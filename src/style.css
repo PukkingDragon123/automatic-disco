@@ -137,6 +137,13 @@ h1, h2, h3 { font-weight: normal; margin: 0; }
 .hud-cmd { right: calc(174px * var(--s)); bottom: 0; }
 .hud-sel, .hud-cmd { transition: transform 360ms steps(8); }
 .hud.fold .hud-sel, .hud.fold .hud-cmd { transform: translateY(calc(100% - 10px * var(--s))); }
+.hud-sel.idle { transform: translateY(calc(100% - 15px * var(--s))); }
+.knob { position: absolute; image-rendering: pixelated; cursor: ns-resize; }
+/* console CRT settings: GAIN (brightness) and TUNE (P1 green / P3 amber phosphor) */
+:root { --crt-filter: brightness(var(--crt-gain, 1)); }
+body.p3 { --crt-filter: hue-rotate(-92deg) saturate(1.35) brightness(var(--crt-gain, 1)); }
+.hud .scr, .hud .mm, .hud .sweep, .hud-dialog .dlg-pf, .hud-dialog .dlg-r, .hud-obj, .tip, .toast { filter: var(--crt-filter); }
+.hud .scr, .hud-dialog .dlg-r { background: radial-gradient(ellipse at 50% 45%, #0c3418 0%, #06180c 60%, #031008 100%); border-radius: calc(3px * var(--s)); }
 
 /* odometer drums */
 .odo { position: absolute; }
