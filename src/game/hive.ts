@@ -161,7 +161,7 @@ export class Hive {
     // plants on established growth are drained into biomass
     for (const p of this.plantsEaten) {
       const got = w.flora.eat(p, dt * 0.12);
-      if (got > 0) { this.res.bio += got * 0.55; this.income.bio += got * 0.02; if (Math.random() < 0.06) { const y = w.surfaceY(w.flora.x[p], w.flora.z[p]); this.fx.mote(w.flora.x[p], y + 0.3, w.flora.z[p], this.core!.x, this.core!.y + 2, this.core!.z, this.vein, 3); } }
+      if (got > 0) { this.res.bio += got * 0.07; this.income.bio += got * 0.02; if (Math.random() < 0.06) { const y = w.surfaceY(w.flora.x[p], w.flora.z[p]); this.fx.mote(w.flora.x[p], y + 0.3, w.flora.z[p], this.core!.x, this.core!.y + 2, this.core!.z, this.vein, 3); } }
       else this.plantsEaten.delete(p);
     }
     this.flushCov();

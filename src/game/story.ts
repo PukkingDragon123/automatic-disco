@@ -195,7 +195,7 @@ export class Story {
     }
   }
   private isDone(id: string) { return !!this.objectives.find((o) => o.id === id)?.done; }
-  private say(lines: (string | Line)[]) { this.dialog.say(lines.map((l) => (typeof l === 'string' ? { text: l } : l))); }
+  say(lines: (string | Line)[]) { this.dialog.say(lines.map((l) => (typeof l === 'string' ? { text: l } : l))); }
   private react(key: string, pool: string[]) {
     if (this.seen.has(key) || !this.calder || this.calder.dead) return;
     this.seen.add(key);
@@ -254,7 +254,9 @@ export class Story {
             { text: 'Easy. Easy now. I\'m not going to hurt you.', expr: 'surprised' },
             'I watched you come down three nights ago. You burned green the whole way.',
             'Dr. Calder. Xenobiology survey, Station Four. The last one left, apparently.',
-            { text: 'And you... you hatched. Look at you. Look at those eyes.', expr: 'smile' },
+            { text: 'And you... you hatched. Look at you.', expr: 'surprised' },
+            { text: 'Those hands. Those teeth. You should terrify me, and you do, a little.', expr: 'surprised' },
+            { text: 'But you watch me the way I watch you. Like you want to learn.', expr: 'smile' },
             { text: 'I\'m going to call you Veyr. It\'s what my grandmother called the green fire on the marsh.', expr: 'smile', onShow: () => c.gesture('present') },
           ]);
           this.go('t-spread');

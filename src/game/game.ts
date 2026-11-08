@@ -24,6 +24,8 @@ import type { Post } from '../gfx/post';
 import { GENE } from '../life/genes';
 import type { Species } from './species';
 import { Story } from './story';
+import { RivalBrain } from './rival';
+import { RIVALS } from '../world/palette';
 import { VeyrChild } from './child';
 import { BabyEditor } from '../ui/babyEditor';
 import { coreCapGeometry } from './buildings';
@@ -69,6 +71,8 @@ export class Game implements Screen {
   readonly regionName: string;
   storyBlock = false;
   story: Story | null = null;
+  rivals: RivalBrain[] = [];
+  private rivalT = 210;
   child!: VeyrChild;
   private cap: THREE.Mesh | null = null; private hatchT = 0;
   private handlers: Record<string, ((d: any) => void)[]> = {};
@@ -496,6 +500,28 @@ export class Game implements Screen {
   onHarvest?: (sp: Species, chosen: string[]) => void;
 
   // ------------------------------------------------------------------ command card
+  /** rival asteroids: the first falls a few minutes in, far from the Veyr */
+  private tickRivals(dt: number) {
+    for (const r of this.rivals) r.update(dt);
+    if (this.rivals.length || !this.veyr.core || this.opts.story === false && !(window as any).__rivalNow) return;
+    this.rivalT -= dt;
+    if ((window as any).__rivalNow) { this.rivalT = 0; (window as any).__rivalNow = false; }
+    if (this.rivalT > 0) return;
+    const rnd = new Rand(this.opts.seed * 7 + 99);
+    const site = RivalBrain.site(this.world, this.veyr.core.x, this.veyr.core.z, rnd);
+    if (!site) { this.rivalT = 60; return; }
+    const key = this.opts.seed % RIVALS.length;
+    sfx('pulse', 0.3, 0.8);
+    toast(`Something else is falling. Red, and fast.`, 'warn', 3000);
+    this.rivals.push(new RivalBrain(this.world, this.fx, key, site[0], site[1], this.opts.seed * 13 + 5, {
+      landed: (b) => {
+        this.cam.shake(1.1, 1.3);
+        toast(`<b>${b.name}</b> has fallen on this world. Its creep will come for yours.`, 'warn', 7000);
+        if (this.story?.calder && !this.story.calder.dead) this.story.say([{ text: 'Did you feel that? Another one came down. Past the ridge.', expr: 'surprised' }, 'It isn\'t like you. It\'s already eating.']);
+      },
+      wave: (b, n) => { toast(`<b>${b.name}</b> sends ${n} of its brood against you`, 'warn', 4500); sfx('call', 0.6, 0.8); },
+    }));
+  }
   /** the mirror pool: change how the child looks */
   openMirror() {
     this.engine.push(new BabyEditor(this.child.lookData, (l) => { this.engine.pop(); if (l) { this.child.setLook(l); toast(`You are <b>${l.name}</b>.`, 'good', 2400); } }));
@@ -568,6 +594,7 @@ export class Game implements Screen {
     this.world.update(simDt, this.cam.cam);
     if (simDt > 0) {
       for (const h of this.world.hives) h.update(simDt);
+      this.tickRivals(simDt);
       this.tickHeld(simDt);
       // corpses on growth are taken automatically
       for (const c of this.world.creatures) if (c.dead && c.digest <= 0 && c.bio > 0.3) { for (const h of this.world.hives) if (h.tryDigest(c)) { if (h === this.veyr) sfx('squelch', Math.max(0.6, c.size), this.audible(c.x, c.z)); break; } }
