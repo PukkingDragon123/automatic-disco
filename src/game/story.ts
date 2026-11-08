@@ -254,9 +254,9 @@ export class Story {
             { text: 'Easy. Easy now. I\'m not going to hurt you.', expr: 'surprised' },
             'I watched you come down three nights ago. You burned green the whole way.',
             'Dr. Calder. Xenobiology survey, Station Four. The last one left, apparently.',
-            { text: 'And you... you hatched. Look at you.', expr: 'surprised' },
-            { text: 'Those hands. Those teeth. You should terrify me, and you do, a little.', expr: 'surprised' },
-            { text: 'But you watch me the way I watch you. Like you want to learn.', expr: 'smile' },
+            { text: 'And you... you hatched. Look at you. You\'re so... round.', expr: 'surprised' },
+            { text: 'Are you floating? You\'re floating. Your own field is holding you up.', expr: 'surprised' },
+            { text: 'Silicon, not carbon, if my scanner\'s right. Hello, little one.', expr: 'smile' },
             { text: 'I\'m going to call you Veyr. It\'s what my grandmother called the green fire on the marsh.', expr: 'smile', onShow: () => c.gesture('present') },
           ]);
           this.go('t-spread');
