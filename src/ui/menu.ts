@@ -3,7 +3,7 @@
 // the ascension finale (the region borders dissolve, the whole planet goes over to the Veyr).
 import * as THREE from 'three';
 import type { Screen } from '../app/engine';
-import type { Post } from '../gfx/post';
+import { type Post, resetGrade } from '../gfx/post';
 import { el, panel, ui, Btn, Tip } from './kit';
 import { sfx } from '../audio/audio';
 import { makeGlobe, stars, type Globe } from './globe';
@@ -32,7 +32,7 @@ export class MenuScreen implements Screen {
   private t = 0; private focus: number = -1;
   private camPos = new THREE.Vector3(0, 0.35, 5.4); private camLook = new THREE.Vector3(0.6, 0, 0);
 
-  constructor(readonly opts: { hasSave: boolean; archive: ArchiveEntry[]; onNew: (seed: number) => void; onContinue: () => void; onLaunch: (e: ArchiveEntry) => void; onMirror: () => void }) {
+  constructor(readonly opts: { hasSave: boolean; archive: ArchiveEntry[]; onNew: (seed: number) => void; onContinue: () => void; onLaunch: (e: ArchiveEntry) => void; onMirror: (back: () => void) => void }) {
     this.scene.background = new THREE.Color(0x02040a);
     this.scene.add(stars(1800, 70));
     const show: Planet = makePlanet(1000 + Math.floor(Math.random() * 9000));
@@ -55,7 +55,7 @@ export class MenuScreen implements Screen {
     if (opts.hasSave) new Btn(col, { icon: 'planet', label: 'CONTINUE', size: 'big', tip: () => 'Return to the world you are taking.' }, () => this.close(() => opts.onContinue()));
     new Btn(col, { icon: 'core', label: 'NEW WORLD', size: 'big', tip: () => opts.hasSave ? 'Abandon the current world and fall on a new one.' : 'Fall on a new world.' }, () => this.close(() => opts.onNew(Math.floor(Math.random() * 1e6))));
     new Btn(col, { icon: 'tree', label: `ARCHIVE · ${opts.archive.length}`, size: 'big', tip: () => 'The worlds you became.' }, () => this.openArchive());
-    new Btn(col, { icon: 'mirror', label: 'MIRROR POOL', size: 'big', tip: () => 'Look at yourself.' }, () => opts.onMirror());
+    new Btn(col, { icon: 'mirror', label: 'MIRROR POOL', size: 'big', tip: () => 'Look at yourself.' }, () => { this.root.style.visibility = 'hidden'; Tip.hide(); opts.onMirror(() => { this.root.style.visibility = ''; }); });
     const seedRow = el('div', 'mn-seed', col);
     el('span', 'tiny', seedRow, 'SEED');
     const inp = el('input', 'fg-name mn-seedin', seedRow) as HTMLInputElement; inp.placeholder = 'random'; inp.maxLength = 9;
@@ -100,7 +100,7 @@ export class MenuScreen implements Screen {
     this.camPos.lerp(pos, Math.min(1, dt * 2.5)); this.camLook.lerp(look, Math.min(1, dt * 2.5));
     this.cam.position.copy(this.camPos); this.cam.lookAt(this.camLook); this.cam.updateMatrixWorld();
   }
-  render(post: Post, t: number) { post.render(this.scene, this.cam, undefined, t); }
+  render(post: Post, t: number) { resetGrade(post.grade); post.render(this.scene, this.cam, undefined, t); }
   resize(w: number, h: number) { this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); }
   private closed = false;
   private close(then: () => void) { if (this.closed) return; this.closed = true; this.root.remove(); Tip.hide(); sfx('click'); then(); }
@@ -140,7 +140,7 @@ export class AscendScreen implements Screen {
     const z = 3.6 - Math.min(1, t / 20) * 0.8;
     this.cam.position.set(0, 0.3, z); this.cam.lookAt(0, 0, 0); this.cam.updateMatrixWorld();
   }
-  render(post: Post, t: number) { post.render(this.scene, this.cam, undefined, t); }
+  render(post: Post, t: number) { resetGrade(post.grade); post.render(this.scene, this.cam, undefined, t); }
   resize(w: number, h: number) { this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); }
   dispose() { this.root.remove(); }
 }

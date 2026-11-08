@@ -41,7 +41,7 @@ export function makePlanet(seed: number): Planet {
 }
 
 export const BIOME_COL: Record<BiomeKey, number> = {
-  meadow: 0x6aa84a, jungle: 0x2f7a3a, savanna: 0xb8a24a, marsh: 0x4a6a4a, highland: 0x7a7a5a, tundra: 0xd8e4ec,
-  desert: 0xe0c07a, crystal: 0x9ac8e0, ashland: 0x5a4a4a, coast: 0x5ab0a0,
+  meadow: 0x5e7a40, jungle: 0x2e4a2a, savanna: 0x9a8a56, marsh: 0x41503c, highland: 0x6e6a58, tundra: 0xc4ccd0,
+  desert: 0xc2a878, crystal: 0x8a9eaa, ashland: 0x4a4240, coast: 0x5a7a6a,
 };
 export const owned = (p: Planet) => p.regions.filter((r) => r.state === 'veyr').length;

@@ -17,7 +17,7 @@ export interface BDef {
   onDeposit?: boolean;
 }
 export const BDEFS: Record<BKind, BDef> = {
-  core: { kind: 'core', name: 'Veyr Core', key: '', desc: 'The heart that fell from the sky. Lose it and you are only rock.', bio: 0, min: 0, time: 1, hp: 2400, radius: 2.6, sight: 18, supply: 6, em: 1 },
+  core: { kind: 'core', name: 'Veyr Core', key: '', desc: 'The heart that fell from the sky. Lose it and you are only rock.', bio: 0, min: 0, time: 1, hp: 2400, radius: 1.1, sight: 18, supply: 6, em: 1 },
   spire: { kind: 'spire', name: 'Nerve Spire', key: 'S', desc: 'Carries your field outward: moss can grow and buildings can root within its reach.', bio: 45, min: 0, time: 14, hp: 380, radius: 0.9, sight: 14, supply: 0, em: 1 },
   tap: { kind: 'tap', name: 'Root Tap', key: 'T', desc: 'Drives roots into a ferrite or crystal seam and pumps minerals up.', bio: 35, min: 0, time: 12, hp: 320, radius: 1.1, sight: 8, supply: 0, em: 1, onDeposit: true },
   brood: { kind: 'brood', name: 'Brood Womb', key: 'B', desc: 'Gestates your designs. Each womb also feeds six more of your creatures.', bio: 70, min: 15, time: 20, hp: 520, radius: 1.6, sight: 10, supply: 6, em: 1 },
@@ -152,6 +152,8 @@ function coreModel(mb: MB, r: Rand, part: 'shell' | 'cap' = 'shell') {
   for (let i = 0; i < 7; i++) { const a = (i / 7) * Math.PI * 2 + r.range(-0.2, 0.2); mb.box([Math.cos(a) * 2.9, 0.2, Math.sin(a) * 2.9], [0.24, r.range(0.5, 0.9), 0.24], 'crystal', { rz: Math.cos(a) * 0.5, rx: Math.sin(a) * 0.5 }, 2); }
   mb.box([0, 1.95, 0], [1.6, 0.16, 1.6], 'glow', {}, 1);
 }
+/** the fallen asteroid is small: a boulder you could put your arms around */
+export const CORE_S = 0.36;
 /** the asteroid: a lumpy faceted rock with glowing fissures; 'cap' is the sealed top that bursts at hatching */
 export function asteroidGeometry(seed: number, part: 'shell' | 'cap'): THREE.BufferGeometry {
   const nz = new Noise(seed), base = new THREE.IcosahedronGeometry(2.5, 4).toNonIndexed();
@@ -172,6 +174,7 @@ export function asteroidGeometry(seed: number, part: 'shell' | 'cap'): THREE.Buf
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setAttribute('aLayer', new THREE.Float32BufferAttribute(lay, 1));
   g.setAttribute('aPart', new THREE.Float32BufferAttribute(prt, 1));
+  g.scale(CORE_S, CORE_S, CORE_S);
   g.computeVertexNormals();
   g.computeBoundingSphere();
   return g;
@@ -191,7 +194,7 @@ function merge(a: THREE.BufferGeometry, b: THREE.BufferGeometry): THREE.BufferGe
 function model(kind: BKind, seed: number): THREE.BufferGeometry {
   const mb = new MB(), r = new Rand(seed);
   switch (kind) {
-    case 'core': coreModel(mb, r); return merge(asteroidGeometry(seed, 'shell'), mb.build());
+    case 'core': { coreModel(mb, r); const ring = mb.build(); ring.scale(CORE_S, CORE_S, CORE_S); return merge(asteroidGeometry(seed, 'shell'), ring); }
     case 'spire': {
       for (let i = 0; i < 4; i++) { const a = i * 1.57 + 0.4; mb.box([Math.cos(a) * 0.55, 0.2, Math.sin(a) * 0.55], [0.22, 0.5, 0.7], 'flesh', { ry: -a, rz: 0.5 }); }
       let y = 0, w = 0.75;

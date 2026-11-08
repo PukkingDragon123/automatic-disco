@@ -179,8 +179,8 @@ async function testChild() {
   const ch = new VeyrChild(fx, 1.25, P.has('lk') ? randomLook(() => lr.next()) : DEFAULT_LOOK, { grown: !P.has('small') }); ch.hatch = 1; scene.add(ch.root);
   if (P.has('wave')) ch.wave();
   const cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 100);
-  const yaw = Number(P.get('yaw') ?? 0.4);
-  cam.position.set(Math.sin(yaw) * 6, 2.6, Math.cos(yaw) * 6); cam.lookAt(0, 1.4, 0);
+  const yaw = Number(P.get('yaw') ?? 0.4), D = Number(P.get('dist') ?? 6);
+  cam.position.set(Math.sin(yaw) * D, 1.3 + D * 0.22, Math.cos(yaw) * D); cam.lookAt(0, 1.3, 0);
   ch.look.set(Math.sin(yaw) * 6, 2.6, Math.cos(yaw) * 6);
   if (P.has('cast')) ch.cast(new THREE.Vector3(2, 0, 4));
   engine.setScreen({ update(dt) { ch.update(dt, cam); fx.update(dt, engine.h, 30); }, render(post, t) { post.render(scene, cam, fxs, t); }, resize(w, h) { cam.aspect = w / h; cam.updateProjectionMatrix(); } });

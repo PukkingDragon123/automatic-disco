@@ -35,7 +35,7 @@ export class Flow {
       hasSave: !!save, archive: read<ArchiveEntry[]>(AK, []),
       onNew: (s) => this.newWorld(s, []), onContinue: () => this.resume(),
       onLaunch: (e) => { const g = [...e.genes].sort(() => Math.random() - 0.5).slice(0, 3); this.newWorld(Math.floor(Math.random() * 1e6), g); },
-      onMirror: () => this.engine.push(new BabyEditor(loadLook(), () => this.engine.pop())),
+      onMirror: (back) => this.engine.push(new BabyEditor(loadLook(), () => { this.engine.pop(); back(); })),
     }));
   }
   newWorld(seed: number, inherit: string[]) {

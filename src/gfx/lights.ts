@@ -19,8 +19,8 @@ export class Sun {
     scene.add(this.light, this.light.target, this.hemi);
   }
   setColors(pal: Palette, k = 1) {
-    this.light.color.set(pal.sun); this.light.intensity = 2.7 * k;
-    this.hemi.color.set(pal.ambient); this.hemi.groundColor.set(pal.groundLight); this.hemi.intensity = 1.7 * (0.55 + 0.45 * k);
+    this.light.color.set(pal.sun); this.light.intensity = 3.3 * k;
+    this.hemi.color.set(pal.ambient); this.hemi.groundColor.set(pal.groundLight); this.hemi.intensity = 1.3 * (0.55 + 0.45 * k);
   }
   follow(target: THREE.Vector3, viewDist: number) {
     const R = (this.radius = Math.max(26, Math.min(120, viewDist * 1.15)));

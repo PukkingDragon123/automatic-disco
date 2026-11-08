@@ -1,15 +1,15 @@
-// The mirror pool: the Veyr child sees itself in still water and chooses how it looks: skin, belly, markings,
-// chub, tail, eyes, gills, back, crystal glow, cheeks and a name; the sculpt rebuilds live and it looks back at you.
+// The assembly bay (the mirror pool): fit out the golem: its asteroid rock, plate steel, reactor glow, the growth
+// creeping over it, fissure pattern, face, head gear, hands and bulk, and a name; it rebuilds live and looks back.
 import * as THREE from 'three';
 import type { Screen } from '../app/engine';
 import type { Post } from '../gfx/post';
 import { el, panel, ui, Btn, Tip } from './kit';
 import { sfx } from '../audio/audio';
-import { VeyrChild } from '../game/child';
+import { VeyrChild, paintMetal, projUV, roundBox } from '../game/child';
 import { Fx } from '../game/fx';
 import { gbuf } from '../gfx/gbuf';
 import { clamp } from '../core/rand';
-import { type BabyLook, SKINS, BELLIES, PATCOLS, EYES, GLOWS, GILLS, EYESTYLES, BACKS, TAILS, PATS, randomLook, saveLook } from '../game/babyLook';
+import { type BabyLook, ROCKS, METALS, GLOWS, MOSSES, VEINS, HEADS, TOPS, ARMS, randomLook, saveLook } from '../game/babyLook';
 
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
 
@@ -25,27 +25,37 @@ export class BabyEditor implements Screen {
   private drag: { x: number; y: number } | null = null;
   private nameIn!: HTMLInputElement;
   private ring: THREE.Mesh;
+  private table!: THREE.Group; private lamps: THREE.Mesh[] = [];
 
   constructor(look: BabyLook, readonly done: (l: BabyLook | null) => void) {
     this.L = { ...look };
-    this.scene.background = new THREE.Color(0x0a1418);
-    this.scene.fog = new THREE.Fog(0x0a1418, 9, 22);
-    this.scene.add(new THREE.HemisphereLight(0xdde8ff, 0x302838, 1.5));
-    const key = new THREE.DirectionalLight(0xfff0dc, 2.6); key.position.set(-3, 6, 5); key.castShadow = true; key.shadow.mapSize.set(1024, 1024);
-    const sc = key.shadow.camera as THREE.OrthographicCamera; sc.left = sc.bottom = -4; sc.right = sc.top = 4; sc.near = 0.5; sc.far = 20; this.scene.add(key);
-    const rim = new THREE.DirectionalLight(0x7affe0, 1.6); rim.position.set(3, 2.5, -4); this.scene.add(rim);
-    // a basin of asteroid rock with a still pool around it
-    const rock = new THREE.MeshLambertMaterial({ color: 0x3a3048, flatShading: true }); gbuf(rock, 1);
-    const ped = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.85, 0.5, 9), rock); ped.position.y = 0; ped.receiveShadow = true; ped.castShadow = true; this.scene.add(ped);
-    const pool = new THREE.MeshLambertMaterial({ color: 0x0c3a40, emissive: new THREE.Color(0x0a4a48), emissiveIntensity: 0.5 }); gbuf(pool, 0);
-    const water = new THREE.Mesh(new THREE.CircleGeometry(7, 40), pool); water.rotation.x = -Math.PI / 2; water.position.y = -0.2; water.receiveShadow = true; this.scene.add(water);
-    const rm = new THREE.MeshLambertMaterial({ color: 0x2a2436, flatShading: true }); gbuf(rm, 1);
-    for (let i = 0; i < 9; i++) { const a = (i / 9) * Math.PI * 2 + 0.3, r = 3.2 + (i % 3) * 0.9; const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4 + (i % 4) * 0.18, 0), rm); m.position.set(Math.cos(a) * r, -0.1, Math.sin(a) * r); m.rotation.set(i, i * 2, 0); m.castShadow = true; this.scene.add(m); }
+    this.scene.background = new THREE.Color(0x0c0e10);
+    this.scene.fog = new THREE.Fog(0x0c0e10, 8, 20);
+    this.scene.add(new THREE.HemisphereLight(0xd8e0ff, 0x3a3020, 1.1));
+    const key = new THREE.DirectionalLight(0xffe2b8, 3.0); key.position.set(-3, 6, 5); key.castShadow = true; key.shadow.mapSize.set(1024, 1024);
+    const sc = key.shadow.camera as THREE.OrthographicCamera; sc.left = sc.bottom = -5; sc.right = sc.top = 5; sc.near = 0.5; sc.far = 20; this.scene.add(key);
+    const rim = new THREE.DirectionalLight(0x7affe0, 1.4); rim.position.set(3, 2.5, -4); this.scene.add(rim);
+    // the assembly bay: a riveted steel floor, a hazard-ringed turntable, gantry posts with warning lamps
+    const tex = (base: number, hz: boolean, rep: number) => { const t = paintMetal(base, hz); t.repeat.set(rep, rep); return t; };
+    const mat = (t: THREE.Texture) => { const m = new THREE.MeshLambertMaterial({ map: t, flatShading: true }); gbuf(m, 1); return m; };
+    const floorM = mat(tex(0x3a3e42, false, 1)), steel = mat(tex(0x5a5e62, false, 1)), haz = mat(tex(0xd0a020, true, 1));
+    const floor = new THREE.Mesh(projUV(new THREE.PlaneGeometry(40, 40).rotateX(-Math.PI / 2), 0.35), floorM); floor.position.y = -0.16; floor.receiveShadow = true; this.scene.add(floor);
+    const table = new THREE.Group(); this.table = table; this.scene.add(table);
+    const top = new THREE.Mesh(projUV(new THREE.CylinderGeometry(1.6, 1.7, 0.32, 24, 1), 1.4), [haz, steel, steel]); top.receiveShadow = true; top.castShadow = true; table.add(top);
+    const lip = new THREE.Mesh(projUV(new THREE.CylinderGeometry(1.25, 1.25, 0.34, 24, 1), 1.4), steel); lip.receiveShadow = true; table.add(lip);
+    for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; const b = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.03, 6), steel); b.position.set(Math.cos(a) * 1.42, 0.17, Math.sin(a) * 1.42); table.add(b); }
+    this.lamps = [];
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4, x = Math.cos(a) * 3.6, z = Math.sin(a) * 3.6;
+      const post = new THREE.Mesh(projUV(roundBox(0.32, 4.2, 0.32, 0.03), 1.4), [steel, steel, steel, steel, haz, haz]); post.position.set(x, 1.95, z); post.castShadow = true; post.receiveShadow = true; this.scene.add(post);
+      const lm = new THREE.MeshBasicMaterial({ color: 0xff8a20 }); gbuf(lm, 1);
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 6), lm); lamp.position.set(x * 0.94, 2.6, z * 0.94); this.scene.add(lamp); this.lamps.push(lamp);
+    }
     const gm = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x7affe0).multiplyScalar(1.6) }); gbuf(gm, 0);
-    this.ring = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.025, 6, 48), gm); this.ring.rotation.x = Math.PI / 2; this.ring.position.y = 0.26; this.scene.add(this.ring);
+    this.ring = new THREE.Mesh(new THREE.TorusGeometry(1.45, 0.02, 6, 48), gm); this.ring.rotation.x = Math.PI / 2; this.ring.position.y = 0.17; this.scene.add(this.ring);
     this.fx = new Fx(this.fxs, this.scene);
     this.child = new VeyrChild(this.fx, 1.25, this.L, { grown: true });
-    this.child.root.position.y = 0.25; this.child.hatch = 1;
+    this.child.root.position.y = -0.22; this.child.hatch = 1;
     this.scene.add(this.child.root);
     this.child.wave();
     this.root = this.buildUI();
@@ -58,7 +68,7 @@ export class BabyEditor implements Screen {
     const root = el('div', 'forge mirror', ui());
     root.addEventListener('pointerdown', (e) => { if (e.target === root) this.drag = { x: e.clientX, y: e.clientY }; });
     const top = panel('fg-top', root, 'dark');
-    el('div', 'hdr fg-title', top, 'MIRROR POOL');
+    el('div', 'hdr fg-title', top, 'ASSEMBLY BAY');
     this.nameIn = el('input', 'fg-name', top) as HTMLInputElement;
     this.nameIn.value = this.L.name; this.nameIn.maxLength = 16;
     this.nameIn.addEventListener('input', () => { this.L.name = this.nameIn.value || 'Veyr'; });
@@ -74,7 +84,7 @@ export class BabyEditor implements Screen {
       const row = el('div', 'fg-pats', p);
       for (const o of list) { const b = el('button', 'fg-pat', row, o.toUpperCase()); b.dataset.k = k; b.dataset.v = o; b.addEventListener('click', () => { (this.L as any)[k] = o; this.changed(); }); }
     };
-    const step = (p: HTMLElement, label: string, k: 'chub', lo: number, hi: number, d: number) => {
+    const step = (p: HTMLElement, label: string, k: 'bulk', lo: number, hi: number, d: number) => {
       el('div', 'hdr fg-h', p, label);
       const row = el('div', 'fg-pats', p);
       const v = el('span', 'small mir-val', row);
@@ -83,23 +93,18 @@ export class BabyEditor implements Screen {
       el('button', 'fg-pat', row, '+').addEventListener('click', () => set(this.L[k] + d));
       v.dataset.val = k;
     };
-    sw(left, 'SKIN', SKINS, 'skin');
-    sw(left, 'BELLY', BELLIES, 'belly');
-    opt(left, 'MARKINGS', PATS, 'pat');
-    sw(left, 'MARKING COLOUR', PATCOLS, 'patCol');
-    step(left, 'CHUB', 'chub', 0, 1, 0.25);
-    opt(left, 'TAIL', TAILS, 'tail');
-    opt(right, 'EYES', EYESTYLES, 'eyes');
-    sw(right, 'EYE COLOUR', EYES, 'eye');
-    opt(right, 'GILLS', GILLS, 'gills');
-    opt(right, 'BACK', BACKS, 'back');
-    sw(right, 'CRYSTAL GLOW', GLOWS, 'glow');
-    el('div', 'hdr fg-h', right, 'CHEEKS');
-    const bl = el('div', 'fg-pats', right);
-    const blb = el('button', 'fg-pat', bl, 'BLUSH'); blb.dataset.k = 'blush'; blb.addEventListener('click', () => { this.L.blush = !this.L.blush; this.changed(); });
+    sw(left, 'ASTEROID ROCK', ROCKS, 'rock');
+    sw(left, 'PLATE STEEL', METALS, 'metal');
+    sw(left, 'REACTOR GLOW', GLOWS, 'glow');
+    opt(left, 'FISSURES', VEINS, 'veins');
+    step(left, 'BULK', 'bulk', 0, 1, 0.25);
+    opt(right, 'FACE', HEADS, 'head');
+    opt(right, 'HEAD GEAR', TOPS, 'top');
+    opt(right, 'HANDS', ARMS, 'arms');
+    opt(right, 'OVERGROWTH', MOSSES, 'moss');
     const bot = panel('fg-bot', root);
     const act = el('div', 'mir-act', bot);
-    new Btn(act, { icon: 'dna', label: 'SURPRISE ME', size: 'wide', tip: () => 'A whole new you.' }, () => { const n = this.L.name; this.L = randomLook(); this.L.name = n; this.changed(); this.child.wave(); });
+    new Btn(act, { icon: 'dna', label: 'SURPRISE ME', size: 'wide', tip: () => 'Refit from the parts bin.' }, () => { const n = this.L.name; this.L = randomLook(); this.L.name = n; this.changed(); this.child.wave(); });
     new Btn(act, { icon: 'heart', label: 'WAVE', size: 'wide', tip: () => 'Say hi.' }, () => { this.child.wave(); sfx('call', 1.6, 0.5); });
     new Btn(act, { icon: 'core', label: 'BACK', size: 'wide', tip: () => 'Keep the old look. [Esc]' }, () => this.close(null));
     new Btn(act, { icon: 'bio', label: 'THIS IS ME', size: 'wide', tip: () => 'Keep this look (remembered for every world).' }, () => { saveLook(this.L); sfx('build'); this.close(this.L); });
@@ -109,8 +114,7 @@ export class BabyEditor implements Screen {
   private refresh(root = this.root) {
     root.querySelectorAll<HTMLElement>('.chip').forEach((c) => c.classList.toggle('on', (this.L as any)[c.dataset.k!] === Number(c.dataset.c)));
     root.querySelectorAll<HTMLElement>('.fg-pat[data-v]').forEach((b) => b.classList.toggle('on', String((this.L as any)[b.dataset.k!]) === b.dataset.v));
-    root.querySelectorAll<HTMLElement>('.fg-pat[data-k="blush"]').forEach((b) => b.classList.toggle('on', this.L.blush));
-    root.querySelectorAll<HTMLElement>('[data-val]').forEach((v) => { const i = Math.round(this.L.chub * 4); v.textContent = ['ROUND', 'PLUMP', 'CHUBBY', 'PUDGY', 'BALLOON'][i]; });
+    root.querySelectorAll<HTMLElement>('[data-val]').forEach((v) => { const i = Math.round(this.L.bulk * 4); v.textContent = ['SCOUT', 'LIGHT', 'STANDARD', 'HEAVY', 'SIEGE'][i]; });
   }
   private changed() { this.dirty = 0.08; this.refresh(); sfx('click', 1, 0.4); if (Math.random() < 0.25) this.child.wave(); }
 
@@ -122,12 +126,14 @@ export class BabyEditor implements Screen {
     this.t += dt;
     if (this.dirty > 0) { this.dirty -= dt; if (this.dirty <= 0) { this.dirty = 0; this.child.setLook(this.L); } }
     if (!this.drag) this.yaw += Math.sin(this.t * 0.25) * dt * 0.08;
-    const D = 7.6;
-    this.cam.position.set(Math.sin(this.yaw) * Math.cos(this.pitch) * D, 1.45 + Math.sin(this.pitch) * D, Math.cos(this.yaw) * Math.cos(this.pitch) * D);
-    this.cam.lookAt(0, 1.25, 0); this.cam.updateMatrixWorld();
+    const D = 6.2;
+    this.cam.position.set(Math.sin(this.yaw) * Math.cos(this.pitch) * D, 1.15 + Math.sin(this.pitch) * D, Math.cos(this.yaw) * Math.cos(this.pitch) * D);
+    this.cam.lookAt(0, 0.95, 0); this.cam.updateMatrixWorld();
     this.child.look.copy(this.cam.position);
     this.child.update(dt, this.cam);
     this.ring.scale.setScalar(1 + Math.sin(this.t * 1.6) * 0.015);
+    this.table.rotation.y = this.t * 0.15;
+    this.lamps.forEach((l, i) => { l.visible = Math.sin(this.t * 3 + i * 1.6) > -0.2; });
     this.fx.update(dt, innerHeight, this.cam.fov);
   }
   render(post: Post, t: number) { post.render(this.scene, this.cam, this.fxs, t); }

@@ -12,7 +12,7 @@ precision highp float;
 varying vec2 vUv;
 uniform sampler2D tColor, tNormal, tDepth, tBloom, tFx;
 uniform vec2 uRes;
-uniform float uNear, uFar, uBloom, uSat, uVig, uFade, uCrease, uTime, uFxOn, uDebug;
+uniform float uNear, uFar, uBloom, uSat, uVig, uFade, uCrease, uTime, uFxOn, uDebug, uAO, uAORad, uProj;
 uniform vec3 uLift, uGamma, uGain, uOutline, uSelCol, uHoverCol, uEnemyCol, uFadeCol;
 
 float linZ(float d) { float z = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear)); }
@@ -57,6 +57,29 @@ void main() {
     cr = max(kR, kU) * uCrease;
   }
   float fade = 1.0 - smoothstep(110.0, 220.0, zC);
+
+  // ---- ambient occlusion (screen space, against the local tangent plane so open ground stays clean):
+  // contact shadow under canopies and creatures, between stones, at the foot of every wall. Bayer-rotated taps.
+  float occ = 0.0;
+  if (!bgC && uAO > 0.0) {
+    float zL = 1.0 / wL, zR2 = 1.0 / wR, zD = 1.0 / wD, zU2 = 1.0 / wU;
+    float gx = abs(zR2 - zC) < abs(zC - zL) ? zR2 - zC : zC - zL;
+    float gy = abs(zU2 - zC) < abs(zC - zD) ? zU2 - zC : zC - zD;
+    float rp = clamp(uAORad * uProj / zC, 3.0, 56.0);
+    vec2 fc = mod(floor(gl_FragCoord.xy), 4.0);
+    float bay = mod(fc.x * 4.0 + fc.y * 7.0 + fc.x * fc.y * 3.0, 16.0) / 16.0;
+    for (int i = 0; i < 12; i++) {
+      float fi = float(i);
+      float a = fi * 2.39996 + bay * 6.2831;
+      float rr = rp * (0.2 + 0.8 * fract(fi * 0.618 + bay * 0.37));
+      vec2 op = vec2(cos(a), sin(a)) * rr;
+      float zs = linZ(texture2D(tDepth, vUv + op * px).r);
+      float d = (zC + gx * op.x + gy * op.y) - zs;
+      occ += smoothstep(0.03 + zC * 0.0015, 0.12 + zC * 0.004, d) * (1.0 - smoothstep(uAORad, uAORad * 3.0, d));
+    }
+    occ /= 12.0;
+  }
+  col *= 1.0 - uAO * occ * fade * (1.0 - step(31.5, nC.a) * 0.6);
   float edge = max(sil, cr) * fade;
 
   // ---- selection / hover rims: outside pixels within 2 px of a nearer flagged pixel
@@ -152,7 +175,8 @@ export interface Grade { lift: THREE.Color; gamma: THREE.Color; gain: THREE.Colo
  * A restrained, slightly filmic look: below-neutral saturation, a faint cool lift in the shadows against a
  * warm tint in the highlights (split tone), soft vignette, gentle bloom.
  */
-export const defaultGrade = (): Grade => ({ lift: new THREE.Color(0.016, 0.017, 0.022), gamma: new THREE.Color(1.08, 1.08, 1.08), gain: new THREE.Color(1.1, 1.085, 1.05), sat: 0.92, vig: 0.38, bloom: 0.3 });
+export function resetGrade(g: Grade) { const d = defaultGrade(); g.lift.copy(d.lift); g.gamma.copy(d.gamma); g.gain.copy(d.gain); g.sat = d.sat; g.vig = d.vig; g.bloom = d.bloom; }
+export const defaultGrade = (): Grade => ({ lift: new THREE.Color(0.0035, 0.004, 0.007), gamma: new THREE.Color(1.06, 1.06, 1.07), gain: new THREE.Color(1.12, 1.09, 1.03), sat: 1.14, vig: 0.34, bloom: 0.34 });
 
 function rt(w: number, h: number, linear = true) {
   return new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, minFilter: linear ? THREE.LinearFilter : THREE.NearestFilter, magFilter: linear ? THREE.LinearFilter : THREE.NearestFilter, depthBuffer: false });
@@ -189,7 +213,7 @@ export class Post {
       tBloom: { value: null }, tFx: { value: this.fx.texture }, uFxOn: { value: 0 },
       uRes: { value: new THREE.Vector2(4, 4) }, uNear: { value: 0.5 }, uFar: { value: 1000 }, uTime: { value: 0 },
       uBloom: { value: gr.bloom }, uSat: { value: gr.sat }, uVig: { value: gr.vig }, uFade: { value: 0 }, uFadeCol: { value: new THREE.Color(0, 0, 0) },
-      uCrease: { value: 0.62 }, uDebug: { value: Number(new URLSearchParams(location.search).get('dbg') ?? 0) },
+      uCrease: { value: 0.62 }, uAO: { value: 0.75 }, uAORad: { value: 1.1 }, uProj: { value: 600 }, uDebug: { value: Number(new URLSearchParams(location.search).get('dbg') ?? 0) },
       uLift: { value: gr.lift }, uGamma: { value: gr.gamma }, uGain: { value: gr.gain },
       uOutline: { value: new THREE.Color(0x07060c) }, uSelCol: { value: new THREE.Color(0x9dff6a) },
       uHoverCol: { value: new THREE.Color(0xf4f0d8) }, uEnemyCol: { value: new THREE.Color(0xff5a48) },
@@ -258,6 +282,7 @@ export class Post {
     const gr = this.grade;
     this.U.uBloom.value = gr.bloom; this.U.uSat.value = gr.sat; this.U.uVig.value = gr.vig;
     this.U.uNear.value = camera.near; this.U.uFar.value = camera.far; this.U.uTime.value = time;
+    this.U.uProj.value = this.h / (2 * Math.tan((camera.fov * Math.PI) / 360));
     this.pass(this.mComp, null);
   }
 }

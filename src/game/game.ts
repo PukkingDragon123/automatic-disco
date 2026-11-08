@@ -141,7 +141,7 @@ export class Game implements Screen {
     // the baby inside the rock, and the rock's sealed top
     const core = this.veyr.core!;
     this.child = new VeyrChild(this.fx);
-    this.child.root.position.set(core.x, core.y + 2.15, core.z);
+    this.child.root.position.set(core.x, core.y + 1.05, core.z);
     this.world.scene.add(this.child.root);
     this.harvest.child = this.child;
     this.child.onCast = () => this.aura?.pulse(1);
@@ -412,7 +412,7 @@ export class Game implements Screen {
       dep.amount -= amt; h.res.min += amt;
       const core = h.core!, dy = this.world.surfaceY(dep.x, dep.z);
       this.child.cast(new THREE.Vector3(dep.x, dy, dep.z));
-      for (let i = 0; i < 16; i++) { const ox = (Math.random() - 0.5) * dep.r * 1.5, oz = (Math.random() - 0.5) * dep.r * 1.5; this.fx.mote(dep.x + ox, dy + 0.3, dep.z + oz, core.x, core.y + 2.5, core.z, dep.kind === 'crystal' ? 0x9ad8ff : 0xc87a4a, 3 + Math.random() * 2); }
+      for (let i = 0; i < 16; i++) { const ox = (Math.random() - 0.5) * dep.r * 1.5, oz = (Math.random() - 0.5) * dep.r * 1.5; this.fx.mote(dep.x + ox, dy + 0.3, dep.z + oz, core.x, core.y + 1, core.z, dep.kind === 'crystal' ? 0x9ad8ff : 0xc87a4a, 3 + Math.random() * 2); }
       for (let i = 0; i < 6; i++) this.fx.arc(this.child.headPos(), new THREE.Vector3(dep.x + (Math.random() - 0.5) * 2, dy + 0.4, dep.z + (Math.random() - 0.5) * 2), 0.12, this.child.lookData.glow, 0.35);
       this.fx.burst(dep.x, dy + 0.4, dep.z, 30, dep.kind === 'crystal' ? 0x9ad8ff : 0x8a5a3a, { speed: 3, up: 5, size: 4, life: 1.2, grav: 4 });
       sfx('crack', 1.4, 0.8); sfx('zap', 0.8, 0.5); this.cam.shake(0.2, 0.3);
@@ -529,7 +529,7 @@ export class Game implements Screen {
     this.cam.followFn(() => at);
     const prevDist = this.cam.distGoal;
     this.cam.distGoal = 13;
-    this.harvest.start(at, sp.name, genes, this.veyr.absorbCap, core ? new THREE.Vector3(core.x, core.y + 2, core.z) : at.clone(), (chosen) => {
+    this.harvest.start(at, sp.name, genes, this.veyr.absorbCap, core ? new THREE.Vector3(core.x, core.y + 1.6, core.z) : at.clone(), (chosen) => {
       for (const id of chosen) {
         const r = this.run.add(id, sp.name, this.world.time);
         this.veyr.res.helix += 2;
@@ -668,10 +668,10 @@ export class Game implements Screen {
     if (this.hatchT < 9) {
       this.hatchT += dt;
       const t = this.hatchT;
-      if (t > 1.2 && t < 3.2 && Math.random() < dt * 12) { this.cam.shake(0.12, 0.2); this.fx.burst(core.x + (Math.random() - 0.5) * 3, core.y + 3, core.z + (Math.random() - 0.5) * 3, 3, 0x6a5a7a, { speed: 1.5, up: 2, size: 2.5, life: 0.6 }); }
+      if (t > 1.2 && t < 3.2 && Math.random() < dt * 12) { this.cam.shake(0.12, 0.2); this.fx.burst(core.x + (Math.random() - 0.5) * 1.2, core.y + 1.1, core.z + (Math.random() - 0.5) * 1.2, 3, 0x6a5a7a, { speed: 1, up: 1.5, size: 2, life: 0.6 }); }
       if (t > 3.2 && this.cap) {
-        this.fx.burst(core.x, core.y + 3.2, core.z, 60, 0x5a5068, { speed: 5, up: 6, size: 4, life: 1.6, grav: 9 });
-        this.fx.burst(core.x, core.y + 3, core.z, 50, VEYR.vein, { glow: true, speed: 3, up: 4, size: 3, life: 1.4, grav: 1 });
+        this.fx.burst(core.x, core.y + 1.2, core.z, 50, 0x5a5068, { speed: 3, up: 4.5, size: 3, life: 1.4, grav: 9 });
+        this.fx.burst(core.x, core.y + 1.1, core.z, 50, VEYR.vein, { glow: true, speed: 2, up: 3, size: 2.5, life: 1.4, grav: 1 });
         sfx('crack', 2, 1); sfx('pulse', 1, 0.7); this.cam.shake(0.6, 0.6);
         this.cap.userData.v = 1;
       }
@@ -680,7 +680,7 @@ export class Game implements Screen {
         if (c.scale.x < 0.05) { c.removeFromParent(); this.cap = null; }
       }
       ch.hatch = clamp((t - 3.2) / 3, 0, 1);
-      ch.look.set(core.x + Math.sin(t * 0.9) * 6, core.y + 2, core.z + 6);
+      ch.look.set(core.x + Math.sin(t * 0.9) * 6, core.y + 1.5, core.z + 6);
       if (t > 7 && t < 7.1) sfx('call', 0.4, 0.8);
       if (t >= 8.5) { this.cam.followFn(null); this.cam.distGoal = 30; }
     } else {
@@ -752,7 +752,7 @@ export class Game implements Screen {
     if (k < 0.5) { sun.hemi.color.lerp(new THREE.Color(0x3a4a8a), (0.5 - k) * 1.5); sun.light.color.lerp(new THREE.Color(0x8a9adf), (0.5 - k) * 1.5); }
     else if (elev < 0.45) sun.light.color.lerp(new THREE.Color(0xffa060), (0.45 - elev) * 1.2);
     const gr = this.engine.post.grade;
-    gr.sat = 0.92 - (1 - k) * 0.2; gr.vig = 0.42 + (1 - k) * 0.35; gr.bloom = 0.3 + (1 - k) * 0.45;
+    gr.sat = 1.14 - (1 - k) * 0.25; gr.vig = 0.42 + (1 - k) * 0.35; gr.bloom = 0.3 + (1 - k) * 0.45;
     this.world.terrain.U.uVeinGain.value = 1 + (1 - k) * 0.8;
     setNight(1 - k);
   }

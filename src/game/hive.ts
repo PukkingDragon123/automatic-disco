@@ -120,7 +120,12 @@ export class Hive {
     if (this.tick >= 0.2) { this.growth(this.tick); this.tick = 0; }
     this.digest(dt);
     this.updateBuildings(dt);
+    // biomass past what the field can hold rots back into the ground (keeps long games from inflating)
+    const cap = this.bioCap;
+    if (this.res.bio > cap) this.res.bio -= (this.res.bio - cap) * Math.min(1, dt * 0.35);
   }
+  /** how much biomass the field can hold */
+  get bioCap() { return 450 + this.emLevel * 320 + this.buildings.filter((b) => b.done && b.def.kind === 'vault').length * 400; }
 
   private growth(dt: number) {
     const w = this.w, R = w.region, N = R.N, cov = this.cov, other = this.enemyCov, f = this.field;
@@ -163,7 +168,7 @@ export class Hive {
     // plants on established growth are drained into biomass
     for (const p of this.plantsEaten) {
       const got = w.flora.eat(p, dt * 0.12);
-      if (got > 0) { this.res.bio += got * 0.07; this.income.bio += got * 0.02; if (Math.random() < 0.06) { const y = w.surfaceY(w.flora.x[p], w.flora.z[p]); this.fx.mote(w.flora.x[p], y + 0.3, w.flora.z[p], this.core!.x, this.core!.y + 2, this.core!.z, this.vein, 3); } }
+      if (got > 0) { this.res.bio += got * 0.07; this.income.bio += got * 0.02; if (Math.random() < 0.06) { const y = w.surfaceY(w.flora.x[p], w.flora.z[p]); this.fx.mote(w.flora.x[p], y + 0.3, w.flora.z[p], this.core!.x, this.core!.y + 0.9, this.core!.z, this.vein, 3); } }
       else this.plantsEaten.delete(p);
     }
     this.flushCov();
@@ -207,7 +212,7 @@ export class Hive {
       c.bio -= take;
       this.res.bio += take * 1.0;
       this.income.bio += take * 0.02;
-      if (this.core && Math.random() < dt * (2 + c.size * 2)) this.fx.mote(c.x + (Math.random() - 0.5) * c.radius, c.y + c.size * 0.3, c.z + (Math.random() - 0.5) * c.radius, this.core.x, this.core.y + 2.2, this.core.z, this.vein, 3 + Math.random() * 2);
+      if (this.core && Math.random() < dt * (2 + c.size * 2)) this.fx.mote(c.x + (Math.random() - 0.5) * c.radius, c.y + c.size * 0.3, c.z + (Math.random() - 0.5) * c.radius, this.core.x, this.core.y + 0.9, this.core.z, this.vein, 3 + Math.random() * 2);
       if (k >= 1) {
         // dissolve, then the genome is offered
         c.fx.dissolve.value = Math.min(1, c.fx.dissolve.value + dt * 0.8);

@@ -3,7 +3,7 @@
 // and the screen whites out on impact.
 import * as THREE from 'three';
 import type { Screen } from '../app/engine';
-import type { Post } from '../gfx/post';
+import { type Post, resetGrade } from '../gfx/post';
 import { el, panel, ui, Btn, Tip } from './kit';
 import { sfx } from '../audio/audio';
 import { makeGlobe, stars, type Globe } from './globe';
@@ -120,7 +120,7 @@ export class PlanetScreen implements Screen {
     this.globe.mat.uniforms.uT.value = this.t;
     this.cam.position.set(0, 0, dist); this.cam.lookAt(0, 0, 0); this.cam.updateMatrixWorld();
   }
-  render(post: Post, t: number) { post.render(this.scene, this.cam, undefined, t); }
+  render(post: Post, t: number) { resetGrade(post.grade); post.render(this.scene, this.cam, undefined, t); }
   resize(w: number, h: number) { this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); }
   private closed = false;
   private close(then: () => void) {

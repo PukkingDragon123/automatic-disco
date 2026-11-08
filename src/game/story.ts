@@ -251,13 +251,13 @@ export class Story {
           c.look = new THREE.Vector3(core.x, core.y + 1.5, core.z);
           c.gesture('think');
           this.say([
-            { text: 'Easy. Easy now. I\'m not going to hurt you.', expr: 'surprised' },
-            'I watched you come down three nights ago. You burned green the whole way.',
-            'Dr. Calder. Xenobiology survey, Station Four. The last one left, apparently.',
-            { text: 'And you... you hatched. Look at you. You\'re so... round.', expr: 'surprised' },
-            { text: 'Are you floating? You\'re floating. Your own field is holding you up.', expr: 'surprised' },
-            { text: 'Silicon, not carbon, if my scanner\'s right. Hello, little one.', expr: 'smile' },
-            { text: 'I\'m going to call you Veyr. It\'s what my grandmother called the green fire on the marsh.', expr: 'smile', onShow: () => c.gesture('present') },
+            { text: 'Easy. Easy now. It\'s all right. I\'m on your side.', expr: 'surprised' },
+            'Three weeks we\'ve combed these hills for your impact site. You came down burning green.',
+            'Dr. Calder. U.S. Planetary Corps, recovery team, Station Four. The last one left, apparently.',
+            { text: 'And you\'re awake. Unit Seven. They swore the rock would never take.', expr: 'surprised' },
+            { text: 'You\'re floating. The gravity coil works. Washington owes me twenty dollars.', expr: 'surprised' },
+            { text: 'Half asteroid, half Earth steel, and something alive in between. Hello, big fella.', expr: 'smile' },
+            { text: 'Your orders haven\'t changed: take this world. For home. For everyone waiting up there.', expr: 'smile', onShow: () => c.gesture('present') },
           ]);
           this.go('t-spread');
         }
@@ -446,8 +446,8 @@ export class Story {
       g.run.flags.calderNotes = 1;
       g.veyr.absorbCap += 1;
       this.say([
-        { text: 'Final entry. If anyone finds this: it isn\'t a monster. It\'s a child. It learns. It chose to let me live.', who: 'journal' },
-        { text: 'Take care of it. Or let it take care of itself. It will anyway.', who: 'journal' },
+        { text: 'Final entry. If the Corps finds this: Unit Seven isn\'t just a weapon. It learns. It chose to keep me alive.', who: 'journal' },
+        { text: 'Finish the job, Seven. Take this world home for us.', who: 'journal' },
       ]);
       toast('Calder\'s notes absorbed: you can take one more gene from every genome', 'story', 7000);
       g.vision.revealAll = false;

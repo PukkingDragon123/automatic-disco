@@ -17,7 +17,7 @@ export function makeGlobe(p: Planet, radius = 1, opts: { ascended?: boolean } = 
     uniforms: {
       uC: { value: C }, uCol: { value: COL }, uSt: { value: ST }, uN: { value: p.regions.length }, uHover: { value: -1 }, uT: { value: 0 },
       uSun: { value: new THREE.Vector3(-0.6, 0.5, 0.65).normalize() }, uMoss: { value: new THREE.Color(VEYR.moss) }, uVein: { value: new THREE.Color(VEYR.vein) },
-      uCreep: { value: new THREE.Color(RIVALS[p.seed % RIVALS.length].creep) }, uSea: { value: new THREE.Color(0x1a5a78) }, uAsc: { value: opts.ascended ? 1 : 0 },
+      uCreep: { value: new THREE.Color(RIVALS[p.seed % RIVALS.length].creep) }, uSea: { value: new THREE.Color(0x1e4256) }, uAsc: { value: opts.ascended ? 1 : 0 },
     },
     vertexShader: 'varying vec3 vP; varying vec3 vNw; void main(){ vP = position; vNw = normalize(mat3(modelMatrix) * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
     fragmentShader: GN_DECL + `
@@ -44,8 +44,13 @@ void main(){
   bool border = d2 - d1 < 0.025;
   if (border && uAsc < 0.5) col *= 0.42;
   if (k == uHover) col = mix(col, vec3(1.0, 0.95, 0.7), border ? 0.8 : 0.22);
+  // drifting cloud banks (texel-snapped, thinner over the poles), and a glint on open water
+  float cl = vn(n * 4.0 + vec3(uT * 0.015, 0.0, uT * 0.008)) * 0.6 + vn(n * 10.0 - vec3(uT * 0.02, 0.0, 0.0)) * 0.4;
+  float cloud = smoothstep(0.6, 0.7, cl) * (uAsc > 0.5 ? 0.5 : 1.0);
   vec3 N = normalize(vNw);
-  float l = max(0.0, dot(N, uSun)) * 1.05 + 0.18;
+  float l = max(0.0, dot(N, uSun)) * 1.05 + 0.12;
+  if (sea < 0.36 && abs(n.y) < 0.82 && st < 0.5) col += vec3(0.5, 0.55, 0.5) * pow(max(0.0, dot(reflect(-uSun, N), vec3(0.0, 0.0, 1.0))), 24.0);
+  col = mix(col, vec3(0.88, 0.9, 0.92) * (0.92 + g * 0.08), cloud * 0.82);
   l = floor(l * 5.0) / 5.0 + 0.1;
   gl_FragColor = vec4(col * l, 1.0);
   gNormal = vec4(N * 0.5 + 0.5, 1.0);
@@ -54,7 +59,7 @@ void main(){
   const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(radius, 24), mat);
   const atmo = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.08, 48, 32), new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.BackSide,
-    uniforms: { uCol: { value: new THREE.Color(opts.ascended ? VEYR.vein : 0x6ab8ff) } },
+    uniforms: { uCol: { value: new THREE.Color(opts.ascended ? VEYR.vein : 0x8ab0d0) } },
     vertexShader: 'varying vec3 vN; varying vec3 vV; void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
     fragmentShader: GN_DECL + 'uniform vec3 uCol; varying vec3 vN; varying vec3 vV; void main(){ float f = pow(1.0 - abs(dot(vN, vV)), 3.0); float q = floor(f * 6.0) / 6.0; gl_FragColor = vec4(uCol * q * 1.3, 1.0); gNormal = vec4(0.0); }',
   }));
