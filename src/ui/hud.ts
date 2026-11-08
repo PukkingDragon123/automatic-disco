@@ -20,7 +20,7 @@ export interface HudCtx {
   commands: () => Cmd[]; ctxKey: () => string;
   conquest: () => number; regionName: string;
   minimap: (x: number, z: number, button: number) => void;
-  openTree: () => void; openBuilder: () => void; openMenu: () => void;
+  openTree: () => void; openBuilder: () => void; openMenu: () => void; openMirror: () => void;
 }
 
 const MIND: Record<string, string> = { idle: 'Resting', wander: 'Wandering', graze: 'Grazing', eat: 'Feeding', hunt: 'Hunting', flee: 'Fleeing', scavenge: 'Scavenging', order: 'Moving', attack: 'Fighting', held: 'Held by tendrils', rest: 'Resting', follow: 'Following', mate: 'Courting' };
@@ -67,6 +67,7 @@ export class Hud {
     cq.addEventListener('pointerleave', () => Tip.hide());
     const right = el('div', 'tr', top);
     this.clock = el('span', 'clock small', right);
+    new Btn(right, { icon: 'mirror', hotkey: 'V', size: 'sq', tip: () => '<h4>Mirror Pool</h4>Look at yourself. Choose your colours, eyes, antennae and name.' }, () => c.openMirror());
     new Btn(right, { icon: 'tree', hotkey: 'T', size: 'sq', tip: () => '<h4>Tree of Descent</h4>Every species you have met, made or watched branch off.' }, () => c.openTree());
     new Btn(right, { icon: 'builder', hotkey: 'C', size: 'sq', tip: () => '<h4>Gene Forge</h4>Design a new species from the genes you own.' }, () => c.openBuilder());
     new Btn(right, { icon: 'pause', hotkey: 'Esc', size: 'sq', tip: () => '<h4>Menu</h4>' }, () => c.openMenu());

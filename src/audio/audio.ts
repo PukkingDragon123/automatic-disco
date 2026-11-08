@@ -55,7 +55,7 @@ function noise(t: number, dur: number, peak: number, f: number, q: number, type:
 let lastSfx: Record<string, number> = {};
 /** play a named sound; k scales pitch/size (bigger creature = lower), v volume */
 export function sfx(name: string, k = 1, v = 1) {
-  if (!ctx || ctx.state !== 'running') return;
+  if (!ctx || ctx.state !== 'running' || !(v > 0.002) || !(k > 0)) return;
   const t = now();
   if ((lastSfx[name] ?? 0) > t - 0.035) return;
   lastSfx[name] = t;

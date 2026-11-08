@@ -25,6 +25,7 @@ import { GENE } from '../life/genes';
 import type { Species } from './species';
 import { Story } from './story';
 import { VeyrChild } from './child';
+import { BabyEditor } from '../ui/babyEditor';
 import { coreCapGeometry } from './buildings';
 import { panel, Btn } from '../ui/kit';
 
@@ -55,6 +56,7 @@ export class Game implements Screen {
   private held: Held[] = [];
   private pulls: Pull[] = [];
   private storms: { x: number; z: number; t: number }[] = [];
+  private shaping: { x: number; z: number; R: number; amt: number; t: number }[] = [];
   private overlay: HTMLCanvasElement; private og: CanvasRenderingContext2D;
   private drag: { x: number; y: number; on: boolean } | null = null;
   private hoverC: Creature | null = null; private hoverB: Building | null = null;
@@ -117,7 +119,7 @@ export class Game implements Screen {
       sel: () => this.sel, selB: () => this.selB, commands: () => this.commands(), ctxKey: () => this.ctxKey(),
       conquest: () => this.conquest(), regionName: this.regionName,
       minimap: (x, z, b) => this.minimapClick(x, z, b),
-      openTree: () => opts.hooks?.openTree?.(this), openBuilder: () => opts.hooks?.openBuilder?.(this), openMenu: () => opts.hooks?.openMenu?.(this),
+      openTree: () => opts.hooks?.openTree?.(this), openBuilder: () => opts.hooks?.openBuilder?.(this), openMenu: () => opts.hooks?.openMenu?.(this), openMirror: () => this.openMirror(),
     });
     this.overlay = el('canvas', 'overlay2d', document.body);
     this.og = this.overlay.getContext('2d')!;
@@ -215,6 +217,7 @@ export class Game implements Screen {
         else this.clickMode(e.clientX, e.clientY, e.shiftKey);
       } else if (e.button === 2) {
         if (this.mode.k === 'paint') { this.paintStroke(e.clientX, e.clientY, false); this.drag = { x: e.clientX, y: e.clientY, on: true }; return; }
+        if (this.mode.k === 'ability' && (this.mode as any).a === 'shape') { this.shapeAt(e.clientX, e.clientY, -1); return; }
         if (this.mode.k !== 'normal') { this.setMode({ k: 'normal' }); return; }
         this.command(e.clientX, e.clientY, e.shiftKey);
       }
@@ -241,6 +244,7 @@ export class Game implements Screen {
     if (k === 'p') { this.paused = !this.paused; toast(this.paused ? 'Paused' : 'Resumed'); return; }
     if (k === 't') { this.opts.hooks?.openTree?.(this); return; }
     if (k === 'c') { this.opts.hooks?.openBuilder?.(this); return; }
+    if (k === 'v') { this.openMirror(); return; }
     if (k === ' ') { if (this.veyr.core) this.cam.lookAt(this.veyr.core.x, this.veyr.core.z); return; }
     if (k === 'Tab') { this.clearSel(); for (const c of this.world.creatures) if (!c.dead && c.faction === 'veyr') this.addSel(c); return; }
     if (e.ctrlKey || e.metaKey) return;
@@ -366,6 +370,7 @@ export class Game implements Screen {
       this.onAbility?.(a, true);
       return;
     }
+    if (a === 'shape') { this.shapeAt(mx, my, 1); return; }
     if (a === 'pulse' || a === 'bloom' || a === 'storm') {
       if (!g) return;
       if (!h.inField(g.x, g.z)) { toast('Outside your field', 'warn', 1400); return; }
@@ -426,6 +431,21 @@ export class Game implements Screen {
       this.onAbility?.(a, true);
     }
   }
+  /** Earthshape: the child lifts (dir 1) or sinks (dir -1) the ground over half a second */
+  private shapeAt(mx: number, my: number, dir: number) {
+    const h = this.veyr, why = h.can('shape');
+    if (why) { toast(why, 'warn', 1200); return; }
+    const g = this.groundAt(mx, my); if (!g) return;
+    if (!h.inField(g.x, g.z)) { toast('Outside your field', 'warn', 1400); return; }
+    const R = 3.2;
+    for (const hv of this.world.hives) for (const b of hv.buildings) if (Math.hypot(b.x - g.x, b.z - g.z) < R + b.def.radius) { toast('Too close to a structure', 'warn', 1400); return; }
+    h.spend('shape');
+    this.shaping.push({ x: g.x, z: g.z, R, amt: dir > 0 ? 1.7 : -1.5, t: 0.55 });
+    this.child.cast(g);
+    sfx(dir > 0 ? 'crack' : 'squelch', dir > 0 ? 0.7 : 1.4, 0.9); sfx('pulse', 0.6, 0.4); this.cam.shake(0.25, 0.45);
+    this.ringFx(g, R, dir > 0 ? 0xc8a070 : 0x7affe0);
+    this.onAbility?.('shape', true);
+  }
   private ringFx(g: THREE.Vector3, R: number, col: number) {
     for (let i = 0; i < 48; i++) { const a = (i / 48) * Math.PI * 2; _v.set(Math.cos(a), 0, Math.sin(a)); this.fx.glow.emit(g.x, g.y + 0.3, g.z, _v.x * R * 2.2, 0.4, _v.z * R * 2.2, new THREE.Color(col).multiplyScalar(2), 1, 3, 0.45, 0, 2.5); }
   }
@@ -475,6 +495,10 @@ export class Game implements Screen {
   onHarvest?: (sp: Species, chosen: string[]) => void;
 
   // ------------------------------------------------------------------ command card
+  /** the mirror pool: change how the child looks */
+  openMirror() {
+    this.engine.push(new BabyEditor(this.child.lookData, (l) => { this.engine.pop(); if (l) { this.child.setLook(l); toast(`You are <b>${l.name}</b>.`, 'good', 2400); } }));
+  }
   ctxKey() { return `${this.menu}|${this.mode.k}|${this.sel.length ? 'u' : ''}|${this.selB ? this.selB.def.kind + (this.selB.done ? 'd' : '') + (this.selB.faction) : ''}|${this.run.reg.list.filter((s) => s.owner === 'veyr').length}`; }
   commands(): Cmd[] {
     const h = this.veyr;
@@ -484,7 +508,7 @@ export class Game implements Screen {
       disabled: () => h.can(a) || false, active: () => this.mode.k === 'ability' && (this.mode as any).a === a,
       run: () => this.setMode({ k: 'ability', a }), cost: String(ABILITIES[a].charge || ABILITIES[a].bio),
     });
-    const abilities = (['snare', 'pulse', 'pull', 'bloom', 'lance', 'storm'] as Ability[]).map(ab);
+    const abilities = (['snare', 'pulse', 'pull', 'shape', 'bloom', 'lance', 'storm'] as Ability[]).map(ab);
     if (this.menu === 'build') {
       const cmds: Cmd[] = BUILD_ORDER.map((k) => ({
         icon: k, key: BDEFS[k].key, name: BDEFS[k].name, cost: String(BDEFS[k].bio),
@@ -518,10 +542,8 @@ export class Game implements Screen {
         { icon: 'attack', key: 'Z', name: 'Attack-move', tip: () => 'Advance and fight anything hostile on the way.', active: () => this.mode.k === 'amove', run: () => this.setMode({ k: 'amove' }) },
         { icon: 'stop', key: 'X', name: 'Stop', tip: () => 'Drop all orders.', run: () => { for (const c of units) { c.order = null; c.mind = 'idle'; c.homeX = c.x; c.homeZ = c.z; } } },
         { icon: 'hold', key: 'H', name: 'Hold ground', tip: () => 'Stay put, strike anything in reach.', run: () => { for (const c of units) { c.order = { kind: 'hold', x: c.x, z: c.z }; c.homeX = c.x; c.homeZ = c.z; } } },
-        ...abilities.slice(0, 4),
-        ...abilities.slice(4),
+        ...abilities,
         { icon: 'brood', key: 'B', name: 'Grow a structure', tip: () => 'Structures grow from established moss inside your field.', run: () => { this.menu = 'build'; this.hud.invalidate(); } },
-        { icon: 'bloom', key: 'G', name: 'Direct growth', tip: () => 'Paint where your moss should spread first (left drag). Right drag erases.', active: () => this.mode.k === 'paint', run: () => this.setMode(this.mode.k === 'paint' ? { k: 'normal' } : { k: 'paint' }) },
       ] as Cmd[];
     }
     return [
@@ -531,7 +553,6 @@ export class Game implements Screen {
       { icon: 'bloom', key: 'G', name: 'Direct growth', tip: () => 'Paint where your moss should spread first (left drag). Right drag erases. [G] again to stop.', active: () => this.mode.k === 'paint', run: () => this.setMode(this.mode.k === 'paint' ? { k: 'normal' } : { k: 'paint' }) },
       { icon: 'builder', key: 'C', name: 'Gene Forge', tip: () => 'Design a species from the genes you own.', run: () => this.opts.hooks?.openBuilder?.(this) },
       { icon: 'tree', key: 'T', name: 'Tree of Descent', tip: () => 'Every species you have met or made.', run: () => this.opts.hooks?.openTree?.(this) },
-      { icon: 'core', key: 'Space', name: 'Find the heart', tip: () => 'Centre the view on your core.', run: () => { if (this.veyr.core) this.cam.lookAt(this.veyr.core.x, this.veyr.core.z); } },
       { icon: 'pause', key: 'P', name: 'Pause', tip: () => 'Pause / resume.', active: () => this.paused, run: () => { this.paused = !this.paused; } },
     ];
   }
@@ -614,6 +635,18 @@ export class Game implements Screen {
       c.x += (dx / d) * sp; c.z += (dz / d) * sp; c.y = this.world.surfaceY(c.x, c.z); c.air = Math.sin(Math.min(1, p.t / 2.6) * Math.PI) * 0.8;
       if (!c.dead) c.stunT = 0.2;
       if (Math.random() < dt * 14) this.fx.arc(this.child.headPos(), new THREE.Vector3(c.x, c.y + c.air + c.size * 0.4, c.z), 0.08, 0xb8a0ff, 0.25);
+    }
+    for (let i = this.shaping.length - 1; i >= 0; i--) {
+      const s = this.shaping[i], step = Math.min(dt, s.t); s.t -= dt;
+      this.region.shape(s.x, s.z, s.R, (s.amt * step) / 0.55);
+      this.world.terrain.flushDirty(); this.world.flora.reseat(s.x, s.z, s.R + 0.5);
+      if (Math.random() < dt * 40) {
+        const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * s.R;
+        const x = s.x + Math.cos(a) * r, z = s.z + Math.sin(a) * r, y = this.world.surfaceY(x, z);
+        this.fx.burst(x, y + 0.1, z, 3, s.amt > 0 ? 0x8a6a4a : 0x5a7a7a, { speed: 1.6, up: s.amt > 0 ? 3.5 : 1.2, size: 3, life: 0.7, grav: 6 });
+        if (Math.random() < 0.3) this.fx.arc(this.child.headPos(), new THREE.Vector3(x, y, z), 0.06, this.child.lookData.glow, 0.2);
+      }
+      if (s.t <= 0) this.shaping.splice(i, 1);
     }
     for (let i = this.storms.length - 1; i >= 0; i--) {
       const s = this.storms[i]; s.t -= dt;

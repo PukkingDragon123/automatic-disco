@@ -190,3 +190,8 @@ h1, h2, h3 { font-weight: normal; margin: 0; }
 .dlg-txt { font-size: calc(7px * var(--s)); line-height: 1.35; min-height: calc(28px * var(--s)); }
 .dlg.journal .dlg-txt { font-family: 'VT'; font-size: calc(9px * var(--s)); color: #e8dcc0; font-style: italic; }
 .dlg.journal .dlg-name { color: var(--dim); }
+
+/* ---------------- mirror pool ---------------- */
+.mir-act { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(3px * var(--s)); }
+.mir-val { display: inline-block; min-width: calc(30px * var(--s)); color: var(--gold); }
+.forge.mirror .fg-left, .forge.mirror .fg-right { width: calc(120px * var(--s)); bottom: auto; }

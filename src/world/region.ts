@@ -238,6 +238,22 @@ export class Region {
     }
   }
 
+  /** the child's earth-shaping: lift (amt > 0) or sink (amt < 0) a smooth mound or hollow. Raw soil and rock
+   *  show where the ground tore; sunk ground under the water line turns to mud and floods. */
+  shape(cx: number, cz: number, R: number, amt: number) {
+    const N = this.N, ext = Math.ceil(R);
+    for (let z = Math.floor(cz) - ext; z <= Math.floor(cz) + ext; z++) for (let x = Math.floor(cx) - ext; x <= Math.floor(cx) + ext; x++) {
+      if (!this.inside(x, z)) continue;
+      const d = Math.hypot(x + 0.5 - cx, z + 0.5 - cz) / R;
+      if (d >= 1) continue;
+      const f = (1 - d * d) ** 2, i = z * N + x;
+      this.h[i] = Math.min(16, Math.max(0.6, this.h[i] + amt * f));
+      if (amt > 0 && f > 0.25) this.b[i] = f > 0.62 && hash01(x, z, 5) < 0.7 ? B.ROCK : f > 0.4 ? B.GRAVEL : B.SOIL;
+      if (amt < 0 && f > 0.3) this.b[i] = this.h[i] < this.water + 0.3 ? B.MUD : B.SOIL;
+      this.fert[i] *= 1 - f * 0.4;
+      this.dirty.add(i);
+    }
+  }
   /** an impact crater: bowl with a raised, glassy rim. Marks touched columns dirty. */
   carveCrater(cx: number, cz: number, R: number, depth: number) {
     const N = this.N, r = new Rand(this.seed + 77);

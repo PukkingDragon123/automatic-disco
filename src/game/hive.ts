@@ -12,13 +12,14 @@ import { B } from '../world/blockTex';
 
 export interface Res { bio: number; min: number; charge: number; helix: number }
 export const EM_LEVELS = [0, 450, 1300, 2800, 5200];
-export type Ability = 'snare' | 'pulse' | 'pull' | 'lance' | 'bloom' | 'storm';
+export type Ability = 'snare' | 'pulse' | 'pull' | 'lance' | 'bloom' | 'storm' | 'shape';
 export const ABILITIES: Record<Ability, { name: string; key: string; charge: number; bio: number; em: number; cd: number; desc: string; range: number }> = {
   snare: { name: 'Tendril Snare', key: '1', charge: 10, bio: 0, em: 1, cd: 2, range: 3.5, desc: 'Tendrils burst from the moss and seize a creature standing on or beside it. Time the strike.' },
   pulse: { name: 'Gravity Slam', key: '2', charge: 25, bio: 0, em: 1, cd: 8, range: 0, desc: 'Gravikinesis: crush the air over a point. Everything hostile there is slammed down and stunned. Strike at the peak for a wider slam.' },
   pull: { name: 'Telekinesis', key: '3', charge: 15, bio: 0, em: 2, cd: 5, range: 0, desc: 'Lift a creature or a corpse with your mind and float it onto your moss.' },
   bloom: { name: 'Overgrowth', key: '4', charge: 0, bio: 40, em: 2, cd: 12, range: 0, desc: 'Force a burst of moss to erupt around a point inside your field.' },
   lance: { name: 'Mind Lance', key: '5', charge: 35, bio: 0, em: 3, cd: 6, range: 0, desc: 'A bolt of thought that leaps from creature to creature. Time it for more leaps.' },
+  shape: { name: 'Earthshape', key: '7', charge: 8, bio: 0, em: 1, cd: 0.5, range: 0, desc: 'Move the ground itself. <b>Left-click</b> lifts the earth into a ridge that walkers must go around; <b>right-click</b> sinks it into a hollow that floods below the water line. Walls, moats, ramps, ponds.' },
   storm: { name: 'Gravity Storm', key: '6', charge: 90, bio: 0, em: 5, cd: 40, range: 0, desc: 'Unmake gravity in a wide circle: stones and creatures lift and grind together.' },
 };
 

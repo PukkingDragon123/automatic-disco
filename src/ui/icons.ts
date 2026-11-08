@@ -126,6 +126,12 @@ export const ICONS: Record<string, string[]> = {
   builder: [
     '................', '.......gg.......', '......gwwg......', '.....bbggbb.....', '....bBBBBBBb....', '...bBGGGGGGBb...', '...bBGgMMgGBb...', '...bBGMmmMGBb...',
     '....bBGMMGBb....', '....bbBGGBbb....', '...bb.bBBb.bb...', '..bb..bBBb..bb..', '..b...bBBb...b..', '.....bb..bb.....', '................', '................'],
+  shape: [
+    '................', '......EEEE......', '.....EsssEe.....', '....EswsssEe....', '....EsssseEe....', '.....eEEEee.....', '......g..g......', '.....g.gg.g.....',
+    '................', '......uuuu......', '....uuYYYYuu....', '...uYYyyyyYYu...', '..uYyyyyyyyyYu..', '.uYYYYYYYYYYYYu.', '.uuuuuuuuuuuuuu.', '................'],
+  mirror: [
+    '.....vvvvvv.....', '...vvvvvvvvvv...', '..vvvvgvvvvvvv..', '..vvvvvgvvvvvv..', '..vvvvvvgvvvvv..', '..vvvvvvvvvvvv..', '...vkkvvvvkkv...', '...kkkvvvvkkk...',
+    '...vkkvvvvkkv...', '....vvvKKvvv....', '....VvvvvvvV....', '.....kwkwkwk....', '.....VkkkkkV....', '......VVVV......', '.......VV.......', '................'],
   pause: [
     '................', '................', '....bbb..bbb....', '....bBb..bBb....', '....bBb..bBb....', '....bBb..bBb....', '....bBb..bBb....', '....bBb..bBb....',
     '....bBb..bBb....', '....bBb..bBb....', '....bBb..bBb....', '....bbb..bbb....', '................', '................', '................', '................'],

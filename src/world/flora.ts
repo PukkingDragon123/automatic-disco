@@ -249,6 +249,19 @@ diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumW) * vec3(0.62, 0.5, 0.36), vWi
       for (const i of c) { const d2 = (this.x[i] - x) ** 2 + (this.z[i] - z) ** 2; if (d2 <= rad * rad) fn(i, d2); }
     }
   }
+  /** re-seat plants after the ground moved: they ride the earth up or down; drowned ones die back */
+  reseat(x: number, z: number, rad: number) {
+    for (const g of [this.mesh.geometry, this.detail.geometry]) {
+      const pa = g.getAttribute('iPos') as THREE.InstancedBufferAttribute, a = pa.array as Float32Array;
+      for (let i = 0; i < pa.count; i++) {
+        const px = a[i * 3], pz = a[i * 3 + 2];
+        if ((px - x) ** 2 + (pz - z) ** 2 > rad * rad) continue;
+        a[i * 3 + 1] = this.region.heightAt(px, pz);
+      }
+      pa.needsUpdate = true;
+    }
+    this.near(x, z, rad, (i) => { if (this.region.heightAt(this.x[i], this.z[i]) < this.region.water - 0.05 && this.bio[i] > 0) { this.bio[i] = 0; this.setHealth(i); } });
+  }
   /** take up to amt (fraction of the plant); returns biomass gained */
   eat(i: number, amt: number): number {
     const take = Math.min(this.bio[i], amt);

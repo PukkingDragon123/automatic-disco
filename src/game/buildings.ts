@@ -116,15 +116,22 @@ class MB {
         const hu = Math.abs(u[0]) * b.s[0] + Math.abs(u[1]) * b.s[1] + Math.abs(u[2]) * b.s[2];
         const hw = Math.abs(w[0]) * b.s[0] + Math.abs(w[1]) * b.s[1] + Math.abs(w[2]) * b.s[2];
         const hn = Math.abs(n[0]) * b.s[0] + Math.abs(n[1]) * b.s[1] + Math.abs(n[2]) * b.s[2];
-        const base = pos.length / 3;
-        for (const [a, c] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-          v.set(n[0] * hn / 2 + u[0] * a * hu / 2 + w[0] * c * hw / 2, n[1] * hn / 2 + u[1] * a * hu / 2 + w[1] * c * hw / 2, n[2] * hn / 2 + u[2] * a * hu / 2 + w[2] * c * hw / 2).applyQuaternion(q);
+        // rounded: the face grid is pushed onto a superellipsoid so structures look grown, not stacked
+        const base = pos.length / 3, NS = 3, e = b.m === 'glow' || b.m === 'membrane' ? 2.4 : 3.2;
+        const hs = [b.s[0] / 2, b.s[1] / 2, b.s[2] / 2];
+        for (let j = 0; j <= NS; j++) for (let i = 0; i <= NS; i++) {
+          const a = (i / NS) * 2 - 1, c = (j / NS) * 2 - 1;
+          const qx = n[0] + u[0] * a + w[0] * c, qy = n[1] + u[1] * a + w[1] * c, qz = n[2] + u[2] * a + w[2] * c;
+          const nr = Math.pow(Math.abs(qx) ** e + Math.abs(qy) ** e + Math.abs(qz) ** e, 1 / e);
+          const px = qx / nr, py = qy / nr, pz = qz / nr;
+          v.set(px * hs[0], py * hs[1], pz * hs[2]).applyQuaternion(q);
           pos.push(b.c[0] + v.x, b.c[1] + v.y, b.c[2] + v.z);
-          v.set(n[0], n[1], n[2]).applyQuaternion(q); nor.push(v.x, v.y, v.z);
+          v.set(Math.sign(px) * Math.abs(px) ** (e - 1) / hs[0], Math.sign(py) * Math.abs(py) ** (e - 1) / hs[1], Math.sign(pz) * Math.abs(pz) ** (e - 1) / hs[2]).applyQuaternion(q).normalize();
+          nor.push(v.x, v.y, v.z);
           uv.push((a * 0.5 + 0.5) * hu, (c * 0.5 + 0.5) * hw);
           lay.push(BL[b.m]); prt.push(b.part ?? 0);
         }
-        idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+        for (let j = 0; j < NS; j++) for (let i = 0; i < NS; i++) { const v0 = base + j * (NS + 1) + i; idx.push(v0, v0 + 1, v0 + NS + 2, v0, v0 + NS + 2, v0 + NS + 1); }
       }
     }
     const g = new THREE.BufferGeometry();
@@ -140,36 +147,51 @@ class MB {
 }
 
 function coreModel(mb: MB, r: Rand, part: 'shell' | 'cap' = 'shell') {
-  // a voxelised, cracked asteroid half-buried in its crater, moss creeping over the top
-  const nz = new Noise(r.int(1, 1e6)), S = 0.5;
-  for (let y = -5; y <= 5; y++) for (let z = -6; z <= 6; z++) for (let x = -6; x <= 6; x++) {
-    const p = [x * S, y * S, z * S];
-    const d = Math.hypot(p[0] * 0.9, p[1] * 1.15, p[2]) + nz.n3(p[0] * 0.7, p[1] * 0.7, p[2] * 0.7) * 0.7;
-    if (d > 2.5) continue;
-    if (part === 'shell' ? y > 2 : y <= 2) continue;
-    if (d < 1.9 && Math.hypot(x, y, z) < 9) {
-      // only shell voxels matter; skip fully interior ones
-      let inside = true;
-      for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
-        const q = [(x + dx) * S, (y + dy) * S, (z + dz) * S];
-        if (Math.hypot(q[0] * 0.9, q[1] * 1.15, q[2]) + nz.n3(q[0] * 0.7, q[1] * 0.7, q[2] * 0.7) * 0.7 > 2.5) inside = false;
-      }
-      if (inside) continue;
-    }
-    const top = y >= 3 && nz.n3(x * 0.4, 9, z * 0.4) > 0.15;
-    const crack = Math.abs(nz.n3(x * 0.35 + 5, y * 0.35, z * 0.35)) < 0.055;
-    mb.box([p[0], p[1] + 1.1, p[2]], [S, S, S], crack ? 'glow' : top ? 'moss' : 'rock', {}, crack ? 1 : 0);
-  }
+  // ring of shard crystals around the rock (the rock itself is built by asteroidGeometry)
   if (part === 'cap') return;
-  // the nest inside the broken shell, glowing where the child sleeps
-  mb.box([0, 2.1, 0], [2.2, 0.2, 2.2], 'glow', {}, 1);
-  for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; mb.box([Math.cos(a) * 2.7, 0.15, Math.sin(a) * 2.7], [0.22, 0.6, 0.22], 'crystal', { rz: Math.cos(a) * 0.5, rx: Math.sin(a) * 0.5 }, 2); }
+  for (let i = 0; i < 7; i++) { const a = (i / 7) * Math.PI * 2 + r.range(-0.2, 0.2); mb.box([Math.cos(a) * 2.9, 0.2, Math.sin(a) * 2.9], [0.24, r.range(0.5, 0.9), 0.24], 'crystal', { rz: Math.cos(a) * 0.5, rx: Math.sin(a) * 0.5 }, 2); }
+  mb.box([0, 1.95, 0], [1.6, 0.16, 1.6], 'glow', {}, 1);
+}
+/** the asteroid: a lumpy faceted rock with glowing fissures; 'cap' is the sealed top that bursts at hatching */
+export function asteroidGeometry(seed: number, part: 'shell' | 'cap'): THREE.BufferGeometry {
+  const nz = new Noise(seed), base = new THREE.IcosahedronGeometry(2.5, 4).toNonIndexed();
+  const P = base.attributes.position as THREE.BufferAttribute;
+  const disp = (x: number, y: number, z: number) => { const l = Math.hypot(x, y, z) || 1; const nx = x / l, ny = y / l, nzz = z / l; const k = 1 + nz.fbm3(nx * 1.6, ny * 1.6, nzz * 1.6, 4) * 0.28 + Math.abs(nz.n3(nx * 4, ny * 4, nzz * 4)) * 0.06; return [nx * 2.5 * k * 1.05, ny * 2.5 * k * 0.86 + 1.2, nzz * 2.5 * k]; };
+  const pos: number[] = [], uv: number[] = [], lay: number[] = [], prt: number[] = [];
+  for (let t = 0; t < P.count; t += 3) {
+    const tri = [0, 1, 2].map((k) => disp(P.getX(t + k), P.getY(t + k), P.getZ(t + k)));
+    const cy = (tri[0][1] + tri[1][1] + tri[2][1]) / 3;
+    const isCap = cy > 3.0;
+    if ((part === 'cap') !== isCap) continue;
+    const cx = (tri[0][0] + tri[1][0] + tri[2][0]) / 3, cz = (tri[0][2] + tri[1][2] + tri[2][2]) / 3;
+    const fis = Math.abs(nz.n3(cx * 0.55 + 7, cy * 0.55, cz * 0.55)) < 0.06;
+    for (const v of tri) { pos.push(v[0], v[1], v[2]); uv.push(v[0] + v[2] * 0.7, v[1]); lay.push(fis ? BL.glow : BL.rock); prt.push(fis ? 1 : 0); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('aLayer', new THREE.Float32BufferAttribute(lay, 1));
+  g.setAttribute('aPart', new THREE.Float32BufferAttribute(prt, 1));
+  g.computeVertexNormals();
+  g.computeBoundingSphere();
+  return g;
+}
+function merge(a: THREE.BufferGeometry, b: THREE.BufferGeometry): THREE.BufferGeometry {
+  const out = new THREE.BufferGeometry();
+  const bb = b.index ? b.toNonIndexed() : b, aa = a.index ? a.toNonIndexed() : a;
+  for (const k of ['position', 'normal', 'uv', 'aLayer', 'aPart']) {
+    const A = aa.attributes[k] as THREE.BufferAttribute, B = bb.attributes[k] as THREE.BufferAttribute;
+    const arr = new Float32Array(A.array.length + B.array.length); arr.set(A.array as Float32Array); arr.set(B.array as Float32Array, A.array.length);
+    out.setAttribute(k, new THREE.BufferAttribute(arr, A.itemSize));
+  }
+  out.computeBoundingSphere();
+  return out;
 }
 
 function model(kind: BKind, seed: number): THREE.BufferGeometry {
   const mb = new MB(), r = new Rand(seed);
   switch (kind) {
-    case 'core': coreModel(mb, r); break;
+    case 'core': coreModel(mb, r); return merge(asteroidGeometry(seed, 'shell'), mb.build());
     case 'spire': {
       for (let i = 0; i < 4; i++) { const a = i * 1.57 + 0.4; mb.box([Math.cos(a) * 0.55, 0.2, Math.sin(a) * 0.55], [0.22, 0.5, 0.7], 'flesh', { ry: -a, rz: 0.5 }); }
       let y = 0, w = 0.75;
@@ -241,7 +263,7 @@ function model(kind: BKind, seed: number): THREE.BufferGeometry {
 }
 const GEO = new Map<string, THREE.BufferGeometry>();
 /** the asteroid's sealed top: it bursts when the Veyr hatches */
-export function coreCapGeometry(x: number, z: number) { const mb = new MB(); coreModel(mb, new Rand(Math.floor(x * 131 + z * 7)), 'cap'); return mb.build(); }
+export function coreCapGeometry(x: number, z: number) { return asteroidGeometry(Math.floor(x * 131 + z * 7), 'cap'); }
 
 // ------------------------------------------------------------------ runtime
 let NEXT = 1;

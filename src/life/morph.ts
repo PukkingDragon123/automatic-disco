@@ -26,6 +26,8 @@ export interface Rig {
   rideH: number; length: number; height: number; stride: number; width: number;
   /** gait: per-pair phase offsets; duty factor */
   duty: number;
+  /** proportions the sculptor reads (per plan) */
+  dims: Record<string, number>;
 }
 
 class B {
@@ -43,7 +45,7 @@ export function buildRig(d: Design): Rig {
   const r = new Rand(d.seed ^ 0x77);
   const b = new B();
   const L = bodyLength(d);
-  const rig: Rig = { plan: d.plan, bones: b.bones, boxes: b.boxes, cards: b.cards, legs: [], root: 0, head: -1, jaw: -1, neck: [], tail: [], spine: [], wings: [], antennae: [], mandibles: [], stalks: [], rideH: 0, length: L, height: 0, stride: 0, width: 0, duty: 0.6 };
+  const rig: Rig = { plan: d.plan, bones: b.bones, boxes: b.boxes, cards: b.cards, legs: [], root: 0, head: -1, jaw: -1, neck: [], tail: [], spine: [], wings: [], antennae: [], mandibles: [], stalks: [], rideH: 0, length: L, height: 0, stride: 0, width: 0, duty: 0.6, dims: {} };
   switch (d.plan) {
     case 'hexapod': case 'octopod': arthropod(d, b, rig, L, r); break;
     case 'serpent': serpent(d, b, rig, L, r); break;
@@ -92,7 +94,7 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
   const nAng = biped ? 0.55 : 0.7;
   const neck = b.bone('neck', chest, biped ? [0, H * 0.22, T * 0.2] : [0, H * 0.28, T * 0.22]);
   const nk = Math.max(lt * 1.2, W * 0.55);
-  b.box(neck, [0, Math.sin(nAng) * neckLen * 0.5, Math.cos(nAng) * neckLen * 0.5], [nk, nk, neckLen + nk * 0.4], 'body', { rx: -nAng });
+  b.box(neck, [0, Math.sin(nAng) * neckLen * 0.5, Math.cos(nAng) * neckLen * 0.5], [nk, nk, neckLen + nk * 1.0], 'body', { rx: -nAng });
   if (d.cover === 'fur' && !biped) b.card(neck, [0, Math.sin(nAng) * neckLen * 0.5 + nk * 0.55, Math.cos(nAng) * neckLen * 0.5 - nk * 0.2], [0, Math.sin(nAng) * neckLen * 0.5, Math.cos(nAng) * neckLen * 0.5], [0, nk * 0.3, -nk * 0.2], 'fur');
   rig.neck = [neck];
   const hl = L * lerp(0.16, 0.3, d.head), hw = Math.max(W * 0.55, hl * 0.62), hh = hw * 0.85;
@@ -136,7 +138,7 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
     let p = root, tw = W * 0.42;
     for (let i = 0; i < n; i++) {
       const tb = b.bone('tail' + i, p, i === 0 ? [0, H * 0.12, -T * 0.25] : [0, -seg * (biped ? 0.04 : 0.14), -seg]);
-      b.box(tb, [0, -seg * 0.06, -seg * 0.5], [tw, tw * 0.9, seg * 1.05], i === 0 ? 'body' : 'limb');
+      b.box(tb, [0, -seg * 0.06, -seg * 0.5], [tw, tw * 0.9, seg * 1.45], i === 0 ? 'body' : 'limb');
       tw *= 0.74; p = tb; rig.tail.push(tb);
     }
     if (has(d, 'tail_club')) b.box(rig.tail[n - 1], [0, -seg * 0.1, -seg * 1.05], [W * 0.5, W * 0.4, W * 0.55], 'plate');
@@ -161,12 +163,12 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
       const lens = three ? [total * 0.42, total * 0.36, total * 0.22] : [total * 0.5, total * 0.5];
       const up = b.bone('leg' + pi + s, pp.parent, [hx, hipY, pp.z]);
       const bones = [up];
-      b.box(up, [0, -lens[0] / 2, 0], [lt * (pp.kind === 'hind' ? 1.25 : 1.08), lens[0] + lt * 0.3, lt * (pp.kind === 'hind' ? 1.45 : 1.15)], 'limb');
+      b.box(up, [0, -lens[0] / 2, 0], [lt * (pp.kind === 'hind' ? 1.25 : 1.08), lens[0] + lt * 1.0, lt * (pp.kind === 'hind' ? 1.45 : 1.15)], 'limb');
       const lo = b.bone('leg' + pi + s + 'b', up, [0, -lens[0], 0]);
       bones.push(lo);
-      b.box(lo, [0, -lens[1] / 2, 0], [lt * 0.78, lens[1] + lt * 0.2, lt * 0.82], 'limb');
+      b.box(lo, [0, -lens[1] / 2, 0], [lt * 0.78, lens[1] + lt * 0.8, lt * 0.82], 'limb');
       let last = lo;
-      if (three) { const me = b.bone('leg' + pi + s + 'c', lo, [0, -lens[1], 0]); bones.push(me); b.box(me, [0, -lens[2] / 2, 0], [lt * 0.6, lens[2], lt * 0.62], 'limb'); last = me; }
+      if (three) { const me = b.bone('leg' + pi + s + 'c', lo, [0, -lens[1], 0]); bones.push(me); b.box(me, [0, -lens[2] / 2, 0], [lt * 0.6, lens[2] + lt * 0.6, lt * 0.62], 'limb'); last = me; }
       const fl = lens[lens.length - 1];
       const foot = b.bone('foot' + pi + s, last, [0, -fl, 0]);
       bones.push(foot);
@@ -199,6 +201,7 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
   // diagonal pairs: fore/hind on the same side half a cycle apart
   for (const lg of rig.legs) lg.phase = (lg.pair % 2 === 0 ? 0 : 0.5) + (lg.side > 0 ? 0.5 : 0) + (six && lg.pair === 1 ? 0.25 : 0);
   if (biped) for (const lg of rig.legs) lg.phase = lg.side > 0 ? 0 : 0.5;
+  rig.dims = { W, H, T, lt, legLen, nk, neckLen, nAng, hl, hw, hh, sl, tailLen, er };
 }
 
 // ------------------------------------------------------------------------------------------------ arthropods
@@ -282,9 +285,9 @@ function arthropod(d: Design, b: B, rig: Rig, L: number, r: Rand) {
     const fx = s * (W * 0.4 + spread * Math.cos(angZ) * 0.8), fz = zt + spread * Math.sin(angZ) * 0.9 * (pi < pairsN / 2 ? 1 : 1);
     const l1 = legLen * (jumper ? 0.6 : 0.48), l2 = legLen * (jumper ? 0.62 : 0.55);
     const fem = b.bone('leg' + pi + s + 'a', coxa, [0, 0, 0]);
-    b.box(fem, [0, -l1 / 2, 0], [lt * (jumper ? 2.2 : 1.15), l1, lt * (jumper ? 2.4 : 1.15)], 'limb');
+    b.box(fem, [0, -l1 / 2, 0], [lt * (jumper ? 2.2 : 1.15), l1 + lt * 1.4, lt * (jumper ? 2.4 : 1.15)], 'limb');
     const tib = b.bone('leg' + pi + s + 'b', fem, [0, -l1, 0]);
-    b.box(tib, [0, -l2 / 2, 0], [lt * 0.8, l2, lt * 0.8], 'limb');
+    b.box(tib, [0, -l2 / 2, 0], [lt * 0.8, l2 + lt * 1.0, lt * 0.8], 'limb');
     const tar = b.bone('foot' + pi + s, tib, [0, -l2, 0]);
     b.box(tar, [0, lt * 0.1, 0], [lt * 0.7, lt * 0.4, lt * 0.7], 'claw');
     rig.legs.push({ side: s, pair: pi, kind: spider ? 'spider' : 'insect', bones: [fem, tib, tar], lens: [l1, l2], foot: [fx, fz], phase: 0 });
@@ -292,6 +295,7 @@ function arthropod(d: Design, b: B, rig: Rig, L: number, r: Rand) {
   // alternating tripods (insects) / alternating tetrapods (spiders)
   for (const lg of rig.legs) lg.phase = ((lg.pair + (lg.side > 0 ? 1 : 0)) % 2) * 0.5;
   rig.duty = 0.55;
+  rig.dims = { W, H, legLen, lt, thL, hl, hw, ab, seg, n, spider: spider ? 1 : 0 };
   void r;
 }
 
@@ -309,11 +313,12 @@ function serpent(d: Design, b: B, rig: Rig, L: number, r: Rand) {
   for (let i = 0; i < n; i++) {
     const sb = b.bone('seg' + i, p, [0, 0, -seg]);
     const k = i < n * 0.3 ? 1 : 1 - ((i - n * 0.3) / (n * 0.7)) * 0.65;
-    b.box(sb, [0, 0, 0], [w * k * 1.08, w * k * 0.92, seg * 1.12], i % 2 ? 'body' : 'limb');
+    b.box(sb, [0, 0, 0], [w * k * 1.08, w * k * 0.92, seg * 1.55], i % 2 ? 'body' : 'limb');
     b.box(sb, [0, -w * k * 0.4, 0], [w * k * 0.8, w * k * 0.16, seg * 1.0], 'belly');
     if (has(d, 'setae') && i % 2 === 0) for (const s of [-1, 1]) b.box(sb, [s * w * k * 0.6, -w * 0.2, 0], [w * 0.35, 0.02, 0.02], 'spike');
     rig.spine.push(sb); p = sb;
   }
+  rig.dims = { W, seg, n };
   void r;
 }
 
@@ -344,5 +349,6 @@ function gastropod(d: Design, b: B, rig: Rig, L: number, r: Rand) {
     b.box(sh, [0, S * 0.86, -S * 0.2], [W * 0.98, S * 0.3, S * 0.36], 'shell', { rx: 0.8 });
     rig.tail.push(sh);
   }
+  rig.dims = { W, H };
   void r;
 }
