@@ -195,3 +195,10 @@ h1, h2, h3 { font-weight: normal; margin: 0; }
 .mir-act { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(3px * var(--s)); }
 .mir-val { display: inline-block; min-width: calc(30px * var(--s)); color: var(--gold); }
 .forge.mirror .fg-left, .forge.mirror .fg-right { width: calc(120px * var(--s)); bottom: auto; }
+
+.h-status { color: var(--glow); letter-spacing: 1px; animation: blink 1.2s steps(2) infinite; }
+.h-tag.splice { color: #0a0910; background: #ffe070; box-shadow: 0 0 calc(4px * var(--s)) rgba(255,224,112,0.6); }
+.h-splice { margin-top: auto; font-family: 'Silk'; font-size: calc(5px * var(--s)); background: #1a1030; color: #c4b4ff; border: none; box-shadow: inset 0 0 0 calc(1px * var(--s)) #7a62e8; padding: calc(1px * var(--s)) calc(3px * var(--s)); cursor: inherit; }
+.h-splice:hover { background: #7a62e8; color: #fff; }
+.h-card.dead { opacity: 0.35; filter: grayscale(1); pointer-events: none; }
+@keyframes blink { 50% { opacity: 0.55; } }

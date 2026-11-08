@@ -136,6 +136,7 @@ export class Game implements Screen {
     this.child = new VeyrChild(this.fx);
     this.child.root.position.set(core.x, core.y + 2.15, core.z);
     this.world.scene.add(this.child.root);
+    this.harvest.child = this.child;
     this.cap = new THREE.Mesh(coreCapGeometry(core.x, core.z), core.mesh.material);
     this.cap.position.copy(core.mesh.position); this.cap.castShadow = true;
     this.world.scene.add(this.cap);
@@ -577,7 +578,7 @@ export class Game implements Screen {
     this.story?.update(simDt, dt);
     this.fx.update(simDt > 0 ? simDt : dt * 0.15, this.engine.h, this.cam.cam.fov);
     this.vision.update(simDt > 0 ? simDt : 0);
-    this.harvest.update(dt);
+    this.harvest.update(dt, this.cam.cam);
     this.daylight();
     this.world.sun.follow(this.cam.target, this.cam.dist);
     this.hover(inp);
