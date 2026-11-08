@@ -38,7 +38,7 @@ void main(){
   if (sea < 0.36 && abs(n.y) < 0.82) col = mix(uSea, uSea * 1.4, step(0.33, sea)) * (0.9 + g * 0.15);
   if (abs(n.y) > 0.86 + (vn(n * 6.0) - 0.5) * 0.08) col = vec3(0.86, 0.92, 0.96) * (0.9 + g * 0.1);
   float st = uSt[k];
-  if (st > 0.5 && st < 1.5 || uAsc > 0.5) { col = mix(uMoss * (0.8 + g * 0.4), col, 0.2); float vein = abs(sin(dot(n, vec3(31.0, 17.0, 23.0)) + uT * 1.5)); if (vein > 0.985) col = uVein * 1.6; }
+  if (st > 0.5 && st < 1.5 || uAsc > 0.5) { col = mix(uMoss * (0.8 + g * 0.4), col, 0.2); float vein = abs(sin(dot(n, vec3(13.0, 7.0, 11.0)) * 2.0 + vn(n * 5.0) * 9.0 + uT * 1.2)); if (vein > 0.993 && vn(n * 11.0) > 0.45) col = uVein * 1.6; }
   if (st > 1.5 && st < 2.5) col = mix(uCreep * (0.8 + g * 0.4), col, 0.25);
   if (st > 2.5) col *= 0.45;
   bool border = d2 - d1 < 0.025;

@@ -70,7 +70,7 @@ export class RivalBrain {
     if (this.fallT > 0) return;
     this.landed = true;
     const R = this.w.region;
-    R.carveCrater(this.x, this.z, 4.5, 2.4);
+    R.carveCrater(this.x, this.z, 3, 1.2);
     this.w.terrain.flushDirty(); this.w.flora.reseat(this.x, this.z, 9);
     this.hive.plantCore(this.x, this.z);
     this.w.hives.push(this.hive);

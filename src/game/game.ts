@@ -91,7 +91,7 @@ export class Game implements Screen {
     this.region = new Region(opts.seed, BIOMES[opts.biome], pal);
     this.regionName = opts.regionName ?? BIOMES[opts.biome].name;
     const L = this.region.landing;
-    this.region.carveCrater(L.x, L.z, 6.5, 2.4);
+    this.region.carveCrater(L.x, L.z, 3.4, 1.3);
     this.region.dirty.clear();
     this.world = new World(this.region, this.run.reg, opts.seed);
     this.fx = new Fx(this.world.fxScene, this.world.scene);
