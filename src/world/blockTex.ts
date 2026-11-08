@@ -80,13 +80,14 @@ function pebble(pc: PixelCanvas, x: number, y: number, rad: number, ramp: number
 
 function grassTop(pc: PixelCanvas, base: number, dry: number, soil: number, seed: number, bloom: number[]) {
   const r = new Rand(seed), G = R(base, 7, 0.55), D = R(dry, 7, 0.5), S = R(soil, 6, 0.5);
-  const dryN = (x: number, y: number) => tileFbm(x, y, TS, TS, 2, 3, seed + 9);
-  // under-layer: shadowed turf, sun-cured patches, the odd peek of bare soil between clumps
+  const dryN = (x: number, y: number) => tileFbm(x, y, TS, TS, 8, 2, seed + 9) * 0.8 + hashf(x >> 1, y >> 1, seed + 4) * 0.2;
+  // under-layer: shadowed turf and sun-cured patches, with scattered dark soil pixels between the stems (no
+  // distinct spots: anything rare per tile would read as a 1 m grid)
   pc.each((x, y) => {
-    const n = tileFbm(x, y, TS, TS, 4, 3, seed), bare = tileFbm(x, y, TS, TS, 8, 2, seed + 21);
+    const n = tileFbm(x, y, TS, TS, 4, 3, seed);
     const k = clampI(1.1 + n * 2.4 + (pc.clusterT(x, y) - 0.5) * 1.0, 1, 3);
-    if (bare < 0.34 && hashf(x, y, seed) < 0.55) { pc.set(x, y, S[clampI(1 + n * 2, 1, 2)]); return; }
-    pc.set(x, y, dryN(x, y) > 0.6 + (hashf(x, y, seed + 3) - 0.5) * 0.08 ? D[k] : G[k]);
+    if (hashf(x, y, seed + 21) < 0.06) { pc.set(x, y, S[1]); return; }
+    pc.set(x, y, dryN(x, y) > 0.62 + (hashf(x, y, seed + 3) - 0.5) * 0.08 ? D[k] : G[k]);
   });
   const blade = (x: number, y: number, len: number, lean: number, ramp: number[]) => {
     pc.shade(x + 1, y + 1, 0.8);
@@ -97,20 +98,18 @@ function grassTop(pc: PixelCanvas, base: number, dry: number, soil: number, seed
     }
   };
   // tussocks: blades fanning out of one root
-  for (let i = 0; i < 6; i++) {
-    const cx = r.int(0, TS - 1), cy = r.int(0, TS - 1), ramp = dryN(cx, cy) > 0.6 ? D : G;
-    pc.set(cx, cy + 1, ramp[0]);
-    for (let b = 0; b < r.int(5, 8); b++) blade(cx + r.int(-1, 1), cy, r.int(3, 6), r.pick([-2, -1, -1, 0, 1, 1, 2]), ramp);
+  for (let i = 0; i < 9; i++) {
+    const cx = r.int(0, TS - 1), cy = r.int(0, TS - 1), ramp = dryN(cx, cy) > 0.62 ? D : G;
+    for (let b = 0; b < r.int(3, 6); b++) blade(cx + r.int(-1, 1), cy, r.int(3, 5), r.pick([-2, -1, -1, 0, 1, 1, 2]), ramp);
   }
   // loose blades everywhere
   for (let i = 0; i < 140; i++) {
     const x = r.int(0, TS - 1), y = r.int(0, TS - 1);
-    blade(x, y, r.int(2, 5), r.pick([-1, 0, 0, 0, 1]), (dryN(x, y) > 0.6) !== r.chance(0.12) ? D : G);
+    blade(x, y, r.int(2, 5), r.pick([-1, 0, 0, 0, 1]), (dryN(x, y) > 0.62) !== r.chance(0.12) ? D : G);
   }
   // seed heads, a rare small flower, grit
-  for (let i = 0; i < 4; i++) { const x = r.int(0, 31), y = r.int(0, 31); pc.set(x, y, D[6]); pc.set(x, y + 1, D[4]); }
-  if (r.chance(0.7)) { const x = r.int(0, 31), y = r.int(0, 31), f = mixHex(r.pick(bloom), G[4], 0.3); pc.set(x, y, f); pc.set(x + 1, y + 1, G[1]); }
-  for (let i = 0; i < 2; i++) pebble(pc, r.int(0, 31), r.int(0, 31), 0, R(mixHex(soil, 0x9a9488, 0.55), 5, 0.5));
+  for (let i = 0; i < 4; i++) { const x = r.int(0, 31), y = r.int(0, 31); pc.set(x, y, D[5]); pc.set(x, y + 1, D[4]); }
+  if (r.chance(0.35)) { const x = r.int(0, 31), y = r.int(0, 31); pc.set(x, y, mixHex(r.pick(bloom), G[4], 0.4)); }
 }
 
 function grassSide(pc: PixelCanvas, grass: number, soil: number, seed: number) {
@@ -131,9 +130,10 @@ function grassSide(pc: PixelCanvas, grass: number, soil: number, seed: number) {
 
 function soilFill(pc: PixelCanvas, soil: number, seed: number, stones = 8) {
   const r = new Rand(seed), S = R(soil, 7, 0.55);
+  // fine, even crumb: tonal variation stays high-frequency so the 1 m tile never shows its repeat
   pc.each((x, y) => {
-    const n = tileFbm(x, y, TS, TS, 4, 3, seed), hum = tileFbm(x, y, TS, TS, 2, 2, seed + 5);
-    pc.set(x, y, S[clampI(1.6 + n * 2.6 + (pc.clusterT(x, y) - 0.5) * 1.1 - (hum > 0.6 ? 0.8 : 0), 1, 5)]);
+    const n = tileFbm(x, y, TS, TS, 8, 2, seed) * 0.7 + hashf(x, y, seed + 5) * 0.3;
+    pc.set(x, y, S[clampI(1.5 + n * 2.8 + (pc.clusterT(x, y) - 0.5) * 0.6, 1, 5)]);
   });
   grit(pc, r, 90, S[6]);
   for (let i = 0; i < 3; i++) crack(pc, r, r.int(0, 31), r.int(0, 31), r.int(4, 9), S[0], S[5]);
@@ -149,25 +149,26 @@ function soilFill(pc: PixelCanvas, soil: number, seed: number, stones = 8) {
   }
 }
 
-function rockTop(pc: PixelCanvas, rock: number, seed: number, sx = 1, sy = 1, n = 9, lichen = true) {
+function rockTop(pc: PixelCanvas, rock: number, seed: number, sx = 1, sy = 1, n = 7, lichen = true) {
+  // weathered bedrock: broad plates with rounded, bevelled edges, joints that open and close along their length,
+  // mottled tone, mineral flecks, hairline fractures and crusts of lichen
   const r = new Rand(seed), K = R(rock, 7, 0.55);
-  const pts = Array.from({ length: n }, () => [r.range(0, TS), r.range(0, TS), r.range(2.4, 4)]);
+  const pts = Array.from({ length: n }, () => [r.range(0, TS), r.range(0, TS), r.range(2.6, 3.8)]);
   const cell = (x: number, y: number) => voronoi(pts, ((x % TS) + TS) % TS, ((y % TS) + TS) % TS, TS, TS, sx, sy);
   pc.each((x, y) => {
-    const [d1, d2, i] = cell(x, y);
-    if (d2 - d1 < 0.9) { pc.set(x, y, K[0]); return; }
-    let k = pts[i][2] + (tileFbm(x, y, TS, TS, 4, 3, seed + 3) - 0.5) * 1.8 + (pc.clusterT(x, y) - 0.5) * 0.5;
-    if (cell(x - 1, y - 1)[2] !== i) k += 1.2; else if (cell(x + 1, y + 1)[2] !== i) k -= 1.1;
+    const [d1, d2, i] = cell(x, y), e = d2 - d1;
+    const open = tileFbm(x, y, TS, TS, 8, 1, seed + 11);
+    if (e < 0.8 && open > 0.4) { pc.set(x, y, open > 0.55 ? K[0] : K[1]); return; }
+    let k = pts[i][2] + (tileFbm(x, y, TS, TS, 4, 3, seed + 3) - 0.5) * 2.4 + (pc.clusterT(x, y) - 0.5) * 0.6;
+    if (e < 2.2) { if (cell(x - 1, y - 1)[2] !== i) k += 1; else if (cell(x + 1, y + 1)[2] !== i) k -= 1; }
     pc.set(x, y, K[clampI(k, 1, 6)]);
   });
-  // mineral flecks and hairline fractures
   grit(pc, r, 80, K[6], 0.55, 0.5);
   for (let i = 0; i < 3; i++) crack(pc, r, r.int(0, 31), r.int(0, 31), r.int(3, 6), K[1], K[5]);
-  // crusts of lichen: dull sage and mustard, dithered at the edges
   if (lichen) for (let i = 0; i < r.int(2, 4); i++) {
-    const c = mixHex(rock, r.pick([0x8c9a6a, 0xb0a064, 0xa0a8a0]), r.range(0.35, 0.5));
-    const x = r.int(0, 31), y = r.int(0, 31), rx = r.range(1.5, 3.2), ry = r.range(1.2, 2.6);
-    pc.ditherBlob(x, y, rx, ry, c, 1.4);
+    const c = mixHex(rock, r.pick([0x8c9a6a, 0xb0a064, 0xa0a8a0]), r.range(0.5, 0.65));
+    const x = r.int(0, 31), y = r.int(0, 31), rx = r.range(1.5, 3), ry = r.range(1.2, 2.4);
+    pc.ditherBlob(x, y, rx, ry, c, 1.5);
     pc.set(x - 1, y - 1, mixHex(c, 0xffffff, 0.15));
   }
 }
@@ -218,19 +219,19 @@ function sand(pc: PixelCanvas, c: number, seed: number) {
 
 function mud(pc: PixelCanvas, c: number, seed: number) {
   const r = new Rand(seed), M = R(c, 7, 0.5);
-  pc.each((x, y) => { const n = tileFbm(x, y, TS, TS, 3, 3, seed); pc.set(x, y, M[clampI(1.6 + n * 2.6 + (pc.clusterT(x, y) - 0.5) * 0.8, 1, 4)]); });
-  // standing water in the hollows: dark, with a dull sky glint along the far rim
-  for (let i = 0; i < 4; i++) {
-    const x = r.int(0, 31), y = r.int(0, 31), rx = r.int(2, 5), ry = r.int(1, 2);
-    pc.ellipse(x, y, rx, ry + 0.5, M[1]);
-    pc.ellipse(x + 0.5, y + 0.5, Math.max(1, rx - 1), Math.max(1, ry - 0.5), M[0]);
-    for (let k = -rx + 2; k < rx - 1; k++) if (hashf(k, i, seed) < 0.6) pc.set(x + k, y - ry + 1, mixHex(M[4], 0x9aa4a8, 0.3));
+  pc.each((x, y) => { const n = tileFbm(x, y, TS, TS, 6, 2, seed) * 0.75 + hashf(x, y, seed + 2) * 0.25; pc.set(x, y, M[clampI(1.4 + n * 2.4 + (pc.clusterT(x, y) - 0.5) * 0.5, 1, 4)]); });
+  // wet hollows: soft dark seeps that blend into the mud, the odd dull glint of sky (no hard puddle shapes:
+  // anything distinct in a 1 m tile reads as a repeating grid)
+  for (let i = 0; i < 3; i++) {
+    const x = r.int(0, 31), y = r.int(0, 31);
+    pc.ditherBlob(x, y, r.range(3, 6), r.range(2, 3.5), M[1], 1.2);
+    if (r.chance(0.5)) pc.blend(x + r.int(-2, 2), y - 1, mixHex(M[4], 0x9aa4a8, 0.3), 0.5);
   }
-  // pits with a lit lower lip, organic flecks, a few twigs
-  for (let i = 0; i < 24; i++) { const x = r.int(0, 31), y = r.int(0, 31); if (r.chance(0.5)) { pc.set(x, y, M[0]); pc.set(x, y + 1, M[4]); } else pc.blend(x, y, M[6], 0.35); }
+  // pits with a lit lower lip, organic flecks, a few faint twigs
+  for (let i = 0; i < 30; i++) { const x = r.int(0, 31), y = r.int(0, 31); if (r.chance(0.3)) { pc.shade(x, y, 0.7); pc.blend(x, y + 1, M[4], 0.5); } else pc.blend(x, y, M[6], 0.3); }
   for (let i = 0; i < 2; i++) {
     const x = r.int(0, 31), y = r.int(0, 31), l = r.int(3, 6), dy = r.pick([-1, 0, 1]);
-    for (let k = 0; k < l; k++) { pc.set(x + k, y + Math.round(k * dy * 0.4), mixHex(M[3], 0x6a5038, 0.5)); pc.shade(x + k, y + Math.round(k * dy * 0.4) + 1, 0.75); }
+    for (let k = 0; k < l; k++) pc.blend(x + k, y + Math.round(k * dy * 0.4), mixHex(M[3], 0x6a5038, 0.5), 0.45);
   }
 }
 
@@ -264,6 +265,8 @@ function snow(pc: PixelCanvas, c: number, seed: number) {
 
 function basalt(pc: PixelCanvas, c: number, seed: number, side: boolean) {
   const r = new Rand(seed), K = R(c, 7, 0.55);
+  const cols: number[][] = [];
+  for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) cols.push([i * 8 + (j % 2) * 4 + r.range(-1.5, 1.5), j * 8 + r.range(-1.5, 1.5), r.range(1.8, 3.6)]);
   pc.each((x, y) => {
     if (side) {
       const col = Math.floor(x / 8), gap = x % 8 === 0;
@@ -271,11 +274,12 @@ function basalt(pc: PixelCanvas, c: number, seed: number, side: boolean) {
       pc.set(x, y, gap ? K[0] : K[clampI(k + (tileFbm(x, y, TS, TS, 2, 2, seed) - 0.5), 1, 5)]);
       if (!gap && (y + col * 5) % 13 === 0) { pc.set(x, y, K[1]); pc.blend(x, y + 1, K[4], 0.4); }
     } else {
-      // hex columns seen end-on
-      const hy = y / 6.928, row = Math.floor(hy), hx = x / 8 - (row % 2) * 0.5;
-      const fx = hx - Math.floor(hx), fy = hy - row;
-      const edge = fx < 0.12 || fx > 0.88 || fy < 0.1;
-      pc.set(x, y, edge ? K[0] : K[clampI(2.6 + (hashf(Math.floor(hx), row, seed) - 0.5) * 2 + (fy < 0.3 ? 1 : 0) + (tileFbm(x, y, TS, TS, 4, 2, seed) - 0.5), 1, 5)]);
+      // column ends: irregular polygons on a jittered hex lattice, each a slightly different height and tone
+      const [d1, d2, i] = voronoi(cols, x, y, TS, TS);
+      if (d2 - d1 < 0.9) { pc.set(x, y, K[0]); return; }
+      let k = cols[i][2] + (tileFbm(x, y, TS, TS, 4, 2, seed) - 0.5) * 1.2 + (pc.clusterT(x, y) - 0.5) * 0.5;
+      if (d2 - d1 < 2) { if (voronoi(cols, x - 1, y - 1, TS, TS)[2] !== i) k += 1; else if (voronoi(cols, x + 1, y + 1, TS, TS)[2] !== i) k -= 0.9; }
+      pc.set(x, y, K[clampI(k, 1, 5)]);
     }
   });
   // vesicles: gas pits with a lit lower rim

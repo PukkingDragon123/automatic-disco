@@ -752,7 +752,7 @@ export class Game implements Screen {
     if (k < 0.5) { sun.hemi.color.lerp(new THREE.Color(0x3a4a8a), (0.5 - k) * 1.5); sun.light.color.lerp(new THREE.Color(0x8a9adf), (0.5 - k) * 1.5); }
     else if (elev < 0.45) sun.light.color.lerp(new THREE.Color(0xffa060), (0.45 - elev) * 1.2);
     const gr = this.engine.post.grade;
-    gr.sat = 1.16 - (1 - k) * 0.25; gr.vig = 0.55 + (1 - k) * 0.35; gr.bloom = 0.55 + (1 - k) * 0.45;
+    gr.sat = 0.92 - (1 - k) * 0.2; gr.vig = 0.42 + (1 - k) * 0.35; gr.bloom = 0.3 + (1 - k) * 0.45;
     this.world.terrain.U.uVeinGain.value = 1 + (1 - k) * 0.8;
     setNight(1 - k);
   }

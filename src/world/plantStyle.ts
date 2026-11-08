@@ -1,20 +1,705 @@
-// ODDWORLD flora style: every plant is built from deliberate shapes, never noise. Leaves are drawn along a curved
-// spine with a lit half and a shadow half, a midrib and a brighter tip; puffs and pods are cel-shaded spheres with
-// a hard highlight and a cool rim light; everything is quantised to four crisp tone bands and outlined in a deep
-// shade of its own colour. The forms are alien: eye-flowers that watch, fiddle-spirals, lantern pods, plate trees.
+// ODDWORLD flora, grown rather than drawn. Every plant is first grown as a 3D structure: trees and shrubs by
+// recursive branching (phyllotaxis, random divergence, photo- and gravitropism, pipe-model tapering) clipped to a
+// crown envelope; palms and ferns as sagging fronds of individual leaflets; grasses, lilies and succulents as
+// blades and whorls. The structure is projected to a slightly top-down side view and rasterised through a z-buffer
+// as crisp pixel shapes: tapered limbs with bark furrows, and hundreds of individual leaves, each shaded by its
+// own midrib-folded normal, by a light-space density grid (self-shadowing and crown occlusion) and by contact
+// shadows under nearer leaves. A warm sunlit rim and a selective outline in a deep shade of the neighbouring colour
+// finish it. Light comes from the upper left. The alien touch lives in the forms (eye-flowers that watch, lantern
+// pods, fiddle spires, glowing beads) and in a few odd hues, not in neon.
 import { PixelCanvas, makeRamp, mixHex, scaleHex } from '../limbo/gfx/pixel';
+import { hashf } from '../limbo/core/rng';
 import { Rand } from '../core/rand';
 import type { Palette } from './palette';
 import type { PlantSpecies } from './plantArt';
 
 export const PX = 32;
 type P2 = [number, number];
+type V3 = [number, number, number];
 export type Painter = (sp: PlantSpecies, h: number, r: Rand, pal: Palette) => PixelCanvas;
 
-const RAMP = (c: number, n = 6, s = 0.62, hs = 0.07) => makeRamp(c, n, { spread: s, hueShift: hs });
+const RAMP = (c: number, n = 7, s = 0.6, hs = 0.045) => makeRamp(c, n, { spread: s, hueShift: hs, satShift: 0.05 });
 const ci = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : Math.round(v));
-const LX = -0.6, LY = -0.8; // light from the upper left
-const RIM = 0xbfeee8;       // cool sky rim on the shadow side
+const TAU = Math.PI * 2, GOLD = 2.39996;
+
+// ------------------------------------------------------------------------------------------------ 3D helpers
+const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const mul = (a: V3, k: number): V3 => [a[0] * k, a[1] * k, a[2] * k];
+const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const len3 = (a: V3) => Math.hypot(a[0], a[1], a[2]);
+const nrm = (a: V3): V3 => { const l = len3(a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+const perp = (a: V3): V3 => nrm(Math.abs(a[1]) < 0.9 ? cross(a, [0, 1, 0]) : cross(a, [1, 0, 0]));
+/** rotate v about the unit axis k by t (Rodrigues) */
+const rot = (v: V3, k: V3, t: number): V3 => { const c = Math.cos(t), s = Math.sin(t); return add(add(mul(v, c), mul(cross(k, v), s)), mul(k, dot(k, v) * (1 - c))); };
+/** a direction tilted away from d by angle t, at azimuth az around d */
+const deviate = (d: V3, t: number, az: number): V3 => nrm(rot(d, rot(perp(d), d, az), t));
+/** direction from elevation above the horizon and azimuth (0 = +x to the right, PI/2 = toward the viewer) */
+const polar = (el: number, az: number): V3 => [Math.cos(el) * Math.cos(az), Math.sin(el), Math.cos(el) * Math.sin(az)];
+/** the part of "up" orthogonal to an axis: the way a leaf blade turns its face to the sky */
+const faceUp = (d: V3): V3 => { const n = sub(UP, mul(d, d[1])); return len3(n) < 0.15 ? perp(d) : nrm(n); };
+const UP: V3 = [0, 1, 0];
+
+// the sprite is a side view seen a little from above (cards lean back toward the RTS camera)
+const TILT = 0.3, CT = Math.cos(TILT), ST = Math.sin(TILT);
+const VIEW: V3 = [0, ST, CT];
+const SUP: V3 = [0, CT, -ST];
+const LIGHT = nrm([-0.55, 0.75, 0.38]);
+const RIMC = 0xf0e4c0; // warm sunlit edge
+const RIM = 0xb4c4c0;  // cool sky bounce on the shadow side (2D painters)
+
+const enum K { NONE = 0, LEAF = 1, BARK = 2, ACC = 3 }
+type Shape = 'ovate' | 'lance' | 'round' | 'heart' | 'strap' | 'petal' | 'lobed' | 'needle';
+/** half-width profile along a leaf, base (u = 0) to tip (u = 1) */
+const PROF: Record<Shape, (u: number) => number> = {
+  ovate: (u) => Math.pow(Math.sin(Math.PI * Math.pow(u, 0.8)), 0.75),
+  lance: (u) => Math.sin(Math.PI * u) * (1 - 0.35 * u),
+  round: (u) => Math.sqrt(Math.max(0, Math.sin(Math.PI * u))),
+  heart: (u) => Math.pow(Math.sin(Math.PI * Math.pow(u, 0.65)), 0.7) * (1 + 0.25 * (1 - u)),
+  strap: (u) => Math.min(1, u * 5 + 0.35) * (1 - Math.pow(u, 3)),
+  petal: (u) => Math.pow(Math.max(0, Math.sin(Math.PI * u)), 0.5) * (0.45 + 0.55 * u),
+  lobed: (u) => Math.pow(Math.sin(Math.PI * Math.pow(u, 0.8)), 0.75) * (0.7 + 0.3 * Math.abs(Math.cos(u * Math.PI * 3.5))),
+  needle: () => 0.5,
+};
+
+interface Limb { a: V3; b: V3; ra: number; rb: number; ramp: number[]; seed: number; ridge?: number; ring?: number; kind?: K; alpha?: number }
+interface Leaf { p: V3; d: V3; n: V3; len: number; wid: number; shape: Shape; ramp: number[]; fold?: number; vein?: number; lat?: boolean; teeth?: boolean; kind?: K; alpha?: number }
+interface Orb { c: V3; r: number; ramp: number[]; seed: number; sq?: number; glow?: number; spots?: number; spotCol?: number; alpha?: number; ribs?: number }
+interface Cap { c: V3; r: number; hr: number; ramp: number[]; gill: number[]; seed: number; spots: number; spotCol: number; alpha?: number }
+
+/** crisp tone bands across ramp indices 1..n (index 0 is kept for creases and outlines) */
+function band(ramp: number[], v: number) { const n = ramp.length - 1; return ramp[1 + Math.min(n - 1, Math.max(0, Math.floor(v * n)))]; }
+/** sunlit diffuse, sky ambient: both already attenuated by the plant's own foliage */
+const tone = (diff: number, sun: number, amb: number) => 0.07 + amb * 0.38 + sun * diff * 0.55;
+
+class Scene {
+  readonly W: number; readonly H: number; readonly cx: number; readonly by: number;
+  readonly zb: Float32Array; readonly kind: Uint8Array;
+  constructor(readonly pc: PixelCanvas) {
+    this.W = pc.w; this.H = pc.h; this.cx = pc.w / 2; this.by = pc.h - 2;
+    this.zb = new Float32Array(this.W * this.H).fill(-1e9); this.kind = new Uint8Array(this.W * this.H);
+  }
+  X(p: V3) { return this.cx + p[0]; }
+  Y(p: V3) { return this.by - (p[1] * CT - p[2] * ST); }
+  Z(p: V3) { return p[1] * ST + p[2] * CT; }
+  put(x: number, y: number, z: number, c: number, k: K, a = 255) {
+    if (x < 0 || y < 0 || x >= this.W || y >= this.H) return;
+    const i = y * this.W + x;
+    if (z <= this.zb[i]) return;
+    this.zb[i] = z; this.kind[i] = k; this.pc.set(x, y, c, a);
+  }
+}
+
+/** light-space occupancy: leaf area per cell as optical depth, marched toward the sun and the sky */
+class Shade {
+  private cs = 3; private ox = 0; private oy = 0; private oz = 0; private nx = 1; private ny = 1; private nz = 1;
+  private d: Float32Array;
+  constructor(pts: [V3, number][]) {
+    if (!pts.length) { this.d = new Float32Array(1); return; }
+    let x0 = 1e9, y0 = 1e9, z0 = 1e9, x1 = -1e9, y1 = -1e9, z1 = -1e9;
+    for (const [p] of pts) { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); z0 = Math.min(z0, p[2]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); z1 = Math.max(z1, p[2]); }
+    const cs = (this.cs = Math.max(3, Math.ceil(Math.max(x1 - x0, y1 - y0, z1 - z0) / 56)));
+    this.ox = x0 - cs; this.oy = y0 - cs; this.oz = z0 - cs;
+    this.nx = Math.ceil((x1 - x0) / cs) + 3; this.ny = Math.ceil((y1 - y0) / cs) + 3; this.nz = Math.ceil((z1 - z0) / cs) + 3;
+    this.d = new Float32Array(this.nx * this.ny * this.nz);
+    // a ray crossing a cell holding leaf area A is blocked with probability ~ A / (2 cs^2)
+    for (const [p, a] of pts) { const i = this.idx(p); if (i >= 0) this.d[i] += a / (2 * cs * cs); }
+  }
+  private idx(p: V3) {
+    const x = Math.floor((p[0] - this.ox) / this.cs), y = Math.floor((p[1] - this.oy) / this.cs), z = Math.floor((p[2] - this.oz) / this.cs);
+    if (x < 0 || y < 0 || z < 0 || x >= this.nx || y >= this.ny || z >= this.nz) return -1;
+    return (z * this.ny + y) * this.nx + x;
+  }
+  ray(p: V3, dir: V3, k: number) {
+    let s = 0, q = add(p, mul(dir, this.cs * 1.1));
+    for (let i = 0; i < 80; i++) { const j = this.idx(q); if (j < 0) break; s += this.d[j]; q = add(q, mul(dir, this.cs)); }
+    return Math.exp(-s * k);
+  }
+  light(p: V3): [number, number] {
+    return [this.ray(p, LIGHT, 1), (this.ray(p, UP, 0.55) + this.ray(p, VIEW, 0.55) + this.ray(p, SIDE, 0.55)) / 3];
+  }
+}
+const SIDE = nrm([-0.8, 0.45, 0.4]);
+
+function drawLimb(S: Scene, l: Limb, sun: number, amb: number) {
+  const ax = S.X(l.a), ay = S.Y(l.a), bx = S.X(l.b), by = S.Y(l.b), za = S.Z(l.a), zb = S.Z(l.b);
+  const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy, Lp = Math.sqrt(L2) || 1;
+  const qx = -dy / Lp, qy = dx / Lp;
+  const q3: V3 = [qx, -qy * SUP[1], -qy * SUP[2]]; // the screen perpendicular as a view-plane direction
+  const R = Math.max(l.ra, l.rb, 0.55) + 1;
+  const x0 = Math.floor(Math.min(ax, bx) - R), x1 = Math.ceil(Math.max(ax, bx) + R), y0 = Math.floor(Math.min(ay, by) - R), y1 = Math.ceil(Math.max(ay, by) + R);
+  for (let py = y0; py <= y1; py++) for (let px = x0; px <= x1; px++) {
+    const ex = px + 0.5 - ax, ey = py + 0.5 - ay;
+    let t = L2 > 0 ? (ex * dx + ey * dy) / L2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const rr = Math.max(0.55, l.ra + (l.rb - l.ra) * t);
+    const cx = ex - dx * t, cy = ey - dy * t;
+    if (cx * cx + cy * cy > rr * rr) continue;
+    const s = Math.max(-1, Math.min(1, (cx * qx + cy * qy) / rr)), c = Math.sqrt(1 - s * s);
+    const nn = add(mul(q3, s), mul(VIEW, c));
+    let v = tone(Math.max(0, dot(nn, LIGHT)), sun, amb);
+    const u = t * Lp;
+    if (l.ridge) { // bark: furrows running along the limb, broken into plates
+      const lane = Math.floor((s * 0.5 + 0.5) * l.ridge + hashf(Math.floor(u / 4), 7, l.seed) * 0.9);
+      const hh = hashf(Math.floor(u / 2.6 + lane * 0.37), lane, l.seed);
+      if (hh < 0.3) v -= 0.13; else if (hh > 0.88) v += 0.07;
+    }
+    if (l.ring && (Math.floor(u) + (l.seed & 7)) % l.ring === 0) v -= 0.16;
+    S.put(px, py, za + (zb - za) * t + rr * c, band(l.ramp, v), l.kind ?? K.BARK, l.alpha ?? 255);
+  }
+}
+
+function drawLeaf(S: Scene, l: Leaf, sun: number, amb: number) {
+  const N = nrm(l.n), side = nrm(cross(N, l.d));
+  const ox = S.X(l.p), oy = S.Y(l.p), oz = S.Z(l.p);
+  const tip = add(l.p, mul(l.d, l.len)), sp = add(l.p, mul(side, l.wid));
+  const ax = S.X(tip) - ox, ay = S.Y(tip) - oy, az = S.Z(tip) - oz;
+  const bx = S.X(sp) - ox, by = S.Y(sp) - oy, bz = S.Z(sp) - oz;
+  const det = ax * by - ay * bx;
+  // each half of the blade folds along the midrib; a face turned from the sun still glows a little (translucency)
+  const flip = dot(N, VIEW) < 0 ? -1 : 1, fold = l.fold ?? 0.35;
+  const half = (sg: number) => { const d = dot(nrm(add(mul(N, flip), mul(side, sg * fold))), LIGHT); return tone(d > 0 ? d : -d * 0.3, sun, amb); };
+  const tA = half(1), tB = half(-1), kind = l.kind ?? K.LEAF, a = l.alpha ?? 255, prof = PROF[l.shape];
+  if (Math.abs(det) < 0.8) { // edge-on: a sliver along the axis
+    const n = Math.max(1, Math.ceil(Math.hypot(ax, ay)));
+    for (let i = 0; i <= n; i++) { const t = i / n; S.put(Math.floor(ox + ax * t), Math.floor(oy + ay * t), oz + az * t, band(l.ramp, (tA + tB) * 0.5 - 0.06 + t * 0.08), kind, a); }
+    return;
+  }
+  const bl = Math.hypot(bx, by);
+  const x0 = Math.floor(Math.min(ox - Math.abs(bx), ox + ax - Math.abs(bx))) - 1, x1 = Math.ceil(Math.max(ox + Math.abs(bx), ox + ax + Math.abs(bx))) + 1;
+  const y0 = Math.floor(Math.min(oy - Math.abs(by), oy + ay - Math.abs(by))) - 1, y1 = Math.ceil(Math.max(oy + Math.abs(by), oy + ay + Math.abs(by))) + 1;
+  for (let py = y0; py <= y1; py++) for (let px = x0; px <= x1; px++) {
+    const ex = px + 0.5 - ox, ey = py + 0.5 - oy;
+    const u = (ex * by - ey * bx) / det, v = (ax * ey - ay * ex) / det;
+    if (u < 0 || u > 1) continue;
+    const w = prof(u), av = Math.abs(v);
+    if (av > w) continue;
+    let val = (v >= 0 ? tA : tB) + (u - 0.4) * 0.1;
+    if (l.vein && l.len >= 5 && av * bl < 0.55 && u > 0.06 && u < 0.9) val += l.vein > 0 ? 0.1 : -0.12;
+    else if (l.lat && ((u * 5.5 + av * 1.1) % 1) < 0.16 && av < w * 0.85) val -= 0.08;
+    if (l.teeth && av > w - 1.1 / Math.max(1, bl) && Math.floor(u * l.len * 0.7) % 2 === 0) val -= 0.12;
+    S.put(px, py, oz + az * u + bz * v + 0.01, band(l.ramp, val), kind, a);
+  }
+}
+
+function drawOrb(S: Scene, o: Orb, sun: number, amb: number) {
+  const cx = S.X(o.c), cy = S.Y(o.c), cz = S.Z(o.c), r = Math.max(0.7, o.r), sq = o.sq ?? 1, n = o.ramp.length - 1;
+  for (let py = Math.floor(cy - r * sq - 1); py <= Math.ceil(cy + r * sq + 1); py++) for (let px = Math.floor(cx - r - 1); px <= Math.ceil(cx + r + 1); px++) {
+    const dx = (px + 0.5 - cx) / r, dy = (py + 0.5 - cy) / (r * sq), d2 = dx * dx + dy * dy;
+    if (d2 > 1) continue;
+    const nz = Math.sqrt(1 - d2), nn = nrm(add(add([dx, 0, 0], mul(SUP, -dy)), mul(VIEW, nz)));
+    let v = tone(Math.max(0, dot(nn, LIGHT)), sun, Math.max(amb, 0.25));
+    if (o.ribs && Math.abs(Math.sin(Math.atan2(dx, nz) * o.ribs)) < 0.22) v -= 0.12;
+    let c = band(o.ramp, v);
+    if (o.glow !== undefined && d2 < 0.5) c = mixHex(c, o.glow, (0.5 - d2) * 1.1);
+    S.put(px, py, cz + nz * r, c, K.ACC, o.alpha ?? 255);
+  }
+  if (r >= 2) S.put(Math.floor(cx - r * 0.4), Math.floor(cy - r * 0.45 * sq), cz + r + 0.1, mixHex(o.ramp[n], 0xffffff, 0.3), K.ACC, o.alpha ?? 255);
+  if (o.spots) {
+    const rr = new Rand(o.seed);
+    for (let k = 0; k < o.spots; k++) {
+      const a = rr.range(0, TAU), d = rr.range(0.1, 0.65);
+      S.put(Math.floor(cx + Math.cos(a) * d * r), Math.floor(cy + Math.sin(a) * d * r * sq), cz + r + 0.2, o.spotCol ?? o.ramp[1], K.ACC, o.alpha ?? 255);
+    }
+  }
+}
+
+/** a mushroom cap seen a little from above: a shaded dome over a crescent of gills */
+function drawCap(S: Scene, o: Cap, sun: number, amb: number) {
+  const cx = S.X(o.c), cy = S.Y(o.c), cz = S.Z(o.c), r = o.r, hr = o.hr, rim = Math.max(1, r * 0.12);
+  for (let py = Math.floor(cy - hr - 1); py <= Math.ceil(cy + rim + 2); py++) for (let px = Math.floor(cx - r - 1); px <= Math.ceil(cx + r + 1); px++) {
+    const dx = (px + 0.5 - cx) / r;
+    if (Math.abs(dx) > 1) continue;
+    const yy = py + 0.5 - cy, edge = Math.sqrt(1 - dx * dx);
+    if (yy < 0) {
+      const dy = -yy / hr; if (dy > edge) continue;
+      const nz = Math.sqrt(Math.max(0, 1 - dx * dx - dy * dy)), nn = nrm(add(add([dx, 0, 0], mul(SUP, dy)), mul(VIEW, nz)));
+      let v = tone(Math.max(0, dot(nn, LIGHT)), sun, Math.max(amb, 0.3)) + (hashf(px, py, o.seed) - 0.5) * 0.06;
+      if (dy < 0.18 && edge - dy < 0.9) v -= 0.08;
+      S.put(px, py, cz + nz * r, band(o.ramp, v), K.ACC, o.alpha ?? 255);
+    } else if (yy < rim * edge + 0.6 && Math.abs(dx) < 0.94) {
+      // gills: radial lamellae converging on the stem, lit edges alternating with dark slots
+      const g = Math.floor((Math.asin(dx) / Math.PI + 0.5) * r * 1.6);
+      S.put(px, py, cz - 0.5, g % 2 ? o.gill[2] : o.gill[1 + (yy > rim * 0.5 ? 0 : 1)], K.ACC, o.alpha ?? 255);
+    }
+  }
+  const rr = new Rand(o.seed);
+  for (let k = 0; k < o.spots; k++) {
+    const a = rr.range(Math.PI * 1.05, Math.PI * 1.95), d = rr.range(0.15, 0.75), x = Math.floor(cx + Math.cos(a) * d * r), y = Math.floor(cy + Math.sin(a) * d * hr);
+    S.put(x, y, cz + r + 0.3, o.spotCol, K.ACC, o.alpha ?? 255);
+    if (r > 6 && rr.chance(0.5)) S.put(x + 1, y, cz + r + 0.3, o.spotCol, K.ACC, o.alpha ?? 255);
+  }
+}
+
+/** a grown plant: limbs, leaves and accents in plant space (px, y up, z toward the viewer, base at the origin) */
+class Plant {
+  limbs: Limb[] = []; leaves: Leaf[] = []; orbs: Orb[] = []; caps: Cap[] = [];
+  /** 2D overlays at a projected anchor, drawn after the 3D pass (the eye of an eye-flower) */
+  post: { p: V3; f: (S: Scene, x: number, y: number, z: number, k: number) => void }[] = [];
+  /** flatten depth (fan-shaped growths) */
+  zs = 1;
+  constructor(readonly r: Rand) {}
+  limb(a: V3, b: V3, ra: number, rb: number, ramp: number[], o: Partial<Limb> = {}) { this.limbs.push({ a, b, ra, rb, ramp, seed: this.r.int(0, 1e6), ...o }); }
+  leaf(l: Leaf) { this.leaves.push(l); }
+  orb(c: V3, r: number, ramp: number[], o: Partial<Orb> = {}) { this.orbs.push({ c, r, ramp, seed: this.r.int(0, 1e6), ...o }); }
+
+  /** fit to the target height, rasterise, rim, contact shadows and outline */
+  render(hPx: number, deep: number, rim = 0.2): PixelCanvas {
+    const su = (p: V3) => p[1] * CT - p[2] * ST;
+    const zf = (p: V3): V3 => [p[0], p[1], p[2] * this.zs];
+    for (const l of this.limbs) { l.a = zf(l.a); l.b = zf(l.b); }
+    for (const l of this.leaves) { l.p = zf(l.p); l.d = nrm(zf(l.d)); }
+    for (const o of this.orbs) o.c = zf(o.c);
+    for (const o of this.caps) o.c = zf(o.c);
+    let top = 1;
+    for (const l of this.limbs) top = Math.max(top, su(l.a) + l.ra, su(l.b) + l.rb);
+    for (const l of this.leaves) top = Math.max(top, su(add(l.p, mul(l.d, l.len))));
+    for (const o of this.orbs) top = Math.max(top, su(o.c) + o.r);
+    for (const o of this.caps) top = Math.max(top, su(o.c) + o.hr);
+    const f = Math.max(0.55, Math.min(1.6, hPx / top));
+    const sc = (p: V3): V3 => [p[0] * f, p[1] * f, p[2] * f];
+    const rf = Math.sqrt(f);
+    for (const l of this.limbs) { l.a = sc(l.a); l.b = sc(l.b); l.ra *= rf; l.rb *= rf; }
+    for (const l of this.leaves) l.p = sc(l.p);
+    for (const o of this.orbs) { o.c = sc(o.c); o.r *= rf; }
+    for (const o of this.caps) { o.c = sc(o.c); o.r *= f; o.hr *= f; }
+    let mx = 3, mt = 3;
+    const ext = (p: V3, e: number) => { mx = Math.max(mx, Math.abs(p[0]) + e); mt = Math.max(mt, su(p) + e); };
+    for (const l of this.limbs) { ext(l.a, l.ra); ext(l.b, l.rb); }
+    for (const l of this.leaves) { ext(l.p, l.wid); ext(add(l.p, mul(l.d, l.len)), l.wid); }
+    for (const o of this.orbs) ext(o.c, o.r);
+    for (const o of this.caps) { ext(o.c, o.r); mt = Math.max(mt, su(o.c) + o.hr); }
+    const pc = new PixelCanvas(Math.max(8, 2 * Math.ceil(mx) + 6), Math.max(8, Math.ceil(mt) + 5));
+    pc.wrap = false; pc.clear();
+    const S = new Scene(pc);
+    // occluders: leaf area (blades count as leaves), a little for limbs
+    const occ: [V3, number][] = [];
+    for (const l of this.leaves) occ.push([add(l.p, mul(l.d, l.len * 0.5)), l.len * l.wid * 1.3]);
+    for (const l of this.limbs) occ.push([mul(add(l.a, l.b), 0.5), len3(sub(l.b, l.a)) * (l.ra + l.rb) * (l.kind === K.LEAF ? 1 : 0.3)]);
+    const sh = new Shade(occ);
+    for (const l of this.limbs) { const [s, a] = sh.light(mul(add(l.a, l.b), 0.5)); drawLimb(S, l, s, a); }
+    for (const l of this.leaves) { const [s, a] = sh.light(add(l.p, mul(l.d, l.len * 0.5))); drawLeaf(S, l, s, a); }
+    for (const o of this.orbs) { const [s, a] = sh.light(o.c); drawOrb(S, o, s, a); }
+    for (const o of this.caps) { const [s, a] = sh.light(add(o.c, [0, o.hr, 0])); drawCap(S, o, s, a); }
+    for (const q of this.post) { const p = sc(zf(q.p)); q.f(S, S.X(p), S.Y(p), S.Z(p), f); }
+    finish(S, rim);
+    outline(pc, deep);
+    return pc;
+  }
+}
+
+/** contact shadows under nearer edges (light from above-left) and a warm rim where foliage meets open sky */
+function finish(S: Scene, rim: number) {
+  const { W, H, zb, kind, pc } = S;
+  const z0 = zb.slice(), k0 = kind.slice();
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x; if (!k0[i]) continue;
+    const up = y > 0 ? i - W : -1, lf = x > 0 ? i - 1 : -1;
+    const openU = up < 0 || !k0[up], openL = lf < 0 || !k0[lf];
+    if ((up >= 0 && k0[up] && z0[up] - z0[i] > 2.5) || (lf >= 0 && k0[lf] && z0[lf] - z0[i] > 3.5)) pc.shade(x, y, 0.8);
+    else if (rim > 0 && (openU || openL) && k0[i] !== K.BARK) pc.set(x, y, mixHex(pc.get(x, y), RIMC, rim), pc.alpha(x, y));
+  }
+}
+
+// ------------------------------------------------------------------------------------------------ growth
+interface LeafStyle { len: [number, number]; wr: number; shapes: Shape[]; ramps: [number[], number][]; ang: [number, number]; droop: number; roll: number; fold?: number; vein?: number; lat?: boolean; stalk?: number; teeth?: boolean }
+function pickRamp(r: Rand, list: [number[], number][]) { return r.weighted(list); }
+/** a species' leaf ramps: mostly the planet's foliage, with older warmer leaves, shaded bluer ones and a few fresh ones */
+function leafRamps(c: number, spread = 0.62): [number[], number][] {
+  return [[RAMP(c, 7, spread), 0.6], [RAMP(mixHex(c, 0xb09a50, 0.24), 7, spread), 0.16], [RAMP(mixHex(c, 0x2a3c40, 0.2), 7, spread), 0.14], [RAMP(mixHex(c, 0xd4dc96, 0.16), 7, spread), 0.1]];
+}
+/** one leaf off a twig: angled out from it, drooping, its blade turned toward the sky and rolled a little */
+function twigLeaf(P: Plant, r: Rand, p: V3, d: V3, ls: LeafStyle) {
+  const out = deviate(d, r.range(ls.ang[0], ls.ang[1]), r.range(0, TAU));
+  const dir = nrm(add(out, [0, -ls.droop * r.range(0.4, 1.6), 0]));
+  const n = nrm(rot(faceUp(dir), dir, r.range(-ls.roll, ls.roll)));
+  const len = r.range(ls.len[0], ls.len[1]);
+  P.leaf({ p: add(p, mul(dir, ls.stalk ?? 0.8)), d: dir, n, len, wid: Math.max(0.6, len * ls.wr * r.range(0.85, 1.15)), shape: r.pick(ls.shapes), ramp: pickRamp(r, ls.ramps), fold: ls.fold, vein: len >= 6 ? ls.vein : 0, lat: !!ls.lat && len >= 8, teeth: ls.teeth });
+}
+
+interface GrowOpt {
+  gens: number; kids: [number, number]; spread: [number, number]; decay: [number, number]; taper: number;
+  /** + bends toward the light, - sags under weight (per step) */
+  trop: number; wob: number; seg: number; apical?: number;
+  /** length of the limbs leaving the trunk (the trunk's own length says nothing about the crown) */
+  len1?: number;
+  /** pull limbs from this generation on toward the horizontal (plate and umbrella crowns) */
+  flat?: [number, number];
+  /** crown envelope: a limb that leaves it stops and leafs out */
+  inside?: (p: V3) => boolean;
+  leafGen: number; onTwig: (p: V3, d: V3, gen: number, st: number) => void; onTip: (p: V3, d: V3, gen: number) => void;
+  ramp: number[]; ridge: number;
+}
+function grow(P: Plant, r: Rand, o: GrowOpt, p: V3, d: V3, len: number, rad: number, gen: number) {
+  const steps = Math.max(1, Math.round(len / o.seg)), st = len / steps, rEnd = Math.max(0.5, rad * o.taper);
+  let q = p, dir = d;
+  for (let i = 0; i < steps; i++) {
+    dir = deviate(dir, r.range(0, o.wob), r.range(0, TAU));
+    dir = nrm(add(dir, [0, o.trop, 0]));
+    if (o.flat && gen >= o.flat[0]) dir = nrm(add(dir, [0, -dir[1] * o.flat[1], 0]));
+    const nq = add(q, mul(dir, st));
+    P.limb(q, nq, rad + (rEnd - rad) * (i / steps), rad + (rEnd - rad) * ((i + 1) / steps), o.ramp, { ridge: rad > 1.3 ? o.ridge : 0 });
+    q = nq;
+    if (gen >= o.leafGen) o.onTwig(q, dir, gen, st);
+    if (o.inside && gen > 0 && !o.inside(q)) { o.onTip(q, dir, gen); return; }
+  }
+  if (gen >= o.gens || len < o.seg * 1.5) { o.onTip(q, dir, gen); return; }
+  const k = r.int(o.kids[0], o.kids[1]), az0 = r.range(0, TAU);
+  for (let c = 0; c < k; c++) {
+    const lead = c === 0 && r.chance(o.apical ?? 0);
+    const cd = deviate(dir, lead ? r.range(0.05, 0.25) : r.range(o.spread[0], o.spread[1]), az0 + (c * TAU) / k + r.range(-0.4, 0.4));
+    const cr = Math.max(0.5, rEnd * (lead ? 0.85 : Math.sqrt(1 / k) * r.range(0.9, 1.1)));
+    grow(P, r, o, q, cd, (gen === 0 && o.len1 ? o.len1 : len) * r.range(o.decay[0], o.decay[1]) * (lead ? 1.05 : 1), cr, gen + 1);
+  }
+}
+/** buttress roots flaring from the foot of a trunk */
+function roots(P: Plant, r: Rand, rad: number, T: number[]) {
+  const n = r.int(3, 5), a0 = r.range(0, TAU);
+  for (let i = 0; i < n; i++) {
+    const a = a0 + (i * TAU) / n + r.range(-0.3, 0.3), l = rad * r.range(1.8, 2.8);
+    P.limb([0, rad * 1.6, 0], [Math.cos(a) * l, -0.5, Math.sin(a) * l], rad * 0.75, 0.6, T, { ridge: 2 });
+  }
+}
+/** a ribbon of grass or a strap leaf: a tapered chain that arches under its own weight */
+function blade(P: Plant, r: Rand, base: V3, dir: V3, len: number, w0: number, sag: number, ramp: number[], dry?: number[], dryFrom = 0.7) {
+  const steps = Math.max(3, Math.round(len / 2.5)), st = len / steps;
+  let q = base, d = dir;
+  for (let i = 0; i < steps; i++) {
+    const t = i / steps;
+    d = nrm(add(d, [r.range(-0.04, 0.04), -sag * (0.5 + t), r.range(-0.04, 0.04)]));
+    const nq = add(q, mul(d, st));
+    P.limb(q, nq, Math.max(0.5, w0 * (1 - t * 0.85)), Math.max(0.5, w0 * (1 - (t + 1 / steps) * 0.85)), dry && t >= dryFrom ? dry : ramp, { kind: K.LEAF });
+    q = nq;
+  }
+  return q;
+}
+/** a frond: a rachis that sags toward its tip, carrying individual leaflets (pinnae) on both sides */
+function frond(P: Plant, r: Rand, base: V3, dir: V3, len: number, o: { rach: number; ramp: number[]; ramps: [number[], number][]; sag: number; start: number; lmax: number; wr: number; fwd: number; droop: number; shape: Shape; gap?: number; lobes?: boolean }) {
+  const steps = Math.max(4, Math.round(len / (o.gap ?? 2))), st = len / steps;
+  let q = base, d = dir;
+  for (let i = 0; i < steps; i++) {
+    const t = (i + 0.5) / steps;
+    d = nrm(add(d, [0, -o.sag * (0.3 + t), 0]));
+    const nq = add(q, mul(d, st));
+    P.limb(q, nq, Math.max(0.5, o.rach * (1 - t)), Math.max(0.5, o.rach * (1 - t - 1 / steps)), o.ramp, { kind: K.LEAF });
+    if (t > o.start) {
+      const side = len3(cross(d, UP)) < 0.2 ? perp(d) : nrm(cross(d, UP));
+      const k = (t - o.start) / (1 - o.start), ll = o.lmax * Math.pow(Math.sin(Math.PI * Math.min(1, 0.12 + k * 0.92)), 0.7);
+      if (ll >= 1) for (const sg of [-1, 1]) {
+        const ld = deviate(nrm(add(add(mul(side, sg), mul(d, o.fwd)), [0, -o.droop, 0])), r.range(0, 0.12), r.range(0, TAU));
+        P.leaf({ p: nq, d: ld, n: faceUp(ld), len: ll * r.range(0.85, 1.1), wid: Math.max(0.6, ll * o.wr), shape: o.shape, ramp: pickRamp(r, o.ramps), fold: 0.5, vein: ll >= 6 ? -1 : 0, lat: o.lobes && ll >= 6 });
+      }
+    }
+    q = nq;
+  }
+  return q;
+}
+/** a fiddlehead: the young frond still rolled into a crozier */
+function crozier(P: Plant, base: V3, h: number, rad: number, az: number, ramp: number[]) {
+  const side: V3 = [Math.cos(az), 0, Math.sin(az)];
+  let q = base;
+  const c = add(base, [0, h, 0]);
+  const pts: V3[] = [];
+  for (let i = 0; i <= 6; i++) pts.push(add(base, add(mul(side, Math.sin((i / 6) * 0.6) * rad), [0, (h - rad) * (i / 6), 0])));
+  for (let a = 0; a < Math.PI * 3.2; a += 0.35) { const rr = rad * (1 - a / (Math.PI * 3.6)); pts.push(add(c, add(mul(side, Math.cos(a) * rr), [0, Math.sin(a) * rr, 0]))); }
+  for (let i = 1; i < pts.length; i++) { const t = i / pts.length; P.limb(q, pts[i], Math.max(0.6, 1.1 * (1 - t * 0.6)), Math.max(0.55, 1.1 * (1 - (t + 0.03) * 0.6)), ramp, { kind: K.LEAF, ridge: 2 }); q = pts[i]; }
+  return c;
+}
+
+/** species-level traits shared by all of a species' variants */
+const traits = (sp: PlantSpecies) => new Rand(sp.id * 7919 + (sp.leaf & 0xffff) * 31 + 17);
+const deepOf = (ramp: number[]) => scaleHex(ramp[0], 0.55);
+
+// ------------------------------------------------------------------------------------------------ painters
+const broadleaf: Painter = (sp, h, r) => {
+  // a spreading broadleaf: buttressed trunk, scaffold limbs, twigs ending in leaf clusters, fruit hanging below
+  const P = new Plant(r), tr = traits(sp), H = h * PX, T = RAMP(sp.trunk, 6, 0.5, 0.04), A = RAMP(sp.accent, 6, 0.55), G = leafRamps(sp.leaf);
+  const shapes = tr.pick<Shape[]>([['ovate'], ['heart', 'ovate'], ['lobed'], ['round', 'ovate'], ['lance', 'ovate']]);
+  const big = tr.next(), fruit = tr.chance(0.55);
+  const ls: LeafStyle = { len: [3.5 + big * 2, 5.5 + big * 3], wr: shapes.includes('lance') ? 0.3 : 0.45, shapes, ramps: G, ang: [0.5, 1.2], droop: 0.35, roll: 0.8, fold: 0.4, vein: -1, lat: true };
+  const cy = H * r.range(0.6, 0.68), crx = H * r.range(0.36, 0.44), cry = H * r.range(0.3, 0.36);
+  const rad = Math.max(2.2, h * 1.5);
+  roots(P, r, rad, T);
+  grow(P, r, {
+    gens: 6, kids: [2, 3], spread: [0.45, 0.85], decay: [0.74, 0.86], taper: 0.66, trop: 0.04, wob: 0.14, seg: 4, apical: 0.3, len1: H * r.range(0.19, 0.24),
+    inside: (p) => p[1] < cy - cry * 0.6 || (p[0] / crx) ** 2 + ((p[1] - cy) / cry) ** 2 + (p[2] / crx) ** 2 < 1,
+    leafGen: 3, ramp: T, ridge: 4,
+    onTwig: (p, d, gen, st) => { for (let k = st / (gen >= 5 ? 2.2 : 3.2); k > 0; k--) if (k >= 1 || r.chance(k)) twigLeaf(P, r, p, d, ls); },
+    onTip: (p, d) => {
+      for (let k = r.int(4, 7); k > 0; k--) twigLeaf(P, r, p, d, ls);
+      if (fruit && r.chance(0.12)) { const f = add(p, [r.range(-1, 1), -r.range(2, 4), r.range(0, 2)]); P.limb(p, f, 0.5, 0.5, T); P.orb(f, Math.max(1.2, h * 0.45), A, { glow: sp.glow ? 0xfff0c0 : undefined, alpha: sp.glow ? 200 : 255 }); }
+    },
+  }, [0, 0, 0], deviate(UP, r.range(0, 0.12), r.range(0, TAU)), H * r.range(0.36, 0.44), rad, 0);
+  return P.render(H, deepOf(G[0][0]));
+};
+
+const umbrella: Painter = (sp, h, r) => {
+  // the plate tree: a short trunk splitting into long rising limbs that level out under flat pads of fine leaves,
+  // with glowing beads hanging on threads beneath the pads
+  const P = new Plant(r), tr = traits(sp), H = h * PX, T = RAMP(sp.trunk, 6, 0.5, 0.04), A = RAMP(sp.accent, 6, 0.55), G = leafRamps(sp.leaf);
+  const beads = sp.glow || tr.chance(0.5), shapes = tr.pick<Shape[]>([['ovate'], ['lance'], ['needle', 'lance']]);
+  const ls: LeafStyle = { len: [3, 4.5], wr: 0.4, shapes, ramps: G, ang: [1.1, 1.5], droop: 0.1, roll: 0.3, fold: 0.2 };
+  const top = H * r.range(0.86, 0.94), rx = H * r.range(0.4, 0.5), rad = Math.max(2, h * 1.3);
+  roots(P, r, rad, T);
+  const pad = (p: V3) => {
+    // a pad: a domed, flattened cloud of fine leaves, thickest in the middle
+    const pr = r.range(9, 14), n = Math.round(pr * pr * 0.75);
+    for (let k = 0; k < n; k++) {
+      const a = r.range(0, TAU), d = Math.sqrt(r.next()) * pr, c = add(p, [Math.cos(a) * d, 1 + (1 - (d / pr) ** 2) * 4 + r.range(-1.5, 1.5), Math.sin(a) * d * 0.8]);
+      const dir = polar(r.range(-0.3, 0.25), r.range(0, TAU));
+      P.leaf({ p: c, d: dir, n: nrm(rot(faceUp(dir), dir, r.range(-0.4, 0.4))), len: r.range(ls.len[0], ls.len[1]), wid: 1.4, shape: r.pick(shapes), ramp: pickRamp(r, G), fold: 0.2 });
+    }
+    if (beads && r.chance(0.45)) for (let k = r.int(1, 3); k > 0; k--) {
+      const s = add(p, [r.range(-pr * 0.7, pr * 0.7), 0, r.range(-pr * 0.5, pr * 0.5)]), e = add(s, [0, -r.range(3, 9), 0]);
+      P.limb(s, e, 0.5, 0.5, T); P.orb(e, r.range(1, 1.5), A, { glow: sp.glow ? 0xfff0c8 : undefined, alpha: sp.glow ? 200 : 255 });
+    }
+  };
+  grow(P, r, {
+    gens: 4, kids: [2, 3], spread: [0.4, 0.75], decay: [0.72, 0.88], taper: 0.66, trop: 0.02, wob: 0.1, seg: 4, flat: [2, 0.22], len1: H * r.range(0.26, 0.32),
+    inside: (p) => p[1] < top && Math.hypot(p[0], p[2]) < rx,
+    leafGen: 3, ramp: T, ridge: 4,
+    onTwig: (p, d, gen) => { if (gen >= 3 && r.chance(0.6)) twigLeaf(P, r, p, d, ls); },
+    onTip: (p) => pad(p),
+  }, [0, 0, 0], deviate(UP, r.range(0, 0.1), r.range(0, TAU)), H * r.range(0.28, 0.36), rad, 0);
+  return P.render(H, deepOf(G[0][0]));
+};
+
+const weeper: Painter = (sp, h, r) => {
+  // a weeping tree: arching limbs shedding curtains of pendulous strands, each strand beaded with narrow leaves
+  // that pale toward the tips
+  const P = new Plant(r), H = h * PX, T = RAMP(sp.trunk, 6, 0.5, 0.04), G = leafRamps(sp.leaf, 0.58), young = RAMP(mixHex(sp.leaf, 0xd8dca0, 0.22), 7, 0.58);
+  const rad = Math.max(2.2, h * 1.45), ls: LeafStyle = { len: [3, 5], wr: 0.3, shapes: ['lance'], ramps: G, ang: [0.6, 1.0], droop: 0.6, roll: 0.6 };
+  roots(P, r, rad, T);
+  const strand = (p: V3, d: V3) => {
+    const len = Math.min(p[1] - H * 0.06, H * r.range(0.22, 0.52));
+    if (len < 6) return;
+    let q = p, dir = nrm([d[0] * 0.5, -0.4, d[2] * 0.5]);
+    const steps = Math.round(len / 2);
+    for (let i = 0; i < steps; i++) {
+      const t = i / steps;
+      dir = nrm(add(dir, [r.range(-0.05, 0.05), -0.35, r.range(-0.05, 0.05)]));
+      const nq = add(q, mul(dir, 2));
+      P.limb(q, nq, 0.5, 0.5, G[0][0], { kind: K.LEAF });
+      const ld = deviate(nrm(add(dir, mul([d[0], 0, d[2]], 0.6))), r.range(0.4, 0.9), r.range(0, TAU));
+      P.leaf({ p: nq, d: ld, n: faceUp(ld), len: r.range(2.5, 4.5) * (1 - t * 0.3), wid: 0.9, shape: 'lance', ramp: t > 0.7 && r.chance(0.6) ? young : pickRamp(r, G), fold: 0.4 });
+      q = nq;
+    }
+  };
+  grow(P, r, {
+    gens: 4, kids: [2, 3], spread: [0.55, 0.9], decay: [0.7, 0.84], taper: 0.64, trop: 0.07, wob: 0.12, seg: 4, apical: 0.3, len1: H * r.range(0.2, 0.26),
+    inside: (p) => p[1] < H * 0.98 && Math.hypot(p[0], p[2]) < H * 0.45,
+    leafGen: 2, ramp: T, ridge: 4,
+    onTwig: (p, d, gen) => { if (r.chance(gen >= 3 ? 0.55 : 0.3)) strand(p, d); if (r.chance(0.5)) twigLeaf(P, r, p, d, ls); },
+    onTip: (p, d) => { strand(p, d); for (let k = r.int(2, 4); k > 0; k--) twigLeaf(P, r, p, d, ls); },
+  }, [0, 0, 0], deviate(UP, r.range(0, 0.12), r.range(0, TAU)), H * r.range(0.42, 0.5), rad, 0);
+  return P.render(H, deepOf(G[0][0]));
+};
+
+const palm: Painter = (sp, h, r) => {
+  // a leaning ringed trunk swelling at the foot; a crown of pinnate fronds, young ones upright, old ones drooping,
+  // the oldest dead and hanging; a cluster of fruit under the crown
+  const P = new Plant(r), H = h * PX, T = RAMP(sp.trunk, 6, 0.5, 0.04), A = RAMP(sp.accent, 6, 0.55), G = leafRamps(sp.leaf, 0.6);
+  const DRY = RAMP(mixHex(sp.leaf, 0x8a6a3e, 0.7), 7, 0.5), Gd: [number[], number][] = [[DRY, 1]];
+  const th = H * r.range(0.66, 0.74), lean = r.range(-0.3, 0.3), lz = r.range(-0.15, 0.15), steps = 16;
+  let q: V3 = [0, 0, 0];
+  const rad = Math.max(1.6, h * 1.2);
+  for (let i = 0; i < steps; i++) {
+    const t = i / steps, t1 = (i + 1) / steps;
+    const nq: V3 = [lean * th * t1 * t1, th * t1, lz * th * t1 * t1];
+    const rr = (tt: number) => rad * (1 - tt * 0.3) + (tt < 0.1 ? (0.1 - tt) * 16 : 0);
+    P.limb(q, nq, rr(t), rr(t1), T, { ring: 3, ridge: 2 });
+    q = nq;
+  }
+  const crown = q, n = r.int(11, 15);
+  for (let i = 0; i < n; i++) {
+    const age = i / (n - 1), dead = age > 0.9 && r.chance(0.6);
+    const el = dead ? -1.2 : 1.2 - age * 1.45 + r.range(-0.12, 0.12);
+    const flen = H * r.range(0.3, 0.42) * (dead ? 0.6 : 0.8 + 0.2 * Math.sin(Math.PI * Math.min(1, age * 1.3)));
+    frond(P, r, crown, polar(el, i * GOLD + r.range(-0.2, 0.2)), flen, { rach: 1.1, ramp: dead ? DRY : G[0][0], ramps: dead ? Gd : G, sag: dead ? 0.02 : 0.03 + age * 0.05, start: 0.1, lmax: Math.min(14, H * 0.09), wr: 0.16, fwd: 0.5, droop: dead ? 0.1 : 0.5 + age * 0.4, shape: 'lance', gap: 1.8 });
+  }
+  for (let k = r.int(5, 9); k > 0; k--) P.orb(add(crown, [r.range(-3, 3), -r.range(1, 5), r.range(-1, 3)]), Math.max(1.2, h * 0.5), A, {});
+  return P.render(H, deepOf(G[0][0]));
+};
+
+const shrub: Painter = (sp, h, r) => {
+  // a multi-stemmed bush: dense leaf clusters on fine twigs, gaps showing the stems inside, berries on some
+  const P = new Plant(r), tr = traits(sp), H = h * PX, T = RAMP(mixHex(sp.trunk, sp.leaf, 0.2), 6, 0.5), A = RAMP(sp.accent, 6, 0.55), G = leafRamps(sp.leaf);
+  const shapes = tr.pick<Shape[]>([['round', 'ovate'], ['ovate'], ['lance'], ['lobed', 'ovate'], ['needle']]), berries = tr.chance(0.55);
+  const ls: LeafStyle = { len: shapes[0] === 'needle' ? [3, 4] : [2.5, 4.5], wr: shapes[0] === 'needle' ? 0.2 : 0.5, shapes, ramps: G, ang: [0.5, 1.3], droop: 0.25, roll: 0.9, fold: 0.35 };
+  const cy = H * 0.5, crx = H * r.range(0.6, 0.75), cry = H * 0.5;
+  const opt: GrowOpt = {
+    gens: 4, kids: [2, 3], spread: [0.4, 0.8], decay: [0.62, 0.8], taper: 0.7, trop: 0.04, wob: 0.22, seg: 3, apical: 0.2,
+    inside: (p) => (p[0] / crx) ** 2 + ((p[1] - cy) / cry) ** 2 + (p[2] / crx) ** 2 < 1,
+    leafGen: 2, ramp: T, ridge: 0,
+    onTwig: (p, d, gen, st) => { for (let k = st / 1.9; k > 0; k--) if (k >= 1 || r.chance(k)) twigLeaf(P, r, p, d, ls); },
+    onTip: (p, d) => {
+      for (let k = r.int(3, 5); k > 0; k--) twigLeaf(P, r, p, d, ls);
+      if (berries && r.chance(0.3)) P.orb(add(p, [r.range(-1, 1), r.range(-1, 1), 1]), r.range(0.8, 1.2), A, { glow: sp.glow ? 0xfff0c0 : undefined, alpha: sp.glow ? 200 : 255 });
+    },
+  };
+  for (let s = r.int(4, 7), i = 0; i < s; i++) grow(P, r, opt, [r.range(-2.5, 2.5), 0, r.range(-2.5, 2.5)], deviate(UP, r.range(0.2, 0.75), (i * TAU) / s + r.range(-0.4, 0.4)), H * r.range(0.32, 0.46), Math.max(0.8, h * 0.9), 1);
+  for (let i = 0; i < 6; i++) blade(P, r, [r.range(-4, 4), 0, r.range(0, 4)], polar(r.range(0.9, 1.4), r.range(0, TAU)), H * r.range(0.12, 0.22), 0.8, 0.12, RAMP(mixHex(sp.leaf, 0x4a5a3a, 0.5)));
+  return P.render(H, deepOf(G[0][0]));
+};
+
+const tuft: Painter = (sp, h, r) => {
+  // a clump of individual arching blades, some with sun-cured tips; reeds carry cattails, grasses seed panicles
+  const P = new Plant(r), H = h * PX, reed = sp.arch === 'reed', G = leafRamps(sp.leaf, 0.55), D = RAMP(mixHex(sp.leaf, 0xa89464, 0.55), 7, 0.5);
+  const n = reed ? r.int(14, 20) : r.int(18, 28);
+  for (let i = 0; i < n; i++) {
+    const el = reed ? r.range(1.2, 1.5) : r.range(0.8, 1.45), az = r.range(0, TAU);
+    blade(P, r, [r.range(-2.5, 2.5), 0, r.range(-2.5, 2.5)], polar(el, az), H * r.range(0.5, 0.95) / Math.max(0.6, Math.sin(el)), reed ? 1.3 : 0.9, reed ? 0.025 : 0.1, pickRamp(r, G), r.chance(0.35) ? D : undefined, r.range(0.55, 0.8));
+  }
+  const heads = reed ? r.int(2, 4) : r.chance(0.65) ? r.int(2, 4) : 0;
+  const A = RAMP(reed ? mixHex(sp.accent, 0x5a3a22, 0.65) : mixHex(sp.accent, 0xc8b88a, 0.55), 6, 0.5);
+  for (let i = 0; i < heads; i++) {
+    const tip = blade(P, r, [r.range(-1.5, 1.5), 0, r.range(-1.5, 1.5)], polar(r.range(1.35, 1.55), r.range(0, TAU)), H * r.range(0.85, 1.05), 0.6, 0.01, G[0][0]);
+    if (reed) { const e = add(tip, [0, r.range(5, 8), 0]); P.limb(tip, e, 1.6, 1.4, A, { kind: K.ACC }); P.limb(e, add(e, [0, 3, 0]), 0.5, 0.5, G[0][0]); }
+    else for (let k = 0; k < 9; k++) { const d = polar(r.range(0.3, 1.2), r.range(0, TAU)); P.leaf({ p: add(tip, [0, -k * 0.9, 0]), d, n: faceUp(d), len: r.range(1.5, 3), wid: 0.7, shape: 'petal', ramp: A, kind: K.ACC, fold: 0.3 }); }
+  }
+  return P.render(H, deepOf(G[0][0]), 0.15);
+};
+
+const fern: Painter = (sp, h, r) => {
+  // a shuttlecock of arching fronds, each a ladder of individual pinnae; one or two fiddleheads uncurling inside
+  const P = new Plant(r), tr = traits(sp), H = h * PX, G = leafRamps(sp.leaf, 0.6), lobes = tr.chance(0.6);
+  const n = r.int(7, 11);
+  for (let i = 0; i < n; i++) {
+    const el = r.range(0.55, 1.25), az = i * GOLD + r.range(-0.2, 0.2);
+    frond(P, r, [0, 0.5, 0], polar(el, az), H * r.range(0.85, 1.1), { rach: 0.8, ramp: G[0][0], ramps: G, sag: 0.05, start: 0.12, lmax: Math.max(4, Math.min(9, H * 0.16)), wr: lobes ? 0.36 : 0.28, fwd: 0.45, droop: 0.12, shape: lobes ? 'lobed' : 'lance', gap: 1.7, lobes });
+  }
+  for (let k = r.int(0, 2); k > 0; k--) crozier(P, [r.range(-2, 2), 0, r.range(-1, 2)], H * r.range(0.35, 0.55), r.range(2.2, 3.2), r.pick([0, Math.PI]) + r.range(-0.5, 0.5), RAMP(mixHex(sp.leaf, 0xc8d090, 0.25)));
+  return P.render(H, deepOf(G[0][0]), 0.15);
+};
+
+const spike: Painter = (sp, h, r) => {
+  // torch lily: a fountain of strap leaves under spikes of tubular florets, buds hot at the top, open flowers
+  // paling below, the oldest withering at the bottom
+  const P = new Plant(r), H = h * PX, G = leafRamps(sp.leaf, 0.58);
+  for (let i = r.int(8, 12); i > 0; i--) blade(P, r, [r.range(-2, 2), 0, r.range(-2, 2)], polar(r.range(0.7, 1.35), r.range(0, TAU)), H * r.range(0.32, 0.5), 1.7, 0.07, pickRamp(r, G));
+  const hot = RAMP(mixHex(sp.accent, 0xc0583a, 0.15), 6, 0.55), pale = RAMP(mixHex(sp.accent, 0xe6d8a0, 0.55), 6, 0.5), old = RAMP(mixHex(sp.accent, 0x6a4a2a, 0.55), 6, 0.5);
+  for (let s = r.int(2, 5), i = 0; i < s; i++) {
+    const base: V3 = [r.range(-H * 0.12, H * 0.12), 0, r.range(-2, 2)];
+    const top = blade(P, r, base, polar(r.range(1.35, 1.55), r.range(0, TAU)), H * r.range(0.62, 0.95), 0.8, 0.0, G[0][0]);
+    const hh = Math.max(7, H * r.range(0.22, 0.3)), m = Math.round(hh / 0.65);
+    for (let k = 0; k < m; k++) {
+      const t = k / m, az = k * GOLD, c = add(top, [Math.cos(az) * 1.2, t * hh, Math.sin(az) * 1.2]);
+      const d = polar(-1.1 + t * 2.1, az);
+      P.leaf({ p: c, d, n: faceUp(d), len: 3 + (1 - t) * 1.2, wid: 0.9, shape: 'strap', ramp: t > 0.62 ? hot : t < 0.12 ? old : pale, kind: K.ACC, fold: 0.6 });
+    }
+  }
+  return P.render(H, deepOf(G[0][0]), 0.15);
+};
+
+const rosette: Painter = (sp, h, r) => {
+  // a succulent rosette: whorls of thick folded leaves with toothed margins and a pale midrib, a bud at the heart
+  const P = new Plant(r), H = h * PX, G = leafRamps(mixHex(sp.leaf, 0x8aa0a0, 0.18), 0.6);
+  const whorls = [[r.int(9, 12), 0.15, 0.45, 1], [r.int(7, 9), 0.55, 0.9, 0.8], [r.int(5, 7), 1.0, 1.3, 0.55]];
+  let a0 = r.range(0, TAU);
+  for (const [n, e0, e1, lk] of whorls) {
+    for (let i = 0; i < n; i++) {
+      const az = a0 + (i * TAU) / n + r.range(-0.15, 0.15), d = polar(r.range(e0, e1), az), len = H * 1.05 * lk * r.range(0.85, 1);
+      P.leaf({ p: [0, 1, 0], d, n: faceUp(d), len, wid: len * 0.2, shape: 'lance', ramp: pickRamp(r, G), fold: 0.6, vein: -1, teeth: true });
+    }
+    a0 += Math.PI / n;
+  }
+  P.orb([0, H * 0.35, 1], Math.max(1.5, h * 2), RAMP(sp.accent, 6, 0.55), { glow: sp.glow ? 0xfff4d0 : undefined, alpha: sp.glow ? 200 : 255 });
+  return P.render(H, deepOf(G[0][0]), 0.15);
+};
+
+const coral: Painter = (sp, h, r) => {
+  // the coral bush: a fan of fleshy forking stems, polyps along them, a bulb on every tip (they glow on some worlds)
+  const P = new Plant(r), H = h * PX, F = RAMP(mixHex(sp.leaf, sp.accent, 0.18), 6, 0.6), A = RAMP(sp.accent, 6, 0.6);
+  const glow = sp.glow ? 0xfff6d8 : undefined, alpha = sp.glow ? 200 : 255;
+  P.zs = 0.4;
+  grow(P, r, {
+    gens: 4, kids: [2, 3], spread: [0.35, 0.6], decay: [0.62, 0.8], taper: 0.72, trop: 0.06, wob: 0.08, seg: 3,
+    leafGen: 1, ramp: F, ridge: 0,
+    onTwig: (p) => { if (r.chance(0.08)) P.orb(add(p, [r.range(-1, 1), 0, 1]), 0.7, A, {}); },
+    onTip: (p) => P.orb(p, r.range(1.3, 2.3), A, { glow, alpha, spots: 1, spotCol: A[1] }),
+  }, [0, 0, 0], deviate(UP, r.range(0, 0.1), r.range(0, TAU)), H * 0.36, Math.max(1.5, h * 2.4), 0);
+  return P.render(H, deepOf(F), 0.12);
+};
+
+const fungus: Painter = (sp, h, r) => {
+  // a cluster of mushrooms: fibrous stems, domed caps with flecks, gill crescents under the rims, young buttons
+  const P = new Plant(r), H = h * PX, C = RAMP(sp.accent, 7, 0.6), Gi = RAMP(mixHex(sp.accent, 0xd8ccb0, 0.6), 5, 0.45), S = RAMP(mixHex(sp.leaf, 0xe0d8c4, 0.68), 6, 0.45);
+  const spot = sp.glow ? 0xf4f0c8 : mixHex(C[6], 0xf0ead8, 0.55);
+  const n = r.int(1, 4), caps: [number, number, number, number][] = [];
+  for (let i = 0; i < n; i++) caps.push([r.range(-H * 0.28, H * 0.28) * (i ? 1 : 0.3), r.range(-H * 0.15, H * 0.2), H * (i === 0 ? 1 : r.range(0.38, 0.78)), 0]);
+  for (let i = r.int(0, 3); i > 0; i--) caps.push([r.range(-H * 0.4, H * 0.4), r.range(0, H * 0.3), H * r.range(0.12, 0.22), 1]);
+  for (const [x, z, ch, button] of caps) {
+    const cr = Math.max(2, ch * (button ? 0.6 : r.range(0.3, 0.46))), hr = cr * (button ? 0.8 : r.range(0.45, 0.65));
+    const lean = r.range(-0.12, 0.12) * ch;
+    const topP: V3 = [x + lean, ch - hr, z];
+    let q: V3 = [x, 0, z];
+    for (let k = 1; k <= 4; k++) { const t = k / 4, nq: V3 = [x + lean * t * t, (ch - hr) * t, z]; P.limb(q, nq, Math.max(0.8, cr * 0.2) * (1.15 - t * 0.25), Math.max(0.8, cr * 0.2) * (1.15 - t * 0.3), S, { ridge: 3 }); q = nq; }
+    P.caps.push({ c: topP, r: cr, hr, ramp: C, gill: Gi, seed: r.int(0, 1e6), spots: button ? 0 : Math.floor(cr / 2.5), spotCol: spot, alpha: sp.glow ? 200 : 255 });
+  }
+  return P.render(H, deepOf(C), 0.12);
+};
+
+const bulb: Painter = (sp, h, r) => {
+  // lantern pods: ribbed translucent bladders full of light, swaying on leafy stems above a clump of blades
+  const P = new Plant(r), H = h * PX, G = leafRamps(sp.leaf, 0.58), A = RAMP(sp.accent, 6, 0.55);
+  const ls: LeafStyle = { len: [3, 5], wr: 0.4, shapes: ['lance', 'ovate'], ramps: G, ang: [0.7, 1.1], droop: 0.3, roll: 0.5 };
+  for (let i = r.int(5, 8); i > 0; i--) blade(P, r, [r.range(-2, 2), 0, r.range(-2, 2)], polar(r.range(0.8, 1.35), r.range(0, TAU)), H * r.range(0.25, 0.4), 1.2, 0.08, pickRamp(r, G));
+  for (let i = r.int(2, 4); i > 0; i--) {
+    const top = blade(P, r, [r.range(-1.5, 1.5), 0, r.range(-1.5, 1.5)], polar(r.range(1.1, 1.45), r.range(0, TAU)), H * r.range(0.45, 0.8), 0.7, 0.015, G[0][0]);
+    for (let k = 0; k < 3; k++) twigLeaf(P, r, mul(top, 0.35 + k * 0.18), UP, ls);
+    const rad = r.range(2.4, 3.8) * Math.max(1, h);
+    P.orb(add(top, [0, rad * 0.6, 0]), rad, A, { sq: 1.15, ribs: 4, glow: sp.glow ? 0xfff4d8 : undefined, alpha: sp.glow ? 200 : 255 });
+  }
+  return P.render(H, deepOf(G[0][0]), 0.15);
+};
+
+const eyeflower: Painter = (sp, h, r) => {
+  // a stalked flower whose heart is an eye: iris, slit pupil, wet highlight. It watches what moves.
+  const P = new Plant(r), H = h * PX, G = leafRamps(sp.leaf, 0.58), A = RAMP(sp.accent, 6, 0.6), A2 = RAMP(mixHex(sp.accent, 0xf0e6d0, 0.3), 6, 0.55);
+  const ls: LeafStyle = { len: [4, 7], wr: 0.35, shapes: ['lance', 'ovate'], ramps: G, ang: [0.8, 1.2], droop: 0.35, roll: 0.5, vein: -1 };
+  for (let i = r.int(5, 7); i > 0; i--) blade(P, r, [r.range(-2, 2), 0, r.range(-2, 2)], polar(r.range(0.7, 1.3), r.range(0, TAU)), H * r.range(0.25, 0.4), 1.5, 0.08, pickRamp(r, G));
+  const head = blade(P, r, [0, 0, 0], polar(r.range(1.3, 1.5), r.range(0, TAU)), H * 0.8, 1.1, 0.01, G[0][0]);
+  for (let k = 0; k < 4; k++) twigLeaf(P, r, mul(head, 0.25 + k * 0.13), UP, ls);
+  const R0 = Math.max(4, H * 0.15), face = nrm([r.range(-0.3, 0.3), 0.15, 1]);
+  for (const [ring, n, lk, ramp] of [[0, r.int(8, 11), 1.5, A], [1, r.int(6, 8), 1.1, A2]] as [number, number, number, number[]][]) {
+    for (let i = 0; i < n; i++) {
+      const d = rot(perp(face), face, ((i + ring * 0.5) * TAU) / n), dd = nrm(add(d, mul(face, -0.25 + ring * 0.2)));
+      P.leaf({ p: add(head, mul(d, R0 * 0.35)), d: dd, n: face, len: R0 * lk, wid: R0 * 0.42, shape: 'petal', ramp, kind: K.ACC, fold: 0.25, vein: 1 });
+    }
+  }
+  const iris = RAMP(sp.glow ? 0x6ac8b0 : 0xc8a040, 6, 0.55), glow = sp.glow;
+  P.post.push({ p: head, f: (S, x, y, z, k) => {
+    const R = R0 * Math.sqrt(k), cx = Math.floor(x), cy = Math.floor(y);
+    for (let py = -R; py <= R; py++) for (let px = -R; px <= R; px++) {
+      const d = Math.hypot(px, py) / (R * 0.62); if (d > 1) continue;
+      const di = Math.hypot(px - 0.5, py) / (R * 0.42);
+      const c = di <= 1 ? band(iris, 0.85 - di * 0.5 - (py < 0 ? 0 : 0.15)) : mixHex(0xece6d4, 0x8a8478, Math.max(0, (px + py) / R) * 0.5);
+      S.put(cx + px, cy + py, z + 6, c, K.ACC, glow && di <= 1 ? 200 : 255);
+    }
+    for (let py = -R * 0.36; py <= R * 0.36; py++) S.put(cx, cy + Math.round(py), z + 7, 0x0a0808, K.ACC);
+    S.put(cx - Math.round(R * 0.22), cy - Math.round(R * 0.22), z + 8, 0xfaf6ee, K.ACC);
+  } });
+  return P.render(H, deepOf(G[0][0]), 0.15);
+};
+
+const fiddle: Painter = (sp, h, r) => {
+  // fiddle spires: fronds that rise and never finish unrolling, laddered with short pinnae, each ending in a
+  // tight crozier with a bead caught in the curl
+  const P = new Plant(r), H = h * PX, G = leafRamps(sp.leaf, 0.6), A = RAMP(sp.accent, 6, 0.55), young = RAMP(mixHex(sp.leaf, 0xc8d090, 0.22), 7, 0.6);
+  const n = r.int(3, 5);
+  for (let i = 0; i < n; i++) {
+    const side = (i / Math.max(1, n - 1) - 0.5) * 2, az = side < 0 ? Math.PI : 0;
+    const dir = polar(1.5 - Math.abs(side) * 0.35 + r.range(-0.08, 0.08), az + r.range(-0.4, 0.4));
+    const tip = frond(P, r, [side * 2, 0, r.range(-1.5, 1.5)], dir, H * r.range(0.55, 0.85), { rach: 1.1, ramp: G[0][0], ramps: G, sag: -0.005, start: 0.15, lmax: Math.max(3, Math.min(6, H * 0.11)), wr: 0.38, fwd: 0.35, droop: 0.05, shape: 'ovate', gap: 2.2 });
+    const rad = Math.max(2.5, H * r.range(0.08, 0.11));
+    const c = crozier(P, tip, rad * 1.3, rad, az + r.range(-0.4, 0.4), young);
+    if (sp.glow || i === 0) P.orb(add(c, [0, 0, 1]), 1.3, A, { glow: sp.glow ? 0xfff4d8 : undefined, alpha: sp.glow ? 200 : 255 });
+  }
+  return P.render(H, deepOf(G[0][0]), 0.15);
+};
+
+// ------------------------------------------------------------------------------------------------ 2D painters
+// (geometric forms that read best drawn flat: barrel cacti, crystal shards, floating lily pads)
 
 /** four crisp bands across ramp indices 1..n (index 0 is kept for creases and outlines) */
 function cel(ramp: number[], v: number) {
@@ -31,9 +716,9 @@ export function canvasFor(wm: number, hm: number) {
 }
 
 interface LeafOpt { shape?: 'lance' | 'round' | 'blade' | 'heart' | 'petal' | 'strap'; rib?: boolean; notch?: number; tip?: number[]; tipFrom?: number; alpha?: number; tipLight?: number; rimSide?: boolean }
-/** a shaped leaf or petal along a curved spine */
+/** a flat shaped leaf or petal along a curved spine */
 export function leaf(pc: PixelCanvas, p0: P2, p1: P2, p2: P2, wid: number, ramp: number[], o: LeafOpt = {}) {
-  const shape = o.shape ?? 'lance';
+  const shape = o.shape ?? 'lance', LX = -0.6, LY = -0.8;
   const steps = Math.max(6, Math.ceil(blen(p0, p1, p2) * 2.2));
   for (let i = 0; i <= steps; i++) {
     const t = i / steps, [x, y] = bez(p0, p1, p2, t), [x2, y2] = bez(p0, p1, p2, Math.min(1, t + 0.02));
@@ -55,16 +740,16 @@ export function leaf(pc: PixelCanvas, p0: P2, p1: P2, p2: P2, wid: number, ramp:
       let c = cel(ramp, v);
       if (o.rib && Math.abs(s) < 0.5 && t > 0.05 && t < 0.88) c = ramp[1];
       if (o.tip && t >= (o.tipFrom ?? 0.75)) c = cel(o.tip, v + (t - (o.tipFrom ?? 0.75)) * 0.8);
-      if (o.rimSide && side * Math.sign(facing || 1) < -0.7 && v < 0.4) c = mixHex(c, RIM, 0.35);
+      if (o.rimSide && side * Math.sign(facing || 1) < -0.7 && v < 0.4) c = mixHex(c, RIM, 0.18);
       pc.set(x + nx * s, y + ny * s, c, o.alpha ?? 255);
     }
   }
 }
 
 interface OrbOpt { rim?: boolean; hi?: boolean; spots?: number; spotCol?: number; alpha?: number; glowCore?: number; squash?: number }
-/** a cel-shaded sphere: hard highlight, cool rim light, dark crease on the shadow edge */
+/** a flat cel-shaded sphere: soft highlight, faint sky rim, dark crease on the shadow edge */
 export function orb(pc: PixelCanvas, cx: number, cy: number, r: number, ramp: number[], o: OrbOpt = {}, rng?: Rand) {
-  const sq = o.squash ?? 1;
+  const sq = o.squash ?? 1, LX = -0.6, LY = -0.8;
   for (let y = Math.floor(cy - r * sq - 1); y <= Math.ceil(cy + r * sq + 1); y++) for (let x = Math.floor(cx - r - 1); x <= Math.ceil(cx + r + 1); x++) {
     const dx = (x + 0.5 - cx) / r, dy = (y + 0.5 - cy) / (r * sq), d2 = dx * dx + dy * dy;
     if (d2 > 1) continue;
@@ -72,18 +757,18 @@ export function orb(pc: PixelCanvas, cx: number, cy: number, r: number, ramp: nu
     const v = 0.16 + nz * 0.44 + (dx * LX + dy * LY) * 0.42;
     let c = cel(ramp, v);
     if (d2 > 0.8 && dx + dy > 0.35) c = ramp[1];
-    if (o.rim !== false && dx > 0.42 && d2 > 0.58 && dy < 0.5) c = mixHex(c, RIM, 0.45);
+    if (o.rim !== false && dx > 0.42 && d2 > 0.58 && dy < 0.5) c = mixHex(c, RIM, 0.2);
     if (o.glowCore !== undefined && d2 < 0.3) c = mixHex(c, o.glowCore, 0.6 - d2);
     pc.set(x, y, c, o.alpha ?? 255);
   }
-  if (o.hi !== false && r >= 2) { pc.set(cx - r * 0.38, cy - r * 0.42 * sq, mixHex(ramp[ramp.length - 1], 0xffffff, 0.55)); if (r >= 4) pc.set(cx - r * 0.38 + 1, cy - r * 0.42 * sq, ramp[ramp.length - 1]); }
+  if (o.hi !== false && r >= 2) pc.set(cx - r * 0.38, cy - r * 0.42 * sq, mixHex(ramp[ramp.length - 1], 0xffffff, 0.3));
   if (o.spots && rng) for (let k = 0; k < o.spots; k++) {
     const a = rng.range(0, Math.PI * 2), d = rng.range(0.15, 0.6) * r, sx = cx + Math.cos(a) * d, sy = cy + Math.sin(a) * d * sq;
-    pc.set(sx, sy, o.spotCol ?? ramp[1]); if (r > 5) { pc.set(sx + 1, sy, o.spotCol ?? ramp[1]); pc.set(sx, sy - 1, mixHex(o.spotCol ?? ramp[1], 0xffffff, 0.5)); }
+    pc.set(sx, sy, o.spotCol ?? ramp[1]);
   }
 }
 
-/** a tapering stem with a lit left edge and a shaded right edge */
+/** a flat tapering stem with a lit left edge and a shaded right edge */
 export function stalk(pc: PixelCanvas, p0: P2, p1: P2, p2: P2, w0: number, w1: number, ramp: number[], rings = 0) {
   const steps = Math.max(6, Math.ceil(blen(p0, p1, p2) * 2));
   for (let i = 0; i <= steps; i++) {
@@ -114,284 +799,52 @@ export function outline(pc: PixelCanvas, deep: number) {
     pc.set(x, y, mixHex(deep, scaleHex(nc, 0.5), lit ? 0.45 : 0.12));
   }
 }
-const deepOf = (ramp: number[]) => scaleHex(ramp[0], 0.55);
-
-// ------------------------------------------------------------------------------------------------ painters
-const blades = (pc: PixelCanvas, r: Rand, cx: number, by: number, n: number, len: number, spread: number, G: number[], wid = 1.4) => {
-  const list: { a: number; l: number; x: number }[] = [];
-  for (let i = 0; i < n; i++) list.push({ a: r.range(-spread, spread), l: len * r.range(0.55, 1), x: cx + r.range(-2, 2) });
-  list.sort((p, q) => Math.abs(q.a) - Math.abs(p.a));
-  for (const b of list) {
-    const tip: P2 = [b.x + Math.sin(b.a) * b.l, by - Math.cos(b.a) * b.l * 0.95];
-    leaf(pc, [b.x, by], [b.x + Math.sin(b.a) * b.l * 0.15, by - b.l * 0.55], tip, wid + r.range(0, 0.6), G, { shape: 'blade' });
-  }
-};
-
-const tuft: Painter = (sp, h, r) => {
-  const pc = canvasFor(h * 0.9, h), G = RAMP(sp.leaf), A = RAMP(sp.accent), cx = pc.w / 2, by = pc.h - 2;
-  blades(pc, r, cx, by, r.int(9, 14), h * PX, 0.75, G, 1.1);
-  if (sp.arch === 'reed') for (let i = 0; i < r.int(2, 4); i++) {
-    const x = cx + r.range(-3, 3), top = by - h * PX * r.range(0.8, 1);
-    stalk(pc, [x, by], [x, by - h * 10], [x + r.range(-2, 2), top + 5], 0.6, 0.5, G);
-    orb(pc, x, top + 3, 1.6, A, { squash: 2.4 });
-  } else if (r.chance(0.6)) for (let i = 0; i < 4; i++) { const x = cx + r.range(-4, 4), y = by - h * PX * r.range(0.65, 0.95); pc.set(x, y, A[4]); pc.set(x, y + 1, A[2]); }
-  outline(pc, deepOf(G));
-  return pc;
-};
-
-const fern: Painter = (sp, h, r) => {
-  const pc = canvasFor(h * 1.6, h * 1.05), G = RAMP(sp.leaf), cx = pc.w / 2, by = pc.h - 2;
-  const n = r.int(6, 9), fr: number[] = [];
-  for (let i = 0; i < n; i++) fr.push(-1.2 + (2.4 * i) / (n - 1) + r.range(-0.1, 0.1));
-  fr.sort((a, b) => Math.abs(b) - Math.abs(a));
-  for (const a of fr) {
-    const len = h * PX * r.range(0.75, 1);
-    const p0: P2 = [cx, by], p1: P2 = [cx + Math.sin(a) * len * 0.45, by - len * 0.95], p2: P2 = [cx + Math.sin(a) * len, by - Math.cos(a) * len * 0.55];
-    const steps = Math.ceil(len / 2.2);
-    for (let i = 1; i < steps; i++) {
-      const t = i / steps, [x, y] = bez(p0, p1, p2, t), [x2, y2] = bez(p0, p1, p2, t + 0.03);
-      const tx = x2 - x, ty = y2 - y, tl = Math.hypot(tx, ty) || 1, nx = -ty / tl, ny = tx / tl;
-      const ll = (1 - t) * 5 + 1.5;
-      for (const s of [-1, 1]) leaf(pc, [x, y], [x + nx * s * ll * 0.5 + tx / tl * 1.5, y + ny * s * ll * 0.5 + ty / tl * 1.5], [x + nx * s * ll + tx / tl * ll * 0.6, y + ny * s * ll + ty / tl * ll * 0.6], 1.1, G, { shape: 'lance' });
-    }
-    stalk(pc, p0, p1, p2, 0.7, 0.5, G);
-    // the youngest frond is still a fiddlehead
-    if (Math.abs(a) < 0.3 && r.chance(0.7)) spiral(pc, p2[0], p2[1] - 2, 3.2, G);
-  }
-  outline(pc, deepOf(G));
-  return pc;
-};
-
-function spiral(pc: PixelCanvas, cx: number, cy: number, r0: number, G: number[]) {
-  for (let t = 0; t < 1; t += 0.01) { const a = t * Math.PI * 3.2, rad = r0 * (1 - t * 0.85); const x = cx + Math.cos(a) * rad, y = cy + Math.sin(a) * rad; pc.set(x, y, cel(G, 0.75 - t * 0.3)); pc.set(x + 1, y, cel(G, 0.5)); }
-}
-
-const shrub: Painter = (sp, h, r) => {
-  // a puffball mound: distinct cel-shaded globes with dark gaps between them
-  const pc = canvasFor(h * 1.45, h), G = RAMP(sp.leaf, 6, 0.66), cx = pc.w / 2, by = pc.h - 2;
-  const L = RAMP(mixHex(sp.leaf, 0x2a4a2a, 0.55));
-  blades(pc, r, cx, by, 6, h * PX * 0.3, 1.2, L, 1.2);
-  const puffs: number[][] = [];
-  const n = r.int(6, 11), rx = pc.w * 0.36, top = by - h * PX * 0.92;
-  for (let i = 0; i < n; i++) {
-    const t = i / (n - 1), a = r.range(0, Math.PI);
-    const rad = h * PX * r.range(0.16, 0.26);
-    puffs.push([cx + Math.cos(a) * rx * r.range(0.2, 1) * (1 - t * 0.4), by - rad - (by - rad - top - rad) * Math.pow(r.next() * (1 - t * 0.3), 1.2) * 0.8 - t * h * 6, rad]);
-  }
-  puffs.sort((p, q) => p[1] - q[1] || p[2] - q[2]);
-  const spots = sp.glow ? 2 : r.chance(0.4) ? 3 : 0;
-  for (const [x, y, rad] of puffs) { orb(pc, x, y, rad + 1, [G[0], G[0], G[0], G[0], G[0], G[0]], { rim: false, hi: false }); orb(pc, x, y, rad, G, { spots, spotCol: sp.glow ? 0xfff6c0 : G[1] }, r); }
-  outline(pc, deepOf(G));
-  return pc;
-};
-
-const broadleaf: Painter = (sp, h, r) => {
-  // the parasol-lobe tree: a twisting trunk holding rosettes of broad heart leaves, fruit pods hanging under them
-  const pc = canvasFor(h * 0.9, h), G = RAMP(sp.leaf, 6, 0.66), T = RAMP(sp.trunk, 6, 0.55), A = RAMP(sp.accent), cx = pc.w / 2, by = pc.h - 2;
-  const top: P2 = [cx + r.range(-4, 4), by - h * PX * 0.52];
-  stalk(pc, [cx, by], [cx + r.range(-6, 6), by - h * PX * 0.3], top, Math.max(2.5, h * 1.6), Math.max(1.5, h), T, 5);
-  const clusters: P2[] = [];
-  const k = r.int(4, 6);
-  for (let i = 0; i < k; i++) { const a = -Math.PI / 2 + (i / (k - 1) - 0.5) * 2.4; clusters.push([top[0] + Math.cos(a) * pc.w * 0.3, top[1] + Math.sin(a) * h * PX * 0.26 - h * 4]); }
-  clusters.sort((a, b) => a[1] - b[1]);
-  for (const c of clusters) stalk(pc, top, [(top[0] + c[0]) / 2, top[1] - 4], c, Math.max(1, h * 0.6), 0.6, T);
-  for (const c of [...clusters].reverse()) {
-    const m = r.int(5, 7), L = h * PX * r.range(0.13, 0.17);
-    const ang: number[] = []; for (let i = 0; i < m; i++) ang.push(-Math.PI / 2 + (i / (m - 1) - 0.5) * 3.6);
-    ang.sort((a, b) => Math.sin(b) - Math.sin(a));
-    for (const a of ang) leaf(pc, c, [c[0] + Math.cos(a) * L * 0.5, c[1] + Math.sin(a) * L * 0.5 - 2], [c[0] + Math.cos(a) * L, c[1] + Math.sin(a) * L * 0.8], L * 0.42, G, { shape: 'heart', rib: true, rimSide: true });
-    if (r.chance(0.6)) orb(pc, c[0] + r.range(-2, 2), c[1] + L * 0.5, Math.max(1.5, h * 0.7), A, { glowCore: sp.glow ? 0xffffff : undefined });
-  }
-  outline(pc, deepOf(G));
-  return pc;
-};
-
-const umbrella: Painter = (sp, h, r) => {
-  // the plate tree: stacked flat canopies, lime above and deep beneath, glowing beads hanging under the rim
-  const pc = canvasFor(h * 1.3, h), G = RAMP(sp.leaf, 6, 0.66), T = RAMP(sp.trunk, 6, 0.55), A = RAMP(sp.accent), cx = pc.w / 2, by = pc.h - 2;
-  const fork: P2 = [cx + r.range(-3, 3), by - h * PX * 0.4];
-  stalk(pc, [cx, by], [cx, by - h * PX * 0.2], fork, Math.max(2, h * 1.3), Math.max(1.5, h * 0.9), T, 6);
-  const plates = r.int(2, 3);
-  for (let p = plates - 1; p >= 0; p--) {
-    const py = by - h * PX * (0.66 + p * 0.12), rx = pc.w * (0.45 - p * 0.09), ry = Math.max(2.5, h * PX * 0.05);
-    const ox = cx + r.range(-4, 4) * (p ? 1 : 0);
-    stalk(pc, fork, [(fork[0] + ox) / 2, py + 6], [ox, py + ry], Math.max(1, h * 0.7), 0.8, T);
-    const lobes = r.int(7, 11);
-    for (let y = -ry * 2; y <= ry * 2.2; y++) for (let x = -rx - 2; x <= rx + 2; x++) {
-      const a = Math.atan2(y / ry, x / rx), rr = Math.hypot(x / rx, y / (ry * 1.6));
-      const scal = 1 + Math.sin(a * lobes + p) * 0.07;
-      if (rr > scal) continue;
-      const under = y > ry * 0.45;
-      const v = under ? 0.2 + (1 - rr) * 0.12 : 0.66 + (1 - rr) * 0.28 - x / rx * 0.14 + (y < -ry * 0.5 ? 0.12 : 0) + (((x * 3 + y * 7) & 7) === 0 ? 0.15 : 0);
-      pc.set(ox + x, py + y, cel(G, v));
-    }
-    // leaf tufts breaking the top edge of every plate
-    for (let k = 0; k < lobes * 3; k++) {
-      const x = ox + r.range(-rx * 0.9, rx * 0.9), y = py - ry * 1.4 * Math.sqrt(Math.max(0, 1 - ((x - ox) / rx) ** 2)) + 1;
-      leaf(pc, [x, y + 1], [x + r.range(-1, 1), y - 2], [x + r.range(-2.5, 2.5), y - r.range(2, 4)], 1.2, G, { shape: 'lance', tipLight: 0.4 });
-    }
-    if (sp.glow || r.chance(0.5)) for (let k = 0; k < 5; k++) { const x = ox + r.range(-rx * 0.8, rx * 0.8), l = r.int(3, 8); for (let j = 0; j < l; j++) pc.set(x, py + ry * 1.3 + j, T[2]); pc.set(x, py + ry * 1.3 + l, A[4], sp.glow ? 200 : 255); }
-  }
-  outline(pc, deepOf(G));
-  return pc;
-};
-
-const palm: Painter = (sp, h, r) => {
-  const pc = canvasFor(h * 1.0, h * 1.02), G = RAMP(sp.leaf, 6, 0.66), T = RAMP(sp.trunk, 6, 0.55), A = RAMP(sp.accent), cx = pc.w / 2, by = pc.h - 2;
-  const bend = r.range(-h * 3, h * 3);
-  const crown: P2 = [cx + bend, by - h * PX * 0.74];
-  stalk(pc, [cx, by], [cx + bend * 0.1, by - h * PX * 0.4], crown, Math.max(2, h * 1.2), Math.max(1.5, h * 0.8), T, 3);
-  const n = r.int(7, 10), fr: number[] = [];
-  for (let i = 0; i < n; i++) fr.push(-2.5 + (5 * i) / (n - 1) + r.range(-0.12, 0.12));
-  fr.sort((a, b) => Math.cos(a) - Math.cos(b));
-  for (const a of fr) {
-    const len = h * PX * r.range(0.3, 0.42);
-    const tip: P2 = [crown[0] + Math.sin(a) * len, crown[1] - Math.cos(a) * len * 0.35 + len * 0.6 * Math.abs(Math.sin(a)) * 0.9];
-    leaf(pc, crown, [crown[0] + Math.sin(a) * len * 0.5, crown[1] - len * 0.45], tip, Math.max(2, h * 1.5), G, { shape: 'lance', rib: true, notch: 3, rimSide: true });
-  }
-  for (let i = 0; i < 4; i++) orb(pc, crown[0] + r.range(-3, 3), crown[1] + r.range(2, 4), Math.max(1.5, h * 0.55), A, {});
-  outline(pc, deepOf(G));
-  return pc;
-};
-
-const weeper: Painter = (sp, h, r) => {
-  const pc = canvasFor(h * 0.95, h), G = RAMP(sp.leaf, 6, 0.6), T = RAMP(sp.trunk, 6, 0.55), cx = pc.w / 2, by = pc.h - 2;
-  const top: P2 = [cx + r.range(-3, 3), by - h * PX * 0.7];
-  stalk(pc, [cx, by], [cx + r.range(-5, 5), by - h * PX * 0.35], top, Math.max(2.5, h * 1.5), Math.max(1.5, h * 0.8), T, 7);
-  const rx = pc.w * 0.36;
-  const crown: number[][] = [];
-  for (let i = 0; i < 9; i++) crown.push([top[0] + r.range(-rx * 0.8, rx * 0.8), top[1] + r.range(-h * 6, h * 2), h * PX * r.range(0.07, 0.11)]);
-  crown.sort((a, b) => a[1] - b[1]);
-  for (const [x, y, rad] of crown) orb(pc, x, y, rad, G, { rim: true });
-  // curtains of hanging strands, beaded with leaves, paler at the tips
-  const n = Math.floor(pc.w * 0.8);
-  for (let i = 0; i < n; i++) {
-    const x0 = top[0] + r.range(-rx * 1.05, rx * 1.05), y0 = top[1] + r.range(-h * 3, h * 4);
-    const len = h * PX * r.range(0.25, 0.55) * (1 - Math.abs(x0 - top[0]) / (rx * 1.8));
-    for (let k = 0; k < len; k++) { const x = x0 + Math.sin(k * 0.22 + i) * 0.7; pc.set(x, y0 + k, cel(G, 0.3 + (k / len) * 0.55 + ((k % 3 === 0) ? 0.2 : 0))); }
-  }
-  outline(pc, deepOf(G));
-  return pc;
-};
-
-const spike: Painter = (sp, h, r) => {
-  // torch lily: a clump of strap leaves under clubs of stacked petals, hot at the tip
-  const pc = canvasFor(h * 0.8, h), G = RAMP(sp.leaf, 6, 0.6), A = RAMP(sp.accent, 6, 0.6, 0.09), cx = pc.w / 2, by = pc.h - 2;
-  blades(pc, r, cx, by, r.int(6, 9), h * PX * 0.45, 0.9, G, 1.6);
-  const n = r.int(3, 6);
-  const heads: number[][] = [];
-  for (let i = 0; i < n; i++) heads.push([cx + r.range(-pc.w * 0.28, pc.w * 0.28), by - h * PX * r.range(0.62, 0.98)]);
-  heads.sort((a, b) => a[1] - b[1]);
-  for (const [x, top] of heads) {
-    stalk(pc, [x + r.range(-1, 1), by - 2], [x, (by + top) / 2], [x, top + 8], 0.8, 0.6, G);
-    const hh = Math.max(6, Math.round(h * PX * 0.26));
-    for (let k = hh; k >= 0; k--) {
-      const t = k / hh, w = 1.2 + Math.sin(Math.min(1, (1 - t) * 1.2) * Math.PI * 0.95) * 2.2;
-      for (let s = -w; s <= w; s += 0.5) pc.set(x + s, top + 8 - (hh - k), cel(A, 0.32 + (1 - t) * 0.55 - (s > w * 0.5 ? 0.2 : s < -w * 0.4 ? -0.1 : 0) + ((k % 3 === 0) ? -0.15 : 0)));
-    }
-    pc.set(x - 1, top + 8 - hh + 1, mixHex(A[5], 0xffffff, 0.5));
-  }
-  outline(pc, deepOf(G));
-  return pc;
-};
-
-const rosette: Painter = (sp, h, r) => {
-  // star rosette: two rings of thick pointed leaves, inner ring brighter, a glowing bud in the heart
-  const pc = canvasFor(h * 1.7, h), G = RAMP(sp.leaf, 6, 0.66), cx = pc.w / 2, by = pc.h - 2;
-  for (const ring of [0, 1]) {
-    const n = ring ? r.int(6, 8) : r.int(8, 11), list: number[] = [];
-    for (let i = 0; i < n; i++) list.push(-1.4 + (2.8 * i) / (n - 1) + r.range(-0.08, 0.08));
-    list.sort((a, b) => Math.abs(b) - Math.abs(a));
-    const R2 = ring ? RAMP(mixHex(sp.leaf, 0xffffff, 0.12), 6, 0.66) : G;
-    for (const a of list) {
-      const len = h * PX * (ring ? 0.62 : 0.95) * r.range(0.85, 1) * (1 - Math.abs(a) * 0.12);
-      const tip: P2 = [cx + Math.sin(a) * len, by - Math.cos(a) * len * (ring ? 0.9 : 0.7) + Math.abs(a) * 3];
-      leaf(pc, [cx, by - 1], [cx + Math.sin(a) * len * 0.45, by - len * 0.75], tip, len * 0.2, R2, { shape: 'lance', rib: true, tipLight: 0.35, rimSide: true });
-    }
-  }
-  orb(pc, cx, by - h * PX * 0.18, Math.max(1.5, h * 2), RAMP(sp.accent), { glowCore: sp.glow ? 0xffffff : undefined });
-  outline(pc, deepOf(G));
-  return pc;
-};
-
-const coral: Painter = (sp, h, r) => {
-  const pc = canvasFor(h * 1.15, h), G = RAMP(sp.leaf, 6, 0.66), A = RAMP(sp.accent, 6, 0.66), cx = pc.w / 2, by = pc.h - 2;
-  const tips: number[][] = [];
-  const grow = (p: P2, a: number, len: number, w: number, d: number) => {
-    const e: P2 = [p[0] + Math.sin(a) * len, p[1] - Math.cos(a) * len];
-    stalk(pc, p, [p[0] + Math.sin(a) * len * 0.5 + r.range(-2, 2), p[1] - Math.cos(a) * len * 0.5], e, w, w * 0.75, G);
-    if (d <= 0 || len < 3) { tips.push([e[0], e[1], Math.max(1.5, w * 1.2)]); return; }
-    const k = r.int(2, 3);
-    for (let i = 0; i < k; i++) grow(e, a + (i - (k - 1) / 2) * r.range(0.4, 0.7), len * r.range(0.62, 0.8), w * 0.72, d - 1);
-  };
-  grow([cx, by], r.range(-0.1, 0.1), h * PX * 0.34, Math.max(1.5, h * 2.6), 3);
-  for (const [x, y, rad] of tips) orb(pc, x, y, rad, A, { glowCore: sp.glow ? 0xffffff : undefined, spots: rad > 2.5 ? 1 : 0, spotCol: A[1] }, r);
-  outline(pc, deepOf(G));
-  return pc;
-};
-
-const fungus: Painter = (sp, h, r) => {
-  const pc = canvasFor(h * 1.2, h), C = RAMP(sp.accent, 6, 0.66), S = RAMP(mixHex(sp.leaf, 0xe8e0d0, 0.65), 5, 0.45), cx = pc.w / 2, by = pc.h - 2;
-  const caps: number[][] = [];
-  for (let i = 0; i < r.int(1, 4); i++) caps.push([cx + r.range(-pc.w * 0.25, pc.w * 0.25), h * PX * (i === 0 ? 1 : r.range(0.4, 0.8)), r.range(0.3, 0.44) * h * PX]);
-  caps.sort((a, b) => b[1] - a[1]);
-  for (const [x, ch, cw] of caps) {
-    const top = by - ch;
-    stalk(pc, [x, by], [x + r.range(-2, 2), (by + top) / 2], [x, top + cw * 0.2], Math.max(1, cw * 0.14), Math.max(1, cw * 0.1), S);
-    orb(pc, x, top + cw * 0.18, cw / 2, C, { squash: 0.55, spots: Math.floor(cw / 4), spotCol: sp.glow ? 0xfff8d0 : mixHex(C[5], 0xffffff, 0.5) }, r);
-    for (let k = -cw / 2 + 2; k <= cw / 2 - 2; k++) { pc.set(x + k, top + cw * 0.2 + 1, C[1]); if (k % 2 === 0) pc.set(x + k, top + cw * 0.2 + 2, C[0]); }
-  }
-  outline(pc, deepOf(C));
-  return pc;
-};
-
-const bulb: Painter = (sp, h, r) => {
-  // lantern pods: translucent bladders full of light, swaying on thin stems
-  const pc = canvasFor(h * 1.1, h), G = RAMP(sp.leaf, 6, 0.6), A = RAMP(sp.accent, 6, 0.6), cx = pc.w / 2, by = pc.h - 2;
-  blades(pc, r, cx, by, 5, h * PX * 0.35, 1.1, G, 1.4);
-  const pods: number[][] = [];
-  for (let i = 0; i < r.int(2, 4); i++) pods.push([cx + r.range(-pc.w * 0.25, pc.w * 0.25), by - h * PX * r.range(0.5, 0.88), r.range(2.6, 4.4) * Math.max(1, h)]);
-  pods.sort((a, b) => a[1] - b[1]);
-  for (const [x, y, rad] of pods) {
-    stalk(pc, [cx, by - 2], [x, (by + y) / 2], [x, y + rad], 0.6, 0.5, G);
-    orb(pc, x, y, rad, A, { glowCore: 0xffffff, alpha: sp.glow ? 200 : 255 });
-    for (let k = -rad + 1; k < rad; k += 3) pc.set(x + k * 0.3, y + k, A[2], sp.glow ? 200 : 255);
-  }
-  outline(pc, deepOf(G));
-  return pc;
-};
 
 const barrel: Painter = (sp, h, r) => {
-  const pc = canvasFor(h * 0.8, h), G = RAMP(mixHex(sp.leaf, 0x5aa040, 0.35), 6, 0.62), A = RAMP(sp.accent), cx = pc.w / 2, by = pc.h - 2;
+  // ribbed barrel cacti: glaucous bodies, areoles of pale spines along every rib, a crown of petals on top
+  const pc = canvasFor(h * 0.9, h), G = RAMP(mixHex(sp.leaf, 0x5e7e62, 0.5), 6, 0.58), A = RAMP(sp.accent, 6, 0.55), cx = pc.w / 2, by = pc.h - 2;
+  const spine = mixHex(G[5], 0xe8e0c8, 0.55);
   const n = r.int(1, 2);
   for (let i = 0; i < n; i++) {
-    const bx = cx + (n === 1 ? 0 : (i - 0.5) * pc.w * 0.34), th = h * PX * (i === 0 ? 0.95 : r.range(0.5, 0.7)), w = Math.max(4, h * PX * r.range(0.17, 0.22));
-    const dome = w * 1.1;
+    const bx = cx + (n === 1 ? 0 : (i - 0.5) * pc.w * 0.34), th = h * PX * (i === 0 ? 0.9 : r.range(0.5, 0.7)), w = Math.max(4, h * PX * r.range(0.2, 0.27) * (n === 1 ? 1.15 : 0.9));
+    const dome = w * 1.1, ribs = r.int(3, 4);
     for (let y = 0; y < th; y++) {
       const fromTop = th - y;
       const ww = fromTop < dome ? w * Math.sqrt(Math.max(0, 1 - ((dome - fromTop) / dome) ** 2)) : w * (0.86 + 0.14 * Math.sin((y / th) * Math.PI));
       for (let k = -ww; k <= ww; k++) {
-        const u = k / Math.max(1, ww), ridge = Math.cos(u * Math.PI * 3) * 0.5 + 0.5;
-        let v = 0.55 - u * 0.3 + ridge * 0.15 - (y < 2 ? 0.2 : 0);
-        if (Math.abs(u + 0.42) < 0.12 && fromTop > dome * 0.6) v += 0.3;
+        const u = k / Math.max(1, ww), ridge = Math.cos(u * Math.PI * ribs) * 0.5 + 0.5;
+        let v = 0.5 - u * 0.3 + ridge * 0.18 - (y < 2 ? 0.2 : 0) + (hashf(Math.floor(bx + k), y, 3) - 0.5) * 0.08;
+        if (Math.abs(u + 0.42) < 0.12 && fromTop > dome * 0.6) v += 0.22;
         pc.set(bx + k, by - y, cel(G, v));
-        if (ridge > 0.96 && (y + Math.floor(k * 2)) % 5 === 0) pc.set(bx + k, by - y, 0xfff4dc);
+        // areoles: a tuft of pale spines on the rib crest every few pixels
+        if (ridge > 0.95 && (y + Math.floor(k * 3)) % 4 === 0 && fromTop > 1) { pc.set(bx + k, by - y, spine); pc.set(bx + k + 1, by - y - 1, mixHex(spine, G[3], 0.4)); }
       }
     }
-    for (let k = 0; k < 3; k++) orb(pc, bx + r.range(-w * 0.4, w * 0.4), by - th + r.range(0, 2), 1.6, A, {});
+    // flower crown: individual petals radiating from the apex
+    if (r.chance(0.7)) for (let k = 0; k < r.int(1, 3); k++) {
+      const fx = bx + r.range(-w * 0.35, w * 0.35), fy = by - th + 1;
+      for (let p = 0; p < 7; p++) { const a = -Math.PI * (0.1 + 0.8 * (p / 6)); leaf(pc, [fx, fy], [fx + Math.cos(a) * 1.5, fy + Math.sin(a) * 1.5], [fx + Math.cos(a) * 3.2, fy + Math.sin(a) * 2.6], 1, A, { shape: 'petal' }); }
+      pc.set(fx, fy - 1, mixHex(A[5], 0xf0e0a0, 0.5));
+    }
   }
   outline(pc, deepOf(G));
   return pc;
 };
 
 const crystalbloom: Painter = (sp, h, r) => {
-  const pc = canvasFor(h * 0.9, h), C = RAMP(sp.accent, 6, 0.7, 0.08), cx = pc.w / 2, by = pc.h - 2;
+  // mineral growths: faceted shards (a lit face, a shadowed face, a bright arris) rising from a stony boss
+  const pc = canvasFor(h * 0.9, h), C = RAMP(sp.accent, 6, 0.6, 0.06), K2 = RAMP(0x6a6460, 5, 0.5), cx = pc.w / 2, by = pc.h - 2;
+  for (let y = 0; y < 4; y++) for (let x = -5 + y; x <= 5 - y; x++) pc.set(cx + x, by - y, K2[ci(2.5 - x * 0.25 + y * 0.3, 1, 4)]);
   const n = r.int(3, 6);
   for (let i = 0; i < n; i++) {
-    const a = (i / Math.max(1, n - 1) - 0.5) * 1.3 + r.range(-0.1, 0.1), len = h * PX * r.range(0.55, 1), w = r.range(1.5, 3);
+    const a = (i / Math.max(1, n - 1) - 0.5) * 1.3 + r.range(-0.1, 0.1), len = h * PX * r.range(0.5, 1), w = r.range(1.5, 3);
     for (let t = 0; t < len; t++) {
       const f = t / len, ww = w * (f > 0.75 ? (1 - f) * 4 : 1);
-      for (let k = -ww; k <= ww; k++) pc.set(cx + Math.sin(a) * t + k, by - Math.cos(a) * t, cel(C, k < 0 ? 0.9 : k > ww * 0.4 ? 0.2 : 0.6), 175);
+      for (let k = -ww; k <= ww; k++) {
+        const face = k < -0.5 ? 0.85 : k > 0.5 ? 0.3 : 0.6;
+        pc.set(cx + Math.sin(a) * t + k, by - 2 - Math.cos(a) * t, cel(C, face + (hashf(i, Math.floor(t / 3), 5) - 0.5) * 0.15), 175);
+      }
+      if (t % 5 === 2) pc.set(cx + Math.sin(a) * t - ww * 0.5, by - 2 - Math.cos(a) * t, mixHex(C[5], 0xffffff, 0.35), 160);
     }
   }
   outline(pc, deepOf(C));
@@ -399,47 +852,20 @@ const crystalbloom: Painter = (sp, h, r) => {
 };
 
 const lily: Painter = (sp, h, r) => {
-  const pc = canvasFor(h, h), G = RAMP(sp.leaf), A = RAMP(sp.accent), cx = pc.w / 2, cy = pc.h / 2;
+  // floating pads seen from above: a notch to the centre, radial veins, a darker turned-up rim; sometimes a flower
+  const pc = canvasFor(h, h), G = RAMP(sp.leaf, 6, 0.55), A = RAMP(sp.accent, 6, 0.55), cx = pc.w / 2, cy = pc.h / 2;
   for (let i = 0; i < r.int(2, 4); i++) {
     const x = cx + r.range(-pc.w * 0.2, pc.w * 0.2), y = cy + r.range(-pc.h * 0.2, pc.h * 0.2), rad = r.range(0.22, 0.32) * h * PX, notch = r.range(0, Math.PI * 2);
     for (let yy = -rad; yy <= rad; yy++) for (let xx = -rad; xx <= rad; xx++) {
       const d = Math.hypot(xx, yy); if (d > rad) continue;
       const ang = Math.atan2(yy, xx); if (Math.abs(((ang - notch + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.28 && d > 1) continue;
-      pc.set(x + xx, y + yy, cel(G, 0.55 - (xx + yy) / rad * 0.25 - (d > rad - 1.2 ? 0.25 : 0) + ((Math.floor(ang * 3) % 2) ? 0.05 : 0)));
+      const vein = d > 1.5 && d < rad - 1.5 && Math.abs(((ang * 9) / Math.PI + 100) % 2 - 1) < 0.14;
+      pc.set(x + xx, y + yy, cel(G, 0.55 - ((xx + yy) / rad) * 0.2 - (d > rad - 1.2 ? 0.25 : 0) + (vein ? 0.18 : 0) + (hashf(Math.floor(x + xx), Math.floor(y + yy), 9) - 0.5) * 0.08));
     }
   }
-  if (r.chance(0.6)) orb(pc, cx, cy, 2.2, A, {});
-  outline(pc, deepOf(G));
-  return pc;
-};
-
-const eyeflower: Painter = (sp, h, r) => {
-  // a stalked flower whose heart is an eye: iris, slit pupil, wet highlight. It watches what moves.
-  const pc = canvasFor(h * 0.9, h), G = RAMP(sp.leaf, 6, 0.6), A = RAMP(sp.accent, 6, 0.66), cx = pc.w / 2, by = pc.h - 2;
-  blades(pc, r, cx, by, 5, h * PX * 0.35, 1.0, G, 1.8);
-  const hx = cx + r.range(-3, 3), hy = by - h * PX * 0.78, R0 = Math.max(4, h * PX * 0.16);
-  stalk(pc, [cx, by], [cx + r.range(-6, 6), by - h * PX * 0.45], [hx, hy + R0 * 0.6], 1.2, 0.9, G);
-  const n = r.int(7, 10);
-  for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2 + 0.2; leaf(pc, [hx, hy], [hx + Math.cos(a) * R0 * 0.8, hy + Math.sin(a) * R0 * 0.8], [hx + Math.cos(a) * R0 * 1.6, hy + Math.sin(a) * R0 * 1.4], R0 * 0.4, A, { shape: 'petal', tipLight: 0.3 }); }
-  const iris = RAMP(sp.glow ? 0x7affe0 : 0xffd040, 6, 0.6);
-  orb(pc, hx, hy, R0 * 0.62, [0xf4f0e0, 0xf4f0e0, 0xece6d4, 0xf8f4ea, 0xfffcf4, 0xffffff], { rim: false, hi: false });
-  orb(pc, hx + 0.5, hy, R0 * 0.42, iris, { rim: false, hi: false, glowCore: sp.glow ? 0xffffff : undefined });
-  for (let y = -R0 * 0.36; y <= R0 * 0.36; y++) pc.set(hx + 0.5, hy + y, 0x080608);
-  pc.set(hx - R0 * 0.2, hy - R0 * 0.2, 0xffffff);
-  outline(pc, deepOf(G));
-  return pc;
-};
-
-const fiddle: Painter = (sp, h, r) => {
-  // fiddle spires: stalks that never finish unrolling, beaded with tiny leaflets
-  const pc = canvasFor(h * 0.9, h), G = RAMP(sp.leaf, 6, 0.66), A = RAMP(sp.accent), cx = pc.w / 2, by = pc.h - 2;
-  const n = r.int(3, 5);
-  for (let i = 0; i < n; i++) {
-    const x = cx + (i - (n - 1) / 2) * pc.w * 0.16 + r.range(-2, 2), top = by - h * PX * r.range(0.6, 0.92), rad = Math.max(3, h * PX * 0.09);
-    stalk(pc, [x, by], [x + r.range(-4, 4), (by + top) / 2], [x, top + rad], 1.1, 0.8, G);
-    for (let k = 0; k < 6; k++) { const yy = by - (by - top) * (0.2 + k * 0.12), s = k % 2 ? 1 : -1; leaf(pc, [x, yy], [x + s * 2, yy - 2], [x + s * 4, yy - 3], 1, G, { shape: 'lance' }); }
-    spiral(pc, x + rad * 0.6, top + rad * 0.3, rad, G);
-    if (sp.glow || i === 0) orb(pc, x + rad * 0.6, top + rad * 0.3, 1.5, A, { glowCore: 0xffffff, alpha: sp.glow ? 200 : 255 });
+  if (r.chance(0.5)) {
+    for (let p = 0; p < 8; p++) { const a = (p / 8) * Math.PI * 2; leaf(pc, [cx, cy], [cx + Math.cos(a) * 1.5, cy + Math.sin(a) * 1.5], [cx + Math.cos(a) * 3.5, cy + Math.sin(a) * 3.5], 1.2, A, { shape: 'petal' }); }
+    pc.set(cx, cy, mixHex(A[5], 0xf0e0a0, 0.5));
   }
   outline(pc, deepOf(G));
   return pc;

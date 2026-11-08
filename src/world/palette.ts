@@ -14,11 +14,11 @@ export interface Palette {
   star: number;
 }
 
-export const VEYR = { moss: 0x2f8f5e, mossLight: 0x8fe08a, mossDark: 0x123a2c, vein: 0x6affd8, em: 0x8f7cff, core: 0x46ffc0, spore: 0xd8ff7a };
+export const VEYR = { moss: 0x3d6a4a, mossLight: 0x7a9a6a, mossDark: 0x1c3226, vein: 0x6affd8, em: 0x8f7cff, core: 0x46ffc0, spore: 0xb8c87a };
 export const RIVALS = [
-  { key: 'krell', name: 'The Krell Shard', creep: 0xd86a8a, creepLight: 0xffb0c8, creepDark: 0x5a1e34, vein: 0xff6aa0, core: 0xff7ab0 },
-  { key: 'sorrow', name: 'Sorrow Bloom', creep: 0xb8642a, creepLight: 0xf0b060, creepDark: 0x4a1e10, vein: 0xffa040, core: 0xffb050 },
-  { key: 'pale', name: 'The Pale Choir', creep: 0x9aa8c8, creepLight: 0xe8f0ff, creepDark: 0x2e3450, vein: 0xb8d0ff, core: 0xd0e0ff },
+  { key: 'krell', name: 'The Krell Shard', creep: 0xa86a78, creepLight: 0xd0a0aa, creepDark: 0x4a2230, vein: 0xff6aa0, core: 0xff7ab0 },
+  { key: 'sorrow', name: 'Sorrow Bloom', creep: 0x9a6a3a, creepLight: 0xc8a070, creepDark: 0x3e2214, vein: 0xffa040, core: 0xffb050 },
+  { key: 'pale', name: 'The Pale Choir', creep: 0x8a90a8, creepLight: 0xc8d0e0, creepDark: 0x2e3244, vein: 0xb8d0ff, core: 0xd0e0ff },
 ];
 
 const BASES: Palette[] = [
@@ -35,7 +35,7 @@ const BASES: Palette[] = [
   {
     // dusk heath: plum and heather turf, wine and ochre canopies, warm low sun
     key: 'violet', name: 'Violet Dusk',
-    grass: 0x5e4d50, grassDry: 0x7e6c5c, soil: 0x4e3d34, rock: 0x67616a, sand: 0xa69282, mud: 0x342a2c, clay: 0x82513f,
+    grass: 0x5c4858, grassDry: 0x7a6658, soil: 0x4e3d34, rock: 0x67616a, sand: 0xa69282, mud: 0x342a2c, clay: 0x82513f,
     snow: 0xe8e2e6, basalt: 0x2b2730, ore: 0x4a4a5c, crystal: 0xc596b4,
     water: 0x4b6870, waterDeep: 0x1c2c3a, foam: 0xdcd8dc,
     foliage: [0x6a4d62, 0x8a7442, 0x3c5a56, 0x7a5052, 0x4c5e44, 0x544868], bark: [0x382a28, 0x46363a, 0x2e2629],

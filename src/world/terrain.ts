@@ -278,19 +278,19 @@ void main() {
   float hb = mix(mix(hAt(i), hAt(i + vec2(1.0, 0.0)), f.x), mix(hAt(i + vec2(0.0, 1.0)), hAt(i + vec2(1.0, 1.0)), f.x), f.y);
   float depth = max(0.0, uWater - hb);
   float t = 1.0 - exp(-depth * 0.85);
-  vec3 c = mix(uShallow * 1.12, uDeep, smoothstep(0.05, 1.0, t));
+  vec3 c = mix(uShallow, uDeep, smoothstep(0.05, 1.0, t));
   // slow caustic mottling
   float m = vn(p * 0.8 + vec2(uTime * 0.05, uTime * 0.03)) * 0.6 + vn(p * 2.1 - uTime * 0.07) * 0.4;
-  c *= 0.88 + m * 0.22;
-  // glitter: dense, twinkling specks of light on the surface
-  float g1 = h2(px + floor(uTime * 4.0 + h2(px) * 9.0) * 3.7);
-  float g2 = h2(floor(px / 2.0) * 1.7 + floor(uTime * 1.5 + h2(floor(px / 2.0)) * 5.0));
-  if (g1 > 0.9) c = mix(c, vec3(1.25), 0.6);
-  else if (g1 > 0.78) c = mix(c, uShallow * 1.5 + 0.1, 0.4);
-  if (g2 > 0.985 && depth > 0.2) c = vec3(1.7);
+  c *= 0.9 + m * 0.16;
+  // glints: sparse, slow twinkles of sky on the surface, a rare bright sun sparkle on open water
+  float g1 = h2(px + floor(uTime * 2.0 + h2(px) * 9.0) * 3.7);
+  float g2 = h2(floor(px / 2.0) * 1.7 + floor(uTime * 1.2 + h2(floor(px / 2.0)) * 5.0));
+  if (g1 > 0.985) c = mix(c, vec3(0.95), 0.32);
+  else if (g1 > 0.945) c = mix(c, uShallow * 1.25 + 0.03, 0.22);
+  if (g2 > 0.997 && depth > 0.3) c = mix(c, vec3(1.15), 0.6);
   // shore: a pale rim melting into the bank
   float shore = 1.0 - smoothstep(0.0, 0.45, depth);
-  c = mix(c, mix(uShallow, uFoam, 0.45) * 1.12, shore * 0.55);
+  c = mix(c, mix(uShallow, uFoam, 0.35), shore * 0.45);
   c = applyFow(c, vWp);
   gl_FragColor = vec4(c, 1.0);
   gNormal = vec4(0.5, 1.0, 0.5, 0.0);
