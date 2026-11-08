@@ -10,10 +10,11 @@ export interface BabyLook {
   name: string; skin: number; belly: number; pat: Pat; patCol: number; eye: number; glow: number;
   gills: Gills; eyes: EyeStyle; back: Back; tail: Tail; chub: number; blush: boolean;
 }
-export const SKINS = [0x6ad8a8, 0xff9ac0, 0x6ac8f0, 0xffc04a, 0xb08aff, 0x4ab8a0, 0xff7a5a, 0xf4f0e4, 0x3a5a9a, 0x9ae04a, 0xe060a0, 0x9a7a5a];
-export const BELLIES = [0xfff4d8, 0xffe0ec, 0xe8f8ff, 0xf0ffd8, 0xfff0a0, 0xffd8c0];
-export const PATCOLS = [0x1a3a5a, 0x2a2a5a, 0x6a1a4a, 0xffffff, 0xffd040, 0x1a1a1a, 0x8a3ad0, 0xe05a2a];
-export const EYES = [0xffc030, 0xff4a2a, 0x5ae0ff, 0x7aff7a, 0xb08aff, 0x2a2a3a];
+/** olive, toad brown, moss, ochre, grey-green, dark olive, rust, sand, then a few alien: muted teal, dusk violet, axolotl pink, slate */
+export const SKINS = [0x6b7a3c, 0x7a6248, 0x4f6b38, 0xa08a4a, 0x6a7466, 0x3f4a2a, 0x8a5236, 0xb09a6a, 0x4a7a72, 0x6a5a78, 0xd8a8a8, 0x4a5a6a];
+export const BELLIES = [0xe8dcc0, 0xe0d0a0, 0xc8c4b8, 0xe0c4b8, 0xf0ece0, 0xe09a50];
+export const PATCOLS = [0x2e2418, 0x1e2414, 0x5a2a18, 0x8a6a2a, 0xd8c8a0, 0x2a2e34, 0x1a3020, 0x7a2a20];
+export const EYES = [0xc8a040, 0xb06a30, 0x8a6a3a, 0x9aa040, 0xa83a2a, 0x2a2a2a];
 export const GLOWS = [0x7affe0, 0xb8a0ff, 0xff7ab8, 0xffe070, 0x6ac8ff, 0x9aff6a];
 export const GILLS: Gills[] = ['feathery', 'crystal', 'none'];
 export const EYESTYLES: EyeStyle[] = ['big', 'huge', 'googly'];
@@ -22,10 +23,10 @@ export const TAILS: Tail[] = ['stub', 'long', 'none'];
 export const PATS: Pat[] = ['none', 'spots', 'stripes', 'speckles', 'patches'];
 
 export const DEFAULT_LOOK: BabyLook = {
-  name: 'Veyr', skin: 0x6ad8a8, belly: 0xfff4d8, pat: 'spots', patCol: 0x1a3a5a, eye: 0xffc030, glow: 0x7affe0,
-  gills: 'feathery', eyes: 'big', back: 'warts', tail: 'stub', chub: 0.75, blush: true,
+  name: 'Veyr', skin: 0x6b7a3c, belly: 0xe8dcc0, pat: 'spots', patCol: 0x2e2418, eye: 0xc8a040, glow: 0x7affe0,
+  gills: 'feathery', eyes: 'big', back: 'warts', tail: 'stub', chub: 0.75, blush: false,
 };
-const KEY = 'oddworld.look4';
+const KEY = 'oddworld.look5';
 function valid(l: BabyLook): BabyLook {
   const d = DEFAULT_LOOK, ok = <T>(v: T, list: readonly T[], f: T) => (list.includes(v) ? v : f);
   const num = (v: unknown, f: number) => (typeof v === 'number' && isFinite(v) ? v : f);

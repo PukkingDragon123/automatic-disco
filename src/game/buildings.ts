@@ -271,7 +271,7 @@ export class Building {
   readonly id = NEXT++;
   hp: number; progress = 0; done = false;
   readonly mesh: THREE.Mesh;
-  readonly U = { uGrow: { value: 0 }, uPulse: { value: 0 }, uTint: { value: new THREE.Color(1, 1, 1) }, uTintK: { value: 0 }, uFlash: { value: 0 }, uTime: { value: 0 } };
+  readonly U = { uGrow: { value: 0 }, uPulse: { value: 0 }, uTint: { value: new THREE.Color(1, 1, 1) }, uTintK: { value: 0 }, uFlash: { value: 0 }, uTime: { value: 0 }, uGlowMul: { value: 1 } };
   readonly flag = { value: 1 };
   selected = false; hovered = false;
   /** production queue (brood): species ids; timer */
@@ -300,11 +300,11 @@ transformed.xz *= (0.35 + 0.65 * g) * (1.0 + wob + uPulse * 0.03 * step(0.5, aPa
 transformed.y *= g;
 vUvl = vec3(uv, aLayer); vPart = aPart;`);
       sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform highp sampler2DArray uBio; uniform vec3 uTint; uniform float uTintK, uFlash, uPulse, uTime; varying vec3 vUvl; varying float vPart;')
+        .replace('#include <common>', '#include <common>\nuniform highp sampler2DArray uBio; uniform vec3 uTint; uniform float uTintK, uFlash, uPulse, uTime, uGlowMul; varying vec3 vUvl; varying float vPart;')
         .replace('#include <map_fragment>', `vec4 bt = texture(uBio, vUvl, -0.35);
 vec3 bc = mix(bt.rgb, bt.rgb * uTint * 1.4, uTintK);
 diffuseColor.rgb *= bc;
-float glowB = (1.0 - bt.a) * (1.1 + uPulse * 0.9 * step(0.5, vPart));`)
+float glowB = (1.0 - bt.a) * (1.1 + uPulse * 0.9 * step(0.5, vPart)) * uGlowMul;`)
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += bc * glowB + vec3(1.0, 0.4, 0.3) * uFlash;');
     };
     m.customProgramCacheKey = () => 'oddworld-building';

@@ -25,6 +25,7 @@ import { GENE } from '../life/genes';
 import type { Species } from './species';
 import { Story } from './story';
 import { RivalBrain } from './rival';
+import { CoreAura } from './coreAura';
 import { RIVALS } from '../world/palette';
 import { VeyrChild } from './child';
 import { BabyEditor } from '../ui/babyEditor';
@@ -73,6 +74,7 @@ export class Game implements Screen {
   storyBlock = false;
   story: Story | null = null;
   rivals: RivalBrain[] = [];
+  aura: CoreAura | null = null;
   private rivalT = 210;
   child!: VeyrChild;
   private cap: THREE.Mesh | null = null; private hatchT = 0;
@@ -142,6 +144,7 @@ export class Game implements Screen {
     this.child.root.position.set(core.x, core.y + 2.15, core.z);
     this.world.scene.add(this.child.root);
     this.harvest.child = this.child;
+    this.child.onCast = () => this.aura?.pulse(1);
     this.cap = new THREE.Mesh(coreCapGeometry(core.x, core.z), core.mesh.material);
     this.cap.position.copy(core.mesh.position); this.cap.castShadow = true;
     this.world.scene.add(this.cap);
@@ -640,6 +643,10 @@ export class Game implements Screen {
     } else for (const h of this.world.hives) for (const b of h.buildings) b.sync(dt, this.world.time);
     this.hatching(dt);
     this.child.setGrowth(this.veyr.emLevel);
+    const vc = this.veyr.core;
+    if (vc && !this.aura) { this.aura = new CoreAura(vc, this.fx, VEYR.vein); this.world.scene.add(this.aura.group); }
+    if (this.aura && (!vc || this.aura.core !== vc)) { this.aura.dispose(); this.aura = null; }
+    this.aura?.update(dt, this.veyr.emLevel);
     for (const f of this.update$) f(simDt);
     this.story?.update(simDt, dt);
     this.fx.update(simDt > 0 ? simDt : dt * 0.15, this.engine.h, this.cam.cam.fov);

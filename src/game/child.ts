@@ -34,26 +34,41 @@ const yAt = (t: number) => Y0 + t * YH;
 interface Shape { fat: number }
 const radii = (S: Shape, t: number): [number, number] => { const f = t < 0.56 ? S.fat : 1 + (S.fat - 1) * 0.3; return [interp(TT, RX, t) * f, interp(TT, RZ, t) * f]; };
 const surf = (S: Shape, a: number, t: number, push = 0): V3 => { const [rx, rz] = radii(S, t); return [Math.sin(a) * (rx + push), yAt(t), Math.cos(a) * (rz + push)]; };
+/** toad warts: jittered bumps on a grid wrapped round the body (0..1 height) */
+function wartAt(a: number, t: number): number {
+  const U = 30, u = ((a + Math.PI) / TAU) * U, v = t * 34, i0 = Math.floor(u), j0 = Math.floor(v);
+  let h = 0;
+  for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+    const i = (((i0 + di) % U) + U) % U, j = j0 + dj, hh = hash(i * 7 + 3, j * 13);
+    if (hh < 0.3) continue;
+    const cu = i0 + di + 0.2 + hash(i, j + 5) * 0.6, cv = j + 0.2 + hash(j + 11, i) * 0.6, r = 0.24 + hash(i + 9, j) * 0.3;
+    const d = Math.hypot(u - cu, (v - cv) * 0.85) / r;
+    if (d < 1) h = Math.max(h, (1 - d * d) * (0.45 + hh * 0.55));
+  }
+  return h;
+}
+/** where warts grow: back and flanks, few on the face, none on the belly */
+const wartMask = (a: number, t: number) => { const aa = Math.abs(a); return sm(0.75, 1.35, aa) * sm(0.1, 0.22, t) * (1 - sm(0.93, 0.99, t)) * (aa < 1.2 && t > 0.5 && t < 0.84 ? 0.35 : 1); };
 const mouthT = (a: number) => TM + 0.05 * Math.pow(Math.min(1, Math.abs(a) / 1.7), 2); // corners curl up
 
 interface Built { geo: THREE.BufferGeometry; texA: THREE.DataTexture; texB: THREE.DataTexture; rest: V3[]; top: number }
 function buildChild(L: BabyLook): Built {
   const S: Shape = { fat: 0.88 + L.chub * 0.3 };
-  const B = new SkinB(256, 256), page = new Page(256, 256);
+  const B = new SkinB(512, 512), page = new Page(512, 512);
   const reg = (n: string, w: number, h: number) => page.reg(n, w, h);
   const R = {
-    BODY: reg('BODY', 128, 72), TAIL: reg('TAIL', 32, 28), LIMB: reg('LIMB', 28, 40), EYE: reg('EYE', 40, 36), LID: reg('LID', 28, 8), PAD: reg('PAD', 8, 8),
-    GILL: reg('GILL', 16, 28), SAC: reg('SAC', 28, 16), TONGUE: reg('TONGUE', 8, 20), GEM: reg('GEM', 8, 8), GLOW: reg('GLOW', 8, 8),
+    BODY: reg('BODY', 288, 168), TAIL: reg('TAIL', 64, 56), LIMB: reg('LIMB', 64, 88), EYE: reg('EYE', 56, 48), LID: reg('LID', 64, 14), PAD: reg('PAD', 12, 12),
+    GILL: reg('GILL', 24, 40), SAC: reg('SAC', 64, 32), TONGUE: reg('TONGUE', 12, 28), GEM: reg('GEM', 12, 12), GLOW: reg('GLOW', 12, 12),
   };
   let g = 1;
   const rest: V3[] = BONES.map(() => [0, 0, 0]);
   const at = (n: BN, p: V3) => { rest[bi(n)] = p; };
   at('body', [0, 0.3, 0]); at('head', [0, 0.56, 0]); at('jaw', [0, 0.57, -0.05]); at('throat', [0, 0.46, 0.18]); at('tongue', [0, 0.585, 0.12]);
   // ---- the body: one loft, head and belly together
-  const bt = cosT(24), bp: V3[] = bt.map((t) => [0, yAt(t), 0]);
+  const bt = cosT(46), bp: V3[] = bt.map((t) => [0, yAt(t), 0]);
   const iB = bi('body'), iH = bi('head'), iJ = bi('jaw');
   sac(B, R.BODY, g++, bp, bt.map((t) => radii(S, t)), bt.map((): Wt => [iB, 1]), {
-    n: 34, up: [0, 0, 1], cap: 0.25,
+    n: 72, up: [0, 0, 1], cap: 0.25,
     bump: (a, t) => {
       const aa = Math.abs(a);
       let b = -0.055 * gauss(t, mouthT(a), 0.011) * (1 - sm(1.6, 1.85, aa)) // the smile crease
@@ -62,6 +77,11 @@ function buildChild(L: BabyLook): Built {
         + 0.16 * gauss(aa, 0.55, 0.2) * gauss(t, 0.86, 0.055) // eye mounds
         + 0.06 * L.chub * gauss(a, 0, 0.9) * gauss(t, 0.28, 0.12); // belly
       if (L.back === 'fin') b += 0.2 * gauss(aa, Math.PI, 0.09) * sm(0.3, 0.4, t) * (1 - sm(0.82, 0.9, t));
+      // toad skin: warts over the back and flanks, parotoid glands behind the eyes, side ridges, a wrinkled throat
+      b += (L.back === 'smooth' ? 0.025 : 0.06) * wartAt(a, t) * wartMask(a, t)
+        + 0.13 * gauss(aa, 1.28, 0.2) * gauss(t, 0.775, 0.045)
+        + 0.035 * gauss(aa, 1.95, 0.07) * sm(0.22, 0.3, t) * (1 - sm(0.68, 0.76, t))
+        + 0.012 * Math.sin(t * 260) * gauss(a, 0, 0.6) * gauss(t, 0.52, 0.035);
       return b;
     },
     wv: (a, t) => {
@@ -160,35 +180,48 @@ function buildChild(L: BabyLook): Built {
     ball(B, R.GEM, g++, p, norm([Math.sin(a), 0.3, Math.cos(a)]), [r, r, r * 1.1], t > 0.6 ? [iH, 1] : [iB, 1], { n: 4, rings: 2 });
   }
   const geo = B.build();
-  const tex = (open: boolean) => { paintChild(L, S, R, open); page.finish(); const p = new Page(256, 256); p.pc.data.set(page.pc.data); return pageTexture(p); };
+  const tex = (open: boolean) => { paintChild(L, S, R, open); page.finish(); const p = new Page(512, 512); p.pc.data.set(page.pc.data); return pageTexture(p); };
   return { geo, texA: tex(false), texB: tex(true), rest, top };
 }
 
 // ------------------------------------------------------------------------------------------------ painting
 function paintChild(L: BabyLook, S: Shape, R: Record<string, Region>, open: boolean) {
-  const SK = makeRamp(L.skin, 8, { spread: 0.5, hueShift: 0.05 }), BE = makeRamp(L.belly, 7, { spread: 0.32 }), PA = makeRamp(L.patCol, 6, { spread: 0.45 });
+  const SK = makeRamp(L.skin, 8, { spread: 0.42, hueShift: 0.03 }), BE = makeRamp(L.belly, 7, { spread: 0.3 }), PA = makeRamp(L.patCol, 6, { spread: 0.4 });
   const glowPx = (r: Region, x: number, y: number, t = 0.3, a = 190) => { r.set(x, y, mixC(L.glow, 0xffffff, t)); r.alpha(x, y, a); };
   const B = R.BODY;
+  const SKd = makeRamp(mixHex(L.skin, L.patCol, 0.45), 8, { spread: 0.45, hueShift: 0.03 });
+  const tipC = mixHex(L.skin, 0xd8b878, 0.45), wartC = mixHex(L.skin, 0x2a2016, 0.5);
   for (let y = 0; y < B.h; y++) for (let x = 0; x < B.w; x++) {
     const t = (y + 0.5) / B.h, a = B.th(x), aa = Math.abs(a);
-    let k = 3.5 + (t - 0.5) * 0.8 + (B.fbm(x, y, 5, 2, 3) - 0.5) * 0.6;
+    const big = B.fbm(x, y, 5, 3, 3), fine = B.fbm(x, y, 22, 2, 4), grain = hash(x * 3, y * 7);
+    let k = 3.6 + (big - 0.5) * 1.3 + (fine - 0.5) * 1.0 + (grain - 0.5) * 0.55 - sm(0.3, 0.9, t) * 0.4 * sm(1.2, 2.6, aa);
     let ramp = SK;
     const belly = (a / 1.08) ** 2 + ((t - 0.3) / 0.27) ** 2 < 1 + (hash(x, y * 3) - 0.5) * 0.08;
-    if (belly) { ramp = BE; k = 3.8 + (B.fbm(x, y, 4, 2, 5) - 0.5) * 0.4; }
-    const face = aa < 1.15 && t > 0.5 && t < 0.82;
-    if (!belly && !face) {
-      if (L.pat === 'spots') { const u = a * 2.6, v = t * 6.5, i = Math.floor(u), j = Math.floor(v); if (hash(i * 7, j * 13) > 0.4) { const d = Math.hypot(u - i - 0.25 - hash(i, j) * 0.5, (v - j - 0.25 - hash(j, i) * 0.5) * 1.1); if (d < 0.26) { ramp = PA; k = d > 0.19 ? 4.2 : 2.6; } } }
-      if (L.pat === 'stripes' && Math.sin(t * 34 + Math.sin(a * 2) * 1.2) > 0.55 && aa > 1.3) ramp = PA;
-      if (L.pat === 'speckles' && hash(x * 5, y * 7) < 0.07) { ramp = PA; k = 3; }
-      if (L.pat === 'patches' && B.fbm(x, y, 4, 2, 9) > 0.6) ramp = PA;
+    let w = 0;
+    if (belly) { ramp = BE; k = 3.9 + (fine - 0.5) * 0.9 + (grain - 0.5) * 0.5; if (hash(x * 5 + 1, y * 3) < 0.07) k -= 1.7; }
+    else {
+      const m = B.fbm(x, y, 7, 3, 21), face = aa < 1.15 && t > 0.5 && t < 0.82;
+      if (!face) {
+        if (L.pat === 'spots' && m > 0.6) { ramp = PA; k = m < 0.625 ? 1.8 : 3 + (fine - 0.5) * 1.2; }
+        if (L.pat === 'patches' && m > 0.52) { ramp = SKd; k = m < 0.545 ? 1.6 : 3.2 + (fine - 0.5); }
+        if (L.pat === 'speckles' && hash(x * 5, y * 7) < 0.08) { ramp = PA; k = 2.4; }
+        if (L.pat === 'stripes') { if (aa > 3.0) { ramp = BE; k = 3.8; } else if (aa > 1.3 && Math.sin(t * 30 + m * 4) > 0.65) ramp = PA; }
+      }
+      w = wartAt(a, t) * wartMask(a, t);
+      if (w > 0.04) k += w * 1.7 - (w < 0.2 ? 1.1 : 0);
+      const gl = gauss(aa, 1.28, 0.2) * gauss(t, 0.775, 0.045);
+      k += gl * 0.9 - (gl > 0.3 && hash(x * 7, y * 3) < 0.1 ? 1.8 : 0);
+      k += 0.9 * gauss(aa, 1.95, 0.07) * sm(0.22, 0.3, t) * (1 - sm(0.68, 0.76, t));
+      if (gauss(a, 0, 0.6) * gauss(t, 0.52, 0.035) > 0.3 && Math.sin(t * 260) < -0.6) k -= 1.1;
     }
-    if (hash(x * 3 + 1, y * 5) < 0.03) k -= 0.7; // pores
-    B.put(x, y, ramp, k, 0.5);
-    // wet gloss on the crown and the belly
-    if ((t > 0.74 && aa < 1.2 && hash(x, y + 9) < 0.035) || (belly && hash(x + 4, y) < 0.012)) B.set(x, y, 0xffffff);
+    B.put(x, y, ramp, k, 0.45);
+    if (w > 0.8 && hash(x + 1, y + 2) < 0.7) B.blend(x, y, tipC, 0.55);
+    else if (w > 0.04 && w < 0.16) B.blend(x, y, wartC, 0.35);
+    // wet highlights: specks on wart tops, a sheen on the crown and belly
+    if ((w > 0.85 && hash(x + 2, y) < 0.3) || (t > 0.76 && aa < 1.1 && hash(x, y + 9) < 0.018) || (belly && hash(x + 4, y) < 0.008)) B.blend(x, y, 0xf4f4ec, 0.75);
   }
   // cheeks, nostrils, the smile
-  if (L.blush) for (const k of [-1, 1]) for (let y = 0; y < B.h; y++) for (let x = 0; x < B.w; x++) { const d = Math.hypot((B.th(x) - k * 1.0) / 0.24, ((y + 0.5) / B.h - 0.665) / 0.035); if (d < 1 && hash(x, y) < 0.9) B.blend(x, y, 0xff6a8a, 0.7 * (1 - d * 0.4)); }
+  if (L.blush) for (const k of [-1, 1]) for (let y = 0; y < B.h; y++) for (let x = 0; x < B.w; x++) { const d = Math.hypot((B.th(x) - k * 1.0) / 0.24, ((y + 0.5) / B.h - 0.665) / 0.035); if (d < 1 && hash(x, y) < 0.8) B.blend(x, y, 0xd87a7a, 0.32 * (1 - d * 0.5)); }
   for (const k of [-1, 1]) { const nx = B.X(k * 6), ny = Math.round(B.h * 0.7); B.set(nx, ny, mixC(SK[0], 0x000000, 0.4)); }
   const dark = mixC(L.patCol, 0x1a0812, 0.6);
   for (let x = 0; x < B.w; x++) {
@@ -202,7 +235,7 @@ function paintChild(L: BabyLook, S: Shape, R: Record<string, Region>, open: bool
   // tail: skin above, belly below, the pattern carried on, a translucent fin edge
   const T = R.TAIL;
   for (let y = 0; y < T.h; y++) for (let x = 0; x < T.w; x++) { const a = T.th(x), aa = Math.abs(a), t = y / T.h; const fin = aa < 0.25 || aa > 2.9; T.put(x, y, aa > 2.2 && !fin ? BE : L.pat === 'stripes' && Math.sin(t * 18) > 0.4 && !fin ? PA : SK, 3.4 + Math.cos(a) * 0.4 - t * 0.6 + (fin ? 1.4 : 0), 0.5); if (fin && t > 0.2) T.alpha(x, y, 225); }
-  R.LIMB.fill(SK, (x, y) => 3.6 + Math.cos(R.LIMB.th(x)) * 0.5 - (y / R.LIMB.h) * 0.4 + (hash(x, y) < 0.04 ? -0.8 : 0), undefined, 0.5);
+  R.LIMB.fill(SK, (x, y) => 3.6 + Math.cos(R.LIMB.th(x)) * 0.5 - (y / R.LIMB.h) * 0.4 + (R.LIMB.fbm(x, y, 12, 2, 6) - 0.5) * 1.1 + (Math.sin(y * 0.42 + R.LIMB.fbm(x, y, 3, 2, 2) * 3) > 0.7 ? -1.3 : 0) + (hash(x, y) < 0.06 ? 1.2 : hash(x + 3, y) < 0.05 ? -0.9 : 0), undefined, 0.45);
   for (let y = 0; y < R.LIMB.h; y++) for (let x = 0; x < R.LIMB.w; x++) if (Math.abs(R.LIMB.th(x)) > 2.3) R.LIMB.put(x, y, BE, 3.6, 0.5);
   R.PAD.fill(makeRamp(mixHex(L.belly, 0xffb0c0, 0.35), 5, { spread: 0.3 }), (x, y) => 2.5 + y / R.PAD.h * 1.5);
   R.LID.fill(SK, (x, y) => 3.4 + (y / R.LID.h) * 0.8 + (y === R.LID.h - 1 ? -1.4 : 0), undefined, 0.4);
@@ -216,7 +249,8 @@ function paintChild(L: BabyLook, S: Shape, R: Record<string, Region>, open: bool
       c = mixC(L.eye, 0xffffff, 0.15 - Y * 0.2);
       if (rho > 0.82) c = mixC(L.eye, 0x000000, 0.55);
       const facet = Math.floor((Math.atan2(Y, X) + Math.PI) / (TAU / 8)) % 2; // gem-cut iris
-      if (rho < 0.8 && rho > 0.45) c = mixC(c, facet ? 0xffffff : 0x000000, 0.12);
+      if (rho < 0.8 && rho > 0.45) c = mixC(c, facet ? 0xffffff : 0x000000, 0.08);
+      if (rho < 0.82 && Math.sin(X * 38 + Math.sin(Y * 21) * 2) + Math.sin(Y * 33 + X * 7) > 1.45) c = mixC(c, 0x1a1008, 0.6); // reticulated iris
       const pupil = L.eyes === 'googly' ? Math.hypot(X - 0.16, Y + 0.1) < 0.26 : (X / 0.5) ** 2 + (Y / 0.2) ** 2 < 1;
       if (pupil) c = 0x060408;
       if (Math.hypot(X + 0.3, Y - 0.34) < 0.17) c = 0xffffff;
@@ -227,7 +261,7 @@ function paintChild(L: BabyLook, S: Shape, R: Record<string, Region>, open: bool
   // vocal sac: thin pale skin; tongue: wet pink; gills: feathery pink-glow fronds
   R.SAC.fill(makeRamp(mixHex(L.belly, L.skin, 0.25), 6, { spread: 0.3 }), (x, y) => 3.6 + Math.cos(R.SAC.th(x)) * 0.4 + (hash(x, y) < 0.03 ? 1.5 : 0), undefined, 0.4);
   R.TONGUE.fill(makeRamp(0xf06a8a, 5, { spread: 0.4 }), (x, y) => 2.4 + Math.cos(R.TONGUE.th(x)) * 0.8 + (hash(x, y) < 0.08 ? 1 : 0));
-  const gc = L.gills === 'crystal' ? L.glow : mixHex(0xff6a9a, L.glow, 0.2);
+  const gc = L.gills === 'crystal' ? L.glow : mixHex(0xc05a64, L.skin, 0.15);
   for (let y = 0; y < R.GILL.h; y++) for (let x = 0; x < R.GILL.w; x++) { R.GILL.put(x, y, makeRamp(gc, 6, { spread: 0.5 }), 1.8 + (y / R.GILL.h) * 1.8 + Math.cos(R.GILL.th(x)) * 0.6, 0.5); if (y > R.GILL.h * 0.8) R.GILL.alpha(x, y, 235); }
   for (let y = 0; y < R.GEM.h; y++) for (let x = 0; x < R.GEM.w; x++) { R.GEM.set(x, y, mixC(L.glow, 0xffffff, 0.15 + ((x + y) % 3) * 0.12)); R.GEM.alpha(x, y, 215); }
   for (let y = 0; y < R.GLOW.h; y++) for (let x = 0; x < R.GLOW.w; x++) glowPx(R.GLOW, x, y, 0.3 + hash(x, y) * 0.2);
@@ -307,7 +341,8 @@ export class VeyrChild {
   setGrowth(level: number) { this.growTo = clamp(0.72 + (level - 1) * 0.11, 0.72, 1.3); }
   private B(n: BN) { return this.bones[bi(n)]; }
   /** reach toward a point; gills flare, mouth opens, the lodestone flares */
-  cast(at: THREE.Vector3) { this.castT = 1.1; this.castAt.copy(at); }
+  cast(at: THREE.Vector3) { this.castT = 1.1; this.castAt.copy(at); this.onCast?.(); }
+  onCast?: () => void;
   /** a little wave */
   wave() { this.waveT = 2.4; }
   update(dt: number, cam: THREE.Camera) {
