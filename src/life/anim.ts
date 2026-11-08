@@ -28,6 +28,8 @@ export class Animator {
   private tail: number[] = [];
   private tailV: number[] = [];
   private lean = 0; private roll = 0; private look = [0, 0];
+  /** current bound height (frog gait) */
+  private hop = 0;
   deathT = 0;
   private blend = 0;
   constructor(readonly rig: Rig, readonly bones: THREE.Bone[], readonly obj: THREE.Object3D) {
@@ -50,15 +52,30 @@ export class Animator {
     this.look[0] = damp(this.look[0], clamp(inp.lookYaw, -1, 1), 5, dt);
     this.look[1] = damp(this.look[1], clamp(inp.lookPitch, -0.6, 0.5), 5, dt);
     const root = B[rig.root];
-    const bob = rig.plan === 'serpent' || rig.plan === 'gastropod' ? 0 : -Math.abs(Math.sin(this.phase * Math.PI * 2 * (rig.legs.length > 2 ? 2 : 1))) * rig.rideH * 0.06 * this.blend;
+    const TAU = Math.PI * 2, ph = this.phase * TAU;
+    let bob = rig.plan === 'serpent' || rig.plan === 'gastropod' ? 0 : -Math.abs(Math.sin(this.phase * Math.PI * 2 * (rig.legs.length > 2 ? 2 : 1))) * rig.rideH * 0.06 * this.blend;
+    // frog bounds: the body arcs up while the hind legs are off the ground, nose up at take-off, down for the landing
+    this.hop = 0; let hopPitch = 0;
+    if (rig.gait === 'hop') {
+      bob = 0;
+      if (this.phase >= rig.duty) {
+        const s = (this.phase - rig.duty) / (1 - rig.duty);
+        this.hop = Math.sin(Math.PI * s) * (rig.dims.hindLen ?? rig.length) * 0.32 * this.blend;
+        hopPitch = -Math.cos(Math.PI * s) * 0.32 * this.blend;
+      } else hopPitch = Math.sin(Math.PI * this.phase / rig.duty) * 0.08 * this.blend;
+    }
+    if (rig.gait === 'amble') bob *= 1.4;
     const breathe = Math.sin(this.t * 1.7) * rig.rideH * 0.012;
-    root.position.y += bob + breathe;
+    root.position.y += bob + breathe + this.hop;
     if (inp.state === 'fly') root.position.y += inp.air;
     // attacks: lunge forward and dip
     let lunge = 0;
     if (inp.state === 'attack') { const a = inp.act; lunge = a < 0.35 ? -smooth(0, 0.35, a) * 0.4 : a < 0.55 ? 1 : 1 - smooth(0.55, 1, a); }
     root.position.z += lunge * rig.length * 0.12;
-    _e.set(lunge * 0.12 + (inp.state === 'eat' ? 0.18 : 0), 0, this.lean, 'YXZ');
+    // heavy bodies roll over the planted legs; sprawlers swing the hips against the shoulders
+    const roll = rig.gait === 'amble' ? Math.sin(ph) * 0.06 * this.blend : 0;
+    const swing = rig.gait === 'sprawl' ? Math.sin(ph) * 0.14 * this.blend + Math.sin(this.t * 0.9) * 0.03 : 0;
+    _e.set(lunge * 0.12 + (inp.state === 'eat' ? 0.18 : 0) + hopPitch, -swing * 0.5, this.lean + roll, 'YXZ');
     root.quaternion.setFromEuler(_e);
     if (inp.state === 'stunned') root.quaternion.multiply(_q.setFromEuler(_e.set(Math.sin(this.t * 13) * 0.08, 0, Math.sin(this.t * 9) * 0.12)));
     // death: roll onto the side and sink
@@ -70,16 +87,19 @@ export class Animator {
     // spine wave (quadruped yaw, serpent undulation)
     if (rig.plan === 'serpent') this.serpent(dt, spd, inp);
     else if (rig.spine.length > 1) {
-      const w = Math.sin(this.phase * Math.PI * 2) * 0.06 * this.blend;
-      B[rig.spine[1]].quaternion.setFromEuler(_e.set(0, w, -this.lean * 0.4));
+      const w = rig.gait === 'sprawl' ? swing : Math.sin(ph) * 0.06 * this.blend;
+      B[rig.spine[1]].quaternion.setFromEuler(_e.set(rig.gait === 'hop' ? -hopPitch * 0.3 : 0, w, -this.lean * 0.4 - roll * 1.3));
     }
     // head and neck
     if (rig.head >= 0 && rig.plan !== 'serpent') {
       const eat = inp.state === 'eat' ? 0.5 + Math.sin(this.t * 6) * 0.08 : 0;
       const atk = inp.state === 'attack' ? (inp.act < 0.5 ? -0.25 * smooth(0, 0.5, inp.act) : 0.25) : 0;
-      const nod = Math.sin(this.phase * Math.PI * 4) * 0.04 * this.blend;
-      for (const n of rig.neck) B[n].quaternion.setFromEuler(_e.set(eat * 0.6 + atk * 0.5 - this.look[1] * 0.4, this.look[0] * 0.4, 0, 'YXZ'));
-      B[rig.head].quaternion.setFromEuler(_e.set(eat * 0.5 + atk + nod - this.look[1] * 0.6, this.look[0] * 0.6, 0, 'YXZ'));
+      const nod = Math.sin(this.phase * Math.PI * 4) * (rig.gait === 'amble' ? 0.07 : 0.04) * this.blend;
+      // a sprawler's neck cancels the body's swing so the head stays on target; an ambler's head swings low
+      const steady = rig.gait === 'sprawl' ? -swing * 1.1 : rig.gait === 'amble' ? Math.sin(ph + 1) * 0.08 * this.blend : 0;
+      const tongueAtk = rig.tongue >= 0 && rig.gait === 'hop';
+      for (const n of rig.neck) B[n].quaternion.setFromEuler(_e.set(eat * 0.6 + (tongueAtk ? 0 : atk * 0.5) - this.look[1] * 0.4, this.look[0] * 0.4 + steady, 0, 'YXZ'));
+      B[rig.head].quaternion.setFromEuler(_e.set(eat * 0.5 + (tongueAtk ? -0.1 * Math.sin(Math.PI * inp.act) : atk) + nod - this.look[1] * 0.6 - hopPitch * 0.4, this.look[0] * 0.6, 0, 'YXZ'));
       if (this.deathT > 0) B[rig.head].quaternion.multiply(_q.setFromEuler(_e.set(0.4 * this.deathT, 0, 0)));
     }
     if (rig.jaw >= 0) {
@@ -87,7 +107,22 @@ export class Animator {
       if (inp.state === 'attack') open = inp.act < 0.45 ? smooth(0, 0.45, inp.act) * 0.7 : inp.act < 0.6 ? 0 : 0.1;
       if (inp.state === 'eat') open = (Math.sin(this.t * 9) * 0.5 + 0.5) * 0.35;
       if (this.deathT > 0) open = 0.35 * this.deathT;
+      // tongue strikes and lizard flicks open the mouth just enough
+      if (rig.tongue >= 0 && inp.state === 'attack') open = Math.max(open, 0.45 * Math.sin(Math.PI * clamp((inp.act - 0.15) / 0.7, 0, 1)));
+      const flick = this.flick();
+      if (flick > 0) open = Math.max(open, 0.12 * flick);
       B[rig.jaw].quaternion.setFromEuler(_e.set(open, 0, 0));
+    }
+    if (rig.tongue >= 0) {
+      let ext = this.flick() * rig.length * 0.12;
+      if (inp.state === 'attack') ext = Math.sin(Math.PI * clamp((inp.act - 0.2) / 0.6, 0, 1)) * rig.length * (rig.gait === 'hop' ? 0.75 : 0.3);
+      if (inp.state === 'eat') ext = Math.max(0, Math.sin(this.t * 7)) * rig.length * 0.08;
+      B[rig.tongue].position.z += ext;
+    }
+    if (rig.throat >= 0) {
+      // the vocal sac swells and empties in slow croaks while it sits still
+      const k = Math.pow(Math.max(0, Math.sin(this.t * 2.4)), 3) * (Math.sin(this.t * 0.37) > -0.2 ? 1 : 0) * (1 - this.blend) * (this.deathT > 0 ? 0 : 1);
+      B[rig.throat].scale.set(1 + 0.55 * k, 1 + 0.9 * k, 1 + 0.45 * k);
     }
     // mandibles / scythes / arms
     rig.mandibles.forEach((m, i) => {
@@ -108,7 +143,9 @@ export class Animator {
     });
     // tail: damped spring lagging behind turns and swaying
     for (let i = 0; i < rig.tail.length; i++) {
-      const target = -inp.turn * 0.18 * (i + 1) * 0.5 + Math.sin(this.t * 1.6 - i * 0.6) * (rig.plan === 'hexapod' || rig.plan === 'octopod' ? 0.03 : 0.12) * (0.4 + this.blend * 0.6);
+      let target = -inp.turn * 0.18 * (i + 1) * 0.5 + Math.sin(this.t * 1.6 - i * 0.6) * (rig.plan === 'hexapod' || rig.plan === 'octopod' ? 0.03 : 0.12) * (0.4 + this.blend * 0.6);
+      // the S-wave runs on down the tail
+      if (rig.gait === 'sprawl') target += Math.sin(ph - 1.2 - i * 0.8) * 0.22 * this.blend;
       this.tailV[i] += ((target - this.tail[i]) * 40 - this.tailV[i] * 8) * dt;
       this.tail[i] += this.tailV[i] * dt;
       const droop = rig.plan === 'gastropod' ? 0 : (this.deathT > 0 ? 0.25 * this.deathT : 0.04);
@@ -140,6 +177,8 @@ export class Animator {
     const S = stride * this.blend;
     if (p < duty) zo = S * (0.5 - p / duty);
     else { const s = (p - duty) / (1 - duty); zo = S * (-0.5 + smooth(0, 1, s)); lift = Math.sin(s * Math.PI) * Math.min(stride * 0.35, rig.rideH * 0.45) * this.blend; }
+    // airborne in a bound: the feet travel with the body (tucked under it), not on the ground
+    if (rig.gait === 'hop') lift += this.hop * (lg.kind === 'hind' ? 0.7 : 0.85);
     let fx = lg.foot[0];
     const fz = lg.foot[1] + zo;
     const dead = this.deathT > 0;
@@ -150,13 +189,14 @@ export class Animator {
     up.getWorldPosition(_A);
     const objQ = obj.getWorldQuaternion(_qi);
     _FWD.set(0, 0, 1).applyQuaternion(objQ);
-    if (lg.kind === 'insect' || lg.kind === 'spider') _POLE.set(lg.side * 0.6, 1, 0).applyQuaternion(objQ);
+    if (lg.pole) _POLE.set(lg.pole[0], lg.pole[1], lg.pole[2]).normalize().applyQuaternion(objQ);
+    else if (lg.kind === 'insect' || lg.kind === 'spider') _POLE.set(lg.side * 0.6, 1, 0).applyQuaternion(objQ);
     else if (lg.kind === 'fore') _POLE.copy(_FWD).multiplyScalar(-1);
     else _POLE.copy(_FWD);
     const lens = lg.lens;
     let target = _T;
     if (lens.length === 3) {
-      _TMP.set(0, -1, 0).addScaledVector(_FWD, 0.32).normalize();
+      this.tarsus(lg, objQ, _TMP);
       _K3.copy(_T).addScaledVector(_TMP, -lens[2]);
       target = _K3;
     }
@@ -181,12 +221,24 @@ export class Animator {
     this.aim(lg.bones[1], _TMP.subVectors(_END, _KNEE).normalize(), _PERP);
     B[lg.bones[1]].updateMatrixWorld(true);
     if (lens.length === 3) {
-      this.aim(lg.bones[2], _TMP.set(0, -1, 0).addScaledVector(_FWD, 0.32).normalize(), _FWD);
+      this.aim(lg.bones[2], this.tarsus(lg, objQ, _TMP), _FWD);
       B[lg.bones[2]].updateMatrixWorld(true);
     }
     const foot = B[lg.bones[lg.bones.length - 1]];
     (foot.parent as THREE.Object3D).getWorldQuaternion(_q2).invert();
     foot.quaternion.copy(_q2).multiply(objQ);
+  }
+
+  /** world direction of the last segment of a three-bone leg */
+  private tarsus(lg: LegDef, objQ: THREE.Quaternion, out: THREE.Vector3) {
+    if (lg.tarsus) return out.set(lg.tarsus[0], lg.tarsus[1], lg.tarsus[2]).normalize().applyQuaternion(objQ);
+    return out.set(0, -1, 0).addScaledVector(_FWD, 0.32).normalize();
+  }
+  /** 0..1: a quick in-out tongue flick every few seconds (tongued sprawlers taste the air) */
+  private flick() {
+    if (this.rig.tongue < 0 || this.rig.gait === 'hop') return 0;
+    const c = (this.t * 0.45 + this.rig.length) % 1;
+    return c < 0.12 ? Math.sin((c / 0.12) * Math.PI * 2) ** 2 : 0;
   }
 
   /** rotate bone so its rest direction (0,-1,0) points along dir (world), knee-forward axis toward pole */

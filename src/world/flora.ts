@@ -1,11 +1,17 @@
 // Flora: plant instances on the region (food for herbivores, life force for the Veyr) drawn as instanced
-// pixel-art cards that lean back toward the camera, sway in the wind, wither under moss and cast matching shadows.
+// pixel-art cards that lean back toward the camera, wither under moss and cast matching shadows, plus a dense
+// layer of ground cover (tussocks, clover, flower patches, young ferns, litter, mushrooms). Everything moves in one
+// wind field: gusts roll across the meadows, blades bend from the root with the tip doing most of the travelling,
+// each tuft with its own stiffness; shrubs sway, trees lean slowly while their leaves flutter; creatures brushing
+// through push the growth aside.
 import * as THREE from 'three';
 import { Region } from './region';
 import { makeFlora, buildFloraAtlas, type PlantSpecies, type FloraAtlas } from './plantArt';
+import type { GroundKind } from './groundArt';
+import { B } from './blockTex';
 import { Rand, hash01 } from '../core/rand';
 import { gbuf } from '../gfx/gbuf';
-import { SHADER_NOISE, FOW_FN } from './terrain';
+import { SHADER_NOISE, FOW_FN, WIND_FN } from './glsl';
 
 const VERT_PARS = /* glsl */`
 attribute vec3 iPos; attribute vec2 iSize; attribute vec4 iRect; attribute vec4 iParam; attribute vec2 iAnim;
@@ -13,27 +19,41 @@ uniform vec4 uPush[12];
 uniform float uTime, uN, uLean, uHComp, uDetail;
 uniform vec3 uCamRight, uCamBack;
 uniform sampler2D uMoss;
-varying float vWither; varying vec3 vBase; varying float vGlowK;
+varying float vWither; varying vec3 vBase; varying float vGlowK; varying float vFlut;
+${SHADER_NOISE}
+${WIND_FN}
 `;
 const VERT_BEGIN = /* glsl */`
 float mc = texture2D(uMoss, iPos.xz / uN).r;
 float wither = clamp(max(1.0 - iParam.z, (mc - 0.4) * 1.8), 0.0, 1.0);
 if (uDetail > 0.5) wither = mc > 0.3 ? 1.0 : 0.0;
-vWither = wither; vBase = iPos;
+vWither = wither; vBase = iPos; vFlut = 0.0;
 float sc = uDetail > 0.5 ? (1.0 - wither) : (1.0 - wither * 0.5) * step(0.02, iParam.z);
 vec2 sz = iSize * sc;
 vec3 transformed;
+vec3 wnd = windAt(iPos.xz, uTime);
 if (abs(iParam.w) > 1.5) {
-  float br = 1.0 + sin(uTime * 1.2 + iParam.x) * 0.03;
-  transformed = iPos + vec3((position.x) * sz.x * br, 0.03, (0.5 - position.y) * sz.y * br);
+  // lying flat (lily pads, leaf litter): turned to its own angle, pads bob on the water
+  float br = 1.0 + sin(uTime * 1.2 + iParam.x) * 0.03 * step(0.5, iParam.y);
+  float a = iParam.x;
+  vec2 o = vec2(position.x * sz.x, (0.5 - position.y) * sz.y) * br;
+  o = vec2(o.x * cos(a) - o.y * sin(a), o.x * sin(a) + o.y * cos(a));
+  transformed = iPos + vec3(o.x, 0.04, o.y);
 } else {
   vec3 up = normalize(vec3(0.0, cos(uLean), 0.0) - uCamBack * sin(uLean));
   float yy = position.y, t = uTime + iParam.x, k = iParam.y, typ = iAnim.x, spd = iAnim.y;
-  float bend = (sin(t * (1.1 + k * 0.6) + iPos.x * 0.21 + iPos.z * 0.17) * 0.07 + sin(t * 2.9) * 0.02) * k;
+  bool tree = k < 0.5 && uDetail < 0.5;
+  // wind: stiffness k scales the bend; blades and stems bend from the root (tip-weighted), trees lean from the
+  // trunk with a slow sway of their own; a fast flutter rides on the gusts
+  float yy2 = yy * yy;
+  float flex = tree ? 0.13 : 0.5 * k;
+  vec2 bendW = wnd.xy * flex;
+  float flutter = sin(t * (5.5 + k * 3.0) + iPos.x * 1.7) * (0.04 + 0.1 * wnd.z) * k * (tree ? 0.15 : 1.0);
+  float bend = flutter + (tree ? sin(t * 0.7 + iPos.z * 0.13) * 0.012 : 0.0);
   float sx = 1.0, sy = 1.0;
   if (typ > 0.5 && typ < 1.5) { float b = sin(t * 1.7 * spd); sx = 1.0 + b * 0.06 * yy; sy = 1.0 + b * 0.04; }
   else if (typ > 1.5 && typ < 2.5) { bend += sin(t * 2.6 * spd) * 0.07 * yy; sy = 1.0 + sin(t * 3.4 * spd) * 0.035 * yy; }
-  else if (typ > 2.5 && typ < 3.5) { bend += sin(t * 19.0 + iParam.x * 3.0) * 0.014 * smoothstep(0.5, 1.0, yy) + sin(t * 1.4) * 0.03; }
+  else if (typ > 2.5 && typ < 3.5) { bend += sin(t * 19.0 + iParam.x * 3.0) * 0.014 * smoothstep(0.5, 1.0, yy); }
   else if (typ > 3.5) { bend += sin(t * 1.3 * spd) * 0.09 * yy; sx += cos(t * 1.3 * spd) * 0.05 * yy; }
   // creatures brushing through push the plant aside
   vec2 push = vec2(0.0);
@@ -43,9 +63,12 @@ if (abs(iParam.w) > 1.5) {
     vec2 d = iPos.xz - p.xy; float dl = length(d), rr = p.z + sz.x * 0.35;
     if (dl < rr) push += (d / max(dl, 0.001)) * (1.0 - dl / rr) * p.w;
   }
-  float yy2 = yy * yy;
+  vec2 off = bendW * sz.y * yy2;
   transformed = iPos + uCamRight * (position.x * sz.x * sx + (bend * sz.y + dot(push, uCamRight.xz) * 0.6) * yy2) + up * (yy * sz.y * uHComp * sy - 0.06) + uCamBack * (dot(push, uCamBack.xz) * 0.35 * yy2);
-  transformed.y -= length(push) * 0.18 * yy2 * sz.y;
+  transformed.xz += off;
+  // a bent stem is shorter
+  transformed.y -= (length(push) * 0.18 + dot(bendW, bendW) * 0.45) * yy2 * sz.y;
+  vFlut = uDetail < 0.5 && (tree || typ < 0.5) ? smoothstep(0.35, 1.0, yy) * (0.25 + wnd.z * 0.75) * uWind : 0.0;
 }
 `;
 const UV_PATCH = /* glsl */`
@@ -53,6 +76,20 @@ const UV_PATCH = /* glsl */`
 float fu = iParam.w < 0.0 ? 1.0 - uv.x : uv.x;
 vMapUv = vec2(iRect.x + iRect.z * fu, iRect.y + iRect.w * (1.0 - uv.y));
 `;
+/** leaves flutter: in the upper crown, small blocks of texels shift a pixel back and forth with the gusts */
+const FLUTTER = /* glsl */`
+vec2 fTex = floor(vMapUv * 2048.0);
+float fBlk = h2(floor(fTex / 3.0) + floor(uTime * 6.0 + h2(floor(fTex / 7.0)) * 4.0) * 1.37);
+vec2 fUv = vMapUv;
+if (vFlut > 0.0 && fBlk > 1.0 - vFlut * 0.22) fUv.x += (fBlk > 1.0 - vFlut * 0.11 ? 1.0 : -1.0) / 2048.0;
+vec4 sampledDiffuseColor = texture2D(map, fUv);
+`;
+
+/** sqrt-based length (Math.hypot is several times slower in the hot loops) */
+const hyp = (a: number, b: number, c = 0) => Math.sqrt(a * a + b * b + c * c);
+/** wind strength by biome: open steppe and savanna are windy, the jungle floor is still */
+const WIND: Partial<Record<string, number>> = { meadow: 1, jungle: 0.55, savanna: 1.25, marsh: 0.8, highland: 1.35, tundra: 1.45, desert: 1.1, crystal: 0.9, ashland: 0.9, coast: 1.3 };
+const STIFF: Partial<Record<GroundKind, number>> = { grass: 1.2, tall: 1.45, dry: 1.1, sedge: 1.0, flower: 1.0, fern: 0.6, clover: 0.2, mush: 0.05, pebble: 0, litter: 0, twig: 0 };
 
 export class Flora {
   readonly species: PlantSpecies[];
@@ -77,6 +114,7 @@ export class Flora {
       uCamRight: { value: new THREE.Vector3(1, 0, 0) }, uCamBack: { value: new THREE.Vector3(0, 0, 1) },
       uMoss: { value: moss }, uVis: { value: vis }, uDark: { value: new THREE.Color(0x07080c) },
       uPush: { value: Array.from({ length: 12 }, () => new THREE.Vector4(0, 0, 0, 0)) },
+      uWindDir: { value: new THREE.Vector2(Math.cos(region.seed * 1.7), Math.sin(region.seed * 1.7)) }, uWind: { value: WIND[region.biome.key] ?? 1 },
     };
     const { inst, det } = this.place();
     this.mesh = this.makeMesh(inst, false);
@@ -91,38 +129,121 @@ export class Flora {
     const treeAt: number[][] = [];
     const L = R.landing;
     const totalW = sp.reduce((s, p) => s + p.weight, 0);
+    // clearings around rock formations: thin soil, no trees, low growth only
+    const rocky = new Float32Array(N * N);
+    for (const p of R.rocks) {
+      if (p.kind === 'pebble' || p.kind === 'river' || p.kind === 'log' || p.kind === 'stump') continue;
+      const rr = Math.max(p.sx, p.sz) * (p.kind === 'arch' ? 1.2 : 1), ext = Math.ceil(rr + 5);
+      for (let z = Math.floor(p.z) - ext; z <= Math.floor(p.z) + ext; z++) for (let x = Math.floor(p.x) - ext; x <= Math.floor(p.x) + ext; x++) {
+        if (!R.inside(x, z)) continue;
+        const d = hyp(x + 0.5 - p.x, z + 0.5 - p.z) - rr, i = z * N + x;
+        rocky[i] = Math.max(rocky[i], Math.min(1, 1 - d / 5));
+      }
+    }
+    // fallen logs and stumps keep a little space around them so they read on the forest floor
+    for (const p of R.rocks) {
+      if (p.kind !== 'log' && p.kind !== 'stump') continue;
+      const c = Math.cos(p.yaw), s2 = Math.sin(p.yaw), half = p.kind === 'log' ? p.sx : 0, ext = Math.ceil(half + 2);
+      for (let z = Math.floor(p.z) - ext; z <= Math.floor(p.z) + ext; z++) for (let x = Math.floor(p.x) - ext; x <= Math.floor(p.x) + ext; x++) {
+        if (!R.inside(x, z)) continue;
+        const dx = x + 0.5 - p.x, dz = z + 0.5 - p.z, u = Math.max(-half, Math.min(half, dx * c + dz * s2));
+        const d = hyp(dx - u * c, dz - u * s2) - p.sy;
+        if (d < 1.6) rocky[z * N + x] = Math.max(rocky[z * N + x], 0.85);
+      }
+    }
+    const under = new Set(['fern', 'fungus', 'shrub', 'fiddle', 'eyeflower', 'bulb']);
+    // shore plants: water within three cells along the axes
+    const wet = new Uint8Array(N * N), nearW = new Uint8Array(N * N);
+    for (let i = 0; i < N * N; i++) wet[i] = R.h[i] < R.water || (R.riverY[i] > 0 && R.h[i] < R.riverY[i] - 0.05) ? 1 : 0;
+    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+      let near = 0;
+      for (let d = 1; d <= 3 && !near; d++) near = (x + d < N && wet[z * N + x + d]) || (x - d >= 0 && wet[z * N + x - d]) || (z + d < N && wet[(z + d) * N + x]) || (z - d >= 0 && wet[(z - d) * N + x]) ? 1 : 0;
+      nearW[z * N + x] = near;
+    }
+    // ground cover sprites by kind (flowers by bloom colour)
+    const kinds = new Map<GroundKind, number[]>(), flowers: number[][] = [];
+    this.atlas.detailInfo.forEach((g, i) => { let l = kinds.get(g.kind); if (!l) kinds.set(g.kind, (l = [])); l.push(i); if (g.kind === 'flower') (flowers[g.tint] ??= []).push(i); });
+    const pick = (k: GroundKind) => { const l = kinds.get(k); return l ? l[r.int(0, l.length - 1)] : -1; };
+    const putD = (k: number, dx: number, dz: number, y?: number) => { if (k >= 0) det.push([dx, y ?? R.heightAt(dx, dz), dz, k]); };
     for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
       const i = z * N + x, f = R.fert[i], w = R.wet[i], h = R.h[i];
-      const dl = Math.hypot(x + 0.5 - L.x, z + 0.5 - L.z);
+      const dl = hyp(x + 0.5 - L.x, z + 0.5 - L.z);
       if (dl < 9) continue;
-      const water = h < R.water;
-      if (R.b[i] === 2 && !water && r.chance(0.85)) continue;
-      const depth = R.water - h;
-      // detail ground cover
-      if (!water && f > 0.25) {
-        const k = Math.floor(f * 1.5 * bi.flora + hash01(x, z, 3) * (0.5 + (nz.n2(x * 0.09, z * 0.09) + 1) * 0.5));
-        for (let j = 0; j < k; j++) { const dx = x + r.next(), dz = z + r.next(); det.push([dx, R.heightAt(dx, dz), dz, r.int(0, this.atlas.detail.length - 1)]); }
+      if (R.solid[i]) continue;
+      const ry = R.riverY[i], inRiver = ry > 0 && h < ry + 0.05;
+      const water = h < R.water || inRiver, surf = inRiver ? ry : R.water;
+      if (R.b[i] === B.SOIL && !water && r.chance(0.85)) continue;
+      const depth = surf - h, fo = R.forest[i], rk = rocky[i];
+      // ground cover: dense tussocks in the meadows, clover and flower patches, litter and ferns under trees,
+      // sedges in damp margins, pebbles on stony ground
+      if (!water) {
+        const bk = R.b[i], lush = Math.min(1.4, f * bi.flora), patch = (nz.n2(x * 0.09, z * 0.09) + 1) * 0.5, damp = R.damp[i];
+        let nG = 0, nTall = 0, nDry = 0, nClover = 0, nFl = 0, nFern = 0, nMush = 0, nLit = 0, nSedge = 0, nPeb = 0;
+        if (bk === B.GRASS || bk === B.CLAY) {
+          nG = Math.floor(1 + lush * (2.2 + patch * 2.6) + hash01(x, z, 3) * 1.4);
+          if (patch > 0.62 && r.chance(0.7)) nTall = r.int(1, 2);
+          if (nz.n2(x * 0.16 + 30, z * 0.16) > 0.42) nClover = r.int(1, 2);
+          nFl = nz.n2(x * 0.11 + 50, z * 0.11 - 20) > 0.38 ? r.int(1, 3) : r.chance(0.04) ? 1 : 0;
+          if (fo > 0.25 && r.chance(fo * 0.5)) nFern = 1;
+        } else if (bk === B.DRY) {
+          nDry = Math.floor(1 + lush * 2.5 + hash01(x, z, 3) * 1.5); nG = r.chance(0.4) ? 1 : 0;
+          nFl = nz.n2(x * 0.11 + 50, z * 0.11 - 20) > 0.5 ? 1 : 0;
+        } else if (bk === B.LITTER) {
+          nLit = r.int(1, 2); nG = r.chance(0.5) ? 1 : 0; nFern = r.chance(0.45) ? 1 : 0; nMush = r.chance(0.06) ? 1 : 0;
+          if (r.chance(0.12)) nLit++;
+          if (r.chance(0.1)) putD(pick('twig'), x + r.next(), z + r.next());
+        } else if (bk === B.SAND || bk === B.GRAVEL || bk === B.MUD) {
+          if (damp > 0.3 && r.chance(0.55 * damp + (bk === B.MUD ? 0.3 : 0))) nSedge = 1;
+          if (r.chance(0.12)) nPeb = 1;
+          if (bk === B.MUD && r.chance(0.5)) nG = 1;
+        } else if (bk === B.ROCK || bk === B.BASALT) { if (r.chance(0.25)) nPeb = 1; if (r.chance(0.3)) nG = 1; }
+        else if (bk === B.SOIL) { if (r.chance(0.3)) nG = 1; if (r.chance(0.1)) nPeb = 1; }
+        else if (bk !== B.SNOW && bk !== B.CRATER && f > 0.2) nG = r.chance(0.5) ? 1 : 0;
+        if (damp > 0.45 && bk !== B.SAND && r.chance(damp * 0.5)) nSedge++;
+        if (rk > 0.5 && r.chance(rk * 0.25)) nPeb++;
+        for (let k = 0; k < nG; k++) putD(pick('grass'), x + r.next(), z + r.next());
+        for (let k = 0; k < nTall; k++) putD(pick('tall'), x + r.next(), z + r.next());
+        for (let k = 0; k < nDry; k++) putD(pick('dry'), x + r.next(), z + r.next());
+        for (let k = 0; k < nClover; k++) putD(pick('clover'), x + r.next(), z + r.next());
+        if (nFl) {
+          // flowers grow in patches of one kind
+          const tint = Math.floor(hash01(Math.floor(x / 7), Math.floor(z / 7), 11) * flowers.length), list = flowers[tint] ?? flowers[0];
+          if (list) for (let k = 0; k < nFl; k++) putD(list[r.int(0, list.length - 1)], x + r.next(), z + r.next());
+        }
+        for (let k = 0; k < nFern; k++) putD(pick('fern'), x + r.next(), z + r.next());
+        for (let k = 0; k < nMush; k++) putD(pick('mush'), x + r.next(), z + r.next());
+        for (let k = 0; k < nLit; k++) putD(pick('litter'), x + r.next(), z + r.next());
+        for (let k = 0; k < nSedge; k++) putD(pick('sedge'), x + r.next(), z + r.next());
+        for (let k = 0; k < nPeb; k++) putD(pick('pebble'), x + r.next(), z + r.next());
       }
-      // plants: each species rolls with clustered noise
+      // plants: each species rolls with clustered noise, trees gather into woods, nothing tall by the rocks
       for (const p of sp) {
         if (p.water !== water) continue;
         if (water && (depth > 1.4 || depth < 0.2)) continue;
+        if (water && inRiver && (p.arch !== 'lily' || depth > 0.7)) continue;
         if (!water && (f < p.fert * 0.7 || w < p.wetMin - 0.08 || w > p.wetMax + 0.08)) continue;
-        if (p.shore && !water) { // near water
-          let near = false;
-          for (let d = 1; d <= 3 && !near; d++) for (const [dx, dz] of [[d, 0], [-d, 0], [0, d], [0, -d]]) if (R.inside(x + dx, z + dz) && R.h[(z + dz) * N + x + dx] < R.water) near = true;
-          if (!near) continue;
-        }
+        if (p.shore && !water && !nearW[i]) continue;
         const cl = (nz.n2(x * 0.07 + p.id * 13.1, z * 0.07 - p.id * 7.3) + 1) * 0.5;
         const clusterK = Math.pow(cl, 1 + p.cluster * 3) * (1 + p.cluster * 2.5);
-        const chance = (p.weight / totalW) * clusterK * (water ? 1.2 : (1.6 + f * 4.4)) * bi.flora * (p.tree ? 0.5 : 1);
+        let mul = p.tree ? (bi.key === 'desert' || bi.key === 'savanna' ? 0.35 + fo * 2 : 0.1 + fo * 2.5) : under.has(p.arch) ? 0.75 + fo * 0.9 : 1.15 - fo * 0.7;
+        if (p.tree) mul *= 1 - rk; else if (p.hmax > 1.2) mul *= 1 - rk * 0.75;
+        const chance = (p.weight / totalW) * clusterK * (water ? 1.2 : (1.6 + f * 4.4)) * bi.flora * (p.tree ? 0.5 : 1) * mul;
         if (r.next() > chance) continue;
         const px = x + r.range(0.15, 0.85), pz = z + r.range(0.15, 0.85);
         if (p.tree) {
           if (treeAt.some((t) => (t[0] - px) ** 2 + (t[1] - pz) ** 2 < 5.5)) continue;
           treeAt.push([px, pz]);
         }
-        inst.push([px, water ? R.water : R.heightAt(px, pz), pz, p.id, r.int(0, p.sprites.length - 1)]);
+        inst.push([px, water ? surf : R.heightAt(px, pz), pz, p.id, r.int(0, p.sprites.length - 1)]);
+      }
+    }
+    // mushrooms and ferns on the fallen logs
+    for (const p of R.rocks) {
+      if (p.kind !== 'log') continue;
+      const c = Math.cos(p.yaw), s2 = Math.sin(p.yaw);
+      for (let k = r.int(0, 3); k > 0; k--) {
+        const t = r.range(-0.8, 0.8) * p.sx, dy = -Math.sin(p.tilt) * t * Math.cos(p.tiltDir - p.yaw);
+        putD(r.chance(0.7) ? pick('mush') : pick('fern'), p.x + c * t, p.z + s2 * t, p.y + p.sz * 1.75 + dy);
       }
     }
     // canopy shade: trees darken a wide ring of ground, shrubs a little patch
@@ -132,7 +253,7 @@ export class Flora {
       const rad = sp.tree ? 2.6 : sp.hmax > 0.9 ? 1.2 : 0.7, k = sp.tree ? 0.22 : 0.07;
       for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
         const X = Math.floor(p[0]) + dx, Z = Math.floor(p[2]) + dz; if (X < 0 || Z < 0 || X >= N || Z >= N) continue;
-        const d = Math.hypot(X + 0.5 - p[0], Z + 0.5 - p[2]); if (d > rad) continue;
+        const d = hyp(X + 0.5 - p[0], Z + 0.5 - p[2]); if (d > rad) continue;
         this.shade[Z * N + X] = Math.max(0.45, this.shade[Z * N + X] - k * (1 - d / rad));
       }
     }
@@ -149,7 +270,7 @@ export class Flora {
   private makeMesh(list: number[][], detail: boolean): THREE.Mesh {
     const n = list.length;
     const g = new THREE.InstancedBufferGeometry();
-    const SEG = detail ? 1 : 4, gp: number[] = [], gu: number[] = [], gi: number[] = [];
+    const SEG = detail ? 2 : 4, gp: number[] = [], gu: number[] = [], gi: number[] = [];
     for (let k = 0; k <= SEG; k++) { const y = k / SEG; gp.push(-0.5, y, 0, 0.5, y, 0); gu.push(0, y, 1, y); if (k < SEG) { const a = k * 2; gi.push(a, a + 1, a + 3, a, a + 3, a + 2); } }
     g.setAttribute('position', new THREE.Float32BufferAttribute(gp, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(gu, 2));
@@ -158,12 +279,15 @@ export class Flora {
     const r = new Rand(this.region.seed ^ (detail ? 0xd7 : 0xa1));
     list.forEach((p, i) => {
       const s = detail ? this.atlas.detail[p[3]] : this.species[p[3]].sprites[p[4]];
-      const flat = !detail && this.species[p[3]].arch === 'lily';
-      const k = detail ? 1 : r.range(0.92, 1.08);
+      const gk = detail ? this.atlas.detailInfo[p[3]] : null;
+      const flat = detail ? gk!.flat : this.species[p[3]].arch === 'lily';
+      const k = detail ? r.range(0.85, 1.15) : r.range(0.92, 1.08);
       pos.set([p[0], p[1], p[2]], i * 3);
       size.set([s.w * k, s.h * k], i * 2);
       rect.set([s.u0, s.v0, s.du, s.dv], i * 4);
-      param.set([r.range(0, 6.28), detail ? 0.6 : (this.species[p[3]].tree ? 0.35 : 1), 1, (r.chance(0.5) ? 1 : -1) * (flat ? 2 : 1)], i * 4);
+      // stiffness: grasses and sedges flex, flowers nod, low mats and stones barely stir; trees are stiff
+      const stiff = gk ? (STIFF[gk.kind] ?? 1) * r.range(0.75, 1.3) : this.species[p[3]].tree ? 0.35 : this.species[p[3]].arch === 'lily' ? 1 : r.range(0.75, 1.15);
+      param.set([r.range(0, 6.28), stiff, 1, (r.chance(0.5) ? 1 : -1) * (flat ? 2 : 1)], i * 4);
       anim.set([detail ? 0 : this.species[p[3]].anim, r.range(0.8, 1.25)], i * 2);
     });
     g.setAttribute('iPos', new THREE.InstancedBufferAttribute(pos, 3));
@@ -187,11 +311,12 @@ export class Flora {
         .replace('#include <uv_vertex>', UV_PATCH);
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
-uniform sampler2D uVis; uniform float uN; uniform vec3 uDark;
-varying float vWither; varying vec3 vBase;
+uniform sampler2D uVis; uniform float uN, uTime; uniform vec3 uDark;
+varying float vWither; varying vec3 vBase; varying float vFlut;
 ${SHADER_NOISE}
 ${FOW_FN}`)
-        .replace('#include <map_fragment>', `#include <map_fragment>
+        .replace('#include <map_fragment>', `${FLUTTER}
+diffuseColor *= sampledDiffuseColor;
 float glowA = sampledDiffuseColor.a;
 vec3 glowC = sampledDiffuseColor.rgb;
 float lumW = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));

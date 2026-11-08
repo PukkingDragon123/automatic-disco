@@ -93,6 +93,7 @@ export class World {
       const x = r.range(6, R.N - 6), z = r.range(6, R.N - 6);
       if (Math.hypot(x - R.landing.x, z - R.landing.z) < minFromLanding) continue;
       if (R.isWater(x, z) && !(sp.pheno.stats.swim > 0)) continue;
+      if (R.isSolid(x, z)) continue;
       const i = Math.floor(z) * R.N + Math.floor(x);
       if (R.fert[i] < 0.15 && sp.design.lineage !== 'arthropod') continue;
       return [x, z];
@@ -103,6 +104,8 @@ export class World {
   spawn(sp: Species, f: Faction, x: number, z: number, juvenile = false): Creature | null {
     const R = this.region;
     x = clamp(x, 1, R.N - 1); z = clamp(z, 1, R.N - 1);
+    // never inside a rock formation: step out to the nearest open ground
+    if (R.isSolid(x, z)) { const f = R.freeNear(x, z); if (!f) return null; [x, z] = f; }
     if (R.isWater(x, z) && !sp.pheno.stats.swim && !sp.pheno.canFly) return null;
     const c = new Creature(sp, f, x, z, juvenile);
     c.y = this.surfaceY(x, z);

@@ -5,6 +5,8 @@ import * as THREE from 'three';
 import type { Screen } from '../app/engine';
 import { type Post, resetGrade } from '../gfx/post';
 import { el, panel, ui, Btn, Tip } from './kit';
+import { TITLE, titleArt } from './hudArt';
+import { brassWord } from './machine';
 import { sfx } from '../audio/audio';
 import { makeGlobe, stars, type Globe } from './globe';
 import { makePlanet, type Planet } from '../world/planet';
@@ -49,25 +51,28 @@ export class MenuScreen implements Screen {
     });
     this.root = el('div', 'menu', ui());
     const title = el('div', 'mn-title', this.root);
-    el('div', 'hdr mn-logo', title, 'ODDWORLD');
-    el('div', 'small mn-tag', title, 'FALL. TAKE ROOT. EAT THE WORLD. BECOME IT.');
-    const col = panel('mn-col', this.root, 'dark');
+    title.style.width = `calc(${TITLE.w}px * var(--s))`; title.style.height = `calc(${TITLE.h}px * var(--s))`;
+    title.style.backgroundImage = `url(${titleArt().url()})`;
+    const logo = el('div', 'mn-logo', title);
+    brassWord('ODDWORLD', 'Jersey', 40).then((c) => { c.className = 'mn-logo-cv'; c.style.width = `calc(${c.width}px * var(--s))`; c.style.height = `calc(${c.height}px * var(--s))`; logo.appendChild(c); });
+    el('div', 'scr mn-tag', title, 'TAKE THE WORLD FOR EARTH.<span class="cur">&#9608;</span>');
+    const col = panel('mn-col', this.root, 'panel');
     if (opts.hasSave) new Btn(col, { icon: 'planet', label: 'CONTINUE', size: 'big', tip: () => 'Return to the world you are taking.' }, () => this.close(() => opts.onContinue()));
     new Btn(col, { icon: 'core', label: 'NEW WORLD', size: 'big', tip: () => opts.hasSave ? 'Abandon the current world and fall on a new one.' : 'Fall on a new world.' }, () => this.close(() => opts.onNew(Math.floor(Math.random() * 1e6))));
-    new Btn(col, { icon: 'tree', label: `ARCHIVE · ${opts.archive.length}`, size: 'big', tip: () => 'The worlds you became.' }, () => this.openArchive());
-    new Btn(col, { icon: 'mirror', label: 'MIRROR POOL', size: 'big', tip: () => 'Look at yourself.' }, () => { this.root.style.visibility = 'hidden'; Tip.hide(); opts.onMirror(() => { this.root.style.visibility = ''; }); });
+    new Btn(col, { icon: 'tree', label: `ARCHIVE · ${opts.archive.length}`, size: 'big', tip: () => 'Worlds claimed for Earth.' }, () => this.openArchive());
+    new Btn(col, { icon: 'mirror', label: 'ASSEMBLY BAY', size: 'big', tip: () => 'Refit Unit 07: paint, plating, lens and name.' }, () => { this.root.style.visibility = 'hidden'; Tip.hide(); opts.onMirror(() => { this.root.style.visibility = ''; }); });
     const seedRow = el('div', 'mn-seed', col);
-    el('span', 'tiny', seedRow, 'SEED');
+    el('span', 'small', seedRow, 'SEED');
     const inp = el('input', 'fg-name mn-seedin', seedRow) as HTMLInputElement; inp.placeholder = 'random'; inp.maxLength = 9;
     inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter' && inp.value) this.close(() => opts.onNew(Math.abs(parseInt(inp.value, 36) || 1) % 1e9)); });
-    el('div', 'tiny mn-foot', this.root, 'A SPECULATIVE EVOLUTION · WASD/EDGE PAN · WHEEL ZOOM · RIGHT-CLICK ORDERS');
+    el('div', 'tiny mn-foot', this.root, 'U.S.P.C. FIELD MANUAL 7 · WASD/EDGE PAN · WHEEL ZOOM · RIGHT-CLICK ORDERS · SELECTOR: SCROLL OR [ ] TO TURN, ENTER TO FIRE');
     sfx('open');
   }
   private openArchive() {
     if (this.arch) { this.arch.remove(); this.arch = null; this.focus = -1; return; }
     const a = panel('mn-arch', this.root, 'dark'); this.arch = a;
-    el('div', 'hdr', a, 'THE WORLDS YOU BECAME');
-    if (!this.opts.archive.length) { el('div', 'small', a, 'None yet. Take a world and it will hang here, green.'); return; }
+    el('div', 'hdr', a, 'WORLDS CLAIMED FOR EARTH');
+    if (!this.opts.archive.length) { el('div', 'small', a, 'None yet. Claim a world and it will hang here, green.'); return; }
     const list = el('div', 'mn-alist', a);
     this.opts.archive.forEach((e, i) => {
       const c = el('div', 'h-card mn-acard', list);
@@ -80,7 +85,7 @@ export class MenuScreen implements Screen {
     const old = this.root.querySelector('.mn-detail'); old?.remove();
     const d = panel('mn-detail', this.root, 'dark');
     el('div', 'hdr', d, e.name.toUpperCase());
-    el('div', 'small', d, `Became the Veyr on ${e.date}. ${e.regions} regions, ${e.species} species in its tree.`);
+    el('div', 'small', d, `Claimed for Earth on ${e.date}. ${e.regions} regions, ${e.species} species in its tree.`);
     const gl = el('div', 'tr-genes', d);
     for (const id of e.genes.slice(0, 24)) if (GENE[id]) el('span', 'tr-gene', gl, GENE[id].name);
     new Btn(d, { icon: 'planet', label: 'LAUNCH OFFSPRING', size: 'big', tip: () => 'Throw a seed of this world at a new one. It carries three of its genes.' }, () => this.close(() => this.opts.onLaunch(e)));
@@ -121,7 +126,7 @@ export class AscendScreen implements Screen {
     this.order = planet.regions.filter((r) => r.state !== 'veyr').map((r) => r.id);
     this.root = el('div', 'ascend', ui());
     this.line = el('div', 'title asc-line', this.root, '');
-    this.lines = [`The ground of ${planet.name} remembers being eaten.`, 'Every root is yours. Every river runs through you.', 'The rivals are compost. The beasts are your blood.', `${name} is not on ${planet.name} anymore.`, `${name} is ${planet.name}.`];
+    this.lines = [`${planet.name} answers to Earth now.`, 'Every root, every river, every beast: logged, tagged, ours.', 'The rivals are scrap. The survey is complete.', `${name} plants the flag.`, `${planet.name}: CLAIMED FOR HUMANITY.`];
     sfx('pulse', 0.3, 1);
   }
   update(dt: number) {

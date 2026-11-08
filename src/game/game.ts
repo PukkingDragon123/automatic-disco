@@ -127,6 +127,8 @@ export class Game implements Screen {
       conquest: () => this.conquest(), regionName: this.regionName,
       minimap: (x, z, b) => this.minimapClick(x, z, b),
       openTree: () => opts.hooks?.openTree?.(this), openBuilder: () => opts.hooks?.openBuilder?.(this), openMenu: () => opts.hooks?.openMenu?.(this), openMirror: () => this.openMirror(),
+      ability: (a) => { if (this.mode.k === 'ability' && this.mode.a === a) { this.setMode({ k: 'normal' }); return; } const why = this.veyr.can(a); if (why) { sfx('deny'); toast(why, 'warn', 1400); return; } this.setMode({ k: 'ability', a }); },
+      armed: () => (this.mode.k === 'ability' ? this.mode.a : null),
     });
     this.overlay = el('canvas', 'overlay2d', document.body);
     this.og = this.overlay.getContext('2d')!;
@@ -260,6 +262,7 @@ export class Game implements Screen {
     if (k === ' ') { if (this.veyr.core) this.cam.lookAt(this.veyr.core.x, this.veyr.core.z); return; }
     if (k === 'Tab') { this.clearSel(); for (const c of this.world.creatures) if (!c.dead && c.faction === 'veyr') this.addSel(c); return; }
     if (e.ctrlKey || e.metaKey) return;
+    if (this.hud.key(k)) return;
     for (const cm of this.commands()) if (cm && cm.key.toLowerCase() === k) { if (!cm.disabled?.()) { sfx('click'); cm.run(); } else { sfx('deny'); toast(String(cm.disabled?.()), 'warn', 1600); } return; }
   }
   setMode(m: Mode) {

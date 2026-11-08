@@ -9,29 +9,30 @@ import { makeRamp, mixHex, scaleHex } from '../limbo/gfx/pixel';
 import { clamp } from '../core/rand';
 import type { Design } from './design';
 import type { Rig } from './morph';
+import { shagCoat, mane, crest, wattle, tailFin, brushTail, sail, frill, roundEars, whiskers, tongue, throatSac, gills, ramHorns, palmAntlers, bearPaw, toes, amphSkin, scuteShell, crabShell, beetleHorns, mothWings, plumes, type SpineTs, type HeadCtx } from './parts';
 import { SkinB, Page, type Region, KIT, blade, sac, spline, chainWeights, ball, sheet, transport, hash, gauss, sub, addV, scl, norm, cross, len, lerpV, pageTexture, mixC, type V3, type Wt } from './kit';
 
 const TAU = Math.PI * 2;
-const has = (d: Design, g: string) => d.genes.includes(g);
+export const has = (d: Design, g: string) => d.genes.includes(g);
 /** jagged per-vertex radius noise, seamless around the loft (fur, bristles) */
-const fuzz = (amp: number, n: number, rings: number, seed: number) => (a: number, t: number) => {
+export const fuzz = (amp: number, n: number, rings: number, seed: number) => (a: number, t: number) => {
   const j = Math.round(((a + Math.PI) / TAU) * n) % n, i = Math.round(t * rings);
   return (hash(j * 7 + i * 131, seed) - 0.5) * amp + (hash(j + 3, i * 17 + seed) < 0.12 ? amp * 0.7 : 0);
 };
-const sm = (t: number) => t * t * (3 - 2 * t);
+export const sm = (t: number) => t * t * (3 - 2 * t);
 /** interpolate per-control values at t given control t's (smoothstep between neighbours) */
-function interp(ts: number[], vs: number[], t: number) {
+export function interp(ts: number[], vs: number[], t: number) {
   if (t <= ts[0]) return vs[0];
   for (let i = 0; i + 1 < ts.length; i++) if (t <= ts[i + 1]) { const f = (t - ts[i]) / Math.max(1e-6, ts[i + 1] - ts[i]); return vs[i] + (vs[i + 1] - vs[i]) * sm(f); }
   return vs[vs.length - 1];
 }
-function chordTs(c: V3[]) { const cum = [0]; for (let i = 1; i < c.length; i++) cum.push(cum[i - 1] + len(sub(c[i], c[i - 1]))); const L = cum[cum.length - 1] || 1; return cum.map((v) => v / L); }
+export function chordTs(c: V3[]) { const cum = [0]; for (let i = 1; i < c.length; i++) cum.push(cum[i - 1] + len(sub(c[i], c[i - 1]))); const L = cum[cum.length - 1] || 1; return cum.map((v) => v / L); }
 
-interface Paint { (): void }
-class Ctx {
+export interface Paint { (): void }
+export class Ctx {
   B: SkinB; page: Page; g = 1; paints: Paint[] = [];
   /** spine samples for surface queries (quills, photophores) */
-  spine: { pts: V3[]; fr: { d: V3; u: V3; v: V3 }[]; ru: number[]; rv: number[]; w: Wt[] } | null = null;
+  spine: { pts: V3[]; fr: { d: V3; u: V3; v: V3 }[]; ru: number[]; rv: number[]; w: Wt[]; L: number } | null = null;
   readonly P: { base: number[]; belly: number[]; pat: number[]; acc: number[]; dark: number[]; skin: number[] };
   constructor(readonly d: Design, readonly rig: Rig, readonly rest: V3[], readonly den: number) {
     this.page = new Page(512, 512); this.B = new SkinB(512, 512);
@@ -96,8 +97,8 @@ function coverK(cover: string, r: Region, x: number, y: number, th: number, t: n
     default: return Math.sin(y * 1.9 + r.fbm(x, y, 3, 2, seed) * 7) * 0.22 + (hash(x, y + seed) < 0.03 ? -0.8 : 0) + (r.fbm(x, y, 5, 3, seed + 2) - 0.5) * 1.3;
   }
 }
-interface HideOpt { L: number; rad: (t: number) => number; belly?: number; seed: number; kind?: 'body' | 'limb' | 'head' | 'jaw' | 'foot'; plates?: number; cover?: string; noPattern?: boolean; bellyAll?: boolean }
-function hide(S: Ctx, r: Region, o: HideOpt) {
+export interface HideOpt { L: number; rad: (t: number) => number; belly?: number; seed: number; kind?: 'body' | 'limb' | 'head' | 'jaw' | 'foot'; plates?: number; cover?: string; noPattern?: boolean; bellyAll?: boolean }
+export function hide(S: Ctx, r: Region, o: HideOpt) {
   const d = S.d, P = S.P, Wn = Math.max(0.05, S.rig.width), cover = o.cover ?? d.cover, seed = o.seed;
   for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
     const t = (y + 0.5) / r.h, th = r.th(x), ath = Math.abs(th);
@@ -125,11 +126,11 @@ function hide(S: Ctx, r: Region, o: HideOpt) {
     for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) { r.set(gx + dx, gy + dy, mixHex(d.colors.accent, 0xffffff, 0.3)); r.alpha(gx + dx, gy + dy, 190); }
   }
 }
-function keratin(r: Region, base: number, o: { rings?: boolean; tipLight?: number } = {}) {
+export function keratin(r: Region, base: number, o: { rings?: boolean; tipLight?: number } = {}) {
   const R = makeRamp(base, 6, { spread: 0.5 });
   r.fill(R, (x, y) => 1.4 + (y / r.h) * (o.tipLight ?? 1.8) + Math.cos(r.th(x)) * 0.8 + (o.rings && y % 3 === 0 ? -0.9 : 0) + (hash(x, y) - 0.5) * 0.5);
 }
-function glowReg(r: Region, c: number) {
+export function glowReg(r: Region, c: number) {
   for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) { r.set(x, y, mixC(c, 0xffffff, 0.25 + Math.cos(r.th(x)) * 0.15)); r.alpha(x, y, 190); }
 }
 
@@ -154,20 +155,22 @@ function furReg(S: Ctx): Region {
   return r;
 }
 /** one card: base on the skin, leaning along `dir`, `side` spans its width */
-function furCard(S: Ctx, base: V3, dir: V3, side: V3, L: number, W2: number, w: Wt, seed: number) {
-  const r = furReg(S), l = L * (0.8 + hash(seed, 1) * 0.4);
+export function furCard(S: Ctx, base: V3, dir: V3, side: V3, L: number, W2: number, w: Wt, seed: number, reg?: Region) {
+  const r = reg ?? furReg(S), l = L * (0.8 + hash(seed, 1) * 0.4);
   const pts: V3[] = [base, addV(base, scl(dir, l * 0.5)), addV(addV(base, scl(dir, l)), [0, -l * 0.12, 0])];
   blade(S.B, r, pts, [W2, W2 * 0.95, W2 * 0.6], side, [w, w, w], { offset: -0.5, edge: 0.25, seed });
 }
-/** a row of cards along the spine between t0..t1 at the given angles (0 = top); `hang` drapes them downward */
-function furCards(S: Ctx, t0: number, t1: number, step: number, angles: number[], L: number, W2: number, hang = false) {
+/** a row of cards along the spine between t0..t1 at the given angles (0 = top); `hang` drapes them downward,
+ *  'drape' lays them back and down over the body (shaggy coats), 'up' stands them on end (bristle crests) */
+export function furCards(S: Ctx, t0: number, t1: number, step: number, angles: number[], L: number, W2: number, hang: boolean | 'drape' | 'up' = false, reg?: Region, jitter = 0.3) {
   const sp = S.spine!, N = sp.pts.length - 1;
   for (let k = Math.max(0, Math.round(t0 * N)); k <= Math.min(N, Math.round(t1 * N)); k += step) for (const a0 of angles) {
-    const a = a0 + (hash(k, a0 * 10) - 0.5) * 0.3, f = sp.fr[k];
+    const a = a0 + (hash(k, a0 * 10) - 0.5) * jitter, f = sp.fr[k];
     const nrm = norm(addV(scl(f.v, Math.cos(a)), scl(f.u, Math.sin(a))));
     const base = addV(sp.pts[k], addV(scl(f.v, Math.cos(a) * sp.rv[k] * 0.9), scl(f.u, Math.sin(a) * sp.ru[k] * 0.9)));
-    const dir = hang ? norm(addV(scl(nrm, 0.4), [0, -1, 0])) : norm(addV(scl(nrm, 0.7), scl(f.d, 0.9)));
-    furCard(S, base, dir, norm(cross(dir, nrm)), L, W2, sp.w[k], k * 31 + Math.round(a0 * 7));
+    const dir = hang === true ? norm(addV(scl(nrm, 0.4), [0, -1, 0])) : hang === 'drape' ? norm(addV(addV(scl(nrm, 0.55), scl(f.d, 0.8)), [0, -0.35, 0]))
+      : hang === 'up' ? norm(addV(scl(nrm, 1), scl(f.d, 0.3))) : norm(addV(scl(nrm, 0.7), scl(f.d, 0.9)));
+    furCard(S, base, dir, norm(cross(dir, nrm)), L, W2, sp.w[k], k * 31 + Math.round(a0 * 7), reg);
   }
 }
 
@@ -177,7 +180,8 @@ function vertebrate(S: Ctx) {
   const hom = d.plan === 'hominid', biped = d.plan === 'biped' || hom;
   const { W, H, T, lt, hl, hw, hh, nk } = D;
   const sl = hom ? D.sl * 0.35 : D.sl;
-  const fur = d.cover === 'fur' || has(d, 'fur');
+  const fur = d.cover === 'fur' || has(d, 'fur') || has(d, 'shaggy');
+  const bear = !!D.bear, hump = D.hump ? 1 : 0, hop = !!D.hop, sprawl = !!D.sprawl, shellV = !!D.shell, amph = has(d, 'amphib_skin'), finT = has(d, 'tail_fin');
   const head = S.at('head'), neck = S.at('neck'), chest = S.at('chest'), hips = S.at('hips');
   const tails = rig.tail.map((i) => S.rest[i]);
   const iH = S.bi('head'), iN = S.bi('neck'), iC = S.bi('chest'), iP = S.bi('hips');
@@ -185,7 +189,7 @@ function vertebrate(S: Ctx) {
   const ctrl: V3[] = [], ru: number[] = [], rv: number[] = [], cs: number[] = [], ids: number[] = [];
   // width, height above and below the spine line
   const push = (p: V3, a: number, top: number, bot: number, id: number) => { ctrl.push(p); ru.push(a); rv.push((top + bot) / 2); cs.push((top - bot) / 2); ids.push(id); };
-  const nr = Math.min(nk * 0.42, hw * 0.4);
+  const nr = bear ? Math.min(nk * 0.5, hw * 0.5) : hop ? hw * 0.36 : Math.min(nk * 0.42, hw * 0.4);
   push(addV(head, [0, 0, hl * 0.04]), hw * 0.28, hh * 0.28, hh * 0.28, iH);
   push(head, hw * 0.3, hh * 0.32, hh * 0.3, iN);
   push(lerpV(head, neck, 0.5), nr * 0.95, nr * 1.05, nr * 1.15, iN);
@@ -197,13 +201,20 @@ function vertebrate(S: Ctx) {
     push(lerpV(chest, hips, 0.55), W * 0.38, W * 0.26, W * 0.3 * fat, iP);
     push(hips, W * 0.44, W * 0.34, W * 0.3, iP);
     push(addV(hips, [0, -H * 0.28, -T * 0.04]), W * 0.3, W * 0.24, W * 0.22, iP);
+  } else if (hop) {
+    // a frog: a squat pear, wide at the haunches, tilted up toward the head, a rounded rump and no tail
+    push(chest, W * 0.44, H * 0.5, H * 0.5, iC);
+    push(lerpV(chest, hips, 0.5), W * 0.5 * fat, H * 0.5, H * 0.5, iP);
+    push(hips, W * 0.48, H * 0.46, H * 0.42, iP);
+    push(addV(hips, [0, -H * 0.06, -T * 0.2]), W * 0.32, H * 0.3, H * 0.3, iP);
   } else {
-    push(chest, W * 0.46, H * 0.46, H * 0.64, iC);
-    push(lerpV(chest, hips, 0.5), W * 0.49 * fat, H * 0.44, H * 0.52 * fat * tuck, iP);
-    push(hips, W * 0.45, H * 0.46, H * 0.42 * tuck, iP);
+    push(chest, W * 0.46, H * (0.46 + hump * 0.1), H * (bear ? 0.7 : 0.64), iC);
+    push(lerpV(chest, hips, 0.5), W * 0.49 * fat, H * 0.44, H * (bear ? 0.6 : 0.52) * fat * tuck, iP);
+    push(hips, W * 0.45, H * (bear ? 0.5 : 0.46), H * 0.42 * tuck, iP);
     if (!tails.length) push(addV(hips, [0, H * 0.03, -T * 0.26]), W * 0.36, H * 0.36, H * 0.36, iP);
-    let tw = W * 0.3;
-    tails.forEach((p, i) => { push(p, tw, tw * (i ? 0.95 : 1.2), tw * (i ? 0.95 : 1.05), rig.tail[i]); tw *= i ? 0.72 : 0.62; });
+    let tw = W * (sprawl ? 0.36 : 0.3);
+    const fl = finT ? 0.62 : 1, fv = finT ? 1.15 : 1;
+    tails.forEach((p, i) => { push(p, tw * (i ? fl : 1), tw * (i ? 0.95 * fv : 1.2), tw * (i ? 0.95 * fv : 1.05), rig.tail[i]); tw *= tails.length > 4 ? (i ? 0.8 : 0.78) : i ? 0.72 : 0.62; });
     if (tails.length > 1) {
       const a = tails[tails.length - 2], b = tails[tails.length - 1];
       const te = tw * (fur ? 1.4 : 0.35);
@@ -213,21 +224,25 @@ function vertebrate(S: Ctx) {
   const cts = chordTs(ctrl);
   const tAt = (i: number) => cts[Math.max(0, Math.min(cts.length - 1, i))];
   const tNeck = tAt(3), tChest = tAt(4), tMid = tAt(5), tHips = tAt(6), tRump = tAt(7);
+  const TS: SpineTs = { head: tAt(1), neck: tNeck, chest: tChest, mid: tMid, hips: tHips, rump: tRump };
   const sp = spline(ctrl, clamp(Math.round(ctrl.reduce((s, p, i) => s + (i ? len(sub(p, ctrl[i - 1])) : 0), 0) / (W * 0.085)), 28, 64));
   const RU = sp.t.map((t) => interp(cts, ru, t) * (fur && !hom && t > tRump + 0.02 ? 1 + 0.5 * sm(clamp((t - 0.88) / 0.12, 0, 1)) : 1));
   const RV = sp.t.map((t) => interp(cts, rv, t));
   const segIds = ids.slice(0, -1);
   const wts = chainWeights(sp.pts, ctrl, segIds, W * 0.32);
   const ribs = (d.girth < 0.45 || d.cover === 'skin') && !fur;
-  const furF = fuzz(0.05, 20, sp.pts.length, d.seed % 97);
+  const furF = fuzz(bear ? 0.08 : 0.05, 20, sp.pts.length, d.seed % 97);
+  const wartN = fuzz(1, 20, sp.pts.length, d.seed % 89), wart = (a: number, t: number) => Math.max(0, wartN(a, t) - 0.38) * 0.12;
   const bump = (a: number, t: number) => {
     const aa = Math.abs(a);
     let b = 0.09 * gauss(t, tChest - 0.02, 0.05) * gauss(aa, 0.62, 0.3) + 0.075 * gauss(t, tHips, 0.05) * gauss(aa, 0.78, 0.28);
     if (!hom && t > tNeck && t < tRump) b += 0.035 * gauss(a, 0, 0.1) * (0.6 + 0.4 * Math.sin(t * 160));
     if (ribs && t > tChest && t < tMid + 0.04) b += 0.035 * Math.max(0, Math.sin(t * 150)) * gauss(aa, 1.75, 0.45);
     if (d.cover === 'scales' && !hom && t > tNeck && t < 0.97) b += 0.09 * gauss(a, 0, 0.07) * (Math.sin(t * 120) > 0.2 ? 1 : 0.2); // dorsal scutes
-    if (fur) b += furF(a, t) * (1 + 3 * gauss(t, (tNeck + tChest) / 2, 0.08) * gauss(a, 0, 0.5));
+    if (fur) b += furF(a, t) * (has(d, 'shaggy') ? 0.45 : 1 + 3 * gauss(t, (tNeck + tChest) / 2, 0.08) * gauss(a, 0, 0.5));
     if (!hom) b += 0.1 * gauss(t, tChest + 0.01, 0.05) * gauss(aa, Math.PI, 0.7); // brisket
+    if (hump) b += 0.09 * gauss(t, tChest - 0.04, 0.1) * gauss(a, 0, 0.95); // the muscle mound over the shoulders
+    if (amph) b += wart(a, t);
     return b;
   };
   const CS = sp.t.map((t) => interp(cts, cs, t));
@@ -236,29 +251,40 @@ function vertebrate(S: Ctx) {
   const Lp = sp.L;
   const BODY = S.reg('BODY', TAU * W * 0.5, Lp, 16, 160, 220);
   sac(S.B, BODY, S.gid(), sp.pts, sp.pts.map((_, i) => [RU[i], RV[i]] as [number, number]), wts, { n: fur ? 20 : 18, up, bump, shift, start: true, end: true });
-  S.spine = { pts: sp.pts, fr: transport(sp.pts, up), ru: RU, rv: RV, w: wts };
-  S.paints.push(() => hide(S, BODY, { L: Lp, rad: (t) => interp(sp.t, RU, t), seed: d.seed % 211, kind: 'body', belly: hom ? 1.6 : 2.05 }));
+  S.spine = { pts: sp.pts, fr: transport(sp.pts, up), ru: RU, rv: RV, w: wts, L: sp.L };
+  S.paints.push(() => { hide(S, BODY, { L: Lp, rad: (t) => interp(sp.t, RU, t), seed: d.seed % 211, kind: 'body', belly: hom ? 1.6 : sprawl || hop ? 1.85 : 2.05 }); if (amph) amphSkin(S, BODY); });
 
   // ------------------------------------------------ head
   vertHead(S, { head, hl, hw, hh, sl, hom, fur });
   if (fur) {
     // 2D pixel-art fur: a mane on the neck and shoulders, tufts down the back, a shaggy fringe, a tail brush, cheek ruffs
     const N = sp.pts.length - 1;
-    furCards(S, tNeck - 0.06, tChest + 0.04, 1, [-0.85, -0.42, 0, 0.42, 0.85], W * 0.3, W * 0.2);
-    furCards(S, tChest, tRump, 1, [-1.1, -0.55, 0, 0.55, 1.1], W * 0.17, W * 0.18);
-    if (!hom) furCards(S, tChest - 0.02, tHips, 1, [-2.45, -2.1, 2.1, 2.45], W * 0.18, W * 0.17, true);
-    if (tails.length) furCards(S, 0.84, 0.99, 1, [0, 1.2, -1.2, 2.4, -2.4, Math.PI], W * 0.22, W * 0.17);
+    if (has(d, 'shaggy')) shagCoat(S, TS, W);
+    else {
+      furCards(S, tNeck - 0.06, tChest + 0.04, 1, [-0.85, -0.42, 0, 0.42, 0.85], W * 0.3, W * 0.2);
+      furCards(S, tChest, tRump, 1, [-1.1, -0.55, 0, 0.55, 1.1], W * 0.17, W * 0.18);
+      if (!hom) furCards(S, tChest - 0.02, tHips, 1, [-2.45, -2.1, 2.1, 2.45], W * 0.18, W * 0.17, true);
+    }
+    if (tails.length && !has(d, 'tail_brush') && !bear) furCards(S, 0.84, 0.99, 1, [0, 1.2, -1.2, 2.4, -2.4, Math.PI], W * (bear ? 0.16 : 0.22), W * 0.17);
     for (const s of [-1, 1]) {
       const hb = addV(head, [s * hw * 0.42, -hh * 0.12, hl * 0.06]), dir = norm([s * 0.9, -0.25, -0.6]);
-      for (let k = 0; k < 3; k++) furCard(S, addV(hb, [0, (k - 1) * hh * 0.12, -k * hl * 0.05]), dir, norm([0, 1, 0.2]), hw * 0.32, hw * 0.16, [S.bi('head'), 1], 400 + k + s * 9);
+      for (let k = 0; k < 3; k++) furCard(S, addV(hb, [0, (k - 1) * hh * 0.12, -k * hl * 0.05]), dir, norm([0, 1, 0.2]), hw * (bear ? 0.26 : 0.32), hw * 0.16, [S.bi('head'), 1], 400 + k + s * 9);
     }
     void N;
   }
+  if (has(d, 'mane') && !hom) mane(S, TS, W, head, hl, hw, hh);
+  if (has(d, 'tail_brush') && tails.length) brushTail(S, TS, W, S.page.regs.get('SHAG') ?? furReg(S));
+  if (has(d, 'crest') && !hom) crest(S, TS, W, H);
+  if (finT && tails.length) tailFin(S, TS, H);
+  if (has(d, 'sail') && !hom) sail(S, TS, W, rig.length);
+  if (has(d, 'frill')) frill(S, TS, hw);
+  if (has(d, 'wattle') && !hom) wattle(S, TS, H);
   // ------------------------------------------------ legs, arms, wings, armour
   for (const lg of rig.legs) vertLeg(S, lg, lt, fur);
   if (biped) for (const ai of rig.mandibles) arm(S, ai, lt, hom, fur);
   for (const wi of rig.wings) patagium(S, wi, fur);
-  if (has(d, 'osteoderms')) carapace(S, chest, hips, W, H, T);
+  if (has(d, 'osteoderms') && !shellV) carapace(S, chest, hips, W, H, T);
+  if (shellV) scuteShell(S, chest, hips, W, H, T);
   if (has(d, 'quills')) quills(S, lt, H, tNeck, tRump);
   if (has(d, 'tail_club') && tails.length) {
     const tip = ctrl[ctrl.length - 1], CL = S.reg('PLATE', TAU * W * 0.3, W * 0.6, 8, 64, 48);
@@ -272,17 +298,19 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
   const iH = S.bi('head'), iN = S.bi('neck');
   const beak = has(d, 'beak');
   const hk = hom ? 1.18 : 1;
+  const D = S.rig.dims, amph = has(d, 'amphib_skin'), flat = !!D.hop || (amph && !!D.sprawl), bear = !!D.bear, bug = has(d, 'eye_bulging');
   const z0 = hl * 0.38;
   const hz = [-hl * 0.24, -hl * 0.06, hl * 0.14, hl * 0.3, hl * 0.44, z0 + sl * 0.45, z0 + sl * 0.8, z0 + sl * (beak ? 1.15 : 1.0)];
   const hy = [hh * 0.04, hh * 0.14, hh * 0.18, hh * 0.13, hh * 0.04, -hh * 0.02, -hh * (beak ? 0.06 : 0.04), -hh * (beak ? 0.2 : 0.05)];
-  const rx = [0.32, 0.48, 0.53, 0.47, 0.38, 0.31, 0.25, beak ? 0.05 : 0.17].map((k) => k * hw * hk);
-  const ry = [0.34, 0.48, 0.52, 0.45, 0.36, 0.29, 0.24, beak ? 0.04 : 0.17].map((k) => k * hh * hk);
+  // a frog's or newt's head is a broad rounded wedge; a bear's a broad skull with a stop before a heavy muzzle
+  const rx = (flat ? [0.4, 0.5, 0.52, 0.51, 0.48, 0.42, 0.33, 0.16] : bear ? [0.36, 0.52, 0.58, 0.5, 0.38, 0.31, 0.27, 0.2] : [0.32, 0.48, 0.53, 0.47, 0.38, 0.31, 0.25, beak ? 0.05 : 0.17]).map((k) => k * hw * hk);
+  const ry = (flat ? [0.36, 0.44, 0.46, 0.43, 0.38, 0.32, 0.25, 0.13] : bear ? [0.36, 0.5, 0.55, 0.46, 0.33, 0.27, 0.24, 0.18] : [0.34, 0.48, 0.52, 0.45, 0.36, 0.29, 0.24, beak ? 0.04 : 0.17]).map((k) => k * hh * hk);
   const ctrl = hz.map((z, i) => addV(head, [0, hy[i], z]));
   const cts = chordTs(ctrl);
   const sp = spline(ctrl, 16);
   const tEye = interp([hz[0], hz[hz.length - 1]], [0, 1], hl * 0.25), tSn = cts[5];
   const fore = has(d, 'eye_binocular') || hom || has(d, 'hominid_eyes');
-  const eAng = fore ? 0.62 : 1.45;
+  const eAng = fore ? 0.62 : bear ? 1.15 : 1.45;
   const furF = fuzz(0.1, 18, 16, d.seed % 53);
   const bump = (a: number, t: number) => {
     const aa = Math.abs(a);
@@ -290,8 +318,9 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
       + 0.12 * gauss(t, tEye + 0.07, 0.08) * gauss(aa, 1.85, 0.35) // cheekbones
       - 0.09 * gauss(t, tEye, 0.05) * gauss(aa, eAng, 0.22) // sockets
       - 0.07 * gauss(aa, Math.PI, 0.6) * sm(clamp((t - tSn + 0.1) / 0.2, 0, 1)); // flat palate
-    if (!beak) b += 0.06 * gauss(t, 0.93, 0.05) * gauss(aa, 0.45, 0.25); // nostril wings
-    if (fur && t < tSn) b += furF(a, t) * 0.8;
+    if (!beak && !flat) b += 0.06 * gauss(t, 0.93, 0.05) * gauss(aa, 0.45, 0.25); // nostril wings
+    if (fur && t < tSn) b += furF(a, t) * (bear ? 0.55 : 0.8);
+    if (flat) b -= 0.1 * gauss(t, tEye, 0.08) * gauss(aa, 0, 0.35); // a dip between the eye turrets
     return b;
   };
   const HEAD = S.reg('HEAD', TAU * hw * 0.5 * hk, len(sub(ctrl[ctrl.length - 1], ctrl[0])), 16, 96, 64);
@@ -299,35 +328,41 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
   sac(S.B, HEAD, S.gid(), sp.pts, sp.t.map((t) => [interp(cts, rx, t), interp(cts, ry, t)] as [number, number]), w, { n: 18, bump, end: true, start: true });
   const Lh = sp.L;
   // eyes, lids
-  const er = Math.max(0.02, hw * (fore ? 0.15 : 0.16)) * (hom ? 1.25 : 1);
+  const er = Math.max(0.02, hw * (bug ? 0.2 : bear ? 0.13 : fore ? 0.15 : 0.16)) * (hom ? 1.25 : 1);
   const EYE = S.fixed('EYE', 12, 12), LID = S.reg('LID', TAU * er * 1.1, er * 0.8, 6, 24, 8);
   for (const s of [-1, 1]) {
-    const off: V3 = fore ? [s * hw * 0.26 * hk, hh * 0.22, hl * 0.38] : [s * hw * 0.48, hh * 0.22, hl * 0.25];
-    const ax = norm(fore ? [s * 0.38, 0.12, 1] : [s, 0.12, 0.38]);
-    const c = addV(addV(head, off), scl(ax, -er * 0.35));
+    // eyes sit on the head's actual surface (the profile at the eye's z, at the socket angle)
+    const ez = bug ? hl * 0.12 : bear ? hl * 0.3 : fore ? hl * 0.38 : hl * 0.25, ea = bug ? 0.6 : eAng, se = 2 / KIT.sq;
+    const sx = Math.pow(Math.sin(ea), se) * interp(hz, rx, ez), sy = interp(hz, hy, ez) + Math.pow(Math.cos(ea), se) * interp(hz, ry, ez);
+    const off: V3 = bug ? [s * hw * 0.3, hh * 0.36, hl * 0.12] : [s * sx, sy, ez];
+    const ax = norm(bug ? [s * 0.62, 0.62, 0.48] : bear ? [s * 0.7, 0.18, 0.7] : fore ? [s * 0.38, 0.12, 1] : [s, 0.12, 0.38]);
+    const c = addV(addV(head, off), scl(ax, -er * (bug ? -0.1 : 0.4)));
+    if (bug) sac(S.B, LID, S.gid(), [addV(c, scl(ax, -er * 1.3)), addV(c, scl(ax, -er * 0.55)), addV(c, scl(ax, -er * 0.05))], [[er * 1.05, er * 1.0], [er * 1.12, er * 1.06], [er * 1.08, er * 1.02]], [[iH, 1], [iH, 1], [iH, 1]], { n: 14, start: false, end: false });
     ball(S.B, EYE, S.gid(), c, ax, [er, er * 0.92, er * 0.8], [iH, 1], { n: 12, rings: 7 });
     sac(S.B, LID, S.gid(), [addV(c, scl(ax, er * 0.05)), addV(c, scl(ax, er * 0.42)), addV(c, scl(ax, er * 0.62))], [[er * 1.22, er * 1.16], [er * 1.12, er * 1.04], [er * 0.98, er * 0.86]], [[iH, 1], [iH, 1], [iH, 1]],
       { n: 14, start: false, end: false, up: [0, 1, 0], shift: (a, t) => (t > 0.5 ? -er * 0.12 * Math.max(0, Math.cos(a)) : 0) });
   }
-  S.paints.push(() => paintEyeReg(S, EYE));
-  S.paints.push(() => { hide(S, LID, { L: er, rad: () => er, seed: 61, kind: 'head', noPattern: true }); for (let x = 0; x < LID.w; x++) LID.set(x, LID.h - 1, S.P.dark[0]); });
+  S.paints.push(() => paintEyeReg(S, EYE, { pupil: flat ? 'h' : bear ? 'round' : undefined }));
+  S.paints.push(() => { hide(S, LID, { L: er, rad: () => er, seed: 61, kind: 'head', noPattern: !amph }); for (let x = 0; x < LID.w; x++) LID.set(x, LID.h - 1, S.P.dark[0]); if (amph) amphSkin(S, LID, 0.5); });
   // face paint: muzzle, lip line, nostrils, socket shading, a pale chin
   S.paints.push(() => {
-    hide(S, HEAD, { L: Lh, rad: (t) => interp(cts, rx, t), seed: (d.seed % 131) + 7, kind: 'head', belly: 2.1 });
+    hide(S, HEAD, { L: Lh, rad: (t) => interp(cts, rx, t), seed: (d.seed % 131) + 7, kind: 'head', belly: flat ? 1.9 : 2.1 });
     for (let y = 0; y < HEAD.h; y++) for (let x = 0; x < HEAD.w; x++) {
       const t = (y + 0.5) / HEAD.h, th = HEAD.th(x), ath = Math.abs(th);
-      if (t > tSn - 0.1 && ath > 1.6 - (t - tSn) * 1.5 + (hash(x, 3) - 0.5) * 0.2 && !beak) HEAD.put(x, y, S.P.belly, 3.4 + Math.cos(th) * 0.5 + (hash(x, y) - 0.5) * 0.8, 0.5);
-      if (t > tSn - 0.04 && Math.abs(ath - 2.25) < 0.14 && !beak) HEAD.set(x, y, S.P.dark[0]); // lip line
-      const sock = gauss(t, tEye, 0.06) * gauss(ath, eAng, 0.32);
-      if (sock > 0.45) HEAD.put(x, y, S.P.dark, 2.2 + Math.cos(th) * 0.4, 0.5);
+      if (t > tSn - 0.1 && ath > 1.6 - (t - tSn) * 1.5 + (hash(x, 3) - 0.5) * 0.2 && !beak && !flat) HEAD.put(x, y, bear ? makeRamp(mixHex(d.colors.base, 0xc8a878, 0.45), 7, { spread: 0.5 }) : S.P.belly, 3.4 + Math.cos(th) * 0.5 + (hash(x, y) - 0.5) * 0.8, 0.5);
+      if (t > (flat ? 0.2 : tSn - 0.04) && Math.abs(ath - (flat ? 2.0 : 2.25)) < 0.14 && !beak) HEAD.set(x, y, S.P.dark[0]); // lip line (a frog's runs the whole jaw)
+      if (flat && D.hop && Math.hypot((t - tEye + 0.16) * 5, ath - 1.45) < 0.32) HEAD.put(x, y, Math.hypot((t - tEye + 0.16) * 5, ath - 1.45) < 0.24 ? S.P.belly : S.P.dark, 2.4, 0.5); // eardrum
+      const sock = gauss(t, tEye + (bear ? 0.06 : 0), 0.06) * gauss(ath, eAng, bear ? 0.22 : 0.32);
+      if (sock > (bear ? 0.7 : 0.45)) HEAD.put(x, y, S.P.dark, 2.2 + Math.cos(th) * 0.4, 0.5);
     }
     if (!beak) for (const s of [-1, 1]) { const nx = HEAD.X(s * 26), ny = HEAD.h * 0.95; HEAD.set(nx, ny, 0x0a0608); HEAD.set(nx + s, ny, 0x1a1012); }
+    if (amph) amphSkin(S, HEAD, 0.8);
   });
   // jaw, throat, teeth
   if (S.rig.jaw >= 0) {
     const iJ = S.rig.jaw, J = S.at(iJ);
     const jctrl: V3[] = [addV(J, [0, hh * 0.04, -hl * 0.14]), addV(J, [0, -hh * 0.03, sl * 0.2]), addV(J, [0, -hh * 0.03, sl * 0.6]), addV(J, [0, -hh * 0.01, sl * (beak ? 1.0 : 0.94)])];
-    const jr: [number, number][] = [[hw * 0.32 * hk, hh * 0.16], [hw * 0.29 * hk, hh * 0.15], [hw * 0.23 * hk, hh * 0.12], [hw * (beak ? 0.06 : 0.14), hh * (beak ? 0.03 : 0.08)]];
+    const jr: [number, number][] = flat ? [[hw * 0.42, hh * 0.16], [hw * 0.42, hh * 0.15], [hw * 0.36, hh * 0.12], [hw * 0.18, hh * 0.07]] : [[hw * 0.32 * hk, hh * 0.16], [hw * 0.29 * hk, hh * 0.15], [hw * 0.23 * hk, hh * 0.12], [hw * (beak ? 0.06 : 0.14), hh * (beak ? 0.03 : 0.08)]];
     const jsp = spline(jctrl, 9);
     const jts = chordTs(jctrl);
     const JAW = beak ? S.reg('BEAK', TAU * hw * 0.3, sl * 1.2, 8, 48, 32) : S.reg('JAW', TAU * hw * 0.3, sl * 1.2, 8, 64, 40);
@@ -336,7 +371,10 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     sac(S.B, MOUTH, S.gid(), [addV(J, [0, hh * 0.13, -hl * 0.08]), addV(J, [0, hh * 0.1, sl * 0.45]), addV(J, [0, hh * 0.08, sl * 0.8])], [[hw * 0.27, hh * 0.13], [hw * 0.22, hh * 0.11], [hw * 0.13, hh * 0.06]], [[iH, 0.5, iJ, 0.5], [iH, 0.5, iJ, 0.5], [iH, 0.5, iJ, 0.5]], { n: 10 });
     S.paints.push(() => { const R = makeRamp(0x8a3446, 5, { spread: 0.5 }); MOUTH.fill(R, (x, y) => 1.4 + Math.cos(MOUTH.th(x)) * 0.8 + (hash(x, y) - 0.5) + (y > MOUTH.h * 0.6 ? -0.6 : 0)); });
     if (beak) S.paints.push(() => keratin(JAW, mixHex(d.colors.accent, 0xd8b050, 0.5), { tipLight: 1.5 }));
-    else S.paints.push(() => hide(S, JAW, { L: sl, rad: () => hw * 0.25, seed: 23, kind: 'jaw', belly: 1.25 }));
+    else S.paints.push(() => { hide(S, JAW, { L: sl, rad: () => hw * 0.25, seed: 23, kind: 'jaw', belly: 1.25 }); if (amph) amphSkin(S, JAW, 0.5); });
+    const HC: HeadCtx = { head, hl, hw, hh, sl, z0, iH, fur };
+    tongue(S, HC, J, iJ);
+    throatSac(S, HC);
     const TEETH = S.fixed('TEETH', 6, 8);
     let teeth = false;
     const fang = (base: V3, dir: V3, L: number, r: number, id: Wt) => {
@@ -344,7 +382,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
       sac(S.B, TEETH, S.gid(), [base, m, tip], [[r, r * 0.9], [r * 0.7, r * 0.62], [r * 0.08, r * 0.08]], [id, id, id], { n: 6 }); teeth = true;
     };
     if (has(d, 'carnassials') || has(d, 'omni_teeth') || has(d, 'venom_fangs')) {
-      const big = has(d, 'carnassials') ? 1 : 0.55;
+      const big = has(d, 'carnassials') ? (S.rig.dims.bear ? 0.5 : 1) : 0.55;
       for (const s of [-1, 1]) {
         fang(addV(head, [s * hw * 0.17 * hk, -hh * 0.27, z0 + sl * 0.78]), norm([0, -1, 0.1]), hh * 0.32 * big, hw * 0.035, [iH, 1]);
         fang(addV(J, [s * hw * 0.13, hh * 0.08, sl * 0.72]), norm([0, 1, 0.15]), hh * 0.18 * big, hw * 0.028, [iJ, 1]);
@@ -361,12 +399,12 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     }
     if (teeth) S.paints.push(() => keratin(TEETH, 0xf0e6cc, { tipLight: 1.2 }));
   }
-  // nose leather or beak
-  if (!beak) {
+  // nose leather or beak (amphibians have only nostrils)
+  if (!beak && !amph) {
     const NOSE = S.fixed('NOSE', 10, 8);
-    ball(S.B, NOSE, S.gid(), addV(head, [0, hh * 0.03, z0 + sl * 0.97]), norm([0, 0.25, 1]), [hw * 0.14 * hk, hh * 0.1, hw * 0.07], [iH, 1], { n: 10, rings: 5 });
+    ball(S.B, NOSE, S.gid(), addV(head, [0, hh * 0.03, z0 + sl * 0.97]), norm([0, 0.25, 1]), [hw * (bear ? 0.2 : 0.14) * hk, hh * (bear ? 0.13 : 0.1), hw * (bear ? 0.1 : 0.07)], [iH, 1], { n: 10, rings: 5 });
     S.paints.push(() => { NOSE.fill(makeRamp(mixHex(d.colors.pattern, 0x1a1214, 0.6), 5, { spread: 0.5 }), (x, y) => 1.6 + Math.cos(NOSE.th(x)) * 0.9 + (hash(x * 3, y * 3) - 0.5) * 0.9 + (y > NOSE.h * 0.7 ? 0.8 : 0)); for (const s of [-1, 1]) NOSE.set(NOSE.X(s * 60), NOSE.h - 2, 0x050304); });
-  } else {
+  } else if (beak) {
     const BK = S.reg('BEAK', TAU * hw * 0.3, sl * 1.2, 8, 48, 32);
     const b0 = addV(head, [0, hh * 0.02, z0]);
     const bctrl: V3[] = [b0, addV(b0, [0, -hh * 0.02, sl * 0.5]), addV(b0, [0, -hh * 0.12, sl * 0.95]), addV(b0, [0, -hh * 0.34, sl * 1.12])];
@@ -390,6 +428,13 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
       for (let y = 1; y < EAR.h - 1; y++) for (let x = 0; x < EAR.w; x++) if (Math.abs(EAR.th(x)) < 1.25 - y / EAR.h * 0.6) EAR.put(x, y, S.P.skin, 2.6 + (hash(x, y) - 0.5) * 0.8 - y / EAR.h, 0.5);
     });
   }
+  // new head parts
+  const HC: HeadCtx = { head, hl, hw, hh, sl, z0, iH, fur };
+  if (has(d, 'ears_round')) roundEars(S, HC);
+  if (has(d, 'whiskers')) whiskers(S, HC);
+  if (has(d, 'gills')) gills(S, HC);
+  if (has(d, 'horns_ram')) ramHorns(S, HC);
+  if (has(d, 'antlers_palm')) palmAntlers(S, HC);
   // horns, antlers
   if (has(d, 'horns')) for (const s of [-1, 1]) {
     const b0 = addV(head, [s * hw * 0.3, hh * 0.42, hl * 0.18]);
@@ -400,7 +445,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     sac(S.B, HORN, S.gid(), hs.pts, hs.t.map((t) => [r0 * (1 - t * 0.9) + 0.002, r0 * (1 - t * 0.9) + 0.002] as [number, number]), hs.pts.map(() => [iH, 1]), { n: 9, bump: (a, t) => 0.08 * Math.max(0, Math.sin(t * 60)) * (1 - t) });
     S.paints.push(() => keratin(HORN, mixHex(d.colors.pattern, 0xc8b490, 0.55), { rings: true }));
   }
-  if (has(d, 'antlers')) for (const s of [-1, 1]) {
+  if (has(d, 'antlers') && !has(d, 'antlers_palm')) for (const s of [-1, 1]) {
     const b0 = addV(head, [s * hw * 0.28, hh * 0.45, -hl * 0.02]);
     const La = hl * 1.1, r0 = Math.max(0.015, hw * 0.07);
     const ANT = S.reg('ANTLER', TAU * r0, La, 6, 16, 48);
@@ -421,15 +466,16 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
   }
 }
 
-function paintEyeReg(S: Ctx, r: Region) {
+export function paintEyeReg(S: Ctx, r: Region, o: { pupil?: 'v' | 'h' | 'round' } = {}) {
   const d = S.d;
-  const slit = has(d, 'carnassials') || d.cover === 'scales';
+  const pupil = o.pupil ?? (has(d, 'carnassials') || d.cover === 'scales' ? 'v' : 'round');
   for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
     const f = y / (r.h - 1), th = r.th(x);
     let c = 0x241a16;
     if (f > 0.4) c = mixC(d.colors.eye, 0x000000, 0.35);
     if (f > 0.55) c = mixC(d.colors.eye, 0xffffff, 0.08 + Math.cos(th) * 0.15);
-    if (f > 0.78) c = slit ? (Math.abs(Math.sin(th)) < 0.34 ? 0x050406 : d.colors.eye) : 0x050406;
+    if (pupil === 'h' && f > 0.6 && hash(x, y) < 0.18) c = mixC(d.colors.eye, 0x000000, 0.45); // flecked iris
+    if (f > 0.78) c = pupil === 'v' ? (Math.abs(Math.sin(th)) < 0.34 ? 0x050406 : d.colors.eye) : pupil === 'h' ? (Math.abs(Math.cos(th)) < 0.42 && f > 0.82 ? 0x050406 : mixC(d.colors.eye, 0xffffff, 0.12)) : 0x050406;
     if (f > 0.4 && f < 0.48) c = mixC(d.colors.eye, 0x000000, 0.65);
     r.set(x, y, c);
   }
@@ -444,11 +490,13 @@ function vertLeg(S: Ctx, lg: Rig['legs'][number], lt: number, fur: boolean) {
   const J = ids.map((i) => S.rest[i]);
   const up = ids[0], parent = S.rig.bones[up].parent;
   const hind = lg.kind === 'hind', bird = lg.kind === 'bird', pillar = has(d, 'leg_pillar'), hoof = has(d, 'leg_hooved') && !bird;
+  const D = S.rig.dims, bear = !!D.bear && !bird, hop = !!D.hop, sprawl = !!D.sprawl, amph = has(d, 'amphib_skin');
   const top = addV(J[0], [-s * lt * 0.3, lt * 0.42, hind ? -lt * 0.1 : 0]);
   const ctrl = [top, ...J];
   const segIds = [up, ...ids.slice(0, -1)];
   const cts = chordTs(ctrl);
-  const prof = bird ? [0.45, 0.66, 0.3, 0.2, 0.17] : pillar ? [0.5, 0.74, 0.66, 0.6, 0.64] : hind ? [0.42, 0.62, 0.4, 0.3, 0.25] : [0.36, 0.52, 0.36, 0.27, 0.24];
+  const prof = bird ? [0.45, 0.66, 0.3, 0.2, 0.17] : pillar ? [0.5, 0.74, 0.66, 0.6, 0.64] : bear ? (hind ? [0.55, 0.74, 0.5, 0.42, 0.42] : [0.5, 0.68, 0.52, 0.44, 0.44])
+    : hop ? (hind ? [0.6, 0.85, 0.48, 0.3, 0.2] : [0.32, 0.4, 0.28, 0.22, 0.2]) : sprawl ? [0.46, 0.6, 0.42, 0.3, 0.26] : hind ? [0.42, 0.62, 0.4, 0.3, 0.25] : [0.36, 0.52, 0.36, 0.27, 0.24];
   const rs = ctrl.map((_, i) => lt * prof[Math.min(prof.length - 1, i === ctrl.length - 1 ? prof.length - 1 : i)]);
   const sp = spline(ctrl, ctrl.length > 4 ? 16 : 13);
   const wts = chainWeights(sp.pts, ctrl, segIds, lt * 0.5).map((w, i) => (sp.t[i] < cts[1] ? [up, 0.55 + 0.45 * (sp.t[i] / cts[1]), parent, 0.45 * (1 - sp.t[i] / cts[1])] : w));
@@ -465,12 +513,19 @@ function vertLeg(S: Ctx, lg: Rig['legs'][number], lt: number, fur: boolean) {
   };
   const LIMB = S.reg('LIMB', TAU * lt * 0.55, sp.L, 8, 64, 96);
   sac(S.B, LIMB, S.gid(), sp.pts, sp.t.map((t) => { const r = interp(cts, rs, t); return [r, r] as [number, number]; }), wts, { n: fur ? 12 : 10, up: [0, 0, 1], bump, start: true, end: false, cap: 0.6 });
-  if (!S.paints.some((p) => (p as any).LIMB)) { const p: Paint = () => hide(S, LIMB, { L: sp.L, rad: () => lt * 0.45, seed: 29, kind: 'limb', belly: 2.4, noPattern: d.pattern !== 'stripes' && d.pattern !== 'rings' && d.pattern !== 'spots' }); (p as any).LIMB = 1; S.paints.push(p); }
+  if (!S.paints.some((p) => (p as any).LIMB)) { const p: Paint = () => { hide(S, LIMB, { L: sp.L, rad: () => lt * 0.45, seed: 29, kind: 'limb', belly: 2.4, noPattern: d.pattern !== 'stripes' && d.pattern !== 'rings' && d.pattern !== 'spots' && !amph }); if (amph) amphSkin(S, LIMB, 0.7); }; (p as any).LIMB = 1; S.paints.push(p); }
   // ---- feet
   const iF = ids[ids.length - 1], F = J[J.length - 1], fw: Wt = [iF, 1];
+  const shag = S.page.regs.get('SHAG');
   if (fur && !bird && !has(d, 'leg_pillar')) {
     const cuff = J[J.length - 2], cw: Wt = [ids[ids.length - 2], 1];
-    for (let k = 0; k < 5; k++) { const a = (k / 5) * TAU; const out: V3 = [Math.sin(a), -0.9, Math.cos(a)]; furCard(S, addV(cuff, [Math.sin(a) * lt * 0.3, -lt * 0.1, Math.cos(a) * lt * 0.3]), norm(out), norm([Math.cos(a), 0, -Math.sin(a)]), lt * 0.6, lt * 0.35, cw, 500 + k + lg.pair * 11 + s); }
+    for (let k = 0; k < 5; k++) { const a = (k / 5) * TAU; const out: V3 = [Math.sin(a), -0.9, Math.cos(a)]; furCard(S, addV(cuff, [Math.sin(a) * lt * 0.3, -lt * 0.1, Math.cos(a) * lt * 0.3]), norm(out), norm([Math.cos(a), 0, -Math.sin(a)]), lt * (shag && bear ? 0.75 : 0.6), lt * 0.35, cw, 500 + k + lg.pair * 11 + s, bear ? shag : undefined); }
+    // a shaggy coat feathers down the backs of the upper legs
+    if (shag && bear) for (let k = 2; k < sp.pts.length * 0.62; k += 2) {
+      const p = sp.pts[k], a = Math.PI + (hash(k, s) - 0.5) * 1.4, out: V3 = [Math.sin(a) * 0.6 + s * 0.4, 0, Math.cos(a)];
+      const rr = interp(cts, rs, sp.t[k]) * 0.85, dir = norm(addV(out, [0, -1.1, 0]));
+      furCard(S, addV(p, scl(norm(out), rr)), dir, norm(cross(dir, out)), lt * 0.85, lt * 0.42, wts[k], 560 + k + lg.pair * 13 + s, shag);
+    }
   }
   const FOOT = S.reg('FOOT', TAU * lt * 0.4, lt * 0.8, 8, 32, 16), CLAW = S.fixed('CLAW', 6, 10);
   if (!S.paints.some((p) => (p as any).FOOT)) {
@@ -481,7 +536,10 @@ function vertLeg(S: Ctx, lg: Rig['legs'][number], lt: number, fur: boolean) {
     const tip = addV(addV(b, scl(dir, L)), [0, -L * 0.45, 0]);
     sac(S.B, CLAW, S.gid(), [b, addV(lerpV(b, tip, 0.5), [0, L * 0.12, 0]), tip], [[r, r * 0.8], [r * 0.65, r * 0.5], [0.002, 0.002]], [fw, fw, fw], { n: 6 });
   };
-  if (hoof) {
+  if (bear) bearPaw(S, FOOT, F, fw, lt, !hind);
+  else if (hop) toes(S, FOOT, F, fw, lt, s, hind ? { n: 5, len: 2.0, spread: 0.3, turn: 0.35, web: true, pads: true } : { n: 4, len: 0.95, spread: 0.42, turn: -0.35, pads: true });
+  else if (sprawl) toes(S, FOOT, F, fw, lt, s, { n: amph && !hind ? 4 : 5, len: amph ? 0.8 : 1.0, spread: 0.42, turn: hind ? 0.55 : 0.2, pads: amph, claws: !amph });
+  else if (hoof) {
     sac(S.B, CLAW, S.gid(), [addV(F, [0, lt * 0.5, 0]), addV(F, [0, lt * 0.22, lt * 0.04]), addV(F, [0, lt * 0.02, lt * 0.08])], [[lt * 0.3, lt * 0.32], [lt * 0.36, lt * 0.38], [lt * 0.42, lt * 0.44]], [fw, fw, fw], { n: 12, bump: (a) => -0.22 * gauss(a, 0, 0.12) });
     if (fur) sac(S.B, FOOT, S.gid(), [addV(F, [0, lt * 0.72, -lt * 0.02]), addV(F, [0, lt * 0.5, 0])], [[lt * 0.36, lt * 0.36], [lt * 0.4, lt * 0.4]], [fw, fw], { n: 12, bump: fuzz(0.35, 12, 2, 4 + s), start: false });
   } else if (pillar) {
@@ -580,7 +638,7 @@ function carapace(S: Ctx, chest: V3, hips: V3, W: number, H: number, T: number) 
     { n: 22, bump: (a, t) => 0.035 * Math.cos(a * 11) * Math.cos(t * 30) + 0.08 * gauss(Math.abs(a), 2.2, 0.15) });
   S.paints.push(() => plates(S, CARA, 9));
 }
-function plates(S: Ctx, r: Region, cell: number) {
+export function plates(S: Ctx, r: Region, cell: number) {
   const R = makeRamp(mixHex(S.d.colors.pattern, S.d.colors.base, 0.4), 7, { spread: 0.55, hueShift: 0.04 });
   for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
     const row = Math.floor(y / cell), ox = (row & 1) * cell * 0.5;
@@ -606,10 +664,13 @@ function quills(S: Ctx, lt: number, H: number, t0: number, t1: number) {
 
 // =============================================================================================== arthropods
 function arthropod(S: Ctx) {
-  const d = S.d, rig = S.rig, D = rig.dims, spider = D.spider > 0;
+  const d = S.d, rig = S.rig, D = rig.dims, spider = D.spider > 0, crab = D.crab > 0, moth = has(d, 'wing_scaled');
   const { W, H, lt, thL, hl, hw } = D;
   const iT = S.bi('thorax'), iH = S.bi('head'), th = S.at(iT), hd = S.at(iH);
   const C = { base: d.cover === 'fur' ? 'fur' : 'chitin' };
+  const fuzzy = spider || d.cover === 'fur';
+  if (crab) crabShell(S, th, hd, W, H, thL, lt);
+  else {
   // ---- thorax (cephalothorax for spiders)
   const tw = spider ? 0.47 : 0.39, thz = [thL * 0.56, thL * 0.3, 0, -thL * 0.3, -thL * 0.55];
   const thr: [number, number][] = [[W * tw * 0.62, H * 0.32], [W * tw * 0.95, H * 0.44], [W * tw, H * 0.47], [W * tw * 0.95, H * 0.43], [W * tw * 0.6, H * 0.3]];
@@ -617,7 +678,7 @@ function arthropod(S: Ctx) {
   const tpts = thz.map((z, i) => addV(th, [0, H * (i === 2 ? 0.07 : 0.04), z]));
   const tsp = spline(tpts, 10), tts = chordTs(tpts);
   sac(S.B, THX, S.gid(), tsp.pts, tsp.t.map((t) => [interp(tts, thr.map((r) => r[0]), t), interp(tts, thr.map((r) => r[1]), t)] as [number, number]), tsp.pts.map(() => [iT, 1]),
-    { n: 16, bump: (a, t) => (spider ? fuzz(0.1, 16, 10, 5)(a, t) - 0.08 * gauss(a, 0, 0.12) * gauss(t, 0.5, 0.15) : -0.09 * (gauss(t, 0.36, 0.035) + gauss(t, 0.68, 0.035)) + 0.06 * gauss(a, 0, 0.2)) });
+    { n: 16, bump: (a, t) => (fuzzy ? fuzz(moth ? 0.22 : 0.1, 16, 10, 5)(a, t) - 0.08 * gauss(a, 0, 0.12) * gauss(t, 0.5, 0.15) : -0.09 * (gauss(t, 0.36, 0.035) + gauss(t, 0.68, 0.035)) + 0.06 * gauss(a, 0, 0.2)) });
   S.paints.push(() => hide(S, THX, { L: thL, rad: () => W * tw, seed: 41, cover: C.base, plates: 3, belly: 2.2 }));
   // ---- head
   const HEAD = S.reg('HEAD', TAU * hw * 0.45, hl * 1.1, 12, 64, 32);
@@ -627,8 +688,10 @@ function arthropod(S: Ctx) {
   sac(S.B, HEAD, S.gid(), hsp.pts, hsp.t.map((t) => [interp(hts, hr.map((r) => r[0]), t), interp(hts, hr.map((r) => r[1]), t)] as [number, number]), hsp.pts.map((_, i) => (i === 0 ? [iH, 0.6, iT, 0.4] : [iH, 1])),
     { n: 14, bump: (a, t) => 0.08 * gauss(t, 0.85, 0.08) * gauss(Math.abs(a), Math.PI, 0.5) - 0.05 * gauss(a, 0, 0.12) });
   S.paints.push(() => hide(S, HEAD, { L: hl, rad: () => hw * 0.4, seed: 43, cover: C.base, plates: 2, belly: 2.2, noPattern: true }));
+  }
   // eyes
-  if (spider) {
+  if (crab) { /* on stalks, with the carapace */ }
+  else if (spider) {
     const E = S.fixed('SEYE', 8, 8);
     const spots: [number, number, number, number][] = [[0.12, 0.3, 0.95, 0.12], [0.3, 0.26, 0.86, 0.08], [0.06, 0.4, 0.82, 0.06], [0.36, 0.18, 0.7, 0.06]];
     for (const [x, y, z, r] of spots) for (const s of [-1, 1]) ball(S.B, E, S.gid(), addV(hd, [s * hw * x, H * y, hl * z]), norm([s * x * 2, 0.4, 1]), [hw * r, hw * r, hw * r * 0.8], [iH, 1], { n: 8, rings: 5 });
@@ -647,7 +710,7 @@ function arthropod(S: Ctx) {
     S.paints.push(() => paintEyeReg(S, E));
   }
   // ocelli: three glowing simple eyes on the brow
-  if (!spider) {
+  if (!spider && !crab) {
     const G = S.fixed('GLOW', 6, 6);
     for (const [x, z] of [[0, 0.7], [-0.12, 0.55], [0.12, 0.55]]) ball(S.B, G, S.gid(), addV(hd, [hw * x, H * 0.34, hl * z]), [0, 1, 0.3], [hw * 0.035, hw * 0.035, hw * 0.025], [iH, 1], { n: 6, rings: 4 });
     S.paints.push(() => glowReg(G, mixHex(d.colors.eye, 0xffffff, 0.3)));
@@ -659,8 +722,10 @@ function arthropod(S: Ctx) {
     const tip = addV(P1, scl(sub(P1, P0), 1.05));
     const ctrl = [P0, lerpV(P0, P1, 0.5), P1, tip];
     const sp = spline(ctrl, 14);
+    const aw = chainWeights(sp.pts, [P0, P1, tip], [a0, a1], lt * 0.3);
     sac(S.B, ANT, S.gid(), sp.pts, sp.t.map((t) => { const r = lt * (0.15 - t * 0.08) * (1 + (hash(d.seed, 2) < 0.3 ? 1.8 * gauss(t, 1, 0.06) : 0)); return [r, r] as [number, number]; }),
-      chainWeights(sp.pts, [P0, P1, tip], [a0, a1], lt * 0.3), { n: 6, bump: (_a, t) => 0.25 * Math.max(0, Math.sin(t * 60)) });
+      aw, { n: 6, bump: (_a, t) => 0.25 * Math.max(0, Math.sin(t * 60)) });
+    if (moth) plumes(S, sp.pts.slice(2), aw.slice(2), lt);
   }
   S.paints.push(() => ANT.fill(S.P.dark, (x, y) => 2 + (y % 2) * 0.8 + Math.cos(ANT.th(x)) * 0.8));
   // mouthparts
@@ -685,6 +750,8 @@ function arthropod(S: Ctx) {
     sac(S.B, CLAW, S.gid(), sp.pts, sp.t.map((t) => [lt * 0.22 * (1 - t * 0.6), lt * 0.22 * (1 - t * 0.6)] as [number, number]), sp.pts.map(() => [iH, 1]), { n: 6 });
   }
   S.paints.push(() => keratin(CLAW, mixHex(d.colors.pattern, 0x2a1810, 0.6), { tipLight: 2.4 }));
+  if (has(d, 'horn_beetle')) beetleHorns(S, hd, th, H, hl, thL, W);
+  if (moth) mothWings(S, W, S.rig.length * 0.8);
   // ---- abdomen
   const abds = rig.tail.map((i) => S.rest[i]);
   const last = abds[abds.length - 1], segL = D.seg;
@@ -703,10 +770,10 @@ function arthropod(S: Ctx) {
   }
   const asp = spline(actrl, spider ? 14 : clamp(abds.length * 7, 12, 30)), ats = chordTs(actrl);
   const nSeg = spider ? 1 : abds.length * 2;
-  const ABD = S.reg('ABD', TAU * aw * 0.5, asp.L, 12, 128, 96);
+  const ABD = S.reg('ABD', TAU * aw * 0.5, asp.L * (crab ? 0.4 : 1), 12, 128, 96);
   const awts = chainWeights(asp.pts, actrl, aid, segL * 0.3);
-  sac(S.B, ABD, S.gid(), asp.pts, asp.t.map((t) => [interp(ats, ar.map((r) => r[0]), t), interp(ats, ar.map((r) => r[1]), t)] as [number, number]), awts,
-    { n: 18, bump: spider ? fuzz(0.08, 18, 14, 7) : (a, t) => 0.08 * (1 - ((t * nSeg) % 1)) - 0.05 * gauss(a, 0, 0.1) });
+  if (!crab) sac(S.B, ABD, S.gid(), asp.pts, asp.t.map((t) => [interp(ats, ar.map((r) => r[0]), t), interp(ats, ar.map((r) => r[1]), t)] as [number, number]), awts,
+    { n: 18, bump: spider ? fuzz(0.08, 18, 14, 7) : moth ? fuzz(0.14, 18, 14, 9) : (a, t) => 0.08 * (1 - ((t * nSeg) % 1)) - 0.05 * gauss(a, 0, 0.1) });
   S.paints.push(() => {
     hide(S, ABD, { L: asp.L, rad: () => aw * 0.4, seed: 47, cover: C.base, plates: nSeg, belly: 2.2 });
     if (has(d, 'biolum')) for (let y = Math.floor(ABD.h * 0.68); y < ABD.h * 0.92; y++) for (let x = 0; x < ABD.w; x++) if (Math.abs(ABD.th(x)) > 1.9) { ABD.set(x, y, mixC(d.colors.accent, 0xffffff, 0.3 + hash(x, y) * 0.2)); ABD.alpha(x, y, 190); }
@@ -729,9 +796,11 @@ function arthropod(S: Ctx) {
       }
       sheet(S.B, SH, S.gid(), grid, (i) => awts[i + 1]);
     }
-    S.paints.push(() => { const R = makeRamp(has(d, 'aposematic') ? d.colors.accent : d.colors.base, 7, { spread: 0.6, hueShift: 0.05 }); SH.fill(R, (x, y) => 2.6 + (1 - x / SH.w) * 1.4 + (Math.abs(x - SH.w * 0.35) < 1.2 ? 2 : 0) + ((y % 4 === 0 && x % 3 === 0) ? -1 : 0) + (SH.fbm(x, y, 3, 2, 3) - 0.5)); for (let y = 0; y < SH.h; y++) SH.set(0, y, R[0]); if (d.pattern === 'spots' || has(d, 'aposematic')) for (let i = 0; i < 5; i++) SH.blob(SH.w * (0.3 + hash(i, 1) * 0.5), SH.h * (0.15 + i * 0.17), 2.4, 2.4, S.P.pat[1], 1.2); });
+    S.paints.push(() => { const R = makeRamp(has(d, 'aposematic') ? d.colors.accent : d.colors.base, 7, { spread: 0.6, hueShift: 0.05 }); SH.fill(R, (x, y) => 2.6 + (1 - x / SH.w) * 1.4 + (Math.abs(x - SH.w * 0.35) < 1.2 ? 2 : 0) + ((y % 4 === 0 && x % 3 === 0) ? -1 : 0) + (SH.fbm(x, y, 3, 2, 3) - 0.5));
+      // iridescence: the highlight band shifts toward the accent hue
+      if (has(d, 'horn_beetle')) for (let y = 0; y < SH.h; y++) for (let x = 0; x < SH.w; x++) { const k = gauss(x / SH.w, 0.38, 0.14) * (0.6 + 0.4 * Math.sin(y * 0.3)); if (k > 0.2) SH.blend(x, y, d.colors.accent, k * 0.45); } for (let y = 0; y < SH.h; y++) SH.set(0, y, R[0]); if (d.pattern === 'spots' || has(d, 'aposematic')) for (let i = 0; i < 5; i++) SH.blob(SH.w * (0.3 + hash(i, 1) * 0.5), SH.h * (0.15 + i * 0.17), 2.4, 2.4, S.P.pat[1], 1.2); });
   }
-  if (has(d, 'wing_gossamer')) {
+  if (has(d, 'wing_gossamer') && !moth) {
     const WING = S.reg('WING', W * 0.8, S.rig.length * 0.8, 12, 48, 64);
     for (const wi of rig.wings) {
       const wb = S.at(wi), s = Math.sign(rig.bones[wi].pos[0]) || 1, wl = S.rig.length * 0.8, ww = W * 0.36;
@@ -767,7 +836,7 @@ function arthropod(S: Ctx) {
     const rs = [0.8, 0.7, jumper ? 1.25 : 0.6, 0.42, 0.3, 0.14].map((k) => k * lt);
     const wts = chainWeights(sp.pts, [root, J[0], J[1], J[2], tip], [iT, ids[0], ids[1], ids[2]], lt * 0.6);
     sac(S.B, LIMB, S.gid(), sp.pts, sp.t.map((t) => { const r = interp(cts, rs, t); return [r, r] as [number, number]; }), wts,
-      { n: 8, bump: (a, t) => 0.3 * gauss(t, cts[3], 0.025) + 0.22 * gauss(t, cts[4], 0.02) + (t > cts[4] ? 0.25 * Math.max(0, Math.sin(t * 90)) : 0) + (spider || d.cover === 'fur' ? fuzz(0.3, 8, 18, lg.pair + s)(a, t) : (t > cts[3] && t < cts[4] ? (hash(Math.round(a * 3), Math.round(t * 30)) > 0.8 ? 0.45 : 0) : 0)) });
+      { n: 8, bump: (a, t) => 0.3 * gauss(t, cts[3], 0.025) + 0.22 * gauss(t, cts[4], 0.02) + (t > cts[4] ? 0.25 * Math.max(0, Math.sin(t * 90)) : 0) + (fuzzy ? fuzz(0.3, 8, 18, lg.pair + s)(a, t) : (t > cts[3] && t < cts[4] ? (hash(Math.round(a * 3), Math.round(t * 30)) > 0.8 ? 0.45 : 0) : 0)) });
     // two tarsal claws
     for (const k of [-1, 1]) sac(S.B, CLAW, S.gid(), [tip, addV(tip, [s * lt * 0.3, -lt * 0.3, k * lt * 0.3])], [[lt * 0.08, lt * 0.08], [0.002, 0.002]], [[ids[2], 1], [ids[2], 1]], { n: 4, start: false });
   }
@@ -777,12 +846,13 @@ function arthropod(S: Ctx) {
     const nm = rig.bones[mi].name;
     if (!nm.startsWith('leg')) continue;
     const C0 = S.at(mi), s = Math.sign(rig.bones[mi].pos[0]) || 1, w: Wt = [mi, 1], fl = D.legLen * 0.5;
-    const knee = addV(C0, [s * fl * 0.12, fl * 0.32, fl * 0.62]);
+    const lt = D.lt * (crab ? 1.25 : 1);
+    const knee = addV(C0, crab ? [s * fl * 0.3, fl * 0.1, fl * 0.4] : [s * fl * 0.12, fl * 0.32, fl * 0.62]);
     const sp = spline([C0, lerpV(C0, knee, 0.5), knee], 8);
     sac(S.B, LIMB, S.gid(), sp.pts, sp.t.map((t) => [lt * (1.3 - t * 0.3), lt * (1.5 - t * 0.4)] as [number, number]), sp.pts.map(() => w), { n: 10, bump: (a, t) => (gauss(a, Math.PI, 0.4) * (Math.sin(t * 40) > 0.5 ? 0.35 : 0)) });
     if (has(d, 'chela')) {
-      const palm = addV(knee, [0, -fl * 0.02, fl * 0.18]);
-      ball(S.B, LIMB, S.gid(), palm, [0, 0, 1], [lt * 1.6, lt * 1.2, fl * 0.2], w, { n: 12, rings: 6 });
+      const palm = addV(knee, crab ? [-s * fl * 0.04, fl * 0.02, fl * 0.24] : [0, -fl * 0.02, fl * 0.18]);
+      ball(S.B, LIMB, S.gid(), palm, [0, 0, 1], crab ? [lt * 1.5, lt * 1.9, fl * 0.3] : [lt * 1.6, lt * 1.2, fl * 0.2], w, { n: 12, rings: 6 });
       for (const k of [1, -1]) {
         const b0 = addV(palm, [0, k * lt * 0.5, fl * 0.16]);
         const pts: V3[] = [b0, addV(b0, [-s * lt * 0.3, k * lt * 0.4, fl * 0.2]), addV(b0, [-s * lt * 0.8, -k * lt * 0.1, fl * 0.36])];
@@ -813,7 +883,7 @@ function serpent(S: Ctx) {
   const BODY = S.reg('BODY', TAU * W * 0.5, sp.L, 12, 128, 220);
   const wts = chainWeights(sp.pts, ctrl, ids.slice(0, ctrl.length - 1), seg * 0.4);
   sac(S.B, BODY, S.gid(), sp.pts, RU.map((r) => [r, r * (worm ? 1 : 0.88)] as [number, number]), wts, { n: 16, bump });
-  S.spine = { pts: sp.pts, fr: transport(sp.pts), ru: RU, rv: RU, w: wts };
+  S.spine = { pts: sp.pts, fr: transport(sp.pts), ru: RU, rv: RU, w: wts, L: sp.L };
   S.paints.push(() => {
     hide(S, BODY, { L: sp.L, rad: () => W * 0.45, seed: 59, belly: worm ? 2.4 : 1.9 });
     if (worm) for (let y = 0; y < BODY.h; y++) { const t = y / BODY.h; if (Math.cos(t * rings * TAU) < -0.85) for (let x = 0; x < BODY.w; x++) BODY.blend(x, y, S.P.dark[1], 0.5); if (Math.abs(t - 0.26) < 0.03) for (let x = 0; x < BODY.w; x++) BODY.put(x, y, S.P.skin, 3.5 + Math.cos(BODY.th(x)), 0.5); }

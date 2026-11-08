@@ -7,6 +7,7 @@ import { Rand, clamp } from '../core/rand';
 import type { Palette } from './palette';
 import type { BiomeKey } from './region';
 import { PAINT as STYLE, ANIM } from './plantStyle';
+import { paintGround, type GroundSprite } from './groundArt';
 
 export type Arch = 'tuft' | 'reed' | 'fern' | 'shrub' | 'broadleaf' | 'umbrella' | 'palm' | 'weeper' | 'spike' | 'rosette' | 'coral' | 'fungus' | 'bulb' | 'barrel' | 'crystalbloom' | 'lily' | 'eyeflower' | 'fiddle';
 export const PX = 32;
@@ -521,16 +522,21 @@ export function makeFlora(pal: Palette, biome: BiomeKey, seed: number): PlantSpe
   const archs = r.shuffle([...pool, ...r.shuffle([...pool]).slice(0, 3)]).slice(0, want);
   if (!archs.includes('tuft')) archs[0] = 'tuft';
   const out: PlantSpecies[] = [];
+  // colours are dealt from shuffled decks so a world's species spread across the whole palette: lime and emerald
+  // canopies next to teal weepers, coral and magenta shrubs, golden puffballs, violet fronds
+  let fDeck: number[] = [], bDeck: number[] = [];
+  const nextF = () => { if (!fDeck.length) fDeck = r.shuffle([...pal.foliage]); return fDeck.pop()!; };
+  const nextB = () => { if (!bDeck.length) bDeck = r.shuffle([...pal.bloom]); return bDeck.pop()!; };
   archs.forEach((a, i) => {
     const s = ARCHS.find((x) => x.arch === a)!;
     const glow = a === 'crystalbloom' || ((a === 'fungus' || a === 'bulb') && r.chance(0.07));
-    // a few flowering kinds carry a tint of their bloom colour in the leaf (like autumn foliage or a red-leaved
-    // shrub), but it is always grounded in the planet's foliage, never a pure flower colour all over
-    const vivid = (a === 'shrub' || a === 'rosette' || a === 'coral' || a === 'bulb' || a === 'fiddle') && r.chance(0.14);
-    const foliage = r.pick(pal.foliage);
+    // flowering kinds often carry their bloom colour into the leaf (coral and magenta shrubs, golden puffballs,
+    // red-orange spikes), always rooted in a foliage hue so it reads as a plant rather than paint
+    const vivid = (a === 'shrub' || a === 'rosette' || a === 'coral' || a === 'bulb' || a === 'fiddle' || a === 'spike' || a === 'fern') && r.chance(0.45);
+    const foliage = nextF(), accent = nextB();
     out.push({
       id: i, name: binomial(r), arch: a, hmin: s.h[0], hmax: s.h[1],
-      leaf: vivid ? mixHex(foliage, r.pick(pal.bloom), r.range(0.3, 0.45)) : foliage, accent: a === 'fungus' ? r.pick([...pal.fungus, ...pal.fungus, ...pal.bloom]) : a === 'crystalbloom' ? pal.crystal : r.pick(pal.bloom), trunk: r.pick(pal.bark),
+      leaf: a === 'lily' ? mixHex(foliage, 0x3e8a3a, 0.6) : vivid ? mixHex(foliage, accent, r.range(0.4, 0.62)) : foliage, accent: a === 'fungus' ? r.pick([...pal.fungus, ...pal.fungus, accent]) : a === 'crystalbloom' ? pal.crystal : accent, trunk: r.pick(pal.bark),
       fert: s.fert, wetMin: s.wet[0], wetMax: s.wet[1], shore: !!s.shore, water: !!s.water,
       weight: s.weight, cluster: s.cluster, food: s.food, regrow: s.tree ? 240 : 60, glow, tree: !!s.tree, anim: ANIM[a] ?? 0, sprites: [],
     });
@@ -543,7 +549,7 @@ export function makeFlora(pal: Palette, biome: BiomeKey, seed: number): PlantSpe
 }
 
 // ---------------------------------------------------------------- atlas
-export interface FloraAtlas { tex: THREE.DataTexture; size: number; detail: Sprite[] }
+export interface FloraAtlas { tex: THREE.DataTexture; size: number; detail: Sprite[]; detailInfo: GroundSprite[] }
 
 /** paint every species' variants (plus ground-cover detail sprites) into one mipmapped atlas */
 export function buildFloraAtlas(species: PlantSpecies[], pal: Palette, seed: number, variants = 4): FloraAtlas {
@@ -565,19 +571,9 @@ export function buildFloraAtlas(species: PlantSpecies[], pal: Palette, seed: num
   for (const sp of species) for (let v = 0; v < variants; v++) jobs.push({ sp, h: sp.hmin + (sp.hmax - sp.hmin) * (v / Math.max(1, variants - 1)) * r.range(0.85, 1), r: r.fork(sp.id * 31 + v) });
   jobs.sort((a, b) => b.h - a.h);
   for (const j of jobs) j.sp.sprites.push(place(PAINT[j.sp.arch](j.sp, j.h, j.r, pal), j.h));
-  // ground cover detail: tiny blades, pebbles, petals
-  const detail: Sprite[] = [];
-  for (let i = 0; i < 18; i++) {
-    const kind = i % 6;
-    const pc = new PixelCanvas(kind === 5 ? 6 : 9, kind === 5 ? 4 : 8); pc.wrap = false; pc.clear();
-    const G = R(i % 2 ? pal.grass : mixHex(pal.grass, pal.grassDry, 0.4), 6);
-    if (kind < 3) { for (let b = 0; b < 4; b++) { const x = 2 + b * 1.5 + r.range(-0.5, 0.5), hh = r.int(3, 6); for (let k = 0; k < hh; k++) pc.set(x + (k === hh - 1 ? r.pick([-1, 0, 1]) : 0), 7 - k, G[ci(2.6 + k * 0.7, 2, 5)]); } }
-    else if (kind === 3) { const A = R(r.pick(pal.bloom), 5); line(pc, 4, 7, 4, 3, G[2]); pc.set(4, 2, A[3]); pc.set(3, 2, A[2]); pc.set(5, 2, A[2]); pc.set(4, 1, A[4]); pc.set(4, 3, A[1]); }
-    else if (kind === 4) { const A = R(r.pick(pal.bloom), 5); for (let b = 0; b < 3; b++) { const x = 2 + b * 2.5; line(pc, x, 7, x + 0.5, 4, G[2]); pc.set(x + 0.5, 3, A[3]); } }
-    else { const K = R(pal.rock, 5); pebbleish(pc, K); }
-    if (kind >= 3) outline(pc, mixHex(G[2], G[0], 0.5));
-    detail.push(place(pc, 0.2));
-  }
+  // ground cover: tussocks, clover, flowers, young ferns, mushrooms, sedges, pebbles, litter and twig decals
+  const detail: Sprite[] = [], detailInfo: GroundSprite[] = [];
+  for (const g of paintGround(pal, seed)) { detail.push(place(g.pc, 0.2)); detailInfo.push(g); }
   const tex = new THREE.DataTexture(new Uint8Array(data.buffer), S, S, THREE.RGBAFormat, THREE.UnsignedByteType);
   tex.mipmaps = mipChain(new Uint8Array(data.buffer), S);
   tex.generateMipmaps = false;
@@ -586,7 +582,7 @@ export function buildFloraAtlas(species: PlantSpecies[], pal: Palette, seed: num
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.flipY = false;
   tex.needsUpdate = true;
-  return { tex, size: S, detail };
+  return { tex, size: S, detail, detailInfo };
 }
 function pebbleish(pc: PixelCanvas, K: number[]) { for (let y = 0; y < 3; y++) for (let x = 0; x < 5; x++) if (!((x === 0 || x === 4) && (y === 0 || y === 2))) pc.set(x, y + 1, K[ci(3 - x * 0.4 - y * 0.6, 1, 4)]); }
 

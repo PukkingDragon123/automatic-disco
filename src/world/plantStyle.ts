@@ -13,6 +13,8 @@ import { Rand } from '../core/rand';
 import type { Palette } from './palette';
 import type { PlantSpecies } from './plantArt';
 
+/** sqrt-based length (Math.hypot is several times slower in the hot loops) */
+const hyp = (a: number, b: number, c = 0) => Math.sqrt(a * a + b * b + c * c);
 export const PX = 32;
 type P2 = [number, number];
 type V3 = [number, number, number];
@@ -28,7 +30,7 @@ const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const mul = (a: V3, k: number): V3 => [a[0] * k, a[1] * k, a[2] * k];
 const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const len3 = (a: V3) => Math.hypot(a[0], a[1], a[2]);
+const len3 = (a: V3) => hyp(a[0], a[1], a[2]);
 const nrm = (a: V3): V3 => { const l = len3(a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
 const perp = (a: V3): V3 => nrm(Math.abs(a[1]) < 0.9 ? cross(a, [0, 1, 0]) : cross(a, [1, 0, 0]));
 /** rotate v about the unit axis k by t (Rodrigues) */
@@ -112,8 +114,15 @@ class Shade {
     return (z * this.ny + y) * this.nx + x;
   }
   ray(p: V3, dir: V3, k: number) {
-    let s = 0, q = add(p, mul(dir, this.cs * 1.1));
-    for (let i = 0; i < 80; i++) { const j = this.idx(q); if (j < 0) break; s += this.d[j]; q = add(q, mul(dir, this.cs)); }
+    // scalar march (no per-step allocation: this is the hottest loop of the whole flora atlas)
+    const cs = this.cs, dx = dir[0] * cs, dy = dir[1] * cs, dz = dir[2] * cs, d = this.d, nx = this.nx, ny = this.ny, nz = this.nz;
+    let s = 0, qx = p[0] + dx * 1.1, qy = p[1] + dy * 1.1, qz = p[2] + dz * 1.1;
+    for (let i = 0; i < 80; i++) {
+      const x = Math.floor((qx - this.ox) / cs), y = Math.floor((qy - this.oy) / cs), z = Math.floor((qz - this.oz) / cs);
+      if (x < 0 || y < 0 || z < 0 || x >= nx || y >= ny || z >= nz) break;
+      s += d[(z * ny + y) * nx + x];
+      qx += dx; qy += dy; qz += dz;
+    }
     return Math.exp(-s * k);
   }
   light(p: V3): [number, number] {
@@ -136,8 +145,8 @@ function drawLimb(S: Scene, l: Limb, sun: number, amb: number) {
     const cx = ex - dx * t, cy = ey - dy * t;
     if (cx * cx + cy * cy > rr * rr) continue;
     const s = Math.max(-1, Math.min(1, (cx * qx + cy * qy) / rr)), c = Math.sqrt(1 - s * s);
-    const nn = add(mul(q3, s), mul(VIEW, c));
-    let v = tone(Math.max(0, dot(nn, LIGHT)), sun, amb);
+    const nl = (q3[0] * s + VIEW[0] * c) * LIGHT[0] + (q3[1] * s + VIEW[1] * c) * LIGHT[1] + (q3[2] * s + VIEW[2] * c) * LIGHT[2];
+    let v = tone(Math.max(0, nl), sun, amb);
     const u = t * Lp;
     if (l.ridge) { // bark: furrows running along the limb, broken into plates
       const lane = Math.floor((s * 0.5 + 0.5) * l.ridge + hashf(Math.floor(u / 4), 7, l.seed) * 0.9);
@@ -161,11 +170,11 @@ function drawLeaf(S: Scene, l: Leaf, sun: number, amb: number) {
   const half = (sg: number) => { const d = dot(nrm(add(mul(N, flip), mul(side, sg * fold))), LIGHT); return tone(d > 0 ? d : -d * 0.3, sun, amb); };
   const tA = half(1), tB = half(-1), kind = l.kind ?? K.LEAF, a = l.alpha ?? 255, prof = PROF[l.shape];
   if (Math.abs(det) < 0.8) { // edge-on: a sliver along the axis
-    const n = Math.max(1, Math.ceil(Math.hypot(ax, ay)));
+    const n = Math.max(1, Math.ceil(hyp(ax, ay)));
     for (let i = 0; i <= n; i++) { const t = i / n; S.put(Math.floor(ox + ax * t), Math.floor(oy + ay * t), oz + az * t, band(l.ramp, (tA + tB) * 0.5 - 0.06 + t * 0.08), kind, a); }
     return;
   }
-  const bl = Math.hypot(bx, by);
+  const bl = hyp(bx, by);
   const x0 = Math.floor(Math.min(ox - Math.abs(bx), ox + ax - Math.abs(bx))) - 1, x1 = Math.ceil(Math.max(ox + Math.abs(bx), ox + ax + Math.abs(bx))) + 1;
   const y0 = Math.floor(Math.min(oy - Math.abs(by), oy + ay - Math.abs(by))) - 1, y1 = Math.ceil(Math.max(oy + Math.abs(by), oy + ay + Math.abs(by))) + 1;
   for (let py = y0; py <= y1; py++) for (let px = x0; px <= x1; px++) {
@@ -187,8 +196,9 @@ function drawOrb(S: Scene, o: Orb, sun: number, amb: number) {
   for (let py = Math.floor(cy - r * sq - 1); py <= Math.ceil(cy + r * sq + 1); py++) for (let px = Math.floor(cx - r - 1); px <= Math.ceil(cx + r + 1); px++) {
     const dx = (px + 0.5 - cx) / r, dy = (py + 0.5 - cy) / (r * sq), d2 = dx * dx + dy * dy;
     if (d2 > 1) continue;
-    const nz = Math.sqrt(1 - d2), nn = nrm(add(add([dx, 0, 0], mul(SUP, -dy)), mul(VIEW, nz)));
-    let v = tone(Math.max(0, dot(nn, LIGHT)), sun, Math.max(amb, 0.25));
+    const nz = Math.sqrt(1 - d2);
+    const ox = dx - SUP[0] * dy + VIEW[0] * nz, oy = -SUP[1] * dy + VIEW[1] * nz, oz = -SUP[2] * dy + VIEW[2] * nz, ol = hyp(ox, oy, oz) || 1;
+    let v = tone(Math.max(0, (ox * LIGHT[0] + oy * LIGHT[1] + oz * LIGHT[2]) / ol), sun, Math.max(amb, 0.25));
     if (o.ribs && Math.abs(Math.sin(Math.atan2(dx, nz) * o.ribs)) < 0.22) v -= 0.12;
     let c = band(o.ramp, v);
     if (o.glow !== undefined && d2 < 0.5) c = mixHex(c, o.glow, (0.5 - d2) * 1.1);
@@ -456,7 +466,7 @@ const umbrella: Painter = (sp, h, r) => {
   };
   grow(P, r, {
     gens: 4, kids: [2, 3], spread: [0.4, 0.75], decay: [0.72, 0.88], taper: 0.66, trop: 0.02, wob: 0.1, seg: 4, flat: [2, 0.22], len1: H * r.range(0.26, 0.32),
-    inside: (p) => p[1] < top && Math.hypot(p[0], p[2]) < rx,
+    inside: (p) => p[1] < top && hyp(p[0], p[2]) < rx,
     leafGen: 3, ramp: T, ridge: 4,
     onTwig: (p, d, gen) => { if (gen >= 3 && r.chance(0.6)) twigLeaf(P, r, p, d, ls); },
     onTip: (p) => pad(p),
@@ -487,7 +497,7 @@ const weeper: Painter = (sp, h, r) => {
   };
   grow(P, r, {
     gens: 4, kids: [2, 3], spread: [0.55, 0.9], decay: [0.7, 0.84], taper: 0.64, trop: 0.07, wob: 0.12, seg: 4, apical: 0.3, len1: H * r.range(0.2, 0.26),
-    inside: (p) => p[1] < H * 0.98 && Math.hypot(p[0], p[2]) < H * 0.45,
+    inside: (p) => p[1] < H * 0.98 && hyp(p[0], p[2]) < H * 0.45,
     leafGen: 2, ramp: T, ridge: 4,
     onTwig: (p, d, gen) => { if (r.chance(gen >= 3 ? 0.55 : 0.3)) strand(p, d); if (r.chance(0.5)) twigLeaf(P, r, p, d, ls); },
     onTip: (p, d) => { strand(p, d); for (let k = r.int(2, 4); k > 0; k--) twigLeaf(P, r, p, d, ls); },
@@ -671,8 +681,8 @@ const eyeflower: Painter = (sp, h, r) => {
   P.post.push({ p: head, f: (S, x, y, z, k) => {
     const R = R0 * Math.sqrt(k), cx = Math.floor(x), cy = Math.floor(y);
     for (let py = -R; py <= R; py++) for (let px = -R; px <= R; px++) {
-      const d = Math.hypot(px, py) / (R * 0.62); if (d > 1) continue;
-      const di = Math.hypot(px - 0.5, py) / (R * 0.42);
+      const d = hyp(px, py) / (R * 0.62); if (d > 1) continue;
+      const di = hyp(px - 0.5, py) / (R * 0.42);
       const c = di <= 1 ? band(iris, 0.85 - di * 0.5 - (py < 0 ? 0 : 0.15)) : mixHex(0xece6d4, 0x8a8478, Math.max(0, (px + py) / R) * 0.5);
       S.put(cx + px, cy + py, z + 6, c, K.ACC, glow && di <= 1 ? 200 : 255);
     }
@@ -707,7 +717,7 @@ function cel(ramp: number[], v: number) {
   return ramp[Math.min(n, 1 + Math.round((b * (n - 1)) / 3))];
 }
 function bez(p0: P2, p1: P2, p2: P2, t: number): P2 { const u = 1 - t; return [u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0], u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1]]; }
-function blen(p0: P2, p1: P2, p2: P2) { return Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) + Math.hypot(p2[0] - p1[0], p2[1] - p1[1]); }
+function blen(p0: P2, p1: P2, p2: P2) { return hyp(p1[0] - p0[0], p1[1] - p0[1]) + hyp(p2[0] - p1[0], p2[1] - p1[1]); }
 
 export function canvasFor(wm: number, hm: number) {
   const w = Math.max(8, Math.ceil(wm * PX)) + 6, h = Math.max(8, Math.ceil(hm * PX)) + 4;
@@ -722,7 +732,7 @@ export function leaf(pc: PixelCanvas, p0: P2, p1: P2, p2: P2, wid: number, ramp:
   const steps = Math.max(6, Math.ceil(blen(p0, p1, p2) * 2.2));
   for (let i = 0; i <= steps; i++) {
     const t = i / steps, [x, y] = bez(p0, p1, p2, t), [x2, y2] = bez(p0, p1, p2, Math.min(1, t + 0.02));
-    let tx = x2 - x, ty = y2 - y; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+    let tx = x2 - x, ty = y2 - y; const tl = hyp(tx, ty) || 1; tx /= tl; ty /= tl;
     const nx = -ty, ny = tx;
     const prof = shape === 'lance' ? Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.06)), 0.72)
       : shape === 'round' ? Math.sqrt(Math.max(0, Math.sin(Math.PI * t)))
@@ -773,7 +783,7 @@ export function stalk(pc: PixelCanvas, p0: P2, p1: P2, p2: P2, w0: number, w1: n
   const steps = Math.max(6, Math.ceil(blen(p0, p1, p2) * 2));
   for (let i = 0; i <= steps; i++) {
     const t = i / steps, [x, y] = bez(p0, p1, p2, t), [x2, y2] = bez(p0, p1, p2, Math.min(1, t + 0.02));
-    let tx = x2 - x, ty = y2 - y; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+    let tx = x2 - x, ty = y2 - y; const tl = hyp(tx, ty) || 1; tx /= tl; ty /= tl;
     const nx = -ty, ny = tx, w = Math.max(0.5, w0 + (w1 - w0) * t);
     for (let s = -w; s <= w; s += 0.5) {
       const lx = nx * s, side = s / w;
@@ -857,7 +867,7 @@ const lily: Painter = (sp, h, r) => {
   for (let i = 0; i < r.int(2, 4); i++) {
     const x = cx + r.range(-pc.w * 0.2, pc.w * 0.2), y = cy + r.range(-pc.h * 0.2, pc.h * 0.2), rad = r.range(0.22, 0.32) * h * PX, notch = r.range(0, Math.PI * 2);
     for (let yy = -rad; yy <= rad; yy++) for (let xx = -rad; xx <= rad; xx++) {
-      const d = Math.hypot(xx, yy); if (d > rad) continue;
+      const d = hyp(xx, yy); if (d > rad) continue;
       const ang = Math.atan2(yy, xx); if (Math.abs(((ang - notch + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.28 && d > 1) continue;
       const vein = d > 1.5 && d < rad - 1.5 && Math.abs(((ang * 9) / Math.PI + 100) % 2 - 1) < 0.14;
       pc.set(x + xx, y + yy, cel(G, 0.55 - ((xx + yy) / rad) * 0.2 - (d > rad - 1.2 ? 0.25 : 0) + (vein ? 0.18 : 0) + (hashf(Math.floor(x + xx), Math.floor(y + yy), 9) - 0.5) * 0.08));

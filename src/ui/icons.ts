@@ -5,6 +5,7 @@ export const PAL: Record<string, number> = {
   g: 0x7affe0, G: 0x2fc49a, n: 0x166a56, m: 0x9cea8a, M: 0x2f9a5e, N: 0x1a4a36,
   v: 0xc4b4ff, V: 0x7a62e8, p: 0x3e2c88, y: 0xffe070, Y: 0xd09030, u: 0x8a5a1a,
   r: 0xff7050, R: 0xb02a2a, b: 0xeee2c4, B: 0xb0a07c, o: 0xffa040, c: 0x6ad0ff, C: 0x2a72b8, x: 0x5a2a1a, f: 0xff8ac0, F: 0xb04a80,
+  d: 0x77825a, D: 0x4e593a, h: 0x252b1d,
 };
 
 export const ICONS: Record<string, string[]> = {
@@ -129,9 +130,10 @@ export const ICONS: Record<string, string[]> = {
   shape: [
     '................', '......EEEE......', '.....EsssEe.....', '....EswsssEe....', '....EsssseEe....', '.....eEEEee.....', '......g..g......', '.....g.gg.g.....',
     '................', '......uuuu......', '....uuYYYYuu....', '...uYYyyyyYYu...', '..uYyyyyyyyyYu..', '.uYYYYYYYYYYYYu.', '.uuuuuuuuuuuuuu.', '................'],
+  // Unit 07's head: an asteroid skull, a brass porthole camera lens, an olive riveted jaw band
   mirror: [
-    '................', '..yyyy....yyyy..', '.yykkyy..yykkyy.', '.yykkyy..yykkyy.', '..yyyymmmmyyyy..', '.mmmmmmmmmmmmmm.', 'mmmmmmmmmmmmmmmm', 'mmffmmmmmmmmffmm',
-    'mmMmmmmmmmmmmMmm', 'mmmMMMMMMMMMMmmm', 'mmwwwwwwwwwwwwmm', '.mwwwwwwwwwwwwm.', '..mwwwwwwwwwwm..', '...mmmmmmmmmm...', '................', '................'],
+    '................', '.....eSSSSe.....', '...eSSsSSSSSe...', '..eSsSSSeSrSSe..', '..SSSuYYYYuSSe..', '.eSSuYyyyyYuSSe.', '.eSuYykkkkyYuSe.', '.eSuykCcwkkyuSe.',
+    '.eSuykCckkkyuSe.', '.eSuYykkkkyYuSe.', '.eSSuYyyyyYuSSe.', '..eSSuYYYYuSSe..', '..hdDdDdDdDdDh..', '..hDbDDbDDbDDh..', '...hhhhhhhhhh...', '................'],
   lode: [
     '................', '......o.....u...', '...u.....o......', '........u....o..', '................', '....ss....ss....', '....ss....ss....', '....RR....RR....',
     '....RR....RR....', '....RRr..rRR....', '.....RRRRRR.....', '......RRRR......', '................', '................', '................', '................'],

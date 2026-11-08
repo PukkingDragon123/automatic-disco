@@ -9,26 +9,10 @@ import { gbuf, GN_DECL } from '../gfx/gbuf';
 import { VEYR, RIVALS } from './palette';
 
 
-export const SHADER_NOISE = /* glsl */`
-float h2(vec2 p) { p = fract(p * vec2(0.1031, 0.1030)); p += dot(p, p.yx + 33.33); return fract((p.x + p.y) * p.x); }
-float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(h2(i), h2(i + vec2(1.0, 0.0)), f.x), mix(h2(i + vec2(0.0, 1.0)), h2(i + vec2(1.0, 1.0)), f.x), f.y); }
-float bayer4(vec2 p) { vec2 q = mod(floor(p), 4.0); float i = q.x + q.y * 4.0;
-  return (i == 0.0 ? 0.0 : i == 1.0 ? 8.0 : i == 2.0 ? 2.0 : i == 3.0 ? 10.0 : i == 4.0 ? 12.0 : i == 5.0 ? 4.0 : i == 6.0 ? 14.0 : i == 7.0 ? 6.0 :
-          i == 8.0 ? 3.0 : i == 9.0 ? 11.0 : i == 10.0 ? 1.0 : i == 11.0 ? 9.0 : i == 12.0 ? 15.0 : i == 13.0 ? 7.0 : i == 14.0 ? 13.0 : 5.0) / 16.0 + 1.0 / 32.0; }
-`;
-
-/** fog-of-war application shared by world shaders: needs uVis, uN, uDark */
-export const FOW_FN = /* glsl */`
-vec3 applyFow(vec3 c, vec3 wp) {
-  vec2 px = floor(wp.xz * 8.0);
-  vec2 v = texture2D(uVis, (px + 0.5) / 8.0 / uN).rg;
-  float d = bayer4(px) * 0.5 + 0.25;
-  if (v.g < d) return uDark;
-  if (v.r < d) { float l = dot(c, vec3(0.3, 0.59, 0.11)); return mix(vec3(l), c, 0.5) * 0.42 + uDark * 0.4; }
-  return c;
-}
-`;
+export { SHADER_NOISE, FOW_FN } from './glsl';
+import { SHADER_NOISE, FOW_FN } from './glsl';
+import { makeSea, makeRivers } from './water';
+import { Rocks } from './rocks';
 
 export class Terrain {
   readonly group = new THREE.Group();
@@ -38,9 +22,12 @@ export class Terrain {
   readonly heightTex: THREE.DataTexture;
   readonly matTex: THREE.DataTexture;
   readonly shadeTex: THREE.DataTexture;
+  readonly dampTex: THREE.DataTexture;
   readonly U: Record<string, THREE.IUniform>;
   readonly avg: number[];
   waterMesh: THREE.Mesh;
+  riverMesh: THREE.Mesh | null;
+  readonly rocks: Rocks;
   private mesh!: THREE.Mesh;
   private geo!: THREE.BufferGeometry;
 
@@ -60,11 +47,12 @@ export class Terrain {
     this.heightTex = mk(new Float32Array(N * N), THREE.FloatType, THREE.RedFormat, true);
     this.matTex = mk(new Uint8Array(N * N), THREE.UnsignedByteType, THREE.RedFormat, true);
     this.shadeTex = mk(new Uint8Array(N * N).fill(255), THREE.UnsignedByteType, THREE.RedFormat);
+    this.dampTex = mk(Uint8Array.from(region.damp, (v) => Math.round(clamp01(v) * 255)), THREE.UnsignedByteType, THREE.RedFormat);
     // material id -> two array-layer variants
     const lay: number[] = [];
     for (let b = 0; b < 16; b++) { const d = BLOCKS[b] ?? BLOCKS[0]; lay.push(d.top[0], d.top[d.top.length - 1]); }
     this.U = {
-      uBlocks: { value: tex }, uMoss: { value: this.moss }, uVis: { value: this.vis }, uHeight: { value: this.heightTex }, uMat: { value: this.matTex }, uShade: { value: this.shadeTex },
+      uBlocks: { value: tex }, uMoss: { value: this.moss }, uVis: { value: this.vis }, uHeight: { value: this.heightTex }, uMat: { value: this.matTex }, uShade: { value: this.shadeTex }, uDamp: { value: this.dampTex },
       uLay: { value: lay }, uRockSide: { value: L.rockSide },
       uN: { value: N }, uTime: { value: 0 }, uCore: { value: new THREE.Vector3(region.landing.x, 0, region.landing.z) },
       uVein: { value: new THREE.Color(VEYR.vein) }, uMossLight: { value: new THREE.Color(VEYR.mossLight) },
@@ -75,8 +63,12 @@ export class Terrain {
     this.mat = this.makeMaterial();
     this.buildMesh();
     this.syncMaps();
-    this.waterMesh = this.makeWater();
+    this.waterMesh = makeSea(region, this.U);
     this.group.add(this.waterMesh);
+    this.riverMesh = makeRivers(region, this.U);
+    if (this.riverMesh) this.group.add(this.riverMesh);
+    this.rocks = new Rocks(region, this.U);
+    this.group.add(this.rocks.mesh);
   }
 
   setRival(k: number, x: number, z: number) {
@@ -101,6 +93,7 @@ export class Terrain {
   /** rebuild after the ground changed (craters, camps) */
   flushDirty() {
     if (!this.region.dirty.size) return;
+    this.rocks.reseat(this.region.dirty);
     this.region.dirty.clear();
     this.writeVerts();
     this.syncMaps();
@@ -174,7 +167,7 @@ vWp = wpos4.xyz; vNw = normalize(mat3(modelMatrix) * objectNormal);`);
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
 uniform highp sampler2DArray uBlocks;
-uniform sampler2D uMoss, uVis, uMat, uShade;
+uniform sampler2D uMoss, uVis, uMat, uShade, uDamp;
 uniform float uN, uTime, uRivalLayer, uVeinGain, uRockSide;
 uniform float uLay[32];
 uniform vec3 uCore, uVein, uMossLight, uRivalVein, uRivalCore, uDark;
@@ -210,6 +203,11 @@ float tpatch = vn(pc * 0.09 + 40.0);
 base *= mix(vec3(0.92, 0.95, 0.88), vec3(1.07, 1.03, 0.94), tpatch);
 float shade = texture2D(uShade, pc / uN).r;
 base *= 0.55 + 0.45 * shade;
+// damp ground along rivers and shores: darker, richer, a soaked band right at the water
+float damp = texture2D(uDamp, pc / uN).r;
+damp = clamp(damp + (vn(pc * 1.3) - 0.5) * 0.35, 0.0, 1.0);
+float dl = dot(base, vec3(0.3, 0.59, 0.11));
+base = mix(base, mix(vec3(dl), base, 1.18) * 0.66, smoothstep(0.25, 0.85, damp) * 0.85);
 vec4 cov = texture2D(uMoss, pc / uN);
 float nLow = vn(vWp.xz * 0.85) * 0.62 + vn(vWp.xz * 3.3) * 0.38;
 float thr = 0.3 + nLow * 0.4 + (h2(pxw) - 0.5) * 0.1;
@@ -245,61 +243,6 @@ diffuseColor.rgb *= base;
     };
     m.customProgramCacheKey = () => 'oddworld-terrain-smooth';
     return gbuf(m, 0);
-  }
-
-  private makeWater(): THREE.Mesh {
-    const R = this.region, N = R.N;
-    const g = new THREE.PlaneGeometry(N + 400, N + 400, 1, 1);
-    g.rotateX(-Math.PI / 2);
-    g.translate(N / 2, R.water, N / 2);
-    const pal = R.pal;
-    const m = new THREE.ShaderMaterial({
-      uniforms: {
-        ...this.U, uShallow: { value: new THREE.Color(pal.water) }, uDeep: { value: new THREE.Color(pal.waterDeep) }, uFoam: { value: new THREE.Color(pal.foam) },
-        uSun: { value: new THREE.Vector3(0.4, 0.8, 0.3) }, uSky: { value: new THREE.Color(pal.sky) },
-      },
-      vertexShader: /* glsl */`
-varying vec3 vWp;
-void main() { vec4 w = modelMatrix * vec4(position, 1.0); vWp = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
-      fragmentShader: /* glsl */`
-${GN_DECL}
-uniform sampler2D uHeight, uVis;
-uniform float uN, uTime, uWater;
-uniform vec3 uShallow, uDeep, uFoam, uDark, uSky;
-varying vec3 vWp;
-${SHADER_NOISE}
-${FOW_FN}
-float hAt(vec2 p) { if (p.x < 0.0 || p.y < 0.0 || p.x >= uN || p.y >= uN) return -2.0; return texture2D(uHeight, (floor(p) + 0.5) / uN).r; }
-void main() {
-  vec2 px = floor(vWp.xz * 32.0);
-  vec2 p = (px + 0.5) / 32.0;
-  // depth from the bilinear neighbourhood of column tops
-  vec2 q = p - 0.5; vec2 i = floor(q), f = q - i;
-  float hb = mix(mix(hAt(i), hAt(i + vec2(1.0, 0.0)), f.x), mix(hAt(i + vec2(0.0, 1.0)), hAt(i + vec2(1.0, 1.0)), f.x), f.y);
-  float depth = max(0.0, uWater - hb);
-  float t = 1.0 - exp(-depth * 0.85);
-  vec3 c = mix(uShallow, uDeep, smoothstep(0.05, 1.0, t));
-  // slow caustic mottling
-  float m = vn(p * 0.8 + vec2(uTime * 0.05, uTime * 0.03)) * 0.6 + vn(p * 2.1 - uTime * 0.07) * 0.4;
-  c *= 0.9 + m * 0.16;
-  // glints: sparse, slow twinkles of sky on the surface, a rare bright sun sparkle on open water
-  float g1 = h2(px + floor(uTime * 2.0 + h2(px) * 9.0) * 3.7);
-  float g2 = h2(floor(px / 2.0) * 1.7 + floor(uTime * 1.2 + h2(floor(px / 2.0)) * 5.0));
-  if (g1 > 0.985) c = mix(c, vec3(0.95), 0.32);
-  else if (g1 > 0.945) c = mix(c, uShallow * 1.25 + 0.03, 0.22);
-  if (g2 > 0.997 && depth > 0.3) c = mix(c, vec3(1.15), 0.6);
-  // shore: a pale rim melting into the bank
-  float shore = 1.0 - smoothstep(0.0, 0.45, depth);
-  c = mix(c, mix(uShallow, uFoam, 0.35), shore * 0.45);
-  c = applyFow(c, vWp);
-  gl_FragColor = vec4(c, 1.0);
-  gNormal = vec4(0.5, 1.0, 0.5, 0.0);
-}`,
-    });
-    const mesh = new THREE.Mesh(g, m);
-    mesh.name = 'water';
-    mesh.receiveShadow = false;
-    return mesh;
   }
 
   // ---------------------------------------------------------------- coverage / vision updates

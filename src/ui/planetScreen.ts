@@ -40,10 +40,11 @@ export class PlanetScreen implements Screen {
     for (let i = 0; i < 14; i++) { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.022 * (1 - i / 16), 0), tm); m.visible = false; this.trail.push(m); this.scene.add(m); }
     this.root = el('div', 'planet', ui());
     const top = panel('pl-top', this.root, 'dark');
+    el('div', 'small pl-kick', top, 'U.S.P.C. ORBITAL SURVEY &middot; TARGET WORLD');
     el('div', 'hdr pl-title', top, planet.name.toUpperCase());
     el('div', 'small pl-sub', top, opts.note ?? `${owned(planet)} / ${planet.goal} REGIONS ARE YOURS · HOLD ${planet.goal} AND THE WORLD BECOMES YOU`);
     this.info = panel('pl-info', this.root);
-    this.info.innerHTML = '<div class="small">Turn the world. Choose where to fall.</div>';
+    this.info.innerHTML = '<div class="small">DRAG TO TURN THE WORLD. CHOOSE A DROP ZONE FOR UNIT 07.</div>';
     const bot = el('div', 'pl-bot', this.root);
     new Btn(bot, { icon: 'stop', label: 'BACK', size: 'wide', tip: () => 'Return to the void.' }, () => this.close(() => opts.onBack()));
     this.flash = el('div', 'pl-flash', this.root);

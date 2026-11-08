@@ -1,22 +1,20 @@
 // DOM widgets over the pixel art: panels, buttons, bars, tooltips, toasts. Everything scales by an integer --s.
-import { panelURL, buttonURL, bgURL, icon, barURL, cursorURL } from './pixelart';
+// The skin is the golem's own machinery (see machine.ts): riveted housings, Bakelite keys, phosphor CRTs.
+import { icon } from './pixelart';
+import { installTheme, cursorURL, segBarURL } from './machine';
 import { sfx } from '../audio/audio';
 
 export let S = 2;
 export function setupUI() {
-  S = innerHeight >= 1100 ? 3 : 2;
+  S = innerHeight >= 1040 ? 3 : 2;
   const r = document.documentElement.style;
   r.setProperty('--s', String(S));
-  r.setProperty('--panel', `url(${panelURL('panel')})`);
-  r.setProperty('--inset', `url(${panelURL('inset')})`);
-  r.setProperty('--dark', `url(${panelURL('dark')})`);
-  r.setProperty('--bg', `url(${bgURL()})`);
-  for (const st of ['n', 'h', 'p', 'd', 'a'] as const) r.setProperty('--btn-' + st, `url(${buttonURL(st)})`);
+  installTheme(r);
   r.setProperty('--cur-point', `url(${cursorURL('point')}) 2 2, auto`);
-  r.setProperty('--cur-attack', `url(${cursorURL('attack')}) 16 12, crosshair`);
+  r.setProperty('--cur-attack', `url(${cursorURL('attack')}) 16 14, crosshair`);
   r.setProperty('--cur-target', `url(${cursorURL('target')}) 16 16, crosshair`);
   r.setProperty('--cur-build', `url(${cursorURL('build')}) 14 14, crosshair`);
-  addEventListener('resize', () => { const n = innerHeight >= 1100 ? 3 : 2; if (n !== S) { S = n; r.setProperty('--s', String(S)); } });
+  addEventListener('resize', () => { const n = innerHeight >= 1040 ? 3 : 2; if (n !== S) { S = n; r.setProperty('--s', String(S)); } });
 }
 
 export function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', parent?: HTMLElement | null, html?: string): HTMLElementTagNameMap[K] {
@@ -69,7 +67,7 @@ export class Bar {
   constructor(parent: HTMLElement, col: number, label = true) {
     this.e = el('div', 'px-bar', parent);
     this.fill = el('div', 'fill', this.e);
-    this.fill.style.backgroundImage = `url(${barURL(col)})`;
+    this.fill.style.backgroundImage = `url(${segBarURL(col)})`;
     this.txt = label ? el('span', 'txt', this.e) : null;
   }
   set(v: number, text?: string) { this.fill.style.width = `${Math.max(0, Math.min(1, v)) * 100}%`; if (this.txt && text !== undefined) this.txt.textContent = text; }
@@ -80,8 +78,10 @@ export const Tip = {
   show(html: string, anchor?: HTMLElement, x?: number, y?: number) {
     if (!html) return;
     if (!this.e) this.e = el('div', 'px-dark tip', document.body);
+    const was = this.e.style.display === 'block';
     this.e.innerHTML = html;
     this.e.style.display = 'block';
+    if (!was) { this.e.classList.remove('on'); void this.e.offsetWidth; this.e.classList.add('on'); }
     const r = anchor?.getBoundingClientRect();
     const tw = this.e.offsetWidth, th = this.e.offsetHeight;
     let left = r ? r.left + r.width / 2 - tw / 2 : (x ?? 0) + 18;

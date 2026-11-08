@@ -46,7 +46,8 @@ float vn3(vec3 p) { vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f)
 vec3 cpx = floor(vRest * 32.0);
 float dissN = ch(cpx + 3.7);
 if (dissN < uDissolve) discard;
-float glowA = sampledDiffuseColor.a;
+// glow is marked by alpha ~0.75 at full resolution; read it there, so mip-blended edges of alpha-cut hair never glow
+float glowA = textureLod(map, vMapUv, 0.0).a;
 vec3 glowC = sampledDiffuseColor.rgb;
 float lumC = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumC) * vec3(0.78, 0.7, 0.62), uDecay * 0.7) * (1.0 - uDecay * 0.35);
@@ -61,7 +62,7 @@ if (uMossC > 0.0) {
 }`)
       .replace('#include <alphatest_fragment>', 'if (diffuseColor.a < 0.5) discard;')
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-if (glowA < 0.98) totalEmissiveRadiance += glowC * 1.6 * uGlowK * (1.0 - uDecay);
+if (glowA > 0.5 && glowA < 0.98) totalEmissiveRadiance += glowC * 1.6 * uGlowK * (1.0 - uDecay);
 if (mossM > 0.5 && ch(cpx + 7.7) > 0.93) totalEmissiveRadiance += uVein * 1.4;
 totalEmissiveRadiance += uFlashCol * uFlash * 0.9;`);
   };
