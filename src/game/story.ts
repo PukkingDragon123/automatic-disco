@@ -127,7 +127,7 @@ export class Story {
     g.on('built', (b: any) => { if (b.def.kind === 'tap') this.complete('tap'); if (b.def.kind === 'brood') this.complete('brood'); this.react('built:' + b.def.kind, BUILT[b.def.kind] ?? ['Something else grew today.']); });
     g.on('birth', (c: any) => { if (c.faction === 'veyr') { this.complete('spawn'); this.react('birth', ['It just... stepped out of the sac. Wet and walking.', 'Another one. They look at me the way you do.']); } });
     g.on('ability', (d: any) => { if (d.a === 'pulse' && d.ok) this.complete('pulse'); });
-    g.on('em', (lv: number) => this.react('em' + lv, [`My compass is pointing at you now. All of them. Every needle in camp.`, 'The air hums. My teeth ache when I stand near the core.', 'I can feel your field on my skin from the camp.']));
+    g.on('em', (lv: number) => this.react('em' + lv, [`My plumb line hangs crooked now. It leans toward you.`, 'I dropped a pebble by the core and it fell sideways.', 'Even from camp I feel lighter when I face you.']));
   }
 
   // ------------------------------------------------------------------ camp
@@ -283,7 +283,7 @@ export class Story {
         break;
       case 't-tap':
         if (this.dialog.busy) break;
-        this.say([{ text: 'My compass spins near those dark seams. Iron. Your field is pulling at it.', onShow: () => c.gesture('clipboard') }, 'If you could reach into it... [B], then a Root Tap on the seam.']);
+        this.say([{ text: 'Those dark seams are heavy. Iron. I swear the rubble leans toward them when you look.', onShow: () => c.gesture('clipboard') }, 'If you could reach into it... [B], then a Root Tap on the seam.']);
         this.obj('tap', 'Grow a Root Tap on a ferrite seam');
         this.go('w-tap');
         break;
@@ -314,7 +314,7 @@ export class Story {
         if (this.stepT > 50 && !this.seen.has('gift')) this.gift();
         break;
       case 't-pulse':
-        this.say([{ text: 'The needle won\'t settle anymore. Your field is strong enough to push with.', onShow: () => c.gesture('present') }, 'Try it on something that bothers you. [2].']);
+        this.say([{ text: 'My cup floated off the table this morning. Your pull is strong enough to push with now.', onShow: () => c.gesture('present') }, 'Try it on something that bothers you. [2].']);
         this.obj('pulse', 'Discharge an EM pulse (2)');
         this.go('w-pulse');
         break;

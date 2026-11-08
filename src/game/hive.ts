@@ -20,8 +20,8 @@ export const ABILITIES: Record<Ability, { name: string; key: string; charge: num
   bloom: { name: 'Overgrowth', key: '4', charge: 0, bio: 40, em: 2, cd: 12, range: 0, desc: 'Force a burst of moss to erupt around a point inside your field.' },
   lance: { name: 'Mind Lance', key: '5', charge: 35, bio: 0, em: 3, cd: 6, range: 0, desc: 'A bolt of thought that leaps from creature to creature. Time it for more leaps.' },
   shape: { name: 'Earthshape', key: '7', charge: 8, bio: 0, em: 1, cd: 0.5, range: 0, desc: 'Move the ground itself. <b>Left-click</b> lifts the earth into a ridge that walkers must go around; <b>right-click</b> sinks it into a hollow that floods below the water line. Walls, moats, ramps, ponds.' },
-  repel: { name: 'Repulse', key: '8', charge: 20, bio: 0, em: 1, cd: 6, range: 0, desc: 'Flip your polarity at a point: a magnetic shockwave hurls everything hostile outward, off its feet, dazed. Breaks charges, clears your growth.' },
-  lode: { name: 'Lodestone', key: '9', charge: 15, bio: 0, em: 2, cd: 12, range: 0, desc: 'Reach into a ferrite or crystal seam inside your field and rip the ore out along your field lines: minerals at once, no Root Tap needed.' },
+  repel: { name: 'Repulse', key: '8', charge: 20, bio: 0, em: 1, cd: 6, range: 0, desc: 'Turn gravity inside out at a point: a shockwave throws everything hostile outward, off its feet, dazed. Breaks charges, clears your growth.' },
+  lode: { name: 'Gravity Well', key: '9', charge: 15, bio: 0, em: 2, cd: 12, range: 0, desc: 'Open a well over a ferrite or crystal seam inside your field: the ore tears loose and falls up into your heart. Minerals at once, no Root Tap needed.' },
   storm: { name: 'Gravity Storm', key: '6', charge: 90, bio: 0, em: 5, cd: 40, range: 0, desc: 'Unmake gravity in a wide circle: stones and creatures lift and grind together.' },
 };
 

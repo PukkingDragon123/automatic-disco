@@ -43,7 +43,7 @@ export class Hud {
     // ---- top bar
     const top = panel('hud-top', this.root, 'dark');
     const res = el('div', 'res', top);
-    for (const [k, ic, tip] of [['bio', 'bio', 'Biomass: life force. Grows moss, structures and creatures.'], ['min', 'min', 'Minerals: ferrite and crystal pumped by Root Taps.'], ['charge', 'charge', 'Charge: your electromagnetic field. Spent on field abilities; refills faster as you grow.'], ['helix', 'helix', 'Helix: evolutionary potential, from every genome you take apart. Spent on new designs.'], ['supply', 'supply', 'Creatures alive / how many your wombs can feed.']] as const) {
+    for (const [k, ic, tip] of [['bio', 'bio', 'Biomass: life force. Grows moss, structures and creatures.'], ['min', 'min', 'Minerals: ferrite and crystal pumped by Root Taps.'], ['charge', 'charge', 'Charge: the pull of your gravity well. Spent on field abilities; refills faster as you grow.'], ['helix', 'helix', 'Helix: evolutionary potential, from every genome you take apart. Spent on new designs.'], ['supply', 'supply', 'Creatures alive / how many your wombs can feed.']] as const) {
       const p = el('div', 'pill', res);
       iconImg(ic, 'pi', p);
       this.resEls[k] = el('span', 'pv', p);
@@ -56,7 +56,7 @@ export class Hud {
     const emc = el('div', 'emc', em);
     this.emTxt = el('span', 'emt', emc);
     this.emBar = new Bar(emc, 0x8a72ff, false);
-    em.addEventListener('pointerenter', () => Tip.show('<h4>Field Strength</h4>Your electromagnetic field grows with your mass: moss, structures, the core. Each level widens your reach, deepens your charge and wakes new abilities.', em));
+    em.addEventListener('pointerenter', () => Tip.show('<h4>Field Strength</h4>Your gravity field grows with your mass: moss, structures, the core. Each level widens your reach, deepens your charge and wakes new abilities.', em));
     em.addEventListener('pointerleave', () => Tip.hide());
     const cq = el('div', 'em conq', top);
     iconImg('planet', 'pi', cq);
