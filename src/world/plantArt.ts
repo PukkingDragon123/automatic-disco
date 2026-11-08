@@ -523,12 +523,14 @@ export function makeFlora(pal: Palette, biome: BiomeKey, seed: number): PlantSpe
   const out: PlantSpecies[] = [];
   archs.forEach((a, i) => {
     const s = ARCHS.find((x) => x.arch === a)!;
-    const glow = a === 'crystalbloom' || ((a === 'fungus' || a === 'bulb') && r.chance(0.18));
-    // flowering kinds often wear a bloom colour all over (the purple rosettes, orange corals, gold shrub balls)
-    const vivid = (a === 'shrub' || a === 'rosette' || a === 'coral' || a === 'bulb' || a === 'fern' || a === 'fiddle' || a === 'broadleaf') && r.chance(a === 'broadleaf' ? 0.3 : 0.6);
+    const glow = a === 'crystalbloom' || ((a === 'fungus' || a === 'bulb') && r.chance(0.07));
+    // a few flowering kinds carry a tint of their bloom colour in the leaf (like autumn foliage or a red-leaved
+    // shrub), but it is always grounded in the planet's foliage, never a pure flower colour all over
+    const vivid = (a === 'shrub' || a === 'rosette' || a === 'coral' || a === 'bulb' || a === 'fiddle') && r.chance(0.14);
+    const foliage = r.pick(pal.foliage);
     out.push({
       id: i, name: binomial(r), arch: a, hmin: s.h[0], hmax: s.h[1],
-      leaf: vivid ? r.pick(pal.bloom.filter((c) => c !== 0xf8f0d0 && c !== 0xffffff)) : r.pick(pal.foliage), accent: a === 'fungus' ? r.pick([...pal.fungus, ...pal.bloom]) : a === 'crystalbloom' ? pal.crystal : r.pick(pal.bloom), trunk: r.pick(pal.bark),
+      leaf: vivid ? mixHex(foliage, r.pick(pal.bloom), r.range(0.3, 0.45)) : foliage, accent: a === 'fungus' ? r.pick([...pal.fungus, ...pal.fungus, ...pal.bloom]) : a === 'crystalbloom' ? pal.crystal : r.pick(pal.bloom), trunk: r.pick(pal.bark),
       fert: s.fert, wetMin: s.wet[0], wetMax: s.wet[1], shore: !!s.shore, water: !!s.water,
       weight: s.weight, cluster: s.cluster, food: s.food, regrow: s.tree ? 240 : 60, glow, tree: !!s.tree, anim: ANIM[a] ?? 0, sprites: [],
     });

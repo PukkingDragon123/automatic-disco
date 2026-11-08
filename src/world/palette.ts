@@ -23,60 +23,72 @@ export const RIVALS = [
 
 const BASES: Palette[] = [
   {
+    // temperate: olive turf, umber soil, grey stone; the odd mauve and teal-grey canopy keeps it off-world
     key: 'amber', name: 'Amber Verdance',
-    grass: 0x8a9a3e, grassDry: 0xb09a52, soil: 0x7a5a3a, rock: 0x8a8478, sand: 0xd8c08a, mud: 0x4e4434, clay: 0xb06a4a,
-    snow: 0xeef4f6, basalt: 0x3a3640, ore: 0x5a4a62, crystal: 0x7ae0e8,
-    water: 0x5ab8c8, waterDeep: 0x1e6a88, foam: 0xe8fbff,
-    foliage: [0x4f9a3e, 0x2f7a5a, 0x8a5aa8, 0xc8a040, 0x3a8a8a, 0x6aa848], bark: [0x5a3e2a, 0x7a5a3a, 0x4a3a3a],
-    bloom: [0xf06a2a, 0xe84a5a, 0xf0c040, 0xb08aff, 0xff8ac0, 0xf8f0d0], fungus: [0xd8c8b0, 0xa86a9a, 0xe0a060],
-    sky: 0x6aa8e0, horizon: 0xd8e8e0, fog: 0x9ab8b8, sun: 0xfff0d8, ambient: 0x8aa0c0, groundLight: 0x6a5a3a, star: 0xfff2c0,
+    grass: 0x67713c, grassDry: 0x998a5c, soil: 0x6a5038, rock: 0x7c776d, sand: 0xb8a77f, mud: 0x463c30, clay: 0x8c5e45,
+    snow: 0xe6eae8, basalt: 0x38363b, ore: 0x5a4d58, crystal: 0x7fbcbc,
+    water: 0x4e7672, waterDeep: 0x1e3a44, foam: 0xd6e0da,
+    foliage: [0x4b6a35, 0x3a5a46, 0x6a5b6c, 0x857640, 0x405e58, 0x5c7239], bark: [0x4e3a2a, 0x66503c, 0x433836],
+    bloom: [0xc06c3e, 0xa85458, 0xceaa52, 0x8a7aa8, 0xb88a94, 0xe2d8bc], fungus: [0xcabca4, 0x88687a, 0xbe9264],
+    sky: 0x7c9cba, horizon: 0xc8d0c8, fog: 0x98a6a2, sun: 0xfff0dc, ambient: 0x8c9cae, groundLight: 0x5a4c38, star: 0xfff2c8,
   },
   {
+    // dusk heath: plum and heather turf, wine and ochre canopies, warm low sun
     key: 'violet', name: 'Violet Dusk',
-    grass: 0x6a3a6a, grassDry: 0x8a5a6a, soil: 0x5a3a34, rock: 0x6a6070, sand: 0xc89a8a, mud: 0x3a2a30, clay: 0x9a4a4a,
-    snow: 0xf0e8f4, basalt: 0x2a2434, ore: 0x4a4a6a, crystal: 0xff8ad8,
-    water: 0x4a8a9a, waterDeep: 0x1a3a5a, foam: 0xf4e8ff,
-    foliage: [0x8a4a9a, 0xd0a048, 0x2a7a7a, 0xb85a7a, 0x4a8a5a, 0x5a3a8a], bark: [0x3a2a2a, 0x4a3438, 0x2a2228],
-    bloom: [0xffc04a, 0x6affd0, 0xff6a8a, 0xf0f0a0, 0x8ad8ff, 0xffa0ff], fungus: [0xe8d0f0, 0x6ad8c8, 0xf0b0a0],
-    sky: 0xb86a8a, horizon: 0xf0b8a0, fog: 0xa87a8a, sun: 0xffb890, ambient: 0x8a6a9a, groundLight: 0x4a3040, star: 0xff9a6a,
+    grass: 0x5e4d50, grassDry: 0x7e6c5c, soil: 0x4e3d34, rock: 0x67616a, sand: 0xa69282, mud: 0x342a2c, clay: 0x82513f,
+    snow: 0xe8e2e6, basalt: 0x2b2730, ore: 0x4a4a5c, crystal: 0xc596b4,
+    water: 0x4b6870, waterDeep: 0x1c2c3a, foam: 0xdcd8dc,
+    foliage: [0x6a4d62, 0x8a7442, 0x3c5a56, 0x7a5052, 0x4c5e44, 0x544868], bark: [0x382a28, 0x46363a, 0x2e2629],
+    bloom: [0xcfa252, 0x7eb4a0, 0xbe6c72, 0xd8cfa2, 0x8aa6be, 0xb68cae], fungus: [0xd6cad4, 0x72a49a, 0xc6a08e],
+    sky: 0x9a7c88, horizon: 0xd8bcaa, fog: 0x8e7c80, sun: 0xffd0ae, ambient: 0x8a7c92, groundLight: 0x46363a, star: 0xffaa7c,
   },
   {
+    // cold steppe: sage turf, slate and lichen, pale overcast light
     key: 'cyan', name: 'Glacier Steppe',
-    grass: 0x5a9a8a, grassDry: 0x9aa88a, soil: 0x5a5048, rock: 0x8a9298, sand: 0xc8c8b0, mud: 0x3e4440, clay: 0x8a6a5a,
-    snow: 0xf4faff, basalt: 0x343a44, ore: 0x4a5a6a, crystal: 0x9ae8ff,
-    water: 0x6ac8d8, waterDeep: 0x2a6a98, foam: 0xffffff,
-    foliage: [0x3a8a6a, 0xc86a5a, 0x6a5a9a, 0x8ab84a, 0x2a6a8a, 0xd8a050], bark: [0x4a4a4a, 0x5a5048, 0x3a3a44],
-    bloom: [0xffffff, 0xa8d8ff, 0xffd0e8, 0xc8a8ff, 0xf0f8a0, 0x6ae8ff], fungus: [0xd8e8f0, 0x8ab8c8, 0xc8d0a0],
-    sky: 0x8ac8f0, horizon: 0xe8f4ff, fog: 0xb8d0e0, sun: 0xffffff, ambient: 0x9ab8d8, groundLight: 0x5a6a6a, star: 0xf0f8ff,
+    grass: 0x5f7a69, grassDry: 0x8f927b, soil: 0x554b43, rock: 0x83888b, sand: 0xb4b09c, mud: 0x3a3e3a, clay: 0x7a6153,
+    snow: 0xeef2f3, basalt: 0x33373e, ore: 0x4a5462, crystal: 0x9cc8d6,
+    water: 0x56848a, waterDeep: 0x203c52, foam: 0xe8f0f0,
+    foliage: [0x3f6a58, 0x96695a, 0x5e5b76, 0x7a8a50, 0x36586a, 0xa48a5a], bark: [0x464646, 0x544c44, 0x3b3b42],
+    bloom: [0xe6e6dc, 0xa0bacc, 0xd6b8be, 0xb0a2c6, 0xd6d4a2, 0x8cbcc6], fungus: [0xd0d6da, 0x88a4ac, 0xb8bb9a],
+    sky: 0x8aaec8, horizon: 0xdce4ea, fog: 0xa8b6c0, sun: 0xfafaf2, ambient: 0x9aaec2, groundLight: 0x56605e, star: 0xf0f6ff,
   },
   {
+    // red mire: rust-red sedge, peat, teal-grey and ochre growth
     key: 'crimson', name: 'Crimson Mire',
-    grass: 0x9a3a3a, grassDry: 0xa86a4a, soil: 0x4a3028, rock: 0x6a5a58, sand: 0xc8a070, mud: 0x2e2420, clay: 0x8a3a2a,
-    snow: 0xf0e8e0, basalt: 0x2a2224, ore: 0x4a3a4a, crystal: 0xffd06a,
-    water: 0x4aa8b0, waterDeep: 0x1a4a62, foam: 0xf0f0e0,
-    foliage: [0x2a7a7a, 0xd0a040, 0x6a3a8a, 0x3a8a4a, 0x1e5a6a, 0xe0703a], bark: [0x2a1e1a, 0x3a2a24, 0x4a3028],
-    bloom: [0xf0f0a0, 0x6ad8ff, 0xffd04a, 0xffffff, 0xa8ff6a, 0xff8a4a], fungus: [0xf0e0c0, 0xc8f0a0, 0xffb06a],
-    sky: 0xe0905a, horizon: 0xffd0a0, fog: 0xc0806a, sun: 0xffd8a0, ambient: 0xa0705a, groundLight: 0x4a2a20, star: 0xffc080,
+    grass: 0x7a463b, grassDry: 0x8e6a4c, soil: 0x45322b, rock: 0x635856, sand: 0xae9072, mud: 0x2d2521, clay: 0x7a412f,
+    snow: 0xece6de, basalt: 0x2b2527, ore: 0x4a3d48, crystal: 0xd8b466,
+    water: 0x4b706c, waterDeep: 0x1a333e, foam: 0xdedccf,
+    foliage: [0x3c6460, 0x9c8242, 0x5a4466, 0x4b6842, 0x2e4a52, 0x9e5e3e], bark: [0x2b211d, 0x3b2d27, 0x4a3329],
+    bloom: [0xdcd4a2, 0x82acc2, 0xdaae56, 0xe8e0d0, 0x9cba74, 0xca7a4c], fungus: [0xdcd0b6, 0xacc290, 0xd2a074],
+    sky: 0xbc8c6c, horizon: 0xe4c4a4, fog: 0xa6826e, sun: 0xffdab4, ambient: 0x987c6a, groundLight: 0x4a2f25, star: 0xffc08a,
   },
   {
+    // dry savanna: golden straw, ochre laterite, blue-green scrub
     key: 'gold', name: 'Gold Savanna',
-    grass: 0xc8a43a, grassDry: 0xd8b86a, soil: 0x9a5a2a, rock: 0x9a8070, sand: 0xe8d0a0, mud: 0x5a3e2a, clay: 0xc0603a,
-    snow: 0xfaf4ea, basalt: 0x3a3030, ore: 0x5a4058, crystal: 0x6affb0,
-    water: 0x4ab0b8, waterDeep: 0x1a5a7a, foam: 0xfff8e8,
-    foliage: [0x2a8a8a, 0x3a9a6a, 0x1a6a7a, 0x6ab84a, 0x8a6a2a, 0x2a7a9a], bark: [0x6a4a2a, 0x8a6a4a, 0x4a3020],
-    bloom: [0xe83a5a, 0xffffff, 0xff6a2a, 0x8a4aff, 0xffd84a, 0x4ae8ff], fungus: [0xf0d8b0, 0xe07a6a, 0xa8d070],
-    sky: 0x5aa0e8, horizon: 0xf0e0c0, fog: 0xc8b890, sun: 0xfff8e0, ambient: 0x90a0c0, groundLight: 0x8a6a3a, star: 0xffffe0,
+    grass: 0x9c8848, grassDry: 0xb4a070, soil: 0x86603c, rock: 0x8c7c6e, sand: 0xccba94, mud: 0x54412f, clay: 0xa4623f,
+    snow: 0xf2eee6, basalt: 0x383133, ore: 0x584556, crystal: 0x84c8a8,
+    water: 0x4c8082, waterDeep: 0x1c4054, foam: 0xeae4d6,
+    foliage: [0x3c6a5e, 0x4b7250, 0x325a60, 0x6a7e42, 0x7a6436, 0x3c5c6c], bark: [0x5e4430, 0x765e48, 0x46311f],
+    bloom: [0xbc5054, 0xeae2d2, 0xcc743e, 0x7e66aa, 0xdcbc54, 0x5eaabc], fungus: [0xdecaaa, 0xbc7c6a, 0xa2b67c],
+    sky: 0x7aa0c6, horizon: 0xdcd2b8, fog: 0xb6aa8c, sun: 0xfff4e0, ambient: 0x90a0b2, groundLight: 0x7a6040, star: 0xffffe0,
   },
 ];
 export const PALETTES = BASES;
 
-function jitter(c: number, r: Rand, h = 0.025, s = 0.06, l = 0.04): number {
+function jitter(c: number, r: Rand, h = 0.02, s = 0.05, l = 0.035): number {
   const [R, G, B] = toRGB(c);
   const [hh, ss, ll] = rgbToHsl(R, G, B);
   return hslToHex((hh + r.range(-h, h) + 1) % 1, Math.min(1, Math.max(0, ss + r.range(-s, s))), Math.min(0.97, Math.max(0.03, ll + r.range(-l, l))));
 }
 
-function lift(c: number, dl: number, ds: number) { const [R, G, B] = toRGB(c); const [h, s, l] = rgbToHsl(R, G, B); return hslToHex(h, Math.min(1, s + ds), Math.min(0.85, l + dl)); }
+/** cap a colour's HSL saturation, keeping hue and lightness */
+function mute(c: number, maxS: number): number {
+  const [R, G, B] = toRGB(c);
+  const [h, s, l] = rgbToHsl(R, G, B);
+  return s > maxS ? hslToHex(h, maxS, l) : c;
+}
+/** natural ceilings per channel: ground and canopy stay earthy; flowers, crystal and lights may be a little richer */
+const SAT_CAP: Record<string, number> = { bloom: 0.55, crystal: 0.42, fungus: 0.4, sun: 1, star: 1, foam: 0.3, water: 0.3, waterDeep: 0.45 };
 
 /** a planet's palette: a curated base, slightly jittered so no two planets match */
 export function planetPalette(seed: number, key?: string): Palette {
@@ -84,9 +96,9 @@ export function planetPalette(seed: number, key?: string): Palette {
   const base = key ? BASES.find((b) => b.key === key) ?? BASES[0] : BASES[seed % BASES.length];
   const out: any = { ...base };
   for (const k of Object.keys(base)) {
-    const v = (base as any)[k];
-    if (typeof v === 'number') out[k] = jitter(v, r);
-    else if (Array.isArray(v)) out[k] = v.map((c: number) => (k === 'foliage' ? lift(jitter(c, r, 0.03, 0.08, 0.05), 0.07, 0.06) : jitter(c, r, 0.03, 0.08, 0.05)));
+    const v = (base as any)[k], cap = SAT_CAP[k] ?? 0.4;
+    if (typeof v === 'number') out[k] = mute(jitter(v, r), cap);
+    else if (Array.isArray(v)) out[k] = v.map((c: number) => mute(jitter(c, r, 0.025, 0.06, 0.045), cap));
   }
   return out as Palette;
 }

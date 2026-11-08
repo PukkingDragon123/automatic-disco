@@ -162,7 +162,7 @@ export function wildDesign(role: Role, pal: Palette, seed: number): Design {
   const colors: Colors = {
     base: warn ? r.pick([0xd8b030, 0xd84a30, 0x30a8d8]) : base,
     belly: mixHex(base, 0xf0e4c8, r.range(0.35, 0.65)),
-    pattern: warn ? 0x141018 : r.chance(0.3) ? r.pick(pal.bloom) : scaleHex(base, r.range(0.45, 0.7)),
+    pattern: warn ? 0x141018 : r.chance(0.08) ? mixHex(r.pick(pal.bloom), base, 0.45) : scaleHex(base, r.range(0.45, 0.7)),
     accent: r.pick([...pal.bloom, pal.crystal]),
     eye: r.pick([0x101010, 0xe8c040, 0xd84020, 0x40c8e8, 0xf0f0e0, 0x80e040]),
   };

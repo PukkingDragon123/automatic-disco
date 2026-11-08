@@ -148,7 +148,11 @@ void main() {
 `;
 
 export interface Grade { lift: THREE.Color; gamma: THREE.Color; gain: THREE.Color; sat: number; vig: number; bloom: number }
-export const defaultGrade = (): Grade => ({ lift: new THREE.Color(0.012, 0.01, 0.02), gamma: new THREE.Color(1, 1, 1), gain: new THREE.Color(1, 1, 1), sat: 1.16, vig: 0.5, bloom: 0.55 });
+/**
+ * A restrained, slightly filmic look: below-neutral saturation, a faint cool lift in the shadows against a
+ * warm roll-off in the highlights (split tone), mids pulled down a touch for weight, soft vignette, gentle bloom.
+ */
+export const defaultGrade = (): Grade => ({ lift: new THREE.Color(0.016, 0.017, 0.022), gamma: new THREE.Color(0.97, 0.97, 0.98), gain: new THREE.Color(1.0, 0.985, 0.95), sat: 0.88, vig: 0.42, bloom: 0.3 });
 
 function rt(w: number, h: number, linear = true) {
   return new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, minFilter: linear ? THREE.LinearFilter : THREE.NearestFilter, magFilter: linear ? THREE.LinearFilter : THREE.NearestFilter, depthBuffer: false });
