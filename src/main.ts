@@ -141,6 +141,7 @@ async function testUI() {
 async function testGame() {
   const { Game } = await import('./game/game');
   const { Forge } = await import('./ui/forge');
+  const { TreeScreen } = await import('./ui/tree');
   const g = new Game(engine, input, {
     seed: Number(P.get('seed') ?? 11), biome: (P.get('biome') ?? 'meadow') as BiomeKey, pal: P.get('pal') ?? undefined,
     hooks: {
@@ -150,6 +151,12 @@ async function testGame() {
           if (r) game.addDesign(r.design, r.parent, 3 + Math.max(0, r.design.genes.length - 4));
         });
         engine.push(f);
+      },
+      openTree: (game) => {
+        const evolve = (sp: any) => {
+          engine.push(new Forge(game.run, game.vaults, () => game.veyr.res.helix, sp, (r) => { engine.pop(); if (r) game.addDesign(r.design, r.parent, 3 + Math.max(0, r.design.genes.length - 4)); }));
+        };
+        engine.push(new TreeScreen(game.run.reg, { close: () => engine.pop(), evolve, time: game.world.time }));
       },
     },
   });
