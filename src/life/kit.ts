@@ -11,11 +11,15 @@ export type V3 = number[];
 export type Wt = number[];
 
 export const KPAD = 2;
+/** global loft style: superellipse squareness (2 = round, higher = boxier) and a multiplier on sides around */
+export const KIT = { sq: 2, nMul: 1 };
 const NOISE = new Map<string, Float32Array>();
 export const hash = (a: number, b = 0) => { const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return s - Math.floor(s); };
 
 /** a rectangle of the page; u wraps (tubes), v clamps */
 export class Region {
+  /** alpha-cut region (fur cards): keeps transparent texels */
+  cut = false;
   constructor(public page: Page, public name: string, public x: number, public y: number, public w: number, public h: number) {}
   /** angle in degrees of a column (0 = the centre column, which lofts put on top) */
   deg(x: number) { return ((x + 0.5) / this.w - 0.5) * 360; }
@@ -129,8 +133,10 @@ export class Page {
         }
       }
     }
-    // gaps between regions stay opaque so distant mips never punch holes (alpha < 1 marks glow)
-    for (let i = 3; i < d.length; i += 4) if (d[i] < 128) d[i] = 255;
+    // gaps between regions stay opaque so distant mips never punch holes (alpha < 1 marks glow); cut regions keep theirs
+    const keep = new Uint8Array(this.W * this.H);
+    for (const r of this.regs.values()) if (r.cut) for (let y = r.y - KPAD; y < r.y + r.h + KPAD; y++) for (let x = r.x - KPAD; x < r.x + r.w + KPAD; x++) if (x >= 0 && y >= 0 && x < W && y < this.H) keep[y * W + x] = 1;
+    for (let i = 3, p = 0; i < d.length; i += 4, p++) if (d[i] < 128 && !keep[p]) d[i] = 255;
   }
 }
 
@@ -283,12 +289,15 @@ export interface SacOpt {
   start?: boolean; end?: boolean; up?: V3; tv?: number[]; double?: boolean; flip?: boolean;
   /** tip pull for the end caps (fraction of radius) */
   cap?: number;
+  /** superellipse squareness of the rings (default KIT.sq) */
+  sq?: number;
   /** per-vertex weights (a = angle around, t = 0..1 along); null falls back to the ring's */
   wv?: (a: number, t: number) => Wt | null;
 }
 /** a lofted segment along explicit points with radii (u, v) and per-point weights */
 export function sac(B: SkinB, reg: Region, g: number, pts: V3[], radii: [number, number][], w: Wt[] | ((i: number) => Wt), o: SacOpt = {}) {
-  const n = o.n ?? 10;
+  const n = Math.max(4, Math.round((o.n ?? 10) * KIT.nMul));
+  const e = 2 / (o.sq ?? KIT.sq);
   const fr = transport(pts, o.up ?? [0, 1, 0]);
   const N = pts.length;
   const tv = o.tv ?? pts.map((_, i) => 1 - i / Math.max(1, N - 1));
@@ -299,7 +308,8 @@ export function sac(B: SkinB, reg: Region, g: number, pts: V3[], radii: [number,
     for (let j = 0; j <= n; j++) {
       const a = -Math.PI + (Math.PI * 2 * j) / n;
       const k = 1 + (o.bump ? o.bump(a, t) : 0);
-      const cu = Math.sin(a) * radii[i][0] * k, sv = Math.cos(a) * radii[i][1] * k + (o.shift ? o.shift(a, t) : 0);
+      const sa = Math.sin(a), ca = Math.cos(a);
+      const cu = Math.sign(sa) * Math.pow(Math.abs(sa), e) * radii[i][0] * k, sv = Math.sign(ca) * Math.pow(Math.abs(ca), e) * radii[i][1] * k + (o.shift ? o.shift(a, t) : 0);
       const f = fr[i];
       P.push([c[0] + f.u[0] * cu + f.v[0] * sv, c[1] + f.u[1] * cu + f.v[1] * sv, c[2] + f.u[2] * cu + f.v[2] * sv]);
     }

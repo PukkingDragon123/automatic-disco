@@ -9,7 +9,7 @@ import { makeRamp, mixHex, scaleHex } from '../limbo/gfx/pixel';
 import { clamp } from '../core/rand';
 import type { Design } from './design';
 import type { Rig } from './morph';
-import { SkinB, Page, type Region, sac, spline, chainWeights, ball, sheet, transport, hash, gauss, sub, addV, scl, norm, cross, len, lerpV, pageTexture, mixC, type V3, type Wt } from './kit';
+import { SkinB, Page, type Region, KIT, blade, sac, spline, chainWeights, ball, sheet, transport, hash, gauss, sub, addV, scl, norm, cross, len, lerpV, pageTexture, mixC, type V3, type Wt } from './kit';
 
 const TAU = Math.PI * 2;
 const has = (d: Design, g: string) => d.genes.includes(g);
@@ -34,7 +34,7 @@ class Ctx {
   spine: { pts: V3[]; fr: { d: V3; u: V3; v: V3 }[]; ru: number[]; rv: number[]; w: Wt[] } | null = null;
   readonly P: { base: number[]; belly: number[]; pat: number[]; acc: number[]; dark: number[]; skin: number[] };
   constructor(readonly d: Design, readonly rig: Rig, readonly rest: V3[], readonly den: number) {
-    this.page = new Page(256, 256); this.B = new SkinB(256, 256);
+    this.page = new Page(512, 512); this.B = new SkinB(512, 512);
     const c = d.colors, apo = has(d, 'aposematic');
     const R = (x: number, s = 0.55) => makeRamp(x, 7, { spread: s, hueShift: 0.05 });
     this.P = { base: R(c.base), belly: R(c.belly, 0.45), pat: R(apo ? c.accent : c.pattern, 0.5), acc: R(c.accent, 0.5), dark: R(mixHex(c.base, 0x120c10, 0.6), 0.4), skin: R(mixHex(c.belly, 0xc87a7a, 0.45), 0.45) };
@@ -44,9 +44,9 @@ class Ctx {
   /** a page region sized in metres (shared if it already exists) */
   reg(name: string, wm: number, hm: number, min = 6, maxW = 160, maxH = 200): Region {
     const r = this.page.regs.get(name); if (r) return r;
-    return this.page.reg(name, clamp(Math.round(wm * this.den), min, maxW), clamp(Math.round(hm * this.den), min, maxH));
+    return this.page.reg(name, clamp(Math.round(wm * this.den), min * 2, maxW * 2), clamp(Math.round(hm * this.den), min * 2, maxH * 2));
   }
-  fixed(name: string, w: number, h: number) { return this.page.regs.get(name) ?? this.page.reg(name, w, h); }
+  fixed(name: string, w: number, h: number) { return this.page.regs.get(name) ?? this.page.reg(name, w * 2, h * 2); }
   gid() { return this.g++; }
 }
 
@@ -133,6 +133,44 @@ function glowReg(r: Region, c: number) {
   for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) { r.set(x, y, mixC(c, 0xffffff, 0.25 + Math.cos(r.th(x)) * 0.15)); r.alpha(x, y, 190); }
 }
 
+// =============================================================================================== fur cards
+/** the fur region: strands of pixel-art hair on a transparent card (alpha-cut) */
+function furReg(S: Ctx): Region {
+  const have = S.page.regs.get('FUR'); if (have) return have;
+  const r = S.fixed('FUR', 24, 20); r.cut = true;
+  S.paints.push(() => {
+    const d = S.d, R = S.P.base, P2 = S.P.pat, B2 = S.P.belly;
+    for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) r.set(x, y, R[2], 0);
+    for (let c = 0; c < r.w; c++) {
+      if (hash(c, 3) < 0.12) continue;
+      const L = Math.floor(r.h * (0.55 + hash(c, 5) * 0.45)), ph = hash(c, 7) * 6, ramp = d.pattern === 'stripes' && Math.floor(c / 5) % 2 ? P2 : hash(c, 9) < 0.15 ? B2 : R;
+      for (let y = 0; y < L; y++) {
+        const x = c + Math.round(Math.sin(y * 0.18 + ph) * 1.2 * (y / L));
+        const f = y / L;
+        r.set(x, y, ramp[Math.min(ramp.length - 1, Math.max(0, Math.round(1.2 + f * 2.4 + (hash(c, y) - 0.5) * 1.2 + (c % 3 === 0 ? 0.6 : 0))))], 255);
+      }
+    }
+  });
+  return r;
+}
+/** one card: base on the skin, leaning along `dir`, `side` spans its width */
+function furCard(S: Ctx, base: V3, dir: V3, side: V3, L: number, W2: number, w: Wt, seed: number) {
+  const r = furReg(S), l = L * (0.8 + hash(seed, 1) * 0.4);
+  const pts: V3[] = [base, addV(base, scl(dir, l * 0.5)), addV(addV(base, scl(dir, l)), [0, -l * 0.12, 0])];
+  blade(S.B, r, pts, [W2, W2 * 0.95, W2 * 0.6], side, [w, w, w], { offset: -0.5, edge: 0.25, seed });
+}
+/** a row of cards along the spine between t0..t1 at the given angles (0 = top); `hang` drapes them downward */
+function furCards(S: Ctx, t0: number, t1: number, step: number, angles: number[], L: number, W2: number, hang = false) {
+  const sp = S.spine!, N = sp.pts.length - 1;
+  for (let k = Math.max(0, Math.round(t0 * N)); k <= Math.min(N, Math.round(t1 * N)); k += step) for (const a0 of angles) {
+    const a = a0 + (hash(k, a0 * 10) - 0.5) * 0.3, f = sp.fr[k];
+    const nrm = norm(addV(scl(f.v, Math.cos(a)), scl(f.u, Math.sin(a))));
+    const base = addV(sp.pts[k], addV(scl(f.v, Math.cos(a) * sp.rv[k] * 0.9), scl(f.u, Math.sin(a) * sp.ru[k] * 0.9)));
+    const dir = hang ? norm(addV(scl(nrm, 0.4), [0, -1, 0])) : norm(addV(scl(nrm, 0.7), scl(f.d, 0.9)));
+    furCard(S, base, dir, norm(cross(dir, nrm)), L, W2, sp.w[k], k * 31 + Math.round(a0 * 7));
+  }
+}
+
 // =============================================================================================== vertebrates
 function vertebrate(S: Ctx) {
   const d = S.d, rig = S.rig, D = rig.dims;
@@ -203,6 +241,19 @@ function vertebrate(S: Ctx) {
 
   // ------------------------------------------------ head
   vertHead(S, { head, hl, hw, hh, sl, hom, fur });
+  if (fur) {
+    // 2D pixel-art fur: a mane on the neck and shoulders, tufts down the back, a shaggy fringe, a tail brush, cheek ruffs
+    const N = sp.pts.length - 1;
+    furCards(S, tNeck - 0.06, tChest + 0.04, 1, [-0.85, -0.42, 0, 0.42, 0.85], W * 0.3, W * 0.2);
+    furCards(S, tChest, tRump, 1, [-1.1, -0.55, 0, 0.55, 1.1], W * 0.17, W * 0.18);
+    if (!hom) furCards(S, tChest - 0.02, tHips, 1, [-2.45, -2.1, 2.1, 2.45], W * 0.18, W * 0.17, true);
+    if (tails.length) furCards(S, 0.84, 0.99, 1, [0, 1.2, -1.2, 2.4, -2.4, Math.PI], W * 0.22, W * 0.17);
+    for (const s of [-1, 1]) {
+      const hb = addV(head, [s * hw * 0.42, -hh * 0.12, hl * 0.06]), dir = norm([s * 0.9, -0.25, -0.6]);
+      for (let k = 0; k < 3; k++) furCard(S, addV(hb, [0, (k - 1) * hh * 0.12, -k * hl * 0.05]), dir, norm([0, 1, 0.2]), hw * 0.32, hw * 0.16, [S.bi('head'), 1], 400 + k + s * 9);
+    }
+    void N;
+  }
   // ------------------------------------------------ legs, arms, wings, armour
   for (const lg of rig.legs) vertLeg(S, lg, lt, fur);
   if (biped) for (const ai of rig.mandibles) arm(S, ai, lt, hom, fur);
@@ -417,6 +468,10 @@ function vertLeg(S: Ctx, lg: Rig['legs'][number], lt: number, fur: boolean) {
   if (!S.paints.some((p) => (p as any).LIMB)) { const p: Paint = () => hide(S, LIMB, { L: sp.L, rad: () => lt * 0.45, seed: 29, kind: 'limb', belly: 2.4, noPattern: d.pattern !== 'stripes' && d.pattern !== 'rings' && d.pattern !== 'spots' }); (p as any).LIMB = 1; S.paints.push(p); }
   // ---- feet
   const iF = ids[ids.length - 1], F = J[J.length - 1], fw: Wt = [iF, 1];
+  if (fur && !bird && !has(d, 'leg_pillar')) {
+    const cuff = J[J.length - 2], cw: Wt = [ids[ids.length - 2], 1];
+    for (let k = 0; k < 5; k++) { const a = (k / 5) * TAU; const out: V3 = [Math.sin(a), -0.9, Math.cos(a)]; furCard(S, addV(cuff, [Math.sin(a) * lt * 0.3, -lt * 0.1, Math.cos(a) * lt * 0.3]), norm(out), norm([Math.cos(a), 0, -Math.sin(a)]), lt * 0.6, lt * 0.35, cw, 500 + k + lg.pair * 11 + s); }
+  }
   const FOOT = S.reg('FOOT', TAU * lt * 0.4, lt * 0.8, 8, 32, 16), CLAW = S.fixed('CLAW', 6, 10);
   if (!S.paints.some((p) => (p as any).FOOT)) {
     const p: Paint = () => { hide(S, FOOT, { L: lt, rad: () => lt * 0.3, seed: 31, kind: 'foot', noPattern: true, cover: d.cover === 'fur' ? 'fur' : 'skin' }); keratin(CLAW, mixHex(d.colors.pattern, 0x2a2420, 0.65), { tipLight: 2 }); };
@@ -858,9 +913,10 @@ function gastropod(S: Ctx) {
 // =============================================================================================== entry
 export interface Sculpt { geo: THREE.BufferGeometry; tex: THREE.DataTexture; tris: number }
 export function sculpt(d: Design, rig: Rig, rest: V3[]): Sculpt {
-  let den = 52;
+  let den = 104;
   for (let attempt = 0; attempt < 8; attempt++) {
     const S = new Ctx(d, rig, rest, den);
+    KIT.sq = 2.7; KIT.nMul = 0.62; // chunky rounded-box sections, flat-shaded facets: blocky but detailed
     try {
       switch (d.plan) {
         case 'hexapod': case 'octopod': arthropod(S); break;
@@ -871,7 +927,7 @@ export function sculpt(d: Design, rig: Rig, rest: V3[]): Sculpt {
     } catch (e) {
       if (e instanceof Error && e.message.startsWith('page overflow')) { den *= 0.82; continue; }
       throw e;
-    }
+    } finally { KIT.sq = 2; KIT.nMul = 1; }
     for (const p of S.paints) p();
     S.page.finish();
     return { geo: S.B.build(), tex: pageTexture(S.page), tris: S.B.tris };

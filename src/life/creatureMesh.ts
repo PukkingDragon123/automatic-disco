@@ -29,7 +29,7 @@ export function makeInstance(m: SpeciesModel): { mesh: THREE.SkinnedMesh; bones:
   const bones = m.rig.bones.map((b) => { const o = new THREE.Bone(); o.name = b.name; o.position.set(b.pos[0], b.pos[1], b.pos[2]); return o; });
   m.rig.bones.forEach((b, i) => { if (b.parent >= 0) bones[b.parent].add(bones[i]); });
   const fx: CreatureFx = { flag: { value: 1 }, flash: { value: 0 }, flashCol: { value: new THREE.Color(1, 1, 1) }, decay: { value: 0 }, moss: { value: 0 }, dissolve: { value: 0 }, glow: { value: 1 } };
-  const mat = new THREE.MeshLambertMaterial({ map: m.tex, alphaTest: 0.5, side: THREE.DoubleSide });
+  const mat = new THREE.MeshLambertMaterial({ map: m.tex, alphaTest: 0.5, side: THREE.DoubleSide, flatShading: true });
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uFlash = fx.flash; sh.uniforms.uFlashCol = fx.flashCol; sh.uniforms.uDecay = fx.decay; sh.uniforms.uMossC = fx.moss; sh.uniforms.uDissolve = fx.dissolve; sh.uniforms.uGlowK = fx.glow;
     sh.uniforms.uMossA = { value: new THREE.Color(VEYR.mossDark) }; sh.uniforms.uMossB = { value: new THREE.Color(VEYR.moss) }; sh.uniforms.uMossL = { value: new THREE.Color(VEYR.mossLight) }; sh.uniforms.uVein = { value: new THREE.Color(VEYR.vein) };
