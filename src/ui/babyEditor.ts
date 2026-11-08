@@ -1,5 +1,5 @@
-// The mirror pool: the Veyr child sees itself in still black water and chooses its flesh. Skin, underside,
-// markings, skull, eyes, maw, tentacles, growths, glow, gauntness and a name; the sculpt rebuilds live and it stares back.
+// The mirror pool: the Veyr child sees itself in still water and chooses how it looks: skin, belly, markings,
+// chub, tail, eyes, gills, back, crystal glow, cheeks and a name; the sculpt rebuilds live and it looks back at you.
 import * as THREE from 'three';
 import type { Screen } from '../app/engine';
 import type { Post } from '../gfx/post';
@@ -9,7 +9,7 @@ import { VeyrChild } from '../game/child';
 import { Fx } from '../game/fx';
 import { gbuf } from '../gfx/gbuf';
 import { clamp } from '../core/rand';
-import { type BabyLook, SKINS, BELLIES, PATCOLS, EYES, GLOWS, SKULLS, EYESETS, MAWS, GROWTHS, PATS, TENTS, randomLook, saveLook } from '../game/babyLook';
+import { type BabyLook, SKINS, BELLIES, PATCOLS, EYES, GLOWS, GILLS, EYESTYLES, BACKS, TAILS, PATS, randomLook, saveLook } from '../game/babyLook';
 
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
 
@@ -44,7 +44,7 @@ export class BabyEditor implements Screen {
     const gm = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x7affe0).multiplyScalar(1.6) }); gbuf(gm, 0);
     this.ring = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.025, 6, 48), gm); this.ring.rotation.x = Math.PI / 2; this.ring.position.y = 0.26; this.scene.add(this.ring);
     this.fx = new Fx(this.fxs, this.scene);
-    this.child = new VeyrChild(this.fx, 1.25, this.L);
+    this.child = new VeyrChild(this.fx, 1.25, this.L, { grown: true });
     this.child.root.position.y = 0.25; this.child.hatch = 1;
     this.scene.add(this.child.root);
     this.child.wave();
@@ -72,9 +72,9 @@ export class BabyEditor implements Screen {
     const opt = (p: HTMLElement, label: string, list: string[], k: keyof BabyLook) => {
       el('div', 'hdr fg-h', p, label);
       const row = el('div', 'fg-pats', p);
-      for (const o of list) { const b = el('button', 'fg-pat', row, o.toUpperCase()); b.dataset.k = k; b.dataset.v = o; b.addEventListener('click', () => { (this.L as any)[k] = k === 'tentacles' ? Number(o) : o; this.changed(); }); }
+      for (const o of list) { const b = el('button', 'fg-pat', row, o.toUpperCase()); b.dataset.k = k; b.dataset.v = o; b.addEventListener('click', () => { (this.L as any)[k] = o; this.changed(); }); }
     };
-    const step = (p: HTMLElement, label: string, k: 'gaunt' | 'reach', lo: number, hi: number, d: number) => {
+    const step = (p: HTMLElement, label: string, k: 'chub', lo: number, hi: number, d: number) => {
       el('div', 'hdr fg-h', p, label);
       const row = el('div', 'fg-pats', p);
       const v = el('span', 'small mir-val', row);
@@ -84,31 +84,33 @@ export class BabyEditor implements Screen {
       v.dataset.val = k;
     };
     sw(left, 'SKIN', SKINS, 'skin');
-    sw(left, 'UNDERSIDE', BELLIES, 'belly');
+    sw(left, 'BELLY', BELLIES, 'belly');
     opt(left, 'MARKINGS', PATS, 'pat');
     sw(left, 'MARKING COLOUR', PATCOLS, 'patCol');
-    opt(left, 'SKULL', SKULLS, 'skull');
-    step(left, 'GAUNTNESS', 'gaunt', 0, 1, 0.25);
-    opt(right, 'EYES', EYESETS, 'eyes');
+    step(left, 'CHUB', 'chub', 0, 1, 0.25);
+    opt(left, 'TAIL', TAILS, 'tail');
+    opt(right, 'EYES', EYESTYLES, 'eyes');
     sw(right, 'EYE COLOUR', EYES, 'eye');
-    opt(right, 'MAW', MAWS, 'maw');
-    opt(right, 'TENTACLES', TENTS.map(String), 'tentacles');
-    step(right, 'REACH', 'reach', 0, 1, 0.25);
-    opt(right, 'GROWTHS', GROWTHS, 'growth');
-    sw(right, 'GLOW', GLOWS, 'glow');
+    opt(right, 'GILLS', GILLS, 'gills');
+    opt(right, 'BACK', BACKS, 'back');
+    sw(right, 'CRYSTAL GLOW', GLOWS, 'glow');
+    el('div', 'hdr fg-h', right, 'CHEEKS');
+    const bl = el('div', 'fg-pats', right);
+    const blb = el('button', 'fg-pat', bl, 'BLUSH'); blb.dataset.k = 'blush'; blb.addEventListener('click', () => { this.L.blush = !this.L.blush; this.changed(); });
     const bot = panel('fg-bot', root);
     const act = el('div', 'mir-act', bot);
-    new Btn(act, { icon: 'dna', label: 'MUTATE', size: 'wide', tip: () => 'Let the flesh decide.' }, () => { const n = this.L.name; this.L = randomLook(); this.L.name = n; this.changed(); this.child.wave(); });
-    new Btn(act, { icon: 'heart', label: 'REACH', size: 'wide', tip: () => 'It reaches for you.' }, () => { this.child.wave(); sfx('call', 0.7, 0.5); });
+    new Btn(act, { icon: 'dna', label: 'SURPRISE ME', size: 'wide', tip: () => 'A whole new you.' }, () => { const n = this.L.name; this.L = randomLook(); this.L.name = n; this.changed(); this.child.wave(); });
+    new Btn(act, { icon: 'heart', label: 'WAVE', size: 'wide', tip: () => 'Say hi.' }, () => { this.child.wave(); sfx('call', 1.6, 0.5); });
     new Btn(act, { icon: 'core', label: 'BACK', size: 'wide', tip: () => 'Keep the old look. [Esc]' }, () => this.close(null));
-    new Btn(act, { icon: 'bio', label: 'BECOME THIS', size: 'wide', tip: () => 'Keep this form (remembered for every world).' }, () => { saveLook(this.L); sfx('build'); this.close(this.L); });
+    new Btn(act, { icon: 'bio', label: 'THIS IS ME', size: 'wide', tip: () => 'Keep this look (remembered for every world).' }, () => { saveLook(this.L); sfx('build'); this.close(this.L); });
     this.refresh(root);
     return root;
   }
   private refresh(root = this.root) {
     root.querySelectorAll<HTMLElement>('.chip').forEach((c) => c.classList.toggle('on', (this.L as any)[c.dataset.k!] === Number(c.dataset.c)));
     root.querySelectorAll<HTMLElement>('.fg-pat[data-v]').forEach((b) => b.classList.toggle('on', String((this.L as any)[b.dataset.k!]) === b.dataset.v));
-    root.querySelectorAll<HTMLElement>('[data-val]').forEach((v) => { const k = v.dataset.val as 'gaunt' | 'reach'; const i = Math.round(this.L[k] * 4); v.textContent = (k === 'gaunt' ? ['FED', 'LEAN', 'HOLLOW', 'STARVED', 'SKELETAL'] : ['COILED', 'SHORT', 'LONG', 'TRAILING', 'SPRAWLING'])[i]; });
+    root.querySelectorAll<HTMLElement>('.fg-pat[data-k="blush"]').forEach((b) => b.classList.toggle('on', this.L.blush));
+    root.querySelectorAll<HTMLElement>('[data-val]').forEach((v) => { const i = Math.round(this.L.chub * 4); v.textContent = ['ROUND', 'PLUMP', 'CHUBBY', 'PUDGY', 'BALLOON'][i]; });
   }
   private changed() { this.dirty = 0.08; this.refresh(); sfx('click', 1, 0.4); if (Math.random() < 0.25) this.child.wave(); }
 

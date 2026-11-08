@@ -130,8 +130,14 @@ export const ICONS: Record<string, string[]> = {
     '................', '......EEEE......', '.....EsssEe.....', '....EswsssEe....', '....EsssseEe....', '.....eEEEee.....', '......g..g......', '.....g.gg.g.....',
     '................', '......uuuu......', '....uuYYYYuu....', '...uYYyyyyYYu...', '..uYyyyyyyyyYu..', '.uYYYYYYYYYYYYu.', '.uuuuuuuuuuuuuu.', '................'],
   mirror: [
-    '.....vvvvvv.....', '...vvvvvvvvvv...', '..vvvvgvvvvvvv..', '..vvvvvgvvvvvv..', '..vvvvvvgvvvvv..', '..vvvvvvvvvvvv..', '...vkkvvvvkkv...', '...kkkvvvvkkk...',
-    '...vkkvvvvkkv...', '....vvvKKvvv....', '....VvvvvvvV....', '.....kwkwkwk....', '.....VkkkkkV....', '......VVVV......', '.......VV.......', '................'],
+    '................', '..yyyy....yyyy..', '.yykkyy..yykkyy.', '.yykkyy..yykkyy.', '..yyyymmmmyyyy..', '.mmmmmmmmmmmmmm.', 'mmmmmmmmmmmmmmmm', 'mmffmmmmmmmmffmm',
+    'mmMmmmmmmmmmmMmm', 'mmmMMMMMMMMMMmmm', 'mmwwwwwwwwwwwwmm', '.mwwwwwwwwwwwwm.', '..mwwwwwwwwwwm..', '...mmmmmmmmmm...', '................', '................'],
+  lode: [
+    '................', '......o.....u...', '...u.....o......', '........u....o..', '................', '....ss....ss....', '....ss....ss....', '....RR....RR....',
+    '....RR....RR....', '....RRr..rRR....', '.....RRRRRR.....', '......RRRR......', '................', '................', '................', '................'],
+  repel: [
+    '......RRRR......', '.....RRRRRR.....', '....RRr..rRR....', '....RR....RR....', '....RR....RR....', '....ss....ss....', '....ss....ss....', '................',
+    '...g...gg...g...', '..g..g....g..g..', '.g............g.', 'g..g........g..g', '................', '................', '................', '................'],
   pause: [
     '................', '................', '....bbb..bbb....', '....bBb..bBb....', '....bBb..bBb....', '....bBb..bBb....', '....bBb..bBb....', '....bBb..bBb....',
     '....bBb..bBb....', '....bBb..bBb....', '....bBb..bBb....', '....bbb..bbb....', '................', '................', '................', '................'],

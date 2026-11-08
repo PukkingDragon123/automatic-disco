@@ -173,11 +173,12 @@ export class SkinB {
     if ((dot(n, m) >= 0) !== flip) this.tri(a, b, c); else this.tri(a, c, b);
   }
   /** loft through rings of equal point count (seam point duplicated at the end); poles close the ends */
-  loft(rings: { pts: V3[]; v: number; w: Wt }[], us: number[], reg: Region, g: number,
+  loft(rings: { pts: V3[]; v: number; w: Wt | ((j: number) => Wt) }[], us: number[], reg: Region, g: number,
     o: { start?: V3 | null; end?: V3 | null; startV?: number; endV?: number; startW?: Wt; endW?: Wt; double?: boolean; flip?: boolean } = {}) {
     const n = us.length;
     const cents: V3[] = rings.map((r) => centroid(r.pts.slice(0, n - 1)));
-    const mk = (gg: number) => rings.map((r) => r.pts.map((p, j) => this.vert(p, reg.x + us[j] * reg.w, reg.y + (1 - r.v) * reg.h, r.w, gg)));
+    const W = (r: { w: Wt | ((j: number) => Wt) }, j: number) => (typeof r.w === 'function' ? r.w(j) : r.w);
+    const mk = (gg: number) => rings.map((r) => r.pts.map((p, j) => this.vert(p, reg.x + us[j] * reg.w, reg.y + (1 - r.v) * reg.h, W(r, j), gg)));
     const emit = (flip: boolean, rows: number[][]) => {
       for (let i = 0; i + 1 < rows.length; i++) {
         const ins = mid(cents[i], cents[i + 1]);
@@ -195,9 +196,9 @@ export class SkinB {
     emit(!!o.flip, idx);
     if (o.double) emit(!o.flip, mk(g + 5000));
     const all = centroid(cents);
-    const pole = (P: V3, ring: number[], v: number, w: Wt) => {
+    const pole = (P: V3, ring: number[], v: number, w: Wt | ((j: number) => Wt)) => {
       for (let j = 0; j + 1 < n; j++) {
-        const pi = this.vert(P, reg.x + ((us[j] + us[j + 1]) / 2) * reg.w, reg.y + (1 - v) * reg.h, w, g);
+        const pi = this.vert(P, reg.x + ((us[j] + us[j + 1]) / 2) * reg.w, reg.y + (1 - v) * reg.h, typeof w === 'function' ? w(j) : w, g);
         this.triOut(pi, ring[j], ring[j + 1], all, !!o.flip);
       }
     };
@@ -282,6 +283,8 @@ export interface SacOpt {
   start?: boolean; end?: boolean; up?: V3; tv?: number[]; double?: boolean; flip?: boolean;
   /** tip pull for the end caps (fraction of radius) */
   cap?: number;
+  /** per-vertex weights (a = angle around, t = 0..1 along); null falls back to the ring's */
+  wv?: (a: number, t: number) => Wt | null;
 }
 /** a lofted segment along explicit points with radii (u, v) and per-point weights */
 export function sac(B: SkinB, reg: Region, g: number, pts: V3[], radii: [number, number][], w: Wt[] | ((i: number) => Wt), o: SacOpt = {}) {
@@ -300,7 +303,8 @@ export function sac(B: SkinB, reg: Region, g: number, pts: V3[], radii: [number,
       const f = fr[i];
       P.push([c[0] + f.u[0] * cu + f.v[0] * sv, c[1] + f.u[1] * cu + f.v[1] * sv, c[2] + f.u[2] * cu + f.v[2] * sv]);
     }
-    return { pts: P, v: tv[i], w: W(i) };
+    const wi = W(i);
+    return { pts: P, v: tv[i], w: o.wv ? (j: number) => o.wv!(-Math.PI + (Math.PI * 2 * j) / n, t) ?? wi : wi };
   });
   const capK = o.cap ?? 0.5;
   const tip = (i: number, dir: number): V3 => {

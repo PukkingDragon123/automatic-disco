@@ -176,7 +176,7 @@ async function testChild() {
   const { randomLook, DEFAULT_LOOK } = await import('./game/babyLook');
   const { Rand } = await import('./core/rand');
   const lr = new Rand(Number(P.get('lk') ?? 0));
-  const ch = new VeyrChild(fx, 1.25, P.has('lk') ? randomLook(() => lr.next()) : DEFAULT_LOOK); ch.hatch = 1; scene.add(ch.root);
+  const ch = new VeyrChild(fx, 1.25, P.has('lk') ? randomLook(() => lr.next()) : DEFAULT_LOOK, { grown: !P.has('small') }); ch.hatch = 1; scene.add(ch.root);
   if (P.has('wave')) ch.wave();
   const cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 100);
   const yaw = Number(P.get('yaw') ?? 0.4);

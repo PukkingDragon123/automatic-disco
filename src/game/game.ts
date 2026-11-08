@@ -59,6 +59,7 @@ export class Game implements Screen {
   private pulls: Pull[] = [];
   private storms: { x: number; z: number; t: number }[] = [];
   private shaping: { x: number; z: number; R: number; amt: number; t: number }[] = [];
+  private knocks: { c: Creature; vx: number; vz: number; t: number }[] = [];
   private overlay: HTMLCanvasElement; private og: CanvasRenderingContext2D;
   private drag: { x: number; y: number; on: boolean } | null = null;
   private hoverC: Creature | null = null; private hoverB: Building | null = null;
@@ -379,6 +380,43 @@ export class Game implements Screen {
       return;
     }
     if (a === 'shape') { this.shapeAt(mx, my, 1); return; }
+    if (a === 'repel') {
+      if (!g) return;
+      if (!h.inField(g.x, g.z)) { toast('Outside your field', 'warn', 1400); return; }
+      h.spend(a); this.setMode({ k: 'normal' });
+      const R = 5.5;
+      this.child.cast(g); this.ringFx(g, R, this.child.lookData.glow);
+      sfx('pulse', 1.6, 0.9); sfx('zap', 0.7, 0.6); this.cam.shake(0.4, 0.4);
+      for (let i = 0; i < 16; i++) { const an = (i / 16) * Math.PI * 2; const p = new THREE.Vector3(g.x + Math.cos(an) * R, 0, g.z + Math.sin(an) * R); p.y = this.world.surfaceY(p.x, p.z) + 0.3; this.fx.arc(g.clone().add(new THREE.Vector3(0, 0.4, 0)), p, 0.1, this.child.lookData.glow, 0.25); }
+      this.world.near(g.x, g.z, R, (c) => {
+        if (c.dead || c.faction === 'veyr') return;
+        const dx = c.x - g.x, dz = c.z - g.z, d = Math.hypot(dx, dz) || 0.1, k = (1 - d / R) * 13 / Math.max(1, c.mass ** 0.15);
+        this.knocks.push({ c, vx: (dx / d) * k, vz: (dz / d) * k, t: 0.5 });
+        c.stunT = Math.max(c.stunT, 1.4); this.world.damage(c, 3, null);
+      });
+      this.onAbility?.(a, true);
+      return;
+    }
+    if (a === 'lode') {
+      if (!g) return;
+      const R2 = this.region;
+      const di = R2.deposits.findIndex((d) => d.amount > 0 && Math.hypot(d.x - g.x, d.z - g.z) < d.r + 2.5);
+      if (di < 0) { toast('Aim at a ferrite or crystal seam', 'warn', 1500); return; }
+      const dep = R2.deposits[di];
+      if (!h.inField(dep.x, dep.z)) { toast('That seam is outside your field', 'warn', 1500); return; }
+      h.spend(a); this.setMode({ k: 'normal' });
+      const amt = Math.min(dep.amount, dep.kind === 'crystal' ? 45 : 32);
+      dep.amount -= amt; h.res.min += amt;
+      const core = h.core!, dy = this.world.surfaceY(dep.x, dep.z);
+      this.child.cast(new THREE.Vector3(dep.x, dy, dep.z));
+      for (let i = 0; i < 16; i++) { const ox = (Math.random() - 0.5) * dep.r * 1.5, oz = (Math.random() - 0.5) * dep.r * 1.5; this.fx.mote(dep.x + ox, dy + 0.3, dep.z + oz, core.x, core.y + 2.5, core.z, dep.kind === 'crystal' ? 0x9ad8ff : 0xc87a4a, 3 + Math.random() * 2); }
+      for (let i = 0; i < 6; i++) this.fx.arc(this.child.headPos(), new THREE.Vector3(dep.x + (Math.random() - 0.5) * 2, dy + 0.4, dep.z + (Math.random() - 0.5) * 2), 0.12, this.child.lookData.glow, 0.35);
+      this.fx.burst(dep.x, dy + 0.4, dep.z, 30, dep.kind === 'crystal' ? 0x9ad8ff : 0x8a5a3a, { speed: 3, up: 5, size: 4, life: 1.2, grav: 4 });
+      sfx('crack', 1.4, 0.8); sfx('zap', 0.8, 0.5); this.cam.shake(0.2, 0.3);
+      toast(`+${Math.round(amt)} minerals torn from the seam`, 'good', 1800);
+      this.onAbility?.(a, true);
+      return;
+    }
     if (a === 'pulse' || a === 'bloom' || a === 'storm') {
       if (!g) return;
       if (!h.inField(g.x, g.z)) { toast('Outside your field', 'warn', 1400); return; }
@@ -538,7 +576,7 @@ export class Game implements Screen {
       disabled: () => h.can(a) || false, active: () => this.mode.k === 'ability' && (this.mode as any).a === a,
       run: () => this.setMode({ k: 'ability', a }), cost: String(ABILITIES[a].charge || ABILITIES[a].bio),
     });
-    const abilities = (['snare', 'pulse', 'pull', 'shape', 'bloom', 'lance', 'storm'] as Ability[]).map(ab);
+    const abilities = (['snare', 'pulse', 'pull', 'shape', 'repel', 'lode', 'bloom', 'lance', 'storm'] as Ability[]).map(ab);
     if (this.menu === 'build') {
       const cmds: Cmd[] = BUILD_ORDER.map((k) => ({
         icon: k, key: BDEFS[k].key, name: BDEFS[k].name, cost: String(BDEFS[k].bio),
@@ -572,8 +610,7 @@ export class Game implements Screen {
         { icon: 'attack', key: 'Z', name: 'Attack-move', tip: () => 'Advance and fight anything hostile on the way.', active: () => this.mode.k === 'amove', run: () => this.setMode({ k: 'amove' }) },
         { icon: 'stop', key: 'X', name: 'Stop', tip: () => 'Drop all orders.', run: () => { for (const c of units) { c.order = null; c.mind = 'idle'; c.homeX = c.x; c.homeZ = c.z; } } },
         { icon: 'hold', key: 'H', name: 'Hold ground', tip: () => 'Stay put, strike anything in reach.', run: () => { for (const c of units) { c.order = { kind: 'hold', x: c.x, z: c.z }; c.homeX = c.x; c.homeZ = c.z; } } },
-        ...abilities,
-        { icon: 'brood', key: 'B', name: 'Grow a structure', tip: () => 'Structures grow from established moss inside your field.', run: () => { this.menu = 'build'; this.hud.invalidate(); } },
+        ...abilities.filter((x) => x.icon !== 'bloom'),
       ] as Cmd[];
     }
     return [
@@ -582,8 +619,6 @@ export class Game implements Screen {
       { icon: 'brood', key: 'B', name: 'Grow a structure', tip: () => 'Structures grow from established moss inside your field.', run: () => { this.menu = 'build'; this.hud.invalidate(); } },
       { icon: 'bloom', key: 'G', name: 'Direct growth', tip: () => 'Paint where your moss should spread first (left drag). Right drag erases. [G] again to stop.', active: () => this.mode.k === 'paint', run: () => this.setMode(this.mode.k === 'paint' ? { k: 'normal' } : { k: 'paint' }) },
       { icon: 'builder', key: 'C', name: 'Gene Forge', tip: () => 'Design a species from the genes you own.', run: () => this.opts.hooks?.openBuilder?.(this) },
-      { icon: 'tree', key: 'T', name: 'Tree of Descent', tip: () => 'Every species you have met or made.', run: () => this.opts.hooks?.openTree?.(this) },
-      { icon: 'pause', key: 'P', name: 'Pause', tip: () => 'Pause / resume.', active: () => this.paused, run: () => { this.paused = !this.paused; } },
     ];
   }
 
@@ -604,6 +639,7 @@ export class Game implements Screen {
       if (Math.random() < simDt * 0.4) { const c = this.world.creatures[Math.floor(Math.random() * this.world.creatures.length)]; if (c && !c.dead && c.mesh.visible) sfx('call', c.size, this.audible(c.x, c.z) * 0.35); }
     } else for (const h of this.world.hives) for (const b of h.buildings) b.sync(dt, this.world.time);
     this.hatching(dt);
+    this.child.setGrowth(this.veyr.emLevel);
     for (const f of this.update$) f(simDt);
     this.story?.update(simDt, dt);
     this.fx.update(simDt > 0 ? simDt : dt * 0.15, this.engine.h, this.cam.cam.fov);
@@ -666,6 +702,13 @@ export class Game implements Screen {
       c.x += (dx / d) * sp; c.z += (dz / d) * sp; c.y = this.world.surfaceY(c.x, c.z); c.air = Math.sin(Math.min(1, p.t / 2.6) * Math.PI) * 0.8;
       if (!c.dead) c.stunT = 0.2;
       if (Math.random() < dt * 14) this.fx.arc(this.child.headPos(), new THREE.Vector3(c.x, c.y + c.air + c.size * 0.4, c.z), 0.08, 0xb8a0ff, 0.25);
+    }
+    for (let i = this.knocks.length - 1; i >= 0; i--) {
+      const k = this.knocks[i], c = k.c; k.t -= dt;
+      if (k.t <= 0 || c.dead) { c.air = 0; this.knocks.splice(i, 1); continue; }
+      const N = this.region.N, nx = Math.min(N - 1, Math.max(1, c.x + k.vx * dt)), nz = Math.min(N - 1, Math.max(1, c.z + k.vz * dt));
+      if (this.region.heightAt(nx, nz) - this.region.heightAt(c.x, c.z) < 1.6) { c.x = nx; c.z = nz; }
+      c.y = this.world.surfaceY(c.x, c.z); c.air = Math.sin((1 - k.t / 0.5) * Math.PI) * 0.9;
     }
     for (let i = this.shaping.length - 1; i >= 0; i--) {
       const s = this.shaping[i], step = Math.min(dt, s.t); s.t -= dt;
