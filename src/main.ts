@@ -1,4 +1,4 @@
-// Boot. ?test=world renders a region for visual QA; the full flow lives in src/game/flow.ts.
+// Boot: the full game flow (src/flow.ts); ?test=world|eco|game|studio|child|mirror|ui open single pieces for visual QA.
 import * as THREE from 'three';
 import { Engine } from './app/engine';
 import { Input } from './app/input';
@@ -238,4 +238,14 @@ else if (P.get('test') === 'child') testChild();
 else if (P.get('test') === 'game') testGame();
 else if (P.get('test') === 'ui') testUI();
 else if (P.get('test') === 'eco') testEco();
-else if (P.get('test') === 'world' || !P.has('test')) testWorld();
+else if (P.get('test') === 'world') testWorld();
+else startFlow();
+
+async function startFlow() {
+  const { Flow } = await import('./flow');
+  (await import('./ui/kit')).setupUI();
+  const f = new Flow(engine, input);
+  (window as any).__flow = f;
+  f.menu();
+  engine.start();
+}

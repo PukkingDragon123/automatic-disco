@@ -212,6 +212,7 @@ export class Game implements Screen {
   private bindInput() {
     const cv = this.engine.canvas;
     cv.addEventListener('pointerdown', (e) => {
+      if (!this.act) return;
       if (this.harvest.blocking || qteActive() || this.storyBlock) {
         if (this.harvest.blocking && e.button === 0) this.harvest.click(e.clientX, e.clientY, this.cam.cam);
         return;
@@ -228,11 +229,13 @@ export class Game implements Screen {
       }
     });
     addEventListener('pointermove', (e) => {
+      if (!this.act) return;
       if (this.harvest.blocking) { this.harvest.hoverAt(e.clientX, e.clientY, this.cam.cam); return; }
       if (this.drag && this.mode.k === 'paint' && this.input.buttons.size) this.paintStroke(e.clientX, e.clientY, this.input.buttons.has(0));
       else if (this.drag && Math.hypot(e.clientX - this.drag.x, e.clientY - this.drag.y) > 6) this.drag.on = true;
     });
     addEventListener('pointerup', (e) => {
+      if (!this.act) return;
       if (e.button !== 0 || !this.drag) { if (e.button === 2 && this.mode.k === 'paint') this.drag = null; return; }
       const d = this.drag; this.drag = null;
       if (this.mode.k === 'paint') return;
@@ -240,7 +243,7 @@ export class Game implements Screen {
       if (d.on) this.boxSelect(d.x, d.y, e.clientX, e.clientY, e.shiftKey);
       else this.clickSelect(e.clientX, e.clientY, e.shiftKey);
     });
-    this.input.onKey((e) => this.key(e));
+    this.offKey = this.input.onKey((e) => { if (this.act) this.key(e); });
   }
   private key(e: KeyboardEvent) {
     if (this.harvest.blocking || qteActive() || this.storyBlock) return;
@@ -798,8 +801,9 @@ export class Game implements Screen {
   }
 
   render(post: Post, t: number) { post.render(this.world.scene, this.cam.cam, this.world.fxScene, t); }
-  suspend() { this.hud.root.style.display = 'none'; this.overlay.style.display = 'none'; }
-  resume() { this.hud.root.style.display = ''; this.overlay.style.display = ''; this.hud.invalidate(); this.input.endFrame(); }
+  private act = true; private offKey: (() => void) | null = null;
+  suspend() { this.act = false; this.hud.root.style.display = 'none'; this.overlay.style.display = 'none'; }
+  resume() { this.act = true; this.hud.root.style.display = ''; this.overlay.style.display = ''; this.hud.invalidate(); this.input.endFrame(); }
   /** a finished design becomes a species of yours */
   addDesign(design: import('../life/design').Design, parent: number | null, helixCost: number) {
     const sp = this.run.reg.add(design, 'veyr', parent, 'design', this.world.time);
@@ -820,5 +824,5 @@ export class Game implements Screen {
     new Btn(row, { icon: 'heart', label: 'LET HIM REST', size: 'big', tip: () => '<h4>Lay him to rest</h4>A pale flower grows where he lies. +8 helix.' }, () => fin(false));
   }
   get vaults() { return this.veyr.buildings.filter((b) => b.def.kind === 'vault' && b.done).length; }
-  dispose() { this.hud.dispose(); this.overlay.remove(); ui().innerHTML = ''; }
+  dispose() { this.act = false; this.offKey?.(); (window as any).__game === this && ((window as any).__game = null); this.hud.dispose(); this.overlay.remove(); ui().innerHTML = ''; }
 }
