@@ -23,7 +23,7 @@ export function rockColours(pal: Palette) {
   return {
     granite: pal.rock,
     sandstone: mixHex(mixHex(pal.sand, pal.clay, 0.5), 0xc87a46, 0.18),
-    basalt: mixHex(pal.basalt, 0x4a4650, 0.3),
+    basalt: mixHex(pal.basalt, 0x6e6a72, 0.5),
     limestone: mixHex(pal.rock, 0xe0d8c4, 0.55),
     moss: scaleHex(mixHex(mixHex(pal.grass, 0x42742c, 0.55), pal.foliage[0], 0.15), 0.82),
   };

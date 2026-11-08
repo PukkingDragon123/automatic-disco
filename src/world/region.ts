@@ -506,7 +506,7 @@ export class Region {
       if (p.kind === 'pebble' || p.kind === 'river' || p.kind === 'log' || p.kind === 'stump') continue;
       const c = Math.cos(p.yaw), sn = Math.sin(p.yaw);
       const feet: [number, number, number, number][] = p.kind === 'arch' ? [[-p.sx, 0, p.sz * 1.1, p.sz * 1.1], [p.sx, 0, p.sz * 1.1, p.sz * 1.1]] : [[0, 0, p.sx, p.sz]];
-      const lift = Math.min(1.8, p.sy * (p.kind === 'slab' ? 0.75 : 0.62));
+      const lift = Math.min(1.7, p.sy * (p.kind === 'slab' ? 0.6 : p.kind === 'spire' || p.kind === 'column' ? 0.8 : 0.5));
       for (const [fx, fz, rx, rz] of feet) {
         const cx = p.x + fx * c - fz * sn, cz = p.z + fx * sn + fz * c;
         const ext = Math.ceil(Math.max(rx, rz) + 2);
@@ -515,7 +515,7 @@ export class Region {
           const i = z * N + x;
           // footprint test in the rock's own frame: all four cell corners inside the base ellipse
           const inE = (px: number, pz: number, k: number) => { const dx = px - cx, dz = pz - cz, u = dx * c + dz * sn, v = -dx * sn + dz * c; return (u / (rx * k)) ** 2 + (v / (rz * k)) ** 2 <= 1; };
-          const core = inE(x, z, 0.9) && inE(x + 1, z, 0.9) && inE(x, z + 1, 0.9) && inE(x + 1, z + 1, 0.9);
+          const core = inE(x, z, 0.78) && inE(x + 1, z, 0.78) && inE(x, z + 1, 0.78) && inE(x + 1, z + 1, 0.78);
           const centre = (p.kind === 'spire' || p.kind === 'column') && inE(x + 0.5, z + 0.5, 1);
           if (core || centre) {
             this.solid[i] = 1; this.fert[i] = 0;

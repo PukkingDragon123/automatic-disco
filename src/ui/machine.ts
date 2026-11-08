@@ -302,7 +302,7 @@ export function plateTile(tone: 'olive' | 'gun' | 'deep' | 'phos' = 'olive') {
       return p.url();
     }
     const R = tone === 'olive' ? OL : tone === 'gun' ? GM : GM.slice(0, 6);
-    metal(p, 0, 0, 64, 64, R, { tile: true, seed: tone === 'olive' ? 11 : 17, base: tone === 'deep' ? 2.3 : R.length * 0.48, rough: tone === 'deep' ? 0.45 : 0.6, brushed: 0.4, scratches: tone === 'deep' ? 0.12 : 1.1, grime: tone === 'deep' ? 0.25 : 0.45, rust: tone === 'olive' ? 0.6 : 0, chips: tone === 'olive' ? 0.9 : 0 });
+    metal(p, 0, 0, 64, 64, R, { tile: true, seed: tone === 'olive' ? 11 : 17, base: tone === 'deep' ? 2.3 : R.length * 0.48, rough: tone === 'deep' ? 0.45 : 0.6, brushed: 0.4, scratches: tone === 'deep' ? 0 : 1.1, grime: tone === 'deep' ? 0.25 : 0.45, rust: tone === 'olive' ? 0.6 : 0, chips: tone === 'olive' ? 0.9 : 0 });
     return p.url();
   });
 }

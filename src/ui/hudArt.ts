@@ -190,7 +190,7 @@ export function wheelArt() {
   const { w, h, wx, wy, ws } = WHEEL;
   const p = housing(w, h, { cut: [12, 0, 0, 0], seed: 88, noRivets: ['b', 'r'], rivetStep: 12, seamsX: [136] });
   // name CRT
-  crtWell(p, 10, 6, 122, 17, 2);
+  crtWell(p, 10, 5, 122, 16, 2);
   // a deep socket the wheel turns in
   const cx = wx + ws / 2, cy = wy + ws / 2;
   for (let y = wy - 4; y < wy + ws + 4; y++) for (let x = wx - 4; x < wx + ws + 4; x++) {

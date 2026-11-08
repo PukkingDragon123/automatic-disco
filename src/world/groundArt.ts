@@ -37,7 +37,8 @@ function blade(pc: PixelCanvas, x: number, y: number, len: number, lean: number,
 function tussock(r: Rand, pal: Palette, kind: 'grass' | 'tall' | 'dry', size: number): PixelCanvas {
   const W = Math.round(14 + size * 8), H = Math.round(kind === 'tall' ? 18 + size * 8 : 10 + size * 7);
   const pc = canvas(W, H + 2);
-  const g0 = kind === 'dry' ? mixHex(pal.grassDry, pal.grass, 0.25) : pal.grass;
+  // living blades lean green whatever the turf colour; the planet's hue still shows through
+  const g0 = kind === 'dry' ? mixHex(pal.grassDry, pal.grass, 0.25) : mixHex(pal.grass, 0x6e9a3a, 0.3);
   const ramps = [
     R(g0, 7, 0.62), R(mixHex(g0, 0x8ab040, 0.22), 7, 0.6), R(mixHex(g0, 0x2e5a34, 0.25), 7, 0.6),
     R(mixHex(g0, pal.grassDry, kind === 'dry' ? 0.6 : 0.3), 7, 0.55),

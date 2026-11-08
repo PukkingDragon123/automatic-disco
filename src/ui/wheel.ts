@@ -68,21 +68,18 @@ function chamber(sel: boolean) {
   }
   if (sel) { chamberSel = p; return p; } chamberPix = p; return p;
 }
-/** spring pawl that rides the ratchet teeth, 15x18 */
+/** spring pawl that rides the ratchet teeth, 15x14: a brass pivot boss, a hardened claw, a coil spring */
 function pawlURL() {
-  const p = new Pix(15, 18);
-  // pivot boss
-  for (let y = 0; y < 7; y++) for (let x = 4; x < 11; x++) { const d = Math.hypot(x - 7, y - 3); if (d <= 3.4) p.set(x, y, d > 2.6 ? INK : dv(BR, 5 - (x - 7) * 0.5 - (y - 3) * 0.6, x, y)); }
-  p.set(7, 3, GM[2]); p.set(6, 2, BR[8]);
-  // the claw: a tapering brass arm with a hardened steel tip
-  for (let y = 6; y < 17; y++) {
-    const half = Math.max(1, Math.round(3 - (y - 6) * 0.22));
-    for (let x = 7 - half; x <= 7 + half; x++) p.set(x, y, x === 7 - half ? BR[7] : x === 7 + half ? BR[2] : y > 13 ? GM[7] : BR[5]);
+  const p = new Pix(15, 14);
+  for (let y = 0; y < 7; y++) for (let x = 3; x < 12; x++) { const d = Math.hypot(x - 7, y - 3); if (d <= 3.4) p.set(x, y, d > 2.6 ? INK : dv(BR, 5 - (x - 7) * 0.5 - (y - 3) * 0.6, x, y)); }
+  p.set(7, 3, GM[2]); p.set(6, 2, BR[8]); p.set(8, 3, GM[5]);
+  for (let y = 6; y < 13; y++) {
+    const half = Math.max(0, Math.round(2.2 - (y - 6) * 0.36));
+    for (let x = 7 - half; x <= 7 + half; x++) p.set(x, y, x === 7 - half && half ? BR[7] : x === 7 + half && half ? BR[2] : y > 9 ? GM[8] : BR[5]);
     p.set(7 - half - 1, y, INK); p.set(7 + half + 1, y, INK);
   }
-  p.set(7, 17, INK); p.set(6, 16, INK); p.set(8, 16, INK);
-  // spring coil to the housing
-  for (let k = 0; k < 4; k++) { p.set(12, 4 + k * 2, GM[8]); p.set(13, 5 + k * 2, GM[4]); }
+  p.set(7, 13, INK);
+  for (let k = 0; k < 3; k++) { p.set(12, 3 + k * 2, GM[8]); p.set(13, 4 + k * 2, GM[4]); }
   return p.url();
 }
 /** the red mushroom button in its chrome collar, 5 frames of 36x36: idle, hover, pressed, dead, armed */
@@ -143,13 +140,13 @@ export class AbilityWheel {
     this.desc.style.backgroundImage = `url(${descArt().url()})`;
     this.descTxt = place(el('div', 'scr wl-dtxt', this.desc), 7, 7, 158, 48);
     // name CRT
-    this.crt = place(el('div', 'scr wl-crt', this.root), 10, 6, 122, 17);
+    this.crt = place(el('div', 'scr wl-crt', this.root), 10, 5, 122, 16);
     this.nameEl = el('div', 'wl-name', this.crt); this.costEl = el('div', 'wl-cost', this.crt);
     // the dial
     this.cv = place(el('canvas', 'wl-dial', this.root), W.wx, W.wy, SZ, SZ);
     this.cv.width = SZ; this.cv.height = SZ;
     this.g = this.cv.getContext('2d')!; this.img = this.g.createImageData(SZ, SZ);
-    this.pawl = place(el('div', 'wl-pawl', this.root), W.wx + C - 7, W.wy - 12, 15, 18);
+    this.pawl = place(el('div', 'wl-pawl', this.root), W.wx + C - 7, W.wy - 8, 15, 14);
     this.pawl.style.backgroundImage = `url(${pawlURL()})`;
     this.fire = place(el('div', 'wl-fire', this.root), W.wx + C - 18, W.wy + C - 18, 36, 36);
     this.fire.style.backgroundImage = `url(${fireSheet()})`;

@@ -97,12 +97,14 @@ function boulderShape(nz: Noise, r: Rand, level: number, o: { rough: number; cut
     for (const [c, d] of cuts) { const s = x * c[0] + y * c[1] + z * c[2]; if (s > d) { const k = (s - d) * 0.94; x -= c[0] * k; y -= c[1] * k; z -= c[2] * k; } }
     p[v * 3] = x; p[v * 3 + 1] = y; p[v * 3 + 2] = z;
   }
-  // normalise into the unit box: base at y = 0, top at 1, widest radius 1
-  let y0 = 1e9, y1 = -1e9, rm = 0;
-  for (let v = 0; v < n; v++) { y0 = Math.min(y0, p[v * 3 + 1]); y1 = Math.max(y1, p[v * 3 + 1]); rm = Math.max(rm, hyp(p[v * 3], p[v * 3 + 2])); }
+  // normalise into the unit box: base at y = 0, top at 1, reaching 0.97 of the box on x and z (so the requested
+  // size is the size you see, give or take the odd bump)
+  let y0 = 1e9, y1 = -1e9, xm = 0, zm = 0;
+  for (let v = 0; v < n; v++) { y0 = Math.min(y0, p[v * 3 + 1]); y1 = Math.max(y1, p[v * 3 + 1]); xm = Math.max(xm, Math.abs(p[v * 3])); zm = Math.max(zm, Math.abs(p[v * 3 + 2])); }
   for (let v = 0; v < n; v++) {
     let y = (p[v * 3 + 1] - y0) / (y1 - y0);
-    let s = 1 / rm;
+    let s = 1;
+    p[v * 3] *= 0.97 / xm; p[v * 3 + 2] *= 0.97 / zm;
     if (o.layers) { // bedding: soft beds weather back, hard ones stand proud as ledges
       const L = o.layers, b = Math.floor(y * L), fr = y * L - b;
       s *= 1 - (o.recess ?? 0.08) * (hashL(b, 3) * 0.8 + 0.2) * Math.sin(Math.PI * fr) ** 0.5;
@@ -240,7 +242,7 @@ function columns(nz: Noise, r: Rand, p: RockPiece) {
       const a = (k / 6) * Math.PI * 2 + Math.PI / 6, x = Math.cos(a) * rad, z = Math.sin(a) * rad;
       return [cx + x, y + (tilt ? x * tx + z * tz : 0), cz + z];
     });
-    const bot = ring(rc, -0.45, false), mid = ring(rc, ht - ch, true), top = ring(rc - ch * 1.2, ht, true);
+    const bot = ring(rc, -0.45, false), mid = ring(rc, ht - ch, true), top = ring(rc - ch * 1.6, ht, true);
     const cTop: V3 = [cx, ht, cz];
     for (let k = 0; k < 6; k++) {
       const k2 = (k + 1) % 6;

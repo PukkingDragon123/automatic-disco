@@ -143,7 +143,7 @@ export class Flow {
     const row = el('div', 'h-row', p);
     const close = () => { p.remove(); g.paused = was; };
     new Btn(row, { icon: 'core', label: 'RESUME', size: 'big' }, close);
-    new Btn(row, { icon: 'mirror', label: 'MIRROR', size: 'wide' }, () => { close(); g.openMirror(); });
+    new Btn(row, { icon: 'mirror', label: 'ASSEMBLY', size: 'wide' }, () => { close(); g.openMirror(); });
     new Btn(row, { icon: 'planet', label: 'TO ORBIT', size: 'wide', tip: () => 'Leave this region for now (it stays unclaimed). Your genes and designs are kept.' }, () => { p.remove(); this.run!.helix = g.veyr.res.helix; this.persist(); this.planetView(); });
     new Btn(row, { icon: 'skull', label: 'QUIT', size: 'wide', tip: () => 'Back to the void. The world is saved at its last orbit.' }, () => { p.remove(); this.menu(); });
   }

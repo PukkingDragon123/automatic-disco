@@ -46,9 +46,10 @@ if (abs(iParam.w) > 1.5) {
   // wind: stiffness k scales the bend; blades and stems bend from the root (tip-weighted), trees lean from the
   // trunk with a slow sway of their own; a fast flutter rides on the gusts
   float yy2 = yy * yy;
-  float flex = tree ? 0.13 : 0.5 * k;
+  // tip travel in a full gust: ~35% of the height for grass, a few percent for a tree
+  float flex = tree ? 0.035 : 0.26 * k;
   vec2 bendW = wnd.xy * flex;
-  float flutter = sin(t * (5.5 + k * 3.0) + iPos.x * 1.7) * (0.04 + 0.1 * wnd.z) * k * (tree ? 0.15 : 1.0);
+  float flutter = sin(t * (5.5 + k * 3.0) + iPos.x * 1.7) * (0.015 + 0.04 * wnd.z) * k * (tree ? 0.2 : 1.0) * uWind;
   float bend = flutter + (tree ? sin(t * 0.7 + iPos.z * 0.13) * 0.012 : 0.0);
   float sx = 1.0, sy = 1.0;
   if (typ > 0.5 && typ < 1.5) { float b = sin(t * 1.7 * spd); sx = 1.0 + b * 0.06 * yy; sy = 1.0 + b * 0.04; }
@@ -81,14 +82,14 @@ const FLUTTER = /* glsl */`
 vec2 fTex = floor(vMapUv * 2048.0);
 float fBlk = h2(floor(fTex / 3.0) + floor(uTime * 6.0 + h2(floor(fTex / 7.0)) * 4.0) * 1.37);
 vec2 fUv = vMapUv;
-if (vFlut > 0.0 && fBlk > 1.0 - vFlut * 0.22) fUv.x += (fBlk > 1.0 - vFlut * 0.11 ? 1.0 : -1.0) / 2048.0;
+if (vFlut > 0.0 && fBlk > 1.0 - vFlut * 0.13) fUv.x += (fBlk > 1.0 - vFlut * 0.065 ? 1.0 : -1.0) / 2048.0;
 vec4 sampledDiffuseColor = texture2D(map, fUv);
 `;
 
 /** sqrt-based length (Math.hypot is several times slower in the hot loops) */
 const hyp = (a: number, b: number, c = 0) => Math.sqrt(a * a + b * b + c * c);
 /** wind strength by biome: open steppe and savanna are windy, the jungle floor is still */
-const WIND: Partial<Record<string, number>> = { meadow: 1, jungle: 0.55, savanna: 1.25, marsh: 0.8, highland: 1.35, tundra: 1.45, desert: 1.1, crystal: 0.9, ashland: 0.9, coast: 1.3 };
+const WIND: Partial<Record<string, number>> = { meadow: 1, jungle: 0.55, savanna: 1.15, marsh: 0.8, highland: 1.2, tundra: 1.25, desert: 1.05, crystal: 0.9, ashland: 0.9, coast: 1.2 };
 const STIFF: Partial<Record<GroundKind, number>> = { grass: 1.2, tall: 1.45, dry: 1.1, sedge: 1.0, flower: 1.0, fern: 0.6, clover: 0.2, mush: 0.05, pebble: 0, litter: 0, twig: 0 };
 
 export class Flora {
@@ -255,6 +256,16 @@ export class Flora {
         const X = Math.floor(p[0]) + dx, Z = Math.floor(p[2]) + dz; if (X < 0 || Z < 0 || X >= N || Z >= N) continue;
         const d = hyp(X + 0.5 - p[0], Z + 0.5 - p[2]); if (d > rad) continue;
         this.shade[Z * N + X] = Math.max(0.45, this.shade[Z * N + X] - k * (1 - d / rad));
+      }
+    }
+    // contact occlusion: the ground darkens where it tucks in under rocks and logs
+    for (const p of R.rocks) {
+      if (p.kind === 'pebble') continue;
+      const rr = Math.max(p.sx, p.sz) + 1.1, ext = Math.ceil(rr);
+      for (let z = Math.floor(p.z) - ext; z <= Math.floor(p.z) + ext; z++) for (let x = Math.floor(p.x) - ext; x <= Math.floor(p.x) + ext; x++) {
+        if (!R.inside(x, z)) continue;
+        const d = hyp(x + 0.5 - p.x, z + 0.5 - p.z) / rr; if (d > 1) continue;
+        const i = z * N + x; this.shade[i] = Math.max(0.45, this.shade[i] - 0.22 * (1 - d) * (p.kind === 'river' ? 0.5 : 1));
       }
     }
     this.n = inst.length;

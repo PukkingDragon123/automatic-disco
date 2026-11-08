@@ -36,7 +36,10 @@ vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
   vec2 rip = vec2(vn(p * 2.3 + t * 0.4), vn(p * 2.3 - t * 0.35 + 9.0)) - 0.5;
   if (flowK > 0.0) rip += vec2(0.0, vn(vec2(fuv.x * 3.0, (fuv.y - t * sp) * 1.4)) - 0.5) * flowK * 0.6;
   vec2 bp = p + rip * 0.12 * min(1.0, depth * 2.0);
-  float mid = floor(texture2D(uMat, (floor(clamp(bp, vec2(0.0), vec2(uN - 0.01))) + 0.5) / uN).r * 255.0 + 0.5);
+  // the bed's material, looked up with the same wavy, grainy jitter the terrain uses (no square cell borders)
+  vec2 mw = vec2(vn(bp * 0.55 + 3.1), vn(bp * 0.55 + 17.7)) - 0.5, mg = vec2(h2(px), h2(px + 31.0)) - 0.5;
+  vec2 mp = bp + mw * 1.5 + mg * 0.55;
+  float mid = floor(texture2D(uMat, (floor(clamp(mp, vec2(0.0), vec2(uN - 0.01))) + 0.5) / uN).r * 255.0 + 0.5);
   vec3 bed = texture(uBlocks, vec3(bp, uLay[int(mid) * 2]), -0.35).rgb;
   bed *= 0.72 + caustic(bp, t) * 0.75 * exp(-depth * 0.8);
   // the water body: clear and turquoise in the shallows, deep teal further down
@@ -74,7 +77,7 @@ vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
   // glints: sparse twinkles, rarer bright sun sparkles on open water
   float g1 = h2(px + floor(t * 2.2 + h2(px) * 9.0) * 3.7);
   float g2 = h2(floor(px / 2.0) * 1.7 + floor(t * 1.4 + h2(floor(px / 2.0)) * 5.0));
-  float gk = 1.0 - smoothstep(0.6, 2.5, depth) * 0.75;
+  float gk = 1.0 - smoothstep(0.6, 2.5, depth) * 0.9;
   gk *= 1.0 - flowK * 0.55;
   if (g1 > 1.0 - 0.01 * gk) c = mix(c, vec3(1.0), 0.38);
   else if (g1 > 1.0 - 0.035 * gk) c = mix(c, uShallow * 1.3 + 0.05, 0.22);
@@ -159,7 +162,10 @@ export function makeSea(R: Region, U: Record<string, THREE.IUniform>): THREE.Mes
 export function makeRivers(R: Region, U: Record<string, THREE.IUniform>): THREE.Mesh | null {
   if (!R.rivers.length) return null;
   const pos: number[] = [], flow: number[] = [], speed: number[] = [], idx: number[] = [];
-  for (const pts of R.rivers) {
+  for (const all of R.rivers) {
+    // only the part over the map: off the rim there is no ground to hold it
+    const pts = all.filter((q) => q.x > 0.25 && q.z > 0.25 && q.x < R.N - 0.25 && q.z < R.N - 0.25);
+    if (pts.length < 4) continue;
     const step = 2, n = Math.floor((pts.length - 1) / step) + 1, base = pos.length / 3;
     const mouth = pts.find((q) => q.y <= R.water + 0.02)?.s ?? 1e9;
     for (let j = 0; j < n; j++) {
