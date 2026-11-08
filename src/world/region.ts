@@ -195,7 +195,8 @@ export class Region {
         const x = e === 0 ? 0 : e === 1 ? N - 1 : u, z = e === 2 ? 0 : e === 3 ? N - 1 : u;
         const i = z * N + x;
         if (h[i] < W + 1) continue;
-        let sc = h[i] + r.range(0, 1.5) - Math.max(0, 30 - hyp(x - L.x, z - L.z)) * 0.2;
+        // high ground far from the sea, so the river crosses the land on its way down
+        let sc = (h[i] - W) * 0.6 + Math.min(ds[i], 90) * 0.12 + r.range(0, 1.5) - Math.max(0, 30 - hyp(x - L.x, z - L.z)) * 0.2;
         for (const [sx, sz] of sources) if (hyp(sx - x, sz - z) < N * 0.45) sc -= 20;
         if (sc > best) { best = sc; src = i; }
       }
@@ -221,7 +222,7 @@ export class Region {
           const X = cx + dx, Z = cz + dz; if (X < 0 || Z < 0 || X >= N || Z >= N) continue;
           const j = Z * N + X; if (done[j]) continue;
           const dl = hyp(X + 0.5 - L.x, Z + 0.5 - L.z), rim = Math.min(X, Z, N - 1 - X, N - 1 - Z);
-          const cost = (dx && dz ? 1.414 : 1) * (1 + Math.max(0, (h[j] - W) / span) * 14 + (dl < 17 ? 60 : 0) + (rim < 9 && hyp(X - sx0, Z - sz0) > 8 ? (9 - rim) * 4 : 0) + (ds[j] > 0 && ds[j] < 7 ? (7 - ds[j]) * 2.5 : 0) + this.noise.n2(X * 0.08 + k * 31, Z * 0.08) * 0.35);
+          const cost = (dx && dz ? 1.414 : 1) * (1 + Math.max(0, (h[j] - W) / span) * 14 + (dl < 17 ? 60 : 0) + (rim < 11 && hyp(X - sx0, Z - sz0) > 8 ? (11 - rim) * 7 : 0) + (ds[j] > 0 && ds[j] < 7 ? (7 - ds[j]) * 2.5 : 0) + this.noise.n2(X * 0.08 + k * 31, Z * 0.08) * 0.35);
           if (g[c] + cost < g[j]) { g[j] = g[c] + cost; from[j] = c; heap.push(j); }
         }
       }
@@ -314,7 +315,9 @@ export class Region {
       const p = pts[k], d = bestD[i], w = p.w, dep = 0.32 + 0.2 * w;
       if (d > w + BANK + VAL) continue;
       let t: number;
-      if (d < w) t = p.y - dep * (1 - (d / w) ** 2) - 0.04;
+      // the bed never drops below sea level: a river stays wadeable all the way down (walkers path over any
+      // column that is not sea), shoaling into a sand bar where it meets the sea
+      if (d < w) t = Math.max(this.water + 0.02, p.y - dep * (1 - (d / w) ** 2) - 0.04);
       else if (d < w + BANK) t = p.y + 0.06 + (d - w) * 0.42;
       else t = p.y + 0.06 + BANK * 0.42 + (d - w - BANK) * 0.85;
       if (h[i] > t) h[i] = t;
@@ -506,7 +509,9 @@ export class Region {
       if (p.kind === 'pebble' || p.kind === 'river' || p.kind === 'log' || p.kind === 'stump') continue;
       const c = Math.cos(p.yaw), sn = Math.sin(p.yaw);
       const feet: [number, number, number, number][] = p.kind === 'arch' ? [[-p.sx, 0, p.sz * 1.1, p.sz * 1.1], [p.sx, 0, p.sz * 1.1, p.sz * 1.1]] : [[0, 0, p.sx, p.sz]];
-      const lift = Math.min(1.7, p.sy * (p.kind === 'slab' ? 0.6 : p.kind === 'spire' || p.kind === 'column' ? 0.8 : 0.5));
+      // the lift stays inside the stone: low rocks are clambered over (lifted to near their top), big ones lift
+      // past any walker's step so paths go round them
+      const lift = Math.min(1.75, p.sy * (p.kind === 'spire' || p.kind === 'column' ? 0.8 : p.sy < 1.3 ? 0.82 : 0.68));
       for (const [fx, fz, rx, rz] of feet) {
         const cx = p.x + fx * c - fz * sn, cz = p.z + fx * sn + fz * c;
         const ext = Math.ceil(Math.max(rx, rz) + 2);

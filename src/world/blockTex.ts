@@ -325,8 +325,8 @@ function litter(pc: PixelCanvas, soil: number, foliage: number[], seed: number) 
   }
   // fallen leaves: mostly browned, a few still green, each with a blade, a midrib and a contact shadow
   for (let i = 0; i < 30; i++) {
-    const fresh = r.chance(0.22);
-    const F = R(mixHex(r.pick(foliage), r.pick([0x7a5a34, 0x8a6a3a, 0x5a4430]), fresh ? 0.2 : r.range(0.5, 0.75)), 6, 0.45);
+    const fresh = r.chance(0.12);
+    const F = R(mixHex(r.pick(foliage), r.pick([0x7a5a34, 0x8a6a3a, 0x5a4430, 0x9a6a30]), fresh ? 0.35 : r.range(0.62, 0.85)), 6, 0.45);
     const x = r.range(0, TS), y = r.range(0, TS), a = r.range(0, Math.PI), len = r.int(2, 3), wid = r.chance(0.5) ? 1 : 1.5;
     const dx = Math.cos(a), dy = Math.sin(a);
     pc.shade(x + dx * len + 1, y + dy * len + 1, 0.7);

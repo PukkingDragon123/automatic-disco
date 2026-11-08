@@ -2,7 +2,7 @@
 // grass), clover and low herbs, small flowers in the planet's bloom colours, young ferns, mushroom clusters, shore
 // sedges, pebbles, and flat leaf-litter and twig decals for the forest floor. Each blade is its own curved stroke
 // with a base-to-tip ramp, lit from the upper left, back blades darker than front ones.
-import { PixelCanvas, makeRamp, mixHex, scaleHex } from '../limbo/gfx/pixel';
+import { PixelCanvas, makeRamp, mixHex } from '../limbo/gfx/pixel';
 import { Rand } from '../core/rand';
 import type { Palette } from './palette';
 
@@ -17,7 +17,7 @@ function canvas(w: number, h: number) { const pc = new PixelCanvas(w, h); pc.wra
 /** one curved blade from (x, y) upward: lean sets where the tip goes, droop bends the top over */
 function blade(pc: PixelCanvas, x: number, y: number, len: number, lean: number, droop: number, ramp: number[], o: { wide?: boolean; dryTip?: number[]; back?: boolean } = {}) {
   const n = ramp.length - 1, steps = Math.max(2, Math.ceil(len * 1.4));
-  let px = x, py = y, tipX = x, tipY = y;
+  let tipX = x, tipY = y;
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const bx = x + lean * t * t * len * 0.9 + droop * Math.max(0, t - 0.55) ** 2 * len * 1.6;
@@ -28,9 +28,8 @@ function blade(pc: PixelCanvas, x: number, y: number, len: number, lean: number,
     if (o.dryTip && t > 0.62) c = o.dryTip[ci(2 + (t - 0.62) * 8, 1, o.dryTip.length - 1)];
     pc.set(bx, by, c);
     if (o.wide && t < 0.35) pc.set(bx + 1, by, ramp[ci(k - 1, 1, n)]);
-    px = bx; py = by; tipX = bx; tipY = by;
+    tipX = bx; tipY = by;
   }
-  void px; void py;
   return [tipX, tipY];
 }
 
@@ -169,7 +168,7 @@ function litter(r: Rand, pal: Palette, twig: boolean): PixelCanvas {
   }
   for (let k = r.int(5, 9); k > 0; k--) {
     const fresh = r.chance(0.25);
-    const base = fresh ? r.pick(pal.foliage) : mixHex(r.pick([...pal.foliage, ...pal.bloom]), r.pick([0x8a5a2a, 0xa06a30, 0x6a4a2a, 0xb08a3a]), r.range(0.45, 0.7));
+    const base = fresh ? mixHex(r.pick(pal.foliage), 0x8a6a3a, 0.25) : mixHex(r.pick([...pal.foliage, ...pal.bloom]), r.pick([0x8a5a2a, 0xa06a30, 0x6a4a2a, 0xb08a3a]), r.range(0.58, 0.8));
     const F = R(base, 6, 0.5), x = r.range(3, W - 3), y = r.range(3, H - 3), a = r.range(0, Math.PI), len = r.range(1.6, 3), wid = r.range(0.8, 1.4);
     const dx = Math.cos(a), dy = Math.sin(a) * 0.7;
     for (let t = -len; t <= len; t += 0.5) {
@@ -196,6 +195,5 @@ export function paintGround(pal: Palette, seed: number): GroundSprite[] {
   for (let i = 0; i < 3; i++) add('pebble', pebbles(r, pal));
   for (let i = 0; i < 5; i++) add('litter', litter(r, pal, false), true);
   for (let i = 0; i < 2; i++) add('twig', litter(r, pal, true), true);
-  void scaleHex;
   return out;
 }

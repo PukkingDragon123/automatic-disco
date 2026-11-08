@@ -47,7 +47,7 @@ if (abs(iParam.w) > 1.5) {
   // trunk with a slow sway of their own; a fast flutter rides on the gusts
   float yy2 = yy * yy;
   // tip travel in a full gust: ~35% of the height for grass, a few percent for a tree
-  float flex = tree ? 0.035 : 0.26 * k;
+  float flex = tree ? 0.035 : 0.21 * k;
   vec2 bendW = wnd.xy * flex;
   float flutter = sin(t * (5.5 + k * 3.0) + iPos.x * 1.7) * (0.015 + 0.04 * wnd.z) * k * (tree ? 0.2 : 1.0) * uWind;
   float bend = flutter + (tree ? sin(t * 0.7 + iPos.z * 0.13) * 0.012 : 0.0);
@@ -152,7 +152,8 @@ export class Flora {
         if (d < 1.6) rocky[z * N + x] = Math.max(rocky[z * N + x], 0.85);
       }
     }
-    const under = new Set(['fern', 'fungus', 'shrub', 'fiddle', 'eyeflower', 'bulb']);
+    // the forest floor: ferns and fungi thrive in the shade; bushes crowd the woodland edges and thin out inside
+    const under = new Set(['fern', 'fungus', 'fiddle', 'eyeflower']), edge = new Set(['shrub', 'bulb', 'coral']);
     // shore plants: water within three cells along the axes
     const wet = new Uint8Array(N * N), nearW = new Uint8Array(N * N);
     for (let i = 0; i < N * N; i++) wet[i] = R.h[i] < R.water || (R.riverY[i] > 0 && R.h[i] < R.riverY[i] - 0.05) ? 1 : 0;
@@ -226,7 +227,7 @@ export class Flora {
         if (p.shore && !water && !nearW[i]) continue;
         const cl = (nz.n2(x * 0.07 + p.id * 13.1, z * 0.07 - p.id * 7.3) + 1) * 0.5;
         const clusterK = Math.pow(cl, 1 + p.cluster * 3) * (1 + p.cluster * 2.5);
-        let mul = p.tree ? (bi.key === 'desert' || bi.key === 'savanna' ? 0.35 + fo * 2 : 0.1 + fo * 2.5) : under.has(p.arch) ? 0.75 + fo * 0.9 : 1.15 - fo * 0.7;
+        let mul = p.tree ? (bi.key === 'desert' || bi.key === 'savanna' ? 0.35 + fo * 2 : 0.1 + fo * 2.5) : under.has(p.arch) ? 0.75 + fo * 0.9 : edge.has(p.arch) ? 1 + 1.6 * fo * (1 - fo) - fo * fo * 0.55 : 1.15 - fo * 0.7;
         if (p.tree) mul *= 1 - rk; else if (p.hmax > 1.2) mul *= 1 - rk * 0.75;
         const chance = (p.weight / totalW) * clusterK * (water ? 1.2 : (1.6 + f * 4.4)) * bi.flora * (p.tree ? 0.5 : 1) * mul;
         if (r.next() > chance) continue;

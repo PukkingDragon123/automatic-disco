@@ -529,7 +529,7 @@ export function makeFlora(pal: Palette, biome: BiomeKey, seed: number): PlantSpe
   const nextB = () => { if (!bDeck.length) bDeck = r.shuffle([...pal.bloom]); return bDeck.pop()!; };
   archs.forEach((a, i) => {
     const s = ARCHS.find((x) => x.arch === a)!;
-    const glow = a === 'crystalbloom' || ((a === 'fungus' || a === 'bulb') && r.chance(0.07));
+    const glow = a === 'crystalbloom' || ((a === 'fungus' || a === 'bulb') && r.chance(0.04));
     // flowering kinds often carry their bloom colour into the leaf (coral and magenta shrubs, golden puffballs,
     // red-orange spikes), always rooted in a foliage hue so it reads as a plant rather than paint
     const vivid = (a === 'shrub' || a === 'rosette' || a === 'coral' || a === 'bulb' || a === 'fiddle' || a === 'spike' || a === 'fern') && r.chance(0.45);

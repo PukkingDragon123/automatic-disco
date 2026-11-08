@@ -24,7 +24,7 @@ export function rockColours(pal: Palette) {
     granite: pal.rock,
     sandstone: mixHex(mixHex(pal.sand, pal.clay, 0.5), 0xc87a46, 0.18),
     basalt: mixHex(pal.basalt, 0x6e6a72, 0.5),
-    limestone: mixHex(pal.rock, 0xe0d8c4, 0.55),
+    limestone: mixHex(pal.rock, 0xc8bea8, 0.42),
     moss: scaleHex(mixHex(mixHex(pal.grass, 0x42742c, 0.55), pal.foliage[0], 0.15), 0.82),
   };
 }
@@ -55,7 +55,7 @@ function crack(pc: PixelCanvas, r: Rand, x: number, y: number, n: number, dx: nu
 }
 
 /** lichen rosette: a dithered crust with a paler growing rim */
-function lichen(pc: PixelCanvas, r: Rand, x: number, y: number, rad: number, c: number) {
+function lichen(pc: PixelCanvas, x: number, y: number, rad: number, c: number) {
   const C = R(c, 5, 0.4);
   for (let j = -rad - 1; j <= rad + 1; j++) for (let i = -rad - 1; i <= rad + 1; i++) {
     const d = hyp(i, j * 1.15) / rad + (hashf(x + i, y + j, 9) - 0.5) * 0.45;
@@ -63,7 +63,6 @@ function lichen(pc: PixelCanvas, r: Rand, x: number, y: number, rad: number, c: 
     if (d > 0.72) pc.set(x + i, y + j, C[3 + (hashf(i, j, 3) > 0.5 ? 1 : 0)]);
     else if (hashf(x + i, y + j, 4) < 0.7) pc.set(x + i, y + j, C[ci(1.5 + hashf(x + i, y + j, 5) * 2, 1, 3)]);
   }
-  void r;
 }
 
 function granite(pc: PixelCanvas, c: number, seed: number, top: boolean) {
@@ -98,7 +97,7 @@ function granite(pc: PixelCanvas, c: number, seed: number, top: boolean) {
     for (let i = 0; i < 4; i++) { const x = r.int(0, RS - 1), y = r.int(0, RS - 1), rr = r.range(1.5, 3); pc.ellipseBlend(x, y, rr, rr * 0.7, K[1], 0.6); pc.blend(x + 1, y + rr * 0.7, K[7], 0.5); }
     for (let i = 0; i < 4; i++) crack(pc, r, r.int(0, RS - 1), r.int(0, RS - 1), r.int(5, 14), r.range(-1, 1), r.range(-1, 1), K[0], K[6], 0.6);
   }
-  for (let i = 0; i < (top ? 7 : 3); i++) lichen(pc, r, r.int(0, RS - 1), r.int(0, RS - 1), r.int(2, 4), r.pick([0xa8b46a, 0xc8b45a, 0x9ab0a6, 0xd09a4a]));
+  for (let i = 0; i < (top ? 7 : 3); i++) lichen(pc, r.int(0, RS - 1), r.int(0, RS - 1), r.int(2, 4), r.pick([0xa8b46a, 0xc8b45a, 0x9ab0a6, 0xd09a4a]));
 }
 
 function sandstone(pc: PixelCanvas, c: number, seed: number, top: boolean) {
@@ -132,7 +131,7 @@ function sandstone(pc: PixelCanvas, c: number, seed: number, top: boolean) {
     for (let i = 0; i < 5; i++) { const x = r.int(0, RS - 1), l = r.int(10, 40), w = r.int(1, 3); for (let k = 0; k < l; k++) for (let j = 0; j < w; j++) pc.blend(x + j, k, mixHex(K[0], 0x3a2a2a, 0.4), 0.32 * (1 - k / l)); }
     for (let i = 0; i < 3; i++) crack(pc, r, r.int(0, RS - 1), r.int(0, RS - 1), r.int(8, 22), r.range(-0.2, 0.2), 1, K[0], K[7], 0.3);
   } else for (let i = 0; i < 3; i++) crack(pc, r, r.int(0, RS - 1), r.int(0, RS - 1), r.int(6, 16), r.range(-1, 1), r.range(-1, 1), K[1], K[7], 0.5);
-  for (let i = 0; i < (top ? 3 : 1); i++) lichen(pc, r, r.int(0, RS - 1), r.int(0, RS - 1), r.int(1, 3), r.pick([0xc89a4a, 0xa8a868, 0xd0784a]));
+  for (let i = 0; i < (top ? 3 : 1); i++) lichen(pc, r.int(0, RS - 1), r.int(0, RS - 1), r.int(1, 3), r.pick([0xc89a4a, 0xa8a868, 0xd0784a]));
 }
 
 function basalt(pc: PixelCanvas, c: number, seed: number, top: boolean) {
@@ -177,7 +176,7 @@ function limestone(pc: PixelCanvas, c: number, seed: number, top: boolean) {
   for (let i = 0; i < 18; i++) { const x = r.int(0, RS - 1), y = r.int(0, RS - 1); pc.set(x, y, K[1]); pc.set(x, y + 1, K[7]); }
   // dark algae streaks and lichen
   if (!top) for (let i = 0; i < 6; i++) { const x = r.int(0, RS - 1), y = r.int(0, RS / 2), l = r.int(10, 30); for (let k = 0; k < l; k++) pc.blend(x, y + k, mixHex(K[1], 0x3a4a3a, 0.4), 0.3 * (1 - k / l)); }
-  for (let i = 0; i < 4; i++) lichen(pc, r, r.int(0, RS - 1), r.int(0, RS - 1), r.int(2, 4), r.pick([0xb8c070, 0xd8b050, 0x9ab4a4]));
+  for (let i = 0; i < 4; i++) lichen(pc, r.int(0, RS - 1), r.int(0, RS - 1), r.int(2, 4), r.pick([0xb8c070, 0xd8b050, 0x9ab4a4]));
 }
 
 function moss(pc: PixelCanvas, c: number, seed: number) {
@@ -212,7 +211,7 @@ function bark(pc: PixelCanvas, c: number, seed: number) {
     if (hashf(Math.floor(lane), Math.floor(x / 9), seed + 1) < 0.18 && ((x % 9) === 0)) k = 0.8;
     pc.set(x, y, K[ci(k, 0, 6)]);
   });
-  for (let i = 0; i < 3; i++) lichen(pc, r, r.int(0, RS - 1), r.int(0, RS - 1), r.int(1, 3), r.pick([0xa8b46a, 0x9ab0a6, 0xc8b45a]));
+  for (let i = 0; i < 3; i++) lichen(pc, r.int(0, RS - 1), r.int(0, RS - 1), r.int(1, 3), r.pick([0xa8b46a, 0x9ab0a6, 0xc8b45a]));
 }
 
 function endGrain(pc: PixelCanvas, c: number, heart: number, seed: number) {

@@ -485,7 +485,8 @@ float mossA = mk * smoothstep(0.4, 0.92, n.y) * (0.2 + patchN * 1.1);
 if (mossA > 0.5 + (dith - 0.5) * 0.08) base = texture(uRock, vec3(uv * 0.5, ${RL.moss}.0), -0.35).rgb * mix(0.85, 1.0, foot) * (0.92 + patchN * 0.16);
 else if (mk > 0.3 && vWp.y - vRock.z < 0.25 + mk * 0.3 && dith > 0.4 && n.y > -0.3) base = mix(base, texture(uRock, vec3(uv * 0.5, ${RL.moss}.0), -0.35).rgb * 0.8, 0.85);
 // snow caps in the cold
-if (uSnow > 0.5 && n.y + (vn(vWp.xz * 2.0) - 0.5) * 0.5 > 0.66) base = uSnowCol * (0.9 + dith * 0.1);
+float snowP = vn(vWp.xz * 1.3 + vWp.y * 0.8) * 0.7 + vn(vWp.xz * 4.1) * 0.3;
+if (uSnow > 0.5 && n.y > 0.84 - (dith - 0.5) * 0.06 && snowP > 0.4) base = uSnowCol * (0.8 + dith * 0.08);
 // wet stone at the waterline
 float wl = vRock.y;
 if (wl > -50.0) { float wet = 1.0 - smoothstep(wl - 0.02, wl + 0.22, vWp.y); base = mix(base, base * vec3(0.55, 0.6, 0.64), wet); }
