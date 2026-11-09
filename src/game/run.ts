@@ -1,6 +1,10 @@
 // A run: one planet, from impact to ascension (or extinction). Genes owned, species known, story beats.
 import { Registry } from './species';
 import { GENE, type Lineage } from '../life/genes';
+import { Skills, type Res } from './skills';
+
+/** a plant saved by the Seed Press: enough to regrow it (flora species index + its look seed) */
+export interface PlantPrefab { name: string; kind: number; seed: number; at: number }
 
 export interface OwnedGene { id: string; level: number; from: string; at: number }
 export class Run {
@@ -9,6 +13,12 @@ export class Run {
   flags: Record<string, number> = {};
   helix = 0;
   kills = 0; absorbed = 0;
+  /** the golem's own progression (shared contract: skills.ts) */
+  readonly skills = new Skills();
+  /** raw materials carried between regions */
+  res: Record<Res, number> = { ore: 0, carbon: 0, water: 0, soil: 0 };
+  /** plants saved as prefabs */
+  plants: PlantPrefab[] = [];
   constructor(readonly seed: number) {}
   has(id: string) { return this.genes.has(id); }
   add(id: string, from: string, at: number): 'new' | 'up' {
