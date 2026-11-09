@@ -37,7 +37,7 @@ interface Held { c: Creature; t: number; dur: number; dps: number; grip: number 
 interface Pull { c: Creature; tx: number; tz: number; t: number }
 
 export interface GameOpts { seed: number; biome: BiomeKey; pal?: string; regionName?: string; run?: Run; hooks?: GameHooks; story?: boolean }
-export interface GameHooks { onWin?(g: Game): void; onLose?(g: Game): void; openBuilder?(g: Game): void; openTree?(g: Game): void; openMenu?(g: Game): void }
+export interface GameHooks { onWin?(g: Game): void; onLose?(g: Game): void; openBuilder?(g: Game): void; openTree?(g: Game): void; openMenu?(g: Game): void; openSkills?(g: Game): void; openLab?(g: Game): void }
 
 const _v = new THREE.Vector3(), _ray = new THREE.Ray();
 

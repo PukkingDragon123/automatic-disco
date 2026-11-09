@@ -52,6 +52,20 @@ export class Hive {
   lost = false;
   onEvent?: (ev: string, d: any) => void;
 
+  // ---- SHARED CONTRACT for the redesign (economy/territory implements these; the player/combat code calls them).
+  // Stubs until implemented: keep the signatures.
+  /** credit a gathered resource (to run.res for the Veyr); returns the amount actually stored */
+  gather(_res: 'ore' | 'carbon' | 'water' | 'soil', _amt: number, _x: number, _y: number, _z: number): number { return 0; }
+  /** modify flora instance i into Veyr growth; claims territory around it */
+  graftPlant(_i: number): boolean { return false; }
+  /** absorb flora instance i as a plant prefab (removes it); returns the prefab or null */
+  absorbPlant(_i: number): { name: string; kind: number; seed: number; at: number } | null { return null; }
+  /** plant a copy of a prefab at x,z */
+  sow(_prefab: { name: string; kind: number; seed: number }, _x: number, _z: number): boolean { return false; }
+  /** rewire a beaten creature to the Veyr's side */
+  convert(_c: Creature): boolean { return false; }
+  /** territory held by the Veyr, 0..1 of the region's land */
+  territory(): number { return 0; }
   constructor(readonly w: World, readonly faction: Faction, readonly fx: Fx, readonly rivalKey = 0) {
     const N = w.region.N;
     this.cov = faction === 'veyr' ? w.moss : w.creep;
