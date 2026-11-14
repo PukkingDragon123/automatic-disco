@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import { Bin, lit, lamp, mesh, box, cyl, tbox, beam, decal, loft, ptex, hullPix, enamelPix, treadPix, hazardPix, stencil, insignia, windowPix, fxMat, HAZE, V3, TAU, sm, hash, type V } from './deployKit';
 import { makePod, type Pod } from './deployPod';
+import { buildHull, HULL_RAMP } from './deployHull';
 import { gbuf } from '../gfx/gbuf';
 import { GM, OL, CR, AM, Pix, dv } from './machine';
 import { Actor } from './cineCast';
@@ -146,8 +147,7 @@ export function buildShip(bin: Bin, parent: THREE.Object3D, opts: { people?: boo
   const keep: { rig: Researcher }[] = [];
 
   // ---- materials
-  const hull = lit(bin, 0xffffff, { map: ptex(bin, hullPix(HAZE, 3, 256, 256, 48)) });
-  const hullDark = lit(bin, 0xb8bcbc, { map: ptex(bin, hullPix(HAZE, 8, 256, 256, 48)) });
+  const hullDark = lit(bin, 0xc8cccc, { map: ptex(bin, hullPix(HULL_RAMP, 8, 256, 256, 48)) });
   const steel = lit(bin, 0x8d8f8a, { phong: true, shininess: 50 });
   const gun = lit(bin, 0x4b4e50);
   const darkGun = lit(bin, 0x232527);
@@ -164,182 +164,9 @@ export function buildShip(bin: Bin, parent: THREE.Object3D, opts: { people?: boo
   const winM = lit(bin, 0xffffff, { map: winT, emissiveMap: winT, emissive: 0xc8a070 });
   const coneU = (c: number, k: number) => ({ uCol: { value: new THREE.Color(c) }, uK: { value: k } });
 
-  // ================================================================ EXTERIOR
-  // lower hull (round the bay), upper hull and the beak over the bay mouth, the stern block
-  const lower = mesh(bin, loft([[-74, 15, 9.5, -8.5, 0.5], [-60, 18, 10, -8.5, 0.5], [44, 18, 10, -8.5, 0.5], [58, 15.5, 9.5, -8.8, 0.6], [64, 14.2, 9.2, -8.8, 0.62]], 1 / 32, false), hullDark, ext);
-  lower.name = 'hull-lower';
-  mesh(bin, loft([[-76, 13.5, 7, 7.5, 0.4], [34, 13.5, 7, 7.5, 0.4], [62, 10, 5.5, 6.5, 0.6], [78, 6, 3.6, 5, 0.7], [92, 2.2, 1.6, 3.5, 0.8]], 1 / 32), hull, ext).name = 'hull-upper';
-  // the back cap of the lower hull (the bay mouth end stays open: a frame round it)
-  mesh(bin, loft([[-74.2, 15, 9.5, -8.5, 0.5], [-74, 15, 9.5, -8.5, 0.5]], 1 / 32), hullDark, ext);
-  // bay mouth frame (front face at z = 64) and its hazard border
-  const mz = 63.9;
-  tbox(bin, 10.2, 18.4, 1.2, hullDark, 1 / 8, ext, -14.2 + 5.1 - 4.9, -8.8, mz);
-  tbox(bin, 10.2, 18.4, 1.2, hullDark, 1 / 8, ext, 14.2 - 5.1 + 4.9, -8.8, mz);
-  tbox(bin, 18.2, 3.4, 1.2, hullDark, 1 / 8, ext, 0, -0.9, mz);
-  tbox(bin, 18.2, 3.8, 1.2, hullDark, 1 / 8, ext, 0, -16.6, mz);
-  const hb = (w: number, h: number, x: number, y: number) => { const m = tbox(bin, w, h, 0.3, haz, 1, ext, x, y, mz + 0.62); m.castShadow = false; };
-  hb(19.6, 0.7, 0, -2.25); hb(19.6, 0.7, 0, -14.75); hb(0.7, 12.5, -9.45, -8.5); hb(0.7, 12.5, 9.45, -8.5);
-  // stern: engine block and five bell nozzles, idling
-  tbox(bin, 30, 26, 10, hullDark, 1 / 8, ext, 0, -1, -80);
-  const nozU = { uCol: { value: new THREE.Color(1.6, 0.6, 0.18) }, uK: { value: 0.6 }, uT: { value: 0 } };
-  const nozMat = fxMat(bin, CONE_V, NOZ_F, nozU, 'add', { side: THREE.BackSide });
-  for (const [x, y, r] of [[0, -1, 5.2], [-9.5, 6.5, 3.4], [9.5, 6.5, 3.4], [-9.5, -8.5, 3.4], [9.5, -8.5, 3.4]] as [number, number, number][]) {
-    const bell = mesh(bin, new THREE.CylinderGeometry(r * 0.45, r, r * 1.5, 20, 1, true), lit(bin, 0x3a3532, { side: THREE.DoubleSide, phong: true, shininess: 30 }), ext, x, y, -85 - r * 0.75);
-    bell.rotation.x = Math.PI / 2;
-    const glow = mesh(bin, new THREE.CylinderGeometry(r * 0.42, r * 0.95, r * 1.45, 20, 1, true), nozMat, ext, x, y, -85 - r * 0.72, false);
-    glow.rotation.x = Math.PI / 2;
-    cyl(bin, r * 0.5, r * 0.5, 1.2, steel, ext, x, y, -85.5).rotation.x = Math.PI / 2;
-  }
-  // side tanks with strap bands and hazard collars
-  for (const s of [-1, 1]) {
-    const tank = mesh(bin, new THREE.CylinderGeometry(4.2, 4.2, 92, 24, 1), tankM, ext, s * 21.5, -6, -12);
-    tank.rotation.x = Math.PI / 2;
-    const tu = (tank.geometry.attributes.uv as THREE.BufferAttribute); for (let i = 0; i < tu.count; i++) tu.setXY(i, tu.getX(i) * 0.82, tu.getY(i) * 2.9);
-    for (const cz of [-58, 34]) { const cap = mesh(bin, new THREE.SphereGeometry(4.2, 24, 10, 0, TAU, 0, Math.PI / 2), tankM, ext, s * 21.5, -6, cz); cap.rotation.x = cz > 0 ? Math.PI / 2 : -Math.PI / 2; }
-    for (let z = -50; z <= 26; z += 9.5) { const band = cyl(bin, 4.35, 4.35, 0.6, gun, ext, s * 21.5, -6, z, 24); band.rotation.x = Math.PI / 2; }
-    for (const z of [-55, 31]) { const c = cyl(bin, 4.32, 4.32, 1.4, haz, ext, s * 21.5, -6, z, 24); c.rotation.x = Math.PI / 2; }
-    // struts to the hull
-    for (let z = -46; z <= 20; z += 22) { beam(bin, new V3(s * 18, -4, z), new V3(s * 17.6, -6, z), 0.5, gun, ext); box(bin, 3.2, 1, 1.4, gun, ext, s * 19, -5, z); }
-    decal(bin, stencil(bin, s < 0 ? 'LOX' : 'HYDRAZINE', { size: 20, color: CR[4], wear: 0.1 }), s < 0 ? 4 : 9, ext, new V3(s * 25.75, -5, 5), new V3(s, 0, 0), new V3(0, 1, 0));
-  }
-  // radiator fins round the reactor, mid-ship
-  for (const s of [-1, 1]) for (const z of [-40, -18]) {
-    const fin = tbox(bin, 22, 0.35, 16, radM, 1 / 8, ext, s * 25, 9, z);
-    fin.rotation.z = s * 0.18;
-    beam(bin, new V3(s * 13, 9, z - 6), new V3(s * 22, 10.5, z - 6), 0.35, gun, ext); beam(bin, new V3(s * 13, 9, z + 6), new V3(s * 22, 10.5, z + 6), 0.35, gun, ext);
-  }
-  tbox(bin, 12, 4, 30, hullDark, 1 / 8, ext, 0, 16, -30); // reactor housing
-  for (let z = -42; z <= -18; z += 4) box(bin, 12.6, 0.5, 0.5, gun, ext, 0, 18.2, z);
-  // the island tower (starboard), bridge windows, mast, radar dish, antennas, strobe
-  const isl = new THREE.Group(); isl.position.set(8.5, 14.5, 8); ext.add(isl);
-  tbox(bin, 7, 9, 18, hull, 1 / 8, isl, 0, 4.5, 0);
-  tbox(bin, 6.2, 4, 12, hull, 1 / 8, isl, 0, 11, 1.5);
-  tbox(bin, 6.6, 0.4, 12.6, darkGun, 1, isl, 0, 13.2, 1.5);
-  for (const [w, x, z, ry] of [[12, 3.12, 1.5, Math.PI / 2], [12, -3.12, 1.5, -Math.PI / 2], [6, 0, 7.52, 0]] as [number, number, number, number][]) {
-    const win = mesh(bin, new THREE.PlaneGeometry(w, 1.2), winM, isl, x, 11.4, z, false); win.rotation.y = ry;
-    const wu = win.geometry.attributes.uv as THREE.BufferAttribute; for (let i = 0; i < wu.count; i++) wu.setX(i, wu.getX(i) * (w / 6));
-  }
-  winT.wrapS = THREE.RepeatWrapping;
-  cyl(bin, 0.5, 0.7, 10, steel, isl, 0, 18, 1);
-  const dish = new THREE.Group(); dish.position.set(0, 23, 1); isl.add(dish);
-  const dishG = new THREE.SphereGeometry(3.2, 16, 6, 0, TAU, 0, 0.9); dishG.translate(0, -3.2 * Math.cos(0.9) - 0.2, 0);
-  const dm = mesh(bin, dishG, lit(bin, 0x9a9c98, { side: THREE.DoubleSide }), dish, 0, 0, 0); dm.rotation.x = Math.PI / 2 + 0.3;
-  box(bin, 0.3, 0.3, 2.4, steel, dish, 0, 0, 1.0);
-  for (const [x, h] of [[-2.2, 7], [2.4, 9], [-1.2, 11]] as [number, number][]) cyl(bin, 0.06, 0.12, h, steel, isl, x, 13.4 + h / 2, -5.2, 5);
-  const strobeM = lamp(bin, 0xffffff, 3);
-  const strobe = mesh(bin, new THREE.SphereGeometry(0.35, 8, 6), strobeM, isl, -1.2, 24.5, -5.2, false);
-  decal(bin, stencil(bin, '01', { size: 30, color: CR[4], wear: 0.1, bridges: true }), 5.2, isl, new V3(3.52, 4.5, 4.2), new V3(1, 0, 0), new V3(0, 1, 0));
-  decal(bin, stencil(bin, '01', { size: 30, color: CR[4], wear: 0.1, bridges: true }), 5.2, isl, new V3(-3.52, 4.5, 4.2), new V3(-1, 0, 0), new V3(0, 1, 0));
-  // deck: a gantry crane over cargo hatches, containers, rails
-  for (const z of [36, 54]) { beam(bin, new V3(-12, 14.5, z), new V3(-10, 24, z), 0.45, gun, ext); beam(bin, new V3(12, 14.5, z), new V3(10, 24, z), 0.45, gun, ext); }
-  box(bin, 21.2, 1.2, 1.2, gun, ext, 0, 24, 36); box(bin, 21.2, 1.2, 1.2, gun, ext, 0, 24, 54);
-  box(bin, 1.2, 1.2, 19.2, gun, ext, -10, 24.6, 45); box(bin, 1.2, 1.2, 19.2, gun, ext, 10, 24.6, 45);
-  box(bin, 4, 2.2, 3, lit(bin, 0xa88c3a), ext, 3, 25.6, 45);
-  for (const [x, z, c] of [[-6, 30, 0x5a5e4a], [-6, 33.2, 0x6a5038], [4, 58, 0x4a5a66]] as [number, number, number][]) tbox(bin, 6, 2.6, 2.8, lit(bin, c, { map: ptex(bin, enamelPix(OL, z, 32, 32)) }), 1 / 3, ext, x, 15.8, z);
-  tbox(bin, 18, 0.3, 14, darkGun, 1 / 2, ext, 0, 14.6, 45);
-  // stencils: name, hull number, the Corps line, insignia, the bay warning
-  const nameT = stencil(bin, 'U.S.S. VANGUARD', { size: 20, color: CR[4], wear: 0.06 });
-  const numT = stencil(bin, 'CVS-01', { size: 30, color: CR[4], wear: 0.1, bridges: true });
-  const corpsT = stencil(bin, 'UNITED STATES PLANETARY CORPS', { size: 10, color: CR[3], wear: 0.05 });
-  const ins = insignia(bin);
-  for (const s of [-1, 1]) {
-    const side = new V3(s, 0, 0), up = new V3(0, 1, 0);
-    decal(bin, nameT, 30, ext, new V3(s * 18.02, -4.8, 26), side, up);
-    decal(bin, numT, 13, ext, new V3(s * 11.7, 6.2, 70), new V3(s, 0, 0.18).normalize(), up);
-    decal(bin, corpsT, 44, ext, new V3(s * 13.52, 9.5, -14), side, up);
-    decal(bin, ins, 14, ext, new V3(s * 18.02, -10.5, -30), side, up);
-  }
-  decal(bin, ins, 12, ext, new V3(0, 14.52, -58), new V3(0, 1, 0), new V3(0, 0, 1));
-  decal(bin, stencil(bin, 'DANGER - LAUNCH BAY - KEEP CLEAR', { size: 10, color: 0xb8402e, wear: 0.05 }), 16, ext, new V3(0, -0.5, mz + 0.62), new V3(0, 0, 1), new V3(0, 1, 0));
-  // the belly: a keel spine with ribs, cargo hatches with hazard borders, stencils, a sensor blister, and a run of
-  // sequenced chase lights along the keel pointing the way to the bay mouth
-  tbox(bin, 4.4, 1.6, 132, hullDark, 1 / 8, ext, 0, -19.2, -6);
-  for (let z = -70; z <= 58; z += 6) box(bin, 7, 0.9, 0.7, gun, ext, 0, -18.8, z);
-  for (const s of [-1, 1]) for (const z of [-46, -26, 6]) {
-    tbox(bin, 7.2, 0.25, 9.2, darkGun, 1, ext, s * 9.5, -18.55, z);
-    for (const [w, d, dx, dz] of [[7.6, 0.4, 0, 4.8], [7.6, 0.4, 0, -4.8], [0.4, 9.6, 3.8, 0], [0.4, 9.6, -3.8, 0]] as [number, number, number, number][]) box(bin, w, 0.3, d, haz, ext, s * 9.5 + dx, -18.6, z + dz).castShadow = false;
-  }
-  const bellyT = stencil(bin, 'U.S.P.C.', { size: 30, color: CR[4], wear: 0.1, bridges: true });
-  decal(bin, bellyT, 22, ext, new V3(0, -18.52, -14), new V3(0, -1, 0), new V3(0, 0, 1));
-  decal(bin, ins, 16, ext, new V3(9.5, -18.52, 32), new V3(0, -1, 0), new V3(0, 0, 1));
-  decal(bin, ins, 16, ext, new V3(-9.5, -18.52, 32), new V3(0, -1, 0), new V3(0, 0, 1));
-  mesh(bin, new THREE.SphereGeometry(2.4, 16, 8, 0, TAU, Math.PI / 2, Math.PI / 2), lit(bin, 0x3a3d40, { phong: true, shininess: 70 }), ext, 0, -20, -52);
-  const chase: THREE.MeshBasicMaterial[] = [];
-  for (let i = 0; i < 22; i++) {
-    const m = bin.m(gbuf(new THREE.MeshBasicMaterial({ color: 0x401a10 }), 32));
-    mesh(bin, new THREE.SphereGeometry(0.32, 6, 4), m, ext, 0, -20.05, -66 + i * 6, false);
-    chase.push(m);
-  }
-  // ---- hero detail (the menu shows the ship up close): lit portholes in rows along the upper hull, conduits with
-  // flanges down the lower hull, RCS quads at the corners, a docking collar, sensor domes, deck lamps and lines,
-  // the bow searchlight, coolant runs from the reactor to the stern, and the ship's name across the stern
-  const portP = new Pix(16, 8);
-  for (let y = 0; y < 8; y++) for (let x = 0; x < 16; x++) portP.set(x, y, dv(HAZE, 4 + hash(x, y, 31) * 0.5, x, y));
-  for (let y = 0; y < 8; y++) for (let x = 0; x < 16; x++) { const d = Math.hypot(x - 7.5, y - 3.5); if (d < 3.2) portP.set(x, y, d > 2.3 ? 0x8a7a50 : y < 3 ? 0xf0d8a0 : 0xd8a860); }
-  const portT = ptex(bin, portP);
-  const portDarkP = new Pix(16, 8); for (let y = 0; y < 8; y++) for (let x = 0; x < 16; x++) { const d = Math.hypot(x - 7.5, y - 3.5); portDarkP.set(x, y, d < 3.2 ? (d > 2.3 ? 0x8a7a50 : 0x1a2024) : dv(HAZE, 4 + hash(x, y, 31) * 0.5, x, y)); }
-  const portM = lit(bin, 0xffffff, { map: portT, emissiveMap: portT, emissive: 0x9a7a48, polyOffset: 1 });
-  const portDM = lit(bin, 0xffffff, { map: ptex(bin, portDarkP), polyOffset: 1 });
-  for (const s of [-1, 1]) for (const [y, z0, z1, m] of [[10.6, -70, 28, portM], [4.2, -64, 20, portDM], [7.4, -40, 8, portM]] as [number, number, number, THREE.Material][]) {
-    const len = z1 - z0, pl = mesh(bin, new THREE.PlaneGeometry(len, 0.9), m, ext, s * 13.53, y, (z0 + z1) / 2, false);
-    pl.rotation.y = s * Math.PI / 2;
-    const u = pl.geometry.attributes.uv as THREE.BufferAttribute; for (let i = 0; i < u.count; i++) u.setX(i, u.getX(i) * (len / 1.8));
-  }
-  for (const s of [-1, 1]) for (const [y, r] of [[-1.2, 0.42], [-2.4, 0.28], [-13.5, 0.36]] as [number, number][]) {
-    const c = cyl(bin, r, r, 126, s < 0 ? lit(bin, 0x5a4636) : lit(bin, 0x4a5644), ext, s * 18.35, y, -6, 8); c.rotation.x = Math.PI / 2;
-    for (let z = -66; z <= 54; z += 8) { const f = cyl(bin, r * 1.5, r * 1.5, 0.3, gun, ext, s * 18.35, y, z, 8); f.rotation.x = Math.PI / 2; }
-  }
-  for (const [x, y, z] of [[-13.6, 12, 58], [13.6, 12, 58], [-13.6, 12, -72], [13.6, 12, -72], [-18.2, -16, 56], [18.2, -16, 56], [-15.2, -16, -70], [15.2, -16, -70]] as [number, number, number][]) {
-    const q = box(bin, 1.6, 1.6, 1.6, gun, ext, x, y, z);
-    for (const [dx, dy, dz] of [[Math.sign(x), 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, z > 0 ? 1 : -1]] as [number, number, number][]) {
-      const n = cyl(bin, 0.18, 0.32, 0.5, darkGun, q, dx * 0.95, dy * 0.95, dz * 0.95, 8);
-      n.quaternion.setFromUnitVectors(new V3(0, 1, 0), new V3(dx, dy, dz));
-    }
-  }
-  const dock = cyl(bin, 2.4, 2.4, 1.6, steel, ext, 14.3, 4.8, -50, 20); dock.rotation.z = Math.PI / 2;
-  const dockR = cyl(bin, 2.7, 2.7, 0.5, haz, ext, 15.1, 4.8, -50, 20); dockR.rotation.z = Math.PI / 2;
-  mesh(bin, new THREE.CircleGeometry(1.7, 20), darkGun, ext, 15.36, 4.8, -50, false).rotation.y = Math.PI / 2;
-  for (const [x, z] of [[-8, -64], [8, -64], [-9, 26]] as [number, number][]) { cyl(bin, 0.4, 0.6, 1.4, gun, ext, x, 15.2, z, 8); mesh(bin, new THREE.SphereGeometry(1.5, 16, 10), lit(bin, 0xc8c4b8, { phong: true, shininess: 30 }), ext, x, 16.8, z); }
-  for (const s of [-1, 1]) {
-    const line = box(bin, 0.35, 0.05, 98, lit(bin, 0xa88c3a), ext, s * 4.5, 14.52, -20); line.castShadow = false;
-    for (let z = -70; z <= 30; z += 10) mesh(bin, new THREE.SphereGeometry(0.22, 6, 4), lamp(bin, s < 0 ? 0xff6040 : 0x70ffa0, 1.2), ext, s * 12.6, 14.6, z, false);
-  }
-  const sl = new THREE.Group(); sl.position.set(0, 3.9, 91.4); ext.add(sl);
-  cyl(bin, 0.7, 0.9, 1.2, darkGun, sl, 0, 0, 0, 12).rotation.x = Math.PI / 2;
-  mesh(bin, new THREE.CircleGeometry(0.62, 14), lamp(bin, 0xfff0d0, 3), sl, 0, 0, 0.61, false);
-  const slBeam = mesh(bin, new THREE.ConeGeometry(9, 70, 24, 1, true), fxMat(bin, CONE_V, CONE_F, coneU(0xfff0d0, 0.16), 'add', { side: THREE.DoubleSide }), sl, 0, 0, 35.6, false);
-  slBeam.rotation.x = -Math.PI / 2;
-  for (const s of [-1, 1]) for (const y of [2, 6]) { const p = cyl(bin, 0.5, 0.5, 34, lit(bin, 0x6a5a44), ext, s * 6, 14.9 + y * 0.1, -58, 8); p.rotation.x = Math.PI / 2; void y; }
-  decal(bin, stencil(bin, 'VANGUARD', { size: 20, color: CR[4], wear: 0.08 }), 14, ext, new V3(0, 11.5, -76.05), new V3(0, 0, -1), new V3(0, 1, 0));
-  // floodlight masts and their beams, the hull's running lights
-  const floods: { head: THREE.Object3D; beam: THREE.Mesh }[] = [];
-  const beamMat = fxMat(bin, CONE_V, CONE_F, coneU(0xffe0b0, 0.22), 'add', { side: THREE.DoubleSide });
-  const floodAt = (p: V, aim: V, len: number) => {
-    const g = new THREE.Group(); g.position.copy(p); ext.add(g);
-    g.lookAt(root.localToWorld(aim.clone()));
-    cyl(bin, 0.12, 0.16, 3, steel, ext, p.x, p.y - 1.5, p.z, 6);
-    const head = box(bin, 1.1, 0.8, 0.9, darkGun, g, 0, 0, 0);
-    mesh(bin, new THREE.CircleGeometry(0.36, 12), lamp(bin, 0xffe8c0, 2.6), g, 0, 0, 0.46, false);
-    const bm = mesh(bin, new THREE.ConeGeometry(len * 0.3, len * 1.4, 24, 1, true), beamMat, g, 0, 0, len * 0.7 + 0.5, false);
-    bm.rotation.x = -Math.PI / 2;
-    floods.push({ head, beam: bm });
-  };
-  floodAt(new V3(-14, 16.5, 52), new V3(-18, -6, 30), 30);
-  floodAt(new V3(14, 16.5, 52), new V3(18, -6, 30), 30);
-  floodAt(new V3(-14, 16.5, -6), new V3(-13.5, 9.5, -22), 22);
-  floodAt(new V3(6, 16.5, 28), new V3(8.5, 20, 8), 18);
-  const navR = mesh(bin, new THREE.SphereGeometry(0.4, 8, 6), lamp(bin, 0xff3020, 2.2), ext, -18.3, -0.5, 44, false);
-  const navG = mesh(bin, new THREE.SphereGeometry(0.4, 8, 6), lamp(bin, 0x40ff80, 2.0), ext, 18.3, -0.5, 44, false);
-  // exterior light rig: the system's sun, the planet's bounce from below, two floods on the name
-  const sun = new THREE.DirectionalLight(0xfff0d8, 3.2); sun.castShadow = true; sun.position.set(-0.8, 0.38, -0.46).normalize().multiplyScalar(220);
-  sun.shadow.mapSize.set(2048, 2048); const sc = sun.shadow.camera as THREE.OrthographicCamera; sc.left = sc.bottom = -110; sc.right = sc.top = 110; sc.near = 10; sc.far = 420; sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.6;
-  root.add(sun, sun.target); extLights.push(sun);
-  // planet-shine from below (the belly reads in it), starlight above
-  const bounce = new THREE.HemisphereLight(0x3a4656, 0x98b0cc, 1.5); root.add(bounce); extLights.push(bounce);
-  for (const s of [-1, 1]) {
-    const f = new THREE.SpotLight(0xffd8a0, 260, 70, 0.55, 0.6, 1.6); f.position.set(s * 14, 16, 52); f.target.position.set(s * 18, -6, 28);
-    root.add(f, f.target); extLights.push(f);
-  }
+  // ================================================================ EXTERIOR (deployHull.ts: the hero hull, merged by material)
+  const H = buildHull(bin, root, ext);
+  const sun = H.sun; extLights.push(...H.lights);
 
   // ================================================================ LAUNCH BAY 2
   const B = BAY, BL = B.z1 - B.z0, BW = B.x1 - B.x0, BH = B.ceil - B.floor;
@@ -604,15 +431,7 @@ export function buildShip(bin: Bin, parent: THREE.Object3D, opts: { people?: boo
     },
     setView,
     update(dt, t) {
-      dish.rotation.y = t * 0.6;
-      strobeM.color.setScalar(Math.sin(t * 5.3) > 0.93 ? 3 : 0.06);
-      const blink = Math.sin(t * 2.4) > 0.2 ? 2.2 : 0.15;
-      (navR.material as THREE.MeshBasicMaterial).color.setRGB(blink, 0.12 * blink, 0.08 * blink);
-      (navG.material as THREE.MeshBasicMaterial).color.setRGB(0.25 * blink, blink, 0.5 * blink);
-      nozU.uT.value = t;
-      // the keel lights run toward the bow, again and again
-      const head = ((t * 14) % (chase.length + 8));
-      chase.forEach((m, i) => { const d = head - i; const k = d >= 0 && d < 3 ? 1 - d / 3 : 0; m.color.setRGB(0.25 + k * 2.6, 0.08 + k * 1.2, 0.05 + k * 0.5); });
+      H.update(t, dt);
       if (beaconOn) for (const [i, b] of beacons.entries()) b.g.rotation.y = t * 4.2 + i * 1.3;
       pod.update(dt, t);
       if (view !== 'ext' || doorU > 0.3) { officer?.update(dt); for (const c of crew) c.a.update(dt); }
@@ -620,7 +439,7 @@ export function buildShip(bin: Bin, parent: THREE.Object3D, opts: { people?: boo
     w,
     dispose() { for (const k of keep) { k.rig.root.removeFromParent(); k.rig.dispose(); } root.removeFromParent(); },
   };
-  void floods; void vents;
+  void vents;
   setView('ext');
   ship.setNixies('  ');
   ship.setCrane(20, 0, 2);
