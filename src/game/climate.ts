@@ -298,6 +298,7 @@ export class Climate {
     // the ground's own climate terms (terrain.ts): snow on flats and heights, rime, drought cracks, rain-wet
     const tr = w.terrain as unknown as { setClimate?(c: { snow?: number; frost?: number; dry?: number; wet?: number }): void };
     tr.setClimate?.({ snow: this.snowCover, frost: this.frost, dry: E.dry * (1 - E.wet), wet: E.wet });
+    if (fl.setSeason) E.dry = 0;
     // the falling weather (details.ts): what falls and how hard
     const det = (g as unknown as { details?: { setPrecip(kind: string, amt: number): void } }).details;
     const kind = this.snow > 0.3 ? 'snow' : this.dust > 0.3 ? 'dust' : this.ash > 0.3 ? 'ash' : this.red > 0.5 && this.rain > 0.2 ? 'redrain' : 'rain';

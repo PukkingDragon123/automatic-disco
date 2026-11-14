@@ -4,6 +4,9 @@
 import type { Design } from '../design';
 import type { Rig } from '../morph';
 import type { V3 } from '../kit';
+import * as THREE from 'three';
+import { buildPlantObject, floraSpeciesFor } from '../../world/floraObject';
+import type { BiomeKey } from '../../world/region';
 import { grovebacker } from './grovebacker';
 import { mirewalker } from './mirewalker';
 import { cragstrider } from './cragstrider';
@@ -31,4 +34,27 @@ export function attachGrove(bones: import('three').Bone[], seats: GroveSeat[], m
     bones[s.bone].add(o); out.push(o);
   });
   return out;
+}
+
+/** grow the region's own flora on a titan instance: mature trees in the big pockets on the crown, young trees and
+ *  saplings in the smaller ones, ferns and shrubs as undergrowth round every trunk. The plants ride the spine bones,
+ *  so they sway with the gait; their own material sways them in the wind and follows the seasons. */
+export function growGrove(bones: THREE.Bone[], geo: THREE.BufferGeometry, o: { biome?: BiomeKey; seed?: number } = {}): THREE.Object3D[] {
+  const seats = groveSeats(geo); if (!seats.length) return [];
+  const sp = floraSpeciesFor(o.biome), seed = o.seed ?? 1;
+  const trees = sp.filter((s) => s.tree), under = sp.filter((s) => !s.tree && ['fern', 'shrub', 'tuft', 'fungus', 'bloom', 'rosette', 'fiddle'].includes(s.arch));
+  const pickT = (i: number) => trees[(i * 7 + seed) % Math.max(1, trees.length)] ?? sp[0], pickU = (i: number) => under[(i * 5 + seed) % Math.max(1, under.length)] ?? sp[sp.length - 1];
+  const place = (s: THREE.Object3D, h: number) => { const ph = (s.userData.plant?.height as number) || 1; s.scale.setScalar(h / ph); return s; };
+  return attachGrove(bones, seats, (s, i) => {
+    const g = new THREE.Group();
+    const main = s.kind === 'fern' ? pickU(i) : pickT(i);
+    g.add(place(buildPlantObject(main, seed * 31 + i, s.kind === 'tree' ? 'full' : 'light', { biome: o.biome, shadows: s.kind === 'tree' || s.kind === 'young' }), s.size));
+    // undergrowth round the foot
+    const n = s.kind === 'tree' ? 3 : s.kind === 'young' ? 2 : 1;
+    for (let k = 0; k < n; k++) {
+      const u = buildPlantObject(pickU(i + k + 1), seed * 17 + i * 5 + k, 'light', { biome: o.biome, shadows: false }), a = k * 2.3 + i, r = 0.5 + s.size * 0.12;
+      place(u, 0.5 + ((i + k) % 3) * 0.25); u.position.set(Math.cos(a) * r, -0.05, Math.sin(a) * r); g.add(u);
+    }
+    return g;
+  });
 }

@@ -384,17 +384,17 @@ function basalt(pc: PixelCanvas, c: number, seed: number, side: boolean) {
   if (side) {
     const cols = Math.round(T / CW), tones = Array.from({ length: cols }, () => r.pick([2, 3, 3, 4]));
     for (let x = 0; x < T; x++) { const col = Math.floor(x / CW), kk = tones[col], e = x % CW; for (let y = 0; y < T; y++) pc.set(x, y, e === 0 ? Kb[0] : e === 1 ? Kb[kk + 1] : e === CW - 1 ? Kb[kk - 1] : Kb[kk]); }
-    for (let col = 0; col < cols; col++) for (let y = r.int(0, 13 * K); y < T; y += r.int(10, 16) * K) for (let x = col * CW + 1; x < col * CW + CW; x++) { pc.set(x, y, Kb[1]); pc.set(x, y + 1, Kb[4]); }
+    for (let col = 0; col < cols; col++) for (let y = r.int(0, 13 * K); y < T; y += Math.round(r.int(10, 16) * K)) for (let x = col * CW + 1; x < col * CW + CW; x++) { pc.set(x, y, Kb[1]); pc.set(x, y + 1, Kb[4]); }
   } else {
-    plates(pc, r, 36, Kb, [2, 3, 3, 4], { bevel: true, seam: 0, joint: 1.5 });
-    for (let i = 0; i < 20 * AREA; i++) crackLine(pc, r.int(0, T - 1), r.int(0, T - 1), r.int(6, 16), Kb[0], Kb[4], r);
+    plates(pc, r, 14, Kb, [2, 3, 3, 4], { bevel: true, seam: 0, joint: 1 });
+    for (let i = 0; i < 5 * AREA; i++) crackLine(pc, r.int(0, T - 1), r.int(0, T - 1), r.int(3, 7), Kb[0], Kb[4], r);
   }
   tidy(pc);
 }
 
 /** ore: bedrock with faceted nuggets of ferrite (now and then copper or a fleck of gold), each in its rust stain */
 function ore(pc: PixelCanvas, rock: number, seed: number, side: boolean) {
-  if (side) rockSide(pc, rock, seed); else rockTop(pc, rock, seed, 40, 0.3);
+  if (side) rockSide(pc, rock, seed); else rockTop(pc, rock, seed, 16, 0.3);
   const r = new Rand(seed + 7), Fe = rampNamed('iron'), Cu = rampNamed('copper'), Au = rampNamed('gold'), Ru = rampNamed('rust'), Kr = RF(rock);
   for (let q = 0; q < AREA; q++) {
     const ox = (q % TILE_M) * TS, oy = Math.floor(q / TILE_M) * TS, spots: [number, number][] = [];
@@ -413,13 +413,13 @@ function ore(pc: PixelCanvas, rock: number, seed: number, side: boolean) {
 
 /** crystal: bedrock pierced by clusters of faceted prisms fanning from a shared root (glowing a little: alpha < 255) */
 function crystal(pc: PixelCanvas, rock: number, cry: number, seed: number, side: boolean) {
-  if (side) rockSide(pc, rock, seed); else rockTop(pc, rock, seed, 40, 0.3);
+  if (side) rockSide(pc, rock, seed); else rockTop(pc, rock, seed, 16, 0.3);
   const r = new Rand(seed + 3), C = RF(cry), Kr = RF(rock);
   for (let q = 0; q < AREA; q++) {
     const ox = (q % TILE_M) * TS, oy = Math.floor(q / TILE_M) * TS;
     for (let c = 0; c < 3; c++) {
       const bx = ox + k(5 + c * 10 + r.range(-1.5, 1.5)), by = oy + k(r.range(16, 30)), n = r.int(4, 6);
-      for (let j = -3 * K; j <= 3 * K; j++) { pc.set(bx + j, by + 1, Kr[1]); if (Math.abs(j) < 3 * K) pc.set(bx + j, by, Kr[0]); if (Math.abs(j) < 2 * K) pc.set(bx + j, by + 2, Kr[2]); }
+      for (let j = -k(3); j <= k(3); j++) { pc.set(bx + j, by + 1, Kr[1]); if (Math.abs(j) < k(3)) pc.set(bx + j, by, Kr[0]); if (Math.abs(j) < k(2)) pc.set(bx + j, by + 2, Kr[2]); }
       const ps = Array.from({ length: n }, (_, j) => ({ lean: (j / (n - 1) - 0.5) * r.range(0.5, 0.9), h: k(r.range(8, 14)) * (j === (n >> 1) ? 1.25 : 1), hw: k(r.range(1.8, 2.8)), dx: k((j / (n - 1) - 0.5) * 5) }));
       ps.sort((a, b) => b.h - a.h);
       for (const p of ps) prism(pc, bx + p.dx, by, p.hw, Math.min(by - oy - 1, p.h), p.lean, C, 190);
@@ -431,11 +431,11 @@ function crystal(pc: PixelCanvas, rock: number, cry: number, seed: number, side:
 function litter(pc: PixelCanvas, soil: number, foliage: number[], seed: number) {
   soilTop(pc, soil, seed, 0.3);
   const r = new Rand(seed + 5), Tw = rampNamed('fur');
-  for (let i = 0; i < 4 * AREA; i++) thread(pc, r, r.range(0, T), r.range(0, T), r.range(18, 40), r.range(0, Math.PI * 2), Tw[3], Tw[1], 0.1);
+  for (let i = 0; i < AREA; i++) { let x = r.int(0, T - 1), y = r.int(0, T - 1); const dx = r.pick([-1, 1]); for (let j = 0; j < r.int(6, 12); j++) { pc.set(x, y, Tw[3]); pc.set(x, y + 1, Tw[1]); x += dx; if (r.chance(0.25)) y += 1; } }
   const browns: number[][] = [rampNamed('rust'), rampNamed('ochre'), rampNamed('clay'), rampNamed('coral')];
-  for (let i = 0; i < 90 * AREA; i++) {
+  for (let i = 0; i < 26 * AREA; i++) {
     const R0 = r.chance(0.15) ? rampFor(r.pick(foliage)) : r.pick(browns);
-    leafStroke(pc, r.range(0, T), r.range(0, T), r.range(0, Math.PI * 2), r.range(7, 15), r.range(2.6, 5), R0, r, { midrib: true, notch: r.chance(0.2) });
+    leafStroke(pc, r.range(0, T), r.range(0, T), r.range(0, Math.PI * 2), r.range(3, 5.5), r.range(1.2, 2), R0, r, { midrib: false, notch: r.chance(0.2) });
   }
   tidy(pc);
 }
@@ -443,19 +443,19 @@ function litter(pc: PixelCanvas, soil: number, foliage: number[], seed: number) 
 /** gravel: a bed of faceted stones of a few kinds, each with its contact shadow, grit between */
 function gravel(pc: PixelCanvas, rock: number, seed: number) {
   const r = new Rand(seed), Kr = RF(rock), kinds = [Kr, rampNamed('stone'), rampNamed('sand'), rampNamed('slate')];
-  plates(pc, r, 24, Kr, [1, 2]);
-  for (let i = 0; i < 160 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(2.5, 4), r.range(2, 3.4), r.pick(kinds), r, Kr[0]);
-  for (let i = 0; i < 110 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), k(r.range(1.8, 3.6)), k(r.range(1.5, 2.8)), r.pick(kinds), r, Kr[0]);
+  plates(pc, r, 9, Kr, [1, 2]);
+  for (let i = 0; i < 30 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(3, 4.5), r.range(2.5, 3.5), r.pick(kinds), r, Kr[0]);
+  for (let i = 0; i < 12 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(4, 6.5), r.range(3, 5), r.pick(kinds), r, Kr[0]);
   tidy(pc);
 }
 
 /** the Veyr's moss: cushions of angular clumps, spore stalks, the odd vein glint (emissive) */
 function moss(pc: PixelCanvas, seed: number) {
   const r = new Rand(seed), M = rampFor(VEYR.moss), G = rampNamed('glowTeal');
-  plates(pc, r, 28, M, [1, 2]);
-  for (let i = 0; i < 26 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), k(r.range(2.6, 5)), k(r.range(2.2, 4)), M, r, M[0]);
-  for (let i = 0; i < 16 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1), h = r.int(2, 3) * K; for (let j = 0; j < h; j++) pc.set(x, y - j, M[2]); pc.set(x, y - h, rampNamed('straw')[4], 200); }
-  for (let i = 0; i < 8 * AREA; i++) pc.set(r.int(0, T - 1), r.int(0, T - 1), G[3], 150);
+  plates(pc, r, 10, M, [1, 2]);
+  for (let i = 0; i < 7 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(4, 7.5), r.range(3.5, 6), M, r, M[0]);
+  for (let i = 0; i < 4 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1), h = r.int(2, 4); for (let j = 0; j < h; j++) pc.set(x, y - j, M[2]); pc.set(x, y - h, rampNamed('straw')[4], 200); }
+  for (let i = 0; i < 2 * AREA; i++) pc.set(r.int(0, T - 1), r.int(0, T - 1), G[3], 150);
 }
 function mossSide(pc: PixelCanvas, seed: number) {
   const r = new Rand(seed), M = rampFor(VEYR.moss);
@@ -467,56 +467,26 @@ function mossSide(pc: PixelCanvas, seed: number) {
 function creep(pc: PixelCanvas, kind: number, seed: number) {
   const rv = RIVALS[kind], C = rampFor(rv.creep), r = new Rand(seed), V = rampFor(rv.vein);
   if (kind === 0) {
-    plates(pc, r, 36, C, [1, 2]);
-    for (let i = 0; i < 14 * K * AREA; i++) {
-      const x = r.int(0, T - 1), y = r.int(0, T - 1), h = r.int(3, 7) * K, a = r.range(-0.6, 0.6);
+    plates(pc, r, 12, C, [1, 2]);
+    for (let i = 0; i < 5 * AREA; i++) {
+      const x = r.int(0, T - 1), y = r.int(0, T - 1), h = r.int(4, 9), a = r.range(-0.6, 0.6);
       for (let t = 0; t < h; t++) for (let w = -1; w <= 1; w++) pc.set(x + Math.round(a * t) + w, y - t, C[w < 0 ? 5 : w > 0 ? 2 : 4], t === h - 1 ? 140 : 255);
     }
   } else if (kind === 1) {
-    plates(pc, r, 30, C, [1, 2, 3], { bevel: true });
-    for (let i = 0; i < 9 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); stone(pc, x, y, r.range(3, 5) * K, r.range(2, 3) * K, C, r, C[0]); pc.set(x, y + 1, V[3], 120); }
+    plates(pc, r, 11, C, [1, 2, 3], { bevel: true });
+    for (let i = 0; i < 2.5 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); stone(pc, x, y, r.range(4, 7), r.range(3, 4.5), C, r, C[0]); pc.set(x, y + 1, V[3], 120); }
   } else {
-    plates(pc, r, 40, C, [1, 2]);
-    for (let i = 0; i < 22 * K * AREA; i++) { let x = r.int(0, T - 1), y = r.int(0, T - 1); for (let t = 0; t < 8 * K; t++) { pc.set(x, y, C[t % 3 === 0 ? 5 : 4]); x += r.pick([-1, 0, 1]); y += r.pick([-1, 0, 1]); } }
+    plates(pc, r, 14, C, [1, 2]);
+    for (let i = 0; i < 6 * AREA; i++) { let x = r.int(0, T - 1), y = r.int(0, T - 1); for (let t = 0; t < 12; t++) { pc.set(x, y, C[t % 3 === 0 ? 5 : 4]); x += r.pick([-1, 0, 1]); y += r.pick([-1, 0, 1]); } }
   }
 }
 
 /** an impact crater floor: fused glass plates, faceted beads, now and then a cooling ember (emissive) */
 function crater(pc: PixelCanvas, seed: number) {
   const r = new Rand(seed), Kc = rampNamed('basalt'), G = rampNamed('slate');
-  plates(pc, r, 32, Kc, [1, 2, 3], { bevel: true, seam: 0 });
-  for (let i = 0; i < 24 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); pc.set(x, y, G[3]); pc.set(x + 1, y, G[2]); pc.set(x, y - 1, G[5]); pc.set(x + 1, y + 1, Kc[0]); }
+  plates(pc, r, 12, Kc, [1, 2, 3], { bevel: true, seam: 0 });
+  for (let i = 0; i < 6 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); pc.set(x, y, G[3]); pc.set(x + 1, y, G[2]); pc.set(x, y - 1, G[5]); pc.set(x + 1, y + 1, Kc[0]); }
   for (let i = 0; i < 3; i++) if (r.chance(0.5)) pc.set(r.int(0, T - 1), r.int(0, T - 1), rampNamed('glowAmber')[3], 210);
-}
-
-/** the scatter sheet: four 1 m cells (2 x 2), each a small group of stones round a big one, on transparency, with
- *  contact shadows (alpha ~110); the terrain stamps one here and there */
-function scatter(pc: PixelCanvas, pal: Palette, seed: number) {
-  const r = new Rand(seed), kinds = [RF(pal.rock), rampNamed('stone'), rampNamed('slate'), RF(pal.sand)];
-  const SH = 0x10141a;
-  pc.clear();
-  for (let q = 0; q < AREA; q++) {
-    // (kept well inside its 1 m cell: the terrain cuts the sheet at the cell's edge)
-    const cx = (q % TILE_M) * TS + TS / 2 + r.range(-6, 6), cy = Math.floor(q / TILE_M) * TS + TS / 2 + r.range(-6, 6);
-    const K0 = r.pick(kinds), big = r.range(24, 40);
-    stone(pc, cx, cy, big, big * r.range(0.65, 0.9), K0, r, SH);
-    for (let s = 0; s < r.int(2, 6); s++) {
-      const a = r.range(0, 6.28), d = big * r.range(0.7, 1.1);
-      stone(pc, cx + Math.cos(a) * d, cy + Math.sin(a) * d * 0.8, r.range(6, 15), r.range(5, 11), r.chance(0.7) ? K0 : r.pick(kinds), r, SH);
-    }
-  }
-  toPalette(pc);
-  // shadows half see-through (black), everything else solid
-  const d = pc.data, s0 = toPaletteOf(SH);
-  for (let i = 0; i < T * T; i++) if (d[i * 4 + 3] > 0) {
-    const sh = d[i * 4] === s0[0] && d[i * 4 + 1] === s0[1] && d[i * 4 + 2] === s0[2];
-    if (sh) { d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = 0; d[i * 4 + 3] = 110; } else d[i * 4 + 3] = 255;
-  }
-}
-/** a colour as the palette snap turns it (rgb bytes) */
-function toPaletteOf(c: number): [number, number, number] {
-  const p = new PixelCanvas(1, 1); p.fill(0); p.set(0, 0, c); toPalette(p);
-  return [p.data[0], p.data[1], p.data[2]];
 }
 
 // ================================================================================================ the array
@@ -546,7 +516,7 @@ export function buildBlockTexture(pal: Palette, seed: number): { tex: THREE.Data
   paint(L.soil, (p) => soilTop(p, pal.soil, s + 4));
   paint(L.rockA, (p) => rockTop(p, pal.rock, s + 5));
   paint(L.rockB, (p) => rockTop(p, pal.rock, s + 6, 56, 1.4));
-  paint(L.rockSide, flat(pal.rock));
+  paint(L.rockSide, (p) => rockSide(p, pal.rock, s + 7));
   paint(L.sandA, (p) => sand(p, pal.sand, s + 8, 1));
   paint(L.sandB, (p) => sand(p, pal.sand, s + 9, 0.5));
   paint(L.mud, (p) => mud(p, pal.mud, s + 10));
@@ -554,7 +524,7 @@ export function buildBlockTexture(pal: Palette, seed: number): { tex: THREE.Data
   paint(L.snow, (p) => snow(p, s + 12));
   paint(L.snowSide, flat(pal.rock));
   paint(L.basalt, (p) => basalt(p, pal.basalt, s + 14, false));
-  paint(L.basaltSide, flat(pal.basalt));
+  paint(L.basaltSide, (p) => basalt(p, pal.basalt, s + 15, true));
   paint(L.ore, (p) => ore(p, pal.rock, s + 16, false));
   paint(L.oreSide, flat(pal.rock));
   paint(L.crystal, (p) => crystal(p, pal.rock, pal.crystal, s + 18, false));
@@ -571,21 +541,20 @@ export function buildBlockTexture(pal: Palette, seed: number): { tex: THREE.Data
   paint(L.drySide, flat(pal.soil));
   paint(L.mudSide, flat(pal.mud));
   paint(L.crater, (p) => crater(p, s + 25));
-  paint(L.scatter, (p) => p.clear(), false);
+  paint(L.soilB, (p) => soilTop(p, pal.soil, s + 26, 2.4));
   const tex = new THREE.DataArrayTexture(data, T, T, LAYERS);
   tex.format = THREE.RGBAFormat;
   tex.type = THREE.UnsignedByteType;
   tex.colorSpace = THREE.SRGBColorSpace;
-  // crisp texels close up; down the mip chain at a distance (nearest texel, blended between levels) so it never
-  // shimmers
+  // crisp pixels at play zoom: nearest everywhere, a coarser mip only well past 2x minification (terrain.ts biases)
   tex.magFilter = THREE.NearestFilter;
-  tex.minFilter = THREE.NearestMipmapLinearFilter;
+  tex.minFilter = THREE.NearestMipmapNearestFilter;
   tex.generateMipmaps = true;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.anisotropy = 8;
   tex.needsUpdate = true;
   return { tex, avg, ms: performance.now() - t0 };
 }
-void [grassSide, rockSide, mossSide, scatter];
-/** GPU memory of the block array with its mip chain, bytes (about 11 MB) */
+void [grassSide, mossSide];
+/** GPU memory of the block array with its mip chain, bytes (about 6 MB) */
 export const BLOCK_BYTES = Math.round((T * T * 4 * LAYERS * 4) / 3);

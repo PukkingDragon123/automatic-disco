@@ -29,9 +29,13 @@ export function cragstrider(d: Design, rig: Rig, rest: V3[]) {
   const body = new Body(2048);
   const seed = d.seed % 997;
   const lichen: Look['lichen'] = [], pitsT: { c: V3; r: number; slit?: boolean }[] = [];
+  // old wounds: claw rakes down both flanks below the bands, a long gash over the shoulder
+  const scars: Look['scars'] = [];
+  for (const s of [-1, 1]) for (let k = 0; k < 3; k++) scars.push({ pts: [[s * W * 0.5, hips[1] - H * 0.12 - k * 0.45, hips[2] + T * 0.35 + k * 0.5], [s * W * 0.55, hips[1] - H * 0.3 - k * 0.45, hips[2] + T * 0.48 + k * 0.5], [s * W * 0.5, hips[1] - H * 0.46 - k * 0.45, hips[2] + T * 0.58 + k * 0.5]], w: 0.12, ramp: 'bone' });
+  scars.push({ pts: [[W * 0.35, chest[1] + H * 0.2, chest[2] + 0.5], [W * 0.5, chest[1] - H * 0.1, chest[2] - 0.3], [W * 0.46, chest[1] - H * 0.4, chest[2] - 1.2]], w: 0.18, ramp: 'bone' });
   const hide = (extra?: Partial<Look>): Look => ({
     ramp: 'hide', step: 3, belly: { ramp: 'stone', step: 4, below: -0.5, scales: { size: 0.7, kind: 'scute', flow: 1, ink: 1.8 } },
-    pebbles: { size: 0.3, pores: 0.4 }, creases: 0.7, lichen,
+    pebbles: { size: 0.3, pores: 0.4 }, creases: 0.7, lichen, scars,
     mud: { top: (p: V3) => 1.4 + 0.5 * Math.sin(p[2] * 1.3 + p[0]), ramp: 'clay', clump: 0.25 },
     ...extra,
   });
@@ -129,7 +133,7 @@ export function cragstrider(d: Design, rig: Rig, rest: V3[]) {
     const L = limb({
       name: 'leg' + lg.pair + (s > 0 ? 'r' : 'l'), side: s, hip: rest[i0], knee: rest[i1], sole: rest[i2],
       bones: { parent: lg.pair === 0 ? X.bi('chest') : rig.root, up: i0, lo: i1, foot: i2, flex: lg.flex },
-      rings: LIMB_TYPES.strider(r0), foot: { pad: r0 * 0.95, h: 0.7, fwd: 0.18, nail: 'claw', lobe: 0.22, toes: [-36, 0, 36].map((a) => ({ a, len: 0.45, r: 0.36, claw: 0.75, curl: 0.45, drop: 0.2 })) },
+      rings: LIMB_TYPES.strider(r0), foot: { pad: r0 * 0.95, h: 0.7, fwd: 0.18, nail: 'claw', lobe: 0.22, toes: [-38, 0, 38].map((a, k) => ({ a, len: 0.5, r: 0.44, claw: k === 1 ? 1.35 : 1.1, curl: 0.5, drop: 0.2 })) },
       paint: (ch, p, b) => {
         const px = new Px(ch, b); paintLook(px, hide());
         // plated shins: rows of keeled scutes down the front of the lower leg and over the knee

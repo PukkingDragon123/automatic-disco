@@ -29,7 +29,7 @@ import { SceneGrab } from '../ocean/grab';
  *  shore lines, rings and foam stay a readable width at play zoom */
 const TSF = Math.min(TS, 64).toFixed(1);
 /** the open sea's feature grid (texels per metre): foam, glitter and ripples are drawn on it */
-const SPF = '32.0';
+const SPF = '16.0';
 
 const RIP_N = 24, WAKE_N = 6;
 /** uniforms, rings and wakes, the bed: shared by the rivers and the sea */
@@ -187,25 +187,42 @@ uniform sampler2D uGrab, uGrabD;
 uniform float uGrabOn, uNear, uFar;
 uniform vec2 uRes;
 uniform mat4 uInvProj, uCamWorld;
-uniform vec3 uSunDir, uSunCol, uSkyTop, uSkyHor, uCloudCol, uSssC, uBodyS, uBodyM, uBodyD, uFoamHi, uFoamLo, uGlowC, uRedS, uRedD;
+uniform vec3 uSunDir, uSunCol, uSkyTop, uSkyHor, uCloudCol, uSssC, uGlowC;
+/** the sea's palette ramps (palette.ts): the turquoise of the shallows, the blue of the deep, foam, the red tide */
+uniform vec3 uRampW[7], uRampB[7], uRampF[5], uRampR[6];
 uniform vec2 uWindV;
-uniform float uCloud, uWindK, uBio, uRed, uTurb, uSunK, uOcean;
+uniform float uCloud, uWindK, uBio, uRed, uTurb, uSunK, uOcean, uDeepCut;
 float linZ(float d) { float z = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear)); }
-/** the colour the water itself scatters, by how much of it the light crosses: turquoise, teal, deep teal-blue (banded) */
-vec3 bodyAt(float path) { float b = floor(clamp(path / 11.0, 0.0, 1.0) * 6.0 + 0.5) / 6.0; return mix(mix(uBodyS, uBodyM, smoothstep(0.0, 0.45, b)), uBodyD, smoothstep(0.45, 1.0, b)); }
 vec3 worldAt(vec2 uv, float d) { vec4 v = uInvProj * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); v /= v.w; return (uCamWorld * v).xyz; }
-/** the sky in a direction: a banded gradient, drifting clouds, the sun's halo */
+vec3 rampW(float k) { return uRampW[int(clamp(floor(k + 0.5), 0.0, 6.0))]; }
+vec3 rampB(float k) { return uRampB[int(clamp(floor(k + 0.5), 0.0, 6.0))]; }
+vec3 rampF(float k) { return uRampF[int(clamp(floor(k + 0.5), 0.0, 4.0))]; }
+vec3 rampR(float k) { return uRampR[int(clamp(floor(k + 0.5), 0.0, 5.0))]; }
+/** the sky in a direction, banded: what the surface mirrors */
 vec3 skyCol(vec3 d) {
   float h = clamp(d.y, 0.0, 1.0);
-  float hb = floor(pow(h, 0.55) * 6.0 + 0.5) / 6.0;
-  vec3 c = mix(uSkyHor, uSkyTop, hb);
+  vec3 c = mix(uSkyHor, uSkyTop, floor(pow(h, 0.55) * 4.0 + 0.5) / 4.0);
   vec2 cp = d.xz / (d.y + 0.14) * 0.55 + uWindV * uTime * 0.0035;
   float cl = vn(cp * 1.4) * 0.62 + vn(cp * 3.3 + 7.1) * 0.38;
-  float cov = smoothstep(0.78 - uCloud * 0.5, 0.86 - uCloud * 0.5, cl) * smoothstep(0.0, 0.08, d.y);
-  c = mix(c, uCloudCol * (0.8 + 0.25 * step(0.5, vn(cp * 2.0 + 3.0))), cov * 0.85);
-  float sd = max(dot(d, uSunDir), 0.0);
-  c += uSunCol * (pow(sd, 6.0) * 0.12 + step(0.9975, sd) * 1.6) * (1.0 - cov * 0.7);
-  return c;
+  float cov = step(0.8 - uCloud * 0.5, cl) * step(0.0, d.y);
+  return mix(c, uCloudCol, cov * 0.85);
+}
+/** caustics as drawn networks: the edges of slowly drifting cells (two layers), on the feature grid */
+float causticNet(vec2 q, float t) {
+  float best = 0.0;
+  for (int l = 0; l < 2; l++) {
+    vec2 s = q * (l == 0 ? 0.75 : 1.2) + float(l) * 17.3;
+    vec2 i = floor(s), f = fract(s);
+    float d1 = 9.0, d2 = 9.0;
+    for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+      vec2 g = vec2(float(x), float(y)), o = vec2(h2(i + g), h2(i + g + 3.7));
+      o = 0.5 + 0.38 * sin(t * (0.6 + float(l) * 0.25) + o * 6.2832);
+      float d = length(g + o - f);
+      if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+    }
+    best = max(best, 1.0 - smoothstep(0.05, 0.11, d2 - d1));
+  }
+  return best;
 }
 `;
 
@@ -244,35 +261,41 @@ ${WATER_COMMON}
 ${WATER_FN}
 ${SEA_UNI}
 varying vec3 vWp; varying vec2 vRest; varying float vWave; varying float vDepth;
+/** sun (or moon) on the facet at texel q: 0 none, 1 a glint, 2 a big one (drawn as a plus) */
+float glintAt(vec2 q, vec3 N, vec3 V, vec3 L, float t, float rough) {
+  vec2 j = vec2(h2(q + floor(t * 5.0 + h2(q) * 11.0) * 1.7), h2(q * 1.3 + 4.1 + floor(t * 5.0 + h2(q + 2.0) * 11.0) * 2.3)) - 0.5;
+  vec3 Ng = normalize(N + vec3(j.x, 0.0, j.y) * rough);
+  float s = max(dot(reflect(-V, Ng), L), 0.0);
+  return step(0.993, s) + step(0.998, s);
+}
 void main() {
   float t = uTime;
   float surf = uWater + uStage * 0.5;
-  // features sit on a world texel grid (in the swell's rest frame, so they ride the waves)
+  // everything on the sea is drawn on one texel grid in the swell's rest frame (so the pixels ride the waves)
   vec2 px = floor(vRest * ${SPF});
   vec2 p = (px + 0.5) / ${SPF};
   float bed = bedH(p), depth = max(0.0, surf - bed);
-  // the swell's normal and crest measure at this texel; short waves fade with distance (no shimmering far off)
+  // the swell's facet normal and crest measure at this texel; short waves fade with distance
   float fw = length(fwidth(vRest));
   vec3 N = vec3(0.0, 1.0, 0.0); float crest = 0.0;
-  for (int i = 0; i < ${8}; i++) {
+  for (int i = 0; i < 8; i++) {
     vec4 a = uWv[i], b = uWq[i];
     float A = a.w * shoalK(depth, b.w) * (1.0 - smoothstep(4.0, 9.0, fw * a.z * 6.0));
     if (A < 1e-5) continue;
     float th = a.z * dot(a.xy, p) - b.x * t + b.y, s = sin(th), c = cos(th), kA = a.z * A;
     N.xz -= a.xy * kA * c; N.y -= b.z * kA * s; crest += b.z * kA * s;
   }
-  // capillary chop on top: tiny ripples, sharper with the wind, fading with distance
-  float near = 1.0 - smoothstep(0.08, 0.5, fw);
-  // (three short wave trains crossing near the wind, their fronts bent by a slow warp: the cross-hatch of real ripples)
+  // ripples on the swell: three short wave trains crossing near the wind, their fronts bent by a slow warp
+  float near = 1.0 - smoothstep(0.1, 0.6, fw);
   vec2 wd = normalize(uWindV + vec2(1e-4, 0.0)), wq = p + (vec2(vn(p * 0.21), vn(p * 0.21 + 5.3)) - 0.5) * 2.4;
   vec2 chop = vec2(0.0);
   for (int i = 0; i < 3; i++) {
     float fi = float(i), an = (fi - 1.0) * 0.62 + 0.15 * sin(fi * 7.1);
     vec2 dd = vec2(wd.x * cos(an) - wd.y * sin(an), wd.x * sin(an) + wd.y * cos(an));
-    float kk = 6.2832 / (0.55 + fi * 0.42), ph = dot(wq, dd) * kk - t * sqrt(9.81 * kk) * 0.6 + fi * 2.1;
+    float kk = 6.2832 / (0.7 + fi * 0.5), ph = dot(wq, dd) * kk - t * sqrt(9.81 * kk) * 0.6 + fi * 2.1;
     chop += dd * cos(ph) * (0.5 + 0.5 * vn(p * 0.5 + fi * 3.0)) / (1.0 + fi * 0.4);
   }
-  chop *= (0.16 + uWindK * 0.3) * near;
+  chop *= (0.14 + uWindK * 0.28) * near;
   N = normalize(N + vec3(chop.x, 0.0, chop.y));
   vec2 ia = interact(p, t);
   vec3 sh = shoreAt(p);
@@ -284,129 +307,124 @@ void main() {
   float glow = 0.0;
   if (!under) {
     // ---------------- seen from above
-    float NdV = max(dot(N, V), 0.0);
-    float F = 0.04 + 0.96 * pow(1.0 - NdV, 4.0);
-    F = floor(min(F, 0.92) * 8.0 + 0.5) / 8.0;
-    vec3 R = reflect(-V, N); R.y = abs(R.y);
-    vec3 sky = skyCol(R);
-    // what lies beneath: the frame so far, bent by the surface; how far the view ray travels through water to it
-    vec3 refr;
     float zW = linZ(gl_FragCoord.z);
-    vec3 body = bodyAt(depth * 1.3);
-    // red tide: drifting red-brown blooms over the body of the water
-    float red = uRed * smoothstep(0.42, 0.62, vn(p * 0.045 + vec2(t * 0.004, -t * 0.003)) * 0.7 + vn(p * 0.16 + 3.0) * 0.3);
-    body = mix(body, mix(uRedS, uRedD, smoothstep(0.8, 6.0, depth)), red);
-    float bedDepth = depth;
+    // what lies beneath (the frame so far, bent by the facet) and how much water the view ray crosses to it
+    float path = depth * 1.4 + 0.2, bedDepth = depth;
+    vec3 bc = vec3(0.0); bool seeBed = false;
     if (uGrabOn > 0.5) {
-      float d0 = texture(uGrabD, uv).r;
-      float th0 = max(0.0, linZ(d0) - zW);
+      float d0 = texture(uGrabD, uv).r, th0 = max(0.0, linZ(d0) - zW);
       vec2 offPx = floor(N.xz * min(th0, 2.5) * 46.0 / max(zW, 1.0) * (uRes.y / 720.0) + 0.5);
       vec2 uv2 = uv + offPx / uRes;
       float d2 = texture(uGrabD, uv2).r;
       if (linZ(d2) < zW) { uv2 = uv; d2 = d0; }
-      vec3 Pb = worldAt(uv2, d2);
       bool sky0 = d2 >= 0.99999;
-      float path = sky0 ? 300.0 : distance(vWp, Pb);
+      vec3 Pb = worldAt(uv2, d2);
+      path = sky0 ? 300.0 : distance(vWp, Pb);
       bedDepth = sky0 ? 60.0 : max(0.0, surf - Pb.y);
-      vec3 bc = texture(uGrab, uv2).rgb;
-      // light on the bed: caustics dancing in the shallows, sand ripples along the shore, dimmer and bluer with depth
-      if (!sky0) {
+      bc = texture(uGrab, uv2).rgb; seeBed = !sky0;
+      if (seeBed) {
         vec2 bq = (floor(Pb.xz * ${SPF}) + 0.5) / ${SPF};
-        float ca = caustic(bq * 2.2, t * 1.6) * 0.7 + caustic(bq * 1.3 + 7.0, t * 1.2) * 0.45;
-        bc *= 1.0 + floor(ca * 3.0) / 3.0 * 0.75 * exp(-bedDepth * 0.2) * uSunK * smoothstep(0.02, 0.3, bedDepth);
+        // light on the bed: caustics as drawn nets of light, ripple marks across the sand, dimmer with depth
+        float cn = causticNet(bq * 1.15, t * 1.1);
+        float ck = uSunK * exp(-bedDepth * 0.2) * smoothstep(0.05, 0.4, bedDepth);
+        bc *= 1.0 + (cn > 0.66 ? 0.6 : cn > 0.25 ? 0.25 : 0.0) * ck;
         float mid = floor(texture2D(uMat, (floor(clamp(bq, vec2(0.0), vec2(uN - 0.01))) + 0.5) / uN).r * 255.0 + 0.5);
         if (abs(mid - 4.0) < 0.5 && bedDepth > 0.15) {
           vec3 s2 = shoreAt(bq);
-          float rp = dot(bq, s2.yz) * 2.6 + vn(bq * 0.35) * 3.0;
-          float rr = fract(rp);
-          bc *= rr < 0.18 ? 1.12 : rr < 0.42 ? 0.9 : 1.0;
+          float rr = fract(dot(bq, s2.yz) * 2.2 + vn(bq * 0.35) * 3.0);
+          bc *= rr < 0.16 ? 1.14 : rr < 0.4 ? 0.88 : 1.0;
         }
-        bc *= exp(-bedDepth * vec3(0.3, 0.09, 0.06));
+        bc *= exp(-bedDepth * vec3(0.26, 0.08, 0.05));
       }
-      vec3 sig = vec3(0.85, 0.16, 0.09) * uTurb;
-      vec3 T = exp(-path * sig);
-      T = floor(T * 6.0 + 0.5) / 6.0;
-      vec3 bd = mix(bodyAt(path), mix(uRedS, uRedD, smoothstep(0.8, 6.0, path)), red);
-      refr = bc * T * vec3(0.8, 1.0, 1.12) + bd * uSunK * (1.0 - T);
-    } else {
-      refr = waterShade(vWp.xz, surf, 0.0, vec2(0.0), 0.0);
-      refr = mix(refr, body * uSunK, smoothstep(2.0, 10.0, depth));
-    }
-    col = mix(refr, sky, F);
-    // subsurface light through the backlit crests, and the lit faces of the waves
+    } else { bc = waterShade(vWp.xz, surf, 0.0, vec2(0.0), 0.0); seeBed = true; path = max(path, 0.2); }
+    // the water's own colour from its ramps: blue past the deep cut, turquoise and teal over the shelves. Each facet a
+    // ramp step lighter where it turns to the light or to the sky, darker where it turns away
+    bool deepF = depth > uDeepCut && path > uDeepCut * 0.8;
+    float base = deepF ? 2.4 - smoothstep(uDeepCut, uDeepCut * 3.0, path) * 1.2 : 4.7 - smoothstep(0.0, uDeepCut, path) * 2.5;
+    float NdV = max(dot(N, V), 0.0), F = pow(1.0 - NdV, 4.0);
+    float facet = (dot(N, L) - L.y) * 10.0;
+    float k = base + floor(clamp(facet, -1.5, 1.5) + 0.5) + floor(min(F, 0.95) * 3.0) - (1.0 - uSunK) * 2.6;
+    vec3 wc = deepF ? rampB(k) : rampW(k);
+    // the red tide: blooms of red-brown drifting over the water
+    float red = uRed * step(0.5, vn(p * 0.045 + vec2(t * 0.004, -t * 0.003)) * 0.7 + vn(p * 0.16 + 3.0) * 0.3);
+    if (red > 0.5) wc = rampR(k * 0.85 + 0.5);
+    // the bed shows through in steps, filtered toward the water's colour
+    float T = exp(-path * 0.42 * uTurb);
+    float Tq = T > 0.72 ? 0.8 : T > 0.45 ? 0.58 : T > 0.22 ? 0.34 : T > 0.08 ? 0.14 : 0.0;
+    vec3 seen = bc * vec3(0.62, 0.95, 1.05) + wc * 0.3;
+    col = seeBed ? mix(wc, seen, Tq) : wc;
+    // the sky mirrored, in steps, more of it toward the horizon
+    float Fq = floor(min(F, 0.9) * 4.0) / 4.0;
+    col = mix(col, skyCol(reflect(-V, N)), Fq * 0.7);
+    // light through the backlit crests
     float hk = clamp(vWave / max(0.05, uSwellH * 0.5) * 0.5 + 0.5, 0.0, 1.0);
-    float sss = pow(clamp(dot(V, -normalize(L + N * 0.45)), 0.0, 1.0), 3.0) * hk * hk;
-    col += uSssC * floor(sss * 4.0 + 0.3) / 4.0 * (0.25 + 0.6 * uSunK) * smoothstep(0.4, 2.5, depth);
-    // ---- foam
+    float sss = pow(clamp(dot(V, -normalize(L + N * 0.45)), 0.0, 1.0), 3.0) * hk * hk * smoothstep(0.6, 2.5, depth) * uSunK;
+    if (sss > 0.3) col = mix(col, uSssC, sss > 0.55 ? 0.55 : 0.3);
+    // ---- foam, drawn: whitecaps where crests fold in the wind, breakers rolling in along the coast, lace on the beach
     float foam = 0.0;
-    // whitecaps: crests folding over in the wind, broken into drawn clumps that trail behind the crest
-    vec2 fq = p * vec2(1.3, 1.3) + uWindV * t * 0.12;
+    vec2 fq = p * 1.3 + uWindV * t * 0.12;
     float fpat = vn(fq * 2.1) * 0.6 + vn(fq * 5.3 + 2.0) * 0.4;
     float thr = mix(0.97, 0.42, uWindK);
-    foam = max(foam, smoothstep(thr, thr + 0.12, crest + (fpat - 0.5) * 0.45) * step(1.2, depth));
-    // breakers: lines rolling in along the coast's contours, standing up in the shallows, breaking into foam
+    foam = max(foam, smoothstep(thr, thr + 0.1, crest + (fpat - 0.5) * 0.45) * step(1.2, depth));
     if (sd < 14.0 && sd > -0.5) {
-      float jitter = vn(p * vec2(0.09, 0.09) + 11.0) * 1.3;
+      float jitter = vn(p * 0.09 + 11.0) * 1.3;
       float ph = sd / 3.4 + t * 0.21 * (0.8 + uWindK * 0.5) + jitter;
       float band = fract(ph), id = floor(ph);
       float zone = smoothstep(9.0, 2.5, sd) * smoothstep(-0.5, 0.2, sd);
-      // the face before the crest steepens (darker), the crest line bright, the foam trailing seaward
-      float alongN = vn(vec2(dot(p, vec2(-sh.z, sh.y)) * 0.6, id * 7.3));
-      float lineOn = step(0.32, alongN);
+      float lineOn = step(0.32, vn(vec2(dot(p, vec2(-sh.z, sh.y)) * 0.6, id * 7.3)));
       float crestL = (1.0 - smoothstep(0.0, 0.07, band)) * lineOn;
       float trail = smoothstep(0.42, 0.0, band) * lineOn * step(0.5 - band * 0.6, fpat);
-      col *= 1.0 - smoothstep(0.86, 0.99, band) * 0.18 * zone;
+      if (band > 0.86 && zone > 0.3) col = deepF ? rampB(k - 1.0) : rampW(k - 1.0);
       foam = max(foam, max(crestL, trail * 0.8) * zone * smoothstep(4.0, 1.0, depth + 0.3) * (0.85 + uWindK * 0.4));
-      // lace: the spent foam spreading in a net close in to the beach
       float lace = smoothstep(2.2, 0.2, sd) * step(0.62, vn(p * 3.2 + vec2(t * 0.3, 0.0)) * 0.5 + vn(p * 6.1 - t * 0.2) * 0.5);
-      foam = max(foam, lace * 0.7);
+      foam = max(foam, lace * 0.68);
     }
     foam = max(foam, ia.y);
-    col *= 1.0 + clamp(ia.x, -1.0, 1.0) * 0.14;
+    // rings and wakes: a crest step up, a trough step down
+    if (ia.x > 0.25) col = deepF ? rampB(k + 1.0) : rampW(k + 1.0);
+    else if (ia.x < -0.25) col = deepF ? rampB(k - 1.0) : rampW(k - 1.0);
     // rain: rings popping all over
     if (uRainW > 0.01) {
       vec2 q = p * 1.6, ci = floor(q), f = fract(q) - 0.5 - (vec2(h2(ci), h2(ci + 5.3)) - 0.5) * 0.5;
       float tc = t * 1.4 + h2(ci + 2.7), ph = fract(tc);
-      float ring = (1.0 - step(0.035, abs(octR(f) - ph * 0.36))) * step(h2(ci + floor(tc) * 1.3), uRainW) * step(ph, 0.85) * legOn(f, h2(ci));
-      col = mix(col, ph < 0.45 ? uFoamHi * uSunK : uBodyD, ring * 0.5);
+      float ring = (1.0 - step(0.045, abs(octR(f) - ph * 0.36))) * step(h2(ci + floor(tc) * 1.3), uRainW) * step(ph, 0.85) * legOn(f, h2(ci));
+      if (ring > 0.5) col = ph < 0.45 ? rampF(2) * (0.4 + 0.6 * uSunK) : (deepF ? rampB(k - 1.0) : rampW(k - 1.0));
     }
-    // foam in two tones (lit and shaded by the wave's slope), pink-tinged in a red tide
-    if (foam > 0.45) {
+    // the foam in three tones: a darker lip at its edge, a shaded body, a lit top (pink-tinged in a red tide)
+    if (foam > 0.36) {
       float lit = dot(N, L) * 0.5 + 0.5;
-      vec3 fc = (foam > 0.72 && lit > 0.45 ? uFoamHi : uFoamLo) * (0.35 + 0.75 * uSunK);
-      fc = mix(fc, uRedS * 1.6 + 0.04, red * 0.5);
-      col = mix(col, fc, foam > 0.72 ? 0.92 : 0.62);
-      glow = max(glow, uBio * (foam > 0.72 ? 1.0 : 0.6));
+      vec3 fc = foam > 0.7 ? (lit > 0.47 ? rampF(4.0) : rampF(3.0)) : foam > 0.5 ? rampF(2.0) : rampF(1.0);
+      fc *= 0.3 + 0.7 * uSunK;
+      if (red > 0.5) fc = mix(fc, rampR(5.0), 0.45);
+      col = fc;
+      glow = max(glow, uBio * (foam > 0.7 ? 1.0 : 0.6));
     }
-    // bioluminescence: in the dark, every disturbance of the water lights up blue-green
-    float dist = max(foam, max(ia.y, clamp(ia.x, 0.0, 1.0)));
+    // bioluminescence: in the dark every disturbance of the water lights up blue-green
+    float stir = max(foam, max(ia.y, clamp(ia.x, 0.0, 1.0)));
     if (uBio > 0.01) {
-      float spark = step(0.985 - dist * 0.1, h2(px * 0.5 + floor(t * 3.0 + h2(px) * 7.0)));
-      float bio = max(dist, spark * smoothstep(0.2, 0.9, crest + 0.4));
-      col += uGlowC * floor(bio * 3.0) / 3.0 * uBio * 1.6;
-      glow = max(glow, uBio * step(0.3, bio));
+      float spark = step(0.988 - stir * 0.1, h2(px * 0.5 + floor(t * 3.0 + h2(px) * 7.0))) * smoothstep(0.2, 0.9, crest + 0.4);
+      float bio = max(step(0.45, stir), spark);
+      if (bio > 0.5) { col = mix(col, uGlowC, 0.75 * uBio) + uGlowC * uBio * 0.6; glow = max(glow, uBio); }
     }
-    // the sun (or the moon) on the water: a disc in the reflection and a path of glitter from pixel-sized facets
-    vec2 gj = vec2(h2(px + floor(t * 6.0 + h2(px) * 11.0) * 1.7), h2(px * 1.3 + 4.1 + floor(t * 6.0 + h2(px + 2.0) * 11.0) * 2.3)) - 0.5;
-    vec3 Ng = normalize(N + vec3(gj.x, 0.0, gj.y) * (0.16 + uWindK * 0.14));
-    float gl0 = max(dot(reflect(-V, Ng), L), 0.0);
-    float glit = step(0.994, gl0) + step(0.9985, max(dot(R, L), 0.0));
-    col += uSunCol * min(glit, 1.0) * 2.4 * (1.0 - foam * 0.8);
+    // the sun (or the moon) on the water: glints off pixel facets, the strongest drawn as a plus
+    float rough = 0.14 + uWindK * 0.14;
+    float gC = glintAt(px, N, V, L, t, rough);
+    float gN = max(max(glintAt(px + vec2(1.0, 0.0), N, V, L, t, rough), glintAt(px - vec2(1.0, 0.0), N, V, L, t, rough)), max(glintAt(px + vec2(0.0, 1.0), N, V, L, t, rough), glintAt(px - vec2(0.0, 1.0), N, V, L, t, rough)));
+    if (foam < 0.5) {
+      if (gC > 0.5) col = rampF(4.0) * uSunCol * (gC > 1.5 ? 2.4 : 1.4);
+      else if (gN > 1.5) col = mix(col, rampF(4.0) * uSunCol * 1.2, 0.75);
+    }
     // floating mats where the Veyr's moss or a rival's creep reaches the water
     vec4 cov = texture2D(uMoss, p / uN);
     if (cov.r > 0.55 + h2(px) * 0.25 && depth < 0.6) col = mix(col, uMossC, 0.45);
     col = applyFow(col, vec3(vWp.x, 0.0, vWp.z));
   } else {
-    // ---------------- seen from below: Snell's window, and the silver ceiling of total internal reflection outside it
-    vec3 Nd = -N;
-    vec3 I = -V;
-    vec3 Tr = refract(I, Nd, 1.333);
-    vec3 deep = uBodyD * (0.45 + 0.55 * uSunK);
+    // ---------------- seen from below: Snell's window, and the dark mirror of total internal reflection outside it
+    vec3 Tr = refract(-V, -N, 1.333);
+    float k0 = 1.5 + (uSunK - 1.0) * 2.0;
     if (dot(Tr, Tr) < 0.5) {
-      col = deep * (0.75 + 0.35 * vn(p * 0.8 + t * 0.2));
-      // the edge of the window glimmers
-      float c0 = dot(V, N);
-      col += uSssC * smoothstep(0.62, 0.68, -c0) * 0.3 * uSunK;
+      col = rampB(k0 + floor(vn(p * 0.8 + t * 0.2) * 2.0));
+      if (-dot(V, N) > 0.62 && -dot(V, N) < 0.7) col = rampW(4.0 + uSunK);
     } else {
       vec3 s = skyCol(Tr);
       if (uGrabOn > 0.5) {
@@ -414,10 +432,11 @@ void main() {
         float d2 = texture(uGrabD, uv2).r;
         if (d2 < 0.99999 && linZ(d2) > linZ(gl_FragCoord.z) + 0.05) s = texture(uGrab, uv2).rgb;
       }
-      col = mix(s, deep, 0.25) + uSunCol * step(0.985, max(dot(Tr, L), 0.0)) * 1.5;
-      col += uSssC * smoothstep(0.55, 0.7, max(0.0, crest + 0.4)) * 0.2 * uSunK;
+      col = mix(s, rampW(4.0), 0.3);
+      if (max(dot(Tr, L), 0.0) > 0.985) col = rampF(4.0) * uSunCol * 1.5;
+      if (crest > 0.35) col = mix(col, rampW(6.0), 0.4);
     }
-    col += uGlowC * uBio * step(0.5, max(ia.y, 0.0)) * 1.2;
+    if (uBio > 0.01 && ia.y > 0.5) col = uGlowC * (0.6 + uBio);
   }
   gl_FragColor = vec4(col, 1.0);
   gNormal = vec4(N * 0.5 + 0.5, glow > 0.25 ? 48.0 : 16.0);
@@ -466,8 +485,10 @@ function waterRamp(c: number) {
     if (d < bd) { bd = d; best = k; }
   }
   const r = RAMPS[best], L = r.length;
-  return { shallow: r[L - 3], deep: r[1], foam: r[L - 1] };
+  return { shallow: r[L - 3], deep: r[1], foam: r[L - 1], key: best };
 }
+/** a ramp padded or shifted to n steps (shift < 0: darker) */
+function padRamp(r: readonly number[], n: number, shift = 0) { return Array.from({ length: n }, (_, i) => r[Math.max(0, Math.min(r.length - 1, Math.round((i / (n - 1)) * (r.length - 1)) + shift))]); }
 
 function uniforms(R: Region, U: Record<string, THREE.IUniform>) {
   const pal = R.pal, wr = waterRamp(pal.water);
@@ -538,17 +559,18 @@ export function makeSea(R: Region, U: Record<string, THREE.IUniform>): THREE.Mes
   const grab = new SceneGrab();
   const wr = waterRamp(R.pal.water);
   const C = (h: number) => new THREE.Color(h);
+  // the sea's two ramp families: the shallows' (the water ramp, or the planet's own water ramp off the open sea) and the deep's
+  const rampW = R.oceanic ? [...RAMPS.water] : padRamp(RAMPS[wr.key], 7), rampB = R.oceanic ? [...RAMPS.sapphire] : padRamp(RAMPS[wr.key], 7, -1);
   const SU = {
     ...swell.U, ...grab.U,
     uShore: { value: shore.tex },
     uSunDir: { value: new THREE.Vector3(-0.5, 0.82, -0.32).normalize() }, uSunCol: { value: new THREE.Color(1.2, 1.05, 0.85) },
+    uSssC: { value: C(RAMPS.glowTeal[1]) }, uGlowC: { value: C(RAMPS.glowTeal[3]) },
+    uRampW: { value: rampW.map(C) }, uRampB: { value: rampB.map(C) },
+    uRampF: { value: [RAMPS.sky[3], RAMPS.sky[4], RAMPS.sky[5], RAMPS.snow[4], RAMPS.snow[5]].map(C) },
+    uRampR: { value: [...RAMPS.coral].map(C) },
     uSkyTop: { value: C(RAMPS.sky[3]) }, uSkyHor: { value: C(RAMPS.sky[5]) }, uCloudCol: { value: C(RAMPS.snow[4]) },
-    uSssC: { value: C(RAMPS.glowTeal[1]) },
-    uBodyS: { value: C(R.oceanic ? RAMPS.water[5] : wr.shallow).lerp(C(RAMPS.sapphire[5]), R.oceanic ? 0.55 : 0.2) },
-    uBodyM: { value: C(R.oceanic ? RAMPS.water[3] : wr.shallow).lerp(C(R.oceanic ? RAMPS.sapphire[3] : wr.deep), 0.45) },
-    uBodyD: { value: C(R.oceanic ? RAMPS.water[1] : wr.deep).lerp(C(RAMPS.sapphire[1]), R.oceanic ? 0.6 : 0.3) },
-    uFoamHi: { value: C(RAMPS.snow[5]) }, uFoamLo: { value: C(RAMPS.sky[4]) }, uGlowC: { value: C(RAMPS.glowTeal[3]) },
-    uRedS: { value: C(RAMPS.coral[2]) }, uRedD: { value: C(RAMPS.blood[1]) },
+    uDeepCut: { value: R.oceanic ? 5.5 : 3.5 },
     uWindV: { value: new THREE.Vector2(swell.main.x, swell.main.y) },
     uCloud: { value: 0.3 }, uWindK: { value: 0.3 }, uBio: { value: 0 }, uRed: { value: 0 }, uTurb: { value: R.oceanic ? 0.8 : 1.25 }, uSunK: { value: 1 }, uOcean: { value: R.oceanic ? 1 : 0 },
   };
@@ -561,22 +583,6 @@ export function makeSea(R: Region, U: Record<string, THREE.IUniform>): THREE.Mes
   mesh.onBeforeRender = (renderer, _scene, camera) => { grab.grab(renderer, camera); };
   const st: SeaState = { swell, shore, grab, U: m.uniforms };
   mesh.userData.sea = st;
-  return mesh;
-}
-/**
- * The sky the sea reflects, as a dome round the camera (shown when the view looks out toward the horizon: low test
- * cameras, a diving golem looking up; the RTS view never sees it). Drawn at the far plane so the post pass treats it as
- * the background.
- */
-export function makeSkyDome(sea: THREE.Mesh): THREE.Mesh {
-  const su = (sea.material as THREE.ShaderMaterial).uniforms;
-  const m = new THREE.ShaderMaterial({
-    uniforms: su, side: THREE.BackSide, depthWrite: false,
-    vertexShader: `varying vec3 vD; void main() { vD = normalize((modelMatrix * vec4(position, 0.0)).xyz); vec4 p = projectionMatrix * viewMatrix * vec4(cameraPosition + vD * 1000.0, 1.0); gl_Position = p.xyww; }`,
-    fragmentShader: `${GN_DECL}\nuniform float uTime, uN;\n${SHADER_NOISE}\n${SEA_UNI}\nvarying vec3 vD;\nvoid main() { vec3 d = normalize(vD); vec3 c = skyCol(vec3(d.x, max(d.y, 0.0), d.z)); if (d.y < 0.0) c = mix(c, uBodyD * uSunK, smoothstep(0.0, -0.08, d.y)); gl_FragColor = vec4(c, 1.0); gNormal = vec4(0.5, 1.0, 0.5, 0.0); }`,
-  });
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 12), m);
-  mesh.frustumCulled = false; mesh.renderOrder = -10; mesh.name = 'sky';
   return mesh;
 }
 /** the sea's state (swell, coast field, uniforms) from the terrain's sea mesh */

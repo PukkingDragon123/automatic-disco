@@ -30,9 +30,13 @@ export function grovebacker(d: Design, rig: Rig, rest: V3[]) {
   const seed = d.seed % 997;
   // ---------------------------------------------------------------- the hide
   const lichenSites: Look['lichen'] = [];
+  // old battle scars: a raked flank, a bite healed into a ring on the neck, a gouge across the thigh
   const scars: Look['scars'] = [
     { pts: [[W * 0.5, H * 0.92 + hips[1] - H * 0.5, hips[2] + T * 0.4], [W * 0.53, hips[1] - H * 0.15, hips[2] + T * 0.6], [W * 0.5, hips[1] - H * 0.32, hips[2] + T * 0.78]], w: 0.16, ramp: 'sand' },
   ];
+  for (let k = 0; k < 4; k++) scars.push({ pts: [[-W * 0.52, chest[1] - H * 0.02 - k * 0.55, chest[2] - T * 0.05 - k * 0.5], [-W * 0.56, chest[1] - H * 0.22 - k * 0.55, chest[2] - T * 0.16 - k * 0.5], [-W * 0.5, chest[1] - H * 0.4 - k * 0.55, chest[2] - T * 0.24 - k * 0.5]], w: 0.13, ramp: 'sand' });
+  for (let k = 0; k < 7; k++) { const a = (k / 7) * Math.PI * 1.6 + 0.4, c = between(neck, head, 0.3); scars.push({ pts: [[c[0] + Math.cos(a) * 1.9, c[1] + Math.sin(a) * 1.9, c[2] - 0.3], [c[0] + Math.cos(a) * 2.1, c[1] + Math.sin(a) * 2.1, c[2] + 0.3]], w: 0.1, ramp: 'sand' }); }
+  scars.push({ pts: [[W * 0.42, hips[1] - 1, hips[2] + 1.2], [W * 0.5, hips[1] - 3, hips[2] + 0.3], [W * 0.44, hips[1] - 5, hips[2] - 0.8]], w: 0.22, ramp: 'sand' });
   const hideLook = (extra?: Partial<Look>): Look => ({
     ramp: 'stone', step: 3, belly: { ramp: 'sand', step: 3, below: -0.55 },
     pebbles: { size: 0.36, pores: 0.35, depth: 1 }, creases: 0.75, lichen: lichenSites, scars,
@@ -111,7 +115,7 @@ export function grovebacker(d: Design, rig: Rig, rest: V3[]) {
       name: 'leg' + lg.pair + (s > 0 ? 'r' : 'l'), side: s, hip, knee, sole,
       bones: { parent: fore ? X.bi('chest') : rig.root, up: i0, lo: i1, foot: i2, flex: lg.flex },
       rings: LIMB_TYPES.pillar(r0),
-      foot: { pad: r0 * 1.12, h: 0.85, fwd: 0.12, nail: 'nail', lobe: 0.2, toes: [-58, -28, 0, 28, 58].map((a, k) => ({ a, len: 0.12, r: 0.42 - Math.abs(k - 2) * 0.04, claw: 0.42, curl: 0.35, drop: 0.25 })) },
+      foot: { pad: r0 * 1.12, h: 0.85, fwd: 0.12, nail: 'nail', lobe: 0.2, toes: [-58, -28, 0, 28, 58].map((a, k) => ({ a, len: 0.18, r: 0.48 - Math.abs(k - 2) * 0.05, claw: 0.75 - Math.abs(k - 2) * 0.08, curl: 0.4, drop: 0.25 })) },
       paint: (ch, p, b) => {
         const px = new Px(ch, b);
         paintLook(px, legLook);

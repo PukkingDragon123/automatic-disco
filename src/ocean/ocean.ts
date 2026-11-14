@@ -5,7 +5,7 @@
 // pontoons it builds on (dive.ts), and the drop pod's splashdown (splash.ts).
 import * as THREE from 'three';
 import type { Game } from '../game/game';
-import { seaState, makeSkyDome, type SeaState } from '../world/water';
+import { seaState, type SeaState } from '../world/water';
 import { Underwater } from './under';
 import { RAMPS } from '../art/palette';
 import { setMuffle } from '../audio/audio';
@@ -20,7 +20,7 @@ import { Splashes } from './splash';
 import { registerSeaWorks, hookFactory } from './pontoon';
 
 const P = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
-const C = new THREE.Color(), C2 = new THREE.Color(), _fw = new THREE.Vector3(), _cur = new THREE.Vector2();
+const C = new THREE.Color(), _cur = new THREE.Vector2();
 const setRamp = (c: THREE.Color, r: readonly number[], k: number) => c.setHex(r[clamp(Math.round(k), 0, r.length - 1)]);
 
 /** what the sea reads from the climate (game.climate when it exists, else the ecosystem's stand-in, else the URL) */
@@ -32,8 +32,6 @@ export class Ocean {
   readonly swell: Swell;
   readonly shore: ShoreField;
   readonly under: Underwater;
-  /** the sky the sea reflects, shown when the view looks out toward the horizon */
-  readonly sky: THREE.Mesh;
   readonly wx: SeaWeather = { wind: 4, windDir: new THREE.Vector2(1, 0), storm: 0, cloud: 0.3, rain: 0, red: 0, eclipse: 0 };
   /** the camera is below the surface */
   underwater = false;
@@ -52,8 +50,7 @@ export class Ocean {
     const mesh = g.world.terrain.waterMesh, st = seaState(mesh);
     if (!st) throw new Error('ocean: the terrain has no sea');
     this.mesh = mesh; this.sea = st; this.swell = st.swell; this.shore = st.shore;
-    this.under = new Underwater(g.world.scene, st.grab);
-    this.sky = makeSkyDome(mesh); this.sky.visible = false; g.world.scene.add(this.sky);
+    this.under = new Underwater(g.world.scene, st.grab, { uRampW: st.U.uRampW, uRampB: st.U.uRampB });
     this.wx.windDir.copy(this.swell.main);
     // the camera rides the sea's surface, not the sea floor, when it looks out over the water
     const R = g.region;
@@ -115,9 +112,7 @@ export class Ocean {
     this.under.update(t, cam, this.level, this.underwater);
     // under the water the post pass's air (haze, mist, light shafts through the canopy) gives way to the water's own
     if (this.underwater) { const e = this.g.world.sun.env; e.haze = 0; e.mist = 0; e.rays = 0; }
-    // the sky dome: only when the view lifts toward the horizon (never in the RTS view, never over the descent's own sky)
-    cam.getWorldDirection(_fw);
-    this.sky.visible = !this.underwater && _fw.y > -0.62 && !(window as unknown as { __descent?: unknown }).__descent;
+
     setMuffle(this.underwater ? clamp((sy - cam.position.y) * 0.5 + 0.55, 0, 1) : 0);
     const night = U.uBio.value as number;
     this.reef?.update(dt, t, Math.max(night, w.eclipse), _cur.set(w.windDir.x, w.windDir.y).multiplyScalar(0.06 + w.storm * 0.2));
@@ -138,52 +133,50 @@ export class Ocean {
   /** wind, storm, cloud, red tide, eclipse: game.climate (CONTRACT.md) when there is one, else the stand-in */
   private weather(dt: number) {
     const w = this.wx, g = this.g as unknown as { climate?: Record<string, unknown>; world: { eco?: { climate?: Record<string, unknown> } } };
-    const c = g.climate ?? g.world.eco?.climate ?? null;
+    const live = g.climate ?? null, c = live ?? g.world.eco?.climate ?? null;
     const weather = (P.get('storm') ? 'storm' : (c?.weather as string)) ?? 'clear';
     const season = (P.get('season') ?? (c?.season as string)) ?? 'bloom';
-    const ev = (c?.event as string | null) ?? (season === 'eclipse' || season === 'bloodtide' ? season : null);
     const storm = weather === 'storm' ? 1 : weather === 'rain' || weather === 'redrain' ? 0.25 : 0;
     let wind = 3.5 + storm * 12 + (weather === 'cloudy' ? 2 : 0) + (weather === 'fog' ? -2 : 0);
+    // the climate's wind (a 0..~2 strength) as metres a second
     const cw = c?.wind as THREE.Vector2 | undefined;
-    if (cw && typeof cw.x === 'number') { const l = Math.hypot(cw.x, cw.y); if (l > 0.05) { wind = Math.max(wind * 0.5, l); w.windDir.set(cw.x / l, cw.y / l); } }
+    if (cw && typeof cw.x === 'number') { const l = Math.hypot(cw.x, cw.y); if (l > 0.02) { wind = Math.max(wind * 0.6, l * 8); w.windDir.set(cw.x / l, cw.y / l); } }
     if (P.has('wind')) wind = Number(P.get('wind'));
     w.wind = damp(w.wind, wind, 0.3, dt); w.storm = damp(w.storm, storm, 0.3, dt);
     const cloud = typeof c?.cloud === 'number' ? (c.cloud as number) : weather === 'storm' ? 0.95 : weather === 'rain' || weather === 'redrain' ? 0.75 : weather === 'cloudy' ? 0.6 : weather === 'fog' ? 0.8 : 0.25;
     w.cloud = damp(w.cloud, cloud, 0.4, dt);
-    w.red = ev === 'bloodtide' || season === 'bloodtide' ? 1 : 0;
-    w.eclipse = ev === 'eclipse' || season === 'eclipse' ? 1 : 0;
+    const blood = typeof c?.bloodK === 'number' ? (c.bloodK as number) : (c?.event === 'bloodtide' || season === 'bloodtide' ? 1 : 0);
+    const ecl = typeof c?.eclipseK === 'number' ? (c.eclipseK as number) : (c?.event === 'eclipse' || season === 'eclipse' ? 1 : 0);
+    w.red = P.get('season') === 'bloodtide' ? 1 : blood; w.eclipse = P.get('season') === 'eclipse' ? 1 : ecl;
   }
-  /** the sun (or moon), the sky and the light under the water, from the world's sun as the game graded it */
+  /** the sun (or at night the moon), the sky and the light under the water, as the climate and the post pass have them */
   private light() {
-    const U = this.sea.U, sun = this.g.world.sun, f = this.forceSun, w = this.wx;
-    const dir = f ? f.dir : sun.dir, k = f ? f.k : clamp(sun.light.intensity / 3.3, 0, 1);
-    (U.uSunDir.value as THREE.Vector3).copy(dir).normalize();
-    const sc = U.uSunCol.value as THREE.Color;
-    if (f) sc.copy(f.col); else sc.copy(sun.light.color).multiplyScalar(0.35 + sun.light.intensity * 0.32);
+    const U = this.sea.U, sun = this.g.world.sun, f = this.forceSun, w = this.wx, e = sun.env as unknown as { sunSky?: THREE.Vector3; moonSky?: THREE.Vector3; day?: number };
+    const k = f ? f.k : clamp(sun.light.intensity / 3.3, 0, 1);
+    const day = f ? f.k : e.day ?? k;
+    // glitter follows the sun by day and the moon by night
+    const sd = U.uSunDir.value as THREE.Vector3, sc = U.uSunCol.value as THREE.Color;
+    if (f) { sd.copy(f.dir); sc.copy(f.col); }
+    else if (day < 0.25 && e.moonSky) { sd.copy(e.moonSky); sc.setRGB(0.55, 0.62, 0.85).multiplyScalar(0.9 + w.eclipse * 0.2); }
+    else { sd.copy(e.sunSky ?? sun.dir); if (sd.y < 0.02) sd.y = 0.02; sc.copy(sun.light.color).multiplyScalar(0.35 + sun.light.intensity * 0.32); }
+    sd.normalize();
     sc.multiplyScalar(1 - w.cloud * 0.55);
-    U.uSunK.value = k;
-    // the sky's ramp indexed by the light; a low sun warms the horizon (sunset), cloud greys it
-    const oc = w.cloud, S = RAMPS.sky, si = k * 4.4 - oc * 1.4;
-    setRamp(U.uSkyTop.value as THREE.Color, S, si - 0.5);
-    // a clear day's zenith over the sea leans to the blue of the deep sky
-    (U.uSkyTop.value as THREE.Color).lerp(C.setHex(RAMPS.sapphire[4]), clamp(k * 1.4 - 0.4, 0, 1) * (1 - oc) * 0.55);
-    const hor = U.uSkyHor.value as THREE.Color; setRamp(hor, S, si + 0.8);
-    const low = clamp((0.5 - dir.y) / 0.35, 0, 1) * clamp(k * 2 - 0.3, 0, 1) * (1 - oc * 0.7);
-    if (low > 0.01) { C.copy(sc).multiplyScalar(0.5); hor.lerp(C2.setRGB(Math.min(1, C.r), Math.min(1, C.g * 0.75), Math.min(1, C.b * 0.5)), low * 0.7); }
-    setRamp(U.uCloudCol.value as THREE.Color, RAMPS.snow, k * 5 - oc * 2.2);
-    if (low > 0.01) (U.uCloudCol.value as THREE.Color).lerp(C.setHex(RAMPS.coral[4]), low * 0.5);
+    U.uSunK.value = Math.max(k, 0.18);
+    // the sky the sea mirrors is the post pass's own (zenith, horizon), so the reflection matches the sky above
+    const PU = (this.g.engine.post as unknown as { U: Record<string, THREE.IUniform> }).U;
+    if (PU.uSkyZen && PU.uSkyHor && (PU.uSkyZen.value as THREE.Color).getHex() !== 0) { (U.uSkyTop.value as THREE.Color).copy(PU.uSkyZen.value as THREE.Color); (U.uSkyHor.value as THREE.Color).copy(PU.uSkyHor.value as THREE.Color); }
+    else { const S = RAMPS.sky, si = k * 4.4 - w.cloud * 1.4; setRamp(U.uSkyTop.value as THREE.Color, S, si - 0.5); setRamp(U.uSkyHor.value as THREE.Color, S, si + 0.8); }
+    setRamp(U.uCloudCol.value as THREE.Color, RAMPS.snow, k * 5 - w.cloud * 2.2);
     // in the dark and the eclipse the sea glows where it is stirred
-    const night = clamp((0.42 - k) / 0.25, 0, 1);
+    const night = clamp((0.42 - day) / 0.25, 0, 1);
     U.uBio.value = Math.max(night * 0.75, w.eclipse);
     const UU = this.under.U;
-    (UU.uSunDir.value as THREE.Vector3).copy(U.uSunDir.value as THREE.Vector3); (UU.uSunCol.value as THREE.Color).copy(sc);
-    UU.uSunK.value = k; UU.uRed.value = U.uRed.value; UU.uBio.value = U.uBio.value;
+    (UU.uSunDir.value as THREE.Vector3).copy(sd); (UU.uSunCol.value as THREE.Color).copy(sc);
+    UU.uSunK.value = U.uSunK.value; UU.uRed.value = U.uRed.value; UU.uBio.value = U.uBio.value;
     UU.uFogK.value = 0.06 + w.storm * 0.05 + (this.region.oceanic ? 0 : 0.04);
     void daylight;
   }
-  /** the sea's census for the field survey: fish by kind, what was caught and lost, the harvest left on the floor */
-  census() { return { fish: this.fishery?.census() ?? {}, caught: this.fishery?.caught ?? 0, eaten: this.fishery?.eaten ?? 0, died: this.fishery?.died ?? 0, floor: this.reef?.stock() ?? null }; }
-  dispose() { for (const p of this.parts) p.dispose?.(); this.under.dispose(); this.reef?.dispose(); this.fishery?.dispose(); this.dive.dispose(); this.splashes.dispose(); this.sky.removeFromParent(); setMuffle(0); }
+  dispose() { for (const p of this.parts) p.dispose?.(); this.under.dispose(); this.reef?.dispose(); this.fishery?.dispose(); this.dive.dispose(); this.splashes.dispose(); setMuffle(0); }
 }
 
 /** give a game its sea (game.ts calls this once, after the details system) */

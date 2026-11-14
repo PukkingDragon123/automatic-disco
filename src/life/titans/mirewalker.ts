@@ -123,8 +123,8 @@ export function mirewalker(d: Design, rig: Rig, rest: V3[]) {
     const fore = lg.kind === 'fore', [i0, i1, i2] = lg.bones, s = lg.side;
     const r0 = fore ? 1.9 : 2.1;
     const toes = fore
-      ? [{ a: -78, len: 0.75, r: 0.42, claw: 1.15, curl: 0.7, drop: 0.05 }, { a: -40, len: 0.1, r: 0.36, claw: 0.35, curl: 0.2, drop: 0.3 }, { a: -8, len: 0.1, r: 0.38, claw: 0.35, curl: 0.2, drop: 0.3 }, { a: 25, len: 0.1, r: 0.36, claw: 0.32, curl: 0.2, drop: 0.3 }, { a: 58, len: 0.08, r: 0.32, claw: 0.3, curl: 0.2, drop: 0.3 }]
-      : [{ a: -30, len: 0.6, r: 0.5, claw: 1.0, curl: 0.75, drop: 0.1 }, { a: 5, len: 0.7, r: 0.52, claw: 1.1, curl: 0.75, drop: 0.1 }, { a: 40, len: 0.62, r: 0.48, claw: 0.95, curl: 0.75, drop: 0.1 }, { a: 72, len: 0.1, r: 0.34, claw: 0.3, curl: 0.2, drop: 0.3 }];
+      ? [{ a: -78, len: 0.75, r: 0.5, claw: 1.6, curl: 0.7, drop: 0.05 }, { a: -40, len: 0.1, r: 0.36, claw: 0.35, curl: 0.2, drop: 0.3 }, { a: -8, len: 0.1, r: 0.38, claw: 0.35, curl: 0.2, drop: 0.3 }, { a: 25, len: 0.1, r: 0.36, claw: 0.32, curl: 0.2, drop: 0.3 }, { a: 58, len: 0.08, r: 0.32, claw: 0.3, curl: 0.2, drop: 0.3 }]
+      : [{ a: -30, len: 0.6, r: 0.56, claw: 1.35, curl: 0.75, drop: 0.1 }, { a: 5, len: 0.7, r: 0.6, claw: 1.6, curl: 0.75, drop: 0.1 }, { a: 40, len: 0.62, r: 0.54, claw: 1.3, curl: 0.75, drop: 0.1 }, { a: 72, len: 0.1, r: 0.34, claw: 0.3, curl: 0.2, drop: 0.3 }];
     const L = limb({
       name: 'leg' + lg.pair + (s > 0 ? 'r' : 'l'), side: s, hip: rest[i0], knee: rest[i1], sole: rest[i2],
       bones: { parent: fore ? X.bi('chest') : rig.root, up: i0, lo: i1, foot: i2, flex: lg.flex },

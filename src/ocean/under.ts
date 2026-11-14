@@ -19,6 +19,7 @@ uniform vec2 uRes;
 uniform float uNear, uFar, uTime, uSurf, uSunK, uRed, uBio, uFogK, uDbg;
 uniform mat4 uInvProj, uCamWorld;
 uniform vec3 uSunDir, uSunCol, uFogS, uFogD, uShaft, uRedC, uGlowC;
+uniform vec3 uRampW[7], uRampB[7];
 float linZ(float d) { float z = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear)); }
 vec3 worldAt(vec2 uv, float d) { vec4 v = uInvProj * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); v /= v.w; return (uCamWorld * v).xyz; }
 float bay(vec2 p) { vec2 f = mod(floor(p), 4.0); return mod(f.x * 4.0 + f.y * 7.0 + f.x * f.y * 3.0, 16.0) / 16.0; }
@@ -41,17 +42,19 @@ void main() {
   vec3 lit = scene * exp(-(pD * 0.6 + uw) * sig);
   // in-scattered light: the fog of the water, brighter toward the surface and the sun, darker in the deep
   float up = clamp(rd.y * 0.5 + 0.5, 0.0, 1.0);
-  vec3 fogC = mix(uFogD, uFogS, clamp(up * 1.2 - camD * 0.03, 0.0, 1.0)) * (0.25 + 0.75 * uSunK);
+  // the water's colour from its ramps: brighter steps up toward the surface, the deep's blue below and far down
+  float fi = clamp(up * 1.25 - camD * 0.04, 0.0, 1.0) * 4.0 - (1.0 - uSunK) * 2.0;
+  vec3 fogC = camD > 7.0 ? uRampB[int(clamp(floor(fi + 0.5), 0.0, 6.0))] : uRampW[int(clamp(floor(fi + 0.5), 0.0, 6.0))];
   fogC = mix(fogC, uRedC * (0.3 + 0.7 * uSunK), uRed * 0.6);
   fogC += uSunCol * pow(max(dot(rd, uSunDir), 0.0), 8.0) * 0.18 * uSunK;
   float k = 1.0 - exp(-uw * uFogK);
   k = floor(k * 9.0 + 0.5) / 9.0;
   vec3 col = mix(lit, fogC, k);
   // light shafts: march the ray through a moving pattern of light cast down from the waves along the sun
-  float acc = 0.0, span = min(uw, 36.0), j = bay(gl_FragCoord.xy);
+  float acc = 0.0, span = min(uw, 36.0), j = bay(floor(gl_FragCoord.xy / 2.0));
   vec3 L = normalize(uSunDir);
   for (int i = 0; i < 10; i++) {
-    vec3 Q = ro + rd * (float(i) + j) / 10.0 * span;
+    vec3 Q = ro + normalize(worldAt((floor(gl_FragCoord.xy / 2.0) * 2.0 + 1.0) / uRes, 0.5) - ro) * (float(i) + j) / 10.0 * span;
     float dz = uSurf - Q.y;
     if (dz < 0.0) continue;
     vec2 S = Q.xz + L.xz / max(L.y, 0.2) * dz;
@@ -65,6 +68,8 @@ void main() {
   if (uDbg > 0.5) col = vec3(k, bg ? 1.0 : 0.0, uw / 160.0);
   gl_FragColor = vec4(col, 1.0);
   gNormal = vec4(0.0);
+  // open water to the end of sight is not the sky: keep the post pass from drawing its sky there
+  gl_FragDepth = bg ? 0.99998 : d;
 }`;
 
 export class Underwater {
@@ -74,18 +79,18 @@ export class Underwater {
   /** 0 above the water .. 1 under it */
   k = 0;
   private snowU = { uTime: { value: 0 }, uCam: { value: new THREE.Vector3() }, uSurf: { value: 0 } };
-  constructor(scene: THREE.Scene, readonly grab: SceneGrab) {
+  constructor(scene: THREE.Scene, readonly grab: SceneGrab, ramps: { uRampW: THREE.IUniform; uRampB: THREE.IUniform }) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
     const C = (h: number) => new THREE.Color(h);
     this.U = {
-      ...grab.U,
+      ...grab.U, uRampW: ramps.uRampW, uRampB: ramps.uRampB,
       uTime: { value: 0 }, uDbg: { value: Number(new URLSearchParams(location.search).get('udbg') ?? 0) }, uSurf: { value: 3.9 }, uSunK: { value: 1 }, uRed: { value: 0 }, uBio: { value: 0 }, uFogK: { value: 0.085 },
       uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color(1, 1, 1) },
       uFogS: { value: C(RAMPS.teal[3]) }, uFogD: { value: C(RAMPS.sapphire[0]) }, uShaft: { value: C(RAMPS.glowTeal[2]) },
       uRedC: { value: C(RAMPS.coral[1]) }, uGlowC: { value: C(RAMPS.glowTeal[3]) },
     };
-    const m = new THREE.ShaderMaterial({ uniforms: this.U, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthTest: false, depthWrite: false, blending: THREE.NormalBlending });
+    const m = new THREE.ShaderMaterial({ uniforms: this.U, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthTest: true, depthFunc: THREE.AlwaysDepth, depthWrite: true, blending: THREE.NormalBlending });
     this.mesh = new THREE.Mesh(g, m);
     this.mesh.frustumCulled = false; this.mesh.renderOrder = 1000; this.mesh.visible = false; this.mesh.name = 'underwater';
     this.mesh.onBeforeRender = (renderer, _s, camera) => { grab.grab(renderer, camera); };

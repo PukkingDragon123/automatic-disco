@@ -6,6 +6,7 @@ import type { Design } from './design';
 import { gbuf, type GFlag } from '../gfx/gbuf';
 import { VEYR } from '../world/palette';
 import { sculpt } from './sculpt';
+import { growGrove } from './titans';
 
 export interface SpeciesModel {
   rig: Rig; geo: THREE.BufferGeometry; tex: THREE.DataTexture; inverses: THREE.Matrix4[];
@@ -86,6 +87,8 @@ totalEmissiveRadiance += uFlashCol * uFlash * 0.9;`);
   mesh.userData.fx = fx;
   mesh.add(bones[0]);
   mesh.bind(new THREE.Skeleton(bones, m.inverses), new THREE.Matrix4());
+  // a titan that carries a grove grows the region's own plants on its back (titans/index.ts)
+  if (m.geo.userData.grove) growGrove(bones, m.geo, { seed: m.rig.bones.length });
   mesh.castShadow = true; mesh.receiveShadow = true;
   mesh.customDepthMaterial = m.depthMat;
   mesh.frustumCulled = true;
