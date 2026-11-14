@@ -161,7 +161,7 @@ export class Builder {
       for (const [y, r] of [[-h / 2, r0], [h / 2, r1]] as [number, number][]) {
         _p.set(ca * r, y, sa * r).applyMatrix4(M);
         const v = o.vlen !== undefined ? (o.v0 ?? 0) + ((y + h / 2) / h) * o.vlen : -(y * s.sv) + ov;
-        this.vtx(k, _p, _n, (a - a0) * rm * su + ou, v, s);
+        this.vtx(k, _p, _n, -(a - a0) * rm * su * inv + ou, v, s);
       }
     }
     for (let i = 0; i < seg; i++) { const a = base + i * 2; if (inv > 0) k.i.push(a, a + 1, a + 3, a, a + 3, a + 2); else k.i.push(a, a + 3, a + 1, a, a + 2, a + 3); }
@@ -187,7 +187,7 @@ export class Builder {
         _n.set(Math.cos(a) * st, ct, Math.sin(a) * st);
         _p.copy(_n).multiplyScalar(r).applyMatrix4(M);
         const v = o.fit !== false ? 0.002 + (th / Math.PI) * 0.996 : th * r * s.sv;
-        this.vtx(k, _p, _q.copy(_n).applyMatrix3(NM).normalize(), a * r * su + ou, v, s);
+        this.vtx(k, _p, _q.copy(_n).applyMatrix3(NM).normalize(), -a * r * su + ou, v, s);
       }
     }
     for (let j = 0; j < hs; j++) for (let i = 0; i < ws; i++) {
@@ -255,7 +255,7 @@ export class Builder {
         _n.set(ca * dy, -dr, sa * dy).normalize();
         _p.set(ca * r, y, sa * r).applyMatrix4(M);
         const v = o.fit ? 0.002 + (L[j] / L[L.length - 1]) * 0.996 : L[j] * s.sv + ov;
-        this.vtx(k, _p, _q.copy(_n).applyMatrix3(NM).normalize(), a * rm * su + ou, v, s);
+        this.vtx(k, _p, _q.copy(_n).applyMatrix3(NM).normalize(), (o.flip ? a : -a) * rm * su + ou, v, s);
       }
     }
     for (let j = 0; j < prof.length - 1; j++) for (let i = 0; i < seg; i++) {

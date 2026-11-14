@@ -112,7 +112,7 @@ export async function testOcean(engine: Engine, input: Input, P: URLSearchParams
     const p = out(3); const px = p.x + Math.cos(p.a) * 8, pz = p.z + Math.sin(p.a) * 8;
     cam = new THREE.Vector3(p.x - Math.cos(p.a) * 12 + Math.sin(p.a) * 5, R.water + 5, p.z - Math.sin(p.a) * 12 - Math.cos(p.a) * 5);
     look = new THREE.Vector3(px, R.water + 2, pz); fov = 46;
-    setTimeout(() => o.dropPod(px, pz, 60), Number(P.get('drop') ?? 500));
+    setTimeout(() => o.dropPod(px, pz, Number(P.get('alt') ?? 14)), Number(P.get('drop') ?? 3000));
   }
   // the land's water, for a look before the geology lays it out (&inland): a lake, a spring and a geyser, a waterfall
   if (P.has('inland')) {
@@ -134,10 +134,16 @@ export async function testOcean(engine: Engine, input: Input, P: URLSearchParams
     engine.setScreen(g);
     for (let i = 0; i < 160 && !g.player.started; i++) engine.step(0.1, false);
     const p = g.player as unknown as { x: number; z: number; y: number; vx: number; vz: number };
-    const node = shot === 'dive' ? o.reef?.nodes.find((n) => o.depthAt(n.x, n.z) < 9) ?? o.reef?.nodes[0] : null;
-    const at = node ? { x: node.x + 1.2, z: node.z + 0.8 } : out(3);
+    const node = shot === 'dive' ? o.reef?.nodes.find((n) => { const d = o.depthAt(n.x, n.z); return d > 3.5 && d < 9; }) ?? o.reef?.nodes[0] : null;
+    const at = node ? { x: node.x + 1.0, z: node.z + 0.6 } : out(3);
     p.x = at.x; p.z = at.z; p.vx = p.vz = 0; (p as unknown as { moveGoal: unknown }).moveGoal = null;
-    if (node) o.dive.depth = Math.max(0, o.depthAt(at.x, at.z) - 2.2);
+    if (node) o.dive.depth = Math.max(0, o.depthAt(at.x, at.z) - 1.6);
+    // a pontoon and a net pen moored off the landing, with a smelter standing on pontoons
+    const f = g.factory as unknown as { place(k: string, x: number, z: number, r: number, free?: boolean): unknown; why(k: string, x: number, z: number, r: number, free?: boolean): string | null };
+    const s0 = out(1.5), bx = Math.floor(s0.x + Math.cos(s0.a) * 3), bz = Math.floor(s0.z + Math.sin(s0.a) * 3);
+    const built: string[] = [];
+    for (const [k, x, z] of [['pontoon', bx, bz], ['pontoon', bx + 2, bz], ['pontoon', bx, bz + 2], ['pontoon', bx + 2, bz + 2], ['smelter', bx + 1, bz + 1], ['netpen', bx + 5, bz]] as [string, number, number][]) { const why = f.why(k, x, z, 0, true); if (!why) f.place(k, x, z, 0, true); built.push(k + ':' + (why ?? 'ok')); }
+    console.log('test=ocean sea works', built.join(' '));
     g.cam.yaw = g.cam.yawGoal = 0.7; g.cam.dist = g.cam.distGoal = 18;
     console.log('test=ocean dive', JSON.stringify(at), 'depth', o.dive.depth.toFixed(1), 'started', g.player.started);
     for (let i = 0; i < 30; i++) engine.step(0.1, false);

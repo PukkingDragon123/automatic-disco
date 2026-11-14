@@ -66,22 +66,22 @@ export function buildFore(C: Ctx): ForeOut {
   // the frame's face plates: bolted doublers either side, an amber traffic lamp column, the bay number
   for (const sx of [-1, 1]) {
     for (let y = -16; y < 0; y += 4.2) B.boxAt(hullA, sx * 10.4, y, fz1, sx * 13.2, y + 3.6, fz1 + 0.25, { bev: 0.08 });
-    for (let k = 0; k < 4; k++) fx.halos.push({ p: new V3(sx * 11.8, -14.4 + k * 3.6, fz1 + 0.5), col: NAV.amber, size: 0.9, mode: 3, ph: k * 0.06 });
-    for (let k = 0; k < 4; k++) B.in(sx * 11.8, -14.4 + k * 3.6, fz1 + 0.3, Math.PI / 2, 0, 0, () => B.cyl(s('lensAmber', 1), 0.28, 0.28, 0.2, 8));
+    for (let k = 0; k < 4; k++) fx.halos.push({ p: new V3(sx * 10.6, -14.4 + k * 3.4, fz1 + 0.5), col: NAV.amber, size: 0.9, mode: 3, ph: k * 0.06 });
+    for (let k = 0; k < 4; k++) B.in(sx * 10.6, -14.4 + k * 3.4, fz1 + 0.3, Math.PI / 2, 0, 0, () => B.cyl(s('lensAmber', 1), 0.28, 0.28, 0.2, 8));
   }
   for (const [y, gapC] of [[-2.5, false], [-15.0, true]] as [number, boolean][]) for (let k = 0; k < 6; k++) {
     const x0 = -9.2 + k * 3.07, x1 = x0 + 2.6;
     if (gapC && x1 > -2 && x0 < 2) continue;
     B.in((x0 + x1) / 2, y, 63.9, 0, 0, Math.PI / 2, () => { B.cyl(hullB, 0.55, 0.55, x1 - x0, 12); B.at(0, (x1 - x0) / 2 - 0.15, 0); B.cyl(gun, 0.62, 0.62, 0.3, 12); B.pop(); });
   }
-  decal(B, s, 'tBay', new V3(0, -0.2, fz1 + 0.02), new V3(0, 0, 1), 9.6);
+  decal(B, s, 'tBay', new V3(0, -1.92, 69.5), new V3(0, -1, -0.035).normalize(), 0, new V3(0, 0, 1));
   for (const sx of [-1, 1]) {
-    B.boxAt(hullB, sx * 11.6 - 0.9, -1.95, fz1, sx * 11.6 + 0.9, 1.45, fz1 + 0.7, { bev: 0.1 });
-    B.boxAt(hullB, sx * 11.6 - 1.0, 1.45, fz1, sx * 11.6 + 1.0, 1.65, fz1 + 1.3);
+    B.boxAt(hullB, sx * 12.9 - 0.75, -8.4, fz1 + 0.2, sx * 12.9 + 0.75, -4.8, fz1 + 0.9, { bev: 0.1 });
+    B.boxAt(hullB, sx * 12.9 - 0.85, -4.8, fz1 + 0.2, sx * 12.9 + 0.85, -4.6, fz1 + 1.5);
     for (const [k, lens, col] of [[0, 'lensRed', NAV.red], [1, 'lensAmber', NAV.amber], [2, 'lensGreen', NAV.green]] as [number, string, [number, number, number]][]) {
-      const y = 0.85 - k * 1.1;
-      B.in(sx * 11.6, y, fz1 + 0.72, Math.PI / 2, 0, 0, () => B.cyl(s(lens, 1), 0.38, 0.38, 0.06, 10));
-      fx.halos.push({ p: new V3(sx * 11.6, y, fz1 + 0.95), col, size: 1.1, mode: k === 2 ? 0 : 1, ph: k * 1.3 + (sx > 0 ? 0.6 : 0) });
+      const y = -5.5 - k * 1.05;
+      B.in(sx * 12.9, y, fz1 + 0.92, Math.PI / 2, 0, 0, () => B.cyl(s(lens, 1), 0.36, 0.36, 0.06, 10));
+      fx.halos.push({ p: new V3(sx * 12.9, y, fz1 + 1.15), col, size: 1.1, mode: k === 2 ? 0 : 1, ph: k * 1.3 + (sx > 0 ? 0.6 : 0) });
     }
   }
   // floods on the frame top, raking down across the mouth onto the apron
