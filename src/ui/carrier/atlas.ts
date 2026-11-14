@@ -335,8 +335,8 @@ export function paintAtlas() {
         let c = AM[3], e = 210;
         if (kind === 'bridge') {
           const yy = y - y0;
-          c = yy < 2 ? AM[4] : yy < 4 ? AM[2] : yy < wh - 9 ? ((x - x0) % 11 < 1 ? AM[0] : AM[1]) : AM[2];
-          e = yy < 2 ? 255 : yy < 4 ? 140 : yy < wh - 9 ? 70 : 120;
+          c = yy < 3 ? AM[4] : yy < 6 ? AM[3] : yy < wh - 9 ? ((x - x0) % 11 < 1 ? AM[1] : AM[2]) : AM[3];
+          e = yy < 3 ? 255 : yy < 6 ? 200 : yy < wh - 9 ? 120 : 170;
           if (state === 'dark') { c = (x - x0 + yy) % 9 === 3 ? SL[3] : SL[0]; e = 0; }
           p.set(x, y, c, e); continue;
         }

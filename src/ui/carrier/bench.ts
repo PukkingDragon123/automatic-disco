@@ -22,8 +22,10 @@ export function bench(engine: Engine, o: BenchOpts = {}) {
   c.ship.root.traverse((ob) => { const l = ob as THREE.Light; if ((l as THREE.PointLight).isPointLight || ((l as THREE.SpotLight).isSpotLight && ((l as THREE.SpotLight).distance <= 8 || l.color.getHex() === 0xff2a14))) l.visible = false; });
   const cam = new THREE.PerspectiveCamera(36, 1, 0.5, 15000);
   cam.position.set(-150, 70, 170); cam.lookAt(0, 0, -30);
-  let tris = 0, meshes = 0;
-  c.group.traverse((ob) => { const m = ob as THREE.Mesh; if (m.isMesh && m.visible) { meshes++; tris += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3; } });
+  const count = (root: THREE.Object3D | undefined) => { let t = 0, n = 0; root?.traverse((ob) => { const m = ob as THREE.Mesh; if (m.isMesh) { n++; t += ((m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3) * ((m as THREE.InstancedMesh).count ?? 1); } }); return { t: Math.round(t), n }; };
+  const hi = count(c.group.getObjectByName('carrier-hi')), lo = count(c.group.getObjectByName('carrier-lo')), ext = count(c.group.getObjectByName('exterior')), bay = count(c.group.getObjectByName('bay'));
+  console.log('carrier hi', JSON.stringify(hi), 'lo', JSON.stringify(lo), 'exterior', JSON.stringify(ext), 'bay', JSON.stringify(bay));
+  const tris = ext.t - lo.t, meshes = ext.n - lo.n;
   const cb = {
     ready: true, buildMs, tris: Math.round(tris), meshes,
     view(v: { pos: number[]; look: number[]; fov?: number; t?: number }) {

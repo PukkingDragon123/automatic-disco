@@ -117,7 +117,7 @@ export class Ocean {
     if (this.underwater) { const e = this.g.world.sun.env; e.haze = 0; e.mist = 0; e.rays = 0; }
     // the sky dome: only when the view lifts toward the horizon (never in the RTS view, never over the descent's own sky)
     cam.getWorldDirection(_fw);
-    this.sky.visible = _fw.y > -0.62 && !(window as unknown as { __descent?: unknown }).__descent;
+    this.sky.visible = !this.underwater && _fw.y > -0.62 && !(window as unknown as { __descent?: unknown }).__descent;
     setMuffle(this.underwater ? clamp((sy - cam.position.y) * 0.5 + 0.55, 0, 1) : 0);
     const night = U.uBio.value as number;
     this.reef?.update(dt, t, Math.max(night, w.eclipse), _cur.set(w.windDir.x, w.windDir.y).multiplyScalar(0.06 + w.storm * 0.2));

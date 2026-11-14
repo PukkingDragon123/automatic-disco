@@ -138,7 +138,7 @@ export function grovebacker(d: Design, rig: Rig, rest: V3[]) {
     body.add(shell({
       name: 'band' + k, host: tr, u: [a0, a1], v: [bv0, bv1], nu: 12, nv: 3, sink: 0.4, rim: 2, ridges: [0.18, 0.5, 0.82], rings: [0.5],
       // the dome across, the rear lip standing proud over the band behind
-      lift: (a, b) => { const x = Math.abs(a - 0.5) * 2, dome = Math.cos(Math.min(1, x) * Math.PI / 2) ** 0.55, hug = k === nb - 1 ? 1 - 0.7 * b * b : k === 0 ? 1 - 0.5 * (1 - b) ** 2 : 1; return ((0.35 + 1.25 * hk * dome) * (1 + 0.45 * Math.pow(1 - b, 3)) + (x > 0.8 ? -0.15 * (x - 0.8) * 5 : 0)) * hug; },
+      lift: (a, b) => { const x = Math.abs(a - 0.5) * 2, dome = Math.cos(Math.min(1, x) * Math.PI / 2) ** 0.55, hug = k === nb - 1 ? 1 - 0.7 * b * b : k === 0 ? 1 - 0.8 * (1 - b) ** 2 : 1; return ((0.35 + 1.25 * hk * dome) * (1 + 0.45 * Math.pow(1 - b, 3)) + (x > 0.8 ? -0.15 * (x - 0.8) * 5 : 0)) * hug; },
       skin: bandSkin, paint: lookPaint(shellLook), k: 1.05,
     }));
   }

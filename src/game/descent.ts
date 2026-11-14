@@ -217,7 +217,7 @@ export class GameDescent {
   private keys = new Set<string>();
   // the hand-over: the shell, the golem, the camera easing into the game's
   private shellT = -1; private outT = -1; private handT = -1; private rtsPos = new V3(); private rtsQ = new THREE.Quaternion(); private rtsFov = 36;
-  private saved: { fog: THREE.Fog | THREE.FogExp2 | null; bg: THREE.Color | THREE.Texture | null; far: number; near: number } | null = null;
+  private saved: { fog: THREE.Fog | THREE.FogExp2 | null; bg: THREE.Color | THREE.Texture | null; far: number; near: number; sun: unknown; uiVis: string } | null = null;
   private skyFade = 1; private finished = false; private wet = false;
   private debris: { m: THREE.Mesh; v: V; w: V; rest: boolean; t: number }[] = [];
 
@@ -242,7 +242,13 @@ export class GameDescent {
     buildFar(this.W); buildWater(this.W);
     // the game scene takes a fog and the long view for the fall; both are given back at the hand-over
     const sc = g.world.scene;
-    this.saved = { fog: sc.fog, bg: sc.background as THREE.Color | THREE.Texture | null, far: g.cam.cam.far, near: g.cam.cam.near };
+    const uiRoot = document.getElementById('ui');
+    this.saved = { fog: sc.fog, bg: sc.background as THREE.Color | THREE.Texture | null, far: g.cam.cam.far, near: g.cam.cam.near, sun: sc.userData.sun, uiVis: uiRoot?.style.visibility ?? '' };
+    // the game's atmosphere pass (haze, mist, shafts) is tuned for a camera thirty metres up; from the sky it would
+    // fog the whole map, so the fall has its own sky and fog and the pass waits for the hand-over. The game's own
+    // panels stay hidden till then too.
+    sc.userData.sun = undefined;
+    if (uiRoot) uiRoot.style.visibility = 'hidden';
     sc.fog = new THREE.Fog(new THREE.Color(pal.horizon), 400, 16000);
     sc.background = new THREE.Color(0x05070a);
     g.vision.revealAll = true; g.vision.update(0, true);
@@ -836,6 +842,8 @@ export class GameDescent {
     // a neutral fog stays (no shader rebuild for the whole scene), the dark diorama background comes back
     const fog = sc.fog as THREE.Fog | null; if (fog) { fog.near = 1e7; fog.far = 2e7; }
     sc.background = sv.bg;
+    sc.userData.sun = sv.sun;
+    const uiRoot = document.getElementById('ui'); if (uiRoot) uiRoot.style.visibility = sv.uiVis;
     this.sky.visible = false;
     for (const L of this.clouds) for (const m of L.slices) m.visible = false;
     this.streaks.visible = false; this.smoke.visible = false; this.strobe.visible = false;

@@ -16,7 +16,7 @@ ${GN_DECL}
 ${SHADER_NOISE}
 uniform sampler2D uGrab, uGrabD;
 uniform vec2 uRes;
-uniform float uNear, uFar, uTime, uSurf, uSunK, uRed, uBio, uFogK;
+uniform float uNear, uFar, uTime, uSurf, uSunK, uRed, uBio, uFogK, uDbg;
 uniform mat4 uInvProj, uCamWorld;
 uniform vec3 uSunDir, uSunCol, uFogS, uFogD, uShaft, uRedC, uGlowC;
 float linZ(float d) { float z = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear)); }
@@ -62,6 +62,7 @@ void main() {
   col += uShaft * floor(acc * 5.0) / 5.0 * uSunK * 0.9 * (1.0 - k * 0.4);
   // bioluminescent motes in the dark water
   if (uBio > 0.01) { vec2 q = floor(gl_FragCoord.xy / 3.0); float s = h2(q + floor(uTime * 2.0 + h2(q) * 9.0)); if (s > 0.9965) col += uGlowC * uBio * 1.2; }
+  if (uDbg > 0.5) col = vec3(k, bg ? 1.0 : 0.0, uw / 160.0);
   gl_FragColor = vec4(col, 1.0);
   gNormal = vec4(0.0);
 }`;
@@ -79,7 +80,7 @@ export class Underwater {
     const C = (h: number) => new THREE.Color(h);
     this.U = {
       ...grab.U,
-      uTime: { value: 0 }, uSurf: { value: 3.9 }, uSunK: { value: 1 }, uRed: { value: 0 }, uBio: { value: 0 }, uFogK: { value: 0.085 },
+      uTime: { value: 0 }, uDbg: { value: Number(new URLSearchParams(location.search).get('udbg') ?? 0) }, uSurf: { value: 3.9 }, uSunK: { value: 1 }, uRed: { value: 0 }, uBio: { value: 0 }, uFogK: { value: 0.085 },
       uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color(1, 1, 1) },
       uFogS: { value: C(RAMPS.teal[3]) }, uFogD: { value: C(RAMPS.sapphire[0]) }, uShaft: { value: C(RAMPS.glowTeal[2]) },
       uRedC: { value: C(RAMPS.coral[1]) }, uGlowC: { value: C(RAMPS.glowTeal[3]) },

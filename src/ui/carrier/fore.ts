@@ -165,7 +165,7 @@ export function buildFore(C: Ctx): ForeOut {
       B.boxAt(olive, X1, 7.4, cz - 7.6, xo - sx * 0.4, 7.9, cz + 7.6, { bev: 0.1 });
       for (const dz of [-7.7, 7.7]) B.boxAt(hullB, X1, -2.0, cz + dz - 0.35, xo + sx * 0.2, 6.4, cz + dz + 0.35, { bev: 0.1 });
       B.boxAt(gun, X1, -2.4, cz - 8, xo + sx * 0.2, -1.9, cz + 8, { bev: 0.08 });
-      B.boxAt(dark, X + sx * 0.02, -1.9, cz - 7.3, X + sx * 0.06, 6.4, cz + 7.3);
+      B.boxAt(hullB, X + sx * 0.02, -1.9, cz - 7.3, X + sx * 0.12, 6.4, cz + 7.3);
       L.boxAt(hullB, X1, -2.4, cz - 8, xo, 7.4, cz + 8);
       // the craft on its cradle
       B.at(X + sx * 3.0, 2.1, cz + 0.3, 0, 0, 0, 0.8); craft(B, s, String(i)); B.pop();
@@ -201,17 +201,28 @@ export function buildFore(C: Ctx): ForeOut {
     for (let k = 0; z < 60; k++) { const len = [9, 7.5, 10, 8][k % 4]; for (const [x0, x1] of [[-12.8, -0.15], [0.15, 12.8]]) B.boxAt(hullB, x0, -21.35, z, x1, -21.0, Math.min(61, z + len) - 0.25, { bev: 0.1 }); z += len; }
     B.boxAt(hullB, -2.8, -23, -44, 2.8, -21.3, 62, { bev: 0.4 });
     L.boxAt(hullB, -2.8, -23, -44, 2.8, -21.3, 62);
-    for (let z2 = -40; z2 <= 58; z2 += 7) B.boxAt(gun, -9, -21.9, z2 - 0.3, 9, -21.3, z2 + 0.3, { bev: 0.08 });
+    for (let z2 = -40; z2 <= 58; z2 += 7) { const w = z2 > 31 && z2 < 47 ? 3.2 : 9; B.boxAt(gun, -w, -21.9, z2 - 0.3, w, -21.3, z2 + 0.3, { bev: 0.08 }); }
+    // two ventral cargo doors: framed, ribbed leaves, hazard ends, hinge knuckles along the outboard edge
+    for (const sx of [-1, 1]) {
+      const xa = Math.min(sx * 3.6, sx * 12.2), xb = Math.max(sx * 3.6, sx * 12.2), za = 32, zb = 46;
+      B.boxAt(hullB, xa - 0.4, -21.75, za - 0.5, xb + 0.4, -21.3, za, { bev: 0.08 }); B.boxAt(hullB, xa - 0.4, -21.75, zb, xb + 0.4, -21.3, zb + 0.5, { bev: 0.08 });
+      B.boxAt(hullB, xa - 0.4, -21.75, za, xa, -21.3, zb, { bev: 0.08 }); B.boxAt(hullB, xb, -21.75, za, xb + 0.4, -21.3, zb, { bev: 0.08 });
+      B.boxAt(hullA, xa + 0.05, -21.5, za + 0.05, xb - 0.05, -21.3, zb - 0.05, { bev: 0.06 });
+      for (let z3 = za + 2.3; z3 < zb - 1; z3 += 2.35) B.boxAt(gun, xa + 0.6, -21.68, z3 - 0.14, xb - 0.6, -21.5, z3 + 0.14, { bev: 0.04 });
+      for (const zz of [za + 0.55, zb - 0.55]) B.in((xa + xb) / 2, -21.52, zz, Math.PI / 2, 0, 0, () => B.panel(haz, xb - xa - 0.4, 0.6, (xb - xa) * 16 / 64));
+      for (let k = 0; k < 4; k++) B.in(sx * 12.35, -21.8, za + 1.5 + k * 3.6, Math.PI / 2, 0, 0, () => B.cyl(gun, 0.28, 0.28, 1.6, 8));
+      decal(B, s, sx < 0 ? 't4' : 't5', new V3((xa + xb) / 2, -21.72, za + 3.2), new V3(0, -1, 0), 1.8, new V3(0, 0, 1));
+    }
     for (let k = 0; k < 18; k++) {
       const zz = -40 + k * 5.8;
       fx.halos.push({ p: new V3(0, -23.3, zz), col: NAV.amber, size: 1.3, mode: 3, ph: k * 0.03 });
       B.in(0, -23.05, zz, 0, 0, 0, () => B.box(s('lensAmber', 1), 0.5, 0.15, 0.5));
     }
-    for (const [x, z, n] of [[-7, -20, 1], [7, -20, 2], [-7, 30, 3], [7, 30, 4], [-7, 50, 5], [7, 50, 6]] as [number, number, number][]) B.in(x, -21.4, z, Math.PI / 2, 0, 0, () => hatch(B, s, n, 3.2));
+    for (const [x, z, n] of [[-7, -20, 1], [7, -20, 2], [-7, 24, 3], [7, 24, 4], [-7, 52, 5], [7, 52, 6]] as [number, number, number][]) B.in(x, -21.4, z, Math.PI / 2, 0, 0, () => hatch(B, s, n, 3.2));
     decal(B, s, 'tUSPC', new V3(-7.6, -21.4, 10), new V3(0, -1, 0), 18, new V3(-1, 0, 0));
     decal(B, s, 'tCorps', new V3(7.6, -21.4, 6), new V3(0, -1, 0), 26, new V3(1, 0, 0));
     for (const sx of [-1, 1]) decal(B, s, 'insignia', new V3(sx * 7.5, -21.4, -32), new V3(0, -1, 0), 8, new V3(0, 0, 1));
-    decal(B, s, 'tNoStep', new V3(-4.4, -21.4, 40), new V3(0, -1, 0), 3, new V3(0, 0, 1));
+    decal(B, s, 'tNoStep', new V3(-7.2, -21.52, 40.2), new V3(0, -1, 0), 3, new V3(0, 0, 1));
     // dipole antenna array and a sensor dome under the keel, aft
     for (let k = 0; k < 6; k++) { const zz = -36 + k * 2.4; B.beam(steel, new V3(-4.5, -23.6, zz), new V3(4.5, -23.6, zz), 0.06); B.beam(steel, new V3(0, -23, zz), new V3(0, -23.6, zz), 0.05); }
     B.in(0, -23, 46, Math.PI, 0, 0, () => B.sphere(s('glass', 1), 1.9, 14, 5, { t0: 0, t1: Math.PI / 2 }));
@@ -254,7 +265,7 @@ export function buildFore(C: Ctx): ForeOut {
       fx.halos.push({ p: new V3(sx * 13.3, 18.0, 62.1), col: sx < 0 ? NAV.red : NAV.green, size: 1.4, mode: 1, ph: 1.1 });
     }
     // the front: control room windows looking over the brow, a big "2" for the bay below
-    B.in(0, 15.3, hz1 + 0.02, 0, 0, 0, () => B.panel(s('winB', 16), 22, 1.5, 22 * 16 / 256));
+    for (const b of [B, L]) b.in(0, 15.3, hz1 + 0.02, 0, 0, 0, () => b.panel(s('winB', 16), 22, 1.5, 22 * 16 / 256));
     B.in(0, 20.2, hz1 - 3.48, 0, 0, 0, () => B.panel(s('winA', 16), 16, 1.5, 16 * 16 / 256));
     decal(B, s, 't2', new V3(-6, 22.13, 50), new V3(0, 1, 0), 3.2, new V3(0, 0, 1));
     // tier-2 roof: vents, an antenna, steam
@@ -302,6 +313,7 @@ export function buildFore(C: Ctx): ForeOut {
     const up = new V3(0, 0.949, 0.316), n = new V3(0, -0.316, 0.949);
     B.push(new THREE.Matrix4().makeBasis(new V3(1, 0, 0), up, n).setPosition(0, 37.4 + n.y * 0.04, 29.2 + n.z * 0.04));
     B.panel(s('winBridge', 16), HW * 2 - 0.4, 4.6, (HW * 2) * 16 / 256); B.pop();
+    L.push(new THREE.Matrix4().makeBasis(new V3(1, 0, 0), up, n).setPosition(0, 37.4 + n.y * 0.04, 29.2 + n.z * 0.04)); L.panel(s('winBridge', 16), HW * 2 - 0.4, 4.6, (HW * 2) * 16 / 256); L.pop();
     // mullion posts across the glazing, the visor, the lower deck windows
     for (let x = -HW + 2; x <= HW - 2; x += 4) B.beam(hullB, new V3(x, 35.1, 28.55), new V3(x, 39.7, 30.05), 0.18, 0.18);
     B.boxAt(hullB, -HW - 0.2, 40.4, 28.6, HW + 0.2, 41.0, 31.0, { bev: 0.1 });
@@ -385,6 +397,7 @@ export function buildFore(C: Ctx): ForeOut {
     L.boxAt(hullA, -11, 12.1, z0, 11, 17.2, z1);
     B.boxAt(deck, -10.8, 17.2, z0 + 0.2, 10.8, 17.3, z1 - 0.2);
     for (const sx of [-1, 1]) {
+      L.in(sx * 11.02, 15.4, (z0 + z1) / 2, 0, sx * Math.PI / 2, 0, () => L.panel(s('winB', 16), z1 - z0 - 2, 1.5, (z1 - z0 - 2) * 16 / 256));
       for (const [y, kind] of [[15.4, 'winB'], [13.4, 'port']] as [number, string][]) B.in(sx * 11.02, y, (z0 + z1) / 2, 0, sx * Math.PI / 2, 0, () => B.panel(s(kind, 16), z1 - z0 - 2, kind === 'port' ? 1.0 : 1.5, (z1 - z0 - 2) * 16 / (kind === 'port' ? 64 : 256)));
       B.in(sx * 7.52, 18.8, (z0 + z1 - 9) / 2, 0, sx * Math.PI / 2, 0, () => B.panel(s('port', 16), z1 - z0 - 18, 1.0, (z1 - z0 - 18) * 16 / 64));
       railing(B, steel, new V3(sx * 10.6, 17.3, z0 + 0.6), new V3(sx * 10.6, 17.3, z1 - 0.6));

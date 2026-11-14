@@ -319,6 +319,8 @@ export class PlanetScreen implements Screen {
     terrain.setShade(flora.shade);
     scene.add(terrain.group, flora.group);
     const sun = new Sun(pal, scene);
+    // its light and shadows, not its atmosphere pass (tuned for a camera thirty metres up; it would fog the survey)
+    scene.userData.sun = undefined;
     // everything of the survey's own sits in a group centred on the map (the landscape beyond it, the marks, the scan)
     const O = new V3(N / 2, 0, N / 2), far = new THREE.Group(); far.position.copy(O); scene.add(far);
     const W = makeWorld(region, pal, bin, far);

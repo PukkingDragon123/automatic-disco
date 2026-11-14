@@ -92,6 +92,8 @@ export class Climate {
     for (const k of Object.keys(WX[this.weather]) as (keyof typeof WX.clear)[]) this.wxT[k] = WX[this.weather][k];
     this.rain = this.wxT.rain; this.cloud = this.wxT.cloud; this.fog = this.wxT.fog;
     if (this.forcedS === 'frost') this.snowCover = 0.85;
+    if (this.forcedS === 'eclipse') this.eclipseK = 1;
+    if (this.forcedS === 'bloodtide') this.bloodK = 1;
     (g as unknown as { climate: Climate }).climate = this;
     try { this.almanac = new Almanac(g, this); } catch (e) { console.error('almanac', e); }
   }
@@ -107,7 +109,10 @@ export class Climate {
   get dayLength() { return this.dayLen; }
   /** force a season and/or a weather (null leaves it running) */
   force(s: Season | null, w: Weather | null) {
-    if (s) { this.forcedS = s; this.t = this.startOf(s) + SEASON[s].days * this.dayLen * 0.5; }
+    if (s) {
+      this.forcedS = s; this.t = this.startOf(s) + SEASON[s].days * this.dayLen * 0.5;
+      this.eclipseK = s === 'eclipse' ? 1 : 0; this.bloodK = s === 'bloodtide' ? 1 : 0;
+    }
     if (w) { this.forcedW = w; this.setWeather(w); for (const k of Object.keys(WX[w]) as (keyof typeof WX.clear)[]) this.wxT[k] = WX[w][k]; }
   }
   /** for a terrain shader: snow, frost, dryness, wetness, mud (0..1), as uniform-shaped objects */
@@ -236,7 +241,7 @@ export class Climate {
       // the eclipse: no sun, only the corona's cold blue-green rim light from where it hangs
       sun.dir.copy(env.sunSky); sun.dir.y = Math.max(0.2, sun.dir.y); sun.dir.normalize();
       sun.light.color.setRGB(0.32, 0.72, 0.78);
-      sun.light.intensity = 0.55 * ecl;
+      sun.light.intensity = 0.3 * ecl;
     } else if (!night) {
       sun.light.color.copy(sc).multiply(_c2.set(pal.sun).lerp(_c2.clone().setRGB(1, 1, 1), 0.6));
       sun.light.color.lerp(_c2.setRGB(1, 0.5, 0.22), golden * 0.55);
@@ -265,7 +270,7 @@ export class Climate {
     sun.hemi.intensity = (0.5 + 1.15 * clamp(dayK * 1.2, 0.18, 1)) * (1 + sun.overcast * 0.25) * (1 - ecl * 0.45) + this.flash * 2.5;
     if (this.flash > 0) sun.hemi.color.lerp(_c.setRGB(0.85, 0.9, 1), this.flash * 0.6);
     // the grade: richer by day, cooler and vignetted by night, red in the bloodtide
-    const gr = g.engine.post.grade, k = Math.max(0.16, dayK);
+    const gr = g.engine.post.grade, k = Math.max(0.08, dayK);
     gr.sat = 1.08 - (1 - k) * 0.22 + this.bloodK * 0.1; gr.vig = 0.36 + (1 - k) * 0.3; gr.bloom = 0.3 + (1 - k) * 0.25 + ecl * 0.3;
     w.terrain.U.uVeinGain.value = 1 + (1 - k) * 0.8 + ecl;
     this.light = k;
@@ -306,12 +311,10 @@ export class Climate {
       (fU.uWindDir.value as THREE.Vector2).set(this.wind.x, this.wind.y).normalize();
     }
     // the ecology: rain feeds it; the season sets the water stage (monsoon high, high sun low)
-    const eco = (w as unknown as { eco?: { rain: number; t: number; year: number; phase0: number } }).eco;
+    const eco = (w as unknown as { eco?: { rain: number; setSeason?(id: Season, stage?: number): void } }).eco;
     if (eco) {
       eco.rain = Math.max(eco.rain, this.rain * (this.snow > 0.3 ? 0.3 : 1));
-      const stage = this.stage();
-      const ph = Math.asin(clamp(stage, -1, 1)) / (Math.PI * 2);
-      if (eco.year > 0) eco.phase0 = ((ph - eco.t / eco.year) % 1 + 1) % 1;
+      eco.setSeason?.(this.season, this.stage());
     }
     // creatures glow brighter in the dark (bioluminescence wakes in the eclipse)
     const glow = 1 + this.eclipseK * 2.2 + (1 - this.light) * 0.6;

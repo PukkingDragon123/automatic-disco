@@ -169,6 +169,18 @@ export const LIMB_TYPES: Record<string, (r: number) => LimbRing[]> = {
     { t: 0.68, r: r * 0.86, e: 1.0, b: [[180, 0.08, 45], [20, 0.04, 30]] },
     { t: 0.8, r: r * 0.84, e: 1.0, b: [[90, 0.05, 30], [-90, 0.05, 30], [170, 0.06, 30]] },
   ],
+  /** a sauropod column: a massive thigh and upper arm tapering hard to the knee, a long straight shank, a broad ankle */
+  column: (r) => [
+    { t: -0.22, r: r * 1.05, e: 1.1, off: [-0.35, 0] },
+    { t: -0.05, r: r * 1.42, e: 1.18, b: [[0, 0.1, 40], [180, 0.14, 50]], off: [-0.1, 0] },
+    { t: 0.12, r: r * 1.36, e: 1.16, b: [[15, 0.16, 45], [175, 0.16, 45], [-90, -0.06, 40]] },
+    { t: 0.28, r: r * 1.12, e: 1.08, b: [[10, 0.1, 40], [175, 0.12, 40]] },
+    { t: 0.42, r: r * 0.92, e: 1.02, b: [[0, 0.06, 30], [150, 0.04, 30], [-150, 0.04, 30]], crease: 1, ink: true },
+    { t: 0.5, r: r * 0.95, e: 1.04, b: [[0, 0.18, 30], [180, -0.05, 40]], crease: 1.5, ink: true },
+    { t: 0.58, r: r * 0.88, e: 1.02, b: [[0, 0.06, 30], [180, 0.06, 40]], crease: 1, ink: true },
+    { t: 0.7, r: r * 0.8, e: 1.0, b: [[180, 0.1, 45], [20, 0.04, 30]] },
+    { t: 0.82, r: r * 0.78, e: 1.0, b: [[90, 0.06, 30], [-90, 0.06, 30], [170, 0.08, 30]] },
+  ],
   /** a muscular strider: thigh muscle front and back, a bony knee cap, a lean shank with tendons behind, ankle knobs */
   strider: (r) => [
     { t: -0.22, r: r * 0.95, e: 1.15, off: [-0.35, 0] },
