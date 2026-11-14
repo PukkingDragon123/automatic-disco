@@ -72,6 +72,8 @@ export function profileOf(c: Creature, w: World): Profile {
   if (diet === 'carn' && p.guild === 'forager') p.guild = 'predator';
   if (diet === 'carn' && (role === 'snail')) p.guild = 'decomposer';
   if (sp.pheno.canFly) { p.shade = false; p.den = false; }
+  // bats: out at night after fruit and moths, hung up asleep by day
+  if (sp.pheno.canFly && (sp.design.beast === 'duskwing' || sp.design.genes.includes('wing_patagium'))) { p.sched = 'night'; p.fruit = true; p.social = 'swarm'; }
   if (st.swim > 0 && p.guild === 'predator') p.ambush = true;
   p.thirstK *= clamp(1 + (w.region.biome.temp - 0.55) * 0.8, 0.7, 1.4);
   cache.set(sp.id, p);
@@ -100,6 +102,11 @@ export function activity(s: Sched, day: number): number {
 }
 /** the hottest hours (a short siesta in hot country) */
 export function midday(day: number) { const d = ((day % 1) + 1) % 1; return d > 0.16 && d < 0.34; }
+/** the last hours before sleep (a drink before bed) */
+export function evening(s: Sched, day: number) {
+  const d = ((day % 1) + 1) % 1;
+  return s === 'day' ? d > 0.4 && d < 0.52 : s === 'night' ? d > 0.9 || d < 0.04 : d > 0.08 && d < 0.14;
+}
 /** the first hours after waking */
 export function morning(s: Sched, day: number) {
   const d = ((day % 1) + 1) % 1;

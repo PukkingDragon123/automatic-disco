@@ -524,6 +524,9 @@ export class Hud {
     if (b.length && S.points > 0) return `CORE CELLS READY: THROW THE SKILLS SWITCH [K]. NEXT: ${b[0].name.toUpperCase()}.`;
     if (S.owned.size <= 1) return 'FLY CLOSE TO NUGGETS, HUSKS, DEW AND CLODS: THE FIELD PULLS THEM IN.';
     if (!S.has('graft')) return 'EVERY LOAD GATHERED EARNS CORE CELLS. PLANT GRAFT CLAIMS GROUND.';
+    const fac = this.c.game?.factory;
+    if (S.has('works') && fac && !fac.buildings.some((b) => b.def.extract)) return 'THE WORKS ARE OPEN [B]: A MINER ON A SEAM, A BELT, A SMELTER, AN UPLINK.';
+    if (fac && fac.buildings.some((b) => b.status === 'nopower')) return 'A MACHINE IS DARK: RUN POWER POLES BACK TO THE CORE OR A GENERATOR.';
     if (h.territory() < 0.05) return 'GRAFT PLANTS [E] TO CLAIM THE GROUND AROUND THEM.';
     if (!S.has('convert')) return 'NEURAL GRAFT TURNS BEATEN CREATURES INTO ALLIES THAT CLAIM GROUND.';
     if (S.has('command') && h.allyCount() && !h.follow) return '[G] RALLIES YOUR ALLIES. SELECT THEM, RIGHT-CLICK TO ORDER.';

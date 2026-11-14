@@ -260,7 +260,7 @@ export class MenuScreen implements Screen {
     if (this.empty) { this.empty.size = Math.min(1, (wx * 1.4) / this.empty.w); this.empty.home.copy(r.pos).addScaledVector(fwd, WORD_D).addScaledVector(r.up, -0.1 * wy); }
     // the apple floats in the open sky above the ship, nearer the camera
     const ad = portrait ? 160 : 115, ay = ad * tanV, ax = ay * a;
-    this.apple.place(r.pos.clone().addScaledVector(fwd, ad).addScaledVector(r.right, (portrait ? 0.6 : -0.6) * ax).addScaledVector(r.up, (portrait ? 0.17 : 0.52) * ay));
+    this.apple.place(r.pos.clone().addScaledVector(fwd, ad).addScaledVector(r.right, (portrait ? 0.6 : -0.68) * ax).addScaledVector(r.up, (portrait ? 0.17 : 0.64) * ay));
     // the archive: the worlds in a row across the view, nearer than the ship
     const n = this.worlds.length, gd = 110, gy = gd * tanV, gx = gy * a;
     this.worlds.forEach((w, i) => {

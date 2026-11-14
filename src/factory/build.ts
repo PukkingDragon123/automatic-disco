@@ -41,6 +41,7 @@ export class Build {
   private camDist = 0;
   onChange?: () => void;
   onInspect?: (b: FBuilding | null) => void;
+  onDismiss?: () => void;
 
   constructor(readonly f: Factory) {
     (this.badMat as unknown as { onBeforeCompile: unknown }).onBeforeCompile = ((prev) => (sh: THREE.WebGLProgramParametersWithUniforms, r: THREE.WebGLRenderer) => { prev.call(this.badMat, sh, r); (sh.uniforms.uGhost.value as THREE.Color).setHex(RAMPS.stampRed[3]); })(this.badMat.onBeforeCompile);
@@ -85,8 +86,8 @@ export class Build {
   }
   toggle() { if (this.active) this.close(); else this.open(null, 'select'); }
   choose(kind: FKind) {
-    const why = this.f.why(kind, -99, -99, 0) ;
-    if (why && (why.startsWith('Needs') && !why.includes('(skill tree)') ? false : why.includes('skill tree'))) { sfx('deny'); toast(why, 'warn', 1800); return; }
+    const def = FDEFS[kind];
+    if (def.skill && !this.f.has(def.skill)) { sfx('deny'); toast(`Needs <b>${def.skill}</b> on the skill tree`, 'warn', 1800); return; }
     this.open(kind, 'place'); sfx('click');
   }
   setTool(t: Tool) {
@@ -103,8 +104,15 @@ export class Build {
     if (!this.canvasEv(e) || !(this.g as unknown as { act: boolean }).act) return;
     const g = this.g;
     if (!this.active) {
-      // outside build mode: Shift-click (or a tap) on a machine opens its inspector
-      if (e.button === 0 && (e.shiftKey || e.pointerType === 'touch') && g.mode.k === 'normal') {
+      // outside build mode: Shift-click on a machine opens its inspection form (a tap does, on touch: see onUp)
+      if (e.pointerType === 'touch') { this.tap = { x: e.clientX, y: e.clientY, t: performance.now() }; return; }
+      // a form is open: a click picks another machine or puts the paperwork away
+      if (g.mode.k === ('factory' as string) && e.button === 0) {
+        const b = this.pick(e.clientX, e.clientY);
+        if (b) this.onInspect?.(b); else this.onDismiss?.();
+        e.stopPropagation(); e.preventDefault(); return;
+      }
+      if (e.button === 0 && e.shiftKey && g.mode.k === 'normal') {
         const b = this.pick(e.clientX, e.clientY);
         if (b) { this.onInspect?.(b); this.f.render.sel = b; e.stopPropagation(); e.preventDefault(); }
       }
@@ -123,7 +131,13 @@ export class Build {
     if (this.drag?.touch && !(this.kind && isDrag(this.kind)) && this.tool !== 'copy') return;
     this.hoverAt(e.clientX, e.clientY);
   };
+  private tap: { x: number; y: number; t: number } | null = null;
   private onUp = (e: PointerEvent) => {
+    if (!this.active && this.tap && e.pointerType === 'touch') {
+      const t = this.tap; this.tap = null;
+      if (Math.hypot(e.clientX - t.x, e.clientY - t.y) < 10 && performance.now() - t.t < 400 && (this.g.mode.k === 'normal' || this.g.mode.k === ('factory' as string))) { const b = this.pick(e.clientX, e.clientY); if (b) { this.onInspect?.(b); this.f.render.sel = b; } else if (this.g.mode.k === ('factory' as string)) this.onDismiss?.(); }
+      return;
+    }
     if (!this.active || !this.drag || e.button !== 0) return;
     const d = this.drag; this.drag = null;
     e.stopPropagation();

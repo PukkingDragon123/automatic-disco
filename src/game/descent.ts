@@ -408,7 +408,7 @@ export class Descent {
     const key = (e: KeyboardEvent) => {
       if (e.repeat) return;
       if (e.key === ' ') { e.preventDefault(); this.burst(); }
-      else if (e.key === 'Escape') this.engageAuto();
+      else if (e.key === 'Escape') { if (this.landed && this.result) this.once('done', () => { this.o.ui.cardOff(); this.o.onDone(this.result!); }); else this.engageAuto(); }
     };
     addEventListener('keydown', key);
     this.off.push(() => removeEventListener('keydown', key));

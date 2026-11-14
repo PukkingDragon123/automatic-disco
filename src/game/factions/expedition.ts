@@ -43,7 +43,7 @@ export class Expedition implements SOwner {
 
   update(dt: number) {
     const F = this.F;
-    if (this.state === 'pending') { if (F.t >= this.site.arrive && F.player()) this.land(); return; }
+    if (this.state === 'pending') { if (F.t >= this.site.arrive && (F.player() || F.test)) this.land(); return; }
     if (this.state === 'gone' || this.state === 'eliminated') return;
     this.t += dt; this.stateT += dt;
     this.units = this.units.filter((u) => !u.dead);
@@ -98,8 +98,9 @@ export class Expedition implements SOwner {
       if (pay && afford) { res.ore -= c.ore; res.carbon -= c.carbon; this.truce(); }
       else this.hostile();
     };
-    new Btn(row, { icon: 'min', label: 'PAY FOR A TRUCE', size: 'big', disabled: () => !afford, tip: () => `<h4>Pay them off</h4>${c.ore} ore and ${c.carbon} carbon. They keep to their side and lift off in a few minutes.${afford ? '' : '<br><b>Not enough in the hold.</b>'}` }, () => fin(true));
+    const pay = new Btn(row, { icon: 'min', label: 'PAY FOR A TRUCE', size: 'big', disabled: () => (afford ? false : 'Not enough in the hold'), tip: () => `<h4>Pay them off</h4>${c.ore} ore and ${c.carbon} carbon. They keep to their side and lift off in a few minutes.` }, () => fin(true));
     new Btn(row, { icon: 'attack', label: 'SEND THEM PACKING', size: 'big', tip: () => '<h4>Refuse</h4>They pitch camp and go for your buildings and creatures. Kill most of the team or wreck their capsule to be rid of them.' }, () => fin(false));
+    pay.refresh();
   }
   private truce() {
     const F = this.F;

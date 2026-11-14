@@ -55,7 +55,7 @@ export function chordTs(c: V3[]) { const cum = [0]; for (let i = 1; i < c.length
 
 export interface Paint { (): void }
 /** texel-density priority per region: the face reads first, so it paints finest */
-const DENSITY: Record<string, number> = { HEAD: 1.55, EYE: 1.6, LID: 1.4, NOSE: 1.5, JAW: 1.3, MOUTH: 1.1, EAR: 1.35, TEETH: 1.2, WHISK: 1.3, FOOT: 1.15, CLAW: 1.1, BODY: 1, LIMB: 1.05 };
+const DENSITY: Record<string, number> = { HEAD: 1.95, EYE: 1.8, LID: 1.4, NOSE: 1.5, JAW: 1.3, MOUTH: 1.1, EAR: 1.35, TEETH: 1.2, WHISK: 1.3, FOOT: 1.15, CLAW: 1.1, BODY: 1, LIMB: 1.05 };
 export class Ctx {
   B: SkinB; page: Page; g = 1; paints: Paint[] = [];
   /** spine samples for surface queries (quills, photophores) */
@@ -631,10 +631,10 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
   };
   const HEAD = S.reg('HEAD', TAU * hw * 0.5 * hk, len(sub(ctrl[ctrl.length - 1], ctrl[0])), 16, 96, 64);
   const w = (i: number): Wt => (i < 2 ? [iH, 0.75, iN, 0.25] : [iH, 1]);
-  sac(S.B, HEAD, S.gid(), sp.pts, sp.t.map((t) => [interp(cts, rx, t), interp(cts, ry, t)] as [number, number]), w, { n: 18, bump, end: true, start: true, cap: BF ? BF.skull.cap : cat ? 0.06 : boar || bear ? 0.16 : hoof ? 0.28 : 0.5 });
+  sac(S.B, HEAD, S.gid(), sp.pts, sp.t.map((t) => [interp(cts, rx, t), interp(cts, ry, t)] as [number, number]), w, { n: 18, sq: 2.55, bump, end: true, start: true, cap: BF ? BF.skull.cap : cat ? 0.06 : boar || bear ? 0.16 : hoof ? 0.28 : 0.5 });
   const Lh = sp.L;
   // ------------------------------------------------ eyes: a wet eyeball in a socket rim, an upper lid that blinks, a lower lid
-  const er = Math.max(0.012, hw * (bug ? 0.2 : BF ? erK : erK * 0.86)) * (hom ? 1.25 : 1);
+  const er = Math.max(0.012, hw * (bug ? 0.2 : BF ? erK : erK * 0.86)) * (hom ? 1.25 : 1) * (bug ? 1 : clamp(1.2 - S.rig.length * 0.12, 0.66, 1.05));
   const EYE = S.fixed('EYE', 12, 12), LID = S.reg('LID', TAU * er * 1.1, er * 0.8, 6, 24, 8), LC = S.fixed('LIDC', 12, 10);
   const rows = BF?.eyes.rows ?? 1;
   for (const s of [-1, 1]) for (let ri = 0; ri < rows; ri++) {
@@ -644,7 +644,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     const sx = Math.pow(Math.sin(eA2), se) * interp(hz, rx, ez), sy = interp(hz, hy, ez) + Math.pow(Math.cos(eA2), se) * interp(hz, ry, ez);
     const off: V3 = bug ? [s * hw * 0.3, hh * 0.36, hl * 0.12] : [s * sx, sy, ez];
     const ax = norm(bug ? [s * 0.62, 0.62, 0.48] : [s * Math.sin(eYaw), hoof ? 0.2 : 0.12, Math.cos(eYaw)]);
-    const c = addV(addV(head, off), scl(ax, -er * (bug ? -0.1 : hoof ? 0.5 : cat ? -0.08 : 0.4)));
+    const c = addV(addV(head, off), scl(ax, -er * (bug ? -0.1 : hoof ? 0.5 : cat ? -0.08 : BF ? 0.62 : 0.45)));
     if (bug) sac(S.B, LID, S.gid(), [addV(c, scl(ax, -er * 1.3)), addV(c, scl(ax, -er * 0.55)), addV(c, scl(ax, -er * 0.05))], [[er * 1.05, er * 1.0], [er * 1.12, er * 1.06], [er * 1.08, er * 1.02]], [[iH, 1], [iH, 1], [iH, 1]], { n: 14, start: false, end: false });
     // the eyeball turns on its own bone; a pupil plate rides the cornea on a bone that scales to dilate
     const eyeB = rows === 1 ? S.rig.eyes[s < 0 ? 0 : 1] : undefined, pupT = (BF ? BF.eyes.pupil : hoof || flat ? 'h' : 'round');
@@ -672,9 +672,9 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     if (lid) {
       S.rig.bones[lid.bone].pos = sub(c, S.rest[iH]) as [number, number, number];
       S.rest[lid.bone] = c; lid.axis = norm(cross(u, ax)) as [number, number, number];
-      lidCap(S, LC, c, ax, u, R, -1.32, 0.86 - heavy, 1.75, [lid.bone, 1]);
+      lidCap(S, LC, c, ax, u, R, -1.32, (cat ? 0.86 : 0.7) - heavy, 1.75, [lid.bone, 1]);
     }
-    lidCap(S, LC, c, ax, scl(u, -1), R * 0.99, -0.75, 0.84 - heavy * 0.5, 1.75, [iH, 1], 3, 8);
+    lidCap(S, LC, c, ax, scl(u, -1), R * 0.99, -0.75, (cat ? 0.84 : 0.72) - heavy * 0.5, 1.75, [iH, 1], 3, 8);
   }
   S.paints.push(() => paintEyeReg(S, EYE, { iris: BF ? (rows > 1 ? 70 : 58) : hom || hoof ? irisA : Math.max(irisA, 52), pupilA: pupA, pk: rows === 1 && ['round', 'v', 'h', 'pinhole'].includes(BF ? BF.eyes.pupil : 'round') ? 0.5 : 1, pupil: BF ? BF.eyes.pupil : hoof || flat ? 'h' : 'round', sclera: hom ? 0xe8e2d8 : hoof ? 0xd8ccb8 : 0xc8b49a, irisC: hoof || boar ? mixHex(d.colors.eye, 0x3a2414, 0.8) : cat ? mixHex(d.colors.eye, 0xd8962a, 0.7) : undefined }));
   S.paints.push(() => {
@@ -695,7 +695,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
       const muz = !beak && !flat && !liz && t > tSn - 0.1 && ath > (cat ? 1.35 : 1.6) - (t - tSn) * 1.5 + (hash(x, 3) - 0.5) * 0.2;
       if (muz) HEAD.put(x, y, muzzleR, 3.4 + (Math.cos(th) > 0 ? 0.5 : 0) - (ath > 2.6 ? 0.8 : 0), 0.5);
       if (cat && muz && t > 0.86 && t < 0.955 && ath > 1.9 && ath < 2.3 && x % 4 === (y >> 2) % 2 * 2 && y % 4 === 1 && hash(x, y + 5) < 0.7) HEAD.set(x, y, S.P.dark[1]); // whisker spots
-      const lipA = flat ? 2.0 : liz ? 2.2 : 2.25;
+      const lipA = flat ? 2.0 : liz ? 2.2 : 2.25 + (cat ? 0 : (1 - t) * 0.35);
       if (!beak && t > (flat || liz ? 0.2 : tSn - 0.04) && Math.abs(ath - lipA - (cat ? (1 - t) * 0.6 : 0)) < 0.12) HEAD.set(x, y, t > 0.97 ? S.P.dark[1] : 0x140c0c); // lip line (a frog's or lizard's runs the whole jaw)
       if (liz && t > 0.25 && ath > lipA - 0.32 && ath < lipA - 0.12 && x % 3 === 0) HEAD.set(x, y, S.P.belly[3]); // labial scales
       if (flat && D.hop && oct((t - tEye + 0.16) * 5, ath - 1.45) < 0.32) HEAD.put(x, y, oct((t - tEye + 0.16) * 5, ath - 1.45) < 0.24 ? S.P.belly : S.P.dark, 2.4, 0.5); // eardrum
@@ -711,6 +711,18 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
       const t = (y + 0.5) / HEAD.h, ath = Math.abs(HEAD.th(x)), u = (t - tEye - 0.035) / 0.09;
       if (u > 0 && u < 1 && Math.abs(ath - (eAng + 0.12 + u * 0.22)) < 0.06 * (1 - u * 0.6)) HEAD.set(x, y, u < 0.7 ? 0x140c08 : S.P.dark[1]);
     }
+    // the face's skin: a dark ring round each orbit with fold lines under it, creases at the mouth corner, pores on the muzzle
+    if (!flat && !beak) for (let y = 0; y < HEAD.h; y++) for (let x = 0; x < HEAD.w; x++) {
+      const t = (y + 0.5) / HEAD.h, ath = Math.abs(HEAD.th(x)), de = Math.abs(t - tEye) * 4 + Math.abs(ath - eAng);
+      if (de < 0.28) HEAD.put(x, y, S.P.dark, 1.2, 0);
+      else if (de < 0.42 && ath > eAng && (y % 3 === 0)) HEAD.put(x, y, S.P.dark, 2, 0);
+      if (t > tSn && Math.abs(ath - 2.45 - (1 - t) * 0.3) < 0.2 && x % 4 === 0 && t < tSn + 0.12) HEAD.put(x, y, S.P.dark, 1.6, 0);
+      if (!cat && t > 0.84 && ath > 1.6 && ath < 2.3 && x % 3 === 0 && y % 3 === 1 && hash(x, y) < 0.5) HEAD.put(x, y, S.P.dark, 2, 0);
+    }
+    // an old scar across the muzzle of the big fighters
+    if (BF && S.rig.length > 2) for (let i = 0; i < HEAD.h * 0.2; i++) { const x = Math.floor(HEAD.X(30 + i * 2)), y = Math.floor(HEAD.h * 0.62 + i); HEAD.set(x, y, S.P.belly[5]); HEAD.set(x + 1, y, S.P.dark[1]); }
+    // a reptile's tympanum behind the jaw
+    if (BF?.headCover === 'scales') for (let y = 0; y < HEAD.h; y++) for (let x = 0; x < HEAD.w; x++) { const q = oct((((y + 0.5) / HEAD.h) - 0.18) * 5, Math.abs(HEAD.th(x)) - 1.55); if (q < 0.3) HEAD.put(x, y, q < 0.22 ? S.P.belly : S.P.dark, q < 0.22 ? 2.6 : 1, 0); }
     // a dark mask across the eyes
     if (BF?.mask) for (let y = 0; y < HEAD.h; y++) for (let x = 0; x < HEAD.w; x++) { const t = (y + 0.5) / HEAD.h, ath = Math.abs(HEAD.th(x)); if (Math.abs(t - tEye) < 0.07 && ath > eAng - 0.45 && ath < eAng + 0.5) HEAD.put(x, y, S.P.dark, 1.6, 0); }
     // the muzzle tip is a fan off the last rows: keep them one clean tone so no stripes radiate across it
@@ -734,7 +746,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     sac(S.B, MOUTH, S.gid(), [addV(J, [0, hh * 0.13, -hl * 0.08]), addV(J, [0, hh * 0.1, sl * 0.45]), addV(J, [0, hh * 0.08, sl * 0.8])], [[hw * 0.27, hh * 0.13], [hw * 0.22, hh * 0.11], [hw * 0.13, hh * 0.06]], [[iH, 0.5, iJ, 0.5], [iH, 0.5, iJ, 0.5], [iH, 0.5, iJ, 0.5]], { n: 10 });
     // gums and palate: ridged pink, dark toward the throat
     S.paints.push(() => { const R = RAMPS.flesh as unknown as number[]; MOUTH.fill(R, (x, y) => 2.4 + (Math.cos(MOUTH.th(x)) > 0.3 ? 1 : 0) + (y % 3 === 0 ? -0.8 : 0) - (y < MOUTH.h * 0.4 ? 1.2 : 0)); });
-    if (beak) S.paints.push(() => keratin(JAW, mixHex(d.colors.accent, 0xd8b050, 0.5), { tipLight: 1.5 }));
+    if (beak) S.paints.push(() => keratin(JAW, BF ? RAMPS.basalt[3] : mixHex(d.colors.accent, 0xd8b050, 0.5), { tipLight: BF ? 0.6 : 1.5 }));
     else S.paints.push(() => {
       hide(S, JAW, { cover: BF?.headCover, L: sl, rad: () => hw * 0.25, seed: 23, kind: 'jaw', belly: 1.25, flow: -1, down: 0.4 });
       for (let x = 0; x < JAW.w; x++) if (Math.abs(JAW.th(x)) < 0.9) { JAW.set(x, JAW.h - 1, 0x140c0c); } // the lower lip
@@ -751,7 +763,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     };
     if (has(d, 'carnassials') || has(d, 'omni_teeth') || has(d, 'venom_fangs')) {
       // canines whose tips just show below the lips, a row of incisors behind the nose
-      const big = has(d, 'carnassials') ? (bear ? 0.55 : cat ? 1 : 0.8) : 0.5;
+      const big = has(d, 'carnassials') ? (BF ? 1.15 : bear ? 0.55 : cat ? 1 : 0.8) : 0.5;
       for (const s of [-1, 1]) {
         fang(addV(head, [s * hw * (cat ? 0.13 : 0.15) * hk, -hh * 0.17, z0 + sl * 0.8]), norm([0, -1, 0.12]), hh * 0.16 * big, hw * 0.034, [iH, 1]);
         fang(addV(J, [s * hw * 0.11, hh * 0.02, sl * 0.72]), norm([0, 1, 0.15]), hh * 0.09 * big, hw * 0.026, [iJ, 1]);
@@ -800,7 +812,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
         const nx = Math.sin(al * Math.PI / 180) * Math.sin(th), ny = Math.sin(al * Math.PI / 180) * Math.cos(th);
         for (const s of [-1, 1]) {
           const dx = nx - s * (boar ? 0.32 : cat ? 0.36 : 0.42), dy = ny + (boar ? 0.05 : cat ? 0.2 : 0.18);
-          const curl = cat ? Math.abs(dx * 1.4 + s * dy * 0.6) < 0.09 && Math.abs(dy) < 0.16 : oct(dx * (boar ? 1.1 : 1.4), dy * (boar ? 0.8 : 1.15)) < (boar ? 0.16 : 0.13);
+          const curl = !boar ? Math.abs(dx * 1.4 + s * dy * 0.6) < 0.09 && Math.abs(dy) < 0.16 : oct(dx * (boar ? 1.1 : 1.4), dy * (boar ? 0.8 : 1.15)) < (boar ? 0.16 : 0.13);
           if (curl) NOSE.set(x, y, 0x060304);
         }
         if (cat && Math.abs(nx) < 0.05 && ny < -0.25) NOSE.set(x, y, mixC(leather, 0x000000, 0.6)); // the philtrum
@@ -812,7 +824,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     const bctrl: V3[] = [b0, addV(b0, [0, -hh * 0.02, sl * 0.5]), addV(b0, [0, -hh * 0.12, sl * 0.95]), addV(b0, [0, -hh * 0.34, sl * 1.12])];
     const bs = spline(bctrl, 9);
     sac(S.B, BK, S.gid(), bs.pts, bs.t.map((t) => [hw * 0.3 * (1 - t * 0.92), hh * 0.26 * (1 - t * 0.9)] as [number, number]), bs.pts.map(() => [iH, 1]), { n: 12, bump: (a) => 0.12 * gauss(a, 0, 0.3) });
-    S.paints.push(() => keratin(BK, mixHex(d.colors.accent, 0xd8b050, 0.5), { tipLight: 1.5 }));
+    S.paints.push(() => { keratin(BK, BF ? RAMPS.basalt[4] : mixHex(d.colors.accent, 0xd8b050, 0.5), { tipLight: BF ? 0.8 : 1.5 }); for (let x = 0; x < BK.w; x++) if (Math.abs(BK.th(x)) > 2.6) for (let y = 0; y < BK.h; y++) BK.set(x, y, RAMPS.ink[1]); });
   }
   // ------------------------------------------------ ears: on their own bones; furred backs, a pale tufted cup, a dark rim
   const earBone = (s: number) => S.rig.ears[s < 0 ? 0 : 1] ?? iH;
@@ -820,10 +832,10 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     const EAR = S.reg('EAR', TAU * hw * 0.2, hh * 0.7, 8, 32, 24);
     for (const s of [-1, 1]) {
       const iE = earBone(s), b0 = iE === iH ? addV(head, [s * hw * 0.38, hh * 0.42, -hl * 0.04]) : S.at(iE);
-      const dir = norm(hoof ? [s * 1.0, 0.55, -0.25] : boar ? [s * 0.7, 0.9, 0.25] : [s * 0.55, 1, -0.18]);
+      const dir = norm(BF?.earK ? [s * 0.9, 0.85, 0.1] : hoof ? [s * 1.0, 0.55, -0.25] : boar ? [s * 0.7, 0.9, 0.25] : [s * 0.55, 1, -0.18]);
       const el = hh * (hom ? 0.35 : hoof ? 0.86 : 0.72) * (BF?.earK ?? 1), ew = hw * (hom ? 0.14 : hoof ? 0.25 : 0.2) * (BF?.earK ?? 1);
       const pts: V3[] = [0, 0.25, 0.55, 0.82, 1].map((t) => addV(b0, scl(dir, t * el)));
-      const wd = hoof ? [0.5, 0.95, 1, 0.7, 0.14] : [0.55, 1, 0.95, 0.6, 0.12];
+      const wd = BF?.earK ? [0.95, 1, 0.72, 0.38, 0.06] : hoof ? [0.5, 0.95, 1, 0.7, 0.14] : [0.55, 1, 0.95, 0.6, 0.12];
       sac(S.B, EAR, S.gid(), pts, wd.map((k) => [ew * k, ew * k * 0.3] as [number, number]), pts.map((_, i) => (i ? [iE, 1] : [iE, 0.6, iH, 0.4])),
         { n: 12, up: hoof ? [0, 0.4, 1] : [0, 0, 1], shift: (a, t) => -ew * 0.2 * Math.max(0, Math.cos(a)) * Math.sin(Math.PI * t), bump: fur ? fuzz(0.12, 12, 5, 9 + s) : undefined });
     }
@@ -870,6 +882,8 @@ export function earPaint(S: Ctx, r: Region, cup: number, L: number, rad: number)
       const depth = 1 - a / edge;
       r.put(x, y, inner, 1.4 + (depth < 0.5 ? 1.2 : 0) - (f > 0.6 ? 0.6 : 0), 0.4);
       if (depth < 0.45 && (hash(x, Math.floor(y / 2)) < 0.45)) r.set(x, y, S.P.belly[Math.min(6, 4 + (hash(x, y + 1) < 0.5 ? 1 : 0))]);
+      if (depth > 0.2 && y % 4 === 0) r.put(x, y, inner, 0.8, 0); // ribs across the cup
+      if (f < 0.3 && depth > 0.55 && depth < 0.75) r.put(x, y, inner, 4, 0); // the tragus fold
     } else if (a < edge + 0.22 && f < 0.96) r.set(x, y, S.P.dark[1]); // rim
     if (f > 0.86) r.put(x, y, S.P.dark, 1.2 + (hash(x, y) - 0.5) * 0.6, 0.5); // dark tip
   }

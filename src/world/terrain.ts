@@ -138,6 +138,8 @@ export class Terrain {
     const g = (this.geo = new THREE.BufferGeometry());
     const pos = new Float32Array((V * V + V * 4 * 2) * 3), nor = new Float32Array(pos.length);
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    // how far each corner sits below its surroundings (hollows fill with sand or mud)
+    g.setAttribute('aHol', new THREE.BufferAttribute(new Float32Array(pos.length / 3), 1));
     g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
     const idx: number[] = [];
     for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
@@ -174,6 +176,12 @@ export class Terrain {
       const nx = hl - hr, nz = hd - hu, ny = 2, l = Math.hypot(nx, ny, nz);
       const i = (z * V + x) * 3; nor[i] = nx / l; nor[i + 1] = ny / l; nor[i + 2] = nz / l;
     }
+    const hol = g.attributes.aHol.array as Float32Array;
+    for (let z = 0; z <= N; z++) for (let x = 0; x <= N; x++) {
+      const a = (this.vh(Math.max(0, x - 2), z) + this.vh(Math.min(N, x + 2), z) + this.vh(x, Math.max(0, z - 2)) + this.vh(x, Math.min(N, z + 2))) * 0.25;
+      hol[z * V + x] = a - this.vh(x, z);
+    }
+    g.attributes.aHol.needsUpdate = true;
     const k = V * V;
     this.skirt.forEach((t, j) => { const o = (k + j) * 3; pos[o] = pos[t * 3]; pos[o + 1] = pos[t * 3 + 1] - 3; pos[o + 2] = pos[t * 3 + 2]; nor[o] = nor[t * 3]; nor[o + 1] = 0.2; nor[o + 2] = nor[t * 3 + 2]; });
     g.attributes.position.needsUpdate = true; g.attributes.normal.needsUpdate = true;
@@ -187,25 +195,25 @@ export class Terrain {
       Object.assign(sh.uniforms, U);
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', `#include <common>
-varying vec3 vWp; varying vec3 vNw;`)
+attribute float aHol;
+varying vec3 vWp; varying vec3 vNw; varying float vHol;`)
         .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
 vec4 wpos4 = modelMatrix * vec4(transformed, 1.0);
-vWp = wpos4.xyz; vNw = normalize(mat3(modelMatrix) * objectNormal);`);
+vWp = wpos4.xyz; vNw = normalize(mat3(modelMatrix) * objectNormal); vHol = aHol;`);
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
 uniform highp sampler2DArray uBlocks;
-uniform sampler2D uMoss, uVis, uMat, uShade, uDamp, uEco, uHeight;
+uniform sampler2D uMoss, uVis, uMat, uShade, uDamp, uEco;
 uniform float uN, uTime, uRivalLayer, uVeinGain, uRockSide, uWetG, uWater;
 uniform float uLay[32];
 uniform float uAvgL[32];
 uniform float uHB[16];
 uniform float uAbs[16];
 uniform vec3 uCore, uVein, uMossLight, uRivalVein, uRivalCore, uDark;
-varying vec3 vWp; varying vec3 vNw;
+varying vec3 vWp; varying vec3 vNw; varying float vHol;
 ${SHADER_NOISE}
 ${FOW_FN}
 int matAt(vec2 cell) { return int(floor(texture2D(uMat, (clamp(cell, vec2(0.0), vec2(uN - 1.0)) + 0.5) / uN).r * 255.0 + 0.5)); }
-float hAtT(vec2 p) { return texture2D(uHeight, (floor(clamp(p, vec2(0.0), vec2(uN - 0.01))) + 0.5) / uN).r; }
 /** one contender for this texel: its weight, plus how proud its own texel stands (its brightness against its tile's) */
 /** (vb picks between the kind's two painted variants the same way: a preference, decided texel by texel) */
 void contend(int id, float w, float pref, float vb, vec2 pc, vec2 gx, vec2 gy, inout float bestS, inout vec4 bestT, inout int bestId) {
@@ -241,7 +249,7 @@ for (int a = 1; a < 4; a++) if (ws[a] > dw) { dw = ws[a]; dom = ids[a]; }
 // the lie of the land: slope, height over the water, hollows
 float slope = 1.0 - vNw.y;
 float hw = vWp.y - uWater;
-float hol = (hAtT(pc + vec2(1.6, 0.0)) + hAtT(pc - vec2(1.6, 0.0)) + hAtT(pc + vec2(0.0, 1.6)) + hAtT(pc - vec2(0.0, 1.6))) * 0.25 - hAtT(pc);
+float hol = vHol;
 bool soft = dom == 0 || dom == 1 || dom == 2 || dom == 11 || dom == 6;
 float moist = max(damp, eco.r);
 float bestS = -1e9; vec4 bestT = vec4(0.5); int bestId = dom;
@@ -325,7 +333,7 @@ diffuseColor.rgb *= base;
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += emis;')
         .replace('#include <dithering_fragment>', '#include <dithering_fragment>\ngl_FragColor.rgb = applyFow(gl_FragColor.rgb, vWp);');
     };
-    m.customProgramCacheKey = () => 'oddworld-terrain-blend2';
+    m.customProgramCacheKey = () => 'oddworld-terrain-blend3';
     return gbuf(m, 0);
   }
 

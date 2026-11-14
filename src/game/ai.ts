@@ -15,7 +15,7 @@
 import { Creature, GOLEM, GOLEM_REF, Emote, type Mind, type Spot, type Memory } from './creature';
 import type { World } from './world';
 import { clamp } from '../core/rand';
-import { profileOf, activity, midday, morning, type Profile } from '../eco/profile';
+import { profileOf, activity, midday, morning, evening, type Profile } from '../eco/profile';
 
 const THINK = 0.35, THINK_FAR = 1.2;
 const TAU = Math.PI * 2;
@@ -43,8 +43,11 @@ function travel(c: Creature, w: World, x: number, z: number, plan: Mind) {
 function dist(c: Creature, x: number, z: number) { return Math.hypot(x - c.x, z - c.z); }
 
 // ================================================================================================ perception
+/** the last hunter seen but not fled from (the animal stands alert and watches it) */
+let watched: Creature | null = null;
 function threatOf(c: Creature, w: World): Creature | null {
   let best: Creature | null = null, bd = 1e9;
+  watched = null;
   const sight = c.st.sight * (c.mind === 'sleep' ? 0.35 : c.mind === 'watch' ? 1.5 : 0.85);
   w.near(c.x, c.z, sight, (o) => {
     if (o.dead || o === c || o.faction === c.faction && c.faction !== 'wild') return;
@@ -62,7 +65,7 @@ function threatOf(c: Creature, w: World): Creature | null {
     // a fed, resting hunter can be watched from a distance; one that is not hunting is only fled when close
     if (!attacking && o.faction === 'wild') {
       if ((o.mind === 'sleep' || o.mind === 'eat' || o.mind === 'rest' || o.mind === 'carry') && d > 6.25) return;
-      if (o.mind !== 'hunt' && o.mind !== 'stalk' && o.mind !== 'attack' && d > Math.min(sight * 0.55, 7) ** 2) return;
+      if (o.mind !== 'hunt' && o.mind !== 'stalk' && o.mind !== 'attack' && d > Math.min(sight * 0.55, 7) ** 2) { if (c.mind !== 'sleep') { c.fear = 2.5; watched = o; } return; }
     }
     if (d < bd) { bd = d; best = o; }
   });
@@ -300,6 +303,8 @@ function thinkWild(c: Creature, w: World) {
     }
   }
   if (c.mind === 'flee' && c.fleeT > 0) return;
+  // a hunter in view but keeping its distance: stop and watch it (head up, ears up)
+  if (watched && (c.mind === 'idle' || c.mind === 'wander' || c.mind === 'graze') && Math.random() < 0.5) { const o = watched as Creature; setMind(c, 'idle'); c.goalX = o.x; c.goalZ = o.z; c.target = 0; c.alarmBy = -o.id; return; }
   // ---- carry on with what it is doing
   if (keepGoing(c, w, P, awake)) return;
   c.plan = null;
@@ -311,7 +316,7 @@ function thinkWild(c: Creature, w: World) {
   const night = 1 - awake;
   const sleepy = night * (0.5 + c.tired) + (c.tired > 0.92 ? 0.8 : 0);
   let uEat = Math.pow(hunger, 1.4) * (0.35 + 0.75 * awake) + (hunger > 0.78 ? 0.7 : 0);
-  let uDrink = Math.pow(c.thirst, 1.3) * 1.25 + (c.thirst > 0.85 ? 0.8 : 0) + (morning(P.sched, w.day) && c.thirst > 0.12 ? 0.35 : 0);
+  let uDrink = Math.pow(c.thirst, 1.3) * 1.25 + (c.thirst > 0.85 ? 0.8 : 0) + (morning(P.sched, w.day) && c.thirst > 0.12 ? 0.35 : 0) + (evening(P.sched, w.day) && c.thirst > 0.25 ? 0.5 : 0);
   const uSleep = sleepy * (1 - Math.max(0, hunger - 0.7)) - (c.thirst > 0.8 ? 0.4 : 0);
   const hot = w.region.biome.temp > 0.6 || eco.moisture(c.x, c.z) < 0.25;
   const uShade = P.shade && hot && midday(w.day) && awake > 0.5 ? 0.55 - hunger * 0.4 - c.thirst * 0.3 : 0;
@@ -393,7 +398,7 @@ function juvenile(c: Creature, w: World, m: Creature) {
 
 function goSleep(c: Creature, w: World, P: Profile): boolean {
   const eco = w.eco;
-  if ((P.social === 'herd' || P.social === 'swarm' || P.social === 'pack') && c.herd && !P.den) {
+  if ((P.social === 'herd' || P.social === 'swarm' || P.social === 'pack') && c.herd && !P.den && !c.rooster) {
     // the herd beds down together; one keeps watch
     // a fresh bed each night (a spot older than most of a day is last night's)
     let hs = eco.herdSleep.get(c.herd);
@@ -412,12 +417,42 @@ function goSleep(c: Creature, w: World, P: Profile): boolean {
     setMind(c, 'sleep'); emote(c, Emote.SLEEP, 3);
     return true;
   }
-  if (P.den) {
+  if (c.rooster) {
+    // bats hang by day under a rock overhang or a branch
+    const r = roostFor(c, w);
+    if (r) { if (dist(c, r[0], r[1]) > 1) { travel(c, w, r[0], r[1], 'sleep'); return true; } }
+  } else if (P.den) {
     const [x, z] = denFor(c, w);
     if (dist(c, x, z) > 2.5) { travel(c, w, x, z, 'sleep'); return true; }
   }
   setMind(c, 'sleep'); emote(c, Emote.SLEEP, 3);
   return true;
+}
+/** a roost: under an arch or a tall slab's lip, the side of a spire or boulder, else under a tree's branch */
+function roostFor(c: Creature, w: World): [number, number] | null {
+  if (c.denX >= 0 && c.roostH > 0) return [c.denX, c.denZ];
+  const R = w.region, fl = w.flora;
+  let best: [number, number, number] | null = null, bs = 1e9;
+  for (const r of R.rocks) {
+    if (r.kind !== 'arch' && r.kind !== 'slab' && r.kind !== 'boulder' && r.kind !== 'spire' && r.kind !== 'column') continue;
+    if (r.sy < 1.5) continue;
+    const d = Math.hypot(r.x - c.homeX, r.z - c.homeZ); if (d > 45 || d > bs) continue;
+    // under the arch's span, or tucked against the overhanging side (away from the noon sun)
+    const a = r.yaw + Math.PI * 0.5 + (c.id % 2) * Math.PI, off = r.kind === 'arch' ? 0 : Math.max(r.sx, r.sz) * 0.55 + 0.25;
+    const x = r.x + Math.cos(a) * off, z = r.z + Math.sin(a) * off;
+    if (R.isWater(x, z)) continue;
+    bs = d; best = [x, z, Math.max(1.2, r.y + r.sy * (r.kind === 'arch' ? 0.82 : 0.7) - R.heightAt(x, z))];
+  }
+  if (!best) fl.near(c.homeX, c.homeZ, 30, (i, d2) => {
+    const sp = fl.species[fl.sp[i]];
+    if (!sp.tree || fl.bio[i] < 0.3 || !w.eco.plantAlive(i) || d2 > bs * bs) return;
+    const a = (i * 2.399) % TAU;
+    bs = Math.sqrt(d2); best = [fl.x[i] + Math.cos(a) * 0.9, fl.z[i] + Math.sin(a) * 0.9, Math.max(1.4, sp.hmin * 0.6)];
+  });
+  if (!best) return null;
+  const b = best as [number, number, number];
+  c.denX = b[0]; c.denZ = b[1]; c.roostH = b[2];
+  return [b[0], b[1]];
 }
 /** the sentry hands the watch to the most rested sleeper */
 function handOver(c: Creature, w: World, hs: { sentry: number; until: number }) {
@@ -650,6 +685,16 @@ export function act(c: Creature, w: World, dt: number) {
   if (c.dead) return;
   c.thinkT += dt; c.actT += dt;
   if (c.emoteT > 0) { c.emoteT -= dt; if (c.emoteT <= 0) c.emote = Emote.NONE; }
+  if (c.fear > 0) c.fear -= dt;
+  // a bat asleep at its roost hangs up there; awake, it drops off and flies
+  if (c.roostH > 0 || c.perch > 0) {
+    const hang = c.mind === 'sleep' && c.roostH > 0 && dist(c, c.denX, c.denZ) < 1.2;
+    const lift = hang ? Math.max(0, c.roostH - c.sp.model.rig.rideH * 2.2 * c.growth) : 0;
+    const was = c.perch;
+    c.perch += (lift - c.perch) * Math.min(1, dt * (hang ? 1.5 : 4));
+    if (c.perch < 0.02 && !hang) c.perch = 0;
+    if (c.perch > 0 || was > 0) c.air = c.perch;
+  }
   if (c.thinkT >= (c.far ? THINK_FAR : THINK)) think(c, w);
   if (c.stunT > 0) { c.stunT -= dt; c.vx *= 0.8; c.vz *= 0.8; return; }
   if (c.mind === 'held') { c.vx *= 0.6; c.vz *= 0.6; return; }
@@ -677,7 +722,7 @@ export function act(c: Creature, w: World, dt: number) {
   const running = c.mind === 'flee' || c.mind === 'hunt';
   if (!running) c.stam = Math.min(1, c.stam + dt / (c.mind === 'rest' || c.mind === 'sleep' ? 8 : 20));
   switch (c.mind) {
-    case 'idle': c.steer(w, c.x, c.z, 0, dt); break;
+    case 'idle': c.steer(w, c.x, c.z, 0, dt); if (c.alarmBy < 0 && c.fear > 0) { const o = w.get(-c.alarmBy); if (o) c.face(o.x, o.z, dt); } break;
     case 'sleep': case 'rest': c.steer(w, c.x, c.z, 0, dt); break;
     case 'curl': {
       // tuck in; a roller that is pressed rolls off as a ball, downhill if it can, then lies still until it is safe

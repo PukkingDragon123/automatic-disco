@@ -273,7 +273,7 @@ export class Factory {
       const core = this.hive.core; if (core && Math.hypot(X + 0.5 - core.x, Z + 0.5 - core.z) < 2.4) return 'Too close to the core';
     }
     if (def.extract === 'water') { if (water < n * 0.5) return 'Must stand on open water'; }
-    else if (water > 0 && !this.foundAt(cx, cz)) return 'No footing in water';
+    else if (water > 0 && !this.foundAt(cx, cz) && kind !== 'dam' && kind !== 'sluice' && kind !== 'pipe' && kind !== 'found') return 'No footing in water (lay a foundation)';
     if (hi - lo > (isBelt(kind) ? 2.2 : 1.8)) return 'Ground too steep (lay a foundation)';
     if (def.extract === 'node' && this.seamUnder(cx, cz, w, d) < 0) return 'Must sit over a seam (ore, copper, coal, crystal)';
     if (def.extract === 'soil') { for (let j = 0; j < d; j++) for (let i = 0; i < w; i++) { const b = R.b[(cz + j) * N + cx + i]; if (b === B.ROCK || b === B.BASALT || b === B.SNOW) return 'Needs diggable soil'; } }

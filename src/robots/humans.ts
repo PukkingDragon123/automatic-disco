@@ -63,7 +63,7 @@ function outfit(v: CrewVariant, liv: LiveryId): Outfit {
  * Build a soldier or crew member. `faction` is a game faction ('veyr', 'soviet', 'prc', 'expedition') or a livery id.
  * gestures: a Researcher rig (gesture(), lookAt(), say()) for scenes such as the operations room.
  */
-export function militaryHuman(variant: CrewVariant, faction: string = 'veyr', o: { gestures?: boolean; seed?: number; name?: string; material?: THREE.Material; app?: Partial<Appearance> } = {}): MilitaryHuman {
+export function militaryHuman(variant: CrewVariant, faction: string = 'veyr', o: { gestures?: boolean; seed?: number; name?: string; material?: THREE.Material; app?: Partial<Appearance>; unarmed?: boolean } = {}): MilitaryHuman {
   registerAllTextures();
   const liv: LiveryId = (['uspc', 'sov', 'prc', 'exp'] as string[]).includes(faction) ? faction as LiveryId : liveryFor(faction);
   const seed = o.seed ?? Math.floor(Math.random() * 1e6);
@@ -207,7 +207,7 @@ export function militaryHuman(variant: CrewVariant, faction: string = 'veyr', o:
   let tris = k.tris;
   // ---- the weapon
   let gun: THREE.Object3D | null = null, muzzle: THREE.Object3D | null = null;
-  if (variant !== 'crew') {
+  if (variant !== 'crew' && !o.unarmed) {
     const g = new THREE.Group();
     const gk = new Kit(7);
     gk.on(g);

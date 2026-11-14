@@ -93,6 +93,8 @@ export class Creature {
   picking = false;
   /** curled up and rolling away as a ball (anim.rolling) */
   rolling = false;
+  /** hanging from a roost: lift above the ground now, and the roost's height above the ground at its den */
+  perch = 0; roostH = 0;
   /** far from the camera: thinks less often, takes straight lines */
   far = false;
   /** lying down 0..1 (sleep, rest; a stalker's crouch is ~0.35) */
@@ -122,6 +124,8 @@ export class Creature {
   get mature() { return this.growth >= 1; }
   get diet() { return this.sp.pheno.diet; }
   get canFly() { return this.sp.pheno.canFly; }
+  /** hangs upside down to sleep (bats: the Duskwing, any hand-winged flyer) when the animator has a roost pose */
+  get rooster() { const d = this.sp.design; return this.canFly && (d.beast === 'duskwing' || d.genes.includes('wing_patagium')) && 'posture' in this.anim; }
   /** tucks into a full ball and can roll away (the fauna's rig.dims.roll) */
   get roller() { return this.sp.model.rig.dims.roll === 1 && typeof (this.anim as unknown as { curl?: unknown }).curl === 'function'; }
   get walker() { return { step: this.size > 1.2 || this.st.climb > 0 ? 1.4 : 0.95, swim: this.st.swim > 0, fly: this.canFly }; }
@@ -183,7 +187,8 @@ export class Creature {
     const s = this.growth;
     m.scale.setScalar(s * this.shrink);
     // lying down (sleep, rest in the shade), lying in wait, a stalker's crouch: the body sinks and the IK'd legs fold
-    const restGoal = this.dead || this.mind === 'curl' ? 0 : this.mind === 'sleep' ? 1 : this.mind === 'rest' ? 0.75 : this.mind === 'ambush' ? 0.55 : this.mind === 'stalk' ? 0.32 : 0;
+    const posed = 'posture' in this.anim;
+    const restGoal = this.dead || this.mind === 'curl' || this.perch > 0 ? 0 : this.mind === 'sleep' ? (posed ? 0.15 : 1) : this.mind === 'rest' ? 0.75 : this.mind === 'ambush' ? 0.55 : this.mind === 'stalk' ? 0.32 : 0;
     this.rest += (restGoal - this.rest) * Math.min(1, dt * (restGoal > this.rest ? 1.4 : 4));
     const legged = !this.canFly && this.sp.design.plan !== 'serpent' && this.sp.design.plan !== 'gastropod';
     const sink = legged ? this.rest * this.sp.pheno.height * 0.3 * s : 0;
@@ -193,8 +198,16 @@ export class Creature {
     this.fx.flag.value = 1 + fl + hv;
     this.fx.flash.value = Math.max(0, this.fx.flash.value - dt * 4);
     // defence poses (the animator's curl hook): a full ball for rollers (rig.dims.roll), a hunch for the rest
-    const an = this.anim as unknown as { curl?: (k: number) => void; rolling?: boolean };
+    const an = this.anim as unknown as { curl?: (k: number) => void; rolling?: boolean; posture?: string };
     if (typeof an.curl === 'function') { an.curl(this.mind === 'curl' && !this.dead ? 1 : 0); an.rolling = this.mind === 'curl' && this.rolling; }
+    // the body's carriage: asleep (or hung from a roost), squared up to threaten, alert to danger, at ease
+    if (posed) {
+      const m = this.mind;
+      an.posture = this.dead || this.stunT > 0 ? 'relaxed'
+        : m === 'sleep' ? (this.perch > 0.3 ? 'roost' : 'sleep')
+        : m === 'display' || (m === 'attack' && this.faction === 'wild' && this.actT < 1.4) ? 'threat'
+        : m === 'watch' || m === 'ambush' || this.fear > 0 || this.alarmT > 0 ? 'alert' : 'relaxed';
+    }
     if (!animate) return;
     let state: AnimState = 'idle';
     const sp = Math.hypot(this.vx, this.vz);
@@ -204,7 +217,7 @@ export class Creature {
     else if (this.stunT > 0) state = 'stunned';
     else if (this.atkAnim >= 0) state = 'attack';
     else if (this.mind === 'eat' || this.mind === 'drink' || (this.mind === 'carry' && sp < 0.1)) state = 'eat';
-    else if (this.canFly && (sp > 0.3 || this.air > 0.2)) state = 'fly';
+    else if (this.canFly && (sp > 0.3 || this.air > 0.2) && this.perch <= 0) state = 'fly';
     else if (sp > 0.08) state = 'move';
     let lookYaw = 0;
     const tg = this.target ? w.get(this.target) : null;

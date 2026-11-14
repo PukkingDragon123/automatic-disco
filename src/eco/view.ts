@@ -212,7 +212,7 @@ export class EcoView {
     const c = this.lg;
     c.clearRect(0, 0, lw, lh);
     // project the grid corners onto the ground
-    const tx = g.cam.target.x, tz = g.cam.target.z, reach = Math.max(60, g.cam.dist * 2.6);
+    const tx = g.cam.target.x, tz = g.cam.target.z, reach = Math.max(90, g.cam.dist * 4);
     for (let j = 0; j <= G; j++) for (let i = 0; i <= G; i++) {
       const x = Math.min(R.N - 0.01, i * CS), z = Math.min(R.N - 0.01, j * CS), k = j * G1 + i;
       if ((x - tx) ** 2 + (z - tz) ** 2 > reach * reach) { this.vok[k] = 0; continue; }
@@ -224,7 +224,7 @@ export class EcoView {
     const band = new Int8Array(G * G);
     for (let n = 0; n < G * G; n++) band[n] = this.bandOf(n);
     // fills
-    c.globalAlpha = 0.34;
+    c.globalAlpha = 0.2;
     for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
       const n = j * G + i, b = band[n];
       if (b < 0) continue;
@@ -349,23 +349,26 @@ export class EcoView {
     const L = LEG[this.mode], px = Math.max(1, Math.min(2, Math.round(S)));
     let slip = this.legend.get(this.mode + px);
     if (!slip) {
+      // a typed slip for the title, then a key: an inked swatch and its typed word per band
       const title = textSprite(L.title, 'info');
       const keys = L.labels.map((s) => textSprite(s, 'info', { tape: false }));
-      const sw = 8 * px, gap = 3 * px;
-      const w = Math.max(title.width, keys.reduce((s, k) => s + k.width * 0.6 + sw + gap * 2, 0)) + 6 * px;
-      slip = document.createElement('canvas'); slip.width = Math.ceil(w); slip.height = title.height + Math.ceil(keys[0].height * 0.6) + 8 * px;
+      const sw = 7 * px, gap = 2 * px, kh = Math.max(...keys.map((k) => k.height));
+      const rowW = keys.reduce((s, k) => s + k.width + sw + gap * 3, 0);
+      slip = document.createElement('canvas'); slip.width = Math.ceil(Math.max(title.width, rowW) + 4 * px); slip.height = title.height + kh + 2 * px;
       const g = slip.getContext('2d')!; g.imageSmoothingEnabled = false;
-      g.drawImage(title, 0, 0);
-      let x = 3 * px; const y = title.height + 3 * px;
+      g.drawImage(title, Math.round((slip.width - title.width) / 2), 0);
+      let x = 2 * px; const y = title.height + px;
       L.labels.forEach((_, i) => {
-        g.fillStyle = hex(RAMPS.ink[1]); g.fillRect(x - px, y - px, sw + 2 * px, sw + 2 * px);
-        g.fillStyle = L.fill[i]; g.fillRect(x, y, sw, sw);
-        const k = keys[i]; g.drawImage(k, x + sw + gap, y - 2 * px, Math.round(k.width * 0.6), Math.round(k.height * 0.6));
-        x += sw + gap * 2 + Math.round(k.width * 0.6);
+        const k = keys[i], sy = y + Math.round((kh - sw) / 2);
+        g.fillStyle = hex(RAMPS.ink[1]); g.fillRect(x - px, sy - px, sw + 2 * px, sw + 2 * px);
+        g.fillStyle = L.fill[i]; g.fillRect(x, sy, sw, sw);
+        g.fillStyle = L.line[i]; g.fillRect(x, sy + sw - px, sw, px);
+        g.drawImage(k, x + sw + gap, y);
+        x += sw + gap * 3 + k.width;
       });
       this.legend.set(this.mode + px, slip);
     }
-    this.g.drawImage(slip, Math.round(W / 2 - slip.width / 2), Math.round(56 * S));
+    this.g.drawImage(slip, Math.round(W / 2 - slip.width / 2), Math.round(46 * S));
   }
 
   // ---------------------------------------------------------------- notes, toasts

@@ -10,6 +10,7 @@ import { VeyrChild } from '../game/child';
 import { loadLook } from '../game/babyLook';
 import { calderRig } from '../game/story';
 import { Researcher, researcherOutfit, type ResearcherGesture } from '../limbo/entities/researcher';
+import { militaryHuman, type CrewVariant } from '../robots/humans';
 import type { Appearance } from '../limbo/entities/humanRig';
 import type { AnimInput } from '../limbo/entities/humanAnim';
 import { worldMaterial } from '../limbo/gfx/materials';
@@ -426,18 +427,14 @@ export class OpsRoom {
     const mk = (app: Appearance, name: string, outfit: Parameters<Researcher['setOutfit']>[0], badge: number[]) => {
       const r = new Researcher(app, wm()); (r as any).ggOverrides = { badge: { col: badge, name } }; r.setOutfit(outfit); r.skin.castShadow = true; r.setExpression('neutral'); return r;
     };
-    const colonel = mk(COLONEL, 'Col. Whitlock', {
-      torso: { tex: 'c_uniform', color: 0x5a5e44, sleeve: 'long' }, legs: { tex: 'c_slacks', color: 0x55583e }, legsKind: 'pants',
-      feet: { tex: 'c_shoes_dress', color: 0x1e1a16, item: 'dress_shoes' }, head: { tex: 'c_hat_cap', color: 0x4e5238, hat: 'cap' },
-    } as any, [90, 96, 60]);
-    const radio = mk(RADIO, 'Sgt. Ruiz', {
-      torso: { tex: 'c_shirt_button', color: 0xa89a72, sleeve: 'short' }, legs: { tex: 'c_slacks', color: 0x55583e }, legsKind: 'pants', feet: { tex: 'c_shoes_boot', color: 0x2a2018 },
-    } as any, [120, 110, 70]);
-    const tech = mk(TECH, 'Cpl. Okafor', {
-      torso: { tex: 'c_jumpsuit', color: 0x5c6050, sleeve: 'short' }, legs: { tex: 'c_slacks', color: 0x50544a }, legsKind: 'pants', feet: { tex: 'c_shoes_boot', color: 0x2a2018 }, hands: { tex: 'c_gloves', color: 0x3a2a1c },
-    } as any, [90, 96, 60]);
+    // the Corps crew in field kit (robots/humans.ts): the Colonel as an officer in greatcoat and breastplate, the radio
+    // operator and the technician as deck crew with headsets; Dr. Calder stays in his lab coat
+    const crew = (v: CrewVariant, app: Appearance, name: string) => { const h = militaryHuman(v, 'veyr', { gestures: true, name, material: wm(), app, unarmed: true }); const r = h.rig as Researcher; r.setExpression('neutral'); return r; };
+    const colonel = crew('officer', COLONEL, 'Col. Whitlock');
+    const radio = crew('crew', RADIO, 'Sgt. Ruiz');
+    const tech = crew('crew', TECH, 'Cpl. Okafor');
+    void mk;
     const calder = calderRig();
-    this.headset(radio);
     const put = (rig: Researcher, name: string, x: number, z: number, yaw: number, work: string) => { rig.root.position.set(x, 0, z); rig.root.rotation.y = yaw; this.scene.add(rig.root); this.ops.push({ rig, name, home: new THREE.Vector3(x, 0, z), yaw, work, t: 2 + Math.random() * 4, act: '', actT: 0, actDur: 99, look: null, pitch: 0 }); };
     put(colonel, 'COL. WHITLOCK', 0.35, -1.2, 0, 'clipboard');
     put(calder, 'DR. CALDER', -1.72, 0.25, Math.PI / 2, 'think');

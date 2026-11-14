@@ -15,7 +15,7 @@ export const ROBOT_KINDS = ['scout', 'worker', 'trooper', 'heavy', 'artillery', 
 export type RobotKind = typeof ROBOT_KINDS[number];
 export const HUMAN_KINDS: RobotKind[] = ['expedition_soldier', 'expedition_heavy', 'expedition_engineer', 'expedition_officer', 'expedition_crew'];
 
-export interface LegRig { hip: THREE.Group; knee: THREE.Group; foot: THREE.Group; lt: number; ls: number; ph: number; bird: boolean; hipH: number; footH: number; side: number; splay: number }
+export interface LegRig { hip: THREE.Group; knee: THREE.Group; foot: THREE.Group; lt: number; ls: number; ph: number; bird: boolean; hipH: number; footH: number; side: number; splay: number; reach: number }
 export interface UnitModel {
   root: THREE.Group; body: THREE.Group; turret: THREE.Group | null; gun: THREE.Group | null; recoil: THREE.Group[];
   muzzles: THREE.Object3D[]; legs: LegRig[]; wheels: { g: THREE.Group; r: number; side: number }[]; rotors: THREE.Group[]; jaws: THREE.Group[];
@@ -49,7 +49,7 @@ class Ctx {
   mark(x: number, y: number, z: number, s: number, onB = false) { this.k.decal(x, y, z, s, s, onB ? 'markB' : 'mark'); return this; }
   serial(x: number, y: number, z: number, w: number, i = 0, onB = false) { this.k.decal(x, y, z, w, w * 0.125, (onB ? 'serB' : 'ser') + i); return this; }
   /** a leg hanging from a hip axle: thigh, knee hinge, shin, ankle hinge, foot; a knee cylinder on lugs */
-  leg(parent: THREE.Object3D, x: number, y: number, z: number, o: { lt: number; ls: number; w: number; bird?: boolean; ph?: number; foot?: 'pad' | 'claw' | 'paw'; side?: number; paint?: number; hipH: number; splay?: number; angular?: boolean }): LegRig {
+  leg(parent: THREE.Object3D, x: number, y: number, z: number, o: { lt: number; ls: number; w: number; bird?: boolean; ph?: number; foot?: 'pad' | 'claw' | 'paw'; side?: number; paint?: number; hipH: number; splay?: number; angular?: boolean; reach?: number }): LegRig {
     const k = this.k, w = o.w, bird = !!o.bird, s = o.side ?? Math.sign(x || 1);
     const hip = G(parent, x, y, z, 'hip'), knee = G(hip, 0, -o.lt, 0, 'knee'), foot = G(knee, 0, -o.ls, 0, 'foot');
     if (o.splay) hip.rotation.z = o.splay;
@@ -84,7 +84,7 @@ class Ctx {
     k.on(hip).box(0, -o.lt * 0.22, fz * w * 0.6, w * 0.3, w * 0.35, w * 0.35, 'st0', { ch: w * 0.05 });
     k.on(knee).box(0, -o.ls * 0.32, fz * w * 0.42, w * 0.3, w * 0.35, w * 0.35, 'st0', { ch: w * 0.05 });
     makePiston(k, this.m.pistons, hip, [0, -o.lt * 0.22, fz * w * 0.78], knee, [0, -o.ls * 0.32, fz * w * 0.6], w * 0.16, o.lt * 0.55, o.ls * 0.5);
-    const L: LegRig = { hip, knee, foot, lt: o.lt, ls: o.ls, ph: o.ph ?? 0, bird, hipH: o.hipH, footH: fH, side: s, splay: o.splay ?? 0 };
+    const L: LegRig = { hip, knee, foot, lt: o.lt, ls: o.ls, ph: o.ph ?? 0, bird, hipH: o.hipH, footH: fH, side: s, splay: o.splay ?? 0, reach: o.reach ?? 0 };
     this.m.legs.push(L);
     this.m.debris.push(knee);
     return L;
@@ -376,7 +376,7 @@ const BUILD: Record<string, Build> = {
     for (let j = 0; j < 4; j++) k.box(0.41, -0.05 + j * 0.08, -0.35, 0.03, 0.012, 0.12, 'st1');
     let i = 0;
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-      c.leg(hull, sx * 0.44, -0.05, sz * 0.4, { lt: 0.56, ls: 0.6, w: 0.13, foot: 'paw', ph: (i === 0 || i === 3) ? 0 : Math.PI, hipH: hipY - 0.05, side: sx, paint: i });
+      c.leg(hull, sx * 0.44, -0.05, sz * 0.4, { lt: 0.56, ls: 0.6, w: 0.16, foot: 'paw', ph: (i === 0 || i === 3) ? 0 : Math.PI, hipH: hipY - 0.05, side: sx, paint: i });
       i++;
     }
     c.stack(hull, 0.25, 0.26, -0.45, 0.35, 0.04); c.stack(hull, -0.25, 0.26, -0.45, 0.35, 0.04);
@@ -622,10 +622,11 @@ const BUILD: Record<string, Build> = {
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * TAU + Math.PI / 6, side = Math.sin(a) > 0 ? 1 : -1;
       const hx = Math.sin(a) * 0.38, hz = Math.cos(a) * 0.38;
-      const mount = G(hull, hx, -0.04, hz, 'legmount'); mount.rotation.y = a - Math.PI / 2 * side;
+      const mount = G(hull, hx, -0.04, hz, 'legmount'); mount.rotation.y = a;
       k.on(hull).push(hx, -0.04, hz, 0, a, 0).box(0, 0, -0.01, 0.1, 0.1, 0.06, 'st0', { ch: 0.01 }).pop();
-      c.leg(mount, 0, 0, 0, { lt: 0.45, ls: 0.55, w: 0.08, foot: 'claw', ph: i % 2 ? 0 : Math.PI, hipH: hipY - 0.04, side, splay: 0, bird: true, paint: i });
+      c.leg(mount, 0, 0, 0, { lt: 0.45, ls: 0.55, w: 0.085, foot: 'claw', ph: i % 2 ? 0 : Math.PI, hipH: hipY - 0.04, side, splay: 0, paint: i, reach: 0.32 });
     }
+    k.on(hull);
     for (const s of [-1, 1]) k.push(s * 0.4, 0.05, 0.0, 0, s * Math.PI / 2, 0).mark(0, 0, 0.01, 0.14).pop();
     k.push(0, 0.03, 0.4).decal(0, 0, 0.004, 0.36, 0.045, 'ser2').pop();
     k.lamp(0, -0.02, 0.405, 0.05, 0.05, 'lensB', 'pa1', true); c.lampAt(hull, 0, -0.02, 0.46);

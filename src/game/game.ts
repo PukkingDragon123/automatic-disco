@@ -28,6 +28,7 @@ import { Story } from './story';
 import { RivalBrain } from './rival';
 import { Factions } from './factions';
 import { Factory } from '../factory/factory';
+import { tickRobots, type RobotUnit } from '../robots/unit';
 import { CoreAura } from './coreAura';
 import { RIVALS } from '../world/palette';
 import { VeyrChild } from './child';
@@ -90,6 +91,8 @@ export class Game implements Screen {
   factions: Factions | null = null;
   /** the industrial layer: grid buildings, belts, power, workers (src/factory) */
   factory!: Factory;
+  /** every robot, soldier and rover on the field, any faction (src/robots; spawnRobot registers them) */
+  robots: RobotUnit[] = [];
   aura: CoreAura | null = null;
   private rivalT = 210;
   child!: VeyrChild;
@@ -683,6 +686,7 @@ export class Game implements Screen {
     if (this.aura && (!vc || this.aura.core !== vc)) { this.aura.dispose(); this.aura = null; }
     this.aura?.update(dt, this.veyr.emLevel);
     for (const f of this.update$) f(simDt);
+    tickRobots(this, simDt);
     this.story?.update(simDt, dt);
     this.fx.update(simDt > 0 ? simDt : dt * 0.15, this.engine.h, this.cam.cam.fov);
     this.vision.update(simDt > 0 ? simDt : 0);

@@ -377,7 +377,7 @@ export class RobotUnit {
         const ph = this.gait + L.ph;
         const ca = Math.cos(L.splay || 0);
         const hipH = L.hipH / Math.max(0.5, ca);
-        const zt = Math.sin(ph) * m.stride * walk, lift = Math.max(0, Math.cos(ph)) * m.stride * 0.6 * walk;
+        const zt = L.reach + Math.sin(ph) * m.stride * walk, lift = Math.max(0, Math.cos(ph)) * m.stride * 0.6 * walk;
         const yt = -(hipH - L.footH - lift / ca);
         const d = clamp(Math.hypot(zt, yt), 0.02, L.lt + L.ls - 0.002);
         const knee = Math.PI - Math.acos(clamp((L.lt * L.lt + L.ls * L.ls - d * d) / (2 * L.lt * L.ls), -1, 1));

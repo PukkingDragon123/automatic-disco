@@ -43,6 +43,7 @@ export class FactoryUI {
     for (const p of [this.cat, this.insp, this.stats, this.crew, this.bar]) { p.addEventListener('pointerdown', (e) => e.stopPropagation()); p.addEventListener('wheel', (e) => e.stopPropagation()); }
     b.onChange = () => { this.catKey = ''; this.renderCat(); };
     b.onInspect = (bb) => this.inspect(bb);
+    b.onDismiss = () => this.closeAll();
     const g = f.g;
     const sus = g.suspend.bind(g), res = g.resume.bind(g), dis = g.dispose.bind(g);
     g.suspend = () => { sus(); this.root.style.display = 'none'; this.overlay.style.display = 'none'; };
@@ -58,15 +59,32 @@ export class FactoryUI {
     if (k === 'o') this.toggleStats();
     else if (k === 'n') this.toggleCrew();
     else if (k === 'i') { const bb = this.b.pick(this.f.g.input.mx, this.f.g.input.my); this.inspect(bb); this.f.render.sel = bb; }
-    else if (k === 'Escape' && this.sel && !this.b.active) { this.inspect(null); }
+    void 0;
   }
-  toggleStats() { this.showStats = !this.showStats; this.showFlags = this.showStats; sfx(this.showStats ? 'open' : 'close', 1, 0.5); this.stats.classList.toggle('on', this.showStats); this.renderStats(); }
-  toggleCrew() { this.showCrew = !this.showCrew; sfx(this.showCrew ? 'open' : 'close', 1, 0.5); this.crew.classList.toggle('on', this.showCrew); this.renderCrew(); }
+  private get anyOpen() { return !!this.sel || this.showStats || this.showCrew; }
+  private modeSet = false;
+  /** while a form is open the game is in 'factory' mode: Escape closes the forms (not the pause menu), a click in
+   *  the field picks another machine or puts the paperwork away */
+  private syncMode() {
+    const g = this.f.g as unknown as { mode: { k: string }; setMode(m: { k: string }): void };
+    if (this.b.active) return;
+    if (this.anyOpen && g.mode.k === 'normal') { g.setMode({ k: 'factory' }); this.modeSet = true; }
+    else if (!this.anyOpen && g.mode.k === 'factory') { g.setMode({ k: 'normal' }); this.modeSet = false; }
+  }
+  closeAll() {
+    this.sel = null; this.f.render.sel = null; this.insp.classList.remove('on');
+    this.showStats = false; this.showFlags = false; this.stats.classList.remove('on');
+    this.showCrew = false; this.crew.classList.remove('on');
+    this.syncMode();
+  }
+  toggleStats() { this.showStats = !this.showStats; this.showFlags = this.showStats; sfx(this.showStats ? 'open' : 'close', 1, 0.5); this.stats.classList.toggle('on', this.showStats); this.renderStats(); this.syncMode(); }
+  toggleCrew() { this.showCrew = !this.showCrew; sfx(this.showCrew ? 'open' : 'close', 1, 0.5); this.crew.classList.toggle('on', this.showCrew); this.renderCrew(); this.syncMode(); }
   inspect(b: FBuilding | null) {
     this.sel = b; this.inspKey = '';
     this.f.render.sel = b;
     this.insp.classList.toggle('on', !!b);
     if (b) { sfx('open', 1.2, 0.4); this.renderInsp(); }
+    this.syncMode();
   }
 
   // ================================================================== catalogue
@@ -284,6 +302,9 @@ export class FactoryUI {
   update(dt: number) {
     this.t += dt; this.slow -= dt;
     this.b.update();
+    // Escape (the game drops 'factory' mode): the paperwork goes away
+    if (!this.b.active && this.modeSet && this.anyOpen && this.f.g.mode.k !== ('factory' as string)) { this.modeSet = false; this.closeAll(); }
+    else if (!this.b.active && !this.modeSet && this.anyOpen && this.f.g.mode.k === 'normal') this.syncMode();
     if (this.slow <= 0) {
       this.slow = 0.25;
       if (this.b.active) this.renderCat();
@@ -335,13 +356,15 @@ export class FactoryUI {
     g.fillStyle = '#e2dbc6'; g.font = `${Math.round(7 * k)}px VT, monospace`;
     g.fillText(st === 'nopower' ? '!' : st === 'blocked' ? '=' : '?', x + 3 * k, y - 8.5 * k);
   }
+  private icons = new Map<string, HTMLImageElement>();
+  private icon(id: ItemId) { let i = this.icons.get(id); if (!i) { i = new Image(); i.src = itemIcon(id); this.icons.set(id, i); } return i; }
   private bubble(g: CanvasRenderingContext2D, x: number, y: number, w: Worker, k: number) {
     x = Math.round(x); y = Math.round(y);
     const s = 12 * k;
     g.fillStyle = '#d2cab4'; g.fillRect(x - s / 2, y - s - 4 * k, s, s);
     g.fillStyle = '#14161b'; g.fillRect(x - s / 2, y - 4 * k, s, k); g.fillRect(x - k, y - 3 * k, 2 * k, 2 * k);
-    const img = new Image(); img.src = itemIcon(w.mood < 0.25 && w.hunger > 0.3 ? 'dung' : 'fruit');
-    if (img.complete) g.drawImage(img, x - s / 2 + k, y - s - 3 * k, s - 2 * k, s - 2 * k);
+    const img = this.icon(w.mood < 0.25 && w.hunger > 0.3 ? 'dung' : 'fruit');
+    if (img.complete) { g.imageSmoothingEnabled = false; g.drawImage(img, x - s / 2 + k, y - s - 3 * k, s - 2 * k, s - 2 * k); }
     if (w.mood < 0.1 && Math.floor(this.t * 4) % 2) { g.fillStyle = '#a2473a'; g.fillRect(x + s / 2, y - s - 4 * k, 2 * k, s); }
   }
 }

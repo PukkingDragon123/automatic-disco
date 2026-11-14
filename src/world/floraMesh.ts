@@ -656,3 +656,5 @@ export function meshGround(form: GroundForm, variant: number, tex: FloraTex, pal
   return { geo: g.build(0.25), H, R: 0.25, tris: g.tris };
 }
 export type { Leaf, Limb, Ribbon };
+/** building blocks shared with the hero modeller (floraHero) */
+export { vadd, vsub, vmul, vdot, vcross, vlen, vnrm, vperp, linHex, ribbonStrip, leafCard, sphere, facetGrid, disc, lathe, cumulative, ampOf };

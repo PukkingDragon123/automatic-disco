@@ -305,7 +305,7 @@ export class World {
     const P = profileOf(c, this), eco = this.eco, bi = this.region.biome;
     const sun = Math.max(0, Math.cos((this.day - 0.25) * Math.PI * 2));
     // thirst: faster in heat, at a run, in daylight; snails and mites drink the damp
-    c.thirst += dt * P.thirstK / (this.dayLen * 0.42) * (1 + bi.temp * 0.5 * sun) * (running ? 1.6 : asleep ? 0.4 : 1);
+    c.thirst += dt * P.thirstK / (this.dayLen * 0.42) * (1 + bi.temp * 0.5 * sun) * (running ? 1.6 : asleep ? 0.25 : 1);
     if (P.thirstK < 0.5 && eco.moisture(c.x, c.z) > 0.55) c.thirst -= dt * 0.01;
     if (c.walker.swim && this.region.isWater(c.x, c.z)) c.thirst -= dt * 0.05;
     c.thirst = clamp(c.thirst, 0, 1);

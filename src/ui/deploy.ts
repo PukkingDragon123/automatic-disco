@@ -91,9 +91,9 @@ export class DeployScreen implements Screen {
     this.buildCarrier();
     this.mode = 'carrier';
     if (this.o.phase === 'launch') { this.setLoaded(); this.cine.ui.fade(0, 0.4); void this.launch(); return; }
-    await this.cine.play((c) => (this.first ? this.establish(c) : this.establishShort(c)), { name: 'deploy-carrier' });
+    const skipped = await this.cine.play((c) => (this.first ? this.establish(c) : this.establishShort(c)), { name: 'deploy-carrier' });
     if (this.disposed) return;
-    void this.launch();
+    void this.launch(skipped);
   }
   private buildCarrier() {
     const bin = this.bin, sc = this.scene, P = this.o.planet;
@@ -239,15 +239,16 @@ export class DeployScreen implements Screen {
   }
 
   // ================================================================ 2. the launch
-  private async launch() {
+  /** short: the 3-2-1 version (later landings, or after the intro was skipped) */
+  private async launch(short = false) {
     const lz = this.lz;
-    await this.cine.play((c) => this.launchScript(c, lz), { name: 'deploy-launch' });
+    await this.cine.play((c) => this.launchScript(c, lz, short), { name: 'deploy-launch' });
     if (this.disposed) return;
     this.toDescent();
   }
-  private async launchScript(c: Cinema, lz: LZInfo) {
+  private async launchScript(c: Cinema, lz: LZInfo, short: boolean) {
     const s = this.ship!, g = this.globe!;
-    const full = this.first;
+    const full = this.first && !short;
     c.onEnd(() => { s.setDoors(1); s.setBeacons(false); });
     // ---- the officer at the console: confirm, clear the rail
     const off = s.officer!;
@@ -264,32 +265,33 @@ export class DeployScreen implements Screen {
     setTimeout(() => { for (const cr of s.crew) if (cr.role !== 'console') { cr.a.action = 'cover_ears'; } }, 2600);
     // ---- the countdown, cut between the tubes, the doors, the bay, the porthole, the lever
     const N = full ? 10 : 3;
+    // the cuts, by the number on the tubes: full 10 tubes, 8 doors, 5 the bay, 3 the porthole, 2 the lever;
+    // short 3 tubes, 2 doors, 1 the lever
     const shot = (i: number) => {
-      const k = N - i;
-      if (k === N) { c.cam.cut(this.w(-6.55, -7.52, 17.3), this.w(-6.55, -7.76, 17.95), 30); c.cam.handheld = 0.006; return; }
-      if (full ? k === N - 2 : k === 1) {
+      if (i === N) { c.cam.cut(this.w(-6.55, -7.52, 17.3), this.w(-6.55, -7.76, 17.95), 30); c.cam.handheld = 0.006; return; }
+      if (i === (full ? 8 : 2)) {
         // the doors: from behind the pod down the rail; they part on the planet
         g.group.visible = true;
         c.cam.cut(this.w(0.9, -11.4, 9.6), this.w(0, -9.5, 64), 50); c.cam.handheld = 0.03;
         c.sfx('servo', 0.9, 0.5); c.sfx('lever', 0.8, 0.6); csfx('wind', 0.8, 0.8);
-        void c.tween(full ? 4.2 : 2.2, (u) => s.setDoors(u), 'inOut');
+        void c.tween(full ? 4.2 : 1.6, (u) => s.setDoors(u), 'inOut');
         this.vent(full ? 4 : 2);
         return;
       }
-      if (full && k === N - 5) { c.cam.cut(this.w(-7.6, -7.3, 42), this.w(0, -12.4, 22), 50); c.cam.handheld = 0.04; this.steamRail(); c.sfx('steam', 1); return; }
-      if (full && k === N - 7) { const p = portholeWorld(s.pod); c.cam.cut(p.clone().add(new V3(0.55, 1.05, -0.35)), p, 30); c.cam.handheld = 0.01; s.pod.lens.value = 1.6; return; }
-      if (k === 2 && full) { c.cam.cut(this.w(-6.9, -7.45, 16.85), this.w(-7.35, -7.85, 17.65), 34); c.cam.handheld = 0.01; return; }
+      if (full && i === 5) { c.cam.cut(this.w(-7.6, -7.3, 42), this.w(0, -12.4, 22), 50); c.cam.handheld = 0.04; this.steamRail(); c.sfx('steam', 1); return; }
+      if (full && i === 3) { const p = portholeWorld(s.pod); c.cam.cut(p.clone().add(new V3(0.55, 1.05, -0.35)), p, 30); c.cam.handheld = 0.01; s.pod.lens.value = 1.6; return; }
+      if (i === (full ? 2 : 1)) { c.cam.cut(this.w(-6.9, -7.45, 16.85), this.w(-7.35, -7.85, 17.65), 34); c.cam.handheld = 0.01; return; }
     };
     for (let i = N; i >= 1; i--) {
       shot(i);
       s.setNixies(String(i));
       if (i === N - 1) this.mark('nixie');
-      if (i === (full ? N - 4 : 1)) this.mark('doors');
-      if (full && i === N - 6) this.mark('beacons');
-      if (full && i === 2) this.mark('porthole');
+      if (i === (full ? 6 : 1)) this.mark('doors');
+      if (full && i === 4) this.mark('beacons');
+      if (full && i === 3) this.mark('porthole');
       c.sfx(i <= 3 ? 'beepHi' : 'beep', 0.6, i <= 3 ? 1 : 0.9);
       if (i <= 3 || i === N) void c.say(i === N ? `T minus ${NUM[i].toLowerCase()}.` : `${NUM[i].charAt(0) + NUM[i].slice(1).toLowerCase()}...`, { who: 'Cdr. Okafor', style: 'radio', pitch: 0.75, hold: -1.4 });
-      if (i === 2) { c.sfx('lever', 1); void c.tween(0.6, (u) => s.setLever(u), 'inOut'); }
+      if (i === (full ? 2 : 1)) { c.sfx('lever', 1); void c.tween(0.6, (u) => s.setLever(u), 'inOut'); }
       await c.wait(1);
     }
     klax();

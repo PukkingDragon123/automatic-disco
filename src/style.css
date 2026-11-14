@@ -521,7 +521,6 @@ body.touch .fc-touchbar.on { display: flex; }
 .fc-touchbar button.go { background: #77562d; }
 /* the console's bottom deck folds away while the catalogue is open */
 body.fc-building .hud .hud-sel, body.fc-building .hud .hud-cmd, body.fc-building .hud .wl, body.fc-building .hud .wl-desc, body.fc-building .hud .hud-scope { visibility: hidden; }
-body.fc-building .touch-ui, body.fc-building .tc-stick { visibility: hidden; }
 
 /* inspection form and the sheets */
 .fc-insp { right: calc(4px * var(--tf)); top: calc(var(--hud-top, 80px) + 54px * var(--tf)); width: min(calc(300px * var(--tf)), calc(100vw - 12px)); max-height: calc(100vh - var(--hud-top, 80px) - 70px * var(--tf)); overflow-y: auto; padding: calc(4px * var(--tf)) calc(6px * var(--tf)); }
