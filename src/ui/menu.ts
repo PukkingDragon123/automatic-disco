@@ -1,10 +1,13 @@
-// The main menu is a place: U.S.P.C. Launch Control 4, an orbital hangar. Unit 07 stands in its launch cradle on
-// a rail aimed through a huge window at the target world; the options are the physical controls on the
-// operator's desk. Hover lights them and outlines them; clicking works them: the RESUME lever throws, the
-// ARCHIVE selector turns (the camera walks to the gallery of claimed worlds on their stands), the LAUNCH cover
-// flips up and the button goes down (klaxons, nixie countdown, the blast shutter opens, the cradle fires, the
-// camera chases the golem out of the window at the planet), the SEED CARD reader takes a hand-punched card, the
-// ASSEMBLY BAY knife switch closes. The camera drifts and leans with the mouse (or a finger).
+// The main menu floats in space. Unit 07's meteor drifts and turns slowly over the target world, its fissures
+// breathing teal light, the golem's brass lens peeking out of the rock and following the pointer, small rocks on
+// tilted orbits, glittering dust, a twinkling starfield and nebula, the sun's glare rimming everything. The options
+// are cast-iron signs hanging on chains and tethered to the rock: they bob and swing, light up and lean in when you
+// point at them, and clank and swing when you work them. An iron cog opens the settings plate.
+//   NEW WORLD    nixie tubes on the sign count down; the rocks fall into the meteor, it ignites and the camera
+//                chases it down at the planet
+//   CONTINUE     resume the world being taken
+//   ARCHIVE      the camera drifts to the worlds claimed for Earth, each hanging on its own iron tag
+//   ASSEMBLY BAY refit Unit 07; SEED CARD (a small tag) launches at a hand-punched seed
 // The ascension finale (AscendScreen) is a newsreel: the regions turn, the borders dissolve, a flag goes up.
 import * as THREE from 'three';
 import type { Screen } from '../app/engine';
@@ -15,15 +18,14 @@ import { makePlanet, type Planet } from '../world/planet';
 import { VEYR } from '../world/palette';
 import { GENE } from '../life/genes';
 import { Fx } from '../game/fx';
-import { VeyrChild } from '../game/child';
-import { loadLook } from '../game/babyLook';
-import { buildRoom, type Room, type Control } from './cineRoom';
 import { Cinema } from '../game/cinema';
 import { csfx, cloop, type Loop } from './cineAudio';
-import { brassWord } from './machine';
-import { setHover, mat, glowMat, tex, roundelTex, labelTex, Pix, CR, RD } from './cineKit';
+import { mat, tex, roundelTex, Pix, CR, RD } from './cineKit';
+import { makeMeteor, makeRockSwarm, makeSparkles, makeSign, stepSign, kickSign, makeGear, makeSunGlare, Nixies, Chain, ironURL, enamelURL, type Sign, type Meteor } from './cineSigns';
+import { fontVars } from './cineUI';
 import { iconURL } from './icons';
 import { gbuf } from '../gfx/gbuf';
+import { settings, setSettings, onSettings, resetSettings, type Quality } from '../settings';
 
 export interface ArchiveEntry { seed: number; name: string; date: string; species: number; genes: string[]; regions: number }
 
@@ -31,167 +33,218 @@ const V3 = THREE.Vector3;
 const CSS = /* css */`
 .mn3 { position: fixed; inset: 0; pointer-events: none !important; z-index: 3; font-family: 'VT', monospace; --u: calc(1px * var(--s, 2)); }
 .mn3 > * { pointer-events: auto; }
-.mn3 .logo { position: absolute; left: calc(10 * var(--u)); top: calc(8 * var(--u)); pointer-events: none; filter: drop-shadow(0 calc(2 * var(--u)) 0 rgba(0,0,0,0.6)); }
-.mn3 .logo canvas { image-rendering: pixelated; display: block; }
-.mn3 .tag { font-size: calc(8 * var(--u)); color: var(--gold, #ffcd6e); text-shadow: var(--amb-glow); letter-spacing: 1px; margin-top: calc(2 * var(--u)); }
-.mn3 .tag .cur { animation: mn-blink 0.9s steps(2) infinite; }
-@keyframes mn-blink { 50% { opacity: 0; } }
-.mn3 .foot { position: absolute; left: 0; right: 0; bottom: calc(5 * var(--u)); text-align: center; font-size: calc(7 * var(--u)); color: rgba(230, 220, 184, 0.55); letter-spacing: 1px; pointer-events: none; }
-.mn3 .foot b { color: var(--gold, #ffcd6e); font-weight: normal; }
-.mn3 .tipx { position: fixed; display: none; pointer-events: none !important; padding: calc(3 * var(--u)) calc(6 * var(--u)); background: radial-gradient(ellipse at 50% 45%, #0c3418 0%, #06180c 60%, #031008 100%); border: calc(2 * var(--u)) solid #2a3121; outline: calc(1 * var(--u)) solid #07080a; border-radius: calc(3 * var(--u)); color: var(--ink, #b8f0b4); text-shadow: var(--phos-glow); max-width: calc(170 * var(--u)); animation: mn-crt 160ms steps(4); }
-@keyframes mn-crt { 0% { transform: scaleY(0.1); opacity: 0.4; } 100% { transform: none; opacity: 1; } }
-.mn3 .tipx .h { font-size: calc(10 * var(--u)); line-height: calc(10 * var(--u)); color: var(--gold, #ffcd6e); text-shadow: var(--amb-glow); }
-.mn3 .tipx .h .k { float: right; margin-left: calc(8 * var(--u)); color: #0c1a10; background: var(--gold, #ffcd6e); padding: 0 calc(2 * var(--u)); text-shadow: none; }
-.mn3 .tipx .d { font-size: calc(8 * var(--u)); line-height: calc(8 * var(--u)); margin-top: calc(2 * var(--u)); }
-.mn3 .tipx .w { font-size: calc(8 * var(--u)); color: var(--warn, #ff6c44); margin-top: calc(2 * var(--u)); }
-.mn3 .back { position: absolute; left: calc(10 * var(--u)); bottom: calc(18 * var(--u)); display: none; padding: calc(3 * var(--u)) calc(8 * var(--u)); background: linear-gradient(180deg, #5a6644, #38412b); border: calc(2 * var(--u)) solid #171a12; box-shadow: 0 0 0 calc(1 * var(--u)) #8a956a inset, 0 calc(2 * var(--u)) 0 #000; color: #ece4c6; font-size: calc(9 * var(--u)); cursor: pointer; letter-spacing: 1px; }
-.mn3 .back:hover { color: var(--gold, #ffcd6e); }
-.mn3 .back:active { transform: translateY(calc(1 * var(--u))); box-shadow: 0 0 0 calc(1 * var(--u)) #8a956a inset; }
-.mn3 .det { position: absolute; right: calc(10 * var(--u)); top: 50%; transform: translateY(-50%); width: calc(150 * var(--u)); display: none; padding: calc(6 * var(--u)); background: radial-gradient(ellipse at 50% 45%, #0c3418 0%, #06180c 60%, #031008 100%); border: calc(3 * var(--u)) solid #2a3121; outline: calc(1 * var(--u)) solid #07080a; box-shadow: 0 0 0 calc(1 * var(--u)) #5a6644 inset, 0 calc(4 * var(--u)) 0 rgba(0,0,0,0.6); border-radius: calc(3 * var(--u)); color: var(--ink, #b8f0b4); text-shadow: var(--phos-glow); animation: mn-crt 200ms steps(5); }
-.mn3 .det .n { font-family: 'Jersey', monospace; font-size: calc(18 * var(--u)); line-height: calc(16 * var(--u)); color: var(--gold, #ffcd6e); text-shadow: var(--amb-glow); }
-.mn3 .det .s { font-size: calc(8 * var(--u)); line-height: calc(8 * var(--u)); margin: calc(3 * var(--u)) 0; }
+.mn3 .tag { position: absolute; left: 50%; bottom: calc(6 * var(--u)); transform: translateX(-50%); font-size: var(--cf-vt1); line-height: var(--cf-vt1); color: rgba(217, 210, 191, 0.45); letter-spacing: 1px; white-space: nowrap; pointer-events: none !important; text-shadow: 0 calc(1 * var(--u)) 0 #000; }
+.mn3 .tag b { color: #d9d2bf; font-weight: normal; }
+.mn3 .iron { background: var(--iron) 0 0 / 100% 100%; image-rendering: pixelated; box-shadow: 0 calc(4 * var(--u)) calc(6 * var(--u)) rgba(8, 9, 12, 0.6); color: #d9d2bf; text-shadow: 0 1px 0 #16171a; }
+.mn3 .enamel { background: var(--enamel) 0 0 / 100% 100%; image-rendering: pixelated; box-shadow: 0 calc(4 * var(--u)) calc(6 * var(--u)) rgba(8, 9, 12, 0.6); color: #d9d2bf; text-shadow: 0 1px 0 #1e2016; }
+.mn3 .tipx { position: fixed; display: none; pointer-events: none !important; padding: calc(5 * var(--u)) calc(8 * var(--u)); max-width: calc(170 * var(--u)); animation: mn-in 160ms steps(4); }
+@keyframes mn-in { 0% { transform: translateY(calc(-4 * var(--u))); opacity: 0; } 100% { transform: none; opacity: 1; } }
+.mn3 .tipx .h { font-family: 'Superwide', monospace; font-size: var(--cf-sw1); line-height: calc(var(--cf-sw1) + 4px); color: #d9d2bf; }
+.mn3 .tipx .h .k { float: right; margin-left: calc(8 * var(--u)); color: #2a1a12; background: #d9d2bf; border-radius: 2px; padding: 0 calc(2 * var(--u)); text-shadow: none; font-family: 'VT', monospace; font-size: var(--cf-vt1); line-height: var(--cf-sw1); }
+.mn3 .tipx .d { font-size: var(--cf-vt1); line-height: var(--cf-vt1); margin-top: calc(2 * var(--u)); color: #b8b2a2; }
+.mn3 .tipx .w { font-size: var(--cf-vt1); color: #d9a43a; margin-top: calc(2 * var(--u)); }
+.mn3 .btn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: calc(3 * var(--u)); padding: calc(3 * var(--u)) calc(8 * var(--u)); cursor: pointer; font-family: 'Superwide', monospace; font-size: var(--cf-sw1); line-height: var(--cf-sw1); letter-spacing: 1px; background: linear-gradient(180deg, #4a2e20, #3a2418 55%, #2a1a12); border: 1px solid #16100c; border-radius: calc(2 * var(--u)); box-shadow: 0 1px 0 rgba(217, 210, 191, 0.18) inset, 0 calc(2 * var(--u)) 0 #16100c; color: #d9d2bf; text-shadow: 0 1px 0 #16100c; transition: transform 60ms, box-shadow 60ms; }
+.mn3 .btn:hover { color: #efe8d6; background: linear-gradient(180deg, #553626, #42291c 55%, #2e1d14); }
+.mn3 .btn:active { transform: translateY(calc(2 * var(--u))); box-shadow: 0 1px 0 rgba(217, 210, 191, 0.1) inset, 0 0 0 #16100c; }
+.mn3 .btn.on { transform: translateY(calc(1 * var(--u))); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4) inset, 0 calc(1 * var(--u)) 0 #16100c; color: #efe8d6; }
+.mn3 .btn.on::before { content: ''; width: calc(3 * var(--u)); height: calc(3 * var(--u)); border-radius: 50%; background: #d9a43a; box-shadow: 0 0 calc(3 * var(--u)) rgba(217, 164, 58, 0.6); margin-right: calc(2 * var(--u)); }
+.mn3 .btn.red { background: linear-gradient(180deg, #c4473b, #b8382e 55%, #8e2a22); border-color: #3a120e; box-shadow: 0 1px 0 rgba(255, 220, 200, 0.25) inset, 0 calc(2 * var(--u)) 0 #3a120e; color: #efe8d6; }
+.mn3 .btn img { width: calc(18 * var(--u)); height: calc(18 * var(--u)); image-rendering: pixelated; }
+.mn3 .back { position: absolute; left: calc(10 * var(--u)); bottom: calc(20 * var(--u)); display: none; }
+/* iron plates: the settings and an archived world's details */
+.mn3 .plate { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; width: calc(230 * var(--u)); padding: calc(12 * var(--u)) calc(14 * var(--u)); box-sizing: border-box; animation: mn-swing 520ms cubic-bezier(.25,1.6,.45,1); transform-origin: 50% 0; }
+@keyframes mn-swing { 0% { transform: translate(-50%, -62%) rotate(-5deg); opacity: 0; } 60% { transform: translate(-50%, -50%) rotate(2deg); opacity: 1; } 100% { transform: translate(-50%, -50%) rotate(0); } }
+.mn3 .plate .hd { font-family: 'Superwide', monospace; font-size: var(--cf-sw2); line-height: var(--cf-sw2); color: #d9d2bf; letter-spacing: 3px; margin-bottom: calc(8 * var(--u)); text-align: center; }
+.mn3 .plate .hd::after { content: ''; display: block; height: 1px; margin: calc(4 * var(--u)) calc(20 * var(--u)) 0; background: rgba(217, 210, 191, 0.35); }
+.mn3 .plate .row { display: flex; align-items: center; gap: calc(6 * var(--u)); margin: calc(4 * var(--u)) 0; }
+.mn3 .plate .lb { flex: 0 0 calc(78 * var(--u)); font-family: 'Jersey', monospace; font-size: var(--cf-np1); line-height: var(--cf-np1); color: #c8c2b0; letter-spacing: 1px; }
+.mn3 .plate .opts { display: flex; gap: calc(2 * var(--u)); flex-wrap: wrap; }
+.mn3 .plate .opts .btn { padding: calc(2 * var(--u)) calc(4 * var(--u)); }
+.mn3 .plate .val { flex: 0 0 calc(22 * var(--u)); text-align: right; font-size: var(--cf-vt1); color: #d9d2bf; }
+.mn3 .plate input[type=range] { -webkit-appearance: none; appearance: none; flex: 1; height: calc(5 * var(--u)); background: linear-gradient(180deg, #1a1c14, #2a2c20); border: 1px solid #16180f; box-shadow: 0 1px 0 rgba(217, 210, 191, 0.15); outline: none; margin: 0; cursor: pointer; }
+.mn3 .plate input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: calc(9 * var(--u)); height: calc(13 * var(--u)); border-radius: calc(2 * var(--u)); background: linear-gradient(90deg, #553626, #3a2418 50%, #2a1a12); border: 1px solid #16100c; box-shadow: 0 calc(1 * var(--u)) 0 #16100c, 0 1px 0 rgba(217, 210, 191, 0.2) inset; }
+.mn3 .plate input[type=range]::-moz-range-thumb { width: calc(9 * var(--u)); height: calc(13 * var(--u)); background: linear-gradient(90deg, #553626, #3a2418 50%, #2a1a12); border: 1px solid #16100c; border-radius: calc(2 * var(--u)); }
+.mn3 .plate .foot { display: flex; justify-content: space-between; margin-top: calc(8 * var(--u)); }
+.mn3 .det { left: auto; right: calc(14 * var(--u)); transform: translateY(-50%); width: calc(170 * var(--u)); }
+@keyframes mn-swing2 { 0% { transform: translateY(-60%) rotate(4deg); opacity: 0; } 100% { transform: translateY(-50%); opacity: 1; } }
+.mn3 .det { animation: mn-swing2 420ms cubic-bezier(.25,1.6,.45,1); }
+.mn3 .det .n { font-family: 'Canned', monospace; font-size: var(--cf-sw2); line-height: var(--cf-sw2); color: #d9d2bf; }
+.mn3 .det .s { font-size: var(--cf-vt1); line-height: var(--cf-vt1); margin: calc(4 * var(--u)) 0; color: #b8b2a2; }
 .mn3 .det .gn { display: flex; flex-wrap: wrap; gap: calc(2 * var(--u)); margin: calc(3 * var(--u)) 0 calc(6 * var(--u)); }
-.mn3 .det .gn span { font-size: calc(7 * var(--u)); border: calc(1 * var(--u)) solid #2a6a34; padding: 0 calc(2 * var(--u)); color: #c0ffc6; }
-.mn3 .big { display: flex; align-items: center; justify-content: center; gap: calc(4 * var(--u)); width: 100%; padding: calc(4 * var(--u)); background: radial-gradient(circle at 50% 35%, #ff7a5a, #c8301e 55%, #7a140a); border: calc(2 * var(--u)) solid #2a0a06; border-radius: calc(4 * var(--u)); box-shadow: 0 calc(3 * var(--u)) 0 #4a0c06, 0 0 0 calc(1 * var(--u)) #ffb090 inset; color: #fff0e0; font-family: 'VT', monospace; font-size: calc(10 * var(--u)); letter-spacing: 1px; cursor: pointer; text-shadow: 0 calc(1 * var(--u)) 0 #4a0c06; }
-.mn3 .big:hover { filter: brightness(1.15); }
-.mn3 .big:active { transform: translateY(calc(2 * var(--u))); box-shadow: 0 calc(1 * var(--u)) 0 #4a0c06, 0 0 0 calc(1 * var(--u)) #ffb090 inset; }
-.mn3 .big img { width: calc(18 * var(--u)); height: calc(18 * var(--u)); image-rendering: pixelated; }
+.mn3 .det .gn span { font-size: var(--cf-vt1); line-height: var(--cf-vt1); border: 1px solid #5c5f5e; padding: 0 calc(2 * var(--u)); color: #c8c2b0; background: rgba(22, 23, 26, 0.5); }
+.mn3 .det .btn { width: 100%; box-sizing: border-box; }
 /* the punch card */
-.mn3 .pcard { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%) rotate(-1deg); display: none; width: min(92vw, calc(260 * var(--u))); padding: calc(6 * var(--u)) calc(8 * var(--u)) calc(8 * var(--u)); background: linear-gradient(180deg, #f2ead2, #e4dab8); color: #3a2a18; box-shadow: calc(3 * var(--u)) calc(4 * var(--u)) 0 rgba(0, 0, 0, 0.55); clip-path: polygon(calc(10 * var(--u)) 0, 100% 0, 100% 100%, 0 100%, 0 calc(10 * var(--u))); animation: mn-card 360ms cubic-bezier(.2,1.4,.4,1); }
+.mn3 .pcard { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%) rotate(-1deg); display: none; width: min(92vw, calc(260 * var(--u))); padding: calc(6 * var(--u)) calc(8 * var(--u)) calc(8 * var(--u)); background: linear-gradient(180deg, #f2ead2, #e4dab8); color: #3a2a18; text-shadow: none; box-shadow: calc(3 * var(--u)) calc(4 * var(--u)) 0 rgba(0, 0, 0, 0.55); clip-path: polygon(calc(10 * var(--u)) 0, 100% 0, 100% 100%, 0 100%, 0 calc(10 * var(--u))); animation: mn-card 360ms cubic-bezier(.2,1.4,.4,1); }
 @keyframes mn-card { 0% { transform: translate(-50%, 30%) rotate(4deg); opacity: 0; } 100% { transform: translate(-50%, -50%) rotate(-1deg); opacity: 1; } }
-.mn3 .pcard .hd { display: flex; justify-content: space-between; font-family: 'Silk', monospace; font-size: calc(6 * var(--u)); color: #a8321c; letter-spacing: 1px; }
+.mn3 .pcard .hd { display: flex; justify-content: space-between; font-family: 'Silk', monospace; font-size: var(--cf-ps1); color: #a8321c; letter-spacing: 1px; }
 .mn3 .pcard .cols { display: grid; grid-template-columns: repeat(9, 1fr); gap: calc(3 * var(--u)); margin: calc(5 * var(--u)) 0; }
 .mn3 .pcard .col { display: flex; flex-direction: column; align-items: center; gap: calc(1 * var(--u)); }
-.mn3 .pcard .ch { font-size: calc(12 * var(--u)); line-height: calc(11 * var(--u)); height: calc(11 * var(--u)); color: #2a1c10; }
+.mn3 .pcard .ch { font-size: var(--cf-vt2); line-height: var(--cf-vt2); height: var(--cf-vt2); color: #2a1c10; }
 .mn3 .pcard .holes { display: grid; grid-template-rows: repeat(10, calc(3 * var(--u))); gap: calc(1 * var(--u)); }
 .mn3 .pcard .holes i { display: block; width: calc(4 * var(--u)); height: calc(3 * var(--u)); background: rgba(90, 70, 40, 0.18); }
 .mn3 .pcard .holes i.p { background: #1a120a; animation: mn-punch 140ms steps(2); }
 @keyframes mn-punch { 0% { transform: scale(1.8); } 100% { transform: none; } }
 .mn3 .pcard .row { display: flex; gap: calc(4 * var(--u)); align-items: center; }
 .mn3 .pcard input { position: absolute; opacity: 0; pointer-events: none; }
-.mn3 .pcard .hint { flex: 1; font-size: calc(7 * var(--u)); color: #6a5a3a; }
-.mn3 .pcard .btn { padding: calc(2 * var(--u)) calc(6 * var(--u)); border: calc(2 * var(--u)) solid #3a2a18; background: #d8ccaa; font-family: 'VT', monospace; font-size: calc(9 * var(--u)); color: #2a1c10; cursor: pointer; }
-.mn3 .pcard .btn.go { background: #c8301e; color: #fff0e0; border-color: #4a0c06; }
-.mn3 .pcard .btn:active { transform: translateY(calc(1 * var(--u))); }
+.mn3 .pcard .hint { flex: 1; font-size: var(--cf-vt1); line-height: var(--cf-vt1); color: #6a5a3a; }
 .mn3.hide > :not(.tipx) { visibility: hidden; }
+/* the ascension's button */
+.mn3 .big { display: flex; align-items: center; justify-content: center; gap: calc(4 * var(--u)); width: 100%; padding: calc(4 * var(--u)); background: radial-gradient(circle at 50% 35%, #ff7a5a, #c8301e 55%, #7a140a); border: calc(2 * var(--u)) solid #2a0a06; border-radius: calc(4 * var(--u)); box-shadow: 0 calc(3 * var(--u)) 0 #4a0c06, 0 0 0 calc(1 * var(--u)) #ffb090 inset; color: #fff0e0; font-family: 'Superwide', monospace; font-size: var(--cf-sw1); letter-spacing: 1px; cursor: pointer; text-shadow: 0 calc(1 * var(--u)) 0 #4a0c06; }
+.mn3 .big:hover { filter: brightness(1.15); }
+.mn3 .big:active { transform: translateY(calc(2 * var(--u))); }
+.mn3 .big img { width: calc(18 * var(--u)); height: calc(18 * var(--u)); image-rendering: pixelated; }
 `;
 let styled = false;
-function style() { if (styled) return; styled = true; const s = document.createElement('style'); s.textContent = CSS; document.head.appendChild(s); }
-
-/** a rough asteroid shell for the launch (the golem curls inside it) */
-function shellMesh() {
-  const g = new THREE.IcosahedronGeometry(1.25, 2);
-  const p = g.attributes.position as THREE.BufferAttribute, v = new V3();
-  for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); v.multiplyScalar(0.82 + Math.abs(Math.sin(v.x * 7.1) * Math.cos(v.y * 5.3 + v.z * 3.1)) * 0.3); p.setXYZ(i, v.x, v.y, v.z); }
-  g.computeVertexNormals();
-  const m = new THREE.MeshLambertMaterial({ color: 0x3a3442, emissive: new THREE.Color(0xff6a20), emissiveIntensity: 0, flatShading: true }); gbuf(m, 1);
-  return new THREE.Mesh(g, m);
+function style() {
+  fontVars();
+  if (styled) return; styled = true;
+  const s = document.createElement('style'); s.textContent = CSS; document.head.appendChild(s);
+  document.documentElement.style.setProperty('--iron', `url(${ironURL(230, 160, 9)})`);
+  document.documentElement.style.setProperty('--enamel', `url(${enamelURL(230, 150, 4)})`);
 }
 
-type Mode = 'console' | 'archive' | 'card' | 'launch' | 'away';
+/** the world positions of the scene's pieces (the camera looks at the origin from +z) */
+const M0 = new V3(-1.9, -0.05, 0);              // the meteor
+const SIGN_X = 2.75, SIGN_Y = [1.45, 0.48, -0.49, -1.46];
+const SUN = new V3(0.55, 0.42, -0.72).normalize();
+const PLANET = new V3(-6.5, -13, -24), PLANET_R = 10;
+const ARCH = new V3(12, 0.2, -1);               // where the archive gallery hangs
+
+type Mode = 'main' | 'archive' | 'card' | 'settings' | 'launch' | 'away';
 export class MenuScreen implements Screen {
   private scene = new THREE.Scene(); private fxScene = new THREE.Scene();
-  private cam = new THREE.PerspectiveCamera(50, 1, 0.05, 400);
-  private fx: Fx; private room: Room; private golem: VeyrChild; private globe: Globe; private moon: THREE.Mesh;
-  private shell: THREE.Mesh;
-  private worlds: { g: Globe; e: ArchiveEntry; i: number }[] = [];
-  private root: HTMLDivElement; private tipEl: HTMLDivElement; private backEl: HTMLDivElement; private detEl: HTMLDivElement; private cardEl: HTMLDivElement;
+  private cam = new THREE.PerspectiveCamera(38, 1, 0.05, 400);
+  private fx: Fx; private meteor: Meteor; private swarm: ReturnType<typeof makeRockSwarm>; private dust: ReturnType<typeof makeSparkles>;
+  private globe: Globe; private sky: THREE.Group;
+  private signs: Sign[] = []; private title: Sign; private seedTag: Sign; private gearTag: Sign;
+  private chains: { c: Chain; a: () => THREE.Vector3; b: () => THREE.Vector3; sag: number }[] = [];
+  private gear: ReturnType<typeof makeGear>; private gearSpin = 0; private gearHover = 0;
+  private nix: Nixies;
+  private worlds: { g: Globe; e: ArchiveEntry; tag: Sign; at: THREE.Vector3 }[] = [];
+  private emptyTag: Sign | null = null;
+  private fire: THREE.Mesh; private glowLight: THREE.PointLight; private lamp: THREE.PointLight;
+  private root: HTMLDivElement; private tipEl: HTMLDivElement; private backEl: HTMLDivElement; private detEl: HTMLDivElement; private cardEl: HTMLDivElement; private setEl: HTMLDivElement;
   private ray = new THREE.Raycaster(); private ndc = new THREE.Vector2(); private ptrIn = false; private ptrX = 0; private ptrY = 0;
   private par = new THREE.Vector2();
-  private hovered: Control | null = null; private hoverStand = -1;
-  private mode: Mode = 'console'; private focus = -1;
+  private hovered: Sign | null = null; private hoverGear = false; private hoverWorld = -1;
+  private mode: Mode = 'main'; private focus = -1;
   private t = 0;
-  private camPos = new V3(0, 2.35, 4.2); private camLook = new V3(0.3, 0.95, -4.5);
+  private camPos = new V3(0.5, 0.25, 9.4); private camLook = new V3(0.6, 0.0, 0);
   private cine: Cinema;
   private hum: Loop | null = null;
-  private anims: { c: Control; from: number; to: number; t: number; dur: number; done?: () => void }[] = [];
   private busy = false; private closed = false;
-  private seedTxt = '';
-  private downAt: { x: number; y: number; t: number } | null = null;
+  private seedTxt = ''; private tipHtml = '';
+  private downAt: { x: number; y: number } | null = null;
   private off: (() => void)[] = [];
-  private knobTurns = 0;
-  private tipHtml = '';
+  private launchK = 0;
 
   constructor(readonly opts: { hasSave: boolean; archive: ArchiveEntry[]; onNew: (seed: number) => void; onContinue: () => void; onLaunch: (e: ArchiveEntry) => void; onMirror: (back: () => void) => void }) {
     style();
-    this.scene.background = new THREE.Color(0x02040a);
-    this.scene.add(stars(2200, 120));
+    this.scene.background = new THREE.Color(0x02030a);
+    this.sky = stars(2600, 120); this.scene.add(this.sky);
     this.fx = new Fx(this.fxScene, this.scene);
-    // the target world through the window, and a small moon
+    // light: the sun behind and above (a rim on everything), a cool fill from the viewer, the planet's glow below
+    this.scene.add(new THREE.HemisphereLight(0x5a6478, 0x1c1a1e, 0.6));
+    const sun = new THREE.DirectionalLight(0xf0e2c8, 3.0); sun.position.copy(SUN).multiplyScalar(40); sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024); const sc = sun.shadow.camera as THREE.OrthographicCamera; sc.left = -7; sc.right = 7; sc.top = 6; sc.bottom = -6; sc.near = 10; sc.far = 80; sun.shadow.bias = -0.001;
+    this.scene.add(sun, sun.target);
+    const fill = new THREE.DirectionalLight(0x9aaacc, 0.85); fill.position.set(-4, 3, 10); this.scene.add(fill);
+    const planetGlow = new THREE.PointLight(0x7aa0c8, 20, 34, 1.4); planetGlow.position.set(-4.5, -6.5, -5); this.scene.add(planetGlow);
+    this.glowLight = new THREE.PointLight(0x6aa89a, 3.5, 7, 1.6);
+    // the work lamp: one warm light that swings onto whichever sign you point at
+    this.lamp = new THREE.PointLight(0xe8b868, 0, 3.2, 1.6); this.scene.add(this.lamp); this.glowLight.position.copy(M0).add(new V3(1.4, 0.2, 1.0)); this.scene.add(this.glowLight);
+    const glare = makeSunGlare(26); glare.position.copy(SUN).multiplyScalar(110); glare.lookAt(0, 0, 0); this.scene.add(glare);
+    // the target world, huge below and behind
     const planet: Planet = makePlanet(1000 + Math.floor(Math.random() * 9000));
-    this.globe = makeGlobe(planet, 9);
-    this.globe.group.position.set(-3.2, 3.6, -34); this.globe.group.rotation.set(0.25, 0, 0.18);
+    this.globe = makeGlobe(planet, PLANET_R, { orbit: true });
+    this.globe.group.position.copy(PLANET); this.globe.group.rotation.set(0.35, 0.4, 0.2);
+    (this.globe.mat.uniforms.uSun?.value as THREE.Vector3 | undefined)?.copy(SUN);
     this.scene.add(this.globe.group);
-    this.moon = new THREE.Mesh(new THREE.IcosahedronGeometry(1.1, 2), gbuf(new THREE.MeshLambertMaterial({ color: 0x8a8490, flatShading: true }), 1));
-    this.moon.position.set(9, 7.5, -48); this.scene.add(this.moon);
-    const sunDisc = new THREE.Mesh(new THREE.CircleGeometry(1.4, 16), glowMat(0xfff4e0)); sunDisc.position.set(16, 11, -80); sunDisc.lookAt(0, 0, 0); this.scene.add(sunDisc);
-    // the hangar
-    const nStands = Math.max(4, Math.min(7, opts.archive.length + 1));
-    this.room = buildRoom(this.scene, nStands);
-    // Unit 07 in its cradle, facing the operator
-    this.golem = new VeyrChild(this.fx, 1.25, loadLook(), { grown: true });
-    this.golem.hatch = 1;
-    this.golem.root.position.copy(this.room.golemAt);
-    this.golem.root.rotation.y = 0.35;
-    this.scene.add(this.golem.root);
-    this.shell = shellMesh(); this.shell.scale.setScalar(0.001); this.shell.visible = false; this.scene.add(this.shell);
-    // claimed worlds on their stands
-    opts.archive.slice(-this.room.stands.length).forEach((e, i) => {
-      const p = makePlanet(e.seed); for (const r of p.regions) r.state = 'veyr';
-      const g = makeGlobe(p, 0.3, { ascended: true });
-      g.group.position.copy(this.room.stands[i].top); g.refresh(); this.scene.add(g.group);
-      this.worlds.push({ g, e, i });
-      const st = this.room.stands[i];
-      const pm = st.plate.material as THREE.MeshLambertMaterial; pm.map = labelTex(e.name.toUpperCase().slice(0, 16), 'brass'); pm.needsUpdate = true;
+    // the meteor, its swarm and its dust
+    this.meteor = makeMeteor(1.7, 7); this.meteor.group.position.copy(M0); this.scene.add(this.meteor.group);
+    this.swarm = makeRockSwarm(18, 2.25, 3.0); this.swarm.group.position.copy(M0); this.scene.add(this.swarm.group);
+    this.dust = makeSparkles(260, 4.4); this.dust.points.position.copy(M0); this.scene.add(this.dust.points);
+    const fm = new THREE.MeshBasicMaterial({ color: 0xff7a28, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }); gbuf(fm, 0);
+    this.fire = new THREE.Mesh(new THREE.IcosahedronGeometry(2.05, 2), fm); this.meteor.group.add(this.fire);
+    // the iron signs, hanging in a column, chained to each other and tethered to the rock
+    const defs: [string, string, string, string, string?][] = [
+      ['new', 'NEW WORLD', 'N', 'Fire Unit 07 at a new world.'],
+      ['continue', 'CONTINUE', 'C', 'Back to the world you are taking.'],
+      ['archive', 'ARCHIVE', 'A', 'The worlds claimed for Earth.', `${opts.archive.length} CLAIMED`],
+      ['assembly', 'ASSEMBLY BAY', 'B', 'Refit Unit 07: paint, plating, lens and name.'],
+    ];
+    defs.forEach(([id, label, key, tip, sub], i) => {
+      const s = makeSign(id, label, 2.5, 0.64, 31 + i * 7, { key, tip, sub });
+      s.rest.set(SIGN_X, SIGN_Y[i], 0.55 - i * 0.12); s.pos.copy(s.rest).add(new V3(4, 3, 0)); s.vel.set(-3, -2, 0);
+      if (id === 'continue' && !opts.hasSave) { s.enabled = false; (s.mat.map as THREE.Texture).needsUpdate = true; s.mat.color.setScalar(0.55); }
+      this.scene.add(s.root); this.signs.push(s);
     });
+    this.seedTag = makeSign('seed', 'SEED CARD', 1.25, 0.34, 77, { key: 'S', tip: 'Punch a seed by hand and launch at that exact world.' });
+    this.seedTag.rest.set(SIGN_X + 0.62, SIGN_Y[3] - 0.78, 0.35); this.seedTag.pos.copy(this.seedTag.rest).add(new V3(3, -2, 0)); this.scene.add(this.seedTag.root); this.signs.push(this.seedTag);
+    this.title = makeSign('title', 'ODDWORLD', 3.6, 1.0, 11, { font: 'Canned', size: 40, sub: 'U.S. PLANETARY CORPS · UNIT 07' });
+    this.title.rest.set(-1.6, 2.55, 0.5); this.title.pos.copy(this.title.rest).add(new V3(0, 3, 0)); this.title.enabled = false; this.scene.add(this.title.root);
+    this.nix = new Nixies(2, 0.1); this.nix.root.position.set(1.02, -0.07, 0.04); this.nix.root.scale.setScalar(1.1); this.signs[0].root.add(this.nix.root); this.nix.set('--');
+    // chains: the title hangs from above; each sign hangs from the one above it; tethers run back to the rock
+    const top = (x: number) => () => new V3(x, 6.5, 0.4);
+    const bottom = (s: Sign, side: number) => () => s.root.localToWorld(new V3(side * s.w * 0.38, -s.h / 2 - 0.02, 0));
+    const add = (n: number, a: () => THREE.Vector3, b: () => THREE.Vector3, sag = 0.06, link = 0.075) => { const c = new Chain(n, link); this.scene.add(c.group); this.chains.push({ c, a, b, sag }); };
+    add(26, top(-2.9), () => this.title.eye(0)); add(26, top(-0.3), () => this.title.eye(1));
+    add(30, top(SIGN_X - 0.95), () => this.signs[0].eye(0)); add(30, top(SIGN_X + 0.95), () => this.signs[0].eye(1));
+    for (let i = 1; i < 4; i++) { const up = this.signs[i - 1], s = this.signs[i]; add(5, bottom(up, -1), () => s.eye(0), 0.02); add(5, bottom(up, 1), () => s.eye(1), 0.02); }
+    add(9, bottom(this.signs[3], 1), () => this.seedTag.eye(0), 0.03, 0.06);
+    for (let i = 0; i < 4; i++) { const s = this.signs[i]; add(16, () => this.meteor.anchor(i + 1), () => s.root.localToWorld(new V3(-s.w / 2 - 0.02, 0.05, 0)), 0.22, 0.07); }
+    // the settings cog, with its own little tag
+    this.gear = makeGear(0.5); this.gear.mesh.position.set(5.05, -2.35, 1.4); this.scene.add(this.gear.mesh);
+    this.gearTag = makeSign('settings', 'SETTINGS', 1.15, 0.3, 91, { key: 'O', tip: 'Volume, graphics quality, UI scale, screen shake.' });
+    this.gearTag.rest.set(5.05, -3.05, 1.45); this.gearTag.pos.copy(this.gearTag.rest); this.scene.add(this.gearTag.root);
+    add(4, () => this.gear.mesh.position.clone().add(new V3(0, -0.3, 0)), () => this.gearTag.eye(0), 0.01, 0.05); add(4, () => this.gear.mesh.position.clone().add(new V3(0, -0.3, 0)), () => this.gearTag.eye(1), 0.01, 0.05);
+    // the archive: claimed worlds hanging in a row, each on its iron tag
+    opts.archive.slice(-7).forEach((e, i) => {
+      const p = makePlanet(e.seed); for (const r of p.regions) r.state = 'veyr';
+      const g = makeGlobe(p, 0.5, { ascended: true }); g.refresh();
+      const at = ARCH.clone().add(new V3((i - 3) * 1.9, Math.sin(i * 1.7) * 0.5 + 0.4, -(i % 2) * 0.9));
+      g.group.position.copy(at); this.scene.add(g.group);
+      const tag = makeSign('world' + i, e.name.toUpperCase().slice(0, 14), 1.5, 0.34, 100 + i, { tip: `${e.regions} regions, ${e.species} species, claimed ${e.date}.` });
+      tag.rest.copy(at).add(new V3(0, -0.95, 0.1)); tag.pos.copy(tag.rest); this.scene.add(tag.root);
+      add(5, () => g.group.position.clone().add(new V3(-0.35, -0.42, 0)), () => tag.eye(0), 0.03, 0.06); add(5, () => g.group.position.clone().add(new V3(0.35, -0.42, 0)), () => tag.eye(1), 0.03, 0.06);
+      this.worlds.push({ g, e, tag, at });
+    });
+    if (!this.worlds.length) {
+      this.emptyTag = makeSign('none', 'NO WORLDS CLAIMED YET', 3.2, 0.5, 120, { tip: 'Claim a world for Earth and it will hang here, green, on its own tag.' });
+      this.emptyTag.rest.copy(ARCH).add(new V3(0, 0.3, 0)); this.emptyTag.pos.copy(this.emptyTag.rest); this.scene.add(this.emptyTag.root);
+      add(20, () => ARCH.clone().add(new V3(-1.2, 4.5, 0)), () => this.emptyTag!.eye(0)); add(20, () => ARCH.clone().add(new V3(1.2, 4.5, 0)), () => this.emptyTag!.eye(1));
+    }
     // the overlay
     this.root = el('div', 'mn3', ui());
-    const logo = el('div', 'logo', this.root);
-    brassWord('ODDWORLD', 'Jersey', 40).then((c) => { const s = Number(document.documentElement.style.getPropertyValue('--s')) || 2; c.style.width = c.width * s + 'px'; c.style.height = c.height * s + 'px'; logo.prepend(c); });
-    el('div', 'tag', logo, 'U.S.P.C. LAUNCH CONTROL 4 · TAKE THE WORLD FOR EARTH<span class="cur">&#9608;</span>');
-    el('div', 'foot', this.root, 'WORK THE CONTROLS ON THE DESK · <b>N</b> LAUNCH · <b>C</b> RESUME · <b>A</b> ARCHIVE · <b>B</b> ASSEMBLY · <b>S</b> SEED CARD');
-    this.tipEl = el('div', 'tipx', this.root);
-    this.backEl = el('div', 'back', this.root, '◀ BACK TO THE DESK');
-    this.backEl.addEventListener('click', (e) => { e.stopPropagation(); this.toConsole(); });
-    this.detEl = el('div', 'det', this.root);
+    el('div', 'tag', this.root, 'POINT AT A SIGN · <b>N</b> NEW WORLD · <b>C</b> CONTINUE · <b>A</b> ARCHIVE · <b>B</b> ASSEMBLY · <b>S</b> SEED · <b>O</b> SETTINGS');
+    this.tipEl = el('div', 'tipx iron', this.root);
+    this.backEl = el('div', 'btn back', this.root, '◀ BACK');
+    this.backEl.addEventListener('click', (e) => { e.stopPropagation(); this.toMain(); });
+    this.detEl = el('div', 'plate det iron', this.root);
     this.cardEl = el('div', 'pcard', this.root);
-    this.plaque();
-    // lever locked without a save
-    const lever = this.ctl('continue'); if (lever) lever.enabled = opts.hasSave;
-    if (!opts.hasSave && lever?.lamp) lever.lamp.color.set(0x401010);
+    this.setEl = el('div', 'plate enamel', this.root);
     this.cine = new Cinema({});
     this.cine.ui.root.remove(); ui().appendChild(this.cine.ui.root);
-    this.room.nixies.set('000000');
     this.bindInput();
-    this.hum = cloop('room', 0.7);
-    csfx('relay'); csfx('hum', 0.6);
-    this.cine.ui.fade(1, 0); this.cine.ui.fade(0, 1.4);
+    this.hum = cloop('drone', 0.35);
+    this.cine.ui.fade(1, 0); this.cine.ui.fade(0, 1.6);
+    this.off.push(onSettings(() => { if (this.mode === 'settings') this.drawSettings(); }));
     (window as any).__menu = this;
   }
 
-  private ctl(id: string) { return this.room.controls.find((c) => c.id === id) ?? null; }
-  /** where a control (or archive stand n) is on screen, in CSS pixels (test pages) */
+  /** where a sign (or the gear) is on screen, in CSS pixels (test pages) */
   screenPos(id: string): [number, number] {
-    const p = new V3();
-    if (id.startsWith('stand')) p.copy(this.room.stands[Number(id.slice(5))]?.top ?? p); else this.ctl(id)?.root.getWorldPosition(p);
+    const p = id === 'gear' ? this.gear.mesh.position.clone() : (this.signs.find((s) => s.id === id)?.pos.clone() ?? new V3());
     p.project(this.cam); return [Math.round((p.x * 0.5 + 0.5) * innerWidth), Math.round((-p.y * 0.5 + 0.5) * innerHeight)];
   }
-  private async plaque() {
-    try {
-      const c = await brassWord('ODDWORLD', 'Jersey', 40);
-      const m = this.room.plaque.material as THREE.MeshLambertMaterial;
-      const t = new THREE.CanvasTexture(c); t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.colorSpace = THREE.SRGBColorSpace;
-      m.map = t; m.color.set(0xffffff); m.transparent = false; m.alphaTest = 0.4; m.needsUpdate = true;
-      this.room.plaque.scale.set(1, (c.height / c.width) * 4.4 / 1.1, 1);
-    } catch { /* the plaque stays plain */ }
-  }
+  private sign(id: string) { return this.signs.find((s) => s.id === id) ?? null; }
 
   // ------------------------------------------------------------------ input
   private bindInput() {
     const cv = document.getElementById('view') as HTMLCanvasElement;
     const setPtr = (e: PointerEvent) => { this.ptrX = e.clientX; this.ptrY = e.clientY; this.ptrIn = true; this.ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); };
-    const move = (e: PointerEvent) => { setPtr(e); if (e.pointerType === 'touch' && this.downAt) { this.par.x += e.movementX * 0.004; this.par.y += e.movementY * 0.004; } };
-    const down = (e: PointerEvent) => { if (e.target !== cv) return; setPtr(e); this.downAt = { x: e.clientX, y: e.clientY, t: performance.now() }; this.pick(); };
+    const move = (e: PointerEvent) => setPtr(e);
+    const down = (e: PointerEvent) => { if (e.target !== cv) return; setPtr(e); this.downAt = { x: e.clientX, y: e.clientY }; this.pick(); };
     const up = (e: PointerEvent) => {
       const d = this.downAt; this.downAt = null; if (!d || e.target !== cv) return;
       if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 14) return;
@@ -203,149 +256,147 @@ export class MenuScreen implements Screen {
       if (this.closed || this.cine.active || (e.target as HTMLElement)?.tagName === 'INPUT') return;
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       if (this.mode === 'card') { this.cardKey(e); return; }
-      if (k === 'Escape') { if (this.mode !== 'console') this.toConsole(); return; }
+      if (k === 'Escape') { if (this.mode !== 'main') this.toMain(); return; }
       if (this.mode === 'archive' && (k === 'ArrowRight' || k === 'ArrowLeft')) { const n = this.worlds.length; if (n) this.focusWorld(((this.focus < 0 ? 0 : this.focus + (k === 'ArrowRight' ? 1 : -1)) + n) % n); return; }
-      const id = { n: 'new', c: 'continue', a: 'archive', b: 'assembly', s: 'seed' }[k as 'n'];
-      if (id) { const c = this.ctl(id); if (c) this.activate(c); }
+      if (k === 'o' || k === 'g') { this.openSettings(); return; }
+      const id = ({ n: 'new', c: 'continue', a: 'archive', b: 'assembly', s: 'seed' } as Record<string, string>)[k];
+      const s = id ? this.sign(id) : null; if (s) this.work(s);
     };
     cv.addEventListener('pointermove', move); addEventListener('pointerdown', down); addEventListener('pointerup', up); cv.addEventListener('pointerleave', leave); addEventListener('keydown', key);
     this.off.push(() => { cv.removeEventListener('pointermove', move); removeEventListener('pointerdown', down); removeEventListener('pointerup', up); cv.removeEventListener('pointerleave', leave); removeEventListener('keydown', key); });
   }
   private clearHover() {
-    if (this.hovered) { setHover(this.hovered.flag, false); this.hovered = null; }
-    if (this.hoverStand >= 0) { setHover(this.room.stands[this.hoverStand].flag, false); this.hoverStand = -1; }
-    this.tipEl.style.display = 'none'; document.body.style.cursor = '';
+    if (this.hovered) this.hovered.hover = 0;
+    this.hovered = null; this.hoverGear = false; this.hoverWorld = -1;
+    this.tipEl.style.display = 'none'; this.tipHtml = ''; document.body.style.cursor = '';
   }
-  /** what is under the pointer (a control on the desk, or a stand in the gallery) */
+  /** what is under the pointer */
   private pick() {
-    if (this.busy || this.cine.active || this.mode === 'launch' || this.mode === 'away' || this.mode === 'card') { this.clearHover(); return; }
+    if (this.busy || this.cine.active || this.mode === 'launch' || this.mode === 'away' || this.mode === 'card' || this.mode === 'settings') { this.clearHover(); return; }
     this.ray.setFromCamera(this.ndc, this.cam);
-    let hitC: Control | null = null, hitS = -1, best = 1e9;
-    if (this.mode === 'console' || this.mode === 'archive') for (const c of this.room.controls) {
-      const h = this.ray.intersectObjects(c.hits, true)[0];
-      if (h && h.distance < best) { best = h.distance; hitC = c; }
+    let best = 1e9, hs: Sign | null = null, hg = false, hw = -1;
+    const pool = this.mode === 'main' ? [...this.signs, this.gearTag] : this.worlds.map((w) => w.tag).concat(this.emptyTag ? [this.emptyTag] : []);
+    for (const s of pool) { const h = this.ray.intersectObject(s.plate, false)[0]; if (h && h.distance < best) { best = h.distance; hs = s; } }
+    if (this.mode === 'main') { const h = this.ray.intersectObject(this.gear.mesh, true)[0]; if (h && h.distance < best) { best = h.distance; hs = null; hg = true; } }
+    if (this.mode === 'archive') this.worlds.forEach((w, i) => { const h = this.ray.intersectObject(w.g.mesh, false)[0]; if (h && h.distance < best) { best = h.distance; hw = i; hs = null; } if (hs === w.tag) hw = i; });
+    if (hs === this.gearTag) { hs = null; hg = true; }
+    if (hs !== this.hovered) {
+      if (this.hovered) this.hovered.hover = 0;
+      this.hovered = hs; if (hs) { hs.hover = 1; csfx('hover', 0.7); csfx('tick', 0.5); }
     }
-    if (this.mode === 'archive') this.room.stands.forEach((s, i) => {
-      const w = this.worlds.find((x) => x.i === i);
-      const objs: THREE.Object3D[] = [s.hit, ...(w ? [w.g.mesh] : [])];
-      const h = this.ray.intersectObjects(objs, true)[0];
-      if (h && h.distance < best) { best = h.distance; hitS = i; hitC = null; }
-    });
-    if (hitC !== this.hovered) {
-      if (this.hovered) setHover(this.hovered.flag, false);
-      this.hovered = hitC;
-      if (hitC) { setHover(hitC.flag, true); csfx('hover', 0.7); }
-    }
-    if (hitS !== this.hoverStand) {
-      if (this.hoverStand >= 0) setHover(this.room.stands[this.hoverStand].flag, false);
-      this.hoverStand = hitS;
-      if (hitS >= 0) { setHover(this.room.stands[hitS].flag, true); csfx('hover', 0.6, 0.8); }
-    }
-    // the tooltip: a little CRT that follows the pointer
-    const c = this.hovered;
+    if (hg !== this.hoverGear) { this.hoverGear = hg; if (hg) { csfx('servo', 0.25, 1.6); } }
+    if (hw !== this.hoverWorld) { this.hoverWorld = hw; if (hw >= 0) csfx('hover', 0.6, 0.8); }
+    this.gearTag.hover = hg ? 1 : 0;
     let html = '';
-    if (c) html = `<div class="h">${c.label}<span class="k">${c.key}</span></div><div class="d">${c.tip}</div>` + (c.id === 'continue' && !c.enabled ? '<div class="w">NO MISSION IN PROGRESS</div>' : '') + (c.id === 'archive' && !this.worlds.length ? '<div class="w">NO WORLDS CLAIMED YET</div>' : '');
-    else if (hitS >= 0) { const w = this.worlds.find((x) => x.i === hitS); html = w ? `<div class="h">${w.e.name.toUpperCase()}</div><div class="d">${w.e.regions} REGIONS · ${w.e.species} SPECIES · CLAIMED ${w.e.date}</div>` : '<div class="h">AWAITING CLAIM</div><div class="d">An empty stand. Claim a world and it will hang here.</div>'; }
+    const s = this.hovered;
+    if (s) html = `<div class="h">${s.label}${s.key ? `<span class="k">${s.key}</span>` : ''}</div><div class="d">${s.tip}</div>` + (s.id === 'continue' && !s.enabled ? '<div class="w">NO MISSION IN PROGRESS</div>' : '');
+    else if (hg) html = `<div class="h">SETTINGS<span class="k">O</span></div><div class="d">${this.gearTag.tip}</div>`;
+    else if (hw >= 0) { const e = this.worlds[hw].e; html = `<div class="h">${e.name.toUpperCase()}</div><div class="d">${e.regions} REGIONS · ${e.species} SPECIES · CLAIMED ${e.date}</div>`; }
     if (html && this.ptrIn) {
       if (this.tipHtml !== html) { this.tipHtml = html; this.tipEl.innerHTML = html; }
       if (this.tipEl.style.display !== 'block') this.tipEl.style.display = 'block';
       const w = this.tipEl.offsetWidth, h = this.tipEl.offsetHeight;
-      this.tipEl.style.left = Math.min(innerWidth - w - 6, this.ptrX + 18) + 'px'; this.tipEl.style.top = Math.max(6, Math.min(innerHeight - h - 6, this.ptrY - h - 12)) + 'px';
+      this.tipEl.style.left = Math.max(6, Math.min(innerWidth - w - 6, this.ptrX - w - 24)) + 'px'; this.tipEl.style.top = Math.max(6, Math.min(innerHeight - h - 6, this.ptrY - h / 2)) + 'px';
       document.body.style.cursor = 'pointer';
     } else { if (this.tipEl.style.display !== 'none') this.tipEl.style.display = 'none'; this.tipHtml = ''; document.body.style.cursor = ''; }
   }
   private click() {
     if (this.busy || this.cine.active) return;
-    if (this.hovered) { this.activate(this.hovered); return; }
-    if (this.mode === 'archive' && this.hoverStand >= 0) {
-      const w = this.worlds.find((x) => x.i === this.hoverStand);
-      if (w) this.focusWorld(this.worlds.indexOf(w)); else csfx('deny', 0.6);
-    }
+    if (this.hoverGear) { this.openSettings(); return; }
+    if (this.mode === 'archive') { if (this.hoverWorld >= 0) this.focusWorld(this.hoverWorld); else if (this.hovered === this.emptyTag && this.emptyTag) { kickSign(this.emptyTag, 0.6); csfx('clamp', 0.5); } return; }
+    if (this.hovered) this.work(this.hovered);
   }
-  private play(c: Control, to: number, dur: number, done?: () => void) { this.anims = this.anims.filter((a) => a.c !== c); this.anims.push({ c, from: c.anim, to, t: 0, dur, done }); }
 
-  // ------------------------------------------------------------------ the controls
-  private activate(c: Control) {
+  // ------------------------------------------------------------------ working the signs
+  private work(s: Sign) {
     if (this.busy || this.closed || this.mode === 'launch' || this.mode === 'away') return;
     Tip.hide();
-    switch (c.id) {
-      case 'new': {
-        this.busy = true; csfx('cover'); this.lamp(c, true);
-        this.play(c, 1, 0.9, () => { csfx('button'); this.launch(Math.floor(Math.random() * 1e6)); });
-        setTimeout(() => csfx('button', 0.8), 620);
-        break;
-      }
-      case 'continue': {
-        if (!c.enabled) { csfx('deny'); csfx('leverLock', 0.8); this.play(c, 0.18, 0.12, () => this.play(c, 0, 0.25)); this.flashTip(); return; }
-        this.busy = true; csfx('lever'); this.lamp(c, true);
-        this.play(c, 1, 0.45, () => { csfx('relay'); csfx('hum', 0.7); this.leave(() => this.opts.onContinue(), 0.9); });
-        break;
-      }
-      case 'archive': {
-        csfx('switch'); csfx('relay', 0.6, 0.8);
-        this.knobTurns++;
-        this.play(c, this.knobTurns, 0.3);
-        if (this.mode === 'archive') this.toConsole(); else this.toArchive();
-        break;
-      }
-      case 'seed': this.openCard(); break;
-      case 'assembly': {
-        this.busy = true; csfx('switch', 1, 0.7); this.lamp(c, true);
-        this.play(c, 1, 0.35, () => {
-          csfx('relay'); csfx('hum', 0.8);
-          const p = new V3(); c.root.getWorldPosition(p);
-          this.fx.burst(p.x, p.y + 0.08, p.z, 14, 0xffd890, { glow: true, speed: 1.6, up: 1.4, size: 2, life: 0.4, grav: 6 });
-          setTimeout(() => {
-            this.root.style.visibility = 'hidden'; this.cine.ui.root.style.visibility = 'hidden';
-            this.opts.onMirror(() => {
-              this.root.style.visibility = ''; this.cine.ui.root.style.visibility = '';
-              this.golem.setLook(loadLook()); this.golem.wave();
-              this.play(c, 0, 0.4); this.lamp(c, false); this.busy = false; csfx('leverLock', 0.6);
-            });
-          }, 380);
-        });
-        break;
-      }
+    kickSign(s); csfx('clamp', 0.9, 0.8 + Math.random() * 0.3); csfx('leverLock', 0.6);
+    if (!s.enabled) { csfx('deny'); kickSign(s, 0.5); this.tipEl.innerHTML = '<div class="h">CONTINUE</div><div class="w">NO MISSION IN PROGRESS</div>'; return; }
+    const after = (f: () => void, ms = 380) => { this.busy = true; setTimeout(() => { this.busy = false; f(); }, ms); };
+    switch (s.id) {
+      case 'new': after(() => this.launch(Math.floor(Math.random() * 1e6))); break;
+      case 'continue': after(() => { csfx('hum', 0.7); this.leave(() => this.opts.onContinue(), 0.9); }); break;
+      case 'archive': after(() => this.toArchive(), 250); break;
+      case 'seed': after(() => this.openCard(), 250); break;
+      case 'assembly': after(() => {
+        this.root.style.visibility = 'hidden'; this.cine.ui.root.style.visibility = 'hidden';
+        this.opts.onMirror(() => { this.root.style.visibility = ''; this.cine.ui.root.style.visibility = ''; csfx('leverLock', 0.6); });
+      }); break;
     }
   }
-  private lamp(c: Control, on: boolean) { if (c.lamp) c.lamp.color.set(on ? c.lampCol : new THREE.Color(c.lampCol).multiplyScalar(0.18)); }
-  private flashTip() { this.tipEl.style.animation = 'none'; void this.tipEl.offsetWidth; this.tipEl.style.animation = ''; }
 
-  // ------------------------------------------------------------------ the archive gallery
+  // ------------------------------------------------------------------ settings: an iron plate
+  private openSettings() {
+    if (this.mode === 'launch' || this.mode === 'away') return;
+    this.gearSpin += 6; csfx('servo', 0.6, 1.2); csfx('clamp', 0.6);
+    if (this.mode === 'settings') { this.toMain(); return; }
+    this.closePanels(); this.mode = 'settings'; this.clearHover();
+    this.drawSettings();
+    this.setEl.style.display = 'block'; this.setEl.style.animation = 'none'; void this.setEl.offsetWidth; this.setEl.style.animation = '';
+  }
+  private drawSettings() {
+    const d = this.setEl; d.innerHTML = '';
+    el('div', 'hd', d, 'SETTINGS');
+    const slider = (label: string, key: 'master' | 'music' | 'sfx') => {
+      const r = el('div', 'row', d); el('div', 'lb', r, label);
+      const inp = el('input', '', r) as HTMLInputElement; inp.type = 'range'; inp.min = '0'; inp.max = '100'; inp.value = String(Math.round(settings[key] * 100));
+      const v = el('div', 'val', r, inp.value);
+      inp.addEventListener('input', () => { v.textContent = inp.value; setSettings({ [key]: Number(inp.value) / 100 }); });
+      inp.addEventListener('change', () => csfx('tick', 0.8));
+      inp.addEventListener('pointerdown', (e) => e.stopPropagation()); inp.addEventListener('keydown', (e) => e.stopPropagation());
+    };
+    const choice = <T extends string | number | boolean>(label: string, cur: T, opts: [T, string][], set: (v: T) => void) => {
+      const r = el('div', 'row', d); el('div', 'lb', r, label);
+      const o = el('div', 'opts', r);
+      for (const [v, name] of opts) { const b = el('div', 'btn' + (v === cur ? ' on' : ''), o, name); b.addEventListener('click', (e) => { e.stopPropagation(); csfx('switch', 0.8); set(v); }); }
+    };
+    slider('MASTER VOLUME', 'master'); slider('MUSIC', 'music'); slider('SOUND EFFECTS', 'sfx');
+    choice<Quality>('GRAPHICS', settings.quality, [['low', 'LOW'], ['medium', 'MEDIUM'], ['high', 'HIGH']], (v) => setSettings({ quality: v }));
+    choice<number>('UI SCALE', settings.uiScale, [[0, 'AUTO'], [2, '2X'], [3, '3X'], [4, '4X']], (v) => setSettings({ uiScale: v }));
+    choice<boolean>('SCREEN SHAKE', settings.shake, [[true, 'ON'], [false, 'OFF']], (v) => setSettings({ shake: v }));
+    const f = el('div', 'foot', d);
+    const rs = el('div', 'btn', f, 'DEFAULTS'); rs.addEventListener('click', (e) => { e.stopPropagation(); csfx('relay'); resetSettings(); });
+    const ok = el('div', 'btn on', f, 'DONE ▶'); ok.addEventListener('click', (e) => { e.stopPropagation(); csfx('leverLock', 0.6); this.toMain(); });
+  }
+
+  // ------------------------------------------------------------------ the archive
   private toArchive() {
-    this.mode = 'archive'; this.focus = -1;
-    this.backEl.style.display = 'block'; this.detEl.style.display = 'none';
-    csfx('servo', 0.5, 0.8);
-    if (!this.worlds.length) setTimeout(() => { if (this.mode === 'archive') { this.tipEl.innerHTML = '<div class="h">THE GALLERY IS EMPTY</div><div class="d">Claim a world for Earth and it will hang here, green, on its own stand.</div>'; this.tipEl.style.display = 'block'; this.tipEl.style.left = innerWidth / 2 - this.tipEl.offsetWidth / 2 + 'px'; this.tipEl.style.top = innerHeight * 0.3 + 'px'; } }, 900);
+    this.closePanels(); this.mode = 'archive'; this.focus = -1; this.clearHover();
+    this.backEl.style.display = 'inline-flex';
+    csfx('whoosh', 0.5, 1.6);
   }
   private focusWorld(i: number) {
     const w = this.worlds[i]; if (!w) return;
-    this.focus = i; csfx('servo', 0.4, 1.2); csfx('chime', 0.4);
+    this.focus = i; csfx('chime', 0.4); kickSign(w.tag, 0.4);
     const e = w.e, d = this.detEl;
     d.innerHTML = '';
     el('div', 'n', d, e.name.toUpperCase());
-    el('div', 's', d, `CLAIMED FOR EARTH ${e.date}<br>${e.regions} REGIONS · ${e.species} SPECIES IN ITS TREE · ${e.genes.length} GENES`);
+    el('div', 's', d, `CLAIMED FOR EARTH ${e.date}<br>${e.regions} REGIONS · ${e.species} SPECIES · ${e.genes.length} GENES`);
     const gn = el('div', 'gn', d);
     for (const id of e.genes.slice(0, 18)) if (GENE[id]) el('span', '', gn, GENE[id].name.toUpperCase());
-    const b = el('div', 'big', d);
+    const b = el('div', 'btn red', d);
     const im = document.createElement('img'); im.src = iconURL('planet', 36); b.appendChild(im);
     el('span', '', b, 'LAUNCH OFFSPRING');
     b.title = 'Throw a seed of this world at a new one. It carries three of its genes.';
     b.addEventListener('click', (ev) => { ev.stopPropagation(); csfx('button'); this.launch(Math.floor(Math.random() * 1e6), e); });
-    d.style.display = 'block';
+    d.style.display = 'block'; d.style.animation = 'none'; void d.offsetWidth; d.style.animation = '';
   }
-  private toConsole() {
+  private closePanels() {
+    this.detEl.style.display = 'none'; this.setEl.style.display = 'none'; this.backEl.style.display = 'none';
     if (this.mode === 'card') this.closeCard();
-    this.mode = 'console'; this.focus = -1;
-    this.backEl.style.display = 'none'; this.detEl.style.display = 'none'; this.tipEl.style.display = 'none';
-    csfx('servo', 0.5, 0.7);
+  }
+  private toMain() {
+    const was = this.mode;
+    this.closePanels(); this.mode = 'main'; this.focus = -1; this.tipEl.style.display = 'none';
+    if (was === 'archive') csfx('whoosh', 0.5, 1.3);
   }
 
   // ------------------------------------------------------------------ the punch card
   private openCard() {
     if (this.mode === 'card') return;
-    this.mode = 'card'; this.clearHover();
-    const rd = this.room.reader; this.play(rd, -0.6, 0.3); csfx('card'); csfx('cardFeed', 0.4);
+    this.closePanels(); this.mode = 'card'; this.clearHover();
+    csfx('card'); csfx('cardFeed', 0.4);
     this.seedTxt = '';
     const c = this.cardEl; c.innerHTML = '';
     const hd = el('div', 'hd', c); el('span', '', hd, 'U.S.P.C. FORM 7-S · TARGET SEED'); el('span', '', hd, 'DO NOT FOLD, SPINDLE OR MUTILATE');
@@ -353,128 +404,83 @@ export class MenuScreen implements Screen {
     for (let i = 0; i < 9; i++) { const col = el('div', 'col', cols); el('div', 'ch', col, '&nbsp;'); const h = el('div', 'holes', col); for (let k = 0; k < 10; k++) el('i', '', h); }
     const row = el('div', 'row', c);
     el('div', 'hint', row, 'TYPE UP TO 9 LETTERS OR DIGITS. THE SAME CARD ALWAYS FINDS THE SAME WORLD.');
-    const cancel = el('div', 'btn', row, 'ESC CANCEL'); cancel.addEventListener('click', (e) => { e.stopPropagation(); this.toConsole(); });
-    const go = el('div', 'btn go', row, 'FEED CARD ▶'); go.addEventListener('click', (e) => { e.stopPropagation(); this.feedCard(); });
-    // a hidden input so phones raise a keyboard
+    const cancel = el('div', 'btn', row, 'ESC'); cancel.addEventListener('click', (e) => { e.stopPropagation(); this.toMain(); });
+    const go = el('div', 'btn red', row, 'FEED CARD ▶'); go.addEventListener('click', (e) => { e.stopPropagation(); this.feedCard(); });
     const inp = el('input', '', c) as HTMLInputElement; inp.maxLength = 9; inp.autocapitalize = 'characters';
     inp.addEventListener('input', () => { this.seedTxt = inp.value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 9); inp.value = this.seedTxt; this.drawCard(); csfx('card', 0.8); });
-    inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') this.feedCard(); if (e.key === 'Escape') this.toConsole(); });
+    inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') this.feedCard(); if (e.key === 'Escape') this.toMain(); });
     c.addEventListener('pointerdown', (e) => { e.stopPropagation(); inp.focus(); });
     c.style.display = 'block';
-    setTimeout(() => inp.focus(), 50);
-    this.backEl.style.display = 'none';
+    setTimeout(() => inp.focus({ preventScroll: true }), 50);
   }
   private cardKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') { this.toConsole(); return; }
+    if (e.key === 'Escape') { this.toMain(); return; }
     if (e.key === 'Enter') { this.feedCard(); return; }
     if (e.key === 'Backspace') { this.seedTxt = this.seedTxt.slice(0, -1); this.drawCard(); csfx('tick'); return; }
     if (/^[0-9a-zA-Z]$/.test(e.key) && this.seedTxt.length < 9) { this.seedTxt += e.key.toUpperCase(); this.drawCard(); csfx('card', 0.8); }
   }
   private drawCard() {
-    const cols = this.cardEl.querySelectorAll('.col');
-    cols.forEach((col, i) => {
+    this.cardEl.querySelectorAll('.col').forEach((col, i) => {
       const ch = this.seedTxt[i] ?? '';
       (col.querySelector('.ch') as HTMLElement).innerHTML = ch || '&nbsp;';
       const code = ch ? parseInt(ch, 36) : -1;
       col.querySelectorAll('i').forEach((h, k) => h.classList.toggle('p', code >= 0 && (code % 10 === k || (code >= 10 && Math.floor(code / 10) - 1 === k % 3 && k < 3))));
     });
     const inp = this.cardEl.querySelector('input'); if (inp && inp.value !== this.seedTxt) inp.value = this.seedTxt;
-    this.room.nixies.set(this.seedTxt ? String(Math.abs(parseInt(this.seedTxt, 36) || 1) % 1e6).padStart(6, '0') : '000000');
+    this.nix.set(this.seedTxt ? String(Math.abs(parseInt(this.seedTxt, 36) || 1) % 100).padStart(2, '0') : '--');
   }
   private feedCard() {
     if (!this.seedTxt) { csfx('deny'); return; }
     const seed = Math.abs(parseInt(this.seedTxt, 36) || 1) % 1e9;
-    this.closeCard(); csfx('cardFeed');
-    const rd = this.room.reader; this.lamp(rd, true);
-    this.busy = true;
-    this.play(rd, 1, 0.5, () => { csfx('relay'); this.launch(seed); });
+    this.closeCard(); csfx('cardFeed'); kickSign(this.seedTag, 0.8);
+    this.busy = true; setTimeout(() => { this.busy = false; this.launch(seed); }, 450);
   }
-  private closeCard() {
-    this.cardEl.style.display = 'none'; this.cardEl.innerHTML = '';
-    if (this.mode === 'card') this.mode = 'console';
-    const rd = this.room.reader; if (rd.anim < 0) this.play(rd, 0, 0.3);
-  }
+  private closeCard() { this.cardEl.style.display = 'none'; this.cardEl.innerHTML = ''; if (this.mode === 'card') this.mode = 'main'; }
 
   // ------------------------------------------------------------------ the launch
   private async launch(seed: number, offspring?: ArchiveEntry) {
     if (this.mode === 'launch') return;
-    this.mode = 'launch'; this.busy = true; this.clearHover();
-    this.detEl.style.display = 'none'; this.backEl.style.display = 'none';
+    this.closePanels(); this.mode = 'launch'; this.busy = true; this.clearHover();
     this.root.classList.add('hide');
-    const R = this.room, G = this.golem, start = R.golemAt.clone();
-    const head = () => G.headPos(new V3());
+    const met = this.meteor, M = met.group.position.clone();
+    const toPlanet = PLANET.clone().addScaledVector(M.clone().sub(PLANET).normalize(), PLANET_R * 1.02).sub(M).normalize();
+    const side = new V3().crossVectors(toPlanet, new V3(0, 1, 0)).normalize();
     const end = () => { this.close(() => (offspring ? this.opts.onLaunch(offspring) : this.opts.onNew(seed))); };
-    const skipped = await this.cine.play(async (c) => {
+    await this.cine.play(async (c) => {
       c.cam.cut(this.cam.position.clone(), this.camLook.clone(), this.cam.fov);
-      // ---- alarm: klaxons, beacons, red light, the room dims
-      let alarm = true;
-      c.task((dt, t) => {
-        if (!alarm) return true;
-        const k = 0.5 + 0.5 * Math.sin(t * 7);
-        R.alarm.intensity = 6 + k * 14;
-        for (const l of R.roomLights) l.intensity = Math.max(1.2, l.intensity - dt * 8);
-        for (const b of R.beacons) { b.head.rotation.y += dt * 6; b.light.intensity = 30; b.mat.color.set(0xffa432); }
-        return false;
-      });
-      let kl = 0; c.task((dt) => { if (!alarm) return true; kl -= dt; if (kl <= 0) { c.sfx('klaxon', 0.55); kl = 0.95; } return false; });
-      c.cam.move({ pos: new V3(0, 1.6, 2.75), look: new V3(0, 1.16, 1.3), fov: 34, dur: 1.2, ease: 'inOut' });
       c.stamp(offspring ? `OFFSPRING OF ${offspring.name.toUpperCase()} · SEED ${seed}` : `TARGET SEED ${seed}`, true);
-      for (let n = 10; n >= 7; n--) { R.nixies.set(String(n).padStart(6, '0')); c.sfx('beep', 0.6, n === 10 ? 1 : 0.9); await c.wait(0.45); }
-      // ---- the cradle: clamps bite, steam, the golem turns to the window, the shutter opens
-      c.cam.cut(new V3(start.x - 1.7, 0.85, start.z + 3.3), new V3(start.x + 0.3, 2.3, start.z - 6), 46);
-      c.cam.move({ pos: new V3(start.x - 1.1, 1.05, start.z + 2.4), look: new V3(start.x + 0.15, 2.1, start.z - 6), dur: 4.4, ease: 'inOut' });
-      c.sfx('clamp'); c.sfx('steam', 0.8);
-      c.tween(0.5, (u) => { R.clamps[0].rotation.z = -u * 0.12; R.clamps[1].rotation.z = u * 0.12; }, 'outBack');
-      const yaw0 = G.root.rotation.y;
-      c.tween(1.6, (u) => { G.root.rotation.y = yaw0 + (Math.PI - yaw0) * u; }, 'inOut');
-      c.task((_, t) => { if (t > 4) return true; if (Math.random() < 0.4) this.fx.burst(start.x + (Math.random() - 0.5) * 1.4, 0.3, start.z + (Math.random() - 0.5) * 1.4, 4, 0xd8d8d0, { speed: 0.7, up: 1.8, size: 2.5, life: 1.3, grav: -0.4 }); return false; });
-      c.sfx('servo', 0.8, 0.6);
-      c.tween(2.4, (u) => { R.shutters[0].position.x = -1.05 - u * 2.3; R.shutters[1].position.x = 1.05 + u * 2.3; }, 'inOut');
-      for (let n = 6; n >= 4; n--) { R.nixies.set(String(n).padStart(6, '0')); c.sfx('beep', 0.6, 0.9); await c.wait(0.5); }
-      // ---- the shell closes round it
-      this.shell.visible = true; this.shell.position.copy(start).setY(start.y + 0.95);
-      G.cast(new V3(start.x, 1.2, -30));
-      c.sfx('crunch', 0.9); c.sfx('hum', 0.8);
-      c.tween(1.2, (u) => this.shell.scale.setScalar(Math.max(0.001, u)), 'outBack');
-      c.cam.cut(new V3(start.x + 2.2, 1.0, start.z + 2.6), new V3(start.x, 1.1, start.z), 34);
-      for (let n = 3; n >= 1; n--) { R.nixies.set(String(n).padStart(6, '0')); c.sfx('beep', 0.7, 0.8); await c.wait(0.5); }
-      R.nixies.set('000000'); c.sfx('beepHi', 0.8);
-      // ---- ignition
-      alarm = false; R.alarm.intensity = 0;
-      c.flash('#fff2d0', 0.5, 0.9); c.sfx('ignite'); c.sfx('boom', 0.8); c.cam.shake(0.25, 0.8);
-      const roar = c.loop('engine', 1);
-      c.sfx('launch', 0.9);
-      let z = start.z, v = 0; const sm = this.shell.material as THREE.MeshLambertMaterial;
-      G.root.visible = false;
+      // the other signs swing away; the NEW WORLD sign stays to count it down
+      this.signs.forEach((s, i) => { if (s.id !== 'new') { kickSign(s, 0.7); setTimeout(() => (s.gone = 1), 120 + i * 90); } });
+      this.title.gone = 0.6; this.gearTag.gone = 1;
+      c.cam.move({ pos: M.clone().add(new V3(3.4, 1.4, 5.4)), look: M.clone().add(new V3(1.6, 0, 0)), fov: 34, dur: 1.6, ease: 'inOut' });
+      c.tween(5.2, (u) => { this.launchK = u; }, 'in');
+      for (let n = 5; n >= 1; n--) { this.nix.set(String(n).padStart(2, '0')); c.sfx('beep', 0.6, n === 1 ? 1.3 : 1); kickSign(this.signs[0], 0.15); await c.wait(0.8); }
+      this.nix.set('00'); c.sfx('beepHi', 0.8);
+      // ignition
+      this.signs[0].gone = 1; kickSign(this.signs[0], 1.2);
+      c.flash('#fff2d0', 0.5, 0.85); c.sfx('ignite'); c.sfx('boom', 0.8); c.cam.shake(0.25, 0.8);
+      const roar = c.loop('engine', 1); c.sfx('launch', 0.9);
+      const fm = this.fire.material as THREE.MeshBasicMaterial;
+      let s = 0, v = 0;
       c.task((dt) => {
-        v += dt * (z > -10 ? 22 : 40); z -= v * dt;
-        const y = start.y + 0.95 + Math.max(0, -10 - z) * 0.12;
-        R.cradle.position.z = Math.max(-10, z);
-        this.shell.position.set(start.x - Math.max(0, -10 - z) * 0.08, y, z);
-        this.shell.rotation.x -= dt * 3; this.shell.rotation.z += dt * 1.3;
-        sm.emissiveIntensity = Math.min(1.6, Math.max(0, -z - 6) * 0.06);
-        const p = this.shell.position;
-        for (let i = 0; i < 7; i++) this.fx.glow.emit(p.x + (Math.random() - 0.5) * 1.1, p.y + (Math.random() - 0.5) * 1.1, p.z + 0.6 + Math.random() * 0.8, (Math.random() - 0.5) * 0.8, (Math.random() - 0.5) * 0.8, 0.5 + Math.random(), new THREE.Color(Math.random() < 0.5 ? 0xffa040 : 0xff5a20).multiplyScalar(2.2), 1, 2 + Math.random() * 1.6, 0.45, 0, 1.5);
-        if (z > -10 && Math.random() < 0.8) this.fx.burst(start.x + (Math.random() < 0.5 ? -0.45 : 0.45), 0.15, Math.max(-10, z) + 0.5, 3, 0xffd070, { glow: true, speed: 2.5, up: 1.4, size: 2, life: 0.4, grav: 7 });
+        v += dt * 26; s += v * dt;
+        met.group.position.copy(M).addScaledVector(toPlanet, s);
+        met.group.rotation.x += dt * 1.2; met.group.rotation.z += dt * 0.6;
+        fm.opacity = Math.min(0.75, fm.opacity + dt * 1.5); this.fire.scale.setScalar(1 + Math.sin(this.t * 30) * 0.03);
+        const p = met.group.position;
+        for (let i = 0; i < 8; i++) this.fx.glow.emit(p.x + (Math.random() - 0.5) * 2.4, p.y + (Math.random() - 0.5) * 2.4, p.z + (Math.random() - 0.5) * 2.4, -toPlanet.x * 2 + (Math.random() - 0.5), -toPlanet.y * 2 + (Math.random() - 0.5), -toPlanet.z * 2 + (Math.random() - 0.5), new THREE.Color(Math.random() < 0.5 ? 0xffa040 : 0xff5a20).multiplyScalar(2.2), 1, 2.5 + Math.random() * 2, 0.5, 0, 1.4);
         return false;
       });
-      // ---- chase it out of the window at the planet
-      c.cam.track(() => ({ pos: this.shell.position.clone().add(new V3(2.3, 1.7, 4.4)), look: this.shell.position.clone().add(new V3(-0.2, 0, -2.5)) }), 14);
-      c.cam.move({ fov: 60, dur: 2.2, ease: 'in' });
-      await c.until(() => this.shell.position.z < -24, 6);
-      c.cam.track(() => ({ pos: this.shell.position.clone().add(new V3(1.8, 1.4, 4.0)), look: this.shell.position.clone().lerp(this.globe.group.position, 0.35) }), 10);
-      c.cam.move({ fov: 44, dur: 1.5 });
-      c.say(offspring ? `Offspring of ${offspring.name}, away.` : 'Unit Seven is away. Godspeed, big fella.', { who: 'Launch Control', style: 'radio', pitch: 0.8 });
-      await c.wait(1.7);
-      roar.stop(0.6);
-      c.sfx('whoosh', 1, 1.4);
+      c.cam.track(() => ({ pos: met.group.position.clone().addScaledVector(toPlanet, -8).addScaledVector(side, 2.6).add(new V3(0, 2.2, 0)), look: met.group.position.clone().addScaledVector(toPlanet, 4) }), 9);
+      c.cam.move({ fov: 52, dur: 2.0, ease: 'in' });
+      c.say(offspring ? `Offspring of ${offspring.name}, away.` : 'Unit Seven is away. Godspeed, big fella.', { who: 'Station Four', style: 'radio', pitch: 0.8 });
+      await c.until(() => met.group.position.distanceTo(PLANET) < PLANET_R * 1.6, 5);
+      roar.stop(0.5); c.sfx('whoosh', 1, 1.4);
       await c.fade(1, 0.5, '#fff6e8');
-      await c.wait(0.3);
+      await c.wait(0.25);
     }, { name: 'launch' });
-    void skipped;
     end();
   }
-  /** fade, then leave */
   private leave(then: () => void, dur = 0.8) {
     this.mode = 'away'; this.clearHover();
     this.cine.ui.fade(1, dur);
@@ -484,84 +490,63 @@ export class MenuScreen implements Screen {
   // ------------------------------------------------------------------ the frame
   update(dt: number) {
     this.t += dt;
-    const t = this.t, R = this.room;
+    const t = this.t, met = this.meteor, L = this.launchK;
     this.cine.update(dt);
-    // the worlds turn
-    this.globe.group.rotation.y += dt * 0.012; this.globe.mat.uniforms.uT.value = t;
-    this.moon.rotation.y += dt * 0.05;
-    for (const w of this.worlds) { w.g.group.rotation.y += dt * (this.focus >= 0 && this.worlds[this.focus] === w ? 0.5 : 0.18); w.g.mat.uniforms.uT.value = t; }
-    // control animations and hover
-    for (let i = this.anims.length - 1; i >= 0; i--) {
-      const a = this.anims[i]; a.t += dt; const u = Math.min(1, a.t / a.dur), e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
-      a.c.anim = a.from + (a.to - a.from) * e;
-      if (u >= 1) { this.anims.splice(i, 1); a.done?.(); }
+    // the meteor turns and drifts; its fissures breathe; the swarm orbits; dust glitters
+    if (this.mode !== 'launch' || L < 1) {
+      met.group.rotation.set(Math.sin(t * 0.13) * 0.12 + L * 0.4, Math.sin(t * 0.09) * 0.42 + t * 0.015, Math.sin(t * 0.11 + 1) * 0.08);
+      if (this.mode !== 'launch') met.group.position.set(M0.x, M0.y + Math.sin(t * 0.32) * 0.13, M0.z + Math.sin(t * 0.21) * 0.08);
     }
-    for (const c of R.controls) {
-      c.hover += ((c === this.hovered ? 1 : 0) - c.hover) * Math.min(1, dt * 12);
-      c.pose(c.id === 'archive' ? c.anim : c.anim);
-      if (c.lamp && c !== this.hovered && c.anim === 0 && !this.busy && c.enabled) c.lamp.color.set(new THREE.Color(c.lampCol).multiplyScalar(0.18 + c.hover * 0.8 + (Math.sin(t * 2 + c.root.position.x) > 0.96 ? 0.3 : 0)));
-      else if (c.lamp && c === this.hovered) c.lamp.color.set(c.enabled ? c.lampCol : Math.sin(t * 14) > 0 ? 0xff2a14 : 0x401010);
-    }
-    // the golem watches the operator (or the pointer) until it is fired
-    if (this.mode !== 'launch') {
-      const look = this.ptrIn ? this.ray.ray.at(6, new V3()) : this.cam.position.clone();
-      this.golem.look.lerp(look, Math.min(1, dt * 3));
-    }
-    this.golem.update(dt, this.cam);
+    met.t.value = t; met.glow.value = 1 + L * 2.6 + (this.hovered?.id === 'new' ? 0.4 : 0);
+    this.glowLight.intensity = 3.5 + L * 16;
+    const ls = this.hovered ?? (this.hoverGear ? this.gearTag : null);
+    if (ls) this.lamp.position.lerp(ls.pos.clone().add(new V3(0, ls.h * 0.9, 0.75)), Math.min(1, dt * 10));
+    this.lamp.intensity += ((ls ? 6 + Math.sin(t * 31) * 0.25 : 0) - this.lamp.intensity) * Math.min(1, dt * 9);
+    this.swarm.group.position.copy(met.group.position); this.swarm.update(dt, L);
+    this.dust.points.position.copy(met.group.position); this.dust.update(t);
+    // the lens follows the pointer
+    const px = this.ptrIn ? this.ndc.x : Math.sin(t * 0.3) * 0.3, py = this.ptrIn ? this.ndc.y : Math.sin(t * 0.23) * 0.2;
+    met.pupil.position.x += (Math.max(-1, Math.min(1, px + 0.5)) * 0.1 - met.pupil.position.x) * Math.min(1, dt * 6);
+    met.pupil.position.y += (py * 0.08 - met.pupil.position.y) * Math.min(1, dt * 6);
+    (met.pupil.material as THREE.MeshBasicMaterial).color.set(0x8fd0b8).multiplyScalar(1 + L * 1.6 + Math.max(0, Math.sin(t * 2.4)) * 0.15);
+    this.globe.group.rotation.y += dt * 0.008; this.globe.mat.uniforms.uT.value = t;
+    // the signs: springs, swings, chains
+    for (const s of this.signs) stepSign(s, dt, t);
+    stepSign(this.title, dt, t); stepSign(this.gearTag, dt, t);
+    for (const w of this.worlds) { w.g.group.rotation.y += dt * (this.focus >= 0 && this.worlds[this.focus] === w ? 0.5 : 0.15); w.g.mat.uniforms.uT.value = t; w.tag.hover = this.hoverWorld >= 0 && this.worlds[this.hoverWorld] === w ? 1 : 0; stepSign(w.tag, dt, t); w.g.group.position.y = w.at.y + Math.sin(t * 0.5 + w.at.x) * 0.06; }
+    if (this.emptyTag) stepSign(this.emptyTag, dt, t);
+    for (const ch of this.chains) ch.c.update(ch.a(), ch.b(), ch.sag);
+    // the cog
+    this.gearHover += ((this.hoverGear ? 1 : 0) - this.gearHover) * Math.min(1, dt * 8);
+    this.gearSpin *= Math.exp(-dt * 1.5);
+    this.gear.mesh.rotation.z -= dt * (0.25 + this.gearHover * 2.2 + this.gearSpin);
+    this.gear.mesh.rotation.y = Math.sin(t * 0.4) * 0.15 - 0.25; this.gear.mesh.position.y = -2.35 + Math.sin(t * 0.6) * 0.05;
     this.fx.update(dt, innerHeight, this.cam.fov);
-    // idle telemetry on the CRTs and the mission clock on the nixies
-    if (Math.floor(t * 8) !== Math.floor((t - dt) * 8)) this.drawCRT();
-    if (this.mode === 'console' && !this.busy) { const d = new Date(); this.room.nixies.set(`${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}${String(d.getSeconds()).padStart(2, '0')}`); }
-    // the camera: a drift, a lean toward the pointer, and the mode's framing
+    // the camera: a drift and a lean toward the pointer, framed by the mode
     if (this.cine.active) { this.cine.apply(this.cam); return; }
-    const px = this.ptrIn ? this.ndc.x : 0, py = this.ptrIn ? this.ndc.y : 0;
-    this.par.x += (px - this.par.x) * Math.min(1, dt * 2.5); this.par.y += (py - this.par.y) * Math.min(1, dt * 2.5);
-    let pos: THREE.Vector3, look: THREE.Vector3, fov = 50;
+    const qx = this.ptrIn ? this.ndc.x : 0, qy = this.ptrIn ? this.ndc.y : 0;
+    this.par.x += (qx - this.par.x) * Math.min(1, dt * 2.2); this.par.y += (qy - this.par.y) * Math.min(1, dt * 2.2);
+    let pos: THREE.Vector3, look: THREE.Vector3, fov = 38;
     if (this.mode === 'archive') {
       const w = this.focus >= 0 ? this.worlds[this.focus] : null;
-      if (w) { const top = R.stands[w.i].top; pos = top.clone().add(new V3(-1.7, 0.25, 1.0)); look = top.clone().add(new V3(0, -0.05, 0)); fov = 36; }
-      else { pos = new V3(2.4, 1.9, 1.6); look = new V3(5.6, 1.3, -2.6); fov = 48; }
-    } else if (this.mode === 'card') {
-      const p = new V3(); R.reader.root.getWorldPosition(p);
-      pos = p.clone().add(new V3(0, 0.75, 0.85)); look = p.clone().add(new V3(0, 0, -0.1)); fov = 40;
-    } else { pos = new V3(0, 2.35, 4.2); look = new V3(0.3, 0.95, -4.5); }
-    pos.x += this.par.x * 0.32 + Math.sin(t * 0.13) * 0.06; pos.y += this.par.y * 0.16 + Math.sin(t * 0.21) * 0.03;
-    look.x += this.par.x * 0.8; look.y += this.par.y * 0.4;
-    const k = 1 - Math.exp(-dt * 3);
+      if (w) { pos = w.at.clone().add(new V3(-0.8, 0.1, 3.2)); look = w.at.clone().add(new V3(0.55, -0.2, 0)); fov = 34; }
+      else { pos = ARCH.clone().add(new V3(0, 0.4, 9.5)); look = ARCH.clone().add(new V3(0, -0.1, 0)); fov = 40; }
+    } else if (this.mode === 'settings' || this.mode === 'card') { pos = new V3(0.2, 0.4, 10.6); look = new V3(0.1, 0.15, 0); fov = 40; }
+    else { pos = new V3(0.5, 0.25, 9.4); look = new V3(0.6, 0.0, 0); }
+    pos.x += this.par.x * 0.42 + Math.sin(t * 0.11) * 0.12; pos.y += this.par.y * 0.24 + Math.sin(t * 0.17) * 0.07;
+    look.x += this.par.x * 0.3; look.y += this.par.y * 0.18;
+    const k = 1 - Math.exp(-dt * 2.4);
     this.camPos.lerp(pos, k); this.camLook.lerp(look, k);
     this.cam.position.copy(this.camPos); this.cam.lookAt(this.camLook);
     if (Math.abs(this.cam.fov - fov) > 0.01) { this.cam.fov += (fov - this.cam.fov) * k; this.cam.updateProjectionMatrix(); }
     this.cam.updateMatrixWorld();
     if (this.ptrIn && !this.downAt) this.pick();
   }
-  private drawCRT() {
-    const [a, b] = this.room.crt, t = this.t;
-    a.clear();
-    a.text('U.S.P.C. LAUNCH CONTROL 4', 4, 4, 0x7ae088);
-    a.text('UNIT 07 · STATUS', 4, 12, 0x43b65a);
-    a.text(this.mode === 'launch' ? 'IGNITION' : this.busy ? 'ARMED' : 'READY', 4, 20, this.mode === 'launch' ? 0xffcd6e : 0xc0ffc6);
-    a.text(`ARCHIVE ${String(this.opts.archive.length).padStart(2, '0')}`, 4, 30, 0x43b65a);
-    a.text(`CRADLE PSI ${String(1200 + Math.round(Math.sin(t * 0.7) * 40))}`, 4, 38, 0x43b65a);
-    if (Math.floor(t * 2) % 2) a.text('_', 4 + 4 * 9, 20, 0xc0ffc6);
-    const g = a.g; g.strokeStyle = '#2a8c42'; g.lineWidth = 1;
-    g.beginPath(); for (let x = 0; x < 88; x++) { const y = 54 + Math.sin(x * 0.25 + t * 4) * 4 * Math.sin(t * 0.7 + x * 0.05); x ? g.lineTo(4 + x, y) : g.moveTo(4, y); } g.stroke();
-    a.scan(); a.flush();
-    b.clear();
-    b.text('TRAJECTORY', 4, 4, 0x7ae088);
-    const gg = b.g; gg.strokeStyle = '#1b6630';
-    gg.beginPath(); gg.arc(64, 36, 18, 0, Math.PI * 2); gg.stroke();
-    gg.fillStyle = '#43b65a'; gg.beginPath(); gg.arc(64, 36, 8, 0, Math.PI * 2); gg.fill();
-    gg.strokeStyle = '#7ae088'; gg.setLineDash([2, 2]); gg.beginPath(); gg.moveTo(8, 58); gg.quadraticCurveTo(30, 10, 56, 32); gg.stroke(); gg.setLineDash([]);
-    const u = (t * 0.25) % 1, bx = 8 + (56 - 8) * u, by = (1 - u) * (1 - u) * 58 + 2 * (1 - u) * u * 10 + u * u * 32;
-    gg.fillStyle = '#ffcd6e'; gg.fillRect(Math.round(bx) - 1, Math.round(by) - 1, 3, 3);
-    b.text('ETA 21D', 4, 54, 0x43b65a);
-    b.scan(); b.flush();
-  }
   render(post: Post, t: number) {
-    resetGrade(post.grade); post.grade.bloom = 0.55; post.grade.vig = 0.42;
+    resetGrade(post.grade); post.grade.bloom = 0.45; post.grade.vig = 0.5; post.grade.sat = 0.96;
     post.render(this.scene, this.cam, this.fxScene, t);
   }
-  resize(w: number, h: number) { this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); }
+  resize(w: number, h: number) { this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); fontVars(); }
   private close(then: () => void) {
     if (this.closed) return;
     this.closed = true; this.dispose(); then();
@@ -573,6 +558,7 @@ export class MenuScreen implements Screen {
     this.root.remove(); this.cine.dispose(); Tip.hide(); document.body.style.cursor = '';
   }
 }
+
 // ================================================================== ASCENSION
 /** the newsreel at the end of a world: the regions go over one by one, the borders dissolve, a flag goes up */
 export class AscendScreen implements Screen {

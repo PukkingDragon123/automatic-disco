@@ -12,8 +12,7 @@ import type { Species } from '../game/species';
 import type { Game } from '../game/game';
 import { GENE, GENES, LINEAGE_NAMES, type GeneCat } from '../life/genes';
 import { pheno, nameFor, type Design } from '../life/design';
-import { toast, Tip, costHTML } from './kit';
-import { icon } from './pixelart';
+import { toast, Tip } from './kit';
 import { sfx } from '../audio/audio';
 import { Rand, clamp } from '../core/rand';
 import { LabScene, TANK } from './labScene';
@@ -183,10 +182,10 @@ export class Forge implements Screen {
       const lv = this.run.genes.get(id)?.level;
       const meta = g.cat === 'body' ? `${LINEAGE_NAMES[g.lineage].toUpperCase()} FRAME` : `${CAT_SHORT[g.cat]} · ${LINEAGE_NAMES[g.lineage].toUpperCase()}`;
       const foreign = g.lineage !== d.lineage && g.cat !== 'body';
-      const tag = on ? (t === 'genome' ? TABS[tabOf(id)].short : 'IN') : why ? 'LOCKED' : foreign ? 'SPLICE' : 'GRAFT';
+      const tag = on ? (t === 'genome' ? '' : g.cat === 'body' ? 'CURRENT' : 'GRAFTED') : why ? 'LOCKED' : foreign ? 'SPLICE' : '';
       const tip = `<h4>${g.name}</h4>${g.desc}<div class="sub" style="margin-top:3px">${fxLine(g, 6) || 'No direct stat effect.'}</div>`
         + (why ? `<div class="tip-warn">${why}</div>` : on ? (t === 'genome' ? '<div class="sub">Click to open its body area.</div>' : g.cat === 'body' ? '<div class="sub">The current body plan.</div>' : '<div class="sub">Installed. Click to remove it.</div>') : `<div class="sub">${foreign ? 'Cross-lineage splice. ' : ''}Click to graft it on.</div>`);
-      return { gene: id, name: g.cat === 'body' && g.plan ? PLAN_NAME[g.plan] : g.name, meta, fx: g.cat === 'body' && g.plan ? `${({ hexapod: '6 LEGS', octopod: '8 LEGS', quadruped: '4 LEGS', biped: '2 LEGS', hexapodV: '6 LEGS', hominid: '2 LEGS', serpent: 'NO LEGS', gastropod: 'ONE FOOT' } as Record<string, string>)[g.plan]} · ${g.tier === 3 ? 'RARE' : g.tier === 2 ? 'UNCOMMON' : 'COMMON'}` : fxLine(g), state: on ? 'on' : why ? 'lock' : 'ok', tag, col: CAT_COL[g.cat], lv, tip };
+      return { cat: g.cat, foreign, gene: id, name: g.cat === 'body' && g.plan ? PLAN_NAME[g.plan] : g.name, meta, fx: g.cat === 'body' && g.plan ? `${({ hexapod: '6 LEGS', octopod: '8 LEGS', quadruped: '4 LEGS', biped: '2 LEGS', hexapodV: '6 LEGS', hominid: '2 LEGS', serpent: 'NO LEGS', gastropod: 'ONE FOOT' } as Record<string, string>)[g.plan]} · ${g.tier === 3 ? 'RARE' : g.tier === 2 ? 'UNCOMMON' : 'COMMON'}` : fxLine(g), state: on ? 'on' : why ? 'lock' : 'ok', tag, col: CAT_COL[g.cat], lv, tip };
     };
     if (t === 'genome') {
       const ids = [...d.genes].filter((id) => GENE[id]).sort((a, b) => TAB_ORDER.indexOf(tabOf(a)) - TAB_ORDER.indexOf(tabOf(b)));
@@ -205,7 +204,7 @@ export class Forge implements Screen {
     const title = t === 'genome' ? `GENOME · ${d.genes.length} GENES` : TABS[t].name;
     const sub = t === 'genome' ? 'Click a part of the specimen, or a tab, to change it.' : TABS[t].desc;
     this.ui.setTab(t, this.hintTabs, counts, title, sub);
-    this.ui.setCards(L, t !== 'genome' && !L.length ? `NO ${TABS[t].name} GENES YET · ABSORB MORE CREATURES` : t === 'genome' && !L.length ? 'THE TANK IS EMPTY' : undefined);
+    this.ui.setCards(L, t !== 'genome' && !L.length ? `NO ${TABS[t].name} GENES YET. ABSORB MORE CREATURES.` : t === 'genome' && !L.length ? 'THE TANK IS EMPTY' : undefined, t);
     this.icons.set(this.ui.cards.map((c, i) => ({ el: (c as HTMLDivElement & { win?: HTMLElement }).win!, gene: L[i].gene })), d);
   }
   private pickCard(i: number) {
@@ -237,15 +236,20 @@ export class Forge implements Screen {
       ['ATTACK', st.attack, 40, st.attack.toFixed(1)], ['SIGHT', st.sight, 30, `${st.sight.toFixed(0)} M`], ['STEALTH', st.stealth, 0.9, `${Math.round(st.stealth * 100)}%`],
       ['UPKEEP', st.upkeep, 0.6, st.upkeep.toFixed(2)], ['BROOD', st.litter, 5, `${st.litter} / ${Math.round(st.gestation)}S`],
     ];
-    this.ui.stats.innerHTML = `<div class="lb-mass">${PLAN_NAME[this.d.plan].toUpperCase()} · ${p.length.toFixed(2)} M · ${st.mass < 10 ? st.mass.toFixed(1) : Math.round(st.mass)} KG · ${p.diet === 'carn' ? 'CARNIVORE' : p.diet === 'herb' ? 'HERBIVORE' : p.diet === 'scav' ? 'SCAVENGER' : 'OMNIVORE'}${p.canFly ? ' · FLIES' : ''}</div>`
-      + rows.map(([n, v, max, txt]) => `<div class="lb-stat"><span>${n}</span><div class="lb-sbar"><div class="${n === 'UPKEEP' ? 'dn' : ''}" style="width:${clamp(v / max, 0, 1) * 100}%"></div></div><span class="v">${txt}</span></div>`).join('');
     const inv = invalid(this.ctx, this.d);
     const splice = spliceLevel(this.ctx);
-    const notes = [...p.warnings.map((w) => `<div class="tip-warn">▲ ${w}</div>`), ...(inv ? [`<div class="tip-warn">■ ${inv}</div>`] : [])];
-    this.ui.warn.innerHTML = (notes.join('') || '<div style="color:var(--hot)">ANATOMY SOUND. VIABLE.</div>') + `<div style="color:var(--dim);margin-top:2px">SPLICE ${splice >= 2 ? 'OPEN: ANY LINEAGE' : splice === 1 ? 'PARTIAL: ORGANS ONLY' : 'CLOSED: ONE LINEAGE'}${this.run.skills?.has('vat') ? ' · VAT ONLINE' : ''}</div>`;
     const lim = limits(this.ctx);
-    this.ui.slots.innerHTML = (['limb', 'sense', 'feed', 'defense', 'meta', 'repro'] as GeneCat[]).map((c) => { const n = this.d.genes.filter((g) => GENE[g]?.cat === c).length; return `<div class="${n >= lim[c] ? 'full' : ''}">${CAT_SHORT[c]}<b>${n}/${lim[c]}</b></div>`; }).join('') + `<div>TOTAL<b>${this.d.genes.length}</b></div>`;
-    this.ui.cost.innerHTML = `<span>DESIGN</span><span class="c-chg"><img src="${icon('helix')}">${cost(this.d)}</span><span>/ ${Math.floor(this.helix())}</span><span>· EACH</span>${costHTML(p.cost, Math.round(st.armor * 60))}<span>· ${p.buildTime.toFixed(0)}S</span>`;
+    const helix = Math.floor(this.helix());
+    this.ui.record({
+      name: this.d.name, latin: this.d.latin, plan: PLAN_NAME[this.d.plan].toUpperCase(), diet: p.diet === 'carn' ? 'CARNIVORE' : p.diet === 'herb' ? 'HERBIVORE' : p.diet === 'scav' ? 'SCAVENGER' : 'OMNIVORE',
+      length: `${p.length.toFixed(2)} M`, mass: `${st.mass < 10 ? st.mass.toFixed(1) : Math.round(st.mass)} KG`, flies: p.canFly,
+      stats: rows.map(([k, v, max, txt]) => ({ k, v: v / max, txt, dn: k === 'UPKEEP' })),
+      notes: [...p.warnings, ...(inv ? [inv + '.'] : [])].map((w) => w.replace(/\.$/, '') + '.'), viable: !inv || /helix|Name it/.test(inv),
+      splice: splice >= 2 ? 'ANY LINEAGE' : splice === 1 ? 'ORGANS ONLY' : 'ONE LINEAGE',
+      slots: (['limb', 'sense', 'feed', 'defense', 'meta', 'repro'] as GeneCat[]).map((c) => ({ k: CAT_SHORT[c], n: this.d.genes.filter((g) => GENE[g]?.cat === c).length, max: lim[c] })), total: this.d.genes.length,
+      cost: `${cost(this.d)} HELIX  (${helix} ON HAND)`, each: `Each grown: ${p.cost} biomass, ${Math.round(st.armor * 60)} minerals, ${p.buildTime.toFixed(0)} s. Splice: ${splice >= 2 ? 'any lineage' : splice === 1 ? 'organs only' : 'one lineage'}${this.run.skills?.has('vat') ? '; vat online' : ''}.`,
+      formNo: `No. ${String(this.run.reg.list.length + 1).padStart(4, '0')}`,
+    });
     this.ui.refresh();
   }
 

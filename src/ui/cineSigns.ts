@@ -5,7 +5,7 @@
 // nixie tubes; a pixel sun glare.
 import * as THREE from 'three';
 import { Pix, metal, rivet, dv, mixc, GM, BR, CR, RS, RD, INK } from './machine';
-import { gbuf, F_HOVER, type GFlag } from '../gfx/gbuf';
+import { gbuf, type GFlag } from '../gfx/gbuf';
 import { glyph7 } from './machine';
 
 const V3 = THREE.Vector3;
@@ -57,11 +57,11 @@ export function makeMeteor(R = 1.7, seed = 7): Meteor {
     C.set(ROCK[k]);
     // lichen-grey and rust patches
     const rust = fbm(nrm.x * 2.2 + 30, nrm.y * 2.2, nrm.z * 2.2, 2);
-    if (rust > 0.66) C.lerp(new THREE.Color(0x6a4030), 0.35);
+    if (rust > 0.66) C.lerp(new THREE.Color(0x5c4232), 0.3);
     const crack = Math.abs(fbm(nrm.x * 2.6 + 50, nrm.y * 2.6, nrm.z * 2.6, 3) - 0.5);
     const crack2 = Math.abs(vnoise(nrm.x * 5 + 70, nrm.y * 5, nrm.z * 5) - 0.5);
     let gl = crack < 0.022 ? 1 : crack < 0.04 ? 0.45 : crack2 < 0.018 ? 0.7 : 0;
-    if (gl > 0) C.set(gl > 0.6 ? 0x2a8c80 : 0x1d4a48);
+    if (gl > 0) C.set(gl > 0.6 ? 0x3d6f68 : 0x2a4644);
     for (let j = 0; j < 3; j++) { col.set([C.r, C.g, C.b], (f + j) * 3); glow[f + j] = gl; }
   }
   g0.setAttribute('color', new THREE.BufferAttribute(col, 3));
@@ -72,7 +72,7 @@ export function makeMeteor(R = 1.7, seed = 7): Meteor {
     sh.uniforms.uGlow = uGlow; sh.uniforms.uT = uT;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aGlow; varying float vGlow; varying vec3 vOP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlow = aGlow; vOP = position;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uGlow, uT; varying float vGlow; varying vec3 vOP;')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\nfloat pulse = 0.65 + 0.35 * sin(uT * 1.7 + vOP.x * 2.0 + vOP.y * 3.0);\ntotalEmissiveRadiance += vec3(0.25, 1.0, 0.85) * vGlow * uGlow * pulse * 1.6;');
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\nfloat pulse = 0.65 + 0.35 * sin(uT * 1.7 + vOP.x * 2.0 + vOP.y * 3.0);\ntotalEmissiveRadiance += vec3(0.42, 0.78, 0.7) * vGlow * uGlow * pulse * 0.9;');
   };
   m.customProgramCacheKey = () => 'menu-meteor';
   gbuf(m, 1);
@@ -80,12 +80,12 @@ export function makeMeteor(R = 1.7, seed = 7): Meteor {
   const group = new THREE.Group(); group.add(body);
   // the golem's lens, peeking out of the rock
   const lens = new THREE.Group();
-  const brass = gbuf(new THREE.MeshPhongMaterial({ color: 0xb08a40, shininess: 70, specular: 0xffe0a0, flatShading: true }), 1);
+  const brass = gbuf(new THREE.MeshLambertMaterial({ color: 0x8a7444, flatShading: true }), 1);
   const ring = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.075, 6, 18), brass); lens.add(ring);
   for (let i = 0; i < 8; i++) { const bolt = new THREE.Mesh(new THREE.SphereGeometry(0.03, 5, 4), brass); const an = (i / 8) * TAU; bolt.position.set(Math.cos(an) * 0.3, Math.sin(an) * 0.3, 0.06); lens.add(bolt); }
   const glass = new THREE.Mesh(new THREE.CircleGeometry(0.26, 20), gbuf(new THREE.MeshBasicMaterial({ color: 0x0a2a2c }), 1)); glass.position.z = -0.01; lens.add(glass);
-  const pupil = new THREE.Mesh(new THREE.CircleGeometry(0.11, 14), gbuf(new THREE.MeshBasicMaterial({ color: new THREE.Color(0x7affe0).multiplyScalar(1.6) }), 32)); pupil.position.z = 0.005; lens.add(pupil);
-  const glint = new THREE.Mesh(new THREE.CircleGeometry(0.035, 6), gbuf(new THREE.MeshBasicMaterial({ color: 0xffffff }), 32)); glint.position.set(-0.07, 0.08, 0.01); pupil.add(glint);
+  const pupil = new THREE.Mesh(new THREE.CircleGeometry(0.11, 14), gbuf(new THREE.MeshBasicMaterial({ color: new THREE.Color(0x8fd0b8) }), 32)); pupil.position.z = 0.005; lens.add(pupil);
+  const glint = new THREE.Mesh(new THREE.CircleGeometry(0.035, 6), gbuf(new THREE.MeshBasicMaterial({ color: 0xe8eef0 }), 32)); glint.position.set(-0.07, 0.08, 0.01); pupil.add(glint);
   const ln = new V3(0.5, 0.25, 0.83).normalize();
   lens.position.copy(shape(ln.clone().multiplyScalar(R))).multiplyScalar(0.97); lens.lookAt(lens.position.clone().multiplyScalar(2));
   group.add(lens);
@@ -94,7 +94,7 @@ export function makeMeteor(R = 1.7, seed = 7): Meteor {
   for (let i = 0; i < 6; i++) {
     const d = new V3(0.92, 0.75 - i * 0.3, 0.32 + (i % 2) * 0.12).normalize();
     const p = shape(d.clone().multiplyScalar(R)).multiplyScalar(0.98); anchors.push(p);
-    const eye = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.022, 5, 10), gbuf(new THREE.MeshPhongMaterial({ color: 0x5c646c, flatShading: true }), 1));
+    const eye = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.024, 5, 10), gbuf(new THREE.MeshLambertMaterial({ color: 0x4a4d4e, flatShading: true }), 1));
     eye.position.copy(p); eye.lookAt(p.clone().multiplyScalar(2)); group.add(eye);
     const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.03, 8), eye.material); plate.position.copy(p).multiplyScalar(0.995); plate.quaternion.setFromUnitVectors(new V3(0, 1, 0), p.clone().normalize()); group.add(plate);
   }
@@ -116,7 +116,7 @@ export function makeRockSwarm(n = 16, rMin = 2.2, rMax = 3.1) {
     for (let k = 0; k < p.count; k++) { v.fromBufferAttribute(p, k); v.multiplyScalar(0.75 + vnoise(v.x * 20 + i, v.y * 20, v.z * 20) * 0.5); p.setXYZ(k, v.x, v.y, v.z); }
     g.computeVertexNormals();
     const col = new Float32Array(p.count * 3), C = new THREE.Color();
-    for (let k = 0; k < p.count; k += 3) { C.set(ROCK[2 + Math.floor(h3(i, k, 5) * 4)]); if (h3(i, k, 9) < 0.08) C.set(0x2a8c80); for (let j = 0; j < 3; j++) col.set([C.r, C.g, C.b], (k + j) * 3); }
+    for (let k = 0; k < p.count; k += 3) { C.set(ROCK[2 + Math.floor(h3(i, k, 5) * 4)]); if (h3(i, k, 9) < 0.05) C.set(0x3d6f68); for (let j = 0; j < 3; j++) col.set([C.r, C.g, C.b], (k + j) * 3); }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     const m = new THREE.Mesh(g, mat); m.castShadow = true; group.add(m);
     const tilt = new THREE.Quaternion().setFromEuler(new THREE.Euler((h3(i, 1, 7) - 0.5) * 1.1, h3(i, 4, 7) * TAU, (h3(i, 6, 7) - 0.5) * 0.9));
@@ -154,7 +154,7 @@ void main(){ vec3 q = position; q.y += sin(uT * 0.3 + ph) * 0.08; q.x += cos(uT 
   gl_PointSize = floor(vS + 0.5); gl_Position = projectionMatrix * modelViewMatrix * vec4(q, 1.0); }`,
     fragmentShader: `layout(location = 1) out highp vec4 gNormal; varying float vA; varying float vS;
 void main(){ vec2 c = floor(gl_PointCoord * vS) - floor(vS * 0.5); float cross = (abs(c.x) < 0.5 || abs(c.y) < 0.5) ? 1.0 : 0.0; if (vS > 3.5 && cross < 0.5) discard;
-  gl_FragColor = vec4(vec3(0.75, 1.0, 0.95) * vA, vA); gNormal = vec4(0.0); }`,
+  gl_FragColor = vec4(vec3(0.86, 0.84, 0.76) * vA * 0.8, vA); gNormal = vec4(0.0); }`,
   });
   (m as any).__gb = true;
   const pts = new THREE.Points(g, m); pts.frustumCulled = false;
@@ -162,32 +162,44 @@ void main(){ vec2 c = floor(gl_PointCoord * vS) - floor(vS * 0.5); float cross =
 }
 
 // ================================================================== cast iron, painted
-/** a weathered iron plate: rolled steel, seams, rivets that bleed rust, chipped edges; w x h texels */
-export function ironPlate(w: number, h: number, seed: number, o: { rivetStep?: number; holes?: boolean; tone?: number[] } = {}) {
-  const p = new Pix(w, h), R = o.tone ?? GM;
-  metal(p, 0, 0, w, h, R, { seed, grime: 0.9, scratches: 1.2, base: R.length * 0.42, rough: 0.8 });
-  // bevel
-  for (let x = 0; x < w; x++) { p.set(x, 0, INK); p.set(x, h - 1, INK); p.set(x, 1, R[R.length - 2]); p.set(x, 2, R[R.length - 3]); p.set(x, h - 2, R[1]); p.set(x, h - 3, R[2]); }
-  for (let y = 0; y < h; y++) { p.set(0, y, INK); p.set(w - 1, y, INK); p.set(1, y, R[R.length - 2]); p.set(w - 2, y, R[1]); }
-  for (const [x, y] of [[0, 0], [1, 0], [0, 1], [w - 1, 0], [w - 2, 0], [w - 1, 1], [0, h - 1], [1, h - 1], [0, h - 2], [w - 1, h - 1], [w - 2, h - 1], [w - 1, h - 2]]) p.set(x, y, 0, 0);
-  // a recessed inner frame line
-  for (let x = 6; x < w - 6; x++) { p.set(x, 6, R[1], 180); p.set(x, h - 7, R[R.length - 3], 160); }
-  for (let y = 6; y < h - 6; y++) { p.set(6, y, R[1], 180); p.set(w - 7, y, R[R.length - 3], 160); }
-  // rust: streaks running down from the rivets, blooms in the corners
-  const step = o.rivetStep ?? 22;
-  const rivets: [number, number][] = [];
-  for (let x = 12; x <= w - 12; x += step) { rivets.push([x, 3]); rivets.push([x, h - 4]); }
-  for (let y = 3 + step; y < h - 4; y += step) { rivets.push([3, y]); rivets.push([w - 4, y]); }
-  for (const [x, y] of rivets) {
-    const len = 4 + Math.floor(h3(x, y, seed) * 14);
-    for (let k = 1; k < len; k++) { const a = 200 - k * (180 / len); p.set(x + (h3(x, k, seed) < 0.3 ? 1 : 0), y + k + 1, RS[Math.min(RS.length - 1, 1 + (k % 3))], a); }
-  }
+/** cast iron, painted texel by texel: a sand-cast grain, a raised rim worn to bare steel where hands go, four
+ * bolts, rust bleeding from the hang holes and a tide line along the bottom. Muted, physical, nothing neon. */
+const IRON = [0x1d1f21, 0x26282a, 0x2f3133, 0x373a3c, 0x3f4244, 0x4a4d4e, 0x5c5f5e, 0x767873, 0x8d8f8a];
+const RUST = [0x3a281c, 0x4a3322, 0x5c3f28, 0x6b4a2e, 0x7a5636];
+export function ironPlate(w: number, h: number, seed: number, o: { rim?: number; holes?: boolean; bolts?: boolean } = {}) {
+  const p = new Pix(w, h), rim = o.rim ?? Math.max(3, Math.round(Math.min(w, h) * 0.06));
+  const sand = (x: number, y: number) => h3(x, y, seed);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const n = h3(Math.floor(x / 3), Math.floor(y / 3), seed + 4), e = Math.min(x, y, w - 1 - x, h - 1 - y);
-    if (e < 9 && n < 0.18 + (9 - e) * 0.02 && h3(x, y, seed + 7) < 0.55) p.set(x, y, RS[1 + Math.floor(h3(x, y, seed) * 3)], 150);
+    // broad mottling from the casting, fine sand grain, a little darker toward the bottom where dirt settles
+    let v = 3.4 + (fbm(x / 23 + seed, y / 23, 0.5, 3) - 0.5) * 1.6 + (sand(x, y) - 0.5) * 0.9 - (y / h) * 0.5;
+    const e = Math.min(x, y, w - 1 - x, h - 1 - y);
+    if (e < rim) { // the raised rim: lit on the top and left, shadowed on the bottom and right
+      const lit = (y < rim && y <= x && y <= w - 1 - x) || (x < rim && x < y && x <= h - 1 - y);
+      v += lit ? 1.4 : -0.9;
+      if (e === rim - 1) v -= 1.2;
+    }
+    p.set(x, y, IRON[Math.max(0, Math.min(IRON.length - 1, Math.round(v)))]);
   }
-  for (const [x, y] of rivets) rivet(p, x, y, GM);
-  if (o.holes) for (const x of [Math.round(w * 0.12), Math.round(w * 0.88)]) { p.disc(x, 6, 3.2, INK); p.disc(x, 6, 2, 0x050505); p.set(x - 2, 4, R[R.length - 1]); }
+  // worn to bare steel along the top rim near the corners (where it is handled), two short scratches
+  for (const cx of [Math.round(w * 0.1), Math.round(w * 0.9)]) for (let x = cx - Math.round(w * 0.06); x < cx + Math.round(w * 0.06); x++) for (let y = 0; y < rim; y++) if (sand(x, y + 50) < 0.55 - Math.abs(x - cx) / (w * 0.12)) p.set(x, y, IRON[7 + (sand(x, y) < 0.3 ? 1 : 0)]);
+  const sc = (x0: number, y0: number, len: number, dx: number, dy: number) => { for (let k = 0; k < len; k++) { p.set(x0 + k * dx, y0 + k * dy, IRON[7], 200); p.set(x0 + k * dx, y0 + k * dy + 1, IRON[1], 160); } };
+  sc(Math.round(w * 0.31), Math.round(h * 0.72), Math.round(w * 0.09), 1, -0.08); sc(Math.round(w * 0.66), Math.round(h * 0.28), Math.round(w * 0.05), 1, 0.12);
+  // rust: bleeding down from the two hang holes, and a ragged tide line along the bottom
+  const holes = [Math.round(w * 0.12), Math.round(w * 0.88)];
+  if (o.holes) for (const hx of holes) {
+    for (let k = 0; k < Math.round(h * 0.55); k++) {
+      const spread = 1 + k * 0.05, fade = 1 - k / (h * 0.55);
+      for (let dx = -Math.ceil(spread); dx <= Math.ceil(spread); dx++) if (sand(hx + dx, k + 9) < fade * (1 - Math.abs(dx) / (spread + 1)) * 0.9) p.set(hx + dx + Math.round(Math.sin(k * 0.3 + hx) * 0.8), Math.round(h * 0.12) + k, RUST[Math.min(4, Math.round(fade * 3 + sand(dx, k) * 1.5))], Math.round(120 + fade * 110));
+    }
+  }
+  for (let x = rim; x < w - rim; x++) { const d = Math.round(2 + fbm(x / 9 + seed, 3.3, 1, 2) * h * 0.14); for (let y = h - rim - d; y < h - rim; y++) if (sand(x, y + 77) < 0.5 + (y - (h - rim - d)) / d * 0.4) p.set(x, y, RUST[1 + Math.floor(sand(x, y) * 3)], 150); }
+  // hang holes, and four bolts in the corners (only where a bolt would be)
+  if (o.holes) for (const hx of holes) { const hy = Math.round(h * 0.12); p.disc(hx, hy, Math.max(2, h * 0.045), IRON[0]); p.disc(hx, hy, Math.max(1.4, h * 0.03), 0x0e0f10); p.set(hx - 1, hy - 2, IRON[6]); }
+  if (o.bolts !== false) for (const [bx, by] of [[rim + 4, rim + 4], [w - rim - 5, rim + 4], [rim + 4, h - rim - 5], [w - rim - 5, h - rim - 5]]) {
+    const r = Math.max(2, Math.round(Math.min(w, h) * 0.035));
+    for (let y = -r - 1; y <= r + 1; y++) for (let x = -r - 1; x <= r + 1; x++) { const d = Math.hypot(x, y); if (d <= r + 1) p.set(bx + x, by + y, d > r ? IRON[0] : IRON[Math.max(2, Math.min(8, Math.round(5 - (x + y) / r * 1.6)))]); }
+    p.set(bx + r, by + r + 1, RUST[2], 160); p.set(bx + r, by + r + 2, RUST[1], 120);
+  }
   return p;
 }
 /** text in one of the pixel faces, thresholded to hard pixels: a boolean mask */
@@ -202,43 +214,53 @@ function textMask(s: string, font: string, size: number): { m: Uint8Array; w: nu
   for (let i = 0; i < w * h; i++) m[i] = d[i * 4 + 3] > 120 ? 1 : 0;
   return { m, w, h };
 }
-export interface SignArt { map: THREE.Texture; emissive: THREE.Texture; back: THREE.Texture }
-/** a cast-iron sign: stencilled lettering in chipped cream paint with a cast shadow; the emissive mask lights it */
-export function signArt(label: string, w: number, h: number, seed: number, o: { font?: string; size?: number; paint?: number; sub?: string } = {}): SignArt {
+export interface SignArt { map: THREE.Texture; back: THREE.Texture }
+/** stencilled lettering, sprayed through a card: off-white paint thick in the middle and thin at the edges of the
+ * pass, a soft speckled overspray around every letter, set a hair off level. */
+export function signArt(label: string, w: number, h: number, seed: number, o: { font?: string; size?: number; paint?: number; sub?: string; emboss?: boolean } = {}): SignArt {
   const p = ironPlate(w, h, seed, { holes: true });
   const back = ironPlate(w, h, seed + 13, { holes: true });
-  const em = new Pix(w, h); em.rect(0, 0, w, h, 0x000000);
-  const font = o.font ?? 'Superwide', paint = o.paint ?? CR[4];
+  const font = o.font ?? 'Superwide', paint = o.paint ?? 0xd9d2bf;
   const unit = font === 'VT' ? 14 : font === 'Silk' ? 11 : font === 'Jersey' ? 13 : 10;
-  let size = o.size ?? unit * 3, T = textMask(label, font, size);
-  while ((T.w > w * 0.84 || T.h > h * 0.8) && size > unit) { size -= unit; T = textMask(label, font, size); }
-  const sub = o.sub ? textMask(o.sub, 'VT', 14) : null;
-  const ox = Math.round((w - T.w) / 2), oy = Math.round((h - T.h) / 2) + (sub ? -6 : 1);
-  const put = (M: { m: Uint8Array; w: number; h: number }, x0: number, y0: number, col: number, chip: number) => {
-    for (let y = 0; y < M.h; y++) for (let x = 0; x < M.w; x++) if (M.m[y * M.w + x] && !(y + 1 < M.h && M.m[(y + 1) * M.w + x])) p.set(x0 + x, y0 + y + 1, INK, 200);
-    for (let y = 0; y < M.h; y++) for (let x = 0; x < M.w; x++) {
-      if (!M.m[y * M.w + x]) continue;
-      const X = x0 + x, Y = y0 + y;
-      if (h3(X >> 1, Y >> 1, seed + 21) < chip) continue; // chipped paint shows the iron
-      const lit = y === 0 || !M.m[(y - 1) * M.w + x];
-      p.set(X, Y, lit ? mixc(col, 0xffffff, 0.25) : h3(X, Y, seed) < 0.12 ? mixc(col, 0x6a5a40, 0.4) : col);
-      em.set(X, Y, 0xffffff);
+  let size = o.size ?? unit * 4, T = textMask(label, font, size);
+  while ((T.w > w * 0.8 || T.h > h * 0.62) && size > unit) { size -= unit; T = textMask(label, font, size); }
+  const sub = o.sub ? textMask(o.sub, 'VT', 14 * Math.max(1, Math.floor(size / 30))) : null;
+  const tilt = (h3(seed, 2, 9) - 0.5) * 0.012;
+  const ox = Math.round((w - T.w) / 2), oy = Math.round((h - T.h - (sub ? sub.h - 4 : 0)) / 2) + 2;
+  const C = new THREE.Color(), base = new THREE.Color(paint);
+  const put = (M: { m: Uint8Array; w: number; h: number }, x0: number, y0: number, thin: number) => {
+    const at = (x: number, y: number) => x >= 0 && y >= 0 && x < M.w && y < M.h && M.m[y * M.w + x] === 1;
+    for (let y = -4; y < M.h + 4; y++) for (let x = -4; x < M.w + 4; x++) {
+      const X = x0 + x, Y = Math.round(y0 + y + (x - M.w / 2) * tilt);
+      if (at(x, y)) {
+        // paint density: heavy in the centre of the spray pass, thinner toward the ends, the odd skipped grain
+        const dens = 0.78 + (fbm(X / 31 + seed, Y / 17, 2, 2) - 0.5) * 0.7 - Math.abs(x / M.w - 0.5) * 0.25 * thin;
+        if (h3(X, Y, seed + 3) > dens + 0.18) continue;
+        C.setHex(p.get(X, Y) < 0 ? 0x333333 : p.get(X, Y)).lerp(base, Math.max(0.35, Math.min(0.97, dens)));
+        p.set(X, Y, C.getHex());
+      } else if (!o.emboss) {
+        // overspray: a speckle that thins out over a few pixels from the letter edge
+        let d = 9; for (let dy = -3; dy <= 3 && d > 1; dy++) for (let dx = -3; dx <= 3; dx++) if (at(x + dx, y + dy)) d = Math.min(d, Math.hypot(dx, dy));
+        if (d < 4 && h3(X, Y, seed + 5) < 0.42 / (d * d)) { const q = p.get(X, Y); if (q >= 0) p.set(X, Y, C.setHex(q).lerp(base, 0.35).getHex()); }
+      }
     }
   };
-  put(T, ox, oy, paint, 0.07);
-  if (sub) put(sub, Math.round((w - sub.w) / 2), oy + T.h - 2, CR[2], 0.04);
-  return { map: texOf(p), emissive: texOf(em), back: texOf(back) };
+  put(T, ox, oy, 1);
+  if (sub) put(sub, Math.round((w - sub.w) / 2), oy + T.h - 2, 0.5);
+  return { map: texOf(p), back: texOf(back) };
 }
 
 // ------------------------------------------------------------------ chains
+let chainMat: THREE.Material | null = null;
+const CHAIN_MAT = () => (chainMat ??= gbuf(new THREE.MeshLambertMaterial({ color: 0x4a4d4e, flatShading: true }), 1));
 /** a chain of torus links between two points, sagging a little; update(a, b) re-lays it */
 export class Chain {
   readonly group = new THREE.Group();
   private links: THREE.Mesh[] = [];
   constructor(readonly n: number, readonly link = 0.075, mat?: THREE.Material) {
-    const g = new THREE.TorusGeometry(link * 0.5, link * 0.16, 4, 8);
+    const g = new THREE.TorusGeometry(link * 0.5, link * 0.2, 5, 8);
     g.scale(1, 1.6, 1);
-    const m = mat ?? gbuf(new THREE.MeshPhongMaterial({ color: 0x5c646c, shininess: 30, flatShading: true }), 1);
+    const m = mat ?? CHAIN_MAT();
     for (let i = 0; i < n; i++) { const l = new THREE.Mesh(g, m); l.castShadow = true; this.group.add(l); this.links.push(l); }
   }
   private _p = new V3(); private _q = new V3(); private _d = new V3(); private _u = new V3(0, 1, 0); private _qq = new THREE.Quaternion(); private _r = new THREE.Quaternion();
@@ -269,21 +291,21 @@ export interface Sign {
   eye(i: number, out?: THREE.Vector3): THREE.Vector3;
 }
 export function makeSign(id: string, label: string, w: number, h: number, seed: number, o: { sub?: string; size?: number; font?: string; key?: string; tip?: string } = {}): Sign {
-  const tw = Math.round(w * 110), th = Math.round(h * 110);
+  const tw = Math.round(w * 180), th = Math.round(h * 180);
   const art = signArt(label, tw, th, seed, { sub: o.sub, size: o.size, font: o.font });
   const flag: GFlag = { value: 1 };
-  const mat = new THREE.MeshLambertMaterial({ map: art.map, emissiveMap: art.emissive, emissive: new THREE.Color(0xffc060), emissiveIntensity: 0, transparent: false, alphaTest: 0.5 }); gbuf(mat, flag);
-  const backM = new THREE.MeshLambertMaterial({ map: art.back, alphaTest: 0.5 }); gbuf(backM, flag);
-  const edge = gbuf(new THREE.MeshLambertMaterial({ color: 0x2a2e33 }), flag);
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.07), [edge, edge, edge, edge, mat, backM]);
+  const mat = new THREE.MeshLambertMaterial({ map: art.map }); gbuf(mat, flag);
+  const backM = new THREE.MeshLambertMaterial({ map: art.back }); gbuf(backM, flag);
+  const edge = gbuf(new THREE.MeshLambertMaterial({ color: 0x2f3133 }), flag);
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.09), [edge, edge, edge, edge, mat, backM]);
   plate.castShadow = true; plate.receiveShadow = true;
   const root = new THREE.Group(); root.add(plate);
   // eye bolts at the top corners, a caged lamp in the middle that comes on with the hover
-  const eyeM = gbuf(new THREE.MeshPhongMaterial({ color: 0x6a7076, flatShading: true }), flag);
+  const eyeM = gbuf(new THREE.MeshLambertMaterial({ color: 0x4a4d4e, flatShading: true }), flag);
   for (const sx of [-1, 1]) { const e = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.016, 5, 10), eyeM); e.position.set(sx * w * 0.38, h / 2 + 0.035, 0); e.rotation.y = Math.PI / 2; root.add(e); }
-  const lampMat = gbuf(new THREE.MeshBasicMaterial({ color: 0x3a2a14 }), 32);
+  const lampMat = gbuf(new THREE.MeshBasicMaterial({ color: 0x2e2a22 }), 32);
   const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), lampMat); lamp.position.set(0, h / 2 + 0.05, 0.04); root.add(lamp);
-  const cage = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.06, 6, 1, true), gbuf(new THREE.MeshLambertMaterial({ color: 0x1a1c1e, wireframe: true }), 1)); cage.position.copy(lamp.position); root.add(cage);
+  const cage = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.06, 6, 1, true), gbuf(new THREE.MeshLambertMaterial({ color: 0x26282a, wireframe: true }), 1)); cage.position.copy(lamp.position); root.add(cage);
   const s: Sign = {
     id, label, key: o.key ?? '', tip: o.tip ?? '', root, plate, flag, lampMat, mat, w, h,
     rest: new V3(), pos: new V3(), vel: new V3(), ang: 0, angV: 0, tilt: 0, tiltV: 0, phase: h3(seed, 1, 2) * TAU,
@@ -308,9 +330,9 @@ export function stepSign(s: Sign, dt: number, t: number) {
   s.root.position.copy(s.pos);
   s.root.rotation.set(s.tilt * 0.6, Math.sin(t * 0.4 + s.phase) * 0.05, s.ang);
   s.lit += ((s.hover > 0.5 ? 1 : 0) - s.lit) * Math.min(1, dt * 10);
-  s.mat.emissiveIntensity = s.lit * 1.1 + (s.enabled ? 0 : 0);
-  s.lampMat.color.set(s.lit > 0.05 ? new THREE.Color(0xffd080).multiplyScalar(0.4 + s.lit * 1.6) : new THREE.Color(0x3a2a14));
-  s.flag.value = s.hover > 0.5 ? 1 + F_HOVER : 1;
+  // the caged bulb warms up with a little flicker (the menu moves its work lamp onto the plate)
+  const fl = s.lit > 0.05 ? 0.92 + Math.sin(t * 31 + s.phase) * 0.05 + Math.sin(t * 7.3) * 0.03 : 0;
+  s.lampMat.color.set(s.lit > 0.05 ? new THREE.Color(0xd9a43a).multiplyScalar((0.35 + s.lit * 1.25) * fl) : new THREE.Color(0x2e2a22));
 }
 /** a clank: kick the sign back and set it swinging */
 export function kickSign(s: Sign, k = 1) { s.vel.z -= 2.2 * k; s.vel.x += (Math.random() - 0.5) * 1.2 * k; s.angV += (Math.random() < 0.5 ? -1 : 1) * 2.6 * k; s.tiltV += 3 * k; }
@@ -330,12 +352,12 @@ export function makeGear(R = 0.55, teeth = 12) {
   for (let i = 0; i < 5; i++) { const a = (i / 5) * TAU + 0.3, hp = new THREE.Path(); hp.absarc(Math.cos(a) * R * 0.53, Math.sin(a) * R * 0.53, R * 0.11, 0, TAU, true); sh.holes.push(hp); }
   const g = new THREE.ExtrudeGeometry(sh, { depth: R * 0.22, bevelEnabled: true, bevelSize: R * 0.03, bevelThickness: R * 0.03, bevelSegments: 1, curveSegments: 6 });
   g.translate(0, 0, -R * 0.11);
-  const face = ironPlate(64, 64, 41, { rivetStep: 100 });
+  const face = ironPlate(96, 96, 41, { bolts: false });
   const t = texOf(face, true); t.repeat.set(1 / (2 * R), 1 / (2 * R)); t.offset.set(0.5, 0.5);
   const flag: GFlag = { value: 1 };
-  const mat = gbuf(new THREE.MeshPhongMaterial({ map: t, color: 0xb0b4b8, shininess: 40, specular: 0x444444, flatShading: true }), flag);
+  const mat = gbuf(new THREE.MeshLambertMaterial({ map: t, flatShading: true }), flag);
   const mesh = new THREE.Mesh(g, mat); mesh.castShadow = true;
-  const hub = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.2, R * 0.2, R * 0.34, 10), gbuf(new THREE.MeshPhongMaterial({ color: 0xb08a40, shininess: 70, flatShading: true }), flag));
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.2, R * 0.2, R * 0.34, 10), gbuf(new THREE.MeshLambertMaterial({ color: 0x6b5a3a, flatShading: true }), flag));
   hub.rotation.x = Math.PI / 2; mesh.add(hub);
   return { mesh, flag };
 }
@@ -386,5 +408,23 @@ export function makeSunGlare(size = 14) {
 }
 /** a painted iron plate as a data URL (DOM panels): w x h art pixels, shown at an integer scale */
 const urlMemo = new Map<string, string>();
-export function ironURL(w: number, h: number, seed = 5) { const k = `${w}x${h}:${seed}`; let u = urlMemo.get(k); if (!u) urlMemo.set(k, (u = ironPlate(w, h, seed, { rivetStep: 26 }).url())); return u; }
+export function ironURL(w: number, h: number, seed = 5) { const k = `${w}x${h}:${seed}`; let u = urlMemo.get(k); if (!u) urlMemo.set(k, (u = ironPlate(w, h, seed, { rim: 5 }).url())); return u; }
+/** olive-drab enamel over steel: brushed, an engraved hairline frame, chipped to bare metal at a few corners */
+const OLV = [0x2a2c20, 0x33362a, 0x3d4030, 0x464a37, 0x4d5038, 0x575b42, 0x63674d, 0x70745a];
+export function enamelURL(w: number, h: number, seed = 4) {
+  const k = `en:${w}x${h}:${seed}`; let u = urlMemo.get(k); if (u) return u;
+  const p = new Pix(w, h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let v = 4 + (fbm(x / 40 + seed, y / 40, 2, 3) - 0.5) * 1.2 + (h3(x >> 0, y, seed) - 0.5) * 0.5 + (h3(0, y, seed + 2) - 0.5) * 0.35 - (y / h) * 0.6;
+    const e = Math.min(x, y, w - 1 - x, h - 1 - y);
+    if (e < 2) v += (y < 2 || x < 2) ? 1.6 : -1.8;
+    p.set(x, y, OLV[Math.max(0, Math.min(OLV.length - 1, Math.round(v)))]);
+  }
+  for (let x = 6; x < w - 6; x++) { p.set(x, 6, OLV[1]); p.set(x, 7, OLV[6], 140); p.set(x, h - 7, OLV[6], 140); p.set(x, h - 8, OLV[1]); }
+  for (let y = 6; y < h - 6; y++) { p.set(6, y, OLV[1]); p.set(7, y, OLV[6], 140); p.set(w - 7, y, OLV[6], 140); p.set(w - 8, y, OLV[1]); }
+  // chips to bare steel: three, where the plate gets knocked
+  for (const [cx, cy, r] of [[3, 3, 5], [w - 4, Math.round(h * 0.62), 4], [Math.round(w * 0.37), h - 3, 3]] as [number, number, number][]) for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) if (Math.hypot(x, y * 1.3) < r * (0.6 + h3(x, y, seed) * 0.5)) { const X = cx + x, Y = cy + y; if (X >= 0 && Y >= 0 && X < w && Y < h) p.set(X, Y, Math.hypot(x, y) > r - 1.5 ? 0x26282a : IRON[7]); }
+  for (const [x, y] of [[10, 10], [w - 11, 10], [10, h - 11], [w - 11, h - 11]]) { p.disc(x, y, 2.2, IRON[2]); p.set(x - 1, y - 1, IRON[7]); p.set(x - 1, y, IRON[1]); p.set(x, y, IRON[1]); p.set(x + 1, y, IRON[1]); }
+  u = p.url(); urlMemo.set(k, u); return u;
+}
 export { BR, RD };

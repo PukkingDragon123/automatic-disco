@@ -8,7 +8,7 @@ import { el, Tip } from './kit';
 import { sfx } from '../audio/audio';
 import { ABILITIES, type Ability, type Hive } from '../game/hive';
 import { iconCanvas } from './pixelart';
-import { Pix, GM, BR, RD, PH, AM, CR, HZ, INK, dv, text, mixc, hex } from './machine';
+import { Pix, GM, RD as RD0, PH as PH0, AM as AM0, CR, OL, INK, dv, text, mixc, hex } from './machine';
 import { Gauge, Lamp, meterFace, place, steamVent, u } from './gadgets';
 import { WHEEL, DESC, wheelArt, descArt } from './hudArt';
 import { hashf } from '../limbo/core/rng';
@@ -17,7 +17,13 @@ import { powerOwned, powerCost } from '../game/combat';
 export interface WheelCtx { hive: Hive; arm(a: Ability): void; armed(): Ability | null }
 
 const ALL: Ability[] = (Object.keys(ABILITIES) as Ability[]).sort((a, b) => +ABILITIES[a].key - +ABILITIES[b].key);
+// ART.md: physical, desaturated materials. Chambers are blued steel, not brass; the hub band is olive enamel worn to
+// steel, not hazard stripes; the one accent is the selected chamber's safety amber; lamps are soft phosphor
+const mute = (R: number[], k: number) => R.map((c) => mixc(c, 0x5a554c, k));
+const BR = GM.slice(1), AM = mute(AM0, 0.3), RD = mute(RD0, 0.4), PH = mute(PH0, 0.3);
 const SZ = WHEEL.ws, C = SZ / 2;
+/** the dial face is rendered at twice the art density (finer machining, 1 px lines); sprites ride on top at 1x */
+const QW = 2, SZ2 = SZ * QW;
 const R_TOOTH = 61.6, R_ROOT = 58.2, R_KNURL = 52.6, R_HAZ0 = 18.5, R_HAZ1 = 23.5, R_CH = 37.6, R_LAMP = 51;
 const TEETH = 36;
 const LX = -0.55, LY = -0.83; // light from the top left
@@ -27,15 +33,15 @@ const wrap = (a: number) => { a %= Math.PI * 2; if (a > Math.PI) a -= Math.PI * 
 let pre: { r: Float32Array; th: Float32Array; scratch: Uint8Array; lit: Float32Array; face: Float32Array } | null = null;
 function precompute() {
   if (pre) return pre;
-  const r = new Float32Array(SZ * SZ), th = new Float32Array(SZ * SZ), scratch = new Uint8Array(SZ * SZ), lit = new Float32Array(SZ * SZ), face = new Float32Array(SZ * SZ);
+  const n = SZ2 * SZ2, r = new Float32Array(n), th = new Float32Array(n), scratch = new Uint8Array(SZ * SZ), lit = new Float32Array(n), face = new Float32Array(n);
   const thL = Math.atan2(-LX, LY);
-  for (let y = 0; y < SZ; y++) for (let x = 0; x < SZ; x++) {
-    const i = y * SZ + x, dx = x + 0.5 - C, dy = y + 0.5 - C, rr = Math.hypot(dx, dy), t = Math.atan2(dx, -dy); // clockwise from 12 o'clock
+  for (let y = 0; y < SZ2; y++) for (let x = 0; x < SZ2; x++) {
+    const i = y * SZ2 + x, dx = (x + 0.5) / QW - C, dy = (y + 0.5) / QW - C, rr = Math.hypot(dx, dy), t = Math.atan2(dx, -dy); // clockwise from 12 o'clock
     r[i] = rr; th[i] = t;
     const nx = dx / Math.max(1, rr), ny = dy / Math.max(1, rr);
     lit[i] = -(nx * LX + ny * LY);
     // machined face: a shallow dome, lathe rings, the spun-metal highlight cross (all fixed to the light, not the disc)
-    const dome = lit[i] * (rr / R_KNURL) * 1.3, lathe = Math.sin(rr * 2.1) * 0.22 + (hashf(Math.floor(rr * 2), 0, 9) - 0.5) * 0.35;
+    const dome = lit[i] * (rr / R_KNURL) * 1.3, lathe = Math.sin(rr * 4.2) * 0.2 + (hashf(Math.floor(rr * 4), 0, 9) - 0.5) * 0.3;
     const spec = Math.pow(Math.max(0, Math.cos(2 * (t - thL))), 8) * 1.4;
     face[i] = 4.2 + dome + lathe + spec - (rr < R_HAZ0 ? 0.8 : 0) - (rr > R_KNURL - 3 ? 0.9 : 0);
   }
@@ -147,8 +153,8 @@ export class AbilityWheel {
     this.nameEl = el('div', 'wl-name', this.crt); this.costEl = el('div', 'wl-cost', this.crt);
     // the dial
     this.cv = place(el('canvas', 'wl-dial', this.root), W.wx, W.wy, SZ, SZ);
-    this.cv.width = SZ; this.cv.height = SZ;
-    this.g = this.cv.getContext('2d')!; this.img = this.g.createImageData(SZ, SZ);
+    this.cv.width = SZ2; this.cv.height = SZ2;
+    this.g = this.cv.getContext('2d')!; this.img = this.g.createImageData(SZ2, SZ2); this.g.imageSmoothingEnabled = false;
     this.pawl = place(el('div', 'wl-pawl', this.root), W.wx + C - 7, W.wy - 8, 15, 14);
     this.pawl.style.backgroundImage = `url(${pawlURL()})`;
     this.fire = place(el('div', 'wl-fire', this.root), W.wx + C - 18, W.wy + C - 18, 36, 36);
@@ -394,8 +400,8 @@ export class AbilityWheel {
     const { r: RR, th: TH, scratch, lit: LIT, face: FACE } = pre!, D = this.img.data, ang = this.ang, h = this.c.hive;
     const cosA = Math.cos(-ang), sinA = Math.sin(-ang);
     const put = (i: number, c: number) => { D[i * 4] = (c >> 16) & 255; D[i * 4 + 1] = (c >> 8) & 255; D[i * 4 + 2] = c & 255; D[i * 4 + 3] = 255; };
-    for (let y = 0; y < SZ; y++) for (let x = 0; x < SZ; x++) {
-      const i = y * SZ + x, r = RR[i], th = TH[i];
+    for (let y = 0; y < SZ2; y++) for (let x = 0; x < SZ2; x++) {
+      const i = y * SZ2 + x, r = RR[i], th = TH[i], ax = (x + 0.5) / QW, ay = (y + 0.5) / QW;
       if (r > R_TOOTH + 0.5) { D[i * 4 + 3] = 0; continue; }
       const phi = th - ang; // angle in disc space
       const rimLit = LIT[i]; // -1..1, + facing the light
@@ -403,12 +409,12 @@ export class AbilityWheel {
       if (r > R_ROOT) {
         const uu = (((phi / (Math.PI * 2)) * TEETH) % 1 + 1) % 1;
         const top = R_ROOT + (R_TOOTH - R_ROOT) * (1 - uu);
-        if (r > top + 0.5) { D[i * 4 + 3] = 0; continue; }
-        const flank = uu > 0.9 || r > top - 0.6;
+        if (r > top + 0.25) { D[i * 4 + 3] = 0; continue; }
+        const flank = uu > 0.93 || r > top - 0.35;
         put(i, flank ? (rimLit > 0.1 ? GM[9] : INK) : dv(GM, 5.6 + rimLit * 2.6, x, y));
         continue;
       }
-      if (r > R_ROOT - 0.8) { put(i, INK); continue; }
+      if (r > R_ROOT - 0.5) { put(i, INK); continue; }
       // knurled grip band
       if (r > R_KNURL) {
         const k = Math.floor(((phi / (Math.PI * 2)) * 72 % 1 + 1) % 1 * 3);
@@ -416,30 +422,30 @@ export class AbilityWheel {
         const v = 5.2 + rimLit * (2.2 + band) + (k === 0 ? 1.3 : k === 1 ? 0 : -1.3) + (band > 0.8 ? 1.6 * rimLit : 0);
         put(i, dv(GM, v, x, y)); continue;
       }
-      if (r > R_KNURL - 0.8) { put(i, rimLit > 0 ? GM[2] : GM[7]); continue; }
-      // hazard ring around the hub: diagonal paint stripes that turn with the disc
+      if (r > R_KNURL - 0.5) { put(i, rimLit > 0 ? GM[2] : GM[7]); continue; }
+      // the hub band: olive enamel, worn through to steel where the thumb turns it, a cream index tick per chamber
       if (r > R_HAZ0 && r < R_HAZ1) {
-        const s = ((phi * 21 + (r - R_HAZ0) * 1.3) % 10 + 10) % 10;
-        const yel = s < 5;
-        const edge = r < R_HAZ0 + 0.9 || r > R_HAZ1 - 0.9;
-        const sx = Math.round(C + (x + 0.5 - C) * cosA - (y + 0.5 - C) * sinA - 0.5), sy = Math.round(C + (x + 0.5 - C) * sinA + (y + 0.5 - C) * cosA - 0.5);
-        const worn = sx >= 0 && sy >= 0 && sx < SZ && sy < SZ && hashf(sx, sy, 3) < 0.08;
-        put(i, edge ? INK : worn ? GM[5] : yel ? (rimLit > 0.3 ? HZ.yl : rimLit < -0.4 ? HZ.yd : HZ.y) : HZ.k);
+        const edge = r < R_HAZ0 + 0.5 || r > R_HAZ1 - 0.5;
+        const sx = Math.round(C + (ax - C) * cosA - (ay - C) * sinA - 0.5), sy = Math.round(C + (ax - C) * sinA + (ay - C) * cosA - 0.5);
+        const wear = Math.sin(phi * 3 + 1.1) * 0.5 + (sx >= 0 && sy >= 0 && sx < SZ && sy < SZ ? hashf(sx, sy, 3) : 0) > 0.85;
+        const tick = N > 0 && Math.abs(wrap(phi - Math.round(phi / STEP) * STEP) * r) < 0.45 && r > R_HAZ1 - 2.6;
+        put(i, edge ? INK : tick ? CR[2] : wear ? dv(GM, 6 + rimLit * 1.5, x, y) : dv(OL, 3.6 + rimLit * 1.8, x, y));
         continue;
       }
       let v = FACE[i];
       // scratches belong to the disc: sample them rotated
-      const sx = Math.round(C + (x + 0.5 - C) * cosA - (y + 0.5 - C) * sinA - 0.5), sy = Math.round(C + (x + 0.5 - C) * sinA + (y + 0.5 - C) * cosA - 0.5);
-      if (sx >= 0 && sy >= 0 && sx < SZ && sy < SZ && scratch[sy * SZ + sx]) v += scratch[sy * SZ + sx] === 2 ? 1.6 : 0.9;
+      const sx = Math.round(C + (ax - C) * cosA - (ay - C) * sinA - 0.5), sy = Math.round(C + (ax - C) * sinA + (ay - C) * cosA - 0.5);
+      if (sx >= 0 && sy >= 0 && sx < SZ && sy < SZ && scratch[sy * SZ + sx] && (x + y) % 2 === 0) v += scratch[sy * SZ + sx] === 2 ? 1.4 : 0.8;
       // engraved spokes between the chambers
       const between = wrap(phi + STEP / 2 - Math.round((phi + STEP / 2) / STEP) * STEP);
-      if (r > 25 && r < 51 && Math.abs(between * r) < 0.55) v = 1.4;
-      else if (r > 25 && r < 51 && Math.abs((between) * r - 1) < 0.5) v += 1.4;
+      if (r > 25 && r < 51 && Math.abs(between * r) < 0.3) v = 1.4;
+      else if (r > 25 && r < 51 && Math.abs((between) * r - 0.6) < 0.3) v += 1.4;
       put(i, dv(GM, v, x, y));
     }
     this.g.putImageData(this.img, 0, 0);
-    // chambers, icons, lamps and numerals: upright sprites riding the disc
+    // chambers, icons, lamps and numerals: upright sprites riding the disc (drawn in art units)
     const g = this.g;
+    g.setTransform(QW, 0, 0, QW, 0, 0); g.imageSmoothingEnabled = false;
     for (let i = 0; i < N; i++) {
       const a = ang - i * STEP, cx = C + Math.sin(a) * R_CH, cy = C - Math.cos(a) * R_CH;
       const top = Math.abs(wrap(a)) < STEP * 0.3;
@@ -475,6 +481,7 @@ export class AbilityWheel {
       if (top && armed === ab && blink) ring(g, cx, cy, 12.6, AM[6]);
       else if (top && !locked && this.settled) ring(g, cx, cy, 12.6, poor ? RD[5] : PH[7]);
     }
+    g.setTransform(1, 0, 0, 1, 0, 0);
   }
 }
 
@@ -486,6 +493,6 @@ const numCache = new Map<string, Pix>();
 function numPix(s: string, col: number) { const k = s + col; let p = numCache.get(k); if (!p) { p = new Pix(5, 7); text(p, s, 1, 1, col, 'shadow'); numCache.set(k, p); } return p; }
 function ring(g: CanvasRenderingContext2D, cx: number, cy: number, r: number, col: number) {
   g.fillStyle = hex(col);
-  for (let k = 0; k < 72; k++) { const a = (k / 72) * Math.PI * 2; g.fillRect(Math.round(cx + Math.cos(a) * r - 0.5), Math.round(cy + Math.sin(a) * r - 0.5), 1, 1); }
+  for (let k = 0; k < 144; k++) { const a = (k / 144) * Math.PI * 2; g.fillRect(Math.round((cx + Math.cos(a) * r) * QW - 0.5) / QW, Math.round((cy + Math.sin(a) * r) * QW - 0.5) / QW, 1 / QW, 1 / QW); }
 }
 void CR;

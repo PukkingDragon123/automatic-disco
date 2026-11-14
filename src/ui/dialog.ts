@@ -26,6 +26,8 @@ export class Dialog {
   private img: ImageData;
   private pt = 0;
   onLine?: (l: Line) => void;
+  /** a line has finished (read, skipped or cleared) */
+  onDone?: (l: Line) => void;
   constructor(parent: HTMLElement, readonly renderer: THREE.WebGLRenderer, readonly portrait: PortraitRig | null) {
     this.box = panel('dlg', parent);
     const pf = el('div', 'px-inset dlg-pf', this.box);
@@ -45,8 +47,9 @@ export class Dialog {
   }
   say(lines: Line[]) { this.q.push(...lines); }
   get busy() { return !!this.cur || this.q.length > 0; }
-  clear() { this.q = []; this.cur = null; this.box.style.display = 'none'; }
-  private skip() { if (!this.cur) return; if (this.shown < this.cur.text.length) this.shown = this.cur.text.length; else this.t = this.dur; }
+  clear() { const c = this.cur; this.q = []; this.cur = null; this.box.style.display = 'none'; if (c) this.onDone?.(c); }
+  /** finish typing the line, or end it */
+  skip() { if (!this.cur) return; if (this.shown < this.cur.text.length) this.shown = this.cur.text.length; else this.t = this.dur; }
   private kind() { const w = this.cur?.who ?? 'calder'; return w; }
   update(dt: number) {
     if (!this.cur && this.q.length) {
@@ -70,7 +73,7 @@ export class Dialog {
     this.shown = Math.min(this.cur.text.length, this.shown + dt * 42);
     const n = Math.floor(this.shown);
     if (n !== before) { this.txt.textContent = this.cur.text.slice(0, n); if (this.kind() === 'journal' && n % 3 === 0) csfx('type', 0.35); }
-    if (this.t >= this.dur) { this.cur = null; if (!this.q.length) this.box.style.display = 'none'; return; }
+    if (this.t >= this.dur) { const c = this.cur; this.cur = null; if (!this.q.length) this.box.style.display = 'none'; this.onDone?.(c); return; }
     // the portrait at ~10 fps: the rig, static from orbit, or the journal's page
     this.pt -= dt;
     if (this.pt <= 0) {

@@ -218,7 +218,9 @@ bool mineT = cov.b > thr;
 bool theirT = !mineT && cov.a > thr;
 if (mineT || theirT) {
   float c = mineT ? cov.b : cov.a;
-  vec3 vc = mineT ? uVein : uRivalVein;
+  // the owner's colour, muted: the ground is etched, not lit up
+  vec3 vc0 = mineT ? uVein : uRivalVein;
+  vec3 vc = mix(vec3(dot(vc0, vec3(0.3, 0.59, 0.11))), vc0, 0.6);
   float inner = smoothstep(thr, thr + 0.22, c);
   float l = dot(base, vec3(0.3, 0.59, 0.11));
   base = mix(base, vec3(l) * vec3(0.82, 0.92, 0.98) * 1.1 + vc * 0.04, 0.34 * inner);
@@ -229,8 +231,8 @@ if (mineT || theirT) {
   float lv = floor(vf * 7.0);
   if ((lv != floor(vr * 7.0) || lv != floor(vd * 7.0)) && inner > 0.15 && h2(vec2(lv, 3.0)) > 0.25) {
     float ph = fract(vf * 2.0 - uTime * 0.2 + h2(vec2(lv, 9.0)));
-    base = mix(base, vc * 0.6, 0.55 * inner);
-    emis += vc * (0.12 + 1.4 * smoothstep(0.9, 1.0, ph)) * 0.55 * inner * uVeinGain;
+    base = mix(base, vc * 0.55, 0.4 * inner);
+    emis += vc * (0.06 + 1.2 * smoothstep(0.92, 1.0, ph)) * 0.35 * inner * uVeinGain;
   }
   vec2 rg = mod(pxw, 40.0);
   if (rg.x < 1.0 && rg.y < 1.0 && inner > 0.6 && h2(floor(pxw / 40.0) + 3.0) > 0.5) { base = vec3(0.8, 0.86, 0.9) * (0.6 + l); emis += vc * 0.25; }
@@ -239,7 +241,7 @@ if (mineT || theirT) {
   vec4 nA = texture2D(uMoss, (pc + vec2(px1, 0.0)) / uN), nB = texture2D(uMoss, (pc - vec2(px1, 0.0)) / uN);
   vec4 nC = texture2D(uMoss, (pc + vec2(0.0, px1)) / uN), nD = texture2D(uMoss, (pc - vec2(0.0, px1)) / uN);
   float nm = mineT ? min(min(nA.b, nB.b), min(nC.b, nD.b)) : min(min(nA.a, nB.a), min(nC.a, nD.a));
-  if (nm < t0 - 0.02) { base = mix(base, vc * 0.7, 0.6); emis += vc * 0.35 * uVeinGain; }
+  if (nm < t0 - 0.02 && h2(pxw * 0.5 + 4.0) > 0.18) { base = mix(base, vc * 0.6, 0.38); emis += vc * 0.1 * uVeinGain; }
 }
 diffuseColor.rgb *= base;
 `)

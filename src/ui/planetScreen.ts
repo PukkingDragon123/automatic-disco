@@ -102,20 +102,12 @@ export class PlanetScreen implements Screen {
     let dist = 4.3;
     if (this.cine) {
       const C = this.cine; C.t += dt;
-      const k = clamp(C.t / 1.4, 0, 1), e = k * k * (3 - 2 * k);
+      // a short orbital zoom: the region turns to face us and the view sinks toward it, then the deployment takes over
+      const k = clamp(C.t / 1.1, 0, 1), e = k * k * (3 - 2 * k);
       this.q.slerpQuaternions(C.from, C.to, e);
-      dist = 4.3 - clamp((C.t - 0.8) / 1.8, 0, 1) * 2.4;
-      // the burning seed
-      const ft = clamp((C.t - 1.0) / 1.5, 0, 1);
-      const target = new THREE.Vector3(...C.r.c).applyQuaternion(this.q).multiplyScalar(1.0);
-      const from = new THREE.Vector3(2.6, 2.2, 2.8);
-      this.meteor.visible = ft > 0 && ft < 1;
-      this.meteor.position.lerpVectors(from, target, ft * ft);
-      this.meteor.rotation.x += dt * 9; this.meteor.rotation.y += dt * 7;
-      this.trail.forEach((m, i) => { m.visible = this.meteor.visible; m.position.lerpVectors(from, target, Math.max(0, ft - i * 0.012) ** 2); });
-      if (ft > 0 && Math.random() < 0.3) sfx('hover', 0.4, 0.2);
-      if (ft >= 1 && !this.flash.classList.contains('on')) { this.flash.classList.add('on'); sfx('crack', 3, 1); sfx('pulse', 0.4, 1); }
-      if (C.t > 3.3) { const r = C.r; this.close(() => this.opts.onLand(r)); return; }
+      const z = clamp((C.t - 0.35) / 1.0, 0, 1);
+      dist = 4.3 - z * z * (3 - 2 * z) * 2.0;
+      if (C.t > 1.45) { const r = C.r; this.close(() => this.opts.onLand(r)); return; }
     } else if (!this.drag) this.q.premultiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(this.spin.y, this.spin.x, 0)));
     if (!this.drag && !this.cine) { this.spin.x += (0.0018 - this.spin.x) * Math.min(1, dt * 0.8); this.spin.y *= 0.96; }
     this.globe.group.quaternion.copy(this.q);

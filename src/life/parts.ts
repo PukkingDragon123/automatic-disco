@@ -5,12 +5,12 @@
 import { makeRamp, mixHex } from '../limbo/gfx/pixel';
 import { clamp } from '../core/rand';
 import { type Region, blade, sac, spline, ball, sheet, hash, gauss, sub, addV, scl, norm, cross, len, lerpV, mixC, transport, type V3, type Wt } from './kit';
-import { type Ctx, has, hide, keratin, fuzz, interp, chordTs, furCard, sm } from './sculpt';
+import { type Ctx, has, hide, keratin, fuzz, interp, chordTs, furCard, sm, earPaint } from './sculpt';
 
 const TAU = Math.PI * 2;
 
 // =============================================================================================== hair
-export interface HairOpt { ramp: number[]; tip?: number[]; stiff?: boolean; frond?: boolean }
+export interface HairOpt { ramp: number[]; tip?: number[]; stiff?: boolean; frond?: boolean; /** thick wavy locks with volume (manes, shaggy coats) */ wavy?: boolean }
 /** an alpha-cut card region painted with hair (locks, bristles or a feathery frond) */
 export function hairReg(S: Ctx, name: string, w: number, h: number, o: () => HairOpt): Region {
   const have = S.page.regs.get(name); if (have) return have;
@@ -39,6 +39,29 @@ function paintHair(r: Region, o: HairOpt) {
       put(cx, y, R, 1.6 + f); put(cx - 1, y, R, 1 + f);
       const fl = (1 - f * 0.8) * r.w * 0.47 * (y % 2 ? 0.8 : 1);
       for (const s of [-1, 1]) for (let k = 1; k < fl; k++) put(cx + (s < 0 ? -1 : 0) + s * k, y + k * 0.6, k > fl * 0.5 && o.tip ? o.tip : R, 2.4 + (k / fl) * 2.4 + (y % 2 ? -0.6 : 0) + (hash(y, k) - 0.5) * 0.6);
+    }
+    return;
+  }
+  if (o.wavy) {
+    // thick locks swinging in an S: a shadowed core, a lit band down one side, strands following the curve, rounded tips
+    const N = Math.max(3, Math.round(r.w / 7));
+    for (let pass = 0; pass < 2; pass++) for (let k = 0; k < N; k++) {
+      const K = k + pass * 53, cx = ((k + 0.5 + (pass ? 0.5 : 0) + (hash(K, 3) - 0.5) * 0.5) * r.w) / N;
+      const Lk = r.h * (pass ? 0.62 + hash(K, 5) * 0.3 : 0.82 + hash(K, 5) * 0.18), wd = (r.w / N) * (0.5 + hash(K, 7) * 0.18) * (pass ? 0.85 : 1);
+      const amp = r.w * (0.05 + hash(K, 9) * 0.05), ph = hash(K, 11) * 6, waves = 1.1 + hash(K, 13) * 0.6;
+      for (let y = 0; y < Lk; y++) {
+        const f = y / Lk, hw = wd * (f < 0.8 ? 1 - f * 0.25 : 0.8 * Math.sqrt(Math.max(0, 1 - (f - 0.8) / 0.2))) + 0.3;
+        const xc = cx + Math.sin(f * Math.PI * 2 * waves + ph) * amp * (0.3 + f), slope = Math.cos(f * Math.PI * 2 * waves + ph);
+        for (let x = Math.floor(xc - hw); x <= Math.ceil(xc + hw); x++) {
+          const e = (x + 0.5 - xc) / hw; if (Math.abs(e) > 1) continue;
+          const tip = o.tip && f > 0.6 + hash(x, K) * 0.25;
+          let v = 1.2 + f * 1.4 + (pass ? 0.4 : 0) - Math.abs(e) * 0.9;
+          if (e * Math.sign(slope || 1) < -0.15 && e * Math.sign(slope || 1) > -0.65 && f > 0.1) v += 1.3; // the lit band where the lock turns to the light
+          if (Math.abs(e) > 0.82) v -= 1.2; // the shadow between locks
+          if ((Math.floor((e + 1) * 3) + (y >> 2)) % 3 === 0) v -= 0.45; // strands
+          put(x, y, tip ? o.tip! : R, v + (hash(x * 3 + K, y) - 0.5) * 0.5);
+        }
+      }
     }
     return;
   }
@@ -83,32 +106,60 @@ function cardRow(S: Ctx, t0: number, t1: number, angles: number[], L: (t: number
 
 export interface SpineTs { head: number; neck: number; chest: number; mid: number; hips: number; rump: number }
 
+/** a lock of hair: a wide card that swings in an S along its length and curls under at the tip */
+export function lock(S: Ctx, base: V3, dir: V3, side: V3, L: number, W2: number, w: Wt | Wt[], seed: number, reg: Region) {
+  const l = L * (0.85 + hash(seed, 1) * 0.3), sw = (hash(seed, 2) - 0.5) * 0.5, sag = 0.1 + hash(seed, 3) * 0.12;
+  const pts: V3[] = [0, 0.33, 0.66, 1].map((f) => addV(addV(base, scl(dir, l * f)), addV(scl(side, Math.sin(f * Math.PI * 1.5) * sw * l * 0.3), [0, -l * sag * f * f, 0])));
+  const ww = Array.isArray(w[0]) ? (w as Wt[]) : pts.map(() => w as Wt);
+  blade(S.B, reg, pts, [W2, W2 * 1.05, W2 * 0.9, W2 * 0.55], side, ww, { offset: -0.5, edge: 0.2, seed });
+}
+/** locks along the spine between t0..t1 at the given angles round it (0 = top) */
+function lockRow(S: Ctx, t0: number, t1: number, angles: number[], L: (t: number) => number, W2: number, mode: 'drape' | 'hang', reg: Region, step = 1, lift = 0) {
+  const sp = S.spine!, N = sp.pts.length - 1;
+  for (let k = Math.max(0, Math.round(t0 * N)); k <= Math.min(N, Math.round(t1 * N)); k += step) for (const a0 of angles) {
+    const a = a0 + (hash(k, a0 * 10 + 5) - 0.5) * 0.35, f = sp.fr[k], t = k / N, l = L(t);
+    if (l <= 0.002) continue;
+    const { p, n } = surf(S, k, a, 0.82 + lift);
+    const dir = mode === 'hang' ? norm(addV(scl(n, 0.45), [0, -1, 0])) : norm(addV(addV(scl(n, 0.5), scl(f.d, 0.85)), [0, -0.45, 0]));
+    lock(S, p, dir, norm(cross(dir, n)), l, W2, sp.w[k], k * 41 + Math.round(a0 * 13), reg);
+  }
+}
+
 /** a heavy layered coat: long on the shoulders, throat and belly, shorter down the back, short on the face */
 export function shagCoat(S: Ctx, T: SpineTs, W: number) {
   const d = S.d, P = S.P;
-  const SH = hairReg(S, 'SHAG', 24, 30, () => ({ ramp: P.base, tip: makeRamp(mixHex(d.colors.base, d.colors.pattern, 0.65), 7, { spread: 0.5, hueShift: 0.04 }) }));
+  const SH = hairReg(S, 'SHAG', 28, 32, () => ({ ramp: P.base, tip: makeRamp(mixHex(d.colors.base, d.colors.pattern, 0.55), 7, { spread: 0.5, hueShift: 0.04 }), wavy: true }));
   const step = S.spine!.pts.length > 44 ? 2 : 1;
-  const hump = S.rig.dims.hump ? 1.25 : 1;
-  cardRow(S, T.neck - 0.06, T.chest + 0.08, [-1.5, -1.05, -0.55, 0, 0.55, 1.05, 1.5], (t) => W * 0.46 * hump * (0.8 + 0.2 * gauss(t, T.chest, 0.06)), W * 0.28, 'drape', SH, step);
-  cardRow(S, T.chest + 0.05, T.rump, [-1.25, -0.62, 0, 0.62, 1.25], () => W * 0.3, W * 0.24, 'drape', SH, step);
-  cardRow(S, T.chest - 0.02, T.hips, [-1.85, 1.85], () => W * 0.32, W * 0.24, 'hang', SH, step);
-  cardRow(S, T.neck + 0.02, T.hips + 0.02, [-2.3, -2.72, 2.3, 2.72], (t) => W * (0.36 + 0.12 * gauss(t, T.chest, 0.08)), W * 0.26, 'hang', SH, step);
-  cardRow(S, T.hips - 0.03, T.rump + 0.03, [-1.6, -2.15, 1.6, 2.15], () => W * 0.3, W * 0.24, 'drape', SH, step);
+  const hump = S.rig.dims.hump ? 1.2 : 1;
+  lockRow(S, T.neck - 0.06, T.chest + 0.08, [-1.45, -0.8, 0, 0.8, 1.45], (t) => W * 0.42 * hump * (0.8 + 0.2 * gauss(t, T.chest, 0.06)), W * 0.36, 'drape', SH, step);
+  lockRow(S, T.chest + 0.06, T.rump, [-1.2, -0.42, 0.42, 1.2], () => W * 0.3, W * 0.32, 'drape', SH, step * 2);
+  lockRow(S, T.neck + 0.02, T.hips + 0.02, [-2.25, -2.75, 2.25, 2.75], (t) => W * (0.34 + 0.14 * gauss(t, T.chest, 0.08)), W * 0.32, 'hang', SH, step);
+  lockRow(S, T.hips - 0.03, T.rump + 0.03, [-1.75, 1.75], () => W * 0.3, W * 0.3, 'drape', SH, step);
   return SH;
 }
 
-/** a lion's mane: a ruff ringing the face, a cape over neck and shoulders, a beard down the chest */
+/** a lion's mane: a thick ruff of fur round the neck that gives it volume, heavy wavy locks ringing the face, a cape
+ *  over the shoulders and a beard down the chest; darker toward the roots and the back */
 export function mane(S: Ctx, T: SpineTs, W: number, head: V3, hl: number, hw: number, hh: number) {
-  const d = S.d, iH = S.bi('head');
-  const MN = hairReg(S, 'MANE', 24, 32, () => ({ ramp: makeRamp(mixHex(d.colors.pattern, d.colors.base, 0.25), 7, { spread: 0.6, hueShift: 0.05 }), tip: makeRamp(mixHex(d.colors.pattern, d.colors.base, 0.6), 7, { spread: 0.5 }) }));
-  for (let i = 0; i < 18; i++) {
-    const a = (i / 18) * TAU + 0.17, out: V3 = [Math.sin(a), Math.cos(a) * 0.95, 0];
-    const base = addV(head, [Math.sin(a) * hw * 0.4, hh * 0.04 + Math.cos(a) * hh * 0.44, -hl * 0.14]);
-    const dir = norm(addV(scl(out, 0.8), [0, -0.12, -0.7]));
-    furCard(S, base, dir, norm(cross(dir, [0, 0, 1])), hw * (0.62 + 0.18 * gauss(Math.cos(a), 1, 0.6)), hw * 0.4, [iH, 1], 700 + i, MN);
+  const d = S.d, iH = S.bi('head'), sp = S.spine!;
+  const mc = mixHex(d.colors.pattern, d.colors.base, 0.3), ramp = makeRamp(mc, 7, { spread: 0.6, hueShift: 0.05 });
+  const MN = hairReg(S, 'MANE', 30, 36, () => ({ ramp, tip: makeRamp(mixHex(d.colors.pattern, d.colors.base, 0.62), 7, { spread: 0.5 }), wavy: true }));
+  // the ruff's body: a lumpy collar of fur hugging the neck from behind the ears to the shoulders
+  const k0 = at(S, T.head - 0.01), k1 = at(S, T.chest), RB = S.reg('MANEB', TAU * W * 0.6, len(sub(sp.pts[k1], sp.pts[k0])) * 1.2, 12, 96, 64);
+  const pts = sp.pts.slice(k0, k1 + 1), n = pts.length;
+  const env = (i: number) => { const t = i / Math.max(1, n - 1); return Math.sin(Math.PI * (0.2 + 0.8 * t)) ** 0.6; };
+  sac(S.B, RB, S.gid(), pts.map((p, i) => addV(p, [0, hh * 0.06 * env(i), 0])), pts.map((_, i) => [sp.ru[k0 + i] * 1.15 + hw * 0.36 * env(i), sp.rv[k0 + i] * 1.12 + hw * 0.3 * env(i)] as [number, number]),
+    pts.map((_, i) => sp.w[k0 + i]), { n: 16, start: false, end: true, bump: (a, t) => 0.13 * Math.sin(a * 6 + t * 7) * Math.sin(t * 13 + a * 2) + 0.06 * Math.cos(a * 11) });
+  S.paints.push(() => hide(S, RB, { L: hw * 2, rad: () => W * 0.5, seed: 97, kind: 'body', noPattern: true, ramp, clump: 1.5, flow: 1, down: 0.8 }));
+  // heavy locks ringing the face
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * TAU + 0.2, out: V3 = [Math.sin(a), Math.cos(a) * 0.95, 0];
+    const base = addV(head, [Math.sin(a) * hw * 0.42, hh * 0.04 + Math.cos(a) * hh * 0.46, -hl * 0.16]);
+    const dir = norm(addV(scl(out, 0.75), [0, -0.2, -0.65]));
+    lock(S, base, dir, norm(cross(dir, [0, 0, 1])), hw * (0.62 + 0.2 * gauss(Math.cos(a), 1, 0.6)), hw * 0.5, [iH, 1], 700 + i, MN);
   }
-  cardRow(S, T.head, T.neck + 0.07, [-2.6, -1.95, -1.3, -0.65, 0, 0.65, 1.3, 1.95, 2.6], (t) => W * (0.52 + 0.12 * gauss(t, T.neck, 0.05)), W * 0.32, 'drape', MN);
-  cardRow(S, T.neck, T.chest + 0.05, [-2.3, -2.75, 2.3, 2.75, Math.PI], () => W * 0.46, W * 0.28, 'hang', MN);
+  lockRow(S, T.head, T.neck + 0.08, [-2.5, -1.7, -0.85, 0, 0.85, 1.7, 2.5], (t) => W * (0.5 + 0.12 * gauss(t, T.neck, 0.05)), W * 0.4, 'drape', MN, 1, 0.25);
+  lockRow(S, T.neck, T.chest + 0.06, [-2.35, -2.85, 2.35, 2.85, Math.PI], () => W * 0.46, W * 0.36, 'hang', MN, 1, 0.2);
 }
 
 /** a crest down the spine: bristles on fur, a scalloped skin crest on wet skin, spiked scales on dry scales */
@@ -238,41 +289,37 @@ export function frill(S: Ctx, T: SpineTs, hw: number) {
 export interface HeadCtx { head: V3; hl: number; hw: number; hh: number; sl: number; z0: number; iH: number; fur: boolean }
 
 /** small rounded ears close to the skull */
-export function roundEars(S: Ctx, h: HeadCtx) {
+export function roundEars(S: Ctx, h: HeadCtx, earBone: (s: number) => number = () => h.iH) {
   const EAR = S.reg('EAR', TAU * h.hw * 0.2, h.hh * 0.6, 8, 32, 24);
   for (const s of [-1, 1]) {
-    const b0 = addV(h.head, [s * h.hw * 0.36, h.hh * 0.38, -h.hl * 0.1]), dir = norm([s * 0.6, 1, -0.3]);
-    const el = h.hh * 0.36, ew = h.hw * 0.17;
+    const iE = earBone(s), b0 = iE === h.iH ? addV(h.head, [s * h.hw * 0.36, h.hh * 0.38, -h.hl * 0.1]) : S.at(iE), dir = norm([s * 0.6, 1, -0.3]);
+    const el = h.hh * 0.38, ew = h.hw * 0.18;
     const pts: V3[] = [0, 0.3, 0.62, 0.88, 1].map((t) => addV(b0, scl(dir, t * el)));
-    sac(S.B, EAR, S.gid(), pts, [0.8, 1, 0.95, 0.68, 0.22].map((k) => [ew * k, ew * k * 0.42] as [number, number]), pts.map(() => [h.iH, 1]),
-      { n: 12, up: [0, 0, 1], shift: (a, t) => -ew * 0.2 * Math.max(0, Math.cos(a)) * Math.sin(Math.PI * t), bump: h.fur ? fuzz(0.2, 12, 5, 19 + s) : undefined });
+    sac(S.B, EAR, S.gid(), pts, [0.8, 1, 0.95, 0.7, 0.24].map((k) => [ew * k, ew * k * 0.4] as [number, number]), pts.map((_, i) => (i ? [iE, 1] : [iE, 0.6, h.iH, 0.4])),
+      { n: 12, up: [0, 0, 1], shift: (a, t) => -ew * 0.26 * Math.max(0, Math.cos(a)) * Math.sin(Math.PI * t), bump: h.fur ? fuzz(0.14, 12, 5, 19 + s) : undefined });
   }
-  S.paints.push(() => {
-    hide(S, EAR, { L: h.hh * 0.4, rad: () => h.hw * 0.17, seed: 79, kind: 'head', noPattern: true });
-    for (let y = 1; y < EAR.h - 1; y++) for (let x = 0; x < EAR.w; x++) if (Math.abs(EAR.th(x)) < 1.0 - (y / EAR.h) * 0.5) EAR.put(x, y, S.P.dark, 1.6 + (hash(x, y) - 0.5) * 0.8, 0.5);
-  });
+  S.paints.push(() => earPaint(S, EAR, 1.05, h.hh * 0.4, h.hw * 0.18));
 }
 
-/** whiskers: a fan of pale hairlines on an alpha-cut card each side of the muzzle */
+/** whiskers: rows of stiff pale hairs fanning from the whisker pads, each two crossed tapering strips so they read
+ *  from any side, drooping a little under their own length */
 export function whiskers(S: Ctx, h: HeadCtx) {
-  const WH = S.page.regs.get('WHISK') ?? S.fixed('WHISK', 14, 8); WH.cut = true;
-  for (const s of [-1, 1]) {
-    const root = addV(h.head, [s * h.hw * 0.2, -h.hh * 0.1, h.z0 + h.sl * 0.72]), out = norm([s, 0.0, 0.12]);
-    const L = h.hw * 0.75, up: V3 = [0, h.hw * 0.2, 0], tip = addV(root, scl(out, L)), r0: V3 = [0, h.hw * 0.03, 0];
-    S.B.quad(sub(root, r0), sub(tip, up), addV(tip, up), addV(root, r0), WH, [0, 0, 1, 1], [[h.iH, 1], [h.iH, 1], [h.iH, 1], [h.iH, 1]], true);
+  const WH = S.fixed('WHISK', 4, 12);
+  const wd = Math.max(0.0035, h.hw * 0.017), w: Wt = [h.iH, 1];
+  for (const s of [-1, 1]) for (let k = 0; k < 7; k++) {
+    const row = k % 3, col = Math.floor(k / 3);
+    const root = addV(h.head, [s * h.hw * (0.21 + col * 0.025), -h.hh * (0.03 + row * 0.055), h.z0 + h.sl * (0.74 - col * 0.11)]);
+    const out = norm([s, (1 - row) * 0.3 + (hash(k, s + 3) - 0.5) * 0.12, 0.42 - col * 0.18]);
+    const L = h.hw * (0.95 + hash(k, s + 7) * 0.4) * (col === 2 ? 0.7 : 1);
+    const pts = [0, 0.35, 0.7, 1].map((f) => addV(addV(root, scl(out, L * f)), [0, -L * 0.14 * f * f, 0]));
+    const wid = [wd, wd * 0.8, wd * 0.6, wd * 0.35];
+    blade(S.B, WH, pts, wid, [0, 1, 0], pts.map(() => w), { offset: -0.5 });
+    blade(S.B, WH, pts, wid, norm(cross(out, [0, 1, 0])), pts.map(() => w), { offset: -0.5 });
   }
   S.paints.push(() => {
-    for (let y = 0; y < WH.h; y++) for (let x = 0; x < WH.w; x++) WH.set(x, y, 0xd8d0c0, 0);
-    // four thick-ish strokes so they survive nearest sampling on a slanted card
-    for (let k = 0; k < 4; k++) {
-      const y1 = (k + 0.5) / 4 * WH.h + (hash(k, 3) - 0.5) * 2, sag = (hash(k, 5) - 0.3) * 2;
-      for (let x = 0; x < WH.w; x++) {
-        const f = x / (WH.w - 1), y = Math.round(WH.h / 2 + (y1 - WH.h / 2) * f + Math.sin(f * Math.PI) * sag);
-        if (f > 0.95 - hash(k, 9) * 0.2) continue;
-        const c = f < 0.12 ? 0x2a2420 : mixC(0xe8e0d0, 0xa8a090, f * 0.6);
-        WH.set(x, y, c, 255); if (f < 0.7) WH.set(x, y + 1, mixC(c, 0x000000, 0.25), 255);
-      }
-    }
+    // dark at the follicle, then ivory to a bright tip
+    const R = makeRamp(0xd8d0bc, 5, { spread: 0.45 });
+    WH.fill(R, (x, y) => (y < WH.h * 0.12 ? -2 : 2.2 + (y / WH.h) * 1.8 + (x === 0 ? -0.6 : 0)), undefined, 0.2);
   });
 }
 
@@ -326,31 +373,50 @@ export function ramHorns(S: Ctx, h: HeadCtx) {
   S.paints.push(() => keratin(HR, mixHex(d.colors.pattern, 0xd8c8a0, 0.6), { rings: true, tipLight: 1.4 }));
 }
 
-/** palmate antlers: a short beam, a broad shovel and a fringe of tines */
-export function palmAntlers(S: Ctx, h: HeadCtx) {
-  const AN = S.reg('PALM', h.hl * 1.4, h.hl * 1.4, 10, 64, 64);
+/** an elk's antlers: a full branching rack (the gene name is historical: no more paddles) */
+export function palmAntlers(S: Ctx, h: HeadCtx) { rack(S, h, 1, true); }
+
+/** a branching rack: a beam that sweeps out, back and up off a pearled burr and curves forward at the top, tines
+ *  reaching forward off its front face (brow, bez, trez, the long royal, a crown at the top); polished bone, or velvet */
+export function rack(S: Ctx, h: HeadCtx, size: number, big: boolean) {
+  const d = S.d, w: Wt = [h.iH, 1];
+  const La = h.hl * (big ? 1.75 : 1.2) * size, r0 = Math.max(0.016, h.hw * (big ? 0.085 : 0.065));
+  const AN = S.reg('ANTLER', TAU * r0 * 1.2, La * 1.1, 8, 24, 110);
+  const velvet = hash(d.seed % 1000, 41) < 0.3;
+  const TINES: number[][] = big ? [[0.05, 0.42, 0.95, 0.1], [0.14, 0.36, 0.85, 0.05], [0.4, 0.3, 0.65, 0.05], [0.6, 0.42, 0.55, -0.05], [0.8, 0.28, 0.35, 0.1], [0.93, 0.22, 0.15, -0.2]]
+    : [[0.1, 0.32, 0.9, 0.1], [0.45, 0.3, 0.55, 0], [0.75, 0.26, 0.3, -0.1]];
   for (const s of [-1, 1]) {
-    const b0 = addV(h.head, [s * h.hw * 0.28, h.hh * 0.45, -h.hl * 0.02]), La = h.hl * 1.3, r0 = Math.max(0.018, h.hw * 0.085), w: Wt = [h.iH, 1];
-    const P1 = addV(b0, [s * La * 0.3, La * 0.18, -La * 0.02]);
-    sac(S.B, AN, S.gid(), [b0, lerpV(b0, P1, 0.5), P1], [[r0, r0], [r0 * 0.9, r0 * 0.9], [r0 * 0.85, r0 * 0.7]], [w, w, w], { n: 8 });
-    // brow tine
-    const bt = addV(b0, [s * La * 0.12, La * 0.08, 0]), bte = addV(bt, [s * La * 0.06, La * 0.12, La * 0.3]);
-    sac(S.B, AN, S.gid(), [bt, lerpV(bt, bte, 0.5), bte], [[r0 * 0.55, r0 * 0.55], [r0 * 0.4, r0 * 0.4], [0.003, 0.003]], [w, w, w], { n: 6 });
-    const pc: V3[] = [P1, addV(P1, [s * La * 0.34, La * 0.12, -La * 0.08]), addV(P1, [s * La * 0.68, La * 0.28, -La * 0.1])];
-    const ps = spline(pc, 8), widths = ps.t.map((t) => La * (0.08 + 0.21 * Math.sin(Math.PI * Math.min(1, t * 0.85 + 0.12))));
-    // the shovel faces up and forward, its width running up-back from the beam
-    sac(S.B, AN, S.gid(), ps.pts, widths.map((wd) => [wd, r0 * 0.42] as [number, number]), ps.pts.map(() => w), { n: 10, up: [0, 0.7, 0.7] });
-    const fr = transport(ps.pts, [0, 0.7, 0.7]);
-    for (let i = 1; i < ps.pts.length; i++) {
-      const u = fr[i].u, sgn = u[1] > 0 ? 1 : -1, e = addV(ps.pts[i], scl(u, sgn * widths[i] * 0.92));
-      const td = norm(addV(addV(scl(u, sgn * 0.45), [0, 1, 0]), [s * 0.25, 0, 0])), tl = La * (0.16 + 0.06 * hash(i, s + 3)), te = addV(e, scl(td, tl));
-      sac(S.B, AN, S.gid(), [e, lerpV(e, te, 0.5), te], [[r0 * 0.5, r0 * 0.4], [r0 * 0.36, r0 * 0.3], [0.004, 0.004]], [w, w, w], { n: 5 });
+    const b0 = addV(h.head, [s * h.hw * 0.27, h.hh * 0.44, -h.hl * 0.02]);
+    const bc: V3[] = [b0, addV(b0, [s * La * 0.17, La * 0.17, -La * 0.13]), addV(b0, [s * La * 0.36, La * 0.46, -La * 0.27]), addV(b0, [s * La * 0.44, La * 0.76, -La * 0.22]), addV(b0, [s * La * 0.4, La * 1.0, -La * 0.02])];
+    const bs = spline(bc, 18), N = bs.pts.length - 1;
+    const rad = (t: number) => r0 * (1 - t * 0.6) * (t < 0.04 ? 1.4 : 1);
+    sac(S.B, AN, S.gid(), bs.pts, bs.t.map((t) => [rad(t), rad(t) * 0.86] as [number, number]), bs.pts.map(() => w),
+      { n: 8, bump: (a, t) => (t < 0.3 ? 0.22 * Math.max(0, Math.sin(a * 5 + t * 50)) * (1 - t / 0.3) : 0.04 * Math.sin(a * 4)) });
+    for (const [tt, tl, fwd, outw] of TINES) {
+      const k = Math.round(tt * N), p = bs.pts[k], rr = rad(tt), L = La * tl * (0.9 + hash(k, s + 5) * 0.2);
+      const dir = norm([s * outw, 1 - fwd * 0.55, fwd * (tt < 0.2 ? 1.2 : 1)]);
+      // tines curve up toward their tips
+      const pts: V3[] = [addV(p, scl(dir, -rr * 0.5)), addV(p, scl(dir, L * 0.4)), addV(addV(p, scl(dir, L * 0.78)), [0, L * 0.08, 0]), addV(addV(p, scl(dir, L)), [0, L * 0.2, 0])];
+      sac(S.B, AN, S.gid(), pts, [[rr * 0.78, rr * 0.7], [rr * 0.6, rr * 0.54], [rr * 0.38, rr * 0.34], [rr * 0.1, rr * 0.1]], pts.map(() => w), { n: 6, tv: [0.45, 0.3, 0.12, 0] });
     }
   }
-  // bone: grooved and pitted, darker toward the burr, pale at the edges
   S.paints.push(() => {
-    const R2 = makeRamp(0x9a8262, 7, { spread: 0.6, hueShift: 0.04 });
-    AN.fill(R2, (x, y) => 2.2 + (y / AN.h) * 1.6 + Math.cos(AN.th(x)) * 0.7 + (AN.fbm(x, y, 4, 2, 21) - 0.5) * 1.6 + (hash(x, y) < 0.06 ? -1.2 : 0) + (Math.sin(x * 1.3 + AN.fbm(x, y, 3, 2, 8) * 6) > 0.85 ? -0.9 : 0));
+    if (velvet) {
+      // velvet: short soft fur, grey-brown, paler and rounder at the growing tips
+      const R = makeRamp(mixHex(d.colors.base, 0x6a5a4a, 0.5), 7, { spread: 0.5, hueShift: 0.04 });
+      AN.fill(R, (x, y) => 2.4 + (1 - y / AN.h) * 1.4 + Math.cos(AN.th(x)) * 0.8 + (hash(x, y) < 0.3 ? -0.7 : 0) + (hash(x >> 1, y >> 1) - 0.5) * 0.6, undefined, 0.4);
+      return;
+    }
+    // bone: dark furrowed and pearled near the burr, long grooves up the beam, polished ivory tines
+    const R = makeRamp(0x8a7256, 7, { spread: 0.6, hueShift: 0.04 });
+    for (let y = 0; y < AN.h; y++) for (let x = 0; x < AN.w; x++) {
+      const f = 1 - y / AN.h, th = AN.th(x);
+      let k = 1.6 + f * 2.6 + Math.cos(th) * 0.8 + (AN.fbm(x, y, 4, 2, 21) - 0.5) * 1.0;
+      if (Math.sin(x * 1.7 + AN.fbm(x, y, 3, 2, 8) * 5) > 0.7 && f < 0.75) k -= 1.0; // grooves
+      if (f < 0.3 && hash(x, y) < 0.18) k += 1.3; // pearls
+      if (f > 0.82) k += 1.2;
+      AN.put(x, y, R, k, 0.4);
+    }
   });
 }
 

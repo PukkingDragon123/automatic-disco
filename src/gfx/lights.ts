@@ -64,7 +64,7 @@ export class Sun {
     const n = qualityProfile().shadowMap, s = this.light.shadow;
     if (n === this.size) return;
     this.size = n; s.mapSize.set(n, n);
-    s.map?.dispose(); (s as { map: THREE.WebGLRenderTarget | null }).map = null;
+    s.map?.dispose(); (s as unknown as { map: THREE.WebGLRenderTarget | null }).map = null;
   }
   dispose() { this.offSettings(); }
   /** k: daylight 0 (night) .. 1 (full day) */

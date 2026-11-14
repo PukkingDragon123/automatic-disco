@@ -19,7 +19,7 @@ import { GENE, CAT_NAMES } from '../life/genes';
 import { RES, SKILL, SKILLS, type Res } from '../game/skills';
 import { PH, AM, CR, RD, hex } from './machine';
 import { Odometer, Nixie, PixText, Lamp, Toggle, BigSwitch, Gauge, Knob, crtSettings, meterFace, place, tip, u, steamVent } from './gadgets';
-import { RESM, STATM, BANK, PLATE, SCOPE, SEL, CMD, WHEEL, resArt, statArt, bankArt, bigSwitchArt, nameArt, scopeArt, selArt, cmdArt, radioArt } from './hudArt';
+import { RESM, STATM, BANK, PLATE, SCOPE, SEL, CMD, WHEEL, resArt, statArt, bankArt, bigSwitchArt, nameArt, scopeArt, selArt, cmdArt, radioArt, crack } from './hudArt';
 import { AbilityWheel } from './wheel';
 
 export interface Cmd { icon: string; key: string; name: string; tip: () => string; disabled?: () => string | false; active?: () => boolean; run: () => void; cost?: string }
@@ -97,7 +97,8 @@ export class Hud {
     this.hullFill = place(el('div', 'tube-fill hull', sm), X.hull, 13, 0, 7);
     this.hullTxt = new PixText(sm, X.hull, 23, 40, 'left');
     tip(place(el('div', 'hit', sm), X.hull - 2, 2, 44, 27), () => { const [a, b] = this.hull(); return `<h4>Hull Integrity</h4>${Math.ceil(a)} / ${Math.round(b)}. Plate Steel adds more. The crashed core patches the hull while Unit 07 stays close to it.`; });
-    this.chgGauge = new Gauge(sm, X.chg - 1, 10, { w: 30, h: 19, cx: 15, cy: 16, r: 12, a0: -1.45, a1: 1.45, face: (p) => meterFace(p, 15, 16, 12, -1.45, 1.45, { ticks: 6, red: [0, 0.18] }) });
+    // the charge meter took a stone once: its glass is cracked
+    this.chgGauge = new Gauge(sm, X.chg - 1, 10, { w: 30, h: 19, cx: 15, cy: 16, r: 12, a0: -1.45, a1: 1.45, face: (p) => meterFace(p, 15, 16, 12, -1.45, 1.45, { ticks: 6, red: [0, 0.18] }), glass: (p) => crack(p, 21, 6, [[2.6, 8], [0.9, 5], [1.9, 4]], 4) });
     this.chgNix = new Nixie(sm, 3, X.chg + 32, 12);
     this.chgMax = new PixText(sm, X.chg + 32, 4, 29, 'right');
     tip(place(el('div', 'hit', sm), X.chg - 2, 2, 64, 27), () => `<h4>Charge</h4>Gravity energy for the field powers. Refills by itself; the Gravity Coil and Reactor Bloom hold more and refill faster.`);
@@ -171,6 +172,8 @@ export class Hud {
     this.objectives.style.display = 'none';
     // power-on: the console wakes module by module
     Array.from(this.root.querySelectorAll('.mod, .wl')).forEach((m, i) => { (m as HTMLElement).style.animationDelay = `${i * 70}ms`; m.classList.add('boot'); });
+    // the tubes light after their housings, each with a line roll
+    setTimeout(() => this.root.querySelectorAll('.scr').forEach((e) => e.classList.add('on')), 500);
 
     // live feedback from the economy
     const g = c.game;
@@ -191,7 +194,10 @@ export class Hud {
     if (key === this.layoutKey) return;
     this.layoutKey = key;
     /** the largest crisp scale (at most `max` CSS px per art px) that passes `ok` */
-    const fit = (ok: (s: number) => boolean, max = 99) => { for (let k = MAX_K; k >= 1; k--) { const s = k / dpr; if (s <= max && ok(s)) return s; } return 1 / dpr; };
+    // native resolution: never more than 2 screen px per art px on a 1x screen (1080p and up), and on high-DPI screens
+    // no more than ~1.34 CSS px (whole device pixels either way)
+    const cap = dpr >= 1.5 ? 1.34 : 2;
+    const fit = (ok: (s: number) => boolean, max = 99) => { for (let k = MAX_K; k >= 1; k--) { const s = k / dpr; if (s <= max && s <= cap && ok(s)) return s; } return 1 / dpr; };
     const topW = PLATE.w + RESM.w + STATM.w + BANK.w + 6, botW = SCOPE.w + SEL.w + CMD.w + WHEEL.w + 4;
     const compact = topW > W;
     const sT = fit((s) => topW * s <= W && BANK.h * s <= H * (touch ? 0.18 : 0.15));
@@ -258,10 +264,10 @@ export class Hud {
       this.textScale(sC * dpr, dpr);
     }
   }
-  /** tooltips and toasts: whole device pixels per font pixel; on high-DPI screens as large as the console's art
-   *  pixels, on 1x screens half that (a pixel font reads fine at 1-2 device pixels there) */
+  /** tooltips and toasts: whole device pixels per font pixel, as large as the console's art pixels on high-DPI and
+   *  1080p+ screens, one device pixel on smaller 1x screens */
   private textScale(k: number, dpr: number) {
-    const fk = dpr >= 1.5 ? Math.round(k) : Math.max(1, Math.round(k / 2));
+    const fk = dpr >= 1.5 || innerHeight >= 1000 ? Math.round(k) : Math.max(1, Math.round(k / 2));
     document.documentElement.style.setProperty('--tf', String(fk / dpr));
   }
   /** toasts read just under the console's top stack */

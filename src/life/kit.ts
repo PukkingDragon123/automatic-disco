@@ -13,7 +13,6 @@ export type Wt = number[];
 export const KPAD = 2;
 /** global loft style: superellipse squareness (2 = round, higher = boxier) and a multiplier on sides around */
 export const KIT = { sq: 2, nMul: 1 };
-const NOISE = new Map<string, Float32Array>();
 export const hash = (a: number, b = 0) => { const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return s - Math.floor(s); };
 
 /** a rectangle of the page; u wraps (tubes), v clamps. Regions are requested at a nominal size while the geometry
@@ -88,16 +87,19 @@ export class Region {
       if (d <= 1) this.blend(x, y, c, t * (1 - d));
     }
   }
-  /** tileable fbm over the region (cached) */
+  /** tileable fbm over the region (cached on the region, so it goes when the page does) */
+  private nz = new Map<number, Float32Array>();
+  private nzK = -1; private nzF: Float32Array | null = null;
   fbm(x: number, y: number, cells = 3, oct = 2, seed = 0) {
     const w = this.w, h = this.h;
-    const key = w + 'x' + h + ':' + cells + ':' + oct + ':' + seed;
-    let f = NOISE.get(key);
+    const key = cells * 1e8 + oct * 1e7 + (seed % 1e7);
+    let f = key === this.nzK ? this.nzF! : this.nz.get(key);
     if (!f) {
       f = new Float32Array(w * h);
       for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) f[j * w + i] = tileFbm(i, j, w, h, cells, oct, seed);
-      NOISE.set(key, f);
+      this.nz.set(key, f);
     }
+    this.nzK = key; this.nzF = f;
     const xi = ((Math.floor(x) % w) + w) % w, yi = ((Math.floor(y) % h) + h) % h;
     return f[yi * w + xi];
   }
@@ -262,8 +264,7 @@ export class SkinB {
       }
     };
     const idx = mk(g);
-    emit(!!o.flip, idx);
-    if (o.double) emit(!o.flip, mk(g + 5000));
+    emit(!!o.flip, idx); // (o.double is moot: the material is double-sided and flat shading takes its normal from the screen)
     const all = centroid(cents);
     const pole = (P: V3, ring: number[], v: number, w: Wt | ((j: number) => Wt)) => {
       for (let j = 0; j + 1 < n; j++) {
@@ -282,7 +283,7 @@ export class SkinB {
     const mk = (gg: number) => [a, b, c, d].map((p, i) => this.vert(p, reg, uv[i][0], 1 - uv[i][1], w[i], gg));
     const f = mk(g);
     this.tri(f[0], f[1], f[2]); this.tri(f[0], f[2], f[3]);
-    if (double) { const q = mk(g < 0 ? -1 : g + 5000); this.tri(q[0], q[2], q[1]); this.tri(q[0], q[3], q[2]); }
+    void double;
   }
   get tris() { return this.I.length / 3; }
   build(): THREE.BufferGeometry {
@@ -458,17 +459,15 @@ export function blade(B: SkinB, reg: Region, pts: V3[], width: number[], side: V
 /** a membrane sheet over a grid of points (rows x cols), double-sided, planar UV over the region */
 export function sheet(B: SkinB, reg: Region, g: number, grid: V3[][], w: (i: number, j: number) => Wt) {
   const rows = grid.length, cols = grid[0].length;
-  for (const side of [0, 1]) {
-    const ids = grid.map((row, i) => row.map((p, j) => B.vert(p, reg, j / (cols - 1), i / (rows - 1), w(i, j), g + side * 5000)));
-    for (let i = 0; i + 1 < rows; i++) for (let j = 0; j + 1 < cols; j++) {
-      const a = ids[i][j], b = ids[i][j + 1], c = ids[i + 1][j + 1], d = ids[i + 1][j];
-      if (side === 0) { B.tri(a, b, c); B.tri(a, c, d); } else { B.tri(a, c, b); B.tri(a, d, c); }
-    }
+  const ids = grid.map((row, i) => row.map((p, j) => B.vert(p, reg, j / (cols - 1), i / (rows - 1), w(i, j), g)));
+  for (let i = 0; i + 1 < rows; i++) for (let j = 0; j + 1 < cols; j++) {
+    const a = ids[i][j], b = ids[i][j + 1], c = ids[i + 1][j + 1], d = ids[i + 1][j];
+    B.tri(a, b, c); B.tri(a, c, d);
   }
 }
 
 /** an ellipsoid as a sac along its local axis `ax` (eyes, knuckles, pods) */
-export function ball(B: SkinB, reg: Region, g: number, c: V3, ax: V3, r: [number, number, number], w: Wt, o: { n?: number; rings?: number; up?: V3; bump?: (a: number, t: number) => number } = {}) {
+export function ball(B: SkinB, reg: Region, g: number, c: V3, ax: V3, r: [number, number, number], w: Wt, o: { n?: number; rings?: number; up?: V3; bump?: (a: number, t: number) => number; tv?: number[]; sq?: number } = {}) {
   const rings = o.rings ?? 6, A = norm(ax);
   const pts: V3[] = [], radii: [number, number][] = [];
   for (let i = 0; i <= rings; i++) {
@@ -476,7 +475,7 @@ export function ball(B: SkinB, reg: Region, g: number, c: V3, ax: V3, r: [number
     pts.push(addV(c, scl(A, Math.sin(ang) * r[2])));
     radii.push([r[0] * k, r[1] * k]);
   }
-  return sac(B, reg, g, pts, radii, pts.map(() => w), { n: o.n ?? 10, up: o.up, bump: o.bump, cap: 0.35 });
+  return sac(B, reg, g, pts, radii, pts.map(() => w), { n: o.n ?? 10, up: o.up, bump: o.bump, cap: 0.35, tv: o.tv, sq: o.sq });
 }
 
 // ------------------------------------------------------------------------------------------- painters

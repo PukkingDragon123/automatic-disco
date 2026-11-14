@@ -96,14 +96,14 @@ vec3 flowP(vec3 n) {
 float cloudLow(vec3 n) {
   vec3 p = flowP(n);
   float belts = 0.5 + 0.5 * sin(p.y * 16.0 + fbm(p * 2.2 + uSeedC) * 5.0);
-  float c = fbm(vec3(p.x * 2.6, p.y * 5.5, p.z * 2.6) + uSeedC) * 0.52 + fbm(p * 7.5 + uSeedC.zxy) * 0.38 + belts * 0.1;
+  float c = fbm(vec3(p.x * 2.4, p.y * 3.6, p.z * 2.4) + uSeedC) * 0.5 + fbm(p * 7.0 + uSeedC.zxy) * 0.4 + belts * 0.12;
   for (int i = 0; i < 4; i++) { float d = distance(p, cycC(i)); c += smoothstep(0.24, 0.07, d) * 0.22 - smoothstep(0.05, 0.0, d) * 0.7; }
-  return smoothstep(0.5, 0.6, c);
+  return smoothstep(0.455, 0.56, c);
 }
 float cloudHigh(vec3 n) {
   vec3 p = rotA(n, vec3(0.0, 1.0, 0.0), uT * 0.021 * (1.0 + sin(n.y * 4.0) * 0.5));
   float c = fbm(vec3(p.x * 1.5, p.y * 15.0, p.z * 1.5) + uSeedC.yzx) * 0.8 + vn(p * 11.0) * 0.2;
-  return smoothstep(0.6, 0.7, c) * 0.7;
+  return smoothstep(0.57, 0.68, c) * 0.75;
 }
 `;
 
@@ -299,7 +299,7 @@ void main(){
   float term = smoothstep(-0.35, -0.05, sd) * (1.0 - smoothstep(-0.05, 0.35, sd));
   vec3 col = mix(uCol * 0.18, uCol, day) + vec3(1.0, 0.5, 0.25) * term * 0.9;
   float q = floor(dens * 7.0) / 7.0;
-  gl_FragColor = vec4(col * q * 1.25, 1.0);
+  gl_FragColor = vec4(col * q * 1.9, 1.0);
   gNormal = vec4(0.0);
 }`;
 const ATMO_VERT = /* glsl */`

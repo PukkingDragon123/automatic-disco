@@ -106,7 +106,7 @@ export class Player implements GolemTarget, TouchHost {
   private unwrap: () => void = () => {};
   private known: Set<string>; private lastPts: number; private errs = 0; private evPts = 0; private evT = 0;
   private cells(n: number) {
-    floatText(this.g, this.x, this.y + this.height + 0.2, this.z, `+${n} CORE CELL${n > 1 ? 'S' : ''}`, 'point', { big: 1, life: 2.2 });
+    floatText(this.g, this.x, this.y + this.height + 0.2, this.z, `+${n} CORE CELL${n > 1 ? 'S' : ''}`, 'point', { life: 2.2 });
     this.g.child.wiggle(); this.g.child.flash(0x7ae088, 1.2); sfx('done', 1, 0.7);
     this.g.fx.burst(this.x, this.y + this.height * 0.6, this.z, 20, 0x7ae088, { glow: true, speed: 1.2, up: 2.4, size: 2, life: 0.9, grav: -0.8 });
   }
@@ -140,7 +140,7 @@ export class Player implements GolemTarget, TouchHost {
     if (id === 'colossus') { this.becomeColossus(); return; }
     const s = SKILL[id];
     const power = (['lift', 'slam', 'repulse', 'well', 'shape', 'storm'] as string[]).includes(id);
-    floatText(this.g, this.x, this.y + this.height + 0.25, this.z, power ? `${s?.name ?? id} LOADED` : `${s?.name ?? id} INSTALLED`, 'skill', { big: 1 });
+    floatText(this.g, this.x, this.y + this.height + 0.25, this.z, power ? `${s?.name ?? id} LOADED` : `${s?.name ?? id} INSTALLED`, 'skill');
     this.g.child.wiggle(); this.g.child.flash(0xfff0a0, 1.5);
     this.g.fx.burst(this.x, this.y + this.height * 0.6, this.z, 24, this.g.child.lookData.glow, { glow: true, speed: 1.6, up: 2, size: 2, life: 0.8, grav: -0.5 });
     sfx('done', 1, 0.8);
@@ -152,7 +152,7 @@ export class Player implements GolemTarget, TouchHost {
     g.child.setScale(SCALE * COLOSSUS, true);
     this.recalcHull(); this.hull = this.hullMax;
     g.cam.distGoal = clamp(g.cam.distGoal * 1.8, 6, 45);
-    floatText(g, this.x, this.y + this.height + 0.4, this.z, 'COLOSSUS FRAME', 'skill', { big: 2, life: 3.2 });
+    floatText(g, this.x, this.y + this.height + 0.4, this.z, 'COLOSSUS FRAME', 'skill', { big: 1, life: 3.2 });
     g.cam.shake(0.5, 1.4); sfx('pulse', 0.6, 1); sfx('build', 0.7, 0.8);
     this.slam(1.4);
     g.child.wiggle();
@@ -166,8 +166,9 @@ export class Player implements GolemTarget, TouchHost {
     }
   }
   private assembled(part: string, at: THREE.Vector3) {
-    floatText(this.g, this.x, this.y + this.height + 0.3, this.z, PART_NAME[part] ?? part.toUpperCase(), 'skill', { big: 1, life: 2.8 });
+    floatText(this.g, this.x, this.y + this.height + 0.3, this.z, PART_NAME[part] ?? part.toUpperCase(), 'skill', { life: 2.8 });
     this.g.fx.burst(at.x, at.y, at.z, 26, 0xffe0a0, { glow: true, speed: 2.2, up: 2, size: 2, life: 0.45, grav: 6 });
+    vfx2d(this.g, 'glint', at.x, at.y, at.z, { size: 0.8 * this.size });
     sfx('crack', 1.8, 0.6); sfx('hit', 1.6, 0.35); this.g.cam.shake(0.06, 0.15);
     this.g.child.wiggle();
   }
@@ -579,7 +580,7 @@ export class Player implements GolemTarget, TouchHost {
       if (c.dead) killed = true;
     }
     // impact: sparks off the knuckles, hit-stop, shake
-    g.fx.spray(at.x, at.y, at.z, fx, 0.3, fz, heavy ? 16 : 8, 0xffd080, { glow: true, speed: 2.5, cone: 0.8, size: 1.8, life: 0.25, grav: 4 });
+    if (!vfx2d(g, 'spark', at.x, at.y, at.z, { dir: [fx, fz], size: heavy ? 0.8 : 0.5 })) g.fx.spray(at.x, at.y, at.z, fx, 0.3, fz, heavy ? 16 : 8, 0xffd080, { glow: true, speed: 2.5, cone: 0.8, size: 1.8, life: 0.25, grav: 4 });
     this.hitStop(killed || crit ? 0.09 : heavy ? 0.07 : 0.045);
     g.cam.shake(killed ? 0.28 : crit ? 0.2 : heavy ? 0.16 : 0.08, 0.2);
     sfx('hit', heavy ? 0.7 : 1.1, 0.8); sfx('crack', heavy ? 0.9 : 1.6, 0.4);
@@ -659,6 +660,7 @@ export class Player implements GolemTarget, TouchHost {
     g.child.hurt(Math.min(2, 0.5 + d / 8));
     const hy = this.y + this.height * 0.6;
     g.fx.spray(this.x - dx / dl * 0.1, hy, this.z - dz / dl * 0.1, dx / dl, 0.6, dz / dl, 10 + Math.round(d), 0xffc060, { glow: true, speed: 2.6, cone: 0.7, size: 1.8, life: 0.35, grav: 7 });
+    vfx2d(g, 'spark', this.x - dx / dl * 0.1, hy, this.z - dz / dl * 0.1, { dir: [dx, dz], size: 0.6 * this.size }); if (d > 6) vfx2d(g, 'crack', this.x, hy, this.z, { size: 0.5 * this.size });
     g.fx.spray(this.x, hy, this.z, dx / dl, 0.8, dz / dl, 6, g.child.lookData.rock, { speed: 1.8, cone: 0.8, size: 2.4, life: 0.5, grav: 9 });
     if (d > 4) this.gore.gib(this.x, hy, this.z, 'rock', g.child.lookData.rock, rnd(0.03, 0.05), { v: new THREE.Vector3(dx / dl * 2 + rnd(-1, 1), 3, dz / dl * 2 + rnd(-1, 1)), bleed: 0, life: 20 });
     floatText(g, this.x, this.y + this.height + 0.1, this.z, `-${Math.max(1, Math.round(d))} HULL`, 'hurt');
@@ -681,6 +683,7 @@ export class Player implements GolemTarget, TouchHost {
     g.fx.burst(this.x, hy, this.z, 30, 0x2a2624, { speed: 1, up: 1.4, size: 4, life: 1.8, grav: -0.6 });
     g.cam.shake(0.7, 0.7); sfx('crack', 0.6, 1); sfx('pulse', 0.8, 0.9); sfx('death', 0.6, 0.7);
     flora(g).impulse?.(this.x, this.z, 3, 1.6);
+    vfx2d(g, 'shock', this.x, hy, this.z, { size: 1.6 }); vfx2d(g, 'smoke', this.x, hy, this.z, { size: 1.4 }); vfx2d(g, 'spark', this.x, hy, this.z, { size: 1.2 });
     this.hitStop(0.16);
     // it drops part of what it carried; the pieces lie there to be picked up again
     const lost: string[] = [];
@@ -691,7 +694,7 @@ export class Player implements GolemTarget, TouchHost {
       const chunks = Math.min(8, n), per = n / chunks;
       for (let i = 0; i < chunks; i++) this.loot.drop(r, per, new THREE.Vector3(this.x, this.y + 0.3, this.z), false, new THREE.Vector3(rnd(-3, 3), rnd(3, 5), rnd(-3, 3)));
     }
-    floatText(g, this.x, this.y + 0.6, this.z, 'UNIT 07 DESTROYED', 'hurt', { big: 1, life: 3 });
+    floatText(g, this.x, this.y + 0.6, this.z, 'UNIT 07 DESTROYED', 'hurt', { life: 3 });
     toast(`Unit 07 is down. Rebooting at the core${lost.length ? `; it dropped ${lost.join(', ')}` : ''}.`, 'warn', 4000);
   }
   private dead(dt: number) {
@@ -708,7 +711,7 @@ export class Player implements GolemTarget, TouchHost {
       this.alive = true; this.hull = this.hullMax; this.invuln = 2.5; this.lastHurt = g.world.time;
       this.place(); g.child.root.updateMatrixWorld(true);
       g.child.reassemble();
-      floatText(g, this.x, this.y + this.height + 0.3, this.z, 'REBOOT COMPLETE', 'good', { big: 1, life: 2.4 });
+      floatText(g, this.x, this.y + this.height + 0.3, this.z, 'REBOOT COMPLETE', 'good', { life: 2.4 });
       g.fx.burst(this.x, this.y + 0.3, this.z, 40, g.child.lookData.glow, { glow: true, speed: 2, up: 2, size: 2, life: 0.8 });
       sfx('build', 1.2, 0.8); sfx('done', 1, 0.6);
     }
@@ -882,7 +885,7 @@ export class Player implements GolemTarget, TouchHost {
         if (Math.random() < dt * (drill ? 40 : 14)) g.fx.spray(contact.x, contact.y, contact.z, this.x - contact.x, 1, this.z - contact.z, drill ? 3 : 1, 0xffc060, { glow: true, speed: drill ? 2.6 : 1.4, cone: 0.9, size: 1.6, life: 0.25, grav: 7 });
         if (Math.random() < dt * 20) g.fx.spray(contact.x, contact.y, contact.z, 0, 1, 0, 2, c.res === 'soil' ? 0x8a6a4a : 0x8a8478, { speed: 1.4, cone: 0.9, size: 2.2, life: 0.4, grav: 8 });
         if (!drill || !ch.arms.length) { if (Math.random() < dt * 12) g.fx.arc(ch.headPos(new THREE.Vector3()), contact, 0.06, ch.lookData.glow, 0.25); g.fx.stream(() => contact, this.mouth, Math.ceil(dt * 30), c.res === 'soil' ? 0x8a6a4a : 0x9a9488, { dur: 0.4, rad: 0.12, arc: 0.05, size: 1.6 }); }
-        if (C.tick <= 0) { C.tick = drill ? 0.12 : 0.3; sfx('crack', rnd(1.6, 2.6), drill ? 0.22 : 0.1); if (drill) g.cam.shake(0.02, 0.1); }
+        if (C.tick <= 0) { C.tick = drill ? 0.12 : 0.3; sfx('crack', rnd(1.6, 2.6), drill ? 0.22 : 0.1); if (drill) { g.cam.shake(0.02, 0.1); if (Math.random() < 0.4) vfx2d(g, 'spark', contact.x, contact.y, contact.z, { size: 0.4 }); } else if (Math.random() < 0.3) vfx2d(g, 'dust', contact.x, contact.y, contact.z, { size: 0.35 }); }
         this.yield(C, dt, contact);
         // stones wear away, seams run dry, drilled rock sheds loose stones
         if (c.stone) { c.stone.r -= dt * (drill ? 0.022 : 0.008); if (c.stone.r < 0.045) { const i = this.stones.list.indexOf(c.stone); if (i >= 0) this.stones.list.splice(i, 1); g.fx.burst(contact.x, contact.y, contact.z, 14, 0x9a9488, { speed: 1.4, up: 1.4, size: 2.2, life: 0.5 }); this.channelStop(); } }
@@ -910,7 +913,7 @@ export class Player implements GolemTarget, TouchHost {
           }
           // clods fly up into the golem
           for (let k = 0; k < 2; k++) { const b = this.gore.gib(ground.x + rnd(-0.2, 0.2), ground.y + 0.05, ground.z + rnd(-0.2, 0.2), 'rock', Math.random() < 0.5 ? g.region.pal.soil : g.region.pal.clay, rnd(0.025, 0.045), { bleed: 0, v: new THREE.Vector3(rnd(-1, 1), 3, rnd(-1, 1)) }); this.gore.suck(b, this.mouth, rnd(0.5, 0.8)); }
-          sfx('squelch', 1.8, 0.2);
+          sfx('squelch', 1.8, 0.2); vfx2d(g, 'dust', ground.x, ground.y, ground.z, { size: 0.45, col: g.region.pal.soil });
         }
         if (Math.random() < dt * 14) g.fx.burst(ground.x, ground.y, ground.z, 2, g.region.pal.soil, { speed: 1, up: 1.6, size: 2.4, life: 0.5 });
         this.yield(C, dt, ground);
@@ -926,7 +929,7 @@ export class Player implements GolemTarget, TouchHost {
           this.channelStop();
           if (g.world.creatures.includes(cc)) g.world.remove(cc);
           const genes = sp.design.genes.filter((id) => GENE[id]);
-          floatText(g, this.x, this.y + this.height + 0.3, this.z, 'GENOME ABSORBED', 'good', { big: 1, life: 2.2 });
+          floatText(g, this.x, this.y + this.height + 0.3, this.z, 'GENOME ABSORBED', 'good', { life: 2.2 });
           g.child.wiggle();
           g.emit('absorb', { species: sp.name, genes });
           g.veyr.harvest?.(cc, sp);
@@ -965,7 +968,7 @@ export class Player implements GolemTarget, TouchHost {
           this.channelStop();
           if (sub === 'sow') {
             const pf = g.veyr.absorbPlant(pi);
-            if (pf) { floatText(g, ground.x, ground.y + 0.5, ground.z, `PREFAB: ${pf.name}`, 'good', { big: 1 }); sfx('absorb', 1.2, 0.7); g.child.wiggle(); }
+            if (pf) { floatText(g, ground.x, ground.y + 0.5, ground.z, `PREFAB: ${pf.name}`, 'good'); sfx('absorb', 1.2, 0.7); g.child.wiggle(); }
             else { floatText(g, ground.x, ground.y + 0.5, ground.z, 'SEED PRESS FAILED', 'warn'); sfx('deny'); }
           } else {
             const ok = g.veyr.graftPlant(pi);
@@ -986,7 +989,7 @@ export class Player implements GolemTarget, TouchHost {
           this.channelStop();
           const ok = g.veyr.convert(cc);
           const h = cc.sp.pheno.height * cc.growth;
-          if (ok) { floatText(g, cc.x, cc.y + h + 0.4, cc.z, 'REWIRED', 'good', { big: 1 }); cc.aggro = 0; if (cc.target === -999999999) { cc.target = 0; cc.mind = 'idle'; } sfx('absorb', 1.5, 0.7); g.child.wiggle(); }
+          if (ok) { floatText(g, cc.x, cc.y + h + 0.4, cc.z, 'REWIRED', 'good'); cc.aggro = 0; if (cc.target === -999999999) { cc.target = 0; cc.mind = 'idle'; } sfx('absorb', 1.5, 0.7); g.child.wiggle(); }
           else { floatText(g, cc.x, cc.y + h + 0.4, cc.z, 'GRAFT REJECTED', 'warn'); sfx('deny'); }
         }
         break;
@@ -1006,7 +1009,7 @@ export class Player implements GolemTarget, TouchHost {
       this.rippleT -= dt * (1 + sp * 0.8);
       if (this.rippleT <= 0) {
         this.rippleT = 0.45;
-        for (let i = 0; i < 14; i++) { const a = (i / 14) * Math.PI * 2; g.fx.matter.emit(this.x + Math.cos(a) * 0.08, y, this.z + Math.sin(a) * 0.08, Math.cos(a) * 0.55, 0, Math.sin(a) * 0.55, _c.set(0xd8f0ff), 0.8, 1.6, 0.6, 0, 1.4); }
+        if (!vfx2d(g, 'ripple', this.x, y, this.z, { size: 0.5 * this.size })) for (let i = 0; i < 14; i++) { const a = (i / 14) * Math.PI * 2; g.fx.matter.emit(this.x + Math.cos(a) * 0.08, y, this.z + Math.sin(a) * 0.08, Math.cos(a) * 0.55, 0, Math.sin(a) * 0.55, _c.set(0xd8f0ff), 0.8, 1.6, 0.6, 0, 1.4); }
       }
     } else {
       const core = g.veyr.core, near = core && Math.hypot(core.x - this.x, core.z - this.z) < 4;

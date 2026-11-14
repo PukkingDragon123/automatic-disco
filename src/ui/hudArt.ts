@@ -8,7 +8,8 @@ export interface HousingOpts { cut?: [number, number, number, number]; tone?: 'o
 export function housing(w: number, h: number, o: HousingOpts = {}): Pix {
   const p = new Pix(w, h), R = o.tone === 'gun' ? GM : OL, seed = o.seed ?? 3;
   const [tl, tr, br, bl] = o.cut ?? [6, 6, 6, 6];
-  metal(p, 0, 0, w, h, R, { seed, base: R.length * 0.5, rough: 0.55, brushed: 0.28, light: 0.9, scratches: 1.1, grime: 0.6, rust: 0.55, chips: 1.1 });
+  // quiet enamel: wear is placed by hand (see wear()), not sprinkled over everything
+  metal(p, 0, 0, w, h, R, { seed, base: R.length * 0.5, rough: 0.38, brushed: 0.2, light: 0.8, scratches: 0.4, grime: 0.22, rust: 0.12, chips: 0.3 });
   const out = (x: number, y: number) => x < 0 || y < 0 || x >= w || y >= h || x + y < tl || (w - 1 - x) + y < tr || (w - 1 - x) + (h - 1 - y) < br || x + (h - 1 - y) < bl;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (out(x, y)) p.clear(x, y);
   const edge = new Uint8Array(w * h);
@@ -20,15 +21,68 @@ export function housing(w: number, h: number, o: HousingOpts = {}): Pix {
     else if (E(x, y + 1) || E(x + 1, y)) p.set(x, y, E(x, y + 1) ? R[1] : R[2]);
   }
   // seams
-  for (const sx of o.seamsX ?? []) { for (let y = 2; y < h - 2; y++) if (!out(sx, y) && !out(sx + 1, y)) { p.set(sx, y, R[1]); p.set(sx + 1, y, R[R.length - 3]); } for (let y = 8; y < h - 6; y += 9) { rivet3(p, sx - 4, y); rivet3(p, sx + 3, y); } }
+  for (const sx of o.seamsX ?? []) { for (let y = 2; y < h - 2; y++) if (!out(sx, y) && !out(sx + 1, y)) { p.set(sx, y, R[1]); p.set(sx + 1, y, R[R.length - 3]); } rivet3(p, sx - 4, 6); rivet3(p, sx + 3, h - 9); }
   for (const sy of o.seamsY ?? []) { for (let x = 2; x < w - 2; x++) if (!out(x, sy) && !out(x, sy + 1)) { p.set(x, sy, R[1]); p.set(x, sy + 1, R[R.length - 3]); } }
-  // perimeter rivets
-  const st = o.rivetStep ?? 11, no = o.noRivets ?? [];
-  if (!no.includes('t')) for (let x = tl + 5; x < w - tr - 7; x += st) rivet(p, x, 3);
-  if (!no.includes('b')) for (let x = bl + 5; x < w - br - 7; x += st) rivet(p, x, h - 7);
-  if (!no.includes('l')) for (let y = tl + 6; y < h - bl - 8; y += st) rivet(p, 3, y);
-  if (!no.includes('r')) for (let y = tr + 6; y < h - br - 8; y += st) rivet(p, w - 7, y);
+  // rivets only where a plate is actually fastened: near the corners of each edge that carries them (a long edge
+  // gets one more in the middle)
+  const no = o.noRivets ?? [];
+  const row = (a: number, b: number, at: (v: number) => void) => { at(a); at(b); if (b - a > (o.rivetStep ?? 11) * 9) at(Math.round((a + b) / 2)); };
+  if (!no.includes('t')) row(tl + 5, w - tr - 8, (x) => rivet(p, x, 3));
+  if (!no.includes('b')) row(bl + 5, w - br - 8, (x) => rivet(p, x, h - 7));
+  if (!no.includes('l')) row(tl + 6, h - bl - 9, (y) => rivet(p, 3, y));
+  if (!no.includes('r')) row(tr + 6, h - br - 9, (y) => rivet(p, w - 7, y));
   return p;
+}
+/** enamel worn through to bare steel where hands rest or a tool keeps catching: a patch, with a dark chipped rim */
+export function wear(p: Pix, x: number, y: number, w: number, h: number, seed = 1) {
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    const dx = (i + 0.5) / w - 0.5, dy = (j + 0.5) / h - 0.5, d = Math.hypot(dx * 1.1, dy) * 2 + (hashf(i, j, seed) - 0.5) * 0.55;
+    if (d > 1) continue;
+    const X = x + i, Y = y + j; if (p.a(X, Y) < 255) continue;
+    p.set(X, Y, d > 0.82 ? mixc(GM[2], OL[2], 0.5) : dv(GM, 7.2 - d * 2 + (hashf(i, j, seed + 5) - 0.5) * 1.2 - j * 0.15, X, Y));
+  }
+}
+/** a strip of masking tape (torn ends, slightly askew) with a grease-pencil note on it, in Calder's hand */
+export function tape(p: Pix, x: number, y: number, w: number, note: string, seed = 1, ink = 0x3b3a36) {
+  const h = 7, skew = 0.08;
+  for (let i = 0; i < w; i++) {
+    const torn0 = Math.floor(hashf(i, 0, seed) * 2), torn1 = Math.floor(hashf(i, 1, seed) * 2);
+    const yo = Math.round(i * skew);
+    for (let j = torn0; j < h - torn1; j++) {
+      const endFray = (i < 2 || i > w - 3) && hashf(i, j, seed + 2) < 0.4;
+      if (endFray) continue;
+      p.set(x + i, y + j + yo, mixc(0xcdbf9a, 0xb3a37c, hashf(i >> 1, j, seed + 3) * 0.5), 225);
+    }
+    p.set(x + i, y + h + yo - torn1, INK, 70);
+  }
+  // grease pencil: soft, a little uneven, the baseline wanders
+  let cx = x + 2;
+  for (const ch of note) {
+    const q = new Pix(6, 6); text(q, ch, 0, 0, ink);
+    const wob = Math.round((hashf(cx, 7, seed) - 0.5) * 1.6), yo = Math.round((cx - x) * skew);
+    for (let j = 0; j < 6; j++) for (let i = 0; i < 6; i++) if (q.get(i, j) >= 0) p.set(cx + i, y + 1 + j + wob + yo, ink, hashf(cx + i, j, seed) < 0.15 ? 150 : 235);
+    cx += textW(ch) + 1;
+  }
+}
+/** a cracked glass: a star at the strike and two jagged runs, light on one side, dark on the other */
+export function crack(p: Pix, x: number, y: number, runs: [number, number][], seed = 1) {
+  for (const [ang, len] of runs) {
+    let cx = x, cy = y, a = ang;
+    for (let k = 0; k < len; k++) {
+      a += (hashf(k, ang * 10, seed) - 0.5) * 0.9;
+      cx += Math.cos(a); cy += Math.sin(a);
+      p.set(Math.round(cx), Math.round(cy), 0xe8eef0, 150 - k * 3);
+      p.set(Math.round(cx) + 1, Math.round(cy) + 1, INK, 70);
+    }
+  }
+  p.set(x, y, 0xffffff, 200); p.set(x + 1, y, 0xe8eef0, 120); p.set(x, y + 1, 0xe8eef0, 120);
+}
+/** stencil overspray: a fine mist of the paint that got under the stencil's edge */
+export function overspray(p: Pix, x: number, y: number, w: number, h: number, col: number, seed = 1) {
+  for (let j = -2; j < h + 2; j++) for (let i = -2; i < w + 2; i++) {
+    const edge = Math.min(i + 2, j + 2, w + 1 - i, h + 1 - j);
+    if (hashf(i, j, seed) < 0.16 - edge * 0.025) p.set(x + i, y + j, col, 90 + hashf(j, i, seed) * 70);
+  }
 }
 /** stencilled paint with a little wear */
 export function stencil(p: Pix, s: string, x: number, y: number, col = CR[3], seed = 1) {
@@ -108,7 +162,7 @@ export function resArt(cols: number[], labels: string[]) {
     socket(p, x + 26, 24, 16, 2, 0x0a120c);
     if (k) for (let y = 4; y < h - 5; y++) { p.set(x - 3, y, OL[1]); p.set(x - 2, y, OL[5]); }
   });
-  hazard(p, 3, h - 4, 4, 2, 4); hazard(p, w - 8, h - 4, 4, 2, 7, true);
+  wear(p, x0 + dx + 30, h - 5, 22, 3, 5);
   return p;
 }
 /** the status rail: hull, charge, core cells, territory */
@@ -121,13 +175,15 @@ export function statArt(winFrac: number) {
   lab('HULL', X.hull); socket(p, X.hull, 13, 40, 7, 0x0c0a08);
   for (let k = 1; k < 10; k++) p.set(X.hull + k * 4, 20, CR[1]);
   lab('CHARGE', X.chg); brassFrame(p, X.chg + 32, 12, 29, 15);
+  overspray(p, X.cel, 4, textW('CELLS'), 5, CR[3], 11);
   lab('CELLS', X.cel); brassFrame(p, X.cel, 12, 19, 15);
   lab('GROUND', X.ter); socket(p, X.ter, 13, 38, 7, 0x0a120c);
   // the claim mark: hold this much and the region is yours
+  // nobody painted a claim line on the tube: Calder taped one on and wrote on it
   const mx = X.ter + Math.round(38 * winFrac / 0.6);
-  for (let y = 11; y <= 21; y++) p.set(mx, y, y === 11 || y === 21 ? RD[6] : RD[4]);
+  for (let y = 11; y <= 21; y++) p.set(mx, y, 0x8a2a22, y === 11 || y === 21 ? 160 : 230);
   for (const x of [X.chg - 4, X.cel - 4, X.ter - 4]) for (let y = 4; y < h - 5; y++) { p.set(x, y, OL[1]); p.set(x + 1, y, OL[5]); }
-  hazard(p, 3, h - 4, 4, 2, 5); hazard(p, w - 8, h - 4, 4, 2, 8, true);
+  tape(p, mx - 9, 22, 19, 'HOLD', 7);
   return p;
 }
 /** the switch bank: a big guarded SKILLS switch and four small toggles */
@@ -145,6 +201,7 @@ export function bankArt() {
   hazard(p, bx + 1, 11, 24, 2, 6);
   for (let y = 11; y < 37; y++) p.shade(bx + 26, y, 0.55); for (let x = bx + 1; x < bx + 27; x++) p.shade(x, 36, 0.55);
   screw(p, bx + 1, 31, 4); screw(p, bx + 20, 31, 5);
+  wear(p, bx + 27, 14, 5, 12, 9); wear(p, bx - 4, 30, 6, 9, 3);
   for (const x of BANK.tog) {
     // black Bakelite escutcheon behind each toggle: ON engraved above, a chrome rim
     for (let y = 11; y < 31; y++) for (let xx = x + 2; xx < x + 17; xx++) {

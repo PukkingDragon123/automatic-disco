@@ -13,6 +13,7 @@ import { clamp, hash01 } from '../core/rand';
 import { makeRamp, mixHex } from '../limbo/gfx/pixel';
 import { Noise } from '../core/noise';
 import { sfx } from '../audio/audio';
+import { vfx2d as V2, type VfxName } from './vfx2d';
 import { floatText } from '../ui/floatText';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4(), _s = new THREE.Vector3(), _c = new THREE.Color();
@@ -29,17 +30,27 @@ export function powerOwned(a: Ability) { if (!SK) return true; const id = ABILIT
 /** charge a field power really costs (the Field Amplifier takes a quarter off) */
 export function powerCost(a: Ability) { return ABILITIES[a].charge * (SK?.has('amp') ? 0.75 : 1); }
 
-// ------------------------------------------------------------------ hand-drawn 2D effects (game/vfx2d.ts, the details layer)
-/** resolved at build time: an empty map until vfx2d.ts exists, then its exports (Vite re-resolves when it appears) */
-const VFX = import.meta.glob('./vfx2d.ts', { eager: true }) as Record<string, Record<string, unknown>>;
-export type Vfx2dKind = 'impact' | 'star' | 'dust' | 'splash' | 'slash' | 'smear' | 'splat';
-/** play a hand-drawn sprite effect if the vfx2d library is present; false when it isn't (callers keep their particles).
- *  Expected export: vfx2d(game, kind, x, y, z, { dir?: [x, z], size?, col? }) (play / spawn accepted too) */
+// ------------------------------------------------------------------ hand-drawn 2D effects (game/vfx2d.ts)
+export type Vfx2dKind = VfxName | 'star' | 'smear' | 'splat';
+/** is the hand-drawn effects layer running? (callers thin out their own particles when it is) */
+export const vfxLive = () => !!V2.live;
+/** play a hand-drawn effect: our names map onto the library's (a crit is an impact with a shockwave, a throw is a
+ *  slash smear, a splat is a blood burst plus pixel droplets that land as stains). dir orients it on screen */
 export function vfx2d(game: Game, kind: Vfx2dKind, x: number, y: number, z: number, o: { dir?: [number, number]; size?: number; col?: number } = {}): boolean {
-  const m = VFX['./vfx2d.ts']; if (!m) return false;
-  const f = (m.vfx2d ?? m.play ?? m.spawn) as ((...a: unknown[]) => unknown) | undefined;
-  if (typeof f !== 'function') return false;
-  try { f(game, kind, x, y, z, o); return true; } catch { return false; }
+  if (!V2.live) return false;
+  let rot = Math.random() * Math.PI * 2;
+  if (o.dir && (o.dir[0] || o.dir[1])) {
+    const l = Math.hypot(o.dir[0], o.dir[1]), [ax, ay, ok] = game.screenOf(x, y, z), [bx, by] = game.screenOf(x + (o.dir[0] / l) * 0.5, y, z + (o.dir[1] / l) * 0.5);
+    if (ok) rot = Math.atan2(-(by - ay), bx - ax);
+  }
+  const scale = o.size ?? 1, tint = o.col;
+  switch (kind) {
+    case 'star': V2.play('impact', x, y, z, { scale: scale * 1.3, rot }); V2.play('shock', x, y, z, { scale: scale * 0.9 }); break;
+    case 'smear': V2.play('slash', x, y, z, { scale, rot }); break;
+    case 'splat': V2.play('blood', x, y, z, { scale, rot, tint }); V2.drops(x, y, z, Math.round(4 + scale * 5), { speed: 2 + scale, tint, land: 'blood' }); break;
+    default: V2.play(kind, x, y, z, { scale, rot, tint });
+  }
+  return true;
 }
 
 // ------------------------------------------------------------------ stone art
@@ -404,7 +415,7 @@ export function strike(game: Game, gore: Gore, knocks: Knocks, c: Creature, dmg:
   const dealt = hp0 - Math.max(0, c.hp);
   c.fx.flash.value = 1; c.fx.flashCol.value.setRGB(1, o.crit ? 0.85 : 0.95, o.crit ? 0.3 : 0.85);
   gore.hit(c, d, dealt);
-  { const h = c.sp.pheno.height * c.growth; vfx2d(game, o.crit ? 'star' : 'impact', c.x - d.x * c.radius * 0.5, c.y + c.air + h * 0.5, c.z - d.z * c.radius * 0.5, { dir: [d.x, d.z], size: Math.min(2, 0.5 + dealt / 20) }); }
+  { const h = c.sp.pheno.height * c.growth; vfx2d(game, o.crit ? 'star' : 'impact', c.x - d.x * c.radius * 0.5, c.y + c.air + h * 0.5, c.z - d.z * c.radius * 0.5, { dir: [d.x, d.z], size: Math.min(1.8, 0.45 + dealt / 22) }); }
   const m = Math.max(0.4, c.mass);
   const kb = (o.knock ?? 3) / Math.pow(m, 0.33);
   knocks.add(c, d.x * kb, d.z * kb, (o.up ?? 2.5) / Math.pow(m, 0.25));

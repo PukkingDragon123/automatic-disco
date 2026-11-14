@@ -89,7 +89,7 @@ export class FloraField {
         const tx = ux * tgt, tz = uz * tgt, k = 60 * w;
         this.vx[i] += ((tx - this.dx[i]) * k - this.vx[i] * 6 * w) * dt;
         this.vz[i] += ((tz - this.dz[i]) * k - this.vz[i] * 6 * w) * dt;
-        if (s > 0.45) this.lie(i, ux, uz, dt * 1.7 * (s - 0.4) * w);
+        if (s > 0.45) this.lie(i, ux, uz, dt * 5.5 * (s - 0.4) * Math.sqrt(w));
         this.wake(i);
       });
     }

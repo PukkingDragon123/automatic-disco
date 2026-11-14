@@ -3,20 +3,62 @@
 // turquoise-to-deep-teal body as depth grows; shores get a lapping pale rim, the surface shimmers with sparse sun
 // glints. Rivers add a current: flow-aligned streaks and ripples scrolling downstream at the local speed, white water
 // along the banks, trailing behind stones and through the rapids. Everything is pixel-snapped at 32 px/m.
+// Interactive water (fed by game/details.ts through WATER_FX): rings spreading from every entry, splash, footfall and
+// drip, V-shaped Kelvin wakes with a foam lip round whatever wades or skims, raindrop rings while it rains. Water
+// marks itself in the G-buffer with flag bit 16 so the post pass can tell it from wet ground.
 import * as THREE from 'three';
 import type { Region } from './region';
 import { GN_DECL } from '../gfx/gbuf';
 import { SHADER_NOISE, FOW_FN } from './glsl';
 import { VEYR } from './palette';
 
+const RIP_N = 24, WAKE_N = 6;
 const WATER_FN = /* glsl */`
 uniform highp sampler2DArray uBlocks;
 uniform sampler2D uHeight, uMat, uVis, uMoss, uFoamMap;
 uniform float uN, uTime, uWater;
 uniform float uLay[32];
 uniform vec3 uShallow, uDeep, uFoam, uDark, uSky, uMossC;
+uniform vec4 uRip[${RIP_N}];
+uniform vec4 uWake[${WAKE_N}];
+uniform float uWakeR[${WAKE_N}];
+uniform float uRainW;
 ${SHADER_NOISE}
 ${FOW_FN}
+/** rings and wakes at p: a height-like signal (crest > 0, trough < 0) and a foam amount */
+vec2 interact(vec2 p, float t) {
+  float h = 0.0, fm = 0.0;
+  for (int i = 0; i < ${RIP_N}; i++) {
+    vec4 r = uRip[i];
+    if (r.w <= 0.0) continue;
+    float age = r.z, d = length(p - r.xy);
+    // a short wave train behind a leading crest; it spreads, slows and flattens
+    float x = d - (0.04 + age * (0.5 + r.w * 0.3));
+    if (abs(x + 0.22) > 0.75) continue;
+    float lam = 0.26 + age * 0.07;
+    float a = r.w * exp(-age * 1.15) / (1.0 + d * 1.4);
+    h += cos(x * 6.2832 / lam) * exp(-pow((x + 0.2) / 0.3, 2.0)) * a;
+    fm = max(fm, (1.0 - smoothstep(0.0, 0.05, abs(x))) * a * step(age, 0.35) * 2.0);
+  }
+  for (int i = 0; i < ${WAKE_N}; i++) {
+    vec4 w = uWake[i];
+    float sp = length(w.zw);
+    if (sp < 0.04) continue;
+    vec2 dir = -w.zw / sp, q = p - w.xy;
+    float al = dot(q, dir), ac = dot(q, vec2(-dir.y, dir.x)), rad = uWakeR[i];
+    float L = rad * 2.5 + sp * 1.8, k = min(1.0, sp / 1.1);
+    if (al < -rad * 1.6 || al > L || abs(ac) > L * 0.5 + rad) continue;
+    // the two arms of the V (~19.5 degrees), a crest with a trough just outside it
+    float arm = abs(ac) - (al + rad * 0.7) * 0.36;
+    float wd = 0.035 + max(0.0, al) * 0.04, fall = (1.0 - al / L) * step(-rad * 0.3, al);
+    h += ((1.0 - smoothstep(0.0, wd, abs(arm))) - 0.6 * (1.0 - smoothstep(0.0, wd, abs(arm - wd * 2.0)))) * fall * k * 1.3;
+    // churned water straight behind, and a foam lip hugging the body
+    float trail = (1.0 - smoothstep(rad * 0.3, rad * 0.9, abs(ac))) * (1.0 - smoothstep(0.0, L * 0.45, al)) * step(0.0, al);
+    float lip = 1.0 - smoothstep(0.0, 0.06, abs(length(q) - rad * 1.05));
+    fm = max(fm, max(trail * vn(vec2(ac * 9.0, (al + t * sp) * 5.0)) * 1.4, lip * (0.5 + 0.5 * k)) * k);
+  }
+  return vec2(h, fm);
+}
 float hAt(vec2 p) { if (p.x < 0.0 || p.y < 0.0 || p.x >= uN || p.y >= uN) return -2.0; return texture2D(uHeight, (floor(p) + 0.5) / uN).r; }
 float bedH(vec2 p) {
   vec2 q = p - 0.5; vec2 i = floor(q), f = q - i;
@@ -32,8 +74,9 @@ vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
   vec2 p = (px + 0.5) / 32.0;
   float t = uTime;
   float depth = max(0.0, surf - bedH(p));
+  vec2 ia = interact(p, t);
   // ripples bend the view of the bed a little
-  vec2 rip = vec2(vn(p * 2.3 + t * 0.4), vn(p * 2.3 - t * 0.35 + 9.0)) - 0.5;
+  vec2 rip = vec2(vn(p * 2.3 + t * 0.4), vn(p * 2.3 - t * 0.35 + 9.0)) - 0.5 + ia.x * 0.35;
   if (flowK > 0.0) rip += vec2(0.0, vn(vec2(fuv.x * 3.0, (fuv.y - t * sp) * 1.4)) - 0.5) * flowK * 0.6;
   vec2 bp = p + rip * 0.12 * min(1.0, depth * 2.0);
   // the bed's material, looked up with the same wavy, grainy jitter the terrain uses (no square cell borders)
@@ -69,6 +112,19 @@ vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
     float fn = vn(vec2(fuv.x * 7.0, (fuv.y - t * sp * 1.6) * 2.6));
     foam = max(max(edge * 0.75, wake), rapid) * (0.55 + fn * 0.9) * flowK;
   }
+  // the rings and wakes: crisp light crests, darker troughs, white water where they break
+  c *= 1.0 + clamp(ia.x, -1.0, 1.0) * 0.14;
+  if (ia.x > 0.38) c = mix(c, uShallow * 1.4 + 0.1, 0.55);
+  else if (ia.x < -0.38) c *= 0.86;
+  foam = max(foam, ia.y);
+  // rain: little rings popping all over the surface
+  if (uRainW > 0.01) {
+    vec2 q = p * 1.6, ci = floor(q), f = fract(q) - 0.5 - (vec2(h2(ci), h2(ci + 5.3)) - 0.5) * 0.5;
+    float tc = t * 1.4 + h2(ci + 2.7), ph = fract(tc);
+    float ring = (1.0 - step(0.035, abs(length(f) - ph * 0.36))) * step(h2(ci + floor(tc) * 1.3), uRainW) * step(ph, 0.85);
+    c = mix(c, uShallow * 1.35 + 0.08, ring * (1.0 - ph) * 0.8);
+    c *= 1.0 - uRainW * 0.08;
+  }
   // shoreline: a pale lapping rim
   float lap = 0.5 + 0.5 * sin(t * 1.3 + vn(p * 0.7) * 6.0);
   float shore = 1.0 - smoothstep(0.0, 0.06 + lap * 0.1, depth);
@@ -89,9 +145,22 @@ vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
 }
 `;
 
+/** the interactive-water inputs every water material shares (written each frame by game/details.ts) */
+export const WATER_FX = {
+  /** rings: (x, z, age seconds, strength; 0 = unused) */
+  uRip: { value: Array.from({ length: RIP_N }, () => new THREE.Vector4(0, 0, 0, 0)) },
+  /** wakes: (x, z, vx, vz) of whatever moves through the water, and its radius */
+  uWake: { value: Array.from({ length: WAKE_N }, () => new THREE.Vector4(0, 0, 0, 0)) },
+  uWakeR: { value: new Array(WAKE_N).fill(0.3) as number[] },
+  /** raindrop rings 0..1 */
+  uRainW: { value: 0 },
+};
+export const RIPPLES = RIP_N, WAKES = WAKE_N;
+
 function uniforms(R: Region, U: Record<string, THREE.IUniform>) {
   const pal = R.pal;
   return {
+    ...WATER_FX,
     uBlocks: U.uBlocks, uHeight: U.uHeight, uMat: U.uMat, uVis: U.uVis, uMoss: U.uMoss, uN: U.uN, uTime: U.uTime, uWater: U.uWater, uLay: U.uLay, uDark: U.uDark,
     uShallow: { value: new THREE.Color(pal.water) }, uDeep: { value: new THREE.Color(pal.waterDeep) }, uFoam: { value: new THREE.Color(pal.foam) },
     uSky: { value: new THREE.Color(pal.sky) }, uMossC: { value: new THREE.Color(VEYR.moss) },
@@ -127,7 +196,7 @@ ${WATER_FN}
 varying vec3 vWp;
 void main() {
   gl_FragColor = vec4(waterShade(vWp.xz, uWater, 0.0, vec2(0.0), 0.0), 1.0);
-  gNormal = vec4(0.5, 1.0, 0.5, 0.0);
+  gNormal = vec4(0.5, 1.0, 0.5, 16.0);
 }`;
 
 const VERT_RIVER = /* glsl */`
@@ -145,7 +214,7 @@ void main() {
   vec2 fuv = vFlow;
   if (abs(determinant(A)) > 1e-10) fuv += Bm * inverse(A) * (wpS - vWp.xz);
   gl_FragColor = vec4(waterShade(vWp.xz, vWp.y, vSpeed.y, fuv, vSpeed.x), 1.0);
-  gNormal = vec4(0.5, 1.0, 0.5, 0.0);
+  gNormal = vec4(0.5, 1.0, 0.5, 16.0);
 }`;
 
 export function makeSea(R: Region, U: Record<string, THREE.IUniform>): THREE.Mesh {

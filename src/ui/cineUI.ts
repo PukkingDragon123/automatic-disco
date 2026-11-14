@@ -26,11 +26,11 @@ const CSS = /* css */`
 .cine .sub .who { display: block; font-size: var(--cf-vt1); line-height: calc(var(--cf-vt1) + 2px); letter-spacing: 1px; }
 .cine .sub.out { opacity: 0; transition: opacity 220ms steps(3); }
 @keyframes cine-sub-in { 0% { opacity: 0; transform: translateY(calc(3 * var(--u))); } 100% { opacity: 1; transform: none; } }
-.cine .sub.radio { background: radial-gradient(ellipse at 50% 45%, #0c3418 0%, #06180c 60%, #031008 100%); border: calc(2 * var(--u)) solid #2a3121; outline: calc(1 * var(--u)) solid #07080a; border-radius: calc(3 * var(--u)); padding: calc(3 * var(--u)) calc(6 * var(--u)); color: var(--ink, #b8f0b4); text-shadow: var(--phos-glow); position: relative; overflow: hidden; box-shadow: 0 0 0 calc(1 * var(--u)) #5a6644 inset; }
+.cine .sub.radio { background: radial-gradient(ellipse at 50% 45%, #18301e 0%, #0e1e14 62%, #0a140e 100%); border: calc(2 * var(--u)) solid #3a3d40; outline: 1px solid #16171a; border-radius: calc(4 * var(--u)); padding: calc(3 * var(--u)) calc(6 * var(--u)); color: #a8d8ac; text-shadow: 0 0 calc(2 * var(--u)) rgba(127, 212, 138, 0.35); position: relative; overflow: hidden; box-shadow: 0 0 0 1px #5c5f5e inset; }
 .cine .sub.radio::after { content: ''; position: absolute; inset: 0; background: var(--scan); pointer-events: none; animation: cine-roll 3s linear infinite; }
 @keyframes cine-roll { from { background-position: 0 0; } to { background-position: 0 calc(40 * var(--u)); } }
-.cine .sub.radio .who { color: var(--gold, #ffcd6e); text-shadow: var(--amb-glow); }
-.cine .sub.radio .who::before { content: '\\25C9  RX \\00B7  '; color: var(--amber, #ffa432); animation: cine-blink 1s steps(2) infinite; }
+.cine .sub.radio .who { color: #c8c2b0; text-shadow: none; }
+.cine .sub.radio .who::before { content: '\\25C9  RX \\00B7  '; color: #d9a43a; animation: cine-blink 1s steps(2) infinite; }
 .cine .sub.radio.static { animation: cine-sub-in 220ms steps(4), cine-static 120ms steps(2) 3; }
 @keyframes cine-static { 0% { filter: brightness(2) contrast(2); } 100% { filter: none; } }
 .cine .sub.film { color: #f2ead2; text-shadow: calc(1 * var(--u)) calc(1 * var(--u)) 0 #000, 0 0 calc(3 * var(--u)) rgba(0, 0, 0, 0.9); text-align: center; padding: calc(5 * var(--u)) calc(14 * var(--u)); background:
@@ -44,16 +44,20 @@ const CSS = /* css */`
 .cine .sub.plain .who { color: #9fd0ff; }
 .cine .sub .cur { animation: cine-blink 0.6s steps(2) infinite; }
 /* title card */
-.cine .card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; color: #efe6c8; opacity: 0; white-space: nowrap; }
-.cine .card.on { opacity: 1; animation: cine-card-in 900ms steps(9); }
+.cine .card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; color: #e8eef0; opacity: 0; white-space: nowrap; }
+.cine .card.on { opacity: 1; animation: cine-card-in 1200ms cubic-bezier(.2,.8,.2,1); }
 .cine .card.off { opacity: 0; transition: opacity 600ms steps(6); }
 @keyframes cine-card-in { 0% { opacity: 0; letter-spacing: 6px; } 100% { opacity: 1; } }
-.cine .card .k { font-family: 'Superwide', monospace; font-size: var(--cf-sw1); letter-spacing: 3px; color: #d8ab50; }
-.cine .card .t { font-family: 'Canned', monospace; font-size: var(--cf-sw4); line-height: var(--cf-sw4); color: #f2e2b0; text-shadow: 0 calc(2 * var(--u)) 0 #5c3f13, 0 0 calc(8 * var(--u)) rgba(255, 180, 80, 0.35); margin: calc(3 * var(--u)) 0; }
-.cine .card .s { font-size: var(--cf-vt1); color: #c8bc98; letter-spacing: 1px; }
-.cine .card .rule { height: calc(1 * var(--u)); margin: calc(3 * var(--u)) auto; width: 70%; background: linear-gradient(90deg, transparent, #d8ab50, transparent); }
+.cine .card .k { font-family: 'Superwide', monospace; font-size: var(--cf-sw1); letter-spacing: 4px; color: #9fb4c2; }
+.cine .card .t { font-family: 'Canned', monospace; font-size: var(--cf-sw4); line-height: var(--cf-sw4); color: #e8eef0; margin: calc(4 * var(--u)) 0; letter-spacing: 2px; }
+.cine .card .s { font-size: var(--cf-vt1); color: #b8b2a2; letter-spacing: 2px; }
+.cine .card .ink { position: absolute; right: calc(-30 * var(--u)); top: calc(-16 * var(--u)); padding: calc(1 * var(--u)) calc(4 * var(--u)); font-family: 'Superwide', monospace; font-size: var(--cf-sw1); letter-spacing: 2px; color: rgba(184, 56, 46, 0.88); border: calc(2 * var(--u)) solid rgba(184, 56, 46, 0.8); border-radius: calc(2 * var(--u)); transform: rotate(-9deg); mix-blend-mode: screen; opacity: 0; }
+.cine .card.on .ink { animation: cine-stamp 260ms 900ms cubic-bezier(.3,1.8,.5,1) both; }
+.cine .card .ink::after { content: attr(data-t); position: absolute; left: calc(1 * var(--u) + 1px); top: calc(1 * var(--u) + 1px); color: rgba(184, 56, 46, 0.35); padding: 0 calc(4 * var(--u)); }
+@keyframes cine-stamp { 0% { opacity: 0; transform: rotate(-9deg) scale(1.9); } 70% { opacity: 1; transform: rotate(-9deg) scale(0.94, 1.05); } 100% { opacity: 1; transform: rotate(-9deg) scale(1); } }
+.cine .card .rule { height: 1px; margin: calc(4 * var(--u)) auto; width: 64%; background: rgba(232, 238, 240, 0.32); }
 /* stamp */
-.cine .stamp { position: absolute; left: calc(10 * var(--u)); bottom: calc(var(--lb) * 11.5vh + 1.4vh); font-size: var(--cf-vt1); color: var(--amber, #ffa432); text-shadow: var(--amb-glow); letter-spacing: 1px; }
+.cine .stamp { position: absolute; left: calc(10 * var(--u)); bottom: calc(var(--lb) * 11.5vh + 1.4vh); font-size: var(--cf-vt1); color: #d9a43a; letter-spacing: 2px; }
 .cine .stamp.top { bottom: auto; top: calc(var(--lb) * 11.5vh + 1.4vh); }
 /* through Unit 07's lens: an iris, a green cast, scanlines, a reticle */
 .cine.pov .vig { opacity: 1; background: radial-gradient(circle at 50% 50%, transparent 30%, rgba(0, 20, 12, 0.55) 52%, #000 70%); }
@@ -68,18 +72,19 @@ const CSS = /* css */`
 /* flash */
 .cine .flash { position: absolute; inset: 0; opacity: 0; }
 /* advancement banner (lives outside cutscenes too) */
-.adv { position: fixed; left: 50%; top: calc(46 * var(--u, 2px)); z-index: 30; pointer-events: none !important; display: flex; align-items: center; gap: calc(5 * var(--u)); transform: translateX(-50%); padding: calc(4 * var(--u)) calc(10 * var(--u)) calc(4 * var(--u)) calc(5 * var(--u));
-  --u: calc(1px * var(--s, 2)); background: linear-gradient(180deg, #4e593a, #38412b 60%, #2a3121); border: calc(2 * var(--u)) solid #171a12; box-shadow: 0 0 0 calc(1 * var(--u)) #77825a inset, 0 calc(3 * var(--u)) 0 rgba(0, 0, 0, 0.55); border-radius: calc(2 * var(--u)); animation: adv-in 380ms cubic-bezier(.2,1.6,.4,1); font-family: 'VT', monospace; }
-.adv.out { animation: adv-out 420ms steps(5) forwards; }
-@keyframes adv-in { 0% { transform: translate(-50%, calc(-30 * var(--u))) scale(1.25); opacity: 0; } 100% { transform: translateX(-50%); opacity: 1; } }
-@keyframes adv-out { to { transform: translate(-50%, calc(-12 * var(--u))); opacity: 0; } }
-.adv .ic { width: calc(36 * var(--u) / 2); height: calc(36 * var(--u) / 2); image-rendering: pixelated; flex: none; background: radial-gradient(circle, rgba(122, 255, 224, 0.25), transparent 70%); }
-.adv .tx { display: flex; flex-direction: column; }
-.adv .k { font-family: 'Silk', monospace; font-size: var(--cf-ps1); letter-spacing: 2px; color: #d8ab50; }
-.adv .t { font-family: 'Superwide', monospace; font-size: var(--cf-sw2); line-height: var(--cf-sw2); color: #f2ead2; text-shadow: 0 calc(1 * var(--u)) 0 #111410; letter-spacing: 1px; }
-.adv .s { font-size: var(--cf-vt1); line-height: var(--cf-vt1); color: #c0ffc6; text-shadow: var(--phos-glow); }
-.adv .st { position: absolute; right: calc(-8 * var(--u)); top: calc(-7 * var(--u)); font-family: 'Silk', monospace; font-size: var(--cf-ps1); color: #c83a28; border: calc(1 * var(--u)) solid #c83a28; padding: 0 calc(2 * var(--u)); transform: rotate(12deg); background: rgba(240, 230, 200, 0.85); animation: adv-stamp 300ms 260ms steps(3) both; }
-@keyframes adv-stamp { 0% { transform: rotate(12deg) scale(2.6); opacity: 0; } 100% { transform: rotate(12deg) scale(1); opacity: 1; } }
+.adv { position: fixed; left: 50%; top: calc(46 * var(--u, 2px)); z-index: 30; pointer-events: none !important; display: flex; align-items: center; gap: calc(6 * var(--u)); transform: translateX(-50%) rotate(-0.6deg); padding: calc(5 * var(--u)) calc(14 * var(--u)) calc(5 * var(--u)) calc(6 * var(--u));
+  --u: calc(1px * var(--s, 2)); background: repeating-linear-gradient(180deg, transparent 0 calc(9 * var(--u)), rgba(159, 180, 194, 0.45) calc(9 * var(--u)) calc(9 * var(--u) + 1px)), linear-gradient(180deg, #ddd6c3, #d3ccb8); color: #3b3a36; box-shadow: calc(2 * var(--u)) calc(3 * var(--u)) calc(4 * var(--u)) rgba(10, 10, 12, 0.45); font-family: 'VT', monospace; animation: adv-in 520ms cubic-bezier(.2,1.25,.4,1); }
+.adv::before { content: ''; position: absolute; left: calc(26 * var(--u)); top: 0; bottom: 0; width: 1px; background: rgba(184, 56, 46, 0.35); }
+.adv.out { animation: adv-out 420ms ease-in forwards; }
+@keyframes adv-in { 0% { transform: translate(-50%, calc(-24 * var(--u))) rotate(-4deg); opacity: 0; } 100% { transform: translateX(-50%) rotate(-0.6deg); opacity: 1; } }
+@keyframes adv-out { to { transform: translate(-50%, calc(-10 * var(--u))) rotate(1.5deg); opacity: 0; } }
+.adv .ic { image-rendering: pixelated; flex: none; }
+.adv .tx { display: flex; flex-direction: column; padding-left: calc(4 * var(--u)); }
+.adv .k { font-family: 'Silk', monospace; font-size: var(--cf-ps1); letter-spacing: 2px; color: #6b6a62; }
+.adv .t { font-family: 'Superwide', monospace; font-size: var(--cf-sw2); line-height: var(--cf-sw2); color: #2e2d2a; letter-spacing: 1px; margin: calc(1 * var(--u)) 0; }
+.adv .s { font-size: var(--cf-vt1); line-height: var(--cf-vt1); color: #4a4944; }
+.adv .st { position: absolute; right: calc(-10 * var(--u)); top: calc(-8 * var(--u)); font-family: 'Superwide', monospace; font-size: var(--cf-sw1); letter-spacing: 1px; color: rgba(184, 56, 46, 0.9); border: calc(2 * var(--u)) solid rgba(184, 56, 46, 0.85); border-radius: calc(2 * var(--u)); padding: 0 calc(3 * var(--u)); transform: rotate(8deg); animation: adv-stamp 280ms 300ms cubic-bezier(.3,1.8,.5,1) both; }
+@keyframes adv-stamp { 0% { transform: rotate(8deg) scale(2.2); opacity: 0; } 70% { transform: rotate(8deg) scale(0.93, 1.06); opacity: 1; } 100% { transform: rotate(8deg) scale(1); opacity: 1; } }
 body.cine-on .hud, body.cine-on .overlay2d, body.cine-on .toasts, body.cine-on .hud-obj, body.cine-on .tip, body.cine-on .wl, body.cine-on .adv, body.cine-on .float-text, body.cine-on .tc-zone, body.cine-on .tc-pad, body.cine-on .tc-btn { visibility: hidden !important; }
 `;
 
@@ -171,9 +176,9 @@ export class CineUI {
     c.el.classList.add('out'); setTimeout(() => c.el.remove(), 260);
     c.done();
   }
-  card(title: string, sub = '', kicker = '') {
+  card(title: string, sub = '', kicker = '', stamp = 'U.S.P.C.') {
     this.cardEl.className = 'card';
-    this.cardEl.innerHTML = (kicker ? `<div class="k">${esc(kicker)}</div><div class="rule"></div>` : '') + `<div class="t">${esc(title)}</div>` + (sub ? `<div class="rule"></div><div class="s">${esc(sub)}</div>` : '');
+    this.cardEl.innerHTML = (kicker ? `<div class="k">${esc(kicker)}</div><div class="rule"></div>` : '') + `<div class="t">${esc(title)}</div>` + (sub ? `<div class="rule"></div><div class="s">${esc(sub)}</div>` : '') + `<div class="ink" data-t="${esc(stamp)}">${esc(stamp)}</div>`;
     void this.cardEl.offsetWidth; this.cardEl.classList.add('on');
   }
   cardOff() { this.cardEl.classList.remove('on'); this.cardEl.classList.add('off'); }
@@ -226,7 +231,7 @@ function nextAdv() {
   advBusy = true;
   const el = div('adv', document.body);
   const s = Number(document.documentElement.style.getPropertyValue('--s')) || 2;
-  const ic = document.createElement('img'); ic.className = 'ic'; ic.src = iconURL(a.icon, 18 * s, { shadow: true }); ic.style.width = ic.style.height = 18 * s + 'px'; el.appendChild(ic);
+  const ic = document.createElement('img'); ic.className = 'ic'; ic.src = iconURL(a.icon, 18 * s, { shadow: false }); ic.style.width = ic.style.height = 18 * s + 'px'; el.appendChild(ic);
   const tx = div('tx', el);
   div('k', tx, esc(a.kicker)); div('t', tx, esc(a.title)); if (a.sub) div('s', tx, esc(a.sub));
   if (a.stamp) div('st', el, esc(a.stamp));

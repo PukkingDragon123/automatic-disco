@@ -16,17 +16,20 @@ interface Built { geo: THREE.BufferGeometry; tex: THREE.Texture; sym: boolean; u
 interface Slot { el: HTMLElement; gene: string | null; key: string; obj: THREE.Group | null; part: THREE.Mesh | null; plate: THREE.Mesh; U: RegU; spin: number; hover: number; ready: boolean; tilt: number; pu: { uCol: { value: THREE.Color }; uT: { value: number }; uOn: { value: number } } }
 
 const PLATE_F = GN_DECL + `uniform vec3 uCol; uniform float uT, uOn; varying vec2 vUv;
+// the viewing box behind a card's window: a backlit cyanotype ground, white-ink grid and a turntable ellipse
 void main(){
-  vec2 G = vec2(64.0, 60.0); vec2 g = (floor(vUv * G) + 0.5) / G; vec2 q = g - vec2(0.5, 0.42);
-  float d = length(q * vec2(1.0, 1.9));
-  float base = 0.035 + 0.05 * (1.0 - smoothstep(0.0, 0.7, length(g - 0.5)));
-  float disc = step(abs(d - 0.36), 0.012) * 0.8 + step(abs(d - 0.3), 0.006) * 0.35;
-  float scan = step(0.5, fract(g.y * 30.0 - uT * 2.0)) * 0.03;
-  float grid = (mod(floor(vUv.x * G.x), 8.0) < 0.5 || mod(floor(vUv.y * G.y), 8.0) < 0.5) ? 0.05 : 0.0;
-  float beam = step(q.y, 0.0) * (1.0 - smoothstep(0.0, 0.36, abs(q.x))) * 0.06 * (0.6 + 0.4 * sin(uT * 3.0));
-  vec3 c = vec3(0.02, 0.06, 0.04) + uCol * (base + disc * (0.5 + uOn) + scan + grid + beam);
+  vec2 px = vUv * vec2(108.0, 84.0);
+  vec2 q = vUv - vec2(0.5, 0.36);
+  vec3 c = mix(vec3(0.075, 0.15, 0.24), vec3(0.115, 0.23, 0.35), smoothstep(0.75, 0.0, length(vUv - vec2(0.5, 0.62))));
+  float grid = (mod(floor(px.x), 9.0) < 1.0 || mod(floor(px.y), 9.0) < 1.0) ? 1.0 : 0.0;
+  c += vec3(0.11, 0.17, 0.24) * grid * 0.45;
+  float e = length(q * vec2(1.0, 2.6));
+  c += vec3(0.85, 0.9, 0.92) * step(abs(e - 0.34), 0.006) * (0.35 + 0.25 * uOn);
+  float tick = step(abs(fract(atan(q.y * 2.6, q.x) / 6.2831 * 24.0 + uT * 0.05) - 0.5), 0.04) * step(abs(e - 0.36), 0.014);
+  c += vec3(0.85, 0.9, 0.92) * tick * 0.25;
+  c *= 1.0 - 0.25 * step(0.5, fract(vUv.y * 42.0 - uT * 0.6)) * 0.15;
   gl_FragColor = vec4(c, 1.0);
-  gNormal = vec4(0.5, 0.5, 1.0, 32.0);
+  gNormal = vec4(0.5, 0.5, 1.0, 0.0);
 }`;
 const PLATE_V = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }';
 
@@ -105,8 +108,8 @@ export class LabIcons {
     b.used = this.t;
     const tab = s.gene && GENE[s.gene] ? tabOf(s.gene) : 'organs';
     s.U.uMask.value = b.sym ? 0 : maskOf(TABS[tab].regs.length > 6 ? [] : TABS[tab].regs);
-    (s.U.uCol.value as THREE.Color).copy(s.pu.uCol.value);
-    s.U.uK.value = 0.7; s.U.uHolo.value = s.gene ? 0.35 : 0.8;
+    (s.U.uCol.value as THREE.Color).set(0xcfdde6);
+    s.U.uK.value = 0.45; s.U.uHolo.value = s.gene ? 0.16 : 0.5;
     const mat = b.sym ? symbolMaterial(b.tex, s.U) : partMaterial(b.tex, s.U);
     const part = new THREE.Mesh(b.geo, mat);
     if (!s.gene) (mat as THREE.MeshLambertMaterial).color.setRGB(0.25, 0.32, 0.3);
@@ -149,7 +152,7 @@ export class LabIcons {
         s.obj.position.set(x, y + r.height * 0.03 * wpp, -D + rad * 0.2);
         s.obj.scale.setScalar(rad);
         s.obj.rotation.set(s.tilt, s.spin, 0);
-        s.U.uT.value = this.t; s.U.uK.value = 0.55 + s.hover * 0.6;
+        s.U.uT.value = this.t; s.U.uK.value = 0.35 + s.hover * 0.45;
       }
     }
   }

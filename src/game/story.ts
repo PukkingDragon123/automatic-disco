@@ -29,6 +29,7 @@ import { Cinema } from './cinema';
 import { Actor, calderRig, hollisRig, brandtRig, makeLander, makeSky, type Lander, type Sky } from '../ui/cineCast';
 import { SCENES, CAMP_PARTS, type SceneName } from '../ui/cineScenes';
 import { advance } from '../ui/cineUI';
+import { SpeechBubble } from '../ui/cineBubble';
 import { csfx } from '../ui/cineAudio';
 import { SKILL, RES, type Res } from './skills';
 import { floatText } from '../ui/floatText';
@@ -73,6 +74,9 @@ export class Story {
   private bodyTaken = false;
   private objBox: HTMLElement | null = null;
   private G: any;
+  private bubble: SpeechBubble;
+  /** the talk camera: eases in to frame Calder and the golem while he speaks; any player input sends it home */
+  private talk = { w: 0, goal: 0, until: 0, cool: 0 };
   private sky: Sky = makeSky();
 
   constructor(readonly g: Game) {
@@ -86,14 +90,31 @@ export class Story {
       say(sec, expr) { self.portraitRig.say(sec, expr); if (sec > 2) self.portraitRig.gesture('talk', { dur: Math.min(3, sec) }); },
       head(out) { const h = (self.portraitRig as any).bones?.head ?? (self.portraitRig as any).j?.head; if (h) return h.getWorldPosition(out); return out.set(0, 1.65, 0); },
     });
-    this.dialog.onLine = (l) => { if (!this.calder.dead && (!l.who || l.who === 'calder')) this.calder.talk(3, l.expr); };
+    this.bubble = new SpeechBubble(ui());
+    this.bubble.onClick = () => this.dialog.skip();
+    this.dialog.onLine = (l) => {
+      if (this.calder.dead || (l.who && l.who !== 'calder')) return;
+      this.calder.talk(3, l.expr);
+      if (this.cine.active || !this.calder.visible) return;
+      this.bubble.show(l.text, 'Dr. Calder');
+      // zoom in on the pair when he is close enough to frame and nothing is fighting the golem
+      const gp = this.golem(), d = Math.hypot(gp.x - this.calder.x, gp.z - this.calder.z);
+      if (d < 26 && this.t - this.st.lastHurt > 6 && this.t > this.talk.cool) { this.talk.goal = 1; this.talk.until = this.t + Math.min(5, 1.6 + l.text.length * 0.05); }
+    };
+    this.dialog.onDone = () => { this.bubble.hide(); if (!this.dialog.busy) this.talk.goal = 0; };
+    // the player always wins: moving, clicking or turning the camera sends the talk camera home at once
+    const yieldCam = () => { if (!this.bubble.el.isConnected) { this.unbind(); return; } if (this.talk.goal > 0 || this.talk.w > 0.05) { this.talk.goal = 0; this.talk.cool = this.t + 25; } };
+    const onKey = (e: KeyboardEvent) => { if (!this.cine.active && !e.repeat) yieldCam(); };
+    const onPtr = (e: PointerEvent) => { if (!this.cine.active && (e.target as HTMLElement)?.tagName === 'CANVAS') yieldCam(); };
+    addEventListener('keydown', onKey); addEventListener('pointerdown', onPtr); addEventListener('wheel', yieldCam as any, { passive: true });
+    this.unbind = () => { removeEventListener('keydown', onKey); removeEventListener('pointerdown', onPtr); removeEventListener('wheel', yieldCam as any); };
     this.cine = new Cinema({
       enter: () => { this.dialog.clear(); this.G.setMode?.({ k: 'normal' }); this.g.world.scene.add(this.sky.mesh); },
       exit: () => { this.G.hud?.invalidate?.(); this.sky.mesh.removeFromParent(); },
     });
     this.cine.ui.root.remove(); ui().appendChild(this.cine.ui.root);
     // camera hook: the cinema drives the game camera while a scene plays
-    this.G.cineCam = (cam: THREE.PerspectiveCamera) => { if (this.cine.active) this.cine.apply(cam); };
+    this.G.cineCam = (cam: THREE.PerspectiveCamera, dt: number) => { if (this.cine.active) this.cine.apply(cam); else this.talkCam(cam, dt); };
     this.placeCamp();
     this.pickLandSpot();
     this.calder = new Actor(calderRig(), this.ground, g.world.scene);
@@ -212,6 +233,29 @@ export class Story {
     this.deathAt = at.clone();
     this.fireOn = false;
     this.g.run.flags.calderDead = 1;
+  }
+
+  private unbind: () => void = () => {};
+  private _tq = new THREE.Quaternion(); private _tc = new THREE.PerspectiveCamera();
+  /** blend the game camera toward a two-shot of Calder and the golem (w eases in and out) */
+  private talkCam(cam: THREE.PerspectiveCamera, dt: number) {
+    const T = this.talk;
+    if (T.goal > 0 && (this.t > T.until || this.calder.dead)) T.goal = 0;
+    T.w += (T.goal - T.w) * Math.min(1, dt * (T.goal > T.w ? 2.2 : 3.4));
+    if (T.w < 0.002) { T.w = 0; return; }
+    const c = this.calder, gp = this.golemHead();
+    const head = new V3(c.x, c.y + 1.55, c.z);
+    const mid = head.clone().lerp(gp, 0.5); mid.y += 0.15;
+    const sep = head.distanceTo(gp);
+    const away = new V3(cam.position.x - mid.x, 0, cam.position.z - mid.z); if (away.lengthSq() < 1e-4) away.set(0, 0, 1); away.normalize();
+    // stand off to the side of the line between them, a little above eye height
+    const across = new V3(gp.x - head.x, 0, gp.z - head.z).normalize(), side = new V3(-across.z, 0, across.x);
+    if (side.dot(away) < 0) side.negate();
+    const dist = Math.max(4.2, sep * 1.25 + 2.6);
+    const want = mid.clone().addScaledVector(side.lerp(away, 0.35).normalize(), dist); want.y = mid.y + dist * 0.32;
+    const e = T.w * T.w * (3 - 2 * T.w);
+    this._tc.position.copy(want); this._tc.lookAt(mid); this._tq.copy(this._tc.quaternion);
+    cam.position.lerp(want, e); cam.quaternion.slerp(this._tq, e); cam.updateMatrixWorld();
   }
 
   // ================================================================== camp
@@ -517,6 +561,11 @@ export class Story {
       const pl = this.G.player; if (pl && typeof pl.invuln === 'number') pl.invuln = Math.max(pl.invuln, 0.6);
     }
     this.dialog.update(real);
+    // the balloon rides above his head
+    if (this.bubble.visible || this.dialog.busy) {
+      const [sx, sy, ok] = this.g.screenOf(this.calder.x, this.calder.y + 2.05, this.calder.z);
+      this.bubble.update(real, sx, sy, ok && sx > -50 && sy > -50 && sx < innerWidth + 50 && sy < innerHeight + 50 && !this.cine.active);
+    }
     // camp fire: lit at night while he lives, cold after
     const w: any = g.world;
     const night = typeof w.day === 'number' && (w.day > 0.72 || w.day < 0.24);

@@ -497,7 +497,7 @@ function tussock3d(g: Geo, r: Rand, tex: FloraTex, pal: Palette, kind: 'grass' |
   const dry = rp(mixHex(pal.grassDry, 0xd8c890, 0.25));
   const cols = 8, rect = tex.blades(ramps, dry, cols, { dryP: kind === 'dry' ? 0.7 : kind === 'sedge' ? 0.25 : 0.22, var: kind === 'tall' ? 1 : 0 });
   const n = kind === 'tall' ? r.int(13, 18) : kind === 'sedge' ? r.int(10, 14) : r.int(9 + size * 3, 12 + size * 4);
-  const Hh = kind === 'tall' ? r.range(0.55, 0.8) : kind === 'sedge' ? r.range(0.5, 0.7) : 0.22 + size * 0.09 + r.range(0, 0.06);
+  const Hh = kind === 'tall' ? r.range(0.6, 0.85) : kind === 'sedge' ? r.range(0.5, 0.7) : 0.28 + size * 0.1 + r.range(0, 0.06);
   const spread = kind === 'sedge' ? 0.07 : 0.1 + size * 0.03;
   g.kind = KIND.LEAF; g.pivot = [0, 0, 0];
   for (let i = 0; i < n; i++) {
@@ -510,7 +510,7 @@ function tussock3d(g: Geo, r: Rand, tex: FloraTex, pal: Palette, kind: 'grass' |
     }
     const ao = 0.62 + 0.38 * (len / Hh) * r.range(0.8, 1);
     g.col = [ao, ao, ao]; g.phase = r.next();
-    const w = (kind === 'sedge' ? 0.012 : 0.009) * r.range(0.8, 1.3);
+    const w = (kind === 'sedge' ? 0.016 : 0.014) * r.range(0.85, 1.25);
     ribbonStrip(g, pts, pts.map(() => w), rect, { flat: true, uOff: r.int(0, cols - 1) / cols, uW: 1 / cols, flutLen: true });
   }
   if (kind === 'tall' || (kind === 'grass' && r.chance(0.3))) {

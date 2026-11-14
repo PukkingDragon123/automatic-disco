@@ -51,7 +51,13 @@ export async function testCine(engine: Engine, input: Input) {
   const scene = P.get('scene') ?? 'opening';
   const st = g.story; if (st) { st.auto = P.has('auto'); st.beat = scene === 'opening' || scene === 'contact' ? 'opening' : 'free'; }
   // let the region settle a moment, then play the scene directly (the story's own triggers are bypassed)
-  if (!P.has('auto')) setTimeout(() => { void g.story?.playScene(scene as any, P.get('part') ?? undefined); }, Number(P.get('delay') ?? 400));
+  if (scene === 'talk' && st) {
+    // the in-game dialogue: Calder beside the golem, talking (balloon over his head, the talk camera framing them)
+    setTimeout(() => {
+      const gp = st.golem(); st.calder.visible = true; st.calder.place(gp.x + 3.2, gp.z + 1.4); st.calder.faceNow(gp.x, gp.z);
+      st.say([{ text: 'You built yourself an arm! Stones and pistons, and you put it together yourself.' }, { text: 'Go on, make a fist.' }]);
+    }, 600);
+  } else if (!P.has('auto')) setTimeout(() => { void g.story?.playScene(scene as any, P.get('part') ?? undefined); }, Number(P.get('delay') ?? 400));
 }
 
 function ffHook(engine: Engine) {

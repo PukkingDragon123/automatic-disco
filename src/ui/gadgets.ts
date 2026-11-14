@@ -19,12 +19,22 @@ export function tip(e: HTMLElement, html: () => string) {
   e.addEventListener('pointerleave', () => Tip.hide());
 }
 
+/** a vertical-only blur filter (url(#odo-vblur)) for rolling drums, defined once */
+function vblur() {
+  if (document.getElementById('odo-vblur')) return;
+  const d = document.createElement('div');
+  d.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+  d.innerHTML = '<svg width="0" height="0"><filter id="odo-vblur" x="0" y="-20%" width="100%" height="140%"><feGaussianBlur stdDeviation="0 1.6"/></filter></svg>';
+  document.body.appendChild(d);
+}
+
 // ------------------------------------------------------------------ odometer
 export class Odometer {
   readonly e: HTMLDivElement;
   private strips: HTMLDivElement[] = [];
   private cur: number[] = [];
   constructor(parent: HTMLElement, readonly n: number, x: number, y: number, cls = '') {
+    vblur();
     this.e = place(el('div', 'odo ' + cls, parent), x, y, n * 8 - 1, 11);
     for (let i = 0; i < n; i++) {
       const w = place(el('div', 'drum', this.e), i * 8, 0, 7, 11);
@@ -44,6 +54,9 @@ export class Odometer {
         setTimeout(() => { st.style.transition = 'none'; st.style.setProperty('--d', '0'); void st.offsetWidth; st.style.transition = ''; }, 260);
       } else st.style.setProperty('--d', String(d));
       this.cur[i] = d;
+      // motion blur while the drum turns
+      const dr = st.parentElement!;
+      dr.classList.add('roll'); clearTimeout((dr as any).__rt); (dr as any).__rt = setTimeout(() => dr.classList.remove('roll'), 240);
       // leading zeros print dim, like an unused drum
     }
     let lead = true;
@@ -143,7 +156,9 @@ export class BigSwitch {
 }
 
 // ------------------------------------------------------------------ needle gauge
-export interface GaugeOpts { w: number; h: number; cx: number; cy: number; r: number; a0: number; a1: number; face: (p: Pix) => void; needle?: number; hub?: boolean }
+export interface GaugeOpts { w: number; h: number; cx: number; cy: number; r: number; a0: number; a1: number; face: (p: Pix) => void; needle?: number; hub?: boolean;
+  /** painted over the needle: the glass (a crack, a grease-pencil mark) */
+  glass?: (p: Pix) => void }
 /** an analog meter: a pre-painted face and a sprung needle that swings and trembles */
 export class Gauge {
   readonly cv: HTMLCanvasElement; private g: CanvasRenderingContext2D; private face: Pix;
@@ -160,7 +175,8 @@ export class Gauge {
   kick(dv2: number) { this.vel += dv2; }
   update(dt: number) {
     this.t += dt;
-    const k = 90, c = 11;
+    // a light needle on a stiff spring: it overshoots and settles
+    const k = 110, c = 8.5;
     this.vel += (k * (this.target - this.v) - c * this.vel) * dt;
     this.v += this.vel * dt;
     const shown = this.v + Math.sin(this.t * 37) * this.jitter + Math.sin(this.t * 13.7) * this.jitter * 0.6;
@@ -179,6 +195,7 @@ export class Gauge {
     p.line(o.cx, o.cy, tx, ty, col);
     p.set(Math.round(tx), Math.round(ty), this.red ? RD[7] : RD[6]);
     if (o.hub !== false) { p.disc(o.cx, o.cy, 1.6, BR[3]); p.set(o.cx - 1, o.cy - 1, BR[7]); p.set(o.cx, o.cy, BR[5]); }
+    o.glass?.(p);
     this.g.putImageData(p.image(), 0, 0);
   }
 }

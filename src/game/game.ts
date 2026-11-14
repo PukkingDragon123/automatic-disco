@@ -29,6 +29,7 @@ import { CoreAura } from './coreAura';
 import { RIVALS } from '../world/palette';
 import { VeyrChild } from './child';
 import { Player } from './player';
+import { Details } from './details';
 import { BabyEditor } from '../ui/babyEditor';
 import { coreCapGeometry } from './buildings';
 import { panel, Btn } from '../ui/kit';
@@ -164,6 +165,7 @@ export class Game implements Screen {
     this.vision.update(0, true);
     this.veyr.flushCov();
     this.player = new Player(this);
+    new Details(this); // footprints, wetness, ripples, weather, hand-drawn VFX (game/details.ts; runs in update$)
     (window as any).__game = this;
   }
 

@@ -1,153 +1,217 @@
-// The gene lab's panels, over the 3D laboratory: the specimen file (name, proportions, the jar shelf) on the left,
-// the phenotype readout and the filing controls on the right, and along the bottom the parts carousel: a row of
-// body-area tabs over a swipeable strip of cards whose windows show the spinning 3D part icons (labIcons.ts).
-// Scientists' lines float over their heads; the region under the cursor is named in a tag. Styles are injected
-// here so the lab owns its look (Corps olive housings, Bakelite keys, phosphor CRTs, paper specimen cards).
-import { el, ui, panel, Btn, iconImg, Tip, S } from './kit';
-import { icon } from './pixelart';
+// The gene lab's 2D panels, made of what a 1957 field lab had on the bench: an olive-enamel instrument strip with
+// Bakelite controls across the top, a masonite clipboard holding the typed specimen record (it types itself as the
+// specimen changes, the species name is rubber-stamped, Dr. Calder pencils his notes in the margin), a cyanotype
+// drawing of the body proportions, a typed catalogue of the specimen jars, and along the bottom a card file: manila
+// divider tabs on a steel drawer front, and McBee edge-notched index cards that slide up out of the drawer, each
+// with a window cut in it where the 3D part turns (labIcons.ts). Everything is drawn at device resolution
+// (labPaper.ts) in a muted, physical palette with one accent, stamp red.
+import { el, ui, Tip } from './kit';
 import { sfx } from '../audio/audio';
 import { clamp } from '../core/rand';
 import type { Design, Pattern, Cover } from '../life/design';
+import type { GeneCat } from '../life/genes';
 import { TABS, TAB_ORDER, type TabId } from './labRules';
+import { paper, enamel, board, blueprint, notchCard, inkMask, paintEl, unpaint, type, pencil, reduced, PAL } from './labPaper';
 
 const CSS = `
-.lab, #ui > .lab { position: fixed; inset: 0; pointer-events: none; z-index: 3; font-family: 'VT', monospace; }
+.lab, #ui > .lab { position: fixed; inset: 0; pointer-events: none; z-index: 3; font-family: 'Pixelify', monospace; color: ${PAL.graphite}; -webkit-font-smoothing: none; }
 .lab .lb-p { position: absolute; pointer-events: auto; }
-.lab .lb-top { top: calc(2px * var(--s)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: calc(3px * var(--s)); padding: 0 calc(2px * var(--s)) !important; max-width: calc(100vw - 8px); box-sizing: border-box; }
-.lb-title { font-family: 'VT'; font-size: calc(13px * var(--s)); line-height: 1; color: var(--hot); letter-spacing: 2px; white-space: nowrap; }
-.lb-title small { display: block; font-size: calc(6px * var(--s)); color: var(--gold); letter-spacing: 1px; text-shadow: var(--amb-glow); }
-.lb-name { font-family: 'VT'; font-size: calc(10px * var(--s)); background: #020805; color: var(--hot); border: none; box-shadow: inset 0 0 0 calc(1px * var(--s)) #1b6630; padding: calc(1px * var(--s)) calc(3px * var(--s)); width: calc(104px * var(--s)); outline: none; text-shadow: var(--phos-glow); caret-color: var(--glow); }
-.lb-latin { font-size: calc(7px * var(--s)); color: var(--dim); font-style: italic; white-space: nowrap; max-width: calc(90px * var(--s)); overflow: hidden; text-overflow: ellipsis; }
-.lb-toggle { display: none !important; }
-.lab .lb-tools { left: calc(2px * var(--s)); top: calc(28px * var(--s)); width: calc(64px * var(--s)); display: flex; flex-direction: column; gap: calc(2px * var(--s)); padding: 0 !important; }
-.lb-tools .px-btn.wide { min-width: 0; width: 100%; height: calc(20px * var(--s)); justify-content: flex-start; padding: 0 calc(2px * var(--s)); }
-.lb-tools .px-btn .lbl { font-size: calc(7px * var(--s)); }
-.lb-tools .px-btn.act .lbl { color: var(--gold); }
-.lab .lb-left { left: calc(68px * var(--s)); top: calc(28px * var(--s)); width: calc(132px * var(--s)); max-height: calc(100vh - 146px * var(--s)); display: none; flex-direction: column; overflow: hidden auto; scrollbar-width: none; z-index: 4; }
-.lab .lb-left.open { display: flex; animation: crt-on 220ms steps(5); }
-.lab .lb-right { right: calc(2px * var(--s)); top: calc(28px * var(--s)); width: calc(124px * var(--s)); max-height: calc(100vh - 146px * var(--s)); display: flex; flex-direction: column; overflow: hidden auto; scrollbar-width: none; }
-.lb-top .px-btn.big { min-width: 0; height: calc(22px * var(--s)); }
-.lb-top .px-btn.wide { min-width: 0; height: calc(22px * var(--s)); }
-.lb-h { font-size: calc(9px * var(--s)); margin: calc(1px * var(--s)) 0 calc(2px * var(--s)); color: var(--gold); text-shadow: var(--amb-glow); letter-spacing: 1px; }
-.lb-h::before { content: ''; display: inline-block; width: calc(5px * var(--s)); height: calc(5px * var(--s)); margin-right: calc(3px * var(--s)); background: var(--haz) 0 0 / calc(16px * var(--s)) calc(6px * var(--s)); vertical-align: middle; }
-.lb-sl { display: grid; grid-template-columns: calc(40px * var(--s)) 1fr; align-items: center; gap: calc(3px * var(--s)); margin: calc(2px * var(--s)) 0; font-size: calc(7px * var(--s)); }
-.lb-sl .track { position: relative; height: calc(6px * var(--s)); background: #08090b; box-shadow: inset 0 calc(1px * var(--s)) 0 #000, 0 calc(1px * var(--s)) 0 #5c646c; touch-action: none; }
-.lb-sl .track::before { content: ''; position: absolute; left: calc(2px * var(--s)); right: calc(2px * var(--s)); top: calc(2px * var(--s)); height: calc(2px * var(--s)); background: repeating-linear-gradient(90deg, #2a9144 0 calc(1px * var(--s)), transparent calc(1px * var(--s)) calc(4px * var(--s))); opacity: 0.7; }
-.lb-sl .cap { position: absolute; top: 0; bottom: 0; right: 0; background: repeating-linear-gradient(45deg, rgba(255, 108, 68, 0.45) 0 calc(2px * var(--s)), transparent calc(2px * var(--s)) calc(4px * var(--s))); pointer-events: none; }
-.lb-sl .knob { position: absolute; top: calc(-3px * var(--s)); width: calc(6px * var(--s)); height: calc(12px * var(--s)); background: linear-gradient(90deg, #fff0bc 0 calc(1px * var(--s)), #d8ab50 calc(1px * var(--s)) calc(4px * var(--s)), #7c581b calc(4px * var(--s))); box-shadow: 0 0 0 calc(1px * var(--s)) #06070a; }
-.lb-row { display: flex; flex-wrap: wrap; gap: calc(2px * var(--s)); align-items: center; }
-.lb-row .px-btn.wide { min-width: 0; flex: 1; height: calc(18px * var(--s)); }
-.lb-row .px-btn .lbl { font-size: calc(8px * var(--s)); }
-.lb-stats { display: flex; flex-direction: column; gap: calc(1px * var(--s)); }
-.lb-mass { color: var(--gold); margin-bottom: calc(2px * var(--s)); font-size: calc(7px * var(--s)); }
-.lb-stat { display: grid; grid-template-columns: calc(30px * var(--s)) 1fr calc(34px * var(--s)); align-items: center; gap: calc(2px * var(--s)); font-size: calc(7px * var(--s)); }
-.lb-stat .v { text-align: right; color: var(--hot); }
-.lb-sbar { height: calc(4px * var(--s)); background: #030a05; box-shadow: 0 0 0 calc(1px * var(--s)) #0b3017; }
-.lb-sbar > div { height: 100%; background: repeating-linear-gradient(90deg, #7ae088 0 calc(3px * var(--s)), #1b6630 calc(3px * var(--s)) calc(4px * var(--s))); box-shadow: 0 0 calc(3px * var(--s)) rgba(67, 182, 90, 0.6); transition: width 150ms steps(6); }
-.lb-sbar > div.dn { background: repeating-linear-gradient(90deg, #ff9a6a 0 calc(3px * var(--s)), #8a2a12 calc(3px * var(--s)) calc(4px * var(--s))); }
-.lb-warn { margin: calc(3px * var(--s)) 0; font-size: calc(7px * var(--s)); line-height: calc(7px * var(--s)); }
-.lb-slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: calc(1px * var(--s)); font-size: calc(6px * var(--s)); margin: calc(2px * var(--s)) 0; }
-.lb-slots div { background: #030a05; box-shadow: inset 0 0 0 1px #0b3017; padding: calc(1px * var(--s)); text-align: center; }
-.lb-slots b { display: block; font-size: calc(8px * var(--s)); }
-.lb-slots .full b { color: var(--amber); text-shadow: var(--amb-glow); }
-.lb-act { margin-top: auto; display: flex; flex-direction: column; gap: calc(3px * var(--s)); }
-.lb-act .px-btn.big { min-width: 0; width: 100%; }
-.lb-cost { display: flex; flex-wrap: wrap; align-items: center; gap: calc(2px * var(--s)); font-size: calc(7px * var(--s)); }
-.lb-cost img { width: calc(9px * var(--s)); height: calc(9px * var(--s)); vertical-align: middle; }
-/* ---- the parts dock */
-.lab .lb-dock { left: 0; right: 0; bottom: 0; height: calc(116px * var(--s)); pointer-events: none; display: flex; flex-direction: column; }
-.lb-head { pointer-events: auto; margin: 0 auto; display: flex; align-items: center; gap: calc(3px * var(--s)); padding: 0 calc(2px * var(--s)) !important; max-width: calc(100vw - 8px); box-sizing: border-box; }
-.lb-area { font-size: calc(10px * var(--s)); color: var(--gold); text-shadow: var(--amb-glow); white-space: nowrap; min-width: calc(60px * var(--s)); }
-.lb-area small { display: block; font-size: calc(6px * var(--s)); color: var(--dim); text-shadow: none; white-space: normal; max-width: calc(130px * var(--s)); line-height: calc(6px * var(--s)); }
-.lb-tabs { display: flex; gap: calc(1px * var(--s)); overflow-x: auto; scrollbar-width: none; touch-action: pan-x; }
-.lb-tab { flex: none; display: flex; align-items: center; gap: calc(1px * var(--s)); font-family: 'VT'; font-size: calc(7px * var(--s)); line-height: calc(7px * var(--s)); background: #16181a; color: var(--stamp); border: none; box-shadow: inset 0 0 0 calc(1px * var(--s)) #363c43; padding: calc(1px * var(--s)) calc(2px * var(--s)); cursor: inherit; }
-.lb-tab img { width: calc(9px * var(--s)); height: calc(9px * var(--s)); }
-.lb-tab.hint { box-shadow: inset 0 0 0 calc(1px * var(--s)) #8c6a22; color: var(--gold); }
-.lb-tab.act { background: #0b3017; color: var(--hot); box-shadow: inset 0 0 0 calc(1px * var(--s)) #43b65a; text-shadow: var(--phos-glow); }
-.lb-tab.empty { opacity: 0.55; }
-.lb-tab .n { color: var(--gold); margin-left: 1px; }
-.lb-strip { pointer-events: auto; flex: 1; display: flex; gap: calc(4px * var(--s)); align-items: flex-end; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; touch-action: pan-x; padding: 0 calc(12px * var(--s)) calc(3px * var(--s)); scrollbar-width: none; overscroll-behavior: contain; }
-.lb-strip::-webkit-scrollbar, .lb-tabs::-webkit-scrollbar, .lab .lb-left::-webkit-scrollbar, .lab .lb-right::-webkit-scrollbar { display: none; }
+.lab b { color: inherit; font-weight: normal; }
+.lab .vt { font-family: 'VT', monospace; font-size: var(--vt); line-height: calc(var(--vt) * 1.05); }
+.lab .np { font-family: 'Jersey', monospace; font-size: var(--np); line-height: var(--np); letter-spacing: 0.04em; }
+.lab .ps { font-family: 'Pixelify', monospace; font-size: var(--ps); line-height: calc(var(--ps) * 1.15); }
+.lab .sw { font-family: 'Superwide', monospace; font-size: var(--sw); line-height: var(--sw); letter-spacing: 0.12em; }
+.lb-caret { display: inline-block; width: 0.55em; height: 0.9em; margin-left: 1px; background: ${PAL.graphite}; vertical-align: -0.1em; opacity: 0.8; animation: lb-car 0.5s steps(2) infinite; }
+@keyframes lb-car { 50% { opacity: 0; } }
+/* ---------------------------------------------------------------- instrument strip */
+.lab .lb-top { top: calc(6 * var(--k)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: calc(12 * var(--k)); padding: calc(6 * var(--k)) calc(14 * var(--k)); box-shadow: 0 calc(3 * var(--k)) calc(8 * var(--k)) rgba(10, 9, 6, 0.55); border-radius: calc(3 * var(--k)); max-width: calc(100vw - 12px); box-sizing: border-box; }
+.lb-title { color: rgba(217, 210, 191, 0.88); text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 250, 230, 0.12); white-space: nowrap; }
+.lb-title .sw { display: block; font-size: calc(var(--sw) * 2); line-height: calc(var(--sw) * 2); letter-spacing: 0.08em; }
+.lb-title .np { display: block; color: rgba(217, 210, 191, 0.6); margin-top: calc(2 * var(--k)); }
+.lb-holder { position: relative; padding: calc(4 * var(--k)) calc(6 * var(--k)) calc(3 * var(--k)); background: linear-gradient(180deg, #9a9c96, #6c6e69 45%, #8d8f8a); border-radius: calc(2 * var(--k)); box-shadow: inset 0 1px 0 rgba(255, 255, 250, 0.35), inset 0 -1px 0 rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.5); }
+.lb-slip { position: relative; padding: calc(2 * var(--k)) calc(6 * var(--k)); box-shadow: inset 0 1px 2px rgba(40, 30, 20, 0.45); }
+.lb-name { display: block; font-family: 'VT', monospace; font-size: var(--vt); line-height: var(--vt); width: calc(196 * var(--k)); background: transparent; border: none; outline: none; color: ${PAL.graphite}; padding: 0; caret-color: ${PAL.stamp}; }
+.lb-latin { font-family: 'Pixelify', monospace; font-size: var(--ps); line-height: var(--ps); color: #6a6658; font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(196 * var(--k)); margin-top: 1px; }
+.lb-ctl { display: flex; flex-direction: column; align-items: center; gap: calc(3 * var(--k)); background: none; border: none; padding: 0; cursor: inherit; color: inherit; font: inherit; }
+.lb-ctl .lab-l { font-family: 'Jersey', monospace; font-size: var(--np); line-height: var(--np); letter-spacing: 0.06em; color: rgba(217, 210, 191, 0.85); text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.6); white-space: nowrap; }
+.lb-ctl.dis { cursor: not-allowed; } .lb-ctl.dis .lab-l { color: rgba(217, 210, 191, 0.4); }
+/* a Bakelite push button in a steel bezel */
+.lb-push .cap { position: relative; width: calc(26 * var(--k)); height: calc(26 * var(--k)); border-radius: 50%; background: radial-gradient(circle at 50% 50%, #7a7c78 0 62%, #3a3d40 63% 68%, #9a9c96 69% 74%, #2a2c2c 75%); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+.lb-push .cap::after { content: ''; position: absolute; inset: 22%; border-radius: 50%; background: radial-gradient(circle at 36% 30%, #7a5a44, ${PAL.bakelite} 58%, #1e120c); box-shadow: 0 calc(2 * var(--k)) 0 #140b07, 0 calc(2 * var(--k)) calc(3 * var(--k)) rgba(0, 0, 0, 0.6); transition: transform 70ms ease-out, box-shadow 70ms ease-out; }
+.lb-push.red .cap::after { background: radial-gradient(circle at 36% 30%, #c9786a, #9e3a30 55%, #5a1c16); box-shadow: 0 calc(2 * var(--k)) 0 #3c120e, 0 calc(2 * var(--k)) calc(3 * var(--k)) rgba(0, 0, 0, 0.6); }
+.lb-push:hover .cap::after { filter: brightness(1.12); }
+.lb-push:active .cap::after { transform: translateY(calc(2 * var(--k))); box-shadow: 0 0 0 #140b07, 0 1px 1px rgba(0, 0, 0, 0.6); }
+.lb-push.dis .cap::after { filter: grayscale(0.85) brightness(0.65); }
+.lb-push.big .cap { width: calc(34 * var(--k)); height: calc(34 * var(--k)); }
+/* a Bakelite knob with a pointer, on a ticked skirt */
+.lb-knob .cap { position: relative; width: calc(28 * var(--k)); height: calc(28 * var(--k)); border-radius: 50%; background: repeating-conic-gradient(from -135deg, rgba(217, 210, 191, 0.75) 0 2deg, transparent 2deg 30deg) , radial-gradient(circle, transparent 60%, rgba(0, 0, 0, 0.0) 61%); }
+.lb-knob .cap i { position: absolute; inset: 18%; border-radius: 50%; background: radial-gradient(circle at 36% 30%, #6e5040, ${PAL.bakelite} 55%, #1a0f0a); box-shadow: 0 calc(2 * var(--k)) calc(3 * var(--k)) rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(0, 0, 0, 0.5); transition: transform 360ms cubic-bezier(0.3, 1.6, 0.5, 1); }
+.lb-knob .cap i::after { content: ''; position: absolute; left: 47%; top: 6%; width: 7%; height: 36%; background: rgba(217, 210, 191, 0.9); border-radius: 1px; }
+.lb-knob:hover .cap i { filter: brightness(1.12); }
+/* a bat-handle toggle on a hex nut; up is on */
+.lb-tog .cap { position: relative; width: calc(22 * var(--k)); height: calc(28 * var(--k)); }
+.lb-tog .cap::before { content: ''; position: absolute; left: 50%; top: 52%; width: calc(14 * var(--k)); height: calc(14 * var(--k)); transform: translate(-50%, -50%); clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); background: linear-gradient(160deg, #a6a8a2, #55585a 60%, #3a3d40); }
+.lb-tog .cap i { position: absolute; left: 50%; top: 52%; width: calc(4 * var(--k)); height: calc(16 * var(--k)); margin-left: calc(-2 * var(--k)); transform-origin: 50% 100%; transform: translateY(-100%) rotate(155deg); border-radius: calc(2 * var(--k)) calc(2 * var(--k)) 1px 1px; background: linear-gradient(90deg, #6e706c, #e2e2dc 40%, #8d8f8a); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); transition: transform 180ms cubic-bezier(0.3, 1.5, 0.5, 1); }
+.lb-tog.on .cap i { transform: translateY(-100%) rotate(25deg); }
+.lb-tog .cap b { position: absolute; left: 50%; top: 52%; width: calc(6 * var(--k)); height: calc(6 * var(--k)); margin: calc(-3 * var(--k)) 0 0 calc(-3 * var(--k)); border-radius: 50%; background: #2a2c2c; }
+/* Dymo tape label */
+.dymo { display: inline-block; padding: 1px calc(4 * var(--k)) 0; background: #23221f; color: #ece6d4; font-family: 'Jersey', monospace; font-size: var(--np); line-height: calc(var(--np) + 2px); letter-spacing: 0.12em; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.8); box-shadow: 0 1px 1px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08); }
+/* ---------------------------------------------------------------- tools plate and drawers */
+.lab .lb-tools { left: calc(6 * var(--k)); top: calc(6 * var(--k)); display: flex; flex-direction: column; gap: calc(8 * var(--k)); padding: calc(12 * var(--k)) calc(10 * var(--k)) calc(10 * var(--k)); border-radius: calc(3 * var(--k)); box-shadow: 0 calc(3 * var(--k)) calc(8 * var(--k)) rgba(10, 9, 6, 0.55); }
+.lb-tools .lb-ctl { flex-direction: row; gap: calc(6 * var(--k)); }
+.lab .lb-left { left: calc(98 * var(--k)); top: calc(10 * var(--k)); width: calc(250 * var(--k)); padding: calc(14 * var(--k)) calc(14 * var(--k)) calc(12 * var(--k)); box-sizing: border-box; color: ${PAL.ink}; display: none; box-shadow: 0 calc(4 * var(--k)) calc(10 * var(--k)) rgba(5, 10, 18, 0.6); transform-origin: 0 0; }
+.lab .lb-left.open { display: block; animation: lb-pull 260ms cubic-bezier(0.2, 0.9, 0.3, 1.15) both; }
+@keyframes lb-pull { 0% { transform: translateX(calc(-30 * var(--k))) rotate(-1.5deg); opacity: 0; } 100% { transform: rotate(-0.4deg); opacity: 1; } }
+.bp-t { color: rgba(232, 238, 240, 0.92); margin-bottom: calc(10 * var(--k)); }
+.bp-t .np { display: block; color: rgba(232, 238, 240, 0.6); margin-top: calc(3 * var(--k)); }
+.lb-sl { display: grid; grid-template-columns: calc(64 * var(--k)) 1fr calc(30 * var(--k)); align-items: center; gap: calc(6 * var(--k)); height: calc(20 * var(--k)); }
+.lb-sl > span { font-family: 'Jersey', monospace; font-size: var(--np); color: rgba(232, 238, 240, 0.85); }
+.lb-sl .v { font-family: 'VT', monospace; font-size: var(--vt); color: ${PAL.ink}; text-align: right; }
+.lb-sl .track { position: relative; height: calc(14 * var(--k)); touch-action: none; cursor: ew-resize; background: linear-gradient(rgba(232, 238, 240, 0.85), rgba(232, 238, 240, 0.85)) 0 50% / 100% 1px no-repeat, repeating-linear-gradient(90deg, rgba(232, 238, 240, 0.7) 0 1px, transparent 1px 10%) 0 100% / 100% 40% no-repeat, repeating-linear-gradient(90deg, rgba(232, 238, 240, 0.35) 0 1px, transparent 1px 2%) 0 100% / 100% 20% no-repeat; }
+.lb-sl .cap { position: absolute; top: 0; bottom: 0; right: 0; background: repeating-linear-gradient(-45deg, rgba(232, 238, 240, 0.5) 0 1px, transparent 1px 4px); pointer-events: none; }
+.lb-sl .cap::after { content: 'VAT'; position: absolute; right: 2px; top: -2px; font-family: 'Jersey'; font-size: var(--np); color: ${PAL.ink}; }
+.lb-sl .knob { position: absolute; top: 0; width: 0; height: 100%; transition: left 120ms cubic-bezier(0.3, 1.4, 0.5, 1); }
+.lb-sl .knob::before { content: ''; position: absolute; left: calc(-5 * var(--k)); top: calc(-2 * var(--k)); border: calc(5 * var(--k)) solid transparent; border-top: calc(8 * var(--k)) solid ${PAL.ink}; }
+.lb-sl .knob::after { content: ''; position: absolute; left: 0; top: 0; width: 1px; height: 100%; background: ${PAL.ink}; }
+.bp-n { font-family: 'Pixelify'; font-size: var(--ps); color: rgba(232, 238, 240, 0.6); margin-top: calc(8 * var(--k)); }
+.lb-shelf { position: absolute; left: calc(98 * var(--k)); top: calc(10 * var(--k)); width: calc(260 * var(--k)); max-height: calc(100vh - 250 * var(--k)); overflow: hidden auto; scrollbar-width: none; pointer-events: auto; z-index: 4; display: none; padding: calc(16 * var(--k)) calc(14 * var(--k)) calc(12 * var(--k)); box-sizing: border-box; box-shadow: 0 calc(4 * var(--k)) calc(10 * var(--k)) rgba(10, 8, 4, 0.55); }
+.lb-shelf.open { display: block; animation: lb-pull 260ms cubic-bezier(0.2, 0.9, 0.3, 1.15) both; }
+.cat-h { border-bottom: 1px solid ${PAL.graphite}; padding-bottom: calc(4 * var(--k)); margin-bottom: calc(6 * var(--k)); }
+.lb-jar { display: grid; grid-template-columns: calc(40 * var(--k)) 1fr; gap: calc(8 * var(--k)); align-items: center; padding: calc(4 * var(--k)) 0; border-bottom: 1px solid rgba(122, 150, 170, 0.45); cursor: inherit; }
+.lb-jar:hover { background: rgba(184, 56, 46, 0.06); }
+.lb-jar img { width: calc(40 * var(--k)); height: calc(40 * var(--k)); background: #2a2c2a; border: calc(2 * var(--k)) solid #ece6d4; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45); transform: rotate(-2deg); image-rendering: auto; }
+.lb-jar:nth-child(odd) img { transform: rotate(1.5deg); }
+.lb-jar .vt { display: block; }
+.lb-jar .pn { font-family: 'Pixelify'; font-size: var(--ps); color: #5a5850; }
+/* ---------------------------------------------------------------- the clipboard and its record sheet */
+.lab .lb-right { right: calc(6 * var(--k)); top: calc(6 * var(--k)); width: calc(262 * var(--k)); padding: calc(20 * var(--k)) calc(9 * var(--k)) calc(10 * var(--k)); box-sizing: border-box; box-shadow: 0 calc(4 * var(--k)) calc(10 * var(--k)) rgba(10, 8, 4, 0.6); border-radius: calc(7 * var(--k)); max-height: calc(100vh - 248 * var(--k)); display: flex; }
+.lb-clip { position: absolute; left: 50%; top: calc(-3 * var(--k)); width: calc(92 * var(--k)); height: calc(26 * var(--k)); transform: translateX(-50%); z-index: 2; border-radius: calc(3 * var(--k)) calc(3 * var(--k)) calc(6 * var(--k)) calc(6 * var(--k)); background: linear-gradient(180deg, #c4c6c0, #8d8f8a 40%, #5a5c58 75%, #8d8f8a); box-shadow: 0 calc(2 * var(--k)) calc(3 * var(--k)) rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 250, 0.6); }
+.lb-clip::before { content: ''; position: absolute; left: 30%; right: 30%; top: calc(6 * var(--k)); height: calc(5 * var(--k)); border-radius: calc(3 * var(--k)); background: #2a2c2c; box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.8), 0 1px 0 rgba(255, 255, 250, 0.4); }
+.lb-sheet { position: relative; flex: 1; min-height: 0; overflow: hidden auto; scrollbar-width: none; padding: calc(16 * var(--k)) calc(12 * var(--k)) calc(12 * var(--k)); box-sizing: border-box; transform: rotate(-0.5deg); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), calc(-2 * var(--k)) calc(3 * var(--k)) calc(4 * var(--k)) rgba(20, 12, 4, 0.35); }
+.lb-sheet::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at var(--lx, 30%) var(--ly, 20%), rgba(255, 244, 214, 0.16), transparent 60%); animation: lb-lamp 14s ease-in-out infinite alternate; }
+@keyframes lb-lamp { 0% { --lx: 25%; --ly: 15%; } 100% { --lx: 70%; --ly: 40%; } }
+@property --lx { syntax: '<percentage>'; inherits: false; initial-value: 30%; } @property --ly { syntax: '<percentage>'; inherits: false; initial-value: 20%; }
+.rs-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid ${PAL.graphite}; padding-bottom: calc(3 * var(--k)); }
+.rs-head .sw { letter-spacing: 0.18em; }
+.rs-row { display: flex; align-items: baseline; gap: calc(6 * var(--k)); border-bottom: 1px solid rgba(59, 58, 54, 0.45); padding: calc(4 * var(--k)) 0 calc(2 * var(--k)); min-height: calc(16 * var(--k)); }
+.rs-k { font-family: 'Jersey', monospace; font-size: var(--np); color: #6a6658; letter-spacing: 0.06em; flex: none; }
+.rs-v { font-family: 'VT', monospace; font-size: var(--vt); color: ${PAL.graphite}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rs-2 { display: grid; grid-template-columns: 1fr 1fr; column-gap: calc(8 * var(--k)); }
+.rs-nm { position: relative; min-height: calc(22 * var(--k)); }
+.stamp { display: inline-block; font-family: 'Superwide', monospace; font-size: var(--sw); line-height: var(--sw); letter-spacing: 0.14em; color: ${PAL.stamp}; border: calc(2 * var(--k)) solid currentColor; padding: calc(3 * var(--k)) calc(5 * var(--k)) calc(2 * var(--k)); transform: rotate(var(--r, -3deg)); -webkit-mask-image: var(--ink); mask-image: var(--ink); -webkit-mask-size: calc(96 * var(--k) / 2); mask-size: calc(96 * var(--k) / 2); opacity: 0.88; text-shadow: 1px 0 0 currentColor; white-space: nowrap; }
+.stamp.g { color: ${PAL.graphite}; opacity: 0.72; }
+.stamp.thump { animation: lb-thump 320ms cubic-bezier(0.2, 0.8, 0.3, 1.2) both; }
+@keyframes lb-thump { 0% { transform: rotate(var(--r, -3deg)) scale(1.9); opacity: 0; } 55% { transform: rotate(var(--r, -3deg)) scale(0.9, 0.86); opacity: 0.95; } 100% { transform: rotate(var(--r, -3deg)) scale(1); opacity: 0.88; } }
+.rs-t { font-family: 'Superwide', monospace; font-size: var(--sw); letter-spacing: 0.16em; margin: calc(9 * var(--k)) 0 calc(3 * var(--k)); color: #4a4842; }
+.rs-stat { display: grid; grid-template-columns: calc(54 * var(--k)) 1fr calc(62 * var(--k)); align-items: center; gap: calc(6 * var(--k)); height: calc(15 * var(--k)); }
+.rs-stat .rs-v { text-align: right; }
+.rs-box { position: relative; height: calc(8 * var(--k)); border: 1px solid rgba(59, 58, 54, 0.8); border-radius: 1px; transform: rotate(var(--rr, 0deg)); }
+.rs-box i { position: absolute; left: 0; top: 0; bottom: 0; background: repeating-linear-gradient(115deg, rgba(59, 58, 54, 0.85) 0 1px, transparent 1px 3px); transition: width 600ms cubic-bezier(0.3, 1.45, 0.5, 1); }
+.rs-box.dn i { background: repeating-linear-gradient(115deg, rgba(59, 58, 54, 0.85) 0 1px, transparent 1px 3px), repeating-linear-gradient(25deg, rgba(59, 58, 54, 0.6) 0 1px, transparent 1px 3px); }
+.rs-notes { position: relative; margin: calc(8 * var(--k)) 0 calc(2 * var(--k)); min-height: calc(18 * var(--k)); }
+.pencil { font-family: 'Pixelify', monospace; font-size: var(--ps); line-height: calc(var(--ps) * 1.35); color: #4b4a46; opacity: 0.9; }
+.pencil b { display: inline-block; }
+.pencil.wr { animation: lb-write 1.1s steps(28) both; }
+@keyframes lb-write { 0% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0 0 0 0); } }
+.rs-ok { position: absolute; right: 0; top: calc(-2 * var(--k)); --r: 6deg; }
+.rs-slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(3 * var(--k)) calc(8 * var(--k)); }
+.rs-slot { display: flex; align-items: center; gap: calc(4 * var(--k)); }
+.rs-slot .rs-k { width: calc(36 * var(--k)); }
+.rs-slot s { position: relative; display: inline-block; width: calc(8 * var(--k)); height: calc(8 * var(--k)); border: 1px solid rgba(59, 58, 54, 0.85); text-decoration: none; }
+.rs-slot s.x::before, .rs-slot s.x::after { content: ''; position: absolute; left: -1px; right: -1px; top: 50%; height: 1px; background: #3e3d39; transform: rotate(42deg); }
+.rs-slot s.x::after { transform: rotate(-38deg); }
+.rs-cost { margin-top: calc(4 * var(--k)); }
+.rs-sig { display: flex; align-items: flex-end; justify-content: space-between; margin-top: calc(10 * var(--k)); }
+.rs-sig .ln { flex: 1; border-bottom: 1px solid rgba(59, 58, 54, 0.6); margin: 0 calc(6 * var(--k)); height: calc(14 * var(--k)); position: relative; }
+.rs-sig .ln .pencil { position: absolute; left: calc(8 * var(--k)); bottom: 0; transform: rotate(-4deg); }
+/* ---------------------------------------------------------------- the card file */
+.lab .lb-dock { left: 0; right: 0; bottom: 0; height: calc(232 * var(--k)); pointer-events: none; display: flex; flex-direction: column; }
+.lb-strip { pointer-events: auto; flex: 1; display: flex; gap: calc(10 * var(--k)); align-items: flex-end; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; touch-action: pan-x; padding: 0 calc(24 * var(--k)); scrollbar-width: none; overscroll-behavior: contain; margin-bottom: calc(-14 * var(--k)); }
+.lb-strip::-webkit-scrollbar, .lb-tabs::-webkit-scrollbar, .lb-sheet::-webkit-scrollbar, .lb-shelf::-webkit-scrollbar { display: none; }
 .lb-strip.center { justify-content: safe center; }
-.lb-card { flex: none; position: relative; width: calc(60px * var(--s)); height: calc(88px * var(--s)); scroll-snap-align: center; cursor: inherit; transition: transform 90ms steps(3); }
-.lb-card:hover, .lb-card.hov { transform: translateY(calc(-3px * var(--s))); }
-.lb-win { position: absolute; left: calc(2px * var(--s)); right: calc(2px * var(--s)); top: calc(2px * var(--s)); height: calc(50px * var(--s)); box-shadow: 0 0 0 calc(2px * var(--s)) #0c0e0c, 0 0 0 calc(3px * var(--s)) var(--cc, #43b65a), 0 calc(3px * var(--s)) 0 calc(3px * var(--s)) #050605; }
-.lb-win::before, .lb-win::after { content: ''; position: absolute; width: calc(5px * var(--s)); height: calc(5px * var(--s)); border: solid var(--cc, #43b65a); opacity: 0.9; }
-.lb-win::before { left: calc(2px * var(--s)); top: calc(2px * var(--s)); border-width: calc(1px * var(--s)) 0 0 calc(1px * var(--s)); }
-.lb-win::after { right: calc(2px * var(--s)); bottom: calc(2px * var(--s)); border-width: 0 calc(1px * var(--s)) calc(1px * var(--s)) 0; }
-.lb-info { position: absolute; left: 0; right: 0; bottom: 0; height: calc(34px * var(--s)); box-sizing: border-box; padding: calc(3px * var(--s)) calc(3px * var(--s)) calc(2px * var(--s)); display: flex; flex-direction: column; gap: 1px; text-align: center; color: #2a2418; text-shadow: none;
-  background: repeating-linear-gradient(90deg, transparent 0 calc(3px * var(--s)), rgba(120, 90, 50, 0.13) calc(3px * var(--s)) calc(4px * var(--s))), linear-gradient(180deg, #ece4c6, #d8cea8);
-  box-shadow: inset 0 calc(-1px * var(--s)) 0 #a89e7a, inset calc(-1px * var(--s)) 0 0 #b4aa86; clip-path: polygon(0 0, 100% 0, 100% 100%, calc(5px * var(--s)) 100%, 0 calc(100% - calc(5px * var(--s)))); }
-.lb-info .nm { font-family: 'Jersey'; font-size: calc(9px * var(--s)); line-height: calc(8px * var(--s)); color: #1a1610; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lb-info .mt { font-size: calc(6px * var(--s)); line-height: calc(6px * var(--s)); color: #6a5a3a; white-space: nowrap; overflow: hidden; }
-.lb-info .fx { font-size: calc(6px * var(--s)); line-height: calc(6px * var(--s)); color: #2a4a2a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lb-st { position: absolute; top: calc(-4px * var(--s)); right: calc(-1px * var(--s)); font-size: calc(6px * var(--s)); line-height: calc(7px * var(--s)); padding: 0 calc(2px * var(--s)); color: #ece4c6; background: #1b6630; z-index: 2; }
-.lb-card.on .lb-st { background: var(--gold); color: #1a1610; box-shadow: 0 0 calc(4px * var(--s)) rgba(255, 200, 100, 0.6); }
-.lb-card.on .lb-info { background: repeating-linear-gradient(90deg, transparent 0 calc(3px * var(--s)), rgba(120, 90, 50, 0.13) calc(3px * var(--s)) calc(4px * var(--s))), linear-gradient(180deg, #fff2c8, #f0d890); }
-.lb-card.lock .lb-st { background: #6a2a1a; }
-.lb-card.lock .lb-info { filter: grayscale(0.7) brightness(0.8); }
-.lb-card.unk .lb-info { filter: grayscale(1) brightness(0.6); }
-.lb-card.none .lb-win { box-shadow: 0 0 0 calc(2px * var(--s)) #0c0e0c, 0 0 0 calc(3px * var(--s)) #6a2a1a; background: repeating-linear-gradient(45deg, rgba(10, 12, 10, 0.92) 0 calc(4px * var(--s)), rgba(40, 20, 14, 0.92) calc(4px * var(--s)) calc(8px * var(--s))); }
-.lb-card.none .lb-win span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: calc(14px * var(--s)); color: var(--warn); }
-.lb-lv { position: absolute; left: calc(4px * var(--s)); top: calc(4px * var(--s)); font-size: calc(6px * var(--s)); color: var(--gold); text-shadow: var(--amb-glow); z-index: 2; pointer-events: none; }
-.lb-hint { pointer-events: none; align-self: center; margin-bottom: calc(10px * var(--s)); font-size: calc(9px * var(--s)); color: var(--hot); text-shadow: var(--phos-glow); animation: blink 1.6s steps(2) infinite; letter-spacing: 1px; text-align: center; }
-/* hide & colour editor */
-.lb-paint { pointer-events: auto; position: absolute; left: 50%; bottom: calc(100% + 2px * var(--s)); transform: translateX(-50%); display: flex; gap: calc(4px * var(--s)); align-items: flex-start; padding: 0 calc(3px * var(--s)) !important; max-width: calc(100vw - 8px); box-sizing: border-box; overflow-x: auto; }
-.lb-sw { display: grid; grid-template-columns: calc(22px * var(--s)) 1fr; align-items: center; gap: 1px calc(2px * var(--s)); font-size: calc(6px * var(--s)); }
-.lb-chips { display: flex; gap: 1px; }
-.lb-chip { width: calc(6px * var(--s)); height: calc(6px * var(--s)); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.6); cursor: inherit; }
-.lb-chip.on { box-shadow: 0 0 0 1px #fff0c4, 0 0 0 calc(2px * var(--s)) #8c4a12; }
-.lb-pats { display: flex; flex-wrap: wrap; gap: calc(1px * var(--s)); max-width: calc(120px * var(--s)); }
-.lb-pat { font-family: 'VT'; font-size: calc(7px * var(--s)); line-height: calc(7px * var(--s)); background: #16181a; color: var(--stamp); border: none; box-shadow: inset 0 0 0 calc(1px * var(--s)) #363c43; padding: calc(1px * var(--s)) calc(2px * var(--s)); cursor: inherit; }
-.lb-pat.on { color: #1a1610; background: var(--gold); box-shadow: inset 0 0 0 calc(1px * var(--s)) #8c4a12; }
-/* scientists' lines, the region tag, the save stamp, the shelf */
-.lb-say { position: absolute; transform: translate(-50%, -100%); pointer-events: none; max-width: calc(110px * var(--s)); padding: calc(2px * var(--s)) calc(4px * var(--s)); background: #f0ead6; color: #1a1610; text-shadow: none; font-size: calc(7px * var(--s)); line-height: calc(7px * var(--s)); box-shadow: 0 0 0 calc(1px * var(--s)) #1a1610, calc(2px * var(--s)) calc(2px * var(--s)) 0 rgba(0, 0, 0, 0.45); animation: lb-pop 160ms steps(3); }
-.lb-say b { display: block; color: #8c4a12; font-size: calc(6px * var(--s)); text-shadow: none; }
-.lb-say::after { content: ''; position: absolute; left: 50%; bottom: calc(-4px * var(--s)); width: calc(4px * var(--s)); height: calc(4px * var(--s)); background: #f0ead6; box-shadow: calc(1px * var(--s)) calc(1px * var(--s)) 0 #1a1610; transform: translateX(-50%) rotate(45deg); }
-.lb-say.out { opacity: 0; transition: opacity 300ms steps(3); }
-@keyframes lb-pop { 0% { transform: translate(-50%, -80%) scale(0.6); } 100% { transform: translate(-50%, -100%) scale(1); } }
-.lb-tag { position: absolute; pointer-events: none; padding: calc(1px * var(--s)) calc(3px * var(--s)); font-size: calc(8px * var(--s)); line-height: calc(8px * var(--s)); background: rgba(2, 10, 5, 0.85); color: var(--hot); text-shadow: var(--phos-glow); box-shadow: inset 0 0 0 1px #43b65a; white-space: nowrap; }
-.lb-tag i { display: block; color: var(--gold); font-size: calc(6px * var(--s)); text-shadow: var(--amb-glow); }
-.lb-stamp { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%) rotate(-8deg); pointer-events: none; font-family: 'VT'; font-size: calc(30px * var(--s)); line-height: 1; color: #d83a2a; border: calc(3px * var(--s)) solid #d83a2a; padding: calc(2px * var(--s)) calc(8px * var(--s)); letter-spacing: 3px; text-shadow: none; opacity: 0.92; animation: lb-stamp 260ms steps(4); mix-blend-mode: screen; }
-.lb-stamp small { display: block; font-size: calc(9px * var(--s)); text-align: center; letter-spacing: 1px; }
-@keyframes lb-stamp { 0% { transform: translate(-50%, -50%) rotate(-8deg) scale(2.4); opacity: 0; } 100% { transform: translate(-50%, -50%) rotate(-8deg) scale(1); opacity: 0.92; } }
-.lb-shelf { position: absolute; left: calc(68px * var(--s)); top: calc(28px * var(--s)); width: calc(140px * var(--s)); max-height: calc(100vh - 146px * var(--s)); overflow: hidden auto; pointer-events: auto; z-index: 4; display: none; }
-.lb-shelf.open { display: block; animation: crt-on 260ms steps(6); }
-.lb-jar { display: grid; grid-template-columns: calc(26px * var(--s)) 1fr; gap: calc(2px * var(--s)); align-items: center; padding: calc(1px * var(--s)); cursor: inherit; font-size: calc(7px * var(--s)); line-height: calc(7px * var(--s)); }
-.lb-jar:hover, .lb-jar.hov { background: #0b3017; color: var(--hot); }
-.lb-jar img { width: calc(26px * var(--s)); height: calc(26px * var(--s)); background: #020805; box-shadow: inset 0 0 0 1px #1b6630; }
-.lb-jar i { display: block; color: var(--dim); font-size: calc(6px * var(--s)); }
-.lb-veil { position: absolute; inset: 0; background: #020403; pointer-events: none; opacity: 1; transition: opacity 600ms steps(8); z-index: 9; display: flex; align-items: center; justify-content: center; color: var(--glow); text-shadow: var(--phos-glow); font-size: calc(10px * var(--s)); letter-spacing: 2px; }
+.lb-card { flex: none; position: relative; width: calc(124 * var(--k)); height: calc(170 * var(--k)); scroll-snap-align: center; cursor: inherit; background-size: 100% 100%; filter: drop-shadow(0 calc(-1 * var(--k)) calc(2 * var(--k)) rgba(20, 14, 6, 0.45)); transition: transform 160ms cubic-bezier(0.3, 1.4, 0.5, 1); transform: translateY(calc(6 * var(--k))) rotate(var(--tilt, 0deg)); }
+.lb-card:hover, .lb-card.hov { transform: translateY(calc(-8 * var(--k))) rotate(0deg); }
+.lb-card.draw { animation: lb-draw 460ms cubic-bezier(0.2, 0.85, 0.3, 1.18) both; animation-delay: var(--d, 0ms); }
+@keyframes lb-draw { 0% { transform: translateY(105%) rotate(calc(var(--tilt, 0deg) * 4)); } 100% { transform: translateY(calc(6 * var(--k))) rotate(var(--tilt, 0deg)); } }
+.lb-card.lock { filter: drop-shadow(0 calc(-1 * var(--k)) calc(2 * var(--k)) rgba(20, 14, 6, 0.45)) saturate(0.4) brightness(0.86); }
+.lb-card.unk { filter: drop-shadow(0 calc(-1 * var(--k)) calc(2 * var(--k)) rgba(20, 14, 6, 0.45)) brightness(0.8); }
+.lb-win { position: absolute; left: calc(8 * var(--k)); top: calc(14 * var(--k)); width: calc(108 * var(--k)); height: calc(84 * var(--k)); }
+.lb-info { position: absolute; left: calc(8 * var(--k)); right: calc(8 * var(--k)); top: calc(101 * var(--k)); bottom: calc(6 * var(--k)); display: flex; flex-direction: column; gap: calc(2 * var(--k)); text-align: left; }
+.lb-info .vt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #2e2d2a; }
+.lb-info .np { color: #6a6658; white-space: nowrap; overflow: hidden; margin-top: calc(3 * var(--k)); }
+.lb-info .ps { color: #3e4a52; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-card .stamp { position: absolute; right: calc(6 * var(--k)); bottom: calc(10 * var(--k)); --r: -9deg; font-size: var(--sw); padding: calc(2 * var(--k)) calc(4 * var(--k)) 1px; }
+.lb-lv { position: absolute; right: calc(9 * var(--k)); top: calc(17 * var(--k)); font-family: 'VT', monospace; font-size: var(--vt); color: ${PAL.ink}; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6); pointer-events: none; }
+.lb-card .q { position: absolute; left: calc(8 * var(--k)); top: calc(14 * var(--k)); width: calc(108 * var(--k)); height: calc(84 * var(--k)); display: flex; align-items: center; justify-content: center; font-family: 'Pixelify'; font-size: calc(var(--ps) * 4); color: rgba(232, 238, 240, 0.55); pointer-events: none; }
+.lb-hint { pointer-events: none; align-self: center; margin-bottom: calc(40 * var(--k)); padding: calc(6 * var(--k)) calc(10 * var(--k)); background: rgba(217, 210, 191, 0.92); transform: rotate(-1deg); }
+/* drawer front: enamel, a label holder, the divider tabs, a cup pull */
+.lb-front { pointer-events: auto; position: relative; height: calc(54 * var(--k)); display: flex; align-items: center; gap: calc(14 * var(--k)); padding: 0 calc(14 * var(--k)); box-shadow: 0 calc(-3 * var(--k)) calc(6 * var(--k)) rgba(10, 9, 6, 0.55); }
+.lb-area { flex: none; min-width: calc(170 * var(--k)); max-width: calc(220 * var(--k)); }
+.lb-area .lb-slip { padding: calc(2 * var(--k)) calc(6 * var(--k)); }
+.lb-area .vt { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-area .ps { display: block; color: #6a6658; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-tabs { flex: 1; display: flex; gap: calc(3 * var(--k)); overflow-x: auto; scrollbar-width: none; touch-action: pan-x; align-self: flex-start; padding-top: calc(4 * var(--k)); }
+.lb-tab { flex: none; position: relative; height: calc(26 * var(--k)); padding: calc(4 * var(--k)) calc(10 * var(--k)) 0; border: none; cursor: inherit; font-family: 'Jersey', monospace; font-size: var(--np); letter-spacing: 0.06em; color: #4a4842; background: linear-gradient(180deg, #cdbd93, #b8a77d); clip-path: polygon(calc(6 * var(--k)) 0, calc(100% - 6 * var(--k)) 0, 100% 100%, 0 100%); box-shadow: inset 0 1px 0 rgba(255, 250, 225, 0.5); transition: transform 140ms cubic-bezier(0.3, 1.5, 0.5, 1); transform: translateY(calc(6 * var(--k))); }
+.lb-tab:hover { transform: translateY(calc(2 * var(--k))); }
+.lb-tab.act { transform: translateY(0); background: linear-gradient(180deg, #ddd0a8, #c8b88e); color: ${PAL.graphite}; }
+.lb-tab.act::after { content: ''; position: absolute; left: calc(10 * var(--k)); right: calc(10 * var(--k)); bottom: calc(5 * var(--k)); height: 1px; background: ${PAL.stamp}; opacity: 0.8; }
+.lb-tab.empty { color: rgba(74, 72, 66, 0.5); }
+.lb-tab .n { font-family: 'Pixelify'; font-size: var(--ps); color: #6a6658; margin-left: calc(3 * var(--k)); }
+.lb-tab.hint::before { content: ''; position: absolute; inset: calc(2 * var(--k)) calc(4 * var(--k)) calc(-2 * var(--k)); border: 1px solid rgba(59, 58, 54, 0.8); border-radius: 48% 52% 45% 55% / 60% 40% 60% 40%; transform: rotate(-2deg); pointer-events: none; }
+.lb-pull { flex: none; width: calc(52 * var(--k)); height: calc(16 * var(--k)); border-radius: 0 0 calc(26 * var(--k)) calc(26 * var(--k)) / 0 0 calc(16 * var(--k)) calc(16 * var(--k)); background: linear-gradient(180deg, #5a5c58, #b4b6b0 40%, #6c6e69); box-shadow: 0 calc(2 * var(--k)) calc(3 * var(--k)) rgba(0, 0, 0, 0.55), inset 0 -1px 0 rgba(255, 255, 250, 0.3); }
+/* paint chip card */
+.lb-paint { pointer-events: auto; position: absolute; left: 50%; bottom: calc(100% + 8 * var(--k)); transform: translateX(-50%) rotate(0.6deg); display: flex; gap: calc(16 * var(--k)); align-items: flex-start; padding: calc(12 * var(--k)) calc(14 * var(--k)); box-sizing: border-box; max-width: calc(100vw - 16px); overflow-x: auto; box-shadow: 0 calc(3 * var(--k)) calc(8 * var(--k)) rgba(10, 8, 4, 0.5); animation: lb-pull 260ms cubic-bezier(0.2, 0.9, 0.3, 1.15) both; }
+.lb-sw { display: grid; grid-template-columns: calc(52 * var(--k)) 1fr; align-items: center; gap: calc(3 * var(--k)) calc(6 * var(--k)); }
+.lb-chips { display: flex; gap: calc(2 * var(--k)); }
+.lb-chip { position: relative; width: calc(12 * var(--k)); height: calc(12 * var(--k)); box-shadow: inset 0 0 0 1px rgba(40, 38, 32, 0.7); cursor: inherit; }
+.lb-chip.on::after { content: ''; position: absolute; inset: calc(-4 * var(--k)); border: 1.5px solid ${PAL.stamp}; border-radius: 52% 48% 55% 45% / 45% 55% 45% 55%; transform: rotate(-12deg); opacity: 0.85; }
+.lb-opts { display: flex; flex-wrap: wrap; gap: calc(2 * var(--k)) calc(10 * var(--k)); max-width: calc(220 * var(--k)); margin-bottom: calc(6 * var(--k)); }
+.lb-opt { display: flex; align-items: center; gap: calc(4 * var(--k)); background: none; border: none; padding: 0; cursor: inherit; font-family: 'VT', monospace; font-size: var(--vt); color: ${PAL.graphite}; }
+.lb-opt s { position: relative; display: inline-block; width: calc(9 * var(--k)); height: calc(9 * var(--k)); border: 1px solid rgba(59, 58, 54, 0.85); text-decoration: none; }
+.lb-opt.on s::before, .lb-opt.on s::after { content: ''; position: absolute; left: -2px; right: -2px; top: 50%; height: 1.5px; background: ${PAL.stamp}; transform: rotate(40deg); }
+.lb-opt.on s::after { transform: rotate(-44deg); }
+/* ---------------------------------------------------------------- floating bits */
+.lb-say { position: absolute; transform: translate(-50%, -100%); pointer-events: none; max-width: calc(180 * var(--k)); padding: calc(5 * var(--k)) calc(8 * var(--k)) calc(6 * var(--k)); background: #ddd6c2; color: ${PAL.graphite}; font-family: 'Pixelify'; font-size: var(--ps); line-height: calc(var(--ps) * 1.2); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35), calc(1 * var(--k)) calc(3 * var(--k)) calc(5 * var(--k)) rgba(10, 8, 4, 0.45); border-radius: calc(3 * var(--k)); animation: lb-pop 200ms cubic-bezier(0.3, 1.5, 0.5, 1); }
+.lb-say .np { display: block; color: #6a6658; margin-bottom: calc(2 * var(--k)); }
+.lb-say::after { content: ''; position: absolute; left: 50%; bottom: calc(-5 * var(--k)); border: calc(5 * var(--k)) solid transparent; border-top-color: #ddd6c2; border-bottom: none; transform: translateX(-50%); }
+.lb-say.out { opacity: 0; transition: opacity 300ms; }
+@keyframes lb-pop { 0% { transform: translate(-50%, -85%) scale(0.85); opacity: 0; } 100% { transform: translate(-50%, -100%) scale(1); opacity: 1; } }
+.lb-tag { position: absolute; pointer-events: none; padding: calc(4 * var(--k)) calc(8 * var(--k)) calc(4 * var(--k)) calc(16 * var(--k)); background: linear-gradient(180deg, #cdbd93, #bba982); clip-path: polygon(calc(8 * var(--k)) 0, 100% 0, 100% 100%, calc(8 * var(--k)) 100%, 0 50%); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); white-space: nowrap; transform: rotate(-2deg); }
+.lb-tag::before { content: ''; position: absolute; left: calc(6 * var(--k)); top: 50%; width: calc(5 * var(--k)); height: calc(5 * var(--k)); margin-top: calc(-2.5 * var(--k)); border-radius: 50%; background: #2a2c2a; box-shadow: 0 0 0 1px #8d8f8a; }
+.lb-tag .vt { display: block; } .lb-tag .ps { display: block; color: #5a5850; }
+.lb-stampbig { position: absolute; left: 50%; top: 38%; translate: -50% -50%; pointer-events: none; font-size: calc(var(--sw) * 4); line-height: calc(var(--sw) * 4); padding: calc(6 * var(--k)) calc(14 * var(--k)) calc(4 * var(--k)); border-width: calc(4 * var(--k)); --r: -7deg; text-align: center; }
+.lb-stampbig .np { display: block; font-size: var(--np); letter-spacing: 0.1em; margin-top: calc(4 * var(--k)); font-family: 'Jersey'; }
+.lb-veil { position: absolute; inset: 0; background: #0d0f0d; pointer-events: none; z-index: 9; display: flex; align-items: center; justify-content: center; transition: opacity 600ms; }
+.lb-veil .vt { color: ${PAL.phos}; opacity: 0.85; letter-spacing: 0.2em; text-shadow: 0 0 4px rgba(127, 212, 138, 0.35); animation: lb-warm 1.2s ease-out both; }
+@keyframes lb-warm { 0% { opacity: 0; transform: scaleY(0.05); filter: brightness(3); } 60% { transform: scaleY(1.05); } 100% { opacity: 0.85; transform: none; filter: none; } }
 .lb-veil.off { opacity: 0; }
+.lb-mtog { display: none !important; }
+/* ---------------------------------------------------------------- smaller screens */
+@media (max-width: 1100px) { .lb-title .np, .lb-latin { display: none; } .lb-name { width: calc(150 * var(--k)); } }
 @media (max-width: 980px) {
-  .lb-toggle { display: inline-flex !important; }
-  .lab .lb-right { display: none; z-index: 5; }
-  .lab .lb-right.open { display: flex; }
-  .lb-latin, .lb-title small { display: none; }
-  .lb-name { width: calc(78px * var(--s)); }
-  .lb-top .px-btn .lbl { display: none; }
-  .lb-top .px-btn.big, .lb-top .px-btn.wide { width: calc(24px * var(--s)); padding: 0; }
-  .lb-top .px-btn.big .ico, .lb-top .px-btn.wide .ico { margin: 0; }
+  .lb-mtog { display: flex !important; }
+  .lab .lb-right { display: none; z-index: 5; } .lab .lb-right.open { display: flex; }
+  .lb-title { display: none; }
 }
-@media (max-width: 560px) { .lb-title { display: none; } .lab .lb-tools { width: calc(24px * var(--s)); } .lb-tools .px-btn .lbl { display: none; } .lab .lb-left, .lb-shelf { left: calc(28px * var(--s)); } }
-@media (max-height: 560px) { .lab .lb-dock { height: calc(100px * var(--s)); } .lb-card { height: calc(76px * var(--s)); width: calc(52px * var(--s)); } .lb-win { height: calc(42px * var(--s)); } .lb-info { height: calc(30px * var(--s)); } }
+@media (max-height: 460px) {
+  .lab .lb-dock { height: calc(170 * var(--k)); }
+  .lb-card { width: calc(96 * var(--k)); height: calc(124 * var(--k)); }
+  .lb-win, .lb-card .q { left: calc(6 * var(--k)); top: calc(13 * var(--k)); width: calc(84 * var(--k)); height: calc(56 * var(--k)); }
+  .lb-info { top: calc(71 * var(--k)); left: calc(6 * var(--k)); right: calc(6 * var(--k)); } .lb-info .ps { display: none; }
+  .lb-front { height: calc(42 * var(--k)); } .lb-tab { height: calc(22 * var(--k)); } .lb-area .ps { display: none; }
+  .lab .lb-top { padding: calc(4 * var(--k)) calc(10 * var(--k)); } .lb-ctl .lab-l { display: none; }
+  .lab .lb-right, .lb-shelf, .lab .lb-left { max-height: calc(100vh - 186 * var(--k)); }
+  .lb-tools .lb-ctl .dymo { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .lab *, .lab *::before, .lab *::after { animation: none !important; transition: none !important; } }
 body.lab-open [class^="tc-"], body.lab-open [class*=" tc-"] { display: none !important; }
-@media (max-height: 450px) {
-  .lab .lb-dock { height: calc(84px * var(--s)); }
-  .lb-card { width: calc(46px * var(--s)); height: calc(64px * var(--s)); }
-  .lb-win { height: calc(34px * var(--s)); }
-  .lb-info { height: calc(28px * var(--s)); padding-top: calc(2px * var(--s)); } .lb-info .fx { display: none; }
-  .lb-area small, .lb-title { display: none; }
-  .lab .lb-tools, .lab .lb-right, .lab .lb-left, .lb-shelf { top: calc(24px * var(--s)); max-height: calc(100vh - 112px * var(--s)); }
-  .lb-tools .px-btn.wide { height: calc(16px * var(--s)); }
-}
 `;
 function injectCSS() {
-  if (document.getElementById('lab-css')) return;
+  const old = document.getElementById('lab-css'); if (old) old.remove();
   const s = document.createElement('style'); s.id = 'lab-css'; s.textContent = CSS; document.head.appendChild(s);
 }
 
-export interface CardSpec { gene: string | null; name: string; meta: string; fx: string; state: 'on' | 'ok' | 'lock' | 'unk' | 'none'; tag: string; col: number; lv?: number; tip: string }
+export interface CardSpec { gene: string | null; name: string; meta: string; fx: string; state: 'on' | 'ok' | 'lock' | 'unk' | 'none'; tag: string; col: number; lv?: number; tip: string; cat?: GeneCat; foreign?: boolean }
 export interface LabHandlers {
   tab(t: TabId | 'genome'): void; card(gene: string | null, i: number): void; hoverCard(el: HTMLElement | null, gene: string | null): void;
   save(): void; leave(): void; reset(): void; reroll(): void; name(s: string): void;
@@ -155,60 +219,105 @@ export interface LabHandlers {
   shelf(open: boolean): void; jar(i: number): void; hoverJar(i: number): void;
   saveDisabled(): string | false;
 }
+/** what the record sheet shows */
+export interface RecordData {
+  name: string; latin: string; plan: string; diet: string; length: string; mass: string; flies: boolean;
+  stats: { k: string; v: number; txt: string; dn?: boolean }[];
+  notes: string[]; viable: boolean; splice: string;
+  slots: { k: string; n: number; max: number }[]; total: number;
+  cost: string; each: string; formNo: string;
+}
 export const SWATCH = [0x6a5a3a, 0x9a7a4a, 0xc8a040, 0xd8c08a, 0xe8e0c8, 0x5a6a3a, 0x3a7a5a, 0x2a6a7a, 0x3a4a7a, 0x5a3a7a, 0x8a3a5a, 0xa83a2a, 0xd86a2a, 0x2a2a30, 0x6a6a70, 0xb0a8a0, 0x7affe0, 0xffe070];
 const EYES = [0x7affe0, 0xffe070, 0xff6a4a, 0x101010, 0x40c8e8, 0xf0f0e0, 0x80e040];
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
+const CAT_IX: Record<GeneCat, number> = { body: 0, limb: 2, sense: 4, feed: 6, defense: 8, meta: 10, repro: 12 };
+const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+
+/** a labelled control: a Bakelite push button, a knob, or a bat-handle toggle */
+class Ctl {
+  readonly e: HTMLButtonElement;
+  constructor(parent: HTMLElement, readonly o: { kind: 'push' | 'knob' | 'tog'; label: string; tip?: () => string; disabled?: () => string | false; on?: () => boolean; red?: boolean; big?: boolean; dymo?: boolean }, onClick: () => void) {
+    const e = (this.e = el('button', `lb-ctl lb-${o.kind}${o.red ? ' red' : ''}${o.big ? ' big' : ''}`, parent));
+    const cap = el('span', 'cap', e);
+    if (o.kind === 'knob') el('i', '', cap); else if (o.kind === 'tog') { el('i', '', cap); el('b', '', cap); }
+    el('span', o.dymo ? 'dymo' : 'lab-l', e, o.label);
+    let turn = 0;
+    e.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const d = o.disabled?.(); if (d) { sfx('deny'); Tip.show(`<div class="tip-warn">${d}</div>`, e); return; }
+      if (o.kind === 'knob') { turn += 60; (cap.firstChild as HTMLElement).style.transform = `rotate(${turn}deg)`; }
+      sfx(o.kind === 'tog' ? 'click' : 'click', o.kind === 'knob' ? 0.8 : 1, 0.6);
+      onClick(); this.refresh();
+    });
+    e.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+    e.addEventListener('pointerenter', () => { if (o.tip) { const d = o.disabled?.(); Tip.show(o.tip() + (d ? `<div class="tip-warn">${d}</div>` : ''), e); } });
+    e.addEventListener('pointerleave', () => Tip.hide());
+    this.refresh();
+  }
+  refresh() { this.e.classList.toggle('dis', !!this.o.disabled?.()); this.e.classList.toggle('on', !!this.o.on?.()); }
+}
 
 export class LabUI {
   readonly root: HTMLDivElement;
   readonly nameIn: HTMLInputElement; readonly latin: HTMLDivElement;
   readonly left: HTMLDivElement; readonly right: HTMLDivElement;
-  readonly stats: HTMLDivElement; readonly warn: HTMLDivElement; readonly slots: HTMLDivElement; readonly cost: HTMLDivElement;
   readonly area: HTMLDivElement; readonly tabs: HTMLDivElement; readonly strip: HTMLDivElement; readonly paint: HTMLDivElement; readonly head: HTMLDivElement;
   readonly shelfBox: HTMLDivElement; readonly tagEl: HTMLDivElement; readonly veil: HTMLDivElement;
-  private saveBtn!: Btn; private toolBtns: Btn[] = []; private sliders: { key: keyof Design; set: (v: number) => void; cap: HTMLDivElement }[] = [];
+  private ctls: Ctl[] = [];
+  private sliders: { key: keyof Design; set: (v: number) => void; cap: HTMLDivElement; v: HTMLElement }[] = [];
   private tabEls = new Map<string, HTMLButtonElement>();
   cards: HTMLDivElement[] = [];
   private bubbles: { e: HTMLDivElement; who: number; t: number }[] = [];
+  private painted: HTMLElement[] = [];
+  private rec: Record<string, HTMLElement> = {};
+  private lastTab = ''; private lastStates = new Map<string, string>(); private lastName = '';
+  private cardImg = new Map<string, string>();
+  private onResize = () => this.scale();
 
   constructor(readonly h: LabHandlers) {
     injectCSS();
     this.root = el('div', 'lab', ui());
-    // ---- top: title plate and the specimen's name
-    const top = panel('lb-p lb-top', this.root, 'dark');
-    el('div', 'lb-title', top, 'GENE LAB<small>U.S.P.C. FIELD LABORATORY 4</small>');
-    this.nameIn = el('input', 'lb-name', top) as HTMLInputElement; this.nameIn.maxLength = 28; this.nameIn.spellcheck = false;
+    this.root.style.setProperty('--ink', inkMask());
+    this.scale();
+    addEventListener('resize', this.onResize);
+    const P = (e: HTMLElement, f: (w: number, h: number) => string) => { this.painted.push(e); paintEl(e, f); return e; };
+    // ---- the instrument strip
+    const top = P(el('div', 'lb-p lb-top', this.root), (w, hh) => enamel(w, hh, { seed: 21 }));
+    el('div', 'lb-title', top, '<span class="sw">GENE LAB</span><span class="np">U.S. PLANETARY CORPS · FIELD LAB 4</span>');
+    const holder = el('div', 'lb-holder', top), slip = P(el('div', 'lb-slip', holder), (w, hh) => paper(w, hh, { seed: 5, edge: 1 }));
+    this.nameIn = el('input', 'lb-name', slip) as HTMLInputElement; this.nameIn.maxLength = 28; this.nameIn.spellcheck = false;
     this.nameIn.addEventListener('input', () => h.name(this.nameIn.value));
     this.nameIn.addEventListener('keydown', (e) => e.stopPropagation());
-    this.latin = el('div', 'lb-latin', top);
-    new Btn(top, { icon: 'dna', size: 'sq', tip: () => '<h4>Re-roll</h4>New colours, pattern and a new name.' }, () => h.reroll());
-    this.saveBtn = new Btn(top, { icon: 'brood', label: 'FILE PREFAB', size: 'big', disabled: () => h.saveDisabled(), tip: () => '<h4>File as a prefab</h4>Save this design to your species. Grow it in a Brood Womb; with the Flesh Printer, print living copies.' }, () => h.save());
-    new Btn(top, { icon: 'stop', label: 'LEAVE', size: 'wide', tip: () => 'Back to the field. Unfiled changes are lost. [ESC]' }, () => h.leave());
-    new Btn(top, { icon: 'cat-meta', size: 'sq', cls: 'lb-toggle', tip: () => 'Phenotype' }, () => { this.right.classList.toggle('open'); this.left.classList.remove('open'); });
-    // ---- left: a column of tools; proportions and the jar shelf open beside it
-    const tools = panel('lb-p lb-tools', this.root, 'inset');
+    this.latin = el('div', 'lb-latin', slip);
+    this.ctls.push(new Ctl(top, { kind: 'knob', label: 'RE-ROLL', tip: () => '<h4>Re-roll</h4>New colours, pattern and a new name.' }, () => h.reroll()));
+    this.ctls.push(new Ctl(top, { kind: 'push', label: 'FILE PREFAB', red: true, big: true, disabled: () => h.saveDisabled(), tip: () => '<h4>File as a prefab</h4>Stamp the record and add the design to your species. Grow it in a Brood Womb; with the Flesh Printer, print living copies.' }, () => h.save()));
+    this.ctls.push(new Ctl(top, { kind: 'tog', label: 'LEAVE', on: () => true, tip: () => 'Back to the field. An unfiled record is lost. [ESC]' }, () => h.leave()));
+    this.ctls.push(new Ctl(top, { kind: 'push', label: 'RECORD', tip: () => 'The specimen record' }, () => { this.right.classList.toggle('open'); this.left.classList.remove('open'); }));
+    this.ctls[this.ctls.length - 1].e.classList.add('lb-mtog');
+    // ---- tools plate: toggles open the drawings and the catalogue
+    const tools = P(el('div', 'lb-p lb-tools', this.root), (w, hh) => enamel(w, hh, { seed: 33 }));
     const drawer = (which: 'left' | 'shelf') => {
       const lo = which === 'left' ? !this.left.classList.contains('open') : false, so = which === 'shelf' ? !this.shelfBox.classList.contains('open') : false;
       this.left.classList.toggle('open', lo); this.shelfBox.classList.toggle('open', so); this.right.classList.remove('open');
-      this.toolBtns.forEach((b, i) => { b.o.active = () => (i === 0 ? this.left.classList.contains('open') : i === 1 ? this.shelfBox.classList.contains('open') : false); b.refresh(); });
       h.shelf(so);
     };
-    this.toolBtns.push(new Btn(tools, { icon: 'cat-body', label: 'SHAPE', size: 'wide', tip: () => '<h4>Proportions</h4>Size, length, girth, legs, neck, head and tail.' }, () => drawer('left')));
-    this.toolBtns.push(new Btn(tools, { icon: 'tree', label: 'JARS', size: 'wide', tip: () => '<h4>Specimen shelf</h4>Every species you have absorbed is kept in a jar. Click a jar on the shelves, or pick one here, to put it in the tank.' }, () => drawer('shelf')));
-    new Btn(tools, { icon: 'stop', label: 'RESET', size: 'wide', tip: () => 'Back to the specimen you started with.' }, () => h.reset());
-    this.left = panel('lb-p lb-left', this.root);
-    el('div', 'lb-h', this.left, 'PROPORTIONS');
+    this.ctls.push(new Ctl(tools, { kind: 'tog', label: 'SHAPE', dymo: true, on: () => !!this.left?.classList.contains('open'), tip: () => '<h4>Proportions</h4>The drawing of the body: size, length, girth, legs, neck, head and tail.' }, () => drawer('left')));
+    this.ctls.push(new Ctl(tools, { kind: 'tog', label: 'JARS', dymo: true, on: () => !!this.shelfBox?.classList.contains('open'), tip: () => '<h4>Specimen catalogue</h4>Every species you have absorbed is kept in a jar. Click a jar on the shelves, or pick one here, to put it in the tank.' }, () => drawer('shelf')));
+    this.ctls.push(new Ctl(tools, { kind: 'push', label: 'RESET', dymo: true, tip: () => 'Back to the specimen you started with.' }, () => h.reset()));
+    // ---- the proportions drawing (cyanotype)
+    this.left = P(el('div', 'lb-p lb-left', this.root), (w, hh) => blueprint(w, hh, 9)) as HTMLDivElement;
+    el('div', 'bp-t', this.left, '<span class="sw">BODY PROPORTIONS</span><span class="np">DWG 7-B · SCALE AS SHOWN · DO NOT SCALE FROM PRINT</span>');
     const sl = (label: string, key: keyof Design, tip: string) => {
       const row = el('div', 'lb-sl', this.left);
       el('span', '', row, label);
-      const tr = el('div', 'track', row), cap = el('div', 'cap', tr), knob = el('div', 'knob', tr);
+      const tr = el('div', 'track', row), cap = el('div', 'cap', tr), knob = el('div', 'knob', tr), v = el('span', 'v', row);
       cap.style.width = '0';
-      const set = (v: number) => { knob.style.left = `calc(${v * 100}% - ${3 * S}px)`; };
-      const upd = (e: PointerEvent) => { const r = tr.getBoundingClientRect(); const v = clamp((e.clientX - r.left) / r.width, 0, 1); h.slider(key, v); };
+      const set = (x: number) => { knob.style.left = `${x * 100}%`; type(v, String(Math.round(x * 100)), 80); };
+      const upd = (e: PointerEvent) => { const r = tr.getBoundingClientRect(); h.slider(key, clamp((e.clientX - r.left) / r.width, 0, 1)); };
       tr.addEventListener('pointerdown', (e) => { e.stopPropagation(); tr.setPointerCapture(e.pointerId); upd(e); sfx('click', 1, 0.4); });
       tr.addEventListener('pointermove', (e) => { if (tr.hasPointerCapture(e.pointerId)) upd(e); });
       row.addEventListener('pointerenter', () => Tip.show(`<h4>${label}</h4>${tip}`, row)); row.addEventListener('pointerleave', () => Tip.hide());
-      this.sliders.push({ key, set, cap });
+      this.sliders.push({ key, set, cap, v });
     };
     sl('SIZE', 'size', 'Overall body size. Mass grows with the cube of length: big bodies are strong, slow to grow and hungry. Full size needs the Growth Vat.');
     sl('LENGTH', 'len', 'Body length for its size.');
@@ -218,39 +327,89 @@ export class LabUI {
     sl('NECK', 'neck', 'Reach and grazing height.');
     sl('HEAD', 'head', 'Bigger heads carry bigger eyes and jaws.');
     sl('TAIL', 'tail', 'Balance and counterweight.');
-    el('div', 'small', this.left, 'DRAG TO WALK ROUND THE TANK · WHEEL OR PINCH TO ZOOM').style.cssText = `font-size:calc(6px * var(--s));line-height:calc(7px * var(--s));color:var(--dim);margin-top:calc(2px * var(--s))`;
-    // ---- right: phenotype and filing
-    this.right = panel('lb-p lb-right', this.root);
-    el('div', 'lb-h', this.right, 'PHENOTYPE');
-    this.stats = el('div', 'lb-stats', this.right);
-    this.warn = el('div', 'lb-warn', this.right);
-    el('div', 'lb-h', this.right, 'GENE SLOTS');
-    this.slots = el('div', 'lb-slots', this.right);
-    el('div', 'lb-h', this.right, 'COST');
-    this.cost = el('div', 'lb-cost', this.right);
-    // ---- the shelf drawer
-    this.shelfBox = panel('lb-shelf', this.root, 'dark');
-    // ---- bottom dock
+    el('div', 'bp-n', this.left, 'DRAG TO WALK ROUND THE TANK · WHEEL OR PINCH TO ZOOM');
+    // ---- the clipboard with the specimen record
+    this.right = P(el('div', 'lb-p lb-right', this.root), (w, hh) => board(w, hh)) as HTMLDivElement;
+    el('div', 'lb-clip', this.right);
+    const sheet = P(el('div', 'lb-sheet', this.right), (w, hh) => paper(w, hh, { seed: 17, coffee: [w * 0.78, hh * 0.84, Math.min(w, hh) * 0.16], fold: Math.round(hh * 0.42) }));
+    this.buildRecord(sheet);
+    // ---- the catalogue of jars
+    this.shelfBox = P(el('div', 'lb-shelf', this.root), (w, hh) => paper(w, hh, { seed: 29, tape: true })) as HTMLDivElement;
+    // ---- the card file
     const dock = el('div', 'lb-p lb-dock', this.root);
-    this.paint = panel('lb-paint', dock, 'dark'); this.paint.style.display = 'none';
-    this.head = panel('lb-head', dock, 'dark');
-    this.area = el('div', 'lb-area', this.head);
+    this.paint = P(el('div', 'lb-paint', dock), (w, hh) => paper(w, hh, { seed: 41, edge: 2 })) as HTMLDivElement; this.paint.style.display = 'none';
+    this.strip = el('div', 'lb-strip', dock);
+    this.strip.addEventListener('wheel', (e) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { this.strip.scrollLeft += e.deltaY; e.preventDefault(); } e.stopPropagation(); }, { passive: false });
+    this.head = P(el('div', 'lb-front', dock), (w, hh) => enamel(w, hh, { seed: 47, color: '#45483a', chips: Math.round(w / 40) })) as HTMLDivElement;
+    const ah = el('div', 'lb-holder lb-area', this.head);
+    this.area = P(el('div', 'lb-slip', ah), (w, hh) => paper(w, hh, { seed: 53, edge: 1 })) as HTMLDivElement;
     this.tabs = el('div', 'lb-tabs', this.head);
     for (const t of ['genome', ...TAB_ORDER] as (TabId | 'genome')[]) {
       const b = el('button', 'lb-tab', this.tabs); b.dataset.t = t;
-      el('img', '', b).setAttribute('src', icon(t === 'genome' ? 'dna' : TABS[t as TabId].icon, { shadow: true }));
       el('span', '', b, t === 'genome' ? 'GENOME' : TABS[t as TabId].short);
       el('span', 'n', b);
-      b.addEventListener('click', (e) => { e.stopPropagation(); sfx('click', 1, 0.5); h.tab(t); });
+      b.addEventListener('click', (e) => { e.stopPropagation(); sfx('click', 1.3, 0.4); h.tab(t); });
       b.addEventListener('pointerenter', () => { if (t !== 'genome') Tip.show(`<h4>${TABS[t as TabId].name}</h4>${TABS[t as TabId].desc}`, b); });
       b.addEventListener('pointerleave', () => Tip.hide());
       this.tabEls.set(t, b);
     }
-    this.strip = el('div', 'lb-strip', dock);
-    this.strip.addEventListener('wheel', (e) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { this.strip.scrollLeft += e.deltaY; e.preventDefault(); } e.stopPropagation(); }, { passive: false });
+    el('div', 'lb-pull', this.head);
     this.tagEl = el('div', 'lb-tag', this.root); this.tagEl.style.display = 'none';
-    this.veil = el('div', 'lb-veil', this.root, 'OPENING THE FIELD LABORATORY...');
+    this.veil = el('div', 'lb-veil', this.root, '<span class="vt">FIELD LABORATORY 4 · POWERING UP</span>');
     this.buildPaint();
+  }
+  /** pixel fonts stay crisp only at whole multiples of their own grid: 1x up to 1000 px tall, 2x above */
+  private scale() {
+    const k = innerHeight >= 1040 ? 2 : 1, r = this.root.style;
+    r.setProperty('--k', k + 'px'); r.setProperty('--vt', 14 * k + 'px'); r.setProperty('--ps', 11 * k + 'px'); r.setProperty('--np', 13 * k + 'px'); r.setProperty('--sw', 10 * k + 'px');
+    this.cardImg.clear();
+    if (this.cards.length) requestAnimationFrame(() => this.dressCards());
+  }
+
+  // ---------------------------------------------------------------------------------------------- the record sheet
+  private buildRecord(s: HTMLElement) {
+    const R = this.rec;
+    const hd = el('div', 'rs-head', s);
+    el('span', 'sw', hd, 'SPECIMEN RECORD');
+    R.no = el('span', 'vt', hd);
+    el('div', 'np', s, 'U.S. PLANETARY CORPS · FORM LB-7 · FIELD LAB 4').style.cssText = 'color:#6a6658;margin:calc(3 * var(--k)) 0 calc(4 * var(--k))';
+    const nm = el('div', 'rs-row rs-nm', s); el('span', 'rs-k', nm, 'SPECIES'); R.name = el('span', 'stamp', nm);
+    const lt = el('div', 'rs-row', s); el('span', 'rs-k', lt, 'BINOMIAL'); R.latin = el('span', 'rs-v', lt);
+    const two = el('div', 'rs-2', s);
+    for (const [k, l] of [['plan', 'PLAN'], ['diet', 'DIET'], ['length', 'LENGTH'], ['mass', 'MASS']]) { const r = el('div', 'rs-row', two); el('span', 'rs-k', r, l); R[k] = el('span', 'rs-v', r); }
+    el('div', 'rs-t', s, 'PHENOTYPE');
+    R.stats = el('div', '', s);
+    R.notes = el('div', 'rs-notes', s);
+    el('div', 'rs-t', s, 'GENE SLOTS');
+    R.slots = el('div', 'rs-slots', s);
+    el('div', 'rs-t', s, 'REQUISITION');
+    R.cost = el('div', 'rs-v rs-cost', s); R.each = el('div', 'ps', s); R.each.style.color = '#5a5850';
+    const sig = el('div', 'rs-sig', s); el('span', 'rs-k', sig, 'EXAMINED'); const ln = el('span', 'ln', sig); el('span', 'pencil', ln, pencil('R. Calder', 3)); el('span', 'rs-k', sig, 'U.S.P.C.');
+  }
+  /** fill the record; changed fields retype themselves, a new name is stamped again */
+  record(d: RecordData) {
+    const R = this.rec;
+    type(R.no, d.formNo, 40, -1);
+    if (d.name !== this.lastName) {
+      R.name.textContent = d.name.toUpperCase() || '—';
+      if (this.lastName && !reduced()) { R.name.classList.remove('thump'); void R.name.offsetWidth; R.name.classList.add('thump'); }
+      this.lastName = d.name;
+    }
+    type(R.latin, d.latin); type(R.plan, d.plan); type(R.diet, d.diet); type(R.length, d.length); type(R.mass, d.mass);
+    if (R.stats.childElementCount !== d.stats.length) {
+      R.stats.innerHTML = '';
+      d.stats.forEach((st, i) => { const r = el('div', 'rs-stat', R.stats); el('span', 'rs-k', r, st.k); const b = el('span', 'rs-box' + (st.dn ? ' dn' : ''), r); b.style.setProperty('--rr', `${((i * 37) % 5 - 2) * 0.12}deg`); el('i', '', b); el('span', 'rs-v', r); });
+    }
+    d.stats.forEach((st, i) => { const r = R.stats.children[i] as HTMLElement; (r.querySelector('i') as HTMLElement).style.width = `${clamp(st.v, 0, 1) * 100}%`; type(r.querySelector('.rs-v') as HTMLElement, st.txt, 60, i * 40); });
+    // Calder's notes in pencil, and the verdict stamped
+    const notes = d.notes.length ? d.notes : [d.flies ? 'Flies. Keep the lid on.' : 'Anatomy sound. Would grow.'];
+    const key = notes.join('|') + d.viable;
+    if (R.notes.dataset.k !== key) {
+      R.notes.dataset.k = key;
+      R.notes.innerHTML = notes.slice(0, 3).map((n, i) => `<div class="pencil wr" style="animation-delay:${i * 0.35}s">${pencil('→ ' + n, i + 7)}</div>`).join('') + `<span class="stamp rs-ok${d.viable ? '' : ' g'}${reduced() ? '' : ' thump'}">${d.viable ? 'VIABLE' : 'NOT VIABLE'}</span>`;
+    }
+    R.slots.innerHTML = d.slots.map((s) => `<div class="rs-slot"><span class="rs-k">${s.k}</span>${Array.from({ length: s.max }, (_, i) => `<s class="${i < s.n ? 'x' : ''}"></s>`).join('')}</div>`).join('');
+    type(R.cost, d.cost); type(R.each, d.each, 70);
   }
 
   // ---------------------------------------------------------------------------------------------- tabs & cards
@@ -260,32 +419,57 @@ export class LabUI {
       const n = counts[k as TabId] ?? 0; (b.querySelector('.n') as HTMLElement).textContent = n ? String(n) : '';
       b.classList.toggle('empty', k !== 'genome' && !n);
     }
-    this.area.innerHTML = `${title}<small>${sub}</small>`;
+    let a = this.area.querySelector('.vt') as HTMLElement | null, s = this.area.querySelector('.ps') as HTMLElement | null;
+    if (!a) { a = el('span', 'vt', this.area); s = el('span', 'ps', this.area); }
+    type(a, title, 60); type(s!, sub, 120);
     this.tabEls.get(t)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
-  setCards(list: CardSpec[], hint?: string) {
+  setCards(list: CardSpec[], hint?: string, tab = '') {
     const keepScroll = this.strip.dataset.k === list.map((c) => c.gene).join(',');
-    const sx = this.strip.scrollLeft;
+    const sx = this.strip.scrollLeft, fresh = tab !== this.lastTab;
+    this.lastTab = tab;
     this.strip.innerHTML = ''; this.cards = [];
-    if (hint) { el('div', 'lb-hint', this.strip, hint); }
+    if (hint) P2(el('div', 'lb-hint vt', this.strip, esc(hint)));
+    const states = new Map<string, string>();
     list.forEach((c, i) => {
-      const card = el('div', `lb-card ${c.state}`, this.strip);
-      card.style.setProperty('--cc', hex(c.col));
+      const card = el('div', `lb-card ${c.state}${fresh && !reduced() ? ' draw' : ''}`, this.strip);
+      card.style.setProperty('--d', `${i * 55}ms`); card.style.setProperty('--tilt', `${((i * 53) % 7 - 3) * 0.35}deg`);
+      card.dataset.cat = c.cat ?? 'meta';
       const win = el('div', 'lb-win', card);
-      if (c.state === 'none') el('span', '', win, '✕');
+      if (c.state === 'unk') el('div', 'q', card, '?');
       if (c.lv) el('div', 'lb-lv', card, `LV ${c.lv}`);
       const info = el('div', 'lb-info', card);
-      el('div', 'nm', info, c.name); el('div', 'mt', info, c.meta); el('div', 'fx', info, c.fx);
-      el('div', 'lb-st', card, c.tag);
+      el('div', 'vt', info, esc(c.name)); el('div', 'np', info, esc(c.meta)); el('div', 'ps', info, esc(c.fx));
+      const k = c.gene ?? '?';
+      states.set(k, c.state);
+      const st = c.state === 'on' ? c.tag : c.state === 'lock' ? 'RESTRICTED' : c.foreign ? 'SPLICE' : '';
+      if (st) { const s = el('span', `stamp${c.state === 'on' ? '' : ' g'}`, card, st); if (!fresh && this.lastStates.get(k) !== c.state && c.state === 'on' && !reduced()) s.classList.add('thump'); }
       card.addEventListener('click', (e) => { e.stopPropagation(); this.h.card(c.gene, i); });
-      card.addEventListener('pointerenter', () => { card.classList.add('hov'); this.h.hoverCard(win, c.gene); if (c.tip) Tip.show(c.tip, card); sfx('hover', 1, 0.5); });
+      card.addEventListener('pointerenter', () => { card.classList.add('hov'); this.h.hoverCard(win, c.gene); if (c.tip) Tip.show(c.tip, card); sfx('hover', 1.2, 0.35); });
       card.addEventListener('pointerleave', () => { card.classList.remove('hov'); this.h.hoverCard(null, null); Tip.hide(); });
+      card.addEventListener('animationend', () => card.classList.remove('draw'), { once: true });
       (card as HTMLDivElement & { win?: HTMLElement }).win = win;
       this.cards.push(card);
     });
+    this.lastStates = states;
+    if (fresh && list.length && !reduced()) sfx('squelch', 3, 0.08);
+    this.dressCards();
     this.strip.classList.toggle('center', this.strip.scrollWidth <= this.strip.clientWidth + 2);
     this.strip.dataset.k = list.map((c) => c.gene).join(',');
     if (keepScroll) this.strip.scrollLeft = sx;
+  }
+  /** the card stock: an edge-notched index card cut to the measured window, one notch per gene category */
+  private dressCards() {
+    const c0 = this.cards[0]; if (!c0) return;
+    const w = c0.offsetWidth, hh = c0.offsetHeight, win = (c0 as HTMLDivElement & { win?: HTMLElement }).win!;
+    if (w < 8) return;
+    const u = parseFloat(this.root.style.getPropertyValue('--k')) || 1;
+    for (const c of this.cards) {
+      const cat = (c.dataset.cat ?? 'meta') as GeneCat, key = `${w}x${hh}|${cat}`;
+      let img = this.cardImg.get(key);
+      if (!img) { img = notchCard(w, hh, { x: win.offsetLeft, y: win.offsetTop, w: win.offsetWidth, h: win.offsetHeight }, CAT_IX[cat] ?? 1, 7 + (CAT_IX[cat] ?? 0), u); this.cardImg.set(key, img); }
+      c.style.backgroundImage = img;
+    }
   }
   scrollTo(i: number) { const c = this.cards[i]; if (c) c.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' }); }
 
@@ -293,24 +477,24 @@ export class LabUI {
   private buildPaint() {
     const p = this.paint;
     const sw = el('div', 'lb-sw', p);
-    for (const [k, lab] of [['base', 'BODY'], ['belly', 'BELLY'], ['pattern', 'MARKS'], ['accent', 'ACCENT'], ['eye', 'EYES']] as const) {
-      el('span', '', sw, lab);
+    for (const [k, lab] of [['base', 'BODY'], ['belly', 'BELLY'], ['pattern', 'MARKINGS'], ['accent', 'ACCENT'], ['eye', 'EYES']] as const) {
+      el('span', 'rs-k', sw, lab);
       const row = el('div', 'lb-chips', sw);
-      for (const c of k === 'eye' ? EYES : SWATCH) { const ch = el('div', 'lb-chip', row); ch.style.background = hex(c); ch.dataset.k = k; ch.dataset.c = String(c); ch.addEventListener('click', (e) => { e.stopPropagation(); this.h.color(k, c); sfx('click', 1, 0.4); }); }
+      for (const c of k === 'eye' ? EYES : SWATCH) { const ch = el('div', 'lb-chip', row); ch.style.background = hex(c); ch.dataset.k = k; ch.dataset.c = String(c); ch.addEventListener('click', (e) => { e.stopPropagation(); this.h.color(k, c); sfx('click', 1.4, 0.35); }); }
     }
     const col = el('div', '', p);
-    el('div', 'lb-h', col, 'PATTERN');
-    const pr = el('div', 'lb-pats', col);
-    for (const pt of ['plain', 'stripes', 'spots', 'bands', 'mottled', 'saddle', 'rings'] as Pattern[]) { const b = el('button', 'lb-pat', pr, pt.toUpperCase()); b.dataset.p = pt; b.addEventListener('click', (e) => { e.stopPropagation(); this.h.pattern(pt); sfx('click', 1, 0.4); }); }
-    el('div', 'lb-h', col, 'COVER');
-    const cr = el('div', 'lb-pats', col);
-    for (const c of ['chitin', 'fur', 'scales', 'skin', 'slime'] as Cover[]) { const b = el('button', 'lb-pat', cr, c.toUpperCase()); b.dataset.c = c; b.addEventListener('click', (e) => { e.stopPropagation(); this.h.cover(c); sfx('click', 1, 0.4); }); }
+    el('div', 'rs-t', col, 'PATTERN').style.marginTop = '0';
+    const pr = el('div', 'lb-opts', col);
+    for (const pt of ['plain', 'stripes', 'spots', 'bands', 'mottled', 'saddle', 'rings'] as Pattern[]) { const b = el('button', 'lb-opt', pr, `<s></s>${pt.toUpperCase()}`); b.dataset.p = pt; b.addEventListener('click', (e) => { e.stopPropagation(); this.h.pattern(pt); sfx('click', 1.4, 0.35); }); }
+    el('div', 'rs-t', col, 'COVER');
+    const cr = el('div', 'lb-opts', col);
+    for (const c of ['chitin', 'fur', 'scales', 'skin', 'slime'] as Cover[]) { const b = el('button', 'lb-opt', cr, `<s></s>${c.toUpperCase()}`); b.dataset.c = c; b.addEventListener('click', (e) => { e.stopPropagation(); this.h.cover(c); sfx('click', 1.4, 0.35); }); }
   }
   showPaint(on: boolean, d: Design) {
     this.paint.style.display = on ? '' : 'none';
     if (!on) return;
     for (const ch of Array.from(this.paint.querySelectorAll('.lb-chip'))) { const e = ch as HTMLElement; e.classList.toggle('on', (d.colors as unknown as Record<string, number>)[e.dataset.k!] === Number(e.dataset.c)); }
-    for (const b of Array.from(this.paint.querySelectorAll('.lb-pat'))) { const e = b as HTMLElement; e.classList.toggle('on', e.dataset.p ? e.dataset.p === d.pattern : e.dataset.c === d.cover); }
+    for (const b of Array.from(this.paint.querySelectorAll('.lb-opt'))) { const e = b as HTMLElement; e.classList.toggle('on', e.dataset.p ? e.dataset.p === d.pattern : e.dataset.c === d.cover); }
   }
 
   // ---------------------------------------------------------------------------------------------- readouts
@@ -319,33 +503,34 @@ export class LabUI {
     this.latin.textContent = d.latin;
     for (const s of this.sliders) { s.set(d[s.key] as number); s.cap.style.width = s.key === 'size' && cap < 1 ? `${(1 - cap) * 100}%` : '0'; }
   }
-  refresh() { this.saveBtn.refresh(); }
+  refresh() { for (const c of this.ctls) c.refresh(); }
 
-  // ---------------------------------------------------------------------------------------------- shelf
+  // ---------------------------------------------------------------------------------------------- the catalogue
   setShelf(list: { name: string; sub: string; img: string }[]) {
     const b = this.shelfBox; b.innerHTML = '';
-    el('div', 'lb-h', b, 'SPECIMEN JARS');
-    if (!list.length) el('div', 'small', b, 'No specimens yet. Absorb a creature and its jar appears here.');
+    el('div', 'cat-h', b, '<span class="sw">SPECIMEN CATALOGUE</span>');
+    if (!list.length) el('div', 'pencil', b, pencil('Nothing in the jars yet. Absorb something.', 5));
     list.forEach((j, i) => {
       const r = el('div', 'lb-jar', b);
       const im = el('img', '', r) as HTMLImageElement; if (j.img) im.src = j.img;
-      el('div', '', r, `${j.name}<i>${j.sub}</i>`);
+      el('div', '', r, `<span class="vt">${esc(j.name)}</span><span class="pn">${esc(j.sub)}</span>`);
       r.addEventListener('click', (e) => { e.stopPropagation(); this.h.jar(i); });
       r.addEventListener('pointerenter', () => this.h.hoverJar(i)); r.addEventListener('pointerleave', () => this.h.hoverJar(-1));
     });
   }
-  closeShelf() { this.shelfBox.classList.remove('open'); this.toolBtns.forEach((b) => b.refresh()); }
+  closeShelf() { this.shelfBox.classList.remove('open'); this.refresh(); }
 
   // ---------------------------------------------------------------------------------------------- floating bits
   tag(html: string | null, x = 0, y = 0) {
     if (!html) { this.tagEl.style.display = 'none'; return; }
-    this.tagEl.innerHTML = html; this.tagEl.style.display = 'block';
+    if (this.tagEl.dataset.h !== html) { this.tagEl.innerHTML = html; this.tagEl.dataset.h = html; }
+    this.tagEl.style.display = 'block';
     const w = this.tagEl.offsetWidth;
-    this.tagEl.style.left = Math.min(innerWidth - w - 4, x + 14) + 'px'; this.tagEl.style.top = Math.max(4, y - 30) + 'px';
+    this.tagEl.style.left = Math.min(innerWidth - w - 4, x + 16) + 'px'; this.tagEl.style.top = Math.max(4, y - 34) + 'px';
   }
-  say(who: number, name: string, text: string, col: string) {
+  say(who: number, name: string, text: string, _col: string) {
     for (const b of this.bubbles) if (b.who === who) b.t = Math.min(b.t, 0.3);
-    const e = el('div', 'lb-say', this.root, `<b style="color:${col === '#ffcd6e' ? '#8c4a12' : col === '#9fd0ff' ? '#2a4a8a' : '#1b6630'}">${name}</b>${text}`);
+    const e = el('div', 'lb-say', this.root, `<span class="np">${esc(name)}</span>${esc(text)}`);
     this.bubbles.push({ e, who, t: 2.6 + text.length * 0.04 });
   }
   /** keep the lines over the speakers' heads */
@@ -361,8 +546,9 @@ export class LabUI {
       if (b.t <= 0) { b.e.remove(); this.bubbles.splice(i, 1); }
     }
   }
-  stamp(title: string, sub: string) { const s = el('div', 'lb-stamp', this.root, `${title}<small>${sub}</small>`); setTimeout(() => s.remove(), 2400); }
+  stamp(title: string, sub: string) { const s = el('div', 'stamp lb-stampbig thump', this.root, `${esc(title)}<span class="np">${esc(sub)}</span>`); setTimeout(() => s.remove(), 2400); }
   ready() { this.veil.classList.add('off'); setTimeout(() => this.veil.remove(), 700); }
-  dispose() { this.root.remove(); Tip.hide(); }
+  dispose() { removeEventListener('resize', this.onResize); for (const e of this.painted) unpaint(e); this.root.remove(); Tip.hide(); }
 }
-export { iconImg };
+/** a hint slip of paper */
+function P2(e: HTMLElement) { paintEl(e, (w, h) => paper(w, h, { seed: 61, edge: 1 })); return e; }

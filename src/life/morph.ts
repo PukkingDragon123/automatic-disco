@@ -26,6 +26,10 @@ export interface Rig {
   plan: Plan;
   bones: BoneDef[]; boxes: Box[]; cards: Card[]; legs: LegDef[];
   root: number; head: number; jaw: number; tongue: number; throat: number; neck: number[]; tail: number[]; spine: number[]; wings: number[]; antennae: number[]; mandibles: number[]; stalks: number[];
+  /** upper eyelids (children of the head, centred on the eyeballs by the sculptor): a blink turns each about its axis */
+  lids: { bone: number; axis: V3 }[];
+  /** ear bones (children of the head at the ear roots), a leaf bone in the ribcage that breathes (-1 if none) */
+  ears: number[]; ribs: number;
   /** body clearance at rest, body length, bounding height, stride length */
   rideH: number; length: number; height: number; stride: number; width: number;
   /** gait: per-pair phase offsets; duty factor */
@@ -51,7 +55,7 @@ export function buildRig(d: Design): Rig {
   const r = new Rand(d.seed ^ 0x77);
   const b = new B();
   const L = bodyLength(d);
-  const rig: Rig = { plan: d.plan, bones: b.bones, boxes: b.boxes, cards: b.cards, legs: [], root: 0, head: -1, jaw: -1, tongue: -1, throat: -1, neck: [], tail: [], spine: [], wings: [], antennae: [], mandibles: [], stalks: [], rideH: 0, length: L, height: 0, stride: 0, width: 0, duty: 0.6, gait: 'walk', dims: {} };
+  const rig: Rig = { plan: d.plan, bones: b.bones, boxes: b.boxes, cards: b.cards, legs: [], root: 0, head: -1, jaw: -1, tongue: -1, throat: -1, neck: [], tail: [], spine: [], wings: [], antennae: [], mandibles: [], stalks: [], lids: [], ears: [], ribs: -1, rideH: 0, length: L, height: 0, stride: 0, width: 0, duty: 0.6, gait: 'walk', dims: {} };
   switch (d.plan) {
     case 'hexapod': case 'octopod': arthropod(d, b, rig, L, r); break;
     case 'serpent': serpent(d, b, rig, L, r); break;
@@ -224,6 +228,11 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
     b.card(wb, [s * span * 0.5, -0.01, -T * 0.25], [s * span * 0.5, 0, 0], [0, 0, T * 0.32], 'membrane');
     rig.wings.push(wb);
   }
+  // soft-tissue bones the animator plays on: eyelids (placed on the eyes by the sculptor), ears, a breathing ribcage
+  for (const s of [-1, 1]) rig.lids.push({ bone: b.bone('lid' + s, head, [s * hw * 0.4, hh * 0.2, hl * 0.25]), axis: [1, 0, 0] });
+  if (has(d, 'ears')) for (const s of [-1, 1]) rig.ears.push(b.bone('ear' + s, head, [s * hw * 0.38, hh * 0.42, -hl * 0.04]));
+  else if (has(d, 'ears_round')) for (const s of [-1, 1]) rig.ears.push(b.bone('ear' + s, head, [s * hw * 0.36, hh * 0.38, -hl * 0.1]));
+  if (d.plan !== 'hominid') rig.ribs = b.bone('ribs', chest, [0, -H * 0.1, -T * 0.12]);
   // gait: walk duty, and how the feet fall
   rig.duty = biped ? 0.55 : hop ? 0.5 : shellV ? 0.75 : bear ? 0.66 : 0.62;
   rig.gait = biped ? 'walk' : hop ? 'hop' : sprawl ? 'sprawl' : bear || shellV ? 'amble' : 'walk';

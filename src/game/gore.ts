@@ -11,7 +11,7 @@ import { clamp, hash01 } from '../core/rand';
 import { spiralPos } from './fx';
 import { sfx } from '../audio/audio';
 import { makeRamp } from '../limbo/gfx/pixel';
-import { vfx2d } from './combat';
+import { vfx2d, vfxLive } from './combat';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4(), _c = new THREE.Color(), _s = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
@@ -212,7 +212,10 @@ export class Gore {
     const cx = c.x, cy = c.y + c.air + h * 0.5, cz = c.z;
     const d = _v.copy(dir).setY(0).normalize();
     const px = cx + d.x * c.radius * 0.3, pz = cz + d.z * c.radius * 0.3;
-    const n = Math.min(60, 10 + Math.round(dmg * 1.6));
+    // with the hand-drawn layer running, a painted blood burst and droplets carry the hit and the particles thin out
+    const hd = vfxLive() ? 0.45 : 1;
+    vfx2d(this.game, 'splat', px, cy, pz, { dir: [d.x, d.z], size: Math.min(1.6, 0.45 + dmg / 24) * Math.max(0.7, Math.min(1.5, c.size)), col: F.blood });
+    const n = Math.round(Math.min(60, 10 + Math.round(dmg * 1.6)) * hd);
     fx.spray(px, cy, pz, d.x, 0.45, d.z, n, F.blood, { speed: 2.4 + Math.min(4, dmg * 0.12), cone: 0.55, size: 2.8, life: 0.75, grav: 9 });
     fx.spray(px, cy, pz, d.x, 0.7, d.z, Math.ceil(n * 0.4), F.light, { speed: 1.8, cone: 0.7, size: 2, life: 0.5, grav: 9 });
     if (o.blunt !== false) fx.spray(cx - d.x * c.radius * 0.4, cy, cz - d.z * c.radius * 0.4, -d.x, 0.6, -d.z, Math.ceil(n * 0.25), F.dark, { speed: 1.3, cone: 0.8, size: 2.2, life: 0.4, grav: 8 });
@@ -235,7 +238,9 @@ export class Gore {
     const F = fluidOf(c), fx = this.game.fx, h = c.sp.pheno.height * c.growth, sz = Math.max(0.5, Math.min(2.2, c.size));
     const cy = c.y + c.air + h * 0.45;
     const d = dir ? _v.copy(dir).setY(0).normalize() : _v.set(0, 0, 0);
-    fx.burst(c.x, cy, c.z, 18 + Math.floor(sz * 14), F.blood, { speed: 2.4, up: 2.4, size: 3.2, life: 0.9, grav: 9 });
+    const hd = vfxLive() ? 0.5 : 1;
+    vfx2d(this.game, 'splat', c.x, cy, c.z, { dir: [d.x, d.z], size: 0.8 + sz * 0.5, col: F.blood });
+    fx.burst(c.x, cy, c.z, Math.round((18 + Math.floor(sz * 14)) * hd), F.blood, { speed: 2.4, up: 2.4, size: 3.2, life: 0.9, grav: 9 });
     fx.spray(c.x, cy, c.z, d.x, 0.9, d.z, 24, F.light, { speed: 3, cone: 0.9, size: 2.4, life: 0.7, grav: 10 });
     for (let i = 0; i < 6; i++) this.seed(_v2.set(c.x, cy, c.z), new THREE.Vector3(d.x * 3 + rnd(-2.5, 2.5), rnd(1, 3.5), d.z * 3 + rnd(-2.5, 2.5)), F.blood, rnd(0.25, 0.5) * sz);
     const b = this.bleeders.find((x) => x.c === c);
@@ -257,7 +262,7 @@ export class Gore {
     }
     for (let i = 0; i < 3; i++) this.sever(c, d, i === 0 ? 'head' : 'any');
     this.game.fx.burst(c.x, cy, c.z, 60, F.blood, { speed: 4.5, up: 4, size: 3.4, life: 1, grav: 10 });
-    vfx2d(this.game, 'splat', c.x, cy, c.z, { dir: [d.x, d.z], size: 1 + sz * 0.5, col: F.blood });
+    vfx2d(this.game, 'splat', c.x, cy, c.z, { dir: [d.x, d.z], size: 1.3 + sz * 0.6, col: F.blood }); vfx2d(this.game, 'poof', c.x, cy, c.z, { size: 0.8 + sz * 0.4, col: F.dark });
     this.splat(c.x, c.z, 1.6 * sz, F.blood, { cell: Math.floor(Math.random() * 4), grow: 0.5 });
     c.fx.dissolve.value = 1;
     c.bio = 0; // the carbon is in the pieces now; the empty corpse is cleared away
