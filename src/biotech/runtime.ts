@@ -71,6 +71,8 @@ export class Biotech {
   private food = 0; private water = 0;
   private profs = new Map<number, Profile>();
   private syncT = 0; private seedN = -1; private t = 0;
+  /** the terrain mesh is rebuilt whole on a flush: the land works batch theirs (one flush every 1.6 s) */
+  private flushT = 0; private reseats: [number, number, number][] = [];
   /** structures (force fields, habitats, vats, reactors): set by structures.ts */
   habitats: () => { x: number; z: number; R: number; cap: number; pop: number; climate: string; b: any }[] = () => [];
   fieldAt: (x: number, z: number) => boolean = () => false;
@@ -214,6 +216,13 @@ export class Biotech {
     const now = this.w.time;
     for (const w of this.workers.values()) this.tickWorker(w, dt, now);
     this.tickPlants(dt, now); this.tickSprings(dt, now); this.tickSeedlings(dt);
+    this.flushT -= dt;
+    if (this.flushT <= 0 && (this.w.region.dirty.size || this.reseats.length)) {
+      this.flushT = 1.6;
+      this.w.terrain.flushDirty();
+      for (const [x, z, r] of this.reseats) this.w.flora.reseat(x, z, r);
+      this.reseats.length = 0;
+    }
     // the minute windows
     while (this.log.length && now - this.log[0].t > 60) this.log.shift();
     while (this.eaten.length && now - this.eaten[0].t > 60) this.eaten.shift();
@@ -329,10 +338,10 @@ export class Biotech {
     });
     w.shapeT -= dt;
     if (w.shapeT <= 0 && w.shapeAcc > 0) {
-      w.shapeT = 0.35;
+      w.shapeT = 0.9;
       const dh = w.shapeAcc / (0.5 * Math.PI * rad * rad);
       R.shape(p.x, p.z, rad, -dh);
-      this.w.terrain.flushDirty(); this.w.flora.reseat(p.x, p.z, rad + 0.5);
+      this.dirty(p.x, p.z, rad + 0.5);
       // the soil comes home: a cubic metre is three loads
       this.yieldItem(w, 'soil', w.shapeAcc * 3, p.x, this.y(p.x, p.z), p.z);
       w.shapeAcc = 0;
@@ -374,9 +383,9 @@ export class Biotech {
     });
     w.shapeT -= dt;
     if (w.shapeT <= 0 && w.shapeAcc > 0) {
-      w.shapeT = 0.35;
+      w.shapeT = 0.9;
       R.shape(p.x, p.z, rad, w.shapeAcc / (0.5 * Math.PI * rad * rad));
-      this.w.terrain.flushDirty(); this.w.flora.reseat(p.x, p.z, rad + 0.5);
+      this.dirty(p.x, p.z, rad + 0.5);
       this.logOut(w, 'ground', w.shapeAcc);
       w.shapeAcc = 0;
     }
@@ -406,7 +415,7 @@ export class Biotech {
     w.note = 'DIGGING THE SPRING';
     this.stroke(w, p.x, p.z, 0.7, dt, () => { const y = this.y(p.x, p.z); vfx2d.play('dust', p.x, y + 0.1, p.z, { ramp: 'soil', scale: 0.6 }); vfx2d.drops(p.x, y + 0.1, p.z, 2, { ramp: R.heightAt(p.x, p.z) < R.water + 0.4 ? 'water' : 'soil', land: 'die' }); });
     w.shapeT -= dt;
-    if (w.shapeT <= 0) { w.shapeT = 0.35; R.shape(p.x, p.z, 1.2, -0.08 * this.mul(w)); this.w.terrain.flushDirty(); this.w.flora.reseat(p.x, p.z, 1.7); }
+    if (w.shapeT <= 0) { w.shapeT = 0.35; R.shape(p.x, p.z, 1.2, -0.08 * this.mul(w)); this.dirty(p.x, p.z, 1.7); }
     if (R.heightAt(p.x, p.z) <= w.goal + 0.05) {
       const sp: Spring = { x: p.x, z: p.z, rate: fn.rate * 4, t: 0, out: [] };
       this.springs.push(sp);
@@ -547,7 +556,7 @@ export class Biotech {
         this.fertilise(t.x, t.z, 1.5, 0.2);
         w.tgt = null; this.logOut(w, 'sand', 1);
       }
-      this.w.terrain.flushDirty();
+      this.dirty();
     }
   }
   private tickPollinate(w: Worker, dt: number, fn: FnLine) {
@@ -930,7 +939,7 @@ export class Biotech {
         case 'greener': {
           this.irrigate(p.x, p.z, 3, 0.05 * lv);
           for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) { const j = (Math.floor(p.z) + dz) * R.N + Math.floor(p.x) + dx; if (j < 0 || j >= R.wet.length) continue; R.wet[j] = Math.min(1, R.wet[j] + 0.02 * lv); if (R.b[j] === B.SAND && R.wet[j] > 0.4 && Math.random() < 0.1) { R.b[j] = B.DRY; R.dirty.add(j); } }
-          this.w.terrain.flushDirty();
+          this.dirty();
           p.spread -= 10;
           if (p.spread <= 0 && this.plants.filter((q) => q.gene === 'desert_greener').length < 40) { p.spread = 60; const a = Math.random() * 6.28; const j = this.seed(fl.sp[p.i], p.x + Math.cos(a) * 2.6, p.z + Math.sin(a) * 2.6); if (j >= 0) this.engineerPlant(j, 'desert_greener', true); }
           amt = 0; break;
@@ -970,6 +979,8 @@ export class Biotech {
   }
 
   // ============================================================================================ the land
+  /** ground changed: flush the terrain (batched) and re-seat the plants there */
+  private dirty(x?: number, z?: number, r?: number) { if (x !== undefined && z !== undefined && !this.reseats.some((q) => Math.abs(q[0] - x) < 0.5 && Math.abs(q[1] - z) < 0.5)) this.reseats.push([x, z, r ?? 2]); }
   irrigate(x: number, z: number, r: number, amt: number) {
     if (this.eco?.irrigate) { this.eco.irrigate(x, z, r, amt); return; }
     const R = this.w.region, N = R.N, rr = Math.ceil(r);

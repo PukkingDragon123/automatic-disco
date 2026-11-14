@@ -33,6 +33,12 @@ code paths. Hostility: everyone fights everyone except their own; 'wild' fights 
 - Workers: tamed creatures are assigned jobs (`haul`, `operate`, `mine`); they walk between buildings carrying items.
 - Events: 'built' {kind, x, z}, 'produced' {item, n}, 'destroyed' {kind, x, z, by}.
 - `game.factory.buildings` is the list enemies target: each has { x, z, hp, faction, kind, damage(n) }.
+- Stores: `game.factory.count(item)`, `take(item, n)` (all or nothing, returns boolean), `put(item, n)` (central
+  stores; raw items go to the golem's hold while it has room), `add(item, n, x?, z?)` (a producer's output: the nearest
+  storage within 30 m of x, z, else the central stores; counted in the statistics), `inventory` (central stores).
+- Extension: `registerBuilding(def)` (src/factory/defs.ts; `hooks: { model(mg), tick(b, dt, f), placed, removed,
+  inspect }`, shown in the catalogue under its `cat`), `registerItem(def, icon?)` (items.ts), `registerRecipe(r)`
+  (recipes.ts). Build mode: `game.factory.build.toggle()`; workers: `game.factory.workers.assign(c, job, target)`.
 
 ## Factions AI (src/game/factions/*, owned by the factions agent)
 - Each faction has a base (lander plus structures), an economy tick, production of RobotUnits, and attack waves that

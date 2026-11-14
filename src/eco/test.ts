@@ -18,6 +18,8 @@ export async function testEcosys(engine: Engine, input: Input, P: URLSearchParam
   any.hatchT = 9; any.cap?.removeFromParent(); any.cap = null; g.cam.followFn(null);
   // a free survey camera: Unit 07 stays parked (pass &golem to keep it, walking about and frightening things)
   if (!P.has('golem')) (g.player as unknown as { update: (dt: number) => void }).update = () => {};
+  // the whole region in view (pass &fog to keep the fog of war)
+  if (!P.has('fog')) g.vision.revealAll = true;
   const w = g.world, eco = w.eco, L = g.region.landing;
   if (P.has('irrigate')) eco.irrigate(L.x + 14, L.z + 6, 9, 1, Infinity);
   const t0 = performance.now();

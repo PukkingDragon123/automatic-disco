@@ -62,6 +62,20 @@ const HUMAN_SCALE = 0.6;
 
 /** everyone fights everyone but their own; the wild only when provoked */
 export function hostile(a: Faction, b: Faction) { return a !== b && a !== 'wild' && b !== 'wild'; }
+/** hostility as the game sees it: the factions system knows the truces (a paid-off expedition) */
+const hos = (g: Host, a: Faction, b: Faction) => (g.factions?.hostile ? g.factions.hostile(a, b) : hostile(a, b));
+/** a faction structure (lander, bunker, tower...) or a factory building: anything with hp that takes damage */
+interface Struct { x: number; z: number; y?: number; hp: number; radius?: number; height?: number; faction?: Faction | string; kind?: string; dead?: boolean; dropT?: number; damage?(n: number, by?: any): void }
+/** the structures a faction may shoot at: other factions' structures, and the factory's buildings unless it is the
+ *  expedition (its engineers capture them whole; it only fights units and the golem) */
+function structsFor(g: Host, f: Faction): Struct[] {
+  const out: Struct[] = [];
+  if (f !== 'expedition') {
+    for (const b of g.factory?.buildings ?? []) if (!b.dead && (b.hp ?? 1) > 0 && hos(g, f, (b.faction ?? 'veyr') as Faction)) out.push(b as Struct);
+    for (const s of g.factions?.structures ?? []) if (!s.dead && (s.dropT ?? 0) <= 0 && s.hp > 0 && hos(g, f, s.faction as Faction)) out.push(s);
+  }
+  return out;
+}
 
 // ------------------------------------------------------------------------------------------------ the host (a Game, or a test stage)
 interface Host {
@@ -71,6 +85,7 @@ interface Host {
   player?: { x: number; y: number; z: number; alive: boolean; started?: boolean; radius: number; height?: number; hurt(n: number, from: any): void };
   factory?: { buildings?: { x: number; z: number; hp: number; faction?: string; kind?: string; damage?(n: number, by?: any): void; dead?: boolean; radius?: number }[] };
   cam?: { shake(a: number, t: number): void };
+  factions?: { structures?: Struct[]; hostile?(a: Faction, b: Faction): boolean };
 }
 /** something it can shoot at */
 interface Tgt { kind: 'robot' | 'creature' | 'golem' | 'building' | 'point'; ref: any; }
@@ -79,7 +94,7 @@ const tPos = (t: Tgt, out: THREE.Vector3): THREE.Vector3 => {
   if (t.kind === 'robot') return out.set(r.x, r.y + r.height * 0.5, r.z);
   if (t.kind === 'creature') return out.set(r.x, r.y + r.size * 0.45 + (r.air ?? 0), r.z);
   if (t.kind === 'golem') return out.set(r.x, r.y + (r.height ?? 0.5) * 0.6, r.z);
-  return out.set(r.x, (r.y ?? 0) + 0.6, r.z);
+  return out.set(r.x, (r.y ?? 0) + (r.height ? r.height * 0.45 : 0.6), r.z);
 };
 const tAlive = (t: Tgt) => {
   const r = t.ref; if (!r) return false;
@@ -192,7 +207,7 @@ export class RobotUnit {
     if (f && typeof f.x === 'number') {
       this.lastHit = { x: f.x, z: f.z, t: this.g.world.time ?? 0, by: f };
       // answer the attacker if idle or only guarding
-      if (!this.tgt || !tAlive(this.tgt)) { const t = this.asTgt(f); if (t && (t.kind !== 'robot' || hostile(this.faction, (f as RobotUnit).faction))) this.tgt = t; }
+      if (!this.tgt || !tAlive(this.tgt)) { const t = this.asTgt(f); if (t && (t.kind !== 'robot' || hos(this.g, this.faction, (f as RobotUnit).faction))) this.tgt = t; }
     }
     if (this.hp <= 0) this.die(f);
   }
@@ -298,13 +313,11 @@ export class RobotUnit {
     if (this.ord?.k === 'move') return; // a move order goes through
     let best: Tgt | null = null, bd = sight;
     const consider = (t: Tgt, x: number, z: number) => { const d = Math.hypot(x - this.x, z - this.z) - tRad(t); if (d < bd) { bd = d; best = t; } };
-    for (const r of g.robots ?? []) if (r !== this && !r.dead && hostile(this.faction, r.faction)) consider({ kind: 'robot', ref: r }, r.x, r.z);
-    g.world.near?.(this.x, this.z, sight, (c) => { if (!c.dead && hostile(this.faction, c.faction)) consider({ kind: 'creature', ref: c }, c.x, c.z); });
+    for (const r of g.robots ?? []) if (r !== this && !r.dead && hos(g, this.faction, r.faction)) consider({ kind: 'robot', ref: r }, r.x, r.z);
+    g.world.near?.(this.x, this.z, sight, (c) => { if (!c.dead && hos(g, this.faction, c.faction)) consider({ kind: 'creature', ref: c }, c.x, c.z); });
     const P = g.player;
-    if (P && P.alive && P.started !== false && hostile(this.faction, 'veyr')) consider({ kind: 'golem', ref: P }, P.x, P.z);
-    const B = g.factory?.buildings;
-    if (Array.isArray(B)) for (const b of B) if (!b.dead && (b.hp ?? 1) > 0 && hostile(this.faction, (b.faction ?? 'veyr') as Faction)) consider({ kind: 'building', ref: b }, b.x, b.z);
-    this.tgt = best;
+    if (P && P.alive && P.started !== false && hos(g, this.faction, 'veyr')) consider({ kind: 'golem', ref: P }, P.x, P.z);
+    for (const b of structsFor(g, this.faction)) consider({ kind: 'building', ref: b }, b.x, b.z);
   }
   /** follow A* waypoints toward (gx, gz); returns the speed it moves at */
   private steer(gx: number, gz: number, dt: number) {
@@ -560,9 +573,10 @@ class Shots {
     const dir = tp.clone().sub(at).normalize(), end = at.clone().addScaledVector(dir, w.range);
     const hits: { t: Tgt; d: number }[] = [];
     const test = (t: Tgt, x: number, y: number, z: number, r: number) => { const d = segDist(at, end, x, y, z); if (d < r + 0.25) hits.push({ t, d: Math.hypot(x - at.x, z - at.z) }); };
-    for (const r of g.robots ?? []) if (!r.dead && r !== from && hostile(from.faction, r.faction)) test({ kind: 'robot', ref: r }, r.x, r.y + r.height * 0.5, r.z, r.radius);
-    g.world.near?.((at.x + end.x) / 2, (at.z + end.z) / 2, w.range / 2 + 1, (c) => { if (!c.dead && hostile(from.faction, c.faction)) test({ kind: 'creature', ref: c }, c.x, c.y + c.size * 0.45, c.z, c.radius ?? 0.4); });
-    const P = g.player; if (P && P.alive && P.started !== false && hostile(from.faction, 'veyr')) test({ kind: 'golem', ref: P }, P.x, P.y + 0.3, P.z, P.radius);
+    for (const r of g.robots ?? []) if (!r.dead && r !== from && hos(g, from.faction, r.faction)) test({ kind: 'robot', ref: r }, r.x, r.y + r.height * 0.5, r.z, r.radius);
+    g.world.near?.((at.x + end.x) / 2, (at.z + end.z) / 2, w.range / 2 + 1, (c) => { if (!c.dead && hos(g, from.faction, c.faction)) test({ kind: 'creature', ref: c }, c.x, c.y + c.size * 0.45, c.z, c.radius ?? 0.4); });
+    const P = g.player; if (P && P.alive && P.started !== false && hos(g, from.faction, 'veyr')) test({ kind: 'golem', ref: P }, P.x, P.y + 0.3, P.z, P.radius);
+    for (const b of structsFor(g, from.faction)) test({ kind: 'building', ref: b }, b.x, (b.y ?? 0) + (b.height ?? 1.2) * 0.45, b.z, b.radius ?? 0.9);
     hits.sort((a, b) => a.d - b.d);
     const n = 1 + (fx.pierce ?? 0);
     let stop = end;
@@ -597,15 +611,14 @@ class Shots {
       const R = s.kind === 'bullet' ? 0.15 : s.kind === 'flame' ? 0.45 : 0.3;
       const fresh = (o: unknown) => !s.hits || !s.hits.has(o);
       for (const r of g.robots ?? []) {
-        if (r.dead || r === s.from || !hostile(s.f, r.faction) || !fresh(r)) continue;
+        if (r.dead || r === s.from || !hos(g, s.f, r.faction) || !fresh(r)) continue;
         const cy = r.y + r.height * 0.5;
         if (segDist(s.p, np, r.x, cy, r.z) < r.radius + R && Math.abs(np.y - cy) < r.height * 0.6 + R) { hit = { kind: 'robot', ref: r }; break; }
       }
-      if (!hit && g.world.near) g.world.near(np.x, np.z, 1.6, (c) => { if (hit || c.dead || !hostile(s.f, c.faction) || !fresh(c)) return; const cy = c.y + c.size * 0.45; if (segDist(s.p, np, c.x, cy, c.z) < (c.radius ?? 0.4) + R) hit = { kind: 'creature', ref: c }; });
+      if (!hit && g.world.near) g.world.near(np.x, np.z, 1.6, (c) => { if (hit || c.dead || !hos(g, s.f, c.faction) || !fresh(c)) return; const cy = c.y + c.size * 0.45; if (segDist(s.p, np, c.x, cy, c.z) < (c.radius ?? 0.4) + R) hit = { kind: 'creature', ref: c }; });
       const P = g.player;
-      if (!hit && P && P.alive && P.started !== false && hostile(s.f, 'veyr') && fresh(P)) { const cy = P.y + (P.height ?? 0.5) * 0.5; if (segDist(s.p, np, P.x, cy, P.z) < P.radius + R) hit = { kind: 'golem', ref: P }; }
-      const B = g.factory?.buildings;
-      if (!hit && Array.isArray(B)) for (const b of B) { if (b.dead || (b.hp ?? 1) <= 0 || !hostile(s.f, (b.faction ?? 'veyr') as Faction) || !fresh(b)) continue; if (Math.hypot(np.x - b.x, np.z - b.z) < (b.radius ?? 0.9) && np.y < g.world.surfaceY(b.x, b.z) + 1.4) { hit = { kind: 'building', ref: b }; break; } }
+      if (!hit && P && P.alive && P.started !== false && hos(g, s.f, 'veyr') && fresh(P)) { const cy = P.y + (P.height ?? 0.5) * 0.5; if (segDist(s.p, np, P.x, cy, P.z) < P.radius + R) hit = { kind: 'golem', ref: P }; }
+      if (!hit) for (const b of structsFor(g, s.f)) { if (!fresh(b)) continue; if (Math.hypot(np.x - b.x, np.z - b.z) < (b.radius ?? 0.9) && np.y < (b.y ?? g.world.surfaceY(b.x, b.z)) + (b.height ?? 1.4)) { hit = { kind: 'building', ref: b }; break; } }
       const gy = g.world.surfaceY(np.x, np.z);
       const ground = np.y <= gy;
       if (hit && s.hits && !s.w.splash && s.kind !== 'cloud') {
@@ -648,8 +661,8 @@ class Shots {
         fx.burst(c.x + Math.cos(a) * rr, c.y + 0.2, c.z + Math.sin(a) * rr, 3, c.w.col ?? RAMPS.ichor[4], { speed: 0.3, up: 0.3, size: 3.5, life: 1.4, grav: -0.1 });
         // everyone hostile inside breathes it
         const inside = (x: number, z: number) => Math.hypot(x - c.x, z - c.z) < c.r;
-        for (const r of g.robots ?? []) if (!r.dead && hostile(c.f, r.faction) && inside(r.x, r.z)) hitTarget(g, { kind: 'robot', ref: r }, c.w.dmg * 0.12, c.from, c.w.fx);
-        g.world.near?.(c.x, c.z, c.r, (cr) => { if (!cr.dead && hostile(c.f, cr.faction)) hitTarget(g, { kind: 'creature', ref: cr }, c.w.dmg * 0.12, c.from, c.w.fx); });
+        for (const r of g.robots ?? []) if (!r.dead && hos(g, c.f, r.faction) && inside(r.x, r.z)) hitTarget(g, { kind: 'robot', ref: r }, c.w.dmg * 0.12, c.from, c.w.fx);
+        g.world.near?.(c.x, c.z, c.r, (cr) => { if (!cr.dead && hos(g, c.f, cr.faction)) hitTarget(g, { kind: 'creature', ref: cr }, c.w.dmg * 0.12, c.from, c.w.fx); });
       }
     }
   }
@@ -660,10 +673,10 @@ class Shots {
       // a shell, a bomb, a rocket: everything hostile in the blast takes damage by distance
       const R = w.splash;
       const hurt = (t: Tgt, x: number, z: number, r: number) => { const d = Math.max(0, Math.hypot(x - p.x, z - p.z) - r); if (d < R) hitTarget(g, t, w.dmg * (1 - (d / R) * 0.7), s.from, w.fx, _u.set(x - p.x, 0, z - p.z).normalize()); };
-      for (const r of g.robots ?? []) if (!r.dead && r !== s.from && hostile(s.f, r.faction)) hurt({ kind: 'robot', ref: r }, r.x, r.z, r.radius);
-      g.world.near?.(p.x, p.z, R + 1, (c) => { if (!c.dead && hostile(s.f, c.faction)) hurt({ kind: 'creature', ref: c }, c.x, c.z, c.radius ?? 0.4); });
-      const P = g.player; if (P && P.alive && P.started !== false && hostile(s.f, 'veyr')) hurt({ kind: 'golem', ref: P }, P.x, P.z, P.radius);
-      const B = g.factory?.buildings; if (Array.isArray(B)) for (const b of B) if (!b.dead && (b.hp ?? 1) > 0 && hostile(s.f, (b.faction ?? 'veyr') as Faction)) hurt({ kind: 'building', ref: b }, b.x, b.z, b.radius ?? 0.9);
+      for (const r of g.robots ?? []) if (!r.dead && r !== s.from && hos(g, s.f, r.faction)) hurt({ kind: 'robot', ref: r }, r.x, r.z, r.radius);
+      g.world.near?.(p.x, p.z, R + 1, (c) => { if (!c.dead && hos(g, s.f, c.faction)) hurt({ kind: 'creature', ref: c }, c.x, c.z, c.radius ?? 0.4); });
+      const P = g.player; if (P && P.alive && P.started !== false && hos(g, s.f, 'veyr')) hurt({ kind: 'golem', ref: P }, P.x, P.z, P.radius);
+      for (const b of structsFor(g, s.f)) hurt({ kind: 'building', ref: b }, b.x, b.z, b.radius ?? 0.9);
       const burn = !!w.fx?.burn;
       fx.burst(p.x, p.y + 0.1, p.z, 26, burn ? RAMPS.glowAmber[3] : RAMPS.glowAmber[4], { glow: true, speed: 3.2, up: 2.4, size: 2.4, life: burn ? 0.8 : 0.4, grav: 6 });
       fx.burst(p.x, p.y + 0.1, p.z, 14, RAMPS.soil[3], { speed: 2.2, up: 3.2, size: 3, life: 0.9, grav: 9 });
@@ -761,7 +774,8 @@ export function nearestHostile(game: Game | object, f: Faction, x: number, z: nu
   const h = game as unknown as Host;
   let best: { p: THREE.Vector3; ref: unknown } | null = null, bd = r;
   const score = (px: number, pz: number) => Math.hypot(px - x, pz - z) * 0.6 + (pref ? Math.hypot(px - pref.x, pz - pref.z) * 0.4 : 0);
-  for (const u of h.robots ?? []) if (!u.dead && hostile(f, u.faction)) { const d = score(u.x, u.z); if (d < bd) { bd = d; best = { p: new THREE.Vector3(u.x, u.y + u.height * 0.5, u.z), ref: u }; } }
-  h.world.near?.(x, z, r, (c) => { if (c.dead || !(hostile(f, c.faction) || (c.faction === 'wild' && c.target === -999999999))) return; const d = score(c.x, c.z); if (d < bd) { bd = d; best = { p: new THREE.Vector3(c.x, c.y + c.size * 0.45, c.z), ref: c }; } });
+  for (const u of h.robots ?? []) if (!u.dead && hos(h, f, u.faction)) { const d = score(u.x, u.z); if (d < bd) { bd = d; best = { p: new THREE.Vector3(u.x, u.y + u.height * 0.5, u.z), ref: u }; } }
+  for (const b of structsFor(h, f)) { const d = score(b.x, b.z) - (b.radius ?? 0.9) * 0.6; if (d < bd) { bd = d; best = { p: new THREE.Vector3(b.x, (b.y ?? 0) + (b.height ?? 1.2) * 0.45, b.z), ref: b }; } }
+  h.world.near?.(x, z, r, (c) => { if (c.dead || !(hos(h, f, c.faction) || (c.faction === 'wild' && c.target === -999999999))) return; const d = score(c.x, c.z); if (d < bd) { bd = d; best = { p: new THREE.Vector3(c.x, c.y + c.size * 0.45, c.z), ref: c }; } });
   return best;
 }
