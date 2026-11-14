@@ -142,7 +142,8 @@ const DEFS: Record<VfxName, Def> = {
         const r = r0 * (0.55 + 0.65 * e) * (1 - sm(0.45, 1, t) * 0.8);
         if (r < 0.7) { if (t < 0.95) g.set(x, y, MID); continue; }
         g.disc(x, y, r, MID);
-        if (t > 0.6 && r > 2) g.disc(x - 0.4, y - 0.6, r - 1.6, 0);
+        // dissipating: eaten away from the upper right, a crescent of dust left hanging
+        if (t > 0.55 && r > 1.6) g.disc(x + r * 0.5, y - r * 0.55, r * (0.6 + (t - 0.55) * 0.9), 0);
       }
       for (let j = 0; j < 7; j++) { const sx = 16 + (R() - 0.5) * 28, sy = 24 - R() * 16 * t; if (t > 0.45 && t < 1 && R() < 0.8) g.set(sx, sy, MID); }
       if (t < 0.5) g.clearBelow(27.5);
@@ -271,7 +272,7 @@ const DEFS: Record<VfxName, Def> = {
         const r = sz * (0.6 + tt * 1.3) * (1 - sm(0.7, 1, tt) * 0.7);
         if (r < 0.7) { g.set(x, y, MID); continue; }
         g.disc(x, y, r, MID);
-        if (tt > 0.55 && r > 2) g.disc(x + 0.5, y - 0.5, r - 1.5, 0);
+        if (tt > 0.5 && r > 1.6) g.disc(x + r * 0.5, y - r * 0.5, r * (0.55 + (tt - 0.5) * 0.9), 0);
         if (y < ty) { ty = y; tx = x; }
       }
       if (t > 0.3 && t < 0.95) { const rr = 2.5 + t * 2; for (let k = 0; k <= 14; k++) { const a = Math.PI * 0.6 + (k / 14) * Math.PI * 1.3; g.set(tx + 2 + Math.cos(a) * rr, ty - 3 + Math.sin(a) * rr, MID); } }
@@ -350,7 +351,7 @@ const DEFS: Record<VfxName, Def> = {
       for (let k = 0; k < 8; k++) {
         const x = c + Math.cos(A[k]) * rr * S[k], y = c + Math.sin(A[k]) * rr * S[k] - f * 0.6;
         g.disc(x, y, pr * S[k], MID);
-        if (f >= 3 && pr > 2) g.disc(x - 0.5, y - 0.5, pr * S[k] - 1.5, 0);
+        if (f >= 3 && pr > 1.5) g.disc(x + Math.cos(A[k]) * pr * 0.55, y + Math.sin(A[k]) * pr * 0.55 - pr * 0.3, pr * S[k] * (0.5 + (f - 3) * 0.15), 0);
       }
     },
   },

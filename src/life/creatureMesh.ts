@@ -69,6 +69,8 @@ totalEmissiveRadiance += uFlashCol * uFlash * 0.9;`);
   mat.customProgramCacheKey = () => 'oddworld-creature';
   gbuf(mat, fx.flag);
   const mesh = new THREE.SkinnedMesh(m.geo, mat);
+  // the animator reads the hit flash off the mesh to flinch
+  mesh.userData.fx = fx;
   mesh.add(bones[0]);
   mesh.bind(new THREE.Skeleton(bones, m.inverses), new THREE.Matrix4());
   mesh.castShadow = true; mesh.receiveShadow = true;

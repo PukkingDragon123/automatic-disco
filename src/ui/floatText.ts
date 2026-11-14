@@ -258,7 +258,7 @@ export interface FloatOpts {
   /** keep the text's case (speech does); popups are upper case */
   keepCase?: boolean;
 }
-interface Pop { x: number; y: number; z: number; lines: string[]; n: number; kind: FloatKind; t: number; life: number; delay: number; big: number; dx: number; rise: number; stack: number; o: FloatOpts }
+interface Pop { x: number; y: number; z: number; lines: string[]; n: number; kind: FloatKind; t: number; life: number; delay: number; big: number; dx: number; rise: number; stack: number; o: FloatOpts; oy: number; bump: number }
 export interface Prompt { x: number; y: number; z: number; key: string; text: string; ok: boolean; prog?: number }
 export interface HullBar { x: number; y: number; z: number; frac: number; alpha: number; flash: number }
 
@@ -294,16 +294,20 @@ export class FloatLayer {
     const say = kind === 'say';
     const text = o.keepCase ?? say ? s : s.toUpperCase(), f = o.font ?? kindFace(kind);
     const wrap = o.wrap ?? (say ? 150 : 0), lines = wrap > 0 ? wrapText(text, f, wrap) : [text];
-    // stack onto popups still near the same spot so numbers don't overprint each other
-    let stack = 0;
-    if (!o.follow) for (const p of this.pops) if (!p.o.follow && p.t < 0.5 && Math.abs(p.x - x) + Math.abs(p.z - z) < 0.5) stack = Math.max(stack, p.stack + 1);
+    // a tally that repeats one still on screen nearby is folded into it ("+3 ORE" + "+2 ORE" = "+5 ORE", with a bump)
+    const tally = /^\+(\d+) (.+)$/.exec(text);
+    if (tally && !o.follow && STYLE[kind].st === 'slip') {
+      const q = this.pops.find((p) => p.kind === kind && !p.o.follow && p.t < p.life * 0.75 && p.lines.length === 1 && Math.hypot(p.x - x, p.z - z) < 1.2 && p.lines[0].endsWith(' ' + tally[2]) && /^\+\d+ /.test(p.lines[0]));
+      if (q) { q.lines = [`+${parseInt(q.lines[0].slice(1)) + parseInt(tally[1])} ${tally[2]}`]; q.n = q.lines[0].length; q.t = Math.min(q.t, 0.25); q.bump = 0.16; return; }
+    }
+    const stack = this.pops.length;
     const dmg = kind === 'dmg' || kind === 'crit' || kind === 'hurt';
     const n = lines.join('\n').length;
     if (say && o.follow) for (const p of this.pops) if (p.o.follow === o.follow && p.kind === 'say') p.life = Math.min(p.life, p.t + 0.15); // a new line replaces the speaker's last
     this.pops.push({
       x, y, z, lines, n, kind, t: 0, life: o.life ?? (say ? 2.2 + n * 0.055 : kind === 'skill' ? 2.6 : dmg ? 0.9 : 1.4), delay: o.delay ?? 0,
       big: o.big ?? 0, dx: dmg ? (Math.random() - 0.5) * 30 : 0, rise: o.rise ?? (say ? 0 : kind === 'skill' ? 18 : dmg ? 26 : 16),
-      stack: Math.min(stack, 5), o: { type: say ? 45 : undefined, ...o },
+      stack, o: { type: say ? 45 : undefined, ...o }, oy: 0, bump: 0,
     });
     if (this.pops.length > 90) this.pops.splice(0, this.pops.length - 90);
   }
@@ -336,11 +340,48 @@ export class FloatLayer {
         g.globalAlpha = 1;
       }
     }
-    // tallies, stamps, numbers and speech
+    // ---- layout: the prompt (below its anchor, under the golem) and the hull gauge are reserved first; speech is
+    // placed next, then stamps, slips and numbers, oldest first; anything that would overlap climbs above what is
+    // already placed, so every anchor grows its own column and nothing overprints
+    const placed: [number, number, number, number][] = [];
+    const hits = (r: [number, number, number, number]) => placed.find((q) => r[0] < q[2] && r[2] > q[0] && r[1] < q[3] && r[3] > q[1]);
+    if (b && b.alpha > 0.02) { const [sx, sy, ok] = this.scr(b.x, b.y, b.z); if (ok) { const w = 39 * k; placed.push([sx - w / 2 - k, sy - 11 * k, sx + w / 2 + k, sy - 4 * k]); } }
+    const pr = this.prompt;
+    let prDraw: (() => void) | null = null;
+    if (pr) {
+      const [sx, sy, ok] = this.scr(pr.x, pr.y, pr.z);
+      if (ok) {
+        const lab = textSprite(pr.text, 'info', { col: pr.ok ? GRAPHITE : 0x8a2a22 });
+        const cap = pr.key ? textSprite(pr.key, 'dmg', { font: 'chunky' }) : null;
+        const ch = lab.height, cw = cap ? Math.max(cap.width + 2, ch) : -2, W = (cw + 2 + lab.width) * k;
+        const x = Math.round(sx - W / 2), y = Math.round(sy + 3 * k);
+        placed.push([x - 2 * k, y - k, x + W + 2 * k, y + (ch + 5) * k]);
+        prDraw = () => {
+          if (cap) {
+            const press = pr.prog !== undefined && pr.prog > 0 ? k : 0;
+            g.fillStyle = hex(OUTLINE); g.fillRect(x, y + k, cw * k, (ch - 1) * k);
+            g.fillStyle = '#3a2418'; g.fillRect(x, y + press, cw * k, (ch - 2) * k);
+            g.fillStyle = '#5c3c2a'; g.fillRect(x, y + press, cw * k, k); g.fillRect(x, y + press, k, (ch - 3) * k);
+            g.fillStyle = '#24160e'; g.fillRect(x + (cw - 1) * k, y + press + k, k, (ch - 3) * k);
+            g.drawImage(cap, x + Math.round((cw - cap.width) / 2) * k, y + press + Math.round((ch - 2 - cap.height) / 2) * k, cap.width * k, cap.height * k);
+          }
+          g.drawImage(lab, x + (cw + 2) * k, y, lab.width * k, lab.height * k);
+          if (pr.prog !== undefined && pr.prog > 0) {
+            const pw = lab.width - 2, bx = x + (cw + 3) * k, by = y + (ch + 1) * k;
+            g.fillStyle = hex(OUTLINE); g.fillRect(bx - k, by, (pw + 2) * k, 3 * k);
+            g.fillStyle = '#1e2a20'; g.fillRect(bx, by + k, pw * k, k);
+            g.fillStyle = '#7fd48a'; g.fillRect(bx, by + k, Math.round(pw * Math.min(1, pr.prog)) * k, k);
+          }
+        };
+      }
+    }
+    // tallies, stamps, numbers and speech: work out where each wants to be
+    interface Item { p: Pop; spr: HTMLCanvasElement; sw: number; sh: number; x: number; y: number; W: number; H: number; sx: number; fade: number; pri: number }
+    const items: Item[] = [];
     for (let i = this.pops.length - 1; i >= 0; i--) {
       const p = this.pops[i];
       if (p.delay > 0) { p.delay -= dt; continue; }
-      p.t += dt;
+      p.t += dt; p.bump = Math.max(0, p.bump - dt);
       if (p.t >= p.life) { this.pops.splice(i, 1); continue; }
       let wx = p.x, wy = p.y, wz = p.z;
       const fo = p.o.follow;
@@ -352,7 +393,7 @@ export class FloatLayer {
       const sp = { col: p.o.col, font: p.o.font, center: !say, tape: say };
       const spr = textSprite(p.lines, p.kind, { ...sp, reveal });
       const full = reveal >= p.n ? spr : textSprite(p.lines, p.kind, sp);
-      let sw = k + p.big * u1, sh = sw, lift = 0;
+      let sw = k + p.big * u1 + (p.bump > 0 ? u1 : 0), sh = sw, lift = 0;
       if (st === 'stamp') { // thump: it lands big, squashes, settles
         if (p.t < 0.05) { sw += 2 * u1; sh += 2 * u1; } else if (p.t < 0.1) { sw = sw * 1.12; sh = sh * 0.84; }
         lift = Math.min(1, p.t / 0.4) * p.rise * 0.3;
@@ -361,47 +402,37 @@ export class FloatLayer {
         lift = (1 - (1 - u) ** 3) * p.rise;
       } else { // a slip drops into place, then floats up slowly with a little bob
         lift = (say ? 0 : (1 - (1 - u) ** 2) * p.rise * 0.8) - (p.t < 0.1 ? (0.1 - p.t) * 30 : 0);
-        lift += Math.sin(p.t * 2.6 + (p.stack + p.n) * 1.7) * 0.6;
+        lift += Math.sin(p.t * 2.6 + (p.stack % 7) * 1.7) * 0.6;
       }
       const W = Math.round(full.width * sw), H = Math.round(full.height * sh);
       const x = Math.round(sx + (st === 'num' ? p.dx * this.dpr * (1 - (1 - u) ** 3) : 0) - W / 2);
-      const y = Math.round(sy - lift * k - p.stack * (full.height + 2) * k - H);
+      const y = Math.round(sy - lift * k - H - (say ? 4 * k : 0));
       const fade = say ? Math.min(1, (p.life - p.t) / 0.35) : u < 0.7 ? 1 : 1 - (u - 0.7) / 0.3;
-      g.globalAlpha = Math.max(0, Math.ceil(fade * 4) / 4);
-      if (say) { // the slip's tail: a torn corner pointing down at the speaker
-        const tx = Math.round(sx / k) * k, ty = y + H - k;
-        g.fillStyle = hex(PAPER); g.fillRect(tx - 2 * k, ty, 4 * k, 2 * k); g.fillRect(tx - k, ty + 2 * k, 2 * k, k);
-        g.fillStyle = hex(PAPER_LO); g.fillRect(tx - k, ty + 3 * k, k, k);
+      items.push({ p, spr, sw, sh, x, y, W, H, sx, fade, pri: say ? 0 : st === 'stamp' ? 1 : st === 'slip' ? 2 : 3 });
+    }
+    items.sort((a, c) => a.pri - c.pri || a.p.stack - c.p.stack);
+    const gap = 2 * k;
+    for (const it of items) {
+      // climb above whatever it would cover
+      const r: [number, number, number, number] = [it.x - k, it.y - k, it.x + it.W + k, it.y + it.H + k];
+      let off = 0;
+      for (let n = 0; n < 16; n++) { const q = hits([r[0], r[1] - off, r[2], r[3] - off]); if (!q) break; off = r[3] - q[1] + gap; }
+      placed.push([r[0], r[1] - off, r[2], r[3] - off]);
+      it.p.oy += (off - it.p.oy) * Math.min(1, dt * 16);
+    }
+    // draw back to front: numbers under slips under stamps under speech
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i], p = it.p, y = Math.round(it.y - p.oy);
+      g.globalAlpha = Math.max(0, Math.ceil(it.fade * 4) / 4);
+      if (p.kind === 'say') { // the slip's tail: a torn corner pointing down at the speaker
+        const tx = Math.round(it.sx / k) * k, ty = y + it.H - k, tl = Math.max(0, Math.round(p.oy / k));
+        g.fillStyle = hex(PAPER); g.fillRect(tx - 2 * k, ty, 4 * k, 2 * k); g.fillRect(tx - k, ty + 2 * k, 2 * k, k + Math.min(tl, 6) * k);
+        g.fillStyle = hex(PAPER_LO); g.fillRect(tx - k, ty + 3 * k + Math.min(tl, 6) * k, k, k);
       }
-      g.drawImage(spr, x, y, Math.round(spr.width * sw), Math.round(spr.height * sh));
+      g.drawImage(it.spr, it.x, y, Math.round(it.spr.width * it.sw), Math.round(it.spr.height * it.sh));
     }
     g.globalAlpha = 1;
-    // context prompt: a Bakelite key and the action typed on a slip
-    const pr = this.prompt;
-    if (pr) {
-      const [sx, sy, ok] = this.scr(pr.x, pr.y, pr.z);
-      if (ok) {
-        const lab = textSprite(pr.text, 'info', { col: pr.ok ? GRAPHITE : 0x8a2a22 });
-        const cap = pr.key ? textSprite(pr.key, 'dmg', { font: 'chunky' }) : null;
-        const ch = lab.height, cw = cap ? Math.max(cap.width + 2, ch) : -2, W = (cw + 2 + lab.width) * k;
-        const x = Math.round(sx - W / 2), y = Math.round(sy - (ch + 3) * k);
-        if (cap) {
-          const press = pr.prog !== undefined && pr.prog > 0 ? k : 0;
-          g.fillStyle = hex(OUTLINE); g.fillRect(x, y + k, cw * k, (ch - 1) * k);
-          g.fillStyle = '#3a2418'; g.fillRect(x, y + press, cw * k, (ch - 2) * k);
-          g.fillStyle = '#5c3c2a'; g.fillRect(x, y + press, cw * k, k); g.fillRect(x, y + press, k, (ch - 3) * k);
-          g.fillStyle = '#24160e'; g.fillRect(x + (cw - 1) * k, y + press + k, k, (ch - 3) * k);
-          g.drawImage(cap, x + Math.round((cw - cap.width) / 2) * k, y + press + Math.round((ch - 2 - cap.height) / 2) * k, cap.width * k, cap.height * k);
-        }
-        g.drawImage(lab, x + (cw + 2) * k, y, lab.width * k, lab.height * k);
-        if (pr.prog !== undefined && pr.prog > 0) {
-          const pw = lab.width - 2, bx = x + (cw + 3) * k, by = y + (ch + 1) * k;
-          g.fillStyle = hex(OUTLINE); g.fillRect(bx - k, by, (pw + 2) * k, 3 * k);
-          g.fillStyle = '#1e2a20'; g.fillRect(bx, by + k, pw * k, k);
-          g.fillStyle = '#7fd48a'; g.fillRect(bx, by + k, Math.round(pw * Math.min(1, pr.prog)) * k, k);
-        }
-      }
-    }
+    prDraw?.();
     for (const h of this.hooks) h(g, k);
   }
   dispose() { this.alive = false; cancelAnimationFrame(this.raf); removeEventListener('resize', this.resize); this.cv.remove(); layers.delete(this.owner); }
