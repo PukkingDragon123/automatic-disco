@@ -51,10 +51,11 @@ export function cragstrider(d: Design, rig: Rig, rest: V3[]) {
     { c: between(hips, chest, 0.66, [0, -H * 0.06, 0]), s: [W * 0.56, H * 0.64], p: 'sag' },
     { c: between(chest, chest, 0, [0, -H * 0.02, T * 0.02]), s: [W * 0.54, H * 0.6], p: 'shoulder' },
     { c: between(chest, neck, 0.55, [0, -H * 0.02, 0]), s: [W * 0.36, H * 0.4], p: 'neck' },
-    { c: between(neck, head, 0.4, [0, -0.2, 0]), s: [W * 0.28, H * 0.3], p: 'neck' },
+    { c: between(neck, head, 0.45, [0, -0.2, 0]), s: [W * 0.27, H * 0.29], p: 'neck' },
+    { c: between(neck, head, 0.85, [0, -0.15, 0]), s: [W * 0.2, H * 0.22], p: 'neck' },
   ];
   const tr = body.add(trunk({
-    name: 'trunk', stations: st, tween: 1, capS: true, capE: false, k: 0.85, skin: X.spine,
+    name: 'trunk', stations: st, tween: 1, capS: true, capE: true, k: 0.85, skin: X.spine,
     rings: [{ at: 9, s: 1, ink: true }],
     paint: (ch, p, b) => { const px = new Px(ch, b); paintLook(px, hide({ folds: { axis: [0, 0.2, 1], origin: neck, spacing: 0.32, near: (q) => (q[2] > chest[2] + T * 0.05 ? 1 : 0) } })); drawPits(px, pitsT); px.flush(); },
   }));

@@ -13,6 +13,8 @@ const v3 = (s: string | null, d: [number, number, number]) => { const a = (s ?? 
 
 export async function testOcean(engine: Engine, input: Input, P: URLSearchParams) {
   const { Game } = await import('../game/game');
+  // a storm sea: the climate reads its weather from the URL (it is built with the game)
+  if ((P.has('storm') || P.get('shot') === 'storm') && !P.has('weather')) { const u = new URL(location.href); u.searchParams.set('weather', 'storm'); history.replaceState(null, '', u); P.set('weather', 'storm'); }
   const seed = Number(P.get('seed') ?? 3), shot = P.get('shot') ?? '';
   const biome = (P.get('biome') ?? (shot === 'reef' || shot === 'school' ? 'reef' : shot === 'kelp' ? 'ocean' : 'archipelago')) as BiomeKey;
   const g = new Game(engine, input, { seed, biome, story: false, hooks: {} });
@@ -35,7 +37,8 @@ export async function testOcean(engine: Engine, input: Input, P: URLSearchParams
     g.world.sun.env.haze = Math.min(g.world.sun.env.haze, 0.0012); g.world.sun.env.mist = 0;
     if (!sunDir) return;
     const s = g.world.sun; s.dir.copy(sunDir);
-    if (shot === 'sunset') { s.light.color.setHex(0xffa860); s.light.intensity = 2.3; s.hemi.color.setHex(0x9a7a8a); s.hemi.intensity = 1.0; }
+    const e = s.env as unknown as { sunSky?: THREE.Vector3; golden?: number; day?: number };
+    if (shot === 'sunset') { s.light.color.setHex(0xffa860); s.light.intensity = 2.3; s.hemi.color.setHex(0x9a7a8a); s.hemi.intensity = 1.0; e.sunSky?.copy(sunDir); e.golden = 1; e.day = 0.55; }
     else { s.light.color.setHex(0x8aa0e0); s.light.intensity = 0.55; s.hemi.color.setHex(0x2a3660); s.hemi.intensity = 0.7; }
   };
   // where to look: the edge of the main island facing open water, or a preset
@@ -67,8 +70,8 @@ export async function testOcean(engine: Engine, input: Input, P: URLSearchParams
     // out on the water, looking toward the sun across the glitter
     const sd = sunDir ?? g.world.sun.dir, a = Math.atan2(sd.z, sd.x);
     let x = L.x, z = L.z;
-    for (let r = 4; r < 70; r++) { x = L.x + Math.cos(a) * r; z = L.z + Math.sin(a) * r; if (o.depthAt(x, z) > 2.5 && r > 20) break; }
-    cam = new THREE.Vector3(x - Math.cos(a) * 14, R.water + (shot === 'storm' ? 5 : 3.4), z - Math.sin(a) * 14);
+    for (let r = 4; r < 90; r++) { x = L.x + Math.cos(a) * r; z = L.z + Math.sin(a) * r; if (o.depthAt(x, z) > 4 && r > 34 && o.depthAt(x - Math.cos(a) * 12, z - Math.sin(a) * 12) > 2) break; }
+    cam = new THREE.Vector3(x - Math.cos(a) * 10, R.water + (shot === 'storm' ? 4.5 : 3.0), z - Math.sin(a) * 10);
     look = new THREE.Vector3(x + Math.cos(a) * 60, R.water + 2, z + Math.sin(a) * 60);
     fov = 50;
   } else if (shot === 'shore') {
@@ -91,7 +94,8 @@ export async function testOcean(engine: Engine, input: Input, P: URLSearchParams
       if (shark) { shark.hunger = 1; shark.prey = S; shark.x = S.cx + 6; shark.z = S.cz + 2; shark.y = S.cy; }
       S.ball = 1;
       let side = 0;
-      track = () => { side += 0.0015; const a = side; const y = Math.min(S.cy + 0.6, o.level - 0.8); return { cam: new THREE.Vector3(S.cx + Math.cos(a) * 6.5, y, S.cz + Math.sin(a) * 6.5), look: new THREE.Vector3(S.cx, S.cy, S.cz) }; };
+      track = () => { side += 0.0015; const a = side; const y = Math.min(S.cy + 0.5, o.level - 0.7); return { cam: new THREE.Vector3(S.cx + Math.cos(a) * 4.2, y, S.cz + Math.sin(a) * 4.2), look: new THREE.Vector3(S.cx, S.cy - 0.2, S.cz) }; };
+      const tr0 = track(); cam.copy(tr0.cam); look.copy(tr0.look); fov = 60;
     }
   }
   if (shot === 'titan' && fs) {
@@ -110,8 +114,23 @@ export async function testOcean(engine: Engine, input: Input, P: URLSearchParams
     look = new THREE.Vector3(px, R.water + 2, pz); fov = 46;
     setTimeout(() => o.dropPod(px, pz, 60), Number(P.get('drop') ?? 500));
   }
+  // the golem at work under the sea: hatched, set down by a seabed node, dived to it; the game's own camera follows
+  if (shot === 'dive' || shot === 'play') {
+    engine.setScreen(g);
+    for (let i = 0; i < 160 && !g.player.started; i++) engine.step(0.1, false);
+    const p = g.player as unknown as { x: number; z: number; y: number; vx: number; vz: number };
+    const node = shot === 'dive' ? o.reef?.nodes.find((n) => o.depthAt(n.x, n.z) < 9) ?? o.reef?.nodes[0] : null;
+    const at = node ? { x: node.x + 1.2, z: node.z + 0.8 } : out(3);
+    p.x = at.x; p.z = at.z; p.vx = p.vz = 0;
+    if (node) o.dive.depth = Math.max(0, o.depthAt(at.x, at.z) - 2.2);
+    g.cam.yaw = g.cam.yawGoal = 0.7; g.cam.dist = g.cam.distGoal = 18;
+    console.log('test=ocean dive', JSON.stringify(at), 'depth', o.dive.depth.toFixed(1), 'started', g.player.started);
+    for (let i = 0; i < 30; i++) engine.step(0.1, false);
+    engine.start();
+    return;
+  }
   g.cineCam = (c) => {
-    const tr = track?.(); if (tr) { cam.lerp(tr.cam, 0.08); look.lerp(tr.look, 0.15); }
+    const tr = track?.(); if (tr) { cam.lerp(tr.cam, 0.25); look.lerp(tr.look, 0.3); }
     c.position.copy(cam); c.lookAt(look); if (Math.abs(c.fov - fov) > 0.01) { c.fov = fov; c.updateProjectionMatrix(); } c.updateMatrixWorld();
   };
   (window as unknown as { __oceanCam: unknown }).__oceanCam = { cam, look };

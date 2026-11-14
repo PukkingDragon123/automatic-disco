@@ -50,7 +50,8 @@ export class Fishery {
     const R = ocean.region;
     this.r = new Rand(R.seed ^ 0xf15);
     const oce = R.oceanic, sea = this.seaCells();
-    const scale = (k: FishKind) => (k === 'leviathan' ? 0.75 : k === 'shark' ? 0.85 : 1);
+    // small fish drawn a little larger than life so they read as pixel art at play zoom
+    const scale = (k: FishKind) => (k === 'leviathan' ? 0.75 : k === 'shark' ? 0.85 : k === 'baitfish' ? 1.7 : k === 'reeffish' ? 1.3 : 1);
     const caps: Partial<Record<FishKind, number>> = oce
       ? { baitfish: 220, reeffish: 70, armourfish: 14, eel: 5, ray: 6, jelly: 26, shark: 2, leviathan: 1 }
       : { baitfish: sea > 1500 ? 70 : 0, reeffish: 0, armourfish: sea > 1500 ? 4 : 0, eel: 0, ray: sea > 2500 ? 2 : 0, jelly: 0, shark: 0, leviathan: 0 };

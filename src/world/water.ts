@@ -286,8 +286,8 @@ void main() {
     N.xz -= a.xy * kA * c; N.y -= b.z * kA * s; crest += b.z * kA * s;
   }
   // ripples on the swell: three short wave trains crossing near the wind, their fronts bent by a slow warp
-  float near = 1.0 - smoothstep(0.1, 0.6, fw);
-  vec2 wd = normalize(uWindV + vec2(1e-4, 0.0)), wq = p + (vec2(vn(p * 0.21), vn(p * 0.21 + 5.3)) - 0.5) * 2.4;
+  float near = 1.0 - smoothstep(0.06, 0.32, fw);
+  vec2 wd = normalize(uWindV + vec2(1e-4, 0.0)), wq = p + (vec2(vn(p * 0.17), vn(p * 0.17 + 5.3)) - 0.5) * 4.2 + (vec2(vn(p * 0.6 + 9.0), vn(p * 0.6 + 2.0)) - 0.5) * 0.8;
   vec2 chop = vec2(0.0);
   for (int i = 0; i < 3; i++) {
     float fi = float(i), an = (fi - 1.0) * 0.62 + 0.15 * sin(fi * 7.1);

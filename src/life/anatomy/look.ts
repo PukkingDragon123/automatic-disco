@@ -65,7 +65,7 @@ export function paintLook(px: Px, L: Look) {
   if (L.belly?.scales) px.scales({ ...L.belly.scales, mask: bellyM });
   if (L.fur) px.fur({ ...L.fur, mask: L.fur.mask ?? isMain as any });
   if (L.pebbles) px.pebbles(L.pebbles.size, { depth: L.pebbles.depth, pores: L.pebbles.pores, aniso: L.pebbles.aniso, mask: (i) => (isMain(i) ? 1 : 0) });
-  if (L.folds) { const f = L.folds; px.folds(f.axis, f.origin, f.spacing, { depth: f.depth, mask: f.near ? (i) => (isMain(i) ? f.near!(px.P(i)) : 0) : (i) => (isMain(i) ? 1 : 0) }); }
+  if (L.folds) { const f = L.folds, P = gb.P; px.folds(f.axis, f.origin, f.spacing, { depth: f.depth, mask: f.near ? (i) => { if (!isMain(i)) return 0; _p[0] = P[i * 3]; _p[1] = P[i * 3 + 1]; _p[2] = P[i * 3 + 2]; return f.near!(_p); } : (i) => (isMain(i) ? 1 : 0) }); }
   if (L.creases) px.creaseInk(L.creases);
   // second materials paint their own drawn surface
   if (L.mats) for (const k of Object.keys(L.mats)) {

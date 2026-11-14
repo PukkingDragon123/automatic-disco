@@ -108,7 +108,7 @@ function seaFan(seed: number, ramp: RampName) {
   };
   rib([0, 0, 0], r.range(-0.15, 0.15), 0.28, 0);
   // the web between the ribs, a darker translucent-looking sheet
-  for (let i = 0; i < 6; i++) { const a0 = -0.9 + i * 0.3, a1 = a0 + 0.3; b.tri([0, 0.2, -0.004], [Math.sin(a0) * 0.75, 0.2 + Math.cos(a0) * 0.6, -0.004], [Math.sin(a1) * 0.75, 0.2 + Math.cos(a1) * 0.6, -0.004], col(ramp, 1), [0.2, 0.9, 0.9]); }
+  for (let i = 0; i < 6; i++) { const a0 = -0.9 + i * 0.3, a1 = a0 + 0.3; b.tri([0, 0.2, -0.004], [Math.sin(a0) * 0.62, 0.2 + Math.cos(a0) * 0.5, -0.004], [Math.sin(a1) * 0.62, 0.2 + Math.cos(a1) * 0.5, -0.004], col(ramp, 2 + (i % 2)), [0.2, 0.9, 0.9]); }
   return b;
 }
 /** tube sponges: a cluster of open hexagonal tubes, dark inside */
@@ -152,11 +152,15 @@ function kelp(seed: number, H: number) {
   for (let i = 0; i < 8; i++) b.prism(pts[i], pts[i + 1], 0.035, 0.03, 3, 'olive', 2, pts[i][1] / H, pts[i + 1][1] / H, 0, false);
   for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; b.prism([0, 0.05, 0], [Math.cos(a) * 0.22, -0.05, Math.sin(a) * 0.22], 0.035, 0.01, 3, 'soil', 3, 0, 0, 0, false); }
   for (let y = 0.35, side = 0; y < H - 0.3; y += r.range(0.28, 0.45), side++) {
-    const a = side * 2.4 + r.range(-0.4, 0.4), L = r.range(0.55, 1.0), wd = r.range(0.07, 0.12), droop = r.range(0.1, 0.35);
+    const a = side * 2.4 + r.range(-0.4, 0.4), L = r.range(0.8, 1.35), wd = r.range(0.09, 0.15), droop = r.range(0.25, 0.6);
     const dx = Math.cos(a), dz = Math.sin(a), px = -dz * wd, pz = dx * wd, k = y / H, k2 = Math.min(1, (y + 0.3) / H);
     const ramp: RampName = r.chance(0.55) ? 'ochre' : 'olive', st = r.int(2, 4);
     const m: V = [dx * L * 0.5, y + 0.12, dz * L * 0.5], e: V = [dx * L, y + 0.12 - droop, dz * L];
-    b.quad([0, y, 0], [m[0] + px, m[1], m[2] + pz], e, [m[0] - px, m[1], m[2] - pz], col(ramp, st), [k, k2, k2, k2]);
+    // a strap: broad from the root, the tip drooping, a midrib fold (two tones)
+    const e2: V = [dx * L * 0.82 + px * 0.7, y + 0.06 - droop * 0.6, dz * L * 0.82 + pz * 0.7], e3: V = [dx * L * 0.82 - px * 0.7, y + 0.06 - droop * 0.6, dz * L * 0.82 - pz * 0.7];
+    b.quad([0, y, 0], [m[0] + px, m[1], m[2] + pz], e2, [dx * L * 0.82, y + 0.08 - droop * 0.6, dz * L * 0.82], col(ramp, st + 1), [k, k2, k2, k2]);
+    b.quad([0, y, 0], [dx * L * 0.82, y + 0.08 - droop * 0.6, dz * L * 0.82], e3, [m[0] - px, m[1], m[2] - pz], col(ramp, st), [k, k2, k2, k2]);
+    b.tri(e2, e, e3, col(ramp, st), [k2, k2, k2]);
     b.tri([m[0] + px, m[1], m[2] + pz], [m[0] + px * 0.2, m[1] + 0.01, m[2] + pz * 0.2], e, col(ramp, st + 1), [k2, k2, k2]);
     b.blob([dx * 0.06, y, dz * 0.06], [0.045, 0.06, 0.045], 'ochre', 3, seed + Math.round(y * 100), 0, 0, k);
   }

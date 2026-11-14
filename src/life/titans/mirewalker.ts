@@ -66,7 +66,7 @@ export function mirewalker(d: Design, rig: Rig, rest: V3[]) {
     { c: nk(0.93, -0.2), s: [W * 0.1, H * 0.11], p: 'neck' },
   ];
   const tr = body.add(trunk({
-    name: 'trunk', stations: st, tween: 1, capS: true, capE: false, k: 0.9,
+    name: 'trunk', stations: st, tween: 1, capS: true, capE: true, k: 0.9,
     rings: [{ at: 10, s: 1, ink: true }, { at: 12, s: 1, ink: true }],
     skin: X.spine,
     paint: (ch, p, b) => {

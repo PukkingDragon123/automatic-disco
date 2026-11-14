@@ -58,9 +58,10 @@ export function grovebacker(d: Design, rig: Rig, rest: V3[]) {
     { c: between(chest, neck, 0.62, [0, -H * 0.04, 0]), s: [W * 0.3, H * 0.32], p: 'neck', tw: [[8, 0, -0.08]] },
     { c: between(neck, head, 0.35, [0, -0.25, 0]), s: [W * 0.22, H * 0.23], p: 'neck' },
     { c: between(neck, head, 0.68, [0, -0.1, 0]), s: [W * 0.19, H * 0.21], p: 'neck' },
+    { c: between(neck, head, 0.88, [0, -0.1, 0]), s: [W * 0.15, H * 0.17], p: 'neck' },
   ];
   const tr = body.add(trunk({
-    name: 'trunk', stations: st, tween: [1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1], capS: true, capE: false, k: 0.85,
+    name: 'trunk', stations: st, tween: [1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 0], capS: true, capE: true, k: 0.85,
     // neck folds and the shoulder's skin fold
     rings: [{ at: 9, s: 1, ink: true }, { at: 10, s: 1, ink: true }, { at: 11, s: 1, ink: true }],
     skin: X.spine, paint: lookPaint(hideLook({ folds: { axis: [0, 0.3, 0.95], origin: neck, spacing: 0.42, depth: 1, near: (p) => (p[2] > chest[2] + T * 0.08 ? 1 : 0) } })),

@@ -332,10 +332,19 @@ export class Px {
     }
   }
   /** a scar: a raised pale seam along a 3D polyline with dark stitched edges */
+  /** the chart's surface bounds (for culling features that cannot touch it) */
+  get box() {
+    if (!this._box) { const P = this.gb.P, b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]; for (let i = 0; i < this.n; i++) for (let k = 0; k < 3; k++) { const v = P[i * 3 + k]; if (v < b[k]) b[k] = v; if (v > b[k + 3]) b[k + 3] = v; } this._box = b; }
+    return this._box;
+  }
+  private _box: number[] | null = null;
   scar(pts: V3[], width: number, R: number[]) {
-    const P = this.gb.P, tpm = 1 / this.mpt;
+    const P = this.gb.P, tpm = 1 / this.mpt, pad = width * 1.5 + this.mpt * 2;
+    const lo = [0, 1, 2].map((k) => Math.min(...pts.map((q) => q[k])) - pad), hi = [0, 1, 2].map((k) => Math.max(...pts.map((q) => q[k])) + pad), b = this.box;
+    if (lo[0] > b[3] || hi[0] < b[0] || lo[1] > b[4] || hi[1] < b[1] || lo[2] > b[5] || hi[2] < b[2]) return;
     for (let i = 0; i < this.n; i++) {
       const px = P[i * 3], py = P[i * 3 + 1], pz = P[i * 3 + 2];
+      if (px < lo[0] || px > hi[0] || py < lo[1] || py > hi[1] || pz < lo[2] || pz > hi[2]) continue;
       let bd = 1e9, bt = 0;
       for (let s = 0; s + 1 < pts.length; s++) {
         const a = pts[s], b = pts[s + 1], ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], L2 = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2 || 1e-9;

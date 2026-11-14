@@ -22,7 +22,18 @@ uniform vec3 uSunDir, uSunCol, uFogS, uFogD, uShaft, uRedC, uGlowC;
 uniform vec3 uRampW[7], uRampB[7];
 float linZ(float d) { float z = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear)); }
 vec3 worldAt(vec2 uv, float d) { vec4 v = uInvProj * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); v /= v.w; return (uCamWorld * v).xyz; }
-float bay(vec2 p) { vec2 f = mod(floor(p), 4.0); return mod(f.x * 4.0 + f.y * 7.0 + f.x * f.y * 3.0, 16.0) / 16.0; }
+/** the light falling from the waves: sheets along the edges of slowly drifting cells (the caustics, seen in the water) */
+float shaftNet(vec2 q, float t) {
+  vec2 i = floor(q), f = fract(q);
+  float d1 = 9.0, d2 = 9.0;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    vec2 g = vec2(float(x), float(y)), o = vec2(h2(i + g), h2(i + g + 3.7));
+    o = 0.5 + 0.4 * sin(t * 0.35 + o * 6.2832);
+    float d = length(g + o - f);
+    if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+  }
+  return 1.0 - smoothstep(0.06, 0.2, d2 - d1);
+}
 void main() {
   vec2 uv = gl_FragCoord.xy / uRes;
   // a slow wobble of the whole view, in whole pixels
@@ -51,15 +62,14 @@ void main() {
   k = floor(k * 9.0 + 0.5) / 9.0;
   vec3 col = mix(lit, fogC, k);
   // light shafts: march the ray through a moving pattern of light cast down from the waves along the sun
-  float acc = 0.0, span = min(uw, 36.0), j = bay(floor(gl_FragCoord.xy / 2.0));
+  float acc = 0.0, span = min(uw, 36.0), j = 0.5;
   vec3 L = normalize(uSunDir);
   for (int i = 0; i < 10; i++) {
     vec3 Q = ro + normalize(worldAt((floor(gl_FragCoord.xy / 2.0) * 2.0 + 1.0) / uRes, 0.5) - ro) * (float(i) + j) / 10.0 * span;
     float dz = uSurf - Q.y;
     if (dz < 0.0) continue;
     vec2 S = Q.xz + L.xz / max(L.y, 0.2) * dz;
-    float pat = vn(S * 0.32 + vec2(uTime * 0.05, uTime * 0.03)) * 0.6 + vn(S * 0.85 - uTime * 0.07) * 0.4;
-    acc += smoothstep(0.56, 0.74, pat) * exp(-dz * 0.07);
+    acc += shaftNet(S * 0.22 + vec2(uTime * 0.02, uTime * 0.013), uTime) * exp(-dz * 0.07);
   }
   acc /= 10.0;
   col += uShaft * floor(acc * 5.0) / 5.0 * uSunK * 0.9 * (1.0 - k * 0.4);

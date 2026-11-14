@@ -27,11 +27,11 @@ if (P.get('group') === '1') {
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0x8a9aa6);
   lightUp(scene, 70);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshLambertMaterial({ color: 0x5a6a48 })); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
-  const ids = ['grovebacker', 'mirewalker', 'cragstrider'], xs = [-34, 6, 44];
+  const ids = ['grovebacker', 'mirewalker', 'cragstrider'], xs = [-52, 8, 58];
   let gbFoot = new THREE.Vector3();
   ids.forEach((id, i) => {
     const m = buildSpeciesModel(beastDesign(id, 300 + i)), { mesh, bones } = makeInstance(m), an = new Animator(m.rig, bones, mesh);
-    mesh.position.set(xs[i], 0, 0); mesh.rotation.y = i === 1 ? Math.PI / 2 + 0.25 : Math.PI / 2 - 0.15; scene.add(mesh); mesh.updateMatrixWorld(true);
+    mesh.position.set(xs[i], 0, i === 1 ? -14 : 0); mesh.rotation.y = i === 0 ? 0.7 : i === 1 ? Math.PI / 2 + 0.2 : -0.6; scene.add(mesh); mesh.updateMatrixWorld(true);
     for (let t = 0; t < 1.2; t += 1 / 30) an.update(1 / 30, { speed: 0, turn: 0, state: 'idle', act: 0, lookYaw: 0, lookPitch: 0, ground: () => 0, air: 0 });
     mesh.updateMatrixWorld(true);
     if (i === 0) { const lg = m.rig.legs.find((l) => l.kind === 'fore' && l.side > 0)!; bones[lg.bones[lg.bones.length - 1]].getWorldPosition(gbFoot); }
@@ -39,7 +39,7 @@ if (P.get('group') === '1') {
   });
   const man = human(); man.position.set(gbFoot.x + 1.5, 0, gbFoot.z + 5); man.rotation.y = 0.4; scene.add(man);
   const W = innerWidth, H = innerHeight;
-  const cam = new THREE.PerspectiveCamera(34, W / (H * 0.68), 1, 900); cam.position.set(8, 34, 150); cam.lookAt(6, 16, 0);
+  const cam = new THREE.PerspectiveCamera(34, W / (H * 0.68), 1, 900); cam.position.set(4, 40, 175); cam.lookAt(4, 15, 0);
   R.setViewport(0, H * 0.32, W, H * 0.68); R.setScissor(0, H * 0.32, W, H * 0.68); R.render(scene, cam);
   // the close panel: the human beside the Grovebacker's forefoot
   const c2 = new THREE.PerspectiveCamera(30, W / (H * 0.32), 0.3, 400); c2.position.set(man.position.x + 4, 3.2, man.position.z + 18); c2.lookAt(man.position.x - 1, 2.6, man.position.z - 2);
