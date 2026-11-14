@@ -162,8 +162,8 @@ export class VoxelWord {
     if (!moving) { this.off.fill(0); this.vel.fill(0); for (let i = 0; i < this.n; i++) this.rot.set([0, 0, 0, 1], i * 4); this.active = false; }
     this.writeAll();
   }
-  /** a box (in the word's own frame) for things to bounce off */
-  get halfSize() { return new THREE.Vector3(this.w / 2 + 0.5, this.h / 2 + 0.5, this.d / 2 + 0.5).multiplyScalar(this.size); }
+  /** a box (in the word's own frame, before its scale) for things to bounce off */
+  get halfSize() { return new THREE.Vector3(this.w / 2 + 0.5, this.h / 2 + 0.5, this.d / 2 + 0.5); }
   dispose() {
     this.group.removeFromParent();
     this.mesh.geometry.dispose(); this.mesh.dispose();

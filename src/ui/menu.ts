@@ -1,96 +1,94 @@
-// The main menu floats in space. Unit 07's meteor drifts and turns slowly over the target world, its fissures
-// breathing teal light, the golem's brass lens peeking out of the rock and following the pointer, small rocks on
-// tilted orbits, glittering dust, a twinkling starfield and nebula, the sun's glare rimming everything. The options
-// are cast-iron signs hanging on chains and tethered to the rock: they bob and swing, light up and lean in when you
-// point at them, and clank and swing when you work them. An iron cog opens the settings plate.
-//   NEW WORLD    nixie tubes on the sign count down and the camera dives past the rock to the planet (the deploy
-//                sequence, src/ui/deploy*.ts, does the carrier, the pod and the fall)
+// The main menu: no title, no signs. The U.S.S. VANGUARD, the Corps' carrier, hangs in space over the target world
+// with her bay doors open on the lit hangar, shuttles plying in and out, radar turning, running lights blinking;
+// the camera drifts and leans after the pointer. Beside her the options float as 3D words built block by block
+// from the pixel font's own glyphs (painted enamel faces, steel sides): they bob, lean in and light up when you
+// point at them, and burst apart and reassemble when you work them. An apple floats by the bow. Kick it.
+//   NEW WORLD    the words burst and the camera runs in at the bay mouth (the deploy sequence, src/ui/deploy*.ts,
+//                does the carrier interior, the pod and the fall); the SEED field picks the world
 //   CONTINUE     resume the world being taken
-//   ARCHIVE      the camera drifts to the worlds claimed for Earth, each hanging on its own iron tag
-//   ASSEMBLY BAY refit Unit 07; SEED CARD (a small tag) launches at a hand-punched seed
+//   ARCHIVE      the words scatter and the worlds claimed for Earth float in
+//   ASSEMBLY BAY refit Unit 07
+//   SETTINGS     volume, graphics quality, UI scale, screen shake
 // The ascension finale (AscendScreen) is a newsreel: the regions turn, the borders dissolve, a flag goes up.
 import * as THREE from 'three';
 import type { Screen } from '../app/engine';
 import { type Post, resetGrade } from '../gfx/post';
 import { el, ui, Tip } from './kit';
-import { makeGlobe, stars, type Globe } from './globe';
+import { makeGlobe, makeSpace, stars, type Globe } from './globe';
 import { makePlanet, type Planet } from '../world/planet';
 import { VEYR } from '../world/palette';
 import { GENE } from '../life/genes';
 import { Fx } from '../game/fx';
 import { Cinema } from '../game/cinema';
 import { csfx, cloop, type Loop } from './cineAudio';
-import { mat, tex, roundelTex, Pix, CR, RD } from './cineKit';
-import { makeMeteor, makeRockSwarm, makeSparkles, makeSign, stepSign, kickSign, makeGear, makeSunGlare, Nixies, Chain, ironURL, enamelURL, type Sign, type Meteor } from './cineSigns';
+import { mat, tex, roundelTex, Pix } from './cineKit';
 import { fontVars } from './cineUI';
 import { iconURL } from './icons';
-import { gbuf } from '../gfx/gbuf';
 import { settings, setSettings, onSettings, resetSettings, type Quality } from '../settings';
+import { RAMPS } from '../art/palette';
+import { VoxelWord } from './menuText';
+import { Apple } from './menuApple';
+import { buildMenuCarrier, type MenuCarrier } from './menuShip';
 
 export interface ArchiveEntry { seed: number; name: string; date: string; species: number; genes: string[]; regions: number }
 
 const V3 = THREE.Vector3;
+// flat master-palette panels: a plate is a fill, a 1 px ink line, a lit top-left edge and a shaded bottom-right
+// edge (hard steps, no gradient, no texture noise) and a hard drop shadow
 const CSS = /* css */`
 .mn3 { position: fixed; inset: 0; pointer-events: none !important; z-index: 3; font-family: 'VT', monospace; --u: calc(1px * var(--s, 2)); }
 .mn3 > * { pointer-events: auto; }
-.mn3 .tag { position: absolute; left: 50%; bottom: calc(6 * var(--u)); transform: translateX(-50%); font-size: var(--cf-vt1); line-height: var(--cf-vt1); color: rgba(217, 210, 191, 0.45); letter-spacing: 1px; white-space: nowrap; pointer-events: none !important; text-shadow: 0 calc(1 * var(--u)) 0 #000; }
-.mn3 .tag b { color: #d9d2bf; font-weight: normal; }
-.mn3 .iron { background: var(--iron) 0 0 / 100% 100%; image-rendering: pixelated; box-shadow: 0 calc(4 * var(--u)) calc(6 * var(--u)) rgba(8, 9, 12, 0.6); color: #d9d2bf; text-shadow: 0 1px 0 #16171a; }
-.mn3 .enamel { background: var(--enamel) 0 0 / 100% 100%; image-rendering: pixelated; box-shadow: 0 calc(4 * var(--u)) calc(6 * var(--u)) rgba(8, 9, 12, 0.6); color: #d9d2bf; text-shadow: 0 1px 0 #1e2016; }
+.mn3 .tag { position: absolute; left: 50%; bottom: calc(6 * var(--u)); transform: translateX(-50%); font-size: var(--cf-vt1); line-height: var(--cf-vt1); color: rgba(189, 181, 159, 0.55); letter-spacing: 1px; white-space: nowrap; pointer-events: none !important; text-shadow: 0 calc(1 * var(--u)) 0 #14161b; }
+.mn3 .tag b { color: #d2cab4; font-weight: normal; }
+.mn3 .plt { background: #2f3023; color: #d2cab4; text-shadow: 0 1px 0 #14161b; border: 1px solid #14161b;
+  box-shadow: inset calc(1 * var(--u)) calc(1 * var(--u)) 0 #585a40, inset calc(-1 * var(--u)) calc(-1 * var(--u)) 0 #1f2019, calc(3 * var(--u)) calc(3 * var(--u)) 0 rgba(20, 22, 27, 0.6); }
 .mn3 .tipx { position: fixed; display: none; pointer-events: none !important; padding: calc(5 * var(--u)) calc(8 * var(--u)); max-width: calc(170 * var(--u)); animation: mn-in 160ms steps(4); }
 @keyframes mn-in { 0% { transform: translateY(calc(-4 * var(--u))); opacity: 0; } 100% { transform: none; opacity: 1; } }
-.mn3 .tipx .h { font-family: 'Superwide', monospace; font-size: var(--cf-sw1); line-height: calc(var(--cf-sw1) + 4px); color: #d9d2bf; }
-.mn3 .tipx .h .k { float: right; margin-left: calc(8 * var(--u)); color: #2a1a12; background: #d9d2bf; border-radius: 2px; padding: 0 calc(2 * var(--u)); text-shadow: none; font-family: 'VT', monospace; font-size: var(--cf-vt1); line-height: var(--cf-sw1); }
-.mn3 .tipx .d { font-size: var(--cf-vt1); line-height: var(--cf-vt1); margin-top: calc(2 * var(--u)); color: #b8b2a2; }
-.mn3 .tipx .w { font-size: var(--cf-vt1); color: #d9a43a; margin-top: calc(2 * var(--u)); }
-.mn3 .btn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: calc(3 * var(--u)); padding: calc(3 * var(--u)) calc(8 * var(--u)); cursor: pointer; font-family: 'Superwide', monospace; font-size: var(--cf-sw1); line-height: var(--cf-sw1); letter-spacing: 1px; background: linear-gradient(180deg, #4a2e20, #3a2418 55%, #2a1a12); border: 1px solid #16100c; border-radius: calc(2 * var(--u)); box-shadow: 0 1px 0 rgba(217, 210, 191, 0.18) inset, 0 calc(2 * var(--u)) 0 #16100c; color: #d9d2bf; text-shadow: 0 1px 0 #16100c; transition: transform 60ms, box-shadow 60ms; }
-.mn3 .btn:hover { color: #efe8d6; background: linear-gradient(180deg, #553626, #42291c 55%, #2e1d14); }
-.mn3 .btn:active { transform: translateY(calc(2 * var(--u))); box-shadow: 0 1px 0 rgba(217, 210, 191, 0.1) inset, 0 0 0 #16100c; }
-.mn3 .btn.on { transform: translateY(calc(1 * var(--u))); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4) inset, 0 calc(1 * var(--u)) 0 #16100c; color: #efe8d6; }
-.mn3 .btn.on::before { content: ''; width: calc(3 * var(--u)); height: calc(3 * var(--u)); border-radius: 50%; background: #d9a43a; box-shadow: 0 0 calc(3 * var(--u)) rgba(217, 164, 58, 0.6); margin-right: calc(2 * var(--u)); }
-.mn3 .btn.red { background: linear-gradient(180deg, #c4473b, #b8382e 55%, #8e2a22); border-color: #3a120e; box-shadow: 0 1px 0 rgba(255, 220, 200, 0.25) inset, 0 calc(2 * var(--u)) 0 #3a120e; color: #efe8d6; }
+.mn3 .tipx .h { font-family: 'Superwide', monospace; font-size: var(--cf-sw1); line-height: calc(var(--cf-sw1) + 4px); color: #e2dbc6; }
+.mn3 .tipx .h .k { float: right; margin-left: calc(8 * var(--u)); color: #1f232b; background: #d2cab4; padding: 0 calc(2 * var(--u)); text-shadow: none; font-family: 'VT', monospace; font-size: var(--cf-vt1); line-height: var(--cf-sw1); }
+.mn3 .tipx .d { font-size: var(--cf-vt1); line-height: var(--cf-vt1); margin-top: calc(2 * var(--u)); color: #bdb59f; }
+.mn3 .tipx .w { font-size: var(--cf-vt1); color: #c9a464; margin-top: calc(2 * var(--u)); }
+.mn3 .btn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: calc(3 * var(--u)); padding: calc(3 * var(--u)) calc(8 * var(--u)); cursor: pointer; font-family: 'Superwide', monospace; font-size: var(--cf-sw1); line-height: var(--cf-sw1); letter-spacing: 1px;
+  background: #2f2e31; border: 1px solid #14161b; box-shadow: inset 0 1px 0 #524f4f, 0 calc(2 * var(--u)) 0 #14161b; color: #d2cab4; text-shadow: 0 1px 0 #14161b; transition: transform 60ms, box-shadow 60ms; }
+.mn3 .btn:hover { color: #e2dbc6; background: #3f3d3f; }
+.mn3 .btn:active { transform: translateY(calc(2 * var(--u))); box-shadow: inset 0 1px 0 #3f3d3f, 0 0 0 #14161b; }
+.mn3 .btn.on { transform: translateY(calc(1 * var(--u))); box-shadow: inset 0 1px 0 #14161b, 0 calc(1 * var(--u)) 0 #14161b; color: #e2dbc6; }
+.mn3 .btn.on::before { content: ''; width: calc(3 * var(--u)); height: calc(3 * var(--u)); background: #c9a464; margin-right: calc(2 * var(--u)); }
+.mn3 .btn.red { background: #80332c; border-color: #3b1a18; box-shadow: inset 0 1px 0 #a2473a, 0 calc(2 * var(--u)) 0 #3b1a18; color: #e2dbc6; }
 .mn3 .btn img { width: calc(18 * var(--u)); height: calc(18 * var(--u)); image-rendering: pixelated; }
 .mn3 .back { position: absolute; left: calc(10 * var(--u)); bottom: calc(20 * var(--u)); display: none; }
-/* iron plates: the settings and an archived world's details */
-.mn3 .plate { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; width: calc(230 * var(--u)); padding: calc(12 * var(--u)) calc(14 * var(--u)); box-sizing: border-box; animation: mn-swing 520ms cubic-bezier(.25,1.6,.45,1); transform-origin: 50% 0; }
-@keyframes mn-swing { 0% { transform: translate(-50%, -62%) rotate(-5deg); opacity: 0; } 60% { transform: translate(-50%, -50%) rotate(2deg); opacity: 1; } 100% { transform: translate(-50%, -50%) rotate(0); } }
-.mn3 .plate .hd { font-family: 'Superwide', monospace; font-size: var(--cf-sw2); line-height: var(--cf-sw2); color: #d9d2bf; letter-spacing: 3px; margin-bottom: calc(8 * var(--u)); text-align: center; }
-.mn3 .plate .hd::after { content: ''; display: block; height: 1px; margin: calc(4 * var(--u)) calc(20 * var(--u)) 0; background: rgba(217, 210, 191, 0.35); }
+.mn3 .plate { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; width: min(94vw, calc(230 * var(--u))); padding: calc(12 * var(--u)) calc(14 * var(--u)); box-sizing: border-box; animation: mn-swing 420ms cubic-bezier(.25,1.6,.45,1); }
+@keyframes mn-swing { 0% { transform: translate(-50%, -58%); opacity: 0; } 100% { transform: translate(-50%, -50%); opacity: 1; } }
+.mn3 .plate .hd { font-family: 'Superwide', monospace; font-size: var(--cf-sw2); line-height: var(--cf-sw2); color: #e2dbc6; letter-spacing: 3px; margin-bottom: calc(8 * var(--u)); text-align: center; }
+.mn3 .plate .hd::after { content: ''; display: block; height: 1px; margin: calc(4 * var(--u)) calc(20 * var(--u)) 0; background: #707254; }
 .mn3 .plate .row { display: flex; align-items: center; gap: calc(6 * var(--u)); margin: calc(4 * var(--u)) 0; }
-.mn3 .plate .lb { flex: 0 0 calc(78 * var(--u)); font-family: 'Jersey', monospace; font-size: var(--cf-np1); line-height: var(--cf-np1); color: #c8c2b0; letter-spacing: 1px; }
+.mn3 .plate .lb { flex: 0 0 calc(78 * var(--u)); font-family: 'Jersey', monospace; font-size: var(--cf-np1); line-height: var(--cf-np1); color: #bdb59f; letter-spacing: 1px; }
 .mn3 .plate .opts { display: flex; gap: calc(2 * var(--u)); flex-wrap: wrap; }
 .mn3 .plate .opts .btn { padding: calc(2 * var(--u)) calc(4 * var(--u)); }
-.mn3 .plate .val { flex: 0 0 calc(22 * var(--u)); text-align: right; font-size: var(--cf-vt1); color: #d9d2bf; }
-.mn3 .plate input[type=range] { -webkit-appearance: none; appearance: none; flex: 1; height: calc(5 * var(--u)); background: linear-gradient(180deg, #1a1c14, #2a2c20); border: 1px solid #16180f; box-shadow: 0 1px 0 rgba(217, 210, 191, 0.15); outline: none; margin: 0; cursor: pointer; }
-.mn3 .plate input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: calc(9 * var(--u)); height: calc(13 * var(--u)); border-radius: calc(2 * var(--u)); background: linear-gradient(90deg, #553626, #3a2418 50%, #2a1a12); border: 1px solid #16100c; box-shadow: 0 calc(1 * var(--u)) 0 #16100c, 0 1px 0 rgba(217, 210, 191, 0.2) inset; }
-.mn3 .plate input[type=range]::-moz-range-thumb { width: calc(9 * var(--u)); height: calc(13 * var(--u)); background: linear-gradient(90deg, #553626, #3a2418 50%, #2a1a12); border: 1px solid #16100c; border-radius: calc(2 * var(--u)); }
+.mn3 .plate .val { flex: 0 0 calc(22 * var(--u)); text-align: right; font-size: var(--cf-vt1); color: #d2cab4; }
+.mn3 .plate input[type=range] { -webkit-appearance: none; appearance: none; flex: 1; height: calc(5 * var(--u)); background: #1f2019; border: 1px solid #14161b; box-shadow: 0 1px 0 #585a40; outline: none; margin: 0; cursor: pointer; }
+.mn3 .plate input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: calc(9 * var(--u)); height: calc(13 * var(--u)); background: #3f3d3f; border: 1px solid #14161b; box-shadow: inset 1px 1px 0 #69645f, 0 calc(1 * var(--u)) 0 #14161b; }
+.mn3 .plate input[type=range]::-moz-range-thumb { width: calc(9 * var(--u)); height: calc(13 * var(--u)); background: #3f3d3f; border: 1px solid #14161b; border-radius: 0; }
 .mn3 .plate .foot { display: flex; justify-content: space-between; margin-top: calc(8 * var(--u)); }
-.mn3 .det { left: auto; right: calc(14 * var(--u)); transform: translateY(-50%); width: calc(170 * var(--u)); }
-@keyframes mn-swing2 { 0% { transform: translateY(-60%) rotate(4deg); opacity: 0; } 100% { transform: translateY(-50%); opacity: 1; } }
-.mn3 .det { animation: mn-swing2 420ms cubic-bezier(.25,1.6,.45,1); }
-.mn3 .det .n { font-family: 'Canned', monospace; font-size: var(--cf-sw2); line-height: var(--cf-sw2); color: #d9d2bf; }
-.mn3 .det .s { font-size: var(--cf-vt1); line-height: var(--cf-vt1); margin: calc(4 * var(--u)) 0; color: #b8b2a2; }
+.mn3 .det { left: auto; right: calc(14 * var(--u)); transform: translateY(-50%); width: min(80vw, calc(170 * var(--u))); animation: mn-swing2 360ms cubic-bezier(.25,1.6,.45,1); }
+@keyframes mn-swing2 { 0% { transform: translateY(-58%); opacity: 0; } 100% { transform: translateY(-50%); opacity: 1; } }
+.mn3 .det .n { font-family: 'Canned', monospace; font-size: var(--cf-sw2); line-height: var(--cf-sw2); color: #e2dbc6; }
+.mn3 .det .s { font-size: var(--cf-vt1); line-height: var(--cf-vt1); margin: calc(4 * var(--u)) 0; color: #bdb59f; }
 .mn3 .det .gn { display: flex; flex-wrap: wrap; gap: calc(2 * var(--u)); margin: calc(3 * var(--u)) 0 calc(6 * var(--u)); }
-.mn3 .det .gn span { font-size: var(--cf-vt1); line-height: var(--cf-vt1); border: 1px solid #5c5f5e; padding: 0 calc(2 * var(--u)); color: #c8c2b0; background: rgba(22, 23, 26, 0.5); }
+.mn3 .det .gn span { font-size: var(--cf-vt1); line-height: var(--cf-vt1); border: 1px solid #55595b; padding: 0 calc(2 * var(--u)); color: #bdb59f; background: #1f2019; }
 .mn3 .det .btn { width: 100%; box-sizing: border-box; }
-/* the punch card */
-.mn3 .pcard { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%) rotate(-1deg); display: none; width: min(92vw, calc(260 * var(--u))); padding: calc(6 * var(--u)) calc(8 * var(--u)) calc(8 * var(--u)); background: linear-gradient(180deg, #f2ead2, #e4dab8); color: #3a2a18; text-shadow: none; box-shadow: calc(3 * var(--u)) calc(4 * var(--u)) 0 rgba(0, 0, 0, 0.55); clip-path: polygon(calc(10 * var(--u)) 0, 100% 0, 100% 100%, 0 100%, 0 calc(10 * var(--u))); animation: mn-card 360ms cubic-bezier(.2,1.4,.4,1); }
-@keyframes mn-card { 0% { transform: translate(-50%, 30%) rotate(4deg); opacity: 0; } 100% { transform: translate(-50%, -50%) rotate(-1deg); opacity: 1; } }
-.mn3 .pcard .hd { display: flex; justify-content: space-between; font-family: 'Silk', monospace; font-size: var(--cf-ps1); color: #a8321c; letter-spacing: 1px; }
-.mn3 .pcard .cols { display: grid; grid-template-columns: repeat(9, 1fr); gap: calc(3 * var(--u)); margin: calc(5 * var(--u)) 0; }
-.mn3 .pcard .col { display: flex; flex-direction: column; align-items: center; gap: calc(1 * var(--u)); }
-.mn3 .pcard .ch { font-size: var(--cf-vt2); line-height: var(--cf-vt2); height: var(--cf-vt2); color: #2a1c10; }
-.mn3 .pcard .holes { display: grid; grid-template-rows: repeat(10, calc(3 * var(--u))); gap: calc(1 * var(--u)); }
-.mn3 .pcard .holes i { display: block; width: calc(4 * var(--u)); height: calc(3 * var(--u)); background: rgba(90, 70, 40, 0.18); }
-.mn3 .pcard .holes i.p { background: #1a120a; animation: mn-punch 140ms steps(2); }
-@keyframes mn-punch { 0% { transform: scale(1.8); } 100% { transform: none; } }
-.mn3 .pcard .row { display: flex; gap: calc(4 * var(--u)); align-items: center; }
-.mn3 .pcard input { position: absolute; opacity: 0; pointer-events: none; }
-.mn3 .pcard .hint { flex: 1; font-size: var(--cf-vt1); line-height: var(--cf-vt1); color: #6a5a3a; }
+/* the seed: a small stencilled field */
+.mn3 .seed { position: absolute; right: calc(10 * var(--u)); bottom: calc(18 * var(--u)); display: flex; align-items: center; gap: calc(4 * var(--u)); padding: calc(3 * var(--u)) calc(5 * var(--u)); }
+.mn3 .seed .l { font-family: 'Superwide', monospace; font-size: var(--cf-sw1); color: #bdb59f; letter-spacing: 1px; }
+.mn3 .seed input { width: calc(64 * var(--u)); font-family: 'Jersey', monospace; font-size: var(--cf-np1); line-height: var(--cf-np1); padding: calc(1 * var(--u)) calc(3 * var(--u)); background: #d2cab4; color: #1f232b; border: 1px solid #14161b; box-shadow: inset 1px 1px 0 #8c8471; outline: none; letter-spacing: 2px; text-transform: uppercase; border-radius: 0; }
+.mn3 .seed input::placeholder { color: #8c8471; }
+/* the joke */
+.mn3 .crunch { position: fixed; pointer-events: none !important; font-family: 'Canned', monospace; font-size: var(--cf-sw2); color: #e2dbc6; text-shadow: calc(1 * var(--u)) calc(1 * var(--u)) 0 #14161b; transform: translate(-50%, -50%); animation: mn-crunch 1.6s steps(12) forwards; white-space: nowrap; }
+@keyframes mn-crunch { 0% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; } 12% { transform: translate(-50%, -60%) scale(1); opacity: 1; } 80% { opacity: 1; } 100% { transform: translate(-50%, -140%); opacity: 0; } }
 .mn3.hide > :not(.tipx) { visibility: hidden; }
 /* the ascension's button */
-.mn3 .big { display: flex; align-items: center; justify-content: center; gap: calc(4 * var(--u)); width: 100%; padding: calc(4 * var(--u)); background: linear-gradient(180deg, #c4473b, #b8382e 55%, #8e2a22); border: 1px solid #3a120e; border-radius: calc(2 * var(--u)); box-shadow: 0 1px 0 rgba(255, 220, 200, 0.25) inset, 0 calc(3 * var(--u)) 0 #3a120e; color: #efe8d6; font-family: 'Superwide', monospace; font-size: var(--cf-sw1); letter-spacing: 1px; cursor: pointer; text-shadow: 0 1px 0 #3a120e; }
-.mn3 .big:hover { filter: brightness(1.08); }
+.mn3 .big { display: flex; align-items: center; justify-content: center; gap: calc(4 * var(--u)); width: 100%; padding: calc(4 * var(--u)); background: #80332c; border: 1px solid #3b1a18; box-shadow: inset 0 1px 0 #a2473a, 0 calc(3 * var(--u)) 0 #3b1a18; color: #e2dbc6; font-family: 'Superwide', monospace; font-size: var(--cf-sw1); letter-spacing: 1px; cursor: pointer; text-shadow: 0 1px 0 #3b1a18; }
+.mn3 .big:hover { background: #a2473a; }
 .mn3 .big:active { transform: translateY(calc(2 * var(--u))); }
 .mn3 .big img { width: calc(18 * var(--u)); height: calc(18 * var(--u)); image-rendering: pixelated; }
 `;
@@ -99,68 +97,58 @@ function style() {
   fontVars();
   if (styled) return; styled = true;
   const s = document.createElement('style'); s.textContent = CSS; document.head.appendChild(s);
-  document.documentElement.style.setProperty('--iron', `url(${ironURL(230, 160, 9)})`);
-  document.documentElement.style.setProperty('--enamel', `url(${enamelURL(230, 150, 4)})`);
 }
 
-/** the world positions of the scene's pieces (the camera looks at the origin from +z) */
-const M0 = new V3(-1.9, -0.05, 0);              // the meteor
-const SIGN_X = 2.75, SIGN_Y = [1.45, 0.48, -0.49, -1.46];
-const SUN = new V3(0.55, 0.42, -0.72).normalize();
-const PLANET = new V3(-6.5, -13, -24), PLANET_R = 10;
-const ARCH = new V3(12, 0.2, -1);               // where the archive gallery hangs
+/** the carrier's placement and the light (the world is in metres; the ship is 180 m long) */
+const SHIP_YAW = 0.62;                                   // her bow swings toward the camera, a little right
+const SHIP_C = new V3(0, 4, -4);                         // her middle, ship-local
+const VIEW = new V3(0.05, 0.2, 0.98).normalize();        // from the ship toward the camera
+const SUN_L = new V3(-0.72, 0.52, 0.16).normalize();     // toward the sun, ship-local: the port side, raking
+const WORD_D = 165;                                      // how far in front of the camera the words float
+type Mode = 'main' | 'archive' | 'settings' | 'launch' | 'away';
+interface Opt { id: string; label: string; key: string; tip: string; word: VoxelWord }
 
-type Mode = 'main' | 'archive' | 'card' | 'settings' | 'launch' | 'away';
 export class MenuScreen implements Screen {
   private scene = new THREE.Scene(); private fxScene = new THREE.Scene();
-  private cam = new THREE.PerspectiveCamera(38, 1, 0.05, 400);
-  private fx: Fx; private meteor: Meteor; private swarm: ReturnType<typeof makeRockSwarm>; private dust: ReturnType<typeof makeSparkles>;
-  private globe: Globe; private sky: THREE.Group;
-  private signs: Sign[] = []; private title: Sign; private seedTag: Sign; private gearTag: Sign;
-  private chains: { c: Chain; a: () => THREE.Vector3; b: () => THREE.Vector3; sag: number }[] = [];
-  private gear: ReturnType<typeof makeGear>; private gearSpin = 0; private gearHover = 0;
-  private nix: Nixies;
-  private worlds: { g: Globe; e: ArchiveEntry; tag: Sign; at: THREE.Vector3 }[] = [];
-  private emptyTag: Sign | null = null;
-  private glowLight: THREE.PointLight; private lamp: THREE.PointLight;
-  private root: HTMLDivElement; private tipEl: HTMLDivElement; private backEl: HTMLDivElement; private detEl: HTMLDivElement; private cardEl: HTMLDivElement; private setEl: HTMLDivElement;
+  private cam = new THREE.PerspectiveCamera(36, 1, 1, 9000);
+  private ship: MenuCarrier; private globe: Globe; private apple: Apple; private fx: Fx;
+  private words: Opt[] = []; private empty: VoxelWord | null = null;
+  private worlds: { g: Globe; e: ArchiveEntry; at: THREE.Vector3 }[] = [];
+  private lamp: THREE.PointLight;
+  private root: HTMLDivElement; private tipEl: HTMLDivElement; private backEl: HTMLDivElement; private detEl: HTMLDivElement; private setEl: HTMLDivElement; private seedIn: HTMLInputElement;
   private ray = new THREE.Raycaster(); private ndc = new THREE.Vector2(); private ptrIn = false; private ptrX = 0; private ptrY = 0;
   private par = new THREE.Vector2();
-  private hovered: Sign | null = null; private hoverGear = false; private hoverWorld = -1;
+  private hovered: Opt | null = null; private hoverApple = false; private hoverWorld = -1; private hoverEmpty = false;
   private mode: Mode = 'main'; private focus = -1;
-  private t = 0;
-  private camPos = new V3(0.5, 0.25, 9.4); private camLook = new V3(0.6, 0.0, 0);
-  private cine: Cinema;
-  private hum: Loop | null = null;
-  private busy = false; private closed = false;
-  private seedTxt = ''; private tipHtml = '';
+  private t = 0; private archK = 0;
+  private rest = { pos: new V3(), look: new V3(), fov: 36, right: new V3(), up: new V3() };
+  private camPos = new V3(); private camLook = new V3(); private shipW = new V3();
+  private cine: Cinema; private hum: Loop | null = null;
+  private busy = false; private closed = false; private tipHtml = '';
   private downAt: { x: number; y: number } | null = null;
   private off: (() => void)[] = [];
-  private launchK = 0;
+  private bonk = 0;
 
   constructor(readonly opts: { hasSave: boolean; archive: ArchiveEntry[]; onNew: (seed: number) => void; onContinue: () => void; onLaunch: (e: ArchiveEntry) => void; onMirror: (back: () => void) => void }) {
     style();
     this.scene.background = new THREE.Color(0x02030a);
-    this.sky = stars(2600, 120); this.scene.add(this.sky);
     this.fx = new Fx(this.fxScene, this.scene);
-    // light: the sun behind and above (a rim on everything), a cool fill from the viewer, the planet's glow below
-    this.scene.add(new THREE.HemisphereLight(0x5a6478, 0x1c1a1e, 0.6));
-    const sun = new THREE.DirectionalLight(0xf0e2c8, 3.0); sun.position.copy(SUN).multiplyScalar(40); sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024); const sc = sun.shadow.camera as THREE.OrthographicCamera; sc.left = -7; sc.right = 7; sc.top = 6; sc.bottom = -6; sc.near = 10; sc.far = 80; sun.shadow.bias = -0.001;
-    this.scene.add(sun, sun.target);
-    const fill = new THREE.DirectionalLight(0xa8b4cc, 1.25); fill.position.set(-4, 3, 10); this.scene.add(fill);
-    const planetGlow = new THREE.PointLight(0x7aa0c8, 20, 34, 1.4); planetGlow.position.set(-4.5, -6.5, -5); this.scene.add(planetGlow);
-    this.glowLight = new THREE.PointLight(0x6aa89a, 3.5, 7, 1.6);
-    // the work lamp: one warm light that swings onto whichever sign you point at
-    this.lamp = new THREE.PointLight(0xe8b868, 0, 3.2, 1.6); this.scene.add(this.lamp); this.glowLight.position.copy(M0).add(new V3(1.4, 0.2, 1.0)); this.scene.add(this.glowLight);
-    const glare = makeSunGlare(26); glare.position.copy(SUN).multiplyScalar(110); glare.lookAt(0, 0, 0); this.scene.add(glare);
-    // the target world, huge below and behind
+    // the carrier, whole, working
+    this.ship = buildMenuCarrier();
+    this.ship.group.rotation.y = SHIP_YAW; this.scene.add(this.ship.group);
+    const sroot = this.ship.carrier.ship.root;
+    this.ship.carrier.ship.sun.position.copy(SUN_L).multiplyScalar(220);
+    this.ship.group.updateMatrixWorld(true);
+    this.shipW.copy(SHIP_C).applyMatrix4(sroot.matrixWorld);
+    // space: the galaxy band, nebulae, twinkling stars, dust drifting through the near field
+    const sunW = SUN_L.clone().applyAxisAngle(new V3(0, 1, 0), SHIP_YAW);
+    this.scene.add(makeSpace({ stars: 2800, radius: 4200, sun: sunW, dust: 300, dustR: [60, 420], nebula: true }).group);
+    // the target world, vast, below and behind
     const planet: Planet = makePlanet(1000 + Math.floor(Math.random() * 9000));
-    this.globe = makeGlobe(planet, PLANET_R, { orbit: true });
-    this.globe.group.position.copy(PLANET); this.globe.group.rotation.set(0.35, 0.4, 0.2);
-    (this.globe.mat.uniforms.uSun?.value as THREE.Vector3 | undefined)?.copy(SUN);
-    // seen this close, under the menu's grade, the planet's day side and cloud tops clip to white: give its surface,
-    // clouds and air a menu-only exposure (separate programs, the game's globe is untouched)
+    this.globe = makeGlobe(planet, 1100, { orbit: true });
+    this.globe.group.position.copy(this.shipW).add(new V3(-300, -1420, -1300)); this.globe.group.rotation.set(0.35, 0.4, 0.2);
+    (this.globe.mat.uniforms.uSun?.value as THREE.Vector3 | undefined)?.copy(sunW);
+    // under the menu's grade the planet's day side and cloud tops clip to white: a menu-only exposure (own programs)
     const expose = (m: THREE.Material, k: number, key: string) => {
       const prev = m.onBeforeCompile;
       m.onBeforeCompile = (sh, r) => {
@@ -179,82 +167,108 @@ export class MenuScreen implements Screen {
       else if (me === this.globe.atmo) expose(me.material, 0.7, 'air');
     });
     this.scene.add(this.globe.group);
-    // the meteor, its swarm and its dust
-    this.meteor = makeMeteor(1.7, 7); this.meteor.group.position.copy(M0); this.scene.add(this.meteor.group);
-    this.swarm = makeRockSwarm(18, 2.25, 3.0); this.swarm.group.position.copy(M0); this.scene.add(this.swarm.group);
-    this.dust = makeSparkles(260, 4.4); this.dust.points.position.copy(M0); this.scene.add(this.dust.points);
-    // the iron signs, hanging in a column, chained to each other and tethered to the rock
-    const defs: [string, string, string, string, string?][] = [
-      ['new', 'NEW WORLD', 'N', 'Fire Unit 07 at a new world.'],
-      ['continue', 'CONTINUE', 'C', 'Back to the world you are taking.'],
-      ['archive', 'ARCHIVE', 'A', 'The worlds claimed for Earth.', `${opts.archive.length} CLAIMED`],
-      ['assembly', 'ASSEMBLY BAY', 'B', 'Refit Unit 07: paint, plating, lens and name.'],
-    ];
-    defs.forEach(([id, label, key, tip, sub], i) => {
-      const s = makeSign(id, label, 2.5, 0.64, 31 + i * 7, { key, tip, sub });
-      s.rest.set(SIGN_X, SIGN_Y[i], 0.55 - i * 0.12); s.pos.copy(s.rest).add(new V3(4, 3, 0)); s.vel.set(-3, -2, 0);
-      if (id === 'continue' && !opts.hasSave) { s.enabled = false; (s.mat.map as THREE.Texture).needsUpdate = true; s.mat.color.setScalar(0.55); }
-      this.scene.add(s.root); this.signs.push(s);
-    });
-    this.seedTag = makeSign('seed', 'SEED CARD', 1.25, 0.34, 77, { key: 'S', tip: 'Punch a seed by hand and launch at that exact world.' });
-    this.seedTag.rest.set(SIGN_X + 0.62, SIGN_Y[3] - 0.78, 0.35); this.seedTag.pos.copy(this.seedTag.rest).add(new V3(3, -2, 0)); this.scene.add(this.seedTag.root); this.signs.push(this.seedTag);
-    this.title = makeSign('title', 'ODDWORLD', 3.6, 1.0, 11, { font: 'Canned', size: 100, sub: 'U.S. PLANETARY CORPS · UNIT 07' });
-    this.title.rest.set(-1.6, 2.55, 0.5); this.title.pos.copy(this.title.rest).add(new V3(0, 3, 0)); this.title.enabled = false; this.scene.add(this.title.root);
-    this.nix = new Nixies(2, 0.1); this.nix.root.position.set(1.02, -0.07, 0.04); this.nix.root.scale.setScalar(1.1); this.signs[0].root.add(this.nix.root); this.nix.set('--');
-    // chains: the title hangs from above; each sign hangs from the one above it; tethers run back to the rock
-    const top = (x: number) => () => new V3(x, 6.5, 0.4);
-    const bottom = (s: Sign, side: number) => () => s.root.localToWorld(new V3(side * s.w * 0.38, -s.h / 2 - 0.02, 0));
-    const add = (n: number, a: () => THREE.Vector3, b: () => THREE.Vector3, sag = 0.06, link = 0.075) => { const c = new Chain(n, link); this.scene.add(c.group); this.chains.push({ c, a, b, sag }); };
-    add(26, top(-2.9), () => this.title.eye(0)); add(26, top(-0.3), () => this.title.eye(1));
-    add(30, top(SIGN_X - 0.95), () => this.signs[0].eye(0)); add(30, top(SIGN_X + 0.95), () => this.signs[0].eye(1));
-    for (let i = 1; i < 4; i++) { const up = this.signs[i - 1], s = this.signs[i]; add(5, bottom(up, -1), () => s.eye(0), 0.02); add(5, bottom(up, 1), () => s.eye(1), 0.02); }
-    add(9, bottom(this.signs[3], 1), () => this.seedTag.eye(0), 0.03, 0.06);
-    for (let i = 0; i < 4; i++) { const s = this.signs[i]; add(16, () => this.meteor.anchor(i + 1), () => s.root.localToWorld(new V3(-s.w / 2 - 0.02, 0.05, 0)), 0.22, 0.07); }
-    // the settings cog, with its own little tag
-    this.gear = makeGear(0.5); this.gear.mesh.position.set(4.75, -2.15, 1.4); this.scene.add(this.gear.mesh);
-    this.gearTag = makeSign('settings', 'SETTINGS', 1.15, 0.3, 91, { key: 'O', tip: 'Volume, graphics quality, UI scale, screen shake.' });
-    this.gearTag.rest.set(4.75, -2.85, 1.45); this.gearTag.pos.copy(this.gearTag.rest); this.scene.add(this.gearTag.root);
-    add(4, () => this.gear.mesh.position.clone().add(new V3(0, -0.3, 0)), () => this.gearTag.eye(0), 0.01, 0.05); add(4, () => this.gear.mesh.position.clone().add(new V3(0, -0.3, 0)), () => this.gearTag.eye(1), 0.01, 0.05);
-    // the archive: claimed worlds hanging in a row, each on its iron tag
-    opts.archive.slice(-7).forEach((e, i) => {
+    // a work lamp that swings onto whichever word you point at
+    this.lamp = new THREE.PointLight(RAMPS.glowAmber[4], 0, 90, 1.6); this.scene.add(this.lamp);
+    // the apple
+    this.apple = new Apple(5.5); this.scene.add(this.apple.group);
+    // the claimed worlds (shown in ARCHIVE)
+    opts.archive.slice(-6).forEach((e) => {
       const p = makePlanet(e.seed); for (const r of p.regions) r.state = 'veyr';
-      const g = makeGlobe(p, 0.5, { ascended: true }); g.refresh();
-      const at = ARCH.clone().add(new V3((i - 3) * 1.9, Math.sin(i * 1.7) * 0.5 + 0.4, -(i % 2) * 0.9));
-      g.group.position.copy(at); this.scene.add(g.group);
-      const tag = makeSign('world' + i, e.name.toUpperCase().slice(0, 14), 1.5, 0.34, 100 + i, { tip: `${e.regions} regions, ${e.species} species, claimed ${e.date}.` });
-      tag.rest.copy(at).add(new V3(0, -0.95, 0.1)); tag.pos.copy(tag.rest); this.scene.add(tag.root);
-      add(5, () => g.group.position.clone().add(new V3(-0.35, -0.42, 0)), () => tag.eye(0), 0.03, 0.06); add(5, () => g.group.position.clone().add(new V3(0.35, -0.42, 0)), () => tag.eye(1), 0.03, 0.06);
-      this.worlds.push({ g, e, tag, at });
+      const g = makeGlobe(p, 9, { ascended: true }); g.refresh(); g.group.visible = false; this.scene.add(g.group);
+      this.worlds.push({ g, e, at: new V3() });
     });
-    if (!this.worlds.length) {
-      this.emptyTag = makeSign('none', 'NO WORLDS CLAIMED YET', 3.2, 0.5, 120, { tip: 'Claim a world for Earth and it will hang here, green, on its own tag.' });
-      this.emptyTag.rest.copy(ARCH).add(new V3(0, 0.3, 0)); this.emptyTag.pos.copy(this.emptyTag.rest); this.scene.add(this.emptyTag.root);
-      add(20, () => ARCH.clone().add(new V3(-1.2, 4.5, 0)), () => this.emptyTag!.eye(0)); add(20, () => ARCH.clone().add(new V3(1.2, 4.5, 0)), () => this.emptyTag!.eye(1));
-    }
     // the overlay
     this.root = el('div', 'mn3', ui());
-    el('div', 'tag', this.root, 'POINT AT A SIGN · <b>N</b> NEW WORLD · <b>C</b> CONTINUE · <b>A</b> ARCHIVE · <b>B</b> ASSEMBLY · <b>S</b> SEED · <b>O</b> SETTINGS');
-    this.tipEl = el('div', 'tipx iron', this.root);
+    el('div', 'tag', this.root, '<b>N</b> NEW WORLD · <b>C</b> CONTINUE · <b>A</b> ARCHIVE · <b>B</b> ASSEMBLY · <b>O</b> SETTINGS · <b>S</b> SEED');
+    this.tipEl = el('div', 'tipx plt', this.root);
     this.backEl = el('div', 'btn back', this.root, '◀ BACK');
     this.backEl.addEventListener('click', (e) => { e.stopPropagation(); this.toMain(); });
-    this.detEl = el('div', 'plate det iron', this.root);
-    this.cardEl = el('div', 'pcard', this.root);
-    this.setEl = el('div', 'plate enamel', this.root);
+    this.detEl = el('div', 'plate det plt', this.root);
+    this.setEl = el('div', 'plate plt', this.root);
+    const sd = el('div', 'seed plt', this.root); el('div', 'l', sd, 'SEED');
+    this.seedIn = el('input', '', sd) as HTMLInputElement; this.seedIn.maxLength = 9; this.seedIn.placeholder = 'RANDOM'; this.seedIn.autocapitalize = 'characters'; this.seedIn.spellcheck = false;
+    this.seedIn.title = 'Up to 9 letters or digits. The same seed always finds the same world.';
+    this.seedIn.addEventListener('input', () => { this.seedIn.value = this.seedIn.value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 9); csfx('type', 0.8); });
+    this.seedIn.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { this.seedIn.blur(); this.work(this.words.find((w) => w.id === 'new') ?? null); } if (e.key === 'Escape') this.seedIn.blur(); });
+    this.seedIn.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.cine = new Cinema({});
     this.cine.ui.root.remove(); ui().appendChild(this.cine.ui.root);
     this.bindInput();
     this.hum = cloop('drone', 0.35);
-    this.cine.ui.fade(1, 0); this.cine.ui.fade(0, 1.6);
+    this.cine.ui.fade(1, 0); this.cine.ui.fade(0, 1.8);
     this.off.push(onSettings(() => { if (this.mode === 'settings') this.drawSettings(); }));
+    this.layout();
+    this.camPos.copy(this.rest.pos).addScaledVector(VIEW, 60); this.camLook.copy(this.rest.look);
+    void this.buildWords();
     (window as any).__menu = this;
   }
 
-  /** where a sign (or the gear) is on screen, in CSS pixels (test pages) */
+  /** the words, once the pixel font is in (their blocks are its glyph pixels) */
+  private async buildWords() {
+    try { await document.fonts.load("13px 'Jersey'"); } catch { /* the fallback still makes blocks */ }
+    if (this.closed) return;
+    const defs: [string, string, string, string][] = [
+      ['new', 'NEW WORLD', 'N', 'Fire Unit 07 at a new world.'],
+      ['continue', 'CONTINUE', 'C', 'Back to the world you are taking.'],
+      ['archive', 'ARCHIVE', 'A', `The worlds claimed for Earth (${this.opts.archive.length}).`],
+      ['assembly', 'ASSEMBLY BAY', 'B', 'Refit Unit 07: paint, plating, lens and name.'],
+      ['settings', 'SETTINGS', 'O', 'Volume, graphics quality, UI scale, screen shake.'],
+    ];
+    defs.forEach(([id, label, key, tip], i) => {
+      const word = new VoxelWord(id, label, { enabled: id !== 'continue' || this.opts.hasSave, yaw: 0.34 - i * 0.03, phase: i * 1.37 });
+      this.scene.add(word.group);
+      const o: Opt = { id, label, key, tip, word };
+      this.words.push(o);
+    });
+    if (!this.worlds.length) { this.empty = new VoxelWord('none', 'NO WORLDS CLAIMED YET', { yaw: 0, phase: 2 }); this.empty.group.visible = false; this.scene.add(this.empty.group); }
+    this.layout();
+    // they arrive: a burst in reverse, from scattered blocks into words
+    this.words.forEach((o, i) => setTimeout(() => { if (!this.closed) { o.word.burst(0.8); csfx('tick', 0.4, 0.8 + i * 0.1); } }, 80 + i * 90));
+  }
+
+  /** frame the shot for this screen's shape: where the camera rests, where the words and the apple float */
+  private layout() {
+    const a = innerWidth / Math.max(1, innerHeight), r = this.rest, portrait = a < 1.05;
+    r.fov = portrait ? 46 : 36;
+    const tanV = Math.tan(THREE.MathUtils.degToRad(r.fov / 2));
+    // distance so the ship's ~150 m of length fills the share of the width it is given
+    const share = portrait ? 0.95 : 0.55, dist = 150 / share / (2 * tanV * a);
+    r.look.copy(this.shipW); r.pos.copy(this.shipW).addScaledVector(VIEW, Math.max(190, dist));
+    const fwd = r.look.clone().sub(r.pos).normalize();
+    r.right.crossVectors(fwd, new V3(0, 1, 0)).normalize(); r.up.crossVectors(r.right, fwd).normalize();
+    // slide the camera so the ship sits where it should on screen (left of centre; high up in portrait)
+    const D = r.pos.distanceTo(this.shipW), hy = D * tanV, hx = hy * a;
+    const sx = portrait ? 0 : -0.36, sy = portrait ? 0.42 : 0.08;
+    const shift = r.right.clone().multiplyScalar(-sx * hx).addScaledVector(r.up, -sy * hy);
+    r.pos.add(shift); r.look.add(shift);
+    // the word column, at WORD_D in front of the camera
+    const wy = WORD_D * tanV, wx = wy * a;
+    const colX = portrait ? 0 : 0.55, avail = portrait ? wx * 1.6 : wx * 0.66;
+    const maxW = Math.max(1, ...this.words.map((o) => o.word.w));
+    const size = Math.min(1.25, avail / maxW);
+    const y0 = portrait ? -0.06 : 0.52, dy = portrait ? 0.17 : 0.26;
+    this.words.forEach((o, i) => {
+      o.word.size = size;
+      o.word.home.copy(r.pos).addScaledVector(fwd, WORD_D).addScaledVector(r.right, colX * wx).addScaledVector(r.up, (y0 - i * dy) * wy);
+    });
+    if (this.empty) { this.empty.size = Math.min(1, (wx * 1.4) / this.empty.w); this.empty.home.copy(r.pos).addScaledVector(fwd, WORD_D).addScaledVector(r.up, -0.1 * wy); }
+    // the apple floats off the bow, near the camera
+    const ad = 120, ay = ad * tanV, ax = ay * a;
+    this.apple.place(r.pos.clone().addScaledVector(fwd, ad).addScaledVector(r.right, (portrait ? 0.55 : 0.02) * ax).addScaledVector(r.up, (portrait ? 0.1 : -0.62) * ay));
+    // the archive: the worlds in a row across the view, nearer than the ship
+    const n = this.worlds.length, gd = 110, gy = gd * tanV, gx = gy * a;
+    this.worlds.forEach((w, i) => {
+      const u = n === 1 ? 0 : (i / (n - 1)) * 2 - 1;
+      w.at.copy(r.pos).addScaledVector(fwd, gd).addScaledVector(r.right, u * gx * (portrait ? 0.6 : 0.62)).addScaledVector(r.up, (Math.sin(i * 1.7) * 0.12 + (portrait ? 0.1 : 0.05)) * gy);
+      w.g.group.scale.setScalar(portrait ? 0.8 : 1);
+    });
+  }
+
+  /** where an option (or the apple) is on screen, in CSS pixels (test pages) */
   screenPos(id: string): [number, number] {
-    const p = id === 'gear' ? this.gear.mesh.position.clone() : (this.signs.find((s) => s.id === id)?.pos.clone() ?? new V3());
+    const p = id === 'apple' ? this.apple.group.position.clone() : (this.words.find((o) => o.id === id)?.word.group.position.clone() ?? new V3());
     p.project(this.cam); return [Math.round((p.x * 0.5 + 0.5) * innerWidth), Math.round((-p.y * 0.5 + 0.5) * innerHeight)];
   }
-  private sign(id: string) { return this.signs.find((s) => s.id === id) ?? null; }
 
   // ------------------------------------------------------------------ input
   private bindInput() {
@@ -264,7 +278,7 @@ export class MenuScreen implements Screen {
     const down = (e: PointerEvent) => { if (e.target !== cv) return; setPtr(e); this.downAt = { x: e.clientX, y: e.clientY }; this.pick(); };
     const up = (e: PointerEvent) => {
       const d = this.downAt; this.downAt = null; if (!d || e.target !== cv) return;
-      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 14) return;
+      if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) > 18) return;
       setPtr(e); this.pick(); this.click();
       if (e.pointerType === 'touch') { this.ptrIn = false; setTimeout(() => { if (!this.downAt) this.clearHover(); }, 700); }
     };
@@ -272,81 +286,99 @@ export class MenuScreen implements Screen {
     const key = (e: KeyboardEvent) => {
       if (this.closed || this.cine.active || (e.target as HTMLElement)?.tagName === 'INPUT') return;
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      if (this.mode === 'card') { this.cardKey(e); return; }
       if (k === 'Escape') { if (this.mode !== 'main') this.toMain(); return; }
       if (this.mode === 'archive' && (k === 'ArrowRight' || k === 'ArrowLeft')) { const n = this.worlds.length; if (n) this.focusWorld(((this.focus < 0 ? 0 : this.focus + (k === 'ArrowRight' ? 1 : -1)) + n) % n); return; }
-      if (k === 'o' || k === 'g') { this.openSettings(); return; }
-      const id = ({ n: 'new', c: 'continue', a: 'archive', b: 'assembly', s: 'seed' } as Record<string, string>)[k];
-      const s = id ? this.sign(id) : null; if (s) this.work(s);
+      if (k === 's') { e.preventDefault(); this.seedIn.focus(); return; }
+      const id = ({ n: 'new', c: 'continue', a: 'archive', b: 'assembly', o: 'settings', g: 'settings' } as Record<string, string>)[k];
+      const o = id ? this.words.find((w) => w.id === id) ?? null : null; if (o) this.work(o);
     };
     cv.addEventListener('pointermove', move); addEventListener('pointerdown', down); addEventListener('pointerup', up); cv.addEventListener('pointerleave', leave); addEventListener('keydown', key);
-    this.off.push(() => { cv.removeEventListener('pointermove', move); removeEventListener('pointerdown', down); removeEventListener('pointerup', up); cv.removeEventListener('pointerleave', leave); removeEventListener('keydown', key); });
+    const rs = () => this.layout(); addEventListener('resize', rs);
+    this.off.push(() => { cv.removeEventListener('pointermove', move); removeEventListener('pointerdown', down); removeEventListener('pointerup', up); cv.removeEventListener('pointerleave', leave); removeEventListener('keydown', key); removeEventListener('resize', rs); });
   }
   private clearHover() {
-    if (this.hovered) this.hovered.hover = 0;
-    this.hovered = null; this.hoverGear = false; this.hoverWorld = -1;
+    for (const o of this.words) o.word.hover = 0;
+    this.hovered = null; this.hoverApple = false; this.hoverWorld = -1; this.hoverEmpty = false;
     this.tipEl.style.display = 'none'; this.tipHtml = ''; document.body.style.cursor = '';
   }
   /** what is under the pointer */
   private pick() {
-    if (this.busy || this.cine.active || this.mode === 'launch' || this.mode === 'away' || this.mode === 'card' || this.mode === 'settings') { this.clearHover(); return; }
+    if (this.busy || this.cine.active || this.mode === 'launch' || this.mode === 'away' || this.mode === 'settings') { this.clearHover(); return; }
     this.ray.setFromCamera(this.ndc, this.cam);
-    let best = 1e9, hs: Sign | null = null, hg = false, hw = -1;
-    const pool = this.mode === 'main' ? [...this.signs, this.gearTag] : this.worlds.map((w) => w.tag).concat(this.emptyTag ? [this.emptyTag] : []);
-    for (const s of pool) { const h = this.ray.intersectObject(s.plate, false)[0]; if (h && h.distance < best) { best = h.distance; hs = s; } }
-    if (this.mode === 'main') { const h = this.ray.intersectObject(this.gear.mesh, true)[0]; if (h && h.distance < best) { best = h.distance; hs = null; hg = true; } }
-    if (this.mode === 'archive') this.worlds.forEach((w, i) => { const h = this.ray.intersectObject(w.g.mesh, false)[0]; if (h && h.distance < best) { best = h.distance; hw = i; hs = null; } if (hs === w.tag) hw = i; });
-    if (hs === this.gearTag) { hs = null; hg = true; }
-    if (hs !== this.hovered) {
-      if (this.hovered) this.hovered.hover = 0;
-      this.hovered = hs; if (hs) { hs.hover = 1; csfx('hover', 0.7); csfx('tick', 0.5); }
+    let best = 1e9, ho: Opt | null = null, ha = false, hw = -1, he = false;
+    if (this.mode === 'main') for (const o of this.words) { const h = this.ray.intersectObject(o.word.hit, false)[0]; if (h && h.distance < best) { best = h.distance; ho = o; } }
+    { const h = this.ray.intersectObject(this.apple.group, true)[0]; if (h && h.distance < best) { best = h.distance; ho = null; ha = true; } }
+    if (this.mode === 'archive') {
+      this.worlds.forEach((w, i) => { const h = this.ray.intersectObject(w.g.mesh, false)[0]; if (h && h.distance < best) { best = h.distance; hw = i; ho = null; ha = false; } });
+      if (this.empty) { const h = this.ray.intersectObject(this.empty.hit, false)[0]; if (h && h.distance < best) { best = h.distance; he = true; ha = false; } }
     }
-    if (hg !== this.hoverGear) { this.hoverGear = hg; if (hg) { csfx('servo', 0.25, 1.6); } }
+    if (ho !== this.hovered) { this.hovered = ho; if (ho) { csfx('hover', 0.7); csfx('tick', 0.5); } }
+    for (const o of this.words) o.word.hover = o === ho ? 1 : 0;
+    if (ha !== this.hoverApple) { this.hoverApple = ha; if (ha) csfx('tick', 0.6, 1.4); }
     if (hw !== this.hoverWorld) { this.hoverWorld = hw; if (hw >= 0) csfx('hover', 0.6, 0.8); }
-    this.gearTag.hover = hg ? 1 : 0;
+    this.hoverEmpty = he;
     let html = '';
-    const s = this.hovered;
-    if (s) html = `<div class="h">${s.label}${s.key ? `<span class="k">${s.key}</span>` : ''}</div><div class="d">${s.tip}</div>` + (s.id === 'continue' && !s.enabled ? '<div class="w">NO MISSION IN PROGRESS</div>' : '');
-    else if (hg) html = `<div class="h">SETTINGS<span class="k">O</span></div><div class="d">${this.gearTag.tip}</div>`;
+    if (ho) html = `<div class="h">${ho.label}<span class="k">${ho.key}</span></div><div class="d">${ho.tip}</div>` + (!ho.word.enabled ? '<div class="w">NO MISSION IN PROGRESS</div>' : '');
+    else if (ha) html = this.apple.bitten ? '<div class="h">AN APPLE</div><div class="d">Somebody took a bite. Nobody aboard will say who.</div>' : '<div class="h">AN APPLE</div><div class="d">Floating out here. Nobody knows why. Kick it.</div>';
     else if (hw >= 0) { const e = this.worlds[hw].e; html = `<div class="h">${e.name.toUpperCase()}</div><div class="d">${e.regions} REGIONS · ${e.species} SPECIES · CLAIMED ${e.date}</div>`; }
+    else if (he) html = '<div class="h">THE ARCHIVE</div><div class="d">Claim a world for Earth and it will float here, green.</div>';
     if (html && this.ptrIn) {
       if (this.tipHtml !== html) { this.tipHtml = html; this.tipEl.innerHTML = html; }
       if (this.tipEl.style.display !== 'block') this.tipEl.style.display = 'block';
       const w = this.tipEl.offsetWidth, h = this.tipEl.offsetHeight;
-      this.tipEl.style.left = Math.max(6, Math.min(innerWidth - w - 6, this.ptrX - w - 24)) + 'px'; this.tipEl.style.top = Math.max(6, Math.min(innerHeight - h - 6, this.ptrY - h / 2)) + 'px';
+      const left = this.ptrX - w - 24 < 6 ? this.ptrX + 24 : this.ptrX - w - 24;
+      this.tipEl.style.left = Math.max(6, Math.min(innerWidth - w - 6, left)) + 'px'; this.tipEl.style.top = Math.max(6, Math.min(innerHeight - h - 6, this.ptrY - h / 2)) + 'px';
       document.body.style.cursor = 'pointer';
     } else { if (this.tipEl.style.display !== 'none') this.tipEl.style.display = 'none'; this.tipHtml = ''; document.body.style.cursor = ''; }
   }
   private click() {
     if (this.busy || this.cine.active) return;
-    if (this.hoverGear) { this.openSettings(); return; }
-    if (this.mode === 'archive') { if (this.hoverWorld >= 0) this.focusWorld(this.hoverWorld); else if (this.hovered === this.emptyTag && this.emptyTag) { kickSign(this.emptyTag, 0.6); csfx('clamp', 0.5); } return; }
+    if (this.hoverApple) { this.kickApple(); return; }
+    if (this.mode === 'archive') { if (this.hoverWorld >= 0) this.focusWorld(this.hoverWorld); else if (this.hoverEmpty && this.empty) { this.empty.burst(0.5); csfx('clamp', 0.4); } return; }
     if (this.hovered) this.work(this.hovered);
   }
 
-  // ------------------------------------------------------------------ working the signs
-  private work(s: Sign) {
-    if (this.busy || this.closed || this.mode === 'launch' || this.mode === 'away') return;
+  // ------------------------------------------------------------------ the apple
+  private kickApple() {
+    const dir = this.ray.ray.direction.clone().add(new V3((Math.random() - 0.5) * 0.5, 0.15 + Math.random() * 0.3, 0)).normalize();
+    this.apple.kick(dir, 1);
+    csfx('thud', 0.9, 1.3); csfx('whoosh', 0.5, 1.6);
+    if (this.apple.kicks === 6 && !this.apple.bitten) setTimeout(() => {
+      if (this.closed) return;
+      this.apple.bite(); csfx('crunch', 1); csfx('crunch', 0.7, 0.8);
+      const p = this.apple.group.position.clone().project(this.cam);
+      const c = el('div', 'crunch', this.root, 'CRUNCH.'); c.style.left = ((p.x * 0.5 + 0.5) * innerWidth) + 'px'; c.style.top = ((-p.y * 0.5 + 0.5) * innerHeight) + 'px';
+      setTimeout(() => c.remove(), 1700);
+    }, 900);
+  }
+
+  // ------------------------------------------------------------------ working the options
+  private work(o: Opt | null) {
+    if (!o || this.busy || this.closed || this.mode === 'launch' || this.mode === 'away') return;
     Tip.hide();
-    kickSign(s); csfx('clamp', 0.9, 0.8 + Math.random() * 0.3); csfx('leverLock', 0.6);
-    if (!s.enabled) { csfx('deny'); kickSign(s, 0.5); this.tipEl.innerHTML = '<div class="h">CONTINUE</div><div class="w">NO MISSION IN PROGRESS</div>'; return; }
-    const after = (f: () => void, ms = 380) => { this.busy = true; setTimeout(() => { this.busy = false; f(); }, ms); };
-    switch (s.id) {
-      case 'new': after(() => this.launch(Math.floor(Math.random() * 1e6))); break;
+    if (!o.word.enabled) { o.word.shake(); csfx('deny'); this.tipEl.innerHTML = '<div class="h">CONTINUE</div><div class="w">NO MISSION IN PROGRESS</div>'; return; }
+    o.word.burst(1); csfx('clamp', 0.7, 0.9 + Math.random() * 0.3); csfx('whoosh', 0.35, 2);
+    const after = (f: () => void, ms = 420) => { this.busy = true; setTimeout(() => { this.busy = false; f(); }, ms); };
+    switch (o.id) {
+      case 'new': after(() => this.launch(this.seedFromField())); break;
       case 'continue': after(() => { csfx('hum', 0.7); this.leave(() => this.opts.onContinue(), 0.9); }); break;
       case 'archive': after(() => this.toArchive(), 250); break;
-      case 'seed': after(() => this.openCard(), 250); break;
+      case 'settings': after(() => this.openSettings(), 200); break;
       case 'assembly': after(() => {
         this.root.style.visibility = 'hidden'; this.cine.ui.root.style.visibility = 'hidden';
         this.opts.onMirror(() => { this.root.style.visibility = ''; this.cine.ui.root.style.visibility = ''; csfx('leverLock', 0.6); });
       }); break;
     }
   }
+  private seedFromField() {
+    const s = this.seedIn.value.trim();
+    return s ? Math.abs(parseInt(s, 36) || 1) % 1e9 : Math.floor(Math.random() * 1e6);
+  }
 
-  // ------------------------------------------------------------------ settings: an iron plate
+  // ------------------------------------------------------------------ settings: an enamel plate
   private openSettings() {
     if (this.mode === 'launch' || this.mode === 'away') return;
-    this.gearSpin += 6; csfx('servo', 0.6, 1.2); csfx('clamp', 0.6);
+    csfx('servo', 0.6, 1.2);
     if (this.mode === 'settings') { this.toMain(); return; }
     this.closePanels(); this.mode = 'settings'; this.clearHover();
     this.drawSettings();
@@ -381,11 +413,12 @@ export class MenuScreen implements Screen {
   private toArchive() {
     this.closePanels(); this.mode = 'archive'; this.focus = -1; this.clearHover();
     this.backEl.style.display = 'inline-flex';
+    for (const o of this.words) o.word.burst(0.6);
     csfx('whoosh', 0.5, 1.6);
   }
   private focusWorld(i: number) {
     const w = this.worlds[i]; if (!w) return;
-    this.focus = i; csfx('chime', 0.4); kickSign(w.tag, 0.4);
+    this.focus = i; csfx('chime', 0.4);
     const e = w.e, d = this.detEl;
     d.innerHTML = '';
     el('div', 'n', d, e.name.toUpperCase());
@@ -399,85 +432,33 @@ export class MenuScreen implements Screen {
     b.addEventListener('click', (ev) => { ev.stopPropagation(); csfx('button'); this.launch(Math.floor(Math.random() * 1e6), e); });
     d.style.display = 'block'; d.style.animation = 'none'; void d.offsetWidth; d.style.animation = '';
   }
-  private closePanels() {
-    this.detEl.style.display = 'none'; this.setEl.style.display = 'none'; this.backEl.style.display = 'none';
-    if (this.mode === 'card') this.closeCard();
-  }
+  private closePanels() { this.detEl.style.display = 'none'; this.setEl.style.display = 'none'; this.backEl.style.display = 'none'; }
   private toMain() {
     const was = this.mode;
     this.closePanels(); this.mode = 'main'; this.focus = -1; this.tipEl.style.display = 'none';
-    if (was === 'archive') csfx('whoosh', 0.5, 1.3);
+    if (was === 'archive') { csfx('whoosh', 0.5, 1.3); for (const o of this.words) o.word.burst(0.6); }
   }
-
-  // ------------------------------------------------------------------ the punch card
-  private openCard() {
-    if (this.mode === 'card') return;
-    this.closePanels(); this.mode = 'card'; this.clearHover();
-    csfx('card'); csfx('cardFeed', 0.4);
-    this.seedTxt = '';
-    const c = this.cardEl; c.innerHTML = '';
-    const hd = el('div', 'hd', c); el('span', '', hd, 'U.S.P.C. FORM 7-S · TARGET SEED'); el('span', '', hd, 'DO NOT FOLD, SPINDLE OR MUTILATE');
-    const cols = el('div', 'cols', c);
-    for (let i = 0; i < 9; i++) { const col = el('div', 'col', cols); el('div', 'ch', col, '&nbsp;'); const h = el('div', 'holes', col); for (let k = 0; k < 10; k++) el('i', '', h); }
-    const row = el('div', 'row', c);
-    el('div', 'hint', row, 'TYPE UP TO 9 LETTERS OR DIGITS. THE SAME CARD ALWAYS FINDS THE SAME WORLD.');
-    const cancel = el('div', 'btn', row, 'ESC'); cancel.addEventListener('click', (e) => { e.stopPropagation(); this.toMain(); });
-    const go = el('div', 'btn red', row, 'FEED CARD ▶'); go.addEventListener('click', (e) => { e.stopPropagation(); this.feedCard(); });
-    const inp = el('input', '', c) as HTMLInputElement; inp.maxLength = 9; inp.autocapitalize = 'characters';
-    inp.addEventListener('input', () => { this.seedTxt = inp.value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 9); inp.value = this.seedTxt; this.drawCard(); csfx('card', 0.8); });
-    inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') this.feedCard(); if (e.key === 'Escape') this.toMain(); });
-    c.addEventListener('pointerdown', (e) => { e.stopPropagation(); inp.focus(); });
-    c.style.display = 'block';
-    setTimeout(() => inp.focus({ preventScroll: true }), 50);
-  }
-  private cardKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') { this.toMain(); return; }
-    if (e.key === 'Enter') { this.feedCard(); return; }
-    if (e.key === 'Backspace') { this.seedTxt = this.seedTxt.slice(0, -1); this.drawCard(); csfx('tick'); return; }
-    if (/^[0-9a-zA-Z]$/.test(e.key) && this.seedTxt.length < 9) { this.seedTxt += e.key.toUpperCase(); this.drawCard(); csfx('card', 0.8); }
-  }
-  private drawCard() {
-    this.cardEl.querySelectorAll('.col').forEach((col, i) => {
-      const ch = this.seedTxt[i] ?? '';
-      (col.querySelector('.ch') as HTMLElement).innerHTML = ch || '&nbsp;';
-      const code = ch ? parseInt(ch, 36) : -1;
-      col.querySelectorAll('i').forEach((h, k) => h.classList.toggle('p', code >= 0 && (code % 10 === k || (code >= 10 && Math.floor(code / 10) - 1 === k % 3 && k < 3))));
-    });
-    const inp = this.cardEl.querySelector('input'); if (inp && inp.value !== this.seedTxt) inp.value = this.seedTxt;
-    this.nix.set(this.seedTxt ? String(Math.abs(parseInt(this.seedTxt, 36) || 1) % 100).padStart(2, '0') : '--');
-  }
-  private feedCard() {
-    if (!this.seedTxt) { csfx('deny'); return; }
-    const seed = Math.abs(parseInt(this.seedTxt, 36) || 1) % 1e9;
-    this.closeCard(); csfx('cardFeed'); kickSign(this.seedTag, 0.8);
-    this.busy = true; setTimeout(() => { this.busy = false; this.launch(seed); }, 450);
-  }
-  private closeCard() { this.cardEl.style.display = 'none'; this.cardEl.innerHTML = ''; if (this.mode === 'card') this.mode = 'main'; }
 
   // ------------------------------------------------------------------ setting out (the deploy sequence does the launch itself)
   private async launch(seed: number, offspring?: ArchiveEntry) {
     if (this.mode === 'launch') return;
     this.closePanels(); this.mode = 'launch'; this.busy = true; this.clearHover();
     this.root.classList.add('hide');
-    const M = this.meteor.group.position.clone();
+    const sroot = this.ship.carrier.ship.root;
+    const mouth = sroot.localToWorld(new V3(0, -8.5, 66)), inside = sroot.localToWorld(new V3(0, -9, 30)), out = sroot.localToWorld(new V3(6, -2, 130));
     const end = () => { this.close(() => (offspring ? this.opts.onLaunch(offspring) : this.opts.onNew(seed))); };
     await this.cine.play(async (c) => {
       c.cam.cut(this.cam.position.clone(), this.camLook.clone(), this.cam.fov);
-      c.stamp(offspring ? `OFFSPRING OF ${offspring.name.toUpperCase()} \u00b7 SEED ${seed}` : `TARGET SEED ${seed}`, true);
-      // the other signs swing clear; NEW WORLD stays to count it down on its nixies
-      this.signs.forEach((s, i) => { if (s.id !== 'new') { kickSign(s, 0.7); setTimeout(() => (s.gone = 1), 120 + i * 90); } });
-      this.title.gone = 0.6; this.gearTag.gone = 1;
-      c.tween(2.6, (u) => { this.launchK = u * 0.6; }, 'in');
-      c.cam.move({ pos: M.clone().add(new V3(2.6, 0.9, 4.6)), look: M.clone().add(new V3(0.6, -0.2, 0)), fov: 34, dur: 2.2, ease: 'inOut' });
-      for (let n = 3; n >= 1; n--) { this.nix.set(String(n).padStart(2, '0')); c.sfx('beep', 0.6, n === 1 ? 1.25 : 1); kickSign(this.signs[0], 0.15); await c.wait(0.75); }
-      this.nix.set('00'); c.sfx('beepHi', 0.7); this.signs[0].gone = 1;
-      // down past the rock and the planet comes up to meet the camera
-      c.sfx('whoosh', 0.8, 0.9); c.sfx('swell', 0.6);
-      const target = PLANET.clone().addScaledVector(M.clone().sub(PLANET).normalize(), PLANET_R * 1.05);
-      c.cam.move({ pos: target.clone().add(new V3(1.5, 3.5, 6)), look: PLANET.clone(), fov: 46, dur: 2.4, ease: 'inCubic' });
-      c.say(offspring ? `Offspring of ${offspring.name}: target acquired.` : 'Target acquired. Bringing the carrier round, Seven.', { who: 'Station Four', style: 'radio', pitch: 0.8 });
-      await c.wait(1.9);
-      await c.fade(1, 0.5, '#d9d2bf');
+      c.stamp(offspring ? `OFFSPRING OF ${offspring.name.toUpperCase()} · SEED ${seed}` : `TARGET SEED ${seed}`, true);
+      for (const o of this.words) o.word.burst(1.4);
+      c.sfx('whoosh', 0.7, 0.8); c.sfx('swell', 0.5);
+      // round to the bow and in at the bay mouth, where the pod waits on its rail
+      c.cam.move({ pos: out, look: mouth, fov: 40, dur: 2.6, ease: 'inOut' });
+      c.say(offspring ? `Offspring of ${offspring.name}: target acquired.` : 'Target acquired. Bay two, stand by to receive Seven.', { who: 'Station Four', style: 'radio', pitch: 0.8 });
+      await c.wait(2.4);
+      c.cam.move({ pos: mouth, look: inside, fov: 48, dur: 1.6, ease: 'inCubic' });
+      await c.wait(1.2);
+      await c.fade(1, 0.5, '#d2cab4');
       await c.wait(0.2);
     }, { name: 'setout' });
     end();
@@ -491,64 +472,52 @@ export class MenuScreen implements Screen {
   // ------------------------------------------------------------------ the frame
   update(dt: number) {
     this.t += dt;
-    const t = this.t, met = this.meteor, L = this.launchK;
+    const t = this.t;
     this.cine.update(dt);
-    // the meteor turns and drifts; its fissures breathe; the swarm orbits; dust glitters
-    if (this.mode !== 'launch' || L < 1) {
-      met.group.rotation.set(Math.sin(t * 0.13) * 0.12 + L * 0.4, Math.sin(t * 0.09) * 0.42 + t * 0.015, Math.sin(t * 0.11 + 1) * 0.08);
-      if (this.mode !== 'launch') met.group.position.set(M0.x, M0.y + Math.sin(t * 0.32) * 0.13, M0.z + Math.sin(t * 0.21) * 0.08);
+    this.ship.update(dt, t);
+    this.globe.group.rotation.y += dt * 0.004; this.globe.mat.uniforms.uT.value = t;
+    // the words float (gone while the archive is up), the lamp follows the one pointed at
+    this.archK += ((this.mode === 'archive' ? 1 : 0) - this.archK) * Math.min(1, dt * 3);
+    for (const o of this.words) {
+      const w = o.word;
+      w.group.visible = this.archK < 0.98;
+      w.update(dt, t, this.cam);
+      if (this.archK > 0.01) { w.group.position.addScaledVector(this.rest.up, this.archK * 70 * (1 + this.words.indexOf(o) * 0.15)); }
     }
-    met.group.updateMatrixWorld();
-    met.t.value = t; met.glow.value = 1 + L * 2.6 + (this.hovered?.id === 'new' ? 0.4 : 0);
-    this.glowLight.intensity = 3.5 + L * 16;
-    const ls = this.hovered ?? (this.hoverGear ? this.gearTag : null);
-    if (ls) this.lamp.position.lerp(ls.pos.clone().add(new V3(0, ls.h * 0.9, 0.75)), Math.min(1, dt * 10));
-    this.lamp.intensity += ((ls ? 6 + Math.sin(t * 31) * 0.25 : 0) - this.lamp.intensity) * Math.min(1, dt * 9);
-    this.swarm.group.position.copy(met.group.position); this.swarm.update(dt, L);
-    this.dust.points.position.copy(met.group.position); this.dust.update(t);
-    // the lens follows the pointer
-    const px = this.ptrIn ? this.ndc.x : Math.sin(t * 0.3) * 0.3, py = this.ptrIn ? this.ndc.y : Math.sin(t * 0.23) * 0.2;
-    met.pupil.position.x += (Math.max(-1, Math.min(1, px + 0.5)) * 0.1 - met.pupil.position.x) * Math.min(1, dt * 6);
-    met.pupil.position.y += (py * 0.08 - met.pupil.position.y) * Math.min(1, dt * 6);
-    (met.pupil.material as THREE.MeshBasicMaterial).color.set(0x8fd0b8).multiplyScalar(1 + L * 1.6 + Math.max(0, Math.sin(t * 2.4)) * 0.15);
-    this.globe.group.rotation.y += dt * 0.008; this.globe.mat.uniforms.uT.value = t;
-    // the signs: springs, swings, chains
-    for (const s of this.signs) stepSign(s, dt, t);
-    stepSign(this.title, dt, t); stepSign(this.gearTag, dt, t);
-    for (const w of this.worlds) { w.g.group.rotation.y += dt * (this.focus >= 0 && this.worlds[this.focus] === w ? 0.5 : 0.15); w.g.mat.uniforms.uT.value = t; w.tag.hover = this.hoverWorld >= 0 && this.worlds[this.hoverWorld] === w ? 1 : 0; stepSign(w.tag, dt, t); w.g.group.position.y = w.at.y + Math.sin(t * 0.5 + w.at.x) * 0.06; }
-    if (this.emptyTag) stepSign(this.emptyTag, dt, t);
-    for (const ch of this.chains) ch.c.update(ch.a(), ch.b(), ch.sag);
-    // the cog
-    this.gearHover += ((this.hoverGear ? 1 : 0) - this.gearHover) * Math.min(1, dt * 8);
-    this.gearSpin *= Math.exp(-dt * 1.5);
-    this.gear.mesh.rotation.z -= dt * (0.25 + this.gearHover * 2.2 + this.gearSpin);
-    this.gear.mesh.rotation.y = Math.sin(t * 0.4) * 0.15 - 0.25; this.gear.mesh.position.y = -2.15 + Math.sin(t * 0.6) * 0.05;
+    if (this.empty) { this.empty.group.visible = this.archK > 0.02; this.empty.update(dt, t, this.cam); this.empty.group.position.addScaledVector(this.rest.up, (1 - this.archK) * -60); }
+    this.worlds.forEach((w, i) => {
+      w.g.group.visible = this.archK > 0.02;
+      w.g.group.position.copy(w.at).addScaledVector(this.rest.up, (1 - this.archK) * -80 - Math.sin(t * 0.5 + i) * 1.2);
+      w.g.group.rotation.y += dt * (this.focus === i ? 0.5 : 0.15); w.g.mat.uniforms.uT.value = t;
+    });
+    const lit = this.hovered?.word;
+    if (lit) this.lamp.position.lerp(lit.group.position.clone().addScaledVector(this.rest.up, 10).add(this.cam.position.clone().sub(lit.group.position).normalize().multiplyScalar(22)), Math.min(1, dt * 10));
+    this.lamp.intensity += ((lit ? 2600 : 0) - this.lamp.intensity) * Math.min(1, dt * 8);
+    // the apple: physics against the hull and the words
+    const boxes = [...this.ship.boxes, ...this.words.filter((o) => o.word.group.visible).map((o) => ({ half: o.word.halfSize, m: o.word.group.matrixWorld, inv: new THREE.Matrix4().copy(o.word.group.matrixWorld).invert(), hit: () => { o.word.burst(0.3); } }))];
+    this.bonk = Math.max(0, this.bonk - dt);
+    this.apple.update(dt, t, boxes, (sp) => { if (this.bonk > 0) return; this.bonk = 0.15; csfx(sp > 25 ? 'clamp' : 'thud', Math.min(1, sp / 40), 1.2); });
     this.fx.update(dt, innerHeight, this.cam.fov);
-    // the camera: a drift and a lean toward the pointer, framed by the mode
+    // the camera: a slow drift and a lean toward the pointer
     if (this.cine.active) { this.cine.apply(this.cam); return; }
     const qx = this.ptrIn ? this.ndc.x : 0, qy = this.ptrIn ? this.ndc.y : 0;
-    this.par.x += (qx - this.par.x) * Math.min(1, dt * 2.2); this.par.y += (qy - this.par.y) * Math.min(1, dt * 2.2);
-    let pos: THREE.Vector3, look: THREE.Vector3, fov = 38;
-    if (this.mode === 'archive') {
-      const w = this.focus >= 0 ? this.worlds[this.focus] : null;
-      if (w) { pos = w.at.clone().add(new V3(-0.8, 0.1, 3.2)); look = w.at.clone().add(new V3(0.55, -0.2, 0)); fov = 34; }
-      else { pos = ARCH.clone().add(new V3(0, 0.4, 9.5)); look = ARCH.clone().add(new V3(0, -0.1, 0)); fov = 40; }
-    } else if (this.mode === 'settings' || this.mode === 'card') { pos = new V3(0.2, 0.4, 10.6); look = new V3(0.1, 0.15, 0); fov = 40; }
-    else { pos = new V3(0.5, 0.25, 9.4); look = new V3(0.6, 0.0, 0); }
-    pos.x += this.par.x * 0.42 + Math.sin(t * 0.11) * 0.12; pos.y += this.par.y * 0.24 + Math.sin(t * 0.17) * 0.07;
-    look.x += this.par.x * 0.3; look.y += this.par.y * 0.18;
-    const k = 1 - Math.exp(-dt * 2.4);
+    this.par.x += (qx - this.par.x) * Math.min(1, dt * 1.6); this.par.y += (qy - this.par.y) * Math.min(1, dt * 1.6);
+    const r = this.rest;
+    const pos = r.pos.clone().addScaledVector(r.right, this.par.x * 16 + Math.sin(t * 0.07) * 6).addScaledVector(r.up, this.par.y * 9 + Math.sin(t * 0.11) * 3);
+    const look = r.look.clone().addScaledVector(r.right, this.par.x * 7).addScaledVector(r.up, this.par.y * 4);
+    if (this.mode === 'archive') pos.addScaledVector(look.clone().sub(pos).normalize(), 18);
+    const k = 1 - Math.exp(-dt * 1.6);
     this.camPos.lerp(pos, k); this.camLook.lerp(look, k);
     this.cam.position.copy(this.camPos); this.cam.lookAt(this.camLook);
-    if (Math.abs(this.cam.fov - fov) > 0.01) { this.cam.fov += (fov - this.cam.fov) * k; this.cam.updateProjectionMatrix(); }
+    if (Math.abs(this.cam.fov - r.fov) > 0.01) { this.cam.fov += (r.fov - this.cam.fov) * k; this.cam.updateProjectionMatrix(); }
     this.cam.updateMatrixWorld();
     if (this.ptrIn && !this.downAt) this.pick();
   }
   render(post: Post, t: number) {
-    resetGrade(post.grade); post.grade.bloom = 0.3; post.grade.vig = 0.5; post.grade.sat = 0.96;
+    resetGrade(post.grade); post.grade.bloom = 0.32; post.grade.vig = 0.5; post.grade.sat = 0.96;
     post.render(this.scene, this.cam, this.fxScene, t);
   }
-  resize(w: number, h: number) { this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); fontVars(); }
+  resize(w: number, h: number) { this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); fontVars(); this.layout(); }
   private close(then: () => void) {
     if (this.closed) return;
     this.closed = true; this.dispose(); then();
@@ -558,6 +527,8 @@ export class MenuScreen implements Screen {
     this.off.forEach((f) => f()); this.off = [];
     this.hum?.stop(0.4); this.hum = null;
     this.root.remove(); this.cine.dispose(); Tip.hide(); document.body.style.cursor = '';
+    for (const o of this.words) o.word.dispose();
+    this.empty?.dispose(); this.apple.dispose(); this.ship.dispose();
   }
 }
 
@@ -581,12 +552,12 @@ export class AscendScreen implements Screen {
     this.globe = makeGlobe(planet, 1); this.scene.add(this.globe.group);
     this.order = planet.regions.filter((r) => r.state !== 'veyr').map((r) => r.id);
     // the flag: a pole, a cloth with the Corps roundel, planted at the top of the world
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.34, 6), mat({ color: 0xc9d0d4, phong: true })); pole.position.y = 0.17; this.flag.add(pole);
-    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 4), mat({ color: 0xd8ab50, phong: true })); knob.position.y = 0.345; this.flag.add(knob);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.34, 6), mat({ color: RAMPS.steel[6], phong: true })); pole.position.y = 0.17; this.flag.add(pole);
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 4), mat({ color: RAMPS.brass[5], phong: true })); knob.position.y = 0.345; this.flag.add(knob);
     const fp = new Pix(32, 20);
-    for (let y = 0; y < 20; y++) for (let x = 0; x < 32; x++) fp.set(x, y, Math.floor(y / 3) % 2 ? CR[4] : RD[4]);
-    for (let y = 0; y < 11; y++) for (let x = 0; x < 13; x++) fp.set(x, y, 0x1c2e6a);
-    for (const [x, y] of [[2, 2], [6, 2], [10, 2], [4, 5], [8, 5], [2, 8], [6, 8], [10, 8]]) fp.set(x, y, 0xffffff);
+    for (let y = 0; y < 20; y++) for (let x = 0; x < 32; x++) fp.set(x, y, Math.floor(y / 3) % 2 ? RAMPS.paper[4] : RAMPS.stampRed[2]);
+    for (let y = 0; y < 11; y++) for (let x = 0; x < 13; x++) fp.set(x, y, RAMPS.slate[1]);
+    for (const [x, y] of [[2, 2], [6, 2], [10, 2], [4, 5], [8, 5], [2, 8], [6, 8], [10, 8]]) fp.set(x, y, RAMPS.paper[5]);
     const cg = new THREE.PlaneGeometry(0.2, 0.125, 10, 4); cg.translate(0.1, 0, 0);
     this.cloth = new THREE.Mesh(cg, mat({ map: tex(fp), side: THREE.DoubleSide, flat: false }));
     this.cloth.position.set(0.006, 0.27, 0); this.flag.add(this.cloth);
