@@ -251,7 +251,7 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
     for (let k = 0; k < nb; k++) {
       const hk = 0.65 + 0.35 * Math.sin(Math.PI * (k + 0.5) / nb), bv0 = v0 + stepV * k - stepV * 0.28, bv1 = v0 + stepV * (k + 1);
       X.body.add(shell({ name: 'band' + k, host: X.tr, u: [ua, ub], v: [bv0, bv1], nu: 10, nv: 3, sink: X.W * 0.03, rim: 2, ridges: [0.5], rings: [0.5],
-        lift: (a, b) => { const x = Math.abs(a - 0.5) * 2, dome = Math.cos(Math.min(1, x) * Math.PI / 2) ** 0.5; return X.W * p.lift * 0.12 * (0.35 + 0.65 * hk * dome) * (1 + 0.55 * Math.pow(1 - b, 3)); },
+        lift: (a, b) => { const x = Math.abs(a - 0.5) * 2, dome = Math.cos(Math.min(1, x) * Math.PI / 2) ** 0.5; return X.W * p.lift * 0.12 * (0.14 + 0.86 * hk * dome) * (1 + 0.45 * Math.pow(1 - b, 3)); },
         skin: X.spine, paint: L, k: 1.0, levels: 1 })).reg = 2;
       for (let s = 0; s < (p.spikes ?? 0); s++) {
         const a = 0.5 + (s - (p.spikes! - 1) / 2) * 0.12, q = onTr(X, a, bv0 + (bv1 - bv0) * 0.3), lift = X.W * p.lift * 0.12 * (0.35 + 0.65 * hk);
