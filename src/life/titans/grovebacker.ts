@@ -169,6 +169,9 @@ export function grovebacker(d: Design, rig: Rig, rest: V3[]) {
     seatsAt.push([0.5 + (h3(k, 1, seed) - 0.5) * 0.08, v, k > 1 && k < nb - 1 ? 1 : 0.6, k > 1 && k < nb - 1 && k % 2 ? 'tree' : 'young']);
     seatsAt.push([0.36 + h3(k, 2, seed) * 0.04, v + step * 0.05, 0.45, k % 2 ? 'sapling' : 'fern']);
     seatsAt.push([0.6 + h3(k, 3, seed) * 0.04, v + step * 0.08, 0.55, k % 2 ? 'fern' : 'young']);
+    // the lower slopes of the crevice: saplings and ferns clinging on
+    seatsAt.push([0.29 + h3(k, 4, seed) * 0.03, v + step * 0.03, 0.3, k % 3 ? 'fern' : 'sapling']);
+    seatsAt.push([0.69 + h3(k, 5, seed) * 0.03, v + step * 0.1, 0.3, k % 3 === 1 ? 'sapling' : 'fern']);
   }
   seatsAt.forEach(([u, v, sz, kind], k) => {
     const { p: c, n } = shellAt(u, v, -0.05), up = norm([n[0] * 0.35, 1, n[2] * 0.35]);
@@ -183,7 +186,7 @@ export function grovebacker(d: Design, rig: Rig, rest: V3[]) {
       body.add(stalk({ name: 'root' + k + '_' + r, path: curve(pts, 6), r: (t) => (0.1 + sz * 0.14) * (1 - t * 0.8), around: 5, levels: 1, skin: () => w, paint: rootLook, k: 1 }));
     }
     const bone = pickBone(c), br = rest[bone];
-    grove.push({ bone, off: [c[0] - br[0], c[1] + 0.15 - br[1], c[2] - br[2]], up, size: kind === 'tree' ? 3.5 + sz * 2.5 : kind === 'young' ? 1.8 + sz : kind === 'sapling' ? 0.9 : 0.5, kind });
+    grove.push({ bone, off: [c[0] - br[0], c[1] + 0.15 - br[1], c[2] - br[2]], up, size: kind === 'tree' ? 6.5 + sz * 3.5 + h3(k, 31, seed) * 2 : kind === 'young' ? 3 + sz * 1.5 + h3(k, 33, seed) : kind === 'sapling' ? 1.4 + h3(k, 35, seed) * 0.6 : 0.8 + h3(k, 37, seed) * 0.4, kind });
   });
   // lichen rosettes and crust cups over the flanks, the shell rims and the legs
   for (let k = 0; k < 70; k++) {
