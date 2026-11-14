@@ -7,7 +7,9 @@
 // shadows under nearer leaves. A warm sunlit rim and a selective outline in a deep shade of the neighbouring colour
 // finish it. Light comes from the upper left. The alien touch lives in the forms (eye-flowers that watch, lantern
 // pods, fiddle spires, glowing beads) and in a few odd hues, not in neon.
-import { PixelCanvas, makeRamp, mixHex, scaleHex } from '../limbo/gfx/pixel';
+import { PixelCanvas, mixHex } from '../limbo/gfx/pixel';
+import { rampFor, kinRamps, step, fillPoly, type P2 as KP2 } from './pixelKit';
+import { snapRGBA } from '../art/palette';
 import { hashf } from '../limbo/core/rng';
 import { Rand } from '../core/rand';
 import type { Palette } from './palette';
@@ -22,7 +24,8 @@ export type Painter = (sp: PlantSpecies, h: number, r: Rand, pal: Palette) => Pi
 /** a grower builds the plant's 3D structure; the sprite (far LOD) and the 3D mesh (near LOD) are both made from it */
 export type Grower = (sp: PlantSpecies, h: number, r: Rand, pal: Palette) => Plant;
 
-const RAMP = (c: number, n = 7, s = 0.6, hs = 0.045) => makeRamp(c, n, { spread: s, hueShift: hs, satShift: 0.05 });
+/** the master-palette ramp nearest a colour (the old spread / hue-shift arguments are kept for call compatibility) */
+const RAMP = (c: number, n = 7, _s = 0.6, _hs = 0.045) => rampFor(c, n);
 const ci = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : Math.round(v));
 const TAU = Math.PI * 2, GOLD = 2.39996;
 
@@ -59,7 +62,8 @@ export type Shape = 'ovate' | 'lance' | 'round' | 'heart' | 'strap' | 'petal' | 
 export const PROF: Record<Shape, (u: number) => number> = {
   ovate: (u) => Math.pow(Math.sin(Math.PI * Math.pow(u, 0.8)), 0.75),
   lance: (u) => Math.sin(Math.PI * u) * (1 - 0.35 * u),
-  round: (u) => Math.sqrt(Math.max(0, Math.sin(Math.PI * u))),
+  // broad but always pointed: no round leaves
+  round: (u) => Math.pow(Math.sin(Math.PI * Math.pow(u, 0.72)), 0.6) * Math.min(1, (1 - u) * 3.2),
   heart: (u) => Math.pow(Math.sin(Math.PI * Math.pow(u, 0.65)), 0.7) * (1 + 0.25 * (1 - u)),
   strap: (u) => Math.min(1, u * 5 + 0.35) * (1 - Math.pow(u, 3)),
   petal: (u) => Math.pow(Math.max(0, Math.sin(Math.PI * u)), 0.5) * (0.45 + 0.55 * u),
@@ -189,13 +193,18 @@ function drawLeaf(S: Scene, l: Leaf, sun: number, amb: number) {
     return;
   }
   const bl = hyp(bx, by);
+  // every leaf its own: halves of uneven width, sometimes a notch bitten out of one edge
+  const hs = hashf(Math.floor(l.p[0] * 3.1), Math.floor(l.p[1] * 2.7 + l.p[2] * 1.3), 41);
+  const asym = (hs - 0.5) * 0.45, notchU = l.len >= 5 && hs > 0.72 ? 0.35 + (hs - 0.72) * 1.4 : -1, notchS = hs > 0.86 ? 1 : -1;
   const x0 = Math.floor(Math.min(ox - Math.abs(bx), ox + ax - Math.abs(bx))) - 1, x1 = Math.ceil(Math.max(ox + Math.abs(bx), ox + ax + Math.abs(bx))) + 1;
   const y0 = Math.floor(Math.min(oy - Math.abs(by), oy + ay - Math.abs(by))) - 1, y1 = Math.ceil(Math.max(oy + Math.abs(by), oy + ay + Math.abs(by))) + 1;
   for (let py = y0; py <= y1; py++) for (let px = x0; px <= x1; px++) {
     const ex = px + 0.5 - ox, ey = py + 0.5 - oy;
     const u = (ex * by - ey * bx) / det, v = (ax * ey - ay * ex) / det;
     if (u < 0 || u > 1) continue;
-    const w = prof(u), av = Math.abs(v);
+    const av = Math.abs(v), sg = v >= 0 ? 1 : -1;
+    let w = prof(u) * (1 + asym * sg);
+    if (sg === notchS && Math.abs(u - notchU) < 0.07) w *= 0.45;
     if (av > w) continue;
     let val = (v >= 0 ? tA : tB) + (u - 0.4) * 0.1;
     if (l.vein && l.len >= 5 && av * bl < 0.55 && u > 0.06 && u < 0.9) val += l.vein > 0 ? 0.1 : -0.12;
@@ -205,53 +214,51 @@ function drawLeaf(S: Scene, l: Leaf, sun: number, amb: number) {
   }
 }
 
+/** a berry, bead, fruit or pod: a faceted little polygon (no discs), a lit upper-left plane and a shaded lower-right
+ *  plane, ribs as darker facet lines, one highlight pixel; glowing ones a step brighter at the heart */
 function drawOrb(S: Scene, o: Orb, sun: number, amb: number) {
-  const cx = S.X(o.c), cy = S.Y(o.c), cz = S.Z(o.c), r = Math.max(0.7, o.r), sq = o.sq ?? 1, n = o.ramp.length - 1;
-  for (let py = Math.floor(cy - r * sq - 1); py <= Math.ceil(cy + r * sq + 1); py++) for (let px = Math.floor(cx - r - 1); px <= Math.ceil(cx + r + 1); px++) {
-    const dx = (px + 0.5 - cx) / r, dy = (py + 0.5 - cy) / (r * sq), d2 = dx * dx + dy * dy;
-    if (d2 > 1) continue;
-    const nz = Math.sqrt(1 - d2);
-    const ox = dx - SUP[0] * dy + VIEW[0] * nz, oy = -SUP[1] * dy + VIEW[1] * nz, oz = -SUP[2] * dy + VIEW[2] * nz, ol = hyp(ox, oy, oz) || 1;
-    let v = tone(Math.max(0, (ox * LIGHT[0] + oy * LIGHT[1] + oz * LIGHT[2]) / ol), sun, Math.max(amb, 0.25));
-    if (o.ribs && Math.abs(Math.sin(Math.atan2(dx, nz) * o.ribs)) < 0.22) v -= 0.12;
+  const cx = S.X(o.c), cy = S.Y(o.c), cz = S.Z(o.c), r = Math.max(0.9, o.r), sq = o.sq ?? 1, n = o.ramp.length - 1;
+  const rr = new Rand(o.seed), k = r < 1.6 ? 4 : r < 3 ? 6 : 7, a0 = rr.range(0, Math.PI / k), pts: KP2[] = [];
+  for (let i = 0; i < k; i++) { const a = a0 + (i / k) * TAU + rr.range(-0.2, 0.2), s = rr.range(0.85, 1.08); pts.push([cx + Math.cos(a) * r * s, cy + Math.sin(a) * r * sq * s]); }
+  const lit = tone(0.85, sun, Math.max(amb, 0.25)), dim = tone(0.25, sun, Math.max(amb, 0.25));
+  fillPoly(pts, (px, py) => {
+    const dx = px + 0.5 - cx, dy = (py + 0.5 - cy) / sq;
+    let v = dx + dy < r * 0.15 ? lit : dim;
+    if (o.ribs && Math.abs(Math.sin(Math.atan2(dx, Math.max(0.3, r - Math.abs(dy))) * o.ribs)) < 0.25) v -= 0.16;
     let c = band(o.ramp, v);
-    if (o.glow !== undefined && d2 < 0.5) c = mixHex(c, o.glow, (0.5 - d2) * 1.1);
-    S.put(px, py, cz + nz * r, c, K.ACC, o.alpha ?? 255);
-  }
-  if (r >= 2) S.put(Math.floor(cx - r * 0.4), Math.floor(cy - r * 0.45 * sq), cz + r + 0.1, mixHex(o.ramp[n], 0xffffff, 0.3), K.ACC, o.alpha ?? 255);
-  if (o.spots) {
-    const rr = new Rand(o.seed);
-    for (let k = 0; k < o.spots; k++) {
-      const a = rr.range(0, TAU), d = rr.range(0.1, 0.65);
-      S.put(Math.floor(cx + Math.cos(a) * d * r), Math.floor(cy + Math.sin(a) * d * r * sq), cz + r + 0.2, o.spotCol ?? o.ramp[1], K.ACC, o.alpha ?? 255);
-    }
+    if (o.glow !== undefined && Math.abs(dx) + Math.abs(dy) < r * 0.6) c = step(c, 1);
+    S.put(px, py, cz + r - (Math.abs(dx) + Math.abs(dy)) * 0.5, c, K.ACC, o.alpha ?? 255);
+  });
+  if (r >= 1.6) S.put(Math.floor(cx - r * 0.4), Math.floor(cy - r * 0.45 * sq), cz + r + 0.1, o.ramp[n], K.ACC, o.alpha ?? 255);
+  if (o.spots) for (let q = 0; q < o.spots; q++) {
+    const a = rr.range(0, TAU), d = rr.range(0.1, 0.55);
+    S.put(Math.floor(cx + Math.cos(a) * d * r), Math.floor(cy + Math.sin(a) * d * r * sq), cz + r + 0.2, o.spotCol ?? o.ramp[1], K.ACC, o.alpha ?? 255);
   }
 }
 
-/** a mushroom cap seen a little from above: a shaded dome over a crescent of gills */
+/** a mushroom cap seen a little from above: a faceted dome (a lit left plane, a top plane, a shaded right plane)
+ *  over a band of gills; flecks as small clusters */
 function drawCap(S: Scene, o: Cap, sun: number, amb: number) {
-  const cx = S.X(o.c), cy = S.Y(o.c), cz = S.Z(o.c), r = o.r, hr = o.hr, rim = Math.max(1, r * 0.12);
-  for (let py = Math.floor(cy - hr - 1); py <= Math.ceil(cy + rim + 2); py++) for (let px = Math.floor(cx - r - 1); px <= Math.ceil(cx + r + 1); px++) {
-    const dx = (px + 0.5 - cx) / r;
-    if (Math.abs(dx) > 1) continue;
-    const yy = py + 0.5 - cy, edge = Math.sqrt(1 - dx * dx);
-    if (yy < 0) {
-      const dy = -yy / hr; if (dy > edge) continue;
-      const nz = Math.sqrt(Math.max(0, 1 - dx * dx - dy * dy)), nn = nrm(add(add([dx, 0, 0], mul(SUP, dy)), mul(VIEW, nz)));
-      let v = tone(Math.max(0, dot(nn, LIGHT)), sun, Math.max(amb, 0.3)) + (hashf(px, py, o.seed) - 0.5) * 0.06;
-      if (dy < 0.18 && edge - dy < 0.9) v -= 0.08;
-      S.put(px, py, cz + nz * r, band(o.ramp, v), K.ACC, o.alpha ?? 255);
-    } else if (yy < rim * edge + 0.6 && Math.abs(dx) < 0.94) {
-      // gills: radial lamellae converging on the stem, lit edges alternating with dark slots
-      const g = Math.floor((Math.asin(dx) / Math.PI + 0.5) * r * 1.6);
-      S.put(px, py, cz - 0.5, g % 2 ? o.gill[2] : o.gill[1 + (yy > rim * 0.5 ? 0 : 1)], K.ACC, o.alpha ?? 255);
-    }
+  const cx = S.X(o.c), cy = S.Y(o.c), cz = S.Z(o.c), r = o.r, hr = o.hr, rim = Math.max(1, Math.round(r * 0.14)), rr = new Rand(o.seed);
+  // the dome as a polygon: rim corners, shoulders, a slightly off-centre crown
+  const sh = rr.range(0.55, 0.7), cr = rr.range(-0.12, 0.12);
+  const dome: KP2[] = [[cx - r, cy], [cx - r * 0.86, cy - hr * sh], [cx - r * 0.42 + cr * r, cy - hr], [cx + r * 0.38 + cr * r, cy - hr * 0.97], [cx + r * 0.84, cy - hr * (sh - 0.05)], [cx + r, cy]];
+  const vL = tone(0.75, sun, Math.max(amb, 0.3)), vT = tone(0.95, sun, Math.max(amb, 0.3)), vR = tone(0.3, sun, Math.max(amb, 0.3));
+  fillPoly(dome, (px, py) => {
+    const dx = (px + 0.5 - cx) / r, top = py + 0.5 < cy - hr * (sh + 0.18);
+    const v = top && dx < 0.25 ? vT : dx < -0.12 ? vL : dx < 0.3 ? (vL + vR) / 2 : vR;
+    S.put(px, py, cz + r * (1 - Math.abs(dx) * 0.5), band(o.ramp, v), K.ACC, o.alpha ?? 255);
+  });
+  // gills: alternating light and dark lamellae under the rim
+  for (let py = Math.floor(cy); py < cy + rim + 1; py++) for (let px = Math.floor(cx - r * 0.92); px <= Math.ceil(cx + r * 0.92); px++) {
+    const g = Math.floor((px - cx) / 1.5 + 100);
+    S.put(px, py, cz - 0.5, g % 2 ? o.gill[2] : o.gill[py > cy + rim * 0.5 ? 1 : 2 - 1], K.ACC, o.alpha ?? 255);
   }
-  const rr = new Rand(o.seed);
   for (let k = 0; k < o.spots; k++) {
-    const a = rr.range(Math.PI * 1.05, Math.PI * 1.95), d = rr.range(0.15, 0.75), x = Math.floor(cx + Math.cos(a) * d * r), y = Math.floor(cy + Math.sin(a) * d * hr);
+    const x = Math.floor(cx + rr.range(-0.7, 0.7) * r), y = Math.floor(cy - rr.range(0.25, 0.8) * hr);
     S.put(x, y, cz + r + 0.3, o.spotCol, K.ACC, o.alpha ?? 255);
-    if (r > 6 && rr.chance(0.5)) S.put(x + 1, y, cz + r + 0.3, o.spotCol, K.ACC, o.alpha ?? 255);
+    if (r > 4) S.put(x + 1, y, cz + r + 0.3, o.spotCol, K.ACC, o.alpha ?? 255);
+    if (r > 6) S.put(x, y + 1, cz + r + 0.3, o.spotCol, K.ACC, o.alpha ?? 255);
   }
 }
 
@@ -347,8 +354,9 @@ function finish(S: Scene, rim: number) {
     const i = y * W + x; if (!k0[i]) continue;
     const up = y > 0 ? i - W : -1, lf = x > 0 ? i - 1 : -1;
     const openU = up < 0 || !k0[up], openL = lf < 0 || !k0[lf];
-    if ((up >= 0 && k0[up] && z0[up] - z0[i] > 2.5) || (lf >= 0 && k0[lf] && z0[lf] - z0[i] > 3.5)) pc.shade(x, y, 0.8);
-    else if (rim > 0 && (openU || openL) && k0[i] !== K.BARK) pc.set(x, y, mixHex(pc.get(x, y), RIMC, rim), pc.alpha(x, y));
+    // contact shadow: one ramp step down; the lit rim: one ramp step up (no tinting)
+    if ((up >= 0 && k0[up] && z0[up] - z0[i] > 2.5) || (lf >= 0 && k0[lf] && z0[lf] - z0[i] > 3.5)) pc.set(x, y, step(pc.get(x, y), -1), pc.alpha(x, y));
+    else if (rim > 0 && (openU || openL) && k0[i] !== K.BARK) pc.set(x, y, step(pc.get(x, y), 1), pc.alpha(x, y));
   }
 }
 
@@ -356,8 +364,9 @@ function finish(S: Scene, rim: number) {
 interface LeafStyle { len: [number, number]; wr: number; shapes: Shape[]; ramps: [number[], number][]; ang: [number, number]; droop: number; roll: number; fold?: number; vein?: number; lat?: boolean; stalk?: number; teeth?: boolean }
 function pickRamp(r: Rand, list: [number[], number][]) { return r.weighted(list); }
 /** a species' leaf ramps: mostly the planet's foliage, with older warmer leaves, shaded bluer ones and a few fresh ones */
-function leafRamps(c: number, spread = 0.62): [number[], number][] {
-  return [[RAMP(c, 7, spread), 0.6], [RAMP(mixHex(c, 0xb09a50, 0.24), 7, spread), 0.16], [RAMP(mixHex(c, 0x2a3c40, 0.2), 7, spread), 0.14], [RAMP(mixHex(c, 0xd4dc96, 0.16), 7, spread), 0.1]];
+function leafRamps(c: number, _spread = 0.62): [number[], number][] {
+  const k = kinRamps(c, 7);
+  return [[k[0], 0.6], [k[1], 0.16], [k[2], 0.14], [k[3], 0.1]];
 }
 /** one leaf off a twig: angled out from it, drooping, its blade turned toward the sky and rolled a little */
 function twigLeaf(P: Plant, r: Rand, p: V3, d: V3, ls: LeafStyle) {
@@ -467,7 +476,7 @@ function crozier(P: Plant, base: V3, h: number, rad: number, az: number, ramp: n
 
 /** species-level traits shared by all of a species' variants */
 const traits = (sp: PlantSpecies) => new Rand(sp.id * 7919 + (sp.leaf & 0xffff) * 31 + 17);
-const deepOf = (ramp: number[]) => scaleHex(ramp[0], 0.55);
+const deepOf = (ramp: number[]) => ramp[0];
 
 // ------------------------------------------------------------------------------------------------ painters
 const broadleaf: Grower = (sp, h, r) => {
@@ -732,15 +741,14 @@ const eyeflower: Grower = (sp, h, r) => {
   const iris = RAMP(sp.glow ? 0x6ac8b0 : 0xc8a040, 6, 0.55), glow = sp.glow;
   P.eyes.push({ p: head, n: face, r: R0 * 0.62, iris, glow });
   P.post.push({ p: head, f: (S, x, y, z, k) => {
-    const R = R0 * Math.sqrt(k), cx = Math.floor(x), cy = Math.floor(y);
-    for (let py = -R; py <= R; py++) for (let px = -R; px <= R; px++) {
-      const d = hyp(px, py) / (R * 0.62); if (d > 1) continue;
-      const di = hyp(px - 0.5, py) / (R * 0.42);
-      const c = di <= 1 ? band(iris, 0.85 - di * 0.5 - (py < 0 ? 0 : 0.15)) : mixHex(0xece6d4, 0x8a8478, Math.max(0, (px + py) / R) * 0.5);
-      S.put(cx + px, cy + py, z + 6, c, K.ACC, glow && di <= 1 ? 200 : 255);
-    }
-    for (let py = -R * 0.36; py <= R * 0.36; py++) S.put(cx, cy + Math.round(py), z + 7, 0x0a0808, K.ACC);
-    S.put(cx - Math.round(R * 0.22), cy - Math.round(R * 0.22), z + 8, 0xfaf6ee, K.ACC);
+    const R = R0 * Math.sqrt(k), cx = Math.floor(x), cy = Math.floor(y), Sc = RAMP(0xd4ccb2, 6), n = iris.length - 1;
+    const lid: KP2[] = [[cx - R * 0.62, cy], [cx - R * 0.3, cy - R * 0.36], [cx + R * 0.3, cy - R * 0.36], [cx + R * 0.62, cy], [cx + R * 0.3, cy + R * 0.32], [cx - R * 0.3, cy + R * 0.32]];
+    fillPoly(lid, (px, py) => S.put(px, py, z + 6, Sc[px + py < cx + cy ? 4 : 2], K.ACC));
+    const ir = R * 0.4, oct: KP2[] = [];
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU + 0.39; oct.push([cx + 0.5 + Math.cos(a) * ir, cy + Math.sin(a) * ir * 0.92]); }
+    fillPoly(oct, (px, py) => S.put(px, py, z + 6.5, iris[py < cy ? n - 1 : n - 3], K.ACC, glow ? 200 : 255));
+    for (let py = -Math.round(ir * 0.85); py <= Math.round(ir * 0.85); py++) S.put(cx, cy + py, z + 7, iris[0], K.ACC);
+    S.put(cx - Math.round(R * 0.2), cy - Math.round(R * 0.18), z + 8, Sc[5], K.ACC);
   } });
   return P.done(H, deepOf(G[0][0]), 0.15);
 };
@@ -803,31 +811,9 @@ export function leaf(pc: PixelCanvas, p0: P2, p1: P2, p2: P2, wid: number, ramp:
       let c = cel(ramp, v);
       if (o.rib && Math.abs(s) < 0.5 && t > 0.05 && t < 0.88) c = ramp[1];
       if (o.tip && t >= (o.tipFrom ?? 0.75)) c = cel(o.tip, v + (t - (o.tipFrom ?? 0.75)) * 0.8);
-      if (o.rimSide && side * Math.sign(facing || 1) < -0.7 && v < 0.4) c = mixHex(c, RIM, 0.18);
+      if (o.rimSide && side * Math.sign(facing || 1) < -0.7 && v < 0.4) c = step(c, 1);
       pc.set(x + nx * s, y + ny * s, c, o.alpha ?? 255);
     }
-  }
-}
-
-interface OrbOpt { rim?: boolean; hi?: boolean; spots?: number; spotCol?: number; alpha?: number; glowCore?: number; squash?: number }
-/** a flat cel-shaded sphere: soft highlight, faint sky rim, dark crease on the shadow edge */
-export function orb(pc: PixelCanvas, cx: number, cy: number, r: number, ramp: number[], o: OrbOpt = {}, rng?: Rand) {
-  const sq = o.squash ?? 1, LX = -0.6, LY = -0.8;
-  for (let y = Math.floor(cy - r * sq - 1); y <= Math.ceil(cy + r * sq + 1); y++) for (let x = Math.floor(cx - r - 1); x <= Math.ceil(cx + r + 1); x++) {
-    const dx = (x + 0.5 - cx) / r, dy = (y + 0.5 - cy) / (r * sq), d2 = dx * dx + dy * dy;
-    if (d2 > 1) continue;
-    const nz = Math.sqrt(1 - d2);
-    const v = 0.16 + nz * 0.44 + (dx * LX + dy * LY) * 0.42;
-    let c = cel(ramp, v);
-    if (d2 > 0.8 && dx + dy > 0.35) c = ramp[1];
-    if (o.rim !== false && dx > 0.42 && d2 > 0.58 && dy < 0.5) c = mixHex(c, RIM, 0.2);
-    if (o.glowCore !== undefined && d2 < 0.3) c = mixHex(c, o.glowCore, 0.6 - d2);
-    pc.set(x, y, c, o.alpha ?? 255);
-  }
-  if (o.hi !== false && r >= 2) pc.set(cx - r * 0.38, cy - r * 0.42 * sq, mixHex(ramp[ramp.length - 1], 0xffffff, 0.3));
-  if (o.spots && rng) for (let k = 0; k < o.spots; k++) {
-    const a = rng.range(0, Math.PI * 2), d = rng.range(0.15, 0.6) * r, sx = cx + Math.cos(a) * d, sy = cy + Math.sin(a) * d * sq;
-    pc.set(sx, sy, o.spotCol ?? ramp[1]);
   }
 }
 
@@ -859,35 +845,38 @@ export function outline(pc: PixelCanvas, deep: number) {
     const i = (ny * W + nx) * 4;
     const nc = (src[i] << 16) | (src[i + 1] << 8) | src[i + 2];
     const lit = (l && !rr) || (u && !d);
-    pc.set(x, y, mixHex(deep, scaleHex(nc, 0.5), lit ? 0.45 : 0.12));
+    // sel-out: the neighbour's own ramp, two steps down on the lit side, to its darkest on the shadow side
+    pc.set(x, y, lit ? step(nc, -2) : step(nc, -4));
   }
+  void deep;
+  snapRGBA(pc.data);
 }
 
 const barrel: Painter = (sp, h, r) => {
   // ribbed barrel cacti: glaucous bodies, areoles of pale spines along every rib, a crown of petals on top
   const pc = canvasFor(h * 0.9, h), G = RAMP(mixHex(sp.leaf, 0x5e7e62, 0.5), 6, 0.58), A = RAMP(sp.accent, 6, 0.55), cx = pc.w / 2, by = pc.h - 2;
-  const spine = mixHex(G[5], 0xe8e0c8, 0.55);
+  const spine = RAMP(0xd4ccb2, 6)[4];
   const n = r.int(1, 2);
   for (let i = 0; i < n; i++) {
     const bx = cx + (n === 1 ? 0 : (i - 0.5) * pc.w * 0.34), th = h * PX * (i === 0 ? 0.9 : r.range(0.5, 0.7)), w = Math.max(4, h * PX * r.range(0.2, 0.27) * (n === 1 ? 1.15 : 0.9));
     const dome = w * 1.1, ribs = r.int(3, 4);
     for (let y = 0; y < th; y++) {
       const fromTop = th - y;
-      const ww = fromTop < dome ? w * Math.sqrt(Math.max(0, 1 - ((dome - fromTop) / dome) ** 2)) : w * (0.86 + 0.14 * Math.sin((y / th) * Math.PI));
+      const f = (dome - fromTop) / dome, ww = fromTop < dome ? w * (f < 0.45 ? 1 - f * 0.25 : f < 0.8 ? 0.89 - (f - 0.45) * 1.1 : 0.5 - (f - 0.8) * 2) : w * (0.88 + (y / th < 0.5 ? 0.1 : 0.06));
       for (let k = -ww; k <= ww; k++) {
         const u = k / Math.max(1, ww), ridge = Math.cos(u * Math.PI * ribs) * 0.5 + 0.5;
         let v = 0.5 - u * 0.3 + ridge * 0.18 - (y < 2 ? 0.2 : 0) + (hashf(Math.floor(bx + k), y, 3) - 0.5) * 0.08;
         if (Math.abs(u + 0.42) < 0.12 && fromTop > dome * 0.6) v += 0.22;
         pc.set(bx + k, by - y, cel(G, v));
         // areoles: a tuft of pale spines on the rib crest every few pixels
-        if (ridge > 0.95 && (y + Math.floor(k * 3)) % 4 === 0 && fromTop > 1) { pc.set(bx + k, by - y, spine); pc.set(bx + k + 1, by - y - 1, mixHex(spine, G[3], 0.4)); }
+        if (ridge > 0.95 && (y + Math.floor(k * 3)) % 4 === 0 && fromTop > 1) { pc.set(bx + k, by - y, spine); pc.set(bx + k + 1, by - y - 1, G[4]); }
       }
     }
     // flower crown: individual petals radiating from the apex
     if (r.chance(0.7)) for (let k = 0; k < r.int(1, 3); k++) {
       const fx = bx + r.range(-w * 0.35, w * 0.35), fy = by - th + 1;
       for (let p = 0; p < 7; p++) { const a = -Math.PI * (0.1 + 0.8 * (p / 6)); leaf(pc, [fx, fy], [fx + Math.cos(a) * 1.5, fy + Math.sin(a) * 1.5], [fx + Math.cos(a) * 3.2, fy + Math.sin(a) * 2.6], 1, A, { shape: 'petal' }); }
-      pc.set(fx, fy - 1, mixHex(A[5], 0xf0e0a0, 0.5));
+      pc.set(fx, fy - 1, RAMP(0xc9a464, 6)[5]);
     }
   }
   outline(pc, deepOf(G));
@@ -907,7 +896,7 @@ const crystalbloom: Painter = (sp, h, r) => {
         const face = k < -0.5 ? 0.85 : k > 0.5 ? 0.3 : 0.6;
         pc.set(cx + Math.sin(a) * t + k, by - 2 - Math.cos(a) * t, cel(C, face + (hashf(i, Math.floor(t / 3), 5) - 0.5) * 0.15), 175);
       }
-      if (t % 5 === 2) pc.set(cx + Math.sin(a) * t - ww * 0.5, by - 2 - Math.cos(a) * t, mixHex(C[5], 0xffffff, 0.35), 160);
+      if (t % 5 === 2) pc.set(cx + Math.sin(a) * t - ww * 0.5, by - 2 - Math.cos(a) * t, C[5], 160);
     }
   }
   outline(pc, deepOf(C));
@@ -918,17 +907,16 @@ const lily: Painter = (sp, h, r) => {
   // floating pads seen from above: a notch to the centre, radial veins, a darker turned-up rim; sometimes a flower
   const pc = canvasFor(h, h), G = RAMP(sp.leaf, 6, 0.55), A = RAMP(sp.accent, 6, 0.55), cx = pc.w / 2, cy = pc.h / 2;
   for (let i = 0; i < r.int(2, 4); i++) {
+    // a pad: an irregular nine-sided outline with a notch to the centre, two tones split by the light, vein strokes
     const x = cx + r.range(-pc.w * 0.2, pc.w * 0.2), y = cy + r.range(-pc.h * 0.2, pc.h * 0.2), rad = r.range(0.22, 0.32) * h * PX, notch = r.range(0, Math.PI * 2);
-    for (let yy = -rad; yy <= rad; yy++) for (let xx = -rad; xx <= rad; xx++) {
-      const d = hyp(xx, yy); if (d > rad) continue;
-      const ang = Math.atan2(yy, xx); if (Math.abs(((ang - notch + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.28 && d > 1) continue;
-      const vein = d > 1.5 && d < rad - 1.5 && Math.abs(((ang * 9) / Math.PI + 100) % 2 - 1) < 0.14;
-      pc.set(x + xx, y + yy, cel(G, 0.55 - ((xx + yy) / rad) * 0.2 - (d > rad - 1.2 ? 0.25 : 0) + (vein ? 0.18 : 0) + (hashf(Math.floor(x + xx), Math.floor(y + yy), 9) - 0.5) * 0.08));
-    }
+    const pts: KP2[] = [[x, y]];
+    for (let k = 0; k <= 9; k++) { const a = notch + 0.3 + (k / 9) * (Math.PI * 2 - 0.6); pts.push([x + Math.cos(a) * rad * r.range(0.9, 1.04), y + Math.sin(a) * rad * r.range(0.9, 1.04)]); }
+    fillPoly(pts, (px, py) => pc.set(px, py, G[px + py < x + y ? 4 : 3]));
+    for (let k = 0; k < 5; k++) { const a = notch + 0.9 + k * 1.05; for (let t = 1.5; t < rad - 1.5; t += 1) pc.set(x + Math.cos(a) * t, y + Math.sin(a) * t, G[Math.cos(a) + Math.sin(a) < 0 ? 5 : 2]); }
   }
   if (r.chance(0.5)) {
     for (let p = 0; p < 8; p++) { const a = (p / 8) * Math.PI * 2; leaf(pc, [cx, cy], [cx + Math.cos(a) * 1.5, cy + Math.sin(a) * 1.5], [cx + Math.cos(a) * 3.5, cy + Math.sin(a) * 3.5], 1.2, A, { shape: 'petal' }); }
-    pc.set(cx, cy, mixHex(A[5], 0xf0e0a0, 0.5));
+    pc.set(cx, cy, RAMP(0xc9a464, 6)[5]);
   }
   outline(pc, deepOf(G));
   return pc;

@@ -109,14 +109,17 @@ export class DeployScreen implements Screen {
     sc.add(g.group); bin.adopt(g.group);
     this.globe = g;
     // the ship
-    this.ship = buildShip(bin, sc);
-    const sun = this.ship.root.children.find((x) => (x as THREE.DirectionalLight).isDirectionalLight) as THREE.DirectionalLight | undefined;
-    if (sun) { sun.position.copy(sunDir).multiplyScalar(220); sun.target.position.set(0, 0, 0); }
+    this.ship = buildShip(bin, sc, { people: true });
+    this.ship.sun.position.copy(sunDir).multiplyScalar(220);
     // particles, and Unit 07 in its sling under the crane hook
     this.fx = new Fx(this.fxScene, sc);
     const parts = this.o.run ? [...this.o.run.skills.owned] : [];
-    const ch = new VeyrChild(this.fx, parts.includes('torso') ? 0.62 : 0.85, loadLook(), { grown: true, parts });
-    ch.hatch = 1; ch.root.position.set(0, -1.45, 0);
+    // whatever child.ts builds for these parts, scaled to fit the pod's hatch (about a metre across)
+    const ch = new VeyrChild(this.fx, 1, loadLook(), { grown: true, parts });
+    ch.hatch = 1; ch.update(0, this.cam);
+    const sz = new THREE.Box3().setFromObject(ch.root).getSize(new V3());
+    ch.setScale(0.95 / Math.max(0.25, sz.x, sz.y, sz.z));
+    ch.root.position.set(0, -1.45, 0);
     this.ship.hook.add(ch.root);
     bin.adopt(ch.root);
     this.child = ch;

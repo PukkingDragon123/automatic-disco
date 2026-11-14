@@ -35,40 +35,57 @@ const SHAPES = 12, MS = 32;
 
 function maskAtlas() {
   const W = SHAPES * MS, d = new Uint8Array(W * MS * 4);
-  const el = (u: number, v: number, cx: number, cy: number, rx: number, ry: number) => ((u - cx) / rx) ** 2 + ((v - cy) / ry) ** 2 <= 1;
+  // every shape is a drawn polygon (toe pads, hoof halves, heel pads with their lobes), never an ellipse
+  type P2 = [number, number];
+  const inPoly = (u: number, v: number, P: P2[]) => {
+    let inside = false;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > v) !== (yj > v) && u < ((xj - xi) * (v - yi)) / (yj - yi) + xi) inside = !inside; }
+    return inside;
+  };
   const seg = (u: number, v: number, ax: number, ay: number, bx: number, by: number, w: number) => {
     const dx = bx - ax, dy = by - ay, t = clamp(((u - ax) * dx + (v - ay) * dy) / (dx * dx + dy * dy), 0, 1);
-    return Math.hypot(u - ax - dx * t, v - ay - dy * t) <= w;
+    return Math.abs(u - ax - dx * t) + Math.abs(v - ay - dy * t) <= w * 1.25;
   };
+  /** a small pad: a hand-set pentagon or hexagon, its own radii, turned */
+  const pad = (cx: number, cy: number, r: number, rot: number, R: number[]): P2[] => R.map((m, i) => { const a = rot + (i / R.length) * Math.PI * 2; return [cx + Math.cos(a) * r * m, cy + Math.sin(a) * r * m * 1.15] as P2; });
+  const mirror = (P: P2[]): P2[] => P.map(([x, y]) => [-x, y] as P2);
+  const HOOF_L: P2[] = [[-0.07, -0.6], [-0.3, -0.58], [-0.5, -0.36], [-0.56, 0.02], [-0.47, 0.4], [-0.27, 0.66], [-0.08, 0.52]];
+  const HOOF_R: P2[] = mirror([[-0.07, -0.55], [-0.28, -0.6], [-0.5, -0.4], [-0.58, 0.06], [-0.44, 0.44], [-0.24, 0.62], [-0.09, 0.5]]);
+  const HEEL: P2[] = [[-0.44, -0.2], [-0.28, -0.06], [0, -0.13], [0.29, -0.05], [0.45, -0.22], [0.4, -0.5], [0.22, -0.64], [0.09, -0.52], [0, -0.64], [-0.1, -0.52], [-0.25, -0.66], [-0.41, -0.5]];
+  const TOES: P2[][] = [pad(-0.52, 0.17, 0.17, 0.3, [1, 0.8, 1.05, 0.9, 0.85]), pad(-0.19, 0.5, 0.17, 0.9, [0.9, 1.05, 0.8, 1, 0.92]), pad(0.2, 0.52, 0.17, 1.5, [1.05, 0.85, 0.95, 0.8, 1]), pad(0.53, 0.19, 0.16, 2.2, [0.9, 1, 0.85, 1.05, 0.9])];
+  const PALM: P2[] = [[-0.28, -0.18], [-0.1, -0.08], [0.16, -0.12], [0.3, -0.3], [0.2, -0.52], [-0.06, -0.56], [-0.26, -0.44]];
+  const BIG: P2[] = pad(0, -0.08, 0.7, 0.2, [1, 0.92, 1.04, 0.95, 0.88, 1.02, 0.97, 0.9]);
+  const SPOT: P2[] = [[-0.5, -0.14], [-0.32, -0.46], [0.04, -0.56], [0.36, -0.42], [0.58, -0.08], [0.44, 0.18], [0.5, 0.42], [0.18, 0.56], [-0.12, 0.44], [-0.42, 0.36]];
+  const LENS: P2[] = [[0, -0.96], [0.36, -0.7], [0.58, -0.2], [0.5, 0.36], [0.24, 0.84], [-0.08, 0.95], [-0.42, 0.6], [-0.6, 0.06], [-0.44, -0.58]];
+  const dia = (u: number, v: number, cx: number, cy: number, r: number) => Math.abs(u - cx) + Math.abs(v - cy) * 0.8 < r;
   const deg = Math.PI / 180;
   const shape = (k: number, u: number, v: number): [number, number] => {
     switch (k) {
-      case Foot.HOOF: return [(u < -0.07 && el(u, v, -0.3, 0.02, 0.26, 0.62)) || (u > 0.07 && el(u, v, 0.3, 0.02, 0.26, 0.62)) ? 1 : 0, 0];
-      case Foot.PAW: return [el(u, v, 0, -0.38, 0.42, 0.3) && !el(u, v, 0, -0.72, 0.12, 0.12) || el(u, v, -0.52, 0.18, 0.16, 0.2) || el(u, v, -0.19, 0.5, 0.16, 0.21) || el(u, v, 0.19, 0.5, 0.16, 0.21) || el(u, v, 0.52, 0.18, 0.16, 0.2) ? 1 : 0, 0];
+      case Foot.HOOF: return [inPoly(u, v, HOOF_L) || inPoly(u, v, HOOF_R) ? 1 : 0, 0];
+      case Foot.PAW: return [inPoly(u, v, HEEL) || TOES.some((T) => inPoly(u, v, T)) ? 1 : 0, 0];
       case Foot.CLAW: {
-        if (el(u, v, 0, -0.32, 0.3, 0.24)) return [1, 0];
-        for (const a of [-72, -36, 0, 36, 72]) { const ex = Math.sin(a * deg) * 0.78, ey = -0.32 + Math.cos(a * deg) * 0.78; if (seg(u, v, 0, -0.32, ex, ey, 0.075)) return [1, 0]; if (Math.hypot(u - ex * 1.12, v + 0.32 - (ey + 0.32) * 1.12) < 0.06) return [1, 0]; }
+        if (inPoly(u, v, PALM)) return [1, 0];
+        const A = [-74, -38, -4, 33, 70], L = [0.6, 0.78, 0.84, 0.74, 0.55];
+        for (let i = 0; i < 5; i++) { const ex = Math.sin(A[i] * deg) * L[i], ey = -0.32 + Math.cos(A[i] * deg) * L[i]; if (seg(u, v, 0, -0.32, ex, ey, 0.065)) return [1, 0]; if (dia(u, v, ex * 1.13, -0.32 + (ey + 0.32) * 1.13, 0.06)) return [1, 0]; }
         return [0, 0];
       }
-      case Foot.THREE: return [seg(u, v, 0, -0.5, 0, 0.82, 0.085) || seg(u, v, 0, -0.5, -0.55, 0.45, 0.08) || seg(u, v, 0, -0.5, 0.55, 0.45, 0.08) || seg(u, v, 0, -0.5, 0, -0.85, 0.07) || el(u, v, 0, -0.45, 0.17, 0.15) ? 1 : 0, 0];
-      case Foot.PAD: { if (el(u, v, 0, -0.08, 0.74, 0.74)) return [1, 0]; for (const a of [-50, -17, 17, 50]) if (Math.hypot(u - Math.sin(a * deg) * 0.78, v + 0.08 - Math.cos(a * deg) * 0.78) < 0.13) return [1, 0]; return [0, 0]; }
-      case Foot.INSECT: return [Math.hypot(u, v - 0.55) < 0.16 || Math.hypot(u + 0.2, v) < 0.16 || Math.hypot(u - 0.12, v + 0.55) < 0.16 ? 1 : 0, 0];
+      case Foot.THREE: return [seg(u, v, 0, -0.5, 0.04, 0.82, 0.075) || seg(u, v, 0, -0.5, -0.56, 0.42, 0.07) || seg(u, v, 0, -0.5, 0.5, 0.48, 0.07) || seg(u, v, 0, -0.5, -0.05, -0.85, 0.06) || inPoly(u, v, pad(0, -0.46, 0.16, 0.4, [1, 0.8, 1.1, 0.9, 1])) ? 1 : 0, 0];
+      case Foot.PAD: { if (inPoly(u, v, BIG)) return [1, 0]; for (const a of [-52, -18, 15, 49]) { const x = Math.sin(a * deg) * 0.76, y = -0.08 + Math.cos(a * deg) * 0.76; if (inPoly(u, v, [[x - 0.12, y - 0.04], [x, y + 0.14], [x + 0.12, y - 0.04]])) return [1, 0]; } return [0, 0]; }
+      case Foot.INSECT: return [dia(u, v, 0.02, 0.55, 0.17) || dia(u, v, -0.2, 0, 0.15) || dia(u, v, 0.13, -0.55, 0.16) ? 1 : 0, 0];
       case Foot.SCUFF: {
-        const r = Math.hypot(u, v), a = Math.atan2(v, u);
-        if (Math.abs(r - 0.72) < 0.09 && Math.sin(a * 4 + 0.5) > -0.35) return [0.7, 0];
-        if (Math.abs(r - 0.4) < 0.07 && Math.sin(a * 3 + 2) > 0) return [0.5, 0];
-        return [0, Math.abs(r - 0.86) < 0.06 && Math.sin(a * 4 + 0.5) > 0 ? 0.6 : 0];
+        // the golem's field drags the grit into a few swept scrape marks
+        if (seg(u, v, -0.7, -0.3, -0.2, -0.62, 0.05) || seg(u, v, -0.2, -0.62, 0.35, -0.55, 0.05)) return [0.7, 0];
+        if (seg(u, v, -0.62, 0.2, -0.15, -0.05, 0.045) || seg(u, v, 0.1, 0.1, 0.62, -0.12, 0.05)) return [0.55, 0];
+        if (seg(u, v, -0.3, 0.6, 0.25, 0.5, 0.05) || seg(u, v, 0.25, 0.5, 0.62, 0.2, 0.045)) return [0.65, 0];
+        return [0, seg(u, v, -0.7, -0.38, -0.2, -0.7, 0.03) || seg(u, v, -0.28, 0.68, 0.25, 0.58, 0.03) ? 0.6 : 0];
       }
       case Foot.DRAG: return [Math.abs(u) < 0.32 * (1 - 0.25 * v * v) ? 1 : 0, 0];
       case Foot.SLIME: { const au = Math.abs(u); return [au < 0.34 ? 0.55 : 0, au > 0.1 && au < 0.2 && Math.floor((v + 1) * 8) % 3 !== 0 ? 1 : 0]; }
-      case Foot.SPOT: case Foot.BLOOD: {
-        const a = Math.atan2(v, u), r = Math.hypot(u, v), rim = 0.55 + 0.12 * Math.sin(a * 5 + k) + 0.06 * Math.sin(a * 9 + 1);
-        if (r < rim) return [1, 0];
-        if (k === Foot.BLOOD && (Math.hypot(u - 0.72, v - 0.3) < 0.1 || Math.hypot(u + 0.6, v + 0.55) < 0.08 || Math.hypot(u + 0.2, v - 0.8) < 0.07)) return [1, 0];
-        return [0, 0];
-      }
+      case Foot.SPOT: return [inPoly(u, v, SPOT) ? 1 : 0, 0];
+      case Foot.BLOOD: return [inPoly(u, v, SPOT.map(([x, y]) => [x * 0.9, y * 0.85] as P2)) || dia(u, v, 0.74, 0.32, 0.1) || dia(u, v, -0.62, -0.56, 0.08) || dia(u, v, -0.2, 0.8, 0.07) ? 1 : 0, 0];
       case Foot.TRODDEN: {
-        if (!el(u, v, 0, 0, 0.6, 0.96)) return [0, 0];
+        if (!inPoly(u, v, LENS)) return [0, 0];
+        // flattened blades: drawn strokes lying the way it walked
         const st = (u * 5.5 + v * 0.6 + 10) % 1;
         return st < 0.22 ? [0, 1] : [0.55, 0];
       }
@@ -120,9 +137,8 @@ void main() {
   vec2 tp = floor(vUv * ${MS}.0);
   vec2 m = texture2D(uMask, vec2((vShape + (tp.x + 0.5) / ${MS}.0) / ${SHAPES}.0, (tp.y + 0.5) / ${MS}.0)).rg;
   if (m.r + m.g < 0.01) discard;
-  // an old print crumbles texel by texel at its edges before it is gone
-  if (hh(tp + vSeed * 97.0) > vK * 2.2) discard;
-  float k = min(1.0, vK * 1.6);
+  // an old print fades in three planar steps, never by speckle
+  float k = ceil(min(1.0, vK * 1.6) * 3.0) / 3.0;
   vec3 mul = mix(vec3(1.0), vTint.rgb, m.r * k) * (1.0 + m.g * (vTint.a - 1.0) * k);
   gl_FragColor = vec4(mul, 1.0);
   gNormal = vec4(1.0);
