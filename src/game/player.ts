@@ -953,7 +953,7 @@ export class Player implements GolemTarget, TouchHost {
         const fl = g.world.flora, got = fl.eat(c.plant, dt * 0.3);
         if (got <= 0 || fl.bio[c.plant] < 0.05) { this.channelStop(); break; }
         g.fx.stream(() => ground, this.mouth, Math.ceil(dt * 50), Math.random() < 0.5 ? 0x6ab04a : 0x9aff6a, { dur: 0.55, rad: 0.2, size: 1.8 });
-        C.acc += got * 6;
+        C.acc += got * 6 * ((g.veyr as unknown as { gatherRate?(r: Res, j: string): number }).gatherRate?.('carbon', 'intake') ?? 1);
         while (C.acc >= 1) { C.acc -= 1; this.loot.drop('carbon', 1, ground, true); }
         break;
       }
@@ -1022,7 +1022,9 @@ export class Player implements GolemTarget, TouchHost {
   /** a gathering job produces nuggets that fly into the intake (credited when they arrive) */
   private yield(C: NonNullable<Player['channel']>, dt: number, at: THREE.Vector3) {
     const c = C.ctx; if (!c.res || !c.rate) return;
-    let rate = c.rate;
+    // the economy's job multipliers (Core Bore triples drilling and digging)
+    const job = c.kind === 'drill' ? 'drill' : c.kind === 'dig' ? 'dig' : c.kind === 'siphon' ? 'siphon' : 'loose';
+    let rate = c.rate * ((this.g.veyr as unknown as { gatherRate?(r: Res, j: string): number }).gatherRate?.(c.res, job) ?? 1);
     if (c.dep !== undefined) { const d = R(this.g).deposits[c.dep]; if (d.amount <= 0) return; }
     C.acc += rate * dt;
     while (C.acc >= 1) {

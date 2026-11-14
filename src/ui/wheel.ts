@@ -16,7 +16,10 @@ import { powerOwned, powerCost } from '../game/combat';
 
 export interface WheelCtx { hive: Hive; arm(a: Ability): void; armed(): Ability | null }
 
-const ALL: Ability[] = (Object.keys(ABILITIES) as Ability[]).sort((a, b) => +ABILITIES[a].key - +ABILITIES[b].key);
+/** every live power in key order (retired ones, em > 50, never get a chamber) */
+const ALL: Ability[] = (Object.keys(ABILITIES) as Ability[]).filter((a) => ABILITIES[a].em <= 50).sort((a, b) => +ABILITIES[a].key - +ABILITIES[b].key);
+/** the hive's own charge cap (it depends on the reactor and coil), with the old formula as a fallback */
+const capOf = (h: Hive) => (h as unknown as { chargeCap?: number }).chargeCap ?? 60 + h.emLevel * 40;
 // ART.md: physical, desaturated materials. Chambers are blued steel, not brass; the hub band is olive enamel worn to
 // steel, not hazard stripes; the one accent is the selected chamber's safety amber; lamps are soft phosphor
 const mute = (R: number[], k: number) => R.map((c) => mixc(c, 0x5a554c, k));
@@ -341,7 +344,7 @@ export class AbilityWheel {
     if (!ORDER.length) {
       this.fire.dataset.st = 'dead'; this.armLamp.set('off', 'r');
       for (const t of this.tubes) t.dataset.st = 'warm';
-      const cap0 = 60 + h.emLevel * 40; this.gauge.set(h.res.charge / cap0); this.gauge.marks = []; this.gauge.red = false; this.gauge.update(dt);
+      const cap0 = capOf(h); this.gauge.set(h.res.charge / cap0); this.gauge.marks = []; this.gauge.red = false; this.gauge.update(dt);
       this.flash = Math.max(0, this.flash - dt);
       if (this.nameEl.textContent !== 'NO FIELD POWERS') this.nameEl.textContent = 'NO FIELD POWERS';
       const c0 = this.flash > 0 ? `<span class="bad">${this.flashMsg}</span>` : 'SKILL TREE &middot; GRAVITY';
@@ -349,7 +352,7 @@ export class AbilityWheel {
       this.descT -= dt;
       this.desc.classList.toggle('open', this.descT > 0);
       const html = '<div class="dt-h">&gt; CYLINDER EMPTY</div><div class="dt-b">No field powers installed. Buy Telekinesis, Gravity Slam, Repulse and the rest on the skill tree to load them here.</div>';
-      if (this.descTxt.innerHTML !== html) this.descTxt.innerHTML = html;
+      if (this.descTxt.innerHTML !== html) { this.descTxt.innerHTML = html; this.rollDesc(); }
       return;
     }
     // fire button state
@@ -358,7 +361,7 @@ export class AbilityWheel {
     this.armLamp.set(armed ? 'blink' : why ? 'off' : 'dim', armed ? 'a' : 'r');
     for (const [i, t] of this.tubes.entries()) t.dataset.st = armed ? 'hot' : this.settled ? (i ? 'warm' : 'hot') : 'warm';
     // charge meter, with the cost of the selected power marked on the rim
-    const cap = 60 + h.emLevel * 40, d = ABILITIES[a];
+    const cap = capOf(h), d = ABILITIES[a];
     this.gauge.set(h.res.charge / cap); this.gauge.marks = d.charge ? [powerCost(a) / cap] : [];
     this.gauge.red = h.res.charge < powerCost(a);
     this.gauge.update(dt);
@@ -382,8 +385,15 @@ export class AbilityWheel {
       const txt = body.slice(0, Math.floor(this.typed));
       const html = `<div class="dt-h">&gt; ${ab.name.toUpperCase()}</div><div class="dt-b">${txt}${this.typed < body.length ? '<span class="cur">&#9608;</span>' : ''}</div>` +
         `<div class="dt-f">${why2 ? `<span class="bad">&#9650; ${why2.toUpperCase()}</span>` : '<span>READY</span>'} &middot; KEY ${ab.key} &middot; CD ${ab.cd}S</div>`;
-      if (this.descTxt.innerHTML !== html) this.descTxt.innerHTML = html;
+      if (this.descTxt.innerHTML !== html) { this.descTxt.innerHTML = html; this.rollDesc(); }
     }
+  }
+  /** the readout body wraps and rolls up like teletype paper as it types, so long text is never cut off */
+  private rollDesc() {
+    const b = this.descTxt.querySelector('.dt-b') as HTMLElement | null;
+    if (!b) return;
+    b.style.cssText = 'overflow:hidden;white-space:normal;overflow-wrap:anywhere;max-height:calc(30px * var(--s));min-height:0';
+    b.scrollTop = b.scrollHeight;
   }
   private costLine(a: Ability) {
     const d = ABILITIES[a], h = this.c.hive, cd = h.cooldowns[a] ?? 0;

@@ -100,6 +100,7 @@ const CSS = `
 .rs-nm { position: relative; min-height: calc(22 * var(--k)); }
 .stamp { display: inline-block; font-family: 'Superwide', monospace; font-size: var(--sw); line-height: var(--sw); letter-spacing: 0.14em; color: ${PAL.stamp}; border: calc(2 * var(--k)) solid currentColor; padding: calc(3 * var(--k)) calc(5 * var(--k)) calc(2 * var(--k)); transform: rotate(var(--r, -3deg)); -webkit-mask-image: var(--ink); mask-image: var(--ink); -webkit-mask-size: calc(96 * var(--k) / 2); mask-size: calc(96 * var(--k) / 2); opacity: 0.88; text-shadow: 1px 0 0 currentColor; white-space: nowrap; }
 .stamp.g { color: ${PAL.graphite}; opacity: 0.72; }
+.stamp.long, .lb-card .stamp { font-family: 'Jersey', monospace; font-size: var(--np); line-height: var(--np); letter-spacing: 0.1em; }
 .stamp.thump { animation: lb-thump 320ms cubic-bezier(0.2, 0.8, 0.3, 1.2) both; }
 @keyframes lb-thump { 0% { transform: rotate(var(--r, -3deg)) scale(1.9); opacity: 0; } 55% { transform: rotate(var(--r, -3deg)) scale(0.9, 0.86); opacity: 0.95; } 100% { transform: rotate(var(--r, -3deg)) scale(1); opacity: 0.88; } }
 .rs-t { font-family: 'Superwide', monospace; font-size: var(--sw); letter-spacing: 0.16em; margin: calc(9 * var(--k)) 0 calc(3 * var(--k)); color: #4a4842; }
@@ -111,10 +112,11 @@ const CSS = `
 .rs-notes { position: relative; margin: calc(8 * var(--k)) 0 calc(2 * var(--k)); min-height: calc(18 * var(--k)); }
 .pencil { font-family: 'Pixelify', monospace; font-size: var(--ps); line-height: calc(var(--ps) * 1.35); color: #4b4a46; opacity: 0.9; }
 .pencil b { display: inline-block; }
+.rs-notes .pencil { max-width: 66%; }
 .pencil.wr { animation: lb-write 1.1s steps(28) both; }
 @keyframes lb-write { 0% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0 0 0 0); } }
 .rs-ok { position: absolute; right: 0; top: calc(-2 * var(--k)); --r: 6deg; }
-.rs-slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(3 * var(--k)) calc(8 * var(--k)); }
+.rs-slots { display: grid; grid-template-columns: repeat(2, 1fr); gap: calc(3 * var(--k)) calc(8 * var(--k)); }
 .rs-slot { display: flex; align-items: center; gap: calc(4 * var(--k)); }
 .rs-slot .rs-k { width: calc(36 * var(--k)); }
 .rs-slot s { position: relative; display: inline-block; width: calc(8 * var(--k)); height: calc(8 * var(--k)); border: 1px solid rgba(59, 58, 54, 0.85); text-decoration: none; }
@@ -140,7 +142,7 @@ const CSS = `
 .lb-info .vt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #2e2d2a; }
 .lb-info .np { color: #6a6658; white-space: nowrap; overflow: hidden; margin-top: calc(3 * var(--k)); }
 .lb-info .ps { color: #3e4a52; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lb-card .stamp { position: absolute; right: calc(6 * var(--k)); bottom: calc(10 * var(--k)); --r: -9deg; font-size: var(--sw); padding: calc(2 * var(--k)) calc(4 * var(--k)) 1px; }
+.lb-card .stamp { position: absolute; right: calc(5 * var(--k)); top: calc(76 * var(--k)); --r: -8deg; padding: calc(2 * var(--k)) calc(4 * var(--k)) 1px; border-width: calc(1.5 * var(--k)); }
 .lb-lv { position: absolute; right: calc(9 * var(--k)); top: calc(17 * var(--k)); font-family: 'VT', monospace; font-size: var(--vt); color: ${PAL.ink}; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6); pointer-events: none; }
 .lb-card .q { position: absolute; left: calc(8 * var(--k)); top: calc(14 * var(--k)); width: calc(108 * var(--k)); height: calc(84 * var(--k)); display: flex; align-items: center; justify-content: center; font-family: 'Pixelify'; font-size: calc(var(--ps) * 4); color: rgba(232, 238, 240, 0.55); pointer-events: none; }
 .lb-hint { pointer-events: none; align-self: center; margin-bottom: calc(40 * var(--k)); padding: calc(6 * var(--k)) calc(10 * var(--k)); background: rgba(217, 210, 191, 0.92); transform: rotate(-1deg); }
@@ -392,6 +394,7 @@ export class LabUI {
     type(R.no, d.formNo, 40, -1);
     if (d.name !== this.lastName) {
       R.name.textContent = d.name.toUpperCase() || '—';
+      R.name.classList.toggle('long', d.name.length > 11);
       if (this.lastName && !reduced()) { R.name.classList.remove('thump'); void R.name.offsetWidth; R.name.classList.add('thump'); }
       this.lastName = d.name;
     }
