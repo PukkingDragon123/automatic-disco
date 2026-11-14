@@ -1,46 +1,37 @@
-// Terrain block textures (the procedural ground in terrain.ts draws grass, soil, rock, sand, mud, clay, snow and gravel
-// itself; these painted tiles still serve ore and crystal seams, leaf litter, impact glass, the territory layers, the
-// river and sea beds and the minimap's colours): high-resolution tileable pixel art, TS texels per metre (128) on painted macro tiles of
-// TILE_M x TILE_M metres (2 x 2 m, 256 x 256 texels), one layer per material and variant in a DataArrayTexture, plus
-// a sheet of scattered stones the terrain stamps here and there. The terrain shader (terrain.ts) samples each tile with
-// a random per-cell offset on a warped cell grid and knits neighbouring cells together texel by texel, so nothing
-// repeats on a grid.
-//
-// The art follows src/ui/ART.md TARGET STYLE with the master palette (src/art/palette.ts): realistic but lively
-// material colours, clean clusters lit from the upper left, a dark selective outline where forms turn away, a lit edge
-// where they face the light, and small specular glints on hard, wet things. Per material:
-//   grass   turf of blade clumps over dark soil: a short thatch under, clumps fanning with the wind on top (back
-//           blades darker, front ones lit, sun-cured tips), clover, seed heads, fallen straw, the odd flower
-//   soil    angular clods and plates, cracks with a lit lip, pebbles with glints, pale root threads, twigs
-//   sand    two broad tones, wind ripples (lit crest, shaded trough), grain clusters, small shells, pebbles
-//   rock    fractured plates bevelled to the light, hairline fractures, lichen crusts, grit in the joints
-//   mud     wet plates, puddles with a sky sheen and a lit lip, hoof prints pressed in, twigs
-//   snow    crust plates with blue shadows, wind-cut ridges, sparkles, bird tracks
-// Alpha < 255 on a block layer marks emissive pixels (glow = 1 - a/255); the scatter sheet uses alpha for its own cut
-// (0 empty, mid a contact shadow, 255 stone).
+// Terrain block textures: the ground as hand-drawn pixel art. TS pixels per metre (48: the plants' own pixel size, so
+// ground and growth read as one drawing at the default 13-30 m zoom) on painted macro tiles of TILE_M x TILE_M metres
+// (4 x 4 m, 192 x 192 px), one layer per material and variant in a DataArrayTexture. Each tile is built from drawn
+// motifs placed at random (blade clumps with a dark shadow-side edge and a lit tip, flower specks, faceted pebbles
+// with an outline and a glint, drawn cracks, ripple strokes, clods, tiny leaves, plates with fracture edges, puddle
+// glints, crust with blue shadow clusters), 3-5 flat tones per material from the palette v2 ramps, no gradients and no
+// noise fills. The terrain shader (terrain.ts) samples each tile at a random whole-pixel offset per cell of a warped
+// grid, knits neighbouring cells and materials together pixel by pixel, and lets the land (slope, height, curvature,
+// moisture, fertility, wear, season) choose between the lush, sparse, stony and dry variants: the fields choose and
+// vary the motifs, they are never the visible texture.
+// Alpha < 255 on a layer marks emissive pixels (glow = 1 - a/255).
 import * as THREE from 'three';
 import { PixelCanvas } from '../limbo/gfx/pixel';
 import { Rand } from '../core/rand';
 import { rampFor, rampNamed, kinRamps, stone, nugget, prism, crackLine, leafStroke, fillPoly, Mask, toPalette, type P2 } from './pixelKit';
 import { VEYR, RIVALS, type Palette } from './palette';
 
-/** ground texel density: texels per metre (the terrain, water and rock shaders read it) */
-export const TS = 128;
+/** ground pixel density: pixels per metre (the terrain, water and rock shaders read it) */
+export const TS = 48;
 /** a painted tile covers TILE_M x TILE_M metres */
-export const TILE_M = 2;
-/** tile size in texels */
+export const TILE_M = 4;
+/** tile size in pixels */
 export const TT = TS * TILE_M;
 const T = TT;
-/** the old art's layout unit (1/32 m) in texels, and how many square metres one tile covers */
+/** the old art's layout unit (1/32 m) in pixels, and how many square metres one tile covers */
 const K = TS / 32, AREA = TILE_M * TILE_M;
-const k = (v: number) => v * K;
+const k = (v: number) => Math.round(v * K);
 
 export const L = {
   grassA: 0, grassB: 1, grassSide: 2, soil: 3, rockA: 4, rockB: 5, rockSide: 6, sandA: 7, sandB: 8, mud: 9, clay: 10,
   snow: 11, snowSide: 12, basalt: 13, basaltSide: 14, ore: 15, oreSide: 16, crystal: 17, crystalSide: 18, litter: 19,
   gravel: 20, moss: 21, mossSide: 22, creep0: 23, creep1: 24, creep2: 25, creepSide: 26, dryA: 27, drySide: 28, mudSide: 29, crater: 30,
-  /** scattered stones (alpha-cut sprites, four 1 m cells) */
-  scatter: 31,
+  /** stony soil: the stonier variant of soil (scree, worn ground) */
+  soilB: 31,
 } as const;
 export const LAYERS = 32;
 
@@ -50,7 +41,7 @@ export const enum B { GRASS, DRY, SOIL, ROCK, SAND, MUD, CLAY, SNOW, BASALT, ORE
 export const BLOCKS: Record<number, { top: number[]; side: number; deep: number; name: string }> = {
   [B.GRASS]: { top: [L.grassA, L.grassB], side: L.grassSide, deep: L.soil, name: 'grass' },
   [B.DRY]: { top: [L.dryA], side: L.drySide, deep: L.soil, name: 'dry grass' },
-  [B.SOIL]: { top: [L.soil], side: L.soil, deep: L.soil, name: 'soil' },
+  [B.SOIL]: { top: [L.soil, L.soilB], side: L.soil, deep: L.soil, name: 'soil' },
   [B.ROCK]: { top: [L.rockA, L.rockB], side: L.rockSide, deep: L.rockSide, name: 'rock' },
   [B.SAND]: { top: [L.sandA, L.sandB], side: L.sandB, deep: L.soil, name: 'sand' },
   [B.MUD]: { top: [L.mud], side: L.mudSide, deep: L.soil, name: 'mud' },
@@ -163,67 +154,61 @@ function tidy(pc: PixelCanvas) {
 }
 
 // ================================================================================================ grass
+/** one blade as pixel art: a 1 px stroke from its root, its lower half edged in the darkest step on the shadow side,
+ *  the body stepping up the ramp, a lit tip pixel (or a sun-cured one) */
+function blade1(pc: PixelCanvas, x: number, y: number, len: number, lean: number, R: number[], k0: number, tip: number) {
+  const n = R.length - 1;
+  for (let i = 0; i < len; i++) {
+    const t = len > 1 ? i / (len - 1) : 1, off = Math.round(lean * t * t * len * 0.45);
+    const X = x + off, Y = y - i;
+    pc.set(X, Y, i === len - 1 ? tip : R[clampI(Math.round(k0 + t * (n - 1 - k0)), 0, n)]);
+    if (t < 0.5) pc.set(X + 1, Y, R[clampI(k0 - 1, 0, n)]);
+  }
+}
 /**
- * Turf: dark soil under, a short thatch of back blades, then clumps fanning out from their roots with the wind (sorted
- * back to front: the nearer clump overlaps the one behind), each casting a small shadow down and right. Sun-cured
- * tips, clover, seed heads, fallen straw and, now and then, a flower. lush 0..1 sets how green and dense it is.
+ * Turf: dark earth plates under, a thatch of short back blades, then tussocks drawn back to front (the nearer one
+ * overlapping), each a fan of blades with a dark root cluster, lit tips and the odd sun-cured one; flower specks and
+ * clover where it is lush, fallen straw where it is dry. lush 0..1: 0 thin and dry, 1 dense and in flower.
  */
 function grassTop(pc: PixelCanvas, pal: Palette, base: number, seed: number, lush: number) {
-  const r = new Rand(seed), S = RF(pal.soil), kin = kinRamps(base), G = kin[0], D = RF(pal.grassDry), Sh = rampNamed('moss');
-  const wind = -Math.PI / 2 + r.range(-0.5, 0.5);
-  // the soil between the tussocks: dark, shaded plates, a few pebbles
-  plates(pc, r, 26, S, [1, 1, 2]);
-  for (let i = 0; i < 18 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(3, 6), r.range(2.5, 4.5), rampNamed('stone'), r, S[0]);
-  // thatch: thousands of short blades, back and shaded, leaning every which way but mostly with the wind
-  const nTh = Math.round((520 + lush * 380) * AREA);
-  for (let i = 0; i < nTh; i++) {
-    const x = r.int(0, T - 1), y = r.int(0, T - 1), R0 = r.chance(0.15) ? kin[1] : r.chance(0.08) ? D : G;
-    blade(pc, x, y, r.range(5, 10), wind + r.range(-0.9, 0.9), r.range(-1, 1), R0, 1, 2);
+  const r = new Rand(seed), S = RF(pal.soil), kin = kinRamps(base), G = kin[0], D = RF(pal.grassDry);
+  plates(pc, r, 9, S, [1, 1, 2]);
+  // a few pebbles showing through the thin places
+  for (let i = 0; i < Math.round(3 * AREA * (1.3 - lush)); i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(3, 4.5), r.range(2.5, 3.5), rampNamed('stone'), r, S[0]);
+  // thatch: short dark blades, every which way
+  for (let i = 0; i < Math.round((150 + lush * 120) * AREA); i++) {
+    const R0 = r.chance(0.18) ? kin[1] : r.chance(0.1 + (1 - lush) * 0.25) ? D : G;
+    blade1(pc, r.int(0, T - 1), r.int(0, T - 1), r.int(2, 3), r.pick([-1, 0, 0, 1]), R0, 1, R0[3]);
   }
-  // clumps, back (top of the tile) to front
-  const clumps: { x: number; y: number; n: number; R: number[] }[] = [];
-  const nC = Math.round((15 + lush * 9) * AREA);
-  for (let i = 0; i < nC; i++) clumps.push({ x: r.range(0, T), y: r.range(0, T), n: r.int(11, 21), R: r.chance(0.16) ? kin[1] : r.chance(0.06) ? kin[2] : G });
-  clumps.sort((a, b) => a.y - b.y);
-  for (const c of clumps) {
-    const reach = r.range(17, 32);
-    // the shadow it throws down and right of the root: angular patches in the darkest soil and leaf steps
-    polyFill(pc, blobPts(c.x + 5, c.y + 4, reach * 0.6, reach * 0.36, 8, r), S[0]);
-    polyFill(pc, blobPts(c.x + 2, c.y + 1, reach * 0.4, reach * 0.24, 7, r), Sh[0]);
-    const order = Array.from({ length: c.n }, (_, i) => i).sort(() => r.next() - 0.5);
-    for (let b = 0; b < c.n; b++) {
-      const i = order[b], fan = (i / (c.n - 1) - 0.5) * r.range(1.5, 2.2), back = b < c.n * 0.45;
-      const len = reach * r.range(0.6, 1.05) * (1 - Math.abs(fan) * 0.25);
-      const dry = r.chance(0.12 * (1.2 - lush)) ? D : undefined;
-      blade(pc, c.x + r.range(-3, 3), c.y + r.range(-1.5, 1.5), len, wind + fan, r.range(-1.6, 1.6), c.R, back ? 1 : 2, back ? 3 : 6, dry, !back && r.chance(0.6));
+  // tussocks, back (top) to front
+  const tufts: { x: number; y: number; n: number; R: number[] }[] = [];
+  for (let i = 0; i < Math.round((22 + lush * 16) * AREA); i++) tufts.push({ x: r.int(0, T - 1), y: r.int(0, T - 1), n: r.int(4, 8), R: r.chance(0.2) ? kin[1] : r.chance(0.08) ? kin[2] : G });
+  tufts.sort((a, b) => a.y - b.y);
+  for (const t of tufts) {
+    // the root cluster in shadow
+    pc.set(t.x, t.y + 1, S[0]); pc.set(t.x + 1, t.y + 1, S[0]); pc.set(t.x - 1, t.y + 1, t.R[0]);
+    const reach = r.int(4, 7);
+    for (let b = 0; b < t.n; b++) {
+      const fan = (b - (t.n - 1) / 2) * 0.9, len = Math.max(3, Math.round(reach * r.range(0.7, 1.05) - Math.abs(fan) * 0.5));
+      const dry = r.chance(0.1 + (1 - lush) * 0.35);
+      blade1(pc, t.x + Math.round(fan * 0.6), t.y, len, fan * 0.5, t.R, b % 2 ? 2 : 3, dry ? D[5] : t.R[6]);
     }
   }
-  // loose front blades over everything, fine and lit
-  for (let i = 0; i < 110 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); blade(pc, x, y, r.range(7, 14), wind + r.range(-0.6, 0.6), r.range(-1, 1), r.chance(0.15) ? kin[1] : G, 3, 6, r.chance(0.1) ? D : undefined); }
-  // clover: three drawn leaflets round a dark heart
-  const Cl = rampNamed(r.chance(0.5) ? 'sage' : 'moss');
-  for (let i = 0; i < Math.round((3 + lush * 5) * AREA); i++) {
-    const cx = r.range(0, T), cy = r.range(0, T);
-    for (let p = 0; p < r.int(3, 6); p++) {
-      const x = cx + r.range(-9, 9), y = cy + r.range(-6, 6), a0 = r.range(0, 2.1);
-      for (let l = 0; l < 3; l++) leafStroke(pc, x, y, a0 + (l / 3) * Math.PI * 2, r.range(3, 4.5), r.range(1.6, 2.4), Cl, r, { midrib: false });
-      pc.set(Math.round(x), Math.round(y), Cl[1]);
-    }
+  // flower specks: a four-petal cross round an eye, lit on its upper-left petal
+  if (lush > 0.4) for (let i = 0; i < Math.round(1.6 * AREA * lush); i++) {
+    const F = RF(r.pick(pal.bloom)), x = r.int(1, T - 2), y = r.int(1, T - 2), O = rampNamed('ochre');
+    pc.set(x, y - 1, F[5]); pc.set(x - 1, y, F[5]); pc.set(x + 1, y, F[4]); pc.set(x, y + 1, F[3]); pc.set(x, y, O[5]); pc.set(x + 1, y + 1, F[1]);
   }
-  // seed heads: a stalk and a lit spike of seeds
-  for (let i = 0; i < 10 * AREA; i++) {
-    const x = r.range(0, T), y = r.range(0, T), a = wind + r.range(-0.4, 0.4), len = r.range(14, 22);
-    blade(pc, x, y, len, a, 0.6, D, 2, 4);
-    const hx = x + Math.cos(a) * len, hy = y + Math.sin(a) * len;
-    for (let s = 0; s < 5; s++) { pc.set(Math.round(hx + Math.cos(a) * s), Math.round(hy + Math.sin(a) * s), D[s % 2 ? 6 : 5]); pc.set(Math.round(hx + Math.cos(a) * s) + 1, Math.round(hy + Math.sin(a) * s), D[3]); }
+  // clover: three leaflets round a dark heart
+  const Cl = rampNamed('sage');
+  for (let i = 0; i < Math.round(1.2 * AREA * lush); i++) {
+    const x = r.int(1, T - 2), y = r.int(1, T - 2);
+    pc.set(x, y - 1, Cl[4]); pc.set(x - 1, y, Cl[4]); pc.set(x + 1, y, Cl[3]); pc.set(x - 1, y - 1, Cl[5]); pc.set(x + 1, y - 1, Cl[3]); pc.set(x, y, Cl[1]); pc.set(x, y + 1, Cl[2]);
   }
-  // fallen straw lying flat in every direction
-  for (let i = 0; i < 14 * AREA; i++) thread(pc, r, r.range(0, T), r.range(0, T), r.range(10, 24), r.range(0, Math.PI * 2), D[r.int(4, 5)], null, 0.08);
-  // now and then a flower: petals round an eye, lit on the upper left
-  if (lush > 0.3) for (let i = 0; i < Math.round(2 * AREA * lush); i++) {
-    const F = RF(r.pick(pal.bloom)), x = r.range(4, T - 4), y = r.range(4, T - 4), n = r.int(4, 6), a0 = r.range(0, 1);
-    for (let p = 0; p < n; p++) leafStroke(pc, x, y, a0 + (p / n) * Math.PI * 2, r.range(3, 4.5), r.range(1.4, 2), F, r, { midrib: false });
-    pc.set(Math.round(x), Math.round(y), rampNamed('ochre')[5]); pc.set(Math.round(x) - 1, Math.round(y) - 1, rampNamed('ochre')[6]);
+  // fallen straw where it is dry
+  for (let i = 0; i < Math.round(2.5 * AREA * (1.2 - lush)); i++) {
+    let x = r.int(0, T - 1), y = r.int(0, T - 1); const dx = r.pick([-1, 1]), l = r.int(4, 8);
+    for (let j = 0; j < l; j++) { pc.set(x, y, D[5]); pc.set(x, y + 1, D[2]); x += dx; if (r.chance(0.3)) y += r.pick([-1, 1]); }
   }
   tidy(pc);
 }
@@ -232,200 +217,162 @@ function grassTop(pc: PixelCanvas, pal: Palette, base: number, seed: number, lus
 function grassSide(pc: PixelCanvas, grass: number, soil: number, seed: number) {
   const r = new Rand(seed), G = RF(grass), S = RF(soil);
   soilTop(pc, soil, seed + 1, 0.4);
-  let len = k(5);
+  let len = 5;
   for (let x = 0; x < T; x++) {
-    if (r.chance(0.5)) len = Math.max(k(3), Math.min(k(8), len + r.pick([-1, 1])));
-    const l = x >= T - 2 ? k(5) : len;
-    for (let y = 0; y < l; y++) pc.set(x, y, G[y < K ? 5 : y < l - 2 * K ? 4 : 3]);
+    if (r.chance(0.5)) len = Math.max(3, Math.min(8, len + r.pick([-1, 1])));
+    const l = x >= T - 2 ? 5 : len;
+    for (let y = 0; y < l; y++) pc.set(x, y, G[y < 1 ? 5 : y < l - 2 ? 4 : 3]);
     pc.set(x, l, G[1]); pc.set(x, l + 1, S[1]);
-    if (r.chance(0.2)) { const e = r.int(1, 3) * K; for (let j = 0; j < e; j++) pc.set(x, l + j, G[2]); }
-    if (r.chance(0.1)) { let rx = x; for (let j = 2; j < r.int(4, 9) * K; j++) { pc.set(rx, l + j, S[5]); if (r.chance(0.3 / K)) rx += r.pick([-1, 1]); } }
   }
   tidy(pc);
 }
 
 // ================================================================================================ soil
-/** dirt: angular plates and clods lit on their upper left, cracks with a lit lip, pebbles that glint, pale root
- *  threads, a twig or two. stones 0..1 sets how stony it is */
+/** dirt: angular plates and clods lit on their upper left, drawn cracks with a lit lip, faceted pebbles with an outline
+ *  and a glint, pale root threads, a twig or two. stones 0..1 sets how stony it is (soilB is the stony variant) */
 function soilTop(pc: PixelCanvas, soil: number, seed: number, stones = 1) {
   const r = new Rand(seed), S = RF(soil), St = rampNamed('stone'), Tw = rampNamed('fur');
-  plates(pc, r, 30, S, [2, 3, 3, 4], { bevel: true });
-  // cracks, branching now and then
-  for (let i = 0; i < 9 * AREA; i++) {
-    const x = r.int(0, T - 1), y = r.int(0, T - 1);
-    crackLine(pc, x, y, r.int(14, 40), S[0], S[5], r);
-    if (r.chance(0.5)) crackLine(pc, x + r.int(-6, 6), y + r.int(-6, 6), r.int(8, 18), S[0], S[5], r);
+  plates(pc, r, 10, S, [2, 3, 3, 4], { bevel: true });
+  for (let i = 0; i < 4 * AREA; i++) crackLine(pc, r.int(0, T - 1), r.int(0, T - 1), r.int(4, 10), S[0], S[5], r);
+  // clods: lumps of the soil itself, lit facet, dark rim, contact shadow
+  for (let i = 0; i < 9 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(3, 6), r.range(2.5, 4.5), S, r, S[0]);
+  // roots: pale threads with a shadow under
+  for (let i = 0; i < 1.5 * AREA; i++) {
+    let x = r.int(0, T - 1), y = r.int(0, T - 1); const dx = r.pick([-1, 1]);
+    for (let j = 0; j < r.int(6, 14); j++) { pc.set(x, y, S[6]); pc.set(x, y + 1, S[1]); x += dx; if (r.chance(0.35)) y += r.pick([-1, 1]); }
   }
-  // clods: angular lumps of the soil itself, each with its contact shadow
-  for (let i = 0; i < 26 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(5, 12), r.range(4, 9), S, r, S[0]);
-  // roots: pale threads with a shadow under, a short branch off them
-  for (let i = 0; i < 4 * AREA; i++) {
-    const x = r.range(0, T), y = r.range(0, T), a = r.range(0, Math.PI * 2);
-    thread(pc, r, x, y, r.range(30, 70), a, S[6], S[1], 0.4);
-    thread(pc, r, x + r.range(-8, 8), y + r.range(-8, 8), r.range(8, 20), a + r.range(-1.2, 1.2), S[5], null, 0.5);
-  }
-  // pebbles (stone() gives them a lit facet and a glint)
-  for (let i = 0; i < Math.round(7 * AREA * stones); i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(7, 15), r.range(5.5, 11), r.chance(0.6) ? St : rampNamed('slate'), r, S[0]);
-  // twigs
-  for (let i = 0; i < 2 * AREA; i++) thread(pc, r, r.range(0, T), r.range(0, T), r.range(14, 30), r.range(0, Math.PI * 2), Tw[3], Tw[1], 0.12);
+  // pebbles: faceted 3-6 px stones with an outline and a glint
+  for (let i = 0; i < Math.round((3 + stones * 9) * AREA); i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(3, 6.5), r.range(2.5, 5), r.chance(0.6) ? St : r.chance(0.5) ? rampNamed('slate') : rampNamed('sand'), r, S[0]);
+  for (let i = 0; i < AREA; i++) { let x = r.int(0, T - 1), y = r.int(0, T - 1); const dx = r.pick([-1, 1]); for (let j = 0; j < r.int(5, 9); j++) { pc.set(x, y, Tw[4]); pc.set(x, y + 1, Tw[1]); x += dx; if (r.chance(0.25)) y += 1; } }
   tidy(pc);
 }
 
 // ================================================================================================ rock
-/** bedrock from above: fractured plates bevelled to the light with dark joints, hairline fractures, lichen crusts,
- *  grit in the joints */
-function rockTop(pc: PixelCanvas, rock: number, seed: number, cell = 44, lichen = 1) {
+/** bedrock from above: plates bevelled to the light with dark joints, drawn fracture lines, lichen crusts with a dark
+ *  rim, grit lodged in the joints, a glint where a lit edge turns */
+function rockTop(pc: PixelCanvas, rock: number, seed: number, cell = 16, lichen = 1) {
   const r = new Rand(seed), Kr = RF(rock);
-  const P = plates(pc, r, cell, Kr, [2, 3, 3, 4], { bevel: true, seam: 0, joint: 1.6 });
-  // a second, finer fracture set inside the plates
-  for (let i = 0; i < 26 * AREA; i++) crackLine(pc, r.int(0, T - 1), r.int(0, T - 1), r.int(8, 26), Kr[1], Kr[5], r);
-  // grit lodged in the joints
-  for (let i = 0; i < 120 * AREA; i++) {
-    const x = r.int(0, T - 1), y = r.int(0, T - 1);
-    if (P.edge[y * T + x] > 2.2) continue;
-    stone(pc, x, y, r.range(2.5, 4.5), r.range(2, 3.5), r.chance(0.5) ? Kr : rampNamed('stone'), r, Kr[0]);
-  }
-  // lichen: angular crusts of one colony each, a darker rim, lit on the upper left
+  const P = plates(pc, r, cell, Kr, [2, 3, 3, 4], { bevel: true, seam: 0, joint: 1 });
+  for (let i = 0; i < 7 * AREA; i++) crackLine(pc, r.int(0, T - 1), r.int(0, T - 1), r.int(4, 10), Kr[1], Kr[5], r);
+  for (let i = 0; i < 24 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); if (P.edge[y * T + x] > 1.2) continue; stone(pc, x, y, r.range(2.5, 3.5), r.range(2, 3), r.chance(0.5) ? Kr : rampNamed('stone'), r, Kr[0]); }
   const Li = [rampNamed('sage'), rampNamed('ochre'), rampNamed('straw'), rampNamed('olive')];
-  for (let i = 0; i < Math.round(9 * AREA * lichen); i++) {
-    const x = r.range(0, T), y = r.range(0, T), Lr = r.pick(Li), rad = r.range(5, 15), m = new Mask(Math.floor(x - rad * 2.4), Math.floor(y - rad * 2.4), Math.ceil(rad * 4.8) + 2, Math.ceil(rad * 4.8) + 2);
-    fillPoly(blobPts(x, y, rad, rad * r.range(0.6, 1), 9, r, 0.45), (X, Y) => m.add(X, Y));
-    for (let s = 0; s < r.int(1, 3); s++) fillPoly(blobPts(x + r.range(-rad, rad), y + r.range(-rad, rad), rad * 0.35, rad * 0.3, 6, r), (X, Y) => m.add(X, Y));
+  for (let i = 0; i < Math.round(3 * AREA * lichen); i++) {
+    const x = r.range(0, T), y = r.range(0, T), Lr = r.pick(Li), rad = r.range(2, 5), m = new Mask(Math.floor(x - rad * 2.5), Math.floor(y - rad * 2.5), Math.ceil(rad * 5) + 2, Math.ceil(rad * 5) + 2);
+    fillPoly(blobPts(x, y, rad, rad * r.range(0.6, 1), 7, r, 0.4), (X, Y) => m.add(X, Y));
+    if (r.chance(0.5)) fillPoly(blobPts(x + r.range(-rad, rad), y + r.range(-rad, rad), rad * 0.5, rad * 0.4, 5, r), (X, Y) => m.add(X, Y));
     m.ink(pc, Lr, (X, Y) => (X + Y < x + y ? 4 : 3), { dark: 1, lit: 5 });
   }
-  // glints where a plate's lit rim catches the sun
-  for (let i = 0; i < 24 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); if (P.edge[y * T + x] < 1.6 && P.at(x - 1, y) !== P.at(x, y)) pc.set(x + 1, y, rampNamed('snow')[5]); }
+  for (let i = 0; i < 6 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); if (P.edge[y * T + x] < 1 && P.at(x - 1, y) !== P.at(x, y)) pc.set(x + 1, y, rampNamed('snow')[5]); }
   tidy(pc);
 }
 
-/** a cliff face: beds of different thickness and tone; hard beds jut (a lit lip, a shaded underside); joints */
+/** a cliff face: strata of different thickness and tone; hard beds jut (a lit lip, a shaded underside); joints */
 function rockSide(pc: PixelCanvas, rock: number, seed: number) {
   const r = new Rand(seed), Kr = RF(rock);
   const bands: { y0: number; t: number; k: number; hard: boolean }[] = [];
-  for (let y = 0; y < T;) { let t = r.int(3, 7) * K + r.int(0, K - 1); if (T - (y + t) < 3 * K) t = T - y; bands.push({ y0: y, t, k: r.pick([2, 3, 3, 4]), hard: r.chance(0.45) }); y += t; }
-  // the bed boundaries wander in hand-set steps along the face
-  const lift: number[] = []; let lv = 0; for (let x = 0; x < T; x++) { if (x % (r.int(3, 6) * K) === 0) lv = r.pick([-2, -1, 0, 0, 1, 2]); lift.push(x === T - 1 ? 0 : lv); }
+  for (let y = 0; y < T;) { let t = r.int(4, 11); if (T - (y + t) < 4) t = T - y; bands.push({ y0: y, t, k: r.pick([2, 3, 3, 4]), hard: r.chance(0.45) }); y += t; }
+  const lift: number[] = []; let lv = 0; for (let x = 0; x < T; x++) { if (x % r.int(4, 9) === 0) lv = r.pick([-1, 0, 0, 1]); lift.push(x === T - 1 ? 0 : lv); }
   for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
     const yy = W(y + lift[x]);
     let b = bands[0]; for (const q of bands) if (yy >= q.y0) b = q;
     const local = yy - b.y0;
     let kk = b.k;
-    if (b.hard) { if (local < 2) kk = 5; else if (local >= b.t - 2) kk = 1; }
-    else if (local >= b.t - 1) kk -= 1;
+    if (b.hard) { if (local === 0) kk = 5; else if (local === b.t - 1) kk = 1; }
+    else if (local === b.t - 1) kk -= 1;
     pc.set(x, y, Kr[kk]);
   }
-  for (const b of bands) if (b.hard && b.t >= 3) for (let j = 0; j < r.int(1, 2) * AREA * 2; j++) { const x = r.int(0, T - 1); for (let i = 2; i < b.t - 2; i++) { pc.set(x, W(b.y0 + i - lift[x]), Kr[1]); pc.set(x - 1, W(b.y0 + i - lift[x]), Kr[4]); } }
-  for (let i = 0; i < 20 * AREA; i++) crackLine(pc, r.int(0, T - 1), r.int(0, T - 1), r.int(8, 22), Kr[0], Kr[5], r);
+  for (const b of bands) if (b.hard && b.t >= 3) for (let j = 0; j < r.int(3, 8); j++) { const x = r.int(0, T - 1); for (let i = 1; i < b.t - 1; i++) { pc.set(x, W(b.y0 + i - lift[x]), Kr[1]); pc.set(x - 1, W(b.y0 + i - lift[x]), Kr[4]); } }
+  for (let i = 0; i < 5 * AREA; i++) crackLine(pc, r.int(0, T - 1), r.int(0, T - 1), r.int(4, 9), Kr[0], Kr[5], r);
   tidy(pc);
 }
 
 // ================================================================================================ sand
-/** sand: two broad tones, wind ripples (a lit crest over a shaded trough) that waver and break, grain clusters,
- *  small shells and pebbles */
-function sand(pc: PixelCanvas, c: number, seed: number, wavy: number) {
-  const r = new Rand(seed), S = RF(c), Sh = rampNamed('bone'), Co = rampNamed('coral');
-  plates(pc, r, 60, S, [3, 3, 4]);
-  // ripples: crests 10-14 cm apart running across the wind, each one wavering and breaking now and then
-  const ph = r.range(0, 6.28), slope = r.range(-0.25, 0.25), gap = r.range(12, 16);
+/** sand: two broad tones, wind-ripple strokes (a lit crest over a shaded trough) that waver and break, grain pairs,
+ *  little drawn shells, a few pebbles. ripples 0..1 */
+function sand(pc: PixelCanvas, c: number, seed: number, ripples: number) {
+  const r = new Rand(seed), S = RF(c), Sh = rampNamed('bone');
+  plates(pc, r, 26, S, [3, 3, 4]);
+  const ph = r.range(0, 6.28), slope = r.range(-0.3, 0.3), gap = r.range(5, 7);
   const rows = Math.floor(T / gap);
-  for (let j = 0; j < rows; j++) {
-    const y0 = j * (T / rows) + r.range(-3, 3), amp = r.range(1.5, 4.5) * wavy, f1 = r.int(1, 3), f2 = r.int(3, 6);
+  if (ripples > 0) for (let j = 0; j < rows; j++) {
+    const y0 = j * (T / rows), amp = r.range(0.6, 1.6), f1 = r.int(1, 4) * 2;
     for (let x = 0; x < T; x++) {
-      if (r.chance(0.014)) x += r.int(4, 14);
-      const y = W(y0 + x * slope + Math.round(Math.sin((x / T) * Math.PI * 2 * f1 + ph + j) * amp + Math.sin((x / T) * Math.PI * 2 * f2 + j * 1.7) * amp * 0.4));
-      pc.set(x, y - 1, S[5]); pc.set(x, y, S[6]); pc.set(x, y + 1, S[2]); pc.set(x, y + 2, S[2]); pc.set(x, y + 3, S[3]);
+      if (r.chance(0.04 * (1.2 - ripples))) { x += r.int(3, 10); continue; }
+      const y = W(y0 + x * slope + Math.round(Math.sin((x / T) * Math.PI * f1 + ph + j) * amp));
+      pc.set(x, y, S[5]); pc.set(x, y + 1, S[2]);
     }
   }
-  // grains: small two-texel clusters, darker and lighter
-  for (let i = 0; i < 260 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1), col = r.chance(0.5) ? S[1] : S[6]; pc.set(x, y, col); pc.set(x + (r.chance(0.5) ? 1 : 0), y + 1, col); }
-  // shells: a fan of ribs (a cockle) or a little spiral (a whelk), pale with a dark outline
-  for (let i = 0; i < 3 * AREA; i++) {
-    const x = r.range(0, T), y = r.range(0, T), Rm = r.chance(0.6) ? Sh : Co, a0 = r.range(0, 6.28);
-    if (r.chance(0.65)) {
-      const m = new Mask(Math.floor(x - 8), Math.floor(y - 8), 17, 17), pts: P2[] = [[x, y]];
-      for (let s = 0; s <= 6; s++) { const a = a0 + (s / 6) * 2.2 - 1.1; pts.push([x + Math.cos(a) * 5.5, y + Math.sin(a) * 5.5]); }
-      fillPoly(pts, (X, Y) => m.add(X, Y));
-      m.ink(pc, Rm, (X, Y) => (Math.floor(Math.atan2(Y + 0.5 - y, X + 0.5 - x) * 2.6) % 2 === 0 ? 4 : 3), { dark: 1, lit: 5 });
-    } else {
-      for (let s = 0; s < 14; s++) { const a = a0 + s * 0.75, rr = 1 + s * 0.28; pc.set(Math.round(x + Math.cos(a) * rr), Math.round(y + Math.sin(a) * rr), Rm[s % 3 === 0 ? 2 : 4]); }
-      pc.set(Math.round(x), Math.round(y), Rm[5]);
-    }
+  for (let i = 0; i < 26 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1), col = r.chance(0.5) ? S[1] : S[6]; pc.set(x, y, col); pc.set(x + 1, y, col); }
+  for (let i = 0; i < Math.round(0.6 * AREA); i++) {
+    const x = r.int(2, T - 3), y = r.int(2, T - 3);
+    pc.set(x - 1, y, Sh[4]); pc.set(x, y - 1, Sh[5]); pc.set(x + 1, y, Sh[3]); pc.set(x, y, Sh[4]); pc.set(x - 1, y + 1, Sh[1]); pc.set(x, y + 1, Sh[2]); pc.set(x + 1, y + 1, Sh[1]);
   }
-  for (let i = 0; i < 4 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(3, 7), r.range(2.5, 5.5), rampNamed('stone'), r, S[1]);
+  for (let i = 0; i < 1.5 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(3, 4.5), r.range(2.5, 3.5), rampNamed('stone'), r, S[1]);
   tidy(pc);
 }
 
 // ================================================================================================ mud
-/** mud: wet dark plates, puddles with a sky sheen and a lit lip, hoof prints pressed in, twigs and leaves */
+/** mud: wet dark plates, puddles with a drawn sky glint and a lit lip, hoof prints pressed in, twigs and leaves */
 function mud(pc: PixelCanvas, c: number, seed: number) {
   const r = new Rand(seed), M = RF(c), Wt = rampNamed('water'), Sk = rampNamed('sky'), Tw = rampNamed('fur');
-  plates(pc, r, 34, M, [1, 2, 2, 3], { bevel: true });
-  for (let i = 0; i < 10 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(4, 9), r.range(3, 6), M, r, M[0]);
-  // hoof prints: a trail of paired hollows pressed in (dark floor, a lit far wall)
-  for (let t = 0; t < AREA; t++) {
-    let x = r.range(0, T), y = r.range(0, T); const a = r.range(0, 6.28), stp = r.range(16, 24);
+  plates(pc, r, 12, M, [1, 2, 2, 3], { bevel: true });
+  for (let i = 0; i < 3 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(3, 5), r.range(2.5, 4), M, r, M[0]);
+  // hoof prints: paired hollows along a trail (dark floor, a lit far edge)
+  for (let t = 0; t < AREA / 2; t++) {
+    let x = r.range(0, T), y = r.range(0, T); const a = r.range(0, 6.28), stp = r.range(6, 9);
     for (let s = 0; s < r.int(4, 8); s++) {
       for (const side of [-1, 1]) {
-        const px = x + Math.cos(a + Math.PI / 2) * side * 4, py = y + Math.sin(a + Math.PI / 2) * side * 4;
-        polyFill(pc, blobPts(px, py, 3.2, 4.2, 6, r, 0.15), M[0]);
-        pc.set(Math.round(px + 2), Math.round(py + 3), M[4]); pc.set(Math.round(px + 3), Math.round(py + 2), M[4]);
+        const px = Math.round(x + Math.cos(a + 1.57) * side * 1.6), py = Math.round(y + Math.sin(a + 1.57) * side * 1.6);
+        pc.set(px, py, M[0]); pc.set(px, py + 1, M[0]); pc.set(px + 1, py + 1, M[4]);
       }
-      x += Math.cos(a) * stp + r.range(-2, 2); y += Math.sin(a) * stp + r.range(-2, 2);
+      x += Math.cos(a) * stp; y += Math.sin(a) * stp;
     }
   }
-  // puddles
-  for (let i = 0; i < 2 * AREA; i++) {
-    const x = r.range(0, T), y = r.range(0, T), rx = r.range(14, 36), ry = rx * r.range(0.45, 0.75), m = new Mask(Math.floor(x - rx * 1.3) - 2, Math.floor(y - ry * 1.3) - 2, Math.ceil(rx * 2.6) + 5, Math.ceil(ry * 2.6) + 5);
-    fillPoly(blobPts(x, y, rx, ry, 11, r, 0.3), (X, Y) => m.add(X, Y));
-    // the water: dark, the sky caught in it toward the far (upper) side
-    m.ink(pc, Wt, (_X, Y) => (Y < y - ry * 0.35 ? 3 : Y < y + ry * 0.2 ? 2 : 2), { dark: 2, lit: null });
-    for (let s = 0; s < r.int(2, 4); s++) { const sy = Math.round(y - ry * r.range(0.1, 0.5)), sx = Math.round(x + r.range(-rx * 0.5, rx * 0.2)), l = r.int(4, 10); for (let q = 0; q < l; q++) if (m.has(sx + q, sy)) pc.set(sx + q, sy, Sk[q < 2 ? 5 : 4]); }
-    // the lip: lit mud where the rim rises toward the light, a dark wet ring on the far side
+  // puddles: flat water, the sky caught in a drawn glint, a lit lip toward the light, a dark wet rim away from it
+  for (let i = 0; i < 0.9 * AREA; i++) {
+    const x = r.range(0, T), y = r.range(0, T), rx = r.range(4, 11), ry = rx * r.range(0.45, 0.7), m = new Mask(Math.floor(x - rx * 1.3) - 2, Math.floor(y - ry * 1.3) - 2, Math.ceil(rx * 2.6) + 5, Math.ceil(ry * 2.6) + 5);
+    fillPoly(blobPts(x, y, rx, ry, 9, r, 0.3), (X, Y) => m.add(X, Y));
+    m.ink(pc, Wt, (_X, Y) => (Y < y - ry * 0.3 ? 3 : 2), { dark: 2, lit: null });
+    const sy = Math.round(y - ry * 0.35), sx = Math.round(x - rx * 0.3);
+    for (let q = 0; q < r.int(2, 4); q++) if (m.has(sx + q, sy)) pc.set(sx + q, sy, Sk[q === 0 ? 5 : 4]);
     for (let Y = m.y0; Y < m.y0 + m.h; Y++) for (let X = m.x0; X < m.x0 + m.w; X++) {
       if (m.has(X, Y)) continue;
       if (m.has(X + 1, Y) || m.has(X, Y + 1)) pc.set(X, Y, M[5]);
       else if (m.has(X - 1, Y) || m.has(X, Y - 1)) pc.set(X, Y, M[0]);
     }
   }
-  for (let i = 0; i < 3 * AREA; i++) thread(pc, r, r.range(0, T), r.range(0, T), r.range(12, 26), r.range(0, Math.PI * 2), Tw[3], Tw[1], 0.1);
-  for (let i = 0; i < 4 * AREA; i++) leafStroke(pc, r.range(0, T), r.range(0, T), r.range(0, 6.28), r.range(5, 8), r.range(2, 3), rampNamed(r.pick(['rust', 'ochre', 'olive'] as const)), r, { midrib: true });
+  for (let i = 0; i < AREA; i++) { let x = r.int(0, T - 1), y = r.int(0, T - 1); const dx = r.pick([-1, 1]); for (let j = 0; j < r.int(4, 8); j++) { pc.set(x, y, Tw[3]); pc.set(x, y + 1, Tw[1]); x += dx; if (r.chance(0.2)) y += 1; } }
+  for (let i = 0; i < AREA; i++) leafStroke(pc, r.range(0, T), r.range(0, T), r.range(0, 6.28), r.range(2.5, 4), r.range(1, 1.6), rampNamed(r.pick(['rust', 'ochre', 'olive'] as const)), r, { midrib: false });
   tidy(pc);
 }
 
 /** clay: sun-baked crazing, plates with up-curled lit rims and dark cracks between */
 function clay(pc: PixelCanvas, c: number, seed: number) {
   const r = new Rand(seed), C = RF(c);
-  plates(pc, r, 30, C, [3, 3, 4], { bevel: true, seam: 0, joint: 1.3 });
-  for (let i = 0; i < 6 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(3, 6), r.range(2.5, 4.5), C, r, C[0]);
+  plates(pc, r, 9, C, [3, 3, 4], { bevel: true, seam: 0, joint: 1 });
+  for (let i = 0; i < 2 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(3, 4.5), r.range(2.5, 3.5), C, r, C[0]);
   tidy(pc);
 }
 
 // ================================================================================================ snow
-/** snow: crust plates with blue shadows, wind-cut ridges (a lit crest, a blue shadow under), sparkles, bird tracks */
+/** snow: crust plates lit to the sun, flakes of wind-packed crust with blue shadow edges, blue shadow clusters in the
+ *  hollows, wind-cut ridge strokes, sparkles, bird tracks */
 function snow(pc: PixelCanvas, seed: number) {
   const r = new Rand(seed), S = rampNamed('snow'), Bl = rampNamed('sky');
-  plates(pc, r, 46, S, [3, 4, 4, 5], { bevel: true });
-  // sastrugi: long wind-cut ridges
+  plates(pc, r, 16, S, [3, 4, 4, 5], { bevel: true });
+  for (let i = 0; i < 6 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(3, 7), r.range(2, 4), S, r, S[2]);
+  for (let i = 0; i < 2 * AREA; i++) polyFill(pc, blobPts(r.range(0, T), r.range(0, T), r.range(3, 7), r.range(1.5, 3), 6, r), S[2]);
   const ph = r.range(0, 6.28), slope = r.range(-0.3, 0.3);
-  for (let j = 0; j < 12; j++) {
-    const y0 = r.range(0, T), amp = r.range(2, 6), len = r.int(60, 220), x0 = r.int(0, T - 1);
-    for (let x = x0; x < x0 + len; x++) {
-      const y = W(y0 + (x - x0) * slope + Math.round(Math.sin((x / T) * Math.PI * 4 + ph + j) * amp));
-      pc.set(x, y - 1, S[5]); pc.set(x, y, S[5]); pc.set(x, y + 1, Bl[4]); pc.set(x, y + 2, S[2]);
-    }
+  for (let j = 0; j < 9; j++) {
+    const y0 = r.range(0, T), amp = r.range(1, 2.5), len = r.int(20, 70), x0 = r.int(0, T - 1);
+    for (let x = x0; x < x0 + len; x++) { const y = W(y0 + (x - x0) * slope + Math.round(Math.sin((x / T) * Math.PI * 6 + ph + j) * amp)); pc.set(x, y, S[5]); pc.set(x, y + 1, Bl[4]); }
   }
-  // crust: flat flakes of wind-packed snow, lit on the upper left, a blue shadow along the lower right
-  for (let i = 0; i < 46 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(7, 18), r.range(4, 9), S, r, S[2]);
-  // blue hollows
-  for (let i = 0; i < 6 * AREA; i++) polyFill(pc, blobPts(r.range(0, T), r.range(0, T), r.range(6, 16), r.range(3, 8), 7, r), S[2]);
-  // sparkles: a bright texel, now and then a little cross
-  for (let i = 0; i < 26 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); pc.set(x, y, S[5]); if (r.chance(0.25)) { pc.set(x - 1, y, S[4]); pc.set(x + 1, y, S[4]); pc.set(x, y - 1, S[4]); pc.set(x, y + 1, S[4]); } }
-  // bird tracks: three-toed prints in a line
+  for (let i = 0; i < 6 * AREA; i++) { const x = r.int(1, T - 2), y = r.int(1, T - 2); pc.set(x, y, S[5]); if (r.chance(0.3)) { pc.set(x - 1, y, S[4]); pc.set(x + 1, y, S[4]); pc.set(x, y - 1, S[4]); pc.set(x, y + 1, S[4]); } }
   let x = r.range(0, T), y = r.range(0, T); const a = r.range(0, 6.28);
-  for (let s = 0; s < 9; s++) {
-    for (const da of [-0.55, 0, 0.55]) for (let q = 0; q < 5; q++) { pc.set(Math.round(x + Math.cos(a + da) * q), Math.round(y + Math.sin(a + da) * q), S[1]); pc.set(Math.round(x + Math.cos(a + da) * q) + 1, Math.round(y + Math.sin(a + da) * q) + 1, S[4]); }
-    pc.set(Math.round(x - Math.cos(a) * 2), Math.round(y - Math.sin(a) * 2), S[1]);
-    x += Math.cos(a) * 9 + (s % 2 ? 3 : -3) * Math.cos(a + 1.57); y += Math.sin(a) * 9 + (s % 2 ? 3 : -3) * Math.sin(a + 1.57);
+  for (let s = 0; s < 14; s++) {
+    for (const da of [-0.6, 0, 0.6]) pc.set(Math.round(x + Math.cos(a + da) * 1.5), Math.round(y + Math.sin(a + da) * 1.5), S[1]);
+    pc.set(Math.round(x), Math.round(y), S[1]);
+    x += Math.cos(a) * 4 + (s % 2 ? 1 : -1) * Math.cos(a + 1.57); y += Math.sin(a) * 4 + (s % 2 ? 1 : -1) * Math.sin(a + 1.57);
   }
   tidy(pc);
 }

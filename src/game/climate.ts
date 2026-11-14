@@ -289,6 +289,10 @@ export class Climate {
     const S = SEASON[this.season];
     E.snow = this.snowCover; E.frost = this.frost; E.ice = this.ice;
     E.dry = clamp(1 - S.green, 0, 1) * (1 - this.rain * 0.3); E.autumn = S.autumn;
+    // the flora turns with the season itself (bloom, wilt, autumn colour, bare in frost, closed in the eclipse, pulsing
+    // in the bloodtide); post then leaves foliage colour alone and only the terrain dries
+    const fl = w.flora as unknown as { setSeason?(id: string, k: number): void };
+    if (fl.setSeason) { fl.setSeason(this.season, this.seasonT); E.autumn = 0; }
     E.dust = this.dust; E.ash = this.ash; E.red = this.bloodK; E.eclipse = this.eclipseK; E.flash = this.flash;
     E.cloudK = this.cloud; E.aurora = Math.max(this.eclipseK, this.season === 'frost' ? 0.35 : 0);
     // the ground's own climate terms (terrain.ts): snow on flats and heights, rime, drought cracks, rain-wet
