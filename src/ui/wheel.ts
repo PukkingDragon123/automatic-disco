@@ -19,6 +19,8 @@ export class AbilityWheel {
   order: Ability[] = []; n = 1; step = TAU;
   sel = 0; ang = 0; vel = 0; target = 0;
   settled = true; grabbed = false;
+  /** spinning free after a flick (until it slows into a detent) */
+  private free = false;
   /** a message for the readout (and how long it stays) */
   flash = 0; flashMsg = ''; flashGood = false;
   /** bumped when the cartridges change (the desk reloads its models) */
@@ -43,7 +45,7 @@ export class AbilityWheel {
     this.loadN++;
     if (added.length) {
       this.say('LOADED: ' + ABILITIES[added[0]].name.toUpperCase(), true);
-      this.vel = 14; this.settled = false;
+      this.vel = 14; this.free = true; this.settled = false;
       sfx('crack', 0.5, 0.5); sfx('hit', 0.6, 0.4);
     }
   }
@@ -56,7 +58,7 @@ export class AbilityWheel {
     const N = this.n;
     this.sel = (((this.sel + n) % N) + N) % N;
     this.target = Math.round(this.ang / this.step) * this.step + n * this.step;
-    this.vel = 0; this.grabbed = false; this.settled = false;
+    this.vel = 0; this.grabbed = false; this.free = false; this.settled = false;
   }
   select(i: number) { const N = this.n; let d = i - this.sel; if (d > N / 2) d -= N; if (d < -N / 2) d += N; if (d) this.turn(d); }
   trigger(): boolean {
@@ -78,7 +80,7 @@ export class AbilityWheel {
   // ---- grabbing the reel
   grab() { this.grabbed = true; this.vel = 0; }
   dragBy(da: number, dt = 1 / 60) { this.ang += da; this.vel = da / Math.max(1 / 240, dt); this.settled = false; }
-  release() { this.grabbed = false; this.settled = false; }
+  release() { this.grabbed = false; this.settled = false; this.free = Math.abs(this.vel) > 3; if (!this.free) { this.target = Math.round(this.ang / this.step) * this.step; this.vel = 0; } }
 
   update(dt: number) {
     if (ALL.filter((a) => powerOwned(a)).join(',') !== this.ownKey) this.reload();
@@ -87,12 +89,13 @@ export class AbilityWheel {
     if (armed !== this.lastArmed) { this.lastArmed = armed; if (armed && armed !== this.current && !this.grabbed) { const i = Math.max(0, this.order.indexOf(armed)); this.select(i); } }
     this.flash = Math.max(0, this.flash - dt);
     if (!this.grabbed) {
-      if (Math.abs(this.vel) > 3) {
+      if (this.free && Math.abs(this.vel) > 3) {
         // spinning free: friction, then it drops into the nearest detent
         this.ang += this.vel * dt; this.vel *= Math.exp(-dt * 2.6);
         this.target = Math.round(this.ang / STEP) * STEP;
         this.sel = ((Math.round(this.ang / STEP) % N) + N) % N;
       } else {
+        this.free = false;
         const k = 220, damp = 20;
         this.vel += (k * (this.target - this.ang) - damp * this.vel) * dt;
         this.ang += this.vel * dt;

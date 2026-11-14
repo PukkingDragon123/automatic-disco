@@ -32,7 +32,7 @@ float shaftNet(vec2 q, float t) {
     float d = length(g + o - f);
     if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
   }
-  return 1.0 - smoothstep(0.06, 0.2, d2 - d1);
+  return 1.0 - smoothstep(0.025, 0.08, d2 - d1);
 }
 void main() {
   vec2 uv = gl_FragCoord.xy / uRes;

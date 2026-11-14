@@ -150,7 +150,8 @@ export class Hud {
     this.hot({ obj: d.tuckLever.root, name: d.tucked ? 'RAISE THE DESK' : 'TUCK THE DESK AWAY', key: '`', tip: () => 'Lower the whole console for a clean view (or raise it again).', click: () => this.tuck() });
     // ---- BUILD tools
     const fac = () => g()?.factory;
-    this.hot({ obj: P.hat.root, lift: P.hat.body, name: 'HARD HAT · WORKS CATALOGUE', key: 'B', tip: () => `Miners, belts, machines, power, storage, land and water works.${g()?.run.skills.has('works') ? '' : '<div class="tip-warn">Unlock Field Works on the skill tree</div>'}`, click: () => this.buildToggle() });
+    this.hot({ obj: P.hat.root, lift: P.hat.body, name: 'HARD HAT · WORKS CATALOGUE', key: 'B', tip: () => `Miners, belts, machines, power, storage, land and water works.${g()?.run.skills.has('works') ? '' : '<div class="tip-warn">Unlock Field Works on the skill tree</div>'}`,
+      click: () => { const f = fac(); if (!f) return; if (!f.build.active && !g()?.run.skills.has('works')) { sfx('deny'); this.tray('Buy <b>Field Works</b> on the skill tree to open the catalogue', 'warn'); return; } f.build.toggle(); } });
     this.hot({ obj: P.tin.root, lift: P.tin.body, name: 'PAINT TIN · ASSEMBLY BAY', key: 'V', tip: () => 'Refit Unit 07: paint, plating, lens and name.', click: () => c.openMirror() });
     this.hot({ obj: P.clip.root, lift: P.clip.body, name: 'CLIPBOARD · PRODUCTION REPORT', key: 'O', tip: () => 'Items made and used per minute, the power grids, and the machines holding the line up.', click: () => fac()?.ui.toggleStats() });
     this.hot({ obj: P.radio.root, lift: P.radio.body, name: 'HANDSET · CREW ROSTER', key: 'N', tip: () => 'Your workers: jobs, appetites, moods. Assign them to haul, operate, mine, forage or keep a pen.', click: () => fac()?.ui.toggleCrew() });

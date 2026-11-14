@@ -152,7 +152,7 @@ export function formations(R: Region, r: Rand) {
       add('boulder', x, z, r.range(0.9, 1.3), r.range(0.6, 0.9), r.range(0.8, 1.1), { moss: 0 });
       for (let k = r.int(4, 8); k > 0; k--) {
         const a = r.range(0, 6.28), d = r.range(0, 1.3), px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d;
-        add('crystal', px, pz, r.range(0.2, 0.42), r.range(0.8, 2.2), r.range(0.2, 0.4), { tilt: r.range(0.05, 0.55), tiltDir: a, moss: 0, ore: 1, hue });
+        add('crystal', px, pz, r.range(0.2, 0.42), r.range(0.8, 2.2), r.range(0.2, 0.4), { tilt: r.range(0.05, 0.55), tiltDir: a + Math.PI, moss: 0, ore: 1, hue });
       }
       for (let k = r.int(3, 7); k > 0; k--) { const a = r.range(0, 6.28), d = r.range(1.8, 4.5), px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d; if (cellOk(px, pz)) add('crystal', px, pz, r.range(0.12, 0.25), r.range(0.3, 0.8), r.range(0.12, 0.25), { tilt: r.range(0, 0.6), tiltDir: r.range(0, 6.28), moss: 0, ore: 1, hue }); }
       scree(x, z, 4, r.int(6, 12), 0.22);

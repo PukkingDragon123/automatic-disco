@@ -294,7 +294,9 @@ export class Region {
         const P = passRoute(this.h, this.mount, N, ps, 6);
         if (P.length < 8) continue;
         routes.push(P);
-        for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) if (this.mount[z * N + x] > 0.15 && polyNear(P, x + 0.5, z + 0.5)[0] < 9) keep[z * N + x] = 1;
+        let x0 = N, z0 = N, x1 = 0, z1 = 0;
+        for (const [px, pz] of P) { x0 = Math.min(x0, px); z0 = Math.min(z0, pz); x1 = Math.max(x1, px); z1 = Math.max(z1, pz); }
+        for (let z = Math.max(0, Math.floor(z0 - 10)); z < Math.min(N, Math.ceil(z1 + 10)); z++) for (let x = Math.max(0, Math.floor(x0 - 10)); x < Math.min(N, Math.ceil(x1 + 10)); x++) if (this.mount[z * N + x] > 0.15 && polyNear(P, x + 0.5, z + 0.5)[0] < 9) keep[z * N + x] = 1;
       }
       strata(this.h, this.mount, N, n, RISER[bi.key] ?? 2.8, 4, keep);
     }

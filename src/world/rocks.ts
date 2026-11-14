@@ -338,10 +338,10 @@ function stumpShape(nz: Noise, r: Rand, p: RockPiece): WoodGeo {
 /** a crystal: a hexagonal prism, slightly tapering, with a six-faced pointed tip; each face carries its own UV into
  *  one of the crystal layer's four 24 px face columns (u across the face, v up it, 48 px/m) */
 function crystalShape(r: Rand, p: RockPiece, layer: number): WoodGeo {
-  const S = woodSoup(), R0 = p.sx, H = p.sy, tip = H * r.range(0.18, 0.3), taper = r.range(0.7, 0.92), NS = 6;
+  const S = woodSoup(), R0 = p.sx, H = p.sy, tip = Math.max(R0 * 1.1, H * r.range(0.3, 0.45)), taper = r.range(0.6, 0.85), NS = 6;
   const rad = Array.from({ length: NS }, () => R0 * r.range(0.8, 1.15)), a0 = r.range(0, Math.PI);
   const ring = (y: number, k: number): V3 => { const a = a0 + (k / NS) * Math.PI * 2, rr = rad[k % NS] * (y > 0 ? taper : 1); return [Math.cos(a) * rr, y, Math.sin(a) * rr * (p.sz / p.sx)]; };
-  const top: V3 = [r.range(-0.15, 0.15) * R0, H + tip, r.range(-0.15, 0.15) * R0];
+  const top: V3 = [r.range(-0.12, 0.12) * R0, H + tip, r.range(-0.12, 0.12) * R0];
   const nrm = (a: V3, b: V3, c: V3): V3 => { const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2]; const x = uy * vz - uz * vy, y = uz * vx - ux * vz, z = ux * vy - uy * vx, l = hyp(x, y, z) || 1; return [x / l, y / l, z / l]; };
   for (let k = 0; k < NS; k++) {
     const col = (k * 7 + Math.floor(r.next() * 4)) % 4, u0 = col * 0.25, u1 = u0 + 0.245;

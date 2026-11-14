@@ -183,8 +183,8 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
   // the body frame the coat lays its patterns in (station centres, arc length from the tail tip)
   const fpts = st.map((s) => s.c), ffr = sideFrames(fpts), cum = [0];
   for (let i = 1; i < fpts.length; i++) cum.push(cum[i - 1] + dst(fpts[i], fpts[i - 1]));
-  const sOf = (n: string) => cum[Math.max(0, names.indexOf(n))];
-  const F: BodyFrame = { pts: fpts, x: ffr.map((f) => f.x), y: ffr.map((f) => f.y), cum, sRump: sOf('rump'), sHips: sOf('hips'), sShoulder: sOf('chest'), sNeck: sOf('withers'), L: cum[cum.length - 1], W };
+  const sOf = (n: string, ...fb: string[]): number => { for (const k of [n, ...fb]) { const i = names.indexOf(k); if (i >= 0) return cum[i]; } return cum[cum.length - 1]; };
+  const F: BodyFrame = { pts: fpts, x: ffr.map((f) => f.x), y: ffr.map((f) => f.y), cum, sRump: sOf('rump', 'hips'), sHips: sOf('hips'), sShoulder: sOf('chest'), sNeck: sOf('withers', 'chest'), L: cum[cum.length - 1], W };
   const zStop = (fam.z[seat.stop] - 0.04) * hl;
   const C = coatCtx(spec.coat, F, seed, { zStop, skullC: skC });
   tr.paint = coatPaint(C, 'trunk');

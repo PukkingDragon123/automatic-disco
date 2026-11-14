@@ -329,8 +329,10 @@ function crystalLayer(pc: PixelCanvas, r: Rand, ramp: Ramp, glow: boolean) {
     for (let y = 0; y < RS; y++) for (let i = 0; i < 24; i++) {
       let k = base;
       if (i === 0) k = n; else if (i === 1) k = n - 1; else if (i >= 22) k = Math.max(0, base - 2);
-      // growth lines across the face
-      if (y % 9 === (col * 3) % 9 && i > 2 && i < 21) k = base - 1;
+      // a milky base (the crystal clouds toward its root: v runs up the face, so the bottom rows of the tile), a
+      // faint growth line here and there
+      else if (y > RS - 30 + ((i * 5 + col * 3) % 7)) k = base - 1;
+      else if (y % 31 === (col * 11) % 31 && i > 4 && i < 19) k = base + 1;
       pc.set(x0 + i, y, at(ramp, k), i === 0 || i >= 22 ? 255 : A);
     }
     // inner fractures (bright lines running obliquely) and an inclusion or two

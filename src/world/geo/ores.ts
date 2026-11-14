@@ -284,7 +284,7 @@ function nodes(R: Region, r: Rand, d: Deposit) {
     if (d.ore === 'lumen') {
       // a big glowing cluster and a few satellites
       stone(R, r, 'crystal', d.x, d.z, r.range(0.8, 1.1), 'lumen', r.range(1.6, 2.4));
-      for (let k = r.int(3, 5); k > 0; k--) { const a = r.range(0, 6.28), dd = r.range(1.2, 2.4); stone(R, r, 'crystal', d.x + Math.cos(a) * dd, d.z + Math.sin(a) * dd, r.range(0.3, 0.55), 'lumen', r.range(0.5, 1.1)); }
+      for (let k = r.int(4, 7); k > 0; k--) { const a = r.range(0, 6.28), dd = r.range(0.7, 2.2), q = stone(R, r, 'crystal', d.x + Math.cos(a) * dd, d.z + Math.sin(a) * dd, r.range(0.22, 0.5), 'lumen', r.range(0.5, 1.3)); q.tilt = r.range(0.25, 0.6); q.tiltDir = a + Math.PI; }
     } else {
       stone(R, r, 'node', d.x, d.z, r.range(0.7, 0.95), 'gravium');
       for (let k = r.int(5, 8); k > 0; k--) {
@@ -299,7 +299,7 @@ function nodes(R: Region, r: Rand, d: Deposit) {
     const a = (k / n) * Math.PI * 2 + r.range(-0.4, 0.4), dd = d.r + r.range(0.3, 1.2);
     const x = d.x + Math.cos(a) * dd, z = d.z + Math.sin(a) * dd;
     if (R.isWater(x, z)) continue;
-    if (def.kind === 'crystal') stone(R, r, 'crystal', x, z, r.range(0.25, 0.55), d.ore!, r.range(0.6, 1.5));
+    if (def.kind === 'crystal') { const q = stone(R, r, 'crystal', x, z, r.range(0.22, 0.5), d.ore!, r.range(0.6, 1.5)); q.tilt = r.range(0.15, 0.5); q.tiltDir = a + Math.PI; }
     else stone(R, r, 'node', x, z, r.range(0.45, 0.95), d.ore!);
   }
 }

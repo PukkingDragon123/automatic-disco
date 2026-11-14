@@ -32,6 +32,8 @@ interface Ctx {
   ds: Float32Array;
   /** lake id + 1 per cell (0 none) */
   lakeId: Int32Array;
+  /** scratch for the least-cost descents */
+  g?: Float32Array; from?: Int32Array; done?: Uint8Array;
 }
 
 /** build the whole water network into the region (land regions; ocean regions keep their own) */
@@ -138,7 +140,7 @@ function pickSource(C: Ctx, avoid: P2[], hiK: number, big: boolean, home = false
 /** least-cost descent from a source to the sea, a lake, another river (if join) or, with no sea, the map edge */
 function descend(C: Ctx, src: P2, join: boolean): number[] | null {
   const { R, N, W } = C, h = R.h, L = R.landing;
-  const g = new Float32Array(N * N).fill(1e9), from = new Int32Array(N * N).fill(-1), done = new Uint8Array(N * N);
+  const g = (C.g ??= new Float32Array(N * N)).fill(1e9), from = (C.from ??= new Int32Array(N * N)).fill(-1), done = (C.done ??= new Uint8Array(N * N)).fill(0);
   const s0 = Math.floor(src[1]) * N + Math.floor(src[0]);
   const heap = new Heap(g);
   g[s0] = 0; heap.push(s0);

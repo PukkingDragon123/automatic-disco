@@ -4,9 +4,23 @@
 import type { Design } from '../design';
 import type { Rig } from '../morph';
 import type { VertSpec } from '../anatomy/vertebrate';
+import { mossback } from './mossback';
+import { stiltwool } from './stiltwool';
 import { lancehorn } from './lancehorn';
+import { scaleback } from './scaleback';
+import { gallowneck } from './gallowneck';
+import { shellhunter } from './shellhunter';
+import { fanfin } from './fanfin';
+import { gillnewt } from './gillnewt';
+import { woolpuff } from './woolpuff';
+import { spiracle } from './spiracle';
+import { ribbon } from './ribbon';
+import { reedneck } from './reedneck';
+import { knuckler } from './knuckler';
+import { duskwing } from './duskwing';
+import { gapejaw } from './gapejaw';
 
 export type SpeciesFn = (d: Design, rig: Rig) => VertSpec;
-export const SPECIES: Record<string, SpeciesFn> = { lancehorn };
+export const SPECIES: Record<string, SpeciesFn> = { mossback, stiltwool, lancehorn, scaleback, gallowneck, shellhunter, fanfin, gillnewt, woolpuff, spiracle, ribbon, reedneck, knuckler, duskwing, gapejaw };
 
 export { rs, sh } from './util';

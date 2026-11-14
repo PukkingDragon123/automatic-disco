@@ -1,5 +1,8 @@
-// Colour helpers for the species recipes: an individual's palette colours back as ramp steps.
+// Helpers for the species recipes: an individual's palette colours back as ramp steps, and surface presets scaled to
+// the animal (fur locks, scales, hide and wet skin sized by its body width, so a woolpuff and a mossback both wear
+// locks a pixel artist would draw at their size).
 import { RAMPS, nearestRamp, type RampName } from '../../art/palette';
+import type { Surf } from '../anatomy/coat';
 
 /** a palette colour back as [ramp, step] (exact when it is a master-palette colour, else the nearest ramp's step) */
 export function rs(c: number): [RampName, number] {
@@ -11,3 +14,12 @@ export function rs(c: number): [RampName, number] {
 }
 /** a ramp step moved by k (clamped to the ramp) */
 export const sh = (c: [RampName, number], k: number): [RampName, number] => [c[0], Math.max(0, Math.min(RAMPS[c[0]].length - 1, c[1] + k))];
+
+/** fur locks for an animal of body width W (k > 1 longer, shaggier) */
+export const fur = (W: number, k = 1, down = 0.5): Surf => ({ fur: { len: 0.16 * W * k, width: 0.058 * W * Math.sqrt(k), down } });
+/** scales of a kind, sized to the body */
+export const scales = (W: number, k = 1, kind: 'shield' | 'pebble' | 'scute' | 'keel' = 'shield', extra: Surf = {}): Surf => ({ scales: { size: 0.075 * W * k, kind }, creases: 0.8, ...extra });
+/** pebbled, wrinkled hide */
+export const hide = (W: number, k = 1, folds = 0): Surf => ({ pebbles: { size: 0.07 * W * k, depth: 0.9, pores: 0.4 }, folds: folds ? { spacing: 0.08 * W * folds, depth: 0.7 } : undefined, creases: 0.8 });
+/** smooth wet skin with glands */
+export const wet = (W: number, glands = 0.3, k = 1): Surf => ({ glands: glands ? { size: 0.12 * W * k, density: glands } : undefined, pebbles: { size: 0.03 * W * k, depth: 0.35 }, wet: 0.5, creases: 0.6 });
