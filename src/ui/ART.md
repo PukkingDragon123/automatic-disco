@@ -1,3 +1,11 @@
+# >>> THE GAME IS DETAILED PIXEL ART. EVERY SURFACE. <<<
+Ground, rock, water, plants, creatures, robots, ships, UI, VFX: all of it must read as deliberate, hand-made pixel art
+at gameplay zoom: visible pixels at a consistent density (about the same pixel size as the plants: chunky enough to
+read as pixels), clean clusters, palette-ramp colours (src/art/palette.ts), selective dark outlines, highlight edges and
+glints. "Realistic" means realistic materials, colour and proportion, DRAWN AS PIXEL ART; it never means photographic
+noise, smooth gradients or fine high-frequency texture that stops reading as pixels. Procedural systems may only place,
+vary and blend hand-drawn pixel motifs; they never replace them.
+
 # UI art direction (applies to every screen)
 
 The user's verdict on the current UI: "looks AI-made, too saturated; make it actually unique, higher resolution,
