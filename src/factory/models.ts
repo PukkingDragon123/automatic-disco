@@ -227,7 +227,7 @@ const MODELS: Partial<Record<string, (tier: number) => Model>> = {
     const ladle = part((p) => { p.box([0, 1.85, 0.2], [0.12, 0.4, 0.12], L.STEEL); p.cyl([0, 1.5, 0.2], 0.28, 0.35, L.RUST, { r1: 0.34, n: 8 }); p.box([0, 1.66, 0.2], [0.5, 0.02, 0.5], L.GLASS, { glow: 1 }); }, [0, 2.05, 0.2], 'press', 'x', 0.5, 0.9);
     return { base: m.geo(), parts: [ladle], lamp: [1.1, 1.0, 1.2], smoke: [[-0.75, 3.55, -0.8], [0.75, 3.55, -0.8]] };
   },
-  constructor: () => {
+  ctor: () => {
     const m = new MG(); pad(m, 2, 2);
     m.box([0, 0.45, 0], [1.6, 0.6, 1.6], L.OLIVE);
     m.box([0, 0.78, 0.15], [0.9, 0.06, 1.2], L.TREAD);
@@ -634,7 +634,7 @@ export function modelFor(kind: FKind | string, model: string, hook?: (m: MG) => 
   let m = CACHE.get(key);
   if (!m) {
     if (hook) { const g = new MG(); hook(g); m = { base: g.geo(), parts: [], lamp: [0, -9, 0] }; }
-    else m = (MODELS[model] ?? MODELS.crate!)(tier);
+    else m = (Object.prototype.hasOwnProperty.call(MODELS, model) ? MODELS[model]! : MODELS.crate!)(tier);
     CACHE.set(key, m);
   }
   return m;

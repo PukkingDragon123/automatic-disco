@@ -21,15 +21,13 @@ import { Rand } from '../core/rand';
 import { SKILL } from '../game/skills';
 import { ecoStep, ecoWants, ecoRemoved } from './eco';
 
-const ECO = new Set<string>(['sluice', 'sprinkler', 'spreader', 'sprayer', 'planter', 'trough', 'pen', 'breeder']);
-/** what pipes carry */
-export const FLUIDS = new Set<string>(['water', 'bio_oil', 'algae_fuel', 'steam', 'herbicide']);
+import { Build } from './build';
+import { FactoryUI } from './ui';
 
-export const TICK = 1 / 20;
-export const SPACING = 1 / 3;
-export type Status = 'idle' | 'working' | 'blocked' | 'starved' | 'nopower' | 'offline';
-export const STATUS_COL: Record<Status, number> = { idle: 0x7b858e, working: 0x9cc5ae, blocked: 0xc9a464, starved: 0xa66d4d, nopower: 0xa2473a, offline: 0x3c3d3f };
-export const STATUS_NAME: Record<Status, string> = { idle: 'IDLE', working: 'WORKING', blocked: 'OUTPUT BLOCKED', starved: 'INPUT STARVED', nopower: 'NO POWER', offline: 'OFFLINE' };
+const ECO = new Set<string>(['sluice', 'sprinkler', 'spreader', 'sprayer', 'planter', 'trough', 'pen', 'breeder']);
+
+import { TICK, SPACING, STATUS_COL, STATUS_NAME, FLUIDS, type Status } from './status';
+export { TICK, SPACING, STATUS_COL, STATUS_NAME, FLUIDS, type Status };
 export interface BeltItem { id: ItemId; t: number }
 export interface Seam { i: number; x: number; z: number; r: number; kind: 'ore' | 'crystal' | 'coal' | 'copper'; item: ItemId; amount: number; dep: number }
 export interface Grid { id: number; supply: number; demand: number; cap: number; sat: number; gens: number; users: number }
@@ -120,6 +118,8 @@ export class Factory {
   grids: Grid[] = [];
   readonly render: FactoryRender;
   readonly workers: Workers;
+  readonly build: Build;
+  readonly ui: FactoryUI;
   time = 0;
   research = 0;
   private acc = 0; private powerDirty = true; private topoDirty = true;
@@ -138,6 +138,8 @@ export class Factory {
     this.makeSeams();
     this.render = new FactoryRender(this);
     this.workers = new Workers(this);
+    this.build = new Build(this);
+    this.ui = new FactoryUI(this, this.build);
     g.update$.push((dt) => { try { this.update(dt); } catch (e) { if (this.errs++ < 5) console.error('factory', e); } });
     this.findRobots();
   }
@@ -541,6 +543,7 @@ export class Factory {
 
   // ================================================================== tick
   update(dt: number) {
+    this.ui.update(dt);
     if (dt <= 0) { this.render.update(0); return; }
     if (!this.robotsTried && this.time > 2) this.findRobots();
     this.acc += Math.min(dt, 0.25);

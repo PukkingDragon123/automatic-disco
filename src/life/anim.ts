@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import type { Rig, LegDef } from './morph';
 import { clamp, damp, smooth } from '../core/rand';
+import { daylight } from '../game/daylight';
 
 export type AnimState = 'idle' | 'move' | 'attack' | 'eat' | 'dead' | 'fly' | 'stunned' | 'grabbed';
 type IdleAct = 'none' | 'look' | 'sniff' | 'groom' | 'shake' | 'shift';
@@ -50,6 +51,10 @@ export class Animator {
   // hit flinch: a damped spring kicked by the hit flash
   private prevFlash = 0; private hitX = 0; private hitV = 0; private hitSide = 1;
   private breathPh = Math.random() * 6;
+  // eyes: the gaze jumps (saccades) between fixations near what the creature attends to; pupils follow the light
+  private gaze = [0, 0]; private gazeT = [0, 0]; private fixIn = 0.5; private pupil = 1;
+  // fat: a sprung lag in the belly
+  private jig = 0; private jigV = 0; private lastY = 0;
   constructor(readonly rig: Rig, readonly bones: THREE.Bone[], readonly obj: THREE.Object3D) {
     this.tail = rig.tail.map(() => 0); this.tailV = rig.tail.map(() => 0);
     this.earIn = rig.ears.map(() => 1 + Math.random() * 4); this.earX = rig.ears.map(() => 0); this.earV = rig.ears.map(() => 0);
@@ -245,6 +250,26 @@ export class Animator {
       const droop = this.deathT;
       B[e].quaternion.setFromEuler(_e.set(0.12 * this.blend - pin * 0.85 - droop * 0.3 + this.earX[i] * 0.4, look + this.earX[i] * 0.6 * s, -s * (pin * 0.45 + droop * 0.7), 'YXZ'));
     });
+    // eyes: fixations held 0.3-2 s, then a fast jump to a new point near the look target; held steady against the head's turn
+    if (rig.eyes.length) {
+      this.fixIn -= dt;
+      if (this.fixIn <= 0) { this.fixIn = 0.3 + Math.random() * 1.7; this.gazeT[0] = (Math.random() - 0.5) * 0.5; this.gazeT[1] = (Math.random() - 0.5) * 0.25; }
+      const lookY = clamp(inp.lookYaw * 0.35 + (act === 'look' ? this.idleYaw * 0.3 * ik : 0), -0.4, 0.4);
+      for (let i = 0; i < 2; i++) this.gaze[i] = damp(this.gaze[i], this.gazeT[i] + (i === 0 ? lookY : 0), 28, dt);
+      // pupils: wide in the dark, pinched in sunlight, flaring when it strikes or is struck
+      const want = (0.55 + (1 - daylight.k) * 0.8) * (inp.state === 'attack' || hit > 0.3 ? 1.2 : 1) * (this.deathT > 0 ? 1.5 : 1);
+      this.pupil = damp(this.pupil, want, 1.6, dt);
+      for (const e of rig.eyes) {
+        B[e.bone].quaternion.setFromEuler(_e.set(-this.gaze[1], this.gaze[0], 0, 'YXZ'));
+        B[e.pupil].scale.setScalar(this.pupil);
+      }
+    }
+    // fat: the belly lags the body's bounce and wobbles back
+    if (rig.ribs >= 0 && rig.dims.fat) {
+      const y = root.position.y, acc = (y - this.lastY) / Math.max(dt, 1e-3); this.lastY = y;
+      this.jigV += (-acc * 0.6 - this.jig * 160 - this.jigV * 9) * dt; this.jig += this.jigV * dt;
+      B[rig.ribs].position.y += clamp(this.jig, -0.05, 0.05) * rig.rideH * 0.5;
+    }
     // tail swish now and then
     let swish = 0;
     if (this.swishT < 0) { this.swishIn -= dt; if (this.swishIn <= 0) { this.swishT = 0; this.swishSide = Math.random() < 0.5 ? -1 : 1; } }
@@ -320,6 +345,7 @@ export class Animator {
     const l1 = lens[0], l2 = lens[1];
     _D.subVectors(target, _A);
     const dist = clamp(_D.length(), Math.abs(l1 - l2) + 1e-3, (l1 + l2) * 0.999);
+    if (lg.flex !== undefined) { const bend = clamp((1 - dist / (l1 + l2)) * 3, 0, 1); B[lg.flex].scale.set(1 + bend * 0.28, 1, 1 + bend * 0.28); }
     _D.normalize();
     const a = (l1 * l1 - l2 * l2 + dist * dist) / (2 * dist);
     const h = Math.sqrt(Math.max(0, l1 * l1 - a * a));

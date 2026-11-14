@@ -492,7 +492,7 @@ export class MenuScreen implements Screen {
     });
     const lit = this.hovered?.word;
     if (lit) this.lamp.position.lerp(lit.group.position.clone().addScaledVector(this.rest.up, 10).add(this.cam.position.clone().sub(lit.group.position).normalize().multiplyScalar(22)), Math.min(1, dt * 10));
-    this.lamp.intensity += ((lit ? 2600 : 0) - this.lamp.intensity) * Math.min(1, dt * 8);
+    this.lamp.intensity += ((lit ? 520 : 0) - this.lamp.intensity) * Math.min(1, dt * 8);
     // the apple: physics against the hull and the words
     const boxes = [...this.ship.boxes, ...this.words.filter((o) => o.word.group.visible).map((o) => ({ half: o.word.halfSize, m: o.word.group.matrixWorld, inv: new THREE.Matrix4().copy(o.word.group.matrixWorld).invert(), hit: () => { o.word.burst(0.3); } }))];
     this.bonk = Math.max(0, this.bonk - dt);

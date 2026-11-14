@@ -15,6 +15,8 @@ export interface Card { bone: number; c: V3; u: V3; v: V3; mat: Mat }
 export interface LegDef {
   side: 1 | -1; pair: number; kind: 'insect' | 'fore' | 'hind' | 'bird' | 'spider';
   bones: number[]; lens: number[];
+  /** a helper bone in the upper segment's muscle belly that swells as the joint below it closes */
+  flex?: number;
   /** rest foot position in creature space (x, z) */
   foot: [number, number];
   phase: number;
@@ -31,6 +33,8 @@ export interface Rig {
   lids: { bone: number; axis: V3 }[];
   /** ear bones (children of the head at the ear roots), a leaf bone in the ribcage that breathes (-1 if none) */
   ears: number[]; ribs: number;
+  /** eyeballs (turned for saccades and fixation) and the pupil plate on each cornea (scaled to dilate) */
+  eyes: { bone: number; pupil: number }[];
   /** body clearance at rest, body length, bounding height, stride length */
   rideH: number; length: number; height: number; stride: number; width: number;
   /** gait: per-pair phase offsets; duty factor */
@@ -56,7 +60,7 @@ export function buildRig(d: Design): Rig {
   const r = new Rand(d.seed ^ 0x77);
   const b = new B();
   const L = bodyLength(d);
-  const rig: Rig = { plan: d.plan, bones: b.bones, boxes: b.boxes, cards: b.cards, legs: [], root: 0, head: -1, jaw: -1, tongue: -1, throat: -1, neck: [], tail: [], spine: [], wings: [], antennae: [], mandibles: [], stalks: [], lids: [], ears: [], ribs: -1, rideH: 0, length: L, height: 0, stride: 0, width: 0, duty: 0.6, gait: 'walk', dims: {} };
+  const rig: Rig = { plan: d.plan, bones: b.bones, boxes: b.boxes, cards: b.cards, legs: [], root: 0, head: -1, jaw: -1, tongue: -1, throat: -1, neck: [], tail: [], spine: [], wings: [], antennae: [], mandibles: [], stalks: [], lids: [], ears: [], ribs: -1, eyes: [], rideH: 0, length: L, height: 0, stride: 0, width: 0, duty: 0.6, gait: 'walk', dims: {} };
   switch (d.plan) {
     case 'hexapod': case 'octopod': arthropod(d, b, rig, L, r); break;
     case 'serpent': serpent(d, b, rig, L, r); break;
@@ -215,7 +219,8 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
       else if (pillars) b.box(foot, [0, lt * 0.14, lt * 0.06], [lt * 1.25, lt * 0.32, lt * 1.3], 'foot');
       else if (pp.kind === 'bird') { b.box(foot, [0, lt * 0.1, lt * 0.42], [lt * 0.9, lt * 0.2, lt * 1.15], 'foot'); b.box(foot, [0, lt * 0.08, lt * 1.02], [lt * 0.9, lt * 0.16, lt * 0.2], 'claw'); }
       else { b.box(foot, [0, lt * 0.12, lt * 0.22], [lt * 0.95, lt * 0.26, lt * 1.15], 'foot'); b.box(foot, [0, lt * 0.08, lt * 0.82], [lt * 0.8, lt * 0.14, lt * 0.12], 'claw'); }
-      rig.legs.push({ side: s, pair: pi, kind: pp.kind, bones, lens, foot: [fx, fz], phase: 0, pole, tarsus });
+      const flex = b.bone('flex' + pi + s, up, [0, -lens[0] * 0.45, 0]);
+      rig.legs.push({ side: s, pair: pi, kind: pp.kind, bones, lens, foot: [fx, fz], phase: 0, pole, tarsus, flex });
     }
   });
   // arms on bipeds
@@ -236,6 +241,7 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
   }
   // soft-tissue bones the animator plays on: eyelids (placed on the eyes by the sculptor), ears, a breathing ribcage
   for (const s of [-1, 1]) rig.lids.push({ bone: b.bone('lid' + s, head, [s * hw * 0.4, hh * 0.2, hl * 0.25]), axis: [1, 0, 0] });
+  for (const s of [-1, 1]) { const eb = b.bone('eye' + s, head, [s * hw * 0.4, hh * 0.2, hl * 0.25]); rig.eyes.push({ bone: eb, pupil: b.bone('pupil' + s, eb, [0, 0, hw * 0.05]) }); }
   if (has(d, 'ears')) for (const s of [-1, 1]) rig.ears.push(b.bone('ear' + s, head, [s * hw * 0.38, hh * 0.42, -hl * 0.04]));
   else if (has(d, 'ears_round')) for (const s of [-1, 1]) rig.ears.push(b.bone('ear' + s, head, [s * hw * 0.36, hh * 0.38, -hl * 0.1]));
   if (d.plan !== 'hominid') rig.ribs = b.bone('ribs', chest, [0, -H * 0.1, -T * 0.12]);
@@ -251,7 +257,7 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
   if (biped) for (const lg of rig.legs) lg.phase = lg.side > 0 ? 0 : 0.5;
   rig.dims = { W, H, T, lt, legLen, nk, neckLen, nAng, hl, hw, hh, sl, tailLen, er, hindLen, bear: bear ? 1 : 0, hump: humped ? 1 : 0, hop: hop ? 1 : 0, sprawl: sprawl ? 1 : 0, shell: shellV ? 1 : 0,
     // behaviour hints for the animator: grazers crop the ground, furred bodies shake themselves dry, hooved heads nod
-    graze: has(d, 'molars') && !has(d, 'carnassials') ? 1 : 0, fur: d.cover === 'fur' ? 1 : 0, hoof: hooves ? 1 : 0, cat: cat ? 1 : 0 };
+    graze: has(d, 'molars') && !has(d, 'carnassials') ? 1 : 0, fur: d.cover === 'fur' ? 1 : 0, hoof: hooves ? 1 : 0, cat: cat ? 1 : 0, fat: has(d, 'fat_stores') ? 1 : 0 };
 }
 
 // ------------------------------------------------------------------------------------------------ arthropods

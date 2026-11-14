@@ -109,7 +109,7 @@ function patternAt(d: Design, r: Region, x: number, y: number, sn: number, cn: n
         if (hash(I * 7 + 1, J * 13 + seed) < 0.3) continue;
         const px = (I + 0.2 + hash(I, J + seed) * 0.6) * cs, py = (J + 0.2 + hash(J, I + seed + 3) * 0.6) * cs;
         const rr = cs * (0.22 + hash(I + 5, J) * 0.18), dx = sn - px, dy = cn - py, hs = I * 131 + J * 17 + seed;
-        if (!patch(dx, dy, rr, hs)) continue;
+        if (Math.abs(dx) > rr * 1.16 || Math.abs(dy) > rr * 1.16 || !patch(dx, dy, rr, hs)) continue;
         if (rr < cs * 0.31) return 1;
         // big spots open into rosettes: a broken ring of drawn segments round a darkened heart
         if (patch(dx, dy, rr * 0.56, hs + 3)) return 2;
@@ -308,12 +308,15 @@ export function glowReg(r: Region, c: number) {
 function facets(r: Region, size: number, seed: number) {
   const w = r.w, h = r.h, nx = Math.max(2, Math.round(w / size)), cw = w / nx, ny = Math.ceil(h / size) + 1;
   const id = new Int32Array(w * h), edge = new Uint8Array(w * h);
+  // each cell's jittered centre, worked out once
+  const JX = new Float32Array(nx * (ny + 3)), JY = new Float32Array(nx * (ny + 3));
+  for (let Y = -1; Y < ny + 2; Y++) for (let Xm = 0; Xm < nx; Xm++) { JX[(Y + 1) * nx + Xm] = 0.15 + hash(Xm, Y * 5 + seed) * 0.7; JY[(Y + 1) * nx + Xm] = 0.15 + hash(Xm * 7 + 2, Y + seed * 3) * 0.7; }
   for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
     const gx = Math.floor(i / cw), gy = Math.floor(j / size);
     let d1 = Infinity, d2 = Infinity, b = 0;
     for (let bb = -1; bb <= 1; bb++) for (let a = -1; a <= 1; a++) {
-      const X = gx + a, Y = gy + bb, Xm = ((X % nx) + nx) % nx;
-      const px = (X + 0.15 + hash(Xm, Y * 5 + seed) * 0.7) * cw, py = (Y + 0.15 + hash(Xm * 7 + 2, Y + seed * 3) * 0.7) * size;
+      const X = gx + a, Y = gy + bb, Xm = ((X % nx) + nx) % nx, q = (Math.min(ny + 1, Math.max(-1, Y)) + 1) * nx + Xm;
+      const px = (X + JX[q]) * cw, py = (Y + JY[q]) * size;
       const dx = i + 0.5 - px, dy = j + 0.5 - py, dd = Math.abs(dx) + Math.abs(dy); // a diamond metric keeps the borders angular
       if (dd < d1) { d2 = d1; d1 = dd; b = Xm * 1000 + Y + 7; } else if (dd < d2) d2 = dd;
     }
@@ -614,7 +617,24 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     const ax = norm(bug ? [s * 0.62, 0.62, 0.48] : [s * Math.sin(eYaw), hoof ? 0.2 : 0.12, Math.cos(eYaw)]);
     const c = addV(addV(head, off), scl(ax, -er * (bug ? -0.1 : hoof ? 0.5 : cat ? -0.08 : 0.4)));
     if (bug) sac(S.B, LID, S.gid(), [addV(c, scl(ax, -er * 1.3)), addV(c, scl(ax, -er * 0.55)), addV(c, scl(ax, -er * 0.05))], [[er * 1.05, er * 1.0], [er * 1.12, er * 1.06], [er * 1.08, er * 1.02]], [[iH, 1], [iH, 1], [iH, 1]], { n: 14, start: false, end: false });
-    ball(S.B, EYE, S.gid(), c, ax, [er, er * 0.95, er * 0.86], [iH, 1], { n: 16, rings: 7, tv: EYE_TV, sq: 2 });
+    // the eyeball turns on its own bone; a pupil plate rides the cornea on a bone that scales to dilate
+    const eyeB = rows === 1 ? S.rig.eyes[s < 0 ? 0 : 1] : undefined, pupT = (BF ? BF.eyes.pupil : hoof || flat ? 'h' : 'round');
+    const ew: Wt = eyeB ? [eyeB.bone, 1] : [iH, 1];
+    if (eyeB) { S.rig.bones[eyeB.bone].pos = sub(c, S.rest[iH]) as [number, number, number]; S.rest[eyeB.bone] = c; }
+    ball(S.B, EYE, S.gid(), c, ax, [er, er * 0.95, er * 0.86], ew, { n: 16, rings: 7, tv: EYE_TV, sq: 2 });
+    if (eyeB && (pupT === 'round' || pupT === 'v' || pupT === 'h' || pupT === 'pinhole')) {
+      const pc = addV(c, scl(ax, er * 0.99)), up0 = norm(sub([0, 1, 0], scl(ax, ax[1]))), lt0 = norm(cross(up0, ax));
+      S.rig.bones[eyeB.pupil].pos = sub(pc, c) as [number, number, number]; S.rest[eyeB.pupil] = pc;
+      const PU = S.fixed('PUPIL', 4, 4), pw: Wt = [eyeB.pupil, 1], g = S.gid();
+      // the outline of the pupil in the cornea's tangent plane: a lens for slits, a long octagon for bars, an octagon
+      const rp = er * (pupT === 'pinhole' ? 0.1 : 0.3), shape: number[][] = pupT === 'v' ? [[0, 1], [0.26, 0.5], [0.3, 0], [0.26, -0.5], [0, -1], [-0.26, -0.5], [-0.3, 0], [-0.26, 0.5]]
+        : pupT === 'h' ? [[1, 0.2], [0.9, 0.34], [-0.9, 0.34], [-1, 0.2], [-1, -0.2], [-0.9, -0.34], [0.9, -0.34], [1, -0.2]]
+          : Array.from({ length: 8 }, (_, i) => [Math.cos((i / 8) * TAU + 0.39), Math.sin((i / 8) * TAU + 0.39)]);
+      const on = (x: number, y: number) => addV(c, scl(norm(addV(ax, addV(scl(lt0, (x * rp) / er), scl(up0, (y * rp) / er)))), er * 1.012));
+      const ctr = S.B.vert(on(0, 0), PU, 0.5, 0.5, pw, g), ring = shape.map(([x, y]) => S.B.vert(on(x, y), PU, 0.5, 0.5, pw, g));
+      for (let i = 0; i < ring.length; i++) S.B.tri(ctr, ring[i], ring[(i + 1) % ring.length]);
+      if (!S.paints.some((p2) => (p2 as any).PUPIL)) { const p2: Paint = () => PU.fill([RAMPS.ink[0]], () => 0); (p2 as any).PUPIL = 1; S.paints.push(p2); }
+    }
     sac(S.B, LID, S.gid(), [addV(c, scl(ax, -er * 0.02)), addV(c, scl(ax, er * 0.3)), addV(c, scl(ax, er * 0.5))], [[er * 1.22, er * 1.16], [er * 1.12, er * 1.06], [er * 1.02, er * 0.96]], [[iH, 1], [iH, 1], [iH, 1]], { n: 14, start: false, end: false, sq: 2.2 });
     // lids: the upper one rides a bone centred on the eyeball and turns down over it to blink
     const u = norm(sub([0, 1, 0], scl(ax, ax[1]))), lid = S.rig.lids[s < 0 ? 0 : 1];
@@ -627,7 +647,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     }
     lidCap(S, LC, c, ax, scl(u, -1), R * 0.99, -0.75, 0.84 - heavy * 0.5, 1.75, [iH, 1], 3, 8);
   }
-  S.paints.push(() => paintEyeReg(S, EYE, { iris: BF ? (rows > 1 ? 70 : 58) : hom || hoof ? irisA : Math.max(irisA, 52), pupilA: pupA, pupil: BF ? BF.eyes.pupil : hoof || flat ? 'h' : 'round', sclera: hom ? 0xe8e2d8 : hoof ? 0xd8ccb8 : 0xc8b49a, irisC: hoof || boar ? mixHex(d.colors.eye, 0x3a2414, 0.8) : cat ? mixHex(d.colors.eye, 0xd8962a, 0.7) : undefined }));
+  S.paints.push(() => paintEyeReg(S, EYE, { iris: BF ? (rows > 1 ? 70 : 58) : hom || hoof ? irisA : Math.max(irisA, 52), pupilA: pupA, pk: rows === 1 && ['round', 'v', 'h', 'pinhole'].includes(BF ? BF.eyes.pupil : 'round') ? 0.5 : 1, pupil: BF ? BF.eyes.pupil : hoof || flat ? 'h' : 'round', sclera: hom ? 0xe8e2d8 : hoof ? 0xd8ccb8 : 0xc8b49a, irisC: hoof || boar ? mixHex(d.colors.eye, 0x3a2414, 0.8) : cat ? mixHex(d.colors.eye, 0xd8962a, 0.7) : undefined }));
   S.paints.push(() => {
     hide(S, LID, { L: er, rad: () => er, seed: 61, kind: 'ear', noPattern: !amph, flow: -1 }); for (let x = 0; x < LID.w; x++) { LID.set(x, LID.h - 1, 0x140c0a); LID.set(x, LID.h - 2, S.P.dark[1]); }
     if (amph) amphSkin(S, LID, 0.5);
@@ -826,7 +846,8 @@ export function earPaint(S: Ctx, r: Region, cup: number, L: number, rad: number)
 export type Pupil = 'v' | 'h' | 'round' | 'w' | 'crescent' | 'pinhole' | 'multi';
 /** distance from a point to a polyline (drawn strokes) */
 const toLine = (x: number, y: number, P: number[][]) => { let b = Infinity; for (let i = 0; i + 1 < P.length; i++) { const [ax, ay] = P[i], [bx, by] = P[i + 1], dx = bx - ax, dy = by - ay, t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy))); b = Math.min(b, Math.abs(x - ax - dx * t) + Math.abs(y - ay - dy * t)); } return b; };
-export function paintEyeReg(S: Ctx, r: Region, o: { pupil?: Pupil; iris?: number; pupilA?: number; sclera?: number; irisC?: number } = {}) {
+export function paintEyeReg(S: Ctx, r: Region, o: { pupil?: Pupil; iris?: number; pupilA?: number; sclera?: number; irisC?: number; pk?: number } = {}) {
+  const pk = o.pk ?? 1; // a pupil plate rides over this eye: paint only the fully constricted pupil under it
   const d = S.d;
   const pupil = o.pupil ?? (has(d, 'carnassials') || d.cover === 'scales' ? 'v' : 'round');
   const lum = ((d.colors.eye >> 16 & 255) * 0.3 + (d.colors.eye >> 8 & 255) * 0.59 + (d.colors.eye & 255) * 0.11);
@@ -848,13 +869,13 @@ export function paintEyeReg(S: Ctx, r: Region, o: { pupil?: Pupil; iris?: number
       if (q > rp * 1.15 && spokes.some((s2) => Math.abs(((a - s2 + Math.PI * 3) % TAU) - Math.PI) < 0.11)) k -= 1;
       c = IR[k];
       const X = px / ri, Y = py / ri;
-      const isP = pupil === 'v' ? Math.abs(px) < 0.12 * (1 - Math.abs(py) / (ri * 0.9)) && Math.abs(py) < ri * 0.9
-        : pupil === 'h' ? Math.abs(py) < 0.11 && Math.abs(px) < ri * 0.78 && oct(px * 0.7, py) < ri * 0.6
+      const isP = pupil === 'v' ? Math.abs(px) < 0.12 * pk * (1 - Math.abs(py) / (ri * 0.9)) && Math.abs(py) < ri * 0.9
+        : pupil === 'h' ? Math.abs(py) < 0.11 * pk && Math.abs(px) < ri * 0.78 && oct(px * 0.7, py) < ri * 0.6
           : pupil === 'w' ? toLine(X, Y, [[-0.62, 0.2], [-0.3, -0.3], [0, 0.08], [0.3, -0.3], [0.62, 0.2]]) < 0.16
             : pupil === 'crescent' ? Math.abs(oct(X, Y + 0.1) - 0.42) < 0.12 && Y < 0.05
               : pupil === 'pinhole' ? oct(X, Y) < 0.13
                 : pupil === 'multi' ? oct(X + 0.34, Y - 0.16) < 0.14 || oct(X - 0.34, Y - 0.16) < 0.14 || oct(X, Y + 0.3) < 0.14
-                  : q < rp;
+                  : q < rp * pk;
       if (isP) c = INK[0];
     }
     r.set(x, y, c);
@@ -875,7 +896,7 @@ function vertLeg(S: Ctx, lg: Rig['legs'][number], lt: number, fur: boolean) {
   const segIds = [up, ...ids.slice(0, -1)];
   const cts = chordTs(ctrl);
   const slender = hoof || has(d, 'leg_cursorial');
-  const BFL = beastForm(d);
+  const BFL = beastForm(d), iFx = lg.flex ?? -1;
   const prof = BFL ? (hind ? BFL.hind : BFL.fore) : bird ? [0.45, 0.66, 0.3, 0.2, 0.17] : pillar ? [0.5, 0.74, 0.66, 0.6, 0.64] : bear ? (hind ? [0.62, 0.8, 0.5, 0.42, 0.42] : [0.58, 0.74, 0.52, 0.44, 0.44])
     : hop ? (hind ? [0.6, 0.85, 0.48, 0.3, 0.2] : [0.32, 0.4, 0.28, 0.22, 0.2]) : sprawl ? [0.5, 0.62, 0.4, 0.3, 0.26]
       : slender ? (hind ? [0.7, 0.74, 0.34, 0.2, 0.19] : [0.62, 0.64, 0.3, 0.19, 0.19]) : hind ? [0.7, 0.76, 0.4, 0.27, 0.25] : [0.62, 0.66, 0.36, 0.28, 0.26];
@@ -904,7 +925,14 @@ function vertLeg(S: Ctx, lg: Rig['legs'][number], lt: number, fur: boolean) {
   // legs are flattened side to side through the thigh and upper arm
   const ell = (t: number): [number, number] => (mammal && t < k2 ? [0.86, 1.14] : mammal ? [0.94, 1.04] : [1, 1]);
   const LIMB = S.reg('LIMB', TAU * lt * 0.55, sp.L, 8, 64, 96);
-  sac(S.B, LIMB, S.gid(), sp.pts, sp.t.map((t) => { const r = interp(cts, rs, t), e = ell(t); return [r * e[0], r * e[1]] as [number, number]; }), wts, { n: 15, sq: mammal || sprawl ? 2.05 : KIT.sq, up: [0, 0, 1], bump, start: true, end: false, cap: 0.6 });
+  const wvL = iFx < 0 || !mammal ? undefined : (a: number, t: number): Wt | null => {
+    const k = 0.55 * gauss(t, m1, 0.07) * gauss(Math.abs(a), hind ? Math.PI : 0.4, 1.0);
+    if (k < 0.04) return null;
+    const b = wts[Math.round(t * (wts.length - 1))], out: Wt = [];
+    for (let j = 0; j + 1 < b.length && j < 4; j += 2) out.push(b[j], b[j + 1] * (1 - k));
+    return [...out, iFx, k];
+  };
+  sac(S.B, LIMB, S.gid(), sp.pts, sp.t.map((t) => { const r = interp(cts, rs, t), e = ell(t); return [r * e[0], r * e[1]] as [number, number]; }), wts, { wv: wvL, n: 15, sq: mammal || sprawl ? 2.05 : KIT.sq, up: [0, 0, 1], bump, start: true, end: false, cap: 0.6 });
   if (!S.paints.some((p) => (p as any).LIMB)) { const p: Paint = () => {
     const lo: HideOpt = { L: sp.L, rad: () => lt * 0.45, seed: 29, kind: 'limb', belly: 2.4, noPattern: d.pattern !== 'stripes' && d.pattern !== 'rings' && d.pattern !== 'spots' && !amph };
     hide(S, LIMB, lo); if (amph) amphSkin(S, LIMB, 0.7);
@@ -1396,7 +1424,7 @@ export interface Sculpt { geo: THREE.BufferGeometry; tex: THREE.DataTexture; tri
 export function sculpt(d: Design, rig: Rig, rest: V3[]): Sculpt {
   const den = 104;
   const S = new Ctx(d, rig, rest, den);
-  KIT.sq = 2.7; KIT.nMul = 0.62; // chunky rounded-box sections, flat-shaded facets: blocky but detailed
+  KIT.sq = 2.1; KIT.nMul = 1.05; // round organic sections at full ring density, smooth-shaded (the post pass keeps the ink outline)
   try {
     switch (d.plan) {
       case 'hexapod': case 'octopod': arthropod(S); break;

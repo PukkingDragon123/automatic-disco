@@ -89,6 +89,22 @@ export const SKILLS: SkillDef[] = [
   S('sequencer', 'lab', 'Deep Sequencer', 'Reel-to-reel gene tape: more gene slots per design.', { carbon: 140, water: 100 }, 2, ['splice']),
   S('vat', 'lab', 'Growth Vat', 'Designs come out bigger and tougher.', { carbon: 240, water: 240 }, 3, ['sequencer']),
   S('cloner', 'lab', 'Clone Bank', 'Twin tanks on one line: printed and grown creatures come out in pairs.', { carbon: 320, water: 260, ore: 120 }, 3, ['vat', 'print']),
+  // INDUSTRY (src/factory): the Corps' field works, built on the 1 m grid in build mode [B]
+  S('works', 'harvest', 'Field Works', 'The Corps catalogue opens: Mk. I miners over seams, belts, smelters, constructors, storage, the core uplink, power poles off the core, foundations, walls, pumps and the land-and-water works.', { ore: 15, soil: 15 }, 0, ['drill']),
+  S('miner2', 'harvest', 'Miner Mk. II', 'A heavier drill tower: twice the ore from every seam.', { ore: 120, soil: 60 }, 1, ['works']),
+  S('miner3', 'harvest', 'Miner Mk. III', 'Tungsten-crowned deep bores: four loads a second.', { ore: 300, carbon: 120, water: 80 }, 2, ['miner2', 'steam']),
+  S('belt2', 'harvest', 'Conveyor Mk. II', 'Faster belts (120 a minute) and conveyor lifts that carry a belt over another.', { ore: 60, carbon: 30 }, 1, ['works']),
+  S('belt3', 'harvest', 'Conveyor Mk. III', 'The fastest belts: 270 a minute.', { ore: 180, carbon: 90 }, 2, ['belt2']),
+  S('assembler', 'fabrication', 'Assembly Line', 'Assemblers (two inputs) and silos: reinforced plate, rotors, frames, circuits, vacuum tubes, motors, ammunition, survey reports.', { ore: 80, soil: 40, water: 20 }, 1, ['works']),
+  S('manufacturer', 'fabrication', 'Manufacturing Hall', 'Manufacturers (four inputs): servos, control units, heavy frames, reactor cores, data tapes.', { ore: 200, carbon: 100, water: 80 }, 2, ['assembler']),
+  S('chem', 'fabrication', 'Chemical Refinery', 'Refineries: rubber and Bakelite from carbon, coal, resin and bio-oil; herbicide for the sprayers.', { water: 120, carbon: 80 }, 1, ['assembler']),
+  S('steam', 'fabrication', 'Steam Power', 'Boilers and steam generators (30 MW each), and the foundry for steel.', { ore: 100, water: 80, carbon: 40 }, 1, ['works']),
+  S('atomic', 'fabrication', 'Atomic Pile', 'A quartz-moderated reactor: 250 MW from a reactor core.', { ore: 400, water: 300, carbon: 200 }, 3, ['steam', 'manufacturer']),
+  S('robotics', 'fabrication', 'Robot Foundry', 'Build the Corps\' robot army from frames, servos and control units.', { ore: 300, carbon: 150, water: 100 }, 3, ['manufacturer']),
+  S('turret', 'combat', 'Gun Turrets', 'Twin-gun turrets fed with ammunition: defence lines for the works.', { ore: 80, carbon: 40 }, 1, ['works']),
+  S('haul', 'fabrication', 'Labour Harness', 'Workers haul items between machines and stores, and worker pens and breeding pens can be built.', { carbon: 60, ore: 30 }, 1, ['convert', 'works']),
+  S('operate', 'fabrication', 'Machine Minders', 'A worker can stand at a machine and run it up to half again as fast.', { carbon: 120, water: 60 }, 1, ['haul']),
+  S('blueprint', 'fabrication', 'Blueprint Office', 'Copy a group of machines and lay it down again elsewhere [Y] / [U].', { ore: 100, water: 60 }, 1, ['assembler']),
 ];
 export const SKILL: Record<string, SkillDef> = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
 

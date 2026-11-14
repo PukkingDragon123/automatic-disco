@@ -525,7 +525,7 @@ void main() { vec2 p = floor(gl_FragCoord.xy); if (mod(p.x + p.y, 2.0) < 0.5) di
         rx = lerp(rx, -1.58, fwd); rz = lerp(rz, k * -0.15, fwd); fx = lerp(fx, -0.04, fwd); ext = lerp(ext, e * 0.075, fwd); curl = lerp(curl, 1.3, Math.min(1, fwd * 2));
         if (A.punch >= 1) A.punch = -1;
       }
-      A.root.position.set(k * Lay.armX, Lay.armY - Lay.bodyY, fwd * 0.03);
+      A.root.position.set(0, 0, fwd * 0.03);
       A.root.rotation.set(rx, 0, rz);
       A.fore.rotation.set(fx, 0, k * up * Math.sin(t * 9) * 0.3);
       A.hand.position.y = A.ram - clamp(ext, -0.01, 0.075) * A.s;

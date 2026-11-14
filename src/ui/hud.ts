@@ -19,7 +19,7 @@ import { GENE, CAT_NAMES } from '../life/genes';
 import { RES, SKILL, SKILLS, type Res } from '../game/skills';
 import { PH, AM, CR, RD, hex } from './machine';
 import { Odometer, Nixie, PixText, Lamp, Toggle, BigSwitch, Gauge, Knob, crtSettings, meterFace, place, tip, u, steamVent } from './gadgets';
-import { RESM, STATM, BANK, PLATE, SCOPE, SEL, CMD, WHEEL, resArt, statArt, bankArt, bigSwitchArt, nameArt, scopeArt, selArt, cmdArt, radioArt, crack } from './hudArt';
+import { RESM, STATM, BANK, PLATE, SCOPE, SEL, CMD, WHEEL, FAC, resArt, statArt, bankArt, bigSwitchArt, nameArt, scopeArt, selArt, cmdArt, radioArt, facArt, crack } from './hudArt';
 import { AbilityWheel } from './wheel';
 
 export interface Cmd { icon: string; key: string; name: string; tip: () => string; disabled?: () => string | false; active?: () => boolean; run: () => void; cost?: string }
@@ -69,6 +69,7 @@ export class Hud {
   private t = 0; private layoutKey = '';
   readonly dialog: HTMLDivElement;
   readonly objectives: HTMLDivElement;
+  private facPwr!: PixText; private facSto!: PixText; private facCrew!: PixText; private facLamp!: Lamp; private facGauge!: HTMLDivElement;
   private onResize = () => this.layout();
 
   constructor(readonly c: HudCtx) {
@@ -124,6 +125,19 @@ export class Hud {
     new Toggle(bank, T[1], 4, 'TREE', 'T', () => '<h4>Tree of Descent</h4>Every species you have met, made or watched branch off.', () => c.openTree());
     new Toggle(bank, T[2], 4, 'ASSY', 'V', () => '<h4>Assembly Bay</h4>Refit Unit 07: paint, plating, lens and name.', () => c.openMirror());
     new Toggle(bank, T[3], 4, 'MENU', 'ESC', () => '<h4>Menu</h4>Pause the survey.', () => c.openMenu());
+
+    // ---- the works: build mode, the production report, the crew roster (src/factory)
+    const fm = mod('hud-fac', FAC.w, FAC.h, facArt().url());
+    const fac = () => c.game?.factory;
+    new Toggle(fm, FAC.tog[0], 4, 'BUILD', 'B', () => `<h4>Build</h4>The Corps field works catalogue: miners, belts, machines, power, storage, land and water works.${c.game?.run.skills.has('works') ? '' : '<div class="tip-warn">Unlock Field Works on the skill tree</div>'}`, () => this.buildKey());
+    new Toggle(fm, FAC.tog[1], 4, 'STATS', 'O', () => '<h4>Production Report</h4>Items made and used per minute, the power grids, and the machines holding the line up.', () => fac()?.ui.toggleStats());
+    new Toggle(fm, FAC.tog[2], 4, 'CREW', 'N', () => '<h4>Crew Roster</h4>Your workers: their jobs, their appetites, their moods. Assign them to haul, operate, mine, forage or keep a pen.', () => fac()?.ui.toggleCrew());
+    this.facPwr = new PixText(fm, FAC.sx + 2, FAC.sy + 3, FAC.sw - 4, 'left');
+    this.facSto = new PixText(fm, FAC.sx + 2, FAC.sy + 12, FAC.sw - 4, 'left');
+    this.facCrew = new PixText(fm, FAC.sx + 2, FAC.sy + 21, FAC.sw - 4, 'left');
+    this.facLamp = new Lamp(fm, FAC.sx + FAC.sw - 9, FAC.sy + 2, 'g', 'off');
+    this.facGauge = place(el('div', 'tube-fill fac-pw', fm), FAC.sx + 2, FAC.sy + 10, 0, 1);
+    tip(place(el('div', 'hit', fm), FAC.sx - 2, FAC.sy - 2, FAC.sw + 4, FAC.sh + 4), () => { const f = fac(); if (!f) return ''; const p = f.power(); return `<h4>Works</h4>Power ${Math.round(p.demand)} of ${Math.round(p.cap)} MW in use on ${p.grids} grid${p.grids === 1 ? '' : 's'}. ${f.buildings.length} structures, ${f.workers.active.length} workers on jobs.`; });
 
     // ---- terrain scope (minimap)
     const sc = mod('hud-scope', SCOPE.w, SCOPE.h, scopeArt().url());
@@ -224,7 +238,8 @@ export class Hud {
       put(M['hud-res'], sT, { l: l0, t: 0 });
       put(M['hud-stat'], sT, { l: l0 + RESM.w * sT, t: 0 });
       put(M['hud-bank'], sT, { r: 0, t: 0 });
-      put(this.objectives, sT, { r: 2 * sT, t: (BANK.h + 3) * sT });
+      put(M['hud-fac'], sT, { r: 0, t: BANK.h * sT });
+      put(this.objectives, sT, { r: 2 * sT, t: (BANK.h + FAC.h + 3) * sT });
       if (touch) {
         // thumbs own the bottom corners: the scope tucks under the plate, the keys sit bottom centre
         const sS = fit((s) => SCOPE.h * s <= H - PLATE.h * sT - 150 || s <= 1 / dpr, sT), sK = fit((s) => CMD.h * s <= H * 0.3 && CMD.w * s <= W - 300, sT);
@@ -253,13 +268,14 @@ export class Hud {
       put(M['hud-res'], sC, { l: 0, t: 0 });
       put(M['hud-stat'], sC, two ? { l: RESM.w * sC, t: 0 } : { l: 0, t: RESM.h * sC });
       put(M['hud-bank'], sC, { r: 0, t: row });
+      put(M['hud-fac'], sC, { r: 0, t: row + BANK.h * sC });
       put(M['hud-scope'], sS, { l: 0, t: row });
-      put(this.objectives, sC, { r: 2, t: row + (BANK.h + 3) * sC });
+      put(this.objectives, sC, { r: 2, t: row + (BANK.h + FAC.h + 3) * sC });
       put(this.dialog, sC, { l: 0, t: row + SCOPE.h * sS + 3 });
       put(M['hud-sel'], sC, null);
       // on touch the thumbs own the whole bottom edge, so the keys hang under the switch bank instead
       const sK = touch ? fit((s) => CMD.w * s <= W * 0.5 && CMD.h * s <= H * 0.18, sC) : fit((s) => CMD.w * s <= W && CMD.h * s <= H * 0.16, sC);
-      put(M['hud-cmd'], sK, touch ? { r: 0, t: row + (BANK.h + 3) * sC } : { l: 0, b: 0 });
+      put(M['hud-cmd'], sK, touch ? { r: 0, t: row + (BANK.h + FAC.h + 3) * sC } : { l: 0, b: 0 });
       put(wl, sC, touch ? null : { r: 0, b: 0 }); put(wd, sC, touch ? null : { r: 0, b: 152 * sC });
       this.toastTop(row + Math.max(SCOPE.h * sS, (BANK.h + 3) * sC) + 4);
       this.textScale(sC * dpr, dpr);
@@ -278,6 +294,7 @@ export class Hud {
   /** keys the console owns (K skills, L lab, G rally allies, and the selector's turn / fire keys); true when used */
   key(k: string) {
     if (k === 'k') { this.skillSw.flick(); this.openSkills(); return true; }
+    if (k === 'b' && this.c.game?.factory) { this.buildKey(); return true; }
     if (k === 'l' && this.c.game?.menu !== 'build') { this.openLab(); return true; }
     if (k === 'g') {
       const h = this.c.hive, why = h.rally();
@@ -285,6 +302,12 @@ export class Hud {
       return true;
     }
     return this.wheel.key(k);
+  }
+  /** build mode on and off (once Field Works is bought) */
+  private buildKey() {
+    const g = this.c.game, f = g?.factory; if (!g || !f) return;
+    if (!f.build.active && !g.run.skills.has('works')) { sfx('deny'); toast('Buy <b>Field Works</b> on the skill tree to open the catalogue', 'warn', 2200); return; }
+    f.build.toggle();
   }
   private openSkills() {
     const g = this.c.game, f = g?.opts.hooks?.openSkills;
@@ -354,6 +377,19 @@ export class Hud {
       this.clockNix.set(hh * 100 + mi);
       this.dayLamp.set(night ? 'dim' : 'on', night ? 'g' : 'a');
       this.colon.classList.toggle('off', Math.floor(this.t * 2) % 2 === 1);
+      const fac = c.game?.factory;
+      if (fac) {
+        const pw = fac.power(), load = pw.cap ? pw.demand / pw.cap : 0;
+        this.facPwr.set(`${Math.round(pw.demand)}/${Math.round(pw.cap)}MW`, load > 0.95 ? RD[6] : load > 0.75 ? AM[6] : PH[8], true);
+        this.facGauge.style.width = u(Math.round(Math.min(1, load) * (FAC.sw - 4)));
+        this.facGauge.classList.toggle('low', load > 0.95);
+        let st = 0; for (const v of Object.values(fac.inventory)) st += v;
+        this.facSto.set(`STORE ${Math.floor(st)}`, PH[7], true);
+        const W = fac.workers.list.length, hungry = fac.workers.list.some((w) => w.job !== 'idle' && w.hunger < 0.3);
+        this.facCrew.set(`CREW ${fac.workers.active.length}/${W}`, hungry ? AM[6] : PH[7], true);
+        const bad = fac.buildings.some((b) => b.status === 'nopower');
+        this.facLamp.set(bad || load > 0.95 ? 'blink' : fac.build.active ? 'on' : pw.demand > 0 ? 'dim' : 'off', bad || load > 0.95 ? 'r' : 'g');
+      }
     }
     this.chgGauge.set(h.res.charge / Math.max(1, h.chargeCap)); this.chgGauge.update(dt);
     this.minimap(dt);

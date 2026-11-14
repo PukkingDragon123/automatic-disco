@@ -115,6 +115,7 @@ function planarCells(w: number, h: number, cells: number, octv: number, seed: nu
   const cs = Math.max(4, Math.min(w, h * 1.5) / (cells * (1 + octv * 0.35))), nx = Math.max(2, Math.round(w / cs)), ny = Math.max(2, Math.ceil(h / cs) + 1), cw = w / nx;
   const f = new Float32Array(w * h);
   for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    if ((i & 1) || (j & 1)) { f[j * w + i] = f[(j & ~1) * w + (i & ~1)]; continue; } // half resolution: odd texels copy their even neighbour
     const gx = Math.floor(i / cw), gy = Math.floor(j / cs);
     let bd = Infinity, bv = 0;
     for (let b = -1; b <= 1; b++) for (let a = -1; a <= 1; a++) {
@@ -125,6 +126,7 @@ function planarCells(w: number, h: number, cells: number, octv: number, seed: nu
     }
     f[j * w + i] = bv;
   }
+  void ny;
   return f;
 }
 

@@ -85,7 +85,7 @@ export const FDEFS: Record<FKind, FDef> = {
 
   smelter: D('smelter', 'Smelter', 'production', 2, 2, 2.8, { ore: 12, soil: 20 }, 4, 600, 'A firebrick furnace. Ore to ingots; soil to glass.', { station: 'smelter', skill: 'works', operable: true }),
   foundry: D('foundry', 'Foundry', 'production', 3, 3, 3.2, { iron_plate: 16, concrete: 12 }, 16, 900, 'Two furnaces and a crucible: steel from ore and coal.', { station: 'foundry', skill: 'steam', operable: true }),
-  constructor: D('constructor', 'Constructor', 'production', 2, 2, 2.2, { ore: 20, soil: 8 }, 4, 500, 'A press and a die: one input, one part. Plates, rods, screws, wire, concrete.', { station: 'constructor', skill: 'works', operable: true }),
+  constructor: D('constructor', 'Constructor', 'production', 2, 2, 2.2, { ore: 20, soil: 8 }, 4, 500, 'A press and a die: one input, one part. Plates, rods, screws, wire, concrete.', { station: 'constructor', skill: 'works', operable: true, model: 'ctor' }),
   assembler: D('assembler', 'Assembler', 'production', 3, 3, 2.6, { iron_plate: 12, screw: 30, iron_rod: 8 }, 15, 800, 'Two arms on a bed: two inputs make one assembly.', { station: 'assembler', skill: 'assembler', operable: true }),
   manufacturer: D('manufacturer', 'Manufacturer', 'production', 4, 4, 3.6, { frame: 6, motor: 4, concrete: 20 }, 55, 1400, 'A whole shop under one roof: up to four inputs. Servos, control units, heavy frames, reactor cores.', { station: 'manufacturer', skill: 'manufacturer', operable: true }),
   refinery: D('refinery', 'Refinery', 'production', 3, 3, 3.6, { iron_plate: 20, concrete: 12, motor: 2 }, 30, 900, 'Tanks and a column: water and carbon into rubber and Bakelite.', { station: 'refinery', skill: 'chem', operable: true }),

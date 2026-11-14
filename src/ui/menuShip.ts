@@ -49,8 +49,12 @@ export function buildMenuCarrier(): MenuCarrier {
   const carrier = buildCarrier({ view: 'both' });
   const ship = carrier.ship, bin = new Bin();
   ship.setDoors(1); ship.setBeacons(false); ship.setSled(20); ship.setClamps(1);
-  // key light from starboard, a little aft and above: it rakes along the plating
-  ship.sun.position.set(0.72, 0.5, -0.3).normalize().multiplyScalar(220);
+  // fewer lights in every shader: the menu never shows the red bay beacons, the booth lamp or the deck fills
+  ship.root.traverse((o) => {
+    const l = o as THREE.Light; if (!l.isLight) return;
+    if ((l as THREE.SpotLight).isSpotLight && (l.color.getHex() === 0xff2a14 || (l as THREE.SpotLight).distance <= 8)) l.visible = false;
+    if ((l as THREE.PointLight).isPointLight) l.visible = false;
+  });
   const group = carrier.group;
   // shuttle traffic (ship-local)
   const C = (a: number[], b: number[], c: number[], d: number[]) => new THREE.CubicBezierCurve3(new V3(...a), new V3(...b), new V3(...c), new V3(...d));

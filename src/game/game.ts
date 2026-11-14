@@ -27,6 +27,7 @@ import type { Species } from './species';
 import { Story } from './story';
 import { RivalBrain } from './rival';
 import { Factions } from './factions';
+import { Factory } from '../factory/factory';
 import { CoreAura } from './coreAura';
 import { RIVALS } from '../world/palette';
 import { VeyrChild } from './child';
@@ -36,7 +37,7 @@ import { BabyEditor } from '../ui/babyEditor';
 import { coreCapGeometry } from './buildings';
 import { panel, Btn } from '../ui/kit';
 
-type Mode = { k: 'normal' } | { k: 'ability'; a: Ability } | { k: 'build'; b: BKind } | { k: 'paint' } | { k: 'amove' } | { k: 'rally' };
+type Mode = { k: 'normal' } | { k: 'ability'; a: Ability } | { k: 'build'; b: BKind } | { k: 'paint' } | { k: 'amove' } | { k: 'rally' } | { k: 'factory' };
 interface Held { c: Creature; t: number; dur: number; dps: number; grip: number }
 interface Pull { c: Creature; tx: number; tz: number; t: number }
 
@@ -84,6 +85,8 @@ export class Game implements Screen {
   rivals: RivalBrain[] = [];
   /** the Soviet / PRC robot programmes and human expeditions on this region (factions/*) */
   factions: Factions | null = null;
+  /** the industrial layer: grid buildings, belts, power, workers (src/factory) */
+  factory!: Factory;
   aura: CoreAura | null = null;
   private rivalT = 210;
   child!: VeyrChild;
@@ -170,6 +173,7 @@ export class Game implements Screen {
     this.veyr.flushCov();
     this.player = new Player(this);
     new Details(this); // footprints, wetness, ripples, weather, hand-drawn VFX (game/details.ts; runs in update$)
+    this.factory = new Factory(this);
     this.factions = new Factions(this);
     (window as any).__game = this;
   }
@@ -645,7 +649,7 @@ export class Game implements Screen {
     return [
       ...abilities.slice(0, 4),
       ...abilities.slice(4),
-      { icon: 'brood', key: 'B', name: 'Fabricate', tip: () => 'Raise a structure on ground you hold. Each is unlocked on the skill tree and paid in raw materials.', disabled: () => (BUILD_ORDER.some((k) => this.run.skills.has(BDEFS[k].skill ?? '')) ? false : 'Unlock a structure on the skill tree first'), run: () => { this.menu = 'build'; this.hud.invalidate(); } },
+      { icon: 'brood', key: 'B', name: 'Build', tip: () => 'Open the Corps field works catalogue: miners, belts, machines, power, workers.', disabled: () => (this.run.skills.has('works') ? false : 'Unlock Field Works on the skill tree first'), run: () => this.factory.build.toggle() },
       { icon: 'builder', key: 'C', name: 'Gene Forge', tip: () => 'Design a species from the genes you own.', run: () => this.opts.hooks?.openBuilder?.(this) },
     ];
   }

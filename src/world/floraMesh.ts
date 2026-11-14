@@ -175,18 +175,22 @@ function sphere(g: Geo, c: V3, r: number, rect: Rect, seg = 8, rings = 5, sq = 1
     }
     P.push(row);
   }
-  facetGrid(g, P, rect);
+  facetGrid(g, P, rect, c);
 }
 /** emit a grid of points as flat-shaded quads (each facet its own normal) */
-function facetGrid(g: Geo, P: V3[][], rect: Rect) {
+function facetGrid(g: Geo, P: V3[][], rect: Rect, ctr: V3) {
   const rows = P.length - 1, cols = P[0].length - 1;
   for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
     const a = P[j][i], b = P[j][i + 1], c = P[j + 1][i + 1], d = P[j + 1][i];
-    let n = vnrm(vcross(vsub(d, a), vsub(b, a)));
-    if (vlen(n) < 0.5) n = vnrm(vcross(vsub(c, b), vsub(a, b)));
+    // both triangles' normals summed: a facet that closes to a point at a pole still gets a true normal
+    const nn = vadd(vcross(vsub(d, a), vsub(c, a)), vcross(vsub(c, a), vsub(b, a)));
+    if (vlen(nn) < 1e-12) continue;
+    // outward: away from the centre of the shape, wound so the outside is the front face
+    const mid: V3 = [(a[0] + c[0]) / 2 - ctr[0], (a[1] + c[1]) / 2 - ctr[1], (a[2] + c[2]) / 2 - ctr[2]], inward = vdot(nn, mid) < 0;
+    const n = vnrm(inward ? vmul(nn, -1) : nn);
     const u0 = rect.u0 + rect.du * (i / cols), u1 = rect.u0 + rect.du * ((i + 1) / cols), v0 = rect.v0 + rect.dv * (j / rows), v1 = rect.v0 + rect.dv * ((j + 1) / rows);
     const q = [g.v(a, n, u0, v0, 0.2), g.v(b, n, u1, v0, 0.2), g.v(c, n, u1, v1, 0.2), g.v(d, n, u0, v1, 0.2)];
-    g.quad(q[0], q[3], q[2], q[1]);
+    if (inward) g.quad(q[0], q[1], q[2], q[3]); else g.quad(q[0], q[3], q[2], q[1]);
   }
 }
 
@@ -351,7 +355,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
       // a lantern pod: six flat facets, a broad shoulder, a pointed tip and a short neck at the stalk
       const sq = o.sq ?? 1, sides = L1 ? 5 : 6, prof: [number, number][] = [[0.15, -1.0], [0.62, -0.72], [0.96, -0.15], [0.84, 0.42], [0.42, 0.85], [0.05, 1.12]];
       const Pg: V3[][] = prof.map(([pr, py], j) => Array.from({ length: sides + 1 }, (_, i) => { const a = (i / sides) * TAU + (j & 1) * 0.25; return [c[0] + Math.cos(a) * pr * rr, c[1] + py * rr * sq, c[2] + Math.sin(a) * pr * rr] as V3; }));
-      facetGrid(g, Pg, rect);
+      facetGrid(g, Pg, rect, c);
     } else {
       g.kind = o.glow !== undefined ? KIND.GLOW : KIND.SOLID;
       g.col = linHex(o.ramp[Math.min(o.ramp.length - 1, 4)], ao * 1.35);

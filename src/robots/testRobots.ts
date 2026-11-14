@@ -34,7 +34,8 @@ export async function testRobots(engine: Engine, input: Input, P: URLSearchParam
     const scales = [1.6, 1.25, 1.25, 1.25, 1.25];
     let x = -5.2;
     for (let s = 0 as GStage; s <= 4; s = (s + 1) as GStage) {
-      const ch = new VeyrChild(fx, scales[s], look, { grown: true, stage: s });
+      const parts = [[], ['torso'], ['torso', 'armR', 'armL', 'coil'], ['torso', 'armR', 'armL', 'coil', 'plating1', 'plating2', 'reactor'], ['torso', 'armR', 'armL', 'coil', 'plating1', 'plating2', 'plating3', 'reactor', 'colossus']][s];
+      const ch = new VeyrChild(fx, scales[s], look, { grown: true, parts });
       ch.hatch = 1;
       ch.root.position.set(x, 0, 0); scene.add(ch.root);
       const cx = x;

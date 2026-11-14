@@ -213,6 +213,25 @@ export function bankArt() {
   }
   return p;
 }
+/** the works panel under the bank: BUILD, STATS and CREW toggles and a small CRT with the power and stores readout */
+export const FAC = { w: 126, h: 46, tog: [4, 25, 46], sx: 70, sy: 8, sw: 50, sh: 30 };
+export function facArt() {
+  const { w, h } = FAC;
+  const p = housing(w, h, { cut: [0, 0, 0, 10], seed: 41, noRivets: ['t', 'r'], rivetStep: 12 });
+  for (let x = 0; x < w; x++) { p.set(x, 0, OL[1]); p.set(x, 1, OL[3]); }
+  for (const x of FAC.tog) {
+    for (let y = 11; y < 31; y++) for (let xx = x + 2; xx < x + 17; xx++) {
+      const e = y === 11 || xx === x + 2 ? GM[7] : y === 30 || xx === x + 16 ? GM[2] : dv(BK3, 2.4 - (y - 11) / 20 * 1.2 + (hashf(xx, y, 5) - 0.5) * 0.4, xx, y);
+      p.set(xx, y, e);
+    }
+    for (let y = 12; y < 32; y++) p.shade(x + 17, y, 0.55); for (let xx = x + 3; xx < x + 18; xx++) p.shade(xx, 31, 0.55);
+    text(p, 'ON', x + 6, 12, CR[3]);
+  }
+  crtWell(p, FAC.sx, FAC.sy, FAC.sw, FAC.sh, 2);
+  stencil(p, 'WORKS', FAC.sx + 13, 2, CR[3], 4);
+  wear(p, 64, 36, 6, 6, 4);
+  return p;
+}
 /** the big switch: two frames (up, thrown) of 22x22: a chrome guard cage, a knurled collar and a heavy bat with a red knob */
 export function bigSwitchArt() {
   const W = 22, H = 22, p = new Pix(W * 2, H);

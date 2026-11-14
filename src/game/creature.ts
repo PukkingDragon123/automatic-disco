@@ -13,8 +13,16 @@ export const GOLEM = -999999999;
 export interface GolemTarget { x: number; y: number; z: number; alive: boolean; radius: number; mass: number; hurt(amt: number, from: Creature): void }
 export const GOLEM_REF: { g: GolemTarget | null } = { g: null };
 
-export type Mind = 'idle' | 'wander' | 'graze' | 'hunt' | 'flee' | 'eat' | 'scavenge' | 'order' | 'attack' | 'mate' | 'rest' | 'follow' | 'held';
+export type Mind = 'idle' | 'wander' | 'graze' | 'hunt' | 'flee' | 'eat' | 'scavenge' | 'order' | 'attack' | 'mate' | 'rest' | 'follow' | 'held'
+  // daily life (ai.ts): drinking, sleeping, going somewhere to do something, stalking, lying in wait, threat
+  // displays, dragging a kill, keeping watch over a sleeping herd
+  | 'drink' | 'sleep' | 'travel' | 'stalk' | 'ambush' | 'display' | 'carry' | 'watch';
 export interface Order { kind: 'move' | 'attack' | 'amove' | 'hold' | 'guard'; x: number; z: number; target?: number }
+/** an activity bubble over the head (eco/view.ts draws them) */
+export const enum Emote { NONE, SLEEP, DRINK, ALARM, LOVE, HUNGRY, TIRED, ANGRY, NEST, FOOD, SEARCH, SHADE, WATCH }
+/** a remembered place: x, z, when (world time), how good or bad */
+export interface Spot { x: number; z: number; t: number; v: number }
+export interface Memory { water: Spot[]; food: Spot[]; danger: Spot[] }
 
 let NEXT = 1;
 
@@ -59,6 +67,33 @@ export class Creature {
   /** bones cut off (collapsed to their joint), mesh scale while being drawn into the intake */
   severed: number[] = [];
   shrink = 1;
+  // ---- daily life and needs (ai.ts, eco/*). 0 = sated / rested / calm, 1 = desperate
+  thirst = Math.random() * 0.35; tired = Math.random() * 0.3; fear = 0;
+  /** stamina for a chase or a flight (0 spent .. 1 fresh) */
+  stam = 1;
+  /** what to do on arriving ('travel') */
+  plan: Mind | null = null;
+  /** seconds in the current activity */
+  actT = 0;
+  emote: Emote = Emote.NONE; emoteT = 0;
+  /** a juvenile's mother; a courting partner; seconds of pregnancy left; seconds until it can court again */
+  mother = 0; mate = 0; preg = 0; breedCD = 30 + Math.random() * 60;
+  /** den or nest (x < 0: none yet) */
+  denX = -1; denZ = -1;
+  /** the corpse being dragged */
+  carry = 0;
+  /** a herd's alarm reaching it: seconds until it bolts, and from what */
+  alarmT = 0; alarmBy = 0;
+  mem: Memory | null = null;
+  /** food in the gut (dung comes of it), a seed being carried (plant species) */
+  gut = 0; seed = -1; seedT = 0;
+  /** far from the camera: thinks less often, takes straight lines */
+  far = false;
+  /** lying down 0..1 (sleep, rest; a stalker's crouch is ~0.35) */
+  rest = 0;
+  dieCause = '';
+  /** cooldowns for displays, courtship and hunts */
+  cdDisplay = 0; cdHunt = 0;
 
   constructor(readonly sp: Species, public faction: Faction, x: number, z: number, juvenile = false) {
     this.x = x; this.z = z; this.homeX = x; this.homeZ = z;
@@ -87,11 +122,13 @@ export class Creature {
   /** move toward (tx, tz) at a fraction of top speed; returns distance left */
   steer(w: World, tx: number, tz: number, run: number, dt: number) {
     const dx = tx - this.x, dz = tz - this.z, d = Math.hypot(dx, dz);
-    const sp = this.speed * run * (this.stunT > 0 ? 0 : 1) * (0.6 + 0.4 * this.growth) * (this.poison > 0 ? 0.8 : 1) * w.moveMul(this);
+    // spent animals slow down (a predator's chase, prey running itself out)
+    const wind = this.stam < 0.25 ? 0.62 + this.stam * 1.5 : 1;
+    const sp = this.speed * run * (this.stunT > 0 ? 0 : 1) * (0.6 + 0.4 * this.growth) * (this.poison > 0 ? 0.8 : 1) * wind * w.moveMul(this);
     let ax = 0, az = 0;
     if (d > 0.05) { ax = (dx / d) * sp; az = (dz / d) * sp; }
-    // separation
-    w.near(this.x, this.z, this.radius * 2.5 + 0.6, (o) => {
+    // separation (near the camera only)
+    if (!this.far) w.near(this.x, this.z, this.radius * 2.5 + 0.6, (o) => {
       if (o === this || o.dead || o.air > 0.5) return;
       const ox = this.x - o.x, oz = this.z - o.z, od = Math.hypot(ox, oz) || 0.01;
       const min = this.radius + o.radius;
@@ -137,7 +174,12 @@ export class Creature {
     const m = this.mesh;
     const s = this.growth;
     m.scale.setScalar(s * this.shrink);
-    m.position.set(this.x, this.y + this.air, this.z);
+    // lying down (sleep, rest in the shade), lying in wait, a stalker's crouch: the body sinks and the IK'd legs fold
+    const restGoal = this.dead ? 0 : this.mind === 'sleep' ? 1 : this.mind === 'rest' ? 0.75 : this.mind === 'ambush' ? 0.55 : this.mind === 'stalk' ? 0.32 : 0;
+    this.rest += (restGoal - this.rest) * Math.min(1, dt * (restGoal > this.rest ? 1.4 : 4));
+    const legged = !this.canFly && this.sp.design.plan !== 'serpent' && this.sp.design.plan !== 'gastropod';
+    const sink = legged ? this.rest * this.sp.pheno.height * 0.3 * s : 0;
+    m.position.set(this.x, this.y + this.air - sink, this.z);
     m.rotation.y = this.yaw;
     const fl = this.selected ? F_SEL : 0, hv = this.hovered ? (this.faction === 'veyr' ? F_HOVER : F_ENEMY) : 0;
     this.fx.flag.value = 1 + fl + hv;
@@ -145,10 +187,12 @@ export class Creature {
     if (!animate) return;
     let state: AnimState = 'idle';
     const sp = Math.hypot(this.vx, this.vz);
+    // asleep: everything slows (breath, blinks, ears)
+    if (this.mind === 'sleep') dt *= 0.35;
     if (this.dead) state = 'dead';
     else if (this.stunT > 0) state = 'stunned';
     else if (this.atkAnim >= 0) state = 'attack';
-    else if (this.mind === 'eat') state = 'eat';
+    else if (this.mind === 'eat' || this.mind === 'drink' || (this.mind === 'carry' && sp < 0.1)) state = 'eat';
     else if (this.canFly && (sp > 0.3 || this.air > 0.2)) state = 'fly';
     else if (sp > 0.08) state = 'move';
     let lookYaw = 0;

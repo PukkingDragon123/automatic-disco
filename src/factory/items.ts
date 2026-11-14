@@ -420,7 +420,7 @@ export function itemIcon(id: ItemId, k = 1): string {
   return u;
 }
 /** inline HTML for an item chip (icon + count) */
-export const itemChip = (id: ItemId, n?: number | string, cls = '') => `<span class="fi-chip ${cls}" title="${ITEMS[id].name}"><img src="${itemIcon(id)}">${n !== undefined ? `<b>${n}</b>` : ''}</span>`;
+export const itemChip = (id: ItemId, n?: number | string, cls = '') => `<span class="fc-chip ${cls}" title="${ITEMS[id]?.name ?? id}"><img src="${itemIcon(id)}">${n !== undefined ? `<b>${n}</b>` : ''}</span>`;
 
 let ARR: THREE.DataArrayTexture | null = null;
 /** every item icon as one layer of a texture array (belt crates sample their icon by item index) */

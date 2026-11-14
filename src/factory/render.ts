@@ -4,7 +4,7 @@
 // something is rising in; the per-instance status lamp colour and work glow are written every frame.
 import * as THREE from 'three';
 import type { Factory, FBuilding } from './factory';
-import { STATUS_COL } from './factory';
+import { STATUS_COL } from './status';
 import { FDEFS, isBelt } from './defs';
 import { modelFor, beltGeo, beltPath, seamGeo, type Model, type Part } from './models';
 import { machineMaterial, MU } from './tex';

@@ -29,7 +29,7 @@ export function makeInstance(m: SpeciesModel): { mesh: THREE.SkinnedMesh; bones:
   const bones = m.rig.bones.map((b) => { const o = new THREE.Bone(); o.name = b.name; o.position.set(b.pos[0], b.pos[1], b.pos[2]); return o; });
   m.rig.bones.forEach((b, i) => { if (b.parent >= 0) bones[b.parent].add(bones[i]); });
   const fx: CreatureFx = { flag: { value: 1 }, flash: { value: 0 }, flashCol: { value: new THREE.Color(1, 1, 1) }, decay: { value: 0 }, moss: { value: 0 }, dissolve: { value: 0 }, glow: { value: 1 } };
-  const mat = new THREE.MeshLambertMaterial({ map: m.tex, alphaTest: 0.5, side: THREE.DoubleSide, flatShading: true });
+  const mat = new THREE.MeshLambertMaterial({ map: m.tex, alphaTest: 0.5, side: THREE.DoubleSide, flatShading: false });
   // small creatures carry a soft sheen on their silhouettes and a touch more value so they read against the foliage
   const rim = { value: THREE.MathUtils.clamp((1.1 - m.rig.length) / 0.8, 0, 1) * 0.55 };
   mat.onBeforeCompile = (sh) => {

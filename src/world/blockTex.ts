@@ -43,10 +43,9 @@ const W = (v: number) => ((Math.floor(v) % T) + T) % T;
 /** turf: plates of two greens (and a sun-cured one), clumps of blades fanning from a root, loose blades, seed heads */
 function grassTop(pc: PixelCanvas, base: number, dry: number, soil: number, seed: number, bloom: number[]) {
   const r = new Rand(seed), G = RF(base), D = RF(dry), S = RF(soil);
-  const pl = plates(pc, r, 9, G, [2, 3, 3, 2]);
-  const dryCell = new Set<number>(); for (let i = 0; i < pl.pts.length; i++) if (r.chance(0.22)) dryCell.add(i);
-  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) if (dryCell.has(pl.at(x, y))) pc.set(x, y, D[(pl.pts[pl.at(x, y)][2] as number) === 2 ? 2 : 3]);
-  const rampAt = (x: number, y: number) => (dryCell.has(pl.at(x, y)) ? D : G);
+  // small plates in two neighbouring steps (nothing distinct enough to show the 1 m repeat), blades over them
+  plates(pc, r, 16, G, [2, 3]);
+  const rampAt = (_x: number, _y: number) => (r.chance(0.22) ? D : G);
   // clumps: 3-6 blades fanning out of one root, a dark root pixel beside them
   for (let i = 0; i < 10; i++) {
     const cx = r.int(0, T - 1), cy = r.int(0, T - 1), R0 = rampAt(cx, cy), m = r.int(3, 6);
@@ -82,7 +81,7 @@ function grassSide(pc: PixelCanvas, grass: number, soil: number, seed: number) {
 /** soil: angular clods (each one tone, lit on its upper left), faceted pebbles, a crack or two, pale root fibres */
 function soilFill(pc: PixelCanvas, soil: number, seed: number, stones = 6) {
   const r = new Rand(seed), S = RF(soil), K = rampNamed('stone');
-  plates(pc, r, 11, S, [2, 3, 3, 4], { bevel: true });
+  plates(pc, r, 18, S, [2, 3]);
   for (let i = 0; i < 2; i++) crackLine(pc, r.int(0, T - 1), r.int(0, T - 1), r.int(4, 8), S[0], S[4], r);
   for (let i = 0; i < 2; i++) { let x = r.int(0, T - 1), y = r.int(0, T - 1); const dx = r.pick([-1, 1]); for (let k = 0; k < r.int(3, 6); k++) { pc.set(x, y, S[5]); x += dx; if (r.chance(0.35)) y += r.pick([-1, 1]); } }
   for (let i = 0; i < stones; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(2.2, 4), r.range(2, 3.2), r.chance(0.5) ? K : rampFor(soil), r, S[1]);

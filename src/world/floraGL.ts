@@ -205,7 +205,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumW) * vTint * 1.7, vTintK);
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumW) * vec3(0.95, 0.85, 0.55), vTr * 0.35);
 ${GRAFT_3D}`)
       .replace('#include <normal_fragment_begin>', `float faceDirection = gl_FrontFacing ? 1.0 : -1.0;
-vec3 normal = normalize(vNormal);
+vec3 normal = normalize(vNormal + vec3(0.0, 1e-5, 0.0));
 if (vKind < 0.5 || (vKind > 3.5 && vKind < 6.5)) normal *= faceDirection;
 vec3 nonPerturbedNormal = normal;`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
