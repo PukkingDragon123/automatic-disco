@@ -257,9 +257,9 @@ export class MenuScreen implements Screen {
       o.word.home.copy(r.pos).addScaledVector(fwd, WORD_D).addScaledVector(r.right, colX * wx).addScaledVector(r.up, (y0 - i * dy) * wy);
     });
     if (this.empty) { this.empty.size = Math.min(1, (wx * 1.4) / this.empty.w); this.empty.home.copy(r.pos).addScaledVector(fwd, WORD_D).addScaledVector(r.up, -0.1 * wy); }
-    // the apple floats off the bow, near the camera
-    const ad = 120, ay = ad * tanV, ax = ay * a;
-    this.apple.place(r.pos.clone().addScaledVector(fwd, ad).addScaledVector(r.right, (portrait ? 0.55 : 0.02) * ax).addScaledVector(r.up, (portrait ? 0.1 : -0.62) * ay));
+    // the apple floats in the open sky above the ship, nearer the camera
+    const ad = 115, ay = ad * tanV, ax = ay * a;
+    this.apple.place(r.pos.clone().addScaledVector(fwd, ad).addScaledVector(r.right, (portrait ? 0.58 : -0.6) * ax).addScaledVector(r.up, (portrait ? 0.08 : 0.52) * ay));
     // the archive: the worlds in a row across the view, nearer than the ship
     const n = this.worlds.length, gd = 110, gy = gd * tanV, gx = gy * a;
     this.worlds.forEach((w, i) => {
@@ -331,8 +331,9 @@ export class MenuScreen implements Screen {
       if (this.tipHtml !== html) { this.tipHtml = html; this.tipEl.innerHTML = html; }
       if (this.tipEl.style.display !== 'block') this.tipEl.style.display = 'block';
       const w = this.tipEl.offsetWidth, h = this.tipEl.offsetHeight;
-      const left = this.ptrX - w - 24 < 6 ? this.ptrX + 24 : this.ptrX - w - 24;
-      this.tipEl.style.left = Math.max(6, Math.min(innerWidth - w - 6, left)) + 'px'; this.tipEl.style.top = Math.max(6, Math.min(innerHeight - h - 6, this.ptrY - h / 2)) + 'px';
+      // above the pointer (below it near the top edge), so the word itself stays in view
+      const top = this.ptrY - h - 30 < 6 ? this.ptrY + 30 : this.ptrY - h - 30;
+      this.tipEl.style.left = Math.max(6, Math.min(innerWidth - w - 6, this.ptrX - w * 0.6)) + 'px'; this.tipEl.style.top = Math.max(6, Math.min(innerHeight - h - 6, top)) + 'px';
       document.body.style.cursor = 'pointer';
     } else { if (this.tipEl.style.display !== 'none') this.tipEl.style.display = 'none'; this.tipHtml = ''; document.body.style.cursor = ''; }
   }
@@ -345,7 +346,9 @@ export class MenuScreen implements Screen {
 
   // ------------------------------------------------------------------ the apple
   private kickApple() {
-    const dir = this.ray.ray.direction.clone().add(new V3((Math.random() - 0.5) * 0.5, 0.15 + Math.random() * 0.3, 0)).normalize();
+    // away from the camera and mostly at the ship, so it has something to bounce off
+    const toShip = this.shipW.clone().sub(this.apple.pos).normalize();
+    const dir = this.ray.ray.direction.clone().multiplyScalar(0.55).addScaledVector(toShip, 0.8).add(new V3((Math.random() - 0.5) * 0.4, (Math.random() - 0.3) * 0.3, (Math.random() - 0.5) * 0.4)).normalize();
     this.apple.kick(dir, 1);
     csfx('thud', 0.9, 1.3); csfx('whoosh', 0.5, 1.6);
     if (this.apple.kicks === 6 && !this.apple.bitten) setTimeout(() => {
