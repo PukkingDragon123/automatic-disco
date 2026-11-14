@@ -68,6 +68,12 @@ for (const [k, v] of Object.entries(F)) {
 }
 /** width of a string in font pixels (before outline) */
 export function pxTextW(s: string) { let w = 0; for (const ch of s.toUpperCase()) w += (GL.get(ch) ?? GL.get('?')!)[0].length + 1; return Math.max(0, w - 1); }
+/** one glyph of the proportional 5x7 face (rows of booleans; the desk's labels and CRT use it too) */
+export function glyph57(ch: string) { return GL.get(ch.toUpperCase()) ?? GL.get('?')!; }
+/** the HUD's mode sets this: in EXPLORE the field keeps quiet (no resource tallies or info slips: the desk's counters
+ *  show the haul) so the world stays clear */
+export const FLOAT = { quiet: false };
+const QUIET: Partial<Record<FloatKind, true>> = { ore: true, carbon: true, water: true, soil: true, info: true };
 // ------------------------------------------------------------------ pixel faces (styles.css maps the user's fonts)
 export type FontKey = 'sans' | 'chunky' | 'wide' | 'mono';
 /** CSS family and the size at which one font pixel lands on one canvas pixel (measured: zero partial coverage) */
@@ -448,6 +454,7 @@ export function floatLayer(owner: Owner): FloatLayer {
 /** pop a line of text at a world point (or above something it follows). kind picks colours and face: resources,
  *  damage, crits, hull, skills, info, 'say' for speech */
 export function floatText(owner: Owner, x: number, y: number, z: number, text: string, kind: FloatKind = 'info', o: FloatOpts = {}) {
+  if (FLOAT.quiet && QUIET[kind]) return;
   floatLayer(owner).add(x, y, z, text, kind, o);
 }
 /** speech over a speaker: types out on a plate and follows it (ends early if the speaker says something else) */
