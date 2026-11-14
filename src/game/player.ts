@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import type { Game } from './game';
 import { type Creature, GOLEM_REF, type GolemTarget } from './creature';
 import { Gore, type Intake } from './gore';
-import { Stones, Loot, Knocks, strike, bindSkills, powerOwned, RES_COL, BLOW, type Stone } from './combat';
+import { Stones, Loot, Knocks, strike, bindSkills, powerOwned, RES_COL, BLOW, vfx2d, type Stone } from './combat';
 import { CHASSIS, type Work } from './child';
 import { floatText, floatLayer } from '../ui/floatText';
 import { TouchControls, isTouchDevice, type TouchHost } from '../ui/touch';
@@ -18,7 +18,7 @@ import { toast } from '../ui/kit';
 import { clamp, damp, dampA } from '../core/rand';
 import { GENE } from '../life/genes';
 
-const _v = new THREE.Vector3(), _v2 = new THREE.Vector3();
+const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _c = new THREE.Color();
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 const SCALE = 0.45;
 const PART_NAME: Record<string, string> = { head: 'SURVEY HEAD ONLINE', torso: 'CORE HOUSING ONLINE', armR: 'RIGHT ARM ONLINE', armL: 'LEFT ARM ONLINE', coil: 'GRAVITY COIL ONLINE', plating1: 'PLATE STEEL BOLTED ON', plating2: 'HEAVY PLATE BOLTED ON' };
@@ -251,6 +251,7 @@ export class Player implements GolemTarget, TouchHost {
       this.hull = Math.min(this.hullMax, this.hull + (nearCore ? 6 : 1.2) * dt);
     }
     g.child.damage = clamp(1 - this.hull / this.hullMax, 0, 1);
+    this.soak(dt);
     this.place();
     this.common(dt);
     this.overlay();
@@ -451,6 +452,7 @@ export class Player implements GolemTarget, TouchHost {
     this.channelStop();
     this.g.fx.burst(this.x, this.y + 0.1, this.z, 10, 0x9a8a6a, { speed: 1.2, up: 0.6, size: 2.2, life: 0.4 });
     flora(this.g).impulse?.(this.x, this.z, 1.2, 0.6);
+    vfx2d(this.g, 'dust', this.x, this.y, this.z, { dir: [-this.vx, -this.vz], size: 0.8 });
     sfx('pulse', 2.4, 0.25); sfx('zap', 1.6, 0.2);
   }
   /** the Ground Plow: a dash straight through creatures throws them */
@@ -529,7 +531,7 @@ export class Player implements GolemTarget, TouchHost {
     g.cam.shake(killed ? 0.28 : crit ? 0.2 : heavy ? 0.16 : 0.08, 0.2);
     sfx('hit', heavy ? 0.7 : 1.1, 0.8); sfx('crack', heavy ? 0.9 : 1.6, 0.4);
     g.child.flash(0xffffff, 0.4);
-    if (heavy) floatText(g, this.x, this.y + this.height + 0.3, this.z, crit ? 'PISTON HAYMAKER!' : 'HAYMAKER!', 'crit');
+    if (heavy) { floatText(g, this.x, this.y + this.height + 0.3, this.z, crit ? 'PISTON HAYMAKER!' : 'HAYMAKER!', 'crit'); vfx2d(g, 'slash', at.x, at.y, at.z, { dir: [fx, fz], size: 1.2 }); }
   }
   private grab(s: Stone) {
     s.state = 'held'; s.thrown = false; this.held = s;
@@ -576,6 +578,7 @@ export class Player implements GolemTarget, TouchHost {
         const from = ch.holdPos(s.big, new THREE.Vector3());
         this.stones.launch(s, from, target, { maxH: s.big ? 9 : 14, burst: this.has('shrapnel') });
         this.g.emit('throw', { x: this.x, z: this.z });
+        vfx2d(this.g, 'smear', from.x, from.y, from.z, { dir: [target.x - from.x, target.z - from.z], size: s.big ? 1.4 : 0.8 });
         this.g.fx.burst(from.x, from.y, from.z, 8, ch.lookData.glow, { glow: true, speed: 1.5, up: 0.5, size: 1.8, life: 0.3 });
         sfx('pulse', 2.8, 0.25); sfx('zap', s.big ? 0.8 : 1.6, 0.25);
         if (s.big) this.g.cam.shake(0.1, 0.15);
@@ -936,6 +939,29 @@ export class Player implements GolemTarget, TouchHost {
       }
     }
   }
+  /** water: skimming a river or the sea soaks it (it dips its rubble in, ripples spread), siphoning splashes it; it
+   *  dries off over half a minute, faster by the core. The details layer may read child.wet / player.wet */
+  wet = 0; private rippleT = 0; private wasOver = false;
+  private soak(dt: number) {
+    const g = this.g, R = g.region, over = R.isWater(this.x, this.z);
+    const sp = Math.hypot(this.vx, this.vz);
+    if (over) {
+      this.wet = Math.min(1, this.wet + dt * 1.6);
+      const y = g.world.surfaceY(this.x, this.z) + 0.02;
+      if (!this.wasOver) { g.fx.burst(this.x, y, this.z, 14, 0xd8f0ff, { speed: 1.2, up: 1.8, size: 2, life: 0.5 }); vfx2d(g, 'splash', this.x, y, this.z, { size: 0.6 }); sfx('squelch', 1.9, 0.25); }
+      this.rippleT -= dt * (1 + sp * 0.8);
+      if (this.rippleT <= 0) {
+        this.rippleT = 0.45;
+        for (let i = 0; i < 14; i++) { const a = (i / 14) * Math.PI * 2; g.fx.matter.emit(this.x + Math.cos(a) * 0.08, y, this.z + Math.sin(a) * 0.08, Math.cos(a) * 0.55, 0, Math.sin(a) * 0.55, _c.set(0xd8f0ff), 0.8, 1.6, 0.6, 0, 1.4); }
+      }
+    } else {
+      const core = g.veyr.core, near = core && Math.hypot(core.x - this.x, core.z - this.z) < 4;
+      this.wet = Math.max(0, this.wet - dt / (near ? 8 : 28));
+    }
+    if (this.channel?.ctx.kind === 'siphon') this.wet = Math.min(1, this.wet + dt * 0.25);
+    this.wasOver = over;
+    g.child.wet = this.wet;
+  }
   /** a gathering job produces nuggets that fly into the intake (credited when they arrive) */
   private yield(C: NonNullable<Player['channel']>, dt: number, at: THREE.Vector3) {
     const c = C.ctx; if (!c.res || !c.rate) return;
@@ -957,7 +983,8 @@ export class Player implements GolemTarget, TouchHost {
     const n = Math.floor(this.creditAcc[res] + 1e-6);
     if (n < 1) return;
     this.creditAcc[res] -= n;
-    const got = this.g.veyr.gather(res, n, p.x, p.y, p.z);
+    // quiet: the nugget already flew into the golem, the economy needn't send its own motes
+    const got = (this.g.veyr.gather as (r: Res, a: number, x: number, y: number, z: number, quiet?: boolean) => number).call(this.g.veyr, res, n, p.x, p.y, p.z, true);
     if (got > 0) { this.gathered[res] += got; sfx('qte-tick', 1, 0.35); }
     else if (this.fullT <= 0) { this.fullT = 3; floatText(this.g, this.x, this.y + this.height + 0.15, this.z, `${RES_NAME[res]} TANKS FULL`, 'info'); }
   }

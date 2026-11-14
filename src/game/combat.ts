@@ -27,6 +27,19 @@ export function bindSkills(s: { has(id: string): boolean } | null) { SK = s; }
 /** owned by the golem? (true everywhere when no game is bound, e.g. a UI test page) */
 export function powerOwned(a: Ability) { if (!SK) return true; const id = ABILITY_SKILL[a]; return !!id && SK.has(id); }
 
+// ------------------------------------------------------------------ hand-drawn 2D effects (game/vfx2d.ts, the details layer)
+/** resolved at build time: an empty map until vfx2d.ts exists, then its exports (Vite re-resolves when it appears) */
+const VFX = import.meta.glob('./vfx2d.ts', { eager: true }) as Record<string, Record<string, unknown>>;
+export type Vfx2dKind = 'impact' | 'star' | 'dust' | 'splash' | 'slash' | 'smear' | 'splat';
+/** play a hand-drawn sprite effect if the vfx2d library is present; false when it isn't (callers keep their particles).
+ *  Expected export: vfx2d(game, kind, x, y, z, { dir?: [x, z], size?, col? }) (play / spawn accepted too) */
+export function vfx2d(game: Game, kind: Vfx2dKind, x: number, y: number, z: number, o: { dir?: [number, number]; size?: number; col?: number } = {}): boolean {
+  const m = VFX['./vfx2d.ts']; if (!m) return false;
+  const f = (m.vfx2d ?? m.play ?? m.spawn) as ((...a: unknown[]) => unknown) | undefined;
+  if (typeof f !== 'function') return false;
+  try { f(game, kind, x, y, z, o); return true; } catch { return false; }
+}
+
 // ------------------------------------------------------------------ stone art
 /** a 32 px tile of the planet's own stone: grain, a crack or two, a lit top edge */
 function stoneTex(base: number, seed: number) {
@@ -193,6 +206,7 @@ export class Stones {
       if (bottom <= gy) {
         if (R.isWater(s.p.x, s.p.z)) {
           s.state = 'sink'; s.t = 0;
+          vfx2d(G, 'splash', s.p.x, gy, s.p.z, { size: s.r * 6 });
           G.fx.burst(s.p.x, gy + 0.02, s.p.z, 8 + Math.round(s.r * 40), 0xd8f0ff, { speed: 1.2 + s.r * 4, up: 2 + s.r * 6, size: 2.4, life: 0.6 });
           sfx('squelch', 1.8 - s.r * 2, 0.3 * G.audible(s.p.x, s.p.z));
           continue;
@@ -201,6 +215,7 @@ export class Stones {
         if (s.v.y < -2.2) {
           // impact: dust and grit, a crack, a bounce
           const k = Math.min(1, -s.v.y / 10);
+          if (k > 0.35) vfx2d(G, 'dust', s.p.x, gy, s.p.z, { size: s.r * 5 * k });
           G.fx.burst(s.p.x, gy + 0.02, s.p.z, 3 + Math.round(k * (s.big ? 18 : 6)), 0x9a8a6a, { speed: 1 + k * 2, up: 0.8 + k, size: 2.4, life: 0.5, grav: 5 });
           if (s.big && k > 0.4) G.cam.shake(0.12 * k, 0.25);
           (G.world.flora as unknown as { impulse?(x: number, z: number, r: number, s: number): void }).impulse?.(s.p.x, s.p.z, s.r * 4 + 0.3, s.big ? 1.2 * k : 0.5 * k);
@@ -330,10 +345,17 @@ interface Knock { c: Creature; vx: number; vz: number; vy: number; air: number }
 export class Knocks {
   list: Knock[] = [];
   constructor(readonly game: Game, readonly gore: Gore) {}
-  add(c: Creature, vx: number, vz: number, up: number) {
-    const k = this.list.find((x) => x.c === c);
-    if (k) { k.vx += vx; k.vz += vz; k.vy = Math.max(k.vy, up); return; }
-    this.list.push({ c, vx, vz, vy: up, air: c.air });
+  /** shove a creature (horizontal speed capped). 'max' keeps the stronger of the shove already under way and this
+   *  one instead of stacking them (a killing blow after the hit's own knockback) */
+  add(c: Creature, vx: number, vz: number, up: number, mode: 'add' | 'max' = 'add') {
+    const cap = 9, k = this.list.find((x) => x.c === c);
+    if (k) {
+      if (mode === 'add') { k.vx += vx; k.vz += vz; }
+      else { const a = Math.hypot(k.vx, k.vz), b = Math.hypot(vx, vz); if (b > a) { k.vx = vx; k.vz = vz; } }
+      k.vy = Math.max(k.vy, up);
+    } else this.list.push({ c, vx, vz, vy: up, air: c.air });
+    const e = k ?? this.list[this.list.length - 1], sp = Math.hypot(e.vx, e.vz);
+    if (sp > cap) { e.vx *= cap / sp; e.vz *= cap / sp; }
   }
   update(dt: number) {
     const R = this.game.region, w = this.game.world;
@@ -380,6 +402,7 @@ export function strike(game: Game, gore: Gore, knocks: Knocks, c: Creature, dmg:
   const dealt = hp0 - Math.max(0, c.hp);
   c.fx.flash.value = 1; c.fx.flashCol.value.setRGB(1, o.crit ? 0.85 : 0.95, o.crit ? 0.3 : 0.85);
   gore.hit(c, d, dealt);
+  { const h = c.sp.pheno.height * c.growth; vfx2d(game, o.crit ? 'star' : 'impact', c.x - d.x * c.radius * 0.5, c.y + c.air + h * 0.5, c.z - d.z * c.radius * 0.5, { dir: [d.x, d.z], size: Math.min(2, 0.5 + dealt / 20) }); }
   const m = Math.max(0.4, c.mass);
   const kb = (o.knock ?? 3) / Math.pow(m, 0.33);
   knocks.add(c, d.x * kb, d.z * kb, (o.up ?? 2.5) / Math.pow(m, 0.25));
@@ -389,6 +412,6 @@ export function strike(game: Game, gore: Gore, knocks: Knocks, c: Creature, dmg:
     floatText(game, c.x, c.y + c.air + h + 0.15, c.z, o.crit ? `${Math.round(dealt)} CRIT!` : String(Math.max(1, Math.round(dealt))), o.crit ? 'crit' : 'dmg');
   }
   // a killing blow throws the body
-  if (c.dead && !c.fx.dissolve.value) knocks.add(c, d.x * kb * 1.4, d.z * kb * 1.4, 3);
+  if (c.dead && !c.fx.dissolve.value) knocks.add(c, d.x * kb * 1.3, d.z * kb * 1.3, 3, 'max');
   return dealt;
 }

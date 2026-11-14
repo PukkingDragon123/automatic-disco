@@ -1,10 +1,12 @@
-@font-face { font-family: 'Pixelify'; src: url('/fonts/pixelify-sans.woff2') format('woff2'); font-display: block; }
-@font-face { font-family: 'Jersey'; src: url('/fonts/jersey10.woff2') format('woff2'); font-display: block; }
-@font-face { font-family: 'Silk'; src: url('/fonts/silkscreen-400.woff2') format('woff2'); font-display: block; }
-@font-face { font-family: 'SilkB'; src: url('/fonts/silkscreen-700.woff2') format('woff2'); font-display: block; }
-@font-face { font-family: 'Tiny5'; src: url('/fonts/tiny5.woff2') format('woff2'); font-display: block; }
-@font-face { font-family: 'Jacquard'; src: url('/fonts/jacquard12.woff2') format('woff2'); font-display: block; }
-@font-face { font-family: 'VT'; src: url('/fonts/vt323.woff2') format('woff2'); font-display: block; }
+@font-face { font-family: 'Pixelify'; src: url('/fonts/hi/PixelSans.ttf') format('truetype'); font-display: block; }
+@font-face { font-family: 'Jersey'; src: url('/fonts/hi/NanoPlus.ttf') format('truetype'); font-display: block; }
+@font-face { font-family: 'Silk'; src: url('/fonts/hi/PixelSans.ttf') format('truetype'); font-display: block; }
+@font-face { font-family: 'SilkB'; src: url('/fonts/hi/NanoPlus.ttf') format('truetype'); font-display: block; }
+@font-face { font-family: 'Tiny5'; src: url('/fonts/hi/PixelSans.ttf') format('truetype'); font-display: block; }
+@font-face { font-family: 'Jacquard'; src: url('/fonts/hi/CannedPixels.ttf') format('truetype'); font-display: block; }
+@font-face { font-family: 'Superwide'; src: url('/fonts/hi/Superwide.ttf') format('truetype'); font-display: block; }
+@font-face { font-family: 'Canned'; src: url('/fonts/hi/CannedPixels.ttf') format('truetype'); font-display: block; }
+@font-face { font-family: 'VT'; src: url('/fonts/hi/RoyaltyMono.ttf') format('truetype'); font-display: block; }
 
 /* The golem's control machinery: olive-drab housings, Bakelite keys, brass, and green P1 phosphor CRTs.
    All art is pixel art at an integer scale --s; sizes are written in art pixels as calc(Npx * var(--s)). */
@@ -102,15 +104,13 @@ i { font-style: normal; color: var(--dim); }
 .c-bio img, .c-min img, .c-chg img { width: calc(9px * var(--s)); height: calc(9px * var(--s)); }
 .c-bio { color: #9cea8a; } .c-min { color: #d8d0b4; } .c-chg { color: var(--violet); }
 
-.toasts { position: fixed; top: calc(38px * var(--s)); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: calc(1px * var(--s)); pointer-events: none !important; z-index: 20; }
+.toasts { position: fixed; top: var(--hud-top, calc(38px * var(--s))); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: calc(1px * var(--s)); pointer-events: none !important; z-index: 20; }
 .toast { font-size: calc(8px * var(--s)); line-height: calc(8px * var(--s)); padding: 0 calc(3px * var(--s)); animation: crt-on 260ms steps(6); transition: opacity 400ms steps(4); text-align: center; max-width: calc(280px * var(--s)); }
 .toast::before { content: '\25B6  '; color: var(--dim); }
 .toast.warn { color: var(--warn); } .toast.warn::before { content: '\25B2  '; color: var(--warn); }
 .toast.good { color: var(--hot); } .toast.story { color: var(--gold); text-shadow: var(--amb-glow); }
 .toast.out { opacity: 0; }
 @media (max-width: 700px), (max-height: 460px) { .toasts, .tip { --s: 1; } .toast, .tip { font-size: 10px; line-height: 10px; } .tip h4 { font-size: 12px; line-height: 11px; } }
-@media (max-width: 700px) { .toasts { top: 172px; } }
-@media (max-height: 460px) and (min-width: 701px) { .toasts { top: 56px; } }
 @keyframes tin { from { transform: translateY(calc(-6px * var(--s))); opacity: 0; } to { transform: none; opacity: 1; } }
 
 h1, h2, h3 { font-weight: normal; margin: 0; }

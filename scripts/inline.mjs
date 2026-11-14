@@ -9,10 +9,10 @@ const files = fs.readdirSync(assets);
 const js = files.filter((f) => f.endsWith('.js'));
 if (js.length !== 1) throw new Error('expected one JS chunk, got ' + js.join(','));
 let css = files.filter((f) => f.endsWith('.css')).map((f) => fs.readFileSync(path.join(assets, f), 'utf8')).join('\n');
-css = css.replace(/url\((['"]?)([^)'"]+\.woff2)\1\)/g, (m, q, u) => {
+css = css.replace(/url\((['"]?)([^)'"]+\.(woff2|ttf))\1\)/g, (m, q, u, ext) => {
   const p = [path.join(assets, u), path.join(dir, u.replace(/^(\.\.\/)+/, '')), path.join(dir, u.replace(/^\.?\//, ''))].find((x) => fs.existsSync(x));
   if (!p) throw new Error('font not found ' + u);
-  return `url(data:font/woff2;base64,${fs.readFileSync(p).toString('base64')})`;
+  return `url(data:font/${ext === 'ttf' ? 'ttf' : 'woff2'};base64,${fs.readFileSync(p).toString('base64')})`;
 });
 const code = fs.readFileSync(path.join(assets, js[0]), 'utf8').replace(/<\/script/gi, '<\\/script');
 const title = (html.match(/<title>([^<]*)<\/title>/) || [])[1] || 'ODDWORLD';

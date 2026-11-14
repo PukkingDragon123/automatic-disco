@@ -25,7 +25,7 @@ const lin = (c: number) => Math.pow(c / 255, 2.2);
 /** a hex colour as linear rgb, times k */
 const linHex = (hex: number, k = 1): [number, number, number] => [lin((hex >> 16) & 255) * k, lin((hex >> 8) & 255) * k, lin(hex & 255) * k];
 /** mean linear value of each neutral bark slot (the tint compensates so a limb keeps its ramp colour) */
-const SLOT_GAIN: Record<number, number> = { [BARK.FURROW]: 1 / 0.33, [BARK.PLATE]: 1 / 0.3, [BARK.RING]: 1 / 0.3, [BARK.STEM]: 1 / 0.52, [BARK.FIBRE]: 1 / 0.64, [BARK.FLESH]: 1 / 0.54 };
+const SLOT_GAIN: Record<number, number> = { [BARK.FURROW]: 1 / 0.3, [BARK.PLATE]: 1 / 0.32, [BARK.RING]: 1 / 0.32, [BARK.STEM]: 1 / 0.48, [BARK.FIBRE]: 1 / 0.6, [BARK.FLESH]: 1 / 0.48 };
 
 // ------------------------------------------------------------------------------------------------ vector bits
 const vadd = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -86,7 +86,7 @@ export function tube(g: Geo, pts: V3[], rad: number[], slot: number, sides: numb
   for (let i = 0; i < n; i++) T.push(vnrm(vsub(pts[Math.min(n - 1, i + 1)], pts[Math.max(0, i - 1)])));
   let N0 = vperp(T[0]);
   for (let i = 0; i < n; i++) { const t = T[i]; N0 = vnrm(vsub(N0, vmul(t, vdot(N0, t)))); Nn.push(N0); }
-  const circ = TAU * Math.max(0.004, rad[0]), vk = (124 / 128) / circ;
+  const circ = TAU * Math.max(0.004, rad[0]), vk = (31 / 64) / circ;
   let acc = 0, prev = -1;
   for (let i = 0; i < n; i++) {
     if (i > 0) acc += vlen(vsub(pts[i], pts[i - 1]));

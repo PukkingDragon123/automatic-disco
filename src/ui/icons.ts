@@ -284,13 +284,20 @@ class IP {
     }
     const col = new Int32Array(n).fill(-1);
     for (let i = 0; i < n; i++) if (rid[i] >= 0) col[i] = this.ramps[rid[i]][ri2[i]];
-    // outer outline
+    // outer outline, hand-pixelled "sel-out": ink on the shadow side, and on the lit (top-left) edge a deep tone
+    // of the shape it wraps, so silhouettes read soft and painted instead of stamped
     const out = new Uint8Array(n);
     for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x; if (rid[i] >= 0) continue;
-      let hit = false;
-      for (let dy = -1; dy <= 1 && !hit; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && solid(x + dx, y + dy)) { hit = true; break; }
-      if (hit) { col[i] = OUT; out[i] = 1; }
+      let hit = -1, lit = false;
+      for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+        if (!solid(x + dx, y + dy)) continue;
+        if (hit < 0) hit = (y + dy) * W + x + dx;
+        if ((dx > 0 || dy > 0) && dx >= 0 && dy >= 0) lit = true;
+      }
+      if (hit < 0) continue;
+      const R = this.ramps[rid[hit]];
+      col[i] = lit && R.length > 2 ? mixHex(R[0], OUT, 0.35) : OUT; out[i] = 1;
     }
     // fx under the solids (shows only where nothing solid or outlined is)
     for (let i = 0; i < n; i++) if (col[i] < 0 && this.fxu[i] >= 0) col[i] = this.fxu[i];

@@ -276,7 +276,9 @@ export class VeyrChild {
   private texs: THREE.Texture[] = [];
   private chrome: THREE.MeshPhongMaterial; private brass: THREE.MeshPhongMaterial; private rubber: THREE.MeshLambertMaterial;
   private eyeMat: THREE.MeshBasicMaterial; private dishMat: THREE.MeshPhongMaterial; private bulbMat: THREE.MeshBasicMaterial; private plateMat: THREE.MeshLambertMaterial;
-  private glowU = { value: 0.6 };
+  private glowU = { value: 0.6 }; private wetU = { value: 0 };
+  /** 0 dry .. 1 soaked: the stone darkens, the steel dulls, water drips off it (player.ts sets it; others may read it) */
+  wet = 0; private dripT = 0;
   private ring: THREE.Mesh;
   private t = 0; private blinkT = 3; private castT = 0; private castAt = new THREE.Vector3(); private smokeT = 1;
   private waveT = 0; private actT = 4; private act: 'scatter' | 'spin' | 'flex' | 'juggle' | null = null; private actK = 0;
@@ -313,14 +315,14 @@ export class VeyrChild {
     this.baseScale = scale;
     if (opts.grown) this.grow = this.growTo = 1;
     if (opts.parts) this.parts = new Set(['head', ...opts.parts]);
-    const glowU = this.glowU;
+    const glowU = this.glowU, wetU = this.wetU;
     const lit = (key: string) => {
       const m = new THREE.MeshLambertMaterial({ flatShading: true });
       m.onBeforeCompile = (sh) => {
-        sh.uniforms.uGlowK = glowU;
+        sh.uniforms.uGlowK = glowU; sh.uniforms.uWet = wetU;
         sh.fragmentShader = sh.fragmentShader
-          .replace('#include <common>', '#include <common>\nuniform float uGlowK;')
-          .replace('#include <map_fragment>', '#include <map_fragment>\nfloat glowA = sampledDiffuseColor.a; vec3 glowC = sampledDiffuseColor.rgb; diffuseColor.a = 1.0;')
+          .replace('#include <common>', '#include <common>\nuniform float uGlowK; uniform float uWet;')
+          .replace('#include <map_fragment>', '#include <map_fragment>\nfloat glowA = sampledDiffuseColor.a; vec3 glowC = sampledDiffuseColor.rgb; diffuseColor.a = 1.0;\ndiffuseColor.rgb *= mix(vec3(1.0), vec3(0.56, 0.6, 0.68), uWet);')
           .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\nif (glowA < 0.98) totalEmissiveRadiance += glowC * uGlowK * (glowA < 0.7 ? 1.6 : 0.5);');
       };
       m.customProgramCacheKey = () => 'veyr-golem-' + key;
@@ -834,6 +836,18 @@ void main() { vec2 p = floor(gl_FragCoord.xy); if (mod(p.x + p.y, 2.0) < 0.5) di
       tip.getWorldPosition(p);
       const sm = this.damage > 0.5;
       this.fx.burst(p.x, p.y, p.z, 1 + Math.round(c * 2) + (sm ? 2 : 0), sm ? 0x2a2624 : c > 0 ? 0x9a8a7a : 0x6a6660, { speed: 0.15, up: 0.5, size: 2, life: 1.1, grav: -0.4 });
+    }
+    // wet: darker stone, duller brass and chrome, drips off the lowest parts
+    this.wetU.value = damp(this.wetU.value, clamp(this.wet, 0, 1), 4, dt);
+    const soak = this.wetU.value;
+    this.chrome.color.setHex(0xb4b6b8).multiplyScalar(1 - soak * 0.35); this.brass.color.setHex(0xb08a40).multiplyScalar(1 - soak * 0.35);
+    this.chrome.shininess = 90 + soak * 60;
+    this.dripT -= dt * soak * 16;
+    if (this.dripT <= 0 && soak > 0.04 && this.root.visible) {
+      this.dripT = 0.4 + Math.random() * 0.8;
+      const src = R.arms.length && Math.random() < 0.5 ? R.arms[Math.floor(Math.random() * R.arms.length)].hand : Math.random() < 0.5 && R.body ? R.body : R.head;
+      const p = src.localToWorld(_a.set((Math.random() - 0.5) * 0.18, -0.1, (Math.random() - 0.5) * 0.18));
+      this.fx.spray(p.x, p.y, p.z, 0, -1, 0, 1 + Math.round(Math.random() * soak), 0xa8d8f0, { speed: 0.4, cone: 0.1, size: 1.6, life: 0.45, grav: 14, jitter: 0.02 });
     }
     // a damaged hull spits sparks
     this.sparkT -= dt * this.damage * 3;

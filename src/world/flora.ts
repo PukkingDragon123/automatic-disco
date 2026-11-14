@@ -85,7 +85,7 @@ export class Flora {
   private state: Uint8Array; private stateTex: THREE.DataTexture; private stateRows = [1e9, -1]; private stateUp = false;
   private variants = 3;
   private lastT = -1;
-  readonly stats = { gen: 0, tris3d: 0, batches: 0, drawn: 0, inst3d: 0, tAtlas: 0, tPlace: 0, tPlants: 0, tGround: 0 };
+  readonly stats = { gen: 0, tris3d: 0, batches: 0, drawn: 0, inst3d: 0, tAtlas: 0, tPlace: 0, tPlants: 0, tGround: 0, tMesh: 0 };
   private frustum = new THREE.Frustum(); private pm = new THREE.Matrix4();
 
   constructor(readonly region: Region, moss: THREE.Texture, vis: THREE.Texture) {
@@ -302,15 +302,16 @@ export class Flora {
 
   // ---------------------------------------------------------------- plants: 3D near, cards far
   /** one plant's 3D record: x y z yaw | scale id seed flex */
-  private rec3d(i: number, x: number, y: number, z: number, seed: number) {
-    const h = hash01(i, seed, 41), h2 = hash01(i, seed, 43);
-    return [x, y, z, h * Math.PI * 2, 0.9 + h2 * 0.2, i, hash01(i, 7, seed), 0.8 + hash01(i, 3, seed) * 0.4];
+  private rec3d(i: number, x: number, y: number, z: number, seed: number, out: number[] = []) {
+    out.push(x, y, z, hash01(i, seed, 41) * Math.PI * 2, 0.9 + hash01(i, seed, 43) * 0.2, i, hash01(i, 7, seed), 0.8 + hash01(i, 3, seed) * 0.4);
+    return out;
   }
   /** one plant's card record (far LOD) */
-  private recCard(i: number, x: number, y: number, z: number, spi: number, v: number, seed: number) {
+  private recCard(i: number, x: number, y: number, z: number, spi: number, v: number, seed: number, out: number[] = []) {
     const s = this.species[spi], spr = s.sprites[v], k = 0.92 + hash01(i, seed, 5) * 0.16, flat = s.arch === 'lily';
     const stiff = s.tree ? 0.35 : flat ? 1 : 0.75 + hash01(i, seed, 9) * 0.4;
-    return [x, y, z, (hash01(i, seed, 13) < 0.5 ? 1 : -1) * (flat ? 2 : 1), spr.w * k, spr.h * k, hash01(i, seed, 17) * 6.28, stiff, spr.u0, spr.v0, spr.du, spr.dv, i, s.anim, 0.8 + hash01(i, seed, 19) * 0.45, this.isSmall(s) ? 2 : 1];
+    out.push(x, y, z, (hash01(i, seed, 13) < 0.5 ? 1 : -1) * (flat ? 2 : 1), spr.w * k, spr.h * k, hash01(i, seed, 17) * 6.28, stiff, spr.u0, spr.v0, spr.du, spr.dv, i, s.anim, 0.8 + hash01(i, seed, 19) * 0.45, this.isSmall(s) ? 2 : 1);
+    return out;
   }
   private buildPlants(inst: number[][]) {
     const nc2 = this.nc * this.nc, sp = this.species, V = this.variants;
@@ -318,8 +319,8 @@ export class Flora {
     const perCard: number[][] = [];
     inst.forEach((p, i) => {
       const c = this.chunk(p[0], p[2]), v = p[4] % V;
-      ((per3d[p[3]][v][c] ??= [])).push(...this.rec3d(i, p[0], p[1], p[2], 1));
-      (perCard[c] ??= []).push(...this.recCard(i, p[0], p[1], p[2], p[3], p[4], 1));
+      this.rec3d(i, p[0], p[1], p[2], 1, (per3d[p[3]][v][c] ??= []));
+      this.recCard(i, p[0], p[1], p[2], p[3], p[4], 1, (perCard[c] ??= []));
     });
     let tris = 0;
     sp.forEach((s, si) => {
@@ -329,12 +330,13 @@ export class Flora {
       const shadow = s.tree || s.hmax > 1.05 || s.arch === 'shrub';
       for (let v = 0; v < V; v++) {
         const form = s.forms?.[v], h = s.heights?.[v] ?? s.hmax, seed = this.region.seed * 131 + si * 17 + v;
-        const pgs: PlantGeo[] = [];
+        const pgs: PlantGeo[] = [], tm = performance.now();
         if (form) { pgs.push(meshPlant(form, s, this.tex, seed, bset, 0), meshPlant(form, s, this.tex, seed, bset, 1)); s.forms![v] = null; }
         else {
           const pg = s.arch === 'barrel' ? meshBarrel(s, h, this.tex, seed) : s.arch === 'crystalbloom' ? meshCrystal(s, h, this.tex, seed, this.region.pal) : meshLily(s, h, this.tex, seed);
           pgs.push(pg, pg);
         }
+        this.stats.tMesh += performance.now() - tm;
         this.pGeo[si][v] = pgs; this.p3d[si][v] = [];
         pgs.forEach((pg, lod) => {
           tris += pg.tris;

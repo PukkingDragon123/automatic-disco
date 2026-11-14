@@ -11,6 +11,7 @@ import { clamp, hash01 } from '../core/rand';
 import { spiralPos } from './fx';
 import { sfx } from '../audio/audio';
 import { makeRamp } from '../limbo/gfx/pixel';
+import { vfx2d } from './combat';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4(), _c = new THREE.Color(), _s = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
@@ -256,6 +257,7 @@ export class Gore {
     }
     for (let i = 0; i < 3; i++) this.sever(c, d, i === 0 ? 'head' : 'any');
     this.game.fx.burst(c.x, cy, c.z, 60, F.blood, { speed: 4.5, up: 4, size: 3.4, life: 1, grav: 10 });
+    vfx2d(this.game, 'splat', c.x, cy, c.z, { dir: [d.x, d.z], size: 1 + sz * 0.5, col: F.blood });
     this.splat(c.x, c.z, 1.6 * sz, F.blood, { cell: Math.floor(Math.random() * 4), grow: 0.5 });
     c.fx.dissolve.value = 1;
     c.bio = 0; // the carbon is in the pieces now; the empty corpse is cleared away

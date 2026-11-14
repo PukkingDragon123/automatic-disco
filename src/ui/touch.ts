@@ -4,7 +4,6 @@
 // caps with stencilled labels, little lamps that light when the button can do something. Hidden on desktop.
 import { Pix, GM, RD, PH, AM, CR, INK, BR, dv, text, textW, mixc } from './machine';
 import { iconCanvas } from './pixelart';
-import { textSprite } from './floatText';
 import { S } from './kit';
 import { sfx } from '../audio/audio';
 
@@ -123,7 +122,6 @@ export class TouchControls {
   private zone: HTMLDivElement; private base: HTMLDivElement; private knob: HTMLDivElement;
   private pad: HTMLDivElement;
   private b: Record<'punch' | 'use' | 'throw' | 'power' | 'wheel', Btn>;
-  private useLab: HTMLCanvasElement; private useTxt = '';
   private stickId: number | null = null; private sx = 0; private sy = 0;
   private gest = new Map<number, { x: number; y: number }>();
   private gd = 0; private ga = 0;
@@ -163,8 +161,9 @@ export class TouchControls {
       return { e, D: s.D, lamp, st: '', lampSt: '', id: null, x0: 0, y0: 0, dx: 0, dy: 0 };
     };
     const C = { x: 34, y: 32 };
-    const at = (deg: number, d: number) => ({ x: C.x - Math.cos((deg * Math.PI) / 180) * d, y: C.y + Math.sin((deg * Math.PI) / 180) * d });
-    const pU = at(0, 41), pT = at(52, 42), pP = at(98, 43), pW = at(76, 66);
+    // (x, y are distances from the right and bottom edges: 0 deg is straight left of PUNCH, 90 deg straight above)
+    const at = (deg: number, d: number) => ({ x: C.x + Math.cos((deg * Math.PI) / 180) * d, y: C.y + Math.sin((deg * Math.PI) / 180) * d });
+    const pU = at(0, 41), pT = at(48, 42), pP = at(94, 42), pW = at(70, 64);
     this.b = {
       punch: mk(21, RD, 'PUNCH', C.x, C.y),
       use: mk(15, PH, 'USE', pU.x, pU.y),
@@ -175,12 +174,6 @@ export class TouchControls {
     // the wheel knob: a turning arrow
     { const p = new Pix(9, 9); for (let a = 0; a < 18; a++) { const t = (a / 18) * Math.PI * 1.6 + 0.6; p.set(Math.round(4 + Math.cos(t) * 3.2), Math.round(4 + Math.sin(t) * 3.2), INK); } p.set(6, 1, INK); p.set(7, 2, INK); p.set(5, 2, INK);
       const ic = p.canvas(); ic.className = 'tc-ic'; ic.style.width = ic.style.height = 9 * k + 'px'; ic.style.top = '50%'; this.b.wheel.e.appendChild(ic); }
-    // the use label: what [USE] will do, on a little strip over the button
-    this.useLab = document.createElement('canvas'); this.useLab.className = 'tc-lab';
-    this.useLab.style.right = '0'; this.pad.appendChild(this.useLab);
-    this.useLab.style.position = 'absolute';
-    const ub = this.b.use;
-    this.useLab.style.left = ''; this.useLab.style.right = (pU.x) * k + 'px'; this.useLab.style.bottom = (pU.y + ub.D / 2 + 3) * k + 'px'; this.useLab.style.transform = 'translateX(50%)';
     // ---- wiring
     this.press(this.b.punch, () => { this.punchHeld = true; host.punch(true); }, () => { this.punchHeld = false; host.punch(false); });
     this.press(this.b.use, () => { this.useHeld = true; host.useDown(); }, () => { this.useHeld = false; host.useUp(); });
@@ -200,7 +193,7 @@ export class TouchControls {
       e.preventDefault(); e.stopPropagation();
       if (b.id !== null) return;
       b.id = e.pointerId; b.x0 = e.clientX; b.y0 = e.clientY; b.dx = b.dy = 0;
-      b.e.setPointerCapture(e.pointerId);
+      try { b.e.setPointerCapture(e.pointerId); } catch { /* a pointer the browser no longer tracks */ }
       b.e.style.backgroundPositionX = `${-b.D * S}px`;
       sfx('click', 1.2, 0.35);
       down(b);
@@ -230,7 +223,7 @@ export class TouchControls {
   private stickDown(e: PointerEvent) {
     e.preventDefault(); e.stopPropagation();
     if (this.stickId !== null) return;
-    this.stickId = e.pointerId; this.zone.setPointerCapture(e.pointerId);
+    this.stickId = e.pointerId; try { this.zone.setPointerCapture(e.pointerId); } catch { /* ditto */ }
     const r = this.zone.getBoundingClientRect();
     this.sx = e.clientX - r.left; this.sy = e.clientY - r.top;
     this.zone.classList.add('on');
@@ -288,18 +281,6 @@ export class TouchControls {
     lamp(this.b.use, L.use ? (L.useOk ? 1 : 2) : 0); dead(this.b.use, !L.use);
     lamp(this.b.throw, L.holding ? 2 : L.canThrow ? 1 : 0); dead(this.b.throw, !L.canThrow && !L.holding);
     lamp(this.b.power, L.power ? 1 : 0); dead(this.b.power, !L.power);
-    // the use label
-    const txt = L.use ? L.use.replace(/\s*\(.*\)$/, '') : '';
-    if (txt !== this.useTxt) {
-      this.useTxt = txt;
-      if (txt) {
-        const spr = textSprite(txt, L.useOk ? 'good' : 'info');
-        this.useLab.width = spr.width; this.useLab.height = spr.height;
-        const g = this.useLab.getContext('2d')!; g.clearRect(0, 0, spr.width, spr.height); g.drawImage(spr, 0, 0);
-        this.useLab.style.width = spr.width * S + 'px'; this.useLab.style.height = spr.height * S + 'px';
-        this.useLab.classList.remove('tc-hide');
-      } else this.useLab.classList.add('tc-hide');
-    }
     // the armed power's icon on its cap
     const key = L.power;
     if (key !== this.iconKey) {

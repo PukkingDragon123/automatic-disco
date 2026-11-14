@@ -115,7 +115,11 @@ export class FloatLayer {
     const loop = () => { if (!this.alive) return; this.raf = requestAnimationFrame(loop); this.draw(); };
     this.raf = requestAnimationFrame(loop);
   }
-  private resize = () => { this.cv.width = innerWidth; this.cv.height = innerHeight; };
+  /** device pixels per CSS pixel: the canvas is drawn at the screen's own resolution so every font pixel is a
+   *  whole number of device pixels (crisp on phones with 2.6x or 3x screens) */
+  private dpr = 1;
+  private resize = () => { this.dpr = Math.max(1, devicePixelRatio || 1); this.cv.width = Math.round(innerWidth * this.dpr); this.cv.height = Math.round(innerHeight * this.dpr); };
+  private scr(x: number, y: number, z: number): [number, number, boolean] { const [a, b, ok] = this.owner.screenOf(x, y, z); return [a * this.dpr, b * this.dpr, ok]; }
   set visible(v: boolean) { this.cv.style.display = v ? '' : 'none'; }
   add(x: number, y: number, z: number, s: string, kind: FloatKind, o: { life?: number; delay?: number; big?: number } = {}) {
     // stack onto popups still near the same spot so numbers don't overprint each other
@@ -127,14 +131,15 @@ export class FloatLayer {
   }
   private draw() {
     const now = performance.now(), dt = Math.min(0.1, (now - this.last) / 1000); this.last = now;
-    const g = this.g, k = S;
+    if (Math.abs((devicePixelRatio || 1) - this.dpr) > 0.01) this.resize();
+    const g = this.g, k = Math.max(1, Math.round(S * this.dpr));
     g.clearRect(0, 0, this.cv.width, this.cv.height);
     g.imageSmoothingEnabled = false;
     if (this.cv.style.display === 'none') return;
     // hull bar: a segmented gauge with rivets, over the golem
     const b = this.bar;
     if (b && b.alpha > 0.02) {
-      const [sx, sy, ok] = this.owner.screenOf(b.x, b.y, b.z);
+      const [sx, sy, ok] = this.scr(b.x, b.y, b.z);
       if (ok) {
         const segs = 10, w = segs * 3 + 3, x0 = Math.round(sx / k - w / 2) * k, y0 = Math.round(sy / k - 8) * k;
         g.globalAlpha = Math.round(b.alpha * 4) / 4;
@@ -155,14 +160,14 @@ export class FloatLayer {
       if (p.delay > 0) { p.delay -= dt; continue; }
       p.t += dt;
       if (p.t >= p.life) { this.pops.splice(i, 1); continue; }
-      const [sx, sy, ok] = this.owner.screenOf(p.x, p.y, p.z);
+      const [sx, sy, ok] = this.scr(p.x, p.y, p.z);
       if (!ok) continue;
       const u = p.t / p.life;
       // pop a size too big, then settle; rise with ease-out; fade in dithered quarter steps
-      const sc = k + p.big + (p.t < 0.07 ? 2 : p.t < 0.14 ? 1 : 0);
+      const u1 = Math.max(1, Math.round(this.dpr)), sc = k + (p.big + (p.t < 0.07 ? 2 : p.t < 0.14 ? 1 : 0)) * u1;
       const ease = 1 - (1 - u) ** 3;
       const spr = textSprite(p.s, p.kind);
-      const x = Math.round(sx + p.dx * ease - (spr.width * sc) / 2), y = Math.round(sy - p.rise * k * ease - p.stack * 10 * k - spr.height * sc);
+      const x = Math.round(sx + p.dx * this.dpr * ease - (spr.width * sc) / 2), y = Math.round(sy - p.rise * k * ease - p.stack * 10 * k - spr.height * sc);
       const a = u < 0.65 ? 1 : 1 - (u - 0.65) / 0.35;
       g.globalAlpha = Math.max(0, Math.ceil(a * 4) / 4);
       if (p.kind === 'skill' && Math.floor(p.t * 10) % 2 === 0 && p.t < 0.6) { g.globalAlpha *= 0.6; }
@@ -172,7 +177,7 @@ export class FloatLayer {
     // context prompt: a keycap and the action
     const pr = this.prompt;
     if (pr) {
-      const [sx, sy, ok] = this.owner.screenOf(pr.x, pr.y, pr.z);
+      const [sx, sy, ok] = this.scr(pr.x, pr.y, pr.z);
       if (ok) {
         const cap = pr.key ? textSprite(pr.key, pr.ok ? 'dmg' : 'info') : null, lab = textSprite(pr.text, pr.ok ? 'good' : 'warn');
         const cw = cap ? Math.max(cap.width + 4, 13) : -2, W = (cw + 2 + lab.width) * k, x = Math.round(sx - W / 2), y = Math.round(sy - 16 * k);
