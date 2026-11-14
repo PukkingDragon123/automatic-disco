@@ -24,7 +24,7 @@ export interface LockSeat {
   /** which colour tile (index into tiles), skin weights at the root */
   col: number; w: Wt;
 }
-const VAR = 4, ROWS = 4;
+const VAR = 4, ROWS = 3;
 /** a piece of many locks over one shared atlas: VAR shapes across, one row of tiles per colour ramp */
 export function locks(o: { name: string; seats: LockSeat[]; tiles: number[][]; steps?: number[]; seed?: number; reg?: number; den?: number }): Piece | null {
   if (!o.seats.length) return null;

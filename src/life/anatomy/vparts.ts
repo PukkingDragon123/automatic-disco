@@ -255,7 +255,7 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
         skin: X.spine, paint: L, k: 1.0, levels: 1 })).reg = 2;
       for (let s = 0; s < (p.spikes ?? 0); s++) {
         const a = 0.5 + (s - (p.spikes! - 1) / 2) * 0.12, q = onTr(X, a, bv0 + (bv1 - bv0) * 0.3), lift = X.W * p.lift * 0.12 * (0.35 + 0.65 * hk);
-        X.body.add(spine({ name: 'cspk' + k + s, at: add(q.p, scl(q.n, lift)), dir: nrm(add(q.n, [0, 0, -0.5])), len: X.W * 0.18 * hk, r: X.W * 0.04, skin: X.spine, paint: keratinPaint('bone', 3) })).reg = 2;
+        X.body.add(spine({ levels: 0, around: 5, name: 'cspk' + k + s, at: add(q.p, scl(q.n, lift)), dir: nrm(add(q.n, [0, 0, -0.5])), len: X.W * 0.18 * hk, r: X.W * 0.04, skin: X.spine, paint: keratinPaint('bone', 3) })).reg = 2;
       }
     }
     if (p.moss) for (let k = 0; k < 18 * p.moss; k++) {
@@ -288,7 +288,7 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
   crest: (X, p) => {
     const v0 = vT(X, p.t1), v1 = vT(X, p.t0), n = Math.max(4, Math.round((v1 - v0) * 40));
     if (p.kind === 'spikes') {
-      for (let k = 0; k < n; k++) { const v = v0 + ((k + 0.5) / n) * (v1 - v0), q = onTr(X, 0.5, v), hk = Math.sin(Math.PI * (k + 0.5) / n) * 0.6 + 0.4; X.body.add(spine({ name: 'dsp' + k, at: sub(q.p, scl(q.n, X.W * 0.02)), dir: nrm(add(q.n, [0, 0, -0.6])), len: X.W * p.h * hk, r: X.W * p.h * 0.18 * hk, skin: X.spine, paint: keratinPaint(p.c[0], p.c[1]) })).reg = 2; }
+      for (let k = 0; k < n; k++) { const v = v0 + ((k + 0.5) / n) * (v1 - v0), q = onTr(X, 0.5, v), hk = Math.sin(Math.PI * (k + 0.5) / n) * 0.6 + 0.4; X.body.add(spine({ levels: 0, around: 5, name: 'dsp' + k, at: sub(q.p, scl(q.n, X.W * 0.02)), dir: nrm(add(q.n, [0, 0, -0.6])), len: X.W * p.h * hk, r: X.W * p.h * 0.18 * hk, skin: X.spine, paint: keratinPaint(p.c[0], p.c[1]) })).reg = 2; }
       return;
     }
     if (p.kind === 'bristle') {
@@ -326,13 +326,13 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
     const tip = X.F.pts[0], dir = nrm(sub(X.F.pts[0], X.F.pts[1])), tb = X.rig.tail[X.rig.tail.length - 1] ?? X.rig.root, R = X.W * p.size * 0.3;
     const L = lookPaint(plateLook(p.c));
     X.body.add(sac({ name: 'club', at: add(tip, scl(dir, -R * 0.4)), n: dir, up: [0, 1, 0], r: [R * 1.2, R, R * 1.1], sink: 0.4, skin: () => [tb, 1], paint: L, levels: 1 })).reg = 10;
-    for (let k = 0; k < (p.spikes ?? 5); k++) { const a = (k / (p.spikes ?? 5)) * Math.PI * 2, d: V3 = nrm(add([Math.cos(a), Math.sin(a), 0], scl(dir, 0.3))); X.body.add(spine({ name: 'clsp' + k, at: add(tip, scl(d, R * 0.9)), dir: d, len: R * 0.9, r: R * 0.25, skin: () => [tb, 1], paint: keratinPaint('bone', 3) })).reg = 10; }
+    for (let k = 0; k < (p.spikes ?? 5); k++) { const a = (k / (p.spikes ?? 5)) * Math.PI * 2, d: V3 = nrm(add([Math.cos(a), Math.sin(a), 0], scl(dir, 0.3))); X.body.add(spine({ levels: 0, around: 5, name: 'clsp' + k, at: add(tip, scl(d, R * 0.9)), dir: d, len: R * 0.9, r: R * 0.25, skin: () => [tb, 1], paint: keratinPaint('bone', 3) })).reg = 10; }
   },
   quills: (X, p) => {
     const v0 = vT(X, p.t1), v1 = vT(X, p.t0);
     for (let k = 0; k < p.n; k++) {
       const u = 0.5 + (h3(k, 1, X.seed) - 0.5) * 0.55, v = v0 + h3(k, 2, X.seed) * (v1 - v0), q = onTr(X, u, v);
-      const d = nrm(add(q.n, [0, 0, -1.2])), hp = X.body.add(spine({ name: 'quill' + k, at: sub(q.p, scl(q.n, X.W * 0.02)), dir: d, len: X.W * p.len * (0.7 + 0.5 * h3(k, 3, X.seed)), r: X.W * 0.018, skin: X.spine, paint: keratinPaint(p.c[0], p.c[1]) }));
+      const d = nrm(add(q.n, [0, 0, -1.2])), hp = X.body.add(spine({ levels: 0, around: 5, name: 'quill' + k, at: sub(q.p, scl(q.n, X.W * 0.02)), dir: d, len: X.W * p.len * (0.7 + 0.5 * h3(k, 3, X.seed)), r: X.W * 0.018, skin: X.spine, paint: keratinPaint(p.c[0], p.c[1]) }));
       hp.reg = 2; hp.levels = 0; hp.farSkip = true;
     }
   },
@@ -346,9 +346,9 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
   shag: (X, p) => {
     // long locks over the back and down the flanks, each in the colour of the coat at its root; a fringe under the belly
     const T = tileSet(X), seats: LockSeat[] = [], v0 = vT(X, p.t1), v1 = vT(X, p.t0), dens = p.density ?? 1;
-    const rows = Math.max(3, Math.round((v1 - v0) * 34 * dens)), L = p.len * X.W;
+    const rows = Math.max(3, Math.min(26, Math.round((v1 - v0) * 30 * dens))), L = p.len * X.W;
     for (let r = 0; r < rows; r++) {
-      const v = v0 + ((r + 0.5) / rows) * (v1 - v0), across = Math.round(7 + (p.flank ?? 0.5) * 8);
+      const v = v0 + ((r + 0.5) / rows) * (v1 - v0), across = Math.round(5 + (p.flank ?? 0.5) * 6);
       for (let i = 0; i < across; i++) {
         const fu = (i + (r % 2) * 0.5) / across, u = 0.5 + (fu - 0.5) * (0.3 + (p.flank ?? 0.5) * 0.36);
         const q = onTr(X, u + (h3(r, i, X.seed) - 0.5) * 0.02, v + (h3(i, r, X.seed) - 0.5) * 0.01);
@@ -363,8 +363,8 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
   mane: (X, p) => {
     const c = p.c ?? X.spec.coat.back ?? X.spec.coat.base, seats: LockSeat[] = [], L = p.len * X.W;
     const v0 = vT(X, 0.15), v1 = 0.999;
-    for (let r = 0; r < 16; r++) for (let i = 0; i < 9; i++) {
-      const v = v0 + ((r + 0.5) / 16) * (v1 - v0), u = 0.5 + ((i + (r % 2) * 0.5) / 9 - 0.5) * 0.9, q = onTr(X, u, v);
+    for (let r = 0; r < 12; r++) for (let i = 0; i < 8; i++) {
+      const v = v0 + ((r + 0.5) / 12) * (v1 - v0), u = 0.5 + ((i + (r % 2) * 0.5) / 8 - 0.5) * 0.9, q = onTr(X, u, v);
       const back = nrm(sub(onTr(X, u, v - 0.02).p, q.p));
       seats.push({ p: q.p, n: q.n, dir: nrm(add(back, [0, -0.6, 0])), len: L * (0.7 + 0.6 * h3(r, i, X.seed)) * (1 - Math.abs(u - 0.5) * 0.6), wid: L * 0.2, lift: 0.45, droop: 0.45, col: 0, w: X.spine(q.p) });
     }

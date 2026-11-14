@@ -16,7 +16,7 @@ export type CoatPattern = 'plain' | 'stripes' | 'spots' | 'rosettes' | 'bands' |
 /** a drawn surface */
 export interface Surf {
   /** fur locks: length and width of a lock (m), how far they turn down the sides, root and tip steps */
-  fur?: { len: number; width: number; down?: number; tip?: number; bend?: number };
+  fur?: { len: number; width: number; down?: number; tooth?: number; clump?: number };
   /** scales: width (m), kind, overlap */
   scales?: { size: number; kind?: ScaleOpt['kind']; len?: number; ink?: number };
   /** pebbled hide: cell size (m), depth, pores */
@@ -61,14 +61,22 @@ export interface CoatCtx { coat: Coat; F: BodyFrame; seed: number; ground: numbe
 export const coatCtx = (coat: Coat, F: BodyFrame, seed: number, o: { zStop?: number; skullC?: V3 } = {}): CoatCtx => ({ coat, F, seed, ground: 0, zStop: o.zStop ?? Infinity, skullC: o.skullC ?? [0, 0, 0] });
 
 /** where a point lies along the body: arc length s from the tail tip, angle a round from the top (+ toward +x) */
+let _hint = 0;
 export function locate(F: BodyFrame, p: V3): { s: number; a: number; r: number } {
+  // neighbouring texels lie on the same few segments: search a window round the last answer, the whole spine if the
+  // best lands on the window's edge
+  const n = F.pts.length - 1;
   let best = 0, bd = Infinity, bt = 0;
-  for (let k = 0; k + 1 < F.pts.length; k++) {
+  const seg = (k: number) => {
     const A = F.pts[k], B = F.pts[k + 1], ab0 = B[0] - A[0], ab1 = B[1] - A[1], ab2 = B[2] - A[2], L2 = ab0 * ab0 + ab1 * ab1 + ab2 * ab2 || 1e-9;
     const t = cl(((p[0] - A[0]) * ab0 + (p[1] - A[1]) * ab1 + (p[2] - A[2]) * ab2) / L2, 0, 1);
     const dx = p[0] - A[0] - ab0 * t, dy = p[1] - A[1] - ab1 * t, dz = p[2] - A[2] - ab2 * t, d = dx * dx + dy * dy + dz * dz;
     if (d < bd) { bd = d; best = k; bt = t; }
-  }
+  };
+  const h = Math.min(Math.max(0, _hint), n - 1), k0 = Math.max(0, h - 2), k1 = Math.min(n - 1, h + 2);
+  for (let k = k0; k <= k1; k++) seg(k);
+  if ((best === k0 && k0 > 0) || (best === k1 && k1 < n - 1)) for (let k = 0; k < n; k++) if (k < k0 || k > k1) seg(k);
+  _hint = best;
   const A = F.pts[best], B = F.pts[best + 1];
   const c: V3 = [A[0] + (B[0] - A[0]) * bt, A[1] + (B[1] - A[1]) * bt, A[2] + (B[2] - A[2]) * bt];
   const x = F.x[best], y = F.y[best], v: V3 = [p[0] - c[0], p[1] - c[1], p[2] - c[2]];
@@ -213,7 +221,7 @@ export function coatPaint(C: CoatCtx, part: PartKind, o: { flow?: number; extra?
       if (!any) continue;
       const mask = (i: number) => zm[zone[i]];
       if (sf.fur) {
-        px.pelt({ len: sf.fur.len, width: sf.fur.width, down: sf.fur.down ?? 0.5, flow, mask, seed: seed + 3 });
+        px.pelt({ len: sf.fur.len, width: sf.fur.width, down: sf.fur.down ?? 0.5, flow, mask, seed: seed + 3, tooth: sf.fur.tooth, clump: sf.fur.clump });
         // each lock wears the colour found at its root, so pattern and belly edges run round the locks
         const LS = px.lockS!, w = px.w, q: V3 = [0, 0, 0];
         for (let i = 0; i < n; i++) {

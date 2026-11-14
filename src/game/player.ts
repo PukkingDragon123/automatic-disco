@@ -871,6 +871,8 @@ export class Player implements GolemTarget, TouchHost {
     }
     // water
     const wet = R.isWater(px, pz) || R.isWater(this.x, this.z);
+    // underwater the golem harvests through the dive tractor (src/ocean/dive.ts), not the siphon
+    if (wet && (this.g as any).ocean?.dive?.under) return null;
     if (wet) {
       const at = new THREE.Vector3(px, gy(px, pz) + 0.35, pz);
       return this.has('siphon') ? mk('siphon', 'SIPHON WATER', true, at, { res: 'water', rate: 3 }) : mk('siphon', 'NEEDS WATER SIPHON', false, at);

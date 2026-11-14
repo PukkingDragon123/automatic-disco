@@ -11,11 +11,10 @@ export const stiltwool: SpeciesFn = (d, rig) => {
     legs: { fore: { kind: 'stilt', r: 0.75 }, hind: { kind: 'stilt', r: 0.8 } },
     coat: {
       base, belly, bellyArc: 0.8,
-      surf: { body: fur(W, 1.4, 0.8), limb: hide(W, 0.5), sock: hide(W, 0.45, 0.6), face: fur(W, 0.45), muzzle: hide(W, 0.3) },
+      surf: { body: { fur: { len: 0.07 * W, width: 0.075 * W, down: 0.8, tooth: 1.0, clump: 0.3 }, pebbles: { size: 0.085 * W, depth: 1.1 } }, limb: hide(W, 0.5), sock: hide(W, 0.45, 0.6), face: fur(W, 0.45), muzzle: hide(W, 0.3) },
       socks: { c: ['basalt', 2], h: rig.dims.legLen * 0.88 }, face: { muzzle: ['hide', 2], nose: ['ink', 2] }, horn: ['basalt', 1],
     },
     parts: [
-      { k: 'fleece', t0: -0.25, t1: 1.08, puff: 1.35 },
       { k: 'shag', t0: -0.1, t1: 1.05, len: 0.3, density: 0.7, fringe: 1.5, flank: 0.9 },
       { k: 'tuft', len: 0.25 },
     ],

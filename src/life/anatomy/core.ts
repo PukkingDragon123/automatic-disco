@@ -246,16 +246,22 @@ export class Body {
   /** subdivide, chart, pack, rasterise, occlude, paint and emit everything */
   build(o: { den?: number; maxScale?: number; occlusion?: boolean; snap?: (d: Uint8ClampedArray) => void } = {}): { geo: THREE.BufferGeometry; tex: THREE.DataTexture; tris: number; scale: number } {
     if (this.quick) return this.buildQuick();
+    const T = (globalThis as { __bodyTimes?: Record<string, number> }).__bodyTimes, now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    let t0 = now(); const lap = (k: string) => { if (T) { const t = now(); T[k] = (T[k] ?? 0) + t - t0; t0 = t; } };
     for (const p of this.pieces) { this.finalize(p); p.ch = (p.charts ?? defaultCharts)(p); surfaceInfo(p); }
+    lap('subdiv');
     if (o.occlusion !== false) occlusion(this.pieces.filter((p) => !p.noOcc));
+    lap('occl');
     const den = o.den ?? this.den;
     for (const p of this.pieces) for (const ch of p.ch!) { ch.reg = this.page.reg(p.name + '.' + ch.name, Math.max(4, ch.wm * den), Math.max(4, ch.hm * den), ch.k); ch.reg.cut = !!p.cut; }
     const scale = this.page.pack(o.maxScale ?? 3);
     this.den = den * scale;
     for (const p of this.pieces) rasterPiece(p);
-    for (const p of this.pieces) for (const ch of p.ch!) p.paint(ch, p, this);
+    lap('raster');
+    for (const p of this.pieces) for (const ch of p.ch!) { p.paint(ch, p, this); if (T) lap('paint:' + p.name.replace(/[0-9_lrs.-]+$/, '')); }
     o.snap?.(this.page.pc.data as unknown as Uint8ClampedArray);
     this.page.finish();
+    lap('finish');
     for (const p of this.pieces) { const t0 = this.B.tris, v0 = this.B.P.length / 3; emitPiece(this.B, p, this.gid++); if (p.reg) this.tagRegs(v0, p.reg); const k = p.name.replace(/[0-9_lrs.-]+$/, ''); this.stats.set(k, (this.stats.get(k) ?? 0) + this.B.tris - t0); }
     // the surface buffers are big: let them go
     for (const p of this.pieces) for (const ch of p.ch!) ch.gb = undefined;

@@ -3,6 +3,7 @@
 // lights blink, the nozzles idle, and shuttles ply in and out of the bay: one inbound on a long curve, one
 // outbound climbing away, one crossing far off. Also the hull's rough boxes, for things to bounce off.
 import * as THREE from 'three';
+import { CARRIER_BOXES } from './deployHull';
 import { buildCarrier, type Carrier } from './deployShip';
 import { Bin, lit, lamp } from './deployKit';
 import { RAMPS } from '../art/palette';
@@ -10,10 +11,8 @@ import { qualityProfile } from '../settings';
 
 const V3 = THREE.Vector3;
 /** ship-local boxes (centre, half size): the hull, the beak over the bay mouth, the island, the side tanks, the stern */
-const HULL_BOXES: [number, number, number, number, number, number][] = [
-  [0, -1.5, -11, 18.5, 17.5, 75], [0, 4, 78, 8, 6, 14], [11.5, 26, 6, 4.5, 12, 7],
-  [-21.5, -6, -12, 4.4, 4.4, 50], [21.5, -6, -12, 4.4, 4.4, 50], [0, -1, -82, 15, 13, 6],
-];
+// collision boxes for the apple come from the hull itself, so they always match the model
+const HULL_BOXES = CARRIER_BOXES;
 
 interface Shuttle { g: THREE.Group; path: THREE.CubicBezierCurve3; dur: number; t: number; wait: number; nav: THREE.MeshBasicMaterial[]; glow: THREE.MeshBasicMaterial; inbound: boolean }
 

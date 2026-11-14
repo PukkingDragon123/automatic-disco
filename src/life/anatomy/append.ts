@@ -126,7 +126,7 @@ export function bulbs(o: { name: string; seats: { p: V3; n: V3; r: number; h?: n
   return { name: o.name, m, grids, levels: o.levels ?? 1, skin: o.skin, paint: o.paint, k: o.k, noOcc: true };
 }
 /** a quill or thorn: a short straight cone */
-export function spine(o: { name: string; at: V3; dir: V3; len: number; r: number; skin: (p: V3) => Wt; paint: Paint; k?: number }) {
-  return stalk({ name: o.name, path: [sub(o.at, scl(nrm(o.dir), o.r)), o.at, add(o.at, scl(nrm(o.dir), o.len * 0.5)), add(o.at, scl(nrm(o.dir), o.len))], r: (t) => o.r * (1 - t * 0.96) + 0.001, around: 6, skin: o.skin, paint: o.paint, levels: 1, k: o.k });
+export function spine(o: { name: string; at: V3; dir: V3; len: number; r: number; skin: (p: V3) => Wt; paint: Paint; k?: number; levels?: number; around?: number }) {
+  return stalk({ name: o.name, path: [sub(o.at, scl(nrm(o.dir), o.r)), o.at, add(o.at, scl(nrm(o.dir), o.len * 0.5)), add(o.at, scl(nrm(o.dir), o.len))], r: (t) => o.r * (1 - t * 0.96) + 0.001, around: o.around ?? 6, skin: o.skin, paint: o.paint, levels: o.levels ?? 1, k: o.k });
 }
 export { sub, add, scl, nrm, crs, lerp };

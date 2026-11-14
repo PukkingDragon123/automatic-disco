@@ -11,11 +11,10 @@ export const woolpuff: SpeciesFn = (d, rig) => {
     legs: { fore: { kind: 'paw', r: 1.0 }, hind: { kind: 'paw', r: 1.0 } },
     coat: {
       base, belly, bellyArc: 0.7,
-      surf: { body: fur(W, 1.5, 0.8), limb: fur(W, 0.8), face: fur(W, 0.6), muzzle: hide(W, 0.3), ear: fur(W, 0.35) },
+      surf: { body: { fur: { len: 0.08 * W, width: 0.085 * W, down: 0.8, tooth: 1.0, clump: 0.3 }, pebbles: { size: 0.1 * W, depth: 1.1 } }, limb: fur(W, 0.8), face: fur(W, 0.6), muzzle: hide(W, 0.3), ear: fur(W, 0.35) },
       face: { muzzle: sh(base, -1), nose: ['ink', 2] }, claw: ['basalt', 2],
     },
     parts: [
-      { k: 'fleece', t0: -0.4, t1: 1.15, puff: 1.6 },
       { k: 'shag', t0: -0.3, t1: 1.1, len: 0.38, density: 0.9, fringe: 1.2, flank: 1.0 },
     ],
   };

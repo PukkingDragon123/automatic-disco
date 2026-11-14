@@ -248,7 +248,7 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
       rig.bones[ei].pos = T3(sub(root, head)); rest[ei] = root;
       const dir = nrm([s * (E.out ?? 0.45), E.up ?? 1, -(E.back ?? 0.2)]), face = nrm([s * 0.55, 0.1, 1]);
       const len = E.len * hh, wid = E.wid * hw;
-      body.add(pinna({ name: 'ear' + k, root, dir, face, len, wid, cup: E.cup, shape: E.shape, tipCurl: E.curl, bone: ei, headBone: iH, levels: small ? 0 : 1, paint: earPaintWith(C, root, dir, face, len) }));
+      body.add(pinna({ name: 'ear' + k, root, dir, face, len, wid, cup: E.cup, shape: E.shape, tipCurl: E.curl, bone: ei, headBone: iH, levels: E.len > 1 ? 1 : 0, paint: earPaintWith(C, root, dir, face, len) }));
     });
   }
   // ---------------------------------------------------------------- the nose, teeth, tongue, whiskers, throat
@@ -310,15 +310,15 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
     const Lg = limb({
       name: 'leg' + lg.pair + (s > 0 ? 'r' : 'l'), side: s, hip: J[0], knee: J[1], hock: three ? J[2] : undefined, sole: J[J.length - 1], tj,
       bones: { parent: rig.bones[B[0]].parent, up: B[0], lo: B[1], mid: three ? B[2] : undefined, foot: B[B.length - 1], flex: lg.flex },
-      rings: legRings(LS.kind, fore, r, tj, segL, fh), foot, around: small ? 8 : 10, levels: 1, k: 1,
+      rings: legRings(LS.kind, fore, r, tj, segL, fh), foot, around: L >= 2.5 ? 8 : 12, levels: L >= 2.5 ? 1 : 0, k: 1,
       paint: coatPaint(C, 'limb', { inner: [-s, 0, 0], hipY: J[0][1] }), clawPaint,
     });
     Lg.skin.reg = 8; Lg.toes.reg = 8; Lg.claws.reg = 8; Lg.toes.levels = 0; Lg.claws.levels = 0; Lg.claws.farSkip = true;
     Lg.toes.paint = coatPaint(C, 'foot');
     body.add(Lg.skin); if (foot.toes.length) { body.add(Lg.toes); body.add(Lg.claws); }
     if (LS.kind === 'hoof' || LS.kind === 'stilt') {
-      const hp2 = body.add(hoof({ name: 'hoof' + lg.pair + (s > 0 ? 'r' : 'l'), sole: J[J.length - 1], r: r * (LS.kind === 'stilt' ? 0.3 : 0.4), h: fh, side: s, bone: B[B.length - 1], cleft: LS.cleft !== false, paint: keratinPaint(spec.coat.horn?.[0] ?? 'basalt', spec.coat.horn?.[1] ?? 2, { rings: fh * 0.18 }), around: small ? 8 : 10 }));
-      hp2.reg = 8;
+      const hp2 = body.add(hoof({ name: 'hoof' + lg.pair + (s > 0 ? 'r' : 'l'), sole: J[J.length - 1], r: r * (LS.kind === 'stilt' ? 0.3 : 0.4), h: fh, side: s, bone: B[B.length - 1], cleft: LS.cleft !== false, paint: keratinPaint(spec.coat.horn?.[0] ?? 'basalt', spec.coat.horn?.[1] ?? 2, { rings: fh * 0.18 }), around: 8 }));
+      hp2.reg = 8; hp2.levels = 0;
     }
     legs.push({ lg, frame: Lg.frame, r, kind: LS.kind });
   }
