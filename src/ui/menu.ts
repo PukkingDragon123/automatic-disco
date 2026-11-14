@@ -148,7 +148,7 @@ export class MenuScreen implements Screen {
     const sun = new THREE.DirectionalLight(0xf0e2c8, 3.0); sun.position.copy(SUN).multiplyScalar(40); sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024); const sc = sun.shadow.camera as THREE.OrthographicCamera; sc.left = -7; sc.right = 7; sc.top = 6; sc.bottom = -6; sc.near = 10; sc.far = 80; sun.shadow.bias = -0.001;
     this.scene.add(sun, sun.target);
-    const fill = new THREE.DirectionalLight(0x9aaacc, 0.85); fill.position.set(-4, 3, 10); this.scene.add(fill);
+    const fill = new THREE.DirectionalLight(0xa8b4cc, 1.25); fill.position.set(-4, 3, 10); this.scene.add(fill);
     const planetGlow = new THREE.PointLight(0x7aa0c8, 20, 34, 1.4); planetGlow.position.set(-4.5, -6.5, -5); this.scene.add(planetGlow);
     this.glowLight = new THREE.PointLight(0x6aa89a, 3.5, 7, 1.6);
     // the work lamp: one warm light that swings onto whichever sign you point at
@@ -192,9 +192,9 @@ export class MenuScreen implements Screen {
     add(9, bottom(this.signs[3], 1), () => this.seedTag.eye(0), 0.03, 0.06);
     for (let i = 0; i < 4; i++) { const s = this.signs[i]; add(16, () => this.meteor.anchor(i + 1), () => s.root.localToWorld(new V3(-s.w / 2 - 0.02, 0.05, 0)), 0.22, 0.07); }
     // the settings cog, with its own little tag
-    this.gear = makeGear(0.5); this.gear.mesh.position.set(5.05, -2.35, 1.4); this.scene.add(this.gear.mesh);
+    this.gear = makeGear(0.5); this.gear.mesh.position.set(4.75, -2.15, 1.4); this.scene.add(this.gear.mesh);
     this.gearTag = makeSign('settings', 'SETTINGS', 1.15, 0.3, 91, { key: 'O', tip: 'Volume, graphics quality, UI scale, screen shake.' });
-    this.gearTag.rest.set(5.05, -3.05, 1.45); this.gearTag.pos.copy(this.gearTag.rest); this.scene.add(this.gearTag.root);
+    this.gearTag.rest.set(4.75, -2.85, 1.45); this.gearTag.pos.copy(this.gearTag.rest); this.scene.add(this.gearTag.root);
     add(4, () => this.gear.mesh.position.clone().add(new V3(0, -0.3, 0)), () => this.gearTag.eye(0), 0.01, 0.05); add(4, () => this.gear.mesh.position.clone().add(new V3(0, -0.3, 0)), () => this.gearTag.eye(1), 0.01, 0.05);
     // the archive: claimed worlds hanging in a row, each on its iron tag
     opts.archive.slice(-7).forEach((e, i) => {
@@ -503,7 +503,7 @@ export class MenuScreen implements Screen {
     this.gearHover += ((this.hoverGear ? 1 : 0) - this.gearHover) * Math.min(1, dt * 8);
     this.gearSpin *= Math.exp(-dt * 1.5);
     this.gear.mesh.rotation.z -= dt * (0.25 + this.gearHover * 2.2 + this.gearSpin);
-    this.gear.mesh.rotation.y = Math.sin(t * 0.4) * 0.15 - 0.25; this.gear.mesh.position.y = -2.35 + Math.sin(t * 0.6) * 0.05;
+    this.gear.mesh.rotation.y = Math.sin(t * 0.4) * 0.15 - 0.25; this.gear.mesh.position.y = -2.15 + Math.sin(t * 0.6) * 0.05;
     this.fx.update(dt, innerHeight, this.cam.fov);
     // the camera: a drift and a lean toward the pointer, framed by the mode
     if (this.cine.active) { this.cine.apply(this.cam); return; }

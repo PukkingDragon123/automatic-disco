@@ -2,6 +2,8 @@
 // a small knob that turns the ability wheel), one-finger drag to swing the camera round, pinch to zoom and a
 // two-finger twist to rotate. Everything is pixel art in the console's style: riveted gunmetal bezels, painted
 // caps with stencilled labels, little lamps that light when the button can do something. Hidden on desktop.
+// body.touch-ui carries --tc-safe-left / --tc-safe-bottom (the stick's corner) and --tc-safe-right /
+// --tc-safe-bottom-right (the buttons') for other UI to keep clear; the objectives are parked and collapsed here.
 import { Pix, GM, RD, PH, AM, CR, INK, BK, OL, dv, text, textW, mixc } from './machine';
 import { iconCanvas } from './pixelart';
 import { S } from './kit';
@@ -152,6 +154,13 @@ const CSS = `
 .tc-lamp { position: absolute; background-repeat: no-repeat; image-rendering: pixelated; pointer-events: none; }
 .tc-lab { position: absolute; image-rendering: pixelated; pointer-events: none; transform: translateX(-50%); white-space: nowrap; }
 .tc-hide { display: none !important; }
+/* the corners the controls own: other UI keeps out of them (body.touch-ui sets --tc-safe-left/-bottom/-right) */
+body.touch-ui .hud-obj { position: fixed !important; left: var(--tc-obj-left, 6px) !important; top: var(--tc-obj-top, 64px) !important; right: auto !important; bottom: auto !important;
+  width: auto !important; max-width: min(46vw, calc(150px * var(--s))) !important; max-height: calc(13px * var(--s)); overflow: hidden; z-index: 26; pointer-events: auto !important; cursor: pointer;
+  font-size: calc(10px * var(--s)) !important; transform-origin: top left; transition: max-height 160ms steps(4); }
+body.touch-ui .hud-obj.tc-open { max-height: 52vh; }
+body.touch-ui .hud-obj h4::after { content: ' \25BE'; opacity: 0.7; }
+body.touch-ui .hud-obj.tc-open h4::after { content: ' \25B4'; }
 `;
 
 // ------------------------------------------------------------------ controls
@@ -237,7 +246,38 @@ export class TouchControls {
     addEventListener('pointerup', this.gUp, true);
     addEventListener('pointercancel', this.gUp, true);
     addEventListener('resize', this.restStick);
+    addEventListener('resize', this.safe);
+    // the objectives collapse to one line on touch: a tap opens them
+    document.addEventListener('pointerup', this.objTap, true);
+    this.safe();
   }
+  private objTap = (e: PointerEvent) => {
+    const o = (e.target as HTMLElement | null)?.closest?.('.hud-obj') as HTMLElement | null;
+    if (o && document.body.classList.contains('touch-ui')) o.classList.toggle('tc-open');
+  };
+  private safeT = 0;
+  /** publish the controls' corners as CSS variables and park the objectives clear of the stick: to the right of the
+   *  minimap when there is room, else under it */
+  private safe = () => {
+    const r = document.body.style, zb = this.zone.getBoundingClientRect(), pb = this.pad.getBoundingClientRect();
+    const btns = [...this.pad.querySelectorAll('.tc-btn')].map((b) => b.getBoundingClientRect());
+    const padW = btns.length ? innerWidth - Math.min(...btns.map((b) => b.left)) : pb.width, padH = btns.length ? innerHeight - Math.min(...btns.map((b) => b.top)) : pb.height;
+    const base = this.base.getBoundingClientRect();
+    r.setProperty('--tc-safe-left', Math.round(base.right + 8) + 'px');
+    r.setProperty('--tc-safe-bottom', Math.round(innerHeight - base.top + 8) + 'px');
+    r.setProperty('--tc-safe-right', Math.round(padW + 8) + 'px');
+    r.setProperty('--tc-safe-bottom-right', Math.round(padH + 8) + 'px');
+    void zb;
+    const mm = document.querySelector('.hud .mm, .hud-mm, canvas.mm') as HTMLElement | null, m = mm?.getBoundingClientRect();
+    let left = 6, top = Math.round(30 * S);
+    if (m && m.width > 0) {
+      if (innerWidth - m.right > 200) { left = Math.round(m.right + 10); top = Math.round(m.top); }
+      else { left = Math.round(m.left); top = Math.round(m.bottom + 8); }
+    }
+    // never down into the stick's corner
+    top = Math.min(top, Math.max(4, base.top - 16 * S - 8));
+    r.setProperty('--tc-obj-left', left + 'px'); r.setProperty('--tc-obj-top', top + 'px');
+  };
   private press(b: Btn, down: (b: Btn) => void, up: (b: Btn) => void, move?: (b: Btn) => void) {
     const R = (b.D / 2) * S;
     b.e.addEventListener('pointerdown', (e) => {
@@ -336,6 +376,7 @@ export class TouchControls {
   /** refresh lamps, the use label and the power icon (cheap; only touches the DOM on change) */
   update() {
     if (!this.active) return;
+    if ((this.safeT += 1) % 60 === 0) this.safe();
     const L = this.host.labels();
     const lamp = (b: Btn, st: 0 | 1 | 2) => { const s = String(st); if (b.lampSt !== s) { b.lampSt = s; b.lamp.style.backgroundPositionX = `${-st * 5 * S / Q * 1.6}px`; } };
     const dead = (b: Btn, d: boolean) => { const s = d ? 'd' : ''; if (b.st !== s) { b.st = s; if (b.id === null) b.e.style.backgroundPositionX = d ? `${-b.D * 2 * S}px` : ''; } };
@@ -366,7 +407,9 @@ export class TouchControls {
   dispose() {
     removeEventListener('pointerdown', this.gDown, true); removeEventListener('pointermove', this.gMove, true);
     removeEventListener('pointerup', this.gUp, true); removeEventListener('pointercancel', this.gUp, true);
-    removeEventListener('resize', this.restStick);
+    removeEventListener('resize', this.restStick); removeEventListener('resize', this.safe);
+    document.removeEventListener('pointerup', this.objTap, true);
+    for (const v of ['--tc-safe-left', '--tc-safe-bottom', '--tc-safe-right', '--tc-safe-bottom-right', '--tc-obj-left', '--tc-obj-top']) document.body.style.removeProperty(v);
     this.zone.remove(); this.pad.remove(); this.style.remove();
     document.body.classList.remove('touch-ui');
   }

@@ -234,9 +234,9 @@ export function signArt(label: string, w: number, h: number, seed: number, o: { 
       const X = x0 + x, Y = Math.round(y0 + y + (x - M.w / 2) * tilt);
       if (at(x, y)) {
         // paint density: heavy in the centre of the spray pass, thinner toward the ends, the odd skipped grain
-        const dens = 0.78 + (fbm(X / 31 + seed, Y / 17, 2, 2) - 0.5) * 0.7 - Math.abs(x / M.w - 0.5) * 0.25 * thin;
-        if (h3(X, Y, seed + 3) > dens + 0.18) continue;
-        C.setHex(p.get(X, Y) < 0 ? 0x333333 : p.get(X, Y)).lerp(base, Math.max(0.35, Math.min(0.97, dens)));
+        const dens = 0.92 + (fbm(X / 31 + seed, Y / 17, 2, 2) - 0.5) * 0.5 - Math.abs(x / M.w - 0.5) * 0.18 * thin;
+        if (h3(X, Y, seed + 3) > dens + 0.12) continue;
+        C.setHex(p.get(X, Y) < 0 ? 0x333333 : p.get(X, Y)).lerp(base, Math.max(0.55, Math.min(0.98, dens)));
         p.set(X, Y, C.getHex());
       } else if (!o.emboss) {
         // overspray: a speckle that thins out over a few pixels from the letter edge
@@ -293,6 +293,13 @@ export interface Sign {
 export function makeSign(id: string, label: string, w: number, h: number, seed: number, o: { sub?: string; size?: number; font?: string; key?: string; tip?: string } = {}): Sign {
   const tw = Math.round(w * 180), th = Math.round(h * 180);
   const art = signArt(label, tw, th, seed, { sub: o.sub, size: o.size, font: o.font });
+  const face = o.font ?? 'Superwide';
+  if (!document.fonts.check(`20px ${face}`) || !document.fonts.check('14px VT')) {
+    Promise.all([document.fonts.load(`40px ${face}`), document.fonts.load('14px VT')]).then(() => {
+      const a = signArt(label, tw, th, seed, { sub: o.sub, size: o.size, font: o.font });
+      mat.map?.dispose(); mat.map = a.map; mat.needsUpdate = true; backM.map?.dispose(); backM.map = a.back; backM.needsUpdate = true;
+    }).catch(() => {});
+  }
   const flag: GFlag = { value: 1 };
   const mat = new THREE.MeshLambertMaterial({ map: art.map }); gbuf(mat, flag);
   const backM = new THREE.MeshLambertMaterial({ map: art.back }); gbuf(backM, flag);

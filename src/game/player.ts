@@ -1071,7 +1071,8 @@ export class Player implements GolemTarget, TouchHost {
     const touch = !!this.touch?.active;
     if (this.alive && this.started && c && c.kind !== 'none' && !this.g.harvest.blocking) {
       const label = ch ? (c.label === '#graft' ? 'GRAFTING' : c.label === '#sow' ? 'PRESSING SEED' : c.kind === 'intake' ? 'DEVOURING' : c.label) : c.label;
-      L.prompt = { x: c.at.x, y: c.at.y, z: c.at.z, key: touch ? '' : c.kind === 'drop' ? 'E' : 'E', text: label, ok: c.ok, prog: ch?.prog };
+      // the prompt sits just under the golem (the popups and speech above it never cover it)
+      L.prompt = { x: this.x, y: this.y, z: this.z, key: touch ? '' : 'E', text: label, ok: c.ok, prog: ch?.prog };
       if (this.held && !ch) L.prompt.text = touch ? 'THROW / DROP' : 'LMB THROW · E DROP';
     } else L.prompt = null;
     const showBar = this.alive && this.started && (this.hull < this.hullMax - 0.5 || this.g.world.time - this.lastHurt < 3);
