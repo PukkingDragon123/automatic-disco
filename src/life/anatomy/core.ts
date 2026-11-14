@@ -217,6 +217,9 @@ export class Body {
    *  on a tiny page of ramp rows, each face one ramp (its piece's tone, the belly's below a line) and each vertex a
    *  step of it by the light, so the far model still reads as the animal in hard-stepped planes */
   static quick = false;
+  /** build only the pieces this keeps (part icons: everything is still built and seated, only these are charted,
+   *  painted and emitted) */
+  static keepPiece: ((p: Piece) => boolean) | null = null;
   readonly quick: boolean;
   /** subdivision steps of the quick build (titans 1, ordinary creatures 0) */
   quickLevels = 1;
@@ -246,6 +249,7 @@ export class Body {
   /** subdivide, chart, pack, rasterise, occlude, paint and emit everything */
   build(o: { den?: number; maxScale?: number; occlusion?: boolean; snap?: (d: Uint8ClampedArray) => void } = {}): { geo: THREE.BufferGeometry; tex: THREE.DataTexture; tris: number; scale: number } {
     if (this.quick) return this.buildQuick();
+    if (Body.keepPiece) { const k = Body.keepPiece; this.pieces = this.pieces.filter((p) => p.reg !== undefined && k(p)); }
     const T = (globalThis as { __bodyTimes?: Record<string, number> }).__bodyTimes, now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
     let t0 = now(); const lap = (k: string) => { if (T) { const t = now(); T[k] = (T[k] ?? 0) + t - t0; t0 = t; } };
     for (const p of this.pieces) { this.finalize(p); p.ch = (p.charts ?? defaultCharts)(p); surfaceInfo(p); }

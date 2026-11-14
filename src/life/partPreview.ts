@@ -5,7 +5,10 @@
 // small modelled symbol instead: a heart, a coiled gut, an egg clutch.
 import * as THREE from 'three';
 import type { SpeciesModel } from './creatureMesh';
-import type { Rig } from './morph';
+import { buildRig, type Rig, type V3 } from './morph';
+import type { Design } from './design';
+import { Body } from './anatomy/core';
+import { isAnatomy, sculptAnatomy } from './titans/builders';
 import { gbuf } from '../gfx/gbuf';
 import { makeRamp, mixHex } from '../limbo/gfx/pixel';
 import { hash01 } from '../core/rand';
@@ -155,6 +158,27 @@ export function partGeometry(m: SpeciesModel, cut: PartCut): THREE.BufferGeometr
   out.computeVertexNormals();
   normalize(out);
   return out;
+}
+
+/**
+ * A part icon's model built straight from the anatomy library: the donor's body is assembled as usual (so the part
+ * seats where it grows), but only the pieces of the cut's regions are charted, painted and emitted, then the cut is
+ * taken (one leg, one wing side) and centred at unit radius. Anatomy species only; null for the old sculptor's.
+ */
+export function partModel(d: Design, cut: PartCut): { geo: THREE.BufferGeometry; tex: THREE.DataTexture } | null {
+  if (!isAnatomy(d)) return null;
+  const rig = buildRig(d), rest: V3[] = rig.bones.map(() => [0, 0, 0]);
+  rig.bones.forEach((b, i) => { const p = b.parent >= 0 ? rest[b.parent] : [0, 0, 0]; rest[i] = [p[0] + b.pos[0], p[1] + b.pos[1], p[2] + b.pos[2]]; });
+  const want = cut.whole ? null : new Set(cut.regions);
+  // the back's plates and crests count as the torso, eyes and feelers as the head
+  const keep = (reg: number) => !want || want.has(reg) || (want.has(TORSO) && reg === BACK);
+  Body.keepPiece = (pc) => keep(pc.reg ?? 0);
+  let o: ReturnType<typeof sculptAnatomy>;
+  try { o = sculptAnatomy(d, rig, rest); } finally { Body.keepPiece = null; }
+  const m = { geo: o.geo, tex: o.tex, rig, restWorld: rest } as unknown as SpeciesModel;
+  const geo = partGeometry(m, cut.oneSide ? cut : { regions: [], whole: true });
+  o.geo.dispose();
+  return geo ? { geo, tex: o.tex } : null;
 }
 
 /** centre on the bounding box and scale to unit radius */

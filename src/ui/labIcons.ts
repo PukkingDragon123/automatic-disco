@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { buildSpeciesModel } from '../life/creatureMesh';
 import { GENE } from '../life/genes';
 import type { Design } from '../life/design';
-import { partGeometry, partMaterial, symbolFor, symbolMaterial, regUniforms, SYMBOLIC, type PartCut, type RegU } from '../life/partPreview';
+import { partGeometry, partModel, partMaterial, symbolFor, symbolMaterial, regUniforms, SYMBOLIC, type PartCut, type RegU } from '../life/partPreview';
 import { GN_DECL } from '../gfx/gbuf';
 import { tabOf, donorFor, TABS, REG, type LabCtx, type TabId } from './labRules';
 import { CAT_COL } from '../game/dnaHarvest';
@@ -98,11 +98,16 @@ export class LabIcons {
       if (!s.gene || SYMBOLIC.has(id) || !GENE[id] || isBio(id)) { const sym = s.gene && isBio(id) ? bioSymbol(id) : symbolFor(s.gene ? id : 'unknown'); b = { geo: sym.geo, tex: sym.tex, sym: true, used: 0 }; }
       else {
         const donor = donorFor(this.ctx, (s as Slot & { base: Design }).base, id);
-        const m = buildSpeciesModel(donor);
-        const tab = tabOf(id);
-        const geo = partGeometry(m, cutFor(tab, id)) ?? partGeometry(m, { regions: [], whole: true })!;
-        m.geo.dispose(); m.depthMat.dispose();
-        b = { geo, tex: m.tex, sym: false, used: 0 };
+        const tab = tabOf(id), cut = cutFor(tab, id);
+        // anatomy species: the part itself, built from the library generators; else cut from the old sculpt
+        const pm = partModel(donor, cut) ?? partModel(donor, { regions: [], whole: true });
+        if (pm) b = { geo: pm.geo, tex: pm.tex, sym: false, used: 0 };
+        else {
+          const m = buildSpeciesModel(donor);
+          const geo = partGeometry(m, cut) ?? partGeometry(m, { regions: [], whole: true })!;
+          m.geo.dispose(); m.depthMat.dispose();
+          b = { geo, tex: m.tex, sym: false, used: 0 };
+        }
       }
       this.cache.set(s.key, b);
       this.trim();

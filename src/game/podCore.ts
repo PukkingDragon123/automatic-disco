@@ -3,11 +3,14 @@
 // skid, hatch open, steaming. Nothing is cleared: the jungle stands all round it, only the plants right under the
 // pod are pushed aside. Small fires burn where it hit (a few grass patches, the smouldering skid, the heat shield
 // still smoking) with a flickering light, and burn out over a minute or two, leaving the ground scorched
-// (terrain.scorch: ash and embers that grow back over a few days) and a few scorched plants. The parachute lies draped beside it.
+// (terrain.scorch: ash and embers that grow back over a few days) and a few scorched plants. The parachute, cut loose at
+// touchdown, lies crumpled downwind over the shrubs, its lines and risers trailing back to the nose cap, flapping a little.
 import * as THREE from 'three';
 import type { Game } from './game';
 import { makePod, type Pod } from '../ui/deployPod';
-import { Bin, lit, mesh, hash, TAU, V3, type V } from '../ui/deployKit';
+import { Bin, lit, mesh, box, ptex, hash, TAU, V3, type V } from '../ui/deployKit';
+import { Pix } from '../ui/machine';
+import { RAMPS } from '../art/palette';
 import { gbuf } from '../gfx/gbuf';
 import { vfx2d } from './vfx2d';
 
@@ -57,26 +60,162 @@ function charDecal(bin: Bin, g: Game, cx: number, cz: number, dirX: number, dirZ
   const me = mesh(bin, geo, m, g.world.scene, 0, 0, 0, false); me.receiveShadow = true; me.renderOrder = 1;
   return me;
 }
-/** the parachute where it fell: a flattened, wrinkled canopy in cream and oxide-red gores, lines toward the pod */
-function drapedChute(bin: Bin, g: Game, x: number, z: number, toX: number, toZ: number) {
-  const R = g.region, G = 12, rows = 4, Rad = 2.6, pos: number[] = [], col: number[] = [];
-  const cA = new THREE.Color(0xd8cfb8), cB = new THREE.Color(0x9a3a2a);
-  const gy = (px: number, pz: number) => R.groundSmooth(Math.min(R.N - 0.5, Math.max(0.5, px)), Math.min(R.N - 0.5, Math.max(0.5, pz)));
-  for (let gi = 0; gi < G; gi++) {
-    const a0 = (gi / G) * TAU, a1 = ((gi + 1) / G) * TAU, cc = gi % 2 ? cB : cA;
-    for (let r = 0; r < rows; r++) {
-      const P = (rr: number, a: number) => { const k = rr / rows, w = 1 + Math.sin(a * 5 + rr) * 0.12; const px = x + Math.cos(a) * Rad * k * w * 1.25, pz = z + Math.sin(a) * Rad * k * w * 0.85; return [px, gy(px, pz) + 0.1 + Math.sin(a * 3 + rr * 2) * 0.12 * k + (1 - k) * 0.3, pz]; };
-      const p00 = P(r, a0), p01 = P(r, a1), p10 = P(r + 1, a0), p11 = P(r + 1, a1);
-      pos.push(...p00, ...p10, ...p11, ...p00, ...p11, ...p01); for (let k = 0; k < 6; k++) col.push(cc.r, cc.g, cc.b);
+/**
+ * The canopy's cloth, 112 x 48 px over ~6 x 2.7 m (about 18 px a metre): u runs skirt -> apex, v across. Six gores in
+ * weathered international orange and sun-bleached white, each gore cut in five panels that faded unevenly, sewn with
+ * darker tapes; a doubled hem at the skirt and the vent band at the apex; dirt and mud worked in from the edges that lay
+ * on the ground (Bayer dither, two steps), a few mildew specks, a singe and a burned-through hole near the skirt where
+ * it dragged over the burning skid, and a stencilled inspection patch.
+ */
+function chutePix(seed: number): Pix {
+  const W = 112, H = 48, p = new Pix(W, H), GORES = 6;
+  const OR = RAMPS.rust, WH = RAMPS.paper, SO = RAMPS.soil, MO = RAMPS.moss, BA = RAMPS.basalt, INK = RAMPS.ink;
+  const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const u = x / (W - 1), v = y / (H - 1), th = (BAYER[(y & 3) * 4 + (x & 3)] + 0.5) / 16;
+    const gv = v * GORES + Math.sin(u * 6.5 + seed) * 0.18 + Math.sin(u * 17 + seed * 2) * 0.05, gi = Math.floor(gv), gf = gv - gi;
+    const row = Math.min(4, Math.floor(u * 5)), orange = (gi & 1) === 0, fade = hash(gi + 7, row, seed);
+    const RR = orange ? OR : WH;
+    let li = orange ? (fade < 0.3 ? 5 : fade < 0.85 ? 4 : 3) : (fade < 0.55 ? 5 : 4);
+    // the weave catching light in long streaks (dithered half step)
+    if (hash(x >> 3, y, seed + 3) > 0.82 && th < 0.5) li = Math.min(RR.length - 1, li + 1);
+    // seams: radial tapes on the gore edges, cross seams between panels; the hem and the vent band
+    const seam = gf < 0.13 || gf > 0.95, cross = Math.abs(u * 5 - Math.round(u * 5)) < 0.03 && u > 0.05 && u < 0.95;
+    if (seam) li = Math.max(1, li - 2); else if (cross) li = Math.max(1, li - 1);
+    if (x < 3) li = x === 2 ? Math.max(1, li - 1) : 2;
+    if (x > W - 6) li = Math.max(1, li - (x > W - 3 ? 2 : 1));
+    let c = RR[li];
+    // weathering: dirt from the edges that lay on the ground and from the skirt that dragged, two dithered steps
+    const n = hash(x >> 2, y >> 2, seed + 5) * 0.35 + hash(x >> 4, y >> 3, seed + 9) * 0.3;
+    const dirt = Math.max(Math.pow(Math.abs(v - 0.5) * 2, 3) * 0.9, Math.max(0, 1 - u * 6) * 0.7, Math.pow(Math.max(0, u - 0.85) / 0.15, 2) * 0.4) + n - 0.3;
+    if (dirt > 0.35 + th * 0.4) c = orange ? SO[4] : SO[5];
+    if (dirt > 0.75 + th * 0.3) c = SO[3];
+    if (hash(x, y, seed + 11) < 0.006) c = SO[2];
+    if (hash(x >> 1, y >> 1, seed + 13) < 0.012 && v > 0.15) c = MO[orange ? 1 : 2];
+    p.set(x, y, c);
+  }
+  // the singe where the skirt dragged over the burning skid, and a hole burned clean through (cut out: the ground shows)
+  const bx = 9 + Math.floor(hash(seed, 1) * 10), by = 30 + Math.floor(hash(seed, 2) * 10);
+  for (let y = by - 6; y <= by + 6; y++) for (let x = bx - 8; x <= bx + 8; x++) {
+    const d = Math.hypot((x - bx) / 1.6, y - by) + hash(x, y, seed) * 1.8;
+    if (d < 2.2) p.clear(x, y); else if (d < 3.4) p.set(x, y, BA[1]); else if (d < 4.6) p.set(x, y, OR[1]); else if (d < 6 && hash(x, y, 2) < 0.5) p.set(x, y, OR[2]);
+  }
+  // the inspection patch on a white gore near the skirt: PKD / INSP, two lines of stencil
+  const gy0 = Math.round((1.5 / GORES) * H) - 3, px = 12;
+  p.rect(px, gy0, 9, 6, WH[5]); p.hl(px, px + 8, gy0, WH[2]); p.hl(px, px + 8, gy0 + 5, WH[2]); p.vl(px, gy0, gy0 + 5, WH[2]); p.vl(px + 8, gy0, gy0 + 5, WH[2]);
+  p.hl(px + 2, px + 6, gy0 + 2, INK[1]); p.hl(px + 2, px + 4, gy0 + 3, INK[2]);
+  return p;
+}
+
+/**
+ * The parachute where it fell, cut loose at touchdown: not laid out round but streamed and crumpled. A long collapsed
+ * canopy (about 6 m by up to 2.7 m, ragged outline, never round) lies downwind of the pod, gathered into a bunched roll
+ * at the skirt, pleated lengthwise, one pocket still holding air, the apex end crushed; it tents over the shrubs it fell
+ * on. Suspension lines run tangled from the hem to a connector link, two webbing risers from there up the hull to the
+ * nose cap. The cloth flaps gently in the region's wind (vertex shader; the pocket breathes). Returns the tick.
+ */
+function drapedChute(bin: Bin, g: Game, x: number, z: number, dirX: number, dirZ: number): (t: number) => void {
+  const R = g.region, F = g.world.flora, N = R.N, seed = R.seed % 97;
+  const gy = (px: number, pz: number) => R.groundSmooth(Math.min(N - 0.5, Math.max(0.5, px)), Math.min(N - 0.5, Math.max(0.5, pz)));
+  const sx = -dirZ, sz = dirX, Lc = 6.2, S0 = 3.0;
+  // the axis it streamed along: ahead and off to one side, clear of the side fires; whichever way keeps it on the map and dry
+  const inside = (px: number, pz: number) => px > 2 && pz > 2 && px < N - 2 && pz < N - 2 && !R.isWater(px, pz);
+  let ax = dirX, az = dirZ;
+  for (const [a, b] of [[0.85, -0.5], [0.85, 0.5], [0, -1], [0, 1], [-0.6, -0.8]]) {
+    let cx = dirX * a + sx * b, cz = dirZ * a + sz * b; const l = Math.hypot(cx, cz) || 1; cx /= l; cz /= l;
+    if (inside(x + cx * (S0 + Lc), z + cz * (S0 + Lc)) && inside(x + cx * (S0 + Lc * 0.5), z + cz * (S0 + Lc * 0.5))) { ax = cx; az = cz; break; }
+  }
+  const bx = -az, bz = ax, ph = hash(seed, 3) * TAU;
+  // the shrubs it came down on (the tallest few; trees stand clear)
+  const shrubs: { x: number; z: number; h: number; r: number }[] = [];
+  F.near(x + ax * (S0 + Lc / 2), z + az * (S0 + Lc / 2), Lc * 0.6 + 1.5, (i) => {
+    const s = F.species[F.sp[i]]; if (!s || s.tree) return;
+    const h = Math.min(0.95, (s.hmin + s.hmax) * 0.5 * 0.7); if (h > 0.4) shrubs.push({ x: F.x[i], z: F.z[i], h, r: 0.3 + h * 1.1 });
+  });
+  shrubs.sort((a, b) => b.h - a.h); shrubs.length = Math.min(shrubs.length, 9);
+  const tent = (px: number, pz: number) => { let t = 0; for (const s of shrubs) { const d = Math.hypot(px - s.x, pz - s.z); if (d < s.r) t = Math.max(t, s.h * Math.pow(1 - d / s.r, 1.4)); } return t; };
+  const sm = (a: number, b: number, v: number) => { const k = Math.min(1, Math.max(0, (v - a) / (b - a))); return k * k * (3 - 2 * k); };
+  const tri = (v: number) => 1 - Math.abs(2 * (v - Math.floor(v)) - 1);
+  const prof = (s: number) => 0.42 + 0.98 * Math.pow(Math.sin(Math.PI * Math.min(1, (s + 0.02) * 0.9)), 0.7);
+  const wL = (s: number) => prof(s) * (1 + 0.16 * Math.sin(s * 13 + ph) + 0.07 * Math.sin(s * 29 + ph * 2));
+  const wR = (s: number) => prof(s) * 0.86 * (1 + 0.14 * Math.sin(s * 11 + ph * 3) + 0.08 * Math.sin(s * 31 + 1));
+  const centre = (s: number) => { const off = Math.sin(s * 2.4 + ph) * 0.55 * s; return [x + ax * (S0 + s * Lc) + bx * off, z + az * (S0 + s * Lc) + bz * off]; };
+  const NU = 34, NV = 16, pos: number[] = [], uv: number[] = [], flap: number[] = [], lobe: number[] = [], idx: number[] = [];
+  const at = (s: number, c: number) => {
+    const [cx, cz] = centre(s), w = c < 0 ? wL(s) : wR(s);
+    const jx = (hash(Math.round(s * 97), Math.round(c * 31), 5) - 0.5) * 0.06, jz = (hash(Math.round(s * 97), Math.round(c * 31), 6) - 0.5) * 0.06;
+    const px = cx + bx * c * w + jx, pz = cz + bz * c * w + jz, ac = Math.abs(c), edge = 1 - sm(0.62, 1, ac);
+    const pleat = tri(c * 2.6 + 0.35 * Math.sin(s * 9 + 1) + 0.2 * Math.sin(s * 21 + ph));
+    const l1 = Math.exp(-(((s - 0.34) / 0.13) ** 2) - (((c + 0.15) / 0.5) ** 2)), l2 = Math.exp(-(((s - 0.74) / 0.08) ** 2) - (((c - 0.4) / 0.35) ** 2));
+    let h = 0.03 + pleat * (0.1 + 0.07 * Math.sin(s * 7 + 2)) * edge + 0.045 * Math.sin(s * Lc * 3.7 + c * 2.1 + ph) * edge;
+    h += 0.24 * Math.max(0, 1 - s / 0.14) * (0.55 + 0.45 * pleat);
+    h += 0.55 * l1 + 0.24 * l2 + Math.max(0, (s - 0.82) / 0.18) * 0.14 * hash(Math.round(s * 40), Math.round(c * 12), 8);
+    const g0 = gy(px, pz), y = Math.max(g0 + Math.max(0.025, h), g0 + tent(px, pz) + 0.04);
+    return { px, py: y, pz, f: Math.min(1, sm(0.5, 1, ac) * 0.7 + l1 + l2 * 0.7 + Math.max(0, s - 0.8) * 1.2) * Math.min(1, s / 0.08), l: l1 + l2 * 0.5 };
+  };
+  for (let i = 0; i <= NU; i++) for (let j = 0; j <= NV; j++) {
+    const s = i / NU, c = (j / NV) * 2 - 1, q = at(s, c);
+    pos.push(q.px, q.py, q.pz); uv.push(s, (c + 1) / 2); flap.push(q.f); lobe.push(q.l);
+  }
+  for (let i = 0; i < NU; i++) for (let j = 0; j < NV; j++) { const a = i * (NV + 1) + j, b = a + 1, c = a + NV + 1, d = c + 1; idx.push(a, c, b, b, c, d); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setAttribute('aFlap', new THREE.Float32BufferAttribute(flap, 1)); geo.setAttribute('aLobe', new THREE.Float32BufferAttribute(lobe, 1));
+  geo.setIndex(idx); geo.computeVertexNormals();
+  const U = { uT: { value: 0 }, uWd: { value: new THREE.Vector2(Math.cos(R.seed * 1.7), Math.sin(R.seed * 1.7)) } };
+  const mat = new THREE.MeshLambertMaterial({ map: ptex(bin, chutePix(seed), false), side: THREE.DoubleSide, flatShading: true, alphaTest: 0.5 });
+  mat.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, U);
+    sh.vertexShader = 'uniform float uT; uniform vec2 uWd; attribute float aFlap; attribute float aLobe;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      float cPh = dot(position.xz, uWd) * 1.3 - uT * 2.2;
+      float cGust = 0.6 + 0.4 * sin(uT * 0.31 + 0.7) * sin(uT * 0.17 + 2.1);
+      transformed.y += aFlap * (sin(cPh) * 0.045 + sin(cPh * 2.7 + position.z * 2.3 + position.x * 1.1) * 0.02) * cGust;
+      transformed.xz += uWd * aFlap * sin(cPh + 1.3) * 0.03 * cGust;
+      transformed.y += aLobe * (0.08 * sin(uT * 0.8) + 0.04 * sin(uT * 1.9 + 1.0)) * (0.5 + cGust * 0.5);`);
+  };
+  mat.customProgramCacheKey = () => 'pod-chute-cloth';
+  const cloth = mesh(bin, geo, bin.m(gbuf(mat, 1)), g.world.scene, 0, 0, 0, true); cloth.receiveShadow = true; cloth.name = 'pod-chute';
+  // the nose cap the risers hang from (the real core pod when there is one)
+  const A = new V3(x, gy(x, z) + 3, z);
+  const pg = (g as unknown as { veyr?: { core?: { mesh?: THREE.Object3D } } }).veyr?.core?.mesh?.userData?.podGroup as THREE.Object3D | undefined;
+  const pod = pg?.userData.pod as Pod | undefined;
+  if (pg && pod) { pg.updateWorldMatrix(true, true); pod.noseCap.getWorldPosition(A); A.x += ax * 0.42; A.z += az * 0.42; }
+  // the connector link where the lines gather, and the hem points they run from
+  const C = new V3(x + ax * 1.6 + bx * 0.25, 0, z + az * 1.6 + bz * 0.25); C.y = gy(C.x, C.z) + Math.max(0.08, tent(C.x, C.z) + 0.05);
+  const steel = lit(bin, RAMPS.steel[3], { flag: 0 });
+  box(bin, 0.14, 0.05, 0.09, steel, g.world.scene, C.x, C.y, C.z).rotation.y = Math.atan2(ax, az);
+  const lp: number[] = [], LS = 9;
+  for (let k = 0; k < 12; k++) {
+    const H = at(0.015, -1 + (2 * k) / 11), wob = (hash(k, seed, 4) - 0.5) * 2, turns = 1 + (k % 3);
+    let px0 = H.px, py0 = H.py, pz0 = H.pz;
+    for (let sI = 1; sI <= LS; sI++) {
+      const t = sI / LS, side = Math.sin(t * Math.PI * turns) * 0.22 * wob * (1 - t);
+      const px = H.px + (C.x - H.px) * t + bx * side, pz = H.pz + (C.z - H.pz) * t + bz * side;
+      const py = sI === LS ? C.y : Math.max(gy(px, pz) + 0.05 + 0.1 * Math.sin(t * Math.PI) * hash(k, sI, 9), gy(px, pz) + tent(px, pz) + 0.03) + (H.py - gy(H.px, H.pz)) * (1 - t) * (1 - t);
+      lp.push(px0, py0, pz0, px, py, pz); px0 = px; py0 = py; pz0 = pz;
     }
   }
-  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geo.computeVertexNormals();
-  mesh(bin, geo, lit(bin, 0xffffff, { vertexColors: true, side: THREE.DoubleSide }), g.world.scene, 0, 0, 0, false).receiveShadow = true;
-  const lp: number[] = [];
-  for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU, px = x + Math.cos(a) * Rad * 1.1, pz = z + Math.sin(a) * Rad * 0.8; lp.push(px, gy(px, pz) + 0.12, pz, toX, gy(toX, toZ) + 0.5, toZ); }
-  const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
-  const lines = new THREE.LineSegments(bin.g(lg), bin.m(gbuf(new THREE.LineBasicMaterial({ color: 0x3a3830 }), 0)));
+  const lg = bin.g(new THREE.BufferGeometry()); lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3));
+  const lines = new THREE.LineSegments(lg, bin.m(gbuf(new THREE.LineBasicMaterial({ color: RAMPS.paper[2] }), 0))); lines.name = 'pod-chute-lines';
   g.world.scene.add(lines);
+  // two webbing risers: from the link along the ground to the pod's foot, then up the hull to the nose cap
+  const foot = new V3(x + ax * 1.2, 0, z + az * 1.2); foot.y = gy(foot.x, foot.z) + 0.08;
+  const rp: number[] = [], ri: number[] = [];
+  for (const off of [-0.07, 0.07]) {
+    const path: THREE.Vector3[] = [];
+    for (let k = 0; k <= 4; k++) { const t = k / 4, px = C.x + (foot.x - C.x) * t + bx * off, pz = C.z + (foot.z - C.z) * t + bz * off; path.push(new V3(px, Math.max(gy(px, pz) + 0.06, C.y + (foot.y - C.y) * t), pz)); }
+    for (let k = 1; k <= 6; k++) { const t = k / 6; path.push(new V3(foot.x + (A.x - foot.x) * t + bx * off * (1 - t * 0.6), foot.y + (A.y - foot.y) * t + Math.sin(t * Math.PI) * 0.12, foot.z + (A.z - foot.z) * t + bz * off * (1 - t * 0.6))); }
+    const base = rp.length / 3;
+    for (let k = 0; k < path.length; k++) {
+      const P = path[k], T = path[Math.min(path.length - 1, k + 1)].clone().sub(path[Math.max(0, k - 1)]).normalize();
+      const Wd = new V3().crossVectors(T, new V3(0, 1, 0)); if (Wd.lengthSq() < 0.01) Wd.set(bx, 0, bz); Wd.normalize().multiplyScalar(0.035);
+      rp.push(P.x - Wd.x, P.y - Wd.y, P.z - Wd.z, P.x + Wd.x, P.y + Wd.y, P.z + Wd.z);
+      if (k > 0) { const a = base + (k - 1) * 2; ri.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+    }
+  }
+  const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3)); rg.setIndex(ri); rg.computeVertexNormals();
+  mesh(bin, rg, lit(bin, RAMPS.olive[2], { side: THREE.DoubleSide, flag: 0 }), g.world.scene, 0, 0, 0, false).name = 'pod-chute-risers';
+  return (t: number) => { U.uT.value = t; };
 }
 
 interface Blaze { x: number; z: number; y: number; life: number; t: number; k: number }
@@ -98,7 +237,7 @@ export function startCrashSite(g: Game, x: number, z: number, dirX: number, dirZ
     terr.scorch(x + sx * 2.2 + dirX * 1.2, z + sz * 2.2 + dirZ * 1.2, 1.1, 0.8);
     terr.scorch(x - sx * 2.6 - dirX * 1.5, z - sz * 2.6 - dirZ * 1.5, 1.0, 0.75);
   } else charDecal(bin, g, x, z, dirX, dirZ);
-  if (o.chute !== false) { const cx = x + dirX * 4.2 + sx * 2.4, cz = z + dirZ * 4.2 + sz * 2.4; drapedChute(bin, g, cx, cz, x, z); }
+  const chute = o.chute !== false ? drapedChute(bin, g, x, z, dirX, dirZ) : null;
   // a few scorched plants along the skid and round the pod (darkened, not removed)
   F.near(x, z, 4.5, (i) => F.setTint(i, 0x2a2018, 0.55 + hash(i, 1) * 0.3));
   for (let k = 2; k <= 8; k += 3) F.near(x - dirX * k, z - dirZ * k, 1.8, (i) => F.setTint(i, 0x2a2018, 0.45));
@@ -117,6 +256,7 @@ export function startCrashSite(g: Game, x: number, z: number, dirX: number, dirZ
     t += dt;
     // the pod pushes the growth under it aside for as long as it stands there
     F.push(x, z, 2.2, 1);
+    chute?.(t);
     if (done) return;
     let heat = 0, hx = 0, hz = 0;
     for (const b of blazes) {
