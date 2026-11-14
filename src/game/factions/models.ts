@@ -137,8 +137,8 @@ function prcLander(name: string): SModel {
   for (let i = 0; i < 5; i++) k.box(0.8, 0.03, 0.04, [0, 0.55 + i * 0.32, 2.75 - i * 0.37], SS[2]);
   k.lampBox(0.2, 0.06, 0.04, [0, 3.75, 1.29], LAMPW);
   // livery: star, the nation mark, the base name
-  k.decal(A.star, 1.0, 1.0, [0, 3.95, 1.26], 0);
-  k.decal(textRect(A, 0), 1.1, 0.24, [0, 3.2, 1.26], 0);
+  k.decal(A.star, 1.0, 1.0, [0, 4.05, 1.26], 0);
+  for (const [a, i] of [[0.78, 0], [-0.78, 1]] as [number, number][]) k.decal(textRect(A, i), 0.75, 0.2, [Math.sin(a) * 1.26, 3.2, Math.cos(a) * 1.26], a);
   k.decal(A.star, 0.8, 0.8, [Math.sin(Math.PI * 0.75) * 1.26, 3.95, Math.cos(Math.PI * 0.75) * 1.26], Math.PI * 0.75);
   k.decal(textRect(A, 1), 1.1, 0.24, [Math.sin(-Math.PI * 0.75) * 1.26, 3.95, Math.cos(-Math.PI * 0.75) * 1.26], -Math.PI * 0.75);
   k.decal(textRect(A, 4), 0.8, 0.17, [Math.sin(Math.PI) * 1.26, 2.1, Math.cos(Math.PI) * 1.26], Math.PI);
@@ -224,9 +224,10 @@ function sovFactory(f: FactionId): SModel {
   for (const x of [-1.4, 1.5]) { k.cyl(0.22, 0.26, 2.4, [x, 3.0, -0.9], SS[3], 10); k.cyl(0.26, 0.26, 0.12, [x, 4.2, -0.9], SS[1], 10); }
   k.lampBox(0.4, 0.12, 0.05, [-1.4, 1.9, 1.66], LAMPW); k.lampBox(0.4, 0.12, 0.05, [1.4, 1.9, 1.66], LAMPW);
   k.decal(A.star, 0.9, 0.9, [0, 2.45, 1.0], 0, -0.6);
-  k.decal(textRect(A, 13, true), 1.3, 0.27, [1.35, 1.25, 1.605], 0);
-  k.decal(textRect(A, 0, true), 1.0, 0.22, [-1.35, 1.25, 1.605], 0);
-  k.decal(textRect(A, 13, true), 1.5, 0.3, [2.105, 1.4, 0], Math.PI / 2);
+  k.decal(textRect(A, 13, true), 1.08, 0.25, [1.53, 1.3, 1.605], 0);
+  k.decal(textRect(A, 0, true), 1.08, 0.25, [-1.53, 1.3, 1.605], 0);
+  k.decal(textRect(A, 13, true), 2.2, 0.46, [-2.105, 1.4, 0], -Math.PI / 2);
+  k.decal(textRect(A, 13, true), 2.2, 0.46, [2.105, 1.4, 0], Math.PI / 2);
   k.decal(A.hazard, 1.9, 0.18, [0, 0.12, 1.86], 0, -Math.PI / 2 + 0.01);
   return { main: k.build(), stacks: [[-1.4, 4.3, -0.9], [1.5, 4.3, -0.9]], height: 4.3 };
 }
@@ -248,8 +249,8 @@ function prcFactory(): SModel {
   k.cyl(0.18, 0.2, 1.8, [2.2, 2.4, -1.0], SS[3], 10);
   k.lampBox(0.3, 0.1, 0.04, [0, 1.15, 1.43], LAMPW);
   k.decal(A.star, 0.8, 0.8, [0, 0.85, 1.43], 0);
-  k.decal(textRect(A, 12), 1.0, 0.22, [-1.2, 1.38, 1.46], 0);
-  k.decal(textRect(A, 0), 0.9, 0.2, [1.2, 1.38, 1.46], 0);
+  k.decal(textRect(A, 12), 1.4, 0.3, [-1.2, 1.44, 1.43], 0);
+  k.decal(textRect(A, 0), 1.2, 0.27, [1.2, 1.44, 1.43], 0);
   k.decal(A.star, 0.7, 0.7, [2.51, 0.8, 0], Math.PI / 2);
   return { main: k.build(), stacks: [[2.2, 3.35, -1.0]], height: 3.4 };
 }

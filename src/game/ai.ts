@@ -38,7 +38,7 @@ function dangerAt(c: Creature, w: World, x: number, z: number) {
 function travel(c: Creature, w: World, x: number, z: number, plan: Mind) {
   const N = w.region.N;
   c.goalX = clamp(x, 1.5, N - 1.5); c.goalZ = clamp(z, 1.5, N - 1.5); c.plan = plan; c.path = null;
-  setMind(c, 'travel');
+  setMind(c, 'travel'); c.actT = 0;
 }
 function dist(c: Creature, x: number, z: number) { return Math.hypot(x - c.x, z - c.z); }
 
@@ -322,7 +322,7 @@ function thinkWild(c: Creature, w: World) {
   // ---- needs, by utility
   const night = 1 - awake;
   const sleepy = night * (0.5 + c.tired) + (c.tired > 0.92 ? 0.8 : 0);
-  let uEat = Math.pow(hunger, 1.4) * (0.35 + 0.75 * awake) + (hunger > 0.78 ? 0.7 : 0);
+  let uEat = Math.pow(hunger, 1.4) * (0.35 + 0.75 * awake) + (hunger > 0.78 ? 0.7 : 0) + (hunger > 0.9 ? 1.2 : 0);
   let uDrink = Math.pow(c.thirst, 1.3) * 1.25 + (c.thirst > 0.85 ? 0.8 : 0) + (morning(P.sched, w.day) && c.thirst > 0.12 ? 0.35 : 0) + (evening(P.sched, w.day) && c.thirst > 0.25 ? 0.5 : 0);
   const uSleep = sleepy * (1 - Math.max(0, hunger - 0.7)) - (c.thirst > 0.8 ? 0.4 : 0);
   const hot = w.region.biome.temp > 0.6 || eco.moisture(c.x, c.z) < 0.25;
@@ -379,7 +379,7 @@ function keepGoing(c: Creature, w: World, P: Profile, awake: number): boolean {
     case 'travel': {
       if (c.actT > 60) return false;
       // nearly there and taking too long (crowded, blocked): do it here
-      if (c.actT > 20 && dist(c, c.goalX, c.goalZ) < 5 && (c.plan === 'sleep' || c.plan === 'watch' || c.plan === 'rest')) { const p = c.plan; c.plan = null; setMind(c, p); return true; }
+      if (c.actT > 20 && dist(c, c.goalX, c.goalZ) < 9 && (c.plan === 'sleep' || c.plan === 'watch' || c.plan === 'rest')) { const p = c.plan; c.plan = null; setMind(c, p); return true; }
       // drop the trip for something urgent
       if (c.plan !== 'drink' && c.thirst > 0.85 || c.plan !== 'eat' && c.energy < 0.1) return false;
       return true;
@@ -411,6 +411,8 @@ function juvenile(c: Creature, w: World, m: Creature) {
 
 function goSleep(c: Creature, w: World, P: Profile): boolean {
   const eco = w.eco;
+  // an exhausted animal in its waking hours just naps where it is
+  if (activity(P.sched, w.day) > 0.55) { setMind(c, 'sleep'); emote(c, Emote.SLEEP, 3); return true; }
   if ((P.social === 'herd' || P.social === 'swarm' || P.social === 'pack') && c.herd && !P.den && !c.rooster) {
     // the herd beds down together; one keeps watch
     // a fresh bed each night (a spot older than most of a day is last night's)
@@ -426,6 +428,7 @@ function goSleep(c: Creature, w: World, P: Profile): boolean {
     let x = hs.x + Math.cos(a) * r, z = hs.z + Math.sin(a) * r;
     if (w.region.isWater(x, z) || w.region.isSolid(x, z)) { x = hs.x; z = hs.z; }
     if (dist(c, x, z) > 1.6) { travel(c, w, x, z, hs.sentry === c.id ? 'watch' : 'sleep'); return true; }
+    if (hs.sentry === c.id && c.tired > 0.85) handOver(c, w, hs);
     if (hs.sentry === c.id) { setMind(c, 'watch'); emote(c, Emote.WATCH, 2); return true; }
     setMind(c, 'sleep'); emote(c, Emote.SLEEP, 3);
     return true;
@@ -472,7 +475,7 @@ function handOver(c: Creature, w: World, hs: { sentry: number; until: number }) 
   const h = c.herd ? w.herds.get(c.herd) : null;
   let next: Creature | null = null;
   if (h) for (const o of h) if (o !== c && !o.dead && o.mature && o.mind === 'sleep' && o.energy > 0.3 && (!next || o.tired < next.tired)) next = o;
-  if (!next) { hs.until = w.time + 30; return; }
+  if (!next) { hs.until = w.time + 30; if (c.tired > 0.85) { hs.sentry = 0; setMind(c, 'sleep'); } return; }
   hs.sentry = next.id; hs.until = w.time + 35 + Math.random() * 20;
   setMind(next, 'watch'); emote(next, Emote.WATCH, 2);
   setMind(c, 'sleep'); emote(c, Emote.SLEEP, 3);
@@ -729,7 +732,14 @@ export function act(c: Creature, w: World, dt: number) {
     }
   }
   // pregnancy runs its course
-  if (c.preg > 0) { c.preg -= dt; if (c.preg <= 0) { c.preg = 0; w.breed(c); emote(c, Emote.NEST, 3.5); c.energy -= 0.2; } }
+  if (c.preg > 0) {
+    c.preg -= dt;
+    if (c.preg <= 0) {
+      c.preg = 0;
+      // the land decides: past what it carries, most young are lost before they are born
+      if (c.faction !== 'wild' || w.canBreed(c) || Math.random() < 0.25) { w.breed(c); emote(c, Emote.NEST, 3.5); c.energy -= 0.2; }
+    }
+  }
   if (c.atkAnim >= 0) {
     const prev = c.atkAnim;
     c.atkAnim += dt * Math.max(1.6, c.st.attackRate * 2);

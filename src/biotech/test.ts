@@ -100,9 +100,11 @@ export async function testBiotech(engine: Engine, input: Input, P: URLSearchPara
   g.update$.push(() => {
     // keep the raider coming
     for (const c of w.creatures) if ((c as any).__raid && !c.dead && placed.field) { if (c.mind !== 'attack' && c.mind !== 'hunt') { c.mind = 'wander'; c.goalX = placed.field.x; c.goalZ = placed.field.z; } }
-    if (framed || w.time < 0.5) return;
+    if (framed || w.time < 1.5 || !(g.player as unknown as { started: boolean }).started) return;
     framed = true;
     const at = shot === 'field' && placed.field ? placed.field : shot === 'habitat' && placed.hab ? placed.hab : shot === 'dig' && digger ? { x: (a0.x + a1.x) / 2, z: (a0.z + a1.z) / 2 } : shot === 'works' ? core : herd[0] ?? core;
+    // the camera follows Unit 07 once it is under control: bring it over to watch
+    const pl = g.player as unknown as { x: number; z: number; moveGoal: unknown; started: boolean }; if (pl) { pl.x = at.x - 2.5; pl.z = at.z + 3.5; pl.moveGoal = null; }
     g.cam.followFn(null); g.cam.lookAt(at.x, at.z, true);
     g.cam.dist = g.cam.distGoal = Number(P.get('dist') ?? (shot === 'field' || shot === 'works' ? 26 : 16));
     if (P.has('yaw')) (g.cam as any).yaw = (g.cam as any).yawGoal = Number(P.get('yaw'));

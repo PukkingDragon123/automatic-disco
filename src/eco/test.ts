@@ -47,7 +47,9 @@ export async function testEcosys(engine: Engine, input: Input, P: URLSearchParam
     if (best.length) at = [best.reduce((s, c) => s + c.x, 0) / best.length, best.reduce((s, c) => s + c.z, 0) / best.length];
   } else if (focus === 'pred') { const p = wild.find((c) => c.diet === 'carn' && c.mature); if (p) at = [p.x, p.z]; }
   else if (focus === 'water') { const d = wild.find((c) => c.mind === 'drink') ?? wild[0]; const s = d ? eco.shoreNear(d.x, d.z) : eco.shoreNear(L.x, L.z); if (s) at = s; }
-  g.cam.lookAt(at[0], at[1], true);
+  // keep the camera over the region (a herd by the edge would put it outside, looking at the void)
+  const N = g.region.N, m = 26;
+  g.cam.lookAt(Math.min(N - m, Math.max(m, at[0])), Math.min(N - m, Math.max(m, at[1])), true);
   g.cam.dist = g.cam.distGoal = Number(P.get('dist') ?? 26);
   const v = ecoView(g);
   if (v) { const ov = P.get('ov'); if (ov) v.setOverlay(ov as 'water'); if (P.has('survey')) v.toggleSurvey(true); }

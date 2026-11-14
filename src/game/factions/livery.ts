@@ -58,13 +58,16 @@ function stencil(g: CanvasRenderingContext2D, s: string, x: number, y: number, w
   const t = c.getContext('2d')!;
   t.fillStyle = col; t.textAlign = 'center'; t.textBaseline = 'middle';
   let fs = Math.floor(h * 0.78);
-  const font = (n: number) => (cjk ? `900 ${n}px "WenQuanYi Zen Hei", "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif` : `bold ${n}px "DejaVu Sans Condensed", "Arial Narrow", "Roboto Condensed", Arial, sans-serif`);
+  const font = (n: number) => (cjk ? `900 ${n}px "WenQuanYi Zen Hei", "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif` : `900 ${n}px "DejaVu Sans Condensed", "Arial Narrow", "Roboto Condensed", Arial, sans-serif`);
   t.font = font(fs);
   while (t.measureText(s).width > w * 0.94 && fs > 10) { fs--; t.font = font(fs); }
+  // heavy strokes: the letters must survive being a few pixels tall at RTS distance
+  t.strokeStyle = col; t.lineWidth = Math.max(2, fs * 0.09); t.lineJoin = 'miter';
+  t.strokeText(s, w / 2, h / 2 + (cjk ? 1 : 2));
   t.fillText(s, w / 2, h / 2 + (cjk ? 1 : 2));
   // bridges: a thin horizontal tie through the middle, and vertical ties in round letters
   t.globalCompositeOperation = 'destination-out';
-  t.fillRect(0, Math.round(h * 0.5) - 1, w, 2);
+  t.fillRect(0, Math.round(h * 0.5) - 1, w, 3);
   let k = seed;
   const rnd = () => ((k = (k * 16807) % 2147483647) / 2147483647);
   for (let i = 0; i < 4; i++) { const px = w * (0.15 + rnd() * 0.7), py = h * (0.2 + rnd() * 0.6); t.fillRect(Math.round(px), Math.round(py), 2 + Math.round(rnd() * 3), 2); }
@@ -129,7 +132,9 @@ export function atlas(f: FactionId, name = ''): Atlas {
   }
   for (let i = 0; i < 16; i++) { const r = rects[i]; rects.push([r[0] + 256 / W, r[1], r[2] + 256 / W, r[3]]); }
   const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4; tex.generateMipmaps = true;
+  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  // no mip chain: averaged-down stencils fade to nothing; crisp texels suit the pixel-art post anyway
+  tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter;
   const sq = (x: number): Rect => [x / W, 1 - 128 / H, (x + 128) / W, 1];
   const a: Atlas = { tex, star: sq(0), roundel: sq(128), hazard: sq(256), plate: sq(384), text: rects };
   ATLAS.set(key, a);
@@ -144,8 +149,9 @@ export function decalMat(f: FactionId, name = ''): THREE.Material {
   const key = f + ':' + name;
   let m = DECAL.get(key);
   if (!m) {
-    m = new THREE.MeshLambertMaterial({ map: atlas(f, name).tex, alphaTest: 0.5, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-    gbuf(m, 1);
+    // blended, not alpha-tested: thin stencil strokes would fall under the test in the far mip levels and vanish
+    m = new THREE.MeshLambertMaterial({ map: atlas(f, name).tex, transparent: true, depthWrite: false, alphaTest: 0.02, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    gbuf(m, 0);
     DECAL.set(key, m);
   }
   return m;

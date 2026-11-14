@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { PixelCanvas } from '../limbo/gfx/pixel';
 import { Rand } from '../core/rand';
-import { rampFor, rampNamed, plates, stone, bladeStroke, crackLine, leafStroke, fillPoly, Mask, tidy, toPalette, type P2 } from './pixelKit';
+import { rampFor, rampNamed, plates, stone, nugget, prism, bladeStroke, crackLine, leafStroke, fillPoly, Mask, tidy, toPalette, type P2 } from './pixelKit';
 import { VEYR, RIVALS, type Palette } from './palette';
 
 export const TS = 32;
@@ -181,27 +181,35 @@ function basalt(pc: PixelCanvas, c: number, seed: number, side: boolean) {
 
 /** ore: bedrock with faceted nuggets of ferrite, each in its rust stain */
 function ore(pc: PixelCanvas, rock: number, oreC: number, seed: number, side: boolean) {
+  // ferrite: rock studded with chunky metal nuggets (iron grey-brown, now and then copper or a fleck of gold), each
+  // faceted with a glint, sitting in a rusty stain with its contact shadow
   if (side) rockSide(pc, rock, seed); else rockTop(pc, rock, seed, 9, false);
-  const r = new Rand(seed + 7), O = RF(oreC), Ru = rampNamed('rust');
-  for (let i = 0; i < 6; i++) {
-    const x = r.int(2, 29), y = r.int(2, 29);
-    for (let k = 0; k < 4; k++) pc.set(x + r.int(-2, 2), y + r.int(1, 3), Ru[2]);
-    stone(pc, x, y, r.range(2.4, 4.2), r.range(2, 3.4), O, r, Ru[1]);
+  const r = new Rand(seed + 7), Fe = rampNamed('iron'), Cu = rampNamed('copper'), Au = rampNamed('gold'), Ru = rampNamed('rust'), K = RF(rock);
+  void oreC;
+  const spots: [number, number][] = [];
+  for (let tries = 0; spots.length < 4 && tries < 60; tries++) {
+    const x = r.range(6, 26), y = r.range(6, 26), gap = spots.length < 2 ? 13 : 9;
+    if (spots.some(([a, b]) => Math.abs(a - x) < gap && Math.abs(b - y) < gap)) continue;
+    spots.push([x, y]);
   }
+  spots.forEach(([x, y], i) => {
+    const M = i === 3 && r.chance(0.6) ? Au : i === 2 || r.chance(0.2) ? Cu : Fe, big = i < 2;
+    nugget(pc, x, y, big ? r.range(10, 12.5) : r.range(6, 8), big ? r.range(7.5, 9.5) : r.range(5, 6.5), M, r, i % 2 ? K[1] : Ru[1]);
+  });
 }
 
-/** crystal: bedrock pierced by clusters of faceted shards (glowing a little: alpha < 255) */
+/** crystal: bedrock pierced by clusters of faceted prisms fanning from a shared root (glowing a little: alpha < 255) */
 function crystal(pc: PixelCanvas, rock: number, cry: number, seed: number, side: boolean) {
   if (side) rockSide(pc, rock, seed); else rockTop(pc, rock, seed, 9, false);
-  const r = new Rand(seed + 3), C = RF(cry);
-  for (let i = 0; i < 5; i++) {
-    const x = r.int(3, 28), y = r.int(6, 30), h = r.int(4, 8), w = r.int(1, 2);
-    for (let k = 0; k < h; k++) for (let j = -w; j <= w; j++) {
-      if (k > h - 2 && Math.abs(j) > 0) continue;
-      const edge = Math.abs(j) === w;
-      pc.set(x + j, y - k, C[edge ? (j < 0 ? 5 : 1) : k > h * 0.5 ? 4 : 3], edge ? 255 : 170);
-    }
-    pc.set(x, y - h + 1, C[6], 90);
+  const r = new Rand(seed + 3), C = RF(cry), K = RF(rock);
+  for (let c = 0; c < 3; c++) {
+    const bx = 5 + c * 10 + r.range(-1.5, 1.5), by = r.range(16, 30), n = r.int(3, 5);
+    // the root: a dark socket of broken rock the prisms grow from
+    for (let k = -3; k <= 3; k++) { pc.set(bx + k, by + 1, K[1]); if (Math.abs(k) < 3) pc.set(bx + k, by, K[0]); }
+    // back to front: the tall ones behind, short leaning ones in front
+    const ps = Array.from({ length: n }, (_, k) => ({ lean: (k / (n - 1) - 0.5) * r.range(0.5, 0.9), h: r.range(8, 14) * (k === (n >> 1) ? 1.25 : 1), hw: r.range(1.8, 2.8), dx: (k / (n - 1) - 0.5) * 5 }));
+    ps.sort((a, b) => b.h - a.h);
+    for (const p of ps) prism(pc, bx + p.dx, by, p.hw, Math.min(by - 1, p.h), p.lean, C, 190);
   }
 }
 

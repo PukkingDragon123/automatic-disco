@@ -1,8 +1,9 @@
 // The drawings on file and where they are issued: weapon designs (kept in localStorage), which are tooled up (paid
 // for once in factory items: the line can then make them), what the golem carries in its hand and on its mount, and
 // which design each kind of Corps robot is issued. installWeapons(game) runs once per game (tickRobots calls it):
-// [J] opens the workbench, new Corps robots get their issued weapon, and the golem's equipped weapons pick their own
-// targets near where the player aims and fire (heat, ammunition from the factory's AMMO when it has any).
+// new Corps robots get their issued weapon, and the golem's equipped weapons pick their own
+// targets near where the player aims and fire (heat, ammunition from the factory's AMMO when it has any). [F2] or the
+// ORDNANCE tab opens the workbench.
 import * as THREE from 'three';
 import type { Game } from '../../game/game';
 import { STOCK, toWeapon, weaponCost, weaponStats, refuse, type WeaponDesign, type Cost } from './parts';
@@ -114,12 +115,18 @@ export function installWeapons(g: Game) {
   for (const u of (g as unknown as { robots?: RobotUnit[] }).robots ?? []) if (u.faction === 'veyr' && s.issue[u.kind]) equipUnit(u, designById(s.issue[u.kind]));
   for (const slot of ['hand', 'mount'] as const) if (s.golem[slot]) equipGolem(g, slot, s.golem[slot]);
   g.update$.push((dt) => { try { tickGolemGuns(g, dt); } catch (e) { console.error('golem guns', e); } });
+  // [F2] or the ORDNANCE tab on the right edge opens the workbench (every letter key is taken)
+  const open = () => { if (g.engine.screen === g) import('./bench').then((m) => m.openBench(g.engine, g)); };
   g.input.onKey((e) => {
-    if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
-    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-    if (k !== 'j') return;
+    if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.key !== 'F2') return;
     const t = (e.target as HTMLElement | null)?.tagName; if (t === 'INPUT' || t === 'TEXTAREA') return;
-    if (g.engine.screen !== g) return;
-    import('./bench').then((m) => m.openBench(g.engine, g));
+    e.preventDefault(); open();
   });
+  const tab = document.createElement('button');
+  tab.textContent = 'ORDNANCE [F2]';
+  tab.style.cssText = `position:fixed;right:0;top:300px;writing-mode:vertical-rl;font:12px 'Jersey',monospace;letter-spacing:1px;padding:8px 4px;background:#${RAMPS.paper[3].toString(16)};color:#${RAMPS.ink[1].toString(16)};border:none;border-left:3px solid #${RAMPS.olive[1].toString(16)};box-shadow:-2px 2px 0 #14161b88;cursor:pointer;z-index:30`;
+  tab.onclick = open;
+  document.body.appendChild(tab);
+  g.update$.push(() => { const on = g.engine.screen === g; if ((tab.style.display !== 'none') !== on) tab.style.display = on ? '' : 'none'; });
+  const dis = g.dispose.bind(g); g.dispose = () => { tab.remove(); dis(); };
 }

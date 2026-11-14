@@ -4,7 +4,7 @@
 // drawn in white ink with dimension lines, the figures card (damage, rate, range, spread, heat, ammunition, weight,
 // sustained output) with hand-ruled bars, the tooling bill against the store, and a rubber stamp: APPROVED, or REFUSED
 // with the reason. Between them the test-fire range: the weapon on a clamp stand fires downrange at target robots
-// that walk on and fall over; the measured output is read off a panel meter. [J] / [Esc] closes.
+// that walk on and fall over; the measured output is read off a panel meter. [F2] / [Esc] closes.
 import * as THREE from 'three';
 import type { Engine, Screen } from '../../app/engine';
 import type { Post } from '../../gfx/post';
@@ -121,7 +121,7 @@ export class WeaponBench implements Screen {
   private onKey = (e: KeyboardEvent) => {
     if (WeaponBench.current !== this) return;
     const t = (e.target as HTMLElement | null)?.tagName; if (t === 'INPUT' && e.key !== 'Escape') return;
-    if (e.key === 'Escape' || e.key === 'j' || e.key === 'J') { e.preventDefault(); this.close(); }
+    if (e.key === 'Escape' || e.key === 'F2') { e.preventDefault(); this.close(); }
   };
   private spawnTarget(kind: RobotKind, x: number, z: number) {
     const u = spawnRobot(this.host as unknown as Game, kind, kind.startsWith('prc') ? 'prc' : 'soviet', x, z);
@@ -183,7 +183,7 @@ export class WeaponBench implements Screen {
           <button data-act="mount" ${why || !tooled ? 'disabled' : ''}>GOLEM: MOUNT${s.golem.mount === d.id ? ' ✓' : ''}</button>
           <select data-act="issue" ${why || !tooled ? 'disabled' : ''}><option value="">ISSUE TO ROBOTS…</option>${kinds.map((k) => `<option value="${k}">${k.toUpperCase()}${s.issue[k] === d.id ? ' ✓' : ''}</option>`).join('')}</select>
           <button data-act="fire">${this.firing ? 'HOLD FIRE' : 'TEST FIRE'}</button>
-          <button class="red" data-act="close">CLOSE [J]</button>
+          <button class="red" data-act="close">CLOSE [F2]</button>
         </div>
       </div>
       <div class="meter">RANGE METER · OUTPUT <b class="dps">0.0</b> /S</div>
@@ -206,6 +206,7 @@ export class WeaponBench implements Screen {
   update(dt: number) {
     this.t += dt; this.host.world.time += dt;
     const why = refuse(this.d, genesOf(this.game));
+    const hpBefore = this.host.robots.reduce((a, u) => a + (u.dead ? 0 : Math.max(0, u.hp)), 0);
     // aim at the nearest standing target, fire what is drawn
     const live = this.host.robots.filter((u) => !u.dead);
     const tgt = live.sort((a, b) => a.z - b.z)[0];
@@ -220,16 +221,13 @@ export class WeaponBench implements Screen {
         this.cd = w.cd;
         this.scene.updateMatrixWorld(true);
         const mz = this.wm.muzzle.getWorldPosition(new THREE.Vector3());
-        const hp0 = live.reduce((a, u) => a + u.hp, 0);
         fireWeapon(this.host, { faction: 'veyr', x: 0, z: 0 }, mz, p, w);
-        this.dmgLog.push({ t: this.t, n: -hp0 });
         this.wm.root.position.z = -this.wm.length * 0.3 - 0.04;
       }
     }
     if (this.wm) this.wm.root.position.z = THREE.MathUtils.damp(this.wm.root.position.z, -this.wm.length * 0.3, 10, dt);
-    const hpBefore = this.host.robots.reduce((a, u) => a + Math.max(0, u.hp), 0);
     tickRobots(this.host, dt);
-    const hpAfter = this.host.robots.reduce((a, u) => a + Math.max(0, u.hp), 0);
+    const hpAfter = this.host.robots.reduce((a, u) => a + (u.dead && u.hp <= 0 && !live.includes(u) ? 0 : Math.max(0, u.hp)), 0);
     // the output meter: damage over the last five seconds
     if (hpBefore > hpAfter) this.dmgLog.push({ t: this.t, n: hpBefore - hpAfter });
     this.dmgLog = this.dmgLog.filter((e) => e.t > this.t - 5);

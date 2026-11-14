@@ -498,7 +498,7 @@ export function meshSundew(sp: PlantSpecies, h: number, tex: FloraTex, seed: num
     ribbonStrip(g, [[0, 0.004, 0], vmul(dn, L * 0.5)], [0.003, 0.0045], pet, { flat: true });
     const bc = vmul(dn, L * 0.5), bl = L * 0.5, bw = L * 0.19, mid = vadd(bc, vmul(dn, bl * 0.5));
     leafCard(g, bc, dn, UP, bl, bw, blade, 0.15, 0.0, null);
-    const nt = lod ? 7 : 24;
+    const nt = lod ? 6 : 14;
     for (let t = 0; t < nt; t++) {
       const u = 0.08 + 0.88 * ((t * 0.618) % 1), s = (((t * 0.382 + 0.5) % 1) * 2 - 1) * Math.sin(Math.PI * Math.min(1, u * 1.05));
       const at = vadd(vadd(bc, vmul(dn, bl * u)), vmul(side, bw * s * 0.78));
@@ -507,11 +507,13 @@ export function meshSundew(sp: PlantSpecies, h: number, tex: FloraTex, seed: num
       const toMid = horiz(vsub(mid, at)), ax = vnrm(vcross(UP, vlen(vsub(mid, at)) > 0.004 ? toMid : dn)), ph = ((Math.atan2(ax[2], ax[0]) / TAU) % 1 + 1) % 1;
       g.kind = KIND.TENTACLE; g.pivot = at; g.phase = ph; g.col = stalk;
       if (lod) g.tri(g.v(at, UP, spk.u0, spk.v0, 0), g.v(vadd(at, vmul(side, 0.0025)), UP, spk.u0, spk.v0, 0), g.v(tip, UP, spk.u0, spk.v0, 1));
-      else atube(g, [at, lerp3(at, tip, 0.5), tip], [0.0011, 0.0009, 0.0007], spk, 3, (i) => i * 0.5);
+      else atube(g, [at, tip], [0.0011, 0.0007], spk, 3, (i) => i);
+      // the drop of glue: a small faceted bead riding the tentacle tip
       g.kind = KIND.DEW; g.col = dew;
-      const b1 = g.n;
-      sphere(g, tip, lod ? 0.0032 : 0.0026, spk, 4, 2, 1);
-      for (let q = b1; q < g.n; q++) g.setW(q, 2, 1);
+      const dr = lod ? 0.0034 : 0.0028, b1 = g.n, top = g.v(vadd(tip, [0, dr * 1.2, 0]), UP, spk.u0 + spk.du * 0.3, spk.v0 + spk.dv * 0.2, 1), bot = g.v(vadd(tip, [0, -dr * 0.8, 0]), [0, -1, 0], spk.u0, spk.v0 + spk.dv, 1);
+      const eq = [0, 1, 2].map((m) => { const b = (m / 3) * TAU + t, d: V3 = [Math.cos(b), 0, Math.sin(b)]; return g.v(vadd(tip, vmul(d, dr)), d, spk.u0 + spk.du * 0.5, spk.v0 + spk.dv * 0.5, 1); });
+      for (let m = 0; m < 3; m++) { g.triN(top, eq[m], eq[(m + 1) % 3]); g.triN(bot, eq[(m + 1) % 3], eq[m]); }
+      void b1;
     }
   }
   return { geo: g.build(R), H: g.H, R, tris: g.tris };

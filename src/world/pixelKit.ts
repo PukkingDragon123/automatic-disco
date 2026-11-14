@@ -57,7 +57,7 @@ export class Mask {
   has(x: number, y: number) { x -= this.x0; y -= this.y0; return x >= 0 && y >= 0 && x < this.w && y < this.h && this.m[y * this.w + x] > 0; }
   add(x: number, y: number, tone = -1) { x -= this.x0; y -= this.y0; if (x < 0 || y < 0 || x >= this.w || y >= this.h) return; this.m[y * this.w + x] = 1; if (tone >= 0) this.t[y * this.w + x] = tone; }
   /** ink onto the canvas: interior tones, selective outline, no orphan pixels */
-  ink(pc: PixelCanvas, ramp: number[], tone: (x: number, y: number) => number, o: { dark?: number; lit?: number | null; alpha?: number } = {}) {
+  ink(pc: PixelCanvas, ramp: number[], tone: (x: number, y: number) => number, o: { dark?: number; lit?: number | null; alpha?: number; ring?: number; edgeAlpha?: number } = {}) {
     const n = ramp.length - 1, dark = o.dark ?? 0, a = o.alpha ?? 255;
     for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
       if (!this.m[y * this.w + x]) continue;
@@ -67,9 +67,11 @@ export class Mask {
       if (nb === 0) continue;
       const R = !this.has(X + 1, Y), D = !this.has(X, Y + 1), L = !this.has(X - 1, Y), U = !this.has(X, Y - 1);
       let i = this.t[y * this.w + x] >= 0 ? this.t[y * this.w + x] : tone(X, Y);
+      const edge = R || D || ((L || U) && o.ring !== undefined);
       if (R || D) i = Math.min(i, dark + (R && D ? 0 : 1));
+      else if ((L || U) && o.ring !== undefined) i = Math.min(i, o.ring);
       else if ((L || U) && o.lit !== null && o.lit !== undefined) i = Math.max(i, o.lit);
-      pc.set(X, Y, ramp[Math.max(0, Math.min(n, i))], a);
+      pc.set(X, Y, ramp[Math.max(0, Math.min(n, i))], edge && o.edgeAlpha !== undefined ? o.edgeAlpha : a);
     }
   }
 }
@@ -91,8 +93,58 @@ export function stone(pc: PixelCanvas, cx: number, cy: number, w: number, h: num
   M.ink(pc, ramp, (x, y) => {
     const d = (x + 0.5 - cx) + (y + 0.5 - cy);
     return d < split ? (y + 0.5 < top ? n - 1 : n - 2) : n - 4;
-  }, { dark: 1, lit: null });
-  if (w >= 3 && h >= 3) { const hx = Math.floor(cx - w * 0.18), hy = Math.floor(cy - h * 0.2); if (M.has(hx, hy)) pc.set(hx, hy, ramp[n]); }
+  }, { dark: 0, ring: 1 });
+  // the lit edge where the top facet turns, and a tiny glint on hard stone
+  if (w >= 3 && h >= 3) {
+    const hx = Math.floor(cx - w * 0.18), hy = Math.floor(cy - h * 0.2);
+    if (M.has(hx, hy)) pc.set(hx, hy, ramp[n]);
+    if (M.has(hx + 1, hy) && M.has(hx + 2, hy + 1)) pc.set(hx + 1, hy, ramp[n]);
+    if (w >= 4 && M.has(hx, hy - 1) && M.has(hx, hy - 2)) pc.set(hx, hy - 1, RAMPS.snow[4]);
+  }
+}
+
+/**
+ * A chunky ore nugget or gem in rock: an irregular faceted lump with a top facet, a lit plane and a shadow plane, a
+ * dark coloured outline, a bright edge where the planes turn, and a specular glint (metals and gems are glossy).
+ */
+export function nugget(pc: PixelCanvas, cx: number, cy: number, w: number, h: number, ramp: number[], r: Rand, shadow?: number) {
+  const k = r.int(5, 7), a0 = r.range(0, Math.PI), pts: P2[] = [];
+  for (let i = 0; i < k; i++) { const a = a0 + (i / k) * Math.PI * 2 + r.range(-0.2, 0.2), s = r.range(0.78, 1.05); pts.push([cx + Math.cos(a) * w * 0.5 * s, cy + Math.sin(a) * h * 0.5 * s]); }
+  const M = new Mask(Math.floor(cx - w), Math.floor(cy - h), Math.ceil(w * 2) + 3, Math.ceil(h * 2) + 3);
+  fillPoly(pts, (x, y) => M.add(x, y));
+  if (shadow !== undefined) for (let y = 0; y < M.h; y++) for (let x = 0; x < M.w; x++) {
+    const X = x + M.x0, Y = y + M.y0;
+    if (!M.has(X, Y) && (M.has(X - 1, Y) || M.has(X, Y - 1) || M.has(X - 1, Y - 1))) pc.set(X, Y, shadow);
+  }
+  const n = ramp.length - 1, top = cy - h * 0.15, fx = cx + r.range(-0.15, 0.2) * w;
+  M.ink(pc, ramp, (x, y) => {
+    const px = x + 0.5, py = y + 0.5;
+    if (py < top) return px < fx ? n - 1 : n - 2;
+    return px + (py - top) * 0.6 < fx ? n - 2 : (px - fx) + (py - top) > w * 0.55 ? n - 4 : n - 3;
+  }, { dark: 0, ring: 1 });
+  // the bright edge along the top facet, then the glint
+  for (let x = Math.floor(cx - w * 0.3); x < fx; x++) if (M.has(x, Math.floor(top)) && M.has(x, Math.floor(top) - 1)) pc.set(x, Math.floor(top), ramp[n]);
+  const gx = Math.floor(cx - w * 0.2), gy = Math.floor(cy - h * 0.25);
+  if (M.has(gx, gy) && M.has(gx + 1, gy)) { pc.set(gx, gy, RAMPS.snow[5]); pc.set(gx + 1, gy, ramp[n]); if (M.has(gx, gy + 1)) pc.set(gx, gy + 1, ramp[n]); }
+}
+
+/**
+ * A crystal prism growing from rock, pointing up and leaning: a lit left face, a shadow right face, the arris between
+ * them bright, a two-faced pointed tip, a dark outline and a glint near the tip. alpha < 255 on the body = glow.
+ */
+export function prism(pc: PixelCanvas, bx: number, by: number, hw: number, hgt: number, lean: number, ramp: number[], alpha = 255) {
+  const sh = by - hgt * 0.72, ax = (y: number) => bx + lean * (by - y);
+  const pts: P2[] = [[bx - hw, by], [ax(sh) - hw, sh], [ax(by - hgt), by - hgt], [ax(sh) + hw, sh], [bx + hw, by]];
+  const M = new Mask(Math.floor(bx - hw - Math.abs(lean) * hgt - 2), Math.floor(by - hgt - 2), Math.ceil(hw * 2 + Math.abs(lean) * hgt * 2) + 5, Math.ceil(hgt) + 4);
+  fillPoly(pts, (x, y) => M.add(x, y));
+  const n = ramp.length - 1;
+  M.ink(pc, ramp, (x, y) => {
+    const u = x + 0.5 - ax(y + 0.5);
+    if (y + 0.5 < sh) return u < 0 ? n : n - 2;
+    return u < -0.6 ? n - 1 : u < 0.6 ? n : n - 3;
+  }, { dark: 0, ring: 1, alpha, edgeAlpha: 255 });
+  const tx = Math.floor(ax(sh) - hw * 0.4), ty = Math.floor(sh + 1);
+  if (M.has(tx, ty)) pc.set(tx, ty, RAMPS.snow[5], 255);
 }
 
 /**
