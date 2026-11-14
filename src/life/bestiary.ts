@@ -259,7 +259,7 @@ export const BEASTS: Record<string, Beast> = {
   },
   grovebacker: {
     id: 'grovebacker', name: 'Grovebacker', latin: 'Silvidorsum colossus', role: 'titan', plan: 'quadruped', lineage: 'vertebrate', cover: 'skin',
-    concept: 'A thirty-metre grazer whose bone back-shield is so old a wood grows on it: lichen, moss and a stand of small trees ride the shell while it crops whole hillsides. Birds and climbing things live in the grove. Its footfalls carry for kilometres.',
+    concept: 'A thirty-metre armoured browser whose back-shield of seven overlapping bone bands is so old a wood grows on it: soil has gathered under every band lip, and the trees, saplings and ferns of its home range root there, gripping down over the plates, swaying as it walks. A hooked beak, swept brow horns, pillar legs with five thick nails, mud to the knees, and the scars of everything that ever tried. Its footfalls carry for kilometres.',
     genes: ['vert_quadruped', 'leg_pillar', 'eye_camera', 'molars', 'beak', 'osteoderms', 'fat_stores', 'ectotherm', 'live_birth'],
     sliders: { size: 1, len: 0.8, girth: 0.95, legLen: 0.25, legThick: 0.95, neck: 0.4, head: 0.35, tail: 0.3 },
     colors: { base: ['stone', 3], belly: ['sand', 3], pattern: ['stone', 2], accent: ['moss', 4], eye: ['ochre', 4] }, pattern: 'plain', patScale: 1,
@@ -287,7 +287,7 @@ export const BEASTS: Record<string, Beast> = {
   },
   cragstrider: {
     id: 'cragstrider', name: 'Cragstrider', latin: 'Hexapodus montanus', role: 'titan', plan: 'hexapodV', lineage: 'vertebrate', cover: 'skin',
-    concept: "A six-legged plated wanderer of this world's own spine-line, twenty-five metres long, that never stops walking: its plates are stone-hard and lichen-crusted, its spiracles roar, and each footfall leaves a crater the small things later nest in.",
+    concept: "A six-legged plated wanderer of this world's own spine-line, twenty-five metres long, that never stops walking: eight keeled basalt bands crowned with blunt spikes and crusted in ochre lichen, a row of ringed spiracle vents down each flank that roar as it breathes, two rows of slit eyes under an armoured brow, hinged mandible blades, a spiked tail club, and feet of three blunt claws that leave craters the small things later nest in.",
     genes: ['vert_hexapod', 'leg_pillar', 'eye_camera', 'molars', 'osteoderms', 'ectotherm', 'fat_stores', 'live_birth'],
     sliders: { size: 0.9, len: 0.8, girth: 0.75, legLen: 0.5, legThick: 0.85, neck: 0.3, head: 0.4, tail: 0.5 },
     colors: { base: ['basalt', 4], belly: ['stone', 4], pattern: ['rust', 2], accent: ['ochre', 4], eye: ['ochre', 5] }, pattern: 'bands', patScale: 2,

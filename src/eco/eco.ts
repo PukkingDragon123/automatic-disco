@@ -196,10 +196,13 @@ export class Eco {
     this.strikes.push({ x, z, t: this.t }); if (this.strikes.length > 8) this.strikes.shift();
     const c = this.cell(x, z);
     if (ignite && this.moist[c] < 0.42 && this.veg[c] > 0.25 && this.waterF[c] < 0.3) this.ignite(x, z);
+    this.char(x, z, 1.4, 0.9);
     this.scare(x, z, 0.8, 8);
   }
   /** set the vegetation round (x, z) burning */
-  ignite(x: number, z: number) { const c = this.cell(x, z); if (this.fire[c] <= 0) { this.fire[c] = 1; this.fires++; this.note('info', 'WILDFIRE: THE BRUSH IS BURNING', x, z); } }
+  ignite(x: number, z: number) { const c = this.cell(x, z); if (this.fire[c] <= 0) { this.fire[c] = 1; this.fires++; this.char(x, z, 2.2, 1); this.note('info', 'WILDFIRE: THE BRUSH IS BURNING', x, z); } }
+  /** burnt ground on the terrain (char, ash and embers that fade over days), when the terrain can draw it */
+  private char(x: number, z: number, r: number, k: number) { (this.w.terrain as unknown as { scorch?: (x: number, z: number, r: number, k: number) => void }).scorch?.(x, z, r, k); }
   /** titans: the colossal species (a 'titan' role from the bestiary, or simply enormous) */
   isTitan(c: Creature) { return roleOf(this.w, c) === ('titan' as Role) || c.st.mass > 25000; }
   phase() { return ((this.t / this.year + this.phase0) % 1 + 1) % 1; }
@@ -527,6 +530,8 @@ export class Eco {
         this.fire[c] = f - s * (wet ? 0.25 : 0.065) - this.waterF[c];
         this.danger[c] = 2; this.ash[c] = Math.min(1, this.ash[c] + s * 0.05); this.nutr[c] = Math.min(2, this.nutr[c] + s * 0.01);
         this.moist[c] = Math.max(0, this.moist[c] - s * 0.02);
+        // the fire front blackens the ground in ragged patches as it goes
+        if (Math.random() < s * 0.8) this.char(this.cx(c) + (Math.random() - 0.5) * CS, this.cz(c) + (Math.random() - 0.5) * CS, 1.4 + Math.random() * 1.4, 0.7 + f * 0.3);
         if (f < 0.5 || wet) continue;
         const x = c % G, z = (c / G) | 0;
         for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
@@ -534,7 +539,7 @@ export class Eco {
           const o = Z * G + X; if (this.fire[o] > 0 || this.ash[o] > 0.5) continue;
           const fuel = Math.min(1, this.veg[o]) * clamp(0.65 - this.moist[o], 0, 1) * (1 - this.waterF[o]);
           // (dry brush carries a fire on in patches; moist ground stops it)
-          if (Math.random() < s * fuel * 0.03 * (dx && dz ? 0.7 : 1)) { this.fire[o] = 1; n++; }
+          if (Math.random() < s * fuel * 0.03 * (dx && dz ? 0.7 : 1)) { this.fire[o] = 1; n++; this.char(this.cx(o), this.cz(o), 2, 1); }
         }
       }
       for (let c = 0; c < G * G; c++) if (this.fire[c] < 0) this.fire[c] = 0;
