@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { Rand } from '../core/rand';
 import { mixHex } from '../limbo/gfx/pixel';
 import { K, PROF, type Plant, type Limb, type Leaf, type Ribbon, type V3, type Shape } from './plantStyle';
-import { FloraTex, BARK, barkU, type Rect } from './floraTex';
+import { FloraTex, BARK, barkU, type Rect, type SprayStyle } from './floraTex';
 import type { PlantSpecies } from './plantArt';
 import type { Palette } from './palette';
 import { rampFor, rampNamed } from './pixelKit';
@@ -322,15 +322,28 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
   // a leaf budget per LOD: thinned crowns grow their remaining leaves so the cover stays the same
   const crown3 = tree || sp.arch === 'shrub' || sp.arch === 'umbrella';
   let nLeaf = 0; for (const l of P.leaves) if (!l.skip3d && l.kind !== K.ACC) nLeaf++;
-  const budget = crown3 ? (sp.arch === 'shrub' ? (L1 ? 60 : 165) : L1 ? 260 : 1400) : L1 ? 40 : 400;
+  // crowns are dressed in leaf sprays: one card carries a twig of many small leaves (alternate, pinnate, palmate,
+  // trifoliate, whorled, bipinnate or needled, by species), so the crown holds several times the leaves for fewer
+  // triangles; each species also has its own hairs and thorns, buds and a dead leaflet among the variants
+  const fsty = new Rand(sp.id * 977 + 3), hairy = fsty.chance(0.3), thorny = (sp.arch === 'shrub' || sp.arch === 'umbrella') && fsty.chance(0.45);
+  const sprayStyle: SprayStyle = sp.arch === 'umbrella' ? fsty.pick<SprayStyle>(['bipinnate', 'pinnate', 'alternate']) : sp.arch === 'shrub' ? fsty.pick<SprayStyle>(['alternate', 'trifoliate', 'whorl', 'alternate', 'palmate']) : fsty.pick<SprayStyle>(['alternate', 'pinnate', 'palmate', 'whorl', 'alternate']);
+  const twigR = rampFor(sp.trunk), accR = rampFor(sp.accent), youngR = rampFor(mixHex(sp.leaf, 0xd8dca0, 0.3));
+  const budget = crown3 ? (sp.arch === 'shrub' ? (L1 ? 34 : 80) : L1 ? 140 : 520) : L1 ? 40 : 400;
   const thin = Math.max(1, Math.round(nLeaf / budget)), grow = thin > 1 ? Math.sqrt(thin) * 0.9 : 1;
-  let li = 0, vi = seed % 3;
+  let li = 0, vi = seed % 4;
   for (const l of P.leaves) {
     if (l.skip3d) continue;
     const petal = l.kind === K.ACC;
     if (!petal && thin > 1 && (li++ % thin)) continue;
     const needle = l.shape === 'needle' && !petal;
-    const rect = needle ? tex.needles(l.ramp, li & 1) : tex.leaf(l.shape, l.ramp, { vein: l.vein, lat: l.lat, teeth: l.teeth, petal, var: petal ? 0 : (vi++ % 3) });
+    if (crown3 && !petal) {
+      const rect = tex.spray(needle ? 'needle' : sprayStyle, l.shape, l.ramp, { var: vi++ % 4, twig: twigR, berry: accR, thorns: thorny, hairs: hairy, young: youngR });
+      const Ls = (l.len / PXM) * leafK * Math.sqrt(thin) * (needle ? 1.0 : 1.2), ao = ampOf(l.amb), vv = r.range(0.9, 1.08);
+      g.col = [ao * vv, ao * vv, ao * vv]; g.kind = KIND.LEAF; g.phase = r.next(); g.pivot = [0, 0, 0];
+      leafCard(g, M(l.p), l.d, l.n, Ls, Ls * 0.39, rect, L1 ? 0 : 0.3, tree ? 0.18 : 0.12, crown);
+      continue;
+    }
+    const rect = needle ? tex.needles(l.ramp, li & 1) : tex.leaf(l.shape, l.ramp, { vein: l.vein, lat: l.lat, teeth: l.teeth, petal, var: petal ? 0 : (vi++ % 4), hairs: hairy && !petal });
     const len = (l.len / PXM) * (petal ? 1.15 : leafK * grow) * (needle ? 1.25 : 1), hw = needle ? len * 0.42 : (l.wid / PXM) * pmaxOf(l.shape) * (petal ? 1.1 : leafK * grow);
     const ao = ampOf(l.amb), vv = r.range(0.88, 1.1), warm = r.range(-0.05, 0.05);
     g.col = [ao * vv * (1 + warm), ao * vv, ao * vv * (1 - warm)];

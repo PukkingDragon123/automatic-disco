@@ -47,7 +47,7 @@ const hyp = (a: number, b: number, c = 0) => Math.sqrt(a * a + b * b + c * c);
 const WIND: Partial<Record<string, number>> = { meadow: 1, jungle: 0.55, savanna: 1.15, marsh: 0.8, highland: 1.2, tundra: 1.25, desert: 1.05, crystal: 0.9, ashland: 0.9, coast: 1.2 };
 const STIFF: Partial<Record<GroundKind, number>> = { grass: 1.2, tall: 1.45, dry: 1.1, sedge: 1.0, flower: 1.0, fern: 0.6, clover: 0.2, mush: 0.05, pebble: 0, litter: 0, twig: 0 };
 /** ground cover kinds grown in 3D near the camera, and how many variants each has */
-const GROUND3D: Partial<Record<GroundKind, [GroundForm, number]>> = { grass: ['grass', 3], tall: ['tall', 2], dry: ['dry', 2], sedge: ['sedge', 2], clover: ['clover', 2], flower: ['flower', 4], fern: ['fern', 2], mush: ['mush', 2] };
+const GROUND3D: Partial<Record<GroundKind, [GroundForm, number]>> = { grass: ['grass', 4], tall: ['tall', 3], dry: ['dry', 3], sedge: ['sedge', 3], clover: ['clover', 3], flower: ['flower', 4], fern: ['fern', 3], mush: ['mush', 3] };
 /** how a plant kind bends: wind flex, push response */
 const BENDS: Record<string, [number, number]> = {
   tuft: [0.5, 1], reed: [0.4, 0.8], fern: [0.26, 0.7], shrub: [0.12, 0.35], broadleaf: [0.028, 0.03], umbrella: [0.03, 0.03], palm: [0.06, 0.04], weeper: [0.04, 0.04],
@@ -102,7 +102,7 @@ export class Flora {
   private nc: number;
   private chunkY: Float32Array;
   private state: Uint8Array; private stateTex: THREE.DataTexture; private stateRows = [1e9, -1]; private stateUp = false;
-  private variants = 3;
+  private variants = 4;
   private lastT = -1;
   readonly stats = { gen: 0, tris3d: 0, batches: 0, drawn: 0, inst3d: 0, tAtlas: 0, tPlace: 0, tPlants: 0, tGround: 0, tMesh: 0 };
   private frustum = new THREE.Frustum(); private pm = new THREE.Matrix4();

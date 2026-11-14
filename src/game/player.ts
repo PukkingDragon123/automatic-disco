@@ -35,6 +35,8 @@ interface Ctx {
   stone?: Stone; c?: Creature; dep?: number; rock?: number; plant?: number; res?: Res; rate?: number;
 }
 interface Pending { t: number; fn: () => void }
+/** the flora's fruit hooks (world/flora.ts), when it has them */
+interface FloraFruit { fruitNear?(x: number, z: number, r: number): number; eatFruit?(i: number): unknown; fruitPos?(i: number, k: number, out: THREE.Vector3): number }
 
 export class Player implements GolemTarget, TouchHost {
   x: number; z: number; y: number;
@@ -855,9 +857,11 @@ export class Player implements GolemTarget, TouchHost {
       return mk('plant', this.has('sow') ? 'GRAFT (HOLD: PRESS SEED)' : 'GRAFT PLANT', true, at, { plant });
     }
     // ripe fruit in reach (tree crowns spread wide): anyone can pick it
-    const fi = fl.fruitNear(px, pz, 1.6);
+    const FF = fl as unknown as FloraFruit;
+    const fi = FF.fruitNear?.(px, pz, 1.6) ?? -1;
     if (fi >= 0 && alive(fi)) {
-      const at = new THREE.Vector3(); fl.fruitPos(fi, 0, at); at.y += 0.25;
+      const at = new THREE.Vector3();
+      if (FF.fruitPos) { FF.fruitPos(fi, 0, at); at.y += 0.25; } else at.set(fl.x[fi], gy(fl.x[fi], fl.z[fi]) + 1, fl.z[fi]);
       return mk('fruit', 'PICK FRUIT', true, at, { plant: fi });
     }
     if (plant >= 0 && (this.has('graft') || this.has('sow') || this.has('intake'))) {
@@ -984,7 +988,7 @@ export class Player implements GolemTarget, TouchHost {
         if (Math.random() < dt * 20) g.fx.arc(tool, c.at, 0.05, ch.lookData.glow, 0.2);
         if (C.t >= dur) {
           this.channelStop();
-          const fl = g.world.flora, food = fl.eatFruit(pi);
+          const food = Number((g.world.flora as unknown as FloraFruit).eatFruit?.(pi) ?? 0);
           if (food <= 0) break;
           const fac = g.factory, works = !!fac && g.run.skills.has('works');
           if (works && fac.put('fruit', 1, c.at.x, c.at.z) > 0) floatText(g, c.at.x, c.at.y + 0.2, c.at.z, '+1 FRUIT', 'good');
