@@ -468,7 +468,7 @@ interface HeadProf { rx: number[]; ry: number[]; hy: number[]; /** eye: station 
 const HEAD_PROF: Record<HeadFam, HeadProf> = {
   canid: { rx: [0.32, 0.48, 0.53, 0.47, 0.38, 0.31, 0.25, 0.17], ry: [0.34, 0.48, 0.52, 0.45, 0.36, 0.29, 0.24, 0.17], hy: [0.04, 0.14, 0.18, 0.13, 0.04, -0.02, -0.04, -0.05], eye: [0.32, 1.02, 0.8, 0.14, 42, 15] },
   // a cat: a big domed cranium, eyes close-set at the front under heavy brows, a short broad blunt muzzle
-  cat: { rx: [0.44, 0.58, 0.64, 0.62, 0.5, 0.42, 0.4, 0.36], ry: [0.44, 0.58, 0.6, 0.52, 0.44, 0.4, 0.37, 0.33], hy: [0.08, 0.22, 0.26, 0.2, 0.08, 0.02, -0.02, -0.05], eye: [0.37, 0.82, 0.3, 0.15, 50, 17] },
+  cat: { rx: [0.44, 0.58, 0.64, 0.62, 0.5, 0.42, 0.4, 0.36], ry: [0.44, 0.58, 0.6, 0.52, 0.44, 0.4, 0.37, 0.33], hy: [0.08, 0.22, 0.26, 0.2, 0.08, 0.02, -0.02, -0.05], eye: [0.37, 0.7, 0.28, 0.13, 50, 17] },
   // a bear: a broad high forehead dropping into a dished stop, a heavy straight muzzle, small eyes
   bear: { rx: [0.38, 0.55, 0.6, 0.54, 0.41, 0.33, 0.29, 0.24], ry: [0.38, 0.52, 0.55, 0.46, 0.34, 0.28, 0.25, 0.21], hy: [0.06, 0.18, 0.21, 0.14, 0.03, -0.02, -0.04, -0.05], eye: [0.3, 1.04, 0.72, 0.108, 38, 14] },
   // deer and elk: a long narrow face, eyes high on the sides, a soft broad nose

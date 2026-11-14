@@ -40,6 +40,8 @@ export interface DescentOpts {
   lz: { x: number; z: number };
   first: boolean; ui: CineUI;
   onDone(r: DescentResult): void;
+  /** QA: freeze time when a named moment comes (entry, porthole, ground-up, cloud, low, chute, flare, impact) */
+  hold?: string | null;
 }
 
 const RP = 60000; // the curvature of the stylised world (m)
@@ -694,6 +696,8 @@ export class Descent {
     if (!this.shot && nx && A <= nx.t) { this.shots.shift(); this.startShot(nx); }
     if (this.shot) { this.shot.t += dt; if (this.shot.t >= this.shot.dur) this.endShot(); }
     if (A <= 0) this.touchdown();
+    const h = this.o.hold;
+    if (h && ((h === 'entry' && A < this.alt0 - 300) || (h === 'low' && A < 230) || (h === 'cloud' && A < this.clouds[0].y + 6) || (h === 'flare' && A < 3.5) || (h === 'chute' && this.chute > 0.9 && A < CHUTE_ALT - 20) || (this.shot && this.shot.name === h && this.shot.t > this.shot.dur * 0.55))) { this.o.engine.timeScale = 0; this.o.hold = null; console.log('descent hold', h); }
   }
   private compass(x: number, z: number) {
     // world -z is north on the chart
@@ -767,6 +771,7 @@ export class Descent {
     if (c) { c.root.rotation.z = Math.min(1.35, this.landT * 0.8); c.root.scale.y = Math.max(0.15, 1 - this.landT * 0.4); c.root.scale.x = c.root.scale.z = Math.max(0.5, 1 - this.landT * 0.15); }
     if (this.shockU && this.shock) { const k = 1 - Math.exp(-this.landT * 1.6); this.shock.scale.setScalar(2 + k * 46); this.shockU.uK.value = Math.max(0, 1 - this.landT / 2.6); }
     if (Math.random() < dt * 8) this.fx.burst(P.x + (Math.random() - 0.5) * 2, P.y + 1, P.z + (Math.random() - 0.5) * 2, 1, Math.random() < 0.5 ? 0x5a5650 : 0x3e3a36, { speed: 0.3, up: 1.4, size: 6, life: 3, grav: -0.3 });
+    if (this.o.hold === 'impact' && this.landT > 0.7) { this.o.engine.timeScale = 0; this.o.hold = null; }
     if (this.landT > 2.2 && this.result) this.once('card', () => {
       const r = this.result!;
       this.o.ui.card(r.grade === 'WIDE' ? 'TOUCHDOWN' : r.grade, `${r.auto ? 'ON THE PIN' : `${Math.round(r.dist * 10) / 10} M FROM THE PIN`} · ${bonusFor(r.grade).text}`, 'UNIT 07 IS DOWN', r.grade === 'BULLSEYE' ? 'BULLSEYE' : 'U.S.P.C.');

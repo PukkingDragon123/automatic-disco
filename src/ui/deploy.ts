@@ -44,6 +44,8 @@ export interface DeployOpts {
   onDone(r: DeployResult): void;
   /** QA: start at 'plan', 'launch' or 'descent' */
   phase?: string | null;
+  /** QA: freeze time (engine.timeScale = 0) when the named shot is reached, for screenshots */
+  hold?: string | null;
 }
 
 const OPS = ['FIRST LIGHT', 'IRON SEED', 'LONG FALL', 'HIGH TIDE', 'BRIGHT ANVIL', 'QUIET HARVEST', 'COLD FORGE', 'STARFALL', 'DEEP FURROW', 'RED SKY', 'GRANITE', 'LANTERN'];
@@ -130,6 +132,8 @@ export class DeployScreen implements Screen {
     for (const c of s.crew) c.a.place(c.home.x, c.home.z);
   }
   private w(x: number, y: number, z: number) { return new V3(x, y, z); }
+  /** QA hold point: freeze here if asked to (screenshots of a given shot) */
+  private mark(name: string) { if (this.o.hold === name) { this.engine.timeScale = 0; console.log('deploy hold', name); } }
 
   // ================================================================ 1. the carrier (full)
   private async establish(c: Cinema) {
@@ -147,14 +151,18 @@ export class DeployScreen implements Screen {
     setTimeout(() => { if (c.active && !c.skipping) { c.ui.card(`OPERATION ${this.op}`, `HIGH ORBIT OVER ${this.o.planet.name.toUpperCase()} · U.S.S. VANGUARD CVS-01`, 'U.S. PLANETARY CORPS', 'TOP SECRET'); csfx('sting', 0.7); } }, 2200);
     setTimeout(() => { if (c.active && !c.skipping) c.ui.cardOff(); }, 6400);
     c.stamp(`D+${this.o.landings} · 04:12 ZULU · ALT 310 NMI`);
-    await c.tween(12, (u) => { const z = 150 - u * 330; c.cam.pos.set(5 + u * 4, -40 + u * 6, z); c.cam.look.set(5, -18 + u * 8, z + 100); }, 'linear');
+    void c.tween(12, (u) => { const z = 150 - u * 330; c.cam.pos.set(5 + u * 4, -40 + u * 6, z); c.cam.look.set(5, -18 + u * 8, z + 100); }, 'linear');
+    await c.wait(4.2); this.mark('flyover');
+    await c.wait(4.6); this.mark('flyover2');
+    await c.wait(3.2);
     // ---- the profile: the long hull against the planet's limb
     c.cam.handheld = 0.3;
     c.cam.cut(this.w(-175, 52, 70), this.w(0, -6, 10), 30);
     void c.cam.move({ pos: this.w(-160, 46, -20), look: this.w(0, -8, 0), dur: 6.5, ease: 'linear' });
     c.sfx('klaxon', 0.35, 0.9);
     void c.say('All decks, condition one. Launch Bay Two, prepare Unit Seven for deployment.', { who: 'Vanguard Control', style: 'radio', pitch: 1.0 });
-    await c.wait(6.2);
+    await c.wait(3); this.mark('profile');
+    await c.wait(3.2);
     // ---- inside Launch Bay 2: the crane brings Unit 07 down the hangar
     await c.fade(1, 0.25);
     engine.set(0.25);
@@ -172,14 +180,18 @@ export class DeployScreen implements Screen {
     s.crew.find((x) => x.role === 'console')!.a.action = 'type';
     c.sfx('servo', 0.6);
     void c.say('Easy... easy... bring her down the line.', { who: 'CPO Hale', style: 'radio', pitch: 0.8 });
-    await c.tween(6.5, (u) => s.setCrane(44 - u * 28.5, 0, 2), 'inOut');
+    void c.tween(6.5, (u) => s.setCrane(44 - u * 28.5, 0, 2), 'inOut');
+    await c.wait(3.4); this.mark('bay');
+    await c.wait(3.1);
     chief.rig.clearGesture();
     // ---- close: down into the pod
     c.cam.cut(this.w(3.4, -10.4, 12.2), this.w(0, -12.0, 15.6), 36);
     void c.cam.move({ pos: this.w(3.0, -10.9, 12.8), look: this.w(0, -12.3, 15.5), dur: 4.5, ease: 'inOut' });
     ch.look.copy(this.cam.position);
     c.sfx('servo', 0.5, 0.8);
-    await c.tween(3.2, (u) => s.setCrane(15.5, 0, 2 + u * 3.6), 'inOut');
+    void c.tween(3.2, (u) => s.setCrane(15.5, 0, 2 + u * 3.6), 'inOut');
+    await c.wait(1.4); this.mark('load');
+    await c.wait(1.8);
     ch.hatch = 0;
     c.sfx('servo', 0.7, 1.2);
     await c.tween(1.3, (u) => s.pod.setHatch(1 - u), 'inOut');
@@ -195,6 +207,7 @@ export class DeployScreen implements Screen {
     c.cam.cut(this.w(-8.4, -7.3, 9.2), this.w(-3.0, -11.4, 19.5), 44);
     void c.cam.move({ pos: this.w(-8.2, -7.25, 9.6), look: this.w(-3.4, -11.2, 19.0), dur: 4, ease: 'inOut' });
     s.officer.faceNow(-3, 19); s.officer.look = this.w(0, -12.5, 16);
+    void c.wait(1.6).then(() => this.mark('gallery'));
     await c.say('Unit Seven, this is Launch Control. Mark your drop zone on the chart.', { who: 'Cdr. Okafor', style: 'radio', pitch: 0.75 });
     await c.wait(0.3);
   }
@@ -231,7 +244,9 @@ export class DeployScreen implements Screen {
     const T = BOOTH.table, mc = this.w(T.x + s.table.centre.x, T.y + s.table.centre.y, T.z + s.table.centre.z);
     s.officer.place(mc.x + 0.1, T.z - 1.2, 0); s.officer.look = mc.clone();
     this.cine.cam.handheld = 0;
-    this.cine.cam.cut(this.w(mc.x, mc.y + 1.8, mc.z + 0.62), mc, 44);
+    // the chart sits left of centre, clear of the intelligence sheet on the right
+    const wide = innerWidth / innerHeight > 4 / 3;
+    this.cine.cam.cut(this.w(mc.x + (wide ? 0.52 : 0), mc.y + 2.05, mc.z + (wide ? 0.66 : 0.95)), this.w(mc.x + (wide ? 0.52 : 0), mc.y, mc.z + (wide ? 0.02 : 0.3)), 44);
     this.cine.ui.letterbox(false, 0.4);
     csfx('page', 0.8); csfx('cardFeed', 0.4);
     this.plan = new PlanTable({
@@ -286,6 +301,10 @@ export class DeployScreen implements Screen {
     for (let i = N; i >= 1; i--) {
       shot(i);
       s.setNixies(String(i));
+      if (i === N - 1) this.mark('nixie');
+      if (i === (full ? N - 4 : 1)) this.mark('doors');
+      if (full && i === N - 6) this.mark('beacons');
+      if (full && i === 2) this.mark('porthole');
       c.sfx(i <= 3 ? 'beepHi' : 'beep', 0.6, i <= 3 ? 1 : 0.9);
       if (i <= 3 || i === N) void c.say(i === N ? `T minus ${NUM[i].toLowerCase()}.` : `${NUM[i].charAt(0) + NUM[i].slice(1).toLowerCase()}...`, { who: 'Cdr. Okafor', style: 'radio', pitch: 0.75, hold: -1.4 });
       if (i === 2) { c.sfx('lever', 1); void c.tween(0.6, (u) => s.setLever(u), 'inOut'); }
@@ -309,6 +328,7 @@ export class DeployScreen implements Screen {
         for (const v of vents) if (Math.abs(v.z - z) < 2) this.fx.spray(v.x, v.y, v.z, 0, 1, 0, 4, 0xe8ecf0, { speed: 5, cone: 0.5, size: 5, life: 0.8, grav: -1, drag: 2 });
       }
       c.cam.shake(0.25 * u, 0.2);
+      if (u > 0.55) this.mark('launch');
     }, 'inCubic');
     c.cam.track(null);
     // the pod leaves the sled at speed and the camera is outside, beside the bow
@@ -320,6 +340,7 @@ export class DeployScreen implements Screen {
     c.cam.cut(this.w(26, -20, 96), this.w(0, -9, 64), 40); c.cam.handheld = 0.2;
     c.cam.track(() => ({ look: pod.getWorldPosition(pw) }), 6);
     c.sfx('whoosh', 1, 0.8); c.sfx('boom', 0.7, 0.8);
+    void c.wait(1.7).then(() => this.mark('away'));
     void c.say('Unit Seven is away!', { who: 'Vanguard Control', style: 'radio', pitch: 1.0 });
     await c.wait(1.0);
     c.sfx('thrust', 1, 0.5);
@@ -349,7 +370,7 @@ export class DeployScreen implements Screen {
     this.cine.ui.flash('#ffb070', 0.8, 0.6);
     this.descent = new Descent({
       engine: this.engine, input: this.input, region: this.region, pal: this.pal, regionName: this.o.region.name, planetName: this.o.planet.name,
-      lz: { x: lz.x, z: lz.z }, first: this.first, ui: this.cine.ui,
+      lz: { x: lz.x, z: lz.z }, first: this.first, ui: this.cine.ui, hold: this.o.hold,
       onDone: (r) => this.finish(r),
     });
     this.descent.resize(this.engine.w, this.engine.h);
@@ -428,7 +449,7 @@ export async function testDeploy(engine: Engine, input: Input, P: URLSearchParam
   const run = new Run(seed);
   for (const id of (P.get('skills') ?? '').split(',')) if (id) run.skills.owned.add(id);
   const go = () => engine.setScreen(new DeployScreen(engine, input, {
-    planet, region, run, landings: P.has('later') ? 2 : 0, phase: P.get('phase'),
+    planet, region, run, landings: P.has('later') ? 2 : 0, phase: P.get('phase'), hold: P.get('hold'),
     onDone: (r) => { console.log('deploy result', JSON.stringify(r), 'res', JSON.stringify(run.res), 'cells', run.skills.points); setTimeout(go, 1500); },
   }));
   go();

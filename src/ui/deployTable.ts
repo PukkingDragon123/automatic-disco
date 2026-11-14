@@ -136,7 +136,7 @@ export function drawChart(R: Region, pr: PRegion, planet: Planet, op: string): H
     g.beginPath(); g.moveTo(px - 8 + j, pz + 8); g.lineTo(px + 8 + j, pz - 8); g.stroke();
   }
   // deposits: stamped symbols with labels
-  g.font = '14px VT'; g.textBaseline = 'middle';
+  g.font = '22px VT'; g.textBaseline = 'middle';
   for (const dp of R.deposits) {
     const x = dp.x * k, y = dp.z * k;
     g.setLineDash([3, 3]); g.strokeStyle = 'rgba(59,58,54,0.55)'; g.lineWidth = 1; g.beginPath(); g.arc(x, y, Math.max(10, dp.r * k * 0.8), 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
@@ -148,8 +148,8 @@ export function drawChart(R: Region, pr: PRegion, planet: Planet, op: string): H
   // the grid: blue lines every 16 m with letters and numbers in the margin, a finer tick every 4 m
   g.strokeStyle = 'rgba(80,110,140,0.45)'; g.lineWidth = 1;
   for (let i = 0; i <= R.N; i += GRID) { const p = Math.round(i * k) + 0.5; g.beginPath(); g.moveTo(p, 0); g.lineTo(p, S); g.stroke(); g.beginPath(); g.moveTo(0, p); g.lineTo(S, p); g.stroke(); }
-  g.fillStyle = 'rgba(60,90,120,0.9)'; g.font = '14px VT'; g.textBaseline = 'top';
-  for (let i = 0; i < 8; i++) { g.fillText(LET[i], i * GRID * k + 4, 4); g.fillText(String(i + 1), 4, i * GRID * k + 16); }
+  g.fillStyle = 'rgba(60,90,120,0.9)'; g.font = '28px VT'; g.textBaseline = 'top';
+  for (let i = 0; i < 8; i++) { g.fillText(LET[i], i * GRID * k + 6, 4); g.fillText(String(i + 1), 6, i * GRID * k + 30); }
   // hostile creep if the region is held by a rival: cross-hatched on the side away from the recommended LZ
   const L = R.landing;
   if (pr.state === 'rival') {
@@ -159,7 +159,7 @@ export function drawChart(R: Region, pr: PRegion, planet: Planet, op: string): H
     g.strokeStyle = 'rgba(184,56,46,0.55)'; g.lineWidth = 1.5;
     for (let i = -S; i < S; i += 9) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + S, S); g.stroke(); g.beginPath(); g.moveTo(i + S, 0); g.lineTo(i, S); g.stroke(); }
     g.restore();
-    hand(g, `HOSTILE CREEP - ${rv.name.toUpperCase()}`, fx - 90, fz - 26 * k - 18, -0.04, 'rgba(184,56,46,0.95)', 18);
+    hand(g, `HOSTILE CREEP - ${rv.name.toUpperCase()}`, clamp(fx - 150, 20, S - 420), clamp(fz - 26 * k - 18, 40, S - 40), -0.04, 'rgba(184,56,46,0.95)', 26);
   }
   // the recommended LZ: a red ring drawn twice by hand, and its label
   g.strokeStyle = 'rgba(184,56,46,0.9)'; g.lineWidth = 2.4;
@@ -168,9 +168,9 @@ export function drawChart(R: Region, pr: PRegion, planet: Planet, op: string): H
     for (let a = 0; a <= 64; a++) { const t = (a / 64) * Math.PI * 2.08 + p * 0.4, r = 26 + Math.sin(t * 3 + p) * 1.6 + p * 2; const x = L.x * k + Math.cos(t) * r, y = L.z * k + Math.sin(t) * r; a ? g.lineTo(x, y) : g.moveTo(x, y); }
     g.stroke();
   }
-  hand(g, 'LZ ALPHA (REC.)', L.x * k + 32, L.z * k - 38, -0.05, 'rgba(184,56,46,0.95)', 18);
+  hand(g, 'LZ ALPHA (REC.)', L.x * k + 30, L.z * k - 36, -0.05, 'rgba(184,56,46,0.95)', 28);
   // Calder's margin note, in graphite
-  hand(g, 'good ground for a first root. - C.', L.x * k - 40, L.z * k + 40, 0.03, 'rgba(59,58,54,0.85)', 14);
+  hand(g, 'good ground for a first root. - C.', clamp(L.x * k - 120, 20, S - 420), L.z * k + 52, 0.03, 'rgba(59,58,54,0.85)', 22);
   // scale bar, north arrow, title block
   const sb = { x: 28, y: S - 44 };
   for (let i = 0; i < 4; i++) { g.fillStyle = i % 2 ? '#e8e2d0' : '#2e2d2a'; g.fillRect(sb.x + i * 10 * k, sb.y, 10 * k, 6); }
