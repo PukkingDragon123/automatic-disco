@@ -43,7 +43,7 @@ export interface Coat {
   /** lower legs in another colour (stockings, bare stilts), below `h` metres off the ground */
   socks?: { c: C2; h: number };
   /** the face: a pale muzzle, a dark mask through the eyes, dark tear lines (cats) */
-  face?: { muzzle?: C2; mask?: C2; tear?: boolean; chin?: C2; brow?: C2 };
+  face?: { muzzle?: C2; mask?: C2; tear?: boolean; chin?: C2; brow?: C2; nose?: C2 };
   /** caked mud up the legs to this height (m), healed scars (count), lichen rosettes (count) */
   mud?: { h: number; ramp?: RampName }; scars?: number; lichen?: number;
   /** keratin: claws, hooves, horns, beak */

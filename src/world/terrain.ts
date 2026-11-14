@@ -38,7 +38,8 @@ export class Terrain {
   readonly ecoTex: THREE.DataTexture;
   /** burnt ground per cell 0..1 (scorch), fading back through dry soil over a few days */
   readonly burn: Float32Array; private burnTex: THREE.DataTexture; private burnLive = false; private burnT = -1;
-  /** geology per cell (setGeo): R rock family, G ore-vein strength, B ore kind, A spare */
+  /** geology per cell (setGeo): R rock family, G ore-vein strength, B ore kind, A spray wetness (<128) or
+   *  mineral crust (>=128: kind (A-128)>>5, strength (A-128)&31) */
   private geoTex: THREE.DataTexture;
   /** the ecology map's bytes; write R (moisture) and G (fertility) 0..255 per column, then ecoFlush() */
   ecoData() { return this.ecoTex.image.data as Uint8Array; }

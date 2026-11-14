@@ -21,13 +21,13 @@ import { buildFore } from './carrier/fore';
 import { buildAft } from './carrier/aft';
 import { craft, type Ctx } from './carrier/kit';
 
-/** the master palette's slate and steel as a 10-step plate ramp (the bay doors still paint with it) */
+/** the master palette's slate and steel as a 10-step plate ramp (kept for older callers; the hull paints from the atlas) */
 export const HULL_RAMP = [...RAMPS.slate, RAMPS.steel[4], RAMPS.steel[5], RAMPS.steel[6], RAMPS.paper[2]];
 export const OLIVE_RAMP = [...RAMPS.olive, RAMPS.straw[2], RAMPS.straw[3], RAMPS.straw[4], RAMPS.straw[5]];
 
 /** ship-local boxes (centre xyz, half size xyz) that rough out the hull, for things that bounce off it */
 export const CARRIER_BOXES: [number, number, number, number, number, number][] = [
-  [0, -4.5, 10, 18.5, 18.5, 56], [0, 5, 80, 12, 7, 16], [0, 26, 22, 24, 10, 8.5], [0, 16, 47, 13, 5, 15], [0, -1, -92, 8, 8, 38],
+  [0, -4.5, 10, 18.5, 18.5, 56], [0, 5, 80, 12, 7, 16], [0, 22.5, 21.5, 5.6, 10.5, 7], [0, 37, 22, 28, 4, 8.5], [0, 16, 47, 13, 5, 15], [0, -1, -92, 8, 8, 38],
   [0, -1, -68, 21, 21, 3], [0, -1, -142, 12.5, 12.5, 14], [-32, -3, -145, 5, 5, 16], [32, -3, -145, 5, 5, 16], [0, -1, -122, 46, 1, 7],
 ];
 

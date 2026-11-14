@@ -6,7 +6,7 @@
 // the screen is never covered. A clip-path traced round whatever stands on the desk decides which clicks are the
 // desk's; everything else falls through to the world.
 import * as THREE from 'three';
-import { DeskView, box, mesh } from './gfx';
+import { DeskView, box, mesh, mat } from './gfx';
 import { M, matsOf, Spring, type Hot, type HitInfo } from './kit';
 import { R, label } from './paint';
 import { decal } from './kit';
@@ -39,7 +39,7 @@ export class Desk {
   readonly vessels = {} as Record<ResKind, Vessel>; readonly resCount = {} as Record<ResKind, Counter>; readonly resCap = {} as Record<ResKind, LiveDecal>; readonly resLamp = {} as Record<ResKind, Lamp>;
   readonly hull: Gauge; readonly charge: Gauge; readonly reactor = new Reactor();
   readonly hullTxt = new LiveDecal(30, 7); readonly chgTxt = new LiveDecal(30, 7);
-  readonly drum = new Drum(); readonly plunger = new Plunger(); readonly readout = new LiveDecal(52, 15, { flat: 1, emit: 0.4, outline: false });
+  readonly drum = new Drum(); readonly plunger = new Plunger(); readonly readout = new LiveDecal(66, 15, { flat: 1, emit: 0.4, outline: false });
   readonly cells = new Counter(2); readonly cellLamp = new Lamp(R.glowTeal[3]);
   readonly clock = new Counter(4); readonly ground = new Counter(2);
   readonly beacons = [new Beacon(R.stampRed[3]), new Beacon(R.glowAmber[3])];
@@ -116,10 +116,10 @@ export class Desk {
     p.add(this.hull.root, this.charge.root, this.reactor.root, this.hullTxt.mesh, this.chgTxt.mesh);
     // ---- the power drum, its readout, the plunger
     this.drum.root.position.set(22, 18, 0); p.add(this.drum.root);
-    this.readout.mesh.position.set(70, 26, 0.4); p.add(this.readout.mesh);
-    p.add(mesh(box(56, 19, 2), M('steel'), 70, 26, -0.8));
-    p.add(stencil('POWER', 70, 13));
-    this.plunger.root.position.set(116, 17, 0); p.add(this.plunger.root);
+    this.readout.mesh.position.set(74, 26, 0.4); p.add(this.readout.mesh);
+    p.add(mesh(box(70, 19, 2), M('steel'), 74, 26, -0.8));
+    p.add(stencil('POWER', 74, 13));
+    this.plunger.root.position.set(124, 17, 0); p.add(this.plunger.root);
     // ---- core cells (the skill tree), clock, held ground
     this.cells.root.position.set(158, 22, 0); p.add(this.cells.root, stencil('CELLS', 158, 32));
     this.cellLamp.root.position.set(170, 12, 0); p.add(this.cellLamp.root);
@@ -134,7 +134,7 @@ export class Desk {
     s.add(this.beacons[0].root, this.beacons[1].root);
   }
   private slab(side: Side, mode: Mode) { let g = this.slabs[side][mode]; if (!g) { g = new THREE.Group(); g.visible = false; this.wing[side].add(g); this.slabs[side][mode] = g; } return g; }
-  private put(side: Side, mode: Mode, o: THREE.Object3D, x: number, z: number, ry = 0) { o.position.set(x, 0, z); o.rotation.y = ry; this.slab(side, mode).add(o); return o; }
+  private put(side: Side, mode: Mode, o: THREE.Object3D, x: number, z: number, ry = 0, s = 1.3) { o.position.set(x, 0, z); o.rotation.y = ry; o.scale.setScalar(s); this.slab(side, mode).add(o); return o; }
   private buildWings() {
     for (const side of ['L', 'R'] as Side[]) {
       const w = this.wing[side];
@@ -143,6 +143,8 @@ export class Desk {
       w.add(mesh(box(WING_W, 1.6, DECK_D - 2), M('deck'), 0, 0.2, -DECK_D / 2));
       w.add(mesh(box(WING_W + 2, 2, 2), M('steel', { spec: 1 }), 0, 0.2, 0.4));
       w.add(mesh(box(WING_W, 10, 3), M('olive'), 0, 5, -DECK_D + 1.5));
+      // a green baize blotter in a leather frame where the tools lie
+      w.add(mesh(box(WING_W - 16, 0.8, DECK_D - 14), mat({ tint: R.sage[2] }), 0, 1.3, -DECK_D / 2 + 1), mesh(box(WING_W - 12, 0.6, DECK_D - 10), M('bake'), 0, 1, -DECK_D / 2 + 1));
       w.position.set(side === 'L' ? -WING_X : WING_X, DECK_Y, DECK_Z0);
     }
     const P = this.props;
@@ -158,12 +160,12 @@ export class Desk {
     wk.gauge.root.position.set(-10, 13, 1); wk.store.root.position.set(12, 17, 1);  wk.crew.root.position.set(12, 6, 1); 
     wk.lamp.root.position.set(-19, 22, 1);
     face.add(wk.gauge.root, wk.store.root, wk.crew.root, wk.lamp.root, stencil('STORE', 12, 23.5), stencil('CREW', 12, 0.5));
-    this.put('L', 'build', wk.root, 44, -30);
+    this.put('L', 'build', wk.root, 44, -30, 0, 1);
     this.put('L', 'build', P.bobble.root, 82, -14);
     this.put('L', 'build', P.mug.root, 88, -38);
     // COMMAND: the holo table on the left; the telemetry CRT, the ordnance crate, the rally horn and the
     // self-destruct on the right
-    this.put('L', 'command', this.table.root, 0, -36);
+    this.put('L', 'command', this.table.root, 0, -36, 0, 1);
     this.crt.root.position.set(-10, 26, -34); this.slab('R', 'command').add(this.crt.root);
     this.put('R', 'command', P.crate.root, -78, -14, 0.2);
     this.put('R', 'command', P.horn.root, 60, -12, -0.3);
@@ -177,7 +179,7 @@ export class Desk {
     this.put('L', 'bio', P.die.root, 52, -12);
     this.put('L', 'bio', P.fan.root, 80, -34, -0.4);
     // SURVEY: the orrery, the calendar, the binoculars and the overlay lens on the left; the table on the right
-    this.put('L', 'survey', this.orrery.root, -66, -28);
+    this.put('L', 'survey', this.orrery.root, -66, -28, 0, 1.25);
     this.put('L', 'survey', P.cal.root, -28, -34);
     this.put('L', 'survey', P.bino.root, 8, -14);
     this.put('L', 'survey', P.lens.root, 44, -26);
@@ -276,8 +278,8 @@ export class Desk {
         if (this.shown[side]) this.slab(side, this.shown[side]!).visible = false;
         this.shown[side] = want;
         if (want) {
-          if (want === 'survey' && side === 'R') this.put('R', 'survey', this.table.root, 0, -36);
-          if (want === 'command' && side === 'L') this.put('L', 'command', this.table.root, 0, -36);
+          if (want === 'survey' && side === 'R') this.put('R', 'survey', this.table.root, 0, -36, 0, 1);
+          if (want === 'command' && side === 'L') this.put('L', 'command', this.table.root, 0, -36, 0, 1);
           this.slab(side, want).visible = true;
         }
       }

@@ -145,9 +145,9 @@ export function digitBand(cell = 8, ink: number = R.bone[5], bg: number = R.ink[
   p.rect(0, 0, 7, cell * 10, bg);
   for (let d = 0; d < 10; d++) {
     // texture rows run top-down; the wheel's v runs up, so digit d sits in row band (9 - d) and they roll in order
-    const y0 = (9 - d) * cell + Math.floor((cell - 7) / 2);
-    num7(p, String(d), 1, y0, ink);
-    p.hl(0, 6, (9 - d) * cell, R.ink[0]);
+    // glyph in rows 0-6 of its cell, a dark gap on row 7 (so the glyph centre sits at v = (d + 0.5) / 10)
+    num7(p, String(d), 1, (9 - d) * cell, ink);
+    p.hl(0, 6, (9 - d) * cell + cell - 1, R.ink[0]);
   }
   return p;
 }

@@ -8,14 +8,16 @@ import { M, D, decal, LiveDecal, Spring, clamp01, DEG } from './kit';
 import { R, digitBand, gaugeFace, glassStreak, label, text5, textW5, text3s, textW3s, iconPix, Pix } from './paint';
 
 // ------------------------------------------------------------------ counter wheels
-const CELL = 8, WR = (CELL * 10) / (Math.PI * 2);
+const CELL = 8, WR = (CELL * 10) / (Math.PI * 2), ARC = 0.95;
 let bandTex: THREE.Texture | null = null;
+/** the front of a number wheel: a curved strip of the drum (only the part that shows in the window is modelled; the
+ *  digits roll over it as the band turns) */
 function wheelGeo() {
-  const S = 20, w = 7, pos: number[] = [], uv: number[] = [];
+  const S = 8, w = 7, pos: number[] = [], uv: number[] = [];
   for (let i = 0; i < S; i++) {
-    const a0 = (i / S) * Math.PI * 2, a1 = ((i + 1) / S) * Math.PI * 2;
-    const p = (a: number, x: number) => [x, WR * Math.sin(a), WR * Math.cos(a)];
-    const v0 = i / S, v1 = (i + 1) / S;
+    const a0 = -ARC + (i / S) * 2 * ARC, a1 = -ARC + ((i + 1) / S) * 2 * ARC;
+    const p = (a: number, x: number) => [x, WR * Math.sin(a), WR * Math.cos(a) - WR];
+    const v0 = a0 / (Math.PI * 2), v1 = a1 / (Math.PI * 2);
     const A = p(a0, -w / 2), B = p(a0, w / 2), C = p(a1, w / 2), Dd = p(a1, -w / 2);
     pos.push(...A, ...B, ...C, ...A, ...C, ...Dd);
     uv.push(0, v0, 1, v0, 1, v1, 0, v0, 1, v1, 0, v1);
@@ -27,45 +29,46 @@ function wheelGeo() {
   return g;
 }
 let WG: THREE.BufferGeometry | null = null;
-/** n rolling number wheels behind a steel bezel; set() rolls them, carrying like the real thing */
+/** n rolling number wheels behind a steel bezel; set() rolls them (always forward, the lower wheels carrying) */
 export class Counter {
   readonly root = new THREE.Group();
-  private wheels: THREE.Mesh[] = []; private ang: number[] = []; private tgt: number[] = [];
+  private bands: DeskMat[] = []; private ang: number[] = []; private tgt: number[] = [];
   readonly bezel: DeskMat;
   value = -1;
   constructor(readonly n: number) {
-    if (!bandTex) bandTex = tex(digitBand(CELL));
+    bandTex ??= tex(digitBand(CELL), true);
     WG ??= wheelGeo();
-    const m = mat({ map: bandTex, flat: 0.55 });
     for (let i = 0; i < n; i++) {
+      const m = mat({ map: bandTex, flat: 0.5 });
       const w = new THREE.Mesh(WG, m);
-      w.position.set((i - (n - 1) / 2) * 7, 0, -WR + 1.4);
-      this.root.add(w); this.wheels.push(w); this.ang.push(0); this.tgt.push(0);
+      w.position.set((i - (n - 1) / 2) * 7, 0, 1.4);
+      this.root.add(w); this.bands.push(m); this.ang.push(0.05); this.tgt.push(0.05);
     }
     // the bezel: four bars round the window, a hair proud of the wheels
     this.bezel = M('steel', { spec: 1 });
     const W = n * 7 + 2;
-    this.root.add(mesh(box(W + 2, 2, 3), this.bezel, 0, 5.5, 0.6), mesh(box(W + 2, 2, 3), this.bezel, 0, -5.5, 0.6), mesh(box(2, 13, 3), this.bezel, -W / 2, 0, 0.6), mesh(box(2, 13, 3), this.bezel, W / 2, 0, 0.6));
-    for (let i = 1; i < n; i++) this.root.add(mesh(box(0.6, 9, 1.4), M('rubber'), (i - n / 2) * 7, 0, 0.6));
+    this.root.add(mesh(box(W + 2, 2, 3), this.bezel, 0, 6.5, 0.8), mesh(box(W + 2, 2, 3), this.bezel, 0, -6.5, 0.8), mesh(box(2, 15, 3), this.bezel, -W / 2, 0, 0.8), mesh(box(2, 15, 3), this.bezel, W / 2, 0, 0.8));
+    this.root.add(mesh(box(W, 12, 1), mat({ tint: R.ink[0] }), 0, 0, -1.4));
+    for (let i = 1; i < n; i++) this.root.add(mesh(box(0.6, 11, 1.4), M('rubber'), (i - n / 2) * 7, 0, 1.2));
   }
   set(v: number) {
     v = Math.max(0, Math.floor(v)); if (v === this.value) return; this.value = v;
     const top = 10 ** this.n - 1, s = String(Math.min(top, v)).padStart(this.n, '0');
     for (let i = 0; i < this.n; i++) {
-      const d = +s[i], cur = this.tgt[i], base = Math.floor(cur / (Math.PI * 2)) * Math.PI * 2;
-      let t = base + ((d + 0.5) / 10) * Math.PI * 2;
-      if (t < cur - 1e-3) t += Math.PI * 2; // always roll forward
+      const d = +s[i], cur = this.tgt[i], base = Math.floor(cur);
+      let t = base + (d + 0.5) / 10;
+      if (t < cur - 1e-4) t += 1; // always roll forward
       this.tgt[i] = t;
     }
   }
   update(dt: number) {
     for (let i = 0; i < this.n; i++) {
       const d = this.tgt[i] - this.ang[i];
-      this.ang[i] += Math.sign(d) * Math.min(Math.abs(d), dt * (2 + Math.abs(d) * 8));
-      // the wheels click into place: snap the last fraction of a cell
-      const cellA = (Math.PI * 2) / 10, q = this.ang[i] / cellA;
-      const shown = Math.abs(d) < 0.02 ? this.ang[i] : (Math.floor(q) + Math.min(1, (q % 1) * 1.6)) * cellA;
-      this.wheels[i].rotation.x = shown;
+      this.ang[i] += Math.sign(d) * Math.min(Math.abs(d), dt * (0.35 + Math.abs(d) * 6));
+      // the wheels click into place: the last part of each cell snaps
+      const q = this.ang[i] * 10 - 0.5, f = q - Math.floor(q);
+      const shown = Math.abs(d) < 0.002 ? this.ang[i] : (Math.floor(q) + Math.min(1, f * 1.5) + 0.5) / 10;
+      (this.bands[i].uniforms.uUvOff.value as THREE.Vector2).y = shown;
     }
   }
 }
@@ -354,16 +357,16 @@ export class ModeKnob {
     this.knob.add(mesh(box(3, 15, 4), km, 0, 1, 6.5));
     this.knob.add(mesh(box(1, 7, 0.6), mat({ tint: R.bone[5], flat: 0.5 }), 0, 4.5, 8.7));
     this.root.add(this.knob);
-    this.win = new LiveDecal(42, 11);
+    this.win = new LiveDecal(50, 11);
     this.win.mesh.position.set(0, 30, 0.4);
     this.root.add(this.win.mesh);
-    this.root.add(mesh(box(46, 15, 2), M('steel'), 0, 30, -0.8));
+    this.root.add(mesh(box(54, 15, 2), M('steel'), 0, 30, -0.8));
   }
   show(i: number, name: string, t: number) {
     for (let k = 0; k < 5; k++) { const on = k === i; this.lamps[k].uniforms.uEmit.value = on ? 0.9 + Math.sin(t * 4) * 0.1 : 0; (this.lamps[k].uniforms.uTint.value as THREE.Color).setHex(on ? R.glowAmber[3] : R.steel[2]); }
     const key = name; if (this.win.key === key) return; this.win.key = key;
     this.win.clear(R.ink[1]);
-    const w = textW5(name); text5(this.win.p, name, Math.round((42 - w) / 2), 2, R.glowAmber[3], R.glowAmber[0]);
+    const w = textW5(name); text5(this.win.p, name, Math.round((50 - w) / 2), 2, R.glowAmber[3], R.glowAmber[0]);
     this.win.flush();
   }
   update(dt: number, i: number) { this.knob.rotation.z = -this.sp.step(ModeKnob.A(i), dt); }

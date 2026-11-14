@@ -37,7 +37,7 @@ void main() {
 }`;
 const FS = /* glsl */`
 layout(location = 1) out highp vec4 gNormal;
-uniform sampler2D map; uniform vec3 uTint, uLight, uGlow;
+uniform sampler2D map; uniform vec3 uTint, uLight, uGlow; uniform vec2 uUvOff;
 uniform float uEmit, uHover, uAlpha, uSpec, uFlag, uFlat, uDim, uShadowOn, uShadowBias;
 uniform sampler2D tShadow;
 varying vec2 vUv; varying vec3 vN; varying vec4 vSh;
@@ -45,7 +45,7 @@ varying vec2 vUv; varying vec3 vN; varying vec4 vSh;
 varying vec3 vCol;
 #endif
 void main() {
-  vec4 tx = texture2D(map, vUv);
+  vec4 tx = texture2D(map, vUv + uUvOff);
 #ifndef GLASS
   if (tx.a < 0.5) discard;
 #endif
@@ -85,7 +85,7 @@ export function mat(o: MatOpts = {}) {
   const m = new THREE.ShaderMaterial({
     vertexShader: VS, fragmentShader: FS,
     uniforms: {
-      map: { value: o.map ?? WHITE() }, uTint: { value: new THREE.Color(o.tint ?? 0xffffff) }, uLight: { value: LIGHT },
+      map: { value: o.map ?? WHITE() }, uUvOff: { value: new THREE.Vector2() }, uTint: { value: new THREE.Color(o.tint ?? 0xffffff) }, uLight: { value: LIGHT },
       uGlow: { value: new THREE.Color(0) }, uEmit: { value: o.emit ?? 0 }, uHover: { value: 0 }, uAlpha: { value: o.glass ?? 1 },
       uSpec: { value: o.spec ?? 0 }, uFlag: { value: o.outline === false ? 0 : 1 }, uFlat: { value: o.flat ?? 0 }, uDim: { value: 0 },
       uShadowM: SHADOW.m, tShadow: SHADOW.t, uShadowOn: SHADOW.on, uShadowBias: SHADOW.bias,

@@ -372,8 +372,8 @@ export class Hud {
     if (ro.key === key) return; ro.key = key;
     ro.clear(R.ink[0]);
     const ink = st === 'bad' ? R.stampRed[3] : st === 'arm' ? (Math.floor(this.t * 3) % 2 ? R.glowAmber[4] : R.glowAmber[2]) : st === 'wait' ? R.glowAmber[2] : R.glowAmber[3];
-    text3s(ro.p, a.slice(0, 12), 2, 2, R.glowAmber[4]);
-    text3s(ro.p, b.slice(0, 12), 2, 9, ink);
+    text3s(ro.p, a.slice(0, 16), 2, 2, R.glowAmber[4]);
+    text3s(ro.p, b.slice(0, 16), 2, 9, ink);
     ro.flush();
   }
 
@@ -583,6 +583,8 @@ export class Hud {
   /** game/climate.ts (through ui/almanac.ts): the orrery and the calendar follow the sky */
   setClimate(c: Climate) { this.climate = c; }
   invalidate() { this.cmdKey = ''; this.selKey = '-'; }
+  /** run the desk's animations forward (headless tests and screenshots, where frames are slow) */
+  settle(n = 120) { for (let i = 0; i < n; i++) { this.wheel.update(1 / 30); this.desk.update(1 / 30); } this.desk.render(); }
   dispose() {
     removeEventListener('resize', this.onResize);
     for (const v of ['--hud-top', '--desk-h', '--desk-wl', '--desk-wr', '--desk-ww']) document.documentElement.style.removeProperty(v);

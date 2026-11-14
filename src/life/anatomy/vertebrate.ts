@@ -252,7 +252,7 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
   if (nose === 'leather' || nose === 'disc') {
     const half = famM.half[7], nw = half[3][0] * hw * (nose === 'disc' ? 1.0 : 0.75), nh = (half[0][1] - half[6][1]) * hh * (nose === 'disc' ? 0.45 : 0.32);
     const nc = nose === 'disc' ? add(noseC, [0, 0, -hl * 0.02]) : add(noseC, [0, hh * 0.08, -hl * 0.03]);
-    const leather: C2 = nose === 'disc' ? ['flesh', 4] : ['ink', 2];
+    const leather: C2 = spec.coat.face?.nose ?? (nose === 'disc' ? ['hide', 3] : ['ink', 2]);
     const nostrils = [-1, 1].map((s) => ({ c: add(nc, [s * nw * 0.45, -nh * 0.15, nh * 0.6]), r: nw * 0.22, dir: nrm([s * 0.6, 0.6, 0.2]), curl: 0.6 }));
     body.add(noseLeather({ name: 'nose', c: nc, fwd: nrm([0, nose === 'disc' ? 0 : 0.35, 1]), w: nw, h: nh, d: nw * 0.6, bone: iH, paint: leatherPaint(leather, nostrils, nose === 'disc') }));
   } else if (nose === 'nostrils') {
