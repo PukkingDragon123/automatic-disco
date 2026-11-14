@@ -55,7 +55,7 @@ type R2 = [number, number];
 interface LodSet { near: R2; plant: R2; small: R2; ground: R2; grassKeep: number; low: boolean }
 const LODS: Record<Quality, LodSet> = {
   high: { near: [21, 23.5], plant: [59, 64], small: [44, 48], ground: [42, 46], grassKeep: 1, low: false },
-  medium: { near: [12, 14], plant: [32, 36], small: [24, 27], ground: [24, 27], grassKeep: 1, low: false },
+  medium: { near: [12, 14], plant: [30, 33], small: [23, 26], ground: [23, 26], grassKeep: 1, low: false },
   low: { near: [8, 10], plant: [8, 10], small: [8, 10], ground: [8, 10], grassKeep: 2, low: true },
 };
 /** plants shorter than this hand over to their cards at the nearer LOD_SMALL range */

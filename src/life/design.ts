@@ -246,7 +246,7 @@ const KINDS: Record<Kind, KindSpec> = {
       d.colors.base = b; d.colors.belly = mixHex(b, 0xf0e4c8, 0.5);
       d.colors.pattern = alien ? r.pick([0x1a1420, 0xe8702a, 0xf0e0c0, 0x2a2a6a]) : r.pick([0x3a2418, 0x5a3420, 0x2a1a14, 0x8a5a2a]);
       d.pattern = alien ? r.pick(['stripes', 'spots', 'plain'] as Pattern[]) : r.pick(['plain', 'plain', 'spots'] as Pattern[]); d.cover = 'fur';
-      d.head = sl(r, 0.55, 0.75); d.legThick = sl(r, 0.5, 0.68); d.legLen = sl(r, 0.45, 0.65); d.neck = sl(r, 0.2, 0.4); d.tail = sl(r, 0.6, 0.9); d.girth = sl(r, 0.45, 0.65);
+      d.head = sl(r, 0.55, 0.75); d.legThick = sl(r, 0.62, 0.78); d.legLen = sl(r, 0.3, 0.46); d.neck = sl(r, 0.2, 0.4); d.tail = sl(r, 0.55, 0.8); d.girth = sl(r, 0.55, 0.75);
     },
   },
   worm: { plans: ['serpent'], size: [0.15, 0.55], genes: () => ['annelid_serpent', 'setae', 'eye_spots', 'ring_maw', 'mucus', 'scav_gut', 'budding'] },

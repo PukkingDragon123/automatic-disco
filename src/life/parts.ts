@@ -380,7 +380,7 @@ export function palmAntlers(S: Ctx, h: HeadCtx) { rack(S, h, 1, true); }
  *  reaching forward off its front face (brow, bez, trez, the long royal, a crown at the top); polished bone, or velvet */
 export function rack(S: Ctx, h: HeadCtx, size: number, big: boolean) {
   const d = S.d, w: Wt = [h.iH, 1];
-  const La = h.hl * (big ? 1.75 : 1.2) * size, r0 = Math.max(0.016, h.hw * (big ? 0.085 : 0.065));
+  const La = h.hl * (big ? 1.9 : 1.25) * size, r0 = Math.max(0.018, h.hw * (big ? 0.11 : 0.08));
   const AN = S.reg('ANTLER', TAU * r0 * 1.2, La * 1.1, 8, 24, 110);
   const velvet = hash(d.seed % 1000, 41) < 0.3;
   const TINES: number[][] = big ? [[0.05, 0.42, 0.95, 0.1], [0.14, 0.36, 0.85, 0.05], [0.4, 0.3, 0.65, 0.05], [0.6, 0.42, 0.55, -0.05], [0.8, 0.28, 0.35, 0.1], [0.93, 0.22, 0.15, -0.2]]

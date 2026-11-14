@@ -258,7 +258,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
     const slot = l0.ring ? BARK.RING : isBark ? ((l0.ridge ?? 0) >= 3 ? (sp.trunk & 1 ? BARK.PLATE : BARK.FURROW) : (l0.ridge ?? 0) >= 2 ? BARK.FURROW : sp.arch === 'coral' ? BARK.FLESH : BARK.STEM) : (l0.ridge ?? 0) >= 3 ? BARK.FIBRE : BARK.STEM;
     const fslot = sp.arch === 'fungus' && isBark ? BARK.FIBRE : slot;
     const green = !isBark || sp.arch === 'coral';
-    const rm = Math.max(...R2), sides = sp.arch === 'shrub' && !L1 ? (rm > 0.035 ? 5 : 3) : L1 ? (rm > 0.07 ? 6 : rm > 0.035 && !green ? 4 : 3) : rm > 0.09 ? 8 : rm > 0.045 ? 6 : rm > 0.022 && !(green && rm < 0.04) ? 4 : 3;
+    const rm = Math.max(...R2), sides = sp.arch === 'shrub' ? (L1 ? 3 : rm > 0.035 ? 5 : 3) : L1 ? (rm > 0.07 ? 6 : rm > 0.035 && !green ? 4 : 3) : rm > 0.09 ? 8 : rm > 0.045 ? 6 : rm > 0.022 && !(green && rm < 0.04) ? 4 : 3;
     const base = l0.ramp[Math.min(l0.ramp.length - 1, 3)], ao = ampOf(amb);
     g.col = linHex(base, ao * SLOT_GAIN[fslot] * (isBark ? 0.95 : 1));
     g.kind = isBark && sp.arch !== 'coral' && sp.arch !== 'fungus' ? KIND.BARK : KIND.STEM; g.pivot = [0, 0, 0]; g.phase = r.next();
@@ -326,7 +326,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
   // ---- orbs: fruit, berries, beads, coral polyps, lantern pods
   const spk = tex.speckle();
   let oi = 0;
-  const orbThin = Math.max(1, Math.round(P.orbs.length / (L1 ? 8 : sp.arch === 'shrub' ? 6 : 40)));
+  const orbThin = Math.max(1, Math.round(P.orbs.length / (sp.arch === 'shrub' ? (L1 ? 3 : 6) : L1 ? 8 : 40)));
   for (const o of P.orbs) {
     if (orbThin > 1 && !o.ribs && (oi++ % orbThin)) continue;
     const c = M(o.c), rr = (o.r / PXM) * (orbThin > 1 ? Math.min(1.5, Math.pow(orbThin, 0.3)) : 1), ao = ampOf(o.amb);
