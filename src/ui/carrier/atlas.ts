@@ -87,7 +87,7 @@ function plates(p: P, o: PlateOpts) {
       const a = 0.4 + rnd() * 0.35, b = 0.35 + rnd() * 0.4;
       p.poly([[x0 + w * a, y1], [x1, y0 + h * b], [x1, y1]], R[t - 1]);
     }
-    p.hl(x0, x1 - 1, y0, R[1]); p.vl(x0, y0, y1 - 1, R[1]);
+    p.hl(x0, x1 - 1, y0, R[Math.max(1, t - 3)]); p.vl(x0, y0, y1 - 1, R[Math.max(1, t - 2)]);
     for (let x = x0 + 1; x < x1; x++) p.set(x, y0 + 1, o.rivets && (x - x0) % 2 === 0 ? R[Math.min(T, t + 2)] : R[Math.min(T, t + 1)]);
     for (let yy = y0 + 1; yy < y0 + Math.min(h - 1, 4); yy++) p.set(x0 + 1, yy, R[Math.min(T, t + 1)]);
     p.hl(x0 + 1, x1 - 1, y1 - 1, R[t - 1]);
@@ -107,7 +107,7 @@ function plates(p: P, o: PlateOpts) {
     // access panel: a 4x3 or 5x3 hatch, dark groove top-left, lit bottom-right lip, one screw glint
     if (o.panels && w >= 14 && h >= 8 && rnd() < o.panels) {
       const pw = 4 + Math.floor(rnd() * 2), ph = 3, px = x0 + 3 + Math.floor(rnd() * (w - pw - 5)), py = y0 + 3 + Math.floor(rnd() * Math.max(1, h - ph - 5));
-      p.hl(px, px + pw - 1, py, R[1]); p.vl(px, py, py + ph - 1, R[1]); p.hl(px + 1, px + pw, py + ph, R[Math.min(T, t + 1)]); p.vl(px + pw, py + 1, py + ph, R[Math.min(T, t + 1)]);
+      p.hl(px, px + pw - 1, py, R[Math.max(1, t - 2)]); p.vl(px, py, py + ph - 1, R[Math.max(1, t - 2)]); p.hl(px + 1, px + pw, py + ph, R[Math.min(T, t + 1)]); p.vl(px + pw, py + 1, py + ph, R[Math.min(T, t + 1)]);
       p.set(px + pw - 1, py + 1, R[Math.min(T, t + 2)]);
     }
     // a doubler patch bolted over the plate: raised, lit along the top, its shadow cast down-right
@@ -154,13 +154,13 @@ export function paintAtlas(): CarrierAtlas {
   const S = new Sheet();
   // ---------------------------------------------------------------- the big hull plates: 252 x 60 m before they repeat
   const hullA = S.alloc('hullA', 1008, 240);
-  plates(hullA, { R: HULL, base: 6, seed: 11, courses: [10, 12, 11, 13, 10, 12, 14, 11, 12, 10, 13, 12, 11, 12, 10, 13, 12, 11, 14, 11], widths: [24, 28, 32, 36, 40, 44, 20, 48], rivets: true, alt: BLUE, altP: 0.03, twins: [RAMPS.stone[4], SL[4], RAMPS.iron[4], ST[4]], facet: 0.3, chips: 0.5, rust: 0.35, grime: 0.6, panels: 0.35, marks: 0.25, doubler: 0.15, primer: 1 });
+  plates(hullA, { R: HULL, base: 6, seed: 11, courses: [10, 12, 11, 13, 10, 12, 14, 11, 12, 10, 13, 12, 11, 12, 10, 13, 12, 11, 14, 11], widths: [24, 28, 32, 36, 40, 44, 20, 48], rivets: true, alt: BLUE, altP: 0.02, twins: [RAMPS.stone[4], SL[3], RAMPS.iron[4], ST[4]], facet: 0.3, chips: 0.45, rust: 0.35, grime: 0.6, panels: 0.18, marks: 0.2, doubler: 0.15 });
   S.shelf();
   const hullB = S.alloc('hullB', 1008, 240);
   plates(hullB, { R: ARMOR, base: 6, seed: 23, courses: [16, 14, 18, 16, 12, 18, 16, 14, 16, 18, 14, 16, 18, 14], widths: [32, 40, 48, 56, 36, 64], rivets: true, twins: [RAMPS.stone[3], RAMPS.iron[3], SL[3]], facet: 0.35, chips: 0.55, rust: 0.5, grime: 0.8, panels: 0.15, marks: 0.15, doubler: 0.2 });
   S.shelf();
   const olive = S.alloc('olive', 496, 120);
-  plates(olive, { R: OLV, base: 4, seed: 5, courses: [8, 9, 8, 10, 8, 9, 8, 10, 8, 9, 8, 9, 8, 8], widths: [12, 16, 20, 24, 28], rivets: true, facet: 0.25, chips: 0.55, rust: 0.12, grime: 0.5, panels: 0.3, marks: 0.12, doubler: 0.06 });
+  plates(olive, { R: OLV, base: 4, seed: 5, courses: [10, 12, 11, 12, 10, 13, 11, 12, 10, 9], widths: [16, 20, 24, 28, 32, 36], rivets: true, facet: 0.25, chips: 0.5, rust: 0.12, grime: 0.5, panels: 0.15, marks: 0.12, doubler: 0.06 });
   const deck = S.alloc('deck', 496, 120);
   {
     const p = deck;

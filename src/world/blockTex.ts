@@ -175,14 +175,14 @@ function blade1(pc: PixelCanvas, x: number, y: number, len: number, lean: number
  */
 function grassTop(pc: PixelCanvas, pal: Palette, base: number, seed: number, lush: number) {
   const r = new Rand(seed), S = RF(pal.soil), kin = kinRamps(base), G = kin[0], D = RF(pal.grassDry);
-  const P = plates(pc, r, 15, G, [2, 2, 3]);
+  const P = plates(pc, r, 11, G, [2, 2, 3, 3]);
   // bare earth in the thin places (whole plates, so the patches have drawn edges)
   for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) if ((((P.map[y * T + x] * 2654435761) >>> 0) >>> 24) / 256 < 0.18 - lush * 0.16) pc.set(x, y, S[(P.map[y * T + x] & 1) + 2]);
   // blade marks on the floor: two-pixel strokes, a lit one over a shaded one
-  for (let i = 0; i < Math.round((40 + lush * 30) * AREA); i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); pc.set(x, y, G[4]); pc.set(x, y + 1, G[1]); }
+  for (let i = 0; i < Math.round((70 + lush * 50) * AREA); i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); pc.set(x, y, G[4]); pc.set(x, y + 1, G[1]); }
   // tussocks, kept apart, back (top) to front
   const tufts: { x: number; y: number; n: number; R: number[] }[] = [];
-  const want = Math.round((9 + lush * 9) * AREA);
+  const want = Math.round((13 + lush * 12) * AREA);
   for (let t = 0; tufts.length < want && t < want * 6; t++) {
     const x = r.int(0, T - 1), y = r.int(0, T - 1);
     if (tufts.some((q) => Math.abs(q.x - x) < 4 && Math.abs(q.y - y) < 4)) continue;
@@ -247,7 +247,7 @@ function soilTop(pc: PixelCanvas, soil: number, seed: number, stones = 1) {
     for (let j = 0; j < r.int(6, 14); j++) { pc.set(x, y, S[6]); pc.set(x, y + 1, S[1]); x += dx; if (r.chance(0.35)) y += r.pick([-1, 1]); }
   }
   // pebbles: faceted 3-6 px stones with an outline and a glint
-  for (let i = 0; i < Math.round((3 + stones * 9) * AREA); i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(3, 6.5), r.range(2.5, 5), r.chance(0.6) ? St : r.chance(0.5) ? rampNamed('slate') : rampNamed('sand'), r, S[0]);
+  for (let i = 0; i < Math.round((1.5 + stones * 4) * AREA); i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(3, 5.5), r.range(2.5, 4.5), r.chance(0.6) ? St : r.chance(0.5) ? rampNamed('slate') : rampNamed('sand'), r, S[0]);
   for (let i = 0; i < AREA; i++) { let x = r.int(0, T - 1), y = r.int(0, T - 1); const dx = r.pick([-1, 1]); for (let j = 0; j < r.int(5, 9); j++) { pc.set(x, y, Tw[4]); pc.set(x, y + 1, Tw[1]); x += dx; if (r.chance(0.25)) y += 1; } }
   tidy(pc);
 }

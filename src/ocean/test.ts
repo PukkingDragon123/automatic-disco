@@ -52,7 +52,13 @@ export async function testOcean(engine: Engine, input: Input, P: URLSearchParams
   const dx = Math.cos(sh.a), dz = Math.sin(sh.a);
   const under = P.has('under') || shot === 'kelp' || shot === 'school' || shot === 'reef';
   if (P.has('cam')) { cam = v3(P.get('cam'), [L.x, 20, L.z + 30]); look = v3(P.get('look'), [L.x, 4, L.z]); }
-  else if (under) {
+  else if (shot === 'reef' && o.reef?.coral.length) {
+    // in among the coral heads of the lagoon
+    const cs = o.reef.coral.filter(([x, z]) => { const d = o.depthAt(x, z); return d > 1.3 && d < 3; });
+    const c = cs[Math.floor(cs.length * 0.37)] ?? o.reef.coral[0], d = o.depthAt(c[0], c[1]);
+    cam = new THREE.Vector3(c[0] - 3.2, R.water - Math.min(d * 0.45, 1.2), c[1] - 2.4);
+    look = new THREE.Vector3(c[0] + 2, c[2] + 0.3, c[1] + 1.5); fov = 58;
+  } else if (under) {
     const s2 = out(shot === 'kelp' ? 7 : 3.5), x = s2.x + Math.cos(s2.a) * 3, z = s2.z + Math.sin(s2.a) * 3, d = o.depthAt(x, z);
     cam = new THREE.Vector3(x - Math.cos(s2.a) * 2, R.water - Math.min(d * 0.55, 3.5), z - Math.sin(s2.a) * 2);
     look = new THREE.Vector3(x + Math.cos(s2.a) * 10, R.water - d * 0.7, z + Math.sin(s2.a) * 10);

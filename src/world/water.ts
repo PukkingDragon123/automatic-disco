@@ -327,7 +327,7 @@ void main() {
         // light on the bed: caustics as drawn nets of light, ripple marks across the sand, dimmer with depth
         float cn = causticNet(bq * 1.15, t * 1.1);
         float ck = uSunK * exp(-bedDepth * 0.2) * smoothstep(0.05, 0.4, bedDepth);
-        bc *= 1.0 + (cn > 0.66 ? 0.6 : cn > 0.25 ? 0.25 : 0.0) * ck;
+        bc *= 1.0 + (cn > 0.66 ? 0.95 : cn > 0.25 ? 0.38 : 0.0) * ck;
         float mid = floor(texture2D(uMat, (floor(clamp(bq, vec2(0.0), vec2(uN - 0.01))) + 0.5) / uN).r * 255.0 + 0.5);
         if (abs(mid - 4.0) < 0.5 && bedDepth > 0.15) {
           vec3 s2 = shoreAt(bq);
@@ -350,8 +350,8 @@ void main() {
     if (red > 0.5) wc = rampR(k * 0.85 + 0.5);
     // the bed shows through in steps, filtered toward the water's colour
     float T = exp(-path * 0.42 * uTurb);
-    float Tq = T > 0.72 ? 0.8 : T > 0.45 ? 0.58 : T > 0.22 ? 0.34 : T > 0.08 ? 0.14 : 0.0;
-    vec3 seen = bc * vec3(0.62, 0.95, 1.05) + wc * 0.3;
+    float Tq = T > 0.72 ? 0.86 : T > 0.45 ? 0.66 : T > 0.22 ? 0.4 : T > 0.08 ? 0.16 : 0.0;
+    vec3 seen = bc * vec3(0.5, 0.95, 1.25) + wc * 0.25;
     col = seeBed ? mix(wc, seen, Tq) : wc;
     // the sky mirrored, in steps, more of it toward the horizon
     float Fq = floor(min(F, 0.9) * 4.0) / 4.0;

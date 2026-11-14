@@ -116,7 +116,7 @@ export function mirewalker(d: Design, rig: Rig, rest: V3[]) {
     body.add(stalk({ name: 'barb' + k, path: curve([b0, [b0[0] + s * L * 0.15, b0[1] - L * 0.45, b0[2] + L * 0.05], [b0[0] + s * L * (0.2 + sway * 0.3), b0[1] - L, b0[2] - L * 0.12]], 6), r: (t) => hl * 0.028 * (1 - t * 0.85), around: 6, levels: 1, skin: () => [onJaw ? iJ : iH, 1], paint: barbLook, k: 1.5 }));
   }
   // ---------------------------------------------------------------- the throat sac under the root of the neck
-  { const q = gridSurf(tr.m, tr.grids[0], 0.0, rowV(11)); body.add(sac({ name: 'sac', at: q.p, n: norm([0, -1, 0.3]), up: [0, 0, 1], r: [W * 0.13, W * 0.17, W * 0.12], skin: X.spine, k: 1, paint: lookPaint({ ramp: 'stone', step: 5, light: 0.6, pebbles: { size: 0.3, depth: 0.7 }, folds: { axis: [0, 0, 1], origin: q.p, spacing: 0.5, depth: 0.8 }, glints: { size: 0.5, every: 0.3 } }) })); }
+  { const q = gridSurf(tr.m, tr.grids[0], 0.0, rowV(11)); body.add(sac({ name: 'sac', at: q.p, n: norm([0, -1, 0.5]), up: [0, 0, 1], r: [W * 0.11, W * 0.16, W * 0.07], sink: 0.35, skin: X.spine, k: 1, paint: lookPaint({ ramp: 'stone', step: 5, light: 0.6, pebbles: { size: 0.3, depth: 0.7 }, folds: { axis: [0, 0, 1], origin: q.p, spacing: 0.5, depth: 0.8 }, glints: { size: 0.5, every: 0.3 } }) })); }
   // ---------------------------------------------------------------- legs: sauropod columns
   const clawPaint = lookPaint({ ramp: 'bone', step: 3, creases: 0.6, glints: { size: 0.25, every: 0.6 }, extra: (px) => px.folds([0, 1, 0], [0, 0, 0], 0.1, { depth: 0.4 }) });
   for (const lg of rig.legs) {

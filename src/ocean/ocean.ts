@@ -173,7 +173,7 @@ export class Ocean {
     const UU = this.under.U;
     (UU.uSunDir.value as THREE.Vector3).copy(sd); (UU.uSunCol.value as THREE.Color).copy(sc);
     UU.uSunK.value = U.uSunK.value; UU.uRed.value = U.uRed.value; UU.uBio.value = U.uBio.value;
-    UU.uFogK.value = 0.06 + w.storm * 0.05 + (this.region.oceanic ? 0 : 0.04);
+    UU.uFogK.value = 0.032 + w.storm * 0.04 + (this.region.oceanic ? 0 : 0.03);
     void daylight;
   }
   dispose() { for (const p of this.parts) p.dispose?.(); this.under.dispose(); this.reef?.dispose(); this.fishery?.dispose(); this.dive.dispose(); this.splashes.dispose(); setMuffle(0); }

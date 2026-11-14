@@ -38,12 +38,12 @@ void main() {
   float uw = min(dist, tUp);
   float camD = max(0.0, uSurf - ro.y), pD = max(0.0, uSurf - min(P.y, uSurf));
   // light reaching the hit point from above, and on the way back to the eye
-  vec3 sig = vec3(0.3, 0.075, 0.05);
-  vec3 lit = scene * exp(-(pD * 0.6 + uw) * sig);
+  vec3 sig = vec3(0.16, 0.04, 0.028);
+  vec3 lit = scene * exp(-(pD * 0.45 + uw) * sig);
   // in-scattered light: the fog of the water, brighter toward the surface and the sun, darker in the deep
   float up = clamp(rd.y * 0.5 + 0.5, 0.0, 1.0);
   // the water's colour from its ramps: brighter steps up toward the surface, the deep's blue below and far down
-  float fi = clamp(up * 1.25 - camD * 0.04, 0.0, 1.0) * 4.0 - (1.0 - uSunK) * 2.0;
+  float fi = clamp(up * 1.1 + 0.2 - camD * 0.03, 0.0, 1.0) * 5.0 - (1.0 - uSunK) * 2.5;
   vec3 fogC = camD > 7.0 ? uRampB[int(clamp(floor(fi + 0.5), 0.0, 6.0))] : uRampW[int(clamp(floor(fi + 0.5), 0.0, 6.0))];
   fogC = mix(fogC, uRedC * (0.3 + 0.7 * uSunK), uRed * 0.6);
   fogC += uSunCol * pow(max(dot(rd, uSunDir), 0.0), 8.0) * 0.18 * uSunK;
@@ -85,7 +85,7 @@ export class Underwater {
     const C = (h: number) => new THREE.Color(h);
     this.U = {
       ...grab.U, uRampW: ramps.uRampW, uRampB: ramps.uRampB,
-      uTime: { value: 0 }, uDbg: { value: Number(new URLSearchParams(location.search).get('udbg') ?? 0) }, uSurf: { value: 3.9 }, uSunK: { value: 1 }, uRed: { value: 0 }, uBio: { value: 0 }, uFogK: { value: 0.085 },
+      uTime: { value: 0 }, uDbg: { value: Number(new URLSearchParams(location.search).get('udbg') ?? 0) }, uSurf: { value: 3.9 }, uSunK: { value: 1 }, uRed: { value: 0 }, uBio: { value: 0 }, uFogK: { value: 0.04 },
       uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color(1, 1, 1) },
       uFogS: { value: C(RAMPS.teal[3]) }, uFogD: { value: C(RAMPS.sapphire[0]) }, uShaft: { value: C(RAMPS.glowTeal[2]) },
       uRedC: { value: C(RAMPS.coral[1]) }, uGlowC: { value: C(RAMPS.glowTeal[3]) },
