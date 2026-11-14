@@ -293,7 +293,9 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
     // limbs swell into a collar where they leave their parent; roots sink into little mounds of earth
     const base0 = l0.ramp[Math.min(l0.ramp.length - 1, 3)];
     if (tree && isBark && pts[0][1] < 0.08 && pts[pts.length - 1][1] - pts[0][1] > 0.6 && r0 > 0.045) {
-      const st = trunkStyle(sp, !!l0.ring), col = linHex(base0, ampOf(amb) * SLOT_GAIN[st.slot] * 0.95);
+      // a very dark bark ramp (basalt, ink) is lifted a step so the sculpted bark still reads in shade
+      const lv = linHex(base0), tb = lv[0] * 0.3 + lv[1] * 0.59 + lv[2] * 0.11 < 0.06 ? l0.ramp[Math.min(l0.ramp.length - 1, 4)] : base0;
+      const st = trunkStyle(sp, !!l0.ring), col = linHex(tb, ampOf(amb) * SLOT_GAIN[st.slot] * 0.95);
       g.kind = KIND.BARK; g.pivot = [0, 0, 0]; g.phase = r.next(); g.col = col;
       const T = sculptTrunk(g, pts, rad, st, lod, col, tex, r);
       soilCollar(g, pts[0], rad[0] * (1 + st.flare * 0.5), r, lod);

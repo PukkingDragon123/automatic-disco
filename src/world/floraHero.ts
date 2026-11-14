@@ -370,7 +370,7 @@ export function meshBloom(sp: PlantSpecies, h: number, tex: FloraTex, seed: numb
   const n = sty.pick([5, 5, 6, 8, 12]), layers = n >= 8 ? 1 : sty.int(1, 2), cup = sty.range(0.15, 0.85), reflex = sty.chance(0.3) ? sty.range(0.2, 0.5) : 0;
   const pet = tex.leaf(shape, A, { petal: true, var: sty.int(0, 2) }), sep = tex.leaf('lance', G, { var: 1 }), leafR = tex.leaf(lshape, G, { lat: true, var: r.int(0, 2) });
   const anther = rampNamed(sty.pick(['ochre', 'straw', 'gold'] as const)), pistil = rampNamed(sty.pick(['straw', 'sage', 'coral'] as const));
-  const flen = h * sty.range(0.085, 0.12) * (n >= 8 ? 0.85 : 1), fwid = flen * (n >= 8 ? 0.22 : 0.42);
+  const flen = h * sty.range(0.06, 0.085) * (n >= 8 ? 0.85 : 1), fwid = flen * (n >= 8 ? 0.22 : 0.42);
   g.kind = KIND.LEAF; g.pivot = [0, 0, 0];
   for (let k = lod ? 4 : 7; k > 0; k--) { const a = r.range(0, TAU), d = vnrm([Math.cos(a), r.range(0.35, 0.7), Math.sin(a)]); g.phase = r.next(); g.col = [0.9, 0.9, 0.9]; leafCard(g, [0, 0.01, 0], d, vnrm(vcross(d, vcross(UP, d))), h * r.range(0.2, 0.3), h * 0.06, leafR, 0.45, 0.3, null); }
   const ns = r.int(2, lod ? 3 : 5);
@@ -498,11 +498,11 @@ export function meshSundew(sp: PlantSpecies, h: number, tex: FloraTex, seed: num
     ribbonStrip(g, [[0, 0.004, 0], vmul(dn, L * 0.5)], [0.003, 0.0045], pet, { flat: true });
     const bc = vmul(dn, L * 0.5), bl = L * 0.5, bw = L * 0.19, mid = vadd(bc, vmul(dn, bl * 0.5));
     leafCard(g, bc, dn, UP, bl, bw, blade, 0.15, 0.0, null);
-    const nt = lod ? 6 : 14;
+    const nt = lod ? 6 : 18;
     for (let t = 0; t < nt; t++) {
       const u = 0.08 + 0.88 * ((t * 0.618) % 1), s = (((t * 0.382 + 0.5) % 1) * 2 - 1) * Math.sin(Math.PI * Math.min(1, u * 1.05));
       const at = vadd(vadd(bc, vmul(dn, bl * u)), vmul(side, bw * s * 0.78));
-      const lean = vnrm(vadd(vadd(UP, vmul(dn, (u - 0.4) * 0.9)), vmul(side, s * 0.7))), len = h * (0.11 + Math.abs(s) * 0.1 + u * 0.06), tip = vadd(at, vmul(lean, len));
+      const rimK = Math.min(1, Math.abs(s) * 1.3 + Math.max(0, u - 0.75) * 3), lean = vnrm(vadd(vadd(UP, vmul(dn, (u - 0.45) * (0.6 + rimK))), vmul(side, s * (0.5 + rimK)))), len = h * (0.05 + rimK * 0.08 + u * 0.02), tip = vadd(at, vmul(lean, len));
       // curl axis: horizontal, square to the way toward the middle of the blade
       const toMid = horiz(vsub(mid, at)), ax = vnrm(vcross(UP, vlen(vsub(mid, at)) > 0.004 ? toMid : dn)), ph = ((Math.atan2(ax[2], ax[0]) / TAU) % 1 + 1) % 1;
       g.kind = KIND.TENTACLE; g.pivot = at; g.phase = ph; g.col = stalk;
@@ -525,23 +525,30 @@ export function meshSundew(sp: PlantSpecies, h: number, tex: FloraTex, seed: num
 export function meshSail(sp: PlantSpecies, h: number, tex: FloraTex, seed: number, lod: number): PlantGeo {
   const r = new Rand(seed), g = new Geo(h);
   const S = rampFor(sp.trunk), M = rampFor(sp.accent), mem = tex.membrane(M);
-  g.kind = KIND.SOLID; g.pivot = [0, h * 0.06, 0]; g.col = linHex(S[4] ?? S[3], 1.4); g.phase = r.next();
-  sphere(g, [0, h * 0.05, 0], h * 0.11, tex.speckle(), lod ? 5 : 8, lod ? 2 : 3, 0.75);
-  const ns = r.int(4, 6), az0 = r.range(0, TAU), spines: V3[][] = [], fan = r.range(1.4, 2.2);
+  // the bulbous root, a step paler than the spines, gripping the soil with splayed tubers
+  g.kind = KIND.SOLID; g.pivot = [0, h * 0.06, 0]; g.col = linHex(S[5] ?? S[4], 1.35); g.phase = r.next();
+  sphere(g, [0, h * 0.06, 0], h * 0.1, tex.speckle(), lod ? 6 : 9, lod ? 3 : 4, 0.85);
+  if (!lod) {
+    g.kind = KIND.BARK; g.col = linHex(S[4] ?? S[3], SLOT_GAIN[BARK.SCALE]); g.pivot = [0, 0, 0];
+    for (let k = 0; k < 5; k++) { const a = (k / 5) * TAU + r.range(-0.3, 0.3), o: V3 = [Math.cos(a), 0, Math.sin(a)]; tube(g, [vadd(vmul(o, h * 0.07), [0, h * 0.05, 0]), vadd(vmul(o, h * 0.15), [0, h * 0.01, 0]), vadd(vmul(o, h * 0.2), [0, -0.03, 0])], [h * 0.022, h * 0.016, h * 0.01], BARK.SCALE, 4, false); }
+    soilCollar(g, [0, 0, 0], h * 0.09, r, 1);
+  }
+  const ns = r.int(5, 7), az0 = r.range(0, TAU), spines: V3[][] = [], fan = r.range(2.0, 2.8);
   for (let k = 0; k < ns; k++) {
-    const f = k / (ns - 1) - 0.5, az = az0 + f * fan, L = h * r.range(0.85, 1.0) * (1 - Math.abs(f) * 0.45), pts: V3[] = [];
-    for (let s = 0; s <= 6; s++) { const t = s / 6, el = 1.5 - t * (0.55 + Math.abs(f) * 0.9); pts.push([Math.cos(az) * Math.cos(el) * L * t * 0.95, h * 0.09 + Math.sin(el) * L * t, Math.sin(az) * Math.cos(el) * L * t * 0.95]); }
+    const f = k / (ns - 1) - 0.5, az = az0 + f * fan, L = h * r.range(0.85, 1.0) * (1 - Math.abs(f) * 0.4), pts: V3[] = [];
+    for (let s = 0; s <= 6; s++) { const t = s / 6, el = 1.5 - t * (0.6 + Math.abs(f) * 1.2); pts.push([Math.cos(az) * Math.cos(el) * L * t, h * 0.1 + Math.sin(el) * L * t, Math.sin(az) * Math.cos(el) * L * t]); }
     spines.push(pts);
     g.kind = KIND.BARK; g.col = linHex(S[3], SLOT_GAIN[BARK.SCALE]); g.pivot = [0, 0, 0]; g.phase = r.next();
-    tube(g, pts, pts.map((_, i) => Math.max(0.004, h * 0.026 * (1 - i / 7))), BARK.SCALE, lod ? 4 : 5, true);
+    tube(g, pts, pts.map((_, i) => Math.max(0.004, h * 0.024 * (1 - i / 7))), BARK.SCALE, lod ? 4 : 5, true);
   }
+  // membranes between neighbouring spines: slack toward the root, the free edge scalloped down between the tips
   g.kind = KIND.MEMBRANE; g.col = [1, 1, 1];
   for (let k = 0; k + 1 < spines.length; k++) {
     const a = spines[k], b = spines[k + 1], rows: V3[][] = [];
-    for (let s = 1; s <= 6; s++) { const row: V3[] = []; for (let j = 0; j <= 4; j++) { const t = j / 4, sag = Math.sin(Math.PI * t) * h * 0.05 * (s / 6); row.push(vadd(lerp3(a[s], b[s], t), [0, -sag, 0])); } rows.push(row); }
+    for (let s = 1; s <= 6; s++) { const row: V3[] = []; for (let j = 0; j <= 4; j++) { const t = j / 4, sag = Math.sin(Math.PI * t) * h * (s === 6 ? 0.17 : 0.05 * (s / 6)); row.push(vadd(lerp3(a[s], b[s], t), [0, -sag, 0])); } rows.push(row); }
     sheet(g, rows, mem, { out: horiz(lerp3(a[3], b[3], 0.5)), flut: (s, j) => Math.sin(Math.PI * (j / 4)) * ((s + 1) / 6) });
   }
-  return { geo: g.build(h * 0.6), H: h, R: h * 0.6, tris: g.tris };
+  return { geo: g.build(h * 0.7), H: h, R: h * 0.7, tris: g.tris };
 }
 
 /** a lure stalk: a stalk spiralling up from a rosette of strap leaves to a glowing faceted bulb in a ruff of

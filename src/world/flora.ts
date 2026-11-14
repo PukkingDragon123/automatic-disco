@@ -269,6 +269,8 @@ export class Flora {
         const chance = (p.weight / totalW) * clusterK * (water ? 1.2 : (1.6 + f * 4.4)) * bi.flora * (p.tree ? 0.5 : 1) * mul;
         if (r.next() > chance) continue;
         const px = x + r.range(0.15, 0.85), pz = z + r.range(0.15, 0.85);
+        // land plants keep their feet dry: no drowned rosettes on the shoreline's sloping lip
+        if (!water && p.arch !== 'reed' && R.heightAt(px, pz) < R.water + 0.04) continue;
         if (p.tree) {
           if (treeAt.some((t) => (t[0] - px) ** 2 + (t[1] - pz) ** 2 < 5.5)) continue;
           treeAt.push([px, pz]);

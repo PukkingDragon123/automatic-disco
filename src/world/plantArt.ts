@@ -66,12 +66,12 @@ const ARCHS: ArchSpec[] = [
   { arch: 'lily', h: [0.6, 1], fert: 0, wet: [0, 1], water: true, weight: 1.2, cluster: 0.8, food: 6 },
   { arch: 'eyeflower', h: [0.9, 1.5], fert: 0.3, wet: [0.25, 1], weight: 1.4, cluster: 0.7, food: 9 },
   { arch: 'fiddle', h: [0.8, 1.4], fert: 0.35, wet: [0.4, 1], weight: 1.4, cluster: 0.7, food: 8 },
-  { arch: 'snaptrap', h: [0.3, 0.55], fert: 0.3, wet: [0.5, 1], shore: true, weight: 1.3, cluster: 0.8, food: 6 },
-  { arch: 'pitcher', h: [0.5, 0.9], fert: 0.25, wet: [0.55, 1], shore: true, weight: 1.1, cluster: 0.75, food: 7 },
-  { arch: 'sundew', h: [0.15, 0.3], fert: 0.2, wet: [0.6, 1], shore: true, weight: 1.4, cluster: 0.9, food: 3 },
+  { arch: 'snaptrap', h: [0.3, 0.55], fert: 0.3, wet: [0.5, 1], weight: 1.3, cluster: 0.8, food: 6 },
+  { arch: 'pitcher', h: [0.5, 0.9], fert: 0.25, wet: [0.55, 1], weight: 1.1, cluster: 0.75, food: 7 },
+  { arch: 'sundew', h: [0.15, 0.3], fert: 0.2, wet: [0.6, 1], weight: 1.4, cluster: 0.9, food: 3 },
   { arch: 'sail', h: [1.2, 2.2], fert: 0.2, wet: [0.05, 0.8], weight: 0.9, cluster: 0.5, food: 10 },
   { arch: 'lure', h: [0.8, 1.5], fert: 0.3, wet: [0.3, 1], weight: 1.0, cluster: 0.6, food: 8 },
-  { arch: 'bloom', h: [0.5, 1.0], fert: 0.4, wet: [0.2, 0.9], weight: 2.2, cluster: 0.75, food: 6 },
+  { arch: 'bloom', h: [0.5, 1.0], fert: 0.4, wet: [0.2, 0.9], weight: 1.3, cluster: 0.85, food: 6 },
 ];
 
 const BIOME_ARCH: Partial<Record<BiomeKey, Arch[]>> = {
