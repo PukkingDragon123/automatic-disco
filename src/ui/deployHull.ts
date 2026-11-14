@@ -38,7 +38,7 @@ void main(){
   float y = vUv.y; // 1 at the throat, 0 at the tail
   float n = vn(vec2(vUv.x * 14.0, y * 9.0 + uT * 7.0)) * 0.6 + vn(vec2(vUv.x * 31.0, y * 21.0 + uT * 13.0)) * 0.4;
   float rim = abs(dot(normalize(vN), normalize(vV)));
-  float a = pow(y, 1.3) * (0.45 + 0.55 * n) * pow(rim, 1.4) * uK;
+  float a = pow(y, 2.4) * smoothstep(0.35, 0.8, n + y * 0.4) * pow(rim, 2.0) * uK;
   vec3 core = vec3(1.1, 1.3, 1.6), hot = vec3(1.6, 0.8, 0.28);
   vec3 c = mix(hot, core, smoothstep(0.55, 0.95, y) * rim);
   a = floor(a * 7.0) / 7.0;
@@ -105,7 +105,7 @@ export function buildHull(bin: Bin, root: THREE.Group, ext: THREE.Group): Hull {
   const beamM = fxMat(bin, CONE_V, BEAM_F, beamU, 'add', { side: THREE.DoubleSide });
   const nozU = { uCol: { value: new THREE.Color(1.6, 0.62, 0.2) }, uK: { value: 0.7 }, uT: { value: 0 } };
   const nozM = fxMat(bin, CONE_V, NOZ_F, nozU, 'add', { side: THREE.BackSide });
-  const plumeU = { uT: { value: 0 }, uK: { value: 0.55 } };
+  const plumeU = { uT: { value: 0 }, uK: { value: 0.5 } };
   const plumeM = fxMat(bin, PLUME_V, PLUME_F, plumeU, 'add', { side: THREE.DoubleSide });
   const nameT = stencil(bin, 'U.S.S. VANGUARD', { size: 20, color: RAMPS.paper[5], wear: 0.06 });
   const numT = stencil(bin, 'CVS-01', { size: 30, color: RAMPS.paper[5], wear: 0.1, bridges: true });
@@ -327,7 +327,7 @@ export function buildHull(bin: Bin, root: THREE.Group, ext: THREE.Group): Hull {
   for (const [x, y, z, r] of bells) {
     const b = mesh(bin, new THREE.CylinderGeometry(r * 0.45, r, r * 1.5, 22, 1, true), bellM, ext, x, y, z - r * 0.75); b.rotation.x = Math.PI / 2;
     const gl = mesh(bin, new THREE.CylinderGeometry(r * 0.42, r * 0.95, r * 1.45, 22, 1, true), nozM, ext, x, y, z - r * 0.72, false); gl.rotation.x = Math.PI / 2;
-    const pl = mesh(bin, new THREE.CylinderGeometry(r * 0.85, r * 0.35, r * 5.5, 20, 6, true), plumeM, ext, x, y, z - r * 1.5 - r * 2.75, false);
+    const pl = mesh(bin, new THREE.CylinderGeometry(r * 0.8, r * 0.25, r * 4, 20, 6, true), plumeM, ext, x, y, z - r * 1.5 - r * 2, false);
     pl.rotation.x = Math.PI / 2; keep.add(pl);
     cyl(bin, r * 0.5, r * 0.5, 1.2, steel, ext, x, y, z + 0.5, 12).rotation.x = Math.PI / 2;
   }

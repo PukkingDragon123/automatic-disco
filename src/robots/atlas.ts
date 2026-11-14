@@ -56,6 +56,7 @@ for (let i = 0; i < 4; i++) REG['ser' + i] = [i * 128, 256, 128, 16];
 for (let i = 0; i < 4; i++) REG['serB' + i] = [i * 128, 272, 128, 16];
 // row 5 (64-aligned, below the serial strips)
 REG.hzB = [0, 320, 64, 64]; REG.pc0 = [64, 320, 64, 64]; REG.plainA = [128, 320, 64, 64]; REG.plainB = [192, 320, 64, 64];
+REG.bioV = [0, 384, 64, 64]; REG.bioA = [64, 384, 64, 64]; REG.bioS = [128, 384, 64, 64]; REG.bioP = [192, 384, 64, 64];
 REG.vent = [256, 320, 64, 64]; REG.lensB = [320, 320, 64, 64]; REG.felt = [384, 320, 64, 64]; REG.ammo = [448, 320, 64, 64];
 export type RegKey = string;
 
@@ -282,6 +283,25 @@ function paintWindow(P: Page) {
     P.set(x, y, b < 5 ? S[4] : b < 7 ? S[3] : y > 48 ? G[0] : S[1], b < 7 ? 255 : 215);
   }
 }
+/** a gland or sac grown from an absorbed creature: polygonal cells, branching veins, a wet highlight (faint glow) */
+function paintBio(P: Page, R: readonly number[], seed: number) {
+  const n = R.length;
+  P.fill(R[2], 215);
+  // cells: irregular hexagons on an offset grid, each one planar-lit
+  for (let cy = 0; cy < 5; cy++) for (let cx = 0; cx < 5; cx++) {
+    const ox = cx * 14 + (cy & 1) * 7 - 2, oy = cy * 13 - 2, j = (k: number) => Math.floor(H(cx * 5 + cy, k, seed) * 3) - 1;
+    const pts: Pt[] = [[ox + 3 + j(1), oy], [ox + 10 + j(2), oy + 1], [ox + 13, oy + 6 + j(3)], [ox + 10 + j(4), oy + 12], [ox + 3, oy + 11 + j(5)], [ox, oy + 5]];
+    P.poly(pts, R[Math.min(n - 1, 3)], 210);
+    P.poly([pts[0], pts[1], [ox + 7, oy + 6], pts[5]], R[Math.min(n - 1, 4)], 200);
+    P.line(pts[2][0], pts[2][1], pts[3][0], pts[3][1], R[1], 220); P.line(pts[3][0], pts[3][1], pts[4][0], pts[4][1], R[1], 220);
+  }
+  // veins: two branching runs
+  for (let v = 0; v < 2; v++) {
+    let x = 4 + v * 30, y = 0;
+    while (y < 64) { const nx = x + Math.floor(H(y, v, seed + 3) * 5) - 2, ny = y + 4; P.line(x, y, nx, ny, R[0], 230); P.line(x + 1, y, nx + 1, ny, R[1], 225); if (H(y, v, seed + 9) < 0.25) P.line(nx, ny, nx + 6, ny + 5, R[0], 230); x = nx; y = ny; }
+  }
+  for (let i = 0; i < 4; i++) { const x = 6 + i * 15, y = 8 + ((i * 23) % 44); P.line(x, y, x + 3, y - 2, R[n - 1], 160); }
+}
 /** soot and exhaust black */
 function paintSoot(P: Page) {
   const K = RAMPS.basalt;
@@ -418,6 +438,7 @@ export function atlasFor(L: Livery): Atlas {
   P.region('red'); paintGlass(P, RAMPS.stampRed.concat([RAMPS.coral[4], RAMPS.coral[5]]), true, false);
   P.region('glass'); paintWindow(P);
   P.region('soot'); paintSoot(P);
+  P.region('bioV'); paintBio(P, RAMPS.ichor, 1); P.region('bioA'); paintBio(P, RAMPS.moss, 2); P.region('bioS'); paintBio(P, RAMPS.sage, 3); P.region('bioP'); paintBio(P, RAMPS.violet, 4);
   P.region('knurl'); paintKnurl(P);
   P.region('ammo'); paintAmmo(P);
   P.region('rock'); paintRock(P, RAMPS[L.rock], 2);

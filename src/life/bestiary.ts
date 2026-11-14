@@ -40,6 +40,8 @@ export interface BeastForm {
   roll?: boolean;
   /** a heavy brow ridge (x head height), a dark face mask over the eyes, the head's own cover, ear size */
   brow?: number; mask?: boolean; headCover?: Cover; earK?: number;
+  /** this species' tweak of its skull family's cage: muzzle length, brow height, eye size */
+  cage?: { muzzle?: number; brow?: number; eye?: number };
   parts: BeastPart[];
 }
 export interface Beast {
@@ -66,7 +68,7 @@ export const BEASTS: Record<string, Beast> = {
       trunk: [[0.44, 0.5, 0.72], [0.52, 0.56, 0.7], [0.5, 0.5, 0.6], [0.47, 0.5, 0.5]], neckR: 0.42, nAng: -0.05, neckK: 1.15, headK: 0.62, snoutK: 0.7,
       hK: 1.1, foreK: 1, hindK: 1, foreT: 1.1, hindT: 1.15, slope: 0.05, tailK: 0.6,
       skull: { rx: [0.36, 0.46, 0.5, 0.46, 0.4, 0.34, 0.28, 0.2], ry: [0.34, 0.42, 0.42, 0.38, 0.32, 0.27, 0.22, 0.16], hy: [0.04, 0.1, 0.12, 0.1, 0.04, -0.01, -0.04, -0.07], eye: [0.22, 1.2, 1.15, 0.09], cap: 0.4 },
-      eyes: { pupil: 'round' }, fore: [0.62, 0.78, 0.66, 0.6, 0.66], hind: [0.66, 0.8, 0.66, 0.6, 0.66], limbSkin: true, headCover: 'scales', brow: 0.12,
+      eyes: { pupil: 'round' }, fore: [0.62, 0.78, 0.66, 0.6, 0.66], hind: [0.66, 0.8, 0.66, 0.6, 0.66], limbSkin: true, headCover: 'scales', brow: 0.12, cage: { muzzle: 1.15, brow: 1.1, eye: 0.9 },
       parts: [{ k: 'carapace', t0: 0.08, t1: 0.82, bands: 6, spread: 1.75, lift: 1.18, ramp: 'stone', moss: true }, { k: 'brow', size: 1 }],
     },
   },
@@ -233,7 +235,7 @@ export const BEASTS: Record<string, Beast> = {
       trunk: [[0.52, 0.62, 0.7], [0.5, 0.56, 0.62], [0.42, 0.46, 0.46], [0.4, 0.42, 0.4]], neckR: 0.6, nAng: 0.05, neckK: 0.5, headK: 0.85, snoutK: 0.85,
       hK: 1.05, foreK: 1.35, hindK: 0.78, foreT: 1.9, hindT: 0.85, slope: 0.05, tailK: 0.3,
       skull: { rx: [0.44, 0.58, 0.64, 0.64, 0.52, 0.44, 0.4, 0.36], ry: [0.44, 0.5, 0.46, 0.4, 0.34, 0.31, 0.29, 0.26], hy: [0.1, 0.18, 0.16, 0.08, 0.0, -0.04, -0.06, -0.08], eye: [0.34, 0.85, 0.5, 0.07], cap: 0.1 },
-      eyes: { pupil: 'round' }, fore: [0.7, 0.86, 0.66, 0.56, 0.6], hind: [0.6, 0.66, 0.44, 0.34, 0.34], limbSkin: true, brow: 0.3, mask: true,
+      eyes: { pupil: 'round' }, fore: [0.7, 0.86, 0.66, 0.56, 0.6], hind: [0.6, 0.66, 0.44, 0.34, 0.34], limbSkin: true, brow: 0.3, mask: true, cage: { muzzle: 1.2, brow: 1.15, eye: 0.85 },
       parts: [{ k: 'shag' }, { k: 'crest', len: 0.75, height: 0.2, ramp: 'fur' }],
     },
   },
@@ -247,7 +249,7 @@ export const BEASTS: Record<string, Beast> = {
       trunk: [[0.48, 0.5, 0.56], [0.5, 0.5, 0.54], [0.44, 0.44, 0.46], [0.42, 0.42, 0.42]], neckR: 0.6, nAng: 0.3, neckK: 0.5, headK: 1.1, snoutK: 0.38,
       hK: 1, foreK: 1, hindK: 1, foreT: 0.8, hindT: 0.8, slope: 0, tailK: 0.4,
       skull: { rx: [0.42, 0.54, 0.58, 0.54, 0.44, 0.36, 0.3, 0.24], ry: [0.42, 0.52, 0.52, 0.42, 0.33, 0.28, 0.25, 0.21], hy: [0.08, 0.17, 0.18, 0.1, 0.0, -0.04, -0.05, -0.06], eye: [0.3, 0.95, 0.75, 0.045], cap: 0.12 },
-      eyes: { pupil: 'round' }, fore: [0.5, 0.56, 0.36, 0.28, 0.26], hind: [0.5, 0.56, 0.36, 0.28, 0.26], earK: 1.45, brow: 0.12,
+      eyes: { pupil: 'round' }, fore: [0.5, 0.56, 0.36, 0.28, 0.26], hind: [0.5, 0.56, 0.36, 0.28, 0.26], earK: 1.45, brow: 0.12, cage: { muzzle: 0.8, brow: 1.05, eye: 0.8 },
       parts: [{ k: 'noseleaf' }],
     },
   },

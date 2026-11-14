@@ -162,7 +162,9 @@ void main() {
   float band = step(0.86, fract(el * 1.3 - uT * 0.3 + h21(vec2(cell.x, 3.0)) * 0.06));
   float band2 = step(0.94, fract(az * 0.8 + uT * 0.12));
   float rim = 1.0 - abs(dot(normalize(vN), normalize(cameraPosition - vW)));
-  float lvl = edge * 2.0 + band * (0.5 + edge) + band2 * edge + step(0.72, rim) + step(0.9, rim);
+  // the lattice is the drawing: lines lit, cells clear except where a pulse runs through or the shell turns away
+  float lvl = edge * (1.0 + step(0.6, rim) + band + band2) + band * 0.6 * step(0.5, h21(cell + 3.0)) + step(0.94, rim);
+  if (!gl_FrontFacing) lvl = min(lvl, 1.0) * edge;
   for (int i = 0; i < 8; i++) {
     vec4 h = uHits[i];
     if (h.w < 0.0 || h.w > 1.2) continue;
@@ -174,9 +176,10 @@ void main() {
   if (h21(cell + floor(uT * 9.0)) > uPow + 0.1) lvl = min(lvl, edge);
   float k = clamp(floor(lvl + 0.001), 0.0, 4.0);
   vec3 col = k < 0.5 ? uRamp[0] : k < 1.5 ? uRamp[1] : k < 2.5 ? uRamp[2] : k < 3.5 ? uRamp[3] : uRamp[4];
-  float a = k < 0.5 ? 0.05 : k < 1.5 ? 0.26 : k < 2.5 ? 0.46 : k < 3.5 ? 0.66 : 0.9;
+  float a = k < 0.5 ? 0.0 : k < 1.5 ? 0.22 : k < 2.5 ? 0.42 : k < 3.5 ? 0.62 : 0.85;
+  if (a <= 0.0) discard;
   // pure light: added over the scene, never covering it (alpha stays 0 in the fx layer)
-  gl_FragColor = vec4(col * a * uUp * 1.35, 0.0);
+  gl_FragColor = vec4(col * a * uUp, 0.0);
 }`;
 function barrierMesh(R: number): { mesh: THREE.Mesh; U: Record<string, THREE.IUniform> } {
   const ramp = RAMPS.glowTeal.map((c) => new THREE.Color(c));

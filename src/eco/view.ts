@@ -1,10 +1,10 @@
 // What the player sees of the ecosystem:
 //  - activity bubbles over the animals near the camera (hand-drawn pixel icons on paper bubbles: asleep, drinking,
 //    alarm, courting, hungry, spent, threat display, nesting, a kill, searching for water, shade, on watch)
-//  - the ECOLOGY OVERLAY ([O] cycles it): soil moisture, soil fertility (and poison), life (herd and hunter density,
+//  - the ECOLOGY OVERLAY ([H] cycles it): soil moisture, soil fertility (and poison), life (herd and hunter density,
 //    danger, migration routes, lures), drawn on the ground as stepped bands in the master palette with contour lines
 //    where the bands change, like a hand-inked survey map, plus a typed legend slip
-//  - the FIELD SURVEY sheet ([N]): a typed census form (species, role, schedule, count with a stepped trend graph,
+//  - the FIELD SURVEY sheet ([M]): a typed census form (species, role, schedule, count with a stepped trend graph,
 //    births and deaths, a rubber-stamped status), the water stage, the season, the land, and field notes
 //  - a few toasts for the big turns (drought, floods, a species gone), a typed slip over a newborn now and then
 // Built once per Game (game.ts calls attachEco); it runs inside the game's update$ list.
@@ -116,7 +116,7 @@ export class EcoView {
   setOverlay(m: OverlayMode) { this.mode = m; }
   cycleOverlay() {
     this.mode = MODES[(MODES.indexOf(this.mode) + 1) % MODES.length];
-    toast(this.mode === 'off' ? 'Ecology overlay off' : `Ecology overlay: <b>${LEG[this.mode].title}</b> &middot; [O] next`, 'info', 1600);
+    toast(this.mode === 'off' ? 'Ecology overlay off' : `Ecology overlay: <b>${LEG[this.mode].title}</b> &middot; [H] next`, 'info', 1600);
   }
   toggleSurvey(on = !this.sheet) {
     if (!on) { this.sheet?.remove(); this.sheet = null; return; }
@@ -129,9 +129,11 @@ export class EcoView {
     if (this.game.hud.root.style.display === 'none' || e.ctrlKey || e.metaKey || e.repeat) return;
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+    // H and M (with no units selected: then they are the Hold and Move commands)
+    if (this.game.sel.some((c) => c.faction === 'veyr' && !c.dead)) return;
     const k = e.key.toLowerCase();
-    if (k === 'o') this.cycleOverlay();
-    else if (k === 'n') this.toggleSurvey();
+    if (k === 'h') this.cycleOverlay();
+    else if (k === 'm') this.toggleSurvey();
   }
 
   // ---------------------------------------------------------------- per frame
@@ -400,7 +402,7 @@ export class EcoView {
     const tot = rows.reduce((a, r) => a + r.alive, 0);
     const word = (v: number, a: string[]) => a[clamp(Math.floor(v * a.length), 0, a.length - 1)];
     s.innerHTML = `
-      <div class="es-x" title="Close [N]">&times;</div>
+      <div class="es-x" title="Close [M]">&times;</div>
       <div class="es-top"><span>U.S. PLANETARY CORPS</span><span>FORM 7-E</span></div>
       <div class="es-title">FIELD SURVEY: FAUNA &amp; FLORA</div>
       <div class="es-meta">REGION <u>${g.regionName.toUpperCase()}</u> &nbsp; DAY <u>${eco.dayNo}</u> &nbsp; TIME <u>${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}</u></div>
@@ -412,7 +414,7 @@ export class EcoView {
       </table>
       <div class="es-sum">TOTAL ${tot} ANIMALS &nbsp;&middot;&nbsp; PLANTS LOST ${eco.diedPlants} / REGROWN ${eco.sprouted + eco.added}</div>
       <div class="es-notes"><div class="es-nh">FIELD NOTES</div>${eco.notes.slice(-4).reverse().map((n) => `<div>D${n.day} &mdash; ${n.text.toLowerCase()}</div>`).join('') || '<div>nothing remarkable yet</div>'}</div>
-      <div class="es-foot">[N] CLOSE &nbsp; [O] OVERLAY: ${this.mode === 'off' ? 'OFF' : LEG[this.mode].title}</div>`;
+      <div class="es-foot">[M] CLOSE &nbsp; [H] HABITAT OVERLAY: ${this.mode === 'off' ? 'OFF' : LEG[this.mode].title}</div>`;
     (s.querySelector('.es-x') as HTMLElement).onclick = () => this.toggleSurvey(false);
     s.querySelectorAll('canvas.es-spark').forEach((cv, i) => this.spark(cv as HTMLCanvasElement, rows[i]));
   }

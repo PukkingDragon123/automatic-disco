@@ -1,6 +1,6 @@
 // ?test=factions: a region with a dug-in Soviet base and a PRC station near Unit 07's landing, their build orders
 // raised at once, and waves already moving (the Soviet column at Unit 07's works, PRC raiders at the Soviets).
-//   &look=sov|prc|front|home   camera target (default sov)    &dist=40 &yaw=0.6
+//   &look=sov|prc|front|home|wave|raid   camera target (default sov; wave/raid: the Soviet / PRC wave)   &dist=40 &yaw=0.6
 //   &exp=5                     a human expedition lands after 5 s (the parley dialog follows)
 //   &ff=20                     fast-forward the faction sim n seconds before showing
 //   &peace                     no waves (just the bases)      &seed=11 &biome=meadow
@@ -10,6 +10,7 @@ import type { Input } from '../../app/input';
 import type { BiomeKey } from '../../world/region';
 import type { FactionSite } from './plan';
 import { Factions } from './index';
+import { tickRobots } from '../../robots/unit';
 
 export async function testFactions(engine: Engine, input: Input, P: URLSearchParams) {
   const { Game } = await import('../game');
@@ -37,9 +38,11 @@ export async function testFactions(engine: Engine, input: Input, P: URLSearchPar
     sov.debugWave(['sov_trooper', 'sov_trooper', 'sov_trooper', 'sov_trooper', 'sov_tank', 'sov_tank', 'sov_titan', 'sov_drone']);
     prc.debugWave(['prc_scout', 'prc_scout', 'prc_scout', 'prc_trooper', 'prc_trooper', 'prc_trooper', 'prc_mech'], true);
   }
-  for (let i = 0, n = Number(P.get('ff') ?? 0) * 10; i < n; i++) F.update(0.1);
+  for (let i = 0, n = Number(P.get('ff') ?? 0) * 10; i < n; i++) { F.update(0.1); tickRobots(g, 0.1); }
   const look = P.get('look') ?? 'sov';
-  const at = look === 'prc' ? [prc.x, prc.z] : look === 'home' ? [L.x, L.z] : look === 'front' ? [(sov.x + L.x) / 2, (sov.z + L.z) / 2] : [sov.x - 4, sov.z];
+  const centroid = (us: { x: number; z: number; dead: boolean }[], dflt: number[]) => { const a = us.filter((u) => !u.dead); return a.length ? [a.reduce((s, u) => s + u.x, 0) / a.length, a.reduce((s, u) => s + u.z, 0) / a.length] : dflt; };
+  const at = look === 'prc' ? [prc.x, prc.z] : look === 'home' ? [L.x, L.z] : look === 'front' ? [(sov.x + L.x) / 2, (sov.z + L.z) / 2]
+    : look === 'wave' ? centroid(sov.waves[0]?.units ?? [], [sov.x, sov.z]) : look === 'raid' ? centroid(prc.waves[0]?.units ?? [], [prc.x, prc.z]) : [sov.x - 4, sov.z];
   g.cam.followFn(null);
   g.cam.lookAt(at[0], at[1], true);
   g.cam.dist = g.cam.distGoal = Number(P.get('dist') ?? 40);

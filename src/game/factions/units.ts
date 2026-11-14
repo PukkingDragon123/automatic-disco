@@ -1,8 +1,8 @@
-// Faction units. When src/robots provides `spawnRobot(game, kind, faction, x, z)` (CONTRACT.md) every faction unit
-// is a real RobotUnit (it is ticked and registered in game.robots by the robots system; the factions only give it
-// orders). Until then, and for any kind it refuses, a StubUnit stands in: a placeholder robot in faction livery
-// that walks (A* over the region), picks hostile targets, shoots (rifle / machine gun tracers, cannon shells,
-// rocket salvos) and blows up. Expedition soldiers use the robots agent's `buildMilitaryHuman` mesh when it exists.
+// Faction units. Every faction unit is a real RobotUnit from src/robots (`spawnRobot(game, kind, faction, x, z)`,
+// CONTRACT.md): registered in game.robots and ticked by tickRobots; the factions only give it orders. If spawnRobot
+// ever refuses a kind (or throws), a StubUnit stands in: a placeholder robot in faction livery that walks (A* over
+// the region), picks hostile targets, shoots (rifle / machine gun tracers, cannon shells, rocket salvos) and blows
+// up; expedition stand-ins wear the robots agent's `buildMilitaryHuman` field kit.
 import * as THREE from 'three';
 import type { Faction } from '../species';
 import { unitModel, type UModel } from './models';
@@ -12,6 +12,8 @@ import type { Factions, Tgt } from './index';
 import { sfx } from '../../audio/audio';
 import { vfx2d } from '../vfx2d';
 import { clamp } from '../../core/rand';
+import { spawnRobot, type RobotKind } from '../../robots/unit';
+import { buildMilitaryHuman } from '../../robots/humans';
 
 export interface UOrder { k: 'move' | 'attack' | 'guard' | 'patrol' | 'work'; x?: number; z?: number; target?: any }
 /** what both RobotUnit (src/robots) and StubUnit satisfy */
@@ -21,25 +23,7 @@ export interface Unit {
 }
 
 // ------------------------------------------------------------------------------------------------ robots bridge
-type SpawnFn = (game: any, kind: string, faction: Faction, x: number, z: number) => Unit;
-const MODS = import.meta.glob('../../robots/*.ts');
-let spawnFn: SpawnFn | null = null;
-let humanFn: ((variant: string, faction: string) => THREE.Object3D) | null = null;
-let loading: Promise<void> | null = null;
-/** load src/robots (if it exists yet) without a static import, so this module builds either way */
-export function loadRobots(): Promise<void> {
-  return (loading ??= (async () => {
-    for (const [path, load] of Object.entries(MODS)) {
-      if (/test|\.d\.ts$/i.test(path)) continue;
-      try {
-        const m: any = await load();
-        if (typeof m.spawnRobot === 'function') spawnFn ??= m.spawnRobot;
-        if (typeof m.buildMilitaryHuman === 'function') humanFn ??= m.buildMilitaryHuman;
-      } catch (e) { console.warn('[factions] robots module failed to load', path, e); }
-    }
-  })());
-}
-export const robotsReady = () => !!spawnFn;
+const humanFn: ((variant: string, faction: string) => THREE.Object3D) | null = typeof buildMilitaryHuman === 'function' ? buildMilitaryHuman : null;
 const refused = new Set<string>();
 
 /** a faction unit: a RobotUnit when the robots system can make one, else a StubUnit */
@@ -47,9 +31,9 @@ export function spawnUnit(F: Factions, kind: string, faction: FactionId, x: numb
   const R = F.g.region;
   x = clamp(x, 3, R.N - 3); z = clamp(z, 3, R.N - 3);
   const free = R.freeNear(x, z, 6); if (free) [x, z] = free;
-  if (spawnFn && !refused.has(kind)) {
+  if (typeof spawnRobot === 'function' && !refused.has(kind)) {
     try {
-      const u = spawnFn(F.g, kind, faction, x, z);
+      const u = spawnRobot(F.g, kind as RobotKind, faction, x, z) as unknown as Unit;
       if (u && u.mesh) return u;
     } catch (e) { console.warn('[factions] spawnRobot refused', kind, e); }
     refused.add(kind);

@@ -94,9 +94,9 @@ vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
   bed *= 0.7 + caustic(bp, t) * 0.32 * exp(-depth * 0.9);
   // the bed seen through the water: red goes first, so a thin sheet only tints it and depth turns it to the body
   // colour (the water ramp's mid step in the shallows, its dark step deep down); never brighter than the bed
-  vec3 T = exp(-max(depth, 0.03) * vec3(2.6, 1.15, 0.95));
-  vec3 body = mix(uShallow, uDeep, smoothstep(0.12, 2.6, depth));
-  vec3 c = bed * T + body * (1.0 - T);
+  vec3 T = exp(-(depth + 0.1) * vec3(3.2, 1.5, 1.2));
+  vec3 body = mix(uShallow, uDeep, smoothstep(0.1, 2.4, depth));
+  vec3 c = bed * T * 0.9 + body * (1.0 - T);
   // slow mottling and a faint sky reflection (more of it where the water is deep and dark)
   c *= 0.94 + (vn(p * 0.8 + vec2(t * 0.05, t * 0.03)) * 0.6 + vn(p * 2.1 - t * 0.07) * 0.4) * 0.1;
   c = mix(c, uSky, 0.05 + 0.07 * (1.0 - T.g));
@@ -134,9 +134,11 @@ vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
     c = mix(c, ph < 0.45 ? uFoam : uDeep, ring * 0.6);
     c *= 1.0 - uRainW * 0.1;
   }
-  // shoreline: a thin, broken lapping line right at the water's edge (not a wash over thin water)
-  float lap = 0.5 + 0.5 * sin(t * 1.3 + vn(p * 0.7) * 6.0);
-  float rim = step(depth, 0.012 + lap * 0.02) * step(0.3, h2(floor(p * 3.0) + floor(t * 0.5)));
+  // shoreline: a one-texel broken line where the water's depth crosses a lapping contour (never a wash over thin water)
+  float lap = 0.5 + 0.5 * sin(t * 1.3 + vn(p * 0.7) * 6.0), thr = 0.012 + lap * 0.03;
+  float dR = surf - bedH(p + vec2(1.0 / 32.0, 0.0)), dD = surf - bedH(p + vec2(0.0, 1.0 / 32.0));
+  float shoreL = depth >= thr && (dR < thr || dD < thr) || depth < thr && (dR >= thr || dD >= thr) ? 1.0 : 0.0;
+  float rim = shoreL * step(0.28, h2(floor(p * 4.0)));
   foam = max(foam, rim * 0.8);
   if (foam > 0.5) c = mix(c, uFoam, foam > 0.75 ? 0.7 : 0.4);
   // glints: sparse twinkles, rarer bright sun sparkles on open water

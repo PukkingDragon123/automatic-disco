@@ -16,7 +16,7 @@ import { planFactions, type FactionSite, type FactionId } from './plan';
 import { Programme } from './brain';
 import { Expedition } from './expedition';
 import { FStructure } from './structure';
-import { StubUnit, loadRobots, type Unit } from './units';
+import { StubUnit, type Unit } from './units';
 import { Shells } from './shells';
 import { Boom } from './boom';
 import { Radio } from './radio';
@@ -26,7 +26,9 @@ import { clamp } from '../../core/rand';
 export { factionsForRegion, planFactions, factionSummary, FACTION_LABEL, type FactionSite, type FactionId } from './plan';
 export interface Tgt { ref: any; x: number; z: number; r: number; f: Faction; soft?: boolean; core?: boolean; hp?: number }
 
-const SOFT = /miner|drill|belt|conveyor|splitter|pump|extract|pipe|well|harvest/i;
+const SOFT = /miner|drill|belt|conveyor|splitter|merger|lift|pump|excavat|extract|pipe|well|harvest|pole/i;
+/** a factory building's footprint radius (FBuilding: fw x fd cells; .r is its rotation, not a radius) */
+const fbR = (b: any): number => b.radius ?? (b.fw ? Math.max(b.fw, b.fd ?? b.fw) * 0.5 : 1);
 const BAR: Record<string, string> = { soviet: '#a2473a', prc: '#c49580', expedition: '#c9a464' };
 
 export class Factions {
@@ -57,7 +59,6 @@ export class Factions {
     this.diff = o.diff ?? 0.85 + danger * 0.1;
     this.grace = g.opts.story !== false ? 60 : 0;
     this.shells = new Shells(this); this.boom = new Boom(this); this.radio = new Radio(g);
-    void loadRobots();
     for (const s of this.plan) {
       if (s.faction === 'expedition') this.expeditions.push(new Expedition(this, s));
       else this.programmes.push(new Programme(this, s));
@@ -141,7 +142,7 @@ export class Factions {
   playerTargets(): Tgt[] {
     const out: Tgt[] = [];
     const fb = (this.g as any).factory?.buildings as any[] | undefined;
-    if (Array.isArray(fb)) for (const b of fb) { if (!this.alive(b) || (b.faction ?? 'veyr') !== 'veyr') continue; out.push({ ref: b, x: b.x, z: b.z, r: b.radius ?? b.r ?? 1, f: 'veyr', soft: SOFT.test(String(b.kind ?? '')), hp: b.hp }); }
+    if (Array.isArray(fb)) for (const b of fb) { if (!this.alive(b) || (b.faction ?? 'veyr') !== 'veyr') continue; out.push({ ref: b, x: b.x, z: b.z, r: fbR(b), f: 'veyr', soft: SOFT.test(String(b.kind ?? '')), hp: b.hp }); }
     for (const b of this.g.veyr.buildings) if (!b.dead) out.push({ ref: b, x: b.x, z: b.z, r: b.def.radius, f: 'veyr', core: b === this.g.veyr.core, soft: b.def.kind === 'tap', hp: b.hp });
     return out;
   }
@@ -195,7 +196,7 @@ export class Factions {
     if (ref === GOLEM_REF.g) { r = ref.radius ?? 0.4; f = 'veyr'; }
     else if (ref instanceof Creature) r = ref.radius;
     else if (ref instanceof Building) r = ref.def.radius;
-    else r = ref.radius ?? ref.r ?? 0.6;
+    else r = ref instanceof FStructure || ref instanceof StubUnit ? ref.radius : ref.fw ? fbR(ref) : ref.radius ?? 0.6;
     return { ref, x: ref.x, z: ref.z, r, f };
   }
   /** every candidate target near (x, z), hostile to f (or all of them) */
@@ -209,7 +210,7 @@ export class Factions {
     const p = this.player();
     if (p && ok('veyr')) { const d = Math.hypot(p.x - x, p.z - z); if (d < r + 2) fn(p, d, p.radius ?? 0.4, 'veyr', false); }
     const fb = (this.g as any).factory?.buildings as any[] | undefined;
-    if (Array.isArray(fb)) for (const b of fb) { const bf = b.faction ?? 'veyr'; if (!this.alive(b) || !ok(bf)) continue; const d2 = (b.x - x) ** 2 + (b.z - z) ** 2; if (d2 < R2 * 1.5) fn(b, Math.sqrt(d2), b.radius ?? b.r ?? 1, bf, true); }
+    if (Array.isArray(fb)) for (const b of fb) { const bf = b.faction ?? 'veyr'; if (!this.alive(b) || !ok(bf)) continue; const d2 = (b.x - x) ** 2 + (b.z - z) ** 2; if (d2 < R2 * 1.5) fn(b, Math.sqrt(d2), fbR(b), bf, true); }
     if (ok('veyr')) for (const b of this.g.veyr.buildings) { if (b.dead) continue; const d2 = (b.x - x) ** 2 + (b.z - z) ** 2; if (d2 < R2 * 1.5) fn(b, Math.sqrt(d2), b.def.radius, 'veyr', true); }
     for (const s of this.structures) { if (s.dead || s.dropT > 0 || !ok(s.faction)) continue; const d2 = (s.x - x) ** 2 + (s.z - z) ** 2; if (d2 < (r + s.radius + 2) ** 2) fn(s, Math.sqrt(d2), s.radius, s.faction, true); }
   }
@@ -251,7 +252,7 @@ export class Factions {
     if (hi - lo > 0.6 + r * 0.35) return false;
     for (const s of this.structures) if (!s.dead && Math.hypot(s.x - x, s.z - z) < s.radius + r + 1.2) return false;
     for (const b of this.g.veyr.buildings) if (Math.hypot(b.x - x, b.z - z) < b.def.radius + r + 3) return false;
-    const fb = (this.g as any).factory?.buildings; if (Array.isArray(fb)) for (const b of fb) if (Math.hypot(b.x - x, b.z - z) < (b.radius ?? 1) + r + 2.5) return false;
+    const fb = (this.g as any).factory?.buildings; if (Array.isArray(fb)) for (const b of fb) if (Math.hypot(b.x - x, b.z - z) < fbR(b) + r + 2.5) return false;
     const [px, pz] = this.playerCenter();
     if (Math.hypot(px - x, pz - z) < 24) return false;
     return true;

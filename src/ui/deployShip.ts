@@ -409,6 +409,8 @@ export function buildShip(bin: Bin, parent: THREE.Object3D, opts: { people?: boo
     for (const l of intLights) l.visible = v !== 'ext';
     sun.castShadow = v !== 'int'; key.castShadow = v === 'int';
     for (const c of [...crew.map((c) => c.a), ...(officer ? [officer] : [])]) c.rig.root.visible = v !== 'ext' || doorU > 0.3;
+    // the hangar is sealed inside the hull: from outside it only shows through open doors
+    bay.visible = v !== 'ext' || doorU > 0.02;
   };
   let beaconOn = false, doorU = 0;
   const w = (x: number, y: number, z: number, out = new V3()) => root.localToWorld(out.set(x, y, z));
@@ -421,7 +423,7 @@ export function buildShip(bin: Bin, parent: THREE.Object3D, opts: { people?: boo
       hook.position.y = -1.4 - drop;
       for (const c of cables) { c.scale.y = drop + 0.3; c.position.y = -1.15 - (drop + 0.3) / 2; }
     },
-    setDoors(u) { doorU = u; const e = sm(0, 1, u); doors[0].rotation.x = -e * 1.45; doors[1].rotation.x = e * 1.45; doorLight.intensity = e * 2.6; },
+    setDoors(u) { doorU = u; if (u > 0.02) bay.visible = true; const e = sm(0, 1, u); doors[0].rotation.x = -e * 1.45; doors[1].rotation.x = e * 1.45; doorLight.intensity = e * 2.6; },
     setBeacons(on) { beaconOn = on; for (const b of beacons) { b.light.intensity = on ? 28 : 0; b.lamp.color.set(on ? 0xff3a20 : 0x401010).multiplyScalar(on ? 2.4 : 1); } (bm2 as THREE.ShaderMaterial).uniforms.uK.value = on ? 0.5 : 0; },
     setLever(u) { lever.rotation.x = 0.5 - sm(0, 1, u) * 1.0; },
     setNixies(s) {

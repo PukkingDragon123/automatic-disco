@@ -57,19 +57,28 @@ type Pt = [number, number];
 /** light from the upper left (screen y runs down) */
 const LX = -0.62, LY = -0.78;
 
+/** sprites are drawn in design units and rasterised at K x (twice the old texel density: more drawn detail) */
+const K = 2;
+const GLINT = 6;
 class Grid {
   readonly d: Uint8Array;
-  constructor(readonly s: number) { this.d = new Uint8Array(s * s); }
-  get(x: number, y: number) { x = Math.floor(x); y = Math.floor(y); return x < 0 || y < 0 || x >= this.s || y >= this.s ? 0 : this.d[y * this.s + x]; }
-  set(x: number, y: number, v: number) { x = Math.floor(x); y = Math.floor(y); if (x >= 0 && y >= 0 && x < this.s && y < this.s) this.d[y * this.s + x] = v; }
-  /** a filled polygon (pixel centres inside, even-odd) */
+  /** s: full-resolution size; k: pixels per design unit */
+  constructor(readonly s: number, readonly k = K) { this.d = new Uint8Array(s * s); }
+  get(x: number, y: number) { x = Math.floor(x * this.k); y = Math.floor(y * this.k); return x < 0 || y < 0 || x >= this.s || y >= this.s ? 0 : this.d[y * this.s + x]; }
+  /** a design-unit pixel: a k x k block */
+  set(x: number, y: number, v: number) { const X = Math.floor(x) * this.k, Y = Math.floor(y) * this.k; for (let j = 0; j < this.k; j++) for (let i = 0; i < this.k; i++) this.px(X + i, Y + j, v); }
+  /** one full-resolution pixel (fine detail: glints, inner lines) */
+  dot(x: number, y: number, v: number) { this.px(Math.floor(x * this.k), Math.floor(y * this.k), v); }
+  private px(x: number, y: number, v: number) { if (x >= 0 && y >= 0 && x < this.s && y < this.s) this.d[y * this.s + x] = v; }
+  /** a filled polygon (pixel centres inside, even-odd); a value function gets design-unit coordinates */
   poly(P: Pt[], v: number | ((x: number, y: number) => number)) {
+    const k = this.k;
     let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
     for (const [x, y] of P) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
-    for (let y = Math.max(0, Math.floor(y0)); y <= Math.min(this.s - 1, Math.ceil(y1)); y++) {
-      const py = y + 0.5;
-      for (let x = Math.max(0, Math.floor(x0)); x <= Math.min(this.s - 1, Math.ceil(x1)); x++) {
-        const px = x + 0.5;
+    for (let y = Math.max(0, Math.floor(y0 * k)); y <= Math.min(this.s - 1, Math.ceil(y1 * k)); y++) {
+      const py = (y + 0.5) / k;
+      for (let x = Math.max(0, Math.floor(x0 * k)); x <= Math.min(this.s - 1, Math.ceil(x1 * k)); x++) {
+        const px = (x + 0.5) / k;
         let inside = false;
         for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
           const [xi, yi] = P[i], [xj, yj] = P[j];
@@ -79,81 +88,95 @@ class Grid {
       }
     }
   }
-  /** a drawn solid: a fan of facets round (cx, cy), each facet one ramp step by how it faces the light; one highlight
-   *  pixel on the lit turn. Small ones collapse to a two-pixel cluster (no orphans). */
-  solid(P: Pt[], cx: number, cy: number, o: { base?: number; cloud?: boolean } = {}) {
+  /** a drawn solid: facets round (cx, cy) each one ramp step by how it faces the light (or, for soft volumes, two
+   *  planes split across the light); where it overlaps a form already drawn, a contour line separates them; a small
+   *  highlight (a glint on glossy things) where the form turns toward the light. Small ones collapse to a cluster. */
+  solid(P: Pt[], cx: number, cy: number, o: { base?: number; cloud?: boolean; gloss?: boolean } = {}) {
     let span = 0; for (const [x, y] of P) span = Math.max(span, Math.abs(x - cx), Math.abs(y - cy));
-    if (span < 1.3) { this.set(cx, cy, o.base ?? MID); this.set(cx + 1, cy, o.base ?? MID); return; }
+    if (span < 1.3) { this.set(cx, cy, o.base ?? MID); this.dot(cx + 0.5, cy, o.gloss ? GLINT : LIT); return; }
+    const before = this.d.slice();
     if (o.cloud) {
-      // soft volumes (dust, smoke): two planes split across the light, a shadow band on the far side
       const r = Math.max(1, span);
-      this.poly(P, (px, py) => { const d = ((px - cx) * LX + (py - cy) * LY) / r; return d > 0.05 ? LIT : d < -0.55 ? SHD : MID; });
-      let best = P[0], bd = -1e9;
-      for (const p of P) { const d = (p[0] - cx) * LX + (p[1] - cy) * LY; if (d > bd) { bd = d; best = p; } }
-      if (span > 3) { const hx = cx + (best[0] - cx) * 0.55, hy = cy + (best[1] - cy) * 0.55; if (this.get(hx, hy) >= MID) this.set(hx, hy, HI); }
-      return;
+      this.poly(P, (px, py) => { const d = ((px - cx) * LX + (py - cy) * LY) / r; return d > 0.32 ? LIT : d > -0.18 ? MID : SHD; });
+    } else {
+      for (let i = 0; i < P.length; i++) {
+        const a = P[i], b = P[(i + 1) % P.length];
+        let nx = b[1] - a[1], ny = -(b[0] - a[0]);
+        const mx = (a[0] + b[0]) / 2 - cx, my = (a[1] + b[1]) / 2 - cy;
+        if (nx * mx + ny * my < 0) { nx = -nx; ny = -ny; }
+        const l = Math.hypot(nx, ny) || 1, dot = (nx * LX + ny * LY) / l;
+        this.poly([[cx, cy], a, b], dot > 0.42 ? LIT : dot < -0.3 ? SHD : (o.base ?? MID));
+      }
+      if (span > 4.5) { const k = 0.42; this.poly(P.map(([x, y]) => [cx + (x - cx) * k - 0.4, cy + (y - cy) * k - 0.4] as Pt), o.base ?? MID); }
     }
+    // a contour where this form lies over one drawn before (only on its shadow side, as a pixel artist would)
     for (let i = 0; i < P.length; i++) {
-      const a = P[i], b = P[(i + 1) % P.length];
-      // the facet's outward normal (screen space)
-      let nx = b[1] - a[1], ny = -(b[0] - a[0]);
-      const mx = (a[0] + b[0]) / 2 - cx, my = (a[1] + b[1]) / 2 - cy;
-      if (nx * mx + ny * my < 0) { nx = -nx; ny = -ny; }
-      const l = Math.hypot(nx, ny) || 1, dot = (nx * LX + ny * LY) / l;
-      const v = dot > 0.42 ? LIT : dot < -0.3 ? SHD : (o.base ?? MID);
-      this.poly([[cx, cy], a, b], v);
+      const a = P[i], b = P[(i + 1) % P.length], n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) * this.k) + 1;
+      for (let j = 0; j <= n; j++) {
+        const x = a[0] + ((b[0] - a[0]) * j) / n, y = a[1] + ((b[1] - a[1]) * j) / n;
+        if ((x - cx) * LX + (y - cy) * LY > 0.2 * span) continue;
+        const X = Math.floor(x * this.k), Y = Math.floor(y * this.k);
+        if (X >= 0 && Y >= 0 && X < this.s && Y < this.s && before[Y * this.s + X] >= SHD) this.d[Y * this.s + X] = SHD;
+      }
     }
-    // the core plane stays mid, so a big form reads as faces round a body rather than a pie
-    if (span > 4.5) {
-      const k = 0.42;
-      this.poly(P.map(([x, y]) => [cx + (x - cx) * k - 0.4, cy + (y - cy) * k - 0.4] as Pt), o.base ?? MID);
-    }
-    // a single highlight on the lit edge where the form turns
+    // the highlight: where the form turns toward the light
     let best = P[0], bd = -1e9;
     for (const p of P) { const d = (p[0] - cx) * LX + (p[1] - cy) * LY; if (d > bd) { bd = d; best = p; } }
-    const hx = cx + (best[0] - cx) * 0.62, hy = cy + (best[1] - cy) * 0.62;
-    if (this.get(hx, hy) >= MID) this.set(hx, hy, HI);
+    const hx = cx + (best[0] - cx) * 0.58, hy = cy + (best[1] - cy) * 0.58;
+    if (this.get(hx, hy) >= MID) { this.dot(hx, hy, o.gloss ? GLINT : HI); this.dot(hx + 0.5, hy, o.gloss ? GLINT : HI); if (o.gloss && span > 2.5) this.dot(hx, hy + 0.5, GLINT); }
   }
   line(x0: number, y0: number, x1: number, y1: number, v: number) {
-    // tidy staircases: step along the major axis one pixel at a time
-    const dx = x1 - x0, dy = y1 - y0, n = Math.max(Math.abs(dx), Math.abs(dy), 1);
-    for (let i = 0; i <= n; i++) this.set(Math.floor(x0 + (dx * i) / n + 0.5), Math.floor(y0 + (dy * i) / n + 0.5), v);
+    // tidy staircases at full resolution: one pixel per step along the major axis
+    const k = this.k, ax = x0 * k, ay = y0 * k, dx = (x1 - x0) * k, dy = (y1 - y0) * k, n = Math.max(Math.abs(dx), Math.abs(dy), 1);
+    for (let i = 0; i <= n; i++) this.px(Math.floor(ax + (dx * i) / n + 0.5), Math.floor(ay + (dy * i) / n + 0.5), v);
   }
+  /** a line two full pixels wide (design-unit weight) */
+  line2(x0: number, y0: number, x1: number, y1: number, v: number) { this.line(x0, y0, x1, y1, v); this.line(x0 + 0.5, y0, x1 + 0.5, y1, v); this.line(x0, y0 + 0.5, x1, y1 + 0.5, v); }
   /** a tapered stroke (a thin triangle): streaks, spikes, sparks */
   stroke(x0: number, y0: number, x1: number, y1: number, w0: number, w1: number, v: number) {
     const dx = x1 - x0, dy = y1 - y0, l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l;
-    if (w0 < 0.9 && w1 < 0.9) { this.line(x0, y0, x1, y1, v); return; }
+    if (w0 < 0.45 && w1 < 0.45) { this.line(x0, y0, x1, y1, v); return; }
     this.poly([[x0 + nx * w0, y0 + ny * w0], [x1 + nx * w1, y1 + ny * w1], [x1 - nx * w1, y1 - ny * w1], [x0 - nx * w0, y0 - ny * w0]], v);
     this.line(x0, y0, x1, y1, v);
   }
   /** a broken hand-drawn arc: a polygon path of `sides` legs with per-vertex wobble; keep(i) drops legs */
-  arcs(cx: number, cy: number, rx: number, ry: number, sides: number, wob: number[], v: number, keep?: (i: number) => boolean, rot = 0) {
+  arcs(cx: number, cy: number, rx: number, ry: number, sides: number, wob: number[], v: number, keep?: (i: number) => boolean, rot = 0, heavy = false) {
     const P: Pt[] = [];
     for (let i = 0; i < sides; i++) { const a = rot + (i / sides) * Math.PI * 2, k = 1 + (wob[i % wob.length] - 0.5) * 0.22; P.push([cx + Math.cos(a) * rx * k, cy + Math.sin(a) * ry * k]); }
-    for (let i = 0; i < sides; i++) { if (keep && !keep(i)) continue; const a = P[i], b = P[(i + 1) % sides]; this.line(a[0], a[1], b[0], b[1], v); }
+    for (let i = 0; i < sides; i++) { if (keep && !keep(i)) continue; const a = P[i], b = P[(i + 1) % sides]; if (heavy) this.line2(a[0], a[1], b[0], b[1], v); else this.line(a[0], a[1], b[0], b[1], v); }
   }
-  clear(x0: number, y0: number, x1: number, y1: number) { for (let y = Math.max(0, y0); y < Math.min(this.s, y1); y++) for (let x = Math.max(0, x0); x < Math.min(this.s, x1); x++) this.d[y * this.s + x] = 0; }
-  clearBelow(y0: number) { this.clear(0, Math.ceil(y0), this.s, this.s); }
-  /** remove orphan single pixels (except highlights, which are deliberate glints) */
+  clear(x0: number, y0: number, x1: number, y1: number) { const k = this.k; for (let y = Math.max(0, Math.floor(y0 * k)); y < Math.min(this.s, Math.floor(y1 * k)); y++) for (let x = Math.max(0, Math.floor(x0 * k)); x < Math.min(this.s, Math.floor(x1 * k)); x++) this.d[y * this.s + x] = 0; }
+  clearBelow(y0: number) { this.clear(0, Math.ceil(y0), this.s / this.k, this.s / this.k); }
+  /** remove orphan single pixels (except highlights and glints, which are deliberate) */
   tidy() {
     const c = this.d.slice(), s = this.s;
     for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
-      const v = c[y * s + x]; if (!v || v === HI) continue;
+      const v = c[y * s + x]; if (!v || v >= HI) continue;
       let n = 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < s && Y < s && c[Y * s + X]) n++; }
       if (!n) this.d[y * s + x] = 0;
     }
   }
-  /** selective outline: the darkest step where the outline sits on the shadow (lower right) side, the shadow step on
-   *  the lit side, none where `lit` is false */
-  selout(lit = true) {
+  /** a bright edge along the silhouette where it faces the light (one full pixel: a lit rim) */
+  rim() {
+    const c = this.d.slice(), s = this.s;
+    for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
+      const v = c[y * s + x]; if (v !== LIT && v !== MID) continue;
+      const e = (X: number, Y: number) => X < 0 || Y < 0 || X >= s || Y >= s || c[Y * s + X] === 0;
+      if (e(x - 1, y) && e(x, y - 1)) this.d[y * s + x] = HI;
+      else if ((e(x, y - 1) || e(x - 1, y)) && v === LIT) this.d[y * s + x] = HI;
+    }
+  }
+  /** the outline: one full pixel of the ramp's darkest step all round the silhouette (glows take a lighter line on
+   *  their lit side so they keep their bloom) */
+  outline(lit = true) {
     const c = this.d.slice(), s = this.s;
     const f = (x: number, y: number) => x >= 0 && y >= 0 && x < s && y < s && c[y * s + x] >= SHD;
     for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
       if (c[y * s + x] !== 0) continue;
-      const dark = f(x - 1, y) || f(x, y - 1) || f(x - 1, y - 1);
-      const light = f(x + 1, y) || f(x, y + 1);
-      if (dark) this.d[y * s + x] = OUT;
-      else if (light && lit) this.d[y * s + x] = SHD;
+      const dark = f(x - 1, y) || f(x, y - 1) || f(x - 1, y - 1) || f(x + 1, y - 1);
+      const light = f(x + 1, y) || f(x, y + 1) || f(x + 1, y + 1) || f(x - 1, y + 1);
+      if (dark || (light && lit)) this.d[y * s + x] = OUT;
+      else if (light) this.d[y * s + x] = SHD;
     }
   }
 }
@@ -308,7 +331,7 @@ const DEFS: Record<VfxName, Def> = {
         const tt = (f - 1) / 5, x = cx + X[k] * (1 + tt * 1.1) + J[k], h0 = 18 * D[k];
         const y = by - h0 * (0.6 + Math.sin(Math.min(1, tt * 1.15) * Math.PI) * 0.75) + (f >= 5 ? (f - 4) * 5 : 0);
         const falling = f >= 4, sz = f <= 3 ? 2.2 : 1.6;
-        if (y < by - 1) g.solid(bead(x, Math.min(by - 2, y), sz * 1.3, sz * 0.8, falling ? Math.PI / 2 : -Math.PI / 2 + X[k] * 0.06), x, Math.min(by - 2, y));
+        if (y < by - 1) g.solid(bead(x, Math.min(by - 2, y), sz * 1.3, sz * 0.8, falling ? Math.PI / 2 : -Math.PI / 2 + X[k] * 0.06), x, Math.min(by - 2, y), { gloss: true });
       }
       g.clearBelow(by + (f >= 5 ? 5 : 3));
     },
@@ -325,7 +348,7 @@ const DEFS: Record<VfxName, Def> = {
         const x = c + Math.cos(A[k]) * d, y = c + Math.sin(A[k]) * d + fall, sz = [0, 2.6, 2, 1.6, 1.2, 1][f] * Z[k];
         if (f === 5 && k % 2) continue;
         const dir = f >= 3 ? Math.atan2(Math.sin(A[k]) * d + fall * 2, Math.cos(A[k]) * d) : A[k];
-        g.solid(bead(x, y, sz * 1.5, sz * 0.75, dir), x, y);
+        g.solid(bead(x, y, sz * 1.5, sz * 0.75, dir), x, y, { gloss: true });
       }
     },
   },
@@ -405,7 +428,7 @@ const DEFS: Record<VfxName, Def> = {
   // one bead of water: pointed tail up, blunt faceted head; stretched along its fall when aligned
   drop: {
     size: 8, holds: [4], m: 0.075, ramp: 'water',
-    draw(g) { g.poly([[4, 0.5], [5.4, 3.5], [5.6, 5.4], [4.6, 6.6], [3.2, 6.6], [2.4, 5.4], [2.6, 3.5]], MID); g.poly([[4, 0.5], [2.6, 3.5], [2.4, 5.4], [3.4, 5]], LIT); g.set(3, 4, HI); g.set(5, 6, SHD); },
+    draw(g) { g.poly([[4, 0.5], [5.4, 3.5], [5.6, 5.4], [4.6, 6.6], [3.2, 6.6], [2.4, 5.4], [2.6, 3.5]], MID); g.poly([[4, 0.5], [2.6, 3.5], [2.4, 5.4], [3.4, 5]], LIT); g.poly([[5.4, 4.6], [5.6, 5.4], [4.6, 6.6], [4, 6.2]], SHD); g.dot(3.1, 3.9, GLINT); g.dot(3.1, 4.4, GLINT); g.dot(3.6, 3.9, HI); },
   },
   // a death poof: an angular burst cloud, clumps blown outward, eaten away, flecks
   poof: {
@@ -483,13 +506,15 @@ interface Frames { uv: Float32Array; cum: Float32Array; ticks: number; m: number
 const RAMP_NAMES = Object.keys(RAMPS) as RampName[];
 const RAMP_ROW = new Map(RAMP_NAMES.map((n, i) => [n, i]));
 /** the five steps a sprite paints with, picked from a ramp of any length: outline, shadow, mid, light, highlight */
+/** the six steps a sprite paints with, from a ramp of any length: outline, shadow, base, lit plane, highlight edge,
+ *  glint (the ramp's lightest) */
 function steps(r: readonly number[]): number[] {
   const L = r.length;
-  if (L >= 7) return [r[0], r[2], r[4], r[5], r[6]];
-  if (L === 6) return [r[0], r[1], r[3], r[4], r[5]];
-  if (L === 5) return [r[0], r[1], r[2], r[3], r[4]];
-  if (L === 4) return [r[0], r[1], r[2], r[2], r[3]];
-  return [r[0], r[0], r[1], r[1], r[L - 1]];
+  if (L >= 7) return [r[0], r[2], r[3], r[4], r[5], r[6]];
+  if (L === 6) return [r[0], r[1], r[2], r[3], r[4], r[5]];
+  if (L === 5) return [r[0], r[1], r[2], r[3], r[4], r[4]];
+  if (L === 4) return [r[0], r[1], r[2], r[2], r[3], r[3]];
+  return [r[0], r[0], r[1], r[1], r[L - 1], r[L - 1]];
 }
 let ATLAS: { tex: THREE.DataTexture; ramps: THREE.DataTexture; fx: Record<VfxName, Frames>; w: number; h: number } | null = null;
 
@@ -503,9 +528,10 @@ function buildAtlas() {
   for (const n of names) {
     const d = DEFS[n];
     for (let f = 0; f < d.holds.length; f++) {
-      if (x + d.size > W) { x = 0; y += rowH + 1; rowH = 0; }
-      slots.push({ n, f, x, y, s: d.size });
-      x += d.size + 1; rowH = Math.max(rowH, d.size);
+      const sz = d.size * K;
+      if (x + sz > W) { x = 0; y += rowH + 1; rowH = 0; }
+      slots.push({ n, f, x, y, s: sz });
+      x += sz + 1; rowH = Math.max(rowH, sz);
     }
   }
   let H = 64; while (H < y + rowH + 1) H *= 2;
@@ -520,10 +546,10 @@ function buildAtlas() {
   }
   const seedOf = (n: string) => { let h = 2166136261; for (let i = 0; i < n.length; i++) h = Math.imul(h ^ n.charCodeAt(i), 16777619); return h >>> 0; };
   for (const sl of slots) {
-    const d = DEFS[sl.n], g = new Grid(sl.s);
+    const d = DEFS[sl.n], g = new Grid(sl.s, K);
     d.draw(g, sl.f, d.holds.length, rng(seedOf(sl.n)));
     g.tidy();
-    if (!d.noOutline) g.selout(d.litLine !== false);
+    if (!d.noOutline) { g.rim(); g.outline(d.litLine !== false); }
     for (let py = 0; py < sl.s; py++) for (let px = 0; px < sl.s; px++) {
       const v = g.d[py * sl.s + px]; if (!v) continue;
       const o = ((sl.y + sl.s - 1 - py) * W + sl.x + px) * 4;

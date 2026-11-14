@@ -466,3 +466,26 @@ export async function testPlanet(engine: Engine, input: Input, P: URLSearchParam
   orbit();
   engine.start();
 }
+
+/** ?test=carrier: the carrier alone in space on a turntable (the menu's centrepiece). &yaw, &pitch, &dist, &spin */
+export async function testCarrier(engine: Engine, _input: Input, P: URLSearchParams) {
+  const { buildCarrier } = await import('./deployShip');
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x020306);
+  const sunDir = new V3(-0.8, 0.38, -0.46).normalize();
+  const bin = new Bin();
+  const space = makeSpace({ stars: 2400, radius: 7000, sun: sunDir, dust: 0, seed: 7 }); scene.add(space.group); bin.adopt(space.group);
+  const c = buildCarrier({}); scene.add(c.group);
+  const cam = new THREE.PerspectiveCamera(Number(P.get('fov') ?? 34), 1, 0.5, 15000);
+  let yaw = Number(P.get('yaw') ?? 2.3);
+  const pitch = Number(P.get('pitch') ?? 0.32), dist = Number(P.get('dist') ?? 330), spin = Number(P.get('spin') ?? 0.04);
+  let tris = 0; c.group.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) tris += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3; });
+  let calls = 0; c.group.traverse((o) => { if ((o as THREE.Mesh).isMesh && o.visible) calls++; });
+  console.log('carrier tris', Math.round(tris), 'meshes', calls);
+  engine.setScreen({
+    update(dt) { yaw += dt * spin; c.update(dt); cam.position.set(Math.sin(yaw) * Math.cos(pitch) * dist, Math.sin(pitch) * dist, -14 + Math.cos(yaw) * Math.cos(pitch) * dist); cam.lookAt(0, 4, -24); cam.updateMatrixWorld(); },
+    render(post, t) { resetGrade(post.grade); post.grade.vig = 0.4; post.grade.bloom = 0.4; post.render(scene, cam, undefined, t); },
+    resize(w, h) { cam.aspect = w / h; cam.updateProjectionMatrix(); },
+    dispose() { c.dispose(); bin.dispose(); },
+  });
+  engine.start();
+}

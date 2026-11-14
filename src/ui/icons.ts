@@ -4,11 +4,12 @@
 //    them, by a resolution-independent painter. Shapes are authored on a 32-unit grid and rasterised at the size
 //    they are shown at (1 source pixel = 1 screen pixel, crisp at any UI scale). Every form is an angular silhouette:
 //    hand-placed polygons, faceted stones cut from irregular outlines, chamfered plates, pointed leaves built on a
-//    spine. Shading is planar, lit from the upper left: one ramp step per plane, 2-4 steps per form, hard cluster
-//    edges; no circles, no gradients, no noise, no dithering. Colours come only from the master ramps
-//    (art/palette.ts), picked by material. The silhouette gets a selective outline (ink on the shadow side, a dark
-//    step of its own material on the lit side), a part that overlaps another gets an inner line, and a lit plane
-//    that meets open sky gets one highlight pixel. Texture is drawn marks: cracks in stone, veins in leaves,
+//    spine. Shading is planar, lit from the upper left: one ramp step per plane, 3-5 tones per material in flat
+//    clusters, a bright highlight edge where a lit plane meets the sky, and a tiny specular glint on hard, glossy
+//    and wet things; no circles, no gradients, no noise, no dithering. Colours come only from the master ramps
+//    (art/palette.ts), picked by material. Every silhouette gets a 1 px outline in the darkest step of its own
+//    ramp (ink for pale ones), and a part that overlaps another gets an inner line. Source art is 24-47 px,
+//    blown up by whole pixels for bigger sizes. Texture is drawn marks: cracks in stone, veins in leaves,
 //    knuckle seams, bark strokes. An fx layer (lit lenses, sparks, field strokes, motion lines, flat light patches)
 //    sits over the solids without an outline (or under them).
 //  * LEGACY 16 x 16 grids (ICONS / PAL, at the bottom): the older hand-pixelled set. Any name without a vignette
@@ -18,6 +19,7 @@
 // hasHiIcon(name), HI_ICON_NAMES. ui/pixelart.ts icon(name) uses the vignettes at the HUD's current scale.
 import { PixelCanvas } from '../limbo/gfx/pixel';
 import { RAMPS } from '../art/palette';
+import { SKILL } from '../game/skills';
 
 type Ramp = readonly number[];
 type Inside = (x: number, y: number) => boolean;
@@ -34,6 +36,9 @@ const WA = RAMPS.water, SO = RAMPS.soil, PL = RAMPS.moss, CB = RAMPS.moss, VE = 
 const FL = RAMPS.flesh, BN = RAMPS.bone, GL = RAMPS.slate, RE = RAMPS.stampRed, CO = RAMPS.coral, BK = RAMPS.basalt;
 const LB = RAMPS.ichor, BW = RAMPS.fur, CR = RAMPS.paper, SN = RAMPS.snow, HZ = RAMPS.ochre, INK = RAMPS.ink;
 const LBD: Ramp = [LB[0], LB[1], LB[2]]; // a shape seen through lab fluid
+/** hard, glossy or wet materials: their parts get a specular glint */
+const GLOSSY = new Set<Ramp>([GM, BR, OL, GL, WA, LN, RE, RAMPS.iron, RAMPS.copper, RAMPS.gold, RAMPS.quartz, RAMPS.malachite, RAMPS.amethyst, RAMPS.ruby, RAMPS.sapphire, OR, SN]);
+const luma = (c: number) => ((c >> 16) & 255) * 0.3 + ((c >> 8) & 255) * 0.59 + (c & 255) * 0.11;
 const OUT = INK[0], HOT = CR[5];
 
 // ------------------------------------------------------------------ painter
@@ -69,7 +74,7 @@ function ngon(cx: number, cy: number, r: number, ry = 1, N = 8, rot = 0): Inside
 }
 const dimC = (c: number) => { const l = ((c >> 16) & 255) * 0.3 + ((c >> 8) & 255) * 0.59 + (c & 255) * 0.11; return GM[clamp(Math.round((l / 255) * 6 * 0.75), 0, 5)]; };
 
-interface SOpt { part?: number; amb?: number; gain?: number; clip?: Inside; min?: boolean }
+interface SOpt { part?: number; amb?: number; gain?: number; clip?: Inside; min?: boolean; gloss?: boolean }
 
 class IP {
   readonly W: number; readonly k: number;
@@ -77,6 +82,7 @@ class IP {
   readonly fxo: Int32Array; readonly fxu: Int32Array; readonly halo: Int32Array;
   private ramps: Ramp[] = []; private rmap = new Map<Ramp, number>();
   pid = 0;
+  private gloss = new Set<number>();
   /** a clip applied to every primitive while set */
   clip: Inside | null = null;
   /** fx primitives go under the solids (patches, strokes behind things) while set */
@@ -93,6 +99,7 @@ class IP {
   /** rasterise a solid over a unit bounding box: each pixel takes the one ramp step of the plane it lies in */
   solid(x0: number, y0: number, x1: number, y1: number, inside: Inside, ramp: Ramp, lum: Lum, o: SOpt = {}) {
     const part = o.part ?? ++this.pid, id = this.rampId(ramp), n = ramp.length, W = this.W;
+    if (o.gloss ?? GLOSSY.has(ramp)) this.gloss.add(part);
     const amb = o.amb ?? 0, gain = o.gain ?? 1, clip = o.clip ?? this.clip;
     const step = (ux: number, uy: number) => clamp(Math.floor(clamp(amb + lum(ux, uy) * gain, 0, 1) * (n - 1) + 0.5), 0, n - 1);
     const px0 = Math.max(0, Math.floor(this.X(x0)) - 1), px1 = Math.min(W - 1, Math.ceil(this.X(x1)) + 1);
@@ -362,8 +369,8 @@ class IP {
       const i = y * W + x; if (rid[i] < 0) continue;
       const len = this.ramps[rid[i]].length;
       let v = ri[i];
-      // one highlight pixel where a lit plane turns into open sky
-      if (len > 2 && v >= Math.ceil((len - 1) * 0.6) && !solid(x, y - 1)) v = Math.min(len - 1, v + 1);
+      // a bright highlight edge where a lit plane turns away into open sky, above or to the left (the light's side)
+      if (len > 2 && v >= Math.ceil((len - 1) * 0.5) && (!solid(x, y - 1) || !solid(x - 1, y))) v = Math.min(len - 1, v + 1);
       // an inner line where a part in front of this one begins
       const a = part[i];
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
@@ -374,18 +381,31 @@ class IP {
     }
     const col = new Int32Array(n).fill(-1);
     for (let i = 0; i < n; i++) if (rid[i] >= 0) col[i] = this.ramps[rid[i]][ri2[i]];
-    // selective outline: ink on the shadow side (right, below), a dark step of the material on the lit side (left, above)
+    // specular glints on hard, glossy and wet things: the top-left-most lit interior pixel of each glossy part
+    // (two pixels on big ones), in the palette's lightest step
+    if (this.gloss.size) {
+      const best = new Map<number, [number, number]>(), cnt = new Map<number, number>();
+      for (let y = 1; y < W - 1; y++) for (let x = 1; x < W - 1; x++) {
+        const i = y * W + x, a = part[i]; if (rid[i] < 0 || !this.gloss.has(a)) continue;
+        cnt.set(a, (cnt.get(a) ?? 0) + 1);
+        const len = this.ramps[rid[i]].length;
+        if (ri2[i] < Math.ceil((len - 1) * 0.5) || part[i - 1] !== a || part[i + 1] !== a || part[i - W] !== a || part[i + W] !== a || rid[i - 1] < 0 || rid[i - W] < 0) continue;
+        const sc = x * 0.8 + y, b = best.get(a); if (!b || sc < b[0]) best.set(a, [sc, i]);
+      }
+      for (const [a, [, i]] of best) {
+        const n = cnt.get(a) ?? 0; if (n < 6) continue;
+        const R = this.ramps[rid[i]], top = R[R.length - 1], g = luma(top) > 165 ? top : SN[5];
+        col[i] = g; if (n >= 40 && part[i + 1] === a) col[i + 1] = g;
+      }
+    }
+    // the outline: 1 px all round every silhouette, the darkest step of the object's own ramp (ink for pale ones)
     for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x; if (rid[i] >= 0) continue;
-      let hit = -1, lit = false;
-      for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
-        if (!solid(x + dx, y + dy)) continue;
-        if (hit < 0) hit = (y + dy) * W + x + dx;
-        if ((dx || dy) && dx >= 0 && dy >= 0) lit = true;
-      }
+      let hit = -1;
+      for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) { if (solid(x + dx, y + dy)) { hit = (y + dy) * W + x + dx; break; } }
       if (hit < 0) continue;
-      const R = this.ramps[rid[hit]];
-      col[i] = lit && R.length > 2 ? R[1] : OUT;
+      const R = this.ramps[rid[hit]], d = R[0];
+      col[i] = R.length > 2 ? (luma(d) > 64 ? INK[1] : d) : OUT;
     }
     // fx under the solids (shows only where nothing solid or outlined is), fx over everything
     for (let i = 0; i < n; i++) if (col[i] < 0 && this.fxu[i] >= 0) col[i] = this.fxu[i];
@@ -549,6 +569,82 @@ function star(cx: number, cy: number, R: number, r: number, rot = -Math.PI / 2):
   const pts: number[] = [];
   for (let i = 0; i < 10; i++) { const a = rot + (i / 10) * TAU, rr = i % 2 ? r : R; pts.push(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); }
   return pts;
+}
+
+
+// ---- the works: machines, belts, domes, cards
+/** a polyline (closed: back to the start) of fx strokes */
+function lines(p: IP, pts: number[], c: number, closed = false, w = 0, dash = 0) {
+  for (let i = 0; i + 3 < pts.length; i += 2) p.fline(pts[i], pts[i + 1], pts[i + 2], pts[i + 3], c, w, -1, dash);
+  if (closed) p.fline(pts[pts.length - 2], pts[pts.length - 1], pts[0], pts[1], c, w, -1, dash);
+}
+/** an N-gon's corners (an angular stand-in for a circle drawn as lines) */
+function corners(cx: number, cy: number, r: number, n = 8, rot = 0.2, ry = 1) { const q: number[] = []; for (let i = 0; i < n; i++) { const a = rot + (i / n) * TAU; q.push(cx + Math.cos(a) * r, cy + Math.sin(a) * r * ry); } return q; }
+/** a dome's outline, base to base over the top, in n straight panes */
+function dome(cx: number, by: number, rx: number, ry: number, n = 7) { const q: number[] = []; for (let i = 0; i <= n; i++) { const a = Math.PI + (i / n) * Math.PI; q.push(cx + Math.cos(a) * rx, by + Math.sin(a) * ry); } return q; }
+/** a dome's meridians at fractions f of its half width, as straight strokes */
+function meridians(p: IP, cx: number, by: number, rx: number, ry: number, fs: number[], c: number, dash = 0) {
+  for (const f of fs) { const q: number[] = []; for (const a of [0, 0.45, 0.9, 1.25, Math.PI / 2]) q.push(cx + rx * f * Math.cos(a), by - ry * Math.sin(a)); lines(p, q, c, false, 0, dash); }
+}
+/** a cog: teeth cut into the outline, the rim bevelled, a hexagonal bore */
+function cog(p: IP, cx: number, cy: number, r: number, ramp: Ramp, teeth = 8, rot = 0.2) {
+  const pts: number[] = [], s = Math.PI / teeth;
+  for (let i = 0; i < teeth; i++) { const a = (i / teeth) * TAU + rot; for (const [da, rr] of [[-s * 0.95, r * 0.78], [-s * 0.5, r], [s * 0.5, r], [s * 0.95, r * 0.78]]) pts.push(cx + Math.cos(a + da) * rr, cy + Math.sin(a + da) * rr); }
+  const hole = ngon(cx, cy, r * 0.3, 1, 6, rot);
+  return p.bevel(pts, ramp, { w: Math.max(0.7, r * 0.22), lum: P_TOP, clip: (x, y) => !hole(x, y) });
+}
+/** an enamel mark plate with the model's numeral (I, II, III) struck in */
+function mkPlate(p: IP, x: number, y: number, mk: number) {
+  const pl = p.box(x, y, 1 + mk * 1.1, 3, CR, { bevel: 0.3, lum: 0.62 });
+  for (let i = 0; i < mk; i++) p.mark([x + 0.85 + i * 1.1, y + 0.7, x + 0.85 + i * 1.1, y + 2.3], pl.part, 0);
+}
+/** a lattice derrick over a seam: mk 1-3 (heavier legs, more bracing, its plate) */
+function derrick(p: IP, x: number, gy: number, top: number, mk: number) {
+  const w = 3 + mk * 0.7, lw = 0.8 + mk * 0.2, n = 2 + mk;
+  p.seg(x, top, x, gy + 2 + mk, 0.8 + mk * 0.3, GM, { gain: 0.85 });
+  p.seg(x - w, gy, x - 1.1, top, lw, GM); p.seg(x + w, gy, x + 1.1, top, lw, GM, { gain: 0.8 });
+  for (let i = 0; i < n; i++) {
+    const t0 = i / n, t1 = (i + 1) / n, ya = gy + (top - gy) * t0, yb = gy + (top - gy) * t1, xa = w + (1.1 - w) * t0, xb = w + (1.1 - w) * t1, sg = i % 2 ? 1 : -1;
+    p.fline(x - xa * sg, ya, x + xb * sg, yb, GM[2]); p.fline(x - xb, yb, x + xb, yb, GM[3]);
+  }
+  const hw = 2.4 + mk * 0.4;
+  p.box(x - hw, top - 3.6, hw * 2, 4.2, OL, { bevel: 0.6 });
+  mkPlate(p, x - (1 + mk * 1.1) / 2, top - 3.0, mk);
+}
+/** a conveyor: a rubber band (lit top face, shaded edge) on a steel rail, roller seams, crates riding it */
+function belt(p: IP, x0: number, y0: number, x1: number, y1: number, w: number, crates: number) {
+  const yAt = (x: number) => y0 + ((y1 - y0) * (x - x0)) / (x1 - x0 || 1e-6);
+  const b = p.poly([x0, y0, x1, y1, x1, y1 + w, x0, y0 + w], BK, (x, y) => (y - yAt(x) < w * 0.4 ? P_TOP : P_SH));
+  p.seg(x0, y0 + w + 0.3, x1, y1 + w + 0.3, 0.5, GM, { gain: 0.8 });
+  const n = Math.max(2, Math.round(Math.abs(x1 - x0) / 2.6));
+  for (let i = 0; i <= n; i++) { const x = x0 + ((x1 - x0) * i) / n; p.mark([x, yAt(x) + w * 0.5, x, yAt(x) + w], b.part, 0); }
+  for (let i = 0; i < crates; i++) { const t = (i + 0.6) / (crates + 0.2), x = x0 + (x1 - x0) * t, y = yAt(x); p.box(x - 0.9, y - 1.9, 1.8 + (i % 2) * 0.4, 1.9, i % 2 ? OR : BR, { bevel: 0.3 }); }
+  return b;
+}
+/** a crystal: two side faces and two cap facets, one ramp step each */
+function crystal(p: IP, cx: number, by: number, w: number, h: number, lean: number, ramp: Ramp, g = 1) {
+  const BL = [cx - w, by], BM = [cx + w * 0.15, by + w * 0.5], BRt = [cx + w, by - w * 0.25];
+  const TL = [cx - w + lean, by - h], TM = [cx + w * 0.15 + lean, by - h + w * 0.5], TR = [cx + w + lean, by - h - w * 0.25], A = [cx + lean * 1.4 + w * 0.1, by - h - w * 2.1];
+  const part = ++p.pid;
+  p.poly([...BL, ...BM, ...TM, ...TL], ramp, P_MID * g, { part }); p.poly([...BM, ...BRt, ...TR, ...TM], ramp, P_SH * g, { part });
+  p.poly([...TL, ...TM, ...A], ramp, P_LIT * g, { part }); p.poly([...TM, ...TR, ...A], ramp, P_TOP * g, { part });
+}
+/** the fallback: a blueprint card with its branch's glyph drawn in white line (any skill without its own vignette) */
+function card(p: IP, branch: string) {
+  const sh = p.bevel([4, 4.5, 24.5, 3.6, 28.2, 7.2, 28.6, 28, 5, 28.6], GL, { w: 1.1, lum: P_MID });
+  p.poly([24.5, 3.6, 24.9, 7.4, 28.2, 7.2], GL, P_LIT, { part: sh.part });
+  p.clip = sh.inside; for (let x = 8; x < 29; x += 4) p.fline(x, 3, x, 29, GL[3], 0, -1, 1); for (let y = 8; y < 29; y += 4) p.fline(3, y, 29, y, GL[3], 0, -1, 1); p.clip = null;
+  const c = CR[4];
+  switch (branch) {
+    case 'chassis': lines(p, [11, 14, 12, 10, 16, 8.5, 20, 10, 21, 14, 19.5, 17.5, 12.5, 17.5], c, true); lines(p, corners(17.8, 12.8, 2, 8), c, true); lines(p, [12, 19.6, 20, 19.6], c); break;
+    case 'harvest': lines(p, [12, 21.5, 15, 10], c); lines(p, [20, 21.5, 17, 10], c); lines(p, [13, 17.4, 19, 17.4], c); lines(p, [13.9, 13.6, 18.1, 13.6], c); lines(p, [13.4, 7, 18.6, 7, 18.6, 10, 13.4, 10], c, true); lines(p, [16, 21.5, 16, 23.4], c); break;
+    case 'gravity': for (let i = 0; i < 3; i++) { const y = 8.5 + i * 4.2; lines(p, [10.5, y, 16, y + 3.4, 21.5, y], i === 2 ? CR[5] : c); } break;
+    case 'combat': lines(p, [11, 11, 19, 10, 21.5, 12.5, 21.5, 18, 19, 20.5, 12, 20.5, 10.5, 18], c, true); for (const x of [13.2, 15.9, 18.6]) lines(p, [x, 10.8, x, 14], c); lines(p, [11, 16, 15, 16], c); break;
+    case 'fabrication': { const q: number[] = []; for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU + 0.2, s = Math.PI / 8; for (const [da, rr] of [[-s * 0.9, 4.4], [-s * 0.45, 6], [s * 0.45, 6], [s * 0.9, 4.4]]) q.push(16 + Math.cos(a + da) * rr, 14.5 + Math.sin(a + da) * rr); } lines(p, q, c, true); lines(p, corners(16, 14.5, 1.8, 6), c, true); break; }
+    case 'lab': lines(p, [14, 8, 18, 8, 18, 12, 22, 21, 10, 21, 14, 12], c, true); lines(p, [12.4, 17.6, 19.6, 17.6], c); p.fdot(15, 19.2, 0.5, LN[3]); p.fdot(17.4, 18.8, 0.4, LN[3]); break;
+    default: lines(p, [12.6, 11.2, 14, 8.6, 18, 8.6, 19.6, 11.2, 19.6, 12.8, 16, 15.2, 16, 17.6], c); p.fdot(16, 20.6, 0.7, c);
+  }
+  lines(p, [7, 25.2, 17.5, 25.2], CR[2]); lines(p, [7, 26.8, 12.5, 26.8], CR[2]);
 }
 
 // ------------------------------------------------------------------ the set
@@ -1160,6 +1256,260 @@ const ART: Record<string, Art> = {
     }
     p.fline(14.8, 13.5, 17.2, 13.5, LN[3], 0.6, LN[0]); p.fline(14.8, 16, 17.2, 16, LN[3], 0.6, LN[0]);
   },
+
+  // ---------------- the works (factory catalogue)
+  works(p) {
+    ground(p, 25, SO, true);
+    p.rock(7, 27.6, 3.6, 81, RD_ROCK, { sq: 0.55 }); p.rock(5.4, 27, 1.1, 82, OR); p.rock(8.8, 28.2, 0.9, 83, OR);
+    derrick(p, 7, 25, 10, 1);
+    p.seg(13, 22.4, 13, 25, 0.6, GM); p.seg(18.5, 20, 18.5, 25, 0.6, GM);
+    belt(p, 11, 20.5, 20.5, 18, 1.6, 2);
+    p.seg(27.5, 13.5, 27.5, 3.5, 1.6, GM);
+    const sm = p.box(20, 12.5, 10, 12.5, CU, { bevel: 0.8, lum: 0.45 });
+    for (const y of [15.5, 18.5, 21.5]) p.mark([20.3, y, 29.7, y], sm.part, 1);
+    for (const [x, y] of [[23, 12.8], [26.5, 15.8], [22, 15.8], [25, 18.8], [28, 18.8], [23.5, 21.8]]) p.mark([x, y, x, y + 2.6], sm.part, 1);
+    p.box(22.6, 19.6, 4.4, 3.8, INK, { lum: 0.4, bevel: 0.3 }); p.glow(24.8, 21.6, 1.7, FI);
+    p.ball(28.4, 2.4, 2.1, 1.5, CR, { gain: 0.75, n: 6 }); p.ball(25.4, 1.2, 1.5, 1.1, CR, { gain: 0.6, n: 5 });
+  },
+  miner2(p) {
+    ground(p, 26, SO);
+    p.rock(16, 28.6, 5.4, 84, RD_ROCK, { sq: 0.45 });
+    derrick(p, 16, 26, 8, 2);
+    for (const [x, y, r, sd] of [[23.5, 19.5, 1.4, 1], [26, 14.5, 1.1, 2], [8.5, 18.5, 1.2, 3], [27.5, 22.5, 0.9, 4], [5.5, 13.5, 0.8, 5]] as [number, number, number, number][]) p.rock(x, y, r, 90 + sd, OR);
+    streaks(p, 23.5, 19.5, 1, -0.9, 3, 2, 1, OR[5]); streaks(p, 8.5, 18.5, -1, -0.9, 3, 2, 1, OR[5]);
+    p.spark(16, 26.5, 2.2, FI[3]);
+  },
+  miner3(p) {
+    p.box(-1, 12, 34, 6.5, SO, { lum: 0.5, bevel: 0.6 }); p.box(-1, 18.5, 34, 6, RW, { lum: 0.42, bevel: 0.5 }); p.box(-1, 24.5, 34, 9, RD_ROCK, { lum: 0.38, bevel: 0.5 });
+    for (const [x, y, r] of [[6, 28, 1.8], [25.5, 27.5, 2.1], [21, 30.5, 1.3], [9.5, 31, 1.1]]) p.rock(x, y, r, x * 3, OR);
+    derrick(p, 16, 12, 4.5, 3);
+    p.box(14.6, 12, 2.8, 14.5, INK, { lum: 0.5, bevel: 0.2 });
+    p.seg(16, 12, 16, 25.6, 1.1, GM);
+    p.bevel([13.4, 25.2, 18.6, 25.2, 16, 30], GM, { w: 0.9, lum: P_LIT });
+    p.spark(16, 29.4, 2.6, FI[3]);
+    for (const [x, y] of [[12.5, 27.5], [19.6, 27], [13.5, 30.5], [19, 30.6]]) p.fdot(x, y, 0.45, FI[3], FI[0]);
+  },
+  belt2(p) {
+    ground(p, 27.5, SO);
+    belt(p, -1, 23, 33, 23, 1.8, 3);
+    p.seg(8, 25, 8, 27.5, 0.7, GM); p.seg(24, 25, 24, 27.5, 0.7, GM);
+    p.seg(10, 23, 10, 17.6, 0.9, GM); p.seg(22, 23, 22, 13.6, 0.9, GM);
+    belt(p, 3, 18.2, 29, 9.4, 1.7, 3);
+    streaks(p, 29, 9.4, 1, -0.34, 3, 2, 1.2, CR[3]);
+    mkPlate(p, 3, 2.5, 2);
+  },
+  belt3(p) {
+    p.seg(6, 25.6, 6, 31, 0.8, GM); p.seg(22, 18, 22, 31, 0.8, GM);
+    belt(p, -1, 27, 33, 11, 2, 6);
+    for (const [x, y] of [[6, 20], [14, 16.5], [22, 12.6]]) streaks(p, x, y - 2.4, 1, -0.47, 5, 2, 1.1, CR[3]);
+    mkPlate(p, 3, 3, 3);
+  },
+  assembler(p) {
+    ground(p, 28, GM);
+    belt(p, -1, 12.5, 8.5, 14.5, 1.5, 1); belt(p, -1, 22, 8.5, 21, 1.5, 1);
+    const m = p.box(8, 7.5, 14.5, 20.5, OL, { bevel: 1, lum: 0.5 });
+    p.mark([8.4, 11, 22, 11], m.part, 1);
+    cog(p, 15.2, 17.4, 4.2, BR);
+    p.box(19.4, 8.6, 2, 1.4, LN, { lum: 0.6, bevel: 0.2 });
+    belt(p, 22.5, 22.5, 33, 22.5, 1.5, 0);
+    p.box(25, 18.3, 5, 4, GM, { bevel: 0.6, lum: 0.62 });
+    for (const [x, y] of [[25.9, 19.2], [29.1, 19.2], [25.9, 21.4], [29.1, 21.4]]) p.rivet(x, y, 0.4, GM);
+  },
+  manufacturer(p) {
+    ground(p, 28.5, GM);
+    p.box(2.5, 12, 27, 16.5, GM, { bevel: 1, lum: 0.46 });
+    for (let i = 0; i < 3; i++) { const x = 2.5 + i * 9; p.poly([x, 12, x, 6.5, x + 9, 12], GM, P_LIT); p.box(x + 0.4, 7.6, 1.4, 4.2, GL, { lum: 0.72, bevel: 0.2 }); }
+    for (const y of [14.5, 17.5, 20.5, 23.5]) p.seg(-1, y, 2.8, y, 1, CU);
+    cog(p, 10, 20, 4.3, BR, 9);
+    p.box(17, 18, 10, 10.5, INK, { lum: 0.5, bevel: 0.3 });
+    p.box(17, 18, 10, 1.6, HZ, { lum: 0.6, bevel: 0.2 });
+    for (let x = 17.5; x < 27; x += 2) p.fline(x, 19.5, x + 1, 18.1, BK[0]);
+    p.ball(22, 24.6, 2.6, 2.6, GM, { n: 7 }); p.ring(22, 24.6, 1, 2, BR, { n: 6 });
+    p.fdot(24, 13.8, 0.55, FI[3]); p.fdot(26.5, 13.8, 0.55, LN[3]);
+  },
+  chem(p) {
+    ground(p, 28.5, GM);
+    const col = p.tank(4, 3, 6.5, 25.5, GM, { r: 2.4 });
+    for (const y of [9, 15, 21]) p.box(4, y, 6.5, 1.1, GM, { lum: 0.3, bevel: 0.3, clip: col.inside });
+    p.seg(7.2, 3.4, 7.2, 1, 0.8, GM);
+    p.seg(10.5, 7, 15, 7, 1, CU); p.seg(15, 7, 15, 13, 1, CU);
+    p.seg(13, 23.5, 12.5, 28.5, 0.8, GM); p.seg(22, 23.5, 22.6, 28.5, 0.8, GM);
+    const sp = p.ball(17.5, 18.5, 6, 5.6, GL, { n: 9 });
+    p.clip = sp.inside; p.fline(11, 19.2, 24, 18.4, GL[1]); p.clip = null;
+    const fl = p.bevel([24, 17.5, 26.6, 17.5, 26.6, 21, 30, 28.2, 20.6, 28.2, 24, 21], GL, { w: 0.8, lum: P_MID, gain: 0.8 });
+    p.poly([22.3, 25, 28.4, 25, 30, 28.2, 20.6, 28.2], LB, P_TOP, { clip: fl.inside });
+    for (const [x, y] of [[24.5, 23], [26, 21.5], [25.4, 19.6]]) p.fdot(x, y, 0.4, LB[4]);
+    p.box(10.6, 25.4, 3.4, 3.1, BK, { bevel: 0.4, lum: 0.5 });
+  },
+  steam(p) {
+    ground(p, 28.5, GM);
+    p.seg(5.5, 14, 5.5, 4, 1.6, GM);
+    const b = p.box(1.5, 13, 17, 11, CU, { r: 3.2, lum: 0.5, bevel: 0.9 });
+    for (const x of [5, 10, 15]) p.mark([x, 13.4, x, 23.6], b.part, 2);
+    for (const x of [3.6, 8, 12.4, 16.6]) p.rivet(x, 15, 0.4, GM);
+    p.box(4, 23.5, 10, 5, INK, { lum: 0.5, bevel: 0.3 }); p.glow(9, 26, 2, FI, { ry: 0.7 });
+    p.ball(6.5, 2.6, 2.2, 1.6, CR, { gain: 0.8, n: 6 }); p.ball(10, 1.5, 1.6, 1.2, CR, { gain: 0.65, n: 5 });
+    p.seg(18.5, 17, 21.5, 17, 1.2, CU);
+    p.box(21, 12, 9.5, 16.5, OL, { bevel: 0.9, lum: 0.5 });
+    p.poly([26.6, 13.4, 23.8, 19, 25.6, 19, 24.6, 24, 28, 17.8, 26.2, 17.8, 27.8, 13.4], FI, P_TOP);
+  },
+  atomic(p) {
+    ground(p, 28.5, RK);
+    const pile = p.bevel([5, 28.5, 7.5, 10, 24.5, 10, 27, 28.5], RK, { w: 1.6, lum: P_MID });
+    for (const y of [15, 21]) p.mark([6.7, y, 25.3, y], pile.part, 2);
+    p.box(12, 14, 8, 10, INK, { lum: 0.5, bevel: 0.3 });
+    p.glow(16, 19, 3.4, LN, { ry: 1.35 });
+    for (const x of [13.6, 16, 18.4]) p.fline(x, 14.6, x, 23.4, GM[2]);
+    crystal(p, 12.5, 10.4, 1.6, 4.5, -0.6, SN); crystal(p, 19.6, 10.4, 1.4, 3.4, 0.7, SN); crystal(p, 16, 10.6, 1.9, 6, 0.1, SN);
+    p.spark(23.5, 5, 1.8, LN[3]);
+  },
+  robotics(p) {
+    ground(p, 28.5, GM);
+    p.seg(3, 28.5, 3, 3.5, 1.3, GM); p.seg(29, 28.5, 29, 3.5, 1.3, GM, { gain: 0.8 }); p.seg(2.5, 3.5, 29.5, 3.5, 1.4, HZ);
+    p.box(9.5, 24.5, 13, 2.2, OL, { bevel: 0.4 });
+    p.seg(13.5, 18.5, 13, 24.6, 1.6, GM); p.seg(18, 18.5, 18.5, 24.6, 1.6, GM, { gain: 0.85 });
+    p.seg(10.5, 11.5, 8, 18, 1.3, GM, { gain: 0.85 }); p.seg(21, 11.5, 23, 17, 1.3, GM, { gain: 0.8 });
+    const t = p.box(10.5, 10.5, 10.5, 8.8, OL, { bevel: 0.8, lum: 0.55 });
+    p.mark([11, 14.6, 20.6, 14.6], t.part, 1); p.rivet(12, 12, 0.4, GM); p.rivet(19, 12, 0.4, GM);
+    p.box(12.6, 5.6, 6.4, 5, GM, { bevel: 0.6 });
+    p.box(13.4, 7, 4.8, 1.6, LN, { lum: 0.7, bevel: 0.2 });
+    p.seg(25, 3.8, 25, 8.5, 1, GM); p.seg(25, 8.5, 22.4, 12.6, 0.9, GM);
+    p.spark(22, 13, 2.4, FI[3]); p.fdot(23.5, 15.5, 0.4, FI[2]); p.fdot(20.5, 15.8, 0.4, FI[3]);
+  },
+  turret(p) {
+    ground(p, 27, SO);
+    p.bevel([5.5, 27, 8, 21, 24, 21, 26.5, 27], GM, { w: 1.2, lum: P_MID });
+    p.seg(18, 15.6, 30, 10.8, 1.3, GM); p.seg(18.4, 18.2, 30.4, 13.4, 1.3, GM, { gain: 0.85 });
+    const d = p.gem([8.5, 21.4, 9.6, 16.2, 13.4, 13.2, 19, 13.2, 22.6, 16, 23.4, 21.4], OL, { crown: 0.2 });
+    p.mark([10.5, 18.2, 22.4, 18.2], d.part, 1);
+    p.box(12.4, 15.4, 3, 1.6, INK, { lum: 0.5, bevel: 0.2 });
+    p.spark(31, 11.4, 2, FI[3]); p.spark(31.2, 13.6, 1.4, FI[3]);
+    for (let i = 0; i < 5; i++) p.box(4 - i * 0.5, 20.5 + i * 1.3, 1.2, 0.9, BR, { lum: 0.6, bevel: 0.2 });
+    p.fdot(27, 24.8, 0.45, BR[4]); p.fdot(28.6, 25.6, 0.45, BR[3]);
+  },
+  haul(p) {
+    ground(p, 27, SO, true);
+    p.box(-1, 21.5, 6, 3.4, BW, { bevel: 0.5, lum: 0.5 });
+    p.fline(5, 22.6, 9.6, 19.6, BR[3]);
+    const b = beast(p, 14, 21, 0.95, 1, FL, { eye: LN, spines: false });
+    const cr = p.box(9, 12.4, 8, 6, BW, { bevel: 0.6, lum: 0.55 });
+    p.mark([9.3, 12.6, 16.7, 18.1], cr.part, 1); p.mark([9.3, 15.4, 16.7, 15.4], cr.part, 1);
+    p.fline(10, 18.4, 11.5, 22.4, BR[2]); p.fline(16, 18.4, 15.4, 22.6, BR[2]);
+    p.farc(b.top[0], b.top[1] - 1.5, 1.6, 0, TAU, LN[3], 0, 0.35);
+  },
+  operate(p) {
+    ground(p, 28, GM);
+    const m = p.box(15, 7, 15, 21, OL, { bevel: 1, lum: 0.5 });
+    p.mark([15.4, 12, 29.6, 12], m.part, 1);
+    p.ring(24.5, 16.8, 1.8, 3.2, BR, { n: 8 }); p.disc(24.5, 16.8, 1.9, CR[4]); p.fline(24.5, 16.8, 25.8, 15.2, RE[3]);
+    p.box(25.2, 8.4, 2.2, 1.4, FI, { lum: 0.7, bevel: 0.2 });
+    p.ring(15, 21, 1.2, 3, GM, { n: 7 }); p.seg(15, 21, 12.4, 19.2, 0.7, GM); p.ball(12.2, 19, 0.7, 0.7, BR, { n: 5 });
+    p.farc(15, 21, 4.6, -2.6, -1.1, CR[3]);
+    const b = beast(p, 6.5, 22.5, 0.62, 1, FL, { eye: LN, spines: false });
+    p.farc(b.top[0], b.top[1] - 1.2, 1.3, 0, TAU, LN[3], 0, 0.35);
+  },
+  blueprint(p) {
+    const sh = p.bevel([3, 6.5, 26.5, 4.5, 29, 25.5, 5.4, 28], GL, { w: 1, lum: P_MID });
+    p.clip = sh.inside;
+    for (let x = 6; x < 30; x += 4) p.fline(x, 3, x - 0.4, 30, GL[3]);
+    for (let y = 9; y < 30; y += 4) p.fline(2, y + 0.4, 30, y - 0.6, GL[3]);
+    p.clip = null;
+    const c = CR[4];
+    lines(p, [8, 12, 17, 11.4, 17.6, 21, 8.6, 21.6], c, true); lines(p, [9.6, 21.5, 9.8, 24, 16.6, 23.6, 16.6, 21.1], c);
+    lines(p, corners(21.6, 15.4, 3, 8, 0.2), c, true); lines(p, [17.6, 15.6, 18.7, 15.5], c);
+    lines(p, [19.5, 23.6, 25.5, 23.2], CR[2]); lines(p, [19.6, 25.2, 23.4, 25], CR[2]);
+    p.seg(31, 22, 23.5, 29.5, 1.3, HZ); p.poly([23.0, 28.6, 24.4, 30, 22.2, 30.6], BN, P_TOP);
+  },
+  // ---------------- biotech
+  bt_works(p) {
+    p.box(5.5, 4, 21, 26.5, BW, { bevel: 0.8, lum: 0.5, r: 1 });
+    p.bevel([7.6, 7.4, 24.6, 7, 24.4, 28.4, 7.8, 28.6], CR, { w: 0.6, lum: P_TOP });
+    p.box(12.5, 2.4, 7, 3.6, GM, { bevel: 0.5 });
+    beast(p, 15.5, 14.5, 0.55, 1, SG, { spines: false });
+    for (const [x0, x1, y] of [[9.5, 18, 20.5], [9.5, 15.5, 22.6], [9.5, 15.8, 24.7], [9.5, 13.5, 26.6]]) p.fline(x0, y, x1, y, CR[1]);
+    p.poly([16.8, 23.2, 23.4, 22.2, 23.9, 26.2, 17.4, 27.2], RE, P_TOP);
+    p.fline(18, 24.6, 22.6, 23.9, RE[1]); p.fline(18.2, 25.8, 21.4, 25.3, RE[1]);
+  },
+  bt_reactor(p) {
+    ground(p, 28.5, GM);
+    p.seg(13.5, 9, 13.5, 3, 1.2, GM); p.ball(13.3, 1.8, 1.3, 1, CR, { gain: 0.6, n: 5 });
+    const dg = p.tank(3.5, 7.5, 12.5, 21, CU, { r: 4.5 });
+    for (const y of [12, 23]) p.box(3.5, y, 12.5, 1, CU, { lum: 0.3, bevel: 0.3, clip: dg.inside });
+    p.box(6.5, 16.5, 6.5, 4.4, INK, { lum: 0.5, bevel: 0.3 }); p.glow(9.75, 18.7, 2.4, FI, { ry: 0.75 });
+    p.seg(4.4, 2.4, 8.4, 6.6, 1.1, BN); p.ball(4, 2, 0.9, 0.9, BN, { n: 5 }); p.ball(8.8, 7, 0.9, 0.9, BN, { n: 5 });
+    p.seg(16, 15, 22, 15, 0.8, CU);
+    p.seg(25, 28.5, 25, 10, 1.2, GM); p.seg(21.5, 11.5, 28.5, 11.5, 1, GM); p.seg(22.5, 15, 27.5, 15, 0.9, GM);
+    p.poly([26.6, 0.8, 23.8, 5.4, 25.6, 5.4, 24.6, 9.4, 28.4, 3.8, 26.4, 3.8, 28.2, 0.8], FI, P_TOP);
+  },
+  bt_vat(p) {
+    p.box(8, 1.8, 16, 3.6, BR, { bevel: 0.7 }); p.seg(16, 1.8, 16, 0, 1.2, CU);
+    const g = p.tank(9, 5, 14, 21.5, GL, { r: 2.2, gain: 0.7 });
+    p.box(9.8, 8, 12.4, 18.5, LB, { bevel: 0.4, lum: 0.62, clip: g.inside });
+    p.clip = g.inside;
+    p.fline(16, 5.2, 16, 12, LB[1]);
+    beast(p, 15.8, 17.5, 0.62, 1, LBD, { eye: LN, spines: false, tuck: 0.55 });
+    for (const [x, y, r] of [[12, 21, 0.6], [12.6, 15, 0.45], [20.4, 11.5, 0.55], [19.6, 23, 0.4], [11.6, 10.4, 0.4]]) p.fdot(x, y, r, LB[4]);
+    p.fline(10.8, 7, 10.8, 24, GL[5], 0, -1, 2.2);
+    p.clip = null;
+    p.box(7, 26, 18, 4.2, BR, { bevel: 0.8 });
+    p.fdot(10, 28, 0.55, LN[3]); p.fdot(12.2, 28, 0.55, FI[3]);
+  },
+  bt_habitat(p) {
+    ground(p, 26, SO, true);
+    const dp = dome(16, 26, 13, 17, 7);
+    const d = p.gem(dp, GL, { crown: 0.25, gain: 0.62 });
+    p.clip = d.inside;
+    p.leaf(8.5, 26, 7, 20, 2, PL, { bend: -0.1 }); p.leaf(9, 26, 11.5, 21, 1.8, PL, { bend: 0.1 });
+    beast(p, 14.5, 22.2, 0.42, 1, SG, { spines: false }); beast(p, 21.5, 23, 0.36, -1, SG, { spines: false });
+    for (const [f, y] of [[0.87, 17.5], [0.53, 11.6]]) p.fline(16 - 13 * f, y, 16 + 13 * f, y, GM[4]);
+    meridians(p, 16, 26, 13, 17, [-0.55, 0, 0.55], GM[4]);
+    p.fline(7.4, 17, 9.4, 13.4, CR[4]); p.fline(10.6, 11.4, 12.4, 9.8, CR[4]);
+    p.clip = null;
+    p.box(24.5, 21.5, 6.5, 4.5, OL, { bevel: 0.6 }); p.ring(27.75, 23.75, 0.6, 1.6, GM, { n: 6 });
+  },
+  bt_field(p) {
+    ground(p, 27, RK);
+    const dp = dome(16, 27, 14, 20, 7);
+    lines(p, dp, LN[2]);
+    p.clip = inPoly(dp);
+    for (const y of [20.5, 14]) p.fline(1, y, 31, y, LN[1], 0, -1, 1);
+    meridians(p, 16, 27, 14, 20, [-0.6, 0.6], LN[1], 1);
+    p.clip = null;
+    p.seg(16, 27, 16, 9.5, 1.6, GM);
+    for (const y of [14, 17.5, 21]) p.ring(16, y, 1, 2.4, CU, { ry: 0.4, n: 7 });
+    p.ball(16, 8, 1.8, 1.8, BR, { n: 6 }); p.glow(16, 8, 1.3, LN);
+    lines(p, [17.5, 7.4, 20, 6.4, 19.4, 4.8, 22.4, 3.6], LN[3]); lines(p, [14.4, 7.6, 11.6, 6, 12.4, 4.6, 9.2, 4.4], LN[3]);
+    p.spark(26.4, 12.6, 2.2, FI[3]); streaks(p, 26.4, 12.6, -1, 0.3, 3, 1, 0, FI[2]);
+  },
+  bt_lock(p) {
+    helix(p, 1, 31, 13, 4.2, 1.5, VE, OR, 1.1);
+    const sk = [[12, 18], [12, 11], [13.4, 8.6], [18.6, 8.6], [20, 11], [20, 18]];
+    for (let i = 0; i + 1 < sk.length; i++) p.seg(sk[i][0], sk[i][1], sk[i + 1][0], sk[i + 1][1], 1.6, GM);
+    p.box(9.5, 16, 13, 12, BR, { r: 1.2, lum: 0.58, bevel: 0.9 });
+    p.disc(16, 21, 1.4, INK[0]); p.poly([15.3, 21.6, 16.7, 21.6, 17.1, 25.2, 14.9, 25.2], INK, P_MID);
+    p.spark(23.5, 6, 1.6, LN[3]);
+  },
+  bt_clone(p) {
+    p.box(1.5, 22.5, 13, 2.6, GM, { bevel: 0.5 }); p.box(17.5, 22.5, 13, 2.6, GM, { bevel: 0.5 });
+    beast(p, 7.6, 17.6, 0.6, 1, FL, { eye: LN, spines: false });
+    beast(p, 23.6, 17.6, 0.6, 1, FL, { eye: LN, spines: false });
+    p.clip = (_, y) => y > 11 && y < 22.4; for (let y = 12.2; y < 22.4; y += 2.2) p.fline(17.6, y, 30.4, y, VE[2]); p.clip = null;
+    p.fline(13.5, 12, 17.5, 12, LN[3], 0, LN[0], 1); p.fline(16.4, 10.8, 17.6, 12, LN[3]); p.fline(16.4, 13.2, 17.6, 12, LN[3]);
+    p.box(9.6, 3, 12.8, 4.4, CR, { lum: 0.62, bevel: 0.4 });
+    lines(p, [11.6, 4, 13.6, 6.4], INK[1]); lines(p, [13.6, 4, 11.6, 6.4], INK[1]); lines(p, [15.2, 4.1, 17.2, 4.1, 17.2, 5.2, 15.2, 6.3, 17.4, 6.3], INK[1]);
+  },
+  bt_dome(p) {
+    ground(p, 28, RK);
+    const dp = dome(16, 28, 15.5, 24, 9);
+    lines(p, dp, LN[3], false, 1.2);
+    lines(p, dome(16, 28, 13, 20, 8), LN[1], false, 0, 1);
+    p.clip = inPoly(dp); for (const y of [21, 14, 8.5]) p.fline(0, y, 32, y, LN[1], 0, -1, 1); meridians(p, 16, 28, 15.5, 24, [-0.62, -0.3, 0.3, 0.62], LN[1], 1); p.clip = null;
+    p.seg(16, 28, 16, 12, 2, GM);
+    for (const y of [15.5, 18.5, 21.5, 24.5]) p.ring(16, y, 1.3, 3.2, CU, { ry: 0.4, n: 7 });
+    p.ball(16, 10.5, 2.2, 2.2, BR, { n: 7 }); p.glow(16, 10.5, 1.6, LN);
+    p.rock(29, 5.4, 2.2, 61, RW); impact(p, 26.4, 8, 1.3);
+    mkPlate(p, 2, 2, 2);
+  },
 };
 
 /** names drawn by other vignettes */
@@ -1167,19 +1517,42 @@ const ALIAS: Record<string, string> = {
   core: 'torso', mirror: 'head', helix: 'dna', tree: 'skills', pulse: 'repulse', pull: 'lift', lode: 'magnet', repel: 'repulse',
   em: 'coil', heal: 'cell', points: 'cell', convertAlly: 'ally', fist: 'attack', pick: 'drill', gene: 'dna', lens: 'head',
 };
+// blueprint cards: the fallback for any skill without its own vignette, one per branch (and a generic one)
+for (const br of ['chassis', 'harvest', 'gravity', 'combat', 'fabrication', 'lab']) ART['card-' + br] = (p) => card(p, br);
+ART.card = (p) => card(p, '');
 export const HI_ICON_NAMES = [...Object.keys(ART), ...Object.keys(ALIAS)];
 export function hasHiIcon(name: string) { return !!ART[name] || !!ALIAS[name]; }
+/** the art for a name: its vignette, else (unless a legacy grid exists) the blueprint card of its skill's branch */
+function artFor(name: string): Art | null {
+  const a = ART[name] ?? ART[ALIAS[name] ?? ''];
+  if (a) return a;
+  if (ICONS[name]) return null;
+  return ART['card-' + (SKILL[name]?.branch ?? '')] ?? ART.card;
+}
 
 const pcCache = new Map<string, PixelCanvas>();
 /** the vignette `name` painted at px x px (art fills px - 4; outline and shadow use the margin), or null */
 export function hiIcon(name: string, px = 36, o: { dim?: boolean; shadow?: boolean } = {}): PixelCanvas | null {
-  const art = ART[name] ?? ART[ALIAS[name] ?? ''];
+  const art = artFor(name);
   if (!art) return null;
   px = Math.max(12, Math.round(px));
   const key = `${name}|${px}|${o.dim ? 1 : 0}${o.shadow ? 1 : 0}`;
   let pc = pcCache.get(key);
-  if (!pc) { const p = new IP(px); art(p); pc = p.canvas(o); pcCache.set(key, pc); }
+  if (!pc) { pc = paint(art, px, o); pcCache.set(key, pc); }
   return pc;
+}
+/** paint at 24-47 px of source and blow it up by a whole number to fill px (centred in any remainder) */
+function paint(art: Art, px: number, o: { dim?: boolean; shadow?: boolean }): PixelCanvas {
+  const k = Math.max(1, Math.round(px / 32)), src = Math.floor(px / k);
+  const p = new IP(src); art(p); const pc = p.canvas(o);
+  if (k === 1 && src === px) return pc;
+  const out = new PixelCanvas(px, px); out.wrap = false; out.clear();
+  const off = Math.floor((px - src * k) / 2), d = pc.data, D = out.data;
+  for (let y = 0; y < px; y++) for (let x = 0; x < px; x++) {
+    const sx = Math.floor((x - off) / k), sy = Math.floor((y - off) / k); if (sx < 0 || sy < 0 || sx >= src || sy >= src) continue;
+    const i = (sy * src + sx) * 4, j = (y * px + x) * 4; D[j] = d[i]; D[j + 1] = d[i + 1]; D[j + 2] = d[i + 2]; D[j + 3] = d[i + 3];
+  }
+  return out;
 }
 const urlCache = new Map<string, string>();
 function pcURL(pc: PixelCanvas) { const c = document.createElement('canvas'); c.width = pc.w; c.height = pc.h; c.getContext('2d')!.putImageData(pc.toImageData(), 0, 0); return c.toDataURL(); }
@@ -1206,10 +1579,14 @@ export const SKILL_ICON: Record<string, string> = {
   graft: 'graft', sow: 'sow', convert: 'convert', print: 'print', grove: 'grove',
   lab: 'lab', splice: 'splice', sequencer: 'sequencer', vat: 'vat',
   plating3: 'plating3', colossus: 'colossus', bore: 'bore', refinery: 'refinery', amp: 'amp', servo: 'servo', command: 'command', cloner: 'cloner',
+  works: 'works', miner2: 'miner2', miner3: 'miner3', belt2: 'belt2', belt3: 'belt3', assembler: 'assembler', manufacturer: 'manufacturer', chem: 'chem',
+  steam: 'steam', atomic: 'atomic', robotics: 'robotics', turret: 'turret', haul: 'haul', operate: 'operate', blueprint: 'blueprint',
+  bt_works: 'bt_works', bt_reactor: 'bt_reactor', bt_vat: 'bt_vat', bt_habitat: 'bt_habitat', bt_field: 'bt_field', bt_lock: 'bt_lock', bt_clone: 'bt_clone', bt_dome: 'bt_dome',
 };
 /** resource -> icon name */
 export const RES_ICON: Record<string, string> = { ore: 'ore', carbon: 'carbon', water: 'water', soil: 'soil' };
-export function skillIcon(id: string): string { return SKILL_ICON[id] ?? (hasHiIcon(id) ? id : 'cell'); }
+/** the icon name for a skill id: its vignette, or for a skill added later, its branch's blueprint card */
+export function skillIcon(id: string): string { return SKILL_ICON[id] ?? (hasHiIcon(id) ? id : 'card-' + (SKILL[id]?.branch ?? 'x')); }
 export function skillIconURL(id: string, px = 36, o: { dim?: boolean; shadow?: boolean } = { shadow: true }) { return iconURL(skillIcon(id), px, o); }
 
 /** the legacy 16 x 16 grid, outlined, upscaled by an integer factor k (18k x 18k) */

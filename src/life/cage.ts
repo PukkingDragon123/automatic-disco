@@ -38,10 +38,10 @@ export const CAGES: Record<string, Cage> = {
   // a beaked reptile: a flat broad skull, a ridge over each eye, the beak's cutting edge running to a hooked tip
   reptile: C([-0.24, -0.04, 0.14, 0.28, 0.42, 0.56, 0.7, 0.8], [0.04, 0.1, 0.12, 0.1, 0.04, 0.0, -0.04, -0.08], [
     [[0, 0.32], [0.32, 0.26], [0.38, 0.0], [0.3, -0.26], [0, -0.32]], [[0, 0.4], [0.42, 0.34], [0.5, 0.0], [0.42, -0.34], [0, -0.4]],
-    [[0, 0.42], [0.48, 0.36], [0.54, -0.02], [0.46, -0.36], [0, -0.42]], [[0, 0.38], [0.44, 0.34], [0.5, 0.0], [0.42, -0.34], [0, -0.4]],
-    [[0, 0.3], [0.34, 0.24], [0.42, -0.02], [0.36, -0.3], [0, -0.36]], [[0, 0.24], [0.24, 0.2], [0.32, -0.04], [0.28, -0.26], [0, -0.3]],
-    [[0, 0.18], [0.16, 0.14], [0.22, -0.04], [0.2, -0.2], [0, -0.24]], [[0, 0.1], [0.08, 0.06], [0.12, -0.06], [0.1, -0.16], [0, -0.2]]],
-    { rings: [2], long: [[3, 3, 7]], front: false }),
+    [[0, 0.42], [0.5, 0.42], [0.54, -0.02], [0.46, -0.36], [0, -0.42]], [[0, 0.38], [0.46, 0.38], [0.5, 0.0], [0.42, -0.34], [0, -0.4]],
+    [[0, 0.3], [0.34, 0.24], [0.42, -0.02], [0.36, -0.3], [0, -0.36]], [[0, 0.24], [0.22, 0.2], [0.3, -0.04], [0.27, -0.26], [0, -0.3]],
+    [[0, 0.16], [0.14, 0.12], [0.18, -0.06], [0.16, -0.22], [0, -0.28]], [[0, 0.02], [0.05, -0.02], [0.07, -0.12], [0.05, -0.22], [0, -0.34]]],
+    { rings: [2, 3], long: [[3, 3, 7], [1, 4, 7]], front: false }),
   // a bat: a high domed brain-case, a pushed-in face, wide gape, a short broad nose plane under the noseleaf
   bat: C([-0.22, -0.04, 0.14, 0.28, 0.38, 0.46, 0.53, 0.58], [0.08, 0.17, 0.18, 0.1, 0.0, -0.04, -0.05, -0.06], [
     [[0, 0.4], [0.3, 0.34], [0.42, 0.04], [0.3, -0.3], [0, -0.38]], [[0, 0.52], [0.44, 0.44], [0.58, 0.04], [0.44, -0.4], [0, -0.48]],
@@ -52,6 +52,18 @@ export const CAGES: Record<string, Cage> = {
 };
 
 /** the stations a lofted head would have (so eyes, lids, helms and paint keep working): z, centre, half-width, half-height */
+/** a species' version of a family cage: the muzzle stretched or shortened past the orbit, the brow shelf raised */
+export function morphCage(c: Cage, m?: { muzzle?: number; brow?: number }): Cage {
+  if (!m) return c;
+  const z4 = c.z[4], mu = m.muzzle ?? 1, br = m.brow ?? 1;
+  return { ...c, z: c.z.map((z, i) => (i > 4 ? z4 + (z - z4) * mu : z)), ring: c.ring.map((r, i) => (i === 3 ? r.map(([x, y], j) => [x, j <= 1 ? y * br : y] as [number, number]) : r)) };
+}
+/** the orbit's centre on a cage: between the upper-side and side points, part way from the brow ring to the next */
+export function cageOrbit(c: Cage, hl: number, hw: number, hh: number, f = 0.55): [number, number, number] {
+  const a = c.ring[3], b = c.ring[4], L = (p: [number, number], q: [number, number]) => [p[0] + (q[0] - p[0]) * f, p[1] + (q[1] - p[1]) * f];
+  const p = L(a[1], b[1]), q = L(a[2], b[2]), yc = c.yc[3] + (c.yc[4] - c.yc[3]) * f;
+  return [((p[0] + q[0]) / 2) * hw * 0.86, (yc + ((p[1] + q[1]) / 2) * 0.86) * hh, (c.z[3] + (c.z[4] - c.z[3]) * f) * hl];
+}
 export function cageProfile(c: Cage, hl: number, hw: number, hh: number) {
   return { hz: c.z.map((z) => z * hl), hy: c.yc.map((y, i) => y * hh + ((c.ring[i][0][1] + c.ring[i][4][1]) / 2) * hh), rx: c.ring.map((r) => r[2][0] * hw), ry: c.ring.map((r) => ((r[0][1] - r[4][1]) / 2) * hh) };
 }

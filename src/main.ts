@@ -1,4 +1,4 @@
-// Boot: the full game flow (src/flow.ts); ?test=world|eco|game|studio|child|mirror|ui|skills|lab|deploy|planet open single pieces for visual QA.
+// Boot: the full game flow (src/flow.ts); ?test=world|eco|game|studio|child|mirror|ui|skills|lab|deploy|planet|carrier open single pieces for visual QA.
 import * as THREE from 'three';
 import { Engine } from './app/engine';
 import { Input } from './app/input';
@@ -234,6 +234,7 @@ else if (P.get('test') === 'cine') import('./ui/cineTest').then((m) => m.testCin
 else if (P.get('test') === 'menu') import('./ui/cineTest').then((m) => m.testMenu(engine));
 else if (P.get('test') === 'deploy') import('./ui/deploy').then((m) => m.testDeploy(engine, input, P));
 else if (P.get('test') === 'planet') import('./ui/deploy').then((m) => m.testPlanet(engine, input, P));
+else if (P.get('test') === 'carrier') import('./ui/deploy').then((m) => m.testCarrier(engine, input, P));
 else if (P.get('test') === 'mirror') testMirror();
 else if (P.get('test') === 'studio') testStudio();
 else if (P.get('test') === 'child') testChild();

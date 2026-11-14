@@ -18,7 +18,7 @@ import type { Palette } from './palette';
 
 export const PXM = 32;
 /** vertex kinds (aP.w) */
-export const KIND = { BARK: 0, LEAF: 1, PETAL: 2, GLOW: 3, SOLID: 4, STEM: 5, CRYSTAL: 6, TINT: 7 } as const;
+export const KIND = { BARK: 0, LEAF: 1, PETAL: 2, GLOW: 3, SOLID: 4, STEM: 5, CRYSTAL: 6, TINT: 7, LOBE: 8, TENTACLE: 9, MEMBRANE: 10, LIQUID: 11, DEW: 12 } as const;
 
 const TAU = Math.PI * 2;
 const lin = (c: number) => Math.pow(c / 255, 2.2);
@@ -57,6 +57,18 @@ export class Geo {
   }
   tri(a: number, b: number, c: number) { this.I.push(a, b, c); }
   quad(a: number, b: number, c: number, d: number) { this.I.push(a, b, c, a, c, d); }
+  /** a triangle wound so its front faces along its first vertex's normal */
+  triN(a: number, b: number, c: number) {
+    const P = this.P, N = this.N;
+    const ux = P[b * 3] - P[a * 3], uy = P[b * 3 + 1] - P[a * 3 + 1], uz = P[b * 3 + 2] - P[a * 3 + 2];
+    const wx = P[c * 3] - P[a * 3], wy = P[c * 3 + 1] - P[a * 3 + 1], wz = P[c * 3 + 2] - P[a * 3 + 2];
+    const d = (uy * wz - uz * wy) * N[a * 3] + (uz * wx - ux * wz) * N[a * 3 + 1] + (ux * wy - uy * wx) * N[a * 3 + 2];
+    if (d < 0) this.I.push(a, c, b); else this.I.push(a, b, c);
+  }
+  quadN(a: number, b: number, c: number, d: number) { this.triN(a, b, c); this.triN(a, c, d); }
+  /** override one component of a vertex's aW (0 sway, 1 branch, 2 flutter / weight, 3 phase) or its kind */
+  setW(i: number, c: number, v: number) { this.W[i * 4 + c] = v; }
+  setKind(i: number, k: number) { this.A[i * 4 + 3] = k; }
   get tris() { return this.I.length / 3; }
   /** sway (by height) and branch weights (by reach from the stem) from the final positions */
   build(R: number): THREE.BufferGeometry {

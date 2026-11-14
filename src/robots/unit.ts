@@ -491,29 +491,64 @@ function tickStatus(g: Host, dt: number) {
 }
 
 // ================================================================================================ shots in flight
-interface Shot { p: THREE.Vector3; v: THREE.Vector3; life: number; w: Weapon; from: RobotUnit; f: Faction; trail: number }
+interface Shot { p: THREE.Vector3; v: THREE.Vector3; life: number; w: Weapon; from: Shooter; f: Faction; trail: number; pierce: number; hits: Set<unknown> | null; kind: ShotKind }
+interface Cloud { x: number; y: number; z: number; r: number; t: number; w: Weapon; from: Shooter; f: Faction; puff: number }
 class Shots {
   private list: Shot[] = [];
+  private clouds: Cloud[] = [];
   private mesh: THREE.InstancedMesh;
+  private col = new THREE.Color();
   private m = new THREE.Matrix4(); private q = new THREE.Quaternion(); private s = new THREE.Vector3(); private z = new THREE.Vector3(0, 0, 1);
   constructor(private g: Host) {
-    const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(RAMPS.glowAmber[4]).multiplyScalar(2.2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
     gbuf(mat, 0);
-    this.mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, 400);
+    this.mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, 500);
+    this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(500 * 3), 3);
     this.mesh.count = 0; this.mesh.frustumCulled = false;
     g.world.scene.add(this.mesh);
   }
-  fire(from: RobotUnit, at: THREE.Vector3, tp: THREE.Vector3, dist: number, w: Weapon) {
-    const p = at.clone(), sp = w.speed;
-    const dir = tp.clone().sub(at).normalize();
-    dir.x += (Math.random() - 0.5) * w.spread * 2; dir.y += (Math.random() - 0.5) * w.spread; dir.z += (Math.random() - 0.5) * w.spread * 2; dir.normalize();
-    const v = dir.multiplyScalar(sp);
-    if (w.shot === 'mortar') {
-      // a lob that lands on the target: pick the flight time from the distance
-      const T = clamp(dist / sp, 0.8, 2.4), gy = 9;
-      v.set((tp.x - at.x) / T + (Math.random() - 0.5) * w.spread * dist, (tp.y - at.y + 0.5 * gy * T * T) / T, (tp.z - at.z) / T + (Math.random() - 0.5) * w.spread * dist);
+  fire(from: Shooter, at: THREE.Vector3, tp: THREE.Vector3, dist: number, w: Weapon) {
+    const fx = w.fx ?? {};
+    if (w.shot === 'beam') { this.beam(from, at, tp, w); return; }
+    const n = w.shot === 'flame' ? 5 : fx.frag ? Math.max(2, Math.round(fx.frag)) : 1;
+    for (let i = 0; i < n; i++) {
+      const p = at.clone(), sp = w.speed * (w.shot === 'flame' ? 0.8 + Math.random() * 0.4 : 1);
+      const dir = tp.clone().sub(at).normalize();
+      const sprd = w.shot === 'flame' ? 0.18 : fx.frag ? w.spread + 0.09 : w.spread;
+      dir.x += (Math.random() - 0.5) * sprd * 2; dir.y += (Math.random() - 0.5) * sprd; dir.z += (Math.random() - 0.5) * sprd * 2; dir.normalize();
+      const v = dir.multiplyScalar(sp);
+      if (w.shot === 'mortar' || w.shot === 'cloud') {
+        // a lob that lands on the target: the flight time from the distance
+        const T = clamp(dist / Math.max(4, sp), 0.8, 2.4), gy = 9;
+        v.set((tp.x - at.x) / T + (Math.random() - 0.5) * w.spread * dist, (tp.y - at.y + 0.5 * gy * T * T) / T, (tp.z - at.z) / T + (Math.random() - 0.5) * w.spread * dist);
+      }
+      const life = w.shot === 'mortar' || w.shot === 'cloud' ? 4 : w.shot === 'flame' ? w.range / sp : (w.range * 1.3) / sp + 0.2;
+      this.list.push({ p, v, life, w, from, f: from.faction, trail: 0, pierce: fx.pierce ?? 0, hits: (fx.pierce || w.shot === 'flame') ? new Set() : null, kind: w.shot });
     }
-    this.list.push({ p, v, life: w.shot === 'mortar' ? 4 : (w.range * 1.3) / sp + 0.2, w, from, f: from.faction, trail: 0 });
+  }
+  /** a gravity lens or a rail beam: instant along the line, through whatever the pierce allows; a pull drags them in */
+  private beam(from: Shooter, at: THREE.Vector3, tp: THREE.Vector3, w: Weapon) {
+    const g = this.g, fx = w.fx ?? {};
+    const dir = tp.clone().sub(at).normalize(), end = at.clone().addScaledVector(dir, w.range);
+    const hits: { t: Tgt; d: number }[] = [];
+    const test = (t: Tgt, x: number, y: number, z: number, r: number) => { const d = segDist(at, end, x, y, z); if (d < r + 0.25) hits.push({ t, d: Math.hypot(x - at.x, z - at.z) }); };
+    for (const r of g.robots ?? []) if (!r.dead && r !== from && hostile(from.faction, r.faction)) test({ kind: 'robot', ref: r }, r.x, r.y + r.height * 0.5, r.z, r.radius);
+    g.world.near?.((at.x + end.x) / 2, (at.z + end.z) / 2, w.range / 2 + 1, (c) => { if (!c.dead && hostile(from.faction, c.faction)) test({ kind: 'creature', ref: c }, c.x, c.y + c.size * 0.45, c.z, c.radius ?? 0.4); });
+    const P = g.player; if (P && P.alive && P.started !== false && hostile(from.faction, 'veyr')) test({ kind: 'golem', ref: P }, P.x, P.y + 0.3, P.z, P.radius);
+    hits.sort((a, b) => a.d - b.d);
+    const n = 1 + (fx.pierce ?? 0);
+    let stop = end;
+    for (let i = 0; i < Math.min(n, hits.length); i++) {
+      const h = hits[i];
+      hitTarget(g, h.t, w.dmg, from, fx, dir);
+      if (fx.pull) { const r = h.t.ref; if (h.t.kind === 'robot' && !r.fly) { r.x -= dir.x * fx.pull * 0.25; r.z -= dir.z * fx.pull * 0.25; } else if (h.t.kind === 'creature') { r.vx -= dir.x * fx.pull * 1.5; r.vz -= dir.z * fx.pull * 1.5; } }
+      if (i === Math.min(n, hits.length) - 1) stop = at.clone().addScaledVector(dir, h.d);
+    }
+    const c = w.col ?? RAMPS.glowTeal[3];
+    g.fx.arc(at, stop, 0.14, c, fx.pull ? 0.12 : 0.04);
+    if (fx.pull) g.fx.arc(at, stop, 0.2, c, 0.3);
+    g.fx.spray(stop.x, stop.y, stop.z, -dir.x, 0.4, -dir.z, 6, c, { glow: true, speed: 1.6, cone: 0.8, size: 1.6, life: 0.3, grav: 2 });
+    vfx2d.play('glint', stop.x, stop.y, stop.z, { scale: 0.4 });
   }
   update(dt: number) {
     const g = this.g, fx = g.fx;
@@ -521,67 +556,99 @@ class Shots {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const s = this.list[i];
       s.life -= dt;
-      if (s.w.shot === 'mortar') s.v.y -= 9 * dt;
-      if (s.w.shot === 'rocket') { s.v.multiplyScalar(1 + dt * 0.8); if ((s.trail -= dt) <= 0) { s.trail = 0.03; fx.burst(s.p.x, s.p.y, s.p.z, 1, RAMPS.steel[4], { speed: 0.1, up: 0.1, size: 2.4, life: 0.6, grav: -0.2 }); } }
-      if (s.w.shot === 'mortar' && (s.trail -= dt) <= 0) { s.trail = 0.06; fx.burst(s.p.x, s.p.y, s.p.z, 1, RAMPS.steel[3], { speed: 0.05, up: 0.05, size: 1.6, life: 0.4, grav: 0 }); }
+      const lob = s.kind === 'mortar' || s.kind === 'cloud';
+      if (lob) s.v.y -= 9 * dt;
+      if (s.kind === 'flame') { s.v.multiplyScalar(Math.exp(-dt * 1.5)); s.v.y += dt * 1.2; if (Math.random() < 0.7) fx.glow.emit(s.p.x, s.p.y, s.p.z, s.v.x * 0.2, 0.4, s.v.z * 0.2, this.col.set(s.w.col ?? RAMPS.glowAmber[4]).multiplyScalar(1.6), 1, 3 + (1 - s.life) * 3, 0.25, -1, 1); }
+      if (s.kind === 'rocket') { s.v.multiplyScalar(1 + dt * 0.8); if ((s.trail -= dt) <= 0) { s.trail = 0.03; fx.burst(s.p.x, s.p.y, s.p.z, 1, RAMPS.steel[4], { speed: 0.1, up: 0.1, size: 2.4, life: 0.6, grav: -0.2 }); } }
+      if (lob && (s.trail -= dt) <= 0) { s.trail = 0.06; fx.burst(s.p.x, s.p.y, s.p.z, 1, s.kind === 'cloud' ? RAMPS.ichor[3] : RAMPS.steel[3], { speed: 0.05, up: 0.05, size: 1.6, life: 0.4, grav: 0 }); }
       const step = s.v.length() * dt;
       _v.copy(s.v).multiplyScalar(dt);
       const np = _w.copy(s.p).add(_v);
       // what it hits on the way
       let hit: Tgt | null = null;
-      const R = (s.w.shot === 'bullet' ? 0.15 : 0.3);
+      const R = s.kind === 'bullet' ? 0.15 : s.kind === 'flame' ? 0.45 : 0.3;
+      const fresh = (o: unknown) => !s.hits || !s.hits.has(o);
       for (const r of g.robots ?? []) {
-        if (r.dead || r === s.from || !hostile(s.f, r.faction)) continue;
+        if (r.dead || r === s.from || !hostile(s.f, r.faction) || !fresh(r)) continue;
         const cy = r.y + r.height * 0.5;
         if (segDist(s.p, np, r.x, cy, r.z) < r.radius + R && Math.abs(np.y - cy) < r.height * 0.6 + R) { hit = { kind: 'robot', ref: r }; break; }
       }
-      if (!hit && g.world.near) g.world.near(np.x, np.z, 1.6, (c) => { if (hit || c.dead || !hostile(s.f, c.faction)) return; const cy = c.y + c.size * 0.45; if (segDist(s.p, np, c.x, cy, c.z) < (c.radius ?? 0.4) + R) hit = { kind: 'creature', ref: c }; });
+      if (!hit && g.world.near) g.world.near(np.x, np.z, 1.6, (c) => { if (hit || c.dead || !hostile(s.f, c.faction) || !fresh(c)) return; const cy = c.y + c.size * 0.45; if (segDist(s.p, np, c.x, cy, c.z) < (c.radius ?? 0.4) + R) hit = { kind: 'creature', ref: c }; });
       const P = g.player;
-      if (!hit && P && P.alive && P.started !== false && hostile(s.f, 'veyr')) { const cy = P.y + (P.height ?? 0.5) * 0.5; if (segDist(s.p, np, P.x, cy, P.z) < P.radius + R) hit = { kind: 'golem', ref: P }; }
+      if (!hit && P && P.alive && P.started !== false && hostile(s.f, 'veyr') && fresh(P)) { const cy = P.y + (P.height ?? 0.5) * 0.5; if (segDist(s.p, np, P.x, cy, P.z) < P.radius + R) hit = { kind: 'golem', ref: P }; }
       const B = g.factory?.buildings;
-      if (!hit && Array.isArray(B)) for (const b of B) { if (b.dead || (b.hp ?? 1) <= 0 || !hostile(s.f, (b.faction ?? 'veyr') as Faction)) continue; if (Math.hypot(np.x - b.x, np.z - b.z) < (b.radius ?? 0.9) && np.y < g.world.surfaceY(b.x, b.z) + 1.4) { hit = { kind: 'building', ref: b }; break; } }
+      if (!hit && Array.isArray(B)) for (const b of B) { if (b.dead || (b.hp ?? 1) <= 0 || !hostile(s.f, (b.faction ?? 'veyr') as Faction) || !fresh(b)) continue; if (Math.hypot(np.x - b.x, np.z - b.z) < (b.radius ?? 0.9) && np.y < g.world.surfaceY(b.x, b.z) + 1.4) { hit = { kind: 'building', ref: b }; break; } }
       const gy = g.world.surfaceY(np.x, np.z);
       const ground = np.y <= gy;
+      if (hit && s.hits && !s.w.splash && s.kind !== 'cloud') {
+        // piercing rounds and flame go on through
+        const ht = hit as Tgt;
+        s.hits.add(ht.ref);
+        hitTarget(g, ht, s.w.dmg * (s.kind === 'flame' ? 0.4 : 1), s.from, s.w.fx, _u.copy(s.v).normalize());
+        this.impact(s, np.clone(), ht, true);
+        if (s.kind !== 'flame' && s.pierce-- <= 0) { this.list.splice(i, 1); continue; }
+        hit = null;
+      }
       if (hit || ground || s.life <= 0) {
-        if (hit && !s.w.splash) hitTarget(g, hit, s.w.dmg, s.from);
-        if (hit || ground) this.impact(s, hit ? np : np.setY(Math.max(np.y, gy)), hit);
+        if (hit && !s.w.splash && s.kind !== 'cloud') hitTarget(g, hit, s.w.dmg, s.from, s.w.fx, _u.copy(s.v).normalize());
+        if ((hit || ground) && s.kind !== 'flame') this.impact(s, hit ? np : np.setY(Math.max(np.y, gy)), hit);
         this.list.splice(i, 1);
         continue;
       }
       s.p.copy(np);
       // draw: a streak along the velocity
-      if (n < 400) {
-        const len = s.w.shot === 'bullet' ? Math.min(0.9, step * 2.2) : s.w.shot === 'melee' ? 0 : 0.35;
-        const th = s.w.shot === 'bullet' ? 0.025 : 0.07;
+      if (n < 500 && s.kind !== 'flame') {
+        const len = s.kind === 'bullet' ? Math.min(0.9, step * 2.2) : s.kind === 'cloud' ? 0.12 : 0.35;
+        const th = s.kind === 'bullet' ? 0.025 : s.kind === 'cloud' ? 0.12 : 0.07;
         this.q.setFromUnitVectors(this.z, _u.copy(s.v).normalize());
         this.m.compose(s.p, this.q, this.s.set(th, th, len));
-        this.mesh.setMatrixAt(n++, this.m);
+        this.mesh.setMatrixAt(n, this.m);
+        this.mesh.setColorAt(n, this.col.set(s.w.col ?? RAMPS.glowAmber[4]).multiplyScalar(s.kind === 'cloud' ? 1 : 2.2));
+        n++;
       }
     }
-    this.mesh.count = n; this.mesh.instanceMatrix.needsUpdate = true;
+    this.mesh.count = n; this.mesh.instanceMatrix.needsUpdate = true; if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    // lingering spore and gas clouds
+    for (let i = this.clouds.length - 1; i >= 0; i--) {
+      const c = this.clouds[i];
+      c.t -= dt;
+      if (c.t <= 0) { this.clouds.splice(i, 1); continue; }
+      if ((c.puff -= dt) <= 0) {
+        c.puff = 0.35;
+        const a = Math.random() * Math.PI * 2, rr = Math.random() * c.r;
+        vfx2d.play('smoke', c.x + Math.cos(a) * rr, c.y + 0.2, c.z + Math.sin(a) * rr, { scale: 0.7, ramp: c.w.fx?.poison ? 'ichor' : c.w.fx?.slow ? 'violet' : 'moss' });
+        fx.burst(c.x + Math.cos(a) * rr, c.y + 0.2, c.z + Math.sin(a) * rr, 3, c.w.col ?? RAMPS.ichor[4], { speed: 0.3, up: 0.3, size: 3.5, life: 1.4, grav: -0.1 });
+        // everyone hostile inside breathes it
+        const inside = (x: number, z: number) => Math.hypot(x - c.x, z - c.z) < c.r;
+        for (const r of g.robots ?? []) if (!r.dead && hostile(c.f, r.faction) && inside(r.x, r.z)) hitTarget(g, { kind: 'robot', ref: r }, c.w.dmg * 0.12, c.from, c.w.fx);
+        g.world.near?.(c.x, c.z, c.r, (cr) => { if (!cr.dead && hostile(c.f, cr.faction)) hitTarget(g, { kind: 'creature', ref: cr }, c.w.dmg * 0.12, c.from, c.w.fx); });
+      }
+    }
   }
-  private impact(s: Shot, p: THREE.Vector3, hit: Tgt | null) {
+  private impact(s: Shot, p: THREE.Vector3, hit: Tgt | null, through = false) {
     const g = this.g, fx = g.fx, w = s.w;
-    if (w.splash) {
+    if (s.kind === 'cloud') { this.clouds.push({ x: p.x, y: p.y, z: p.z, r: w.splash ?? 1.8, t: 6, w, from: s.from, f: s.f, puff: 0 }); vfx2d.play('poof', p.x, p.y + 0.2, p.z, { scale: 0.8, ramp: 'ichor' }); return; }
+    if (w.splash && !through) {
       // a shell, a bomb, a rocket: everything hostile in the blast takes damage by distance
       const R = w.splash;
-      const hurt = (t: Tgt, x: number, z: number, r: number) => { const d = Math.max(0, Math.hypot(x - p.x, z - p.z) - r); if (d < R) hitTarget(g, t, w.dmg * (1 - (d / R) * 0.7), s.from); };
+      const hurt = (t: Tgt, x: number, z: number, r: number) => { const d = Math.max(0, Math.hypot(x - p.x, z - p.z) - r); if (d < R) hitTarget(g, t, w.dmg * (1 - (d / R) * 0.7), s.from, w.fx, _u.set(x - p.x, 0, z - p.z).normalize()); };
       for (const r of g.robots ?? []) if (!r.dead && r !== s.from && hostile(s.f, r.faction)) hurt({ kind: 'robot', ref: r }, r.x, r.z, r.radius);
       g.world.near?.(p.x, p.z, R + 1, (c) => { if (!c.dead && hostile(s.f, c.faction)) hurt({ kind: 'creature', ref: c }, c.x, c.z, c.radius ?? 0.4); });
       const P = g.player; if (P && P.alive && P.started !== false && hostile(s.f, 'veyr')) hurt({ kind: 'golem', ref: P }, P.x, P.z, P.radius);
       const B = g.factory?.buildings; if (Array.isArray(B)) for (const b of B) if (!b.dead && (b.hp ?? 1) > 0 && hostile(s.f, (b.faction ?? 'veyr') as Faction)) hurt({ kind: 'building', ref: b }, b.x, b.z, b.radius ?? 0.9);
-      fx.burst(p.x, p.y + 0.1, p.z, 26, RAMPS.glowAmber[4], { glow: true, speed: 3.2, up: 2.4, size: 2.4, life: 0.4, grav: 6 });
+      const burn = !!w.fx?.burn;
+      fx.burst(p.x, p.y + 0.1, p.z, 26, burn ? RAMPS.glowAmber[3] : RAMPS.glowAmber[4], { glow: true, speed: 3.2, up: 2.4, size: 2.4, life: burn ? 0.8 : 0.4, grav: 6 });
       fx.burst(p.x, p.y + 0.1, p.z, 14, RAMPS.soil[3], { speed: 2.2, up: 3.2, size: 3, life: 0.9, grav: 9 });
       fx.burst(p.x, p.y + 0.2, p.z, 10, RAMPS.basalt[2], { speed: 0.8, up: 1, size: 4.5, life: 1.8, grav: -0.4 });
       vfx2d.play('impact', p.x, p.y + 0.2, p.z, { scale: R * 0.7 }); vfx2d.play('dust', p.x, p.y, p.z, { scale: R * 0.8 }); vfx2d.play('crack', p.x, p.y + 0.02, p.z, { scale: R * 0.5, flat: true });
       g.cam?.shake(Math.min(0.25, 0.06 * R), 0.25);
     } else {
       const metal = hit && (hit.kind === 'robot' || hit.kind === 'building' || hit.kind === 'golem');
-      fx.spray(p.x, p.y, p.z, -s.v.x, 0.4 * s.v.length(), -s.v.z, metal ? 6 : 4, metal ? RAMPS.glowAmber[4] : hit ? RAMPS.blood[3] : RAMPS.soil[4], { glow: !!metal, speed: 1.8, cone: 0.7, size: 1.4, life: 0.25, grav: 7 });
-      vfx2d.play(metal ? 'spark' : hit ? 'blood' : 'dust', p.x, p.y, p.z, { scale: 0.35 });
+      const bio = w.fx?.poison || w.fx?.acid;
+      fx.spray(p.x, p.y, p.z, -s.v.x, 0.4 * s.v.length(), -s.v.z, metal ? 6 : 4, bio ? RAMPS.ichor[4] : metal ? RAMPS.glowAmber[4] : hit ? RAMPS.blood[3] : RAMPS.soil[4], { glow: !!metal && !bio, speed: 1.8, cone: 0.7, size: 1.4, life: 0.25, grav: 7 });
+      vfx2d.play(metal ? 'spark' : hit ? 'blood' : 'dust', p.x, p.y, p.z, { scale: 0.35, ...(bio ? { ramp: 'ichor' as const } : {}) });
     }
   }
-  dispose() { this.mesh.removeFromParent(); this.mesh.geometry.dispose(); }
 }
 function segDist(a: THREE.Vector3, b: THREE.Vector3, x: number, y: number, z: number) {
   const abx = b.x - a.x, aby = b.y - a.y, abz = b.z - a.z, l2 = abx * abx + aby * aby + abz * abz || 1e-6;
@@ -643,5 +710,24 @@ export function tickRobots(game: Game | object, dt: number) {
   const h = game as unknown as Host;
   const L = h.robots;
   if (L) for (const u of [...L]) { try { u.update(dt); } catch (e) { console.error('robot', u.kind, e); u.dispose(); } }
-  if (dt > 0) { SHOTS.get(h)?.update(dt); DEBRIS.get(h)?.update(dt); }
+  if (dt > 0) { SHOTS.get(h)?.update(dt); DEBRIS.get(h)?.update(dt); tickStatus(h, dt); }
+}
+
+/** fire a weapon from any shooter (the golem's mount, a test stand): muzzle point, aim point */
+export function fireWeapon(game: Game | object, from: Shooter, muzzle: THREE.Vector3, aim: THREE.Vector3, w: Weapon) {
+  const h = game as unknown as Host;
+  const dist = Math.hypot(aim.x - muzzle.x, aim.z - muzzle.z);
+  const dir = _v.copy(aim).sub(muzzle).normalize();
+  const c = w.col ?? RAMPS.glowAmber[4];
+  if (w.shot !== 'beam') h.fx.spray(muzzle.x, muzzle.y, muzzle.z, dir.x, dir.y, dir.z, w.shot === 'bullet' ? 3 : 6, c, { glow: true, speed: 2.2, cone: 0.35, size: w.shot === 'bullet' ? 1.6 : 2.4, life: 0.12, grav: 0 });
+  shots(h).fire(from, muzzle, aim, dist, w);
+}
+/** the nearest hostile to a point within a radius, for mounts that pick their own targets */
+export function nearestHostile(game: Game | object, f: Faction, x: number, z: number, r: number, pref?: THREE.Vector3): { p: THREE.Vector3; ref: unknown } | null {
+  const h = game as unknown as Host;
+  let best: { p: THREE.Vector3; ref: unknown } | null = null, bd = r;
+  const score = (px: number, pz: number) => Math.hypot(px - x, pz - z) * 0.6 + (pref ? Math.hypot(px - pref.x, pz - pref.z) * 0.4 : 0);
+  for (const u of h.robots ?? []) if (!u.dead && hostile(f, u.faction)) { const d = score(u.x, u.z); if (d < bd) { bd = d; best = { p: new THREE.Vector3(u.x, u.y + u.height * 0.5, u.z), ref: u }; } }
+  h.world.near?.(x, z, r, (c) => { if (c.dead || !(hostile(f, c.faction) || (c.faction === 'wild' && c.target === -999999999))) return; const d = score(c.x, c.z); if (d < bd) { bd = d; best = { p: new THREE.Vector3(c.x, c.y + c.size * 0.45, c.z), ref: c }; } });
+  return best;
 }
