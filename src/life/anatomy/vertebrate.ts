@@ -170,6 +170,11 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
     push({ c: add(nk(t), [0, -dew * r * 0.5, 0]), s: [r, r * (1.08 + dew)], p: 'neck' }, 'neck' + k);
   }
   push({ c: add(nape, [0, -hh * 0.05, hl * 0.12]), s: [nr1 * 0.92, nr1 * 0.98], p: 'neck' }, 'nape');
+  // keep the stations marching forward (a frog's skull sits on its chest: no neck stations behind the withers)
+  for (let i = 2; i < st.length; i++) {
+    const a = st[i - 2].c, b = st[i - 1].c, c = st[i].c, d0 = nrm(sub(b, a)), step = (c[0] - b[0]) * d0[0] + (c[1] - b[1]) * d0[1] + (c[2] - b[2]) * d0[2];
+    if (step < W * 0.04 && names[i] !== 'nape') { st.splice(i, 1); names.splice(i, 1); i--; }
+  }
   const tr = body.add(trunk({ name: 'trunk', stations: st, tween: 1, capS: true, capE: true, k: 0.9, skin: spine, paint: () => void 0,
     rings: [{ at: names.indexOf('withers'), s: 0.5 }] }));
   tr.reg = 1;

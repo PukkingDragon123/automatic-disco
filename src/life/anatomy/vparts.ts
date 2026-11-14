@@ -11,6 +11,7 @@ import { gridSurf, type Piece } from './core';
 import { shell } from './armour';
 import { horn, stalk, fin, sac, spine, bulbs, curve } from './append';
 import { lookPaint, type Look } from './look';
+import { eyeball } from './head';
 import { locks, type LockSeat } from './locks';
 import { Px, RP, h3 } from './paint';
 import type { VCtx } from './vertebrate';
@@ -48,7 +49,8 @@ export type VPart =
   | { k: 'fleece'; t0: number; t1: number; puff: number; c?: C2 }
   | { k: 'wings'; span: number; c: C2 }
   | { k: 'warts'; n: number; size: number; c?: C2 }
-  | { k: 'eyeRows'; rows: number; c?: C2 };
+  | { k: 'eyeRows'; rows: number; c?: C2; r?: number }
+  | { k: 'beak'; c: C2; hook?: number };
 
 const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -226,7 +228,21 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
       X.body.add(fin({ name: 'frill' + s, roots, dirs, lens, side, ray: X.hl * 0.02, web: X.hl * 0.01, scallop: 0.3, steps: 4, skin: () => [X.iH, 1], paint: finPaint(p.c, roots, dirs, lens, X.hl * 0.02), levels: X.small ? 0 : 1 })).reg = 7;
     }
   },
-  eyeRows: () => void 0,
+  eyeRows: (X, p) => {
+    // more eyes in a row back along each side of the skull: lidless, smaller, fixed in their sockets
+    const seat = X.fam.seat!, ES = X.spec.head.eyes, iris = RP((p.c ?? ES.iris)[0]);
+    for (const s of [-1, 1] as const) for (let k = 1; k <= p.rows; k++) {
+      const q = onSk(X, seat.eye[1] + 0.25 * k, s, seat.eye[0] - 0.55 * k), r = ES.r * X.hw * (p.r ?? 0.7) * (1 - k * 0.12);
+      const ax = nrm(add(q.n, [0, 0.1, 0.25])), c = add(q.p, scl(q.n, -r * 0.4));
+      const e = X.body.add(eyeball({ name: 'xeye' + s + k, c, ax, r, bone: X.iH, iris, pupil: ES.pupil === 'round' ? 'pin' : ES.pupil, irisA: 0.7, levels: 0, around: 8 }));
+      e.reg = 4;
+    }
+  },
+  beak: (X, p) => {
+    // a horn sheath over the muzzle from the stop to the nose plane, hooked at the tip, and over the chin
+    const sv = X.skRow, stop = X.fam.seat!.stop, L = lookPaint({ ramp: p.c[0], step: p.c[1], creases: 0.6, glints: { size: X.hw * 0.2, every: 0.5 }, pebbles: { size: X.hw * 0.05, depth: 0.4 } });
+    X.body.add(shell({ name: 'beak', host: X.sk, u: [0.06, 0.94], v: [sv(stop + 0.4), 1.0], nu: 8, nv: 3, lift: (a, b) => X.hh * (0.03 + 0.08 * b * (p.hook ?? 1)), sink: X.hh * 0.03, curl: { b1: false }, rim: 2, skin: () => [X.iH, 1], paint: L, k: 1.6, levels: 1 })).reg = 6;
+  },
   // ------------------------------------------------------------------------------------------- body armour
   carapace: (X, p) => {
     const lichen: Look['lichen'] = [];
