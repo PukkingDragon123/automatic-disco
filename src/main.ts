@@ -241,7 +241,7 @@ else if (P.get('test') === 'eco') testEco();
 else if (P.get('test') === 'world') testWorld();
 else startFlow();
 
-/** ?test=skills: the skill tree over a stand-in run (a few skills owned, some resources); &atlas shows every icon */
+/** ?test=skills: the skill tree (Operations Room 7) over a stand-in run; &own=a,b &pts=n &res=o,c,w,s &live */
 async function testSkills() {
   (await import('./ui/kit')).setupUI();
   (await import('./ui/skillTree')).testSkills(engine, P);
