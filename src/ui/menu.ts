@@ -179,7 +179,7 @@ export class MenuScreen implements Screen {
     });
     this.seedTag = makeSign('seed', 'SEED CARD', 1.25, 0.34, 77, { key: 'S', tip: 'Punch a seed by hand and launch at that exact world.' });
     this.seedTag.rest.set(SIGN_X + 0.62, SIGN_Y[3] - 0.78, 0.35); this.seedTag.pos.copy(this.seedTag.rest).add(new V3(3, -2, 0)); this.scene.add(this.seedTag.root); this.signs.push(this.seedTag);
-    this.title = makeSign('title', 'ODDWORLD', 3.6, 1.0, 11, { font: 'Canned', size: 40, sub: 'U.S. PLANETARY CORPS · UNIT 07' });
+    this.title = makeSign('title', 'ODDWORLD', 3.6, 1.0, 11, { font: 'Canned', size: 100, sub: 'U.S. PLANETARY CORPS · UNIT 07' });
     this.title.rest.set(-1.6, 2.55, 0.5); this.title.pos.copy(this.title.rest).add(new V3(0, 3, 0)); this.title.enabled = false; this.scene.add(this.title.root);
     this.nix = new Nixies(2, 0.1); this.nix.root.position.set(1.02, -0.07, 0.04); this.nix.root.scale.setScalar(1.1); this.signs[0].root.add(this.nix.root); this.nix.set('--');
     // chains: the title hangs from above; each sign hangs from the one above it; tethers run back to the rock

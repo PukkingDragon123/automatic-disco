@@ -31,7 +31,7 @@ const ROCK = [0x16131b, 0x221d28, 0x2f2936, 0x3e3645, 0x504655, 0x655868, 0x7c6e
 export interface Meteor { group: THREE.Group; body: THREE.Mesh; lens: THREE.Group; pupil: THREE.Mesh; glow: { value: number }; t: { value: number }; anchor(i: number, out?: THREE.Vector3): THREE.Vector3; anchors: THREE.Vector3[] }
 /** Unit 07's asteroid: every face painted its own rock tone, cracks of glowing teal facets, a brass lens */
 export function makeMeteor(R = 1.7, seed = 7): Meteor {
-  const g0 = new THREE.IcosahedronGeometry(R, 4).toNonIndexed();
+  const g0 = new THREE.IcosahedronGeometry(R, 5).toNonIndexed();
   const pos = g0.attributes.position as THREE.BufferAttribute, v = new V3();
   const craters = Array.from({ length: 7 }, (_, i) => ({ c: new V3().randomDirection(), r: 0.22 + h3(i, seed, 1) * 0.3, d: 0.07 + h3(i, seed, 2) * 0.08 }));
   const shape = (p: THREE.Vector3) => {
@@ -46,6 +46,11 @@ export function makeMeteor(R = 1.7, seed = 7): Meteor {
   const col = new Float32Array(pos.count * 3), glow = new Float32Array(pos.count);
   const a = new V3(), b = new V3(), c = new V3(), ctr = new V3(), nrm = new V3();
   const C = new THREE.Color();
+  // fissures: the faces nearest a noise zero-line, chosen by rank (fractal noise bunches up near its middle, so a
+  // fixed threshold would light a third of the rock); the thinnest 4 % glow, the next 3 % are darkened lips
+  const crackOf = (f: number) => { a.fromBufferAttribute(pos, f); b.fromBufferAttribute(pos, f + 1); c.fromBufferAttribute(pos, f + 2); const n = a.add(b).add(c).normalize(); return Math.abs(fbm(n.x * 2.3 + 50, n.y * 2.3, n.z * 2.3, 3) - fbm(n.x * 2.3 + 90, n.y * 2.3 + 4, n.z * 2.3, 2)); };
+  const cracks: number[] = []; for (let f = 0; f < pos.count; f += 3) cracks.push(crackOf(f));
+  const sorted = [...cracks].sort((x, y) => x - y), p4 = sorted[Math.floor(sorted.length * 0.04)], p7 = sorted[Math.floor(sorted.length * 0.07)];
   for (let f = 0; f < pos.count; f += 3) {
     a.fromBufferAttribute(pos, f); b.fromBufferAttribute(pos, f + 1); c.fromBufferAttribute(pos, f + 2);
     ctr.copy(a).add(b).add(c).divideScalar(3); nrm.copy(ctr).normalize();
@@ -58,10 +63,9 @@ export function makeMeteor(R = 1.7, seed = 7): Meteor {
     // lichen-grey and rust patches
     const rust = fbm(nrm.x * 2.2 + 30, nrm.y * 2.2, nrm.z * 2.2, 2);
     if (rust > 0.66) C.lerp(new THREE.Color(0x5c4232), 0.3);
-    const crack = Math.abs(fbm(nrm.x * 2.6 + 50, nrm.y * 2.6, nrm.z * 2.6, 3) - 0.5);
-    const crack2 = Math.abs(vnoise(nrm.x * 5 + 70, nrm.y * 5, nrm.z * 5) - 0.5);
-    let gl = crack < 0.022 ? 1 : crack < 0.04 ? 0.45 : crack2 < 0.018 ? 0.7 : 0;
-    if (gl > 0) C.set(gl > 0.6 ? 0x3d6f68 : 0x2a4644);
+    const cr = cracks[f / 3];
+    const gl = cr <= p4 ? 1 : 0;
+    if (gl > 0) C.set(0x3d6f68); else if (cr <= p7) C.multiplyScalar(0.55);
     for (let j = 0; j < 3; j++) { col.set([C.r, C.g, C.b], (f + j) * 3); glow[f + j] = gl; }
   }
   g0.setAttribute('color', new THREE.BufferAttribute(col, 3));
@@ -224,7 +228,7 @@ export function signArt(label: string, w: number, h: number, seed: number, o: { 
   const unit = font === 'VT' ? 14 : font === 'Silk' ? 11 : font === 'Jersey' ? 13 : 10;
   let size = o.size ?? unit * 4, T = textMask(label, font, size);
   while ((T.w > w * 0.8 || T.h > h * 0.62) && size > unit) { size -= unit; T = textMask(label, font, size); }
-  const sub = o.sub ? textMask(o.sub, 'VT', 14 * Math.max(1, Math.floor(size / 30))) : null;
+  const sub = o.sub ? textMask(o.sub, 'VT', 14 * Math.max(1, Math.min(2, Math.floor(size / 30)))) : null;
   const tilt = (h3(seed, 2, 9) - 0.5) * 0.012;
   const ox = Math.round((w - T.w) / 2), oy = Math.round((h - T.h - (sub ? sub.h - 4 : 0)) / 2) + 2;
   const C = new THREE.Color(), base = new THREE.Color(paint);

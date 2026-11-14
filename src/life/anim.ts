@@ -1,10 +1,14 @@
-// Procedural animation for any rig: gait cycles with feet IK'd onto the terrain, body bob and lean, head look,
-// spring tails, jaws, mandibles, antennae, wings, serpent waves, gastropod glides, attacks, eating and death.
+// Procedural animation for any rig: gait cycles with feet IK'd onto the terrain (a gallop at speed), body bob, lean
+// and weight shift, a head held steady over the gait, spring tails with swishes, jaws, mandibles, antennae, wings,
+// serpent waves, gastropod glides, attacks, eating and death; and the small life on top: breathing, blinking lids,
+// flicking and swivelling ears, idle business (looking round, sniffing or cropping the ground, grooming a flank,
+// shaking the coat, shifting weight) and a flinch whenever the creature's hit flash fires.
 import * as THREE from 'three';
 import type { Rig, LegDef } from './morph';
 import { clamp, damp, smooth } from '../core/rand';
 
 export type AnimState = 'idle' | 'move' | 'attack' | 'eat' | 'dead' | 'fly' | 'stunned' | 'grabbed';
+type IdleAct = 'none' | 'look' | 'sniff' | 'groom' | 'shake' | 'shift';
 export interface AnimIn {
   speed: number; turn: number; state: AnimState;
   /** 0..1 progress of a one-shot (attack) */
@@ -32,8 +36,45 @@ export class Animator {
   private hop = 0;
   deathT = 0;
   private blend = 0;
+  /** gallop blend (0 walk .. 1 full gallop) */
+  private run = 0;
+  // blinks
+  private blinkIn = 1 + Math.random() * 3; private blinkT = -1; private blinks = 1;
+  // ears: flick timers and twitch springs
+  private earIn: number[] = []; private earX: number[] = []; private earV: number[] = [];
+  // idle business
+  private idleAct: IdleAct = 'none'; private idleT = 0; private idleDur = 0; private idleIn = 1.5 + Math.random() * 3; private idleK = 0;
+  private idleYaw = 0; private idlePitch = 0; private idleSide = 1;
+  // tail swish
+  private swishIn = 2 + Math.random() * 5; private swishT = -1; private swishSide = 1;
+  // hit flinch: a damped spring kicked by the hit flash
+  private prevFlash = 0; private hitX = 0; private hitV = 0; private hitSide = 1;
+  private breathPh = Math.random() * 6;
   constructor(readonly rig: Rig, readonly bones: THREE.Bone[], readonly obj: THREE.Object3D) {
     this.tail = rig.tail.map(() => 0); this.tailV = rig.tail.map(() => 0);
+    this.earIn = rig.ears.map(() => 1 + Math.random() * 4); this.earX = rig.ears.map(() => 0); this.earV = rig.ears.map(() => 0);
+  }
+
+  /** an idle behaviour chosen now and then while standing */
+  private idle(dt: number, still: boolean) {
+    const rig = this.rig, D = rig.dims;
+    if (!still) { this.idleK = damp(this.idleK, 0, 6, dt); if (this.idleK < 0.02) this.idleAct = 'none'; this.idleIn = Math.max(this.idleIn, 1); return; }
+    if (this.idleAct === 'none') {
+      this.idleIn -= dt;
+      if (this.idleIn <= 0 && rig.head >= 0) {
+        const r = Math.random(), quad = rig.legs.length >= 4 && rig.plan !== 'hexapod' && rig.plan !== 'octopod';
+        this.idleAct = r < 0.32 ? 'look' : r < 0.6 && quad ? 'sniff' : r < 0.74 && quad ? 'groom' : r < 0.82 && D.fur ? 'shake' : 'shift';
+        if (D.graze && this.idleAct !== 'shake' && Math.random() < 0.45) this.idleAct = 'sniff';
+        this.idleT = 0; this.idleSide = Math.random() < 0.5 ? -1 : 1;
+        this.idleDur = this.idleAct === 'shake' ? 1.1 : this.idleAct === 'sniff' ? (D.graze ? 3.5 : 2.2) + Math.random() * 2 : 1.6 + Math.random() * 2;
+        this.idleYaw = (Math.random() - 0.5) * 1.8; this.idlePitch = (Math.random() - 0.5) * 0.5;
+      }
+    } else {
+      this.idleT += dt;
+      const fade = Math.min(1, this.idleT / 0.45, (this.idleDur - this.idleT) / 0.45);
+      this.idleK = smooth(0, 1, Math.max(0, fade));
+      if (this.idleT >= this.idleDur) { this.idleAct = 'none'; this.idleK = 0; this.idleIn = 2 + Math.random() * 5; }
+    }
   }
 
   update(dt: number, inp: AnimIn) {
@@ -48,6 +89,17 @@ export class Animator {
     const stride = Math.max(0.05, rig.stride * (0.55 + 0.45 * clamp(spd / (rig.stride * 3 + 0.1), 0, 1.4)));
     this.phase = (this.phase + (spd / stride) * dt * 0.5) % 1;
     this.blend = damp(this.blend, spd > 0.05 ? 1 : 0, 8, dt);
+    // four-footed walkers break into a gallop when pushed
+    const canRun = rig.gait === 'walk' && rig.legs.length === 4 && rig.plan !== 'biped';
+    this.run = damp(this.run, canRun ? clamp((spd / stride - 2.2) / 1.6, 0, 1) : 0, 3, dt);
+    // a hit flash kicks the flinch spring
+    const fx = (this.obj.userData as { fx?: { flash: { value: number } } }).fx, flash = fx ? fx.flash.value : 0;
+    if (flash > 0.6 && flash - this.prevFlash > 0.45 && !dead) { this.hitV += 9; this.hitSide = Math.random() < 0.5 ? -1 : 1; this.blinkT = 0; this.blinks = 1; }
+    this.prevFlash = flash;
+    this.hitV += (-this.hitX * 140 - this.hitV * 14) * dt; this.hitX += this.hitV * dt;
+    const hit = clamp(this.hitX, -0.6, 1.2);
+    this.idle(dt, inp.state === 'idle' && spd < 0.05 && !dead);
+    const ik = this.idleK, act = this.idleAct, it = this.idleT;
     this.lean = damp(this.lean, clamp(inp.turn * 0.12, -0.25, 0.25), 6, dt);
     this.look[0] = damp(this.look[0], clamp(inp.lookYaw, -1, 1), 5, dt);
     this.look[1] = damp(this.look[1], clamp(inp.lookPitch, -0.6, 0.5), 5, dt);
@@ -65,8 +117,18 @@ export class Animator {
       } else hopPitch = Math.sin(Math.PI * this.phase / rig.duty) * 0.08 * this.blend;
     }
     if (rig.gait === 'amble') bob *= 1.4;
-    const breathe = Math.sin(this.t * 1.7) * rig.rideH * 0.012;
+    bob *= 1 + this.run * 1.2;
+    // breathing: slow at rest in big animals, quick in small ones, heaving after a run
+    const bHz = (0.32 / Math.sqrt(Math.max(0.15, rig.length))) * (1 + this.blend * 0.8 + this.run);
+    this.breathPh += dt * bHz * Math.PI * 2;
+    const br = Math.sin(this.breathPh), bAmp = 0.022 + this.blend * 0.015 + this.run * 0.02;
+    const breathe = br * rig.rideH * 0.006;
+    if (rig.ribs >= 0) B[rig.ribs].scale.set(1 + br * bAmp * 0.9, 1 + br * bAmp, 1 + br * bAmp * 0.3);
     root.position.y += bob + breathe + this.hop;
+    // weight shift: the body sways over the stance legs, or settles from one side to the other while it stands
+    const shift = (rig.plan === 'serpent' || rig.plan === 'gastropod' ? 0 : Math.sin(ph) * rig.width * 0.035 * this.blend * (1 - this.run)) + (act === 'shift' ? Math.sin(it * 1.6) * rig.width * 0.06 * ik : 0);
+    root.position.x += shift;
+    root.position.z -= hit * rig.length * 0.04;
     if (inp.state === 'fly') root.position.y += inp.air;
     // attacks: lunge forward and dip
     let lunge = 0;
@@ -75,7 +137,9 @@ export class Animator {
     // heavy bodies roll over the planted legs; sprawlers swing the hips against the shoulders
     const roll = rig.gait === 'amble' ? Math.sin(ph) * 0.06 * this.blend : 0;
     const swing = rig.gait === 'sprawl' ? Math.sin(ph) * 0.14 * this.blend + Math.sin(this.t * 0.9) * 0.03 : 0;
-    _e.set(lunge * 0.12 + (inp.state === 'eat' ? 0.18 : 0) + hopPitch, -swing * 0.5, this.lean + roll, 'YXZ');
+    const shake = act === 'shake' ? Math.sin(it * 26) * 0.11 * ik : 0;
+    const gal = this.run * Math.sin(ph * 2 + 0.6) * 0.07;
+    _e.set(lunge * 0.12 + (inp.state === 'eat' ? 0.18 : 0) + hopPitch - hit * 0.16 + gal, -swing * 0.5, this.lean + roll + shake + hit * 0.1 * this.hitSide, 'YXZ');
     root.quaternion.setFromEuler(_e);
     if (inp.state === 'stunned') root.quaternion.multiply(_q.setFromEuler(_e.set(Math.sin(this.t * 13) * 0.08, 0, Math.sin(this.t * 9) * 0.12)));
     // death: roll onto the side and sink
@@ -87,23 +151,38 @@ export class Animator {
     // spine wave (quadruped yaw, serpent undulation)
     if (rig.plan === 'serpent') this.serpent(dt, spd, inp);
     else if (rig.spine.length > 1) {
-      const w = rig.gait === 'sprawl' ? swing : Math.sin(ph) * 0.06 * this.blend;
-      B[rig.spine[1]].quaternion.setFromEuler(_e.set(rig.gait === 'hop' ? -hopPitch * 0.3 : 0, w, -this.lean * 0.4 - roll * 1.3));
+      const w = rig.gait === 'sprawl' ? swing : Math.sin(ph) * 0.06 * this.blend * (1 - this.run);
+      // the back flexes and extends through each gallop stride; a groom curls the body toward the flank
+      const flex = this.run * Math.sin(ph * 2) * 0.16;
+      const curl = act === 'groom' ? this.idleSide * 0.22 * ik : 0;
+      B[rig.spine[1]].quaternion.setFromEuler(_e.set((rig.gait === 'hop' ? -hopPitch * 0.3 : 0) + flex, w + curl, -this.lean * 0.4 - roll * 1.3 - shake * 0.6));
     }
     // head and neck
     if (rig.head >= 0 && rig.plan !== 'serpent') {
       const eat = inp.state === 'eat' ? 0.5 + Math.sin(this.t * 6) * 0.08 : 0;
       const atk = inp.state === 'attack' ? (inp.act < 0.5 ? -0.25 * smooth(0, 0.5, inp.act) : 0.25) : 0;
-      const nod = Math.sin(this.phase * Math.PI * 4) * (rig.gait === 'amble' ? 0.07 : 0.04) * this.blend;
-      // a sprawler's neck cancels the body's swing so the head stays on target; an ambler's head swings low
+      // hooved heads nod with the forefeet; cats and dogs hold theirs level; an ambler's head swings low
+      const nod = Math.sin(this.phase * Math.PI * 4) * (rig.dims.hoof ? 0.08 : rig.dims.cat ? 0.015 : rig.gait === 'amble' ? 0.07 : 0.035) * this.blend * (1 - this.run * 0.5);
+      // a sprawler's neck cancels the body's swing so the head stays on target
       const steady = rig.gait === 'sprawl' ? -swing * 1.1 : rig.gait === 'amble' ? Math.sin(ph + 1) * 0.08 * this.blend : 0;
       const tongueAtk = rig.tongue >= 0 && rig.gait === 'hop';
-      for (const n of rig.neck) B[n].quaternion.setFromEuler(_e.set(eat * 0.6 + (tongueAtk ? 0 : atk * 0.5) - this.look[1] * 0.4, this.look[0] * 0.4 + steady, 0, 'YXZ'));
-      B[rig.head].quaternion.setFromEuler(_e.set(eat * 0.5 + (tongueAtk ? -0.1 * Math.sin(Math.PI * inp.act) : atk) + nod - this.look[1] * 0.6 - hopPitch * 0.4, this.look[0] * 0.6, 0, 'YXZ'));
+      // idle business: look round, sniff or crop the ground (nose twitching, jaw working), turn to groom a flank
+      let iy = 0, ip = 0, hp = 0, hr = 0;
+      if (act === 'look') { iy = this.idleYaw * ik; ip = this.idlePitch * ik; }
+      else if (act === 'sniff') { ip = (rig.dims.graze ? 1.0 : 0.62) * ik; hp = (0.25 + Math.sin(it * 9) * 0.035) * ik; iy = Math.sin(it * 0.7) * 0.25 * ik; }
+      else if (act === 'groom') { iy = this.idleSide * 1.1 * ik; ip = 0.3 * ik; hp = (0.3 + Math.sin(it * 7) * 0.08) * ik; hr = -this.idleSide * 0.3 * ik; }
+      else if (act === 'shake') hr = -shake * 1.6;
+      // the head is held steady against the body's roll and lean, and jerks back from a blow
+      const level = -(this.lean + roll) * 0.75;
+      for (const n of rig.neck) B[n].quaternion.setFromEuler(_e.set(eat * 0.6 + (tongueAtk ? 0 : atk * 0.5) - this.look[1] * 0.4 + ip - hit * 0.25 - gal * 0.8, this.look[0] * 0.4 + steady + iy * 0.55, level * 0.5, 'YXZ'));
+      B[rig.head].quaternion.setFromEuler(_e.set(eat * 0.5 + (tongueAtk ? -0.1 * Math.sin(Math.PI * inp.act) : atk) + nod - this.look[1] * 0.6 - hopPitch * 0.4 + hp - hit * 0.2, this.look[0] * 0.6 + iy * 0.45, level * 0.5 + hr + hit * 0.15 * this.hitSide, 'YXZ'));
       if (this.deathT > 0) B[rig.head].quaternion.multiply(_q.setFromEuler(_e.set(0.4 * this.deathT, 0, 0)));
     }
     if (rig.jaw >= 0) {
-      let open = Math.max(0, Math.sin(this.t * 0.7)) ** 8 * 0.15;
+      // the mouth stays shut at rest; a rare yawn, panting on the run, a grazer's jaw working while it crops
+      let open = Math.max(0, Math.sin(this.t * 0.23 + rig.length)) ** 60 * 0.45 + (rig.dims.fur ? this.run * (0.12 + Math.sin(this.t * 9) * 0.05) : 0);
+      if (act === 'sniff' && rig.dims.graze) open = Math.max(open, (0.5 + 0.5 * Math.sin(it * 8)) * 0.12 * ik);
+      if (act === 'groom') open = Math.max(open, (0.5 + 0.5 * Math.sin(it * 7)) * 0.1 * ik);
       if (inp.state === 'attack') open = inp.act < 0.45 ? smooth(0, 0.45, inp.act) * 0.7 : inp.act < 0.6 ? 0 : 0.1;
       if (inp.state === 'eat') open = (Math.sin(this.t * 9) * 0.5 + 0.5) * 0.35;
       if (this.deathT > 0) open = 0.35 * this.deathT;
@@ -141,14 +220,44 @@ export class Animator {
       const f = flying ? Math.sin(this.t * (rig.plan === 'hexapod' ? 46 : 11) + (i >> 1)) * 0.8 : 0;
       B[w].quaternion.setFromEuler(_e.set(0, flying ? s * 0.9 : 0, -s * (flying ? f : 0.06)));
     });
+    // blinks: now and then (sometimes twice), shut by a blow, stunned flutters, half-shut in death
+    if (rig.lids.length) {
+      if (this.blinkT < 0) { this.blinkIn -= dt * (inp.state === 'stunned' ? 6 : 1); if (this.blinkIn <= 0) { this.blinkT = 0; this.blinks = Math.random() < 0.2 ? 2 : 1; } }
+      let shut = 0;
+      if (this.blinkT >= 0) {
+        this.blinkT += dt;
+        const c = this.blinkT / 0.17;
+        shut = c < 0.35 ? c / 0.35 : c < 0.5 ? 1 : 1 - (c - 0.5) / 0.5;
+        if (c >= 1) { if (--this.blinks > 0) this.blinkT = 0; else { this.blinkT = -1; this.blinkIn = 1.8 + Math.random() * 4.5; } shut = 0; }
+      }
+      if (this.deathT > 0) shut = Math.max(shut, 0.62 * this.deathT);
+      if (inp.state === 'stunned') shut = Math.max(shut, 0.35);
+      for (const l of rig.lids) B[l.bone].quaternion.setFromAxisAngle(_a.set(l.axis[0], l.axis[1], l.axis[2]), clamp(shut, 0, 1) * 1.62);
+    }
+    // ears: swivel after the gaze, prick when moving, pin back to strike or when hit, flick off flies, droop in death
+    rig.ears.forEach((e, i) => {
+      const s = i === 0 ? -1 : 1;
+      this.earIn[i] -= dt;
+      if (this.earIn[i] <= 0) { this.earV[i] += (Math.random() < 0.5 ? 1 : -1) * 14; this.earIn[i] = 1.5 + Math.random() * 6; }
+      this.earV[i] += (-this.earX[i] * 260 - this.earV[i] * 16) * dt; this.earX[i] += this.earV[i] * dt;
+      const pin = (inp.state === 'attack' ? 0.9 : 0) + clamp(hit, 0, 1) * 0.8 + (act === 'shake' ? Math.abs(shake) * 4 : 0);
+      const look = this.look[0] * 0.5 + (act === 'look' ? this.idleYaw * 0.4 * ik : 0);
+      const droop = this.deathT;
+      B[e].quaternion.setFromEuler(_e.set(0.12 * this.blend - pin * 0.85 - droop * 0.3 + this.earX[i] * 0.4, look + this.earX[i] * 0.6 * s, -s * (pin * 0.45 + droop * 0.7), 'YXZ'));
+    });
+    // tail swish now and then
+    let swish = 0;
+    if (this.swishT < 0) { this.swishIn -= dt; if (this.swishIn <= 0) { this.swishT = 0; this.swishSide = Math.random() < 0.5 ? -1 : 1; } }
+    else { this.swishT += dt; swish = Math.sin(Math.min(1, this.swishT / 0.9) * Math.PI) * this.swishSide; if (this.swishT > 0.9) { this.swishT = -1; this.swishIn = 2.5 + Math.random() * 6; } }
     // tail: damped spring lagging behind turns and swaying
     for (let i = 0; i < rig.tail.length; i++) {
       let target = -inp.turn * 0.18 * (i + 1) * 0.5 + Math.sin(this.t * 1.6 - i * 0.6) * (rig.plan === 'hexapod' || rig.plan === 'octopod' ? 0.03 : 0.12) * (0.4 + this.blend * 0.6);
+      if (rig.plan !== 'hexapod' && rig.plan !== 'octopod' && rig.plan !== 'gastropod') target += swish * 0.22 * (0.5 + i * 0.35) + hit * 0.2 * this.hitSide;
       // the S-wave runs on down the tail
       if (rig.gait === 'sprawl') target += Math.sin(ph - 1.2 - i * 0.8) * 0.22 * this.blend;
       this.tailV[i] += ((target - this.tail[i]) * 40 - this.tailV[i] * 8) * dt;
       this.tail[i] += this.tailV[i] * dt;
-      const droop = rig.plan === 'gastropod' ? 0 : (this.deathT > 0 ? 0.25 * this.deathT : 0.04);
+      const droop = rig.plan === 'gastropod' ? 0 : (this.deathT > 0 ? 0.25 * this.deathT : 0.04 - this.run * (i ? 0.02 : 0.12));
       B[rig.tail[i]].quaternion.setFromEuler(_e.set(droop, this.tail[i], 0));
     }
     // legs
@@ -171,8 +280,11 @@ export class Animator {
   /** 2-bone IK in world space with a pole; feet planted on the terrain */
   private leg(lg: LegDef, inp: AnimIn, stride: number) {
     const B = this.bones, rig = this.rig, obj = this.obj;
-    const duty = rig.duty;
-    const p = (this.phase + lg.phase) % 1;
+    // a rotary gallop: the hind pair lands close together, then the fore pair half a stride later; less time on the ground
+    const duty = rig.duty + (0.4 - rig.duty) * this.run;
+    const gph = (lg.kind === 'hind' ? 0 : 0.5) + (lg.side > 0 ? 0.1 : 0);
+    let dph = gph - lg.phase; dph -= Math.round(dph);
+    const p = (((this.phase + lg.phase + dph * this.run) % 1) + 1) % 1;
     let zo = 0, lift = 0;
     const S = stride * this.blend;
     if (p < duty) zo = S * (0.5 - p / duty);

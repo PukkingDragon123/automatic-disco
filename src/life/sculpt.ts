@@ -387,7 +387,15 @@ function vertebrate(S: Ctx) {
   const up: V3 = hom ? [0, 0, -1] : [0, 1, 0];
   const Lp = sp.L;
   const BODY = S.reg('BODY', TAU * W * 0.5, Lp, 16, 160, 220);
-  sac(S.B, BODY, S.gid(), sp.pts, sp.pts.map((_, i) => [RU[i], RV[i]] as [number, number]), wts, { n: fur ? 20 : 18, up, bump, shift, start: true, end: true });
+  const iR = rig.ribs, tRib = (tChest + tMid) / 2, sRib = Math.max(0.03, (tMid - tChest) * 0.9);
+  const wv = iR < 0 ? undefined : (a: number, t: number): Wt | null => {
+    const k = 0.6 * gauss(t, tRib, sRib) * (0.3 + 0.7 * Math.sin(a / 2) ** 2);
+    if (k < 0.03) return null;
+    const b = wts[Math.round(t * (wts.length - 1))], out: Wt = [];
+    for (let j = 0; j + 1 < b.length && j < 6; j += 2) out.push(b[j], b[j + 1] * (1 - k));
+    return [...out, iR, k];
+  };
+  sac(S.B, BODY, S.gid(), sp.pts, sp.pts.map((_, i) => [RU[i], RV[i]] as [number, number]), wts, { n: fur ? 20 : 18, up, bump, shift, start: true, end: true, wv });
   S.spine = { pts: sp.pts, fr: transport(sp.pts, up), ru: RU, rv: RV, w: wts, L: sp.L };
   S.paints.push(() => { hide(S, BODY, { L: Lp, rad: (t) => interp(sp.t, RU, t), seed: d.seed % 211, kind: 'body', belly: hom ? 1.6 : sprawl || hop ? 1.85 : 2.05 }); if (amph) amphSkin(S, BODY); });
 
@@ -541,7 +549,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     hide(S, LID, { L: er, rad: () => er, seed: 61, kind: 'ear', noPattern: !amph, flow: -1 }); for (let x = 0; x < LID.w; x++) { LID.set(x, LID.h - 1, 0x140c0a); LID.set(x, LID.h - 2, S.P.dark[1]); }
     if (amph) amphSkin(S, LID, 0.5);
     // lid caps: furred or scaly skin darkening to the margin, a dark lash line, a wet rim
-    const R2 = fur ? S.P.base : S.P.skin;
+    const R2 = hom ? S.P.skin : S.P.base;
     LC.fill(R2, (x, y) => 3.4 - (y / LC.h) * 1.4 + (hash(x, y + 9) - 0.5) * 0.7 + (y % 3 === 0 && !fur ? -0.6 : 0), undefined, 0.3);
     for (let x = 0; x < LC.w; x++) for (let y = Math.floor(LC.h * 0.72); y < LC.h; y++) LC.set(x, y, y > LC.h * 0.86 ? mixC(0x5a2a2a, S.P.skin[2], 0.3) : 0x120a08);
     if (amph) amphSkin(S, LC, 0.4);
@@ -564,6 +572,8 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
       // a pale brow spot over each eye and a dark tear line down to the muzzle on cats
       if ((cat || fam === 'canid') && gauss(t, tEye - 0.06, 0.025) * gauss(ath, eAng - 0.3, 0.1) > 0.6 && (x + y) % 2 === 0) HEAD.put(x, y, S.P.belly, 4, 0.4);
     }
+    // the muzzle tip is a fan off the last rows: keep them one clean tone so no stripes radiate across it
+    for (let y = HEAD.h - 2; y < HEAD.h; y++) for (let x = 0; x < HEAD.w; x++) HEAD.put(x, y, beak || flat || liz ? S.P.base : muzzleR, 3.0 + Math.cos(HEAD.th(x)) * 0.5, 0.5);
     if (liz) for (const s of [-1, 1]) { const nx = HEAD.X(s * 30), ny = HEAD.h * 0.93; HEAD.set(nx, ny, 0x0a0608); HEAD.set(nx + s, ny, 0x0a0608); HEAD.set(nx, ny + 1, 0x2a1a14); }
     if (amph) amphSkin(S, HEAD, 0.8);
   });
@@ -600,10 +610,10 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
       // canines whose tips just show below the lips, a row of incisors behind the nose
       const big = has(d, 'carnassials') ? (bear ? 0.55 : cat ? 1 : 0.8) : 0.5;
       for (const s of [-1, 1]) {
-        fang(addV(head, [s * hw * (cat ? 0.13 : 0.15) * hk, -hh * 0.2, z0 + sl * 0.8]), norm([0, -1, 0.12]), hh * 0.24 * big, hw * 0.034, [iH, 1]);
-        fang(addV(J, [s * hw * 0.11, hh * 0.05, sl * 0.72]), norm([0, 1, 0.15]), hh * 0.13 * big, hw * 0.026, [iJ, 1]);
+        fang(addV(head, [s * hw * (cat ? 0.13 : 0.15) * hk, -hh * 0.17, z0 + sl * 0.8]), norm([0, -1, 0.12]), hh * 0.16 * big, hw * 0.034, [iH, 1]);
+        fang(addV(J, [s * hw * 0.11, hh * 0.02, sl * 0.72]), norm([0, 1, 0.15]), hh * 0.09 * big, hw * 0.026, [iJ, 1]);
       }
-      for (let i = 0; i < 4; i++) { const x = (i - 1.5) * hw * 0.05; fang(addV(head, [x, -hh * 0.22, z0 + sl * 0.9]), [0, -1, 0], hh * 0.06, hw * 0.018, [iH, 1]); }
+      for (let i = 0; i < 4; i++) { const x = (i - 1.5) * hw * 0.05; fang(addV(head, [x, -hh * 0.16, z0 + sl * 0.9]), [0, -1, 0], hh * 0.05, hw * 0.018, [iH, 1]); }
     }
     if (has(d, 'tusks')) for (const s of [-1, 1]) {
       const b0 = addV(head, [s * hw * 0.2, -hh * 0.22, z0 + sl * 0.6]);
@@ -619,7 +629,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
   if (!beak && !amph && !liz) {
     const NOSE = S.fixed('NOSE', 10, 8);
     const nz = z0 + sl * (boar ? 1.0 : 0.97);
-    const nr: [number, number, number] = cat ? [hw * 0.15, hh * 0.1, hw * 0.07] : bear ? [hw * 0.2, hh * 0.13, hw * 0.1] : hoof ? [hw * 0.21, hh * 0.17, hw * 0.08] : boar ? [hw * 0.2, hh * 0.19, hw * 0.045] : [hw * 0.14, hh * 0.1, hw * 0.07];
+    const nr: [number, number, number] = cat ? [hw * 0.125, hh * 0.085, hw * 0.05] : bear ? [hw * 0.2, hh * 0.13, hw * 0.1] : hoof ? [hw * 0.21, hh * 0.17, hw * 0.08] : boar ? [hw * 0.2, hh * 0.19, hw * 0.045] : [hw * 0.14, hh * 0.1, hw * 0.07];
     ball(S.B, NOSE, S.gid(), addV(head, [0, hy[7] + (cat ? hh * 0.08 : hoof ? hh * 0.02 : hh * 0.06), nz - nr[2] * 0.4]), norm([0, boar ? 0 : cat ? 0.45 : 0.25, 1]), [nr[0] * hk, nr[1], nr[2]], [iH, 1], { n: 16, rings: 7, tv: EYE_TV, sq: cat ? 2.6 : 2.2, cap: 0.08 });
     S.paints.push(() => {
       const leather = cat ? mixHex(d.colors.belly, 0xc86a6a, 0.55) : boar ? mixHex(d.colors.base, 0xd8a0a0, 0.55) : mixHex(d.colors.pattern, 0x1a1214, 0.65);

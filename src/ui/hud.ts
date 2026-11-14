@@ -257,8 +257,9 @@ export class Hud {
       put(this.objectives, sC, { r: 2, t: row + (BANK.h + 3) * sC });
       put(this.dialog, sC, { l: 0, t: row + SCOPE.h * sS + 3 });
       put(M['hud-sel'], sC, null);
-      const sK = fit((s) => CMD.w * s <= W - (touch ? 220 : 0) && CMD.h * s <= H * 0.16, sC);
-      put(M['hud-cmd'], sK, touch ? { l: (W - CMD.w * sK) / 2, b: 0 } : { l: 0, b: 0 });
+      // on touch the thumbs own the whole bottom edge, so the keys hang under the switch bank instead
+      const sK = touch ? fit((s) => CMD.w * s <= W * 0.5 && CMD.h * s <= H * 0.18, sC) : fit((s) => CMD.w * s <= W && CMD.h * s <= H * 0.16, sC);
+      put(M['hud-cmd'], sK, touch ? { r: 0, t: row + (BANK.h + 3) * sC } : { l: 0, b: 0 });
       put(wl, sC, touch ? null : { r: 0, b: 0 }); put(wd, sC, touch ? null : { r: 0, b: 152 * sC });
       this.toastTop(row + Math.max(SCOPE.h * sS, (BANK.h + 3) * sC) + 4);
       this.textScale(sC * dpr, dpr);

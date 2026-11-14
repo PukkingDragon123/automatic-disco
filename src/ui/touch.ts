@@ -159,8 +159,8 @@ body.touch-ui .hud-obj { position: fixed !important; left: var(--tc-obj-left, 6p
   width: auto !important; max-width: min(46vw, calc(150px * var(--s))) !important; max-height: calc(13px * var(--s)); overflow: hidden; z-index: 26; pointer-events: auto !important; cursor: pointer;
   font-size: calc(10px * var(--s)) !important; transform-origin: top left; transition: max-height 160ms steps(4); }
 body.touch-ui .hud-obj.tc-open { max-height: 52vh; }
-body.touch-ui .hud-obj h4::after { content: ' \25BE'; opacity: 0.7; }
-body.touch-ui .hud-obj.tc-open h4::after { content: ' \25B4'; }
+body.touch-ui .hud-obj h4::after { content: ' \\25BE'; opacity: 0.7; }
+body.touch-ui .hud-obj.tc-open h4::after { content: ' \\25B4'; }
 `;
 
 // ------------------------------------------------------------------ controls
@@ -256,8 +256,8 @@ export class TouchControls {
     if (o && document.body.classList.contains('touch-ui')) o.classList.toggle('tc-open');
   };
   private safeT = 0;
-  /** publish the controls' corners as CSS variables and park the objectives clear of the stick: to the right of the
-   *  minimap when there is room, else under it */
+  /** publish the controls' corners as CSS variables and park the objectives clear of the stick: beside the minimap
+   *  in landscape, under it in portrait */
   private safe = () => {
     const r = document.body.style, zb = this.zone.getBoundingClientRect(), pb = this.pad.getBoundingClientRect();
     const btns = [...this.pad.querySelectorAll('.tc-btn')].map((b) => b.getBoundingClientRect());
@@ -271,7 +271,7 @@ export class TouchControls {
     const mm = document.querySelector('.hud .mm, .hud-mm, canvas.mm') as HTMLElement | null, m = mm?.getBoundingClientRect();
     let left = 6, top = Math.round(30 * S);
     if (m && m.width > 0) {
-      if (innerWidth - m.right > 200) { left = Math.round(m.right + 10); top = Math.round(m.top); }
+      if (innerWidth > innerHeight && innerWidth - m.right > 200) { left = Math.round(m.right + 10); top = Math.round(m.top); }
       else { left = Math.round(m.left); top = Math.round(m.bottom + 8); }
     }
     // never down into the stick's corner

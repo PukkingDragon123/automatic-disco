@@ -30,14 +30,16 @@ export function makeInstance(m: SpeciesModel): { mesh: THREE.SkinnedMesh; bones:
   m.rig.bones.forEach((b, i) => { if (b.parent >= 0) bones[b.parent].add(bones[i]); });
   const fx: CreatureFx = { flag: { value: 1 }, flash: { value: 0 }, flashCol: { value: new THREE.Color(1, 1, 1) }, decay: { value: 0 }, moss: { value: 0 }, dissolve: { value: 0 }, glow: { value: 1 } };
   const mat = new THREE.MeshLambertMaterial({ map: m.tex, alphaTest: 0.5, side: THREE.DoubleSide, flatShading: true });
+  // small creatures carry a soft sheen on their silhouettes and a touch more value so they read against the foliage
+  const rim = { value: THREE.MathUtils.clamp((1.1 - m.rig.length) / 0.8, 0, 1) * 0.55 };
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uFlash = fx.flash; sh.uniforms.uFlashCol = fx.flashCol; sh.uniforms.uDecay = fx.decay; sh.uniforms.uMossC = fx.moss; sh.uniforms.uDissolve = fx.dissolve; sh.uniforms.uGlowK = fx.glow;
+    sh.uniforms.uFlash = fx.flash; sh.uniforms.uFlashCol = fx.flashCol; sh.uniforms.uDecay = fx.decay; sh.uniforms.uMossC = fx.moss; sh.uniforms.uDissolve = fx.dissolve; sh.uniforms.uGlowK = fx.glow; sh.uniforms.uRim = rim;
     sh.uniforms.uMossA = { value: new THREE.Color(VEYR.mossDark) }; sh.uniforms.uMossB = { value: new THREE.Color(VEYR.moss) }; sh.uniforms.uMossL = { value: new THREE.Color(VEYR.mossLight) }; sh.uniforms.uVein = { value: new THREE.Color(VEYR.vein) };
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vRest;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvRest = position;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 varying vec3 vRest;
-uniform float uFlash, uDecay, uMossC, uDissolve, uGlowK; uniform vec3 uFlashCol, uMossA, uMossB, uMossL, uVein;
+uniform float uFlash, uDecay, uMossC, uDissolve, uGlowK, uRim; uniform vec3 uFlashCol, uMossA, uMossB, uMossL, uVein;
 float ch(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 float vn3(vec3 p) { vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(mix(ch(i), ch(i + vec3(1,0,0)), f.x), mix(ch(i + vec3(0,1,0)), ch(i + vec3(1,1,0)), f.x), f.y),
@@ -62,6 +64,10 @@ if (uMossC > 0.0) {
 }`)
       .replace('#include <alphatest_fragment>', 'if (diffuseColor.a < 0.5) discard;')
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+if (uRim > 0.0) {
+  float rimF = pow(1.0 - clamp(abs(dot(normalize(normal), normalize(vViewPosition))), 0.0, 1.0), 2.2);
+  totalEmissiveRadiance += diffuseColor.rgb * (rimF * 1.1 + 0.12) * uRim * (1.0 - uDecay);
+}
 if (glowA > 0.5 && glowA < 0.98) totalEmissiveRadiance += glowC * 1.6 * uGlowK * (1.0 - uDecay);
 if (mossM > 0.5 && ch(cpx + 7.7) > 0.93) totalEmissiveRadiance += uVein * 1.4;
 totalEmissiveRadiance += uFlashCol * uFlash * 0.9;`);
