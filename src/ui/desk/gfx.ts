@@ -15,29 +15,39 @@ export const LIGHT = new THREE.Vector3(-0.5, 0.72, 0.48).normalize();
 // ------------------------------------------------------------------ materials
 const VS = /* glsl */`
 varying vec2 vUv; varying vec3 vN;
-#ifdef USE_COLOR
+#if defined(USE_COLOR) || defined(USE_INSTANCING_COLOR)
 varying vec3 vCol;
 #endif
 void main() {
-  vUv = uv; vN = normalize(normalMatrix * normal);
+  vUv = uv;
+  vec3 p = position, nn = normal;
+#ifdef USE_INSTANCING
+  p = (instanceMatrix * vec4(p, 1.0)).xyz; nn = mat3(instanceMatrix) * nn;
+#endif
+  vN = normalize(normalMatrix * nn);
 #ifdef USE_COLOR
   vCol = color;
 #endif
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+#ifdef USE_INSTANCING_COLOR
+  vCol = instanceColor;
+#endif
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
 }`;
 const FS = /* glsl */`
 layout(location = 1) out highp vec4 gNormal;
 uniform sampler2D map; uniform vec3 uTint, uLight, uGlow;
 uniform float uEmit, uHover, uAlpha, uSpec, uFlag, uFlat, uDim;
 varying vec2 vUv; varying vec3 vN;
-#ifdef USE_COLOR
+#if defined(USE_COLOR) || defined(USE_INSTANCING_COLOR)
 varying vec3 vCol;
 #endif
 void main() {
   vec4 tx = texture2D(map, vUv);
+#ifndef GLASS
   if (tx.a < 0.5) discard;
+#endif
   vec3 c = tx.rgb * uTint;
-#ifdef USE_COLOR
+#if defined(USE_COLOR) || defined(USE_INSTANCING_COLOR)
   c *= vCol;
 #endif
   vec3 n = normalize(vN); if (!gl_FrontFacing) n = -n;
