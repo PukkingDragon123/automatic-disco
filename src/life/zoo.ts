@@ -10,14 +10,18 @@ import { planetPalette } from '../world/palette';
 
 const P = new URLSearchParams(location.search);
 const cells = (P.get('c') ?? 'lion:4,bear:3,elk:2,frog:5,monitor:3,boar:2').split(',');
-const cols = Number(P.get('cols') ?? Math.min(3, cells.length)), rows = Math.ceil(cells.length / cols);
+const nCells = P.get('angles') === '1' ? 5 : cells.length;
+const cols = Number(P.get('cols') ?? Math.min(3, nCells)), rows = Math.ceil(nCells / cols);
 const yaw0 = Number(P.get('yaw') ?? 0.9), pitch = Number(P.get('pitch') ?? 0.25), dk = Number(P.get('dist') ?? 3), face = P.get('face') === '1';
 const mode = (P.get('mode') ?? 'idle') as 'idle' | 'move', T = Number(P.get('t') ?? 2.4);
 const cv = document.getElementById('c') as HTMLCanvasElement;
 const R = new THREE.WebGLRenderer({ canvas: cv, antialias: false });
 R.setSize(innerWidth, innerHeight); R.shadowMap.enabled = true; R.setScissorTest(true);
 R.outputColorSpace = THREE.SRGBColorSpace;
-const shots = cells.map((spec) => {
+const ANG = [[0.05, 0.12], [1.57, 0.1], [3.1, 0.12], [-0.8, 0.3], [0.6, 1.45]];
+const angles = P.get('angles') === '1';
+const shots = (P.get('lineup') === '1' ? [] : angles ? ANG.map(() => cells[0]) : cells).map((spec, ci) => {
+  const yaw = angles ? ANG[ci][0] : yaw0, pit = angles ? ANG[ci][1] : pitch;
   const [kind, seedS, genes] = spec.split(':');
   const seed = Number(seedS ?? 3);
   const d = wildDesign(kind as Kind, planetPalette(seed, 'amber'), seed * 100);
@@ -39,11 +43,49 @@ const shots = cells.map((spec) => {
   const tgt = new THREE.Vector3(0, m.rig.height * 0.45, 0);
   let D = (Math.max(m.rig.length, m.rig.height) * 0.75 + 0.2) * dk;
   if (face && m.rig.head >= 0) { bones[m.rig.head].getWorldPosition(tgt); tgt.z += m.rig.dims.hl ? m.rig.dims.hl * 0.25 : 0; D = Math.max(m.rig.dims.hw ?? 0.2, 0.08) * 2.2 * dk; }
-  cam.position.set(tgt.x + Math.sin(yaw0) * Math.cos(pitch) * D, tgt.y + Math.sin(pitch) * D, tgt.z + Math.cos(yaw0) * Math.cos(pitch) * D);
+  cam.position.set(tgt.x + Math.sin(yaw) * Math.cos(pit) * D, tgt.y + Math.sin(pit) * D, tgt.z + Math.cos(yaw) * Math.cos(pit) * D);
   cam.lookAt(tgt);
   console.log(spec, d.name, 'tris', m.geo.index!.count / 3, 'build ms', ms.toFixed(0));
   return { scene, cam };
 });
+// &lineup=1: every listed species in one row, side-on, with a 1.8 m human silhouette for scale (like a field-guide sheet)
+if (P.get('lineup') === '1') {
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x8a9096);
+  scene.add(new THREE.HemisphereLight(0xe8ecf0, 0x50483e, 1.7));
+  const key = new THREE.DirectionalLight(0xfff4e8, 2.2); key.position.set(-3, 6, 8); scene.add(key);
+  // two rows: the small half in front, the big half behind, each starting with the human for scale
+  let x = 0, row = 0, top = 0;
+  const half = Math.ceil(cells.length / 2), rowX: number[] = [];
+  const ink = new THREE.MeshBasicMaterial({ color: 0x2c323c });
+  const man = new THREE.Group();
+  for (const [w, h, y] of [[0.36, 0.62, 1.15], [0.24, 0.26, 1.6], [0.13, 0.86, 0.43]] as [number, number, number][]) for (const sx of w === 0.13 ? [-0.09, 0.09] : [0]) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.2), ink); m.position.set(sx, y, 0); man.add(m); }
+  man.position.x = x; scene.add(man); x += 1.4;
+  for (const [ci, spec] of cells.entries()) {
+    if (ci === half) { rowX.push(x); x = 0; row = 1; const m2 = man.clone(); scene.add(m2); x += 1.4; }
+    const [kind, seedS] = spec.split(':');
+    const d = wildDesign(kind as Kind, planetPalette(Number(seedS ?? 3), 'amber'), Number(seedS ?? 3) * 100);
+    const m = buildSpeciesModel(d), { mesh, bones } = makeInstance(m), an = new Animator(m.rig, bones, mesh);
+    for (let t = 0; t < 0.5; t += 1 / 30) an.update(1 / 30, { speed: 0, turn: 0, state: 'idle', act: 0, lookYaw: 0, lookPitch: 0, ground: () => 0, air: 0 });
+    mesh.rotation.y = -Math.PI / 2; mesh.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(mesh), wdt = box.max.x - box.min.x;
+    mesh.position.x = x - box.min.x; scene.add(mesh); x += wdt + 0.6; top = Math.max(top, box.max.y - box.min.y);
+    if (row === 1) { mesh.position.y = 0; }
+    console.log(spec, d.name, 'L', m.rig.length.toFixed(2), 'tris', m.geo.index!.count / 3);
+  }
+  rowX.push(x);
+  // render the two rows into the top and bottom halves of the sheet at one common scale
+  const span = Math.max(...rowX), asp = innerWidth / (innerHeight / 2), hgt = Math.max(top * 1.15, span / asp);
+  const cam = new THREE.OrthographicCamera(-0.5, -0.5 + hgt * asp, hgt - 0.3, -0.3, 0.1, 100); cam.position.set(0, 0, 30); cam.lookAt(0, 0, 0);
+  const all = scene.children.filter((o) => (o as THREE.SkinnedMesh).isSkinnedMesh || o.type === 'Group');
+  const rows2 = [all.slice(0, half + 1), all.slice(half + 1)];
+  for (let rI = 0; rI < 2; rI++) {
+    for (const o of all) o.visible = rows2[rI].includes(o);
+    const y = rI === 0 ? innerHeight / 2 : 0;
+    R.setViewport(0, y, innerWidth, innerHeight / 2); R.setScissor(0, y, innerWidth, innerHeight / 2); R.render(scene, cam);
+  }
+  (window as any).__done = true;
+  throw new Error('lineup drawn');
+}
 const W = innerWidth / cols, H = innerHeight / rows;
 shots.forEach((s, i) => {
   const x = (i % cols) * W, y = innerHeight - (Math.floor(i / cols) + 1) * H;

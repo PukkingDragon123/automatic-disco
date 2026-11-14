@@ -1,6 +1,7 @@
 // The region screen: an RTS where you are a living asteroid. Selection, orders, field abilities with QTEs,
 // growth painting, building, digestion and the harvest of genomes.
 import * as THREE from 'three';
+import { daylight } from './daylight';
 import type { Engine, Screen } from '../app/engine';
 import type { Input } from '../app/input';
 import { RtsCam } from '../app/rtsCam';
@@ -25,6 +26,7 @@ import { GENE } from '../life/genes';
 import type { Species } from './species';
 import { Story } from './story';
 import { RivalBrain } from './rival';
+import { Factions } from './factions';
 import { CoreAura } from './coreAura';
 import { RIVALS } from '../world/palette';
 import { VeyrChild } from './child';
@@ -38,7 +40,7 @@ type Mode = { k: 'normal' } | { k: 'ability'; a: Ability } | { k: 'build'; b: BK
 interface Held { c: Creature; t: number; dur: number; dps: number; grip: number }
 interface Pull { c: Creature; tx: number; tz: number; t: number }
 
-export interface GameOpts { seed: number; biome: BiomeKey; pal?: string; regionName?: string; run?: Run; hooks?: GameHooks; story?: boolean }
+export interface GameOpts { seed: number; biome: BiomeKey; pal?: string; regionName?: string; run?: Run; hooks?: GameHooks; story?: boolean; /** planet danger 1..3: which enemy programmes hold the region (factions/plan.ts) */ danger?: number }
 export interface GameHooks { onWin?(g: Game): void; onLose?(g: Game): void; openBuilder?(g: Game): void; openTree?(g: Game): void; openMenu?(g: Game): void; openSkills?(g: Game): void; openLab?(g: Game): void }
 
 const _v = new THREE.Vector3(), _ray = new THREE.Ray();
@@ -80,6 +82,8 @@ export class Game implements Screen {
   /** cutscene camera hook (story.ts / cinema.ts): runs right after the game camera updates and may overwrite it */
   cineCam: ((cam: THREE.PerspectiveCamera, dt: number) => void) | null = null;
   rivals: RivalBrain[] = [];
+  /** the Soviet / PRC robot programmes and human expeditions on this region (factions/*) */
+  factions: Factions | null = null;
   aura: CoreAura | null = null;
   private rivalT = 210;
   child!: VeyrChild;
@@ -166,6 +170,7 @@ export class Game implements Screen {
     this.veyr.flushCov();
     this.player = new Player(this);
     new Details(this); // footprints, wetness, ripples, weather, hand-drawn VFX (game/details.ts; runs in update$)
+    this.factions = new Factions(this);
     (window as any).__game = this;
   }
 
@@ -565,6 +570,8 @@ export class Game implements Screen {
   // ------------------------------------------------------------------ command card
   /** rival asteroids: the first falls a few minutes in, far from the Veyr */
   private tickRivals(dt: number) {
+    // the space race (factions/*) replaces the rival asteroid
+    if (this.factions) { this.factions.update(dt); return; }
     for (const r of this.rivals) r.update(dt);
     if (this.rivals.length || !this.veyr.core || this.opts.story === false && !(window as any).__rivalNow) return;
     this.rivalT -= dt;
@@ -765,6 +772,7 @@ export class Game implements Screen {
     const ang = (d - 0.25) * Math.PI * 2;
     const elev = Math.cos(ang);
     const k = clamp(elev * 1.4 + 0.25, 0.16, 1);
+    daylight.k = k;
     const pal = this.region.pal, sun = this.world.sun;
     sun.dir.set(Math.sin(ang) * 0.7, Math.max(0.25, Math.abs(elev) * 0.9 + 0.2), -0.35 + Math.cos(ang) * 0.2).normalize();
     sun.setColors(pal, k);
@@ -810,7 +818,7 @@ export class Game implements Screen {
     if (this.won || this.lostFlag) return;
     if (this.veyr.lost) { this.lostFlag = true; this.opts.hooks?.onLose?.(this); return; }
     const rivalsAlive = this.world.hives.some((h) => h !== this.veyr && !h.lost);
-    if (this.conquest() >= this.veyr.winAt && !rivalsAlive) { this.won = true; this.opts.hooks?.onWin?.(this); }
+    if (this.conquest() >= this.veyr.winAt && !rivalsAlive && (this.factions?.cleared() ?? true)) { this.won = true; this.opts.hooks?.onWin?.(this); }
   }
 
   // ------------------------------------------------------------------ 2D overlay: bars, drag box, brushes, ranges
@@ -833,6 +841,7 @@ export class Game implements Screen {
       g.fillStyle = c.faction === 'veyr' ? '#7affe0' : c.faction === 'rival' ? '#ff8ab0' : f > 0.5 ? '#ffe070' : '#ff7050';
       g.fillRect(x, y, Math.round(w * f), px * 2);
     }
+    this.factions?.drawOverlay(g);
     // drag box
     if (this.drag?.on && this.mode.k === 'normal') {
       const x0 = Math.min(this.drag.x, this.input.mx), y0 = Math.min(this.drag.y, this.input.my);
@@ -893,5 +902,5 @@ export class Game implements Screen {
     new Btn(row, { icon: 'heart', label: 'LET HIM REST', size: 'big', tip: () => '<h4>Lay him to rest</h4>A pale flower grows where he lies. +8 helix.' }, () => fin(false));
   }
   get vaults() { return this.veyr.buildings.filter((b) => b.def.kind === 'vault' && b.done).length; }
-  dispose() { this.act = false; this.offKey?.(); (window as any).__game === this && ((window as any).__game = null); this.hud.dispose(); this.overlay.remove(); ui().innerHTML = ''; }
+  dispose() { this.act = false; this.factions?.dispose(); this.offKey?.(); (window as any).__game === this && ((window as any).__game = null); this.hud.dispose(); this.overlay.remove(); ui().innerHTML = ''; }
 }

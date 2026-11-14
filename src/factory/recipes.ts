@@ -2,7 +2,7 @@
 // Rates in the statistics sheet are computed from these (per minute = 60 / t * n).
 import type { ItemId } from './items';
 
-export type Station = 'smelter' | 'foundry' | 'constructor' | 'assembler' | 'manufacturer' | 'refinery' | 'shed' | 'boiler' | 'reactor' | 'lab' | 'robotfab';
+export type Station = 'smelter' | 'foundry' | 'constructor' | 'assembler' | 'manufacturer' | 'refinery' | 'shed' | 'boiler' | 'reactor' | 'lab' | 'robotfab' | (string & {});
 export type Stack = Partial<Record<ItemId, number>>;
 export interface Recipe {
   id: string; name: string; at: Station; in: Stack; out: Stack; t: number;
@@ -20,6 +20,8 @@ export const RECIPES: Recipe[] = [
   R('iron_ingot', 'smelter', 'Iron Ingot', { ore: 1 }, { iron_ingot: 1 }, 2),
   R('copper_ingot', 'smelter', 'Copper Ingot', { copper_ore: 1 }, { copper_ingot: 1 }, 2),
   R('glass', 'smelter', 'Glass', { soil: 3 }, { glass: 1 }, 3),
+  R('pellet_ingot', 'smelter', 'Iron Ingot (pellets)', { iron_pellet: 2 }, { iron_ingot: 2 }, 1.5),
+  R('bead_glass', 'smelter', 'Glass (beads)', { glass_bead: 2 }, { glass: 2 }, 2),
   R('concrete_kiln', 'smelter', 'Concrete (kiln)', { soil: 2, carbon: 1 }, { concrete: 1 }, 3),
   // foundry
   R('steel_ingot', 'foundry', 'Steel Ingot', { ore: 2, coal: 2 }, { steel_ingot: 2 }, 4),
@@ -34,6 +36,8 @@ export const RECIPES: Recipe[] = [
   R('concrete', 'constructor', 'Concrete', { soil: 3 }, { concrete: 1 }, 3),
   R('steel_beam', 'constructor', 'Steel Beam', { steel_ingot: 3 }, { steel_beam: 1 }, 4),
   R('gear', 'constructor', 'Gear', { iron_plate: 1 }, { gear: 1 }, 3),
+  R('silk_cable', 'constructor', 'Cable (silk-wound)', { silk: 2, copper_wire: 1 }, { cable: 2 }, 2),
+  R('pellet_rod', 'constructor', 'Iron Rod (pellets)', { iron_pellet: 1 }, { iron_rod: 1 }, 1.5),
   // assembler
   R('reinforced_plate', 'assembler', 'Reinforced Plate', { iron_plate: 4, screw: 8 }, { reinforced_plate: 1 }, 8),
   R('rotor', 'assembler', 'Rotor', { iron_rod: 3, screw: 10 }, { rotor: 1 }, 8),
@@ -55,12 +59,21 @@ export const RECIPES: Recipe[] = [
   R('plastic', 'refinery', 'Bakelite', { coal: 2, water: 1 }, { plastic: 2 }, 5),
   R('plastic_carbon', 'refinery', 'Bakelite (plant)', { carbon: 3, water: 2 }, { plastic: 1 }, 5),
   R('cable_rubber', 'refinery', 'Rubber Cable', { copper_wire: 1, rubber: 1 }, { cable: 2 }, 3),
+  R('resin_plastic', 'refinery', 'Bakelite (resin)', { resin: 2 }, { plastic: 3 }, 4),
+  R('resin_rubber', 'refinery', 'Rubber (resin)', { resin: 1, water: 1 }, { rubber: 2 }, 3),
+  R('oil_plastic', 'refinery', 'Plastic (bio-oil)', { bio_oil: 2, water: 1 }, { plastic: 3 }, 4),
+  R('herbicide', 'refinery', 'Herbicide', { bio_oil: 1, carbon: 1 }, { herbicide: 2 }, 5),
+  R('herbicide_coal', 'refinery', 'Herbicide (coal tar)', { coal: 2, water: 1 }, { herbicide: 1 }, 5),
   // grow shed
   R('fruit', 'shed', 'Fruit', { water: 1, soil: 1 }, { fruit: 2 }, 10),
   R('carbon_crop', 'shed', 'Fibre Crop', { water: 1 }, { carbon: 2 }, 8),
+  R('resin_crop', 'shed', 'Resin Saplings', { water: 1, carbon: 1 }, { resin: 1 }, 12),
+  R('oil_crop', 'shed', 'Oil Fruit', { water: 2, soil: 1 }, { bio_oil: 1 }, 12),
   // power
   R('burn_coal', 'boiler', 'Burn Coal', { coal: 1, water: 1 }, { steam: 4 }, 8),
   R('burn_carbon', 'boiler', 'Burn Carbon', { carbon: 1, water: 1 }, { steam: 2 }, 4),
+  R('burn_algae', 'boiler', 'Burn Algae Fuel', { algae_fuel: 1, water: 1 }, { steam: 6 }, 12),
+  R('burn_oil', 'boiler', 'Burn Bio-Oil', { bio_oil: 1, water: 1 }, { steam: 4 }, 8),
   R('fission', 'reactor', 'Fission', { reactor_core: 1, water: 4 }, {}, 60),
   // research lab
   R('study_report', 'lab', 'Study Reports', { report: 1 }, {}, 10, { research: 1 }),
@@ -74,6 +87,8 @@ export const RECIPES: Recipe[] = [
   R('bot_walker', 'robotfab', 'Walker', { heavy_frame: 2, servo: 6, control_unit: 2, reactor_core: 1 }, {}, 120, { robot: 'walker' }),
 ];
 export const RECIPE: Record<string, Recipe> = Object.fromEntries(RECIPES.map((r) => [r.id, r]));
+/** add a recipe (another system's machines or refining steps); a station may be a registered building's own */
+export function registerRecipe(r: Recipe) { const k = RECIPES.findIndex((q) => q.id === r.id); if (k >= 0) RECIPES[k] = r; else RECIPES.push(r); RECIPE[r.id] = r; }
 export const recipesAt = (s: Station) => RECIPES.filter((r) => r.at === s);
 /** items per minute a recipe makes (or uses) of one item at speed 1 */
 export const perMin = (r: Recipe, n: number) => (60 / r.t) * n;

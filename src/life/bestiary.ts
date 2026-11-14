@@ -19,7 +19,7 @@ export type BeastPart =
   | { k: 'tailFan'; size: number; ramp: RampName }
   | { k: 'headFans'; size: number; ramp: RampName }
   | { k: 'finCrest'; height: number }
-  | { k: 'mane' } | { k: 'shag' } | { k: 'brow'; size: number };
+  | { k: 'mane' } | { k: 'shag' } | { k: 'brow'; size: number } | { k: 'helm'; ramp: RampName };
 
 export interface BeastForm {
   /** trunk cross-sections at chest, barrel, waist and hips: [width, height above, depth below] (x body W / H) */
@@ -54,9 +54,9 @@ const DEF_SKULL = { rx: [0.32, 0.48, 0.53, 0.47, 0.38, 0.31, 0.25, 0.17], ry: [0
 export const BEASTS: Record<string, Beast> = {
   mossback: {
     id: 'mossback', name: 'Mossback', latin: 'Testudocervus muscosus', role: 'tank', plan: 'quadruped', lineage: 'vertebrate', cover: 'fur',
-    concept: 'A five-metre browser that carries its ribs outside: a domed back-shield of overlapping bone bands, grown over with moss, over a shaggy body. Slow, near-blind, unbothered. Its small head hangs low under the shield rim.',
+    concept: 'A browser nearly five metres long that carries its ribs outside: a domed back-shield of overlapping bone bands, grown over with moss, over a shaggy body. Slow, near-blind, unbothered. Its small head hangs low under the shield rim.',
     genes: ['vert_quadruped', 'leg_pillar', 'eye_camera', 'molars', 'osteoderms', 'shaggy', 'fat_stores', 'endotherm', 'live_birth'],
-    sliders: { size: 0.82, len: 0.55, girth: 0.92, legLen: 0.3, legThick: 0.85, neck: 0.25, head: 0.4, tail: 0.15 },
+    sliders: { size: 1, len: 0.85, girth: 0.92, legLen: 0.3, legThick: 0.85, neck: 0.25, head: 0.4, tail: 0.15 },
     colors: { base: ['fur', 2], belly: ['fur', 3], pattern: ['fur', 1], accent: ['moss', 4], eye: ['fur', 1] }, pattern: 'plain', patScale: 1,
     form: {
       trunk: [[0.44, 0.5, 0.72], [0.52, 0.56, 0.7], [0.5, 0.5, 0.6], [0.47, 0.5, 0.5]], neckR: 0.5, nAng: 0.05, neckK: 0.8, headK: 0.75, snoutK: 0.8,
@@ -74,10 +74,10 @@ export const BEASTS: Record<string, Beast> = {
     colors: { base: ['bone', 3], belly: ['bone', 4], pattern: ['sand', 2], accent: ['rust', 3], eye: ['fur', 1] }, pattern: 'plain', patScale: 1,
     form: {
       trunk: [[0.48, 0.55, 0.6], [0.55, 0.62, 0.66], [0.55, 0.6, 0.62], [0.5, 0.56, 0.52]], neckR: 0.42, nAng: 0.15, neckK: 1.1, headK: 0.55, snoutK: 0.9,
-      hK: 1.15, foreK: 1.05, hindK: 1, foreT: 0.75, hindT: 0.8, slope: 0.02, tailK: 0.4,
+      hK: 1.15, foreK: 1.32, hindK: 1.28, foreT: 0.7, hindT: 0.75, slope: 0.02, tailK: 0.4,
       skull: { rx: [0.3, 0.44, 0.48, 0.4, 0.3, 0.24, 0.21, 0.19], ry: [0.34, 0.46, 0.48, 0.4, 0.32, 0.28, 0.26, 0.22], hy: [0.08, 0.17, 0.18, 0.12, 0.04, -0.02, -0.05, -0.08], eye: [0.2, 1.1, 1.15, 0.12], cap: 0.28 },
       eyes: { pupil: 'h' }, fore: [0.7, 0.62, 0.3, 0.2, 0.19], hind: [0.74, 0.68, 0.32, 0.2, 0.19], limbSkin: true,
-      parts: [{ k: 'wool', t0: -0.02, t1: 0.86, puff: 1.32, hang: 0.5 }],
+      parts: [{ k: 'wool', t0: -0.02, t1: 0.86, puff: 1.26, hang: 0.18 }],
     },
   },
   lancehorn: {
@@ -124,16 +124,16 @@ export const BEASTS: Record<string, Beast> = {
   },
   shellhunter: {
     id: 'shellhunter', name: 'Shellhunter', latin: 'Venatorcarapax pallidus', role: 'apex', plan: 'quadruped', lineage: 'vertebrate', cover: 'fur',
-    concept: 'The plains apex: six metres of pale muscle under a slate-blue helm and back-shield, a ruff of white fur at the throat, three slit eyes down each side of the helm, and a long whip tail ending in a red signal fan it flicks before it charges.',
+    concept: 'The plains apex: nearly five metres of pale muscle under a slate-blue helm and back-shield, a ruff of white fur at the throat, three slit eyes down each side of the helm, and a long whip tail ending in a red signal fan it flicks before it charges.',
     genes: ['vert_quadruped', 'leg_padded', 'eye_binocular', 'carnassials', 'osteoderms', 'fur', 'tail_balance', 'endotherm', 'live_birth'],
-    sliders: { size: 0.85, len: 0.7, girth: 0.62, legLen: 0.5, legThick: 0.75, neck: 0.2, head: 0.6, tail: 0.95 },
+    sliders: { size: 1, len: 1, girth: 0.62, legLen: 0.5, legThick: 0.75, neck: 0.2, head: 0.6, tail: 0.95 },
     colors: { base: ['snow', 3], belly: ['snow', 4], pattern: ['slate', 3], accent: ['stampRed', 3], eye: ['teal', 4] }, pattern: 'plain', patScale: 1,
     form: {
       trunk: [[0.46, 0.5, 0.72], [0.5, 0.48, 0.64], [0.42, 0.44, 0.46], [0.46, 0.5, 0.48]], neckR: 0.55, nAng: 0.1, neckK: 0.6, headK: 1, snoutK: 1,
       hK: 1, foreK: 1.06, hindK: 1, foreT: 1.25, hindT: 1.1, slope: 0.06, tailK: 1.25,
       skull: { rx: [0.42, 0.56, 0.6, 0.54, 0.46, 0.38, 0.32, 0.24], ry: [0.4, 0.52, 0.54, 0.46, 0.38, 0.32, 0.27, 0.2], hy: [0.08, 0.18, 0.2, 0.14, 0.05, -0.01, -0.04, -0.06], eye: [0.3, 1.0, 0.8, 0.05], cap: 0.2 },
       eyes: { rows: 3, pupil: 'v' }, fore: [0.66, 0.76, 0.42, 0.3, 0.28], hind: [0.7, 0.78, 0.42, 0.28, 0.26], limbSkin: true, tailScales: true,
-      parts: [{ k: 'carapace', t0: -0.04, t1: 0.42, bands: 4, spread: 1.4, lift: 1.12, ramp: 'slate' }, { k: 'tailFan', size: 0.55, ramp: 'stampRed' }, { k: 'mane' }],
+      parts: [{ k: 'helm', ramp: 'slate' }, { k: 'carapace', t0: 0.0, t1: 0.42, bands: 4, spread: 1.4, lift: 1.12, ramp: 'slate' }, { k: 'tailFan', size: 0.55, ramp: 'stampRed' }, { k: 'mane' }],
     },
   },
   fanfin: {

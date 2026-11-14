@@ -72,8 +72,8 @@ export function skyAt(sky: Sky, scene: THREE.Scene, camY: number, alt: number, w
 // ------------------------------------------------------------------ the ground
 export function buildFar(W: World) {
   const R = W.R, N = W.N, pal = W.pal, bin = W.bin;
-  const n = R.noise, G = 132, ext = 22000;
-  const coord = (i: number) => { const u = (i / (G - 1)) * 2 - 1, a = Math.abs(u); return Math.sign(u) * (a < 0.08 ? (a / 0.08) * 70 : 70 + Math.pow((a - 0.08) / 0.92, 2.15) * (ext - 70)); };
+  const n = R.noise, G = 184, ext = 22000;
+  const coord = (i: number) => { const u = (i / (G - 1)) * 2 - 1, a = Math.abs(u); return Math.sign(u) * (a < 0.26 ? (a / 0.26) * 230 : 230 + Math.pow((a - 0.26) / 0.74, 2.5) * (ext - 230)); };
   const pos = new Float32Array(G * G * 3), col = new Float32Array(G * G * 3);
   const bk = R.biome.key;
   const cA = new THREE.Color(bk === 'desert' ? pal.sand : bk === 'tundra' ? pal.snow : bk === 'ashland' ? pal.basalt : bk === 'savanna' ? pal.grassDry : bk === 'marsh' ? pal.mud : pal.grass);
@@ -87,7 +87,7 @@ export function buildFar(W: World) {
     const big = n.fbm2(x * 0.00045 + 31, z * 0.00045 - 7, 4), mid = n.fbm2(x * 0.004, z * 0.004, 3);
     const hFar = 4.2 + big * amp * 1.4 + mid * amp * 0.25 + Math.max(0, n.ridge2(x * 0.0008, z * 0.0008, 3) - 0.4) * amp * 2 * R.biome.rough;
     if (dIn < 0) y = W.gH(clamp(x, -N / 2 + 1, N / 2 - 1), clamp(z, -N / 2 + 1, N / 2 - 1)) - 2.5;
-    else { const edge = W.gH(clamp(x, -N / 2 + 0.5, N / 2 - 0.5), clamp(z, -N / 2 + 0.5, N / 2 - 0.5)); y = lerp(edge - 0.3, hFar, sm(0, 220, dIn)); }
+    else { const edge = W.gH(clamp(x, -N / 2 + 0.5, N / 2 - 0.5), clamp(z, -N / 2 + 0.5, N / 2 - 0.5)); const near = 4.3 + mid * 2.2 + big * 3; y = lerp(lerp(edge - 0.2, near, sm(0, 60, dIn)), hFar, sm(120, 900, dIn)); }
     const d2 = x * x + z * z; y -= d2 / (2 * RP);
     pos[k] = x; pos[k + 1] = y; pos[k + 2] = z;
     // colour: ground, woods, rock on the heights, sand at the shore, snow up high
@@ -105,6 +105,44 @@ export function buildFar(W: World) {
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
   const m = mesh(bin, g, lit(bin, 0xffffff, { vertexColors: true, flat: true, flag: 0 }), W.parent, 0, 0, 0, false);
   m.receiveShadow = true; m.frustumCulled = false;
+  // the woods carry on past the region's border, thinning out (so the region is not a tile on a table)
+  if (bk === 'desert' || bk === 'ashland') return;
+  const spots: [number, number, number, number][] = [];
+  for (let z = -300; z <= 300; z += 4) for (let x = -300; x <= 300; x += 4) {
+    const dIn = Math.max(Math.abs(x), Math.abs(z)) - N / 2; if (dIn < 1) continue;
+    const jx = x + (hash(x, z, 1) - 0.5) * 3.6, jz = z + (hash(x, z, 2) - 0.5) * 3.6;
+    const f = n.fbm2(jx * 0.02 + 9, jz * 0.02, 3) * 0.9 + 0.35 - dIn / 700;
+    if (hash(x, z, 5) > f) continue;
+    const yy = sampleFar(g, G, coord, jx, jz); if (yy < R.water + 0.4) continue;
+    spots.push([jx, yy, jz, 0.8 + hash(x, z, 3) * 0.9]);
+    if (spots.length > 2600) break;
+  }
+  if (spots.length) {
+    const im = new THREE.InstancedMesh(bin.g(treeGeo()), lit(bin, 0xffffff, { flat: true }), spots.length);
+    const fc = pal.foliage.length ? pal.foliage : [pal.grass];
+    spots.forEach(([x, y, z, sc], i) => {
+      _m.compose(_v.set(x, y - 0.1, z), _q.setFromAxisAngle(new V3(0, 1, 0), hash(x, z, 4) * TAU), _v2.set(sc, sc * (0.8 + hash(x, z, 6) * 0.5), sc));
+      im.setMatrixAt(i, _m); im.setColorAt(i, new THREE.Color(fc[Math.floor(hash(x, z, 7) * fc.length)]).multiplyScalar(0.66 + hash(x, z, 8) * 0.22));
+    });
+    im.castShadow = true; im.receiveShadow = true; W.parent.add(im);
+  }
+}
+/** the far ground's height at a point (bilinear on its stretched grid) */
+function sampleFar(g: THREE.BufferGeometry, G: number, coord: (i: number) => number, x: number, z: number) {
+  const find = (v: number) => { let lo = 0, hi = G - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (coord(m) <= v) lo = m; else hi = m; } return lo; };
+  const i = find(x), j = find(z), x0 = coord(i), x1 = coord(i + 1), z0 = coord(j), z1 = coord(j + 1);
+  const u = clamp((x - x0) / (x1 - x0), 0, 1), v = clamp((z - z0) / (z1 - z0), 0, 1), P = g.attributes.position as THREE.BufferAttribute;
+  const y = (a: number, b: number) => P.getY(b * G + a);
+  return (y(i, j) * (1 - u) + y(i + 1, j) * u) * (1 - v) + (y(i, j + 1) * (1 - u) + y(i + 1, j + 1) * u) * v;
+}
+/** a little conifer: trunk and two cones (instanced across the woods) */
+function treeGeo() {
+  const trunk = new THREE.CylinderGeometry(0.12, 0.18, 1.2, 5); trunk.translate(0, 0.6, 0);
+  const crownA = new THREE.ConeGeometry(1.1, 2.6, 6); crownA.translate(0, 2.3, 0);
+  const crownB = new THREE.ConeGeometry(0.8, 1.8, 6); crownB.translate(0, 3.3, 0);
+  const tg = mergeGeos([trunk, crownA, crownB]);
+  [trunk, crownA, crownB].forEach((x) => x.dispose());
+  return tg;
 }
 function blockColor(W: World, b: number, x: number, z: number, out: THREE.Color) {
   const p = W.pal;
@@ -134,11 +172,7 @@ export function buildRegion(W: World) {
   const m = mesh(bin, g, lit(bin, 0xffffff, { vertexColors: true, flat: true, flag: 1 }), W.parent, 0, 0, 0, false);
   m.receiveShadow = true; m.name = 'region-ground'; W.regionMesh = m;
   // woods: instanced conifers and broadleaf lumps where the forest is thick
-  const trunk = new THREE.CylinderGeometry(0.12, 0.18, 1.2, 5); trunk.translate(0, 0.6, 0);
-  const crownA = new THREE.ConeGeometry(1.1, 2.6, 6); crownA.translate(0, 2.3, 0);
-  const crownB = new THREE.ConeGeometry(0.8, 1.8, 6); crownB.translate(0, 3.3, 0);
-  const tg = mergeGeos([trunk, crownA, crownB]);
-  [trunk, crownA, crownB].forEach((x) => x.dispose());
+  const tg = treeGeo();
   const spots: [number, number, number][] = [];
   for (let z = 2; z < N - 2; z += 2) for (let x = 2; x < N - 2; x += 2) {
     const f = R.forest[z * N + x];
@@ -185,8 +219,8 @@ export function buildRegion(W: World) {
 }
 export function buildWater(W: World) {
   const pal = W.pal;
-  const m = lit(W.bin, new THREE.Color(pal.water).lerp(new THREE.Color(0x234656), 0.45).getHex(), { phong: true, shininess: 90, flat: false, flag: 0 });
-  (m as THREE.MeshPhongMaterial).specular = new THREE.Color(0x8a9aa0);
+  const m = lit(W.bin, new THREE.Color(pal.water).lerp(new THREE.Color(0x234656), 0.45).getHex(), { phong: true, shininess: 260, flat: false, flag: 0 });
+  (m as THREE.MeshPhongMaterial).specular = new THREE.Color(0x2e3a3e);
   const w = mesh(W.bin, new THREE.CircleGeometry(22000, 48), m, W.parent, 0, W.R.water - 0.08, 0, false);
   w.rotation.x = -Math.PI / 2; w.receiveShadow = true;
 }

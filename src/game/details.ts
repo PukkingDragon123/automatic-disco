@@ -319,6 +319,8 @@ export class Details {
   private rainMesh: THREE.Mesh; private rainU: Record<string, THREE.IUniform>;
   private rain = 0; private rainGoal = 0; private showerT = 0; private showerDur = 0; private nextShower: number; private forced: number | null = null;
   private wetGround = 0; private hitAcc = 0;
+  // trampled ground: where creatures walk often the grass wears to a dirt path (terrain eco map, blue channel)
+  private wear: Float32Array; private wearDirty = false; private wearT = 0;
   private gatherT = 0;
 
   constructor(readonly g: Game) {
@@ -329,6 +331,7 @@ export class Details {
     this.vfx.onLand = (x, y, z, kind, size, ramp) => this.landed(x, y, z, kind, size, ramp);
     this.prints = new Prints(w.scene);
     this.flow = this.buildFlow();
+    this.wear = new Float32Array(R.N * R.N);
     // debris: leaves and twigs on the water, lit and outlined like everything else
     const plane = new THREE.PlaneGeometry(1, 1); plane.rotateX(-Math.PI / 2);
     const mk = (kind: 'leaf' | 'twig', ramp: RampName, n: number) => {
@@ -500,6 +503,16 @@ export class Details {
     }
     this.vfx.update(dt);
     this.prints.flush(this.t);
+    // worn paths recover slowly; the terrain reads them from its eco map
+    if ((this.wearT += dt) > 0.6) {
+      const k = Math.exp(-this.wearT / 900), tr = w.terrain, d = tr.ecoData(), W = this.wear;
+      this.wearT = 0;
+      let any = this.wearDirty;
+      for (let i = 0; i < W.length; i++) { if (W[i] <= 0) continue; W[i] *= k; if (W[i] < 0.004) W[i] = 0; const b = Math.round(W[i] * 255); if (d[i * 4 + 2] !== b) { d[i * 4 + 2] = b; any = true; } }
+      if (any) tr.ecoFlush();
+      this.wearDirty = false;
+    }
+    w.terrain.U.uWetG.value = this.wetGround;
   }
 
   private ripples(dt: number) {
@@ -626,6 +639,8 @@ export class Details {
   private printAt(x: number, z: number, yaw: number, sx: number, sz: number, shape: Foot, side: number, wet: number, mass: number, inW: boolean) {
     if (inW) return;
     const R = this.g.region, N = R.N;
+    const wi = clamp(Math.floor(z), 0, N - 1) * N + clamp(Math.floor(x), 0, N - 1);
+    this.wear[wi] = Math.min(1, this.wear[wi] + 0.012 * clamp(Math.cbrt(Math.max(0.1, mass)) * 0.45, 0.25, 2)); this.wearDirty = true;
     const b = R.b[clamp(Math.floor(z), 0, N - 1) * N + clamp(Math.floor(x), 0, N - 1)];
     let so = SOIL[b];
     // rain softens everything; a wet foot marks even bare rock

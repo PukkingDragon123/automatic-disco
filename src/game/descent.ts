@@ -87,9 +87,9 @@ void main(){
   float v = uWake > 0.5 ? vUv.y : 1.0 - vUv.y;
   float flow = vn(vec2(vUv.x * 18.0, v * 6.0 - uT * 14.0)) * 0.6 + vn(vec2(vUv.x * 41.0, v * 13.0 - uT * 23.0)) * 0.4;
   float rim = abs(dot(normalize(vN), normalize(vV)));
-  float body = uWake > 0.5 ? pow(1.0 - v, 1.4) * smoothstep(0.25, 0.75, flow) * (0.4 + 0.6 * (1.0 - rim)) : pow(1.0 - rim, 1.2) * (0.6 + 0.6 * flow);
+  float body = uWake > 0.5 ? pow(1.0 - v, 1.8) * smoothstep(0.45, 0.8, flow) * rim : pow(1.0 - rim, 1.6) * (0.5 + 0.6 * flow);
   float a = body * uK;
-  vec3 hot = vec3(2.2, 1.7, 1.2), mid = vec3(1.7, 0.62, 0.12), cool = vec3(0.7, 0.12, 0.04);
+  vec3 hot = vec3(1.7, 1.15, 0.7), mid = vec3(1.45, 0.48, 0.1), cool = vec3(0.6, 0.1, 0.03);
   float heat = uWake > 0.5 ? (1.0 - v) * (0.6 + flow * 0.5) : 0.7 + rim * 0.3;
   vec3 c = heat > 0.66 ? mix(mid, hot, (heat - 0.66) * 3.0) : mix(cool, mid, heat * 1.5);
   a = floor(a * 6.0) / 6.0;
@@ -321,7 +321,7 @@ export class Descent {
     const rel = (s: number, u: number, f: number, out: V) => out.set(P().x + this.Rt.x * s + this.F.x * f, P().y + u, P().z + this.Rt.y * s + this.F.y * f);
     const add = (name: string, alt: number, dur: number, pose: Shot['pose']) => { if (alt < a0 - 60) this.shots.push({ name, t: alt, dur, pose }); };
     // 1. alongside, through the sheath, the horizon curving behind
-    add('plasma-side', a0 - 120, 3.0, (t, pos, look) => { rel(-9 + t * 1.2, -2.5 + t * 0.6, 3 - t * 1.2, pos); rel(0, -0.6, 0, look); return 38; });
+    add('plasma-side', a0 - 120, 3.0, (t, pos, look) => { rel(-17 + t * 1.5, -5 + t * 0.8, 7 - t * 1.4, pos); rel(1.5, -3.2, 0, look); return 40; });
     // 2. the porthole: Unit 07's lens in the orange light
     add('porthole', 1700, 2.4, (t, pos, look) => { portholeWorld(this.pod, look); const out = look.clone().sub(P()).setY(0).normalize(); pos.copy(look).addScaledVector(out, 1.6 - t * 0.25).add(_v.set(0, 0.35, 0)); return 34; });
     // 3. from the ground at the pin: a fireball crossing the sky
@@ -528,7 +528,7 @@ export class Descent {
     if (this.shot) { this.shot.t += dt; if (this.shot.t >= this.shot.dur) this.endShot(); }
     if (A <= 0) this.touchdown();
     const h = this.o.hold;
-    if (h && ((h === 'entry' && A < this.alt0 - 300) || (h === 'low' && A < 230) || (h === 'cloud' && A < this.clouds[0].y + 6) || (h === 'flare' && A < 3.5) || (h === 'chute' && this.chute > 0.9 && A < CHUTE_ALT - 20) || (this.shot && this.shot.name === h && this.shot.t > this.shot.dur * 0.55))) { this.o.engine.timeScale = 0; this.o.hold = null; console.log('descent hold', h); }
+    if (h && ((h.startsWith('alt:') && A < Number(h.slice(4))) || (h === 'entry' && A < this.alt0 - 300) || (h === 'low' && A < 230) || (h === 'cloud' && A < this.clouds[0].y + 6) || (h === 'flare' && A < 3.5) || (h === 'chute' && this.chute > 0.9 && A < CHUTE_ALT - 20) || (this.shot && this.shot.name === h && this.shot.t > this.shot.dur * 0.55))) { this.o.engine.timeScale = 0; this.o.hold = null; console.log('descent hold', h); }
   }
   private compass(x: number, z: number) {
     // world -z is north on the chart
@@ -614,7 +614,7 @@ export class Descent {
     const A = this.alt, pod = this.pod, P = pod.root.position;
     // plasma: builds after the interface, peaks, dies by the weather deck
     const heat = this.landed ? 0 : sm(this.alt0 + 50, this.alt0 - 300, A) * (1 - sm(1300, 900, A));
-    for (const u of this.plasmaU) { u.uT.value = this.t; u.uK.value = heat * (u.uWake.value ? 0.9 : 1.2); }
+    for (const u of this.plasmaU) { u.uT.value = this.t; u.uK.value = heat * (u.uWake.value ? 0.42 : 0.6); }
     this.plasma.forEach((m) => (m.visible = heat > 0.01));
     pod.heat.value = Math.max(heat * 1.4, pod.heat.value - dt * 0.15);
     this.heatLight.intensity = heat * 12;

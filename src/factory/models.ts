@@ -483,6 +483,100 @@ const MODELS: Partial<Record<string, (tier: number) => Model>> = {
     m.label([0, 0.55, 0.36], 0.4, 0.24, 'MERGER');
     return { base: m.geo(), parts: [], lamp: [0, -9, 0] };
   },
+  dam: () => {
+    const m = new MG();
+    m.box([0, 0.1, 0], [1.0, 0.2, 1.1], L.CONCRETE);
+    m.box([0, 0.95, 0], [1.0, 1.7, 0.7], L.CONCRETE);
+    m.box([0, 0.55, -0.42], [1.0, 0.9, 0.2], L.CONCRETE, { rx: 0.35 });
+    m.box([0, 1.82, 0], [1.02, 0.08, 0.76], L.STEEL);
+    m.box([0, 1.4, 0.36], [1.0, 0.06, 0.02], L.HAZARD);
+    return { base: m.geo(), parts: [], lamp: [0, -9, 0] };
+  },
+  sluice: () => {
+    const m = new MG();
+    m.box([0, 0.1, 0], [1.0, 0.2, 1.1], L.CONCRETE);
+    for (const x of [-0.42, 0.42]) m.box([x, 1.0, 0], [0.16, 1.9, 0.7], L.CONCRETE);
+    m.box([0, 2.0, 0], [1.02, 0.14, 0.5], L.OLIVE);
+    m.cyl([0, 2.2, 0.1], 0.18, 0.06, L.RED, { n: 8, axis: 'z' });
+    m.cyl([0, 2.2, 0.1], 0.05, 0.3, L.STEEL, { n: 6, axis: 'z' });
+    m.lamp([0.4, 2.25, -0.2]);
+    const gate = part((p) => { p.box([0, 0.9, 0], [0.7, 1.4, 0.12], L.RUST); for (let y = 0.4; y < 1.6; y += 0.3) p.box([0, y, 0.07], [0.7, 0.05, 0.03], L.STEEL); }, [0, 0.9, 0], 'press', 'y', 0, 0);
+    return { base: m.geo(), parts: [gate], lamp: [0.4, 2.25, -0.2] };
+  },
+  sprinkler: () => {
+    const m = new MG();
+    m.box([0, 0.06, 0], [0.5, 0.12, 0.5], L.CONCRETE);
+    m.cyl([0, 0.6, 0], 0.06, 1.0, L.COPPER, { n: 6 });
+    m.cyl([0, 0.15, 0], 0.16, 0.18, L.OLIVE, { n: 6 });
+    m.lamp([0.18, 0.4, 0.0]);
+    const head = part((p) => { p.cyl([0, 1.15, 0], 0.08, 0.12, L.BRASS, { n: 6 }); for (const sgn of [-1, 1]) { p.box([sgn * 0.25, 1.18, 0], [0.5, 0.04, 0.04], L.COPPER); p.box([sgn * 0.5, 1.2, 0], [0.06, 0.08, 0.06], L.BRASS); } }, [0, 1.15, 0], 'spin', 'y', 4);
+    return { base: m.geo(), parts: [head], lamp: [0.18, 0.4, 0.0] };
+  },
+  spreader: () => {
+    const m = new MG(); pad(m, 2, 2, 0.12);
+    m.hopper([0, 1.1, -0.2], 0.4, 1.3, 0.8, L.OLIVE);
+    m.box([0, 1.52, -0.2], [1.3, 0.04, 1.3], L.HAZARD);
+    for (const [x, z] of [[-0.5, -0.7], [0.5, -0.7], [-0.5, 0.3], [0.5, 0.3]]) m.box([x, 0.45, z], [0.08, 0.7, 0.08], L.GUN);
+    m.box([0, 0.35, 0.65], [0.5, 0.4, 0.4], L.CREAM);
+    m.lamp([0.6, 0.7, 0.65]);
+    const disc = part((p) => { p.cyl([0, 0.55, -0.2], 0.4, 0.05, L.STEEL, { n: 8 }); for (let k = 0; k < 4; k++) p.box([0, 0.6, -0.2], [0.7, 0.05, 0.04], L.RUST, { ry: k * 0.785 }); }, [0, 0.55, -0.2], 'spin', 'y', 6);
+    return { base: m.geo(), parts: [disc], lamp: [0.6, 0.7, 0.65] };
+  },
+  sprayer: () => {
+    const m = new MG();
+    m.box([0, 0.06, 0], [0.8, 0.12, 0.8], L.CONCRETE);
+    m.cyl([0.15, 0.4, 0.15], 0.25, 0.6, L.OLIVE, { n: 8 });
+    m.box([0.15, 0.55, 0.15], [0.3, 0.12, 0.52], L.HAZARD);
+    m.box([-0.25, 0.9, -0.25], [0.08, 1.7, 0.08], L.GUN);
+    m.lamp([0.4, 0.85, 0.15]);
+    const boom = part((p) => { p.box([-0.25, 1.72, -0.25], [1.4, 0.05, 0.05], L.GUN); for (let k = -2; k <= 2; k++) p.box([-0.25 + k * 0.3, 1.66, -0.25], [0.05, 0.08, 0.05], L.BRASS); }, [-0.25, 1.72, -0.25], 'spin', 'y', 0.8);
+    return { base: m.geo(), parts: [boom], lamp: [0.4, 0.85, 0.15] };
+  },
+  planter: () => {
+    const m = new MG(); pad(m, 2, 2, 0.1);
+    m.box([0, 0.55, -0.3], [1.5, 0.7, 0.9], L.RED);
+    m.box([0, 0.93, -0.3], [1.56, 0.06, 0.96], L.STEEL);
+    for (const x of [-0.45, 0, 0.45]) m.hopper([x, 1.15, -0.3], 0.2, 0.42, 0.36, L.CREAM);
+    m.box([0, 0.3, 0.55], [1.6, 0.12, 0.14], L.GUN);
+    for (const x of [-0.6, -0.2, 0.2, 0.6]) m.box([x, 0.2, 0.62], [0.05, 0.25, 0.08], L.STEEL, { rx: 0.4 });
+    m.label([0, 0.55, 0.16], 0.5, 0.3, 'GROW SHED');
+    m.lamp([0.65, 1.0, -0.65]);
+    return { base: m.geo(), parts: [], lamp: [0.65, 1.0, -0.65] };
+  },
+  trough: () => {
+    const m = new MG();
+    m.box([0, 0.06, 0], [1.9, 0.12, 0.9], L.CONCRETE);
+    m.box([0, 0.35, 0], [1.7, 0.45, 0.6], L.WOOD);
+    m.box([0, 0.55, 0], [1.6, 0.06, 0.5], L.MOSS);
+    for (const x of [-0.8, 0.8]) m.box([x, 0.2, 0], [0.1, 0.4, 0.75], L.WOOD);
+    m.box([0.6, 0.62, 0.1], [0.2, 0.12, 0.2], L.RED); m.box([-0.4, 0.62, -0.1], [0.18, 0.1, 0.18], L.RED);
+    return { base: m.geo(), parts: [], lamp: [0, -9, 0] };
+  },
+  pen: () => {
+    const m = new MG();
+    for (const s of [-1, 1]) for (let k = -1; k <= 1; k++) {
+      m.box([s * 1.4, 0.7, k * 0.95], [0.1, 1.4, 0.1], L.WOOD); if (k !== 0 || s < 0) m.box([k * 0.95, 0.7, s * 1.4], [0.1, 1.4, 0.1], L.WOOD);
+    }
+    for (const y of [0.45, 0.95]) { for (const s of [-1, 1]) m.box([s * 1.4, y, 0], [0.05, 0.08, 2.8], L.WOOD); m.box([0, y, -1.4], [2.8, 0.08, 0.05], L.WOOD); m.box([-0.95, y, 1.4], [0.95, 0.08, 0.05], L.WOOD); m.box([0.95, y, 1.4], [0.95, 0.08, 0.05], L.WOOD); }
+    m.box([0, 1.5, 1.4], [1.2, 0.1, 0.12], L.GUN); for (const x of [-0.55, 0.55]) m.box([x, 0.8, 1.4], [0.1, 1.6, 0.12], L.GUN);
+    m.box([0, 0.15, 0], [1.0, 0.2, 0.5], L.WOOD); m.box([0, 0.26, 0], [0.9, 0.04, 0.4], L.MOSS);
+    m.lamp([0.55, 1.65, 1.4]);
+    const gate = part((p) => { p.box([0, 0.9, 1.4], [1.0, 1.1, 0.06], L.WOOD); p.box([0, 0.9, 1.43], [1.0, 0.08, 0.02], L.HAZARD); }, [0, 1.45, 1.4], 'press', 'y', 0, 0);
+    return { base: m.geo(), parts: [gate], lamp: [0.55, 1.65, 1.4] };
+  },
+  breeder: () => {
+    const m = new MG();
+    for (const s of [-1, 1]) for (let k = -1; k <= 1; k++) { m.box([s * 1.4, 0.6, k * 1.35], [0.1, 1.2, 0.1], L.WOOD); m.box([k * 1.35, 0.6, s * 1.4], [0.1, 1.2, 0.1], L.WOOD); }
+    for (const y of [0.4, 0.85]) for (const s of [-1, 1]) { m.box([s * 1.4, y, 0], [0.05, 0.08, 2.8], L.WOOD); m.box([0, y, s * 1.4], [2.8, 0.08, 0.05], L.WOOD); }
+    m.box([-0.7, 1.15, -0.8], [1.4, 0.06, 1.2], L.RUST, { rx: -0.2 });
+    for (const x of [-1.3, -0.1]) m.box([x, 0.6, -0.3], [0.06, 1.0, 0.06], L.WOOD);
+    m.box([0, 0.08, -0.8], [1.4, 0.1, 1.0], L.MOSS);
+    m.box([0.8, 0.3, 0.8], [0.8, 0.3, 0.4], L.WOOD); m.box([0.8, 0.42, 0.8], [0.7, 0.04, 0.3], L.MOSS);
+    m.cyl([0.9, 0.3, -0.9], 0.2, 0.5, L.CREAM, { n: 8 });
+    m.label([0.8, 0.3, 1.01], 0.36, 0.2, 'BARRACKS');
+    m.lamp([1.35, 1.25, 1.35]);
+    return { base: m.geo(), parts: [], lamp: [1.35, 1.25, 1.35] };
+  },
   lift: () => {
     const m = new MG();
     m.box([0, 0.08, 0], [0.9, 0.16, 0.9], L.CONCRETE);
@@ -523,18 +617,32 @@ export function beltPath(shape: 'straight' | 'left' | 'right', t: number): [numb
   const sx = shape === 'left' ? -1 : 1, a = t * Math.PI / 2;
   return [sx * 0.5 - sx * Math.sin(a) * 0.5, 0.5 - Math.cos(a) * 0.5, -sx * Math.cos(a), Math.sin(a)];
 }
+/** a pipe cell: copper run on a trestle; curves turn in from the side through an elbow */
+export function pipeBody(m: MG, shape: 'straight' | 'left' | 'right') {
+  const y = 0.42;
+  m.box([0, y / 2 - 0.05, 0], [0.5, 0.06, 0.1], L.GUN); m.box([0, y / 2 - 0.1, 0], [0.06, y - 0.1, 0.06], L.GUN);
+  if (shape === 'straight') { m.cyl([0, y, 0], 0.13, 1.0, L.COPPER, { n: 6, axis: 'z', open: true }); m.cyl([0, y, 0.45], 0.17, 0.08, L.BRASS, { n: 6, axis: 'z' }); return; }
+  const sx = shape === 'left' ? -1 : 1;
+  m.cyl([sx * 0.25, y, 0], 0.13, 0.5, L.COPPER, { n: 6, axis: 'x', open: true });
+  m.cyl([0, y, 0.25], 0.13, 0.5, L.COPPER, { n: 6, axis: 'z', open: true });
+  m.box([0, y, 0], [0.3, 0.3, 0.3], L.BRASS);
+}
 const CACHE = new Map<string, Model>();
-export function modelFor(kind: FKind | string, model: string): Model {
+export function modelFor(kind: FKind | string, model: string, hook?: (m: MG) => void): Model {
   const tier = kind === 'miner2' ? 2 : kind === 'miner3' ? 3 : 1;
-  const key = model + tier;
+  const key = (hook ? 'hook:' + kind : model) + tier;
   let m = CACHE.get(key);
-  if (!m) { m = (MODELS[model] ?? MODELS.crate!)(tier); CACHE.set(key, m); }
+  if (!m) {
+    if (hook) { const g = new MG(); hook(g); m = { base: g.geo(), parts: [], lamp: [0, -9, 0] }; }
+    else m = (MODELS[model] ?? MODELS.crate!)(tier);
+    CACHE.set(key, m);
+  }
   return m;
 }
-export function beltGeo(shape: 'straight' | 'left' | 'right'): THREE.BufferGeometry {
-  const key = 'belt-' + shape;
+export function beltGeo(shape: 'straight' | 'left' | 'right', pipe = false): THREE.BufferGeometry {
+  const key = (pipe ? 'pipe-' : 'belt-') + shape;
   let m = CACHE.get(key);
-  if (!m) { const g = new MG(); beltBody(g, shape); m = { base: g.geo(), parts: [], lamp: [0, -9, 0] }; CACHE.set(key, m); }
+  if (!m) { const g = new MG(); if (pipe) pipeBody(g, shape); else beltBody(g, shape); m = { base: g.geo(), parts: [], lamp: [0, -9, 0] }; CACHE.set(key, m); }
   return m.base;
 }
 /** an outcrop over a coal or copper seam */

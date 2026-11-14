@@ -12,7 +12,7 @@ import type { Design } from './design';
 import type { Rig } from './morph';
 import { shagCoat, mane, tassel, crest, wattle, tailFin, brushTail, sail, frill, roundEars, whiskers, tongue, throatSac, gills, ramHorns, palmAntlers, rack, bearPaw, toes, amphSkin, scuteShell, crabShell, beetleHorns, mothWings, plumes, type SpineTs, type HeadCtx } from './parts';
 import { BEASTS, type BeastForm } from './bestiary';
-import { growBody, markBody, headFans, greatHorn, skullCrest, type BodyMark } from './forms';
+import { growBody, markBody, headFans, greatHorn, skullCrest, helm, type BodyMark } from './forms';
 import { SkinB, Page, type Region, KIT, oct, blade, sac, spline, chainWeights, ball, sheet, transport, hash, gauss, sub, addV, scl, norm, cross, len, lerpV, pageTexture, mixC, type V3, type Wt } from './kit';
 
 const TAU = Math.PI * 2;
@@ -798,6 +798,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     if (p.k === 'horn') greatHorn(S, HC, p, S.P.base);
     else if (p.k === 'crest') skullCrest(S, HC, p);
     else if (p.k === 'headFans') headFans(S, HC, p);
+    else if (p.k === 'helm') helm(S, HC, ctrl, rx, ry, p.ramp);
   }
   if (has(d, 'electro')) {
     const G = S.fixed('GLOW', 6, 6);
@@ -910,7 +911,6 @@ function vertLeg(S: Ctx, lg: Rig['legs'][number], lt: number, fur: boolean) {
     // bare-legged species: the coat ends at the elbow and knee, wrinkled skin below with tendons down the back
     if (BFL?.limbSkin) {
       const keep = keepRows(LIMB, 0, Math.floor(LIMB.h * 0.4)); hide(S, LIMB, { ...lo, cover: 'skin', noPattern: true }); keep();
-      for (let y = Math.floor(LIMB.h * 0.45); y < LIMB.h; y++) for (const a of [2.8, -2.8]) LIMB.set(LIMB.X((a * 180) / Math.PI), y, S.P.dark[2]);
     }
   }; (p as any).LIMB = 1; S.paints.push(p); }
   // ---- feet

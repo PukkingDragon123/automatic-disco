@@ -76,7 +76,6 @@ export const USTAT: Record<string, UStat> = {
 export const statOf = (kind: string): UStat => USTAT[kind] ?? USTAT.sov_trooper;
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3();
-const TRACER = new THREE.Color(), DUST = 0x8a7a65;
 
 export class StubUnit implements Unit {
   x: number; y: number; z: number; hp: number; readonly maxHp: number; dead = false;
@@ -91,7 +90,7 @@ export class StubUnit implements Unit {
   tgt: Tgt | null = null;
   private cd = Math.random(); private thinkT = Math.random() * 0.3; private flash = 0; private walk = Math.random() * 6;
   private path: number[] | null = null; private pi = 0; private repath = 0; private stuck = 0;
-  private deadT = 0; private home: [number, number];
+  deadT = 0; private home: [number, number];
   /** last thing that hurt it (brains read this to answer) */
   lastHit: { x: number; z: number; t: number } | null = null;
   /** set by the expedition while an engineer works a capture */
@@ -117,6 +116,7 @@ export class StubUnit implements Unit {
     F.g.world.scene.add(this.mesh);
   }
   get height() { return this.M.height; }
+  get human() { return this.kind.startsWith('expedition'); }
   get hover() { return this.M.hover; }
   order(o: UOrder) {
     this.ord = o; this.path = null; this.repath = 0;
@@ -134,9 +134,15 @@ export class StubUnit implements Unit {
   private die() {
     this.dead = true; this.hp = 0;
     const big = this.st.hp > 150;
-    this.F.boom.explode(this.x, this.y + this.M.height * 0.5, this.z, big ? 1.6 : 0.8, this.faction as FactionId);
-    this.F.boom.debris(this.x, this.y + this.M.height * 0.5, this.z, big ? 7 : 3, this.faction as FactionId, big ? 0.35 : 0.18);
-    this.mat.color.setHex(0x4a4642); this.mat.emissive.setHex(0);
+    if (this.human) {
+      // a person goes down: no fireball, just dust (they are carried off later)
+      vfx2d.play('dust', this.x, this.y + 0.1, this.z, { scale: 0.6 });
+      this.mat.emissive.setHex(0);
+    } else {
+      this.F.boom.explode(this.x, this.y + this.M.height * 0.5, this.z, big ? 1.6 : 0.8, this.faction as FactionId);
+      this.F.boom.debris(this.x, this.y + this.M.height * 0.5, this.z, big ? 7 : 3, this.faction as FactionId, big ? 0.35 : 0.18);
+      this.mat.color.setHex(0x4a4642); this.mat.emissive.setHex(0);
+    }
     this.F.onUnitDeath(this);
   }
   dispose() { this.mesh.removeFromParent(); this.mat.dispose(); }
@@ -147,6 +153,7 @@ export class StubUnit implements Unit {
     const F = this.F, w = F.g.world;
     if (this.dead) {
       this.deadT += dt;
+      if (this.human) { this.mesh.rotation.x = -Math.min(1.45, this.deadT * 4); if (this.deadT > 6) this.mesh.position.y -= dt * 0.3; return; }
       // the wreck slumps, smoulders and sinks away
       this.mesh.rotation.z = Math.min(0.5, this.deadT * 1.5) * (this.kind.length % 2 ? 1 : -1);
       if (this.top && this.deadT < 0.6) this.top.position.y += dt * 2;
@@ -284,4 +291,3 @@ function safeHuman(kind: string, f: FactionId): THREE.Object3D | null {
 }
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 function turn(a: number, b: number, k: number) { const d = wrap(b - a); return a + clamp(d, -k, k); }
-export { TRACER, DUST };

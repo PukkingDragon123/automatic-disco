@@ -4,16 +4,20 @@
 import type { ItemId } from './items';
 import type { Station } from './recipes';
 
-export type FKind =
+export type BaseKind =
   | 'depot' | 'miner1' | 'miner2' | 'miner3' | 'pump' | 'excavator'
   | 'belt1' | 'belt2' | 'belt3' | 'splitter' | 'merger' | 'lift'
   | 'smelter' | 'foundry' | 'constructor' | 'assembler' | 'manufacturer' | 'refinery' | 'shed'
   | 'crate' | 'silo' | 'boiler' | 'steamgen' | 'reactor' | 'pole'
-  | 'lab' | 'robotfab' | 'barracks' | 'turret' | 'wall' | 'found';
-export type FCat = 'extract' | 'logistics' | 'production' | 'power' | 'storage' | 'special' | 'defence';
+  | 'lab' | 'robotfab' | 'barracks' | 'turret' | 'wall' | 'found'
+  | 'pipe' | 'dam' | 'sluice' | 'sprinkler' | 'spreader' | 'sprayer' | 'planter' | 'trough' | 'pen' | 'breeder';
+/** building kinds: the Corps catalogue plus anything registered later (registerBuilding) */
+export type FKind = BaseKind | (string & {});
+export type FCat = 'extract' | 'logistics' | 'production' | 'power' | 'storage' | 'eco' | 'bio' | 'special' | 'defence';
 export const CATS: { k: FCat; name: string; no: string }[] = [
   { k: 'extract', name: 'Extraction', no: 'SEC. A' }, { k: 'logistics', name: 'Logistics', no: 'SEC. B' }, { k: 'production', name: 'Production', no: 'SEC. C' },
-  { k: 'power', name: 'Power', no: 'SEC. D' }, { k: 'storage', name: 'Storage', no: 'SEC. E' }, { k: 'special', name: 'Works & Labour', no: 'SEC. F' }, { k: 'defence', name: 'Defence', no: 'SEC. G' },
+  { k: 'power', name: 'Power', no: 'SEC. D' }, { k: 'storage', name: 'Storage', no: 'SEC. E' }, { k: 'eco', name: 'Land & Water', no: 'SEC. F' },
+  { k: 'bio', name: 'Bio-Works', no: 'SEC. G' }, { k: 'special', name: 'Works & Labour', no: 'SEC. H' }, { k: 'defence', name: 'Defence', no: 'SEC. J' },
 ];
 export type Cost = Partial<Record<ItemId, number>>;
 export interface FDef {
@@ -43,6 +47,23 @@ export interface FDef {
   solid?: boolean;
   /** an operator (worker) speeds it */
   operable?: boolean;
+  /** pipes: carry only these items (fluids) and hide them */
+  fluid?: boolean;
+  /** effect radius (sprinklers, sprayers, planters, troughs, pens) */
+  radius?: number;
+  /** registered buildings: behaviour and look supplied by another system */
+  hooks?: BuildingHooks;
+}
+/** what another system supplies with registerBuilding: a model (built with the factory's geometry kit, or any
+ *  geometry using the aLayer / aGlow attributes), and behaviour run on the 20 Hz tick */
+export interface BuildingHooks {
+  model?: (m: import('./models').MG) => void;
+  /** called every tick; b is the FBuilding, f the Factory */
+  tick?: (b: any, dt: number, f: any) => void;
+  placed?: (b: any, f: any) => void;
+  removed?: (b: any, f: any) => void;
+  /** extra lines for the inspector (HTML) */
+  inspect?: (b: any, f: any) => string;
 }
 const D = (kind: FKind, name: string, cat: FCat, w: number, d: number, h: number, cost: Cost, power: number, hp: number, desc: string, x: Partial<FDef> = {}): FDef =>
   ({ kind, name, cat, w, d, h, cost, power, hp, desc, model: kind, input: 'back', output: 'front', buf: 20, solid: true, ...x });
@@ -84,11 +105,31 @@ export const FDEFS: Record<FKind, FDef> = {
   turret: D('turret', 'Turret', 'defence', 2, 2, 1.8, { iron_plate: 10, iron_rod: 6, ore: 10 }, 2, 900, 'Twin guns on a turntable. Feed it ammunition by belt or by hand; it fires on anything hostile within 14 m.', { skill: 'turret', output: 'none', buf: 60 }),
   wall: D('wall', 'Wall', 'defence', 1, 1, 1.4, { soil: 3, ore: 1 }, 0, 800, 'Poured concrete. Drag to lay a line.', { input: 'none', output: 'none', skill: 'works' }),
   found: D('found', 'Foundation', 'logistics', 2, 2, 0.3, { soil: 4 }, 0, 400, 'A poured slab: levels the ground. Drag to lay a floor.', { input: 'none', output: 'none', solid: false, skill: 'works' }),
+
+  // land and water: engineering the ecosystem around the base
+  pipe: D('pipe', 'Pipe', 'eco', 1, 1, 0.4, { ore: 2 }, 0, 100, 'Copper pipe on trestles: carries water, bio-oil and fuel like a belt carries crates. Drag to lay a run.', { belt: 1, input: 'all', solid: false, skill: 'works', fluid: true, model: 'pipe' }),
+  dam: D('dam', 'Dam Wall', 'eco', 1, 1, 1.8, { concrete: 2, soil: 4 }, 0, 1200, 'Poured concrete across a stream or a hollow. With a closed sluice gate in the line, the water rises behind it and floods the low ground.', { input: 'none', output: 'none', skill: 'works' }),
+  sluice: D('sluice', 'Sluice Gate', 'eco', 1, 1, 2.0, { iron_plate: 4, concrete: 2 }, 1, 900, 'A gate in a dam wall. Closed, it holds the water back and floods the hollow upstream; open, it lets the water run and irrigates the land downstream.', { input: 'none', output: 'none', skill: 'works', radius: 9 }),
+  sprinkler: D('sprinkler', 'Irrigation Sprinkler', 'eco', 1, 1, 1.3, { ore: 6, copper_wire: 2 }, 1, 200, 'Throws piped water over 6 m: wetter, greener ground, faster regrowth, fatter crops.', { input: 'all', output: 'none', solid: false, skill: 'works', radius: 6, buf: 10 }),
+  spreader: D('spreader', 'Fertiliser Spreader', 'eco', 2, 2, 1.6, { ore: 12, iron_rod: 4 }, 3, 400, 'A hopper and a spinning disc: dung or carbon spread over 7 m makes the ground richer.', { input: 'back', output: 'none', skill: 'works', radius: 7, buf: 20 }),
+  sprayer: D('sprayer', 'Herbicide Sprayer', 'eco', 1, 1, 1.8, { iron_plate: 6, copper_wire: 4 }, 2, 300, 'A boom on a mast that fogs herbicide over 5 m: plants wither and creatures sicken and keep away. Clears ground, starves a rival, breaks a herd.', { input: 'all', output: 'none', skill: 'chem', radius: 5, buf: 10 }),
+  planter: D('planter', 'Seed Planter', 'eco', 2, 2, 1.4, { ore: 15, soil: 10 }, 2, 400, 'A seed drill that sows a saved plant prefab on a 2 m grid within 7 m (paid from the hold like a hand sowing): farms and orchards.', { input: 'none', output: 'none', skill: 'sow', radius: 7, operable: true }),
+  trough: D('trough', 'Bait Trough', 'eco', 2, 1, 0.8, { ore: 4, soil: 6 }, 0, 250, 'Fruit, carbon or protein in a trough: grazers come from far off to feed. Lure herds into a kill zone or a capture pen.', { input: 'all', output: 'none', solid: false, skill: 'works', radius: 26, buf: 30 }),
+  pen: D('pen', 'Capture Pen', 'eco', 3, 3, 1.4, { ore: 20, soil: 10 }, 0, 700, 'A baited stockade with a drop gate. A wild creature that wanders in is shut in and, with the Neural Graft, broken to the harness as a worker.', { input: 'all', output: 'none', solid: false, skill: 'convert', radius: 1.6, buf: 20 }),
+  breeder: D('breeder', 'Breeding Pen', 'eco', 3, 3, 1.4, { ore: 25, soil: 15, carbon: 10 }, 1, 700, 'Two of your creatures of one kind kept here, fed, will breed. The pen gathers their dung and their milk (protein) out the front.', { input: 'back', output: 'front', solid: false, skill: 'haul', radius: 2.2, buf: 30 }),
 };
 export const FKINDS = Object.keys(FDEFS) as FKind[];
-export const isBelt = (k: FKind) => k === 'belt1' || k === 'belt2' || k === 'belt3';
-/** placement by dragging a line (belts, walls, foundations) */
-export const isDrag = (k: FKind) => isBelt(k) || k === 'wall' || k === 'found';
+export const isBelt = (k: FKind) => k === 'belt1' || k === 'belt2' || k === 'belt3' || k === 'pipe';
+/** placement by dragging a line (belts, pipes, walls, dams, foundations) */
+export const isDrag = (k: FKind) => isBelt(k) || k === 'wall' || k === 'found' || k === 'dam';
+/** add a building to the catalogue (another system's machines: force fields, habitats, vats). Fill what the Corps
+ *  defaults do not: name, cat, w, d, h, cost, power, hp, desc */
+export function registerBuilding(def: Partial<FDef> & Pick<FDef, 'kind' | 'name' | 'w' | 'd'>): FDef {
+  const full: FDef = { cat: 'bio', h: 2, cost: {}, power: 0, hp: 500, desc: '', input: def.station ? 'back' : 'none', output: def.station ? 'front' : 'none', buf: 20, solid: true, ...def, model: def.model ?? def.kind } as FDef;
+  FDEFS[def.kind] = full;
+  if (!FKINDS.includes(def.kind)) FKINDS.push(def.kind);
+  return full;
+}
 export const DIRS: [number, number][] = [[0, 1], [-1, 0], [0, -1], [1, 0]];
 /** rotation r turns local +z (forward) to DIRS[r]: 0 south (+z), 1 west, 2 north, 3 east */
 export function rotXZ(lx: number, lz: number, r: number): [number, number] {

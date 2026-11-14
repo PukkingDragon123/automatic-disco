@@ -1,5 +1,6 @@
 // The gene catalog. A gene belongs to a lineage (what it can be grafted onto) and a category; it grows a body
 // part and/or shifts stats. Wild species carry genomes made of these; the Veyr absorbs them from corpses.
+import { BIO_GENES } from './genesBio';
 export type Lineage = 'arthropod' | 'vertebrate' | 'annelid' | 'mollusc' | 'hominid';
 export type GeneCat = 'body' | 'limb' | 'sense' | 'feed' | 'defense' | 'meta' | 'repro';
 export type Plan = 'hexapod' | 'octopod' | 'quadruped' | 'biped' | 'hexapodV' | 'serpent' | 'gastropod' | 'hominid';
@@ -139,6 +140,8 @@ export const GENES: GeneDef[] = [
   G({ id: 'egg_capsule', name: 'Egg Capsules', cat: 'repro', lineage: 'mollusc', tier: 1, desc: 'Gel-wrapped eggs laid in damp places.', fx: { litter: 3, gestation: 40, maturity: 50 } }),
   G({ id: 'spawn', name: 'Frogspawn', cat: 'repro', lineage: 'vertebrate', tier: 1, desc: 'Clouds of jelly-wrapped eggs laid in still water. The tadpoles do the rest.', fx: { litter: 4, gestation: 26, maturity: 35 } }),
   G({ id: 'rapid_molt', name: 'Rapid Molting', cat: 'repro', lineage: 'arthropod', tier: 2, desc: 'Young shed and grow in a fraction of the time.', fx: { maturity: -20 } }),
+  // functional genes: the production engine (genesBio.ts)
+  ...BIO_GENES,
 ];
 export const GENE: Record<string, GeneDef> = Object.fromEntries(GENES.map((g) => [g.id, g]));
 export const CAT_NAMES: Record<GeneCat, string> = { body: 'Body Plan', limb: 'Limbs', sense: 'Senses', feed: 'Feeding', defense: 'Defense', meta: 'Metabolism', repro: 'Reproduction' };

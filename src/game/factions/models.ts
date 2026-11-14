@@ -211,7 +211,7 @@ function sovFactory(f: FactionId): SModel {
   const L = LIVERY[f], A = atlas(f), k = new Kit();
   k.box(4.6, 0.25, 3.6, [0, 0.12, 0], ST[3]); // slab
   k.box(4.2, 1.9, 3.2, [0, 1.15, 0], L.hull);
-  k.add(new THREE.CylinderGeometry(1.6, 1.6, 4.2, 16, 1, false, 0, Math.PI), L.hull2, [0, 2.1, 0], [0, 0, Math.PI / 2], [1, 1, 0.42]);
+  k.add(new THREE.CylinderGeometry(1.6, 1.6, 4.2, 16, 1, false, 0, Math.PI), L.hull2, [0, 2.1, 0], [0, 0, Math.PI / 2], [0.42, 1, 1]);
   for (let i = 0; i < 6; i++) k.box(0.06, 0.06, 3.25, [-2.0 + i * 0.8, 2.1, 0], SS[2]); // ribs
   for (let i = 0; i < 6; i++) k.add(new THREE.TorusGeometry(1.61, 0.03, 3, 16, Math.PI), SS[2], [-2.0 + i * 0.8, 2.1, 0], [0, Math.PI / 2, 0], [1, 0.42, 1]);
   k.box(1.9, 1.5, 0.08, [0, 0.95, 1.62], L.dark); // the big door

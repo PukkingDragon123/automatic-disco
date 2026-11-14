@@ -1,63 +1,75 @@
 // Icons. Two sets share one name space:
 //
-//  * HI-RES VIGNETTES (the main set): small scenes of Unit 07 using each ability, painted by a resolution-
-//    independent pixel-art painter. Shapes are authored on a 32-unit grid and rasterised at the size they are
-//    shown at (always 1 source pixel = 1 screen pixel, so they are crisp at any UI scale): ramp shading lit from
-//    the top left, ordered dithering, a 1 px dark outline around the silhouette, selective inner outlines where
-//    one part overlaps another, a rim highlight and an optional drop shadow. An "fx" layer (glows, sparks,
-//    shockwaves, motion lines) composites over the solids without being outlined (or under them, for halos).
+//  * HI-RES VIGNETTES (the main set): small scenes of Unit 07 using each ability, drawn the way a pixel artist draws
+//    them, by a resolution-independent painter. Shapes are authored on a 32-unit grid and rasterised at the size
+//    they are shown at (1 source pixel = 1 screen pixel, crisp at any UI scale). Every form is an angular silhouette:
+//    hand-placed polygons, faceted stones cut from irregular outlines, chamfered plates, pointed leaves built on a
+//    spine. Shading is planar, lit from the upper left: one ramp step per plane, 2-4 steps per form, hard cluster
+//    edges; no circles, no gradients, no noise, no dithering. Colours come only from the master ramps
+//    (art/palette.ts), picked by material. The silhouette gets a selective outline (ink on the shadow side, a dark
+//    step of its own material on the lit side), a part that overlaps another gets an inner line, and a lit plane
+//    that meets open sky gets one highlight pixel. Texture is drawn marks: cracks in stone, veins in leaves,
+//    knuckle seams, bark strokes. An fx layer (lit lenses, sparks, field strokes, motion lines, flat light patches)
+//    sits over the solids without an outline (or under them).
 //  * LEGACY 16 x 16 grids (ICONS / PAL, at the bottom): the older hand-pixelled set. Any name without a vignette
 //    falls back to it (upscaled by an integer factor).
 //
 // API: hiIcon(name, px) -> PixelCanvas | null, iconURL(name, px), skillIcon(id) -> icon name, skillIconURL(id),
 // hasHiIcon(name), HI_ICON_NAMES. ui/pixelart.ts icon(name) uses the vignettes at the HUD's current scale.
-import { PixelCanvas, mixHex } from '../limbo/gfx/pixel';
+import { PixelCanvas } from '../limbo/gfx/pixel';
+import { RAMPS } from '../art/palette';
 
 type Ramp = readonly number[];
 type Inside = (x: number, y: number) => boolean;
 type Lum = (x: number, y: number) => number;
 
-// ------------------------------------------------------------------ palette (ramps run dark -> light)
-const RK: Ramp = [0x15131c, 0x24202d, 0x37313f, 0x4d4656, 0x675e6e, 0x857a88, 0xa89ca6];   // asteroid rock
-const RW: Ramp = [0x19130f, 0x2b221d, 0x41352c, 0x5b4b3d, 0x786451, 0x987f66, 0xbaa086];   // warm boulder
-const RD_ROCK: Ramp = [0x110f16, 0x1d1a24, 0x2c2834, 0x3e3846, 0x544c5c, 0x6c6276];        // dark ore rock
-const BR: Ramp = [0x241807, 0x3f2a0d, 0x5c3f13, 0x7c581b, 0x9c7226, 0xbc8e36, 0xd8ab50, 0xeeca78, 0xfff0bc];
-const GM: Ramp = [0x0e1114, 0x1a1e23, 0x272c32, 0x363c43, 0x474e56, 0x5c646c, 0x78818a, 0x9da6ad, 0xc9d0d4];
-const OL: Ramp = [0x111410, 0x1d2217, 0x2a3121, 0x38412b, 0x485337, 0x5a6644, 0x707b54, 0x8a956a];
-const CU: Ramp = [0x281009, 0x451f0e, 0x663016, 0x87441f, 0xa85a29, 0xc6793c, 0xe0a064, 0xf6ca98];
-const RS: Ramp = [0x2a1409, 0x46220e, 0x663215, 0x86451b, 0xa65c25, 0xc27a3a];
-const LN: Ramp = [0x0a2626, 0x14484a, 0x23706a, 0x3f9a8c, 0x7cc4b0, 0xcde8dc];                // lens / reactor teal
-const VI: Ramp = [0x18142c, 0x2c2656, 0x463e88, 0x6660ac, 0x9c96c8, 0xdcd8ec];                // gravity field violet
-const FI: Ramp = [0x3a1408, 0x76280e, 0xb84a18, 0xd9782c, 0xeab060, 0xf6e6c4];                // fire / sparks
-const WA: Ramp = [0x061634, 0x0d2d62, 0x174f94, 0x2c7cc6, 0x56aee8, 0x9cdaff, 0xe6f8ff];      // water
-const SO: Ramp = [0x170c05, 0x2a170b, 0x432812, 0x603c1d, 0x7e552b, 0x9c703e, 0xbc8f58];      // soil
-const CB: Ramp = [0x050705, 0x0b100a, 0x141d11, 0x1f2d1a, 0x2e4424, 0x466432, 0x6c9448, 0xa8d07a]; // carbon (charred green-black)
-const OR: Ramp = [0x1e100a, 0x3a1c0e, 0x5c2e14, 0x8a4a22, 0xb8662e, 0xe08a4a, 0xf4b47a, 0xffdcb4];      // ore nodules
-const PL: Ramp = [0x0c2412, 0x16401c, 0x225e28, 0x347e34, 0x52a046, 0x82c462, 0xb8e48c];      // plant green
-const VE: Ramp = [0x0e221f, 0x173c36, 0x235c50, 0x34806a, 0x52a486, 0x84c6a8, 0xc8e8d8];      // Veyr growth teal
-const FL: Ramp = [0x220a0c, 0x3e1416, 0x5e2220, 0x80362e, 0xa24e3c, 0xc06e52, 0xdc9676];      // creature flesh
-const BN: Ramp = [0x4e4636, 0x786c54, 0xa29676, 0xc8bc98, 0xe6dcbc, 0xfaf4e0];                // bone / cream
-const GL: Ramp = [0x0a161a, 0x15303a, 0x234e58, 0x3a7680, 0x66a6ae, 0xa8dade, 0xe6fafa];      // glass
-const RE: Ramp = [0x1c0605, 0x380b08, 0x5e130c, 0x881d12, 0xb02a18, 0xd64426, 0xee6c44, 0xffa684]; // signal red
-const HZ: Ramp = [0x3a2c10, 0x684e1c, 0x94702a, 0xc49438, 0xd9a43a, 0xeedcae];                // hazard yellow
-const BK: Ramp = [0x0c0b0a, 0x171513, 0x221f1c, 0x2f2b27, 0x3e3933, 0x524b43, 0x6a6258];      // Bakelite
-const PH: Ramp = [0x020805, 0x071e0e, 0x124722, 0x288c42, 0x43b65a, 0x7ae088, 0xc0ffc6];      // P1 phosphor
-const LB: Ramp = [0x06180e, 0x0c3018, 0x154a24, 0x226a34, 0x3a9048, 0x66b864];                // lab fluid
-const BW: Ramp = [0x1a120c, 0x2c2016, 0x403020, 0x56442e, 0x6e5a40, 0x8a7656];                // dead wood
-const CR: Ramp = [0x5e5744, 0x878068, 0xaea686, 0xd0c8a4, 0xece4c6, 0xfffaea];                // cream enamel
-const NV: Ramp = [0x0a1430, 0x14245a, 0x203a86, 0x3456ae, 0x5478cc];                          // navy enamel
-const OUT = 0x0b0a12;
+// ------------------------------------------------------------------ palette: master ramps, picked by material
+const RK = RAMPS.stone;       // Unit 07's asteroid rock
+const RW = RAMPS.clay;        // warm boulders: fists, thrown stones
+const RD_ROCK = RAMPS.basalt; // dark ore rock
+const BR = RAMPS.brass, GM = RAMPS.steel, OL = RAMPS.olive, CU = RAMPS.rust, VI = RAMPS.violet;
+const LN = RAMPS.glowTeal;    // lit lenses, reactor light, Veyr glow (sparingly)
+const FI = RAMPS.glowAmber;   // sparks, fire, molten metal (sparingly)
+const WA = RAMPS.water, SO = RAMPS.soil, PL = RAMPS.moss, CB = RAMPS.moss, VE = RAMPS.teal, SG = RAMPS.sage, OR = RAMPS.ochre;
+const FL = RAMPS.flesh, BN = RAMPS.bone, GL = RAMPS.slate, RE = RAMPS.stampRed, CO = RAMPS.coral, BK = RAMPS.basalt;
+const LB = RAMPS.ichor, BW = RAMPS.fur, CR = RAMPS.paper, SN = RAMPS.snow, HZ = RAMPS.ochre, INK = RAMPS.ink;
+const LBD: Ramp = [LB[0], LB[1], LB[2]]; // a shape seen through lab fluid
+const OUT = INK[0], HOT = CR[5];
 
 // ------------------------------------------------------------------ painter
-const BAY = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-const bay = (x: number, y: number) => (BAY[(y & 3) * 4 + (x & 3)] + 0.5) / 16;
-const L0 = Math.hypot(-0.48, -0.66, 0.58), LX = -0.48 / L0, LY = -0.66 / L0, LZ = 0.58 / L0;
-const L2 = Math.hypot(LX, LY), LX2 = LX / L2, LY2 = LY / L2;
+const LX = -0.6, LY = -0.8; // toward the light (upper left)
+// plane levels: a plane facing away, side-on, the flat crown, facing the light. Each lands on one ramp step.
+const P_SH = 0.28, P_MID = 0.47, P_TOP = 0.66, P_LIT = 0.84;
+/** the level of a plane from its outward normal */
+function plane(nx: number, ny: number) { const L = Math.sqrt(nx * nx + ny * ny) || 1, d = (nx * LX + ny * LY) / L; return d > 0.38 ? P_LIT : d < -0.38 ? P_SH : P_MID; }
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 const h1 = (i: number, s = 0) => { const v = Math.sin(i * 127.1 + s * 311.7) * 43758.5453; return v - Math.floor(v); };
 const TAU = Math.PI * 2;
+/** even-odd point-in-polygon */
+function inPoly(pts: number[]): Inside {
+  return (x, y) => {
+    let c = false;
+    for (let i = 0, j = pts.length - 2; i < pts.length; j = i, i += 2) {
+      const xi = pts[i], yi = pts[i + 1], xj = pts[j], yj = pts[j + 1];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  };
+}
+function bbox(pts: number[]) {
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (let i = 0; i < pts.length; i += 2) { x0 = Math.min(x0, pts[i]); x1 = Math.max(x1, pts[i]); y0 = Math.min(y0, pts[i + 1]); y1 = Math.max(y1, pts[i + 1]); }
+  return [x0, y0, x1, y1];
+}
+/** inside a regular N-gon (vertex radius r, squashed by ry): the angular stand-in wherever a circle would go */
+function ngon(cx: number, cy: number, r: number, ry = 1, N = 8, rot = 0): Inside {
+  const ap = Math.cos(Math.PI / N) * r, ns: number[] = [];
+  for (let i = 0; i < N; i++) { const a = rot + (i / N) * TAU; ns.push(Math.cos(a), Math.sin(a)); }
+  return (x, y) => { const dx = x - cx, dy = (y - cy) / ry; for (let i = 0; i < N; i++) if (dx * ns[2 * i] + dy * ns[2 * i + 1] > ap) return false; return true; };
+}
+const dimC = (c: number) => { const l = ((c >> 16) & 255) * 0.3 + ((c >> 8) & 255) * 0.59 + (c & 255) * 0.11; return GM[clamp(Math.round((l / 255) * 6 * 0.75), 0, 5)]; };
 
-interface SOpt { part?: number; dither?: number; amb?: number; gain?: number; clip?: Inside }
+interface SOpt { part?: number; amb?: number; gain?: number; clip?: Inside; min?: boolean }
 
 class IP {
   readonly W: number; readonly k: number;
@@ -67,7 +79,7 @@ class IP {
   pid = 0;
   /** a clip applied to every primitive while set */
   clip: Inside | null = null;
-  /** fx primitives go under the solids (halos, beams behind things) while set */
+  /** fx primitives go under the solids (patches, strokes behind things) while set */
   under = false;
   constructor(W: number) {
     this.W = W; this.k = (W - 4) / 32;
@@ -78,139 +90,197 @@ class IP {
   X(u: number) { return 2 + u * this.k; }
   U(p: number) { return (p + 0.5 - 2) / this.k; }
   private rampId(r: Ramp) { let i = this.rmap.get(r); if (i === undefined) { i = this.ramps.length; this.ramps.push(r); this.rmap.set(r, i); } return i; }
-  /** rasterise a solid over a unit bounding box */
+  /** rasterise a solid over a unit bounding box: each pixel takes the one ramp step of the plane it lies in */
   solid(x0: number, y0: number, x1: number, y1: number, inside: Inside, ramp: Ramp, lum: Lum, o: SOpt = {}) {
-    const part = o.part ?? ++this.pid, id = this.rampId(ramp), D = o.dither ?? 0.85, n = ramp.length, W = this.W;
+    const part = o.part ?? ++this.pid, id = this.rampId(ramp), n = ramp.length, W = this.W;
     const amb = o.amb ?? 0, gain = o.gain ?? 1, clip = o.clip ?? this.clip;
+    const step = (ux: number, uy: number) => clamp(Math.floor(clamp(amb + lum(ux, uy) * gain, 0, 1) * (n - 1) + 0.5), 0, n - 1);
     const px0 = Math.max(0, Math.floor(this.X(x0)) - 1), px1 = Math.min(W - 1, Math.ceil(this.X(x1)) + 1);
     const py0 = Math.max(0, Math.floor(this.X(y0)) - 1), py1 = Math.min(W - 1, Math.ceil(this.X(y1)) + 1);
+    let hit = 0;
     for (let py = py0; py <= py1; py++) for (let px = px0; px <= px1; px++) {
       const ux = this.U(px), uy = this.U(py);
       if (!inside(ux, uy) || (clip && !clip(ux, uy))) continue;
-      const v = clamp(amb + lum(ux, uy) * gain, 0, 1);
       const i = py * W + px;
-      this.rid[i] = id; this.ri[i] = clamp(Math.floor(v * (n - 1) + 0.5 + (bay(px, py) - 0.5) * D), 0, n - 1); this.part[i] = part;
+      this.rid[i] = id; this.ri[i] = step(ux, uy); this.part[i] = part; hit++;
+    }
+    if (!hit && o.min) { // too small to cover a pixel centre: still one pixel, never nothing
+      const ux = (x0 + x1) / 2, uy = (y0 + y1) / 2, px = Math.floor(this.X(ux)), py = Math.floor(this.X(uy));
+      if (px >= 0 && py >= 0 && px < W && py < W && (!clip || clip(ux, uy))) { const i = py * W + px; this.rid[i] = id; this.ri[i] = step(ux, uy); this.part[i] = part; }
     }
     return part;
   }
-  // ---- shading helpers
-  sph(cx: number, cy: number, rx: number, ry: number, rot = 0): Lum {
-    const c = Math.cos(-rot), s = Math.sin(-rot);
-    return (x, y) => {
-      const dx = x - cx, dy = y - cy, lx = (dx * c - dy * s) / rx, ly = (dx * s + dy * c) / ry;
-      const nz = Math.sqrt(Math.max(0, 1 - lx * lx - ly * ly));
-      const nx = lx * Math.cos(rot) - ly * Math.sin(rot), ny = lx * Math.sin(rot) + ly * Math.cos(rot);
-      return 0.1 + 0.95 * Math.max(0, nx * LX + ny * LY + nz * LZ);
-    };
-  }
-  // ---- primitives
-  ball(cx: number, cy: number, rx: number, ry: number, ramp: Ramp, o: SOpt & { rot?: number } = {}) {
-    const rot = o.rot ?? 0, c = Math.cos(-rot), s = Math.sin(-rot), R = Math.max(rx, ry);
-    const inside: Inside = (x, y) => { const dx = x - cx, dy = y - cy, lx = (dx * c - dy * s) / rx, ly = (dx * s + dy * c) / ry; return lx * lx + ly * ly <= 1; };
-    const part = this.solid(cx - R, cy - R, cx + R, cy + R, inside, ramp, this.sph(cx, cy, rx, ry, rot), o);
-    return { part, inside };
-  }
-  /** an irregular faceted stone */
-  rock(cx: number, cy: number, r: number, seed: number, ramp: Ramp, o: SOpt & { sq?: number; n?: number; jag?: number; rot?: number } = {}) {
-    const N = o.n ?? 8, sq = o.sq ?? 0.86, jag = o.jag ?? 0.24, rot = o.rot ?? h1(seed, 9) * TAU;
-    const rad: number[] = []; for (let i = 0; i < N; i++) rad.push(1 - jag + h1(seed + i, 3) * jag);
-    const radAt = (a: number) => { const t = (((a - rot) / TAU) % 1 + 1) % 1 * N, i = Math.floor(t), f = t - i; return rad[i % N] * (1 - f) + rad[(i + 1) % N] * f; };
-    const inside: Inside = (x, y) => { const dx = (x - cx) / r, dy = (y - cy) / (r * sq); return Math.hypot(dx, dy) <= radAt(Math.atan2(dy, dx)); };
-    const lum: Lum = (x, y) => {
-      const dx = (x - cx) / r, dy = (y - cy) / (r * sq), a = Math.atan2(dy, dx), rr = Math.hypot(dx, dy) / radAt(a);
-      const fi = Math.floor((((a - rot) / TAU) % 1 + 1) % 1 * N), am = rot + (fi + 0.5) / N * TAU;
-      const q = Math.min(0.97, Math.round(rr * 3) / 3 * 0.92 + 0.05);
-      const nz = Math.sqrt(1 - q * q);
-      let v = 0.1 + 0.95 * Math.max(0, Math.cos(am) * q * LX + Math.sin(am) * q * LY + nz * LZ);
-      // pits
-      if (h1(Math.floor(x * 1.7) * 31 + Math.floor(y * 1.7), seed) < 0.07) v -= 0.18;
-      return v;
-    };
-    const R = r * 1.05;
-    const part = this.solid(cx - R, cy - R, cx + R, cy + R, inside, ramp, lum, o);
-    return { part, inside };
-  }
+  // ---- primitives (all angular)
   poly(pts: number[], ramp: Ramp, lum: number | Lum, o: SOpt = {}) {
-    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-    for (let i = 0; i < pts.length; i += 2) { x0 = Math.min(x0, pts[i]); x1 = Math.max(x1, pts[i]); y0 = Math.min(y0, pts[i + 1]); y1 = Math.max(y1, pts[i + 1]); }
-    const inside: Inside = (x, y) => {
-      let c = false;
-      for (let i = 0, j = pts.length - 2; i < pts.length; j = i, i += 2) {
-        const xi = pts[i], yi = pts[i + 1], xj = pts[j], yj = pts[j + 1];
-        if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
-      }
-      return c;
-    };
+    const [x0, y0, x1, y1] = bbox(pts), inside = inPoly(pts);
     const f: Lum = typeof lum === 'number' ? () => lum : lum;
     const part = this.solid(x0, y0, x1, y1, inside, ramp, f, o);
     return { part, inside };
   }
-  /** a bevelled plate: lit top/left edge, shadowed bottom/right edge, a soft vertical falloff */
+  /** a faceted form cut from an outline: each edge is a side plane, a flat crown plane sits off-centre toward the light */
+  gem(pts: number[], ramp: Ramp, o: SOpt & { crown?: number; top?: number } = {}) {
+    const N = pts.length / 2;
+    let cx = 0, cy = 0; for (let i = 0; i < N; i++) { cx += pts[2 * i]; cy += pts[2 * i + 1]; } cx /= N; cy /= N;
+    let size = 0; for (let i = 0; i < N; i++) size = Math.max(size, Math.abs(pts[2 * i] - cx), Math.abs(pts[2 * i + 1] - cy));
+    const cr = o.crown ?? 0.24, kx = cx + LX * size * cr, ky = cy + LY * size * cr, top = o.top ?? 0.5;
+    const nx: number[] = [], ny: number[] = [], h: number[] = [], lv: number[] = [];
+    for (let i = 0; i < N; i++) {
+      const j = (i + 1) % N, ax = pts[2 * i], ay = pts[2 * i + 1], bx = pts[2 * j], by = pts[2 * j + 1];
+      let ex = by - ay, ey = ax - bx; const L = Math.sqrt(ex * ex + ey * ey) || 1; ex /= L; ey /= L;
+      if (((ax + bx) / 2 - cx) * ex + ((ay + by) / 2 - cy) * ey < 0) { ex = -ex; ey = -ey; }
+      nx.push(ex); ny.push(ey); h.push(Math.max(0.15, (ax - kx) * ex + (ay - ky) * ey)); lv.push(plane(ex, ey));
+    }
+    const lum: Lum = (x, y) => {
+      let b = -1e9, bi = 0;
+      for (let i = 0; i < N; i++) { const m = ((x - kx) * nx[i] + (y - ky) * ny[i]) / h[i]; if (m > b) { b = m; bi = i; } }
+      return b < top ? P_TOP : lv[bi];
+    };
+    return { ...this.poly(pts, ramp, lum, o), lum };
+  }
+  /** a flat plate cut to any outline (concave too), its rim bevelled: each edge's band is one plane, the face another */
+  bevel(pts: number[], ramp: Ramp, o: SOpt & { w?: number; lum?: number } = {}) {
+    const N = pts.length / 2, w2 = (o.w ?? 1.2) ** 2, face = o.lum ?? P_MID;
+    let area = 0; for (let i = 0; i < N; i++) { const j = (i + 1) % N; area += pts[2 * i] * pts[2 * j + 1] - pts[2 * j] * pts[2 * i + 1]; }
+    const sg = area > 0 ? 1 : -1, lv: number[] = [];
+    for (let i = 0; i < N; i++) { const j = (i + 1) % N; lv.push(plane(sg * (pts[2 * j + 1] - pts[2 * i + 1]), -sg * (pts[2 * j] - pts[2 * i]))); }
+    const lum: Lum = (x, y) => {
+      let b = 1e9, bi = 0;
+      for (let i = 0; i < N; i++) {
+        const j = (i + 1) % N, ax = pts[2 * i], ay = pts[2 * i + 1], ex = pts[2 * j] - ax, ey = pts[2 * j + 1] - ay;
+        const t = clamp(((x - ax) * ex + (y - ay) * ey) / (ex * ex + ey * ey || 1), 0, 1), dx = x - ax - ex * t, dy = y - ay - ey * t, d = dx * dx + dy * dy;
+        if (d < b) { b = d; bi = i; }
+      }
+      return b < w2 ? lv[bi] : face;
+    };
+    return this.poly(pts, ramp, lum, o);
+  }
+  /** an irregular stone: a jagged outline of 5-8 corners, faceted, with a crack or two drawn in */
+  rock(cx: number, cy: number, r: number, seed: number, ramp: Ramp, o: SOpt & { sq?: number; n?: number; jag?: number; rot?: number; cracks?: number } = {}) {
+    const rp = r * this.k, N = o.n ?? (rp < 2.5 ? 5 : rp < 6 ? 6 : 8), sq = o.sq ?? 0.86, jag = o.jag ?? 0.24, rot = o.rot ?? h1(seed, 9) * TAU;
+    const pts: number[] = [];
+    for (let i = 0; i < N; i++) {
+      const a = rot + ((i + (h1(seed + i, 5) - 0.5) * 0.5) / N) * TAU, rr = r * (1.04 - jag + h1(seed + i, 3) * jag);
+      pts.push(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * sq);
+    }
+    const g = this.gem(pts, ramp, { min: true, ...o });
+    const nc = o.cracks ?? (rp >= 9 ? 2 : rp >= 4.5 ? 1 : 0);
+    for (let c = 0; c < nc; c++) {
+      const i = Math.floor(h1(seed, 11 + c) * N) % N, vx = pts[2 * i], vy = pts[2 * i + 1];
+      const t1 = 0.26 + h1(seed, 13 + c) * 0.12, t2 = 0.5 + h1(seed, 15 + c) * 0.15, kk = (h1(seed, 17 + c) - 0.5) * r * 0.3;
+      this.mark([vx, vy, vx + (cx - vx) * t1 + kk, vy + (cy - vy) * t1 - kk, vx + (cx - vx) * t2, vy + (cy - vy) * t2], g.part, 1);
+    }
+    return g;
+  }
+  /** a rounded thing (head, joint, orb, bulb) drawn as an irregular faceted polygon, never a circle */
+  ball(cx: number, cy: number, rx: number, ry: number, ramp: Ramp, o: SOpt & { rot?: number; n?: number; seed?: number; crown?: number; top?: number } = {}) {
+    const R = Math.max(rx, ry), rot = o.rot ?? 0, s = o.seed ?? Math.round(cx * 7.3 + cy * 13.1 + R * 3);
+    const N = o.n ?? clamp(Math.round(5 + R * this.k * 0.3), 5, 9), a0 = h1(s, 2) * TAU, c = Math.cos(rot), si = Math.sin(rot);
+    const pts: number[] = [];
+    for (let i = 0; i < N; i++) {
+      const a = a0 + ((i + (h1(s + i, 4) - 0.5) * 0.45) / N) * TAU, rr = 1.08 - h1(s + i, 6) * 0.1;
+      const lx = Math.cos(a) * rx * rr, ly = Math.sin(a) * ry * rr;
+      pts.push(cx + lx * c - ly * si, cy + lx * si + ly * c);
+    }
+    return this.gem(pts, ramp, { min: true, ...o });
+  }
+  /** a pointed leaf on a curved spine: an asymmetric width profile, folded along the midrib (lit half, shade half), veined */
+  leaf(x0: number, y0: number, x1: number, y1: number, w: number, ramp: Ramp, o: SOpt & { bend?: number; lean?: number; vein?: boolean } = {}) {
+    const dx = x1 - x0, dy = y1 - y0, L = Math.sqrt(dx * dx + dy * dy) || 1, ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+    const bend = (o.bend ?? 0.1) * L, lean = o.lean ?? 0.25, wa = (w / 2) * (1 + lean), wb = (w / 2) * (1 - lean);
+    const prof = [0, 0.14, 0.2, 0.66, 0.42, 1, 0.68, 0.74, 0.88, 0.3, 1, 0];
+    const sp = (t: number) => Math.sin(t * Math.PI) * bend;
+    const A: number[] = [], B: number[] = [];
+    for (let i = 0; i < prof.length; i += 2) {
+      const t = prof[i], kk = prof[i + 1], bx = x0 + dx * t + nx * sp(t), by = y0 + dy * t + ny * sp(t);
+      A.push(bx + nx * kk * wa, by + ny * kk * wa); B.push(bx - nx * kk * wb, by - ny * kk * wb);
+    }
+    const pts = [...A]; for (let i = B.length - 4; i >= 0; i -= 2) pts.push(B[i], B[i + 1]);
+    const litA = plane(nx, ny) >= plane(-nx, -ny);
+    const lum: Lum = (x, y) => { const t = clamp(((x - x0) * ux + (y - y0) * uy) / L, 0, 1), s = (x - x0) * nx + (y - y0) * ny - sp(t); return (s >= 0) === litA ? P_TOP : P_SH + 0.06; };
+    const r = this.poly(pts, ramp, lum, o);
+    if (o.vein !== false && L * this.k >= 7) { const v: number[] = []; for (const t of [0.06, 0.4, 0.78]) v.push(x0 + dx * t + nx * sp(t), y0 + dy * t + ny * sp(t)); this.mark(v, r.part, ramp.length > 5 ? 1 : 0); }
+    return r;
+  }
+  /** a bevelled plate: lit top and left bands, shadowed bottom and right, a flat face; r chamfers the corners */
   box(x: number, y: number, w: number, h: number, ramp: Ramp, o: SOpt & { bevel?: number; lum?: number; r?: number } = {}) {
-    const b = o.bevel ?? Math.min(1.1, Math.min(w, h) * 0.2), base = o.lum ?? 0.55, rr = o.r ?? 0;
+    const b = o.bevel ?? Math.min(1.1, Math.min(w, h) * 0.2), base = o.lum ?? 0.55, rr = (o.r ?? 0) * 0.8;
     const inside: Inside = (px, py) => {
       if (px < x || py < y || px > x + w || py > y + h) return false;
-      if (!rr) return true;
-      const cx = clamp(px, x + rr, x + w - rr), cy = clamp(py, y + rr, y + h - rr);
-      return (px - cx) ** 2 + (py - cy) ** 2 <= rr * rr;
+      return !rr || Math.min(px - x, x + w - px) + Math.min(py - y, y + h - py) >= rr;
     };
     const lum: Lum = (px, py) => {
-      if (py - y < b || px - x < b * 0.7) return base + 0.35;
-      if (y + h - py < b || x + w - px < b * 0.7) return base - 0.3;
-      return base + 0.12 - ((py - y) / h) * 0.24;
+      const dt = py - y, dl = (px - x) * 1.3, db = y + h - py, dr = (x + w - px) * 1.3, m = Math.min(dt, dl, db, dr);
+      if (m >= b) return base;
+      return m === dt ? base + 0.28 : m === dl ? base + 0.14 : m === db ? base - 0.26 : base - 0.15;
     };
     const part = this.solid(x, y, x + w, y + h, inside, ramp, lum, o);
     return { part, inside };
   }
-  /** a cylinder-shaded vertical capsule / tank (light falls across x) */
+  /** a tank or tube: chamfered ends, vertical bands of light (rim, highlight, body, shadow) */
   tank(x: number, y: number, w: number, h: number, ramp: Ramp, o: SOpt & { r?: number } = {}) {
-    const rr = o.r ?? w * 0.3;
+    const rr = (o.r ?? w * 0.3) * 0.8;
     const inside: Inside = (px, py) => {
       if (px < x || py < y || px > x + w || py > y + h) return false;
-      const cx = clamp(px, x + rr, x + w - rr), cy = clamp(py, y + rr, y + h - rr);
-      return (px - cx) ** 2 + (py - cy) ** 2 <= rr * rr;
+      return Math.min(px - x, x + w - px) + Math.min(py - y, y + h - py) >= rr;
     };
-    const lum: Lum = (px, py) => {
-      const t = ((px - x) / w) * 2 - 1, nz = Math.sqrt(Math.max(0, 1 - t * t));
-      const cap = py - y < rr ? (rr - (py - y)) / rr : 0;
-      return 0.1 + 0.95 * Math.max(0, t * LX + -cap * LY * -1 * 0.6 + nz * LZ + cap * 0.25);
-    };
+    const lum: Lum = (px) => { const t = (px - x) / w; return t < 0.12 ? P_MID : t < 0.36 ? P_LIT : t < 0.7 ? P_TOP : P_SH; };
     const part = this.solid(x, y, x + w, y + h, inside, ramp, lum, o);
     return { part, inside };
   }
-  /** a thick segment shaded as a rod */
+  /** a rod: square-ish pointed ends, lit band toward the light, shadow band away */
   seg(x0: number, y0: number, x1: number, y1: number, w: number, ramp: Ramp, o: SOpt = {}) {
-    const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy) || 1e-6, ux = dx / L, uy = dy / L, nx = -uy, ny = ux, hw = w / 2;
-    const side = nx * LX2 + ny * LY2;
+    const dx = x1 - x0, dy = y1 - y0, L = Math.sqrt(dx * dx + dy * dy) || 1e-6, ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+    const hw = Math.max(w / 2, 0.55 / this.k), cap = hw * 0.6;
+    const side = nx * LX + ny * LY, sg = side >= 0 ? 1 : -1, flat = Math.abs(side) < 0.22;
     const inside: Inside = (x, y) => {
-      const px = x - x0, py = y - y0, t = clamp((px * ux + py * uy) / L, 0, 1);
-      return Math.hypot(px - dx * t, py - dy * t) <= hw;
+      const px = x - x0, py = y - y0, t = px * ux + py * uy, q = Math.abs(px * nx + py * ny), ov = Math.max(0, -t, t - L);
+      return ov <= cap && q <= hw - ov * 0.7;
     };
     const lum: Lum = (x, y) => {
-      const px = x - x0, py = y - y0, off = clamp((px * nx + py * ny) / hw, -1, 1);
-      const nz = Math.sqrt(Math.max(0, 1 - off * off));
-      return 0.1 + 0.95 * Math.max(0, off * side * L2 + nz * LZ);
+      const s = (((x - x0) * nx + (y - y0) * ny) / hw) * sg;
+      if (flat) return s > 0.3 ? P_TOP : P_MID;
+      return s > 0.3 ? P_LIT : s < -0.4 ? P_SH : P_MID;
     };
-    const part = this.solid(Math.min(x0, x1) - hw, Math.min(y0, y1) - hw, Math.max(x0, x1) + hw, Math.max(y0, y1) + hw, inside, ramp, lum, o);
+    const part = this.solid(Math.min(x0, x1) - hw - cap, Math.min(y0, y1) - hw - cap, Math.max(x0, x1) + hw + cap, Math.max(y0, y1) + hw + cap, inside, ramp, lum, o);
     return { part, inside };
   }
-  /** a raised ring (portholes, bezels, coils); ry squashes it into an ellipse */
-  ring(cx: number, cy: number, r0: number, r1: number, ramp: Ramp, o: SOpt & { ry?: number } = {}) {
-    const ry = o.ry ?? 1;
-    const inside: Inside = (x, y) => { const d = Math.hypot(x - cx, (y - cy) / ry); return d >= r0 && d <= r1; };
-    const lum: Lum = (x, y) => {
-      const dx = x - cx, dy = (y - cy) / ry, d = Math.hypot(dx, dy) || 1e-6, u = (d - r0) / (r1 - r0);
-      const dir = (dx / d) * LX2 + (dy / d) * LY2;
-      return 0.5 + (u > 0.5 ? 0.42 : -0.42) * dir + (Math.abs(u - 0.5) < 0.2 ? 0.1 : 0);
+  /** a raised ring (porthole, bezel, coil) as an N-sided band: each side is two planes, the outer slope and the inner */
+  ring(cx: number, cy: number, r0: number, r1: number, ramp: Ramp, o: SOpt & { ry?: number; n?: number; rot?: number } = {}) {
+    const ry = o.ry ?? 1, N = o.n ?? clamp(Math.round(6 + r1 * this.k * 0.25), 6, 10);
+    const rot = o.rot ?? (h1(Math.round(cx * 5 + cy * 9), 1) * TAU) / N, ca = Math.cos(Math.PI / N);
+    const ns: number[] = [], lvO: number[] = [], lvI: number[] = [];
+    for (let i = 0; i < N; i++) { const a = rot + (i / N) * TAU, ex = Math.cos(a), ey = Math.sin(a); ns.push(ex, ey); lvO.push(plane(ex, ey / ry)); lvI.push(plane(-ex, -ey / ry)); }
+    let NB = 0, NI = 0;
+    const norm = (x: number, y: number) => {
+      const dx = x - cx, dy = (y - cy) / ry; let b = -1e9, bi = 0;
+      for (let i = 0; i < N; i++) { const d = dx * ns[2 * i] + dy * ns[2 * i + 1]; if (d > b) { b = d; bi = i; } }
+      NB = b / ca; NI = bi;
     };
+    const thin = (r1 - r0) * this.k < 2.5;
+    const inside: Inside = (x, y) => { norm(x, y); return NB >= r0 && NB <= r1; };
+    const lum: Lum = (x, y) => { norm(x, y); return thin || (NB - r0) / (r1 - r0) >= 0.5 ? lvO[NI] : lvI[NI]; };
     const part = this.solid(cx - r1, cy - r1 * ry, cx + r1, cy + r1 * ry, inside, ramp, lum, o);
     return { part, inside };
   }
+  /** a flat octagonal fill of one colour (a dial face, a hole) */
   disc(cx: number, cy: number, r: number, c: number, o: SOpt = {}) {
-    const inside: Inside = (x, y) => (x - cx) ** 2 + (y - cy) ** 2 <= r * r;
-    return { part: this.solid(cx - r, cy - r, cx + r, cy + r, inside, [c], () => 0, o), inside };
+    const inside = ngon(cx, cy, r, 1, 8, Math.PI / 8);
+    return { part: this.solid(cx - r, cy - r, cx + r, cy + r, inside, [c], () => 0, { min: true, ...o }), inside };
   }
-  rivet(x: number, y: number, r = 0.55, ramp: Ramp = BR) { return this.ball(x, y, r, r, ramp); }
+  rivet(x: number, y: number, r = 0.55, ramp: Ramp = BR) { return this.ball(x, y, r, r, ramp, { n: 5 }); }
+  /** a drawn mark on a part already painted: a 1 px polyline that drops that part's pixels to step v (cracks, veins, seams) */
+  mark(pts: number[], part: number, v: number) {
+    const W = this.W;
+    for (let i = 0; i + 3 < pts.length; i += 2) {
+      const ax = this.X(pts[i]), ay = this.X(pts[i + 1]), bx = this.X(pts[i + 2]), by = this.X(pts[i + 3]);
+      const n = Math.max(1, Math.ceil(Math.max(Math.abs(bx - ax), Math.abs(by - ay))));
+      for (let s = 0; s <= n; s++) {
+        const x = Math.floor(ax + ((bx - ax) * s) / n), y = Math.floor(ay + ((by - ay) * s) / n);
+        if (x < 0 || y < 0 || x >= W || y >= W) continue;
+        const j = y * W + x; if (this.rid[j] >= 0 && this.part[j] === part) this.ri[j] = Math.min(this.ri[j], v);
+      }
+    }
+  }
   // ---- fx layer (not outlined)
   private fset(px: number, py: number, c: number, halo = -1) {
     px = Math.floor(px); py = Math.floor(py);
@@ -220,48 +290,68 @@ class IP {
     (this.under ? this.fxu : this.fxo)[i] = c;
     if (halo >= 0) this.halo[i] = halo;
   }
-  /** concentric quantised glow (ramp dark at the rim -> bright at the core) */
-  glow(cx: number, cy: number, r: number, ramp: Ramp, o: { ry?: number; halo?: boolean; pow?: number } = {}) {
-    const ry = o.ry ?? 1, n = ramp.length, W = this.W, pw = o.pow ?? 0.8;
-    const px0 = Math.max(0, Math.floor(this.X(cx - r)) - 1), px1 = Math.min(W - 1, Math.ceil(this.X(cx + r)) + 1);
-    const py0 = Math.max(0, Math.floor(this.X(cy - r * ry)) - 1), py1 = Math.min(W - 1, Math.ceil(this.X(cy + r * ry)) + 1);
-    for (let py = py0; py <= py1; py++) for (let px = px0; px <= px1; px++) {
-      const d = Math.hypot(this.U(px) - cx, (this.U(py) - cy) / ry) / r; if (d > 1) continue;
-      const v = Math.pow(1 - d, pw);
-      this.fset(px, py, ramp[clamp(Math.floor(v * n + (bay(px, py) - 0.5) * 0.9), 0, n - 1)], o.halo ? ramp[0] : -1);
-    }
+  private fill(inside: Inside, x0: number, y0: number, x1: number, y1: number, col: (ux: number, uy: number) => number, halo = -1) {
+    const W = this.W;
+    const px0 = Math.max(0, Math.floor(this.X(x0)) - 1), px1 = Math.min(W - 1, Math.ceil(this.X(x1)) + 1);
+    const py0 = Math.max(0, Math.floor(this.X(y0)) - 1), py1 = Math.min(W - 1, Math.ceil(this.X(y1)) + 1);
+    for (let py = py0; py <= py1; py++) for (let px = px0; px <= px1; px++) { const ux = this.U(px), uy = this.U(py); if (inside(ux, uy)) this.fset(px, py, col(ux, uy), halo); }
   }
-  /** a line of width w units (at least one pixel) */
+  /** a lit lens: a flat lit face, a brighter patch toward the light, a darker rim on big ones, a glint. No gradient. */
+  glow(cx: number, cy: number, r: number, ramp: Ramp, o: { ry?: number; halo?: boolean } = {}) {
+    const ry = o.ry ?? 1, n = ramp.length, rp = r * this.k;
+    if (rp < 1.2) { this.fdot(cx, cy, r, ramp[n - 1]); return; }
+    const body = ngon(cx, cy, r, ry, 8, 0), rim = rp >= 3 ? ngon(cx, cy, r * 0.74, ry, 8, 0) : null;
+    const hx = cx - r * 0.24, hy = cy - r * 0.24 * ry, hot = ngon(hx, hy, r * 0.5, ry, 6, 0.3);
+    const cHot = ramp[Math.max(0, n - 2)], cRim = ramp[Math.max(0, n - 4)], cBody = ramp[Math.max(0, n - 3)];
+    this.fill(body, cx - r, cy - r * ry, cx + r, cy + r * ry, (x, y) => (hot(x, y) ? cHot : rim && !rim(x, y) ? cRim : cBody), o.halo ? ramp[0] : -1);
+    if (rp >= 2) { const gx = this.X(hx - r * 0.18), gy = this.X(hy - r * 0.18 * ry); this.fset(gx, gy, ramp[n - 1]); if (rp >= 4.5) this.fset(gx + 1, gy, ramp[n - 1]); }
+  }
+  /** a flat angular patch: a cast shadow, a pool of light on the ground (c2: a smaller lit patch inside, toward the light) */
+  plate(cx: number, cy: number, rx: number, ry: number, c: number, c2 = -1) {
+    const s = Math.round(cx * 5 + cy * 3), pts: number[] = [];
+    for (let i = 0; i < 6; i++) { const a = h1(s, 1) * 0.6 + ((i + (h1(s + i, 2) - 0.5) * 0.3) / 6) * TAU, rr = 1 - h1(s + i, 3) * 0.14; pts.push(cx + Math.cos(a) * rx * rr, cy + Math.sin(a) * ry * rr); }
+    this.fpoly(pts, c);
+    if (c2 >= 0) { const q: number[] = []; for (let i = 0; i < pts.length; i += 2) q.push(cx - rx * 0.12 + (pts[i] - cx) * 0.55, cy - ry * 0.12 + (pts[i + 1] - cy) * 0.5); this.fpoly(q, c2); }
+  }
+  fpoly(pts: number[], c: number, halo = -1) { const [x0, y0, x1, y1] = bbox(pts); this.fill(inPoly(pts), x0, y0, x1, y1, () => c, halo); }
+  /** a 1 px line (or a square brush w units wide), stepped along its long axis so the staircase stays tidy */
   fline(x0: number, y0: number, x1: number, y1: number, c: number, w = 0, halo = -1, dash = 0) {
-    const a = [this.X(x0), this.X(y0)], b = [this.X(x1), this.X(y1)];
-    const L = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(L * 1.5)), hw = Math.max(0, (w * this.k) / 2 - 0.5);
+    const ax = this.X(x0), ay = this.X(y0), bx = this.X(x1), by = this.X(y1);
+    const n = Math.max(1, Math.ceil(Math.max(Math.abs(bx - ax), Math.abs(by - ay)))), wp = Math.max(1, Math.round(w * this.k)), lo = -Math.floor((wp - 1) / 2), hi = Math.ceil((wp - 1) / 2);
+    const dl = Math.max(1, Math.round(dash * this.k));
     for (let i = 0; i <= n; i++) {
-      if (dash && Math.floor((i / n) * L / dash) % 2) continue;
-      const t = i / n, x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t;
-      if (hw <= 0) this.fset(x, y, c, halo);
-      else for (let oy = -Math.ceil(hw); oy <= Math.ceil(hw); oy++) for (let ox = -Math.ceil(hw); ox <= Math.ceil(hw); ox++) if (ox * ox + oy * oy <= hw * hw + 0.5) this.fset(x + ox, y + oy, c, halo);
+      if (dash && Math.floor(i / dl) % 2) continue;
+      const x = ax + ((bx - ax) * i) / n, y = ay + ((by - ay) * i) / n;
+      for (let oy = lo; oy <= hi; oy++) for (let ox = lo; ox <= hi; ox++) this.fset(x + ox, y + oy, c, halo);
     }
   }
+  /** an arc drawn as a few straight strokes, slightly off true; a full ring is never quite closed */
   farc(cx: number, cy: number, r: number, a0: number, a1: number, c: number, w = 0, ry = 1, halo = -1, dash = 0) {
-    const n = Math.max(6, Math.ceil(Math.abs(a1 - a0) * r * this.k * 1.2));
-    let px = cx + Math.cos(a0) * r, py = cy + Math.sin(a0) * r * ry;
-    for (let i = 1; i <= n; i++) {
-      const a = a0 + ((a1 - a0) * i) / n, x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * ry;
-      if (!dash || Math.floor(i / dash) % 2 === 0) this.fline(px, py, x, y, c, w, halo);
-      px = x; py = y;
+    const rp = r * this.k, sides = rp < 6 ? 7 : rp < 12 ? 9 : 11, span = a1 - a0, full = Math.abs(span) >= TAU - 0.01;
+    const n = Math.max(2, Math.round((Math.abs(span) / TAU) * sides)), s = Math.round(cx * 3 + cy * 7 + r * 11);
+    const P = (i: number): [number, number] => {
+      const j = i % n ? 1 : full ? 0 : 1, e = i === 0 || i === n ? 0 : j;
+      const a = a0 + (span * i) / n + (h1(s + i, 1) - 0.5) * (0.45 / sides) * TAU * e, rr = r * (1 + (h1(s + i, 2) - 0.5) * 0.1 * e);
+      return [cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * ry];
+    };
+    const gap = full ? Math.floor(h1(s, 9) * n) : -1;
+    for (let i = 0; i < n; i++) {
+      if (i === gap || (dash && i % 2)) continue;
+      const [x0, y0] = P(i), [x1, y1] = P(i + 1); this.fline(x0, y0, x1, y1, c, w, halo);
     }
   }
+  /** a cluster: 1 px (a glint), 2 x 2, or a small octagon */
   fdot(cx: number, cy: number, r: number, c: number, halo = -1) {
-    const R = Math.max(0.5 / this.k, r);
-    for (let py = Math.floor(this.X(cy - R)); py <= Math.ceil(this.X(cy + R)); py++) for (let px = Math.floor(this.X(cx - R)); px <= Math.ceil(this.X(cx + R)); px++) {
-      if (Math.hypot(this.U(px) - cx, this.U(py) - cy) <= R + 0.35 / this.k) this.fset(px, py, c, halo);
-    }
+    const rp = r * this.k, X = this.X(cx), Y = this.X(cy);
+    if (rp < 0.8) { this.fset(X, Y, c, halo); return; }
+    if (rp < 1.5) { const x = Math.floor(X - 0.5), y = Math.floor(Y - 0.5); for (const [a, b] of [[0, 0], [1, 0], [0, 1], [1, 1]]) this.fset(x + a, y + b, c, halo); return; }
+    this.fill(ngon(cx, cy, r, 1, 8, 0), cx - r, cy - r, cx + r, cy + r, () => c, halo);
   }
-  /** a four-point star: a hot core, longer cardinal arms, short diagonals */
-  spark(cx: number, cy: number, s: number, c: number, hot = 0xffffff, halo = -1) {
-    this.fline(cx - s, cy, cx + s, cy, c, 0, halo); this.fline(cx, cy - s, cx, cy + s, c, 0, halo);
-    const d = s * 0.42; this.fline(cx - d, cy - d, cx + d, cy + d, c, 0, halo); this.fline(cx - d, cy + d, cx + d, cy - d, c, 0, halo);
-    this.fdot(cx, cy, Math.max(0.5, s * 0.22), hot, halo);
+  /** a four-point star, arms of unequal length, a hot cluster at the core */
+  spark(cx: number, cy: number, s: number, c: number, hot = HOT, halo = -1) {
+    this.fline(cx - s * 0.8, cy, cx + s, cy, c, 0, halo); this.fline(cx, cy - s * 0.95, cx, cy + s * 0.7, c, 0, halo);
+    if (s * this.k >= 2.5) { const d = s * 0.38; this.fline(cx - d, cy - d, cx + d, cy + d, c, 0, halo); this.fline(cx - d * 0.8, cy + d * 0.8, cx + d * 0.8, cy - d * 0.8, c, 0, halo); }
+    this.fdot(cx, cy, Math.max(0.5, s * 0.2), hot, halo);
   }
   // ---- finish
   canvas(o: { dim?: boolean; shadow?: boolean } = {}): PixelCanvas {
@@ -272,9 +362,9 @@ class IP {
       const i = y * W + x; if (rid[i] < 0) continue;
       const len = this.ramps[rid[i]].length;
       let v = ri[i];
-      // rim light on the top edge, and where an upper-left neighbour is open
-      if (!solid(x, y - 1) || (!solid(x - 1, y) && !solid(x - 1, y - 1))) v = Math.min(len - 1, v + 1);
-      // selective outline: darken where a part in front of this one begins
+      // one highlight pixel where a lit plane turns into open sky
+      if (len > 2 && v >= Math.ceil((len - 1) * 0.6) && !solid(x, y - 1)) v = Math.min(len - 1, v + 1);
+      // an inner line where a part in front of this one begins
       const a = part[i];
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const X = x + dx, Y = y + dy;
@@ -284,24 +374,21 @@ class IP {
     }
     const col = new Int32Array(n).fill(-1);
     for (let i = 0; i < n; i++) if (rid[i] >= 0) col[i] = this.ramps[rid[i]][ri2[i]];
-    // outer outline, hand-pixelled "sel-out": ink on the shadow side, and on the lit (top-left) edge a deep tone
-    // of the shape it wraps, so silhouettes read soft and painted instead of stamped
-    const out = new Uint8Array(n);
+    // selective outline: ink on the shadow side (right, below), a dark step of the material on the lit side (left, above)
     for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x; if (rid[i] >= 0) continue;
       let hit = -1, lit = false;
       for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
         if (!solid(x + dx, y + dy)) continue;
         if (hit < 0) hit = (y + dy) * W + x + dx;
-        if ((dx > 0 || dy > 0) && dx >= 0 && dy >= 0) lit = true;
+        if ((dx || dy) && dx >= 0 && dy >= 0) lit = true;
       }
       if (hit < 0) continue;
       const R = this.ramps[rid[hit]];
-      col[i] = lit && R.length > 2 ? mixHex(R[0], OUT, 0.35) : OUT; out[i] = 1;
+      col[i] = lit && R.length > 2 ? R[1] : OUT;
     }
-    // fx under the solids (shows only where nothing solid or outlined is)
+    // fx under the solids (shows only where nothing solid or outlined is), fx over everything
     for (let i = 0; i < n; i++) if (col[i] < 0 && this.fxu[i] >= 0) col[i] = this.fxu[i];
-    // fx over everything
     for (let i = 0; i < n; i++) if (this.fxo[i] >= 0) col[i] = this.fxo[i];
     // halos around fx
     const col2 = new Int32Array(col);
@@ -313,16 +400,11 @@ class IP {
       }
     }
     const pc = new PixelCanvas(W, W); pc.wrap = false; pc.clear();
-    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
-      let c = col2[y * W + x]; if (c < 0) continue;
-      if (o.dim) { const l = (((c >> 16) & 255) * 0.3 + ((c >> 8) & 255) * 0.59 + (c & 255) * 0.11) | 0; c = mixHex((l << 16) | (l << 8) | l, 0x101018, 0.45); }
-      pc.set(x, y, c);
-    }
+    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) { const c = col2[y * W + x]; if (c >= 0) pc.set(x, y, o.dim ? dimC(c) : c); }
     if (o.shadow) {
       const a = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < W && col2[y * W + x] >= 0;
-      for (let y = W - 1; y >= 1; y--) for (let x = W - 1; x >= 1; x--) if (!a(x, y) && a(x - 1, y - 1)) pc.set(x, y, 0x000000, 110);
+      for (let y = W - 1; y >= 1; y--) for (let x = W - 1; x >= 1; x--) if (!a(x, y) && a(x - 1, y - 1)) pc.set(x, y, OUT, 110);
     }
-    void out;
     return pc;
   }
 }
@@ -342,13 +424,16 @@ function golem(p: IP, g: Golem): GolemOut {
     p.seg(sx, sy, ex, ey, 0.75 * s, GM, { gain: k });
     p.seg(ex, ey, wx, wy, 0.7 * s, GM, { gain: k });
     p.rock(sx + d1[0] * L1 * 0.48, sy + d1[1] * L1 * 0.48, 1.4 * s, 31 + (back ? 7 : 0), RK, { gain: k, sq: 0.9 });
-    p.ball(ex, ey, 0.78 * s, 0.78 * s, BR, { gain: k });
+    p.ball(ex, ey, 0.78 * s, 0.78 * s, BR, { gain: k, n: 5 });
     p.rock(ex + d2[0] * L2 * 0.45, ey + d2[1] * L2 * 0.45, 1.3 * s, 41 + (back ? 7 : 0), RK, { gain: k, sq: 0.9 });
     const fr = 1.75 * s * (g.fist ?? 1);
     if (g.open && !back) {
       for (let i = -1; i <= 1; i++) { const a = ang[0] + ang[1] + i * 0.45, dd = dir(a); p.rock(wx + dd[0] * 1.6 * s, wy + dd[1] * 1.6 * s, 0.75 * s, 61 + i, RW, { gain: k }); }
       p.rock(wx + d2[0] * 0.3 * s, wy + d2[1] * 0.3 * s, 1.2 * s, 51, RW, { gain: k });
-    } else p.rock(wx + d2[0] * 0.55 * s, wy + d2[1] * 0.55 * s, fr, 51 + (back ? 7 : 0), RW, { gain: k, sq: 0.92 });
+    } else {
+      const fx = wx + d2[0] * 0.55 * s, fy = wy + d2[1] * 0.55 * s, fs = p.rock(fx, fy, fr, 51 + (back ? 7 : 0), RW, { gain: k, sq: 0.92, cracks: 0 });
+      if (fr * p.k >= 2.2) p.mark([fx - d2[1] * fr * 0.7 + d2[0] * fr * 0.2, fy + d2[0] * fr * 0.7 + d2[1] * fr * 0.2, fx + d2[0] * fr * 0.7, fy + d2[1] * fr * 0.7], fs.part, 1); // the knuckle seam
+    }
     return [wx + d2[0] * (0.55 * s + fr), wy + d2[1] * (0.55 * s + fr)];
   };
   const shF: [number, number] = [x + 4.3 * s * f, y - 2.4 * s], shB: [number, number] = [x - 4.3 * s * f, y - 2.4 * s];
@@ -356,15 +441,15 @@ function golem(p: IP, g: Golem): GolemOut {
   const body = g.body !== false;
   if (body && g.back) tipB = arm(shB[0], shB[1], g.back, true);
   if (body && g.coil !== false) {
-    p.ball(x, y + 6.4 * s, 2.0 * s, 1.0 * s, VI, { gain: 1.1 });
-    for (let i = 0; i < 3; i++) p.ring(x, y + 4.6 * s + i * 1.05 * s, (2.1 - i * 0.35) * s, (3.0 - i * 0.45) * s, CU, { ry: 0.38, gain });
+    p.ball(x, y + 6.4 * s, 2.0 * s, 1.0 * s, VI, { amb: 0.1, n: 6 });
+    for (let i = 0; i < 3; i++) p.ring(x, y + 4.6 * s + i * 1.05 * s, (2.1 - i * 0.35) * s, (3.0 - i * 0.45) * s, CU, { ry: 0.38, gain, n: 8 });
   }
   if (body) {
     p.rock(x, y, 4.7 * s, 21, RK, { sq: 0.94, gain, jag: 0.16 });
     const px = x + 0.6 * s * f, py = y + 0.2 * s;
     p.box(px - 2.4 * s, py - 2.2 * s, 4.8 * s, 4.6 * s, OL, { gain, bevel: 0.45 * s });
     if (s > 0.7) for (const [rx, ry] of [[-1.85, -1.65], [1.85, -1.65], [-1.85, 1.85], [1.85, 1.85]]) p.rivet(px + rx * s, py + ry * s, 0.38 * s);
-    p.ring(px, py + 0.1 * s, 0.75 * s, 1.4 * s, BR, { gain });
+    p.ring(px, py + 0.1 * s, 0.75 * s, 1.4 * s, BR, { gain, n: 7 });
     p.glow(px, py + 0.1 * s, 0.85 * s, LN);
   }
   const hx = x + 0.5 * s * f, hy = body ? y - 7.4 * s : y;
@@ -376,22 +461,21 @@ function golem(p: IP, g: Golem): GolemOut {
 function head(p: IP, x: number, y: number, s: number, f: number, o: { antenna?: boolean; glow?: Ramp } = {}): [number, number] {
   if (o.antenna !== false && s >= 1.2) {
     p.seg(x - 1.4 * s * f, y - 2.4 * s, x - 2.2 * s * f, y - 4.4 * s, 0.32 * s, GM);
-    p.ball(x - 2.2 * s * f, y - 4.6 * s, 0.5 * s, 0.5 * s, RE);
+    p.ball(x - 2.2 * s * f, y - 4.6 * s, 0.5 * s, 0.5 * s, RE, { n: 5 });
   }
-  const rk = p.rock(x, y, 3.4 * s, 11, RK, { sq: 0.9, jag: 0.18 });
-  if (s >= 1.6) { // a glowing fissure and a few cracks across the skull
+  const rk = p.rock(x, y, 3.4 * s, 11, RK, { sq: 0.9, jag: 0.18, cracks: 0 });
+  if (s >= 1.6) { // a glowing fissure and a crack across the skull
     p.clip = rk.inside;
     p.fline(x - 2.6 * s * f, y - 0.6 * s, x - 1.4 * s * f, y + 0.4 * s, LN[2]); p.fline(x - 1.4 * s * f, y + 0.4 * s, x - 1.8 * s * f, y + 1.4 * s, LN[2]);
-    p.fline(x - 0.4 * s * f, y - 2.6 * s, x + 0.2 * s * f, y - 1.5 * s, RK[1]);
     p.clip = null;
+    p.mark([x - 0.4 * s * f, y - 3.2 * s, x + 0.1 * s * f, y - 2.2 * s, x - 0.1 * s * f, y - 1.5 * s], rk.part, 1);
   }
-  p.poly([x - 2.9 * s, y + 1.3 * s, x + 2.9 * s, y + 1.3 * s, x + 2.4 * s, y + 2.7 * s, x - 2.4 * s, y + 2.7 * s], OL, (_, yy) => (yy < y + 1.7 * s ? 0.85 : 0.45));
-  if (s >= 1.2) for (let i = -2; i <= 2; i++) p.rivet(x + i * 1.1 * s, y + 2.0 * s, 0.3 * s);
+  p.poly([x - 2.9 * s, y + 1.3 * s, x + 2.9 * s, y + 1.3 * s, x + 2.4 * s, y + 2.7 * s, x - 2.4 * s, y + 2.7 * s], OL, (_, yy) => (yy < y + 1.75 * s ? P_LIT : P_MID));
+  if (s >= 1.2) for (let i = -2; i <= 2; i++) p.rivet(x + i * 1.1 * s + (i === 1 ? 0.15 * s : 0), y + 2.0 * s, 0.3 * s);
   const lx = x + 1.3 * s * f, ly = y - 0.4 * s;
-  p.ring(lx, ly, 0.95 * s, 1.75 * s, BR);
-  p.ball(lx, ly, 1.0 * s, 1.0 * s, GL, { gain: 0.5 });
+  p.ring(lx, ly, 0.95 * s, 1.75 * s, BR, { n: 8 });
+  p.ball(lx, ly, 1.0 * s, 1.0 * s, GL, { gain: 0.5, n: 6 });
   p.glow(lx, ly, 1.05 * s, o.glow ?? LN);
-  if (s >= 1.2) p.fdot(lx - 0.45 * s, ly - 0.45 * s, 0.22 * s, 0xffffff);
   return [lx, ly];
 }
 /** a quadruped beast in profile */
@@ -400,29 +484,31 @@ function beast(p: IP, x: number, y: number, s: number, f: number, ramp: Ramp = F
   p.seg(x - 3.6 * s * f, y - 0.4 * s, x - 6.4 * s * f, y - 2.2 * s - k * 2 * s, 1.0 * s, ramp, { gain: 0.85 });
   p.seg(x - 2.4 * s * f, y + 0.8 * s, x - 2.9 * s * f - k * 2 * s * f, y + 4.0 * s - k * 2.5 * s, 1.15 * s, ramp, { gain: 0.7 });
   p.seg(x + 1.8 * s * f, y + 0.8 * s, x + 1.5 * s * f + k * 2 * s * f, y + 4.0 * s - k * 2.5 * s, 1.15 * s, ramp, { gain: 0.7 });
-  p.ball(x, y, 4.3 * s, 2.5 * s, ramp);
+  p.ball(x, y, 4.3 * s, 2.5 * s, ramp, { n: 8, seed: 5 });
   p.seg(x - 1.6 * s * f, y + 1.2 * s, x - 1.3 * s * f - k * 2 * s * f, y + 4.2 * s - k * 2.5 * s, 1.2 * s, ramp);
   p.seg(x + 2.8 * s * f, y + 1.0 * s, x + 3.0 * s * f + k * 2 * s * f, y + 4.2 * s - k * 2.5 * s, 1.2 * s, ramp);
-  if (o.spines !== false) for (let i = -1; i <= 1; i++) { const sx = x + i * 1.6 * s * f; p.poly([sx - 0.7 * s, y - 2.0 * s, sx + 0.7 * s, y - 2.0 * s, sx - 0.3 * s * f, y - 3.6 * s], BN, 0.7); }
-  p.ball(x + 4.6 * s * f, y - 1.3 * s, 2.2 * s, 1.75 * s, ramp);
-  p.ball(x + 6.4 * s * f, y - 0.6 * s, 1.3 * s, 0.9 * s, ramp, { gain: 0.95 });
-  for (let i = 0; i < 2; i++) p.poly([x + (5.8 + i * 0.8) * s * f, y + 0.1 * s, x + (6.3 + i * 0.8) * s * f, y + 0.1 * s, x + (6.05 + i * 0.8) * s * f, y + 0.9 * s], BN, 0.9);
+  if (o.spines !== false) for (let i = -1; i <= 1; i++) { const sx = x + i * 1.6 * s * f, hh = 1.6 + i * 0.25; p.poly([sx - 0.7 * s, y - 2.0 * s, sx + 0.7 * s, y - 2.0 * s, sx - 0.3 * s * f, y - (2.0 + hh) * s], BN, P_TOP); }
+  p.ball(x + 4.6 * s * f, y - 1.3 * s, 2.2 * s, 1.75 * s, ramp, { n: 7, seed: 9 });
+  p.ball(x + 6.4 * s * f, y - 0.6 * s, 1.3 * s, 0.9 * s, ramp, { gain: 0.95, n: 6, seed: 13 });
+  for (let i = 0; i < 2; i++) p.poly([x + (5.8 + i * 0.8) * s * f, y + 0.1 * s, x + (6.3 + i * 0.8) * s * f, y + 0.1 * s, x + (6.05 + i * 0.8) * s * f, y + (0.9 - i * 0.2) * s], BN, P_TOP);
   const ex = x + 5.0 * s * f, ey = y - 1.9 * s;
-  if (o.eye) p.glow(ex, ey, 0.75 * s, o.eye); else p.disc(ex, ey, 0.42 * s, 0xffe070);
+  if (o.eye) p.glow(ex, ey, 0.75 * s, o.eye); else p.disc(ex, ey, 0.42 * s, FI[3]);
   return { eye: [ex, ey] as [number, number], top: [x + 4.4 * s * f, y - 3.1 * s] as [number, number] };
 }
-/** a leafy plant; veyr: grafted (teal veins, a glowing bud) */
+/** a leafy plant; veyr: grafted (teal, glowing veins, a lit bud) */
 function plant(p: IP, x: number, y: number, s: number, o: { veyr?: boolean } = {}) {
   const R = o.veyr ? VE : PL;
-  p.seg(x, y, x - 0.4 * s, y - 13 * s, 1.3 * s, o.veyr ? VE : PL, { gain: 0.85 });
+  p.seg(x, y, x - 0.4 * s, y - 13 * s, 1.3 * s, R, { gain: 0.85 });
   const leaves: [number, number, number, number, number][] = [[-4.2, -7.5, 3.8, 1.6, -0.55], [4.0, -10.4, 3.8, 1.5, 0.6], [-3.6, -2.6, 3.3, 1.4, -0.3], [3.6, -4.6, 3.1, 1.3, 0.45]];
   for (const [dx, dy, rx, ry, rot] of leaves) {
-    const lf = p.ball(x + dx * s, y + dy * s, rx * s, ry * s, R, { rot });
-    if (o.veyr) { p.clip = lf.inside; p.fline(x + dx * s - Math.cos(rot) * rx * s, y + dy * s - Math.sin(rot) * rx * s, x + dx * s + Math.cos(rot) * rx * s * 0.8, y + dy * s + Math.sin(rot) * rx * s * 0.8, LN[4]); p.clip = null; }
+    const ux = Math.cos(rot), uy = Math.sin(rot), sg = dx < 0 ? 1 : -1, cx = x + dx * s, cy = y + dy * s;
+    const bx = cx + ux * rx * s * sg, by = cy + uy * rx * s * sg, tx = cx - ux * rx * s * sg, ty = cy - uy * rx * s * sg;
+    const lf = p.leaf(bx, by, tx, ty, ry * 2.1 * s, R, { bend: dx < 0 ? -0.12 : 0.12, vein: !o.veyr });
+    if (o.veyr) { p.clip = lf.inside; p.fline(bx, by, bx + (tx - bx) * 0.8, by + (ty - by) * 0.8, LN[3]); p.clip = null; }
   }
-  if (o.veyr) { p.ball(x - 0.4 * s, y - 14 * s, 1.6 * s, 1.6 * s, VE, { gain: 1.2 }); p.glow(x - 0.4 * s, y - 14 * s, 1.1 * s, LN); }
+  if (o.veyr) { p.ball(x - 0.4 * s, y - 14 * s, 1.6 * s, 1.6 * s, VE, { amb: 0.15, n: 6 }); p.glow(x - 0.4 * s, y - 14 * s, 1.1 * s, LN); }
 }
-/** a double helix between two points (two ramps; rungs in cream) */
+/** a double helix between two points (two ramps; rungs in bone) */
 function helix(p: IP, x0: number, x1: number, cy: number, amp: number, turns: number, ra: Ramp, rb: Ramp, w = 1.2) {
   const N = 40, P = (t: number, ph: number): [number, number] => [x0 + (x1 - x0) * t, cy + Math.sin(t * turns * TAU + ph) * amp];
   const strand = (ph: number, r: Ramp, front: boolean) => {
@@ -438,20 +524,25 @@ function helix(p: IP, x0: number, x1: number, cy: number, amp: number, turns: nu
 }
 /** motion streaks behind something moving along (dx, dy) */
 function streaks(p: IP, x: number, y: number, dx: number, dy: number, len: number, n: number, spread: number, c = CR[4]) {
-  const L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+  const L = Math.sqrt(dx * dx + dy * dy) || 1, ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
   for (let i = 0; i < n; i++) {
     const o = (i - (n - 1) / 2) * spread, l = len * (0.6 + h1(i, 5) * 0.4);
     p.fline(x + nx * o - ux * 1.2, y + ny * o - uy * 1.2, x + nx * o - ux * (1.2 + l), y + ny * o - uy * (1.2 + l), c);
   }
 }
 function impact(p: IP, x: number, y: number, s: number) {
-  p.glow(x, y, s * 1.1, FI, { pow: 0.6 });
-  p.spark(x, y, s * 1.6, FI[4], 0xffffff);
-  for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU + 0.3, r0 = s * 1.3, r1 = s * (2.0 + h1(i, 2) * 0.8); p.fline(x + Math.cos(a) * r0, y + Math.sin(a) * r0, x + Math.cos(a) * r1, y + Math.sin(a) * r1, FI[5]); }
+  p.glow(x, y, s * 1.1, FI);
+  p.spark(x, y, s * 1.6, FI[3]);
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU + 0.3 + (h1(i, 7) - 0.5) * 0.5, r0 = s * 1.3, r1 = s * (2.0 + h1(i, 2) * 0.8); p.fline(x + Math.cos(a) * r0, y + Math.sin(a) * r0, x + Math.cos(a) * r1, y + Math.sin(a) * r1, FI[4]); }
 }
+/** a slab of ground; grass: blade clumps drawn along the edge */
 function ground(p: IP, y: number, ramp: Ramp = SO, grass = false) {
   p.box(-1, y, 34, 34 - y, ramp, { bevel: 1.0, lum: 0.5 });
-  if (grass) for (let x = 0; x < 32; x += 1.6) p.fline(x, y, x + 0.4, y - 0.8 - h1(x * 7, 1) * 1.2, PL[4]);
+  if (grass) for (let x = 0.6, i = 0; x < 32; x += 2.4 + h1(i, 2) * 1.8, i++) {
+    const hh = 1.1 + h1(i, 1) * 1.3;
+    p.fline(x, y, x - 0.5, y - hh, PL[4]); p.fline(x + 0.8, y, x + 1.2, y - hh * 0.7, PL[3]);
+    if (i % 3 === 1) p.fline(x + 0.3, y, x + 0.1, y - hh * 1.3, PL[5]);
+  }
 }
 /** a five-point star */
 function star(cx: number, cy: number, R: number, r: number, rot = -Math.PI / 2): number[] {
@@ -467,52 +558,53 @@ const ART: Record<string, Art> = {
   ore(p) {
     const big = p.rock(15, 16.5, 11.5, 3, RD_ROCK, { sq: 0.84, n: 9, jag: 0.2 });
     p.clip = big.inside;
-    p.seg(5, 13, 13, 18, 1.6, RS); p.seg(13, 18, 21, 14, 1.4, RS); p.seg(15, 21, 24, 23, 1.2, RS); p.seg(9, 8, 14, 11, 1.0, RS);
-    p.rock(19, 11.5, 2.9, 71, OR, { gain: 1.05 }); p.rock(10.5, 19.5, 2.4, 72, OR, { gain: 1.05 }); p.rock(21.5, 19.5, 2.0, 73, OR); p.rock(13.5, 9.5, 1.4, 74, OR);
+    p.seg(5, 13, 13, 18, 1.6, CU, { gain: 0.8 }); p.seg(13, 18, 21, 14, 1.4, CU, { gain: 0.8 }); p.seg(15, 21, 24, 23, 1.2, CU, { gain: 0.8 }); p.seg(9, 8, 14, 11, 1.0, CU, { gain: 0.8 });
+    p.rock(19, 11.5, 2.9, 71, OR); p.rock(10.5, 19.5, 2.4, 72, OR); p.rock(21.5, 19.5, 2.0, 73, OR); p.rock(13.5, 9.5, 1.4, 74, OR);
     p.clip = null;
-    p.rock(26.5, 26.5, 3.8, 8, RD_ROCK, { sq: 0.85 }); p.rock(27, 25.6, 1.5, 75, OR, { gain: 1.1 });
-    p.spark(18.2, 10.4, 2.2, OR[7], 0xffffff); p.spark(9.8, 18.8, 1.4, OR[7], 0xffffff); p.fdot(26.4, 25, 0.4, 0xffffff);
+    p.rock(26.5, 26.5, 3.8, 8, RD_ROCK, { sq: 0.85 }); p.rock(27, 25.6, 1.5, 75, OR);
+    p.spark(18.2, 10.4, 2.2, OR[6]); p.spark(9.8, 18.8, 1.4, OR[6]);
   },
   carbon(p) {
     const crystal = (cx: number, by: number, w: number, h: number, lean: number, g = 1) => {
       const BL = [cx - w, by], BM = [cx + w * 0.15, by + w * 0.5], BRt = [cx + w, by - w * 0.25];
       const TL = [cx - w + lean, by - h], TM = [cx + w * 0.15 + lean, by - h + w * 0.5], TR = [cx + w + lean, by - h - w * 0.25], A = [cx + lean * 1.4 + w * 0.1, by - h - w * 2.1];
-      p.poly([...BL, ...BM, ...TM, ...TL], CB, 0.3 * g);
-      p.poly([...BM, ...BRt, ...TR, ...TM], CB, 0.6 * g);
-      p.poly([...TL, ...TM, ...A], CB, 0.68 * g);
-      p.poly([...TM, ...TR, ...A], CB, 0.98 * g);
+      const part = ++p.pid;
+      p.poly([...BL, ...BM, ...TM, ...TL], CB, P_MID * g, { part });
+      p.poly([...BM, ...BRt, ...TR, ...TM], CB, P_SH * g, { part });
+      p.poly([...TL, ...TM, ...A], CB, P_LIT * g, { part });
+      p.poly([...TM, ...TR, ...A], CB, P_TOP * g, { part });
     };
-    p.rock(16, 27, 7, 4, CB, { sq: 0.45, gain: 0.8 });
+    p.rock(16, 27, 7, 4, RD_ROCK, { sq: 0.45 });
     crystal(9, 26, 2.6, 7, -1.5, 0.85);
     crystal(21.5, 25.5, 2.4, 6, 1.8, 0.9);
     crystal(15, 26.5, 3.6, 13, 0.4);
-    p.rock(6, 28.5, 2.2, 9, CB); p.rock(25.5, 28.6, 2.0, 12, CB);
-    p.spark(16.7, 7.5, 2.0, CB[7], 0xffffff); p.fdot(23.5, 15.2, 0.45, CB[7]); p.glow(12, 28.6, 1.2, FI.slice(1, 4)); p.fdot(20, 28.8, 0.4, FI[3]);
+    p.rock(6, 28.5, 2.2, 9, RD_ROCK); p.rock(25.5, 28.6, 2.0, 12, RD_ROCK);
+    p.spark(16.7, 7.5, 2.0, CB[6]); p.fdot(23.5, 15.2, 0.45, CB[6]); p.fdot(12, 28.4, 0.6, FI[2]); p.fdot(20, 28.8, 0.4, FI[1]);
   },
   water(p) {
-    const inside: Inside = (x, y) => { if (Math.hypot(x - 16, y - 19.5) <= 8.6) return true; if (y < 19.5 && y > 2.5) { const t = (y - 2.5) / 17; return Math.abs(x - 16) <= 8.6 * Math.pow(t, 0.85); } return false; };
-    const sp = p.sph(16, 17.5, 9, 12);
-    p.solid(6, 2, 26, 29, inside, WA, (x, y) => sp(x, y) * 0.9 + (y > 22 ? 0.1 : 0));
-    p.farc(16, 19.5, 6, Math.PI * 1.05, Math.PI * 1.45, WA[6], 0.9);
-    p.fline(13.6, 10.5, 12.2, 13.5, WA[6], 0.8);
-    p.fdot(19.5, 23, 0.7, WA[5]);
-    p.under = true; p.farc(16, 29.5, 11, 0, TAU, WA[4], 0, 0.22); p.farc(16, 29.5, 14.5, 0, TAU, WA[3], 0, 0.22, -1, 2); p.under = false;
+    const d = p.gem([16, 2.4, 18.8, 7.2, 22.8, 13.2, 24.8, 18.2, 24.4, 22.6, 21.8, 26.6, 17.6, 28.8, 13.4, 28.6, 9.8, 26.2, 7.6, 22.2, 7.4, 17.6, 9.6, 12.6, 13.4, 7.0], WA, { crown: 0.3, top: 0.52 });
+    p.clip = d.inside;
+    p.fline(13.2, 10.4, 11.2, 14.6, WA[6], 0.9); p.fline(10.6, 16.4, 10.2, 18.6, WA[6]); // light on the lit shoulder
+    p.fline(20.4, 24.6, 22.4, 21.8, WA[5]);                                          // light thrown back through the water
+    p.clip = null;
+    p.under = true;
+    p.fline(3.5, 29.8, 9.5, 29.8, WA[4]); p.fline(22.5, 29.6, 28.8, 29.6, WA[4]); p.fline(6, 31, 11, 31, WA[3]); p.fline(21, 31, 25.5, 31, WA[3]);
+    p.under = false;
+    p.fdot(5, 27.2, 0.6, WA[5]); p.fdot(27.4, 26.4, 0.5, WA[5]);
   },
   soil(p) {
-    const inside: Inside = (x, y) => y <= 28.8 && Math.hypot((x - 16) / 13.6, (y - 28) / 10.5) <= 1;
-    const sp = p.sph(16, 27, 13.6, 10.5);
-    p.solid(2, 17, 30, 29, inside, SO, (x, y) => sp(x, y) - (h1(Math.floor(x * 1.3) * 17 + Math.floor(y * 1.3), 4) < 0.16 ? 0.25 : 0));
-    p.ball(11.5, 21, 2.2, 1.6, SO, { gain: 0.9 }); p.ball(21, 24.5, 2.5, 1.7, SO, { gain: 0.85 }); p.ball(16.5, 25.5, 1.4, 1.0, SO);
+    const m = p.gem([2.2, 28.8, 3.8, 24.4, 7.6, 20.2, 12.6, 17.8, 18.4, 17.4, 23.4, 18.8, 27.4, 22.4, 29.8, 28.8], SO, { crown: 0.15, top: 0.45 });
+    p.mark([6, 26.5, 9, 25.4, 10.4, 27], m.part, 2); p.mark([19.5, 27.8, 22.5, 26.2, 25.4, 27.4], m.part, 2); p.mark([12, 22.6, 14.4, 22], m.part, 2);
+    p.ball(11.5, 21, 2.2, 1.6, SO, { n: 5 }); p.ball(21, 24.5, 2.5, 1.7, SO, { n: 6 }); p.ball(16.5, 25.5, 1.4, 1.0, SO, { n: 5 });
     p.rock(7.5, 25.5, 1.6, 2, RK); p.rock(24.5, 21, 1.3, 5, RK); p.rock(14, 27.6, 1.0, 9, RK);
     p.seg(17, 18, 17.6, 11, 0.8, PL);
-    p.ball(15, 11.6, 2.4, 1.0, PL, { rot: -0.5 }); p.ball(20.2, 10.8, 2.4, 1.0, PL, { rot: 0.45 });
+    p.leaf(17.4, 12.4, 12.2, 10.4, 2.2, PL, { bend: -0.14 }); p.leaf(17.6, 11.6, 22.8, 9.2, 2.0, PL, { bend: 0.12 });
   },
   // ---------------- status
   hull(p) {
-    const sh = [5, 4, 27, 4, 27, 15, 24.5, 22, 16, 29, 7.5, 22, 5, 15];
-    const outer = p.poly(sh, GM, (x, y) => 0.62 - y / 70 + (Math.abs(x + y * 0.5 - 22) < 1.4 ? 0.3 : 0));
-    p.poly([8, 7, 24, 7, 24, 14.5, 22, 20, 16, 25.5, 10, 20, 8, 14.5], OL, (x, y) => 0.6 - y / 60 - x / 120);
-    p.poly(star(16, 14.5, 5.2, 2.1), CR, 0.75);
+    const outer = p.bevel([5, 4, 27, 4, 27, 15, 24.5, 22, 16, 29, 7.5, 22, 5, 15], GM, { w: 2.4, lum: P_MID });
+    p.bevel([8, 7, 24, 7, 24, 14.5, 22, 20, 16, 25.5, 10, 20, 8, 14.5], OL, { w: 1.2, lum: P_MID });
+    p.bevel(star(16, 14.5, 5.2, 2.1), CR, { w: 0.9, lum: P_TOP });
     for (const [x, y] of [[7, 6], [16, 6], [25, 6], [6.8, 14.5], [25.2, 14.5], [10.5, 22.5], [21.5, 22.5]]) p.rivet(x, y, 0.65, GM);
     p.clip = outer.inside; p.fline(23, 4.5, 21, 8, OUT); p.fline(21, 8, 22.5, 10.5, OUT); p.clip = null;
   },
@@ -520,79 +612,85 @@ const ART: Record<string, Art> = {
     p.box(14, 1.5, 4, 2.6, BR, { bevel: 0.6 });
     p.box(9.5, 3.8, 13, 3.6, BR, { bevel: 0.8 });
     const g = p.tank(10.5, 6.8, 11, 18.4, GL, { r: 3, gain: 0.85 });
-    p.clip = g.inside; p.glow(16, 16, 4.3, LN, { ry: 1.9 }); p.fline(16, 9.5, 16, 22.5, LN[5]); p.fline(13, 9, 13, 21, GL[6], 0, -1, 2.5); p.clip = null;
+    p.clip = g.inside; p.glow(16, 16, 4.3, LN, { ry: 1.9 }); p.fline(16, 10, 16, 22, LN[4]); p.fline(12.6, 9, 12.6, 21, GL[5], 0, -1, 2.5); p.clip = null;
     p.box(9.5, 24.4, 13, 3.6, BR, { bevel: 0.8 });
     p.seg(13, 28, 13, 30.5, 1.1, GM); p.seg(19, 28, 19, 30.5, 1.1, GM);
-    p.spark(23.5, 6.5, 2, LN[4], 0xffffff);
+    p.spark(24, 6.5, 2, LN[3]);
   },
   charge(p) {
-    p.under = true; p.glow(16, 16, 13, VI.slice(0, 3), { pow: 1.3 }); p.under = false;
-    p.poly([19.5, 1.5, 8.5, 17, 15, 17, 11, 30.5, 24.5, 12.5, 17.5, 12.5, 22.5, 1.5], VI, (x, y) => 0.9 - y / 60 + (x < 14 ? 0.1 : 0));
-    p.spark(25.5, 23, 2, VI[4], 0xffffff); p.spark(6.5, 8, 1.6, VI[4], 0xffffff);
+    p.under = true;
+    for (const [a, b, c, d] of [[5, 6, 7.5, 8.4], [27, 4.6, 24.8, 7.2], [3.6, 21, 6.6, 19.8], [28.4, 19.4, 25.4, 18.6], [8.4, 28.6, 10.2, 25.8], [23.6, 27.6, 21.4, 25.2]]) p.fline(a, b, c, d, VI[3]);
+    p.under = false;
+    p.bevel([19.5, 1.5, 8.5, 17, 15, 17, 11, 30.5, 24.5, 12.5, 17.5, 12.5, 22.5, 1.5], VI, { w: 1.7, lum: P_TOP, amb: 0.12 });
+    p.spark(26, 23.5, 2, VI[5]); p.spark(6.5, 9, 1.6, VI[5]);
   },
   skills(p) {
     const tr = (a: number[], b: number[]) => p.seg(a[0], a[1], b[0], b[1], 1.3, CU);
     const R = [16, 27.5], A = [16, 19], B = [8, 13], C = [24, 13], D = [8, 5.5], E = [24, 5.5], F = [16, 9];
     tr(R, A); tr(A, B); tr(A, C); tr(B, D); tr(C, E); tr(A, F);
-    const node = (c: number[], r: number, g: Ramp | null) => { p.ring(c[0], c[1], r * 0.55, r, BR); if (g) p.glow(c[0], c[1], r * 0.6, g); else p.disc(c[0], c[1], r * 0.55, GM[2]); };
-    node(R, 3.4, LN); node(A, 2.4, LN); node(B, 2.4, LN); node(C, 2.4, FI.slice(1)); node(F, 2.1, null); node(D, 2.1, null); node(E, 2.1, LN);
+    const node = (c: number[], r: number, g: Ramp | null) => { p.ring(c[0], c[1], r * 0.55, r, BR, { n: 7 }); if (g) p.glow(c[0], c[1], r * 0.62, g); else p.disc(c[0], c[1], r * 0.58, GM[1]); };
+    node(R, 3.4, LN); node(A, 2.4, LN); node(B, 2.4, LN); node(C, 2.4, FI); node(F, 2.1, null); node(D, 2.1, null); node(E, 2.1, LN);
   },
   menu(p) {
-    const inside: Inside = (x, y) => { const dx = x - 16, dy = y - 16, r = Math.hypot(dx, dy), a = Math.atan2(dy, dx); return r <= 10.4 + (Math.cos(a * 8) > 0.25 ? 3.2 : 0) && r >= 3.6; };
-    p.solid(1, 1, 31, 31, inside, BR, (x, y) => { const dx = x - 16, dy = y - 16, r = Math.hypot(dx, dy) || 1; return 0.55 + 0.4 * ((dx / r) * LX2 + (dy / r) * LY2) * (r > 7.5 ? 1 : -1); });
-    p.ring(16, 16, 3.6, 6.4, OL);
-    for (let i = 0; i < 4; i++) { const a = (i / 4) * TAU + 0.4; p.rivet(16 + Math.cos(a) * 8.6, 16 + Math.sin(a) * 8.6, 0.6, GM); }
+    const pts: number[] = [];
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * TAU + 0.2 + (h1(i, 4) - 0.5) * 0.05;
+      for (const [da, r] of [[-0.36, 10.2], [-0.19, 13.4], [0.19, 13.4], [0.36, 10.2]]) pts.push(16 + Math.cos(a + da) * r, 16 + Math.sin(a + da) * r);
+    }
+    const hole = ngon(16, 16, 3.8, 1, 8, 0.2);
+    p.bevel(pts, BR, { w: 2.2, lum: P_TOP, clip: (x, y) => !hole(x, y) });
+    p.ring(16, 16, 3.6, 6.4, OL, { n: 8, rot: 0.2 });
+    for (let i = 0; i < 4; i++) { const a = (i / 4) * TAU + 0.6; p.rivet(16 + Math.cos(a) * 8.4, 16 + Math.sin(a) * 8.4, 0.6, GM); }
   },
   // ---------------- chassis
   head(p) {
-    p.under = true; p.glow(15.5, 29, 8, VI.slice(0, 4), { ry: 0.32 }); p.under = false;
+    p.under = true; p.plate(15.5, 29.2, 8, 2.2, VI[1], VI[2]); p.under = false;
     head(p, 15, 15, 2.95, 1);
     p.rock(4.5, 25.5, 1.1, 3, RK); p.rock(27, 23, 1.3, 6, RK); p.rock(25.5, 28.5, 0.8, 8, RK);
     p.fline(4.5, 27.5, 4.5, 29.5, VI[3]); p.fline(27, 25.4, 27, 27.6, VI[3]);
   },
   torso(p) {
-    p.ball(4.2, 12, 2.4, 2.4, GM); p.ball(27.8, 12, 2.4, 2.4, GM);
+    p.ball(4.2, 12, 2.4, 2.4, GM, { n: 6 }); p.ball(27.8, 12, 2.4, 2.4, GM, { n: 6 });
     p.box(12.5, 2.5, 7, 3.2, GM, { bevel: 0.7 });
     p.ring(16, 27.5, 3.2, 5.6, CU, { ry: 0.38 });
     p.rock(16, 16.5, 12.4, 21, RK, { sq: 0.86, jag: 0.14 });
     p.box(8.5, 9.5, 15, 13.5, OL, { bevel: 1.1 });
     for (const [x, y] of [[10, 11], [22, 11], [10, 21.5], [22, 21.5], [16, 10.6]]) p.rivet(x, y, 0.7);
-    p.ring(16, 16.5, 2.8, 4.7, BR);
-    p.glow(16, 16.5, 2.95, LN); p.fdot(14.8, 15.2, 0.5, 0xffffff);
+    p.ring(16, 16.5, 2.8, 4.7, BR, { n: 8 });
+    p.glow(16, 16.5, 2.95, LN);
   },
   armR(p) {
-    p.ball(6, 6.5, 3.2, 3.2, GM);
+    p.ball(6, 6.5, 3.2, 3.2, GM, { n: 7 });
     p.seg(5, 8.5, 14, 16.5, 1.3, GM); p.seg(7.5, 5.5, 16, 13.5, 1.0, GM);
     p.farc(9.5, 13.5, 5, -1.9, -0.4, CU[5], 0.8);
     p.rock(10.3, 10.8, 3.5, 31, RK, { sq: 0.85 });
-    p.ball(15.8, 15.6, 2.0, 2.0, BR);
+    p.ball(15.8, 15.6, 2.0, 2.0, BR, { n: 6 });
     p.seg(15.5, 15.5, 22.5, 22.5, 1.2, GM);
     p.rock(19.3, 19.5, 3.2, 41, RK, { sq: 0.86 });
-    const fist = p.rock(24.8, 25.2, 4.8, 51, RW, { sq: 0.88 });
-    p.clip = fist.inside; p.fline(22, 23, 25.5, 28.5, RW[1]); p.fline(24.5, 21.5, 28, 26.5, RW[1]); p.clip = null;
+    const fist = p.rock(24.8, 25.2, 4.8, 51, RW, { sq: 0.88, cracks: 0 });
+    p.mark([22, 23, 25.5, 28.5], fist.part, 1); p.mark([24.5, 21.5, 28, 26.5], fist.part, 1);
   },
   armL(p) {
     const m = (x: number) => 32 - x;
-    p.ball(m(6), 6.5, 3.2, 3.2, GM);
+    p.ball(m(6), 6.5, 3.2, 3.2, GM, { n: 7 });
     p.seg(m(5), 8.5, m(14), 16.5, 1.3, GM); p.seg(m(7.5), 5.5, m(16), 13.5, 1.0, GM);
     p.rock(m(10.3), 10.8, 3.5, 37, RK, { sq: 0.85 });
-    p.ball(m(15.8), 15.6, 2.0, 2.0, BR);
+    p.ball(m(15.8), 15.6, 2.0, 2.0, BR, { n: 6 });
     p.seg(m(15.5), 15.5, m(21.5), 21.5, 1.2, GM);
     p.rock(m(19.3), 19.5, 3.2, 47, RK, { sq: 0.86 });
-    p.rock(m(23), 23.5, 3.0, 57, RW);
+    p.rock(m(23), 23.5, 3.0, 57, RW, { cracks: 0 });
     for (const [dx, dy, r] of [[3.4, 0.2, 1.3], [2.6, 2.6, 1.3], [0.2, 3.4, 1.25]]) p.rock(m(23 + dx), 23.5 + dy, r, 70 + dx, RW);
-    p.glow(m(26.5), 27.2, 1.4, LN); p.fdot(m(26.5), 27.2, 0.35, 0xffffff);
+    p.glow(m(26.5), 27.2, 1.4, LN);
   },
   coil(p) {
-    p.ball(16, 15.5, 4.2, 9.5, VI, { gain: 1.15 });
+    p.ball(16, 15.5, 4.2, 9.5, VI, { amb: 0.12, n: 8 });
     for (let i = 0; i < 4; i++) p.ring(16, 7.8 + i * 4.6, 6.6 - i * 0.5, 9.2 - i * 0.6, CU, { ry: 0.36 });
-    p.under = true; p.farc(16, 16, 14.5, 0, TAU, VI[3], 0, 0.42, -1, 3); p.under = false;
+    p.under = true; p.farc(16, 16, 14.5, 0, TAU, VI[3], 0, 0.42, -1, 1); p.plate(16, 30.8, 4.5, 1.3, VI[2], VI[3]); p.under = false;
     p.rock(3.2, 19.5, 1.7, 3, RK); p.rock(28.6, 13.2, 1.5, 7, RK); p.rock(25.8, 23.5, 1.1, 9, RK);
-    p.glow(16, 31, 4.5, VI.slice(1), { ry: 0.35 });
   },
   plating1(p) {
     const pl = p.box(5, 5, 22, 22, GM, { bevel: 1.4, lum: 0.6, r: 1.5 });
-    p.clip = pl.inside; for (let i = 0; i < 3; i++) p.fline(9 + i * 2, 25, 21 + i * 2, 7, GM[7]); p.clip = null;
+    p.clip = pl.inside; for (const [a, b, c, d] of [[9, 25, 20, 8.4], [11.4, 24.4, 23, 7], [15, 25, 21.6, 14.8]]) p.fline(a, b, c, d, GM[5]); p.clip = null;
     for (const [x, y] of [[8, 8], [16, 7.6], [24, 8], [7.6, 16], [24.4, 16], [8, 24], [16, 24.4], [24, 24]]) p.rivet(x, y, 0.8, GM);
     p.box(14.6, 11, 2.8, 10, CR, { bevel: 0.4, lum: 0.75 });
   },
@@ -608,53 +706,58 @@ const ART: Record<string, Art> = {
     p.box(10.8, 12.5, 2.4, 8.5, CR, { bevel: 0.4, lum: 0.75 }); p.box(14.8, 12.5, 2.4, 8.5, CR, { bevel: 0.4, lum: 0.75 });
   },
   reactor(p) {
-    for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU + 0.13, r0 = 11.5, r1 = i % 2 ? 14 : 15.5; p.fline(16 + Math.cos(a) * r0, 16 + Math.sin(a) * r0, 16 + Math.cos(a) * r1, 16 + Math.sin(a) * r1, i % 2 ? LN[3] : LN[4]); }
-    p.ring(16, 16, 6.6, 10.6, BR);
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * TAU + 0.13 + (h1(i, 3) - 0.5) * 0.12, r0 = 11.5, r1 = (i % 2 ? 14 : 15.5) - h1(i, 5) * 0.8;
+      p.fline(16 + Math.cos(a) * r0, 16 + Math.sin(a) * r0, 16 + Math.cos(a) * r1, 16 + Math.sin(a) * r1, i % 2 ? LN[1] : LN[2]);
+    }
+    p.ring(16, 16, 6.6, 10.6, BR, { n: 10 });
     for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU + 0.39; p.rivet(16 + Math.cos(a) * 8.6, 16 + Math.sin(a) * 8.6, 0.65, GM); }
-    p.glow(16, 16, 6.8, LN, { pow: 0.55 }); p.fdot(16, 16, 1.6, 0xffffff); p.spark(16, 16, 4.5, LN[5], 0xffffff);
+    p.glow(16, 16, 6.8, LN);
+    p.spark(15, 15, 3.6, LN[3]);
   },
   // ---------------- harvest
   drill(p) {
     p.rock(25, 28, 7.5, 5, RD_ROCK, { sq: 0.7 });
     p.rock(27, 26, 1.7, 76, OR); p.rock(21.5, 28, 1.2, 77, OR);
-    const lens = head(p, 8, 8.5, 1.75, 1);
-    void lens;
+    head(p, 8, 8.5, 1.75, 1);
     p.seg(11, 12, 15.5, 16.5, 1.5, GM);
-    p.poly([13, 15.5, 17, 11.5, 20, 14.5, 16, 18.5], OL, 0.6);
-    const bit = p.poly([15.6, 17.7, 19.4, 13.9, 27, 26.5], GM, (x, y) => 0.75 - ((x - 15) + (y - 14)) / 40);
+    p.bevel([13, 15.5, 17, 11.5, 20, 14.5, 16, 18.5], OL, { w: 0.9 });
+    const bit = p.bevel([15.6, 17.7, 19.4, 13.9, 27, 26.5], GM, { w: 1.3, lum: P_TOP });
     p.clip = bit.inside; for (let i = 0; i < 5; i++) { const t = 0.2 + i * 0.16, x = 17.5 + (27 - 17.5) * t, y = 15.8 + (26.5 - 15.8) * t; p.fline(x - 2.4 * (1 - t), y + 0.6, x + 0.6, y - 2.4 * (1 - t), GM[1]); } p.clip = null;
-    p.spark(25.5, 24, 2.6, FI[4], 0xffffff);
-    for (const [x, y] of [[21, 20], [23, 19.5], [29, 20], [27.5, 18], [20, 22.5]]) p.fdot(x, y, 0.5, h1(x, y) < 0.5 ? FI[4] : FI[3], FI[1]);
-    p.fline(24, 23, 21.5, 19, FI[3]); p.fline(26, 23, 28.5, 18.5, FI[3]);
+    p.spark(25.5, 24, 2.6, FI[3]);
+    for (const [x, y] of [[21, 20], [23, 19.5], [29, 20], [27.5, 18], [20, 22.5]]) p.fdot(x, y, 0.5, h1(x, y) < 0.5 ? FI[3] : FI[2], FI[0]);
+    p.fline(24, 23, 21.5, 19, FI[2]); p.fline(26, 23, 28.5, 18.5, FI[2]);
   },
   intake(p) {
-    p.seg(7, 31, 7.6, 17, 3.2, BW); p.seg(7.4, 21, 3, 16, 1.2, BW); p.seg(7.6, 19, 11.8, 14.5, 1.1, BW); p.seg(7.5, 17.5, 6.5, 12.5, 1.0, BW);
-    p.ball(6.5, 30.5, 5.5, 1.4, SO, { gain: 0.7 });
+    const tr = p.seg(7, 31, 7.6, 17, 3.2, BW);
+    p.mark([7.9, 29.5, 8.1, 24], tr.part, 1); p.mark([6.6, 26.5, 6.8, 21.5], tr.part, 1);
+    p.seg(7.4, 21, 3, 16, 1.2, BW); p.seg(7.6, 19, 11.8, 14.5, 1.1, BW); p.seg(7.5, 17.5, 6.5, 12.5, 1.0, BW);
+    p.gem([1, 31.5, 3, 29.4, 7, 28.8, 11, 29.6, 12.4, 31.5], SO, { gain: 0.8 });
     head(p, 24, 9.5, 1.85, -1);
     const curve = (t: number): [number, number] => { const a = [9, 16], b = [13, 2], c = [21, 13]; const u = 1 - t; return [u * u * a[0] + 2 * u * t * b[0] + t * t * c[0], u * u * a[1] + 2 * u * t * b[1] + t * t * c[1]]; };
-    for (let i = 0; i < 9; i++) { const t = i / 8, [x, y] = curve(t); p.fdot(x + (h1(i, 3) - 0.5) * 1.6, y + (h1(i, 4) - 0.5) * 1.6, 0.35 + t * 0.55, i % 3 ? CB[3] : CB[5], CB[7]); }
-    p.fdot(5, 13, 0.5, CB[3], CB[7]); p.fdot(11.5, 11, 0.6, CB[4], CB[7]);
+    for (let i = 0; i < 9; i++) { const t = i / 8, [x, y] = curve(t); p.fdot(x + (h1(i, 3) - 0.5) * 1.6, y + (h1(i, 4) - 0.5) * 1.6, 0.35 + t * 0.55, i % 3 ? CB[2] : CB[4], CB[5]); }
+    p.fdot(5, 13, 0.5, CB[2], CB[5]); p.fdot(11.5, 11, 0.6, CB[3], CB[5]);
   },
   siphon(p) {
-    p.ball(16, 27.5, 13, 3.6, WA, { gain: 0.9 });
-    p.farc(16, 27.5, 9, 0, TAU, WA[5], 0, 0.3); p.farc(16, 27.5, 5, 0, TAU, WA[6], 0, 0.3, -1, 2);
+    p.gem([3, 27.4, 6, 24.8, 12, 24, 20, 24.2, 26.4, 25, 29, 27.4, 26.6, 30.2, 19, 31, 12, 30.8, 5.4, 30], WA, { crown: 0.1, top: 0.6 });
+    for (const [a, b, c, w] of [[7.6, 26.6, 11.6, WA[5]], [19.6, 26.2, 24, WA[5]], [11, 28.6, 14, WA[6]], [18, 28.9, 22.4, WA[4]], [5.6, 28.8, 7.6, WA[4]]]) p.fline(a, b, c, b, w);
     for (let i = 0; i < 26; i++) { const t = i / 25, y = 26 - t * 13, x = 16 + Math.sin(t * 11) * 3.6 * (1 - t * 0.5), r = 0.55 + (1 - t) * 0.25; p.fdot(x, y, r, Math.cos(t * 11) > 0 ? WA[5] : WA[3], WA[1]); }
     head(p, 16, 8.2, 1.9, 1);
     p.fdot(9, 19, 0.5, WA[4], WA[1]); p.fdot(23.5, 17, 0.55, WA[5], WA[1]);
   },
   excavate(p) {
     ground(p, 23, SO, true);
-    p.ball(13, 24.5, 6.5, 2.4, SO, { gain: 0.25 });
+    p.gem([6.5, 23.6, 9, 22.6, 17, 22.6, 19.5, 23.6, 17.5, 26.4, 9, 26.6], SO, { gain: 0.35 });
     golem(p, { x: 26, y: 12, s: 0.95, f: -1, front: [1.0, 0.9], back: [0.4, 0.2] });
-    p.ball(10.5, 15.3, 2.8, 1.8, SO, { gain: 1.05 });
+    p.ball(10.5, 15.3, 2.8, 1.8, SO, { n: 6 });
     for (const [x, y, r] of [[6, 11, 0.9], [9, 8.5, 0.8], [4, 16, 0.7], [13.5, 10, 0.6]]) p.rock(x, y, r, x * 3, SO);
     p.fline(5.5, 13, 7, 14.5, SO[4]); p.fline(9.5, 10.5, 10, 12.5, SO[4]);
   },
   magnet(p) {
-    p.under = true; for (const r of [8.5, 12, 15.5]) p.farc(9, 16, r, -0.9, 0.9, VI[r > 12 ? 2 : 3], 0, 1, -1, 2); p.under = false;
+    p.under = true; for (const r of [8.5, 12, 15.5]) p.farc(9, 16, r, -0.9, 0.9, VI[r > 12 ? 2 : 3], 0, 1, -1, 1); p.under = false;
     head(p, 8.5, 16, 1.9, 1);
     for (const [x, y, r, sd] of [[21, 9.5, 1.8, 3], [25.5, 17, 2.1, 5], [21.5, 24.5, 1.6, 7], [29, 11, 1.2, 9]] as [number, number, number, number][]) {
-      p.rock(x, y, r, sd, RD_ROCK); p.rock(x + 0.3, y - 0.3, r * 0.55, sd + 50, OR, { gain: 1.1 });
+      p.rock(x, y, r, sd, RD_ROCK); p.rock(x + 0.3, y - 0.3, r * 0.55, sd + 50, OR);
       streaks(p, x, y, -1, (16 - y) * 0.05, 4, 2, r * 0.7, VI[4]);
     }
   },
@@ -666,13 +769,13 @@ const ART: Record<string, Art> = {
     for (const [x, y, w] of [[17, 11.5, 12], [17, 23, 12]]) p.box(x, y, w, 1.4, OL, { lum: 0.3, bevel: 0.4, clip: b.inside });
     p.box(7.5, 12, 4, 8.5, BK, { bevel: 0.4, lum: 0.2 }); p.box(8.1, 15.5, 2.8, 4.6, WA, { bevel: 0.3, lum: 0.75 });
     p.box(21, 14, 4, 7.5, BK, { bevel: 0.4, lum: 0.2 }); p.box(21.6, 17, 2.8, 3.6, SO, { bevel: 0.3, lum: 0.7 });
-    p.ring(28, 25.5, 1.4, 2.6, BR); p.disc(28, 25.5, 1.4, CR[4]); p.fline(28, 25.5, 29, 24.4, RE[4]);
+    p.ring(28, 25.5, 1.4, 2.6, BR, { n: 7 }); p.disc(28, 25.5, 1.4, CR[4]); p.fline(28, 25.5, 29, 24.4, RE[3]);
   },
   // ---------------- gravity
   lift(p) {
     const g = golem(p, { x: 8.5, y: 20.5, s: 0.85, front: [2.65, 0.25], back: [0.35, -0.2] });
     const t = g.tipF!;
-    p.under = true; p.glow(22, 15.5, 7, VI.slice(0, 4), { ry: 0.3 }); p.under = false;
+    p.under = true; p.plate(22, 15.6, 6.5, 2, VI[1], VI[2]); p.under = false;
     for (let i = 0; i < 6; i++) { const u = i / 5, x = t[0] + (21 - t[0]) * u, y = t[1] + (14.5 - t[1]) * u - Math.sin(u * Math.PI) * 3; p.fdot(x, y, 0.55 - u * 0.15, i % 2 ? VI[4] : VI[3], VI[1]); }
     p.rock(22, 8.5, 6, 13, RW, { sq: 0.85 });
     p.farc(22, 15.8, 5.5, 0, TAU, VI[4], 0, 0.28);
@@ -680,48 +783,53 @@ const ART: Record<string, Art> = {
   },
   slam(p) {
     ground(p, 24, RK);
-    p.ball(18, 24.6, 7.5, 1.8, RK, { gain: 0.3 });
-    p.clip = (x, y) => y > 24.2;
+    p.gem([10.5, 24.6, 14, 23.6, 22.5, 23.6, 25.5, 24.6, 22, 26.4, 13.5, 26.4], RK, { gain: 0.35 });
+    p.clip = (_, y) => y > 24.2;
     for (const [x1, y1] of [[8, 31], [12, 29], [25, 31], [29, 28], [18, 32]]) p.fline(18, 25, x1, y1, RK[0]);
     p.clip = null;
     for (let i = 0; i < 4; i++) { const y = 2 + i * 5.2, w = 6.5 - i * 0.4, c = i === 3 ? VI[5] : VI[3 + (i % 2)]; p.fline(18 - w, y, 18, y + 3.6, c, 1.1, VI[1]); p.fline(18 + w, y, 18, y + 3.6, c, 1.1, VI[1]); }
-    p.glow(18, 23.5, 8, VI.slice(1), { ry: 0.32 });
+    p.plate(18, 23.9, 7.5, 2.2, VI[2], VI[4]);
     for (const [x, y, r] of [[6, 17, 1.5], [29, 18.5, 1.3], [10, 13.5, 0.9], [26, 14, 1.0]]) p.rock(x, y, r, x, RK);
     p.fline(7.5, 19, 9.5, 21.5, RK[5]); p.fline(27.5, 20, 25.5, 22, RK[5]);
   },
   repulse(p) {
-    p.under = true; p.farc(16, 18, 12, 0, TAU, VI[3], 1.0, 0.85); p.farc(16, 18, 15.5, 0, TAU, VI[2], 0, 0.85, -1, 2); p.under = false;
+    p.under = true; p.farc(16, 18, 12, 0, TAU, VI[3], 1.0, 0.85); p.farc(16, 18, 15.5, 0, TAU, VI[2], 0, 0.85, -1, 1); p.under = false;
     golem(p, { x: 16, y: 18.5, s: 0.82, front: [1.95, 0.35], back: [1.95, 0.35] });
     p.farc(16, 18, 8.4, Math.PI * 1.1, Math.PI * 1.9, VI[5], 0, 1);
     for (const [x, y, dx, dy] of [[3.5, 4, -1, -1], [28.5, 4.5, 1, -1], [3, 29, -1, 1], [29, 28.5, 1, 1]] as [number, number, number, number][]) { p.rock(x, y, 1.6, x + y, RK); streaks(p, x, y, dx, dy, 3.5, 2, 1.2, VI[4]); }
   },
   well(p) {
-    for (let arm = 0; arm < 3; arm++) for (let i = 0; i < 40; i++) {
-      const t = i / 40, r = 3.6 + t * 12.5, a = arm * (TAU / 3) + t * 5.2;
-      p.fdot(16 + Math.cos(a) * r, 16 + Math.sin(a) * r * 0.9, 0.45 + t * 0.2, t < 0.35 ? VI[5] : t < 0.7 ? VI[3] : VI[2]);
+    for (let arm = 0; arm < 3; arm++) { // three arms of drawn strokes, heavy near the eye, thinning out
+      let px = 0, py = 0;
+      for (let i = 0; i <= 7; i++) {
+        const t = i / 7, r = 3.8 + t * 12.2, a = arm * (TAU / 3) + t * 4.4 + (h1(i + arm * 9, 2) - 0.5) * 0.18;
+        const x = 16 + Math.cos(a) * r, y = 16 + Math.sin(a) * r * 0.9;
+        if (i) p.fline(px, py, x, y, t < 0.4 ? VI[5] : t < 0.75 ? VI[4] : VI[2], t < 0.45 ? 1.4 : 0);
+        px = x; py = y;
+      }
     }
-    p.ball(16, 16, 4.6, 4.2, VI, { gain: 0.4 });
-    p.ring(16, 16, 3.4, 4.8, VI, { gain: 1.2 });
-    p.disc(16, 16, 2.4, 0x07040f);
+    p.ball(16, 16, 4.6, 4.2, VI, { gain: 0.45, n: 8 });
+    p.ring(16, 16, 3.4, 4.8, VI, { amb: 0.15, n: 8 });
+    p.disc(16, 16, 2.4, INK[0]);
     for (const [r, a, s] of [[9.5, 0.9, 1.4], [12.5, 2.9, 1.7], [7, 4.3, 1.0], [13.5, 5.4, 1.2]]) p.rock(16 + Math.cos(a) * r, 16 + Math.sin(a) * r * 0.9, s, r * 3, RK);
   },
   shape(p) {
     ground(p, 24, SO, true);
-    const pil = p.poly([9, 10, 23, 8.5, 24.5, 25, 7.5, 25], RW, (x, y) => 0.62 - x / 70 + (x < 11 ? 0.15 : 0) - y / 90);
+    const pil = p.bevel([9, 10, 23, 8.5, 24.5, 25, 7.5, 25], RW, { w: 1.8, lum: P_MID });
     p.clip = pil.inside; for (const y of [13, 17.5, 21.5]) p.fline(6, y, 26, y - 1, RW[1]); p.fline(14, 9, 13, 13, RW[1]); p.fline(19, 17, 20, 21, RW[1]); p.clip = null;
-    p.poly([8.6, 10.4, 23.2, 8.8, 23.6, 11, 8.2, 12], PL, 0.7);
-    for (const [x, y, r] of [[6, 25, 1.8], [26, 25.5, 2.0], [4, 27.5, 1.2], [28.5, 28, 1.3]]) p.ball(x, y, r, r * 0.8, SO, { gain: 1.2 });
-    for (const [x, y] of [[4, 14], [28, 13]]) for (let i = 0; i < 2; i++) { const yy = y + i * 4; p.fline(x - 2.2, yy + 2, x, yy, LN[4], 0.8, LN[1]); p.fline(x + 2.2, yy + 2, x, yy, LN[4], 0.8, LN[1]); }
+    p.poly([8.6, 10.4, 23.2, 8.8, 23.6, 11, 8.2, 12], PL, P_TOP);
+    for (const [x, y, r] of [[6, 25, 1.8], [26, 25.5, 2.0], [4, 27.5, 1.2], [28.5, 28, 1.3]]) p.ball(x, y, r, r * 0.8, SO, { amb: 0.1 });
+    for (const [x, y] of [[4, 14], [28, 13]]) for (let i = 0; i < 2; i++) { const yy = y + i * 4; p.fline(x - 2.2, yy + 2, x, yy, LN[3], 0.8, LN[0]); p.fline(x + 2.2, yy + 2, x, yy, LN[3], 0.8, LN[0]); }
   },
   storm(p) {
     ground(p, 27, RK);
-    p.farc(16, 27.5, 5.5, 0, TAU, RE[5], 0, 0.3); p.fline(16, 26, 16, 29, RE[6]); p.fline(10.5, 27.5, 21.5, 27.5, RE[5], 0, -1, 1.5);
+    p.farc(16, 27.5, 5.5, 0, TAU, RE[3], 0, 0.3); p.fline(16, 26, 16, 29, RE[3]); p.fline(10.5, 27.5, 21.5, 27.5, RE[2], 0, -1, 1.5);
     const stones: [number, number][] = [];
-    for (let i = 0; i < 7; i++) { const a = Math.PI + (i / 6) * Math.PI, x = 16 + Math.cos(a) * 12.5, y = 9 + Math.sin(a) * 5.2; stones.push([x, y]); }
-    p.under = true; for (const [x, y] of stones) p.glow(x, y + 1.6, 2, VI.slice(1, 4), { ry: 0.4 }); p.under = false;
+    for (let i = 0; i < 7; i++) { const a = Math.PI + (i / 6) * Math.PI, x = 16 + Math.cos(a) * 12.5, y = 9 + Math.sin(a) * 5.2 + (h1(i, 4) - 0.5) * 1.2; stones.push([x, y]); }
+    p.under = true; for (const [x, y] of stones) p.plate(x, y + 1.8, 1.8, 0.8, VI[1]); p.under = false;
     for (const [x, y] of stones) p.fline(x, y + 1.8, x + (16 - x) * 0.55, y + 1.8 + (26 - y) * 0.55, VI[3], 0, -1, 1.5);
     stones.forEach(([x, y], i) => p.rock(x, y, 1.7 + h1(i, 2) * 0.7, i * 5 + 1, RW));
-    p.spark(16, 25.5, 2.4, FI[4], 0xffffff);
+    p.spark(16, 25.5, 2.4, FI[3]);
   },
   // ---------------- combat
   punch(p) {
@@ -745,11 +853,11 @@ const ART: Record<string, Art> = {
   },
   shrapnel(p) {
     p.fline(2, 3, 11, 13, CR[3], 0, -1, 1.5);
-    p.under = true; p.farc(16, 18, 10, 0, TAU, FI[2], 0, 0.75, -1, 2); p.under = false;
+    p.under = true; p.farc(16, 18, 10, 0, TAU, FI[1], 0, 0.75, -1, 1); p.under = false;
     for (let i = 0; i < 7; i++) {
-      const a = (i / 7) * TAU + 0.5, r = 8.5 + h1(i, 3) * 3, x = 16 + Math.cos(a) * r, y = 18 + Math.sin(a) * r * 0.8;
-      p.poly([x - Math.cos(a + 1.3) * 1.6, y - Math.sin(a + 1.3) * 1.6, x + Math.cos(a) * 2.2, y + Math.sin(a) * 2.2, x - Math.cos(a - 1.3) * 1.4, y - Math.sin(a - 1.3) * 1.4], RW, 0.6 + Math.cos(a + 2.2) * 0.3);
-      streaks(p, x, y, Math.cos(a), Math.sin(a), 2.5, 1, 0, FI[4]);
+      const a = (i / 7) * TAU + 0.5 + (h1(i, 6) - 0.5) * 0.3, r = 8.5 + h1(i, 3) * 3, x = 16 + Math.cos(a) * r, y = 18 + Math.sin(a) * r * 0.8;
+      p.poly([x - Math.cos(a + 1.3) * 1.6, y - Math.sin(a + 1.3) * 1.6, x + Math.cos(a) * 2.2, y + Math.sin(a) * 2.2, x - Math.cos(a - 1.3) * 1.4, y - Math.sin(a - 1.3) * 1.4], RW, plane(Math.cos(a), Math.sin(a)));
+      streaks(p, x, y, Math.cos(a), Math.sin(a), 2.5, 1, 0, FI[3]);
     }
     impact(p, 16, 18, 3);
   },
@@ -758,11 +866,11 @@ const ART: Record<string, Art> = {
     for (const [x, y, k] of [[21.5, 10, 0.75], [24, 17.5, 1], [21, 25, 0.75]] as [number, number, number][]) {
       streaks(p, x - 1.6, y, 1, (y - 17.5) * 0.06, 5.5, 2, 1.4);
       p.rock(x, y, 2.2, x + y, RW, { gain: k });
-      p.spark(x + 4, y, 1.8, FI[4], 0xffffff);
+      p.spark(x + 4, y, 1.8, FI[3]);
     }
   },
   plow(p) {
-    for (let i = 0; i < 4; i++) p.ball(3 + i * 2.6, 27 - i * 0.3, 2.4 - i * 0.3, 1.6, CR, { gain: 0.65 });
+    for (let i = 0; i < 4; i++) p.ball(3 + i * 2.6, 27 - i * 0.3, 2.4 - i * 0.3, 1.6, CR, { gain: 0.65, n: 6 });
     streaks(p, 9, 18, 1, 0, 8, 3, 2.2, VI[4]);
     golem(p, { x: 12, y: 18.5, s: 0.82, front: [1.75, -0.1], back: [1.2, 0.2], fist: 1.1 });
     beast(p, 25, 8.5, 0.62, -1, FL, { tuck: 0.6 });
@@ -770,8 +878,8 @@ const ART: Record<string, Art> = {
   },
   // ---------------- fabrication
   graft(p) {
-    p.ball(19.5, 29, 7.5, 2.4, SO);
-    p.under = true; p.farc(19.5, 29, 11, 0, TAU, VE[4], 0, 0.24, -1, 2); p.under = false;
+    p.ball(19.5, 29, 7.5, 2.4, SO, { n: 7 });
+    p.under = true; p.farc(19.5, 29, 11, 0, TAU, VE[4], 0, 0.24, -1, 1); p.under = false;
     plant(p, 19.5, 28.5, 1.05, { veyr: true });
     p.rock(5, 18.5, 2.8, 51, RW);
     p.seg(7.5, 18.2, 17.8, 18.8, 0.7, BR);
@@ -780,49 +888,56 @@ const ART: Record<string, Art> = {
   sow(p) {
     p.seg(16, 0, 16, 4, 1.8, GM);
     p.box(4.5, 3.5, 23, 4.5, BR, { bevel: 0.8 });
-    for (const x of [7, 25]) { p.seg(x, 7, x, 19, 1.1, GM); }
-    p.ball(16, 13, 3.3, 2.4, SO, { gain: 1.0 });
-    p.clip = (x, y) => Math.hypot((x - 16) / 3.3, (y - 13) / 2.4) <= 1; p.fline(13.5, 13, 18.5, 13, VE[5]); p.clip = null;
+    for (const x of [7, 25]) p.seg(x, 7, x, 19, 1.1, GM);
+    const pod = p.ball(16, 13, 3.3, 2.4, SO, { n: 7 });
+    p.clip = pod.inside; p.fline(13.5, 13, 18.5, 13, VE[5]); p.clip = null;
     p.box(4.5, 17, 23, 3.6, OL, { bevel: 0.7 });
     for (const x of [6.5, 25.5]) { p.rivet(x, 5.8, 0.6, GM); p.rivet(x, 18.8, 0.6, GM); }
     ground(p, 27, SO);
-    for (const x of [8, 16, 24]) { p.seg(x, 27.5, x + 0.3, 23.5, 0.75, VE); p.ball(x - 1.3, 23.8, 1.5, 0.7, VE, { rot: -0.5 }); p.ball(x + 1.6, 23.2, 1.5, 0.7, VE, { rot: 0.5 }); }
-    for (const x of [11, 21]) p.fline(x, 9.5, x, 16, LN[4], 0, -1, 1);
+    for (const [x, top, k] of [[8, 23.8, 1], [16, 22.6, 1.25], [24, 24.4, 0.85]]) {
+      p.seg(x, 27.5, x + 0.3, top, 0.75, VE);
+      p.leaf(x + 0.1, top + 0.4, x - 2.6 * k, top - 1.2 * k, 1.5 * k, VE, { bend: -0.15 }); p.leaf(x + 0.3, top, x + 3 * k, top - 1.8 * k, 1.4 * k, VE, { bend: 0.15 });
+    }
+    for (const x of [11, 21]) p.fline(x, 9.5, x, 16, LN[3], 0, -1, 1);
   },
   convert(p) {
     p.seg(9, 13, 4, 5.5, 1.6, BN);
-    p.ball(14.5, 18.5, 10, 8, FL);
-    p.ball(24.5, 21.5, 5.6, 3.6, FL, { gain: 0.95 });
-    p.poly([19, 24.5, 29.5, 23, 28, 27, 20, 28.5], FL, 0.35);
-    for (let i = 0; i < 4; i++) p.poly([20.5 + i * 2.2, 24.4, 22 + i * 2.2, 24.4, 21.2 + i * 2.2, 26], BN, 0.85);
-    const skull = (x: number, y: number) => Math.hypot((x - 14.5) / 10, (y - 18.5) / 8) <= 1;
-    p.clip = skull; p.fline(7, 15, 12, 15, LN[4], 0, LN[1]); p.fline(12, 15, 14, 12, LN[4], 0, LN[1]); p.fline(9, 20, 13, 20, LN[3], 0, LN[1]); p.fline(13, 20, 15.5, 16.5, LN[3], 0, LN[1]); p.clip = null;
-    p.fdot(12, 15, 0.6, LN[5]); p.fdot(13, 20, 0.6, LN[5]);
+    const sk = p.ball(14.5, 18.5, 10, 8, FL, { n: 9 });
+    p.ball(24.5, 21.5, 5.6, 3.6, FL, { n: 7 });
+    p.poly([19, 24.5, 29.5, 23, 28, 27, 20, 28.5], FL, P_SH);
+    for (let i = 0; i < 4; i++) p.poly([20.5 + i * 2.2, 24.4, 22 + i * 2.2, 24.4, 21.2 + i * 2.2, 26 - (i % 2) * 0.4], BN, P_TOP);
+    p.clip = sk.inside; p.fline(7, 15, 12, 15, LN[3], 0, LN[0]); p.fline(12, 15, 14, 12, LN[3], 0, LN[0]); p.fline(9, 20, 13, 20, LN[2], 0, LN[0]); p.fline(13, 20, 15.5, 16.5, LN[2], 0, LN[0]); p.clip = null;
+    p.fdot(12, 15, 0.6, LN[4]); p.fdot(13, 20, 0.6, LN[4]);
     p.seg(14, 6.5, 15.5, 12.5, 1.5, GM); p.box(12.2, 4, 4.4, 3, BR, { bevel: 0.6 });
-    p.glow(20.5, 15.5, 2.2, LN); p.fdot(20.5, 15.5, 0.6, 0xffffff);
-    p.spark(18, 9.5, 1.6, LN[4], 0xffffff);
+    p.glow(20.5, 15.5, 2.2, LN);
+    p.spark(18, 9.5, 1.6, LN[3]);
   },
   print(p) {
     p.seg(4, 4, 4, 29.5, 1.6, GM); p.seg(28, 4, 28, 29.5, 1.6, GM);
     p.box(2.5, 2.5, 27, 3.2, GM, { bevel: 0.6 });
     p.box(13.5, 5.5, 5, 3.6, BR, { bevel: 0.6 });
-    p.poly([14.5, 9, 17.5, 9, 16, 12], GM, 0.6);
+    p.poly([14.5, 9, 17.5, 9, 16, 12], GM, P_MID);
     ground(p, 28.5, GM);
     p.clip = (_, y) => y > 19.5; beast(p, 16, 23.5, 0.95, 1, FL); p.clip = null;
     p.clip = (_, y) => y <= 19.5; beast(p, 16, 23.5, 0.95, 1, VE, { eye: LN }); p.clip = null;
-    p.fline(3, 19.5, 29, 19.5, LN[5]); p.fline(16, 12, 16, 19, LN[4], 0, LN[1], 1.2);
-    p.clip = (_, y) => y <= 19.5; for (let y = 13; y < 19.5; y += 2) p.fline(5, y, 27, y, VE[2], 0, -1, 0); p.clip = null;
+    p.fline(3, 19.5, 29, 19.5, LN[4]); p.fline(16, 12, 16, 19, LN[3], 0, LN[0], 1.2);
+    p.clip = (_, y) => y <= 19.5; for (let y = 13; y < 19.5; y += 2) p.fline(5, y, 27, y, VE[2]); p.clip = null;
   },
   grove(p) {
-    p.ball(16, 31.5, 17, 5.5, SO);
-    const tree = (x: number, y0: number, y1: number, w: number, cr: number) => {
-      p.seg(x, y0, x, y1, w, BW);
-      const c = p.ball(x, y1 - cr * 0.55, cr, cr * 0.82, VE);
-      p.clip = c.inside; p.fline(x - cr * 0.6, y1 - cr * 0.2, x + cr * 0.2, y1 - cr * 1.1, LN[4]); p.fline(x + cr * 0.6, y1 - cr * 0.3, x, y1 - cr * 0.9, LN[4]); p.clip = null;
+    p.gem([-1, 31.8, 4, 28.4, 12, 27, 21, 27.2, 28.4, 28.2, 33, 31.8], SO, { crown: 0.1 });
+    const tree = (x: number, y0: number, y1: number, w: number, cr: number, sd: number) => {
+      const tr = p.seg(x, y0, x, y1, w, BW);
+      if (w * p.k >= 2) p.mark([x + w * 0.15, y0 - 1, x + w * 0.1, y1 + 2], tr.part, 1);
+      const part = ++p.pid, cy = y1 - cr * 0.55, ins: Inside[] = [];
+      for (const [dx, dy, s] of [[-0.5, 0.12, 0.6], [0.48, 0.18, 0.58], [-0.12, 0.34, 0.52], [0.06, -0.34, 0.7]]) ins.push(p.ball(x + dx * cr, cy + dy * cr, cr * s, cr * s * 0.85, VE, { part, seed: sd + Math.round(dx * 10) }).inside);
+      // leaf clumps: short dark strokes where the lobes fold, a couple of lit buds
+      p.mark([x - cr * 0.15, cy + cr * 0.45, x + cr * 0.05, cy - cr * 0.05, x - cr * 0.3, cy - cr * 0.35], part, 1);
+      p.mark([x + cr * 0.55, cy + cr * 0.25, x + cr * 0.25, cy - cr * 0.05], part, 1);
+      p.fdot(x - cr * 0.42, cy - cr * 0.2, 0.45, LN[3]); p.fdot(x + cr * 0.3, cy - cr * 0.62, 0.45, LN[2]);
     };
-    tree(6.5, 28.5, 21, 1.4, 3.6); tree(25.5, 28.5, 20, 1.6, 4.2); tree(16, 28.5, 15, 2.4, 6.5);
-    for (const [x, y] of [[9.5, 6], [24, 7.5], [5, 12], [28.5, 13], [20, 3]]) p.fdot(x, y, 0.55, LN[4], LN[1]);
-    p.farc(16, 6, 9, Math.PI * 1.05, Math.PI * 1.95, LN[3], 0, 0.5, -1, 2);
+    tree(6.5, 28.5, 21, 1.4, 3.6, 3); tree(25.5, 28.5, 20, 1.6, 4.2, 17); tree(16, 28.5, 15, 2.4, 6.5, 41);
+    for (const [x, y] of [[9.5, 6], [24, 7.5], [5, 12], [28.5, 13], [20, 3]]) p.fdot(x, y, 0.55, LN[3], LN[0]);
+    p.farc(16, 6, 9, Math.PI * 1.05, Math.PI * 1.95, LN[2], 0, 0.5, -1, 1);
   },
   // ---------------- lab
   lab(p) {
@@ -830,128 +945,126 @@ const ART: Record<string, Art> = {
     p.box(5.5, 2, 21, 4.2, BR, { bevel: 0.8 });
     const g = p.tank(7.5, 5.5, 17, 21, GL, { r: 1.5, gain: 0.7 });
     p.box(8.5, 9, 15, 17, LB, { bevel: 0.5, lum: 0.6, clip: g.inside });
-    p.clip = (x, y) => x > 8.5 && x < 23.5 && y > 9; beast(p, 15.5, 17, 0.6, 1, LB.map((c) => mixHex(c, 0x000000, 0.35)), { eye: LN, spines: false }); p.clip = null;
-    p.clip = g.inside; p.fline(10, 7, 10, 24, GL[6], 0, -1, 2.2); p.clip = null;
-    for (const [x, y, r] of [[19, 12, 0.8], [21, 16, 0.6], [12, 21, 0.7], [20.5, 22, 0.5]]) p.farc(x, y, r, 0, TAU, PH[6]);
+    p.clip = (x, y) => x > 8.5 && x < 23.5 && y > 9; beast(p, 15.5, 17, 0.6, 1, LBD, { eye: LN, spines: false }); p.clip = null;
+    p.clip = g.inside; p.fline(10, 7, 10, 24, GL[5], 0, -1, 2.2); p.clip = null;
+    for (const [x, y, r] of [[19, 12, 0.8], [21, 16, 0.6], [12, 21, 0.7], [20.5, 22, 0.5]]) p.fdot(x, y, r, LB[4]);
     p.box(5.5, 25.5, 21, 4.5, BR, { bevel: 0.8 });
     p.rivet(8, 27.8, 0.6, GM); p.rivet(24, 27.8, 0.6, GM);
   },
   splice(p) {
-    helix(p, 2, 16, 16, 5.5, 1.1, LN, FI);
-    helix(p, 16, 30, 16, 5.5, 1.1, VE, HZ);
-    p.glow(16, 16, 3, LN, { pow: 0.6 }); p.spark(16, 16, 4, LN[5], 0xffffff);
+    helix(p, 2, 16, 16, 5.5, 1.1, VE, OR);
+    helix(p, 16, 30, 16, 5.5, 1.1, SG, CU);
+    p.glow(16, 16, 3, LN); p.spark(16, 16, 4, LN[3]);
   },
   sequencer(p) {
     p.box(2.5, 3, 27, 21, BK, { bevel: 1.2, lum: 0.5, r: 1.2 });
-    const scr = p.box(5.5, 6, 21, 14, PH, { bevel: 0.3, lum: 0.1, r: 1.5 });
+    const scr = p.box(5.5, 6, 21, 14, LN, { bevel: 0.3, lum: 0.05, r: 1.5 });
     p.clip = scr.inside;
-    for (let i = 0; i < 26; i++) { const t = i / 25, x = 7 + t * 18, y = 11 + Math.sin(t * TAU * 1.5) * 3; p.fdot(x, y, 0.35, PH[5]); p.fdot(x, 22 - y, 0.35, PH[4]); if (i % 4 === 0) p.fline(x, y, x, 22 - y, PH[3]); }
-    for (let i = 0; i < 5; i++) p.box(7 + i * 3.8, 17, 2.6, 1.6, i < 3 ? PH : BK, { lum: i < 3 ? 0.9 : 0.4, bevel: 0.2 });
+    for (let i = 0; i < 26; i++) { const t = i / 25, x = 7 + t * 18, y = 11 + Math.sin(t * TAU * 1.5) * 3; p.fdot(x, y, 0.35, LN[3]); p.fdot(x, 22 - y, 0.35, LN[2]); if (i % 4 === 0) p.fline(x, y, x, 22 - y, LN[1]); }
+    for (let i = 0; i < 5; i++) p.box(7 + i * 3.8, 17, 2.6, 1.6, i < 3 ? LN : BK, { lum: i < 3 ? 0.75 : 0.4, bevel: 0.2 });
     p.clip = null;
-    p.ball(7, 27, 1.8, 1.8, BR); p.ball(12.5, 27, 1.8, 1.8, BR);
+    p.ball(7, 27, 1.8, 1.8, BR, { n: 6 }); p.ball(12.5, 27, 1.8, 1.8, BR, { n: 6 });
     const tape = p.box(17, 25.5, 13.5, 4, CR, { bevel: 0.4, lum: 0.7 });
     p.clip = tape.inside; for (let x = 18.5; x < 30; x += 2) if (h1(x, 2) > 0.35) p.fdot(x, 27.5, 0.55, BK[0]); p.clip = null;
   },
   vat(p) {
-    p.seg(16, 6, 16, 1.5, 1.8, GM); p.ring(16, 2, 1.2, 2.6, RE, { ry: 0.5 });
-    const v = p.ball(16, 17.5, 12.5, 11, CU);
-    p.clip = v.inside; for (const y of [10, 25]) for (let x = 5; x < 28; x += 3) p.fdot(x, y + Math.abs(x - 16) * -0.04, 0.45, CU[7]); p.clip = null;
-    p.ring(16, 17.5, 4, 6.4, BR);
-    p.disc(16, 17.5, 4.1, LB[2]);
-    p.ball(16.3, 17.8, 3, 2.6, BN);
-    p.ball(17, 18, 1.4, 2.0, [0x060606, 0x101010, 0x202020]);
-    p.glow(17, 18, 1.1, FI.slice(2)); p.fdot(15.6, 16.6, 0.5, 0xffffff);
-    for (const [x, y, r] of [[25, 6, 2.2], [28.5, 3.5, 1.6], [6, 5, 1.6]]) p.ball(x, y, r, r * 0.85, CR, { gain: 0.95 });
+    p.seg(16, 6, 16, 1.5, 1.8, GM); p.ring(16, 2, 1.2, 2.6, RE, { ry: 0.5, n: 7 });
+    const v = p.ball(16, 17.5, 12.5, 11, CU, { n: 9 });
+    p.clip = v.inside; for (const y of [10, 25]) for (let x = 5; x < 28; x += 2.6 + h1(x, 1) * 0.8) p.fdot(x, y + Math.abs(x - 16) * -0.04, 0.45, CU[6]); p.clip = null;
+    p.ring(16, 17.5, 4, 6.4, BR, { n: 8 });
+    p.disc(16, 17.5, 4.1, LB[1]);
+    p.ball(16.3, 17.8, 3, 2.6, BN, { n: 7 });
+    p.ball(17, 18, 1.4, 2.0, INK, { n: 6 });
+    p.fdot(17.4, 18.6, 0.6, FI[2]); p.fdot(15.6, 16.6, 0.5, HOT);
+    for (const [x, y, r] of [[25, 6, 2.2], [28.5, 3.5, 1.6], [6, 5, 1.6]]) p.ball(x, y, r, r * 0.85, CR, { gain: 0.95, n: 6 });
   },
   // ---------------- story and misc
   planet(p) {
     p.under = true; p.farc(16, 16, 14.5, Math.PI, TAU, CR[3], 1.2, 0.3); p.under = false;
-    const land: Inside = (x, y) => { const n = Math.sin(x * 0.55 + Math.cos(y * 0.4) * 2) + Math.cos(y * 0.6 - x * 0.2) + Math.sin((x + y) * 0.9) * 0.35; return n > 0.45; };
-    const disk: Inside = (x, y) => Math.hypot(x - 16, y - 16) <= 11.5;
-    const sp = p.sph(16, 16, 11.5, 11.5);
-    const pt = ++p.pid;
-    p.solid(4, 4, 28, 28, (x, y) => disk(x, y) && !land(x, y), WA, sp, { part: pt });
-    p.solid(4, 4, 28, 28, (x, y) => disk(x, y) && land(x, y), VE, sp, { part: pt });
-    p.solid(4, 4, 28, 28, (x, y) => disk(x, y) && Math.abs(y - 16) > 10, CR, sp, { part: pt });
+    const disk: number[] = []; for (let i = 0; i < 10; i++) { const a = (i / 10) * TAU + 0.15 + (h1(i, 3) - 0.5) * 0.14; disk.push(16 + Math.cos(a) * 11.8, 16 + Math.sin(a) * 11.8); }
+    const g = p.gem(disk, WA, { crown: 0.28, top: 0.55 });
+    const lands = [inPoly([7.4, 9.6, 10.6, 7.6, 14.6, 8.4, 16.2, 11.2, 15, 13.8, 12.2, 14.4, 11.4, 16.6, 8.6, 16.2, 6.6, 13.2]), inPoly([17.2, 16.4, 20.6, 14.2, 24.2, 15, 26.4, 18, 25, 21.4, 21.8, 24.6, 19.4, 22.8, 19.6, 20]), inPoly([9.6, 20.6, 12.8, 20.8, 14, 23.2, 11.6, 25, 9.4, 23.4])];
+    p.solid(4, 4, 28, 28, (x, y) => g.inside(x, y) && lands.some((f) => f(x, y)), SG, g.lum, { part: g.part });
+    p.solid(4, 4, 28, 28, (x, y) => g.inside(x, y) && (y < 6.6 + (x - 16) * 0.12 || y > 25.8 + (x - 16) * 0.1), SN, g.lum, { part: g.part });
     p.farc(16, 16, 14.5, 0, Math.PI, CR[4], 1.2, 0.3);
-    p.spark(27, 5, 1.6, CR[5], 0xffffff);
+    p.spark(27, 5, 1.6, CR[5]);
   },
   dna(p) {
     const N = 36, P = (t: number, ph: number): [number, number] => [16 + Math.sin(t * TAU * 1.25 + ph) * 6.5, 2.5 + t * 27];
     const strand = (ph: number, r: Ramp, front: boolean) => { for (let i = 0; i < N; i++) { const t0 = i / N, t1 = (i + 1) / N, z = Math.cos(((t0 + t1) / 2) * TAU * 1.25 + ph); if ((z > 0) !== front) continue; const a = P(t0, ph), b = P(t1, ph); p.seg(a[0], a[1], b[0], b[1], 2.0, r, { gain: front ? 1 : 0.6 }); } };
-    strand(0, LN, false); strand(Math.PI, HZ, false);
+    strand(0, VE, false); strand(Math.PI, OR, false);
     for (let i = 1; i < 9; i++) { const t = i / 9, a = P(t, 0), b = P(t, Math.PI); p.seg(a[0], a[1], b[0], b[1], 1.0, BN, { gain: 0.8 }); }
-    strand(0, LN, true); strand(Math.PI, HZ, true);
+    strand(0, VE, true); strand(Math.PI, OR, true);
   },
   heart(p) {
-    const inside: Inside = (x, y) => { const X = (x - 16) / 12.5, Y = -(y - 15) / 12.5; const a = X * X + Y * Y - 0.36; return a * a * a - X * X * Y * Y * Y * 0.9 <= 0; };
-    p.solid(2, 3, 30, 29, inside, RE, p.sph(16, 15, 13, 13));
-    p.ball(11, 10.5, 2.2, 1.5, RE, { gain: 1.4, rot: -0.6 }); p.fdot(10.2, 10, 0.6, 0xffffff);
+    const ht = p.bevel([16, 8.6, 18.2, 5.6, 21.6, 4.2, 25, 4.8, 27.6, 7.6, 28, 11.6, 26.4, 15.4, 22.4, 20.2, 16.2, 27.6, 9.8, 20.6, 5.4, 15.8, 4, 11.8, 4.6, 7.8, 7.2, 5, 10.6, 4.4, 13.8, 5.8], CO, { w: 2.6, lum: P_MID, amb: 0.06 });
+    p.poly([8.2, 8.6, 11.2, 6.8, 12.8, 7.8, 9.6, 10.6], CO, 1, { part: ht.part });
   },
   skull(p) {
-    p.ball(16, 13, 10.5, 9.5, BN);
-    p.box(9.5, 18.5, 13, 8.5, BN, { r: 2.5, lum: 0.5 });
-    p.ball(11.8, 14.5, 2.9, 2.6, [0x0a0808, 0x1a1414]); p.ball(20.2, 14.5, 2.9, 2.6, [0x0a0808, 0x1a1414]);
-    p.poly([16, 17.5, 14.4, 21, 17.6, 21], [0x0a0808, 0x1a1414], 0.5);
-    for (let x = 11.5; x <= 20.5; x += 2.2) p.fline(x, 23, x, 26.5, BN[0]);
-    p.fline(16, 4, 17.5, 7.5, BN[0]); p.fline(17.5, 7.5, 16.5, 9.5, BN[0]);
-    p.glow(11.8, 14.5, 1.0, LN); p.glow(20.2, 14.5, 1.0, LN);
+    const cr = p.gem([16, 3.2, 21.4, 4.2, 25, 7.8, 26.4, 12.8, 25, 17.6, 22, 19.8, 10.2, 19.8, 7, 17.4, 5.6, 12.4, 7.2, 7.4, 10.8, 4.2], BN, { crown: 0.25 });
+    const jaw = p.box(9.5, 18.5, 13, 8.5, BN, { r: 2.5, lum: 0.5 });
+    p.poly([8.8, 12.8, 12.2, 11.4, 14.2, 13.2, 13.6, 16.6, 10.4, 17.4, 8.4, 15.2], INK, P_MID);
+    p.poly([18, 13.4, 20.2, 11.6, 23.4, 12.2, 23.8, 15.4, 22.2, 17.2, 18.8, 16.6], INK, P_MID);
+    p.poly([16, 17.6, 14.4, 21, 17.8, 20.8], INK, P_MID);
+    for (let x = 11.6; x <= 20.6; x += 2.2) p.mark([x, 23, x + (h1(x, 1) - 0.5) * 0.6, 26.4], jaw.part, 1);
+    p.mark([16, 3.4, 17.5, 7.5, 16.5, 9.5], cr.part, 1);
+    p.glow(11.4, 14.4, 1.1, LN); p.glow(20.8, 14.2, 1.1, LN);
   },
   pause(p) { p.box(8.5, 6, 5.5, 20, BR, { bevel: 1, r: 1 }); p.box(18, 6, 5.5, 20, BR, { bevel: 1, r: 1 }); },
   stop(p) {
     const pts: number[] = []; for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU + Math.PI / 8; pts.push(16 + Math.cos(a) * 13, 16 + Math.sin(a) * 13); }
-    p.poly(pts, RE, (x, y) => 0.75 - (x + y) / 90);
+    p.bevel(pts, RE, { w: 1.8, lum: P_TOP });
     p.box(8.5, 13.5, 15, 5, CR, { bevel: 0.6, lum: 0.75 });
   },
   move(p) {
-    p.poly([16, 3, 28, 15.5, 20.5, 15.5, 20.5, 28.5, 11.5, 28.5, 11.5, 15.5, 4, 15.5], VE, (x, y) => 0.85 - y / 50 - x / 120);
-    p.spark(25, 5, 1.4, LN[4], 0xffffff);
+    p.bevel([16, 3, 28, 15.5, 20.5, 15.5, 20.5, 28.5, 11.5, 28.5, 11.5, 15.5, 4, 15.5], VE, { w: 1.6, lum: P_TOP });
+    p.spark(25, 5, 1.4, LN[3]);
   },
   attack(p) {
-    p.seg(3, 30, 10, 22, 2.2, GM); p.ball(10.5, 21.5, 2.0, 2.0, BR);
-    const f = p.rock(17, 15.5, 9, 51, RW, { sq: 0.88 });
-    p.clip = f.inside; for (let i = 0; i < 3; i++) p.fline(13 + i * 3.5, 9, 10.5 + i * 3.5, 15, RW[1]); p.clip = null;
-    p.spark(27.5, 5, 2.5, FI[4], 0xffffff); p.fline(25, 9, 28, 11, FI[4]); p.fline(23, 6, 24, 2.5, FI[4]);
+    p.seg(3, 30, 10, 22, 2.2, GM); p.ball(10.5, 21.5, 2.0, 2.0, BR, { n: 6 });
+    const f = p.rock(17, 15.5, 9, 51, RW, { sq: 0.88, cracks: 0 });
+    for (let i = 0; i < 3; i++) p.mark([13 + i * 3.5, 9, 10.5 + i * 3.5, 15], f.part, 1);
+    p.spark(27.5, 5, 2.5, FI[3]); p.fline(25, 9, 28, 11, FI[3]); p.fline(23, 6, 24, 2.5, FI[3]);
   },
   absorb(p) {
     head(p, 25, 8, 1.55, -1);
     p.clip = (x, y) => x + (h1(Math.floor(y * 2), 3) - 0.5) * 2 < 13.5;
     beast(p, 10.5, 22.5, 0.82, 1, FL);
     p.clip = null;
-    for (let i = 0; i < 14; i++) { const t = i / 13, x = 13 + t * 9 + Math.sin(t * 7) * 1.4, y = 21 - t * 11 - Math.sin(t * Math.PI) * 2.5; p.fdot(x, y, 0.35 + (1 - t) * 0.35, i % 3 ? LN[4] : FL[5], LN[1]); }
-    p.fline(10, 15, 9, 13, LN[3]);
+    for (let i = 0; i < 14; i++) { const t = i / 13, x = 13 + t * 9 + Math.sin(t * 7) * 1.4, y = 21 - t * 11 - Math.sin(t * Math.PI) * 2.5; p.fdot(x, y, 0.35 + (1 - t) * 0.35, i % 3 ? LN[3] : FL[5], LN[0]); }
+    p.fline(10, 15, 9, 13, LN[2]);
   },
   territory(p) {
-    p.ball(16, 30, 15, 5, VE);
-    p.under = true; p.farc(15, 28.5, 13, 0, TAU, LN[4], 0, 0.28, -1, 2); p.under = false;
-    p.seg(13, 29, 13, 3.5, 1.1, GM); p.ball(13, 3.2, 0.9, 0.9, BR);
-    const fl = p.poly([13.5, 4, 28, 8.5, 13.5, 13.5], CR, (x) => 0.85 - (x - 13) / 40);
-    p.clip = fl.inside; p.poly([13.5, 4, 21, 6.4, 21, 11.2, 13.5, 13.5], NV, 0.55); for (const y of [7.8, 10.2]) p.fline(21, y, 28, 8.5 + (y - 8.5) * 0.3, RE[5]); p.clip = null;
-    p.poly(star(17, 8.6, 2.0, 0.85), CR, 0.9);
+    p.gem([1, 32, 3, 28, 10, 25.6, 22, 25.4, 29, 27.6, 31, 32], VE, { crown: 0.1 });
+    p.under = true; p.farc(15, 28.5, 13, 0, TAU, LN[3], 0, 0.28, -1, 1); p.under = false;
+    p.seg(13, 29, 13, 3.5, 1.1, GM); p.ball(13, 3.2, 0.9, 0.9, BR, { n: 5 });
+    const fl = p.poly([13.5, 4, 28, 8.5, 13.5, 13.5], CR, (x) => (x < 20.5 ? P_TOP : P_MID));
+    p.clip = fl.inside; p.poly([13.5, 4, 21, 6.4, 21, 11.2, 13.5, 13.5], GL, P_MID); for (const y of [7.8, 10.2]) p.fline(21, y, 28, 8.5 + (y - 8.5) * 0.3, RE[3]); p.clip = null;
+    p.poly(star(17, 8.6, 2.0, 0.85), CR, P_LIT);
   },
   ally(p) {
-    p.farc(23, 8.5, 3.5, 0, TAU, LN[4], 0.8, 0.35, LN[1]);
+    p.farc(23, 8.5, 3.5, 0, TAU, LN[3], 0.8, 0.35, LN[0]);
     beast(p, 14, 18.5, 1.05, 1, FL, { eye: LN });
     p.seg(19, 10.5, 20.5, 14, 1.1, GM); p.box(17.6, 8.4, 3, 2.4, BR, { bevel: 0.5 });
-    for (const [x, y] of [[6, 7], [27, 16], [4, 14]]) p.fdot(x, y, 0.5, LN[4], LN[1]);
+    for (const [x, y] of [[6, 7], [27, 16], [4, 14]]) p.fdot(x, y, 0.5, LN[3], LN[0]);
   },
   journal(p) {
-    p.poly([2.5, 9, 16, 6.5, 29.5, 9, 29.5, 27, 16, 25, 2.5, 27], [0x2a140c, 0x44241a, 0x5e3424, 0x7a4a32], 0.55);
-    p.poly([4, 8.5, 15.5, 6.5, 15.5, 24, 4, 25.5], CR, (x) => 0.65 + x / 80);
-    p.poly([16.5, 6.5, 28, 8.5, 28, 25.5, 16.5, 24], CR, (x) => 0.85 - (x - 16) / 60);
-    for (let i = 0; i < 6; i++) { p.fline(5.5, 10.5 + i * 2.4, 14, 9.5 + i * 2.4, CR[1]); }
-    for (let i = 0; i < 3; i++) p.fline(18, 18 + i * 2.3, 26.5, 19.2 + i * 2.3, CR[1]);
-    p.ring(22, 12.4, 1.6, 2.7, BR); p.fdot(22, 12.4, 0.9, LN[3]); p.fline(18.5, 10, 20, 11, CR[1]);
-    p.seg(27, 3, 19.5, 17, 1.4, HZ); p.poly([19.0, 16.4, 20.4, 17.2, 18.6, 19.4], BN, 0.6);
+    p.poly([2.5, 9, 16, 6.5, 29.5, 9, 29.5, 27, 16, 25, 2.5, 27], CU, P_SH);
+    p.poly([4, 8.5, 15.5, 6.5, 15.5, 24, 4, 25.5], CR, (x) => (x < 12.6 ? P_TOP : P_MID));
+    p.poly([16.5, 6.5, 28, 8.5, 28, 25.5, 16.5, 24], CR, (x) => (x < 19 ? P_MID : P_TOP));
+    for (let i = 0; i < 6; i++) p.fline(5.5, 10.5 + i * 2.4, 14 - h1(i, 3) * 3.5, 9.5 + i * 2.4 + h1(i, 4) * 0.4, CR[1]);
+    for (let i = 0; i < 3; i++) p.fline(18, 18 + i * 2.3, 26.5 - h1(i, 5) * 3, 19.2 + i * 2.3, CR[1]);
+    p.ring(22, 12.4, 1.6, 2.7, BR, { n: 7 }); p.fdot(22, 12.4, 0.9, LN[2]); p.fline(18.5, 10, 20, 11, CR[1]);
+    p.seg(27, 3, 19.5, 17, 1.4, HZ); p.poly([19.0, 16.4, 20.4, 17.2, 18.6, 19.4], BN, P_TOP);
   },
   radio(p) {
-    for (const r of [4, 7, 10]) p.farc(20, 8, r, -1.2, 0.2, CR[4 - Math.floor(r / 4)], 0, 1, -1, r > 6 ? 2 : 0);
-    p.seg(10, 9, 10, 1.5, 1.0, GM); p.ball(10, 1.6, 0.8, 0.8, RE);
+    for (const r of [4, 7, 10]) p.farc(20, 8, r, -1.2, 0.2, CR[4 - Math.floor(r / 4)], 0, 1, -1, r > 6 ? 1 : 0);
+    p.seg(10, 9, 10, 1.5, 1.0, GM); p.ball(10, 1.6, 0.8, 0.8, RE, { n: 5 });
     p.box(4.5, 8.5, 14, 21, OL, { bevel: 1.1, r: 1.5 });
     const g = p.box(6.5, 11, 10, 7, BK, { bevel: 0.3, lum: 0.25 });
     p.clip = g.inside; for (let y = 12; y < 18; y += 1.4) p.fline(6.5, y, 16.5, y, BK[4]); p.clip = null;
-    p.box(6.5, 20, 10, 3.6, PH, { bevel: 0.3, lum: 0.3 }); p.fline(7.5, 21.8, 15.5, 21.8, PH[5], 0, -1, 1.2);
-    p.ball(8.5, 26.3, 1.4, 1.4, BR); p.ball(14.5, 26.3, 1.4, 1.4, BK, { gain: 1.4 });
+    p.box(6.5, 20, 10, 3.6, LN, { bevel: 0.3, lum: 0.05 }); p.fline(7.5, 21.8, 15.5, 21.8, LN[3], 0, -1, 1.2);
+    p.ball(8.5, 26.3, 1.4, 1.4, BR, { n: 6 }); p.ball(14.5, 26.3, 1.4, 1.4, BK, { amb: 0.2, n: 6 });
   },
   // ---------------- skills added to the tree
   plating3(p) {
@@ -963,7 +1076,7 @@ const ART: Record<string, Art> = {
     p.clip = null;
     for (const [x, y] of [[12.5, 8.5], [24.5, 8.5], [12.5, 20.5], [24.5, 20.5]]) p.rivet(x, y, 0.85, GM);
     for (const x of [14.6, 17.6, 20.6]) p.box(x, 11, 2, 7.5, CR, { bevel: 0.3, lum: 0.75 });
-    p.ball(24.5, 13.5, 1.4, 1.1, GM, { gain: 0.35 });
+    p.ball(24.5, 13.5, 1.4, 1.1, GM, { gain: 0.35, n: 6 });
     impact(p, 25, 13, 1.6); p.rock(29.5, 4.5, 1.3, 9, RK); streaks(p, 29.5, 4.5, 1, -1.2, 3, 2, 1.1);
   },
   colossus(p) {
@@ -973,7 +1086,7 @@ const ART: Record<string, Art> = {
     // a man for scale
     p.seg(4.6, 28.5, 4.6, 26, 0.9, BK); p.seg(5.8, 28.5, 5.8, 26, 0.9, BK);
     p.box(3.9, 22.4, 2.6, 4.2, CR, { lum: 0.7, bevel: 0.3 });
-    p.ball(5.2, 21, 1.15, 1.15, [0x6a3e22, 0x9a6440, 0xd0946a, 0xf0c09a]);
+    p.ball(5.2, 21, 1.15, 1.15, FL, { amb: 0.2, n: 5 });
     for (const [x, y] of [[2.5, 13], [30, 10], [29.5, 20]]) { p.fline(x, y, x + 1.6, y + 0.5, CR[4]); p.fline(x, y + 2, x + 1.2, y + 2.4, CR[4]); }
   },
   bore(p) {
@@ -981,60 +1094,60 @@ const ART: Record<string, Art> = {
     p.box(-1, 15, 34, 8, RW, { lum: 0.45, bevel: 0.6 });
     p.box(-1, 23, 34, 10, RD_ROCK, { lum: 0.4, bevel: 0.6 });
     for (const [x, y, r] of [[23, 27, 2.6], [27.5, 25, 1.8], [19, 29.5, 1.6], [7, 27.5, 1.8]]) p.rock(x, y, r, x, OR);
-    p.ball(15.5, 21, 4.2, 9.6, BK, { gain: 0.18 });
+    p.gem([11.4, 13, 13.6, 11.4, 17.6, 11.4, 19.8, 13.2, 20, 27.4, 17.8, 30.6, 13.2, 30.6, 11, 27.6], BK, { gain: 0.3 });
     p.box(12.5, -1, 6, 6.5, OL, { bevel: 0.8 });
-    const bit = p.poly([12.3, 5, 18.7, 5, 15.5, 24], GM, (x, y) => 0.5 + (16 - x) / 14 - y / 70);
+    const bit = p.bevel([12.3, 5, 18.7, 5, 15.5, 24], GM, { w: 1.4, lum: P_TOP });
     p.clip = bit.inside; for (let y = 7; y < 24; y += 3) p.fline(12, y + 2.2, 19, y - 1, GM[1]); p.clip = null;
-    p.glow(15.5, 23.2, 2.4, FI, { pow: 0.6 });
-    for (const [x, y] of [[10.5, 19], [20.5, 18], [12, 15.5], [19.5, 22], [9, 23]]) p.fdot(x, y, 0.45, FI[4], FI[1]);
-    p.fline(17, 21.5, 21.5, 17.5, FI[3]); p.fline(14, 21.5, 10, 18, FI[3]);
+    p.glow(15.5, 23.2, 2.4, FI);
+    for (const [x, y] of [[10.5, 19], [20.5, 18], [12, 15.5], [19.5, 22], [9, 23]]) p.fdot(x, y, 0.45, FI[3], FI[0]);
+    p.fline(17, 21.5, 21.5, 17.5, FI[2]); p.fline(14, 21.5, 10, 18, FI[2]);
   },
   refinery(p) {
-    p.box(3, 25.5, 9, 4, OR, { bevel: 0.6, lum: 0.62 }); p.box(5, 21.8, 9, 4, OR, { bevel: 0.6, lum: 0.7 });
-    p.poly([16, 27, 30, 27, 28.5, 30.5, 17.5, 30.5], GM, 0.45);
-    p.box(17.5, 26.3, 11, 1.6, FI, { lum: 0.85, bevel: 0.2 });
+    p.box(3, 25.5, 9, 4, BR, { bevel: 0.6, lum: 0.62 }); p.box(5, 21.8, 9, 4, BR, { bevel: 0.6, lum: 0.7 });
+    p.poly([16, 27, 30, 27, 28.5, 30.5, 17.5, 30.5], GM, P_MID);
+    p.box(17.5, 26.3, 11, 1.6, FI, { lum: 0.7, bevel: 0.2 });
     p.seg(5.5, 9.5, 1, 13.5, 1.3, GM);
-    const cr = p.poly([3, 6, 13.5, 2, 18, 11.5, 9, 16.5], GM, (x, y) => 0.75 - (x + y) / 60);
-    p.clip = cr.inside; p.poly([11.6, 3.4, 13.8, 2.4, 17.8, 10.9, 15.6, 12], FI, 0.9); p.fline(4, 7.5, 9.5, 15, GM[2]); p.fline(6.5, 5.5, 12, 13.5, GM[3]); p.clip = null;
-    p.glow(16.8, 10.6, 2.0, FI, { pow: 0.6 });
-    for (let i = 0; i < 9; i++) { const t = i / 8, x = 17.2 + Math.sin(t * 2.4) * 2 + t * 4, y = 11 + t * 15; p.fdot(x, y, 0.9 - t * 0.2, i % 2 ? FI[4] : FI[3], FI[1]); }
-    p.glow(22.5, 26.8, 3, FI, { ry: 0.45 });
-    for (const [x, y] of [[26, 22], [19.5, 22.5], [28, 19]]) p.fdot(x, y, 0.4, FI[5], FI[2]);
+    const cr = p.bevel([3, 6, 13.5, 2, 18, 11.5, 9, 16.5], GM, { w: 1.4, lum: P_MID });
+    p.clip = cr.inside; p.poly([11.6, 3.4, 13.8, 2.4, 17.8, 10.9, 15.6, 12], FI, P_TOP); p.fline(4, 7.5, 9.5, 15, GM[2]); p.fline(6.5, 5.5, 12, 13.5, GM[3]); p.clip = null;
+    p.glow(16.8, 10.6, 2.0, FI);
+    for (let i = 0; i < 9; i++) { const t = i / 8, x = 17.2 + Math.sin(t * 2.4) * 2 + t * 4, y = 11 + t * 15; p.fdot(x, y, 0.9 - t * 0.2, i % 2 ? FI[3] : FI[2], FI[0]); }
+    p.plate(22.5, 26.9, 3, 1.1, FI[2], FI[3]);
+    for (const [x, y] of [[26, 22], [19.5, 22.5], [28, 19]]) p.fdot(x, y, 0.4, FI[4], FI[1]);
   },
   amp(p) {
-    p.under = true; for (const r of [10, 13, 15.5]) p.farc(16, 14.5, r, 0, TAU, VI[r > 12 ? 2 : 3], 0, 0.6, -1, r > 14 ? 2 : 0); p.under = false;
+    p.under = true; for (const r of [10, 13, 15.5]) p.farc(16, 14.5, r, 0, TAU, VI[r > 12 ? 2 : 3], 0, 0.6, -1, r > 14 ? 1 : 0); p.under = false;
     p.box(9.5, 23, 13, 5, BR, { bevel: 0.9 });
     for (const x of [11.5, 14.5, 17.5, 20.5]) p.seg(x, 28, x, 31, 0.8, GM);
     const tb = p.tank(10, 3, 12, 20.5, GL, { r: 5.5, gain: 0.7 });
     p.clip = tb.inside;
     p.box(11.8, 9, 2.2, 12, GM, { lum: 0.6, bevel: 0.3 }); p.box(18, 9, 2.2, 12, GM, { lum: 0.5, bevel: 0.3 });
-    p.glow(16, 14.5, 3.2, FI, { ry: 2.2 }); p.fline(16, 9, 16, 20.5, FI[5]);
-    p.fline(12.4, 5.5, 12.4, 18, GL[6], 0, -1, 2);
+    p.glow(16, 14.5, 3.2, FI, { ry: 2.2 }); p.fline(16, 9, 16, 20.5, FI[4]);
+    p.fline(12.4, 5.5, 12.4, 18, GL[5], 0, -1, 2);
     p.clip = null;
-    p.spark(16, 4.5, 1.6, VI[4], 0xffffff);
+    p.spark(16, 4.5, 1.6, VI[5]);
   },
   servo(p) {
-    p.ring(7, 7, 2.6, 4.6, BR); p.disc(7, 7, 2.7, CR[4]);
-    p.farc(7, 7, 2.2, Math.PI * 0.75, Math.PI * 1.25, RE[5], 0.6);
-    p.fline(7, 7, 9.2, 5.6, BK[0]); p.fdot(7, 7, 0.5, BK[0]);
+    p.ring(7, 7, 2.6, 4.6, BR, { n: 8 }); p.disc(7, 7, 2.7, CR[4]);
+    p.farc(7, 7, 2.2, Math.PI * 0.75, Math.PI * 1.25, RE[3], 0.6);
+    p.fline(7, 7, 9.2, 5.6, INK[0]); p.fdot(7, 7, 0.5, INK[0]);
     p.seg(7, 11.5, 7, 17, 1.0, CU); p.seg(7, 17, 11, 19, 1.0, CU);
     p.tank(5, 17, 9, 13, OL, { r: 2.5 });
     p.seg(9.5, 20, 19.5, 13.5, 1.6, GM);
-    p.ball(10, 19.7, 1.4, 1.4, BR);
-    const f = p.rock(22.5, 11.5, 4.8, 51, RW, { sq: 0.9 });
-    p.clip = f.inside; p.fline(20, 8, 23, 14, RW[1]); p.fline(22.5, 7.5, 26, 12, RW[1]); p.clip = null;
+    p.ball(10, 19.7, 1.4, 1.4, BR, { n: 6 });
+    const f = p.rock(22.5, 11.5, 4.8, 51, RW, { sq: 0.9, cracks: 0 });
+    p.mark([20, 8, 23, 14], f.part, 1); p.mark([22.5, 7.5, 26, 12], f.part, 1);
     impact(p, 27.5, 6.5, 1.8);
     streaks(p, 22.5, 11.5, 1, -0.6, 4, 3, 1.4);
   },
   command(p) {
-    p.under = true; for (const r of [5, 8, 11]) p.farc(10, 5.5, r, -0.2, 1.4, r > 9 ? LN[2] : LN[3], 0, 1, -1, r > 6 ? 2 : 0); p.under = false;
-    p.seg(10, 12, 10, 3.5, 0.7, GM); p.ball(10, 3.3, 0.9, 0.9, RE);
+    p.under = true; for (const r of [5, 8, 11]) p.farc(10, 5.5, r, -0.2, 1.4, r > 9 ? LN[1] : LN[2], 0, 1, -1, r > 6 ? 1 : 0); p.under = false;
+    p.seg(10, 12, 10, 3.5, 0.7, GM); p.ball(10, 3.3, 0.9, 0.9, RE, { n: 5 });
     head(p, 9, 15, 1.55, 1, { antenna: false });
     for (const [x, y, s] of [[22.5, 15, 0.62], [17.5, 25, 0.62]] as [number, number, number][]) {
       const b = beast(p, x, y, s, -1, FL, { eye: LN, spines: false });
-      p.farc(b.top[0], b.top[1] - 1.4, 1.8, 0, TAU, LN[4], 0, 0.35, LN[1]);
+      p.farc(b.top[0], b.top[1] - 1.4, 1.8, 0, TAU, LN[3], 0, 0.35, LN[0]);
     }
-    p.fdot(26, 24.5, 0.5, LN[4], LN[1]);
+    p.fdot(26, 24.5, 0.5, LN[3], LN[0]);
   },
   cloner(p) {
     p.seg(15.5, 3, 16.5, 3, 1.2, CU); p.seg(7.5, 3, 24.5, 3, 1.2, CU);
@@ -1042,10 +1155,10 @@ const ART: Record<string, Art> = {
       p.box(x, 1.5, 12.5, 3.6, BR, { bevel: 0.7 });
       const g = p.tank(x + 1, 4.5, 10.5, 21, GL, { r: 1.2, gain: 0.7 });
       p.box(x + 1.7, 8, 9, 17, LB, { bevel: 0.4, lum: 0.6, clip: g.inside });
-      p.clip = g.inside; beast(p, x + 6, 16.5, 0.42, 1, LB.map((c) => mixHex(c, 0x000000, 0.35)), { eye: LN, spines: false }); p.fline(x + 2.6, 6, x + 2.6, 23, GL[6], 0, -1, 2); p.clip = null;
+      p.clip = g.inside; beast(p, x + 6, 16.5, 0.42, 1, LBD, { eye: LN, spines: false }); p.fline(x + 2.6, 6, x + 2.6, 23, GL[5], 0, -1, 2); p.clip = null;
       p.box(x, 25, 12.5, 4.5, BR, { bevel: 0.7 });
     }
-    p.fline(14.8, 13.5, 17.2, 13.5, LN[4], 0.6, LN[1]); p.fline(14.8, 16, 17.2, 16, LN[4], 0.6, LN[1]);
+    p.fline(14.8, 13.5, 17.2, 13.5, LN[3], 0.6, LN[0]); p.fline(14.8, 16, 17.2, 16, LN[3], 0.6, LN[0]);
   },
 };
 
@@ -1107,9 +1220,8 @@ export function legacyCanvas(name: string, k = 1, o: { dim?: boolean; shadow?: b
     const row = g[y] ?? '';
     for (let x = 0; x < 16; x++) {
       const ch = row[x]; if (!ch || ch === '.' || ch === ' ') continue;
-      let c = PAL[ch]; if (c === undefined) continue;
-      if (o.dim) { const l = (((c >> 16) & 255) * 0.3 + ((c >> 8) & 255) * 0.59 + (c & 255) * 0.11) | 0; c = mixHex((l << 16) | (l << 8) | l, 0x101018, 0.45); }
-      base[(y + 1) * S + x + 1] = c;
+      const c = PAL[ch]; if (c === undefined) continue;
+      base[(y + 1) * S + x + 1] = o.dim ? dimC(c) : c;
     }
   }
   const src = new Int32Array(base);
@@ -1123,20 +1235,20 @@ export function legacyCanvas(name: string, k = 1, o: { dim?: boolean; shadow?: b
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) { const c = base[y * S + x]; if (c >= 0) pc.rect(x * k, y * k, k, k, c); }
   if (o.shadow) {
     const has = (x: number, y: number) => x >= 0 && y >= 0 && x < S && y < S && base[y * S + x] >= 0;
-    for (let y = S - 1; y >= 1; y--) for (let x = S - 1; x >= 1; x--) if (!has(x, y) && has(x - 1, y - 1)) for (let j = 0; j < k; j++) for (let i = 0; i < k; i++) pc.set(x * k + i, y * k + j, 0x000000, 110);
+    for (let y = S - 1; y >= 1; y--) for (let x = S - 1; x >= 1; x--) if (!has(x, y) && has(x - 1, y - 1)) for (let j = 0; j < k; j++) for (let i = 0; i < k; i++) pc.set(x * k + i, y * k + j, OUT, 110);
   }
   return pc;
 }
 
 // ------------------------------------------------------------------ legacy 16 x 16 grids
-// Each is authored as a 16 x 16 grid of palette letters (fills and internal shading only); a 1 px dark outline
+// Each is authored as a 16 x 16 grid of palette letters (each letter a step of a master ramp) (fills and internal shading only); a 1 px dark outline
 // is added around every shape automatically so the whole set shares one weight.
 export const PAL: Record<string, number> = {
-  k: 0x0a0910, K: 0x2a2634, w: 0xf6f2e8, s: 0xc0bab0, S: 0x7a7480, e: 0x3a3446, E: 0x5c5470,
-  g: 0x7affe0, G: 0x2fc49a, n: 0x166a56, m: 0x9cea8a, M: 0x2f9a5e, N: 0x1a4a36,
-  v: 0xc4b4ff, V: 0x7a62e8, p: 0x3e2c88, y: 0xffe070, Y: 0xd09030, u: 0x8a5a1a,
-  r: 0xff7050, R: 0xb02a2a, b: 0xeee2c4, B: 0xb0a07c, o: 0xffa040, c: 0x6ad0ff, C: 0x2a72b8, x: 0x5a2a1a, f: 0xff8ac0, F: 0xb04a80,
-  d: 0x77825a, D: 0x4e593a, h: 0x252b1d,
+  k: INK[0], K: RAMPS.basalt[2], w: CR[5], s: RK[6], S: RK[5], e: RK[2], E: RK[3],
+  g: LN[3], G: LN[2], n: VE[2], m: PL[5], M: PL[3], N: PL[1],
+  v: VI[5], V: VI[3], p: VI[1], y: FI[3], Y: OR[4], u: OR[2],
+  r: CO[4], R: RE[2], b: BN[5], B: BN[3], o: FI[2], c: WA[5], C: WA[3], x: CU[1], f: RAMPS.plum[5], F: RAMPS.plum[3],
+  d: OL[4], D: OL[2], h: OL[0],
 };
 
 export const ICONS: Record<string, string[]> = {

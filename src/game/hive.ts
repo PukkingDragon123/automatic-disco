@@ -489,7 +489,9 @@ export class Hive {
 
   // ------------------------------------------------------------------ creatures: convert, print, absorb
   /** how many allies it can keep */
-  allyCap() { return this.isVeyr ? 4 + (this.has('convert') ? 2 : 0) + (this.has('print') ? 3 : 0) + (this.has('vat') ? 3 : 0) : 99; }
+  allyCap() { return this.isVeyr ? 4 + (this.has('convert') ? 2 : 0) + (this.has('print') ? 3 : 0) + (this.has('vat') ? 3 : 0) + (this.game?.factory?.barracks ?? 0) * 4 : 99; }
+  /** take a creature born or bred on the Veyr's side into the fold (marked, counted) */
+  adopt(c: Creature) { c.faction = this.faction; c.homeX = c.x; c.homeZ = c.z; this.allies.add(c); this.mark(c); }
   allyCount() { let n = 0; for (const c of this.allies) if (!c.dead) n++; return n; }
   whyConvert(c: Creature): string | null {
     if (c.dead) return 'It is dead';
@@ -695,6 +697,8 @@ export class Hive {
       if ((c as any).__print) { c.fx.dissolve.value = Math.max(0, c.fx.dissolve.value - dt * 0.8); if (c.fx.dissolve.value <= 0) (c as any).__print = 0; }
       if (!(c as any).__mk && Math.random() < dt * 2) this.recolor(c);
       if (c.fx.flash.value < 0.24) { c.fx.flashCol.value.setHex(this.vein); c.fx.flash.value = 0.1 + 0.07 * Math.sin(t * 2.2 + c.id); }
+      // workers keep to their jobs (factory/workers.ts drives them)
+      if ((c as any).__job) continue;
       // rallied: keep up with Unit 07, fighting whatever is in the way, in a loose ring around it
       const gp = this.follow ? this.golem() : null;
       if (gp) {

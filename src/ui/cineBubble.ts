@@ -1,12 +1,12 @@
-// A speech balloon drawn by hand on paper, floating over a speaker's head in world space: an off-white sheet with
-// a faint grain, a graphite outline that wobbles like a pencil line, a tail that points at the speaker, the line
-// typed in as it is spoken, a small name in the corner. It settles in with a slight tilt and lifts away when done.
+// A speech balloon drawn by hand on paper, floating over a speaker's head in world space: a sheet of the master
+// palette's paper with clipped corners, an ink outline that wobbles like a pen line, a few hatch strokes of shade in
+// one corner, a tail that points at the speaker, the line typed in as it is spoken, a small name in the corner. It settles in with a slight tilt and lifts away when done.
 // Drawn on a canvas at device resolution, so the line work is fine and crisp.
 const CSS = /* css */`
 .bub { position: fixed; left: 0; top: 0; z-index: 4; pointer-events: auto; cursor: pointer; transform-origin: 50% 100%; opacity: 0; will-change: transform, opacity; }
 .bub canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
-.bub .bt { position: relative; font-family: 'VT', monospace; font-size: var(--cf-vt2, 28px); line-height: calc(var(--cf-vt2, 28px) + 2px); color: #1f1e1b; white-space: pre-wrap; }
-.bub .bn { position: relative; font-family: 'Silk', monospace; font-size: var(--cf-ps1, 11px); line-height: var(--cf-ps1, 11px); color: #4a4944; letter-spacing: 1px; margin-bottom: 4px; }
+.bub .bt { position: relative; font-family: 'VT', monospace; font-size: var(--cf-vt2, 28px); line-height: calc(var(--cf-vt2, 28px) + 2px); color: #1f232b; white-space: pre-wrap; }
+.bub .bn { position: relative; font-family: 'Silk', monospace; font-size: var(--cf-ps1, 11px); line-height: var(--cf-ps1, 11px); color: #6f6858; letter-spacing: 1px; margin-bottom: 4px; }
 .bub .bt .cur { opacity: 0.6; }
 body.cine-on .bub { visibility: hidden; }
 `;
@@ -67,10 +67,13 @@ export class SpeechBubble {
     const tr = tipRel < 0 ? w * (0.34 + h1(s, 5) * 0.12) - 6 * u : tipRel;
     const tipX = x0 + tr, tx = Math.min(x0 + w - r - 9 * u, Math.max(x0 + r + 6 * u, tipX + 6 * u)), tipY = y0 + h + this.tail;
     this.tipRel = tr; this.up = up;
-    // the outline as a pencil would go round it: a rounded box, its points nudged off true, the tail in one stroke
+    // the outline as a pen would go round it: a box with its corners clipped, its points nudged off true, the tail in one stroke
     const pts: [number, number][] = [];
     const seg = (ax: number, ay: number, bx: number, by: number) => { const n = Math.max(2, Math.round(Math.hypot(bx - ax, by - ay) / (6 * u))); for (let k = 0; k < n; k++) { const t = k / n; pts.push([ax + (bx - ax) * t, ay + (by - ay) * t]); } };
-    const arc = (cx: number, cy: number, a0: number) => { for (let k = 0; k < 4; k++) { const a = a0 + (k / 4) * Math.PI / 2; pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); } };
+    const arc = (cx: number, cy: number, a0: number) => { // a clipped corner: two straight cuts, not an arc
+      const c = Math.cos(a0), si = Math.sin(a0), c2 = Math.cos(a0 + Math.PI / 2), s2 = Math.sin(a0 + Math.PI / 2);
+      pts.push([cx + c * r, cy + si * r], [cx + (c + c2) * r * 0.55, cy + (si + s2) * r * 0.55]);
+    };
     seg(x0 + r, y0, x0 + w - r, y0); arc(x0 + w - r, y0 + r, -Math.PI / 2);
     seg(x0 + w, y0 + r, x0 + w, y0 + h - r); arc(x0 + w - r, y0 + h - r, 0);
     seg(x0 + w - r, y0 + h, tx + 7 * u, y0 + h);
@@ -79,14 +82,15 @@ export class SpeechBubble {
     seg(x0, y0 + h - r, x0, y0 + r); arc(x0 + r, y0 + r, Math.PI);
     const wob = (k: number) => (h1(k, s) - 0.5) * 0.9;
     const path = () => { g.beginPath(); pts.forEach(([px, py], k) => { const X = px + wob(k), Y = py + wob(k + 99); if (k) g.lineTo(X, Y); else g.moveTo(X, Y); }); g.closePath(); };
-    g.save(); g.translate(2 * u, up ? -3 * u : 3 * u); path(); g.fillStyle = 'rgba(10, 10, 12, 0.5)'; g.fill(); g.restore();
-    path(); g.fillStyle = '#e4ddcb'; g.fill();
-    g.save(); path(); g.clip();
-    for (let k = 0; k < (W * H) / 9; k++) { const px = h1(k, s + 1) * W, py = h1(k, s + 2) * H; g.fillStyle = h1(k, s + 3) < 0.5 ? 'rgba(90, 80, 60, 0.07)' : 'rgba(255, 252, 240, 0.12)'; g.fillRect(px, py, 1, 1); }
+    g.save(); g.translate(2 * u, up ? -3 * u : 3 * u); path(); g.fillStyle = 'rgba(20, 22, 27, 0.5)'; g.fill(); g.restore();
+    path(); g.fillStyle = '#e2dbc6'; g.fill();
+    // shade drawn in, not sprinkled: a few hatch strokes in the corner away from the light
+    g.save(); path(); g.clip(); g.strokeStyle = '#bdb59f'; g.lineWidth = Math.max(1, u * 0.6); g.lineCap = 'butt';
+    for (let k = 0; k < 4; k++) { const hx = x0 + w - (5 + k * 4.2) * u, hy = y0 + h - 2.5 * u; g.beginPath(); g.moveTo(hx, hy); g.lineTo(hx + (3.2 + h1(k, s) * 1.4) * u, hy - (3.2 + h1(k, s) * 1.4) * u); g.stroke(); }
     g.restore();
     g.lineJoin = 'round'; g.lineCap = 'round';
-    path(); g.strokeStyle = '#2a2925'; g.lineWidth = Math.max(1.5, u * 0.9); g.stroke();
-    g.save(); g.translate(0.6, -0.4); path(); g.strokeStyle = 'rgba(59, 58, 54, 0.3)'; g.lineWidth = 1; g.stroke(); g.restore();
+    path(); g.strokeStyle = '#1f232b'; g.lineWidth = Math.max(1.5, u * 0.9); g.stroke();
+    g.save(); g.translate(0.6, -0.4); path(); g.strokeStyle = 'rgba(44, 50, 60, 0.3)'; g.lineWidth = 1; g.stroke(); g.restore();
   }
   /** where to put the sheet so the tail touches (x, y): above or below, shifted sideways, clear of the HUD */
   private place(x: number, y: number) {

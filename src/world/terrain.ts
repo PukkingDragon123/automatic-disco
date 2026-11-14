@@ -1,6 +1,12 @@
 // Voxel terrain: 16 x 16-column chunks, Minecraft-style smooth AO, array-texture blocks. The fragment shader tints
 // the ground the Veyr and its rivals hold (from a territory texture: a metallic sheen, hairline veins pulsing in the
 // owner's colour, a bright seam along the claim's edge) and applies fog of war.
+// Ground materials blend by their own pixel structure: every texel is contested by the materials around it (the cells'
+// own blocks plus dirt and rock on slopes, sand at the shore and in hollows, mud where it is damp, worn dirt on trodden
+// paths, dry grass where the soil is poor) and the one whose texel stands highest wins (a height blend on each tile's
+// own brightness): grass blades lap over dirt, sand settles into the cracks between stones, pebbles keep ragged edges.
+// It is decided per world texel (32 px/m), so it stays pixel art: no fades, no grain.
+// Hooks: ecoData()/ecoFlush() (R moisture, G fertility for src/eco; B trampled wear from game/details.ts), U.uWetG.
 import * as THREE from 'three';
 import { Region } from './region';
 import { BLOCKS, L, buildBlockTexture } from './blockTex';
@@ -23,6 +29,16 @@ export class Terrain {
   readonly matTex: THREE.DataTexture;
   readonly shadeTex: THREE.DataTexture;
   readonly dampTex: THREE.DataTexture;
+  /** RGBA N x N: R moisture, G fertility (src/eco writes these), B trampled wear (details.ts), A reserved */
+  readonly ecoTex: THREE.DataTexture;
+  /** the ecology map's bytes; write R (moisture) and G (fertility) 0..255 per column, then ecoFlush() */
+  ecoData() { return this.ecoTex.image.data as Uint8Array; }
+  ecoFlush() { this.ecoTex.needsUpdate = true; }
+  /** moisture and fertility (0..1) for one column */
+  setEco(x: number, z: number, moisture: number, fertility: number) {
+    const N = this.region.N, i = (Math.min(N - 1, Math.max(0, Math.floor(z))) * N + Math.min(N - 1, Math.max(0, Math.floor(x)))) * 4, d = this.ecoData();
+    d[i] = Math.round(clamp01(moisture) * 255); d[i + 1] = Math.round(clamp01(fertility) * 255);
+  }
   readonly U: Record<string, THREE.IUniform>;
   readonly avg: number[];
   waterMesh: THREE.Mesh;
@@ -48,12 +64,23 @@ export class Terrain {
     this.matTex = mk(new Uint8Array(N * N), THREE.UnsignedByteType, THREE.RedFormat, true);
     this.shadeTex = mk(new Uint8Array(N * N).fill(255), THREE.UnsignedByteType, THREE.RedFormat);
     this.dampTex = mk(Uint8Array.from(region.damp, (v) => Math.round(clamp01(v) * 255)), THREE.UnsignedByteType, THREE.RedFormat);
+    // ecology: R moisture, G fertility (seeded from the region, rewritten by src/eco), B trampled wear (details.ts)
+    const eco = new Uint8Array(N * N * 4);
+    for (let i = 0; i < N * N; i++) { eco[i * 4] = Math.round(clamp01(region.damp[i] * 0.6 + region.wet[i] * 0.4) * 255); eco[i * 4 + 1] = Math.round(clamp01(region.fert[i]) * 255); eco[i * 4 + 3] = 255; }
+    this.ecoTex = mk(eco, THREE.UnsignedByteType);
+    // each layer's mean brightness (linear): a texel brighter than its tile's mean stands proud in the height blend
+    const lin = (c: number) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    const avgL = avg.map((c) => lin((c >> 16) & 255) * 0.3 + lin((c >> 8) & 255) * 0.59 + lin(c & 255) * 0.11);
+    while (avgL.length < 32) avgL.push(0.3);
     // material id -> two array-layer variants
     const lay: number[] = [];
     for (let b = 0; b < 16; b++) { const d = BLOCKS[b] ?? BLOCKS[0]; lay.push(d.top[0], d.top[d.top.length - 1]); }
     this.U = {
       uBlocks: { value: tex }, uMoss: { value: this.moss }, uVis: { value: this.vis }, uHeight: { value: this.heightTex }, uMat: { value: this.matTex }, uShade: { value: this.shadeTex }, uDamp: { value: this.dampTex },
-      uLay: { value: lay }, uRockSide: { value: L.rockSide },
+      uLay: { value: lay }, uRockSide: { value: L.rockSide }, uEco: { value: this.ecoTex }, uAvgL: { value: avgL }, uWetG: { value: 0 },
+      // per block kind: how far its texels stand proud (+) or settle (-) in a blend, and how much it darkens wet
+      uHB: { value: [0.09, 0.07, -0.04, 0.07, -0.09, -0.1, -0.02, 0.1, 0.05, 0.05, 0.08, 0.02, 0.0, 0.0, 0, 0] },
+      uAbs: { value: [0.55, 0.6, 1, 0.2, 1, 0.6, 0.9, 0, 0.2, 0.2, 0, 0.7, 0.4, 0.3, 0, 0] },
       uN: { value: N }, uTime: { value: 0 }, uCore: { value: new THREE.Vector3(region.landing.x, 0, region.landing.z) },
       uVein: { value: new THREE.Color(VEYR.vein) }, uMossLight: { value: new THREE.Color(VEYR.mossLight) },
       uRivalVein: { value: new THREE.Color(RIVALS[0].vein) }, uRivalLayer: { value: L.creep0 }, uRivalCore: { value: new THREE.Vector3(-999, 0, -999) },
@@ -167,47 +194,94 @@ vWp = wpos4.xyz; vNw = normalize(mat3(modelMatrix) * objectNormal);`);
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
 uniform highp sampler2DArray uBlocks;
-uniform sampler2D uMoss, uVis, uMat, uShade, uDamp;
-uniform float uN, uTime, uRivalLayer, uVeinGain, uRockSide;
+uniform sampler2D uMoss, uVis, uMat, uShade, uDamp, uEco, uHeight;
+uniform float uN, uTime, uRivalLayer, uVeinGain, uRockSide, uWetG, uWater;
 uniform float uLay[32];
+uniform float uAvgL[32];
+uniform float uHB[16];
+uniform float uAbs[16];
 uniform vec3 uCore, uVein, uMossLight, uRivalVein, uRivalCore, uDark;
 varying vec3 vWp; varying vec3 vNw;
 ${SHADER_NOISE}
-${FOW_FN}`)
+${FOW_FN}
+int matAt(vec2 cell) { return int(floor(texture2D(uMat, (clamp(cell, vec2(0.0), vec2(uN - 1.0)) + 0.5) / uN).r * 255.0 + 0.5)); }
+float hAtT(vec2 p) { return texture2D(uHeight, (floor(clamp(p, vec2(0.0), vec2(uN - 0.01))) + 0.5) / uN).r; }
+/** one contender for this texel: its weight, plus how proud its own texel stands (its brightness against its tile's) */
+void contend(int id, float w, float vb, vec2 pc, vec2 gx, vec2 gy, inout float bestS, inout vec4 bestT, inout int bestId) {
+  if (w <= 0.015) return;
+  for (int v = 0; v < 2; v++) {
+    float wv = v == 0 ? w * (1.0 - vb) : w * vb;
+    if (wv <= 0.015) continue;
+    float lay = uLay[id * 2 + v];
+    vec4 t = textureGrad(uBlocks, vec3(pc, lay), gx, gy);
+    float l = dot(t.rgb, vec3(0.3, 0.59, 0.11)), a = uAvgL[int(lay)];
+    float h = clamp(0.5 + (l - a) / (a + 0.03) * 0.6, 0.0, 1.0);
+    float sc = wv + uHB[id] + (h - 0.5) * 0.55;
+    if (sc > bestS) { bestS = sc; bestT = t; bestId = id; }
+  }
+}`)
         .replace('#include <map_fragment>', `
 vec3 emis = vec3(0.0);
 vec2 pxw = floor(vWp.xz * 32.0);
 vec2 pc = (pxw + 0.5) / 32.0;
-// jittered nearest material: a smooth warp for wavy borders plus per-pixel grain for a dithered edge
-vec2 warp = vec2(vn(pc * 0.55 + 3.1), vn(pc * 0.55 + 17.7)) - 0.5;
-vec2 grain = vec2(h2(pxw), h2(pxw + 31.0)) - 0.5;
-vec2 mp = pc + warp * 1.5 + grain * 0.55;
-float mid = floor(texture2D(uMat, (floor(clamp(mp, vec2(0.0), vec2(uN - 0.01))) + 0.5) / uN).r * 255.0 + 0.5);
-int mi = int(mid);
-float vsel = step(0.5, vn(pc * 0.21 + 9.0) + (h2(pxw + 7.0) - 0.5) * 0.25);
-float lay = vsel > 0.5 ? uLay[mi * 2 + 1] : uLay[mi * 2];
+vec2 gx = dFdx(vWp.xz), gy = dFdy(vWp.xz);
+vec4 eco = texture2D(uEco, pc / uN);
+float damp = texture2D(uDamp, pc / uN).r;
+// the cells round this texel, their borders bent by a slow warp (shape only: no per-pixel grain)
+vec2 q = pc - 0.5 + (vec2(vn(pc * 0.55 + 3.1), vn(pc * 0.55 + 17.7)) - 0.5) * 0.9;
+vec2 i0 = floor(q), fq = q - i0;
+int ids[4]; float ws[4];
+ids[0] = matAt(i0); ids[1] = matAt(i0 + vec2(1.0, 0.0)); ids[2] = matAt(i0 + vec2(0.0, 1.0)); ids[3] = matAt(i0 + vec2(1.0, 1.0));
+ws[0] = (1.0 - fq.x) * (1.0 - fq.y); ws[1] = fq.x * (1.0 - fq.y); ws[2] = (1.0 - fq.x) * fq.y; ws[3] = fq.x * fq.y;
+for (int a = 1; a < 4; a++) for (int b = 0; b < 4; b++) { if (b < a && ids[b] == ids[a] && ws[a] > 0.0) { ws[b] += ws[a]; ws[a] = 0.0; } }
+int dom = ids[0]; float dw = ws[0];
+for (int a = 1; a < 4; a++) if (ws[a] > dw) { dw = ws[a]; dom = ids[a]; }
+// the lie of the land: slope, height over the water, hollows
+float slope = 1.0 - vNw.y;
+float hw = vWp.y - uWater;
+float hol = (hAtT(pc + vec2(1.6, 0.0)) + hAtT(pc - vec2(1.6, 0.0)) + hAtT(pc + vec2(0.0, 1.6)) + hAtT(pc - vec2(0.0, 1.6))) * 0.25 - hAtT(pc);
+bool soft = dom == 0 || dom == 1 || dom == 2 || dom == 11 || dom == 6;
+float moist = max(damp, eco.r);
+float bestS = -1e9; vec4 bestT = vec4(0.5); int bestId = dom;
+// a grass cell on poor soil gives way to dry grass (fertility from the ecology)
+float dryK = smoothstep(0.42, 0.16, eco.g + (vn(pc * 0.3 + 4.0) - 0.5) * 0.18);
+for (int a = 0; a < 4; a++) {
+  int id = ids[a]; float w = ws[a];
+  float vb = smoothstep(0.38, 0.62, vn(pc * 0.21 + 9.0 + float(id) * 3.7));
+  if (id == 0) { contend(1, w * dryK, 0.0, pc, gx, gy, bestS, bestT, bestId); w *= 1.0 - dryK; }
+  contend(id, w, vb, pc, gx, gy, bestS, bestT, bestId);
+}
+if (soft || dom == 4) {
+  // dirt breaks through on slopes and along trodden paths, stone on the steeper ones
+  float sw = dom == 4 ? 0.0 : smoothstep(0.1, 0.22, slope) * 0.9;
+  float pw = smoothstep(0.12, 0.6, eco.b) * (dom == 4 ? 0.0 : 1.05);
+  contend(2, max(sw, pw), 0.0, pc, gx, gy, bestS, bestT, bestId);
+  if (dom != 4) contend(3, smoothstep(0.2, 0.3, slope) * 0.95, 0.5, pc, gx, gy, bestS, bestT, bestId);
+}
+if (soft) {
+  // sand at the waterline and settled in the hollows (mud instead where it is wet), mud where the ground is damp
+  float shore = (1.0 - smoothstep(0.04, 0.42, hw)) * (1.0 - smoothstep(0.06, 0.2, slope)) * 0.95;
+  float hollow = smoothstep(0.12, 0.4, hol) * 0.75;
+  contend(moist > 0.62 ? 5 : 4, max(shore, hollow), 0.5, pc, gx, gy, bestS, bestT, bestId);
+  contend(5, smoothstep(0.58, 0.92, moist) * 0.92, 0.0, pc, gx, gy, bestS, bestT, bestId);
+}
 vec3 base;
 float glowA;
 if (vNw.y < 0.74) {
   // steep ground: rock strata projected on the dominant horizontal axis
   vec2 uvs = abs(vNw.x) > abs(vNw.z) ? vec2(vWp.z, -vWp.y) : vec2(vWp.x, -vWp.y);
   vec4 tr = texture(uBlocks, vec3(uvs, uRockSide), -0.35);
-  base = tr.rgb; glowA = tr.a;
+  base = tr.rgb; glowA = tr.a; bestId = 3;
 } else {
-  vec4 texel = texture(uBlocks, vec3(vWp.xz, lay), -0.35);
-  base = texel.rgb; glowA = texel.a;
+  base = bestT.rgb; glowA = bestT.a;
 }
 emis += base * (1.0 - glowA) * 2.0;
-// painterly variation: broad warm/cool patches, darker under canopy
-float tpatch = vn(pc * 0.09 + 40.0);
-base *= mix(vec3(0.92, 0.95, 0.88), vec3(1.07, 1.03, 0.94), tpatch);
+// darker under canopy
 float shade = texture2D(uShade, pc / uN).r;
 base *= 0.55 + 0.45 * shade;
-// damp ground along rivers and shores: darker, richer, a soaked band right at the water
-float damp = texture2D(uDamp, pc / uN).r;
-damp = clamp(damp + (vn(pc * 1.3) - 0.5) * 0.35, 0.0, 1.0);
-float dl = dot(base, vec3(0.3, 0.59, 0.11));
-base = mix(base, mix(vec3(dl), base, 1.18) * 0.66, smoothstep(0.25, 0.85, damp) * 0.85);
+// damp and rain-wet ground soaks darker by how much it drinks (sand and soil a lot, stone little, snow not at all)
+float ab = uAbs[bestId];
+base *= 1.0 - (0.16 * smoothstep(0.3, 0.9, moist) + 0.24 * uWetG) * ab;
 // held ground (game/hive.ts writes the Veyr's claim into b, a rival's into a). No carpet: the soil itself is changed,
 // a faint cold metallic sheen, hairline veins in the owner's colour that pulse now and then, sparse rivet studs and a
 // bright seam along the edge of the claim
@@ -248,7 +322,7 @@ diffuseColor.rgb *= base;
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += emis;')
         .replace('#include <dithering_fragment>', '#include <dithering_fragment>\ngl_FragColor.rgb = applyFow(gl_FragColor.rgb, vWp);');
     };
-    m.customProgramCacheKey = () => 'oddworld-terrain-smooth';
+    m.customProgramCacheKey = () => 'oddworld-terrain-blend2';
     return gbuf(m, 0);
   }
 

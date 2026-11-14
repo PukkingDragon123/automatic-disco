@@ -41,7 +41,7 @@ function carapace(S: Ctx, p: Extract<BeastPart, { k: 'carapace' }>, marks: BodyM
     const ta = p.t0 + ((p.t1 - p.t0) * b) / p.bands, tb = p.t0 + ((p.t1 - p.t0) * (b + 1.3)) / p.bands;
     const rows = 5, cols = 10, grid: V3[][] = [], w: Wt[] = [];
     for (let i = 0; i <= rows; i++) {
-      const u = i / rows, t = Math.min(0.99, ta + (tb - ta) * u), k = Math.round(t * N);
+      const u = i / rows, t = clamp(ta + (tb - ta) * u, 0, 0.99), k = Math.round(t * N);
       grid.push(Array.from({ length: cols + 1 }, (_, j) => {
         const a = -p.spread + (2 * p.spread * j) / cols, dome = Math.cos((a / p.spread) * Math.PI / 2) ** 0.6;
         return surf(S, k, a, 0.97 + (p.lift - 0.97) * dome + u * 0.05 * dome).p;
@@ -49,7 +49,7 @@ function carapace(S: Ctx, p: Extract<BeastPart, { k: 'carapace' }>, marks: BodyM
       w.push(sp.w[k]);
     }
     // the rear lip: the shell turns down toward the hide, showing its thickness
-    const kL = Math.round(Math.min(0.99, tb) * N);
+    const kL = Math.round(clamp(tb, 0, 0.99) * N);
     grid.push(Array.from({ length: cols + 1 }, (_, j) => { const a = -p.spread + (2 * p.spread * j) / cols; return surf(S, kL, a, 0.95 + (p.lift - 0.95) * Math.cos((a / p.spread) * Math.PI / 2) ** 0.6 * 0.82).p; }));
     w.push(sp.w[kL]);
     sheet(S.B, CR, S.gid(), grid, (i) => w[i]);
@@ -57,8 +57,12 @@ function carapace(S: Ctx, p: Extract<BeastPart, { k: 'carapace' }>, marks: BodyM
   }
   marks.push({ t0: p.t0, t1: Math.min(1, p.t1 + 0.3 / p.bands), a0: p.spread - 0.12, a1: p.spread + 0.06, k: 0.5 });
   marks.push({ t0: p.t0, t1: Math.min(1, p.t1 + 0.3 / p.bands), a0: -p.spread - 0.06, a1: -p.spread + 0.12, k: 0.5 });
-  S.paints.push(() => {
-    const R = RP(p.ramp), M = RP('moss');
+  S.paints.push(() => shellPaint(CR, p.ramp, !!p.moss));
+}
+/** bone shell: lit crown, turned flanks, two ridges, pits, a pale lip over a dark under-edge, optional moss */
+function shellPaint(CR: Region, ramp: RampName, moss: boolean) {
+  {
+    const R = RP(ramp), M = RP('moss'), p = { moss };
     for (let y = 0; y < CR.h; y++) for (let x = 0; x < CR.w; x++) {
       const u = x / CR.w - 0.5, v = y / CR.h, au = Math.abs(u);
       // planes: the lit crown, the turned flanks, two ridges running back, a pale lip over a dark under-edge
@@ -68,10 +72,23 @@ function carapace(S: Ctx, p: Extract<BeastPart, { k: 'carapace' }>, marks: BodyM
       if (au > 0.47) k = 1;
       if (y % 7 === 3 && (x + (y >> 3)) % 9 < 2 && v < 0.8) k -= 1; // pits
       let c = R[clamp(k, 0, R.length - 1)];
-      if (p.moss && v < 0.8 && au < 0.3 && CR.fbm(x, y, 3, 2, 51) > 0.55) c = M[clamp(k + 1, 0, M.length - 1)];
+      // moss: drawn ragged patches on the crown of each band, thickest at the front where the band before shelters it
+      const mz = 0.06 + 0.16 * hash(Math.floor(v * 9), Math.floor(u * 6 + 3)) * (1 - v);
+      if (p.moss && v < 0.7 && au < mz) c = M[clamp(k + (au < mz * 0.5 ? 1 : 0), 0, M.length - 1)];
       CR.set(x, y, c);
     }
-  });
+  }
+}
+/** a helm: a cap of bone over the skull from brow to nape, its rim above the eyes, sitting on the head's own profile */
+export function helm(S: Ctx, h: HeadCtx, ctrl: V3[], rx: number[], ry: number[], ramp: RampName) {
+  const HM = S.fixed('HELM', 16, 12), spread = 0.95, rows = ctrl.length - 3, cols = 8, se = 2 / 2.7, w: Wt = [h.iH, 1];
+  const grid: V3[][] = [];
+  for (let i = 0; i < rows; i++) {
+    const c = ctrl[i], lift = i === 0 ? 1.04 : 1.12 - i * 0.012;
+    grid.push(Array.from({ length: cols + 1 }, (_, j) => { const a = -spread + (2 * spread * j) / cols; return addV(c, [Math.sign(Math.sin(a)) * Math.abs(Math.sin(a)) ** se * rx[i] * lift, Math.abs(Math.cos(a)) ** se * ry[i] * lift, 0]); }));
+  }
+  sheet(S.B, HM, S.gid(), grid, () => w);
+  S.paints.push(() => shellPaint(HM, ramp, false));
 }
 
 // ---------------------------------------------------------------------------------------------- horn plates

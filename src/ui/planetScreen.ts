@@ -324,12 +324,12 @@ export class PlanetScreen implements Screen {
   private findings(Rg: Region, pr: PRegion): Mark[] {
     const N = Rg.N, out: Mark[] = [];
     const add = (kind: Kind, x: number, z: number, label: string) => out.push({ kind, x: x - N / 2, z: z - N / 2, label, d: 0, el: null, shown: false });
-    for (const d of Rg.deposits) add(d.kind === 'ore' ? 'ore' : 'crystal', d.x, d.z, d.kind === 'ore' ? `FERRITE SEAM · ${Math.round(d.amount)}` : `LUMEN SEAM · ${Math.round(d.amount)}`);
+    for (const d of Rg.deposits) add(d.kind === 'ore' ? 'ore' : 'crystal', d.x, d.z, d.kind === 'ore' ? 'FERRITE' : 'LUMEN');
     // open water: the water cell nearest the middle of the biggest body
     let wx = 0, wz = 0, wn = 0;
     for (let z = 4; z < N - 4; z += 3) for (let x = 4; x < N - 4; x += 3) if (Rg.h[z * N + x] < Rg.water - 0.3) { wx += x; wz += z; wn++; }
-    if (wn > 12) { let best = Infinity, bx = 0, bz = 0; for (let z = 4; z < N - 4; z += 2) for (let x = 4; x < N - 4; x += 2) if (Rg.h[z * N + x] < Rg.water - 0.3) { const dd = Math.hypot(x - wx / wn, z - wz / wn); if (dd < best) { best = dd; bx = x; bz = z; } } add('water', bx, bz, wn > 220 ? 'OPEN SEA' : 'STANDING WATER'); }
-    for (const rv of Rg.rivers) { const p = rv[Math.floor(rv.length * 0.55)]; if (p) add('river', p.x, p.z, 'RIVER · WADEABLE'); }
+    if (wn > 12) { let best = Infinity, bx = 0, bz = 0; for (let z = 4; z < N - 4; z += 2) for (let x = 4; x < N - 4; x += 2) if (Rg.h[z * N + x] < Rg.water - 0.3) { const dd = Math.hypot(x - wx / wn, z - wz / wn); if (dd < best) { best = dd; bx = x; bz = z; } } add('water', bx, bz, wn > 220 ? 'OPEN SEA' : 'POOL'); }
+    for (const rv of Rg.rivers) { const p = rv[Math.floor(rv.length * 0.55)]; if (p) add('river', p.x, p.z, 'RIVER'); }
     // the steepest ground, the thickest woods
     let sx = 0, sz = 0, sb = 0, fx = 0, fz = 0, fb = 0;
     for (let z = 8; z < N - 8; z += 2) for (let x = 8; x < N - 8; x += 2) {
@@ -337,8 +337,8 @@ export class PlanetScreen implements Screen {
       const s = slopeAt(Rg, x, z); if (s > sb) { sb = s; sx = x; sz = z; }
       let f = 0; for (let dz = -3; dz <= 3; dz += 3) for (let dx = -3; dx <= 3; dx += 3) f += Rg.forest[(z + dz) * N + x + dx]; if (f > fb) { fb = f; fx = x; fz = z; }
     }
-    if (sb > 0.55) add('steep', sx, sz, 'STEEP GROUND');
-    if (fb > 4) add('woods', fx, fz, 'DENSE WOODS');
+    if (sb > 0.55) add('steep', sx, sz, 'STEEP');
+    if (fb > 4) add('woods', fx, fz, 'WOODS');
     // life signs: herds where the ground is fertile and open; predator sign in the dangerous regions
     const herds = 2 + Math.round(Rg.biome.fauna * 1.5);
     for (let k = 0, made = 0; k < 400 && made < herds; k++) {
@@ -346,13 +346,13 @@ export class PlanetScreen implements Screen {
       if (Rg.isWater(x, z) || Rg.isSolid(x, z) || Rg.fert[Math.floor(z) * N + Math.floor(x)] < 0.35) continue;
       if (out.some((m) => Math.hypot(m.x - (x - N / 2), m.z - (z - N / 2)) < 18)) continue;
       const n = 4 + Math.floor(hash(k, 9) * 10 * Rg.biome.fauna);
-      add(made === 0 && pr.danger >= 2 ? 'predator' : 'herd', x, z, made === 0 && pr.danger >= 2 ? `PREDATOR SIGN · ${pr.danger === 3 ? 'LARGE' : 'MEDIUM'}` : `HERD · ${n} LIFE SIGNS`);
+      add(made === 0 && pr.danger >= 2 ? 'predator' : 'herd', x, z, made === 0 && pr.danger >= 2 ? (pr.danger === 3 ? 'PREDATOR · LARGE' : 'PREDATOR') : `HERD ×${n}`);
       made++;
     }
     // hostiles: a rival's creep when the region is held; enemy bases when the game knows of any
-    if (pr.state === 'rival') { const rv = RIVALS[this.planet.seed % RIVALS.length]; add('rival', N - Rg.landing.x, N - Rg.landing.z, `HOSTILE CREEP · ${rv.name.toUpperCase()}`); }
+    if (pr.state === 'rival') { const rv = RIVALS[this.planet.seed % RIVALS.length]; add('rival', N - Rg.landing.x, N - Rg.landing.z, `CREEP · ${rv.name.toUpperCase()}`); }
     for (const it of this.opts.intel?.(pr) ?? []) add(it.kind, it.x, it.z, it.label.toUpperCase());
-    add('lz', Rg.landing.x, Rg.landing.z, 'LZ ALPHA · RECOMMENDED');
+    add('lz', Rg.landing.x, Rg.landing.z, 'LZ ALPHA (REC.)');
     for (const m of out) m.d = Math.hypot(m.x, m.z);
     return out.sort((a, b) => a.d - b.d);
   }
@@ -559,13 +559,21 @@ export class PlanetScreen implements Screen {
     const L = this.local;
     if (L && (this.mode === 'survey')) {
       const sScale = (Number(document.documentElement.style.getPropertyValue('--s')) || 2) / 2;
-      for (const m of L.marks) {
-        if (!m.el) continue;
-        const g = new V3(m.x, L.W.gH(m.x, m.z), m.z);
-        const top = g.clone(); top.y += 7;
-        const gp = g.clone().project(this.lcam);
-        const tp = at(top, this.lcam, m.el);
-        m.el.style.setProperty('--stalk', `${Math.max(0, Math.round((tp.y - gp.y) * 0.5 * H) - 2 * sScale)}px`);
+      // each label stands on a stalk over its find; labels that would overlap climb their stalks until clear
+      const placed: [number, number, number, number][] = [];
+      const items = L.marks.filter((m) => m.el).map((m) => {
+        const g = new V3(m.x, L.W.gH(m.x, m.z), m.z), gp = g.clone().project(this.lcam);
+        return { m, gx: (gp.x * 0.5 + 0.5) * W, gy: (-gp.y * 0.5 + 0.5) * H, on: gp.z < 1 && Math.abs(gp.x) < 1.1 && Math.abs(gp.y) < 1.1 };
+      }).sort((a, b) => b.gy - a.gy);
+      const lift = 16 * sScale, lh = 14 * sScale + 2;
+      for (const it of items) {
+        const el = it.m.el!; el.style.visibility = it.on ? '' : 'hidden'; if (!it.on) continue;
+        const w = el.offsetWidth || 80;
+        let y = it.gy - lift, x0 = it.gx - 6 * sScale;
+        for (let k = 0; k < 8; k++) { const hit = placed.find(([px, py, pw, ph]) => x0 < px + pw && x0 + w > px && y > py - ph && y - lh < py); if (!hit) break; y = hit[1] - hit[3] - 1; }
+        placed.push([x0, y, w, lh]);
+        el.style.left = `${Math.round(it.gx)}px`; el.style.top = `${Math.round(y)}px`;
+        el.style.setProperty('--stalk', `${Math.max(0, Math.round(it.gy - y))}px`);
       }
       const ra = (this.ret as any).__at as V | undefined;
       if (ra && this.ret.style.display !== 'none') at(ra.clone().setY(ra.y + 2), this.lcam, this.ret);

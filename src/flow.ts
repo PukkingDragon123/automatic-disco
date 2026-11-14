@@ -102,7 +102,7 @@ export class Flow {
     const engine = this.engine;
     // landing: where the pod came down (GameOpts takes it once game.ts reads opts.landing; see ui/deploy.ts)
     const gopts: GameOpts & { landing?: { x: number; z: number } } = {
-      seed: r.seed, biome: r.biome, pal: p.palKey, regionName: r.name, run, story: this.landings === 1, landing: drop?.landing ?? undefined,
+      seed: r.seed, biome: r.biome, pal: p.palKey, regionName: r.name, run, story: this.landings === 1, danger: r.danger, landing: drop?.landing ?? undefined,
       hooks: {
         openBuilder: (game) => openLab(engine, game),
         openLab: (game) => openLab(engine, game),

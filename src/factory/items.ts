@@ -6,13 +6,16 @@ import * as THREE from 'three';
 import { Pix, poly, selout, RA, INKC, type Pt } from './paint';
 import type { Res } from '../game/skills';
 
-export type ItemId =
+export type BaseItemId =
   | 'ore' | 'carbon' | 'water' | 'soil' | 'copper_ore' | 'coal' | 'crystal' | 'fruit'
   | 'iron_ingot' | 'copper_ingot' | 'steel_ingot' | 'glass' | 'concrete' | 'rubber' | 'plastic'
   | 'iron_plate' | 'iron_rod' | 'screw' | 'copper_wire' | 'cable' | 'steel_beam' | 'gear'
   | 'reinforced_plate' | 'rotor' | 'frame' | 'circuit' | 'vacuum_tube' | 'motor' | 'ammo'
-  | 'servo' | 'control_unit' | 'heavy_frame' | 'reactor_core' | 'report' | 'tape' | 'steam';
-export type ItemCat = 'raw' | 'refined' | 'part' | 'assembly' | 'advanced' | 'research' | 'internal';
+  | 'servo' | 'control_unit' | 'heavy_frame' | 'reactor_core' | 'report' | 'tape' | 'steam'
+  | 'iron_pellet' | 'silk' | 'resin' | 'bio_oil' | 'glass_bead' | 'protein' | 'algae_fuel' | 'dung' | 'herbicide';
+/** item ids: the base set plus anything registered later (registerItem: the biotech producers add their own) */
+export type ItemId = BaseItemId | (string & {});
+export type ItemCat = 'raw' | 'bio' | 'refined' | 'part' | 'assembly' | 'advanced' | 'research' | 'internal';
 export interface ItemDef {
   id: ItemId; name: string; cat: ItemCat; desc: string;
   /** colour of the crate sides on a belt */
@@ -60,9 +63,27 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   report: I('report', 'Survey Report', 'research', RA.paper[4], 'Plates, wire and measurements, typed up. The research lab reads them.'),
   tape: I('tape', 'Data Tape', 'research', RA.ink[2], 'A reel of recorded analysis. Worth a lot to the lab.'),
   steam: I('steam', 'Steam', 'internal', RA.snow[4], 'Pressure from the boiler.'),
+  // the living route: what engineered creatures and plants produce, and what the pens and sheds give
+  iron_pellet: I('iron_pellet', 'Iron Pellets', 'bio', RA.rust[3], 'Rock eaten by ore-gizzard grazers and passed as clean iron pellets. Smelts faster than ore.'),
+  silk: I('silk', 'Silk', 'bio', RA.straw[4], 'Spun from engineered glands. Insulation, rope, cable.'),
+  resin: I('resin', 'Resin', 'bio', RA.ochre[4], 'Tapped from resin trees. Refines to Bakelite and rubber.'),
+  bio_oil: I('bio_oil', 'Bio-Oil', 'bio', RA.ichor[3], 'Pressed from oil fruit and seed. Burns in a boiler; refines to plastic.', { fuel: 6 }),
+  glass_bead: I('glass_bead', 'Glass Beads', 'bio', RA.water[5], 'Silica beads grown by crystal corals. Melts to glass.'),
+  protein: I('protein', 'Protein', 'bio', RA.flesh[4], 'Milk and meal from the herds. Good food for workers.', { food: 2.5 }),
+  algae_fuel: I('algae_fuel', 'Algae Fuel', 'bio', RA.ichor[2], 'Skimmed from biofuel ponds. A clean boiler fuel.', { fuel: 10 }),
+  dung: I('dung', 'Dung', 'bio', RA.soil[2], 'From the pens and the herds. The fertiliser spreader wants it.'),
+  herbicide: I('herbicide', 'Herbicide', 'refined', RA.ichor[4], 'A defoliant in drums: the sprayer kills plants and sickens creatures with it.'),
 };
 export const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
 export const ITEM_INDEX: Record<ItemId, number> = Object.fromEntries(ITEM_IDS.map((k, i) => [k, i])) as Record<ItemId, number>;
+/** add an item (another system's producers): its definition and, optionally, an icon painter on a 16 px Pix */
+export function registerItem(def: ItemDef, icon?: (p: Pix) => void) {
+  if (!ITEMS[def.id]) { ITEM_IDS.push(def.id); ITEM_INDEX[def.id] = ITEM_IDS.length - 1; }
+  ITEMS[def.id] = def;
+  if (icon) ICON[def.id] = icon;
+  pixCache.delete(def.id); for (const k of [...urlCache.keys()]) if (k.startsWith(def.id + '@')) urlCache.delete(k);
+  if (ARR) { ARR.dispose(); ARR = null; }
+}
 /** the raw materials that live in the golem's hold (run.res) */
 export const RAW_RES: ItemId[] = ['ore', 'carbon', 'water', 'soil'];
 export const isRes = (id: ItemId): id is Res => id === 'ore' || id === 'carbon' || id === 'water' || id === 'soil';
@@ -90,6 +111,64 @@ function ingot(p: Pix, R: number[], mark = -1) {
   selout(p, R[1]);
 }
 const ICON: Partial<Record<ItemId, Painter>> = {
+  iron_pellet: (p) => {
+    const R = RA.rust;
+    for (const [x, y, k] of [[3, 9, 4], [7, 6, 3], [9, 10, 4], [5, 12, 3], [11, 6, 2], [12, 11, 3]] as const) { poly(p, [[x, y], [x + 2, y - 1], [x + 3, y + 1], [x + 1, y + 2]], R[k]); p.set(x + 1, y, R[k + 2]); }
+    selout(p, R[1]);
+  },
+  silk: (p) => {
+    const R = RA.straw;
+    poly(p, [[3, 5], [8, 2], [13, 5], [13, 11], [8, 14], [3, 11]], R[3]); poly(p, [[3, 5], [8, 2], [9, 3], [5, 7], [4, 11], [3, 11]], R[5]);
+    for (let k = 0; k < 4; k++) p.line(4, 6 + k * 2, 12, 4 + k * 2, R[k % 2 ? 2 : 4]);
+    p.line(12, 12, 15, 15, R[4]);
+    selout(p, R[1]);
+  },
+  resin: (p) => {
+    const R = RA.ochre;
+    poly(p, [[7, 2], [10, 6], [12, 10], [10, 14], [5, 14], [3, 10], [5, 6]], R[4]); poly(p, [[7, 2], [5, 6], [3, 10], [5, 12], [6, 7]], R[6]);
+    poly(p, [[10, 14], [12, 10], [11, 9], [8, 13]], R[2]); p.set(6, 8, 0xd6c79c);
+    selout(p, R[1]);
+  },
+  bio_oil: (p) => {
+    const R = RA.steel, O = RA.ichor;
+    p.rect(4, 4, 8, 10, R[3]); p.rect(4, 4, 2, 10, R[5]); p.rect(10, 4, 2, 10, R[1]);
+    p.rect(4, 7, 8, 4, O[3]); p.rect(4, 7, 2, 4, O[4]); p.rect(10, 7, 2, 4, O[1]);
+    p.hl(5, 10, 3, R[4]); p.hl(4, 11, 6, R[2]); p.hl(4, 11, 11, R[2]); p.set(8, 2, R[5]);
+    selout(p, R[1]);
+  },
+  glass_bead: (p) => {
+    const R = RA.water;
+    for (const [x, y] of [[3, 8], [7, 5], [10, 9], [6, 11], [11, 4]] as const) { poly(p, [[x, y + 1], [x + 1, y], [x + 3, y], [x + 4, y + 1], [x + 4, y + 2], [x + 3, y + 3], [x + 1, y + 3], [x, y + 2]], R[4]); p.set(x + 1, y + 1, R[6]); p.set(x + 3, y + 2, R[2]); }
+    selout(p, R[1]);
+  },
+  protein: (p) => {
+    const R = RA.paper, F = RA.flesh;
+    p.rect(4, 5, 8, 9, R[4]); p.rect(4, 5, 2, 9, R[5]); p.rect(10, 5, 2, 9, R[2]);
+    poly(p, [[4, 5], [6, 2], [10, 2], [12, 5]], R[3]); p.hl(6, 9, 2, R[5]);
+    p.rect(5, 8, 6, 3, F[4]); p.hl(5, 10, 8, F[5]);
+    selout(p, R[1]);
+  },
+  algae_fuel: (p) => {
+    const R = RA.olive, A = RA.ichor;
+    p.rect(3, 4, 10, 10, R[3]); p.rect(3, 4, 2, 10, R[4]); p.rect(11, 4, 2, 10, R[1]);
+    p.hl(3, 12, 6, R[1]); p.hl(3, 12, 11, R[1]);
+    p.rect(5, 7, 6, 3, A[3]); p.set(6, 8, A[4]); p.set(9, 8, A[2]);
+    p.rect(9, 2, 3, 2, R[2]);
+    selout(p, R[0]);
+  },
+  dung: (p) => {
+    const R = RA.soil;
+    lump(p, R, [[2, 13], [4, 9], [7, 8], [8, 5], [11, 6], [13, 9], [14, 13]], 8, 11, 2);
+    p.set(6, 11, R[4]); p.set(10, 8, R[4]); p.set(9, 12, R[1]);
+    selout(p, R[0]);
+  },
+  herbicide: (p) => {
+    const R = RA.olive, Y = RA.glowAmber;
+    p.rect(4, 3, 8, 11, R[4]); p.rect(4, 3, 2, 11, R[5]); p.rect(10, 3, 2, 11, R[2]);
+    p.hl(4, 11, 5, R[1]); p.hl(4, 11, 12, R[1]);
+    p.rect(6, 7, 4, 3, Y[3]); p.set(7, 8, RA.ink[1]); p.set(8, 8, RA.ink[1]);
+    selout(p, R[1]);
+  },
   ore: (p) => {
     lump(p, RA.stone, [[3, 6], [6, 3], [11, 3], [14, 7], [13, 12], [8, 14], [3, 12]], 8, 8, 3);
     for (const [x, y, k] of [[6, 6, 4], [7, 6, 5], [6, 7, 3], [10, 9, 4], [11, 9, 3], [10, 10, 2], [8, 11, 3], [11, 5, 4]] as const) p.set(x, y, RA.rust[k]);
