@@ -3,10 +3,10 @@
 //   1. the carrier: a long flyover under its floodlit hull toward the planet, then its profile against the limb;
 //      inside Launch Bay 2 the gantry crane lowers Unit 07 into the drop pod, the hatch swings shut, the clamps bite,
 //      steam vents; up in the gallery the launch officer asks for a drop zone
-//   2. the plotting table: the region as a survey chart under the glass (deployTable.ts); the player pins the LZ
-//   3. the launch: klaxons, the red beacons, the countdown on nixie tubes, the clamshell doors opening on the
+//   (the drop point itself is picked from orbit on the planet screen and handed in)
+//   2. the launch: klaxons, the red beacons, the countdown on nixie tubes, the clamshell doors opening on the
 //      planet, the lever, the rail firing the pod out of the bow; the pod seen leaving the ship
-//   4. the descent (game/descent.ts): flown by the player, scored against the pin, with its own cinematic cuts
+//   3. the descent (game/descent.ts): flown by the player, scored against the pin, with its own cinematic cuts
 // The first landing plays all of it; later ones are a short version. Esc skips any cinematic part (the scene runs
 // through to its end state); in the descent Esc hands over to the autopilot and fast-forwards.
 import * as THREE from 'three';
@@ -27,7 +27,7 @@ import { Descent, bonusFor, type DescentResult, type Grade } from '../game/desce
 import { Bin, V3, ease, type V } from './deployKit';
 import { buildShip, BAY, BOOTH, railVents, type Ship } from './deployShip';
 import { portholeWorld } from './deployPod';
-import { PlanTable, drawChart, gridRef, type LZInfo } from './deployTable';
+import { assessLZ, type LZInfo } from '../game/descentWorld';
 import { hashi } from '../core/rand';
 
 export interface DeployResult {
@@ -42,7 +42,11 @@ export interface DeployOpts {
   /** landings made before this one (0: the full sequence plays) */
   landings: number;
   onDone(r: DeployResult): void;
-  /** QA: start at 'plan', 'launch' or 'descent' */
+  /** the drop point picked from orbit (region coordinates); the recommended LZ when absent */
+  lz?: { x: number; z: number } | null;
+  /** the Region already generated for this region (the planet screen's close-up), to save generating it again */
+  regionData?: Region | null;
+  /** QA: start at 'launch' or 'descent' */
   phase?: string | null;
   /** QA: freeze time (engine.timeScale = 0) when the named shot is reached, for screenshots */
   hold?: string | null;
@@ -58,11 +62,10 @@ export class DeployScreen implements Screen {
   private cam = new THREE.PerspectiveCamera(40, 1, 0.12, 15000);
   private ship: Ship | null = null; private globe: Globe | null = null; private fx: Fx | null = null; private child: VeyrChild | null = null;
   private region: Region; private pal: Palette;
-  private plan: PlanTable | null = null;
   private descent: Descent | null = null;
   private mode: 'boot' | 'carrier' | 'descent' | 'done' = 'boot';
   private t = 0; private first: boolean;
-  private lz: LZInfo | null = null;
+  private lz: LZInfo;
   private op: string;
   private podFree: { p: V; v: V; t: number } | null = null;
   private disposed = false;
@@ -73,7 +76,8 @@ export class DeployScreen implements Screen {
     this.pal = planetPalette(o.region.seed, o.planet.palKey);
     this.op = this.first ? OPS[0] : OPS[1 + (hashi(o.region.seed, o.landings) % (OPS.length - 1))];
     // the same region the game will generate: the chart, the hazards and the descent's terrain come from it
-    this.region = new Region(o.region.seed, BIOMES[o.region.biome], this.pal);
+    this.region = o.regionData ?? new Region(o.region.seed, BIOMES[o.region.biome], this.pal);
+    this.lz = assessLZ(this.region, o.lz?.x ?? this.region.landing.x, o.lz?.z ?? this.region.landing.z);
     this.cine.ui.fade(1, 0);
     (window as any).__deploy = this;
     void this.start();
@@ -86,12 +90,10 @@ export class DeployScreen implements Screen {
     if (this.o.phase === 'descent') { this.toDescent(); return; }
     this.buildCarrier();
     this.mode = 'carrier';
-    if (this.o.phase === 'plan') { this.setLoaded(); this.cine.ui.fade(0, 0.4); this.planning(); return; }
-    if (this.o.phase === 'launch') { this.setLoaded(); this.cine.ui.fade(0, 0.4); this.lz = null; void this.launch(); return; }
-    const skipped = await this.cine.play((c) => (this.first ? this.establish(c) : this.establishShort(c)), { name: 'deploy-carrier' });
-    void skipped;
+    if (this.o.phase === 'launch') { this.setLoaded(); this.cine.ui.fade(0, 0.4); void this.launch(); return; }
+    await this.cine.play((c) => (this.first ? this.establish(c) : this.establishShort(c)), { name: 'deploy-carrier' });
     if (this.disposed) return;
-    this.planning();
+    void this.launch();
   }
   private buildCarrier() {
     const bin = this.bin, sc = this.scene, P = this.o.planet;
@@ -209,10 +211,10 @@ export class DeployScreen implements Screen {
     c.cam.handheld = 0.02;
     c.cam.cut(this.w(-8.4, -7.3, 9.2), this.w(-3.0, -11.4, 19.5), 44);
     void c.cam.move({ pos: this.w(-8.2, -7.25, 9.6), look: this.w(-3.4, -11.2, 19.0), dur: 4, ease: 'inOut' });
-    s.officer.faceNow(-3, 19); s.officer.look = this.w(0, -12.5, 16);
+    s.officer!.faceNow(-3, 19); s.officer!.look = this.w(0, -12.5, 16);
     void c.wait(1.6).then(() => this.mark('gallery'));
-    await c.say('Unit Seven, this is Launch Control. Mark your drop zone on the chart.', { who: 'Cdr. Okafor', style: 'radio', pitch: 0.75 });
-    await c.wait(0.3);
+    await c.say(`Unit Seven, this is Launch Control. Drop zone received: grid ${this.lz.grid}, ${this.o.region.name}. Stand by.`, { who: 'Cdr. Okafor', style: 'radio', pitch: 0.75 });
+    await c.wait(0.2);
   }
   /** later landings: the profile, the gallery, and on to the chart */
   private async establishShort(c: Cinema) {
@@ -232,37 +234,13 @@ export class DeployScreen implements Screen {
     s.setView('int'); g.group.visible = false;
     c.cam.cut(this.w(-8.4, -7.3, 9.2), this.w(-3.0, -11.4, 19.5), 44);
     void c.fade(0, 0.4);
-    s.officer.faceNow(-3, 19);
-    await c.say('Seven, Launch Control. Same drill. Mark your drop zone.', { who: 'Cdr. Okafor', style: 'radio', pitch: 0.75 });
+    s.officer!.faceNow(-3, 19);
+    await c.say(`Seven, Launch Control. Same drill. Drop zone grid ${this.lz.grid}.`, { who: 'Cdr. Okafor', style: 'radio', pitch: 0.75 });
   }
 
-  // ================================================================ 2. the plotting table
-  private planning() {
-    const s = this.ship!;
-    this.setLoaded();
-    const tex = this.bin.t(new THREE.CanvasTexture(drawChart(this.region, this.o.region, this.o.planet, this.op)));
-    tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.magFilter = THREE.LinearFilter;
-    s.table.setMap(tex);
-    // the officer across the table; the camera over the chart
-    const T = BOOTH.table, mc = this.w(T.x + s.table.centre.x, T.y + s.table.centre.y, T.z + s.table.centre.z);
-    s.officer.place(mc.x + 0.1, T.z - 1.2, 0); s.officer.look = mc.clone();
-    this.cine.cam.handheld = 0;
-    // the chart sits left of centre, clear of the intelligence sheet on the right
-    const wide = innerWidth / innerHeight > 4 / 3;
-    this.cine.cam.cut(this.w(mc.x + (wide ? 0.52 : 0), mc.y + 2.05, mc.z + (wide ? 0.66 : 0.95)), this.w(mc.x + (wide ? 0.52 : 0), mc.y, mc.z + (wide ? 0.02 : 0.3)), 44);
-    this.cine.ui.letterbox(false, 0.4);
-    csfx('page', 0.8); csfx('cardFeed', 0.4);
-    this.plan = new PlanTable({
-      region: this.region, pr: this.o.region, planet: this.o.planet, op: this.op, ship: s, cam: this.cam, canvas: this.engine.canvas,
-      onPin: (w) => { s.officer.gesture('point', { at: w }); s.officer.look = w; },
-      onConfirm: (lz) => { this.lz = lz; setTimeout(() => { this.plan?.dispose(); this.plan = null; void this.launch(); }, 450); },
-    });
-  }
-
-  // ================================================================ 3. the launch
+  // ================================================================ 2. the launch
   private async launch() {
-    const lz = this.lz ?? { x: this.region.landing.x, z: this.region.landing.z, grid: gridRef(this.region.landing.x, this.region.landing.z) } as LZInfo;
-    this.lz = lz;
+    const lz = this.lz;
     await this.cine.play((c) => this.launchScript(c, lz), { name: 'deploy-launch' });
     if (this.disposed) return;
     this.toDescent();
@@ -272,7 +250,8 @@ export class DeployScreen implements Screen {
     const full = this.first;
     c.onEnd(() => { s.setDoors(1); s.setBeacons(false); });
     // ---- the officer at the console: confirm, clear the rail
-    s.officer.place(-6.4, 16.75, 0); s.officer.faceNow(-6.4, 20); s.officer.look = this.w(0, -12, 50);
+    const off = s.officer!;
+    off.place(-6.4, 16.75, 0); off.faceNow(-6.4, 20); off.look = this.w(0, -12, 50);
     for (const cr of s.crew) cr.a.place(cr.home.x, cr.home.z);
     c.cam.handheld = 0.025;
     c.cam.cut(this.w(-5.0, -7.35, 15.6), this.w(-6.7, -7.7, 17.8), 42);
@@ -364,11 +343,11 @@ export class DeployScreen implements Screen {
     });
   }
 
-  // ================================================================ 4. the descent
+  // ================================================================ 3. the descent
   private toDescent() {
     this.disposeCarrier();
     this.mode = 'descent';
-    const lz = this.lz ?? ({ x: this.region.landing.x, z: this.region.landing.z } as LZInfo);
+    const lz = this.lz;
     this.cine.ui.fade(1, 0); this.cine.ui.fade(0, 0.8, '#f0d8b8');
     this.cine.ui.flash('#ffb070', 0.8, 0.6);
     this.descent = new Descent({
@@ -408,7 +387,6 @@ export class DeployScreen implements Screen {
         s.pod.setRetro(f.t > 1.0 ? 1 : 0, this.t);
         if (this.fx && Math.random() < dt * 40) this.fx.burst(f.p.x, f.p.y, f.p.z - 2, 1, 0xd8d0c8, { speed: 1, up: 0, size: 5, life: 1.4, grav: 0 });
       }
-      this.plan?.update(dt);
       this.fx!.update(dt, this.engine.h, this.cam.fov);
       this.cine.apply(this.cam);
     } else if (this.mode === 'descent' || this.mode === 'done') this.descent?.update(dt);
@@ -423,7 +401,6 @@ export class DeployScreen implements Screen {
   }
   resize(w: number, h: number) { this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); this.descent?.resize(w, h); }
   private disposeCarrier() {
-    this.plan?.dispose(); this.plan = null;
     this.ship?.dispose(); this.ship = null;
     this.bin.dispose();
     this.scene.clear(); this.fxScene.clear();
@@ -440,7 +417,7 @@ export class DeployScreen implements Screen {
 }
 
 /** ?test=deploy: the deployment over a stand-in planet and run. &seed, &region (index), &later (the short
- *  version), &phase=plan|launch|descent, &skills=torso,armR (Unit 07's parts) */
+ *  version), &phase=launch|descent, &hold=<shot>, &lz=x,z, &skills=torso,armR (Unit 07's parts) */
 export async function testDeploy(engine: Engine, input: Input, P: URLSearchParams) {
   (await import('./kit')).setupUI();
   const { makePlanet } = await import('../world/planet');
@@ -453,6 +430,7 @@ export async function testDeploy(engine: Engine, input: Input, P: URLSearchParam
   for (const id of (P.get('skills') ?? '').split(',')) if (id) run.skills.owned.add(id);
   const go = () => engine.setScreen(new DeployScreen(engine, input, {
     planet, region, run, landings: P.has('later') ? 2 : 0, phase: P.get('phase'), hold: P.get('hold'),
+    lz: P.has('lz') ? { x: Number(P.get('lz')!.split(',')[0]), z: Number(P.get('lz')!.split(',')[1]) } : null,
     onDone: (r) => { console.log('deploy result', JSON.stringify(r), 'res', JSON.stringify(run.res), 'cells', run.skills.points); setTimeout(go, 1500); },
   }));
   go();

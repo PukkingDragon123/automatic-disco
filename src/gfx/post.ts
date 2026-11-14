@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import type { Sun } from './lights';
 import { settings, qualityProfile } from '../settings';
+import { RAMPS } from '../art/palette';
 
 const VERT = /* glsl */`
 varying vec2 vUv;
@@ -134,8 +135,11 @@ void main() {
         if (uRain > 0.01) {
           vec2 q = wp * 2.3, ci = floor(q), f = fract(q) - 0.5 - (vec2(h21(ci), h21(ci + 5.3)) - 0.5) * 0.45;
           float tc = uTime * 1.15 + h21(ci + 2.7), ph = fract(tc);
-          float ring = (1.0 - step(0.05, abs(length(f) - ph * 0.42))) * (1.0 - ph) * step(h21(ci + floor(tc)), uRain);
-          pc += vec3(0.32, 0.36, 0.42) * ring;
+          vec2 af = abs(f);
+          float oc = max(max(af.x, af.y), (af.x + af.y) * 0.7071);
+          float leg = step(0.25, h21(ci + floor((atan(f.y, f.x) / 6.2832 + 0.5) * 8.0 + 0.5) * 3.1));
+          float ring = (1.0 - step(0.05, abs(oc - ph * 0.42))) * step(ph, 0.7) * leg * step(h21(ci + floor(tc)), uRain);
+          pc = mix(pc, uSkyCol, ring * 0.7);
         }
         col = pn < thr + 0.03 ? mix(col, pc, 0.45) : pc;
       }
@@ -297,7 +301,6 @@ export interface Grade { lift: THREE.Color; gamma: THREE.Color; gain: THREE.Colo
 export function resetGrade(g: Grade) { const d = defaultGrade(); g.lift.copy(d.lift); g.gamma.copy(d.gamma); g.gain.copy(d.gain); g.sat = d.sat; g.vig = d.vig; g.bloom = d.bloom; }
 export const defaultGrade = (): Grade => ({ lift: new THREE.Color(0.0035, 0.004, 0.007), gamma: new THREE.Color(1.06, 1.06, 1.07), gain: new THREE.Color(1.12, 1.09, 1.03), sat: 1.14, vig: 0.34, bloom: 0.34 });
 
-const _w = new THREE.Color(1, 1, 1);
 function rt(w: number, h: number, linear = true) {
   return new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, minFilter: linear ? THREE.LinearFilter : THREE.NearestFilter, magFilter: linear ? THREE.LinearFilter : THREE.NearestFilter, depthBuffer: false });
 }
@@ -435,10 +438,10 @@ export class Post {
     // daylight from the key's strength; the sun's colour as it stands after the day/night grading in the game
     const k = Math.min(1, sun.light.intensity / 3.3), sc = U.uSunCol.value as THREE.Color;
     sc.copy(sun.light.color).multiplyScalar(0.35 + sun.light.intensity * 0.32);
+    // haze, mist and the sky in puddles are steps of the master palette's sky ramp, indexed by the light
     const sky = U.uSkyCol.value as THREE.Color, hz = U.uHazeCol.value as THREE.Color, mc = U.uMistCol.value as THREE.Color;
-    sky.copy(e.sky).multiplyScalar(0.25 + 0.75 * k);
-    hz.copy(e.sky).lerp(sun.hemi.color, 0.35).multiplyScalar((0.2 + 0.8 * k) * 0.95);
-    mc.copy(e.sky).lerp(_w, 0.3).lerp(sun.hemi.color, 0.3).multiplyScalar(0.14 + 0.62 * k);
+    const S = RAMPS.sky, si = Math.max(0, Math.min(S.length - 1, Math.round(k * 4.4 - sun.overcast * 1.2)));
+    sky.setHex(S[Math.min(S.length - 1, si + 1)]); hz.setHex(S[si]); mc.setHex(S[Math.max(0, si - 1)]);
     U.uHaze.value = e.haze; U.uMist.value = e.mist * (lo ? 0.35 : 1); U.uMistY.value = e.mistY; U.uMistH.value = e.mistH; U.uPatch.value = e.patch;
     U.uWet.value = e.wet; U.uRain.value = e.rain; U.uDew.value = e.dew; U.uHeat.value = lo ? 0 : e.heat;
     (U.uWind.value as THREE.Vector2).copy(e.wind);

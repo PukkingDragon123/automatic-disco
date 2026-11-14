@@ -182,14 +182,14 @@ export function plates(pc: PixelCanvas, r: Rand, n: number, ramp: number[], idx:
 /** clean up: lone pixels that match none of their four neighbours take the commonest neighbour colour */
 export function tidy(pc: PixelCanvas) {
   const W = pc.w, H = pc.h, d = pc.data, src = new Uint32Array(W * H);
-  for (let i = 0; i < W * H; i++) src[i] = (d[i * 4] << 16) | (d[i * 4 + 1] << 8) | d[i * 4 + 2] | (d[i * 4 + 3] < 255 ? 0x1000000 : 0);
+  for (let i = 0; i < W * H; i++) src[i] = d[i * 4 + 3] === 0 ? 0x2000000 : (d[i * 4] << 16) | (d[i * 4 + 1] << 8) | d[i * 4 + 2] | (d[i * 4 + 3] < 255 ? 0x1000000 : 0);
   const g = (x: number, y: number) => (pc.wrap ? src[(((y % H) + H) % H) * W + (((x % W) + W) % W)] : x < 0 || y < 0 || x >= W || y >= H ? -1 : src[y * W + x]);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const c = src[y * W + x]; if (c & 0x1000000 || d[(y * W + x) * 4 + 3] === 0) continue;
+    const c = src[y * W + x]; if (c & 0x3000000) continue;
     const nb = [g(x - 1, y), g(x + 1, y), g(x, y - 1), g(x, y + 1)];
     if (nb.includes(c)) continue;
     let best = -1, bc = 0;
-    for (const a of nb) { if (a < 0 || a & 0x1000000) continue; const k = nb.filter((b) => b === a).length; if (k > bc) { bc = k; best = a; } }
+    for (const a of nb) { if (a < 0 || a & 0x3000000) continue; const k = nb.filter((b) => b === a).length; if (k > bc) { bc = k; best = a; } }
     if (best >= 0 && bc >= 2) pc.set(x, y, best & 0xffffff, d[(y * W + x) * 4 + 3]);
   }
 }

@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import type { Palette } from '../world/palette';
 import { settings, qualityProfile, onSettings } from '../settings';
+import { RAMPS } from '../art/palette';
 
 export interface Env {
   /** aerial perspective: extinction per metre (blue distance) */
@@ -52,7 +53,7 @@ export class Sun {
     this.hemi = new THREE.HemisphereLight(pal.ambient, pal.groundLight, 1.7);
     scene.add(this.light, this.light.target, this.hemi);
     scene.userData.sun = this;
-    this.env = { haze: 0.0045, mist: 0, mistY: 0, mistH: 1.4, patch: 0.6, rays: 0.5, wet: 0, rain: 0, dew: 0, heat: 0, wind: new THREE.Vector2(0.35, 0.12), sky: new THREE.Color(pal.sky) };
+    this.env = { haze: 0.0045, mist: 0, mistY: 0, mistH: 1.4, patch: 0.6, rays: 0.5, wet: 0, rain: 0, dew: 0, heat: 0, wind: new THREE.Vector2(0.35, 0.12), sky: new THREE.Color().setHex(RAMPS.sky[4]) };
     this.setColors(pal, 1);
     this.offSettings = onSettings((_s, ch) => { if (ch.includes('quality')) this.applyQuality(); });
   }
@@ -78,7 +79,7 @@ export class Sun {
     this.hemi.color.set(pal.ambient).lerp(COOL_SKY, 0.22);
     this.hemi.groundColor.set(pal.groundLight).lerp(WARM_BOUNCE, 0.18);
     this.hemi.intensity = 1.3 * (0.55 + 0.45 * k) * (1 + oc * 0.2);
-    this.env.sky.set(pal.sky).lerp(_g.setRGB(0.62, 0.66, 0.72), oc * 0.6);
+    this.env.sky.setHex(RAMPS.sky[Math.max(0, Math.round(4 * k - oc * 1.2))]);
     // cloud softens the shadows too
     this.light.shadow.radius = this.softness();
   }

@@ -272,13 +272,13 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
   let nLeaf = 0; for (const l of P.leaves) if (!l.skip3d && l.kind !== K.ACC) nLeaf++;
   const budget = crown3 ? (sp.arch === 'shrub' ? (L1 ? 60 : 165) : L1 ? 260 : 1400) : L1 ? 40 : 400;
   const thin = Math.max(1, Math.round(nLeaf / budget)), grow = thin > 1 ? Math.sqrt(thin) * 0.9 : 1;
-  let li = 0;
+  let li = 0, vi = seed % 3;
   for (const l of P.leaves) {
     if (l.skip3d) continue;
     const petal = l.kind === K.ACC;
     if (!petal && thin > 1 && (li++ % thin)) continue;
     const needle = l.shape === 'needle' && !petal;
-    const rect = needle ? tex.needles(l.ramp, li & 1) : tex.leaf(l.shape, l.ramp, { vein: l.vein, lat: l.lat, teeth: l.teeth, petal });
+    const rect = needle ? tex.needles(l.ramp, li & 1) : tex.leaf(l.shape, l.ramp, { vein: l.vein, lat: l.lat, teeth: l.teeth, petal, var: petal ? 0 : (vi++ % 3) });
     const len = (l.len / PXM) * (petal ? 1.15 : leafK * grow) * (needle ? 1.25 : 1), hw = needle ? len * 0.42 : (l.wid / PXM) * pmaxOf(l.shape) * (petal ? 1.1 : leafK * grow);
     const ao = ampOf(l.amb), vv = r.range(0.88, 1.1), warm = r.range(-0.05, 0.05);
     g.col = [ao * vv * (1 + warm), ao * vv, ao * vv * (1 - warm)];

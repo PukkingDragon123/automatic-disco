@@ -81,9 +81,18 @@ class Grid {
   }
   /** a drawn solid: a fan of facets round (cx, cy), each facet one ramp step by how it faces the light; one highlight
    *  pixel on the lit turn. Small ones collapse to a two-pixel cluster (no orphans). */
-  solid(P: Pt[], cx: number, cy: number, o: { base?: number; flatLit?: boolean } = {}) {
+  solid(P: Pt[], cx: number, cy: number, o: { base?: number; cloud?: boolean } = {}) {
     let span = 0; for (const [x, y] of P) span = Math.max(span, Math.abs(x - cx), Math.abs(y - cy));
     if (span < 1.3) { this.set(cx, cy, o.base ?? MID); this.set(cx + 1, cy, o.base ?? MID); return; }
+    if (o.cloud) {
+      // soft volumes (dust, smoke): two planes split across the light, a shadow band on the far side
+      const r = Math.max(1, span);
+      this.poly(P, (px, py) => { const d = ((px - cx) * LX + (py - cy) * LY) / r; return d > 0.05 ? LIT : d < -0.55 ? SHD : MID; });
+      let best = P[0], bd = -1e9;
+      for (const p of P) { const d = (p[0] - cx) * LX + (p[1] - cy) * LY; if (d > bd) { bd = d; best = p; } }
+      if (span > 3) { const hx = cx + (best[0] - cx) * 0.55, hy = cy + (best[1] - cy) * 0.55; if (this.get(hx, hy) >= MID) this.set(hx, hy, HI); }
+      return;
+    }
     for (let i = 0; i < P.length; i++) {
       const a = P[i], b = P[(i + 1) % P.length];
       // the facet's outward normal (screen space)
@@ -205,7 +214,7 @@ const DEFS: Record<VfxName, Def> = {
         const x = 16 + bx * (0.45 + e * 0.8), y = 25 - rise * e - (i % 2);
         const r = r0 * (0.55 + 0.65 * e) * (1 - sm(0.5, 1, t) * 0.75);
         if (r < 1) { if (t < 0.95 && i % 2) { g.set(x, y, MID); g.set(x + 1, y, MID); } continue; }
-        g.solid(lump(x, y, r, k, rot, 1.15), x, y);
+        g.solid(lump(x, y, r, k, rot, 1.15), x, y, { cloud: true });
         if (t > 0.55 && r > 1.6) g.poly(lump(x + r * 0.55, y - r * 0.6, r * (0.55 + (t - 0.55)), (k + 1) % 4, rot + 1, 1.1), 0);
       }
       if (t < 0.5) g.clearBelow(27.5);
@@ -322,7 +331,7 @@ const DEFS: Record<VfxName, Def> = {
   },
   // a smoke curl: clumps rising on a spiral, eaten away, a hooked wisp drawn at the top
   smoke: {
-    size: 32, holds: [2, 2, 2, 2, 3, 3, 3, 4, 4], m: 0.7, ramp: 'slate',
+    size: 32, holds: [2, 2, 2, 2, 3, 3, 3, 4, 4], m: 0.7, ramp: 'sky',
     draw(g, f, n, R) {
       const t = f / (n - 1);
       let tx = 16, ty = 28;
@@ -333,7 +342,7 @@ const DEFS: Record<VfxName, Def> = {
         const x = 16 + jx + Math.sin(tt * 4.2 + ph) * 4 * tt, y = 28 - tt * 21 - i * 1.2;
         const r = sz * (0.6 + tt * 1.3) * (1 - sm(0.7, 1, tt) * 0.7);
         if (r < 1) continue;
-        g.solid(lump(x, y, r, k, ph), x, y);
+        g.solid(lump(x, y, r, k, ph), x, y, { cloud: true });
         if (tt > 0.5 && r > 1.6) g.poly(lump(x + r * 0.5, y - r * 0.5, r * (0.55 + (tt - 0.5) * 0.9), k + 1, ph + 1), 0);
         if (y < ty) { ty = y; tx = x; }
       }
@@ -400,16 +409,16 @@ const DEFS: Record<VfxName, Def> = {
   },
   // a death poof: an angular burst cloud, clumps blown outward, eaten away, flecks
   poof: {
-    size: 48, holds: [1, 2, 2, 2, 3, 3, 3, 4], m: 1.0, ramp: 'stone',
+    size: 48, holds: [1, 2, 2, 2, 3, 3, 3, 4], m: 1.0, ramp: 'bone',
     draw(g, f, _n, R) {
       const c = 24, A = [0, 1, 2, 3, 4, 5, 6, 7].map((k) => (k / 8) * TAU + (R() - 0.5) * 0.5), S = A.map(() => 0.85 + R() * 0.3), K = A.map(() => Math.floor(R() * 4));
-      if (f === 0) { g.solid(lump(c, c, 9.5, 3, A[0]), c, c, { base: LIT }); return; }
+      if (f === 0) { g.solid(lump(c, c, 9.5, 3, A[0]), c, c, { cloud: true }); g.poly(lump(c - 1.5, c - 1.5, 5, 1, A[2]), HI); return; }
       const rr = [0, 8, 13, 17, 19, 21, 22, 23][f], pr = [0, 4.5, 5, 5, 4, 3, 2, 1][f], cr = [0, 9, 7, 4, 0, 0, 0, 0][f];
-      if (cr > 0) g.solid(lump(c, c, cr, 0, A[1]), c, c);
+      if (cr > 0) g.solid(lump(c, c, cr, 0, A[1]), c, c, { cloud: true });
       for (let k = 0; k < 8; k++) {
         const x = c + Math.cos(A[k]) * rr * S[k], y = c + Math.sin(A[k]) * rr * S[k] - f * 0.6;
         if (pr * S[k] < 1.2) { if (k % 2) { g.set(x, y, MID); g.set(x + 1, y, SHD); } continue; }
-        g.solid(lump(x, y, pr * S[k], K[k], A[k]), x, y);
+        g.solid(lump(x, y, pr * S[k], K[k], A[k]), x, y, { cloud: true });
         if (f >= 3) g.poly(lump(x + Math.cos(A[k]) * pr * 0.55, y + Math.sin(A[k]) * pr * 0.55 - pr * 0.3, pr * S[k] * (0.5 + (f - 3) * 0.15), K[k] + 1, A[k]), 0);
       }
     },

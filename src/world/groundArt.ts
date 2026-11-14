@@ -1,8 +1,10 @@
 // Ground cover sprites, painted blade by blade at 32 px/m: grass tussocks (lush, mixed, sun-cured, tall seeding
 // grass), clover and low herbs, small flowers in the planet's bloom colours, young ferns, mushroom clusters, shore
 // sedges, pebbles, and flat leaf-litter and twig decals for the forest floor. Each blade is its own curved stroke
-// with a base-to-tip ramp, lit from the upper left, back blades darker than front ones.
-import { PixelCanvas, makeRamp, mixHex } from '../limbo/gfx/pixel';
+// with a base-to-tip ramp, lit from the upper left, back blades darker than front ones. Flowers are built from
+// drawn petals, pebbles and caps are faceted, litter is drawn leaves; every colour comes from the master palette.
+import { PixelCanvas, mixHex } from '../limbo/gfx/pixel';
+import { rampFor, rampNamed, leafStroke, stone, fillPoly, Mask, tidy, toPalette, type P2 } from './pixelKit';
 import { Rand } from '../core/rand';
 import type { Palette } from './palette';
 
@@ -10,7 +12,8 @@ export type GroundKind = 'grass' | 'tall' | 'dry' | 'clover' | 'flower' | 'fern'
 export interface GroundSprite { kind: GroundKind; pc: PixelCanvas; flat: boolean; /** bloom colour index for flowers */ tint: number }
 
 const ci = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : Math.round(v));
-const R = (c: number, n = 7, s = 0.6, hs = 0.05) => makeRamp(c, n, { spread: s, hueShift: hs, satShift: 0.06 });
+/** the master-palette ramp nearest a colour (old spread arguments kept for call compatibility) */
+const R = (c: number, n = 7, _s = 0.6, _hs = 0.05) => rampFor(c, n);
 
 function canvas(w: number, h: number) { const pc = new PixelCanvas(w, h); pc.wrap = false; pc.clear(); return pc; }
 
@@ -71,45 +74,45 @@ function tussock(r: Rand, pal: Palette, kind: 'grass' | 'tall' | 'dry', size: nu
 }
 
 function clover(r: Rand, pal: Palette): PixelCanvas {
-  // a low mat of trefoil leaves on short stalks, a few pom flowers
-  const W = 16, H = 9, pc = canvas(W, H);
-  const G = R(mixHex(pal.grass, 0x4a8a3a, 0.45), 7, 0.6);
-  for (let k = r.int(6, 10); k > 0; k--) {
-    const x = r.range(2, W - 3), y = r.range(3, H - 2);
-    pc.set(x, y + 1, G[1]);
-    for (let l = 0; l < 3; l++) {
-      const a = -Math.PI / 2 + (l - 1) * 2.1, lx = x + Math.cos(a) * 1.3, ly = y + Math.sin(a) * 0.9;
-      pc.set(lx, ly, G[ci(4 + (l === 0 ? 1 : 0) - (y > H - 4 ? 1 : 0), 1, 6)]);
-      pc.set(lx + (l === 2 ? 1 : l === 1 ? -1 : 0), ly, G[3]);
-    }
-    if (r.chance(0.15)) pc.set(x, y - 1, mixHex(G[6], 0xffffff, 0.3));
+  // a low mat of trefoils: three small pointed leaflets on a stalk, lit ones a step brighter; a few pom flowers
+  const W = 18, H = 10, pc = canvas(W, H), G = R(mixHex(pal.grass, 0x4a8a3a, 0.45));
+  for (let k = r.int(5, 8); k > 0; k--) {
+    const x = r.range(3, W - 4), y = r.range(4, H - 2);
+    pc.set(x, y + 1, G[2]); pc.set(x, y + 2, G[1]);
+    for (let l = 0; l < 3; l++) leafStroke(pc, x, y, -Math.PI / 2 + (l - 1) * 2.0 + r.range(-0.2, 0.2), r.range(2, 2.6), 1.1, G, r, { midrib: false });
   }
-  if (r.chance(0.6)) for (let k = r.int(1, 3); k > 0; k--) {
-    const x = r.range(3, W - 4), y = r.range(1, 3), F = R(r.chance(0.5) ? 0xf0e8e0 : mixHex(pal.bloom[2] ?? 0xd06a90, 0xffffff, 0.35), 5, 0.4);
-    pc.set(x, y + 1, G[2]); pc.set(x, y, F[3]); pc.set(x + 1, y, F[2]); pc.set(x, y - 1, F[4]); pc.set(x - 1, y, F[3]);
+  if (r.chance(0.6)) for (let k = r.int(1, 2); k > 0; k--) {
+    const x = Math.floor(r.range(3, W - 4)), y = Math.floor(r.range(1, 3)), F = R(r.chance(0.5) ? 0xe2dbc6 : pal.bloom[2] ?? 0xa6705f);
+    pc.set(x, y + 1, G[2]); pc.set(x, y, F[4]); pc.set(x + 1, y, F[3]); pc.set(x, y - 1, F[5]); pc.set(x - 1, y, F[4]); pc.set(x + 1, y - 1, F[2]);
   }
+  tidy(pc); toPalette(pc);
   return pc;
 }
 
 function flower(r: Rand, pal: Palette, tint: number): PixelCanvas {
-  const W = 12, H = 14, pc = canvas(W, H), G = R(mixHex(pal.grass, 0x3e7a34, 0.4), 6, 0.55);
-  const col = pal.bloom[tint % pal.bloom.length], F = R(col, 6, 0.55, 0.06), eye = mixHex(pal.bloom[(tint + 3) % pal.bloom.length], 0xf0c040, 0.5);
+  // basal leaves, 2-4 stalks, and heads built from petals: a daisy of drawn petals round an eye, a hanging bell, a
+  // spike of florets opening from the bottom, or a puff of short petals
+  const W = 14, H = 16, pc = canvas(W, H), G = R(mixHex(pal.grass, 0x3e7a34, 0.4));
+  const F = R(pal.bloom[tint % pal.bloom.length]), eye = rampNamed('ochre');
   const form = r.int(0, 3);
-  // a few basal leaves
-  for (let k = 0; k < 4; k++) blade(pc, W / 2 + r.range(-2, 2), H - 1, r.range(2, 4), r.range(-1.2, 1.2), 0, G);
-  for (let k = r.int(2, 4); k > 0; k--) {
-    const x = W / 2 + r.range(-3.5, 3.5), [tx, ty] = blade(pc, x, H - 1, r.range(H * 0.45, H * 0.85), r.range(-0.25, 0.25), 0, G);
-    if (form === 0) { // daisy: a ring of petals round a bright eye
-      for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1]]) pc.set(tx + dx, ty + dy - 1, F[dy < 0 ? 5 : 3]);
-      pc.set(tx, ty - 1, eye);
-    } else if (form === 1) { // bell: a hanging cup
-      pc.set(tx + 1, ty, F[4]); pc.set(tx + 1, ty + 1, F[3]); pc.set(tx + 2, ty + 1, F[2]); pc.set(tx + 1, ty + 2, F[1]);
-    } else if (form === 2) { // spike: a column of florets, opening from the bottom
-      for (let j = 0; j < 5; j++) { pc.set(tx, ty - j, F[ci(4 - j * 0.5, 1, 5)]); if (j < 3) pc.set(tx + (j % 2 ? 1 : -1), ty - j, F[ci(3 - j * 0.4, 1, 5)]); }
-    } else { // puff: a round head
-      for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) if (i * i + j * j < 2) pc.set(tx + i, ty + j - 1, F[ci(3.6 - (i + j) * 0.8, 1, 5)]);
+  for (let k = 0; k < 3; k++) leafStroke(pc, W / 2 + r.range(-2, 2), H - 1, -Math.PI / 2 + r.range(-1.1, 1.1), r.range(3, 5), 1.1, G, r, { midrib: false });
+  for (let k = r.int(2, 3); k > 0; k--) {
+    const x = Math.floor(W / 2 + r.range(-3.5, 3.5)), len = Math.floor(r.range(H * 0.45, H * 0.8)), lean = r.pick([-1, 0, 1]);
+    for (let j = 0; j < len; j++) pc.set(x + (j > len * 0.6 ? lean : 0), H - 1 - j, G[j < 2 ? 2 : 3]);
+    const tx = x + lean, ty = H - 1 - len;
+    if (form === 0) {
+      for (let p = 0; p < 5; p++) leafStroke(pc, tx, ty, (p / 5) * Math.PI * 2 + r.range(-0.2, 0.2), 2.2, 0.9, F, r, { midrib: false });
+      pc.set(tx, ty, eye[5]); pc.set(tx + 1, ty, eye[3]);
+    } else if (form === 1) {
+      pc.set(tx + 1, ty, F[4]); pc.set(tx + 1, ty + 1, F[4]); pc.set(tx + 2, ty + 1, F[2]); pc.set(tx, ty + 1, F[5]); pc.set(tx + 1, ty + 2, F[3]); pc.set(tx, ty + 2, F[1]); pc.set(tx + 2, ty + 2, F[1]);
+    } else if (form === 2) {
+      for (let j = 0; j < 5; j++) { pc.set(tx, ty - j, F[j < 2 ? 3 : 5]); if (j < 4) pc.set(tx + (j % 2 ? 1 : -1), ty - j, F[j % 2 ? 2 : 4]); }
+    } else {
+      for (let p = 0; p < 7; p++) { const a = (p / 7) * Math.PI * 2; pc.set(tx + Math.round(Math.cos(a) * 1.4), ty - 1 + Math.round(Math.sin(a) * 1.4), F[Math.cos(a) + Math.sin(a) < 0 ? 5 : 3]); }
+      pc.set(tx, ty - 1, F[4]);
     }
   }
+  tidy(pc); toPalette(pc);
   return pc;
 }
 
@@ -129,15 +132,19 @@ function youngFern(r: Rand, pal: Palette): PixelCanvas {
 }
 
 function mushrooms(r: Rand, pal: Palette): PixelCanvas {
-  const W = 12, H = 9, pc = canvas(W, H);
-  const C = R(r.pick(pal.fungus), 6, 0.55), S = R(mixHex(pal.fungus[0], 0xf0e8d8, 0.6), 5, 0.4);
+  // a small cluster: pale stems, angular caps (a lit left plane, a shaded right plane, a dark rim), one shine
+  const W = 14, H = 11, pc = canvas(W, H);
+  const C = R(r.pick(pal.fungus)), S = rampNamed('bone');
   for (let k = r.int(1, 3); k > 0; k--) {
-    const x = r.range(3, W - 4), h = r.int(2, 4), w = r.int(1, 2), top = H - 1 - h;
-    for (let j = top; j < H; j++) pc.set(x, j, S[j === H - 1 ? 1 : 3]);
-    for (let i = -w - 1; i <= w + 1; i++) { pc.set(x + i, top, C[ci(3.5 - i * 0.6, 1, 5)]); if (Math.abs(i) <= w) pc.set(x + i, top - 1, C[ci(4.5 - i * 0.6, 1, 5)]); }
-    pc.set(x - w, top - 1, C[5]);
-    if (r.chance(0.4)) pc.set(x + 1, top - 1, mixHex(C[5], 0xffffff, 0.5));
+    const x = Math.floor(r.range(3, W - 4)), h = r.int(2, 4), w = r.int(2, 3), top = H - 1 - h;
+    for (let j = top; j < H; j++) { pc.set(x, j, S[j === H - 1 ? 1 : 3]); if (w > 2) pc.set(x + 1, j, S[2]); }
+    const pts: P2[] = [[x - w, top + 1], [x - w + 1, top - 1], [x + 0.5, top - 2], [x + w, top - 1], [x + w + 1, top + 1]];
+    const m = new Mask(x - w - 2, top - 4, w * 2 + 6, 7);
+    fillPoly(pts, (X, Y) => m.add(X, Y));
+    m.ink(pc, C, (X) => (X <= x ? 4 : 3), { dark: 1, lit: null });
+    pc.set(x - 1, top - 1, C[5]);
   }
+  tidy(pc); toPalette(pc);
   return pc;
 }
 
@@ -149,34 +156,33 @@ function sedge(r: Rand, pal: Palette): PixelCanvas {
 }
 
 function pebbles(r: Rand, pal: Palette): PixelCanvas {
-  const W = 12, H = 6, pc = canvas(W, H);
-  for (let k = r.int(2, 4); k > 0; k--) {
-    const x = r.range(2, W - 3), y = r.range(2, H - 2), rr = r.range(0.8, 1.8), K = R(mixHex(pal.rock, r.pick([0xb0a090, 0x707888, 0x9a8a7a]), 0.3), 5, 0.55);
-    for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) if ((i * i) / (rr * rr) + (j * j) / (rr * rr * 0.6) <= 1) pc.set(x + i, y + j, K[ci(2.6 - (i + j) * 0.7, 1, 4)]);
-  }
+  // a few faceted stones of different kinds, each with its contact shadow
+  const W = 14, H = 8, pc = canvas(W, H), kinds = [rampFor(pal.rock), rampNamed('stone'), rampNamed('sand'), rampNamed('slate')];
+  for (let k = r.int(2, 4); k > 0; k--) stone(pc, r.range(3, W - 3), r.range(3, H - 3), r.range(2.6, 4.4), r.range(2, 3), r.pick(kinds), r);
+  tidy(pc); toPalette(pc);
   return pc;
 }
 
-/** flat decal seen from above: fallen leaves, browned with a few still bright, and the odd twig */
+/** flat decal seen from above: fallen leaves drawn at every angle, browned with a few still bright, and the odd twig */
 function litter(r: Rand, pal: Palette, twig: boolean): PixelCanvas {
   const W = twig ? 20 : 18, H = twig ? 12 : 16, pc = canvas(W, H);
   if (twig) {
-    const T = R(mixHex(pal.bark[1], 0x8a6a48, 0.3), 5, 0.5);
-    let x = 2, y = r.range(4, H - 4), a = r.range(-0.4, 0.4);
-    for (let k = 0; k < W - 4; k++) { pc.set(x, y, T[3]); pc.set(x, y + 1, T[1]); if (r.chance(0.12)) { let bx = x, byy = y; const s = r.pick([-1, 1]); for (let j = 0; j < r.int(2, 4); j++) { bx += 0.7; byy += s; pc.set(bx, byy, T[2]); } } x += Math.cos(a); y += Math.sin(a); a += r.range(-0.2, 0.2); }
+    const T = rampNamed('fur');
+    let x = 2, y = Math.floor(r.range(4, H - 4)), run = 0;
+    for (let k = 0; k < W - 4; k++) {
+      pc.set(x, y, T[3]); pc.set(x, y + 1, T[1]);
+      if (r.chance(0.12)) { let bx = x, by = y; const s2 = r.pick([-1, 1]); for (let j = 0; j < r.int(2, 3); j++) { bx += 1; by += s2; pc.set(bx, by, T[2]); } }
+      x++; if (++run > r.int(2, 5)) { y += r.pick([-1, 1]); run = 0; }
+    }
+    tidy(pc); toPalette(pc);
     return pc;
   }
-  for (let k = r.int(5, 9); k > 0; k--) {
-    const fresh = r.chance(0.25);
-    const base = fresh ? mixHex(r.pick(pal.foliage), 0x8a6a3a, 0.25) : mixHex(r.pick([...pal.foliage, ...pal.bloom]), r.pick([0x8a5a2a, 0xa06a30, 0x6a4a2a, 0xb08a3a]), r.range(0.58, 0.8));
-    const F = R(base, 6, 0.5), x = r.range(3, W - 3), y = r.range(3, H - 3), a = r.range(0, Math.PI), len = r.range(1.6, 3), wid = r.range(0.8, 1.4);
-    const dx = Math.cos(a), dy = Math.sin(a) * 0.7;
-    for (let t = -len; t <= len; t += 0.5) {
-      const w = wid * (1 - Math.abs(t) / (len + 0.6));
-      for (let s = -w; s <= w; s += 0.5) pc.set(x + dx * t - dy * s, y + dy * t + dx * s * 0.7, F[ci(3 + (s < 0 ? 1 : -0.5), 1, 5)]);
-    }
-    for (let t = -len + 0.5; t < len; t += 0.5) pc.set(x + dx * t, y + dy * t, F[2]);
+  const browns = [rampNamed('rust'), rampNamed('ochre'), rampNamed('clay'), rampNamed('coral'), rampNamed('straw')];
+  for (let k = r.int(5, 8); k > 0; k--) {
+    const fresh = r.chance(0.25), F = fresh ? rampFor(r.pick(pal.foliage)) : r.pick(browns);
+    leafStroke(pc, r.range(3, W - 3), r.range(3, H - 3), r.range(0, Math.PI * 2), r.range(2.6, 4), r.range(1, 1.5), F, r, { notch: r.chance(0.3) });
   }
+  tidy(pc); toPalette(pc);
   return pc;
 }
 

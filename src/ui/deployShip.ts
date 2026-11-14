@@ -66,7 +66,6 @@ export interface Ship {
   setBeacons(on: boolean): void;
   setLever(u: number): void;
   setNixies(s: string): void;
-  table: { root: THREE.Group; map: THREE.Mesh; size: number; centre: V; pin: THREE.Group; cursor: THREE.Mesh; setMap(t: THREE.Texture): void };
   /** the launch officer and deck crew (empty / null when built without people) */
   crew: Crew[]; officer: Actor | null;
   /** 'ext': the sun, floodlights and the hull's own lamps; 'int': the hangar rig; 'both' (the launch, seen from outside) */
@@ -528,27 +527,21 @@ export function buildShip(bin: Bin, parent: THREE.Object3D, opts: { people?: boo
   mesh(bin, new THREE.SphereGeometry(0.07, 10, 8), lit(bin, 0x9a2a1e, { phong: true, shininess: 80 }), lever, 0, 0.62, 0);
   lever.rotation.x = 0.5;
   box(bin, 0.18, 0.12, 0.18, lit(bin, 0xa88c3a), con, -1.05, 1.1, -0.15);
-  // the plotting table: a backlit glass top in a brass-railed wooden frame, the chart under the glass
-  const T = K.table, tSize = 1.5;
+  // the plotting table: a brass-railed wooden frame round a backlit glass
+  const T = K.table;
   const table = new THREE.Group(); table.position.copy(T); booth.add(table);
   tbox(bin, 2.5, 0.08, 1.8, lit(bin, 0x5a3a24, { phong: true, shininess: 30 }), 1, table, 0, 0.92, 0);
   for (const [x, z] of [[-1.15, -0.8], [1.15, -0.8], [-1.15, 0.8], [1.15, 0.8]] as [number, number][]) box(bin, 0.1, 0.9, 0.1, lit(bin, 0x4a2e1c), table, x, 0.45, z);
   tbox(bin, 2.3, 0.6, 1.6, lit(bin, 0x3a2a1c), 1, table, 0, 0.55, 0);
   for (const s of [-1, 1]) { box(bin, 2.52, 0.035, 0.035, lit(bin, 0xa88a50, { phong: true, shininess: 80 }), table, 0, 0.98, s * 0.91); box(bin, 0.035, 0.035, 1.84, lit(bin, 0xa88a50, { phong: true, shininess: 80 }), table, s * 1.26, 0.98, 0); }
-  const mapMat = bin.m(gbuf(new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: new THREE.Color(0xffffff), emissiveIntensity: 0.62 }), 1));
-  const mapMesh = mesh(bin, new THREE.PlaneGeometry(tSize, tSize), mapMat, table, -0.3, 0.965, 0, false);
-  mapMesh.rotation.x = -Math.PI / 2;
+  // the plotting glass: a dim phosphor plot of the drop corridor glowing under the glass
+  const plot = new Pix(64, 64);
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) { const d = Math.hypot(x - 32, y - 32); plot.set(x, y, x % 8 === 0 || y % 8 === 0 ? 0x24402e : Math.abs(d - 22) < 0.7 || Math.abs(d - 12) < 0.6 ? 0x3e6a4a : (Math.abs(x - 32) < 0.6 && y < 32) ? 0x5a8a64 : 0x101a14); }
+  mesh(bin, new THREE.PlaneGeometry(1.5, 1.5), lamp(bin, 0xffffff, 0.9, ptex(bin, plot, false)), table, -0.3, 0.965, 0, false).rotation.x = -Math.PI / 2;
   // a ruler, a grease pencil, the coffee mug that left its ring on the chart
   box(bin, 0.06, 0.012, 1.2, lit(bin, 0xc8b88a), table, 0.75, 0.972, 0.1).rotation.y = 0.12;
   cyl(bin, 0.008, 0.008, 0.16, lit(bin, 0x9a2a1e), table, 0.9, 0.975, -0.45, 6).rotation.z = Math.PI / 2;
   cyl(bin, 0.045, 0.04, 0.1, lit(bin, 0xd8d0c0, { phong: true }), table, 0.98, 1.01, 0.62, 12);
-  // the brass pin (drops in on the pick) and the grease-pencil cursor ring
-  const pin = new THREE.Group(); pin.visible = false; table.add(pin);
-  cyl(bin, 0.006, 0.006, 0.12, steel, pin, 0, 0.06, 0, 5);
-  mesh(bin, new THREE.SphereGeometry(0.022, 10, 8), lit(bin, 0x9a2a1e, { phong: true, shininess: 90 }), pin, 0, 0.125, 0);
-  const cursorM = bin.m(gbuf(new THREE.MeshBasicMaterial({ color: 0xb8382e, transparent: true, opacity: 0.85, depthWrite: false }), 0));
-  const cursor = mesh(bin, new THREE.RingGeometry(0.045, 0.055, 24), cursorM, table, 0, 0.968, 0, false);
-  cursor.rotation.x = -Math.PI / 2; cursor.visible = false;
   const lampOver = new THREE.SpotLight(0xffe6c0, 6, 6, 0.9, 0.5, 1.6); lampOver.position.set(T.x, K.ceil - 0.2, T.z); lampOver.target.position.set(T.x, T.y, T.z); booth.add(lampOver, lampOver.target); intLights.push(lampOver);
   mesh(bin, new THREE.ConeGeometry(0.35, 0.3, 14, 1, true), lit(bin, 0x3a4a3a, { side: THREE.DoubleSide }), booth, T.x, K.ceil - 0.25, T.z);
 
@@ -609,7 +602,6 @@ export function buildShip(bin: Bin, parent: THREE.Object3D, opts: { people?: boo
       const t = s.padStart(2, ' ').slice(-2);
       for (let i = 0; i < 2; i++) { const img = nixieCanvas(t[i]); (nixT[i].image as HTMLCanvasElement).getContext('2d')!.drawImage(img, 0, 0); nixT[i].needsUpdate = true; }
     },
-    table: { root: table, map: mapMesh, size: tSize, centre: new V3(-0.3, 0.965, 0), pin, cursor, setMap(t) { mapMat.map = t; mapMat.emissiveMap = t; mapMat.needsUpdate = true; } },
     setView,
     update(dt, t) {
       dish.rotation.y = t * 0.6;

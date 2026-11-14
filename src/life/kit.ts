@@ -3,8 +3,7 @@
 // field (folds, ribs, plates, fuzz), weights blend across joints so bodies bend like flesh, and the page is
 // painted with ramps, light baked by angle, fbm and strands.
 import * as THREE from 'three';
-import { PixelCanvas, bayer } from '../limbo/gfx/pixel';
-import { tileFbm } from '../limbo/core/rng';
+import { PixelCanvas } from '../limbo/gfx/pixel';
 
 export type V3 = number[];
 /** skin weights: [boneIndex, weight, ...] (up to 4 pairs) */
@@ -45,10 +44,9 @@ export class Region {
   get(x: number, y: number) { const [p, q] = this.ix(x, y); return this.page.pc.get(p, q); }
   alpha(x: number, y: number, a: number) { if (!this.inside(Math.floor(y))) return; const [p, q] = this.ix(x, y); this.page.pc.data[(q * this.page.W + p) * 4 + 3] = a; }
   blend(x: number, y: number, c: number, t: number) { if (!this.inside(Math.floor(y))) return; const [p, q] = this.ix(x, y); this.page.pc.blend(p, q, c, t); }
-  /** dithered write of a fractional ramp index */
-  put(x: number, y: number, R: number[], v: number, dither = 0.5) {
-    let i = Math.floor(v);
-    if (v - i > 0.5 + (bayer(Math.floor(x), Math.floor(y)) - 0.5) * dither) i++;
+  /** write a ramp step: the value rounds to one step (hard cluster edges; no dither as fill) */
+  put(x: number, y: number, R: number[], v: number, _dither = 0) {
+    const i = Math.round(v);
     this.set(x, y, R[i < 0 ? 0 : i >= R.length ? R.length - 1 : i]);
   }
   fill(R: number[], fn: (x: number, y: number) => number, mask?: (x: number, y: number) => boolean, dither = 0.5) {
@@ -66,25 +64,23 @@ export class Region {
       if (e2 <= dx) { err += dx; y0 += sy; }
     }
   }
+  /** an octagonal stamp (drawn, angular: never a disc) */
   ellipse(cx: number, cy: number, rx: number, ry: number, c: number, t = 1) {
     for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
-      const dx = (x + 0.5 - cx) / rx, dy = (y + 0.5 - cy) / ry;
-      if (dx * dx + dy * dy <= 1) this.blend(x, y, c, t);
+      if (oct((x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry) <= 1) this.blend(x, y, c, t);
     }
   }
-  /** dithered soft blob */
-  blob(cx: number, cy: number, rx: number, ry: number, c: number, strength = 1) {
+  /** a solid octagonal patch */
+  blob(cx: number, cy: number, rx: number, ry: number, c: number, _strength = 1) {
     for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
-      const dx = (x + 0.5 - cx) / rx, dy = (y + 0.5 - cy) / ry;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      if (d <= 1 && (1 - d) * strength > bayer(x & 1023, y & 1023)) this.set(x, y, c);
+      if (oct((x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry) <= 1) this.set(x, y, c);
     }
   }
+  /** two flat steps of light: a core and a rim (no radial falloff) */
   glow(cx: number, cy: number, rx: number, ry: number, c: number, t: number) {
     for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
-      const dx = (x + 0.5 - cx) / rx, dy = (y + 0.5 - cy) / ry;
-      const d = dx * dx + dy * dy;
-      if (d <= 1) this.blend(x, y, c, t * (1 - d));
+      const d = oct((x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry);
+      if (d <= 1) this.blend(x, y, c, d < 0.5 ? t : t * 0.5);
     }
   }
   /** tileable fbm over the region (cached on the region, so it goes when the page does) */
@@ -94,11 +90,7 @@ export class Region {
     const w = this.w, h = this.h;
     const key = cells * 1e8 + oct * 1e7 + (seed % 1e7);
     let f = key === this.nzK ? this.nzF! : this.nz.get(key);
-    if (!f) {
-      f = new Float32Array(w * h);
-      for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) f[j * w + i] = tileFbm(i, j, w, h, cells, oct, seed);
-      this.nz.set(key, f);
-    }
+    if (!f) { f = planarCells(w, h, cells, oct, seed); this.nz.set(key, f); }
     this.nzK = key; this.nzF = f;
     const xi = ((Math.floor(x) % w) + w) % w, yi = ((Math.floor(y) % h) + h) % h;
     return f[yi * w + xi];
@@ -113,6 +105,27 @@ export class Region {
       if (branch > 0 && hash(i, seed + 7) < branch && len > 6) this.crack(px, py, Math.floor(len * 0.4), (a * 180) / Math.PI + (hash(i, seed + 3) < 0.5 ? 50 : -50), c, seed * 3 + i, t * 0.8, 0);
     }
   }
+}
+
+/** the octagon norm: level sets are drawn octagons rather than circles */
+export const oct = (x: number, y: number) => { const ax = Math.abs(x), ay = Math.abs(y); return Math.max(ax, ay, (ax + ay) * 0.7071); };
+/** planar tone clusters in place of noise: the region tiled into irregular polygons (cells about size/cells/oct
+ *  texels across, wrapping in u), each one flat value in 0..1 */
+function planarCells(w: number, h: number, cells: number, octv: number, seed: number) {
+  const cs = Math.max(4, Math.min(w, h * 1.5) / (cells * (1 + octv * 0.35))), nx = Math.max(2, Math.round(w / cs)), ny = Math.max(2, Math.ceil(h / cs) + 1), cw = w / nx;
+  const f = new Float32Array(w * h);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    const gx = Math.floor(i / cw), gy = Math.floor(j / cs);
+    let bd = Infinity, bv = 0;
+    for (let b = -1; b <= 1; b++) for (let a = -1; a <= 1; a++) {
+      const X = gx + a, Y = gy + b, Xm = ((X % nx) + nx) % nx;
+      const px = (X + 0.15 + hash(Xm, Y * 7 + seed) * 0.7) * cw, py = (Y + 0.15 + hash(Xm * 3 + 1, Y + seed * 5) * 0.7) * cs;
+      const dx = i + 0.5 - px, dy = j + 0.5 - py, dd = dx * dx + dy * dy;
+      if (dd < bd) { bd = dd; bv = hash(Xm * 17 + 3, Y * 29 + seed); }
+    }
+    f[j * w + i] = bv;
+  }
+  return f;
 }
 
 /** a page split into regions: requested while modelling, then scaled to fill the page and skyline-packed */

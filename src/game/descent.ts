@@ -23,6 +23,7 @@ import { settings } from '../settings';
 import { isTouchDevice } from '../ui/touch';
 import { Bin, lit, mesh, fxMat, rawMat, V3, TAU, sm, ease, hash, type V } from '../ui/deployKit';
 import { makePod, portholeWorld, type Pod } from '../ui/deployPod';
+import { makeWorld, buildGround, makeSky, skyAt, dropMarks, RP, type World, type Sky } from './descentWorld';
 import { clamp, damp, lerp } from '../core/rand';
 
 export type Grade = 'BULLSEYE' | 'ON TARGET' | 'CLOSE' | 'WIDE' | 'AUTOPILOT';
@@ -44,7 +45,6 @@ export interface DescentOpts {
   hold?: string | null;
 }
 
-const RP = 60000; // the curvature of the stylised world (m)
 const CHUTE_ALT = 115, RETRO_ALT = 7;
 /** descent rate by altitude (m/s), before the chute */
 const VTAB: [number, number][] = [[3000, 135], [1200, 122], [900, 86], [400, 56], [150, 42], [0, 40]];
@@ -57,26 +57,6 @@ function tToGround(alt: number) {
 }
 
 // ------------------------------------------------------------------ shaders
-const SKY_V = `varying vec3 vD; void main(){ vD = position; vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`;
-const SKY_F = `uniform vec3 uSun, uZen, uHor, uSpace, uSunCol; uniform float uAlt, uWhite, uDip;
-varying vec3 vD;
-float hs(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
-void main(){
-  vec3 d = normalize(vD);
-  float h = d.y + uDip;
-  float hc = clamp(h, 0.0, 1.0);
-  vec3 low = mix(uZen, uHor, pow(1.0 - hc, 5.0));
-  vec3 high = mix(uSpace, uHor * 1.1, pow(1.0 - hc, 40.0)) + uHor * 0.25 * pow(1.0 - hc, 9.0);
-  vec3 col = mix(low, high, uAlt);
-  if (h < 0.0) col = mix(uHor * 0.85, uHor * 0.55, clamp(-h * 3.0, 0.0, 1.0));
-  float s = max(dot(d, uSun), 0.0);
-  col += uSunCol * (pow(s, 1400.0) * 9.0 + pow(s, 60.0) * 0.35 + pow(s, 7.0) * 0.08 * (1.0 - uAlt * 0.6));
-  if (uAlt > 0.05 && h > 0.0) { float st = step(0.9982, hs(floor(d * 380.0))); col += vec3(0.85, 0.85, 0.8) * st * uAlt * clamp(h * 5.0, 0.0, 1.0); }
-  col = floor(col * 48.0) / 48.0;
-  col = mix(col, vec3(0.82, 0.84, 0.86), uWhite);
-  gl_FragColor = vec4(col, 1.0);
-  gNormal = vec4(0.0);
-}`;
 const CLOUD_V = `varying vec2 vW; varying float vY; uniform vec3 uCam; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xz; vY = w.y; gl_Position = projectionMatrix * viewMatrix * w; }`;
 const CLOUD_F = `uniform float uT, uCover, uSlice, uShade, uFadeNear; uniform vec3 uLit, uDark, uCam; uniform vec2 uWind;
 varying vec2 vW; varying float vY;
@@ -198,7 +178,7 @@ export class Descent {
   private fx: Fx;
   private pod: Pod;
   private R: Region; private N: number;
-  private sky: THREE.Mesh; private skyU: Record<string, THREE.IUniform>;
+  private W: World; private skyO: Sky; private sky: THREE.Mesh; private skyU: Record<string, THREE.IUniform>;
   private sun: THREE.DirectionalLight; private hemi: THREE.HemisphereLight; private heatLight: THREE.PointLight;
   private clouds: { y: number; cover: number; slices: THREE.Mesh[]; u: Record<string, THREE.IUniform>[] }[] = [];
   private plasma: THREE.Mesh[] = []; private plasmaU: Record<string, THREE.IUniform>[] = [];
@@ -239,13 +219,9 @@ export class Descent {
     this.scene.background = new THREE.Color(0x05070a);
     this.fx = new Fx(this.fxScene, this.scene);
     // ---- sky
-    this.skyU = {
-      uSun: { value: new V3(-0.45, 0.42, -0.78).normalize() }, uZen: { value: new THREE.Color(pal.sky).lerp(new THREE.Color(0x44607a), 0.35) },
-      uHor: { value: new THREE.Color(pal.horizon).lerp(new THREE.Color(0xc8d0d4), 0.25) }, uSpace: { value: new THREE.Color(0x03050a) },
-      uSunCol: { value: new THREE.Color(pal.sun).lerp(new THREE.Color(0xfff0d8), 0.5) }, uAlt: { value: 1 }, uWhite: { value: 0 }, uDip: { value: 0 },
-    };
-    this.sky = mesh(bin, new THREE.SphereGeometry(30000, 32, 16), rawMat(bin, SKY_V, SKY_F, this.skyU, { side: THREE.BackSide, depthWrite: false }), this.scene, 0, 0, 0, false);
-    this.sky.renderOrder = -10; this.sky.frustumCulled = false;
+    // the ground and the sky: the shared builders (descentWorld.ts), the same ones the orbital close-up uses
+    this.W = makeWorld(R, pal, bin, this.scene);
+    this.skyO = makeSky(this.W); this.sky = this.skyO.mesh; this.skyU = this.skyO.U;
     // ---- light
     const sd = this.skyU.uSun.value as V;
     this.sun = new THREE.DirectionalLight(new THREE.Color(pal.sun).lerp(new THREE.Color(0xfff2dc), 0.5), 3.0);
@@ -257,7 +233,7 @@ export class Descent {
     this.scene.add(this.hemi);
     this.scene.fog = new THREE.Fog(new THREE.Color(pal.horizon), 400, 16000);
     // ---- the ground: far landscape, the region itself, water, woods, rocks
-    this.buildFar(); this.buildRegion(); this.buildWater();
+    buildGround(this.W);
     // ---- clouds: two weather decks, thicker over wet biomes
     const moist = R.biome.moist, cover = clamp(0.3 + moist * 0.45, 0.25, 0.85);
     for (const [y, cv] of [[820, cover], [470, cover * 0.75]] as [number, number][]) this.buildCloud(y, cv);
@@ -308,126 +284,6 @@ export class Descent {
 
   // ================================================================ build
   private gH(x: number, z: number) { return this.R.groundSmooth(x + this.N / 2, z + this.N / 2); }
-  private buildFar() {
-    const R = this.R, N = this.N, pal = this.o.pal, bin = this.bin;
-    const n = R.noise, G = 132, ext = 22000;
-    const coord = (i: number) => { const u = (i / (G - 1)) * 2 - 1, a = Math.abs(u); return Math.sign(u) * (a < 0.08 ? (a / 0.08) * 70 : 70 + Math.pow((a - 0.08) / 0.92, 2.15) * (ext - 70)); };
-    const pos = new Float32Array(G * G * 3), col = new Float32Array(G * G * 3);
-    const bk = R.biome.key;
-    const cA = new THREE.Color(bk === 'desert' ? pal.sand : bk === 'tundra' ? pal.snow : bk === 'ashland' ? pal.basalt : bk === 'savanna' ? pal.grassDry : bk === 'marsh' ? pal.mud : pal.grass);
-    const cB = new THREE.Color(bk === 'desert' ? pal.clay : bk === 'tundra' ? pal.rock : bk === 'ashland' ? pal.rock : (pal.foliage[0] ?? pal.grass)).multiplyScalar(bk === 'jungle' ? 0.7 : 0.85);
-    const cR = new THREE.Color(pal.rock), cS = new THREE.Color(pal.sand), cN = new THREE.Color(pal.snow);
-    const amp = 6 + R.biome.rough * 60, c = new THREE.Color();
-    for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
-      const x = coord(i), z = coord(j), k = (j * G + i) * 3;
-      const dIn = Math.max(Math.abs(x), Math.abs(z)) - N / 2;
-      let y: number;
-      const big = n.fbm2(x * 0.00045 + 31, z * 0.00045 - 7, 4), mid = n.fbm2(x * 0.004, z * 0.004, 3);
-      const hFar = 4.2 + big * amp * 1.4 + mid * amp * 0.25 + Math.max(0, n.ridge2(x * 0.0008, z * 0.0008, 3) - 0.4) * amp * 2 * R.biome.rough;
-      if (dIn < 0) y = this.gH(clamp(x, -N / 2 + 1, N / 2 - 1), clamp(z, -N / 2 + 1, N / 2 - 1)) - 2.5;
-      else { const edge = this.gH(clamp(x, -N / 2 + 0.5, N / 2 - 0.5), clamp(z, -N / 2 + 0.5, N / 2 - 0.5)); y = lerp(edge - 0.3, hFar, sm(0, 220, dIn)); }
-      const d2 = x * x + z * z; y -= d2 / (2 * RP);
-      pos[k] = x; pos[k + 1] = y; pos[k + 2] = z;
-      // colour: ground, woods, rock on the heights, sand at the shore, snow up high
-      const h = y + d2 / (2 * RP);
-      const f = n.fbm2(x * 0.0021 + 50, z * 0.0021, 3);
-      c.copy(cA).lerp(cB, clamp((f + 0.1) * 2.2 * (bk === 'desert' ? 0.4 : 1), 0, 1));
-      if (h < 5.2) c.lerp(cS, clamp((5.2 - h) / 1.4, 0, 1) * 0.8);
-      if (h > 22) c.lerp(cR, clamp((h - 22) / 30, 0, 0.8));
-      if (h > 60 && bk !== 'desert') c.lerp(cN, clamp((h - 60) / 40, 0, 0.9));
-      c.multiplyScalar(0.92 + hash(i, j, 3) * 0.12);
-      col[k] = c.r; col[k + 1] = c.g; col[k + 2] = c.b;
-    }
-    const idx: number[] = [];
-    for (let j = 0; j < G - 1; j++) for (let i = 0; i < G - 1; i++) { const a = j * G + i, b = a + 1, cc = a + G, d = cc + 1; idx.push(a, cc, b, b, cc, d); }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
-    const m = mesh(bin, g, lit(bin, 0xffffff, { vertexColors: true, flat: true, flag: 0 }), this.scene, 0, 0, 0, false);
-    m.receiveShadow = true; m.frustumCulled = false;
-  }
-  private blockColor(b: number, x: number, z: number, out: THREE.Color) {
-    const p = this.o.pal;
-    const tbl = [p.grass, p.grassDry, p.soil, p.rock, p.sand, p.mud, p.clay, p.snow, p.basalt, p.ore, p.crystal, p.soil, p.rock, p.basalt];
-    out.set(tbl[b] ?? p.grass);
-    if (b === 11) out.lerp(new THREE.Color(p.grass), 0.4);
-    if (b === 12) out.lerp(new THREE.Color(p.sand), 0.4);
-    return out.multiplyScalar(0.9 + hash(x, z, 5) * 0.16);
-  }
-  private buildRegion() {
-    const R = this.R, N = this.N, bin = this.bin, pal = this.o.pal;
-    // one vertex per cell centre, plus a skirt round the edge down into the far landscape
-    const pos: number[] = [], col: number[] = [], idx: number[] = [];
-    const c = new THREE.Color(), fol = new THREE.Color(pal.foliage[0] ?? pal.grass).multiplyScalar(0.62), wat = new THREE.Color(pal.water).lerp(new THREE.Color(0x2a4a5a), 0.3);
-    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
-      const i = z * N + x;
-      let y = R.h[i];
-      const ry = R.riverY[i];
-      this.blockColor(R.b[i], x, z, c);
-      const f = R.forest[i]; if (f > 0.2) c.lerp(fol, clamp((f - 0.2) * 1.1, 0, 0.75));
-      if (ry > 0 && y < ry) { c.copy(wat); y = ry - 0.1; }
-      if (R.damp[i] > 0.3) c.multiplyScalar(1 - (R.damp[i] - 0.3) * 0.25);
-      pos.push(x + 0.5 - N / 2, y, z + 0.5 - N / 2); col.push(c.r, c.g, c.b);
-    }
-    for (let z = 0; z < N - 1; z++) for (let x = 0; x < N - 1; x++) { const a = z * N + x, b = a + 1, cc = a + N, d = cc + 1; idx.push(a, cc, b, b, cc, d); }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
-    const m = mesh(bin, g, lit(bin, 0xffffff, { vertexColors: true, flat: true, flag: 1 }), this.scene, 0, 0, 0, false);
-    m.receiveShadow = true;
-    // woods: instanced conifers and broadleaf lumps where the forest is thick
-    const trunk = new THREE.CylinderGeometry(0.12, 0.18, 1.2, 5); trunk.translate(0, 0.6, 0);
-    const crownA = new THREE.ConeGeometry(1.1, 2.6, 6); crownA.translate(0, 2.3, 0);
-    const crownB = new THREE.ConeGeometry(0.8, 1.8, 6); crownB.translate(0, 3.3, 0);
-    const tg = mergeGeos([trunk, crownA, crownB]);
-    [trunk, crownA, crownB].forEach((x) => x.dispose());
-    const spots: [number, number, number][] = [];
-    for (let z = 2; z < N - 2; z += 2) for (let x = 2; x < N - 2; x += 2) {
-      const f = R.forest[z * N + x];
-      if (f < 0.4 || hash(x, z, 11) > f || R.isWater(x + 0.5, z + 0.5) || R.isSolid(x + 0.5, z + 0.5)) continue;
-      spots.push([x + 0.5 + (hash(x, z, 1) - 0.5) * 1.6, z + 0.5 + (hash(x, z, 2) - 0.5) * 1.6, 0.8 + hash(x, z, 3) * 0.9]);
-      if (spots.length > 2200) break;
-    }
-    if (spots.length) {
-      const im = new THREE.InstancedMesh(bin.g(tg), lit(bin, 0xffffff, { flat: true }), spots.length);
-      const fc = pal.foliage.length ? pal.foliage : [pal.grass];
-      spots.forEach(([x, z, s], i) => {
-        _m.compose(_v.set(x - N / 2, R.groundSmooth(x, z) - 0.1, z - N / 2), _q.setFromAxisAngle(new V3(0, 1, 0), hash(x, z, 4) * TAU), _v2.set(s, s * (0.8 + hash(x, z, 6) * 0.5), s));
-        im.setMatrixAt(i, _m);
-        im.setColorAt(i, new THREE.Color(fc[Math.floor(hash(x, z, 7) * fc.length)]).multiplyScalar(0.7 + hash(x, z, 8) * 0.25));
-      });
-      im.castShadow = true; im.receiveShadow = true; this.scene.add(im);
-    } else bin.g(tg);
-    // rock formations as faceted boulders
-    const rocks = R.rocks.filter((r) => r.kind !== 'pebble');
-    if (rocks.length) {
-      const rg = new THREE.DodecahedronGeometry(0.5, 0); rg.translate(0, 0.35, 0);
-      const im = new THREE.InstancedMesh(bin.g(rg), lit(bin, 0xffffff, { flat: true }), rocks.length);
-      const rc = [pal.rock, pal.sand, pal.basalt, pal.rock, 0x6a5038];
-      rocks.forEach((r, i) => {
-        _m.compose(_v.set(r.x - N / 2, r.y - 0.2, r.z - N / 2), _q.setFromEuler(new THREE.Euler(r.tilt * Math.cos(r.tiltDir), r.yaw, r.tilt * Math.sin(r.tiltDir))), _v2.set(r.sx, r.sy, r.sz));
-        im.setMatrixAt(i, _m); im.setColorAt(i, new THREE.Color(rc[r.mat] ?? pal.rock).multiplyScalar(0.85 + hash(i, 1) * 0.2));
-      });
-      im.castShadow = true; im.receiveShadow = true; this.scene.add(im);
-    }
-    // lumen seams glint: small crystal spires
-    const cr = R.deposits.filter((d) => d.kind === 'crystal');
-    if (cr.length) {
-      const sg = new THREE.ConeGeometry(0.25, 1.6, 5); sg.translate(0, 0.7, 0);
-      const cm = bin.m(gbuf(new THREE.MeshBasicMaterial({ color: new THREE.Color(pal.crystal).multiplyScalar(1.6) }), 32));
-      const im = new THREE.InstancedMesh(bin.g(sg), cm, cr.length * 6);
-      let k = 0;
-      for (const d of cr) for (let j = 0; j < 6; j++) {
-        const a = (j / 6) * TAU + hash(d.x, j) * 0.8, rr = 0.6 + hash(d.z, j) * 1.8, x = d.x + Math.cos(a) * rr, z = d.z + Math.sin(a) * rr;
-        _m.compose(_v.set(x - N / 2, R.groundSmooth(x, z) - 0.1, z - N / 2), _q.setFromEuler(new THREE.Euler((hash(j, 1) - 0.5) * 0.6, 0, (hash(j, 2) - 0.5) * 0.6)), _v2.setScalar(0.6 + hash(x, z) * 0.9));
-        im.setMatrixAt(k++, _m);
-      }
-      this.scene.add(im);
-    }
-  }
-  private buildWater() {
-    const pal = this.o.pal;
-    const m = lit(this.bin, new THREE.Color(pal.water).lerp(new THREE.Color(0x234656), 0.45).getHex(), { phong: true, shininess: 90, flat: false, flag: 0 });
-    (m as THREE.MeshPhongMaterial).specular = new THREE.Color(0x8a9aa0);
-    const w = mesh(this.bin, new THREE.CircleGeometry(22000, 48), m, this.scene, 0, this.R.water - 0.08, 0, false);
-    w.rotation.x = -Math.PI / 2; w.receiveShadow = true;
-  }
   private buildCloud(y: number, cover: number) {
     const L = { y, cover, slices: [] as THREE.Mesh[], u: [] as Record<string, THREE.IUniform>[] };
     const lc = new THREE.Color(0xe8e6de), dc = new THREE.Color(this.o.pal.horizon).lerp(new THREE.Color(0x5a6470), 0.6);
@@ -441,32 +297,7 @@ export class Descent {
   }
   private buildLZ() {
     const bin = this.bin, L = this.lzW;
-    // the painted rings: an 18 m dashed circle (on target), the 6 m red ring (bullseye), a cross
-    const ring = (r0: number, r1: number, col: number, dash = 0) => {
-      const seg = 96, pos: number[] = [];
-      for (let i = 0; i < seg; i++) {
-        if (dash && i % 2) continue;
-        const a0 = (i / seg) * TAU, a1 = ((i + 1) / seg) * TAU;
-        const P = (a: number, r: number) => { const x = L.x + Math.cos(a) * r, z = L.z + Math.sin(a) * r; return [x, this.gH(x, z) + 0.12, z]; };
-        const A = P(a0, r0), B = P(a1, r0), C = P(a0, r1), D = P(a1, r1);
-        pos.push(...A, ...C, ...B, ...B, ...C, ...D);
-      }
-      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
-      const m = bin.m(gbuf(new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(1.4), side: THREE.DoubleSide }), 32));
-      mesh(bin, g, m, this.scene, 0, 0, 0, false);
-    };
-    ring(17.4, 18, 0xe8e2d0, 1); ring(5.4, 6.2, 0xd04a34); ring(0, 0.9, 0xe8e2d0);
-    for (const a of [0, Math.PI / 2]) {
-      const pos: number[] = [];
-      for (let i = -1; i <= 1; i += 2) for (let k = 0; k < 6; k++) {
-        const r0 = 1.6 + k * 0.6, r1 = r0 + 0.6, w = 0.25, ca = Math.cos(a), sa = Math.sin(a);
-        const P = (r: number, s: number) => { const x = L.x + ca * r * i - sa * s, z = L.z + sa * r * i + ca * s; return [x, this.gH(x, z) + 0.12, z]; };
-        const A = P(r0, -w), B = P(r1, -w), C = P(r0, w), D = P(r1, w);
-        pos.push(...A, ...C, ...B, ...B, ...C, ...D);
-      }
-      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals();
-      mesh(bin, g, bin.m(gbuf(new THREE.MeshBasicMaterial({ color: new THREE.Color(0xe8e2d0).multiplyScalar(1.3), side: THREE.DoubleSide }), 32)), this.scene, 0, 0, 0, false);
-    }
+    dropMarks(this.W, L);
     // red smoke column, leaning downwind
     this.smokeU = { uT: { value: 0 }, uCol: { value: new THREE.Color(0xa83a2a) } };
     const sg = new THREE.CylinderGeometry(14, 1.4, 260, 20, 12, true); sg.translate(0, 130, 0);
@@ -895,16 +726,4 @@ export class Descent {
     this.bin.dispose();
     this.scene.clear(); this.fxScene.clear();
   }
-}
-
-/** merge plain geometries (position + normal + uv) into one */
-function mergeGeos(list: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  const parts = list.map((g) => (g.index ? g.toNonIndexed() : g));
-  let n = 0; for (const g of parts) n += g.attributes.position.count;
-  const pos = new Float32Array(n * 3), nrm = new Float32Array(n * 3);
-  let o = 0;
-  for (const g of parts) { pos.set(g.attributes.position.array as Float32Array, o * 3); nrm.set(g.attributes.normal.array as Float32Array, o * 3); o += g.attributes.position.count; }
-  parts.forEach((g, i) => { if (g !== list[i]) g.dispose(); });
-  const out = new THREE.BufferGeometry(); out.setAttribute('position', new THREE.BufferAttribute(pos, 3)); out.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
-  return out;
 }

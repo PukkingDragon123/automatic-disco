@@ -219,29 +219,41 @@ const WET_PRINT: Soil = { ...soil('slate', 0.85, 16, null, 2), rim: 1 };
 const BLOOD_PRINT = soil('blood', 0.9, 45, null, 2), ICHOR_PRINT = soil('ichor', 0.9, 45, null, 2);
 
 // ------------------------------------------------------------------------------------------------ floating debris
-function debrisTex(kind: 'leaf' | 'twig') {
-  const S = 16, d = new Uint8Array(S * S * 4);
-  const put = (x: number, y: number, v: number) => { if (x < 0 || y < 0 || x >= S || y >= S) return; const o = (y * S + x) * 4; d[o] = d[o + 1] = d[o + 2] = v; d[o + 3] = 255; };
-  const filled = (x: number, y: number) => x >= 0 && y >= 0 && x < S && y < S && d[(y * S + x) * 4 + 3] > 0;
+/** a floating leaf or twig painted in one master-palette ramp: a pointed blade split on its vein into a lit and a mid
+ *  plane, a shadow edge, a darker sel-out on the shadow side */
+function debrisTex(kind: 'leaf' | 'twig', ramp: RampName) {
+  const S = 16, d = new Uint8Array(S * S * 4), r = RAMPS[ramp], L = r.length;
+  const st = [r[0], r[Math.max(1, L - 5)], r[L - 3], r[L - 2], r[L - 1]];
+  const grid = new Uint8Array(S * S);
+  const put = (x: number, y: number, v: number) => { if (x >= 0 && y >= 0 && x < S && y < S) grid[y * S + x] = v; };
   if (kind === 'leaf') {
-    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-      const u = (x + 0.5) / S * 2 - 1, v = (y + 0.5) / S * 2 - 1, w = 0.62 * Math.sin(Math.PI * clamp((v + 0.95) / 1.85, 0, 1)) ** 0.8;
-      if (Math.abs(u) < w) put(x, y, Math.abs(u) < 0.08 ? 150 : u < 0 ? 235 : 200);
+    // spine from the stem (bottom) to the tip (top), an asymmetric width profile
+    const W = [0, 1.5, 2.6, 3.4, 3.9, 4.1, 4, 3.7, 3.2, 2.6, 2, 1.4, 0.8, 0.3];
+    for (let i = 0; i < W.length; i++) {
+      const y = 14 - i, x0 = 7.5 + (i - 7) * 0.12;
+      for (let x = 0; x < S; x++) {
+        const dx = x + 0.5 - x0;
+        if (dx < -W[i] * 1.05 || dx > W[i] * 0.9) continue;
+        put(x, y, Math.abs(dx) < 0.6 ? 2 : dx < 0 ? 4 : 3);
+      }
     }
-    put(8, 15, 120); put(7, 15, 120);
+    put(7, 15, 1); put(8, 15, 1);
+    put(6, 6, 5);
   } else {
-    for (let t = 0; t < 14; t++) { put(2 + t, 13 - Math.round(t * 0.75), 190); put(2 + t, 14 - Math.round(t * 0.75), 140); }
-    for (let t = 0; t < 4; t++) put(9 + t, 7 - t - 1, 170);
+    for (let t = 0; t < 13; t++) { const x = 2 + t, y = 12 - Math.round(t * 0.7); put(x, y, 4); put(x, y + 1, 3); }
+    for (let t = 0; t < 4; t++) { put(9 + t, 5 - t, 4); put(9 + t, 6 - t, 2); }
+    put(14, 3, 3);
   }
-  // a dark outline
-  const c = d.slice();
+  const c = grid.slice();
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-    if (c[(y * S + x) * 4 + 3]) continue;
-    const near = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => { const X = x + dx, Y = y + dy; return X >= 0 && Y >= 0 && X < S && Y < S && c[(Y * S + X) * 4 + 3] > 0; });
-    if (near) { const o = (y * S + x) * 4; d[o] = d[o + 1] = d[o + 2] = 40; d[o + 3] = 255; }
+    if (c[y * S + x]) continue;
+    const f = (X: number, Y: number) => X >= 0 && Y >= 0 && X < S && Y < S && c[Y * S + X] > 1;
+    if (f(x - 1, y) || f(x, y - 1)) grid[y * S + x] = 1;
+    else if (f(x + 1, y) || f(x, y + 1)) grid[y * S + x] = 2;
   }
-  void filled;
+  for (let i = 0; i < S * S; i++) { const v = grid[i]; if (!v) continue; const col = st[v - 1]; d[i * 4] = (col >> 16) & 255; d[i * 4 + 1] = (col >> 8) & 255; d[i * 4 + 2] = col & 255; d[i * 4 + 3] = 255; }
   const t = new THREE.DataTexture(d, S, S, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.flipY = false;
   t.colorSpace = THREE.SRGBColorSpace; t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.needsUpdate = true;
   return t;
 }
@@ -301,8 +313,8 @@ export class Details {
   private gWas = false; private gTrail = 0; private gDust = 0; private gDrip = 0; private gRing = 0; private gx = 0; private gz = 0; private gLeaf = 0;
   private stoneSeen = new WeakSet<object>();
   // debris
-  private leaves: THREE.InstancedMesh; private twigs: THREE.InstancedMesh;
-  private db: { x: number; z: number; yaw: number; spin: number; ph: number; age: number; beach: number; s: number; on: boolean; twig: boolean }[] = [];
+  private dm: THREE.InstancedMesh[] = [];
+  private db: { x: number; z: number; yaw: number; spin: number; ph: number; age: number; beach: number; s: number; on: boolean; twig: boolean; v: number; slot: number }[] = [];
   // weather
   private rainMesh: THREE.Mesh; private rainU: Record<string, THREE.IUniform>;
   private rain = 0; private rainGoal = 0; private showerT = 0; private showerDur = 0; private nextShower: number; private forced: number | null = null;
@@ -319,16 +331,16 @@ export class Details {
     this.flow = this.buildFlow();
     // debris: leaves and twigs on the water, lit and outlined like everything else
     const plane = new THREE.PlaneGeometry(1, 1); plane.rotateX(-Math.PI / 2);
-    const mk = (kind: 'leaf' | 'twig', n: number) => {
-      const m = gbuf(new THREE.MeshLambertMaterial({ map: debrisTex(kind), alphaTest: 0.5, side: THREE.DoubleSide }), 1);
+    const mk = (kind: 'leaf' | 'twig', ramp: RampName, n: number) => {
+      const m = gbuf(new THREE.MeshLambertMaterial({ map: debrisTex(kind, ramp), alphaTest: 0.5, side: THREE.DoubleSide }), 1);
       const im = new THREE.InstancedMesh(plane, m, n);
-      im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3).fill(1), 3);
-      im.count = 0; im.frustumCulled = false; im.receiveShadow = true; im.name = 'debris';
+      _m.makeScale(0, 0, 0); for (let i = 0; i < n; i++) im.setMatrixAt(i, _m);
+      im.frustumCulled = false; im.receiveShadow = true; im.name = 'debris';
       w.scene.add(im);
       return im;
     };
-    this.leaves = mk('leaf', 48); this.twigs = mk('twig', 14);
-    for (let i = 0; i < 62; i++) this.db.push({ x: 0, z: 0, yaw: 0, spin: 0, ph: 0, age: 0, beach: 0, s: 0, on: false, twig: i >= 48 });
+    this.dm = [mk('leaf', 'moss', 18), mk('leaf', 'ochre', 16), mk('leaf', 'rust', 14), mk('twig', 'fur', 14)];
+    this.dm.forEach((im, v) => { for (let i = 0; i < im.count; i++) this.db.push({ x: 0, z: 0, yaw: 0, spin: 0, ph: 0, age: 0, beach: 0, s: 0, on: false, twig: v === 3, v, slot: i }); });
     // rain
     const N = 1400, rg = new THREE.InstancedBufferGeometry();
     rg.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0], 3));
@@ -701,7 +713,7 @@ export class Details {
     return f;
   }
   private debris(dt: number) {
-    const g = this.g, R = g.region, N = R.N, tgt = g.cam.target, pal = R.pal;
+    const g = this.g, R = g.region, N = R.N, tgt = g.cam.target;
     const want = Math.round(14 + R.biome.flora * 14);
     let alive = 0;
     for (const d of this.db) if (d.on) alive++;
@@ -709,19 +721,15 @@ export class Details {
     for (let tries = 0; tries < 3 && alive < want; tries++) {
       const a = Math.random() * TAU, r = rnd(2, 17), x = tgt.x + Math.cos(a) * r, z = tgt.z + Math.sin(a) * r;
       if (x < 1 || z < 1 || x > N - 1 || z > N - 1 || !R.isWater(x, z) || R.heightAt(x, z) > this.waterY(x, z) - 0.06) continue;
-      const twig = Math.random() < 0.18;
-      const d = this.db.find((q) => !q.on && q.twig === twig); if (!d) continue;
+      const twig = Math.random() < 0.18, v = twig ? 3 : Math.floor(Math.random() * 3);
+      const d = this.db.find((q) => !q.on && q.v === v); if (!d) continue;
       d.on = true; d.x = x; d.z = z; d.yaw = Math.random() * TAU; d.spin = rnd(-0.4, 0.4); d.ph = Math.random() * TAU; d.age = 0; d.beach = 0;
       d.s = twig ? rnd(0.16, 0.3) : rnd(0.07, 0.14);
-      const cols = twig ? [0x7a5a3a, 0x6a4a30, 0x8a6a48] : [...pal.foliage, ...pal.foliage, ...pal.bloom.slice(0, 2), 0xb8a040, 0xa06a30];
-      const im = twig ? this.twigs : this.leaves, idx = this.db.indexOf(d) - (twig ? 48 : 0);
-      im.setColorAt(idx, _c.set(cols[Math.floor(Math.random() * cols.length)]).multiplyScalar(rnd(0.85, 1.1)));
-      if (im.instanceColor) im.instanceColor.needsUpdate = true;
       alive++;
     }
     const p = g.player, wind = g.world.sun.env.wind;
     for (let i = 0; i < this.db.length; i++) {
-      const d = this.db[i], im = d.twig ? this.twigs : this.leaves, idx = d.twig ? i - 48 : i;
+      const d = this.db[i], im = this.dm[d.v], idx = d.slot;
       if (d.on) {
         d.age += dt;
         const ci = clamp(Math.floor(d.z), 0, N - 1) * N + clamp(Math.floor(d.x), 0, N - 1);
@@ -744,8 +752,7 @@ export class Details {
       _m.compose(_v.set(d.x, y, d.z), _q, _s.set(d.s * fade, 1, d.s * fade * (d.twig ? 1 : 1.3)));
       im.setMatrixAt(idx, _m);
     }
-    this.leaves.count = 48; this.twigs.count = 14;
-    this.leaves.instanceMatrix.needsUpdate = true; this.twigs.instanceMatrix.needsUpdate = true;
+    for (const im of this.dm) im.instanceMatrix.needsUpdate = true;
   }
 
   // ------------------------------------------------------------------ weather and humidity
@@ -792,7 +799,7 @@ export class Details {
     U.uTime.value = this.t;
     (U.uRes.value as THREE.Vector2).set(g.engine.w, g.engine.h);
     U.uPx.value = Math.max(0.6, g.engine.h / 900);
-    (U.uCol.value as THREE.Color).setRGB(0.8, 0.88, 1.0).multiply(this.vfx.light).multiplyScalar(1.15);
+    (U.uCol.value as THREE.Color).setHex(RAMPS.sky[5]).multiply(this.vfx.light);
     const maxN = (rm as unknown as { maxN: number }).maxN;
     (rm.geometry as THREE.InstancedBufferGeometry).instanceCount = Math.floor(maxN * this.rain * clamp(box / 26, 0.65, 1));
     this.hitAcc += dt * this.rain * 70;

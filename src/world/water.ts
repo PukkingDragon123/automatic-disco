@@ -25,18 +25,23 @@ uniform float uWakeR[${WAKE_N}];
 uniform float uRainW;
 ${SHADER_NOISE}
 ${FOW_FN}
+/** a hand-drawn ring's "radius": an octagon, never a circle */
+float octR(vec2 v) { v = abs(v); return max(max(v.x, v.y), (v.x + v.y) * 0.7071); }
+/** rings break into arcs: a few legs of the octagon are left out (which ones depends on the ring) */
+float legOn(vec2 v, float seed) { float a = atan(v.y, v.x) / 6.2832 + 0.5; return step(0.24, fract(sin(floor(a * 8.0 + 0.5) * 12.9898 + seed * 78.233) * 43758.5453)); }
 /** rings and wakes at p: a height-like signal (crest > 0, trough < 0) and a foam amount */
 vec2 interact(vec2 p, float t) {
   float h = 0.0, fm = 0.0;
   for (int i = 0; i < ${RIP_N}; i++) {
     vec4 r = uRip[i];
     if (r.w <= 0.0) continue;
-    float age = r.z, d = length(p - r.xy);
+    float age = r.z, d = octR(p - r.xy);
     // a short wave train behind a leading crest; it spreads, slows and flattens
     float x = d - (0.04 + age * (0.5 + r.w * 0.3));
     if (abs(x + 0.22) > 0.75) continue;
     float lam = 0.26 + age * 0.07;
     float a = r.w * exp(-age * 0.9) / (1.0 + d * 0.6);
+    a *= legOn(p - r.xy, float(i) + floor(r.x * 7.0));
     h += cos(x * 6.2832 / lam) * exp(-pow((x + 0.2) / 0.3, 2.0)) * a;
     fm = max(fm, (1.0 - smoothstep(0.0, 0.05, abs(x))) * a * step(age, 0.35) * 2.0);
   }
@@ -54,7 +59,7 @@ vec2 interact(vec2 p, float t) {
     h += ((1.0 - smoothstep(0.0, wd, abs(arm))) - 0.6 * (1.0 - smoothstep(0.0, wd, abs(arm - wd * 2.0)))) * fall * k * 1.3;
     // churned water straight behind, and a foam lip hugging the body
     float trail = (1.0 - smoothstep(rad * 0.3, rad * 0.9, abs(ac))) * (1.0 - smoothstep(0.0, L * 0.45, al)) * step(0.0, al);
-    float lip = 1.0 - smoothstep(0.0, 0.06, abs(length(q) - rad * 1.05));
+    float lip = (1.0 - smoothstep(0.0, 0.06, abs(octR(q) - rad * 1.05))) * legOn(q, float(i));
     fm = max(fm, max(trail * vn(vec2(ac * 9.0, (al + t * sp) * 5.0)) * 1.4, lip * (0.5 + 0.5 * k)) * k);
   }
   return vec2(h, fm);
@@ -115,15 +120,15 @@ vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
   // the rings and wakes: crisp light crests, darker troughs, white water where they break
   // (a darker trough line keeps them readable on pale shallows too)
   c *= 1.0 + clamp(ia.x, -1.0, 1.0) * 0.12;
-  if (ia.x > 0.2) c = mix(c, uShallow * 1.3 + 0.16, 0.6);
-  else if (ia.x < -0.2) c = mix(c, uDeep * 0.9, 0.38);
+  if (ia.x > 0.2) c = mix(c, uFoam, 0.45);
+  else if (ia.x < -0.2) c = mix(c, uDeep, 0.4);
   foam = max(foam, ia.y);
   // rain: little rings popping all over the surface
   if (uRainW > 0.01) {
     vec2 q = p * 1.6, ci = floor(q), f = fract(q) - 0.5 - (vec2(h2(ci), h2(ci + 5.3)) - 0.5) * 0.5;
     float tc = t * 1.4 + h2(ci + 2.7), ph = fract(tc);
-    float ring = (1.0 - step(0.035, abs(length(f) - ph * 0.36))) * step(h2(ci + floor(tc) * 1.3), uRainW) * step(ph, 0.85);
-    c = mix(c, mix(uDeep, uShallow, ph) * 0.95, ring * (1.0 - ph * 0.6) * 0.75);
+    float ring = (1.0 - step(0.035, abs(octR(f) - ph * 0.36))) * step(h2(ci + floor(tc) * 1.3), uRainW) * step(ph, 0.85) * legOn(f, h2(ci));
+    c = mix(c, ph < 0.45 ? uFoam : uDeep, ring * 0.6);
     c *= 1.0 - uRainW * 0.1;
   }
   // shoreline: a pale lapping rim

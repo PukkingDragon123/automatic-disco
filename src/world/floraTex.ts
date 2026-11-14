@@ -9,6 +9,9 @@
 import * as THREE from 'three';
 import { Rand } from '../core/rand';
 import { PROF, type Shape } from './plantStyle';
+import { RAMPS } from '../art/palette';
+import { fillPoly } from './pixelKit';
+const M = (k: keyof typeof RAMPS) => [...RAMPS[k]] as number[];
 
 export interface Rect { u0: number; v0: number; du: number; dv: number }
 /** atlas size (texels) */
@@ -108,45 +111,50 @@ export class FloraTex {
     const long = shape === 'strap' || shape === 'lance' || shape === 'needle';
     const W = o.petal ? 14 : long ? 12 : 16, H = o.petal ? 18 : long ? 36 : 30;
     return this.get(key, W, H, (mk) => {
-      const P = mk([ramp]), n = ramp.length - 1, prof = PROF[shape], r = new Rand(this.seed ^ (key.length * 7919) ^ ((o.var ?? 0) * 131));
+      const P = mk([ramp]), n = ramp.length - 1, prof = PROF[shape], v = o.var ?? 0, r = new Rand(this.seed ^ (key.length * 7919) ^ (v * 131));
       let pmax = 0.01; for (let t = 0; t <= 1; t += 0.02) pmax = Math.max(pmax, prof(t));
-      const cx = W / 2, half = W / 2 - 0.5;
+      // each variant its own leaf: the midrib bends, the halves differ, one has a bite, one a curled tip
+      const half = W / 2 - 0.5, bend = (v === 1 ? 1 : v === 2 ? -0.7 : 0.4) * r.range(0.6, 1.2), asym = (v === 2 ? -1 : 1) * r.range(0.1, 0.24);
+      const biteT = !o.petal && v === 2 ? r.range(0.4, 0.62) : -1, curl = !o.petal && v === 1;
+      const mid = (t: number) => W / 2 + bend * t * t * W * 0.22;
       const hw: number[] = [];
       for (let y = 0; y < H; y++) {
-        const t = (y + 0.5) / H;
+        const t = (y + 0.5) / H, cm = mid(t);
         let w = (prof(Math.min(0.995, t)) / pmax) * half;
         if (o.teeth && y % 3 === 1) w -= 1;
         hw.push(w);
         for (let x = 0; x < W; x++) {
-          const s = x + 0.5 - cx;
-          if (Math.abs(s) > w || t > 0.985) continue;
+          const sx = x + 0.5 - cm, side = sx < 0 ? -1 : 1;
+          let ws = w * (1 + asym * side);
+          if (biteT > 0 && side > 0 && Math.abs(t - biteT) < 0.09) ws -= Math.max(0, 2.4 - Math.abs(t - biteT) * 30);
+          if (Math.abs(sx) > ws || t > 0.985) continue;
           // two clean bands: lit left, shaded right; the base a step darker, the tip a step lighter
-          let i = s < 0 ? n - 2 : n - 3;
+          let i = sx < 0 ? n - 2 : n - 3;
           if (t < 0.18) i--;
-          if (t > 0.72 && s < 0) i++;
-          if (o.petal) i = Math.min(n, (t < 0.3 ? 2 : t < 0.65 ? 3 : 4) + (s < 0 ? 1 : 0));
+          if (t > 0.72 && sx < 0) i++;
+          if (curl && t > 0.84) i = sx < 0 ? n - 3 : n - 4;
+          if (o.petal) i = Math.min(n, (t < 0.3 ? 2 : t < 0.65 ? 3 : 4) + (sx < 0 ? 1 : 0));
           P.set(x, y, i);
         }
       }
       if (o.petal) {
         // petals: two fine veins from the heart, a pale lip
-        for (let y = 2; y < H * 0.7; y++) { P.nudge(Math.floor(cx - 2 - y * 0.08), y, -1); P.nudge(Math.floor(cx + 1 + y * 0.08), y, -1); }
-        for (let y = Math.floor(H * 0.72); y < H; y++) for (let x = 0; x < W; x++) if (P.get(x, y) >= 0 && P.get(x, y + 1) < 0 && x < cx) P.set(x, y, n);
+        for (let y = 2; y < H * 0.7; y++) { P.nudge(Math.floor(mid(y / H) - 2 - y * 0.08), y, -1); P.nudge(Math.floor(mid(y / H) + 1 + y * 0.08), y, -1); }
+        for (let y = Math.floor(H * 0.72); y < H; y++) for (let x = 0; x < W; x++) if (P.get(x, y) >= 0 && P.get(x, y + 1) < 0 && x < mid(y / H)) P.set(x, y, n);
       } else {
-        // the midrib (pale on most leaves, a groove on some), and lateral veins paired off it, angled to the tip
-        const mid = Math.floor(cx - 0.5), rib = (o.vein ?? 0) < 0 ? -1 : 1;
-        for (let y = 1; y < H - 2; y++) if (P.get(mid, y) >= 0) P.nudge(mid, y, rib);
+        // the midrib follows the bend (pale on most leaves, a groove on some); lateral veins paired off it
+        const rib = (o.vein ?? 0) < 0 ? -1 : 1;
+        for (let y = 1; y < H - 2; y++) { const x = Math.floor(mid((y + 0.5) / H)); if (P.get(x, y) >= 0) P.nudge(x, y, rib); }
         if (o.lat || shape === 'ovate' || shape === 'heart' || shape === 'lobed' || shape === 'round') {
-          for (let y0 = 4; y0 < H - 5; y0 += 4 + (y0 > H * 0.6 ? 1 : 0)) for (let k = 1; k < hw[y0] - 1; k++) {
-            const y = y0 + Math.floor(k * 0.8);
-            P.nudge(mid - k, y, 1); P.nudge(mid + 1 + k, y, -1);
+          for (let y0 = 4 + (v & 1); y0 < H - 5; y0 += 4 + (y0 > H * 0.6 ? 1 : 0)) for (let k = 1; k < hw[y0] - 1; k++) {
+            const y = y0 + Math.floor(k * 0.8), m = Math.floor(mid((y + 0.5) / H));
+            P.nudge(m - k, y, 1); P.nudge(m + 1 + k, y, -1);
           }
         }
         // the shine: a short streak on the lit half, a pixel inside the edge, two thirds of the way up
         const sy = Math.floor(H * r.range(0.52, 0.66));
-        for (let k = 0; k < 3; k++) { const y = sy + k, x = Math.floor(cx - Math.max(1, hw[Math.min(H - 1, y)] - 1.6)); if (P.get(x, y) >= 0) P.set(x, y, n); }
-        // the odd hand-placed blemish
-        if (r.chance(0.3)) { const y = Math.floor(H * r.range(0.3, 0.6)), x = Math.floor(cx + r.range(1, Math.max(1.2, hw[y] - 1.5))); P.nudge(x, y, -2); P.nudge(x + 1, y, -1); }
+        for (let k = 0; k < 3; k++) { const y = sy + k, x = Math.floor(mid((y + 0.5) / H) - Math.max(1, hw[Math.min(H - 1, y)] * (1 - asym) - 1.6)); if (P.get(x, y) >= 0) P.set(x, y, n); }
+        if (v === 0 && r.chance(0.5)) { const y = Math.floor(H * r.range(0.3, 0.6)), x = Math.floor(mid(y / H) + r.range(1, Math.max(1.2, hw[y] - 1.5))); P.nudge(x, y, -2); P.nudge(x + 1, y, -1); }
       }
       P.sel(0, 2);
       return P;
@@ -268,22 +276,25 @@ export class FloraTex {
   }
 
   // -------------------------------------------------------------------------------------------- solids
-  /** a mushroom cap seen from above (planar mapped): banded dome lit from the upper left, flecks, a dark rim */
+  /** a mushroom cap seen from above (planar mapped): an eight-faceted dome, each facet one ramp step by how it faces
+   *  the light, a dark rim, flecks as small clusters, one shine */
   cap(ramp: number[], spots: number, spotCol: number, var_ = 0): Rect {
     return this.get(`cap|${keyOf(ramp)}|${spots}|${spotCol}|${var_}`, 24, 24, (mk) => {
       const sr = [spotCol, spotCol, spotCol, spotCol];
       const P = mk([ramp, sr]), n = ramp.length - 1, c = 12, r = new Rand(this.seed ^ (spotCol & 0xffff) ^ var_);
+      const off = r.range(-1, 1), fac = 8;
       for (let y = 0; y < 24; y++) for (let x = 0; x < 24; x++) {
-        const dx = (x + 0.5 - c) / c, dy = (y + 0.5 - c) / c, d2 = dx * dx + dy * dy;
-        if (d2 > 1) { P.set(x, y, 1); continue; }
-        const l = -(dx * 0.6 + dy * 0.7) + Math.sqrt(1 - d2) * 0.7;
-        P.set(x, y, d2 > 0.82 ? 1 : Math.max(1, Math.min(n, Math.round(2 + l * 3))));
+        const dx = x + 0.5 - c - off, dy = y + 0.5 - c, a = Math.atan2(dy, dx), f = Math.floor(((a + Math.PI) / (Math.PI * 2)) * fac + 0.5) % fac;
+        const fa = (f / fac) * Math.PI * 2 - Math.PI, face = -(Math.cos(fa) * 0.7 + Math.sin(fa) * 0.7);
+        const ring = Math.max(Math.abs(dx), Math.abs(dy)) * 0.6 + (Math.abs(dx) + Math.abs(dy)) * 0.4;
+        const crown = ring < 4.5;
+        P.set(x, y, ring > 10.6 ? 1 : crown ? (dx + dy < 0 ? n - 1 : n - 2) : face > 0.3 ? n - 2 : face > -0.3 ? n - 3 : n - 4);
       }
       for (let k = 0; k < spots; k++) {
-        const a = r.range(0, Math.PI * 2), d = r.range(0.15, 0.7) * c, x = Math.floor(c + Math.cos(a) * d), y = Math.floor(c + Math.sin(a) * d);
-        P.set(x, y, 1, 1); P.set(x + 1, y, 1, 1); P.set(x, y + 1, 1, 1); if (r.chance(0.5)) P.set(x + 1, y + 1, 1, 1);
+        const x = Math.floor(r.range(4, 19)), y = Math.floor(r.range(4, 19));
+        P.set(x, y, 2, 1); P.set(x + 1, y, 3, 1); P.set(x, y + 1, 1, 1); if (r.chance(0.5)) P.set(x + 1, y + 1, 2, 1);
       }
-      P.set(c - 5, c - 5, n); P.set(c - 4, c - 5, n); P.set(c - 5, c - 4, n);
+      P.set(c - 4, c - 4, n); P.set(c - 3, c - 4, n);
       return P;
     });
   }
@@ -293,7 +304,8 @@ export class FloraTex {
       const P = mk([ramp]), n = ramp.length - 1;
       for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
         const dx = x + 0.5 - 8, dy = y + 0.5 - 8, a = Math.atan2(dy, dx), d = Math.hypot(dx, dy);
-        P.set(x, y, d < 2.2 ? 1 : Math.abs(Math.sin(a * 10)) < 0.35 ? 1 : Math.min(n, 3));
+        P.set(x, y, Math.max(Math.abs(dx), Math.abs(dy)) < 2.2 ? 1 : Math.abs(Math.sin(a * 10)) < 0.35 ? 1 : Math.min(n, 3));
+        void d;
       }
       return P;
     });
@@ -302,7 +314,7 @@ export class FloraTex {
   cactus(ramp: number[], ribs: number, flower: number): Rect {
     const W = ribs * 4;
     return this.get(`cactus|${keyOf(ramp)}|${ribs}|${flower}`, W, 48, (mk) => {
-      const spine = [0x8a7a5a, 0xb8a478, 0xe0d0a0, 0xf4ecd0];
+      const spine = M('bone').slice(1, 5);
       const P = mk([ramp, spine]), n = ramp.length - 1;
       for (let y = 0; y < 48; y++) for (let x = 0; x < W; x++) {
         const f = x % 4;
@@ -327,34 +339,27 @@ export class FloraTex {
       return P;
     });
   }
-  /** an eye: sclera, an iris ring, a slit pupil and a wet highlight */
+  /** an eye: an almond of sclera, an eight-sided iris, a slit pupil and a wet highlight */
   eye(iris: number[]): Rect {
     return this.get(`eye|${keyOf(iris)}`, 16, 16, (mk) => {
-      const scl = [0x6a645c, 0xa8a094, 0xd8d0c0, 0xf0ead8];
-      const P = mk([iris, scl, [0x0a080a]]), n = iris.length - 1;
-      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-        const dx = x + 0.5 - 8, dy = y + 0.5 - 8, d = Math.hypot(dx, dy);
-        if (d < 4.6) P.set(x, y, d > 3.8 ? 0 : dy < 0 ? n - 1 : n - 3);
-        else P.set(x, y, dx + dy > 4 ? 1 : d > 7.2 ? 1 : 3, 1);
-      }
+      const P = mk([iris, M('bone'), M('ink')]), n = iris.length - 1;
+      fillPoly([[1, 8], [4, 3.5], [12, 3.5], [15, 8], [12, 12.5], [4, 12.5]], (x, y) => P.set(x, y, x + y < 16 ? 4 : 2, 1));
+      const oct: [number, number][] = []; for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2 + 0.39; oct.push([8 + Math.cos(a) * 4.2, 8 + Math.sin(a) * 4.2]); }
+      fillPoly(oct, (x, y) => P.set(x, y, y < 8 ? n - 1 : n - 3));
       for (let y = 4; y < 12; y++) P.set(8, y, 0, 2);
       P.set(6, 5, n); P.set(5, 6, n);
       return P;
     });
   }
-  /** a floating lily pad seen from above: notch to the centre, vein strokes, a darker turned-up rim */
+  /** a floating lily pad seen from above: an irregular many-sided pad, a notch to the centre, vein strokes, a rim */
   pad(ramp: number[], var_ = 0): Rect {
     return this.get(`pad|${keyOf(ramp)}|${var_}`, 24, 24, (mk) => {
-      const P = mk([ramp]), n = ramp.length - 1, notch = 0.25 + var_ * 1.7;
-      for (let y = 0; y < 24; y++) for (let x = 0; x < 24; x++) {
-        const dx = x + 0.5 - 12, dy = y + 0.5 - 12, d = Math.hypot(dx, dy) / 12, a = Math.atan2(dy, dx);
-        const da = Math.abs(((a - notch + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
-        if (d > 0.98 || (da < 0.16 && d > 0.08)) continue;
-        let i = dx + dy < 0 ? n - 2 : n - 3;
-        if (Math.abs(Math.sin(a * 5)) < 0.12 && d > 0.15 && d < 0.85) i++;
-        P.set(x, y, i);
-      }
-      P.set(7, 6, n); P.set(8, 6, n); P.set(6, 7, n);
+      const P = mk([ramp]), n = ramp.length - 1, notch = 0.25 + var_ * 1.7, r = new Rand(this.seed ^ 0x9ad ^ var_);
+      const pts: [number, number][] = [[12, 12]];
+      for (let k = 0; k <= 10; k++) { const a = notch + 0.28 + (k / 10) * (Math.PI * 2 - 0.56); pts.push([12 + Math.cos(a) * 11.4 * r.range(0.9, 1.03), 12 + Math.sin(a) * 11.4 * r.range(0.9, 1.03)]); }
+      fillPoly(pts, (x, y) => P.set(x, y, x + y < 24 ? n - 2 : n - 3));
+      for (let k = 0; k < 6; k++) { const a = notch + 0.8 + k * 0.9; for (let t = 2; t < 10; t++) { const x = Math.floor(12 + Math.cos(a) * t), y = Math.floor(12 + Math.sin(a) * t); if (P.get(x, y) >= 0) P.nudge(x, y, 1); } }
+      P.set(7, 6, n); P.set(8, 6, n);
       P.sel(0, 2);
       return P;
     });
@@ -362,7 +367,7 @@ export class FloraTex {
   /** neutral skin for berries, beads and fruit (tinted per vertex): a lit cap and a shine */
   speckle(): Rect {
     return this.get('speckle', 8, 8, (mk) => {
-      const P = mk([[0x9a9a9a, 0xc4c4c4, 0xdedede, 0xf2f2f2, 0xffffff]]);
+      const P = mk([M('paper')]);
       for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) P.set(x, y, y < 3 ? 3 : y < 6 ? 2 : 1);
       P.set(2, 2, 4); P.set(3, 2, 4);
       return P;
@@ -371,23 +376,23 @@ export class FloraTex {
   /** pale faceted streaks for crystal shards (tinted per vertex) */
   crystal(): Rect {
     return this.get('crystal', 8, 16, (mk) => {
-      const P = mk([[0xa8b0b8, 0xc8d0d8, 0xe4eaee, 0xffffff]]);
+      const P = mk([M('paper').slice(2)]);
       for (let y = 0; y < 16; y++) for (let x = 0; x < 8; x++) P.set(x, y, x === 2 || (x === 3 && y > 9) ? 3 : x < 4 ? 2 : 1);
       return P;
     });
   }
-  /** a small round flower head seen from above: a ring of petals round a disc (neutral, tinted per instance) */
+  /** a small flower head seen from above, built of overlapping drawn petals round a faceted eye (light, tinted per
+   *  instance by its bloom colour) */
   floret(form: number): Rect {
     return this.get(`floret|${form}`, 16, 16, (mk) => {
-      const P = mk([[0x8a8a8a, 0xb8b8b8, 0xdcdcdc, 0xf4f4f4, 0xffffff], [0x6a3a10, 0xb06818, 0xe8a830, 0xf8d860]]), np = [8, 5, 5, 12][form % 4];
-      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-        const dx = x + 0.5 - 8, dy = y + 0.5 - 8, d = Math.hypot(dx, dy) / 8, a = Math.atan2(dy, dx);
-        const pet = Math.abs(Math.cos((a * np) / 2));
-        if (d > (form === 3 ? 0.95 : 0.55 + 0.42 * pet)) continue;
-        const disc = form === 1 ? 0.2 : form === 3 ? 0 : 0.3;
-        if (d < disc) P.set(x, y, dx + dy < 0 ? 3 : 2, 1);
-        else P.set(x, y, pet < 0.35 ? 1 : dx + dy < 0 ? 4 : 3);
+      const P = mk([M('paper'), M('ochre')]), np = [7, 5, 5, 11][form % 4], r = new Rand(this.seed ^ (form * 77));
+      for (let p = 0; p < np; p++) {
+        const a = (p / np) * Math.PI * 2 + r.range(-0.15, 0.15), L = form === 3 ? 4.5 : r.range(5.6, 7.2), w = form === 3 ? 1.1 : r.range(1.6, 2.3);
+        const ca = Math.cos(a), sa = Math.sin(a), lit = ca + sa < 0;
+        fillPoly([[8 + ca * 1.2 - sa * w * 0.4, 8 + sa * 1.2 + ca * w * 0.4], [8 + ca * L * 0.55 - sa * w, 8 + sa * L * 0.55 + ca * w], [8 + ca * L, 8 + sa * L], [8 + ca * L * 0.55 + sa * w, 8 + sa * L * 0.55 - ca * w], [8 + ca * 1.2 + sa * w * 0.4, 8 + sa * 1.2 - ca * w * 0.4]],
+          (x, y) => P.set(x, y, lit ? 4 : (p & 1) ? 2 : 3));
       }
+      if (form !== 3) { P.set(7, 7, 3, 1); P.set(8, 7, 2, 1); P.set(7, 8, 2, 1); P.set(8, 8, 1, 1); if (form !== 1) { P.set(6, 8, 2, 1); P.set(8, 6, 3, 1); } }
       P.sel(0, 1);
       return P;
     });

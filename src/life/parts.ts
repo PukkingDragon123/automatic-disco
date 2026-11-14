@@ -2,10 +2,14 @@
 // crests, paddle fins, sails and frills on struts; spiral horns and palmate antlers; whiskers, round ears, tongues,
 // throat sacs and feathery gills; bear paws, webbed frog feet and splayed lizard toes; warty wet amphibian skin;
 // tortoise scute shells; crab carapaces with stalked eyes, beetle horns, moth wings and plumed antennae.
-import { makeRamp, mixHex } from '../limbo/gfx/pixel';
+import { mixHex } from '../limbo/gfx/pixel';
+import { RAMPS } from '../art/palette';
 import { clamp } from '../core/rand';
-import { type Region, blade, sac, spline, ball, sheet, hash, gauss, sub, addV, scl, norm, cross, len, lerpV, mixC, transport, type V3, type Wt } from './kit';
-import { type Ctx, has, hide, keratin, fuzz, interp, chordTs, furCard, sm, earPaint } from './sculpt';
+import { type Region, oct, blade, sac, spline, ball, sheet, hash, gauss, sub, addV, scl, norm, cross, len, lerpV, mixC, transport, type V3, type Wt } from './kit';
+import { type Ctx, has, hide, keratin, fuzz, interp, chordTs, furCard, sm, earPaint, rampFor } from './sculpt';
+
+/** ramps come from the master palette, centred on the colour asked for */
+const makeRamp = (c: number, _n?: number, _o?: unknown) => rampFor(c);
 
 const TAU = Math.PI * 2;
 
@@ -59,7 +63,7 @@ function paintHair(r: Region, o: HairOpt) {
           if (e * Math.sign(slope || 1) < -0.15 && e * Math.sign(slope || 1) > -0.65 && f > 0.1) v += 1.3; // the lit band where the lock turns to the light
           if (Math.abs(e) > 0.82) v -= 1.2; // the shadow between locks
           if ((Math.floor((e + 1) * 3) + (y >> 2)) % 3 === 0) v -= 0.45; // strands
-          put(x, y, tip ? o.tip! : R, v + (hash(x * 3 + K, y) - 0.5) * 0.5);
+          put(x, y, tip ? o.tip! : R, v);
         }
       }
     }
@@ -220,7 +224,6 @@ function finPaint(S: Ctx, r: Region, o: { rays?: number; accent?: number } = {})
     if (u > 0.88) k -= 1.6;
     const spot = d.pattern !== 'plain' && hash(Math.floor(x / 3), Math.floor(y / 3) + 7) > 0.86 && u < 0.85;
     r.put(x, y, spot ? Pp : R, k, 0.5);
-    if (has(d, 'amphib_skin') && u > 0.4 && hash(x, y + 3) > 0.97) r.blend(x, y, 0xffffff, 0.6);
   }
 }
 
@@ -295,7 +298,7 @@ export function frill(S: Ctx, T: SpineTs, hw: number) {
       let k2 = 2.2 + v * 1.8 + (FR.fbm(x, y, 3, 2, 9) - 0.5) * 0.9 + (x % Math.round(FR.w / 6) === 0 ? -1.2 : 0);
       let RR = v < 0.3 ? S.P.belly : A;
       if (v > 0.86) { RR = Pp; k2 = 1.2; }
-      for (const eu of [0.22, 0.78]) { const dd = Math.hypot((u - eu) * 3.4, v - 0.62); if (dd < 0.16) { RR = dd < 0.07 ? Pp : S.P.belly; k2 = dd < 0.07 ? 1 : 4; } }
+      for (const eu of [0.22, 0.78]) { const dd = oct((u - eu) * 3.4, v - 0.62); if (dd < 0.16) { RR = dd < 0.07 ? Pp : S.P.belly; k2 = dd < 0.07 ? 1 : 4; } }
       FR.put(x, y, RR, k2, 0.5);
     }
     keratin(BONE, mixHex(d.colors.accent, 0x2a1a14, 0.5), { tipLight: 1.2 });
@@ -352,7 +355,7 @@ export function tongue(S: Ctx, h: HeadCtx, J: V3, iJ: number) {
   const tip = pts[n - 1];
   if (has(S.d, 'amphib_skin') || S.rig.dims.hop) ball(S.B, TG, S.gid(), addV(tip, [0, 0, h.hw * 0.04]), [0, 0, 1], [h.hw * 0.12, h.hh * 0.07, h.hw * 0.1], [iT, 1], { n: 8, rings: 4 });
   else for (const s of [-1, 1]) { const e = addV(tip, [s * h.hw * 0.06, 0, h.hw * 0.16]); sac(S.B, TG, S.gid(), [tip, lerpV(tip, e, 0.5), e], [[h.hw * 0.03, h.hh * 0.025], [h.hw * 0.02, h.hh * 0.02], [0.002, 0.002]], [[iT, 1], [iT, 1], [iT, 1]], { n: 5 }); }
-  S.paints.push(() => { const R = makeRamp(has(S.d, 'amphib_skin') ? 0xd8707a : 0x6a3a5a, 5, { spread: 0.5 }); TG.fill(R, (x, y) => 1.6 + Math.cos(TG.th(x)) * 0.9 + (hash(x, y) - 0.5) * 0.6 + (Math.abs(TG.th(x)) < 0.3 && y % 3 === 0 ? 1.2 : 0)); });
+  S.paints.push(() => { const R = makeRamp(has(S.d, 'amphib_skin') ? 0xd8707a : 0x6a3a5a, 5, { spread: 0.5 }); TG.fill(R, (x, y) => 1.6 + (Math.cos(TG.th(x)) > 0.3 ? 1 : 0) + (Math.abs(TG.th(x)) < 0.3 && y % 3 === 0 ? 1.2 : 0)); });
 }
 
 /** a frog's vocal sac: swells on its own bone */
@@ -360,7 +363,7 @@ export function throatSac(S: Ctx, h: HeadCtx) {
   const iT = S.rig.throat; if (iT < 0) return;
   const TH = S.fixed('THROAT', 10, 8);
   ball(S.B, TH, S.gid(), addV(h.head, [0, -h.hh * 0.3, h.hl * 0.06]), [0, 0, 1], [h.hw * 0.3, h.hh * 0.22, h.hl * 0.24], [iT, 1], { n: 12, rings: 6 });
-  S.paints.push(() => TH.fill(S.P.belly, (x, y) => 3 + Math.cos(TH.th(x)) * 0.6 + (y % 3 === 0 ? -0.8 : 0) + (hash(x, y) - 0.5) * 0.6));
+  S.paints.push(() => TH.fill(S.P.belly, (x, y) => 3 + (Math.cos(TH.th(x)) > 0.2 ? 0.6 : 0) + (y % 3 === 0 ? -0.8 : 0)));
 }
 
 /** feathery external gills: three fronds each side behind the head */
@@ -421,7 +424,7 @@ export function rack(S: Ctx, h: HeadCtx, size: number, big: boolean) {
     if (velvet) {
       // velvet: short soft fur, grey-brown, paler and rounder at the growing tips
       const R = makeRamp(mixHex(d.colors.base, 0x6a5a4a, 0.5), 7, { spread: 0.5, hueShift: 0.04 });
-      AN.fill(R, (x, y) => 2.4 + (y / AN.h) * 1.4 + Math.cos(AN.th(x)) * 0.8 + (hash(x, y) < 0.3 ? -0.7 : 0) + (hash(x >> 1, y >> 1) - 0.5) * 0.6, undefined, 0.4);
+      AN.fill(R, (x, y) => 2.4 + (y / AN.h) * 1.4 + (Math.cos(AN.th(x)) > 0.3 ? 0.8 : 0) + ((x + (y >> 2)) % 4 === 0 ? -0.7 : 0), undefined, 0.4);
       return;
     }
     // bone: dark furrowed and pearled near the burr, long grooves up the beam, polished ivory tines
@@ -430,7 +433,7 @@ export function rack(S: Ctx, h: HeadCtx, size: number, big: boolean) {
       const f = y / AN.h, th = AN.th(x);
       let k = 1.6 + f * 2.6 + Math.cos(th) * 0.8 + (AN.fbm(x, y, 4, 2, 21) - 0.5) * 1.0;
       if (Math.sin(x * 1.7 + AN.fbm(x, y, 3, 2, 8) * 5) > 0.7 && f < 0.75) k -= 1.0; // grooves
-      if (f < 0.3 && hash(x, y) < 0.18) k += 1.3; // pearls
+      if (f < 0.3 && hash(x >> 1, y >> 1) < 0.2) k += 1.3; // pearls
       if (f > 0.82) k += 1.2;
       AN.put(x, y, R, k, 0.4);
     }
@@ -478,21 +481,27 @@ export function toes(S: Ctx, FOOT: Region, F: V3, fw: Wt, lt: number, s: number,
 }
 
 // =============================================================================================== skin
-/** wet amphibian skin over a painted region: raised warts (dense on dull toads, sparse on glossy dart frogs) and wet glints */
+/** wet amphibian skin over a painted region: faceted warts (dense on dull toads, sparse on glossy dart frogs), each lit
+ *  on its upper-left facet with a dark sel-out on the shadow side, and wet glints as short dashes on the lit side */
 export function amphSkin(S: Ctx, r: Region, dens = 1) {
-  const c = S.d.colors.base, R = (c >> 16) & 255, G = (c >> 8) & 255, B = c & 255;
-  const sat = (Math.max(R, G, B) - Math.min(R, G, B)) / 255, warty = sat < 0.42 ? 1 : 0.3, seed = r.x * 7 + r.y;
-  const n = Math.round((r.w * r.h) / 70 * warty * dens);
+  const c = S.d.colors.base, Rc = (c >> 16) & 255, Gc = (c >> 8) & 255, Bc = c & 255;
+  // glossy warning-coloured frogs (worn with ink) carry few warts; dull toads many
+  const pc = S.d.colors.pattern, dart = ((pc >> 16) & 255) + ((pc >> 8) & 255) + (pc & 255) < 120, warty = dart ? 0.25 : 1, seed = r.x * 7 + r.y;
+  void Rc; void Gc; void Bc;
+  const n = Math.round((r.w * r.h) / 120 * warty * dens);
   for (let i = 0; i < n; i++) {
-    const x = hash(i, seed + 71) * r.w, y = hash(i, seed + 73) * r.h; if (Math.abs(r.th(x)) > 2.2) continue;
-    const rad = 0.7 + hash(i, seed + 75) * 1.4, base = r.get(x, y);
-    r.ellipse(x, y + 0.4, rad + 0.4, rad + 0.4, mixC(base, 0x000000, 0.35), 0.6);
-    r.ellipse(x, y, rad, rad, mixC(base, 0xfff0d0, 0.22), 0.8);
-    r.blend(x - rad * 0.3, y - rad * 0.3, 0xffffff, 0.5);
+    const x = Math.floor(hash(i, seed + 71) * r.w), y = Math.floor(hash(i, seed + 73) * r.h); if (Math.abs(r.th(x)) > 2.2) continue;
+    const rad = 1 + Math.floor(hash(i, seed + 75) * 2.2), sk = 1 + (hash(i, seed + 77) - 0.5) * 0.6, RR = rampFor(r.get(x, y));
+    for (let dy = -rad - 1; dy <= rad + 1; dy++) for (let dx = -rad - 1; dx <= rad + 1; dx++) {
+      const m = Math.abs(dx) * sk + Math.abs(dy);
+      if (m <= rad) r.set(x + dx, y + dy, RR[dx + dy < 0 ? 5 : dx + dy === 0 ? 4 : 2]);
+      else if (m <= rad + 1 && dx + dy > 0) r.set(x + dx, y + dy, RR[0]);
+    }
+    if (rad > 1) r.set(x - 1, y - 1, RR[6]);
   }
-  for (let i = 0; i < (r.w * r.h) / 55; i++) {
-    const x = hash(i, seed + 91) * r.w, y = hash(i, seed + 93) * r.h; if (Math.abs(r.th(x)) > 1.3) continue;
-    r.blend(x, y, 0xffffff, 0.65); r.blend(x, y + 1, 0xffffff, 0.35); if (hash(i, seed + 95) < 0.3) r.blend(x + 1, y, 0xffffff, 0.4);
+  for (let i = 0; i < (r.w * r.h) / 140; i++) {
+    const x = Math.floor(hash(i, seed + 91) * r.w), y = Math.floor(hash(i, seed + 93) * r.h); if (Math.abs(r.th(x)) > 1.1) continue;
+    r.set(x, y, RAMPS.bone[5]); r.set(x + 1, y, RAMPS.bone[4]);
   }
 }
 
@@ -560,7 +569,7 @@ export function crabShell(S: Ctx, th: V3, hd: V3, W: number, H: number, thL: num
     ball(S.B, E, S.gid(), addV(s1, [0, W * 0.03, 0]), norm([s * 0.5, 0.6, 0.6]), [W * 0.055, W * 0.055, W * 0.05], [iH, 1], { n: 10, rings: 6 });
   }
   if (!S.paints.some((p) => (p as any).CEYE)) {
-    const p = () => { E.fill(makeRamp(mixHex(d.colors.eye, 0x101418, 0.6), 6, { spread: 0.6 }), (x, y) => 1.4 + ((x + (y & 1)) % 2) * 0.6 + (y / E.h) * 1.2, undefined, 0.3); E.set(E.X(-30), E.h * 0.75, 0xffffff); };
+    const p = () => { E.fill(makeRamp(mixHex(d.colors.eye, 0x101418, 0.6), 6, { spread: 0.6 }), (x, y) => 1.4 + (x % 3 === 1 && y % 3 === 1 ? 0.8 : x % 3 === 0 || y % 3 === 0 ? -0.5 : 0) + (y > E.h * 0.55 ? 1 : 0), undefined, 0.3); E.set(E.X(-30), E.h * 0.75, RAMPS.snow[5]); };
     (p as any).CEYE = 1; S.paints.push(p);
   }
 }
@@ -617,7 +626,7 @@ function wingPaint(S: Ctx, r: Region, fore: boolean) {
     const spots: [number, number, number][] = fore ? [[0.62, 0.45, 0.15]] : [[0.55, 0.5, 0.24]];
     if (d.pattern === 'spots') spots.push(fore ? [0.3, 0.3, 0.07] : [0.8, 0.3, 0.08]);
     for (const [cu, cv, rr] of spots) {
-      const dd = Math.hypot(u - cu, (v - cv) * asp);
+      const dd = oct(u - cu, (v - cv) * asp);
       if (dd < rr) { if (dd < rr * 0.35) { RR = Pp; k = 0.6; } else if (dd < rr * 0.7) { RR = A; k = 3.4 - dd / rr; } else { RR = Pp; k = 1.4; } }
       if (Math.abs(u - (cu - rr * 0.15)) < 0.02 && Math.abs((v - (cv - rr * 0.15)) * asp) < 0.02) { RR = A; k = 5; }
     }

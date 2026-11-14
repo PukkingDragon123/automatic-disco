@@ -5,15 +5,30 @@
 // fur strands, overlapping scales, chitin plates with seams and gloss, wet skin with veins, patterns laid out in
 // body space so stripes run round the flanks and spots sit on the back.
 import * as THREE from 'three';
-import { makeRamp, mixHex, scaleHex } from '../limbo/gfx/pixel';
+import { mixHex, scaleHex } from '../limbo/gfx/pixel';
+import { RAMPS, nearestRamp, snapRGBA } from '../art/palette';
 import { clamp } from '../core/rand';
 import type { Design } from './design';
 import type { Rig } from './morph';
 import { shagCoat, mane, tassel, crest, wattle, tailFin, brushTail, sail, frill, roundEars, whiskers, tongue, throatSac, gills, ramHorns, palmAntlers, rack, bearPaw, toes, amphSkin, scuteShell, crabShell, beetleHorns, mothWings, plumes, type SpineTs, type HeadCtx } from './parts';
-import { SkinB, Page, type Region, KIT, blade, sac, spline, chainWeights, ball, sheet, transport, hash, gauss, sub, addV, scl, norm, cross, len, lerpV, pageTexture, mixC, type V3, type Wt } from './kit';
+import { SkinB, Page, type Region, KIT, oct, blade, sac, spline, chainWeights, ball, sheet, transport, hash, gauss, sub, addV, scl, norm, cross, len, lerpV, pageTexture, mixC, type V3, type Wt } from './kit';
 
 const TAU = Math.PI * 2;
 export const has = (d: Design, g: string) => d.genes.includes(g);
+/** the master-palette ramp nearest a colour, as seven steps with that colour's own step in the middle (index 3) */
+const RAMP_CACHE = new Map<number, number[]>();
+export function rampFor(c: number): number[] {
+  let out = RAMP_CACHE.get(c);
+  if (out) return out;
+  const R = RAMPS[nearestRamp(c)] as readonly number[];
+  let bi = 0, bd = Infinity;
+  R.forEach((v, i) => { const d = Math.abs(((v >> 16) & 255) - ((c >> 16) & 255)) + Math.abs(((v >> 8) & 255) - ((c >> 8) & 255)) + Math.abs((v & 255) - (c & 255)); if (d < bd) { bd = d; bi = i; } });
+  out = Array.from({ length: 7 }, (_, i) => R[Math.max(0, Math.min(R.length - 1, i - 3 + bi))]);
+  RAMP_CACHE.set(c, out);
+  return out;
+}
+/** painters ask for a ramp round a colour; they get the master palette's */
+const makeRamp = (c: number, _n?: number, _o?: unknown) => rampFor(c);
 /** jagged per-vertex radius noise, seamless around the loft (fur, bristles) */
 export const fuzz = (amp: number, n: number, rings: number, seed: number) => (a: number, t: number) => {
   const j = Math.round(((a + Math.PI) / TAU) * n) % n, i = Math.round(t * rings);
@@ -54,49 +69,49 @@ export class Ctx {
 }
 
 // =============================================================================================== painting
+/** a drawn patch: an irregular hexagon (six hand-jittered corners) tested as a polygon, so its edges stay straight */
+function patch(dx: number, dy: number, r: number, hs: number) {
+  const n = 6, a = Math.atan2(dy, dx);
+  const ang = (k: number) => ((k + 0.32 * (hash(hs, ((k % n) + n) % n) - 0.5)) / n) * TAU - Math.PI;
+  const rad = (k: number) => r * (0.6 + 0.55 * hash(hs + 7, ((k % n) + n) % n));
+  let k = Math.floor(((a + Math.PI) / TAU) * n);
+  if (a < ang(k)) k--; else if (a >= ang(k + 1)) k++;
+  const a0 = ang(k), a1 = ang(k + 1), r0 = rad(k), r1 = rad(k + 1);
+  const x0 = Math.cos(a0) * r0, y0 = Math.sin(a0) * r0, x1 = Math.cos(a1) * r1, y1 = Math.sin(a1) * r1;
+  return (x1 - x0) * (dy - y0) - (y1 - y0) * (dx - x0) >= 0;
+}
+/** 0 ground colour, 1 pattern colour, 2 a rosette's darkened heart */
 function patternAt(d: Design, r: Region, x: number, y: number, sn: number, cn: number, th: number, seed: number): number {
   const ps = d.patScale || 1, ath = Math.abs(th);
   const n = r.fbm(x, y, 4, 2, seed);
   switch (d.pattern) {
-    case 'stripes': return ath < 2.3 - n * 0.6 && Math.sin((sn * 7.5) / ps + n * 3.2 + ath * 0.7) > 0.42 + ath * 0.1 ? 1 : 0;
+    case 'stripes': {
+      // drawn bands that taper toward the belly; their edges step at hand-set breaks rather than wobble
+      const u = ((sn * 7.5) / ps + ath * 0.7) / TAU, i = Math.floor(u), f = u - i, st = Math.floor(ath * 3);
+      const w = (0.22 + 0.1 * hash(i, st + seed)) * (1 - ath / 2.7), c = 0.5 + 0.14 * (hash(i * 3, st + seed) - 0.5);
+      return ath < 2.15 + 0.3 * hash(i, seed) && Math.abs(f - c) < w ? 1 : 0;
+    }
     case 'spots': {
-      if (ath > 2.25 - n * 0.4) return 0;
+      if (ath > 2.15 + n * 0.25) return 0;
       const cs = 0.42 * ps, ci = Math.floor(sn / cs), cj = Math.floor(cn / cs);
       for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
         const I = ci + a, J = cj + b;
         if (hash(I * 7 + 1, J * 13 + seed) < 0.3) continue;
         const px = (I + 0.2 + hash(I, J + seed) * 0.6) * cs, py = (J + 0.2 + hash(J, I + seed + 3) * 0.6) * cs;
-        const rr = cs * (0.2 + hash(I + 5, J) * 0.16);
-        const dd = Math.hypot(sn - px, cn - py) + (n - 0.5) * cs * 0.25;
-        if (dd < rr) return rr > cs * 0.3 && dd < rr * 0.45 ? 0 : 1; // big spots open into rosettes
+        const rr = cs * (0.22 + hash(I + 5, J) * 0.18), dx = sn - px, dy = cn - py, hs = I * 131 + J * 17 + seed;
+        if (!patch(dx, dy, rr, hs)) continue;
+        if (rr < cs * 0.31) return 1;
+        // big spots open into rosettes: a broken ring of drawn segments round a darkened heart
+        if (patch(dx, dy, rr * 0.56, hs + 3)) return 2;
+        return hash(hs, Math.floor(((Math.atan2(dy, dx) + Math.PI) / TAU) * 5) + 11) < 0.3 ? 0 : 1;
       }
       return 0;
     }
-    case 'bands': return ((sn / (1.1 * ps) + n * 0.45) % 1) < 0.36 ? 1 : 0;
+    case 'bands': return ((sn / (1.1 * ps) + n * 0.2) % 1) < 0.36 ? 1 : 0;
     case 'mottled': return n > 0.56 - (ath > 2 ? -0.2 : 0) ? 1 : 0;
     case 'saddle': return ath < 1.25 + (n - 0.5) * 0.8 && Math.abs(sn % 6 - 2.6) < 1.4 + (n - 0.5) ? 1 : 0;
     case 'rings': return ((sn / (0.6 * ps)) % 1) < 0.15 ? 1 : 0;
     default: return 0;
-  }
-}
-/** cover texture as a ramp offset */
-function coverK(cover: string, r: Region, x: number, y: number, th: number, t: number, seed: number, plates = 6) {
-  switch (cover) {
-    case 'fur': {
-      const col = Math.floor(x / 2), strand = ((y + Math.floor(hash(col, seed) * 6)) % 5) / 5;
-      return strand * 1.0 - 0.5 + (hash(x, y + seed) - 0.5) * 0.5 + (r.fbm(x, y, 5, 2, seed + 9) - 0.5) * 0.9;
-    }
-    case 'scales': {
-      const q = 3, row = Math.floor(y / q), lx = (((x + (row & 1) * 1.5) % q) + q) % q / q - 0.5, ly = (y % q) / q;
-      const scal = ly - (0.5 - Math.sqrt(Math.max(0, 0.25 - lx * lx))) * 0.6;
-      return 0.75 - scal * 1.9 + (hash(Math.floor((x + (row & 1) * 1.5) / q), row + seed) - 0.5) * 0.6;
-    }
-    case 'chitin': {
-      const pv = t * plates, seam = Math.abs(pv - Math.round(pv)) < 0.05 ? -2.4 : 0;
-      return seam + (0.5 - (pv - Math.floor(pv))) * 1.1 + Math.pow(Math.max(0, Math.cos(th - 0.5)), 8) * 2.4 + (hash(x * 3, y * 7 + seed) < 0.04 ? -1 : 0);
-    }
-    case 'slime': return (hash(x >> 1, (y >> 1) + seed) > 0.95 ? 2.2 : 0) + (r.fbm(x, y, 4, 3, seed) - 0.5) * 1.4 + Math.pow(Math.max(0, Math.cos(th - 0.4)), 10) * 1.8;
-    default: return Math.sin(y * 1.9 + r.fbm(x, y, 3, 2, seed) * 7) * 0.22 + (hash(x, y + seed) < 0.03 ? -0.8 : 0) + (r.fbm(x, y, 5, 3, seed + 2) - 0.5) * 1.3;
   }
 }
 export interface HideOpt {
@@ -135,7 +150,7 @@ function shingles(r: Region, o: ShingleOpt): ShingleHit {
         const dx = x + 0.5 - rx, dy = y + 0.5 - ry;
         const sl = (dx * fx + dy * fy) / Lk;
         if (sl < 0 || sl > 1) continue;
-        const hw = o.round ? Wk * Math.sqrt(Math.max(0, 1 - (2 * sl - 1) ** 2)) * 1.05 : Wk * (1 - sl * sl * 0.82) + 0.35;
+        const hw = o.round ? Wk * Math.min(1, (1 - Math.abs(2 * sl - 1)) * 1.8) : Wk * (1 - sl * sl * 0.82) + 0.35;
         const el = (dx * -fy + dy * fx - bend * sl * sl) / hw;
         if (el < -1 || el > 1) continue;
         const p = y * w + (((x % w) + w) % w);
@@ -156,21 +171,21 @@ function furHide(S: Ctx, r: Region, o: HideOpt) {
   const H = shingles(r, { cw: 3.8 * ks, ch: 3.6 * ks, len: 2.6, flow: o.flow ?? 1, down: o.down ?? (o.kind === 'limb' || o.kind === 'foot' ? 0.12 : 0.55), seed: seed * 7 + 3, bend: 0.7 });
   const patAt = (x: number, y: number) => {
     const t = (y + 0.5) / r.h, th = r.th(x), ath = Math.abs(th);
-    const edge = (o.belly ?? 2.05) + (r.fbm(x, y, 5, 2, seed) - 0.5) * 0.8;
+    const edge = (o.belly ?? 2.05) + (r.fbm(x, y, 5, 2, seed) - 0.5) * 0.3;
     const bel = o.bellyAll || ath > edge;
     let pv = !o.noPattern && !bel ? patternAt(d, r, x, y, (t * o.L) / Wn, (th * o.rad(t)) / Wn, th, seed + 17) : 0;
     if (has(d, 'cryptic') && !bel && r.fbm(x, y, 6, 2, seed + 40) > 0.62) pv = 1;
-    return o.ramp ?? (pv ? P.pat : bel ? P.belly : P.base);
+    return o.ramp ?? (pv === 2 ? P.dark : pv ? P.pat : bel ? P.belly : P.base);
   };
   // pattern and countershading are chosen per clump, so their edges break along the locks
   const rampOf = new Map<number, number[]>();
   for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
     const p = y * r.w + x, id = H.id[p], th = r.th(x), t = (y + 0.5) / r.h;
-    let k = 3.0 + Math.cos(th) * 0.6 + (r.fbm(x, y, 3, 2, seed + 5) - 0.5) * 0.5;
+    let k = 3.0 + Math.cos(th) * 0.6;
     if (o.kind === 'limb') k -= sm(clamp((t - 0.62) / 0.38, 0, 1)) * 0.9; // darker socks
     if (o.kind === 'foot') k -= 0.4;
     let RR: number[];
-    if (id < 0) { RR = patAt(x, y); k -= (1.5 + hash(x, y + seed) * 0.4) * con; } // underfur
+    if (id < 0) { RR = patAt(x, y); k -= 1.6 * con; } // underfur
     else {
       let R0 = rampOf.get(id);
       if (!R0) { R0 = patAt(Math.floor(H.rx[p]), Math.floor(H.ry[p] + 1.5)); rampOf.set(id, R0); }
@@ -220,13 +235,13 @@ function scaleHide(S: Ctx, r: Region, o: HideOpt) {
         const sx = Math.floor(H.rx[p]), sy = Math.floor(H.ry[p] + 1), st = (sy + 0.5) / r.h, sth = r.th(sx);
         let pv = !o.noPattern ? patternAt(d, r, sx, sy, (st * o.L) / Wn, (sth * o.rad(st)) / Wn, sth, seed + 17) : 0;
         if (has(d, 'cryptic') && r.fbm(sx, sy, 6, 2, seed + 40) > 0.62) pv = 1;
-        R0 = pv ? P.pat : P.base; rampOf.set(id, R0);
+        R0 = pv === 2 ? P.dark : pv ? P.pat : P.base; rampOf.set(id, R0);
       }
       RR = R0;
       const sv = H.s[p], e = H.e[p], lit = (th >= 0 ? 1 : -1) * e;
-      k += 0.55 - Math.abs(e) * 0.55 - sv * 0.6 + (hash(id, 9) - 0.5) * 0.7;
-      if (sv > 0.82 || Math.abs(e) > 0.86) k -= 0.9; // the shadowed free edge
-      else if (sv > 0.18 && sv < 0.42 && lit > 0.05 && lit < 0.5) k += 1.1; // a glint on each scale's crown
+      k += (lit > 0 ? 0.5 : -0.3) - (sv > 0.6 ? 0.45 : 0) + (hash(id, 9) - 0.5) * 0.6; // two planes: the lit half, the turned half
+      if ((sv > 0.84 || Math.abs(e) > 0.8) && lit <= 0) k -= 1.4; // sel-out on the shadow side
+      else if (sv > 0.2 && sv < 0.38 && lit > 0.2 && lit < 0.5) k += 1.2; // one glint where the plate turns to the light
       if (has(d, 'crest') && ath < 0.3) k += 0.3;
     }
     if (t > 0.97) k -= 0.3;
@@ -238,13 +253,18 @@ export function hide(S: Ctx, r: Region, o: HideOpt) {
   const d = S.d, P = S.P, Wn = Math.max(0.05, S.rig.width), cover = o.cover ?? d.cover, seed = o.seed;
   if (cover === 'fur') { furHide(S, r, o); return; }
   if (cover === 'scales' && r.w >= 12 && r.h >= 8) { scaleHide(S, r, o); return; }
+  // the surface is cut into drawn facets (an irregular polygon tiling); each facet takes one tone, creases run
+  // between some of them; chitin breaks into plates at its seams under a hard band of gloss
+  const F = facets(r, cover === 'chitin' ? 8 : cover === 'slime' ? 6 : 5, seed);
   for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
-    const t = (y + 0.5) / r.h, th = r.th(x), ath = Math.abs(th);
+    const t = (y + 0.5) / r.h, th = r.th(x), ath = Math.abs(th), p = y * r.w + x, fid = F.id[p];
     const sn = (t * o.L) / Wn, cn = (th * o.rad(t)) / Wn;
-    const edge = (o.belly ?? 2.05) + (r.fbm(x, y, 5, 2, seed) - 0.5) * 0.8 + (hash(x, y) - 0.5) * 0.12;
+    const edge = (o.belly ?? 2.05) + (r.fbm(x, y, 5, 2, seed) - 0.5) * 0.5;
     const bel = o.bellyAll || ath > edge;
-    let k = 3.1 + Math.cos(th) * 0.65;
-    k += coverK(cover, r, x, y, th, t, seed, o.plates);
+    let k = 3.1 + Math.cos(th) * 0.65 + (hash(fid, seed) - 0.5) * 0.9;
+    if (F.edge[p] && hash(fid, seed + 3) < 0.35) k -= 0.9;
+    if (cover === 'chitin') { const pv2 = t * (o.plates ?? 6); k += Math.abs(pv2 - Math.round(pv2)) < 0.05 ? -2.4 : (0.5 - (pv2 - Math.floor(pv2))) > 0 ? 0.4 : -0.3; if (Math.cos(th - 0.5) > 0.9) k += 1.8; }
+    else if (cover === 'slime' && Math.cos(th - 0.4) > 0.93) k += 1.4;
     if (o.kind === 'limb' && cover === 'fur') k -= sm(clamp((t - 0.6) / 0.4, 0, 1)) * 1.1; // darker socks
     if (o.kind === 'foot') k -= 0.5;
     if (cover === 'scales' && bel && o.kind !== 'limb') k += y % 3 === 0 ? -1.3 : 0.3; // ventral scutes
@@ -254,9 +274,9 @@ export function hide(S: Ctx, r: Region, o: HideOpt) {
     r.put(x, y, RR, k, 0.55);
     if (has(d, 'chloro_skin') && !bel && r.fbm(x, y, 7, 2, seed + 5) > 0.6) r.blend(x, y, 0x3a8a3a, 0.35);
   }
-  // wet glints, veins
-  if (cover === 'skin' || cover === 'slime') for (let i = 0; i < Math.max(3, r.w * r.h / 500); i++) r.crack(hash(i, seed + 2) * r.w, hash(i + 4, seed) * r.h, 6 + Math.floor(hash(i + 6, seed) * 12), hash(i + 1, seed) * 360, P.skin[2], seed * 3 + i, 0.3, 0.2);
-  if (cover === 'slime' || has(d, 'mucus')) for (let i = 0; i < r.w * r.h / 90; i++) { const gx = hash(i, seed + 40) * r.w, gy = hash(i + 2, seed + 40) * r.h; if (Math.abs(r.th(gx)) < 1.6) { r.blend(gx, gy, 0xffffff, 0.7); r.blend(gx + 1, gy, 0xffffff, 0.3); } }
+  // veins, wet glints as short dashes on the lit side
+  if (cover === 'skin' || cover === 'slime') for (let i = 0; i < Math.max(2, r.w * r.h / 900); i++) r.crack(hash(i, seed + 2) * r.w, hash(i + 4, seed) * r.h, 6 + Math.floor(hash(i + 6, seed) * 12), hash(i + 1, seed) * 360, P.skin[2], seed * 3 + i, 0.3, 0.2);
+  if (cover === 'slime' || has(d, 'mucus')) for (let i = 0; i < r.w * r.h / 160; i++) { const gx = hash(i, seed + 40) * r.w, gy = hash(i + 2, seed + 40) * r.h; if (Math.abs(r.th(gx)) < 1.2) { r.set(gx, gy, RAMPS.bone[5]); r.set(gx + 1, gy, RAMPS.bone[4]); } }
   // photophores along the lateral line
   if (has(d, 'biolum') && o.kind === 'body') for (let i = 0; i < 14; i++) {
     const gx = r.X(i % 2 ? 100 : -100), gy = ((i >> 1) + 0.5) / 7 * r.h * 0.8;
@@ -264,11 +284,32 @@ export function hide(S: Ctx, r: Region, o: HideOpt) {
   }
 }
 export function keratin(r: Region, base: number, o: { rings?: boolean; tipLight?: number } = {}) {
+  // planes of horn: a lit strip on the upper side, growth rings, a pale worn tip
   const R = makeRamp(base, 6, { spread: 0.5 });
-  r.fill(R, (x, y) => 1.4 + (y / r.h) * (o.tipLight ?? 1.8) + Math.cos(r.th(x)) * 0.8 + (o.rings && y % 3 === 0 ? -0.9 : 0) + (hash(x, y) - 0.5) * 0.5);
+  r.fill(R, (x, y) => 1.4 + (y / r.h) * (o.tipLight ?? 1.8) + (Math.cos(r.th(x)) > 0.55 ? 1 : Math.cos(r.th(x)) < -0.4 ? -0.6 : 0) + (o.rings && y % 3 === 0 ? -0.9 : 0));
 }
 export function glowReg(r: Region, c: number) {
-  for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) { r.set(x, y, mixC(c, 0xffffff, 0.25 + Math.cos(r.th(x)) * 0.15)); r.alpha(x, y, 190); }
+  // two flat steps of light from the glow ramp nearest the colour
+  const G = ((c >> 16) & 255) > (c & 255) ? RAMPS.glowAmber : RAMPS.glowTeal;
+  for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) { r.set(x, y, Math.cos(r.th(x)) > 0.2 ? G[3] : G[2]); r.alpha(x, y, 190); }
+}
+/** drawn facets for skin: a jittered polygon tiling (cells about `size` texels, wrapping round the region), with the
+ *  texels on a border between two cells flagged for creases */
+function facets(r: Region, size: number, seed: number) {
+  const w = r.w, h = r.h, nx = Math.max(2, Math.round(w / size)), cw = w / nx, ny = Math.ceil(h / size) + 1;
+  const id = new Int32Array(w * h), edge = new Uint8Array(w * h);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    const gx = Math.floor(i / cw), gy = Math.floor(j / size);
+    let d1 = Infinity, d2 = Infinity, b = 0;
+    for (let bb = -1; bb <= 1; bb++) for (let a = -1; a <= 1; a++) {
+      const X = gx + a, Y = gy + bb, Xm = ((X % nx) + nx) % nx;
+      const px = (X + 0.15 + hash(Xm, Y * 5 + seed) * 0.7) * cw, py = (Y + 0.15 + hash(Xm * 7 + 2, Y + seed * 3) * 0.7) * size;
+      const dx = i + 0.5 - px, dy = j + 0.5 - py, dd = Math.abs(dx) + Math.abs(dy); // a diamond metric keeps the borders angular
+      if (dd < d1) { d2 = d1; d1 = dd; b = Xm * 1000 + Y + 7; } else if (dd < d2) d2 = dd;
+    }
+    id[j * w + i] = b; edge[j * w + i] = d2 - d1 < 1.1 ? 1 : 0;
+  }
+  return { id, edge };
 }
 
 // =============================================================================================== fur cards
@@ -568,7 +609,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     if (amph) amphSkin(S, LID, 0.5);
     // lid caps: furred or scaly skin darkening to the margin, a dark lash line, a wet rim
     const R2 = hom ? S.P.skin : S.P.base;
-    LC.fill(R2, (x, y) => 3.4 - (y / LC.h) * 1.4 + (hash(x, y + 9) - 0.5) * 0.7 + (y % 3 === 0 && !fur ? -0.6 : 0), undefined, 0.3);
+    LC.fill(R2, (x, y) => 3.4 - (y / LC.h > 0.45 ? 1 : 0) + (y % 3 === 0 && !fur ? -0.6 : 0), undefined, 0.3);
     for (let x = 0; x < LC.w; x++) for (let y = Math.floor(LC.h * 0.72); y < LC.h; y++) LC.set(x, y, y > LC.h * 0.86 ? mixC(0x5a2a2a, S.P.skin[2], 0.3) : 0x120a08);
     if (amph) amphSkin(S, LC, 0.4);
   });
@@ -579,17 +620,17 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     for (let y = 0; y < HEAD.h; y++) for (let x = 0; x < HEAD.w; x++) {
       const t = (y + 0.5) / HEAD.h, th = HEAD.th(x), ath = Math.abs(th);
       const muz = !beak && !flat && !liz && t > tSn - 0.1 && ath > (cat ? 1.35 : 1.6) - (t - tSn) * 1.5 + (hash(x, 3) - 0.5) * 0.2;
-      if (muz && (x + y) % 3 !== 0) HEAD.put(x, y, muzzleR, 3.4 + Math.cos(th) * 0.5 + (hash(x, y) - 0.5) * 0.7, 0.5);
+      if (muz) HEAD.put(x, y, muzzleR, 3.4 + (Math.cos(th) > 0 ? 0.5 : 0) - (ath > 2.6 ? 0.8 : 0), 0.5);
       if (cat && muz && t > 0.86 && t < 0.955 && ath > 1.9 && ath < 2.3 && x % 4 === (y >> 2) % 2 * 2 && y % 4 === 1 && hash(x, y + 5) < 0.7) HEAD.set(x, y, S.P.dark[1]); // whisker spots
       const lipA = flat ? 2.0 : liz ? 2.2 : 2.25;
       if (!beak && t > (flat || liz ? 0.2 : tSn - 0.04) && Math.abs(ath - lipA - (cat ? (1 - t) * 0.6 : 0)) < 0.12) HEAD.set(x, y, t > 0.97 ? S.P.dark[1] : 0x140c0c); // lip line (a frog's or lizard's runs the whole jaw)
       if (liz && t > 0.25 && ath > lipA - 0.32 && ath < lipA - 0.12 && x % 3 === 0) HEAD.set(x, y, S.P.belly[3]); // labial scales
-      if (flat && D.hop && Math.hypot((t - tEye + 0.16) * 5, ath - 1.45) < 0.32) HEAD.put(x, y, Math.hypot((t - tEye + 0.16) * 5, ath - 1.45) < 0.24 ? S.P.belly : S.P.dark, 2.4, 0.5); // eardrum
+      if (flat && D.hop && oct((t - tEye + 0.16) * 5, ath - 1.45) < 0.32) HEAD.put(x, y, oct((t - tEye + 0.16) * 5, ath - 1.45) < 0.24 ? S.P.belly : S.P.dark, 2.4, 0.5); // eardrum
       const sock = gauss(t, tEye + (bear ? 0.04 : 0), 0.045) * gauss(ath, eAng, bear ? 0.16 : 0.2);
-      if (sock > 0.55) HEAD.blend(x, y, S.P.dark[0], 0.3 + (sock - 0.55) * 0.8);
+      if (sock > 0.62) HEAD.put(x, y, S.P.dark, 2.2, 0); // one hard step of shadow in the socket
       // a pale brow spot over each eye and a dark tear line down to the muzzle on cats
       if ((cat || fam === 'canid') && gauss(t, tEye - 0.06, 0.025) * gauss(ath, eAng - 0.3, 0.1) > 0.6 && (x + y) % 2 === 0) HEAD.put(x, y, S.P.belly, 4, 0.4);
-      if (cat && gauss(t, tEye + 0.03, 0.03) * gauss(ath, eAng + 0.36, 0.14) > 0.5) HEAD.put(x, y, S.P.belly, 4.6 + (hash(x, y) - 0.5) * 0.6, 0.4); // the pale patch under the eye
+      if (cat && Math.abs(t - tEye - 0.03) < 0.035 && Math.abs(ath - eAng - 0.36) < 0.16 - Math.abs(t - tEye - 0.03) * 1.5) HEAD.put(x, y, S.P.belly, 4.6, 0.4); // the pale patch under the eye
       if (cat) { const u = (t - tEye - 0.01) / 0.14; if (u > 0 && u < 1 && Math.abs(ath - (eAng - 0.18 + u * 0.75)) < 0.055 * (1.2 - u * 0.5)) HEAD.set(x, y, 0x1e1210); } // the tear line from the inner corner
     }
     // deer and elk: the dark slit of the preorbital gland running forward and down from the eye
@@ -617,7 +658,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     const MOUTH = S.fixed('MOUTH', 12, 12);
     sac(S.B, MOUTH, S.gid(), [addV(J, [0, hh * 0.13, -hl * 0.08]), addV(J, [0, hh * 0.1, sl * 0.45]), addV(J, [0, hh * 0.08, sl * 0.8])], [[hw * 0.27, hh * 0.13], [hw * 0.22, hh * 0.11], [hw * 0.13, hh * 0.06]], [[iH, 0.5, iJ, 0.5], [iH, 0.5, iJ, 0.5], [iH, 0.5, iJ, 0.5]], { n: 10 });
     // gums and palate: ridged pink, dark toward the throat
-    S.paints.push(() => { const R = makeRamp(0x9a4450, 6, { spread: 0.5 }); MOUTH.fill(R, (x, y) => 1.8 + Math.cos(MOUTH.th(x)) * 0.8 + (hash(x, y) - 0.5) * 0.6 + (y % 3 === 0 ? -0.7 : 0) - (1 - y / MOUTH.h) * 1.2); });
+    S.paints.push(() => { const R = RAMPS.flesh as unknown as number[]; MOUTH.fill(R, (x, y) => 2.4 + (Math.cos(MOUTH.th(x)) > 0.3 ? 1 : 0) + (y % 3 === 0 ? -0.8 : 0) - (y < MOUTH.h * 0.4 ? 1.2 : 0)); });
     if (beak) S.paints.push(() => keratin(JAW, mixHex(d.colors.accent, 0xd8b050, 0.5), { tipLight: 1.5 }));
     else S.paints.push(() => {
       hide(S, JAW, { L: sl, rad: () => hw * 0.25, seed: 23, kind: 'jaw', belly: 1.25, flow: -1, down: 0.4 });
@@ -665,7 +706,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
         const R2 = S.P.belly;
         for (let y = 0; y < PAD.h; y++) for (let x = 0; x < PAD.w; x++) {
           const f = y / PAD.h, th = PAD.th(x), ath = Math.abs(th);
-          PAD.put(x, y, R2, 3.6 + Math.cos(th) * 0.6 + (hash(x, y) - 0.5) * 0.7 - (ath > 2.4 ? 1.4 : 0), 0.4);
+          PAD.put(x, y, R2, 3.6 + (Math.cos(th) > 0.2 ? 0.6 : 0) - (ath > 2.4 ? 1.4 : 0), 0.4);
           if (f > 0.45 && f < 0.85 && ath < 2.2 && x % 3 === (y >> 1) % 3 && y % 3 === 0 && hash(x, y + 3) < 0.75) PAD.set(x, y, S.P.dark[1]); // whisker spots
         }
       });
@@ -677,14 +718,14 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
       for (let y = 0; y < NOSE.h; y++) for (let x = 0; x < NOSE.w; x++) {
         const al = eyeAlpha((y + 0.5) / NOSE.h), th = NOSE.th(x);
         // pebbled leather, lit from above, a wet sheen on the bridge
-        let k = 2.4 + Math.cos(th) * 0.9 + (hash(x * 3, y * 3) - 0.5) * 0.8 - Math.max(0, al - 60) / 40;
-        if (Math.cos(th) > 0.6 && al > 20 && al < 45 && (x + y) % 2 === 0) k += 1.4;
+        let k = 2.4 + (Math.cos(th) > 0.3 ? 0.9 : Math.cos(th) < -0.5 ? -0.8 : 0) - (al > 60 ? 1 : 0);
+        if (Math.cos(th) > 0.75 && al > 22 && al < 40) k += 1.4; // the wet sheen on the bridge
         NOSE.put(x, y, R, k, 0.4);
         // nostrils: commas low on either side; a cat's are slits under a triangle, a boar's two holes in the disc
         const nx = Math.sin(al * Math.PI / 180) * Math.sin(th), ny = Math.sin(al * Math.PI / 180) * Math.cos(th);
         for (const s of [-1, 1]) {
           const dx = nx - s * (boar ? 0.32 : cat ? 0.36 : 0.42), dy = ny + (boar ? 0.05 : cat ? 0.2 : 0.18);
-          const curl = cat ? Math.abs(dx * 1.4 + s * dy * 0.6) < 0.09 && Math.abs(dy) < 0.16 : Math.hypot(dx * (boar ? 1.1 : 1.4), dy * (boar ? 0.8 : 1.15)) < (boar ? 0.16 : 0.13);
+          const curl = cat ? Math.abs(dx * 1.4 + s * dy * 0.6) < 0.09 && Math.abs(dy) < 0.16 : oct(dx * (boar ? 1.1 : 1.4), dy * (boar ? 0.8 : 1.15)) < (boar ? 0.16 : 0.13);
           if (curl) NOSE.set(x, y, 0x060304);
         }
         if (cat && Math.abs(nx) < 0.05 && ny < -0.25) NOSE.set(x, y, mixC(leather, 0x000000, 0.6)); // the philtrum
@@ -745,7 +786,7 @@ export function earPaint(S: Ctx, r: Region, cup: number, L: number, rad: number)
     if (a < edge && f > 0.04 && f < 0.94) {
       // deep inside is shadowed skin; near the rim, light hairs comb inward
       const depth = 1 - a / edge;
-      r.put(x, y, inner, 1.4 + (1 - depth) * 1.6 - f * 0.6 + (hash(x, y) - 0.5) * 0.6, 0.4);
+      r.put(x, y, inner, 1.4 + (depth < 0.5 ? 1.2 : 0) - (f > 0.6 ? 0.6 : 0), 0.4);
       if (depth < 0.45 && (hash(x, Math.floor(y / 2)) < 0.45)) r.set(x, y, S.P.belly[Math.min(6, 4 + (hash(x, y + 1) < 0.5 ? 1 : 0))]);
     } else if (a < edge + 0.22 && f < 0.96) r.set(x, y, S.P.dark[1]); // rim
     if (f > 0.86) r.put(x, y, S.P.dark, 1.2 + (hash(x, y) - 0.5) * 0.6, 0.5); // dark tip
@@ -758,33 +799,33 @@ export function paintEyeReg(S: Ctx, r: Region, o: { pupil?: 'v' | 'h' | 'round';
   const lum = ((d.colors.eye >> 16 & 255) * 0.3 + (d.colors.eye >> 8 & 255) * 0.59 + (d.colors.eye & 255) * 0.11);
   // dark eyes still show a warm brown iris round a black pupil
   const irisC = o.irisC ?? (lum < 50 ? mixHex(d.colors.eye, 0x6a4424, 0.55) : d.colors.eye);
-  const IR = makeRamp(irisC, 7, { spread: 0.65, hueShift: 0.05 }), SC = makeRamp(o.sclera ?? 0xc8b49a, 5, { spread: 0.45 });
-  const ai = o.iris ?? 42, ap = o.pupilA || 15, rad = Math.PI / 180;
+  const IR = makeRamp(irisC), SC = makeRamp(o.sclera ?? 0xc8b49a), INK = RAMPS.ink;
+  const ai = o.iris ?? 42, ap = o.pupilA || 15, rad = Math.PI / 180, ri = Math.sin(ai * rad), rp = Math.sin(ap * rad);
+  // the iris is drawn: an octagon, shadowed under the lid, lit low, with a few dark spokes and a dark rim
+  const spokes = [0.4, 1.3, 2.2, 3.4, 4.3, 5.4].map((a, i) => a + (hash(d.seed % 997, i) - 0.5) * 0.5);
   for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
-    const al = eyeAlpha((y + 0.5) / r.h), th = r.th(x), ct = Math.cos(th);
-    const px = Math.sin(al * rad) * Math.sin(th), py = Math.sin(al * rad) * ct;
+    const al = eyeAlpha((y + 0.5) / r.h), th = r.th(x), sa = Math.sin(al * rad);
+    const px = sa * Math.sin(th), py = sa * Math.cos(th), q = oct(px, py);
     let c: number;
-    if (al > ai) c = SC[clamp(Math.round(3.2 - (al - ai) / 14 - Math.max(0, ct) * 1.2 + (hash(x, y) < 0.08 ? -1 : 0)), 0, 4)]; // sclera, shadowed under the lid
-    else if (al > ai - 4) c = IR[0]; // the dark limbal ring
+    if (q > ri) c = SC[al > ai + 16 ? 1 : py > 0.1 ? 2 : 3]; // sclera: shadowed under the lid, a lit lower plane
+    else if (q > ri * 0.86) c = IR[0]; // the dark rim
     else {
-      // iris: radial fibres, a pale collarette round the pupil, shaded under the upper lid, brighter below
-      const fib = (hash(x, 7) - 0.5) * 1.3 + (hash(x >> 1, 9) < 0.15 ? -1 : 0);
-      let k = 3.0 + fib - ct * 0.9 + (al < ap + 7 ? 0.9 : 0) - (al > ai - 10 ? 0.7 : 0);
-      if (pupil === 'h' && hash(x, y) < 0.12) k -= 1.2;
-      c = IR[clamp(Math.round(k), 0, 6)];
-      const isP = pupil === 'v' ? Math.abs(px) < 0.07 + 0.05 * (1 - Math.abs(py) / 0.6) && Math.abs(py) < 0.62 && al < ai - 6
-        : pupil === 'h' ? Math.abs(py) < 0.11 && Math.abs(px) < Math.sin((ai - 9) * rad) * 0.85
-          : al < ap;
-      if (isP) c = 0x050406;
+      let k = py > ri * 0.25 ? 2 : py < -ri * 0.3 ? 4 : 3;
+      const a = Math.atan2(px, py) + Math.PI;
+      if (q > rp * 1.15 && spokes.some((s2) => Math.abs(((a - s2 + Math.PI * 3) % TAU) - Math.PI) < 0.11)) k -= 1;
+      c = IR[k];
+      const isP = pupil === 'v' ? Math.abs(px) < 0.12 * (1 - Math.abs(py) / (ri * 0.9)) && Math.abs(py) < ri * 0.9
+        : pupil === 'h' ? Math.abs(py) < 0.11 && Math.abs(px) < ri * 0.78 && oct(px * 0.7, py) < ri * 0.6
+          : q < rp;
+      if (isP) c = INK[0];
     }
     r.set(x, y, c);
   }
-  // wet catchlights: a big one up top, a faint bounce below (symmetric, so both eyes agree)
+  // wet catchlights: a square glint up top, a small one below (symmetric, so both eyes agree)
   const row = (a: number) => { for (let y = 0; y < r.h; y++) if (eyeAlpha((y + 0.5) / r.h) <= a) return y; return r.h - 1; };
-  const hy = row(24), hx = Math.floor(r.X(0)), big = r.w > 30 ? 2 : 1;
-  for (let i = -big; i < big; i++) for (let j = 0; j < big + 1; j++) r.set(hx + i, hy + j, j === 0 && i === -big ? 0xe8f0ff : 0xffffff);
-  r.set(r.X(180), row(ai * 0.62), 0xb8c8e0);
-  r.set(r.X(12), row(ai + 4), 0xf0f0f0); // the wet line along the lower lid
+  const hy = row(24), hx = Math.floor(r.X(0)), big = r.w > 30 ? 2 : 1, L = RAMPS.snow;
+  for (let i = -big; i < big; i++) for (let j = 0; j < big + 1; j++) r.set(hx + i, hy + j, L[5]);
+  r.set(r.X(180), row(ai * 0.62), L[3]);
 }
 
 /** a vertebrate leg: thigh to toes, muscled, knuckled, with paws, hooves, pillars or bird feet */
@@ -847,7 +888,7 @@ function vertLeg(S: Ctx, lg: Rig['legs'][number], lt: number, fur: boolean) {
     const p: Paint = () => {
       hide(S, FOOT, { L: lt, rad: () => lt * 0.3, seed: 31, kind: 'foot', noPattern: true, cover: d.cover === 'fur' ? 'fur' : 'skin' });
       // leathery pads on the soles of paws and toes
-      if (!hoof && !bird) { const PR = makeRamp(mixHex(d.colors.pattern, 0x2a1e1c, 0.7), 5, { spread: 0.5 }); for (let y = 0; y < FOOT.h; y++) for (let x = 0; x < FOOT.w; x++) if (Math.abs(FOOT.th(x)) > 2.35 - (y / FOOT.h) * 0.4) FOOT.put(x, y, PR, 1.6 + (hash(x * 2, y * 2) - 0.5) * 1.2, 0.5); }
+      if (!hoof && !bird) { const PR = makeRamp(mixHex(d.colors.pattern, 0x2a1e1c, 0.7), 5, { spread: 0.5 }); for (let y = 0; y < FOOT.h; y++) for (let x = 0; x < FOOT.w; x++) if (Math.abs(FOOT.th(x)) > 2.35 - (y / FOOT.h) * 0.4) FOOT.put(x, y, PR, 1.6 + (y % 4 === 0 ? -0.8 : 0), 0.5); }
       keratin(CLAW, hoof ? mixHex(d.colors.pattern, 0x1c1814, 0.75) : mixHex(d.colors.pattern, 0x2a2420, 0.65), { tipLight: hoof ? 1.2 : 2, rings: hoof });
     };
     (p as any).FOOT = 1; S.paints.push(p);
@@ -1028,7 +1069,7 @@ function arthropod(S: Ctx) {
     for (const s of [-1, 1]) ball(S.B, E, S.gid(), addV(hd, [s * hw * 0.38, H * 0.1, hl * 0.52]), norm([s, 0.15, 0.35]), [hl * 0.27, H * 0.26, hw * 0.17], [iH, 1], { n: 14, rings: 7 });
     S.paints.push(() => {
       const R = makeRamp(mixHex(d.colors.eye, 0x101418, 0.45), 6, { spread: 0.6 });
-      E.fill(R, (x, y) => 1.6 + ((x + (y & 1)) % 2) * 0.7 + (Math.abs(E.th(x) + 0.4) < 0.7 && y > E.h * 0.5 ? 2 : 0) + y / E.h * 0.8 + (hash(x, y) - 0.5) * 0.5, undefined, 0.3);
+      E.fill(R, (x, y) => 1.6 + (x % 3 === 1 && y % 3 === 1 ? 0.9 : x % 3 === 0 || y % 3 === 0 ? -0.5 : 0) + (Math.abs(E.th(x) + 0.4) < 0.7 && y > E.h * 0.5 ? 2 : 0) + (y > E.h * 0.5 ? 0.8 : 0), undefined, 0.3);
       E.set(E.X(-30), E.h * 0.7, 0xffffff); E.set(E.X(-25), E.h * 0.72, 0xe0e8ff);
     });
   } else {
@@ -1324,6 +1365,7 @@ export function sculpt(d: Design, rig: Rig, rest: V3[]): Sculpt {
   // every region is laid out at the finest density that still fills one page, then painted at that size
   const k = S.page.pack();
   for (const p of S.paints) p();
+  snapRGBA(S.page.pc.data); // anything blended or mixed lands back on the master palette
   S.page.finish();
   return { geo: S.B.build(), tex: pageTexture(S.page), tris: S.B.tris, den: Math.round(den * k), fill: S.page.fill };
 }
