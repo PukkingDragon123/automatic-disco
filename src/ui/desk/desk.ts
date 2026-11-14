@@ -6,7 +6,7 @@
 // the screen is never covered. A clip-path traced round whatever stands on the desk decides which clicks are the
 // desk's; everything else falls through to the world.
 import * as THREE from 'three';
-import { DeskView, box, mesh, mat } from './gfx';
+import { DeskView, box, cyl, mesh, mat } from './gfx';
 import { M, matsOf, Spring, type Hot, type HitInfo } from './kit';
 import { R, label } from './paint';
 import { decal } from './kit';
@@ -14,6 +14,7 @@ import { Counter, Gauge, Reactor, Vessel, Drum, Plunger, ModeKnob, Lever, Beacon
 import { BlueprintTube, Microscope, HardHat, Clipboard, Handset, SpecimenJar, AmmoCrate, Binoculars, Magnifier, Scroll, PaintTin, Horn, Bobblehead, Mug, Die, Fan, Calendar, SelfDestruct, Prop } from './props';
 import { HoloTable, CRT, Orrery, InspectBoard } from './boards';
 import { LiveDecal } from './kit';
+import { Pads, type PadId } from './pads';
 
 /** the strip's panel: a 36-unit face leaning back 50 degrees above a 12-deep ledge */
 const PANEL_L = 36, PANEL_TILT = 48 * Math.PI / 180, LEDGE = 12, LEDGE_H = 6;
@@ -56,6 +57,10 @@ export class Desk {
     crate: new AmmoCrate(), bino: new Binoculars(), lens: new Magnifier(), lens2: new Magnifier(), horn: new Horn(),
     bobble: new Bobblehead(), mug: new Mug(), die: new Die(), fan: new Fan(), cal: new Calendar(), boom: new SelfDestruct(),
   };
+  /** the touch layout: thumb pads on the strip's ends (ui/touch.ts docks its hit areas over them) */
+  pads: Pads | null = null; touch = false;
+  padState: Parameters<Pads['update']>[1] = null;
+  private extras = new THREE.Group();
   // ---- interaction
   readonly hots: Hot[] = [];
   private hotOf = new Map<THREE.Object3D, Hot>();
@@ -63,6 +68,7 @@ export class Desk {
   hover: Hot | null = null;
   private drag: { hot: Hot; x: number; y: number; lx: number; ly: number; moved: boolean; id: number; button: number; hit: HitInfo } | null = null;
   onHover?: (h: Hot | null) => void;
+  onClick?: (h: Hot) => void;
   private t = 0; private maskT = 0; private maskKey = '';
   private shake = new Spring(0, 260, 9);
   /** desk-space scale (shrinks below 640 art px wide) */
@@ -96,6 +102,14 @@ export class Desk {
     p.add(mesh(box(W, PANEL_L, 8), M('olive'), 0, PANEL_L / 2, -4));
     // seams between the panel's sections (where the plates meet: a dark joint, a lit lip)
     for (const x of [-236, -82, 138, 226]) p.add(mesh(box(1.2, PANEL_L, 1), M('rubber'), x, PANEL_L / 2, 0.1));
+    // the screws that hold each plate: one in every corner, slots turned whichever way the fitter left them
+    const sm = M('steel', { spec: 1 });
+    for (const [i, x] of [-318, -236, -82, 138, 226, 318].entries()) for (const y of [3, PANEL_L - 3]) {
+      for (const dx of i === 0 ? [4] : i === 5 ? [-4] : [-4, 4]) {
+        const sc = mesh(cyl(1.3, 1.3, 1, 6).rotateX(Math.PI / 2), sm, x + dx, y, 0.4); p.add(sc);
+        const sl = mesh(box(2.2, 0.5, 0.4), M('rubber'), x + dx, y, 0.95); sl.rotation.z = (x * 7 + y * 13 + dx) % 3; p.add(sl);
+      }
+    }
     s.add(p);
     // ---- MODE selector
     this.knob.root.position.set(-276, 14, 0); p.add(this.knob.root);
@@ -121,10 +135,11 @@ export class Desk {
     p.add(stencil('POWER', 74, 13));
     this.plunger.root.position.set(124, 17, 0); p.add(this.plunger.root);
     // ---- core cells (the skill tree), clock, held ground
-    this.cells.root.position.set(158, 22, 0); p.add(this.cells.root, stencil('CELLS', 158, 32));
-    this.cellLamp.root.position.set(170, 12, 0); p.add(this.cellLamp.root);
-    this.clock.root.position.set(198, 22, 0); p.add(this.clock.root, stencil('TIME', 198, 32));
-    this.ground.root.position.set(246, 22, 0); p.add(this.ground.root, stencil('GND %', 246, 32));
+    const ex = this.extras; p.add(ex);
+    this.cells.root.position.set(164, 22, 0); ex.add(this.cells.root, stencil('CELLS', 164, 32));
+    this.cellLamp.root.position.set(176, 12, 0); ex.add(this.cellLamp.root);
+    this.clock.root.position.set(206, 22, 0); ex.add(this.clock.root, stencil('TIME', 206, 32));
+    this.ground.root.position.set(252, 22, 0); ex.add(this.ground.root, stencil('GND %', 252, 32));
     // ---- things on the ledge and the rail
     this.tube.root.position.set(150, LEDGE_H, -5); s.add(this.tube.root);
     this.menuLever.root.position.set(292, LEDGE_H + 2, -6); s.add(this.menuLever.root);
@@ -190,6 +205,36 @@ export class Desk {
     void label; void decal;
   }
 
+  /** phones and tablets: thumb pads on the ends, the spare readouts folded away, the levers moved in */
+  setTouch(on: boolean) {
+    if (on === this.touch) return;
+    this.touch = on;
+    if (on && !this.pads) { this.pads = new Pads(PANEL_TILT); this.strip.add(this.pads.left, this.pads.right); }
+    if (this.pads) { this.pads.left.visible = this.pads.right.visible = on; }
+    this.extras.visible = !on; this.beacons[1].root.visible = !on; this.tuckLever.root.visible = !on;
+    this.menuLever.root.position.x = on ? 200 : 292;
+    this.layout();
+  }
+  /** where the thumb pads are on the page (CSS px) for ui/touch.ts to dock its hit areas */
+  padDock() {
+    const P = this.pads; if (!P || !this.touch) return null;
+    this.root.updateMatrixWorld(true);
+    const v = new THREE.Vector3(), out: Partial<Record<PadId, { x: number; y: number; r: number }>> = {};
+    const r = this.view.canvas.getBoundingClientRect(), k = r.width / this.view.W;
+    for (const [id, c] of Object.entries(P.caps) as [PadId, typeof P.caps[PadId]][]) {
+      c.root.getWorldPosition(v); const s = this.view.toScreen(v);
+      out[id] = { x: s.x, y: s.y, r: (c.r + 4) * k * this.sc };
+    }
+    P.well.getWorldPosition(v); const w = this.view.toScreen(v);
+    return { at: out, zone: { x: 0, y: Math.max(0, w.y - 130 * k), w: Math.max(40, w.x + 70 * k), h: innerHeight - Math.max(0, w.y - 130 * k) } };
+  }
+  /** pads follow the strip's ends */
+  private placePads() {
+    if (!this.pads) return;
+    const W = this.view.W / this.sc;
+    this.pads.left.position.set(-W / 2 + 62, 0, 0); this.pads.right.position.set(W / 2 - 97, 0, 0);
+  }
+
   // ------------------------------------------------------------------ hot objects
   addHot(h: Hot) {
     this.hots.push(h);
@@ -197,6 +242,13 @@ export class Desk {
     h.hv = 0;
     h.obj.traverse((o) => this.hotOf.set(o, h));
     return h;
+  }
+  /** test helper: the page position (CSS px) of the first hot object whose tag contains `name` */
+  where(name: string): [number, number] | null {
+    const h = this.hots.find((q) => q.name.includes(name) && visibleUp(q.obj)); if (!h) return null;
+    this.root.updateMatrixWorld(true);
+    const b = new THREE.Box3().setFromObject(h.obj), c = b.getCenter(new THREE.Vector3()), s = this.view.toScreen(c);
+    return [Math.round(s.x), Math.round(s.y)];
   }
   private pick(x: number, y: number): { hot: Hot; hit: HitInfo } | null {
     this.view.ndc(x, y, this.ndc);
@@ -243,7 +295,7 @@ export class Desk {
       if (d.moved) { d.hot.drag?.up?.({ ...d.hit, x: e.clientX, y: e.clientY }); return; }
       if (e.type === 'pointercancel') return;
       const hit = { ...d.hit, button: d.button };
-      if (d.button === 2) d.hot.alt?.(hit); else if (d.button === 0) { d.hot.drag?.up?.(hit); d.hot.click?.(hit); }
+      if (d.button === 2) d.hot.alt?.(hit); else if (d.button === 0) { d.hot.drag?.up?.(hit); if (d.hot.click) { this.onClick?.(d.hot); d.hot.click(hit); } }
     };
     cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
     cv.addEventListener('pointerleave', () => { if (!this.drag) { this.setHover(null); cv.style.cursor = ''; } });
@@ -296,6 +348,7 @@ export class Desk {
     const W = this.view.W;
     this.sc = W >= 640 ? 1 : W / 640;
     this.root.scale.setScalar(this.sc);
+    this.placePads();
     this.maskKey = '';
   }
   /** the strip's top and the wings' tops on screen (CSS px from the bottom), for other UI to keep clear */
@@ -387,6 +440,7 @@ export class Desk {
     for (const b of this.beacons) b.update(dt);
     this.menuLever.update(dt); this.tuckLever.update(dt);
     this.table.update(dt); this.crt.update(dt); this.orrery.update(dt); this.board.update(dt, this.t);
+    this.pads?.update(dt, this.padState);
     this.works.gauge.update(dt); this.works.store.update(dt); this.works.crew.update(dt); this.works.lamp.update(dt);
     if ((this.maskT -= dt) <= 0) { this.maskT = 0.12; this.measure(); this.mask(); }
   }

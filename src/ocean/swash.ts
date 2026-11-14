@@ -25,14 +25,14 @@ void main() {
   float ph = fract(uTime * 0.13 + vn(p * 0.08) * 1.7 + vn(p * 0.31) * 0.25);
   float surge = ph < 0.3 ? ph / 0.3 : 1.0 - (ph - 0.3) / 0.7;
   surge = surge * surge * (3.0 - 2.0 * surge);
-  float reach = 0.1 + uSwell * 0.35 + uWindK * 0.12;
+  float reach = 0.16 + uSwell * 0.4 + uWindK * 0.14;
   float S = uLevel + 0.02 + surge * reach * (0.75 + 0.5 * vn(p * 0.5 + 7.0));
   float maxS = uLevel + 0.04 + reach * 0.95;
   float lit = 0.35 + 0.65 * uSunK;
   vec4 c = vec4(0.0);
-  if (h < maxS) c = vec4(uWet * lit, 0.42);
+  if (h < maxS) c = vec4(uWet * lit, 0.58);
   if (h < S) {
-    c = vec4(uSheet * lit, 0.55);
+    c = vec4(uSheet * lit, 0.66);
     // the lace at the sheet's edge, broken into drawn clumps
     float e = S - h;
     if (e < 0.03 + 0.02 * vn(p * 4.0)) c = vec4((vn(p * 6.0 + uTime) > 0.45 ? uFoamA : uFoamB) * lit, 0.95);
@@ -46,7 +46,7 @@ void main() {
 export class Swash {
   readonly mesh: THREE.Mesh | null = null;
   private U = { uTime: { value: 0 }, uLevel: { value: 0 }, uSwell: { value: 0.3 }, uSunK: { value: 1 }, uWindK: { value: 0.3 },
-    uWet: { value: new THREE.Color(RAMPS.sand[1]) }, uSheet: { value: new THREE.Color(RAMPS.water[5]) }, uFoamA: { value: new THREE.Color(RAMPS.snow[5]) }, uFoamB: { value: new THREE.Color(RAMPS.sky[5]) } };
+    uWet: { value: new THREE.Color(RAMPS.sand[0]) }, uSheet: { value: new THREE.Color(RAMPS.water[5]) }, uFoamA: { value: new THREE.Color(RAMPS.snow[5]) }, uFoamB: { value: new THREE.Color(RAMPS.sky[5]) } };
   constructor(readonly o: Ocean) {
     const R = o.region, N = R.N, sh = o.shore, W = R.water;
     const pos: number[] = [], sdA: number[] = [], idx: number[] = [];

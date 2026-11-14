@@ -207,7 +207,7 @@ export function coatPaint(C: CoatCtx, part: PartKind, o: { flow?: number; extra?
       if (!any) continue;
       const mask = (i: number) => zm[zone[i]];
       if (sf.fur) {
-        px.locks({ len: sf.fur.len, width: sf.fur.width, down: sf.fur.down ?? 0.5, flow, mask, seed: seed + 3, tip: sf.fur.tip, bend: sf.fur.bend });
+        px.pelt({ len: sf.fur.len, width: sf.fur.width, down: sf.fur.down ?? 0.5, flow, mask, seed: seed + 3 });
         // each lock wears the colour found at its root, so pattern and belly edges run round the locks
         const LS = px.lockS!, w = px.w, q: V3 = [0, 0, 0];
         for (let i = 0; i < n; i++) {

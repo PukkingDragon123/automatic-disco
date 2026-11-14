@@ -170,6 +170,30 @@ export function formations(R: Region, r: Rand) {
     }
   }
   cliffFeatures(R, r, cellOk, add, moss0, (m) => { mat = m; });
+  // the ranges dressed: strata ledges jutting from the riser tops, crags and pinnacles on the crests
+  if (R.spines.length) {
+    let ledges = 0, crags = 0;
+    const wantL = Math.round(N * 0.12), wantC = Math.round(N * 0.05);
+    for (let t = 0; t < 4000 && (ledges < wantL || crags < wantC); t++) {
+      const x = r.range(4, N - 4), z = r.range(4, N - 4), i = Math.floor(z) * N + Math.floor(x);
+      if (R.mount[i] < 0.45 || R.passMask[i] || R.riverY[i] > 0) continue;
+      const h = g0(x, z);
+      let lo = 1e9, hi = -1e9, ldx = 0, ldz = 0;
+      for (let a = 0; a < 8; a++) { const dx = Math.cos(a * 0.785), dz = Math.sin(a * 0.785), v = g0(x + dx * 2, z + dz * 2); if (v < lo) { lo = v; ldx = dx; ldz = dz; } hi = Math.max(hi, v); }
+      if (R.rocks.some((q) => (q.kind === 'slab' || q.kind === 'spire') && hyp(q.x - x, q.z - z) < 5)) continue;
+      mat = matAt(x, z);
+      if (ledges < wantL && h - lo > 1.8 && hi - h < 0.8) {
+        // a bed of harder stone standing out over the riser below it
+        add('slab', x + ldx * 0.6, z + ldz * 0.6, r.range(1.4, 2.6), r.range(0.5, 0.9), r.range(0.9, 1.5), { yaw: Math.atan2(ldz, ldx) + Math.PI / 2, y: h - r.range(0.35, 0.6), tilt: r.range(0.02, 0.1), tiltDir: Math.atan2(ldz, ldx), moss: moss0 * 0.5 });
+        ledges++;
+      } else if (crags < wantC && hi <= h + 0.3 && R.mount[i] > 0.7) {
+        const Rr = r.range(0.7, 1.3);
+        add('spire', x, z, Rr, r.range(2.2, 4.5), Rr * r.range(0.8, 1.15), { tilt: r.range(0, 0.12), tiltDir: r.range(0, 6.28), moss: 0, fam: 'stack' });
+        for (let k = r.int(1, 3); k > 0; k--) { const a = r.range(0, 6.28), d = r.range(1.4, 2.6); add('boulder', x + Math.cos(a) * d, z + Math.sin(a) * d, r.range(0.5, 1), r.range(0.4, 0.8), r.range(0.5, 1), { moss: 0, tilt: r.range(0, 0.3), tiltDir: r.range(0, 6.28) }); }
+        crags++;
+      }
+    }
+  }
   // rounded stones along the rivers: on the banks, in the shallows, and as riffles where the water runs fast
   for (const pts of R.rivers) for (let k = 4; k < pts.length - 4; k += 2) {
     const p = pts[k];

@@ -273,6 +273,40 @@ export class Px {
       }
     }
   }
+  /** fur as a pixel artist draws it: the light falls on the coat in a few broad flat planes, and wherever one plane
+   *  meets the next its edge breaks into flames of hair pointing along the flow (each lock's tooth: a sawtooth in the
+   *  light along the lock, peaked at its middle), so detail gathers on the turning form and the planes stay clean.
+   *  Each lock shifts its plane a little (clumps), a few carry a dark strand line or a lit hairline, and the gaps
+   *  at the lock roots under a lit plane show a darker underfur notch. Records lockS like locks(). */
+  pelt(o: { len: number; width: number; flow?: number; down?: number; mask?: (i: number) => number; seed?: number; tooth?: number; clump?: number; strands?: number }) {
+    const { w, h } = this, seed = o.seed ?? 37, flow = o.flow ?? 1, sy = o.len, tooth = o.tooth ?? 0.6, clump = o.clump ?? 0.18, strands = o.strands ?? 0.3, down = o.down ?? 0.5;
+    const mpt = this.mpt;
+    const S = this.lockS ?? (this.lockS = new Float32Array(this.n).fill(-2));
+    for (let y = 0; y < h; y++) {
+      const Yr = this.Y[y], circ = this.circ[y], nc = Math.max(3, Math.round(circ / o.width));
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x, m = o.mask ? o.mask(i) : 1;
+        if (m <= 0.02) continue;
+        const u = (x + 0.5) / w, side = this.ch.wrap ? Math.sin((u - 0.5) * TAU) : 0;
+        const ry = (flow > 0 ? Yr : -Yr) / sy;
+        // the locks lean down the flanks: shift the column with the row
+        const uu = u * nc + side * down * ry * 0.5;
+        const c = Math.floor(uu), cm = ((c % nc) + nc) % nc;
+        const ph = h3(cm, 3, seed) * 0.9, r = Math.floor(ry + ph), s = ry + ph - r;
+        const id = Math.floor(h3(r, cm, seed) * 9973);
+        const e = (uu - c - 0.5) * 2 + (h3(r, cm, seed + 1) - 0.5) * 0.3;
+        S[i] = s;
+        // the tooth: rises along the lock to its tip, peaked across its middle
+        let mk = tooth * (s - Math.abs(e) * 0.5 - 0.25) + clump * (h3(r, cm, seed + 2) - 0.5) * 2;
+        const wT = o.width / mpt;
+        if (wT >= 2.5 && Math.abs(e) * wT * 0.5 < 0.5 && s > 0.15 && s < 0.85) {
+          const k = h3(r, cm, seed + 5);
+          if (k < strands) mk -= 1.1; else if (k > 1 - strands * 0.6) mk += 0.8;
+        }
+        this.mark[i] += mk * m;
+      }
+    }
+  }
   /** pebbled hide: a network of small domed polygons (each lit on its upper side, a dark crease round it); `aniso`
    *  stretches the cells (wrinkles running round a joint: [sx, sy, sz] in world axes) */
   pebbles(size: number, o: { mask?: (i: number) => number; depth?: number; aniso?: [number, number, number]; seed?: number; pores?: number } = {}) {

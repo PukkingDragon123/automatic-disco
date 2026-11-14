@@ -1,9 +1,9 @@
-// The ground of a region, built once for the two places that show it from the air: the orbital close-up on the
-// planet screen (where the drop zone is picked) and the controllable descent (where it is flown to). It is the real
-// Region the game will generate: its heightfield faceted and painted from the world's palette (woods darkening the
-// canopy, rivers and damp ground, ore and crystal), instanced trees and rock formations, lumen spires glinting,
-// set in a stylised landscape that runs out to a curved horizon under a sky dome that knows its altitude. Plus the
-// painted drop-zone marks and the landing assessment of a point. World frame: cell (rx, rz) at (rx - N/2, h, rz - N/2).
+// The world beyond the 128 m map, for the two places that see a region from the air: the orbital close-up on the
+// planet screen and the descent inside the real game. The map itself is always the game's own (Terrain, Flora);
+// this is what surrounds it: a stylised landscape in the world's palette running out to a curved horizon (woods
+// carrying on past the border, hills, shores, snow up high), the sea, and a sky dome that knows its altitude. Plus
+// the painted drop-zone marks and the landing assessment of a point. Frame: map-centred metres (cell (rx, rz) at
+// (rx - N/2, h, rz - N/2)); callers put these in a group offset by (N/2, 0, N/2) to sit round the game's map.
 import * as THREE from 'three';
 import type { Region } from '../world/region';
 import type { Palette } from '../world/palette';
@@ -15,13 +15,11 @@ import { clamp, lerp } from '../core/rand';
 export const RP = 60000;
 const _v = new V3(), _v2 = new V3(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4();
 
-export interface World { R: Region; N: number; pal: Palette; bin: Bin; parent: THREE.Object3D; gH(x: number, z: number): number; regionMesh?: THREE.Mesh }
+export interface World { R: Region; N: number; pal: Palette; bin: Bin; parent: THREE.Object3D; gH(x: number, z: number): number }
 export function makeWorld(R: Region, pal: Palette, bin: Bin, parent: THREE.Object3D): World {
   const N = R.N;
   return { R, N, pal, bin, parent, gH: (x, z) => R.groundSmooth(x + N / 2, z + N / 2) };
 }
-/** everything on the ground: far landscape, the region, water */
-export function buildGround(W: World) { buildFar(W); buildRegion(W); buildWater(W); return W; }
 
 // ------------------------------------------------------------------ sky
 export const SKY_V = `varying vec3 vD; void main(){ vD = position; vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`;
@@ -143,79 +141,6 @@ function treeGeo() {
   const tg = mergeGeos([trunk, crownA, crownB]);
   [trunk, crownA, crownB].forEach((x) => x.dispose());
   return tg;
-}
-function blockColor(W: World, b: number, x: number, z: number, out: THREE.Color) {
-  const p = W.pal;
-  const tbl = [p.grass, p.grassDry, p.soil, p.rock, p.sand, p.mud, p.clay, p.snow, p.basalt, p.ore, p.crystal, p.soil, p.rock, p.basalt];
-  out.set(tbl[b] ?? p.grass);
-  if (b === 11) out.lerp(new THREE.Color(p.grass), 0.4);
-  if (b === 12) out.lerp(new THREE.Color(p.sand), 0.4);
-  return out.multiplyScalar(0.9 + hash(x, z, 5) * 0.16);
-}
-export function buildRegion(W: World) {
-  const R = W.R, N = W.N, bin = W.bin, pal = W.pal;
-  // one vertex per cell centre, plus a skirt round the edge down into the far landscape
-  const pos: number[] = [], col: number[] = [], idx: number[] = [];
-  const c = new THREE.Color(), fol = new THREE.Color(pal.foliage[0] ?? pal.grass).multiplyScalar(0.62), wat = new THREE.Color(pal.water).lerp(new THREE.Color(0x2a4a5a), 0.3);
-  for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
-    const i = z * N + x;
-    let y = R.h[i];
-    const ry = R.riverY[i];
-    blockColor(W, R.b[i], x, z, c);
-    const f = R.forest[i]; if (f > 0.2) c.lerp(fol, clamp((f - 0.2) * 1.1, 0, 0.75));
-    if (ry > 0 && y < ry) { c.copy(wat); y = ry - 0.1; }
-    if (R.damp[i] > 0.3) c.multiplyScalar(1 - (R.damp[i] - 0.3) * 0.25);
-    pos.push(x + 0.5 - N / 2, y, z + 0.5 - N / 2); col.push(c.r, c.g, c.b);
-  }
-  for (let z = 0; z < N - 1; z++) for (let x = 0; x < N - 1; x++) { const a = z * N + x, b = a + 1, cc = a + N, d = cc + 1; idx.push(a, cc, b, b, cc, d); }
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
-  const m = mesh(bin, g, lit(bin, 0xffffff, { vertexColors: true, flat: true, flag: 1 }), W.parent, 0, 0, 0, false);
-  m.receiveShadow = true; m.name = 'region-ground'; W.regionMesh = m;
-  // woods: instanced conifers and broadleaf lumps where the forest is thick
-  const tg = treeGeo();
-  const spots: [number, number, number][] = [];
-  for (let z = 2; z < N - 2; z += 2) for (let x = 2; x < N - 2; x += 2) {
-    const f = R.forest[z * N + x];
-    if (f < 0.4 || hash(x, z, 11) > f || R.isWater(x + 0.5, z + 0.5) || R.isSolid(x + 0.5, z + 0.5)) continue;
-    spots.push([x + 0.5 + (hash(x, z, 1) - 0.5) * 1.6, z + 0.5 + (hash(x, z, 2) - 0.5) * 1.6, 0.8 + hash(x, z, 3) * 0.9]);
-    if (spots.length > 2200) break;
-  }
-  if (spots.length) {
-    const im = new THREE.InstancedMesh(bin.g(tg), lit(bin, 0xffffff, { flat: true }), spots.length);
-    const fc = pal.foliage.length ? pal.foliage : [pal.grass];
-    spots.forEach(([x, z, s], i) => {
-      _m.compose(_v.set(x - N / 2, R.groundSmooth(x, z) - 0.1, z - N / 2), _q.setFromAxisAngle(new V3(0, 1, 0), hash(x, z, 4) * TAU), _v2.set(s, s * (0.8 + hash(x, z, 6) * 0.5), s));
-      im.setMatrixAt(i, _m);
-      im.setColorAt(i, new THREE.Color(fc[Math.floor(hash(x, z, 7) * fc.length)]).multiplyScalar(0.7 + hash(x, z, 8) * 0.25));
-    });
-    im.castShadow = true; im.receiveShadow = true; W.parent.add(im);
-  } else bin.g(tg);
-  // rock formations as faceted boulders
-  const rocks = R.rocks.filter((r) => r.kind !== 'pebble');
-  if (rocks.length) {
-    const rg = new THREE.DodecahedronGeometry(0.5, 0); rg.translate(0, 0.35, 0);
-    const im = new THREE.InstancedMesh(bin.g(rg), lit(bin, 0xffffff, { flat: true }), rocks.length);
-    const rc = [pal.rock, pal.sand, pal.basalt, pal.rock, 0x6a5038];
-    rocks.forEach((r, i) => {
-      _m.compose(_v.set(r.x - N / 2, r.y - 0.2, r.z - N / 2), _q.setFromEuler(new THREE.Euler(r.tilt * Math.cos(r.tiltDir), r.yaw, r.tilt * Math.sin(r.tiltDir))), _v2.set(r.sx, r.sy, r.sz));
-      im.setMatrixAt(i, _m); im.setColorAt(i, new THREE.Color(rc[r.mat] ?? pal.rock).multiplyScalar(0.85 + hash(i, 1) * 0.2));
-    });
-    im.castShadow = true; im.receiveShadow = true; W.parent.add(im);
-  }
-  // lumen seams glint: small crystal spires
-  const cr = R.deposits.filter((d) => d.kind === 'crystal');
-  if (cr.length) {
-    const sg = new THREE.ConeGeometry(0.25, 1.6, 5); sg.translate(0, 0.7, 0);
-    const cm = bin.m(gbuf(new THREE.MeshBasicMaterial({ color: new THREE.Color(pal.crystal).multiplyScalar(1.6) }), 32));
-    const im = new THREE.InstancedMesh(bin.g(sg), cm, cr.length * 6);
-    let k = 0;
-    for (const d of cr) for (let j = 0; j < 6; j++) {
-      const a = (j / 6) * TAU + hash(d.x, j) * 0.8, rr = 0.6 + hash(d.z, j) * 1.8, x = d.x + Math.cos(a) * rr, z = d.z + Math.sin(a) * rr;
-      _m.compose(_v.set(x - N / 2, R.groundSmooth(x, z) - 0.1, z - N / 2), _q.setFromEuler(new THREE.Euler((hash(j, 1) - 0.5) * 0.6, 0, (hash(j, 2) - 0.5) * 0.6)), _v2.setScalar(0.6 + hash(x, z) * 0.9));
-      im.setMatrixAt(k++, _m);
-    }
-    W.parent.add(im);
-  }
 }
 export function buildWater(W: World) {
   const pal = W.pal;

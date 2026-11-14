@@ -3,10 +3,11 @@
 //
 //   factionsForRegion(region, planet) -> [{ faction: 'soviet', x: 108, z: 20, strength: 1.1, arrive: 0, name: 'ZARYA' }, ...]
 //
-// x, z are the planned site in region metres (0..128). In play the base settles on the flattest dry ground within
+// x, z are the planned site in region metres (0..Region.N). In play the base settles on the flattest dry ground within
 // ~12 m of it (away from Unit 07's landing), so a scan marker is always within a few metres of the real base.
 import { Rand } from '../../core/rand';
 import type { PRegion, Planet } from '../../world/planet';
+import { LAND_N } from '../../world/region';
 
 export type FactionId = 'soviet' | 'prc' | 'expedition';
 export interface FactionSite {
@@ -32,8 +33,8 @@ const NAMES: Record<FactionId, string[]> = {
 // base slots: the four corners and the four edge midpoints (Unit 07 always lands in the middle 40% of the map)
 const SLOTS: [number, number][] = [[20, 20], [108, 20], [20, 108], [108, 108], [14, 64], [114, 64], [64, 14], [64, 114]];
 
-/** the plan for a region seed at a danger (1..3); N is the region size (128) */
-export function planFactions(seed: number, danger: number, N = 128): FactionSite[] {
+/** the plan for a region seed at a danger (1..3); N is the region size (Region.N; SLOTS are laid out for 128 and scaled) */
+export function planFactions(seed: number, danger: number, N = LAND_N): FactionSite[] {
   const r = new Rand(((seed >>> 0) ^ 0x5f3a91c7) >>> 0);
   const d = Math.max(1, Math.min(3, Math.round(danger || 1)));
   const first: FactionId = r.chance(0.5) ? 'soviet' : 'prc';
@@ -63,9 +64,10 @@ export function planFactions(seed: number, danger: number, N = 128): FactionSite
   return out;
 }
 
-/** for the planet layer / orbital scan: the same plan the region screen will play */
-export function factionsForRegion(region: Pick<PRegion, 'seed' | 'danger'>, _planet?: Planet): FactionSite[] {
-  return planFactions(region.seed, region.danger);
+/** for the planet layer / orbital scan: the same plan the region screen will play (N: that region's size in metres,
+ *  Region.N, so the scan marks sit where the bases will settle) */
+export function factionsForRegion(region: Pick<PRegion, 'seed' | 'danger'>, _planet?: Planet, N = LAND_N): FactionSite[] {
+  return planFactions(region.seed, region.danger, N);
 }
 
 /** one line for a planet info panel: "SOVIET BASE · PRC BASE" */

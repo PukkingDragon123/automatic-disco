@@ -376,14 +376,16 @@ function clay(pc: PixelCanvas, c: number, seed: number) {
  *  hollows, wind-cut ridge strokes, sparkles, bird tracks */
 function snow(pc: PixelCanvas, seed: number) {
   const r = new Rand(seed), S = rampNamed('snow'), Bl = rampNamed('sky');
-  plates(pc, r, 16, S, [3, 4, 4, 5], { bevel: true });
-  for (let i = 0; i < 6 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(3, 7), r.range(2, 4), S, r, S[2]);
-  for (let i = 0; i < 2 * AREA; i++) polyFill(pc, blobPts(r.range(0, T), r.range(0, T), r.range(3, 7), r.range(1.5, 3), 6, r), S[2]);
+  // wind-packed drifts: broad soft plates two steps apart with no drawn rims (bevelled rims read as paving slabs)
+  plates(pc, r, 30, S, [4, 4, 5]);
+  // sastrugi: wind-cut ridges, a lit crest over a blue shadow, wavering and breaking, all running one way
   const ph = r.range(0, 6.28), slope = r.range(-0.3, 0.3);
-  for (let j = 0; j < 9; j++) {
-    const y0 = r.range(0, T), amp = r.range(1, 2.5), len = r.int(20, 70), x0 = r.int(0, T - 1);
-    for (let x = x0; x < x0 + len; x++) { const y = W(y0 + (x - x0) * slope + Math.round(Math.sin((x / T) * Math.PI * 6 + ph + j) * amp)); pc.set(x, y, S[5]); pc.set(x, y + 1, Bl[4]); }
+  for (let j = 0; j < 26; j++) {
+    const y0 = r.range(0, T), amp = r.range(1, 2.5), len = r.int(16, 60), x0 = r.int(0, T - 1);
+    for (let x = x0; x < x0 + len; x++) { const y = W(y0 + (x - x0) * slope + Math.round(Math.sin((x / T) * Math.PI * 6 + ph + j) * amp)); pc.set(x, y, S[5]); pc.set(x, y + 1, Bl[4]); if (x - x0 > 3 && x - x0 < len - 3) pc.set(x, y + 2, S[3]); }
   }
+  // a few lumps of crust with their blue lee
+  for (let i = 0; i < 2 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(4, 7), r.range(2.5, 4), S, r, Bl[4]);
   for (let i = 0; i < 6 * AREA; i++) { const x = r.int(1, T - 2), y = r.int(1, T - 2); pc.set(x, y, S[5]); if (r.chance(0.3)) { pc.set(x - 1, y, S[4]); pc.set(x + 1, y, S[4]); pc.set(x, y - 1, S[4]); pc.set(x, y + 1, S[4]); } }
   let x = r.range(0, T), y = r.range(0, T); const a = r.range(0, 6.28);
   for (let s = 0; s < 14; s++) {
@@ -608,9 +610,10 @@ function litter(pc: PixelCanvas, soil: number, foliage: number[], seed: number) 
 /** gravel: a bed of faceted stones of a few kinds, each with its contact shadow, grit between */
 function gravel(pc: PixelCanvas, rock: number, seed: number) {
   const r = new Rand(seed), Kr = RF(rock), kinds = [Kr, rampNamed('stone'), rampNamed('sand'), rampNamed('slate')];
-  plates(pc, r, 9, Kr, [1, 2]);
-  for (let i = 0; i < 30 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(3, 4.5), r.range(2.5, 3.5), r.pick(kinds), r, Kr[0]);
-  for (let i = 0; i < 12 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(4, 6.5), r.range(3, 5), r.pick(kinds), r, Kr[0]);
+  // the bed between the stones in mid tones (a dark one reads as a hole from 30 m), then the stones packed on it
+  plates(pc, r, 9, Kr, [2, 3, 3]);
+  for (let i = 0; i < 26 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(5, 7), r.range(4, 5.5), r.pick(kinds), r, Kr[1]);
+  for (let i = 0; i < 9 * AREA; i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(7, 10), r.range(5, 7.5), r.pick(kinds), r, Kr[1]);
   tidy(pc);
 }
 

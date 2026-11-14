@@ -83,8 +83,7 @@ export class Hud {
   private tag: HTMLDivElement; private tagHot: Hot | null = null; private tagT = 0; private tagTxt = '';
   private t = 0; private slow = 0; private selKey = '-'; private cmdKey = ''; private cmds: Cmd[] = []; private keyHots: Hot[] = [];
   private flashT: Record<Res, number> = { ore: 0, carbon: 0, water: 0, soil: 0 };
-  private lastHull = -1; private alarmT = 0; private cellHot = 0; private mapT = 0; private mapBuilt = 0; private crtT = 0;
-  private opened = { build: false, ledger: false, overlay: false, survey: false };
+  private dockT = 0; private lastHull = -1; private alarmT = 0; private cellHot = 0; private mapT = 0; private mapBuilt = 0; private crtT = 0;
   private thumbs = new Map<string, Pix | null>();
   private onResize = () => { this.desk.layout(); this.cssVars(); };
 
@@ -103,6 +102,8 @@ export class Hud {
     crtSettings.apply();
     this.bindDesk();
     this.desk.onHover = (h) => { this.tagHot = h; this.tagT = 0; if (h) sfx('hover', 1, 0.35); };
+    // every object answers with a solid little click (a bakelite tap), its own action does the rest
+    this.desk.onClick = () => sfx('hit', 2.2, 0.18);
     const g = c.game;
     g?.on('gather', (d: { res: Res }) => { if (d?.res) { this.flashT[d.res] = 0.3; this.desk.vessels[d.res].kick(1.2); } });
     g?.on('points', () => { this.cellHot = 2.5; });
@@ -134,7 +135,7 @@ export class Hud {
       },
       click: (h) => {
         // a click on the cartridge in front fires; one above or below turns the drum to it
-        const y = h.local.y - 18;
+        const y = h.local.y;
         if (Math.abs(y) < 5) { if (W.trigger()) d.plunger.press(); setTimeout(() => d.plunger.release(), 120); } else W.turn(y > 0 ? -1 : 1);
       } });
     this.hot({ obj: d.plunger.root, name: 'FIRE', key: 'F', tip: () => this.powerTip(), click: () => { d.plunger.press(); setTimeout(() => d.plunger.release(), 140); W.trigger(); } });
@@ -182,7 +183,7 @@ export class Hud {
 
   // ------------------------------------------------------------------ modes
   /** switch the presentation: the desk reconfigures, the mode's panels open, the last mode's close */
-  setMode(m: Mode, quiet = false) {
+  setMode(m: Mode, quiet = false, follow = false) {
     const prev = this.mode;
     if (m === prev && !quiet) return;
     this.mode = m;
@@ -191,26 +192,37 @@ export class Hud {
     FLOAT.quiet = m === 'explore';
     document.body.dataset.deskMode = m;
     const g = this.c.game, f = g?.factory, ev = this.eco(), bio = this.bio();
-    // close what the last mode opened
-    if (prev !== m) {
-      if (this.opened.build && f?.build.active) f.build.toggle();
-      if (this.opened.ledger && bio?.ledgerOpen) bio.toggleLedger(false);
-      if (this.opened.overlay && ev && ev.mode !== 'off') ev.setOverlay('off');
-      if (this.opened.survey) ev?.toggleSurvey(false);
-      if (prev === 'build' && f) { if (f.ui.showStats) f.ui.toggleStats(); if (f.ui.showCrew) f.ui.toggleCrew(); }
-      this.opened = { build: false, ledger: false, overlay: false, survey: false };
+    // each mode shows only its own panels: everything that belongs to another mode closes
+    if (f) {
+      if (m !== 'build' && f.build.active) f.build.toggle();
+      if (m !== 'build' && f.ui.showStats) f.ui.toggleStats();
+      if (m !== 'build' && f.ui.showCrew) f.ui.toggleCrew();
     }
-    if (m === 'build' && f) {
-      if (!f.build.active) { if (g?.run.skills.has('works')) { f.build.toggle(); this.opened.build = true; } else if (!quiet) this.tray('Buy <b>Field Works</b> on the skill tree to open the catalogue', 'warn'); }
+    if (m !== 'bio' && bio?.ledgerOpen) bio.toggleLedger(false);
+    if (m !== 'survey' && document.querySelector('.eco-sheet')) ev?.toggleSurvey(false);
+    if (m !== 'bio' && m !== 'survey' && ev && ev.mode !== 'off') ev.setOverlay('off');
+    // and the mode brings its own up (unless a panel's own key brought us here)
+    if (!follow) {
+      if (m === 'build' && f && !f.build.active) { if (g?.run.skills.has('works')) f.build.toggle(); else if (!quiet) this.tray('Buy <b>Field Works</b> on the skill tree to open the catalogue', 'warn'); }
+      if (m === 'bio' && bio && !bio.ledgerOpen) bio.toggleLedger(true);
+      if (m === 'bio' && ev) ev.setOverlay('life');
+      if (m === 'survey' && ev) ev.setOverlay('water');
     }
-    if (m === 'bio') {
-      if (bio && !bio.ledgerOpen) { bio.toggleLedger(true); this.opened.ledger = true; }
-      if (ev && ev.mode === 'off') { ev.setOverlay('life'); this.opened.overlay = true; }
-    }
-    if (m === 'survey' && ev && ev.mode === 'off') { ev.setOverlay('water'); this.opened.overlay = true; }
-    if (m === 'explore' && f?.build.active) f.build.toggle();
     this.desk.table.scan = m === 'survey' ? 1 : 0.3;
+    this.panels = this.panelState();
     this.cssVars();
+  }
+  /** which panels are open now (a panel opened by its own key pulls the desk into its mode) */
+  private panels: Record<string, boolean> = {};
+  private panelState(): Record<string, boolean> {
+    const f = this.c.game?.factory, ev = this.eco(), bio = this.bio();
+    return { cat: !!f?.build.active, stats: !!f?.ui.showStats, crew: !!f?.ui.showCrew, ledger: !!bio?.ledgerOpen, sheet: !!document.querySelector('.eco-sheet'), overlay: !!ev && !!ev.mode && ev.mode !== 'off' };
+  }
+  private followPanels() {
+    const now = this.panelState(), was = this.panels;
+    const home: Record<string, Mode> = { cat: 'build', stats: 'build', crew: 'build', ledger: 'bio', sheet: 'survey', overlay: this.mode === 'bio' ? 'bio' : 'survey' };
+    for (const k of Object.keys(now)) if (now[k] && !was[k] && home[k] !== this.mode) { this.setMode(home[k], false, true); return; }
+    this.panels = now;
   }
   /** Esc: back to EXPLORE (true when that was something to do) */
   escape() { if (this.desk.tucked) { this.tuck(); return true; } if (this.mode !== 'explore') { this.setMode('explore'); return true; } return false; }
@@ -313,6 +325,13 @@ export class Hud {
     if (d.mode === 'command' || d.mode === 'survey') this.tableUpdate(dt);
     if ((this.crtT -= dt) <= 0) { this.crtT = 0.25; if (d.mode === 'command') this.crtPaint(); }
     this.selection();
+    // ---- touch: the thumb pads on the desk mirror the touch controls (and their hit areas sit over the pads)
+    const tc = (c.game?.player as unknown as { touch?: { active: boolean; dock: (a: unknown, z: unknown) => void; state(): Desk['padState'] } } | undefined)?.touch;
+    if (tc) {
+      d.setTouch(tc.active);
+      d.padState = tc.active ? tc.state() : null;
+      if (tc.active && (this.dockT -= dt) <= 0) { this.dockT = 0.5; const pd = d.padDock(); if (pd) tc.dock(pd.at, pd.zone); }
+    }
     // ---- hover tag
     this.tagUpdate(dt);
     d.update(dt);
@@ -351,6 +370,7 @@ export class Hud {
       d.works.lamp.state = bad || load > 0.95 ? 'blink' : pw.demand > 0 ? 'on' : 'off';
     }
     this.cssVars();
+    this.followPanels();
     // the mode knob's window and lamps
     d.knob.show(MODES.indexOf(this.mode), MODE_NAME[this.mode], this.t);
     // the tools that are open burn a little

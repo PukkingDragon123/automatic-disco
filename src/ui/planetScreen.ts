@@ -367,7 +367,7 @@ export class PlanetScreen implements Screen {
     }
     // hostiles: a rival's creep when the region is held; enemy bases when the game knows of any
     if (pr.state === 'rival') { const rv = RIVALS[this.planet.seed % RIVALS.length]; add('rival', N - Rg.landing.x, N - Rg.landing.z, `CREEP · ${rv.name.toUpperCase()}`); }
-    const intel: Intel[] = this.opts.intel?.(pr) ?? factionsForRegion(pr, this.planet).map((f) => ({
+    const intel: Intel[] = this.opts.intel?.(pr) ?? factionsForRegion(pr, this.planet, N).map((f) => ({
       kind: f.faction === 'soviet' ? 'soviet' as const : f.faction === 'prc' ? 'prc' as const : 'camp' as const, x: f.x, z: f.z,
       label: f.faction === 'expedition' ? `${f.name} · EXPEDITION (INBOUND)` : `${f.name} · ${f.faction === 'soviet' ? 'SOVIET' : 'PRC'} BASE`,
     }));

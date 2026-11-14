@@ -153,6 +153,7 @@ h1, h2, h3 { font-weight: normal; margin: 0; }
 .desk-tag .cur { animation: blink 0.6s steps(2) infinite; }
 /* panels from the other systems keep clear of the desk (its height is published as --desk-h; the wings' tops as
    --desk-wl / --desk-wr; their width as --desk-ww) */
+.fc-ui { z-index: 3; }
 .fc-cat { bottom: calc(var(--desk-h, 0px) + 4px) !important; left: calc(var(--desk-ww, 0px) + 8px) !important; translate: none !important; width: min(calc(980px * var(--tf)), calc(100vw - var(--desk-ww, 0px) - 16px)) !important; }
 .fc-insp { max-height: calc(100vh - var(--desk-wr, 0px) - 70px) !important; }
 .fc-stats { max-height: calc(100vh - var(--desk-wl, 0px) - 30px) !important; }

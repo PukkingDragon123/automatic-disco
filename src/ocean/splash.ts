@@ -53,7 +53,16 @@ export class Splashes {
   dropPod(x: number, z: number, alt = 40) { this.spawnPod(x, z, true, 0, alt); }
   private spawnPod(x: number, z: number, falling: boolean, delay: number, alt = 0) {
     if (this.pod) { this.pod.root.removeFromParent(); }
-    const model = makePod(this.bin), root = new THREE.Group();
+    const root = new THREE.Group();
+    let model: Pod;
+    try { model = makePod(this.bin); }
+    catch (e) {
+      // the pod's own model is unavailable: a plain capsule in the Corps' olive stands in
+      console.warn('ocean: pod model', e);
+      const r = new THREE.Group(), m = this.bin.m(gbuf(new THREE.MeshLambertMaterial({ color: RAMPS.olive[3] }), 1));
+      const hull = new THREE.Mesh(this.bin.g(new THREE.CylinderGeometry(0.5, 1.05, 2.15, 12)), m); hull.position.y = 1.2; r.add(hull);
+      model = { root: r, body: r, hatch: r, setHatch() {}, heat: { value: 0 }, lens: { value: 0 }, setRetro() {}, rcsPorts: [], noseCap: hull, chute: null, addChute() { return null as never; }, setChute() {}, porthole: new THREE.Vector3(), update() {} } as unknown as Pod;
+    }
     root.add(model.root); model.setHatch(0); model.root.scale.setScalar(0.85);
     // the flotation collar: eight inflated cells round the waist, safety amber with dark straps
     const collar = new THREE.Group();

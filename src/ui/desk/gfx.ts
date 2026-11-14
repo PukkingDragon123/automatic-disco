@@ -255,8 +255,8 @@ export class DeskView {
     });
     const tri = new THREE.BufferGeometry(); tri.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
     const q = new THREE.Mesh(tri, this.comp); q.frustumCulled = false; this.cs.add(q);
-    const sd = new THREE.DepthTexture(2048, 1024, THREE.FloatType);
-    this.shRT = new THREE.WebGLRenderTarget(2048, 1024, { depthBuffer: true, depthTexture: sd, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+    const sd = new THREE.DepthTexture(1536, 768, THREE.FloatType);
+    this.shRT = new THREE.WebGLRenderTarget(1536, 768, { depthBuffer: true, depthTexture: sd, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
     SHADOW.t.value = sd;
     this.lightCam.layers.set(2);
     this.canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.ok = false; });

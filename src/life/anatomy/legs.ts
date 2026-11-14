@@ -19,7 +19,7 @@ export function legRings(kind: LegKind, fore: boolean, r: number, tj: number[], 
   const at = (seg: number, f: number) => tj[seg] + (tj[seg + 1] - tj[seg]) * f;
   const up = (m: number) => Math.max(tj[n - 1] + 0.02, 1 - (m / Math.max(1e-6, last)) * (1 - tj[n - 1]));
   const R = (t: number, k: number, e = 1, b?: [number, number, number][], crease?: number, off?: [number, number]): LimbRing => ({ t, r: r * k, e, b, crease, ink: !!crease, off });
-  const top: LimbRing[] = [R(-0.32, 0.8, 1.15, undefined, undefined, [-0.45, 0]), R(-0.1, 1.02, 1.25, [[0, 0.1, 50], [175, 0.2, 50]], undefined, [-0.15, 0])];
+  const top: LimbRing[] = [R(-0.32, 0.8, 1.6, undefined, undefined, [-0.45, 0]), R(-0.1, 1.02, 1.5, [[0, 0.1, 50], [175, 0.2, 50]], undefined, [-0.15, 0])];
   switch (kind) {
     case 'hoof': case 'stilt': {
       const k = kind === 'stilt' ? 0.72 : 1, hh = foot, three = n === 3;
@@ -69,8 +69,8 @@ export function legRings(kind: LegKind, fore: boolean, r: number, tj: number[], 
     }
     case 'bear': case 'knuckle': {
       const kk = kind === 'knuckle' && fore ? 1.18 : 1;
-      return [R(-0.32, 0.82, 1.1, undefined, undefined, [-0.45, 0]),
-        R(-0.1, 1.08 * kk, 1.15, [[0, 0.12, 50], [180, 0.16, 50]], undefined, [-0.15, 0]),
+      return [R(-0.32, 0.82, 1.55, undefined, undefined, [-0.45, 0]),
+        R(-0.1, 1.08 * kk, 1.4, [[0, 0.12, 50], [180, 0.16, 50]], undefined, [-0.15, 0]),
         R(at(0, 0.3), 1.22 * kk, 1.18, [[15, 0.18, 45], [170, 0.2, 45], [-90, -0.04, 40]]),
         R(at(0, 0.72), 0.95 * kk, 1.1, [[10, 0.1, 40], [175, 0.12, 40]]),
         R(tj[1], 0.86 * kk, 1.05, [[0, 0.18, 32], [180, -0.06, 40]], 1),

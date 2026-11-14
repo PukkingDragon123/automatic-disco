@@ -424,7 +424,7 @@ export class TouchControls {
   }
   /** what the desk's pads show: which are held, their lamps (0 off, 1 green, 2 amber), dead caps, the stick */
   state() {
-    const out = { held: {} as Record<string, boolean>, lamp: {} as Record<string, number>, dead: {} as Record<string, boolean>, stick: { x: this.kx, y: this.ky, on: this.stickId !== null }, icon: this.iconKey };
+    const out = { held: {} as Record<string, boolean>, lamp: {} as Record<string, number>, dead: {} as Record<string, boolean>, stick: { x: this.kx / ((this.art.D / 2 - 9) * S), y: this.ky / ((this.art.D / 2 - 9) * S), on: this.stickId !== null }, icon: this.iconKey };
     for (const [id, b] of Object.entries(this.b)) { out.held[id] = b.id !== null; out.lamp[id] = +(b.lampSt || 0); out.dead[id] = b.st === 'd'; }
     return out;
   }
