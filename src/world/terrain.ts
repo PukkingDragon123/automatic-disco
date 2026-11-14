@@ -207,16 +207,18 @@ ${FOW_FN}
 int matAt(vec2 cell) { return int(floor(texture2D(uMat, (clamp(cell, vec2(0.0), vec2(uN - 1.0)) + 0.5) / uN).r * 255.0 + 0.5)); }
 float hAtT(vec2 p) { return texture2D(uHeight, (floor(clamp(p, vec2(0.0), vec2(uN - 0.01))) + 0.5) / uN).r; }
 /** one contender for this texel: its weight, plus how proud its own texel stands (its brightness against its tile's) */
-void contend(int id, float w, float vb, vec2 pc, vec2 gx, vec2 gy, inout float bestS, inout vec4 bestT, inout int bestId) {
+/** (vb picks between the kind's two painted variants the same way: a preference, decided texel by texel) */
+void contend(int id, float w, float pref, float vb, vec2 pc, vec2 gx, vec2 gy, inout float bestS, inout vec4 bestT, inout int bestId) {
   if (w <= 0.015) return;
+  bool two = uLay[id * 2 + 1] != uLay[id * 2];
   for (int v = 0; v < 2; v++) {
-    float wv = v == 0 ? w * (1.0 - vb) : w * vb;
-    if (wv <= 0.015) continue;
+    if (v == 1 && !two) break;
     float lay = uLay[id * 2 + v];
+    if (two && (v == 0 ? vb > 0.8 : vb < 0.2)) continue;
     vec4 t = textureGrad(uBlocks, vec3(pc, lay), gx, gy);
     float l = dot(t.rgb, vec3(0.3, 0.59, 0.11)), a = uAvgL[int(lay)];
     float h = clamp(0.5 + (l - a) / (a + 0.03) * 0.6, 0.0, 1.0);
-    float sc = wv + uHB[id] + (h - 0.5) * 0.55;
+    float sc = w + pref + uHB[id] + (h - 0.5) * 0.55 + (two ? (v == 0 ? 0.5 - vb : vb - 0.5) * 0.6 : 0.0);
     if (sc > bestS) { bestS = sc; bestT = t; bestId = id; }
   }
 }`)
@@ -248,22 +250,23 @@ float dryK = smoothstep(0.42, 0.16, eco.g + (vn(pc * 0.3 + 4.0) - 0.5) * 0.18);
 for (int a = 0; a < 4; a++) {
   int id = ids[a]; float w = ws[a];
   float vb = smoothstep(0.38, 0.62, vn(pc * 0.21 + 9.0 + float(id) * 3.7));
-  if (id == 0) { contend(1, w * dryK, 0.0, pc, gx, gy, bestS, bestT, bestId); w *= 1.0 - dryK; }
-  contend(id, w, vb, pc, gx, gy, bestS, bestT, bestId);
+  float pref = 0.0;
+  if (id == 0) { if (dryK > 0.05) contend(1, w, (dryK - 0.5) * 0.8, 0.0, pc, gx, gy, bestS, bestT, bestId); pref = dryK > 0.05 ? (0.5 - dryK) * 0.8 - 0.0 : 0.0; }
+  contend(id, w, pref, vb, pc, gx, gy, bestS, bestT, bestId);
 }
 if (soft || dom == 4) {
   // dirt breaks through on slopes and along trodden paths, stone on the steeper ones
   float sw = dom == 4 ? 0.0 : smoothstep(0.1, 0.22, slope) * 0.9;
   float pw = smoothstep(0.12, 0.6, eco.b) * (dom == 4 ? 0.0 : 1.05);
-  contend(2, max(sw, pw), 0.0, pc, gx, gy, bestS, bestT, bestId);
-  if (dom != 4) contend(3, smoothstep(0.2, 0.3, slope) * 0.95, 0.5, pc, gx, gy, bestS, bestT, bestId);
+  contend(2, max(sw, pw), 0.0, 0.0, pc, gx, gy, bestS, bestT, bestId);
+  if (dom != 4) contend(3, smoothstep(0.2, 0.3, slope) * 0.95, 0.0, 0.5, pc, gx, gy, bestS, bestT, bestId);
 }
 if (soft) {
   // sand at the waterline and settled in the hollows (mud instead where it is wet), mud where the ground is damp
   float shore = (1.0 - smoothstep(0.04, 0.42, hw)) * (1.0 - smoothstep(0.06, 0.2, slope)) * 0.95;
   float hollow = smoothstep(0.12, 0.4, hol) * 0.75;
-  contend(moist > 0.62 ? 5 : 4, max(shore, hollow), 0.5, pc, gx, gy, bestS, bestT, bestId);
-  contend(5, smoothstep(0.58, 0.92, moist) * 0.92, 0.0, pc, gx, gy, bestS, bestT, bestId);
+  contend(moist > 0.62 ? 5 : 4, max(shore, hollow), 0.0, 0.5, pc, gx, gy, bestS, bestT, bestId);
+  contend(5, smoothstep(0.58, 0.92, moist) * 0.92, 0.0, 0.0, pc, gx, gy, bestS, bestT, bestId);
 }
 vec3 base;
 float glowA;

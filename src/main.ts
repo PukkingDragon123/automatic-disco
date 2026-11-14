@@ -238,6 +238,7 @@ else if (P.get('test') === 'mirror') testMirror();
 else if (P.get('test') === 'studio') testStudio();
 else if (P.get('test') === 'child') testChild();
 else if (P.get('test') === 'game') testGame();
+else if (P.get('test') === 'biotech') import('./biotech/test').then((m) => m.testBiotech(engine, input, P));
 else if (P.get('test') === 'ecosys') import('./eco/test').then((m) => m.testEcosys(engine, input, P));
 else if (P.get('test') === 'factory') import('./factory/test').then((m) => m.testFactory(engine, input, P));
 else if (P.get('test') === 'factions') import('./game/factions/test').then((m) => m.testFactions(engine, input, P));

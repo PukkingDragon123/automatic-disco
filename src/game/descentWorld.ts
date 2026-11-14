@@ -220,7 +220,7 @@ export function buildRegion(W: World) {
 export function buildWater(W: World) {
   const pal = W.pal;
   const m = lit(W.bin, new THREE.Color(pal.water).lerp(new THREE.Color(0x234656), 0.45).getHex(), { phong: true, shininess: 260, flat: false, flag: 0 });
-  (m as THREE.MeshPhongMaterial).specular = new THREE.Color(0x2e3a3e);
+  (m as THREE.MeshPhongMaterial).specular = new THREE.Color(0x182024);
   const w = mesh(W.bin, new THREE.CircleGeometry(22000, 48), m, W.parent, 0, W.R.water - 0.08, 0, false);
   w.rotation.x = -Math.PI / 2; w.receiveShadow = true;
 }

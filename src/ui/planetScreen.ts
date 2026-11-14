@@ -27,6 +27,7 @@ import { Bin, fxMat, mesh, V3, sm, ease, hash, type V } from './deployKit';
 import { makeWorld, buildGround, makeSky, skyAt, dropMarks, assessLZ, slopeAt, type World, type Sky, type LZInfo } from '../game/descentWorld';
 import { clamp, lerp, damp } from '../core/rand';
 import { gbuf } from '../gfx/gbuf';
+import { factionsForRegion } from '../game/factions/plan';
 
 /** an enemy presence inside a region, when the game knows of one (factions): drawn as a scan marker */
 export interface Intel { kind: 'soviet' | 'prc' | 'camp' | 'rival'; x: number; z: number; label: string }
@@ -36,7 +37,8 @@ export interface PlanetOpts {
   onBack: () => void;
   canLand: (r: PRegion) => string | null;
   note?: string;
-  /** enemy bases / camps in a region (none by default: a rival's creep shows when the region is held) */
+  /** enemy bases / camps in a region (default: the factions' own plan, game/factions/plan.ts, the same sites the
+   *  region screen will build them on) */
   intel?: (r: PRegion) => Intel[];
 }
 
@@ -351,7 +353,11 @@ export class PlanetScreen implements Screen {
     }
     // hostiles: a rival's creep when the region is held; enemy bases when the game knows of any
     if (pr.state === 'rival') { const rv = RIVALS[this.planet.seed % RIVALS.length]; add('rival', N - Rg.landing.x, N - Rg.landing.z, `CREEP · ${rv.name.toUpperCase()}`); }
-    for (const it of this.opts.intel?.(pr) ?? []) add(it.kind, it.x, it.z, it.label.toUpperCase());
+    const intel: Intel[] = this.opts.intel?.(pr) ?? factionsForRegion(pr, this.planet).map((f) => ({
+      kind: f.faction === 'soviet' ? 'soviet' as const : f.faction === 'prc' ? 'prc' as const : 'camp' as const, x: f.x, z: f.z,
+      label: f.faction === 'expedition' ? `${f.name} · EXPEDITION (INBOUND)` : `${f.name} · ${f.faction === 'soviet' ? 'SOVIET' : 'PRC'} BASE`,
+    }));
+    for (const it of intel) add(it.kind, it.x, it.z, it.label.toUpperCase());
     add('lz', Rg.landing.x, Rg.landing.z, 'LZ ALPHA (REC.)');
     for (const m of out) m.d = Math.hypot(m.x, m.z);
     return out.sort((a, b) => a.d - b.d);

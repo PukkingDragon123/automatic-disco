@@ -20,7 +20,7 @@ R.setSize(innerWidth, innerHeight); R.shadowMap.enabled = true; R.setScissorTest
 R.outputColorSpace = THREE.SRGBColorSpace;
 const ANG = [[0.05, 0.12], [1.57, 0.1], [3.1, 0.12], [-0.8, 0.3], [0.6, 1.45]];
 const angles = P.get('angles') === '1';
-const shots = (P.get('lineup') === '1' ? [] : angles ? ANG.map(() => cells[0]) : cells).map((spec, ci) => {
+const shots = (P.get('lineup') === '1' || P.get('group') === '1' ? [] : angles ? ANG.map(() => cells[0]) : cells).map((spec, ci) => {
   const yaw = angles ? ANG[ci][0] : yaw0, pit = angles ? ANG[ci][1] : pitch;
   const [kind, seedS, genes] = spec.split(':');
   const seed = Number(seedS ?? 3);
@@ -49,6 +49,26 @@ const shots = (P.get('lineup') === '1' ? [] : angles ? ANG.map(() => cells[0]) :
   console.log(spec, d.name, 'tris', m.geo.index!.count / 3, 'build ms', ms.toFixed(0));
   return { scene, cam };
 });
+// &group=1: the listed species loose on a grass field, seen from a top-down three-quarter camera 30 m off (play scale)
+if (P.get('group') === '1') {
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x2a363e);
+  scene.add(new THREE.HemisphereLight(0xdde8ff, 0x403828, 1.6));
+  const key = new THREE.DirectionalLight(0xfff0dc, 2.6); key.position.set(-6, 12, 8); key.castShadow = true; key.shadow.mapSize.set(2048, 2048);
+  const sc = key.shadow.camera as THREE.OrthographicCamera; sc.left = sc.bottom = -14; sc.right = sc.top = 14; scene.add(key);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshLambertMaterial({ color: 0x4a6a40 })); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+  cells.forEach((spec, i) => {
+    const [kind, seedS] = spec.split(':');
+    const d = wildDesign(kind as Kind, planetPalette(Number(seedS ?? 3), 'amber'), Number(seedS ?? 3) * 100);
+    const m = buildSpeciesModel(d), { mesh, bones } = makeInstance(m), an = new Animator(m.rig, bones, mesh);
+    const a = i * 2.4, rr = 3 + i * 0.75; mesh.position.set(Math.cos(a) * rr, 0, Math.sin(a) * rr); mesh.rotation.y = i * 1.3;
+    scene.add(mesh); mesh.updateMatrixWorld(true);
+    for (let t = 0; t < 0.6; t += 1 / 30) an.update(1 / 30, { speed: 0, turn: 0, state: 'idle', act: 0, lookYaw: 0, lookPitch: 0, ground: () => 0, air: 0 });
+  });
+  const cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.5, 300);
+  cam.position.set(0, 30 * Math.sin(0.85), 30 * Math.cos(0.85)); cam.lookAt(0, 0, 0);
+  R.setViewport(0, 0, innerWidth, innerHeight); R.setScissor(0, 0, innerWidth, innerHeight); R.render(scene, cam);
+  throw new Error('group drawn');
+}
 // &lineup=1: every listed species in one row, side-on, with a 1.8 m human silhouette for scale (like a field-guide sheet)
 if (P.get('lineup') === '1') {
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0x8a9096);

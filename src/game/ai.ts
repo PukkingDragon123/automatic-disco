@@ -59,8 +59,11 @@ function threatOf(c: Creature, w: World): Creature | null {
       const hid = clamp(o.st.stealth * 0.8 + w.eco.coverAt(o.x, o.z) * 0.4, 0, 0.82);
       if (d > (sight * (1 - hid)) ** 2) return;
     }
-    // a fed, resting hunter can be watched from a distance
-    if (!attacking && o.faction === 'wild' && (o.mind === 'sleep' || o.mind === 'eat' || o.mind === 'rest' || o.mind === 'carry') && d > 49) return;
+    // a fed, resting hunter can be watched from a distance; one that is not hunting is only fled when close
+    if (!attacking && o.faction === 'wild') {
+      if ((o.mind === 'sleep' || o.mind === 'eat' || o.mind === 'rest' || o.mind === 'carry') && d > 6.25) return;
+      if (o.mind !== 'hunt' && o.mind !== 'stalk' && o.mind !== 'attack' && d > Math.min(sight * 0.55, 7) ** 2) return;
+    }
     if (d < bd) { bd = d; best = o; }
   });
   return best;
@@ -100,6 +103,7 @@ function curlUp(c: Creature, w: World, by: number) {
 function stillThreatened(c: Creature, w: World, r: number) {
   const th = c.target === GOLEM ? GOLEM_REF.g : w.get(c.target);
   if (!th || (c.target !== GOLEM && (th as Creature).dead)) return false;
+  if (c.target !== GOLEM) { const o = th as Creature; if (o.mind === 'sleep' || o.mind === 'rest' || o.mind === 'eat') return false; }
   return (th.x - c.x) ** 2 + (th.z - c.z) ** 2 < r * r;
 }
 /** a ball's way out: away from the danger and downhill, round water */
@@ -165,8 +169,9 @@ function treeNear(c: Creature, w: World, r: number): [number, number] | null {
 function waterFor(c: Creature, w: World): [number, number] | null {
   let best: [number, number] | null = null, bd = 75 * 75;
   if (c.mem) for (const s of c.mem.water) { const d = (s.x - c.x) ** 2 + (s.z - c.z) ** 2 + dangerAt(c, w, s.x, s.z) * 400; if (d < bd) { bd = d; best = [s.x, s.z]; } }
+  // the animals know their land: the nearest shore, however far
   const sh = w.eco.shoreNear(c.x, c.z);
-  if (sh) { const d = (sh[0] - c.x) ** 2 + (sh[1] - c.z) ** 2 + dangerAt(c, w, sh[0], sh[1]) * 400; if (d < bd * 0.9) best = sh; }
+  if (sh) { const d = (sh[0] - c.x) ** 2 + (sh[1] - c.z) ** 2 + dangerAt(c, w, sh[0], sh[1]) * 400; if (!best || d < bd * 0.9) best = sh; }
   return best;
 }
 /** a den: sheltered (trees, rock), dry, away from danger, near home */
@@ -282,7 +287,7 @@ function thinkWild(c: Creature, w: World) {
   }
   // ---- danger first
   const th = threatOf(c, w);
-  if (th && c.mind === 'curl') { c.target = th.id; return; }
+  if (th && c.mind === 'curl' && c.actT < 14) { c.target = th.id; return; }
   if (th) {
     // cornered predators and big animals fight back; mothers stand over their young
     const young = !!th.target && w.get(th.target)?.mother === c.id;
@@ -359,12 +364,14 @@ function keepGoing(c: Creature, w: World, P: Profile, awake: number): boolean {
     case 'graze': return w.flora.bio[-1 - c.target] > 0.05 && c.actT < 15;
     case 'travel': {
       if (c.actT > 60) return false;
+      // nearly there and taking too long (crowded, blocked): do it here
+      if (c.actT > 20 && dist(c, c.goalX, c.goalZ) < 5 && (c.plan === 'sleep' || c.plan === 'watch' || c.plan === 'rest')) { const p = c.plan; c.plan = null; setMind(c, p); return true; }
       // drop the trip for something urgent
       if (c.plan !== 'drink' && c.thirst > 0.85 || c.plan !== 'eat' && c.energy < 0.1) return false;
       return true;
     }
     case 'follow': return false;
-    case 'curl': return c.actT < 25 && (c.actT < (c.roller ? 3 : 2) || stillThreatened(c, w, c.roller ? c.st.sight * 0.8 : 5));
+    case 'curl': return c.actT < 14 && (c.actT < (c.roller ? 3 : 2) || stillThreatened(c, w, c.roller ? c.st.sight * 0.6 : 5));
   }
   return false;
 }
@@ -398,7 +405,8 @@ function goSleep(c: Creature, w: World, P: Profile): boolean {
       eco.herdSleep.set(c.herd, hs);
     }
     const a = (c.id * 2.399) % TAU, r = 0.8 + c.radius * 2 + (c.id % 3) * 0.7 * P.spread / 5;
-    const x = hs.x + Math.cos(a) * r, z = hs.z + Math.sin(a) * r;
+    let x = hs.x + Math.cos(a) * r, z = hs.z + Math.sin(a) * r;
+    if (w.region.isWater(x, z) || w.region.isSolid(x, z)) { x = hs.x; z = hs.z; }
     if (dist(c, x, z) > 1.6) { travel(c, w, x, z, hs.sentry === c.id ? 'watch' : 'sleep'); return true; }
     if (hs.sentry === c.id) { setMind(c, 'watch'); emote(c, Emote.WATCH, 2); return true; }
     setMind(c, 'sleep'); emote(c, Emote.SLEEP, 3);
@@ -467,7 +475,11 @@ function court(c: Creature, w: World): boolean {
     const d = (o.x - c.x) ** 2 + (o.z - c.z) ** 2;
     if (d < bd) { bd = d; p = o; }
   });
-  if (!p) { c.breedCD = 15 + Math.random() * 15; return false; }
+  if (!p) {
+    // no partner about: small, many-young kinds and lines down to their last few lay or bud alone
+    if (c.mass < 40 || c.st.litter >= 2 || c.sp.alive < 4) { c.preg = c.st.gestation * 0.8; c.breedCD = c.st.gestation * 1.6 + 30; emote(c, Emote.NEST, 2); return true; }
+    c.breedCD = 15 + Math.random() * 15; return false;
+  }
   const o = p as Creature;
   c.mate = o.id; o.mate = c.id; setMind(c, 'mate'); setMind(o, 'mate'); o.plan = null; o.path = null; c.path = null;
   emote(c, Emote.LOVE, 3); emote(o, Emote.LOVE, 3);
@@ -768,7 +780,7 @@ export function act(c: Creature, w: World, dt: number) {
         }
         // big mouths take big bites
         const got = w.flora.eat(p, dt * 0.08 * Math.max(0.4, c.size) * clamp(Math.pow(c.mass / 300, 0.25), 1, 3));
-        const e = got * 0.6 / Math.pow(Math.max(1, c.mass), 0.55);
+        const e = got * 0.6 / Math.pow(Math.max(1, c.faction === 'wild' ? Math.min(c.mass, 450) : c.mass), 0.55);
         c.energy = Math.min(1, c.energy + e);
         if (c.faction === 'wild') {
           c.gut += e; c.thirst = Math.max(0, c.thirst - got * 0.004);
@@ -782,7 +794,7 @@ export function act(c: Creature, w: World, dt: number) {
         c.face(cp.x, cp.z, dt);
         const take = Math.min(cp.bio, dt * (0.6 + c.mass * 0.02));
         cp.bio -= take;
-        c.energy = Math.min(1, c.energy + take * 1.4 / Math.pow(Math.max(1, c.mass), 0.6));
+        c.energy = Math.min(1, c.energy + take * 1.4 / Math.pow(Math.max(1, c.faction === 'wild' ? Math.min(c.mass, 600) : c.mass), 0.6));
         c.gut += take * 0.05;
         if (c.energy > 0.97) c.mind = 'idle';
       }

@@ -95,7 +95,7 @@ export class Radio {
   private show(tag: string, who: string, text: string, f: FactionId | 'calder') {
     if (!this.box || !this.box.isConnected) {
       this.box = el('div', 'fx-radio', ui());
-      this.box.style.cssText = 'position:fixed;left:50%;bottom:calc(150px * var(--s, 1));transform:translateX(-50%);max-width:min(78vw, 720px);pointer-events:none;z-index:19;' +
+      this.box.style.cssText = 'position:fixed;left:50%;bottom:calc(5px * var(--s, 1));transform:translateX(-50%);width:max-content;max-width:min(36vw, 640px);pointer-events:none;z-index:19;' +
         'background:rgba(20,22,27,0.82);border-top:1px solid #3b3a36;border-bottom:1px solid #3b3a36;padding:5px 12px 6px;text-align:center;transition:opacity 300ms steps(4)';
     }
     const col = f === 'soviet' ? '#a2473a' : f === 'prc' ? '#c49580' : f === 'expedition' ? '#c9a464' : '#d9d2bf';

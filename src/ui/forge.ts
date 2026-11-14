@@ -20,8 +20,10 @@ import { LabIcons } from './labIcons';
 import { LabUI, SWATCH, type CardSpec } from './labUI';
 import { CAT_COL } from '../game/dnaHarvest';
 import { thumb } from './thumbs';
+import { BIO, isBio, isPlantGene } from '../life/genesBio';
+import { profileOf, upkeepLabel, suggest, roleScore, sourceNote, labelFor, ROLES, ROLE_NAME, ROLE_SPEC, type Role } from '../biotech/functions';
 import {
-  TABS, TAB_ORDER, REG_TABS, REG_NAME, tabOf, install, remove, invalid, cost, limits, lockReason, ownedPlans, defaultsFor, intoTank, sizeCap, spliceLevel, fxLine, fixSegs, PLAN_NAME,
+  TABS, TAB_ORDER, REG_TABS, REG_NAME, tabOf, install, remove, invalid, cost, limits, funcLimit, lockReason, ownedPlans, defaultsFor, intoTank, sizeCap, spliceLevel, fxLine, fixSegs, PLAN_NAME,
   type TabId, type LabCtx, type Change,
 } from './labRules';
 
@@ -56,6 +58,8 @@ export class Forge implements Screen {
   private canvas: HTMLCanvasElement;
   private prevTouch = '';
   private grade: { bloom: number; vig: number } | null = null;
+  /** the role planner's target */
+  private role: Role = 'producer';
 
   constructor(readonly run: Run, readonly vaults: number, readonly helix: () => number, readonly base: Species | null, readonly done: (r: ForgeResult | null) => void, readonly opts: LabOpts = {}) {
     this.ctx = { run, vaults, helix };
@@ -70,11 +74,14 @@ export class Forge implements Screen {
       slider: (k, v) => this.slider(k, v), color: (k, c) => { (this.d.colors as unknown as Record<string, number>)[k] = c; this.restyle(); }, pattern: (p) => { this.d.pattern = p; this.restyle(); }, cover: (c) => { this.d.cover = c; this.restyle(); },
       shelf: (o) => { if (o) this.fillShelf(); }, jar: (i) => this.loadJar(i), hoverJar: (i) => { this.L.hoverJar = i; },
       saveDisabled: () => invalid(this.ctx, this.d),
+      role: (r) => { this.role = r as Role; this.stats(); },
+      suggest: (id) => this.suggestPick(id),
     });
     this.L.onSay = (i, text) => { const s = this.L.sci[i]; this.ui.say(i, s.name, text, s.col); };
     // the shelves: your designs first, then everything you have absorbed
     this.jarSp = opts.species ?? this.shelfSpecies();
     this.L.setJars([...this.jarSp, ...new Array(Math.max(0, 18 - this.jarSp.length)).fill(null)].slice(0, 18));
+    this.role = ROLES.reduce((a, b) => (roleScore(b, this.d) > roleScore(a, this.d) ? b : a), 'producer' as Role);
     this.L.setSpecimen(this.d, false, true);
     this.openTab('genome', false);
     this.refresh();
@@ -173,7 +180,7 @@ export class Forge implements Screen {
     this.ui.showPaint(t === 'hide', this.d);
     this.cards();
   }
-  private owned(tab: TabId) { return [...this.run.genes.keys()].filter((id) => GENE[id] && tabOf(id) === tab); }
+  private owned(tab: TabId) { return [...this.run.genes.keys()].filter((id) => GENE[id] && tabOf(id) === tab && !isPlantGene(id)); }
   private cards() {
     const d = this.d, t = this.tab;
     const L: CardSpec[] = [];
@@ -183,9 +190,10 @@ export class Forge implements Screen {
       const meta = g.cat === 'body' ? `${LINEAGE_NAMES[g.lineage].toUpperCase()} FRAME` : `${CAT_SHORT[g.cat]} · ${LINEAGE_NAMES[g.lineage].toUpperCase()}`;
       const foreign = g.lineage !== d.lineage && g.cat !== 'body';
       const tag = on ? (t === 'genome' ? '' : g.cat === 'body' ? 'CURRENT' : 'GRAFTED') : why ? 'LOCKED' : foreign ? 'SPLICE' : '';
-      const tip = `<h4>${g.name}</h4>${g.desc}<div class="sub" style="margin-top:3px">${fxLine(g, 6) || 'No direct stat effect.'}</div>`
+      const bio = BIO[id], fnTxt = bio ? this.fnLine(id) : '';
+      const tip = `<h4>${g.name}</h4>${g.desc}${bio ? `<div class="sub" style="margin-top:3px">${fnTxt} · PART: ${bio.anat.part}</div><div class="sub">FROM: ${bio.src.note}</div>` : ''}<div class="sub" style="margin-top:3px">${fxLine(g, 6) || 'No direct stat effect.'}</div>`
         + (why ? `<div class="tip-warn">${why}</div>` : on ? (t === 'genome' ? '<div class="sub">Click to open its body area.</div>' : g.cat === 'body' ? '<div class="sub">The current body plan.</div>' : '<div class="sub">Installed. Click to remove it.</div>') : `<div class="sub">${foreign ? 'Cross-lineage splice. ' : ''}Click to graft it on.</div>`);
-      return { cat: g.cat, foreign, gene: id, name: g.cat === 'body' && g.plan ? PLAN_NAME[g.plan] : g.name, meta, fx: g.cat === 'body' && g.plan ? `${({ hexapod: '6 LEGS', octopod: '8 LEGS', quadruped: '4 LEGS', biped: '2 LEGS', hexapodV: '6 LEGS', hominid: '2 LEGS', serpent: 'NO LEGS', gastropod: 'ONE FOOT' } as Record<string, string>)[g.plan]} · ${g.tier === 3 ? 'RARE' : g.tier === 2 ? 'UNCOMMON' : 'COMMON'}` : fxLine(g), state: on ? 'on' : why ? 'lock' : 'ok', tag, col: CAT_COL[g.cat], lv, tip };
+      return { cat: g.cat, foreign, gene: id, name: g.cat === 'body' && g.plan ? PLAN_NAME[g.plan] : g.name, meta, fx: bio ? fnTxt : g.cat === 'body' && g.plan ? `${({ hexapod: '6 LEGS', octopod: '8 LEGS', quadruped: '4 LEGS', biped: '2 LEGS', hexapodV: '6 LEGS', hominid: '2 LEGS', serpent: 'NO LEGS', gastropod: 'ONE FOOT' } as Record<string, string>)[g.plan]} · ${g.tier === 3 ? 'RARE' : g.tier === 2 ? 'UNCOMMON' : 'COMMON'}` : fxLine(g), state: on ? 'on' : why ? 'lock' : 'ok', tag, col: CAT_COL[g.cat], lv, tip };
     };
     if (t === 'genome') {
       const ids = [...d.genes].filter((id) => GENE[id]).sort((a, b) => TAB_ORDER.indexOf(tabOf(a)) - TAB_ORDER.indexOf(tabOf(b)));
@@ -195,8 +203,8 @@ export class Forge implements Screen {
       const st = (id: string) => { const c = geneCard(id); return c.state === 'on' ? 0 : c.state === 'ok' ? 1 : 2; };
       ids.sort((a, b) => st(a) - st(b) || GENE[a].tier - GENE[b].tier);
       for (const id of ids) L.push(geneCard(id));
-      const unk = GENES.filter((g) => tabOf(g.id) === t && !this.run.has(g.id)).length;
-      if (unk) L.push({ gene: null, name: 'UNSEQUENCED', meta: `${unk} MORE IN THE WILD`, fx: 'ABSORB TO SEQUENCE', state: 'unk', tag: '?', col: 0x3a5a4a, tip: `<h4>Unsequenced</h4>${unk} more ${TABS[t].name.toLowerCase()} gene${unk > 1 ? 's' : ''} exist out there. Absorb the creatures that carry them.` });
+      const unk = GENES.filter((g) => tabOf(g.id) === t && !this.run.has(g.id) && !isPlantGene(g.id)).length;
+      if (unk) L.push({ gene: null, name: 'UNSEQUENCED', meta: `${unk} MORE IN THE WILD`, fx: 'ABSORB TO SEQUENCE', state: 'unk', tag: '?', col: 0x3a5a4a, tip: `<h4>Unsequenced</h4>${unk} more ${TABS[t].name.toLowerCase()} gene${unk > 1 ? 's' : ''} exist out there. Absorb the creatures that carry them.${t === 'works' ? '<div class="sub" style="margin-top:3px">' + GENES.filter((g) => tabOf(g.id) === 'works' && !this.run.has(g.id) && !isPlantGene(g.id)).slice(0, 6).map((g) => `${g.name}: ${BIO[g.id]?.src.note ?? ''}`).join('<br>') + '</div>' : ''}` });
     }
     this.cardList = L;
     const counts: Partial<Record<TabId | 'genome', number>> = { genome: d.genes.length };
@@ -223,6 +231,40 @@ export class Forge implements Screen {
     sfx('build', 1, 0.6);
   }
 
+  // ---------------------------------------------------------------------------------------------- functions and roles
+  private level = (id: string) => this.run.genes.get(id)?.level ?? 1;
+  /** a function organ's line for this specimen: "PASSES 4.2 IRON PELLETS/MIN" */
+  private fnLine(id: string): string {
+    const d = this.d.genes.includes(id) ? this.d : { ...this.d, genes: [...this.d.genes, id] };
+    const f = profileOf(d, this.level).fns.find((x) => x.gene === id);
+    const b = BIO[id];
+    return f ? f.label : b ? (b.fn.group === 'control' ? b.fn.verb : labelFor(b.fn, b.fn.rate)) : '';
+  }
+  private planner(p: ReturnType<typeof pheno>) {
+    const prof = profileOf(this.d, this.level, p);
+    const fns = prof.fns.map((f) => f.label);
+    const ctl = this.d.genes.filter((g) => BIO[g]?.fn.group === 'control').map((g) => GENE[g].name.toUpperCase());
+    if (ctl.length) fns.push(ctl.join(' · '));
+    const sugg = suggest(this.role, this.d, (id) => this.run.has(id), (id) => lockReason(this.ctx, this.d, GENE[id]), sourceNote).map((x) => ({
+      id: x.id, name: x.name, state: (x.installed ? 'on' : !x.owned ? 'unk' : x.why === 'READY TO GRAFT' ? 'ok' : 'lock') as 'on' | 'ok' | 'lock' | 'unk',
+      why: x.installed ? 'GRAFTED' : x.owned ? (x.why === 'READY TO GRAFT' ? 'CLICK TO GRAFT' : x.why.toUpperCase()) : x.why,
+    }));
+    return {
+      fns, upkeep: upkeepLabel(prof) + (prof.docile ? ' · OBEDIENT' : '') + (prof.sterile ? ' · STERILE' : '') + (prof.locked ? ' · LOCKED' : ''),
+      roles: ROLES.map((r) => ({ k: r, name: ROLE_NAME[r], on: r === this.role, score: roleScore(r, this.d) })),
+      sugg, advice: ROLE_SPEC[this.role].advice,
+    };
+  }
+  private suggestPick(id: string) {
+    const g = GENE[id]; if (!g || this.closing) return;
+    if (this.d.genes.includes(id)) { this.openTab(tabOf(id), true); sfx('click'); return; }
+    if (!this.run.has(id)) { sfx('deny'); toast(`${g.name}: ${BIO[id]?.src.note ?? 'absorb the creatures that carry it'}`, 'info', 2800); return; }
+    const why = lockReason(this.ctx, this.d, g);
+    if (why) { sfx('deny'); toast(why, 'warn', 2600); this.L.speak(2, 'bad', true); return; }
+    this.apply(install(this.ctx, this.d, id), id);
+    sfx('build', 1, 0.6);
+  }
+
   // ---------------------------------------------------------------------------------------------- readouts
   private refresh() {
     this.ui.setDesign(this.d, sizeCap(this.ctx));
@@ -246,7 +288,8 @@ export class Forge implements Screen {
       stats: rows.map(([k, v, max, txt]) => ({ k, v: v / max, txt, dn: k === 'UPKEEP' })),
       notes: [...p.warnings, ...(inv ? [inv + '.'] : [])].map((w) => w.replace(/\.$/, '') + '.'), viable: !inv || /helix|Name it/.test(inv),
       splice: splice >= 2 ? 'ANY LINEAGE' : splice === 1 ? 'ORGANS ONLY' : 'ONE LINEAGE',
-      slots: (['limb', 'sense', 'feed', 'defense', 'meta', 'repro'] as GeneCat[]).map((c) => ({ k: CAT_SHORT[c], n: this.d.genes.filter((g) => GENE[g]?.cat === c).length, max: lim[c] })), total: this.d.genes.length,
+      slots: [...(['limb', 'sense', 'feed', 'defense', 'meta', 'repro'] as GeneCat[]).map((c) => ({ k: CAT_SHORT[c], n: this.d.genes.filter((g) => GENE[g]?.cat === c && !isBio(g)).length, max: lim[c] })), { k: 'FUNC', n: this.d.genes.filter((g) => isBio(g)).length, max: funcLimit(this.ctx) }], total: this.d.genes.length,
+      ...this.planner(p),
       cost: `${cost(this.d)} HELIX  (${helix} ON HAND)`, each: `Each grown: ${p.cost} biomass, ${Math.round(st.armor * 60)} minerals, ${p.buildTime.toFixed(0)} s. Splice: ${splice >= 2 ? 'any lineage' : splice === 1 ? 'organs only' : 'one lineage'}${this.run.skills?.has('vat') ? '; vat online' : ''}.`,
       formNo: `No. ${String(this.run.reg.list.length + 1).padStart(4, '0')}`,
     });

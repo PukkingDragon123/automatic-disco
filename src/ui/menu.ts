@@ -40,7 +40,6 @@ const CSS = /* css */`
 .mn3 > * { pointer-events: auto; }
 .mn3 .tag { position: absolute; left: 50%; bottom: calc(6 * var(--u)); transform: translateX(-50%); font-size: var(--cf-vt1); line-height: var(--cf-vt1); color: rgba(189, 181, 159, 0.55); letter-spacing: 1px; white-space: nowrap; pointer-events: none !important; text-shadow: 0 calc(1 * var(--u)) 0 #14161b; }
 .mn3 .tag b { color: #d2cab4; font-weight: normal; }
-@media (max-width: 760px), (pointer: coarse) { .mn3 .tag { display: none; } .mn3 .seed { right: 50%; transform: translateX(50%); bottom: calc(8 * var(--u)); } }
 .mn3 .plt { background: #2f3023; color: #d2cab4; text-shadow: 0 1px 0 #14161b; border: 1px solid #14161b;
   box-shadow: inset calc(1 * var(--u)) calc(1 * var(--u)) 0 #585a40, inset calc(-1 * var(--u)) calc(-1 * var(--u)) 0 #1f2019, calc(3 * var(--u)) calc(3 * var(--u)) 0 rgba(20, 22, 27, 0.6); }
 .mn3 .tipx { position: fixed; display: none; pointer-events: none !important; padding: calc(5 * var(--u)) calc(8 * var(--u)); max-width: calc(170 * var(--u)); animation: mn-in 160ms steps(4); }
@@ -92,6 +91,8 @@ const CSS = /* css */`
 .mn3 .big:hover { background: #a2473a; }
 .mn3 .big:active { transform: translateY(calc(2 * var(--u))); }
 .mn3 .big img { width: calc(18 * var(--u)); height: calc(18 * var(--u)); image-rendering: pixelated; }
+/* phones: no keyboard hint, the seed field centred at the foot */
+@media (max-width: 760px), (pointer: coarse) { .mn3 .tag { display: none; } .mn3 .seed { right: 50%; transform: translateX(50%); bottom: calc(8 * var(--u)); } }
 `;
 let styled = false;
 function style() {
@@ -258,8 +259,8 @@ export class MenuScreen implements Screen {
     });
     if (this.empty) { this.empty.size = Math.min(1, (wx * 1.4) / this.empty.w); this.empty.home.copy(r.pos).addScaledVector(fwd, WORD_D).addScaledVector(r.up, -0.1 * wy); }
     // the apple floats in the open sky above the ship, nearer the camera
-    const ad = 115, ay = ad * tanV, ax = ay * a;
-    this.apple.place(r.pos.clone().addScaledVector(fwd, ad).addScaledVector(r.right, (portrait ? 0.58 : -0.6) * ax).addScaledVector(r.up, (portrait ? 0.08 : 0.52) * ay));
+    const ad = portrait ? 160 : 115, ay = ad * tanV, ax = ay * a;
+    this.apple.place(r.pos.clone().addScaledVector(fwd, ad).addScaledVector(r.right, (portrait ? 0.6 : -0.6) * ax).addScaledVector(r.up, (portrait ? 0.17 : 0.52) * ay));
     // the archive: the worlds in a row across the view, nearer than the ship
     const n = this.worlds.length, gd = 110, gy = gd * tanV, gx = gy * a;
     this.worlds.forEach((w, i) => {

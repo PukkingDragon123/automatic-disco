@@ -10,15 +10,18 @@ import { GN_DECL } from '../gfx/gbuf';
 import { SHADER_NOISE, FOW_FN, WIND_FN } from './glsl';
 
 /**
- * Per-plant state texture (2 texels per plant, 512 wide):
+ * Per-plant state texture (3 texels per plant, 512 wide):
  *   A = (bio, graft 0..1, dissolve 0..1, grow 0..1)
  *   B = (tint r, tint g, tint b, faction * 64 + tint amount * 63)
+ *   C = (trap closure 0..1 (snap traps, sundews), -, -, -)
  */
 export const STATE_W = 512;
 const STATE_FN = /* glsl */`
 uniform sampler2D uState;
-vec4 stateA(float id) { if (id < -0.5) return vec4(1.0, 0.0, 0.0, 1.0); int i = int(id + 0.5) * 2; return texelFetch(uState, ivec2(i % ${STATE_W}, i / ${STATE_W}), 0); }
-vec4 stateB(float id) { if (id < -0.5) return vec4(0.0); int i = int(id + 0.5) * 2 + 1; return texelFetch(uState, ivec2(i % ${STATE_W}, i / ${STATE_W}), 0); }
+vec4 stateA(float id) { if (id < -0.5) return vec4(1.0, 0.0, 0.0, 1.0); int i = int(id + 0.5) * 3; return texelFetch(uState, ivec2(i % ${STATE_W}, i / ${STATE_W}), 0); }
+vec4 stateB(float id) { if (id < -0.5) return vec4(0.0); int i = int(id + 0.5) * 3 + 1; return texelFetch(uState, ivec2(i % ${STATE_W}, i / ${STATE_W}), 0); }
+vec4 stateC(float id) { if (id < -0.5) return vec4(0.0); int i = int(id + 0.5) * 3 + 2; return texelFetch(uState, ivec2(i % ${STATE_W}, i / ${STATE_W}), 0); }
+bool isK(float k, float v) { return abs(k - v) < 0.5; }
 `;
 
 /** grafted plants (game/hive.ts): steel sheathes the plant from the root up, riveted bands, crystal facets, veins
@@ -90,7 +93,7 @@ float cutAt(vec3 P, vec3 C) {
 const VERT_PARS_3D = /* glsl */`
 attribute vec4 aW; attribute vec4 aP;
 attribute vec4 iA; attribute vec4 iB;
-uniform float uTime, uN, uH, uFlex, uPushK, uGround, uBob;
+uniform float uTime, uN, uH, uFlex, uPushK, uGround, uBob, uDay;
 uniform vec3 uCamPos; uniform vec4 uLod3;
 uniform sampler2D uMoss, uField;
 uniform vec3 uBloom[8];
@@ -120,12 +123,25 @@ vUp = clamp(position.y / max(0.05, uH), 0.0, 1.0);
 float grow = sA.a * (uGround > 0.5 ? (1.0 - wither) : (1.0 - wither * 0.45) * step(0.02, bio));
 vec3 p = position;
 float kind = aP.w;
-// petals open and close a little through the day; pods, bulbs and caps breathe round their pivot
-if ((kind > 1.5 && kind < 2.5) || kind > 6.5) {
-  vec3 d = p - aP.xyz; float o = 0.5 + 0.5 * sin(t * 0.45 + ph + aW.w * 1.5); float k = mix(0.84, 1.06, o);
-  d.xz *= k; d.y += (1.0 - k) * length(d.xz) * 0.9; p = aP.xyz + d;
-} else if (kind > 2.5 && kind < 4.5 && dot(aP.xyz, aP.xyz) > 0.0) {
+// petals open by day and close at night; pods, bulbs and caps breathe round their pivot; trap lobes snap shut on
+// their hinge and tentacles curl in when prey comes near (closure from the per-plant state)
+float closure = stateC(iB.y).r;
+if (isK(kind, 2.0) || isK(kind, 7.0)) {
+  vec3 d = p - aP.xyz; float o = clamp(uDay * 1.15 - 0.05, 0.0, 1.0) * (0.96 + 0.04 * sin(t * 0.45 + ph + aW.w * 1.5));
+  float k = mix(0.32, 1.0, o);
+  d.xz *= k; d.y += (1.0 - k) * length(d.xz) * 1.1; p = aP.xyz + d;
+} else if ((isK(kind, 3.0) || isK(kind, 4.0)) && dot(aP.xyz, aP.xyz) > 0.0) {
   p = aP.xyz + (p - aP.xyz) * (1.0 + sin(t * 1.4 + ph) * (kind < 3.5 ? 0.06 : 0.018));
+} else if (isK(kind, 8.0)) {
+  float az = aW.w * 6.2831; vec3 ax = vec3(cos(az), 0.0, sin(az));
+  float c0 = cos(aW.z * closure * 0.95), s0 = sin(aW.z * closure * 0.95);
+  vec3 d = p - aP.xyz; p = aP.xyz + d * c0 + cross(ax, d) * s0 + ax * dot(ax, d) * (1.0 - c0);
+} else if (isK(kind, 9.0)) {
+  float az = aW.w * 6.2831; vec3 ax = vec3(cos(az), 0.0, sin(az)); float a = (closure * 1.3 + 0.12 * sin(t * 0.8 + ph)) * aW.z;
+  float c0 = cos(a), s0 = sin(a);
+  vec3 d = p - aP.xyz; p = aP.xyz + d * c0 + cross(ax, d) * s0 + ax * dot(ax, d) * (1.0 - c0);
+} else if (isK(kind, 11.0)) {
+  p.y += sin(t * 1.7 + ph + p.x * 20.0) * 0.002;
 }
 p *= sc * grow;
 float Hh = max(0.05, uH * sc * grow);
@@ -148,7 +164,7 @@ float a0 = dot(p.xz, bd), cth = cos(th), sth = sin(th);
 float a1 = a0 * cth + p.y * sth, y1 = -a0 * sth + p.y * cth;
 p.xz += bd * (a1 - a0); p.y = y1;
 // leaves and petals flutter in the gusts
-if (kind > 0.5 && kind < 3.5 || kind > 6.5) p += nW * sin(t * (7.0 + seed * 4.0) + aW.w * 37.0 + base.x * 1.3) * aW.z * 0.022 * (0.3 + wnd.z) * uWind * min(1.0, Hh);
+if ((kind > 0.5 && kind < 3.5) || isK(kind, 7.0) || isK(kind, 10.0)) p += nW * sin(t * (7.0 + seed * 4.0) + aW.w * 37.0 + base.x * 1.3) * aW.z * (isK(kind, 10.0) ? 0.035 : 0.022) * (0.3 + wnd.z) * uWind * min(1.0, Hh);
 p.y += sin(t * 1.2 + ph) * 0.02 * uBob;
 vec3 transformed = base + p;
 vWorld = transformed;
@@ -157,7 +173,8 @@ float cd = distance(uCamPos, base);
 vFade = vec2(smoothstep(uLod3.x, uLod3.y, cd), smoothstep(uLod3.z, uLod3.w, cd));
 `;
 const FRAG_PARS_3D = /* glsl */`
-uniform sampler2D uBark, uVis; uniform float uN, uTime, uGround; uniform vec3 uDark; uniform vec3 uGraftCol[4];
+uniform sampler2D uBark, uVis; uniform float uN, uTime, uGround, uDay; uniform vec3 uDark; uniform vec3 uGraftCol[4];
+bool isK(float k, float v) { return abs(k - v) < 0.5; }
 varying float vWither, vUp, vTr, vTintK; varying vec2 vFade; varying vec3 vWorld;
 varying vec4 vGraft; varying vec3 vBase, vLocal, vTint, vBloom;
 flat varying float vKind;
@@ -173,7 +190,7 @@ if (bay >= vFade.x || bay < vFade.y) discard;
 bool barkK = vKind < 0.5 || (vKind > 4.5 && vKind < 5.5);
 vec4 tB = texture2D(uBark, vMapUv), tA = texture2D(map, vMapUv);
 vec4 texel = barkK ? tB : tA;
-if (!barkK && !(vKind > 3.5 && vKind < 4.5) && !(vKind > 5.5 && vKind < 6.5)) {
+if (!barkK && !isK(vKind, 4.0) && !isK(vKind, 6.0) && !isK(vKind, 11.0)) {
   vec2 dd = fwidth(vMapUv) * 1024.0;
   float al = texel.a * (1.0 + max(0.0, log2(max(max(dd.x, dd.y), 1.0))) * 0.3);
   if (al < 0.5) discard;
@@ -197,9 +214,9 @@ export function plant3dMaterial(U: FloraUniforms, atlas: THREE.Texture, local: {
       .replace('void main() {', GN_DECL + 'void main() {')
       .replace('#include <map_fragment>', `${FRAG_TEX_3D}
 if (distance(vWorld, uCamPos) < 1.5) discard;
-if (uGround < 0.5 && ((vKind > 0.5 && vKind < 2.5) || vKind > 6.5) && stip(gl_FragCoord.xy, cutAt(vWorld, uCamPos)) > 0.5) discard;
+if (uGround < 0.5 && (isK(vKind, 1.0) || isK(vKind, 2.0) || isK(vKind, 7.0) || isK(vKind, 10.0)) && stip(gl_FragCoord.xy, cutAt(vWorld, uCamPos)) > 0.5) discard;
 diffuseColor.rgb *= texel.rgb;
-if (vKind > 6.5) diffuseColor.rgb *= vBloom * 1.25;
+if (isK(vKind, 7.0)) diffuseColor.rgb *= vBloom * 1.25;
 float lumW = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumW) * vec3(0.62, 0.5, 0.36), vWither * 0.85);
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumW) * vTint * 1.7, vTintK);
@@ -207,17 +224,21 @@ diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumW) * vec3(0.95, 0.85, 0.55), vT
 ${GRAFT_3D}`)
       .replace('#include <normal_fragment_begin>', `float faceDirection = gl_FrontFacing ? 1.0 : -1.0;
 vec3 normal = normalize(vNormal + vec3(0.0, 1e-5, 0.0));
-if (vKind < 0.5 || (vKind > 3.5 && vKind < 6.5)) normal *= faceDirection;
+if (vKind < 0.5 || (vKind > 3.5 && vKind < 6.5) || isK(vKind, 11.0)) normal *= faceDirection;
 vec3 nonPerturbedNormal = normal;`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-float sss = ((vKind > 0.5 && vKind < 3.5) || vKind > 6.5) ? 0.17 : 0.05;
+float night = 1.0 - uDay;
+float sss = ((vKind > 0.5 && vKind < 3.5) || (vKind > 6.5 && vKind < 10.5)) ? 0.17 : 0.05;
 totalEmissiveRadiance += diffuseColor.rgb * sss * (1.0 - vWither * 0.6) + graftE;
-if (vKind > 2.5 && vKind < 3.5) totalEmissiveRadiance += diffuseColor.rgb * (0.85 + 0.3 * sin(uTime * 1.4 + vBase.x * 2.0)) * (1.0 - vWither);
-if (vKind > 5.5 && vKind < 6.5) totalEmissiveRadiance += diffuseColor.rgb * 0.5;`)
+// lures and glowing tissue: dim by day, bright at night
+if (isK(vKind, 3.0)) totalEmissiveRadiance += diffuseColor.rgb * (0.35 + 1.0 * night) * (0.85 + 0.3 * sin(uTime * 1.4 + vBase.x * 2.0)) * (1.0 - vWither);
+if (isK(vKind, 6.0)) totalEmissiveRadiance += diffuseColor.rgb * (0.4 + 0.4 * night);
+if (isK(vKind, 10.0)) totalEmissiveRadiance += diffuseColor.rgb * (0.12 + 0.55 * night);
+if (isK(vKind, 11.0)) totalEmissiveRadiance += diffuseColor.rgb * 0.25;`)
       .replace('#include <dithering_fragment>', `#include <dithering_fragment>
 gl_FragColor.rgb = applyFow(gl_FragColor.rgb, vBase);
 float outl = (vKind < 0.5 || (vKind > 3.5 && vKind < 4.5)) ? 1.0 : 0.0;
-float emit = ((vKind > 2.5 && vKind < 3.5) || (vKind > 5.5 && vKind < 6.5) || dot(graftE, graftE) > 0.04) ? 32.0 : 0.0;
+float emit = (isK(vKind, 3.0) || isK(vKind, 6.0) || (isK(vKind, 10.0) && uDay < 0.5) || dot(graftE, graftE) > 0.04) ? 32.0 : 0.0;
 gNormal = vec4(inverseTransformDirection(normal, viewMatrix) * 0.5 + 0.5, outl + emit);`);
   };
   m.customProgramCacheKey = () => 'oddworld-flora3d';

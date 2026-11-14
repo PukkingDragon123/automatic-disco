@@ -77,6 +77,8 @@ export class Programme implements SOwner {
   waves: Wave[] = [];
   private scout: { u: Unit; t: number; seen: boolean } | null = null;
   private landed = false; private hitT = -99;
+  /** structures to raise before the build order (the start kit after a mid-game landing) */
+  private queue: SKind[] = [];
 
   constructor(readonly F: Factions, readonly site: FactionSite) {
     this.f = site.faction as 'soviet' | 'prc';
@@ -116,6 +118,8 @@ export class Programme implements SOwner {
       ? `That was a lander, Seven. Red star on the hull. The Soviets are down to the ${compass(this.x - px, this.z - pz)}.`
       : `Another lander, Seven, to the ${compass(this.x - px, this.z - pz)}. Chinese markings. They'll spread fast.`);
     for (const k of this.P.startUnits.slice(0, 3)) this.spawn(k, this.hq!);
+    this.queue = [...this.P.start];
+    this.res += 120;
   }
 
   // ------------------------------------------------------------------ tick
@@ -150,13 +154,22 @@ export class Programme implements SOwner {
   private build() {
     const busy = this.structures.filter((s) => !s.dead && s.built < 1).length;
     if (busy >= this.P.parallel) return;
-    const P = this.P;
-    const kind = this.orderI < P.order.length ? P.order[this.orderI] : P.loop[(this.orderI - P.order.length) % P.loop.length];
     if (this.structures.filter((s) => !s.dead).length >= 22) return;
-    const cost = kind === 'miner' ? P.minerCost : SDEF[kind].cost;
+    const kind = this.nextBuild(), cost = this.costOf(kind);
     if (this.res < cost) return;
     if (this.placeNext(kind, false)) { this.res -= cost; }
-    this.orderI++;
+    if (this.queue.length) this.queue.shift(); else this.orderI++;
+  }
+  private nextBuild(): SKind {
+    const P = this.P;
+    return this.queue[0] ?? (this.orderI < P.order.length ? P.order[this.orderI] : P.loop[(this.orderI - P.order.length) % P.loop.length]);
+  }
+  private costOf(k: SKind) { return k === 'miner' ? this.P.minerCost : SDEF[k].cost; }
+  /** what production must leave in the coffers for the next structure (none while the army is tiny) */
+  private reserve() {
+    const alive = this.units.filter((u) => !u.dead).length;
+    if (alive < 4 || this.structures.filter((s) => !s.dead && s.built < 1).length >= this.P.parallel) return 0;
+    return this.costOf(this.nextBuild()) * (this.f === 'soviet' ? 0.9 : 0.6);
   }
   /** pick a site for a structure of this kind and raise it */
   private placeNext(kind: SKind, instant: boolean): FStructure | null {
@@ -229,7 +242,7 @@ export class Programme implements SOwner {
       const titans = this.units.filter((u) => u.kind === 'sov_titan').length + [...this.producing.values()].filter((j) => j.kind === 'sov_titan').length;
       if (kind === 'sov_titan' && titans >= (this.t > 1100 ? 2 : 1)) kind = 'sov_tank';
       const cost = this.P.unitCost[kind] ?? 40;
-      if (this.res < cost) continue;
+      if (this.res - cost < this.reserve()) continue;
       this.res -= cost;
       this.producing.set(p, { kind, t: (this.P.unitTime[kind] ?? 12) * (p.kind === 'lander' ? 1.6 : 1) / Math.sqrt(this.strength) });
     }

@@ -416,7 +416,7 @@ export class EcoView {
   private row(r: CensusRow, i: number) {
     const st = r.status.toUpperCase(), cls = r.status === 'extinct' || r.status === 'declining' || r.status === 'endangered' ? 'red' : r.status === 'booming' ? 'amb' : '';
     const hrs = r.sched === 'day' ? 'DAY' : r.sched === 'night' ? 'NIGHT' : r.sched === 'dusk' ? 'DUSK' : '';
-    const role = (r.guild || r.role || '').toUpperCase().slice(0, 9);
+    const role = (GUILD[r.guild] ?? r.role ?? '').toUpperCase();
     const tag = r.introduced ? ' <i>INTRO.</i>' : '';
     return `<tr class="${r.alive ? '' : 'gone'}"><td>${r.name.toUpperCase()}${tag}</td><td>${role}</td><td>${hrs}</td><td class="n">${r.alive}${r.young ? `<small>+${r.young}j</small>` : ''}</td><td><canvas class="es-spark" width="40" height="12" data-i="${i}"></canvas></td><td class="n">${r.born}/${r.died}</td><td><span class="es-st ${cls}" style="transform:rotate(${((r.id * 37) % 7) - 3}deg)">${st}</span></td></tr>`;
   }
@@ -437,6 +437,7 @@ export class EcoView {
   }
 }
 
+const GUILD: Record<string, string> = { grazer: 'GRAZER', browser: 'BROWSER', predator: 'HUNTER', scavenger: 'SCAVENGER', decomposer: 'RECYCLER', forager: 'FORAGER' };
 /** legend per mode: band fills (light to dark of the theme), contour inks and labels */
 const LEG: Record<Exclude<OverlayMode, 'off'>, { title: string; fill: string[]; line: string[]; labels: string[] }> = {
   water: {
@@ -461,16 +462,16 @@ function injectStyle() {
   if (styled) return; styled = true;
   const st = document.createElement('style');
   st.textContent = `
-  .eco-sheet { position: fixed; right: calc(10px * var(--s, 1)); top: calc(58px * var(--s, 1)); width: calc(318px * var(--s, 1)); z-index: 11; pointer-events: auto;
-    background-color: #d9d2bf; color: #3b3a36; font-family: 'VT', monospace; font-size: calc(7px * var(--s, 1)); line-height: calc(9px * var(--s, 1));
-    padding: calc(9px * var(--s, 1)) calc(10px * var(--s, 1)) calc(8px * var(--s, 1)); transform: rotate(-0.6deg);
-    background-image: repeating-linear-gradient(0deg, transparent 0, transparent calc(9px * var(--s, 1) - 1px), #9fb4c2 calc(9px * var(--s, 1) - 1px), #9fb4c2 calc(9px * var(--s, 1)));
-    box-shadow: calc(2px * var(--s, 1)) calc(3px * var(--s, 1)) 0 #2b2a27; border-left: calc(14px * var(--s, 1)) solid #d2cab4; }
-  .eco-sheet::before { content: ''; position: absolute; left: calc(-9px * var(--s, 1)); top: calc(18px * var(--s, 1)); width: calc(4px * var(--s, 1)); height: calc(4px * var(--s, 1)); background: #8c8471; box-shadow: 0 calc(90px * var(--s, 1)) 0 #8c8471, 0 calc(180px * var(--s, 1)) 0 #8c8471; }
+  .eco-sheet { position: fixed; right: calc(8px * var(--s, 1)); top: calc(52px * var(--s, 1)); width: calc(232px * var(--s, 1)); z-index: 11; pointer-events: auto;
+    background-color: #d9d2bf; color: #3b3a36; font-family: 'VT', monospace; font-size: calc(5px * var(--s, 1)); line-height: calc(7px * var(--s, 1));
+    padding: calc(7px * var(--s, 1)) calc(8px * var(--s, 1)) calc(6px * var(--s, 1)); transform: rotate(-0.6deg);
+    background-image: repeating-linear-gradient(0deg, transparent 0, transparent calc(7px * var(--s, 1) - 1px), #9fb4c2 calc(7px * var(--s, 1) - 1px), #9fb4c2 calc(7px * var(--s, 1)));
+    box-shadow: calc(2px * var(--s, 1)) calc(3px * var(--s, 1)) 0 #2b2a27; border-left: calc(11px * var(--s, 1)) solid #d2cab4; }
+  .eco-sheet::before { content: ''; position: absolute; left: calc(-9px * var(--s, 1)); top: calc(16px * var(--s, 1)); width: calc(4px * var(--s, 1)); height: calc(4px * var(--s, 1)); background: #8c8471; box-shadow: 0 calc(70px * var(--s, 1)) 0 #8c8471, 0 calc(140px * var(--s, 1)) 0 #8c8471; }
   .eco-sheet::after { content: ''; position: absolute; right: calc(28px * var(--s, 1)); top: calc(-5px * var(--s, 1)); width: calc(34px * var(--s, 1)); height: calc(10px * var(--s, 1)); background: #bdb59f; opacity: 0.85; transform: rotate(3deg); }
   .eco-sheet u { text-decoration: none; border-bottom: 1px solid #3b3a36; padding: 0 2px; }
   .es-top { display: flex; justify-content: space-between; letter-spacing: 1px; color: #67645c; }
-  .es-title { font-size: calc(10px * var(--s, 1)); line-height: calc(13px * var(--s, 1)); letter-spacing: 1px; margin: calc(2px * var(--s, 1)) 0 calc(3px * var(--s, 1)); }
+  .es-title { font-size: calc(8px * var(--s, 1)); line-height: calc(10px * var(--s, 1)); letter-spacing: 1px; margin: calc(2px * var(--s, 1)) 0 calc(3px * var(--s, 1)); }
   .es-meta { white-space: nowrap; overflow: hidden; }
   .es-t { width: 100%; border-collapse: collapse; margin-top: calc(5px * var(--s, 1)); }
   .es-t th { text-align: left; font-weight: normal; color: #67645c; border-bottom: 1px solid #3b3a36; }
@@ -479,7 +480,7 @@ function injectStyle() {
   .es-t td small { color: #67645c; font-size: 0.85em; margin-left: 1px; }
   .es-t td i { font-style: normal; color: #b8382e; font-size: 0.85em; }
   .es-t tr.gone td { color: #8c8471; text-decoration: line-through; text-decoration-color: #3b3a36; }
-  .es-t canvas { width: calc(40px * var(--s, 1)); height: calc(12px * var(--s, 1)); image-rendering: pixelated; vertical-align: middle; }
+  .es-t canvas { width: calc(30px * var(--s, 1)); height: calc(9px * var(--s, 1)); image-rendering: pixelated; vertical-align: middle; }
   .es-st { display: inline-block; padding: 0 2px; border: 1px solid #3b3a36; color: #3b3a36; font-size: 0.9em; line-height: 1.1; opacity: 0.85; }
   .es-st.red { color: #b8382e; border-color: #b8382e; }
   .es-st.amb { color: #a47b42; border-color: #a47b42; }
@@ -487,7 +488,7 @@ function injectStyle() {
   .es-notes { margin-top: calc(4px * var(--s, 1)); font-family: 'Pixelify', monospace; color: #1f232b; transform: rotate(0.5deg); }
   .es-nh { font-family: 'VT', monospace; color: #67645c; letter-spacing: 1px; }
   .es-foot { margin-top: calc(4px * var(--s, 1)); text-align: right; color: #8c8471; }
-  .es-x { position: absolute; right: calc(6px * var(--s, 1)); top: calc(4px * var(--s, 1)); cursor: pointer; font-size: calc(11px * var(--s, 1)); color: #67645c; }
+  .es-x { position: absolute; right: calc(5px * var(--s, 1)); top: calc(2px * var(--s, 1)); cursor: pointer; font-size: calc(9px * var(--s, 1)); color: #67645c; }
   `;
   document.head.appendChild(st);
 }

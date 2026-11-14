@@ -241,7 +241,7 @@ const BUILD: Record<string, Build> = {
     k.on(hips);
     k.box(0, 0, 0, 0.22, 0.08, 0.13, 'pb0', { ch: 0.015 });
     k.box(0, -0.03, 0.07, 0.12, 0.06, 0.02, c.A(1), { ch: 0.004 });
-    for (const s of [-1, 1]) c.leg(hips, s * 0.09, -0.03, 0, { lt: 0.22, ls: 0.22, w: 0.06, foot: 'pad', ph: s > 0 ? 0 : Math.PI, hipH: hipY - 0.03, side: s });
+    for (const s of [-1, 1]) c.leg(hips, s * 0.09, -0.03, 0, { lt: 0.25, ls: 0.25, w: 0.075, foot: 'pad', ph: s > 0 ? 0 : Math.PI, hipH: hipY - 0.03, side: s });
     const torso = G(hips, 0, 0.06, 0, 'torso'); m.turret = torso;
     k.on(hips).cyl(0, 0.05, 0, 0.05, 0.055, 0.03, 10, 'st0');
     k.on(torso);
@@ -435,7 +435,7 @@ const BUILD: Record<string, Build> = {
     const hips = G(m.body, 0, hipY, 0, 'hips');
     k.on(hips).box(0, 0, 0, 0.26, 0.09, 0.15, 'pb0', { ch: 0.006 });
     k.rivets([-0.12, 0.03, 0.076], [0.12, 0.03, 0.076], 8, 0.006, 'z');
-    for (const s of [-1, 1]) c.leg(hips, s * 0.11, -0.03, 0, { lt: 0.22, ls: 0.24, w: 0.07, foot: 'pad', ph: s > 0 ? 0 : Math.PI, hipH: hipY - 0.03, side: s, angular: true });
+    for (const s of [-1, 1]) c.leg(hips, s * 0.11, -0.03, 0, { lt: 0.255, ls: 0.27, w: 0.085, foot: 'pad', ph: s > 0 ? 0 : Math.PI, hipH: hipY - 0.03, side: s, angular: true });
     const torso = G(hips, 0, 0.06, 0, 'torso'); m.turret = torso;
     k.on(torso);
     k.push(0, 0.16, 0, 0, Math.PI / 2, 0).prism(0, 0, 0, [[-0.13, -0.14], [0.12, -0.14], [0.16, 0.0], [0.08, 0.16], [-0.12, 0.16]], 0.34, 'pa0', { capReg: 'pa2' }).pop();
@@ -508,7 +508,7 @@ const BUILD: Record<string, Build> = {
     const hips = G(m.body, 0, hipY, 0, 'hips');
     k.on(hips).box(0, 0, 0, 0.6, 0.18, 0.36, 'pb0', { ch: 0.02 });
     k.rivets([-0.27, 0.06, 0.181], [0.27, 0.06, 0.181], 12, 0.01, 'z');
-    for (const s of [-1, 1]) c.leg(hips, s * 0.27, -0.06, 0, { lt: 0.5, ls: 0.55, w: 0.16, foot: 'pad', ph: s > 0 ? 0 : Math.PI, hipH: hipY - 0.06, side: s, angular: true });
+    for (const s of [-1, 1]) c.leg(hips, s * 0.27, -0.06, 0, { lt: 0.56, ls: 0.6, w: 0.17, foot: 'pad', ph: s > 0 ? 0 : Math.PI, hipH: hipY - 0.06, side: s, angular: true });
     const tower = G(hips, 0, 0.1, 0, 'tower'); m.turret = tower;
     k.on(tower);
     k.push(0, 0.35, 0, 0, Math.PI / 2, 0).prism(0, 0, 0, [[-0.3, -0.35], [0.26, -0.35], [0.34, -0.05], [0.2, 0.35], [-0.28, 0.35]], 0.7, 'pa0', { capReg: 'pa2' }).pop();
@@ -576,7 +576,7 @@ const BUILD: Record<string, Build> = {
     const hipY = 0.52;
     const hips = G(m.body, 0, hipY, 0, 'hips');
     k.on(hips).lathe(0, -0.04, 0, [[0.06, 0], [0.11, 0.02], [0.115, 0.06], [0.07, 0.09]], 12, 'pb0');
-    for (const s of [-1, 1]) c.leg(hips, s * 0.085, -0.02, 0, { lt: 0.23, ls: 0.24, w: 0.055, foot: 'pad', ph: s > 0 ? 0 : Math.PI, hipH: hipY - 0.02, side: s, paint: 1 });
+    for (const s of [-1, 1]) c.leg(hips, s * 0.085, -0.02, 0, { lt: 0.26, ls: 0.27, w: 0.065, foot: 'pad', ph: s > 0 ? 0 : Math.PI, hipH: hipY - 0.02, side: s, paint: 1 });
     const torso = G(hips, 0, 0.06, 0, 'torso'); m.turret = torso;
     k.on(torso);
     k.lathe(0, 0, 0, [[0.07, 0], [0.12, 0.06], [0.135, 0.16], [0.12, 0.27], [0.07, 0.31], [0.04, 0.32]], 14, 'pa0', { regs: ['pb0', 'pa0', 'pa0', 'pas', 'pas'] });

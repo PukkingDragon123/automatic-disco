@@ -31,6 +31,7 @@ import { FloraField } from './floraField';
 import { Batch, CH } from './floraBatch';
 import { plant3dMaterial, cardMaterial, STATE_W } from './floraGL';
 import { settings, onSettings, type Quality } from '../settings';
+import { daylight } from '../game/daylight';
 
 /** spare instance slots for plants sown during play */
 const SPARE = 320;
@@ -123,7 +124,7 @@ export class Flora {
       uLodAsh: { value: new THREE.Vector4() }, uLodBsh: { value: new THREE.Vector4() }, uLodG: { value: new THREE.Vector4() },
       uMoss: { value: moss }, uVis: { value: vis }, uDark: { value: new THREE.Color(0x07080c) },
       uField: { value: this.field.tex }, uBark: { value: this.tex.bark },
-      uFocus: { value: new THREE.Vector3() }, uCut: { value: new THREE.Vector4(0, 2.2, 3.4, 0) },
+      uFocus: { value: new THREE.Vector3() }, uCut: { value: new THREE.Vector4(0, 2.2, 3.4, 0) }, uDay: { value: 1 },
       uWindDir: { value: new THREE.Vector2(Math.cos(region.seed * 1.7), Math.sin(region.seed * 1.7)) }, uWind: { value: WIND[region.biome.key] ?? 1 },
       uGraftCol: { value: [VEYR.vein, ...RIVALS.map((r) => r.vein)].slice(0, 4).map((c) => new THREE.Color(c)) },
       uBloom: { value: Array.from({ length: 8 }, (_, i) => new THREE.Color(pal.bloom[i % pal.bloom.length]).convertSRGBToLinear()) },
@@ -133,9 +134,9 @@ export class Flora {
     this.stats.tPlace = performance.now() - tq; tq = performance.now();
     const cap = inst.length + SPARE;
     // per-plant state (2 texels each)
-    const rows = Math.ceil((cap * 2) / STATE_W);
+    const rows = Math.ceil((cap * 3) / STATE_W);
     this.state = new Uint8Array(STATE_W * rows * 4);
-    for (let i = 0; i < this.n; i++) { this.state[i * 8] = 255; this.state[i * 8 + 3] = 255; }
+    for (let i = 0; i < this.n; i++) { this.state[i * 12] = 255; this.state[i * 12 + 3] = 255; }
     this.stateTex = new THREE.DataTexture(this.state, STATE_W, rows, THREE.RGBAFormat, THREE.UnsignedByteType);
     this.stateTex.magFilter = this.stateTex.minFilter = THREE.NearestFilter; this.stateTex.generateMipmaps = false; this.stateTex.flipY = false;
     this.stateTex.needsUpdate = true; this.stateTex.onUpdate = () => { this.stateUp = true; };
@@ -429,6 +430,7 @@ export class Flora {
     const dt = this.lastT < 0 ? 1 / 60 : Math.max(0, Math.min(0.1, t - this.lastT));
     this.lastT = t;
     this.U.uTime.value = t;
+    this.U.uDay.value = daylight.k;
     const e = cam.matrixWorld.elements;
     const right = this.U.uCamRight.value as THREE.Vector3, back = this.U.uCamBack.value as THREE.Vector3;
     right.set(e[0], 0, e[2]).normalize();
@@ -572,10 +574,10 @@ export class Flora {
     return take * this.species[this.sp[i]].food;
   }
   private sset(i: number, texel: number, ch: number, v: number) {
-    const o = (i * 2 + texel) * 4 + ch, b = Math.max(0, Math.min(255, Math.round(v)));
+    const o = (i * 3 + texel) * 4 + ch, b = Math.max(0, Math.min(255, Math.round(v)));
     if (this.state[o] === b) return;
     this.state[o] = b;
-    const row = ((i * 2 + texel) / STATE_W) | 0;
+    const row = ((i * 3 + texel) / STATE_W) | 0;
     if (row < this.stateRows[0]) this.stateRows[0] = row;
     if (row > this.stateRows[1]) this.stateRows[1] = row;
   }

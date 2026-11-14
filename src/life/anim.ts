@@ -240,7 +240,8 @@ export class Animator {
       const flying = inp.state === 'fly';
       const f = flying ? Math.sin(this.t * (rig.plan === 'hexapod' ? 46 : 11) + (i >> 1)) * 0.8 : 0;
       // at rest the hand-wing folds back along the flank, its membrane gathered
-      B[w].quaternion.setFromEuler(_e.set(0, flying ? s * 0.9 : s * 1.15, -s * (flying ? f : 0.42)));
+      const fold = rig.plan !== 'hexapod' && rig.plan !== 'octopod';
+      B[w].quaternion.setFromEuler(_e.set(0, flying ? s * 0.9 : fold ? s * 1.15 : 0, -s * (flying ? f : fold ? 0.42 : 0.06)));
     });
     // blinks: now and then (sometimes twice), shut by a blow, stunned flutters, half-shut in death
     if (rig.lids.length) {
