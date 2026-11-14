@@ -20,7 +20,7 @@ import { Vfx2D, setLiveVfx, type LandKind, type VfxName } from './vfx2d';
 import { WATER_FX, RIPPLES, WAKES } from '../world/water';
 import { B } from '../world/blockTex';
 import { gbuf, GN_DECL } from '../gfx/gbuf';
-import { RES_COL } from './combat';
+import { RAMPS, type RampName } from '../art/palette';
 import { clamp } from '../core/rand';
 
 const TAU = Math.PI * 2;
@@ -176,21 +176,31 @@ class Prints {
   }
 }
 
-/** how the ground takes a print: depth multiplier, the colour pressed in, rim brightening, seconds it lasts */
-interface Soil { k: number; r: number; g: number; b: number; rim: number; life: number; dust: number }
+/** how the ground takes a print: depth, the colour it is pressed down to and the lit rim, seconds it lasts, and the
+ *  ramp its dust is drawn in. The darkening is the ground ramp's own shadow step over its mid step (palette-true). */
+interface Soil { k: number; r: number; g: number; b: number; rim: number; life: number; dust: RampName | null }
+const lin = (c: number) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+function soil(ramp: RampName, k: number, life: number, dust: RampName | null, deep = 2): Soil {
+  const r = RAMPS[ramp], L = r.length, mid = Math.min(L - 2, Math.round((L - 1) * 0.62)), lo = Math.max(0, mid - deep), hi = Math.min(L - 1, mid + 1);
+  const ch = (c: number, s: number) => lin((c >> s) & 255);
+  const q = (s: number) => clamp(ch(r[lo], s) / Math.max(1e-3, ch(r[mid], s)), 0.25, 1);
+  const rim = (ch(r[hi], 16) + ch(r[hi], 8) + ch(r[hi], 0)) / Math.max(1e-3, ch(r[mid], 16) + ch(r[mid], 8) + ch(r[mid], 0));
+  return { k, r: q(16), g: q(8), b: q(0), rim: 1 + (rim - 1) * 0.6, life, dust };
+}
 const SOIL: Record<number, Soil> = {
-  [B.MUD]: { k: 1, r: 0.5, g: 0.46, b: 0.42, rim: 1.1, life: 80, dust: 0 },
-  [B.SAND]: { k: 0.95, r: 0.7, g: 0.64, b: 0.56, rim: 1.16, life: 55, dust: 0xf0dcb0 },
-  [B.SNOW]: { k: 1, r: 0.64, g: 0.72, b: 0.9, rim: 1.08, life: 110, dust: 0xf4f8ff },
-  [B.SOIL]: { k: 0.8, r: 0.64, g: 0.58, b: 0.52, rim: 1.08, life: 45, dust: 0xc8aa88 },
-  [B.CLAY]: { k: 0.85, r: 0.62, g: 0.56, b: 0.5, rim: 1.08, life: 60, dust: 0xd0a888 },
-  [B.LITTER]: { k: 0.6, r: 0.7, g: 0.64, b: 0.58, rim: 1.04, life: 30, dust: 0 },
-  [B.DRY]: { k: 0.5, r: 0.78, g: 0.74, b: 0.62, rim: 1.1, life: 22, dust: 0xd8c898 },
-  [B.GRASS]: { k: 0.42, r: 0.74, g: 0.8, b: 0.66, rim: 1.06, life: 16, dust: 0 },
-  [B.GRAVEL]: { k: 0.22, r: 0.78, g: 0.76, b: 0.74, rim: 1.04, life: 10, dust: 0xb8b0a4 },
-  [B.CRATER]: { k: 0.3, r: 0.7, g: 0.68, b: 0.7, rim: 1.04, life: 20, dust: 0x9a96a0 },
+  [B.MUD]: soil('soil', 1, 80, null, 3),
+  [B.SAND]: soil('sand', 0.95, 55, 'sand'),
+  [B.SNOW]: soil('snow', 1, 110, 'snow'),
+  [B.SOIL]: soil('soil', 0.8, 45, 'soil'),
+  [B.CLAY]: soil('clay', 0.85, 60, 'clay'),
+  [B.LITTER]: soil('ochre', 0.6, 30, null),
+  [B.DRY]: soil('straw', 0.5, 22, 'straw', 1),
+  [B.GRASS]: soil('moss', 0.42, 16, null, 1),
+  [B.GRAVEL]: soil('stone', 0.22, 10, 'stone', 1),
+  [B.CRATER]: soil('slate', 0.3, 20, 'slate', 1),
 };
-const WET_PRINT: Soil = { k: 0.85, r: 0.56, g: 0.58, b: 0.64, rim: 1.0, life: 16, dust: 0 };
+const WET_PRINT: Soil = { ...soil('slate', 0.85, 16, null, 2), rim: 1 };
+const BLOOD_PRINT = soil('blood', 0.9, 45, null, 2), ICHOR_PRINT = soil('ichor', 0.9, 45, null, 2);
 
 // ------------------------------------------------------------------------------------------------ floating debris
 function debrisTex(kind: 'leaf' | 'twig') {
@@ -288,7 +298,7 @@ export class Details {
     this.vfx = new Vfx2D(w.fxScene);
     setLiveVfx(this.vfx);
     this.vfx.ground = (x, z) => this.surface(x, z);
-    this.vfx.onLand = (x, y, z, kind, size, tint) => this.landed(x, y, z, kind, size, tint);
+    this.vfx.onLand = (x, y, z, kind, size, ramp) => this.landed(x, y, z, kind, size, ramp);
     this.prints = new Prints(w.scene);
     this.flow = this.buildFlow();
     // debris: leaves and twigs on the water, lit and outlined like everything else
@@ -362,12 +372,12 @@ export class Details {
     this.vfx.drops(x, y + 0.05, z, o.drops ?? Math.round(4 + size * 8), { speed: 0.8 + size * 1.6, up: 1.6 + size * 2.4, scale: clamp(0.8 + size * 0.6, 0.8, 2) });
     this.ripple(x, z, clamp(0.5 + size * 0.8, 0.4, 1.6));
   }
-  private landed(x: number, _y: number, z: number, kind: LandKind, size: number, tint: THREE.Color) {
+  private landed(x: number, _y: number, z: number, kind: LandKind, size: number, ramp: RampName) {
     const R = this.g.region;
     if (R.isWater(x, z)) { this.vfx.play('ripple', x, this.waterY(x, z) + 0.012, z, { scale: clamp(size * 3.2, 0.18, 0.6), speed: 1.3 }); return; }
     const y = R.heightAt(x, z), s = clamp(size * 1.2, 0.05, 0.16);
-    if (kind === 'blood') this.prints.add(x, y, z, Math.random() * TAU, s * 1.6, s * 1.6, Foot.BLOOD, 0.9, 45, this.t, tint.r * 0.7 + 0.08, tint.g * 0.7 + 0.04, tint.b * 0.7 + 0.04, 1);
-    else { this.prints.add(x, y, z, Math.random() * TAU, s, s, Foot.SPOT, 0.85, 9, this.t, 0.62, 0.64, 0.7, 1); if (kind === 'splash') this.vfx.play('rainhit', x, y + 0.02, z, { scale: 0.8 }); }
+    if (kind === 'blood') { const bp = ramp === 'ichor' ? ICHOR_PRINT : BLOOD_PRINT; this.prints.add(x, y, z, Math.random() * TAU, s * 1.6, s * 1.6, Foot.BLOOD, bp.k, bp.life, this.t, bp.r, bp.g, bp.b, 1); }
+    else { this.prints.add(x, y, z, Math.random() * TAU, s, s, Foot.SPOT, 0.85, 9, this.t, WET_PRINT.r, WET_PRINT.g, WET_PRINT.b, 1); if (kind === 'splash') this.vfx.play('rainhit', x, y + 0.02, z, { scale: 0.8 }); }
   }
 
   // ------------------------------------------------------------------ events -> hand-drawn effects
@@ -382,36 +392,36 @@ export class Details {
     });
     g.on('throw', () => {
       const p = golem(); if (!p) return;
-      v.play('dust', p.x, this.surface(p.x, p.z) + 0.05, p.z, { scale: 0.5, tint: this.dustTint(p.x, p.z) });
+      v.play('dust', p.x, this.surface(p.x, p.z) + 0.05, p.z, { scale: 0.5, ramp: this.dustRamp(p.x, p.z) });
     });
     g.on('gather', (d: { res?: string; x?: number; y?: number; z?: number }) => {
       if (d?.x === undefined || this.t - this.gatherT < 0.12) return;
       this.gatherT = this.t;
-      v.play('sparkle', d.x, (d.y ?? this.surface(d.x, d.z ?? 0)) + 0.15, d.z ?? 0, { scale: 0.6, tint: (RES_COL as Record<string, number>)[d.res ?? ''] ?? 0xfff0a0 });
+      v.play('sparkle', d.x, (d.y ?? this.surface(d.x, d.z ?? 0)) + 0.15, d.z ?? 0, { scale: 0.6, ramp: d.res === 'water' || d.res === 'carbon' ? 'glowTeal' : 'glowAmber' });
     });
     g.on('graft', (d: { x?: number; z?: number }) => {
       if (d?.x === undefined || d.z === undefined) return;
       const y = this.surface(d.x, d.z);
       v.play('leaves', d.x, y + 0.35, d.z, { scale: 1.1 });
-      v.play('sparkle', d.x, y + 0.4, d.z, { scale: 1, tint: 0x9affd8, delay: 0.1 });
+      v.play('sparkle', d.x, y + 0.4, d.z, { scale: 1, ramp: 'glowTeal', delay: 0.1 });
     });
-    const glow = (n: number, tint: number) => {
+    const glow = (n: number, ramp: RampName) => {
       const p = golem(); if (!p) return;
-      for (let i = 0; i < n; i++) v.play(i % 2 ? 'glint' : 'sparkle', p.x + rnd(-0.3, 0.3), p.y + p.height * rnd(0.3, 1.2), p.z + rnd(-0.3, 0.3), { scale: i % 2 ? 1.2 : 0.8, tint, delay: i * 0.08 });
+      for (let i = 0; i < n; i++) v.play(i % 2 ? 'glint' : 'sparkle', p.x + rnd(-0.3, 0.3), p.y + p.height * rnd(0.3, 1.2), p.z + rnd(-0.3, 0.3), { scale: i % 2 ? 1.2 : 0.8, ramp, delay: i * 0.08 });
     };
-    g.on('absorb', () => glow(5, 0x9affd8));
-    g.on('skill', () => glow(4, 0xfff0a0));
-    g.on('convert', () => glow(3, 0xc8b0ff));
+    g.on('absorb', () => glow(5, 'glowTeal'));
+    g.on('skill', () => glow(4, 'glowAmber'));
+    g.on('convert', () => glow(3, 'glowTeal'));
     g.on('placed', (b: { x?: number; z?: number }) => {
       if (b?.x === undefined || b.z === undefined) return;
       const y = this.surface(b.x, b.z);
-      v.play('poof', b.x, y + 0.4, b.z, { scale: 1.4, tint: this.dustTint(b.x, b.z) });
-      v.play('shock', b.x, y + 0.03, b.z, { scale: 1.2, tint: this.dustTint(b.x, b.z) });
+      v.play('poof', b.x, y + 0.4, b.z, { scale: 1.4, ramp: this.dustRamp(b.x, b.z) });
+      v.play('shock', b.x, y + 0.03, b.z, { scale: 1.2, ramp: this.dustRamp(b.x, b.z) });
     });
     g.on('birth', (kid: Creature) => {
       if (!kid) return;
-      v.play('sparkle', kid.x, kid.y + kid.size * 0.4, kid.z, { scale: 0.8, tint: 0x9affd8 });
-      v.play('dust', kid.x, kid.y + 0.04, kid.z, { scale: 0.5, tint: this.dustTint(kid.x, kid.z) });
+      v.play('sparkle', kid.x, kid.y + kid.size * 0.4, kid.z, { scale: 0.8, ramp: 'glowTeal' });
+      v.play('dust', kid.x, kid.y + 0.04, kid.z, { scale: 0.5, ramp: this.dustRamp(kid.x, kid.z) });
     });
   }
   private damaged(c: Creature, amt: number, by: Creature | null) {
@@ -421,22 +431,23 @@ export class Details {
     if (w.time - c.golemHit < 0.08) return;
     const last = this.hitT.get(c) ?? -9;
     const y = c.y + c.air + c.sp.pheno.height * c.growth * 0.5;
-    const blood = c.sp.design.lineage === 'arthropod' ? 0x7ac040 : 0xb01e14;
+    const blood: RampName = c.sp.design.lineage === 'arthropod' ? 'ichor' : 'blood';
     if (by && amt >= 1.5 && this.t - last > 0.15) {
       this.hitT.set(c, this.t);
       const k = clamp(0.45 + c.size * 0.35, 0.45, 1.6);
       const dx = c.x - by.x, dz = c.z - by.z;
       this.vfx.play('impact', c.x - dx * 0.2, y, c.z - dz * 0.2, { scale: k * 0.8, rot: Math.random() * TAU });
-      this.vfx.play('blood', c.x, y, c.z, { scale: k, tint: blood, rot: Math.random() * TAU, flip: Math.random() < 0.5, delay: 0.04 });
-      this.vfx.drops(c.x, y, c.z, 3 + Math.round(k * 3), { tint: blood, land: 'blood', speed: 1.4, up: 1.6, scale: 1.2 });
+      this.vfx.play('blood', c.x, y, c.z, { scale: k, ramp: blood, rot: Math.random() * TAU, flip: Math.random() < 0.5, delay: 0.04 });
+      this.vfx.drops(c.x, y, c.z, 3 + Math.round(k * 3), { ramp: blood, land: 'blood', speed: 1.4, up: 1.6, scale: 1.2 });
     } else if (this.t - last > 0.6 && Math.random() < 0.35) {
       this.hitT.set(c, this.t);
-      this.vfx.drops(c.x, y, c.z, 1, { tint: blood, land: 'blood', speed: 0.6, up: 0.8, scale: 1.1 });
+      this.vfx.drops(c.x, y, c.z, 1, { ramp: blood, land: 'blood', speed: 0.6, up: 0.8, scale: 1.1 });
     }
   }
-  private dustTint(x: number, z: number) {
+  /** the ramp loose ground kicks up in */
+  private dustRamp(x: number, z: number): RampName {
     const R = this.g.region, b = R.b[clamp(Math.floor(z), 0, R.N - 1) * R.N + clamp(Math.floor(x), 0, R.N - 1)];
-    return SOIL[b]?.dust || 0xd8ccb8;
+    return SOIL[b]?.dust ?? 'soil';
   }
 
   // ------------------------------------------------------------------ per frame
@@ -511,7 +522,7 @@ export class Details {
           this.deadSeen.add(c);
           if (near && c.mesh.visible) {
             if (inW) this.splash(c.x, c.z, c.size * 0.7);
-            else this.vfx.play('dust', c.x, this.surface(c.x, c.z) + 0.05, c.z, { scale: clamp(0.5 + c.size * 0.7, 0.5, 2.6), tint: this.dustTint(c.x, c.z), delay: 0.25 });
+            else this.vfx.play('dust', c.x, this.surface(c.x, c.z) + 0.05, c.z, { scale: clamp(0.5 + c.size * 0.7, 0.5, 2.6), ramp: this.dustRamp(c.x, c.z), delay: 0.25 });
           }
         }
         s.inWater = inW;
@@ -580,7 +591,7 @@ export class Details {
     const so = SOIL[b];
     if (so?.dust && c.mass > 40 && (s.dustT -= 1) <= 0 && s.wet < 0.2 && this.wetGround < 0.3) {
       s.dustT = 2;
-      this.vfx.play('dust', x, R.heightAt(x, z) + 0.04, z, { scale: clamp(0.35 + Math.cbrt(c.mass) * 0.07, 0.4, 1.5), tint: so.dust, flip: lg.side < 0 });
+      this.vfx.play('dust', x, R.heightAt(x, z) + 0.04, z, { scale: clamp(0.35 + Math.cbrt(c.mass) * 0.07, 0.4, 1.5), ramp: so.dust, flip: lg.side < 0 });
     }
   }
   /** press a print into whatever ground is at (x, z) */
@@ -627,14 +638,14 @@ export class Details {
         const b = R.b[clamp(Math.floor(p.z), 0, R.N - 1) * R.N + clamp(Math.floor(p.x), 0, R.N - 1)], so = SOIL[b];
         const k = so ? 0.35 + so.k * 0.35 : 0.25;
         this.prints.add(p.x, y, p.z, Math.atan2(p.vx, p.vz), p.radius * 2.6, p.radius * 2.6, Foot.SCUFF, k, 7, this.t, so ? so.r : 0.82, so ? so.g : 0.82, so ? so.b : 0.84, so ? so.rim : 1.05, _n);
-        if (p.wet > 0.15) this.prints.add(p.x + rnd(-0.1, 0.1), y, p.z + rnd(-0.1, 0.1), Math.random() * TAU, 0.08, 0.08, Foot.SPOT, p.wet, 8, this.t, 0.62, 0.64, 0.7, 1, _n);
+        if (p.wet > 0.15) this.prints.add(p.x + rnd(-0.1, 0.1), y, p.z + rnd(-0.1, 0.1), Math.random() * TAU, 0.08, 0.08, Foot.SPOT, p.wet, 8, this.t, WET_PRINT.r, WET_PRINT.g, WET_PRINT.b, 1, _n);
       }
       const b = R.b[clamp(Math.floor(p.z), 0, R.N - 1) * R.N + clamp(Math.floor(p.x), 0, R.N - 1)], so = SOIL[b];
       if (so?.dust && sp > 2.2 && this.wetGround < 0.3 && (this.gDust -= dt) <= 0) {
         this.gDust = 0.22;
-        this.vfx.play('dust', p.x - p.vx * 0.08, R.heightAt(p.x, p.z) + 0.03, p.z - p.vz * 0.08, { scale: 0.45, tint: so.dust, flip: Math.random() < 0.5 });
+        this.vfx.play('dust', p.x - p.vx * 0.08, R.heightAt(p.x, p.z) + 0.03, p.z - p.vz * 0.08, { scale: 0.45, ramp: so.dust, flip: Math.random() < 0.5 });
       }
-      if ((b === B.GRASS || b === B.LITTER) && sp > 3 && (this.gLeaf -= dt) <= 0) { this.gLeaf = rnd(0.5, 1.2); this.vfx.play('leaves', p.x, R.heightAt(p.x, p.z) + 0.25, p.z, { scale: 0.7, tint: b === B.LITTER ? 0xd8a060 : 0xffffff }); }
+      if ((b === B.GRASS || b === B.LITTER) && sp > 3 && (this.gLeaf -= dt) <= 0) { this.gLeaf = rnd(0.5, 1.2); this.vfx.play('leaves', p.x, R.heightAt(p.x, p.z) + 0.25, p.z, { scale: 0.7, ramp: b === B.LITTER ? 'rust' : 'moss' }); }
     }
     // dripping after a dip
     if (!over && p.wet > 0.12) {

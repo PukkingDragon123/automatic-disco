@@ -195,3 +195,14 @@ export function tidy(pc: PixelCanvas) {
 }
 /** every colour onto the master palette (alpha kept) */
 export const toPalette = (pc: PixelCanvas) => snapRGBA(pc.data);
+
+// ------------------------------------------------------------------------------------------------ ramp steps
+const STEP = new Map<number, [readonly number[], number]>();
+for (const r of Object.values(RAMPS)) r.forEach((c, i) => { if (!STEP.has(c)) STEP.set(c, [r, i]); });
+/** the same colour d steps lighter (+) or darker (-) along its own master ramp (snapped first if off-palette) */
+export function step(c: number, d: number): number {
+  let e = STEP.get(c);
+  if (!e) { e = STEP.get(snapColor(c)); if (!e) return c; }
+  const [r, i] = e; return r[Math.max(0, Math.min(r.length - 1, i + d))];
+}
+import { snap as snapColor } from '../art/palette';

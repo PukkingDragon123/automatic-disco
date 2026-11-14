@@ -2,6 +2,7 @@
 // reads from it so a world is cohesive. The Veyr's own moss is constant: it is the player's signature colour.
 import { Rand } from '../core/rand';
 import { rgbToHsl, hslToHex, toRGB } from '../limbo/gfx/pixel';
+import { snap } from '../art/palette';
 
 export interface Palette {
   key: string; name: string;
@@ -100,15 +101,20 @@ const SAT_CAP: Record<string, number> = {
   grass: 0.46, grassDry: 0.46, soil: 0.4, sand: 0.42, clay: 0.5, sky: 0.55, horizon: 0.5,
 };
 
-/** a planet's palette: a curated base, slightly jittered so no two planets match */
+/** light colours stay free (they light the scene) but calmer; every material colour lands on the master palette */
+const LIGHTS = new Set(['sky', 'horizon', 'fog', 'sun', 'ambient', 'groundLight', 'star']);
+
+/** a planet's palette: a curated base, slightly jittered so no two planets match, then every material colour snapped
+ *  onto the master palette (src/art/palette.ts) so terrain, plants and ground cover share its low-saturation ramps */
 export function planetPalette(seed: number, key?: string): Palette {
   const r = new Rand(seed ^ 0x51ed);
   const base = key ? BASES.find((b) => b.key === key) ?? BASES[0] : BASES[seed % BASES.length];
   const out: any = { ...base };
   for (const k of Object.keys(base)) {
     const v = (base as any)[k], cap = SAT_CAP[k] ?? 0.42;
-    if (typeof v === 'number') out[k] = mute(jitter(v, r), cap);
-    else if (Array.isArray(v)) out[k] = v.map((c: number) => mute(jitter(c, r, 0.025, 0.06, 0.045), cap));
+    const f = (c: number) => (LIGHTS.has(k) ? mute(c, Math.min(cap, 0.32)) : snap(mute(c, cap)));
+    if (typeof v === 'number') out[k] = f(jitter(v, r));
+    else if (Array.isArray(v)) out[k] = v.map((c: number) => f(jitter(c, r, 0.025, 0.06, 0.045)));
   }
   return out as Palette;
 }
