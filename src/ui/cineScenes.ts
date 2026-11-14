@@ -91,7 +91,7 @@ export async function opening(c: Cinema, S: Story) {
   });
   c.ui.fade(1, 0);
   await c.wait(0.4);
-  await c.card('RECOVERY TEAM', 'STATION FOUR · DAY 21 AFTER IMPACT', 'U.S. PLANETARY CORPS', 3.4, 'CLASSIFIED');
+  await c.card('RECOVERY TEAM', 'STATION FOUR · 3 HOURS AFTER IMPACT', 'U.S. PLANETARY CORPS', 3.4, 'CLASSIFIED');
   // ---- 1. Recovery One comes down out of a pale sky
   let alt = 42;
   const engine = c.loop('engine', 0.8), wind = c.loop('drone', 0.35);
