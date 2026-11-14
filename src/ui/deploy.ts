@@ -436,3 +436,31 @@ export async function testDeploy(engine: Engine, input: Input, P: URLSearchParam
   go();
   engine.start();
 }
+
+/** ?test=planet: the orbital survey screen over a stand-in planet; picking a drop point runs the deployment.
+ *  &seed, &region (index: dive into it at once), &later, &skills */
+export async function testPlanet(engine: Engine, input: Input, P: URLSearchParams) {
+  (await import('./kit')).setupUI();
+  const { makePlanet } = await import('../world/planet');
+  const { Run } = await import('../game/run');
+  const { PlanetScreen } = await import('./planetScreen');
+  const seed = Number(P.get('seed') ?? 7);
+  const planet = makePlanet(seed);
+  if (P.has('rival')) planet.regions[1].state = 'rival';
+  const run = new Run(seed);
+  for (const id of (P.get('skills') ?? '').split(',')) if (id) run.skills.owned.add(id);
+  const orbit = () => {
+    const ps = new PlanetScreen(planet, {
+      canLand: (r) => (r.state === 'veyr' ? 'Already yours.' : r.state === 'lost' ? 'Burnt out. Nothing will take root here again.' : null),
+      onBack: () => console.log('planet: back'), note: 'A NEW WORLD. CHOOSE WHERE TO FALL.',
+      onLand: (r, lz, region) => engine.setScreen(new DeployScreen(engine, input, {
+        planet, region: r, run, landings: P.has('later') ? 2 : 0, lz, regionData: region, hold: P.get('hold'), phase: P.get('phase'),
+        onDone: (res) => { console.log('deploy result', JSON.stringify(res)); setTimeout(orbit, 1500); },
+      })),
+    });
+    engine.setScreen(ps);
+    if (P.has('region')) (ps as any).choose(planet.regions[Number(P.get('region'))]);
+  };
+  orbit();
+  engine.start();
+}

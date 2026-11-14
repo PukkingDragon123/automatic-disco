@@ -3,11 +3,13 @@
 // offspring at a new world. The run (genes, designs, helix, the planet's map) is saved between regions.
 import type { Engine } from './app/engine';
 import type { Input } from './app/input';
-import { Game } from './game/game';
+import { Game, type GameOpts } from './game/game';
 import { openLab } from './ui/forge';
 import { TreeScreen } from './ui/tree';
 import { openSkillTree } from './ui/skillTree';
 import { PlanetScreen } from './ui/planetScreen';
+import { DeployScreen, type DeployResult } from './ui/deploy';
+import type { Region } from './world/region';
 import { MenuScreen, AscendScreen, type ArchiveEntry } from './ui/menu';
 import { BabyEditor } from './ui/babyEditor';
 import { loadLook } from './game/babyLook';
@@ -80,18 +82,27 @@ export class Flow {
     const p = this.planet!;
     this.engine.setScreen(new PlanetScreen(p, {
       canLand: (r) => (r.state === 'veyr' ? 'Already yours.' : r.state === 'lost' ? 'Burnt out. Nothing will take root here again.' : null),
-      onLand: (r) => this.land(r), onBack: () => this.menu(), note,
+      onLand: (r, lz, region) => this.deploy(r, lz, region), onBack: () => this.menu(), note,
+    }));
+  }
+
+  /** the drop: the carrier's launch and the controllable descent (ui/deploy.ts), then the region itself */
+  private deploy(r: PRegion, lz?: { x: number; z: number }, region?: Region) {
+    this.engine.setScreen(new DeployScreen(this.engine, this.input, {
+      planet: this.planet!, region: r, run: this.run, landings: this.landings, lz, regionData: region,
+      onDone: (res) => this.land(r, res),
     }));
   }
 
   // ------------------------------------------------------------------ a region
-  private land(r: PRegion) {
+  private land(r: PRegion, drop?: DeployResult) {
     const p = this.planet!, run = this.run!;
     this.landings++;
     for (const s of run.reg.list) s.alive = 0;
     const engine = this.engine;
-    const g: Game = new Game(engine, this.input, {
-      seed: r.seed, biome: r.biome, pal: p.palKey, regionName: r.name, run, story: this.landings === 1,
+    // landing: where the pod came down (GameOpts takes it once game.ts reads opts.landing; see ui/deploy.ts)
+    const gopts: GameOpts & { landing?: { x: number; z: number } } = {
+      seed: r.seed, biome: r.biome, pal: p.palKey, regionName: r.name, run, story: this.landings === 1, landing: drop?.landing ?? undefined,
       hooks: {
         openBuilder: (game) => openLab(engine, game),
         openLab: (game) => openLab(engine, game),
@@ -104,10 +115,12 @@ export class Flow {
         onWin: (game) => this.won(game, r),
         onLose: (game) => this.lost(game, r),
       },
-    });
+    };
+    const g: Game = new Game(engine, this.input, gopts);
     g.veyr.res.helix += run.helix;
     engine.setScreen(g);
     if (this.landings > 1) toast(`You fall on <b>${r.name}</b>. Everything you have absorbed came with you.`, 'story', 5000);
+    if (drop?.bonus) toast(`Drop ${drop.grade === 'BULLSEYE' ? '<b>dead on the pin</b>' : 'scored'}: ${drop.bonus.toLowerCase()}.`, 'good', 6000);
   }
   private result(title: string, sub: string, lines: string[], btn: string, then: () => void) {
     const p = panel('choice', ui(), 'dark');
