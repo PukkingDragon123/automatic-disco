@@ -82,10 +82,11 @@ function sovLander(name: string): SModel {
   k.cone(0.75, 0.9, [0, 0.95, 0], L.dark, 12, [Math.PI, 0, 0]);
   for (let i = 0; i < 4; i++) { const a = (i * Math.PI) / 2; k.cone(0.3, 0.55, [Math.cos(a) * 1.1, 1.1, Math.sin(a) * 1.1], SS[2], 8, [Math.PI, 0, 0]); }
   // service drum
-  k.cyl(2.2, 2.2, 1.9, [0, 2.35, 0], L.hull, 8);
-  k.cyl(2.28, 2.28, 0.14, [0, 1.42, 0], L.hull2, 8); k.cyl(2.28, 2.28, 0.14, [0, 3.28, 0], L.hull2, 8);
-  k.rivetRing(0, 1.6, 0, 2.2, 32, SS[5]); k.rivetRing(0, 3.12, 0, 2.2, 32, SS[5]);
-  for (let i = 0; i < 8; i++) { const a = (i * Math.PI) / 4 + Math.PI / 8; k.box(0.05, 1.75, 0.05, [Math.cos(a) * 2.07, 2.35, Math.sin(a) * 2.07], L.hull2, [0, -a, 0]); }
+  const D8 = -Math.PI / 8; // drum faces centred on 0, 45, 90... degrees
+  k.cyl(2.2, 2.2, 1.9, [0, 2.35, 0], L.hull, 8, [0, D8, 0]);
+  k.cyl(2.28, 2.28, 0.14, [0, 1.42, 0], L.hull2, 8, [0, D8, 0]); k.cyl(2.28, 2.28, 0.14, [0, 3.28, 0], L.hull2, 8, [0, D8, 0]);
+  k.rivetPoly(0, 1.6, 0, 2.2, 8, 5, SS[5], D8); k.rivetPoly(0, 3.12, 0, 2.2, 8, 5, SS[5], D8);
+  for (let i = 0; i < 8; i++) { const a = D8 + (i * Math.PI) / 4; k.box(0.07, 1.75, 0.07, [Math.sin(a) * 2.2, 2.35, Math.cos(a) * 2.2], L.hull2, [0, a, 0]); }
   // fuel spheres strapped to the drum
   for (let i = 0; i < 4; i++) { const a = (i * Math.PI) / 2 + Math.PI / 4; k.ball(0.55, [Math.cos(a) * 2.45, 2.4, Math.sin(a) * 2.45], SS[4], 10); k.torus(0.56, 0.035, [Math.cos(a) * 2.45, 2.4, Math.sin(a) * 2.45], L.dark); }
   // descent sphere on a collar
@@ -107,11 +108,12 @@ function sovLander(name: string): SModel {
   k.decal(A.star, 1.5, 1.5, [0, 5.3, 1.66], 0, -0.25);
   k.decal(A.star, 1.1, 1.1, [0, 5.0, -1.66], Math.PI, 0.15);
   for (let i = 0; i < 8; i++) {
-    const a = (i * Math.PI) / 4, r = 2.2 * Math.cos(Math.PI / 8) + 0.012, x = Math.sin(a) * r, z = Math.cos(a) * r;
-    if (i === 0) k.decal(textRect(A, 0, true), 1.5, 0.3, [x, 2.65, z], a);
-    else if (i === 1 || i === 7) k.decal(textRect(A, 1, true), 1.5, 0.3, [x, 2.65, z], a);
-    else if (i === 4) k.decal(textRect(A, 4, true), 1.5, 0.3, [x, 2.65, z], a);
-    if (i % 2 === 0) k.decal(textRect(A, 3 + i, true), 0.9, 0.18, [x, 2.0, z], a);
+    const f = i; // face f is centred at D8 + (f + 0.5) * 45 degrees = f * 45 degrees (0 faces +Z, toward Unit 07)
+    if (i === 0) k.faceDecal(textRect(A, 0, true), 1.4, 0.32, 2.2, 8, f, 2.7, D8);
+    else if (i % 2) k.faceDecal(textRect(A, 1, true), 1.4, 0.3, 2.2, 8, f, 2.7, D8);
+    else if (i === 2 || i === 6) k.faceDecal(A.star, 0.8, 0.8, 2.2, 8, f, 2.45, D8);
+    else k.faceDecal(textRect(A, 4, true), 1.4, 0.3, 2.2, 8, f, 2.7, D8);
+    k.faceDecal(textRect(A, 3 + i, true), 0.9, 0.18, 2.2, 8, f, 1.95, D8);
   }
   return { main: k.build(), height: 7.7 };
 }
@@ -255,12 +257,13 @@ function prcFactory(): SModel {
 // ------------------------------------------------------------------------------------------------ defences
 function bunker(f: FactionId): SModel {
   const L = LIVERY[f], A = atlas(f), k = new Kit(), t = new Kit();
-  k.cyl(1.3, 1.55, 1.0, [0, 0.5, 0], ST[4], 8);
-  k.cyl(1.32, 1.32, 0.18, [0, 1.06, 0], ST[3], 8);
-  for (let i = 0; i < 8; i++) { const a = (i * Math.PI) / 4 + Math.PI / 8; k.box(0.5, 0.08, 0.06, [Math.cos(a) * 1.42, 0.55, Math.sin(a) * 1.42], RAMPS.basalt[1], [0, -a + Math.PI / 2, 0.32 * 0]); }
+  const B8 = -Math.PI / 8;
+  k.cyl(1.3, 1.55, 1.0, [0, 0.5, 0], ST[4], 8, [0, B8, 0]);
+  k.cyl(1.36, 1.36, 0.18, [0, 1.06, 0], ST[3], 8, [0, B8, 0]);
+  for (let i = 1; i < 8; i += 2) { const a = (i * Math.PI) / 4; k.box(0.5, 0.09, 0.08, [Math.sin(a) * 1.3, 0.62, Math.cos(a) * 1.3], RAMPS.basalt[0], [-0.24, a, 0]); }
   sandbags(k, 0, 0, 1.85, 12, -0.6, Math.PI + 0.6, 2);
-  k.decal(A.star, 0.6, 0.6, [0, 0.62, 1.43], 0, -0.25);
-  k.decal(textRect(A, 14, f !== 'prc'), 0.9, 0.18, [Math.sin(Math.PI) * 1.43, 0.6, Math.cos(Math.PI) * 1.43], Math.PI, -0.25);
+  k.faceDecal(A.star, 0.62, 0.62, 1.405, 8, 0, 0.55, B8, -0.245);
+  k.faceDecal(textRect(A, 14, f !== 'prc'), 0.9, 0.18, 1.405, 8, 4, 0.55, B8, -0.245);
   // the turret: a riveted cupola with a machine gun
   t.cyl(0.55, 0.65, 0.45, [0, 0.22, 0], L.hull, 12); t.ball(0.55, [0, 0.45, 0], L.hull2, 12, true);
   t.rivetRing(0, 0.2, 0, 0.62, 16, SS[5], 0.035);
@@ -370,10 +373,10 @@ function buildUnit(kind: string, f: FactionId): UModel {
       for (const s of [-1, 1]) { b.box(0.3, 0.42, Lh * 1.02, [s * W * 0.5, 0.25, 0], L.dark); for (let i = 0; i < 5; i++) b.cyl(0.17, 0.17, 0.32, [s * W * 0.5, 0.2, -Lh * 0.4 + i * Lh * 0.2], SS[3], 8, [0, 0, Math.PI / 2]); }
       b.rivetRow([-W * 0.4, 0.66, -Lh / 2], [-W * 0.4, 0.66, Lh / 2], 10, SS[5]); b.rivetRow([W * 0.4, 0.66, -Lh / 2], [W * 0.4, 0.66, Lh / 2], 10, SS[5]);
       b.decal(textRect(A, 7, pale), 0.7, 0.15, [W * 0.4 + 0.01, 0.45, 0], Math.PI / 2);
-      t.cyl(0.5, 0.58, 0.38, [0, 0.19, -0.1], L.hull, 8); t.ball(0.48, [0, 0.38, -0.1], L.hull2, 10, true, [0, 0, 0]);
+      t.cyl(0.5, 0.58, 0.38, [0, 0.19, -0.1], L.hull, 8, [0, -Math.PI / 8, 0]); t.ball(0.48, [0, 0.38, -0.1], L.hull2, 10, true, [0, 0, 0]);
       t.cyl(0.07, 0.08, 1.7, [0, 0.3, 0.95], SS[2], 8, [Math.PI / 2, 0, 0]); t.cyl(0.1, 0.1, 0.18, [0, 0.3, 1.78], SS[1], 8, [Math.PI / 2, 0, 0]);
       t.cyl(0.1, 0.1, 0.12, [0.2, 0.6, -0.2], SS[3], 8);
-      t.decal(A.star, 0.42, 0.42, [0.53, 0.2, -0.1], Math.PI / 2); t.decal(A.star, 0.42, 0.42, [-0.53, 0.2, -0.1], -Math.PI / 2);
+      t.faceDecal(A.star, 0.34, 0.34, 0.54, 8, 6, 0.19, -Math.PI / 8, -0.2, 0, -0.1); t.faceDecal(A.star, 0.34, 0.34, 0.54, 8, 2, 0.19, -Math.PI / 8, -0.2, 0, -0.1);
       return { base: b.build(), top: t.build(), topY: 0.66, muzzle: [0, 0.3, 1.9], height: 1.4, hover: 0, legs: false };
     }
     // PRC scout: a light three-wheeled car with a pintle gun
@@ -393,7 +396,7 @@ function buildUnit(kind: string, f: FactionId): UModel {
       b.cyl(0.3, 0.3, 0.6, [s * 0.75, 1.35, 0.05], SS[3], 10, [0, 0, Math.PI / 2]);
     }
     b.box(1.6, 0.35, 0.9, [0, 2.45, 0], SS[2]);
-    t.cyl(1.0, 1.05, 1.3, [0, 0.65, 0], L.hull, 10);
+    t.cyl(1.0, 1.05, 1.3, [0, 0.65, 0], L.hull, 10, [0, -Math.PI / 10, 0]);
     t.ball(0.95, [0, 1.3, 0], L.hull2, 14, true);
     t.rivetRing(0, 0.1, 0, 1.04, 30, SS[5], 0.06); t.rivetRing(0, 1.25, 0, 1.0, 30, SS[5], 0.06);
     t.box(0.7, 0.18, 0.1, [0, 1.15, 0.96], L.glass);
@@ -404,8 +407,8 @@ function buildUnit(kind: string, f: FactionId): UModel {
       t.cyl(0.13, 0.13, 0.2, [s * 1.25, 1.05, 2.05], SS[1], 8, [Math.PI / 2, 0, 0]);
       t.cyl(0.12, 0.14, 0.9, [s * 0.5, 1.9, -0.6], SS[2], 8);
     }
-    t.decal(A.star, 0.9, 0.9, [0, 0.6, 1.02], 0);
-    t.decal(textRect(A, 9, pale), 1.0, 0.2, [0, 0.6, -1.02], Math.PI);
+    t.faceDecal(A.star, 0.7, 0.7, 1.03, 10, 0, 0.6, -Math.PI / 10);
+    t.faceDecal(textRect(A, 9, pale), 0.9, 0.2, 1.03, 10, 5, 0.6, -Math.PI / 10);
     return { base: b.build(), top: t.build(), topY: 2.6, muzzle: [1.25, 1.05, 2.15], height: 4.6, hover: 0, legs: true };
   }
   if (kind === 'prc_mech') {

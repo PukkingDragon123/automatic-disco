@@ -1,7 +1,7 @@
 // Floating 3D menu words built from a pixel font's own glyphs: the word is rasterised at the font's native size and
 // every lit pixel becomes a small bevelled block, so the letters keep the font's exact pixel shapes in depth. The
-// face of each block is painted enamel, its sides are steel, and both carry a hand-pixelled bevel (a lit edge top
-// left, a shaded edge bottom right) from the master palette. A word bobs and turns gently; pointed at, it leans
+// face of each block is painted enamel, its sides are steel, each one flat step of a master ramp; the top rows catch
+// a little more light. A word bobs and turns gently; pointed at, it leans
 // toward the camera and lights up; worked, its blocks burst apart with a spin and spring back into place.
 import * as THREE from 'three';
 import { RAMPS } from '../art/palette';
@@ -10,19 +10,6 @@ import { gbuf, F_HOVER } from '../gfx/gbuf';
 const ST = RAMPS.steel, PA = RAMPS.paper, GA = RAMPS.glowAmber;
 const h1 = (i: number, s = 0) => { const v = Math.sin(i * 127.1 + s * 311.7) * 43758.5453; return v - Math.floor(v); };
 
-/** an 8 x 8 bevelled face: one ramp step per band, a lit edge, a shaded edge, a chipped corner */
-function bevelTex(R: readonly number[], lit: number, body: number, dark: number, mark: number) {
-  const c = document.createElement('canvas'); c.width = c.height = 8;
-  const g = c.getContext('2d')!;
-  const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
-  g.fillStyle = hex(R[body]); g.fillRect(0, 0, 8, 8);
-  g.fillStyle = hex(R[lit]); g.fillRect(0, 0, 8, 1); g.fillRect(0, 0, 1, 7);
-  g.fillStyle = hex(R[dark]); g.fillRect(0, 7, 8, 1); g.fillRect(7, 1, 1, 7);
-  g.fillStyle = hex(R[mark]); g.fillRect(5, 2, 1, 1); g.fillRect(2, 5, 2, 1); // a scuff, drawn
-  const t = new THREE.CanvasTexture(c); t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-let FACE: THREE.Texture | null = null, SIDE: THREE.Texture | null = null;
 
 /** the lit pixels of a word in a pixel font at its native size, trimmed */
 export function glyphPixels(text: string, font: string, px: number) {
@@ -66,12 +53,12 @@ export class VoxelWord {
     this.enabled = o.enabled !== false; this.yaw = o.yaw ?? 0.32; this.phase = o.phase ?? 0;
     const gp = glyphPixels(label, o.font ?? 'Jersey', px);
     this.n = gp.pts.length; this.w = gp.w * vox; this.h = gp.h * vox; this.d = depth * vox;
-    FACE ??= bevelTex(PA, 5, 4, 2, 3); SIDE ??= bevelTex(ST, 5, 3, 1, 2);
-    const face = gbuf(new THREE.MeshLambertMaterial({ map: FACE, flatShading: true }), this.flag);
-    const side = gbuf(new THREE.MeshLambertMaterial({ map: SIDE, flatShading: true }), this.flag);
+    // flat steps of the ramp: a block face is one plane, one colour (a texture would only shimmer at this size)
+    const face = gbuf(new THREE.MeshLambertMaterial({ color: PA[4], flatShading: true }), this.flag);
+    const side = gbuf(new THREE.MeshLambertMaterial({ color: ST[3], flatShading: true }), this.flag);
     const back = gbuf(new THREE.MeshLambertMaterial({ color: ST[1], flatShading: true }), this.flag);
     this.mats = [face, side];
-    const geo = new THREE.BoxGeometry(vox * 0.96, vox * 0.96, this.d);
+    const geo = new THREE.BoxGeometry(vox * 1.002, vox * 1.002, this.d); // flush: the blocks read as one solid letter
     this.mesh = new THREE.InstancedMesh(geo, [side, side, side, side, face, back], Math.max(1, this.n));
     this.mesh.castShadow = true; this.mesh.receiveShadow = true; this.mesh.frustumCulled = false;
     this.rest = new Float32Array(this.n * 3); this.off = new Float32Array(this.n * 3); this.vel = new Float32Array(this.n * 3);

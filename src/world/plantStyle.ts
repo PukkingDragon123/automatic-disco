@@ -495,7 +495,7 @@ const broadleaf: Grower = (sp, h, r) => {
     onTwig: (p, d, gen, st) => { for (let k = st / (gen >= 5 ? 2.2 : 3.2); k > 0; k--) if (k >= 1 || r.chance(k)) twigLeaf(P, r, p, d, ls); },
     onTip: (p, d) => {
       for (let k = r.int(4, 7); k > 0; k--) twigLeaf(P, r, p, d, ls);
-      if (fruit && r.chance(0.12)) { const f = add(p, [r.range(-1, 1), -r.range(2, 4), r.range(0, 2)]); P.limb(p, f, 0.5, 0.5, T); P.orb(f, Math.max(1.2, h * 0.45), A, { glow: sp.glow ? 0xfff0c0 : undefined, alpha: sp.glow ? 200 : 255 }); }
+      if (fruit && r.chance(0.12)) { const f = add(p, [r.range(-1, 1), -r.range(2, 4), r.range(0, 2)]); P.limb(p, f, 0.5, 0.5, T, { kind: K.ACC, chain: P.chain() }); P.orb(f, Math.max(1.2, h * 0.45), A, { glow: sp.glow ? 0xfff0c0 : undefined, alpha: sp.glow ? 200 : 255 }); }
     },
   }, [0, 0, 0], deviate(UP, r.range(0, 0.12), r.range(0, TAU)), H * r.range(0.36, 0.44), rad, 0);
   return P.done(H, deepOf(G[0][0]));
@@ -519,7 +519,7 @@ const umbrella: Grower = (sp, h, r) => {
     }
     if (beads && r.chance(0.45)) for (let k = r.int(1, 3); k > 0; k--) {
       const s = add(p, [r.range(-pr * 0.7, pr * 0.7), 0, r.range(-pr * 0.5, pr * 0.5)]), e = add(s, [0, -r.range(3, 9), 0]);
-      P.limb(s, e, 0.5, 0.5, T); P.orb(e, r.range(1, 1.5), A, { glow: sp.glow ? 0xfff0c8 : undefined, alpha: sp.glow ? 200 : 255 });
+      P.limb(s, e, 0.5, 0.5, T, { kind: K.ACC, chain: P.chain() }); P.orb(e, r.range(1, 1.5), A, { glow: sp.glow ? 0xfff0c8 : undefined, alpha: sp.glow ? 200 : 255 });
     }
   };
   grow(P, r, {

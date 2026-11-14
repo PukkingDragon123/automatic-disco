@@ -36,6 +36,8 @@ export interface BeastForm {
   fore: number[]; hind: number[];
   /** bare skin on the legs (fur stops at the elbow and knee), a scaled tail, lateral spiracles, sensory pits */
   limbSkin?: boolean; tailScales?: boolean; spiracles?: number; pits?: boolean;
+  /** curls into a ball when threatened, and can roll away as one (Animator.curl / Animator.rolling) */
+  roll?: boolean;
   parts: BeastPart[];
 }
 export interface Beast {
@@ -104,7 +106,7 @@ export const BEASTS: Record<string, Beast> = {
       trunk: [[0.42, 0.56, 0.5], [0.48, 0.66, 0.5], [0.46, 0.62, 0.46], [0.44, 0.54, 0.44]], neckR: 0.48, nAng: -0.05, neckK: 0.6, headK: 0.7, snoutK: 1.6,
       hK: 1.05, foreK: 0.95, hindK: 1.05, foreT: 1.1, hindT: 1.05, slope: -0.04, tailK: 1.1,
       skull: { rx: [0.34, 0.46, 0.48, 0.4, 0.3, 0.22, 0.17, 0.12], ry: [0.36, 0.46, 0.46, 0.38, 0.28, 0.22, 0.17, 0.12], hy: [0.06, 0.13, 0.14, 0.08, 0.0, -0.04, -0.06, -0.08], eye: [0.26, 1.25, 1.0, 0.07], cap: 0.4 },
-      eyes: { pupil: 'round' }, fore: [0.6, 0.7, 0.5, 0.42, 0.44], hind: [0.62, 0.72, 0.5, 0.42, 0.44],
+      eyes: { pupil: 'round' }, fore: [0.6, 0.7, 0.5, 0.42, 0.44], hind: [0.62, 0.72, 0.5, 0.42, 0.44], roll: true,
       parts: [{ k: 'plates', t0: -0.02, t1: 0.97, rows: 22, spread: 2.0, size: 0.34, ramp: 'rust' }],
     },
   },
@@ -174,7 +176,7 @@ export const BEASTS: Record<string, Beast> = {
       trunk: [[0.5, 0.58, 0.58], [0.56, 0.64, 0.6], [0.56, 0.62, 0.58], [0.5, 0.56, 0.52]], neckR: 0.6, nAng: 0.2, neckK: 0.5, headK: 0.9, snoutK: 0.6,
       hK: 1.1, foreK: 1, hindK: 1, foreT: 1, hindT: 1, slope: 0, tailK: 0.3,
       skull: { rx: [0.4, 0.52, 0.56, 0.52, 0.44, 0.36, 0.3, 0.24], ry: [0.4, 0.52, 0.54, 0.46, 0.38, 0.32, 0.27, 0.21], hy: [0.06, 0.16, 0.18, 0.13, 0.05, 0.0, -0.03, -0.05], eye: [0.3, 1.0, 0.85, 0.11], cap: 0.25 },
-      eyes: { pupil: 'round' }, fore: [0.6, 0.66, 0.5, 0.42, 0.44], hind: [0.62, 0.7, 0.5, 0.42, 0.44],
+      eyes: { pupil: 'round' }, fore: [0.6, 0.66, 0.5, 0.42, 0.44], hind: [0.62, 0.7, 0.5, 0.42, 0.44], roll: true,
       parts: [{ k: 'wool', t0: -0.06, t1: 0.95, puff: 1.4, hang: 0.25 }],
     },
   },
@@ -190,6 +192,60 @@ export const BEASTS: Record<string, Beast> = {
       skull: { rx: [0.36, 0.48, 0.52, 0.46, 0.36, 0.28, 0.24, 0.2], ry: [0.36, 0.46, 0.5, 0.42, 0.34, 0.28, 0.25, 0.21], hy: [0.06, 0.15, 0.17, 0.11, 0.03, -0.03, -0.05, -0.08], eye: [0.24, 1.0, 1.0, 0.06], cap: 0.28 },
       eyes: { rows: 2, pupil: 'h' }, fore: [0.6, 0.68, 0.4, 0.28, 0.26], hind: [0.64, 0.72, 0.4, 0.28, 0.26], spiracles: 7, pits: true,
       parts: [{ k: 'plates', t0: 0.2, t1: 0.86, rows: 12, spread: 1.2, size: 0.3, ramp: 'olive' }],
+    },
+  },
+  ribbon: {
+    id: 'ribbon', name: 'Ribbon Strider', latin: 'Taeniocursor tenuis', role: 'stalker', plan: 'quadruped', lineage: 'vertebrate', cover: 'scales',
+    concept: 'Three metres of scaled ribbon slung between four tiny, widely spread legs: it slides through the grass stems like a dropped belt, flat head first, and strikes small animals from below. Barely ankle-high.',
+    genes: ['vert_quadruped', 'leg_sprawl', 'eye_camera', 'tongue', 'carnassials', 'tail_balance', 'ectotherm', 'brood_care'],
+    sliders: { size: 0.38, len: 1, girth: 0.02, legLen: 0.12, legThick: 0.3, neck: 0.5, head: 0.2, tail: 1 },
+    colors: { base: ['slate', 4], belly: ['sand', 4], pattern: ['ink', 1], accent: ['ochre', 5], eye: ['brass', 4] }, pattern: 'bands', patScale: 0.7,
+    form: {
+      trunk: [[0.4, 0.36, 0.4], [0.42, 0.36, 0.42], [0.4, 0.36, 0.4], [0.4, 0.36, 0.38]], neckR: 0.6, nAng: 0.0, neckK: 1.4, headK: 0.8, snoutK: 1.1,
+      hK: 0.6, foreK: 1, hindK: 1, foreT: 0.7, hindT: 0.75, slope: 0, tailK: 1.4,
+      skull: { rx: [0.44, 0.52, 0.52, 0.48, 0.42, 0.34, 0.26, 0.16], ry: [0.3, 0.34, 0.34, 0.3, 0.26, 0.21, 0.17, 0.11], hy: [0.0, 0.05, 0.06, 0.05, 0.02, -0.01, -0.03, -0.05], eye: [0.26, 0.85, 1.0, 0.09], cap: 0.4 },
+      eyes: { pupil: 'v' }, fore: [0.42, 0.5, 0.36, 0.28, 0.26], hind: [0.44, 0.52, 0.36, 0.28, 0.26], parts: [],
+    },
+  },
+  reedneck: {
+    id: 'reedneck', name: 'Reedneck', latin: 'Calamicollis insidians', role: 'stalker', plan: 'quadruped', lineage: 'vertebrate', cover: 'skin',
+    concept: 'An ambusher that is mostly neck: a squat, mud-coloured body hidden in the marsh and a single stalk of neck standing straight up like a reed, topped by a head fringed in green leaf-frills. Birds land on it.',
+    genes: ['vert_quadruped', 'leg_sprawl', 'eye_camera', 'carnassials', 'tongue', 'ectotherm', 'brood_care'],
+    sliders: { size: 0.3, len: 0.3, girth: 0.75, legLen: 0.2, legThick: 0.5, neck: 1, head: 0.3, tail: 0.3 },
+    colors: { base: ['olive', 3], belly: ['straw', 3], pattern: ['moss', 2], accent: ['moss', 4], eye: ['ochre', 4] }, pattern: 'mottled', patScale: 1,
+    form: {
+      trunk: [[0.5, 0.46, 0.5], [0.54, 0.48, 0.5], [0.52, 0.46, 0.48], [0.48, 0.44, 0.44]], neckR: 0.42, nAng: 1.42, neckK: 3.2, headK: 0.7, snoutK: 1.1,
+      hK: 0.85, foreK: 1, hindK: 1, foreT: 1, hindT: 1, slope: 0, tailK: 0.7,
+      skull: { rx: [0.34, 0.44, 0.46, 0.42, 0.34, 0.27, 0.2, 0.14], ry: [0.34, 0.44, 0.44, 0.38, 0.3, 0.24, 0.19, 0.13], hy: [0.04, 0.12, 0.14, 0.1, 0.03, -0.02, -0.04, -0.06], eye: [0.28, 1.0, 0.9, 0.08], cap: 0.35 },
+      eyes: { pupil: 'pinhole' }, fore: [0.5, 0.6, 0.42, 0.32, 0.3], hind: [0.52, 0.62, 0.42, 0.32, 0.3],
+      parts: [{ k: 'headFans', size: 1.4, ramp: 'moss' }],
+    },
+  },
+  knuckler: {
+    id: 'knuckler', name: 'Knuckle Brute', latin: 'Brachiograd ferox', role: 'apex', plan: 'quadruped', lineage: 'vertebrate', cover: 'fur',
+    concept: 'All shoulders: forearms thicker than its body walk it on folded knuckles, and the short hind legs trot behind. It clubs prey flat with one swing. A shag of dark hair over the shoulders, bare grey skin on the arms.',
+    genes: ['vert_quadruped', 'leg_plantigrade', 'eye_binocular', 'ears_round', 'carnassials', 'shaggy', 'fur', 'endotherm', 'live_birth'],
+    sliders: { size: 0.62, len: 0.55, girth: 0.7, legLen: 0.4, legThick: 0.8, neck: 0.15, head: 0.5, tail: 0.1 },
+    colors: { base: ['fur', 1], belly: ['hide', 3], pattern: ['fur', 0], accent: ['rust', 4], eye: ['ochre', 5] }, pattern: 'plain', patScale: 1,
+    form: {
+      trunk: [[0.52, 0.62, 0.7], [0.5, 0.56, 0.62], [0.42, 0.46, 0.46], [0.4, 0.42, 0.4]], neckR: 0.6, nAng: 0.05, neckK: 0.5, headK: 0.85, snoutK: 0.8,
+      hK: 1.05, foreK: 1.35, hindK: 0.78, foreT: 1.9, hindT: 0.85, slope: 0.05, tailK: 0.3,
+      skull: { rx: [0.38, 0.52, 0.56, 0.52, 0.44, 0.36, 0.31, 0.26], ry: [0.4, 0.52, 0.54, 0.46, 0.36, 0.3, 0.27, 0.23], hy: [0.06, 0.16, 0.2, 0.13, 0.03, -0.02, -0.04, -0.06], eye: [0.32, 0.8, 0.55, 0.075], cap: 0.2 },
+      eyes: { pupil: 'round' }, fore: [0.7, 0.86, 0.66, 0.56, 0.6], hind: [0.6, 0.66, 0.44, 0.34, 0.34], limbSkin: true,
+      parts: [{ k: 'shag' }],
+    },
+  },
+  gapejaw: {
+    id: 'gapejaw', name: 'Gapejaw', latin: 'Latirictus bufoformis', role: 'snail', plan: 'quadruped', lineage: 'vertebrate', cover: 'slime',
+    concept: 'A squat warty toad-thing that is half head: a mouth as wide as its body, a flat skull with pinhole eyes on top. It sits in a puddle as a rock and swallows anything that fits.',
+    genes: ['vert_quadruped', 'leg_leaping', 'eye_bulging', 'tongue', 'amphib_skin', 'spawn'],
+    sliders: { size: 0.12, len: 0.5, girth: 0.9, legLen: 0.5, legThick: 0.65, neck: 0, head: 0.9, tail: 0 },
+    colors: { base: ['olive', 3], belly: ['straw', 4], pattern: ['soil', 2], accent: ['coral', 4], eye: ['brass', 4] }, pattern: 'mottled', patScale: 1,
+    form: {
+      trunk: [[0.46, 0.48, 0.5], [0.52, 0.5, 0.5], [0.5, 0.46, 0.44], [0.36, 0.3, 0.3]], neckR: 0.5, nAng: 0.25, neckK: 1, headK: 1.35, snoutK: 0.9,
+      hK: 0.75, foreK: 1, hindK: 1, foreT: 1, hindT: 1, slope: 0, tailK: 0,
+      skull: { rx: [0.46, 0.56, 0.6, 0.6, 0.58, 0.52, 0.42, 0.22], ry: [0.32, 0.38, 0.38, 0.36, 0.32, 0.27, 0.21, 0.12], hy: [0.04, 0.12, 0.14, 0.11, 0.04, -0.02, -0.04, -0.05], eye: [0.12, 0.5, 0.6, 0.14], cap: 0.3 },
+      eyes: { pupil: 'pinhole' }, fore: [0.32, 0.4, 0.28, 0.22, 0.2], hind: [0.6, 0.85, 0.48, 0.3, 0.2], parts: [],
     },
   },
 };

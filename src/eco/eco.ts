@@ -122,7 +122,7 @@ export class Eco {
   /** soil fertility 0..1 */
   fertility(x: number, z: number) { return clamp(this.fert[this.cell(x, z)], 0, 1); }
   /** how poisoned the ground is 0..1 */
-  poison(x: number, z: number) { return this.poisonF[this.cell(x, z)]; }
+  poisonAt(x: number, z: number) { return this.poisonF[this.cell(x, z)]; }
   /** vegetation (standing forage) 0..~1.5 */
   vegetation(x: number, z: number) { return this.veg[this.cell(x, z)]; }
   /** plant cover (hiding places, shade) 0..1 */
@@ -151,22 +151,29 @@ export class Eco {
   }
 
   // ================================================================================================ API for other systems
-  /** draw animals of a kind toward (x, z) for ttl seconds (Infinity for good). Strength 0..1 also sets the reach. */
-  attract(x: number, z: number, kind: LureKind = 'all', strength = 0.6, ttl = 60): number {
-    const id = this.nextId++;
-    this.lures.push({ id, x, z, kind, s: Math.abs(strength), r: 8 + 22 * Math.min(1, Math.abs(strength)), until: this.t + ttl });
-    return id;
+  /** draw animals of a kind toward (x, z) for ttl seconds (Infinity for good). Strength 0..1 also sets the reach.
+   *  Kinds: 'herb' (also 'grazer'), 'carn' ('predator'), 'scav', 'fruit', 'water', 'all'. Calling again at the same
+   *  place refreshes the lure instead of stacking a new one. Returns an id for cancel(). */
+  attract(x: number, z: number, kind: LureKind | string = 'all', strength = 0.6, ttl = 60): number {
+    return this.lure(x, z, kind, Math.abs(strength), 8 + 22 * Math.min(1, Math.abs(strength)), ttl);
   }
   /** keep animals of a kind away from (x, z) */
-  repel(x: number, z: number, kind: LureKind = 'all', strength = 0.6, ttl = 60): number {
+  repel(x: number, z: number, kind: LureKind | string = 'all', strength = 0.6, ttl = 60): number {
+    return this.lure(x, z, kind, -Math.abs(strength), 6 + 18 * Math.min(1, Math.abs(strength)), ttl);
+  }
+  private lure(x: number, z: number, kind: LureKind | string, s: number, r: number, ttl: number) {
+    const k = lureKind(kind);
+    for (const l of this.lures) if (!l.auto && l.kind === k && Math.sign(l.s) === Math.sign(s) && (l.x - x) ** 2 + (l.z - z) ** 2 < 1) { l.s = s; l.r = r; l.until = Math.max(l.until, this.t + ttl); return l.id; }
     const id = this.nextId++;
-    this.lures.push({ id, x, z, kind, s: -Math.abs(strength), r: 6 + 18 * Math.min(1, Math.abs(strength)), until: this.t + ttl });
+    this.lures.push({ id, x, z, kind: k, s, r, until: this.t + ttl });
     return id;
   }
   /** cancel an attract / repel / irrigation */
   cancel(id: number) { this.lures = this.lures.filter((l) => l.id !== id); this.irrs = this.irrs.filter((l) => l.id !== id); }
-  /** water the ground round (x, z) (a channel, sprinkler, spring or dam outflow): the land greens and herds come */
-  irrigate(x: number, z: number, r = 6, amt = 1, ttl = Infinity): number {
+  /** water the ground round (x, z) (a channel, sprinkler, spring, a dam's outflow) for ttl seconds: the land greens
+   *  and herds come to drink. Call again to keep it running (the same place is refreshed, not stacked). */
+  irrigate(x: number, z: number, r = 6, amt = 1, ttl = 12): number {
+    for (const s of this.irrs) if ((s.x - x) ** 2 + (s.z - z) ** 2 < 2.25 && Math.abs(s.r - r) < 1) { s.amt = Math.max(clamp(amt, 0, 1), s.amt); s.until = Math.max(s.until, this.t + ttl); return s.id; }
     const id = this.nextId++;
     this.irrs.push({ id, x, z, r, amt: clamp(amt, 0, 1), until: this.t + ttl });
     this.stampIrr();
@@ -174,8 +181,9 @@ export class Eco {
   }
   /** feed the soil (manure, compost, a fertiliser item) */
   fertilise(x: number, z: number, r = 5, amt = 0.4) { this.paint(x, z, r, (c, k) => { this.nutr[c] += amt * k * 0.6; this.fert[c] = Math.min(1.2, this.fert[c] + amt * k * 0.4); }); }
+  fertilize(x: number, z: number, r = 5, amt = 0.4) { this.fertilise(x, z, r, amt); }
   /** poison the soil (herbicide, toxic runoff): plants wilt, grazers that eat there sicken */
-  poisonLand(x: number, z: number, r = 5, amt = 0.8) { this.paint(x, z, r, (c, k) => { this.poisonF[c] = Math.min(1, this.poisonF[c] + amt * k); }); }
+  poison(x: number, z: number, r = 5, amt = 0.8) { this.paint(x, z, r, (c, k) => { this.poisonF[c] = Math.min(1, this.poisonF[c] + amt * k); }); }
   /** remember a place as dangerous (a kill, a blast) */
   scare(x: number, z: number, amt = 0.5, r = 6) { this.paint(x, z, r, (c, k) => { this.danger[c] = Math.min(2, this.danger[c] + amt * k); }); }
   /** populations per species, the census sheet's rows */
@@ -750,6 +758,15 @@ export class Eco {
   }
 }
 
+function lureKind(k: string): LureKind {
+  switch (k) {
+    case 'herb': case 'grazer': case 'herbivore': case 'browser': case 'forager': return 'herb';
+    case 'carn': case 'predator': case 'hunter': return 'carn';
+    case 'scav': case 'scavenger': case 'decomposer': return 'scav';
+    case 'fruit': case 'water': return k;
+  }
+  return 'all';
+}
 /** a habitat window: 1 inside [a, b], falling off outside (drier side faster) */
 function win(m: number, a: number, b: number) { return m < a ? clamp(1 - (a - m) / 0.2, 0, 1) : m > b ? clamp(1 - (m - b) / 0.3, 0, 1) : 1; }
 function rootSp(w: World, sp: Species): Species { let s = sp; while (s.parent !== null) s = w.reg.get(s.parent); return s; }

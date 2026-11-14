@@ -33,6 +33,8 @@ import { RIVALS } from '../world/palette';
 import { VeyrChild } from './child';
 import { Player } from './player';
 import { Details } from './details';
+import { installBiotech } from '../biotech';
+import { attachEco } from '../eco/view';
 import { BabyEditor } from '../ui/babyEditor';
 import { coreCapGeometry } from './buildings';
 import { panel, Btn } from '../ui/kit';
@@ -173,8 +175,10 @@ export class Game implements Screen {
     this.veyr.flushCov();
     this.player = new Player(this);
     new Details(this); // footprints, wetness, ripples, weather, hand-drawn VFX (game/details.ts; runs in update$)
+    attachEco(this); // the ecosystem's overlay, activity bubbles, field survey sheet and API as game.eco (src/eco/view.ts)
     this.factory = new Factory(this);
     this.factions = new Factions(this);
+    installBiotech(this); // engineered creatures and plants at work, Bio-Works structures, work orders (src/biotech)
     (window as any).__game = this;
   }
 

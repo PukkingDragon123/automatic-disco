@@ -51,6 +51,12 @@ export class Animator {
   // hit flinch: a damped spring kicked by the hit flash
   private prevFlash = 0; private hitX = 0; private hitV = 0; private hitSide = 1;
   private breathPh = Math.random() * 6;
+  // defence: curled into a ball (0..1), and rolling as a ball along the direction of travel
+  private curlK = 0; private curlT = 0; private rollA = 0;
+  /** set by the AI: roll along the ground as a ball while curled (flee downhill) */
+  rolling = false;
+  /** curl into a defensive ball (1) or open out again (0); species with rig.dims.roll tuck fully, others hunch */
+  curl(k: number) { this.curlT = clamp(k, 0, 1); }
   // eyes: the gaze jumps (saccades) between fixations near what the creature attends to; pupils follow the light
   private gaze = [0, 0]; private gazeT = [0, 0]; private fixIn = 0.5; private pupil = 1;
   // fat: a sprung lag in the belly
@@ -104,6 +110,8 @@ export class Animator {
     this.hitV += (-this.hitX * 140 - this.hitV * 14) * dt; this.hitX += this.hitV * dt;
     const hit = clamp(this.hitX, -0.6, 1.2);
     this.idle(dt, inp.state === 'idle' && spd < 0.05 && !dead);
+    this.curlK = damp(this.curlK, dead ? 0 : this.curlT * (rig.dims.roll ? 1 : 0.45), 5, dt);
+    const cu = this.curlK;
     const ik = this.idleK, act = this.idleAct, it = this.idleT;
     this.lean = damp(this.lean, clamp(inp.turn * 0.12, -0.25, 0.25), 6, dt);
     this.look[0] = damp(this.look[0], clamp(inp.lookYaw, -1, 1), 5, dt);
@@ -129,7 +137,7 @@ export class Animator {
     const br = Math.sin(this.breathPh), bAmp = 0.022 + this.blend * 0.015 + this.run * 0.02;
     const breathe = br * rig.rideH * 0.006;
     if (rig.ribs >= 0) B[rig.ribs].scale.set(1 + br * bAmp * 0.9, 1 + br * bAmp, 1 + br * bAmp * 0.3);
-    root.position.y += bob + breathe + this.hop;
+    root.position.y += (bob + breathe + this.hop) * (1 - cu) - cu * rig.rideH * 0.62;
     // weight shift: the body sways over the stance legs, or settles from one side to the other while it stands
     const shift = (rig.plan === 'serpent' || rig.plan === 'gastropod' ? 0 : Math.sin(ph) * rig.width * 0.035 * this.blend * (1 - this.run)) + (act === 'shift' ? Math.sin(it * 1.6) * rig.width * 0.06 * ik : 0);
     root.position.x += shift;
@@ -146,6 +154,8 @@ export class Animator {
     const gal = this.run * Math.sin(ph * 2 + 0.6) * 0.07;
     _e.set(lunge * 0.12 + (inp.state === 'eat' ? 0.18 : 0) + hopPitch - hit * 0.16 + gal, -swing * 0.5, this.lean + roll + shake + hit * 0.1 * this.hitSide, 'YXZ');
     root.quaternion.setFromEuler(_e);
+    // rolling: the ball turns about its side axis by the distance travelled over its radius
+    if (this.rolling && cu > 0.7) { this.rollA += (spd * dt) / Math.max(0.1, rig.width * 0.9); root.quaternion.multiply(_q.setFromEuler(_e.set(this.rollA, 0, 0))); }
     if (inp.state === 'stunned') root.quaternion.multiply(_q.setFromEuler(_e.set(Math.sin(this.t * 13) * 0.08, 0, Math.sin(this.t * 9) * 0.12)));
     // death: roll onto the side and sink
     if (this.deathT > 0) {
@@ -160,7 +170,7 @@ export class Animator {
       // the back flexes and extends through each gallop stride; a groom curls the body toward the flank
       const flex = this.run * Math.sin(ph * 2) * 0.16;
       const curl = act === 'groom' ? this.idleSide * 0.22 * ik : 0;
-      B[rig.spine[1]].quaternion.setFromEuler(_e.set((rig.gait === 'hop' ? -hopPitch * 0.3 : 0) + flex, w + curl, -this.lean * 0.4 - roll * 1.3 - shake * 0.6));
+      B[rig.spine[1]].quaternion.setFromEuler(_e.set((rig.gait === 'hop' ? -hopPitch * 0.3 : 0) + flex + cu * 1.25, w + curl, -this.lean * 0.4 - roll * 1.3 - shake * 0.6));
     }
     // head and neck
     if (rig.head >= 0 && rig.plan !== 'serpent') {
@@ -179,8 +189,8 @@ export class Animator {
       else if (act === 'shake') hr = -shake * 1.6;
       // the head is held steady against the body's roll and lean, and jerks back from a blow
       const level = -(this.lean + roll) * 0.75;
-      for (const n of rig.neck) B[n].quaternion.setFromEuler(_e.set(eat * 0.6 + (tongueAtk ? 0 : atk * 0.5) - this.look[1] * 0.4 + ip - hit * 0.25 - gal * 0.8, this.look[0] * 0.4 + steady + iy * 0.55, level * 0.5, 'YXZ'));
-      B[rig.head].quaternion.setFromEuler(_e.set(eat * 0.5 + (tongueAtk ? -0.1 * Math.sin(Math.PI * inp.act) : atk) + nod - this.look[1] * 0.6 - hopPitch * 0.4 + hp - hit * 0.2, this.look[0] * 0.6 + iy * 0.45, level * 0.5 + hr + hit * 0.15 * this.hitSide, 'YXZ'));
+      for (const n of rig.neck) B[n].quaternion.setFromEuler(_e.set(cu * 1.1 + eat * 0.6 + (tongueAtk ? 0 : atk * 0.5) - this.look[1] * 0.4 + ip - hit * 0.25 - gal * 0.8, this.look[0] * 0.4 + steady + iy * 0.55, level * 0.5, 'YXZ'));
+      B[rig.head].quaternion.setFromEuler(_e.set(cu * 0.9 + eat * 0.5 + (tongueAtk ? -0.1 * Math.sin(Math.PI * inp.act) : atk) + nod - this.look[1] * 0.6 - hopPitch * 0.4 + hp - hit * 0.2, this.look[0] * 0.6 + iy * 0.45, level * 0.5 + hr + hit * 0.15 * this.hitSide, 'YXZ'));
       if (this.deathT > 0) B[rig.head].quaternion.multiply(_q.setFromEuler(_e.set(0.4 * this.deathT, 0, 0)));
     }
     if (rig.jaw >= 0) {
@@ -283,7 +293,7 @@ export class Animator {
       this.tailV[i] += ((target - this.tail[i]) * 40 - this.tailV[i] * 8) * dt;
       this.tail[i] += this.tailV[i] * dt;
       const droop = rig.plan === 'gastropod' ? 0 : (this.deathT > 0 ? 0.25 * this.deathT : 0.04 - this.run * (i ? 0.02 : 0.12));
-      B[rig.tail[i]].quaternion.setFromEuler(_e.set(droop, this.tail[i], 0));
+      B[rig.tail[i]].quaternion.setFromEuler(_e.set(droop - this.curlK * (rig.dims.roll ? 0.75 : 0.3), this.tail[i] * (1 - this.curlK), 0));
     }
     // legs
     this.obj.updateMatrixWorld(true);
@@ -316,8 +326,11 @@ export class Animator {
     else { const s = (p - duty) / (1 - duty); zo = S * (-0.5 + smooth(0, 1, s)); lift = Math.sin(s * Math.PI) * Math.min(stride * 0.35, rig.rideH * 0.45) * this.blend; }
     // airborne in a bound: the feet travel with the body (tucked under it), not on the ground
     if (rig.gait === 'hop') lift += this.hop * (lg.kind === 'hind' ? 0.7 : 0.85);
-    let fx = lg.foot[0];
-    const fz = lg.foot[1] + zo;
+    // curled: the feet draw in under the body and leave the ground
+    const cu = this.curlK;
+    let fx = lg.foot[0] * (1 - cu * 0.75);
+    const fz = (lg.foot[1] + zo) * (1 - cu * 0.6);
+    lift += cu * rig.rideH * 0.5;
     const dead = this.deathT > 0;
     if (dead) fx *= 1 + this.deathT * 0.3;
     _T.set(fx, 0, fz).applyMatrix4(obj.matrixWorld);

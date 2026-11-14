@@ -175,7 +175,7 @@ export class Kit {
   /** add any geometry, coloured, placed */
   add(geo: THREE.BufferGeometry, color: number, at: V3, rot: V3 = [0, 0, 0], scale: V3 = [1, 1, 1], lamp = false, q?: THREE.Quaternion) {
     const g = geo.index ? geo.toNonIndexed() : geo;
-    if (q) _q.copy(q); else _q.setFromEuler(_e.set(rot[0], rot[1], rot[2]));
+    if (q) _q.copy(q); else _q.setFromEuler(_e.set(rot[0], rot[1], rot[2], 'XYZ'));
     _m.compose(_p.set(at[0], at[1], at[2]), _q, _s.set(scale[0], scale[1], scale[2]));
     _n3.getNormalMatrix(_m);
     const P = g.attributes.position as THREE.BufferAttribute, N = g.attributes.normal as THREE.BufferAttribute;
@@ -209,6 +209,22 @@ export class Kit {
   rivetRing(cx: number, y: number, cz: number, R: number, n: number, color: number, s = 0.045) {
     for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; this.box(s, s, s * 0.6, [cx + Math.cos(a) * R, y, cz + Math.sin(a) * R], color, [0, -a + Math.PI / 2, 0]); }
     return this;
+  }
+  /** rivets on the flat faces of a seg-sided cylinder (three.js puts vertex k at angle rot + k*2pi/seg, x = sin) */
+  rivetPoly(cx: number, y: number, cz: number, R: number, seg: number, per: number, color: number, rot = 0, s = 0.045) {
+    for (let k = 0; k < seg; k++) {
+      const a0 = rot + (k / seg) * Math.PI * 2, a1 = rot + ((k + 1) / seg) * Math.PI * 2;
+      for (let i = 0; i < per; i++) {
+        const t = (i + 0.5) / per, x = Math.sin(a0) * R * (1 - t) + Math.sin(a1) * R * t, z = Math.cos(a0) * R * (1 - t) + Math.cos(a1) * R * t;
+        this.box(s, s, s * 0.6, [cx + x, y, cz + z], color, [0, (a0 + a1) / 2, 0]);
+      }
+    }
+    return this;
+  }
+  /** a decal on face i of a seg-sided cylinder rotated by rot (face centre at angle rot + (i + 0.5) * 2pi/seg) */
+  faceDecal(r: Rect, w: number, h: number, R: number, seg: number, i: number, y: number, rot = 0, rx = 0, cx = 0, cz = 0) {
+    const a = rot + ((i + 0.5) / seg) * Math.PI * 2, ap = R * Math.cos(Math.PI / seg) + 0.014;
+    return this.decal(r, w, h, [cx + Math.sin(a) * ap, y, cz + Math.cos(a) * ap], a, rx);
   }
   /** a row of rivets from a to b */
   rivetRow(a: V3, b: V3, n: number, color: number, s = 0.045) {

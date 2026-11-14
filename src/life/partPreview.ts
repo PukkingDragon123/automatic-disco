@@ -26,6 +26,8 @@ export function boneRegions(rig: Rig): Int8Array {
   for (const s of rig.stalks) set(s, EYES);
   for (const l of rig.lids ?? []) set(l.bone, EYES);
   for (const e of rig.ears ?? []) set(e, FEELERS);
+  for (const e of rig.eyes ?? []) { set(e.bone, EYES); set(e.pupil, EYES); }
+  for (const lg of rig.legs) if (lg.flex !== undefined && lg.flex >= 0) set(lg.flex, LEGS);
   for (const w of rig.wings) set(w, WINGS);
   for (const lg of rig.legs) {
     for (const b of lg.bones) set(b, LEGS);

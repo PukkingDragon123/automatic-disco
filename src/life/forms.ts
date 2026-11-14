@@ -42,15 +42,18 @@ function carapace(S: Ctx, p: Extract<BeastPart, { k: 'carapace' }>, marks: BodyM
     const rows = 5, cols = 10, grid: V3[][] = [], w: Wt[] = [];
     for (let i = 0; i <= rows; i++) {
       const u = i / rows, t = clamp(ta + (tb - ta) * u, 0, 0.99), k = Math.round(t * N);
-      grid.push(Array.from({ length: cols + 1 }, (_, j) => {
+      // each row runs rim lip, shell, rim lip: the shell's thickness turns in to meet the hide at both edges
+      const row = Array.from({ length: cols + 1 }, (_, j) => {
         const a = -p.spread + (2 * p.spread * j) / cols, dome = Math.cos((a / p.spread) * Math.PI / 2) ** 0.6;
-        return surf(S, k, a, 0.97 + (p.lift - 0.97) * dome + u * 0.05 * dome).p;
-      }));
+        return surf(S, k, a, 1.02 + (p.lift - 1.02) * dome + u * 0.05 * dome).p;
+      });
+      grid.push([surf(S, k, -p.spread + 0.05, 0.94).p, ...row, surf(S, k, p.spread - 0.05, 0.94).p]);
       w.push(sp.w[k]);
     }
     // the rear lip: the shell turns down toward the hide, showing its thickness
     const kL = Math.round(clamp(tb, 0, 0.99) * N);
-    grid.push(Array.from({ length: cols + 1 }, (_, j) => { const a = -p.spread + (2 * p.spread * j) / cols; return surf(S, kL, a, 0.95 + (p.lift - 0.95) * Math.cos((a / p.spread) * Math.PI / 2) ** 0.6 * 0.82).p; }));
+    const lipRow = Array.from({ length: cols + 1 }, (_, j) => { const a = -p.spread + (2 * p.spread * j) / cols; return surf(S, kL, a, 0.95 + (p.lift - 0.95) * Math.cos((a / p.spread) * Math.PI / 2) ** 0.6 * 0.82).p; });
+    grid.push([surf(S, kL, -p.spread + 0.05, 0.92).p, ...lipRow, surf(S, kL, p.spread - 0.05, 0.92).p]);
     w.push(sp.w[kL]);
     sheet(S.B, CR, S.gid(), grid, (i) => w[i]);
     marks.push({ t0: tb - 0.012, t1: tb + 0.018, a0: -p.spread, a1: p.spread, k: 0.55 });

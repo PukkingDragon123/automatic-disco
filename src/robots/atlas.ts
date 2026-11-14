@@ -445,16 +445,16 @@ export function atlasFor(L: Livery): Atlas {
 }
 
 // ------------------------------------------------------------------------------------------------ the material
-export interface KitU { glow: { value: number }; wet: { value: number }; flash: { value: THREE.Color }; lit: { value: number } }
-export function kitUniforms(): KitU { return { glow: { value: 1 }, wet: { value: 0 }, flash: { value: new THREE.Color(0, 0, 0) }, lit: { value: 1 } }; }
+export interface KitU { glow: { value: number }; wet: { value: number }; flash: { value: THREE.Color }; lit: { value: number }; scroll: { value: THREE.Vector2 } }
+export function kitUniforms(): KitU { return { glow: { value: 1 }, wet: { value: 0 }, flash: { value: new THREE.Color(0, 0, 0) }, lit: { value: 1 }, scroll: { value: new THREE.Vector2() } }; }
 /** the atlas material: tiles within regions, emissive texels glow (uGlow), wet darkens, uFlash adds a hit flash */
 export function kitMaterial(at: Atlas, U: KitU = kitUniforms(), flag = 1): THREE.MeshLambertMaterial {
   const m = new THREE.MeshLambertMaterial({ map: at.tex, flatShading: true });
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.uGlowK = U.glow; sh.uniforms.uWet = U.wet; sh.uniforms.uFlash = U.flash; sh.uniforms.uLit = U.lit;
+    sh.uniforms.uGlowK = U.glow; sh.uniforms.uWet = U.wet; sh.uniforms.uFlash = U.flash; sh.uniforms.uLit = U.lit; sh.uniforms.uScroll = U.scroll;
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec4 reg;\nvarying vec4 vReg;\nvarying vec2 vUvT;')
-      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvUvT = uv; vReg = reg;');
+      .replace('#include <common>', '#include <common>\nattribute vec4 reg;\nuniform vec2 uScroll;\nvarying vec4 vReg;\nvarying vec2 vUvT;')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvec4 r4 = reg; float scr = 0.0; if (r4.z < 0.0) { scr = uScroll.x; r4.z = -r4.z; } if (r4.w < 0.0) { scr = uScroll.y; r4.w = -r4.w; }\nvUvT = uv + vec2(0.0, scr); vReg = r4;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform float uGlowK; uniform float uWet; uniform vec3 uFlash; uniform float uLit;\nvarying vec4 vReg;\nvarying vec2 vUvT;')
       .replace('#include <map_fragment>', `vec2 kuv = vReg.xy + fract(vUvT) * vReg.zw;
@@ -462,9 +462,9 @@ vec4 sampledDiffuseColor = textureGrad(map, kuv, dFdx(vUvT) * vReg.zw, dFdy(vUvT
 float glowA = sampledDiffuseColor.a; vec3 glowC = sampledDiffuseColor.rgb;
 diffuseColor.rgb *= sampledDiffuseColor.rgb * mix(vec3(1.0), vec3(0.56, 0.6, 0.68), uWet);
 diffuseColor.a = 1.0;`)
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\nif (glowA < 0.98) totalEmissiveRadiance += glowC * uGlowK * uLit * (glowA < 0.7 ? 1.7 : 0.45);\ntotalEmissiveRadiance += uFlash;');
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\nif (glowA < 0.98) totalEmissiveRadiance += glowC * uGlowK * uLit * (glowA < 0.7 ? 1.1 : 0.4);\ntotalEmissiveRadiance += uFlash;');
   };
-  m.customProgramCacheKey = () => 'oddworld-kit-v1';
+  m.customProgramCacheKey = () => 'oddworld-kit-v2';
   gbuf(m, flag);
   return m;
 }

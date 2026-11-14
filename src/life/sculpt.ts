@@ -191,7 +191,7 @@ function furHide(S: Ctx, r: Region, o: HideOpt) {
   const rampOf = new Map<number, number[]>();
   for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
     const p = y * r.w + x, id = H.id[p], th = r.th(x), t = (y + 0.5) / r.h;
-    let k = 3.0 + Math.cos(th) * 0.6;
+    let k = 3.25 + Math.cos(th) * 0.6;
     if (o.kind === 'limb') k -= sm(clamp((t - 0.62) / 0.38, 0, 1)) * 0.9; // darker socks
     if (o.kind === 'foot') k -= 0.4;
     let RR: number[];
@@ -201,8 +201,8 @@ function furHide(S: Ctx, r: Region, o: HideOpt) {
       if (!R0) { R0 = patAt(Math.floor(H.rx[p]), Math.floor(H.ry[p] + 1.5)); rampOf.set(id, R0); }
       RR = R0;
       const sv = H.s[p], e = H.e[p], lit = (th >= 0 ? 1 : -1) * e, sc = (hash(id, 3) - 0.5) * 0.9;
-      let f = sv < 0.42 ? -1.1 : -0.3 + 1.15 * sm(clamp((sv - 0.42) / 0.5, 0, 1)); // the root lies in the shadow of the clump above, the tip catches light
-      if (Math.abs(e) > 0.74) f -= 0.95; // the parting between locks
+      let f = sv < 0.42 ? -0.85 : -0.15 + 1.1 * sm(clamp((sv - 0.42) / 0.5, 0, 1)); // the root lies in the shadow of the clump above, the tip catches light
+      if (Math.abs(e) > 0.74) f -= 0.75; // the parting between locks
       else if (lit > 0.18 && lit < 0.6 && sv > 0.48 && sv < 0.9) f += 0.7; // a sheen down the lit side
       else if (Math.abs(e - sc) < 0.13 && sv > 0.35) f -= 0.5; // a strand line through the lock
       k += (f + (hash(id, 5) - 0.5) * 0.45) * con; // clump tone

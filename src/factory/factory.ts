@@ -535,7 +535,7 @@ export class Factory {
       const p = b.def.power;
       if (p < 0) {
         g.cap += -p; g.gens++;
-        if (b.kind === 'steamgen' ? (b.inBuf.get('steam') ?? 0) > 0.01 : b.running && b.on) g.supply += -p;
+        if (b.kind === 'steamgen' ? (b.inBuf.get('steam') ?? 0) > 0.01 : (b.running || b.status === 'working') && b.on) g.supply += -p;
       } else if (p > 0 && b.on) { g.users++; g.demand += b.running || b.status === 'working' ? p : p * 0.1; }
     }
     for (const g of this.grids) g.sat = g.demand <= 0 ? 1 : Math.min(1, g.supply / g.demand);

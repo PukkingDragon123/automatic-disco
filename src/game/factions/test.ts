@@ -44,7 +44,9 @@ export async function testFactions(engine: Engine, input: Input, P: URLSearchPar
   g.cam.lookAt(at[0], at[1], true);
   g.cam.dist = g.cam.distGoal = Number(P.get('dist') ?? 40);
   setTimeout(() => { g.cam.distGoal = Number(P.get('dist') ?? 40); g.cam.lookAt(at[0], at[1]); }, 900);
-  if (P.has('yaw')) g.cam.yaw = g.cam.yawGoal = Number(P.get('yaw'));
+  // by default look from Unit 07's side (the bases face it)
+  const yaw = P.has('yaw') ? Number(P.get('yaw')) : look === 'home' ? 0.6 : Math.atan2(L.x - at[0], L.z - at[1]);
+  g.cam.yaw = g.cam.yawGoal = yaw;
   (window as any).__F = F;
   engine.setScreen(g);
   engine.start();

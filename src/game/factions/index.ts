@@ -276,7 +276,7 @@ export class Factions {
     return best;
   }
   /** a deposit nobody works yet, near enough; the PRC reaches further for the rich ones */
-  freeDeposit(x: number, z: number, reach: number, greedy: boolean): number {
+  freeDeposit(x: number, z: number, reach: number, greedy: boolean, f: Faction = 'soviet'): number {
     const R = this.g.region, [px, pz] = this.playerCenter();
     const fb = (this.g as any).factory?.buildings as any[] | undefined;
     let best = -1, bs = -1e9;
@@ -286,6 +286,8 @@ export class Factions {
       if (this.structures.some((s) => !s.dead && s.kind === 'miner' && s.deposit === i)) return;
       if (Math.hypot(d.x - px, d.z - pz) < 26) return;
       if (Array.isArray(fb) && fb.some((b) => Math.hypot(b.x - d.x, b.z - d.z) < d.r + 4)) return;
+      // not under another programme's guns
+      if (this.structures.some((s) => !s.dead && s.faction !== f && Math.hypot(s.x - d.x, s.z - d.z) < 18)) return;
       const s = -dist + (greedy ? d.amount * 0.04 : 0);
       if (s > bs) { bs = s; best = i; }
     });

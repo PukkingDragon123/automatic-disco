@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { buildCarrier, type Carrier } from './deployShip';
 import { Bin, lit, lamp } from './deployKit';
 import { RAMPS } from '../art/palette';
+import { qualityProfile } from '../settings';
 
 const V3 = THREE.Vector3;
 /** ship-local boxes (centre, half size): the hull, the beak over the bay mouth, the island, the side tanks, the stern */
@@ -55,6 +56,8 @@ export function buildMenuCarrier(): MenuCarrier {
     if ((l as THREE.SpotLight).isSpotLight && (l.color.getHex() === 0xff2a14 || (l as THREE.SpotLight).distance <= 8)) l.visible = false;
     if ((l as THREE.PointLight).isPointLight) l.visible = false;
   });
+  // the shadow map follows the graphics setting (the carrier's own rig asks for 2048)
+  { const q = qualityProfile(); ship.sun.castShadow = q.shadows; ship.sun.shadow.mapSize.set(q.shadowMap, q.shadowMap); }
   const group = carrier.group;
   // shuttle traffic (ship-local)
   const C = (a: number[], b: number[], c: number[], d: number[]) => new THREE.CubicBezierCurve3(new V3(...a), new V3(...b), new V3(...c), new V3(...d));

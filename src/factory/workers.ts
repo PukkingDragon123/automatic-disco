@@ -31,6 +31,12 @@ export interface Worker {
   plant: number; note: string;
 }
 interface FloraFruit { fruitNear?(x: number, z: number, r: number): { id: number; x: number; z: number } | number | null; eatFruit?(id: number): unknown }
+/** who grows the fruit: the ecosystem (world.eco) or the flora itself, whichever has it */
+function fruitSrc(f: Factory): FloraFruit {
+  const eco = (f.g.world as unknown as { eco?: FloraFruit }).eco;
+  if (eco?.fruitNear) return eco;
+  return f.g.world.flora as unknown as FloraFruit;
+}
 
 export class Workers {
   list: Worker[] = [];
@@ -179,10 +185,10 @@ export class Workers {
           return;
         } else {
           // forage: fruit from the plants, if the flora grows any; else grazing on its own
-          const fl = f.g.world.flora as unknown as FloraFruit;
+          const fl = fruitSrc(f);
           const fr = fl.fruitNear?.(c.x, c.z, 16);
-          if (fr !== null && fr !== undefined) {
-            const id = typeof fr === 'number' ? fr : fr.id, fx = typeof fr === 'number' ? c.x : fr.x, fz = typeof fr === 'number' ? c.z : fr.z;
+          if (fr !== null && fr !== undefined && fr !== -1) {
+            const flo = f.g.world.flora, id = typeof fr === 'number' ? fr : fr.id, fx = typeof fr === 'number' ? flo.x[fr] : fr.x, fz = typeof fr === 'number' ? flo.z[fr] : fr.z;
             if (this.go(w, fx, fz, 0.5)) { fl.eatFruit?.(id); w.hunger = Math.min(1, w.hunger + 0.4); this.done(w); }
             return;
           }
@@ -361,7 +367,7 @@ export class Workers {
   }
   // ------------------------------------------------------------------ foraging
   private forage(w: Worker, dt: number) {
-    const f = this.f, c = w.c, fl = f.g.world.flora, ff = fl as unknown as FloraFruit;
+    const f = this.f, c = w.c, fl = f.g.world.flora, ff = fruitSrc(f);
     const home = w.target ?? this.nearest(c.x, c.z, (b) => b.kind === 'barracks' || b.kind === 'depot');
     if (w.carry && w.carry.n >= this.cap(c)) {
       if (home) { if (!this.goTo(w, home)) return; const got = f.give(home, w.carry.id, w.carry.n); if (got < w.carry.n) f.put(w.carry.id, w.carry.n - got); }
@@ -370,7 +376,7 @@ export class Workers {
     }
     const cx = home?.x ?? c.x, cz = home?.z ?? c.z;
     const fr = ff.fruitNear?.(cx, cz, 22);
-    if (fr !== null && fr !== undefined) {
+    if (fr !== null && fr !== undefined && fr !== -1) {
       const id = typeof fr === 'number' ? fr : fr.id, x = typeof fr === 'number' ? fl.x[id] ?? c.x : fr.x, z = typeof fr === 'number' ? fl.z[id] ?? c.z : fr.z;
       if (!this.go(w, x, z, 0.5)) return;
       this.workAnim(w, dt); ff.eatFruit?.(id);

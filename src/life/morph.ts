@@ -257,7 +257,7 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
   if (biped) for (const lg of rig.legs) lg.phase = lg.side > 0 ? 0 : 0.5;
   rig.dims = { W, H, T, lt, legLen, nk, neckLen, nAng, hl, hw, hh, sl, tailLen, er, hindLen, bear: bear ? 1 : 0, hump: humped ? 1 : 0, hop: hop ? 1 : 0, sprawl: sprawl ? 1 : 0, shell: shellV ? 1 : 0,
     // behaviour hints for the animator: grazers crop the ground, furred bodies shake themselves dry, hooved heads nod
-    graze: has(d, 'molars') && !has(d, 'carnassials') ? 1 : 0, fur: d.cover === 'fur' ? 1 : 0, hoof: hooves ? 1 : 0, cat: cat ? 1 : 0, fat: has(d, 'fat_stores') ? 1 : 0 };
+    graze: has(d, 'molars') && !has(d, 'carnassials') ? 1 : 0, fur: d.cover === 'fur' ? 1 : 0, hoof: hooves ? 1 : 0, cat: cat ? 1 : 0, fat: has(d, 'fat_stores') ? 1 : 0, roll: F?.roll ? 1 : 0 };
 }
 
 // ------------------------------------------------------------------------------------------------ arthropods

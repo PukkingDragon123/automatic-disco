@@ -87,6 +87,8 @@ export class Creature {
   mem: Memory | null = null;
   /** food in the gut (dung comes of it), a seed being carried (plant species) */
   gut = 0; seed = -1; seedT = 0;
+  /** eating fruit off a plant (not the plant itself) */
+  picking = false;
   /** far from the camera: thinks less often, takes straight lines */
   far = false;
   /** lying down 0..1 (sleep, rest; a stalker's crouch is ~0.35) */

@@ -124,7 +124,7 @@ function plantFor(c: Creature, w: World, r: number, cx = c.x, cz = c.z): number 
     const sp = fl.species[fl.sp[i]];
     if (sp.tree && c.size < 1.4) return;
     // a little preference for richer plants and safer ground
-    const s = d2 - sp.food * 0.4 - fl.bio[i] * 3 + (c.faction === 'wild' ? eco.poison(fl.x[i], fl.z[i]) * 30 : 0);
+    const s = d2 - sp.food * 0.4 - fl.bio[i] * 3 + (c.faction === 'wild' ? eco.poisonAt(fl.x[i], fl.z[i]) * 30 : 0);
     if (s < bs) { bs = s; best = i; }
   });
   return best;
@@ -360,13 +360,13 @@ function goSleep(c: Creature, w: World, P: Profile): boolean {
   const eco = w.eco;
   if ((P.social === 'herd' || P.social === 'swarm' || P.social === 'pack') && c.herd && !P.den) {
     // the herd beds down together; one keeps watch
-    const today = Math.floor(w.time / w.dayLen + 0.5);
+    // a fresh bed each night (a spot older than most of a day is last night's)
     let hs = eco.herdSleep.get(c.herd);
-    if (!hs || hs.day !== today) {
+    if (!hs || w.time - hs.day > w.dayLen * 0.6) {
       const L = leaderOf(w, c) ?? c;
       // open ground with a view, not in danger, not in the water
       const [x, z] = placeFor(L, w, P, L.x, L.z, 6, 5);
-      hs = { x, z, day: today, sentry: P.sentry ? c.id : 0, until: w.time + 40 };
+      hs = { x, z, day: w.time, sentry: P.sentry ? c.id : 0, until: w.time + 40 };
       eco.herdSleep.set(c.herd, hs);
     }
     const a = (c.id * 2.399) % TAU, r = 0.8 + c.radius * 2 + (c.id % 3) * 0.7 * P.spread / 5;
@@ -470,7 +470,8 @@ function forage(c: Creature, w: World, P: Profile, hunger: number): boolean {
   if (diet === 'carn' || diet === 'omni' || diet === 'scav') {
     const cp = corpseFor(c, w, P);
     if (cp) { setMind(c, 'scavenge'); c.target = cp.id; return true; }
-    if (P.guild === 'predator' && c.cdHunt <= 0) {
+    // hunters (and small carrion-eaters that will take what they can overpower)
+    if ((P.guild === 'predator' || P.guild === 'decomposer' && diet === 'carn') && c.cdHunt <= 0) {
       const pr = preyFor(c, w);
       if (pr) {
         const d = dist(c, pr.x, pr.z);
@@ -491,12 +492,12 @@ function forage(c: Creature, w: World, P: Profile, hunger: number): boolean {
   }
   if (P.fruit) {
     const f = eco.fruitNear(c.x, c.z, Math.min(c.st.sight, 18));
-    if (f >= 0) { setMind(c, 'graze'); c.target = -1 - f; c.goalX = w.flora.x[f]; c.goalZ = w.flora.z[f]; (c as any).__fruit = 1; return true; }
+    if (f >= 0) { setMind(c, 'graze'); c.target = -1 - f; c.goalX = w.flora.x[f]; c.goalZ = w.flora.z[f]; c.picking = true; return true; }
   }
   if (diet === 'herb' || diet === 'omni' || diet === 'scav' && P.guild !== 'scavenger') {
     const p = plantFor(c, w, Math.min(c.st.sight, 12));
     if (p >= 0 && dangerAt(c, w, w.flora.x[p], w.flora.z[p]) < 0.8) {
-      setMind(c, 'graze'); c.target = -1 - p; c.goalX = w.flora.x[p]; c.goalZ = w.flora.z[p]; (c as any).__fruit = 0;
+      setMind(c, 'graze'); c.target = -1 - p; c.goalX = w.flora.x[p]; c.goalZ = w.flora.z[p]; c.picking = false;
       remember(mem(c).food, w.flora.x[p], w.flora.z[p], w.time, eco.vegetation(c.x, c.z), 4);
       return true;
     }
@@ -693,7 +694,7 @@ export function act(c: Creature, w: World, dt: number) {
         break;
       }
       const t = w.get(c.target);
-      if (!t) { c.mind = 'idle'; break; }
+      if (!t || t.dead && c.fleeT <= 0) { c.mind = 'idle'; break; }
       const dx = c.x - t.x, dz = c.z - t.z, d = Math.hypot(dx, dz) || 1;
       if (d > c.st.sight * 1.2 && c.fleeT <= 0) { c.mind = 'idle'; break; }
       fleeFrom(c, w, t.x, t.z, dt);
@@ -711,12 +712,12 @@ export function act(c: Creature, w: World, dt: number) {
         const p = -1 - c.target;
         c.face(w.flora.x[p], w.flora.z[p], dt);
         // fruit: picked one at a time, the seed rides along to be dropped in the dung far away
-        if ((c as any).__fruit && w.eco.fruit[p] > 0) {
+        if (c.picking && w.eco.fruit[p] > 0) {
           if (c.actT > 1.2) {
             const got = w.eco.eatFruit(p); c.actT = 0;
             c.energy = Math.min(1, c.energy + got / Math.pow(Math.max(1, c.mass), 0.3)); c.thirst = Math.max(0, c.thirst - 0.05); c.gut += got;
             if (c.seed < 0) { c.seed = w.flora.sp[p]; c.seedT = 15 + Math.random() * 45; }
-            if (c.energy > 0.95 || w.eco.fruit[p] <= 0) { c.mind = 'idle'; (c as any).__fruit = 0; }
+            if (c.energy > 0.95 || w.eco.fruit[p] <= 0) { c.mind = 'idle'; c.picking = false; }
           }
           break;
         }
@@ -726,7 +727,7 @@ export function act(c: Creature, w: World, dt: number) {
         if (c.faction === 'wild') {
           c.gut += e; c.thirst = Math.max(0, c.thirst - got * 0.004);
           w.eco.grazed(c.x, c.z, got);
-          const pz = w.eco.poison(c.x, c.z); if (pz > 0.2) c.poison = Math.max(c.poison, pz * 3);
+          const pz = w.eco.poisonAt(c.x, c.z); if (pz > 0.2) c.poison = Math.max(c.poison, pz * 3);
         }
         if (got <= 0 || c.energy > 0.97) c.mind = 'idle';
       } else {
@@ -886,8 +887,7 @@ function go(c: Creature, w: World, tx: number, tz: number, run: number, dt: numb
   if (!c.path || c.repathT <= 0 || (Math.abs(c.goalX - tx) > 2 || Math.abs(c.goalZ - tz) > 2)) {
     if (!chase || c.repathT <= 0) {
       c.path = w.pather.find(c.x, c.z, tx, tz, c.walker, 6000);
-      c.pathI = 0; c.repathT = chase ? 1.2 : 4;
-      if (c.mind !== 'travel' && c.mind !== 'wander' && c.mind !== 'graze') { c.goalX = tx; c.goalZ = tz; }
+      c.pathI = 0; c.repathT = chase ? 1.2 : 4; c.goalX = tx; c.goalZ = tz;
       if (!c.path) { c.steer(w, tx, tz, run, dt); return d; }
     }
   }

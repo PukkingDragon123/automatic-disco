@@ -165,7 +165,7 @@ export class Programme implements SOwner {
     const toP = Math.atan2(pz - this.z, px - this.x);
     const rad = kind === 'lander' ? 3 : SDEF[kind].r;
     if (kind === 'miner') {
-      const di = F.freeDeposit(this.x, this.z, this.P.minerReach, this.f === 'prc');
+      const di = F.freeDeposit(this.x, this.z, this.P.minerReach, this.f === 'prc', this.f);
       if (di < 0) return null;
       const d = R.deposits[di];
       for (let k = 0; k < 16; k++) {

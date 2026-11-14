@@ -90,7 +90,7 @@ export class Biotech {
   get run() { return this.g.run; }
   get hive() { return this.g.veyr; }
   get factory(): any { return (this.g as any).factory ?? null; }
-  get eco(): any { return (this.g as any).eco ?? null; }
+  get eco(): any { return (this.g as any).eco ?? (this.w as any).eco ?? null; }
 
   // ============================================================================================ profiles
   profileOfSp(sp: Species): Profile {
@@ -971,6 +971,7 @@ export class Biotech {
   }
   fertilise(x: number, z: number, r: number, amt: number) {
     const e = this.eco; if (e?.fertilise) { e.fertilise(x, z, r, amt); return; } if (e?.fertilize) { e.fertilize(x, z, r, amt); return; }
+    if (e?.dung) e.dung(x, z, amt * 3, (x * 31 + z * 17) | 0);
     const R = this.w.region, N = R.N, rr = Math.ceil(r);
     for (let dz = -rr; dz <= rr; dz++) for (let dx = -rr; dx <= rr; dx++) { const X = Math.floor(x) + dx, Z = Math.floor(z) + dz; if (X < 0 || Z < 0 || X >= N || Z >= N) continue; const d = Math.hypot(dx, dz) / r; if (d >= 1) continue; const i = Z * N + X; R.fert[i] = Math.min(1, R.fert[i] + amt * (1 - d)); }
   }

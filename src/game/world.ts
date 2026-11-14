@@ -8,6 +8,8 @@ import { Pather } from './path';
 import { Registry, type Species, type Faction } from './species';
 import { Creature } from './creature';
 import { act } from './ai';
+import { Eco, WILD_CAP } from '../eco/eco';
+import { profileOf, activity } from '../eco/profile';
 import { wildDesign, mutate, divergence, nameFor, type Role } from '../life/design';
 import { Rand, clamp, hash01 } from '../core/rand';
 import { B } from '../world/blockTex';
@@ -19,7 +21,6 @@ export interface WorldHooks {
   onDamage?(c: Creature, amount: number, by: Creature | null): void;
 }
 
-const ROLE_CAP: Record<Role, number> = { mite: 16, grazer: 9, tank: 4, stalker: 5, apex: 2, scavenger: 6, flyer: 10, snail: 8 };
 const ROLE_GROUPS: Record<Role, [number, number, number]> = { mite: [4, 3, 5], grazer: [3, 3, 5], tank: [2, 2, 3], stalker: [3, 1, 2], apex: [1, 1, 1], scavenger: [3, 1, 2], flyer: [2, 3, 5], snail: [3, 2, 3] };
 
 export class World {
@@ -45,6 +46,8 @@ export class World {
   hives: import('./hive').Hive[] = [];
   readonly frustum = new THREE.Frustum();
   private projM = new THREE.Matrix4();
+  /** the ecosystem: water, soil, plants, populations (src/eco) */
+  readonly eco: Eco;
 
   constructor(readonly region: Region, readonly reg: Registry, readonly seed: number) {
     this.terrain = new Terrain(region);
@@ -56,7 +59,10 @@ export class World {
     this.moss = new Float32Array(region.N * region.N);
     this.creep = new Float32Array(region.N * region.N);
     this.scene.background = new THREE.Color(0x07080c);
+    this.eco = new Eco(this);
   }
+  /** a new herd id (empty list registered) */
+  newHerd() { const id = this.herdN++; this.herds.set(id, []); return id; }
   get pal(): Palette { return this.region.pal; }
 
   // ------------------------------------------------------------------ fauna
@@ -171,6 +177,7 @@ export class World {
     c.sp.alive--;
     if (c.sp.alive <= 0 && c.sp.owner === 'wild') c.sp.extinct = true;
     if (by) by.sp.kills++;
+    this.eco.onDeath(c, by);
     this.hooks.onDeath?.(c, by);
   }
 
@@ -185,9 +192,10 @@ export class World {
 
   canBreed(c: Creature): boolean {
     if (c.faction === 'wild') {
-      const role = this.roles.get(this.rootOf(c.sp).id);
-      const cap = Math.round((role ? ROLE_CAP[role] : 6) * this.region.biome.fauna);
-      return this.countLineage(c.sp) < cap;
+      // food and water set the cap (eco.capacity); the wild as a whole stays within a performance budget
+      let wild = 0;
+      for (const o of this.creatures) if (!o.dead && o.faction === 'wild') wild++;
+      return wild < WILD_CAP && this.countLineage(c.sp) < this.eco.capacity(c);
     }
     return this.mossAtXZ(c.x, c.z) > 0.5 && (this.ownedSupply?.(c.faction) ?? 0) > 0;
   }
@@ -216,6 +224,7 @@ export class World {
       const kid = this.spawn(sp, c.faction, c.x + Math.cos(a) * (c.radius + 0.5), c.z + Math.sin(a) * (c.radius + 0.5), true);
       if (!kid) continue;
       kid.herd = c.herd; kid.homeX = c.homeX; kid.homeZ = c.homeZ; kid.energy = 0.7;
+      if (c.faction === 'wild') { kid.mother = c.id; kid.denX = c.denX; kid.denZ = c.denZ; kid.thirst = 0.1; kid.tired = c.tired; this.eco.onBirth(kid); }
       if (c.herd) this.herds.get(c.herd)?.push(kid);
       this.hooks.onBirth?.(kid, c, newSp);
       newSp = null;
@@ -236,15 +245,20 @@ export class World {
     this.frustum.setFromProjectionMatrix(this.projM);
     const camPos = cam.position;
     const dead: Creature[] = [];
+    this.eco.update(dt);
     for (const c of this.creatures) {
       if (!c.dead) {
+        // full minds near the camera, slower thinking and straight-line travel far away
+        c.far = (c.x - camPos.x) ** 2 + (c.z - camPos.z) ** 2 > 78 * 78;
         act(c, this, dt);
         c.move(this, dt);
         this.metabolism(c, dt);
       } else {
         c.rot += dt;
         if (c.digest <= 0) c.fx.decay.value = Math.min(1, c.rot / 150);
-        if ((c.rot > 260 && c.digest <= 0) || (c.bio <= 0.01 && c.digest <= 0 && c.rot > 4)) dead.push(c);
+        // a carcass feeds the soil as it rots, and whatever is left when it is gone
+        if (c.digest <= 0 && dt > 0) this.eco.rotting(c.x, c.z, dt * 0.05);
+        if ((c.rot > 260 && c.digest <= 0) || (c.bio <= 0.01 && c.digest <= 0 && c.rot > 4)) { dead.push(c); if (c.digest <= 0) this.eco.rotting(c.x, c.z, c.bio); }
       }
       // animate only what can be seen
       const near = c.mesh.position.distanceToSquared(camPos) < 120 * 120;
@@ -269,15 +283,40 @@ export class World {
   }
 
   private metabolism(c: Creature, dt: number) {
-    const st = c.st;
-    const drain = clamp(0.0022 + st.upkeep * 0.01, 0.0018, 0.009) * (c.mind === 'flee' || c.mind === 'hunt' ? 1.6 : 1);
+    const st = c.st, wild = c.faction === 'wild', asleep = c.mind === 'sleep';
+    const running = c.mind === 'flee' || c.mind === 'hunt';
+    const drain = clamp(0.0022 + st.upkeep * 0.01, 0.0018, 0.009) * (running ? 1.6 : asleep ? 0.35 : c.mind === 'rest' ? 0.7 : 1);
     c.energy -= drain * dt;
-    if (c.poison > 0) { c.poison -= dt; this.damage(c, st.hp * 0.012 * dt + 0.4 * dt, null); }
-    if (c.energy <= 0) { c.energy = 0; this.damage(c, c.maxHp * 0.02 * dt, null); }
-    else if (c.hp < c.maxHp) c.hp = Math.min(c.maxHp, c.hp + st.regen * dt * (c.energy > 0.3 ? 1 : 0.2));
+    /** a hurt that may be the last: name the cause first so the census can count it */
+    const hurt = (amt: number, cause: string) => { if (c.hp - amt * (1 - st.armor) <= 0) c.dieCause = cause; this.damage(c, amt, null); };
+    if (c.poison > 0) { c.poison -= dt; hurt(st.hp * 0.012 * dt + 0.4 * dt, 'poison'); }
+    if (c.energy <= 0) { c.energy = 0; hurt(c.maxHp * 0.02 * dt, 'starvation'); }
+    else if (c.hp < c.maxHp) c.hp = Math.min(c.maxHp, c.hp + st.regen * dt * (c.energy > 0.3 && c.thirst < 0.8 ? 1 : 0.2));
+    if (wild && !c.dead) this.needs(c, dt, asleep, running, hurt);
     c.age += dt;
     if (c.growth < 1) { c.growth = Math.min(1, c.growth + dt / st.maturity * 0.65); }
-    if (c.age > st.lifespan * (c.faction === 'wild' ? 1 : 3) && Math.random() < dt * 0.01) this.kill(c, null);
+    if (c.age > st.lifespan * (wild ? 1 : 3) && Math.random() < dt * 0.01) { c.dieCause = 'old age'; this.kill(c, null); }
+  }
+  /** a wild animal's thirst, tiredness and gut */
+  private needs(c: Creature, dt: number, asleep: boolean, running: boolean, hurt: (amt: number, cause: string) => void) {
+    const P = profileOf(c, this), eco = this.eco, bi = this.region.biome;
+    const sun = Math.max(0, Math.cos((this.day - 0.25) * Math.PI * 2));
+    // thirst: faster in heat, at a run, in daylight; snails and mites drink the damp
+    c.thirst += dt * P.thirstK / (this.dayLen * 0.42) * (1 + bi.temp * 0.5 * sun) * (running ? 1.6 : asleep ? 0.4 : 1);
+    if (P.thirstK < 0.5 && eco.moisture(c.x, c.z) > 0.55) c.thirst -= dt * 0.01;
+    if (c.walker.swim && this.region.isWater(c.x, c.z)) c.thirst -= dt * 0.05;
+    c.thirst = clamp(c.thirst, 0, 1);
+    if (c.thirst >= 1) hurt(c.maxHp * 0.015 * dt, 'thirst');
+    // tiredness: the day wears it down, sleep restores it (a long chase tires it fast)
+    if (asleep) c.tired = Math.max(0, c.tired - dt / (this.dayLen * 0.15));
+    else if (c.mind === 'rest') c.tired = Math.max(0, c.tired - dt / (this.dayLen * 0.6));
+    else c.tired = Math.min(1, c.tired + dt / (this.dayLen * 0.55) * (running ? 2.5 : 1) * (activity(P.sched, this.day) < 0.3 ? 1.6 : 1));
+    // what goes in comes out: dung feeds the soil and drops the seeds it carried
+    if (c.seed >= 0) { c.seedT -= dt; if (c.seedT <= 0) { eco.dung(c.x, c.z, 0.5, c.seed); c.seed = -1; c.gut *= 0.5; } }
+    if (c.gut > 0.9) { eco.dung(c.x, c.z, c.gut, -1); c.gut = 0; }
+    if (c.breedCD > 0) c.breedCD -= dt;
+    if (c.cdDisplay > 0) c.cdDisplay -= dt;
+    if (c.cdHunt > 0) c.cdHunt -= dt;
   }
 }
 

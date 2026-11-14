@@ -36,6 +36,8 @@ export class Kit {
   dens: number;
   /** the paint used by plate() when none is given */
   paint: RegKey = 'pa0';
+  /** 1 or 2: the texture of what is built next scrolls with the material's uScroll.x / .y (track belts) */
+  scroll = 0;
   tris = 0;
   constructor(dens = 3) { this.dens = dens; }
   /** start (or continue) the mesh of a bone; mat indexes the materials passed to finish() */
@@ -82,7 +84,7 @@ export class Kit {
       else if (ax >= ay && ax >= az) o.uv.push((_n.x > 0 ? -P.z : P.z) * d, -P.y * d);
       else if (ay >= az) o.uv.push(P.x * d, (_n.y > 0 ? P.z : -P.z) * d);
       else o.uv.push((_n.z > 0 ? P.x : -P.x) * d, -P.y * d);
-      o.reg.push(R[0], R[1], R[2], R[3]);
+      o.reg.push(R[0], R[1], this.scroll === 1 ? -R[2] : R[2], this.scroll === 2 ? -R[3] : R[3]);
     }
     o.tris++; this.tris++;
   }
@@ -370,6 +372,33 @@ export class Kit {
     }
     this.acc.clear();
     return out;
+  }
+}
+/** a hydraulic cylinder between two bones: the barrel on a clevis at a (in from), the rod's clevis at b (in to) */
+export interface Piston { from: THREE.Object3D; to: THREE.Object3D; a: THREE.Vector3; b: THREE.Vector3; g: THREE.Group; rod: THREE.Group }
+export function makePiston(k: Kit, list: Piston[], from: THREE.Object3D, a: V3, to: THREE.Object3D, b: V3, r: number, lb: number, lr: number) {
+  const g = new THREE.Group(); g.position.set(...a); from.add(g);
+  const rod = new THREE.Group(); g.add(rod);
+  k.on(g);
+  k.cyl(0, lb / 2, 0, r, r, lb, 8, 'hose');
+  k.cyl(0, lb - r * 0.25, 0, r * 1.18, r * 1.18, r * 0.5, 8, 'st0');
+  k.cyl(0, r * 0.3, 0, r * 1.1, r * 1.1, r * 0.6, 8, 'st0');
+  k.clevis(r * 1.2, r * 0.9, r * 1.2);
+  k.cyl(r * 1.05, lb * 0.8, 0, r * 0.35, r * 0.35, r * 0.6, 6, 'br', { axis: 'x' });
+  k.on(rod);
+  k.cyl(0, -lr / 2, 0, r * 0.55, r * 0.55, lr, 8, 'st1');
+  k.push(0, 0, 0, Math.PI, 0, 0).clevis(r * 1.1, r * 0.8, r * 1.0).pop();
+  list.push({ from, to, a: new THREE.Vector3(...a), b: new THREE.Vector3(...b), g, rod });
+}
+const _pm = new THREE.Matrix4(), _pv = new THREE.Vector3(), _py = new THREE.Vector3(0, 1, 0);
+/** aim every cylinder at its lug (world matrices must be current) */
+export function aimPistons(list: Piston[]) {
+  for (const P of list) {
+    _pm.copy(P.from.matrixWorld).invert().multiply(P.to.matrixWorld);
+    const d = _pv.copy(P.b).applyMatrix4(_pm).sub(P.a), L = d.length();
+    P.g.position.copy(P.a);
+    if (L > 1e-5) P.g.quaternion.setFromUnitVectors(_py, d.multiplyScalar(1 / L));
+    P.rod.position.set(0, L, 0);
   }
 }
 export function lerp3(a: V3, b: V3, t: number): V3 { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; }

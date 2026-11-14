@@ -105,6 +105,15 @@ export const SKILLS: SkillDef[] = [
   S('haul', 'fabrication', 'Labour Harness', 'Workers haul items between machines and stores, and worker pens and breeding pens can be built.', { carbon: 60, ore: 30 }, 1, ['convert', 'works']),
   S('operate', 'fabrication', 'Machine Minders', 'A worker can stand at a machine and run it up to half again as fast.', { carbon: 120, water: 60 }, 1, ['haul']),
   S('blueprint', 'fabrication', 'Blueprint Office', 'Copy a group of machines and lay it down again elsewhere [Y] / [U].', { ore: 100, water: 60 }, 1, ['assembler']),
+  // BIOTECH (lab branch): engineered life as the production engine (src/biotech)
+  S('bt_works', 'lab', 'Bioworks Bureau', 'Work orders for engineered life: one more function-organ slot per design, and the ledger tracks every producer per minute.', { carbon: 60, water: 40 }, 1, ['lab']),
+  S('bt_reactor', 'lab', 'Bio-Reactor', 'A digester and a firebox: carcasses, bio-oil, algae fuel and carbon burnt into 25 MW for the grid.', { ore: 80, carbon: 60 }, 1, ['bt_works']),
+  S('bt_vat', 'lab', 'Growth Vat Tank', 'A glass tank of warm medium: designs grow in a fraction of a womb\'s time and step out ready to work.', { carbon: 100, water: 100 }, 2, ['bt_works']),
+  S('bt_habitat', 'lab', 'Engineered Habitat', 'A glazed dome with a climate unit: engineered stock lives, breeds and produces faster inside and cannot escape.', { soil: 100, ore: 60, water: 60 }, 2, ['bt_works']),
+  S('bt_field', 'lab', 'Force-Field Barrier', 'A Tesla mast that throws a shimmering lattice dome: nothing hostile walks through, and it takes the shots meant for the works.', { ore: 160, water: 90, carbon: 60 }, 2, ['bt_reactor']),
+  S('bt_lock', 'lab', 'Gene-Lock', 'A kill switch on the germ line, sequenced: locked designs breed only in a habitat and never escape or cross with wild stock.', { carbon: 140, water: 80 }, 1, ['bt_habitat']),
+  S('bt_clone', 'lab', 'Cloning', 'The vats grow twins, and clone any creature you select: proven workers copied exactly.', { carbon: 220, water: 180, ore: 60 }, 2, ['bt_vat']),
+  S('bt_dome', 'lab', 'Field Dome II', 'Heavier coils: force fields reach 9.5 m and hold twice the punishment.', { ore: 260, water: 180, carbon: 120 }, 3, ['bt_field']),
 ];
 export const SKILL: Record<string, SkillDef> = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
 

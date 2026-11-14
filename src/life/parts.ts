@@ -6,6 +6,7 @@ import { mixHex } from '../limbo/gfx/pixel';
 import { RAMPS } from '../art/palette';
 import { clamp } from '../core/rand';
 import { type Region, oct, blade, sac, spline, ball, sheet, hash, gauss, sub, addV, scl, norm, cross, len, lerpV, mixC, transport, type V3, type Wt } from './kit';
+import { BEASTS } from './bestiary';
 import { type Ctx, has, hide, keratin, fuzz, interp, chordTs, furCard, sm, earPaint, rampFor } from './sculpt';
 
 /** ramps come from the master palette, centred on the colour asked for */
@@ -157,13 +158,15 @@ export function mane(S: Ctx, T: SpineTs, W: number, head: V3, hl: number, hw: nu
   S.paints.push(() => hide(S, RB, { L: hw * 2, rad: () => W * 0.5, seed: 97, kind: 'body', noPattern: true, ramp, clump: 1.5, flow: 1, down: 0.8 }));
   // a hood of mane round the head: the face sits in it, cheeks, chin and throat framed
   const iN = S.bi('neck'), hwt: Wt = [iH, 0.7, iN, 0.3];
-  const hood: V3[] = [addV(head, [0, hh * 0.08, -hl * 0.34]), addV(head, [0, hh * 0.02, -hl * 0.08]), addV(head, [0, -hh * 0.06, hl * 0.14])];
+  const helmed = !!(d.beast && BEASTS[d.beast]?.form.parts.some((p) => p.k === 'helm')), zb = helmed ? -0.2 : 0;
+  const hood: V3[] = [addV(head, [0, hh * 0.08, hl * (-0.34 + zb)]), addV(head, [0, hh * 0.02 - (helmed ? hh * 0.12 : 0), hl * (-0.08 + zb)]), addV(head, [0, -hh * (helmed ? 0.2 : 0.06), hl * (0.14 + zb)])];
   sac(S.B, RB, S.gid(), hood, [[hw * 0.9, hh * 1.0], [hw * 0.95, hh * 1.05], [hw * 0.74, hh * 0.86]], [hwt, hwt, hwt],
     { n: 26, sq: 2, start: false, end: false, bump: (a, t) => 0.1 * Math.sin(a * 8 + t * 5) + 0.06 * Math.cos(a * 13) + 0.12 * gauss(Math.abs(a), Math.PI, 0.7) });
   // heavy locks round the rim of the hood, longest under the chin and down the throat
   for (let i = 0; i < 18; i++) {
     const a = (i / 18) * TAU + 0.17, out: V3 = [Math.sin(a), Math.cos(a), 0], chin = gauss(Math.cos(a), -1, 0.5);
-    const base = addV(head, [Math.sin(a) * hw * 0.82, -hh * 0.06 + Math.cos(a) * hh * 0.92, hl * 0.1]);
+    if (helmed && Math.cos(a) > 0.3) continue; // the helm crowns the head: the ruff frames only the cheeks and throat
+    const base = addV(head, [Math.sin(a) * hw * 0.82, -hh * 0.06 + Math.cos(a) * hh * 0.92, hl * (0.1 + zb)]);
     const top = Math.max(0, Math.cos(a)), dir = norm(addV(scl(out, 0.7 - top * 0.35), [0, -0.35 - chin * 0.5, -0.35 - top * 0.6]));
     lock(S, base, dir, norm(cross(dir, [0, 0, 1])), hw * (0.5 + 0.35 * chin), hw * 0.5, hwt, 700 + i, MN);
   }

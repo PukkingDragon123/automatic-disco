@@ -287,7 +287,7 @@ export class Descent {
   private buildCloud(y: number, cover: number) {
     const L = { y, cover, slices: [] as THREE.Mesh[], u: [] as Record<string, THREE.IUniform>[] };
     const lc = new THREE.Color(0xe8e6de), dc = new THREE.Color(this.o.pal.horizon).lerp(new THREE.Color(0x5a6470), 0.6);
-    for (let s = -2; s <= 2; s++) {
+    for (const s of [-1.5, -0.5, 0.5, 1.5]) {
       const u = { uT: { value: 0 }, uCover: { value: cover }, uSlice: { value: s / 2 }, uShade: { value: s * 0.12 }, uLit: { value: lc }, uDark: { value: dc }, uCam: { value: new V3() }, uWind: { value: new THREE.Vector2(6, 2) }, uFadeNear: { value: 1 } };
       const m = mesh(this.bin, new THREE.PlaneGeometry(40000, 40000), fxMat(this.bin, CLOUD_V, CLOUD_F, u, 'alpha', { side: THREE.DoubleSide }), this.scene, 0, y + s * 14, 0, false);
       m.rotation.x = -Math.PI / 2; m.frustumCulled = false; m.renderOrder = 2;
@@ -673,16 +673,18 @@ export class Descent {
     const cam = this.cam, P = this.pod.root.position, A = this.alt;
     // the chase rig: high and behind on the way down, closing in and coming level near the ground
     const low = sm(320, 30, A);
-    const back = lerp(12, 13, low), up = lerp(30, 5.5, low);
+    const back = lerp(9, 12, low), up = lerp(19, 5.5, low);
     const vx = this.v.x * 0.35, vz = this.v.y * 0.35;
-    const want = _v.set(P.x - this.F.x * back - vx * 0.2, P.y + up, P.z - this.F.y * back - vz * 0.2);
-    const look = _v2.set(P.x + this.F.x * lerp(6, 18, low) + vx, P.y - lerp(40, 4, low), P.z + this.F.y * lerp(6, 18, low) + vz);
-    if (!this.chase.init) { this.chase.pos.copy(want); this.chase.look.copy(look); this.chase.init = true; }
-    this.chase.pos.lerp(want, 1 - Math.exp(-dt * 5)); this.chase.look.lerp(look, 1 - Math.exp(-dt * 3.2));
+    // offsets from the pod are what is smoothed (a lag on the steering, none on the fall itself)
+    const wantOff = _v.set(-this.F.x * back - vx * 0.25, up, -this.F.y * back - vz * 0.25);
+    const lookOff = _v2.set(this.F.x * lerp(5, 18, low) + vx, -lerp(30, 4, low), this.F.y * lerp(5, 18, low) + vz);
+    if (!this.chase.init) { this.chase.pos.copy(wantOff); this.chase.look.copy(lookOff); this.chase.init = true; }
+    this.chase.pos.lerp(wantOff, 1 - Math.exp(-dt * 4)); this.chase.look.lerp(lookOff, 1 - Math.exp(-dt * 3));
+    const cpos = new V3().copy(P).add(this.chase.pos), clook = new V3().copy(P).add(this.chase.look);
     // never below the ground
-    this.chase.pos.y = Math.max(this.chase.pos.y, this.gH(this.chase.pos.x, this.chase.pos.z) + 2);
+    cpos.y = Math.max(cpos.y, this.gH(cpos.x, cpos.z) + 2);
     let fov = lerp(60, 48, low);
-    cam.position.copy(this.chase.pos); cam.up.set(0, 1, 0); cam.lookAt(this.chase.look);
+    cam.position.copy(cpos); cam.up.set(0, 1, 0); cam.lookAt(clook);
     // a cut overrides it; a blend eases back out
     if (this.shot) {
       const sp = new V3(), sl = new V3();

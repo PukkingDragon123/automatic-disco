@@ -15,9 +15,9 @@ import { sfx } from '../audio/audio';
 
 /** the ecosystem agent's interface (all optional until it lands) */
 export interface EcoAPI {
-  irrigate?(x: number, z: number, r: number, amt?: number): void;
-  attract?(x: number, z: number, kind: string, strength: number, ttl: number): void;
-  repel?(x: number, z: number, kind: string, strength: number, ttl: number): void;
+  irrigate?(x: number, z: number, r: number, amt?: number, ttl?: number): unknown;
+  attract?(x: number, z: number, kind: string, strength: number, ttl: number): unknown;
+  repel?(x: number, z: number, kind: string, strength: number, ttl: number): unknown;
   fertilise?(x: number, z: number, r: number, amt?: number): void;
   fertilize?(x: number, z: number, r: number, amt?: number): void;
   poison?(x: number, z: number, r: number, amt?: number): void;
@@ -32,7 +32,7 @@ const take = (b: FBuilding, ids: ItemId[], n = 1): ItemId | null => { for (const
 const has = (b: FBuilding, ids: ItemId[]) => ids.some((id) => (b.inBuf.get(id) ?? 0) >= 1);
 const FOOD: ItemId[] = ['fruit', 'protein', 'carbon'];
 
-export function ecoOf(f: Factory): Eco { return (f.g as unknown as { eco?: EcoAPI }).eco; }
+export function ecoOf(f: Factory): Eco { return (f.g as unknown as { eco?: EcoAPI }).eco ?? (f.g.world as unknown as { eco?: EcoAPI }).eco; }
 /** which items an eco structure takes */
 export function ecoWants(b: FBuilding, id: ItemId): boolean {
   switch (b.kind) {
@@ -66,7 +66,7 @@ export function ecoStep(f: Factory, b: FBuilding, dt: number) {
       b.status = 'working'; b.running = true;
       if (s.t < 2) { if (Math.random() < dt * 14) spray(f, b, 0x9cb2a5, rad, 1.6); return; }
       s.t = 0; take(b, ['water']);
-      if (eco?.irrigate) eco.irrigate(b.x, b.z, rad, 1); else { field(f, R.wet, b.x, b.z, rad, 0.05); field(f, R.damp, b.x, b.z, rad, 0.04); field(f, R.fert, b.x, b.z, rad, 0.01); }
+      if (eco?.irrigate) eco.irrigate(b.x, b.z, rad, 1, 3); else { field(f, R.wet, b.x, b.z, rad, 0.05); field(f, R.damp, b.x, b.z, rad, 0.04); field(f, R.fert, b.x, b.z, rad, 0.01); }
       return;
     }
     case 'spreader': {
@@ -75,9 +75,9 @@ export function ecoStep(f: Factory, b: FBuilding, dt: number) {
       if (Math.random() < dt * 10) spray(f, b, RAMPS.soil[3], rad, 0.6);
       if (s.t < 4) return;
       s.t = 0; const used = take(b, ['dung', 'carbon']);
-      const amt = used === 'dung' ? 0.06 : 0.03;
+      const amt = used === 'dung' ? 0.3 : 0.15;
       const fz = eco?.fertilise ?? eco?.fertilize;
-      if (fz) fz.call(eco, b.x, b.z, rad, amt); else field(f, R.fert, b.x, b.z, rad, amt);
+      if (fz) fz.call(eco, b.x, b.z, rad, amt); else field(f, R.fert, b.x, b.z, rad, amt * 0.2);
       return;
     }
     case 'sprayer': {
@@ -89,7 +89,7 @@ export function ecoStep(f: Factory, b: FBuilding, dt: number) {
       const fl = g.world.flora;
       fl.near(b.x, b.z, rad, (i) => { if (fl.bio[i] > 0.05) fl.eat(i, 0.18); });
       g.world.near(b.x, b.z, rad, (c) => { if (c.dead || c.faction === 'veyr') return; c.poison = Math.max(c.poison, 4); if (c.faction === 'wild' && c.mind !== 'attack') { c.mind = 'flee'; c.fleeT = 2; c.target = 0; } });
-      eco?.poison?.(b.x, b.z, rad, 1); eco?.repel?.(b.x, b.z, 'all', 1, 8);
+      eco?.poison?.(b.x, b.z, rad, 0.5); eco?.repel?.(b.x, b.z, 'all', 1, 4);
       if (!eco?.poison) field(f, R.fert, b.x, b.z, rad, -0.04);
       return;
     }
@@ -114,7 +114,7 @@ function spray(f: Factory, b: FBuilding, col: number, r: number, up: number) {
 /** grazers wander in to the bait */
 function lure(f: Factory, b: FBuilding, r: number) {
   const eco = ecoOf(f);
-  if (eco?.attract) { eco.attract(b.x, b.z, 'grazer', 1, 8); return; }
+  if (eco?.attract) { eco.attract(b.x, b.z, 'grazer', 1, 4); return; }
   f.g.world.near(b.x, b.z, r, (c) => {
     if (c.dead || c.faction !== 'wild' || c.diet === 'carn' || c.mind === 'flee' || c.mind === 'attack') return;
     if (Math.random() < 0.3) { c.mind = 'wander'; c.goalX = b.x + (Math.random() - 0.5) * 1.5; c.goalZ = b.z + (Math.random() - 0.5) * 1.5; c.path = null; }
@@ -131,7 +131,7 @@ function sluice(f: Factory, b: FBuilding) {
   if (b.on && (s.t ?? 0) > 3) {
     s.t = 0;
     const [fx, fz] = b.fwd, x = b.x + fx * 4, z = b.z + fz * 4, eco = ecoOf(f);
-    if (eco?.irrigate) eco.irrigate(x, z, b.def.radius ?? 9, 0.6); else { field(f, f.g.region.wet, x, z, 7, 0.03); field(f, f.g.region.fert, x, z, 7, 0.01); }
+    if (eco?.irrigate) eco.irrigate(x, z, b.def.radius ?? 9, 0.6, 4); else { field(f, f.g.region.wet, x, z, 7, 0.03); field(f, f.g.region.fert, x, z, 7, 0.01); }
   }
 }
 /** fill the hollow behind a closed sluice up to the crest of its dam (bounded), and draw the new water */

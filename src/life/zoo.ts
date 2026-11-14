@@ -35,6 +35,7 @@ const shots = (P.get('lineup') === '1' ? [] : angles ? ANG.map(() => cells[0]) :
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshLambertMaterial({ color: 0x4a6a40 })); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
   const { mesh, bones } = makeInstance(m); scene.add(mesh);
   const an = new Animator(m.rig, bones, mesh);
+  if (P.get('curl') === '1') an.curl(1);
   for (let t = 0; t < T; t += 1 / 30) an.update(1 / 30, { speed: mode === 'move' ? Number(P.get('spd') ?? 1.2) : 0, turn: 0, state: mode, act: 0, lookYaw: 0, lookPitch: 0, ground: () => 0, air: 0 });
   // &lid=0..1 forces the eyelids (checks that a blink closes the eye)
   if (P.has('lid')) for (const l of m.rig.lids) bones[l.bone].quaternion.setFromAxisAngle(new THREE.Vector3(...l.axis), Number(P.get('lid')) * 1.62);

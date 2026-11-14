@@ -40,6 +40,7 @@ const CSS = /* css */`
 .mn3 > * { pointer-events: auto; }
 .mn3 .tag { position: absolute; left: 50%; bottom: calc(6 * var(--u)); transform: translateX(-50%); font-size: var(--cf-vt1); line-height: var(--cf-vt1); color: rgba(189, 181, 159, 0.55); letter-spacing: 1px; white-space: nowrap; pointer-events: none !important; text-shadow: 0 calc(1 * var(--u)) 0 #14161b; }
 .mn3 .tag b { color: #d2cab4; font-weight: normal; }
+@media (max-width: 760px), (pointer: coarse) { .mn3 .tag { display: none; } .mn3 .seed { right: 50%; transform: translateX(50%); bottom: calc(8 * var(--u)); } }
 .mn3 .plt { background: #2f3023; color: #d2cab4; text-shadow: 0 1px 0 #14161b; border: 1px solid #14161b;
   box-shadow: inset calc(1 * var(--u)) calc(1 * var(--u)) 0 #585a40, inset calc(-1 * var(--u)) calc(-1 * var(--u)) 0 #1f2019, calc(3 * var(--u)) calc(3 * var(--u)) 0 rgba(20, 22, 27, 0.6); }
 .mn3 .tipx { position: fixed; display: none; pointer-events: none !important; padding: calc(5 * var(--u)) calc(8 * var(--u)); max-width: calc(170 * var(--u)); animation: mn-in 160ms steps(4); }
@@ -145,9 +146,10 @@ export class MenuScreen implements Screen {
     this.scene.add(makeSpace({ stars: 2800, radius: 4200, sun: sunW, dust: 300, dustR: [60, 420], nebula: true }).group);
     // the target world, vast, below and behind
     const planet: Planet = makePlanet(1000 + Math.floor(Math.random() * 9000));
-    this.globe = makeGlobe(planet, 1100, { orbit: true });
-    this.globe.group.position.copy(this.shipW).add(new V3(-300, -1420, -1300)); this.globe.group.rotation.set(0.35, 0.4, 0.2);
-    (this.globe.mat.uniforms.uSun?.value as THREE.Vector3 | undefined)?.copy(sunW);
+    this.globe = makeGlobe(planet, 1500, { orbit: true });
+    this.globe.group.rotation.set(0.35, 0.4, 0.2);
+    // the planet keeps its own sun behind and to the right: a lit crescent and a long night side under the ship
+    (this.globe.mat.uniforms.uSun?.value as THREE.Vector3 | undefined)?.set(0.62, 0.42, -0.66).normalize();
     // under the menu's grade the planet's day side and cloud tops clip to white: a menu-only exposure (own programs)
     const expose = (m: THREE.Material, k: number, key: string) => {
       const prev = m.onBeforeCompile;
@@ -162,9 +164,9 @@ export class MenuScreen implements Screen {
     };
     this.globe.group.traverse((o) => {
       const me = o as THREE.Mesh; if (!me.isMesh || !(me.material instanceof THREE.ShaderMaterial)) return;
-      if (me === this.globe.mesh) expose(me.material, 0.66, 'ground');
-      else if (/cloud/.test(me.name)) expose(me.material, 0.6, 'cloud' + me.id);
-      else if (me === this.globe.atmo) expose(me.material, 0.7, 'air');
+      if (me === this.globe.mesh) expose(me.material, 0.55, 'ground');
+      else if (/cloud/.test(me.name)) expose(me.material, 0.45, 'cloud' + me.id);
+      else if (me === this.globe.atmo) expose(me.material, 0.75, 'air');
     });
     this.scene.add(this.globe.group);
     // a work lamp that swings onto whichever word you point at
@@ -232,7 +234,7 @@ export class MenuScreen implements Screen {
     r.fov = portrait ? 46 : 36;
     const tanV = Math.tan(THREE.MathUtils.degToRad(r.fov / 2));
     // distance so the ship's ~150 m of length fills the share of the width it is given
-    const share = portrait ? 0.95 : 0.55, dist = 150 / share / (2 * tanV * a);
+    const share = portrait ? 0.95 : 0.6, dist = 150 / share / (2 * tanV * a);
     r.look.copy(this.shipW); r.pos.copy(this.shipW).addScaledVector(VIEW, Math.max(190, dist));
     const fwd = r.look.clone().sub(r.pos).normalize();
     r.right.crossVectors(fwd, new V3(0, 1, 0)).normalize(); r.up.crossVectors(r.right, fwd).normalize();
@@ -241,6 +243,9 @@ export class MenuScreen implements Screen {
     const sx = portrait ? 0 : -0.36, sy = portrait ? 0.42 : 0.08;
     const shift = r.right.clone().multiplyScalar(-sx * hx).addScaledVector(r.up, -sy * hy);
     r.pos.add(shift); r.look.add(shift);
+    // the planet: its limb arcs across the bottom of the view (lower in portrait, under the words)
+    { const D = 4200, c = THREE.MathUtils.degToRad(r.fov / 2 + (portrait ? 18 : 14)), off = portrait ? 0 : -0.12;
+      this.globe.group.position.copy(r.pos).addScaledVector(fwd, Math.cos(c) * D).addScaledVector(r.up, -Math.sin(c) * D).addScaledVector(r.right, off * D); }
     // the word column, at WORD_D in front of the camera
     const wy = WORD_D * tanV, wx = wy * a;
     const colX = portrait ? 0 : 0.55, avail = portrait ? wx * 1.6 : wx * 0.66;
