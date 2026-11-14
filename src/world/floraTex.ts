@@ -701,11 +701,17 @@ export class FloraTex {
 
 // ------------------------------------------------------------------------------------------------ bark
 /** bark slots (48 px each, tiling vertically, neutral grey: tinted per limb) */
-export const BARK = { FURROW: 0, PLATE: 1, RING: 2, STEM: 3, FIBRE: 4, FLESH: 5, SMOOTH: 6, SCALE: 7 } as const;
-export const BARK_SLOTS = 8;
+export const BARK = { FURROW: 0, PLATE: 1, RING: 2, STEM: 3, FIBRE: 4, FLESH: 5, SMOOTH: 6, SCALE: 7, PEEL: 8, SHAG: 9 } as const;
+export const BARK_SLOTS = 10;
 const SW = 48, BH = 96;
 
-/** pixel-art bark: plates and fissures drawn as deliberate marks, light from the left of each slot */
+/**
+ * Pixel-art bark, every kind drawn as deliberate marks in neutral tones (tinted per species): furrowed ridges split by
+ * forking fissures with lit lips and cross-checks, plates with lit edges, dark seams, cracks and lifting corners,
+ * palm rings with fibrous leaf bases, green stems with nodes and fine hairs, shaggy fibre, pored flesh, smooth bark
+ * with lenticels and branch-scar eyes, overlapping alien shields, papery bark peeling in curling bands, and long
+ * shaggy strips lifting at their ends. Knots (a dark heart, a lit rim, the grain bending round) sit in the woody kinds.
+ */
 function paintBark(seed: number): THREE.DataTexture {
   const W = SW * BARK_SLOTS, d = new Uint8Array(W * BH * 4), r = new Rand(seed ^ 0xba4c);
   const T = [92, 128, 164, 196, 222];
@@ -713,21 +719,36 @@ function paintBark(seed: number): THREE.DataTexture {
     x = ((Math.floor(x) % SW) + SW) % SW; y = ((Math.floor(y) % BH) + BH) % BH;
     const i = (y * W + s * SW + x) * 4; d[i] = Math.max(0, Math.min(255, v + cr)); d[i + 1] = Math.max(0, Math.min(255, v + cg)); d[i + 2] = Math.max(0, Math.min(255, v + cb)); d[i + 3] = 255;
   };
+  const get = (s: number, x: number, y: number) => { x = ((Math.floor(x) % SW) + SW) % SW; y = ((Math.floor(y) % BH) + BH) % BH; return d[(y * W + s * SW + x) * 4]; };
+  const add = (s: number, x: number, y: number, dv: number) => put(s, x, y, get(s, x, y) + dv);
+  /** a knot: an eight-sided eye with a dark heart, a rim lit on its upper left, the grain darkened round it */
+  const knot = (s: number, cx: number, cy: number, rw: number, rh: number) => {
+    for (let dy = -Math.ceil(rh * 1.6); dy <= Math.ceil(rh * 1.6); dy++) for (let dx = -Math.ceil(rw * 1.4); dx <= Math.ceil(rw * 1.4); dx++) {
+      const ax = Math.abs(dx) / rw, ay = Math.abs(dy) / rh, q = Math.max(ax, ay) * 0.6 + (ax + ay) * 0.4;
+      if (q < 0.5) put(s, cx + dx, cy + dy, T[0] - 34, 6, 0, -6);
+      else if (q < 0.85) put(s, cx + dx, cy + dy, dx + dy < 0 ? T[4] : T[1] - 8);
+      else if (q < 1.35 && ax < 1.4) add(s, cx + dx, cy + dy, -14);
+    }
+  };
   for (let s = 0; s < BARK_SLOTS; s++) for (let y = 0; y < BH; y++) for (let x = 0; x < SW; x++) {
+    // a round limb: lit on the left third, shaded on the right
     const band = x < 15 ? 3 : x < 33 ? 2 : 1;
-    put(s, x, y, s === BARK.STEM || s === BARK.FLESH ? T[band + 1] - 10 : s === BARK.FIBRE || s === BARK.SMOOTH ? T[Math.min(4, band + 2)] : T[band]);
+    put(s, x, y, s === BARK.STEM || s === BARK.FLESH ? T[band + 1] - 10 : s === BARK.FIBRE || s === BARK.SMOOTH || s === BARK.PEEL ? T[Math.min(4, band + 2)] - (s === BARK.PEEL ? 6 : 0) : T[band]);
   }
-  // furrowed bark: corky ridges split by dark fissures that wander and fork; each ridge lit on its left lip
+  // furrowed: corky ridges split by dark fissures that wander and fork, each ridge lit on its left lip, short
+  // cross-checks across the ridges, a knot or two
   for (let k = 0; k < 7; k++) {
     let x = k * 6.9 + r.range(0, 2);
     for (let y = 0; y < BH; y++) {
       if (r.chance(0.22)) x += r.sign();
-      put(BARK.FURROW, x, y, T[0] - 20, 10, 0, -8); put(BARK.FURROW, x + 1, y, T[3] + 10);
+      put(BARK.FURROW, x, y, T[0] - 24, 10, 0, -8); put(BARK.FURROW, x - 1, y, T[0] - 6, 6, 0, -4); put(BARK.FURROW, x + 1, y, T[4]);
       if (y % 17 === 5) for (let j = 1; j < 4; j++) put(BARK.FURROW, x + 1 + j, y + j, T[0] - 4, 6);
     }
   }
-  for (let k = 0; k < 12; k++) { const x = r.int(0, SW - 1), y = r.int(0, BH - 1); put(BARK.FURROW, x, y, T[4]); put(BARK.FURROW, x, y + 1, T[1]); }
-  // plated bark: rows of different heights, each split into plates of different widths (wrapping round the trunk)
+  for (let k = 0; k < 18; k++) { const x = r.int(0, SW - 4), y = r.int(0, BH - 1); for (let j = 0; j < r.int(2, 3); j++) put(BARK.FURROW, x + j, y, T[0] - 6); put(BARK.FURROW, x, y - 1, T[4] - 6); }
+  knot(BARK.FURROW, r.int(8, 38), r.int(10, 40), 2.2, 3.4); knot(BARK.FURROW, r.int(8, 38), r.int(55, 85), 1.6, 2.6);
+  // plated: rows of different heights split into plates of different widths, lit along the top and left, seamed dark,
+  // some cracked, some with a corner lifting off (a lit flake over its own shadow)
   {
     const rows: number[] = []; let acc = 0;
     while (acc < BH) { let h = r.int(9, 15); if (BH - (acc + h) < 9) h = BH - acc; rows.push(h); acc += h; }
@@ -736,33 +757,51 @@ function paintBark(seed: number): THREE.DataTexture {
       const cuts: number[] = []; let x = r.int(0, 11);
       while (cuts.length === 0 || x < cuts[0] + SW - 7) { cuts.push(x); x += r.int(8, 16); }
       for (let k = 0; k < cuts.length; k++) {
-        const a = cuts[k], b = k + 1 < cuts.length ? cuts[k + 1] : cuts[0] + SW, tone = r.pick([0, 6, -6, 10]), crack = r.chance(0.35) ? r.int(a + 3, b - 3) : -1;
+        const a = cuts[k], b = k + 1 < cuts.length ? cuts[k + 1] : cuts[0] + SW, tone = r.pick([0, 6, -6, 10]), crack = r.chance(0.35) ? r.int(a + 3, b - 3) : -1, flake = r.chance(0.3);
         for (let yy = 0; yy < h; yy++) for (let xx = a; xx < b; xx++) {
           const px = xx - a, w = b - a, lit = (xx % SW) < 24;
           let v = (lit ? T[3] : T[2]) + tone;
-          if (yy >= h - 1 || px >= w - 1) v = T[0] - 20;
+          if (yy >= h - 1 || px >= w - 1) v = T[0] - 22;
           else if (yy === 0 || px === 0) v = (lit ? T[4] : T[3]) + 6;
           else if (px > w * 0.6) v -= 14;
           if (xx === crack && yy > 1 && yy < h - 3) v = T[0] - 8;
+          if (flake && px >= w - 5 && yy >= h - 5 && px - (w - 5) + yy - (h - 5) < 4) v = px - (w - 5) + yy - (h - 5) === 3 ? T[0] - 14 : T[4] + 10;
           put(BARK.PLATE, xx, y0 + yy, v, yy >= h - 1 || px >= w - 1 ? 8 : 0, 0, yy >= h - 1 || px >= w - 1 ? -6 : 0);
         }
       }
       y0 += h;
     }
+    knot(BARK.PLATE, r.int(10, 36), r.int(20, 70), 1.8, 2.4);
   }
-  // a palm trunk: leaf-scar rings with a diamond weave between them, fibres hanging from each ring
+  // a palm trunk: leaf-scar rings, the old leaf bases as a fibrous weave between them, fibres hanging from each ring
   for (let y = 0; y < BH; y++) for (let x = 0; x < SW; x++) {
     const ry = y % 24;
-    if (ry === 0) put(BARK.RING, x, y, T[0] - 14, 10, 2, -8);
-    else if (ry === 1) put(BARK.RING, x, y, T[4]);
-    else if ((x + ry) % 12 === 0 || (x - ry + 96) % 12 === 0) put(BARK.RING, x, y, T[1]);
-    else if (ry < 6 && (x * 7) % 11 === 0) put(BARK.RING, x, y, T[1] - 6);
+    if (ry === 0) put(BARK.RING, x, y, T[0] - 18, 10, 2, -8);
+    else if (ry === 1) put(BARK.RING, x, y, T[4] + 6);
+    else if (ry === 2) put(BARK.RING, x, y, T[3]);
+    else if ((x + ry) % 12 === 0 || (x - ry + 96) % 12 === 0) put(BARK.RING, x, y, T[1] - 4);
+    else if ((x + ry) % 12 === 1 || (x - ry + 96) % 12 === 11) put(BARK.RING, x, y, T[4] - 8);
+    else if (ry < 7 && (x * 7) % 5 === 0) put(BARK.RING, x, y, T[1] - 10);
   }
-  // smooth pale bark: long horizontal lenticels, the odd dark eye where a twig fell
-  for (let k = 0; k < 20; k++) { const x = r.int(0, SW - 6), y = r.int(0, BH - 1), l = r.int(2, 5); for (let j = 0; j < l; j++) put(BARK.SMOOTH, x + j, y, T[1]); }
-  for (let k = 0; k < 3; k++) {
-    const x = r.int(6, SW - 9), y = r.int(6, BH - 9);
-    for (const [dx, dy, v] of [[0, 0, T[0] - 20], [1, 0, T[0] - 20], [0, 1, T[0]], [-1, 0, T[1]], [2, 1, T[1]], [0, -1, T[1]], [-1, 2, T[4]], [0, 2, T[4]]] as [number, number, number][]) put(BARK.SMOOTH, x + dx, y + dy, v);
+  // green stems: fine lengthwise lines, a node every so often (a dark band under a lit swelling), short hairs
+  for (let y = 0; y < BH; y++) { put(BARK.STEM, 9, y, T[4]); put(BARK.STEM, 30, y, T[2] - 6); put(BARK.STEM, 40, y, T[1] + 6); }
+  for (const ny of [14, 62]) for (let x = 0; x < SW; x++) { put(BARK.STEM, x, ny, T[0] - 8); put(BARK.STEM, x, ny - 1, x < 24 ? T[4] + 10 : T[3]); put(BARK.STEM, x, ny + 1, T[1]); }
+  for (let k = 0; k < 40; k++) { const x = (k * 13 + 5) % SW, y = (k * 29 + 7) % BH; put(BARK.STEM, x, y, T[4] + 12); put(BARK.STEM, x + 1, y - 1, T[3] + 6); }
+  // shaggy fibre: long strands of different tones, some ending in a loose pale tip over a dark gap
+  for (let x = 0; x < SW; x += 2) {
+    const tone = [T[1], T[3], T[2], T[4], T[2]][(x / 2) % 5], len = r.int(18, 40), y0 = r.int(0, BH - 1);
+    for (let y = 0; y < BH; y++) { const t = (y - y0 + BH) % BH; put(BARK.FIBRE, x, y, t < len ? tone : tone - 20); put(BARK.FIBRE, x + 1, y, t < len ? tone - 18 : tone - 34); }
+    put(BARK.FIBRE, x, y0 + len, T[4] + 14); put(BARK.FIBRE, x, y0 + len + 1, T[0] - 10);
+  }
+  // pored flesh: pore clusters and fine cracks
+  for (let k = 0; k < 22; k++) { const x = r.int(0, SW - 2), y = r.int(0, BH - 2); put(BARK.FLESH, x, y, T[1]); put(BARK.FLESH, x + 1, y, T[1] + 10); put(BARK.FLESH, x, y + 1, T[4]); }
+  for (let k = 0; k < 5; k++) { let x = r.int(0, SW - 1); const y0 = r.int(0, BH - 1); for (let j = 0; j < 8; j++) { if (j % 3 === 2) x += r.sign(); put(BARK.FLESH, x, y0 + j, T[0]); } }
+  // smooth: long horizontal lenticels (dark over a lit underline), branch-scar eyes with their two dark brows
+  for (let k = 0; k < 24; k++) { const x = r.int(0, SW - 6), y = r.int(0, BH - 1), l = r.int(2, 5); for (let j = 0; j < l; j++) { put(BARK.SMOOTH, x + j, y, T[1] - 4); put(BARK.SMOOTH, x + j, y + 1, T[4] + 8); } }
+  for (let k = 0; k < 2; k++) {
+    const x = r.int(10, SW - 12), y = r.int(12, BH - 12);
+    knot(BARK.SMOOTH, x, y, 1.6, 1.2);
+    for (let j = 1; j < 6; j++) { put(BARK.SMOOTH, x - 2 - j, y - 1 + (j >> 1), T[0] - 6); put(BARK.SMOOTH, x + 2 + j, y - 1 + (j >> 1), T[0] - 6); }
   }
   // alien scales: overlapping rows of pointed shields (each row's tips lie over the row below), lit on the upper left
   for (let row = BH / 6 - 1; row >= 0; row--) for (let c = 0; c < SW / 12 + 1; c++) {
@@ -775,10 +814,30 @@ function paintBark(seed: number): THREE.DataTexture {
       put(BARK.SCALE, x0 + px, y0 + py, v, edgeB ? 4 : 0, 0, edgeB ? 6 : 0);
     }
   }
-  // stems: fine lengthwise lines; fibres: pale and dark streaks; flesh: pore clusters
-  for (let y = 0; y < BH; y++) { put(BARK.STEM, 9, y, T[4]); put(BARK.STEM, 30, y, T[2] - 6); }
-  for (let k = 0; k < 9; k++) { const x = r.int(0, SW - 1), dark = k & 1; for (let y = 0; y < BH; y++) if ((y + k * 13) % 19 < 12) put(BARK.FIBRE, x, y, dark ? T[1] : T[4]); }
-  for (let k = 0; k < 22; k++) { const x = r.int(0, SW - 2), y = r.int(0, BH - 2); put(BARK.FLESH, x, y, T[1]); put(BARK.FLESH, x, y + 1, T[4]); }
+  // paper bark: pale bands peeling in horizontal curls (a lit rolled edge over its shadow, the darker under-bark
+  // showing where a band has gone), with dark lenticel dashes across the paper
+  {
+    let y = 0;
+    while (y < BH - 4) {
+      const h = r.int(4, 8), x0 = r.int(0, SW - 1), w = r.int(14, 34), gone = r.chance(0.35);
+      for (let k = 0; k < w; k++) {
+        const x = x0 + k, edge = k === 0 || k === w - 1;
+        for (let j = 0; j < h; j++) put(BARK.PEEL, x, y + j, gone ? T[1] + (j === 0 ? 10 : 0) : j === 0 ? T[4] + 14 : j === h - 1 ? T[2] : edge ? T[2] + 6 : T[3] + 8, gone ? 6 : 0, 0, gone ? -4 : 0);
+        put(BARK.PEEL, x, y + h, T[0] - 6, 4, 0, -2);
+        if (!gone && k === w - 1) { put(BARK.PEEL, x + 1, y, T[4] + 18); put(BARK.PEEL, x + 1, y + 1, T[1]); }
+      }
+      y += h + r.int(2, 6);
+    }
+    for (let k = 0; k < 20; k++) { const x = r.int(0, SW - 4), yy = r.int(0, BH - 1); put(BARK.PEEL, x, yy, T[0] + 6); put(BARK.PEEL, x + 1, yy, T[0] + 6); put(BARK.PEEL, x + 2, yy, T[1]); }
+  }
+  // shaggy strips: long plates lifting free at their ends, each lit down its left edge, shadowed down its right, a
+  // dark gap under the curled end
+  for (let x = 0; x < SW;) {
+    const w = r.int(4, 7), len = r.int(20, 40), y0 = r.int(0, BH - 1), tone = r.pick([0, 8, -8, 14]);
+    for (let j = 0; j < len; j++) for (let k = 0; k < w; k++) put(BARK.SHAG, x + k, y0 + j, k === 0 ? T[4] + tone : k === w - 1 ? T[0] - 4 : (k < w / 2 ? T[3] : T[2]) + tone);
+    for (let k = 0; k < w; k++) { put(BARK.SHAG, x + k, y0 + len, T[0] - 26); put(BARK.SHAG, x + k, y0 + len - 1, T[4] + 16); put(BARK.SHAG, x + k, y0 - 1, T[0] - 18); }
+    x += w;
+  }
   const t = new THREE.DataTexture(d, W, BH, THREE.RGBAFormat, THREE.UnsignedByteType);
   t.colorSpace = THREE.SRGBColorSpace; t.flipY = false;
   t.wrapS = THREE.ClampToEdgeWrapping; t.wrapT = THREE.RepeatWrapping;
