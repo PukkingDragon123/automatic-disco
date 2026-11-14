@@ -232,6 +232,16 @@ export class Flora {
       for (let d = 1; d <= 3 && !near; d++) near = (x + d < N && wet[z * N + x + d]) || (x - d >= 0 && wet[z * N + x - d]) || (z + d < N && wet[(z + d) * N + x]) || (z - d >= 0 && wet[(z - d) * N + x]) ? 1 : 0;
       nearW[z * N + x] = near;
     }
+    // keep-off ground: ore seams and outcrops (a deposit's radius and 1.5 m round it: the nodes and the miners stand
+    // there), the feet of cave mouths and rock overhangs (the dark under them reads, and dens and roosts go there)
+    const keep = new Uint8Array(N * N);
+    const keepDisc = (cx: number, cz: number, rad: number) => {
+      for (let z = Math.floor(cz - rad); z <= Math.ceil(cz + rad); z++) for (let x = Math.floor(cx - rad); x <= Math.ceil(cx + rad); x++) if (R.inside(x, z) && hyp(x + 0.5 - cx, z + 0.5 - cz) < rad) keep[z * N + x] = 1;
+    };
+    for (const d of R.deposits) keepDisc(d.x, d.z, d.r + 1.5);
+    const G = R as unknown as { caves?: { x: number; z: number; dir: [number, number]; r: number }[]; overhangs?: { x: number; z: number; dir: [number, number] }[] };
+    for (const c of G.caves ?? []) { keepDisc(c.x, c.z, c.r + 1); keepDisc(c.x + c.dir[0] * (c.r + 0.8), c.z + c.dir[1] * (c.r + 0.8), c.r + 0.6); }
+    for (const o of G.overhangs ?? []) { keepDisc(o.x, o.z, 1.5); keepDisc(o.x + o.dir[0] * 1.2, o.z + o.dir[1] * 1.2, 1.1); }
     // ground cover sprites by kind (flowers by bloom colour)
     const kinds = new Map<GroundKind, number[]>(), flowers: number[][] = [];
     this.atlas.detailInfo.forEach((g, i) => { let l = kinds.get(g.kind); if (!l) kinds.set(g.kind, (l = [])); l.push(i); if (g.kind === 'flower') (flowers[g.tint] ??= []).push(i); });
@@ -240,7 +250,8 @@ export class Flora {
     for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
       const i = z * N + x, f = R.fert[i], w = R.wet[i], h = R.h[i];
       const dl = hyp(x + 0.5 - L.x, z + 0.5 - L.z);
-      if (dl < 9) continue;
+      // the pod pushes the plants aside itself: only a small gap right under it
+      if (dl < 2.5) continue;
       if (R.solid[i]) continue;
       const ry = R.riverY[i], inRiver = ry > 0 && h < ry + 0.05;
       const water = h < R.water || inRiver, surf = inRiver ? ry : R.water;
@@ -273,6 +284,7 @@ export class Flora {
         else if (bk !== B.SNOW && bk !== B.CRATER && f > 0.2) nG = r.chance(0.5) ? 1 : 0;
         if (damp > 0.45 && bk !== B.SAND && r.chance(damp * 0.5)) nSedge++;
         if (rk > 0.5 && r.chance(rk * 0.25)) nPeb++;
+        if (keep[i]) { nG = nTall = nDry = nClover = nFl = nFern = nMush = nLit = nSedge = 0; }
         for (let k = 0; k < nG; k++) putD(pick('grass'), x + r.next(), z + r.next());
         for (let k = 0; k < nTall; k++) putD(pick('tall'), x + r.next(), z + r.next());
         for (let k = 0; k < nDry; k++) putD(pick('dry'), x + r.next(), z + r.next());
@@ -289,6 +301,7 @@ export class Flora {
         for (let k = 0; k < nPeb; k++) putD(pick('pebble'), x + r.next(), z + r.next());
       }
       // plants: each species rolls with clustered noise, trees gather into woods, nothing tall by the rocks
+      if (keep[i]) continue;
       for (const p of sp) {
         if (p.water !== water) continue;
         if (water && (depth > 1.4 || depth < 0.2)) continue;
@@ -315,7 +328,7 @@ export class Flora {
     // mineral-crust algae mats round the hot springs, where the geology marks them
     if (geo && crustI >= 0 && geo.length >= N * N * 4) for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
       const i = z * N + x;
-      if (geo[i * 4 + 3] < 128 || R.h[i] < R.water || r.next() > 0.45) continue;
+      if (geo[i * 4 + 3] < 128 || R.h[i] < R.water || keep[i] || r.next() > 0.45) continue;
       const px = x + r.range(0.1, 0.9), pz = z + r.range(0.1, 0.9);
       inst.push([px, R.heightAt(px, pz), pz, crustI, r.int(0, sp[crustI].sprites.length - 1)]);
     }

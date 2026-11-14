@@ -19,7 +19,7 @@ import { csfx } from './cineAudio';
 import { makeGlobe, makeSpace, type Globe } from './globe';
 import { buildCarrier, type Carrier } from './deployShip';
 import { type Planet, type PRegion, owned } from '../world/planet';
-import { Region, BIOMES } from '../world/region';
+import { Region, BIOMES, ORES } from '../world/region';
 import { planetPalette, RIVALS } from '../world/palette';
 import { RAMPS } from '../art/palette';
 import { Pix } from './machine';
@@ -51,7 +51,8 @@ const P = RAMPS;
 const css = (c: number) => '#' + c.toString(16).padStart(6, '0');
 
 // ------------------------------------------------------------------ pixel-art marker icons (12 x 12, master palette)
-type Kind = 'ore' | 'crystal' | 'water' | 'river' | 'steep' | 'woods' | 'herd' | 'predator' | 'rival' | 'soviet' | 'prc' | 'camp' | 'lz';
+type Kind = 'ore' | 'crystal' | 'water' | 'river' | 'steep' | 'woods' | 'herd' | 'predator' | 'rival' | 'soviet' | 'prc' | 'camp' | 'lz'
+  | 'buried' | 'spring' | 'thermal' | 'danger' | 'pass' | 'vein' | 'rare';
 const ICON_CACHE = new Map<Kind, string>();
 function star(p: Pix, cx: number, cy: number, r0: number, r1: number, c: number) {
   const pts: number[] = [];
@@ -79,6 +80,13 @@ function iconURL(k: Kind): string {
     case 'soviet': star(p, 5.5, 6, 5.4, 2.2, P.stampRed[3]); p.set(5, 4, P.coral[5]); break;
     case 'prc': p.rect(0, 1, 12, 10, P.stampRed[2]); star(p, 4, 5, 3.6, 1.5, P.glowAmber[3]); p.set(9, 3, P.glowAmber[3]); p.set(10, 5, P.glowAmber[3]); p.set(10, 7, P.glowAmber[3]); p.set(9, 9, P.glowAmber[3]); break;
     case 'camp': for (let y = 3; y < 10; y++) { const w = (y - 3) * 0.8; for (let x = Math.round(6 - w); x <= Math.round(5 + w); x++) p.set(x, y, P.olive[3 + (x < 6 ? 0 : 1)]); } p.vl(6, 7, 9, ink); p.vl(5, 7, 9, ink); p.vl(6, 1, 3, P.steel[5]); p.set(7, 1, P.stampRed[3]); p.set(8, 1, P.stampRed[3]); break;
+    case 'buried': { for (let y = 6; y < 12; y++) p.hl(1, 10, y, P.soil[2 + (y > 8 ? 0 : 1)]); for (const [x, y] of [[4, 8], [5, 8], [6, 9], [7, 9], [5, 9]]) p.set(x, y, P.glowAmber[3]); p.vl(5, 0, 5, P.paper[4]); p.vl(6, 0, 5, P.paper[3]); p.set(4, 2, P.paper[4]); p.set(7, 2, P.paper[4]); break; }
+    case 'spring': for (let y = 3; y < 10; y++) for (let x = 1; x < 11; x++) { const e = Math.abs(x - 5.5) / 5 + Math.abs(y - 6.5) / 3.6; if (e < 1) p.set(x, y, e < 0.45 ? P.water[3] : e < 0.75 ? P.glowTeal[2] : P.paper[4]); } p.vl(4, 0, 2, P.snow[4]); p.vl(7, 1, 2, P.snow[3]); break;
+    case 'thermal': { for (let y = 6; y < 11; y++) { const w = (y - 6) * 1.1; for (let x = Math.round(6 - w); x <= Math.round(5 + w); x++) p.set(x, y, P.paper[3 + (x < 6 ? 1 : 0)]); } p.vl(6, 0, 5, P.snow[5]); p.vl(5, 1, 5, P.snow[4]); p.set(4, 0, P.snow[3]); p.set(7, 1, P.snow[3]); break; }
+    case 'danger': { for (let y = 1; y < 11; y++) { const w = (y - 1) * 0.5; for (let x = Math.round(6 - w); x <= Math.round(5 + w); x++) p.set(x, y, P.stampRed[2 + (x < 6 ? 1 : 0)]); } p.vl(6, 4, 7, P.paper[5]); p.vl(5, 4, 7, P.paper[5]); p.set(6, 9, P.paper[5]); p.set(5, 9, P.paper[5]); break; }
+    case 'pass': { for (let x = 0; x < 12; x++) { const y = 2 + Math.round(Math.abs(x - 5.5) * 0.9); for (let yy = y; yy < 11; yy++) p.set(x, yy, P.stone[3 + (x < 6 ? 1 : 0)]); } for (let y = 5; y < 12; y++) p.set(5 + (y & 1), y, P.paper[5]); break; }
+    case 'vein': { for (let y = 1; y < 11; y++) p.hl(2, 9, y, P.stone[2 + (y % 3 === 0 ? 1 : 0)]); for (let x = 2; x < 10; x++) { p.set(x, 5 + Math.round(Math.sin(x * 0.9)), P.copper[4]); p.set(x, 6 + Math.round(Math.sin(x * 0.9)), P.gold[4]); } break; }
+    case 'rare': { for (let y = 1; y < 11; y++) { const w = y < 5 ? (y - 1) * 0.8 : (10 - y) * 0.7; for (let x = Math.round(6 - w); x <= Math.round(5 + w); x++) p.set(x, y, P.amethyst[x < 6 ? 4 : 3]); } p.vl(6, 2, 8, P.glowTeal[4]); p.set(5, 3, P.snow[5]); break; }
     case 'lz': for (let a = 0; a < 40; a++) { const t = (a / 40) * Math.PI * 2; p.set(Math.round(5.5 + Math.cos(t) * 4.5), Math.round(5.5 + Math.sin(t) * 4.5), P.paper[4]); } p.vl(6, 0, 11, P.stampRed[3]); p.hl(0, 11, 6, P.stampRed[3]); break;
   }
   rim();
@@ -87,6 +95,7 @@ function iconURL(k: Kind): string {
 const KIND_COL: Record<Kind, number> = {
   ore: P.rust[6], crystal: P.glowTeal[4], water: P.water[6], river: P.water[6], steep: P.glowAmber[4], woods: P.moss[6], herd: P.bone[5], predator: P.coral[5],
   rival: P.coral[5], soviet: P.coral[5], prc: P.glowAmber[4], camp: P.olive[5], lz: P.paper[5],
+  buried: P.glowAmber[3], spring: P.glowTeal[4], thermal: P.paper[5], danger: P.stampRed[3], pass: P.stone[6], vein: P.copper[5], rare: P.amethyst[6],
 };
 
 // ------------------------------------------------------------------ CSS: floating pixel labels only
@@ -340,7 +349,19 @@ export class PlanetScreen implements Screen {
   private findings(Rg: Region, pr: PRegion): Mark[] {
     const N = Rg.N, out: Mark[] = [];
     const add = (kind: Kind, x: number, z: number, label: string) => out.push({ kind, x: x - N / 2, z: z - N / 2, label, d: 0, el: null, shown: false });
-    for (const d of Rg.deposits) add(d.kind === 'ore' ? 'ore' : 'crystal', d.x, d.z, d.kind === 'ore' ? 'FERRITE' : 'LUMEN');
+    // the geology (world/geo): seams named by their ore, veins in the cliffs, rare ores and the danger round them,
+    // buried bodies as unnamed anomalies (a ground scan names them), springs, the thermal field, the passes
+    const oreName = (d: Region['deposits'][number]) => (d.ore ? ORES[d.ore].name : d.kind === 'ore' ? 'Ferrite' : 'Quartz').toUpperCase();
+    for (const d of Rg.deposits) {
+      if (d.style === 'rare') add('rare', d.x, d.z, `${oreName(d)} · RARE`);
+      else if (d.style === 'vein') add('vein', d.x, d.z, `${oreName(d)} VEIN`);
+      else add(d.kind === 'ore' ? 'ore' : 'crystal', d.x, d.z, oreName(d));
+    }
+    for (const b of Rg.buried) add('buried', b.x, b.z, `BURIED ANOMALY · ${Math.round(b.depth ?? 8)} M`);
+    if (Rg.thermal) add('thermal', Rg.thermal.x, Rg.thermal.z, `THERMAL FIELD · ${Rg.springs.filter((q) => q.kind === 'geyser').length} GEYSERS`);
+    else for (const sp of Rg.springs.slice(0, 2)) add('spring', sp.x, sp.z, sp.kind === 'mineral' ? 'MINERAL SPRING' : 'HOT SPRING');
+    for (const ps of Rg.passes) add('pass', ps.x, ps.z, `PASS · ${Math.round(ps.y - Rg.water)} M`);
+    for (const dg of Rg.dangers) if (dg.kind !== 'geyser' || !Rg.thermal) add('danger', dg.x + 3, dg.z + 3, dg.kind === 'cliff' ? 'CLIFF LEDGE' : dg.kind === 'wild' ? 'FAR SIDE · WILD' : dg.kind.toUpperCase());
     // open water: the water cell nearest the middle of the biggest body
     let wx = 0, wz = 0, wn = 0;
     for (let z = 4; z < N - 4; z += 3) for (let x = 4; x < N - 4; x += 3) if (Rg.h[z * N + x] < Rg.water - 0.3) { wx += x; wz += z; wn++; }

@@ -172,7 +172,7 @@ export function partModel(d: Design, cut: PartCut): { geo: THREE.BufferGeometry;
   const want = cut.whole ? null : new Set(cut.regions);
   // the back's plates and crests count as the torso, eyes and feelers as the head
   const keep = (reg: number) => !want || want.has(reg) || (want.has(TORSO) && reg === BACK);
-  Body.keepPiece = (pc) => keep(pc.reg ?? 0);
+  if (want) Body.keepPiece = (pc) => keep(pc.reg ?? TORSO);
   let o: ReturnType<typeof sculptAnatomy>;
   try { o = sculptAnatomy(d, rig, rest); } finally { Body.keepPiece = null; }
   const m = { geo: o.geo, tex: o.tex, rig, restWorld: rest } as unknown as SpeciesModel;

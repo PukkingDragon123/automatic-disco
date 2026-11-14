@@ -26,7 +26,7 @@ import { Bin, lit, mesh, fxMat, rawMat, V3, TAU, sm, ease, hash, type V } from '
 import { makePod, portholeWorld, type Pod } from '../ui/deployPod';
 import { makeWorld, buildFar, buildWater, makeSky, dropMarks, RP, type World, type Sky } from './descentWorld';
 import { clamp, damp, lerp } from '../core/rand';
-import { vfx2d } from './vfx2d';
+import { puffsFor } from './podCore';
 
 export type Grade = 'BULLSEYE' | 'ON TARGET' | 'CLOSE' | 'WIDE' | 'AUTOPILOT';
 /** what a landing earns (applied to the run by the deployment): within 6 m a core cell and ore, close in some ore */
@@ -192,7 +192,7 @@ export class GameDescent {
   private streaks: THREE.LineSegments; private streakP: Float32Array; private streakC: Float32Array; private streakSeed: Float32Array;
   private smokeU: Record<string, THREE.IUniform>; private smoke: THREE.Mesh;
   private shock: THREE.Mesh | null = null; private shockU: Record<string, THREE.IUniform> | null = null;
-  private strobe: THREE.Mesh;
+  private strobe: THREE.Mesh; private marks: THREE.Group | null = null;
   // state
   private alt: number; private alt0: number;
   private p = new THREE.Vector2(); private v = new THREE.Vector2(); private wind = new THREE.Vector2();
@@ -325,7 +325,7 @@ export class GameDescent {
   }
   private buildLZ() {
     const bin = this.bin, L = this.lzW;
-    dropMarks(this.W, L);
+    this.marks = dropMarks(this.W, L);
     // red smoke column, leaning downwind
     this.smokeU = { uT: { value: 0 }, uCol: { value: new THREE.Color(0xa83a2a) } };
     const sg = new THREE.CylinderGeometry(14, 1.4, 260, 20, 12, true); sg.translate(0, 130, 0);
@@ -689,12 +689,15 @@ export class GameDescent {
     const c = this.pod.chute;
     if (c) { c.root.rotation.z = Math.min(1.35, this.landT * 0.8); c.root.scale.y = Math.max(0.15, 1 - this.landT * 0.4); c.root.scale.x = c.root.scale.z = Math.max(0.5, 1 - this.landT * 0.15); }
     if (this.shockU && this.shock) { const k = 1 - Math.exp(-this.landT * 1.6); this.shock.scale.setScalar(2 + k * 46); this.shockU.uK.value = Math.max(0, 1 - this.landT / 2.6); this.shock.visible = this.shockU.uK.value > 0; }
-    if (Math.random() < dt * 8) this.fx.burst(P.x + (Math.random() - 0.5) * 2, P.y + 1, P.z + (Math.random() - 0.5) * 2, 1, Math.random() < 0.5 ? 0x5a5650 : 0x3e3a36, { speed: 0.3, up: 1.4, size: 6, life: 3, grav: -0.3 });
+    // the painted landing guide dissolves within a second of touchdown
+    const mk = this.marks; if (mk?.visible) { const f = mk.userData.fade as { value: number }; f.value = clamp(this.landT / 0.9, 0, 1); if (f.value >= 1) mk.visible = false; }
+    // dust and smoke hanging round the pod for the first seconds (soft pixel puffs, drifting off)
+    if (this.landT < 2.5 && Math.random() < dt * 4 * (1 - this.landT / 2.5)) puffsFor(this.g).emit(P.x + this.O.x + (Math.random() - 0.5) * 3, P.y + 0.3, P.z + this.O.z + (Math.random() - 0.5) * 3, { size: 0.5, grow: 2.6, life: 3, vy: 0.6, ramp: this.wet ? 2 : 0, jitter: 0.6 });
     if (this.o.hold === 'impact' && this.landT > 0.7) { this.g.engine.timeScale = 0; this.o.hold = null; }
     // on land the shell blows off its bolts; in the water the ocean has the pod: the golem just comes out
     if (this.landT > 1.9 && this.shellT < 0) { this.shellT = 0; this.g.emerge(); if (!this.wet) { csfx('steam', 1); csfx('servo', 0.6, 0.8); } }
     if (this.shellT >= 0) { this.shellT += dt; if (this.corePod) { this.corePod.setHatch(clamp((this.shellT - 0.4) / 1.1, 0, 1)); this.corePod.heat.value = Math.max(0, 1.1 - this.landT * 0.12); } }
-    if (this.shellT >= 0.4 && this.shellT < 1.6 && !this.wet && Math.random() < dt * 10) { const W = this.cpWorld(); vfx2d.play('smoke', W.x, W.y + 1.6, W.z, { scale: 1.3, ramp: 'snow', vel: [(Math.random() - 0.5) * 2, 1.6, (Math.random() - 0.5) * 2], speed: 0.9 }); }
+    if (this.shellT >= 0.4 && this.shellT < 1.6 && !this.wet && Math.random() < dt * 10) { const W = this.cpWorld(); puffsFor(this.g).emit(W.x, W.y + 1.8, W.z, { size: 0.35, grow: 3, life: 2.2, vy: 1.7, ramp: 2, jitter: 1.4 }); }
     if (this.landT > 2.6 && this.result) this.once('card', () => {
       const r = this.result!;
       this.ui.card(r.grade === 'WIDE' ? 'TOUCHDOWN' : r.grade, `${r.auto ? 'ON THE PIN' : `${Math.round(r.dist * 10) / 10} M FROM THE PIN`} · ${bonusFor(r.grade).text}`, 'UNIT 07 IS DOWN', r.grade === 'BULLSEYE' ? 'BULLSEYE' : 'U.S.P.C.');
@@ -726,7 +729,7 @@ export class GameDescent {
     this.shakeK = Math.max(q, this.shakeK - rdt * 1.5);
     // smoke trail and glowing ablation shed off the shield
     if (heat > 0.2 && Math.random() < rdt * 60) this.fx.burst(P.x + (Math.random() - 0.5) * 2, P.y + 2 + Math.random() * 4, P.z + (Math.random() - 0.5) * 2, 1, 0xff8a3a, { glow: true, speed: 2, up: this.vy * 0.25, size: 3, life: 0.6, grav: -this.vy * 0.4 });
-    if (heat > 0.05 && heat < 0.9 && Math.random() < rdt * 30) this.fx.burst(P.x, P.y + 4, P.z, 1, 0x4a4440, { speed: 1, up: this.vy * 0.5, size: 7, life: 2.5, grav: -2 });
+    if (heat > 0.05 && heat < 0.9 && Math.random() < rdt * 24) puffsFor(this.g).emit(P.x + this.O.x, P.y + 4, P.z + this.O.z, { size: 1.1, grow: 3, life: 2.6, vy: 0.3, ramp: 1, jitter: 1.2 });
     if (this.retro > 0 && !this.landed) {
       for (let i = 0; i < 6; i++) { const a = Math.random() * TAU; const g = this.gH(P.x, P.z); this.fx.spray(P.x + Math.cos(a) * 2, g + 0.3, P.z + Math.sin(a) * 2, Math.cos(a), 0.15, Math.sin(a), 2, 0xb8a888, { speed: 11, cone: 0.3, size: 5, life: 1.4, grav: -0.3, drag: 1.5 }); }
     }
@@ -823,6 +826,7 @@ export class GameDescent {
     this.sky.visible = false;
     for (const L of this.clouds) for (const m of L.slices) m.visible = false;
     this.streaks.visible = false; this.smoke.visible = false; this.strobe.visible = false;
+    this.marks?.removeFromParent(); this.marks = null;
     // the world beyond the map sinks away under the skirt, then everything of ours is freed
     let sink = 0;
     const far = this.far, root = this.root, bin = this.bin;

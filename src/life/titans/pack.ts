@@ -1,11 +1,14 @@
 // A titan model as plain arrays (for the build worker's reply and the IndexedDB cache), and back.
 import * as THREE from 'three';
 import type { Rig } from '../morph';
+import { pixelTexture } from '../kit';
 
 export interface TitanPayload {
   attrs: { name: string; array: ArrayBufferView; size: number }[];
   index: Uint32Array | Uint16Array;
   tex: Uint8Array; W: number; H: number;
+  /** the pixel-art mip levels below the page (kit.ts pixelMips), computed in the worker */
+  mips?: Uint8Array[];
   /** the rig patches the sculpt made: every bone's position, the lids' axes, the legs' poles */
   bones: number[]; lids: number[]; poles: number[];
   grove?: unknown;
@@ -15,11 +18,12 @@ export function packTitan(geo: THREE.BufferGeometry, tex: THREE.DataTexture, rig
   const img = tex.image as { data: Uint8Array; width: number; height: number };
   return {
     attrs, index: geo.index!.array as Uint32Array | Uint16Array, tex: new Uint8Array(img.data), W: img.width, H: img.height,
+    mips: ((tex.mipmaps ?? []) as unknown as { data: Uint8Array }[]).slice(1).map((m) => new Uint8Array(m.data)),
     bones: rig.bones.flatMap((b) => b.pos), lids: rig.lids.flatMap((l) => l.axis), poles: rig.legs.flatMap((l) => l.pole ?? [0, 0, 0]),
     grove: geo.userData.grove,
   };
 }
-export const payloadBuffers = (p: TitanPayload): Transferable[] => [...new Set([...p.attrs.map((a) => a.array.buffer), p.index.buffer, p.tex.buffer])] as Transferable[];
+export const payloadBuffers = (p: TitanPayload): Transferable[] => [...new Set([...p.attrs.map((a) => a.array.buffer), p.index.buffer, p.tex.buffer, ...(p.mips ?? []).map((m) => m.buffer)])] as Transferable[];
 export function unpackGeo(p: TitanPayload): THREE.BufferGeometry {
   const g = new THREE.BufferGeometry();
   for (const a of p.attrs) {
@@ -32,8 +36,12 @@ export function unpackGeo(p: TitanPayload): THREE.BufferGeometry {
   return g;
 }
 export function unpackTex(p: TitanPayload): THREE.DataTexture {
+  if (!p.mips?.length) return pixelTexture(p.tex, p.W, p.H);
   const tex = new THREE.DataTexture(p.tex, p.W, p.H, THREE.RGBAFormat, THREE.UnsignedByteType);
-  tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestMipmapNearestFilter; tex.generateMipmaps = true; tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace; tex.needsUpdate = true;
+  let w = p.W, h = p.H; const levels = [{ data: p.tex, width: w, height: h }];
+  for (const m of p.mips) { w = Math.max(1, w >> 1); h = Math.max(1, h >> 1); levels.push({ data: m, width: w, height: h }); }
+  tex.mipmaps = levels as unknown as typeof tex.mipmaps; tex.generateMipmaps = false;
+  tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestMipmapNearestFilter; tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace; tex.needsUpdate = true;
   return tex;
 }
 /** apply the sculpt's rig patches to a rig built from the same design */

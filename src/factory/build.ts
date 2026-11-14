@@ -354,6 +354,7 @@ export class Build {
       const gp = this.g.groundAt(mx, my); if (!gp) return;
       const s = f.seams.reduce((best, s) => (Math.hypot(s.x - gp.x, s.z - gp.z) < Math.hypot((best?.x ?? 1e9) - gp.x, (best?.z ?? 1e9) - gp.z) ? s : best), null as null | typeof f.seams[0]);
       if (!s || Math.hypot(s.x - gp.x, s.z - gp.z) > s.r + 3) { toast('That is not a seam', 'warn', 1400); return; }
+      if (s.drill) { toast('That seam lies deep: only a drill-tier miner (Mk. II or better) reaches it', 'warn', 2200); return; }
       err = W.assign(p.c, 'mine', null, s.i);
     } else if (p.job === 'haul') {
       if (!b) return;

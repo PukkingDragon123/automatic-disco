@@ -13,7 +13,7 @@ import { Body } from '../anatomy/core';
 import { sculptAnatomy, isTitan } from './builders';
 import { packTitan, unpackGeo, unpackTex, patchRig, type TitanPayload } from './pack';
 
-const VERSION = 'anat-3';
+const VERSION = 'anat-4';
 export const TITAN_BUILD = { mode: (typeof location !== 'undefined' && /(zoo|check)\.html/.test(location.pathname)) || typeof Worker === 'undefined' ? 'sync' : 'async' as 'sync' | 'async' };
 /** a model the async build can upgrade: its live instances, and the hook that grows anything they carry */
 export interface Upgradable {

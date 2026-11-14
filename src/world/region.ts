@@ -396,16 +396,17 @@ export class Region {
       S[i] = v;
     }
   }
-  /** the crash site: level ground round the landing, easing out into the land */
+  /** the crash site: a gentle easing of the ground right under the pod (small and invisible: the land keeps its roll,
+   *  the pod pushes the plants aside itself) */
   private landingPad() {
     const N = this.N, L = this.landing, h = this.h;
     let sum = 0, cnt = 0;
-    for (let dz = -6; dz <= 6; dz++) for (let dx = -6; dx <= 6; dx++) { const X = Math.floor(L.x) + dx, Z = Math.floor(L.z) + dz; if (!this.inside(X, Z)) continue; sum += h[Z * N + X]; cnt++; }
+    for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) { const X = Math.floor(L.x) + dx, Z = Math.floor(L.z) + dz; if (!this.inside(X, Z)) continue; sum += h[Z * N + X]; cnt++; }
     const avg = Math.max(this.water + 0.6, sum / Math.max(1, cnt));
-    for (let dz = -18; dz <= 18; dz++) for (let dx = -18; dx <= 18; dx++) {
+    for (let dz = -8; dz <= 8; dz++) for (let dx = -8; dx <= 8; dx++) {
       const X = Math.floor(L.x) + dx, Z = Math.floor(L.z) + dz; if (!this.inside(X, Z)) continue;
-      const d = hyp(dx, dz), t = d < 8 ? 1 : d < 18 ? 1 - smooth(8, 18, d) : 0;
-      if (t > 0) { const i = Z * N + X; h[i] = h[i] + (avg - h[i]) * t * 0.85; }
+      const d = hyp(dx, dz), t = d < 2.5 ? 1 : d < 8 ? 1 - smooth(2.5, 8, d) : 0;
+      if (t > 0) { const i = Z * N + X; h[i] = h[i] + (avg - h[i]) * t * 0.6; }
     }
   }
   /** flood the walkable ground from the landing (a 0.75 m climb, dry land or a wadeable river) */

@@ -18,7 +18,7 @@ export const shellhunter: SpeciesFn = (d, rig) => {
     parts: [
       { k: 'helm', c: pat, rim: sh(pat, -1) },
       { k: 'eyeRows', rows: 2, r: 0.62 },
-      { k: 'carapace', t0: -0.15, t1: 0.48, bands: 4, spread: 1.55, lift: 1.3, c: pat, rim: sh(pat, -1), spikes: 0 },
+      { k: 'carapace', t0: -0.18, t1: 0.5, bands: 4, spread: 1.45, lift: 1.1, c: pat, rim: sh(pat, -1), dome: true },
       { k: 'tailFan', size: 0.75, c: ['coral', 3], rays: 9 },
       { k: 'mane', len: 0.42, c: sh(belly, 1), ruff: 1.4 },
     ],

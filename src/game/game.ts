@@ -41,6 +41,9 @@ import { attachOcean, type Ocean } from '../ocean/ocean';
 import { BabyEditor } from '../ui/babyEditor';
 import { coreCapGeometry } from './buildings';
 import { panel, Btn } from '../ui/kit';
+import { GeoLive, type GeoHost } from '../world/geo/live';
+import { registerGeoItems } from '../world/geo/items';
+import { floatText } from '../ui/floatText';
 
 type Mode = { k: 'normal' } | { k: 'ability'; a: Ability } | { k: 'build'; b: BKind } | { k: 'paint' } | { k: 'amove' } | { k: 'rally' } | { k: 'factory' };
 interface Held { c: Creature; t: number; dur: number; dps: number; grip: number }
@@ -98,6 +101,8 @@ export class Game implements Screen {
   aura: CoreAura | null = null;
   /** the sea: swell, underwater, sea life, diving, pontoons, splashdowns (src/ocean) */
   ocean: Ocean | null = null;
+  /** the living geology: geysers on their timers, scalding pools, steam vents, mist off the falls (world/geo/live.ts) */
+  geo: GeoLive | null = null;
   private rivalT = 210;
   child!: VeyrChild;
   /** Unit 07 under direct control (player.ts) */
@@ -191,7 +196,10 @@ export class Game implements Screen {
     new Details(this); // footprints, wetness, ripples, weather, hand-drawn VFX (game/details.ts; runs in update$)
     attachEco(this); // the ecosystem's overlay, activity bubbles, field survey sheet and API as game.eco (src/eco/view.ts)
     attachOcean(this); // the sea, its life, diving and pontoons (src/ocean/ocean.ts; runs in update$)
+    registerGeoItems(); // gold, sulphur, lumen and gravium and what is made of them, before the works build their catalogue
     this.factory = new Factory(this);
+    this.geo = new GeoLive(this.region);
+    this.on('geyser', (d: { x: number; z: number; phase: 'warn' | 'erupt' }) => this.geyser(d));
     this.factions = new Factions(this);
     installBiotech(this); // engineered creatures and plants at work, Bio-Works structures, work orders (src/biotech)
     if (opts.descent) this.awaitPod();
@@ -739,6 +747,7 @@ export class Game implements Screen {
     if (this.aura && (!vc || this.aura.core !== vc)) { this.aura.dispose(); this.aura = null; }
     this.aura?.update(dt, this.veyr.emLevel);
     for (const f of this.update$) f(simDt);
+    try { this.geo?.update(simDt, this as unknown as GeoHost, this.cam.cam.position); } catch (e) { if (this.geoErr++ < 3) console.error('geo', e); }
     tickRobots(this, simDt);
     this.story?.update(simDt, dt);
     this.fx.update(simDt > 0 ? simDt : dt * 0.15, this.engine.h, this.cam.cam.fov);
@@ -746,12 +755,28 @@ export class Game implements Screen {
     this.harvest.update(dt, this.cam.cam);
     this.daylight();
     this.world.sun.follow(this.cam.target, this.cam.dist);
+    // the ground's relief shading follows the sun (world/terrain.ts)
+    (this.world.terrain.U.uSunW?.value as THREE.Vector3 | undefined)?.copy(this.world.sun.dir);
     this.hover(inp);
     this.updateGhost();
     this.hud.update(dt);
     this.drawOverlay();
     this.checkEnd();
     inp.endFrame();
+  }
+  private geoErr = 0; private geyserNote = new Map<string, number>();
+  /** a geyser boils over or erupts: heard by how close it is; the golem is warned when it stands by the vent */
+  private geyser(d: { x: number; z: number; phase: 'warn' | 'erupt' }) {
+    if (!d) return;
+    const v = this.audible(d.x, d.z), p = this.player, near = !!p?.started && Math.hypot(p.x - d.x, p.z - d.z) < 9;
+    if (d.phase === 'erupt') {
+      if (v > 0.03) { sfx('pulse', 0.45, v * 0.9); sfx('squelch', 0.5, v * 0.5); }
+      if (v > 0.5) this.cam.shake(0.08 * v, 0.6);
+    } else if (v > 0.05) sfx('grow', 0.6, v * 0.6);
+    if (d.phase === 'warn' && near) {
+      const key = `${Math.round(d.x)},${Math.round(d.z)}`, t = this.world.time;
+      if (t - (this.geyserNote.get(key) ?? -1e9) > 60) { this.geyserNote.set(key, t); floatText(this, d.x, this.region.heightAt(d.x, d.z) + 1.2, d.z, 'GEYSER: STAND CLEAR', 'warn', { life: 2.6 }); }
+    }
   }
   /** the shell cracks, its top bursts, the child rises, blinks, looks around */
   private hatching(dt: number) {

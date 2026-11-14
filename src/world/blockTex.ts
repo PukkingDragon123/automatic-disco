@@ -530,16 +530,37 @@ function veinGravium(pc: PixelCanvas, seed: number) {
   // floating speckles: lit motes drifting above the band, glowing
   for (let i = 0; i < 10 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); pc.set(x, y, r.chance(0.8) ? V[6] : Gt[4], 180); }
 }
-/** spring crust from above: travertine terraces, scalloped rims (lit lip, shaded under) round shallow pools */
-function crust(pc: PixelCanvas, seed: number, R: number[]) {
-  const r = new Rand(seed), Wt = rampNamed('water');
-  plates(pc, r, 14, R, [3, 4, 4]);
-  for (let i = 0; i < 3 * AREA; i++) {
-    const x = r.range(0, T), y = r.range(0, T), rx = r.range(5, 14), m = new Mask(Math.floor(x - rx * 1.4), Math.floor(y - rx), Math.ceil(rx * 2.8) + 2, Math.ceil(rx * 2) + 2);
-    fillPoly(blobPts(x, y, rx, rx * 0.6, 10, r, 0.25), (X, Y) => m.add(X, Y));
-    m.ink(pc, Wt, (_X, Y) => (Y < y ? 4 : 3), { dark: 3, lit: null });
-    // the rim: a bright lip on the near (lower) edge, a shaded step under it
-    for (let X = m.x0; X < m.x0 + m.w; X++) for (let Y = m.y0; Y < m.y0 + m.h; Y++) if (m.has(X, Y) && !m.has(X, Y + 1)) { pc.set(X, Y + 1, R[6]); pc.set(X, Y + 2, R[2]); }
+/**
+ * Spring crust from above: travertine. White to cream sinter in hard-edged plates, stepped into terraces (scalloped
+ * rim lips, a lit white edge with a shaded step under it, as the dams at a hot spring), a few shallow pools on the
+ * shelves; the iron in ochre and rust water stains some terrace floors and runs in thin streaks, never a wash of
+ * colour. `stain` 0 white, 1 ochre, 2 rust.
+ */
+function crust(pc: PixelCanvas, seed: number, stain: 0 | 1 | 2) {
+  const r = new Rand(seed), Wt = rampNamed('water'), Bo = rampNamed('bone'), Pp = rampNamed('paper'), Qz = rampNamed('quartz'), Sd = rampNamed('sand');
+  const St = stain === 2 ? rampNamed('rust') : rampNamed('ochre');
+  // the sinter: cream and white plates (a 7-step ramp from shade to the white lip)
+  const base = [Bo[1], Bo[2], Bo[3], Pp[3], Pp[4], Pp[5], Qz[6]];
+  plates(pc, r, 14, base, stain ? [3, 3, 4, 4, 5] : [3, 4, 4, 5, 5]);
+  // the terraces: overlapping scalloped shelves, each floor one flat tone, its downhill rim a lip and a step
+  const floors = stain === 0 ? [[Pp[4], Pp[5]], [Pp[3], Pp[4]], [Qz[4], Qz[5]]] : stain === 1 ? [[Pp[4], Pp[5]], [Sd[4], Sd[5]], [St[5], St[6]]] : [[Pp[4], Pp[5]], [Sd[3], Sd[4]], [St[4], St[5]]];
+  for (let i = 0; i < 4 * AREA; i++) {
+    const x = r.range(0, T), y = r.range(0, T), rx = r.range(9, 20), ry = rx * r.range(0.32, 0.55);
+    const m = new Mask(Math.floor(x - rx - 2), Math.floor(y - ry - 2), Math.ceil(rx * 2) + 5, Math.ceil(ry * 2) + 5);
+    fillPoly(blobPts(x, y, rx, ry, 14, r, 0.22), (X, Y) => m.add(X, Y));
+    // stains only now and then, and lighter where the water runs shallow
+    const fl = floors[stain && r.chance(0.32) ? 2 : r.chance(0.5) ? 1 : 0];
+    m.ink(pc, [Bo[2], fl[0], fl[1]], (_X, Y) => (Y < y - ry * 0.2 ? 2 : 1), { dark: 1, lit: null });
+    for (let X = m.x0; X < m.x0 + m.w; X++) for (let Y = m.y0; Y < m.y0 + m.h; Y++) if (m.has(X, Y) && !m.has(X, Y + 1)) { pc.set(X, Y + 1, Qz[6]); pc.set(X, Y + 2, Bo[2]); if (r.chance(0.3)) pc.set(X, Y + 3, Bo[1]); }
+  }
+  // iron streaks where the overflow ran down the steps (ochre and rust springs only)
+  if (stain) for (let i = 0; i < 3 * AREA; i++) thread(pc, r, r.range(0, T), r.range(0, T), r.int(6, 14), Math.PI / 2 + r.range(-0.4, 0.4), St[stain === 2 ? 4 : 5], null, 0.25);
+  // shallow pools on a few shelves: pale water over the white floor, a darker lee under the rim
+  for (let i = 0; i < AREA; i++) {
+    if (!r.chance(0.6)) continue;
+    const x = r.range(0, T), y = r.range(0, T), rx = r.range(3, 7), m = new Mask(Math.floor(x - rx - 1), Math.floor(y - rx), Math.ceil(rx * 2) + 3, Math.ceil(rx * 1.4) + 3);
+    fillPoly(blobPts(x, y, rx, rx * 0.55, 9, r, 0.25), (X, Y) => m.add(X, Y));
+    m.ink(pc, Wt, (_X, Y) => (Y < y ? 5 : 4), { dark: 3, lit: null });
   }
   tidy(pc);
 }
@@ -723,9 +744,9 @@ export function buildBlockTexture(pal: Palette, seed: number): { tex: THREE.Data
   paint(L.veinCoal, (p) => veinCoal(p, s + 37));
   paint(L.veinSulphur, (p) => veinSulphur(p, s + 38));
   paint(L.veinGravium, (p) => veinGravium(p, s + 39));
-  paint(L.crustWhite, (p) => crust(p, s + 40, rampNamed('bone')));
-  paint(L.crustOchre, (p) => crust(p, s + 41, rampNamed('ochre')));
-  paint(L.crustRust, (p) => crust(p, s + 42, rampNamed('rust')));
+  paint(L.crustWhite, (p) => crust(p, s + 40, 0));
+  paint(L.crustOchre, (p) => crust(p, s + 41, 1));
+  paint(L.crustRust, (p) => crust(p, s + 42, 2));
   const tex = new THREE.DataArrayTexture(data, T, T, LAYERS);
   tex.format = THREE.RGBAFormat;
   tex.type = THREE.UnsignedByteType;

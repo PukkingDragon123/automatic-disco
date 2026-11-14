@@ -249,7 +249,7 @@ export class Body {
   /** subdivide, chart, pack, rasterise, occlude, paint and emit everything */
   build(o: { den?: number; maxScale?: number; occlusion?: boolean; snap?: (d: Uint8ClampedArray) => void } = {}): { geo: THREE.BufferGeometry; tex: THREE.DataTexture; tris: number; scale: number } {
     if (this.quick) return this.buildQuick();
-    if (Body.keepPiece) { const k = Body.keepPiece; this.pieces = this.pieces.filter((p) => p.reg !== undefined && k(p)); }
+    if (Body.keepPiece) { const k = Body.keepPiece; this.pieces = this.pieces.filter((p) => k(p)); }
     const T = (globalThis as { __bodyTimes?: Record<string, number> }).__bodyTimes, now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
     let t0 = now(); const lap = (k: string) => { if (T) { const t = now(); T[k] = (T[k] ?? 0) + t - t0; t0 = t; } };
     for (const p of this.pieces) { this.finalize(p); p.ch = (p.charts ?? defaultCharts)(p); surfaceInfo(p); }

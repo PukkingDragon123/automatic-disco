@@ -400,6 +400,7 @@ export class Workers {
   private mine(w: Worker, dt: number) {
     const f = this.f, c = w.c, s = f.seams[w.seam];
     if (!s || s.amount <= 0) { w.note = 'SEAM WORKED OUT'; this.release(c); return; }
+    if (s.drill) { w.note = 'TOO DEEP TO DIG BY HAND'; this.release(c); return; }
     if (w.carry && w.carry.n >= this.cap(c)) {
       const dst = this.nearest(c.x, c.z, (b) => b.kind === 'depot' || (b.def.store !== undefined && b.kind !== 'barracks'));
       if (dst) { if (!this.goTo(w, dst)) return; const got = f.give(dst, w.carry.id, w.carry.n); if (got < w.carry.n) f.put(w.carry.id, w.carry.n - got); }

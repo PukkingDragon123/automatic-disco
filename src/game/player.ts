@@ -20,6 +20,10 @@ import { sfx } from '../audio/audio';
 import { toast } from '../ui/kit';
 import { clamp, damp, dampA } from '../core/rand';
 import { GENE } from '../life/genes';
+import { ORES, type OreId } from '../world/region';
+import { B } from '../world/blockTex';
+import { vfx2d as V2 } from './vfx2d';
+import { RAMPS } from '../art/palette';
 
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _c = new THREE.Color();
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
@@ -273,7 +277,7 @@ export class Player implements GolemTarget, TouchHost {
     if (dt <= 0) { this.place(); this.overlay(); return; }
     // timers
     for (let i = this.pending.length - 1; i >= 0; i--) { const p = this.pending[i]; p.t -= dt; if (p.t <= 0) { this.pending.splice(i, 1); p.fn(); } }
-    this.punchCd -= dt; this.comboT -= dt; this.dashCd -= dt; this.invuln -= dt;
+    this.punchCd -= dt; this.comboT -= dt; this.dashCd -= dt; this.invuln -= dt; this.scanCd = Math.max(0, this.scanCd - dt);
     if (!this.alive) { this.dead(dt); this.place(); this.common(dt); this.overlay(); return; }
     this.input(dt);
     this.move(dt);
@@ -682,6 +686,87 @@ export class Player implements GolemTarget, TouchHost {
     this.channelStop();
     if (this.hull <= 0) this.die();
   }
+  // ------------------------------------------------------------------ [X] / the survey table: a sounding
+  /** seconds until the scanner can sound again */
+  scanCd = 0;
+  /** how far a sounding reaches (the Deep Bore's geophones and lumen optics hear further) */
+  get scanReach() { return 26 + (this.has('bore') ? 8 : 0) + (this.has('lumen') ? 10 : 0); }
+  /**
+   * A seismic sounding round the golem: a pulse runs out through the ground and buried bodies within reach answer.
+   * Each one found is revealed (region.scan: it becomes a deposit, the works add a drill-tier seam), staked out on the
+   * ground and named; one still out of reach is heard as a faint echo with a bearing. Returns how many were found.
+   */
+  scan(): number {
+    const g = this.g, R = g.region;
+    if (!this.driving) return 0;
+    if (this.scanCd > 0) { floatText(g, this.x, this.y + this.height + 0.2, this.z, `SCANNER RECHARGING ${Math.ceil(this.scanCd)} S`, 'warn'); sfx('deny'); return 0; }
+    this.scanCd = 15;
+    const rad = this.scanReach, y = g.world.surfaceY(this.x, this.z);
+    const found = R.scan(this.x, this.z, rad);
+    // the pulse: rings run out over the ground, the lens flashes
+    V2.play('shock', this.x, y + 0.08, this.z, { flat: true, ramp: 'glowTeal', scale: 3.2, emit: 0.4 });
+    for (let k = 1; k <= 2; k++) this.pending.push({ t: k * 0.25, fn: () => V2.play('shock', this.x, y + 0.08, this.z, { flat: true, ramp: 'glowTeal', scale: 3 + k * 1.8, emit: 0.2 }) });
+    g.child.flash(0x95ccb0, 1.2); g.child.wiggle();
+    sfx('pulse', 1.6, 0.7); sfx('zap', 2.2, 0.3); g.cam.shake(0.05, 0.3);
+    const names: string[] = [];
+    for (const i of found) {
+      const d = R.deposits[i]; if (!d) continue;
+      const nm = d.ore ? ORES[d.ore].name : d.kind === 'crystal' ? 'Crystal' : 'Ore';
+      names.push(nm);
+      this.stake(d, nm, Math.hypot(d.x - this.x, d.z - this.z) / Math.max(1, rad) * 0.9);
+    }
+    if (found.length) {
+      g.world.terrain.flushDirty();
+      toast(`Sounding: <b>${found.length} buried bod${found.length > 1 ? 'ies' : 'y'}</b> (${names.join(', ')}). ${this.has('bore') ? 'The Deep Bore reaches it,' : 'Buy the Deep Bore to drill it by hand,'} or set a Miner Mk. II on it.`, 'good', 6000);
+      sfx('done', 0.8, 0.6);
+    } else {
+      // the nearest body still out of reach answers faintly: a bearing to follow
+      let best = null as null | { x: number; z: number }, bd = 1e9;
+      for (const b of R.buried) { const dd = Math.hypot(b.x - this.x, b.z - this.z); if (dd < bd) { bd = dd; best = b; } }
+      if (best && bd < rad * 2.6) {
+        const a = Math.atan2(best.x - this.x, -(best.z - this.z)), dirs = ['NORTH', 'NORTH-EAST', 'EAST', 'SOUTH-EAST', 'SOUTH', 'SOUTH-WEST', 'WEST', 'NORTH-WEST'];
+        const dir = dirs[((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8];
+        floatText(g, this.x, this.y + this.height + 0.25, this.z, `FAINT ECHO ${dir}, ~${Math.round(bd / 10) * 10} M`, 'info', { life: 3.5 });
+      } else floatText(g, this.x, this.y + this.height + 0.25, this.z, R.buried.length ? 'NO ECHO IN RANGE' : 'NOTHING BURIED LEFT HERE', 'info', { life: 2.6 });
+    }
+    g.emit('scan', { x: this.x, z: this.z, r: rad, found: found.length });
+    return found.length;
+  }
+  /** a revealed body: the ground over it turns to disturbed gravel round a seam of its ore, a ping and its name */
+  private stake(d: { x: number; z: number; r: number; kind: 'ore' | 'crystal'; ore?: OreId }, nm: string, delay: number) {
+    const g = this.g, R = g.region, N = R.N, geo = R.geo, oreGeo = d.ore ? ORES[d.ore].geo : d.kind === 'crystal' ? 1 : 0;
+    for (let Z = Math.floor(d.z - d.r - 1); Z <= Math.ceil(d.z + d.r + 1); Z++) for (let X = Math.floor(d.x - d.r - 1); X <= Math.ceil(d.x + d.r + 1); X++) {
+      if (!R.inside(X, Z)) continue;
+      const i = Z * N + X, dd = Math.hypot(X + 0.5 - d.x, Z + 0.5 - d.z);
+      if (dd > d.r + 1 || R.h[i] < R.water || R.solid[i]) continue;
+      R.b[i] = dd < d.r * 0.55 ? (d.kind === 'crystal' ? B.CRYSTAL : B.ORE) : B.GRAVEL;
+      if (dd < d.r) { geo[i * 4 + 1] = Math.max(geo[i * 4 + 1], 160); geo[i * 4 + 2] = oreGeo; }
+      R.dirty.add(i);
+    }
+    const t = (g.world.terrain as unknown as { geoTex?: THREE.DataTexture }).geoTex; if (t) t.needsUpdate = true;
+    this.pending.push({ t: 0.3 + delay, fn: () => {
+      const y = g.world.surfaceY(d.x, d.z);
+      V2.play('shock', d.x, y + 0.1, d.z, { flat: true, ramp: 'glowAmber', scale: 1.4 + d.r * 0.4, emit: 0.2 });
+      g.fx.burst(d.x, y + 0.3, d.z, 16, 0xd9a43a, { glow: true, speed: 1.2, up: 2.2, size: 2, life: 0.9, grav: -0.4 });
+      floatText(g, d.x, y + 1.1, d.z, `BURIED ${nm.toUpperCase()} · DRILL-TIER`, 'good', { life: 6 });
+      sfx('qte-good', 0.9, g.audible(d.x, d.z) * 0.6);
+    } });
+  }
+  /** the land hurts it (a geyser's blast, scalding water; world/geo/live.ts): nobody to blame, the plating soaks some */
+  hazard(amt: number, why: string) {
+    if (!this.alive || this.invuln > 0 || !this.started || !(amt > 0)) return;
+    const g = this.g, d = amt * (1 - this.armor * 0.5);
+    this.hull -= d; this.lastHurt = g.world.time; this.hazAcc += d;
+    if (this.hazAcc >= 2) {
+      const n = Math.round(this.hazAcc); this.hazAcc = 0;
+      floatText(g, this.x, this.y + this.height + 0.1, this.z, why === 'geyser' ? `SCALDED -${n} HULL` : `-${n} HULL`, 'hurt');
+      g.child.hurt(Math.min(1.5, 0.4 + n / 8)); g.emit('hurt', { amt: n });
+      vfx2d(g, 'smoke', this.x, this.y + this.height * 0.6, this.z, { size: 0.5 * this.size });
+      sfx('crack', 2.4, 0.25);
+    }
+    if (this.hull <= 0) this.die();
+  }
+  private hazAcc = 0;
   private die() {
     const g = this.g;
     this.alive = false; this.hull = 0; this.rebootT = 7; this.deathAt.set(this.x, this.y, this.z);
@@ -833,8 +918,11 @@ export class Player implements GolemTarget, TouchHost {
     // an ore seam
     const dep = R.deposits.findIndex((d) => d.amount > 0 && Math.hypot(d.x - px, d.z - pz) < d.r + 0.5);
     if (dep >= 0) {
-      const at = new THREE.Vector3(px, gy(px, pz) + 0.45, pz), cr = R.deposits[dep].kind === 'crystal';
-      return this.has('drill') ? mk('drill', cr ? 'DRILL CRYSTAL SEAM' : 'DRILL ORE SEAM', true, at, { dep, res: 'ore', rate: cr ? 3.2 : 2.6 }) : mk('grit', 'SCRAPE ORE', true, at, { dep, res: 'ore', rate: 0.85 });
+      const d = R.deposits[dep], at = new THREE.Vector3(px, gy(px, pz) + 0.45, pz), cr = d.kind === 'crystal';
+      const nm = (d.ore ? ORES[d.ore].name : cr ? 'crystal' : 'ore').toUpperCase();
+      // a buried body a scan turned up: only the Deep Bore reaches it
+      if (d.drill && !this.has('bore')) return mk('drill', `BURIED ${nm}: NEEDS DEEP BORE`, false, at, { dep });
+      return this.has('drill') ? mk('drill', `DRILL ${nm} SEAM`, true, at, { dep, res: 'ore', rate: cr ? 3.2 : 2.6 }) : mk('grit', `SCRAPE ${nm}`, true, at, { dep, res: 'ore', rate: 0.85 });
     }
     // a rock formation
     let rock = -1, rd = 1e9;
@@ -1112,6 +1200,9 @@ export class Player implements GolemTarget, TouchHost {
       const label = ch ? (c.label === '#graft' ? 'GRAFTING' : c.label === '#sow' ? 'PRESSING SEED' : c.kind === 'intake' ? 'DEVOURING' : c.label) : c.label;
       // the prompt sits just under the golem (the popups and speech above it never cover it)
       L.prompt = { x: this.x, y: this.y, z: this.z, key: touch ? '' : 'E', text: label, ok: c.ok, prog: ch?.prog };
+      // on a seam: what is left of it, in the ore's colour
+      const d = c.dep !== undefined ? this.g.region.deposits[c.dep] : null;
+      if (d) { L.prompt.left = d.amount / Math.max(1, d.max ?? d.amount); L.prompt.leftCol = d.ore ? RAMPS[ORES[d.ore].ramp][4] ?? 0xd9a43a : 0xd9a43a; }
       if (this.held && !ch) L.prompt.text = touch ? 'THROW / DROP' : 'LMB THROW · E DROP';
     } else L.prompt = null;
     const showBar = this.alive && this.started && (this.hull < this.hullMax - 0.5 || this.g.world.time - this.lastHurt < 3);

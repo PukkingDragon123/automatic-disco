@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import type { Game } from './game';
 import { makePod, type Pod } from '../ui/deployPod';
-import { Bin, lit, mesh, box, ptex, hash, TAU, V3, type V } from '../ui/deployKit';
+import { Bin, lit, mesh, box, ptex, fxMat, hash, TAU, V3, type V } from '../ui/deployKit';
 import { Pix } from '../ui/machine';
 import { RAMPS } from '../art/palette';
 import { gbuf } from '../gfx/gbuf';
@@ -222,6 +222,116 @@ function drapedChute(bin: Bin, g: Game, x: number, z: number, dirX: number, dirZ
   return (t: number) => { U.uT.value = t; };
 }
 
+// ------------------------------------------------------------------ smoke
+// Hand-drawn pixel smoke: each puff is a camera-facing card shaded per screen pixel (native resolution, no texture):
+// a lumpy cluster of four lobes lit from above in ramp steps (dark underside, light crown, dithered between steps),
+// its edge a 4x4 Bayer dither instead of a blur or an outline. Puffs rise, slow, drift downwind, grow and thin out
+// (the dither eats them from the edge in). Premultiplied alpha, sorted back to front, no G-buffer write (no outline).
+const PUFF_V = `
+attribute vec3 iPos; attribute vec4 iD;
+varying vec2 vP; varying vec4 vD;
+void main() {
+  vP = position.xy; vD = iD;
+  vec4 mv = modelViewMatrix * vec4(iPos, 1.0);
+  mv.xy += position.xy * iD.x;
+  gl_Position = projectionMatrix * mv;
+}`;
+const PUFF_F = `
+uniform vec3 uR[15]; uniform vec3 uL;
+varying vec2 vP; varying vec4 vD;
+float pb2(vec2 a) { a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }
+void main() {
+  float s = vD.z * 61.0, age = vD.y;
+  float best = -1.0; vec2 bd = vec2(0.0);
+  for (int i = 0; i < 4; i++) {
+    float fi = float(i);
+    vec2 c = i == 0 ? vec2(0.0, -0.08) : vec2(sin(s + fi * 2.3), cos(s * 1.37 + fi * 1.9)) * (0.3 + age * 0.12) + vec2(0.0, 0.06);
+    float r = i == 0 ? 0.6 : 0.47 - fi * 0.03;
+    vec2 d = (vP - c) / r; float k = 1.0 - dot(d, d);
+    if (k > best) { best = k; bd = d; }
+  }
+  float th = pb2(0.5 * gl_FragCoord.xy) * 0.25 + pb2(gl_FragCoord.xy);
+  if (best * 2.4 - age * age * 1.7 - age * 0.25 < th) discard;
+  vec3 n = normalize(vec3(bd, sqrt(max(best, 0.0)) + 0.15));
+  float lit = clamp(dot(n, uL) * 0.55 + 0.45, 0.0, 1.0);
+  float st = clamp(floor(lit * 4.0 + (th - 0.5) * 0.7 + 0.5), 0.0, 4.0);
+  vec3 col = uR[int(vD.w + 0.5) * 5 + int(st)];
+  float a = 0.8 - age * 0.35;
+  gl_FragColor = vec4(col * a, a);
+  gNormal = vec4(0.0);
+}`;
+/** 0 warm grey (grass and fuel smoke, dust), 1 charcoal (the heat shield), 2 steam; ramps run dark -> light */
+const PUFF_RAMPS = [RAMPS.stone.slice(2, 7), RAMPS.basalt.slice(1, 6), RAMPS.snow.slice(1, 6)];
+export interface PuffOpts { size?: number; grow?: number; life?: number; vy?: number; ramp?: 0 | 1 | 2; jitter?: number }
+export class Puffs {
+  readonly mesh: THREE.Mesh;
+  private n = 0; private readonly max = 480;
+  private P = new Float32Array(this.max * 3); private Vl = new Float32Array(this.max * 3);
+  private A = new Float32Array(this.max * 6); // age, life, s0, s1, seed, ramp
+  private iPos: THREE.InstancedBufferAttribute; private iD: THREE.InstancedBufferAttribute; private geo: THREE.InstancedBufferGeometry;
+  private ord: number[] = []; private dep = new Float32Array(this.max); private cp = new V3();
+  constructor(bin: Bin, parent: THREE.Object3D, private wind: THREE.Vector2, private cam: () => THREE.Camera) {
+    const base = new THREE.PlaneGeometry(2, 2);
+    const geo = this.geo = new THREE.InstancedBufferGeometry();
+    geo.index = base.index; geo.setAttribute('position', base.getAttribute('position'));
+    this.iPos = new THREE.InstancedBufferAttribute(new Float32Array(this.max * 3), 3).setUsage(THREE.DynamicDrawUsage);
+    this.iD = new THREE.InstancedBufferAttribute(new Float32Array(this.max * 4), 4).setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('iPos', this.iPos); geo.setAttribute('iD', this.iD); geo.instanceCount = 0;
+    const rc = new Float32Array(45), c = new THREE.Color();
+    PUFF_RAMPS.forEach((r, i) => r.forEach((h, j) => { c.setHex(h); rc.set([c.r, c.g, c.b], (i * 5 + j) * 3); }));
+    const mat = fxMat(bin, PUFF_V, PUFF_F, { uR: { value: rc }, uL: { value: new V3(-0.35, 0.85, 0.45).normalize() } }, 'alpha');
+    this.mesh = new THREE.Mesh(bin.g(geo), mat); this.mesh.frustumCulled = false; this.mesh.renderOrder = 4; this.mesh.name = 'pod-smoke';
+    parent.add(this.mesh);
+  }
+  emit(x: number, y: number, z: number, o: PuffOpts = {}) {
+    if (this.n >= this.max) return;
+    const i = this.n++, j = o.jitter ?? 0.3;
+    this.P.set([x + (Math.random() - 0.5) * j, y, z + (Math.random() - 0.5) * j], i * 3);
+    this.Vl.set([(Math.random() - 0.5) * 0.3, (o.vy ?? 1.2) * (0.8 + Math.random() * 0.4), (Math.random() - 0.5) * 0.3], i * 3);
+    const s0 = (o.size ?? 0.6) * (0.8 + Math.random() * 0.4);
+    this.A.set([0, (o.life ?? 4.5) * (0.8 + Math.random() * 0.4), s0, s0 * (o.grow ?? 3), Math.random(), o.ramp ?? 0], i * 6);
+  }
+  update(dt: number) {
+    const P = this.P, V = this.Vl, A = this.A, w = this.wind;
+    for (let i = 0; i < this.n; i++) {
+      const a = i * 6, p = i * 3;
+      A[a] += dt / A[a + 1];
+      if (A[a] >= 1) { // swap the last one in
+        const l = --this.n; P.copyWithin(p, l * 3, l * 3 + 3); V.copyWithin(p, l * 3, l * 3 + 3); A.copyWithin(a, l * 6, l * 6 + 6); i--; continue;
+      }
+      // rise and slow; lean into the wind more the older (higher) it gets
+      V[p + 1] = Math.max(0.3, V[p + 1] * Math.exp(-dt * 0.45));
+      const k = 0.5 + A[a] * 1.3;
+      V[p] += (w.x * k - V[p]) * dt * 0.7; V[p + 2] += (w.y * k - V[p + 2]) * dt * 0.7;
+      P[p] += V[p] * dt; P[p + 1] += V[p + 1] * dt; P[p + 2] += V[p + 2] * dt;
+    }
+    // back to front from the camera
+    const cam = this.cam(); cam.getWorldPosition(this.cp);
+    const ord = this.ord; ord.length = this.n;
+    for (let i = 0; i < this.n; i++) { ord[i] = i; this.dep[i] = (P[i * 3] - this.cp.x) ** 2 + (P[i * 3 + 1] - this.cp.y) ** 2 + (P[i * 3 + 2] - this.cp.z) ** 2; }
+    ord.sort((x, y) => this.dep[y] - this.dep[x]);
+    const ip = this.iPos.array as Float32Array, id = this.iD.array as Float32Array;
+    for (let k = 0; k < this.n; k++) {
+      const i = ord[k], a = i * 6, age = A[a], gr = 1 - (1 - age) * (1 - age);
+      ip[k * 3] = P[i * 3]; ip[k * 3 + 1] = P[i * 3 + 1]; ip[k * 3 + 2] = P[i * 3 + 2];
+      id[k * 4] = A[a + 2] + (A[a + 3] - A[a + 2]) * gr; id[k * 4 + 1] = age; id[k * 4 + 2] = A[a + 4]; id[k * 4 + 3] = A[a + 5];
+    }
+    this.iPos.needsUpdate = true; this.iD.needsUpdate = true; this.geo.instanceCount = this.n;
+  }
+}
+const PUFFS = new WeakMap<Game, Puffs>();
+/** the game's crash-site smoke (made on first use; it lives in the game's scene and runs on its clock) */
+export function puffsFor(g: Game): Puffs {
+  let p = PUFFS.get(g);
+  if (!p) {
+    const s = g.region.seed;
+    p = new Puffs(new Bin(), g.world.scene, new THREE.Vector2(Math.cos(s * 1.7), Math.sin(s * 1.7)).multiplyScalar(1.1), () => g.cam.cam);
+    const pf = p; g.update$.push((dt) => pf.update(Math.max(dt, 0)));
+    PUFFS.set(g, p);
+  }
+  return p;
+}
+
 interface Blaze { x: number; z: number; y: number; life: number; t: number; k: number }
 /**
  * The crash site round the pod at (x, z) (region metres), skidding in direction (dirX, dirZ): char, scorch, small
@@ -252,6 +362,7 @@ export function startCrashSite(g: Game, x: number, z: number, dirX: number, dirZ
   for (const [a, s] of [[2.5, 0.4], [5, -0.6], [7.5, 0.3]] as [number, number][]) add(x - dirX * a + sx * s, z - dirZ * a + sz * s, 45 + hash(a, x) * 40, 0.6);
   add(x + sx * 2.2 + dirX * 1.2, z + sz * 2.2 + dirZ * 1.2, 35 + hash(z, 3) * 30, 0.5);
   add(x - sx * 2.6 - dirX * 1.5, z - sz * 2.6 - dirZ * 1.5, 30 + hash(z, 7) * 30, 0.45);
+  const puffs = puffsFor(g);
   const light = new THREE.PointLight(0xff8a3a, 0, 16, 1.6); light.position.set(x, gy(x, z) + 1.2, z); g.world.scene.add(light);
   let t = 0, smokeT = 0, steamT = 0, done = false;
   const col = new THREE.Color();
@@ -273,17 +384,14 @@ export function startCrashSite(g: Game, x: number, z: number, dirX: number, dirZ
         col.setRGB(1.6 + Math.random() * 0.5, 0.55 + Math.random() * 0.35, 0.12).multiplyScalar(1.1);
         g.fx.glow.emit(b.x + (Math.random() - 0.5) * 0.9 * b.k, b.y + 0.15, b.z + (Math.random() - 0.5) * 0.9 * b.k, (Math.random() - 0.5) * 0.3, 1.2 + Math.random() * 1.4, (Math.random() - 0.5) * 0.3, col, 1, 2.2 + Math.random() * 1.6 * b.k, 0.45 + Math.random() * 0.35, -0.6, 1.2);
       }
-      if (Math.random() < dt * 1.5 * k) vfx2d.play('spark', b.x, b.y + 0.5, b.z, { scale: 0.5, ramp: 'glowAmber', emit: 1.6, vel: [(Math.random() - 0.5) * 1.5, 2.5, (Math.random() - 0.5) * 1.5], grav: 4 });
+      if (Math.random() < dt * 1.2 * k) vfx2d.play('spark', b.x, b.y + 0.4, b.z, { scale: 0.28, ramp: 'glowAmber', emit: 1.2, speed: 1.6, vel: [(Math.random() - 0.5) * 1.2, 2, (Math.random() - 0.5) * 1.2], grav: 5 });
     }
     // smoke off the fires and the heat shield; steam off the hull for the first half minute
     smokeT -= dt; steamT -= dt;
-    if (smokeT <= 0) {
-      smokeT = 0.45 / Math.max(0.3, heat);
-      const b = blazes[Math.floor(Math.random() * blazes.length)];
-      if (b && b.t < b.life) vfx2d.play('smoke', b.x, b.y + 0.8, b.z, { scale: 1.4 + Math.random() * 1.2, ramp: 'stone', vel: [0.3, 1.1, 0.2], speed: 0.55 });
-      if (t < 150) vfx2d.play('smoke', x + dirX * 0.8, gy(x, z) + 0.6, z + dirZ * 0.8, { scale: 1.8, ramp: 'basalt', vel: [0.2, 1.4, 0.1], speed: 0.5 });
-    }
-    if (steamT <= 0 && t < 30) { steamT = 0.35; vfx2d.play('smoke', x - dirX * 0.5, gy(x, z) + 2.4, z - dirZ * 0.5, { scale: 0.9, ramp: 'snow', vel: [0.2, 1.8, 0.1], speed: 0.8 }); }
+    // each fire sends up its own thin column; the heat shield a slow charcoal one that dies down over two minutes
+    for (const b of blazes) if (b.t < b.life && Math.random() < dt * 1.1 * b.k * Math.pow(1 - b.t / b.life, 0.5)) puffs.emit(b.x, b.y + 0.5, b.z, { size: 0.3 + b.k * 0.2, grow: 3, life: 3.5 + b.k * 1.5, vy: 1.2, ramp: 0, jitter: 0.5 * b.k });
+    if (smokeT <= 0 && t < 150) { smokeT = 0.55 + t / 60; puffs.emit(x + dirX * 0.8, gy(x, z) + 0.5, z + dirZ * 0.8, { size: 0.45, grow: 3.2, life: 5, vy: 1.4, ramp: 1, jitter: 0.6 }); }
+    if (steamT <= 0 && t < 30) { steamT = 0.3; puffs.emit(x - dirX * 0.5, gy(x, z) + 2.4, z - dirZ * 0.5, { size: 0.3, grow: 3, life: 2.4, vy: 1.8, ramp: 2, jitter: 0.6 }); }
     // the light flickers with the fire and dies with it
     light.intensity = heat > 0.02 ? (6 + Math.sin(t * 23) * 1.5 + Math.sin(t * 7.3) * 1.2 + Math.random() * 1.5) * Math.min(1.6, heat) : 0;
     if (heat > 0.02) light.position.set(hx / heat, gy(hx / heat, hz / heat) + 1.1, hz / heat);

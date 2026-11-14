@@ -362,8 +362,14 @@ void main() {
     } else { bc = waterShade(vWp.xz, surf, 0.0, vec2(0.0), 0.0); seeBed = true; path = max(path, 0.2); }
     // the water's own colour from its ramps: blue past the deep cut, turquoise and teal over the shelves. Each facet a
     // ramp step lighter where it turns to the light or to the sky, darker where it turns away
+#ifdef LAKE
+    // a lake is still and clear: its deep water stays in the shallows' ramp (a deep teal, never the sea's black-blue)
+    bool deepF = false;
+    float base = 4.7 - smoothstep(0.0, uDeepCut * 1.8, path) * 2.5;
+#else
     bool deepF = depth > uDeepCut && path > uDeepCut * 0.8;
     float base = deepF ? 2.4 - smoothstep(uDeepCut, uDeepCut * 3.0, path) * 1.2 : 4.7 - smoothstep(0.0, uDeepCut, path) * 2.5;
+#endif
     float NdV = max(dot(N, V), 0.0), F = pow(1.0 - NdV, 4.0);
     float facet = (dot(N, L) - L.y) * 10.0;
     float k = base + floor(clamp(facet, -1.5, 1.5) + 0.5) + floor(min(F, 0.95) * 3.0) - (1.0 - uSunK) * 2.6 - max(0.0, uWindK - 0.6) * 2.0;
@@ -378,6 +384,10 @@ void main() {
     col = seeBed ? mix(wc, seen, Tq) : wc;
     // the sky mirrored, in steps, more of it toward the horizon
     float Fq = floor(min(F, 0.9) * 4.0) / 4.0;
+#ifdef LAKE
+    // still water mirrors the sky even seen from above
+    Fq = max(Fq, 0.25);
+#endif
     col = mix(col, skyCol(reflect(-V, N)), Fq * 0.7);
     // light through the backlit crests
     float hk = clamp(vWave / max(0.05, uSwellH * 0.5) * 0.5 + 0.5, 0.0, 1.0);
@@ -653,6 +663,16 @@ export function makeLakes(lakes: LakeDef[], sea: THREE.Mesh): THREE.Mesh | null 
 export function seaState(mesh: THREE.Object3D | null | undefined): SeaState | null { return (mesh?.userData.sea as SeaState) ?? null; }
 
 /** ribbons along the river centre lines, at the water surface, reaching under the banks on both sides */
+/** is a point inside a lake's outline (a river running through a lake leaves the lake's own surface to draw it) */
+function inLake(R: Region, x: number, z: number, y: number) {
+  for (const L of R.lakes) {
+    const P = L.poly; if (!P || P.length < 3 || Math.abs(y - L.level) > 0.08 || Math.hypot(x - L.x, z - L.z) > L.r * 2.6 + 3) continue;
+    let ins = false;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, zi] = P[i], [xj, zj] = P[j]; if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) ins = !ins; }
+    if (ins) return true;
+  }
+  return false;
+}
 export function makeRivers(R: Region, U: Record<string, THREE.IUniform>): THREE.Mesh | null {
   if (!R.rivers.length) return null;
   const pos: number[] = [], flow: number[] = [], speed: number[] = [], rapid: number[] = [], idx: number[] = [];
@@ -662,6 +682,9 @@ export function makeRivers(R: Region, U: Record<string, THREE.IUniform>): THREE.
     if (pts.length < 4) continue;
     const step = 2, n = Math.floor((pts.length - 1) / step) + 1, base = pos.length / 3;
     const mouth = pts.find((q) => q.y <= R.water + 0.02)?.s ?? 1e9;
+    // where the river crosses a lake the ribbon stops: the lake's still surface draws that water (two surfaces there
+    // fought, and the ribbon's deep body read as a dark hole under the lake)
+    const wet = Array.from({ length: n }, (_, j) => { const p = pts[Math.min(pts.length - 1, j * step)]; return inLake(R, p.x, p.z, p.y); });
     for (let j = 0; j < n; j++) {
       const k = Math.min(pts.length - 1, j * step), p = pts[k];
       const a = pts[Math.max(0, k - 2)], b = pts[Math.min(pts.length - 1, k + 2)];
@@ -676,7 +699,7 @@ export function makeRivers(R: Region, U: Record<string, THREE.IUniform>): THREE.
         speed.push(p.v, Math.max(0, fk));
         rapid.push(Math.min(1, ((p as RiverPt & { rapid?: number; drop?: number }).rapid ?? 0) + ((p as RiverPt & { drop?: number }).drop ?? 0) * 2));
       }
-      if (j < n - 1) { const q = base + j * 2; idx.push(q, q + 2, q + 1, q + 1, q + 2, q + 3); }
+      if (j < n - 1 && !(wet[j] && wet[j + 1])) { const q = base + j * 2; idx.push(q, q + 2, q + 1, q + 1, q + 2, q + 3); }
     }
   }
   const g = new THREE.BufferGeometry();

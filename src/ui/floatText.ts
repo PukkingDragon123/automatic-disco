@@ -265,7 +265,11 @@ export interface FloatOpts {
   keepCase?: boolean;
 }
 interface Pop { x: number; y: number; z: number; lines: string[]; n: number; kind: FloatKind; t: number; life: number; delay: number; big: number; dx: number; rise: number; stack: number; o: FloatOpts; oy: number; bump: number }
-export interface Prompt { x: number; y: number; z: number; key: string; text: string; ok: boolean; prog?: number }
+export interface Prompt {
+  x: number; y: number; z: number; key: string; text: string; ok: boolean; prog?: number;
+  /** a seam's gauge under the prompt: what is left of the deposit (amount / max), in the ore's colour */
+  left?: number; leftCol?: number;
+}
 export interface HullBar { x: number; y: number; z: number; frac: number; alpha: number; flash: number }
 
 export class FloatLayer {
@@ -361,7 +365,7 @@ export class FloatLayer {
         const cap = pr.key ? textSprite(pr.key, 'dmg', { font: 'chunky' }) : null;
         const ch = lab.height, cw = cap ? Math.max(cap.width + 2, ch) : -2, W = (cw + 2 + lab.width) * k;
         const x = Math.round(sx - W / 2), y = Math.round(sy + 3 * k);
-        placed.push([x - 2 * k, y - k, x + W + 2 * k, y + (ch + 5) * k]);
+        placed.push([x - 2 * k, y - k, x + W + 2 * k, y + (ch + (pr.left !== undefined ? 10 : 5)) * k]);
         prDraw = () => {
           if (cap) {
             const press = pr.prog !== undefined && pr.prog > 0 ? k : 0;
@@ -377,6 +381,14 @@ export class FloatLayer {
             g.fillStyle = hex(OUTLINE); g.fillRect(bx - k, by, (pw + 2) * k, 3 * k);
             g.fillStyle = '#1e2a20'; g.fillRect(bx, by + k, pw * k, k);
             g.fillStyle = '#7fd48a'; g.fillRect(bx, by + k, Math.round(pw * Math.min(1, pr.prog)) * k, k);
+          }
+          if (pr.left !== undefined) {
+            // the seam gauge: a strip of cells in a gunmetal frame, lit by what is left in the ground
+            const segs = 10, sw = segs * 3 + 1, bx = x + (cw + 2) * k, by = y + (ch + 4) * k, f = Math.max(0, Math.min(1, pr.left));
+            const on = Math.ceil(f * segs - 0.001), col = pr.leftCol ?? AMBER;
+            g.fillStyle = hex(OUTLINE); g.fillRect(bx - k, by - k, (sw + 2) * k, 5 * k);
+            g.fillStyle = '#3a3d40'; g.fillRect(bx, by, sw * k, 3 * k);
+            for (let i = 0; i < segs; i++) { g.fillStyle = hex(i < on ? (i === on - 1 ? mixc(col, 0xffffff, 0.2) : col) : mixc(col, 0x1a1c1c, 0.8)); g.fillRect(bx + (1 + i * 3) * k, by + k, 2 * k, k); }
           }
         };
       }

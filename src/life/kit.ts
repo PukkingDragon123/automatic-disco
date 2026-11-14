@@ -525,12 +525,44 @@ export { mixC };
 
 export function pageTexture(page: Page): THREE.DataTexture {
   const d = page.pc.data;
-  const tex = new THREE.DataTexture(new Uint8Array(d.buffer, d.byteOffset, d.byteLength), page.W, page.H, THREE.RGBAFormat, THREE.UnsignedByteType);
+  return pixelTexture(new Uint8Array(d.buffer, d.byteOffset, d.byteLength), page.W, page.H);
+}
+/** a page as a texture whose smaller levels are drawn, not blurred: each mip level takes the most frequent colour of
+ *  every 2x2 block of the level above (the darkest on a tie, so outlines survive), so a creature seen small stays in
+ *  palette colours and clean clusters, and its alpha markers (glow, wet eyes, cut hair) are never averaged */
+export function pixelTexture(data: Uint8Array, W: number, H: number): THREE.DataTexture {
+  const tex = new THREE.DataTexture(data, W, H, THREE.RGBAFormat, THREE.UnsignedByteType);
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.NearestMipmapNearestFilter;
-  tex.generateMipmaps = true;
+  tex.mipmaps = pixelMips(data, W, H) as unknown as typeof tex.mipmaps;
+  tex.generateMipmaps = false;
   tex.flipY = false;
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.needsUpdate = true;
   return tex;
+}
+export function pixelMips(data: Uint8Array, W: number, H: number): { data: Uint8Array; width: number; height: number }[] {
+  const out = [{ data, width: W, height: H }];
+  let src = data, w = W, h = H;
+  const lum = (a: Uint8Array, i: number) => a[i] * 3 + a[i + 1] * 6 + a[i + 2];
+  while (w > 1 || h > 1) {
+    const w2 = Math.max(1, w >> 1), h2 = Math.max(1, h >> 1), dst = new Uint8Array(w2 * h2 * 4);
+    const k = [0, 0, 0, 0];
+    for (let y = 0; y < h2; y++) for (let x = 0; x < w2; x++) {
+      const x0 = Math.min(w - 1, x * 2), x1 = Math.min(w - 1, x * 2 + 1), y0 = Math.min(h - 1, y * 2), y1 = Math.min(h - 1, y * 2 + 1);
+      k[0] = (y0 * w + x0) * 4; k[1] = (y0 * w + x1) * 4; k[2] = (y1 * w + x0) * 4; k[3] = (y1 * w + x1) * 4;
+      let best = k[0], bn = -1, bl = Infinity;
+      for (let a = 0; a < 4; a++) {
+        let n = 0;
+        for (let b = 0; b < 4; b++) if (src[k[a]] === src[k[b]] && src[k[a] + 1] === src[k[b] + 1] && src[k[a] + 2] === src[k[b] + 2] && src[k[a] + 3] === src[k[b] + 3]) n++;
+        const l = lum(src, k[a]);
+        if (n > bn || (n === bn && l < bl)) { bn = n; best = k[a]; bl = l; }
+      }
+      const o = (y * w2 + x) * 4;
+      dst[o] = src[best]; dst[o + 1] = src[best + 1]; dst[o + 2] = src[best + 2]; dst[o + 3] = src[best + 3];
+    }
+    out.push({ data: dst, width: w2, height: h2 });
+    src = dst; w = w2; h = h2;
+  }
+  return out;
 }

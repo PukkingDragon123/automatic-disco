@@ -114,6 +114,9 @@ export const SKILLS: SkillDef[] = [
   S('bt_lock', 'lab', 'Gene-Lock', 'A kill switch on the germ line, sequenced: locked designs breed only in a habitat and never escape or cross with wild stock.', { carbon: 140, water: 80 }, 1, ['bt_habitat']),
   S('bt_clone', 'lab', 'Cloning', 'The vats grow twins, and clone any creature you select: proven workers copied exactly.', { carbon: 220, water: 180, ore: 60 }, 2, ['bt_vat']),
   S('bt_dome', 'lab', 'Field Dome II', 'Heavier coils: force fields reach 9.5 m and hold twice the punishment.', { ore: 260, water: 180, carbon: 120 }, 3, ['bt_field']),
+  // RARE ORES (world/geo): the alien lumen crystal and gravium, mined in dangerous ground, worked into high-tier parts
+  S('lumen', 'harvest', 'Lumen Optics', 'Grind lumen crystal into lenses and wind them into lumen cells: power for beam weapons and the deep scanners.', { ore: 160, water: 120, carbon: 60 }, 2, ['bore', 'assembler']),
+  S('gravity', 'gravity', 'Gravium Casting', 'Cast gravium into steel plates and wind gravity coils round a reactor core: lift, shields and gravity weapons.', { ore: 240, water: 160, carbon: 80 }, 2, ['bore', 'slam']),
 ];
 export const SKILL: Record<string, SkillDef> = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
 

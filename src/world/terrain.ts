@@ -110,6 +110,10 @@ export class Terrain {
       uSnow: { value: 0 }, uFrost: { value: 0 }, uDry: { value: 0 }, uFrostC: { value: new THREE.Color(RAMPS.snow[5]) },
       // the height over the water where snow lies all year: low in cold country, out of reach in hot
       uSnowLine: { value: 8 + region.biome.temp * 26 },
+      // toward the sun (the game copies world.sun.dir in each frame) and how strongly the land is shaded in planes
+      uSunW: { value: new THREE.Vector3(-0.53, 0.72, -0.34) }, uRelief: { value: 1 },
+      // the thermal field's centre and reach (its spring crust is drawn only in there)
+      uCrust: { value: region.thermal ? new THREE.Vector3(region.thermal.x, region.thermal.z, region.thermal.r + 6) : new THREE.Vector3(-999, -999, 0) },
     };
     this.mat = this.makeMaterial();
     this.buildMesh();
@@ -228,7 +232,8 @@ vWp = wpos4.xyz; vNw = normalize(mat3(modelMatrix) * objectNormal); vHol = aHol;
         .replace('#include <common>', `#include <common>
 uniform highp sampler2DArray uBlocks;
 uniform sampler2D uMoss, uVis, uMat, uShade, uDamp, uEco, uBurn, uGeo;
-uniform float uN, uTime, uRivalLayer, uVeinGain, uRockSide, uWetG, uWater;
+uniform float uN, uTime, uRivalLayer, uVeinGain, uRockSide, uWetG, uWater, uRelief;
+uniform vec3 uSunW, uCrust;
 uniform float uLay[32];
 uniform float uAvgL[48];
 uniform float uFamLay[7];
@@ -364,12 +369,25 @@ if (snowK > 0.02) contend(7, snowK * 1.25, 0.15, 0.5, pc, bestS, bestT, bestId);
 // the geology: spring mineral crust (terraces) and waterfall spray (A channel)
 vec4 geoT = texture2D(uGeo, (floor(pc) + 0.5) / uN);
 float ga = geoT.a * 255.0, spray = ga < 127.5 ? ga / 127.0 : 0.0;
-if (ga > 128.5) {
-  float ck = floor((ga - 128.0) / 32.0), cs = mod(ga - 128.0, 32.0) / 31.0;
+// the crust's strength over the four cells round the (warped) pixel, so its edge is a ragged contour across the
+// cells, never a cell's square; the strongest cell names its kind
+vec2 cq = pc - 0.5 + (vec2(vn(pc * 0.7 + 21.0), vn(pc * 0.7 + 4.0)) - 0.5) * 1.2;
+vec2 c0 = floor(cq), cfq = cq - c0;
+float cs = 0.0, ck = -1.0, cb = 0.0;
+// (only inside the thermal field: the four extra fetches cost nothing anywhere else)
+if (length(pc - uCrust.xy) < uCrust.z) for (int a = 0; a < 4; a++) {
+  vec2 o = vec2(float(a - (a / 2) * 2), float(a / 2));
+  float gA = texture2D(uGeo, (c0 + o + 0.5) / uN).a * 255.0;
+  float sA = gA > 128.5 ? mod(gA - 128.0, 32.0) / 31.0 : 0.0;
+  float wA = (o.x > 0.5 ? cfq.x : 1.0 - cfq.x) * (o.y > 0.5 ? cfq.y : 1.0 - cfq.y);
+  cs += sA * wA;
+  if (sA * wA > cb) { cb = sA * wA; ck = floor((gA - 128.0) / 32.0); }
+}
+if (ck >= 0.0 && cs > 0.05) {
   float cl = ck < 0.5 ? ${L.crustWhite}.0 : ck < 1.5 ? ${L.crustOchre}.0 : ${L.crustRust}.0;
   vec4 tc = blk(cl, pc);
   float lc = dot(tc.rgb, vec3(0.3, 0.59, 0.11)), ac = uAvgL[int(cl)];
-  float sc = cs * 1.7 + (clamp(0.5 + (lc - ac) / (ac + 0.03) * 0.6, 0.0, 1.0) - 0.5) * 0.55 - slope * 2.0;
+  float sc = (cs - 0.3) * 3.4 + (clamp(0.5 + (lc - ac) / (ac + 0.03) * 0.6, 0.0, 1.0) - 0.5) * 0.55 - slope * 2.0;
   if (sc > bestS) { bestS = sc; bestT = tc; }
 }
 // burnt ground (scorch): char and ash while fresh, dry soil as it fades
@@ -402,6 +420,21 @@ if (vNw.y < 0.74) {
     // the vein's own pixels, more of them where the vein runs strong (a slow patchiness, never a fade)
     if (tv.a > 0.1 && geo.g * 1.5 + (vn(uvs * 0.45 + 5.0) - 0.5) * 0.9 > 0.55) tr = vec4(tv.rgb, tv.a > 0.95 ? 1.0 : tv.a);
   }
+  // the strata read from afar: beds ~1.4 m thick (their boundaries wavering), each a step lighter or darker, a lit
+  // ledge lip on top of each with a shadow line under it
+  float bz = -uvs.y / 1.4 + (vn(vec2(uvs.x * 0.09, float(fam) * 3.1)) - 0.5) * 0.7;
+  float bI = floor(bz), bF = bz - bI, bT = h2(vec2(bI, float(fam) + 7.0));
+  if (tr.a > 0.95) {
+    // (the painted strata are dark stone: lifted a step so a face reads as rock in light, not a hole)
+    tr.rgb *= 1.18 * (bT < 0.33 ? 0.8 : bT < 0.7 ? 1.0 : 1.2);
+    if (bF > 0.94) tr.rgb *= 1.45; else if (bF > 0.89) tr.rgb *= 0.66;
+    // snow on the ledges high in the ranges: drifts on each bed's top, more of them the higher the face
+    float sk = smoothstep(uSnowLine - 4.0, uSnowLine + 8.0, hw + (G1 - 0.5) * 4.0) + uSnow * 0.5;
+    if (sk > 0.02 && bF > 0.97 - sk * 0.42 && h2(floor(uvs * 3.0) + bI) < 0.3 + sk * 0.7) {
+      vec4 sn = textureGrad(uBlocks, vec3(cuv, uLay[14]), cgx, cgy);
+      tr.rgb = bF > 0.94 ? sn.rgb * 1.08 : sn.rgb * 0.92;
+    }
+  }
   base = tr.rgb; glowA = tr.a; bestId = 3;
 } else {
   base = bestT.rgb; glowA = bestT.a;
@@ -412,6 +445,22 @@ if (spray > 0.01) {
   // spray: soaked darker, and a few of the proudest pixels catch the light as wet glints, twinkling
   base *= 1.0 - 0.38 * spray;
   if (h2(pxw + floor(uTime * 3.0 + h2(pxw) * 7.0) * 1.7) < spray * 0.05) base = mix(base, uFrostC, 0.75);
+}
+// relief: the land shaded in planes like a pixel artist would, a step lighter where a slope turns to the sun and a
+// step cooler (sky-lit, never black) where it turns away, stronger up in the ranges; sunlit ridges and cliff faces
+// seen edge-on catch a warm rim
+{
+  vec3 Ls = normalize(uSunW);
+  float facing = vNw.x * Ls.x + vNw.z * Ls.z;
+  float relK = uRelief * smoothstep(0.05, 0.28, slope) * (0.5 + 0.5 * smoothstep(1.5, 10.0, hw));
+  float stL = clamp(floor(facing * 3.0 + 0.5) / 3.0, -1.0, 1.0);
+  // (the default camera looks into the sun's lee, so the faces it sees most are the shaded ones: those are lifted
+  // a step with the sky's cool fill, never left as flat dark masses)
+  if (stL > 0.0) base *= 1.0 + relK * stL * 0.5;
+  else base = mix(base, base * vec3(1.14, 1.2, 1.3), relK * min(1.0, -stL + 0.34) * 0.8);
+  vec3 Vv = normalize(cameraPosition - vWp);
+  float rimK = pow(1.0 - max(dot(vNw, Vv), 0.0), 3.0) * max(facing, 0.0) * smoothstep(0.12, 0.4, slope) * uRelief;
+  if (rimK > 0.1) base *= rimK > 0.22 ? vec3(1.34, 1.26, 1.12) : vec3(1.16, 1.12, 1.05);
 }
 emis += base * (1.0 - glowA) * 2.0;
 // darker under canopy
@@ -462,7 +511,7 @@ diffuseColor.rgb *= base;
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += emis;')
         .replace('#include <dithering_fragment>', '#include <dithering_fragment>\ngl_FragColor.rgb = applyFow(gl_FragColor.rgb, vWp);');
     };
-    m.customProgramCacheKey = () => 'oddworld-terrain-pixel48';
+    m.customProgramCacheKey = () => 'oddworld-terrain-pixel49';
     return gbuf(m, 0);
   }
 

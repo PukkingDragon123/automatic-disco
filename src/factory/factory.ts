@@ -11,6 +11,7 @@ import type { Faction } from '../game/species';
 import type { Creature } from '../game/creature';
 import { FDEFS, DIRS, rotXZ, footW, footD, isBelt, type FKind, type FDef, type Cost } from './defs';
 import { ITEMS, ITEM_IDS, isRes, type ItemId } from './items';
+import type { Deposit } from '../world/region';
 import { recipesAt, RECIPE, type Recipe } from './recipes';
 const RECIPE_BY_ID = (id: string): Recipe | undefined => RECIPE[id];
 import { FactoryRender } from './render';
@@ -30,7 +31,15 @@ const ECO = new Set<string>(['sluice', 'sprinkler', 'spreader', 'sprayer', 'plan
 import { TICK, SPACING, STATUS_COL, STATUS_NAME, FLUIDS, type Status } from './status';
 export { TICK, SPACING, STATUS_COL, STATUS_NAME, FLUIDS, type Status };
 export interface BeltItem { id: ItemId; t: number }
-export interface Seam { i: number; x: number; z: number; r: number; kind: 'ore' | 'crystal' | 'coal' | 'copper'; item: ItemId; amount: number; dep: number }
+export interface Seam {
+  i: number; x: number; z: number; r: number; kind: 'ore' | 'crystal' | 'coal' | 'copper'; item: ItemId; amount: number; dep: number;
+  /** a buried body a scan revealed: only drill-tier miners (Mk. II and up) reach it, never a worker's hands */
+  drill?: boolean;
+  /** the geology's ore id (world/geo/ores.ts ORES), when it came from a region deposit */
+  ore?: string;
+}
+/** miners that bore deep enough for buried seams */
+export const DRILL_TIER = new Set(['miner2', 'miner3']);
 /** a region's works in the save file (compact rows) */
 export interface FactorySave {
   v: 1;
@@ -38,6 +47,8 @@ export interface FactorySave {
   b: [string, number, number, number, string, number, ...(Record<string, number> | 0 | string)[]][];
   inv: Record<string, number>;
   seams: [number, number][];
+  /** buried deposits this region's scans revealed (x, z), revealed again in order on load so seam indices hold */
+  scan?: [number, number][];
   rs: number;
   /** [species, job, building row (-1), seam, x, z, hunger, mood] */
   w: [string, string, number, number, number, number, number, number][];
@@ -182,7 +193,8 @@ export class Factory {
     for (const b of this.buildings) for (const it of b.items) inv[it.id] = (inv[it.id] ?? 0) + 1;
     const seams = this.seams.map((s) => [s.i, Math.floor(s.amount)] as [number, number]);
     const w = this.workers.list.filter((x) => !x.c.dead && x.job !== 'idle').map((x) => [x.c.sp.name, x.job, x.target ? idx.get(x.target) ?? -1 : -1, x.seam, Math.round(x.c.x * 10) / 10, Math.round(x.c.z * 10) / 10, Math.round(x.hunger * 100) / 100, Math.round(x.mood * 100) / 100] as FactorySave['w'][number]);
-    return { v: 1, b: rows, inv, seams, rs: this.research, w };
+    const scan = this.seams.filter((s) => s.drill && s.dep >= 0).map((s) => [Math.round(s.x * 10) / 10, Math.round(s.z * 10) / 10] as [number, number]);
+    return { v: 1, b: rows, inv, seams, ...(scan.length ? { scan } : {}), rs: this.research, w };
   }
   /** write the works into the run (flow.ts calls this when it saves) */
   store() { this.g.run.factories[this.saveKey] = this.save(); }
@@ -190,6 +202,8 @@ export class Factory {
   load(sv: FactorySave) {
     if (!sv || sv.v !== 1) return;
     for (const [k, n] of Object.entries(sv.inv ?? {})) this.inventory[k] = (this.inventory[k] ?? 0) + n;
+    // seams revealed by earlier scans come back first (in the same order), then every seam's depletion
+    for (const [x, z] of sv.scan ?? []) this.g.region.scan(x, z, 0.5);
     for (const [i, a] of sv.seams ?? []) if (this.seams[i]) this.seams[i].amount = a;
     this.research = sv.rs ?? 0;
     const made: (FBuilding | null)[] = [];
@@ -227,7 +241,12 @@ export class Factory {
   // ================================================================== resource seams
   private makeSeams() {
     const R = this.g.region, N = this.N, rnd = new Rand(this.g.opts.seed * 31 + 7);
-    R.deposits.forEach((d, k) => this.seams.push({ i: this.seams.length, x: d.x, z: d.z, r: d.r, kind: d.kind, item: d.kind === 'crystal' ? 'crystal' : 'ore', amount: d.amount * 4, dep: k }));
+    R.deposits.forEach((d, k) => this.seams.push(this.seamOf(d, k)));
+    // a scan (the golem's, or a survey) turns up a buried body: it becomes a seam for the drill-tier miners
+    R.onDeposit.push((d, k) => {
+      if (this.seams.some((s) => s.dep === k)) return;
+      const s = this.seamOf(d, k); this.seams.push(s); this.markSeam(s); this.onChange?.();
+    });
     // the factory's own surveys turn up coal and copper: two of each fairly near the landing, more further out
     const L = R.landing;
     for (const kind of ['coal', 'copper', 'coal', 'copper', 'coal', 'copper', 'coal', 'copper'] as const) {
@@ -247,15 +266,20 @@ export class Factory {
         break;
       }
     }
-    for (const s of this.seams) {
-      const rr = Math.ceil(s.r + 0.5);
-      for (let dz = -rr; dz <= rr; dz++) for (let dx = -rr; dx <= rr; dx++) {
-        const X = Math.floor(s.x) + dx, Z = Math.floor(s.z) + dz;
-        if (X < 0 || Z < 0 || X >= N || Z >= N) continue;
-        if (Math.hypot(X + 0.5 - s.x, Z + 0.5 - s.z) <= s.r + 0.6) this.seamAt[Z * N + X] = s.i;
-      }
-    }
+    for (const s of this.seams) this.markSeam(s);
     this.g.world.terrain.flushDirty();
+  }
+  /** a region deposit as a seam: the item its ore yields (the old ore / crystal split when it has none) */
+  private seamOf(d: Deposit, k: number): Seam {
+    return { i: this.seams.length, x: d.x, z: d.z, r: d.r, kind: d.kind, item: (d.item && ITEMS[d.item] ? d.item : d.kind === 'crystal' ? 'crystal' : 'ore') as ItemId, amount: d.amount * 4, dep: k, drill: !!d.drill, ore: d.ore };
+  }
+  private markSeam(s: Seam) {
+    const N = this.N, rr = Math.ceil(s.r + 0.5);
+    for (let dz = -rr; dz <= rr; dz++) for (let dx = -rr; dx <= rr; dx++) {
+      const X = Math.floor(s.x) + dx, Z = Math.floor(s.z) + dz;
+      if (X < 0 || Z < 0 || X >= N || Z >= N) continue;
+      if (Math.hypot(X + 0.5 - s.x, Z + 0.5 - s.z) <= s.r + 0.6) this.seamAt[Z * N + X] = s.i;
+    }
   }
   /** the seam under a footprint (most covered cells), or -1 */
   seamUnder(cx: number, cz: number, w: number, d: number): number {
@@ -351,7 +375,11 @@ export class Factory {
     if (def.extract === 'water') { if (water < n * 0.5) return 'Must stand on open water'; }
     else if (water > 0 && !this.foundAt(cx, cz) && kind !== 'dam' && kind !== 'sluice' && kind !== 'pipe' && kind !== 'found') return 'No footing in water (lay a foundation)';
     if (hi - lo > (isBelt(kind) ? 2.2 : 1.8)) return 'Ground too steep (lay a foundation)';
-    if (def.extract === 'node' && this.seamUnder(cx, cz, w, d) < 0) return 'Must sit over a seam (ore, copper, coal, crystal)';
+    if (def.extract === 'node') {
+      const si = this.seamUnder(cx, cz, w, d);
+      if (si < 0) return 'Must sit over a seam (ore, copper, coal, crystal)';
+      if (this.seams[si].drill && !DRILL_TIER.has(kind)) return 'A buried seam: it needs a drill-tier miner (Mk. II or better)';
+    }
     if (def.extract === 'soil') { for (let j = 0; j < d; j++) for (let i = 0; i < w; i++) { const b = R.b[(cz + j) * N + cx + i]; if (b === B.ROCK || b === B.BASALT || b === B.SNOW) return 'Needs diggable soil'; } }
     for (const h of this.g.world.hives) if (h !== this.hive) for (const b of h.buildings) if (b.x >= cx - 1 && b.x <= cx + w + 1 && b.z >= cz - 1 && b.z <= cz + d + 1) return 'A rival structure is in the way';
     return null;

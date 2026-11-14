@@ -159,9 +159,10 @@ export class Hud {
     this.hot({ obj: P.bobble.root, lift: P.bobble.body, name: 'DR. CALDER (BOBBLEHEAD)', tip: () => 'Corps issue, 1957. He nods at everything.', click: () => { P.bobble.bob(); sfx('call', 1.6, 0.25); } });
     this.hot({ obj: P.mug.root, lift: P.mug.body, name: 'COFFEE', tip: () => 'Calder\'s. Long cold.', click: () => { P.mug.jostle(3); sfx('squelch', 1.8, 0.25); } });
     // ---- COMMAND
-    this.hot({ obj: d.table.root, name: 'HOLO TABLE', tip: () => 'The region in relief. Click to look there, right-click to send the selected units, drag to tilt it.',
+    this.hot({ obj: d.table.root, name: 'HOLO TABLE · SCANNER', key: 'X',
+      tip: () => this.mode === 'survey' ? `Click to sound the ground round Unit 07 (${Math.round(g()?.player?.scanReach ?? 26)} m): buried ore bodies answer and are staked out. Revealed seams show as amber pins.${this.scanWhy()}` : 'The region in relief. Click to look there, right-click to send the selected units, drag to tilt it. [X] sounds the ground for buried ore.',
       drag: { move: (_h, dx, dy) => { d.table.yawT += dx * 0.012; d.table.pitchT = Math.max(-0.25, Math.min(0.35, d.table.pitchT + dy * 0.006)); } },
-      click: (h) => this.tableClick(h.point, 0), alt: (h) => this.tableClick(h.point, 2) });
+      click: (h) => { if (this.mode === 'survey') { d.table.pingAt(d.table.relief.worldToLocal(h.point.clone())); this.scan(); } else this.tableClick(h.point, 0); }, alt: (h) => this.tableClick(h.point, 2) });
     this.hot({ obj: d.crt.root, name: 'TELEMETRY', tip: () => 'Unit 07 and whatever it has linked. The knobs set GAIN and TUNE (green or amber tubes).' });
     this.hot({ obj: d.crt.knobs[0], name: 'GAIN', tip: () => 'Phosphor brightness for every screen on the console. Drag or scroll.', wheel: (dy) => crtSettings.setGain(crtSettings.gain - Math.sign(dy) * 0.08),
       drag: { move: (_h, dx, dy) => crtSettings.setGain(crtSettings.gain + (dx - dy) * 0.006) }, click: () => crtSettings.setGain(crtSettings.gain >= 0.95 ? 0.2 : crtSettings.gain + 0.2) });
@@ -244,6 +245,8 @@ export class Hud {
     if (k === 'b' && this.c.game?.factory) { this.buildToggle(); return true; }
     if (k === 'l' && this.c.game?.menu !== 'build') { this.openLab(); return true; }
     if (k === 'g') { this.rally(); return true; }
+    // [X] sounds the ground (unless the works catalogue or a unit's Stop key owns it)
+    if (k === 'x' && !this.c.game?.factory?.build.active && !this.c.commands().some((cm) => cm && cm.key.toLowerCase() === 'x')) { this.scan(); return true; }
     return this.wheel.key(k);
   }
   /** B: the works catalogue (and the BUILD desk with it) */
@@ -256,6 +259,15 @@ export class Hud {
   private openSkills() { const g = this.c.game, f = g?.opts.hooks?.openSkills; if (g && f) f(g); else this.tray('The skill tree is not connected', 'warn'); }
   private openLab() { const g = this.c.game, f = g?.opts.hooks?.openLab; if (g && f) f(g); else this.c.openBuilder(); }
   private openBench() { const g = this.c.game; if (g && g.engine.screen === g) import('../robots/weapons/bench').then((m) => m.openBench(g.engine, g)); }
+  /** a sounding round the golem (player.scan): the scan table sweeps with it */
+  private scan() {
+    const p = this.c.game?.player;
+    if (!p?.started) { sfx('deny'); this.tray('Unit 07 is not out of the pod yet', 'warn'); return; }
+    this.scanT = 1.4; this.mapT = 0;
+    p.scan();
+  }
+  private scanT = 0;
+  private scanWhy() { const p = this.c.game?.player; return p && p.scanCd > 0 ? `<div class="tip-warn">Recharging: ${Math.ceil(p.scanCd)} s</div>` : ''; }
   private ledger() { const b = this.bio(); if (b) b.toggleLedger(); else this.tray('The bioworks are not running here', 'warn'); }
   private rally() {
     const h = this.c.hive, why = h.rally();
@@ -326,6 +338,7 @@ export class Hud {
     if ((this.slow -= dt) <= 0) { this.slow = 0.125; this.slowUpdate(hp, hm, hf); }
     // ---- the wings' instruments
     if (d.mode === 'command' || d.mode === 'survey') this.tableUpdate(dt);
+    if (this.scanT > 0) { this.scanT = Math.max(0, this.scanT - dt); d.table.scan = (this.mode === 'survey' ? 1 : 0.3) + this.scanT * 0.5; }
     if ((this.crtT -= dt) <= 0) { this.crtT = 0.25; if (d.mode === 'command') this.crtPaint(); }
     this.selection();
     // ---- touch: the thumb pads on the desk mirror the touch controls (and their hit areas sit over the pads)
@@ -424,6 +437,8 @@ export class Hud {
     const pins: [number, number, number, number][] = [];
     const gp = c.hive.golem(); if (gp) pins.push([gp.x, gp.z, R.snow[5], 1.8]);
     for (const hv of w.hives) for (const b of hv.buildings) if (b.visibleNow) pins.push([b.x, b.z, hv.faction === 'veyr' ? R.glowTeal[4] : R.stampRed[3], b.def.kind === 'core' ? 1.8 : 1.1]);
+    // the survey's finds: seams and revealed buried bodies as amber pins, the rare ores brighter
+    if (d.mode === 'survey') for (const dp of Rg.deposits) { if (dp.amount <= 0) continue; const i = Math.floor(dp.z) * N + Math.floor(dp.x); if (seen[i] || dp.style === 'buried') pins.push([dp.x, dp.z, dp.tier === 2 ? R.glowTeal[4] : dp.style === 'buried' ? R.glowAmber[4] : R.glowAmber[2], dp.style === 'buried' || dp.tier === 2 ? 1.3 : 0.9]); }
     const fac = c.game?.factions;
     if (fac) for (const st of fac.structures) { if (st.dead) continue; const i = Math.floor(st.z) * N + Math.floor(st.x); if (seen[i]) pins.push([st.x, st.z, R.stampRed[3], st.kind === 'lander' ? 2 : 1.2]); }
     for (const u of (c.game?.robots ?? []) as { x: number; z: number; dead: boolean; faction: string }[]) { if (u.dead) continue; const i = Math.floor(u.z) * N + Math.floor(u.x); if (vis[i]) pins.push([u.x, u.z, u.faction === 'veyr' ? R.bone[4] : R.coral[4], 0.8]); }

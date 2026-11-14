@@ -347,10 +347,10 @@ export function eyeball(o: EyeSpec): Piece {
   };
 }
 /** an upper eyelid: a thick band of skin over the top of the eye, on the lid bone (a blink turns it down) */
-export function eyelid(o: { name: string; c: V3; ax: V3; r: number; bone: number; paint: Paint; lower?: boolean; cover?: number }): Piece {
+export function eyelid(o: { name: string; c: V3; ax: V3; r: number; bone: number; paint: Paint; lower?: boolean; cover?: number; root?: number }): Piece {
   const m = newCM(), ax = nrm(o.ax), sd0 = crs([0, 1, 0], ax), side = Math.hypot(...sd0) > 0.25 ? nrm(sd0) : nrm(crs([0, 0, 1], ax)), up0 = crs(ax, side), up = o.lower ? scl(up0, -1) : up0;
   const rows: V3[][] = [];
-  const th1 = o.cover ?? 0.55, th0 = 1.75; // angles from the axis: margin .. the lid's root over the eye
+  const th1 = o.cover ?? 0.55, th0 = o.root ?? 1.75; // angles from the axis: margin .. the lid's root over the eye (deep in the socket, so a full blink still covers the cornea)
   for (let k = 0; k <= 6; k++) {
     const ph = -1.35 + (2.7 * k) / 6, row: V3[] = [];
     // outer face from the root to the margin, then back along the inner face

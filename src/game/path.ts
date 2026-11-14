@@ -23,7 +23,13 @@ export class Pather {
     const n = R.N * R.N;
     this.g = new Float32Array(n); this.f = new Float32Array(n); this.from = new Int32Array(n); this.stamp = new Uint32Array(n); this.closed = new Uint32Array(n);
   }
-  passable(i: number, w: Walker) { return w.fly || w.swim || this.R.h[i] >= this.R.water; }
+  /** dry land, or (for swimmers and amphibians) any water; walkers wade rivers and lakes no deeper than 1.1 m */
+  passable(i: number, w: Walker) {
+    if (w.fly || w.swim) return true;
+    const R = this.R; if (R.h[i] < R.water) return false;
+    const ry = R.riverY[i];
+    return !(ry > 0 && ry - R.h[i] > 1.1);
+  }
   canStep(a: number, b: number, w: Walker) {
     if (w.fly) return true;
     if (!this.passable(b, w)) return false;

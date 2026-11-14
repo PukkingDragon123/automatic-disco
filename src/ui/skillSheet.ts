@@ -161,6 +161,29 @@ const D: Record<string, Draw> = {
     s.pl([-18, -2, 0, -32, 18, -2], 'o'); for (let i = 1; i < 4; i++) { const y = -2 - i * 7.5, w = 18 - i * 4.5; s.line(-w, y, w, y - 3, 't'); s.line(w, y, -w, y - 3, 't'); }
     s.dim(26, -2, 26, 30, 8, '300', 4.5);
   },
+  lumen(s) {
+    // a lumen cluster on its ledge: three prisms, the tall one's shadow face hatched
+    ground(s, -48, -10, 22);
+    const c1 = [-40, 22, -40, -6, -32, -18, -24, -6, -24, 22]; s.pl(c1, 'o', true); s.line(-32, -18, -32, 22, 't'); s.hatch([-32, -18, -24, -6, -24, 22, -32, 22], 2.4);
+    s.pl([-47, 22, -47, 6, -43, 0, -39, 6, -39, 22], 'o', true);
+    const c3 = [-24, 22, -21, 4, -16, 0, -13, 8, -17, 22]; s.pl(c3, 'o', true); s.fill(c3, 0.1);
+    // the ground lens in its ring: the crystal's light gathered and thrown as a beam
+    s.ell(8, 0, 4, 16); s.ell(8, 0, 6.5, 19, 't');
+    for (const y of [-12, -6, 0, 6, 12]) s.line(-11, y, 4, y * 0.92, 't');
+    s.pl([12, -12, 38, 0, 12, 12], 't'); arrow(s, 12, 0, 48, 0, 4, 'o');
+    s.dim(8, 22, 38, 22, 6, 'FOCUS 30', 4.5);
+  },
+  gravity(s) {
+    // the cast plate: steel round a gravium core; stones ride the field over it
+    const pl = [-46, 14, 6, 14, 6, 24, -46, 24]; s.pl(pl, 'o', true); s.hatch([-38, 16, -6, 16, -6, 22, -38, 22], 2.2);
+    stone(s, -32, -8, 6, 4.5, 41); stone(s, -14, -20, 4.5, 3.5, 42); stone(s, -1, -2, 3.5, 3, 43);
+    for (const [x, y] of [[-32, 0], [-14, -14], [-1, 3]] as [number, number][]) arrow(s, x, 12, x, y, 3, 't');
+    for (let i = 0; i < 3; i++) s.arc(-20, 14, 14 + i * 7, 5 + i * 4, Math.PI, TAU, 'h');
+    // the gravity coil: windings round a reactor core
+    s.box(22, -22, 14, 44); for (let y = -18; y <= 18; y += 4) s.line(18, y, 40, y + 2);
+    s.line(29, -30, 29, 30, 'c');
+    s.text('G COIL', 29, -36, 4.5, { align: 'c' });
+  },
   refinery(s) {
     ground(s, -48, 48, 24);
     const mould = [6, 10, 40, 10, 36, 22, 10, 22]; s.pl(mould, 'o', true); s.hatch(mould, 2.4);

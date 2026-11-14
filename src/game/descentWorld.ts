@@ -152,9 +152,24 @@ export function buildWater(W: World) {
 
 // ------------------------------------------------------------------ drop-zone marks
 /** painted on the ground at a point: an 18 m dashed circle (on target), the 6 m red ring (bullseye), a cross */
+/**
+ * The painted landing guide round the pin: a dashed outer ring, the red ring, the centre spot and the cross bars. The
+ * returned group carries userData.fade ({ value: 0..1 }): a pixel dissolve (4x4 Bayer, screen space) that takes the
+ * paint away after touchdown, opaque throughout so the G-buffer stays clean.
+ */
 export function dropMarks(W: World, L: V, o: { outer?: number; red?: number; paint?: number } = {}): THREE.Group {
-  const bin = W.bin, g = new THREE.Group();
+  const bin = W.bin, g = new THREE.Group(), fade = { value: 0 };
+  g.userData.fade = fade;
   const paint = o.paint ?? 0xe8e2d0, red = o.red ?? 0xd04a34;
+  const markMat = (col: THREE.Color) => {
+    const m = new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide });
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.uFade = fade;
+      sh.fragmentShader = 'uniform float uFade;\nfloat lzB2(vec2 a) { a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }\n' + sh.fragmentShader.replace('void main() {', 'void main() {\n  if (uFade > 0.0 && lzB2(0.5 * gl_FragCoord.xy) * 0.25 + lzB2(gl_FragCoord.xy) < uFade) discard;');
+    };
+    m.customProgramCacheKey = () => 'lz-mark';
+    return bin.m(gbuf(m, 32));
+  };
   const ring = (r0: number, r1: number, col: number, dash = 0) => {
     const seg = 96, pos: number[] = [];
     for (let i = 0; i < seg; i++) {
@@ -165,7 +180,7 @@ export function dropMarks(W: World, L: V, o: { outer?: number; red?: number; pai
       pos.push(...A, ...C, ...B, ...B, ...C, ...D);
     }
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.computeVertexNormals();
-    mesh(bin, geo, bin.m(gbuf(new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(1.4), side: THREE.DoubleSide }), 32)), g, 0, 0, 0, false);
+    mesh(bin, geo, markMat(new THREE.Color(col).multiplyScalar(1.4)), g, 0, 0, 0, false);
   };
   const outer = o.outer ?? 18;
   ring(outer - 0.6, outer, paint, 1); ring(5.4, 6.2, red); ring(0, 0.9, paint);
@@ -178,7 +193,7 @@ export function dropMarks(W: World, L: V, o: { outer?: number; red?: number; pai
       pos.push(...A, ...C, ...B, ...B, ...C, ...D);
     }
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.computeVertexNormals();
-    mesh(bin, geo, bin.m(gbuf(new THREE.MeshBasicMaterial({ color: new THREE.Color(paint).multiplyScalar(1.3), side: THREE.DoubleSide }), 32)), g, 0, 0, 0, false);
+    mesh(bin, geo, markMat(new THREE.Color(paint).multiplyScalar(1.3)), g, 0, 0, 0, false);
   }
   W.parent.add(g);
   return g;

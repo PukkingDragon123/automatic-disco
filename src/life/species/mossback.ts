@@ -15,7 +15,7 @@ export const mossback: SpeciesFn = (d, rig) => {
       socks: { c: ['hide', 2], h: rig.dims.legLen * 0.85 }, face: { muzzle: ['hide', 2] }, claw: ['basalt', 2], scars: 2, mud: { h: rig.dims.legLen * 0.35, ramp: 'soil' },
     },
     parts: [
-      { k: 'carapace', t0: -0.12, t1: 0.98, bands: 6, spread: 2.0, lift: 2.0, c: ['stone', 3], rim: ['stone', 4], moss: 1.4, spikes: 0 },
+      { k: 'carapace', t0: -0.15, t1: 1.0, bands: 7, spread: 2.05, lift: 2.4, c: ['stone', 4], rim: ['stone', 4], moss: 1.6, dome: true },
       { k: 'shag', t0: 0.0, t1: 1.0, len: 0.34, density: 0.55, fringe: 1.6, flank: 0.0, col: sh(base, -1) },
       { k: 'beak', c: ['basalt', 3], hook: 1.2 },
       { k: 'brow', size: 1.2, c: ['stone', 3] },

@@ -32,7 +32,7 @@ export type VPart =
   | { k: 'barbels'; n: number; len: number; c?: C2 }
   | { k: 'wattle'; size: number; c?: C2 }
   | { k: 'frill'; size: number; c: C2; rays?: number }
-  | { k: 'carapace'; t0: number; t1: number; bands: number; lift: number; spread: number; c: C2; rim?: C2; moss?: number; spikes?: number }
+  | { k: 'carapace'; t0: number; t1: number; bands: number; lift: number; spread: number; c: C2; rim?: C2; moss?: number; spikes?: number; dome?: boolean }
   | { k: 'plates'; t0: number; t1: number; rows: number; per?: number; spread: number; size: number; c: C2; keel?: boolean; tail?: boolean }
   | { k: 'shell'; c: C2; scute: C2; h: number }
   | { k: 'crest'; t0: number; t1: number; h: number; kind: 'fin' | 'spikes' | 'bristle'; c: C2 }
@@ -61,8 +61,11 @@ const crs = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0]
 const lerp = (a: V3, b: V3, t: number): V3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 
 /** keratin, bone and plate looks */
-const plateLook = (c: C2, o: { moss?: number; rim?: C2; lichen?: Look['lichen'] } = {}): Look => ({
-  ramp: c[0], step: c[1], creases: 0.7, pebbles: { size: 0.03, depth: 0.5 }, lichen: o.lichen,
+const plateLook = (c: C2, o: { moss?: number; rim?: C2; lichen?: Look['lichen']; W?: number } = {}): Look => ({
+  ramp: c[0], step: c[1], creases: 0.7, pebbles: { size: (o.W ?? 0.6) * 0.06, depth: 0.55, pores: 0.3 }, lichen: o.lichen,
+  glints: { size: (o.W ?? 0.6) * 0.12, every: 0.35 },
+  // growth lines round the plate, a darker rim step on the curled edge
+  extra: (px) => px.folds([0, 0.5, -1], [0, 0, 0], (o.W ?? 0.6) * 0.025, { depth: 0.35, wob: 0.3 }),
   mats: { 1: { ramp: (o.rim ?? c)[0], step: Math.max(0, (o.rim ?? c)[1] - 2) } },
 });
 
@@ -161,12 +164,12 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
   },
   helm: (X, p) => {
     // a helm of plates over the crown and brow, a ridged plate down the bridge
-    const L = lookPaint(plateLook(p.c, { rim: p.rim }));
+    const L = lookPaint(plateLook(p.c, { rim: p.rim, W: X.W }));
     const sv = X.skRow, plates: [number, number, number, number, number][] = [[0.38, 0.62, sv(0.3), sv(1.6), 0.16], [0.24, 0.4, sv(0.8), sv(2.4), 0.14], [0.6, 0.76, sv(0.8), sv(2.4), 0.14], [0.36, 0.64, sv(1.7), sv(3.2), 0.18], [0.4, 0.6, sv(3.2), sv(5.6), 0.12]];
     plates.forEach(([a0, a1, b0, b1, h], k) => X.body.add(shell({ name: 'helm' + k, host: X.sk, u: [a0, a1], v: [b0, b1], nu: 3, nv: 3, levels: 1, sink: X.hh * 0.05, rim: 2, ridges: [0.5], lift: (a, b) => X.hh * h * (0.45 + 0.55 * Math.sin(Math.PI * a)) * (0.6 + 0.4 * b), skin: () => [X.iH, 1], paint: L, k: 1.6 })).reg = 5);
   },
   brow: (X, p) => {
-    const L = lookPaint(plateLook(p.c)), sv = X.skRow;
+    const L = lookPaint(plateLook(p.c, { W: X.W * 0.5 })), sv = X.skRow;
     for (const s of [-1, 1] as const) {
       const u0 = X.skCol(1.0, s), u1 = X.skCol(2.1, s), a = Math.min(u0, u1), b = Math.max(u0, u1);
       X.body.add(shell({ name: 'brow' + s, host: X.sk, u: [a, b], v: [sv(X.fam.seat!.eye[0] - 0.9), sv(X.fam.seat!.eye[0] - 0.1)], nu: 3, nv: 2, levels: 1, sink: X.hh * 0.04, rim: 2, lift: (aa, bb) => X.hh * 0.14 * p.size * Math.sin(Math.PI * aa) * (0.5 + 0.5 * bb), skin: () => [X.iH, 1], paint: L, k: 1.6 })).reg = 3;
@@ -266,9 +269,16 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
   // ------------------------------------------------------------------------------------------- body armour
   carapace: (X, p) => {
     const lichen: Look['lichen'] = [];
-    const L = lookPaint(plateLook(p.c, { rim: p.rim, lichen }));
+    const L = lookPaint(plateLook(p.c, { rim: p.rim, lichen, W: X.W }));
     const v0 = vT(X, p.t1), v1 = vT(X, p.t0), nb = p.bands, stepV = (v1 - v0) / nb, ua = 0.5 - p.spread * 0.2, ub = 0.5 + p.spread * 0.2;
-    for (let k = 0; k < nb; k++) {
+    if (p.dome) {
+      // one domed shield over the back: highest along the spine, its skirt close to the flanks, and stepped at every
+      // band, each band's rear lip standing proud over the one behind it; creased between bands and down the keel
+      const rings = Array.from({ length: nb - 1 }, (_, k) => (k + 1) / nb);
+      X.body.add(shell({ name: 'dome', host: X.tr, u: [ua, ub], v: [v0, v1], nu: 12, nv: nb * 3, sink: X.W * 0.04, rim: 3, ridges: [0.5], rings,
+        lift: (a, b) => { const x = Math.abs(a - 0.5) * 2, dome = Math.cos(Math.min(1, x) * Math.PI / 2) ** 0.55, f = (b * nb) % 1, step = 0.82 + 0.18 * (1 - f) ** 2; return X.W * p.lift * 0.12 * (0.1 + 0.9 * dome) * step * (0.75 + 0.25 * Math.sin(Math.PI * b)); },
+        skin: X.spine, paint: L, k: 1.0, levels: 1 })).reg = 2;
+    } else for (let k = 0; k < nb; k++) {
       const hk = 0.65 + 0.35 * Math.sin(Math.PI * (k + 0.5) / nb), bv0 = v0 + stepV * k - stepV * 0.28, bv1 = v0 + stepV * (k + 1);
       X.body.add(shell({ name: 'band' + k, host: X.tr, u: [ua, ub], v: [bv0, bv1], nu: 8, nv: 3, sink: X.W * 0.03, rim: 2, ridges: [0.5], rings: [0.5],
         lift: (a, b) => { const x = Math.abs(a - 0.5) * 2, dome = Math.cos(Math.min(1, x) * Math.PI / 2) ** 0.5; return X.W * p.lift * 0.12 * (0.14 + 0.86 * hk * dome) * (1 + 0.45 * Math.pow(1 - b, 3)); },
@@ -284,7 +294,7 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
     }
   },
   plates: (X, p) => {
-    const L = lookPaint(plateLook(p.c));
+    const L = lookPaint(plateLook(p.c, { W: X.W * p.size }));
     const v0 = vT(X, p.t1), v1 = vT(X, p.t0), rows = p.rows, per = p.per ?? 5, dv = (v1 - v0) / rows;
     for (let r = 0; r < rows; r++) {
       const v = v0 + dv * r, q0 = onTr(X, 0.5, v), girth = Math.hypot(q0.p[0], 0) + 1e-3;
@@ -344,7 +354,7 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
   },
   club: (X, p) => {
     const tip = X.F.pts[0], dir = nrm(sub(X.F.pts[0], X.F.pts[1])), tb = X.rig.tail[X.rig.tail.length - 1] ?? X.rig.root, R = X.W * p.size * 0.3;
-    const L = lookPaint(plateLook(p.c));
+    const L = lookPaint(plateLook(p.c, { W: X.W }));
     X.body.add(sac({ name: 'club', at: add(tip, scl(dir, -R * 0.4)), n: dir, up: [0, 1, 0], r: [R * 1.2, R, R * 1.1], sink: 0.4, skin: () => [tb, 1], paint: L, levels: 1 })).reg = 10;
     for (let k = 0; k < (p.spikes ?? 5); k++) { const a = (k / (p.spikes ?? 5)) * Math.PI * 2, d: V3 = nrm(add([Math.cos(a), Math.sin(a), 0], scl(dir, 0.3))); X.body.add(spine({ levels: 0, around: 5, name: 'clsp' + k, at: add(tip, scl(d, R * 0.9)), dir: d, len: R * 0.9, r: R * 0.25, skin: () => [tb, 1], paint: keratinPaint('bone', 3) })).reg = 10; }
   },
@@ -419,12 +429,12 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
   wings: (X, p) => {
     // a hand wing: the arm to the wrist, four long fingers, the membrane between them and back to the flank
     for (const wi of X.rig.wings) {
-      const s = Math.sign(X.rig.bones[wi].pos[0]) || 1, wb = X.rest[wi], span = X.L * p.span, T = X.T;
-      const wrist = add(wb, [s * span * 0.42, span * 0.03, T * 0.05]);
+      const s = Math.sign(X.rig.bones[wi].pos[0]) || 1, wb = X.rest[wi], span = X.L * p.span, T = X.L * 0.85; // T: the wing's chord, front to back
+      const wrist = add(wb, [s * span * 0.42, span * 0.03, span * 0.02]);
       const tips: V3[] = [add(wb, [s * span * 0.98, -span * 0.02, -T * 0.05]), add(wb, [s * span * 0.86, -span * 0.04, -T * 0.42]), add(wb, [s * span * 0.62, -span * 0.05, -T * 0.68]), add(wb, [s * span * 0.32, -span * 0.04, -T * 0.82])];
       const w: Wt = [wi, 1], R = X.D.lt * 0.18;
       const bonePaint = fleshFlat(p.c);
-      X.body.add(stalk({ name: 'arm' + s, path: curve([add(wb, [-s * R, 0, 0]), add(wb, [s * span * 0.2, span * 0.05, T * 0.12]), wrist], 6), r: (t) => R * (1.2 - t * 0.5), around: 6, skin: () => w, paint: bonePaint, levels: 0 })).reg = 11;
+      X.body.add(stalk({ name: 'arm' + s, path: curve([add(wb, [-s * R, 0, 0]), add(wb, [s * span * 0.2, span * 0.05, span * 0.05]), wrist], 6), r: (t) => R * (1.2 - t * 0.5), around: 6, skin: () => w, paint: bonePaint, levels: 0 })).reg = 11;
       tips.forEach((tp, k) => X.body.add(stalk({ name: 'fing' + s + k, path: curve([wrist, lerp(wrist, tp, 0.5), tp], 5), r: (t) => R * 0.55 * (1 - t * 0.8), around: 4, skin: () => w, paint: bonePaint, levels: 0 })).reg = 11);
       // the membrane: from the leading edge (arm, then the first finger) back to the flank, in rays to each fingertip
       const roots: V3[] = [add(wb, [s * span * 0.08, 0, 0]), lerp(wb, wrist, 0.5), wrist, wrist, wrist, add(wb, [s * span * 0.05, -span * 0.02, -T * 0.6])];

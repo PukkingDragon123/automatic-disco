@@ -243,7 +243,7 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
     if (lid && !ES.lidless) {
       rig.bones[lid.bone].pos = T3(sub(c, head)); rest[lid.bone] = c;
       lid.axis = nrm(crs([0, 1, 0], ax)) as [number, number, number];
-      const lp = body.add(eyelid({ name: 'lid' + k, c, ax, r: er, bone: lid.bone, paint: coatPaint(C, 'lid'), cover: 0.55 + (ES.lid ?? 0) }));
+      const lp = body.add(eyelid({ name: 'lid' + k, c, ax, r: er, bone: lid.bone, paint: coatPaint(C, 'lid'), cover: 0.55 + (ES.lid ?? 0), root: 2.5 }));
       lp.reg = 4; lp.levels = 0;
       const ll = body.add(eyelid({ name: 'llid' + k, c, ax, r: er * 0.99, bone: iH, paint: coatPaint(C, 'lid'), lower: true, cover: 0.85 }));
       ll.reg = 4; ll.levels = 0;

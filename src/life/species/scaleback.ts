@@ -12,11 +12,11 @@ export const scaleback: SpeciesFn = (d, rig) => {
     legs: { fore: { kind: 'bear', r: 1.0, claw: 2.4, toes: 3 }, hind: { kind: 'bear', r: 0.95, claw: 1.0 } },
     coat: {
       base, belly, bellyArc: 0.8,
-      surf: { body: scales(W, 2.0, 'shield'), belly: hide(W, 0.7, 0.8), limb: scales(W, 0.9, 'shield'), foot: hide(W, 0.5), face: scales(W, 0.6, 'shield'), muzzle: hide(W, 0.35) },
+      surf: { body: scales(W, 2.6, 'shield'), belly: hide(W, 0.7, 0.8), limb: scales(W, 0.9, 'shield'), foot: hide(W, 0.5), face: scales(W, 0.6, 'shield'), muzzle: hide(W, 0.35) },
       face: { muzzle: sh(base, -1) }, claw: ['bone', 3],
     },
     parts: [
-      { k: 'plates', t0: -0.9, t1: 2.6, rows: 26, per: 5, spread: 2.2, size: 0.5, c: acc, keel: true },
+      { k: 'plates', t0: -0.7, t1: 2.4, rows: 17, per: 4, spread: 2.1, size: 0.7, c: acc, keel: true },
     ],
   };
 };
