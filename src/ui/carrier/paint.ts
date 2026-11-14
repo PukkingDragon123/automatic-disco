@@ -137,8 +137,10 @@ export function textWidth(s: string, sc: number) { let w = 0; for (const ch of s
  * Stencil lettering at an integer scale: stencil bridges cut through lone vertical strokes at the mid row, a few
  * flakes of paint lost (in clusters, at stroke edges), and an optional 1 px drop shadow (for raised letters).
  */
-export function stencil(p: P, s: string, x: number, y: number, sc: number, col: number, o: { bridges?: boolean; wear?: number; seed?: number; shadow?: number; em?: number } = {}) {
-  let cx = x; const wear = o.wear ?? 0.04, seed = o.seed ?? 3;
+export function stencil(p: P, s: string, x: number, y: number, sc: number, col: number, o: { bridges?: boolean; wear?: number; seed?: number; shadow?: number; off?: number; em?: number } = {}) {
+  let cx = x; const wear = o.wear ?? 0.04, seed = o.seed ?? 3, off = o.off ?? 1;
+  // the shade first (painted where the letters' own paint will not cover it), then the letters
+  if (o.shadow !== undefined) stencil(p, s, x + off, y + off, sc, o.shadow, { ...o, shadow: undefined, em: -1 });
   for (const ch of s.toUpperCase()) {
     const g = G.get(ch) ?? G.get(' ')!;
     for (let j = 0; j < 7; j++) for (let i = 0; i < g[0].length; i++) {
@@ -148,7 +150,6 @@ export function stencil(p: P, s: string, x: number, y: number, sc: number, col: 
         if (o.bridges !== false && sc >= 2 && lone && j === 3 && b < Math.max(1, sc >> 1)) continue;
         const X = cx + i * sc + a, Y = y + j * sc + b;
         if (wear > 0 && hh(X >> 1, Y >> 1, seed) < wear && hh(X >> 2, Y >> 2, seed + 1) < 0.5) continue;
-        if (o.shadow !== undefined) p.set(X + 1, Y + 1, o.shadow);
         p.set(X, Y, col, o.em ?? -1);
       }
     }

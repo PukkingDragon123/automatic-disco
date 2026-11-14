@@ -47,6 +47,8 @@ export interface Piece {
   N?: V3[]; K?: Float32Array; A?: Float32Array;
   /** leave out of the ambient-occlusion voxels (tiny or floating parts) */
   noOcc?: boolean;
+  /** its charts keep texel alpha (translucent membranes) */
+  cut?: boolean;
 }
 /** the surface under every texel of a chart */
 export interface GBuf {
@@ -216,7 +218,7 @@ export class Body {
     for (const p of this.pieces) { this.finalize(p); p.ch = (p.charts ?? defaultCharts)(p); surfaceInfo(p); }
     if (o.occlusion !== false) occlusion(this.pieces.filter((p) => !p.noOcc));
     const den = o.den ?? this.den;
-    for (const p of this.pieces) for (const ch of p.ch!) ch.reg = this.page.reg(p.name + '.' + ch.name, Math.max(4, ch.wm * den), Math.max(4, ch.hm * den), ch.k);
+    for (const p of this.pieces) for (const ch of p.ch!) { ch.reg = this.page.reg(p.name + '.' + ch.name, Math.max(4, ch.wm * den), Math.max(4, ch.hm * den), ch.k); ch.reg.cut = !!p.cut; }
     const scale = this.page.pack(o.maxScale ?? 3);
     this.den = den * scale;
     for (const p of this.pieces) rasterPiece(p);

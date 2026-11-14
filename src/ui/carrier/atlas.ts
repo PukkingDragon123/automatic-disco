@@ -412,10 +412,12 @@ export function paintAtlas() {
     ['tAir', 'AIRLOCK', 2, PA[4]], ['tFwd', 'FWD >', 2, PA[3]], ['tBlast', 'CAUTION - EXHAUST', 2, RD[3]], ['tProp', 'PROPELLANT - LH2', 2, PA[4]],
     ['t2', '2', 8, PA[4]], ['t3', '3', 6, PA[4]], ['t4', '4', 6, PA[4]], ['t5', '5', 6, PA[4]], ['t6', '6', 6, PA[4]], ['tPC1', 'PC-1', 3, PA[4]], ['tPC2', 'PC-2', 3, PA[4]], ['tPC3', 'PC-3', 3, PA[4]],
   ];
+  const shaded = new Set(['tCorps', 'tName', 'tVanguard', 'tHull', 't01', 'tUSPC', 'tBay', 't2', 't3', 't4', 't5', 't6', 'tDock1', 'tDock2']);
   for (const [n, s, sc, c] of words) {
-    const w = textWidth(s, sc) + 2, h = 7 * sc + 2;
+    const off = shaded.has(n) ? Math.max(1, sc >> 1) : 0;
+    const w = textWidth(s, sc) + 2 + off, h = 7 * sc + 2 + off;
     const p = S.alloc(n, w, h, 'decal');
-    stencil(p, s, 1, 1, sc, c, { wear: sc >= 4 ? 0.05 : 0.03, seed: n.length * 7 + sc });
+    stencil(p, s, 1, 1, sc, c, { wear: sc >= 4 ? 0.05 : 0.03, seed: n.length * 7 + sc, shadow: off ? INK[1] : undefined, off });
   }
   {
     // the national insignia: star and bars, with the red stripe (no gradients; the disc is drawn, not computed soft)
