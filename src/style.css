@@ -513,7 +513,7 @@ body.p3 { --crt-filter: grayscale(1) sepia(1) saturate(3.4) hue-rotate(-14deg) b
 .fc-chip img { width: calc(16px * var(--tf)); height: calc(16px * var(--tf)); image-rendering: pixelated; }
 .fc-chip b { font-weight: normal; color: #1f232b; }
 .fc-chip.lack b { color: #a2473a; text-decoration: line-through; text-decoration-thickness: calc(1px * var(--tf)); }
-.fc-card .fc-chip img { width: calc(12px * var(--tf)); height: calc(12px * var(--tf)); }
+
 /* touch: turn / build / cancel by the right thumb */
 .fc-touchbar { position: absolute; right: calc(6px * var(--tf)); bottom: calc(150px * var(--tf)); display: none; flex-direction: column; gap: calc(4px * var(--tf)); }
 body.touch .fc-touchbar.on { display: flex; }

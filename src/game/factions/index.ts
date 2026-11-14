@@ -380,8 +380,10 @@ export class Factions {
   dispose() {
     this.radio.dispose(); this.shells.clear(); this.boom.clear();
     for (const e of this.expeditions) e.dispose();
+    for (const u of this.units) if (!(u instanceof StubUnit) && !u.dead) this.removeUnit(u);
     for (const u of this.stubs) u.dispose();
     for (const s of this.structures) s.dispose();
+    this.units = [];
     this.stubs = []; this.structures = [];
   }
 }

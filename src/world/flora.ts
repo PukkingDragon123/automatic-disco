@@ -26,7 +26,8 @@ import { B } from './blockTex';
 import { Rand, hash01 } from '../core/rand';
 import { VEYR, RIVALS } from './palette';
 import { FloraTex } from './floraTex';
-import { meshPlant, meshBarrel, meshCrystal, meshLily, meshGround, bladeSetOf, type GroundForm, type PlantGeo } from './floraMesh';
+import { meshPlant, meshBarrel, meshCrystal, meshGround, bladeSetOf, type GroundForm, type PlantGeo } from './floraMesh';
+import { HERO } from './floraHero';
 import { FloraField } from './floraField';
 import { Batch, CH } from './floraBatch';
 import { plant3dMaterial, cardMaterial, STATE_W } from './floraGL';
@@ -46,6 +47,7 @@ const GROUND3D: Partial<Record<GroundKind, [GroundForm, number]>> = { grass: ['g
 const BENDS: Record<string, [number, number]> = {
   tuft: [0.5, 1], reed: [0.4, 0.8], fern: [0.26, 0.7], shrub: [0.12, 0.35], broadleaf: [0.028, 0.03], umbrella: [0.03, 0.03], palm: [0.06, 0.04], weeper: [0.04, 0.04],
   spike: [0.3, 0.75], rosette: [0.05, 0.2], coral: [0.06, 0.3], fungus: [0.02, 0.15], bulb: [0.3, 0.7], barrel: [0.0, 0.02], crystalbloom: [0.0, 0.0], lily: [0.05, 0.2], eyeflower: [0.25, 0.7], fiddle: [0.22, 0.6],
+  snaptrap: [0.05, 0.3], pitcher: [0.03, 0.2], sundew: [0.02, 0.15], sail: [0.05, 0.12], lure: [0.2, 0.5], bloom: [0.3, 0.75],
 };
 /**
  * LOD ranges per quality tier (camera distance, metres): full 3D fades to the lighter 3D mesh over near, that to the
@@ -145,6 +147,7 @@ export class Flora {
     this.x = grow(this.x, new Float32Array(cap)); this.z = grow(this.z, new Float32Array(cap));
     this.sp = grow(this.sp, new Uint8Array(cap)); this.bio = grow(this.bio, new Float32Array(cap));
     this.buildPlants(inst);
+    for (let i = 0; i < this.n; i++) this.trapCheck(i);
     this.stats.tPlants = performance.now() - tq; tq = performance.now();
     this.buildGround(det);
     this.stats.tGround = performance.now() - tq;
@@ -348,8 +351,9 @@ export class Flora {
         const form = s.forms?.[v], h = s.heights?.[v] ?? s.hmax, seed = this.region.seed * 131 + si * 17 + v;
         const pgs: PlantGeo[] = [], tm = performance.now();
         if (form) { pgs.push(meshPlant(form, s, this.tex, seed, bset, 0), meshPlant(form, s, this.tex, seed, bset, 1)); s.forms![v] = null; }
+        else if (HERO[s.arch]) pgs.push(HERO[s.arch](s, h, this.tex, seed, 0), HERO[s.arch](s, h, this.tex, seed, 1));
         else {
-          const pg = s.arch === 'barrel' ? meshBarrel(s, h, this.tex, seed) : s.arch === 'crystalbloom' ? meshCrystal(s, h, this.tex, seed, this.region.pal) : meshLily(s, h, this.tex, seed);
+          const pg = s.arch === 'barrel' ? meshBarrel(s, h, this.tex, seed) : meshCrystal(s, h, this.tex, seed, this.region.pal);
           pgs.push(pg, pg);
         }
         this.stats.tMesh += performance.now() - tm;
@@ -443,6 +447,7 @@ export class Flora {
     const cp = (this.U.uCamPos.value as THREE.Vector3).set(e[12], e[13], e[14]);
     this.updateCut(cp, e, t);
     this.field.step(dt);
+    this.stepTraps(dt);
     this.cull(cam as THREE.PerspectiveCamera, cp);
     this.flushState();
   }
@@ -525,11 +530,40 @@ export class Flora {
     c.set(this.cutOn ? 1 : 0, 1.3 + d * 0.02, 1.6 + d * 0.03, 0);
   }
 
+  // ---------------------------------------------------------------- carnivorous plants
+  /** snap traps and sundews: plant index, kind (1 snap, 2 sundew); closure 0 open .. 1 shut, hold timer */
+  private traps: number[] = []; private trapKind: number[] = []; private trapK: number[] = []; private trapHold: number[] = [];
+  /** movers seen this frame (x, z pairs: pushes, the focus) */
+  private movers: number[] = [];
+  private trapCheck(i: number) {
+    const a = this.species[this.sp[i]]?.arch, k = a === 'snaptrap' ? 1 : a === 'sundew' ? 2 : 0;
+    if (k) { this.traps.push(i); this.trapKind.push(k); this.trapK.push(0); this.trapHold.push(0); }
+  }
+  /** snap traps shut fast on anything that comes close, hold, then slowly reopen; sundews curl in while it stays */
+  private stepTraps(dt: number) {
+    const M = this.movers, f = this.U.uFocus.value as THREE.Vector3;
+    if (this.lastT - this.focusT < 0.5) M.push(f.x, f.z);
+    for (let t = 0; t < this.traps.length; t++) {
+      const i = this.traps[t], x = this.x[i], z = this.z[i], snap = this.trapKind[t] === 1, reach = snap ? 0.8 : 0.6;
+      let near = false;
+      for (let m = 0; m < M.length && !near; m += 2) near = (M[m] - x) ** 2 + (M[m + 1] - z) ** 2 < reach * reach;
+      let k = this.trapK[t];
+      if (snap) {
+        if (near && k < 0.25 && this.trapHold[t] <= 0) this.trapHold[t] = 4.5;
+        if (this.trapHold[t] > 0) { this.trapHold[t] -= dt; k = Math.min(1, k + dt / 0.12); }
+        else k = Math.max(0, k - dt / 3);
+      } else k = near ? Math.min(1, k + dt / 1.6) : Math.max(0, k - dt / 5);
+      if (k !== this.trapK[t]) { this.trapK[t] = k; this.sset(i, 2, 0, (snap ? 1 - (1 - k) * (1 - k) : k) * 255); }
+    }
+    M.length = 0;
+  }
+
   // ---------------------------------------------------------------- physics hooks
   /** movers that part the plants: [x, z, radius, strength] (creatures, each frame) */
-  setPush(list: [number, number, number, number][]) { for (const p of list) this.field.push(p[0], p[1], p[2], p[3]); }
-  /** hold growth aside this frame (call every frame while something is there): s 0.3 brush .. 1 heavy (tramples) */
-  push(x: number, z: number, r: number, s: number) { this.field.push(x, z, r, s); }
+  setPush(list: [number, number, number, number][]) { for (const p of list) this.push(p[0], p[1], p[2], p[3]); }
+  /** hold growth aside this frame (call every frame while something is there): s 0.3 brush .. 1 heavy (tramples).
+   *  Snap traps and sundews near it react. */
+  push(x: number, z: number, r: number, s: number) { this.field.push(x, z, r, s); if (this.movers.length < 256) this.movers.push(x, z); }
   /** one-off outward kick: explosions, thrown rocks landing (s 0.5 gust .. 3 blast; flattens above ~0.8) */
   impulse(x: number, z: number, r: number, s: number) { this.field.impulse(x, z, r, s); }
   /** how flattened the growth is at a point, 0..1 */
@@ -632,6 +666,7 @@ export class Flora {
     this.sset(i, 0, 0, 255); this.sset(i, 0, 1, 0); this.sset(i, 0, 2, 0); this.sset(i, 0, 3, 255);
     const key = (Math.floor(z / 4) << 8) | Math.floor(x / 4);
     let cl = this.cells.get(key); if (!cl) this.cells.set(key, (cl = [])); cl.push(i);
+    this.sset(i, 2, 0, 0); this.trapCheck(i);
     return i;
   }
   /** regrowth tick */

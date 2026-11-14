@@ -86,7 +86,12 @@ function alarm(c: Creature, w: World, by: number, r = 16) {
   });
 }
 function bolt(c: Creature, w: World, by: number, t = 3) {
-  if (c.roller && c.faction === 'wild') { curlUp(c, w, by); return; }
+  if (c.roller && c.faction === 'wild' && c.cdCurl <= 0) {
+    const th = by === GOLEM ? GOLEM_REF.g : w.get(by);
+    const close = !!th && (th.x - c.x) ** 2 + (th.z - c.z) ** 2 < 36;
+    const coming = !!th && by !== GOLEM && (th as Creature).target === c.id;
+    if (close || coming) { curlUp(c, w, by); return; }
+  }
   c.target = by; c.fleeT = t + Math.random(); c.path = null; c.plan = null;
   if (c.mind !== 'flee') emote(c, Emote.ALARM, 1.8);
   setMind(c, 'flee');
@@ -129,6 +134,8 @@ function preyFor(c: Creature, w: World): Creature | null {
     if (c.faction !== 'wild' && o.faction === c.faction) return;
     if (o.mass > c.mass * (c.boss ? 3 : 1.6)) return;
     if (o.canFly && !c.canFly && o.mind !== 'sleep') return;
+    // a plated roller: hardly worth the teeth (mostly left alone, never while it is balled up)
+    if (o.roller && (o.mind === 'curl' || (o.id + c.id) % 4 !== 0)) return;
     const d = Math.hypot(o.x - c.x, o.z - c.z);
     // the young, the weak, the sleeping, the drinking and the stragglers
     let alone = 1;
@@ -290,7 +297,7 @@ function thinkWild(c: Creature, w: World) {
   }
   // ---- danger first
   const th = threatOf(c, w);
-  if (th && c.mind === 'curl' && c.actT < 14) { c.target = th.id; return; }
+  if (th && c.mind === 'curl' && c.actT < 14 && keepGoing(c, w, P, awake)) { c.target = th.id; return; }
   if (th) {
     // cornered predators and big animals fight back; mothers stand over their young
     const young = !!th.target && w.get(th.target)?.mother === c.id;
@@ -355,6 +362,8 @@ function keepGoing(c: Creature, w: World, P: Profile, awake: number): boolean {
     case 'watch': {
       const hs = c.herd ? w.eco.herdSleep.get(c.herd) : null;
       if (!hs || hs.sentry !== c.id || awake > 0.55) return false;
+      // a hungry or parched sentry hands over the watch
+      if (c.energy < 0.25 || c.thirst > 0.75) { handOver(c, w, hs); return false; }
       if (w.time > hs.until) { handOver(c, w, hs); return false; }
       return true;
     }
@@ -376,7 +385,11 @@ function keepGoing(c: Creature, w: World, P: Profile, awake: number): boolean {
       return true;
     }
     case 'follow': return false;
-    case 'curl': return c.actT < 14 && (c.actT < (c.roller ? 3 : 2) || stillThreatened(c, w, c.roller ? c.st.sight * 0.6 : 5));
+    case 'curl': {
+      const on = c.actT < 14 && (c.actT < (c.roller ? 3 : 2) || stillThreatened(c, w, c.roller ? 7 : 5));
+      if (!on) c.cdCurl = 6;
+      return on;
+    }
   }
   return false;
 }
@@ -406,7 +419,7 @@ function goSleep(c: Creature, w: World, P: Profile): boolean {
       const L = leaderOf(w, c) ?? c;
       // open ground with a view, not in danger, not in the water
       const [x, z] = placeFor(L, w, P, L.x, L.z, 6, 5);
-      hs = { x, z, day: w.time, sentry: P.sentry ? c.id : 0, until: w.time + 40 };
+      hs = { x, z, day: w.time, sentry: P.sentry && c.energy > 0.35 ? c.id : 0, until: w.time + 40 };
       eco.herdSleep.set(c.herd, hs);
     }
     const a = (c.id * 2.399) % TAU, r = 0.8 + c.radius * 2 + (c.id % 3) * 0.7 * P.spread / 5;
@@ -458,7 +471,7 @@ function roostFor(c: Creature, w: World): [number, number] | null {
 function handOver(c: Creature, w: World, hs: { sentry: number; until: number }) {
   const h = c.herd ? w.herds.get(c.herd) : null;
   let next: Creature | null = null;
-  if (h) for (const o of h) if (o !== c && !o.dead && o.mature && o.mind === 'sleep' && (!next || o.tired < next.tired)) next = o;
+  if (h) for (const o of h) if (o !== c && !o.dead && o.mature && o.mind === 'sleep' && o.energy > 0.3 && (!next || o.tired < next.tired)) next = o;
   if (!next) { hs.until = w.time + 30; return; }
   hs.sentry = next.id; hs.until = w.time + 35 + Math.random() * 20;
   setMind(next, 'watch'); emote(next, Emote.WATCH, 2);
@@ -754,7 +767,8 @@ export function act(c: Creature, w: World, dt: number) {
     case 'wander': if (go(c, w, c.goalX, c.goalZ, c.faction === 'wild' && c.energy < 0.3 ? 0.5 : 0.38, dt) < 0.8) c.mind = 'idle'; break;
     case 'travel': {
       const late = c.plan === 'sleep' || c.plan === 'watch';
-      const left = go(c, w, c.goalX, c.goalZ, late ? 0.45 : c.plan === 'drink' && c.thirst > 0.7 ? 0.6 : 0.42, dt);
+      const urgent = c.plan === 'drink' && c.thirst > 0.7 || c.energy < 0.2;
+      const left = go(c, w, c.goalX, c.goalZ, urgent ? 0.75 : late ? 0.5 : 0.55, dt);
       if (left < 0.9 + c.radius * 0.5) {
         const p = c.plan; c.plan = null;
         if (p === 'drink') startDrink(c, w, c.x, c.z);

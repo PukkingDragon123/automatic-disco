@@ -153,7 +153,7 @@ export class Build {
     else if (k === 'y') this.setTool('copy');
     else if (k === 'u') this.setTool('paste');
   }
-  rotate() { this.rot = (this.rot + 1) & 3; if (this.tool === 'paste' && this.blueprint) this.blueprint = turn(this.blueprint); sfx('click', 1.3, 0.5); this.refresh(); }
+  rotate() { this.hoverKey = ''; this.rot = (this.rot + 1) & 3; if (this.tool === 'paste' && this.blueprint) this.blueprint = turn(this.blueprint); sfx('click', 1.3, 0.5); this.refresh(); }
   /** touch: build the ghost where it stands */
   confirm() { if (this.ghosts.length) this.commit(); }
 
@@ -173,7 +173,12 @@ export class Build {
     const p = g.groundAt(mx, my); if (!p) return null;
     return this.f.at(Math.floor(p.x), Math.floor(p.z)) ?? this.f.foundAt(Math.floor(p.x), Math.floor(p.z));
   }
+  private hoverKey = ''; private hoverT = 0;
   private hoverAt(mx: number, my: number) {
+    // only when something moved (or twice a second, for costs and validity)
+    const now = performance.now(), key = `${mx}|${my}|${this.rot}|${this.tool}|${this.kind}|${this.drag?.on ? this.drag.x + ',' + this.drag.z : ''}|${this.f.buildings.length}`;
+    if (key === this.hoverKey && now - this.hoverT < 500) return;
+    this.hoverKey = key; this.hoverT = now;
     const p = this.g.groundAt(mx, my);
     this.ground = p;
     this.cell = p ? [Math.floor(p.x), Math.floor(p.z)] : null;

@@ -1,6 +1,6 @@
 // ?test=robots: Unit 07's five build stages side by side and a line-up of every robot and soldier kind idling, with
 // a skirmish button that drops two teams onto a test field. Params: &view=golem|units|all &focus=<i> (close-up of one
-// exhibit) &yaw= &pitch= &dist= &anim=walk|fire|die &skirmish
+// exhibit) &yaw= &pitch= &dist= &anim=walk|fire|die &skirmish &bench (the weapons workbench)
 import * as THREE from 'three';
 import type { Engine } from '../app/engine';
 import type { Input } from '../app/input';
@@ -83,4 +83,6 @@ export async function testRobots(engine: Engine, input: Input, P: URLSearchParam
     resize(w, h) { cam.aspect = w / h; cam.updateProjectionMatrix(); },
   });
   engine.start();
+  // &bench: the ordnance workbench and its test-fire range (no game: everything is allowed and free)
+  if (P.has('bench')) (await import('./weapons/bench')).openBench(engine, null);
 }

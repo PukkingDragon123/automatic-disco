@@ -932,4 +932,4 @@ export const PAINT: Record<string, Painter> = Object.fromEntries([
   ...Object.entries(FLAT),
 ]);
 /** how each kind moves: 0 sway, 1 breathe, 2 bob, 3 shiver, 4 coil */
-export const ANIM: Record<string, number> = { tuft: 0, reed: 0, fern: 0, shrub: 1, broadleaf: 0, umbrella: 0, palm: 0, weeper: 0, spike: 2, rosette: 1, coral: 3, fungus: 1, bulb: 1, barrel: 1, crystalbloom: 3, lily: 1, eyeflower: 4, fiddle: 4 };
+export const ANIM: Record<string, number> = { tuft: 0, reed: 0, fern: 0, shrub: 1, broadleaf: 0, umbrella: 0, palm: 0, weeper: 0, spike: 2, rosette: 1, coral: 3, fungus: 1, bulb: 1, barrel: 1, crystalbloom: 3, lily: 1, eyeflower: 4, fiddle: 4, snaptrap: 1, pitcher: 1, sundew: 1, sail: 3, lure: 4, bloom: 2 };

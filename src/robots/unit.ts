@@ -125,6 +125,8 @@ export class RobotUnit {
   status = { burn: 0, poison: 0, acid: 0, slow: 0, by: null as any };
   /** the weapon design it carries (weapons workbench), if any */
   design: unknown = null;
+  /** free slot for the systems that own it (factions, tests) */
+  userData: Record<string, any> = {};
   /** show-room mode (tests, menus): it walks in place at this speed and fires at a point ahead every few seconds */
   demo: { speed?: number; fire?: boolean; t?: number } | null = null;
   constructor(game: Game, kind: RobotKind, faction: Faction, x: number, z: number) {

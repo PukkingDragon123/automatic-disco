@@ -406,6 +406,60 @@ export class FloraTex {
     });
   }
 
+  /** a snap trap's lobe, unrolled: the left half is the outer face (rim at the left edge, hinge at the centre), the
+   *  right half the inner face (hinge at the centre, rim at the right edge). Outside: green planes with veins running
+   *  to the rim; inside: the red digestive face set with glands, a green margin, wet glints. Opaque: the mesh is the
+   *  silhouette. */
+  trap(leafR: number[], accR: number[]): Rect {
+    return this.get(`trap|${keyOf(leafR)}|${keyOf(accR)}`, 48, 36, (mk) => {
+      const P = mk([leafR, accR]), n = leafR.length - 1, m = accR.length - 1, W = 48, H = 36;
+      for (let y = 0; y < H; y++) for (let x = 0; x < 24; x++) {
+        // outer: rim (x 0) .. hinge (x 23); a lit plane high on the lobe, the hinge crease in shade
+        let i = x > 19 ? n - 3 : x < 3 ? n - 1 : n - 2;
+        if (x >= 6 && x <= 13 && y < H * 0.62) i = n - 1;
+        if (x === 1 && y > 2 && y < H - 3) i = n;
+        P.set(x, y, i);
+      }
+      // veins: paired diagonals from hinge to rim, one step down (drawn strokes, 1-1-2-2 staircases)
+      for (let y0 = 3; y0 < H - 4; y0 += 6) for (let k = 0; k < 18; k++) { const x = 21 - k, y = y0 + (k >> 1); if (y < H - 1) P.nudge(x, y, -1); }
+      for (let y = 0; y < H; y++) for (let x = 24; x < W; x++) {
+        // inner: the hinge deep red, the face in two planes, a green margin and a light lip
+        const u = x - 24;
+        let i = u < 2 ? 1 : u < 17 ? (y < H * 0.55 ? m - 2 : m - 3) : -1;
+        if (i >= 0) P.set(x, y, i, 1); else P.set(x, y, u < 21 ? n - 2 : u < 23 ? n - 1 : n, 0);
+      }
+      // glands: staggered 2x1 clusters with a darker tail (placed, not scattered)
+      for (let row = 0, y = 3; y < H - 3; y += 4, row++) for (let x = 28 + (row & 1) * 2; x < 40; x += 4) { P.set(x, y, m, 1); P.set(x + 1, y, m - 1, 1); P.set(x, y + 1, m - 4, 1); }
+      // wet glints on the digestive face
+      P.set(31, 8, m, 1); P.set(32, 8, m, 1); P.set(31, 9, m, 1); P.set(35, 21, m, 1); P.set(36, 21, m, 1);
+      // a dark coloured outline round the lobe's ends and along the rim on both faces
+      for (let x = 0; x < W; x++) { P.set(x, 0, x < 24 || x > 40 ? 0 : 0, x < 24 || x > 40 ? 0 : 1); P.set(x, H - 1, 0, x < 24 || x > 40 ? 0 : 1); }
+      for (let y = 0; y < H; y++) { P.set(0, y, 0); P.set(W - 1, y, 0); P.set(W - 2, y, 1); }
+      return P;
+    });
+  }
+  /** a foliose lichen crust: a lobed rosette, older and darker at the heart, a pale growing margin on the lit side,
+   *  a few fruiting cups; dark outline */
+  lichen(ramp: number[], var_ = 0): Rect {
+    return this.get(`lichen|${keyOf(ramp)}|${var_}`, 24, 24, (mk) => {
+      const cup = M('rust'), P = mk([ramp, cup]), n = ramp.length - 1, r = new Rand(this.seed ^ 0x11c4e ^ (var_ * 97));
+      const lob = [[1, 0.7, 0.95, 0.6, 1, 0.8, 0.55, 0.9, 0.75, 1, 0.65], [0.8, 1, 0.6, 0.9, 0.7, 1, 0.85, 0.5, 0.95, 0.7, 0.9], [0.95, 0.6, 0.8, 1, 0.55, 0.85, 1, 0.7, 0.6, 0.9, 1]][var_ % 3];
+      const outer: [number, number][] = [], inner: [number, number][] = [], heart: [number, number][] = [];
+      for (let k = 0; k < 11; k++) {
+        const a = (k / 11) * Math.PI * 2 + var_, rr = 10.6 * (0.6 + 0.4 * lob[k]), ca = Math.cos(a), sa = Math.sin(a);
+        outer.push([12 + ca * rr, 12 + sa * rr]); inner.push([12 + ca * (rr - 2.2), 12 + sa * (rr - 2.2)]); heart.push([12 + ca * rr * 0.42, 12 + sa * rr * 0.42]);
+      }
+      fillPoly(outer, (x, y) => P.set(x, y, x + y < 24 ? n : n - 2));
+      fillPoly(inner, (x, y) => P.set(x, y, x + y < 22 ? n - 1 : n - 2));
+      fillPoly(heart, (x, y) => P.set(x, y, n - 3));
+      // lobe clefts: short dark strokes from the margin inward
+      for (let k = 0; k < 11; k += 2) { const a = ((k + 0.5) / 11) * Math.PI * 2 + var_; for (let t = 5; t < 9; t++) P.nudge(12 + Math.cos(a) * t, 12 + Math.sin(a) * t, -1); }
+      for (let k = r.int(2, 4); k > 0; k--) { const x = Math.floor(r.range(8, 14)), y = Math.floor(r.range(8, 14)); P.set(x, y, 4, 1); P.set(x + 1, y, 3, 1); P.set(x, y + 1, 2, 1); P.set(x + 1, y + 1, 1, 1); }
+      P.sel(0, 1);
+      return P;
+    });
+  }
+
   /** a small flower head seen from above, built of overlapping drawn petals round a faceted eye (light, tinted per
    *  instance by its bloom colour) */
   floret(form: number): Rect {

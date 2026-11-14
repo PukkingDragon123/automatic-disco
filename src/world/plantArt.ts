@@ -7,8 +7,9 @@ import type { Palette } from './palette';
 import type { BiomeKey } from './region';
 import { PAINT as STYLE, ANIM, GROW, FLAT, type Plant } from './plantStyle';
 import { paintGround, type GroundSprite } from './groundArt';
+import { HERO_FLAT } from './heroArt';
 
-export type Arch = 'tuft' | 'reed' | 'fern' | 'shrub' | 'broadleaf' | 'umbrella' | 'palm' | 'weeper' | 'spike' | 'rosette' | 'coral' | 'fungus' | 'bulb' | 'barrel' | 'crystalbloom' | 'lily' | 'eyeflower' | 'fiddle';
+export type Arch = 'tuft' | 'reed' | 'fern' | 'shrub' | 'broadleaf' | 'umbrella' | 'palm' | 'weeper' | 'spike' | 'rosette' | 'coral' | 'fungus' | 'bulb' | 'barrel' | 'crystalbloom' | 'lily' | 'eyeflower' | 'fiddle' | 'snaptrap' | 'pitcher' | 'sundew' | 'sail' | 'lure' | 'bloom';
 export const PX = 32;
 
 export interface Sprite { u0: number; v0: number; du: number; dv: number; w: number; h: number; /** px */ pw: number; ph: number; ax: number }
@@ -65,18 +66,24 @@ const ARCHS: ArchSpec[] = [
   { arch: 'lily', h: [0.6, 1], fert: 0, wet: [0, 1], water: true, weight: 1.2, cluster: 0.8, food: 6 },
   { arch: 'eyeflower', h: [0.9, 1.5], fert: 0.3, wet: [0.25, 1], weight: 1.4, cluster: 0.7, food: 9 },
   { arch: 'fiddle', h: [0.8, 1.4], fert: 0.35, wet: [0.4, 1], weight: 1.4, cluster: 0.7, food: 8 },
+  { arch: 'snaptrap', h: [0.3, 0.55], fert: 0.3, wet: [0.5, 1], shore: true, weight: 1.3, cluster: 0.8, food: 6 },
+  { arch: 'pitcher', h: [0.5, 0.9], fert: 0.25, wet: [0.55, 1], shore: true, weight: 1.1, cluster: 0.75, food: 7 },
+  { arch: 'sundew', h: [0.15, 0.3], fert: 0.2, wet: [0.6, 1], shore: true, weight: 1.4, cluster: 0.9, food: 3 },
+  { arch: 'sail', h: [1.2, 2.2], fert: 0.2, wet: [0.05, 0.8], weight: 0.9, cluster: 0.5, food: 10 },
+  { arch: 'lure', h: [0.8, 1.5], fert: 0.3, wet: [0.3, 1], weight: 1.0, cluster: 0.6, food: 8 },
+  { arch: 'bloom', h: [0.5, 1.0], fert: 0.4, wet: [0.2, 0.9], weight: 2.2, cluster: 0.75, food: 6 },
 ];
 
 const BIOME_ARCH: Partial<Record<BiomeKey, Arch[]>> = {
-  desert: ['tuft', 'rosette', 'barrel', 'barrel', 'shrub', 'umbrella', 'spike', 'crystalbloom'],
-  tundra: ['tuft', 'fern', 'shrub', 'rosette', 'coral', 'fungus', 'weeper', 'broadleaf'],
-  crystal: ['tuft', 'crystalbloom', 'crystalbloom', 'coral', 'rosette', 'shrub', 'fungus', 'umbrella'],
-  ashland: ['tuft', 'fungus', 'fungus', 'barrel', 'rosette', 'coral', 'umbrella', 'shrub'],
-  savanna: ['tuft', 'tuft', 'umbrella', 'umbrella', 'shrub', 'spike', 'rosette', 'barrel', 'bulb'],
-  marsh: ['reed', 'reed', 'lily', 'weeper', 'fern', 'fungus', 'bulb', 'tuft', 'spike', 'palm', 'fiddle', 'eyeflower'],
-  jungle: ['fern', 'fern', 'palm', 'palm', 'broadleaf', 'broadleaf', 'bulb', 'spike', 'coral', 'fungus', 'shrub', 'lily', 'weeper', 'eyeflower', 'fiddle'],
+  desert: ['tuft', 'rosette', 'barrel', 'barrel', 'shrub', 'umbrella', 'spike', 'crystalbloom', 'sail', 'bloom'],
+  tundra: ['tuft', 'fern', 'shrub', 'rosette', 'coral', 'fungus', 'weeper', 'broadleaf', 'sundew', 'bloom'],
+  crystal: ['tuft', 'crystalbloom', 'crystalbloom', 'coral', 'rosette', 'shrub', 'fungus', 'umbrella', 'sail', 'lure'],
+  ashland: ['tuft', 'fungus', 'fungus', 'barrel', 'rosette', 'coral', 'umbrella', 'shrub', 'sail', 'lure'],
+  savanna: ['tuft', 'tuft', 'umbrella', 'umbrella', 'shrub', 'spike', 'rosette', 'barrel', 'bulb', 'bloom', 'sail'],
+  marsh: ['reed', 'reed', 'lily', 'weeper', 'fern', 'fungus', 'bulb', 'tuft', 'palm', 'fiddle', 'snaptrap', 'pitcher', 'sundew', 'bloom'],
+  jungle: ['fern', 'palm', 'palm', 'broadleaf', 'broadleaf', 'bulb', 'coral', 'fungus', 'shrub', 'lily', 'weeper', 'eyeflower', 'pitcher', 'snaptrap', 'lure', 'bloom'],
 };
-const DEFAULT_ARCH: Arch[] = ['tuft', 'fern', 'shrub', 'broadleaf', 'umbrella', 'palm', 'spike', 'rosette', 'coral', 'fungus', 'bulb', 'reed', 'lily', 'weeper', 'eyeflower', 'fiddle'];
+const DEFAULT_ARCH: Arch[] = ['tuft', 'fern', 'shrub', 'broadleaf', 'umbrella', 'palm', 'rosette', 'coral', 'fungus', 'bulb', 'reed', 'lily', 'weeper', 'fiddle', 'bloom', 'snaptrap', 'pitcher', 'lure'];
 
 export function makeFlora(pal: Palette, biome: BiomeKey, seed: number): PlantSpecies[] {
   const r = new Rand(seed ^ 0x5eed);
@@ -92,7 +99,7 @@ export function makeFlora(pal: Palette, biome: BiomeKey, seed: number): PlantSpe
   const nextB = () => { if (!bDeck.length) bDeck = r.shuffle([...pal.bloom]); return bDeck.pop()!; };
   archs.forEach((a, i) => {
     const s = ARCHS.find((x) => x.arch === a)!;
-    const glow = a === 'crystalbloom' || ((a === 'fungus' || a === 'bulb') && r.chance(0.04));
+    const glow = a === 'crystalbloom' || a === 'lure' || (a === 'fungus' && r.chance(0.3)) || (a === 'bulb' && r.chance(0.04));
     // flowering kinds often carry their bloom colour into the leaf (coral and magenta shrubs, golden puffballs,
     // red-orange spikes), always rooted in a foliage hue so it reads as a plant rather than paint
     const vivid = (a === 'shrub' || a === 'rosette' || a === 'coral' || a === 'bulb' || a === 'fiddle' || a === 'spike' || a === 'fern') && r.chance(0.45);
@@ -137,7 +144,7 @@ export function buildFloraAtlas(species: PlantSpecies[], pal: Palette, seed: num
     const g = GROW[j.sp.arch], sp = j.sp;
     sp.forms ??= []; sp.heights ??= [];
     if (g) { const P = g(sp, j.h, j.r, pal).normalize(); sp.sprites.push(place(P.raster(), j.h)); sp.forms.push(P); }
-    else { sp.sprites.push(place((FLAT[sp.arch] ?? PAINT[sp.arch])(sp, j.h, j.r, pal), j.h)); sp.forms.push(null); }
+    else { sp.sprites.push(place((FLAT[sp.arch] ?? HERO_FLAT[sp.arch] ?? PAINT[sp.arch])(sp, j.h, j.r, pal), j.h)); sp.forms.push(null); }
     sp.heights.push(j.h);
   }
   // ground cover: tussocks, clover, flowers, young ferns, mushrooms, sedges, pebbles, litter and twig decals

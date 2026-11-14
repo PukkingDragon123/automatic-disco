@@ -288,7 +288,7 @@ export class World {
     const st = c.st, wild = c.faction === 'wild', asleep = c.mind === 'sleep';
     const running = c.mind === 'flee' || c.mind === 'hunt';
     // (wild hunters live on feast and famine: a slower burn between kills)
-    const drain = clamp(0.0022 + st.upkeep * 0.01, 0.0018, 0.009) * (running ? 1.6 : asleep ? 0.35 : c.mind === 'rest' ? 0.7 : 1) * (wild && c.diet === 'carn' ? 0.6 : 1);
+    const drain = clamp(0.0022 + st.upkeep * 0.01, 0.0018, wild ? 0.0055 : 0.009) * (running ? 1.6 : asleep ? 0.35 : c.mind === 'rest' ? 0.7 : 1) * (wild && c.diet === 'carn' ? 0.6 : 1);
     c.energy -= drain * dt;
     /** a hurt that may be the last: name the cause first so the census can count it */
     const hurt = (amt: number, cause: string) => { if (c.hp - amt * (1 - st.armor) <= 0) c.dieCause = cause; this.damage(c, amt, null); };
@@ -305,7 +305,7 @@ export class World {
     const P = profileOf(c, this), eco = this.eco, bi = this.region.biome;
     const sun = Math.max(0, Math.cos((this.day - 0.25) * Math.PI * 2));
     // thirst: faster in heat, at a run, in daylight; snails and mites drink the damp
-    c.thirst += dt * P.thirstK / (this.dayLen * 0.42) * (1 + bi.temp * 0.5 * sun) * (running ? 1.6 : asleep ? 0.25 : 1);
+    c.thirst += dt * P.thirstK / (this.dayLen * 0.8) * (1 + bi.temp * 0.5 * sun) * (running ? 1.6 : asleep ? 0.25 : 1);
     if (P.thirstK < 0.5 && eco.moisture(c.x, c.z) > 0.55) c.thirst -= dt * 0.01;
     if (c.walker.swim && this.region.isWater(c.x, c.z)) c.thirst -= dt * 0.05;
     c.thirst = clamp(c.thirst, 0, 1);
@@ -320,6 +320,7 @@ export class World {
     if (c.breedCD > 0) c.breedCD -= dt;
     if (c.cdDisplay > 0) c.cdDisplay -= dt;
     if (c.cdHunt > 0) c.cdHunt -= dt;
+    if (c.cdCurl > 0) c.cdCurl -= dt;
   }
 }
 

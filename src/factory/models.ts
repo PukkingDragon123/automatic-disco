@@ -498,6 +498,7 @@ const MODELS: Partial<Record<string, (tier: number) => Model>> = {
     for (const x of [-0.42, 0.42]) m.box([x, 1.0, 0], [0.16, 1.9, 0.7], L.CONCRETE);
     m.box([0, 2.0, 0], [1.02, 0.14, 0.5], L.OLIVE);
     m.cyl([0, 2.2, 0.1], 0.18, 0.06, L.RED, { n: 8, axis: 'z' });
+    m.label([0, 2.0, 0.26], 0.4, 0.12, 'SLUICE');
     m.cyl([0, 2.2, 0.1], 0.05, 0.3, L.STEEL, { n: 6, axis: 'z' });
     m.lamp([0.4, 2.25, -0.2]);
     const gate = part((p) => { p.box([0, 0.9, 0], [0.7, 1.4, 0.12], L.RUST); for (let y = 0.4; y < 1.6; y += 0.3) p.box([0, y, 0.07], [0.7, 0.05, 0.03], L.STEEL); }, [0, 0.9, 0], 'press', 'y', 0, 0);
@@ -539,7 +540,7 @@ const MODELS: Partial<Record<string, (tier: number) => Model>> = {
     for (const x of [-0.45, 0, 0.45]) m.hopper([x, 1.15, -0.3], 0.2, 0.42, 0.36, L.CREAM);
     m.box([0, 0.3, 0.55], [1.6, 0.12, 0.14], L.GUN);
     for (const x of [-0.6, -0.2, 0.2, 0.6]) m.box([x, 0.2, 0.62], [0.05, 0.25, 0.08], L.STEEL, { rx: 0.4 });
-    m.label([0, 0.55, 0.16], 0.5, 0.3, 'GROW SHED');
+    m.label([0, 0.55, 0.16], 0.5, 0.3, 'SEED DRILL');
     m.lamp([0.65, 1.0, -0.65]);
     return { base: m.geo(), parts: [], lamp: [0.65, 1.0, -0.65] };
   },
@@ -573,7 +574,7 @@ const MODELS: Partial<Record<string, (tier: number) => Model>> = {
     m.box([0, 0.08, -0.8], [1.4, 0.1, 1.0], L.MOSS);
     m.box([0.8, 0.3, 0.8], [0.8, 0.3, 0.4], L.WOOD); m.box([0.8, 0.42, 0.8], [0.7, 0.04, 0.3], L.MOSS);
     m.cyl([0.9, 0.3, -0.9], 0.2, 0.5, L.CREAM, { n: 8 });
-    m.label([0.8, 0.3, 1.01], 0.36, 0.2, 'BARRACKS');
+    m.label([0.8, 0.3, 1.01], 0.36, 0.2, 'BREEDING PEN');
     m.lamp([1.35, 1.25, 1.35]);
     return { base: m.geo(), parts: [], lamp: [1.35, 1.25, 1.35] };
   },

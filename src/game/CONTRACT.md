@@ -37,3 +37,21 @@ code paths. Hostility: everyone fights everyone except their own; 'wild' fights 
 ## Factions AI (src/game/factions/*, owned by the factions agent)
 - Each faction has a base (lander plus structures), an economy tick, production of RobotUnits, and attack waves that
   target `game.factory.buildings`, `game.robots` and the golem. Expeditions arrive mid-game by lander.
+- `game.factions` (src/game/factions/index.ts, a `Factions`):
+  - `structures: FStructure[]`: every faction structure, a target like a factory building:
+    { x, z, y, hp, maxHp, radius, height, faction, kind, dead, damage(n, from?) }. Kinds: lander (the HQ: destroying
+    it eliminates the faction), miner, factory, bunker, artillery, tower, mast, depot, tent. **Player robots and turrets
+    should include these in their target scan.**
+  - `units`: every unit the factions fielded (RobotUnits from `spawnRobot`; a StubUnit only if spawnRobot refuses).
+  - `hostile(a, b)`: like robots' `hostile`, but a paid-off expedition is at peace with 'veyr' (`truce`). Robots
+    should prefer `game.factions?.hostile(a, b) ?? hostile(a, b)` so truces hold.
+  - `nearestHostile(x, z, r, faction)`, `eachHostileIn(x, z, r, faction, fn)`, `hit(ref, n, from)`: shared targeting.
+  - `cleared()`: the region win also needs every faction eliminated or driven off (game.checkEnd uses it).
+- `factionsForRegion(region, planet?)` / `planFactions(seed, danger)` (factions/plan.ts, pure, no three.js): the
+  1-2 factions on a region, `[{ faction, x, z, strength, arrive, name }]`, exactly what the region screen spawns
+  (bases settle within ~12 m of x, z). `factionSummary(region)` is a one-line label for planet UI.
+- Expedition units capture: engineers channel next to a factory building (sets `building.faction = 'expedition'`, or
+  calls `building.capture('expedition')` if it exists) or a 'veyr' creature (its faction changes). Expedition humans
+  should not shoot buildings (they want them whole).
+- Events on game: 'faction-wave' {faction, n, x, z, vsOther}, 'faction-eliminated' {faction, name, left?},
+  'captured' {target, by, x, z}.

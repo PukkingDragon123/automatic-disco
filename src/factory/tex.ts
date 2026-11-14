@@ -14,7 +14,7 @@ export const L = {
 } as const;
 /** name plates, in this order, from layer LABEL0 */
 export const LABELS = ['CORE UPLINK', 'MINER', 'WATER PUMP', 'EXCAVATOR', 'SMELTER', 'FOUNDRY', 'CONSTRUCTOR', 'ASSEMBLER', 'MANUFACTURER', 'REFINERY',
-  'GROW SHED', 'STORAGE', 'SILO', 'BOILER', 'STEAM GEN.', 'ATOMIC PILE', 'RESEARCH', 'ROBOT WORKS', 'BARRACKS', 'TURRET', 'SPLITTER', 'MERGER', 'LIFT'];
+  'GROW SHED', 'STORAGE', 'SILO', 'BOILER', 'STEAM GEN.', 'ATOMIC PILE', 'RESEARCH', 'ROBOT WORKS', 'BARRACKS', 'TURRET', 'SPLITTER', 'MERGER', 'LIFT', 'SEED DRILL', 'BREEDING PEN', 'SLUICE'];
 export const labelLayer = (name: string) => L.LABEL0 + Math.max(0, LABELS.indexOf(name));
 
 const H = (x: number, y: number, s = 0) => { let h = (x * 374761393 + y * 668265263 + s * 2246822519) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };

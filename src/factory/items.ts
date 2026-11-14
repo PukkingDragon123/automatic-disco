@@ -3,8 +3,9 @@
 // and ammunition. Each has a hand-drawn 16 px icon in the master palette: planes filled one ramp step each, light
 // from the upper left, selective outline. The icons also go on the belts (iconArray: one texture layer per item).
 import * as THREE from 'three';
-import { Pix, poly, selout, RA, INKC, type Pt } from './paint';
+import { Pix, KPix, poly, selout, RA, INKC, type Pt } from './paint';
 import type { Res } from '../game/skills';
+import { itemIcon as hiItemURL, hiItem, ITEM_ICON_NAMES } from '../ui/icons';
 
 export type BaseItemId =
   | 'ore' | 'carbon' | 'water' | 'soil' | 'copper_ore' | 'coal' | 'crystal' | 'fruit'
@@ -77,7 +78,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
 export const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
 export const ITEM_INDEX: Record<ItemId, number> = Object.fromEntries(ITEM_IDS.map((k, i) => [k, i])) as Record<ItemId, number>;
 /** add an item (another system's producers): its definition and, optionally, an icon painter on a 16 px Pix */
-export function registerItem(def: ItemDef, icon?: (p: Pix) => void) {
+export function registerItem(def: ItemDef, icon?: (p: KPix) => void) {
   if (!ITEMS[def.id]) { ITEM_IDS.push(def.id); ITEM_INDEX[def.id] = ITEM_IDS.length - 1; }
   ITEMS[def.id] = def;
   if (icon) ICON[def.id] = icon;
@@ -89,10 +90,14 @@ export const RAW_RES: ItemId[] = ['ore', 'carbon', 'water', 'soil'];
 export const isRes = (id: ItemId): id is Res => id === 'ore' || id === 'carbon' || id === 'water' || id === 'soil';
 
 // ------------------------------------------------------------------ icons
-const S = 16;
-type Painter = (p: Pix) => void;
+/** the icon set in the target style lives in ui/icons.ts (hiItem); these 16-unit drawings, landing at 32 px with a
+ *  coloured outline, are the fallback for anything it does not draw */
+const S = 32;
+const HI = new Set<string>(ITEM_ICON_NAMES);
+const hasHi = (id: ItemId) => HI.has(id) || !ICON[id];
+type Painter = (p: KPix) => void;
 /** a fractured lump: angular facets, each one ramp step by how it faces the light */
-function lump(p: Pix, R: number[], o: Pt[], cx: number, cy: number, base = 2) {
+function lump(p: KPix, R: number[], o: Pt[], cx: number, cy: number, base = 2) {
   // fan of facets from a point up-left of centre: facets facing up/left are lit
   const c: Pt = [cx - 1, cy - 1];
   for (let i = 0; i < o.length; i++) {
@@ -102,7 +107,7 @@ function lump(p: Pix, R: number[], o: Pt[], cx: number, cy: number, base = 2) {
     poly(p, [c, a, b], R[Math.max(0, Math.min(R.length - 1, Math.round(base + lit * 1.4)))]);
   }
 }
-function ingot(p: Pix, R: number[], mark = -1) {
+function ingot(p: KPix, R: number[], mark = -1) {
   poly(p, [[5, 4], [12, 4], [13, 7], [4, 7]], R[5]);
   poly(p, [[4, 7], [13, 7], [15, 12], [2, 12]], R[3]);
   poly(p, [[13, 7], [12, 4], [14, 8], [15, 12]], R[2]);
@@ -404,20 +409,30 @@ const ICON: Partial<Record<ItemId, Painter>> = {
 };
 
 const pixCache = new Map<ItemId, Pix>(), urlCache = new Map<string, string>();
+/** a 32 px RGBA icon (the texture-array layer for belt crates) */
 export function itemPix(id: ItemId): Pix {
   let p = pixCache.get(id);
-  if (!p) { p = new Pix(S, S); (ICON[id] ?? ICON.ore!)(p); pixCache.set(id, p); }
+  if (!p) {
+    if (hasHi(id)) { const pc = hiItem(id, S); p = new Pix(S, S); p.d.set(pc.data.subarray(0, S * S * 4)); }
+    else { const k = new KPix(S / 16); ICON[id]!(k); p = k.p; }
+    pixCache.set(id, p);
+  }
   return p;
 }
-/** a data URL of an item's icon, at 1x (16 px) or scaled up with whole pixels */
-export function itemIcon(id: ItemId, k = 1): string {
-  const key = id + '@' + k; let u = urlCache.get(key);
+/** a data URL of an item's icon at px x px (the target-style drawing, else the fallback scaled by whole pixels) */
+export function itemIcon(id: ItemId, px = chipPx()): string {
+  if (hasHi(id)) return hiItemURL(id, px);
+  const key = id + '@' + px; let u = urlCache.get(key);
   if (u) return u;
-  const src = itemPix(id);
-  if (k === 1) u = src.url();
-  else { const q = new Pix(S * k, S * k); for (let y = 0; y < S * k; y++) for (let x = 0; x < S * k; x++) { const i = (Math.floor(y / k) * S + Math.floor(x / k)) * 4; if (src.d[i + 3]) q.set(x, y, (src.d[i] << 16) | (src.d[i + 1] << 8) | src.d[i + 2], src.d[i + 3]); } u = q.url(); }
+  const k = Math.max(1, Math.round(px / 16)), kp = new KPix(k); ICON[id]!(kp); u = kp.url();
   urlCache.set(key, u);
   return u;
+}
+/** chips are drawn at the device size they are shown at (16 CSS px per text scale step): no resampling */
+let CHIP = 0;
+export function chipPx() {
+  if (!CHIP) { const tf = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tf')) || 1; CHIP = Math.max(16, Math.round(16 * tf * (devicePixelRatio || 1))); setTimeout(() => (CHIP = 0), 2000); }
+  return CHIP;
 }
 /** inline HTML for an item chip (icon + count) */
 export const itemChip = (id: ItemId, n?: number | string, cls = '') => `<span class="fc-chip ${cls}" title="${ITEMS[id]?.name ?? id}"><img src="${itemIcon(id)}">${n !== undefined ? `<b>${n}</b>` : ''}</span>`;

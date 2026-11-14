@@ -101,7 +101,7 @@ export class Creature {
   rest = 0;
   dieCause = '';
   /** cooldowns for displays, courtship and hunts */
-  cdDisplay = 0; cdHunt = 0;
+  cdDisplay = 0; cdHunt = 0; cdCurl = 0;
 
   constructor(readonly sp: Species, public faction: Faction, x: number, z: number, juvenile = false) {
     this.x = x; this.z = z; this.homeX = x; this.homeZ = z;

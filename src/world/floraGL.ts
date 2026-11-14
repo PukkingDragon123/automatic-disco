@@ -136,7 +136,7 @@ if (isK(kind, 2.0) || isK(kind, 7.0)) {
   float az = aW.w * 6.2831; vec3 ax = vec3(cos(az), 0.0, sin(az));
   float c0 = cos(aW.z * closure * 0.95), s0 = sin(aW.z * closure * 0.95);
   vec3 d = p - aP.xyz; p = aP.xyz + d * c0 + cross(ax, d) * s0 + ax * dot(ax, d) * (1.0 - c0);
-} else if (isK(kind, 9.0)) {
+} else if (isK(kind, 9.0) || isK(kind, 12.0)) {
   float az = aW.w * 6.2831; vec3 ax = vec3(cos(az), 0.0, sin(az)); float a = (closure * 1.3 + 0.12 * sin(t * 0.8 + ph)) * aW.z;
   float c0 = cos(a), s0 = sin(a);
   vec3 d = p - aP.xyz; p = aP.xyz + d * c0 + cross(ax, d) * s0 + ax * dot(ax, d) * (1.0 - c0);
@@ -151,6 +151,8 @@ vec3 nW = rotY(normal, yaw);
 vec3 wnd = windAt(base.xz, t);
 vec4 fld = texture2D(uField, (base.xz + p.xz * uGround) / uN);
 vec2 fb = (fld.xy - 0.5) * 4.0;
+// floating growth (lily pads) drifts aside from whatever wades through
+p.xz += fb * 0.1 * uBob;
 vTr = fld.z;
 vec2 bend = wnd.xy * flex * uFlex + fb * uPushK;
 bend += uWindDir * sin(t * (0.6 + uFlex * 0.8) + ph) * 0.05 * uWind * (0.35 + wnd.z) * uFlex;
@@ -190,7 +192,7 @@ if (bay >= vFade.x || bay < vFade.y) discard;
 bool barkK = vKind < 0.5 || (vKind > 4.5 && vKind < 5.5);
 vec4 tB = texture2D(uBark, vMapUv), tA = texture2D(map, vMapUv);
 vec4 texel = barkK ? tB : tA;
-if (!barkK && !isK(vKind, 4.0) && !isK(vKind, 6.0) && !isK(vKind, 11.0)) {
+if (!barkK && !isK(vKind, 4.0) && !isK(vKind, 6.0) && !isK(vKind, 11.0) && !isK(vKind, 12.0)) {
   vec2 dd = fwidth(vMapUv) * 1024.0;
   float al = texel.a * (1.0 + max(0.0, log2(max(max(dd.x, dd.y), 1.0))) * 0.3);
   if (al < 0.5) discard;
@@ -224,7 +226,7 @@ diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumW) * vec3(0.95, 0.85, 0.55), vT
 ${GRAFT_3D}`)
       .replace('#include <normal_fragment_begin>', `float faceDirection = gl_FrontFacing ? 1.0 : -1.0;
 vec3 normal = normalize(vNormal + vec3(0.0, 1e-5, 0.0));
-if (vKind < 0.5 || (vKind > 3.5 && vKind < 6.5) || isK(vKind, 11.0)) normal *= faceDirection;
+if (vKind < 0.5 || (vKind > 3.5 && vKind < 6.5) || vKind > 10.5) normal *= faceDirection;
 vec3 nonPerturbedNormal = normal;`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
 float night = 1.0 - uDay;
@@ -234,11 +236,12 @@ totalEmissiveRadiance += diffuseColor.rgb * sss * (1.0 - vWither * 0.6) + graftE
 if (isK(vKind, 3.0)) totalEmissiveRadiance += diffuseColor.rgb * (0.35 + 1.0 * night) * (0.85 + 0.3 * sin(uTime * 1.4 + vBase.x * 2.0)) * (1.0 - vWither);
 if (isK(vKind, 6.0)) totalEmissiveRadiance += diffuseColor.rgb * (0.4 + 0.4 * night);
 if (isK(vKind, 10.0)) totalEmissiveRadiance += diffuseColor.rgb * (0.12 + 0.55 * night);
-if (isK(vKind, 11.0)) totalEmissiveRadiance += diffuseColor.rgb * 0.25;`)
+if (isK(vKind, 11.0)) totalEmissiveRadiance += diffuseColor.rgb * 0.25;
+if (isK(vKind, 12.0)) totalEmissiveRadiance += diffuseColor.rgb * (0.3 + 1.1 * night) * (0.85 + 0.3 * sin(uTime * 2.1 + vBase.z * 3.0));`)
       .replace('#include <dithering_fragment>', `#include <dithering_fragment>
 gl_FragColor.rgb = applyFow(gl_FragColor.rgb, vBase);
 float outl = (vKind < 0.5 || (vKind > 3.5 && vKind < 4.5)) ? 1.0 : 0.0;
-float emit = (isK(vKind, 3.0) || isK(vKind, 6.0) || (isK(vKind, 10.0) && uDay < 0.5) || dot(graftE, graftE) > 0.04) ? 32.0 : 0.0;
+float emit = (isK(vKind, 3.0) || isK(vKind, 6.0) || ((isK(vKind, 10.0) || isK(vKind, 12.0)) && uDay < 0.5) || dot(graftE, graftE) > 0.04) ? 32.0 : 0.0;
 gNormal = vec4(inverseTransformDirection(normal, viewMatrix) * 0.5 + 0.5, outl + emit);`);
   };
   m.customProgramCacheKey = () => 'oddworld-flora3d';

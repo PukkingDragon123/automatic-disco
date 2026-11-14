@@ -202,7 +202,7 @@ export class PlanetScreen implements Screen {
     // the carrier holding station off the planet, in the foreground (its own lights; the sun matched)
     this.carrier = buildCarrier({ people: false });
     const cg = this.carrier.group;
-    cg.position.set(-250, -95, 4.1 * R - 530); cg.rotation.set(0.1, Math.PI - 0.75, 0.05);
+    cg.position.set(-205, -100, 4.1 * R - 560); cg.rotation.set(0.1, Math.PI - 0.75, 0.05);
     this.carrier.ship.sun.position.copy(SUN.clone().applyQuaternion(cg.quaternion.clone().invert())).multiplyScalar(220);
     sc.add(cg);
     // DOM: the header, hover label, the carrier's tag, hints, the white of the cloud deck
@@ -428,7 +428,7 @@ export class PlanetScreen implements Screen {
     this.globe.mat.uniforms.uT.value = this.t;
     this.carrier.update(dt);
     // the carrier drifts a little on station
-    this.carrier.group.position.y = -95 + Math.sin(this.t * 0.21) * 3;
+    this.carrier.group.position.y = -100 + Math.sin(this.t * 0.21) * 3;
     this.carrier.group.rotation.z = 0.05 + Math.sin(this.t * 0.17) * 0.012;
     switch (this.mode) {
       case 'orbit': this.orbit(dt); break;

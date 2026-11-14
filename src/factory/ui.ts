@@ -314,11 +314,13 @@ export class FactoryUI {
     }
     this.drawOverlay();
   }
+  private tf = 1; private tfT = -9;
   private drawOverlay() {
     const cv = this.overlay, g = this.og, W = innerWidth, H = innerHeight;
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
     g.clearRect(0, 0, W, H);
-    const f = this.f, game = f.g, dpr = 1, k = Math.max(1, Math.round((parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tf')) || 1) * 2) / 2);
+    if (this.t - this.tfT > 1) { this.tfT = this.t; this.tf = Math.max(1, Math.round((parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tf')) || 1) * 2) / 2); }
+    const f = this.f, game = f.g, dpr = 1, k = this.tf;
     // flags over machines in trouble (always for dark machines; all problems while building or reading the report)
     const all = this.b.active || this.showFlags;
     for (const b of f.buildings) {

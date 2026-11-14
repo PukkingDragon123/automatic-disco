@@ -44,7 +44,7 @@ type Mode = { k: 'normal' } | { k: 'ability'; a: Ability } | { k: 'build'; b: BK
 interface Held { c: Creature; t: number; dur: number; dps: number; grip: number }
 interface Pull { c: Creature; tx: number; tz: number; t: number }
 
-export interface GameOpts { seed: number; biome: BiomeKey; pal?: string; regionName?: string; run?: Run; hooks?: GameHooks; story?: boolean; /** planet danger 1..3: which enemy programmes hold the region (factions/plan.ts) */ danger?: number }
+export interface GameOpts { seed: number; biome: BiomeKey; pal?: string; regionName?: string; run?: Run; hooks?: GameHooks; story?: boolean; /** planet danger 1..3: which enemy programmes hold the region (factions/plan.ts) */ danger?: number; /** where the drop pod actually came down (deploy sequence); snapped to open ground */ landing?: { x: number; z: number } }
 export interface GameHooks { onWin?(g: Game): void; onLose?(g: Game): void; openBuilder?(g: Game): void; openTree?(g: Game): void; openMenu?(g: Game): void; openSkills?(g: Game): void; openLab?(g: Game): void }
 
 const _v = new THREE.Vector3(), _ray = new THREE.Ray();
@@ -111,6 +111,11 @@ export class Game implements Screen {
     const pal = planetPalette(opts.seed, opts.pal);
     this.region = new Region(opts.seed, BIOMES[opts.biome], pal);
     this.regionName = opts.regionName ?? BIOMES[opts.biome].name;
+    if (opts.landing) {
+      const N = this.region.N, cx = Math.min(N - 6, Math.max(6, opts.landing.x)), cz = Math.min(N - 6, Math.max(6, opts.landing.z));
+      const f = this.region.freeNear(cx, cz, 12);
+      if (f) this.region.landing = { x: f[0], z: f[1] };
+    }
     const L = this.region.landing;
     this.region.carveCrater(L.x, L.z, 3.4, 1.3);
     this.region.dirty.clear();

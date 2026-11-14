@@ -1,3 +1,6 @@
+// SUPERSEDED by the space race (src/game/factions/*): game.ts no longer drops a rival asteroid while game.factions
+// exists. Kept for old code paths ('rival' faction, hive creep).
+//
 // A rival asteroid: another seed of the same kind falls burning onto the region and plays the same game. It grafts
 // the plants around it into its own growth (in its own colour, and it will take back Veyr grafts on its border), its
 // brood claim the ground they walk, it raises structures on what it holds, taps the seams, steals the genomes of

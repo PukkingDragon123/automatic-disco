@@ -57,7 +57,7 @@ export async function testEcosys(engine: Engine, input: Input, P: URLSearchParam
   console.log('[ecosys] thirsty', wild.filter((c) => c.thirst > 0.6).map((c) => `${c.sp.name.split(' ').pop()}:${c.mind}/${c.plan} t${c.thirst.toFixed(2)} shore${(() => { const s = eco.shoreNear(c.x, c.z); return s ? Math.hypot(s[0] - c.x, s[1] - c.z).toFixed(0) : '-'; })()} goal${Math.hypot(c.goalX - c.x, c.goalZ - c.z).toFixed(0)}`).join(' | '));
   console.log('[ecosys] species', g.run.reg.list.map((s) => `${s.name}:${s.pheno.diet}:${s.pheno.stats.mass.toFixed(0)}kg`).join(', '));
   console.log('[ecosys] needs', wild.slice(0, 12).map((c) => `${c.sp.name.split(' ').pop()}:${c.mind} e${c.energy.toFixed(2)} t${c.thirst.toFixed(2)} f${c.tired.toFixed(2)}`).join(' | '));
-  console.log('[ecosys] census', eco.census().map((r) => `${r.name}:${r.alive}(${r.status}) b${r.born} d${r.died} ${JSON.stringify(r.causes)}`).join(' | '));
+  console.log('[ecosys] census', eco.census().map((r) => `${r.name}:${r.alive}/${r.cap}(${r.status}) b${r.born} d${r.died} ${JSON.stringify(r.causes)}`).join(' | '));
   console.log(`[ecosys] plants died ${eco.diedPlants} sprouted ${eco.sprouted} added ${eco.added}; level ${eco.level.toFixed(2)} season ${eco.seasonName()}`);
   engine.setScreen(g);
   engine.start();

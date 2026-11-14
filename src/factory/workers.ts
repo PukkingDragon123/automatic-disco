@@ -144,6 +144,7 @@ export class Workers {
       }
     }
     this.draw();
+    if (dt > 0) this.botTick(dt);
   }
   /** hunger and mood; the animal's own appetite is kept out of it (we feed it) */
   private needs(w: Worker, dt: number) {
@@ -231,7 +232,16 @@ export class Workers {
   private stock(b: FBuilding): Map<ItemId, number> { return b.def.store && b.kind !== 'barracks' ? b.store : b.outBuf; }
   /** pick a delivery: a building that wants an item another building (or the stores) holds */
   private plan(w: Worker): boolean {
-    const f = this.f, c = w.c;
+    const p = this.pick(w.c.x, w.c.z, this.cap(w.c), w.route);
+    if (!p) return false;
+    w.src = p.src; w.dst = p.dst; w.want = p.id; w.fromStores = !!p.src && p.src.kind === 'depot';
+    w.state = 'toSrc';
+    return true;
+  }
+  /** the best delivery from a point for a carrier of this capacity (reserves it) */
+  private pick(cx: number, cz: number, cap: number, route: Worker['route']): { src: FBuilding; dst: FBuilding; id: ItemId } | null {
+    const f = this.f, c = { x: cx, z: cz };
+    const w = { route };
     const cand: { src: FBuilding | null; dst: FBuilding; id: ItemId; score: number }[] = [];
     const dsts = w.route ? [w.route.to] : f.buildings.filter((b) => b.on && !isBelt(b.kind) && b.kind !== 'depot' && !(b.def.store && b.kind !== 'barracks'));
     const srcs = w.route ? [w.route.from] : f.buildings.filter((b) => this.stock(b).size > 0);
@@ -241,7 +251,7 @@ export class Workers {
         if (src === dst) continue;
         for (const [id, n] of this.stock(src)) {
           if (n < 1 || id === 'steam') continue;
-          const want = f.wants(dst, id) - (this.reserved.get(dst.id + ':' + id) ?? 0) * this.cap(c);
+          const want = f.wants(dst, id) - (this.reserved.get(dst.id + ':' + id) ?? 0) * cap;
           if (want < 1) continue;
           cand.push({ src, dst, id, score: (Math.hypot(src.x - c.x, src.z - c.z) + Math.hypot(dst.x - src.x, dst.z - src.z)) * pri });
         }
@@ -251,7 +261,7 @@ export class Workers {
         const dep = this.nearest(dst.x, dst.z, (b) => b.kind === 'depot');
         if (dep) for (const id of this.needs2(dst)) {
           if (f.count(id) < 1) continue;
-          const want = f.wants(dst, id) - (this.reserved.get(dst.id + ':' + id) ?? 0) * this.cap(c);
+          const want = f.wants(dst, id) - (this.reserved.get(dst.id + ':' + id) ?? 0) * cap;
           if (want < 1) continue;
           cand.push({ src: dep, dst, id, score: (Math.hypot(dep.x - c.x, dep.z - c.z) + Math.hypot(dst.x - dep.x, dst.z - dep.z)) * pri * 1.3 + 4 });
         }
@@ -264,13 +274,50 @@ export class Workers {
       if (!store) continue;
       for (const [id, n] of src.outBuf) if (n >= 1 && id !== 'steam') cand.push({ src, dst: store, id, score: Math.hypot(src.x - c.x, src.z - c.z) + Math.hypot(store.x - src.x, store.z - src.z) + 6 });
     }
-    if (!cand.length) return false;
+    if (!cand.length) return null;
     cand.sort((a, b) => a.score - b.score);
     const p = cand[0];
-    w.src = p.src; w.dst = p.dst; w.want = p.id; w.fromStores = !!p.src && p.src.kind === 'depot';
     const k = p.dst.id + ':' + p.id; this.reserved.set(k, (this.reserved.get(k) ?? 0) + 1);
-    w.state = 'toSrc';
-    return true;
+    return { src: p.src!, dst: p.dst, id: p.id };
+  }
+
+  // ------------------------------------------------------------------ robot haulers (the Corps' worker bots)
+  private bots = new Map<object, { src: FBuilding | null; dst: FBuilding | null; id: ItemId | null; carry: number; think: number; to: string }>();
+  /** U.S.P.C. worker robots (src/robots) left without other orders haul like harnessed creatures, without the appetite */
+  private botTick(dt: number) {
+    const f = this.f, robots = (f.g as unknown as { robots?: { kind: string; faction: string; dead: boolean; x: number; z: number; y: number; ord: { k: string } | null; order(o: { k: string; x?: number; z?: number }): void }[] }).robots;
+    if (!robots) return;
+    for (const r of robots) {
+      if (r.dead || r.faction !== 'veyr' || r.kind !== 'worker') { this.bots.delete(r); continue; }
+      let b = this.bots.get(r);
+      if (!b) { if (r.ord && r.ord.k !== 'move' && r.ord.k !== 'work') continue; b = { src: null, dst: null, id: null, carry: 0, think: 0, to: '' }; this.bots.set(r, b); }
+      if (r.ord && r.ord.k !== 'move' && r.ord.k !== 'work') { this.bots.delete(r); continue; } // the player took it
+      const go = (t: FBuilding) => { const key = t.id + ''; const d = Math.hypot(r.x - t.x, r.z - t.z); if (d < Math.max(t.fw, t.fd) / 2 + 1.3) return true; if (b!.to !== key) { b!.to = key; r.order({ k: 'move', x: t.x + (r.x > t.x ? 1 : -1) * (t.fw / 2 + 0.8), z: t.z }); } return false; };
+      b.think -= dt;
+      if (!b.dst || b.dst.dead) {
+        if (b.carry > 0 && b.id) { f.put(b.id, b.carry); b.carry = 0; }
+        if (b.think > 0) continue; b.think = 1.5;
+        const p = this.pick(r.x, r.z, 10, null); if (!p) continue;
+        b.src = p.src; b.dst = p.dst; b.id = p.id; b.to = '';
+      }
+      if (!b.carry) {
+        const src = b.src!;
+        if (src.dead) { b.dst = null; continue; }
+        if (!go(src)) continue;
+        const id = b.id!;
+        let n = 0;
+        if (src.kind === 'depot') { n = Math.min(10, f.count(id), Math.max(1, f.wants(b.dst!, id))); if (!f.take(id, n)) n = 0; }
+        else { const st = this.stock(src), have = Math.floor(st.get(id) ?? 0); n = Math.min(10, have); if (n > 0) st.set(id, have - n); }
+        const k = b.dst!.id + ':' + id; this.reserved.set(k, Math.max(0, (this.reserved.get(k) ?? 0) - 1));
+        if (n <= 0) { b.dst = null; continue; }
+        b.carry = n; b.to = '';
+        continue;
+      }
+      if (!go(b.dst)) { f.render.extra.push({ x: r.x, y: r.y + 1.1, z: r.z, id: b.id!, yaw: 0 }); continue; }
+      const got = f.give(b.dst, b.id!, b.carry);
+      if (got < b.carry) f.put(b.id!, b.carry - got);
+      b.carry = 0; b.dst = null; b.to = '';
+    }
   }
   /** items a building could use */
   private needs2(b: FBuilding): ItemId[] {
