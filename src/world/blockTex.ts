@@ -34,8 +34,17 @@ export const L = {
   soilB: 31,
   /** burnt ground: char, ash drifts, charred sticks, ember specks (terrain.scorch) */
   ash: 32,
+  /** cliff strata by rock family (terrain.setGeo R: 1 sandstone, 3 limestone, 4 slate, 5 granite, 6 tuff) */
+  sandstoneSide: 33, limestoneSide: 34, slateSide: 35, graniteSide: 36, tuffSide: 37,
+  /** ore veins on transparency, by kind (terrain.setGeo B: 0 iron, 1 lumen, 2 copper, 3 gold, 4 coal, 5 sulphur, 6 gravium) */
+  veinIron: 38, veinLumen: 39, veinCopper: 40, veinGold: 41, veinCoal: 42, veinSulphur: 43, veinGravium: 44,
+  /** spring mineral crust terraces, from above (terrain.setGeo A >= 128: 0 white, 1 ochre, 2 rust) */
+  crustWhite: 45, crustOchre: 46, crustRust: 47,
 } as const;
-export const LAYERS = 33;
+export const LAYERS = 48;
+/** rock family -> strata layer, ore kind -> vein layer (terrain.setGeo ids) */
+export const FAMILY_SIDE = [L.rockSide, L.sandstoneSide, L.basaltSide, L.limestoneSide, L.slateSide, L.graniteSide, L.tuffSide];
+export const VEIN_LAYER = [L.veinIron, L.veinLumen, L.veinCopper, L.veinGold, L.veinCoal, L.veinSulphur, L.veinGravium];
 
 /** surface block kinds */
 export const enum B { GRASS, DRY, SOIL, ROCK, SAND, MUD, CLAY, SNOW, BASALT, ORE, CRYSTAL, LITTER, GRAVEL, CRATER }
@@ -402,6 +411,134 @@ function ash(pc: PixelCanvas, seed: number) {
   tidy(pc);
 }
 
+// ================================================================================================ strata and veins
+/** beds across a cliff panel: thickness from th(), each bed drawn by bed(y0, t, i); the boundaries wander a pixel or
+ *  two in hand-set steps along the face */
+function beds(pc: PixelCanvas, r: Rand, th: () => number, bed: (x: number, y: number, local: number, t: number, i: number) => number | null) {
+  const list: { y0: number; t: number }[] = [];
+  for (let y = 0; y < T;) { let t = th(); if (T - (y + t) < 3) t = T - y; list.push({ y0: y, t }); y += t; }
+  const lift: number[] = []; let lv = 0; for (let x = 0; x < T; x++) { if (x % r.int(5, 11) === 0) lv = r.pick([-1, 0, 0, 1]); lift.push(x === T - 1 ? 0 : lv); }
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
+    const yy = W(y + lift[x]);
+    let i = 0; for (let q = 0; q < list.length; q++) if (yy >= list[q].y0) i = q;
+    const c = bed(x, y, yy - list[i].y0, list[i].t, i);
+    if (c !== null) pc.set(x, y, c);
+  }
+  return { list, lift };
+}
+/** sandstone: warm banded layers (sand, ochre, clay, rust), cross-bedding inside the thick ones, weathered pits */
+function sandstoneSide(pc: PixelCanvas, seed: number) {
+  const r = new Rand(seed), R = [rampNamed('sand'), rampNamed('ochre'), rampNamed('clay'), rampNamed('rust')];
+  const tone = Array.from({ length: 80 }, () => ({ R: r.pick(R), k: r.pick([2, 3, 3, 4]), xb: r.chance(0.4) }));
+  beds(pc, r, () => r.int(3, 9), (x, _y, local, t, i) => {
+    const b = tone[i % tone.length];
+    if (local === 0) return b.R[Math.min(6, b.k + 2)];
+    if (local === t - 1) return b.R[Math.max(0, b.k - 2)];
+    if (b.xb && t > 5 && (x + local * 3) % 11 === 0) return b.R[b.k - 1];
+    return b.R[b.k];
+  });
+  for (let i = 0; i < 3 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1), w = r.int(2, 4); for (let j = 0; j < w; j++) { pc.set(x + j, y, rampNamed('clay')[0]); pc.set(x + j, y + 1, rampNamed('clay')[1]); } pc.set(x - 1, y, rampNamed('sand')[5]); }
+  tidy(pc);
+}
+/** limestone: pale blocky beds split by joints into blocks (lit top-left rims, dark bottom-right), solution pits */
+function limestoneSide(pc: PixelCanvas, seed: number) {
+  const r = new Rand(seed), R = rampNamed('bone'), St = rampNamed('stone');
+  const joints = Array.from({ length: 60 }, () => Array.from({ length: 6 }, () => r.int(0, T - 1)));
+  const tones = Array.from({ length: 60 }, () => r.pick([2, 3, 3, 4]));
+  beds(pc, r, () => r.int(8, 15), (x, _y, local, t, i) => {
+    const J = joints[i % joints.length];
+    if (J.some((j) => j === x)) return St[2];
+    if (J.some((j) => j === x - 1)) return R[5];
+    if (local === 0) return R[5];
+    if (local === t - 1) return St[3];
+    return R[tones[i % tones.length]];
+  });
+  for (let i = 0; i < 9 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); pc.set(x, y, St[1]); pc.set(x + 1, y, St[2]); if (r.chance(0.4)) pc.set(x, y + 1, St[2]); pc.set(x, y - 1, R[5]); }
+  tidy(pc);
+}
+/** slate and shale: thin dark laminations, two or three tones, gently wavy, cut by a few slanting fractures */
+function slateSide(pc: PixelCanvas, seed: number) {
+  const r = new Rand(seed), S = rampNamed('slate'), Bs = rampNamed('basalt');
+  const tone = Array.from({ length: 200 }, () => r.pick([S[1], S[2], S[2], S[3], Bs[2]]));
+  beds(pc, r, () => r.int(1, 3), (_x, _y, local, _t, i) => (local === 0 && i % 3 === 0 ? S[4] : tone[i % tone.length]));
+  for (let i = 0; i < 4 * AREA; i++) { let x = r.int(0, T - 1), y = r.int(0, T - 1); for (let j = 0; j < r.int(5, 12); j++) { pc.set(x, y, S[0]); pc.set(x + 1, y, S[4]); x += 1; y += 1; } }
+  tidy(pc);
+}
+/** granite: big blocks with drawn joints (lit rims), speckled with feldspar, quartz and mica clusters */
+function graniteSide(pc: PixelCanvas, seed: number) {
+  const r = new Rand(seed), G = rampNamed('stone'), Fe = rampNamed('coral'), Q = rampNamed('quartz');
+  plates(pc, r, 26, G, [3, 4, 4, 5], { bevel: true, seam: 1, joint: 1 });
+  for (let i = 0; i < 40 * AREA; i++) {
+    const x = r.int(0, T - 1), y = r.int(0, T - 1), k = r.next();
+    if (k < 0.4) { pc.set(x, y, G[1]); if (r.chance(0.5)) pc.set(x + 1, y, G[1]); }
+    else if (k < 0.75) { pc.set(x, y, Fe[4]); pc.set(x, y + 1, Fe[3]); }
+    else { pc.set(x, y, Q[5]); pc.set(x + 1, y, Q[4]); }
+  }
+  tidy(pc);
+}
+/** volcanic tuff: soft layers of ash (pale grey, ochre) with pumice clots (pale, pitted) and dark lapilli */
+function tuffSide(pc: PixelCanvas, seed: number) {
+  const r = new Rand(seed), A = rampNamed('stone'), O = rampNamed('ochre'), Bo = rampNamed('bone');
+  const tone = Array.from({ length: 80 }, () => (r.chance(0.6) ? A[r.pick([3, 4, 4])] : O[r.pick([3, 4])]));
+  beds(pc, r, () => r.int(4, 12), (_x, _y, local, _t, i) => (local === 0 ? Bo[4] : tone[i % tone.length]));
+  for (let i = 0; i < 5 * AREA; i++) {
+    const x = r.range(0, T), y = r.range(0, T), m = new Mask(Math.floor(x - 8), Math.floor(y - 6), 17, 13);
+    fillPoly(blobPts(x, y, r.range(2.5, 6), r.range(2, 4), 7, r), (X, Y) => m.add(X, Y));
+    m.ink(pc, Bo, (X, Y) => ((X * 7 + Y * 13) % 9 === 0 ? 1 : X + Y < x + y ? 5 : 4), { dark: 2, lit: null });
+  }
+  for (let i = 0; i < 8 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); pc.set(x, y, rampNamed('basalt')[0]); pc.set(x + 1, y, rampNamed('basalt')[1]); }
+  tidy(pc);
+}
+/** an ore vein on transparency: wavy bands of R (lit top, dark bottom) wandering across the panel, with specks */
+function veinBands(pc: PixelCanvas, r: Rand, R: number[], n: number, thick: [number, number], speck?: (x: number, y: number) => void, alpha = 255) {
+  pc.clear();
+  for (let b = 0; b < n; b++) {
+    const y0 = r.range(0, T), slope = r.range(-0.35, 0.35), amp = r.range(1, 5), th = r.int(thick[0], thick[1]), ph = r.range(0, 6.28), x0 = r.int(0, T - 1), len = r.int(40, 150);
+    for (let x = x0; x < x0 + len; x++) {
+      const w = Math.max(1, th + Math.round(Math.sin(x * 0.21 + b) * 1.2)), yc = Math.round(y0 + (x - x0) * slope + Math.sin(x * 0.07 + ph) * amp);
+      for (let j = 0; j < w; j++) pc.set(x, yc + j, R[j === 0 ? 5 : j === w - 1 ? 1 : 3], alpha);
+      if (speck && r.chance(0.08)) speck(x, yc + r.int(0, w - 1));
+    }
+  }
+}
+function veinIron(pc: PixelCanvas, seed: number) { const r = new Rand(seed), Ru = rampNamed('rust'), Fe = rampNamed('iron'); veinBands(pc, r, Ru, 10, [2, 4], (x, y) => { pc.set(x, y, Fe[5]); pc.set(x + 1, y, Fe[2]); }); }
+function veinCopper(pc: PixelCanvas, seed: number) {
+  const r = new Rand(seed), M = rampNamed('malachite'), Cu = rampNamed('copper');
+  pc.clear();
+  for (let i = 0; i < 2 * AREA; i++) { let x = r.range(0, T), y = r.range(0, T); let a = r.range(-0.6, 0.6); for (let s = 0; s < r.int(14, 40); s++) { pc.set(Math.round(x), Math.round(y), M[s % 4 === 0 ? 5 : 3]); pc.set(Math.round(x), Math.round(y) + 1, M[1]); x += Math.cos(a); y += Math.sin(a); a += r.range(-0.3, 0.3); if (r.chance(0.06)) { pc.set(Math.round(x), Math.round(y) - 1, Cu[5]); pc.set(Math.round(x) + 1, Math.round(y) - 1, Cu[3]); } } }
+}
+function veinGold(pc: PixelCanvas, seed: number) { const r = new Rand(seed), Q = rampNamed('quartz'), Au = rampNamed('gold'); veinBands(pc, r, Q, 7, [3, 5], (x, y) => { pc.set(x, y, Au[6]); pc.set(x + 1, y, Au[4]); pc.set(x, y + 1, Au[3]); }); }
+function veinCoal(pc: PixelCanvas, seed: number) { const r = new Rand(seed), C = rampNamed('basalt'), In = rampNamed('ink'); veinBands(pc, r, [In[0], In[0], C[0], C[1], C[2], C[3], C[4]], 6, [4, 7], (x, y) => pc.set(x, y, C[5])); }
+function veinSulphur(pc: PixelCanvas, seed: number) {
+  const r = new Rand(seed), Y = rampNamed('gold'), St = rampNamed('straw');
+  pc.clear();
+  for (let i = 0; i < 4 * AREA; i++) { const x = r.range(0, T), y = r.range(0, T), m = new Mask(Math.floor(x - 9), Math.floor(y - 6), 19, 13); fillPoly(blobPts(x, y, r.range(3, 8), r.range(1.5, 4), 8, r, 0.45), (X, Yy) => m.add(X, Yy)); m.ink(pc, r.chance(0.6) ? Y : St, (X, Yy) => (X + Yy < x + y ? 6 : 5), { dark: 3, lit: null }); }
+}
+function veinLumen(pc: PixelCanvas, seed: number) {
+  const r = new Rand(seed), C = rampNamed('glowTeal');
+  pc.clear();
+  for (let i = 0; i < 3 * AREA; i++) { const bx = r.range(4, T - 4), by = r.range(8, T - 2); for (let k = 0; k < r.int(2, 4); k++) prism(pc, bx + r.range(-3, 3), by, r.range(1.2, 2), r.range(4, 9), r.range(-0.5, 0.5), C, 190); }
+}
+function veinGravium(pc: PixelCanvas, seed: number) {
+  const r = new Rand(seed), V = rampNamed('amethyst'), Gt = rampNamed('glowTeal');
+  veinBands(pc, r, V, 7, [2, 4]);
+  // floating speckles: lit motes drifting above the band, glowing
+  for (let i = 0; i < 10 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); pc.set(x, y, r.chance(0.8) ? V[6] : Gt[4], 180); }
+}
+/** spring crust from above: travertine terraces, scalloped rims (lit lip, shaded under) round shallow pools */
+function crust(pc: PixelCanvas, seed: number, R: number[]) {
+  const r = new Rand(seed), Wt = rampNamed('water');
+  plates(pc, r, 14, R, [3, 4, 4]);
+  for (let i = 0; i < 3 * AREA; i++) {
+    const x = r.range(0, T), y = r.range(0, T), rx = r.range(5, 14), m = new Mask(Math.floor(x - rx * 1.4), Math.floor(y - rx), Math.ceil(rx * 2.8) + 2, Math.ceil(rx * 2) + 2);
+    fillPoly(blobPts(x, y, rx, rx * 0.6, 10, r, 0.25), (X, Y) => m.add(X, Y));
+    m.ink(pc, Wt, (_X, Y) => (Y < y ? 4 : 3), { dark: 3, lit: null });
+    // the rim: a bright lip on the near (lower) edge, a shaded step under it
+    for (let X = m.x0; X < m.x0 + m.w; X++) for (let Y = m.y0; Y < m.y0 + m.h; Y++) if (m.has(X, Y) && !m.has(X, Y + 1)) { pc.set(X, Y + 1, R[6]); pc.set(X, Y + 2, R[2]); }
+  }
+  tidy(pc);
+}
+
 // ================================================================================================ the rest
 /** basalt: column ends as bevelled polygons (top), column flanks with cross joints (side) */
 function basalt(pc: PixelCanvas, c: number, seed: number, side: boolean) {
@@ -568,6 +705,21 @@ export function buildBlockTexture(pal: Palette, seed: number): { tex: THREE.Data
   paint(L.crater, (p) => crater(p, s + 25));
   paint(L.soilB, (p) => soilTop(p, pal.soil, s + 26, 2.4));
   paint(L.ash, (p) => ash(p, s + 27));
+  paint(L.sandstoneSide, (p) => sandstoneSide(p, s + 28));
+  paint(L.limestoneSide, (p) => limestoneSide(p, s + 29));
+  paint(L.slateSide, (p) => slateSide(p, s + 30));
+  paint(L.graniteSide, (p) => graniteSide(p, s + 31));
+  paint(L.tuffSide, (p) => tuffSide(p, s + 32));
+  paint(L.veinIron, (p) => veinIron(p, s + 33));
+  paint(L.veinLumen, (p) => veinLumen(p, s + 34));
+  paint(L.veinCopper, (p) => veinCopper(p, s + 35));
+  paint(L.veinGold, (p) => veinGold(p, s + 36));
+  paint(L.veinCoal, (p) => veinCoal(p, s + 37));
+  paint(L.veinSulphur, (p) => veinSulphur(p, s + 38));
+  paint(L.veinGravium, (p) => veinGravium(p, s + 39));
+  paint(L.crustWhite, (p) => crust(p, s + 40, rampNamed('bone')));
+  paint(L.crustOchre, (p) => crust(p, s + 41, rampNamed('ochre')));
+  paint(L.crustRust, (p) => crust(p, s + 42, rampNamed('rust')));
   const tex = new THREE.DataArrayTexture(data, T, T, LAYERS);
   tex.format = THREE.RGBAFormat;
   tex.type = THREE.UnsignedByteType;
