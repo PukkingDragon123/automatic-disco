@@ -427,6 +427,8 @@ export class Desk {
     this.strip.position.y = ty;
     this.tuckLever.root.position.y = LEDGE_H + 2 - ty; // the tuck lever stays in reach
     this.wings(dt);
+    // a hovered thing that sank away with its wing lets go of the pointer
+    if (this.hover && !visibleUp(this.hover.obj)) this.setHover(null);
     // hover: lift and light
     for (const h of this.hots) {
       const on = h === this.hover ? 1 : 0;

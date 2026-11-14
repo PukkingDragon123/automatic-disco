@@ -581,7 +581,7 @@ export class Hud {
     if (!h || this.desk.tucked && h.obj !== this.desk.tuckLever.root) { if (tg.style.display !== 'none') tg.style.display = 'none'; return; }
     this.tagT += dt;
     const off = h.off?.();
-    const name = h.name + (h.key ? ` [${h.key}]` : ''), n = Math.min(name.length, Math.floor(this.tagT * 70));
+    const name = h.name + (h.key ? (h.key.startsWith('[') ? ` ${h.key}` : ` [${h.key}]`) : ''), n = Math.min(name.length, Math.floor(this.tagT * 70));
     const tip = this.tagT > 0.25 ? (h.tip?.() ?? '') : '';
     const html = `<div class="tg-n">${name.slice(0, n)}${n < name.length ? '<span class="cur">_</span>' : ''}</div>${tip ? `<div class="tg-t">${tip}</div>` : ''}${off ? `<div class="tg-w">${off}</div>` : ''}`;
     if (html !== this.tagTxt) { this.tagTxt = html; tg.innerHTML = html; }

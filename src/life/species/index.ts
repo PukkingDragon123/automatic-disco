@@ -21,8 +21,10 @@ import { duskwing } from './duskwing';
 import { gapejaw } from './gapejaw';
 
 export type SpeciesFn = (d: Design, rig: Rig) => VertSpec;
-/** the recipe a design is built from: its bestiary species', or none (the old sculptor) */
-export const recipeFor = (d: Design): SpeciesFn | undefined => (d.beast && SPECIES[d.beast] ? SPECIES[d.beast] : undefined);
+/** the recipe a design is built from: its bestiary species', or the gene recipe for any other vertebrate (quadruped,
+ *  six-limbed or biped); none for the plans other builders cover */
+export const recipeFor = (d: Design): SpeciesFn | undefined => (d.beast && SPECIES[d.beast] ? SPECIES[d.beast] : (d.plan === 'quadruped' || d.plan === 'hexapodV' || d.plan === 'biped') && d.lineage === 'vertebrate' && !(d.beast && !SPECIES[d.beast]) ? geneRecipe : undefined);
 export const SPECIES: Record<string, SpeciesFn> = { mossback, stiltwool, lancehorn, scaleback, gallowneck, shellhunter, fanfin, gillnewt, woolpuff, spiracle, ribbon, reedneck, knuckler, duskwing, gapejaw };
 
 export { rs, sh } from './util';
+import { geneRecipe } from './genes';

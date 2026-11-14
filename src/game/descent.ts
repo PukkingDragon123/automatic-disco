@@ -399,7 +399,7 @@ export class GameDescent {
     [...e.lamps.children].forEach((l, i) => l.classList.toggle('on', i < this.bursts));
     const wr = this.wind.x * this.Rt.x + this.wind.y * this.Rt.y, wf = this.wind.x * this.F.x + this.wind.y * this.F.y;
     (e.wind.firstElementChild as HTMLElement).style.transform = `rotate(${Math.atan2(-wf, wr)}rad)`;
-    e.mode.textContent = this.auto ? 'AUTOPILOT' : this.chute > 0 ? 'UNDER CHUTE' : 'MANUAL';
+    e.mode.textContent = this.landed ? (this.wet ? 'SPLASHDOWN' : 'DOWN · SAFE') : this.auto ? 'AUTOPILOT' : this.chute > 0 ? 'UNDER CHUTE' : 'MANUAL';
     this.hud.classList.toggle('black', black);
     const showMk = !this.landed && !this.shot;
     // the pin

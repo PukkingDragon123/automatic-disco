@@ -15,7 +15,7 @@ import { eyeball } from './head';
 import { locks, type LockSeat } from './locks';
 import { Px, RP, h3 } from './paint';
 import type { VCtx } from './vertebrate';
-import { keratinPaint, coatSampler } from './coat';
+import { keratinPaint, coatSampler, coatPaint } from './coat';
 
 type C2 = [RampName, number];
 export type VPart =
@@ -50,7 +50,8 @@ export type VPart =
   | { k: 'wings'; span: number; c: C2 }
   | { k: 'warts'; n: number; size: number; c?: C2 }
   | { k: 'eyeRows'; rows: number; c?: C2; r?: number }
-  | { k: 'beak'; c: C2; hook?: number };
+  | { k: 'beak'; c: C2; hook?: number }
+  | { k: 'arms'; r?: number; claws?: number };
 
 const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -236,6 +237,25 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
       const ax = nrm(add(q.n, [0, 0.1, 0.25])), c = add(q.p, scl(q.n, -r * 0.4));
       const e = X.body.add(eyeball({ name: 'xeye' + s + k, c, ax, r, bone: X.iH, iris, pupil: ES.pupil === 'round' ? 'pin' : ES.pupil, irisA: 0.7, levels: 0, around: 8 }));
       e.reg = 4;
+    }
+  },
+  arms: (X, p) => {
+    // a biped's arms on their bones: shoulder, a muscled upper arm, the elbow, a forearm to the wrist, a hand of
+    // three clawed fingers
+    const lt = X.D.lt * (p.r ?? 1), iC = X.bi('chest'), paint = coatPaint(X.C, 'limb'), claw = keratinPaint(X.spec.coat.claw?.[0] ?? 'basalt', X.spec.coat.claw?.[1] ?? 2);
+    for (const ai of X.rig.mandibles) {
+      if (!/^arm/.test(X.rig.bones[ai].name)) continue;
+      const A = X.rest[ai], s = Math.sign(X.rig.bones[ai].pos[0]) || 1, al = X.L * 0.2, w: Wt = [ai, 1];
+      const ctrl: V3[] = [add(A, [-s * lt * 0.3, lt * 0.35, 0]), A, add(A, [s * al * 0.07, -al * 0.42, al * 0.06]), add(A, [s * al * 0.03, -al * 0.62, al * 0.42])];
+      const path = curve(ctrl, 9);
+      X.body.add(stalk({ name: 'arm' + s, path, r: (t) => lt * 0.32 * (t < 0.2 ? 1.15 : t < 0.55 ? 1.05 - (t - 0.2) * 0.6 : 0.82 - (t - 0.55) * 0.5) * (Math.abs(t - 0.5) < 0.06 ? 1.08 : 1), around: 8, skin: (q) => (q[1] > A[1] - lt * 0.1 ? [ai, 0.7, iC, 0.3] : w), paint, levels: 0, k: 1 })).reg = 9;
+      const wrist = ctrl[3], dir = nrm(sub(ctrl[3], ctrl[2])), side = nrm(crs(dir, [0, 1, 0]));
+      for (let i = 0; i < 3; i++) {
+        const b0 = add(wrist, scl(side, (i - 1) * lt * 0.12)), fd = nrm(add(dir, [(i - 1) * 0.2 * s, -0.4, 0])), Lf = lt * 0.4;
+        X.body.add(stalk({ name: 'fing' + s + i, path: curve([b0, add(b0, scl(fd, Lf * 0.5)), add(add(b0, scl(fd, Lf)), [0, -Lf * 0.15, 0])], 4), r: (t) => lt * 0.06 * (1 - t * 0.3), around: 5, skin: () => w, paint, levels: 0 })).reg = 9;
+        const tip = add(add(b0, scl(fd, Lf)), [0, -Lf * 0.15, 0]);
+        X.body.add(stalk({ name: 'aclaw' + s + i, path: curve([tip, add(tip, scl(fd, Lf * 0.3 * (p.claws ?? 1))), add(add(tip, scl(fd, Lf * 0.45 * (p.claws ?? 1))), [0, -Lf * 0.25, 0])], 4), r: (t) => lt * 0.045 * (1 - t * 0.9) + 0.001, around: 4, keel: true, skin: () => w, paint: claw, levels: 0 })).reg = 9;
+      }
     }
   },
   beak: (X, p) => {
