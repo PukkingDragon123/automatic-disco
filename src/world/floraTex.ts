@@ -382,6 +382,30 @@ export class FloraTex {
       return P;
     });
   }
+  /** a pitcher's skin wrapped round it: the leaf colour with veins of the accent running up, blotched toward the lip */
+  pitcher(ramp: number[], accent: number[]): Rect {
+    return this.get(`pitcher|${keyOf(ramp)}|${keyOf(accent)}`, 24, 40, (mk) => {
+      const P = mk([ramp, accent]), n = ramp.length - 1, m = accent.length - 1, r = new Rand(this.seed ^ 0x9177);
+      for (let y = 0; y < 40; y++) for (let x = 0; x < 24; x++) P.set(x, y, x % 6 < 2 ? n - 2 : n - 1);
+      // veins: one per facet, wandering by a pixel now and then, thicker toward the lip
+      for (let k = 0; k < 4; k++) { let x = k * 6 + 3; for (let y = 0; y < 40; y++) { if (y % 7 === 6) x += r.pick([-1, 1]); P.set(x, y, m - 2, 1); if (y > 26) P.set(x + 1, y, m - 1, 1); } }
+      // blotches near the lip: deliberate 2x2 clusters
+      for (let k = 0; k < 9; k++) { const x = r.int(0, 22), y = r.int(28, 37); P.set(x, y, m - 1, 1); P.set(x + 1, y, m - 2, 1); P.set(x, y + 1, m - 2, 1); P.set(x + 1, y + 1, m - 3, 1); }
+      return P;
+    });
+  }
+  /** a membrane sail between spines: veins fanning from the root, a pale band at the free edge */
+  membrane(ramp: number[]): Rect {
+    return this.get(`membrane|${keyOf(ramp)}`, 32, 32, (mk) => {
+      const P = mk([ramp]), n = ramp.length - 1;
+      for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+        const t = y / 32, vein = Math.abs(((x / 32) * 5 + t * 0.6) % 1 - 0.5) < 0.06;
+        P.set(x, y, vein ? n - 3 : t > 0.85 ? n : t > 0.5 ? n - 1 : n - 2);
+      }
+      return P;
+    });
+  }
+
   /** a small flower head seen from above, built of overlapping drawn petals round a faceted eye (light, tinted per
    *  instance by its bloom colour) */
   floret(form: number): Rect {
@@ -402,7 +426,7 @@ export class FloraTex {
 
 // ------------------------------------------------------------------------------------------------ bark
 /** bark slots (32 px each, tiling vertically, neutral grey: tinted per limb) */
-export const BARK = { FURROW: 0, PLATE: 1, RING: 2, STEM: 3, FIBRE: 4, FLESH: 5 } as const;
+export const BARK = { FURROW: 0, PLATE: 1, RING: 2, STEM: 3, FIBRE: 4, FLESH: 5, SMOOTH: 6, SCALE: 7 } as const;
 export const BARK_SLOTS = 8;
 const SW = 32, BH = 64;
 
@@ -417,7 +441,7 @@ function paintBark(seed: number): THREE.DataTexture {
   for (let s = 0; s < BARK_SLOTS; s++) for (let y = 0; y < BH; y++) for (let x = 0; x < SW; x++) {
     // a round limb: lit on the left third, shaded on the right
     const band = x < 10 ? 3 : x < 22 ? 2 : 1;
-    put(s, x, y, s === BARK.STEM || s === BARK.FLESH ? T[band + 1] - 10 : s === BARK.FIBRE ? T[Math.min(4, band + 2)] : T[band]);
+    put(s, x, y, s === BARK.STEM || s === BARK.FLESH ? T[band + 1] - 10 : s === BARK.FIBRE || s === BARK.SMOOTH ? T[Math.min(4, band + 2)] : T[band]);
   }
   // furrowed bark: long corky ridges split by dark fissures that wander and fork
   for (let k = 0; k < 7; k++) {
@@ -441,6 +465,15 @@ function paintBark(seed: number): THREE.DataTexture {
     if (ry === 0) put(BARK.RING, x, y, T[0] - 12, 10, 2, -8);
     else if (ry === 1) put(BARK.RING, x, y, T[3]);
     else if ((x + ry) % 8 === 0 || (x - ry + 64) % 8 === 0) put(BARK.RING, x, y, T[1]);
+  }
+  // smooth pale bark: long horizontal lenticels and the odd dark eye where a twig fell
+  for (let k = 0; k < 14; k++) { const x = r.int(0, SW - 4), y = r.int(0, BH - 1); for (let j = 0; j < r.int(2, 4); j++) put(BARK.SMOOTH, x + j, y, T[1]); }
+  for (let k = 0; k < 2; k++) { const x = r.int(4, SW - 6), y = r.int(4, BH - 6); put(BARK.SMOOTH, x, y, T[0]); put(BARK.SMOOTH, x + 1, y, T[0]); put(BARK.SMOOTH, x, y - 1, T[1]); put(BARK.SMOOTH, x - 1, y + 1, T[3]); }
+  // alien scales: offset rows of pointed plates, each lit on its upper left and outlined below
+  for (let y = 0; y < BH; y++) for (let x = 0; x < SW; x++) {
+    const row = Math.floor(y / 6), px = (x + (row & 1) * 3) % 6, py = y % 6;
+    const edge = py === 5 || (py >= 3 && (px === 0 || px === 5)) || (py >= 4 && (px === 1 || px === 4));
+    if (edge) put(BARK.SCALE, x, y, T[0], 4, 0, 6); else if (py === 0 || px === 1) put(BARK.SCALE, x, y, T[3] + 4); else if (px >= 4) put(BARK.SCALE, x, y, T[1]);
   }
   // stems: a fine lengthwise line or two; fibres: pale streaks; flesh: pores
   for (let y = 0; y < BH; y++) { put(BARK.STEM, 6, y, T[4]); put(BARK.STEM, 20, y, T[2] - 6); }

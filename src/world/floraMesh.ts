@@ -25,7 +25,8 @@ const lin = (c: number) => Math.pow(c / 255, 2.2);
 /** a hex colour as linear rgb, times k */
 const linHex = (hex: number, k = 1): [number, number, number] => [lin((hex >> 16) & 255) * k, lin((hex >> 8) & 255) * k, lin(hex & 255) * k];
 /** mean linear value of each neutral bark slot (the tint compensates so a limb keeps its ramp colour) */
-const SLOT_GAIN: Record<number, number> = { [BARK.FURROW]: 1 / 0.3, [BARK.PLATE]: 1 / 0.32, [BARK.RING]: 1 / 0.32, [BARK.STEM]: 1 / 0.48, [BARK.FIBRE]: 1 / 0.6, [BARK.FLESH]: 1 / 0.48 };
+const SLOT_GAIN: Record<number, number> = { [BARK.FURROW]: 1 / 0.3, [BARK.PLATE]: 1 / 0.32, [BARK.RING]: 1 / 0.32, [BARK.STEM]: 1 / 0.48, [BARK.FIBRE]: 1 / 0.6, [BARK.FLESH]: 1 / 0.48, [BARK.SMOOTH]: 1 / 0.6, [BARK.SCALE]: 1 / 0.3 };
+export { SLOT_GAIN };
 
 // ------------------------------------------------------------------------------------------------ vector bits
 const vadd = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
