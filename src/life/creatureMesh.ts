@@ -69,6 +69,13 @@ if (uRim > 0.0) {
   totalEmissiveRadiance += diffuseColor.rgb * (rimF * 1.1 + 0.12) * uRim * (1.0 - uDecay);
 }
 if (glowA > 0.5 && glowA < 0.98) totalEmissiveRadiance += glowC * 1.6 * uGlowK * (1.0 - uDecay);
+#if NUM_DIR_LIGHTS > 0
+// wet eyes (texels marked 253): the one cornea facet turned to the sun's half-vector shows its small, hard specular
+if (glowA > 0.985 && glowA < 0.997) {
+  vec3 hv = normalize(directionalLights[0].direction + normalize(vViewPosition));
+  totalEmissiveRadiance += directionalLights[0].color * step(0.93, dot(normalize(normal), hv)) * 0.8 * (1.0 - uDecay);
+}
+#endif
 if (mossM > 0.5 && ch(cpx + 7.7) > 0.93) totalEmissiveRadiance += uVein * 1.4;
 totalEmissiveRadiance += uFlashCol * uFlash * 0.9;`);
   };
