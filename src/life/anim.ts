@@ -53,6 +53,9 @@ export class Animator {
   private breathPh = Math.random() * 6;
   // defence: curled into a ball (0..1), and rolling as a ball along the direction of travel
   private curlK = 0; private curlT = 0; private rollA = 0;
+  /** the body's carriage, set by the AI: relaxed, alert (head and ears up), sleep (curled, eyes shut, slow breath),
+   *  threat (head low, back arched, jaw open, ears pinned), roost (hung upside down, wings folded) */
+  posture: 'relaxed' | 'alert' | 'sleep' | 'threat' | 'roost' = 'relaxed';
   /** set by the AI: roll along the ground as a ball while curled (flee downhill) */
   rolling = false;
   /** curl into a defensive ball (1) or open out again (0); species with rig.dims.roll tuck fully, others hunch */
@@ -110,7 +113,8 @@ export class Animator {
     this.hitV += (-this.hitX * 140 - this.hitV * 14) * dt; this.hitX += this.hitV * dt;
     const hit = clamp(this.hitX, -0.6, 1.2);
     this.idle(dt, inp.state === 'idle' && spd < 0.05 && !dead);
-    this.curlK = damp(this.curlK, dead ? 0 : this.curlT * (rig.dims.roll ? 1 : 0.45), 5, dt);
+    const pz = this.posture, sleep = pz === 'sleep' ? 1 : 0, threat = pz === 'threat' ? 1 : 0, alert = pz === 'alert' ? 1 : 0;
+    this.curlK = damp(this.curlK, dead ? 0 : Math.max(this.curlT, sleep * 0.6) * (rig.dims.roll ? 1 : 0.45), 5, dt);
     const cu = this.curlK;
     const ik = this.idleK, act = this.idleAct, it = this.idleT;
     this.lean = damp(this.lean, clamp(inp.turn * 0.12, -0.25, 0.25), 6, dt);
@@ -132,7 +136,7 @@ export class Animator {
     if (rig.gait === 'amble') bob *= 1.4;
     bob *= 1 + this.run * 1.2;
     // breathing: slow at rest in big animals, quick in small ones, heaving after a run
-    const bHz = (0.32 / Math.sqrt(Math.max(0.15, rig.length))) * (1 + this.blend * 0.8 + this.run);
+    const bHz = (0.32 / Math.sqrt(Math.max(0.15, rig.length))) * (1 + this.blend * 0.8 + this.run) * (this.posture === 'sleep' ? 0.6 : 1);
     this.breathPh += dt * bHz * Math.PI * 2;
     const br = Math.sin(this.breathPh), bAmp = 0.022 + this.blend * 0.015 + this.run * 0.02;
     const breathe = br * rig.rideH * 0.006;
@@ -154,6 +158,7 @@ export class Animator {
     const gal = this.run * Math.sin(ph * 2 + 0.6) * 0.07;
     _e.set(lunge * 0.12 + (inp.state === 'eat' ? 0.18 : 0) + hopPitch - hit * 0.16 + gal, -swing * 0.5, this.lean + roll + shake + hit * 0.1 * this.hitSide, 'YXZ');
     root.quaternion.setFromEuler(_e);
+    if (pz === 'roost') { root.quaternion.multiply(_q.setFromEuler(_e.set(0, 0, Math.PI))); root.position.y += rig.rideH * 2.2; }
     // rolling: the ball turns about its side axis by the distance travelled over its radius
     if (this.rolling && cu > 0.7) { this.rollA += (spd * dt) / Math.max(0.1, rig.width * 0.9); root.quaternion.multiply(_q.setFromEuler(_e.set(this.rollA, 0, 0))); }
     if (inp.state === 'stunned') root.quaternion.multiply(_q.setFromEuler(_e.set(Math.sin(this.t * 13) * 0.08, 0, Math.sin(this.t * 9) * 0.12)));
@@ -170,7 +175,7 @@ export class Animator {
       // the back flexes and extends through each gallop stride; a groom curls the body toward the flank
       const flex = this.run * Math.sin(ph * 2) * 0.16;
       const curl = act === 'groom' ? this.idleSide * 0.22 * ik : 0;
-      B[rig.spine[1]].quaternion.setFromEuler(_e.set((rig.gait === 'hop' ? -hopPitch * 0.3 : 0) + flex + cu * 1.25, w + curl, -this.lean * 0.4 - roll * 1.3 - shake * 0.6));
+      B[rig.spine[1]].quaternion.setFromEuler(_e.set((rig.gait === 'hop' ? -hopPitch * 0.3 : 0) + flex + cu * 1.25 - threat * 0.15, w + curl, -this.lean * 0.4 - roll * 1.3 - shake * 0.6));
     }
     // head and neck
     if (rig.head >= 0 && rig.plan !== 'serpent') {
@@ -189,7 +194,7 @@ export class Animator {
       else if (act === 'shake') hr = -shake * 1.6;
       // the head is held steady against the body's roll and lean, and jerks back from a blow
       const level = -(this.lean + roll) * 0.75;
-      for (const n of rig.neck) B[n].quaternion.setFromEuler(_e.set(cu * 1.1 + eat * 0.6 + (tongueAtk ? 0 : atk * 0.5) - this.look[1] * 0.4 + ip - hit * 0.25 - gal * 0.8, this.look[0] * 0.4 + steady + iy * 0.55, level * 0.5, 'YXZ'));
+      for (const n of rig.neck) B[n].quaternion.setFromEuler(_e.set(cu * 1.1 + threat * 0.3 - alert * 0.3 + eat * 0.6 + (tongueAtk ? 0 : atk * 0.5) - this.look[1] * 0.4 + ip - hit * 0.25 - gal * 0.8, this.look[0] * 0.4 + steady + iy * 0.55, level * 0.5, 'YXZ'));
       B[rig.head].quaternion.setFromEuler(_e.set(cu * 0.9 + eat * 0.5 + (tongueAtk ? -0.1 * Math.sin(Math.PI * inp.act) : atk) + nod - this.look[1] * 0.6 - hopPitch * 0.4 + hp - hit * 0.2, this.look[0] * 0.6 + iy * 0.45, level * 0.5 + hr + hit * 0.15 * this.hitSide, 'YXZ'));
       if (this.deathT > 0) B[rig.head].quaternion.multiply(_q.setFromEuler(_e.set(0.4 * this.deathT, 0, 0)));
     }
@@ -198,6 +203,7 @@ export class Animator {
       let open = Math.max(0, Math.sin(this.t * 0.23 + rig.length)) ** 60 * 0.45 + (rig.dims.fur ? this.run * (0.12 + Math.sin(this.t * 9) * 0.05) : 0);
       if (act === 'sniff' && rig.dims.graze) open = Math.max(open, (0.5 + 0.5 * Math.sin(it * 8)) * 0.12 * ik);
       if (act === 'groom') open = Math.max(open, (0.5 + 0.5 * Math.sin(it * 7)) * 0.1 * ik);
+      if (threat) open = Math.max(open, 0.42 + Math.sin(this.t * 3) * 0.05);
       if (inp.state === 'attack') open = inp.act < 0.45 ? smooth(0, 0.45, inp.act) * 0.7 : inp.act < 0.6 ? 0 : 0.1;
       if (inp.state === 'eat') open = (Math.sin(this.t * 9) * 0.5 + 0.5) * 0.35;
       if (this.deathT > 0) open = 0.35 * this.deathT;
@@ -233,7 +239,8 @@ export class Animator {
       const s = i % 2 === 0 ? -1 : 1;
       const flying = inp.state === 'fly';
       const f = flying ? Math.sin(this.t * (rig.plan === 'hexapod' ? 46 : 11) + (i >> 1)) * 0.8 : 0;
-      B[w].quaternion.setFromEuler(_e.set(0, flying ? s * 0.9 : 0, -s * (flying ? f : 0.06)));
+      // at rest the hand-wing folds back along the flank, its membrane gathered
+      B[w].quaternion.setFromEuler(_e.set(0, flying ? s * 0.9 : s * 1.15, -s * (flying ? f : 0.42)));
     });
     // blinks: now and then (sometimes twice), shut by a blow, stunned flutters, half-shut in death
     if (rig.lids.length) {
@@ -246,6 +253,7 @@ export class Animator {
         if (c >= 1) { if (--this.blinks > 0) this.blinkT = 0; else { this.blinkT = -1; this.blinkIn = 1.8 + Math.random() * 4.5; } shut = 0; }
       }
       if (this.deathT > 0) shut = Math.max(shut, 0.62 * this.deathT);
+      if (sleep) shut = 1;
       if (inp.state === 'stunned') shut = Math.max(shut, 0.35);
       for (const l of rig.lids) B[l.bone].quaternion.setFromAxisAngle(_a.set(l.axis[0], l.axis[1], l.axis[2]), clamp(shut, 0, 1) * 1.62);
     }
@@ -255,7 +263,7 @@ export class Animator {
       this.earIn[i] -= dt;
       if (this.earIn[i] <= 0) { this.earV[i] += (Math.random() < 0.5 ? 1 : -1) * 14; this.earIn[i] = 1.5 + Math.random() * 6; }
       this.earV[i] += (-this.earX[i] * 260 - this.earV[i] * 16) * dt; this.earX[i] += this.earV[i] * dt;
-      const pin = (inp.state === 'attack' ? 0.9 : 0) + clamp(hit, 0, 1) * 0.8 + (act === 'shake' ? Math.abs(shake) * 4 : 0);
+      const pin = (inp.state === 'attack' ? 0.9 : 0) + clamp(hit, 0, 1) * 0.8 + (act === 'shake' ? Math.abs(shake) * 4 : 0) + threat * 0.9 - alert * 0.35;
       const look = this.look[0] * 0.5 + (act === 'look' ? this.idleYaw * 0.4 * ik : 0);
       const droop = this.deathT;
       B[e].quaternion.setFromEuler(_e.set(0.12 * this.blend - pin * 0.85 - droop * 0.3 + this.earX[i] * 0.4, look + this.earX[i] * 0.6 * s, -s * (pin * 0.45 + droop * 0.7), 'YXZ'));

@@ -114,6 +114,8 @@ export class RobotUnit {
   private path: number[] | null = null; private pi = 0; private repathT = 0; private pathTo = new THREE.Vector3(1e9, 0, 0); private stuckT = 0;
   private recoilK = 0; private flashK = 0; private deadT = 0; private smokeT = 0; private patrolB: [number, number] | null = null; private home: [number, number];
   private meleeT = -1; private fireT = 0; private bob = Math.random() * 6;
+  /** show-room mode (tests, menus): it walks in place at this speed and fires at a point ahead every few seconds */
+  demo: { speed?: number; fire?: boolean; t?: number } | null = null;
   constructor(game: Game, kind: RobotKind, faction: Faction, x: number, z: number) {
     if (!(ROBOT_KINDS as readonly string[]).includes(kind)) throw new Error('unknown robot kind ' + kind);
     this.g = game as unknown as Host;
@@ -181,6 +183,18 @@ export class RobotUnit {
     if (this.removed) return;
     if (this.dead) { this.dying(dt); return; }
     if (dt <= 0) { this.animate(0, 0); return; }
+    if (this.demo) {
+      const D = this.demo;
+      this.cd -= dt; this.burstT -= dt;
+      if (D.fire) {
+        D.t = (D.t ?? Math.random() * 3) - dt;
+        const tp = _w.set(this.x + Math.sin(this.yaw) * 6, this.y + 0.5, this.z + Math.cos(this.yaw) * 6);
+        this.aimPitch = damp(this.aimPitch, this.weapon.shot === 'mortar' ? 0.8 : 0.05, 4, dt);
+        if (D.t <= 0) { D.t = 2.5 + Math.random() * 2; this.tgt = { kind: 'point', ref: tp.clone() }; this.fire(tp); }
+        if (this.burstN > 0 && this.burstT <= 0) this.fire(tp, true);
+      }
+      this.place(dt); this.animate(dt, D.speed ?? 0); return;
+    }
     this.thinkT -= dt;
     if (this.thinkT <= 0) { this.thinkT = 0.35 + Math.random() * 0.2; this.think(); }
     // where to go

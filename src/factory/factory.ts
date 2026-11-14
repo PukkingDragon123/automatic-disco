@@ -288,6 +288,7 @@ export class Factory {
     const w = footW(def, r), d = footD(def, r);
     let y: number;
     if (isBelt(kind) || kind === 'splitter' || kind === 'merger') {
+      this.clearFlora(cx, cz, w, d);
       const f = this.foundAt(cx, cz);
       y = f ? f.y + 0.15 : Math.max(this.g.region.water - 0.1, this.g.region.heightAt(cx + 0.5, cz + 0.5));
     } else if (def.extract === 'water') y = this.g.region.water - 0.05;
@@ -326,6 +327,14 @@ export class Factory {
     });
     this.g.world.terrain.flushDirty();
     fl.reseat(mx, mz, rad + 1);
+  }
+  /** pull up the plants standing on a footprint */
+  private clearFlora(cx: number, cz: number, w: number, d: number) {
+    const fl = this.g.world.flora;
+    fl.near(cx + w / 2, cz + d / 2, Math.hypot(w, d) / 2 + 0.6, (i) => {
+      const x = fl.x[i], z = fl.z[i];
+      if (x >= cx - 0.15 && x <= cx + w + 0.15 && z >= cz - 0.15 && z <= cz + d + 0.15) { this.hive.ownerOf(i)?.ungraft(i); fl.remove(i); }
+    });
   }
   /** take a building down; refund (deconstructed) or not (destroyed) */
   remove(b: FBuilding, refund = true) {

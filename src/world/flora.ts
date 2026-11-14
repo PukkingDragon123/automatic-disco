@@ -519,7 +519,8 @@ export class Flora {
     }
     const d = cp.distanceTo(f);
     // a cone: about 2 m round the focus at the default view, wider toward the camera
-    c.set(this.cutOn ? 1 : 0, 1.6 + d * 0.025, 2.4 + d * 0.06, 0);
+    // a narrow cylinder that opens a little toward the camera: only what is really in the way goes
+    c.set(this.cutOn ? 1 : 0, 1.3 + d * 0.02, 1.6 + d * 0.03, 0);
   }
 
   // ---------------------------------------------------------------- physics hooks

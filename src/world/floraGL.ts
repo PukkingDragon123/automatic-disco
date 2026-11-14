@@ -62,7 +62,8 @@ if (vGraft.x > 0.0 || vGraft.z > 0.0) {
 const CUT_PARS = /* glsl */`
 uniform vec3 uFocus; uniform vec4 uCut;
 float stip(vec2 p, float k) {
-  vec2 q = mod(floor(p), 2.0);
+  // 2x2-pixel clusters, placed by hand in a 4x4 block (not a per-pixel halftone)
+  vec2 q = mod(floor(p / 2.0), 2.0);
   if (k > 0.9) return 1.0;
   if (k > 0.6) return q.x + q.y < 1.5 ? 1.0 : 0.0;
   if (k > 0.35) return mod(q.x + q.y, 2.0) > 0.5 ? 1.0 : 0.0;
@@ -76,11 +77,11 @@ float cutAt(vec3 P, vec3 C) {
   float k = 0.0;
   if (t > 0.0 && t < 1.04) {
     float R = mix(uCut.z, uCut.y, clamp(t, 0.0, 1.0)), d = length(P - (C + D * t));
-    k = 1.0 - clamp((d - R * 0.7) / (R * 0.6), 0.0, 1.0);
+    k = 1.0 - clamp((d - R * 0.85) / (R * 0.3), 0.0, 1.0);
   }
   // tall growth over the focus: cut above head height
   vec2 hz = P.xz - uFocus.xz;
-  float near = 1.0 - clamp((length(hz) - uCut.y * 0.8) / (uCut.y * 0.6), 0.0, 1.0);
+  float near = 1.0 - clamp((length(hz) - uCut.y * 0.7) / (uCut.y * 0.3), 0.0, 1.0);
   k = max(k, near * clamp((P.y - uFocus.y - 1.3) / 0.8, 0.0, 1.0));
   return floor(k * 4.0 + 0.5) / 4.0;
 }
@@ -196,7 +197,7 @@ export function plant3dMaterial(U: FloraUniforms, atlas: THREE.Texture, local: {
       .replace('void main() {', GN_DECL + 'void main() {')
       .replace('#include <map_fragment>', `${FRAG_TEX_3D}
 if (distance(vWorld, uCamPos) < 1.5) discard;
-if (uGround < 0.5 && !(vKind < 0.5) && stip(gl_FragCoord.xy, cutAt(vWorld, uCamPos)) > 0.5) discard;
+if (uGround < 0.5 && ((vKind > 0.5 && vKind < 2.5) || vKind > 6.5) && stip(gl_FragCoord.xy, cutAt(vWorld, uCamPos)) > 0.5) discard;
 diffuseColor.rgb *= texel.rgb;
 if (vKind > 6.5) diffuseColor.rgb *= vBloom * 1.25;
 float lumW = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));

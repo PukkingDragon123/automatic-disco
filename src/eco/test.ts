@@ -41,9 +41,10 @@ export async function testEcosys(engine: Engine, input: Input, P: URLSearchParam
   g.cam.dist = g.cam.distGoal = Number(P.get('dist') ?? 26);
   const v = ecoView(g);
   if (v) { const ov = P.get('ov'); if (ov) v.setOverlay(ov as 'water'); if (P.has('survey')) v.toggleSurvey(true); }
-  const minds: Record<string, number> = {};
-  for (const c of wild) minds[c.mind] = (minds[c.mind] ?? 0) + 1;
+  const minds: Record<string, Record<string, number>> = {};
+  for (const c of wild) { const m = (minds[c.sp.name] ??= {}); m[c.mind] = (m[c.mind] ?? 0) + 1; }
   console.log('[ecosys] minds', JSON.stringify(minds));
+  console.log('[ecosys] needs', wild.slice(0, 12).map((c) => `${c.sp.name.split(' ').pop()}:${c.mind} e${c.energy.toFixed(2)} t${c.thirst.toFixed(2)} f${c.tired.toFixed(2)}`).join(' | '));
   console.log('[ecosys] census', eco.census().map((r) => `${r.name}:${r.alive}(${r.status}) b${r.born} d${r.died} ${JSON.stringify(r.causes)}`).join(' | '));
   console.log(`[ecosys] plants died ${eco.diedPlants} sprouted ${eco.sprouted} added ${eco.added}; level ${eco.level.toFixed(2)} season ${eco.seasonName()}`);
   engine.setScreen(g);

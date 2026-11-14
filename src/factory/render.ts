@@ -60,7 +60,7 @@ export class FactoryRender {
   constructor(readonly f: Factory) {
     f.g.world.scene.add(this.group);
     // belt crates
-    const g = new THREE.BoxGeometry(0.26, 0.15, 0.26);
+    const g = new THREE.BoxGeometry(0.3, 0.17, 0.3);
     const uv = g.attributes.uv as THREE.BufferAttribute;
     for (let i = 0; i < uv.count; i++) { const face = Math.floor(i / 4); if (face !== 2) uv.setXY(i, 0.03, 0.03); }
     this.itemAttr = new THREE.InstancedBufferAttribute(new Float32Array(this.itemCap), 1); this.itemAttr.setUsage(THREE.DynamicDrawUsage);

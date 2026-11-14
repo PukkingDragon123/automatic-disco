@@ -17,7 +17,7 @@ export type BeastPart =
   | { k: 'horn'; len: number; rise: number; base: number; ramp: RampName }
   | { k: 'crest'; len: number; height: number; ramp: RampName }
   | { k: 'tailFan'; size: number; ramp: RampName }
-  | { k: 'headFans'; size: number; ramp: RampName }
+  | { k: 'headFans'; size: number; ramp: RampName; fwd?: boolean } | { k: 'noseleaf' }
   | { k: 'finCrest'; height: number }
   | { k: 'mane' } | { k: 'shag' } | { k: 'brow'; size: number } | { k: 'helm'; ramp: RampName };
 
@@ -38,10 +38,12 @@ export interface BeastForm {
   limbSkin?: boolean; tailScales?: boolean; spiracles?: number; pits?: boolean;
   /** curls into a ball when threatened, and can roll away as one (Animator.curl / Animator.rolling) */
   roll?: boolean;
+  /** a heavy brow ridge (x head height), a dark face mask over the eyes, the head's own cover, ear size */
+  brow?: number; mask?: boolean; headCover?: Cover; earK?: number;
   parts: BeastPart[];
 }
 export interface Beast {
-  id: string; name: string; latin: string; role: 'mite' | 'grazer' | 'tank' | 'stalker' | 'apex' | 'snail' | 'scavenger';
+  id: string; name: string; latin: string; role: 'mite' | 'grazer' | 'tank' | 'stalker' | 'apex' | 'snail' | 'scavenger' | 'flyer';
   /** the written concept: niche, signature, size */
   concept: string;
   plan: Plan; lineage: Lineage; cover: Cover; genes: string[];
@@ -57,14 +59,14 @@ export const BEASTS: Record<string, Beast> = {
   mossback: {
     id: 'mossback', name: 'Mossback', latin: 'Testudocervus muscosus', role: 'tank', plan: 'quadruped', lineage: 'vertebrate', cover: 'fur',
     concept: 'A browser nearly five metres long that carries its ribs outside: a domed back-shield of overlapping bone bands, grown over with moss, over a shaggy body. Slow, near-blind, unbothered. Its small head hangs low under the shield rim.',
-    genes: ['vert_quadruped', 'leg_pillar', 'eye_camera', 'molars', 'osteoderms', 'shaggy', 'fat_stores', 'endotherm', 'live_birth'],
+    genes: ['vert_quadruped', 'leg_pillar', 'eye_camera', 'molars', 'beak', 'osteoderms', 'shaggy', 'fat_stores', 'endotherm', 'live_birth'],
     sliders: { size: 1, len: 0.85, girth: 0.92, legLen: 0.3, legThick: 0.85, neck: 0.25, head: 0.4, tail: 0.15 },
     colors: { base: ['fur', 2], belly: ['fur', 3], pattern: ['fur', 1], accent: ['moss', 4], eye: ['fur', 1] }, pattern: 'plain', patScale: 1,
     form: {
-      trunk: [[0.44, 0.5, 0.72], [0.52, 0.56, 0.7], [0.5, 0.5, 0.6], [0.47, 0.5, 0.5]], neckR: 0.5, nAng: 0.05, neckK: 0.8, headK: 0.75, snoutK: 0.8,
+      trunk: [[0.44, 0.5, 0.72], [0.52, 0.56, 0.7], [0.5, 0.5, 0.6], [0.47, 0.5, 0.5]], neckR: 0.42, nAng: -0.05, neckK: 1.15, headK: 0.62, snoutK: 0.7,
       hK: 1.1, foreK: 1, hindK: 1, foreT: 1.1, hindT: 1.15, slope: 0.05, tailK: 0.6,
-      skull: { rx: [0.4, 0.54, 0.58, 0.5, 0.42, 0.36, 0.33, 0.3], ry: [0.4, 0.52, 0.54, 0.46, 0.38, 0.33, 0.3, 0.27], hy: [0.08, 0.16, 0.18, 0.12, 0.04, -0.02, -0.05, -0.08], eye: [0.24, 1.25, 1.1, 0.07], cap: 0.2 },
-      eyes: { pupil: 'h' }, fore: [0.62, 0.78, 0.66, 0.6, 0.66], hind: [0.66, 0.8, 0.66, 0.6, 0.66], limbSkin: true,
+      skull: { rx: [0.36, 0.46, 0.5, 0.46, 0.4, 0.34, 0.28, 0.2], ry: [0.34, 0.42, 0.42, 0.38, 0.32, 0.27, 0.22, 0.16], hy: [0.04, 0.1, 0.12, 0.1, 0.04, -0.01, -0.04, -0.07], eye: [0.22, 1.2, 1.15, 0.09], cap: 0.4 },
+      eyes: { pupil: 'round' }, fore: [0.62, 0.78, 0.66, 0.6, 0.66], hind: [0.66, 0.8, 0.66, 0.6, 0.66], limbSkin: true, headCover: 'scales', brow: 0.12,
       parts: [{ k: 'carapace', t0: 0.08, t1: 0.82, bands: 6, spread: 1.75, lift: 1.18, ramp: 'stone', moss: true }, { k: 'brow', size: 1 }],
     },
   },
@@ -218,7 +220,7 @@ export const BEASTS: Record<string, Beast> = {
       hK: 0.85, foreK: 1, hindK: 1, foreT: 1, hindT: 1, slope: 0, tailK: 0.7,
       skull: { rx: [0.34, 0.44, 0.46, 0.42, 0.34, 0.27, 0.2, 0.14], ry: [0.34, 0.44, 0.44, 0.38, 0.3, 0.24, 0.19, 0.13], hy: [0.04, 0.12, 0.14, 0.1, 0.03, -0.02, -0.04, -0.06], eye: [0.28, 1.0, 0.9, 0.08], cap: 0.35 },
       eyes: { pupil: 'pinhole' }, fore: [0.5, 0.6, 0.42, 0.32, 0.3], hind: [0.52, 0.62, 0.42, 0.32, 0.3],
-      parts: [{ k: 'headFans', size: 1.4, ramp: 'moss' }],
+      parts: [{ k: 'headFans', size: 1.3, ramp: 'moss', fwd: true }],
     },
   },
   knuckler: {
@@ -228,11 +230,25 @@ export const BEASTS: Record<string, Beast> = {
     sliders: { size: 0.62, len: 0.55, girth: 0.7, legLen: 0.4, legThick: 0.8, neck: 0.15, head: 0.5, tail: 0.1 },
     colors: { base: ['fur', 1], belly: ['hide', 3], pattern: ['fur', 0], accent: ['rust', 4], eye: ['ochre', 5] }, pattern: 'plain', patScale: 1,
     form: {
-      trunk: [[0.52, 0.62, 0.7], [0.5, 0.56, 0.62], [0.42, 0.46, 0.46], [0.4, 0.42, 0.4]], neckR: 0.6, nAng: 0.05, neckK: 0.5, headK: 0.85, snoutK: 0.8,
+      trunk: [[0.52, 0.62, 0.7], [0.5, 0.56, 0.62], [0.42, 0.46, 0.46], [0.4, 0.42, 0.4]], neckR: 0.6, nAng: 0.05, neckK: 0.5, headK: 0.85, snoutK: 0.5,
       hK: 1.05, foreK: 1.35, hindK: 0.78, foreT: 1.9, hindT: 0.85, slope: 0.05, tailK: 0.3,
-      skull: { rx: [0.38, 0.52, 0.56, 0.52, 0.44, 0.36, 0.31, 0.26], ry: [0.4, 0.52, 0.54, 0.46, 0.36, 0.3, 0.27, 0.23], hy: [0.06, 0.16, 0.2, 0.13, 0.03, -0.02, -0.04, -0.06], eye: [0.32, 0.8, 0.55, 0.075], cap: 0.2 },
-      eyes: { pupil: 'round' }, fore: [0.7, 0.86, 0.66, 0.56, 0.6], hind: [0.6, 0.66, 0.44, 0.34, 0.34], limbSkin: true,
-      parts: [{ k: 'shag' }],
+      skull: { rx: [0.44, 0.58, 0.64, 0.64, 0.52, 0.44, 0.4, 0.36], ry: [0.44, 0.5, 0.46, 0.4, 0.34, 0.31, 0.29, 0.26], hy: [0.1, 0.18, 0.16, 0.08, 0.0, -0.04, -0.06, -0.08], eye: [0.34, 0.85, 0.5, 0.07], cap: 0.1 },
+      eyes: { pupil: 'round' }, fore: [0.7, 0.86, 0.66, 0.56, 0.6], hind: [0.6, 0.66, 0.44, 0.34, 0.34], limbSkin: true, brow: 0.22, mask: true,
+      parts: [{ k: 'shag' }, { k: 'crest', len: 0.75, height: 0.2, ramp: 'fur' }],
+    },
+  },
+  duskwing: {
+    id: 'duskwing', name: 'Duskwing', latin: 'Chiropteroides foliinasus', role: 'flyer', plan: 'quadruped', lineage: 'vertebrate', cover: 'fur',
+    concept: 'A fruit-and-moth hunter on hand-wings: skin stretched over four long finger bones, a thumb claw for climbing, ears bigger than its face and a leaf of skin on the nose that aims its calls. By day it hangs folded under rock overhangs.',
+    genes: ['vert_quadruped', 'leg_padded', 'wing_patagium', 'ears', 'eye_camera', 'molars', 'fur', 'endotherm', 'live_birth'],
+    sliders: { size: 0.0, len: 0.4, girth: 0.6, legLen: 0.2, legThick: 0.35, neck: 0.1, head: 0.6, tail: 0.1 },
+    colors: { base: ['fur', 2], belly: ['fur', 4], pattern: ['fur', 1], accent: ['plum', 3], eye: ['ink', 1] }, pattern: 'plain', patScale: 1,
+    form: {
+      trunk: [[0.48, 0.5, 0.56], [0.5, 0.5, 0.54], [0.44, 0.44, 0.46], [0.42, 0.42, 0.42]], neckR: 0.6, nAng: 0.3, neckK: 0.5, headK: 1.1, snoutK: 0.6,
+      hK: 1, foreK: 1, hindK: 1, foreT: 0.8, hindT: 0.8, slope: 0, tailK: 0.4,
+      skull: { rx: [0.4, 0.52, 0.56, 0.5, 0.4, 0.32, 0.26, 0.2], ry: [0.4, 0.5, 0.52, 0.44, 0.34, 0.28, 0.24, 0.19], hy: [0.06, 0.16, 0.18, 0.12, 0.04, -0.02, -0.04, -0.05], eye: [0.3, 1.0, 0.8, 0.07], cap: 0.25 },
+      eyes: { pupil: 'round' }, fore: [0.5, 0.56, 0.36, 0.28, 0.26], hind: [0.5, 0.56, 0.36, 0.28, 0.26], earK: 1.9,
+      parts: [{ k: 'noseleaf' }],
     },
   },
   gapejaw: {

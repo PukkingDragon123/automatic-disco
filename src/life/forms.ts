@@ -178,13 +178,22 @@ function tailFan(S: Ctx, p: Extract<BeastPart, { k: 'tailFan' }>, W: number) {
 export function headFans(S: Ctx, h: HeadCtx, p: Extract<BeastPart, { k: 'headFans' }>) {
   const FN = S.fixed('HFAN', 12, 14), iN = S.bi('neck');
   for (const s of [-1, 1]) {
-    const base = addV(h.head, [s * h.hw * 0.38, -h.hh * 0.08, -h.hl * 0.08]);
-    fan(S, FN, base, norm([s * 0.55, -0.75, -0.55]), norm([s * 0.5, 0.85, -0.45]), h.hw * p.size, [h.iH, 0.75, iN, 0.25], 7, 5 + s);
+    // gill fans sweep back from behind the jaw; a flower-hood opens forward round the mouth
+    const base = addV(h.head, p.fwd ? [s * h.hw * 0.3, h.hh * 0.05, h.z0 * 0.7] : [s * h.hw * 0.38, -h.hh * 0.08, -h.hl * 0.08]);
+    if (p.fwd) fan(S, FN, base, norm([s * 0.75, -0.6, 0.45]), norm([s * 0.55, 0.9, 0.5]), h.hw * p.size, [h.iH, 1], 7, 5 + s);
+    else fan(S, FN, base, norm([s * 0.55, -0.75, -0.55]), norm([s * 0.5, 0.85, -0.45]), h.hw * p.size, [h.iH, 0.75, iN, 0.25], 7, 5 + s);
   }
   S.paints.push(() => fanPaint(FN, p.ramp, 7));
 }
 
 // ---------------------------------------------------------------------------------------------- horn and crest
+/** a noseleaf: an upright lance of bare skin on the nose with a raised midrib, aiming the echolocation calls */
+export function noseleaf(S: Ctx, h: HeadCtx) {
+  const NL = S.fixed('NLEAF', 6, 10), w: Wt = [h.iH, 1], b0 = addV(h.head, [0, h.hh * 0.05, h.z0 + h.sl * 0.92]);
+  const pts: V3[] = [b0, addV(b0, [0, h.hh * 0.22, -h.sl * 0.05]), addV(b0, [0, h.hh * 0.42, -h.sl * 0.12])];
+  blade(S.B, NL, pts, [h.hw * 0.16, h.hw * 0.13, h.hw * 0.03], [1, 0, 0], [w, w, w], { offset: -0.5 });
+  S.paints.push(() => { const R = RP('flesh'); NL.fill(R, (x, y) => (Math.abs(x / NL.w - 0.5) < 0.12 ? 4 : 3) - (y > NL.h * 0.85 ? 1 : 0)); });
+}
 /** a great nose horn rising forward from a collar of skin */
 export function greatHorn(S: Ctx, h: HeadCtx, p: Extract<BeastPart, { k: 'horn' }>, collarRamp: number[]) {
   const L = h.hl * p.len, r0 = h.hw * p.base, base = addV(h.head, [0, h.hh * 0.18, h.z0 + h.sl * 0.55]);

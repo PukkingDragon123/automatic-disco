@@ -123,6 +123,23 @@ const CSS = `
 .rs-slot s.x::before, .rs-slot s.x::after { content: ''; position: absolute; left: -1px; right: -1px; top: 50%; height: 1px; background: #3e3d39; transform: rotate(42deg); }
 .rs-slot s.x::after { transform: rotate(-38deg); }
 .rs-cost { margin-top: calc(4 * var(--k)); }
+.rs-fn { display: block; font-family: 'VT', monospace; font-size: var(--vt); line-height: calc(var(--vt) * 1.1); color: ${PAL.graphite}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rs-fn.none { color: #8a8678; }
+.rs-upk { margin: calc(2 * var(--k)) 0 calc(2 * var(--k)); }
+.rs-roles { display: flex; flex-wrap: wrap; gap: calc(2 * var(--k)); margin: calc(3 * var(--k)) 0 calc(4 * var(--k)); }
+.rs-role { position: relative; border: none; cursor: inherit; padding: calc(2 * var(--k)) calc(5 * var(--k)) calc(1 * var(--k)); font-family: 'Jersey', monospace; font-size: var(--np); letter-spacing: 0.04em; color: #4a4842; background: linear-gradient(180deg, #cdbd93, #b8a77d); clip-path: polygon(calc(3 * var(--k)) 0, calc(100% - 3 * var(--k)) 0, 100% 100%, 0 100%); }
+.rs-role.on { background: linear-gradient(180deg, #ddd0a8, #c8b88e); color: ${PAL.graphite}; }
+.rs-role.on::after { content: ''; position: absolute; left: calc(4 * var(--k)); right: calc(4 * var(--k)); bottom: 1px; height: 1px; background: ${PAL.stamp}; }
+.rs-role i { position: absolute; left: 0; bottom: 0; height: 2px; background: ${PAL.graphite}; opacity: 0.55; }
+.rs-sug { display: grid; grid-template-columns: calc(10 * var(--k)) 1fr auto; align-items: baseline; gap: calc(4 * var(--k)); border-bottom: 1px dotted rgba(59, 58, 54, 0.4); padding: 1px 0; cursor: inherit; }
+.rs-sug:hover { background: rgba(184, 56, 46, 0.06); }
+.rs-sug s { position: relative; display: inline-block; width: calc(8 * var(--k)); height: calc(8 * var(--k)); border: 1px solid rgba(59, 58, 54, 0.85); text-decoration: none; }
+.rs-sug.on s::before, .rs-sug.on s::after { content: ''; position: absolute; left: -1px; right: -1px; top: 50%; height: 1px; background: #3e3d39; transform: rotate(42deg); }
+.rs-sug.on s::after { transform: rotate(-38deg); }
+.rs-sug .rs-v { font-size: var(--vt); }
+.rs-sug .w { font-family: 'Pixelify', monospace; font-size: var(--ps); color: #6a6658; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(120 * var(--k)); text-align: right; }
+.rs-sug.ok .w { color: ${PAL.stamp}; }
+.rs-sug.unk .rs-v { color: #8a8678; }
 .rs-sig { display: flex; align-items: flex-end; justify-content: space-between; margin-top: calc(10 * var(--k)); }
 .rs-sig .ln { flex: 1; border-bottom: 1px solid rgba(59, 58, 54, 0.6); margin: 0 calc(6 * var(--k)); height: calc(14 * var(--k)); position: relative; }
 .rs-sig .ln .pencil { position: absolute; left: calc(8 * var(--k)); bottom: 0; transform: rotate(-4deg); }
@@ -220,6 +237,8 @@ export interface LabHandlers {
   slider(key: keyof Design, v: number): void; color(k: 'base' | 'belly' | 'pattern' | 'accent' | 'eye', c: number): void; pattern(p: Pattern): void; cover(c: Cover): void;
   shelf(open: boolean): void; jar(i: number): void; hoverJar(i: number): void;
   saveDisabled(): string | false;
+  /** the role planner: target a role, graft a suggested gene */
+  role(r: string): void; suggest(gene: string): void;
 }
 /** what the record sheet shows */
 export interface RecordData {
@@ -228,6 +247,12 @@ export interface RecordData {
   notes: string[]; viable: boolean; splice: string;
   slots: { k: string; n: number; max: number }[]; total: number;
   cost: string; each: string; formNo: string;
+  /** what it does in the field ("PASSES 4.2 IRON PELLETS/MIN") and what it costs to keep */
+  fns: string[]; upkeep: string;
+  /** the role planner */
+  roles: { k: string; name: string; on: boolean; score: number }[];
+  sugg: { id: string; name: string; state: 'on' | 'ok' | 'lock' | 'unk'; why: string }[];
+  advice: string;
 }
 export const SWATCH = [0x6a5a3a, 0x9a7a4a, 0xc8a040, 0xd8c08a, 0xe8e0c8, 0x5a6a3a, 0x3a7a5a, 0x2a6a7a, 0x3a4a7a, 0x5a3a7a, 0x8a3a5a, 0xa83a2a, 0xd86a2a, 0x2a2a30, 0x6a6a70, 0xb0a8a0, 0x7affe0, 0xffe070];
 const EYES = [0x7affe0, 0xffe070, 0xff6a4a, 0x101010, 0x40c8e8, 0xf0f0e0, 0x80e040];
@@ -382,6 +407,13 @@ export class LabUI {
     el('div', 'rs-t', s, 'PHENOTYPE');
     R.stats = el('div', '', s);
     R.notes = el('div', 'rs-notes', s);
+    el('div', 'rs-t', s, 'FUNCTIONS IN THE FIELD');
+    R.fns = el('div', '', s);
+    R.upk = el('div', 'pencil rs-upk', s);
+    el('div', 'rs-t', s, 'ROLE PLANNER');
+    R.roles = el('div', 'rs-roles', s);
+    R.sugg = el('div', '', s);
+    R.advice = el('div', 'pencil', s);
     el('div', 'rs-t', s, 'GENE SLOTS');
     R.slots = el('div', 'rs-slots', s);
     el('div', 'rs-t', s, 'REQUISITION');
@@ -413,6 +445,36 @@ export class LabUI {
     }
     R.slots.innerHTML = d.slots.map((s) => `<div class="rs-slot"><span class="rs-k">${s.k}</span>${Array.from({ length: s.max }, (_, i) => `<s class="${i < s.n ? 'x' : ''}"></s>`).join('')}</div>`).join('');
     type(R.cost, d.cost); type(R.each, d.each, 70);
+    // functions: typed, one line each
+    const fk = d.fns.join('|');
+    if (R.fns.dataset.k !== fk) {
+      R.fns.dataset.k = fk; R.fns.innerHTML = '';
+      if (!d.fns.length) el('span', 'rs-fn none', R.fns, 'NONE. GRAFT A FUNCTION ORGAN (WORK TAB).');
+      d.fns.forEach((f, i) => type(el('span', 'rs-fn', R.fns), f, 60, i * 120));
+    }
+    if (R.upk.dataset.k !== d.upkeep) { R.upk.dataset.k = d.upkeep; R.upk.innerHTML = pencil('→ ' + d.upkeep, 11); }
+    // the role planner: manila tabs with a fill bar for how well the design fills each role
+    const rk = d.roles.map((r) => r.k + r.on + Math.round(r.score * 10)).join(',');
+    if (R.roles.dataset.k !== rk) {
+      R.roles.dataset.k = rk; R.roles.innerHTML = '';
+      for (const r of d.roles) {
+        const b = el('button', `rs-role${r.on ? ' on' : ''}`, R.roles, r.name);
+        const bar = el('i', '', b); bar.style.width = `${Math.round(r.score * 100)}%`;
+        b.addEventListener('click', (e) => { e.stopPropagation(); sfx('click', 1.3, 0.4); this.h.role(r.k); });
+      }
+    }
+    const sk = d.sugg.map((x) => x.id + x.state + x.why).join('|');
+    if (R.sugg.dataset.k !== sk) {
+      R.sugg.dataset.k = sk; R.sugg.innerHTML = '';
+      for (const x of d.sugg) {
+        const row = el('div', `rs-sug ${x.state}`, R.sugg);
+        el('s', '', row); el('span', 'rs-v', row, esc(x.name.toUpperCase())); el('span', 'w', row, esc(x.why));
+        row.addEventListener('click', (e) => { e.stopPropagation(); this.h.suggest(x.id); });
+        row.addEventListener('pointerenter', () => Tip.show(`<h4>${esc(x.name)}</h4>${x.state === 'ok' ? 'Click to graft it on.' : x.state === 'on' ? 'Grafted.' : esc(x.why)}`, row));
+        row.addEventListener('pointerleave', () => Tip.hide());
+      }
+    }
+    if (R.advice.dataset.k !== d.advice) { R.advice.dataset.k = d.advice; R.advice.innerHTML = pencil(d.advice, 13); }
   }
 
   // ---------------------------------------------------------------------------------------------- tabs & cards

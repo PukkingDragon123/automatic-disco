@@ -203,9 +203,9 @@ export class FloraTex {
             for (let d = -Math.ceil(w); d <= Math.ceil(w); d++) {
               if (Math.abs(d) > w + 0.25) continue;
               // the upper face of each leaflet is lit, the lower in shade, the tip catches the light
-              let i = d < 0 ? n - 2 : n - 3;
-              if (f > 0.75 && d <= 0) i = n - 1;
-              if (d === 0 && ww >= 1.5 && f < 0.8) i = n - 4;
+              let i = d < 0 ? n - 1 : n - 2;
+              if (f > 0.75 && d <= 0) i = n;
+              if (d === 0 && ww >= 1.5 && f < 0.8) i = n - 3;
               P.set(x, y + d, Math.max(1, i), R);
             }
           }
@@ -232,7 +232,7 @@ export class FloraTex {
           for (let x = 0; x < cw; x++) {
             const s = x + 0.5 - cw / 2;
             if (Math.abs(s) > hw + 0.15 || t > 0.985) continue;
-            let i = s < -0.5 ? nr - 1 : s < 0.5 ? nr - 2 : nr - 3;
+            let i = s < -0.5 ? nr : s < 0.5 ? nr - 1 : nr - 2;
             if (t < 0.2) i -= 1; else if (t > 0.6 && s < 0) i = nr;
             if (t > dryFrom) { const nd = all[D].length - 1; P.set(b * cw + x, y, s < 0 ? nd - 1 : nd - 2, D); }
             else P.set(b * cw + x, y, Math.max(1, i), R);

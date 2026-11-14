@@ -12,7 +12,7 @@ import type { Design } from './design';
 import type { Rig } from './morph';
 import { shagCoat, mane, tassel, crest, wattle, tailFin, brushTail, sail, frill, roundEars, whiskers, tongue, throatSac, gills, ramHorns, palmAntlers, rack, bearPaw, toes, amphSkin, scuteShell, crabShell, beetleHorns, mothWings, plumes, type SpineTs, type HeadCtx } from './parts';
 import { BEASTS, type BeastForm } from './bestiary';
-import { growBody, markBody, headFans, greatHorn, skullCrest, helm, type BodyMark } from './forms';
+import { growBody, markBody, headFans, greatHorn, skullCrest, helm, noseleaf, type BodyMark } from './forms';
 import { SkinB, Page, type Region, KIT, oct, blade, sac, spline, chainWeights, ball, sheet, transport, hash, gauss, sub, addV, scl, norm, cross, len, lerpV, pageTexture, mixC, type V3, type Wt } from './kit';
 
 const TAU = Math.PI * 2;
@@ -494,6 +494,12 @@ function vertebrate(S: Ctx) {
     // a scaled tail on a furred body: scales take over past the rump, the fur keeps the trunk
     if (BF?.tailScales) { const y0 = Math.floor((tRump + 0.03) * BODY.h), keep = keepRows(BODY, 0, y0); hide(S, BODY, { ...ho, cover: 'scales' }); keep(); }
     if (BF) markBody(S, BODY, BF, marks, TS);
+    // anatomy: the armpit and groin fall into shadow, the skin folds where the neck meets the chest
+    if (!hom && !hop) for (let y = 0; y < BODY.h; y++) for (let x = 0; x < BODY.w; x++) {
+      const t = (y + 0.5) / BODY.h, ath = Math.abs(BODY.th(x));
+      if (ath > 1.8 && ath < 2.75 && (Math.abs(t - tChest - 0.03) < 0.022 || Math.abs(t - tHips + 0.015) < 0.022)) BODY.blend(x, y, RAMPS.ink[1], 0.4);
+      else if (ath < 2.3 && t > tNeck - 0.04 && t < tNeck + 0.03 && Math.abs(((t - tNeck) * 120) % 2.2) < 0.35) BODY.blend(x, y, RAMPS.ink[1], 0.3);
+    }
   });
 
   // ------------------------------------------------ head
@@ -620,6 +626,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     if (liz) b += 0.16 * gauss(t, 0.12, 0.1) * gauss(aa, 1.95, 0.5) + 0.1 * gauss(t, tEye - 0.03, 0.05) * gauss(aa, eAng - 0.42, 0.25); // jaw muscles, brow scales
     if (fur && t < tSn) b += furF(a, t) * (bear ? 0.35 : 0.45);
     if (flat) b -= 0.1 * gauss(t, tEye, 0.08) * gauss(aa, 0, 0.35); // a dip between the eye turrets
+    if (BF?.brow) b += BF.brow * gauss(t, tEye - 0.06, 0.04) * gauss(aa, eAng - 0.35, 0.45); // a heavy brow ridge
     return b;
   };
   const HEAD = S.reg('HEAD', TAU * hw * 0.5 * hk, len(sub(ctrl[ctrl.length - 1], ctrl[0])), 16, 96, 64);
@@ -681,7 +688,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
   });
   // ------------------------------------------------ face paint: short muzzle hair, a pale chin, lips, whisker pads, sockets
   S.paints.push(() => {
-    hide(S, HEAD, { L: Lh, rad: (t) => interp(cts, rx, t), seed: (d.seed % 131) + 7, kind: 'head', belly: flat ? 1.9 : 2.1, flow: -1, down: 0.5 });
+    hide(S, HEAD, { cover: BF?.headCover, L: Lh, rad: (t) => interp(cts, rx, t), seed: (d.seed % 131) + 7, kind: 'head', belly: flat ? 1.9 : 2.1, flow: -1, down: 0.5 });
     const muzzleR = bear ? makeRamp(mixHex(d.colors.base, 0xc8a878, 0.45), 7, { spread: 0.5 }) : hoof ? makeRamp(mixHex(d.colors.base, 0xe8e0d0, 0.35), 7, { spread: 0.5 }) : S.P.belly;
     for (let y = 0; y < HEAD.h; y++) for (let x = 0; x < HEAD.w; x++) {
       const t = (y + 0.5) / HEAD.h, th = HEAD.th(x), ath = Math.abs(th);
@@ -704,6 +711,8 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
       const t = (y + 0.5) / HEAD.h, ath = Math.abs(HEAD.th(x)), u = (t - tEye - 0.035) / 0.09;
       if (u > 0 && u < 1 && Math.abs(ath - (eAng + 0.12 + u * 0.22)) < 0.06 * (1 - u * 0.6)) HEAD.set(x, y, u < 0.7 ? 0x140c08 : S.P.dark[1]);
     }
+    // a dark mask across the eyes
+    if (BF?.mask) for (let y = 0; y < HEAD.h; y++) for (let x = 0; x < HEAD.w; x++) { const t = (y + 0.5) / HEAD.h, ath = Math.abs(HEAD.th(x)); if (Math.abs(t - tEye) < 0.07 && ath > eAng - 0.45 && ath < eAng + 0.5) HEAD.put(x, y, S.P.dark, 1.6, 0); }
     // the muzzle tip is a fan off the last rows: keep them one clean tone so no stripes radiate across it
     for (let y = HEAD.h - 2; y < HEAD.h; y++) for (let x = 0; x < HEAD.w; x++) HEAD.put(x, y, beak || flat || liz ? S.P.base : muzzleR, 3.0 + Math.cos(HEAD.th(x)) * 0.5, 0.5);
     if (liz) for (const s of [-1, 1]) { const nx = HEAD.X(s * 30), ny = HEAD.h * 0.93; HEAD.set(nx, ny, 0x0a0608); HEAD.set(nx + s, ny, 0x0a0608); HEAD.set(nx, ny + 1, 0x2a1a14); }
@@ -727,7 +736,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     S.paints.push(() => { const R = RAMPS.flesh as unknown as number[]; MOUTH.fill(R, (x, y) => 2.4 + (Math.cos(MOUTH.th(x)) > 0.3 ? 1 : 0) + (y % 3 === 0 ? -0.8 : 0) - (y < MOUTH.h * 0.4 ? 1.2 : 0)); });
     if (beak) S.paints.push(() => keratin(JAW, mixHex(d.colors.accent, 0xd8b050, 0.5), { tipLight: 1.5 }));
     else S.paints.push(() => {
-      hide(S, JAW, { L: sl, rad: () => hw * 0.25, seed: 23, kind: 'jaw', belly: 1.25, flow: -1, down: 0.4 });
+      hide(S, JAW, { cover: BF?.headCover, L: sl, rad: () => hw * 0.25, seed: 23, kind: 'jaw', belly: 1.25, flow: -1, down: 0.4 });
       for (let x = 0; x < JAW.w; x++) if (Math.abs(JAW.th(x)) < 0.9) { JAW.set(x, JAW.h - 1, 0x140c0c); } // the lower lip
       if (amph) amphSkin(S, JAW, 0.5);
     });
@@ -812,7 +821,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     for (const s of [-1, 1]) {
       const iE = earBone(s), b0 = iE === iH ? addV(head, [s * hw * 0.38, hh * 0.42, -hl * 0.04]) : S.at(iE);
       const dir = norm(hoof ? [s * 1.0, 0.55, -0.25] : boar ? [s * 0.7, 0.9, 0.25] : [s * 0.55, 1, -0.18]);
-      const el = hh * (hom ? 0.35 : hoof ? 0.86 : 0.72), ew = hw * (hom ? 0.14 : hoof ? 0.25 : 0.2);
+      const el = hh * (hom ? 0.35 : hoof ? 0.86 : 0.72) * (BF?.earK ?? 1), ew = hw * (hom ? 0.14 : hoof ? 0.25 : 0.2) * (BF?.earK ?? 1);
       const pts: V3[] = [0, 0.25, 0.55, 0.82, 1].map((t) => addV(b0, scl(dir, t * el)));
       const wd = hoof ? [0.5, 0.95, 1, 0.7, 0.14] : [0.55, 1, 0.95, 0.6, 0.12];
       sac(S.B, EAR, S.gid(), pts, wd.map((k) => [ew * k, ew * k * 0.3] as [number, number]), pts.map((_, i) => (i ? [iE, 1] : [iE, 0.6, iH, 0.4])),
@@ -841,6 +850,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     else if (p.k === 'crest') skullCrest(S, HC, p);
     else if (p.k === 'headFans') headFans(S, HC, p);
     else if (p.k === 'helm') helm(S, HC, ctrl, rx, ry, p.ramp);
+    else if (p.k === 'noseleaf') noseleaf(S, HC);
   }
   if (has(d, 'electro')) {
     const G = S.fixed('GLOW', 6, 6);
@@ -1085,6 +1095,8 @@ function patagium(S: Ctx, wi: number, fur: boolean) {
     WING.fill(R, (x, y) => 2.4 + (WING.fbm(x, y, 3, 2, 5) - 0.5) * 1.4 - (y / WING.h) * 0.6);
     for (let i = 0; i < 6; i++) WING.crack(hash(i, 7) * WING.w, 0, WING.h, 90, R[0], i * 13 + 3, 0.5, 0.3);
     if (fur) for (let x = 0; x < WING.w; x++) WING.set(x, 0, S.P.base[3]);
+    // the trailing edge scallops between the finger tips
+    for (let x = 0; x < WING.w; x++) { const sc = Math.abs(Math.sin((x / WING.w) * Math.PI * 3)); for (let y = Math.floor(WING.h * (0.86 + sc * 0.1)); y < WING.h; y++) WING.set(x, y, R[0]); }
   });
 }
 
