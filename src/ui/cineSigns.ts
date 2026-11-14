@@ -329,6 +329,7 @@ export function stepSign(s: Sign, dt: number, t: number) {
   s.tiltV += (-10 * s.tilt + s.vel.z * 0.6 - s.hover * 0.6) * dt; s.tiltV *= Math.exp(-2 * dt); s.tilt += s.tiltV * dt;
   s.root.position.copy(s.pos);
   s.root.rotation.set(s.tilt * 0.6, Math.sin(t * 0.4 + s.phase) * 0.05, s.ang);
+  s.root.updateMatrixWorld();
   s.lit += ((s.hover > 0.5 ? 1 : 0) - s.lit) * Math.min(1, dt * 10);
   // the caged bulb warms up with a little flicker (the menu moves its work lamp onto the plate)
   const fl = s.lit > 0.05 ? 0.92 + Math.sin(t * 31 + s.phase) * 0.05 + Math.sin(t * 7.3) * 0.03 : 0;

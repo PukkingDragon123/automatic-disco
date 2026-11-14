@@ -3,8 +3,8 @@
 // tilted orbits, glittering dust, a twinkling starfield and nebula, the sun's glare rimming everything. The options
 // are cast-iron signs hanging on chains and tethered to the rock: they bob and swing, light up and lean in when you
 // point at them, and clank and swing when you work them. An iron cog opens the settings plate.
-//   NEW WORLD    nixie tubes on the sign count down; the rocks fall into the meteor, it ignites and the camera
-//                chases it down at the planet
+//   NEW WORLD    nixie tubes on the sign count down and the camera dives past the rock to the planet (the deploy
+//                sequence, src/ui/deploy*.ts, does the carrier, the pod and the fall)
 //   CONTINUE     resume the world being taken
 //   ARCHIVE      the camera drifts to the worlds claimed for Earth, each hanging on its own iron tag
 //   ASSEMBLY BAY refit Unit 07; SEED CARD (a small tag) launches at a hand-punched seed
@@ -89,8 +89,8 @@ const CSS = /* css */`
 .mn3 .pcard .hint { flex: 1; font-size: var(--cf-vt1); line-height: var(--cf-vt1); color: #6a5a3a; }
 .mn3.hide > :not(.tipx) { visibility: hidden; }
 /* the ascension's button */
-.mn3 .big { display: flex; align-items: center; justify-content: center; gap: calc(4 * var(--u)); width: 100%; padding: calc(4 * var(--u)); background: radial-gradient(circle at 50% 35%, #ff7a5a, #c8301e 55%, #7a140a); border: calc(2 * var(--u)) solid #2a0a06; border-radius: calc(4 * var(--u)); box-shadow: 0 calc(3 * var(--u)) 0 #4a0c06, 0 0 0 calc(1 * var(--u)) #ffb090 inset; color: #fff0e0; font-family: 'Superwide', monospace; font-size: var(--cf-sw1); letter-spacing: 1px; cursor: pointer; text-shadow: 0 calc(1 * var(--u)) 0 #4a0c06; }
-.mn3 .big:hover { filter: brightness(1.15); }
+.mn3 .big { display: flex; align-items: center; justify-content: center; gap: calc(4 * var(--u)); width: 100%; padding: calc(4 * var(--u)); background: linear-gradient(180deg, #c4473b, #b8382e 55%, #8e2a22); border: 1px solid #3a120e; border-radius: calc(2 * var(--u)); box-shadow: 0 1px 0 rgba(255, 220, 200, 0.25) inset, 0 calc(3 * var(--u)) 0 #3a120e; color: #efe8d6; font-family: 'Superwide', monospace; font-size: var(--cf-sw1); letter-spacing: 1px; cursor: pointer; text-shadow: 0 1px 0 #3a120e; }
+.mn3 .big:hover { filter: brightness(1.08); }
 .mn3 .big:active { transform: translateY(calc(2 * var(--u))); }
 .mn3 .big img { width: calc(18 * var(--u)); height: calc(18 * var(--u)); image-rendering: pixelated; }
 `;
@@ -122,7 +122,7 @@ export class MenuScreen implements Screen {
   private nix: Nixies;
   private worlds: { g: Globe; e: ArchiveEntry; tag: Sign; at: THREE.Vector3 }[] = [];
   private emptyTag: Sign | null = null;
-  private fire: THREE.Mesh; private glowLight: THREE.PointLight; private lamp: THREE.PointLight;
+  private glowLight: THREE.PointLight; private lamp: THREE.PointLight;
   private root: HTMLDivElement; private tipEl: HTMLDivElement; private backEl: HTMLDivElement; private detEl: HTMLDivElement; private cardEl: HTMLDivElement; private setEl: HTMLDivElement;
   private ray = new THREE.Raycaster(); private ndc = new THREE.Vector2(); private ptrIn = false; private ptrX = 0; private ptrY = 0;
   private par = new THREE.Vector2();
@@ -164,8 +164,6 @@ export class MenuScreen implements Screen {
     this.meteor = makeMeteor(1.7, 7); this.meteor.group.position.copy(M0); this.scene.add(this.meteor.group);
     this.swarm = makeRockSwarm(18, 2.25, 3.0); this.swarm.group.position.copy(M0); this.scene.add(this.swarm.group);
     this.dust = makeSparkles(260, 4.4); this.dust.points.position.copy(M0); this.scene.add(this.dust.points);
-    const fm = new THREE.MeshBasicMaterial({ color: 0xff7a28, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }); gbuf(fm, 0);
-    this.fire = new THREE.Mesh(new THREE.IcosahedronGeometry(2.05, 2), fm); this.meteor.group.add(this.fire);
     // the iron signs, hanging in a column, chained to each other and tethered to the rock
     const defs: [string, string, string, string, string?][] = [
       ['new', 'NEW WORLD', 'N', 'Fire Unit 07 at a new world.'],
@@ -437,48 +435,32 @@ export class MenuScreen implements Screen {
   }
   private closeCard() { this.cardEl.style.display = 'none'; this.cardEl.innerHTML = ''; if (this.mode === 'card') this.mode = 'main'; }
 
-  // ------------------------------------------------------------------ the launch
+  // ------------------------------------------------------------------ setting out (the deploy sequence does the launch itself)
   private async launch(seed: number, offspring?: ArchiveEntry) {
     if (this.mode === 'launch') return;
     this.closePanels(); this.mode = 'launch'; this.busy = true; this.clearHover();
     this.root.classList.add('hide');
-    const met = this.meteor, M = met.group.position.clone();
-    const toPlanet = PLANET.clone().addScaledVector(M.clone().sub(PLANET).normalize(), PLANET_R * 1.02).sub(M).normalize();
-    const side = new V3().crossVectors(toPlanet, new V3(0, 1, 0)).normalize();
+    const M = this.meteor.group.position.clone();
     const end = () => { this.close(() => (offspring ? this.opts.onLaunch(offspring) : this.opts.onNew(seed))); };
     await this.cine.play(async (c) => {
       c.cam.cut(this.cam.position.clone(), this.camLook.clone(), this.cam.fov);
-      c.stamp(offspring ? `OFFSPRING OF ${offspring.name.toUpperCase()} · SEED ${seed}` : `TARGET SEED ${seed}`, true);
-      // the other signs swing away; the NEW WORLD sign stays to count it down
+      c.stamp(offspring ? `OFFSPRING OF ${offspring.name.toUpperCase()} \u00b7 SEED ${seed}` : `TARGET SEED ${seed}`, true);
+      // the other signs swing clear; NEW WORLD stays to count it down on its nixies
       this.signs.forEach((s, i) => { if (s.id !== 'new') { kickSign(s, 0.7); setTimeout(() => (s.gone = 1), 120 + i * 90); } });
       this.title.gone = 0.6; this.gearTag.gone = 1;
-      c.cam.move({ pos: M.clone().add(new V3(3.4, 1.4, 5.4)), look: M.clone().add(new V3(1.6, 0, 0)), fov: 34, dur: 1.6, ease: 'inOut' });
-      c.tween(5.2, (u) => { this.launchK = u; }, 'in');
-      for (let n = 5; n >= 1; n--) { this.nix.set(String(n).padStart(2, '0')); c.sfx('beep', 0.6, n === 1 ? 1.3 : 1); kickSign(this.signs[0], 0.15); await c.wait(0.8); }
-      this.nix.set('00'); c.sfx('beepHi', 0.8);
-      // ignition
-      this.signs[0].gone = 1; kickSign(this.signs[0], 1.2);
-      c.flash('#fff2d0', 0.5, 0.85); c.sfx('ignite'); c.sfx('boom', 0.8); c.cam.shake(0.25, 0.8);
-      const roar = c.loop('engine', 1); c.sfx('launch', 0.9);
-      const fm = this.fire.material as THREE.MeshBasicMaterial;
-      let s = 0, v = 0;
-      c.task((dt) => {
-        v += dt * 26; s += v * dt;
-        met.group.position.copy(M).addScaledVector(toPlanet, s);
-        met.group.rotation.x += dt * 1.2; met.group.rotation.z += dt * 0.6;
-        fm.opacity = Math.min(0.75, fm.opacity + dt * 1.5); this.fire.scale.setScalar(1 + Math.sin(this.t * 30) * 0.03);
-        const p = met.group.position;
-        for (let i = 0; i < 8; i++) this.fx.glow.emit(p.x + (Math.random() - 0.5) * 2.4, p.y + (Math.random() - 0.5) * 2.4, p.z + (Math.random() - 0.5) * 2.4, -toPlanet.x * 2 + (Math.random() - 0.5), -toPlanet.y * 2 + (Math.random() - 0.5), -toPlanet.z * 2 + (Math.random() - 0.5), new THREE.Color(Math.random() < 0.5 ? 0xffa040 : 0xff5a20).multiplyScalar(2.2), 1, 2.5 + Math.random() * 2, 0.5, 0, 1.4);
-        return false;
-      });
-      c.cam.track(() => ({ pos: met.group.position.clone().addScaledVector(toPlanet, -8).addScaledVector(side, 2.6).add(new V3(0, 2.2, 0)), look: met.group.position.clone().addScaledVector(toPlanet, 4) }), 9);
-      c.cam.move({ fov: 52, dur: 2.0, ease: 'in' });
-      c.say(offspring ? `Offspring of ${offspring.name}, away.` : 'Unit Seven is away. Godspeed, big fella.', { who: 'Station Four', style: 'radio', pitch: 0.8 });
-      await c.until(() => met.group.position.distanceTo(PLANET) < PLANET_R * 1.6, 5);
-      roar.stop(0.5); c.sfx('whoosh', 1, 1.4);
-      await c.fade(1, 0.5, '#fff6e8');
-      await c.wait(0.25);
-    }, { name: 'launch' });
+      c.tween(2.6, (u) => { this.launchK = u * 0.6; }, 'in');
+      c.cam.move({ pos: M.clone().add(new V3(2.6, 0.9, 4.6)), look: M.clone().add(new V3(0.6, -0.2, 0)), fov: 34, dur: 2.2, ease: 'inOut' });
+      for (let n = 3; n >= 1; n--) { this.nix.set(String(n).padStart(2, '0')); c.sfx('beep', 0.6, n === 1 ? 1.25 : 1); kickSign(this.signs[0], 0.15); await c.wait(0.75); }
+      this.nix.set('00'); c.sfx('beepHi', 0.7); this.signs[0].gone = 1;
+      // down past the rock and the planet comes up to meet the camera
+      c.sfx('whoosh', 0.8, 0.9); c.sfx('swell', 0.6);
+      const target = PLANET.clone().addScaledVector(M.clone().sub(PLANET).normalize(), PLANET_R * 1.05);
+      c.cam.move({ pos: target.clone().add(new V3(1.5, 3.5, 6)), look: PLANET.clone(), fov: 46, dur: 2.4, ease: 'inCubic' });
+      c.say(offspring ? `Offspring of ${offspring.name}: target acquired.` : 'Target acquired. Bringing the carrier round, Seven.', { who: 'Station Four', style: 'radio', pitch: 0.8 });
+      await c.wait(1.9);
+      await c.fade(1, 0.5, '#d9d2bf');
+      await c.wait(0.2);
+    }, { name: 'setout' });
     end();
   }
   private leave(then: () => void, dur = 0.8) {
@@ -497,6 +479,7 @@ export class MenuScreen implements Screen {
       met.group.rotation.set(Math.sin(t * 0.13) * 0.12 + L * 0.4, Math.sin(t * 0.09) * 0.42 + t * 0.015, Math.sin(t * 0.11 + 1) * 0.08);
       if (this.mode !== 'launch') met.group.position.set(M0.x, M0.y + Math.sin(t * 0.32) * 0.13, M0.z + Math.sin(t * 0.21) * 0.08);
     }
+    met.group.updateMatrixWorld();
     met.t.value = t; met.glow.value = 1 + L * 2.6 + (this.hovered?.id === 'new' ? 0.4 : 0);
     this.glowLight.intensity = 3.5 + L * 16;
     const ls = this.hovered ?? (this.hoverGear ? this.gearTag : null);
@@ -634,7 +617,7 @@ export class AscendScreen implements Screen {
       drone.set(0.8);
       await c.wait(1.2);
       await c.fade(1, 1.2);
-      await c.card(`${P.name.toUpperCase()}`, 'CLAIMED FOR HUMANITY', 'U.S.P.C. · WORLD ' + String(P.seed % 1000).padStart(3, '0'), 3.6);
+      await c.card(`${P.name.toUpperCase()}`, 'CLAIMED FOR HUMANITY', 'U.S.P.C. · WORLD ' + String(P.seed % 1000).padStart(3, '0'), 3.6, 'CLAIMED');
       c.fade(0, 1.2);
       c.cam.cut(new V3(0, 0.35, 3.4), new V3(0, 0, 0), 32);
     }, { name: 'ascend' });

@@ -73,7 +73,7 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
   // body forms read from the genes: a bear's plantigrade bulk, a frog's crouch, a lizard's sprawl, a tortoise's box
   const bear = has(d, 'leg_plantigrade') && !biped, humped = has(d, 'hump') && !biped;
   const hop = has(d, 'leg_leaping') && !biped, sprawl = has(d, 'leg_sprawl') && !biped && !hop, shellV = has(d, 'shell_scute') && !biped;
-  const amph = has(d, 'amphib_skin'), cat = has(d, 'whiskers') && has(d, 'carnassials') && !sprawl;
+  const amph = has(d, 'amphib_skin');
   const T = L * (biped ? 0.42 : hop ? 0.52 : sprawl ? 0.5 : bear ? 0.54 : 0.58);
   const W = L * lerp(0.2, 0.36, d.girth) * (hop ? 1.3 : bear ? 1.12 : shellV ? 1.2 : sprawl ? 0.92 : 1);
   const H = W * (biped ? 1.15 : hop ? 0.78 : sprawl ? 0.7 : bear ? 1.12 : shellV ? 0.85 : 1.05);
@@ -108,7 +108,8 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
   const nk = Math.max(lt * 1.2, W * (bear ? 0.7 : hop ? 0.8 : 0.55));
   b.box(neck, [0, Math.sin(nAng) * neckLen * 0.5, Math.cos(nAng) * neckLen * 0.5], [nk, nk, neckLen + nk * 1.0], 'body', { rx: -nAng });
   rig.neck = [neck];
-  let hl = L * lerp(0.16, 0.3, d.head), hw = Math.max(W * 0.55, hl * 0.62), hh = hw * 0.85;
+  const cat = has(d, 'whiskers') && has(d, 'carnassials') && !sprawl;
+  let hl = L * lerp(0.16, 0.3, d.head) * (cat ? 0.82 : 1), hw = Math.max(W * 0.55, hl * 0.62), hh = hw * 0.85;
   if (hop) { hl = L * lerp(0.24, 0.3, d.head); hw = W * 1.0; hh = hw * 0.5; }
   else if (amph && sprawl) { hl = L * lerp(0.1, 0.15, d.head); hw = W * 0.9; hh = hw * 0.55; }
   else if (sprawl) { hl = L * lerp(0.1, 0.16, d.head); hw = Math.max(W * 0.6, hl * 0.55); hh = hw * 0.66; }
@@ -120,7 +121,7 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
   b.box(head, [0, hh * 0.1, hl * 0.12], [hw, hh, hl * 0.55], 'head');
   // snout + nose
   const sl = hl * (hop ? 0.36 : amph ? 0.4 : beak ? 0.5 : bear ? 0.62 : cat ? 0.36 : has(d, 'carnassials') ? 0.55 : 0.6);
-  if (cat) hh = hw * 0.95;
+  if (cat) { hw = Math.max(hw, hl * 0.78); hh = hw * 0.92; }
   b.box(head, [0, -hh * 0.06, hl * 0.38 + sl * 0.38], [hw * 0.68, hh * 0.52, sl], beak ? 'horn' : 'head');
   if (!beak) b.box(head, [0, hh * 0.08, hl * 0.38 + sl * 0.88], [hw * 0.4, hh * 0.2, hl * 0.06], 'nose');
   // jaw (and a tongue that can shoot out of it, and a throat sac that pulses)

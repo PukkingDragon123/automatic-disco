@@ -230,9 +230,10 @@ export class Cinema {
     });
   }
   /** a newsreel title card */
-  async card(title: string, sub = '', kicker = '', dur = 3.2) {
+  async card(title: string, sub = '', kicker = '', dur = 3.2, stamp = 'U.S.P.C.') {
     if (this.skipping) return;
-    this.ui.card(title, sub, kicker); csfx('sting', 0.7);
+    this.ui.card(title, sub, kicker, stamp); csfx('sting', 0.6);
+    setTimeout(() => { if (!this.skipping) csfx('thud', 0.5, 1.4); }, 900);
     await this.wait(dur);
     this.ui.cardOff();
     await this.wait(0.6);

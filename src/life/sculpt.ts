@@ -487,7 +487,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
   const cts = chordTs(ctrl);
   const sp = spline(ctrl, 16);
   const fore = (has(d, 'eye_binocular') || has(d, 'hominid_eyes')) && !cat && !hom;
-  const [ezK, eA, eYaw, erK, irisA, pupA] = fore ? [0.36, 0.72, 0.5, 0.15, 44, 15] : F.eye;
+  const [ezK, eA, eYaw, erK0, irisA, pupA] = fore ? [0.36, 0.72, 0.5, 0.15, 44, 15] : F.eye, erK = hoof ? erK0 * 0.88 : erK0;
   const tEye = interp([hz[0], hz[hz.length - 1]], [0, 1], hl * (bug ? 0.12 : ezK)), tSn = cts[5];
   const eAng = bug ? 0.6 : eA;
   const furF = fuzz(0.1, 18, 16, d.seed % 53);
@@ -509,7 +509,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
   };
   const HEAD = S.reg('HEAD', TAU * hw * 0.5 * hk, len(sub(ctrl[ctrl.length - 1], ctrl[0])), 16, 96, 64);
   const w = (i: number): Wt => (i < 2 ? [iH, 0.75, iN, 0.25] : [iH, 1]);
-  sac(S.B, HEAD, S.gid(), sp.pts, sp.t.map((t) => [interp(cts, rx, t), interp(cts, ry, t)] as [number, number]), w, { n: 18, bump, end: true, start: true, cap: boar ? 0.15 : 0.5 });
+  sac(S.B, HEAD, S.gid(), sp.pts, sp.t.map((t) => [interp(cts, rx, t), interp(cts, ry, t)] as [number, number]), w, { n: 18, bump, end: true, start: true, cap: boar || cat || bear ? 0.18 : hoof ? 0.3 : 0.5 });
   const Lh = sp.L;
   // ------------------------------------------------ eyes: a wet eyeball in a socket rim, an upper lid that blinks, a lower lid
   const er = Math.max(0.02, hw * (bug ? 0.2 : erK)) * (hom ? 1.25 : 1);
@@ -520,7 +520,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     const sx = Math.pow(Math.sin(eAng), se) * interp(hz, rx, ez), sy = interp(hz, hy, ez) + Math.pow(Math.cos(eAng), se) * interp(hz, ry, ez);
     const off: V3 = bug ? [s * hw * 0.3, hh * 0.36, hl * 0.12] : [s * sx, sy, ez];
     const ax = norm(bug ? [s * 0.62, 0.62, 0.48] : [s * Math.sin(eYaw), hoof ? 0.2 : 0.12, Math.cos(eYaw)]);
-    const c = addV(addV(head, off), scl(ax, -er * (bug ? -0.1 : 0.4)));
+    const c = addV(addV(head, off), scl(ax, -er * (bug ? -0.1 : hoof ? 0.5 : 0.4)));
     if (bug) sac(S.B, LID, S.gid(), [addV(c, scl(ax, -er * 1.3)), addV(c, scl(ax, -er * 0.55)), addV(c, scl(ax, -er * 0.05))], [[er * 1.05, er * 1.0], [er * 1.12, er * 1.06], [er * 1.08, er * 1.02]], [[iH, 1], [iH, 1], [iH, 1]], { n: 14, start: false, end: false });
     ball(S.B, EYE, S.gid(), c, ax, [er, er * 0.95, er * 0.86], [iH, 1], { n: 16, rings: 7, tv: EYE_TV, sq: 2 });
     sac(S.B, LID, S.gid(), [addV(c, scl(ax, -er * 0.02)), addV(c, scl(ax, er * 0.3)), addV(c, scl(ax, er * 0.5))], [[er * 1.22, er * 1.16], [er * 1.12, er * 1.06], [er * 1.02, er * 0.96]], [[iH, 1], [iH, 1], [iH, 1]], { n: 14, start: false, end: false, sq: 2.2 });
@@ -534,7 +534,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     }
     lidCap(S, LC, c, ax, scl(u, -1), R * 0.99, -0.75, 0.84 - heavy * 0.5, 1.75, [iH, 1], 3, 8);
   }
-  S.paints.push(() => paintEyeReg(S, EYE, { iris: irisA, pupilA: pupA, pupil: hoof || flat ? 'h' : cat ? 'v' : 'round', sclera: hom ? 0xe8e2d8 : hoof ? 0xd8ccb8 : 0xc8b49a }));
+  S.paints.push(() => paintEyeReg(S, EYE, { iris: irisA, pupilA: pupA, pupil: hoof || flat ? 'h' : cat ? 'v' : 'round', sclera: hom ? 0xe8e2d8 : hoof ? 0xd8ccb8 : 0xc8b49a, irisC: hoof || boar ? mixHex(d.colors.eye, 0x3a2414, 0.8) : undefined }));
   S.paints.push(() => {
     hide(S, LID, { L: er, rad: () => er, seed: 61, kind: 'ear', noPattern: !amph, flow: -1 }); for (let x = 0; x < LID.w; x++) { LID.set(x, LID.h - 1, 0x140c0a); LID.set(x, LID.h - 2, S.P.dark[1]); }
     if (amph) amphSkin(S, LID, 0.5);
@@ -552,16 +552,15 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
       const t = (y + 0.5) / HEAD.h, th = HEAD.th(x), ath = Math.abs(th);
       const muz = !beak && !flat && !liz && t > tSn - 0.1 && ath > (cat ? 1.35 : 1.6) - (t - tSn) * 1.5 + (hash(x, 3) - 0.5) * 0.2;
       if (muz && (x + y) % 3 !== 0) HEAD.put(x, y, muzzleR, 3.4 + Math.cos(th) * 0.5 + (hash(x, y) - 0.5) * 0.7, 0.5);
-      if (cat && muz && t > 0.8 && t < 0.97 && ath > 1.7 && ath < 2.45 && (x % 3 === 0) && (y % 3 === 1)) HEAD.set(x, y, S.P.dark[1]); // whisker spots
+      if (cat && muz && t > 0.86 && t < 0.955 && ath > 1.9 && ath < 2.3 && x % 4 === (y >> 2) % 2 * 2 && y % 4 === 1 && hash(x, y + 5) < 0.7) HEAD.set(x, y, S.P.dark[1]); // whisker spots
       const lipA = flat ? 2.0 : liz ? 2.2 : 2.25;
       if (!beak && t > (flat || liz ? 0.2 : tSn - 0.04) && Math.abs(ath - lipA - (cat ? (1 - t) * 0.6 : 0)) < 0.12) HEAD.set(x, y, t > 0.97 ? S.P.dark[1] : 0x140c0c); // lip line (a frog's or lizard's runs the whole jaw)
       if (liz && t > 0.25 && ath > lipA - 0.32 && ath < lipA - 0.12 && x % 3 === 0) HEAD.set(x, y, S.P.belly[3]); // labial scales
       if (flat && D.hop && Math.hypot((t - tEye + 0.16) * 5, ath - 1.45) < 0.32) HEAD.put(x, y, Math.hypot((t - tEye + 0.16) * 5, ath - 1.45) < 0.24 ? S.P.belly : S.P.dark, 2.4, 0.5); // eardrum
-      const sock = gauss(t, tEye + (bear ? 0.06 : 0), 0.06) * gauss(ath, eAng, bear ? 0.22 : 0.32);
-      if (sock > (bear ? 0.7 : 0.5)) HEAD.put(x, y, S.P.dark, 2.0 + Math.cos(th) * 0.4, 0.4);
+      const sock = gauss(t, tEye + (bear ? 0.04 : 0), 0.045) * gauss(ath, eAng, bear ? 0.16 : 0.2);
+      if (sock > 0.55) HEAD.blend(x, y, S.P.dark[0], 0.3 + (sock - 0.55) * 0.8);
       // a pale brow spot over each eye and a dark tear line down to the muzzle on cats
-      if ((cat || fam === 'canid') && gauss(t, tEye - 0.07, 0.03) * gauss(ath, eAng - 0.32, 0.12) > 0.6) HEAD.put(x, y, S.P.belly, 4, 0.4);
-      if (cat && t > tEye + 0.03 && t < tSn + 0.1 && Math.abs(ath - (eAng + 0.15 + (t - tEye) * 1.6)) < 0.07) HEAD.set(x, y, S.P.dark[1]);
+      if ((cat || fam === 'canid') && gauss(t, tEye - 0.06, 0.025) * gauss(ath, eAng - 0.3, 0.1) > 0.6 && (x + y) % 2 === 0) HEAD.put(x, y, S.P.belly, 4, 0.4);
     }
     if (liz) for (const s of [-1, 1]) { const nx = HEAD.X(s * 30), ny = HEAD.h * 0.93; HEAD.set(nx, ny, 0x0a0608); HEAD.set(nx + s, ny, 0x0a0608); HEAD.set(nx, ny + 1, 0x2a1a14); }
     if (amph) amphSkin(S, HEAD, 0.8);
@@ -619,7 +618,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     const NOSE = S.fixed('NOSE', 10, 8);
     const nz = z0 + sl * (boar ? 1.0 : 0.97);
     const nr: [number, number, number] = cat ? [hw * 0.15, hh * 0.1, hw * 0.07] : bear ? [hw * 0.2, hh * 0.13, hw * 0.1] : hoof ? [hw * 0.21, hh * 0.17, hw * 0.08] : boar ? [hw * 0.2, hh * 0.19, hw * 0.045] : [hw * 0.14, hh * 0.1, hw * 0.07];
-    ball(S.B, NOSE, S.gid(), addV(head, [0, hy[7] + (cat ? hh * 0.08 : hoof ? hh * 0.02 : hh * 0.06), nz]), norm([0, boar ? 0 : cat ? 0.45 : 0.25, 1]), [nr[0] * hk, nr[1], nr[2]], [iH, 1], { n: 12, rings: 7, tv: EYE_TV, sq: cat ? 2.4 : 2 });
+    ball(S.B, NOSE, S.gid(), addV(head, [0, hy[7] + (cat ? hh * 0.08 : hoof ? hh * 0.02 : hh * 0.06), nz - nr[2] * 0.4]), norm([0, boar ? 0 : cat ? 0.45 : 0.25, 1]), [nr[0] * hk, nr[1], nr[2]], [iH, 1], { n: 16, rings: 7, tv: EYE_TV, sq: cat ? 2.6 : 2.2, cap: 0.08 });
     S.paints.push(() => {
       const leather = cat ? mixHex(d.colors.belly, 0xc86a6a, 0.55) : boar ? mixHex(d.colors.base, 0xd8a0a0, 0.55) : mixHex(d.colors.pattern, 0x1a1214, 0.65);
       const R = makeRamp(leather, 6, { spread: 0.55 });
@@ -701,12 +700,12 @@ export function earPaint(S: Ctx, r: Region, cup: number, L: number, rad: number)
   }
 }
 
-export function paintEyeReg(S: Ctx, r: Region, o: { pupil?: 'v' | 'h' | 'round'; iris?: number; pupilA?: number; sclera?: number } = {}) {
+export function paintEyeReg(S: Ctx, r: Region, o: { pupil?: 'v' | 'h' | 'round'; iris?: number; pupilA?: number; sclera?: number; irisC?: number } = {}) {
   const d = S.d;
   const pupil = o.pupil ?? (has(d, 'carnassials') || d.cover === 'scales' ? 'v' : 'round');
   const lum = ((d.colors.eye >> 16 & 255) * 0.3 + (d.colors.eye >> 8 & 255) * 0.59 + (d.colors.eye & 255) * 0.11);
   // dark eyes still show a warm brown iris round a black pupil
-  const irisC = lum < 50 ? mixHex(d.colors.eye, 0x6a4424, 0.55) : d.colors.eye;
+  const irisC = o.irisC ?? (lum < 50 ? mixHex(d.colors.eye, 0x6a4424, 0.55) : d.colors.eye);
   const IR = makeRamp(irisC, 7, { spread: 0.65, hueShift: 0.05 }), SC = makeRamp(o.sclera ?? 0xc8b49a, 5, { spread: 0.45 });
   const ai = o.iris ?? 42, ap = o.pupilA || 15, rad = Math.PI / 180;
   for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {

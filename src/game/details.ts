@@ -234,7 +234,7 @@ void main() {
   float l = length(d);
   vec2 dir = l > 1e-3 ? d / l : vec2(0.0, 1.0);
   vec4 P = mix(a, b, position.y);
-  P.xy += vec2(-dir.y, dir.x) * position.x * 2.0 * uPx / uRes * P.w;
+  P.xy += vec2(-dir.y, dir.x) * position.x * 4.0 * uPx / uRes * P.w;
   vT = position.y;
   gl_Position = P;
 }`;
@@ -764,7 +764,7 @@ export class Details {
     (U.uFall.value as THREE.Vector3).set(env.wind.x * 1.6, -11, env.wind.y * 1.6);
     U.uTime.value = this.t;
     (U.uRes.value as THREE.Vector2).set(g.engine.w, g.engine.h);
-    U.uPx.value = Math.max(0.5, g.engine.h / 1080);
+    U.uPx.value = Math.max(0.6, g.engine.h / 900);
     (U.uCol.value as THREE.Color).setRGB(0.72, 0.8, 0.95).multiply(this.vfx.light);
     const maxN = (rm as unknown as { maxN: number }).maxN;
     (rm.geometry as THREE.InstancedBufferGeometry).instanceCount = Math.floor(maxN * this.rain * clamp(box / 30, 0.5, 1.6) / 1.6);

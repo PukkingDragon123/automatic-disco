@@ -21,7 +21,7 @@ const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 
 // ------------------------------------------------------------------ field powers gated by the skill tree
 /** the skill that unlocks each field power (null: no skill grants it, so it never shows) */
-export const ABILITY_SKILL: Record<Ability, string | null> = { pull: 'lift', pulse: 'slam', repel: 'repulse', lode: 'well', shape: 'shape', storm: 'storm', snare: 'graft', lance: null, bloom: null };
+export const ABILITY_SKILL: Record<Ability, string | null> = { pull: 'lift', pulse: 'slam', repel: 'repulse', lode: 'well', shape: 'shape', storm: 'storm', snare: null, lance: null, bloom: null };
 let SK: { has(id: string): boolean } | null = null;
 /** the skills the wheel and the casting code check (bound by the player when a game starts) */
 export function bindSkills(s: { has(id: string): boolean } | null) { SK = s; }

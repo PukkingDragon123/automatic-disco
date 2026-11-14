@@ -91,7 +91,7 @@ export async function opening(c: Cinema, S: Story) {
   });
   c.ui.fade(1, 0);
   await c.wait(0.4);
-  await c.card('RECOVERY TEAM', 'STATION FOUR · DAY 21 AFTER IMPACT', 'U.S. PLANETARY CORPS', 3.4);
+  await c.card('RECOVERY TEAM', 'STATION FOUR · DAY 21 AFTER IMPACT', 'U.S. PLANETARY CORPS', 3.4, 'CLASSIFIED');
   // ---- 1. Recovery One comes down out of a pale sky
   let alt = 42;
   const engine = c.loop('engine', 0.8), wind = c.loop('drone', 0.35);
@@ -274,7 +274,7 @@ export async function contact(c: Cinema, S: Story) {
   c.cam.move({ pos: spot(S, G, pL, 4.6, dL, 0.9, 1.8), dur: 6, ease: 'inOut' });
   await c.say('Well. Just you and me, big fella. Let\'s get you a body.', { who: 'Dr. Calder', style: 'film', onShow: () => { cal.talk(3, 'smile'); cal.gesture('nod'); } });
   await c.fade(1, 1.2);
-  await c.card('ODDWORLD', 'TAKE THIS WORLD FOR HUMANITY', 'U.S.P.C. · UNIT 07', 3.2);
+  await c.card('ODDWORLD', 'TAKE THIS WORLD FOR HUMANITY', 'U.S.P.C. · UNIT 07', 3.2, 'UNIT 07');
   c.fade(0, 1.0);
 }
 
@@ -442,7 +442,7 @@ export async function beast(c: Cinema, S: Story) {
   await c.say('Calder, this is Station Four. Do you copy? ...Calder?', { who: 'Station Four', style: 'radio', pitch: 0.7 });
   await c.wait(1.2);
   await c.fade(1, 2);
-  await c.card('DR. EDWIN CALDER', '1911 – 1957', 'U.S. PLANETARY CORPS', 3);
+  await c.card('DR. EDWIN CALDER', '1911 – 1957', 'U.S. PLANETARY CORPS', 3, 'IN MEMORIAM');
   c.fade(0, 1.2);
 }
 
@@ -487,7 +487,7 @@ export async function final(c: Cinema, S: Story) {
   wind.set(0.8); csfx('swell', 0.6);
   await c.wait(6.5);
   await c.fade(1, 1.8);
-  await c.card('FOR CALDER', 'HOLD THE GROUND', 'U.S.P.C. · UNIT 07', 3.2);
+  await c.card('FOR CALDER', 'HOLD THE GROUND', 'U.S.P.C. · UNIT 07', 3.2, 'RECEIVED');
   c.fade(0, 1.4);
 }
 

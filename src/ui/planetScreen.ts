@@ -9,8 +9,6 @@ import { sfx } from '../audio/audio';
 import { makeGlobe, makeSpace, type Globe } from './globe';
 import { type Planet, type PRegion, owned } from '../world/planet';
 import { BIOMES } from '../world/region';
-import { gbuf } from '../gfx/gbuf';
-import { VEYR } from '../world/palette';
 import { clamp } from '../core/rand';
 
 export interface PlanetOpts { onLand: (r: PRegion) => void; onBack: () => void; canLand: (r: PRegion) => string | null; note?: string }
@@ -24,7 +22,6 @@ export class PlanetScreen implements Screen {
   private drag: { x: number; y: number; moved: boolean } | null = null;
   private hover = -1; private sel: PRegion | null = null;
   private cine: { r: PRegion; t: number; from: THREE.Quaternion; to: THREE.Quaternion } | null = null;
-  private meteor: THREE.Mesh; private trail: THREE.Mesh[] = [];
   private flash: HTMLDivElement;
   private t = 0;
 
@@ -35,10 +32,6 @@ export class PlanetScreen implements Screen {
     this.globe = makeGlobe(planet, 1, { orbit: true });
     this.scene.add(this.globe.group);
     this.q.setFromEuler(new THREE.Euler(0.35, -0.6, 0));
-    const rm = new THREE.MeshLambertMaterial({ color: 0x2a2436, emissive: new THREE.Color(VEYR.vein), emissiveIntensity: 0.8, flatShading: true }); gbuf(rm, 1);
-    this.meteor = new THREE.Mesh(new THREE.IcosahedronGeometry(0.035, 0), rm); this.meteor.visible = false; this.scene.add(this.meteor);
-    const tm = new THREE.MeshBasicMaterial({ color: new THREE.Color(VEYR.vein).multiplyScalar(2), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }); gbuf(tm, 0);
-    for (let i = 0; i < 14; i++) { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.022 * (1 - i / 16), 0), tm); m.visible = false; this.trail.push(m); this.scene.add(m); }
     this.root = el('div', 'planet', ui());
     const top = panel('pl-top', this.root, 'dark');
     el('div', 'small pl-kick', top, 'U.S.P.C. ORBITAL SURVEY &middot; TARGET WORLD');

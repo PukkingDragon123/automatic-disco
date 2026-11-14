@@ -467,7 +467,7 @@ export function sheet(B: SkinB, reg: Region, g: number, grid: V3[][], w: (i: num
 }
 
 /** an ellipsoid as a sac along its local axis `ax` (eyes, knuckles, pods) */
-export function ball(B: SkinB, reg: Region, g: number, c: V3, ax: V3, r: [number, number, number], w: Wt, o: { n?: number; rings?: number; up?: V3; bump?: (a: number, t: number) => number; tv?: number[]; sq?: number } = {}) {
+export function ball(B: SkinB, reg: Region, g: number, c: V3, ax: V3, r: [number, number, number], w: Wt, o: { n?: number; rings?: number; up?: V3; bump?: (a: number, t: number) => number; tv?: number[]; sq?: number; cap?: number } = {}) {
   const rings = o.rings ?? 6, A = norm(ax);
   const pts: V3[] = [], radii: [number, number][] = [];
   for (let i = 0; i <= rings; i++) {
@@ -475,7 +475,7 @@ export function ball(B: SkinB, reg: Region, g: number, c: V3, ax: V3, r: [number
     pts.push(addV(c, scl(A, Math.sin(ang) * r[2])));
     radii.push([r[0] * k, r[1] * k]);
   }
-  return sac(B, reg, g, pts, radii, pts.map(() => w), { n: o.n ?? 10, up: o.up, bump: o.bump, cap: 0.35, tv: o.tv, sq: o.sq });
+  return sac(B, reg, g, pts, radii, pts.map(() => w), { n: o.n ?? 10, up: o.up, bump: o.bump, cap: o.cap ?? 0.35, tv: o.tv, sq: o.sq });
 }
 
 // ------------------------------------------------------------------------------------------- painters
