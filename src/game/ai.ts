@@ -12,7 +12,9 @@
 //  - lures (eco.attract / repel), sown plants, watered ground, bases and danger memory steer where they go
 // The golem takes part: predators hunt it, provoked animals fight back or bolt, small ones keep clear of it, its
 // attacks frighten a whole herd and mark the place as dangerous, and a rival's brood goes for it on sight.
-import { Creature, GOLEM, GOLEM_REF, Emote, type Mind, type Spot, type Memory } from './creature';
+// Machines (robots, faction hardware: MACHINES) are danger too: the timid bolt from them, big or fierce animals and
+// mothers stand and fight, and anything a machine shoots answers it by its temperament.
+import { Creature, GOLEM, GOLEM_REF, Emote, MACHINES, machineId, machineOf, machineMass, isMachine, type Mind, type Spot, type Memory, type Machine } from './creature';
 import type { World } from './world';
 import { clamp } from '../core/rand';
 import { profileOf, activity, midday, morning, evening, type Profile } from '../eco/profile';
@@ -41,6 +43,12 @@ function travel(c: Creature, w: World, x: number, z: number, plan: Mind) {
   setMind(c, 'travel'); c.actT = 0;
 }
 function dist(c: Creature, x: number, z: number) { return Math.hypot(x - c.x, z - c.z); }
+/** where a target id is: the golem, a machine or a creature */
+function tAt(w: World, id: number): { x: number; z: number; radius: number } | null {
+  if (id === GOLEM) return GOLEM_REF.g;
+  if (isMachine(id)) return machineOf(id);
+  return w.get(id) ?? null;
+}
 
 // ================================================================================================ perception
 /** the last hunter seen but not fled from (the animal stands alert and watches it) */
@@ -72,6 +80,56 @@ function threatOf(c: Creature, w: World): Creature | null {
   return best;
 }
 
+/** the nearest machine this wild animal should mind: one that just shot it, or one coming into its sight */
+function machineThreat(c: Creature, w: World): Machine | null {
+  if (c.machineHit && w.time - c.machineHitT < 6) { const m = machineOf(c.machineHit); if (m && (m.x - c.x) ** 2 + (m.z - c.z) ** 2 < (c.st.sight * 1.6) ** 2) return m; }
+  const L = MACHINES.list; if (!L.length) return null;
+  const sight = c.st.sight * (c.mind === 'sleep' ? 0.3 : c.mind === 'watch' ? 1.2 : 0.7);
+  let best: Machine | null = null, bd = sight * sight;
+  for (const m of L) {
+    if (m.dead) continue;
+    const d = (m.x - c.x) ** 2 + (m.z - c.z) ** 2;
+    if (d < bd) { bd = d; best = m; }
+  }
+  return best;
+}
+/** a machine in view: fight it (big, fierce, cornered, or guarding young) or bolt (and the herd with it) */
+function machineMind(c: Creature, w: World, P: Profile): boolean {
+  const m = machineThreat(c, w);
+  if (!m) return false;
+  const id = machineId(m), mm = machineMass(m), d = Math.hypot(m.x - c.x, m.z - c.z);
+  if ((c.mind === 'attack' || c.mind === 'hunt') && c.target === id) return true;
+  if (c.mind === 'flee' && c.target === id && c.fleeT > 0) return true;
+  const shot = c.machineHit === id && w.time - c.machineHitT < 6;
+  let young = false;
+  if (c.mature) w.near(c.x, c.z, 6, (o) => { if (!young && o.mother === c.id && !o.dead) young = true; });
+  const fierce = c.boss || (P.guild === 'predator' && c.mass > mm * 0.7) || c.mass > mm * 3 || (c.diet !== 'herb' && c.mass > mm * 1.4);
+  if ((fierce || (young && c.mass > mm * 0.5) || (shot && c.diet !== 'herb' && c.mass > mm)) && c.hp > c.maxHp * 0.35) {
+    setMind(c, 'attack'); c.target = id; c.path = null; c.aggro = Math.max(c.aggro, 6);
+    if (c.emote !== Emote.ANGRY) emote(c, Emote.ANGRY, 2);
+    return true;
+  }
+  // not a fighter: only close machines (or ones that shot at it) set it running; far off it keeps an eye on them
+  if (shot || d < Math.min(c.st.sight * 0.55, 9) + m.radius) {
+    const was = c.mind === 'flee';
+    bolt(c, w, id, shot ? 4 : 2.5);
+    if (!was) alarm(c, w, id);
+    return true;
+  }
+  if (c.mind !== 'sleep') c.fear = Math.max(c.fear, 1.5);
+  return false;
+}
+/** chase a machine and bite at it */
+function chaseMachine(c: Creature, w: World, dt: number) {
+  const m = machineOf(c.target);
+  if (!m) { setMind(c, 'idle'); c.target = 0; return; }
+  const reach = c.st.reach + c.radius + m.radius, d = Math.hypot(m.x - c.x, m.z - c.z);
+  if (d > c.st.sight * 1.8 || (c.hp < c.maxHp * 0.2 && !c.boss)) { bolt(c, w, c.target, 4); return; }
+  if (d > reach * 0.85) go(c, w, m.x, m.z, d < 10 ? 1 : 0.8, dt, true);
+  else { c.steer(w, c.x, c.z, 0, dt); c.face(m.x, m.z, dt); }
+  if (d < reach + 0.25 && c.atkT <= 0 && c.atkAnim < 0) { c.atkAnim = 0; c.atkT = 1 / c.st.attackRate; }
+}
+
 /** a herd's alarm: the ones nearby bolt after a beat, in a ripple; other grazers close by startle too */
 function alarm(c: Creature, w: World, by: number, r = 16) {
   const h = c.herd ? w.herds.get(c.herd) : null;
@@ -87,15 +145,15 @@ function alarm(c: Creature, w: World, by: number, r = 16) {
 }
 function bolt(c: Creature, w: World, by: number, t = 3) {
   if (c.roller && c.faction === 'wild' && c.cdCurl <= 0) {
-    const th = by === GOLEM ? GOLEM_REF.g : w.get(by);
+    const th = tAt(w, by);
     const close = !!th && (th.x - c.x) ** 2 + (th.z - c.z) ** 2 < 36;
-    const coming = !!th && by !== GOLEM && (th as Creature).target === c.id;
+    const coming = !!th && w.get(by)?.target === c.id;
     if (close || coming) { curlUp(c, w, by); return; }
   }
   c.target = by; c.fleeT = t + Math.random(); c.path = null; c.plan = null;
   if (c.mind !== 'flee') emote(c, Emote.ALARM, 1.8);
   setMind(c, 'flee');
-  const th = by === GOLEM ? GOLEM_REF.g : w.get(by);
+  const th = tAt(w, by);
   if (th) { remember(mem(c).danger, th.x, th.z, w.time, 1); w.eco.scare(th.x, th.z, 0.12, 5); }
 }
 
@@ -104,14 +162,14 @@ function curlUp(c: Creature, w: World, by: number) {
   if (c.mind !== 'curl') { emote(c, Emote.ALARM, 1.6); c.rolling = false; }
   c.target = by; c.path = null; c.plan = null; c.fleeT = 0;
   setMind(c, 'curl');
-  const th = by === GOLEM ? GOLEM_REF.g : w.get(by);
+  const th = tAt(w, by);
   if (th) remember(mem(c).danger, th.x, th.z, w.time, 1);
 }
 /** is whatever made it curl up still close? */
 function stillThreatened(c: Creature, w: World, r: number) {
-  const th = c.target === GOLEM ? GOLEM_REF.g : w.get(c.target);
-  if (!th || (c.target !== GOLEM && (th as Creature).dead)) return false;
-  if (c.target !== GOLEM) { const o = th as Creature; if (o.mind === 'sleep' || o.mind === 'rest' || o.mind === 'eat') return false; }
+  const th = tAt(w, c.target);
+  if (!th || (c.target !== GOLEM && (th as Creature | Machine).dead)) return false;
+  const o = w.get(c.target); if (o && (o.mind === 'sleep' || o.mind === 'rest' || o.mind === 'eat')) return false;
   return (th.x - c.x) ** 2 + (th.z - c.z) ** 2 < r * r;
 }
 /** a ball's way out: away from the danger and downhill, round water */
@@ -312,6 +370,8 @@ function thinkWild(c: Creature, w: World) {
       return;
     }
   }
+  // ---- machines
+  if (!th && machineMind(c, w, P)) return;
   if (c.mind === 'flee' && c.fleeT > 0) return;
   // a hunter in view but keeping its distance: stop and watch it (head up, ears up)
   if (watched && (c.mind === 'idle' || c.mind === 'wander' || c.mind === 'graze') && Math.random() < 0.5) { const o = watched as Creature; setMind(c, 'idle'); c.goalX = o.x; c.goalZ = o.z; c.target = 0; c.alarmBy = -o.id; return; }
@@ -375,8 +435,8 @@ function keepGoing(c: Creature, w: World, P: Profile, awake: number): boolean {
     case 'display': return c.actT < 3.2;
     case 'carry': return !!c.carry && c.actT < 14;
     case 'stalk': case 'ambush': return c.actT < (c.mind === 'ambush' ? 45 : 26) && !!w.get(c.target) && !w.get(c.target)!.dead || (c.mind === 'ambush' && c.actT < 45 && c.energy > 0.15);
-    case 'hunt': return (!!w.get(c.target) && !w.get(c.target)!.dead) || c.target === GOLEM;
-    case 'attack': return (!!w.get(c.target) && !w.get(c.target)!.dead && c.actT < 12) || c.target === GOLEM;
+    case 'hunt': return (!!w.get(c.target) && !w.get(c.target)!.dead) || c.target === GOLEM || !!machineOf(c.target);
+    case 'attack': return (!!w.get(c.target) && !w.get(c.target)!.dead && c.actT < 12) || c.target === GOLEM || (!!machineOf(c.target) && c.actT < 20);
     case 'scavenge': { const cp = w.get(c.target); return !!cp && cp.dead && cp.bio > 0.5 && c.actT < 40; }
     case 'graze': return w.flora.bio[-1 - c.target] > 0.05 && c.actT < 15;
     case 'travel': {
@@ -749,6 +809,7 @@ export function act(c: Creature, w: World, dt: number) {
     const t = w.get(c.target);
     if (prev < 0.5 && c.atkAnim >= 0.5 && t && !t.dead && Math.hypot(t.x - c.x, t.z - c.z) < c.st.reach + c.radius + t.radius + 0.6) c.strike(w, t);
     else if (prev < 0.5 && c.atkAnim >= 0.5 && c.target === GOLEM) strikeGolem(c);
+    else if (prev < 0.5 && c.atkAnim >= 0.5 && isMachine(c.target)) { const m = machineOf(c.target); if (m && Math.hypot(m.x - c.x, m.z - c.z) < c.st.reach + c.radius + m.radius + 0.5) m.damage(c.st.attack * (0.6 + 0.4 * c.growth) * (0.85 + Math.random() * 0.3), c); }
     if (c.atkAnim >= 1) c.atkAnim = -1;
   }
   const running = c.mind === 'flee' || c.mind === 'hunt';
@@ -758,7 +819,7 @@ export function act(c: Creature, w: World, dt: number) {
     case 'sleep': case 'rest': c.steer(w, c.x, c.z, 0, dt); break;
     case 'curl': {
       // tuck in; a roller that is pressed rolls off as a ball, downhill if it can, then lies still until it is safe
-      const th = c.target === GOLEM ? GOLEM_REF.g : w.get(c.target);
+      const th = tAt(w, c.target);
       const d = th ? Math.hypot(th.x - c.x, th.z - c.z) : 99;
       if (c.roller && th) {
         if (!c.rolling && c.actT > 0.5 && c.actT < 6 && d < 7 + c.radius) c.rolling = true;
@@ -825,6 +886,14 @@ export function act(c: Creature, w: World, dt: number) {
         if (d > c.st.sight * 1.2 && c.fleeT <= 0) { c.mind = 'idle'; c.target = 0; break; }
         if (c.fleeT <= 0 && d > 3) { c.mind = 'idle'; c.target = 0; break; }
         fleeFrom(c, w, G.x, G.z, dt);
+        break;
+      }
+      if (isMachine(c.target)) {
+        const m = machineOf(c.target);
+        if (!m) { c.mind = 'idle'; c.target = 0; break; }
+        const d = Math.hypot(c.x - m.x, c.z - m.z);
+        if (d > c.st.sight * 1.2 && c.fleeT <= 0) { c.mind = 'idle'; c.target = 0; break; }
+        fleeFrom(c, w, m.x, m.z, dt);
         break;
       }
       const t = w.get(c.target);
@@ -965,6 +1034,7 @@ export function act(c: Creature, w: World, dt: number) {
     }
     case 'hunt': case 'attack': {
       if (c.target === GOLEM) { chaseGolem(c, w, dt); break; }
+      if (isMachine(c.target)) { chaseMachine(c, w, dt); break; }
       const t = w.get(c.target);
       if (!t || t.dead) {
         if (c.mind === 'hunt' && t && t.dead) { killed(c, w, t); break; }

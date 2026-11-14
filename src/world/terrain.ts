@@ -9,7 +9,7 @@
 // Hooks: ecoData()/ecoFlush() (R moisture, G fertility for src/eco; B trampled wear from game/details.ts), U.uWetG.
 import * as THREE from 'three';
 import { Region } from './region';
-import { BLOCKS, L, buildBlockTexture } from './blockTex';
+import { BLOCKS, L, TS, buildBlockTexture } from './blockTex';
 import { clamp01 } from '../core/rand';
 import { gbuf, GN_DECL } from '../gfx/gbuf';
 import { VEYR, RIVALS } from './palette';
@@ -19,6 +19,9 @@ export { SHADER_NOISE, FOW_FN } from './glsl';
 import { SHADER_NOISE, FOW_FN } from './glsl';
 import { makeSea, makeRivers } from './water';
 import { Rocks } from './rocks';
+
+/** the ground's texel grid (blockTex.TS texels per metre) as GLSL literals: the grid itself and the rivet spacing */
+const TSF = TS.toFixed(1), RIV = (40 * TS / 32).toFixed(1);
 
 export class Terrain {
   readonly group = new THREE.Group();
@@ -86,6 +89,8 @@ export class Terrain {
       uRivalVein: { value: new THREE.Color(RIVALS[0].vein) }, uRivalLayer: { value: L.creep0 }, uRivalCore: { value: new THREE.Vector3(-999, 0, -999) },
       uDark: { value: new THREE.Color(0x07080c) }, uVeinGain: { value: 1 },
       uWater: { value: region.water },
+      // the seasonal water stage (eco.level) the sea and river surfaces ride on (water.ts)
+      uStage: { value: 0 },
     };
     this.mat = this.makeMaterial();
     this.buildMesh();
@@ -232,8 +237,8 @@ void contend(int id, float w, float pref, float vb, vec2 pc, vec2 gx, vec2 gy, i
 }`)
         .replace('#include <map_fragment>', `
 vec3 emis = vec3(0.0);
-vec2 pxw = floor(vWp.xz * 32.0);
-vec2 pc = (pxw + 0.5) / 32.0;
+vec2 pxw = floor(vWp.xz * ${TSF});
+vec2 pc = (pxw + 0.5) / ${TSF};
 vec2 gx = dFdx(vWp.xz), gy = dFdy(vWp.xz);
 vec4 eco = texture2D(uEco, pc / uN);
 float damp = texture2D(uDamp, pc / uN).r;
@@ -311,18 +316,18 @@ if (mineT || theirT) {
   base = mix(base, vec3(l) * vec3(0.82, 0.92, 0.98) * 1.1 + vc * 0.04, 0.34 * inner);
   // hairline veins: one-pixel contour lines of a slow noise field (a line wherever a contour crosses into the next pixel)
   float vf = vn(pc * 0.11 + 5.0) * 0.75 + vn(pc * 0.37 + 2.0) * 0.25;
-  float vr = vn((pc + vec2(1.0 / 32.0, 0.0)) * 0.11 + 5.0) * 0.75 + vn((pc + vec2(1.0 / 32.0, 0.0)) * 0.37 + 2.0) * 0.25;
-  float vd = vn((pc + vec2(0.0, 1.0 / 32.0)) * 0.11 + 5.0) * 0.75 + vn((pc + vec2(0.0, 1.0 / 32.0)) * 0.37 + 2.0) * 0.25;
+  float vr = vn((pc + vec2(1.0 / ${TSF}, 0.0)) * 0.11 + 5.0) * 0.75 + vn((pc + vec2(1.0 / ${TSF}, 0.0)) * 0.37 + 2.0) * 0.25;
+  float vd = vn((pc + vec2(0.0, 1.0 / ${TSF})) * 0.11 + 5.0) * 0.75 + vn((pc + vec2(0.0, 1.0 / ${TSF})) * 0.37 + 2.0) * 0.25;
   float lv = floor(vf * 7.0);
   if ((lv != floor(vr * 7.0) || lv != floor(vd * 7.0)) && inner > 0.15 && h2(vec2(lv, 3.0)) > 0.25) {
     float ph = fract(vf * 2.0 - uTime * 0.2 + h2(vec2(lv, 9.0)));
     base = mix(base, vc * 0.55, 0.4 * inner);
     emis += vc * (0.06 + 1.2 * smoothstep(0.92, 1.0, ph)) * 0.35 * inner * uVeinGain;
   }
-  vec2 rg = mod(pxw, 40.0);
-  if (rg.x < 1.0 && rg.y < 1.0 && inner > 0.6 && h2(floor(pxw / 40.0) + 3.0) > 0.5) { base = vec3(0.8, 0.86, 0.9) * (0.6 + l); emis += vc * 0.25; }
+  vec2 rg = mod(pxw, ${RIV});
+  if (rg.x < 1.0 && rg.y < 1.0 && inner > 0.6 && h2(floor(pxw / ${RIV}) + 3.0) > 0.5) { base = vec3(0.8, 0.86, 0.9) * (0.6 + l); emis += vc * 0.25; }
   // the seam: this pixel is held and one of its four neighbours is not
-  float t0 = 0.42 + nT * 0.14, px1 = 1.0 / 32.0;
+  float t0 = 0.42 + nT * 0.14, px1 = 1.0 / ${TSF};
   vec4 nA = texture2D(uMoss, (pc + vec2(px1, 0.0)) / uN), nB = texture2D(uMoss, (pc - vec2(px1, 0.0)) / uN);
   vec4 nC = texture2D(uMoss, (pc + vec2(0.0, px1)) / uN), nD = texture2D(uMoss, (pc - vec2(0.0, px1)) / uN);
   float nm = mineT ? min(min(nA.b, nB.b), min(nC.b, nD.b)) : min(min(nA.a, nB.a), min(nC.a, nD.a));
@@ -348,4 +353,6 @@ diffuseColor.rgb *= base;
   visFlush() { this.vis.needsUpdate = true; }
 
   update(t: number) { this.U.uTime.value = t; }
+  /** the seasonal water stage in metres over the region's water line (eco.level): rivers rise by it, the sea by half */
+  setStage(level: number) { this.U.uStage.value = level; }
 }

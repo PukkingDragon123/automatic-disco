@@ -281,6 +281,7 @@ export class World {
     this.flora.setPush(movers);
     this.flora.tick(dt);
     this.terrain.update(this.time);
+    this.terrain.setStage(this.eco.level);
     this.flora.update(this.time, cam);
   }
 

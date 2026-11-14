@@ -2,7 +2,8 @@
 // seen through the water (its own block texture, rippled and laced with caustic light) and is swallowed by the
 // turquoise-to-deep-teal body as depth grows; shores get a lapping pale rim, the surface shimmers with sparse sun
 // glints. Rivers add a current: flow-aligned streaks and ripples scrolling downstream at the local speed, white water
-// along the banks, trailing behind stones and through the rapids. Everything is pixel-snapped at 32 px/m.
+// along the banks, trailing behind stones and through the rapids. Everything is pixel-snapped to the ground's texel
+// grid (blockTex.TS px/m).
 // Interactive water (fed by game/details.ts through WATER_FX): rings spreading from every entry, splash, footfall and
 // drip, V-shaped Kelvin wakes with a foam lip round whatever wades or skims, raindrop rings while it rains. Water
 // marks itself in the G-buffer with flag bit 16 so the post pass can tell it from wet ground.
@@ -12,12 +13,16 @@ import { GN_DECL } from '../gfx/gbuf';
 import { SHADER_NOISE, FOW_FN } from './glsl';
 import { VEYR } from './palette';
 import { RAMPS, type RampName } from '../art/palette';
+import { TS } from './blockTex';
+
+/** the ground's texel grid (texels per metre, blockTex.TS) as a GLSL literal: the water snaps to the same pixels */
+const TSF = TS.toFixed(1);
 
 const RIP_N = 24, WAKE_N = 6;
 const WATER_FN = /* glsl */`
 uniform highp sampler2DArray uBlocks;
 uniform sampler2D uHeight, uMat, uVis, uMoss, uFoamMap;
-uniform float uN, uTime, uWater;
+uniform float uN, uTime, uWater, uStage;
 uniform float uLay[32];
 uniform vec3 uShallow, uDeep, uFoam, uDark, uSky, uMossC;
 uniform vec4 uRip[${RIP_N}];
@@ -76,8 +81,8 @@ float caustic(vec2 p, float t) {
 }
 /** wp: world xz; surf: surface height; flowK 0 (still) .. 1 (river); fuv: (across, along) metres; sp: flow speed */
 vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
-  vec2 px = floor(wp * 32.0);
-  vec2 p = (px + 0.5) / 32.0;
+  vec2 px = floor(wp * ${TSF});
+  vec2 p = (px + 0.5) / ${TSF};
   float t = uTime;
   float depth = max(0.0, surf - bedH(p));
   vec2 ia = interact(p, t);
@@ -136,7 +141,7 @@ vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
   }
   // shoreline: a one-texel broken line where the water's depth crosses a lapping contour (never a wash over thin water)
   float lap = 0.5 + 0.5 * sin(t * 1.3 + vn(p * 0.7) * 6.0), thr = 0.012 + lap * 0.03;
-  float dR = surf - bedH(p + vec2(1.0 / 32.0, 0.0)), dD = surf - bedH(p + vec2(0.0, 1.0 / 32.0));
+  float dR = surf - bedH(p + vec2(1.0 / ${TSF}, 0.0)), dD = surf - bedH(p + vec2(0.0, 1.0 / ${TSF}));
   float shoreL = depth >= thr && (dR < thr || dD < thr) || depth < thr && (dR >= thr || dD >= thr) ? 1.0 : 0.0;
   float rim = shoreL * step(0.28, h2(floor(p * 4.0)));
   foam = max(foam, rim * 0.8);
@@ -185,7 +190,7 @@ function uniforms(R: Region, U: Record<string, THREE.IUniform>) {
   const pal = R.pal, wr = waterRamp(pal.water);
   return {
     ...WATER_FX,
-    uBlocks: U.uBlocks, uHeight: U.uHeight, uMat: U.uMat, uVis: U.uVis, uMoss: U.uMoss, uN: U.uN, uTime: U.uTime, uWater: U.uWater, uLay: U.uLay, uDark: U.uDark,
+    uBlocks: U.uBlocks, uHeight: U.uHeight, uMat: U.uMat, uVis: U.uVis, uMoss: U.uMoss, uN: U.uN, uTime: U.uTime, uWater: U.uWater, uStage: U.uStage, uLay: U.uLay, uDark: U.uDark,
     uShallow: { value: new THREE.Color(wr.shallow) }, uDeep: { value: new THREE.Color(wr.deep) }, uFoam: { value: new THREE.Color(wr.foam) },
     uSky: { value: new THREE.Color(RAMPS.sky[4]) }, uMossC: { value: new THREE.Color(VEYR.moss) },
     uFoamMap: { value: foamMap(R) },
@@ -211,29 +216,33 @@ function foamMap(R: Region) {
   return t;
 }
 
+// the seasonal water stage (eco.level): the sea rises half as far as the rivers do
 const VERT_SEA = /* glsl */`
+uniform float uStage;
 varying vec3 vWp;
-void main() { vec4 w = modelMatrix * vec4(position, 1.0); vWp = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`;
+void main() { vec4 w = modelMatrix * vec4(position, 1.0); w.y += uStage * 0.5; vWp = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`;
 const FRAG_SEA = /* glsl */`
 ${GN_DECL}
 ${WATER_FN}
 varying vec3 vWp;
 void main() {
-  gl_FragColor = vec4(waterShade(vWp.xz, uWater, 0.0, vec2(0.0), 0.0), 1.0);
+  gl_FragColor = vec4(waterShade(vWp.xz, uWater + uStage * 0.5, 0.0, vec2(0.0), 0.0), 1.0);
   gNormal = vec4(0.5, 1.0, 0.5, 16.0);
 }`;
 
 const VERT_RIVER = /* glsl */`
 attribute vec2 aFlow; attribute vec2 aSpeed;
+uniform float uStage;
 varying vec3 vWp; varying vec2 vFlow; varying vec2 vSpeed;
-void main() { vec4 w = modelMatrix * vec4(position, 1.0); vWp = w.xyz; vFlow = aFlow; vSpeed = aSpeed; gl_Position = projectionMatrix * viewMatrix * w; }`;
+// rivers take the full stage, easing to the sea's half where the current fades into it at the mouth
+void main() { vec4 w = modelMatrix * vec4(position, 1.0); w.y += uStage * mix(0.5, 1.0, aSpeed.y); vWp = w.xyz; vFlow = aFlow; vSpeed = aSpeed; gl_Position = projectionMatrix * viewMatrix * w; }`;
 const FRAG_RIVER = /* glsl */`
 ${GN_DECL}
 ${WATER_FN}
 varying vec3 vWp; varying vec2 vFlow; varying vec2 vSpeed;
 void main() {
   // flow coordinates at the centre of this world pixel (so the current is pixel-snapped like everything else)
-  vec2 wpS = (floor(vWp.xz * 32.0) + 0.5) / 32.0;
+  vec2 wpS = (floor(vWp.xz * ${TSF}) + 0.5) / ${TSF};
   mat2 A = mat2(dFdx(vWp.xz), dFdy(vWp.xz)), Bm = mat2(dFdx(vFlow), dFdy(vFlow));
   vec2 fuv = vFlow;
   if (abs(determinant(A)) > 1e-10) fuv += Bm * inverse(A) * (wpS - vWp.xz);

@@ -232,6 +232,35 @@ export function facArt() {
   wear(p, 64, 36, 6, 6, 4);
   return p;
 }
+/** the field panel beside the works: the ecology overlay (H), field survey (M) and ordnance bench (F2) toggles and a
+ *  glass stage tube showing the season's water stage against its banks (a scribed mark at the usual level) */
+export const ECO = { w: 86, h: 46, tog: [4, 25, 46], tx: 70, ty: 10, th: 26 };
+export function ecoArt() {
+  const { w, h } = ECO;
+  const p = housing(w, h, { cut: [0, 0, 0, 10], seed: 47, noRivets: ['t', 'r'], rivetStep: 12 });
+  for (let x = 0; x < w; x++) { p.set(x, 0, OL[1]); p.set(x, 1, OL[3]); }
+  for (const x of ECO.tog) {
+    for (let y = 11; y < 31; y++) for (let xx = x + 2; xx < x + 17; xx++) {
+      const e = y === 11 || xx === x + 2 ? GM[7] : y === 30 || xx === x + 16 ? GM[2] : dv(BK3, 2.4 - (y - 11) / 20 * 1.2 + (hashf(xx, y, 7) - 0.5) * 0.4, xx, y);
+      p.set(xx, y, e);
+    }
+    for (let y = 12; y < 32; y++) p.shade(x + 17, y, 0.55); for (let xx = x + 3; xx < x + 18; xx++) p.shade(xx, 31, 0.55);
+    text(p, 'ON', x + 6, 12, CR[3]);
+  }
+  // the stage tube: a chrome collar top and bottom, dark glass between, scribed ticks on the housing beside it
+  const { tx, ty, th } = ECO;
+  for (let y = ty - 2; y < ty + th + 2; y++) for (let x = tx - 2; x < tx + 7; x++) {
+    const collar = y < ty || y >= ty + th;
+    p.set(x, y, collar ? (x === tx - 2 || y === ty - 2 ? GM[8] : x === tx + 6 || y === ty + th + 1 ? GM[2] : GM[5]) : x < tx || x > tx + 4 ? GM[x < tx ? 6 : 2] : dv(BK3, 1.4 + (hashf(x, y, 3) - 0.5) * 0.3, x, y));
+  }
+  for (let y = ty - 1; y < ty + th + 3; y++) p.shade(tx + 7, y, 0.55);
+  for (let k = 0; k <= 4; k++) { const y = ty + Math.round((k / 4) * (th - 1)); p.set(tx + 8, y, CR[3]); if (k % 2 === 0) p.set(tx + 9, y, CR[3]); }
+  // the usual level (stage 0 of -0.4..0.5): a red scribe across the glass
+  const y0 = ty + Math.round((0.5 / 0.9) * (th - 1));
+  p.set(tx + 8, y0, RD[5]); p.set(tx + 9, y0, RD[5]); p.set(tx + 10, y0, RD[4]);
+  wear(p, 6, 36, 7, 6, 8);
+  return p;
+}
 /** the big switch: two frames (up, thrown) of 22x22: a chrome guard cage, a knurled collar and a heavy bat with a red knob */
 export function bigSwitchArt() {
   const W = 22, H = 22, p = new Pix(W * 2, H);

@@ -12,6 +12,25 @@ export const GOLEM = -999999999;
 /** what creatures need to know about the golem to hunt it, fear it and hit it */
 export interface GolemTarget { x: number; y: number; z: number; alive: boolean; radius: number; mass: number; hurt(amt: number, from: Creature): void }
 export const GOLEM_REF: { g: GolemTarget | null } = { g: null };
+/** a machine on the field (robots and faction hardware): wild animals take it for danger and flee or fight it */
+export interface Machine { x: number; y: number; z: number; dead: boolean; radius: number; hp: number; maxHp: number; faction: string; damage(n: number, from?: unknown): void }
+/** the machines in the region (game.ts refreshes the list every frame) */
+export const MACHINES: { list: Machine[] } = { list: [] };
+/** target ids at or below MACHINE0 name a machine: MACHINE0 - its machine number */
+export const MACHINE0 = -1100000000;
+let MSEQ = 0;
+const MID = new WeakMap<object, number>();
+/** a machine's target id (stable for its life) */
+export function machineId(m: object): number { let k = MID.get(m); if (k === undefined) { k = ++MSEQ; MID.set(m, k); } return MACHINE0 - k; }
+export const isMachine = (id: number) => id <= MACHINE0;
+/** the live machine a target id names, if any */
+export function machineOf(id: number): Machine | null {
+  if (id > MACHINE0) return null;
+  for (const m of MACHINES.list) if (!m.dead && MID.get(m) === MACHINE0 - id) return m;
+  return null;
+}
+/** a rough mass for a machine (its hit points stand in for bulk), on the creatures' scale */
+export const machineMass = (m: Machine) => Math.max(1, m.maxHp / 20);
 
 export type Mind = 'idle' | 'wander' | 'graze' | 'hunt' | 'flee' | 'eat' | 'scavenge' | 'order' | 'attack' | 'mate' | 'rest' | 'follow' | 'held'
   // daily life (ai.ts): drinking, sleeping, going somewhere to do something, stalking, lying in wait, threat
@@ -66,6 +85,8 @@ export class Creature {
   aggro = 0;
   /** last time the golem hit it, and with what (kill attribution) */
   golemHit = -99; golemBy: 'punch' | 'rock' | 'ability' | 'plow' = 'punch';
+  /** the machine that last shot it (a target id) and when */
+  machineHit = 0; machineHitT = -99;
   /** bones cut off (collapsed to their joint), mesh scale while being drawn into the intake */
   severed: number[] = [];
   shrink = 1;
@@ -230,6 +251,7 @@ export class Creature {
     const tg = this.target ? w.get(this.target) : null;
     if (tg && !this.dead) lookYaw = wrapA(Math.atan2(tg.x - this.x, tg.z - this.z) - this.yaw);
     else if (this.target === GOLEM && GOLEM_REF.g && !this.dead) lookYaw = wrapA(Math.atan2(GOLEM_REF.g.x - this.x, GOLEM_REF.g.z - this.z) - this.yaw);
+    else if (isMachine(this.target) && !this.dead) { const m = machineOf(this.target); if (m) lookYaw = wrapA(Math.atan2(m.x - this.x, m.z - this.z) - this.yaw); }
     this.anim.update(dt, { speed: sp / s, turn: this.turnRate, state, act: Math.max(0, this.atkAnim), lookYaw, lookPitch: 0, ground: (x, z) => w.surfaceYsmooth(x, z), air: 0.9 + Math.sin(this.anim.t * 2) * 0.15 });
   }
 

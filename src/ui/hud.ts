@@ -19,7 +19,7 @@ import { GENE, CAT_NAMES } from '../life/genes';
 import { RES, SKILL, SKILLS, type Res } from '../game/skills';
 import { PH, AM, CR, RD, hex } from './machine';
 import { Odometer, Nixie, PixText, Lamp, Toggle, BigSwitch, Gauge, Knob, crtSettings, meterFace, place, tip, u, steamVent } from './gadgets';
-import { RESM, STATM, BANK, PLATE, SCOPE, SEL, CMD, WHEEL, FAC, resArt, statArt, bankArt, bigSwitchArt, nameArt, scopeArt, selArt, cmdArt, radioArt, facArt, crack } from './hudArt';
+import { RESM, STATM, BANK, PLATE, SCOPE, SEL, CMD, WHEEL, FAC, ECO, ecoArt, resArt, statArt, bankArt, bigSwitchArt, nameArt, scopeArt, selArt, cmdArt, radioArt, facArt, crack } from './hudArt';
 import { AbilityWheel } from './wheel';
 
 export interface Cmd { icon: string; key: string; name: string; tip: () => string; disabled?: () => string | false; active?: () => boolean; run: () => void; cost?: string }
@@ -38,8 +38,21 @@ export interface HudCtx {
   armed?: () => Ability | null;
 }
 
-const MIND: Record<string, string> = { idle: 'RESTING', wander: 'WANDERING', graze: 'GRAZING', eat: 'FEEDING', hunt: 'HUNTING', flee: 'FLEEING', scavenge: 'SCAVENGING', order: 'MOVING', attack: 'FIGHTING', held: 'HELD', rest: 'RESTING', follow: 'FOLLOWING', mate: 'COURTING' };
+const MIND: Record<string, string> = {
+  idle: 'RESTING', wander: 'WANDERING', graze: 'GRAZING', eat: 'FEEDING', hunt: 'HUNTING', flee: 'FLEEING', scavenge: 'SCAVENGING', order: 'MOVING', attack: 'FIGHTING', held: 'HELD', rest: 'RESTING', follow: 'FOLLOWING', mate: 'COURTING',
+  // daily life and defence (game/ai.ts)
+  drink: 'DRINKING', sleep: 'ASLEEP', travel: 'ON THE MOVE', stalk: 'STALKING', ambush: 'LYING IN WAIT', display: 'THREAT DISPLAY', carry: 'DRAGGING A KILL', watch: 'KEEPING WATCH', curl: 'CURLED UP',
+};
 const MM = 96;
+/** the scope's livery glyphs for the rival programmes (5 x 5 art pixels) */
+const glyph = (rows: string[]) => { const px: [number, number][] = []; rows.forEach((r, y) => { for (let x = 0; x < r.length; x++) if (r[x] === '#') px.push([x, y]); }); return px; };
+const GLYPH: Record<string, { px: [number, number][]; col: string; dim: string }> = {
+  soviet: { px: glyph(['..#..', '#####', '.###.', '.#.#.', '#...#']), col: '#e0503e', dim: '#8a3026' },
+  prc: { px: glyph(['..#..', '.###.', '#####', '.###.', '##.##']), col: '#e8c050', dim: '#94782e' },
+  expedition: { px: glyph(['..#..', '..#..', '##.##', '..#..', '..#..']), col: '#c8dce8', dim: '#7a8a96' },
+  rival: { px: glyph(['#...#', '.#.#.', '..#..', '.#.#.', '#...#']), col: '#ff6a4a', dim: '#9a4030' },
+};
+const ev2 = (c: HudCtx) => (c.game as unknown as { ecoView?: { mode?: string } } | undefined)?.ecoView;
 const isAbilityCmd = (c: Cmd) => !!(ABILITIES as any)[c.icon] && (ABILITIES as any)[c.icon].key === c.key;
 const SOURCE: Record<Res, string> = {
   ore: 'Shed by rock formations and seams: pull in the loose nuggets, or bore seams and boulders with the Ore Drill.',
@@ -70,6 +83,7 @@ export class Hud {
   readonly dialog: HTMLDivElement;
   readonly objectives: HTMLDivElement;
   private facPwr!: PixText; private facSto!: PixText; private facCrew!: PixText; private facLamp!: Lamp; private facGauge!: HTMLDivElement;
+  private ecoStage!: HTMLDivElement; private ecoLamp!: Lamp; private ecoOv!: Toggle; private ecoSv!: Toggle; private ecoT = 0; private ecoH = -1; private ecoOn = [false, false];
   private onResize = () => this.layout();
 
   constructor(readonly c: HudCtx) {
@@ -138,6 +152,19 @@ export class Hud {
     this.facLamp = new Lamp(fm, FAC.sx + FAC.sw - 9, FAC.sy + 2, 'g', 'off');
     this.facGauge = place(el('div', 'tube-fill fac-pw', fm), FAC.sx + 2, FAC.sy + 10, 0, 1);
     tip(place(el('div', 'hit', fm), FAC.sx - 2, FAC.sy - 2, FAC.sw + 4, FAC.sh + 4), () => { const f = fac(); if (!f) return ''; const p = f.power(); return `<h4>Works</h4>Power ${Math.round(p.demand)} of ${Math.round(p.cap)} MW in use on ${p.grids} grid${p.grids === 1 ? '' : 's'}. ${f.buildings.length} structures, ${f.workers.active.length} workers on jobs.`; });
+
+    // ---- the ecology panel beside the works: overlay (H), field survey (M), the season's water stage
+    const em = mod('hud-eco', ECO.w, ECO.h, ecoArt().url());
+    const ev = () => (c.game as unknown as { ecoView?: { cycleOverlay(): void; toggleSurvey(): void; mode?: string } } | undefined)?.ecoView;
+    this.ecoOv = new Toggle(em, ECO.tog[0], 4, 'ECO', 'H', () => `<h4>Ecology Overlay</h4>Moisture, fertility, forage, herds and danger drawn over the ground like a hand-inked survey map. Each press shows the next layer, then off.`, () => ev()?.cycleOverlay());
+    this.ecoSv = new Toggle(em, ECO.tog[1], 4, 'FIELD', 'M', () => `<h4>Field Survey</h4>The census sheet: the season, the water, every species' numbers and how they are doing.`, () => ev()?.toggleSurvey());
+    new Toggle(em, ECO.tog[2], 4, 'ARMS', 'F2', () => `<h4>Ordnance Bench</h4>Design weapons from parts (frame, power, barrel, ammo), then issue them to Unit 07, robot types and engineered creatures.`, () => { const g = c.game; if (g && g.engine.screen === g) import('../robots/weapons/bench').then((m) => m.openBench(g.engine, g)); });
+    this.ecoStage = place(el('div', 'tube-fill stage', em), ECO.tx, ECO.ty, 5, 0);
+    this.ecoLamp = new Lamp(em, ECO.tx - 1, 1, 'a', 'off');
+    tip(place(el('div', 'hit', em), ECO.tx - 3, ECO.ty - 3, 12, ECO.th + 6), () => {
+      const e = c.world.eco, lv = e.level;
+      return `<h4>Water Stage</h4>${e.seasonName()}. The rivers stand ${lv >= 0 ? '+' : ''}${lv.toFixed(2)} m on their usual level (the red scribe)${lv > 0.3 ? ': <b>in spate</b>, low ground flooding' : lv < -0.25 ? ': <b>low</b>, the shallows are drying' : ''}.`;
+    });
 
     // ---- terrain scope (minimap)
     const sc = mod('hud-scope', SCOPE.w, SCOPE.h, scopeArt().url());
@@ -239,6 +266,7 @@ export class Hud {
       put(M['hud-stat'], sT, { l: l0 + RESM.w * sT, t: 0 });
       put(M['hud-bank'], sT, { r: 0, t: 0 });
       put(M['hud-fac'], sT, { r: 0, t: BANK.h * sT });
+      put(M['hud-eco'], sT, { r: FAC.w * sT, t: BANK.h * sT });
       put(this.objectives, sT, { r: 2 * sT, t: (BANK.h + FAC.h + 3) * sT });
       if (touch) {
         // thumbs own the bottom corners: the scope tucks under the plate, the keys sit bottom centre
@@ -269,13 +297,17 @@ export class Hud {
       put(M['hud-stat'], sC, two ? { l: RESM.w * sC, t: 0 } : { l: 0, t: RESM.h * sC });
       put(M['hud-bank'], sC, { r: 0, t: row });
       put(M['hud-fac'], sC, { r: 0, t: row + BANK.h * sC });
+      // the ecology panel goes beside the works when the scope leaves room, else under them
+      const ecoSide = (SCOPE.w * sS + (FAC.w + ECO.w) * sC) <= W;
+      put(M['hud-eco'], sC, ecoSide ? { r: FAC.w * sC, t: row + BANK.h * sC } : { r: 0, t: row + (BANK.h + FAC.h) * sC });
+      const below = row + (BANK.h + FAC.h + (ecoSide ? 0 : ECO.h) + 3) * sC;
       put(M['hud-scope'], sS, { l: 0, t: row });
-      put(this.objectives, sC, { r: 2, t: row + (BANK.h + FAC.h + 3) * sC });
+      put(this.objectives, sC, { r: 2, t: below });
       put(this.dialog, sC, { l: 0, t: row + SCOPE.h * sS + 3 });
       put(M['hud-sel'], sC, null);
       // on touch the thumbs own the whole bottom edge, so the keys hang under the switch bank instead
       const sK = touch ? fit((s) => CMD.w * s <= W * 0.5 && CMD.h * s <= H * 0.18, sC) : fit((s) => CMD.w * s <= W && CMD.h * s <= H * 0.16, sC);
-      put(M['hud-cmd'], sK, touch ? { r: 0, t: row + (BANK.h + FAC.h + 3) * sC } : { l: 0, b: 0 });
+      put(M['hud-cmd'], sK, touch ? { r: 0, t: below } : { l: 0, b: 0 });
       put(wl, sC, touch ? null : { r: 0, b: 0 }); put(wd, sC, touch ? null : { r: 0, b: 152 * sC });
       this.toastTop(row + Math.max(SCOPE.h * sS, (BANK.h + 3) * sC) + 4);
       this.textScale(sC * dpr, dpr);
@@ -391,6 +423,16 @@ export class Hud {
         this.facLamp.set(bad || load > 0.95 ? 'blink' : fac.build.active ? 'on' : pw.demand > 0 ? 'dim' : 'off', bad || load > 0.95 ? 'r' : 'g');
       }
     }
+    if ((this.ecoT -= dt) <= 0) {
+      this.ecoT = 0.3;
+      const e = c.world.eco, lv = e.level, k = Math.max(0, Math.min(1, (lv + 0.4) / 0.9)), hh = Math.round(k * ECO.th);
+      if (hh !== this.ecoH) { this.ecoH = hh; this.ecoStage.style.top = u(ECO.ty + ECO.th - hh); this.ecoStage.style.height = u(hh); }
+      this.ecoLamp.set(lv > 0.3 || lv < -0.25 ? 'blink' : 'off', lv > 0.3 ? 'a' : 'r');
+      // a toggle's lamp burns while its sheet or overlay is up
+      const v = ev2(c), ov = !!v && !!v.mode && v.mode !== 'off', sv = !!document.querySelector('.eco-sheet');
+      if (ov !== this.ecoOn[0]) { this.ecoOn[0] = ov; this.ecoOv.lamp.set(ov ? 'on' : 'dim'); }
+      if (sv !== this.ecoOn[1]) { this.ecoOn[1] = sv; this.ecoSv.lamp.set(sv ? 'on' : 'dim'); }
+    }
     this.chgGauge.set(h.res.charge / Math.max(1, h.chargeCap)); this.chgGauge.update(dt);
     this.minimap(dt);
     this.selection();
@@ -447,6 +489,30 @@ export class Hud {
       const s = b.def.kind === 'core' ? 3 : 2;
       g.fillRect(Math.floor(b.x / k) - (s >> 1), Math.floor(b.z / k) - (s >> 1), s, s);
     }
+    // rival programmes: their structures as livery glyphs (a red star for the Soviets, a gold five-pointed star for the
+    // PRC, a compass rose for an expedition), the HQ lander ringed; their machines as dots; Corps robots as pale dots
+    const fac = c.game?.factions, vis2 = c.vision.vis, seen2 = c.vision.seen;
+    const at = (x: number, z: number) => Math.min(N - 1, Math.max(0, Math.floor(z))) * N + Math.min(N - 1, Math.max(0, Math.floor(x)));
+    if (fac) {
+      for (const st of fac.structures) {
+        if (st.dead || !seen2[at(st.x, st.z)]) continue;
+        const gl = GLYPH[st.faction as string]; if (!gl) continue;
+        const gx = Math.floor(st.x / k), gy = Math.floor(st.z / k), hq = st.kind === 'lander';
+        if (hq) { g.fillStyle = 'rgba(20,16,12,0.85)'; g.fillRect(gx - 4, gy - 4, 9, 9); g.fillStyle = blink ? gl.col : gl.dim; g.fillRect(gx - 4, gy - 4, 9, 1); g.fillRect(gx - 4, gy + 4, 9, 1); g.fillRect(gx - 4, gy - 4, 1, 9); g.fillRect(gx + 4, gy - 4, 1, 9); }
+        else { g.fillStyle = 'rgba(20,16,12,0.7)'; for (const [px, py] of gl.px) g.fillRect(gx + px - 2 + 1, gy + py - 2 + 1, 1, 1); }
+        g.fillStyle = gl.col;
+        for (const [px, py] of gl.px) g.fillRect(gx + px - 2, gy + py - 2, 1, 1);
+      }
+    }
+    const units = (c.game?.robots ?? []) as { x: number; z: number; dead: boolean; faction: string }[];
+    const dot = (u: { x: number; z: number; dead: boolean; faction: string }) => {
+      if (u.dead || !vis2[at(u.x, u.z)]) return;
+      const gl = GLYPH[u.faction];
+      g.fillStyle = u.faction === 'veyr' ? '#d8f0dc' : gl ? (blink ? gl.col : gl.dim) : '#ff6a4a';
+      g.fillRect(Math.floor(u.x / k), Math.floor(u.z / k), u.faction === 'veyr' ? 1 : 2, u.faction === 'veyr' ? 1 : 2);
+    };
+    for (const u of units) dot(u);
+    if (fac?.stubs.length) for (const u of fac.stubs) dot(u as unknown as { x: number; z: number; dead: boolean; faction: string });
     // Unit 07: a bright cross that pulses
     const gp = c.hive.golem();
     if (gp) {

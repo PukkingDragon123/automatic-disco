@@ -387,6 +387,26 @@ function stoneRough(pc: PixelCanvas, rng: Rng) {
   for (let i = 0; i < 5; i++) { const x = rng.int(0, 31), y = rng.int(0, 31); pc.set(x, y, 0x8f9a6a); pc.set(x + 1, y, 0xa3ab7a); pc.set(x, y + 1, 0x7d8a5e); }
 }
 
+/** cast concrete (the furniture props that ask for plain 'concrete'): calm grey, aggregate flecks, a form seam */
+function concrete(pc: PixelCanvas, rng: Rng) {
+  const R = makeRamp(0x8a8780, 6, { spread: 0.3, hueShift: 0.02 });
+  for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) pc.set(x, y, q(R, 0.5 + (nz(pc, x, y, 3, 3, 3, 951) - 0.5) * 0.8, x, y, 0.12));
+  flecks(pc, rng, [R[1], R[2], R[4]], 40, 0.2);
+  for (let x = 0; x < 32; x++) { pc.set(x, 15, R[1]); pc.set(x, 16, R[4]); }
+}
+/** a hemp rope's lay: diagonal strands, a dark groove between each */
+function rope(pc: PixelCanvas, rng: Rng) {
+  const R = makeRamp(0xa88c5c, 6, { spread: 0.42, hueShift: 0.04 });
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const u = (x + y) % 8; pc.set(x, y, R[u === 0 ? 0 : u === 1 ? 2 : u < 4 ? 4 : u < 6 ? 3 : 2]); }
+  flecks(pc, rng, [R[5], R[1]], 6, 0);
+}
+/** still water in a tank or trough: dark teal with a few lit ripple dashes */
+function stillWater(pc: PixelCanvas, rng: Rng) {
+  const R = makeRamp(0x3c6c78, 6, { spread: 0.36, hueShift: -0.02 });
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) pc.set(x, y, q(R, 0.42 + (nz(pc, x, y, 2, 4, 2, 961) - 0.5) * 0.5, x, y, 0.1));
+  for (let i = 0; i < 5; i++) { const x = rng.int(0, 13), y = rng.int(0, 15); pc.set(x, y, R[5]); pc.set(x + 1, y, R[4]); }
+}
+
 function bark(pc: PixelCanvas, rng: Rng) {
   const R = makeRamp(0x5c4c3e, 6, { spread: 0.46, hueShift: 0.03 });
   for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
@@ -557,6 +577,9 @@ addTextureModule(() => {
   A.add('marble', 32, 32, marble);
   A.add('stone_rough', 32, 32, stoneRough);
   A.add('bark', 32, 32, bark);
+  A.add('concrete', 32, 32, concrete);
+  A.add('zw_rope', 16, 16, rope);
+  A.add('water', 16, 16, stillWater);
   A.add('leaves', 32, 32, leaves);
   A.add('screen_off', 16, 16, screenOff);
   A.add('screen_on', 16, 16, screenOn);

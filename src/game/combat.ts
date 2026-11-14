@@ -81,7 +81,8 @@ function stoneGeo(seed: number) {
     const r = 1 + nz.fbm3(v.x * 1.7, v.y * 1.7, v.z * 1.7, 2) * 0.42;
     P.setXYZ(i, v.x * r * (1 + hash01(seed, 2) * 0.3), v.y * r * flat, v.z * r);
   }
-  const ng = g.toNonIndexed(); g.dispose();
+  // (polyhedra come non-indexed already)
+  const ng = g.index ? g.toNonIndexed() : g; if (ng !== g) g.dispose();
   ng.computeVertexNormals();
   const Pn = ng.attributes.position, Nn = ng.attributes.normal, uv: number[] = [];
   for (let i = 0; i < Pn.count; i++) {

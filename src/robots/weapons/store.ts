@@ -3,9 +3,10 @@
 // which design each kind of Corps robot is issued. installWeapons(game) runs once per game (tickRobots calls it):
 // new Corps robots get their issued weapon, and the golem's equipped weapons pick their own
 // targets near where the player aims and fire (heat, ammunition from the factory's AMMO when it has any). [F2] or the
-// ORDNANCE tab opens the workbench.
+// console's ARMS toggle opens the workbench.
 import * as THREE from 'three';
 import type { Game } from '../../game/game';
+import type { Creature } from '../../game/creature';
 import { STOCK, toWeapon, weaponCost, weaponStats, refuse, type WeaponDesign, type Cost } from './parts';
 import { buildWeaponMesh } from './model';
 import { robotHooks, fireWeapon, nearestHostile, type RobotUnit, type Shooter, type Weapon } from '../unit';
@@ -14,13 +15,17 @@ import { RAMPS } from '../../art/palette';
 import { TRIGGER } from './trigger';
 
 const KEY = 'oddworld.weapons.v1';
-export interface WeaponStore { designs: WeaponDesign[]; tooled: string[]; golem: { hand: string | null; mount: string | null }; issue: Record<string, string>; /** the golem's mounts pick their own targets (off: they fire only on the trigger) */ auto?: boolean }
+export interface WeaponStore {
+  designs: WeaponDesign[]; tooled: string[]; golem: { hand: string | null; mount: string | null }; issue: Record<string, string>;
+  /** the golem's mounts pick their own targets (off: they fire only on the trigger) */ auto?: boolean;
+  /** creature designs (by species name) and the weapon design bolted on their backs */ beasts?: Record<string, string>;
+}
 let S: WeaponStore | null = null;
 export function store(): WeaponStore {
   if (S) return S;
   try { const t = localStorage.getItem(KEY); if (t) S = JSON.parse(t) as WeaponStore; } catch { /* private mode */ }
   if (!S || !Array.isArray(S.designs)) S = { designs: STOCK.map((d) => ({ ...d })), tooled: [], golem: { hand: null, mount: null }, issue: {} };
-  S.tooled ??= []; S.golem ??= { hand: null, mount: null }; S.issue ??= {};
+  S.tooled ??= []; S.golem ??= { hand: null, mount: null }; S.issue ??= {}; S.beasts ??= {};
   return S;
 }
 export function saveStore() { try { localStorage.setItem(KEY, JSON.stringify(store())); } catch { /* ignore */ } }
@@ -72,6 +77,77 @@ export function issueTo(g: Game | null, kind: string, id: string | null) {
   const d = designById(id);
   for (const u of (g as unknown as { robots?: RobotUnit[] } | null)?.robots ?? []) if (!u.dead && u.faction === 'veyr' && u.kind === kind) equipUnit(u, d);
 }
+// ------------------------------------------------------------------------------------------------ engineered creatures
+/** the smallest body (metres, nose to tail) that can carry a back mount */
+export const BEAST_MIN_LEN = 1.2;
+interface BeastGun { id: string; w: Weapon; cd: number; ammo: number; ammoPer: number; mount: THREE.Group; pivot: THREE.Group; muzzle: THREE.Object3D }
+const BEASTS = new WeakMap<Creature, BeastGun>();
+/** can this species carry a weapon on its back? (null: yes, else why not) */
+export function beastRefuse(sp: { pheno: { length: number }; model: { rig: { spine: number[] } } }): string | null {
+  if (sp.pheno.length < BEAST_MIN_LEN) return 'TOO SMALL FOR A BACK MOUNT';
+  if (!sp.model.rig.spine.length) return 'NO SPINE TO BOLT TO';
+  return null;
+}
+/** issue a weapon design to every animal of a creature design (null takes it back off) */
+export function issueToBeast(g: Game | null, name: string, id: string | null) {
+  const s = store(); s.beasts ??= {};
+  if (id) s.beasts[name] = id; else delete s.beasts[name];
+  saveStore();
+  if (!g) return;
+  for (const c of g.world.creatures) if (!c.dead && c.faction === 'veyr' && c.sp.name === name) equipBeast(c, designById(id));
+}
+/** bolt a design onto a creature's back: a pivoting cradle on the spine bone (rides the body's motion) */
+export function equipBeast(c: Creature, d: WeaponDesign | null) {
+  const old = BEASTS.get(c);
+  if (old) { old.mount.removeFromParent(); old.mount.traverse((o) => (o as THREE.Mesh).geometry?.dispose()); BEASTS.delete(c); }
+  if (!d || beastRefuse(c.sp)) return;
+  const rig = c.sp.model.rig, bi = rig.spine[rig.spine.length > 2 ? Math.floor(rig.spine.length / 2) : 0];
+  const bone = (c.anim as unknown as { bones: THREE.Bone[] }).bones?.[bi]; if (!bone) return;
+  // the top of the back over that bone: the highest body box on it
+  let top = 0, zc = 0, n = 0;
+  for (const b of rig.boxes) if (b.bone === bi && (b.mat === 'body' || b.mat === 'limb')) { top = Math.max(top, b.c[1] + b.s[1] / 2); zc += b.c[2]; n++; }
+  const wm = buildWeaponMesh(d, 'uspc');
+  const mount = new THREE.Group(), pivot = new THREE.Group();
+  mount.name = 'beast-mount'; mount.position.set(0, top + 0.03, n ? zc / n : 0);
+  // a saddle plate under the cradle, in the weapon's own finish
+  const sc = Math.min(1.5, Math.max(0.35, (rig.length * 0.5) / Math.max(0.2, wm.length)));
+  wm.root.scale.setScalar(sc); wm.root.position.set(0, 0.04 * sc, -wm.length * sc * 0.3);
+  pivot.add(wm.root); mount.add(pivot); bone.add(mount);
+  const st = weaponStats(d);
+  BEASTS.set(c, { id: d.id, w: toWeapon(d), cd: Math.random(), ammo: 0, ammoPer: st.ammo, mount, pivot, muzzle: wm.muzzle });
+}
+const _bm = new THREE.Vector3();
+let beastScanT = 0;
+/** creatures of an issued design get their weapon; armed ones turn it on the nearest enemy in range and fire */
+function tickBeastGuns(g: Game, dt: number) {
+  if (dt <= 0) return;
+  const s = store(), issued = s.beasts ?? {};
+  if ((beastScanT -= dt) <= 0) {
+    beastScanT = 0.7;
+    if (Object.keys(issued).length) for (const c of g.world.creatures) {
+      if (c.dead || c.faction !== 'veyr') continue;
+      const want = issued[c.sp.name] ?? null, has = BEASTS.get(c);
+      if ((has?.id ?? null) !== want) equipBeast(c, designById(want));
+    }
+  }
+  for (const c of g.world.creatures) {
+    const G = BEASTS.get(c); if (!G) continue;
+    if (c.dead || c.faction !== 'veyr') { equipBeast(c, null); continue; }
+    G.cd -= dt;
+    const t = nearestHostile(g, 'veyr', c.x, c.z, G.w.range);
+    // the cradle swings toward the target (or back to the front)
+    const want = t ? Math.atan2(t.p.x - c.x, t.p.z - c.z) - c.yaw : 0;
+    const da = Math.atan2(Math.sin(want - G.pivot.rotation.y), Math.cos(want - G.pivot.rotation.y));
+    G.pivot.rotation.y += da * Math.min(1, dt * 6);
+    if (!t || G.cd > 0 || Math.abs(da) > 0.35 || !c.mesh.visible && Math.random() < 0.5) continue;
+    G.muzzle.updateWorldMatrix(true, false);
+    const mz = G.muzzle.getWorldPosition(_bm);
+    fireWeapon(g, { faction: 'veyr', x: c.x, z: c.z } as Shooter, mz, t.p, G.w);
+    G.cd = G.w.cd * (0.9 + Math.random() * 0.25);
+    G.ammo += G.ammoPer; if (G.ammo >= 10) { G.ammo -= 10; factoryOf(g)?.take('ammo', 1); }
+  }
+}
+
 // ------------------------------------------------------------------------------------------------ the golem
 interface Gun { id: string; w: Weapon; cd: number; heat: number; hot: boolean; ammo: number; heatPer: number; ammoPer: number }
 const GUNS = new WeakMap<object, Record<'hand' | 'mount', Gun | null>>();
@@ -125,6 +201,7 @@ export function installWeapons(g: Game) {
   for (const u of (g as unknown as { robots?: RobotUnit[] }).robots ?? []) if (u.faction === 'veyr' && s.issue[u.kind]) equipUnit(u, designById(s.issue[u.kind]));
   for (const slot of ['hand', 'mount'] as const) if (s.golem[slot]) equipGolem(g, slot, s.golem[slot]);
   g.update$.push((dt) => { try { tickGolemGuns(g, dt); } catch (e) { console.error('golem guns', e); } });
+  g.update$.push((dt) => { try { tickBeastGuns(g, dt); } catch (e) { console.error('beast guns', e); } });
   // the trigger: holding the right button (or a side button) over the view fires while a weapon is on the golem;
   // Ctrl + right click keeps the old right click (fly there, order the allies). Side buttons never navigate away.
   const cv = g.engine.canvas;
@@ -137,18 +214,13 @@ export function installWeapons(g: Game) {
   const up = (e: PointerEvent | MouseEvent) => { if (e.button === 2 || e.button === 3 || e.button === 4) { if (TRIGGER.mouse && e.button !== 2) e.preventDefault(); TRIGGER.mouse = false; } };
   const nav = (e: MouseEvent) => { if ((e.button === 3 || e.button === 4) && TRIGGER.armed) e.preventDefault(); };
   addEventListener('pointerdown', down, true); addEventListener('pointerup', up, true); addEventListener('mouseup', nav, true); addEventListener('blur', () => { TRIGGER.mouse = false; });
-  // [F2] or the ORDNANCE tab on the right edge opens the workbench (every letter key is taken)
+  // [F2] or the console's ARMS toggle opens the workbench (every letter key is taken)
   const open = () => { if (g.engine.screen === g) import('./bench').then((m) => m.openBench(g.engine, g)); };
   g.input.onKey((e) => {
     if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.key !== 'F2') return;
     const t = (e.target as HTMLElement | null)?.tagName; if (t === 'INPUT' || t === 'TEXTAREA') return;
     e.preventDefault(); open();
   });
-  const tab = document.createElement('button');
-  tab.textContent = 'ORDNANCE [F2]';
-  tab.style.cssText = `position:fixed;right:0;top:300px;writing-mode:vertical-rl;font:12px 'Jersey',monospace;letter-spacing:1px;padding:8px 4px;background:#${RAMPS.paper[3].toString(16)};color:#${RAMPS.ink[1].toString(16)};border:none;border-left:3px solid #${RAMPS.olive[1].toString(16)};box-shadow:-2px 2px 0 #14161b88;cursor:pointer;z-index:30`;
-  tab.onclick = open;
-  document.body.appendChild(tab);
-  g.update$.push(() => { const on = g.engine.screen === g; if ((tab.style.display !== 'none') !== on) tab.style.display = on ? '' : 'none'; });
-  const dis = g.dispose.bind(g); g.dispose = () => { tab.remove(); removeEventListener('pointerdown', down, true); removeEventListener('pointerup', up, true); removeEventListener('mouseup', nav, true); TRIGGER.mouse = TRIGGER.touch = TRIGGER.armed = false; dis(); };
+  // (the console's FIELD panel carries the ARMS toggle that opens the bench on touch screens: ui/hud.ts)
+  const dis = g.dispose.bind(g); g.dispose = () => { removeEventListener('pointerdown', down, true); removeEventListener('pointerup', up, true); removeEventListener('mouseup', nav, true); TRIGGER.mouse = TRIGGER.touch = TRIGGER.armed = false; dis(); };
 }

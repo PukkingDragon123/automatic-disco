@@ -18,6 +18,9 @@
 //   setDissolve(i, k)     absorbed plant dissolves in sparks; setGrow(i, k) sown plants grow in
 //   setTint(i, rgb, k)    generic per-plant colour hook (0 off .. 1 full), e.g. poisoned, highlighted
 //   addPlant(kind, seed, x, z) -> index (spare slots), remove(i)
+//   setFruit(i, k)        ripe fruit on a plant, 0 none .. 1 full (eco.ts drives it): faceted fruit or pods hang
+//                         in the crown, scaled by k; fruitNear(x, z, r) -> plant index or -1, eatFruit(i) -> food
+//                         (both routed to fruitSrc, the ecosystem, when it is attached)
 import * as THREE from 'three';
 import { Region } from './region';
 import { makeFlora, buildFloraAtlas, type PlantSpecies, type FloraAtlas } from './plantArt';
@@ -33,6 +36,8 @@ import { Batch, CH } from './floraBatch';
 import { plant3dMaterial, cardMaterial, STATE_W } from './floraGL';
 import { settings, onSettings, type Quality } from '../settings';
 import { daylight } from '../game/daylight';
+import { gbuf } from '../gfx/gbuf';
+import { rampFor } from './pixelKit';
 
 /** spare instance slots for plants sown during play */
 const SPARE = 320;
@@ -452,6 +457,7 @@ export class Flora {
     this.stepTraps(dt);
     this.cull(cam as THREE.PerspectiveCamera, cp);
     this.flushState();
+    this.fruitFrame(dt, cp, e);
   }
 
   private lists = { n0: new Int32Array(4096), n1: new Int32Array(4096), n1s: new Int32Array(4096), far: new Int32Array(4096), gNear: new Int32Array(4096), gFar: new Int32Array(4096), vis: new Int32Array(4096) };
@@ -671,6 +677,123 @@ export class Flora {
     this.sset(i, 2, 0, 0); this.trapCheck(i);
     return i;
   }
+  // ---------------------------------------------------------------- fruit (eco.ts sets it; animals, workers, the golem pick it)
+  private fruitK = new Uint8Array(0);
+  private fruiting = new Set<number>();
+  private fruitMesh: THREE.InstancedMesh[] = [];
+  private fruitT = 0; private fruitDirty = true; private fruitAt0 = new THREE.Vector3(1e9, 0, 1e9);
+  /** the ecosystem, when attached, owns the fruit counts: fruitNear / eatFruit go to it (it calls setFruit back) */
+  fruitSrc: { fruitNear(x: number, z: number, r: number): number; eatFruit(i: number): number } | null = null;
+  /** ripe fruit on plant i: k 0 (none) .. 1 (laden); shown as up to three fruits (trees bear twice as many) */
+  setFruit(i: number, k: number) {
+    if (!(i >= 0 && i < this.x.length)) return;
+    if (this.fruitK.length < this.x.length) { const a = new Uint8Array(this.x.length); a.set(this.fruitK); this.fruitK = a; }
+    const q = Math.max(0, Math.min(3, Math.round(k * 3)));
+    if (this.fruitK[i] === q) return;
+    this.fruitK[i] = q;
+    if (q) this.fruiting.add(i); else this.fruiting.delete(i);
+    this.fruitDirty = true;
+  }
+  /** how laden plant i is, 0..1 */
+  fruitOn(i: number) { return (this.fruitK[i] ?? 0) / 3; }
+  /** the nearest plant with ripe fruit within r of (x, z), or -1 */
+  fruitNear(x: number, z: number, r: number): number {
+    if (this.fruitSrc) return this.fruitSrc.fruitNear(x, z, r);
+    let best = -1, bd = r * r;
+    this.near(x, z, r, (i, d2) => { if (this.fruitK[i] && this.bio[i] > 0 && d2 < bd) { bd = d2; best = i; } });
+    return best;
+  }
+  /** pick one fruit off plant i; returns the food in it (0 if there was none) */
+  eatFruit(i: number): number {
+    if (this.fruitSrc) return this.fruitSrc.eatFruit(i);
+    if (!this.fruitK[i]) return 0;
+    this.setFruit(i, (this.fruitK[i] - 1) / 3);
+    return 0.18 + this.species[this.sp[i]].food * 0.006;
+  }
+  /** where fruit hangs on plant i (k: which fruit) and how big it is; false if it has none to show */
+  fruitPos(i: number, k: number, out: THREE.Vector3): number {
+    const s = this.species[this.sp[i]], g = Math.max(0.3, this.state[i * 12 + 3] / 255), h = s.hmax * 0.92 * g;
+    const pod = !s.tree && s.arch !== 'shrub', a = hash01(i, k, 61) * Math.PI * 2 + k * 2.4;
+    // tree fruit hangs under the crown close in to the trunk, shrub fruit sits among the twigs, pods ride the tops
+    const rr = (s.tree ? h * 0.16 : pod ? h * 0.1 : h * 0.26) * (0.75 + hash01(i, k, 62) * 0.4);
+    const yk = s.tree ? 0.64 + hash01(i, k, 63) * 0.14 : pod ? 0.8 + hash01(i, k, 63) * 0.14 : 0.45 + hash01(i, k, 63) * 0.34;
+    const R = this.region, ry = R.riverAt(this.x[i], this.z[i]), gy = R.isWater(this.x[i], this.z[i]) ? Math.max(R.water, ry) : R.heightAt(this.x[i], this.z[i]);
+    out.set(this.x[i] + Math.cos(a) * rr, gy + h * yk, this.z[i] + Math.sin(a) * rr);
+    return (s.tree ? 0.1 : pod ? 0.065 : 0.075) * (0.85 + hash01(i, k, 64) * 0.3) * (0.6 + 0.4 * g);
+  }
+  /** two hand-cut forms, flat-lit in the master palette: a fruit (a six-sided lathe with a dimpled crown) and a long
+   *  pod, each on a short dark stalk (its own instanced mesh, sharing the fruit's matrix) */
+  private makeFruitMeshes() {
+    const N = 480;
+    const mk = (pod: boolean) => {
+      const prof = (pod ? [[0, -1.7], [0.3, -1.35], [0.55, -0.5], [0.52, 0.5], [0.3, 1.25], [0.08, 1.5], [0, 1.45]] : [[0, -0.95], [0.5, -0.82], [0.88, -0.35], [0.95, 0.2], [0.74, 0.7], [0.3, 0.92], [0.08, 0.8], [0, 0.84]]).map(([x, y]) => new THREE.Vector2(x, y));
+      const geo = new THREE.LatheGeometry(prof, 6).toNonIndexed();
+      const pos = geo.attributes.position as THREE.BufferAttribute, col = new Float32Array(pos.count * 3), top = pod ? 1.5 : 0.92;
+      // the crown darker (where the stalk sits), the underside a step down: planes of one ramp, lit from above
+      for (let v = 0; v < pos.count; v++) { const y = pos.getY(v) / top, kk = y > 0.78 ? 0.5 : y < -0.62 ? 0.78 : 1; col[v * 3] = col[v * 3 + 1] = col[v * 3 + 2] = kk; }
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      geo.deleteAttribute('uv'); geo.computeVertexNormals();
+      const mat = gbuf(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), 1);
+      const m = new THREE.InstancedMesh(geo, mat, N);
+      m.count = 0; m.frustumCulled = false; m.name = pod ? 'flora-pods' : 'flora-fruit';
+      m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(N * 3), 3);
+      this.group.add(m);
+      return m;
+    };
+    // the stalk: a thin three-sided stem rising from the fruit's crown (in fruit units, so it scales with it)
+    const sg = new THREE.CylinderGeometry(0.07, 0.1, 1.6, 3, 1).toNonIndexed(); sg.translate(0, 0.8 + 0.75, 0); sg.deleteAttribute('uv'); sg.computeVertexNormals();
+    const stem = new THREE.InstancedMesh(sg, gbuf(new THREE.MeshLambertMaterial({ color: new THREE.Color(rampFor(this.region.pal.soil)[1]), flatShading: true }), 1), N * 2);
+    stem.count = 0; stem.frustumCulled = false; stem.name = 'flora-fruit-stalks';
+    this.group.add(stem);
+    this.fruitMesh = [mk(false), mk(true), stem];
+  }
+  private fruitCol = new Map<number, THREE.Color>();
+  private fruitCand: number[] = [];
+  private fruitFrame(dt: number, cp: THREE.Vector3, e: ArrayLike<number>) {
+    if (!this.fruiting.size && !this.fruitMesh.length) return;
+    this.fruitT -= dt;
+    // the ground point the camera looks at
+    const fy = e[9], t = Math.max(0, Math.min(90, (cp.y - this.region.water) / Math.max(0.25, fy)));
+    const lx = cp.x - e[8] * t, lz = cp.z - e[10] * t;
+    const moved = (lx - this.fruitAt0.x) ** 2 + (lz - this.fruitAt0.z) ** 2 > 16;
+    if (this.fruitT > 0 || (!this.fruitDirty && !moved)) return;
+    this.fruitT = 0.3; this.fruitDirty = false; this.fruitAt0.set(lx, 0, lz);
+    if (!this.fruitMesh.length) this.makeFruitMeshes();
+    const [fm, pm, sm] = this.fruitMesh, M = new THREE.Matrix4(), q = new THREE.Quaternion(), P = new THREE.Vector3(), S = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+    const vd = (this.U.uVis.value as THREE.DataTexture).image?.data as Uint8Array | undefined, N = this.region.N;
+    const R2 = Math.max(30, Math.min(60, cp.y * 1.4)) ** 2;
+    // nearest first, so the instance budget goes to what is in front of the camera
+    const cand = this.fruitCand; cand.length = 0;
+    for (const i of this.fruiting) {
+      if (this.bio[i] <= 0.05) continue;
+      const dx = this.x[i] - lx, dz = this.z[i] - lz, d2 = dx * dx + dz * dz; if (d2 > R2) continue;
+      if (vd) { const X = Math.min(N - 1, Math.max(0, Math.floor(this.x[i]))), Z = Math.min(N - 1, Math.max(0, Math.floor(this.z[i]))); if (vd[(Z * N + X) * 4 + 1] < 8) continue; }
+      cand.push(Math.floor(d2) * 65536 + i);
+    }
+    if (cand.length > 300) cand.sort((a, b) => a - b);
+    let nf = 0, np = 0;
+    for (const ci of cand) {
+      const i = ci % 65536;
+      const s = this.species[this.sp[i]], pod = !s.tree && s.arch !== 'shrub', mesh = pod ? pm : fm;
+      let c = this.fruitCol.get(s.id);
+      if (!c) { const ramp = rampFor(s.accent); c = new THREE.Color(ramp[pod ? 3 : 4]); this.fruitCol.set(s.id, c); }
+      const n = this.fruitK[i] * (s.tree ? 2 : 1);
+      for (let k = 0; k < n; k++) {
+        if ((pod ? np : nf) >= mesh.instanceMatrix.count) break;
+        const sz = this.fruitPos(i, k, P);
+        q.setFromAxisAngle(Y, hash01(i, k, 65) * 6.28);
+        M.compose(P, q, S.setScalar(sz));
+        const j = pod ? np++ : nf++;
+        mesh.setMatrixAt(j, M); mesh.setColorAt(j, c);
+        sm.setMatrixAt(nf + np - 1, M);
+      }
+    }
+    fm.count = nf; pm.count = np; sm.count = nf + np;
+    fm.instanceMatrix.needsUpdate = pm.instanceMatrix.needsUpdate = sm.instanceMatrix.needsUpdate = true;
+    if (fm.instanceColor) fm.instanceColor.needsUpdate = true;
+    if (pm.instanceColor) pm.instanceColor.needsUpdate = true;
+  }
+
   /** regrowth tick */
   tick(dt: number) {
     for (const i of this.recovering) {

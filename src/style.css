@@ -443,14 +443,6 @@ body.p3 { --crt-filter: grayscale(1) sepia(1) saturate(3.4) hue-rotate(-14deg) b
 .mn-alist { display: flex; flex-direction: column; gap: calc(2px * var(--s)); max-height: calc(160px * var(--s)); overflow-y: auto; }
 .mn-acard { width: auto; min-height: 0; cursor: pointer; }
 .mn-detail { position: fixed; right: calc(10px * var(--s)); bottom: calc(10px * var(--s)); width: calc(156px * var(--s)); display: flex; flex-direction: column; gap: calc(3px * var(--s)); align-items: center; }
-.pl-top { position: fixed; top: calc(4px * var(--s)); left: 50%; transform: translateX(-50%); text-align: center; padding: 0 calc(6px * var(--s)) !important; }
-.pl-title { font-family: 'VT'; font-size: calc(16px * var(--s)); line-height: calc(14px * var(--s)); color: var(--hot); letter-spacing: 3px; }
-.pl-info { position: fixed; right: calc(10px * var(--s)); top: 50%; transform: translateY(-50%); width: calc(140px * var(--s)); display: flex; flex-direction: column; gap: calc(3px * var(--s)); align-items: center; text-align: center; }
-.pl-rname { font-size: calc(12px * var(--s)); color: var(--gold); }
-.pl-desc { color: var(--stamp); }
-.pl-bot { position: fixed; left: calc(10px * var(--s)); bottom: calc(10px * var(--s)); }
-.pl-flash { position: fixed; inset: 0; background: #e8fff0; opacity: 0; pointer-events: none; transition: opacity 600ms steps(6); }
-.pl-flash.on { opacity: 1; }
 .asc-line { position: fixed; left: 0; right: 0; bottom: calc(40px * var(--s)); text-align: center; font-family: 'VT'; font-size: calc(16px * var(--s)); color: var(--glow); text-shadow: var(--phos-glow); letter-spacing: 2px; }
 .ascend > .px-btn { position: fixed; left: 50%; bottom: calc(12px * var(--s)); transform: translateX(-50%); }
 
@@ -580,6 +572,7 @@ table.fc-tab td { position: relative; border-bottom: calc(1px * var(--tf)) dotte
 .fc-man-bars .fc-meter { width: calc(40px * var(--tf)); }
 .fc-man-jobs { display: flex; flex-wrap: wrap; gap: calc(1px * var(--tf)); margin-top: calc(1px * var(--tf)); }
 .fc-man-jobs .fc-btn { font-size: calc(11px * var(--tf)); line-height: calc(9px * var(--tf)); }
+.tube-fill.stage { background: linear-gradient(90deg, #c9dde3 0 calc(1px * var(--s)), #4f7f93 calc(1px * var(--s)) calc(4px * var(--s)), #2b4b5a calc(4px * var(--s))); box-shadow: 0 0 calc(2px * var(--s)) rgba(79, 127, 147, 0.4); transition: height 900ms steps(8), top 900ms steps(8); }
 .tube-fill.fac-pw.low { background: linear-gradient(180deg, #e0998a 0 calc(1px * var(--s)), #942e25 calc(1px * var(--s))); }
 @media (max-width: 700px) { .fc-card { flex-basis: calc(100px * var(--tf)); } .fc-plate { width: calc(96px * var(--tf)); height: calc(67px * var(--tf)); } }
 /* with an inspection form open on the right, the report moves over to the left */

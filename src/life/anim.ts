@@ -60,6 +60,9 @@ export class Animator {
   rolling = false;
   /** curl into a defensive ball (1) or open out again (0); species with rig.dims.roll tuck fully, others hunch */
   curl(k: number) { this.curlT = clamp(k, 0, 1); }
+  /** snout down, working the ground: probing for grubs or rooting among plants (1), or head up again (0) */
+  probe(k: number) { this.probeT = clamp(k, 0, 1); }
+  private probeK = 0; private probeT = 0;
   // eyes: the gaze jumps (saccades) between fixations near what the creature attends to; pupils follow the light
   private gaze = [0, 0]; private gazeT = [0, 0]; private fixIn = 0.5; private pupil = 1;
   // fat: a sprung lag in the belly
@@ -116,6 +119,8 @@ export class Animator {
     const pz = this.posture, sleep = pz === 'sleep' ? 1 : 0, threat = pz === 'threat' ? 1 : 0, alert = pz === 'alert' ? 1 : 0;
     this.curlK = damp(this.curlK, dead ? 0 : Math.max(this.curlT, sleep * 0.6) * (rig.dims.roll ? 1 : 0.45), 5, dt);
     const cu = this.curlK;
+    this.probeK = damp(this.probeK, dead ? 0 : this.probeT * (1 - cu), 4, dt);
+    const pk = this.probeK;
     const ik = this.idleK, act = this.idleAct, it = this.idleT;
     this.lean = damp(this.lean, clamp(inp.turn * 0.12, -0.25, 0.25), 6, dt);
     this.look[0] = damp(this.look[0], clamp(inp.lookYaw, -1, 1), 5, dt);
@@ -192,6 +197,8 @@ export class Animator {
       else if (act === 'sniff') { ip = (rig.dims.graze ? 1.0 : 0.62) * ik; hp = (0.25 + Math.sin(it * 9) * 0.035) * ik; iy = Math.sin(it * 0.7) * 0.25 * ik; }
       else if (act === 'groom') { iy = this.idleSide * 1.1 * ik; ip = 0.3 * ik; hp = (0.3 + Math.sin(it * 7) * 0.08) * ik; hr = -this.idleSide * 0.3 * ik; }
       else if (act === 'shake') hr = -shake * 1.6;
+      // probing: the neck reaches down, the snout sweeps slowly side to side with a twitching nose
+      if (pk > 0.005) { ip += (rig.dims.graze ? 1.05 : 0.8) * pk; hp += (0.32 + Math.sin(this.t * 10.5) * 0.04) * pk; iy += Math.sin(this.t * 1.6) * 0.32 * pk; }
       // the head is held steady against the body's roll and lean, and jerks back from a blow
       const level = -(this.lean + roll) * 0.75;
       for (const n of rig.neck) B[n].quaternion.setFromEuler(_e.set(cu * 1.1 + threat * 0.3 - alert * 0.3 + eat * 0.6 + (tongueAtk ? 0 : atk * 0.5) - this.look[1] * 0.4 + ip - hit * 0.25 - gal * 0.8, this.look[0] * 0.4 + steady + iy * 0.55, level * 0.5, 'YXZ'));
@@ -203,6 +210,7 @@ export class Animator {
       let open = Math.max(0, Math.sin(this.t * 0.23 + rig.length)) ** 60 * 0.45 + (rig.dims.fur ? this.run * (0.12 + Math.sin(this.t * 9) * 0.05) : 0);
       if (act === 'sniff' && rig.dims.graze) open = Math.max(open, (0.5 + 0.5 * Math.sin(it * 8)) * 0.12 * ik);
       if (act === 'groom') open = Math.max(open, (0.5 + 0.5 * Math.sin(it * 7)) * 0.1 * ik);
+      if (pk > 0.2) open = Math.max(open, (0.5 + 0.5 * Math.sin(this.t * 6.5)) * 0.1 * pk);
       if (threat) open = Math.max(open, 0.42 + Math.sin(this.t * 3) * 0.05);
       if (inp.state === 'attack') open = inp.act < 0.45 ? smooth(0, 0.45, inp.act) * 0.7 : inp.act < 0.6 ? 0 : 0.1;
       if (inp.state === 'eat') open = (Math.sin(this.t * 9) * 0.5 + 0.5) * 0.35;

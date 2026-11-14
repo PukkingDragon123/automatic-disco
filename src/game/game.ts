@@ -11,7 +11,7 @@ import { World } from './world';
 import { Hive, ABILITIES, type Ability } from './hive';
 import { Fx } from './fx';
 import { Vision } from './vision';
-import { Creature } from './creature';
+import { Creature, MACHINES, type Machine } from './creature';
 import { Building, BDEFS, BUILD_ORDER, type BKind } from './buildings';
 import { Harvest } from './dnaHarvest';
 import { Run } from './run';
@@ -675,6 +675,9 @@ export class Game implements Screen {
     this.cam.enabled = !this.harvest.blocking && !this.player?.started;
     this.cam.update(dt, inp);
     this.cineCam?.(this.cam.cam, dt);
+    // the machines the wildlife flees or fights (ai.ts): every robot, plus any stand-in faction units
+    const stubs = this.factions?.stubs;
+    MACHINES.list = (stubs?.length ? (this.robots as unknown[]).concat(stubs) : this.robots) as Machine[];
     this.world.update(simDt, this.cam.cam);
     if (simDt > 0) {
       for (const h of this.world.hives) h.update(simDt);
@@ -922,5 +925,5 @@ export class Game implements Screen {
     new Btn(row, { icon: 'heart', label: 'LET HIM REST', size: 'big', tip: () => '<h4>Lay him to rest</h4>A pale flower grows where he lies. +8 helix.' }, () => fin(false));
   }
   get vaults() { return this.veyr.buildings.filter((b) => b.def.kind === 'vault' && b.done).length; }
-  dispose() { this.act = false; this.factions?.dispose(); this.offKey?.(); (window as any).__game === this && ((window as any).__game = null); this.hud.dispose(); this.overlay.remove(); ui().innerHTML = ''; }
+  dispose() { MACHINES.list = []; this.act = false; this.factions?.dispose(); this.offKey?.(); (window as any).__game === this && ((window as any).__game = null); this.hud.dispose(); this.overlay.remove(); ui().innerHTML = ''; }
 }

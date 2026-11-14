@@ -161,7 +161,7 @@ function coreModel(mb: MB, r: Rand, part: 'shell' | 'cap' = 'shell') {
 export const CORE_S = 0.36;
 /** the asteroid: a lumpy faceted rock with glowing fissures; 'cap' is the sealed top that bursts at hatching */
 export function asteroidGeometry(seed: number, part: 'shell' | 'cap'): THREE.BufferGeometry {
-  const nz = new Noise(seed), base = new THREE.IcosahedronGeometry(2.5, 4).toNonIndexed();
+  const nz = new Noise(seed), base = new THREE.IcosahedronGeometry(2.5, 4); // (already non-indexed)
   const P = base.attributes.position as THREE.BufferAttribute;
   const disp = (x: number, y: number, z: number) => { const l = Math.hypot(x, y, z) || 1; const nx = x / l, ny = y / l, nzz = z / l; const k = 1 + nz.fbm3(nx * 1.6, ny * 1.6, nzz * 1.6, 4) * 0.28 + Math.abs(nz.n3(nx * 4, ny * 4, nzz * 4)) * 0.06; return [nx * 2.5 * k * 1.05, ny * 2.5 * k * 0.86 + 1.2, nzz * 2.5 * k]; };
   const pos: number[] = [], uv: number[] = [], lay: number[] = [], prt: number[] = [];

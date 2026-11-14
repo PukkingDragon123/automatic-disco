@@ -47,6 +47,9 @@ const CSS = `
 .bw-tab.arm { background: linear-gradient(180deg, #e4cd98, #c9a464); color: #2e2d2a; }
 .bw-tab.dis { color: rgba(74, 72, 66, 0.4); background: linear-gradient(180deg, #b9ad8c, #a99d7c); }
 .bw-tab.tr { background: linear-gradient(180deg, #a6a8a2, #8d8f8a); color: #23221f; }
+.bw-rel { justify-content: flex-end; }
+.bw-tab.rel { background: linear-gradient(180deg, #cdbd93, #b8a77d); color: ${PAL.stamp}; }
+.bw-tab.rel.arm { background: linear-gradient(180deg, #c65a4c, ${PAL.stamp}); color: #efe6d2; }
 .bw-now { margin-top: calc(6 * var(--k)); border-top: 1px solid rgba(59, 58, 54, 0.45); padding-top: calc(4 * var(--k)); color: #3b3a36; }
 .bw-now div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bw > * { pointer-events: none; }
@@ -212,13 +215,33 @@ export class BioUI {
     for (const w of able) { const e = this.bt.assign(w.c, job, job === 'auto' ? w.c.x : undefined, job === 'auto' ? w.c.z : undefined); if (e) why = e; }
     if (why) toast(why, 'warn', 1800);
   }
+  /** release the selection into the wild (two clicks: arm, then confirm within a few seconds) */
+  private relArm = false; private relT = 0;
+  private releaseSel() {
+    const ws = this.selWorkers(); if (!ws.length) return;
+    if (!this.relArm) { this.relArm = true; this.relT = performance.now(); this.key = ''; sfx('click', 1.2, 0.6); setTimeout(() => { if (this.relArm && performance.now() - this.relT >= 3900) { this.relArm = false; this.key = ''; } }, 4000); return; }
+    this.relArm = false; this.key = '';
+    const g = this.g as any, eco = g.world?.eco ?? g.eco;
+    if (!eco?.release) { sfx('deny'); toast('The ecosystem is not running here', 'warn', 1600); return; }
+    for (const w of ws) {
+      const c = w.c;
+      this.bt.assign(c, 'idle');
+      g.factory?.workers?.release?.(c);
+      c.selected = false;
+      eco.release(c);
+    }
+    g.sel = (g.sel as Creature[]).filter((c) => c.faction === 'veyr');
+    g.hud?.invalidate?.();
+    sfx('grow', 0.8, 0.6);
+    toast(`${ws.length > 1 ? ws.length + ' animals' : ws[0].c.sp.name} released into the wild`, 'good', 2400);
+  }
   private renderSlip() {
     const ws = this.selWorkers();
     const open = ws.length > 0 && this.active;
     this.slip.classList.toggle('open', open);
     if (!open) return;
     const sp = new Map<string, number>(); for (const w of ws) sp.set(w.c.sp.name, (sp.get(w.c.sp.name) ?? 0) + 1);
-    const k = ws.map((w) => `${w.c.id}:${w.job}:${w.state}`).join(',') + '|' + (this.arm ? JSON.stringify(this.arm) : '');
+    const k = ws.map((w) => `${w.c.id}:${w.job}:${w.state}`).join(',') + '|' + (this.arm ? JSON.stringify(this.arm) : '') + (this.relArm ? '|rel' : '');
     const first = ws[0], prof = first.prof;
     if (k !== this.key) {
       this.key = k;
@@ -248,6 +271,12 @@ export class BioUI {
           b.addEventListener('click', (e) => { e.stopPropagation(); sfx('click', 1.2, 0.6); this.setArm({ k: 'troop', o }, o === 'attack' ? 'CLICK AN ENEMY OR WHERE TO ADVANCE' : o === 'patrol' ? 'CLICK THE FAR END OF THE PATROL' : `CLICK WHERE TO ${o.toUpperCase()}`); });
         }
       }
+      // set them loose: they leave the roster and join the wild as an introduced species (eco.release)
+      const rel = el('div', 'bw-jobs bw-rel', s);
+      const rb = el('button', `bw-tab rel${this.relArm ? ' arm' : ''}`, rel, this.relArm ? 'CONFIRM: RELEASE?' : 'RELEASE INTO THE WILD');
+      rb.addEventListener('click', (e) => { e.stopPropagation(); this.releaseSel(); });
+      rb.addEventListener('pointerenter', () => Tip.show('<h4>Release into the Wild</h4>Turn the selected engineered stock loose. They stop working for you and join the ecosystem as an introduced species: they feed, breed and spread their genes. Click twice to confirm.', rb));
+      rb.addEventListener('pointerleave', () => Tip.hide());
       el('div', 'ps bw-now', s);
     }
     // the live lines: each worker's job, state and output

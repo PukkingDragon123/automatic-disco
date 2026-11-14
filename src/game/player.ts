@@ -29,7 +29,7 @@ const PART_NAME: Record<string, string> = { head: 'SURVEY HEAD ONLINE', torso: '
 const COLOSSUS = 2.6;
 const RES_NAME: Record<Res, string> = { ore: 'ORE', carbon: 'CARBON', water: 'WATER', soil: 'SOIL' };
 
-type CtxKind = 'drop' | 'grab' | 'drill' | 'grit' | 'intake' | 'gibs' | 'plantC' | 'convert' | 'plant' | 'siphon' | 'dig' | 'none';
+type CtxKind = 'drop' | 'grab' | 'drill' | 'grit' | 'intake' | 'gibs' | 'plantC' | 'convert' | 'plant' | 'siphon' | 'dig' | 'fruit' | 'none';
 interface Ctx {
   kind: CtxKind; label: string; ok: boolean; at: THREE.Vector3;
   stone?: Stone; c?: Creature; dep?: number; rock?: number; plant?: number; res?: Res; rate?: number;
@@ -770,7 +770,7 @@ export class Player implements GolemTarget, TouchHost {
     // hold-to-work jobs stop when released; quick jobs finish on their own
     if (this.channel && !this.channel.ctx.label.startsWith('#')) {
       const k = this.channel.kind;
-      if (k !== 'convert' && k !== 'plant') this.channelStop();
+      if (k !== 'convert' && k !== 'plant' && k !== 'fruit') this.channelStop();
     }
   }
   private startChannel(c: Ctx, sub?: 'graft' | 'sow') {
@@ -846,12 +846,22 @@ export class Player implements GolemTarget, TouchHost {
       const at = new THREE.Vector3(px, gy(px, pz) + 0.5, pz);
       return this.has('drill') ? mk('drill', 'DRILL ROCK', true, at, { rock, res: 'ore', rate: 1.3 }) : mk('grit', 'SCRAPE GRIT', true, at, { rock, res: 'ore', rate: 0.6 });
     }
-    // a plant
+    // a plant (a dormant seed-bank slot in the ecosystem is bare ground, not a plant)
     let plant = -1, pd = 1e9;
-    g.world.flora.near(px, pz, 0.75, (i, d2) => { if (g.world.flora.bio[i] > 0.2 && d2 < pd) { pd = d2; plant = i; } });
+    const fl = g.world.flora, alive = (i: number) => g.world.eco?.plantAlive?.(i) ?? true;
+    fl.near(px, pz, 0.75, (i, d2) => { if (fl.bio[i] > 0.2 && d2 < pd && alive(i)) { pd = d2; plant = i; } });
+    if (plant >= 0 && this.has('graft') && !this.grafted.has(plant)) {
+      const at = new THREE.Vector3(fl.x[plant], gy(fl.x[plant], fl.z[plant]) + 0.6, fl.z[plant]);
+      return mk('plant', this.has('sow') ? 'GRAFT (HOLD: PRESS SEED)' : 'GRAFT PLANT', true, at, { plant });
+    }
+    // ripe fruit in reach (tree crowns spread wide): anyone can pick it
+    const fi = fl.fruitNear(px, pz, 1.6);
+    if (fi >= 0 && alive(fi)) {
+      const at = new THREE.Vector3(); fl.fruitPos(fi, 0, at); at.y += 0.25;
+      return mk('fruit', 'PICK FRUIT', true, at, { plant: fi });
+    }
     if (plant >= 0 && (this.has('graft') || this.has('sow') || this.has('intake'))) {
-      const fl = g.world.flora, at = new THREE.Vector3(fl.x[plant], gy(fl.x[plant], fl.z[plant]) + 0.6, fl.z[plant]);
-      if (this.has('graft') && !this.grafted.has(plant)) return mk('plant', this.has('sow') ? 'GRAFT (HOLD: PRESS SEED)' : 'GRAFT PLANT', true, at, { plant });
+      const at = new THREE.Vector3(fl.x[plant], gy(fl.x[plant], fl.z[plant]) + 0.6, fl.z[plant]);
       if (this.has('sow')) return mk('plant', 'PRESS SEED', true, at, { plant });
       return mk('plantC', 'DRAW CARBON', true, at, { plant, res: 'carbon', rate: 1.6 });
     }
@@ -881,7 +891,7 @@ export class Player implements GolemTarget, TouchHost {
     // too far from the job: stop
     const far = Math.hypot(c.at.x - this.x, c.at.z - this.z) > 2.2 + (c.c ? c.c.radius : 0);
     if (far) { this.channelStop(); return; }
-    const workOf: Record<string, Work> = { drill: 'drill', grit: 'grit', intake: 'intake', gibs: 'intake', plantC: 'intake', convert: 'convert', plant: 'graft', siphon: 'siphon', dig: ch.arms.length ? 'dig' : 'grit' };
+    const workOf: Record<string, Work> = { drill: 'drill', grit: 'grit', intake: 'intake', gibs: 'intake', plantC: 'intake', fruit: 'intake', convert: 'convert', plant: 'graft', siphon: 'siphon', dig: ch.arms.length ? 'dig' : 'grit' };
     ch.work = c.kind === 'drill' && !ch.arms.length ? 'drill' : workOf[c.kind] ?? null;
     const mouth = ch.mouthPos(new THREE.Vector3());
     const tool = ch.arms.length && (c.kind === 'drill' || c.kind === 'dig' || c.kind === 'plant' || c.kind === 'convert') ? ch.handPos(ch.arms.includes('armR') ? 'armR' : 'armL', new THREE.Vector3()) : ch.headPos(new THREE.Vector3());
@@ -958,12 +968,32 @@ export class Player implements GolemTarget, TouchHost {
         break;
       }
       case 'plantC': {
-        if (c.plant === undefined) { this.channelStop(); break; }
+        if (c.plant === undefined || g.world.eco?.plantAlive?.(c.plant) === false) { this.channelStop(); break; }
         const fl = g.world.flora, got = fl.eat(c.plant, dt * 0.3);
         if (got <= 0 || fl.bio[c.plant] < 0.05) { this.channelStop(); break; }
         g.fx.stream(() => ground, this.mouth, Math.ceil(dt * 50), Math.random() < 0.5 ? 0x6ab04a : 0x9aff6a, { dur: 0.55, rad: 0.2, size: 1.8 });
         C.acc += got * 6 * ((g.veyr as unknown as { gatherRate?(r: Res, j: string): number }).gatherRate?.('carbon', 'intake') ?? 1);
         while (C.acc >= 1) { C.acc -= 1; this.loot.drop('carbon', 1, ground, true); }
+        break;
+      }
+      case 'fruit': {
+        // a quick pull: the fruit snaps off and flies into the intake (the works' stores take it as fruit once
+        // Field Works is up, else the golem burns it for carbon)
+        const pi = c.plant!, dur = 0.45;
+        C.prog = C.t / dur;
+        if (Math.random() < dt * 20) g.fx.arc(tool, c.at, 0.05, ch.lookData.glow, 0.2);
+        if (C.t >= dur) {
+          this.channelStop();
+          const fl = g.world.flora, food = fl.eatFruit(pi);
+          if (food <= 0) break;
+          const fac = g.factory, works = !!fac && g.run.skills.has('works');
+          if (works && fac.put('fruit', 1, c.at.x, c.at.z) > 0) floatText(g, c.at.x, c.at.y + 0.2, c.at.z, '+1 FRUIT', 'good');
+          else this.credit('carbon', 1 + food * 2, c.at.clone());
+          g.fx.burst(c.at.x, c.at.y, c.at.z, 6, g.region.pal.bloom[0] ?? 0xd08050, { speed: 0.8, up: 1, size: 1.8, life: 0.4 });
+          sfx('squelch', 1.6, 0.3);
+          // keep picking while E is held
+          if (this.use.down) { const nx = this.sense(); if (nx?.kind === 'fruit') { this.ctx = nx; this.startChannel(nx); } }
+        }
         break;
       }
       case 'plant': {

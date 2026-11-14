@@ -16,7 +16,7 @@ import { Kit } from '../kit';
 import { atlasFor, kitMaterial, livery } from '../atlas';
 import { PARTS, PART, SLOTS, SLOT_NAME, partsOf, refuse, weaponStats, weaponCost, newDesign, toWeapon, type WeaponDesign, type Slot } from './parts';
 import { buildWeaponMesh, type WeaponMesh } from './model';
-import { store, saveStore, genesOf, lack, toolUp, isTooled, equipGolem, issueTo, designById } from './store';
+import { store, saveStore, genesOf, lack, toolUp, isTooled, equipGolem, issueTo, designById, issueToBeast, beastRefuse } from './store';
 import { RobotUnit, spawnRobot, tickRobots, fireWeapon, type RobotKind } from '../unit';
 
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
@@ -162,6 +162,10 @@ export class WeaponBench implements Screen {
     const fxs = Object.entries(st.fx).filter(([, v]) => v).map(([k, v]) => `${k.toUpperCase()} ${Number(v).toFixed(0)}`).join(' · ');
     const bill = Object.entries(cost).map(([k, n]) => { const have = fac ? fac.count(k) : Infinity; return `<span class="${have < (n ?? 0) ? 'no' : ''}">${n} ${k.replace(/_/g, ' ')}${fac ? ` (${have})` : ''}</span>`; }).join(' · ');
     const kinds: RobotKind[] = ['scout', 'worker', 'trooper', 'heavy', 'artillery', 'walker'];
+    // the run's own creature designs: large ones take a back mount
+    type BSp = { name: string; owner: string; pheno: { length: number }; model: { rig: { spine: number[] } } };
+    const reg = (this.game as unknown as { run?: { reg: { list: BSp[] } } } | null)?.run?.reg.list ?? [];
+    const seenB = new Set<string>(), beasts = reg.filter((sp) => sp.owner === 'veyr' && !seenB.has(sp.name) && (seenB.add(sp.name), true));
     this.el.innerHTML = `
       <div class="sheet">
         <h1>ORDNANCE BRANCH · U.S.P.C.</h1>
@@ -182,6 +186,7 @@ export class WeaponBench implements Screen {
           <button data-act="hand" ${why || !tooled ? 'disabled' : ''}>GOLEM: ARM${s.golem.hand === d.id ? ' ✓' : ''}</button>
           <button data-act="mount" ${why || !tooled ? 'disabled' : ''}>GOLEM: MOUNT${s.golem.mount === d.id ? ' ✓' : ''}</button>
           <select data-act="issue" ${why || !tooled ? 'disabled' : ''}><option value="">ISSUE TO ROBOTS…</option>${kinds.map((k) => `<option value="${k}">${k.toUpperCase()}${s.issue[k] === d.id ? ' ✓' : ''}</option>`).join('')}</select>
+          <select data-act="beast" ${why || !tooled || !beasts.length ? 'disabled' : ''} title="Bolt this weapon on the backs of a creature design (bodies ${'1.2'} m and longer)"><option value="">${beasts.length ? 'ISSUE TO CREATURES…' : 'NO CREATURE DESIGNS'}</option>${beasts.map((sp) => { const no = beastRefuse(sp); return `<option value="${sp.name}" ${no ? 'disabled' : ''}>${sp.name.toUpperCase()}${no ? ' · ' + no : ''}${s.beasts?.[sp.name] === d.id ? ' ✓' : ''}</option>`; }).join('')}</select>
           <button data-act="auto" title="Off: the golem's weapons fire only while the trigger is held (right mouse, a side button, touch FIRE)">AUTO-TARGET: ${s.auto ? 'ON' : 'OFF'}</button>
           <button data-act="fire">${this.firing ? 'HOLD FIRE' : 'TEST FIRE'}</button>
           <button class="red" data-act="close">CLOSE [F2]</button>
@@ -199,6 +204,7 @@ export class WeaponBench implements Screen {
     act('hand').onclick = () => { equipGolem(this.game, 'hand', store().golem.hand === d.id ? null : d.id); this.paint(); };
     act('mount').onclick = () => { equipGolem(this.game, 'mount', store().golem.mount === d.id ? null : d.id); this.paint(); };
     (act('issue') as HTMLSelectElement).onchange = (e) => { const k = (e.target as HTMLSelectElement).value; if (k) issueTo(this.game, k, store().issue[k] === d.id ? null : d.id); this.paint(); };
+    (act('beast') as HTMLSelectElement).onchange = (e) => { const k = (e.target as HTMLSelectElement).value; if (k) issueToBeast(this.game, k, store().beasts?.[k] === d.id ? null : d.id); this.paint(); };
     act('fire').onclick = () => { this.firing = !this.firing; this.paint(); };
     act('auto').onclick = () => { const st = store(); st.auto = !st.auto; saveStore(); this.paint(); };
     act('close').onclick = () => this.close();

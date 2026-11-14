@@ -275,6 +275,7 @@ export class Eco {
   eatFruit(i: number): number {
     if (this.fruit[i] <= 0) return 0;
     this.fruit[i]--;
+    this.w.flora.setFruit(i, this.fruit[i] / 3);
     return 0.18 + this.w.flora.species[this.w.flora.sp[i]].food * 0.006;
   }
   /** wild breeding cap for this creature's line: food and water set it */
@@ -400,8 +401,10 @@ export class Eco {
       this.liveN0[c]++;
       this.aLive[c]++; this.aVig[c] += this.vig[i]; this.aBio[c] += fl.bio[i];
       if (fl.species[fl.sp[i]].tree) this.aTree[c]++;
-      if (this.fruits(i) && this.vig[i] > 0.6 && hash01(i, 3, 9) < 0.5) { this.fruit[i] = 1 + Math.floor(hash01(i, 4, 9) * 2); this.aFruit[c]++; }
+      if (this.fruits(i) && this.vig[i] > 0.6 && hash01(i, 3, 9) < 0.5) { this.fruit[i] = 1 + Math.floor(hash01(i, 4, 9) * 2); this.aFruit[c]++; fl.setFruit(i, this.fruit[i] / 3); }
     }
+    // the flora shows the fruit and hands pickers (workers, the golem) over to these counts
+    fl.fruitSrc = this;
     this.swapPass();
     this.vegTot0 = this.vegTot;
     this.pop();
@@ -441,6 +444,7 @@ export class Eco {
         this.aLive[c]++; this.aVig[c] += 1; this.aBio[c] += fl.bio[i];
         if (this.fruits(i)) this.growFruit(i, 1, dtp);
         if (this.fruit[i]) this.aFruit[c]++;
+        fl.setFruit(i, this.fruit[i] / 3);
         continue;
       }
       const suit = this.suit(i, c);
@@ -478,6 +482,7 @@ export class Eco {
       this.aLive[c]++; this.aVig[c] += v; this.aBio[c] += fl.bio[i];
       if (sp.tree) this.aTree[c]++;
       if (this.fruit[i]) this.aFruit[c]++;
+      fl.setFruit(i, this.pst[i] === 2 ? 0 : this.fruit[i] / 3);
       void NN;
     }
   }
@@ -488,6 +493,7 @@ export class Eco {
   private die(i: number) {
     const fl = this.w.flora;
     this.pst[i] = 1; this.dd[i] = 0; this.fruit[i] = 0; this.diedPlants++;
+    fl.setFruit(i, 0);
     fl.setGrow(i, 0); this.gq[i] = 0;
     if (this.tq[i]) { this.tq[i] = 0; fl.setTint(i, DRY_TINT, 0); }
     const c = this.cell(fl.x[i], fl.z[i]);
