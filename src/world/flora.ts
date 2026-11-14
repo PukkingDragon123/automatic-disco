@@ -48,15 +48,16 @@ const BENDS: Record<string, [number, number]> = {
 };
 /**
  * LOD ranges per quality tier (camera distance, metres): full 3D fades to the lighter 3D mesh over near, that to the
- * painted cards over plant (small plants: small); 3D ground cover fades to its cards over ground. Low keeps full 3D
+ * painted cards at plant (small plants: small); 3D ground cover to its cards at ground. Each plant switches whole
+ * (a hard per-instance cut, no dithered cross-fade band). Low keeps full 3D
  * within ~10 m only (shrubs on their light mesh), cards beyond, and half the grass.
  */
 type R2 = [number, number];
 interface LodSet { near: R2; plant: R2; small: R2; ground: R2; grassKeep: number; low: boolean }
 const LODS: Record<Quality, LodSet> = {
-  high: { near: [21, 23.5], plant: [59, 64], small: [44, 48], ground: [42, 46], grassKeep: 1, low: false },
-  medium: { near: [9.5, 11.5], plant: [28, 31], small: [22, 25], ground: [23, 26], grassKeep: 1, low: false },
-  low: { near: [8, 10], plant: [8, 10], small: [8, 10], ground: [8, 10], grassKeep: 2, low: true },
+  high: { near: [23, 23.05], plant: [62, 62.05], small: [46, 46.05], ground: [44, 44.05], grassKeep: 1, low: false },
+  medium: { near: [11, 11.05], plant: [30, 30.05], small: [24, 24.05], ground: [25, 25.05], grassKeep: 1, low: false },
+  low: { near: [10, 10.05], plant: [10, 10.05], small: [10, 10.05], ground: [10, 10.05], grassKeep: 2, low: true },
 };
 /** plants shorter than this hand over to their cards at the nearer LOD_SMALL range */
 const SMALL_H = 1.25;
