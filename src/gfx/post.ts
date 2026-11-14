@@ -70,7 +70,7 @@ vec3 atmosphere(vec3 col, vec3 P, vec3 rd, float dist, bool bg) {
     float phase = 0.6 + 1.6 * pow(max(0.0, cosT * 0.5 + 0.5), 6.0);
     // lit air glows, shaded air stays clear: the beams read against the shade without veiling the sunlit ground
     float a = (1.0 - exp(-uRays * span * 0.025)) * phase;
-    col = col * (1.0 - a * 0.1) + uSunCol * (a * lit * lit * 0.13);
+    col = col * (1.0 - a * 0.05) + uSunCol * (a * lit * lit * 0.055);
   }
   // low mist: exponential height fog integrated along the ray, thickened in drifting patches near the ground
   if (uMist > 0.0) {
@@ -85,13 +85,15 @@ vec3 atmosphere(vec3 col, vec3 P, vec3 rd, float dist, bool bg) {
     }
     n /= 3.0;
     float pt = mix(1.0, smoothstep(0.28, 0.78, n) * 2.0, uPatch);
-    float m = 1.0 - exp(-uMist * integ * pt);
-    col = mix(col, uMistCol * mix(0.62, 1.0, lit), clamp(m, 0.0, 0.6));
+    // (the play area near the eye stays clear: mist gathers further off)
+    float m = (1.0 - exp(-uMist * integ * pt)) * smoothstep(14.0, 48.0, D);
+    col = mix(col, uMistCol * mix(0.62, 1.0, lit), clamp(m, 0.0, 0.42));
   }
   // aerial perspective: blue with distance (warmer toward the sun), a touch warm up close
-  float hz = (1.0 - exp(-D * uHaze)) * (bg ? 0.25 : 1.0);
+  // aerial perspective only far out: it fades in past ~60 m and never fully swallows the scene
+  float hz = (1.0 - exp(-max(0.0, D - 60.0) * uHaze * 0.8)) * (bg ? 0.25 : 0.7);
   vec3 hc = mix(uHazeCol, uHazeCol * 0.55 + uSunCol * 0.3, pow(max(0.0, dot(rd, uSunDir)), 5.0));
-  col *= mix(vec3(1.035, 1.0, 0.955), vec3(1.0), smoothstep(3.0, 36.0, D));
+  col *= mix(vec3(1.03, 1.0, 0.965), vec3(1.0), smoothstep(3.0, 36.0, D));
   return mix(col, hc, hz);
 }
 // flags: outline + 2 sel + 4 hover + 8 enemy + 32 emit
@@ -377,7 +379,7 @@ void main() {
     vec2 uv = 0.15 + (vec2(float(x), float(y)) + 0.5) / vec2(12.0, 8.0) * 0.7;
     s += log(max(dot(texture2D(tColor, uv).rgb, vec3(0.2126, 0.7152, 0.0722)), 1e-4));
   }
-  float target = clamp(uKey / max(exp(s / 96.0), 1e-4), 0.5, 1.35);
+  float target = clamp(uKey / max(exp(s / 96.0), 1e-4), 0.5, 1.15);
   float prev = texture2D(tPrev, vec2(0.5)).r;
   gl_FragColor = vec4(prev <= 0.0 ? target : mix(prev, target, uRate), 0.0, 0.0, 1.0);
 }`;
@@ -503,7 +505,7 @@ export class Post {
     // the eye's adaptation: two 1x1 targets, ping-ponged
     this.expA = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
     this.expB = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
-    this.mExpo = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: EXPO, uniforms: { tColor: this.U.tColor, tPrev: { value: this.expA.texture }, uRate: { value: 0.05 }, uKey: { value: 0.15 } }, depthTest: false, depthWrite: false });
+    this.mExpo = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: EXPO, uniforms: { tColor: this.U.tColor, tPrev: { value: this.expA.texture }, uRate: { value: 0.05 }, uKey: { value: 0.13 } }, depthTest: false, depthWrite: false });
     this.U.tExpo.value = this.expA.texture;
     this.mDown = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: DOWN, uniforms: { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() } }, depthTest: false, depthWrite: false });
     this.mUp = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: UP, uniforms: { tSrc: { value: null }, tPrev: { value: null }, uTexel: { value: new THREE.Vector2() } }, depthTest: false, depthWrite: false });
@@ -619,7 +621,7 @@ export class Post {
     if (e.ash > 0) { const ac = _t.setHex(RAMPS.stone[3]).multiplyScalar(0.3 + 0.7 * k); hz.lerp(ac, e.ash * 0.6); mc.lerp(ac, e.ash * 0.6); zen.lerp(ac, e.ash * 0.6); }
     if (e.red > 0) { const rc = _t.setHex(RAMPS.coral[3]).multiplyScalar(0.3 + 0.7 * k); hz.lerp(rc, e.red * 0.55); mc.lerp(rc, e.red * 0.5); hor.lerp(rc, e.red * 0.7); zen.lerp(_t.setHex(RAMPS.plum[2]), e.red * 0.6); }
     // golden hour: pink-orange in the haze and the mist, a burning horizon
-    if (e.golden > 0) { const gc = _t.setHex(RAMPS.coral[5]).multiplyScalar(0.5 + 0.5 * k); hz.lerp(gc, e.golden * 0.6); mc.lerp(gc, e.golden * 0.45); hor.lerp(_t.setHex(RAMPS.rust[6]), e.golden * 0.7); }
+    if (e.golden > 0) { const gc = _t.setHex(RAMPS.coral[5]).multiplyScalar(0.5 + 0.5 * k); hz.lerp(gc, e.golden * 0.35); mc.lerp(gc, e.golden * 0.2); hor.lerp(_t.setHex(RAMPS.rust[6]), e.golden * 0.7); }
     if (e.eclipse > 0) { zen.lerp(_t.setRGB(0.004, 0.006, 0.02), e.eclipse); hor.lerp(_t.setRGB(0.02, 0.03, 0.06), e.eclipse); hz.lerp(_t.setRGB(0.02, 0.03, 0.06), e.eclipse * 0.8); mc.lerp(_t.setRGB(0.04, 0.06, 0.1), e.eclipse * 0.8); }
     (U.uWind.value as THREE.Vector2).copy(e.wind);
     // shafts need the sun's shadow map (it exists after the first shadowed frame)

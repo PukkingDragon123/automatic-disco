@@ -267,11 +267,12 @@ export class Climate {
     sky.lerp(_c.setRGB(0.8, 0.25, 0.18), this.bloodK * 0.45);
     const av = (w.terrain as unknown as { avg?: number[] }).avg, gc = av?.[0] ?? 0x5a7a3a;
     sun.hemi.groundColor.setRGB(lin((gc >> 16) & 255), lin((gc >> 8) & 255), lin(gc & 255)).multiplyScalar(0.55 + 1.6 * dayK).lerp(sun.light.color, 0.15);
-    sun.hemi.intensity = (0.5 + 1.15 * clamp(dayK * 1.2, 0.18, 1)) * (1 + sun.overcast * 0.25) * (1 - ecl * 0.45) + this.flash * 2.5;
+    // (a modest fill keeps the shadows deep under a strong key)
+    sun.hemi.intensity = (0.45 + 0.9 * clamp(dayK * 1.2, 0.18, 1)) * (1 + sun.overcast * 0.3) * (1 - ecl * 0.45) + this.flash * 2.5;
     if (this.flash > 0) sun.hemi.color.lerp(_c.setRGB(0.85, 0.9, 1), this.flash * 0.6);
     // the grade: richer by day, cooler and vignetted by night, red in the bloodtide
     const gr = g.engine.post.grade, k = Math.max(0.08, dayK);
-    gr.sat = 1.08 - (1 - k) * 0.22 + this.bloodK * 0.1; gr.vig = 0.36 + (1 - k) * 0.3; gr.bloom = 0.3 + (1 - k) * 0.25 + ecl * 0.3;
+    gr.sat = 1.16 - (1 - k) * 0.26 + this.bloodK * 0.1; gr.vig = 0.36 + (1 - k) * 0.3; gr.bloom = 0.3 + (1 - k) * 0.25 + ecl * 0.3;
     w.terrain.U.uVeinGain.value = 1 + (1 - k) * 0.8 + ecl;
     this.light = k;
     daylight.k = Math.max(0, Math.min(1, dayK));
@@ -305,8 +306,8 @@ export class Climate {
     const amt = kind === 'snow' ? this.snow : kind === 'dust' ? this.dust : kind === 'ash' ? this.ash : this.rain;
     det?.setPrecip(kind, amt);
     // fog banks thicken the mist
-    w.sun.env.mist = Math.max(w.sun.env.mist, this.fog * 0.16);
-    w.sun.env.haze = Math.max(w.sun.env.haze, 0.003 + this.fog * 0.012 + this.dust * 0.02 + this.ash * 0.01);
+    w.sun.env.mist = Math.max(w.sun.env.mist, this.fog * 0.12);
+    w.sun.env.haze = Math.max(w.sun.env.haze, 0.003 + this.fog * 0.01 + this.dust * 0.016 + this.ash * 0.008);
     // flora sways with the wind
     const fU = (w.flora as unknown as { U?: Record<string, THREE.IUniform> }).U;
     if (fU?.uWind && fU.uWindDir) {
