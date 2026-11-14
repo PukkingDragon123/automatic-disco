@@ -6,7 +6,7 @@
 // the screen is never covered. A clip-path traced round whatever stands on the desk decides which clicks are the
 // desk's; everything else falls through to the world.
 import * as THREE from 'three';
-import { DeskView, box, cyl, mesh, mat } from './gfx';
+import { DeskView, box, cyl, mesh, mat, merged } from './gfx';
 import { M, matsOf, Spring, type Hot, type HitInfo } from './kit';
 import { R, label } from './paint';
 import { decal } from './kit';
@@ -20,7 +20,7 @@ import { Pads, type PadId } from './pads';
 const PANEL_L = 36, PANEL_TILT = 48 * Math.PI / 180, LEDGE = 12, LEDGE_H = 6;
 const RAIL_Y = LEDGE_H + PANEL_L * Math.sin(PANEL_TILT), RAIL_Z = -LEDGE - PANEL_L * Math.cos(PANEL_TILT);
 /** the wing decks: their top, front edge and depth */
-const DECK_Y = RAIL_Y + 5, DECK_Z0 = RAIL_Z - 4, DECK_D = 54, WING_W = 204, WING_X = 320 - WING_W / 2;
+const DECK_Y = RAIL_Y + 12, DECK_Z0 = RAIL_Z - 4, DECK_D = 54, WING_W = 204, WING_X = 320 - WING_W / 2;
 type Side = 'L' | 'R';
 
 export class Desk {
@@ -47,7 +47,7 @@ export class Desk {
   readonly menuLever = new Lever(R.stampRed[3]); readonly tuckLever = new Lever(R.ochre[5], 10);
   readonly tube = new BlueprintTube();
   // ---- the wings' things
-  readonly table = new HoloTable(104);
+  readonly table = new HoloTable(88);
   readonly crt = new CRT(92, 46);
   readonly orrery = new Orrery();
   readonly board = new InspectBoard();
@@ -60,7 +60,7 @@ export class Desk {
   /** the touch layout: thumb pads on the strip's ends (ui/touch.ts docks its hit areas over them) */
   pads: Pads | null = null; touch = false;
   padState: Parameters<Pads['update']>[1] = null;
-  private extras = new THREE.Group();
+  private extras = new THREE.Group(); private menuLabel!: THREE.Object3D;
   // ---- interaction
   readonly hots: Hot[] = [];
   private hotOf = new Map<THREE.Object3D, Hot>();
@@ -101,22 +101,22 @@ export class Desk {
     p.position.set(0, LEDGE_H, -LEDGE); p.rotation.x = -(Math.PI / 2 - PANEL_TILT);
     p.add(mesh(box(W, PANEL_L, 8), M('olive'), 0, PANEL_L / 2, -4));
     // seams between the panel's sections (where the plates meet: a dark joint, a lit lip)
-    for (const x of [-236, -82, 138, 226]) p.add(mesh(box(1.2, PANEL_L, 1), M('rubber'), x, PANEL_L / 2, 0.1));
+    for (const x of [-222, -78, 150, 234]) p.add(mesh(box(1.2, PANEL_L, 1), M('rubber'), x, PANEL_L / 2, 0.1));
     // the screws that hold each plate: one in every corner, slots turned whichever way the fitter left them
-    const sm = M('steel', { spec: 1 });
-    for (const [i, x] of [-318, -236, -82, 138, 226, 318].entries()) for (const y of [3, PANEL_L - 3]) {
-      for (const dx of i === 0 ? [4] : i === 5 ? [-4] : [-4, 4]) {
-        const sc = mesh(cyl(1.3, 1.3, 1, 6).rotateX(Math.PI / 2), sm, x + dx, y, 0.4); p.add(sc);
-        const sl = mesh(box(2.2, 0.5, 0.4), M('rubber'), x + dx, y, 0.95); sl.rotation.z = (x * 7 + y * 13 + dx) % 3; p.add(sl);
-      }
+    // (merged into two draws: heads and slots)
+    const heads: [THREE.BufferGeometry, number, number, number, number?][] = [], slots: typeof heads = [];
+    const hg = cyl(1.3, 1.3, 1, 6).rotateX(Math.PI / 2), sg = box(2.2, 0.5, 0.4);
+    for (const [i, x] of [-318, -222, -78, 150, 234, 318].entries()) for (const y of [3, PANEL_L - 3]) {
+      for (const dx of i === 0 ? [4] : i === 5 ? [-4] : [-4, 4]) { heads.push([hg, x + dx, y, 0.4]); slots.push([sg, x + dx, y, 0.95, (x * 7 + y * 13 + dx) % 3]); }
     }
+    p.add(mesh(merged(heads), M('steel', { spec: 1 })), mesh(merged(slots), M('rubber')));
     s.add(p);
     // ---- MODE selector
-    this.knob.root.position.set(-276, 14, 0); p.add(this.knob.root);
+    this.knob.root.position.set(-294, 17, 0); p.add(this.knob.root);
     // ---- the holds: hopper, furnace, sight glass, scale; each with its counter, cap and lamp
     const res: ResKind[] = ['ore', 'carbon', 'water', 'soil'], names = ['ORE', 'CARBON', 'WATER', 'SOIL'];
     res.forEach((r, i) => {
-      const cx = -214 + i * 34;
+      const cx = -200 + i * 34;
       const v = new Vessel(r); v.root.position.set(cx - 9, 16, 1); p.add(v.root); this.vessels[r] = v;
       const c = new Counter(3); c.root.position.set(cx + 8.5, 22, 0); p.add(c.root); this.resCount[r] = c;
       const cap = new LiveDecal(18, 6, { flat: 0.7 }); cap.mesh.position.set(cx + 8.5, 13, 0.4); p.add(cap.mesh); this.resCap[r] = cap;
@@ -124,42 +124,42 @@ export class Desk {
       const lm = new Lamp(R.glowTeal[3], 1.4); lm.root.position.set(cx + 13, 7, 0); p.add(lm.root); this.resLamp[r] = lm;
     });
     // ---- hull, reactor, charge
-    this.hull.root.position.set(-62, 20, 0); this.charge.root.position.set(-16, 20, 0);
-    this.reactor.root.position.set(-39, 13, 0);
-    this.hullTxt.mesh.position.set(-62, 5, 0.4); this.chgTxt.mesh.position.set(-16, 5, 0.4);
+    this.hull.root.position.set(-60, 20, 0); this.charge.root.position.set(-14, 20, 0);
+    this.reactor.root.position.set(-37, 13, 0);
+    this.hullTxt.mesh.position.set(-60, 5, 0.4); this.chgTxt.mesh.position.set(-14, 5, 0.4);
     p.add(this.hull.root, this.charge.root, this.reactor.root, this.hullTxt.mesh, this.chgTxt.mesh);
     // ---- the power drum, its readout, the plunger
-    this.drum.root.position.set(22, 18, 0); p.add(this.drum.root);
-    this.readout.mesh.position.set(74, 26, 0.4); p.add(this.readout.mesh);
-    p.add(mesh(box(70, 19, 2), M('steel'), 74, 26, -0.8));
-    p.add(stencil('POWER', 74, 13));
-    this.plunger.root.position.set(124, 17, 0); p.add(this.plunger.root);
+    this.drum.root.position.set(24, 18, 0); p.add(this.drum.root);
+    this.readout.mesh.position.set(80, 26, 0.4); p.add(this.readout.mesh);
+    p.add(mesh(box(70, 19, 2), M('steel'), 80, 26, -0.8));
+    p.add(stencil('POWER', 80, 13));
+    this.plunger.root.position.set(132, 17, 0); p.add(this.plunger.root);
     // ---- core cells (the skill tree), clock, held ground
     const ex = this.extras; p.add(ex);
-    this.cells.root.position.set(164, 22, 0); ex.add(this.cells.root, stencil('CELLS', 164, 32));
-    this.cellLamp.root.position.set(176, 12, 0); ex.add(this.cellLamp.root);
-    this.clock.root.position.set(206, 22, 0); ex.add(this.clock.root, stencil('TIME', 206, 32));
-    this.ground.root.position.set(252, 22, 0); ex.add(this.ground.root, stencil('GND %', 252, 32));
+    this.cells.root.position.set(170, 22, 0); ex.add(this.cells.root, stencil('CELLS', 170, 32));
+    this.cellLamp.root.position.set(182, 12, 0); ex.add(this.cellLamp.root);
+    this.clock.root.position.set(212, 22, 0); ex.add(this.clock.root, stencil('TIME', 212, 32));
+    this.ground.root.position.set(258, 22, 0); ex.add(this.ground.root, stencil('GND %', 258, 32));
     // ---- things on the ledge and the rail
-    this.tube.root.position.set(150, LEDGE_H, -5); s.add(this.tube.root);
-    this.menuLever.root.position.set(292, LEDGE_H + 2, -6); s.add(this.menuLever.root);
-    p.add(stencil('MENU', 292, 4));
-    this.tuckLever.root.position.set(-306, LEDGE_H + 2, -6); s.add(this.tuckLever.root);
-    this.beacons[0].root.position.set(-110, RAIL_Y + 1.6, RAIL_Z - 4); this.beacons[1].root.position.set(286, RAIL_Y + 1.6, RAIL_Z - 4);
+    this.tube.root.position.set(176, LEDGE_H, -5); s.add(this.tube.root);
+    this.menuLever.root.position.set(298, LEDGE_H + 2, -6); s.add(this.menuLever.root);
+    this.menuLabel = stencil('MENU', 298, 4); p.add(this.menuLabel);
+    this.tuckLever.root.position.set(-252, LEDGE_H + 2, -6); s.add(this.tuckLever.root);
+    this.beacons[0].root.position.set(-150, RAIL_Y + 1.6, RAIL_Z - 4); this.beacons[1].root.position.set(286, RAIL_Y + 1.6, RAIL_Z - 4);
     s.add(this.beacons[0].root, this.beacons[1].root);
   }
   private slab(side: Side, mode: Mode) { let g = this.slabs[side][mode]; if (!g) { g = new THREE.Group(); g.visible = false; this.wing[side].add(g); this.slabs[side][mode] = g; } return g; }
-  private put(side: Side, mode: Mode, o: THREE.Object3D, x: number, z: number, ry = 0, s = 1.3) { o.position.set(x, 0, z); o.rotation.y = ry; o.scale.setScalar(s); this.slab(side, mode).add(o); return o; }
+  private put(side: Side, mode: Mode, o: THREE.Object3D, x: number, z: number, ry = 0, s = 1.6) { o.position.set(x, 0, z); o.rotation.y = ry; o.scale.setScalar(s); this.slab(side, mode).add(o); return o; }
   private buildWings() {
     for (const side of ['L', 'R'] as Side[]) {
       const w = this.wing[side];
       // the deck: an olive top on a cabinet, a steel nosing, a low backboard
       w.add(mesh(box(WING_W, 60, DECK_D), M('olive'), 0, -30, -DECK_D / 2));
-      w.add(mesh(box(WING_W, 1.6, DECK_D - 2), M('deck'), 0, 0.2, -DECK_D / 2));
+      w.add(mesh(box(WING_W, 1.6, DECK_D - 2), M('olive'), 0, 0.2, -DECK_D / 2));
       w.add(mesh(box(WING_W + 2, 2, 2), M('steel', { spec: 1 }), 0, 0.2, 0.4));
       w.add(mesh(box(WING_W, 10, 3), M('olive'), 0, 5, -DECK_D + 1.5));
       // a green baize blotter in a leather frame where the tools lie
-      w.add(mesh(box(WING_W - 16, 0.8, DECK_D - 14), mat({ tint: R.sage[2] }), 0, 1.3, -DECK_D / 2 + 1), mesh(box(WING_W - 12, 0.6, DECK_D - 10), M('bake'), 0, 1, -DECK_D / 2 + 1));
+      w.add(mesh(box(WING_W - 16, 0.8, DECK_D - 14), mat({ tint: R.sage[3] }), 0, 1.3, -DECK_D / 2 + 1), mesh(box(WING_W - 12, 0.6, DECK_D - 10), M('bake'), 0, 1, -DECK_D / 2 + 1));
       w.position.set(side === 'L' ? -WING_X : WING_X, DECK_Y, DECK_Z0);
     }
     const P = this.props;
@@ -180,7 +180,7 @@ export class Desk {
     this.put('L', 'build', P.mug.root, 88, -38);
     // COMMAND: the holo table on the left; the telemetry CRT, the ordnance crate, the rally horn and the
     // self-destruct on the right
-    this.put('L', 'command', this.table.root, 0, -36, 0, 1);
+    this.put('L', 'command', this.table.root, 0, -52, 0, 1);
     this.crt.root.position.set(-10, 26, -34); this.slab('R', 'command').add(this.crt.root);
     this.put('R', 'command', P.crate.root, -78, -14, 0.2);
     this.put('R', 'command', P.horn.root, 60, -12, -0.3);
@@ -212,7 +212,10 @@ export class Desk {
     if (on && !this.pads) { this.pads = new Pads(PANEL_TILT); this.strip.add(this.pads.left, this.pads.right); }
     if (this.pads) { this.pads.left.visible = this.pads.right.visible = on; }
     this.extras.visible = !on; this.beacons[1].root.visible = !on; this.tuckLever.root.visible = !on;
-    this.menuLever.root.position.x = on ? 200 : 292;
+    // the readouts shift right to clear the stick's plinth; the levers come in from the ends
+    this.panel.position.x = on ? 22 : 0;
+    this.tube.root.position.x = on ? 196 : 176;
+    this.menuLever.root.position.x = on ? 222 : 298; this.menuLabel.position.x = on ? 200 : 298;
     this.layout();
   }
   /** where the thumb pads are on the page (CSS px) for ui/touch.ts to dock its hit areas */
@@ -331,12 +334,14 @@ export class Desk {
         this.shown[side] = want;
         if (want) {
           if (want === 'survey' && side === 'R') this.put('R', 'survey', this.table.root, 0, -36, 0, 1);
-          if (want === 'command' && side === 'L') this.put('L', 'command', this.table.root, 0, -36, 0, 1);
+          if (want === 'command' && side === 'L') this.put('L', 'command', this.table.root, 0, -52, 0, 1);
           this.slab(side, want).visible = true;
         }
       }
-      const w = this.wing[side], base = side === 'L' ? -WING_X : WING_X;
-      w.position.set(base * 1, DECK_Y + v * 92, DECK_Z0 + v * 30);
+      // on touch screens the thumb pads own the ends: the wings come in toward the middle, a size smaller
+      const w = this.wing[side], base = this.touch ? (side === 'L' ? -168 : 60) : side === 'L' ? -WING_X : WING_X;
+      w.scale.setScalar(this.touch ? 0.8 : 1);
+      w.position.set(base, DECK_Y + v * 92, DECK_Z0 + v * 30);
       w.rotation.x = v * 0.5;
       w.visible = v > -0.97;
     }

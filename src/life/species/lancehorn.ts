@@ -15,6 +15,9 @@ export const lancehorn: SpeciesFn = (d) => {
       surf: { body: { fur: { len: 0.14, width: 0.05, down: 0.6 } }, back: { fur: { len: 0.17, width: 0.055, down: 0.4 } }, limb: { fur: { len: 0.09, width: 0.04 } }, face: { fur: { len: 0.05, width: 0.03 } }, muzzle: { pebbles: { size: 0.03, depth: 0.7 }, creases: 0.8 } },
       face: { muzzle: sh(base, 1), nose: ['hide', 2] }, claw: ['bone', 3], horn: ['violet', 2],
     },
-    parts: [],
+    parts: [
+      { k: 'horn', at: 'nose', len: 1.7, r: 0.13, rise: 0.45, back: -1.0, curl: 0.35, c: ['violet', 2] },
+      { k: 'shag', t0: -0.2, t1: 0.95, len: 0.32, density: 0.9, fringe: 1.2, flank: 0.6 },
+    ],
   };
 };

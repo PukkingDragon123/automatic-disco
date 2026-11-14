@@ -209,6 +209,8 @@ export class Hud {
       if (m === 'survey' && ev) ev.setOverlay('water');
     }
     this.desk.table.scan = m === 'survey' ? 1 : 0.3;
+    if (m === 'command') this.crtPaint();
+    this.mapT = 0;
     this.panels = this.panelState();
     this.cssVars();
   }
@@ -604,7 +606,7 @@ export class Hud {
   setClimate(c: Climate) { this.climate = c; }
   invalidate() { this.cmdKey = ''; this.selKey = '-'; }
   /** run the desk's animations forward (headless tests and screenshots, where frames are slow) */
-  settle(n = 120) { for (let i = 0; i < n; i++) { this.wheel.update(1 / 30); this.desk.update(1 / 30); } this.desk.render(); }
+  settle(n = 120) { this.mapT = 0; this.mapBuilt = 0; this.update(1 / 30); this.crtPaint(); for (let i = 0; i < n; i++) { this.wheel.update(1 / 30); this.desk.update(1 / 30); } this.desk.render(); }
   dispose() {
     removeEventListener('resize', this.onResize);
     for (const v of ['--hud-top', '--desk-h', '--desk-wl', '--desk-wr', '--desk-ww']) document.documentElement.style.removeProperty(v);

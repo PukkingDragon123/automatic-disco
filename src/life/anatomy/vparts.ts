@@ -14,7 +14,7 @@ import { lookPaint, type Look } from './look';
 import { locks, type LockSeat } from './locks';
 import { Px, RP, h3 } from './paint';
 import type { VCtx } from './vertebrate';
-import { keratinPaint } from './coat';
+import { keratinPaint, coatSampler } from './coat';
 
 type C2 = [RampName, number];
 export type VPart =
@@ -328,21 +328,21 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
   },
   // ------------------------------------------------------------------------------------------- hair
   shag: (X, p) => {
-    const c = X.spec.coat, cols = [RP((p.col ?? c.back ?? c.base)[0]), RP(c.belly[0]), RP((c.pattern?.c ?? c.base)[0])], steps = [(p.col ?? c.back ?? c.base)[1], c.belly[1], (c.pattern?.c ?? c.base)[1]];
-    const seats: LockSeat[] = [], v0 = vT(X, p.t1), v1 = vT(X, p.t0), dens = p.density ?? 1;
-    const rows = Math.max(3, Math.round((v1 - v0) * 26 * dens)), L = p.len * X.W;
+    // long locks over the back and down the flanks, each in the colour of the coat at its root; a fringe under the belly
+    const T = tileSet(X), seats: LockSeat[] = [], v0 = vT(X, p.t1), v1 = vT(X, p.t0), dens = p.density ?? 1;
+    const rows = Math.max(3, Math.round((v1 - v0) * 34 * dens)), L = p.len * X.W;
     for (let r = 0; r < rows; r++) {
-      const v = v0 + ((r + 0.5) / rows) * (v1 - v0), across = Math.round(5 + (p.flank ?? 0.5) * 6);
+      const v = v0 + ((r + 0.5) / rows) * (v1 - v0), across = Math.round(7 + (p.flank ?? 0.5) * 8);
       for (let i = 0; i < across; i++) {
-        const fu = (i + (r % 2) * 0.5) / across, u = 0.5 + (fu - 0.5) * (0.28 + (p.flank ?? 0.5) * 0.4) * 2;
+        const fu = (i + (r % 2) * 0.5) / across, u = 0.5 + (fu - 0.5) * (0.3 + (p.flank ?? 0.5) * 0.36);
         const q = onTr(X, u + (h3(r, i, X.seed) - 0.5) * 0.02, v + (h3(i, r, X.seed) - 0.5) * 0.01);
-        const back = nrm(sub(onTr(X, u, v - 0.02).p, q.p));
-        seats.push({ p: q.p, n: q.n, dir: nrm(add(back, [0, -0.35, 0])), len: L * (0.75 + 0.5 * h3(r * 7, i, X.seed)), wid: L * 0.22, lift: 0.25, droop: 0.5, col: 0, w: X.spine(q.p) });
+        const back = nrm(sub(onTr(X, u, v - 0.02).p, q.p)), k = 0.7 + 0.6 * h3(r * 7, i, X.seed);
+        seats.push({ p: q.p, n: q.n, dir: nrm(add(back, [0, -0.35, 0])), len: L * k, wid: L * k * 0.13, lift: 0.25, droop: 0.5, col: T.at(q.p, q.n, p.col), w: X.spine(q.p) });
       }
       // the fringe hanging under the belly line
-      if (p.fringe) for (const u of [0.12, 0.88, 0.04, 0.96]) { const q = onTr(X, u + (h3(r, 9, X.seed) - 0.5) * 0.03, v); seats.push({ p: q.p, n: q.n, dir: [0, -1, -0.2], len: L * p.fringe * (0.8 + 0.4 * h3(r, 11, X.seed)), wid: L * 0.2, lift: 0.1, droop: 0.1, col: 1, w: X.spine(q.p) }); }
+      if (p.fringe) for (const u of [0.13, 0.87, 0.06, 0.94]) { const q = onTr(X, u + (h3(r, 9, X.seed) - 0.5) * 0.03, v), k = 0.8 + 0.4 * h3(r, 11, X.seed); seats.push({ p: q.p, n: q.n, dir: [0, -1, -0.25], len: L * p.fringe * k, wid: L * k * 0.12, lift: 0.1, droop: 0.1, col: T.at(q.p, q.n), w: X.spine(q.p) }); }
     }
-    const lp = locks({ name: 'shag', seats, tiles: cols, steps, seed: X.seed }); if (lp) X.body.add(lp);
+    const lp = locks({ name: 'shag', seats, tiles: T.tiles, steps: T.steps, seed: X.seed }); if (lp) X.body.add(lp);
   },
   mane: (X, p) => {
     const c = p.c ?? X.spec.coat.back ?? X.spec.coat.base, seats: LockSeat[] = [], L = p.len * X.W;
@@ -405,6 +405,19 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
   },
 };
 const s0 = (seats: { r: number }[]) => seats[0].r * 0.55;
+/** the colours of a set of locks: the coat sampled at each root (so a lock over a stripe wears the stripe) */
+function tileSet(X: VCtx, part: 'trunk' | 'head' = 'trunk') {
+  const smp = coatSampler(X.C, part), tiles: number[][] = [], steps: number[] = [];
+  return {
+    tiles, steps,
+    at(p: V3, n: V3, force?: C2): number {
+      let R: number[], st: number;
+      if (force) { R = RP(force[0]); st = force[1]; } else { smp.classify(p, n[1], n[0], n[2]); R = smp.R; st = Math.round(smp.st); }
+      for (let k = 0; k < tiles.length; k++) if (tiles[k] === R && steps[k] === st) return k;
+      tiles.push(R); steps.push(st); return tiles.length - 1;
+    },
+  };
+}
 
 /** a flat fleshy part (gill stalks, finger bones, barbels): one ramp step, creases inked */
 function fleshFlat(c: C2) {

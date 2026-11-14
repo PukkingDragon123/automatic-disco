@@ -7,6 +7,7 @@
 // with a hard 1-3 px specular glint on glossy parts: no gradients, no smooth falloff.
 import * as THREE from 'three';
 import { snap } from '../../art/palette';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Pix } from '../machine';
 
 /** light from the upper left and a little in front, in view space */
@@ -85,7 +86,7 @@ export function mat(o: MatOpts = {}) {
   const m = new THREE.ShaderMaterial({
     vertexShader: VS, fragmentShader: FS,
     uniforms: {
-      map: { value: o.map ?? WHITE() }, uUvOff: { value: new THREE.Vector2() }, uTint: { value: new THREE.Color(o.tint ?? 0xffffff) }, uLight: { value: LIGHT },
+      map: { value: o.map ?? WHITE() }, uUvOff: { value: new THREE.Vector2() }, uTint: { value: new THREE.Color().setHex(o.tint ?? 0xffffff, THREE.LinearSRGBColorSpace) }, uLight: { value: LIGHT },
       uGlow: { value: new THREE.Color(0) }, uEmit: { value: o.emit ?? 0 }, uHover: { value: 0 }, uAlpha: { value: o.glass ?? 1 },
       uSpec: { value: o.spec ?? 0 }, uFlag: { value: o.outline === false ? 0 : 1 }, uFlat: { value: o.flat ?? 0 }, uDim: { value: 0 },
       uShadowM: SHADOW.m, tShadow: SHADOW.t, uShadowOn: SHADOW.on, uShadowBias: SHADOW.bias,
@@ -155,6 +156,10 @@ export function extrude(pts: [number, number][], d: number, T = 64) {
   const s = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)));
   const g = facet(new THREE.ExtrudeGeometry(s, { depth: d, bevelEnabled: false }));
   return planarUV(g, T);
+}
+/** many small static parts in one draw: each geometry moved into place, then merged (they share one material) */
+export function merged(parts: [THREE.BufferGeometry, number, number, number, number?][]) {
+  return mergeGeometries(parts.map(([g, x, y, z, rz]) => { const c = g.clone(); if (rz) c.rotateZ(rz); c.translate(x, y, z); return c; }), false)!;
 }
 export function mesh(g: THREE.BufferGeometry, m: THREE.Material, x = 0, y = 0, z = 0) { const o = new THREE.Mesh(g, m); o.position.set(x, y, z); return o; }
 

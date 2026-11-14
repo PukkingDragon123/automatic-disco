@@ -156,7 +156,7 @@ export class Vessel {
       for (let i = 0; i < n; i++) {
         const row = Math.floor(i / 5), col = i % 5;
         this.nugPos.push(new THREE.Vector3(-4.8 + col * 2.4 + (row % 2) * 1.1, -5 + row * 2.6, 2 + ((i * 7) % 3) * 0.6));
-        this.nug.setColorAt(i, new THREE.Color(cols[i % cols.length]));
+        this.nug.setColorAt(i, new THREE.Color().setHex(cols[i % cols.length], THREE.LinearSRGBColorSpace));
       }
       g.add(this.nug);
       const gl = mesh(quad(13, 14), mat({ map: tex(glassStreak(13, 14)), glass: 0.4, flat: 1 }), 0, 0, 5.1);
@@ -337,7 +337,7 @@ export class ModeKnob {
   readonly knob = new THREE.Group();
   readonly win: LiveDecal;
   private sp = new Spring(0, 140, 11); private lamps: DeskMat[] = [];
-  static A = (i: number) => (-2 + i) * 34 * DEG;
+  static A = (i: number) => (-2 + i) * 36 * DEG;
   constructor() {
     const plate = new Pix(40, 40), c = 19.5;
     for (let y = 0; y < 40; y++) for (let x = 0; x < 40; x++) { const d = Math.hypot(x - c, y - c); if (d < 19.6) plate.set(x, y, d > 18.6 ? R.steel[1] : d > 17.6 ? R.steel[4] : R.steel[2]); }
@@ -358,12 +358,13 @@ export class ModeKnob {
     this.knob.add(mesh(box(1, 7, 0.6), mat({ tint: R.bone[5], flat: 0.5 }), 0, 4.5, 8.7));
     this.root.add(this.knob);
     this.win = new LiveDecal(50, 11);
-    this.win.mesh.position.set(0, 30, 0.4);
+    this.win.mesh.position.set(45, 2, 0.4);
     this.root.add(this.win.mesh);
-    this.root.add(mesh(box(54, 15, 2), M('steel'), 0, 30, -0.8));
+    this.root.add(mesh(box(54, 15, 2), M('steel'), 45, 2, -0.8));
+    this.root.add(stencil('MODE', 45, 13));
   }
   show(i: number, name: string, t: number) {
-    for (let k = 0; k < 5; k++) { const on = k === i; this.lamps[k].uniforms.uEmit.value = on ? 0.9 + Math.sin(t * 4) * 0.1 : 0; (this.lamps[k].uniforms.uTint.value as THREE.Color).setHex(on ? R.glowAmber[3] : R.steel[2]); }
+    for (let k = 0; k < 5; k++) { const on = k === i; this.lamps[k].uniforms.uEmit.value = on ? 0.9 + Math.sin(t * 4) * 0.1 : 0; (this.lamps[k].uniforms.uTint.value as THREE.Color).setHex(on ? R.glowAmber[3] : R.steel[2], THREE.LinearSRGBColorSpace); }
     const key = name; if (this.win.key === key) return; this.win.key = key;
     this.win.clear(R.ink[1]);
     const w = textW5(name); text5(this.win.p, name, Math.round((50 - w) / 2), 2, R.glowAmber[3], R.glowAmber[0]);
@@ -433,7 +434,7 @@ export class Lamp {
   update(dt: number) {
     this.t += dt;
     const on = this.state === 'on' || (this.state === 'blink' && Math.floor(this.t * 2.5) % 2 === 0) || (this.state === 'fast' && Math.floor(this.t * 8) % 2 === 0);
-    (this.m.uniforms.uTint.value as THREE.Color).setHex(on ? this.col : R.steel[2]);
+    (this.m.uniforms.uTint.value as THREE.Color).setHex(on ? this.col : R.steel[2], THREE.LinearSRGBColorSpace);
     this.m.uniforms.uEmit.value = on ? 0.8 : 0;
   }
 }

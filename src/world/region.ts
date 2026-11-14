@@ -1,4 +1,12 @@
-// One playable region of a planet: an N x N grid of 1 m columns with heights in 0.5 m steps.
+// One playable region of a planet: an N x N grid of 1 m columns (N = 160 on land, 128 at sea).
+// Generation (land): rolling ground, then MOUNTAIN RANGES raised along wandering ridgelines with saddles (geo/ranges),
+// worn by hydraulic and thermal erosion (geo/erosion), their cores stepped into strata benches with cliff risers so
+// they cannot be climbed, PASSES graded through the saddles valley to valley; the landing goes in the big valley.
+// Then the WATER network (geo/hydro: rivers from mountain sources with rapids and waterfalls, plunge pools, tarns,
+// valley lakes, streams, deltas and marsh pools), a THERMAL field of terraced hot springs and geysers in the hot and
+// volcanic country (geo/springs), the blocks, the rock FORMATIONS (geo/formations), reach, the ORES (geo/ores:
+// outcrops, cliff veins, buried bodies, rare alien ores) and the per-cell geology map `geo` for the ground shader.
+// Ocean biomes (src/ocean) redraw the relief as islands (oceanFloor) and dress the sea bed (seabed).
 import { Noise } from '../core/noise';
 import { Rand, clamp, smooth, hash01 } from '../core/rand';
 import { B } from './blockTex';
@@ -578,7 +586,7 @@ export class Region {
           const X = Math.floor(x) + dx, Z = Math.floor(z) + dz;
           if (X < 0 || Z < 0 || X >= N || Z >= N) continue;
           const i = Z * N + X;
-          if (hyp(X + 0.5 - x, Z + 0.5 - z) < w + 0.35 && this.h[i] >= this.water + 0.15 && this.b[i] !== B.ROCK) { this.b[i] = B.SOIL; this.fert[i] *= 0.35; }
+          if (hyp(X + 0.5 - x, Z + 0.5 - z) < w + 0.35 && this.h[i] >= this.water + 0.15 && this.b[i] !== B.ROCK && this.mount[i] < 0.4) { this.b[i] = B.SOIL; this.fert[i] *= 0.35; }
         }
         if (hyp(tx - x, tz - z) < 2) break;
       }

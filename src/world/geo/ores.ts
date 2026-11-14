@@ -299,8 +299,8 @@ function nodes(R: Region, r: Rand, d: Deposit) {
     const a = (k / n) * Math.PI * 2 + r.range(-0.4, 0.4), dd = d.r + r.range(0.3, 1.2);
     const x = d.x + Math.cos(a) * dd, z = d.z + Math.sin(a) * dd;
     if (R.isWater(x, z)) continue;
-    if (def.kind === 'crystal') stone(R, r, 'crystal', x, z, r.range(0.22, 0.5), d.ore!, r.range(0.4, 1.1));
-    else stone(R, r, 'node', x, z, r.range(0.3, 0.7), d.ore!);
+    if (def.kind === 'crystal') stone(R, r, 'crystal', x, z, r.range(0.25, 0.55), d.ore!, r.range(0.6, 1.5));
+    else stone(R, r, 'node', x, z, r.range(0.45, 0.95), d.ore!);
   }
 }
 

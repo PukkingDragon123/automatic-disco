@@ -72,7 +72,7 @@ export class Pads {
       c.cap.position.z = c.sp.step(held ? -2.6 : 0, dt);
       c.m.uniforms.uDim.value = st?.dead[id] ? 0.4 : 0;
       const l = st?.lamp[id] ?? 0;
-      (c.lamp.uniforms.uTint.value as THREE.Color).setHex(l === 1 ? R.glowTeal[3] : l === 2 ? R.glowAmber[3] : R.steel[2]);
+      (c.lamp.uniforms.uTint.value as THREE.Color).setHex(l === 1 ? R.glowTeal[3] : l === 2 ? R.glowAmber[3] : R.steel[2], THREE.LinearSRGBColorSpace);
       c.lamp.uniforms.uEmit.value = l ? 0.8 : 0;
     }
   }

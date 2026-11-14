@@ -583,7 +583,9 @@ if (uHasGeo > 0.5 && oreL < -0.5 && !own) {
 }
 if (oreL > -0.5 && !own) {
   vec4 o = texture(uRock, vec3(uv * 0.5, ${RL.ore0}.0 + oreL), -0.35);
-  if (o.a < 0.02 && oreK > 0.9) o = texture(uRock, vec3(uv * 0.5 * 1.37 + vec2(0.31, 0.57), ${RL.ore0}.0 + oreL), -0.35);
+  // an ore node is thick with it: the overlay laid three times over at offsets
+  if (o.a < 0.02 && oreK > 0.9) o = texture(uRock, vec3(uv * 0.5 + vec2(0.31, 0.57), ${RL.ore0}.0 + oreL), -0.35);
+  if (o.a < 0.02 && oreK > 0.9) o = texture(uRock, vec3(uv.yx * 0.5 + vec2(0.63, 0.19), ${RL.ore0}.0 + oreL), -0.35);
   if (o.a > 0.02 && dith < oreK * 1.3) { base = o.rgb; glowA = o.a; }
 }
 // cavity occlusion and the damp foot where stone meets soil, in two steps each

@@ -74,11 +74,13 @@ export function trunk(o: TrunkSpec): TrunkPiece {
   }
   const K = (C0n: number) => C0n / 2 + 1, Kp = K(keys[0].pts.length);
   for (const c of o.cols ?? []) for (const side of [1, -1] as const) creaseCol(m, g, ringIndex(c.j, side, Kp), keyRow[c.a], keyRow[c.b], c.s, !!c.ink);
-  const lv = o.levels ?? 2, f = 2 ** lv, C0 = keys[0].pts.length;
+  const lv = o.levels ?? 2, C0 = keys[0].pts.length, R0 = rings.length;
+  // the refinement actually applied (a body may cap the subdivision steps): read it off the grid
+  const fR = () => (piece.grids[0].v.length - 1) / (R0 - 1), fC = () => piece.grids[0].v[0].length / C0;
   const piece: TrunkPiece = {
     name: o.name, m, grids: [g], levels: lv, skin: o.skin, paint: o.paint, k: o.k, charts: o.charts,
-    rows0: rings.length, cols0: C0,
-    row: (s) => keyRow[s] * f, col: (j, side = 1) => ringIndex(j, side, Kp) * f,
+    rows0: R0, cols0: C0,
+    row: (s) => keyRow[s] * fR(), col: (j, side = 1) => ringIndex(j, side, Kp) * fC(),
   };
   return piece;
 }

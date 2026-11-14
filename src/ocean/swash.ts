@@ -30,7 +30,11 @@ void main() {
   float maxS = uLevel + 0.04 + reach * 0.95;
   float lit = 0.35 + 0.65 * uSunK;
   vec4 c = vec4(0.0);
-  if (h < maxS) c = vec4(uWet * lit, 0.58);
+  if (h < maxS) {
+    c = vec4(uWet * lit, 0.55);
+    // wet sand mirrors the sky in single-texel glints
+    if (h2(px + floor(uTime * 0.5)) > 0.965) c = vec4(uFoamB * lit, 0.7);
+  }
   if (h < S) {
     c = vec4(uSheet * lit, 0.66);
     // the lace at the sheet's edge, broken into drawn clumps
@@ -46,7 +50,7 @@ void main() {
 export class Swash {
   readonly mesh: THREE.Mesh | null = null;
   private U = { uTime: { value: 0 }, uLevel: { value: 0 }, uSwell: { value: 0.3 }, uSunK: { value: 1 }, uWindK: { value: 0.3 },
-    uWet: { value: new THREE.Color(RAMPS.sand[0]) }, uSheet: { value: new THREE.Color(RAMPS.water[5]) }, uFoamA: { value: new THREE.Color(RAMPS.snow[5]) }, uFoamB: { value: new THREE.Color(RAMPS.sky[5]) } };
+    uWet: { value: new THREE.Color(RAMPS.soil[0]) }, uSheet: { value: new THREE.Color(RAMPS.water[5]) }, uFoamA: { value: new THREE.Color(RAMPS.snow[5]) }, uFoamB: { value: new THREE.Color(RAMPS.sky[5]) } };
   constructor(readonly o: Ocean) {
     const R = o.region, N = R.N, sh = o.shore, W = R.water;
     const pos: number[] = [], sdA: number[] = [], idx: number[] = [];

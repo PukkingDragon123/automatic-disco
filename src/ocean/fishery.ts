@@ -124,7 +124,17 @@ export class Fishery {
     if (!f.alive) return; f.alive = false;
     const K = this.kinds.get(f.kind)!; K.list.splice(K.list.indexOf(f), 1);
     this.fish.splice(this.fish.indexOf(f), 1);
-    if (f.school) f.school.members.splice(f.school.members.indexOf(f), 1);
+    const S = f.school;
+    if (S) {
+      S.members.splice(S.members.indexOf(f), 1);
+      // the ecosystem's field notes hear of a school thinned out or gone
+      if (S.members.length === Math.floor(S.cap * 0.3)) this.note('crash', `A SCHOOL OF ${f.kind === 'reeffish' ? 'REEF FISH' : 'BAITFISH'} IS THINNING OUT`, S.cx, S.cz);
+      if (!S.members.length) this.note('extinct', `A SCHOOL OF ${f.kind === 'reeffish' ? 'REEF FISH' : 'BAITFISH'} IS FISHED OUT`, S.cx, S.cz);
+    }
+  }
+  private note(kind: string, text: string, x: number, z: number) {
+    const eco = (this.ocean.g as unknown as { world: { eco?: { note?(k: string, t: string, x: number, z: number): void } } }).world.eco;
+    try { eco?.note?.(kind, text, x, z); } catch { /* the eco may not take notes */ }
   }
   /** a fish the golem's intake can take: the nearest small fish within r (3D) */
   catchable(x: number, y: number, z: number, r: number): Fish | null {

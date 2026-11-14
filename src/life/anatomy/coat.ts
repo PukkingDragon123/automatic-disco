@@ -146,19 +146,17 @@ const _p: V3 = [0, 0, 0];
 /** the flat colours of a coat for the quick build (far LOD) */
 export const coatTone = (c: Coat): Tone => ({ ramp: RP(c.base[0]), step: c.base[1], belly: { ramp: RP(c.belly[0]), step: c.belly[1], below: -0.45 } });
 
-/** a painter for one kind of part, drawing the coat's zones from the real surface under every texel */
-export function coatPaint(C: CoatCtx, part: PartKind, o: { flow?: number; extra?: (px: Px, ch: Chart) => void; before?: (px: Px, zone: Uint8Array) => void; hipY?: number; light?: number; inner?: V3 } = {}) {
-  const f = (ch: Chart, _pc: Piece, b: Body) => {
-    const px = new Px(ch, b), gb = px.gb, P = gb.P, N = gb.N, n = px.n, c = C.coat, F = C.F, seed = C.seed;
-    if (o.light !== undefined) px.lightK = o.light;
-    const zone = new Uint8Array(n), S = new Float32Array(n), A = new Float32Array(n);
-    const Rb = RP(c.base[0]), Rbel = RP(c.belly[0]), Rbk = c.back ? RP(c.back[0]) : Rb, Rpat = c.pattern ? RP(c.pattern.c[0]) : Rb, Rh = c.pattern?.heart ? RP(c.pattern.heart[0]) : Rpat;
-    const Rsock = c.socks ? RP(c.socks.c[0]) : Rb, Rmuz = c.face?.muzzle ? RP(c.face.muzzle[0]) : Rbel, Rchin = c.face?.chin ? RP(c.face.chin[0]) : Rbel;
-    const bellyArc = c.bellyArc ?? 1.0;
-    // the belly line follows cells (the scale rows, the fur locks) rather than a smooth curve
-    const edgeCell = Math.max(0.01, F.W * 0.09);
-    /** the zone and colour of a point (its normal's y for the head's chin line, its normal for the inner leg) */
-    const classify = (q: V3, ny: number, nx: number, nz: number): number => {
+/** the coat's zone and colour at any point of a kind of part: classify(q, ny, nx, nz) returns the zone index and
+ *  leaves the ramp and step in R and st (painters, and parts that take their colour from the skin under them) */
+export function coatSampler(C: CoatCtx, part: PartKind, o: { hipY?: number; inner?: V3 } = {}) {
+  const c = C.coat, F = C.F, seed = C.seed;
+  const Rb = RP(c.base[0]), Rbel = RP(c.belly[0]), Rbk = c.back ? RP(c.back[0]) : Rb, Rpat = c.pattern ? RP(c.pattern.c[0]) : Rb, Rh = c.pattern?.heart ? RP(c.pattern.heart[0]) : Rpat;
+  const Rsock = c.socks ? RP(c.socks.c[0]) : Rb, Rmuz = c.face?.muzzle ? RP(c.face.muzzle[0]) : Rbel, Rchin = c.face?.chin ? RP(c.face.chin[0]) : Rbel;
+  const bellyArc = c.bellyArc ?? 1.0;
+  // the belly line follows cells (the scale rows, the fur locks) rather than a smooth curve
+  const edgeCell = Math.max(0.01, F.W * 0.09);
+  const out = { R: Rb, st: c.base[1] as number, classify: (_q: V3, _ny: number, _nx: number, _nz: number): number => 0 };
+  out.classify = (q, ny, nx, nz) => {
       let z: Zone, s = 0, a = 0;
       if (part === 'trunk') {
         const l = locate(F, q); s = l.s; a = l.a;
@@ -186,16 +184,24 @@ export function coatPaint(C: CoatCtx, part: PartKind, o: { flow?: number; extra?
       const pv = z === 'sock' && c.socks ? 0 : patternAt(C, q, z, s, a);
       if (pv === 1) { R = Rpat; st = c.pattern!.c[1]; } else if (pv === 2) { R = Rh; st = c.pattern!.heart?.[1] ?? c.pattern!.c[1] - 1; }
       if (z === 'flank' && c.back && Math.abs(a) < 1.25) st -= 0.3;
-      _R = R; _st = st;
+      out.R = R; out.st = st;
       return ZI[z];
-    };
-    let _R = Rb, _st = 0;
+      };
+  return out;
+}
+
+/** a painter for one kind of part, drawing the coat's zones from the real surface under every texel */
+export function coatPaint(C: CoatCtx, part: PartKind, o: { flow?: number; extra?: (px: Px, ch: Chart) => void; before?: (px: Px, zone: Uint8Array) => void; hipY?: number; light?: number; inner?: V3 } = {}) {
+  const f = (ch: Chart, _pc: Piece, b: Body) => {
+    const px = new Px(ch, b), gb = px.gb, P = gb.P, N = gb.N, n = px.n, c = C.coat, F = C.F, seed = C.seed;
+    if (o.light !== undefined) px.lightK = o.light;
+    const zone = new Uint8Array(n);
+    const smp = coatSampler(C, part, o), classify = smp.classify;
     for (let i = 0; i < n; i++) {
       _p[0] = P[i * 3]; _p[1] = P[i * 3 + 1]; _p[2] = P[i * 3 + 2];
       zone[i] = classify(_p, N[i * 3 + 1], N[i * 3], N[i * 3 + 2]);
-      px.put(i, _R, _st);
+      px.put(i, smp.R, smp.st);
     }
-    void S; void A;
     o.before?.(px, zone);
     // the drawn surfaces, one pass per distinct surface over the zones that wear it
     const flow = o.flow ?? (part === 'limb' || part === 'foot' || part === 'ear' ? 1 : -1);
@@ -217,7 +223,7 @@ export function coatPaint(C: CoatCtx, part: PartKind, o: { flow?: number; extra?
           const k = -flow * LS[i] * sf.fur.len * 0.9 / tl; tx *= k; ty *= k; tz *= k;
           q[0] = P[i * 3] + tx; q[1] = P[i * 3 + 1] + ty; q[2] = P[i * 3 + 2] + tz;
           classify(q, N[i * 3 + 1], N[i * 3], N[i * 3 + 2]);
-          px.put(i, _R, _st);
+          px.put(i, smp.R, smp.st);
         }
       }
       if (sf.scales) px.scales({ size: sf.scales.size, kind: sf.scales.kind, len: sf.scales.len, flow, mask, ink: sf.scales.ink, seed: seed + 5 });

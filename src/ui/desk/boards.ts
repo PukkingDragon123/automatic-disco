@@ -64,7 +64,7 @@ export class HoloTable {
   /** rebuild the relief from the region (heights and colours) */
   build(d: MapData) {
     const G = this.G, S = this.S, k = d.N / G, P = this.pos, C = this.col, c = new THREE.Color();
-    const hAt = (gx: number, gz: number) => { const x = Math.min(d.N - 1, Math.floor(gx * k)), z = Math.min(d.N - 1, Math.floor(gz * k)); return Math.max(-0.5, (d.h[z * d.N + x] - d.water) * 0.55); };
+    const hAt = (gx: number, gz: number) => { const x = Math.min(d.N - 1, Math.floor(gx * k)), z = Math.min(d.N - 1, Math.floor(gz * k)); return Math.max(-0.5, Math.min(9, (d.h[z * d.N + x] - d.water) * 0.3)); };
     let o = 0;
     for (let gz = 0; gz < G; gz++) for (let gx = 0; gx < G; gx++) {
       const x0 = (gx / G - 0.5) * S, x1 = ((gx + 1) / G - 0.5) * S, z0 = (gz / G - 0.5) * S, z1 = ((gz + 1) / G - 0.5) * S;
@@ -72,7 +72,7 @@ export class HoloTable {
       const v = [x0, h00, z0, x0, h01, z1, x1, h10, z0, x1, h10, z0, x0, h01, z1, x1, h11, z1];
       P.set(v, o * 3);
       const idx = Math.min(d.N - 1, Math.floor((gz + 0.5) * k)) * d.N + Math.min(d.N - 1, Math.floor((gx + 0.5) * k));
-      c.setHex(d.cell(idx));
+      c.setHex(d.cell(idx), THREE.LinearSRGBColorSpace);
       for (let j = 0; j < 6; j++) C.set([c.r, c.g, c.b], (o + j) * 3);
       o += 6;
     }
@@ -86,7 +86,7 @@ export class HoloTable {
     let o = 0;
     for (let gz = 0; gz < G; gz++) for (let gx = 0; gx < G; gx++) {
       const idx = Math.min(d.N - 1, Math.floor((gz + 0.5) * k)) * d.N + Math.min(d.N - 1, Math.floor((gx + 0.5) * k));
-      c.setHex(d.cell(idx));
+      c.setHex(d.cell(idx), THREE.LinearSRGBColorSpace);
       for (let j = 0; j < 6; j++) { C[(o + j) * 3] = c.r; C[(o + j) * 3 + 1] = c.g; C[(o + j) * 3 + 2] = c.b; }
       o += 6;
     }
@@ -100,7 +100,7 @@ export class HoloTable {
     const m = new THREE.Matrix4(), c = new THREE.Color(), n = Math.min(200, pins.length);
     for (let i = 0; i < n; i++) {
       const [x, z, col, s] = pins[i], p = this.local(N, x, z, 1.5);
-      m.makeScale(s, s, s).setPosition(p); this.pins.setMatrixAt(i, m); this.pins.setColorAt(i, c.setHex(col));
+      m.makeScale(s, s, s).setPosition(p); this.pins.setMatrixAt(i, m); this.pins.setColorAt(i, c.setHex(col, THREE.LinearSRGBColorSpace));
     }
     this.pins.count = n; this.pinN = n;
     this.pins.instanceMatrix.needsUpdate = true; if (this.pins.instanceColor) this.pins.instanceColor.needsUpdate = true;
@@ -205,7 +205,7 @@ export class Orrery {
     this.m1Arm.rotation.y = this.s.m1.step(wrap(this.m1Arm.rotation.y, this.m1), dt);
     this.m2Arm.rotation.y = this.s.m2.step(wrap(this.m2Arm.rotation.y, this.m2), dt);
     this.globe.rotation.y += dt * 0.4;
-    (this.m2M.uniforms.uTint.value as THREE.Color).setHex(this.red > 0.5 ? R.stampRed[3] : R.quartz[3]);
+    (this.m2M.uniforms.uTint.value as THREE.Color).setHex(this.red > 0.5 ? R.stampRed[3] : R.quartz[3], THREE.LinearSRGBColorSpace);
     this.m2M.uniforms.uEmit.value = this.red * 0.8;
     this.sunM.uniforms.uEmit.value = 0.8 * (1 - this.dark * 0.9);
     this.gM.uniforms.uDim.value = this.dark * 0.5;
