@@ -102,13 +102,14 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
     b.box(root, [x, H * 0.5 + 0.02, z], [lt * 0.18, H * 0.55, lt * 0.18], 'spike', { rx: -0.9, rz: x * 0.6 });
   }
   // neck and head
-  const neckLen = hop ? L * 0.03 : L * lerp(0.1, biped ? 0.42 : bear ? 0.2 : 0.3, d.neck);
-  const nAng = hop ? 0.25 : biped ? 0.55 : bear ? 0.28 : sprawl ? 0.3 : shellV ? 0.45 : 0.7;
-  const neck = b.bone('neck', chest, hop ? [0, H * 0.05, T * 0.2] : biped ? [0, H * 0.22, T * 0.2] : bear ? [0, H * 0.12, T * 0.24] : sprawl ? [0, H * 0.06, T * 0.24] : [0, H * 0.28, T * 0.22]);
+  // cats carry the head low and level, the neck reaching forward from between the shoulders
+  const cat = has(d, 'whiskers') && has(d, 'carnassials') && !sprawl && !biped;
+  const neckLen = hop ? L * 0.03 : L * lerp(0.1, biped ? 0.42 : bear ? 0.2 : cat ? 0.2 : 0.3, d.neck);
+  const nAng = hop ? 0.25 : biped ? 0.55 : bear ? 0.28 : cat ? 0.3 : sprawl ? 0.3 : shellV ? 0.45 : 0.7;
+  const neck = b.bone('neck', chest, hop ? [0, H * 0.05, T * 0.2] : biped ? [0, H * 0.22, T * 0.2] : bear ? [0, H * 0.12, T * 0.24] : cat ? [0, H * 0.16, T * 0.24] : sprawl ? [0, H * 0.06, T * 0.24] : [0, H * 0.28, T * 0.22]);
   const nk = Math.max(lt * 1.2, W * (bear ? 0.7 : hop ? 0.8 : 0.55));
   b.box(neck, [0, Math.sin(nAng) * neckLen * 0.5, Math.cos(nAng) * neckLen * 0.5], [nk, nk, neckLen + nk * 1.0], 'body', { rx: -nAng });
   rig.neck = [neck];
-  const cat = has(d, 'whiskers') && has(d, 'carnassials') && !sprawl;
   let hl = L * lerp(0.16, 0.3, d.head) * (cat ? 0.82 : 1), hw = Math.max(W * 0.55, hl * 0.62), hh = hw * 0.85;
   if (hop) { hl = L * lerp(0.24, 0.3, d.head); hw = W * 1.0; hh = hw * 0.5; }
   else if (amph && sprawl) { hl = L * lerp(0.1, 0.15, d.head); hw = W * 0.9; hh = hw * 0.55; }

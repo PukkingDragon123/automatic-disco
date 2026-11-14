@@ -312,7 +312,7 @@ export class Details {
     rg.instanceCount = 0;
     this.rainU = { uCenter: { value: new THREE.Vector3() }, uBox: { value: new THREE.Vector3(24, 16, 24) }, uFall: { value: new THREE.Vector3(1, -11, 0.4) }, uTime: { value: 0 }, uLen: { value: 0.8 }, uPx: { value: 0.75 }, uRes: { value: new THREE.Vector2(1, 1) }, uCol: { value: new THREE.Color(0.72, 0.8, 0.95) } };
     this.rainMesh = new THREE.Mesh(rg, new THREE.ShaderMaterial({
-      vertexShader: RAIN_VERT, fragmentShader: RAIN_FRAG, uniforms: this.rainU, transparent: true, depthWrite: false, depthTest: true,
+      vertexShader: RAIN_VERT, fragmentShader: RAIN_FRAG, uniforms: this.rainU, transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide,
       blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
       blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
     }));

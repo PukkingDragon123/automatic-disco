@@ -151,15 +151,32 @@ export function mane(S: Ctx, T: SpineTs, W: number, head: V3, hl: number, hw: nu
   sac(S.B, RB, S.gid(), pts.map((p, i) => addV(p, [0, hh * 0.05 * env(i), 0])), pts.map((_, i) => [sp.ru[k0 + i] * 1.1 + hw * 0.26 * env(i), sp.rv[k0 + i] * 1.08 + hw * 0.24 * env(i)] as [number, number]),
     pts.map((_, i) => sp.w[k0 + i]), { n: 26, sq: 2, start: false, end: true, bump: (a, t) => 0.12 * Math.sin(a * 7 + t * 7) * Math.sin(t * 13 + a * 2) + 0.07 * Math.cos(a * 13 + t * 5) });
   S.paints.push(() => hide(S, RB, { L: hw * 2, rad: () => W * 0.5, seed: 97, kind: 'body', noPattern: true, ramp, clump: 1.5, flow: 1, down: 0.8 }));
-  // heavy locks ringing the face
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * TAU + 0.2, out: V3 = [Math.sin(a), Math.cos(a) * 0.95, 0];
-    const base = addV(head, [Math.sin(a) * hw * 0.42, hh * 0.04 + Math.cos(a) * hh * 0.46, -hl * 0.16]);
-    const dir = norm(addV(scl(out, 0.75), [0, -0.2, -0.65]));
-    lock(S, base, dir, norm(cross(dir, [0, 0, 1])), hw * (0.62 + 0.2 * gauss(Math.cos(a), 1, 0.6)), hw * 0.5, [iH, 1], 700 + i, MN);
+  // a hood of mane round the head: the face sits in it, cheeks, chin and throat framed
+  const iN = S.bi('neck'), hwt: Wt = [iH, 0.7, iN, 0.3];
+  const hood: V3[] = [addV(head, [0, hh * 0.08, -hl * 0.34]), addV(head, [0, hh * 0.02, -hl * 0.08]), addV(head, [0, -hh * 0.06, hl * 0.14])];
+  sac(S.B, RB, S.gid(), hood, [[hw * 0.92, hh * 1.0], [hw * 0.98, hh * 1.08], [hw * 0.84, hh * 0.98]], [hwt, hwt, hwt],
+    { n: 26, sq: 2, start: false, end: false, bump: (a, t) => 0.1 * Math.sin(a * 8 + t * 5) + 0.06 * Math.cos(a * 13) + 0.12 * gauss(Math.abs(a), Math.PI, 0.7) });
+  // heavy locks round the rim of the hood, longest under the chin and down the throat
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * TAU + 0.17, out: V3 = [Math.sin(a), Math.cos(a), 0], chin = gauss(Math.cos(a), -1, 0.5);
+    const base = addV(head, [Math.sin(a) * hw * 0.82, -hh * 0.06 + Math.cos(a) * hh * 0.92, hl * 0.1]);
+    const dir = norm(addV(scl(out, 0.7), [0, -0.35 - chin * 0.5, -0.35]));
+    lock(S, base, dir, norm(cross(dir, [0, 0, 1])), hw * (0.5 + 0.35 * chin), hw * 0.5, hwt, 700 + i, MN);
   }
   lockRow(S, T.head, T.neck + 0.08, [-2.5, -1.7, -0.85, 0, 0.85, 1.7, 2.5], (t) => W * (0.5 + 0.12 * gauss(t, T.neck, 0.05)), W * 0.4, 'drape', MN, 1, 0.25);
   lockRow(S, T.neck, T.chest + 0.06, [-2.35, -2.85, 2.35, 2.85, Math.PI], () => W * 0.46, W * 0.36, 'hang', MN, 1, 0.2);
+}
+
+/** a cat's tail tip: a dark tassel of hair */
+export function tassel(S: Ctx, W: number) {
+  const sp = S.spine!, N = sp.pts.length - 1, d = S.d;
+  const TS = hairReg(S, 'TASSEL', 12, 16, () => ({ ramp: makeRamp(mixHex(d.colors.pattern, 0x140c0a, 0.55), 6, { spread: 0.5 }), wavy: true }));
+  const k = N - 1, f = sp.fr[k], tip = sp.pts[N];
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * TAU, n = norm(addV(scl(f.u, Math.sin(a)), scl(f.v, Math.cos(a))));
+    const dir = norm(addV(scl(f.d, 1), scl(n, 0.45)));
+    lock(S, addV(lerpV(sp.pts[k - 1], tip, 0.4), scl(n, sp.ru[k] * 0.6)), dir, norm(cross(dir, n)), W * 0.3, W * 0.14, sp.w[k], 760 + i, TS);
+  }
 }
 
 /** a crest down the spine: bristles on fur, a scalloped skin crest on wet skin, spiked scales on dry scales */
