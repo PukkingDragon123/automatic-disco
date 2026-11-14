@@ -25,7 +25,17 @@ export async function testEcosys(engine: Engine, input: Input, P: URLSearchParam
   let sim = days * w.dayLen;
   if (P.has('t')) { const want = Number(P.get('t')); sim += ((want - (w.day + days) % 1) + 1) % 1 * w.dayLen; }
   const step = 0.25;
-  for (let s = 0; s < sim; s += step) { g.cam.update(0, input); w.update(step, g.cam.cam); for (const h of w.hives) h.update(step); }
+  // &trace=Name: log what that species is up to every 30 s of the fast-forward
+  const trace = P.get('trace');
+  let nextTrace = 0;
+  for (let s = 0; s < sim; s += step) {
+    g.cam.update(0, input); w.update(step, g.cam.cam); for (const h of w.hives) h.update(step);
+    if (trace && s >= nextTrace) {
+      nextTrace += 30;
+      const l = w.creatures.filter((c) => !c.dead && c.sp.name.includes(trace));
+      console.log(`[trace] t${s.toFixed(0)} day${w.day.toFixed(2)} ` + l.slice(0, 6).map((c) => `#${c.id}:${c.mind}${c.plan ? '>' + c.plan : ''} a${c.actT.toFixed(0)} e${c.energy.toFixed(2)} t${c.thirst.toFixed(2)} f${c.tired.toFixed(2)} hp${(c.hp / c.maxHp).toFixed(2)} g${Math.hypot(c.goalX - c.x, c.goalZ - c.z).toFixed(0)}`).join(' | '));
+    }
+  }
   console.log(`[ecosys] fast-forwarded ${sim.toFixed(0)} s in ${(performance.now() - t0).toFixed(0)} ms; day ${eco.dayNo} at ${w.day.toFixed(2)}`);
   // where to look
   const wild = w.creatures.filter((c) => !c.dead && c.faction === 'wild');
