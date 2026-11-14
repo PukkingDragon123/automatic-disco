@@ -2,7 +2,7 @@
 import { pheno, type Design, type Pheno } from '../life/design';
 import { buildSpeciesModel, type SpeciesModel } from '../life/creatureMesh';
 
-export type Faction = 'wild' | 'veyr' | 'rival';
+export type Faction = 'wild' | 'veyr' | 'rival' | 'soviet' | 'prc' | 'expedition';
 
 export class Species {
   private _model: SpeciesModel | null = null;
