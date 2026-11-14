@@ -53,8 +53,9 @@ export async function testRobots(engine: Engine, input: Input, P: URLSearchParam
   const cam = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.05, 300);
   const focus = P.has('focus') ? ex[Number(P.get('focus'))] : null;
   const yaw = Number(P.get('yaw') ?? 0.35), pitch = Number(P.get('pitch') ?? 0.22);
-  const cx = focus ? focus.x : ex.reduce((a, e) => a + e.x, 0) / Math.max(1, ex.length), cz = focus ? focus.z : 0;
-  const span = focus ? focus.h * 1.9 : Math.max(6, ex.reduce((a, e) => Math.max(a, Math.abs(e.x - cx)), 0) * 2.3);
+  const sk = P.has('skirmish');
+  const cx = sk ? 0 : focus ? focus.x : ex.reduce((a, e) => a + e.x, 0) / Math.max(1, ex.length), cz = sk ? 18 : focus ? focus.z : 0;
+  const span = sk ? 16 : focus ? focus.h * 1.9 : Math.max(6, ex.reduce((a, e) => Math.max(a, Math.abs(e.x - cx)), 0) * 2.3);
   const D = Number(P.get('dist') ?? span * 1.6), ty = focus ? focus.h * 0.5 : 1.1;
   const place = (t: number) => {
     const yy = yaw + (P.has('spin') ? t * 0.3 : 0);
