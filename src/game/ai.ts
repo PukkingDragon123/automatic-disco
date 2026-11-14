@@ -22,7 +22,7 @@ const TAU = Math.PI * 2;
 
 // ================================================================================================ small helpers
 function emote(c: Creature, e: Emote, t = 2.6) { c.emote = e; c.emoteT = t; }
-function setMind(c: Creature, m: Mind) { if (c.mind !== m) { c.mind = m; c.actT = 0; } }
+function setMind(c: Creature, m: Mind) { if (c.mind !== m) { c.mind = m; c.actT = 0; c.rolling = false; } }
 function mem(c: Creature): Memory { return (c.mem ??= { water: [], food: [], danger: [] }); }
 function remember(list: Spot[], x: number, z: number, t: number, v: number, max = 4) {
   for (const s of list) if ((s.x - x) ** 2 + (s.z - z) ** 2 < 49) { s.x += (x - s.x) * 0.3; s.z += (z - s.z) * 0.3; s.t = t; s.v = Math.max(s.v * 0.7, v); return; }
@@ -80,11 +80,37 @@ function alarm(c: Creature, w: World, by: number, r = 16) {
   });
 }
 function bolt(c: Creature, w: World, by: number, t = 3) {
+  if (c.roller && c.faction === 'wild') { curlUp(c, w, by); return; }
   c.target = by; c.fleeT = t + Math.random(); c.path = null; c.plan = null;
   if (c.mind !== 'flee') emote(c, Emote.ALARM, 1.8);
   setMind(c, 'flee');
   const th = by === GOLEM ? GOLEM_REF.g : w.get(by);
   if (th) { remember(mem(c).danger, th.x, th.z, w.time, 1); w.eco.scare(th.x, th.z, 0.12, 5); }
+}
+
+/** a roller tucks into its ball (and rolls off downhill if the danger closes in) */
+function curlUp(c: Creature, w: World, by: number) {
+  if (c.mind !== 'curl') { emote(c, Emote.ALARM, 1.6); c.rolling = false; }
+  c.target = by; c.path = null; c.plan = null; c.fleeT = 0;
+  setMind(c, 'curl');
+  const th = by === GOLEM ? GOLEM_REF.g : w.get(by);
+  if (th) remember(mem(c).danger, th.x, th.z, w.time, 1);
+}
+/** is whatever made it curl up still close? */
+function stillThreatened(c: Creature, w: World, r: number) {
+  const th = c.target === GOLEM ? GOLEM_REF.g : w.get(c.target);
+  if (!th || (c.target !== GOLEM && (th as Creature).dead)) return false;
+  return (th.x - c.x) ** 2 + (th.z - c.z) ** 2 < r * r;
+}
+/** a ball's way out: away from the danger and downhill, round water */
+function rollDir(c: Creature, w: World, tx: number, tz: number): [number, number] {
+  const R = w.region;
+  let ax = c.x - tx, az = c.z - tz; const d = Math.hypot(ax, az) || 1; ax /= d; az /= d;
+  const gx = R.heightAt(c.x + 1, c.z) - R.heightAt(c.x - 1, c.z), gz = R.heightAt(c.x, c.z + 1) - R.heightAt(c.x, c.z - 1), gl = Math.hypot(gx, gz);
+  let fx = ax, fz = az;
+  if (gl > 0.08) { fx = ax * 0.6 - (gx / gl) * 0.8; fz = az * 0.6 - (gz / gl) * 0.8; const l = Math.hypot(fx, fz) || 1; fx /= l; fz /= l; }
+  if (R.isWater(c.x + fx * 3, c.z + fz * 3) || R.isSolid(c.x + fx * 3, c.z + fz * 3)) { const t = fx; fx = -fz; fz = t; if (R.isWater(c.x + fx * 3, c.z + fz * 3)) { fx = -fx; fz = -fz; } }
+  return [fx, fz];
 }
 
 // ================================================================================================ finding things
@@ -256,6 +282,7 @@ function thinkWild(c: Creature, w: World) {
   }
   // ---- danger first
   const th = threatOf(c, w);
+  if (th && c.mind === 'curl') { c.target = th.id; return; }
   if (th) {
     // cornered predators and big animals fight back; mothers stand over their young
     const young = !!th.target && w.get(th.target)?.mother === c.id;
@@ -337,6 +364,7 @@ function keepGoing(c: Creature, w: World, P: Profile, awake: number): boolean {
       return true;
     }
     case 'follow': return false;
+    case 'curl': return c.actT < 25 && (c.actT < (c.roller ? 3 : 2) || stillThreatened(c, w, c.roller ? c.st.sight * 0.8 : 5));
   }
   return false;
 }
@@ -494,7 +522,8 @@ function forage(c: Creature, w: World, P: Profile, hunger: number): boolean {
     const f = eco.fruitNear(c.x, c.z, Math.min(c.st.sight, 18));
     if (f >= 0) { setMind(c, 'graze'); c.target = -1 - f; c.goalX = w.flora.x[f]; c.goalZ = w.flora.z[f]; c.picking = true; return true; }
   }
-  if (diet === 'herb' || diet === 'omni' || diet === 'scav' && P.guild !== 'scavenger') {
+  // plants: grazers, omnivores, and scavengers when there is no carrion
+  if (diet === 'herb' || diet === 'omni' || diet === 'scav' && (P.guild !== 'scavenger' || hunger > 0.55)) {
     const p = plantFor(c, w, Math.min(c.st.sight, 12));
     if (p >= 0 && dangerAt(c, w, w.flora.x[p], w.flora.z[p]) < 0.8) {
       setMind(c, 'graze'); c.target = -1 - p; c.goalX = w.flora.x[p]; c.goalZ = w.flora.z[p]; c.picking = false;
@@ -638,6 +667,20 @@ export function act(c: Creature, w: World, dt: number) {
   switch (c.mind) {
     case 'idle': c.steer(w, c.x, c.z, 0, dt); break;
     case 'sleep': case 'rest': c.steer(w, c.x, c.z, 0, dt); break;
+    case 'curl': {
+      // tuck in; a roller that is pressed rolls off as a ball, downhill if it can, then lies still until it is safe
+      const th = c.target === GOLEM ? GOLEM_REF.g : w.get(c.target);
+      const d = th ? Math.hypot(th.x - c.x, th.z - c.z) : 99;
+      if (c.roller && th) {
+        if (!c.rolling && c.actT > 0.5 && c.actT < 6 && d < 7 + c.radius) c.rolling = true;
+        if (c.rolling) {
+          if (d > 14 || c.actT > 8) c.rolling = false;
+          else { const [fx, fz] = rollDir(c, w, th.x, th.z); c.steer(w, c.x + fx * 6, c.z + fz * 6, 1.25, dt); break; }
+        }
+      }
+      c.steer(w, c.x, c.z, 0, dt);
+      break;
+    }
     case 'watch': {
       // the sentry stands and looks round
       c.steer(w, c.x, c.z, 0, dt);
@@ -697,6 +740,8 @@ export function act(c: Creature, w: World, dt: number) {
       if (!t || t.dead && c.fleeT <= 0) { c.mind = 'idle'; break; }
       const dx = c.x - t.x, dz = c.z - t.z, d = Math.hypot(dx, dz) || 1;
       if (d > c.st.sight * 1.2 && c.fleeT <= 0) { c.mind = 'idle'; break; }
+      // run out and caught: hunch and cower (the animator's curl, half way for non-rollers)
+      if (c.faction === 'wild' && c.stam < 0.06 && d < 3 + c.radius + t.radius && typeof (c.anim as unknown as { curl?: unknown }).curl === 'function') { setMind(c, 'curl'); break; }
       fleeFrom(c, w, t.x, t.z, dt);
       break;
     }
@@ -721,7 +766,8 @@ export function act(c: Creature, w: World, dt: number) {
           }
           break;
         }
-        const got = w.flora.eat(p, dt * 0.08 * Math.max(0.4, c.size));
+        // big mouths take big bites
+        const got = w.flora.eat(p, dt * 0.08 * Math.max(0.4, c.size) * clamp(Math.pow(c.mass / 300, 0.25), 1, 3));
         const e = got * 0.6 / Math.pow(Math.max(1, c.mass), 0.55);
         c.energy = Math.min(1, c.energy + e);
         if (c.faction === 'wild') {
@@ -828,6 +874,8 @@ export function act(c: Creature, w: World, dt: number) {
       const reach = c.st.reach + c.radius + t.radius;
       const d = Math.hypot(t.x - c.x, t.z - c.z);
       if (c.faction === 'wild') {
+        // a plated ball is not worth the teeth: worry at it a while, then leave it
+        if (t.mind === 'curl' && t.roller && d < reach + 1 && Math.random() < dt * 0.3) { setMind(c, 'idle'); c.target = 0; c.cdHunt = 10; emote(c, Emote.TIRED, 2); break; }
         // a sprint costs wind: out of breath and still not there, it gives up
         if (d > reach) c.stam = Math.max(0, c.stam - dt / (2 + c.st.stamina * 0.08));
         if ((c.stam <= 0.02 && d > reach * 1.2) || d > c.st.sight * 1.8) {

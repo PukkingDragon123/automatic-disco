@@ -16,7 +16,9 @@ export const GOLEM_REF: { g: GolemTarget | null } = { g: null };
 export type Mind = 'idle' | 'wander' | 'graze' | 'hunt' | 'flee' | 'eat' | 'scavenge' | 'order' | 'attack' | 'mate' | 'rest' | 'follow' | 'held'
   // daily life (ai.ts): drinking, sleeping, going somewhere to do something, stalking, lying in wait, threat
   // displays, dragging a kill, keeping watch over a sleeping herd
-  | 'drink' | 'sleep' | 'travel' | 'stalk' | 'ambush' | 'display' | 'carry' | 'watch';
+  | 'drink' | 'sleep' | 'travel' | 'stalk' | 'ambush' | 'display' | 'carry' | 'watch'
+  // defence: curled into a ball (rollers roll away downhill; the rest hunch and cower)
+  | 'curl';
 export interface Order { kind: 'move' | 'attack' | 'amove' | 'hold' | 'guard'; x: number; z: number; target?: number }
 /** an activity bubble over the head (eco/view.ts draws them) */
 export const enum Emote { NONE, SLEEP, DRINK, ALARM, LOVE, HUNGRY, TIRED, ANGRY, NEST, FOOD, SEARCH, SHADE, WATCH }
@@ -89,6 +91,8 @@ export class Creature {
   gut = 0; seed = -1; seedT = 0;
   /** eating fruit off a plant (not the plant itself) */
   picking = false;
+  /** curled up and rolling away as a ball (anim.rolling) */
+  rolling = false;
   /** far from the camera: thinks less often, takes straight lines */
   far = false;
   /** lying down 0..1 (sleep, rest; a stalker's crouch is ~0.35) */
@@ -118,6 +122,8 @@ export class Creature {
   get mature() { return this.growth >= 1; }
   get diet() { return this.sp.pheno.diet; }
   get canFly() { return this.sp.pheno.canFly; }
+  /** tucks into a full ball and can roll away (the fauna's rig.dims.roll) */
+  get roller() { return this.sp.model.rig.dims.roll === 1 && typeof (this.anim as unknown as { curl?: unknown }).curl === 'function'; }
   get walker() { return { step: this.size > 1.2 || this.st.climb > 0 ? 1.4 : 0.95, swim: this.st.swim > 0, fly: this.canFly }; }
   hostileTo(o: Creature) { return o.faction !== this.faction || this.faction === 'wild'; }
 
@@ -177,7 +183,7 @@ export class Creature {
     const s = this.growth;
     m.scale.setScalar(s * this.shrink);
     // lying down (sleep, rest in the shade), lying in wait, a stalker's crouch: the body sinks and the IK'd legs fold
-    const restGoal = this.dead ? 0 : this.mind === 'sleep' ? 1 : this.mind === 'rest' ? 0.75 : this.mind === 'ambush' ? 0.55 : this.mind === 'stalk' ? 0.32 : 0;
+    const restGoal = this.dead || this.mind === 'curl' ? 0 : this.mind === 'sleep' ? 1 : this.mind === 'rest' ? 0.75 : this.mind === 'ambush' ? 0.55 : this.mind === 'stalk' ? 0.32 : 0;
     this.rest += (restGoal - this.rest) * Math.min(1, dt * (restGoal > this.rest ? 1.4 : 4));
     const legged = !this.canFly && this.sp.design.plan !== 'serpent' && this.sp.design.plan !== 'gastropod';
     const sink = legged ? this.rest * this.sp.pheno.height * 0.3 * s : 0;
@@ -186,6 +192,9 @@ export class Creature {
     const fl = this.selected ? F_SEL : 0, hv = this.hovered ? (this.faction === 'veyr' ? F_HOVER : F_ENEMY) : 0;
     this.fx.flag.value = 1 + fl + hv;
     this.fx.flash.value = Math.max(0, this.fx.flash.value - dt * 4);
+    // defence poses (the animator's curl hook): a full ball for rollers (rig.dims.roll), a hunch for the rest
+    const an = this.anim as unknown as { curl?: (k: number) => void; rolling?: boolean };
+    if (typeof an.curl === 'function') { an.curl(this.mind === 'curl' && !this.dead ? 1 : 0); an.rolling = this.mind === 'curl' && this.rolling; }
     if (!animate) return;
     let state: AnimState = 'idle';
     const sp = Math.hypot(this.vx, this.vz);

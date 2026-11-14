@@ -79,7 +79,7 @@ export class FStructure {
     if (!this.built) this.mesh.scale.set(1, 0.08, 1);
     if (o.drop) { this.dropT = this.dropMax = o.drop; this.mesh.position.y = this.y + 80; }
     // clear the plants under it
-    F.g.world.flora.near(x, z, this.radius + 0.4, (i) => F.g.world.flora.remove(i));
+    F.g.world.flora.near(x, z, this.radius + (kind === 'lander' ? 7 : 1.2), (i) => F.g.world.flora.remove(i));
     F.g.world.scene.add(this.mesh);
   }
   get ready() { return this.built >= 1 && !this.dead && this.dropT <= 0; }

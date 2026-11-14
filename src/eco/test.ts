@@ -16,6 +16,8 @@ export async function testEcosys(engine: Engine, input: Input, P: URLSearchParam
   const g = new Game(engine, input, { seed: Number(P.get('seed') ?? 5), biome: (P.get('biome') ?? 'meadow') as BiomeKey, pal: P.get('pal') ?? undefined, story: false, hooks: {} });
   const any = g as unknown as { hatchT: number; cap: { removeFromParent(): void } | null };
   any.hatchT = 9; any.cap?.removeFromParent(); any.cap = null; g.cam.followFn(null);
+  // a free survey camera: Unit 07 stays parked (pass &golem to keep it, walking about and frightening things)
+  if (!P.has('golem')) (g.player as unknown as { update: (dt: number) => void }).update = () => {};
   const w = g.world, eco = w.eco, L = g.region.landing;
   if (P.has('irrigate')) eco.irrigate(L.x + 14, L.z + 6, 9, 1, Infinity);
   const t0 = performance.now();

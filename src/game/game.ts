@@ -48,6 +48,7 @@ export interface GameHooks { onWin?(g: Game): void; onLose?(g: Game): void; open
 
 const _v = new THREE.Vector3(), _ray = new THREE.Ray();
 
+const _focus = new THREE.Vector3();
 export class Game implements Screen {
   readonly run: Run;
   readonly region: Region;
@@ -723,6 +724,8 @@ export class Game implements Screen {
       if (this.input.overCanvas && Math.random() < 0.1) { const g = this.groundAt(this.input.mx, this.input.my); if (g) ch.look.copy(g); }
     }
     ch.update(dt, this.cam.cam);
+    // the canopy opens around the golem so it and the ground stay visible
+    { const f = this.world.flora as any; if (f?.setFocus) { ch.root.getWorldPosition(_focus); f.setFocus(_focus.x, _focus.y, _focus.z); } }
   }
   private tickHeld(dt: number) {
     for (let i = this.held.length - 1; i >= 0; i--) {

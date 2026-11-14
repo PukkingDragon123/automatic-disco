@@ -550,7 +550,6 @@ export class Factory {
     while (this.acc >= TICK) { this.acc -= TICK; this.step(TICK); }
     // visuals run every frame
     for (const b of this.buildings) {
-      if (b.rise < 1) b.rise = Math.min(1, b.rise + dt * 2.5);
       const w = b.status === 'working' ? 1 : 0;
       b.work += (w - b.work) * Math.min(1, dt * 3);
       b.phase += dt * b.work * (b.kind === 'turret' ? 0 : 1);
@@ -564,6 +563,7 @@ export class Factory {
     if (this.powerDirty) this.repower();
     this.powerTick();
     for (const b of this.buildings) {
+      if (b.rise < 1) b.rise = Math.min(1, b.rise + dt * 2.5);
       b.sat = b.def.power > 0 ? (this.gridOf(b)?.sat ?? 0) : 1;
       if (isBelt(b.kind)) this.beltStep(b, dt);
       else if (b.kind === 'splitter' || b.kind === 'merger') this.nodeStep(b);

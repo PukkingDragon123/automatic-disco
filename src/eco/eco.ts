@@ -497,7 +497,7 @@ export class Eco {
       const c = Math.floor(Math.random() * G * G);
       if (this.waterF[c] > 0.85 || this.poisonF[c] > 0.2) continue;
       const wetter = this.moist[c] - this.moist0[c], empty = 1 - clamp(this.liveN[c] / Math.max(4, this.liveN0[c] + 3), 0, 1);
-      const s = Math.max(0, wetter) * 2 + Math.min(1, this.seedN[c] * 0.25) + empty * 0.3 - this.graze[c];
+      const s = Math.max(0, wetter - 0.07) * 2.5 + Math.min(1, this.seedN[c] * 0.25) - this.graze[c];
       if (s * empty > bs) { bs = s * empty; best = c; }
     }
     if (best < 0) return;

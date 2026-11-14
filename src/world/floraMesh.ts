@@ -272,7 +272,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
     // merge short steps on thin limbs
     let P2 = pts, R2 = rad;
     if (L1 && !isBark && r0 < 0.012) continue;
-    const stepK = fine ? 3 : L1 ? (r0 < 0.08 ? (pts.length > 12 ? 4 : 3) : 2) : r0 < 0.05 || sp.arch === 'shrub' ? (pts.length > 16 ? 3 : 2) : 1;
+    const stepK = fine ? (sp.arch === 'shrub' ? 4 : 3) : L1 ? (r0 < 0.08 ? (pts.length > 12 ? 4 : 3) : 2) : r0 < 0.05 || sp.arch === 'shrub' ? (pts.length > 16 ? 3 : 2) : 1;
     if (pts.length > 3 && stepK > 1) { P2 = []; R2 = []; for (let k = 0; k < pts.length; k += stepK) { P2.push(pts[k]); R2.push(rad[k]); } if ((pts.length - 1) % stepK) { P2.push(pts[pts.length - 1]); R2.push(rad[rad.length - 1]); } }
     const slot = l0.ring ? BARK.RING : isBark ? ((l0.ridge ?? 0) >= 3 ? (sp.trunk & 1 ? BARK.PLATE : BARK.FURROW) : (l0.ridge ?? 0) >= 2 ? BARK.FURROW : sp.arch === 'coral' ? BARK.FLESH : BARK.STEM) : (l0.ridge ?? 0) >= 3 ? BARK.FIBRE : BARK.STEM;
     const fslot = sp.arch === 'fungus' && isBark ? BARK.FIBRE : slot;

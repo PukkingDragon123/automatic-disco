@@ -8,7 +8,8 @@
 // Liveries per faction (atlas.ts): U.S.P.C. olive with a white star, the expedition's cream and slate, Soviet
 // grey-green with a red star, PRC dark green with a gold-rimmed star. Era hardware and markings only.
 //
-//   const h = buildMilitaryHuman('trooper', 'veyr');  scene.add(h.rig.root);  h.rig.update(dt, { speed });
+//   const h = militaryHuman('trooper', 'veyr');  scene.add(h.rig.root);  h.rig.update(dt, { speed });   (full control)
+//   const o = buildMilitaryHuman('trooper', 'veyr');  scene.add(o);  o.userData.update(dt, { speed });  (an Object3D)
 import * as THREE from 'three';
 import { HumanRig, type Appearance, type Outfit } from '../limbo/entities/humanRig';
 import { Researcher } from '../limbo/entities/researcher';
@@ -62,7 +63,7 @@ function outfit(v: CrewVariant, liv: LiveryId): Outfit {
  * Build a soldier or crew member. `faction` is a game faction ('veyr', 'soviet', 'prc', 'expedition') or a livery id.
  * gestures: a Researcher rig (gesture(), lookAt(), say()) for scenes such as the operations room.
  */
-export function buildMilitaryHuman(variant: CrewVariant, faction: string = 'veyr', o: { gestures?: boolean; seed?: number; name?: string; material?: THREE.Material; app?: Partial<Appearance> } = {}): MilitaryHuman {
+export function militaryHuman(variant: CrewVariant, faction: string = 'veyr', o: { gestures?: boolean; seed?: number; name?: string; material?: THREE.Material; app?: Partial<Appearance> } = {}): MilitaryHuman {
   registerAllTextures();
   const liv: LiveryId = (['uspc', 'sov', 'prc', 'exp'] as string[]).includes(faction) ? faction as LiveryId : liveryFor(faction);
   const seed = o.seed ?? Math.floor(Math.random() * 1e6);
@@ -254,4 +255,16 @@ export function buildMilitaryHuman(variant: CrewVariant, faction: string = 'veyr
     void gm;
   }
   return { rig, variant, liv, gun, muzzle, armour, lamps, U, tris };
+}
+
+/** the same as an Object3D (its rig root, at game scale 0.6 unless opts.scale): userData.human is the MilitaryHuman,
+ *  userData.update(dt, animInput) animates it. Variants: trooper (or 'soldier'), heavy, engineer, officer, crew. */
+export function buildMilitaryHuman(variant: string, faction: string = 'veyr', o: { gestures?: boolean; seed?: number; name?: string; scale?: number } = {}): THREE.Object3D {
+  const v: CrewVariant = variant === 'soldier' ? 'trooper' : (['trooper', 'heavy', 'engineer', 'officer', 'crew'] as string[]).includes(variant) ? variant as CrewVariant : 'trooper';
+  const h = militaryHuman(v, faction, o);
+  const root = h.rig.root;
+  root.scale.setScalar(o.scale ?? 0.6);
+  root.userData.human = h;
+  root.userData.update = (dt: number, inp?: object) => h.rig.update(dt, inp as never);
+  return root;
 }

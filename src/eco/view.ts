@@ -102,7 +102,8 @@ export class EcoView {
     // hide when the game is not on screen (lab, tree, menus) and clean up when it is gone
     const watch = () => {
       if ((window as unknown as { __game?: Game }).__game !== game && performance.now() - this.lastT > 3000) { this.cv.remove(); this.sheet?.remove(); off(); return; }
-      const on = performance.now() - this.lastT < 150;
+      // the game hides its HUD when another screen (lab, tree, menu) is over it
+      const on = game.hud.root.style.display !== 'none' && performance.now() - this.lastT < 1500;
       this.cv.style.display = on ? '' : 'none';
       if (this.sheet) this.sheet.style.display = on ? '' : 'none';
       requestAnimationFrame(watch);
@@ -125,7 +126,7 @@ export class EcoView {
     this.sheetT = 0; this.fillSheet();
   }
   private key(e: KeyboardEvent) {
-    if (performance.now() - this.lastT > 300 || e.ctrlKey || e.metaKey || e.repeat) return;
+    if (this.game.hud.root.style.display === 'none' || e.ctrlKey || e.metaKey || e.repeat) return;
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
     const k = e.key.toLowerCase();

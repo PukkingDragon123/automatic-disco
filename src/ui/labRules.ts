@@ -5,12 +5,13 @@
 import { GENE, PLAN_LEGS, PLAN_LINEAGE, LINEAGE_NAMES, CAT_NAMES, compatible, type GeneCat, type GeneDef, type Plan, type Lineage } from '../life/genes';
 import { nameFor, type Design } from '../life/design';
 import { Rand, clamp } from '../core/rand';
+import { isBio, isPlantGene } from '../life/genesBio';
 import { binomial } from '../world/plantArt';
 import { VEYR } from '../world/palette';
 import type { Run } from '../game/run';
 
-export type TabId = 'body' | 'legs' | 'arms' | 'tail' | 'wings' | 'eyes' | 'senses' | 'jaw' | 'crown' | 'back' | 'hide' | 'organs';
-export const TAB_ORDER: TabId[] = ['body', 'legs', 'arms', 'tail', 'wings', 'eyes', 'senses', 'jaw', 'crown', 'back', 'hide', 'organs'];
+export type TabId = 'body' | 'works' | 'legs' | 'arms' | 'tail' | 'wings' | 'eyes' | 'senses' | 'jaw' | 'crown' | 'back' | 'hide' | 'organs';
+export const TAB_ORDER: TabId[] = ['body', 'works', 'legs', 'arms', 'tail', 'wings', 'eyes', 'senses', 'jaw', 'crown', 'back', 'hide', 'organs'];
 
 /** body regions painted onto the specimen's vertices (partPreview.ts writes them, the tank highlights them) */
 export const REG = { none: 0, torso: 1, back: 2, head: 3, eyes: 4, crown: 5, jaw: 6, feelers: 7, legs: 8, arms: 9, tail: 10, wings: 11 } as const;
@@ -20,6 +21,7 @@ export const REG_NAME: Record<number, string> = { 1: 'TORSO', 2: 'BACK', 3: 'HEA
 export interface TabDef { name: string; short: string; icon: string; cat: GeneCat; regs: number[]; desc: string }
 export const TABS: Record<TabId, TabDef> = {
   body: { name: 'BODY PLAN', short: 'PLAN', icon: 'cat-body', cat: 'body', regs: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], desc: 'The frame everything else hangs on. Changing it re-grows the specimen; compatible genes carry over.' },
+  works: { name: 'FUNCTION ORGANS', short: 'WORK', icon: 'cat-meta', cat: 'meta', regs: [1, 2], desc: 'What it DOES: dig, terraform, produce, change the land, haul, operate, guard, fight. Function organs have their own slots; control genes keep it obedient and contained.' },
   legs: { name: 'WALKING LEGS', short: 'LEGS', icon: 'cat-limb', cat: 'limb', regs: [8], desc: 'What it stands and runs on. One kind per body plan.' },
   arms: { name: 'FORELIMBS', short: 'ARMS', icon: 'cat-limb', cat: 'limb', regs: [9], desc: 'Claws, scythes, hands and shoulders: limbs that hold and strike.' },
   tail: { name: 'TAIL', short: 'TAIL', icon: 'cat-limb', cat: 'limb', regs: [10], desc: 'Balance, a weapon or an oar. One tail; a sting rides alongside.' },
@@ -53,6 +55,7 @@ export function tabOf(id: string): TabId {
   const g = GENE[id];
   if (!g) return 'organs';
   if (g.cat === 'body') return 'body';
+  if (isBio(id)) return 'works';
   if (WALK.has(id)) return 'legs';
   if (EYES.has(id)) return 'eyes';
   if (FEELERS.has(id)) return 'senses';
@@ -84,7 +87,9 @@ export function limits(c: LabCtx): Record<GeneCat, number> {
   const seq = has(c, 'sequencer') ? 1 : 0;
   return { body: 1, limb: BASE_LIMITS.limb + seq, sense: BASE_LIMITS.sense + seq, feed: BASE_LIMITS.feed + seq, defense: BASE_LIMITS.defense + seq, meta: BASE_LIMITS.meta + seq, repro: 1 };
 }
-export function totalSlots(c: LabCtx) { const l = limits(c); return Object.values(l).reduce((a, b) => a + b, 0); }
+export function totalSlots(c: LabCtx) { const l = limits(c); return Object.values(l).reduce((a, b) => a + b, 0) + funcLimit(c); }
+/** function organs (genesBio.ts) have slots of their own: two, plus the Deep Sequencer and the Bioworks Bureau */
+export function funcLimit(c: LabCtx) { return 2 + (has(c, 'sequencer') ? 1 : 0) + (has(c, 'bt_works') ? 1 : 0); }
 /** the size slider's ceiling: designs only grow to full size in a Growth Vat */
 export const SIZE_CAP_NO_VAT = 0.62;
 export function sizeCap(c: LabCtx) { return has(c, 'vat') ? 1 : SIZE_CAP_NO_VAT; }
@@ -95,6 +100,7 @@ export const PLAN_NAME: Record<Plan, string> = { hexapod: 'Hexapod', octopod: 'A
 /** why a gene cannot go onto this design (null: it can) */
 export function lockReason(c: LabCtx, d: Design, g: GeneDef): string | null {
   if (g.cat === 'body') return g.plan ? null : 'Not a body plan';
+  if (isPlantGene(g.id)) return 'A plant gene: sow it into a prefab from the Bioworks ledger [J]';
   if (!compatible(g, d.lineage, spliceLevel(c))) {
     if (g.lineage === d.lineage) return 'Incompatible';
     return has(c, 'splice') || spliceLevel(c) > 0
@@ -118,8 +124,9 @@ export function install(c: LabCtx, d0: Design, id: string): Change {
   const dropped: string[] = [];
   const grp = group(id);
   if (grp) for (const x of [...d.genes]) if (group(x) === grp) { d.genes = d.genes.filter((y) => y !== x); dropped.push(x); }
-  const lim = limits(c)[g.cat];
-  const inCat = () => d.genes.filter((x) => GENE[x]?.cat === g.cat);
+  const bio = isBio(id);
+  const lim = bio ? funcLimit(c) : limits(c)[g.cat];
+  const inCat = () => d.genes.filter((x) => (bio ? isBio(x) : GENE[x]?.cat === g.cat && !isBio(x)));
   while (inCat().length >= lim) {
     const list = inCat();
     const tab = tabOf(id);
@@ -176,8 +183,8 @@ export function switchPlan(c: LabCtx, d0: Design, plan: Plan): Change {
     const g = GENE[id];
     if (!g || g.cat === 'body' || d.genes.includes(id)) continue;
     if (lockReason(c, d, g)) { dropped.push(id); continue; }
-    const lim = limits(c)[g.cat];
-    if (d.genes.filter((x) => GENE[x]?.cat === g.cat).length >= lim && !group(id)) { dropped.push(id); continue; }
+    const bio = isBio(id), lim = bio ? funcLimit(c) : limits(c)[g.cat];
+    if (d.genes.filter((x) => (bio ? isBio(x) : GENE[x]?.cat === g.cat && !isBio(x))).length >= lim && !group(id)) { dropped.push(id); continue; }
     d = install(c, d, id).d;
   }
   fixSegs(d);
@@ -190,7 +197,8 @@ export function fixSegs(d: Design) { d.segs = d.plan === 'serpent' ? Math.round(
 export function invalid(c: LabCtx, d: Design): string | false {
   if (!d.genes.some((g) => GENE[g]?.cat === 'body')) return 'No body plan';
   if (!d.genes.some((g) => GENE[g]?.cat === 'feed')) return 'It needs a mouth to feed';
-  if (!d.genes.some((g) => GENE[g]?.cat === 'repro')) return 'It needs a way to reproduce';
+  if (!d.genes.some((g) => GENE[g]?.cat === 'repro' && !isBio(g))) return 'It needs a way to reproduce';
+  if (d.genes.some((g) => isPlantGene(g))) return 'Plant genes go onto plants';
   if (PLAN_LEGS[d.plan].length && !d.genes.some((g) => PLAN_LEGS[d.plan].includes(g))) return 'It needs legs to move';
   if (c.helix() < cost(d)) return `Needs ${cost(d)} helix`;
   if (!d.name.trim()) return 'Name it';

@@ -90,6 +90,22 @@ function patch(dx: number, dy: number, r: number, hs: number) {
   const x0 = Math.cos(a0) * r0, y0 = Math.sin(a0) * r0, x1 = Math.cos(a1) * r1, y1 = Math.sin(a1) * r1;
   return (x1 - x0) * (dy - y0) - (y1 - y0) * (dx - x0) >= 0;
 }
+/** a hand-placed spot field: drawn hexagonal patches on a jittered lattice (body-width units) */
+function spotAt(sn: number, cn: number, cs: number, seed: number) {
+  const ci = Math.floor(sn / cs), cj = Math.floor(cn / cs);
+  for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+    const I = ci + a, J = cj + b; if (hash(I * 7 + 1, J * 13 + seed) < 0.35) continue;
+    const px = (I + 0.2 + hash(I, J + seed) * 0.6) * cs, py = (J + 0.2 + hash(J, I + seed + 3) * 0.6) * cs, rr = cs * (0.2 + hash(I + 5, J) * 0.14);
+    const dx = sn - px, dy = cn - py;
+    if (Math.abs(dx) < rr * 1.16 && Math.abs(dy) < rr * 1.16 && patch(dx, dy, rr, I * 131 + J * 17 + seed)) return true;
+  }
+  return false;
+}
+/** disruptive patches on the flanks only (mottling, camouflage): a few large drawn patches, none on the back or belly */
+function flankPatch(t: number, th: number, sn: number, cn: number, seed: number) {
+  const ath = Math.abs(th);
+  return ath > 0.8 && ath < 2.0 && t > 0.08 && t < 0.9 && spotAt(sn * 0.6, cn * 0.6, 0.7, seed);
+}
 /** 0 ground colour, 1 pattern colour, 2 a rosette's darkened heart */
 function patternAt(d: Design, r: Region, x: number, y: number, sn: number, cn: number, th: number, seed: number): number {
   const ps = d.patScale || 1, ath = Math.abs(th);
@@ -118,8 +134,13 @@ function patternAt(d: Design, r: Region, x: number, y: number, sn: number, cn: n
       return 0;
     }
     case 'bands': return ((sn / (1.1 * ps) + n * 0.2) % 1) < 0.36 ? 1 : 0;
-    case 'mottled': return n > 0.56 - (ath > 2 ? -0.2 : 0) ? 1 : 0;
-    case 'saddle': return ath < 1.25 + (n - 0.5) * 0.8 && Math.abs(sn % 6 - 2.6) < 1.4 + (n - 0.5) ? 1 : 0;
+    case 'mottled': return flankPatch((y + 0.5) / r.h, th, sn, cn, seed) ? 1 : 0;
+    // a saddle: one broad dark band over the back behind the shoulders, its edges drawn with a few hand steps
+    case 'saddle': return ath < 1.3 + 0.08 * Math.floor(sn * 2 % 3) && Math.abs(sn % 6 - 2.6) < 1.3 ? 1 : 0;
+    // spots only down the flanks, in two loose rows
+    case 'flankSpots': return ath > 0.9 && ath < 2.05 && spotAt(sn, cn, 0.38 * ps, seed) ? 1 : 0;
+    // a few broad stripes over the shoulders and forelegs only
+    case 'shoulderStripes': { const t = (y + 0.5) / r.h; return t > 0.1 && t < 0.36 && ath < 2.1 && Math.abs(((sn * 5) / ps + ath * 0.5) % 1 - 0.5) < 0.16 * (1 - ath / 2.6) ? 1 : 0; }
     case 'rings': return ((sn / (0.6 * ps)) % 1) < 0.15 ? 1 : 0;
     default: return 0;
   }
@@ -176,15 +197,16 @@ function furHide(S: Ctx, r: Region, o: HideOpt) {
   const d = S.d, P = S.P, Wn = Math.max(0.05, S.rig.width), seed = o.seed;
   // coat length: sleek cats and ungulates paint fine low-contrast strands, bears and shaggy coats heavy locks
   const shaggy = has(d, 'shaggy') || !!S.rig.dims.bear, sleek = !shaggy && (has(d, 'leg_hooved') || has(d, 'whiskers') || has(d, 'leg_cursorial') || has(d, 'leg_padded'));
-  const long = shaggy ? 1.25 : sleek ? 0.72 : 0.9, con = shaggy ? 1 : sleek ? 0.62 : 0.8;
+  const long = shaggy ? 1.25 : sleek ? 0.72 : 0.9, con = shaggy ? 0.82 : sleek ? 0.6 : 0.72;
   const ks = long * (o.clump ?? (o.kind === 'head' || o.kind === 'jaw' ? 0.72 : o.kind === 'limb' ? 0.85 : o.kind === 'foot' ? 0.7 : o.kind === 'ear' ? 0.6 : 1));
   const H = shingles(r, { cw: 3.8 * ks, ch: 3.6 * ks, len: 2.6, flow: o.flow ?? 1, down: o.down ?? (o.kind === 'limb' || o.kind === 'foot' ? 0.12 : 0.55), seed: seed * 7 + 3, bend: 0.7 });
   const patAt = (x: number, y: number) => {
     const t = (y + 0.5) / r.h, th = r.th(x), ath = Math.abs(th);
-    const edge = (o.belly ?? 2.05) + (r.fbm(x, y, 5, 2, seed) - 0.5) * 0.3;
+    const edge = (o.belly ?? 2.05) + 0.05 * Math.sin(t * 37 + seed) + 0.03 * Math.sin(t * 91);
     const bel = o.bellyAll || ath > edge;
-    let pv = !o.noPattern && !bel ? patternAt(d, r, x, y, (t * o.L) / Wn, (th * o.rad(t)) / Wn, th, seed + 17) : 0;
-    if (has(d, 'cryptic') && !bel && r.fbm(x, y, 6, 2, seed + 40) > 0.62) pv = 1;
+    const sn = (t * o.L) / Wn, cn = (th * o.rad(t)) / Wn;
+    let pv = !o.noPattern && !bel ? patternAt(d, r, x, y, sn, cn, th, seed + 17) : 0;
+    if (has(d, 'cryptic') && !bel && !pv && flankPatch(t, th, sn, cn, seed + 40)) pv = 1;
     return o.ramp ?? (pv === 2 ? P.dark : pv ? P.pat : bel ? P.belly : P.base);
   };
   // pattern and countershading are chosen per clump, so their edges break along the locks
@@ -205,7 +227,7 @@ function furHide(S: Ctx, r: Region, o: HideOpt) {
       if (Math.abs(e) > 0.74) f -= 0.75; // the parting between locks
       else if (lit > 0.18 && lit < 0.6 && sv > 0.48 && sv < 0.9) f += 0.7; // a sheen down the lit side
       else if (Math.abs(e - sc) < 0.13 && sv > 0.35) f -= 0.5; // a strand line through the lock
-      k += (f + (hash(id, 5) - 0.5) * 0.45) * con; // clump tone
+      k += (f + (hash(id, 5) - 0.5) * 0.25) * con; // clump tone
     }
     r.put(x, y, RR, k, 0.15);
   }
@@ -227,7 +249,7 @@ function scaleHide(S: Ctx, r: Region, o: HideOpt) {
   const rampOf = new Map<number, number[]>();
   for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
     const p = y * r.w + x, id = H.id[p], th = r.th(x), ath = Math.abs(th), t = (y + 0.5) / r.h;
-    const edge = (o.belly ?? 2.05) + (r.fbm(x, y, 5, 2, seed) - 0.5) * 0.5;
+    const edge = (o.belly ?? 2.05) + 0.05 * Math.sin(t * 37 + seed) + 0.03 * Math.sin(t * 91);
     const bel = o.bellyAll || ath > edge;
     let k = 3.0 + Math.cos(th) * 0.7;
     if (bel && o.kind !== 'limb' && o.kind !== 'foot') {
@@ -244,7 +266,7 @@ function scaleHide(S: Ctx, r: Region, o: HideOpt) {
       if (!R0) {
         const sx = Math.floor(H.rx[p]), sy = Math.floor(H.ry[p] + 1), st = (sy + 0.5) / r.h, sth = r.th(sx);
         let pv = !o.noPattern ? patternAt(d, r, sx, sy, (st * o.L) / Wn, (sth * o.rad(st)) / Wn, sth, seed + 17) : 0;
-        if (has(d, 'cryptic') && r.fbm(sx, sy, 6, 2, seed + 40) > 0.62) pv = 1;
+        if (has(d, 'cryptic') && !pv && flankPatch(st, sth, (st * o.L) / Wn, (sth * o.rad(st)) / Wn, seed + 40)) pv = 1;
         R0 = pv === 2 ? P.dark : pv ? P.pat : P.base; rampOf.set(id, R0);
       }
       RR = R0;
@@ -269,17 +291,17 @@ export function hide(S: Ctx, r: Region, o: HideOpt) {
   for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
     const t = (y + 0.5) / r.h, th = r.th(x), ath = Math.abs(th), p = y * r.w + x, fid = F.id[p];
     const sn = (t * o.L) / Wn, cn = (th * o.rad(t)) / Wn;
-    const edge = (o.belly ?? 2.05) + (r.fbm(x, y, 5, 2, seed) - 0.5) * 0.5;
+    const edge = (o.belly ?? 2.05) + 0.05 * Math.sin(t * 37 + seed) + 0.03 * Math.sin(t * 91);
     const bel = o.bellyAll || ath > edge;
-    let k = 3.1 + Math.cos(th) * 0.65 + (hash(fid, seed) - 0.5) * 0.9;
-    if (F.edge[p] && hash(fid, seed + 3) < 0.35) k -= 0.9;
+    let k = 3.2 + (Math.cos(th) > 0.35 ? 0.6 : Math.cos(th) < -0.45 ? -0.5 : 0) + (hash(fid, seed) - 0.5) * 0.3;
+    if (F.edge[p] && hash(fid, seed + 3) < 0.18) k -= 0.8;
     if (cover === 'chitin') { const pv2 = t * (o.plates ?? 6); k += Math.abs(pv2 - Math.round(pv2)) < 0.05 ? -2.4 : (0.5 - (pv2 - Math.floor(pv2))) > 0 ? 0.4 : -0.3; if (Math.cos(th - 0.5) > 0.9) k += 1.8; }
     else if (cover === 'slime' && Math.cos(th - 0.4) > 0.93) k += 1.4;
     if (o.kind === 'limb' && cover === 'fur') k -= sm(clamp((t - 0.6) / 0.4, 0, 1)) * 1.1; // darker socks
     if (o.kind === 'foot') k -= 0.5;
     if (cover === 'scales' && bel && o.kind !== 'limb') k += y % 3 === 0 ? -1.3 : 0.3; // ventral scutes
     let pv = !o.noPattern && !bel ? patternAt(d, r, x, y, sn, cn, th, seed + 17) : 0;
-    if (has(d, 'cryptic') && !bel && r.fbm(x, y, 6, 2, seed + 40) > 0.62) pv = 1;
+    if (has(d, 'cryptic') && !bel && !pv && flankPatch(t, th, sn, cn, seed + 40)) pv = 1;
     const RR = pv ? P.pat : bel ? P.belly : P.base;
     r.put(x, y, RR, k, 0.55);
     if (has(d, 'chloro_skin') && !bel && r.fbm(x, y, 7, 2, seed + 5) > 0.6) r.blend(x, y, 0x3a8a3a, 0.35);

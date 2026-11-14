@@ -354,6 +354,18 @@ export class Kit {
     return this;
   }
 
+  /** the faction marking (star) as a decal facing +z */
+  mark(x: number, y: number, z: number, s: number, onB = false) { return this.decal(x, y, z, s, s, onB ? 'markB' : 'mark'); }
+  /** a gun barrel along +z from the origin of the current frame: a breech, a cooling jacket, a muzzle brake */
+  barrel(len: number, r: number, o: { brake?: boolean; jacket?: boolean; regB?: RegKey } = {}) {
+    this.cyl(0, 0, len * 0.08, r * 1.8, r * 1.8, len * 0.16, 10, 'dk', { axis: 'z' });
+    if (o.jacket) { this.cyl(0, 0, len * 0.42, r * 1.55, r * 1.55, len * 0.5, 10, 'vent', { axis: 'z' }); this.cyl(0, 0, len * 0.17, r * 1.7, r * 1.7, len * 0.03, 10, 'st0', { axis: 'z' }); this.cyl(0, 0, len * 0.68, r * 1.7, r * 1.7, len * 0.03, 10, 'st0', { axis: 'z' }); }
+    this.cyl(0, 0, len * 0.58, r, r * 0.92, len * 0.84, 10, o.regB ?? 'st0', { axis: 'z' });
+    if (o.brake) { this.cyl(0, 0, len * 0.98, r * 1.5, r * 1.5, len * 0.08, 8, 'dk', { axis: 'z' }); for (const s of [-1, 1]) this.box(s * r * 1.5, 0, len * 0.98, r * 0.3, r * 1.6, len * 0.05, 'soot'); }
+    else this.cyl(0, 0, len, r * 1.15, r * 1.15, len * 0.04, 8, 'dk', { axis: 'z' });
+    return this;
+  }
+
   // -------------------------------------------------------------------------------------------- output
   /** build one mesh per (bone, material) and parent it; returns the meshes */
   finish(mats: THREE.Material[], o: { shadow?: boolean } = {}): THREE.Mesh[] {

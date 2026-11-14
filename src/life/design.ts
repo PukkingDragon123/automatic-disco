@@ -8,7 +8,7 @@ import type { Palette } from '../world/palette';
 import { RAMPS, type RampName } from '../art/palette';
 import { BEASTS, beastDesign, beastsFor } from './bestiary';
 
-export type Pattern = 'plain' | 'stripes' | 'spots' | 'bands' | 'mottled' | 'saddle' | 'rings';
+export type Pattern = 'plain' | 'stripes' | 'spots' | 'bands' | 'mottled' | 'saddle' | 'rings' | 'flankSpots' | 'shoulderStripes';
 export type Cover = 'chitin' | 'fur' | 'scales' | 'skin' | 'slime';
 export interface Colors { base: number; belly: number; pattern: number; accent: number; eye: number }
 export interface Design {

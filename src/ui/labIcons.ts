@@ -11,6 +11,8 @@ import { partGeometry, partMaterial, symbolFor, symbolMaterial, regUniforms, SYM
 import { GN_DECL } from '../gfx/gbuf';
 import { tabOf, donorFor, TABS, REG, type LabCtx, type TabId } from './labRules';
 import { CAT_COL } from '../game/dnaHarvest';
+import { isBio } from '../life/genesBio';
+import { bioSymbol } from '../biotech/organs';
 
 interface Built { geo: THREE.BufferGeometry; tex: THREE.Texture; sym: boolean; used: number }
 interface Slot { el: HTMLElement; gene: string | null; key: string; obj: THREE.Group | null; part: THREE.Mesh | null; plate: THREE.Mesh; U: RegU; spin: number; hover: number; ready: boolean; tilt: number; pu: { uCol: { value: THREE.Color }; uT: { value: number }; uOn: { value: number } } }
@@ -56,7 +58,7 @@ export class LabIcons {
 
   /** what a gene's icon depends on (so a change elsewhere on the body does not re-grow it) */
   private keyOf(id: string, base: Design): string {
-    if (SYMBOLIC.has(id) || !GENE[id]) return 'sym:' + id;
+    if (SYMBOLIC.has(id) || !GENE[id] || isBio(id)) return 'sym:' + id;
     const tab = tabOf(id);
     const group = tab === 'eyes' || tab === 'senses' || tab === 'jaw' || tab === 'crown' ? ['eyes', 'senses', 'jaw', 'crown'] : tab === 'legs' || tab === 'arms' ? ['legs', 'arms'] : tab === 'tail' || tab === 'wings' ? [tab] : null;
     const genes = group ? base.genes.filter((g) => group.includes(tabOf(g))).sort() : [...base.genes].sort();
@@ -93,7 +95,7 @@ export class LabIcons {
     let b = this.cache.get(s.key);
     if (!b) {
       const id = s.gene ?? 'unknown';
-      if (!s.gene || SYMBOLIC.has(id) || !GENE[id]) { const sym = symbolFor(s.gene ? id : 'unknown'); b = { geo: sym.geo, tex: sym.tex, sym: true, used: 0 }; }
+      if (!s.gene || SYMBOLIC.has(id) || !GENE[id] || isBio(id)) { const sym = s.gene && isBio(id) ? bioSymbol(id) : symbolFor(s.gene ? id : 'unknown'); b = { geo: sym.geo, tex: sym.tex, sym: true, used: 0 }; }
       else {
         const donor = donorFor(this.ctx, (s as Slot & { base: Design }).base, id);
         const m = buildSpeciesModel(donor);

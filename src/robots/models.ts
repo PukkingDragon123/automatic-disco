@@ -133,16 +133,7 @@ class Ctx {
     }
     this.m.tracks = true;
   }
-  /** a gun barrel along +z from the origin of the current frame: a breech, a cooling jacket, a muzzle brake */
-  barrel(len: number, r: number, o: { brake?: boolean; jacket?: boolean; twin?: number; regB?: string } = {}) {
-    const k = this.k;
-    k.cyl(0, 0, len * 0.08, r * 1.8, r * 1.8, len * 0.16, 10, 'dk', { axis: 'z' });
-    if (o.jacket) { k.cyl(0, 0, len * 0.42, r * 1.55, r * 1.55, len * 0.5, 10, 'vent', { axis: 'z' }); k.cyl(0, 0, len * 0.17, r * 1.7, r * 1.7, len * 0.03, 10, 'st0', { axis: 'z' }); k.cyl(0, 0, len * 0.68, r * 1.7, r * 1.7, len * 0.03, 10, 'st0', { axis: 'z' }); }
-    k.cyl(0, 0, len * 0.58, r, r * 0.92, len * 0.84, 10, o.regB ?? 'st0', { axis: 'z' });
-    if (o.brake) { k.cyl(0, 0, len * 0.98, r * 1.5, r * 1.5, len * 0.08, 8, 'dk', { axis: 'z' }); for (const s of [-1, 1]) k.box(s * r * 1.5, 0, len * 0.98, r * 0.3, r * 1.6, len * 0.05, 'soot'); }
-    else k.cyl(0, 0, len, r * 1.15, r * 1.15, len * 0.04, 8, 'dk', { axis: 'z' });
-    return this;
-  }
+  barrel(len: number, r: number, o: { brake?: boolean; jacket?: boolean; regB?: string } = {}) { this.k.barrel(len, r, o); return this; }
   /** a muzzle point at z in a group */
   muzzle(g: THREE.Object3D, x: number, y: number, z: number) { const o = new THREE.Object3D(); o.position.set(x, y, z); g.add(o); this.m.muzzles.push(o); return o; }
   lampAt(g: THREE.Object3D, x: number, y: number, z: number) { const o = new THREE.Object3D(); o.position.set(x, y, z); g.add(o); this.m.lamps.push(o); return o; }

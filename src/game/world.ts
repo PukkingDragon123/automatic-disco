@@ -160,11 +160,13 @@ export class World {
   damage(c: Creature, amount: number, by: Creature | null) {
     if (c.dead || amount <= 0) return;
     if (by && this.attackMul) amount *= this.attackMul(by);
+    // curled up: rollers' plates take most of a blow, a hunched animal shields its belly
+    if (c.mind === 'curl') amount *= c.roller ? 0.3 : 0.75;
     const dealt = amount * (1 - c.st.armor);
     c.hp -= dealt;
     c.fx.flash.value = 1;
     c.fx.flashCol.value.setRGB(1, 0.35, 0.3);
-    if (by) { c.lastHitBy = by.id; if (c.mind !== 'flee' && c.mind !== 'held' && (c.diet !== 'herb' || c.mass > by.mass)) { c.target = by.id; if (!c.order) c.mind = 'attack'; } }
+    if (by) { c.lastHitBy = by.id; if (c.mind !== 'flee' && c.mind !== 'held' && c.mind !== 'curl' && (c.diet !== 'herb' || c.mass > by.mass)) { c.target = by.id; if (!c.order) c.mind = 'attack'; } }
     this.hooks.onDamage?.(c, dealt, by);
     if (c.hp <= 0) this.kill(c, by);
   }
@@ -285,7 +287,8 @@ export class World {
   private metabolism(c: Creature, dt: number) {
     const st = c.st, wild = c.faction === 'wild', asleep = c.mind === 'sleep';
     const running = c.mind === 'flee' || c.mind === 'hunt';
-    const drain = clamp(0.0022 + st.upkeep * 0.01, 0.0018, 0.009) * (running ? 1.6 : asleep ? 0.35 : c.mind === 'rest' ? 0.7 : 1);
+    // (wild hunters live on feast and famine: a slower burn between kills)
+    const drain = clamp(0.0022 + st.upkeep * 0.01, 0.0018, 0.009) * (running ? 1.6 : asleep ? 0.35 : c.mind === 'rest' ? 0.7 : 1) * (wild && c.diet === 'carn' ? 0.6 : 1);
     c.energy -= drain * dt;
     /** a hurt that may be the last: name the cause first so the census can count it */
     const hurt = (amt: number, cause: string) => { if (c.hp - amt * (1 - st.armor) <= 0) c.dieCause = cause; this.damage(c, amt, null); };
