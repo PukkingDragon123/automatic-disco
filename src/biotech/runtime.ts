@@ -304,7 +304,8 @@ export class Biotech {
     if (!w.base) {
       if (this.nearStructure(p.x, p.z, rad + 0.8)) { this.nextPoint(w, chan, 'STRUCTURE IN THE WAY'); return; }
       w.base = R.heightAt(p.x, p.z);
-      w.goal = chan ? Math.min(w.base - 0.9, R.water - 0.4) : Math.max(0.8, w.base - (fn.fn.kind === 'tunnel' ? 2.8 : 2.2));
+      // a channel runs a metre or so deep, down past the water line where the water is close enough to let in
+      w.goal = chan ? Math.max(w.base - 1.6, Math.min(w.base - 0.9, R.water - 0.4)) : Math.max(0.8, w.base - (fn.fn.kind === 'tunnel' ? 2.8 : 2.2));
       if (w.goal < 0.8) w.goal = 0.8;
     }
     // stand at the rim, on the side it came from
@@ -314,7 +315,9 @@ export class Biotech {
     const k = this.mul(w);
     const vol = (fn.rate / 60) * dt * k;
     w.vol += vol; w.shapeAcc += vol;
-    w.note = chan ? `DIGGING CHANNEL ${Math.round(w.k * 100)}%` : `DIGGING · ${Math.round(clamp((w.base - R.heightAt(p.x, p.z)) / Math.max(0.1, w.base - w.goal), 0, 1) * 100)}%`;
+    const depth = clamp((w.base - R.heightAt(p.x, p.z)) / Math.max(0.1, w.base - w.goal), 0, 1);
+    const L = chan ? Math.max(0.5, Math.hypot(w.site2!.x - w.site!.x, w.site2!.z - w.site!.z)) : 1;
+    w.note = chan ? `DIGGING CHANNEL ${Math.round(clamp(w.k + depth * 1.2 / L, 0, 1) * 100)}%` : `DIGGING · ${Math.round(clamp((w.base - R.heightAt(p.x, p.z)) / Math.max(0.1, w.base - w.goal), 0, 1) * 100)}%`;
     this.stroke(w, p.x, p.z, fn.fn.kind === 'tunnel' ? 0.55 : 0.8, dt, () => {
       const y = this.y(p.x, p.z);
       vfx2d.play('dust', p.x + (Math.random() - 0.5) * rad, y + 0.1, p.z + (Math.random() - 0.5) * rad, { ramp: R.isWater(p.x, p.z) ? 'water' : 'soil', scale: 0.7 + c.size * 0.3 });
@@ -446,7 +449,8 @@ export class Biotech {
     const R = this.w.region, c = w.c, s = w.site!, ore = fn.fn.kind === 'ore';
     if (!w.tgt || (w.tgt.ref && w.tgt.ref.amount <= 0)) {
       w.seek -= dt; if (w.seek > 0) return; w.seek = 2;
-      if (ore) { const r = this.findRock(s.x, s.z, 14); w.tgt = r ? { x: r.x, z: r.z, ref: r.ref, i: r.crystal ? 1 : 0 } : null; }
+      // on AUTO a gizzard goes looking further afield for rock
+      if (ore) { const r = this.findRock(s.x, s.z, 14) ?? (w.job === 'auto' ? this.findRock(s.x, s.z, 40) : null); w.tgt = r ? { x: r.x, z: r.z, ref: r.ref, i: r.crystal ? 1 : 0 } : null; }
       else w.tgt = this.findCell(s.x, s.z, 12, (i) => R.b[i] === B.SAND && R.h[i] >= R.water) ?? this.findCell(s.x, s.z, 6, (i) => (R.b[i] === B.SOIL || R.b[i] === B.DRY || R.b[i] === B.GRAVEL) && R.h[i] >= R.water);
       if (!w.tgt) { w.note = ore ? 'NO ROCK WITHIN 14 M' : 'NO SAND OR SOIL HERE'; this.hold(w); return; }
       w.state = 'go';

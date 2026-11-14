@@ -39,7 +39,7 @@ export async function testRobots(engine: Engine, input: Input, P: URLSearchParam
       ch.hatch = 1;
       ch.root.position.set(x, 0, 0); scene.add(ch.root);
       const cx = x;
-      ex.push({ obj: ch.root, x: cx, z: 0, h: s === 0 ? 0.8 : s === 4 ? 2.6 : 1.8, name: `${s} ${STAGE_NAMES[s]} (${ch.tris} tris)`, tick(dt, t) { ch.look.set(cx + Math.sin(t * 0.4 + s) * 3, 1.4, 6); ch.update(dt, cam); } });
+      ex.push({ obj: ch.root, x: cx, z: 0, h: [1.15, 1.8, 1.8, 1.8, 2.8][s], name: `${s} ${STAGE_NAMES[s]} (${ch.tris} tris)`, tick(dt, t) { ch.look.set(cx + Math.sin(t * 0.4 + s) * 3, 1.4, 6); ch.update(dt, cam); } });
       console.log('golem stage', s, STAGE_NAMES[s], 'tris', ch.tris, 'mesh tris', trisOf(ch.root));
       x += s === 3 ? 3.2 : 2.4;
     }

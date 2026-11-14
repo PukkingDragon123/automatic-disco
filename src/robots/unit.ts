@@ -360,7 +360,7 @@ export class RobotUnit {
     }
     if (!m) return;
     const U = m.U;
-    U.flash.value.setRGB(this.flashK * 0.45, this.flashK * 0.1, this.flashK * 0.05);
+    U.flash.value.setRGB(this.flashK * 0.22, this.flashK * 0.06, this.flashK * 0.03);
     U.glow.value = 0.9 + (this.fireT > 0 ? 0.6 : 0);
     // turret and gun
     if (m.turret) m.turret.rotation.y = this.aimYaw;

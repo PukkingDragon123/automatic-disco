@@ -478,12 +478,12 @@ export function buildShip(bin: Bin, parent: THREE.Object3D, opts: { people?: boo
     mesh(bin, new THREE.ConeGeometry(0.55, 0.45, 12, 1, true), lit(bin, 0x3a4a3a, { side: THREE.DoubleSide }), bay, x, B.ceil - 2.2, z);
     mesh(bin, new THREE.CircleGeometry(0.4, 12), lamp(bin, 0xffe0a8, 2.2), bay, x, B.ceil - 2.42, z, false).rotation.x = Math.PI / 2;
   }
-  const key = new THREE.SpotLight(0xffe2b0, 110, 60, 0.95, 0.5, 1.5); key.position.set(0, B.ceil - 1.2, 24); key.target.position.set(0, B.floor, 30);
+  const key = new THREE.SpotLight(0xffe2b0, 110, 60, 0.95, 0.5, 1.5); key.position.set(1.5, B.ceil - 1.2, 19); key.target.position.set(0, B.floor, 16);
   key.castShadow = true; key.shadow.mapSize.set(1024, 1024); key.shadow.bias = -0.0006; key.shadow.normalBias = 0.04; (key.shadow.camera as THREE.PerspectiveCamera).near = 1; (key.shadow.camera as THREE.PerspectiveCamera).far = 40;
   bay.add(key, key.target); intLights.push(key);
   const key2 = new THREE.SpotLight(0xffd8a0, 80, 50, 0.9, 0.6, 1.5); key2.position.set(0, B.ceil - 1.2, 46); key2.target.position.set(0, B.floor, 52); bay.add(key2, key2.target); intLights.push(key2);
-  const fill = new THREE.HemisphereLight(0x8090a0, 0x2a2620, 0.9); bay.add(fill); intLights.push(fill);
-  for (const z of [12, 34]) { const pl = new THREE.PointLight(0xffc890, 18, 22, 1.6); pl.position.set(0, -6, z); bay.add(pl); intLights.push(pl); }
+  const fill = new THREE.HemisphereLight(0x8090a0, 0x2a2620, 1.35); bay.add(fill); intLights.push(fill);
+  for (const z of [12, 34]) { const pl = new THREE.PointLight(0xffc890, 26, 24, 1.6); pl.position.set(0, -6, z); bay.add(pl); intLights.push(pl); }
   const doorLight = new THREE.DirectionalLight(0xa8c4e8, 0); doorLight.position.set(0, -6, 120); doorLight.target.position.set(0, -12, 20); bay.add(doorLight, doorLight.target); intLights.push(doorLight);
 
   // ---- the control gallery: a box on the port catwalk, slanted windows on the bay side, console, table

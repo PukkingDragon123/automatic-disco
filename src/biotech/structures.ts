@@ -175,7 +175,8 @@ void main() {
   float k = clamp(floor(lvl + 0.001), 0.0, 4.0);
   vec3 col = k < 0.5 ? uRamp[0] : k < 1.5 ? uRamp[1] : k < 2.5 ? uRamp[2] : k < 3.5 ? uRamp[3] : uRamp[4];
   float a = k < 0.5 ? 0.05 : k < 1.5 ? 0.26 : k < 2.5 ? 0.46 : k < 3.5 ? 0.66 : 0.9;
-  gl_FragColor = vec4(col * a * uUp * 1.35, 1.0);
+  // pure light: added over the scene, never covering it (alpha stays 0 in the fx layer)
+  gl_FragColor = vec4(col * a * uUp * 1.35, 0.0);
 }`;
 function barrierMesh(R: number): { mesh: THREE.Mesh; U: Record<string, THREE.IUniform> } {
   const ramp = RAMPS.glowTeal.map((c) => new THREE.Color(c));
@@ -183,7 +184,10 @@ function barrierMesh(R: number): { mesh: THREE.Mesh; U: Record<string, THREE.IUn
     uRamp: { value: ramp }, uC: { value: new THREE.Vector3() }, uT: { value: 0 }, uPow: { value: 1 }, uUp: { value: 0 }, uR: { value: R },
     uHits: { value: Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, 0, -1)) },
   };
-  const m = new THREE.ShaderMaterial({ vertexShader: BARRIER_VERT, fragmentShader: BARRIER_FRAG, uniforms: U, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+  const m = new THREE.ShaderMaterial({
+    vertexShader: BARRIER_VERT, fragmentShader: BARRIER_FRAG, uniforms: U, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
+  });
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(R, 56, 18, 0, Math.PI * 2, 0, Math.PI / 2), m);
   mesh.renderOrder = 4; mesh.frustumCulled = false;
   return { mesh, U };

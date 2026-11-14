@@ -248,7 +248,8 @@ export class StubUnit implements Unit {
       if (ot && Math.hypot(ot.x - this.x, ot.z - this.z) < this.st.sight * 1.6 && (!this.tgt || !this.inRange(this.tgt))) { this.tgt = ot; return; }
     }
     if (this.tgt && this.inRange(this.tgt)) return;
-    const near = F.nearestHostile(this.x, this.z, this.st.sight, this.faction);
+    // an expedition wants your buildings whole: its rifles are for machines, creatures and Unit 07
+    const near = F.nearestHostile(this.x, this.z, this.st.sight, this.faction, { noBuildings: this.human });
     if (near) this.tgt = near;
     else if (this.tgt && Math.hypot(this.tgt.x - this.x, this.tgt.z - this.z) > this.st.sight * 1.5) this.tgt = null;
   }

@@ -12,6 +12,7 @@ import type { Design } from './design';
 import type { Rig } from './morph';
 import { shagCoat, mane, tassel, crest, wattle, tailFin, brushTail, sail, frill, roundEars, whiskers, tongue, throatSac, gills, ramHorns, palmAntlers, rack, bearPaw, toes, amphSkin, scuteShell, crabShell, beetleHorns, mothWings, plumes, type SpineTs, type HeadCtx } from './parts';
 import { BEASTS, type BeastForm } from './bestiary';
+import { CAGES, cageProfile, cageHead } from './cage';
 import { growBody, markBody, headFans, greatHorn, skullCrest, helm, noseleaf, type BodyMark } from './forms';
 import { SkinB, Page, type Region, KIT, oct, blade, sac, spline, chainWeights, ball, sheet, transport, hash, gauss, sub, addV, scl, norm, cross, len, lerpV, pageTexture, mixC, type V3, type Wt } from './kit';
 
@@ -601,8 +602,11 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
   const beak = fam === 'beak', flat = fam === 'frog', bear = fam === 'bear', cat = fam === 'cat', hoof = fam === 'hoof', boar = fam === 'boar', liz = fam === 'lizard';
   const hk = hom ? 1.18 : 1;
   const z0 = hl * 0.38;
-  const hz = cat ? [-0.2, -0.04, 0.12, 0.28, 0.39, 0.47, 0.58, 0.66].map((k) => k * hl) : [-hl * 0.24, -hl * 0.06, hl * 0.14, hl * 0.3, hl * 0.44, z0 + sl * 0.45, z0 + sl * 0.8, z0 + sl * (beak ? 1.15 : 1.0)];
-  const hy = F.hy.map((k) => k * hh), rx = F.rx.map((k) => k * hw * hk), ry = F.ry.map((k) => k * hh * hk);
+  // a hand-blocked cage head for the skull families that have one (cage.ts); its stations stand in for the loft's
+  const cageK = hom || flat || bug ? '' : BF?.earK ? 'bat' : BF && beak ? 'reptile' : cat ? 'felid' : bear ? 'brute' : hoof ? 'bovid' : '';
+  const CG = cageK ? CAGES[cageK] : undefined, cp = CG ? cageProfile(CG, hl, hw * hk, hh * hk) : undefined;
+  const hz = cp ? cp.hz : cat ? [-0.2, -0.04, 0.12, 0.28, 0.39, 0.47, 0.58, 0.66].map((k) => k * hl) : [-hl * 0.24, -hl * 0.06, hl * 0.14, hl * 0.3, hl * 0.44, z0 + sl * 0.45, z0 + sl * 0.8, z0 + sl * (beak ? 1.15 : 1.0)];
+  const hy = cp ? cp.hy : F.hy.map((k) => k * hh), rx = cp ? cp.rx : F.rx.map((k) => k * hw * hk), ry = cp ? cp.ry : F.ry.map((k) => k * hh * hk);
   const ctrl = hz.map((z, i) => addV(head, [0, hy[i], z]));
   const cts = chordTs(ctrl);
   const sp = spline(ctrl, 16);
@@ -631,7 +635,8 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
   };
   const HEAD = S.reg('HEAD', TAU * hw * 0.5 * hk, len(sub(ctrl[ctrl.length - 1], ctrl[0])), 16, 96, 64);
   const w = (i: number): Wt => (i < 2 ? [iH, 0.75, iN, 0.25] : [iH, 1]);
-  sac(S.B, HEAD, S.gid(), sp.pts, sp.t.map((t) => [interp(cts, rx, t), interp(cts, ry, t)] as [number, number]), w, { n: 18, sq: 2.55, bump, end: true, start: true, cap: BF ? BF.skull.cap : cat ? 0.06 : boar || bear ? 0.16 : hoof ? 0.28 : 0.5 });
+  if (CG) cageHead(S.B, HEAD, S.gid(), CG, head, hl, hw * hk, hh * hk, (t) => (t < 0.12 ? [iH, 0.75, iN, 0.25] : [iH, 1]));
+  else sac(S.B, HEAD, S.gid(), sp.pts, sp.t.map((t) => [interp(cts, rx, t), interp(cts, ry, t)] as [number, number]), w, { n: 18, sq: 2.55, bump, end: true, start: true, cap: BF ? BF.skull.cap : cat ? 0.06 : boar || bear ? 0.16 : hoof ? 0.28 : 0.5 });
   const Lh = sp.L;
   // ------------------------------------------------ eyes: a wet eyeball in a socket rim, an upper lid that blinks, a lower lid
   const er = Math.max(0.012, hw * (bug ? 0.2 : BF ? erK : erK * 0.86)) * (hom ? 1.25 : 1) * (bug ? 1 : clamp(1.2 - S.rig.length * 0.12, 0.66, 1.05));

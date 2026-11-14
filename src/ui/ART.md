@@ -72,3 +72,12 @@ or interpolate between hexes. `snap()` / `snapRGBA()` exist for porting, but new
 - Variation comes from drawing different shapes (3+ hand-variants per element), not from noise.
 - Texture through drawn marks: bark as vertical strokes and knots; grass as blade clumps; stone as fractured facets
   with crack lines; fur as clumped strands following form; scales as offset rows of drawn plates.
+
+## Update (user): "2D pixel art more colourful, more detail, a little higher resolution, not lazy, not simple"
+- The master palette is now v2: richer saturation with stronger hue shifts. Use the ramps' full range, and mix
+  neighbouring ramps within one subject (warm lit planes, cool shadow planes, a complementary accent).
+- Resolution: double the texel density of 2D art (icons drawn at 48 px or more of source, tiles and leaf cards
+  at 2x their current size), still shown at integer scale so pixels stay crisp.
+- Detail: more drawn information per element (secondary forms, edge wear, small highlights, inner shapes, texture
+  marks, colour variation between clusters), but still clean clusters with no noise. Every element must look
+  hand-made by a skilled pixel artist, never simple or lazy.

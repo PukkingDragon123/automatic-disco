@@ -214,9 +214,10 @@ export class Factions {
     for (const s of this.structures) { if (s.dead || s.dropT > 0 || !ok(s.faction)) continue; const d2 = (s.x - x) ** 2 + (s.z - z) ** 2; if (d2 < (r + s.radius + 2) ** 2) fn(s, Math.sqrt(d2), s.radius, s.faction, true); }
   }
   /** the nearest hostile thing to a faction within r (edge distance); arty prefers structures */
-  nearestHostile(x: number, z: number, r: number, f: Faction, o: { min?: number; structures?: boolean } = {}): Tgt | null {
+  nearestHostile(x: number, z: number, r: number, f: Faction, o: { min?: number; structures?: boolean; noBuildings?: boolean } = {}): Tgt | null {
     let best: any = null, bs = 1e9, bf: Faction = 'wild', br = 0;
     this.each(x, z, r, f, (ref, d, rr, fac, st) => {
+      if (st && o.noBuildings && !(ref instanceof FStructure)) return;
       const e = d - rr;
       if (e > r || (o.min && d < o.min)) return;
       const s = e - (o.structures && st ? 8 : 0) - (ref === GOLEM_REF.g ? 1 : 0);

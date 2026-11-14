@@ -28,6 +28,8 @@ const CSS = `
 .bw .np { font-family: 'Jersey', monospace; font-size: var(--np); line-height: var(--np); letter-spacing: 0.05em; }
 .bw .ps { font-family: 'Pixelify', monospace; font-size: var(--ps); line-height: calc(var(--ps) * 1.2); }
 .bw .sw { font-family: 'Superwide', monospace; font-size: var(--sw); line-height: var(--sw); letter-spacing: 0.14em; }
+.bw b { color: inherit; font-weight: normal; display: inline-block; }
+.bw .pencil, .bw-up { font-family: 'Pixelify', monospace; font-size: var(--ps); line-height: calc(var(--ps) * 1.35); color: #4b4a46; }
 .bw-slip { position: absolute; left: calc(10 * var(--k)); bottom: calc(150 * var(--k)); width: calc(318 * var(--k)); padding: calc(12 * var(--k)) calc(12 * var(--k)) calc(10 * var(--k)); box-sizing: border-box; pointer-events: auto; transform: rotate(-0.6deg); box-shadow: 0 calc(3 * var(--k)) calc(8 * var(--k)) rgba(10, 8, 4, 0.55); display: none; }
 .bw-slip.open { display: block; animation: bw-in 240ms cubic-bezier(0.2, 0.9, 0.3, 1.15) both; }
 @keyframes bw-in { 0% { transform: translateY(calc(30 * var(--k))) rotate(-2deg); opacity: 0; } 100% { transform: rotate(-0.6deg); opacity: 1; } }

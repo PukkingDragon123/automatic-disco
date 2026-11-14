@@ -325,3 +325,43 @@ export function windowPix(cols = 8, seed = 2) {
 }
 /** a deterministic 0..1 hash for scattering details by hand-chosen rules */
 export const hash = h2;
+
+/**
+ * Merge every static mesh under root into one mesh per material (position, normal, uv), in root's space. Meshes
+ * under an object in keep (anything that animates) are left alone, as are instanced, skinned, vertex-coloured and
+ * multi-material meshes. Cuts hundreds of draw calls to a few dozen.
+ */
+export function mergeStatic(bin: Bin, root: THREE.Object3D, keep: Set<THREE.Object3D>) {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert(), M = new THREE.Matrix4();
+  const groups = new Map<THREE.Material, { geos: THREE.BufferGeometry[]; cast: boolean; recv: boolean; order: number }>();
+  const victims: THREE.Mesh[] = [];
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || (m as any).isInstancedMesh || (m as any).isSkinnedMesh || Array.isArray(m.material) || !m.visible) return;
+    for (let p: THREE.Object3D | null = o; p && p !== root; p = p.parent) if (keep.has(p)) return;
+    const mat = m.material as THREE.Material;
+    if ((mat as any).vertexColors) return;
+    const src = m.geometry;
+    if (!src.attributes.uv || !src.attributes.normal || !src.attributes.position) return;
+    const g = src.index ? src.toNonIndexed() : src.clone();
+    for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') g.deleteAttribute(k);
+    g.applyMatrix4(M.multiplyMatrices(inv, m.matrixWorld));
+    let e = groups.get(mat); if (!e) groups.set(mat, (e = { geos: [], cast: false, recv: false, order: m.renderOrder }));
+    e.geos.push(g); e.cast ||= m.castShadow; e.recv ||= m.receiveShadow;
+    victims.push(m);
+  });
+  for (const v of victims) { v.removeFromParent(); v.geometry.dispose(); }
+  for (const [mat, e] of groups) {
+    let n = 0; for (const g of e.geos) n += g.attributes.position.count;
+    const pos = new Float32Array(n * 3), nrm = new Float32Array(n * 3), uv = new Float32Array(n * 2);
+    let o = 0;
+    for (const g of e.geos) { pos.set(g.attributes.position.array as Float32Array, o * 3); nrm.set(g.attributes.normal.array as Float32Array, o * 3); uv.set(g.attributes.uv.array as Float32Array, o * 2); o += g.attributes.position.count; g.dispose(); }
+    const out = new THREE.BufferGeometry();
+    out.setAttribute('position', new THREE.BufferAttribute(pos, 3)); out.setAttribute('normal', new THREE.BufferAttribute(nrm, 3)); out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    out.computeBoundingSphere();
+    const me = new THREE.Mesh(bin.g(out), mat); me.castShadow = e.cast; me.receiveShadow = e.recv; me.renderOrder = e.order; me.name = 'merged';
+    root.add(me);
+  }
+  return { meshes: groups.size, merged: victims.length };
+}

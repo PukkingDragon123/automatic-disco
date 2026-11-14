@@ -1,5 +1,5 @@
-// THE MASTER PALETTE. Every 2D painter in the game (plants, ground, rock, creatures, icons, VFX, UI art) draws from
-// these ramps and nothing else. Hand-picked, low saturation, hue-shifted: shadows lean cool (blue-violet), lights lean
+// THE MASTER PALETTE (v2: richer colour, user asked for more colourful pixel art). Every 2D painter in the game (plants, ground, rock, creatures, icons, VFX, UI art) draws from
+// these ramps and nothing else. Hand-picked, rich but natural saturation, hue-shifted: shadows lean cool (blue-violet), lights lean
 // warm (straw), mid-tones carry the local colour. No ramp reaches pure black, pure white or full saturation.
 // Ramps run dark -> light. Pick a ramp by material, then index it by light; do not mix or tint at runtime.
 
@@ -8,43 +8,43 @@ const R = (...c: string[]) => c.map(hex);
 
 export const RAMPS = {
   // foliage
-  moss: R('#1d2421', '#2a3628', '#3d4c34', '#566340', '#747b4f', '#9a9763', '#c0b886'),
-  sage: R('#1f2526', '#2c3a37', '#3f524a', '#5a6e5e', '#7c8c76', '#a3ad93'),
-  teal: R('#1b2329', '#253539', '#344c4b', '#4b665e', '#6b8476', '#93a596'),
-  violet: R('#211f29', '#33293d', '#4a3a53', '#62506a', '#7e6c80', '#a1929c'),
-  plum: R('#271c25', '#3d2734', '#583645', '#744a55', '#91666a', '#b38c86'),
-  rust: R('#291c19', '#432a22', '#64392a', '#86503a', '#a66d4d', '#c2926a', '#d9b991'),
-  coral: R('#2a1d20', '#46292b', '#663a3a', '#87524c', '#a6705f', '#c49580'),
-  ochre: R('#2b241b', '#453825', '#634f31', '#836a40', '#a28854', '#bfa874', '#d6c79c'),
-  straw: R('#3a3324', '#575036', '#77704c', '#968f64', '#b3ab80', '#cfc7a2'),
+  moss: R('#1a2720', '#283c22', '#3e552b', '#597033', '#7f8b3f', '#aea94f', '#d4c272'),
+  sage: R('#1c2829', '#264039', '#375a49', '#507858', '#77976b', '#a3b888'),
+  teal: R('#16262e', '#1e3c40', '#2b5550', '#407162', '#5f9075', '#8aae92'),
+  violet: R('#201b2d', '#362145', '#50305d', '#664575', '#86628a', '#a98aa0'),
+  plum: R('#2b1826', '#451f33', '#642a3f', '#833b4e', '#a2555c', '#c37c76'),
+  rust: R('#2f1a13', '#4e2817', '#773717', '#9f4621', '#c36530', '#de8f4e', '#efb67b'),
+  coral: R('#2f181c', '#501f1f', '#752b2b', '#9b4238', '#bf6346', '#da876a'),
+  ochre: R('#312715', '#503e1a', '#745820', '#99702a', '#bc913a', '#d8ac5b', '#e9cb89'),
+  straw: R('#42391c', '#635b2a', '#877b3c', '#a99c51', '#c5b36e', '#decd93'),
   // ground and stone
-  soil: R('#1c1816', '#2b241f', '#3e342b', '#56483b', '#6f604e', '#8a7a65', '#a99a83'),
-  clay: R('#241a17', '#3a2a23', '#543b2f', '#6e4f3d', '#89674f', '#a48568'),
-  sand: R('#3b352b', '#5a513f', '#7a6f56', '#998d6f', '#b6aa8b', '#cfc4a7'),
-  stone: R('#1b1c1f', '#2a2b2e', '#3c3d3f', '#525150', '#6b6863', '#87827a', '#a7a196'),
-  slate: R('#1a1d22', '#262c33', '#343d45', '#47525a', '#5f6b70', '#7d8888'),
-  basalt: R('#18181b', '#222225', '#2f2e31', '#3f3d3f', '#524f4f', '#69645f'),
-  snow: R('#5f6873', '#7b858e', '#98a1a6', '#b5bbbb', '#cfd2cc', '#e2e1d8'),
+  soil: R('#1f1813', '#30251a', '#453624', '#604b31', '#7c6141', '#997c56', '#b89d74'),
+  clay: R('#291912', '#422a1b', '#613b22', '#7f4b2c', '#9d643b', '#b98453'),
+  sand: R('#413925', '#645435', '#887448', '#a9945f', '#c6ad7b', '#ddc799'),
+  stone: R('#1a1b20', '#292a2f', '#3c3d3f', '#525150', '#6c6862', '#898278', '#a9a194'),
+  slate: R('#171b25', '#212d38', '#2d404c', '#3f5362', '#566f79', '#759090'),
+  basalt: R('#18181b', '#222225', '#2f2e31', '#3f3d3f', '#524f4f', '#6a645e'),
+  snow: R('#5c6876', '#798590', '#96a0a8', '#b4bbbc', '#cfd3cb', '#e3e1d7'),
   // water and sky
-  water: R('#141d23', '#1c2c33', '#273f45', '#365656', '#4f706b', '#719086', '#9cb2a5'),
-  sky: R('#2e3742', '#43505b', '#5d6b73', '#7c8a8d', '#9ea9a6', '#c1c6bd'),
+  water: R('#0f2028', '#14323b', '#1d494f', '#2a625e', '#427d74', '#639e8b', '#92bca6'),
+  sky: R('#26394a', '#395165', '#536e7d', '#729097', '#97b0ab', '#bfcbb8'),
   // flesh, fur, bone, blood
-  fur: R('#1f1916', '#33281f', '#4b3a2b', '#64503b', '#806a50', '#9e8a6c', '#bba98d'),
-  hide: R('#221b1c', '#382b2a', '#51403b', '#6b5750', '#887168', '#a69187'),
-  flesh: R('#2a1a1c', '#452629', '#643538', '#83494a', '#a0655f', '#bd8a7d'),
-  bone: R('#3f3a31', '#5c5546', '#7b735f', '#9b927a', '#bab196', '#d4ccb2'),
-  blood: R('#1e1012', '#33171a', '#4d1e21', '#68282a', '#843634'),
-  ichor: R('#1d2116', '#2f361f', '#465028', '#606b34', '#7c8746'),
+  fur: R('#231912', '#3a2a18', '#563d20', '#72502d', '#916b3f', '#b18e59', '#cba97d'),
+  hide: R('#251819', '#3e2824', '#5a3e32', '#765245', '#966b5a', '#b38c7a'),
+  flesh: R('#301416', '#501b1d', '#74252a', '#973537', '#b75248', '#d37867'),
+  bone: R('#453e2b', '#65583d', '#877853', '#a9986c', '#c7b589', '#e0cfa6'),
+  blood: R('#230b0d', '#3c0e0f', '#5c100f', '#7c1814', '#9e1e1a'),
+  ichor: R('#202512', '#353e17', '#525d1b', '#6b7d22', '#8b9d30'),
   // made things
-  steel: R('#1c1e20', '#2b2e31', '#3e4245', '#55595b', '#6f7373', '#8e9190', '#b0b1ab'),
-  olive: R('#1f2019', '#2f3023', '#424430', '#585a40', '#707254', '#8c8d6d'),
-  brass: R('#2a2216', '#43361f', '#5f4c2a', '#7d6538', '#9a8050', '#b69d6f'),
-  paper: R('#6f6858', '#8c8471', '#a69d88', '#bdb59f', '#d2cab4', '#e2dbc6'),
-  ink: R('#14161b', '#1f232b', '#2c323c'),
+  steel: R('#1c1e20', '#2a2f32', '#3d4346', '#54595c', '#6e7373', '#8e9190', '#b1b2aa'),
+  olive: R('#222316', '#35351e', '#4b4c28', '#616436', '#7b7e48', '#999b5f'),
+  brass: R('#31260f', '#4f3e13', '#705719', '#946c21', '#b38737', '#cea457'),
+  paper: R('#726955', '#8f856e', '#aa9e84', '#c1b59b', '#d6cab0', '#e5dbc3'),
+  ink: R('#13161c', '#1e232c', '#2a323e'),
   // the few lit things: used sparingly, never as a fill
-  glowTeal: R('#2c4a46', '#467268', '#6c9e8c', '#9cc5ae', '#cbe2cf'),
-  glowAmber: R('#4a3620', '#77562d', '#a47b42', '#c9a464', '#e4cd98'),
-  stampRed: R('#3b1a18', '#5e2522', '#80332c', '#a2473a'),
+  glowTeal: R('#274f47', '#3e7a6c', '#62a88f', '#95ccb0', '#c7e6ce'),
+  glowAmber: R('#503a1a', '#825722', '#b27d34', '#d7a856', '#eecc8e'),
+  stampRed: R('#401913', '#672319', '#8c2920', '#b13c2b'),
 } as const;
 export type RampName = keyof typeof RAMPS;
 
