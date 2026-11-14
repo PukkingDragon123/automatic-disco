@@ -120,7 +120,7 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
   const beak = has(d, 'beak');
   b.box(head, [0, hh * 0.1, hl * 0.12], [hw, hh, hl * 0.55], 'head');
   // snout + nose
-  const sl = hl * (hop ? 0.36 : amph ? 0.4 : beak ? 0.5 : bear ? 0.62 : cat ? 0.36 : has(d, 'carnassials') ? 0.55 : 0.6);
+  const sl = hl * (hop ? 0.36 : amph ? 0.4 : beak ? 0.5 : bear ? 0.6 : cat ? 0.3 : has(d, 'carnassials') ? 0.55 : 0.6);
   if (cat) { hw = Math.max(hw, hl * 0.78); hh = hw * 0.92; }
   b.box(head, [0, -hh * 0.06, hl * 0.38 + sl * 0.38], [hw * 0.68, hh * 0.52, sl], beak ? 'horn' : 'head');
   if (!beak) b.box(head, [0, hh * 0.08, hl * 0.38 + sl * 0.88], [hw * 0.4, hh * 0.2, hl * 0.06], 'nose');
@@ -160,7 +160,7 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
     const n = sprawl || has(d, 'tail_fin') ? 6 : 4, seg = tailLen / n;
     let p = root, tw = W * 0.42;
     for (let i = 0; i < n; i++) {
-      const tb = b.bone('tail' + i, p, i === 0 ? [0, H * 0.12, -T * 0.25] : [0, -seg * (biped ? 0.04 : sprawl ? 0.07 : 0.14), -seg]);
+      const tb = b.bone('tail' + i, p, i === 0 ? [0, H * (biped || sprawl || has(d, 'tail_fin') ? 0.12 : 0.02), -T * 0.25] : [0, -seg * (biped ? 0.04 : sprawl ? 0.07 : 0.14), -seg]);
       b.box(tb, [0, -seg * 0.06, -seg * 0.5], [tw, tw * 0.9, seg * 1.45], i === 0 ? 'body' : 'limb');
       tw *= n > 4 ? 0.82 : 0.74; p = tb; rig.tail.push(tb);
     }
@@ -193,7 +193,8 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
       } else if (hop) {
         total = startY * 1.12; fx = s * W * 0.52; fz += T * 0.16; pole = [s * 0.7, 0.1, -1];
       } else if (shellV) { fx = s * W * 0.52; total = Math.hypot(fx - hx, startY) * 1.04; pole = [s * 0.4, 0, hind ? 1 : -1]; }
-      const three = (!hind || !bear) && pp.kind !== 'fore' && (runner || hooves || pp.kind === 'bird' || hop);
+      else if (!hind && !biped) total = startY * 1.05; // a forearm under a slightly angled upper arm
+      const three = (!hind || !bear) && pp.kind !== 'fore' && (runner || hooves || pp.kind === 'bird' || hop || (hind && !sprawl && !shellV && !pillars));
       const lens = hop && hind ? [total * 0.34, total * 0.36, total * 0.3] : three ? [total * 0.42, total * 0.36, total * 0.22] : [total * 0.5, total * 0.5];
       const up = b.bone('leg' + pi + s, pp.parent, [hx, hipY, pp.z]);
       const bones = [up];

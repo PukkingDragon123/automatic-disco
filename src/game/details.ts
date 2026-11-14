@@ -242,8 +242,8 @@ const RAIN_FRAG = /* glsl */`
 uniform vec3 uCol;
 varying float vT;
 void main() {
-  float a = vT < 0.18 ? 0.85 : 0.42;
-  gl_FragColor = vec4(uCol * (vT < 0.18 ? 1.25 : 0.85) * a, a);
+  float a = vT < 0.15 ? 0.9 : 0.6;
+  gl_FragColor = vec4(uCol * (vT < 0.15 ? 1.5 : 1.0) * a, a);
 }`;
 
 // ------------------------------------------------------------------------------------------------ per-creature state
@@ -310,7 +310,7 @@ export class Details {
     const seeds = new Float32Array(N * 3); for (let i = 0; i < seeds.length; i++) seeds[i] = Math.random();
     rg.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seeds, 3));
     rg.instanceCount = 0;
-    this.rainU = { uCenter: { value: new THREE.Vector3() }, uBox: { value: new THREE.Vector3(24, 16, 24) }, uFall: { value: new THREE.Vector3(1, -11, 0.4) }, uTime: { value: 0 }, uLen: { value: 0.55 }, uPx: { value: 0.75 }, uRes: { value: new THREE.Vector2(1, 1) }, uCol: { value: new THREE.Color(0.72, 0.8, 0.95) } };
+    this.rainU = { uCenter: { value: new THREE.Vector3() }, uBox: { value: new THREE.Vector3(24, 16, 24) }, uFall: { value: new THREE.Vector3(1, -11, 0.4) }, uTime: { value: 0 }, uLen: { value: 0.8 }, uPx: { value: 0.75 }, uRes: { value: new THREE.Vector2(1, 1) }, uCol: { value: new THREE.Color(0.72, 0.8, 0.95) } };
     this.rainMesh = new THREE.Mesh(rg, new THREE.ShaderMaterial({
       vertexShader: RAIN_VERT, fragmentShader: RAIN_FRAG, uniforms: this.rainU, transparent: true, depthWrite: false, depthTest: true,
       blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
@@ -744,9 +744,9 @@ export class Details {
     const d = w.day, elev = Math.cos((d - 0.25) * TAU);
     const dawn = clamp(1 - Math.abs(((d + 0.5) % 1) - 0.5 - 0.02) / 0.12, 0, 1);
     env.mistY = R.water + 0.15; env.mistH = 0.9 + hum * 1.1;
-    env.mist = (0.012 + hum * 0.07) * (1 + dawn * 1.4 + this.wetGround * 0.8) * (elev < 0 ? 1.3 : 1);
+    env.mist = (0.012 + hum * 0.07) * (1 + dawn * 1.4 + this.wetGround * 0.5) * (elev < 0 ? 1.3 : 1);
     env.patch = 0.75;
-    env.haze = 0.0028 + hum * 0.0035 + this.rain * 0.007;
+    env.haze = 0.0028 + hum * 0.0035 + this.rain * 0.005;
     env.rays = clamp((0.3 + hum * 0.7) * (1 + dawn * 0.6 + (elev < 0.5 ? 0.4 : 0)) * (1 - this.rain * 0.8), 0, 1.2);
     // dew on the morning leaves (and on everything after rain), shimmer over hot dry ground at midday
     env.dew = clamp(dawn * (0.4 + hum) + this.wetGround * 0.5 * (1 - this.rain), 0, 1);
@@ -765,9 +765,9 @@ export class Details {
     U.uTime.value = this.t;
     (U.uRes.value as THREE.Vector2).set(g.engine.w, g.engine.h);
     U.uPx.value = Math.max(0.6, g.engine.h / 900);
-    (U.uCol.value as THREE.Color).setRGB(0.72, 0.8, 0.95).multiply(this.vfx.light);
+    (U.uCol.value as THREE.Color).setRGB(0.8, 0.88, 1.0).multiply(this.vfx.light).multiplyScalar(1.15);
     const maxN = (rm as unknown as { maxN: number }).maxN;
-    (rm.geometry as THREE.InstancedBufferGeometry).instanceCount = Math.floor(maxN * this.rain * clamp(box / 30, 0.5, 1.6) / 1.6);
+    (rm.geometry as THREE.InstancedBufferGeometry).instanceCount = Math.floor(maxN * this.rain * clamp(box / 26, 0.65, 1));
     this.hitAcc += dt * this.rain * 70;
     while (this.hitAcc >= 1) {
       this.hitAcc -= 1;

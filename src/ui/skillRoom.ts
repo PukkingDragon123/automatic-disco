@@ -111,7 +111,7 @@ void main(){
   gl_FragColor = vec4(c, 1.0); gNormal = vec4(0.5, 0.5, 1.0, 33.0);
 }`;
 const PULSE_F = GN_DECL + `uniform float uK; uniform vec3 uCol; varying vec2 vUv;
-void main(){ vec2 q = vUv * 2.0 - 1.0; float r = length(q); float ring = smoothstep(0.1, 0.0, abs(r - 0.82)) ; float a = ring * uK; gl_FragColor = vec4(uCol * a, a); gNormal = vec4(0.0); }`;
+void main(){ vec2 q = vUv * 2.0 - 1.0; float r = length(q); float ring = smoothstep(0.16, 0.0, abs(r - 0.8)); float a = ring * uK; gl_FragColor = vec4(uCol * a * 1.6, a); gNormal = vec4(0.0); }`;
 
 // ------------------------------------------------------------------ the people
 interface Op { rig: Researcher; name: string; home: THREE.Vector3; yaw: number; work: string; t: number; act: string; actT: number; actDur: number; look: THREE.Vector3 | null; pitch: number }
@@ -230,14 +230,14 @@ export class OpsRoom {
     const X0 = -5.6, X1 = 5.6, Z0 = -4, Z1 = 5, H = 3.6;
     k.quad('concrete', [X0, 0, Z1], [X1, 0, Z1], [X1, 0, Z0], [X0, 0, Z0], undefined, 0x6e6c66);
     k.quad('concrete', [X0, H, Z0], [X1, H, Z0], [X1, H, Z1], [X0, H, Z1], undefined, 0x7a7a7a);
-    const wall = (a: V3, b: V3, col = 0xb0aca4) => { k.quad('concrete', [a[0], 0, a[2]], [b[0], 0, b[2]], [b[0], H, b[2]], [a[0], H, a[2]], undefined, col); };
+    const wall = (a: V3, b: V3, col = 0xc4bcb4) => { k.quad('concrete', [a[0], 0, a[2]], [b[0], 0, b[2]], [b[0], H, b[2]], [a[0], H, a[2]], undefined, col); };
     wall([X0, 0, Z1], [X0, 0, Z0]); wall([X1, 0, Z0], [X1, 0, Z1]); wall([X1, 0, Z1], [X0, 0, Z1]);
     // back wall around the window opening
     const WX = 2.3, WY0 = 1.05, WY1 = 2.65;
-    k.quad('concrete', [X0, 0, Z0], [X1, 0, Z0], [X1, WY0, Z0], [X0, WY0, Z0], undefined, 0xb0aca4);
-    k.quad('concrete', [X0, WY1, Z0], [X1, WY1, Z0], [X1, H, Z0], [X0, H, Z0], undefined, 0xb0aca4);
-    k.quad('concrete', [X0, WY0, Z0], [-WX, WY0, Z0], [-WX, WY1, Z0], [X0, WY1, Z0], undefined, 0xb0aca4);
-    k.quad('concrete', [WX, WY0, Z0], [X1, WY0, Z0], [X1, WY1, Z0], [WX, WY1, Z0], undefined, 0xb0aca4);
+    k.quad('concrete', [X0, 0, Z0], [X1, 0, Z0], [X1, WY0, Z0], [X0, WY0, Z0], undefined, 0xc4bcb4);
+    k.quad('concrete', [X0, WY1, Z0], [X1, WY1, Z0], [X1, H, Z0], [X0, H, Z0], undefined, 0xc4bcb4);
+    k.quad('concrete', [X0, WY0, Z0], [-WX, WY0, Z0], [-WX, WY1, Z0], [X0, WY1, Z0], undefined, 0xc4bcb4);
+    k.quad('concrete', [WX, WY0, Z0], [X1, WY0, Z0], [X1, WY1, Z0], [WX, WY1, Z0], undefined, 0xc4bcb4);
     // a painted dado band and floor skirting all round
     for (const [a, b] of [[[X0, 0, Z1], [X0, 0, Z0]], [[X1, 0, Z0], [X1, 0, Z1]], [[X0, 0, Z0], [X1, 0, Z0]]] as [V3, V3][]) {
       const dx = b[0] - a[0], dz = b[2] - a[2], L = Math.hypot(dx, dz), nx = (-dz / L) * 0.012, nz = (dx / L) * 0.012;

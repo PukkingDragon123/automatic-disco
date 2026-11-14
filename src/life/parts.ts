@@ -305,21 +305,20 @@ export function roundEars(S: Ctx, h: HeadCtx, earBone: (s: number) => number = (
  *  from any side, drooping a little under their own length */
 export function whiskers(S: Ctx, h: HeadCtx) {
   const WH = S.fixed('WHISK', 4, 12);
-  const wd = Math.max(0.0035, h.hw * 0.017), w: Wt = [h.iH, 1];
+  const wd = Math.max(0.005, h.hw * 0.034), w: Wt = [h.iH, 1];
   for (const s of [-1, 1]) for (let k = 0; k < 7; k++) {
     const row = k % 3, col = Math.floor(k / 3);
     const root = addV(h.head, [s * h.hw * (0.21 + col * 0.025), -h.hh * (0.03 + row * 0.055), h.z0 + h.sl * (0.74 - col * 0.11)]);
     const out = norm([s, (1 - row) * 0.3 + (hash(k, s + 3) - 0.5) * 0.12, 0.42 - col * 0.18]);
     const L = h.hw * (0.95 + hash(k, s + 7) * 0.4) * (col === 2 ? 0.7 : 1);
     const pts = [0, 0.35, 0.7, 1].map((f) => addV(addV(root, scl(out, L * f)), [0, -L * 0.14 * f * f, 0]));
-    const wid = [wd, wd * 0.8, wd * 0.6, wd * 0.35];
-    blade(S.B, WH, pts, wid, [0, 1, 0], pts.map(() => w), { offset: -0.5 });
-    blade(S.B, WH, pts, wid, norm(cross(out, [0, 1, 0])), pts.map(() => w), { offset: -0.5 });
+    const wid = [wd, wd * 0.62, wd * 0.4, wd * 0.2];
+    blade(S.B, WH, pts, wid, norm(cross(out, norm([0, 1, 0.55]))), pts.map(() => w), { offset: -0.5 });
   }
   S.paints.push(() => {
     // dark at the follicle, then ivory to a bright tip
-    const R = makeRamp(0xd8d0bc, 5, { spread: 0.45 });
-    WH.fill(R, (x, y) => (y < WH.h * 0.12 ? -2 : 2.2 + (y / WH.h) * 1.8 + (x === 0 ? -0.6 : 0)), undefined, 0.2);
+    const R = makeRamp(0xf0ead8, 5, { spread: 0.3 });
+    WH.fill(R, (x, y) => (y < WH.h * 0.06 ? 0.5 : 3 + (y / WH.h) * 1.5), undefined, 0.2);
   });
 }
 
@@ -387,17 +386,18 @@ export function rack(S: Ctx, h: HeadCtx, size: number, big: boolean) {
     : [[0.1, 0.32, 0.9, 0.1], [0.45, 0.3, 0.55, 0], [0.75, 0.26, 0.3, -0.1]];
   for (const s of [-1, 1]) {
     const b0 = addV(h.head, [s * h.hw * 0.27, h.hh * 0.44, -h.hl * 0.02]);
-    const bc: V3[] = [b0, addV(b0, [s * La * 0.17, La * 0.17, -La * 0.13]), addV(b0, [s * La * 0.36, La * 0.46, -La * 0.27]), addV(b0, [s * La * 0.44, La * 0.76, -La * 0.22]), addV(b0, [s * La * 0.4, La * 1.0, -La * 0.02])];
-    const bs = spline(bc, 18), N = bs.pts.length - 1;
-    const rad = (t: number) => r0 * (1 - t * 0.6) * (t < 0.04 ? 1.4 : 1);
+    // the main beam: out and back low over the neck, then rising, its crown swinging forward
+    const bc: V3[] = [b0, addV(b0, [s * La * 0.2, La * 0.1, -La * 0.15]), addV(b0, [s * La * 0.42, La * 0.36, -La * 0.36]), addV(b0, [s * La * 0.52, La * 0.66, -La * 0.36]), addV(b0, [s * La * 0.5, La * 0.92, -La * 0.16]), addV(b0, [s * La * 0.42, La * 1.06, La * 0.06])];
+    const bs = spline(bc, 20), N = bs.pts.length - 1;
+    const rad = (t: number) => r0 * (1 - t * 0.62) * (t < 0.04 ? 1.45 : 1);
     sac(S.B, AN, S.gid(), bs.pts, bs.t.map((t) => [rad(t), rad(t) * 0.86] as [number, number]), bs.pts.map(() => w),
-      { n: 8, bump: (a, t) => (t < 0.3 ? 0.22 * Math.max(0, Math.sin(a * 5 + t * 50)) * (1 - t / 0.3) : 0.04 * Math.sin(a * 4)) });
+      { n: 11, sq: 2, bump: (a, t) => (t < 0.3 ? 0.22 * Math.max(0, Math.sin(a * 5 + t * 50)) * (1 - t / 0.3) : 0.04 * Math.sin(a * 4)) });
     for (const [tt, tl, fwd, outw] of TINES) {
       const k = Math.round(tt * N), p = bs.pts[k], rr = rad(tt), L = La * tl * (0.9 + hash(k, s + 5) * 0.2);
-      const dir = norm([s * outw, 1 - fwd * 0.55, fwd * (tt < 0.2 ? 1.2 : 1)]);
-      // tines curve up toward their tips
-      const pts: V3[] = [addV(p, scl(dir, -rr * 0.5)), addV(p, scl(dir, L * 0.4)), addV(addV(p, scl(dir, L * 0.78)), [0, L * 0.08, 0]), addV(addV(p, scl(dir, L)), [0, L * 0.2, 0])];
-      sac(S.B, AN, S.gid(), pts, [[rr * 0.78, rr * 0.7], [rr * 0.6, rr * 0.54], [rr * 0.38, rr * 0.34], [rr * 0.1, rr * 0.1]], pts.map(() => w), { n: 6, tv: [0.45, 0.3, 0.12, 0] });
+      // tines leave the front of the beam reaching forward, then sweep up toward their tips
+      const dir = norm([s * outw, 0.35 + (1 - fwd) * 0.6, fwd * (tt < 0.2 ? 1.25 : 1.05)]);
+      const pts: V3[] = [addV(p, scl(dir, -rr * 0.4)), addV(p, scl(dir, L * 0.36)), addV(addV(p, scl(dir, L * 0.7)), [0, L * 0.12, 0]), addV(addV(p, scl(dir, L * 0.92)), [0, L * 0.3, 0])];
+      sac(S.B, AN, S.gid(), pts, [[rr * 0.8, rr * 0.72], [rr * 0.58, rr * 0.52], [rr * 0.34, rr * 0.3], [rr * 0.08, rr * 0.08]], pts.map(() => w), { n: 9, sq: 2, tv: [0.45, 0.3, 0.12, 0] });
     }
   }
   S.paints.push(() => {

@@ -125,12 +125,12 @@ void main() {
       float lum = dot(col, vec3(0.3, 0.59, 0.11));
       col = mix(vec3(lum), col, 1.0 + 0.3 * wk) * (1.0 - 0.36 * wk);
       vec2 wp = (floor(P.xz * 32.0) + 0.5) / 32.0;
-      float pn = vn2(wp * 0.42 + 3.7) * 0.62 + vn2(wp * 1.25 - 1.9) * 0.38, thr = 1.0 - uWet * 0.4;
+      float pn = vn2(wp * 0.42 + 3.7) * 0.62 + vn2(wp * 1.25 - 1.9) * 0.38, thr = 1.0 - uWet * 0.3;
       vec3 rr = reflect(rd, vec3(0.0, 1.0, 0.0));
       if (N0.y > 0.985 && pn > thr) {
         vec3 sky = mix(uHazeCol, uSkyCol, smoothstep(0.0, 0.7, rr.y));
         float fres = 0.3 + 0.7 * pow(1.0 - max(0.0, -rd.y), 3.0);
-        vec3 pc = mix(col * 0.5, sky, 0.45 * fres + 0.2) + uSunCol * pow(max(0.0, dot(rr, uSunDir)), 160.0) * 2.5;
+        vec3 pc = mix(col * 0.42, sky * 0.75, 0.38 * fres + 0.12) + uSunCol * pow(max(0.0, dot(rr, uSunDir)), 160.0) * 2.5;
         if (uRain > 0.01) {
           vec2 q = wp * 2.3, ci = floor(q), f = fract(q) - 0.5 - (vec2(h21(ci), h21(ci + 5.3)) - 0.5) * 0.45;
           float tc = uTime * 1.15 + h21(ci + 2.7), ph = fract(tc);

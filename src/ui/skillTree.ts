@@ -78,7 +78,8 @@ export class SkillTree implements Screen {
     x.addEventListener('click', (e) => { e.stopPropagation(); this.close(); });
     if (this.compact) {
       this.root.classList.add('compact');
-      this.hint.innerHTML = 'DRAG LOOK · PINCH LEAN IN · TAP A LIT ITEM';
+      this.hint.innerHTML = 'DRAG \u00B7 PINCH \u00B7 TAP AN ITEM';
+      this.cam.dist = this.camGoal.dist = innerWidth < innerHeight ? 3.0 : 2.4;
       this.drawer = el('div', 'sk3-card', this.root);
       this.bar = el('div', 'sk3-bar', this.root);
       const b = (label: string, cls: string, f: () => void) => { const e = el('div', 'sk3-btn ' + cls, this.bar!, label); e.addEventListener('pointerdown', (ev) => ev.stopPropagation()); e.addEventListener('click', (ev) => { ev.stopPropagation(); f(); }); return e; };
@@ -140,7 +141,7 @@ export class SkillTree implements Screen {
     const same = (this.card.lines[1]?.t ?? '') === (lines[1]?.t ?? '');
     this.card = { lines, key, n: same ? this.card.n : 0, total: lines.reduce((a, l) => a + l.t.length + 1, 0), drawn: -1 };
     if (same) this.card.n = Math.min(this.card.n, this.card.total);
-    if (this.drawer) this.drawer.style.display = id ? '' : 'none';
+    if (this.drawer) this.drawer.style.display = id ? 'block' : 'none';
   }
   private updateCard(force = false) { this.setCard(this.hover ?? this.sel); if (force) this.card.drawn = -1; }
   private typeCard(dt: number) {

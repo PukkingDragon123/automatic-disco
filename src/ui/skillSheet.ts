@@ -489,7 +489,7 @@ export function sheetBase(): Sk {
   for (let i = 0; i < 8; i++) { const x = 30 + ((SW - 60) * (i + 0.5)) / 8; s.text(String(8 - i), x, 21, 6, { align: 'c' }); s.text(String(8 - i), x, SH - 27, 6, { align: 'c' }); }
   for (let i = 0; i < 4; i++) { const y = 30 + ((SH - 60) * (i + 0.5)) / 4; s.text('DCBA'[i], 24, y - 3, 6, { align: 'c' }); s.text('DCBA'[i], SW - 24, y - 3, 6, { align: 'c' }); }
   for (const R of REGIONS) s.text(R.title, R.x + 4, R.y + R.h - 10, 7.5, { slant: 0.06 });
-  s.text('VIEW A  -  EXPLODED ASSEMBLY, UNIT 07  -  SCALE 1:4', VIEW_A.x + VIEW_A.w / 2, VIEW_A.y + VIEW_A.h - 2, 8, { align: 'c' });
+  s.text('VIEW A  -  EXPLODED ASSEMBLY, UNIT 07  -  SCALE 1:4', VIEW_A.x + VIEW_A.w / 2 + 40, VIEW_A.y + VIEW_A.h + 2, 7.5, { align: 'c' });
   s.line(AX, 34, AX, 640, 'c');
   return s;
 }

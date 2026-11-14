@@ -6,7 +6,8 @@
 .sk3-close { position: absolute; right: 14px; top: 12px; padding: 5px 10px 4px; background: rgba(217, 210, 191, 0.9); color: #3b3a36; font-size: 15px; letter-spacing: 1px; cursor: pointer; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45); transform: rotate(1.2deg); }
 .sk3-close:hover { background: #e8e1cc; color: #b8382e; }
 @keyframes sk3-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
-.sk3.compact .sk3-hint { bottom: auto; top: 12px; left: 12px; transform: none; font-size: 12px; animation: none; }
+.sk3.compact .sk3-hint { bottom: auto; top: 12px; left: 10px; transform: none; font-size: 12px; animation: none; }
+.sk3.compact .sk3-close { top: 40px; right: 10px; font-size: 12px; }
 .sk3-card { position: absolute; left: 10px; right: 10px; bottom: 64px; padding: 10px 12px 8px; background: #d9d2bf linear-gradient(transparent 23px, rgba(122, 150, 170, 0.35) 24px) 0 26px / 100% 24px; border-top: 3px solid rgba(184, 56, 46, 0.55); color: #3b3a36; font-size: 15px; line-height: 24px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5); pointer-events: none; max-height: 46vh; overflow: hidden; display: none; }
 .sk3-card .big { font-size: 22px; }
 .sk3-card .red { color: #b8382e; }

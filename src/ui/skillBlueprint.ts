@@ -128,8 +128,7 @@ export class Blueprint {
   }
   /** APPROVED stamp over the bottom-right of the part (s = scale for the thump, a = ink) */
   stamp(g: CanvasRenderingContext2D, n: NodeDef, s: number, a: number) {
-    const b = n.sk.bbox(), img = stampArt(n.item), w = n.chassis ? 62 : 52, h = (w * img.height) / img.width;
-    const x = n.chassis ? n.lx + (n.la === 'r' ? -w * 0.4 : n.la === 'l' ? w * 0.6 : 0) : b.x + b.w - w * 0.38, y = n.chassis ? n.ly + 26 : b.y + b.h - h * 0.15;
+    const img = stampArt(n.item), w = n.chassis ? 56 : 48, h = (w * img.height) / img.width, [x, y] = this.stampAt(n.id);
     const rot = (hashf(n.item, 1, 2) - 0.5) * 0.5;
     g.save(); g.translate(x, y); g.rotate(rot); g.scale(s, s * (s > 1 ? 0.92 : 1)); g.globalAlpha = a;
     g.drawImage(img, -w / 2, -h / 2, w, h);
@@ -186,10 +185,10 @@ export class Blueprint {
   }
   circleOn(id: string, p: number, num: number) { const n = NODES[id]; if (!n) return; this.og.setTransform(this.ok, 0, 0, this.ok, 0, 0); this.redCircle(this.og, n, p, p >= 1 ? num : 0); }
   stampOn(id: string, s: number, a: number) { const n = NODES[id]; if (!n) return; this.og.setTransform(this.ok, 0, 0, this.ok, 0, 0); this.stamp(this.og, n, s, a); }
-  /** where on the sheet the stamp lands for an item (sheet units) */
+  /** where on the sheet the stamp lands for an item (sheet units): over the lower right of the part */
   stampAt(id: string): [number, number] {
-    const n = NODES[id], b = n.sk.bbox(), w = n.chassis ? 62 : 52;
-    return n.chassis ? [n.lx + (n.la === 'r' ? -w * 0.4 : n.la === 'l' ? w * 0.6 : 0), n.ly + 26] : [b.x + b.w - w * 0.38, b.y + b.h];
+    const n = NODES[id], b = n.sk.bbox(), w = n.chassis ? 56 : 48;
+    return [Math.min(b.x + b.w - w * 0.3, b.x + b.w * 0.8), b.y + b.h * 0.72];
   }
 }
 
