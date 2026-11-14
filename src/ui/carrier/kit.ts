@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { Builder, bendPath, TAU, type Skin, type V } from './geo';
 import type { FxReg } from './fx';
+import { PPM } from './atlas';
 
 export const V3 = THREE.Vector3;
 export type SkinFn = (name: string, ppm?: number, bucket?: string) => Skin;
@@ -88,19 +89,24 @@ export function dish(B: Builder, s: SkinFn, R: number, o: { feed?: boolean; ribs
     B.at(0, fy, 0); B.cyl(s('brassC', 4), 0.18, 0.3, 0.5, 8); B.pop();
   }
 }
-/** a louvred vent box on a wall (front face = local +z) */
-export function ventBox(B: Builder, s: SkinFn, w: number, h: number, kind = 0) {
+/** a louvred vent box on a wall (front face = local +z); always 2 x 1.25 m: the art's own pixel size */
+export function ventBox(B: Builder, s: SkinFn, _w = 2, _h = 1.25, kind = 0) {
+  const w = 2, h = 1.25;
   B.box(s('hullB', 16), w + 0.2, h + 0.2, 0.3, { bev: 0.06 });
   B.at(0, 0, 0.16); B.panel(s('vent' + kind, 1), w, h); B.pop();
 }
-/** a numbered hatch plate on a wall (front = local +z) */
-export function hatch(B: Builder, s: SkinFn, n: number, size = 3) {
+/** a numbered hatch plate on a wall (front = local +z); 3 m square, the art's own pixel size */
+export function hatch(B: Builder, s: SkinFn, n: number, _size = 3) {
+  const size = 3;
   B.box(s('hullB', 16), size + 0.3, size + 0.3, 0.2, { bev: 0.08 });
   B.at(0, 0, 0.11); B.panel(s('hatch' + n, 1), size, size); B.pop();
 }
-/** a decal (transparent lettering / roundel) on a surface: centre, outward normal, width (height from the art), up in the surface */
-export function decal(B: Builder, s: SkinFn, name: string, at: V, n: V, w: number, up = new V3(0, 1, 0)) {
-  const sk = s(name, 1, 'd'), aspect = sk.r[2] / sk.r[3];
+/**
+ * A decal (transparent lettering / roundel) on a surface: centre, outward normal, up in the surface. Its size
+ * comes from the art (pixels / PPM) so every stencil on the ship has the same pixel size; w is ignored.
+ */
+export function decal(B: Builder, s: SkinFn, name: string, at: V, n: V, _w = 0, up = new V3(0, 1, 0)) {
+  const sk = s(name, 1, 'd'), aspect = sk.r[2] / sk.r[3], w = (sk.px?.[0] ?? 16) / PPM;
   const z = n.clone().normalize(), x = up.clone().cross(z).normalize(), y = z.clone().cross(x);
   B.push(new THREE.Matrix4().makeBasis(x, y, z).setPosition(at.clone().addScaledVector(z, 0.04)));
   B.panel(sk, w, w / aspect);
@@ -117,8 +123,8 @@ export function craft(B: Builder, s: SkinFn, label: string) {
   B.loft(sk, [st(-6, 1.5, 1.4, -1.0), st(-3.5, 2.0, 1.9, -1.2), st(1.5, 2.0, 1.8, -1.2), st(4.2, 1.5, 1.2, -1.0), st(6.0, 0.7, 0.5, -0.7), st(6.9, 0.2, 0.0, -0.4)]);
   // red band, canopy glazing
   B.at(0, 0.3, 0.5); B.box(red, 4.08, 3.0, 0.6, { skip: 'pyny' }); B.pop();
-  for (const sx of [-1, 1]) { B.push(new THREE.Matrix4().makeRotationY(sx * Math.PI / 2 - sx * 0.18).setPosition(sx * 1.66, 1.15, 4.0)); B.panel(s('winA', 16), 2.0, 0.6, 0.12); B.pop(); }
-  B.at(0, 1.4, 3.6, -0.75, 0, 0); B.panel(s('winBridge', 16), 1.6, 0.9, 0.1); B.pop();
+  for (const sx of [-1, 1]) { B.push(new THREE.Matrix4().makeRotationY(sx * Math.PI / 2 - sx * 0.18).setPosition(sx * 1.66, 1.15, 4.0)); B.panel(s('port', 16), 2.0, 1.0); B.pop(); }
+  B.at(0, 1.4, 3.6, -0.75, 0, 0); B.panel(s('glass', 1), 1.6, 0.9); B.pop();
   // delta wings with tip fins, twin rockets
   for (const sx of [-1, 1]) {
     const W = [[1.8, 1.2], [3.9, -3.6], [3.9, -5.4], [1.8, -5.6]];

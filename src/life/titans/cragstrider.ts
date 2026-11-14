@@ -107,6 +107,10 @@ export function cragstrider(d: Design, rig: Rig, rest: V3[]) {
     [0.36, 0.5, sv(2) + 0.03, sv(3) + 0.05, 0.34], [0.5, 0.64, sv(2) + 0.03, sv(3) + 0.05, 0.34], [0.24, 0.37, sv(2) + 0.06, sv(3) + 0.04, 0.4], [0.63, 0.76, sv(2) + 0.06, sv(3) + 0.04, 0.4]];
   crown.forEach(([a0, a1, b0, b1, h], k) => body.add(shell({ name: 'crown' + k, host: sk, u: [a0, a1], v: [b0, b1], nu: 3, nv: 3, levels: 1, sink: 0.1, rim: 2, ridges: [0.5],
     lift: (a, b) => h * (0.45 + 0.55 * Math.sin(Math.PI * a)) * (0.6 + 0.4 * b), skin: () => [iH, 1], paint: scute, k: 1.6 })));
+  // a ridged bony muzzle plate down the snout, nostril pits either side of it
+  body.add(shell({ name: 'muzzle', host: sk, u: [0.3, 0.7], v: [sv(4) + 0.02, 0.99], nu: 6, nv: 4, sink: 0.08, rim: 2, ridges: [0.2, 0.5, 0.8], rings: [0.35, 0.7], curl: { b1: false }, levels: 1,
+    lift: (a, b) => 0.1 + 0.16 * Math.sin(Math.PI * a) * (1 - b * 0.4), skin: () => [iH, 1], paint: scute, k: 1.6 }));
+  for (const s of [-1, 1] as const) { const q = gridSurf(sk.m, sk.grids[0], su(2, s), 0.93); pitsH.push({ c: q.p, r: 0.13, slit: true }); }
   // mandible plates: two hinged blades of bone either side of the mouth, on the jaw
   for (const s of [-1, 1] as const) {
     const q = gridSurf(sk.m, sk.grids[0], su(5, s), sv(5));

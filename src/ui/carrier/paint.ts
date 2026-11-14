@@ -3,7 +3,7 @@
 // face (with stencil bridges and flaked paint) for the hull lettering. Colours come only from palette ramps.
 import { RAMPS } from '../../art/palette';
 
-export const AW = 2048, AH = 2048;
+export const AW = 1024, AH = 1024;
 
 export interface Reg { name: string; x: number; y: number; w: number; h: number; pad: number; tile: boolean; decal: boolean }
 

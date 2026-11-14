@@ -179,7 +179,7 @@ export function grovebacker(d: Design, rig: Rig, rest: V3[]) {
     const nr = kind === 'tree' ? 6 : kind === 'young' ? 4 : kind === 'sapling' ? 2 : 0;
     for (let r = 0; r < nr; r++) {
       const a = (r / nr) * Math.PI * 2 + h3(k, r, seed) * 0.8, du = Math.cos(a) * 0.045 * (0.6 + sz), dv = Math.sin(a) * step * 0.55 * (0.6 + sz);
-      const pts: V3[] = [0, 0.35, 0.7, 1].map((t) => { const q = shellAt(u + du * t, v + dv * t, 0.08 * (1 - t) + 0.02); return [q.p[0], q.p[1] + (t === 0 ? 0.25 : 0), q.p[2]] as V3; });
+      const pts: V3[] = [0, 0.35, 0.7, 1].map((t) => { const q = shellAt(u + du * t, v + dv * t, -0.32 + 0.12 * (1 - t)); return [q.p[0], q.p[1] + (t === 0 ? 0.2 : 0), q.p[2]] as V3; });
       body.add(stalk({ name: 'root' + k + '_' + r, path: curve(pts, 6), r: (t) => (0.1 + sz * 0.14) * (1 - t * 0.8), around: 5, levels: 1, skin: () => w, paint: rootLook, k: 1 }));
     }
     const bone = pickBone(c), br = rest[bone];

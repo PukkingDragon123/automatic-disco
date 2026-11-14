@@ -32,8 +32,10 @@ export const L = {
   gravel: 20, moss: 21, mossSide: 22, creep0: 23, creep1: 24, creep2: 25, creepSide: 26, dryA: 27, drySide: 28, mudSide: 29, crater: 30,
   /** stony soil: the stonier variant of soil (scree, worn ground) */
   soilB: 31,
+  /** burnt ground: char, ash drifts, charred sticks, ember specks (terrain.scorch) */
+  ash: 32,
 } as const;
-export const LAYERS = 32;
+export const LAYERS = 33;
 
 /** surface block kinds */
 export const enum B { GRASS, DRY, SOIL, ROCK, SAND, MUD, CLAY, SNOW, BASALT, ORE, CRYSTAL, LITTER, GRAVEL, CRATER }
@@ -166,48 +168,51 @@ function blade1(pc: PixelCanvas, x: number, y: number, len: number, lean: number
   }
 }
 /**
- * Turf: dark earth plates under, a thatch of short back blades, then tussocks drawn back to front (the nearer one
- * overlapping), each a fan of blades with a dark root cluster, lit tips and the odd sun-cured one; flower specks and
- * clover where it is lush, fallen straw where it is dry. lush 0..1: 0 thin and dry, 1 dense and in flower.
+ * Turf: a calm floor of broad plates in two neighbouring greens (bare earth showing where it is thin), short blade
+ * marks scattered on it, then distinct tussocks spaced apart and drawn back to front: a fan of blades from a shaded
+ * root, the sun side lit, the shadow side edged in the darkest step, a bright tip (sun-cured on some). Flower specks
+ * and clover where it is lush, fallen straw where it is dry. lush 0..1: 0 thin and dry, 1 dense and in flower.
  */
 function grassTop(pc: PixelCanvas, pal: Palette, base: number, seed: number, lush: number) {
   const r = new Rand(seed), S = RF(pal.soil), kin = kinRamps(base), G = kin[0], D = RF(pal.grassDry);
-  plates(pc, r, 9, S, [1, 1, 2]);
-  // a few pebbles showing through the thin places
-  for (let i = 0; i < Math.round(3 * AREA * (1.3 - lush)); i++) stone(pc, r.int(0, T - 1), r.int(0, T - 1), r.range(3, 4.5), r.range(2.5, 3.5), rampNamed('stone'), r, S[0]);
-  // thatch: short dark blades, every which way
-  for (let i = 0; i < Math.round((150 + lush * 120) * AREA); i++) {
-    const R0 = r.chance(0.18) ? kin[1] : r.chance(0.1 + (1 - lush) * 0.25) ? D : G;
-    blade1(pc, r.int(0, T - 1), r.int(0, T - 1), r.int(2, 3), r.pick([-1, 0, 0, 1]), R0, 1, R0[3]);
-  }
-  // tussocks, back (top) to front
+  const P = plates(pc, r, 15, G, [2, 2, 3]);
+  // bare earth in the thin places (whole plates, so the patches have drawn edges)
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) if ((((P.map[y * T + x] * 2654435761) >>> 0) >>> 24) / 256 < 0.3 - lush * 0.26) pc.set(x, y, S[(P.map[y * T + x] & 1) + 2]);
+  // blade marks on the floor: two-pixel strokes, a lit one over a shaded one
+  for (let i = 0; i < Math.round((40 + lush * 30) * AREA); i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); pc.set(x, y, G[4]); pc.set(x, y + 1, G[1]); }
+  // tussocks, kept apart, back (top) to front
   const tufts: { x: number; y: number; n: number; R: number[] }[] = [];
-  for (let i = 0; i < Math.round((22 + lush * 16) * AREA); i++) tufts.push({ x: r.int(0, T - 1), y: r.int(0, T - 1), n: r.int(4, 8), R: r.chance(0.2) ? kin[1] : r.chance(0.08) ? kin[2] : G });
+  const want = Math.round((9 + lush * 9) * AREA);
+  for (let t = 0; tufts.length < want && t < want * 6; t++) {
+    const x = r.int(0, T - 1), y = r.int(0, T - 1);
+    if (tufts.some((q) => Math.abs(q.x - x) < 4 && Math.abs(q.y - y) < 4)) continue;
+    tufts.push({ x, y, n: r.int(3, 6), R: r.chance(0.15) ? kin[1] : r.chance(0.12 + (1 - lush) * 0.3) ? D : G });
+  }
   tufts.sort((a, b) => a.y - b.y);
   for (const t of tufts) {
-    // the root cluster in shadow
-    pc.set(t.x, t.y + 1, S[0]); pc.set(t.x + 1, t.y + 1, S[0]); pc.set(t.x - 1, t.y + 1, t.R[0]);
-    const reach = r.int(4, 7);
+    // the root's shadow, falling down and to the right
+    pc.set(t.x, t.y + 1, t.R[0]); pc.set(t.x + 1, t.y + 1, t.R[0]); pc.set(t.x + 2, t.y + 1, t.R[1]);
+    const reach = r.int(4, 6);
     for (let b = 0; b < t.n; b++) {
-      const fan = (b - (t.n - 1) / 2) * 0.9, len = Math.max(3, Math.round(reach * r.range(0.7, 1.05) - Math.abs(fan) * 0.5));
-      const dry = r.chance(0.1 + (1 - lush) * 0.35);
-      blade1(pc, t.x + Math.round(fan * 0.6), t.y, len, fan * 0.5, t.R, b % 2 ? 2 : 3, dry ? D[5] : t.R[6]);
+      const fan = (b - (t.n - 1) / 2) * 1.1, len = Math.max(3, Math.round(reach - Math.abs(fan) * 0.7 + r.range(-0.5, 0.5)));
+      const sun = fan < 0, dry = r.chance(0.08 + (1 - lush) * 0.3);
+      blade1(pc, t.x + Math.round(fan), t.y, len, fan * 0.45, t.R, sun ? 4 : 2, dry ? D[5] : t.R[sun ? 6 : 5]);
     }
   }
-  // flower specks: a four-petal cross round an eye, lit on its upper-left petal
-  if (lush > 0.4) for (let i = 0; i < Math.round(1.6 * AREA * lush); i++) {
+  // flower specks: a four-petal cross round an eye
+  if (lush > 0.4) for (let i = 0; i < Math.round(1.2 * AREA * lush); i++) {
     const F = RF(r.pick(pal.bloom)), x = r.int(1, T - 2), y = r.int(1, T - 2), O = rampNamed('ochre');
     pc.set(x, y - 1, F[5]); pc.set(x - 1, y, F[5]); pc.set(x + 1, y, F[4]); pc.set(x, y + 1, F[3]); pc.set(x, y, O[5]); pc.set(x + 1, y + 1, F[1]);
   }
   // clover: three leaflets round a dark heart
   const Cl = rampNamed('sage');
-  for (let i = 0; i < Math.round(1.2 * AREA * lush); i++) {
+  for (let i = 0; i < Math.round(0.8 * AREA * lush); i++) {
     const x = r.int(1, T - 2), y = r.int(1, T - 2);
     pc.set(x, y - 1, Cl[4]); pc.set(x - 1, y, Cl[4]); pc.set(x + 1, y, Cl[3]); pc.set(x - 1, y - 1, Cl[5]); pc.set(x + 1, y - 1, Cl[3]); pc.set(x, y, Cl[1]); pc.set(x, y + 1, Cl[2]);
   }
   // fallen straw where it is dry
-  for (let i = 0; i < Math.round(2.5 * AREA * (1.2 - lush)); i++) {
-    let x = r.int(0, T - 1), y = r.int(0, T - 1); const dx = r.pick([-1, 1]), l = r.int(4, 8);
+  for (let i = 0; i < Math.round(2 * AREA * (1.2 - lush)); i++) {
+    let x = r.int(0, T - 1), y = r.int(0, T - 1); const dx = r.pick([-1, 1]), l = r.int(4, 7);
     for (let j = 0; j < l; j++) { pc.set(x, y, D[5]); pc.set(x, y + 1, D[2]); x += dx; if (r.chance(0.3)) y += r.pick([-1, 1]); }
   }
   tidy(pc);
@@ -377,6 +382,26 @@ function snow(pc: PixelCanvas, seed: number) {
   tidy(pc);
 }
 
+// ================================================================================================ burnt ground
+/** burnt ground: angular char plates, drifts of pale ash, charred sticks, the odd glowing ember (emissive: the terrain
+ *  lets embers glow only while the burn is fresh) */
+function ash(pc: PixelCanvas, seed: number) {
+  const r = new Rand(seed), C = rampNamed('basalt'), A = rampNamed('stone'), Em = rampNamed('glowAmber'), In = rampNamed('ink');
+  plates(pc, r, 9, C, [1, 1, 2, 2]);
+  // ash drifts: flat pale clusters, lit on their upper left
+  for (let i = 0; i < 4 * AREA; i++) { polyFill(pc, blobPts(r.range(0, T), r.range(0, T), r.range(2, 6), r.range(1.5, 3.5), 6, r), r.chance(0.5) ? A[4] : A[3]); }
+  for (let i = 0; i < 6 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); pc.set(x, y, A[5]); pc.set(x + 1, y, A[4]); }
+  // charred sticks: a black stroke with a lit grey edge and a glowing tip now and then
+  for (let i = 0; i < 1.5 * AREA; i++) {
+    let x = r.int(0, T - 1), y = r.int(0, T - 1); const dx = r.pick([-1, 1]), l = r.int(4, 9);
+    for (let j = 0; j < l; j++) { pc.set(x, y, In[0]); pc.set(x, y - 1, C[3]); x += dx; if (r.chance(0.25)) y += r.pick([-1, 1]); }
+    if (r.chance(0.4)) pc.set(x, y, Em[3], 150);
+  }
+  // embers: two-pixel clusters, glowing (alpha < 255)
+  for (let i = 0; i < 3 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); pc.set(x, y, Em[4], 120); pc.set(x + 1, y, Em[2], 170); }
+  tidy(pc);
+}
+
 // ================================================================================================ the rest
 /** basalt: column ends as bevelled polygons (top), column flanks with cross joints (side) */
 function basalt(pc: PixelCanvas, c: number, seed: number, side: boolean) {
@@ -542,6 +567,7 @@ export function buildBlockTexture(pal: Palette, seed: number): { tex: THREE.Data
   paint(L.mudSide, flat(pal.mud));
   paint(L.crater, (p) => crater(p, s + 25));
   paint(L.soilB, (p) => soilTop(p, pal.soil, s + 26, 2.4));
+  paint(L.ash, (p) => ash(p, s + 27));
   const tex = new THREE.DataArrayTexture(data, T, T, LAYERS);
   tex.format = THREE.RGBAFormat;
   tex.type = THREE.UnsignedByteType;

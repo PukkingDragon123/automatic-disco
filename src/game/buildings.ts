@@ -9,6 +9,7 @@ import { gbuf, F_SEL, F_HOVER, F_ENEMY } from '../gfx/gbuf';
 import { VEYR } from '../world/palette';
 import type { Faction } from './species';
 import type { Res } from './skills';
+import { makeCorePod } from './podCore';
 
 export type BKind = 'core' | 'spire' | 'tap' | 'brood' | 'vault' | 'maw' | 'thorn' | 'coil' | 'lure' | 'spore';
 export interface BDef {
@@ -322,6 +323,8 @@ float glowB = (1.0 - bt.a) * (1.1 + uPulse * 0.9 * step(0.5, vPart)) * uGlowMul;
     this.mesh.rotation.y = def.kind === 'core' ? 0 : ((x * 13 + z * 7) % 6) * 0.5;
     this.mesh.castShadow = true; this.mesh.receiveShadow = true;
     this.mesh.userData.building = this;
+    // the Veyr's core is the U.S.P.C. drop pod it came down in (game/podCore.ts); the rock stays as an invisible hit shape
+    if (def.kind === 'core' && faction === 'veyr') { m.visible = false; const p = makeCorePod(); p.group.position.y = 0.6; this.mesh.add(p.group); this.mesh.userData.podGroup = p.group; }
   }
   get maxHp() { return this.def.hp; }
   sync(dt: number, t: number) {

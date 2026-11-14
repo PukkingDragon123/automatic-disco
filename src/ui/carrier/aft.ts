@@ -46,7 +46,7 @@ export function buildAft(C: Ctx): AftOut {
   B.in(0, yc, (z0 + z1) / 2, Math.PI / 2, 0, 0, () => B.cyl(hullA, 2.3, 2.3, z0 - z1, 16, { caps: false }));
   L.in(0, yc, (z0 + z1) / 2, Math.PI / 2, 0, 0, () => L.cyl(hullA, 2.3, 2.3, z0 - z1, 8, { caps: false }));
   for (let z = z0 - 4; z > z1; z -= 6) B.in(0, yc, z, Math.PI / 2, 0, 0, () => B.cyl(gun, 2.55, 2.55, 0.5, 16));
-  for (const sx of [-1, 1]) B.in(sx * 2.32, yc + 0.4, (z0 + z1) / 2 + 8, 0, sx * Math.PI / 2, 0, () => B.panel(s('port', 16), 40, 0.7, 40 * 16 / 64));
+  for (const sx of [-1, 1]) B.in(sx * 2.32, yc + 0.4, (z0 + z1) / 2 + 8, 0, sx * Math.PI / 2, 0, () => B.panel(s('port', 16), 40, 1.0));
   for (const sx of [-1, 1]) {
     pipe(B, s('pipeRed', 32), gun, [new V3(sx * 3.1, yc + 3.1, z0 + 2), new V3(sx * 3.1, yc + 3.1, z1 - 1)], 0.5, 3);
     pipe(B, s('pipeBrass', 32), gun, [new V3(sx * 3.3, yc - 3.4, z0 + 2), new V3(sx * 3.3, yc - 3.4, z1 - 1)], 0.42, 3);
@@ -70,8 +70,6 @@ export function buildAft(C: Ctx): AftOut {
   flood(C, new V3(hw + 0.6, top + 0.8, -94), new V3(9, yc + 8, -101), { len: 12, spread: 0.3 });
   flood(C, new V3(-hw - 0.6, bot - 0.8, -94), new V3(-9, yc - 8, -101), { len: 12, spread: 0.3 });
   for (const z of [-62, -96, -122]) for (const sx of [-1, 1]) fx.halos.push({ p: new V3(sx * (hw + 0.6), top + 0.6, z), col: NAV.warm, size: 0.8, mode: 0, ph: 0 });
-  decal(B, s, 'tProp', new V3(-hw - 0.47, yc, -108), new V3(-1, 0, 0), 9);
-  decal(B, s, 'tProp', new V3(hw + 0.47, yc, -108), new V3(1, 0, 0), 9);
 
   // ================================================================ the habitat ring: hub (static), ring and spokes (rotating)
   const HZ = -68;
@@ -85,8 +83,8 @@ export function buildAft(C: Ctx): AftOut {
       r.push(new THREE.Matrix4().makeRotationZ(a).setPosition(0, 0, 0));
       r.at(R0, 0, 0, 0, 0, 0);
       r.box(s('olive', 16), 3.6, chord, 5.2, { bev: 0.25, side: s('olive', 16) });
-      r.at(1.82, 0, 0, 0, Math.PI / 2, Math.PI / 2); r.panel(s('winHab', 16), 4.4, 1.2, 4.4 * 16 / 128); r.pop();
-      for (const sz of [-1, 1]) { r.at(0.3, 0, sz * 2.62, 0, sz > 0 ? 0 : Math.PI, Math.PI / 2); r.panel(s('port', 16), chord - 1.2, 0.8, (chord - 1.2) * 16 / 64); r.pop(); }
+      r.at(1.82, 0, 0, 0, Math.PI / 2, Math.PI / 2); r.panel(s('winHab', 16), 4.4, 1.25); r.pop();
+      for (const sz of [-1, 1]) { r.at(0.3, 0, sz * 2.62, 0, sz > 0 ? 0 : Math.PI, Math.PI / 2); r.panel(s('port', 16), chord - 1.2, 1.0); r.pop(); }
       r.pop();
       // joint collar between segments
       r.push(new THREE.Matrix4().makeRotationZ(a + dA / 2)); r.at(R0, 0, 0); r.box(s('hullB', 16), 4.1, 0.9, 5.8, { bev: 0.15 }); r.pop(); r.pop();
@@ -100,7 +98,7 @@ export function buildAft(C: Ctx): AftOut {
       r.beam(steel, d.clone().multiplyScalar(5).add(side), d.clone().multiplyScalar(16.8).add(side), 0.08);
     }
     r.at(0, 0, 0, Math.PI / 2, 0, 0); r.cyl(gun, 4.9, 4.9, 3.0, 18); r.pop();
-    for (const a of [0.3, 2.2, 4.0]) { r.push(new THREE.Matrix4().makeRotationZ(a)); decal(r, s, 'tHab', new V3(R0 - 1.1, 0, 2.66), new V3(0, 0, 1), 5, new V3(1, 0, 0)); r.pop(); }
+    for (const a of [0.3, 2.2, 4.0]) { r.push(new THREE.Matrix4().makeRotationZ(a)); decal(r, s, 'tHab', new V3(R0 - 1.0, 0, 2.66), new V3(0, 0, 1), 0, new V3(1, 0, 0)); r.pop(); }
   }
   L.in(0, yc, HZ, 0, 0, 0, () => { for (let i = 0; i < 10; i++) { L.push(new THREE.Matrix4().makeRotationZ(i * TAU / 10)); L.at(18.6, 0, 0); L.box(s('olive', 16), 3.6, 11.8, 5.2); L.pop(); L.pop(); } });
 
@@ -121,7 +119,6 @@ export function buildAft(C: Ctx): AftOut {
         B.beam(gun, new V3(sx * hw, yc + 3, z), new V3(tx - sx * 1.2, yc + 2.0, z), 0.25); B.beam(gun, new V3(sx * hw, yc - 3, z), new V3(tx - sx * 1.2, yc - 2.0, z), 0.25);
       }
       pipe(B, s('pipeRed', 32), gun, [new V3(tx, yc - 2.5, tz1 - 1.5), new V3(tx, yc - 3.8, tz1 - 3), new V3(sx * 6.6, yc - 3.8, tz1 - 3), new V3(sx * 6.6, yc - 3.8, -101)], 0.32, 3, 0.7);
-      decal(B, s, 'tLH2', new V3(tx + sx * 2.52, yc + 0.2, (tz0 + tz1) / 2 + 3), new V3(sx, 0, 0), 2.6);
       B.in(tx, yc + 2.55, tz0 - 4, 0, 0, 0, () => { B.cyl(gun, 0.4, 0.4, 0.6, 8); B.at(0, 0.45, 0); B.cyl(s('redC', 8), 0.25, 0.25, 0.3, 8); B.pop(); });
     }
     L.boxAt(s('contOlive'), -2.8, top + 0.65, -91, 2.8, top + 5.8, -77); L.boxAt(s('contBlue'), -2.8, bot - 3.3, -90, 2.8, bot - 0.6, -78);

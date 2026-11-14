@@ -10,7 +10,7 @@ const V3 = THREE.Vector3;
 export const TAU = Math.PI * 2;
 
 /** an atlas rect (u0, v0, du, dv in 0..1) and its tile repeats per metre (su, sv); b is the bucket (material) */
-export interface Skin { r: readonly [number, number, number, number]; su: number; sv: number; b: string; ou?: number; ov?: number }
+export interface Skin { r: readonly [number, number, number, number]; su: number; sv: number; b: string; ou?: number; ov?: number; tile?: boolean; px?: readonly [number, number] }
 
 export interface BoxOpts { bev?: number; skip?: string; top?: Skin; side?: Skin; bot?: Skin }
 
@@ -94,8 +94,9 @@ export class Builder {
    * A flat panel on the local xy plane facing +z, w x h, mapped once onto a cell rect (or tiled along u by
    * `rep` cells when the skin tiles). For decals, signs, window bands.
    */
-  panel(s: Skin, w: number, h: number, rep = 1, two = false) {
+  panel(s: Skin, w: number, h: number, rep = -1, two = false) {
     const e = 0.0015;
+    if (rep < 0) rep = s.tile ? Math.max(1, Math.round(w * s.su * 4) / 4) : 1;
     this.quad(s, [new V3(-w / 2, -h / 2, 0), new V3(w / 2, -h / 2, 0), new V3(w / 2, h / 2, 0), new V3(-w / 2, h / 2, 0)], [[e, 1 - e], [rep - e, 1 - e], [rep - e, e], [e, e]], two);
   }
 

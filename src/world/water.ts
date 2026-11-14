@@ -388,7 +388,7 @@ void main() {
       vec2 q = p * 1.6, ci = floor(q), f = fract(q) - 0.5 - (vec2(h2(ci), h2(ci + 5.3)) - 0.5) * 0.5;
       float tc = t * 1.4 + h2(ci + 2.7), ph = fract(tc);
       float ring = (1.0 - step(0.045, abs(octR(f) - ph * 0.36))) * step(h2(ci + floor(tc) * 1.3), uRainW) * step(ph, 0.85) * legOn(f, h2(ci));
-      if (ring > 0.5) col = ph < 0.45 ? rampF(2) * (0.4 + 0.6 * uSunK) : (deepF ? rampB(k - 1.0) : rampW(k - 1.0));
+      if (ring > 0.5) col = ph < 0.45 ? rampF(2.0) * (0.4 + 0.6 * uSunK) : (deepF ? rampB(k - 1.0) : rampW(k - 1.0));
     }
     // the foam in three tones: a darker lip at its edge, a shaded body, a lit top (pink-tinged in a red tide)
     if (foam > 0.36) {

@@ -26,6 +26,7 @@ import { Bin, lit, mesh, fxMat, rawMat, V3, TAU, sm, ease, hash, type V } from '
 import { makePod, portholeWorld, type Pod } from '../ui/deployPod';
 import { makeWorld, buildFar, buildWater, makeSky, dropMarks, RP, type World, type Sky } from './descentWorld';
 import { clamp, damp, lerp } from '../core/rand';
+import { vfx2d } from './vfx2d';
 
 export type Grade = 'BULLSEYE' | 'ON TARGET' | 'CLOSE' | 'WIDE' | 'AUTOPILOT';
 /** what a landing earns (applied to the run by the deployment): within 6 m a core cell and ore, close in some ore */
@@ -218,8 +219,7 @@ export class GameDescent {
   // the hand-over: the shell, the golem, the camera easing into the game's
   private shellT = -1; private outT = -1; private handT = -1; private rtsPos = new V3(); private rtsQ = new THREE.Quaternion(); private rtsFov = 36;
   private saved: { fog: THREE.Fog | THREE.FogExp2 | null; bg: THREE.Color | THREE.Texture | null; far: number; near: number; sun: unknown; uiVis: string } | null = null;
-  private skyFade = 1; private finished = false; private wet = false;
-  private debris: { m: THREE.Mesh; v: V; w: V; rest: boolean; t: number }[] = [];
+  private skyFade = 1; private finished = false; private wet = false; private farTrees: THREE.Object3D[] = [];
 
   constructor(readonly o: DescentOpts) {
     style();
@@ -240,6 +240,7 @@ export class GameDescent {
     this.skyO = makeSky(this.W); this.sky = this.skyO.mesh; this.skyU = this.skyO.U;
     this.root.add(this.sky);
     buildFar(this.W); buildWater(this.W);
+    this.farTrees = this.far.children.filter((o) => (o as THREE.InstancedMesh).isInstancedMesh);
     // the game scene takes a fog and the long view for the fall; both are given back at the hand-over
     const sc = g.world.scene;
     const uiRoot = document.getElementById('ui');
@@ -537,6 +538,12 @@ export class GameDescent {
     this.v.y += (az + (this.wind.y - this.v.y) * drag) * dt;
     if (this.v.length() > 48) this.v.setLength(48);
     this.p.addScaledVector(this.v, dt);
+    // the descent cone narrows onto the map: low down the pod cannot drift off it
+    const lim = this.N / 2 - 8;
+    if (this.alt < 420) for (const k of ['x', 'y'] as const) {
+      const over = Math.abs(this.p[k]) - lim;
+      if (over > 0) { const sg = Math.sign(this.p[k]); this.v[k] -= sg * over * dt * (this.alt < 140 ? 4 : 1.2); if (this.v[k] * sg > 0) this.v[k] *= Math.exp(-dt * 3); if (this.alt < 25) this.p[k] = sg * Math.min(Math.abs(this.p[k]), lim + 2); }
+    }
     if (thrust > 0.05 && !this.auto) this.fuel = Math.max(0, this.fuel - dt * 0.03 * thrust);
     this.burstCD = Math.max(0, this.burstCD - dt);
     if (thrust > 0.1 && Math.random() < dt * 14) this.puff(new THREE.Vector2(ax, az).normalize(), 4);
@@ -601,15 +608,18 @@ export class GameDescent {
     const water = R.isWater(rx, rz);
     // a splashdown when the region has an ocean (src/ocean takes the pod and the golem from there)
     this.wet = water && !!(g as unknown as { ocean?: unknown }).ocean;
-    // the real ground: the game carves the crater here and moves its core under the pod (hidden till the shell blows)
-    g.touchdown(rx, rz);
+    // the skid: the way it was drifting (or the way it was flying, when it came straight down)
+    const sk = this.v.length() > 1.5 ? this.v.clone().normalize() : this.F.clone();
+    // the real ground: the game moves its core (the pod itself) here, aimed along the skid, and lights the crash site
+    g.touchdown(rx, rz, sk.x, sk.y);
     const L = R.landing;
     this.p.set(L.x - N / 2, L.z - N / 2);
     this.result = { x: L.x, z: L.z, dist, grade, auto: this.auto, water };
-    const core = g.veyr.core; if (core) core.mesh.visible = false;
-    const cap = (g as unknown as { cap: THREE.Mesh | null }).cap; if (cap) cap.visible = false;
-    // the blast: flora flattened, creatures thrown off their feet and the rest of the wildlife scared away
-    g.world.flora.impulse(L.x, L.z, 22, 3);
+    // under the flash, the falling pod becomes the core's pod (same model, landed pose): its hatch shut till the golem stirs
+    this.pod.root.visible = false;
+    const cp = (g.veyr.core?.mesh.userData.podGroup as THREE.Object3D | undefined)?.userData.pod as Pod | undefined;
+    if (cp) { cp.setHatch(0); cp.heat.value = 1.1; this.corePod = cp; }
+    // the blast: creatures nearby thrown off their feet and the rest of the wildlife scared away (the plants stand)
     (g.world as unknown as { eco?: { scare?(x: number, z: number, a: number, r: number): void } }).eco?.scare?.(L.x, L.z, 1.6, 34);
     const knocks = (g as unknown as { knocks?: { c: unknown; vx: number; vz: number; t: number }[] }).knocks;
     for (const c of g.world.creatures) {
@@ -617,8 +627,8 @@ export class GameDescent {
       const dx = c.x - L.x, dz = c.z - L.z, d = Math.hypot(dx, dz) || 1;
       const cc = c as unknown as { mind: string; fleeT: number };
       if (d < 34) { cc.mind = 'flee'; cc.fleeT = Math.max(cc.fleeT ?? 0, 5); }
-      if (d > 16) continue;
-      const k = 1 - d / 16;
+      if (d > 11) continue;
+      const k = 1 - d / 11;
       knocks?.push({ c, vx: (dx / d) * 15 * k, vz: (dz / d) * 15 * k, t: 0.35 + k * 0.35 });
       if (d < 6) g.world.damage(c, 40 * k, null);
     }
@@ -644,10 +654,14 @@ export class GameDescent {
     this.endShot();
     // the impact shot: wide and low, then in on the crater as the shell comes off and the golem climbs out
     const cx = P.x, cz = P.z;
+    // look in toward the middle of the map (the jungle behind the pod), or along the approach near the middle
+    const inn = Math.hypot(cx, cz) > 14 ? new THREE.Vector2(-cx, -cz).normalize() : this.F.clone();
+    const side2 = new THREE.Vector2(-inn.y, inn.x);
     this.shot = { name: 'impact', t: 0, dur: 99, pose: (t, pos, look) => {
       const k = ease.inOut(clamp((t - 2.2) / 6, 0, 1));
-      const d = lerp(27, 11, k), side = lerp(14, 5, k), h = lerp(4.5, 3.2, k);
-      pos.set(cx - this.F.x * d + this.Rt.x * side, this.gH(cx, cz) + h + t * 0.12, cz - this.F.y * d + this.Rt.y * side);
+      const d = lerp(22, 10, k), side = lerp(11, 4.5, k), h = lerp(4.2, 3.0, k);
+      pos.set(cx - inn.x * d + side2.x * side, 0, cz - inn.y * d + side2.y * side);
+      pos.y = Math.max(this.gH(cx, cz), this.gH(pos.x, pos.z)) + h + t * 0.1;
       look.set(cx, this.gH(cx, cz) + lerp(2, 1.4, k), cz);
       return lerp(40, 34, k);
     } };
@@ -657,50 +671,10 @@ export class GameDescent {
     const line = grade === 'BULLSEYE' ? 'Dead on the smoke. Beautiful flying, Seven.' : grade === 'ON TARGET' ? 'On target. Close enough to walk it.' : grade === 'CLOSE' ? 'You are down, Seven. A short walk to the pin.' : grade === 'AUTOPILOT' ? 'Autopilot put you down. Close to the pin.' : 'Long way from the pin, Seven. But you are down.';
     setTimeout(() => { if (!this.finished) this.say(`Touchdown. Welcome to ${pn}, Seven. ${line}`, 'Launch Control', 0.85); }, 900);
   }
-  /** explosive bolts: the shell comes off in panels and the core is there in the crater; the golem climbs out */
-  private blowShell() {
-    const g = this.g, P = this.pod.root.position, O = this.O, gy = this.gH(P.x, P.z);
-    this.shellT = 0;
-    this.pod.root.visible = false;
-    const core = g.veyr.core; if (core) core.mesh.visible = true;
-    const cap = (g as unknown as { cap: THREE.Mesh | null }).cap; if (cap) cap.visible = true;
-    g.emerge();
-    csfx('boom', 0.8, 1.3); csfx('crunch', 0.7, 1.2); sfx('crack', 2.2, 0.9); csfx('steam', 0.9);
-    this.kick = 1.2;
-    for (let i = 0; i < 16; i++) { const a = (i / 16) * TAU; this.g.fx.burst(P.x + O.x + Math.cos(a) * 1.0, gy + 0.6 + (i % 4) * 0.5, P.z + O.z + Math.sin(a) * 1.0, 3, 0xffc070, { glow: true, speed: 5, up: 3, size: 2, life: 0.5, grav: 9 }); }
-    for (let i = 0; i < 18; i++) this.g.fx.burst(P.x + O.x, gy + 1.2, P.z + O.z, 1, 0xd8d8d0, { speed: 2.5, up: 3, size: 7, life: 2.2, grav: -0.6 });
-    // six skin panels, the heat shield and the nose fly off and tumble down round the crater
-    const bin = this.debrisBin;
-    const skin = lit(bin, 0x5a5d44), dark = lit(bin, 0x2a2420), red = lit(bin, 0x8a2e24);
-    const group = new THREE.Group(); g.world.scene.add(group); (this.debrisG = group);
-    for (let i = 0; i < 6; i++) {
-      const a0 = (i / 6) * TAU;
-      const geo = new THREE.CylinderGeometry(0.5, 1.05, 2.15, 4, 1, true, a0, TAU / 6);
-      const m = mesh(bin, geo, lit(bin, 0x5a5d44, { side: THREE.DoubleSide }), group, P.x + O.x, gy + 1.3, P.z + O.z);
-      void skin;
-      const am = a0 + TAU / 12;
-      this.debris.push({ m, v: new V3(Math.sin(am) * (6 + Math.random() * 3), 5 + Math.random() * 3, Math.cos(am) * (6 + Math.random() * 3)), w: new V3(Math.random() * 6 - 3, Math.random() * 4 - 2, Math.random() * 6 - 3), rest: false, t: 0 });
-    }
-    const shield = mesh(bin, new THREE.CylinderGeometry(1.12, 1.12, 0.2, 18), dark, group, P.x + O.x, gy + 0.2, P.z + O.z);
-    this.debris.push({ m: shield, v: new V3(this.F.x * 3, 3, this.F.y * 3), w: new V3(2, 0, 1), rest: false, t: 0 });
-    const nose = mesh(bin, new THREE.CylinderGeometry(0.3, 0.5, 0.9, 12), red, group, P.x + O.x, gy + 3, P.z + O.z);
-    this.debris.push({ m: nose, v: new V3(-this.Rt.x * 4, 9, -this.Rt.y * 4), w: new V3(5, 3, 2), rest: false, t: 0 });
-  }
-  private debrisG: THREE.Group | null = null;
-  /** the shell's pieces: thrown, tumbling, coming to rest, then slowly settling into the ground and gone */
-  private tickDebris(dt: number) {
-    const R = this.R;
-    for (const d of this.debris) {
-      d.t += dt;
-      const m = d.m;
-      if (!d.rest) {
-        d.v.y -= 9.8 * dt; m.position.addScaledVector(d.v, dt);
-        m.rotation.x += d.w.x * dt; m.rotation.y += d.w.y * dt; m.rotation.z += d.w.z * dt;
-        const gy = R.groundSmooth(m.position.x, m.position.z);
-        if (m.position.y < gy + 0.15) { m.position.y = gy + 0.15; if (Math.abs(d.v.y) > 2.5) { d.v.y = -d.v.y * 0.3; d.v.x *= 0.5; d.v.z *= 0.5; d.w.multiplyScalar(0.5); this.g.fx.burst(m.position.x, gy + 0.2, m.position.z, 4, 0xb8a888, { speed: 1.5, up: 1, size: 4, life: 0.8 }); } else { d.rest = true; m.rotation.x = Math.round(m.rotation.x / Math.PI) * Math.PI + 0.12; } }
-      } else if (d.t > 14) m.position.y -= dt * 0.08;
-    }
-  }
+  private corePod: Pod | null = null;
+  /** the landed (core) pod's position in the world */
+  private cpWorld() { const o = new V3(); const c = this.g.veyr.core; if (c) o.set(c.x, this.R.groundSmooth(c.x, c.z), c.z); return o; }
+  private tickDebris(_dt: number) { /* the pod stays whole now: nothing is thrown off */ }
   /** Esc after touchdown: hurry to the hand-over */
   private hurry() {
     if (this.shellT < 0) { this.landT = Math.max(this.landT, 1.9); return; }
@@ -718,8 +692,9 @@ export class GameDescent {
     if (Math.random() < dt * 8) this.fx.burst(P.x + (Math.random() - 0.5) * 2, P.y + 1, P.z + (Math.random() - 0.5) * 2, 1, Math.random() < 0.5 ? 0x5a5650 : 0x3e3a36, { speed: 0.3, up: 1.4, size: 6, life: 3, grav: -0.3 });
     if (this.o.hold === 'impact' && this.landT > 0.7) { this.g.engine.timeScale = 0; this.o.hold = null; }
     // on land the shell blows off its bolts; in the water the ocean has the pod: the golem just comes out
-    if (this.landT > 1.9 && this.shellT < 0) { if (this.wet) { this.shellT = 0; this.pod.root.visible = false; this.g.emerge(); } else this.blowShell(); }
-    if (this.shellT >= 0) this.shellT += dt;
+    if (this.landT > 1.9 && this.shellT < 0) { this.shellT = 0; this.g.emerge(); if (!this.wet) { csfx('steam', 1); csfx('servo', 0.6, 0.8); } }
+    if (this.shellT >= 0) { this.shellT += dt; if (this.corePod) { this.corePod.setHatch(clamp((this.shellT - 0.4) / 1.1, 0, 1)); this.corePod.heat.value = Math.max(0, 1.1 - this.landT * 0.12); } }
+    if (this.shellT >= 0.4 && this.shellT < 1.6 && !this.wet && Math.random() < dt * 10) { const W = this.cpWorld(); vfx2d.play('smoke', W.x, W.y + 1.6, W.z, { scale: 1.3, ramp: 'snow', vel: [(Math.random() - 0.5) * 2, 1.6, (Math.random() - 0.5) * 2], speed: 0.9 }); }
     if (this.landT > 2.6 && this.result) this.once('card', () => {
       const r = this.result!;
       this.ui.card(r.grade === 'WIDE' ? 'TOUCHDOWN' : r.grade, `${r.auto ? 'ON THE PIN' : `${Math.round(r.dist * 10) / 10} M FROM THE PIN`} · ${bonusFor(r.grade).text}`, 'UNIT 07 IS DOWN', r.grade === 'BULLSEYE' ? 'BULLSEYE' : 'U.S.P.C.');
@@ -772,6 +747,7 @@ export class GameDescent {
     }
     (this.streaks.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
     (this.streaks.geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
+    for (const ft of this.farTrees) ft.visible = A > 160;
     // the world: smoke, strobe, clouds drifting
     this.smokeU.uT.value = this.t;
     (this.strobe.material as THREE.MeshBasicMaterial).color.setScalar(Math.sin(this.t * 6) > 0.85 ? 3 : 0.0);
@@ -849,13 +825,11 @@ export class GameDescent {
     this.streaks.visible = false; this.smoke.visible = false; this.strobe.visible = false;
     // the world beyond the map sinks away under the skirt, then everything of ours is freed
     let sink = 0;
-    const far = this.far, root = this.root, bin = this.bin, debris = this.debrisG, dbin = this.debrisBin, list = this.debris;
+    const far = this.far, root = this.root, bin = this.bin;
     const tick = (dt: number) => {
       sink += Math.max(dt, 1 / 60);
       far.position.y = -sink * sink * 6;
-      for (const d of list) if (d.rest && d.t > 14) d.m.position.y -= Math.max(dt, 1 / 60) * 0.08;
-      if (sink > 3.2 && far.parent) { root.removeFromParent(); bin.dispose(); }
-      if (sink > 24) { debris?.removeFromParent(); dbin.dispose(); const i = g.update$.indexOf(tick); if (i >= 0) g.update$.splice(i, 1); }
+      if (sink > 3.2) { root.removeFromParent(); bin.dispose(); this.debrisBin.dispose(); const i = g.update$.indexOf(tick); if (i >= 0) g.update$.splice(i, 1); }
     };
     g.update$.push(tick);
     // fog of war as the game plays it: what was seen from the sky is not known on the ground

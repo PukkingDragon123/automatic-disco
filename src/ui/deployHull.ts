@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import { Bin, fxMat } from './deployKit';
 import { RAMPS } from '../art/palette';
 import { Builder } from './carrier/geo';
-import { paintAtlas, makeSkins } from './carrier/atlas';
+import { paintAtlas, makeSkins, PPM } from './carrier/atlas';
 import { AW, AH } from './carrier/paint';
 import { atlasTextures, atlasMat } from './carrier/mat';
 import { newFx, buildFx, merge, NAV, NOZ_F, PLUME_V, PLUME_F } from './carrier/fx';
@@ -52,7 +52,7 @@ export function hullSkinTex(bin: Bin, name = 'hullB') {
   for (let y = 0; y < r.h; y++) d.set(A.d.subarray(((r.y + y) * AW + r.x) * 4, ((r.y + y) * AW + r.x + r.w) * 4), (r.h - 1 - y) * r.w * 4);
   const t = new THREE.DataTexture(d, r.w, r.h, THREE.RGBAFormat, THREE.UnsignedByteType);
   t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.NearestFilter; t.minFilter = THREE.LinearMipmapLinearFilter;
-  t.generateMipmaps = true; t.anisotropy = 4; t.repeat.set((8 * 16) / r.w, (8 * 16) / r.h); t.needsUpdate = true;
+  t.generateMipmaps = true; t.anisotropy = 4; t.repeat.set((8 * PPM) / r.w, (8 * PPM) / r.h); t.needsUpdate = true;
   return bin.t(t);
 }
 

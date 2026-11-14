@@ -36,6 +36,8 @@ export class Terrain {
   readonly dampTex: THREE.DataTexture;
   /** RGBA N x N: R moisture, G fertility (src/eco writes these), B trampled wear (details.ts), A reserved */
   readonly ecoTex: THREE.DataTexture;
+  /** burnt ground per cell 0..1 (scorch), fading back through dry soil over a few days */
+  readonly burn: Float32Array; private burnTex: THREE.DataTexture; private burnLive = false; private burnT = -1;
   /** the ecology map's bytes; write R (moisture) and G (fertility) 0..255 per column, then ecoFlush() */
   ecoData() { return this.ecoTex.image.data as Uint8Array; }
   ecoFlush() { this.ecoTex.needsUpdate = true; }
@@ -76,16 +78,18 @@ export class Terrain {
     const eco = new Uint8Array(N * N * 4);
     for (let i = 0; i < N * N; i++) { eco[i * 4] = Math.round(clamp01(region.damp[i] * 0.6 + region.wet[i] * 0.4) * 255); eco[i * 4 + 1] = Math.round(clamp01(region.fert[i]) * 255); eco[i * 4 + 3] = 255; }
     this.ecoTex = mk(eco, THREE.UnsignedByteType);
+    this.burn = new Float32Array(N * N);
+    this.burnTex = mk(new Uint8Array(N * N), THREE.UnsignedByteType, THREE.RedFormat);
     // each layer's mean brightness (linear): a texel brighter than its tile's mean stands proud in the height blend
     const lin = (c: number) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
     const avgL = avg.map((c) => lin((c >> 16) & 255) * 0.3 + lin((c >> 8) & 255) * 0.59 + lin(c & 255) * 0.11);
-    while (avgL.length < 32) avgL.push(0.3);
+    while (avgL.length < 40) avgL.push(0.3);
     // material id -> two array-layer variants
     const lay: number[] = [];
     for (let b = 0; b < 16; b++) { const d = BLOCKS[b] ?? BLOCKS[0]; lay.push(d.top[0], d.top[d.top.length - 1]); }
     this.U = {
       uBlocks: { value: tex }, uMoss: { value: this.moss }, uVis: { value: this.vis }, uHeight: { value: this.heightTex }, uMat: { value: this.matTex }, uShade: { value: this.shadeTex }, uDamp: { value: this.dampTex },
-      uLay: { value: lay }, uRockSide: { value: L.rockSide }, uEco: { value: this.ecoTex }, uAvgL: { value: avgL }, uWetG: { value: 0 },
+      uLay: { value: lay }, uRockSide: { value: L.rockSide }, uEco: { value: this.ecoTex }, uBurn: { value: this.burnTex }, uAvgL: { value: avgL }, uWetG: { value: 0 },
       // per block kind: how far its texels stand proud (+) or settle (-) in a blend, and how much it darkens wet
       uHB: { value: [0.09, 0.07, -0.04, 0.07, -0.09, -0.1, -0.02, 0.1, 0.05, 0.05, 0.08, 0.02, 0.0, 0.0, 0, 0] },
       uAbs: { value: [0.55, 0.6, 1, 0.2, 1, 0.6, 0.9, 0, 0.2, 0.2, 0, 0.7, 0.4, 0.3, 0, 0] },
@@ -218,10 +222,10 @@ vWp = wpos4.xyz; vNw = normalize(mat3(modelMatrix) * objectNormal); vHol = aHol;
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
 uniform highp sampler2DArray uBlocks;
-uniform sampler2D uMoss, uVis, uMat, uShade, uDamp, uEco;
+uniform sampler2D uMoss, uVis, uMat, uShade, uDamp, uEco, uBurn;
 uniform float uN, uTime, uRivalLayer, uVeinGain, uRockSide, uWetG, uWater;
 uniform float uLay[32];
-uniform float uAvgL[32];
+uniform float uAvgL[40];
 uniform float uHB[16];
 uniform float uAbs[16];
 uniform vec3 uCore, uVein, uMossLight, uRivalVein, uRivalCore, uDark;
@@ -350,6 +354,17 @@ if (ridge > 0.02) contend(3, ridge * 0.9, 0.0, vRock, pc, bestS, bestT, bestId);
 // snow (the climate's cover, and the high ground above the snow line) settles on the flats, never on steep faces
 float snowK = clamp(uSnow * 1.15 + smoothstep(uSnowLine, uSnowLine + 10.0, hw) * 0.9 + (G1 - 0.5) * 0.35 + hol * 0.6 - slope * 2.4, 0.0, 1.0);
 if (snowK > 0.02) contend(7, snowK * 1.25, 0.15, 0.5, pc, bestS, bestT, bestId);
+// burnt ground (scorch): char and ash while fresh, dry soil as it fades
+float burn = texture2D(uBurn, pc / uN).r;
+bool charred = false;
+if (burn > 0.02) {
+  vec4 ta = blk(${L.ash}.0, pc);
+  float la = dot(ta.rgb, vec3(0.3, 0.59, 0.11)), aa = uAvgL[${L.ash}];
+  float sa = smoothstep(0.25, 0.55, burn) * 1.9 + (clamp(0.5 + (la - aa) / (aa + 0.03) * 0.6, 0.0, 1.0) - 0.5) * 0.55;
+  if (sa > bestS) { bestS = sa; bestT = ta; charred = true; }
+  contend(2, smoothstep(0.0, 0.12, burn) * (1.0 - smoothstep(0.3, 0.5, burn)) * 1.4, 0.0, 0.0, pc, bestS, bestT, bestId);
+  if (charred && bestT.a < 1.0 && burn < 0.7) bestT.a = 1.0;
+}
 vec3 base;
 float glowA;
 if (vNw.y < 0.74) {
@@ -428,7 +443,38 @@ diffuseColor.rgb *= base;
   visData() { return this.vis.image.data as Uint8Array; }
   visFlush() { this.vis.needsUpdate = true; }
 
-  update(t: number) { this.U.uTime.value = t; }
+  update(t: number) {
+    this.U.uTime.value = t;
+    // burns fade: ash and char for a day or so, then dry soil, then the ground's own cover again (~3 days of 420 s)
+    if (this.burnLive) {
+      const dt = this.burnT < 0 ? 0 : Math.min(5, t - this.burnT);
+      if (this.burnT < 0 || dt >= 1) {
+        this.burnT = t;
+        const b = this.burn, d = this.burnTex.image.data as Uint8Array, k = dt / 1260;
+        let any = false;
+        for (let i = 0; i < b.length; i++) { if (b[i] <= 0) continue; b[i] = Math.max(0, b[i] - k); d[i] = Math.round(b[i] * 255); any = true; }
+        this.burnTex.needsUpdate = true;
+        if (!any) this.burnLive = false;
+      }
+    }
+  }
+  /**
+   * Burn the ground round (x, z): k 0..1 of char within r metres (a ragged edge), kept if already burnt harder. Drawn as
+   * pixel-art char, ash drifts, charred sticks and ember specks (the embers glow only while the burn is fresh); it fades
+   * through dry soil back to the ground's own cover over about three in-game days. Drop pods, fires, blasts.
+   */
+  scorch(x: number, z: number, r: number, k = 1) {
+    const N = this.region.N, b = this.burn, d = this.burnTex.image.data as Uint8Array, ext = Math.ceil(r + 1);
+    for (let Z = Math.floor(z) - ext; Z <= Math.floor(z) + ext; Z++) for (let X = Math.floor(x) - ext; X <= Math.floor(x) + ext; X++) {
+      if (X < 0 || Z < 0 || X >= N || Z >= N) continue;
+      const dd = Math.hypot(X + 0.5 - x, Z + 0.5 - z) / Math.max(0.3, r);
+      const jag = (((X * 73856093) ^ (Z * 19349663)) >>> 0) % 1000 / 1000;
+      const v = k * clamp01((1.15 - dd - jag * 0.3) * 2.2);
+      const i = Z * N + X;
+      if (v > b[i]) { b[i] = v; d[i] = Math.round(v * 255); }
+    }
+    this.burnTex.needsUpdate = true; this.burnLive = true;
+  }
   /**
    * The climate's hold on the ground, each 0..1: snow cover (settles on the flats and high ground first), frost (rime
    * on grass tips and open ground), drought (grass cures yellow, soil and mud crack, puddles dry) and rain-wet ground

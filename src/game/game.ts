@@ -25,6 +25,7 @@ import type { Post } from '../gfx/post';
 import { GENE } from '../life/genes';
 import type { Species } from './species';
 import { Story } from './story';
+import { aimCorePod, startCrashSite, defaultSkid } from './podCore';
 import { RivalBrain } from './rival';
 import { Factions } from './factions';
 import { Factory } from '../factory/factory';
@@ -122,7 +123,7 @@ export class Game implements Screen {
       if (f) this.region.landing = { x: f[0], z: f[1] };
     }
     const L = this.region.landing;
-    if (!opts.descent) this.region.carveCrater(L.x, L.z, 3.4, 1.3);
+    // no crater: the pod comes down on intact ground (game/podCore.ts: a skid, small fires, the jungle still standing)
     this.region.dirty.clear();
     this.world = new World(this.region, this.run.reg, opts.seed);
     this.fx = new Fx(this.world.fxScene, this.world.scene);
@@ -180,10 +181,9 @@ export class Game implements Screen {
     this.harvest.child = this.child;
     this.child.onCast = () => this.aura?.pulse(1);
     this.veyr.attach(this);
-    this.cap = new THREE.Mesh(coreCapGeometry(core.x, core.z), core.mesh.material);
-    this.cap.position.copy(core.mesh.position); this.cap.castShadow = true;
-    this.world.scene.add(this.cap);
+    // (the core is the drop pod: no rock cap to burst)
     this.cam.followFn(() => new THREE.Vector3(core.x, 0, core.z)); this.cam.dist = this.cam.distGoal = 13;
+    if (!opts.descent) { const sk = defaultSkid(L.x, L.z); aimCorePod(core.mesh.userData.podGroup, Math.atan2(sk.x, sk.z)); startCrashSite(this, L.x, L.z, sk.x, sk.z); }
     if (opts.story !== false && !opts.descent) this.story = new Story(this);
     this.vision.update(0, true);
     this.veyr.flushCov();
@@ -208,8 +208,9 @@ export class Game implements Screen {
     core.mesh.visible = false; if (this.cap) this.cap.visible = false;
     this.veyr.flushCov();
   }
-  /** the pod is down at (x, z): crater, core, golem and camera all key off this point (the story waits for beginStory) */
-  touchdown(x: number, z: number) {
+  /** the pod is down at (x, z), skidding along (dirX, dirZ): the core (the pod), the crash site, the golem and the
+   *  camera all key off this point (the story waits for beginStory) */
+  touchdown(x: number, z: number, dirX = 0, dirZ = 1) {
     if (!this.descending) return;
     const R = this.region, N = R.N, old = this.veyr.core!, hv = this.veyr as unknown as { buildings: Building[] };
     // a splashdown (src/ocean): the pod stays where it hit the water, the ocean takes it from there
@@ -219,13 +220,12 @@ export class Game implements Screen {
     R.landing = f ? { x: f[0], z: f[1] } : { x: clamp(x, 6, N - 6), z: clamp(z, 6, N - 6) };
     const L = R.landing;
     if (wet) ocean!.splashdown?.(L.x, L.z);
-    else { R.carveCrater(L.x, L.z, 3.4, 1.3); this.world.terrain.flushDirty(); this.world.flora.reseat(L.x, L.z, 8); }
+    else this.world.flora.impulse(L.x, L.z, 5, 1.6); // only what is right under the pod goes down
     old.mesh.removeFromParent(); hv.buildings = hv.buildings.filter((b) => b !== old);
     this.veyr.plantCore(L.x, L.z);
     const core = this.veyr.core!;
-    this.cap?.removeFromParent();
-    this.cap = new THREE.Mesh(coreCapGeometry(core.x, core.z), core.mesh.material);
-    this.cap.position.copy(core.mesh.position); this.cap.castShadow = true; this.world.scene.add(this.cap);
+    aimCorePod(core.mesh.userData.podGroup, Math.atan2(dirX, dirZ));
+    if (!wet) startCrashSite(this, L.x, L.z, dirX, dirZ);
     this.child.root.position.set(core.x, core.y + 1.05, core.z);
     this.cam.lookAt(L.x, L.z + 4, true);
     this.cam.followFn(() => new THREE.Vector3(core.x, 0, core.z)); this.cam.dist = this.cam.distGoal = 13;
