@@ -36,7 +36,7 @@ vec2 interact(vec2 p, float t) {
     float x = d - (0.04 + age * (0.5 + r.w * 0.3));
     if (abs(x + 0.22) > 0.75) continue;
     float lam = 0.26 + age * 0.07;
-    float a = r.w * exp(-age * 1.15) / (1.0 + d * 1.4);
+    float a = r.w * exp(-age * 0.9) / (1.0 + d * 0.6);
     h += cos(x * 6.2832 / lam) * exp(-pow((x + 0.2) / 0.3, 2.0)) * a;
     fm = max(fm, (1.0 - smoothstep(0.0, 0.05, abs(x))) * a * step(age, 0.35) * 2.0);
   }
@@ -115,8 +115,8 @@ vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
   // the rings and wakes: crisp light crests, darker troughs, white water where they break
   // (a darker trough line keeps them readable on pale shallows too)
   c *= 1.0 + clamp(ia.x, -1.0, 1.0) * 0.12;
-  if (ia.x > 0.36) c = mix(c, uShallow * 1.3 + 0.16, 0.6);
-  else if (ia.x < -0.3) c = mix(c, uDeep * 0.9, 0.38);
+  if (ia.x > 0.2) c = mix(c, uShallow * 1.3 + 0.16, 0.6);
+  else if (ia.x < -0.2) c = mix(c, uDeep * 0.9, 0.38);
   foam = max(foam, ia.y);
   // rain: little rings popping all over the surface
   if (uRainW > 0.01) {

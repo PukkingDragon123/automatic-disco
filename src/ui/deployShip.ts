@@ -193,7 +193,7 @@ export function buildShip(bin: Bin, parent: THREE.Object3D): Ship {
     const tank = mesh(bin, new THREE.CylinderGeometry(4.2, 4.2, 92, 24, 1), tankM, ext, s * 21.5, -6, -12);
     tank.rotation.x = Math.PI / 2;
     const tu = (tank.geometry.attributes.uv as THREE.BufferAttribute); for (let i = 0; i < tu.count; i++) tu.setXY(i, tu.getX(i) * 0.82, tu.getY(i) * 2.9);
-    for (const cz of [-56, 33]) { const cap = mesh(bin, new THREE.SphereGeometry(4.2, 24, 10, 0, TAU, 0, Math.PI / 2), tankM, ext, s * 21.5, -6, cz + (cz > 0 ? 25 : -2)); cap.rotation.x = cz > 0 ? Math.PI / 2 : -Math.PI / 2; }
+    for (const cz of [-58, 34]) { const cap = mesh(bin, new THREE.SphereGeometry(4.2, 24, 10, 0, TAU, 0, Math.PI / 2), tankM, ext, s * 21.5, -6, cz); cap.rotation.x = cz > 0 ? Math.PI / 2 : -Math.PI / 2; }
     for (let z = -50; z <= 26; z += 9.5) { const band = cyl(bin, 4.35, 4.35, 0.6, gun, ext, s * 21.5, -6, z, 24); band.rotation.x = Math.PI / 2; }
     for (const z of [-55, 31]) { const c = cyl(bin, 4.32, 4.32, 1.4, haz, ext, s * 21.5, -6, z, 24); c.rotation.x = Math.PI / 2; }
     // struts to the hull
@@ -249,6 +249,25 @@ export function buildShip(bin: Bin, parent: THREE.Object3D): Ship {
   }
   decal(bin, ins, 12, ext, new V3(0, 14.52, -58), new V3(0, 1, 0), new V3(0, 0, 1));
   decal(bin, stencil(bin, 'DANGER - LAUNCH BAY - KEEP CLEAR', { size: 10, color: 0xb8402e, wear: 0.05 }), 16, ext, new V3(0, -0.5, mz + 0.62), new V3(0, 0, 1), new V3(0, 1, 0));
+  // the belly: a keel spine with ribs, cargo hatches with hazard borders, stencils, a sensor blister, and a run of
+  // sequenced chase lights along the keel pointing the way to the bay mouth
+  tbox(bin, 4.4, 1.6, 132, hullDark, 1 / 8, ext, 0, -19.2, -6);
+  for (let z = -70; z <= 58; z += 6) box(bin, 7, 0.9, 0.7, gun, ext, 0, -18.8, z);
+  for (const s of [-1, 1]) for (const z of [-46, -26, 6]) {
+    tbox(bin, 7.2, 0.25, 9.2, darkGun, 1, ext, s * 9.5, -18.55, z);
+    for (const [w, d, dx, dz] of [[7.6, 0.4, 0, 4.8], [7.6, 0.4, 0, -4.8], [0.4, 9.6, 3.8, 0], [0.4, 9.6, -3.8, 0]] as [number, number, number, number][]) box(bin, w, 0.3, d, haz, ext, s * 9.5 + dx, -18.6, z + dz).castShadow = false;
+  }
+  const bellyT = stencil(bin, 'U.S.P.C.', { size: 30, color: CR[4], wear: 0.1, bridges: true });
+  decal(bin, bellyT, 22, ext, new V3(0, -18.52, -14), new V3(0, -1, 0), new V3(0, 0, 1));
+  decal(bin, ins, 16, ext, new V3(9.5, -18.52, 32), new V3(0, -1, 0), new V3(0, 0, 1));
+  decal(bin, ins, 16, ext, new V3(-9.5, -18.52, 32), new V3(0, -1, 0), new V3(0, 0, 1));
+  mesh(bin, new THREE.SphereGeometry(2.4, 16, 8, 0, TAU, Math.PI / 2, Math.PI / 2), lit(bin, 0x3a3d40, { phong: true, shininess: 70 }), ext, 0, -20, -52);
+  const chase: THREE.MeshBasicMaterial[] = [];
+  for (let i = 0; i < 22; i++) {
+    const m = bin.m(gbuf(new THREE.MeshBasicMaterial({ color: 0x401a10 }), 32));
+    mesh(bin, new THREE.SphereGeometry(0.32, 6, 4), m, ext, 0, -20.05, -66 + i * 6, false);
+    chase.push(m);
+  }
   // floodlight masts and their beams, the hull's running lights
   const floods: { head: THREE.Object3D; beam: THREE.Mesh }[] = [];
   const beamMat = fxMat(bin, CONE_V, CONE_F, coneU(0xffe0b0, 0.55), 'add', { side: THREE.DoubleSide });
@@ -272,7 +291,8 @@ export function buildShip(bin: Bin, parent: THREE.Object3D): Ship {
   const sun = new THREE.DirectionalLight(0xfff0d8, 3.2); sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048); const sc = sun.shadow.camera as THREE.OrthographicCamera; sc.left = sc.bottom = -110; sc.right = sc.top = 110; sc.near = 10; sc.far = 420; sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.6;
   root.add(sun, sun.target); extLights.push(sun);
-  const bounce = new THREE.HemisphereLight(0x405060, 0x7a90b0, 0.55); root.add(bounce); extLights.push(bounce);
+  // planet-shine from below (the belly reads in it), starlight above
+  const bounce = new THREE.HemisphereLight(0x3a4656, 0x98b0cc, 1.5); root.add(bounce); extLights.push(bounce);
   for (const s of [-1, 1]) {
     const f = new THREE.SpotLight(0xffd8a0, 260, 70, 0.55, 0.6, 1.6); f.position.set(s * 14, 16, 52); f.target.position.set(s * 18, -6, 28);
     root.add(f, f.target); extLights.push(f);
@@ -552,6 +572,9 @@ export function buildShip(bin: Bin, parent: THREE.Object3D): Ship {
       (navR.material as THREE.MeshBasicMaterial).color.setRGB(blink, 0.12 * blink, 0.08 * blink);
       (navG.material as THREE.MeshBasicMaterial).color.setRGB(0.25 * blink, blink, 0.5 * blink);
       nozU.uT.value = t;
+      // the keel lights run toward the bow, again and again
+      const head = ((t * 14) % (chase.length + 8));
+      chase.forEach((m, i) => { const d = head - i; const k = d >= 0 && d < 3 ? 1 - d / 3 : 0; m.color.setRGB(0.25 + k * 2.6, 0.08 + k * 1.2, 0.05 + k * 0.5); });
       if (beaconOn) for (const [i, b] of beacons.entries()) b.g.rotation.y = t * 4.2 + i * 1.3;
       pod.update(dt, t);
       if (view !== 'ext' || doorU > 0.3) { officer.update(dt); for (const c of crew) c.a.update(dt); }

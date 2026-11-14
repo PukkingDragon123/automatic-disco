@@ -477,7 +477,7 @@ export class Details {
       const s = r[i * 4 + 3]; if (s <= 0) continue;
       const age = r[i * 4 + 2], d = Math.hypot(x - r[i * 4], z - r[i * 4 + 1]), xx = d - (0.04 + age * (0.5 + s * 0.3));
       if (Math.abs(xx + 0.22) > 0.75) continue;
-      h += Math.cos((xx * TAU) / (0.26 + age * 0.07)) * Math.exp(-(((xx + 0.2) / 0.3) ** 2)) * s * Math.exp(-age * 1.15) / (1 + d * 1.4);
+      h += Math.cos((xx * TAU) / (0.26 + age * 0.07)) * Math.exp(-(((xx + 0.2) / 0.3) ** 2)) * s * Math.exp(-age * 0.9) / (1 + d * 0.6);
     }
     return h;
   }

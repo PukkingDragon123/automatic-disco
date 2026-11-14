@@ -125,7 +125,11 @@ export class SpeechBubble {
     if (this.rectT <= 0) {
       this.rectT = 0.25;
       this.rects = [];
-      document.querySelectorAll<HTMLElement>(SpeechBubble.AVOID).forEach((e) => { if (e.offsetParent === null) return; const r = e.getBoundingClientRect(); if (r.width > 4 && r.height > 4 && getComputedStyle(e).visibility !== 'hidden') this.rects.push(r); });
+      document.querySelectorAll<HTMLElement>(SpeechBubble.AVOID).forEach((e) => {
+        const r = e.getBoundingClientRect(); if (r.width < 4 || r.height < 4) return; // (fixed panels have no offsetParent: test the box itself)
+        const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) < 0.05) return;
+        this.rects.push(r);
+      });
     }
     const p = this.place(x, y);
     const lift = (1 - this.alpha) * (this.want ? 10 : -14) * (p.up ? -1 : 1);
