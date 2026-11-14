@@ -46,3 +46,29 @@ never sprinkled randomly over everything.
 
 'Pixelify' (PixelSans) body, 'Jersey' (NanoPlus) labels, 'Jacquard'/'Canned' (CannedPixels) titles, 'VT'
 (RoyaltyMono) typewriter and CRT, 'Superwide' stencil headers. Hand-lettered notes may be drawn as paths.
+
+# 2D pixel art (world textures, plants, creatures, icons, VFX)
+
+User verdict: "I see circle shapes; that is AI slop. More hand-drawn. New palette, less saturated."
+
+## Palette
+Only `src/art/palette.ts` (RAMPS). Pick a ramp by material, index by light. Never invent a colour, tint at runtime,
+or interpolate between hexes. `snap()` / `snapRGBA()` exist for porting, but new art should index ramps directly.
+
+## Banned (these are what read as generated)
+- circles, ellipses, `hypot(x, y) < r` blobs, radial gradients, as shapes OR as shading
+- fbm / value-noise "texture" used as the look (noise may only jitter a hand-defined shape's edge by a pixel)
+- per-pixel random speckle and ordered dithering used as fill
+- perfect symmetry and repeated identical stamps
+
+## Required (what a pixel artist actually does)
+- Shapes are drawn: silhouettes from a spine polyline with an asymmetric width profile, angular facets, notches,
+  lobes, curled or broken tips. Leaves are pointed and veined, not round. Petals overlap and fold.
+- Shading is planar: decide the light (upper left) and fill each plane with ONE ramp step; 2-4 steps per form.
+  Hard cluster edges, no gradients. A single 1 px highlight placed on the lit edge where a form turns.
+- Selective outline ("sel-out"): darkest ramp step on the shadow side, a lighter step or none on the lit side.
+- Clusters, not pixels: no orphan single pixels except deliberate glints. Tidy staircases, no jaggies (1-1-2-2 not
+  1-3-1). Anti-alias only by hand, sparingly.
+- Variation comes from drawing different shapes (3+ hand-variants per element), not from noise.
+- Texture through drawn marks: bark as vertical strokes and knots; grass as blade clumps; stone as fractured facets
+  with crack lines; fur as clumped strands following form; scales as offset rows of drawn plates.
