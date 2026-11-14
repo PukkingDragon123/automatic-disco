@@ -488,7 +488,7 @@ export function meshPitcher(sp: PlantSpecies, h: number, tex: FloraTex, seed: nu
 export function meshSundew(sp: PlantSpecies, h: number, tex: FloraTex, seed: number, lod: number): PlantGeo {
   const r = new Rand(seed), g = new Geo(Math.max(0.12, h));
   const G = rampFor(sp.leaf), A = rampNamed((['ruby', 'coral', 'rust'] as const)[sp.id % 3]), blade = tex.leaf('round', A, { var: 0 }), pet = tex.leaf('strap', G, { var: 1 }), spk = tex.speckle();
-  const dew = linHex(rampNamed('glowAmber')[4], 0.8), stalk = linHex(A[4] ?? A[3], 1.35);
+  const dew = linHex(rampNamed('glowAmber')[4], 1.15), stalk = linHex(A[3], 1.3);
   const n = r.int(6, 9);
   let R = 0.1;
   for (let k = 0; k < n; k++) {
@@ -510,7 +510,7 @@ export function meshSundew(sp: PlantSpecies, h: number, tex: FloraTex, seed: num
       else atube(g, [at, tip], [0.0011, 0.0007], spk, 3, (i) => i);
       // the drop of glue: a small faceted bead riding the tentacle tip
       g.kind = KIND.DEW; g.col = dew;
-      const dr = lod ? 0.0034 : 0.0028, b1 = g.n, top = g.v(vadd(tip, [0, dr * 1.2, 0]), UP, spk.u0 + spk.du * 0.3, spk.v0 + spk.dv * 0.2, 1), bot = g.v(vadd(tip, [0, -dr * 0.8, 0]), [0, -1, 0], spk.u0, spk.v0 + spk.dv, 1);
+      const dr = lod ? 0.004 : 0.0036, b1 = g.n, top = g.v(vadd(tip, [0, dr * 1.2, 0]), UP, spk.u0 + spk.du * 0.3, spk.v0 + spk.dv * 0.2, 1), bot = g.v(vadd(tip, [0, -dr * 0.8, 0]), [0, -1, 0], spk.u0, spk.v0 + spk.dv, 1);
       const eq = [0, 1, 2].map((m) => { const b = (m / 3) * TAU + t, d: V3 = [Math.cos(b), 0, Math.sin(b)]; return g.v(vadd(tip, vmul(d, dr)), d, spk.u0 + spk.du * 0.5, spk.v0 + spk.dv * 0.5, 1); });
       for (let m = 0; m < 3; m++) { g.triN(top, eq[m], eq[(m + 1) % 3]); g.triN(bot, eq[(m + 1) % 3], eq[m]); }
       void b1;
