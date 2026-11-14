@@ -111,7 +111,7 @@ export class Inland {
     this.group.name = 'inland-water';
     this.falls = Array.isArray(R.falls) ? R.falls.filter((f) => f && isFinite(f.x) && isFinite(f.top) && isFinite(f.bottom) && f.top > f.bottom) : [];
     this.springs = Array.isArray(R.springs) ? R.springs.filter((s) => s && isFinite(s.x) && s.r > 0) : [];
-    if (Array.isArray(R.lakes) && R.lakes.length) { this.lakeMesh = makeLakes(R.lakes, o.mesh); if (this.lakeMesh) this.group.add(this.lakeMesh); }
+    if (Array.isArray(R.lakes) && R.lakes.length) { this.lakeMesh = makeLakes(R.lakes, o.mesh, o.region); if (this.lakeMesh) this.group.add(this.lakeMesh); }
     for (const f of this.falls) this.group.add(this.curtain(f));
     for (const s of this.springs) { this.group.add(this.pool(s)); this.gst.push(0); this.jets.push(s.kind === 'geyser' ? this.jet(s) : null); }
   }

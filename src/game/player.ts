@@ -743,7 +743,7 @@ export class Player implements GolemTarget, TouchHost {
       if (dd < d.r) { geo[i * 4 + 1] = Math.max(geo[i * 4 + 1], 160); geo[i * 4 + 2] = oreGeo; }
       R.dirty.add(i);
     }
-    const t = (g.world.terrain as unknown as { geoTex?: THREE.DataTexture }).geoTex; if (t) t.needsUpdate = true;
+    g.world.terrain.setGeo(R.geo); // the terrain keeps its own copy of the geology map
     this.pending.push({ t: 0.3 + delay, fn: () => {
       const y = g.world.surfaceY(d.x, d.z);
       V2.play('shock', d.x, y + 0.1, d.z, { flat: true, ramp: 'glowAmber', scale: 1.4 + d.r * 0.4, emit: 0.2 });

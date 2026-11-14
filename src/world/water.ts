@@ -634,10 +634,15 @@ export interface LakeDef { level: number; poly: [number, number][]; kind?: 'fres
  * refraction, caustics, ripples, reflections and glints, lace where the water runs thin. Drawn just before the sea and
  * grabbing its own copy of the frame.
  */
-export function makeLakes(lakes: LakeDef[], sea: THREE.Mesh): THREE.Mesh | null {
+export function makeLakes(lakes: LakeDef[], sea: THREE.Mesh, R?: Region): THREE.Mesh | null {
   const pos: number[] = [], cell: number[] = [], idx: number[] = [];
   for (const L of lakes) {
-    if (!L || !Array.isArray(L.poly) || L.poly.length < 3 || !isFinite(L.level)) continue;
+    if (!L || !isFinite(L.level)) continue;
+    // a lake the geology flooded: its surface is drawn over exactly the cells it flooded (riverY at its level) and a
+    // one-cell margin under the banks. (Its outline polygon, traced as rays from the centre, ran on over the lip of
+    // a bench lake or a tarn wherever the ground fell away, and the water hung there in the air over the cliffs.)
+    if (R && cellsLake(R, L, pos, cell, idx)) continue;
+    if (!Array.isArray(L.poly) || L.poly.length < 3) continue;
     const pts = L.poly.map(([x, z]) => new THREE.Vector2(x, z));
     if (THREE.ShapeUtils.isClockWise(pts)) pts.reverse();
     // a margin so the water reaches under the banks
@@ -659,18 +664,42 @@ export function makeLakes(lakes: LakeDef[], sea: THREE.Mesh): THREE.Mesh | null 
   mesh.onBeforeRender = (renderer, _s, camera) => { st.grab.grab(renderer, camera); };
   return mesh;
 }
+/** quads over a lake's flooded cells and a margin under its banks (false when it has no cells to draw) */
+function cellsLake(R: Region, L: LakeDef, pos: number[], cell: number[], idx: number[]): boolean {
+  const G = L as LakeDef & { x?: number; z?: number; r?: number };
+  if (G.x === undefined || G.z === undefined) return false;
+  const N = R.N, lv = L.level, ext = Math.ceil((G.r ?? 6) * 2.6 + 4);
+  const x0 = Math.max(0, Math.floor(G.x - ext)), x1 = Math.min(N - 1, Math.ceil(G.x + ext)), z0 = Math.max(0, Math.floor(G.z - ext)), z1 = Math.min(N - 1, Math.ceil(G.z + ext));
+  const W = x1 - x0 + 1, m = new Uint8Array(W * (z1 - z0 + 1));
+  let n = 0;
+  for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) { const i = z * N + x; if (Math.abs(R.riverY[i] - lv) < 0.004 && R.h[i] < lv) { m[(z - z0) * W + x - x0] = 1; n++; } }
+  if (!n) return false;
+  // the margin: neighbours standing at or a little under the water (the bank the surface tucks under), never a drop
+  for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+    const k = (z - z0) * W + x - x0; if (m[k] !== 1) continue;
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const X = x + dx, Z = z + dz; if (X < x0 || Z < z0 || X > x1 || Z > z1) continue;
+      const kk = (Z - z0) * W + X - x0; if (m[kk]) continue;
+      if (R.h[Z * N + X] >= lv - 0.35) m[kk] = 2;
+    }
+  }
+  for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
+    if (!m[(z - z0) * W + x - x0]) continue;
+    const b = pos.length / 3;
+    pos.push(x, lv, z, x + 1, lv, z, x, lv, z + 1, x + 1, lv, z + 1); cell.push(1, 1, 1, 1);
+    idx.push(b, b + 2, b + 1, b + 1, b + 2, b + 3);
+  }
+  return true;
+}
 /** the sea's state (swell, coast field, uniforms) from the terrain's sea mesh */
 export function seaState(mesh: THREE.Object3D | null | undefined): SeaState | null { return (mesh?.userData.sea as SeaState) ?? null; }
 
 /** ribbons along the river centre lines, at the water surface, reaching under the banks on both sides */
-/** is a point inside a lake's outline (a river running through a lake leaves the lake's own surface to draw it) */
+/** is a river point out on a lake (its cell flooded at the lake's level): the lake's own still surface draws it */
 function inLake(R: Region, x: number, z: number, y: number) {
-  for (const L of R.lakes) {
-    const P = L.poly; if (!P || P.length < 3 || Math.abs(y - L.level) > 0.08 || Math.hypot(x - L.x, z - L.z) > L.r * 2.6 + 3) continue;
-    let ins = false;
-    for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, zi] = P[i], [xj, zj] = P[j]; if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) ins = !ins; }
-    if (ins) return true;
-  }
+  if (!R.inside(Math.floor(x), Math.floor(z))) return false;
+  const i = Math.floor(z) * R.N + Math.floor(x), ry = R.riverY[i];
+  for (const L of R.lakes) if (Math.abs(ry - L.level) < 0.004 && Math.abs(y - L.level) < 0.08 && R.h[i] < L.level - 0.05) return true;
   return false;
 }
 export function makeRivers(R: Region, U: Record<string, THREE.IUniform>): THREE.Mesh | null {

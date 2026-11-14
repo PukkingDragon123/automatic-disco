@@ -457,7 +457,7 @@ if (spray > 0.01) {
   // (the default camera looks into the sun's lee, so the faces it sees most are the shaded ones: those are lifted
   // a step with the sky's cool fill, never left as flat dark masses)
   if (stL > 0.0) base *= 1.0 + relK * stL * 0.5;
-  else base = mix(base, base * vec3(1.14, 1.2, 1.3), relK * min(1.0, -stL + 0.34) * 0.8);
+  else base = mix(base, base * vec3(1.22, 1.2, 1.16), relK * min(1.0, -stL + 0.34) * 0.8);
   vec3 Vv = normalize(cameraPosition - vWp);
   float rimK = pow(1.0 - max(dot(vNw, Vv), 0.0), 3.0) * max(facing, 0.0) * smoothstep(0.12, 0.4, slope) * uRelief;
   if (rimK > 0.1) base *= rimK > 0.22 ? vec3(1.34, 1.26, 1.12) : vec3(1.16, 1.12, 1.05);
