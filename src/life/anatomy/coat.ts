@@ -16,7 +16,7 @@ export type CoatPattern = 'plain' | 'stripes' | 'spots' | 'rosettes' | 'bands' |
 /** a drawn surface */
 export interface Surf {
   /** fur locks: length and width of a lock (m), how far they turn down the sides, root and tip steps */
-  fur?: { len: number; width: number; down?: number; root?: number; tip?: number };
+  fur?: { len: number; width: number; down?: number; tip?: number; bend?: number };
   /** scales: width (m), kind, overlap */
   scales?: { size: number; kind?: ScaleOpt['kind']; len?: number; ink?: number };
   /** pebbled hide: cell size (m), depth, pores */
@@ -157,39 +157,45 @@ export function coatPaint(C: CoatCtx, part: PartKind, o: { flow?: number; extra?
     const bellyArc = c.bellyArc ?? 1.0;
     // the belly line follows cells (the scale rows, the fur locks) rather than a smooth curve
     const edgeCell = Math.max(0.01, F.W * 0.09);
-    for (let i = 0; i < n; i++) {
-      _p[0] = P[i * 3]; _p[1] = P[i * 3 + 1]; _p[2] = P[i * 3 + 2];
-      const ny = N[i * 3 + 1];
+    /** the zone and colour of a point (its normal's y for the head's chin line, its normal for the inner leg) */
+    const classify = (q: V3, ny: number, nx: number, nz: number): number => {
       let z: Zone, s = 0, a = 0;
       if (part === 'trunk') {
-        const l = locate(F, _p); s = l.s; a = l.a;
-        const ce = cell3(_p[0], _p[1], _p[2], edgeCell, seed + 29), jit = (h3(ce.id, 1, seed) - 0.5) * 0.35;
+        const l = locate(F, q); s = l.s; a = l.a;
+        const ce = cell3(q[0], q[1], q[2], edgeCell, seed + 29), jit = (h3(ce.id, 1, seed) - 0.5) * 0.35;
         const aa = Math.abs(a);
         z = aa > Math.PI - bellyArc + jit ? 'belly' : s < F.sRump ? 'tail' : s > F.sNeck ? 'neck' : aa < 0.9 + jit ? 'back' : 'flank';
         if (z === 'neck' && aa > Math.PI - bellyArc * 1.15 + jit) z = 'belly';
       } else if (part === 'limb' || part === 'foot') {
         const sockH = c.socks ? c.socks.h : -1;
-        z = part === 'foot' ? 'foot' : _p[1] < sockH + (h3(Math.floor(_p[0] * 40 + _p[2] * 40), 3, seed) - 0.5) * 0.02 ? 'sock' : 'limb';
+        z = part === 'foot' ? 'foot' : q[1] < sockH + (h3(Math.floor(q[0] * 40 + q[2] * 40), 3, seed) - 0.5) * 0.02 ? 'sock' : 'limb';
         // the pale inner thigh and armpit
-        if (z === 'limb' && o.inner && (N[i * 3] * o.inner[0] + N[i * 3 + 2] * o.inner[2]) > 0.55 && (o.hipY === undefined || _p[1] > o.hipY - F.W * 0.22)) z = 'belly';
-        s = _p[1]; a = Math.atan2(N[i * 3], N[i * 3 + 2]);
+        if (z === 'limb' && o.inner && (nx * o.inner[0] + nz * o.inner[2]) > 0.55 && (o.hipY === undefined || q[1] > o.hipY - F.W * 0.22)) z = 'belly';
+        s = q[1]; a = Math.atan2(nx, nz);
       } else if (part === 'head' || part === 'jaw' || part === 'lid') {
-        const dz = _p[2] - C.skullC[2];
+        const dz = q[2] - C.skullC[2];
         z = part === 'jaw' ? (ny < -0.25 ? 'belly' : 'muzzle') : dz > C.zStop ? 'muzzle' : ny < -0.55 ? 'belly' : 'face';
-        s = F.L + dz; a = Math.atan2(_p[0] - C.skullC[0], _p[1] - C.skullC[1]);
+        s = F.L + dz; a = Math.atan2(q[0] - C.skullC[0], q[1] - C.skullC[1]);
       } else { z = 'ear'; }
-      zone[i] = ZI[z]; S[i] = s; A[i] = a;
       // colour: the zone's ramp and step, the pattern over it
       let R = Rb, st = c.base[1];
       if (z === 'belly') { R = part === 'jaw' || part === 'head' ? Rchin : Rbel; st = c.belly[1]; }
       else if (z === 'back' && c.back) { R = Rbk; st = c.back[1]; }
       else if (z === 'sock' || z === 'foot') { if (c.socks) { R = Rsock; st = c.socks.c[1]; } }
       else if (z === 'muzzle' && c.face?.muzzle) { R = Rmuz; st = c.face.muzzle[1]; }
-      const pv = z === 'sock' && c.socks ? 0 : patternAt(C, _p, z, s, a);
+      const pv = z === 'sock' && c.socks ? 0 : patternAt(C, q, z, s, a);
       if (pv === 1) { R = Rpat; st = c.pattern!.c[1]; } else if (pv === 2) { R = Rh; st = c.pattern!.heart?.[1] ?? c.pattern!.c[1] - 1; }
-      px.put(i, R, st);
-      if (z === 'flank' && c.back && Math.abs(a) < 1.25) px.step[i] -= 0.3;
+      if (z === 'flank' && c.back && Math.abs(a) < 1.25) st -= 0.3;
+      _R = R; _st = st;
+      return ZI[z];
+    };
+    let _R = Rb, _st = 0;
+    for (let i = 0; i < n; i++) {
+      _p[0] = P[i * 3]; _p[1] = P[i * 3 + 1]; _p[2] = P[i * 3 + 2];
+      zone[i] = classify(_p, N[i * 3 + 1], N[i * 3], N[i * 3 + 2]);
+      px.put(i, _R, _st);
     }
+    void S; void A;
     o.before?.(px, zone);
     // the drawn surfaces, one pass per distinct surface over the zones that wear it
     const flow = o.flow ?? (part === 'limb' || part === 'foot' || part === 'ear' ? 1 : -1);
@@ -200,7 +206,20 @@ export function coatPaint(C: CoatCtx, part: PartKind, o: { flow?: number; extra?
       let any = false; for (let i = 0; i < n; i++) if (zm[zone[i]]) { any = true; break; }
       if (!any) continue;
       const mask = (i: number) => zm[zone[i]];
-      if (sf.fur) px.fur({ len: sf.fur.len, width: sf.fur.width, down: sf.fur.down ?? 0.5, flow, mask, seed: seed + 3, root: sf.fur.root, tip: sf.fur.tip });
+      if (sf.fur) {
+        px.locks({ len: sf.fur.len, width: sf.fur.width, down: sf.fur.down ?? 0.5, flow, mask, seed: seed + 3, tip: sf.fur.tip, bend: sf.fur.bend });
+        // each lock wears the colour found at its root, so pattern and belly edges run round the locks
+        const LS = px.lockS!, w = px.w, q: V3 = [0, 0, 0];
+        for (let i = 0; i < n; i++) {
+          if (!mask(i) || LS[i] <= 0.05) continue;
+          const x = i % w, y = (i - x) / w, iu = Math.min(px.h - 1, y + 1) * w + x, il = Math.max(0, y - 1) * w + x;
+          let tx = P[iu * 3] - P[il * 3], ty = P[iu * 3 + 1] - P[il * 3 + 1], tz = P[iu * 3 + 2] - P[il * 3 + 2]; const tl = Math.hypot(tx, ty, tz) || 1;
+          const k = -flow * LS[i] * sf.fur.len * 0.9 / tl; tx *= k; ty *= k; tz *= k;
+          q[0] = P[i * 3] + tx; q[1] = P[i * 3 + 1] + ty; q[2] = P[i * 3 + 2] + tz;
+          classify(q, N[i * 3 + 1], N[i * 3], N[i * 3 + 2]);
+          px.put(i, _R, _st);
+        }
+      }
       if (sf.scales) px.scales({ size: sf.scales.size, kind: sf.scales.kind, len: sf.scales.len, flow, mask, ink: sf.scales.ink, seed: seed + 5 });
       if (sf.pebbles) px.pebbles(sf.pebbles.size, { depth: sf.pebbles.depth, pores: sf.pebbles.pores, mask, seed: seed + 7 });
       if (sf.folds) px.folds(part === 'limb' || part === 'foot' ? [0, 1, 0] : [0, 0.3, 1], [0, 0, 0], sf.folds.spacing, { depth: sf.folds.depth ?? 0.8, mask, seed: seed + 9 });

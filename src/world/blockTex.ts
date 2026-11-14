@@ -598,8 +598,8 @@ function litter(pc: PixelCanvas, soil: number, foliage: number[], seed: number) 
   const r = new Rand(seed + 5), Tw = rampNamed('fur');
   for (let i = 0; i < AREA; i++) { let x = r.int(0, T - 1), y = r.int(0, T - 1); const dx = r.pick([-1, 1]); for (let j = 0; j < r.int(6, 12); j++) { pc.set(x, y, Tw[3]); pc.set(x, y + 1, Tw[1]); x += dx; if (r.chance(0.25)) y += 1; } }
   const browns: number[][] = [rampNamed('rust'), rampNamed('ochre'), rampNamed('clay'), rampNamed('coral')];
-  for (let i = 0; i < 26 * AREA; i++) {
-    const R0 = r.chance(0.15) ? rampFor(r.pick(foliage)) : r.pick(browns);
+  for (let i = 0; i < 20 * AREA; i++) {
+    const R0 = r.chance(0.06) ? rampFor(r.pick(foliage)) : r.pick(browns);
     leafStroke(pc, r.range(0, T), r.range(0, T), r.range(0, Math.PI * 2), r.range(3, 5.5), r.range(1.2, 2), R0, r, { midrib: false, notch: r.chance(0.2) });
   }
   tidy(pc);
