@@ -971,5 +971,5 @@ export class Game implements Screen {
     new Btn(row, { icon: 'heart', label: 'LET HIM REST', size: 'big', tip: () => '<h4>Lay him to rest</h4>A pale flower grows where he lies. +8 helix.' }, () => fin(false));
   }
   get vaults() { return this.veyr.buildings.filter((b) => b.def.kind === 'vault' && b.done).length; }
-  dispose() { MACHINES.list = []; this.act = false; this.factions?.dispose(); this.offKey?.(); (window as any).__game === this && ((window as any).__game = null); this.hud.dispose(); this.overlay.remove(); ui().innerHTML = ''; }
+  dispose() { MACHINES.list = []; this.act = false; this.ocean?.dispose(); this.factions?.dispose(); this.offKey?.(); (window as any).__game === this && ((window as any).__game = null); this.hud.dispose(); this.overlay.remove(); ui().innerHTML = ''; }
 }

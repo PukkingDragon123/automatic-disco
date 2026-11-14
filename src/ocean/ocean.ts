@@ -17,7 +17,7 @@ import { Reef } from './reef';
 import { Fishery } from './fishery';
 import { Dive } from './dive';
 import { Splashes } from './splash';
-import { registerSeaWorks, hookFactory } from './pontoon';
+import { registerSeaWorks } from './pontoon';
 import { Inland } from './inland';
 import { Swash } from './swash';
 
@@ -130,7 +130,6 @@ export class Ocean {
     this.dive.update(dt, t);
     this.fishery?.update(dt, t, this.dive.golem(), Math.max(night, w.eclipse), w.storm, w.red);
     this.splashes.update(dt, t);
-    if (this.g.factory) hookFactory(this, this.g.factory);
     for (const p of this.parts) p.update(dt, t);
     // the coast field follows the ground (craters, earthshaping) every few seconds
     if ((this.shoreT -= dt) <= 0) { this.shoreT = 6; if (this.coastMoved()) this.shore.build(); }

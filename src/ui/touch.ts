@@ -155,6 +155,10 @@ const CSS = `
 .tc-lamp { position: absolute; background-repeat: no-repeat; image-rendering: pixelated; pointer-events: none; }
 .tc-lab { position: absolute; image-rendering: pixelated; pointer-events: none; transform: translateX(-50%); white-space: nowrap; }
 .tc-hide { display: none !important; }
+/* docked on the desk: the art is the desk's 3D pads, these are only the hit areas */
+body.tc-docked .tc-btn { background: none !important; }
+body.tc-docked .tc-btn > *, body.tc-docked .tc-base, body.tc-docked .tc-knob { visibility: hidden; }
+body.tc-docked .tc-zone { z-index: 26; }
 /* the corners the controls own: other UI keeps out of them (body.touch-ui sets --tc-safe-left/-bottom/-right) */
 body.touch-ui .hud-obj { position: fixed !important; left: var(--tc-obj-left, 6px) !important; top: var(--tc-obj-top, 64px) !important; right: auto !important; bottom: auto !important;
   width: auto !important; max-width: min(46vw, calc(150px * var(--s))) !important; max-height: calc(13px * var(--s)); overflow: hidden; z-index: 26; pointer-events: auto !important; cursor: pointer;
@@ -403,6 +407,26 @@ export class TouchControls {
         this.b.power.e.appendChild(cv); this.b.power.ic = cv;
       }
     }
+  }
+  // ------------------------------------------------------------------ docked on the cockpit desk
+  /** the desk draws the controls as 3D thumb pads (ui/desk/pads); the DOM pieces become invisible hit areas laid over
+   *  them. `at` gives each button's centre and radius in CSS px (viewport); the stick's zone is a rectangle. */
+  docked = false;
+  dock(at: Partial<Record<'punch' | 'use' | 'throw' | 'power' | 'wheel' | 'fire', { x: number; y: number; r: number }>>, zone: { x: number; y: number; w: number; h: number }) {
+    if (!this.docked) { this.docked = true; document.body.classList.add('tc-docked'); }
+    for (const [id, p] of Object.entries(at)) {
+      const b = this.b[id as keyof typeof this.b]; if (!b || !p) continue;
+      const e = b.e.style; e.position = 'fixed'; e.right = 'auto'; e.bottom = 'auto';
+      e.left = Math.round(p.x - p.r) + 'px'; e.top = Math.round(p.y - p.r) + 'px'; e.width = e.height = Math.round(p.r * 2) + 'px';
+    }
+    const z = this.zone.style; z.left = Math.round(zone.x) + 'px'; z.top = Math.round(zone.y) + 'px'; z.width = Math.round(zone.w) + 'px'; z.height = Math.round(zone.h) + 'px'; z.bottom = 'auto';
+    this.restStick();
+  }
+  /** what the desk's pads show: which are held, their lamps (0 off, 1 green, 2 amber), dead caps, the stick */
+  state() {
+    const out = { held: {} as Record<string, boolean>, lamp: {} as Record<string, number>, dead: {} as Record<string, boolean>, stick: { x: this.kx, y: this.ky, on: this.stickId !== null }, icon: this.iconKey };
+    for (const [id, b] of Object.entries(this.b)) { out.held[id] = b.id !== null; out.lamp[id] = +(b.lampSt || 0); out.dead[id] = b.st === 'd'; }
+    return out;
   }
   setVisible(v: boolean) {
     this.active = v;
