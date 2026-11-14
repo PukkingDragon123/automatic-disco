@@ -121,7 +121,7 @@ export async function testOcean(engine: Engine, input: Input, P: URLSearchParams
     const p = g.player as unknown as { x: number; z: number; y: number; vx: number; vz: number };
     const node = shot === 'dive' ? o.reef?.nodes.find((n) => o.depthAt(n.x, n.z) < 9) ?? o.reef?.nodes[0] : null;
     const at = node ? { x: node.x + 1.2, z: node.z + 0.8 } : out(3);
-    p.x = at.x; p.z = at.z; p.vx = p.vz = 0;
+    p.x = at.x; p.z = at.z; p.vx = p.vz = 0; (p as unknown as { moveGoal: unknown }).moveGoal = null;
     if (node) o.dive.depth = Math.max(0, o.depthAt(at.x, at.z) - 2.2);
     g.cam.yaw = g.cam.yawGoal = 0.7; g.cam.dist = g.cam.distGoal = 18;
     console.log('test=ocean dive', JSON.stringify(at), 'depth', o.dive.depth.toFixed(1), 'started', g.player.started);

@@ -38,6 +38,8 @@ export class Terrain {
   readonly ecoTex: THREE.DataTexture;
   /** burnt ground per cell 0..1 (scorch), fading back through dry soil over a few days */
   readonly burn: Float32Array; private burnTex: THREE.DataTexture; private burnLive = false; private burnT = -1;
+  /** geology per cell (setGeo): R rock family, G ore-vein strength, B ore kind, A spare */
+  private geoTex: THREE.DataTexture;
   /** the ecology map's bytes; write R (moisture) and G (fertility) 0..255 per column, then ecoFlush() */
   ecoData() { return this.ecoTex.image.data as Uint8Array; }
   ecoFlush() { this.ecoTex.needsUpdate = true; }
@@ -80,6 +82,8 @@ export class Terrain {
     this.ecoTex = mk(eco, THREE.UnsignedByteType);
     this.burn = new Float32Array(N * N);
     this.burnTex = mk(new Uint8Array(N * N), THREE.UnsignedByteType, THREE.RedFormat);
+    const geo0 = (region as unknown as { geo?: Uint8Array }).geo;
+    this.geoTex = mk(geo0 && geo0.length === N * N * 4 ? Uint8Array.from(geo0) : new Uint8Array(N * N * 4), THREE.UnsignedByteType, THREE.RGBAFormat, true);
     // each layer's mean brightness (linear): a texel brighter than its tile's mean stands proud in the height blend
     const lin = (c: number) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
     const avgL = avg.map((c) => lin((c >> 16) & 255) * 0.3 + lin((c >> 8) & 255) * 0.59 + lin(c & 255) * 0.11);
@@ -89,7 +93,7 @@ export class Terrain {
     for (let b = 0; b < 16; b++) { const d = BLOCKS[b] ?? BLOCKS[0]; lay.push(d.top[0], d.top[d.top.length - 1]); }
     this.U = {
       uBlocks: { value: tex }, uMoss: { value: this.moss }, uVis: { value: this.vis }, uHeight: { value: this.heightTex }, uMat: { value: this.matTex }, uShade: { value: this.shadeTex }, uDamp: { value: this.dampTex },
-      uLay: { value: lay }, uRockSide: { value: L.rockSide }, uEco: { value: this.ecoTex }, uBurn: { value: this.burnTex }, uAvgL: { value: avgL }, uWetG: { value: 0 },
+      uLay: { value: lay }, uRockSide: { value: L.rockSide }, uEco: { value: this.ecoTex }, uBurn: { value: this.burnTex }, uGeo: { value: this.geoTex }, uAvgL: { value: avgL }, uWetG: { value: 0 },
       // per block kind: how far its texels stand proud (+) or settle (-) in a blend, and how much it darkens wet
       uHB: { value: [0.09, 0.07, -0.04, 0.07, -0.09, -0.1, -0.02, 0.1, 0.05, 0.05, 0.08, 0.02, 0.0, 0.0, 0, 0] },
       uAbs: { value: [0.55, 0.6, 1, 0.2, 1, 0.6, 0.9, 0, 0.2, 0.2, 0, 0.7, 0.4, 0.3, 0, 0] },
@@ -222,7 +226,7 @@ vWp = wpos4.xyz; vNw = normalize(mat3(modelMatrix) * objectNormal); vHol = aHol;
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
 uniform highp sampler2DArray uBlocks;
-uniform sampler2D uMoss, uVis, uMat, uShade, uDamp, uEco, uBurn;
+uniform sampler2D uMoss, uVis, uMat, uShade, uDamp, uEco, uBurn, uGeo;
 uniform float uN, uTime, uRivalLayer, uVeinGain, uRockSide, uWetG, uWater;
 uniform float uLay[32];
 uniform float uAvgL[40];
@@ -372,8 +376,17 @@ if (vNw.y < 0.74) {
   vec2 uvs = abs(vNw.x) > abs(vNw.z) ? vec2(vWp.z, -vWp.y) : vec2(vWp.x, -vWp.y);
   uvs = (floor(uvs * ${TSF}) + 0.5) / ${TSF};
   vec2 pan = floor(uvs / ${TMF});
-  float lay = dom == 8 ? ${L.basaltSide}.0 : uRockSide;
-  vec4 tr = textureGrad(uBlocks, vec3((uvs + floor(vec2(h2(pan + 1.3), h2(pan + 7.9)) * ${TTF}) / ${TSF}) / ${TMF}, lay), dFdx(uvs) * 0.5 / ${TMF}, dFdy(uvs) * 0.5 / ${TMF});
+  vec4 geo = texture2D(uGeo, (floor(vWp.xz) + 0.5) / uN);
+  int fam = int(geo.r * 255.0 + 0.5);
+  float lay = dom == 8 || fam == 2 ? ${L.basaltSide}.0 : uRockSide;
+  vec2 cuv = (uvs + floor(vec2(h2(pan + 1.3), h2(pan + 7.9)) * ${TTF}) / ${TSF}) / ${TMF}, cgx = dFdx(uvs) * 0.5 / ${TMF}, cgy = dFdy(uvs) * 0.5 / ${TMF};
+  vec4 tr = textureGrad(uBlocks, vec3(cuv, lay), cgx, cgy);
+  // ore veins: where the geology says so, the painted ore strata show through, the proudest pixels first
+  if (geo.g > 0.06) {
+    vec4 to = textureGrad(uBlocks, vec3(cuv, geo.b > 0.5 / 255.0 ? ${L.crystalSide}.0 : ${L.oreSide}.0), cgx, cgy);
+    float lo = dot(to.rgb, vec3(0.3, 0.59, 0.11)), lr = dot(tr.rgb, vec3(0.3, 0.59, 0.11));
+    if (geo.g * 1.4 + (lo - lr) * 2.0 + (vn(uvs * 0.9 + 5.0) - 0.5) * 0.8 > 0.75) tr = to;
+  }
   base = tr.rgb; glowA = tr.a; bestId = 3;
 } else {
   base = bestT.rgb; glowA = bestT.a;
@@ -463,6 +476,17 @@ diffuseColor.rgb *= base;
    * pixel-art char, ash drifts, charred sticks and ember specks (the embers glow only while the burn is fresh); it fades
    * through dry soil back to the ground's own cover over about three in-game days. Drop pods, fires, blasts.
    */
+  /**
+   * Geology per cell for the cliffs (the landscape generator's): N*N*4 bytes, R the rock family (0 the planet's rock,
+   * 2 basalt; others fall back to the planet's rock until they get their own strata), G ore-vein strength 0..255 (veins
+   * of the painted ore show through the strata where it is high), B the ore kind (0 ferrite, 1 lumen crystal), A spare.
+   * Call again after the ground changes; a Region carrying `geo` is picked up at construction.
+   */
+  setGeo(data: Uint8Array) {
+    const d = this.geoTex.image.data as Uint8Array;
+    if (data.length !== d.length) { console.warn('terrain.setGeo: expected', d.length, 'bytes, got', data.length); return; }
+    d.set(data); this.geoTex.needsUpdate = true;
+  }
   scorch(x: number, z: number, r: number, k = 1) {
     const N = this.region.N, b = this.burn, d = this.burnTex.image.data as Uint8Array, ext = Math.ceil(r + 1);
     for (let Z = Math.floor(z) - ext; Z <= Math.floor(z) + ext; Z++) for (let X = Math.floor(x) - ext; X <= Math.floor(x) + ext; X++) {

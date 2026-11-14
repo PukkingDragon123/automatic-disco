@@ -551,9 +551,9 @@ export function buildBlockTexture(pal: Palette, seed: number): { tex: THREE.Data
   paint(L.basalt, (p) => basalt(p, pal.basalt, s + 14, false));
   paint(L.basaltSide, (p) => basalt(p, pal.basalt, s + 15, true));
   paint(L.ore, (p) => ore(p, pal.rock, s + 16, false));
-  paint(L.oreSide, flat(pal.rock));
+  paint(L.oreSide, (p) => ore(p, pal.rock, s + 17, true));
   paint(L.crystal, (p) => crystal(p, pal.rock, pal.crystal, s + 18, false));
-  paint(L.crystalSide, flat(pal.rock));
+  paint(L.crystalSide, (p) => crystal(p, pal.rock, pal.crystal, s + 19, true));
   paint(L.litter, (p) => litter(p, pal.soil, pal.foliage, s + 20));
   paint(L.gravel, (p) => gravel(p, pal.rock, s + 21));
   paint(L.moss, (p) => moss(p, 777));
