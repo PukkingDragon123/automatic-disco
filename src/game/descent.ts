@@ -781,7 +781,7 @@ export class Descent {
     for (const u of this.plasmaU) { u.uT.value = this.t; u.uK.value = heat * (u.uWake.value ? 0.9 : 1.2); }
     this.plasma.forEach((m) => (m.visible = heat > 0.01));
     pod.heat.value = Math.max(heat * 1.4, pod.heat.value - dt * 0.15);
-    this.heatLight.intensity = heat * 160;
+    this.heatLight.intensity = heat * 12;
     this.fire$?.set(heat * 1.4);
     this.wind$?.set(0.3 + (1 - heat) * 0.4 * (this.landed ? 0 : 1));
     pod.lens.value = 0.8 + Math.sin(this.t * 3) * 0.2 + heat * 0.4;

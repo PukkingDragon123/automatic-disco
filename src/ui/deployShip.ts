@@ -274,7 +274,7 @@ export function buildShip(bin: Bin, parent: THREE.Object3D): Ship {
   root.add(sun, sun.target); extLights.push(sun);
   const bounce = new THREE.HemisphereLight(0x405060, 0x7a90b0, 0.55); root.add(bounce); extLights.push(bounce);
   for (const s of [-1, 1]) {
-    const f = new THREE.SpotLight(0xffd8a0, 900, 70, 0.55, 0.6, 1.6); f.position.set(s * 14, 16, 52); f.target.position.set(s * 18, -6, 28);
+    const f = new THREE.SpotLight(0xffd8a0, 260, 70, 0.55, 0.6, 1.6); f.position.set(s * 14, 16, 52); f.target.position.set(s * 18, -6, 28);
     root.add(f, f.target); extLights.push(f);
   }
 
@@ -415,12 +415,12 @@ export function buildShip(bin: Bin, parent: THREE.Object3D): Ship {
     mesh(bin, new THREE.ConeGeometry(0.55, 0.45, 12, 1, true), lit(bin, 0x3a4a3a, { side: THREE.DoubleSide }), bay, x, B.ceil - 2.2, z);
     mesh(bin, new THREE.CircleGeometry(0.4, 12), lamp(bin, 0xffe0a8, 2.2), bay, x, B.ceil - 2.42, z, false).rotation.x = Math.PI / 2;
   }
-  const key = new THREE.SpotLight(0xffe2b0, 1400, 60, 0.95, 0.5, 1.5); key.position.set(0, B.ceil - 1.2, 24); key.target.position.set(0, B.floor, 30);
+  const key = new THREE.SpotLight(0xffe2b0, 110, 60, 0.95, 0.5, 1.5); key.position.set(0, B.ceil - 1.2, 24); key.target.position.set(0, B.floor, 30);
   key.castShadow = true; key.shadow.mapSize.set(1024, 1024); key.shadow.bias = -0.0006; key.shadow.normalBias = 0.04; (key.shadow.camera as THREE.PerspectiveCamera).near = 1; (key.shadow.camera as THREE.PerspectiveCamera).far = 40;
   bay.add(key, key.target); intLights.push(key);
-  const key2 = new THREE.SpotLight(0xffd8a0, 900, 50, 0.9, 0.6, 1.5); key2.position.set(0, B.ceil - 1.2, 46); key2.target.position.set(0, B.floor, 52); bay.add(key2, key2.target); intLights.push(key2);
+  const key2 = new THREE.SpotLight(0xffd8a0, 80, 50, 0.9, 0.6, 1.5); key2.position.set(0, B.ceil - 1.2, 46); key2.target.position.set(0, B.floor, 52); bay.add(key2, key2.target); intLights.push(key2);
   const fill = new THREE.HemisphereLight(0x8090a0, 0x2a2620, 0.9); bay.add(fill); intLights.push(fill);
-  for (const z of [12, 34]) { const pl = new THREE.PointLight(0xffc890, 60, 22, 1.6); pl.position.set(0, -6, z); bay.add(pl); intLights.push(pl); }
+  for (const z of [12, 34]) { const pl = new THREE.PointLight(0xffc890, 18, 22, 1.6); pl.position.set(0, -6, z); bay.add(pl); intLights.push(pl); }
   const doorLight = new THREE.DirectionalLight(0xa8c4e8, 0); doorLight.position.set(0, -6, 120); doorLight.target.position.set(0, -12, 20); bay.add(doorLight, doorLight.target); intLights.push(doorLight);
 
   // ---- the control gallery: a box on the port catwalk, slanted windows on the bay side, console, table
@@ -485,7 +485,7 @@ export function buildShip(bin: Bin, parent: THREE.Object3D): Ship {
   const cursorM = bin.m(gbuf(new THREE.MeshBasicMaterial({ color: 0xb8382e, transparent: true, opacity: 0.85, depthWrite: false }), 0));
   const cursor = mesh(bin, new THREE.RingGeometry(0.045, 0.055, 24), cursorM, table, 0, 0.968, 0, false);
   cursor.rotation.x = -Math.PI / 2; cursor.visible = false;
-  const lampOver = new THREE.SpotLight(0xffe6c0, 120, 6, 0.9, 0.5, 1.6); lampOver.position.set(T.x, K.ceil - 0.2, T.z); lampOver.target.position.set(T.x, T.y, T.z); booth.add(lampOver, lampOver.target); intLights.push(lampOver);
+  const lampOver = new THREE.SpotLight(0xffe6c0, 6, 6, 0.9, 0.5, 1.6); lampOver.position.set(T.x, K.ceil - 0.2, T.z); lampOver.target.position.set(T.x, T.y, T.z); booth.add(lampOver, lampOver.target); intLights.push(lampOver);
   mesh(bin, new THREE.ConeGeometry(0.35, 0.3, 14, 1, true), lit(bin, 0x3a4a3a, { side: THREE.DoubleSide }), booth, T.x, K.ceil - 0.25, T.z);
 
   // ---- people: the launch officer in the gallery, the deck crew round the sled
@@ -536,7 +536,7 @@ export function buildShip(bin: Bin, parent: THREE.Object3D): Ship {
       for (const c of cables) { c.scale.y = drop + 0.3; c.position.y = -1.15 - (drop + 0.3) / 2; }
     },
     setDoors(u) { doorU = u; const e = sm(0, 1, u); doors[0].rotation.x = -e * 1.45; doors[1].rotation.x = e * 1.45; doorLight.intensity = e * 2.6; },
-    setBeacons(on) { beaconOn = on; for (const b of beacons) { b.light.intensity = on ? 420 : 0; b.lamp.color.set(on ? 0xff3a20 : 0x401010).multiplyScalar(on ? 2.4 : 1); } (bm2 as THREE.ShaderMaterial).uniforms.uK.value = on ? 0.5 : 0; },
+    setBeacons(on) { beaconOn = on; for (const b of beacons) { b.light.intensity = on ? 28 : 0; b.lamp.color.set(on ? 0xff3a20 : 0x401010).multiplyScalar(on ? 2.4 : 1); } (bm2 as THREE.ShaderMaterial).uniforms.uK.value = on ? 0.5 : 0; },
     setLever(u) { lever.rotation.x = 0.5 - sm(0, 1, u) * 1.0; },
     setNixies(s) {
       if (s === nixCur) return; nixCur = s;
