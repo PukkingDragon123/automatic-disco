@@ -114,6 +114,21 @@ export async function testOcean(engine: Engine, input: Input, P: URLSearchParams
     look = new THREE.Vector3(px, R.water + 2, pz); fov = 46;
     setTimeout(() => o.dropPod(px, pz, 60), Number(P.get('drop') ?? 500));
   }
+  // the land's water, for a look before the geology lays it out (&inland): a lake, a spring and a geyser, a waterfall
+  if (P.has('inland')) {
+    const { Inland } = await import('./inland');
+    const lx = L.x + 6, lz = L.z - 5, gy = R.heightAt(lx, lz), lv = gy - 0.15;
+    const poly: [number, number][] = []; for (let i = 0; i < 9; i++) { const a = (i / 9) * Math.PI * 2, rr = 3.2 + Math.sin(i * 2.3) * 0.7; poly.push([lx + Math.cos(a) * rr, lz + Math.sin(a) * rr]); }
+    for (let z = Math.floor(lz - 5); z <= lz + 5; z++) for (let x = Math.floor(lx - 5); x <= lx + 5; x++) { const d = Math.hypot(x + 0.5 - lx, z + 0.5 - lz); if (d < 3.6 && R.inside(x, z)) { R.h[z * R.N + x] = Math.min(R.h[z * R.N + x], lv - 0.25 - (3.6 - d) * 0.3); R.dirty.add(z * R.N + x); } }
+    g.world.terrain.flushDirty();
+    const RR = R as unknown as Record<string, unknown>;
+    RR.lakes = [{ level: lv, poly }];
+    RR.springs = [{ x: L.x - 5, z: L.z - 4, r: 1.3, level: R.heightAt(L.x - 5, L.z - 4) + 0.05, kind: 'hot', hue: 'turquoise' }, { x: L.x - 2, z: L.z - 8, r: 0.9, level: R.heightAt(L.x - 2, L.z - 8) + 0.05, kind: 'geyser', hue: 'ochre' }];
+    const fe = out(1.2);
+    RR.falls = [{ x: fe.x - Math.cos(fe.a) * 3, z: fe.z - Math.sin(fe.a) * 3, top: R.water + 3.5, bottom: R.water, w: 2.2, dir: [Math.cos(fe.a), Math.sin(fe.a)] }];
+    const inl = new Inland(o); g.world.terrain.group.add(inl.group); o.parts.push(inl);
+    cam = new THREE.Vector3(L.x + 2, R.heightAt(L.x, L.z) + 9, L.z + 10); look = new THREE.Vector3(L.x, R.heightAt(L.x, L.z), L.z - 4);
+  }
   // the golem at work under the sea: hatched, set down by a seabed node, dived to it; the game's own camera follows
   if (shot === 'dive' || shot === 'play') {
     engine.setScreen(g);
