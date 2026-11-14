@@ -58,6 +58,10 @@ export class Animator {
   posture: 'relaxed' | 'alert' | 'sleep' | 'threat' | 'roost' = 'relaxed';
   /** 1 at a heavy footfall, decaying to 0: the game shakes the camera and ground by it (titans, rig.length > 12) */
   stomp = 0;
+  /** titans only: 1 at the peak of a snort (a sudden deep exhale through the nostrils), decaying to 0: the game can
+   *  blow dust from the nostrils and flatten the grass ahead by it */
+  snort = 0;
+  private snortIn = 6 + Math.random() * 10; private snortT = -1;
   /** set by the AI: roll along the ground as a ball while curled (flee downhill) */
   rolling = false;
   /** curl into a defensive ball (1) or open out again (0); species with rig.dims.roll tuck fully, others hunch */
@@ -146,7 +150,15 @@ export class Animator {
     // breathing: slow at rest in big animals, quick in small ones, heaving after a run
     const bHz = (0.32 / Math.sqrt(Math.max(0.15, rig.length))) * (1 + this.blend * 0.8 + this.run) * (this.posture === 'sleep' ? 0.6 : 1);
     this.breathPh += dt * bHz * Math.PI * 2;
-    const br = Math.sin(this.breathPh), bAmp = 0.022 + this.blend * 0.015 + this.run * 0.02;
+    // titans breathe like bellows (a slow, deep heave of the barrel and the plates over it) and now and then snort
+    const titan = rig.length > 12;
+    let snortK = 0;
+    if (titan && !dead) {
+      if (this.snortT < 0) { this.snortIn -= dt; if (this.snortIn <= 0) { this.snortT = 0; this.snortIn = 9 + Math.random() * 14; } }
+      else { this.snortT += dt; const c = this.snortT / 1.6; snortK = c < 0.3 ? c / 0.3 : Math.max(0, 1 - (c - 0.3) / 0.7); if (c >= 1) this.snortT = -1; }
+    }
+    this.snort = snortK;
+    const br = Math.sin(this.breathPh) * (titan ? 1.6 : 1) - snortK * 1.4, bAmp = 0.022 + this.blend * 0.015 + this.run * 0.02;
     const breathe = br * rig.rideH * 0.006;
     if (rig.ribs >= 0) B[rig.ribs].scale.set(1 + br * bAmp * 0.9, 1 + br * bAmp, 1 + br * bAmp * 0.3);
     root.position.y += (bob + breathe + this.hop) * (1 - cu) - cu * rig.rideH * 0.62;
@@ -196,7 +208,9 @@ export class Animator {
       const tongueAtk = rig.tongue >= 0 && rig.gait === 'hop';
       // idle business: look round, sniff or crop the ground (nose twitching, jaw working), turn to groom a flank
       let iy = 0, ip = 0, hp = 0, hr = 0;
-      if (act === 'look') { iy = this.idleYaw * ik; ip = this.idlePitch * ik; }
+      // a titan's head sweeps slowly across the land while it stands, and tosses with a snort
+      if (titan && spd < 0.05) { iy += Math.sin(this.t * 0.16) * 0.32 * (1 - this.blend); ip += Math.sin(this.t * 0.11 + 1) * 0.06 - snortK * 0.18; }
+      if (act === 'look') { iy += this.idleYaw * ik; ip += this.idlePitch * ik; }
       else if (act === 'sniff') { ip = (rig.dims.graze ? 1.0 : 0.62) * ik; hp = (0.25 + Math.sin(it * 9) * 0.035) * ik; iy = Math.sin(it * 0.7) * 0.25 * ik; }
       else if (act === 'groom') { iy = this.idleSide * 1.1 * ik; ip = 0.3 * ik; hp = (0.3 + Math.sin(it * 7) * 0.08) * ik; hr = -this.idleSide * 0.3 * ik; }
       else if (act === 'shake') hr = -shake * 1.6;
