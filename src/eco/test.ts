@@ -23,6 +23,8 @@ export async function testEcosys(engine: Engine, input: Input, P: URLSearchParam
   const w = g.world, eco = w.eco, L = g.region.landing;
   // an engineering demo: a spring watering the ground east of the base for good
   const irr: [number, number] = [Math.min(g.region.N - 20, L.x + 16), L.z + 4];
+  // (after the first tick: the eco settles its baseline then, and the spring is a change to it)
+  w.update(0.01, g.cam.cam);
   if (P.has('irrigate')) eco.irrigate(irr[0], irr[1], 10, 1, Infinity);
   const t0 = performance.now();
   const days = Number(P.get('days') ?? 1);
