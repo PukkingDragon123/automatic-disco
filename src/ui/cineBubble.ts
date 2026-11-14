@@ -5,8 +5,8 @@
 const CSS = /* css */`
 .bub { position: fixed; left: 0; top: 0; z-index: 4; pointer-events: auto; cursor: pointer; transform-origin: 50% 100%; opacity: 0; will-change: transform, opacity; }
 .bub canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
-.bub .bt { position: relative; font-family: 'VT', monospace; font-size: var(--cf-vt1, 14px); line-height: calc(var(--cf-vt1, 14px) + 2px); color: #3b3a36; white-space: pre-wrap; }
-.bub .bn { position: relative; font-family: 'Silk', monospace; font-size: var(--cf-ps1, 11px); line-height: var(--cf-ps1, 11px); color: #6b6a62; letter-spacing: 1px; margin-bottom: 2px; }
+.bub .bt { position: relative; font-family: 'VT', monospace; font-size: var(--cf-vt2, 28px); line-height: calc(var(--cf-vt2, 28px) + 2px); color: #1f1e1b; white-space: pre-wrap; }
+.bub .bn { position: relative; font-family: 'Silk', monospace; font-size: var(--cf-ps1, 11px); line-height: var(--cf-ps1, 11px); color: #4a4944; letter-spacing: 1px; margin-bottom: 4px; }
 .bub .bt .cur { opacity: 0.6; }
 body.cine-on .bub { visibility: hidden; }
 `;
@@ -36,10 +36,10 @@ export class SpeechBubble {
     this.nameEl.textContent = who.toUpperCase();
     this.el.style.display = 'block';
     const S = Number(document.documentElement.style.getPropertyValue('--s')) || 2, u = S;
-    const pad = 7 * u;
+    const pad = 10 * u;
     this.txt.textContent = text; this.el.style.width = 'auto';
     this.el.style.padding = `${pad * 0.8}px ${pad}px ${pad * 0.9}px`;
-    this.el.style.maxWidth = `${170 * u}px`;
+    this.el.style.maxWidth = `${230 * u}px`;
     const r = this.el.getBoundingClientRect();
     this.w = Math.ceil(r.width); this.h = Math.ceil(r.height); this.tail = 12 * u;
     this.el.style.width = this.w + 'px';
@@ -70,21 +70,26 @@ export class SpeechBubble {
     const wob = (i: number) => (h1(i, s) - 0.5) * 0.9;
     const path = () => { g.beginPath(); pts.forEach(([px, py], i) => { const X = px + wob(i), Y = py + wob(i + 99); if (i) g.lineTo(X, Y); else g.moveTo(X, Y); }); g.closePath(); };
     // a soft shadow where the sheet lifts off, the paper, its grain
-    g.save(); g.translate(1.5 * u, 2 * u); path(); g.fillStyle = 'rgba(12, 12, 14, 0.32)'; g.fill(); g.restore();
-    path(); g.fillStyle = '#dcd5c2'; g.fill();
+    g.save(); g.translate(2 * u, 3 * u); path(); g.fillStyle = 'rgba(10, 10, 12, 0.5)'; g.fill(); g.restore();
+    path(); g.fillStyle = '#e4ddcb'; g.fill();
     g.save(); path(); g.clip();
     for (let i = 0; i < (W * H) / 9; i++) { const px = h1(i, s + 1) * W, py = h1(i, s + 2) * H; g.fillStyle = h1(i, s + 3) < 0.5 ? 'rgba(90, 80, 60, 0.07)' : 'rgba(255, 252, 240, 0.12)'; g.fillRect(px, py, 1, 1); }
     g.fillStyle = 'rgba(160, 150, 120, 0.12)'; g.fillRect(x0, y0 + h - 3 * u, w, 3 * u);
     g.restore();
     // the graphite line: two passes, the second a hair off, like a pencil going round twice
     g.lineJoin = 'round'; g.lineCap = 'round';
-    path(); g.strokeStyle = 'rgba(59, 58, 54, 0.9)'; g.lineWidth = Math.max(1.25, u * 0.75); g.stroke();
+    path(); g.strokeStyle = '#2a2925'; g.lineWidth = Math.max(1.5, u * 0.9); g.stroke();
     g.save(); g.translate(0.6, -0.4); path(); g.strokeStyle = 'rgba(59, 58, 54, 0.3)'; g.lineWidth = 1; g.stroke(); g.restore();
     (this as any)._tip = [tipX - x0 + 4 * u - 4 * u, this.h + this.tail];
   }
   /** follow the speaker: (x, y) is the screen point the tail should touch (above their head) */
+  private offT = 0;
   update(dt: number, x: number, y: number, onScreen: boolean) {
-    this.alpha += ((this.want && onScreen ? 1 : 0) - this.alpha) * Math.min(1, dt * (this.want ? 9 : 6));
+    // only fade for being off screen if it stays off a moment (camera moves shouldn't make it flicker)
+    this.offT = onScreen ? 0 : this.offT + dt;
+    const show = this.want && this.offT < 0.4;
+    this.alpha += ((show ? 1 : 0) - this.alpha) * Math.min(1, dt * (show ? 14 : 6));
+    if (show && this.alpha > 0.97) this.alpha = 1;
     if (this.alpha < 0.01 && !this.want) { this.el.style.display = 'none'; return; }
     const before = Math.floor(this.shown);
     this.shown = Math.min(this.text.length, this.shown + dt * 42);

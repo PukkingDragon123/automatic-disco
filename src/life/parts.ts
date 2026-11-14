@@ -396,7 +396,7 @@ export function rack(S: Ctx, h: HeadCtx, size: number, big: boolean) {
       const k = Math.round(tt * N), p = bs.pts[k], rr = rad(tt), L = La * tl * (0.9 + hash(k, s + 5) * 0.2);
       // tines leave the front of the beam reaching forward, then sweep up toward their tips
       const dir = norm([s * outw, 0.35 + (1 - fwd) * 0.6, fwd * (tt < 0.2 ? 1.25 : 1.05)]);
-      const pts: V3[] = [addV(p, scl(dir, -rr * 0.4)), addV(p, scl(dir, L * 0.36)), addV(addV(p, scl(dir, L * 0.7)), [0, L * 0.12, 0]), addV(addV(p, scl(dir, L * 0.92)), [0, L * 0.3, 0])];
+      const pts: V3[] = [addV(p, scl(dir, -rr * 0.4)), addV(p, scl(dir, L * 0.32)), addV(addV(p, scl(dir, L * 0.6)), [0, L * 0.16, 0]), addV(addV(p, scl(dir, L * 0.76)), [0, L * 0.42, 0])];
       sac(S.B, AN, S.gid(), pts, [[rr * 0.8, rr * 0.72], [rr * 0.58, rr * 0.52], [rr * 0.34, rr * 0.3], [rr * 0.08, rr * 0.08]], pts.map(() => w), { n: 9, sq: 2, tv: [0.45, 0.3, 0.12, 0] });
     }
   }
@@ -404,13 +404,13 @@ export function rack(S: Ctx, h: HeadCtx, size: number, big: boolean) {
     if (velvet) {
       // velvet: short soft fur, grey-brown, paler and rounder at the growing tips
       const R = makeRamp(mixHex(d.colors.base, 0x6a5a4a, 0.5), 7, { spread: 0.5, hueShift: 0.04 });
-      AN.fill(R, (x, y) => 2.4 + (1 - y / AN.h) * 1.4 + Math.cos(AN.th(x)) * 0.8 + (hash(x, y) < 0.3 ? -0.7 : 0) + (hash(x >> 1, y >> 1) - 0.5) * 0.6, undefined, 0.4);
+      AN.fill(R, (x, y) => 2.4 + (y / AN.h) * 1.4 + Math.cos(AN.th(x)) * 0.8 + (hash(x, y) < 0.3 ? -0.7 : 0) + (hash(x >> 1, y >> 1) - 0.5) * 0.6, undefined, 0.4);
       return;
     }
     // bone: dark furrowed and pearled near the burr, long grooves up the beam, polished ivory tines
     const R = makeRamp(0x8a7256, 7, { spread: 0.6, hueShift: 0.04 });
     for (let y = 0; y < AN.h; y++) for (let x = 0; x < AN.w; x++) {
-      const f = 1 - y / AN.h, th = AN.th(x);
+      const f = y / AN.h, th = AN.th(x);
       let k = 1.6 + f * 2.6 + Math.cos(th) * 0.8 + (AN.fbm(x, y, 4, 2, 21) - 0.5) * 1.0;
       if (Math.sin(x * 1.7 + AN.fbm(x, y, 3, 2, 8) * 5) > 0.7 && f < 0.75) k -= 1.0; // grooves
       if (f < 0.3 && hash(x, y) < 0.18) k += 1.3; // pearls

@@ -12,7 +12,8 @@ import { Pix, GM, RD as RD0, PH as PH0, AM as AM0, CR, OL, INK, dv, text, mixc, 
 import { Gauge, Lamp, meterFace, place, steamVent, u } from './gadgets';
 import { WHEEL, DESC, wheelArt, descArt } from './hudArt';
 import { hashf } from '../limbo/core/rng';
-import { powerOwned, powerCost } from '../game/combat';
+import { powerOwned, powerCost, ABILITY_SKILL } from '../game/combat';
+import { skillIcon } from './icons';
 
 export interface WheelCtx { hive: Hive; arm(a: Ability): void; armed(): Ability | null }
 
@@ -193,7 +194,9 @@ export class AbilityWheel {
     const added = first ? [] : next.filter((a) => !this.order.includes(a));
     this.order = next; this.n = Math.max(1, next.length); this.step = (Math.PI * 2) / this.n;
     this.ownKey = next.join(',');
-    this.icons = next.map((a) => ({ n: toCanvas(iconCanvas(a, { shadow: true })), d: toCanvas(iconCanvas(a, { dim: true, shadow: true })) }));
+    // each chamber shows its power's skill vignette, painted at the dial's own pixel density (18 art units x QW)
+    const icn = (a: Ability) => skillIcon(ABILITY_SKILL[a] ?? a);
+    this.icons = next.map((a) => ({ n: toCanvas(iconCanvas(icn(a), { shadow: true, px: 18 * QW })), d: toCanvas(iconCanvas(icn(a), { dim: true, shadow: true, px: 18 * QW })) }));
     let i = added.length ? next.indexOf(added[0]) : prev ? next.indexOf(prev) : 0;
     if (i < 0) i = 0;
     this.sel = i; this.ang = this.target = i * this.step; this.vel = 0; this.lastDet = Math.floor(this.ang / (this.step / 2) + 0.5);
@@ -465,9 +468,9 @@ export class AbilityWheel {
       const X = Math.round(cx - 12.5), Y = Math.round(cy - 12.5);
       drawPix(g, ch, X, Y);
       const ic = this.icons[i];
-      if (locked) g.drawImage(ic.d, X + 4, Y + 4);
-      else if (poor) { g.globalAlpha = 0.5; g.drawImage(ic.n, X + 4, Y + 4); g.globalAlpha = 1; }
-      else g.drawImage(ic.n, X + 4, Y + 4);
+      if (locked) g.drawImage(ic.d, X + 4, Y + 4, 18, 18);
+      else if (poor) { g.globalAlpha = 0.5; g.drawImage(ic.n, X + 4, Y + 4, 18, 18); g.globalAlpha = 1; }
+      else g.drawImage(ic.n, X + 4, Y + 4, 18, 18);
       if (locked) { // padlock grate across the bore
         g.fillStyle = hex(GM[2]); for (let k = 0; k < 4; k++) g.fillRect(X + 6, Y + 7 + k * 3, 13, 1);
         g.fillStyle = hex(GM[6]); for (let k = 0; k < 4; k++) g.fillRect(X + 6, Y + 8 + k * 3, 13, 1);

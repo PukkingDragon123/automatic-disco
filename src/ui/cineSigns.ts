@@ -43,14 +43,9 @@ export function makeMeteor(R = 1.7, seed = 7): Meteor {
   for (let i = 0; i < pos.count; i++) { v.fromBufferAttribute(pos, i); const p = shape(v); pos.setXYZ(i, p.x, p.y, p.z); }
   g0.computeVertexNormals();
   // per-face paint: a tone from noise and slope, darker in craters; fissures are faces on a noise zero-line
-  const col = new Float32Array(pos.count * 3), glow = new Float32Array(pos.count);
+  const col = new Float32Array(pos.count * 3);
   const a = new V3(), b = new V3(), c = new V3(), ctr = new V3(), nrm = new V3();
   const C = new THREE.Color();
-  // fissures: the faces nearest a noise zero-line, chosen by rank (fractal noise bunches up near its middle, so a
-  // fixed threshold would light a third of the rock); the thinnest 4 % glow, the next 3 % are darkened lips
-  const crackOf = (f: number) => { a.fromBufferAttribute(pos, f); b.fromBufferAttribute(pos, f + 1); c.fromBufferAttribute(pos, f + 2); const n = a.add(b).add(c).normalize(); return Math.abs(fbm(n.x * 2.3 + 50, n.y * 2.3, n.z * 2.3, 3) - fbm(n.x * 2.3 + 90, n.y * 2.3 + 4, n.z * 2.3, 2)); };
-  const cracks: number[] = []; for (let f = 0; f < pos.count; f += 3) cracks.push(crackOf(f));
-  const sorted = [...cracks].sort((x, y) => x - y), p4 = sorted[Math.floor(sorted.length * 0.04)], p7 = sorted[Math.floor(sorted.length * 0.07)];
   for (let f = 0; f < pos.count; f += 3) {
     a.fromBufferAttribute(pos, f); b.fromBufferAttribute(pos, f + 1); c.fromBufferAttribute(pos, f + 2);
     ctr.copy(a).add(b).add(c).divideScalar(3); nrm.copy(ctr).normalize();
@@ -63,22 +58,45 @@ export function makeMeteor(R = 1.7, seed = 7): Meteor {
     // lichen-grey and rust patches
     const rust = fbm(nrm.x * 2.2 + 30, nrm.y * 2.2, nrm.z * 2.2, 2);
     if (rust > 0.66) C.lerp(new THREE.Color(0x5c4232), 0.3);
-    const cr = cracks[f / 3];
-    const gl = cr <= p4 ? 1 : 0;
-    if (gl > 0) C.set(0x3d6f68); else if (cr <= p7) C.multiplyScalar(0.55);
-    for (let j = 0; j < 3; j++) { col.set([C.r, C.g, C.b], (f + j) * 3); glow[f + j] = gl; }
+    for (let j = 0; j < 3; j++) col.set([C.r, C.g, C.b], (f + j) * 3);
   }
   g0.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  g0.setAttribute('aGlow', new THREE.BufferAttribute(glow, 1));
   const uGlow = { value: 1 }, uT = { value: 0 };
   const m = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  // the fissures: a crack network cut into the rock and glowing along continuous paths. Cell edges of a 3D
+  // cellular noise (they join and branch like real cracks), kept to a few regions by a mask, with a finer
+  // network splitting off; sampled on an object-space pixel grid so the lines stay crisp, darkened into the
+  // stone, and lit by a slow pulse that runs along them.
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uGlow = uGlow; sh.uniforms.uT = uT;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aGlow; varying float vGlow; varying vec3 vOP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlow = aGlow; vOP = position;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uGlow, uT; varying float vGlow; varying vec3 vOP;')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\nfloat pulse = 0.65 + 0.35 * sin(uT * 1.7 + vOP.x * 2.0 + vOP.y * 3.0);\ntotalEmissiveRadiance += vec3(0.42, 0.78, 0.7) * vGlow * uGlow * pulse * 0.9;');
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vOP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvOP = position;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+uniform float uGlow, uT; varying vec3 vOP;
+vec3 ch3(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.xxy + p.yxx) * p.zyx); }
+float cn3(vec3 p) { vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(ch3(i).x, ch3(i + vec3(1,0,0)).x, f.x), mix(ch3(i + vec3(0,1,0)).x, ch3(i + vec3(1,1,0)).x, f.x), f.y),
+             mix(mix(ch3(i + vec3(0,0,1)).x, ch3(i + vec3(1,0,1)).x, f.x), mix(ch3(i + vec3(0,1,1)).x, ch3(i + vec3(1,1,1)).x, f.x), f.y), f.z); }
+vec3 cell3(vec3 p) { vec3 i = floor(p), f = fract(p); float d1 = 9.0, d2 = 9.0, id = 0.0;
+  for (int z = -1; z <= 1; z++) for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    vec3 g = vec3(float(x), float(y), float(z)), o = ch3(i + g), r = g + o - f; float d = dot(r, r);
+    if (d < d1) { d2 = d1; d1 = d; id = o.y; } else if (d < d2) d2 = d; }
+  return vec3(sqrt(d1), sqrt(d2), id); }
+float crackAt(vec3 q, out float id) {
+  vec3 w = cell3(q * 1.3 + 3.0); id = w.z;
+  float region = smoothstep(0.34, 0.6, cn3(q * 0.85 + 7.0));
+  float main = (1.0 - smoothstep(0.03, 0.07, w.y - w.x)) * region;
+  vec3 w2 = cell3(q * 3.0 + 11.0);
+  float fine = (1.0 - smoothstep(0.025, 0.05, w2.y - w2.x)) * region * smoothstep(0.5, 0.72, cn3(q * 1.6 + 2.0));
+  return max(main, fine * 0.65); }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+vec3 qP = (floor(vOP * 24.0) + 0.5) / 24.0; float cid; float crk = crackAt(qP, cid);
+diffuseColor.rgb *= 1.0 - crk * 0.8;`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+float ph = dot(qP, normalize(vec3(0.8, 0.45, 0.35))) * 3.4 + cid * 6.2832;
+float pulse = pow(0.5 + 0.5 * sin(ph - uT * 1.3), 6.0);
+totalEmissiveRadiance += vec3(0.42, 0.78, 0.7) * crk * uGlow * (0.22 + 1.1 * pulse);`);
   };
-  m.customProgramCacheKey = () => 'menu-meteor';
+  m.customProgramCacheKey = () => 'menu-meteor-cracks';
   gbuf(m, 1);
   const body = new THREE.Mesh(g0, m); body.castShadow = true; body.receiveShadow = true;
   const group = new THREE.Group(); group.add(body);
@@ -120,7 +138,7 @@ export function makeRockSwarm(n = 16, rMin = 2.2, rMax = 3.1) {
     for (let k = 0; k < p.count; k++) { v.fromBufferAttribute(p, k); v.multiplyScalar(0.75 + vnoise(v.x * 20 + i, v.y * 20, v.z * 20) * 0.5); p.setXYZ(k, v.x, v.y, v.z); }
     g.computeVertexNormals();
     const col = new Float32Array(p.count * 3), C = new THREE.Color();
-    for (let k = 0; k < p.count; k += 3) { C.set(ROCK[2 + Math.floor(h3(i, k, 5) * 4)]); if (h3(i, k, 9) < 0.05) C.set(0x3d6f68); for (let j = 0; j < 3; j++) col.set([C.r, C.g, C.b], (k + j) * 3); }
+    for (let k = 0; k < p.count; k += 3) { C.set(ROCK[2 + Math.floor(h3(i, k, 5) * 4)]); for (let j = 0; j < 3; j++) col.set([C.r, C.g, C.b], (k + j) * 3); }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     const m = new THREE.Mesh(g, mat); m.castShadow = true; group.add(m);
     const tilt = new THREE.Quaternion().setFromEuler(new THREE.Euler((h3(i, 1, 7) - 0.5) * 1.1, h3(i, 4, 7) * TAU, (h3(i, 6, 7) - 0.5) * 0.9));

@@ -653,8 +653,8 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
   if (!beak && !amph && !liz) {
     const NOSE = S.fixed('NOSE', 10, 8);
     const nz = z0 + sl * (boar ? 1.0 : 0.97);
-    const nr: [number, number, number] = cat ? [hw * 0.19, hh * 0.11, hw * 0.05] : bear ? [hw * 0.2, hh * 0.13, hw * 0.1] : hoof ? [hw * 0.21, hh * 0.17, hw * 0.08] : boar ? [hw * 0.2, hh * 0.19, hw * 0.045] : [hw * 0.14, hh * 0.1, hw * 0.07];
-    ball(S.B, NOSE, S.gid(), addV(head, [0, hy[7] + (cat ? hh * 0.08 : hoof ? hh * 0.02 : hh * 0.06), nz - nr[2] * 0.4]), norm([0, boar ? 0 : cat ? 0.45 : 0.25, 1]), [nr[0] * hk, nr[1], nr[2]], [iH, 1], { n: 16, rings: 7, tv: EYE_TV, sq: cat ? 2.6 : 2.2, cap: 0.08, bump: cat ? (a) => -0.24 * Math.cos(3 * a) : undefined });
+    const nr: [number, number, number] = cat ? [hw * 0.25, hh * 0.15, hw * 0.07] : bear ? [hw * 0.2, hh * 0.13, hw * 0.1] : hoof ? [hw * 0.21, hh * 0.17, hw * 0.08] : boar ? [hw * 0.2, hh * 0.19, hw * 0.045] : [hw * 0.14, hh * 0.1, hw * 0.07];
+    ball(S.B, NOSE, S.gid(), addV(head, [0, hy[7] + (cat ? hh * 0.12 : hoof ? hh * 0.02 : hh * 0.06), nz - nr[2] * (cat ? 0.1 : 0.4)]), norm([0, boar ? 0 : cat ? 0.45 : 0.25, 1]), [nr[0] * hk, nr[1], nr[2]], [iH, 1], { n: 16, rings: 7, tv: EYE_TV, sq: cat ? 2.6 : 2.2, cap: 0.08, bump: cat ? (a) => -0.24 * Math.cos(3 * a) : undefined });
     S.paints.push(() => {
       const leather = cat ? mixHex(d.colors.belly, 0xc86a6a, 0.55) : boar ? mixHex(d.colors.base, 0xd8a0a0, 0.55) : mixHex(d.colors.pattern, 0x1a1214, 0.65);
       const R = makeRamp(leather, 6, { spread: 0.55 });

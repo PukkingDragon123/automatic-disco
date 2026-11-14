@@ -159,6 +159,25 @@ export class MenuScreen implements Screen {
     this.globe = makeGlobe(planet, PLANET_R, { orbit: true });
     this.globe.group.position.copy(PLANET); this.globe.group.rotation.set(0.35, 0.4, 0.2);
     (this.globe.mat.uniforms.uSun?.value as THREE.Vector3 | undefined)?.copy(SUN);
+    // seen this close, under the menu's grade, the planet's day side and cloud tops clip to white: give its surface,
+    // clouds and air a menu-only exposure (separate programs, the game's globe is untouched)
+    const expose = (m: THREE.Material, k: number, key: string) => {
+      const prev = m.onBeforeCompile;
+      m.onBeforeCompile = (sh, r) => {
+        prev.call(m, sh, r);
+        sh.uniforms.uMenuExp = { value: k };
+        const i = sh.fragmentShader.lastIndexOf('}');
+        sh.fragmentShader = 'uniform float uMenuExp;\n' + sh.fragmentShader.slice(0, i) + '  gl_FragColor.rgb *= uMenuExp;\n' + sh.fragmentShader.slice(i);
+      };
+      m.customProgramCacheKey = () => 'menu-exp-' + key;
+      m.needsUpdate = true;
+    };
+    this.globe.group.traverse((o) => {
+      const me = o as THREE.Mesh; if (!me.isMesh || !(me.material instanceof THREE.ShaderMaterial)) return;
+      if (me === this.globe.mesh) expose(me.material, 0.66, 'ground');
+      else if (/cloud/.test(me.name)) expose(me.material, 0.6, 'cloud' + me.id);
+      else if (me === this.globe.atmo) expose(me.material, 0.7, 'air');
+    });
     this.scene.add(this.globe.group);
     // the meteor, its swarm and its dust
     this.meteor = makeMeteor(1.7, 7); this.meteor.group.position.copy(M0); this.scene.add(this.meteor.group);
@@ -526,7 +545,7 @@ export class MenuScreen implements Screen {
     if (this.ptrIn && !this.downAt) this.pick();
   }
   render(post: Post, t: number) {
-    resetGrade(post.grade); post.grade.bloom = 0.45; post.grade.vig = 0.5; post.grade.sat = 0.96;
+    resetGrade(post.grade); post.grade.bloom = 0.3; post.grade.vig = 0.5; post.grade.sat = 0.96;
     post.render(this.scene, this.cam, this.fxScene, t);
   }
   resize(w: number, h: number) { this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); fontVars(); }
