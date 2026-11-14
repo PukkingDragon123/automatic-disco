@@ -75,6 +75,15 @@ export function buildFore(C: Ctx): ForeOut {
     B.in((x0 + x1) / 2, y, 63.9, 0, 0, Math.PI / 2, () => { B.cyl(hullB, 0.55, 0.55, x1 - x0, 12); B.at(0, (x1 - x0) / 2 - 0.15, 0); B.cyl(gun, 0.62, 0.62, 0.3, 12); B.pop(); });
   }
   decal(B, s, 'tBay', new V3(0, -0.2, fz1 + 0.02), new V3(0, 0, 1), 9.6);
+  for (const sx of [-1, 1]) {
+    B.boxAt(hullB, sx * 6.2 - 0.9, 0.2, fz1, sx * 6.2 + 0.9, 3.9, fz1 + 0.7, { bev: 0.1 });
+    B.boxAt(hullB, sx * 6.2 - 1.0, 3.9, fz1, sx * 6.2 + 1.0, 4.1, fz1 + 1.3);
+    for (const [k, lens, col] of [[0, 'lensRed', NAV.red], [1, 'lensAmber', NAV.amber], [2, 'lensGreen', NAV.green]] as [number, string, [number, number, number]][]) {
+      const y = 3.2 - k * 1.15;
+      B.in(sx * 6.2, y, fz1 + 0.72, Math.PI / 2, 0, 0, () => B.cyl(s(lens, 1), 0.38, 0.38, 0.06, 10));
+      fx.halos.push({ p: new V3(sx * 6.2, y, fz1 + 0.95), col, size: 1.1, mode: k === 2 ? 0 : 1, ph: k * 1.3 + (sx > 0 ? 0.6 : 0) });
+    }
+  }
   // floods on the frame top, raking down across the mouth onto the apron
   for (const sx of [-1, 1]) flood(C, new V3(sx * 12.4, 2.6, fz1 - 0.6), new V3(sx * 4, -15.5, 74), { len: 16, spread: 0.3, pool: { n: new V3(0, 1, 0), w: 7, h: 9, at: new V3(sx * 4, -15.5, 71) } });
 
@@ -110,6 +119,14 @@ export function buildFore(C: Ctx): ForeOut {
     // sensor blisters under the brow
     B.in(sx * 4.5, -0.55, 80, Math.PI, 0, 0, () => B.sphere(s('glass', 1), 1.3, 12, 4, { t0: 0, t1: Math.PI / 2 }));
     B.in(sx * 4.5, -0.6, 80, 0, 0, 0, () => B.cyl(gun, 1.45, 1.45, 0.3, 12));
+  }
+  for (let k = 0; k < 7; k++) {
+    const za = 63 + k * 4.4, zb = za + 3.9, ya = 12.15 - Math.max(0, za - 72) * 0.24, yb = 12.15 - Math.max(0, zb - 72) * 0.24;
+    B.push(new THREE.Matrix4().makeRotationX(Math.atan2(ya - yb, zb - za)).setPosition(0, (ya + yb) / 2 + 0.2, (za + zb) / 2)); B.box(hullB, 2.6, 0.4, 3.8, { bev: 0.1 }); B.pop();
+  }
+  for (const sx of [-1, 1]) {
+    B.in(sx * 3.6, 11.3, 74.5, 0, 0, 0, () => { B.cyl(gun, 0.9, 1.0, 0.5, 12); B.at(0, 0.25, 0); B.sphere(s('glass', 1), 0.8, 12, 5, { t0: 0, t1: Math.PI / 2 }); B.pop(); });
+    flood(C, new V3(sx * 9.4, 11.6, 66.5), new V3(sx * 13.0, 5.2, 77), { len: 12, spread: 0.3, pool: { n: new V3(sx, 0, -0.4).normalize(), w: 7, h: 10, at: new V3(sx * 12.4, 5.0, 77) } });
   }
   // the bow searchlight in its armoured hood, a white strobe on the tip
   flood(C, new V3(0, 3.4, 95.6), new V3(0, -2, 160), { len: 60, spread: 0.13, k: 0.8 });
@@ -268,6 +285,9 @@ export function buildFore(C: Ctx): ForeOut {
     for (const b of [B, L]) b.in(0, 15.3, hz1 + 0.02, 0, 0, 0, () => b.panel(s('winB', 16), 22, 1.5, 22 * 16 / 256));
     B.in(0, 20.2, hz1 - 3.48, 0, 0, 0, () => B.panel(s('winA', 16), 16, 1.5, 16 * 16 / 256));
     decal(B, s, 't2', new V3(-6, 22.13, 50), new V3(0, 1, 0), 3.2, new V3(0, 0, 1));
+    // the tug's pad on the tier-2 roof: hazard border, amber edge lamps
+    for (const [x, z, w, h, r] of [[-4, 46.5, 8, 0.5, 0], [-4, 57.5, 8, 0.5, 0], [-8, 52, 11, 0.5, 1], [0, 52, 11, 0.5, 1]] as [number, number, number, number, number][]) B.in(x, 22.14, z, -Math.PI / 2, 0, r * Math.PI / 2, () => B.panel(haz, w, h, w * 16 / 64));
+    for (const [x, z] of [[-8, 46.5], [0, 46.5], [-8, 57.5], [0, 57.5], [-4, 46.5], [-4, 57.5]] as [number, number][]) { B.in(x, 22.2, z, 0, 0, 0, () => B.box(s('lensAmber', 1), 0.3, 0.15, 0.3)); fx.halos.push({ p: new V3(x, 22.45, z), col: NAV.amber, size: 0.8, mode: 0, ph: 0 }); }
     // tier-2 roof: vents, an antenna, steam
     for (const z of [42, 46]) B.in(-5.5, 22.1, z, -Math.PI / 2, 0, 0, () => ventBox(B, s, 2, 1.2, 1));
     fx.vents.push({ p: new V3(-5.5, 22.6, 44), dir: new V3(0, 1, -0.2), period: 11, ph: 4, size: 1.6 });
@@ -299,6 +319,9 @@ export function buildFore(C: Ctx): ForeOut {
     B.beam(gun, new V3(sx * 5.6, 28, 16), new V3(sx * 12, 33, 16), 0.4);
   }
   ladder(B, steel, 0, TZ0 + 0.95, 12.2, 33, new V3(0, 0, -1));
+  pipe(B, s('pipeSteel', 32), gun, [new V3(3.4, 12.2, TZ0 + 0.7), new V3(3.4, 32.8, TZ0 + 0.7), new V3(3.4, 33.6, TZ0 - 0.4)], 0.35, 2.5, 0.5);
+  pipe(B, s('pipeOlive', 32), gun, [new V3(-3.2, 12.2, TZ0 + 0.7), new V3(-3.2, 32.8, TZ0 + 0.7), new V3(-3.2, 33.6, TZ0 - 0.4)], 0.28, 2.5, 0.5);
+  for (const y of [18, 26]) B.in(-2.2, y, TZ0 + 0.95, 0, Math.PI, 0, () => ventBox(B, s, 1.6, 1.0, 0));
   B.in(0, 20, TZ1 - 1.97, 0, 0, 0, () => hatch(B, s, 1, 2.4));
   // the hammerhead: a raked glazing band across the front, decks of windows round the sides and back
   const HW = 24, hamSec: [number, number][] = [[14, 33], [28, 33], [28.4, 35], [30, 39.8], [29.6, 40.5], [14, 40.5]];
@@ -413,6 +436,10 @@ export function buildFore(C: Ctx): ForeOut {
     B.in(0, 18.8, z0 + 2.98, 0, Math.PI, 0, () => hatch(B, s, 2, 2.2));
     for (const z of [-22, -12]) B.in(3.5, 20.4, z, -Math.PI / 2, 0, 0, () => ventBox(B, s, 2.2, 1.2, 1));
     fx.vents.push({ p: new V3(3.5, 21, -17), dir: new V3(0.2, 1, 0), period: 13, ph: 8, size: 1.8 });
+    for (const [x, z] of [[-4.5, -20], [-4.5, -14], [4.6, -30]] as [number, number][]) { B.in(x, 21.2, z, 0, 0, 0, () => { B.box(s('hullB', 16), 2.4, 1.6, 2.4, { bev: 0.12 }); B.at(0, 0.82, 0); B.cyl(gun, 0.95, 0.95, 0.12, 12); B.pop(); }); B.in(x, 22.06, z, -Math.PI / 2, 0, 0, () => B.panel(s('vent1', 1), 1.6, 1.6)); }
+    B.in(5.0, 21.6, -9, 0, 0, 0, () => { B.box(s('olive', 16), 3.2, 2.4, 4.0, { bev: 0.15 }); });
+    B.in(5.0, 21.6, -6.98, 0, 0, 0, () => B.panel(s('winA', 16), 2.6, 1.0, 2.6 * 16 / 256));
+    for (const [dx, dz, h] of [[-1, -1.2, 6], [1.1, -0.6, 4.5], [0.2, 1.3, 7.5]] as [number, number, number][]) whip(B, s, new V3(5.0 + dx, 22.8, -9 + dz), h);
     // the deep space antenna on its pedestal
     B.in(-1, 20.4, -33, 0, 0, 0, () => { B.cyl(gun, 1.6, 2.2, 1.2, 12); B.at(0, 2.0, 0); B.cyl(s('hullB', 16), 0.6, 0.8, 2.8, 10); B.pop(); });
     B.in(-1, 25.5, -33, 0.55, 0.5, 0, () => dish(B, s, 5.2, { ribs: 8 }));

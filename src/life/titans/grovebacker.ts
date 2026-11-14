@@ -14,8 +14,8 @@ import { trunk, type Station } from '../anatomy/trunk';
 import { limb, LIMB_TYPES } from '../anatomy/limb';
 import { shell } from '../anatomy/armour';
 import { skull, jaw, eyeball, eyelid, SKULLS, drawPits } from '../anatomy/head';
-import { horn } from '../anatomy/append';
-import { tree, crusts } from '../anatomy/growth';
+import { horn, sac, stalk, curve } from '../anatomy/append';
+import { crusts } from '../anatomy/growth';
 import { lookPaint, paintLook, type Look } from '../anatomy/look';
 import { Px, RP, cell3, cl, h3 } from '../anatomy/paint';
 import { titanCtx, between } from './common';
@@ -148,17 +148,39 @@ export function grovebacker(d: Design, rig: Rig, rest: V3[]) {
     body.add(shell({ name: 'scute' + side + '_' + k, host: tr, u: u as [number, number], v: [vv0, vv1], nu: 3, nv: 3, sink: 0.3, rim: 2, levels: 1,
       lift: (a, b) => 0.5 + 0.35 * Math.sin(Math.PI * b) * (side ? 1 - a : a) + 0.2 * (side ? a : 1 - a), skin: bandSkin, paint: lookPaint({ ...shellLook, extra: (px) => shellMarks(px, seed + 7, true) }), k: 1 }));
   }
-  // ---------------------------------------------------------------- life on the back
-  const bark = lookPaint({ ramp: 'soil', step: 3, pebbles: { size: 0.1, aniso: [1, 0.3, 1], depth: 1.2 }, creases: 0.6 });
-  const leaf = lookPaint({ ramp: 'moss', step: 3, light: 1.2, scales: { size: 0.3, kind: 'pebble', flow: 1, lit: 1.2, ink: 1.6, shade: 1 }, extra: (px) => px.glints(RP('moss'), { size: 0.5, every: 0.3 }) });
-  const nTrees = 9;
-  for (let k = 0; k < nTrees; k++) {
-    const v = v0 + (v1 - v0) * (0.12 + 0.76 * (k + 0.5) / nTrees), u = 0.5 + (h3(k, 3, seed) - 0.5) * 0.16;
-    const band = Math.min(nb - 1, Math.floor((v - v0) / step)), hk = 0.55 + 0.45 * Math.sin(Math.PI * (band + 0.5) / nb);
-    const q = gridSurf(tr.m, tr.grids[0], u, v), lift = 0.35 + 1.25 * hk;
-    const base: V3 = [q.p[0] + q.n[0] * lift, q.p[1] + q.n[1] * lift, q.p[2] + q.n[2] * lift];
-    for (const p of tree({ name: 'tree' + k, base, up: [q.n[0] * 0.3, 1, q.n[2] * 0.3], h: 2.4 + h3(k, 5, seed) * 2.2, r: 0.2 + h3(k, 7, seed) * 0.1, seed: seed + k * 17, skin: () => X.spine(base), bark, leaf, lean: [(h3(k, 9, seed) - 0.5), 0, (h3(k, 11, seed) - 0.5)] })) body.add(p);
+  // ---------------------------------------------------------------- the grove's ground: soil pockets and roots
+  // Soil gathers where each band's proud rear lip overhangs the band behind it; the grove grows there. The titan
+  // carries the ground (pockets of soil with moss rims, roots gripping down over the plates); the plants themselves are
+  // the region's own flora, parented to the spine bones at these seats (titans/index.ts attachGrove).
+  const bandLift = (u: number, v: number) => { const k = cl(Math.floor((v - v0) / step), 0, nb - 1), hk = 0.55 + 0.45 * Math.sin(Math.PI * (k + 0.5) / nb), a = (u - 0.205) / 0.59, x = Math.abs(a - 0.5) * 2, b = cl((v - (v0 + step * k - step * 0.22)) / (step * 1.22), 0, 1); return (0.35 + 1.25 * hk * Math.cos(Math.min(1, x) * Math.PI / 2) ** 0.55) * (1 + 0.45 * Math.pow(1 - b, 3)); };
+  const shellAt = (u: number, v: number, extra = 0): { p: V3; n: V3 } => { const q = gridSurf(tr.m, tr.grids[0], u, v), l = bandLift(u, v) + extra; return { p: [q.p[0] + q.n[0] * l, q.p[1] + q.n[1] * l, q.p[2] + q.n[2] * l], n: q.n }; };
+  const soilLook = lookPaint({ ramp: 'soil', step: 2, creases: 0.6, pebbles: { size: 0.14, depth: 0.9 }, extra: (px) => { const N = px.gb.N, P = px.gb.P; for (let i = 0; i < px.n; i++) { const c = cell3(P[i * 3], P[i * 3 + 1], P[i * 3 + 2], 0.22, seed + 9); if (N[i * 3 + 1] > 0.35 + (h3(c.id, 1, seed) - 0.5) * 0.4) { px.put(i, RP('moss'), 3 + (h3(c.id, 3, seed) > 0.6 ? 1 : 0)); px.mark[i] = (c.f2 - c.f1) / px.mpt < 1 ? -1.5 : 0; } } } });
+  const rootLook = lookPaint({ ramp: 'soil', step: 3, pebbles: { size: 0.08, aniso: [1, 0.3, 1], depth: 1.1 }, creases: 0.6, glints: { size: 0.3, every: 0.2 } });
+  const grove: { bone: number; off: V3; up: V3; size: number; kind: 'tree' | 'young' | 'sapling' | 'fern' }[] = [];
+  const pickBone = (p: V3) => { const w = X.spine(p); let bi = w[0], bw = w[1]; for (let j = 2; j + 1 < w.length; j += 2) if (w[j + 1] > bw) { bw = w[j + 1]; bi = w[j]; } return bi; };
+  const seatsAt: [number, number, number, 'tree' | 'young' | 'sapling' | 'fern'][] = [];
+  for (let k = 1; k < nb; k++) {
+    // two or three pockets in each crevice, one big one near the crown
+    const v = v0 + step * k + step * 0.06;
+    seatsAt.push([0.5 + (h3(k, 1, seed) - 0.5) * 0.08, v, k > 1 && k < nb - 1 ? 1 : 0.6, k > 1 && k < nb - 1 && k % 2 ? 'tree' : 'young']);
+    seatsAt.push([0.36 + h3(k, 2, seed) * 0.04, v + step * 0.05, 0.45, k % 2 ? 'sapling' : 'fern']);
+    seatsAt.push([0.6 + h3(k, 3, seed) * 0.04, v + step * 0.08, 0.55, k % 2 ? 'fern' : 'young']);
   }
+  seatsAt.forEach(([u, v, sz, kind], k) => {
+    const { p: c, n } = shellAt(u, v, -0.05), up = norm([n[0] * 0.35, 1, n[2] * 0.35]);
+    const R = 0.55 + sz * 0.9, w = X.spine(c);
+    // the pocket: a low cushion of soil and moss sunk into the crevice
+    body.add(sac({ name: 'soil' + k, at: c, n: up, up: [0, 0, 1], r: [R, R * 0.85, 0.22 + sz * 0.18], sink: 0.55, skin: () => w, paint: soilLook, levels: 1, k: 1 }));
+    // roots gripping out over the plates and down their slope
+    const nr = kind === 'tree' ? 6 : kind === 'young' ? 4 : kind === 'sapling' ? 2 : 0;
+    for (let r = 0; r < nr; r++) {
+      const a = (r / nr) * Math.PI * 2 + h3(k, r, seed) * 0.8, du = Math.cos(a) * 0.045 * (0.6 + sz), dv = Math.sin(a) * step * 0.55 * (0.6 + sz);
+      const pts: V3[] = [0, 0.35, 0.7, 1].map((t) => { const q = shellAt(u + du * t, v + dv * t, 0.08 * (1 - t) + 0.02); return [q.p[0], q.p[1] + (t === 0 ? 0.25 : 0), q.p[2]] as V3; });
+      body.add(stalk({ name: 'root' + k + '_' + r, path: curve(pts, 6), r: (t) => (0.1 + sz * 0.14) * (1 - t * 0.8), around: 5, levels: 1, skin: () => w, paint: rootLook, k: 1 }));
+    }
+    const bone = pickBone(c), br = rest[bone];
+    grove.push({ bone, off: [c[0] - br[0], c[1] + 0.15 - br[1], c[2] - br[2]], up, size: kind === 'tree' ? 3.5 + sz * 2.5 : kind === 'young' ? 1.8 + sz : kind === 'sapling' ? 0.9 : 0.5, kind });
+  });
   // lichen rosettes and crust cups over the flanks, the shell rims and the legs
   for (let k = 0; k < 70; k++) {
     const u = 0.12 + h3(k, 21, seed) * 0.76, v = 0.08 + h3(k, 23, seed) * 0.8, q = gridSurf(tr.m, tr.grids[0], u, v);
@@ -177,6 +199,7 @@ export function grovebacker(d: Design, rig: Rig, rest: V3[]) {
   body.add(horn({ name: 'hook', ctrl: [[0, head[1] + hh * 0.05, head[2] + hl * 0.42], [0, head[1] - hh * 0.05, head[2] + hl * 0.62], [0, head[1] - hh * 0.32, head[2] + hl * 0.7]], r0: hw * 0.18, skin: () => [iH, 1], paint: lookPaint(keratin), k: 1.5 }));
   const out = body.build({ den: 34, snap: undefined });
   if ((globalThis as any).__titanStats) console.log([...body.stats.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => k + ':' + v).join(' '));
+  out.geo.userData.grove = grove;
   return { geo: out.geo, tex: out.tex, tris: out.tris, den: Math.round(body.den), fill: body.page.fill };
 }
 

@@ -115,16 +115,16 @@ export function jaw(o: { name: string; hinge: V3; chin: V3; w: number; h: number
 }
 
 export type PupilKind = 'slit' | 'bar' | 'round' | 'w' | 'pin';
-export interface EyeSpec { name: string; c: V3; ax: V3; r: number; bone: number; iris: number[]; pupil: PupilKind; irisA?: number; sclera?: number[]; k?: number }
+export interface EyeSpec { name: string; c: V3; ax: V3; r: number; bone: number; iris: number[]; pupil: PupilKind; irisA?: number; sclera?: number[]; k?: number; levels?: number; around?: number }
 /** an eyeball: a sphere on its own bone, painted wet (the shader lights its cornea with the sun's specular) */
 export function eyeball(o: EyeSpec): Piece {
   const m = newCM(), ax = nrm(o.ax), side = nrm(crs([0, 1, 0], ax)), up = crs(ax, side), rings: Ring[] = [];
-  const st = [-0.92, -0.6, -0.2, 0.2, 0.55, 0.8, 0.95];
-  for (const f of st) { const k = Math.sqrt(Math.max(0.02, 1 - f * f)); rings.push({ c: add(o.c, scl(ax, f * o.r)), x: side, y: up, pts: Array.from({ length: 12 }, (_, j) => { const a = (j / 12) * TAU; return [Math.sin(a) * o.r * k, Math.cos(a) * o.r * k]; }) }); }
+  const st = (o.levels ?? 1) === 0 ? [-0.7, 0.0, 0.6, 0.92] : [-0.92, -0.6, -0.2, 0.2, 0.55, 0.8, 0.95], C = o.around ?? 12;
+  for (const f of st) { const k = Math.sqrt(Math.max(0.02, 1 - f * f)); rings.push({ c: add(o.c, scl(ax, f * o.r)), x: side, y: up, pts: Array.from({ length: C }, (_, j) => { const a = (j / C) * TAU; return [Math.sin(a) * o.r * k, Math.cos(a) * o.r * k]; }) }); }
   const g = tube(m, rings, { tag: 0, capS: true, capE: true });
   const irisA = o.irisA ?? 0.62, sclera = o.sclera ?? RP('bone');
   return {
-    name: o.name, m, grids: [g], levels: 1, k: o.k ?? 2.4, noOcc: true, skin: () => [o.bone, 1],
+    name: o.name, m, grids: [g], levels: o.levels ?? 1, k: o.k ?? 2.4, noOcc: true, skin: () => [o.bone, 1],
     paint: (ch, _p, b) => {
       const px = new Px(ch, b), P = px.gb.P, n = px.n;
       px.lightK = 0.5;

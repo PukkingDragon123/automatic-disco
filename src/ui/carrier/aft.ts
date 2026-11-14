@@ -52,6 +52,19 @@ export function buildAft(C: Ctx): AftOut {
     pipe(B, s('pipeBrass', 32), gun, [new V3(sx * 3.3, yc - 3.4, z0 + 2), new V3(sx * 3.3, yc - 3.4, z1 - 1)], 0.42, 3);
     B.boxAt(s('gunT', 32), sx * 1.4 - 0.35, top + 0.45, z1, sx * 1.4 + 0.35, top + 0.75, z0, { bev: 0.05 });
   }
+  // a catwalk down the truss (grating on brackets, a handrail), and cable bundles clipped along the top
+  for (let z = z0 - 2; z > z1 + 2; z -= 3) {
+    if (z < -63 && z > -73) continue;
+    B.boxAt(s('grate', 32), hw + 0.45, bot + 1.1, z - 1.45, hw + 1.65, bot + 1.22, z + 1.45);
+    B.beam(steel, new V3(hw + 0.45, bot + 0.4, z), new V3(hw + 1.6, bot + 1.1, z), 0.06);
+    B.beam(steel, new V3(hw + 1.6, bot + 1.2, z), new V3(hw + 1.6, bot + 2.2, z), 0.05);
+  }
+  for (const [za, zb] of [[z0 - 2, -63], [-73, z1 + 2]] as [number, number][]) B.beam(steel, new V3(hw + 1.6, bot + 2.2, za), new V3(hw + 1.6, bot + 2.2, zb), 0.04);
+  for (let k = 0; k < 3; k++) {
+    const x = -0.9 + k * 0.45;
+    B.tube(s('rubber', 1), [new V3(x, top + 0.9, z0 + 1), new V3(x, top + 0.9, z1 - 0.5)], 0.13 + (k === 1 ? 0.05 : 0), 5);
+  }
+  for (let z = z0 - 3; z > z1; z -= 4.5) B.boxAt(gun, -1.3, top + 0.6, z - 0.1, 0.3, top + 1.15, z + 0.1);
   // floodlights on the truss: one onto the hab hub, two onto the propellant farm
   flood(C, new V3(-hw - 0.6, top + 0.8, -60), new V3(-6, yc + 3, -66), { len: 10, spread: 0.32 });
   flood(C, new V3(hw + 0.6, top + 0.8, -94), new V3(9, yc + 8, -101), { len: 12, spread: 0.3 });
@@ -98,7 +111,19 @@ export function buildAft(C: Ctx): AftOut {
     const put = (x: number, y: number, z: number, k: number) => { B.at(x, y, z); container(B, s, kinds[k % 3]); B.pop(); };
     put(-1.4, top + 1.95, -83, 0); put(1.4, top + 1.95, -85, 1); put(0, top + 4.55, -84.5, 2);
     put(-1.4, bot - 1.95, -84, 2); put(1.4, bot - 1.95, -83.2, 0);
-    for (const sx of [-1, 1]) put(sx * (hw + 2.0), yc, -84 + sx * 0.8, sx > 0 ? 1 : 2);
+    for (const sx of [-1, 1]) {
+      const tx = sx * (hw + 3.4), tz0 = -77, tz1 = -93, tl = tz0 - tz1;
+      B.in(tx, yc, (tz0 + tz1) / 2, Math.PI / 2, 0, 0, () => B.cyl(s('ctank', 16), 2.5, 2.5, tl, 18, { caps: false }));
+      for (const [z, flip] of [[tz0, 0], [tz1, Math.PI]] as [number, number][]) B.in(tx, yc, z, Math.PI / 2 + flip, 0, 0, () => B.sphere(s('creamC', 8), 2.5, 18, 5, { t0: 0, t1: Math.PI / 2 }));
+      L.in(tx, yc, (tz0 + tz1) / 2, Math.PI / 2, 0, 0, () => L.cyl(s('ctank', 16), 2.5, 2.5, tl + 4, 8));
+      for (const z of [tz0 - 2.5, (tz0 + tz1) / 2, tz1 + 2.5]) {
+        B.in(tx, yc, z, Math.PI / 2, 0, 0, () => B.cyl(gun, 2.62, 2.62, 0.45, 18, { caps: false }));
+        B.beam(gun, new V3(sx * hw, yc + 3, z), new V3(tx - sx * 1.2, yc + 2.0, z), 0.25); B.beam(gun, new V3(sx * hw, yc - 3, z), new V3(tx - sx * 1.2, yc - 2.0, z), 0.25);
+      }
+      pipe(B, s('pipeRed', 32), gun, [new V3(tx, yc - 2.5, tz1 - 1.5), new V3(tx, yc - 3.8, tz1 - 3), new V3(sx * 6.6, yc - 3.8, tz1 - 3), new V3(sx * 6.6, yc - 3.8, -101)], 0.32, 3, 0.7);
+      decal(B, s, 'tLH2', new V3(tx + sx * 2.52, yc + 0.2, (tz0 + tz1) / 2 + 3), new V3(sx, 0, 0), 2.6);
+      B.in(tx, yc + 2.55, tz0 - 4, 0, 0, 0, () => { B.cyl(gun, 0.4, 0.4, 0.6, 8); B.at(0, 0.45, 0); B.cyl(s('redC', 8), 0.25, 0.25, 0.3, 8); B.pop(); });
+    }
     L.boxAt(s('contOlive'), -2.8, top + 0.65, -91, 2.8, top + 5.8, -77); L.boxAt(s('contBlue'), -2.8, bot - 3.3, -90, 2.8, bot - 0.6, -78);
     // rack beams the containers sit on
     for (const z of [RZ0 - 1, RZ1 + 1]) { B.beam(gun, new V3(-3, top + 0.55, z), new V3(3, top + 0.55, z), 0.3); B.beam(gun, new V3(-3, bot - 0.55, z), new V3(3, bot - 0.55, z), 0.3); }
@@ -227,6 +252,14 @@ export function buildAft(C: Ctx): AftOut {
   for (let k = 0; k < 4; k++) {
     const a = k * TAU / 4 + TAU / 8, x = Math.cos(a) * 9.0, y = yc + Math.sin(a) * 9.0;
     bell(x, y, fz - 0.4, 1.0, 2.3, 4.6, false);
+  }
+  // turbopumps on the thrust frame, their feed lines to the throat ring, exhaust stubs
+  for (const sx of [-1, 1]) {
+    const px = sx * 5.6, py = yc + 6.6, pz = dz1 - 2;
+    B.in(px, py, pz, Math.PI / 2, 0, 0, () => { B.cyl(s('brassC', 4), 1.1, 1.1, 2.6, 12); B.at(0, -1.6, 0); B.cyl(gun, 0.8, 1.1, 0.7, 12); B.pop(); B.at(0, 1.6, 0); B.cyl(gun, 1.15, 0.9, 0.6, 12); B.pop(); });
+    pipe(B, s('pipeRed', 32), gun, [new V3(px, py - 1.1, pz - 1), new V3(px, py - 3.0, pz - 3.5), new V3(sx * 2.6, yc + 2.4, fz - 0.6)], 0.4, 2, 0.8);
+    pipe(B, s('pipeBrass', 32), gun, [new V3(px, py + 1.1, pz + 1.0), new V3(px, py + 1.1, dz0 - 2), new V3(sx * 6.5, yc + 9.4, dz0 - 2)], 0.3, 2, 0.6);
+    B.in(px + sx * 1.0, py + 0.6, pz - 1.4, 0, 0, sx * 0.6, () => B.cyl(s('dark', 1), 0.3, 0.35, 1.2, 8));
   }
   // gimbal actuators on the main bell
   for (let k = 0; k < 4; k++) { const a = k * TAU / 4; B.beam(s('brassC', 4), new V3(Math.cos(a) * 6.6, yc + Math.sin(a) * 6.6, fz), new V3(Math.cos(a) * 4.0, yc + Math.sin(a) * 4.0, fz - 4.5), 0.28); }

@@ -74,7 +74,7 @@ function finPaint(ramp: RampName, step: number, o: { rays?: number; alpha?: numb
 function eyes(k: Kit, at: V3, r: number, iris: RampName, pupil: 'slit' | 'bar' | 'round' | 'w' | 'pin' = 'round', fwd = 0.25) {
   for (const s of at[0] ? [-1, 1] : [1]) {
     const c: V3 = [s * at[0] * k.L, at[1] * k.L, at[2] * k.L];
-    k.body.add(eyeball({ name: 'eye' + s + at[2], c, ax: nrm([at[0] ? s : 0, at[0] ? 0.1 : 1, fwd]), r: r * k.L, bone: 0, iris: RP(iris), pupil, irisA: 0.75 }));
+    k.body.add(eyeball({ name: 'eye' + s + at[2], c, ax: nrm([at[0] ? s : 0, at[0] ? 0.1 : 1, fwd]), r: r * k.L, bone: 0, iris: RP(iris), pupil, irisA: 0.75, levels: 0, around: 10 }));
   }
 }
 /** scaled skin: counter-shaded back and belly, drawn scale rows, a lateral line, the gill cover's edge, marks */
@@ -166,7 +166,7 @@ const BUILD: Record<FishKind, (k: Kit) => { wave: 'side' | 'vert' | 'wing' | 'ee
     for (const s of [-1, 1]) {
       const b0: V3 = [s * 0.06 * L, 0.03 * L, 0.3 * L], st = curve([b0, [s * 0.075 * L, 0.07 * L, 0.32 * L], [s * 0.09 * L, 0.1 * L, 0.34 * L]], 4);
       k.body.add(stalk({ name: 'stalk' + s, path: st, r: () => L * 0.012, around: 5, levels: 0, skin: W1, paint: solid('sand', 3) }));
-      k.body.add(eyeball({ name: 'eye' + s, c: st[st.length - 1], ax: [s * 0.4, 0.5, 0.7], r: L * 0.018, bone: 0, iris: RP('ochre'), pupil: 'w' }));
+      k.body.add(eyeball({ name: 'eye' + s, c: st[st.length - 1], ax: [s * 0.4, 0.5, 0.7], r: L * 0.018, bone: 0, iris: RP('ochre'), pupil: 'w', levels: 0, around: 10 }));
     }
     return { wave: 'wing' };
   },
@@ -219,20 +219,20 @@ const BUILD: Record<FishKind, (k: Kit) => { wave: 'side' | 'vert' | 'wing' | 'ee
     const bd = fishBody(k, [[-0.5, 0.0, 0.012, 0.01, 'ridge'], [-0.42, 0.005, 0.03, 0.025, 'ridge'], [-0.3, 0.01, 0.06, 0.055, 'ridge'], [-0.14, 0.012, 0.095, 0.09, 'round'], [0.02, 0.01, 0.115, 0.105, 'round'], [0.18, 0.0, 0.12, 0.112, 'round'], [0.32, -0.005, 0.11, 0.1, 'round'], [0.44, -0.01, 0.08, 0.075, 'flat'], [0.5, -0.012, 0.035, 0.04, 'flat']],
       skinPaint({ L, back: ['slate', 2], belly: ['stone', 4], scale: 0.02, noScales: true, pebbles: 0.012, gill: 0.4,
         photo: (P, N, i) => N[i * 3 + 1] < -0.6 && Math.abs((P[i * 3] / L * 40) % 1) < 0.25 && Math.abs((P[i * 3 + 2] / L * 40) % 1) < 0.25 && P[i * 3 + 2] / L > -0.25 && P[i * 3 + 2] / L < 0.3,
-        marks: (px, P, N, i) => { const z = P[i * 3 + 2] / L; if (z > 0.38 && N[i * 3 + 1] < 0 && N[i * 3 + 1] > -0.55 && Math.abs(N[i * 3]) > 0.5 && Math.floor(z * 300) % 2 === 0) px.put(i, RP('bone'), 3); if (N[i * 3 + 1] < -0.4 && Math.abs(((z * 60) % 1)) < 0.08) px.mark[i] -= 1; } }), { levels: 2, tween: 1 });
+        marks: (px, P, N, i) => { const z = P[i * 3 + 2] / L; if (z > 0.38 && N[i * 3 + 1] < 0 && N[i * 3 + 1] > -0.55 && Math.abs(N[i * 3]) > 0.5 && Math.floor(z * 300) % 2 === 0) px.put(i, RP('bone'), 3); if (N[i * 3 + 1] < -0.4 && Math.abs(((z * 60) % 1)) < 0.08) px.mark[i] -= 1; } }), { levels: 1, tween: 1 });
     k.body.finalize(bd);
     k.body.add(shell({ name: 'crest', host: bd, u: [0.48, 0.52], v: [0.25, 0.7], nu: 2, nv: 6, lift: (a, b) => L * 0.012 * Math.sin(Math.PI * b) * (0.4 + 0.6 * Math.sin(Math.PI * a)), sink: L * 0.004, rim: 2, levels: 1, skin: W1, paint: solid('slate', 3) }));
     const fp = finPaint('slate', 2, { rays: 5, alpha: 200, tip: 'stone' });
     for (const s of [-1, 1]) for (const [z, len] of [[0.22, 0.16], [-0.08, 0.1]]) rayFin(k, 'flip' + s + z, [s * 0.1 * L, -0.06 * L, z * L], [s * 0.1 * L, -0.06 * L, (z - 0.06) * L], [s * 1, -0.45, -0.2], [s * 0.7, -0.5, -0.7], [len, len * 0.9, len * 0.7, len * 0.5, len * 0.3], [0, 1, 0], fp, { th: 0.008, scallop: 0.05 });
     for (const s of [-1, 1]) rayFin(k, 'fluke' + s, [0, 0, -0.47 * L], [s * 0.01 * L, 0, -0.42 * L], [s * 0.9, 0, -0.6], [s * 1, 0, -0.1], [0.18, 0.17, 0.13, 0.08], [0, 1, 0], fp, { th: 0.006, scallop: 0.05 });
-    k.body.add(bulbs({ name: 'barn', seats: Array.from({ length: 70 }, (_, i) => { const z = (h3(i, 1, 7) - 0.5) * 0.7, a = (h3(i, 2, 7) - 0.5) * 2.4, r = 0.1 * L; return { p: [Math.sin(a) * r, Math.cos(a) * r, z * L] as V3, n: nrm([Math.sin(a), Math.cos(a), 0]), r: L * (0.004 + h3(i, 3, 7) * 0.004), cone: true }; }), skin: W1, levels: 0, paint: solid('bone', 3) }));
+    k.body.add(bulbs({ name: 'barn', seats: Array.from({ length: 44 }, (_, i) => { const z = (h3(i, 1, 7) - 0.5) * 0.7, a = (h3(i, 2, 7) - 0.5) * 2.4, r = 0.1 * L; return { p: [Math.sin(a) * r, Math.cos(a) * r, z * L] as V3, n: nrm([Math.sin(a), Math.cos(a), 0]), r: L * (0.004 + h3(i, 3, 7) * 0.004), cone: true }; }), skin: W1, levels: 0, paint: solid('bone', 3) }));
     eyes(k, [0.105, 0.0, 0.38], 0.008, 'ochre', 'round');
     return { wave: 'vert' };
   },
 };
 
 const LEN: Record<FishKind, number> = { baitfish: 0.18, reeffish: 0.35, shark: 3.2, ray: 1.6, jelly: 0.5, eel: 1.4, armourfish: 0.6, leviathan: 32 };
-const PAGE: Record<FishKind, number> = { baitfish: 256, reeffish: 256, shark: 512, ray: 512, jelly: 256, eel: 256, armourfish: 256, leviathan: 512 };
+const PAGE: Record<FishKind, number> = { baitfish: 256, reeffish: 256, shark: 512, ray: 512, jelly: 256, eel: 256, armourfish: 256, leviathan: 1024 };
 
 export function buildFish(kind: FishKind, seed = 1): FishModel {
   const L = LEN[kind], body = new Body(PAGE[kind]), k: Kit = { L, body, seed };

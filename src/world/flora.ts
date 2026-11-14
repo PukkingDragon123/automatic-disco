@@ -39,6 +39,7 @@ import { settings, onSettings, type Quality } from '../settings';
 import { daylight } from '../game/daylight';
 import { gbuf } from '../gfx/gbuf';
 import { rampFor, rampNamed } from './pixelKit';
+import { registerLiveFlora } from './floraObject';
 
 /** spare instance slots for plants sown during play */
 const SPARE = 320;
@@ -167,7 +168,10 @@ export class Flora {
     this.setQuality(settings.quality);
     this.offSettings = onSettings((st, ch) => { if (ch.includes('quality')) this.setQuality(st.quality); });
     this.stats.gen = performance.now() - t0;
+    registerLiveFlora(this);
   }
+  /** the built mesh of species si, variant v, LOD lod (0 full, 1 light): shared with standalone plants (floraObject) */
+  plantGeo(si: number, v: number, lod: number): PlantGeo | null { return this.pGeo[si]?.[v]?.[lod] ?? null; }
 
   // ---------------------------------------------------------------- placement (where everything grows)
   private place() {
@@ -438,7 +442,7 @@ export class Flora {
     for (const b of this.all) b.dirty = true;
   }
   /** stop following the settings (call when the world is thrown away) */
-  dispose() { this.offSettings?.(); this.offSettings = null; }
+  dispose() { this.offSettings?.(); this.offSettings = null; registerLiveFlora(null); }
 
   // ---------------------------------------------------------------- per frame
   /** camera basis for the cards, LOD chunk lists, physics field (call each frame before rendering) */
