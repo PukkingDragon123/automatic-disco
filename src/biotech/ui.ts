@@ -79,7 +79,7 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 type Arm = { k: 'job'; job: Job; pts: { x: number; z: number }[] } | { k: 'troop'; o: 'move' | 'attack' | 'guard' | 'patrol' } | { k: 'sow'; gene: string; prefab: number } | null;
 
 export class BioUI {
-  private root: HTMLDivElement; private slip: HTMLDivElement; private led: HTMLDivElement; private hint: HTMLDivElement; private tagB: HTMLButtonElement;
+  private root: HTMLDivElement; private slip: HTMLDivElement; private led: HTMLDivElement; private hint: HTMLDivElement;
   private ov: HTMLCanvasElement; private og: CanvasRenderingContext2D;
   private painted: HTMLElement[] = [];
   private arm: Arm = null;
@@ -96,10 +96,8 @@ export class BioUI {
     this.slip = P(el('div', 'bw-slip', this.root), (w, h) => paper(w, h, { seed: 71, edge: 2, fold: Math.round(h * 0.55) }));
     this.led = P(el('div', 'bw-led', this.root), (w, h) => paper(w, h, { seed: 83, rule: 'form', tape: true, coffee: [w * 0.82, h * 0.9, Math.min(w, h) * 0.12] }));
     this.hint = P(el('div', 'bw-hint vt', this.root), (w, h) => paper(w, h, { seed: 91, edge: 1 }));
-    this.tagB = P(el('button', 'bw-tag', this.root, 'BIOWORKS [J]'), (w, h) => enamel(w, h, { seed: 5, color: '#c8b88e', chips: 2 })) as HTMLButtonElement;
-    this.tagB.addEventListener('click', (e) => { e.stopPropagation(); this.toggleLedger(); });
-    this.tagB.addEventListener('pointerenter', () => Tip.show('<h4>Bioworks ledger</h4>Production per minute, upkeep, every producer, plant works, vats and habitats. [J]', this.tagB));
-    this.tagB.addEventListener('pointerleave', () => Tip.hide());
+    // (the side tab is gone: the ledger opens from the specimen jar on the cockpit desk, BIO mode, or [J])
+    (g as unknown as { bioUI: BioUI }).bioUI = this;
     for (const e of [this.slip, this.led]) { e.addEventListener('pointerdown', (ev) => ev.stopPropagation()); e.addEventListener('wheel', (ev) => ev.stopPropagation(), { passive: true }); }
     this.ov = el('canvas', 'bw-ov', document.body); this.og = this.ov.getContext('2d')!;
     this.resize();
@@ -292,7 +290,9 @@ export class BioUI {
   }
 
   // ============================================================================================ the ledger
-  private toggleLedger() { const o = !this.led.classList.contains('open'); this.led.classList.toggle('open', o); this.ledKey = ''; sfx(o ? 'open' : 'close', 1, 0.5); }
+  /** the ledger is open */
+  get ledgerOpen() { return this.led.classList.contains('open'); }
+  toggleLedger(force?: boolean) { const o = force ?? !this.led.classList.contains('open'); if (o === this.ledgerOpen) return; this.led.classList.toggle('open', o); this.ledKey = ''; sfx(o ? 'open' : 'close', 1, 0.5); }
   private itemIcon(id: string): string {
     let u = this.icons.get(id);
     if (u === undefined) {
