@@ -23,10 +23,17 @@ export { ROBOT_KINDS } from './models';
 export interface RobotOrder { k: 'move' | 'attack' | 'guard' | 'patrol' | 'work'; x?: number; z?: number; target?: any }
 
 // ------------------------------------------------------------------------------------------------ stats
+/** what a hit does besides damage: burning, venom, acid (eats armour), slowing, pulling in, piercing, fragments, knockback */
+export interface WFx { burn?: number; poison?: number; acid?: number; slow?: number; pull?: number; pierce?: number; frag?: number; knock?: number }
+export type ShotKind = 'bullet' | 'shell' | 'mortar' | 'rocket' | 'melee' | 'flame' | 'beam' | 'cloud';
 export interface Weapon {
   /** reach, seconds between shots, damage per hit, what it fires, its speed, spread (rad), shots per burst, splash radius */
-  range: number; cd: number; dmg: number; shot: 'bullet' | 'shell' | 'mortar' | 'rocket' | 'melee'; speed: number; spread: number; burst?: number; splash?: number;
+  range: number; cd: number; dmg: number; shot: ShotKind; speed: number; spread: number; burst?: number; splash?: number;
+  /** effects on hit; the tracer / flame / cloud ramp colour */
+  fx?: WFx; col?: number;
 }
+/** anything that can fire through the shot system (a RobotUnit, the golem's mount, a test stand) */
+export interface Shooter { faction: Faction; x: number; z: number; dead?: boolean }
 export interface RobotStats { hp: number; speed: number; turn: number; sight: number; armor: number; weapon: Weapon; melee?: Weapon; fly?: boolean; step?: number; scale?: number; name: string }
 const W = (range: number, cd: number, dmg: number, shot: Weapon['shot'], speed: number, spread: number, o: Partial<Weapon> = {}): Weapon => ({ range, cd, dmg, shot, speed, spread, ...o });
 export const STATS: Record<RobotKind, RobotStats> = {
@@ -114,6 +121,10 @@ export class RobotUnit {
   private path: number[] | null = null; private pi = 0; private repathT = 0; private pathTo = new THREE.Vector3(1e9, 0, 0); private stuckT = 0;
   private recoilK = 0; private flashK = 0; private deadT = 0; private smokeT = 0; private patrolB: [number, number] | null = null; private home: [number, number];
   private meleeT = -1; private fireT = 0; private bob = Math.random() * 6;
+  /** lingering effects: seconds of burning, venom, acid, slowing */
+  status = { burn: 0, poison: 0, acid: 0, slow: 0, by: null as any };
+  /** the weapon design it carries (weapons workbench), if any */
+  design: unknown = null;
   /** show-room mode (tests, menus): it walks in place at this speed and fires at a point ahead every few seconds */
   demo: { speed?: number; fire?: boolean; t?: number } | null = null;
   constructor(game: Game, kind: RobotKind, faction: Faction, x: number, z: number) {
@@ -155,7 +166,7 @@ export class RobotUnit {
   }
   damage(n: number, from?: any) {
     if (this.dead || n <= 0) return;
-    const d = n * (1 - this.st.armor);
+    const d = n * (1 - Math.max(0, this.st.armor - (this.status.acid > 0 ? 0.25 : 0)));
     this.hp -= d;
     this.flashK = 1;
     const f = from?.ref ?? from;
@@ -183,6 +194,16 @@ export class RobotUnit {
     if (this.removed) return;
     if (this.dead) { this.dying(dt); return; }
     if (dt <= 0) { this.animate(0, 0); return; }
+    const S = this.status;
+    if (S.burn > 0 || S.poison > 0 || S.acid > 0) {
+      S.burn = Math.max(0, S.burn - dt); S.poison = Math.max(0, S.poison - dt); S.acid = Math.max(0, S.acid - dt);
+      const d = (S.burn > 0 ? 3.5 : 0) + (S.poison > 0 ? 2.5 : 0) + (S.acid > 0 ? 1 : 0);
+      this.hp -= d * dt; if (S.burn > 0 && Math.random() < dt * 10) this.g.fx.burst(this.x, this.y + this.height * 0.5, this.z, 1, RAMPS.glowAmber[3], { glow: true, speed: 0.4, up: 1.2, size: 2, life: 0.4, grav: -1 });
+      if (S.poison > 0 && Math.random() < dt * 5) this.g.fx.burst(this.x, this.y + this.height * 0.6, this.z, 1, RAMPS.ichor[4], { speed: 0.3, up: 0.6, size: 1.8, life: 0.6, grav: -0.3 });
+      if (this.hp <= 0) { this.die(S.by); return; }
+    }
+    S.slow = Math.max(0, S.slow - dt);
+    if (S.slow > 0) dt *= 0.45;
     if (this.demo) {
       const D = this.demo;
       this.cd -= dt; this.burstT -= dt;
@@ -323,6 +344,7 @@ export class RobotUnit {
     this.burstT = 0.09;
     this.recoilK = 1; this.fireT = 0.25;
     if (w.shot === 'melee') { this.meleeT = 0; this.strike(); return; }
+    if (w.shot === 'flame' || w.shot === 'beam') this.recoilK = 0.3;
     const m = this.model, h = this.human;
     const mz = (m?.muzzles.length ? m.muzzles[(this.burstN + 1) % m.muzzles.length] : h?.muzzle) ?? null;
     if (mz) { this.mesh.updateMatrixWorld(true); mz.getWorldPosition(_u); } else _u.set(this.x, this.y + this.height * 0.7, this.z);
@@ -330,7 +352,7 @@ export class RobotUnit {
     const fx = this.g.fx, flashC = RAMPS.glowAmber[4];
     const dir = _v.copy(tp).sub(_u); const dist = dir.length(); dir.normalize();
     fx.spray(_u.x, _u.y, _u.z, dir.x, dir.y, dir.z, w.shot === 'bullet' ? 3 : 8, flashC, { glow: true, speed: w.shot === 'bullet' ? 2 : 3.5, cone: 0.35, size: w.shot === 'bullet' ? 1.6 : 2.6, life: 0.12, grav: 0 });
-    if (w.shot !== 'bullet') { fx.burst(_u.x, _u.y, _u.z, 4, RAMPS.steel[4], { speed: 0.6, up: 0.4, size: 3, life: 0.9, grav: -0.5 }); vfx2d.play('smoke', _u.x, _u.y, _u.z, { scale: 0.6 }); }
+    if (w.shot === 'shell' || w.shot === 'mortar' || w.shot === 'rocket') { fx.burst(_u.x, _u.y, _u.z, 4, RAMPS.steel[4], { speed: 0.6, up: 0.4, size: 3, life: 0.9, grav: -0.5 }); vfx2d.play('smoke', _u.x, _u.y, _u.z, { scale: 0.6 }); }
     shots(this.g).fire(this, _u, tp, dist, w);
   }
   /** a claw or a fist: hits whatever it is fighting if it is still in reach */
@@ -338,7 +360,7 @@ export class RobotUnit {
     const t = this.tgt; if (!t || !tAlive(t)) return;
     const p = tPos(t, _v);
     if (Math.hypot(p.x - this.x, p.z - this.z) - tRad(t) > this.weapon.range + 0.3) return;
-    hitTarget(this.g, t, this.weapon.dmg, this);
+    hitTarget(this.g, t, this.weapon.dmg, this, this.weapon.fx);
     this.g.fx.spray(p.x, p.y, p.z, Math.sin(this.yaw), 0.5, Math.cos(this.yaw), 8, RAMPS.glowAmber[3], { glow: true, speed: 2, size: 1.6, life: 0.25, grav: 6 });
     vfx2d.play('impact', p.x, p.y, p.z, { scale: 0.6 });
   }
@@ -441,13 +463,31 @@ export class RobotUnit {
   }
 }
 
-/** damage whatever a target is */
-function hitTarget(g: Host, t: Tgt, n: number, from: RobotUnit) {
+/** damage whatever a target is, and give it the payload's effects */
+function hitTarget(g: Host, t: Tgt, n: number, from: Shooter, fx?: WFx, dir?: THREE.Vector3) {
   const r = t.ref;
-  if (t.kind === 'robot') (r as RobotUnit).damage(n, from);
-  else if (t.kind === 'creature') g.world.damage?.(r as Creature, n, null);
-  else if (t.kind === 'golem') r.hurt(n, from);
+  if (t.kind === 'robot') {
+    const u = r as RobotUnit;
+    if (fx) { const S = u.status; S.by = from; if (fx.burn) S.burn = Math.max(S.burn, fx.burn); if (fx.poison) S.poison = Math.max(S.poison, fx.poison); if (fx.acid) S.acid = Math.max(S.acid, fx.acid); if (fx.slow) S.slow = Math.max(S.slow, fx.slow); }
+    if (fx?.knock && dir && !u.fly) { u.x += dir.x * fx.knock * 0.15; u.z += dir.z * fx.knock * 0.15; }
+    u.damage(n, from);
+  } else if (t.kind === 'creature') {
+    const c = r as Creature;
+    if (fx?.poison) c.poison = Math.max(c.poison ?? 0, fx.poison);
+    if (fx?.burn || fx?.acid) STATUS.set(c, { burn: Math.max(STATUS.get(c)?.burn ?? 0, fx.burn ?? 0), acid: Math.max(STATUS.get(c)?.acid ?? 0, fx.acid ?? 0) });
+    if (fx?.knock && dir) { c.vx += dir.x * fx.knock; c.vz += dir.z * fx.knock; }
+    g.world.damage?.(c, n * (STATUS.get(c)?.acid ? 1.25 : 1), null);
+  } else if (t.kind === 'golem') r.hurt(n, from);
   else if (t.kind === 'building') { if (typeof r.damage === 'function') r.damage(n, from); else if (typeof r.hp === 'number') r.hp -= n; }
+}
+/** creatures burning or eaten by acid (venom uses the creature's own poison) */
+const STATUS = new Map<Creature, { burn: number; acid: number }>();
+function tickStatus(g: Host, dt: number) {
+  for (const [c, s] of STATUS) {
+    s.burn -= dt; s.acid -= dt;
+    if (c.dead || (s.burn <= 0 && s.acid <= 0)) { STATUS.delete(c); continue; }
+    if (s.burn > 0) { g.world.damage?.(c, 3 * dt, null); if (Math.random() < dt * 8) g.fx.burst(c.x, c.y + c.size * 0.5, c.z, 1, RAMPS.glowAmber[3], { glow: true, speed: 0.4, up: 1.2, size: 2, life: 0.4, grav: -1 }); }
+  }
 }
 
 // ================================================================================================ shots in flight

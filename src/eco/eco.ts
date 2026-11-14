@@ -249,6 +249,14 @@ export class Eco {
   drank(x: number, z: number) { const c = this.cell(x, z); this.drinkH[c] = Math.min(5, this.drinkH[c] + 0.2); }
   /** a carcass rotting where it lies feeds the soil */
   rotting(x: number, z: number, amt: number) { const c = this.cell(x, z); this.nutr[c] = Math.min(3, this.nutr[c] + amt * 0.01); }
+  /** grubs and beetles in the ground (rotting matter, dung, and some under any growth) */
+  grubsAt(x: number, z: number) { const c = this.cell(x, z); return this.nutr[c] * 1.5 + Math.min(1, this.veg[c]) * 0.12 + this.seedN[c] * 0.01; }
+  /** a digger turns the soil over: it eats what lives there and the ground is the better for it */
+  dig(x: number, z: number, amt: number): number {
+    const c = this.cell(x, z), got = Math.min(amt, this.grubsAt(x, z));
+    this.nutr[c] = Math.max(0, this.nutr[c] - got * 0.4); this.fert[c] = Math.min(1.2, this.fert[c] + got * 0.05);
+    return got;
+  }
   /** best visible fruit near (x, z): a plant index, or -1 */
   fruitNear(x: number, z: number, r: number): number {
     const G = this.G, cx = Math.floor(x / CS), cz = Math.floor(z / CS), R = Math.ceil(r / CS);

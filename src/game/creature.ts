@@ -126,6 +126,10 @@ export class Creature {
   get canFly() { return this.sp.pheno.canFly; }
   /** hangs upside down to sleep (bats: the Duskwing, any hand-winged flyer) when the animator has a roost pose */
   get rooster() { const d = this.sp.design; return this.canFly && (d.beast === 'duskwing' || d.genes.includes('wing_patagium')) && 'posture' in this.anim; }
+  /** forages by probing the ground with a long snout (digs grubs out of rotting, dunged ground) */
+  get prober() { const d = this.sp.model.rig.dims; return !!(d.snout || d.probe || d.dig) || this.sp.design.genes.includes('proboscis'); }
+  /** digging for grubs ('eat' with no plant or corpse) */
+  digging = false;
   /** tucks into a full ball and can roll away (the fauna's rig.dims.roll) */
   get roller() { return this.sp.model.rig.dims.roll === 1 && typeof (this.anim as unknown as { curl?: unknown }).curl === 'function'; }
   get walker() { return { step: this.size > 1.2 || this.st.climb > 0 ? 1.4 : 0.95, swim: this.st.swim > 0, fly: this.canFly }; }
@@ -200,6 +204,9 @@ export class Creature {
     // defence poses (the animator's curl hook): a full ball for rollers (rig.dims.roll), a hunch for the rest
     const an = this.anim as unknown as { curl?: (k: number) => void; rolling?: boolean; posture?: string };
     if (typeof an.curl === 'function') { an.curl(this.mind === 'curl' && !this.dead ? 1 : 0); an.rolling = this.mind === 'curl' && this.rolling; }
+    // snout in the ground: probing for grubs, or rooting about among plants (the animator's probe hook, when it has one)
+    const probe = (an as { probe?: (k: number) => void }).probe;
+    if (typeof probe === 'function' && this.prober) probe.call(an, !this.dead && this.mind === 'eat' && (this.digging || this.target < 0) ? 1 : 0);
     // the body's carriage: asleep (or hung from a roost), squared up to threaten, alert to danger, at ease
     if (posed) {
       const m = this.mind;

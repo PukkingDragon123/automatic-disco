@@ -22,7 +22,7 @@ const TAU = Math.PI * 2;
 
 // ================================================================================================ small helpers
 function emote(c: Creature, e: Emote, t = 2.6) { c.emote = e; c.emoteT = t; }
-function setMind(c: Creature, m: Mind) { if (c.mind !== m) { c.mind = m; c.actT = 0; c.rolling = false; } }
+function setMind(c: Creature, m: Mind) { if (c.mind !== m) { c.mind = m; c.actT = 0; c.rolling = false; c.digging = false; } }
 function mem(c: Creature): Memory { return (c.mem ??= { water: [], food: [], danger: [] }); }
 function remember(list: Spot[], x: number, z: number, t: number, v: number, max = 4) {
   for (const s of list) if ((s.x - x) ** 2 + (s.z - z) ** 2 < 49) { s.x += (x - s.x) * 0.3; s.z += (z - s.z) * 0.3; s.t = t; s.v = Math.max(s.v * 0.7, v); return; }
@@ -345,7 +345,7 @@ function thinkWild(c: Creature, w: World) {
 /** is the current activity still the right one? (true: keep at it) */
 function keepGoing(c: Creature, w: World, P: Profile, awake: number): boolean {
   switch (c.mind) {
-    case 'eat': return c.energy < 0.97 && c.actT < 30;
+    case 'eat': if (c.digging && c.mind === 'eat') return c.actT < 14 && c.energy < 0.96; return c.energy < 0.97 && c.actT < 30;
     case 'drink': return c.thirst > 0.03 && c.actT < 20;
     case 'sleep': {
       const wake = (awake > 0.55 && c.tired < 0.45) || (c.tired <= 0.02 && awake > 0.25) || c.energy < 0.12 || c.thirst > 0.92 || c.aggro > 0;
@@ -565,6 +565,12 @@ function forage(c: Creature, w: World, P: Profile, hunger: number): boolean {
       }
     }
   }
+  // long snouts: root out grubs where the ground is rich with rot and dung
+  if (c.prober) {
+    let bx = c.x, bz = c.z, bs = eco.grubsAt(c.x, c.z);
+    for (let k = 0; k < 6; k++) { const a = Math.random() * TAU, d = 3 + Math.random() * 12, x = clamp(c.x + Math.cos(a) * d, 2, w.region.N - 2), z = clamp(c.z + Math.sin(a) * d, 2, w.region.N - 2); if (w.region.isWater(x, z)) continue; const s = eco.grubsAt(x, z) - d * 0.004 - dangerAt(c, w, x, z); if (s > bs) { bs = s; bx = x; bz = z; } }
+    if (bs > 0.12) { if (dist(c, bx, bz) > 1.5) travel(c, w, bx, bz, 'eat'); else { setMind(c, 'eat'); c.target = 0; c.digging = true; } return true; }
+  }
   if (P.fruit) {
     const f = eco.fruitNear(c.x, c.z, Math.min(c.st.sight, 18));
     if (f >= 0) { setMind(c, 'graze'); c.target = -1 - f; c.goalX = w.flora.x[f]; c.goalZ = w.flora.z[f]; c.picking = true; return true; }
@@ -756,6 +762,7 @@ export function act(c: Creature, w: World, dt: number) {
         else if (p === 'watch') { setMind(c, 'watch'); emote(c, Emote.WATCH, 2); }
         else if (p === 'rest') { setMind(c, 'rest'); if (c.faction === 'wild' && midday(w.day)) emote(c, Emote.SHADE, 2.4); }
         else if (p === 'ambush') { setMind(c, 'ambush'); c.target = 0; }
+        else if (p === 'eat' && c.prober) { setMind(c, 'eat'); c.target = 0; c.digging = true; }
         else setMind(c, 'idle');
       }
       break;
@@ -810,6 +817,15 @@ export function act(c: Creature, w: World, dt: number) {
     }
     case 'eat': {
       c.steer(w, c.x, c.z, 0, dt);
+      if (c.digging) {
+        // snout down, working the ground over in little shuffles
+        if (c.target !== 0) { c.digging = false; break; }
+        const got = w.eco.dig(c.x, c.z, dt * 0.06);
+        c.energy = Math.min(1, c.energy + got * 2.2 / Math.pow(Math.max(1, Math.min(c.mass, 300)), 0.35)); c.gut += got * 0.5;
+        if (Math.random() < dt * 0.4) c.yaw += (Math.random() - 0.5) * 1.2;
+        if (got < dt * 0.004 || c.energy > 0.96 || c.actT > 14) { c.digging = false; setMind(c, 'idle'); }
+        break;
+      }
       if (c.target < 0) {
         const p = -1 - c.target;
         c.face(w.flora.x[p], w.flora.z[p], dt);

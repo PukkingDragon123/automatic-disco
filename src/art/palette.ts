@@ -41,6 +41,15 @@ export const RAMPS = {
   brass: R('#31260f', '#4f3e13', '#705719', '#946c21', '#b38737', '#cea457'),
   paper: R('#726955', '#8f856e', '#aa9e84', '#c1b59b', '#d6cab0', '#e5dbc3'),
   ink: R('#13161c', '#1e232c', '#2a323e'),
+  // minerals and gems (realistic, for items and deposits)
+  iron: R('#1d1b1c', '#2f2c2c', '#47413d', '#625952', '#82776c', '#a39689', '#c6b9a9'),
+  copper: R('#2a160f', '#4a2516', '#6f3a1f', '#96522a', '#b8703a', '#d39859', '#e8c08a'),
+  gold: R('#2e220c', '#4f3a12', '#76581b', '#9c7a27', '#c19e3b', '#dcc066', '#f0dea0'),
+  quartz: R('#3c4148', '#5c636a', '#7f878b', '#a3aaab', '#c6cbc8', '#e3e6df'),
+  malachite: R('#0f2219', '#173a25', '#1f5532', '#2c7240', '#459155', '#73b073', '#a8d09d'),
+  amethyst: R('#1f1530', '#33204d', '#4b2e6c', '#66408a', '#8a5ea8', '#b089c4', '#d6b9de'),
+  ruby: R('#250b12', '#43111d', '#66182a', '#8c2238', '#b0354a', '#cf6066', '#e7a092'),
+  sapphire: R('#0d1730', '#15264f', '#1e3a72', '#2b5292', '#4472ad', '#6f99c5', '#a8c4db'),
   // the few lit things: used sparingly, never as a fill
   glowTeal: R('#274f47', '#3e7a6c', '#62a88f', '#95ccb0', '#c7e6ce'),
   glowAmber: R('#503a1a', '#825722', '#b27d34', '#d7a856', '#eecc8e'),

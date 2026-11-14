@@ -81,3 +81,23 @@ or interpolate between hexes. `snap()` / `snapRGBA()` exist for porting, but new
 - Detail: more drawn information per element (secondary forms, edge wear, small highlights, inner shapes, texture
   marks, colour variation between clusters), but still clean clusters with no noise. Every element must look
   hand-made by a skilled pixel artist, never simple or lazy.
+
+## TARGET STYLE (user references, final word on 2D pixel art)
+The user showed two sheets and wants "between these two, but the colour more realistic":
+(A) a 32 px ore and crystal sheet: chunky rocks, nuggets, ingots, crystal clusters and gems; (B) a 16 px item
+sheet: tools, weapons, potions, food, gadgets. What both do, and what we do now:
+- **Size:** icons and small sprites at about 24–32 px of source art (between A's 32 and B's 16), shown at integer scale.
+- **Outline:** a 1 px DARK OUTLINE around every object's silhouette, coloured (the darkest step of the object's
+  own ramp, or ink for very light objects), never pure black. Interior lines only where forms overlap. The outline
+  makes every object read instantly on any background.
+- **Shading:** 3–5 tones per material in clean flat clusters: shadow, base, a lit plane, a bright highlight edge,
+  and on hard, glossy or wet materials a tiny 1–3 px SPECULAR GLINT (white-ish, from the palette's lightest step).
+  Light from the upper left. Crisp planes on rocks and ingots, facets on crystals, a soft round-cluster shade on
+  organic things.
+- **Readability:** a bold, simple silhouette first, detail second. Each icon is recognisable at 1x.
+- **Colour:** REALISTIC material colours (iron grey-brown, copper orange-brown, gold ochre, quartz pale, malachite
+  green, slate blue-grey, wet stone darker), saturated enough to be lively but true to the material. Gems and
+  glowing things can be more vivid; everything else stays believable. Use palette.ts ramps; add material ramps
+  there if needed (copper, gold, iron, quartz, malachite, amethyst, ruby, sapphire).
+- Applies to icons, item sprites, VFX sprites, UI glyphs, and the pixel textures on plants, ground and creatures
+  (the same outline, cluster and highlight logic, scaled to texture use).
