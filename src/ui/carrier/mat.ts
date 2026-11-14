@@ -42,7 +42,11 @@ export function atlasMat(bin: Bin, T: AtlasTex, o: AtlasMatOpts = {}) {
   ${decal ? 'if (aTex.a < 0.5) discard;' : ''}
   diffuseColor.rgb *= aTex.rgb;`)
       .replace('#include <emissivemap_fragment>', `
-  totalEmissiveRadiance = aTex.rgb * textureGrad(emissiveMap, aUv, aDx, aDy).r * uEmisK;`);
+  totalEmissiveRadiance = aTex.rgb * textureGrad(emissiveMap, aUv, aDx, aDy).r * uEmisK;`)
+      // a sliver triangle can give flat shading a zero normal (NaN): keep it out of the lighting, the G-buffer
+      // and so out of the bloom chain, where one NaN pixel grows into a black block
+      .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\n  if (!(dot(normal, normal) > 0.25)) normal = vec3(0.0, 0.0, 1.0);')
+      .replace('#include <opaque_fragment>', '  if (!(outgoingLight.r + outgoingLight.g + outgoingLight.b >= 0.0)) outgoingLight = vec3(0.0);\n#include <opaque_fragment>');
   };
   const key = `carrier-atlas|${o.phong ? 'p' : 'l'}|${decal ? 'd' : 'o'}`;
   m.customProgramCacheKey = () => key;

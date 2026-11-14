@@ -6,6 +6,7 @@ import { beastDesign } from '../bestiary';
 import { buildSpeciesModel, makeInstance } from '../creatureMesh';
 import { Animator } from '../anim';
 import { buildFish, FISH_KINDS } from '../fish';
+import { TITAN_BUILD } from './async';
 
 const P = new URLSearchParams(location.search);
 const cv = document.getElementById('c') as HTMLCanvasElement;
@@ -59,4 +60,28 @@ if (P.get('fish') === '1') {
     console.log(k, 'tris', m.geo.index!.count / 3);
   });
   (window as any).__done = true;
+}
+
+// ?upgrade=<id>: the async path. The placeholder renders at once (left), the worker's full model lands later (right);
+// a second build of the same species shows the IndexedDB cache hit
+if (P.get('upgrade')) {
+  TITAN_BUILD.mode = 'async';
+  const id = P.get('upgrade')!, W = innerWidth, H = innerHeight;
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x2a363e); lightUp(scene, 40);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshLambertMaterial({ color: 0x4a6a40 })); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+  const t0 = performance.now(), m = buildSpeciesModel(beastDesign(id, 300)), tPh = performance.now() - t0;
+  const { mesh, bones } = makeInstance(m), an = new Animator(m.rig, bones, mesh); mesh.rotation.y = 0.8; scene.add(mesh);
+  const step = () => { for (let t = 0; t < 0.5; t += 1 / 30) an.update(1 / 30, { speed: 0, turn: 0, state: 'idle', act: 0, lookYaw: 0, lookPitch: 0, ground: () => 0, air: 0 }); mesh.updateMatrixWorld(true); };
+  const cam = new THREE.PerspectiveCamera(32, (W / 2) / H, 0.5, 600); cam.position.set(55, 32, 55); cam.lookAt(0, 9, 0);
+  step(); R.setViewport(0, 0, W / 2, H); R.setScissor(0, 0, W / 2, H); R.render(scene, cam);
+  console.log('placeholder ms', tPh.toFixed(0), 'tris', m.geo.index!.count / 3);
+  const wait = setInterval(() => {
+    if (!(m as unknown as { ready?: boolean }).ready) return;
+    clearInterval(wait);
+    console.log('upgraded after ms', (performance.now() - t0).toFixed(0), 'tris', m.geo.index!.count / 3);
+    step(); R.setViewport(W / 2, 0, W / 2, H); R.setScissor(W / 2, 0, W / 2, H); R.render(scene, cam);
+    // the same species again: served from IndexedDB
+    const t1 = performance.now(), m2 = buildSpeciesModel(beastDesign(id, 300));
+    const w2 = setInterval(() => { if ((m2 as unknown as { ready?: boolean }).ready) { clearInterval(w2); console.log('second build ready after ms', (performance.now() - t1).toFixed(0)); (window as any).__done = true; } }, 50);
+  }, 100);
 }

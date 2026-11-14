@@ -627,9 +627,27 @@ export function meshLilyHero(sp: PlantSpecies, h: number, tex: FloraTex, seed: n
   return { geo: g.build(R), H: 0.3, R, tris: g.tris };
 }
 
+/** mineral-crust algae round a hot spring: flat lobed mats in the thermophiles' colour bands (green at the cool rim,
+ *  orange and rust toward the hot heart), each mat a faceted plate with a little raised lip */
+export function meshCrust(sp: PlantSpecies, h: number, tex: FloraTex, seed: number, lod: number): PlantGeo {
+  const r = new Rand(seed), g = new Geo(0.05), spk = tex.speckle();
+  const bands = [rampNamed('moss'), rampNamed('ochre'), rampNamed('rust'), rampNamed('teal')];
+  const n = lod ? 3 : r.int(4, 6);
+  for (let k = 0; k < n; k++) {
+    const c: V3 = [r.range(-0.3, 0.3) * h, 0.004 + k * 0.004, r.range(-0.3, 0.3) * h], rad = h * r.range(0.18, 0.34) * (1 - k * 0.1), sides = lod ? 6 : 9, B = bands[(k + seed) % bands.length];
+    const lob = (i: number) => 0.8 + ((i * 7 + k * 3) % 5) * 0.07;
+    g.kind = KIND.SOLID; g.pivot = [0, 0, 0]; g.phase = r.next(); g.col = linHex(B[3], 1.3);
+    facetGrid(g, [ring(c, rad * 0.35, 0.012, sides, lob), ring(c, rad * 0.85, 0.008, sides, lob, 0.2), ring(c, rad, 0.014, sides, lob, 0.35), ring(c, rad * 1.06, -0.01, sides, lob, 0.5)], spk, vadd(c, [0, -0.3, 0]));
+    g.col = linHex(B[4] ?? B[3], 1.3);
+    const top = g.v(vadd(c, [0, 0.016, 0]), UP, spk.u0 + spk.du * 0.3, spk.v0 + spk.dv * 0.3), inner = ring(c, rad * 0.35, 0.012, sides, lob).map((p) => g.v(p, UP, spk.u0 + spk.du * 0.5, spk.v0 + spk.dv * 0.4));
+    for (let i = 0; i < sides; i++) g.triN(top, inner[i], inner[i + 1]);
+  }
+  return { geo: g.build(h * 0.4), H: 0.05, R: h * 0.4, tris: g.tris };
+}
+
 /** the species modelled whole by this file (both LODs: full up close, lighter in the mid range) */
 export const HERO: Record<string, (sp: PlantSpecies, h: number, tex: FloraTex, seed: number, lod: number) => PlantGeo> = {
-  snaptrap: meshSnaptrap, pitcher: meshPitcher, sundew: meshSundew, sail: meshSail, lure: meshLure, bloom: meshBloom, lily: meshLilyHero,
+  snaptrap: meshSnaptrap, pitcher: meshPitcher, sundew: meshSundew, sail: meshSail, lure: meshLure, bloom: meshBloom, lily: meshLilyHero, crust: meshCrust,
 };
 
 // ------------------------------------------------------------------------------------------------ fruit

@@ -54,7 +54,7 @@ const GROUND3D: Partial<Record<GroundKind, [GroundForm, number]>> = { grass: ['g
 const BENDS: Record<string, [number, number]> = {
   tuft: [0.5, 1], reed: [0.4, 0.8], fern: [0.26, 0.7], shrub: [0.12, 0.35], broadleaf: [0.028, 0.03], umbrella: [0.03, 0.03], palm: [0.06, 0.04], weeper: [0.04, 0.04],
   spike: [0.3, 0.75], rosette: [0.05, 0.2], coral: [0.06, 0.3], fungus: [0.02, 0.15], bulb: [0.3, 0.7], barrel: [0.0, 0.02], crystalbloom: [0.0, 0.0], lily: [0.05, 0.2], eyeflower: [0.25, 0.7], fiddle: [0.22, 0.6],
-  snaptrap: [0.05, 0.3], pitcher: [0.03, 0.2], sundew: [0.02, 0.15], sail: [0.05, 0.12], lure: [0.2, 0.5], bloom: [0.3, 0.75],
+  snaptrap: [0.05, 0.3], pitcher: [0.03, 0.2], sundew: [0.02, 0.15], sail: [0.05, 0.12], lure: [0.2, 0.5], bloom: [0.3, 0.75], crust: [0, 0.05],
 };
 /**
  * LOD ranges per quality tier (camera distance, metres): full 3D fades to the lighter 3D mesh over near, that to the
@@ -180,6 +180,26 @@ export class Flora {
     const treeAt: number[][] = [];
     const L = R.landing;
     const totalW = sp.reduce((s, p) => s + p.weight, 0);
+    // habitats: river banks and shores (riparian), wet low flats and deltas (marsh), high slopes up to the snow line
+    // (alpine), hot-spring crusts (from the geology, when it has marked them: region.geo alpha >= 128)
+    const snowLine = 8 + bi.temp * 26, geo = (R as unknown as { geo?: Uint8Array }).geo;
+    const RIP: Partial<Record<string, number>> = { weeper: 2.6, reed: 2.4, palm: 1.4, fern: 1.3, lily: 1, bloom: 1, fungus: 1.2, snaptrap: 0.8, pitcher: 0.8 };
+    const DRY: Partial<Record<string, number>> = { barrel: 0.1, sail: 0.3, umbrella: 0.45, crystalbloom: 0.5, rosette: 0.6 };
+    const MARSH: Partial<Record<string, number>> = { snaptrap: 3, pitcher: 3, sundew: 3.2, reed: 1.6, lily: 1.2, bloom: 0.5 };
+    const ALP: Partial<Record<string, number>> = { tuft: 1.5, rosette: 2.2, bloom: 1.7, shrub: 1.1, sundew: 1.2, fern: 0.9, fungus: 0.6, spike: 1.1 };
+    const habitat = (p: PlantSpecies, i: number, x: number, z: number) => {
+      const h = R.h[i], damp = R.damp[i];
+      let k = 1 + (RIP[p.arch] ?? 0) * damp - (1 - (DRY[p.arch] ?? 1)) * damp;
+      const marsh = Math.min(1, Math.max(0, (R.wet[i] - 0.62) * 3)) * Math.min(1, Math.max(0, 1 - (h - R.water) / 0.9));
+      k *= 1 + (MARSH[p.arch] ?? 0) * marsh;
+      const alp = Math.min(1, Math.max(0, (h - (snowLine - 10)) / 10)), snow = Math.min(1, Math.max(0, (h - snowLine) / 5));
+      if (alp > 0) k *= p.tree ? 1 - alp * 0.85 : 1 + ((ALP[p.arch] ?? 0.4) - 1) * alp;
+      if (snow > 0) k *= 1 - snow * (p.arch === 'tuft' || p.arch === 'rosette' ? 0.7 : 0.97);
+      const xa = Math.max(0, x - 1), xb = Math.min(N - 1, x + 1), za = Math.max(0, z - 1), zb = Math.min(N - 1, z + 1);
+      const slope = Math.min(1, Math.max(0, (Math.abs(R.h[z * N + xb] - R.h[z * N + xa]) + Math.abs(R.h[zb * N + x] - R.h[za * N + x]) - 0.5) / 1.4));
+      return k * (1 - slope * (p.tree ? 0.75 : 0.3));
+    };
+    const crustI = sp.findIndex((p) => p.arch === 'crust');
     // clearings around rock formations: thin soil, no trees, low growth only
     const rocky = new Float32Array(N * N);
     for (const p of R.rocks) {
@@ -279,6 +299,7 @@ export class Flora {
         const clusterK = Math.pow(cl, 1 + p.cluster * 3) * (1 + p.cluster * 2.5);
         let mul = p.tree ? (bi.key === 'desert' || bi.key === 'savanna' ? 0.35 + fo * 2 : 0.1 + fo * 2.5) : under.has(p.arch) ? 0.75 + fo * 0.9 : edge.has(p.arch) ? 1 + 1.6 * fo * (1 - fo) - fo * fo * 0.55 : 1.15 - fo * 0.7;
         if (p.tree) mul *= 1 - rk; else if (p.hmax > 1.2) mul *= 1 - rk * 0.75;
+        mul *= habitat(p, i, x, z);
         const chance = (p.weight / totalW) * clusterK * (water ? 1.2 : (1.6 + f * 4.4)) * bi.flora * (p.tree ? 0.5 : 1) * mul;
         if (r.next() > chance) continue;
         const px = x + r.range(0.15, 0.85), pz = z + r.range(0.15, 0.85);
@@ -290,6 +311,13 @@ export class Flora {
         }
         inst.push([px, water ? surf : R.heightAt(px, pz), pz, p.id, r.int(0, p.sprites.length - 1)]);
       }
+    }
+    // mineral-crust algae mats round the hot springs, where the geology marks them
+    if (geo && crustI >= 0 && geo.length >= N * N * 4) for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+      const i = z * N + x;
+      if (geo[i * 4 + 3] < 128 || R.h[i] < R.water || r.next() > 0.45) continue;
+      const px = x + r.range(0.1, 0.9), pz = z + r.range(0.1, 0.9);
+      inst.push([px, R.heightAt(px, pz), pz, crustI, r.int(0, sp[crustI].sprites.length - 1)]);
     }
     // mushrooms and ferns on the fallen logs
     for (const p of R.rocks) {

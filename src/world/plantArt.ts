@@ -9,7 +9,7 @@ import { PAINT as STYLE, ANIM, GROW, FLAT, type Plant } from './plantStyle';
 import { paintGround, type GroundSprite } from './groundArt';
 import { HERO_FLAT } from './heroArt';
 
-export type Arch = 'tuft' | 'reed' | 'fern' | 'shrub' | 'broadleaf' | 'umbrella' | 'palm' | 'weeper' | 'spike' | 'rosette' | 'coral' | 'fungus' | 'bulb' | 'barrel' | 'crystalbloom' | 'lily' | 'eyeflower' | 'fiddle' | 'snaptrap' | 'pitcher' | 'sundew' | 'sail' | 'lure' | 'bloom';
+export type Arch = 'tuft' | 'reed' | 'fern' | 'shrub' | 'broadleaf' | 'umbrella' | 'palm' | 'weeper' | 'spike' | 'rosette' | 'coral' | 'fungus' | 'bulb' | 'barrel' | 'crystalbloom' | 'lily' | 'eyeflower' | 'fiddle' | 'snaptrap' | 'pitcher' | 'sundew' | 'sail' | 'lure' | 'bloom' | 'crust';
 export const PX = 32;
 
 export interface Sprite { u0: number; v0: number; du: number; dv: number; w: number; h: number; /** px */ pw: number; ph: number; ax: number }
@@ -72,6 +72,7 @@ const ARCHS: ArchSpec[] = [
   { arch: 'sail', h: [1.2, 2.2], fert: 0.2, wet: [0.05, 0.8], weight: 0.9, cluster: 0.5, food: 10 },
   { arch: 'lure', h: [0.8, 1.5], fert: 0.3, wet: [0.3, 1], weight: 1.0, cluster: 0.6, food: 8 },
   { arch: 'bloom', h: [0.5, 1.0], fert: 0.4, wet: [0.2, 0.9], weight: 1.3, cluster: 0.85, food: 6 },
+  { arch: 'crust', h: [0.5, 0.8], fert: 0, wet: [0, 1], weight: 0, cluster: 0, food: 2 },
 ];
 
 const BIOME_ARCH: Partial<Record<BiomeKey, Arch[]>> = {
@@ -111,6 +112,8 @@ export function makeFlora(pal: Palette, biome: BiomeKey, seed: number): PlantSpe
       weight: s.weight, cluster: s.cluster, food: s.food, regrow: s.tree ? 240 : 60, glow, tree: !!s.tree, anim: ANIM[a] ?? 0, sprites: [],
     });
   });
+  // mineral-crust algae: placed only round hot springs (flora.ts), never by the normal roll (weight 0)
+  { const s = ARCHS.find((x) => x.arch === 'crust')!; out.push({ id: out.length, name: binomial(r), arch: 'crust', hmin: s.h[0], hmax: s.h[1], leaf: 0x7a9a3a, accent: 0xc8782a, trunk: 0xd8d0b8, fert: 0, wetMin: 0, wetMax: 1, shore: false, water: false, weight: 0, cluster: 0, food: s.food, regrow: 90, glow: false, tree: false, anim: 0, sprites: [] }); }
   if (!out.some((p) => p.tree) && biome !== 'desert') {
     const s = ARCHS.find((x) => x.arch === 'broadleaf')!;
     out.push({ id: out.length, name: binomial(r), arch: 'broadleaf', hmin: s.h[0], hmax: s.h[1], leaf: r.pick(pal.foliage), accent: r.pick(pal.bloom), trunk: r.pick(pal.bark), fert: s.fert, wetMin: s.wet[0], wetMax: s.wet[1], shore: false, water: false, weight: s.weight, cluster: s.cluster, food: s.food, regrow: 240, glow: false, tree: true, anim: 0, sprites: [] });

@@ -6,7 +6,8 @@ import type { Design } from './design';
 import { gbuf, type GFlag } from '../gfx/gbuf';
 import { VEYR } from '../world/palette';
 import { sculpt } from './sculpt';
-import { growGrove } from './titans';
+import { growGrove, isTitan, titanModel, TITAN_BUILD } from './titans';
+import type { Upgradable } from './titans/async';
 
 export interface SpeciesModel {
   rig: Rig; geo: THREE.BufferGeometry; tex: THREE.DataTexture; inverses: THREE.Matrix4[];
@@ -17,10 +18,15 @@ export function buildSpeciesModel(d: Design): SpeciesModel {
   const rig = buildRig(d);
   const restWorld: V3[] = rig.bones.map(() => [0, 0, 0]);
   rig.bones.forEach((bn, i) => { const p = bn.parent >= 0 ? restWorld[bn.parent] : [0, 0, 0] as V3; restWorld[i] = [p[0] + bn.pos[0], p[1] + bn.pos[1], p[2] + bn.pos[2]]; });
-  const { geo, tex } = sculpt(d, rig, restWorld);
+  // titans build their full model in a worker: a placeholder silhouette now, upgraded in place when it lands
+  let model: SpeciesModel | null = null;
+  const titan = isTitan(d);
+  const { geo, tex } = titan ? titanModel(d, rig, restWorld, () => model as unknown as Upgradable) : sculpt(d, rig, restWorld);
   const inverses = restWorld.map((p) => new THREE.Matrix4().makeTranslation(-p[0], -p[1], -p[2]));
   const depthMat = new THREE.MeshDepthMaterial({ map: tex, alphaTest: 0.5, depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide });
-  return { rig, geo, tex, inverses, depthMat, restWorld };
+  model = { rig, geo, tex, inverses, depthMat, restWorld };
+  if (titan && TITAN_BUILD.mode === 'async') (model as unknown as Upgradable).live = new Set();
+  return model;
 }
 
 // --------------------------------------------------------------------------------------------- instances
@@ -87,8 +93,11 @@ totalEmissiveRadiance += uFlashCol * uFlash * 0.9;`);
   mesh.userData.fx = fx;
   mesh.add(bones[0]);
   mesh.bind(new THREE.Skeleton(bones, m.inverses), new THREE.Matrix4());
-  // a titan that carries a grove grows the region's own plants on its back (titans/index.ts)
-  if (m.geo.userData.grove) growGrove(bones, m.geo, { seed: m.rig.bones.length });
+  // a titan that carries a grove grows the region's own plants on its back (titans/index.ts); while its full model is
+  // still building, the instance waits on the model's live list and is upgraded in place
+  const grow = () => { if (m.geo.userData.grove) growGrove(bones, m.geo, { seed: m.rig.bones.length }); };
+  const live = (m as unknown as Upgradable).live;
+  if (live) live.add({ mesh, bones, grow }); else grow();
   mesh.castShadow = true; mesh.receiveShadow = true;
   mesh.customDepthMaterial = m.depthMat;
   mesh.frustumCulled = true;

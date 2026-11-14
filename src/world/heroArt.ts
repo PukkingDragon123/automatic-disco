@@ -97,6 +97,17 @@ const bloom: Painter = (sp, h, r) => {
   return pc;
 };
 
+const crust: Painter = (_sp, h, r) => {
+  // flat mats of thermophile algae in colour bands, each a lobed patch with a lit rim
+  const pc = canvasFor(h * 1.2, 0.12), cx = pc.w / 2, by = pc.h - 2, bands = [rampNamed('moss'), rampNamed('ochre'), rampNamed('rust')];
+  for (let k = 0; k < 3; k++) {
+    const B = bands[k], w = h * PX * (0.55 - k * 0.14), x0 = cx + r.range(-2, 2);
+    fillPoly([[x0 - w, by + 1], [x0 - w * 0.7, by - 1 - k], [x0 + w * 0.6, by - 1 - k], [x0 + w, by + 1]], (x, y) => pc.set(x, y, B[y < by - k ? 5 : 3]));
+  }
+  outline(pc, bands[2][0]);
+  return pc;
+};
+
 /** archetypes modelled whole in 3D (floraHero); these are their far sprites */
-export const HERO_FLAT: Record<string, Painter> = { snaptrap, pitcher, sundew, sail, lure, bloom };
+export const HERO_FLAT: Record<string, Painter> = { snaptrap, pitcher, sundew, sail, lure, bloom, crust };
 export type { PixelCanvas };
