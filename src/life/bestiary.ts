@@ -19,6 +19,7 @@ export type BeastPart =
   | { k: 'tailFan'; size: number; ramp: RampName }
   | { k: 'headFans'; size: number; ramp: RampName; fwd?: boolean } | { k: 'noseleaf' }
   | { k: 'finCrest'; height: number }
+  | { k: 'grove'; t0: number; t1: number; trees: number }
   | { k: 'mane' } | { k: 'shag' } | { k: 'brow'; size: number } | { k: 'helm'; ramp: RampName };
 
 export interface BeastForm {
@@ -42,10 +43,12 @@ export interface BeastForm {
   brow?: number; mask?: boolean; headCover?: Cover; earK?: number;
   /** this species' tweak of its skull family's cage: muzzle length, brow height, eye size */
   cage?: { muzzle?: number; brow?: number; eye?: number };
+  /** a titan's size over its plan's range (body length multiplier) */
+  scale?: number;
   parts: BeastPart[];
 }
 export interface Beast {
-  id: string; name: string; latin: string; role: 'mite' | 'grazer' | 'tank' | 'stalker' | 'apex' | 'snail' | 'scavenger' | 'flyer';
+  id: string; name: string; latin: string; role: 'mite' | 'grazer' | 'tank' | 'stalker' | 'apex' | 'snail' | 'scavenger' | 'flyer' | 'titan';
   /** the written concept: niche, signature, size */
   concept: string;
   plan: Plan; lineage: Lineage; cover: Cover; genes: string[];
@@ -251,6 +254,48 @@ export const BEASTS: Record<string, Beast> = {
       skull: { rx: [0.42, 0.54, 0.58, 0.54, 0.44, 0.36, 0.3, 0.24], ry: [0.42, 0.52, 0.52, 0.42, 0.33, 0.28, 0.25, 0.21], hy: [0.08, 0.17, 0.18, 0.1, 0.0, -0.04, -0.05, -0.06], eye: [0.3, 0.95, 0.75, 0.045], cap: 0.12 },
       eyes: { pupil: 'round' }, fore: [0.5, 0.56, 0.36, 0.28, 0.26], hind: [0.5, 0.56, 0.36, 0.28, 0.26], earK: 1.45, brow: 0.12, cage: { muzzle: 0.8, brow: 1.05, eye: 0.8 },
       parts: [{ k: 'noseleaf' }],
+    },
+  },
+  grovebacker: {
+    id: 'grovebacker', name: 'Grovebacker', latin: 'Silvidorsum colossus', role: 'titan', plan: 'quadruped', lineage: 'vertebrate', cover: 'skin',
+    concept: 'A thirty-metre grazer whose bone back-shield is so old a wood grows on it: lichen, moss and a stand of small trees ride the shell while it crops whole hillsides. Birds and climbing things live in the grove. Its footfalls carry for kilometres.',
+    genes: ['vert_quadruped', 'leg_pillar', 'eye_camera', 'molars', 'beak', 'osteoderms', 'fat_stores', 'ectotherm', 'live_birth'],
+    sliders: { size: 1, len: 0.8, girth: 0.95, legLen: 0.25, legThick: 0.95, neck: 0.4, head: 0.35, tail: 0.3 },
+    colors: { base: ['stone', 3], belly: ['sand', 3], pattern: ['stone', 2], accent: ['moss', 4], eye: ['ochre', 4] }, pattern: 'plain', patScale: 1,
+    form: {
+      trunk: [[0.44, 0.5, 0.7], [0.52, 0.56, 0.7], [0.5, 0.52, 0.62], [0.46, 0.5, 0.52]], neckR: 0.42, nAng: 0.1, neckK: 1.2, headK: 0.6, snoutK: 0.75,
+      hK: 1.1, foreK: 1, hindK: 1, foreT: 1.2, hindT: 1.25, slope: 0.04, tailK: 0.9, scale: 6.5,
+      skull: { rx: [0.36, 0.46, 0.5, 0.46, 0.4, 0.34, 0.28, 0.2], ry: [0.34, 0.42, 0.42, 0.38, 0.32, 0.27, 0.22, 0.16], hy: [0.04, 0.1, 0.12, 0.1, 0.04, -0.01, -0.04, -0.07], eye: [0.22, 1.2, 1.15, 0.06], cap: 0.4 },
+      eyes: { pupil: 'h' }, fore: [0.62, 0.78, 0.66, 0.6, 0.66], hind: [0.66, 0.8, 0.66, 0.6, 0.66], headCover: 'scales', brow: 0.14, cage: { muzzle: 1.1, brow: 1.1, eye: 0.7 },
+      parts: [{ k: 'carapace', t0: 0.06, t1: 0.86, bands: 7, spread: 1.8, lift: 1.22, ramp: 'stone', moss: true }, { k: 'grove', t0: 0.15, t1: 0.75, trees: 9 }],
+    },
+  },
+  mirewalker: {
+    id: 'mirewalker', name: 'Mirewalker', latin: 'Paludigigas longicollis', role: 'titan', plan: 'quadruped', lineage: 'vertebrate', cover: 'skin',
+    concept: 'A swamp titan forty metres from nose to tail: a neck as long as its body to crop the tops of the fen forests, pillar legs that sink a metre at every step, crusts of lichen on the wet grey hide and long-healed scars from things that tried.',
+    genes: ['vert_quadruped', 'leg_pillar', 'eye_camera', 'molars', 'tail_balance', 'fat_stores', 'ectotherm', 'live_birth'],
+    sliders: { size: 1, len: 1, girth: 0.7, legLen: 0.55, legThick: 0.85, neck: 1, head: 0.2, tail: 1 },
+    colors: { base: ['slate', 3], belly: ['stone', 4], pattern: ['slate', 2], accent: ['sage', 4], eye: ['ink', 1] }, pattern: 'flankSpots', patScale: 2.2,
+    form: {
+      trunk: [[0.44, 0.52, 0.66], [0.5, 0.58, 0.66], [0.48, 0.56, 0.58], [0.46, 0.54, 0.5]], neckR: 0.5, nAng: 0.75, neckK: 3.0, headK: 0.45, snoutK: 0.9,
+      hK: 1.05, foreK: 1.05, hindK: 1, foreT: 1.1, hindT: 1.15, slope: 0.06, tailK: 1.6, scale: 8.5,
+      skull: { rx: [0.34, 0.44, 0.48, 0.42, 0.34, 0.28, 0.24, 0.2], ry: [0.34, 0.44, 0.46, 0.4, 0.32, 0.28, 0.25, 0.21], hy: [0.06, 0.14, 0.16, 0.1, 0.03, -0.02, -0.05, -0.07], eye: [0.24, 1.15, 1.05, 0.06], cap: 0.3 },
+      eyes: { pupil: 'round' }, fore: [0.62, 0.74, 0.62, 0.56, 0.62], hind: [0.66, 0.78, 0.62, 0.56, 0.62], limbSkin: true,
+      parts: [{ k: 'plates', t0: 0.1, t1: 0.7, rows: 14, spread: 0.6, size: 0.18, ramp: 'sage' }],
+    },
+  },
+  cragstrider: {
+    id: 'cragstrider', name: 'Cragstrider', latin: 'Hexapodus montanus', role: 'titan', plan: 'hexapodV', lineage: 'vertebrate', cover: 'skin',
+    concept: "A six-legged plated wanderer of this world's own spine-line, twenty-five metres long, that never stops walking: its plates are stone-hard and lichen-crusted, its spiracles roar, and each footfall leaves a crater the small things later nest in.",
+    genes: ['vert_hexapod', 'leg_pillar', 'eye_camera', 'molars', 'osteoderms', 'ectotherm', 'fat_stores', 'live_birth'],
+    sliders: { size: 0.9, len: 0.8, girth: 0.75, legLen: 0.5, legThick: 0.85, neck: 0.3, head: 0.4, tail: 0.5 },
+    colors: { base: ['basalt', 4], belly: ['stone', 4], pattern: ['basalt', 2], accent: ['ochre', 4], eye: ['ochre', 5] }, pattern: 'plain', patScale: 1,
+    form: {
+      trunk: [[0.46, 0.54, 0.62], [0.5, 0.56, 0.6], [0.48, 0.54, 0.56], [0.46, 0.52, 0.5]], neckR: 0.48, nAng: 0.25, neckK: 0.9, headK: 0.7, snoutK: 0.9,
+      hK: 1, foreK: 1, hindK: 1, foreT: 1.1, hindT: 1.1, slope: 0.03, tailK: 0.9, scale: 5.5,
+      skull: { rx: [0.36, 0.48, 0.52, 0.46, 0.36, 0.28, 0.24, 0.2], ry: [0.36, 0.46, 0.5, 0.42, 0.34, 0.28, 0.25, 0.21], hy: [0.06, 0.15, 0.17, 0.11, 0.03, -0.03, -0.05, -0.08], eye: [0.24, 1.0, 1.0, 0.05], cap: 0.28 },
+      eyes: { rows: 2, pupil: 'h' }, fore: [0.62, 0.74, 0.62, 0.56, 0.62], hind: [0.66, 0.78, 0.62, 0.56, 0.62], spiracles: 9, pits: true,
+      parts: [{ k: 'carapace', t0: 0.1, t1: 0.9, bands: 8, spread: 1.5, lift: 1.16, ramp: 'basalt', moss: true }],
     },
   },
   gapejaw: {

@@ -262,7 +262,7 @@ export function dropMarks(W: World, L: V, o: { outer?: number; red?: number; pai
 // ------------------------------------------------------------------ is it good ground?
 export interface LZInfo {
   x: number; z: number; ok: boolean; snapped: boolean; grid: string; elev: number; slope: number; ground: string;
-  seam: { kind: 'ore' | 'crystal'; dist: number } | null; verdict: 'SUITABLE' | 'ROUGH' | 'NO LANDING'; note: string;
+  seam: { kind: 'ore' | 'crystal'; dist: number } | null; verdict: 'SUITABLE' | 'ROUGH' | 'SPLASHDOWN' | 'NO LANDING'; note: string;
 }
 const LET = 'ABCDEFGH';
 export const gridRef = (x: number, z: number) => `${LET[clamp(Math.floor(x / 16), 0, 7)]}-${clamp(Math.floor(z / 16), 0, 7) + 1}`;
@@ -275,7 +275,13 @@ export function slopeAt(R: Region, x: number, z: number) {
 export function assessLZ(R: Region, x0: number, z0: number): LZInfo {
   let x = clamp(x0, 7, R.N - 7), z = clamp(z0, 7, R.N - 7), snapped = false, note = '';
   const water = R.isWater(x, z), solid = R.isSolid(x, z);
-  if (water || solid) {
+  // open water is a splashdown (the ocean takes the pod); only rock is moved off
+  if (water && !solid) {
+    let seam: LZInfo['seam'] = null;
+    for (const d of R.deposits) { const dd = Math.hypot(d.x - x, d.z - z); if (!seam || dd < seam.dist) seam = { kind: d.kind, dist: dd }; }
+    return { x, z, ok: true, snapped: false, grid: gridRef(x, z), elev: R.groundSmooth(x, z), slope: 0, ground: 'open water', seam, verdict: 'SPLASHDOWN', note: 'SPLASHDOWN IN OPEN WATER' };
+  }
+  if (solid) {
     const f = R.freeNear(x, z, 9);
     if (f) { x = f[0]; z = f[1]; snapped = true; note = water ? 'MOVED OFF THE WATER' : 'MOVED OFF THE ROCK'; }
   }

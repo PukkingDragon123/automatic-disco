@@ -4,6 +4,7 @@ import type { Creature } from '../game/creature';
 import type { World } from '../game/world';
 import type { Role } from '../life/design';
 import { hash01, clamp } from '../core/rand';
+import { BEASTS } from '../life/bestiary';
 
 /** day (diurnal), night (nocturnal) or dusk (crepuscular: dawn and dusk) */
 export type Sched = 'day' | 'night' | 'dusk';
@@ -32,12 +33,19 @@ export interface Profile {
   range: number;
   /** herd spacing */
   spread: number;
+  /** a colossus: migrates slowly across the region, fells trees, fears nothing; small life follows it */
+  titan: boolean;
+  /** cold-blooded or small enough to sleep the frost out */
+  hibernate: boolean;
+  /** bioluminescent: it lights up in the dark (and puts on a display in the eclipse) */
+  glow: boolean;
 }
 
 const cache = new Map<number, Profile>();
 
 /** the ecological role of a species' founding line ('owned' for designs) */
 export function roleOf(w: World, c: Creature): Role | 'owned' {
+  if (c.sp.design.beast && BEASTS[c.sp.design.beast]?.role === 'titan') return 'titan' as Role;
   let s = c.sp;
   while (s.parent !== null) s = w.reg.get(s.parent);
   return w.roles.get(s.id) ?? 'owned';
@@ -60,6 +68,7 @@ export function profileOf(c: Creature, w: World): Profile {
     case 'scavenger': p = base('scavenger', h(2) < 0.55 ? 'day' : 'dusk', 'solo', { den: true, range: 50, spread: 6 }); break;
     case 'stalker': p = base('predator', h(3) < 0.6 ? 'night' : 'dusk', 'pack', { den: true, territorial: true, ambush: st.swim > 0 || st.stealth > 0.32, range: 40, spread: 5 }); break;
     case 'apex': p = base('predator', 'dusk', 'solo', { den: true, territorial: true, range: 56, spread: 8 }); break;
+    case 'titan' as Role: p = base('grazer', 'day', 'herd', { titan: true, range: 140, spread: 12, thirstK: 1.3 }); break;
     default: {
       // designs and anything unknown: read it off the body
       const carn = diet === 'carn', scav = diet === 'scav';
@@ -75,12 +84,17 @@ export function profileOf(c: Creature, w: World): Profile {
   // bats: out at night after fruit and moths, hung up asleep by day
   if (sp.pheno.canFly && (sp.design.beast === 'duskwing' || sp.design.genes.includes('wing_patagium'))) { p.sched = 'night'; p.fruit = true; p.social = 'swarm'; }
   if (st.swim > 0 && p.guild === 'predator') p.ambush = true;
+  // the colossal (a titan by role, or anything this vast) live as titans
+  if (st.mass > 25000 && !p.titan) { p.titan = true; p.guild = 'grazer'; p.social = 'herd'; p.den = false; p.range = 140; p.spread = 12; p.sentry = false; }
+  p.glow = glow;
+  const g = sp.design.genes;
+  p.hibernate = !p.titan && (g.includes('ectotherm') || sp.design.lineage === 'arthropod' || role === 'snail' || role === 'mite' || sp.design.plan === 'gastropod') && !sp.pheno.canFly;
   p.thirstK *= clamp(1 + (w.region.biome.temp - 0.55) * 0.8, 0.7, 1.4);
   cache.set(sp.id, p);
   return p;
 
   function base(guild: Guild, sched: Sched, social: Social, o: Partial<Profile>): Profile {
-    return { role, guild, sched, social, den: false, ambush: false, territorial: false, fruit: false, shade: false, sentry: false, thirstK: 1, range: 30, spread: 5, ...o };
+    return { role, guild, sched, social, den: false, ambush: false, territorial: false, fruit: false, shade: false, sentry: false, thirstK: 1, range: 30, spread: 5, titan: false, hibernate: false, glow: false, ...o };
   }
 }
 

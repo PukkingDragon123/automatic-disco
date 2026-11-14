@@ -21,12 +21,20 @@ import { GOLEM_REF } from '../game/creature';
 import { clamp, hash01 } from '../core/rand';
 import { RAMPS } from '../art/palette';
 import { profileOf, roleOf, type Guild } from './profile';
+import { StubClimate, SEASON, type ClimateLike, type SeasonFx, type Season } from './climate';
 import type { Role } from '../life/design';
 
 /** metres per eco cell */
 export const CS = 4;
 const PASS_FRAMES = 40;
-const ROLE_CAP: Record<Role, number> = { mite: 16, grazer: 9, tank: 4, stalker: 5, apex: 2, scavenger: 6, flyer: 10, snail: 8 };
+const ROLE_CAP: Partial<Record<Role | 'titan', number>> = { mite: 16, grazer: 9, tank: 4, stalker: 5, apex: 2, scavenger: 6, flyer: 10, snail: 8, titan: 3 };
+const SEASON_NAME: Record<Season, string> = { thaw: 'THAW', bloom: 'BLOOM', highsun: 'HIGH SUN', monsoon: 'MONSOON', eclipse: 'ECLIPSE', ember: 'EMBER', bloodtide: 'BLOOD TIDE', frost: 'FROST' };
+const SEASON_NOTE: Record<Season, string> = {
+  thaw: 'THAW: THE SLEEPERS STIR, THE RIVERS SWELL', bloom: 'BLOOM: FLOWERING AND COURTSHIP EVERYWHERE', highsun: 'HIGH SUN: THE WATER SHRINKS, THE HERDS CROWD THE LAST POOLS',
+  monsoon: 'MONSOON: FLOODWATER DRIVES THE ANIMALS TO HIGH GROUND', eclipse: 'ECLIPSE: THE SUN IS GONE. THE DAY-ANIMALS SLEEP OR PANIC; THE HUNTERS ROAM',
+  ember: 'EMBER: DRY LIGHTNING, WILDFIRE, ASH', bloodtide: 'BLOOD TIDE: THE RED MOON. PREDATORS IN FRENZY, HERDS STAMPEDE', frost: 'FROST: THE COLD-BLOODED SLEEP, THE HERDS HUDDLE AND MOVE DOWNHILL',
+};
+const FLOWER = new Set(['eyeflower', 'bulb', 'lily', 'rosette', 'fiddle', 'crystalbloom', 'coral']);
 /** the wild never grows past this many animals (performance) */
 export const WILD_CAP = 150;
 const DRY_TINT = RAMPS.straw[3];
@@ -79,6 +87,20 @@ export class Eco {
   private reservoir = 0;
   /** seasonal climate factor (-1 deep dry season .. 1 height of the wet season) */
   seasonK = 0;
+  /** the climate (game.climate when it exists; a stand-in until then) and what its season does to life */
+  climate: ClimateLike;
+  sfx: SeasonFx = SEASON.bloom;
+  /** plant regrowth speed for flora.tick (by season) */
+  growK = 1;
+  /** wildfire per cell (0..1 burning), and the ash left behind */
+  readonly fire: Float32Array; readonly ash: Float32Array;
+  fires = 0;
+  /** lightning strikes: where and when (the AI panics anything close) */
+  strikes: { x: number; z: number; t: number }[] = [];
+  private strikeT = 8; private igniteT = 30;
+  /** where the camera looks (thunder and fire are staged near it) */
+  focus: { x: number; z: number } | null = null;
+  private lastSeason: Season | null = null;
   readonly year: number;
   private phase0: number;
   // ---- other systems' handles
@@ -111,6 +133,8 @@ export class Eco {
     this.shoreX = F(); this.shoreZ = F(); this.shoreD = new Int16Array(n);
     this.liveN0 = F(); this.aLive = F(); this.aVig = F(); this.aBio = F(); this.aTree = F(); this.aFruit = new Uint16Array(n);
     this.liveN = F(); this.vigS = F();
+    this.fire = F(); this.ash = F();
+    this.climate = new StubClimate(w.region.biome.temp);
     this.year = w.dayLen * 6;
     // start a little into the wet season
     this.phase0 = 0.08 + hash01(w.seed, 5, 1) * 0.1;
@@ -140,9 +164,37 @@ export class Eco {
   plantAlive(i: number) { return this.pst[i] !== 1; }
   /** the season by name */
   seasonName() {
-    const k = this.seasonK, a = Math.abs(k), wet = k >= 0, growing = Math.sign(k) * Math.cos(this.phase() * Math.PI * 2) > 0;
-    return (a > 0.8 ? (wet ? 'HEIGHT OF THE ' : 'DEEP ') : a < 0.4 ? (growing ? 'EARLY ' : 'LATE ') : '') + (wet ? 'WET SEASON' : 'DRY SEASON');
+    const c = this.climate, t = c.seasonT;
+    return (t < 0.25 ? 'EARLY ' : t > 0.75 ? 'LATE ' : '') + SEASON_NAME[c.season];
   }
+  /** is a fire burning near (x, z)? the nearest burning cell's centre, or null */
+  fireNear(x: number, z: number, r: number): [number, number] | null {
+    if (!this.fires) return null;
+    const G = this.G, R = Math.ceil(r / CS), cx = Math.floor(x / CS), cz = Math.floor(z / CS);
+    let best: [number, number] | null = null, bd = r * r;
+    for (let j = Math.max(0, cz - R); j <= Math.min(G - 1, cz + R); j++) for (let i = Math.max(0, cx - R); i <= Math.min(G - 1, cx + R); i++) {
+      if (this.fire[j * G + i] < 0.15) continue;
+      const X = i * CS + CS / 2, Z = j * CS + CS / 2, d = (X - x) ** 2 + (Z - z) ** 2;
+      if (d < bd) { bd = d; best = [X, Z]; }
+    }
+    return best;
+  }
+  /** a recent lightning strike near (x, z) (within the last 1.5 s) */
+  strikeNear(x: number, z: number, r: number): { x: number; z: number } | null {
+    for (const s of this.strikes) if (this.t - s.t < 1.5 && (s.x - x) ** 2 + (s.z - z) ** 2 < r * r) return s;
+    return null;
+  }
+  /** lightning hits (x, z): everything near panics; on dry ground it can start a fire */
+  strike(x: number, z: number, ignite = true) {
+    this.strikes.push({ x, z, t: this.t }); if (this.strikes.length > 8) this.strikes.shift();
+    const c = this.cell(x, z);
+    if (ignite && this.moist[c] < 0.42 && this.veg[c] > 0.25 && this.waterF[c] < 0.3) this.ignite(x, z);
+    this.scare(x, z, 0.8, 8);
+  }
+  /** set the vegetation round (x, z) burning */
+  ignite(x: number, z: number) { const c = this.cell(x, z); if (this.fire[c] <= 0) { this.fire[c] = 1; this.fires++; this.note('info', 'WILDFIRE: THE BRUSH IS BURNING', x, z); } }
+  /** titans: the colossal species (a 'titan' role from the bestiary, or simply enormous) */
+  isTitan(c: Creature) { return roleOf(this.w, c) === ('titan' as Role) || c.st.mass > 25000; }
   phase() { return ((this.t / this.year + this.phase0) % 1 + 1) % 1; }
   /** days since landing */
   get dayNo() { return Math.floor(this.t / this.w.dayLen + 0.32) + 1; }
@@ -285,7 +337,7 @@ export class Eco {
   capacity(c: Creature): number {
     const role = roleOf(this.w, c);
     if (role === 'owned') return 6;
-    const base = ROLE_CAP[role] * this.w.region.biome.fauna;
+    const base = (ROLE_CAP[role] ?? 6) * this.w.region.biome.fauna * this.sfx.cap;
     const g = profileOf(c, this.w).guild;
     const vegK = this.vegTot0 > 0 ? clamp(this.vegTot / this.vegTot0, 0.2, 1.7) : 1;
     const preyK = this.prey0 > 0 ? clamp(this.prey / this.prey0, 0.2, 1.8) : 1;
@@ -337,9 +389,12 @@ export class Eco {
   // ================================================================================================ the tick
   update(dt: number) {
     if (dt <= 0) return;
+    if (this.climate instanceof StubClimate) this.climate.update();
+    this.sfx = SEASON[this.climate.season] ?? SEASON.bloom;
     if (!this.ready) this.init();
     this.t += dt;
     this.clock(dt);
+    this.weatherTick(dt);
     this.plants(dt);
     this.acc += dt;
     if (this.acc >= 0.5) { this.grid(this.acc); this.acc = 0; }
@@ -391,7 +446,7 @@ export class Eco {
     for (let c = 0; c < G * G; c++) { this.elev[c] /= cnt[c]; this.wetB[c] /= cnt[c]; this.fertB[c] /= cnt[c]; this.fert[c] = this.fert0[c] = this.fertB[c]; }
     this.scanWater();
     // settle the water to the starting climate before anything reads it
-    this.seasonK = Math.sin(this.phase() * Math.PI * 2);
+    this.seasonK = 0;
     for (let k = 0; k < 60; k++) this.hydro(4);
     this.moist0.set(this.moist);
     // plants: vigour from their habitat as it is now; per-cell starting stand
@@ -416,16 +471,91 @@ export class Eco {
 
   private clock(dt: number) {
     const bi = this.w.region.biome;
-    this.seasonK = Math.sin(this.phase() * Math.PI * 2);
+    // the season sets the wet and the dry (its moisture shift as a -1..1 factor), and the plants' pace
+    const fx = this.sfx, k = Math.min(1, dt / 20);
+    this.seasonK += (clamp(fx.moist * 5, -1, 1) - this.seasonK) * k;
+    this.growK += (fx.grow - this.growK) * k;
+    this.rain = Math.max(this.rain, this.climate.rain);
+    if (this.lastSeason !== this.climate.season) { if (this.lastSeason) this.note('season', SEASON_NOTE[this.climate.season], this.w.region.landing.x, this.w.region.landing.z); this.lastSeason = this.climate.season; }
     // rain fills the soil and the rivers; both drain away again
     this.wetness = clamp(this.wetness + this.rain * dt / 50 - this.wetness * dt / (this.w.dayLen * 0.35), 0, 1);
     this.reservoir = clamp(this.reservoir + this.rain * dt * 0.004 - this.reservoir * dt / (this.w.dayLen * 0.5), 0, 0.5);
     const amp = 0.1 + 0.16 * bi.moist;
     const daily = Math.sin((this.w.day - 0.1) * Math.PI * 2) * 0.015;
     const was = this.level;
-    this.level = clamp(this.seasonK * amp + this.reservoir + daily, -0.4, 0.5);
+    this.level = clamp(this.seasonK * amp * 0.5 + fx.level + this.reservoir + daily, -0.45, 0.6);
     if (was <= 0.3 && this.level > 0.3) this.note('flood', 'RIVERS IN SPATE: LOW GROUND FLOODING', this.w.region.landing.x, this.w.region.landing.z);
   }
+
+  /** storms, wildfire, red rain, and the titans' passage */
+  private fireT = 0; private titanT = 0;
+  private weatherTick(dt: number) {
+    const cl = this.climate, wx = cl.weather, R = this.w.region, G = this.G;
+    // lightning: storms anywhere; dry lightning in the ember season (it starts fires)
+    const stormy = wx === 'storm' || (cl.season === 'ember' && (wx === 'ash' || wx === 'dust' || wx === 'clear'));
+    if (stormy && (this.strikeT -= dt) <= 0) {
+      this.strikeT = (wx === 'storm' ? 6 : 14) + Math.random() * 10;
+      const f = this.focus, a = Math.random() * Math.PI * 2, d = 6 + Math.random() * 30;
+      const x = clamp((f ? f.x : Math.random() * R.N) + Math.cos(a) * d, 4, R.N - 4), z = clamp((f ? f.z : Math.random() * R.N) + Math.sin(a) * d, 4, R.N - 4);
+      this.strike(x, z, cl.season === 'ember' || wx !== 'storm');
+      this.onStrike?.(x, z);
+    }
+    // the ember season sets the dry brush alight now and then, wherever the land is driest
+    if (cl.season === 'ember' && (this.igniteT -= dt) <= 0) {
+      this.igniteT = 40 + Math.random() * 50;
+      let best = -1, bs = 0.3;
+      for (let k = 0; k < 12; k++) { const c = Math.floor(Math.random() * G * G); const s = this.veg[c] * (0.6 - this.moist[c]); if (this.waterF[c] < 0.2 && s > bs) { bs = s; best = c; } }
+      if (best >= 0) this.ignite(this.cx(best), this.cz(best));
+    }
+    // red rain: spores and algae settle everywhere, feeding the soil and the seed bank
+    if (wx === 'redrain') for (let k = 0; k < 6; k++) { const c = Math.floor(Math.random() * G * G); this.nutr[c] = Math.min(2, this.nutr[c] + dt * 0.08); this.seedN[c] = Math.min(20, this.seedN[c] + dt * 0.3); }
+    // fire: spreads through dry growth downwind, burns out, is put out by rain and water, leaves ash
+    if (this.fires && (this.fireT -= dt) <= 0) {
+      const s = 0.5 - this.fireT; this.fireT = 0.5;
+      let n = 0;
+      const wet = cl.rain > 0.3 || this.rain > 0.3;
+      for (let c = 0; c < G * G; c++) {
+        const f = this.fire[c]; if (f <= 0) continue;
+        n++;
+        this.fire[c] = f - s * (wet ? 0.25 : 0.045) - this.waterF[c];
+        this.danger[c] = 2; this.ash[c] = Math.min(1, this.ash[c] + s * 0.05); this.nutr[c] = Math.min(2, this.nutr[c] + s * 0.01);
+        this.moist[c] = Math.max(0, this.moist[c] - s * 0.02);
+        if (f < 0.35 || wet) continue;
+        const x = c % G, z = (c / G) | 0;
+        for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+          const X = x + dx, Z = z + dz; if ((!dx && !dz) || X < 0 || Z < 0 || X >= G || Z >= G) continue;
+          const o = Z * G + X; if (this.fire[o] > 0 || this.ash[o] > 0.5) continue;
+          const fuel = Math.min(1, this.veg[o]) * clamp(0.65 - this.moist[o], 0, 1) * (1 - this.waterF[o]);
+          if (Math.random() < s * fuel * 0.22) { this.fire[o] = 1; n++; }
+        }
+      }
+      for (let c = 0; c < G * G; c++) if (this.fire[c] < 0) this.fire[c] = 0;
+      this.fires = n;
+    }
+    // titans: trees go down in their path (felled trunks feed the ground and drop their fruit and seed)
+    if ((this.titanT -= dt) <= 0) {
+      this.titanT = 0.6;
+      const fl = this.w.flora;
+      for (const c of this.w.creatures) {
+        if (c.dead || !this.isTitan(c) || Math.hypot(c.vx, c.vz) < 0.2) continue;
+        const r = c.radius * 1.15 + 0.6, hit: number[] = [];
+        fl.near(c.x, c.z, r, (i) => { if (this.pst[i] !== 1) hit.push(i); });
+        for (const i of hit) {
+          const sp = fl.species[fl.sp[i]];
+          if (!sp.tree) { if (fl.bio[i] > 0.1) fl.eat(i, 0.3); continue; }
+          fl.impulse(fl.x[i], fl.z[i], 3.5, 2.6);
+          const k = this.cell(fl.x[i], fl.z[i]);
+          this.nutr[k] = Math.min(2, this.nutr[k] + 0.15); this.seedN[k] = Math.min(20, this.seedN[k] + 3); this.seedSp[k] = fl.sp[i];
+          this.pst[i] = 1; fruitShow(fl, i, 0); this.fruit[i] = 0;
+          fl.remove(i);
+          this.onFell?.(fl.x[i], fl.z[i]);
+        }
+      }
+    }
+  }
+  /** set by the view: a lightning bolt (for its flash) and a felled tree (for its dust) */
+  onStrike: ((x: number, z: number) => void) | null = null;
+  onFell: ((x: number, z: number) => void) | null = null;
 
   /** visit a slice of the plants */
   private plants(dt: number) {
@@ -455,25 +585,33 @@ export class Eco {
         // the seed bank: dormant plants come back when the ground is good and left alone
         if (suit > 0.55 && this.graze[c] < 0.5 && fl.bio[i] > 0.3) {
           const nb = this.liveN0[c] > 0 ? clamp(this.liveN[c] / this.liveN0[c], 0, 1) : 0;
-          const ch = (dtp / 45) * suit * suit * (0.25 + nb * 0.6 + Math.min(1, this.seedN[c] * 0.2)) * (1 - this.graze[c]);
-          if (hash01(i, Math.floor(this.t * 3), 17) < ch) { this.pst[i] = 2; this.sprout[i] = 0.06; this.vig[i] = suit; this.sprouted++; this.seedN[c] = Math.max(0, this.seedN[c] - 0.3); fl.setGrow(i, 0.06); this.gq[i] = 0; }
+          const ch = (dtp / 45) * suit * suit * (0.25 + nb * 0.6 + Math.min(1, this.seedN[c] * 0.2)) * (1 - this.graze[c]) * this.sfx.grow * (this.fire[c] > 0 ? 0 : 1);
+          if (hash01(i, Math.floor(this.t * 3), 17) < ch) {
+            this.pst[i] = 2; this.sprout[i] = 0.06; this.vig[i] = suit; this.sprouted++; this.seedN[c] = Math.max(0, this.seedN[c] - 0.3); fl.setGrow(i, 0.06); this.gq[i] = 0;
+            // red-rain spores come up rust-red; anything else sheds the char or the red
+            if (this.climate.weather === 'redrain') { this.tq[i] = 6; fl.setTint(i, RAMPS.rust[3], 0.35); } else if (this.tq[i] >= 6) { this.tq[i] = 0; fl.setTint(i, DRY_TINT, 0); }
+          }
         }
         continue;
       }
       const sp = fl.species[fl.sp[i]];
+      // fire takes everything in a burning cell, leaving black stubs
+      if (this.fire[c] > 0.35) { if (fl.bio[i] > 0) fl.eat(i, fl.bio[i]); this.die(i, true); continue; }
       this.vig[i] += (suit - this.vig[i]) * Math.min(1, dtp / 45);
       const v = this.vig[i];
       // drought, waterlogging and poison: the plant browns, its forage withers, and it dies back
       if (v < 0.42 && fl.bio[i] > 0.02) fl.eat(i, (0.42 - v) * dtp * 0.014);
       const tq = v < 0.48 ? Math.min(3, Math.floor((0.48 - v) / 0.1) + 1) : 0;
-      if (tq !== this.tq[i]) { this.tq[i] = tq; fl.setTint(i, DRY_TINT, tq * 0.16); }
+      if (tq !== this.tq[i] && this.tq[i] < 6) { this.tq[i] = tq; fl.setTint(i, DRY_TINT, tq * 0.16); }
       if (this.pst[i] === 2) {
         this.sprout[i] = Math.min(1, this.sprout[i] + dtp / 22);
         const g = this.sprout[i] * (0.62 + 0.38 * v);
         fl.setGrow(i, g);
         if (this.sprout[i] >= 1) { this.pst[i] = 0; this.gq[i] = Math.round(g * 8); }
       } else {
-        const gq = Math.round((0.62 + 0.38 * v) * 8);
+        // the eclipse closes the flowers; frost shrinks the small growth back toward the root
+        const close = (this.climate.season === 'eclipse' && FLOWER.has(sp.arch) ? 0.68 : 1) * (this.sfx.grow <= 0 && !sp.tree ? 0.8 : 1);
+        const gq = Math.round((0.62 + 0.38 * v) * 8 * close);
         if (gq !== this.gq[i]) { this.gq[i] = gq; fl.setGrow(i, gq / 8); }
       }
       // bare ground: eaten to the root and starved of water, or trampled flat by a crowd
@@ -490,15 +628,18 @@ export class Eco {
     }
   }
   private growFruit(i: number, v: number, dtp: number) {
-    if (v > 0.6 && this.fruit[i] < 3 && hash01(i, Math.floor(this.t * 2), 23) < (dtp / 80) * (1 + this.seasonK * 0.5)) this.fruit[i]++;
+    if (v > 0.6 && this.fruit[i] < 3 && hash01(i, Math.floor(this.t * 2), 23) < (dtp / 80) * this.sfx.fruit) this.fruit[i]++;
+    else if (this.sfx.fruit <= 0.3 && this.fruit[i] > 0 && hash01(i, Math.floor(this.t), 29) < dtp / 60) this.fruit[i]--;
   }
   private fruits(i: number) { const sp = this.w.flora.species[this.w.flora.sp[i]]; return sp.tree || sp.arch === 'shrub' || sp.arch === 'bulb' || sp.arch === 'fiddle' || sp.arch === 'eyeflower'; }
-  private die(i: number) {
+  private die(i: number, burnt = false) {
     const fl = this.w.flora;
     this.pst[i] = 1; this.dd[i] = 0; this.fruit[i] = 0; this.diedPlants++;
     fruitShow(fl, i, 0);
-    fl.setGrow(i, 0); this.gq[i] = 0;
-    if (this.tq[i]) { this.tq[i] = 0; fl.setTint(i, DRY_TINT, 0); }
+    // burnt: a charred stub stays; otherwise it is gone back into the seed bank
+    fl.setGrow(i, burnt ? 0.22 : 0); this.gq[i] = 0;
+    if (burnt) { this.tq[i] = 7; fl.setTint(i, RAMPS.basalt[1], 0.85); }
+    else if (this.tq[i]) { this.tq[i] = 0; fl.setTint(i, DRY_TINT, 0); }
     const c = this.cell(fl.x[i], fl.z[i]);
     this.nutr[c] = Math.min(2, this.nutr[c] + 0.01);
   }
@@ -635,7 +776,7 @@ export class Eco {
     }
     // soil moisture: climate, groundwater, rain, flood; dries by sun and heat
     const climate = 1 + this.seasonK * (0.1 + 0.12 * bi.moist);
-    const dry = (0.02 + bi.temp * 0.05) * (1 - this.seasonK * 0.3);
+    const dry = (0.02 + bi.temp * 0.05) * (1 - this.seasonK * 0.3) - (this.ready ? this.sfx.moist * 0.6 : 0) + (this.climate.temp > 32 ? 0.05 : 0);
     for (let c = 0; c < G * G; c++) {
       const tgt = clamp(this.wetB[c] * (0.7 + 0.3 * climate) + this.gw[c] * 0.5 + this.wetness * 0.28 + this.floodF[c] * 0.5 + this.irr[c] * 0.35 + this.cover[c] * 0.04 - dry, 0, 1.2);
       const m = this.moist[c];
@@ -686,6 +827,12 @@ export class Eco {
       if (h.core) this.lures.push({ id: 0, x: h.core.x, z: h.core.z, kind: 'all', s: -0.7, r: 15, until: this.t + 4, auto: true });
       let k = 0;
       for (const b of h.buildings) { if (b === h.core || b.dead || k++ > 24) continue; this.lures.push({ id: 0, x: b.x, z: b.z, kind: 'all', s: -0.4, r: 8, until: this.t + 4, auto: true }); }
+    }
+    for (const c of w.creatures) {
+      if (c.dead || !this.isTitan(c)) continue;
+      this.lures.push({ id: 0, x: c.x, z: c.z, kind: 'herb', s: 0.45, r: 26, until: this.t + 4, auto: true });
+      this.lures.push({ id: 0, x: c.x, z: c.z, kind: 'scav', s: 0.35, r: 30, until: this.t + 4, auto: true });
+      this.lures.push({ id: 0, x: c.x, z: c.z, kind: 'carn', s: -0.9, r: 18, until: this.t + 4, auto: true });
     }
     let k = 0;
     for (const b of this.structures()) { if (k++ > 40) break; this.lures.push({ id: 0, x: b.x, z: b.z, kind: 'all', s: -0.35, r: 8, until: this.t + 4, auto: true }); }
@@ -740,8 +887,6 @@ export class Eco {
     dm /= G2;
     if (dm < -0.08) this.flag('drought', 600, () => this.note('drought', 'DROUGHT: THE GROUND IS DRYING OUT', this.w.region.landing.x, this.w.region.landing.z));
     if (bare >= 0) this.flag('graze' + bare, 240, () => this.note('graze', 'OVERGRAZED: THE HERDS ARE STRIPPING THE GROUND BARE', this.cx(bare), this.cz(bare)));
-    const sk = this.seasonK >= 0 ? 'wet' : 'dry';
-    if (this.flags.get('season') !== (sk === 'wet' ? 1 : 0)) { const first = !this.flags.has('season'); this.flags.set('season', sk === 'wet' ? 1 : 0); if (!first) this.note('season', sk === 'wet' ? 'THE RAINS RETURN: WET SEASON' : 'THE DRY SEASON SETS IN', this.w.region.landing.x, this.w.region.landing.z); }
   }
   private flag(key: string, every: number, f: () => void) {
     const t = this.flags.get(key) ?? -1e9;

@@ -29,6 +29,7 @@ export function growBody(S: Ctx, F: BeastForm, T: SpineTs, W: number, H: number,
     else if (p.k === 'wool') wool(S, p, W);
     else if (p.k === 'tailFan') tailFan(S, p, W);
     else if (p.k === 'finCrest') crest(S, T, W, H * p.height / 0.32 * 0.32);
+    else if (p.k === 'grove') grove(S, p, W);
   }
 }
 
@@ -146,6 +147,23 @@ function wool(S: Ctx, p: Extract<BeastPart, { k: 'wool' }>, W: number) {
     const dir = norm([s * 0.3, -1, -0.2]);
     lock(S, base, dir, norm(cross(dir, f.d)), W * (0.3 + p.hang * 0.4), W * 0.36, sp.w[k], 900 + i * 3 + s, SH);
   }
+}
+
+// ---------------------------------------------------------------------------------------------- grove
+/** a stand of small trees rooted in the moss of a titan's shell: bark trunks and layered canopy masses */
+function grove(S: Ctx, p: Extract<BeastPart, { k: 'grove' }>, W: number) {
+  const TR = S.fixed('BARK', 6, 12), CN = S.fixed('CANOPY', 12, 12);
+  for (let i = 0; i < p.trees; i++) {
+    const t = p.t0 + ((p.t1 - p.t0) * (i + 0.5)) / p.trees, a = (hash(i, 7) - 0.5) * 1.6, k = at(S, t), { p: b, n } = surf(S, k, a, 1.24);
+    const h = W * (0.35 + hash(i, 9) * 0.3), up = norm(addV(n, [0, 1.6, 0])), w = S.spine!.w[k];
+    sac(S.B, TR, S.gid(), [b, addV(b, scl(up, h * 0.5)), addV(b, scl(up, h))], [[W * 0.035, W * 0.035], [W * 0.025, W * 0.025], [W * 0.018, W * 0.018]], [w, w, w], { n: 6, sq: 2 });
+    for (let j = 0; j < 3; j++) sac(S.B, CN, S.gid(), [addV(b, scl(up, h * (0.62 + j * 0.16))), addV(b, scl(up, h * (0.74 + j * 0.16)))], [[W * (0.2 - j * 0.05), W * (0.12 - j * 0.03)], [W * (0.06 - j * 0.015), W * 0.04]], [w, w], { n: 9, sq: 2.4 });
+  }
+  S.paints.push(() => {
+    const B = RP('soil'), G = RP('moss');
+    TR.fill(B, (x, y) => (Math.cos(TR.th(x)) > 0.3 ? 4 : 2) + (x % 3 === 0 ? -1 : 0) + (y % 5 === 0 ? -1 : 0));
+    CN.fill(G, (x, y) => (Math.cos(CN.th(x)) > 0.4 ? 5 : Math.cos(CN.th(x)) > -0.2 ? 4 : 2) + ((x + (y >> 1)) % 5 === 0 ? -1 : 0));
+  });
 }
 
 // ---------------------------------------------------------------------------------------------- fans

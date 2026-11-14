@@ -24,7 +24,10 @@ import { planetPalette, RIVALS } from '../world/palette';
 import { RAMPS } from '../art/palette';
 import { Pix } from './machine';
 import { Bin, fxMat, mesh, V3, sm, ease, hash, type V } from './deployKit';
-import { makeWorld, buildGround, makeSky, skyAt, dropMarks, assessLZ, slopeAt, type World, type Sky, type LZInfo } from '../game/descentWorld';
+import { makeWorld, buildFar, buildWater, makeSky, skyAt, dropMarks, assessLZ, slopeAt, type World, type Sky, type LZInfo } from '../game/descentWorld';
+import { Terrain } from '../world/terrain';
+import { Flora } from '../world/flora';
+import { Sun } from '../gfx/lights';
 import { clamp, lerp, damp } from '../core/rand';
 import { gbuf } from '../gfx/gbuf';
 import { factionsForRegion } from '../game/factions/plan';
@@ -148,7 +151,7 @@ void main(){
   float grid = max(1.0 - smoothstep(0.0, gw.x, g.x), 1.0 - smoothstep(0.0, gw.y, g.y));
   float ch = abs(fract(vW.y + 0.5) - 0.5), cw = fwidth(vW.y) * 1.2;
   float cont = 1.0 - smoothstep(0.0, cw, ch);
-  float edge = abs(max(abs(vW.x), abs(vW.z)) - 63.6); float border = 1.0 - smoothstep(0.0, fwidth(vW.x) * 2.0, edge);
+  vec2 mc = vW.xz - uC; float edge = abs(max(abs(mc.x), abs(mc.y)) - uC.x + 0.4); float border = 1.0 - smoothstep(0.0, fwidth(vW.x) * 2.0, edge);
   float echo = (1.0 - smoothstep(0.0, 2.5, abs(d - uEcho))) * 0.35;
   float a = lead * 1.3 + inside * (grid * 0.32 + cont * 0.16 + border * 0.7) + echo;
   a *= uK;
@@ -171,7 +174,7 @@ export class PlanetScreen implements Screen {
   private q = new THREE.Quaternion(); private spin = new THREE.Vector2(0.0016, 0);
   private dist = 4.1 * R; private distGoal = 4.1 * R;
   // ---- the region close-up (built on the dive, freed on the way back up)
-  private local: { scene: THREE.Scene; bin: Bin; W: World; sky: Sky; region: Region; pr: PRegion; sun: THREE.DirectionalLight; scan: Record<string, THREE.IUniform>; marks: Mark[]; pings: { m: THREE.Mesh; u: Record<string, THREE.IUniform>; t: number }[]; reticle: THREE.Group | null; ellipse: THREE.Group | null; beam: THREE.Mesh | null; beamU: Record<string, THREE.IUniform> | null } | null = null;
+  private local: { scene: THREE.Scene; bin: Bin; W: World; sky: Sky; region: Region; pr: PRegion; sun: Sun; terrain: Terrain; flora: Flora; far: THREE.Group; O: V; ground: THREE.Mesh; scan: Record<string, THREE.IUniform>; marks: Mark[]; pings: { m: THREE.Mesh; u: Record<string, THREE.IUniform>; t: number }[]; reticle: THREE.Group | null; ellipse: THREE.Group | null; beam: THREE.Mesh | null; beamU: Record<string, THREE.IUniform> | null } | null = null;
   private lcam = new THREE.PerspectiveCamera(44, 1, 0.5, 60000);
   private view = { tx: 0, tz: 4, d: 190, tx2: 0, tz2: 4, d2: 190 };
   private mode: Mode = 'orbit';
@@ -305,22 +308,31 @@ export class PlanetScreen implements Screen {
   private buildLocal(pr: PRegion) {
     const bin = new Bin(), scene = new THREE.Scene();
     const pal = planetPalette(pr.seed, this.planet.palKey);
-    const region = new Region(pr.seed, BIOMES[pr.biome], pal);
+    const region = new Region(pr.seed, BIOMES[pr.biome], pal), N = region.N;
     scene.background = new THREE.Color(pal.horizon);
     scene.fog = new THREE.Fog(new THREE.Color(pal.horizon), 400, 9000);
-    const W = makeWorld(region, pal, bin, scene);
-    const sky = makeSky(W);
-    buildGround(W);
-    const sun = new THREE.DirectionalLight(new THREE.Color(pal.sun).lerp(new THREE.Color(0xfff2dc), 0.5), 3.0);
-    sun.position.copy(sky.U.uSun.value as V).multiplyScalar(160); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
-    const sc = sun.shadow.camera as THREE.OrthographicCamera; sc.left = sc.bottom = -80; sc.right = sc.top = 80; sc.near = 10; sc.far = 400; sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.08;
-    scene.add(sun, sun.target);
-    scene.add(new THREE.HemisphereLight(new THREE.Color(pal.sky).lerp(new THREE.Color(0xb8c8d8), 0.5), new THREE.Color(pal.groundLight ?? 0x4a4030), 1.1));
-    // the scan: an additive copy of the ground, a hair above it
-    const scan = { uR: { value: 0 }, uK: { value: 1 }, uEcho: { value: -99 }, uT: { value: 0 }, uCol: { value: new THREE.Color(P.glowTeal[3]).multiplyScalar(1.6) }, uC: { value: new THREE.Vector2(0, 0) } };
-    const sm2 = mesh(bin, W.regionMesh!.geometry.clone(), fxMat(bin, SCAN_V, SCAN_F, scan, 'add'), scene, 0, 0.06, 0, false);
-    sm2.renderOrder = 4;
-    this.local = { scene, bin, W, sky, region, pr, sun, scan, marks: this.findings(region, pr), pings: [], reticle: null, ellipse: null, beam: null, beamU: null };
+    // the ground the game will play on, literally: its terrain (blocks, rocks, water, the skirt) and its flora, under
+    // the game's own sun and atmosphere, all of it revealed (the scan sees everything)
+    const terrain = new Terrain(region);
+    const vd = terrain.visData(); for (let i = 0; i < vd.length; i += 4) { vd[i] = 255; vd[i + 1] = 255; } terrain.visFlush();
+    const flora = new Flora(region, terrain.moss, terrain.vis);
+    terrain.setShade(flora.shade);
+    scene.add(terrain.group, flora.group);
+    const sun = new Sun(pal, scene);
+    // everything of the survey's own sits in a group centred on the map (the landscape beyond it, the marks, the scan)
+    const O = new V3(N / 2, 0, N / 2), far = new THREE.Group(); far.position.copy(O); scene.add(far);
+    const W = makeWorld(region, pal, bin, far);
+    const sky = makeSky(W); scene.add(sky.mesh);
+    buildFar(W); buildWater(W);
+    // the scan: an additive skin a hair above the ground (a grid of the region's heights, map-centred)
+    const pos: number[] = [], idx: number[] = [];
+    for (let z = 0; z <= N; z += 1) for (let x = 0; x <= N; x += 1) { const xx = Math.min(N - 0.5, Math.max(0.5, x)), zz = Math.min(N - 0.5, Math.max(0.5, z)); pos.push(x - N / 2, Math.max(region.groundSmooth(xx, zz), region.water - 0.1) + 0.08, z - N / 2); }
+    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) { const a = z * (N + 1) + x, b = a + 1, c = a + N + 1, d = c + 1; idx.push(a, c, b, b, c, d); }
+    const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gg.setIndex(idx); gg.computeVertexNormals();
+    const scan = { uR: { value: 0 }, uK: { value: 1 }, uEcho: { value: -99 }, uT: { value: 0 }, uCol: { value: new THREE.Color(P.glowTeal[3]).multiplyScalar(1.6) }, uC: { value: new THREE.Vector2(N / 2, N / 2) } };
+    const ground = mesh(bin, gg, fxMat(bin, SCAN_V, SCAN_F, scan, 'add'), far, 0, 0, 0, false);
+    ground.renderOrder = 4;
+    this.local = { scene, bin, W, sky, region, pr, sun, terrain, flora, far, O, ground, scan, marks: this.findings(region, pr), pings: [], reticle: null, ellipse: null, beam: null, beamU: null };
   }
   /** what the scan will turn up, nearest first */
   private findings(Rg: Region, pr: PRegion): Mark[] {
@@ -364,9 +376,9 @@ export class PlanetScreen implements Screen {
   }
   private pickGround(x: number, y: number) {
     const L = this.local; if (!L) return;
-    const hit = this.ray(x, y, this.lcam).intersectObject(L.W.regionMesh!, false)[0];
+    const hit = this.ray(x, y, this.lcam).intersectObject(L.ground, false)[0];
     if (!hit) { sfx('deny', 1, 0.4); return; }
-    this.setDrop(hit.point.x + L.region.N / 2, hit.point.z + L.region.N / 2);
+    this.setDrop(hit.point.x, hit.point.z);
   }
   private setDrop(rx: number, rz: number) {
     const L = this.local!; const W = L.W, N = L.region.N;
@@ -386,15 +398,15 @@ export class PlanetScreen implements Screen {
     }
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.computeVertexNormals();
     mesh(L.bin, geo, L.bin.m(gbuf(new THREE.MeshBasicMaterial({ color: new THREE.Color(P.glowAmber[3]).multiplyScalar(1.3), side: THREE.DoubleSide }), 32)), eg, 0, 0, 0, false);
-    L.scene.add(eg); L.ellipse = eg;
+    L.far.add(eg); L.ellipse = eg;
     // a beacon of light standing on the point
     L.beamU = { uK: { value: 0.9 }, uCol: { value: new THREE.Color(a.ok ? P.glowAmber[4] : P.stampRed[3]).multiplyScalar(1.4) }, uY0: { value: at.y } };
-    L.beam = mesh(L.bin, new THREE.CylinderGeometry(0.5, 0.5, 60, 10, 1, true), fxMat(L.bin, SCAN_V, BEAM_F, L.beamU, 'add', { side: THREE.DoubleSide }), L.scene, at.x, at.y + 30, at.z, false);
+    L.beam = mesh(L.bin, new THREE.CylinderGeometry(0.5, 0.5, 60, 10, 1, true), fxMat(L.bin, SCAN_V, BEAM_F, L.beamU, 'add', { side: THREE.DoubleSide }), L.far, at.x, at.y + 30, at.z, false);
     this.ping(at.x, at.z, a.ok ? P.glowAmber[4] : P.stampRed[3]);
     csfx(a.ok ? 'thud' : 'deny', 0.6, 1.8); sfx('click', 1, 0.5); csfx('beep', 0.4, 1.4);
     const r = this.ret;
     r.style.display = '';
-    r.innerHTML = `<span class="g">DROP POINT &middot; GRID ${a.grid}</span><span class="v ${a.verdict === 'SUITABLE' ? 'good' : a.verdict === 'ROUGH' ? 'warn' : 'bad'}">${a.verdict} &middot; ${esc(a.note)}${a.seam ? ` &middot; ${a.seam.kind === 'ore' ? 'FERRITE' : 'LUMEN'} ${Math.round(a.seam.dist)} M` : ''}</span>` + (a.ok ? `<span class="go" style="--plate:url(${launchPlate()})">LAUNCH &#9654;</span>` : '');
+    r.innerHTML = `<span class="g">DROP POINT &middot; GRID ${a.grid}</span><span class="v ${a.verdict === 'SUITABLE' ? 'good' : a.verdict === 'ROUGH' || a.verdict === 'SPLASHDOWN' ? 'warn' : 'bad'}">${a.verdict} &middot; ${esc(a.note)}${a.seam ? ` &middot; ${a.seam.kind === 'ore' ? 'FERRITE' : 'LUMEN'} ${Math.round(a.seam.dist)} M` : ''}</span>` + (a.ok ? `<span class="go" style="--plate:url(${launchPlate()})">LAUNCH &#9654;</span>` : '');
     const go = r.querySelector('.go') as HTMLElement | null;
     if (go) { go.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.launch(); }); go.addEventListener('pointerenter', () => sfx('hover', 1.2, 0.3)); }
     (r as any).__at = at;
@@ -402,7 +414,7 @@ export class PlanetScreen implements Screen {
   private ping(x: number, z: number, col: number) {
     const L = this.local; if (!L) return;
     const u = { uK: { value: 1 }, uCol: { value: new THREE.Color(col).multiplyScalar(1.5) } };
-    const m = mesh(L.bin, new THREE.RingGeometry(0.85, 1, 32), fxMat(L.bin, SCAN_V, PING_F, u, 'add', { side: THREE.DoubleSide }), L.scene, x, L.W.gH(x, z) + 0.4, z, false);
+    const m = mesh(L.bin, new THREE.RingGeometry(0.85, 1, 32), fxMat(L.bin, SCAN_V, PING_F, u, 'add', { side: THREE.DoubleSide }), L.far, x, L.W.gH(x, z) + 0.4, z, false);
     m.rotation.x = -Math.PI / 2;
     L.pings.push({ m, u, t: 0 });
   }
@@ -420,7 +432,12 @@ export class PlanetScreen implements Screen {
     this.ret.style.display = 'none'; this.scanHud.style.display = 'none'; this.hint.style.opacity = '0';
     for (const m of this.local?.marks ?? []) { m.el?.remove(); m.el = null; }
   }
-  private freeLocal() { const L = this.local; if (!L) return; L.bin.dispose(); L.scene.clear(); this.local = null; this.lz = null; }
+  private freeLocal() {
+    const L = this.local; if (!L) return;
+    L.flora.dispose(); L.sun.dispose();
+    L.terrain.group.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) m.geometry.dispose(); });
+    L.bin.dispose(); L.scene.clear(); this.local = null; this.lz = null;
+  }
 
   // ================================================================ frame
   update(dt: number) {
@@ -476,11 +493,13 @@ export class PlanetScreen implements Screen {
     v.d = this.arrive < 1 ? lerp(1400, v.d2, ease.outCubic(this.arrive)) : damp(v.d, v.d2, 7, dt);
     if (this.arrive >= 1 && this.T > 2.7 && this.hint.style.opacity === '0') this.hint.style.opacity = '1';
     const tgt = new V3(v.tx, L.W.gH(v.tx, v.tz), v.tz);
-    this.lcam.position.set(v.tx + Math.sin(this.t * 0.07) * v.d * 0.04, tgt.y + v.d * 0.8, v.tz + v.d * 0.6);
+    tgt.add(L.O);
+    this.lcam.position.set(tgt.x + Math.sin(this.t * 0.07) * v.d * 0.04, tgt.y + v.d * 0.8, tgt.z + v.d * 0.6);
     this.lcam.lookAt(tgt); this.lcam.updateMatrixWorld();
     skyAt(L.sky, L.scene, this.lcam.position.y, this.lcam.position.y);
     L.sky.mesh.position.copy(this.lcam.position);
-    L.sun.target.position.copy(tgt); L.sun.position.copy(L.sky.U.uSun.value as V).multiplyScalar(160).add(tgt);
+    L.sun.follow(tgt, Math.min(v.d, 120));
+    L.terrain.update(this.t); L.flora.update(this.t, this.lcam); L.flora.tick(dt);
     // the scan: one full sweep on arrival, then a faint echo every few seconds
     if (this.arrive > 0.55) {
       const before = this.scanR;
@@ -517,7 +536,7 @@ export class PlanetScreen implements Screen {
       const u = clamp(this.T / 1.1, 0, 1);
       this.view.d = lerp(this.view.d, 1600, ease.in(u) * 0.2 + dt * 0.5);
       this.lcam.position.y += dt * 900 * ease.in(u);
-      this.lcam.lookAt(this.view.tx, 0, this.view.tz); this.lcam.updateMatrixWorld();
+      this.lcam.lookAt(this.view.tx + L.O.x, 0, this.view.tz + L.O.z); this.lcam.updateMatrixWorld();
       skyAt(L.sky, L.scene, this.lcam.position.y, this.lcam.position.y); L.sky.mesh.position.copy(this.lcam.position);
       this.whiteGoal = sm(0.3, 1, u);
       if (u >= 1 && this.white > 0.95) {
@@ -535,7 +554,7 @@ export class PlanetScreen implements Screen {
     const L = this.local!;
     const u = clamp(this.T / 1.3, 0, 1);
     this.lcam.position.y += dt * 1400 * ease.in(u);
-    this.lcam.lookAt(this.view.tx, 0, this.view.tz); this.lcam.updateMatrixWorld();
+    this.lcam.lookAt(this.view.tx + L.O.x, 0, this.view.tz + L.O.z); this.lcam.updateMatrixWorld();
     skyAt(L.sky, L.scene, this.lcam.position.y, this.lcam.position.y); L.sky.mesh.position.copy(this.lcam.position);
     this.whiteGoal = sm(0.35, 1, u);
     if (u >= 1 && this.white > 0.95 && this.mode === 'launch') {
@@ -568,7 +587,7 @@ export class PlanetScreen implements Screen {
       // each label stands on a stalk over its find; labels that would overlap climb their stalks until clear
       const placed: [number, number, number, number][] = [];
       const items = L.marks.filter((m) => m.el).map((m) => {
-        const g = new V3(m.x, L.W.gH(m.x, m.z), m.z), gp = g.clone().project(this.lcam);
+        const g = new V3(m.x, L.W.gH(m.x, m.z), m.z).add(L.O), gp = g.clone().project(this.lcam);
         return { m, gx: (gp.x * 0.5 + 0.5) * W, gy: (-gp.y * 0.5 + 0.5) * H, on: gp.z < 1 && Math.abs(gp.x) < 1.1 && Math.abs(gp.y) < 1.1 };
       }).sort((a, b) => b.gy - a.gy);
       const lift = 16 * sScale, lh = 14 * sScale + 2;
@@ -582,7 +601,7 @@ export class PlanetScreen implements Screen {
         el.style.setProperty('--stalk', `${Math.max(0, Math.round(it.gy - y))}px`);
       }
       const ra = (this.ret as any).__at as V | undefined;
-      if (ra && this.ret.style.display !== 'none') at(ra.clone().setY(ra.y + 2), this.lcam, this.ret);
+      if (ra && this.ret.style.display !== 'none') at(ra.clone().setY(ra.y + 2).add(L.O), this.lcam, this.ret);
     }
   }
   render(post: Post, t: number) {

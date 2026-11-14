@@ -218,7 +218,7 @@ export class GameDescent {
   // the hand-over: the shell, the golem, the camera easing into the game's
   private shellT = -1; private outT = -1; private handT = -1; private rtsPos = new V3(); private rtsQ = new THREE.Quaternion(); private rtsFov = 36;
   private saved: { fog: THREE.Fog | THREE.FogExp2 | null; bg: THREE.Color | THREE.Texture | null; far: number; near: number } | null = null;
-  private skyFade = 1; private finished = false;
+  private skyFade = 1; private finished = false; private wet = false;
   private debris: { m: THREE.Mesh; v: V; w: V; rest: boolean; t: number }[] = [];
 
   constructor(readonly o: DescentOpts) {
@@ -592,6 +592,8 @@ export class GameDescent {
     const dist = Math.hypot(this.p.x - this.lzW.x, this.p.y - this.lzW.z);
     const grade: Grade = this.auto ? 'AUTOPILOT' : dist <= 6 ? 'BULLSEYE' : dist <= 18 ? 'ON TARGET' : dist <= 45 ? 'CLOSE' : 'WIDE';
     const water = R.isWater(rx, rz);
+    // a splashdown when the region has an ocean (src/ocean takes the pod and the golem from there)
+    this.wet = water && !!(g as unknown as { ocean?: unknown }).ocean;
     // the real ground: the game carves the crater here and moves its core under the pod (hidden till the shell blows)
     g.touchdown(rx, rz);
     const L = R.landing;
@@ -619,7 +621,8 @@ export class GameDescent {
     this.ui.flash('#fff', 0.9, 1);
     csfx('impact', 1, 0.8); csfx('boom', 1, 0.6); csfx('crunch', 0.8); sfx('crack', 3, 1);
     this.shakeK = 2.2; this.kick = 2;
-    for (let i = 0; i < 28; i++) { const a = (i / 28) * TAU; this.fx.spray(P.x + Math.cos(a) * 1.2, gy + 0.3, P.z + Math.sin(a) * 1.2, Math.cos(a), 0.18, Math.sin(a), 5, i % 3 ? 0xb8a888 : 0x8a7a62, { speed: 14, cone: 0.35, size: 5, life: 2.2, grav: -0.3, drag: 1.6 }); }
+    const dust = this.wet ? [0xe8f0f0, 0xb8d0d4] : [0xb8a888, 0x8a7a62];
+    for (let i = 0; i < 28; i++) { const a = (i / 28) * TAU; this.fx.spray(P.x + Math.cos(a) * 1.2, gy + 0.3, P.z + Math.sin(a) * 1.2, Math.cos(a), this.wet ? 0.6 : 0.18, Math.sin(a), 5, i % 3 ? dust[0] : dust[1], { speed: 14, cone: 0.35, size: 5, life: 2.2, grav: this.wet ? 9 : -0.3, drag: 1.6 }); }
     this.fx.burst(P.x, gy + 0.4, P.z, 40, 0x5a4a3a, { speed: 9, up: 9, size: 3, life: 1.6, grav: 14 });
     this.fx.burst(P.x, gy + 0.4, P.z, 24, 0xffb060, { glow: true, speed: 7, up: 6, size: 2, life: 0.7, grav: 10 });
     this.shockU = { uK: { value: 1 }, uT: { value: 0 }, uCol: { value: new THREE.Color(0xc8b898) } };
@@ -707,7 +710,8 @@ export class GameDescent {
     if (this.shockU && this.shock) { const k = 1 - Math.exp(-this.landT * 1.6); this.shock.scale.setScalar(2 + k * 46); this.shockU.uK.value = Math.max(0, 1 - this.landT / 2.6); this.shock.visible = this.shockU.uK.value > 0; }
     if (Math.random() < dt * 8) this.fx.burst(P.x + (Math.random() - 0.5) * 2, P.y + 1, P.z + (Math.random() - 0.5) * 2, 1, Math.random() < 0.5 ? 0x5a5650 : 0x3e3a36, { speed: 0.3, up: 1.4, size: 6, life: 3, grav: -0.3 });
     if (this.o.hold === 'impact' && this.landT > 0.7) { this.g.engine.timeScale = 0; this.o.hold = null; }
-    if (this.landT > 1.9 && this.shellT < 0) this.blowShell();
+    // on land the shell blows off its bolts; in the water the ocean has the pod: the golem just comes out
+    if (this.landT > 1.9 && this.shellT < 0) { if (this.wet) { this.shellT = 0; this.pod.root.visible = false; this.g.emerge(); } else this.blowShell(); }
     if (this.shellT >= 0) this.shellT += dt;
     if (this.landT > 2.6 && this.result) this.once('card', () => {
       const r = this.result!;

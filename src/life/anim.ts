@@ -56,6 +56,8 @@ export class Animator {
   /** the body's carriage, set by the AI: relaxed, alert (head and ears up), sleep (curled, eyes shut, slow breath),
    *  threat (head low, back arched, jaw open, ears pinned), roost (hung upside down, wings folded) */
   posture: 'relaxed' | 'alert' | 'sleep' | 'threat' | 'roost' = 'relaxed';
+  /** 1 at a heavy footfall, decaying to 0: the game shakes the camera and ground by it (titans, rig.length > 12) */
+  stomp = 0;
   /** set by the AI: roll along the ground as a ball while curled (flee downhill) */
   rolling = false;
   /** curl into a defensive ball (1) or open out again (0); species with rig.dims.roll tuck fully, others hunch */
@@ -116,6 +118,7 @@ export class Animator {
     this.hitV += (-this.hitX * 140 - this.hitV * 14) * dt; this.hitX += this.hitV * dt;
     const hit = clamp(this.hitX, -0.6, 1.2);
     this.idle(dt, inp.state === 'idle' && spd < 0.05 && !dead);
+    this.stomp = Math.max(0, this.stomp - dt * 3);
     const pz = this.posture, sleep = pz === 'sleep' ? 1 : 0, threat = pz === 'threat' ? 1 : 0, alert = pz === 'alert' ? 1 : 0;
     this.curlK = damp(this.curlK, dead ? 0 : Math.max(this.curlT, sleep * 0.6) * (rig.dims.roll ? 1 : 0.45), 5, dt);
     const cu = this.curlK;
@@ -337,6 +340,7 @@ export class Animator {
     const gph = (lg.kind === 'hind' ? 0 : 0.5) + (lg.side > 0 ? 0.1 : 0);
     let dph = gph - lg.phase; dph -= Math.round(dph);
     const p = (((this.phase + lg.phase + dph * this.run) % 1) + 1) % 1;
+    if (rig.length > 12 && this.blend > 0.5 && p < duty && p > duty - 0.04) this.stomp = 1;
     let zo = 0, lift = 0;
     const S = stride * this.blend;
     if (p < duty) zo = S * (0.5 - p / duty);

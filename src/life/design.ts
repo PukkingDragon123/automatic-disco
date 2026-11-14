@@ -41,6 +41,8 @@ export function bodyLength(d: Design) {
   const [a, b] = PLAN_LEN[d.plan];
   let L = lerp(a, b, Math.pow(d.size, 1.3)) * lerp(0.85, 1.15, d.len);
   if (d.lineage === 'arthropod' && d.genes.includes('tracheal')) L *= 1.55;
+  // titans: a bestiary species can be built many times larger than its plan's range
+  if (d.beast) L *= BEASTS[d.beast]?.form.scale ?? 1;
   return L;
 }
 

@@ -27,6 +27,15 @@ export interface Env {
   wind: THREE.Vector2;
   /** sky colour (reflections, haze base) */
   sky: THREE.Color;
+  // ---- climate (game/climate.ts): all 0..1
+  /** snow lying on up-facing ground and plant tops; hoar frost; ice on still water */
+  snow: number; frost: number; ice: number;
+  /** dry grass (high sun), autumn colour on foliage (ember) */
+  dry: number; autumn: number;
+  /** dust storm, ash fall, the bloodtide's red, the eclipse */
+  dust: number; ash: number; red: number; eclipse: number;
+  /** lightning flash, cloud cover (sweeping cloud shadows), aurora */
+  flash: number; cloudK: number; aurora: number;
 }
 
 const WARM_KEY = new THREE.Color(0xffd9a8), COOL_SKY = new THREE.Color(0x8fb4ff), WARM_BOUNCE = new THREE.Color(0x9a7450);
@@ -53,7 +62,8 @@ export class Sun {
     this.hemi = new THREE.HemisphereLight(pal.ambient, pal.groundLight, 1.7);
     scene.add(this.light, this.light.target, this.hemi);
     scene.userData.sun = this;
-    this.env = { haze: 0.0045, mist: 0, mistY: 0, mistH: 1.4, patch: 0.6, rays: 0.5, wet: 0, rain: 0, dew: 0, heat: 0, wind: new THREE.Vector2(0.35, 0.12), sky: new THREE.Color().setHex(RAMPS.sky[4]) };
+    this.env = { haze: 0.0045, mist: 0, mistY: 0, mistH: 1.4, patch: 0.6, rays: 0.5, wet: 0, rain: 0, dew: 0, heat: 0, wind: new THREE.Vector2(0.35, 0.12), sky: new THREE.Color().setHex(RAMPS.sky[4]),
+      snow: 0, frost: 0, ice: 0, dry: 0, autumn: 0, dust: 0, ash: 0, red: 0, eclipse: 0, flash: 0, cloudK: 0, aurora: 0 };
     this.setColors(pal, 1);
   }
   /** PCF radius in shadow texels: wider on the bigger map, wider still under cloud */

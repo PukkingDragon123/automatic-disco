@@ -24,6 +24,33 @@ import { Rocks } from './rocks';
  *  metres and texels */
 const TSF = TS.toFixed(1), TMF = TILE_M.toFixed(1), TTF = TT.toFixed(1);
 
+/** per block kind (blockTex B order): a shadow, body and lit colour for the procedural ground, from the planet's
+ *  palette (linear), plus the sky caught in puddles, lichen and the region's prevailing wind */
+function matColours(region: Region): Record<string, THREE.IUniform> {
+  const p = region.pal;
+  const body = [p.grass, p.grassDry, p.soil, p.rock, p.sand, p.mud, p.clay, p.snow, p.basalt, p.ore, p.crystal, p.soil, mixHex(p.rock, 0x8a8478, 0.35), 0x3a3836];
+  const A: THREE.Color[] = [], D: THREE.Color[] = [], Lc: THREE.Color[] = [];
+  const cool = new THREE.Color(0x2a3440), warm = new THREE.Color(0xfff0d0);
+  body.forEach((hex, k) => {
+    const c = new THREE.Color(hex);
+    A.push(c);
+    // shadow: darker and cooler (the sky fills the shade); lit: lighter and a touch warmer (the sun); snow keeps its blue
+    D.push(c.clone().multiplyScalar(k === 7 ? 0.62 : 0.42).lerp(cool, k === 7 ? 0.25 : 0.12));
+    Lc.push(c.clone().multiplyScalar(k === 7 ? 1.12 : 1.38).lerp(warm, 0.08));
+  });
+  const a = region.seed * 1.7;
+  return {
+    uMatA: { value: A }, uMatD: { value: D }, uMatL: { value: Lc },
+    uSkyC: { value: new THREE.Color(p.sky).lerp(new THREE.Color(0xc8d4dc), 0.3) }, uLichen: { value: new THREE.Color(mixHex(0x9a9a5a, p.grassDry, 0.35)) },
+    uWindXZ: { value: new THREE.Vector2(Math.cos(a), Math.sin(a)) },
+  };
+}
+const mixHex = (a: number, b: number, t: number) => {
+  const ch = (c: number, s: number) => (c >> s) & 255;
+  const m = (s: number) => Math.round(ch(a, s) + (ch(b, s) - ch(a, s)) * t);
+  return (m(16) << 16) | (m(8) << 8) | m(0);
+};
+
 export class Terrain {
   readonly group = new THREE.Group();
   readonly mat: THREE.MeshLambertMaterial;
@@ -95,6 +122,10 @@ export class Terrain {
       uWater: { value: region.water },
       // the seasonal water stage (eco.level) the sea and river surfaces ride on (water.ts)
       uStage: { value: 0 },
+      // the procedural ground: each block kind's shadow, body and lit colours (linear), the sky seen in puddles,
+      // lichen, the prevailing wind (blade streaks, ripples, drifts), and the climate's terms (setClimate)
+      ...matColours(region),
+      uSnow: { value: 0 }, uFrost: { value: 0 }, uDry: { value: 0 },
     };
     this.mat = this.makeMaterial();
     this.buildMesh();
@@ -251,21 +282,162 @@ vec4 blk(float lay, vec2 p) {
   float wb = 0.5 * (1.0 - sgD / band);
   return (lb - la) * 2.2 + (wb - 0.5) * 1.6 > 0.0 ? b : a;
 }
-/** one contender for this texel: its weight, plus how proud its own texel stands (its brightness against its tile's) */
-/** (vb picks between the kind's two painted variants the same way: a preference, decided texel by texel) */
-void contend(int id, float w, float pref, float vb, vec2 pc, vec2 gx, vec2 gy, inout float bestS, inout vec4 bestT, inout int bestId) {
-  if (w <= 0.015) return;
-  bool two = uLay[id * 2 + 1] != uLay[id * 2];
-  for (int v = 0; v < 2; v++) {
-    if (v == 1 && !two) break;
-    float lay = uLay[id * 2 + v];
-    if (two && (v == 0 ? vb > 0.8 : vb < 0.2)) continue;
-    vec4 t = blk(lay, pc);
-    float l = dot(t.rgb, vec3(0.3, 0.59, 0.11)), a = uAvgL[int(lay)];
-    float h = clamp(0.5 + (l - a) / (a + 0.03) * 0.6, 0.0, 1.0);
-    float sc = w + pref + uHB[id] + (h - 0.5) * 0.55 + (two ? (v == 0 ? 0.5 - vb : vb - 0.5) * 0.6 : 0.0);
-    if (sc > bestS) { bestS = sc; bestT = t; bestId = id; }
+// ---------------------------------------------------------------- the procedural ground
+// Every material is computed per texel (pixel-quantised to the TS grid) from a few shared fields evaluated once per
+// fragment: noise octaves from ~25 m patches down to ~9 cm grain, blade streaks along the wind, and two cellular
+// layers (small cells ~12 cm: tussocks, pebbles; large cells ~55 cm: clods, plates). Each material returns its
+// colour and a height; neighbouring materials then contend texel by texel on weight + height, so stones stand
+// proud through sand and grass tussocks over soil instead of cross-fading.
+uniform vec3 uMatA[14]; uniform vec3 uMatD[14]; uniform vec3 uMatL[14];
+uniform vec3 uSkyC, uLichen;
+uniform vec2 uWindXZ;
+uniform float uSnow, uFrost, uDry;
+// toward the sun in the ground plane (gfx/lights.ts Sun.dir): the side of every lump that catches the light
+const vec2 LXZ = vec2(-0.842, -0.539);
+float Gm, G1, G2, G3, G4, Gpx, Gst;
+float sF1, sF2, sId, lF1, lF2, lId; vec2 sD, lD;
+void cells(vec2 p, out float f1, out float f2, out float id, out vec2 d) {
+  vec2 i = floor(p), f = p - i; f1 = 9.0; f2 = 9.0; id = 0.0; d = vec2(0.0);
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    vec2 g = vec2(float(x), float(y)), o = vec2(h2(i + g), h2(i + g + 17.17)) * 0.8 + 0.1;
+    vec2 r = g + o - f; float dd = dot(r, r);
+    if (dd < f1) { f2 = f1; f1 = dd; id = h2(i + g + 3.3); d = -r; } else if (dd < f2) f2 = dd;
   }
+  f1 = sqrt(f1); f2 = sqrt(f2);
+}
+void fields(vec2 p) {
+  Gm = vn(p * 0.035 + 13.0) * 0.6 + vn(p * 0.09 + 41.0) * 0.4;
+  G1 = vn(p * 0.17 + 5.0); G2 = vn(p * 0.71 + 9.0); G3 = vn(p * 3.1 + 2.0); G4 = vn(p * 11.0 + 7.0);
+  Gpx = h2(floor(p * ${TSF}) + 0.37);
+  vec2 w = uWindXZ, u = vec2(dot(p, w), dot(p, vec2(-w.y, w.x)));
+  Gst = vn(vec2(u.x * 3.4, u.y * 30.0) + G2 * 1.5) * 0.65 + vn(vec2(u.x * 7.0, u.y * 64.0) + 11.0) * 0.35;
+  cells(p * 8.0 + G3 * 0.6, sF1, sF2, sId, sD);
+  cells(p * 1.8 + (G2 - 0.5) * 0.5, lF1, lF2, lId, lD);
+}
+/** a material's colour along its ramp: 0 shadow .. 0.5 body .. 1 lit */
+vec3 tone(int id, float t) { t = clamp(t, 0.0, 1.0); return t < 0.5 ? mix(uMatD[id], uMatA[id], t * 2.0) : mix(uMatA[id], uMatL[id], t * 2.0 - 1.0); }
+/** how much a lump's side at offset d (from its centre) faces the sun, -1..1 */
+float litOf(vec2 d) { float l = length(d); return l > 1e-4 ? dot(d / l, LXZ) : 0.0; }
+
+vec4 mGrass(int id) {
+  float tuft = 1.0 - smoothstep(0.15, 0.75, sF1);
+  float t = 0.2 + Gst * 0.5 + tuft * 0.3 + (G3 - 0.5) * 0.25 + (Gpx - 0.5) * 0.12;
+  // each tussock lit on its sun side; the ground between them in shade
+  t += litOf(sD) * tuft * 0.2 - (1.0 - tuft) * 0.12;
+  vec3 c = tone(id, t);
+  // greener and yellower patches and sun-cured tips (more in a drought)
+  float dry = clamp(smoothstep(0.45, 0.85, Gm * 0.7 + G1 * 0.3) * 0.55 + uDry * 0.7, 0.0, 1.0);
+  if (id == 0) c = mix(c, tone(1, t), dry * (0.3 + Gst * 0.5));
+  // bare earth between the tussocks
+  float gap = smoothstep(0.62, 0.92, sF1) * smoothstep(0.55, 0.25, Gst) * (0.45 + G2 * 0.55);
+  c = mix(c, tone(2, 0.25 + G4 * 0.3), gap * 0.75);
+  return vec4(c, 0.35 + tuft * 0.35 + Gst * 0.25 - gap * 0.3);
+}
+vec4 mSoil(int id, vec2 p) {
+  float edge = lF2 - lF1;
+  float t = 0.38 + (lId - 0.5) * 0.3 + (G3 - 0.5) * 0.2 + (G4 - 0.5) * 0.08;
+  t += smoothstep(0.25, 0.05, edge) * litOf(lD) * 0.28;
+  vec3 c = tone(id, t);
+  c *= 1.0 - smoothstep(0.07, 0.0, edge) * (0.5 + uDry * 0.3);
+  float h = 0.3 + smoothstep(0.0, 0.3, edge) * 0.2;
+  // roots: pale threads where the soil is rooty
+  float rt = abs(vn(p * vec2(2.6, 0.7) + 31.0) - 0.5);
+  if (rt < 0.011 && G1 > 0.5) c = mix(c, uMatL[id] * 1.15, 0.7);
+  // pebbles in about one small cell in five, a lit face, a dark rim, a glint (brighter when wet)
+  float rad = 0.3 + (sId - 0.78) * 1.4;
+  if (sId > 0.78 && sF1 < rad) {
+    float pl = litOf(sD), r = sF1 / rad;
+    c = tone(3, 0.35 + pl * 0.35 + (sId - 0.89) * 2.0);
+    if (r > 0.8) c *= 0.55;
+    if (pl > 0.7 && r > 0.4 && r < 0.68) c = mix(c, vec3(1.0), 0.45);
+    h = 0.8 + (1.0 - r) * 0.2;
+  }
+  return vec4(c, h);
+}
+vec4 mRock(int id, vec2 p, float shadedFace, float moist) {
+  float edge = lF2 - lF1;
+  float t = 0.42 + (lId - 0.5) * 0.35 + (G3 - 0.5) * 0.25 + (G4 - 0.5) * 0.1;
+  t += smoothstep(0.3, 0.06, edge) * litOf(lD) * 0.32;
+  vec3 c = tone(id, t);
+  c *= 1.0 - smoothstep(0.06, 0.0, edge) * 0.65;
+  float fr = abs(vn(p * 5.5 + 4.0) - 0.5);
+  c *= 1.0 - smoothstep(0.018, 0.0, fr) * 0.35;
+  // lichen crusts, thicker on damp stone turned from the sun
+  float lk = vn(p * 2.4 + 70.0) * 0.6 + G3 * 0.4;
+  if (lk > 0.68 - shadedFace * 0.12 - moist * 0.08) c = mix(c, uLichen * (0.75 + G4 * 0.5), 0.7);
+  return vec4(c, 0.55 + smoothstep(0.0, 0.25, edge) * 0.35);
+}
+vec4 mSand(vec2 p) {
+  vec2 w = uWindXZ, a = vec2(-w.y, w.x);
+  float ph = dot(p, a) * 7.5 + G2 * 4.0 + G3 * 0.8, sn = sin(ph), cs = cos(ph);
+  float t = 0.45 + (G1 - 0.5) * 0.25 + (G3 - 0.5) * 0.15;
+  t += cs * dot(a, LXZ) * 0.22 + smoothstep(0.85, 1.0, sn) * 0.1;
+  t += (step(0.93, Gpx) - step(Gpx, 0.06)) * 0.12;
+  vec3 c = tone(4, t);
+  if (sId > 0.985 && sF1 < 0.3) c = mix(uMatL[4], vec3(0.85, 0.8, 0.72), 0.6);
+  return vec4(c, 0.2 + sn * 0.08);
+}
+vec4 mMud(vec2 p) {
+  float t = 0.3 + (G2 - 0.5) * 0.3 + (G3 - 0.5) * 0.2;
+  vec3 c = tone(5, t);
+  float pud = G1 * 0.55 + G2 * 0.45;
+  if (pud < 0.34 - uDry * 0.3) {
+    // a puddle: dark water with the sky in it and the odd glint
+    c = mix(uMatD[5] * 0.7, uSkyC, 0.22 + (1.0 - smoothstep(0.2, 0.34, pud)) * 0.12);
+    if (Gpx > 0.985) c += vec3(0.25);
+    return vec4(c, 0.0);
+  }
+  c *= 1.0 - smoothstep(0.05, 0.0, lF2 - lF1) * uDry * 0.5;
+  return vec4(c, 0.15 + G3 * 0.1);
+}
+vec4 mClay(vec2 p) {
+  float edge = sF2 - sF1;
+  float t = 0.45 + (lId - 0.5) * 0.25 + (G3 - 0.5) * 0.2 + smoothstep(0.2, 0.05, edge) * litOf(sD) * 0.25;
+  vec3 c = tone(6, t);
+  c *= 1.0 - smoothstep(0.06, 0.0, edge) * 0.55;
+  return vec4(c, 0.4 + smoothstep(0.0, 0.2, edge) * 0.2);
+}
+vec4 mSnow(vec2 p) {
+  vec2 w = uWindXZ;
+  float t = 0.62 + (G1 - 0.5) * 0.2 + (G2 - 0.5) * 0.25;
+  float ph = dot(p, w) * 1.4 + G2 * 3.0;
+  t += cos(ph) * dot(w, LXZ) * 0.15 - smoothstep(0.1, 0.0, lF2 - lF1) * 0.1;
+  vec3 c = tone(7, t);
+  c = mix(c, c * vec3(0.82, 0.9, 1.1), smoothstep(0.55, 0.3, t));
+  if (Gpx > 0.992) c = vec3(1.25);
+  return vec4(c, 0.6 + G2 * 0.2);
+}
+vec4 mGravel(int id) {
+  float r = sF1 / 0.48, pl = litOf(sD);
+  vec3 c = tone(id, 0.32 + (sId - 0.5) * 0.5 + pl * 0.3 * smoothstep(0.2, 0.9, r));
+  if (r > 0.85) c *= 0.5;
+  if (pl > 0.8 && r > 0.5 && r < 0.75 && sId > 0.5) c = mix(c, vec3(1.0), 0.4);
+  return vec4(c, 0.5 + (1.0 - r) * 0.4);
+}
+/** one material's colour and height at p; glow is the painted layer's emissive alpha (1 = none) */
+vec4 matOf(int id, vec2 p, float shadedFace, float moist, out float glow) {
+  glow = 1.0;
+  if (id == 0 || id == 1) return mGrass(id);
+  if (id == 2) return mSoil(2, p);
+  if (id == 3 || id == 8) return mRock(id, p, shadedFace, moist);
+  if (id == 4) return mSand(p);
+  if (id == 5) return mMud(p);
+  if (id == 6) return mClay(p);
+  if (id == 7) return mSnow(p);
+  if (id == 12) return mGravel(12);
+  // painted layers (ore and crystal seams, leaf litter, impact glass), sampled without repeats
+  float lay = uLay[id * 2];
+  vec4 t = blk(lay, p);
+  glow = t.a;
+  float l = dot(t.rgb, vec3(0.3, 0.59, 0.11)), a = uAvgL[int(lay)];
+  return vec4(t.rgb, clamp(0.5 + (l - a) / (a + 0.03) * 0.6, 0.0, 1.0));
+}
+void contend(int id, float w, float pref, vec2 p, float shadedFace, float moist, inout float bestS, inout vec4 bestT, inout int bestId, inout float bestG) {
+  if (w <= 0.015) return;
+  float gl;
+  vec4 t = matOf(id, p, shadedFace, moist, gl);
+  float sc = w + pref + uHB[id] + (t.a - 0.5) * 0.55;
+  if (sc > bestS) { bestS = sc; bestT = t; bestId = id; bestG = gl; }
 }`)
         .replace('#include <map_fragment>', `
 vec3 emis = vec3(0.0);
@@ -273,6 +445,7 @@ vec2 pxw = floor(vWp.xz * ${TSF});
 vec2 pc = (pxw + 0.5) / ${TSF};
 vec2 gx = dFdx(vWp.xz), gy = dFdy(vWp.xz);
 blkGrid(pc, gx, gy);
+fields(pc);
 vec4 eco = texture2D(uEco, pc / uN);
 float damp = texture2D(uDamp, pc / uN).r;
 // the cells round this texel, their borders bent by a slow warp (shape only: no per-pixel grain)
@@ -284,63 +457,72 @@ ws[0] = (1.0 - fq.x) * (1.0 - fq.y); ws[1] = fq.x * (1.0 - fq.y); ws[2] = (1.0 -
 for (int a = 1; a < 4; a++) for (int b = 0; b < 4; b++) { if (b < a && ids[b] == ids[a] && ws[a] > 0.0) { ws[b] += ws[a]; ws[a] = 0.0; } }
 int dom = ids[0]; float dw = ws[0];
 for (int a = 1; a < 4; a++) if (ws[a] > dw) { dw = ws[a]; dom = ids[a]; }
-// the lie of the land: slope, height over the water, hollows
+// the lie of the land: slope, height over the water, curvature (hol > 0 a hollow or gully, < 0 a ridge), aspect
 float slope = 1.0 - vNw.y;
 float hw = vWp.y - uWater;
 float hol = vHol;
+float shadedFace = clamp(dot(vNw.xz, -LXZ) * 3.0, 0.0, 1.0) * smoothstep(0.05, 0.3, slope);
 bool soft = dom == 0 || dom == 1 || dom == 2 || dom == 11 || dom == 6;
 float moist = max(damp, eco.r);
-float bestS = -1e9; vec4 bestT = vec4(0.5); int bestId = dom;
-// a grass cell on poor soil gives way to dry grass (fertility from the ecology)
-// (plus broad patches of their own, 10-30 m across, so a meadow is never one even green)
-float dryK = smoothstep(0.42, 0.16, eco.g + (vn(pc * 0.3 + 4.0) - 0.5) * 0.18 + (vn(pc * 0.045 + 21.0) - 0.5) * 0.3);
+float bestS = -1e9; vec4 bestT = vec4(0.5); int bestId = dom; float bestG = 1.0;
+// a grass cell on poor soil gives way to dry grass (fertility from the ecology, drought from the climate), plus broad
+// patches of its own, 10-30 m across, so a meadow is never one even green
+float dryK = smoothstep(0.42, 0.16, eco.g + (vn(pc * 0.3 + 4.0) - 0.5) * 0.18 + (Gm - 0.5) * 0.3 - uDry * 0.35);
 for (int a = 0; a < 4; a++) {
   int id = ids[a]; float w = ws[a];
-  float vb = smoothstep(0.38, 0.62, vn(pc * 0.21 + 9.0 + float(id) * 3.7));
   float pref = 0.0;
-  if (id == 0) { if (dryK > 0.05) contend(1, w, (dryK - 0.5) * 0.8, 0.0, pc, gx, gy, bestS, bestT, bestId); pref = dryK > 0.05 ? (0.5 - dryK) * 0.8 - 0.0 : 0.0; }
-  contend(id, w, pref, vb, pc, gx, gy, bestS, bestT, bestId);
+  if (id == 0) { if (dryK > 0.05) contend(1, w, (dryK - 0.5) * 0.8, pc, shadedFace, moist, bestS, bestT, bestId, bestG); pref = dryK > 0.05 ? (0.5 - dryK) * 0.8 : 0.0; }
+  contend(id, w, pref, pc, shadedFace, moist, bestS, bestT, bestId, bestG);
 }
 if (soft || dom == 4) {
   // dirt breaks through on slopes and along trodden paths, stone on the steeper ones
   float sw = dom == 4 ? 0.0 : smoothstep(0.1, 0.22, slope) * 0.9;
   float pw = smoothstep(0.12, 0.6, eco.b) * (dom == 4 ? 0.0 : 1.05);
-  contend(2, max(sw, pw), 0.0, 0.0, pc, gx, gy, bestS, bestT, bestId);
-  if (dom != 4) contend(3, smoothstep(0.2, 0.3, slope) * 0.95, 0.0, 0.5, pc, gx, gy, bestS, bestT, bestId);
+  contend(2, max(sw, pw), 0.0, pc, shadedFace, moist, bestS, bestT, bestId, bestG);
+  if (dom != 4) contend(3, smoothstep(0.2, 0.3, slope) * 0.95, 0.0, pc, shadedFace, moist, bestS, bestT, bestId, bestG);
 }
 if (soft) {
   // sand at the waterline and settled in the hollows (mud instead where it is wet), mud where the ground is damp
   float shore = (1.0 - smoothstep(0.04, 0.42, hw)) * (1.0 - smoothstep(0.06, 0.2, slope)) * 0.95;
-  float hollow = smoothstep(0.12, 0.4, hol) * 0.75;
-  contend(moist > 0.62 ? 5 : 4, max(shore, hollow), 0.0, 0.5, pc, gx, gy, bestS, bestT, bestId);
-  contend(5, smoothstep(0.58, 0.92, moist) * 0.92, 0.0, 0.0, pc, gx, gy, bestS, bestT, bestId);
+  float hollow = smoothstep(0.12, 0.4, hol) * 0.75 * (1.0 - smoothstep(0.1, 0.3, slope));
+  contend(moist > 0.62 ? 5 : 4, max(shore, hollow), 0.0, pc, shadedFace, moist, bestS, bestT, bestId, bestG);
+  contend(5, smoothstep(0.58, 0.92, moist) * 0.92 * (1.0 - uDry * 0.6), 0.0, pc, shadedFace, moist, bestS, bestT, bestId, bestG);
 }
+// gullies collect scree and washed gravel; ridges wear down to the stone
+float gully = smoothstep(0.1, 0.4, hol) * smoothstep(0.06, 0.2, slope);
+if (gully > 0.02) contend(12, gully * 0.95, 0.0, pc, shadedFace, moist, bestS, bestT, bestId, bestG);
+float ridge = smoothstep(-0.08, -0.35, hol) * smoothstep(0.06, 0.22, slope);
+if (ridge > 0.02) contend(3, ridge * 0.9, 0.0, pc, shadedFace, moist, bestS, bestT, bestId, bestG);
+// snow (the climate's cover, and always some on the high ground) settles on the flats, never on steep faces
+float snowK = clamp(uSnow * 1.15 + smoothstep(16.0, 28.0, hw) * 0.9 + (G1 - 0.5) * 0.35 + hol * 0.6 - slope * 2.4, 0.0, 1.0);
+if (snowK > 0.02) contend(7, snowK * 1.25, 0.15, pc, shadedFace, moist, bestS, bestT, bestId, bestG);
 vec3 base;
 float glowA;
 if (vNw.y < 0.74) {
-  // steep ground: rock strata projected on the dominant horizontal axis
-  vec2 uvs = abs(vNw.x) > abs(vNw.z) ? vec2(vWp.z, -vWp.y) : vec2(vWp.x, -vWp.y);
-  vec4 tr = textureGrad(uBlocks, vec3(uvs / ${TMF}, uRockSide), dFdx(uvs) / ${TMF}, dFdy(uvs) / ${TMF});
-  base = tr.rgb; glowA = tr.a; bestId = 3;
+  // cliffs: beds of stone in different tones and hardness (hard beds jut with a lit lip over a shaded underside),
+  // vertical joints, rain streaks down the face, moss on damp faces turned from the sun
+  vec2 side = abs(vNw.x) > abs(vNw.z) ? vec2(vWp.z, vWp.y) : vec2(vWp.x, vWp.y);
+  float yy = vWp.y + (vn(vec2(side.x * 0.35, 1.0)) - 0.5) * 0.9 + (G3 - 0.5) * 0.12;
+  float bed = floor(yy * 1.5), lb = fract(yy * 1.5), hb = h2(vec2(bed, 3.1));
+  float t = 0.28 + hb * 0.45 + (G3 - 0.5) * 0.15 + (G4 - 0.5) * 0.08;
+  if (hb > 0.55) t += lb > 0.86 ? 0.25 : lb < 0.14 ? -0.3 : 0.0;
+  int rid = dom == 8 ? 8 : 3;
+  vec3 c = tone(rid, t);
+  float joint = abs(vn(vec2(side.x * 2.4, bed * 7.0 + 0.5)) - 0.5);
+  c *= 1.0 - smoothstep(0.028, 0.0, joint) * 0.55;
+  c *= 0.86 + 0.14 * vn(vec2(side.x * 1.3, side.y * 0.08));
+  if (shadedFace * moist > 0.15 && G2 > 0.55) c = mix(c, uMatD[0] * 1.3, 0.45);
+  base = c; glowA = 1.0; bestId = rid;
 } else {
-  base = bestT.rgb; glowA = bestT.a;
-  // scattered stones: here and there a painted group of stones sits on the ground (more on stony and dry ground, none
-  // on water, snow or held ground), with its contact shadow
-  float stony = bestId == 3 || bestId == 12 || bestId == 8 ? 0.34 : bestId == 4 || bestId == 1 || bestId == 2 ? 0.16 : bestId == 7 || bestId == 5 ? 0.0 : 0.07;
-  vec2 sc = floor(pc / 1.6), so = vec2(h2(sc + 3.7), h2(sc + 8.9)) * 0.55;
-  vec2 sl = pc - sc * 1.6 - so;
-  if (stony > 0.0 && h2(sc + 0.31) < stony * (1.0 - smoothstep(0.1, 0.25, slope)) && hw > 0.08 && sl.x >= 0.0 && sl.y >= 0.0 && sl.x < 1.0 && sl.y < 1.0) {
-    float qd = floor(h2(sc + 5.5) * 4.0);
-    vec2 suv = (sl + vec2(mod(qd, 2.0), floor(qd / 2.0))) / ${TMF};
-    vec4 st = textureGrad(uBlocks, vec3(suv, ${L.scatter}.0), gx / ${TMF}, gy / ${TMF});
-    if (st.a > 0.6) { base = st.rgb; glowA = 1.0; bestId = 3; }
-    else if (st.a > 0.2) base *= 0.62;
-  }
+  base = bestT.rgb; glowA = bestG;
 }
-// broad macro variation, 5-40 m: patches a touch darker (damp hollows) or lighter (sun-bleached), so tiles never read
-// as wallpaper from the overview
-float mac = vn(pc * 0.031 + 13.0) * 0.55 + vn(pc * 0.11 + 3.0) * 0.3 + vn(pc * 0.42 + 7.0) * 0.15;
-base *= 0.88 + 0.22 * mac;
+// ridges bleach, hollows hold the damp and the shade; broad macro patches 10-30 m across
+base *= (1.0 + smoothstep(-0.05, -0.4, hol) * 0.08) * (1.0 - smoothstep(0.05, 0.4, hol) * 0.1);
+base *= 0.86 + 0.26 * Gm;
+// moss creeps over damp soil and stone on slopes turned away from the sun
+if ((bestId == 3 || bestId == 2 || bestId == 12) && shadedFace * moist > 0.12) base = mix(base, uMatD[0] * 1.25, smoothstep(0.12, 0.45, shadedFace * moist + (G2 - 0.5) * 0.3) * 0.55);
+// frost: on cold nights rime whitens the grass tips and the open ground
+if (uFrost > 0.01) base = mix(base, vec3(0.82, 0.87, 0.93), uFrost * (bestId <= 1 ? 0.2 + Gst * 0.55 : 0.3) * (1.0 - smoothstep(0.2, 0.4, slope)));
 emis += base * (1.0 - glowA) * 2.0;
 // darker under canopy
 float shade = texture2D(uShade, pc / uN).r;
@@ -390,7 +572,7 @@ diffuseColor.rgb *= base;
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += emis;')
         .replace('#include <dithering_fragment>', '#include <dithering_fragment>\ngl_FragColor.rgb = applyFow(gl_FragColor.rgb, vWp);');
     };
-    m.customProgramCacheKey = () => 'oddworld-terrain-blend3';
+    m.customProgramCacheKey = () => 'oddworld-terrain-procedural1';
     return gbuf(m, 0);
   }
 
@@ -405,6 +587,17 @@ diffuseColor.rgb *= base;
   visFlush() { this.vis.needsUpdate = true; }
 
   update(t: number) { this.U.uTime.value = t; }
+  /**
+   * The climate's hold on the ground, each 0..1: snow cover (settles on the flats and high ground first), frost (rime
+   * on grass tips and open ground), drought (grass cures yellow, soil and mud crack, puddles dry) and rain-wet ground
+   * (darker, by how much each material drinks). Uniforms on U: uSnow, uFrost, uDry, uWetG.
+   */
+  setClimate(c: { snow?: number; frost?: number; dry?: number; wet?: number }) {
+    if (c.snow !== undefined) this.U.uSnow.value = clamp01(c.snow);
+    if (c.frost !== undefined) this.U.uFrost.value = clamp01(c.frost);
+    if (c.dry !== undefined) this.U.uDry.value = clamp01(c.dry);
+    if (c.wet !== undefined) this.U.uWetG.value = clamp01(c.wet);
+  }
   /** the seasonal water stage in metres over the region's water line (eco.level): rivers rise by it, the sea by half */
   setStage(level: number) { this.U.uStage.value = level; }
 }

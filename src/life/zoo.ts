@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { wildDesign, type Kind } from './design';
 import { buildSpeciesModel, makeInstance } from './creatureMesh';
 import { Animator } from './anim';
+import { buildFish, FISH_KINDS } from './fish';
 import { planetPalette } from '../world/palette';
 
 const P = new URLSearchParams(location.search);
@@ -20,7 +21,7 @@ R.setSize(innerWidth, innerHeight); R.shadowMap.enabled = true; R.setScissorTest
 R.outputColorSpace = THREE.SRGBColorSpace;
 const ANG = [[0.05, 0.12], [1.57, 0.1], [3.1, 0.12], [-0.8, 0.3], [0.6, 1.45]];
 const angles = P.get('angles') === '1';
-const shots = (P.get('lineup') === '1' || P.get('group') === '1' ? [] : angles ? ANG.map(() => cells[0]) : cells).map((spec, ci) => {
+const shots = (P.get('lineup') === '1' || P.get('group') === '1' || P.get('fish') === '1' ? [] : angles ? ANG.map(() => cells[0]) : cells).map((spec, ci) => {
   const yaw = angles ? ANG[ci][0] : yaw0, pit = angles ? ANG[ci][1] : pitch;
   const [kind, seedS, genes] = spec.split(':');
   const seed = Number(seedS ?? 3);
@@ -49,6 +50,21 @@ const shots = (P.get('lineup') === '1' || P.get('group') === '1' ? [] : angles ?
   console.log(spec, d.name, 'tris', m.geo.index!.count / 3, 'build ms', ms.toFixed(0));
   return { scene, cam };
 });
+// &fish=1: every sea-life kind side-on in a grid on blue water
+if (P.get('fish') === '1') {
+  const kinds = FISH_KINDS, cn = 4, rn = 2, cw = innerWidth / cn, chh = innerHeight / rn;
+  kinds.forEach((k, i) => {
+    const scene = new THREE.Scene(); scene.background = new THREE.Color(0x26404a);
+    scene.add(new THREE.HemisphereLight(0xdde8ff, 0x203038, 1.8)); const key = new THREE.DirectionalLight(0xfff0dc, 2.2); key.position.set(-3, 6, 4); scene.add(key);
+    const m = buildFish(k, 3), mesh = new THREE.Mesh(m.geo, m.mat); m.uniforms.uTime.value = 0.8; mesh.rotation.y = -Math.PI / 2 + 0.35; scene.add(mesh);
+    const box = new THREE.Box3().setFromObject(mesh), c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3()).length();
+    const cam = new THREE.PerspectiveCamera(30, cw / chh, 0.01, 500); cam.position.set(c.x + sz * 0.3, c.y + sz * 0.5, c.z + sz * 1.7); cam.lookAt(c);
+    const x = (i % cn) * cw, y = innerHeight - (Math.floor(i / cn) + 1) * chh;
+    R.setViewport(x, y, cw, chh); R.setScissor(x, y, cw, chh); R.render(scene, cam);
+    console.log(k, 'L', m.length, 'tris', m.geo.index!.count / 3);
+  });
+  throw new Error('fish drawn');
+}
 // &group=1: the listed species loose on a grass field, seen from a top-down three-quarter camera 30 m off (play scale)
 if (P.get('group') === '1') {
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0x2a363e);

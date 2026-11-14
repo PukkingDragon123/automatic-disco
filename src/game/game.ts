@@ -208,12 +208,14 @@ export class Game implements Screen {
   touchdown(x: number, z: number) {
     if (!this.descending) return;
     const R = this.region, N = R.N, old = this.veyr.core!, hv = this.veyr as unknown as { buildings: Building[] };
-    const f = R.freeNear(clamp(x, 6, N - 6), clamp(z, 6, N - 6), 12);
+    // a splashdown (src/ocean): the pod stays where it hit the water, the ocean takes it from there
+    const ocean = (this as unknown as { ocean?: { splashdown?(x: number, z: number): void } }).ocean;
+    const wet = !!ocean && R.isWater(x, z);
+    const f = wet ? null : R.freeNear(clamp(x, 6, N - 6), clamp(z, 6, N - 6), 12);
     R.landing = f ? { x: f[0], z: f[1] } : { x: clamp(x, 6, N - 6), z: clamp(z, 6, N - 6) };
     const L = R.landing;
-    R.carveCrater(L.x, L.z, 3.4, 1.3);
-    this.world.terrain.flushDirty();
-    this.world.flora.reseat(L.x, L.z, 8);
+    if (wet) ocean!.splashdown?.(L.x, L.z);
+    else { R.carveCrater(L.x, L.z, 3.4, 1.3); this.world.terrain.flushDirty(); this.world.flora.reseat(L.x, L.z, 8); }
     old.mesh.removeFromParent(); hv.buildings = hv.buildings.filter((b) => b !== old);
     this.veyr.plantCore(L.x, L.z);
     const core = this.veyr.core!;
