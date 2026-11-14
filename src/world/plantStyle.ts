@@ -84,7 +84,7 @@ export const PROF: Record<Shape, (u: number) => number> = {
  *  ribbon instead (blades, frond rachises) */
 export interface Limb { a: V3; b: V3; ra: number; rb: number; ramp: number[]; seed: number; ridge?: number; ring?: number; kind?: K; alpha?: number; chain?: number; skip3d?: boolean; amb?: number }
 export interface Leaf { p: V3; d: V3; n: V3; len: number; wid: number; shape: Shape; ramp: number[]; fold?: number; vein?: number; lat?: boolean; teeth?: boolean; kind?: K; alpha?: number; skip3d?: boolean; amb?: number }
-export interface Orb { c: V3; r: number; ramp: number[]; seed: number; sq?: number; glow?: number; spots?: number; spotCol?: number; alpha?: number; ribs?: number; amb?: number }
+export interface Orb { c: V3; r: number; ramp: number[]; seed: number; sq?: number; glow?: number; spots?: number; spotCol?: number; alpha?: number; ribs?: number; amb?: number; /** edible fruit: in 3D the ecosystem's fruit layer shows it (setFruit) */ fruit?: boolean }
 export interface Cap { c: V3; r: number; hr: number; ramp: number[]; gill: number[]; seed: number; spots: number; spotCol: number; alpha?: number; amb?: number }
 /**
  * 3D-only records. A ribbon is a flat strip along a polyline: a grass or strap blade (w = half width per point), or a
@@ -523,7 +523,7 @@ const broadleaf: Grower = (sp, h, r) => {
     onTwig: (p, d, gen, st) => { for (let k = st / (gen >= 5 ? 2.2 : 3.2); k > 0; k--) if (k >= 1 || r.chance(k)) twigLeaf(P, r, p, d, ls); },
     onTip: (p, d) => {
       for (let k = r.int(4, 7); k > 0; k--) twigLeaf(P, r, p, d, ls);
-      if (fruit && r.chance(0.12)) { const f = add(p, [r.range(-1, 1), -r.range(2, 4), r.range(0, 2)]); P.limb(p, f, 0.5, 0.5, T, { kind: K.ACC, chain: P.chain() }); P.orb(f, Math.max(1.2, h * 0.45), A, { glow: sp.glow ? 0xfff0c0 : undefined, alpha: sp.glow ? 200 : 255 }); }
+      if (fruit && r.chance(0.12)) { const f = add(p, [r.range(-1, 1), -r.range(2, 4), r.range(0, 2)]); P.limb(p, f, 0.5, 0.5, T, { kind: K.ACC, chain: P.chain() }); P.orb(f, Math.max(1.2, h * 0.45), A, { glow: sp.glow ? 0xfff0c0 : undefined, alpha: sp.glow ? 200 : 255, fruit: true }); }
     },
   }, [0, 0, 0], deviate(UP, r.range(0, 0.12), r.range(0, TAU)), H * r.range(0.36, 0.44), rad, 0);
   return P.done(H, deepOf(G[0][0]));
@@ -547,7 +547,7 @@ const umbrella: Grower = (sp, h, r) => {
     }
     if (beads && r.chance(0.45)) for (let k = r.int(1, 3); k > 0; k--) {
       const s = add(p, [r.range(-pr * 0.7, pr * 0.7), 0, r.range(-pr * 0.5, pr * 0.5)]), e = add(s, [0, -r.range(3, 9), 0]);
-      P.limb(s, e, 0.5, 0.5, T, { kind: K.ACC, chain: P.chain() }); P.orb(e, r.range(1, 1.5), A, { glow: sp.glow ? 0xfff0c8 : undefined, alpha: sp.glow ? 200 : 255 });
+      P.limb(s, e, 0.5, 0.5, T, { kind: K.ACC, chain: P.chain() }); P.orb(e, r.range(1, 1.5), A, { glow: sp.glow ? 0xfff0c8 : undefined, alpha: sp.glow ? 200 : 255, fruit: true });
     }
   };
   grow(P, r, {
@@ -615,7 +615,7 @@ const palm: Grower = (sp, h, r) => {
     const flen = H * r.range(0.3, 0.42) * (dead ? 0.6 : 0.8 + 0.2 * Math.sin(Math.PI * Math.min(1, age * 1.3)));
     frond(P, r, crown, polar(el, i * GOLD + r.range(-0.2, 0.2)), flen, { rach: 1.1, ramp: dead ? DRY : G[0][0], ramps: dead ? Gd : G, sag: dead ? 0.02 : 0.03 + age * 0.05, start: 0.1, lmax: Math.min(14, H * 0.09), wr: 0.16, fwd: 0.5, droop: dead ? 0.1 : 0.5 + age * 0.4, shape: 'lance', gap: 1.8 });
   }
-  for (let k = r.int(5, 9); k > 0; k--) P.orb(add(crown, [r.range(-3, 3), -r.range(1, 5), r.range(-1, 3)]), Math.max(1.2, h * 0.5), A, {});
+  for (let k = r.int(5, 9); k > 0; k--) P.orb(add(crown, [r.range(-3, 3), -r.range(1, 5), r.range(-1, 3)]), Math.max(1.2, h * 0.5), A, { fruit: true });
   return P.done(H, deepOf(G[0][0]));
 };
 
@@ -632,7 +632,7 @@ const shrub: Grower = (sp, h, r) => {
     onTwig: (p, d, gen, st) => { for (let k = st / 1.9; k > 0; k--) if (k >= 1 || r.chance(k)) twigLeaf(P, r, p, d, ls); },
     onTip: (p, d) => {
       for (let k = r.int(3, 5); k > 0; k--) twigLeaf(P, r, p, d, ls);
-      if (berries && r.chance(0.3)) P.orb(add(p, [r.range(-1, 1), r.range(-1, 1), 1]), r.range(0.8, 1.2), A, { glow: sp.glow ? 0xfff0c0 : undefined, alpha: sp.glow ? 200 : 255 });
+      if (berries && r.chance(0.3)) P.orb(add(p, [r.range(-1, 1), r.range(-1, 1), 1]), r.range(0.8, 1.2), A, { glow: sp.glow ? 0xfff0c0 : undefined, alpha: sp.glow ? 200 : 255, fruit: true });
     },
   };
   for (let s = r.int(4, 7), i = 0; i < s; i++) grow(P, r, opt, [r.range(-2.5, 2.5), 0, r.range(-2.5, 2.5)], deviate(UP, r.range(0.2, 0.75), (i * TAU) / s + r.range(-0.4, 0.4)), H * r.range(0.32, 0.46), Math.max(0.8, h * 0.9), 1);
