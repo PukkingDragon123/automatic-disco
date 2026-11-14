@@ -405,7 +405,7 @@ export class Game implements Screen {
       if (!h.inField(g.x, g.z)) { toast('Outside your field', 'warn', 1400); return; }
       h.spend(a); this.setMode({ k: 'normal' });
       const R = 5.5 * this.powerReach;
-      this.child.cast(g); this.ringFx(g, R, this.child.lookData.glow);
+      this.child.cast(g); this.ringFx(g, R, this.child.lookData.glow); this.world.flora.impulse?.(g.x, g.z, R, 2.2);
       sfx('pulse', 1.6, 0.9); sfx('zap', 0.7, 0.6); this.cam.shake(0.4, 0.4);
       for (let i = 0; i < 16; i++) { const an = (i / 16) * Math.PI * 2; const p = new THREE.Vector3(g.x + Math.cos(an) * R, 0, g.z + Math.sin(an) * R); p.y = this.world.surfaceY(p.x, p.z) + 0.3; this.fx.arc(g.clone().add(new THREE.Vector3(0, 0.4, 0)), p, 0.1, this.child.lookData.glow, 0.25); }
       this.world.near(g.x, g.z, R, (c) => {
@@ -455,7 +455,7 @@ export class Game implements Screen {
       const grade = await QTE.charge(sx, sy);
       this.busy = false;
       const R = (4.5 + grade * 1.8) * this.powerReach;
-      sfx('pulse'); this.cam.shake(0.35 + grade * 0.15, 0.5); this.child.cast(g);
+      sfx('pulse'); this.cam.shake(0.35 + grade * 0.15, 0.5); this.child.cast(g); this.world.flora.impulse?.(g.x, g.z, R, 1.6 + grade * 0.5);
       this.ringFx(g, R, VEYR.em);
       this.world.near(g.x, g.z, R, (c) => { if (c.dead || c.faction === 'veyr') return; c.stunT = 2 + grade; c.mind = c.faction === 'wild' ? 'idle' : c.mind; this.world.damage(c, 4 + grade * 4, null); c.fx.flashCol.value.setRGB(0.6, 0.5, 1); c.fx.flash.value = 1; });
       this.onAbility?.(a, grade > 0);

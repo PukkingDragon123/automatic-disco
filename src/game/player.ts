@@ -327,7 +327,12 @@ export class Player implements GolemTarget, TouchHost {
       }
     }
     // the golem's field parts the grass as it passes (it hovers: a brush, never a trample)
-    if (this.alive && this.started) flora(this.g).push?.(this.x, this.z, this.radius * 2 + 0.3, Math.min(0.42, 0.25 + Math.hypot(this.vx, this.vz) * 0.04));
+    // (a bare head floats low and flattens what it skims; the full body ruffles; a Colossus or a dash tramples)
+    if (this.alive && this.started) {
+      const sp = Math.hypot(this.vx, this.vz), low = this.has('torso') ? 0 : 0.12;
+      const k = clamp(0.28 + sp * 0.05 + low + (this.has('colossus') ? 0.45 : 0) + (this.dashT > 0 ? 0.3 : 0), 0.28, 1);
+      flora(this.g).push?.(this.x, this.z, 0.8 * this.size, k);
+    }
   }
 
   // ------------------------------------------------------------------ input
@@ -582,6 +587,7 @@ export class Player implements GolemTarget, TouchHost {
     // impact: sparks off the knuckles, hit-stop, shake
     if (!vfx2d(g, 'spark', at.x, at.y, at.z, { dir: [fx, fz], size: heavy ? 0.8 : 0.5 })) g.fx.spray(at.x, at.y, at.z, fx, 0.3, fz, heavy ? 16 : 8, 0xffd080, { glow: true, speed: 2.5, cone: 0.8, size: 1.8, life: 0.25, grav: 4 });
     this.hitStop(killed || crit ? 0.09 : heavy ? 0.07 : 0.045);
+    flora(g).impulse?.(at.x, at.z, heavy ? 1.4 : 0.8, heavy ? 1.2 : 0.6);
     g.cam.shake(killed ? 0.28 : crit ? 0.2 : heavy ? 0.16 : 0.08, 0.2);
     sfx('hit', heavy ? 0.7 : 1.1, 0.8); sfx('crack', heavy ? 0.9 : 1.6, 0.4);
     g.child.flash(0xffffff, 0.4);

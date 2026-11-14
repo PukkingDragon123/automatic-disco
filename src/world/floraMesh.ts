@@ -253,12 +253,12 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
     // merge short steps on thin limbs
     let P2 = pts, R2 = rad;
     if (L1 && !isBark && r0 < 0.012) continue;
-    const stepK = L1 ? (r0 < 0.08 ? (pts.length > 12 ? 4 : 3) : 2) : r0 < 0.05 ? (pts.length > 16 ? 3 : 2) : 1;
+    const stepK = L1 ? (r0 < 0.08 ? (pts.length > 12 ? 4 : 3) : 2) : r0 < 0.05 || sp.arch === 'shrub' ? (pts.length > 16 ? 3 : 2) : 1;
     if (pts.length > 3 && stepK > 1) { P2 = []; R2 = []; for (let k = 0; k < pts.length; k += stepK) { P2.push(pts[k]); R2.push(rad[k]); } if ((pts.length - 1) % stepK) { P2.push(pts[pts.length - 1]); R2.push(rad[rad.length - 1]); } }
     const slot = l0.ring ? BARK.RING : isBark ? ((l0.ridge ?? 0) >= 3 ? (sp.trunk & 1 ? BARK.PLATE : BARK.FURROW) : (l0.ridge ?? 0) >= 2 ? BARK.FURROW : sp.arch === 'coral' ? BARK.FLESH : BARK.STEM) : (l0.ridge ?? 0) >= 3 ? BARK.FIBRE : BARK.STEM;
     const fslot = sp.arch === 'fungus' && isBark ? BARK.FIBRE : slot;
     const green = !isBark || sp.arch === 'coral';
-    const rm = Math.max(...R2), sides = L1 ? (rm > 0.07 ? 6 : rm > 0.035 && !green ? 4 : 3) : rm > 0.09 ? 8 : rm > 0.045 ? 6 : rm > 0.022 && !(green && rm < 0.04) ? 4 : 3;
+    const rm = Math.max(...R2), sides = sp.arch === 'shrub' && !L1 ? (rm > 0.035 ? 5 : 3) : L1 ? (rm > 0.07 ? 6 : rm > 0.035 && !green ? 4 : 3) : rm > 0.09 ? 8 : rm > 0.045 ? 6 : rm > 0.022 && !(green && rm < 0.04) ? 4 : 3;
     const base = l0.ramp[Math.min(l0.ramp.length - 1, 3)], ao = ampOf(amb);
     g.col = linHex(base, ao * SLOT_GAIN[fslot] * (isBark ? 0.95 : 1));
     g.kind = isBark && sp.arch !== 'coral' && sp.arch !== 'fungus' ? KIND.BARK : KIND.STEM; g.pivot = [0, 0, 0]; g.phase = r.next();
@@ -270,7 +270,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
   // a leaf budget per LOD: thinned crowns grow their remaining leaves so the cover stays the same
   const crown3 = tree || sp.arch === 'shrub' || sp.arch === 'umbrella';
   let nLeaf = 0; for (const l of P.leaves) if (!l.skip3d && l.kind !== K.ACC) nLeaf++;
-  const budget = crown3 ? (sp.arch === 'shrub' ? (L1 ? 90 : 320) : L1 ? 260 : 1400) : L1 ? 40 : 400;
+  const budget = crown3 ? (sp.arch === 'shrub' ? (L1 ? 60 : 165) : L1 ? 260 : 1400) : L1 ? 40 : 400;
   const thin = Math.max(1, Math.round(nLeaf / budget)), grow = thin > 1 ? Math.sqrt(thin) * 0.9 : 1;
   let li = 0;
   for (const l of P.leaves) {
@@ -292,13 +292,14 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
   const bs = bladeSet ?? bladeSetOf([P]);
   const bladeTex = bs.ramps.length ? tex.blades(bs.ramps, bs.dry, bs.ramps.length * 2, { pairs: true, wide: true }) : null;
   const grassy = sp.arch === 'tuft' || sp.arch === 'reed';
+  let bi = 0;
   for (const rb of P.ribbons) {
     const pts = resample(rb.pts.map(M), rb.kind === 'blade' ? (L1 ? 2 : grassy ? 3 : 4) : L1 ? 3 : 6);
     const lim = rb.limbs ?? [];
     let amb = 0; for (const l of lim) amb += l.amb ?? 0.6; amb = lim.length ? amb / lim.length : 0.6;
     g.phase = r.next(); g.pivot = [0, 0, 0]; g.kind = KIND.LEAF;
     const ao = ampOf(amb);
-    if (rb.kind === 'blade' && L1 && sp.arch === 'shrub') continue;
+    if (rb.kind === 'blade' && sp.arch === 'shrub' && (L1 || (bi++ & 1))) continue;
     if (rb.kind === 'blade') {
       const w0 = (rb.w[0] / PXM) * 1.25, nc = bs.ramps.length * 2, col = (bs.index.get(rb.ramp.join('.')) ?? 0) * 2 + (rb.dry ? 1 : 0);
       const vv = r.range(0.9, 1.08);
@@ -325,7 +326,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
   // ---- orbs: fruit, berries, beads, coral polyps, lantern pods
   const spk = tex.speckle();
   let oi = 0;
-  const orbThin = Math.max(1, Math.round(P.orbs.length / (L1 ? 8 : sp.arch === 'shrub' ? 10 : 40)));
+  const orbThin = Math.max(1, Math.round(P.orbs.length / (L1 ? 8 : sp.arch === 'shrub' ? 6 : 40)));
   for (const o of P.orbs) {
     if (orbThin > 1 && !o.ribs && (oi++ % orbThin)) continue;
     const c = M(o.c), rr = (o.r / PXM) * (orbThin > 1 ? Math.min(1.5, Math.pow(orbThin, 0.3)) : 1), ao = ampOf(o.amb);

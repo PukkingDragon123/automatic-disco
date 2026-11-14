@@ -352,8 +352,8 @@ export class TouchControls {
         // the hi-res icon where the art has one (twice the density, like the buttons)
         const pc = iconCanvas(key, { shadow: true, px: 18 * Q }) as unknown as { w: number; h: number; toImageData(): ImageData };
         const cv = document.createElement('canvas'); cv.width = pc.w; cv.height = pc.h; cv.getContext('2d')!.putImageData(pc.toImageData(), 0, 0);
-        const sc = pc.w > 24 ? S / Q : S;
-        cv.className = 'tc-ic'; cv.style.width = pc.w * sc + 'px'; cv.style.height = pc.h * sc + 'px';
+        // sized to sit above the stencilled label, not over it
+        cv.className = 'tc-ic'; cv.style.width = cv.style.height = 12 * S + 'px'; cv.style.top = '34%';
         this.b.power.e.appendChild(cv); this.b.power.ic = cv;
       }
     }

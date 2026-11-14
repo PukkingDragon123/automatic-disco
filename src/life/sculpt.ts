@@ -149,9 +149,11 @@ function shingles(r: Region, o: ShingleOpt): ShingleHit {
 /** fur: combed clumps over a dark underfur, dark roots and lit tips, a sheen on the side facing the light, pale guard hairs */
 function furHide(S: Ctx, r: Region, o: HideOpt) {
   const d = S.d, P = S.P, Wn = Math.max(0.05, S.rig.width), seed = o.seed;
-  const long = has(d, 'shaggy') || !!S.rig.dims.bear ? 1.3 : has(d, 'leg_hooved') || has(d, 'whiskers') ? 0.85 : 1;
+  // coat length: sleek cats and ungulates paint fine low-contrast strands, bears and shaggy coats heavy locks
+  const shaggy = has(d, 'shaggy') || !!S.rig.dims.bear, sleek = !shaggy && (has(d, 'leg_hooved') || has(d, 'whiskers') || has(d, 'leg_cursorial') || has(d, 'leg_padded'));
+  const long = shaggy ? 1.25 : sleek ? 0.72 : 0.9, con = shaggy ? 1 : sleek ? 0.62 : 0.8;
   const ks = long * (o.clump ?? (o.kind === 'head' || o.kind === 'jaw' ? 0.72 : o.kind === 'limb' ? 0.85 : o.kind === 'foot' ? 0.7 : o.kind === 'ear' ? 0.6 : 1));
-  const H = shingles(r, { cw: 4.6 * ks, ch: 4.2 * ks, len: 2.3, flow: o.flow ?? 1, down: o.down ?? (o.kind === 'limb' || o.kind === 'foot' ? 0.12 : 0.55), seed: seed * 7 + 3, bend: 0.7 });
+  const H = shingles(r, { cw: 3.8 * ks, ch: 3.6 * ks, len: 2.6, flow: o.flow ?? 1, down: o.down ?? (o.kind === 'limb' || o.kind === 'foot' ? 0.12 : 0.55), seed: seed * 7 + 3, bend: 0.7 });
   const patAt = (x: number, y: number) => {
     const t = (y + 0.5) / r.h, th = r.th(x), ath = Math.abs(th);
     const edge = (o.belly ?? 2.05) + (r.fbm(x, y, 5, 2, seed) - 0.5) * 0.8;
@@ -168,17 +170,17 @@ function furHide(S: Ctx, r: Region, o: HideOpt) {
     if (o.kind === 'limb') k -= sm(clamp((t - 0.62) / 0.38, 0, 1)) * 0.9; // darker socks
     if (o.kind === 'foot') k -= 0.4;
     let RR: number[];
-    if (id < 0) { RR = patAt(x, y); k -= 1.5 + hash(x, y + seed) * 0.4; } // underfur
+    if (id < 0) { RR = patAt(x, y); k -= (1.5 + hash(x, y + seed) * 0.4) * con; } // underfur
     else {
       let R0 = rampOf.get(id);
       if (!R0) { R0 = patAt(Math.floor(H.rx[p]), Math.floor(H.ry[p] + 1.5)); rampOf.set(id, R0); }
       RR = R0;
       const sv = H.s[p], e = H.e[p], lit = (th >= 0 ? 1 : -1) * e, sc = (hash(id, 3) - 0.5) * 0.9;
-      k += sv < 0.42 ? -1.15 : -0.35 + 1.25 * sm(clamp((sv - 0.42) / 0.5, 0, 1)); // the root lies in the shadow of the clump above, the tip catches light
-      if (Math.abs(e) > 0.72) k -= 0.95; // the parting between locks
-      else if (lit > 0.18 && lit < 0.6 && sv > 0.48 && sv < 0.9) k += 0.75; // a sheen down the lit side
-      else if (Math.abs(e - sc) < 0.13 && sv > 0.35) k -= 0.5; // a strand line through the lock
-      k += (hash(id, 5) - 0.5) * 0.5; // clump tone
+      let f = sv < 0.42 ? -1.1 : -0.3 + 1.15 * sm(clamp((sv - 0.42) / 0.5, 0, 1)); // the root lies in the shadow of the clump above, the tip catches light
+      if (Math.abs(e) > 0.74) f -= 0.95; // the parting between locks
+      else if (lit > 0.18 && lit < 0.6 && sv > 0.48 && sv < 0.9) f += 0.7; // a sheen down the lit side
+      else if (Math.abs(e - sc) < 0.13 && sv > 0.35) f -= 0.5; // a strand line through the lock
+      k += (f + (hash(id, 5) - 0.5) * 0.45) * con; // clump tone
     }
     r.put(x, y, RR, k, 0.15);
   }
@@ -746,29 +748,41 @@ function vertLeg(S: Ctx, lg: Rig['legs'][number], lt: number, fur: boolean) {
   const ctrl = [top, ...J];
   const segIds = [up, ...ids.slice(0, -1)];
   const cts = chordTs(ctrl);
-  const prof = bird ? [0.45, 0.66, 0.3, 0.2, 0.17] : pillar ? [0.5, 0.74, 0.66, 0.6, 0.64] : bear ? (hind ? [0.55, 0.74, 0.5, 0.42, 0.42] : [0.5, 0.68, 0.52, 0.44, 0.44])
-    : hop ? (hind ? [0.6, 0.85, 0.48, 0.3, 0.2] : [0.32, 0.4, 0.28, 0.22, 0.2]) : sprawl ? [0.46, 0.6, 0.42, 0.3, 0.26] : hind ? [0.42, 0.62, 0.4, 0.3, 0.25] : [0.36, 0.52, 0.36, 0.27, 0.24];
+  const slender = hoof || has(d, 'leg_cursorial');
+  const prof = bird ? [0.45, 0.66, 0.3, 0.2, 0.17] : pillar ? [0.5, 0.74, 0.66, 0.6, 0.64] : bear ? (hind ? [0.62, 0.8, 0.5, 0.42, 0.42] : [0.58, 0.74, 0.52, 0.44, 0.44])
+    : hop ? (hind ? [0.6, 0.85, 0.48, 0.3, 0.2] : [0.32, 0.4, 0.28, 0.22, 0.2]) : sprawl ? [0.5, 0.62, 0.4, 0.3, 0.26]
+      : slender ? (hind ? [0.62, 0.7, 0.34, 0.2, 0.19] : [0.56, 0.62, 0.3, 0.19, 0.19]) : hind ? [0.6, 0.7, 0.38, 0.28, 0.25] : [0.54, 0.62, 0.36, 0.27, 0.25];
   const rs = ctrl.map((_, i) => lt * prof[Math.min(prof.length - 1, i === ctrl.length - 1 ? prof.length - 1 : i)]);
-  const sp = spline(ctrl, ctrl.length > 4 ? 16 : 13);
+  const sp = spline(ctrl, ctrl.length > 4 ? 18 : 15);
   const wts = chainWeights(sp.pts, ctrl, segIds, lt * 0.5).map((w, i) => (sp.t[i] < cts[1] ? [up, 0.55 + 0.45 * (sp.t[i] / cts[1]), parent, 0.45 * (1 - sp.t[i] / cts[1])] : w));
-  const tj = cts.slice(2, -1);
+  const tj = cts.slice(2, -1), three = ctrl.length > 4;
   const furF = fuzz(0.14, 14, sp.pts.length, (d.seed + lg.pair * 7 + s) % 91);
+  const m1 = (cts[1] + cts[2]) / 2, k2 = cts[2], seg2 = cts[3] - cts[2];
+  const mammal = !bird && !hop && !sprawl && !pillar;
+  // muscle planes (a = 0 the front of the leg, +-pi the back), knobs at the joints, tendons down the back of the cannon
   const bump = (a: number, t: number) => {
+    const aa = Math.abs(a);
     let b = 0;
-    for (const k of tj) b += 0.16 * gauss(t, k, 0.035);
-    if (hind && !bird) b += 0.22 * gauss(t, (cts[1] + cts[2]) / 2, 0.1) * gauss(Math.abs(a), Math.PI, 0.9);
-    else if (!bird) b += 0.12 * gauss(t, (cts[1] + cts[2]) / 2, 0.1) * gauss(a, 0, 0.9);
+    for (const k of tj) b += 0.07 * gauss(t, k, 0.03);
+    if (mammal && hind) b += 0.16 * gauss(t, m1 - 0.04, 0.09) * gauss(aa, 0.3, 0.7) + 0.22 * gauss(t, m1, 0.1) * gauss(aa, Math.PI, 0.75) + 0.1 * gauss(t, k2, 0.03) * gauss(aa, 0, 0.5)
+      + 0.2 * gauss(t, k2 + seg2 * 0.3, 0.06) * gauss(aa, Math.PI, 0.6) + (three ? 0.24 * gauss(t, cts[3], 0.025) * gauss(aa, Math.PI, 0.5) - 0.12 * sm(clamp((t - cts[3]) / 0.05, 0, 1)) * gauss(aa, Math.PI, 0.6) * (t < 0.95 ? 1 : 0) : 0);
+    else if (mammal) b += 0.14 * gauss(t, cts[1], 0.06) * gauss(aa, 0.4, 0.6) + 0.2 * gauss(t, m1, 0.09) * gauss(aa, Math.PI - 0.3, 0.6) + 0.26 * gauss(t, k2, 0.025) * gauss(aa, Math.PI, 0.45)
+      + 0.15 * gauss(t, k2 + seg2 * 0.28, 0.07) * gauss(aa, 0.5, 0.7) + 0.1 * gauss(t, cts[3] - 0.04, 0.03) * gauss(aa, 0, 0.6);
+    else if (hind && !bird) b += 0.22 * gauss(t, m1, 0.1) * gauss(aa, Math.PI, 0.9);
+    else if (!bird) b += 0.12 * gauss(t, m1, 0.1) * gauss(a, 0, 0.9);
     if (bird) b += 0.16 * gauss(t, cts[1] * 0.9, 0.1);
-    if (fur && t < 0.85) b += furF(a, t) * 0.5;
+    if (fur && t < 0.85) b += furF(a, t) * (bear || has(d, 'shaggy') ? 0.5 : 0.25);
     return b;
   };
+  // legs are flattened side to side through the thigh and upper arm
+  const ell = (t: number): [number, number] => (mammal && t < k2 ? [0.84, 1.16] : mammal ? [0.92, 1.06] : [1, 1]);
   const LIMB = S.reg('LIMB', TAU * lt * 0.55, sp.L, 8, 64, 96);
-  sac(S.B, LIMB, S.gid(), sp.pts, sp.t.map((t) => { const r = interp(cts, rs, t); return [r, r] as [number, number]; }), wts, { n: fur ? 12 : 10, up: [0, 0, 1], bump, start: true, end: false, cap: 0.6 });
+  sac(S.B, LIMB, S.gid(), sp.pts, sp.t.map((t) => { const r = interp(cts, rs, t), e = ell(t); return [r * e[0], r * e[1]] as [number, number]; }), wts, { n: fur ? 13 : 11, up: [0, 0, 1], bump, start: true, end: false, cap: 0.6 });
   if (!S.paints.some((p) => (p as any).LIMB)) { const p: Paint = () => { hide(S, LIMB, { L: sp.L, rad: () => lt * 0.45, seed: 29, kind: 'limb', belly: 2.4, noPattern: d.pattern !== 'stripes' && d.pattern !== 'rings' && d.pattern !== 'spots' && !amph }); if (amph) amphSkin(S, LIMB, 0.7); }; (p as any).LIMB = 1; S.paints.push(p); }
   // ---- feet
   const iF = ids[ids.length - 1], F = J[J.length - 1], fw: Wt = [iF, 1];
   const shag = S.page.regs.get('SHAG');
-  if (fur && !bird && !has(d, 'leg_pillar')) {
+  if (fur && !bird && !has(d, 'leg_pillar') && (bear || shag)) {
     const cuff = J[J.length - 2], cw: Wt = [ids[ids.length - 2], 1];
     for (let k = 0; k < 5; k++) { const a = (k / 5) * TAU; const out: V3 = [Math.sin(a), -0.9, Math.cos(a)]; furCard(S, addV(cuff, [Math.sin(a) * lt * 0.3, -lt * 0.1, Math.cos(a) * lt * 0.3]), norm(out), norm([Math.cos(a), 0, -Math.sin(a)]), lt * (shag && bear ? 0.75 : 0.6), lt * 0.35, cw, 500 + k + lg.pair * 11 + s, bear ? shag : undefined); }
     // a shaggy coat feathers down the backs of the upper legs
@@ -780,7 +794,12 @@ function vertLeg(S: Ctx, lg: Rig['legs'][number], lt: number, fur: boolean) {
   }
   const FOOT = S.reg('FOOT', TAU * lt * 0.4, lt * 0.8, 8, 32, 16), CLAW = S.fixed('CLAW', 6, 10);
   if (!S.paints.some((p) => (p as any).FOOT)) {
-    const p: Paint = () => { hide(S, FOOT, { L: lt, rad: () => lt * 0.3, seed: 31, kind: 'foot', noPattern: true, cover: d.cover === 'fur' ? 'fur' : 'skin' }); keratin(CLAW, mixHex(d.colors.pattern, 0x2a2420, 0.65), { tipLight: 2 }); };
+    const p: Paint = () => {
+      hide(S, FOOT, { L: lt, rad: () => lt * 0.3, seed: 31, kind: 'foot', noPattern: true, cover: d.cover === 'fur' ? 'fur' : 'skin' });
+      // leathery pads on the soles of paws and toes
+      if (!hoof && !bird) { const PR = makeRamp(mixHex(d.colors.pattern, 0x2a1e1c, 0.7), 5, { spread: 0.5 }); for (let y = 0; y < FOOT.h; y++) for (let x = 0; x < FOOT.w; x++) if (Math.abs(FOOT.th(x)) > 2.35 - (y / FOOT.h) * 0.4) FOOT.put(x, y, PR, 1.6 + (hash(x * 2, y * 2) - 0.5) * 1.2, 0.5); }
+      keratin(CLAW, hoof ? mixHex(d.colors.pattern, 0x1c1814, 0.75) : mixHex(d.colors.pattern, 0x2a2420, 0.65), { tipLight: hoof ? 1.2 : 2, rings: hoof });
+    };
     (p as any).FOOT = 1; S.paints.push(p);
   }
   const claw = (b: V3, dir: V3, L: number, r: number) => {
@@ -791,8 +810,14 @@ function vertLeg(S: Ctx, lg: Rig['legs'][number], lt: number, fur: boolean) {
   else if (hop) toes(S, FOOT, F, fw, lt, s, hind ? { n: 5, len: 2.0, spread: 0.3, turn: 0.35, web: true, pads: true } : { n: 4, len: 0.95, spread: 0.42, turn: -0.35, pads: true });
   else if (sprawl) toes(S, FOOT, F, fw, lt, s, { n: amph && !hind ? 4 : 5, len: amph ? 0.8 : 1.0, spread: 0.42, turn: hind ? 0.55 : 0.2, pads: amph, claws: !amph });
   else if (hoof) {
-    sac(S.B, CLAW, S.gid(), [addV(F, [0, lt * 0.5, 0]), addV(F, [0, lt * 0.22, lt * 0.04]), addV(F, [0, lt * 0.02, lt * 0.08])], [[lt * 0.3, lt * 0.32], [lt * 0.36, lt * 0.38], [lt * 0.42, lt * 0.44]], [fw, fw, fw], { n: 12, bump: (a) => -0.22 * gauss(a, 0, 0.12) });
-    if (fur) sac(S.B, FOOT, S.gid(), [addV(F, [0, lt * 0.72, -lt * 0.02]), addV(F, [0, lt * 0.5, 0])], [[lt * 0.36, lt * 0.36], [lt * 0.4, lt * 0.4]], [fw, fw], { n: 12, bump: fuzz(0.35, 12, 2, 4 + s), start: false });
+    // a cloven hoof: two wedged toes split by a cleft, a hairy coronet band above, two dewclaws behind the fetlock
+    for (const k of [-1, 1]) {
+      const x = k * lt * 0.16;
+      sac(S.B, CLAW, S.gid(), [addV(F, [x, lt * 0.46, -lt * 0.04]), addV(F, [x * 1.05, lt * 0.22, lt * 0.06]), addV(F, [x * 1.12, lt * 0.02, lt * 0.15])], [[lt * 0.16, lt * 0.2], [lt * 0.19, lt * 0.27], [lt * 0.2, lt * 0.31]], [fw, fw, fw],
+        { n: 10, up: [0, 0, 1], sq: 2.2, bump: (a, t) => -0.3 * gauss(a, k * Math.PI / 2, 0.55) + 0.12 * gauss(a, 0, 0.4) * t, cap: 0.3 });
+      ball(S.B, CLAW, S.gid(), addV(F, [k * lt * 0.17, lt * 0.62, -lt * 0.28]), norm([k * 0.3, -0.6, -1]), [lt * 0.07, lt * 0.06, lt * 0.08], fw, { n: 6, rings: 4 });
+    }
+    if (fur) sac(S.B, FOOT, S.gid(), [addV(F, [0, lt * 0.78, -lt * 0.02]), addV(F, [0, lt * 0.6, -lt * 0.03]), addV(F, [0, lt * 0.44, 0])], [[lt * 0.24, lt * 0.26], [lt * 0.3, lt * 0.34], [lt * 0.32, lt * 0.36]], [fw, fw, fw], { n: 12, up: [0, 0, 1], bump: fuzz(0.3, 12, 3, 4 + s), start: false });
   } else if (pillar) {
     sac(S.B, FOOT, S.gid(), [addV(F, [0, lt * 0.42, 0]), addV(F, [0, lt * 0.14, lt * 0.02]), addV(F, [0, lt * 0.01, lt * 0.03])], [[lt * 0.66, lt * 0.66], [lt * 0.74, lt * 0.74], [lt * 0.72, lt * 0.72]], [fw, fw, fw], { n: 14 });
     for (let i = 0; i < 4; i++) { const a = (i - 1.5) * 0.42; ball(S.B, CLAW, S.gid(), addV(F, [Math.sin(a) * lt * 0.7, lt * 0.08, Math.cos(a) * lt * 0.7]), [Math.sin(a), 0, Math.cos(a)], [lt * 0.13, lt * 0.1, lt * 0.06], fw, { n: 8, rings: 4 }); }
@@ -808,13 +833,14 @@ function vertLeg(S: Ctx, lg: Rig['legs'][number], lt: number, fur: boolean) {
   } else {
     // paw: palm, four toes, claws
     sac(S.B, FOOT, S.gid(), [addV(F, [0, lt * 0.42, -lt * 0.12]), addV(F, [0, lt * 0.22, lt * 0.16]), addV(F, [0, lt * 0.13, lt * 0.42])], [[lt * 0.3, lt * 0.3], [lt * 0.4, lt * 0.24], [lt * 0.38, lt * 0.15]], [fw, fw, fw], { n: 12 });
-    const big = has(d, 'carnassials') ? 1.4 : 1;
+    const catty = has(d, 'whiskers') && has(d, 'carnassials'), big = has(d, 'carnassials') ? 1.4 : 1;
     for (let i = 0; i < 4; i++) {
-      const x = (i - 1.5) * lt * 0.2, z = lt * (0.48 + (1.5 - Math.abs(i - 1.5)) * 0.07);
-      const c: V3 = addV(F, [x, lt * 0.1, z]);
-      ball(S.B, FOOT, S.gid(), c, [x * 0.5, 0, 1], [lt * 0.11, lt * 0.1, lt * 0.13], fw, { n: 8, rings: 5 });
-      claw(addV(c, [0, lt * 0.03, lt * 0.1]), norm([x * 0.8, 0, 1]), lt * 0.2 * big, lt * 0.04);
+      const x = (i - 1.5) * lt * 0.21, z = lt * (0.48 + (1.5 - Math.abs(i - 1.5)) * 0.08);
+      const c: V3 = addV(F, [x, lt * 0.11, z]);
+      ball(S.B, FOOT, S.gid(), c, [x * 0.5, 0, 1], [lt * 0.12, lt * 0.11, lt * 0.14], fw, { n: 9, rings: 5 });
+      if (!catty) claw(addV(c, [0, lt * 0.03, lt * 0.1]), norm([x * 0.8, 0, 1]), lt * 0.2 * big, lt * 0.04);
     }
+    if (!hind) ball(S.B, FOOT, S.gid(), addV(F, [-s * lt * 0.3, lt * 0.42, lt * 0.02]), [-s, -0.3, 0.4], [lt * 0.07, lt * 0.07, lt * 0.09], fw, { n: 6, rings: 4 });
   }
 }
 

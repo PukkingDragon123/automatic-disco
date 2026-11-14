@@ -68,8 +68,9 @@ export class Batch {
     }
   }
 
-  /** copy the listed chunks' instances into the draw buffer */
-  rebuild(chunks: ArrayLike<number>, n: number, sig: number) {
+  /** copy the listed chunks' instances into the draw buffer (keep > 1: only every keep-th instance, thinning) */
+  rebuild(chunks: ArrayLike<number>, n: number, sig: number, keep = 1) {
+    sig = (sig ^ (keep * 0x45d9f3b)) >>> 0;
     if (!this.dirty && sig === this.sig) return;
     this.sig = sig; this.dirty = false;
     const S = this.stride;
@@ -89,7 +90,8 @@ export class Batch {
     let o = 0;
     for (let k = 0; k < n; k++) {
       const c = chunks[k], a = this.start[c], b = this.start[c + 1];
-      if (b > a) { dst.set(this.data.subarray(a * S, b * S), o * S); o += b - a; }
+      if (keep > 1) { for (let i = a; i < b; i += keep) { dst.set(this.data.subarray(i * S, (i + 1) * S), o * S); o++; } }
+      else if (b > a) { dst.set(this.data.subarray(a * S, b * S), o * S); o += b - a; }
       const e = this.extra.get(c);
       if (e && e.length) { dst.set(e, o * S); o += e.length / S; }
     }

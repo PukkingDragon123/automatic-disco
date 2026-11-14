@@ -30,6 +30,7 @@ import { meshPlant, meshBarrel, meshCrystal, meshLily, meshGround, bladeSetOf, t
 import { FloraField } from './floraField';
 import { Batch, CH } from './floraBatch';
 import { plant3dMaterial, cardMaterial, STATE_W } from './floraGL';
+import { settings, onSettings, type Quality } from '../settings';
 
 /** spare instance slots for plants sown during play */
 const SPARE = 320;
@@ -45,9 +46,18 @@ const BENDS: Record<string, [number, number]> = {
   tuft: [0.5, 1], reed: [0.4, 0.8], fern: [0.26, 0.7], shrub: [0.12, 0.35], broadleaf: [0.028, 0.03], umbrella: [0.03, 0.03], palm: [0.06, 0.04], weeper: [0.04, 0.04],
   spike: [0.3, 0.75], rosette: [0.05, 0.2], coral: [0.06, 0.3], fungus: [0.02, 0.15], bulb: [0.3, 0.7], barrel: [0.0, 0.02], crystalbloom: [0.0, 0.0], lily: [0.05, 0.2], eyeflower: [0.25, 0.7], fiddle: [0.22, 0.6],
 };
-/** LOD ranges (camera distance, metres): full 3D fades to the lighter 3D mesh over LOD_NEAR, that to the painted
- *  cards over LOD_PLANT; 3D ground cover fades to its cards over LOD_GROUND */
-const LOD_NEAR: [number, number] = [21, 23.5], LOD_PLANT: [number, number] = [59, 64], LOD_SMALL: [number, number] = [44, 48], LOD_GROUND: [number, number] = [42, 46];
+/**
+ * LOD ranges per quality tier (camera distance, metres): full 3D fades to the lighter 3D mesh over near, that to the
+ * painted cards over plant (small plants: small); 3D ground cover fades to its cards over ground. Low keeps full 3D
+ * within ~10 m only (shrubs on their light mesh), cards beyond, and half the grass.
+ */
+type R2 = [number, number];
+interface LodSet { near: R2; plant: R2; small: R2; ground: R2; grassKeep: number; low: boolean }
+const LODS: Record<Quality, LodSet> = {
+  high: { near: [21, 23.5], plant: [59, 64], small: [44, 48], ground: [42, 46], grassKeep: 1, low: false },
+  medium: { near: [12, 14], plant: [32, 36], small: [24, 27], ground: [24, 27], grassKeep: 1, low: false },
+  low: { near: [8, 10], plant: [8, 10], small: [8, 10], ground: [8, 10], grassKeep: 2, low: true },
+};
 /** plants shorter than this hand over to their cards at the nearer LOD_SMALL range */
 const SMALL_H = 1.25;
 
@@ -106,9 +116,10 @@ export class Flora {
     this.U = {
       uTime: { value: 0 }, uN: { value: N }, uLean: { value: 0.42 }, uHComp: { value: 1.08 },
       uCamRight: { value: new THREE.Vector3(1, 0, 0) }, uCamBack: { value: new THREE.Vector3(0, 0, 1) }, uCamPos: { value: new THREE.Vector3(0, 50, 0) },
-      uLod: { value: new THREE.Vector2(...LOD_PLANT) },
-      uLodA: { value: new THREE.Vector4(-2, -1, ...LOD_NEAR) }, uLodB: { value: new THREE.Vector4(...LOD_NEAR, ...LOD_PLANT) }, uLodBs: { value: new THREE.Vector4(...LOD_NEAR, ...LOD_SMALL) }, uLodG: { value: new THREE.Vector4(-2, -1, ...LOD_GROUND) },
-      uLodS: { value: new THREE.Vector2(...LOD_SMALL) }, uLodGr: { value: new THREE.Vector2(...LOD_GROUND) },
+      // LOD bands (set by setQuality): 3D near / light 3D per category (big, small, shrub), ground, and the card fades
+      uLod: { value: new THREE.Vector2() }, uLodS: { value: new THREE.Vector2() }, uLodGr: { value: new THREE.Vector2() },
+      uLodA: { value: new THREE.Vector4() }, uLodB: { value: new THREE.Vector4() }, uLodBs: { value: new THREE.Vector4() },
+      uLodAsh: { value: new THREE.Vector4() }, uLodBsh: { value: new THREE.Vector4() }, uLodG: { value: new THREE.Vector4() },
       uMoss: { value: moss }, uVis: { value: vis }, uDark: { value: new THREE.Color(0x07080c) },
       uField: { value: this.field.tex }, uBark: { value: this.tex.bark },
       uWindDir: { value: new THREE.Vector2(Math.cos(region.seed * 1.7), Math.sin(region.seed * 1.7)) }, uWind: { value: WIND[region.biome.key] ?? 1 },
@@ -138,6 +149,8 @@ export class Flora {
     this.tex.finish();
     for (const b of this.all) this.group.add(b.mesh);
     this.stats.batches = this.all.length;
+    this.setQuality(settings.quality);
+    this.offSettings = onSettings((st, ch) => { if (ch.includes('quality')) this.setQuality(st.quality); });
     this.stats.gen = performance.now() - t0;
   }
 
@@ -340,8 +353,9 @@ export class Flora {
         this.pGeo[si][v] = pgs; this.p3d[si][v] = [];
         pgs.forEach((pg, lod) => {
           tris += pg.tris;
-          const small = this.isSmall(s);
-          const { mat, depth } = plant3dMaterial(this.U, this.tex.tex, { uH: pg.H, uFlex: flex, uPushK: pushK, uBob: s.arch === 'lily' ? 1 : 0, lod: lod ? (small ? this.U.uLodBs : this.U.uLodB) : this.U.uLodA });
+          const small = this.isSmall(s), shrub = s.arch === 'shrub', U = this.U;
+          const band = lod ? (shrub ? U.uLodBsh : small ? U.uLodBs : U.uLodB) : shrub ? U.uLodAsh : U.uLodA;
+          const { mat, depth } = plant3dMaterial(this.U, this.tex.tex, { uH: pg.H, uFlex: flex, uPushK: pushK, uBob: s.arch === 'lily' ? 1 : 0, lod: band });
           const b = new Batch(`flora3d:${s.arch}:${v}:${lod}`, pg.geo, mat, shadow ? depth : null, 8, I3D, per3d[si][v], nc2, 24);
           this.p3d[si][v][lod] = b; this.all.push(b);
         });
@@ -391,6 +405,22 @@ export class Flora {
     this.all.push(this.gFar, this.gAlways);
   }
 
+  // ---------------------------------------------------------------- quality
+  private L: LodSet = LODS.high;
+  private offSettings: (() => void) | null = null;
+  /** switch LOD tier ('low' | 'medium' | 'high'); follows settings.quality automatically */
+  setQuality(q: Quality) {
+    const L = (this.L = LODS[q] ?? LODS.high), U = this.U, HIDE: [number, number] = [1e6, 1e6 + 1], ALL: [number, number] = [-2, -1];
+    const v4 = (u: THREE.IUniform, a: R2, b: R2) => (u.value as THREE.Vector4).set(a[0], a[1], b[0], b[1]);
+    v4(U.uLodA, ALL, L.near); v4(U.uLodB, L.near, L.plant); v4(U.uLodBs, L.near, L.small); v4(U.uLodG, ALL, L.ground);
+    // on low, shrubs show their light mesh up close instead of the full one
+    if (L.low) { v4(U.uLodAsh, HIDE, HIDE); v4(U.uLodBsh, ALL, L.near); } else { v4(U.uLodAsh, ALL, L.near); v4(U.uLodBsh, L.near, L.plant); }
+    (U.uLod.value as THREE.Vector2).set(...(L.low ? L.near : L.plant)); (U.uLodS.value as THREE.Vector2).set(...(L.low ? L.near : L.small)); (U.uLodGr.value as THREE.Vector2).set(...L.ground);
+    for (const b of this.all) b.dirty = true;
+  }
+  /** stop following the settings (call when the world is thrown away) */
+  dispose() { this.offSettings?.(); this.offSettings = null; }
+
   // ---------------------------------------------------------------- per frame
   /** camera basis for the cards, LOD chunk lists, physics field (call each frame before rendering) */
   update(t: number, cam: THREE.Camera) {
@@ -418,7 +448,7 @@ export class Flora {
     cam.updateMatrixWorld();
     this.pm.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.pm);
-    const nc = this.nc, L = this.lists, box = this.box, M = 2.5;
+    const nc = this.nc, L = this.lists, box = this.box, M = 2.5, LL = this.L;
     let n0 = 0, n1 = 0, n1s = 0, nF = 0, gN = 0, gF = 0, nV = 0;
     let s0 = 17, s1 = 23, s1s = 29, sF = 31, sGN = 7, sGF = 11, sV = 3;
     const mix = (h: number, c: number) => (Math.imul(h ^ (c + 0x9e37), 0x01000193) >>> 0);
@@ -434,21 +464,26 @@ export class Flora {
       const fx = Math.abs(cp.x - x0) > Math.abs(cp.x - x1) ? x0 : x1, fz = Math.abs(cp.z - z0) > Math.abs(cp.z - z1) ? z0 : z1;
       const dmax = hyp(fx - cp.x, cp.y - y0, fz - cp.z) + M;
       L.vis[nV++] = c; sV = mix(sV, c);
-      if (dmin < LOD_NEAR[1]) { L.n0[n0++] = c; s0 = mix(s0, c); }
-      if (dmax > LOD_NEAR[0] && dmin < LOD_PLANT[1]) { L.n1[n1++] = c; s1 = mix(s1, c); }
-      if (dmax > LOD_NEAR[0] && dmin < LOD_SMALL[1]) { L.n1s[n1s++] = c; s1s = mix(s1s, c); }
-      if (dmax > LOD_SMALL[0]) { L.far[nF++] = c; sF = mix(sF, c); }
-      if (dmin < LOD_GROUND[1]) { L.gNear[gN++] = c; sGN = mix(sGN, c); }
-      if (dmax > LOD_GROUND[0]) { L.gFar[gF++] = c; sGF = mix(sGF, c); }
+      if (dmin < LL.near[1]) { L.n0[n0++] = c; s0 = mix(s0, c); }
+      if (dmax > LL.near[0] && dmin < LL.plant[1]) { L.n1[n1++] = c; s1 = mix(s1, c); }
+      if (dmax > LL.near[0] && dmin < LL.small[1]) { L.n1s[n1s++] = c; s1s = mix(s1s, c); }
+      if (dmax > Math.min(LL.small[0], LL.plant[0])) { L.far[nF++] = c; sF = mix(sF, c); }
+      if (dmin < LL.ground[1]) { L.gNear[gN++] = c; sGN = mix(sGN, c); }
+      if (dmax > LL.ground[0]) { L.gFar[gF++] = c; sGF = mix(sGF, c); }
     }
     let drawn = 0, i3 = 0;
-    this.p3d.forEach((row, si) => { const small = this.isSmall(this.species[si]); for (const pair of row) {
-      pair[0].rebuild(L.n0, n0, s0);
-      if (small) pair[1].rebuild(L.n1s, n1s, s1s); else pair[1].rebuild(L.n1, n1, s1);
+    this.p3d.forEach((row, si) => { const s = this.species[si], small = this.isSmall(s), shrub = s.arch === 'shrub'; for (const pair of row) {
+      if (LL.low) {
+        // low: full 3D up close only (shrubs on their light mesh), nothing in between
+        pair[0].rebuild(L.n0, shrub ? 0 : n0, s0); pair[1].rebuild(L.n0, shrub ? n0 : 0, s0 + 1);
+      } else {
+        pair[0].rebuild(L.n0, n0, s0);
+        if (small) pair[1].rebuild(L.n1s, n1s, s1s); else pair[1].rebuild(L.n1, n1, s1);
+      }
       drawn += pair[0].count + pair[1].count; i3 += pair[0].count + pair[1].count;
     } });
-    for (const b of this.g3d) { b.rebuild(L.gNear, gN, sGN); drawn += b.count; i3 += b.count; }
-    this.pCards.rebuild(L.far, nF, sF); this.gFar.rebuild(L.gFar, gF, sGF); this.gAlways.rebuild(L.vis, nV, sV);
+    for (const b of this.g3d) { b.rebuild(L.gNear, gN, sGN, LL.grassKeep); drawn += b.count; i3 += b.count; }
+    this.pCards.rebuild(L.far, nF, sF); this.gFar.rebuild(L.gFar, gF, sGF, LL.grassKeep); this.gAlways.rebuild(L.vis, nV, sV);
     drawn += this.pCards.count + this.gFar.count + this.gAlways.count;
     this.stats.drawn = drawn; this.stats.inst3d = i3;
   }

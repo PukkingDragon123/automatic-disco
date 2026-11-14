@@ -312,6 +312,8 @@ export class Post {
   private scene = new THREE.Scene();
   private mComp: THREE.ShaderMaterial; private mBright: THREE.ShaderMaterial; private mDown: THREE.ShaderMaterial; private mUp: THREE.ShaderMaterial;
   private black: THREE.WebGLRenderTarget;
+  /** a cleared 1x1 depth texture with a compare function: what the shadow sampler reads when there are no shafts */
+  private noShadow: THREE.WebGLRenderTarget;
   readonly grade: Grade = defaultGrade();
   readonly U: Record<string, THREE.IUniform>;
   w = 1; h = 1;
@@ -321,6 +323,10 @@ export class Post {
     this.main = new THREE.WebGLRenderTarget(4, 4, { count: 2, type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true, depthTexture: depth });
     this.fx = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true, depthTexture: depth });
     this.black = rt(1, 1);
+    const nd = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType);
+    nd.compareFunction = THREE.LessEqualCompare; nd.minFilter = nd.magFilter = THREE.LinearFilter;
+    this.noShadow = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: true, depthTexture: nd });
+    renderer.setRenderTarget(this.noShadow); renderer.clear(true, true, false); renderer.setRenderTarget(null);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
     this.quad = new THREE.Mesh(g);
@@ -336,7 +342,7 @@ export class Post {
       uLift: { value: gr.lift }, uGamma: { value: gr.gamma }, uGain: { value: gr.gain },
       uOutline: { value: new THREE.Color(0x07060c) }, uSelCol: { value: new THREE.Color(0x9dff6a) },
       uHoverCol: { value: new THREE.Color(0xf4f0d8) }, uEnemyCol: { value: new THREE.Color(0xff5a48) },
-      tShadow: { value: null }, uShadowOn: { value: 0 }, uShadowM: { value: new THREE.Matrix4() }, uRaySteps: { value: 12 },
+      tShadow: { value: this.noShadow.depthTexture }, uShadowOn: { value: 0 }, uShadowM: { value: new THREE.Matrix4() }, uRaySteps: { value: 12 },
       uEnv: { value: 0 }, uHaze: { value: 0 }, uMist: { value: 0 }, uMistY: { value: 0 }, uMistH: { value: 1.4 }, uPatch: { value: 0.6 },
       uRays: { value: 0 }, uWet: { value: 0 }, uRain: { value: 0 }, uDew: { value: 0 }, uHeat: { value: 0 }, uWind: { value: new THREE.Vector2() },
       uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uCamPos: { value: new THREE.Vector3() },
@@ -418,7 +424,7 @@ export class Post {
 
   private atmosphere(scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     const U = this.U, sun = scene.userData.sun as Sun | undefined;
-    if (!sun || sun.light.parent !== scene) { U.uEnv.value = 0; U.uShadowOn.value = 0; return; }
+    if (!sun || sun.light.parent !== scene) { U.uEnv.value = 0; U.uShadowOn.value = 0; U.tShadow.value = this.noShadow.depthTexture; return; }
     const e = sun.env, q = settings.quality, lo = q === 'low';
     U.uEnv.value = 1;
     (U.uInvProj.value as THREE.Matrix4).copy(camera.projectionMatrixInverse);
@@ -439,7 +445,7 @@ export class Post {
     const map = sun.light.castShadow ? sun.light.shadow.map : null, dt = map?.depthTexture ?? null;
     const rays = lo || !dt || !dt.compareFunction ? 0 : e.rays;
     U.uRays.value = rays; U.uShadowOn.value = rays > 0 ? 1 : 0; U.uRaySteps.value = q === 'high' ? 12 : 7;
-    U.tShadow.value = rays > 0 ? dt : null;
+    U.tShadow.value = rays > 0 ? dt : this.noShadow.depthTexture;
     if (rays > 0) (U.uShadowM.value as THREE.Matrix4).copy(sun.light.shadow.matrix);
   }
 }
