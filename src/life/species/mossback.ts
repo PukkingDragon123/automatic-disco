@@ -12,7 +12,7 @@ export const mossback: SpeciesFn = (d, rig) => {
     coat: {
       base, belly, back: sh(base, -1), bellyArc: 1.1,
       surf: { body: fur(W, 1.5, 0.7), limb: hide(W, 1.1, 1.2), sock: hide(W, 1.1, 1.2), foot: hide(W, 0.8), face: hide(W, 0.6), muzzle: hide(W, 0.5) },
-      socks: { c: ['hide', 2], h: rig.dims.legLen * 0.85 }, face: { muzzle: ['hide', 2] }, claw: ['basalt', 2], mud: { h: rig.dims.legLen * 0.35, ramp: 'soil' },
+      socks: { c: ['hide', 2], h: rig.dims.legLen * 0.85 }, face: { muzzle: ['hide', 2] }, claw: ['basalt', 2], scars: 2, mud: { h: rig.dims.legLen * 0.35, ramp: 'soil' },
     },
     parts: [
       { k: 'carapace', t0: -0.12, t1: 0.98, bands: 6, spread: 2.0, lift: 2.0, c: ['stone', 3], rim: ['stone', 4], moss: 1.4, spikes: 0 },

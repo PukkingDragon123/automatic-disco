@@ -76,7 +76,7 @@ function chutePix(seed: number): Pix {
     const gv = v * GORES + Math.sin(u * 6.5 + seed) * 0.18 + Math.sin(u * 17 + seed * 2) * 0.05, gi = Math.floor(gv), gf = gv - gi;
     const row = Math.min(4, Math.floor(u * 5)), orange = (gi & 1) === 0, fade = hash(gi + 7, row, seed);
     const RR = orange ? OR : WH;
-    let li = orange ? (fade < 0.3 ? 5 : fade < 0.85 ? 4 : 3) : (fade < 0.55 ? 5 : 4);
+    let li = orange ? (fade < 0.2 ? 5 : fade < 0.7 ? 4 : 3) : (fade < 0.35 ? 5 : fade < 0.8 ? 4 : 3);
     // the weave catching light in long streaks (dithered half step)
     if (hash(x >> 3, y, seed + 3) > 0.82 && th < 0.5) li = Math.min(RR.length - 1, li + 1);
     // seams: radial tapes on the gore edges, cross seams between panels; the hem and the vent band
@@ -87,7 +87,9 @@ function chutePix(seed: number): Pix {
     let c = RR[li];
     // weathering: dirt from the edges that lay on the ground and from the skirt that dragged, two dithered steps
     const n = hash(x >> 2, y >> 2, seed + 5) * 0.35 + hash(x >> 4, y >> 3, seed + 9) * 0.3;
-    const dirt = Math.max(Math.pow(Math.abs(v - 0.5) * 2, 3) * 0.9, Math.max(0, 1 - u * 6) * 0.7, Math.pow(Math.max(0, u - 0.85) / 0.15, 2) * 0.4) + n - 0.3;
+    // and a few muddy drag streaks across, where it slid over wet ground
+    const drag = Math.max(0, 1 - Math.abs(u - 0.22 - hash(seed, 4) * 0.1) * 30) * 0.5 + Math.max(0, 1 - Math.abs(u - 0.61) * 40) * 0.4 * hash(y >> 2, seed, 6);
+    const dirt = Math.max(Math.pow(Math.abs(v - 0.5) * 2, 3) * 0.9, Math.max(0, 1 - u * 6) * 0.7, Math.pow(Math.max(0, u - 0.85) / 0.15, 2) * 0.4, drag) + n - 0.24;
     if (dirt > 0.35 + th * 0.4) c = orange ? SO[4] : SO[5];
     if (dirt > 0.75 + th * 0.3) c = SO[3];
     if (hash(x, y, seed + 11) < 0.006) c = SO[2];
@@ -136,7 +138,7 @@ function drapedChute(bin: Bin, g: Game, x: number, z: number, dirX: number, dirZ
   const tent = (px: number, pz: number) => { let t = 0; for (const s of shrubs) { const d = Math.hypot(px - s.x, pz - s.z); if (d < s.r) t = Math.max(t, s.h * Math.pow(1 - d / s.r, 1.4)); } return t; };
   const sm = (a: number, b: number, v: number) => { const k = Math.min(1, Math.max(0, (v - a) / (b - a))); return k * k * (3 - 2 * k); };
   const tri = (v: number) => 1 - Math.abs(2 * (v - Math.floor(v)) - 1);
-  const prof = (s: number) => 0.42 + 0.98 * Math.pow(Math.sin(Math.PI * Math.min(1, (s + 0.02) * 0.9)), 0.7);
+  const prof = (s: number) => 0.28 + 1.1 * Math.pow(Math.sin(Math.PI * Math.min(1, (s + 0.02) * 0.9)), 0.7);
   const wL = (s: number) => prof(s) * (1 + 0.16 * Math.sin(s * 13 + ph) + 0.07 * Math.sin(s * 29 + ph * 2));
   const wR = (s: number) => prof(s) * 0.86 * (1 + 0.14 * Math.sin(s * 11 + ph * 3) + 0.08 * Math.sin(s * 31 + 1));
   const centre = (s: number) => { const off = Math.sin(s * 2.4 + ph) * 0.55 * s; return [x + ax * (S0 + s * Lc) + bx * off, z + az * (S0 + s * Lc) + bz * off]; };
@@ -144,12 +146,14 @@ function drapedChute(bin: Bin, g: Game, x: number, z: number, dirX: number, dirZ
   const at = (s: number, c: number) => {
     const [cx, cz] = centre(s), w = c < 0 ? wL(s) : wR(s);
     const jx = (hash(Math.round(s * 97), Math.round(c * 31), 5) - 0.5) * 0.06, jz = (hash(Math.round(s * 97), Math.round(c * 31), 6) - 0.5) * 0.06;
-    const px = cx + bx * c * w + jx, pz = cz + bz * c * w + jz, ac = Math.abs(c), edge = 1 - sm(0.62, 1, ac);
+    const px = cx + bx * c * w + jx, pz = cz + bz * c * w + jz, ac = Math.abs(c), edge = 1 - sm(0.45, 0.97, ac);
     const pleat = tri(c * 2.6 + 0.35 * Math.sin(s * 9 + 1) + 0.2 * Math.sin(s * 21 + ph));
     const l1 = Math.exp(-(((s - 0.34) / 0.13) ** 2) - (((c + 0.15) / 0.5) ** 2)), l2 = Math.exp(-(((s - 0.74) / 0.08) ** 2) - (((c - 0.4) / 0.35) ** 2));
-    let h = 0.03 + pleat * (0.1 + 0.07 * Math.sin(s * 7 + 2)) * edge + 0.045 * Math.sin(s * Lc * 3.7 + c * 2.1 + ph) * edge;
-    h += 0.24 * Math.max(0, 1 - s / 0.14) * (0.55 + 0.45 * pleat);
-    h += 0.55 * l1 + 0.24 * l2 + Math.max(0, (s - 0.82) / 0.18) * 0.14 * hash(Math.round(s * 40), Math.round(c * 12), 8);
+    // pleats and wrinkles, the bunched roll just inside the hem, the air pocket, the crushed apex; hem and apex tuck down to the ground
+    let h = pleat * (0.08 + 0.06 * Math.sin(s * 7 + 2)) * edge + 0.04 * Math.sin(s * Lc * 3.7 + c * 2.1 + ph) * edge;
+    h += 0.22 * Math.exp(-(((s - 0.085) / 0.055) ** 2)) * (0.55 + 0.45 * pleat) * (1 - sm(0.6, 1, ac) * 0.7);
+    h += 0.55 * l1 + 0.24 * l2 + Math.max(0, (s - 0.8) / 0.2) * 0.12 * hash(Math.round(s * 40), Math.round(c * 12), 8);
+    h = 0.03 + h * sm(0, 0.045, s) * (1 - 0.85 * sm(0.93, 1, s));
     const g0 = gy(px, pz), y = Math.max(g0 + Math.max(0.025, h), g0 + tent(px, pz) + 0.04);
     return { px, py: y, pz, f: Math.min(1, sm(0.5, 1, ac) * 0.7 + l1 + l2 * 0.7 + Math.max(0, s - 0.8) * 1.2) * Math.min(1, s / 0.08), l: l1 + l2 * 0.5 };
   };

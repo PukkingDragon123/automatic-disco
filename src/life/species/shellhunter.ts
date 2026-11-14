@@ -13,7 +13,7 @@ export const shellhunter: SpeciesFn = (d, rig) => {
     coat: {
       base, belly, bellyArc: 1.0,
       surf: { body: fur(W, 0.6, 0.4), limb: fur(W, 0.45), face: fur(W, 0.3), muzzle: fur(W, 0.2), tail: scales(W, 0.8, 'keel') },
-      face: { muzzle: sh(belly, 1), nose: ['plum', 1], mask: sh(pat, -1) }, claw: ['basalt', 1],
+      face: { muzzle: sh(belly, 1), nose: ['plum', 1], mask: sh(pat, -1) }, claw: ['basalt', 1], scars: 3, ribs: 0.4,
     },
     parts: [
       { k: 'helm', c: pat, rim: sh(pat, -1) },

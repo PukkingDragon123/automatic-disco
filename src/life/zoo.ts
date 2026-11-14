@@ -1,7 +1,7 @@
 // Dev contact sheet for the creature sculptor (src/life/zoo.html): several species side by side under studio light,
 // straight to the screen (no post pipeline), so sculpt and paint can be judged in one capture.
 //   ?c=lion:4,bear:3,elk:2   kind:seed[:gene+gene] cells     &cols=3   &face=1 frames the heads   &yaw=0.9 &pitch=0.25 &dist=3
-//   &mode=idle|move &spd=1.2   &t=2.4 seconds of animation before the capture   &lid=1 shuts the eyelids
+//   &mode=idle|move &spd=1.2   &t=2.4 seconds of animation before the capture   &lid=1 shuts the eyelids   &far=1 the far LOD
 import * as THREE from 'three';
 import { wildDesign, type Kind } from './design';
 import { buildSpeciesModel, makeInstance } from './creatureMesh';
@@ -35,6 +35,8 @@ const shots = (P.get('lineup') === '1' || P.get('group') === '1' || P.get('fish'
   const rim = new THREE.DirectionalLight(0x9affe8, 1.2); rim.position.set(4, 3, -5); scene.add(rim);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshLambertMaterial({ color: 0x4a6a40 })); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
   const { mesh, bones } = makeInstance(m); scene.add(mesh);
+  // &far=1 draws the far level of detail
+  if (P.get('far') === '1' && m.far) { mesh.geometry = m.far.geo; (mesh.material as THREE.MeshLambertMaterial).map = m.far.tex; mesh.onBeforeRender = () => void 0; }
   const an = new Animator(m.rig, bones, mesh);
   if (P.get('curl') === '1') an.curl(1);
   for (let t = 0; t < T; t += 1 / 30) an.update(1 / 30, { speed: mode === 'move' ? Number(P.get('spd') ?? 1.2) : 0, turn: 0, state: mode, act: 0, lookYaw: 0, lookPitch: 0, ground: () => 0, air: 0 });

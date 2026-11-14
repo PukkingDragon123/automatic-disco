@@ -97,7 +97,7 @@ export function grovebacker(d: Design, rig: Rig, rest: V3[]) {
     rig.bones[e.pupil].pos = [0, 0, 0]; rest[e.pupil] = c;
     body.add(eyeball({ name: 'eye' + k, c, ax, r: er, bone: e.bone, iris: RP('ochre'), pupil: 'bar', irisA: 0.7 }));
     const lid = rig.lids[k];
-    if (lid) { rig.bones[lid.bone].pos = [c[0] - head[0], c[1] - head[1], c[2] - head[2]]; rest[lid.bone] = c; const axn = norm(ax); lid.axis = norm(cross([0, 1, 0], axn).map((v) => v * -s) as V3) as [number, number, number];
+    if (lid) { rig.bones[lid.bone].pos = [c[0] - head[0], c[1] - head[1], c[2] - head[2]]; rest[lid.bone] = c; const axn = norm(ax); lid.axis = norm(cross([0, 1, 0], axn)) as [number, number, number];
       body.add(eyelid({ name: 'lid' + k, c, ax: axn, r: er, bone: lid.bone, paint: lookPaint({ ...browLook, pebbles: { size: 0.05 } }) })); }
     // nostril-like sensory pits along the muzzle
     for (let n = 0; n < 3; n++) { const qq = gridSurf(sk.m, sk.grids[0], su(2, s) + 0.02 * s, sv(5) + n * 0.05); pits.push({ c: qq.p, r: 0.07 + n * 0.01 }); }

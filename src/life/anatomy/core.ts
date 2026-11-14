@@ -281,8 +281,11 @@ export class Body {
     const reg = this.page.reg('pal', this.page.W, this.page.H);
     reg.x = 0; reg.y = 0; reg.w = this.page.W; reg.h = this.page.H; reg.rot = false;
     const L = this.light, W = this.page.W, H = this.page.H;
+    // the far model keeps only what shapes the silhouette: no alpha-cut hair, nothing under 1/25 of the animal's size
+    const box = (V: V3[]) => { let a = Infinity, b = Infinity, c = Infinity, d = -Infinity, e = -Infinity, f = -Infinity; for (const v of V) { a = Math.min(a, v[0]); b = Math.min(b, v[1]); c = Math.min(c, v[2]); d = Math.max(d, v[0]); e = Math.max(e, v[1]); f = Math.max(f, v[2]); } return Math.hypot(d - a, e - b, f - c); };
+    const all = box(this.pieces.flatMap((p) => p.m.V)), small = this.pieces.length > 12 ? all / 25 : 0;
     for (const p of this.pieces) {
-      if (p.farSkip) continue;
+      if (p.farSkip || p.cut || box(p.m.V) < small) continue;
       this.finalize(p); surfaceInfo(p);
       const tone: Tone | undefined = p.tone ?? toneOf(p.paint);
       const R0 = tone?.ramp ?? grey, Rb = tone?.belly?.ramp ?? R0, st0 = tone?.step ?? 3, stB = tone?.belly?.step ?? st0, below = tone?.belly?.below ?? -2;

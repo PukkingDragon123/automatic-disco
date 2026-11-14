@@ -1,7 +1,29 @@
 // ANATOMY LIBRARY (src/life/anatomy): reusable creature parts, each a hand-blocked control cage subdivided with
-// creased landmarks and painted as detailed pixel art from its own rasterised anatomy. The titans (src/life/titans)
-// and the sea life (src/life/fish.ts) are built from it; the procedural species (design.ts / wildDesign) and the gene
-// lab can assemble new creatures from the same generators.
+// creased landmarks and painted as detailed pixel art from its own rasterised anatomy. Every creature in the game is
+// built from it: the titans (src/life/titans), the bestiary species and every gene-built vertebrate (vertebrate.ts
+// with a recipe from src/life/species), the arthropods (arthropod.ts), serpents and gastropods (softbody.ts), the sea
+// life (src/life/fish.ts). Models build in a worker pool with an IndexedDB cache (titans/async.ts); the quick build
+// is the placeholder and the far LOD; the lab's part icons are built from the same generators (partPreview.ts).
+//
+// BUILDERS
+//   vertebrate.ts buildVertebrate(design, rig, rest, VertSpec) -> { geo, tex, tris, den, fill }
+//              VertSpec = { trunk: chest/barrel/waist/hips sections, neck, tail, hump; head: skull family + eyes, ears,
+//              nose, teeth, tongue, whiskers, throat; legs: fore/mid/hind kinds; coat; parts: VPart[] }
+//   arthropod.ts buildArthropod(design, rig, rest)   softbody.ts buildSerpent / buildGastropod
+//   species/   SPECIES (the bestiary recipes as data), geneRecipe (any procedural vertebrate), recipeFor(design)
+//   legs.ts    legRings(kind, fore, r, tj, segL, footH), legFoot(kind, ...): hoof, stilt, paw, bear, pillar, sprawl,
+//              leap, bird, knuckle (limb.ts limb() takes 2- or 3-segment legs; hoof() a solid or cloven hoof)
+//   face.ts    pupilDisc (on the pupil bone), pinna (ears), noseLeather, drawNostrils, tooth, tusk, whiskers, tongueP,
+//              mouthLining, throatSac; head.ts mandible() fits a jaw under any skull's lip line
+//   coat.ts    Coat: colours per zone (back, flank, belly, neck, tail, limb, sock, foot, face, muzzle, ear), pattern
+//              in body space (stripes, spots, rosettes, bands, mottled, saddle, rings, flankSpots, shoulderStripes,
+//              dorsal, blotches, speckle), Surf per zone (fur, scales, pebbles, folds, glands, creases, wet), socks,
+//              mud, scars, ribs; coatPaint(C, part), coatSampler(C, part) (a part takes its colour from the skin)
+//   vparts.ts  VPart generators: horn, ramHorns, antlers, tusks, skullCrest, helm, brow, beak, headFans, gills,
+//              noseleaf, barbels, wattle, frill, eyeRows, carapace, plates, shell, crest, sail, tailFin, tailFan, club,
+//              quills, spiracles, shag, mane, tuft, feathering, fleece, wings, warts, arms
+//   locks.ts   locks({ seats, tiles }): hair with geometry over one shared alpha-cut atlas of drawn lock tiles
+//   organs.ts  growOrgans(X): the biotech genes' organs seated on the trunk, skull and forefeet
 //
 // ASSEMBLY (core.ts)
 //   const body = new Body(pageSize)            one page, one skinned geometry; body.den = texels per metre requested
@@ -29,6 +51,8 @@
 //   growth.ts  crusts (lichen cups and barnacle clusters on a host), tree (stand-in; titans use the real flora)
 //
 // PAINT (paint.ts, look.ts)
+//   Px.pelt (fur as broad light planes whose edges break into flames of hair along the flow), Px.locks (shingled
+//   pointed locks), Px.scales, Px.pebbles, px.folds ...
 //   lookPaint(Look) paints any chart from a declarative recipe: ramp + step, belly, per-material looks (mats),
 //   scales { size, kind: shield|pebble|scute|keel }, fur { len, width, flow }, pebbles (hide), folds (skin creases
 //   round an axis), spots, mud, lichen rosettes, scars, glints, creases (cage ink lines). For bespoke marks use Px
@@ -45,3 +69,11 @@ export * from './append';
 export * from './growth';
 export * from './look';
 export { Px, RP, cell3 } from './paint';
+export * from './legs';
+export * from './face';
+export * from './coat';
+export * from './vparts';
+export * from './locks';
+export { buildVertebrate, type VertSpec, type VCtx } from './vertebrate';
+export { buildArthropod } from './arthropod';
+export { buildSerpent, buildGastropod } from './softbody';

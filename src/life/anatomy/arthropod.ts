@@ -183,7 +183,7 @@ export function buildArthropod(d: Design, rig: Rig, rest: V3[]) {
   for (const lg of rig.legs) {
     const [iF, iT, iTa] = lg.bones, s = lg.side, cox = rest[rig.bones[iF].parent >= 0 ? rig.bones[iF].parent : iF];
     const hip = rest[iF], knee = rest[iT], ft = rest[iTa], l1 = dst(hip, knee), l2 = dst(knee, ft);
-    const r0 = lt * 0.5 * (lg.pair === (spider ? 3 : 2) && g('leg_saltatorial') ? 2.2 : 1);
+    const r0 = lt * (crab ? 0.34 : 0.4) * (lg.pair === (spider ? 3 : 2) && g('leg_saltatorial') ? 2.2 : 1);
     const legPaint = chitinPaint(lg.pair % 2 && d.pattern === 'rings' ? pat : base, { pits: lt * 0.3, glint: 0.7, setae: lt * 0.9, band: sh(base, -1), bandAt: (q) => { const y = q[1]; return Math.abs(y - knee[1]) < lt * 0.6 || Math.abs(y - hip[1]) < lt * 0.5 ? 1 : 0; } });
     // the coxa: a stout segment from the body wall
     body.add(stalk({ name: 'coxa' + lg.pair + s, path: curve([add(cox, [-s * lt * 0.6, lt * 0.3, 0]), add(cox, [s * lt * 0.1, -lt * 0.2, 0]), add(hip, [0, -lt * 0.4, 0])], 4), r: () => r0 * 1.25, around: 6, skin: () => [iR, 1], paint: legPaint, levels: 0 })).reg = 8;

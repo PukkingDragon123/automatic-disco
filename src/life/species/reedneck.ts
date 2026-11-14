@@ -13,7 +13,7 @@ export const reedneck: SpeciesFn = (d, rig) => {
       base, belly, bellyArc: 0.9,
       pattern: { kind: 'mottled', c: pat, scale: 0.8, on: { limbs: true } },
       surf: { body: hide(W, 1.0, 0.8), neck: scales(W, 0.5, 'keel'), limb: hide(W, 0.7), face: scales(W, 0.35, 'pebble') },
-      face: { chin: belly }, claw: ['basalt', 2], mud: { h: rig.dims.legLen * 0.6, ramp: 'soil' },
+      face: { chin: belly }, claw: ['basalt', 2], ribs: 0.6, mud: { h: rig.dims.legLen * 0.6, ramp: 'soil' },
     },
     parts: [
       { k: 'headFans', size: 1.3, c: acc, rays: 6, fwd: true },

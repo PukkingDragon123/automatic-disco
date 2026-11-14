@@ -105,7 +105,7 @@ export function mirewalker(d: Design, rig: Rig, rest: V3[]) {
     rig.bones[e.bone].pos = [c[0] - head[0], c[1] - head[1], c[2] - head[2]]; rest[e.bone] = c; rig.bones[e.pupil].pos = [0, 0, 0]; rest[e.pupil] = c;
     body.add(eyeball({ name: 'eye' + k, c, ax, r: er, bone: e.bone, iris: RP('teal'), pupil: 'round', irisA: 0.78 }));
     const lid = rig.lids[k];
-    if (lid) { rig.bones[lid.bone].pos = [c[0] - head[0], c[1] - head[1], c[2] - head[2]]; rest[lid.bone] = c; lid.axis = norm(cross([0, 1, 0], norm(ax)).map((v) => v * -s) as V3) as [number, number, number]; body.add(eyelid({ name: 'lid' + k, c, ax: norm(ax), r: er, bone: lid.bone, paint: lookPaint({ ...faceLook, pebbles: { size: 0.05 } }) })); }
+    if (lid) { rig.bones[lid.bone].pos = [c[0] - head[0], c[1] - head[1], c[2] - head[2]]; rest[lid.bone] = c; lid.axis = norm(cross([0, 1, 0], norm(ax))) as [number, number, number]; body.add(eyelid({ name: 'lid' + k, c, ax: norm(ax), r: er, bone: lid.bone, paint: lookPaint({ ...faceLook, pebbles: { size: 0.05 } }) })); }
   });
   // sensory barbels: a fringe hanging from the upper lip and the chin, swaying with the jaw
   const barbLook = lookPaint({ ramp: 'sage', step: 3, creases: 0.5, pebbles: { size: 0.05, depth: 0.6 }, glints: { size: 0.2, every: 0.4 } });

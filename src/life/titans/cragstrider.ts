@@ -126,7 +126,7 @@ export function cragstrider(d: Design, rig: Rig, rest: V3[]) {
     rig.bones[e.bone].pos = [c[0] - head[0], c[1] - head[1], c[2] - head[2]]; rest[e.bone] = c; rig.bones[e.pupil].pos = [0, 0, 0]; rest[e.pupil] = c;
     body.add(eyeball({ name: 'eye' + k, c, ax, r: eyeR * 1.4, bone: e.bone, iris: RP('ochre'), pupil: 'bar', irisA: 0.75 }));
     const lid = rig.lids[k];
-    if (lid) { rig.bones[lid.bone].pos = [c[0] - head[0], c[1] - head[1], c[2] - head[2]]; rest[lid.bone] = c; lid.axis = norm(cross([0, 1, 0], norm(ax)).map((v) => v * -s) as V3) as [number, number, number]; body.add(eyelid({ name: 'lid' + k, c, ax: norm(ax), r: eyeR * 1.4, bone: lid.bone, paint: lookPaint({ ...faceLook, pebbles: { size: 0.04 } }) })); }
+    if (lid) { rig.bones[lid.bone].pos = [c[0] - head[0], c[1] - head[1], c[2] - head[2]]; rest[lid.bone] = c; lid.axis = norm(cross([0, 1, 0], norm(ax))) as [number, number, number]; body.add(eyelid({ name: 'lid' + k, c, ax: norm(ax), r: eyeR * 1.4, bone: lid.bone, paint: lookPaint({ ...faceLook, pebbles: { size: 0.04 } }) })); }
     // the second row and the back eyes: small lidless slit eyes in sockets, glinting ochre
     for (let r = 0; r < 3; r++) { const qq = gridSurf(sk.m, sk.grids[0], su(2, s) - s * 0.02 * (r + 1), sv(3) - 0.06 - r * 0.07); pitsH.push({ c: qq.p, r: eyeR * 0.85, slit: true, glow: RP('ochre') }); }
     for (let r = 0; r < 4; r++) { const qq = gridSurf(sk.m, sk.grids[0], su(3, s), sv(4) + r * 0.05); pitsH.push({ c: qq.p, r: eyeR * 0.45 }); }

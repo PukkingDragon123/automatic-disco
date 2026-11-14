@@ -46,6 +46,8 @@ export interface Coat {
   face?: { muzzle?: C2; mask?: C2; tear?: boolean; chin?: C2; brow?: C2; nose?: C2 };
   /** caked mud up the legs to this height (m), healed scars (count), lichen rosettes (count) */
   mud?: { h: number; ramp?: RampName }; scars?: number; lichen?: number;
+  /** rib ridges drawn down the flanks between the shoulder and the waist (lean or bare-skinned animals), 0..1 */
+  ribs?: number;
   /** keratin: claws, hooves, horns, beak */
   horn?: C2; claw?: C2;
 }
@@ -57,8 +59,8 @@ export interface BodyFrame {
   /** body half width (m) for scaling patterns */
   W: number;
 }
-export interface CoatCtx { coat: Coat; F: BodyFrame; seed: number; ground: number; zStop: number; skullC: V3 }
-export const coatCtx = (coat: Coat, F: BodyFrame, seed: number, o: { zStop?: number; skullC?: V3 } = {}): CoatCtx => ({ coat, F, seed, ground: 0, zStop: o.zStop ?? Infinity, skullC: o.skullC ?? [0, 0, 0] });
+export interface CoatCtx { coat: Coat; F: BodyFrame; seed: number; ground: number; zStop: number; skullC: V3; scarLines: { pts: V3[]; w: number }[] }
+export const coatCtx = (coat: Coat, F: BodyFrame, seed: number, o: { zStop?: number; skullC?: V3 } = {}): CoatCtx => ({ coat, F, seed, ground: 0, zStop: o.zStop ?? Infinity, skullC: o.skullC ?? [0, 0, 0], scarLines: [] });
 
 /** where a point lies along the body: arc length s from the tail tip, angle a round from the top (+ toward +x) */
 let _hint = 0;
@@ -242,6 +244,18 @@ export function coatPaint(C: CoatCtx, part: PartKind, o: { flow?: number; extra?
     }
     // the face's marks
     if ((part === 'head' || part === 'lid') && c.face?.mask) { const Rm = RP(c.face.mask[0]); for (let i = 0; i < n; i++) if (zone[i] === ZI.face && Math.abs(P[i * 3 + 1] - C.skullC[1]) < F.W * 0.12 && P[i * 3 + 2] > C.skullC[2] - F.W * 0.1) { px.rampI[i] = px.ramp(Rm); px.step[i] = c.face.mask[1]; } }
+    // rib ridges: a lit ridge and a dark groove per rib, running down the flank from the back to the belly line
+    if (c.ribs && part === 'trunk') {
+      const sp = F.W * 0.16, s0 = F.sShoulder - (F.sShoulder - F.sHips) * 0.62, q: V3 = [0, 0, 0];
+      for (let i = 0; i < n; i++) {
+        if (zone[i] !== ZI.flank && zone[i] !== ZI.back) continue;
+        q[0] = P[i * 3]; q[1] = P[i * 3 + 1]; q[2] = P[i * 3 + 2];
+        const l = locate(F, q), aa = Math.abs(l.a); if (l.s < s0 || l.s > F.sShoulder || aa < 0.7 || aa > 2.3) continue;
+        const f = ((l.s - s0) / sp + aa * 0.15) % 1, k = c.ribs * Math.sin(Math.PI * (aa - 0.7) / 1.6);
+        if (f < 0.16) px.mark[i] -= 1.1 * k; else if (f < 0.38) px.mark[i] += 0.6 * k;
+      }
+    }
+    for (const sc of C.scarLines) if (part === 'trunk' || part === 'limb') px.scar(sc.pts, sc.w, RP(c.belly[0]));
     if (c.mud && (part === 'limb' || part === 'foot' || part === 'trunk')) { const h = c.mud.h; px.mud((i) => h + Math.sin(P[i * 3 + 2] * 9 + P[i * 3] * 7) * h * 0.18, RP(c.mud.ramp ?? 'soil'), { clump: Math.max(0.02, h * 0.12), seed }); }
     o.extra?.(px, ch);
     // wet skin and glossy scales catch glints

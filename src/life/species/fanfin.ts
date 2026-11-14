@@ -13,7 +13,7 @@ export const fanfin: SpeciesFn = (d, rig) => {
       base, belly, bellyArc: 0.95,
       pattern: { kind: 'speckle', c: pat, scale: 0.6, on: { limbs: true, head: true, tail: true } },
       surf: { body: wet(W, 0.18), limb: wet(W, 0.1, 0.7), face: wet(W, 0.15, 0.6) },
-      face: { chin: sh(belly, 0) }, horn: ['plum', 1],
+      face: { chin: sh(belly, 0) }, horn: ['plum', 1], ribs: 0.8,
     },
     parts: [
       { k: 'headFans', size: 1.15, c: acc, rays: 7 },

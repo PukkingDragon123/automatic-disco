@@ -190,6 +190,14 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
   const zStop = (fam.z[seat.stop] - 0.04) * hl;
   const C = coatCtx(spec.coat, F, seed, { zStop, skullC: skC });
   tr.paint = coatPaint(C, 'trunk');
+  // old wounds: claw rakes down a flank and across a haunch, seated on the trunk's surface
+  for (let k = 0; k < (spec.coat.scars ?? 0); k++) {
+    const side = k % 2 ? 0.72 : 0.28, v = 0.35 + ((k * 0.37 + seed * 0.013) % 0.45), rake = 3 - (k % 2);
+    for (let r = 0; r < rake; r++) {
+      const pts: V3[] = []; for (let j = 0; j < 4; j++) { const q = gridSurf(tr.m, tr.grids[0], side + (j / 3 - 0.5) * 0.12, v + r * 0.025 + j * 0.008); pts.push(q.p); }
+      C.scarLines.push({ pts, w: W * 0.025 });
+    }
+  }
   // ---------------------------------------------------------------- the skull
   const iH = rig.head, iN = bi('neck'), iJ = rig.jaw;
   const M = HS.muzzle ?? 1, zS = fam.z[seat.stop];

@@ -13,7 +13,7 @@ export const gallowneck: SpeciesFn = (d, rig) => {
       base, belly, bellyArc: 0.9,
       pattern: { kind: 'spots', c: pat, scale: 1.25, on: { limbs: true, tail: true } },
       surf: { body: fur(W, 0.7, 0.5), limb: fur(W, 0.5), face: fur(W, 0.4), muzzle: fur(W, 0.25) },
-      face: { muzzle: sh(belly, 0), nose: ['ink', 1] }, claw: ['basalt', 2],
+      face: { muzzle: sh(belly, 0), nose: ['ink', 1] }, claw: ['basalt', 2], ribs: 0.5, scars: 1,
     },
     parts: [
       { k: 'skullCrest', len: 1.1, h: 0.55, c: acc },
