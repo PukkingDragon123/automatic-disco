@@ -30,12 +30,16 @@ export class Splashes {
   /** a huge entry: crown, column, ring, foam (the splashdown, a breaching titan) */
   big(x: number, z: number, k = 1) {
     const o = this.o, g = o.g, y = o.surfaceAt(x, z);
-    for (let i = 0; i < 40; i++) { const a = (i / 40) * Math.PI * 2; g.fx.spray(x + Math.cos(a) * 1.4 * k, y + 0.2, z + Math.sin(a) * 1.4 * k, Math.cos(a), 1.7, Math.sin(a), 3, i % 3 ? WHITE : FOAM, { speed: 7 + k * 3, cone: 0.25, size: 4 + k, life: 1.8, grav: 11, drag: 0.6 }); }
-    g.fx.spray(x, y + 0.3, z, 0, 1, 0, Math.round(50 * k), WHITE, { speed: 14 * Math.sqrt(k), cone: 0.18, size: 4 + k, life: 2.2, grav: 10, drag: 0.4 });
-    g.fx.burst(x, y + 0.5, z, Math.round(40 * k), SPRAY, { speed: 3, up: 2, size: 7 + k * 2, life: 2.6, grav: -0.4 });
-    for (let i = 0; i < 18; i++) { const a = (i / 18) * Math.PI * 2; g.fx.spray(x + Math.cos(a) * 2, y + 0.15, z + Math.sin(a) * 2, Math.cos(a), 0.12, Math.sin(a), 3, FOAM, { speed: 9 * k, cone: 0.3, size: 5, life: 1.6, grav: 2, drag: 1.4 }); }
+    // the crown: a ring of sheets thrown up and out, in two foam tones
+    for (let i = 0; i < 56; i++) { const a = (i / 56) * Math.PI * 2; g.fx.spray(x + Math.cos(a) * 1.3 * k, y + 0.2, z + Math.sin(a) * 1.3 * k, Math.cos(a), 1.9, Math.sin(a), 5, i % 3 ? WHITE : FOAM, { speed: 8 + k * 3.5, cone: 0.22, size: 6 + k * 2, life: 1.9, grav: 11, drag: 0.5 }); }
+    // the column bursting up the middle, and its veil of spray
+    g.fx.spray(x, y + 0.3, z, 0, 1, 0, Math.round(90 * k), WHITE, { speed: 15 * Math.sqrt(k), cone: 0.14, size: 7 + k * 2, life: 2.4, grav: 10, drag: 0.35 });
+    g.fx.spray(x, y + 0.3, z, 0, 1, 0, Math.round(40 * k), FOAM, { speed: 9 * Math.sqrt(k), cone: 0.35, size: 9 + k * 2, life: 2.6, grav: 7, drag: 0.6 });
+    g.fx.burst(x, y + 0.8, z, Math.round(50 * k), SPRAY, { speed: 3.5, up: 2.5, size: 11 + k * 3, life: 3, grav: -0.3 });
+    // the ring racing out over the water
+    for (let i = 0; i < 28; i++) { const a = (i / 28) * Math.PI * 2; g.fx.spray(x + Math.cos(a) * 2, y + 0.15, z + Math.sin(a) * 2, Math.cos(a), 0.1, Math.sin(a), 4, FOAM, { speed: 10 * k, cone: 0.3, size: 7, life: 1.7, grav: 2, drag: 1.3 }); }
     this.ripple(x, z, 1.5); setTimeout(() => this.ripple(x + 0.5, z - 0.4, 1.4), 220); setTimeout(() => this.ripple(x - 0.6, z + 0.3, 1.2), 520);
-    detailsOf(g)?.splash(x, z, 2.5 * k, { drops: Math.round(30 * k) });
+    detailsOf(g)?.splash(x, z, 2.5 * k, { drops: Math.round(40 * k) });
     o.fishery?.splash(x, z, 30 * k, 1);
     g.cam.shake(0.5 * k, 0.6);
     sfx('crack', 2.4, 0.8 * Math.min(1, k)); sfx('squelch', 0.5, 0.9); sfx('pulse', 0.5, 0.5);

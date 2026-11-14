@@ -134,7 +134,7 @@ export class Flora {
       uMoss: { value: moss }, uVis: { value: vis }, uDark: { value: new THREE.Color(0x07080c) },
       uField: { value: this.field.tex }, uBark: { value: this.tex.bark },
       uFocus: { value: new THREE.Vector3() }, uCut: { value: new THREE.Vector4(0, 2.2, 3.4, 0) }, uDay: { value: 1 },
-      uSeasonA: { value: new THREE.Vector4() }, uSeasonB: { value: new THREE.Vector4() },
+      uSeasonA: { value: new THREE.Vector4(0, 0, 0, 0) }, uSeasonB: { value: new THREE.Vector4(0, 0, 0, 0) },
       uAutumn: { value: [rampNamed('rust')[4], rampNamed('ochre')[5], rampNamed('coral')[4], rampNamed('plum')[3]].map((c) => new THREE.Color(c)) },
       uWindDir: { value: new THREE.Vector2(Math.cos(region.seed * 1.7), Math.sin(region.seed * 1.7)) }, uWind: { value: WIND[region.biome.key] ?? 1 },
       uGraftCol: { value: [VEYR.vein, ...RIVALS.map((r) => r.vein)].slice(0, 4).map((c) => new THREE.Color(c)) },

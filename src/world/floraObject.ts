@@ -56,7 +56,7 @@ function kitFor(biome?: BiomeKey, planetSeed?: number): Kit {
     uTime: { value: 0 }, uDay: { value: 1 }, uWind: { value: 1 }, uWindDir: { value: new THREE.Vector2(0.8, 0.6) }, uBark: { value: tex.bark },
     uDark: { value: new THREE.Color(0x07080c) }, uGraftCol: { value: [0, 1, 2, 3].map(() => new THREE.Color(0x6affd8)) },
     uBloom: { value: Array.from({ length: 8 }, (_, i) => new THREE.Color(pal.bloom[i % pal.bloom.length]).convertSRGBToLinear()) },
-    uSeasonA: { value: new THREE.Vector4() }, uSeasonB: { value: new THREE.Vector4() },
+    uSeasonA: { value: new THREE.Vector4(0, 0, 0, 0) }, uSeasonB: { value: new THREE.Vector4(0, 0, 0, 0) },
     uAutumn: { value: [0xc36530, 0xd8ac5b, 0xbf6346, 0x833b4e].map((c) => new THREE.Color(c)) },
     uLean: { value: 0 }, uHComp: { value: 1 }, uCamRight: { value: new THREE.Vector3(1, 0, 0) }, uCamBack: { value: new THREE.Vector3(0, 0, 1) },
   });

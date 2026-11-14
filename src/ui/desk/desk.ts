@@ -16,7 +16,7 @@ import { HoloTable, CRT, Orrery, InspectBoard } from './boards';
 import { LiveDecal } from './kit';
 
 /** the strip's panel: a 36-unit face leaning back 50 degrees above a 12-deep ledge */
-const PANEL_L = 36, PANEL_TILT = 50 * Math.PI / 180, LEDGE = 12, LEDGE_H = 6;
+const PANEL_L = 36, PANEL_TILT = 48 * Math.PI / 180, LEDGE = 12, LEDGE_H = 6;
 const RAIL_Y = LEDGE_H + PANEL_L * Math.sin(PANEL_TILT), RAIL_Z = -LEDGE - PANEL_L * Math.cos(PANEL_TILT);
 /** the wing decks: their top, front edge and depth */
 const DECK_Y = RAIL_Y + 5, DECK_Z0 = RAIL_Z - 4, DECK_D = 54, WING_W = 204, WING_X = 320 - WING_W / 2;
@@ -73,6 +73,7 @@ export class Desk {
   constructor(parent: HTMLElement) {
     this.view = new DeskView(parent);
     this.view.scene.add(this.root);
+    (window as unknown as { __desk: Desk }).__desk = this;
     this.root.add(this.strip, this.wing.L, this.wing.R);
     this.hull = new Gauge(22, -2.1, 2.1, { ticks: 8, red: [0, 0.2], word: 'HULL' });
     this.charge = new Gauge(22, -2.1, 2.1, { ticks: 8, red: [0, 0.15], word: 'CHG' });
@@ -102,8 +103,8 @@ export class Desk {
     const res: ResKind[] = ['ore', 'carbon', 'water', 'soil'], names = ['ORE', 'CARBON', 'WATER', 'SOIL'];
     res.forEach((r, i) => {
       const cx = -214 + i * 34;
-      const v = new Vessel(r); v.root.position.set(cx - 9, 16, 1); v.root.scale.setScalar(0.92); p.add(v.root); this.vessels[r] = v;
-      const c = new Counter(3); c.root.position.set(cx + 8.5, 22, 0); c.root.scale.setScalar(0.8); p.add(c.root); this.resCount[r] = c;
+      const v = new Vessel(r); v.root.position.set(cx - 9, 16, 1); p.add(v.root); this.vessels[r] = v;
+      const c = new Counter(3); c.root.position.set(cx + 8.5, 22, 0); p.add(c.root); this.resCount[r] = c;
       const cap = new LiveDecal(18, 6, { flat: 0.7 }); cap.mesh.position.set(cx + 8.5, 13, 0.4); p.add(cap.mesh); this.resCap[r] = cap;
       const lb = stencil(names[i], cx, 32); p.add(lb);
       const lm = new Lamp(R.glowTeal[3], 1.4); lm.root.position.set(cx + 13, 7, 0); p.add(lm.root); this.resLamp[r] = lm;
@@ -122,8 +123,8 @@ export class Desk {
     // ---- core cells (the skill tree), clock, held ground
     this.cells.root.position.set(158, 22, 0); p.add(this.cells.root, stencil('CELLS', 158, 32));
     this.cellLamp.root.position.set(170, 12, 0); p.add(this.cellLamp.root);
-    this.clock.root.position.set(198, 22, 0); this.clock.root.scale.setScalar(0.8); p.add(this.clock.root, stencil('TIME', 198, 32));
-    this.ground.root.position.set(246, 22, 0); this.ground.root.scale.setScalar(0.8); p.add(this.ground.root, stencil('GND %', 246, 32));
+    this.clock.root.position.set(198, 22, 0); p.add(this.clock.root, stencil('TIME', 198, 32));
+    this.ground.root.position.set(246, 22, 0); p.add(this.ground.root, stencil('GND %', 246, 32));
     // ---- things on the ledge and the rail
     this.tube.root.position.set(150, LEDGE_H, -5); s.add(this.tube.root);
     this.menuLever.root.position.set(292, LEDGE_H + 2, -6); s.add(this.menuLever.root);
@@ -154,7 +155,7 @@ export class Desk {
     const wk = this.works;
     wk.root.add(mesh(box(44, 26, 10), M('olive'), 0, 13, -4));
     const face = new THREE.Group(); face.position.set(0, 3, 1); face.rotation.x = -0.35; wk.root.add(face);
-    wk.gauge.root.position.set(-10, 13, 1); wk.store.root.position.set(12, 17, 1); wk.store.root.scale.setScalar(0.72); wk.crew.root.position.set(12, 6, 1); wk.crew.root.scale.setScalar(0.72);
+    wk.gauge.root.position.set(-10, 13, 1); wk.store.root.position.set(12, 17, 1);  wk.crew.root.position.set(12, 6, 1); 
     wk.lamp.root.position.set(-19, 22, 1);
     face.add(wk.gauge.root, wk.store.root, wk.crew.root, wk.lamp.root, stencil('STORE', 12, 23.5), stencil('CREW', 12, 0.5));
     this.put('L', 'build', wk.root, 44, -30);
@@ -291,7 +292,7 @@ export class Desk {
   layout() {
     this.view.resize();
     const W = this.view.W;
-    this.sc = Math.min(1, W / 652);
+    this.sc = W >= 640 ? 1 : W / 640;
     this.root.scale.setScalar(this.sc);
     this.maskKey = '';
   }
@@ -313,7 +314,7 @@ export class Desk {
   private mask() {
     const cv = this.view.canvas, r = cv.getBoundingClientRect();
     const cols = Math.ceil(r.width / 6), top = new Float32Array(cols).fill(r.height);
-    const box3 = new THREE.Box3(), v = new THREE.Vector3();
+    const box3 = new THREE.Box3(), v = new THREE.Vector3(), cam = this.view.cam;
     const groups: THREE.Object3D[] = [this.strip];
     for (const side of ['L', 'R'] as Side[]) if (this.wing[side].visible) groups.push(...this.wing[side].children.filter((c) => c.visible));
     for (const h of this.hots) if (visibleUp(h.obj)) groups.push(h.obj);
@@ -336,7 +337,6 @@ export class Desk {
         for (let c = c0; c <= c1; c++) top[c] = Math.min(top[c], Math.max(0, y0 - 2));
       });
     }
-    const cam = this.view.cam;
     function _proj(p: THREE.Vector3) { p.project(cam); p.x = (p.x * 0.5 + 0.5) * r.width; p.y = (-p.y * 0.5 + 0.5) * r.height; }
     const pts: string[] = [`0px ${r.height}px`];
     let prev = -1;

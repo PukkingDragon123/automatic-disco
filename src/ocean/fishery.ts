@@ -284,7 +284,7 @@ export class Fishery {
     if (f.breach > 0) {
       // the breach: a surge up and out, a hang, the fall and the splash
       f.breach += dt;
-      if (f.breach < 2.2) { f.vy = Math.min(f.vy + dt * 9, 11); }
+      if (f.breach < 2.0) { f.vy = Math.min(f.vy + dt * 8, 8.5); }
       else f.vy -= 9.8 * dt;
       f.x += f.vx * dt; f.z += f.vz * dt; f.y += f.vy * dt;
       const sy = o.surfaceAt(f.x, f.z);

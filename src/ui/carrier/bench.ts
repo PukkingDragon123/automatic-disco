@@ -6,8 +6,9 @@ import type { Engine } from '../../app/engine';
 import { buildCarrier } from '../deployShip';
 import { makeSpace } from '../globe';
 import { resetGrade } from '../../gfx/post';
+import { gbuf } from '../../gfx/gbuf';
 
-export interface BenchOpts { view?: 'ext' | 'int' | 'both'; doors?: number; sun?: [number, number, number]; bloom?: number; t?: number }
+export interface BenchOpts { view?: 'ext' | 'int' | 'both'; doors?: number; sun?: [number, number, number]; bloom?: number; t?: number; hide?: string[]; noOutline?: boolean }
 
 export function bench(engine: Engine, o: BenchOpts = {}) {
   document.querySelectorAll('body > div').forEach((d) => { (d as HTMLElement).style.display = 'none'; });
@@ -19,6 +20,8 @@ export function bench(engine: Engine, o: BenchOpts = {}) {
   const buildMs = Math.round(performance.now() - t0);
   c.ship.sun.position.copy(sunDir).multiplyScalar(220);
   if (o.doors !== undefined) c.ship.setDoors(o.doors);
+  if (o.noOutline) c.group.traverse((ob) => { if (ob.name === 'carrier-m') gbuf((ob as THREE.Mesh).material as THREE.Material, 0); });
+  if (o.hide) c.group.traverse((ob) => { if (o.hide!.some((h) => ob.name === h || ob.type === h)) ob.visible = false; });
   c.ship.root.traverse((ob) => { const l = ob as THREE.Light; if ((l as THREE.PointLight).isPointLight || ((l as THREE.SpotLight).isSpotLight && ((l as THREE.SpotLight).distance <= 8 || l.color.getHex() === 0xff2a14))) l.visible = false; });
   const cam = new THREE.PerspectiveCamera(36, 1, 0.5, 15000);
   cam.position.set(-150, 70, 170); cam.lookAt(0, 0, -30);

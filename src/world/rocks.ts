@@ -1,18 +1,22 @@
-// Sculpted rock formations. Every rock is grown from a primitive (an icosphere for boulders and slabs, a lathe for
-// spires, a swept tube for arches, hexagonal prisms for basalt) and then weathered: fbm swelling, planar fracture
-// cuts that leave crisp facets, recessed bedding in layered stone, solution grooves in limestone. Normals keep hard
-// edges at the fractures (crease angle), each vertex carries a cavity occlusion term, and everything is merged into
-// one mesh. The shader paints it with the palette's stone (dominant-axis projection, 32 px/m), world-height strata
-// that line up across a whole formation, lichen crusts, moss on top faces (more in damp woods), snow in the cold,
-// a dark wet line at the water, the Veyr moss / rival creep overlay and fog of war.
+// Sculpted rock formations. Every rock is grown from a primitive (an icosphere for boulders, slabs and ore nodes, a
+// lathe for spires, a swept tube for arches and cave mouths, hexagonal prisms for basalt columns and crystals) and then
+// weathered: fbm swelling, planar fracture cuts that leave crisp facets, recessed bedding in layered stone, solution
+// grooves in limestone. Normals keep hard edges at the fractures (crease angle), each vertex carries a cavity
+// occlusion term. The pieces are merged per 32 m tile (frustum-culled; the small stones of a tile drop out past
+// ~85 m: a LOD), and the shader paints them with the hand-drawn pixel art of rockTex.ts at the ground's own 48 px/m:
+// the family's side or top face (world-projected on the dominant axis), alternate strata bands that line up across a
+// whole formation, ore veins (a node's own ore, or the ground's geo map where a rock stands on a vein), moss on the
+// upward faces, snow above the snow line and in the cold, a dark wet line at the water, glowing lumen and gravium,
+// gravium's floating stones bobbing, the Veyr moss / rival creep overlay and fog of war.
 import * as THREE from 'three';
 import { Region, RockMat, type RockPiece } from './region';
 import { Rand } from '../core/rand';
 import { Noise } from '../core/noise';
 import { gbuf } from '../gfx/gbuf';
 import { SHADER_NOISE, FOW_FN } from './glsl';
-import { buildRockTexture, RL } from './rockTex';
+import { buildRockTexture, RL, CRYSTAL_L } from './rockTex';
 import { L, B, TILE_M } from './blockTex';
+import { RAMPS } from '../art/palette';
 
 /** sqrt-based length (Math.hypot is several times slower in the hot loops) */
 const hyp = (a: number, b: number, c = 0) => Math.sqrt(a * a + b * b + c * c);
@@ -120,7 +124,7 @@ const hashL = (a: number, b: number) => { let h = (a * 374761393 + b * 668265263
 /** a spire as a lathe: rings up the height with a per-family profile, bedding recesses and grooves, a domed top */
 function spireShape(nz: Noise, r: Rand, p: RockPiece): Soup {
   const H = p.sy, R0 = p.sx, NR = Math.max(10, Math.min(34, Math.round(H * 5.5))), NS = 14;
-  const fam = p.mat === RockMat.SANDSTONE ? 'hoodoo' : p.mat === RockMat.LIMESTONE ? 'pillar' : 'stack';
+  const fam = p.fam ?? (p.mat === RockMat.SANDSTONE ? 'hoodoo' : p.mat === RockMat.LIMESTONE ? 'pillar' : 'stack');
   const ox = r.range(-50, 50), waist = r.range(0.5, 0.7), beds = r.range(1.6, 2.6);
   const prof = (t: number) => {
     if (fam === 'hoodoo') {
@@ -330,14 +334,76 @@ function stumpShape(nz: Noise, r: Rand, p: RockPiece): WoodGeo {
   return woodOut(S);
 }
 
+// ------------------------------------------------------------------------------------------------ crystals, caves
+/** a crystal: a hexagonal prism, slightly tapering, with a six-faced pointed tip; each face carries its own UV into
+ *  one of the crystal layer's four 24 px face columns (u across the face, v up it, 48 px/m) */
+function crystalShape(r: Rand, p: RockPiece, layer: number): WoodGeo {
+  const S = woodSoup(), R0 = p.sx, H = p.sy, tip = H * r.range(0.18, 0.3), taper = r.range(0.7, 0.92), NS = 6;
+  const rad = Array.from({ length: NS }, () => R0 * r.range(0.8, 1.15)), a0 = r.range(0, Math.PI);
+  const ring = (y: number, k: number): V3 => { const a = a0 + (k / NS) * Math.PI * 2, rr = rad[k % NS] * (y > 0 ? taper : 1); return [Math.cos(a) * rr, y, Math.sin(a) * rr * (p.sz / p.sx)]; };
+  const top: V3 = [r.range(-0.15, 0.15) * R0, H + tip, r.range(-0.15, 0.15) * R0];
+  const nrm = (a: V3, b: V3, c: V3): V3 => { const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2]; const x = uy * vz - uz * vy, y = uz * vx - ux * vz, z = ux * vy - uy * vx, l = hyp(x, y, z) || 1; return [x / l, y / l, z / l]; };
+  for (let k = 0; k < NS; k++) {
+    const col = (k * 7 + Math.floor(r.next() * 4)) % 4, u0 = col * 0.25, u1 = u0 + 0.245;
+    const b0 = ring(-0.1, k), b1 = ring(-0.1, k + 1), t0 = ring(H, k), t1 = ring(H, k + 1), n = nrm(b0, t0, b1);
+    const v0 = -0.05, v1 = (H + 0.1) * 0.5;
+    wtri(S, [[b0, n, 0.55, [u0, v0, layer]], [t0, n, 1, [u0, v1, layer]], [b1, n, 0.55, [u1, v0, layer]]]);
+    wtri(S, [[b1, n, 0.55, [u1, v0, layer]], [t0, n, 1, [u0, v1, layer]], [t1, n, 1, [u1, v1, layer]]]);
+    const nt = nrm(t0, top, t1);
+    wtri(S, [[t0, nt, 1, [u0, v1, layer]], [top, nt, 1, [(u0 + u1) / 2, v1 + tip * 0.5, layer]], [t1, nt, 1, [u1, v1, layer]]]);
+  }
+  return woodOut(S);
+}
+
+/** a cave mouth: a deep, heavy arch set into a cliff (the span along local x, the tunnel along z) and a back wall in
+ *  deep shadow, so the opening reads as dark rock running back into the face */
+function caveShape(nz: Noise, r: Rand, p: RockPiece): Soup {
+  const span = p.sx, H = p.sy, depth = p.sz, NA = 18, NS = 10, P: number[] = [], I: number[] = [];
+  const ox = r.range(-50, 50), lintel = H * 0.42;
+  for (let j = 0; j <= NA; j++) {
+    const a = Math.PI - (j / NA) * Math.PI, cx = Math.cos(a) * (span + lintel * 0.5), cy = Math.max(-0.3, Math.sin(a) * (H - lintel * 0.4));
+    const nx = Math.cos(a), ny = Math.sin(a);
+    for (let k = 0; k < NS; k++) {
+      // the cross-section: a rounded box, thick (the rock above and beside the tunnel)
+      const t = k / (NS - 1), z = (t - 0.5) * depth, out = lintel * (0.55 + 0.45 * Math.sin(Math.PI * t));
+      let f = 1 + nz.fbm3(cx * 0.8 + ox, cy * 0.8, z * 0.8, 3) * 0.2;
+      const bed = Math.floor((cy + 1) * 2.2), fr = (cy + 1) * 2.2 - bed;
+      f *= 1 - 0.08 * hashL(bed, 13) * Math.sin(Math.PI * fr) ** 0.6;
+      P.push(cx + nx * out * f, Math.max(-0.3, cy + ny * out * f), z);
+    }
+  }
+  for (let j = 0; j < NA; j++) for (let k = 0; k < NS - 1; k++) {
+    const a = j * NS + k, b = a + 1, c = a + NS, d = c + 1;
+    I.push(a, b, c, b, d, c);
+  }
+  // the inner vault and the back wall: a dark shell behind the opening
+  const base = P.length / 3;
+  for (let j = 0; j <= NA; j++) {
+    const a = Math.PI - (j / NA) * Math.PI, cx = Math.cos(a) * span * 0.95, cy = Math.max(-0.3, Math.sin(a) * H * 0.85);
+    P.push(cx, cy, depth * 0.45, cx * 0.4, cy * 0.5, depth * 0.5);
+  }
+  for (let j = 0; j < NA; j++) { const a = base + j * 2, b = a + 2; I.push(a, a + 1, b, b, a + 1, b + 1); }
+  const ao = cavity(P, I, 3);
+  for (let v = base; v < P.length / 3; v++) ao[v] = 0.22;
+  return { p: P, i: I, ao };
+}
+
 // ------------------------------------------------------------------------------------------------ the mesh
+type Part = { pos: Float32Array; nor: Float32Array; ao: Float32Array; uv?: Float32Array; piece: RockPiece };
+/** small pieces drop out past this distance (m) */
+const SMALL_FAR = 85;
+const TILE = 32;
+const isSmall = (p: RockPiece) => p.kind === 'pebble' || p.kind === 'river' || p.kind === 'floater' || ((p.kind === 'node' || p.kind === 'crystal') && Math.max(p.sx, p.sy) < 0.7);
+
 export class Rocks {
-  readonly mesh: THREE.Mesh;
-  private ranges: { start: number; count: number; cell: number; h0: number }[] = [];
+  /** every rock: a group of per-tile meshes (the small stones of each tile behind a LOD) */
+  readonly mesh: THREE.Group;
+  private ranges: { mesh: THREE.Mesh; start: number; count: number; cell: number; h0: number }[] = [];
+  private mat: THREE.MeshLambertMaterial;
 
   constructor(readonly region: Region, U: Record<string, THREE.IUniform>) {
-    const R = region, nz = new Noise(R.seed ^ 0x2a0c), parts: { pos: Float32Array; nor: Float32Array; ao: Float32Array; uv?: Float32Array; piece: RockPiece }[] = [];
-    let total = 0;
+    const R = region, nz = new Noise(R.seed ^ 0x2a0c);
+    const tiles = new Map<number, { big: Part[]; small: Part[] }>();
     const shared: Record<string, ReturnType<typeof crease>[]> = {};
     for (const p of R.rocks) {
       const r = new Rand(p.seed);
@@ -345,14 +411,16 @@ export class Rocks {
       if (p.kind === 'column') g = columns(nz, r, p);
       else if (p.kind === 'log') g = logShape(nz, r, p);
       else if (p.kind === 'stump') g = stumpShape(nz, r, p);
+      else if (p.kind === 'crystal') g = crystalShape(r, p, p.oreId === 'lumen' ? CRYSTAL_L.lumen : CRYSTAL_L[p.hue ?? 'quartz']);
       else {
         let soup: Soup, unit = true;
         const big = Math.max(p.sx, p.sz, p.sy * 0.6) * 0.85;
         if (p.kind === 'spire') { soup = spireShape(nz, r, p); unit = false; }
         else if (p.kind === 'arch') { soup = archShape(nz, r, p); unit = false; }
-        else if (p.kind === 'pebble' || p.kind === 'river') {
+        else if (p.kind === 'cave') { soup = caveShape(nz, r, p); unit = false; }
+        else if (p.kind === 'pebble' || p.kind === 'river' || p.kind === 'floater') {
           // small stones share a handful of shapes: scaled, the creased normals follow the inverse scale
-          const key = p.kind, list = (shared[key] ??= []), vi = r.int(0, 7);
+          const key = p.kind === 'floater' ? 'pebble' : p.kind, list = (shared[key] ??= []), vi = r.int(0, 7);
           if (!list[vi]) {
             const vr = new Rand(R.seed * 31 + vi * 977 + (key === 'river' ? 5 : 0));
             list[vi] = crease(key === 'pebble' ? boulderShape(nz, vr, 1, { rough: 0.25, cuts: vr.int(3, 5), cutLo: 0.35, flat: 0.5 }) : boulderShape(nz, vr, 2, { rough: 0.1, cuts: vr.chance(0.3) ? 1 : 0, cutLo: 0.7, flat: 0.45 }), Math.cos(key === 'river' ? 1.2 : 0.62));
@@ -364,18 +432,19 @@ export class Rocks {
             Nn[v] = nx / l; Nn[v + 1] = ny / l; Nn[v + 2] = nz2 / l;
           }
           soup = { p: [], i: [] }; unit = false;
-          g = { pos: P, nor: Nn, ao: u.ao };
+          g = { pos: P, nor: Nn, ao: Float32Array.from(u.ao) };
         }
-        else if (p.kind === 'slab') soup = boulderShape(nz, r, big > 1.6 ? 3 : 2, { rough: 0.14, cuts: r.int(3, 6), cutLo: 0.6, flat: 0.8, box: 0.45, layers: p.mat === RockMat.GRANITE || p.mat === RockMat.BASALT ? 3 : Math.max(3, Math.round(p.sy * 2.6)), recess: 0.11 });
+        else if (p.kind === 'node') soup = boulderShape(nz, r, 2, { rough: 0.22, cuts: r.int(4, 7), cutLo: 0.4, flat: 0.55, box: 0.75 });
+        else if (p.kind === 'slab' || p.kind === 'overhang') soup = boulderShape(nz, r, big > 1.6 ? 3 : 2, { rough: 0.14, cuts: r.int(3, 6), cutLo: 0.6, flat: p.kind === 'overhang' ? 0.9 : 0.8, box: 0.45, layers: p.mat === RockMat.GRANITE || p.mat === RockMat.BASALT ? 3 : Math.max(3, Math.round(p.sy * 2.6)), recess: 0.11 });
         else {
-          const layered = p.mat === RockMat.SANDSTONE || p.mat === RockMat.LIMESTONE;
+          const layered = p.mat === RockMat.SANDSTONE || p.mat === RockMat.LIMESTONE || p.mat === RockMat.SLATE || p.mat === RockMat.TUFF;
           soup = boulderShape(nz, r, big > 1.35 ? 3 : 2, {
-            rough: p.mat === RockMat.GRANITE ? 0.2 : 0.17, cuts: p.mat === RockMat.BASALT ? r.int(5, 8) : r.int(2, 5), cutLo: p.mat === RockMat.BASALT ? 0.45 : 0.6, flat: 0.55,
+            rough: p.mat === RockMat.GRANITE ? 0.2 : 0.17, cuts: p.mat === RockMat.BASALT || p.mat === RockMat.SLATE ? r.int(5, 8) : r.int(2, 5), cutLo: p.mat === RockMat.BASALT ? 0.45 : 0.6, flat: 0.55,
             box: p.mat === RockMat.BASALT ? 0.7 : layered ? 0.8 : undefined, layers: layered ? Math.max(2, Math.round(p.sy * 2.2)) : 0, recess: 0.07,
           });
         }
         if (unit) for (let v = 0; v < soup.p.length; v += 3) { soup.p[v] *= p.sx; soup.p[v + 1] *= p.sy; soup.p[v + 2] *= p.sz; }
-        if (soup.i.length) g = crease(soup, Math.cos(0.62));
+        if (soup.i.length) g = crease(soup, Math.cos(p.kind === 'node' ? 0.45 : 0.62));
       }
       // tilt, yaw, place: one rotation matrix M = Tilt(about the horizontal axis normal to tiltDir) * Yaw
       const c = Math.cos(p.yaw), sn = Math.sin(p.yaw), tc = Math.cos(p.tilt), ts = Math.sin(p.tilt);
@@ -393,12 +462,34 @@ export class Rocks {
         const nx = Nn[i], ny = Nn[i + 1], nz2 = Nn[i + 2];
         Nn[i] = m00 * nx + m01 * ny + m02 * nz2; Nn[i + 1] = m10 * nx + m11 * ny + m12 * nz2; Nn[i + 2] = m20 * nx + m21 * ny + m22 * nz2;
       }
-      parts.push({ ...g, piece: p });
-      const cell = Math.min(R.N - 1, Math.max(0, Math.floor(p.z))) * R.N + Math.min(R.N - 1, Math.max(0, Math.floor(p.x)));
-      this.ranges.push({ start: total, count: g.pos.length / 3, cell, h0: R.h[cell] });
-      total += g.pos.length / 3;
+      const key = Math.floor(Math.max(0, p.z) / TILE) * 64 + Math.floor(Math.max(0, p.x) / TILE);
+      let t = tiles.get(key); if (!t) tiles.set(key, (t = { big: [], small: [] }));
+      (isSmall(p) ? t.small : t.big).push({ ...g, piece: p });
     }
-    const pos = new Float32Array(total * 3), nor = new Float32Array(total * 3), col = new Float32Array(total * 3), info = new Float32Array(total * 3), uvs = new Float32Array(total * 3).fill(-1);
+    this.mat = this.material(U);
+    this.mesh = new THREE.Group();
+    this.mesh.name = 'rocks';
+    for (const [key, t] of tiles) {
+      const cx = ((key % 64) + 0.5) * TILE, cz = (Math.floor(key / 64) + 0.5) * TILE;
+      if (t.big.length) this.mesh.add(this.merge(t.big, 'rocks-big'));
+      if (t.small.length) {
+        const lod = new THREE.LOD();
+        lod.position.set(cx, 0, cz);
+        const m = this.merge(t.small, 'rocks-small');
+        m.position.set(-cx, 0, -cz);
+        const holder = new THREE.Group(); holder.add(m);
+        lod.addLevel(holder, 0); lod.addLevel(new THREE.Group(), SMALL_FAR);
+        this.mesh.add(lod);
+      }
+    }
+  }
+
+  /** merge a tile's parts into one mesh, with the per-vertex terms the shader reads */
+  private merge(parts: Part[], name: string): THREE.Mesh {
+    const R = this.region;
+    let total = 0; for (const q of parts) total += q.pos.length / 3;
+    const pos = new Float32Array(total * 3), nor = new Float32Array(total * 3), col = new Float32Array(total * 3), info = new Float32Array(total * 3), uvs = new Float32Array(total * 3).fill(-1), ore = new Float32Array(total * 4);
+    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.mat);
     let o = 0;
     for (const { pos: P, nor: Nn, ao, uv, piece: p } of parts) {
       pos.set(P, o * 3); nor.set(Nn, o * 3);
@@ -407,91 +498,114 @@ export class Rocks {
       for (let a = 0; a < 6; a++) ground = Math.min(ground, R.heightAt(p.x + Math.cos(a * 1.05) * (p.sx * 1.08 + 0.3), p.z + Math.sin(a * 1.05) * (p.sz * 1.08 + 0.3)));
       let wl = R.heightAt(p.x, p.z) < R.water + 0.6 ? R.water : -99;
       if (p.wet) for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) wl = Math.max(wl, R.riverAt(p.x + dx, p.z + dz) || -99);
-      const kindK = p.kind === 'pebble' || p.kind === 'river' ? 1 : 0;
+      const kindK = p.kind === 'pebble' || p.kind === 'river' || p.kind === 'floater' ? 1 : 0;
+      const oreL = p.ore !== undefined && (p.kind === 'node' || p.kind === 'floater') ? p.ore : -1;
+      const fl = p.float ? Math.round(p.float * 25) * 10 + ((p.seed % 600) / 100) : 0;
       for (let v = 0; v < ao.length; v++) {
-        col[(o + v) * 3] = ao[v]; col[(o + v) * 3 + 1] = p.moss; col[(o + v) * 3 + 2] = kindK;
-        info[(o + v) * 3] = p.mat; info[(o + v) * 3 + 1] = wl; info[(o + v) * 3 + 2] = Math.min(ground, p.y + p.sy * 0.25);
+        const k = o + v;
+        col[k * 3] = ao[v]; col[k * 3 + 1] = p.moss; col[k * 3 + 2] = kindK;
+        info[k * 3] = p.mat; info[k * 3 + 1] = wl; info[k * 3 + 2] = Math.min(ground, p.y + p.sy * 0.25);
+        ore[k * 4] = oreL; ore[k * 4 + 1] = oreL >= 0 ? 1 : 0; ore[k * 4 + 2] = p.glow ?? 0; ore[k * 4 + 3] = fl;
       }
+      const cell = Math.min(R.N - 1, Math.max(0, Math.floor(p.z))) * R.N + Math.min(R.N - 1, Math.max(0, Math.floor(p.x)));
+      this.ranges.push({ mesh, start: o, count: ao.length, cell, h0: R.h[cell] });
       o += ao.length;
     }
-    const geo = new THREE.BufferGeometry();
+    const geo = mesh.geometry;
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
     geo.setAttribute('aCol', new THREE.BufferAttribute(col, 3));
     geo.setAttribute('aRock', new THREE.BufferAttribute(info, 3));
     geo.setAttribute('aUvL', new THREE.BufferAttribute(uvs, 3));
+    geo.setAttribute('aOre', new THREE.BufferAttribute(ore, 4));
     geo.computeBoundingSphere();
-    this.mesh = new THREE.Mesh(geo, this.material(U));
-    this.mesh.castShadow = true; this.mesh.receiveShadow = true;
-    this.mesh.frustumCulled = false;
-    this.mesh.name = 'rocks';
+    if (geo.boundingSphere) geo.boundingSphere.radius += 3; // floaters bob
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    mesh.name = name;
+    return mesh;
   }
 
   private material(TU: Record<string, THREE.IUniform>) {
-    const R = this.region, pal = R.pal;
+    const R = this.region;
     const U = {
-      uRock: { value: buildRockTexture(pal, R.seed) }, uBlocks: TU.uBlocks, uMoss: TU.uMoss, uVis: TU.uVis, uN: TU.uN, uDark: TU.uDark, uTime: TU.uTime, uRivalLayer: TU.uRivalLayer,
-      uSnow: { value: R.biome.key === 'tundra' ? 1 : 0 }, uSnowCol: { value: new THREE.Color(pal.snow) },
+      uRock: { value: buildRockTexture(R.pal, R.seed) }, uBlocks: TU.uBlocks, uMoss: TU.uMoss, uVis: TU.uVis, uN: TU.uN, uDark: TU.uDark, uTime: TU.uTime, uRivalLayer: TU.uRivalLayer,
+      uGeo: TU.uGeo ?? { value: null }, uSnowC: TU.uSnow ?? { value: 0 }, uSnowLine: TU.uSnowLine ?? { value: 30 }, uWater: TU.uWater ?? { value: R.water },
+      uCold: { value: R.biome.key === 'tundra' ? 1 : 0 }, uSnowCol: { value: new THREE.Color(RAMPS.snow[5]) }, uSnowSh: { value: new THREE.Color(RAMPS.snow[3]) },
+      uHasGeo: { value: TU.uGeo ? 1 : 0 },
     };
     const m = new THREE.MeshLambertMaterial();
     m.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, U);
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', `#include <common>
-attribute vec3 aCol; attribute vec3 aRock; attribute vec3 aUvL;
-varying vec3 vWp; varying vec3 vNw; varying vec3 vCol; varying vec3 vRock; varying vec3 vUvL;`)
+attribute vec3 aCol; attribute vec3 aRock; attribute vec3 aUvL; attribute vec4 aOre;
+uniform float uTime;
+varying vec3 vWp; varying vec3 vNw; varying vec3 vCol; varying vec3 vRock; varying vec3 vUvL; varying vec4 vOre;`)
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+// gravium's stones float and bob over their ore
+if (aOre.w > 0.5) { float A = floor(aOre.w / 10.0), ph = aOre.w - A * 10.0; transformed.y += sin(uTime * 0.9 + ph) * A * 0.004 + sin(uTime * 2.3 + ph * 2.0) * 0.012; }`)
         .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
-vWp = (modelMatrix * vec4(transformed, 1.0)).xyz; vNw = normalize(mat3(modelMatrix) * objectNormal); vCol = aCol; vRock = aRock; vUvL = aUvL;`);
+vWp = (modelMatrix * vec4(transformed, 1.0)).xyz; vNw = normalize(mat3(modelMatrix) * objectNormal); vCol = aCol; vRock = aRock; vUvL = aUvL; vOre = aOre;`);
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
 uniform highp sampler2DArray uRock, uBlocks;
-uniform sampler2D uMoss, uVis;
-uniform float uN, uTime, uSnow, uRivalLayer;
-uniform vec3 uDark, uSnowCol;
-varying vec3 vWp; varying vec3 vNw; varying vec3 vCol; varying vec3 vRock; varying vec3 vUvL;
+uniform sampler2D uMoss, uVis, uGeo;
+uniform float uN, uTime, uCold, uSnowC, uSnowLine, uWater, uRivalLayer, uHasGeo;
+uniform vec3 uDark, uSnowCol, uSnowSh;
+varying vec3 vWp; varying vec3 vNw; varying vec3 vCol; varying vec3 vRock; varying vec3 vUvL; varying vec4 vOre;
 ${SHADER_NOISE}
-${FOW_FN}
-vec3 lichenCol(float h) { return h < 0.33 ? vec3(0.78, 0.74, 0.42) : h < 0.66 ? vec3(0.62, 0.7, 0.58) : vec3(0.86, 0.56, 0.3); }`)
+${FOW_FN}`)
         .replace('#include <map_fragment>', `
 vec3 n = normalize(vNw);
 float mat = floor(vRock.x + 0.5);
-vec3 cell = floor(vWp * 32.0);
+float fam = mat > 4.5 ? mat - 1.0 : mat;
+vec3 cell = floor(vWp * 48.0);
 float dith = h2(cell.xz + cell.y * 7.31);
-bool topF = n.y > 0.6 + (dith - 0.5) * 0.16;
+bool topF = n.y > 0.62 + (dith - 0.5) * 0.16;
 vec2 uv = topF ? vWp.xz : (abs(n.x) > abs(n.z) ? vec2(vWp.z * sign(n.x), -vWp.y) : vec2(-vWp.x * sign(n.z), -vWp.y));
-bool wood = vUvL.z > -0.5;
-vec3 base = wood ? texture(uRock, vec3(vUvL.xy, floor(vUvL.z + 0.5)), -0.35).rgb : texture(uRock, vec3(uv * 0.5, mat * 2.0 + (topF ? 1.0 : 0.0)), -0.35).rgb;
-// strata that run through the whole formation at the same heights (layered stone)
-if (mat > 0.5 && mat < 1.5 || mat > 2.5 && mat < 3.5) {
-  float k = mat < 1.5 ? 2.3 : 1.25;
-  float sy = vWp.y * k + (vn(vWp.xz * 0.22 + 5.0) - 0.5) * 1.3;
-  float bh = h2(vec2(floor(sy), mat * 7.0));
-  base *= mat < 1.5 ? mix(vec3(1.13, 0.9, 0.78), vec3(0.92, 0.94, 1.02), bh) * (0.9 + bh * 0.2) : mix(vec3(0.95), vec3(1.06, 1.04, 0.98), bh);
-  if (!topF && fract(sy) < 0.06) base *= 0.76;
+uv = (floor(uv * 48.0) + 0.5) / 48.0;
+bool own = vUvL.z > -0.5;
+float lay = own ? floor(vUvL.z + 0.5) : fam * 3.0 + (topF ? 1.0 : 0.0);
+// strata: the layered families alternate beds at world heights, so a whole formation is banded alike
+float sy = vWp.y * (fam > 0.5 && fam < 1.5 ? 1.7 : 1.1) + (vn(vWp.xz * 0.22 + 5.0) - 0.5) * 1.2;
+bool layered = fam > 0.5 && fam < 1.5 || fam > 2.5;
+if (!own && !topF && layered && h2(vec2(floor(sy), fam * 7.0)) > 0.55) lay = fam * 3.0 + 2.0;
+vec4 tx = texture(uRock, vec3(own ? vUvL.xy : uv * 0.5, lay), -0.35);
+vec3 base = tx.rgb;
+float glowA = tx.a;
+// a bedding parting where two strata meet: a dark row, the row under it lit
+if (!own && !topF && layered) { float e = fract(sy) * 48.0 / (fam > 0.5 && fam < 1.5 ? 1.7 : 1.1); if (e < 1.0) base *= 0.6; else if (e < 2.0) base *= 1.12; }
+// ore: a node's own, or the vein in the ground's geo map where a rock stands on one
+float oreL = vOre.x, oreK = vOre.y;
+if (uHasGeo > 0.5 && oreL < -0.5 && !own) {
+  vec4 gg = texture2D(uGeo, (floor(vWp.xz) + 0.5) / uN);
+  if (gg.g > 0.35 && !topF) { oreL = floor(gg.b * 255.0 + 0.5); oreK = gg.g; }
 }
-// broad weathering tones
-base *= 0.88 + vn(vWp.xz * 0.35 + vWp.y * 0.3) * 0.24;
-// cavity occlusion and the dark damp foot where stone meets soil
-base *= mix(0.38, 1.0, vCol.x);
-float foot = smoothstep(0.0, 0.5, vWp.y - vRock.z);
-base *= mix(0.6, 1.0, foot);
-// lichen crusts on the faces
-float lc = vn(vWp.xz * 1.4 + vec2(vWp.y * 1.9, mat * 13.0));
-if (!topF && lc > 0.8 && dith > 0.2) base = mix(base, lichenCol(h2(floor(vWp.xz * 2.0) + floor(vWp.y * 2.0))), 0.5);
+if (oreL > -0.5 && !own) {
+  vec4 o = texture(uRock, vec3(uv * 0.5, ${RL.ore0}.0 + oreL), -0.35);
+  if (o.a < 0.02 && oreK > 0.9) o = texture(uRock, vec3(uv * 0.5 * 1.37 + vec2(0.31, 0.57), ${RL.ore0}.0 + oreL), -0.35);
+  if (o.a > 0.02 && dith < oreK * 1.3) { base = o.rgb; glowA = o.a; }
+}
+// cavity occlusion and the damp foot where stone meets soil, in two steps each
+base *= vCol.x < 0.5 ? 0.6 : vCol.x < 0.78 ? 0.82 : 1.0;
+float foot = vWp.y - vRock.z;
+if (foot < 0.12 + dith * 0.08 && !own) base *= 0.74;
 // moss on the upward faces, thicker in damp woods
 float mk = vCol.y;
 float patchN = vn(vWp.xz * 1.1 + vWp.y * 0.5) * 0.65 + vn(vWp.xz * 3.7 - vWp.y) * 0.35;
 float mossA = mk * smoothstep(0.4, 0.92, n.y) * (0.2 + patchN * 1.1);
-if (mossA > 0.5 + (dith - 0.5) * 0.08) base = texture(uRock, vec3(uv * 0.5, ${RL.moss}.0), -0.35).rgb * mix(0.85, 1.0, foot) * (0.92 + patchN * 0.16);
-else if (mk > 0.3 && vWp.y - vRock.z < 0.25 + mk * 0.3 && dith > 0.4 && n.y > -0.3) base = mix(base, texture(uRock, vec3(uv * 0.5, ${RL.moss}.0), -0.35).rgb * 0.8, 0.85);
-// snow caps in the cold
+if (!own && mossA > 0.5 + (dith - 0.5) * 0.08) { base = texture(uRock, vec3(uv * 0.5, ${RL.moss}.0), -0.35).rgb; glowA = 1.0; }
+else if (!own && mk > 0.3 && foot < 0.25 + mk * 0.3 && dith > 0.4 && n.y > -0.3) base = texture(uRock, vec3(uv * 0.5, ${RL.moss}.0), -0.35).rgb * 0.82;
+// snow: in the cold, under the climate's cover, and all year above the snow line
+float hw = vWp.y - uWater;
+float snowK = max(uCold, max(uSnowC * 1.1, smoothstep(uSnowLine, uSnowLine + 8.0, hw)));
 float snowP = vn(vWp.xz * 1.3 + vWp.y * 0.8) * 0.7 + vn(vWp.xz * 4.1) * 0.3;
-if (uSnow > 0.5 && n.y > 0.84 - (dith - 0.5) * 0.06 && snowP > 0.4) base = uSnowCol * (0.8 + dith * 0.08);
+if (snowK > 0.05 && n.y > 0.8 - snowK * 0.2 - (dith - 0.5) * 0.06 && snowP < snowK * 1.1) { base = n.y > 0.9 ? uSnowCol : uSnowSh; glowA = 1.0; }
 // wet stone at the waterline
 float wl = vRock.y;
-if (wl > -50.0) { float wet = 1.0 - smoothstep(wl - 0.02, wl + 0.22, vWp.y); base = mix(base, base * vec3(0.55, 0.6, 0.64), wet); }
+if (wl > -50.0 && vWp.y < wl + 0.14 + dith * 0.08) base *= vec3(0.6, 0.66, 0.7);
+vec3 emis = base * (1.0 - glowA) * (1.4 + 0.25 * sin(uTime * 1.3 + vWp.x * 0.7 + vWp.z));
 // the Veyr moss and rival creep spread over the stone as they do over the ground
-vec3 emis = vec3(0.0);
 vec4 cov = texture2D(uMoss, vWp.xz / uN);
 float thr = 0.3 + (vn(vWp.xz * 0.85) * 0.62 + vn(vWp.xz * 3.3) * 0.38) * 0.4 + (n.y < 0.3 ? 0.18 : 0.0);
 if (cov.r > thr || cov.g > thr + 0.02) {
@@ -503,25 +617,24 @@ diffuseColor.rgb *= base;
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += emis;')
         .replace('#include <dithering_fragment>', '#include <dithering_fragment>\ngl_FragColor.rgb = applyFow(gl_FragColor.rgb, vWp);');
     };
-    m.customProgramCacheKey = () => 'oddworld-rocks';
+    m.customProgramCacheKey = () => 'oddworld-rocks-48';
     return gbuf(m, 1);
   }
 
   /** after the ground moved: rocks ride it up or down; an impact shatters what stood in the crater */
   reseat(dirty: Set<number>) {
     if (!dirty.size) return;
-    const R = this.region, a = this.mesh.geometry.getAttribute('position') as THREE.BufferAttribute, info = this.mesh.geometry.getAttribute('aRock') as THREE.BufferAttribute;
-    const P = a.array as Float32Array, I = info.array as Float32Array;
-    let moved = false;
+    const R = this.region, moved = new Set<THREE.Mesh>();
     for (const rg of this.ranges) {
       if (!dirty.has(rg.cell)) continue;
       const crater = R.b[rg.cell] === B.CRATER;
       const dy = crater ? -60 : R.h[rg.cell] - rg.h0;
       if (Math.abs(dy) < 1e-3) continue;
       rg.h0 = R.h[rg.cell];
+      const P = (rg.mesh.geometry.getAttribute('position') as THREE.BufferAttribute).array as Float32Array, I = (rg.mesh.geometry.getAttribute('aRock') as THREE.BufferAttribute).array as Float32Array;
       for (let v = rg.start; v < rg.start + rg.count; v++) { P[v * 3 + 1] += dy; I[v * 3 + 2] += dy; }
-      moved = true;
+      moved.add(rg.mesh);
     }
-    if (moved) { a.needsUpdate = true; info.needsUpdate = true; }
+    for (const m of moved) { m.geometry.getAttribute('position').needsUpdate = true; m.geometry.getAttribute('aRock').needsUpdate = true; m.geometry.computeBoundingSphere(); }
   }
 }

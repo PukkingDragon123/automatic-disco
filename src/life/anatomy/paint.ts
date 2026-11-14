@@ -210,6 +210,69 @@ export class Px {
       }
     }
   }
+  /** the lock under each texel after locks(): its position along the lock (0 root .. 1 tip, -1 bare underfur) */
+  lockS: Float32Array | null = null;
+  /** fur drawn as pixel art: shingled locks, each a pointed flame of hair (a curved, tapering outline swept along the
+   *  flow and down the flanks), lying over the roots of the row behind it. Every lock is shaded from its own dome on
+   *  the real surface: a lit side and a shadow side, a selective outline (dark on the shadow side, a soft line on the
+   *  lit side), one or two strand lines running its length, a bright tip where it turns to the light; the lock on top
+   *  casts a short shadow on the one under it, and the gaps between them are dark underfur. */
+  locks(o: { len: number; width: number; flow?: number; down?: number; bend?: number; mask?: (i: number) => number; seed?: number; tip?: number; ink?: number; under?: number }) {
+    const { w, h } = this, seed = o.seed ?? 31, flow = o.flow ?? 1, sy = o.len * 0.42, lenK = o.len / sy, ink = o.ink ?? 2, tipK = o.tip ?? 1.5, under = o.under ?? 1.7;
+    const L = this.body.light, N = this.gb.N, P = this.gb.P, mpt = this.mpt, down = o.down ?? 0.5, bendK = o.bend ?? 0.7;
+    const S = this.lockS ?? (this.lockS = new Float32Array(this.n).fill(-2));
+    const cand: number[] = [];
+    for (let y = 0; y < h; y++) {
+      const Yr = this.Y[y], circ = this.circ[y];
+      const nc = Math.max(3, Math.round(circ / o.width));
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x, m = o.mask ? o.mask(i) : 1;
+        if (m <= 0.02) continue;
+        const u = (x + 0.5) / w, ry = (flow > 0 ? Yr : -Yr) / sy, r0 = Math.floor(ry);
+        const side = this.ch.wrap ? Math.sin((u - 0.5) * TAU) : 0;
+        cand.length = 0;
+        for (let dr = -3; dr <= 0; dr++) {
+          const r = r0 + dr, off = (r & 1) * 0.5, cu = Math.floor(u * nc - off);
+          for (let dc = -1; dc <= 1; dc++) {
+            const c = cu + dc, cm = ((c % nc) + nc) % nc, hs = h3(r, cm, seed);
+            const Ll = lenK * (0.82 + 0.36 * h3(cm, r, seed + 1)), s = (ry - r - (h3(cm, r, seed + 4) - 0.5) * 0.3) / Ll;
+            if (s < -0.05 || s > 1.05) continue;
+            let du = u - (c + off + 0.5 + (hs - 0.5) * 0.3) / nc; du -= Math.round(du);
+            const bend = (h3(r, cm, seed + 2) - 0.5) * bendK, sc = Math.max(0, Math.min(1, s));
+            const e = du * nc * 2 - bend * sc * sc * 2 - side * down * sc * 1.4;
+            // the outline: a rounded root, full in the middle, pointed at the tip
+            const hw = (sc < 0.18 ? 0.72 + sc * 1.55 : 1.0) * (1 - Math.pow(Math.max(0, sc - 0.3) / 0.7, 1.7) * 0.92) + 0.04;
+            const outA = Math.max(0, Math.abs(e) - hw) * o.width * 0.5, outB = s > 1 ? (s - 1) * Ll * sy : s < 0 ? -s * Ll * sy : 0;
+            cand.push(-r * 4 - Math.abs(e) * 0.01, sc, e, hw, Math.floor(hs * 9973), Math.max(outA, outB) / mpt, Ll);
+          }
+        }
+        let bi = -1;
+        for (let k = 0; k < cand.length; k += 7) if (cand[k + 5] === 0 && (bi < 0 || cand[k] > cand[bi])) bi = k;
+        if (bi < 0) { this.mark[i] -= under * m; S[i] = -1; continue; }
+        const bs = cand[bi + 1], be = cand[bi + 2], bhw = cand[bi + 3], bid = cand[bi + 4], bL = cand[bi + 6];
+        S[i] = bs;
+        let shadow = false;
+        for (let k = 0; k < cand.length; k += 7) if (cand[k] > cand[bi] && cand[k + 5] > 0 && cand[k + 5] < 1.8) { shadow = true; break; }
+        const rimT = Math.min((bhw - Math.abs(be)) * o.width * 0.5, (1 - bs) * bL * sy) / mpt;
+        // the lock's dome: the normal tilted across it and toward its tip along the real tangents
+        const xr = (x + 1) % w, yu = Math.min(h - 1, y + 1), yl = Math.max(0, y - 1), ir = y * w + xr, iu = yu * w + x, il = yl * w + x;
+        const tux = P[ir * 3] - P[i * 3], tuy = P[ir * 3 + 1] - P[i * 3 + 1], tuz = P[ir * 3 + 2] - P[i * 3 + 2], tul = Math.hypot(tux, tuy, tuz) || 1;
+        const tvx = P[iu * 3] - P[il * 3], tvy = P[iu * 3 + 1] - P[il * 3 + 1], tvz = P[iu * 3 + 2] - P[il * 3 + 2], tvl = (Math.hypot(tvx, tvy, tvz) || 1) * flow;
+        const ka = (be / Math.max(0.2, bhw)) * 0.6, kb = (bs - 0.35) * 0.45;
+        const nx = N[i * 3] + (tux / tul) * ka + (tvx / tvl) * kb, ny = N[i * 3 + 1] + (tuy / tul) * ka + (tvy / tvl) * kb, nz = N[i * 3 + 2] + (tuz / tul) * ka + (tvz / tvl) * kb;
+        const nl = Math.hypot(nx, ny, nz) || 1, lam = (nx * L[0] + ny * L[1] + nz * L[2]) / nl, lam0 = N[i * 3] * L[0] + N[i * 3 + 1] * L[1] + N[i * 3 + 2] * L[2], dl = lam - lam0;
+        let mk = dl > 0.1 ? 0.9 : dl > 0.03 ? 0.4 : dl < -0.12 ? -0.9 : dl < -0.04 ? -0.4 : 0;
+        // strand lines along the lock (wide locks get two)
+        const wT = bhw * o.width * 0.5 / mpt, nS = wT > 3.2 ? 2 : wT > 1.8 ? 1 : 0;
+        if (nS && bs > 0.12 && bs < 0.86) { const en = be / bhw, k1 = nS === 2 ? Math.min(Math.abs(en - 0.38), Math.abs(en + 0.38)) : Math.abs(en - (bid % 2 ? 0.2 : -0.2)); if (k1 * bhw * o.width * 0.5 / mpt < 0.55) mk -= 0.9; }
+        if (bs < 0.16) mk -= 0.6; // the root, in the shadow of the lock over it
+        if (bs > 0.68 && dl > -0.03) mk += tipK * (bs > 0.84 ? 1 : 0.6); // the lit tip
+        if (rimT < 1) mk = dl > 0.02 ? -0.7 : -ink; // the selective outline
+        if (shadow && rimT >= 1) mk = Math.min(mk, -1.1);
+        this.mark[i] += mk * m;
+      }
+    }
+  }
   /** pebbled hide: a network of small domed polygons (each lit on its upper side, a dark crease round it); `aniso`
    *  stretches the cells (wrinkles running round a joint: [sx, sy, sz] in world axes) */
   pebbles(size: number, o: { mask?: (i: number) => number; depth?: number; aniso?: [number, number, number]; seed?: number; pores?: number } = {}) {

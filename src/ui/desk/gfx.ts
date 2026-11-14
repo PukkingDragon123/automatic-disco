@@ -14,7 +14,8 @@ export const LIGHT = new THREE.Vector3(-0.5, 0.72, 0.48).normalize();
 
 // ------------------------------------------------------------------ materials
 const VS = /* glsl */`
-varying vec2 vUv; varying vec3 vN;
+uniform mat4 uShadowM;
+varying vec2 vUv; varying vec3 vN; varying vec4 vSh;
 #if defined(USE_COLOR) || defined(USE_INSTANCING_COLOR)
 varying vec3 vCol;
 #endif
@@ -31,13 +32,15 @@ void main() {
 #ifdef USE_INSTANCING_COLOR
   vCol = instanceColor;
 #endif
+  vSh = uShadowM * modelMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
 }`;
 const FS = /* glsl */`
 layout(location = 1) out highp vec4 gNormal;
 uniform sampler2D map; uniform vec3 uTint, uLight, uGlow;
-uniform float uEmit, uHover, uAlpha, uSpec, uFlag, uFlat, uDim;
-varying vec2 vUv; varying vec3 vN;
+uniform float uEmit, uHover, uAlpha, uSpec, uFlag, uFlat, uDim, uShadowOn, uShadowBias;
+uniform sampler2D tShadow;
+varying vec2 vUv; varying vec3 vN; varying vec4 vSh;
 #if defined(USE_COLOR) || defined(USE_INSTANCING_COLOR)
 varying vec3 vCol;
 #endif
@@ -54,7 +57,13 @@ void main() {
   float d = dot(n, uLight);
   // four planar light steps (ART.md: one ramp step per plane, hard cluster edges)
   float l = d > 0.62 ? 1.12 : d > 0.22 ? 0.96 : d > -0.18 ? 0.8 : 0.64;
-  l = mix(l, 1.0, uFlat) * (1.0 - uDim);
+  l = mix(l, 1.0, uFlat);
+  // hard pixel shadows from the desk lamp (the light comes from the upper left): one plane step darker
+  if (uShadowOn > 0.5) {
+    vec3 s = vSh.xyz / vSh.w * 0.5 + 0.5;
+    if (s.x > 0.0 && s.x < 1.0 && s.y > 0.0 && s.y < 1.0 && s.z < 1.0 && s.z - uShadowBias > texture2D(tShadow, s.xy).r) l = min(l, 0.8) * 0.84;
+  }
+  l *= 1.0 - uDim;
   vec3 col = c * l * (1.0 + uHover * 0.3) + c * uEmit + uGlow;
   // a hard specular glint where the surface turns toward the light
   vec3 h = normalize(uLight + vec3(0.0, 0.0, 1.0));
@@ -68,6 +77,8 @@ void main() {
 #endif
 }`;
 
+/** the shadow map every desk material reads (DeskView fills it each frame) */
+export const SHADOW = { m: { value: new THREE.Matrix4() }, t: { value: null as THREE.Texture | null }, on: { value: 0 }, bias: { value: 0.0018 } };
 export interface MatOpts { map?: THREE.Texture; tint?: number; emit?: number; spec?: number; flat?: number; outline?: boolean; glass?: number; vcol?: boolean; side?: THREE.Side }
 /** a desk material: a pixel-art texture lit in planar steps. `glass` makes it a premultiplied transparent layer. */
 export function mat(o: MatOpts = {}) {
@@ -77,6 +88,7 @@ export function mat(o: MatOpts = {}) {
       map: { value: o.map ?? WHITE() }, uTint: { value: new THREE.Color(o.tint ?? 0xffffff) }, uLight: { value: LIGHT },
       uGlow: { value: new THREE.Color(0) }, uEmit: { value: o.emit ?? 0 }, uHover: { value: 0 }, uAlpha: { value: o.glass ?? 1 },
       uSpec: { value: o.spec ?? 0 }, uFlag: { value: o.outline === false ? 0 : 1 }, uFlat: { value: o.flat ?? 0 }, uDim: { value: 0 },
+      uShadowM: SHADOW.m, tShadow: SHADOW.t, uShadowOn: SHADOW.on, uShadowBias: SHADOW.bias,
     },
     vertexColors: !!o.vcol, side: o.side ?? THREE.FrontSide,
   });
@@ -217,10 +229,14 @@ export class DeskView {
   private rt: THREE.WebGLRenderTarget;
   private comp: THREE.ShaderMaterial; private cs = new THREE.Scene(); private co = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   /** device pixels per art pixel */
-  k = 2; W = 640; H = 360; dpr = 1;
+  k = 0; W = 0; H = 0; dpr = 0;
   /** the camera's pitch (radians down from horizontal) */
-  pitch = 0.62;
+  pitch = 0.74;
   ok = true;
+  private shRT: THREE.WebGLRenderTarget; private lightCam = new THREE.OrthographicCamera(-390, 390, 210, -210, 500, 1500);
+  private depthMat = new THREE.MeshDepthMaterial();
+  /** where the desk lamp's light falls from, in desk space */
+  readonly lightDir = new THREE.Vector3();
 
   constructor(parent: HTMLElement) {
     this.canvas = document.createElement('canvas');
@@ -239,13 +255,19 @@ export class DeskView {
     });
     const tri = new THREE.BufferGeometry(); tri.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
     const q = new THREE.Mesh(tri, this.comp); q.frustumCulled = false; this.cs.add(q);
+    const sd = new THREE.DepthTexture(2048, 1024, THREE.FloatType);
+    this.shRT = new THREE.WebGLRenderTarget(2048, 1024, { depthBuffer: true, depthTexture: sd, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+    SHADOW.t.value = sd;
+    this.lightCam.layers.set(2);
     this.canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.ok = false; });
     this.canvas.addEventListener('webglcontextrestored', () => { this.ok = true; });
   }
   /** pick the art-pixel size for the screen and size everything to it; returns true when it changed */
   resize(): boolean {
     const dpr = devicePixelRatio || 1, dw = Math.round(innerWidth * dpr), dh = Math.round(innerHeight * dpr);
-    const k = Math.max(1, Math.round(dw / 660));
+    // about 640 art px across (never fewer: the desk is laid out for 640), a whole number of device px each
+    let k = Math.max(1, Math.round(dw / 660));
+    while (k > 1 && dw / k < 640) k--;
     const W = Math.ceil(dw / k), H = Math.ceil(dh / k);
     if (k === this.k && W === this.W && H === this.H && dpr === this.dpr) return false;
     this.k = k; this.W = W; this.H = H; this.dpr = dpr;
@@ -262,6 +284,11 @@ export class DeskView {
     const c = this.cam, p = this.pitch;
     c.position.set(0, Math.sin(p) * 2000, Math.cos(p) * 2000);
     c.up.set(0, 1, 0); c.lookAt(0, 0, 0); c.updateMatrixWorld();
+    // the lamp: the view-space light carried into desk space, its shadow camera looking down that way at the desk
+    this.lightDir.copy(LIGHT).transformDirection(c.matrixWorld);
+    const L = this.lightCam, tgt = new THREE.Vector3(0, 40, -60);
+    L.position.copy(tgt).addScaledVector(this.lightDir, 1000); L.up.set(0, 1, 0); L.lookAt(tgt); L.updateMatrixWorld(); L.updateProjectionMatrix();
+    SHADOW.m.value.multiplyMatrices(L.projectionMatrix, L.matrixWorldInverse);
   }
   /** screen (CSS px, from the top left) -> normalised device coords for the raycaster */
   ndc(x: number, y: number, out: THREE.Vector2) {
@@ -276,10 +303,22 @@ export class DeskView {
   render() {
     if (!this.ok) return;
     const r = this.renderer;
+    // casters: every opaque, outlined part (decals, glass and holograms neither cast nor take part)
+    this.scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.ShaderMaterial | undefined;
+      if (!m) return;
+      if (!m.transparent && !o.userData.noCast && m.uniforms?.uFlag?.value !== 0 && m.visible !== false) o.layers.enable(2); else o.layers.disable(2);
+    });
+    SHADOW.on.value = 0;
+    this.scene.overrideMaterial = this.depthMat;
+    r.setRenderTarget(this.shRT); r.setClearColor(0xffffff, 1); r.clear(true, true, false);
+    r.render(this.scene, this.lightCam);
+    this.scene.overrideMaterial = null;
+    SHADOW.on.value = 1;
     r.setRenderTarget(this.rt); r.setClearColor(0x000000, 0); r.clear(true, true, false);
     r.render(this.scene, this.cam);
     r.setRenderTarget(null); r.setClearColor(0x000000, 0); r.clear(true, true, false);
     r.render(this.cs, this.co);
   }
-  dispose() { this.rt.dispose(); this.renderer.dispose(); this.canvas.remove(); }
+  dispose() { this.rt.dispose(); this.shRT.dispose(); this.renderer.dispose(); this.canvas.remove(); }
 }

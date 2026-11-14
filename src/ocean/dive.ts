@@ -105,9 +105,11 @@ export class Dive {
     if (!mine) {
       const f = ((cam: THREE.PerspectiveCamera) => {
         const k = this.camK, rts = g.cam, pp = this.p; if (!pp) return;
-        const pitch = lerp(rts.pitch(rts.dist), 0.42, k), D = lerp(rts.dist, clamp(rts.dist * 0.4, 5, 10), k);
+        const pitch = lerp(rts.pitch(rts.dist), 0.26, k), D = lerp(rts.dist, clamp(rts.dist * 0.3, 4.5, 8), k);
         _q.set(pp.x, pp.y + pp.height * 0.6, pp.z);
         _v.set(_q.x + Math.sin(rts.yaw) * Math.cos(pitch) * D, _q.y + Math.sin(pitch) * D, _q.z + Math.cos(rts.yaw) * Math.cos(pitch) * D);
+        // down there it stays in the water: under the waves, clear of the sea floor
+        if (k > 0.5) { const o = this.o; _v.y = clamp(_v.y, o.bedAt(_v.x, _v.z) + 0.9, o.surfaceAt(_v.x, _v.z) - 0.45); }
         cam.position.lerp(_v, k); cam.lookAt(_q.x, _q.y + 0.3 * (1 - k), _q.z); cam.updateMatrixWorld();
       }) as ((cam: THREE.PerspectiveCamera, dt: number) => void) & { __dive?: boolean };
       f.__dive = true; g.cineCam = f;

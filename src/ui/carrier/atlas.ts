@@ -83,7 +83,7 @@ function plates(p: P, o: PlateOpts) {
   for (const q of out) {
     const { x0, y0, x1, y1, t, R } = q, w = x1 - x0, h = y1 - y0, T = top(R);
     p.rect(x0, y0, w, h, q.fill >= 0 ? q.fill : R[t]);
-    if (o.facet && w >= 20 && h >= 8 && rnd() < o.facet) {
+    if (o.facet && w >= 20 && h >= 8 && t >= o.base && q.fill < 0 && rnd() < o.facet) {
       const a = 0.4 + rnd() * 0.35, b = 0.35 + rnd() * 0.4;
       p.poly([[x0 + w * a, y1], [x1, y0 + h * b], [x1, y1]], R[t - 1]);
     }
@@ -157,7 +157,7 @@ export function paintAtlas(): CarrierAtlas {
   plates(hullA, { R: HULL, base: 6, seed: 11, courses: [10, 12, 11, 13, 10, 12, 14, 11, 12, 10, 13, 12, 11, 12, 10, 13, 12, 11, 14, 11], widths: [24, 28, 32, 36, 40, 44, 20, 48], rivets: true, alt: BLUE, altP: 0.02, twins: [RAMPS.stone[4], SL[3], RAMPS.iron[4], ST[4]], facet: 0.3, chips: 0.45, rust: 0.35, grime: 0.6, panels: 0.18, marks: 0.2, doubler: 0.15 });
   S.shelf();
   const hullB = S.alloc('hullB', 1008, 240);
-  plates(hullB, { R: ARMOR, base: 6, seed: 23, courses: [16, 14, 18, 16, 12, 18, 16, 14, 16, 18, 14, 16, 18, 14], widths: [32, 40, 48, 56, 36, 64], rivets: true, twins: [RAMPS.stone[3], RAMPS.iron[3], SL[3]], facet: 0.35, chips: 0.55, rust: 0.5, grime: 0.8, panels: 0.15, marks: 0.15, doubler: 0.2 });
+  plates(hullB, { R: ARMOR, base: 6, seed: 23, courses: [16, 14, 18, 16, 12, 18, 16, 14, 16, 18, 14, 16, 18, 14], widths: [32, 40, 48, 56, 36, 64], rivets: true, twins: [RAMPS.stone[4], RAMPS.iron[3], ST[3]], facet: 0.35, chips: 0.55, rust: 0.5, grime: 0.8, panels: 0.15, marks: 0.15, doubler: 0.2 });
   S.shelf();
   const olive = S.alloc('olive', 496, 120);
   plates(olive, { R: OLV, base: 4, seed: 5, courses: [10, 12, 11, 12, 10, 13, 11, 12, 10, 9], widths: [16, 20, 24, 28, 32, 36], rivets: true, facet: 0.25, chips: 0.5, rust: 0.12, grime: 0.5, panels: 0.15, marks: 0.12, doubler: 0.06 });

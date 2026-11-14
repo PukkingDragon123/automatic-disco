@@ -17,7 +17,8 @@ export async function testOcean(engine: Engine, input: Input, P: URLSearchParams
   if ((P.has('storm') || P.get('shot') === 'storm') && !P.has('weather')) { const u = new URL(location.href); u.searchParams.set('weather', 'storm'); history.replaceState(null, '', u); P.set('weather', 'storm'); }
   const seed = Number(P.get('seed') ?? 3), shot = P.get('shot') ?? '';
   const biome = (P.get('biome') ?? (shot === 'reef' || shot === 'school' ? 'reef' : shot === 'kelp' ? 'ocean' : 'archipelago')) as BiomeKey;
-  const g = new Game(engine, input, { seed, biome, story: false, hooks: {} });
+  const landing = shot === 'landing';
+  const g = new Game(engine, input, { seed, biome, story: false, hooks: {}, descent: landing });
   (window as unknown as { __game: unknown }).__game = g;
   g.vision.revealAll = true; g.vision.update(0, true);
   // a clean frame for the beauty shots (&hud=1 keeps the HUD)
@@ -75,9 +76,10 @@ export async function testOcean(engine: Engine, input: Input, P: URLSearchParams
     look = new THREE.Vector3(x + Math.cos(a) * 60, R.water + 2, z + Math.sin(a) * 60);
     fov = 50;
   } else if (shot === 'shore') {
-    const s0 = out(0.3);
-    cam = new THREE.Vector3(s0.x - Math.cos(s0.a) * 7 + Math.sin(s0.a) * 6, R.water + 4.5, s0.z - Math.sin(s0.a) * 7 - Math.cos(s0.a) * 6);
-    look = new THREE.Vector3(s0.x + Math.cos(s0.a) * 4, R.water, s0.z + Math.sin(s0.a) * 4);
+    // out over the water, looking back at a beach the swell rolls onto
+    const s0 = out(0.3), ca = Math.cos(s0.a), sa = Math.sin(s0.a);
+    cam = new THREE.Vector3(s0.x + ca * 9 + sa * 3, R.water + 3.2, s0.z + sa * 9 - ca * 3);
+    look = new THREE.Vector3(s0.x - ca * 1.5, R.water + 0.2, s0.z - sa * 1.5); fov = 48;
   } else {
     cam = new THREE.Vector3(sh.x - dx * 18, R.water + 16, sh.z - dz * 18 + 6);
     look = new THREE.Vector3(sh.x + dx * 8, R.water, sh.z + dz * 8);
@@ -101,18 +103,30 @@ export async function testOcean(engine: Engine, input: Input, P: URLSearchParams
   if (shot === 'titan' && fs) {
     const lev = fs.fish.find((f) => f.kind === 'leviathan');
     if (lev) {
-      const p = out(9); lev.x = p.x + Math.cos(p.a) * 30; lev.z = p.z + Math.sin(p.a) * 30; lev.y = o.level - 6; lev.gx = lev.x + 40; lev.gz = lev.z; lev.gt = 30;
-      fs.breachSoon = 50;
-      const c0 = new THREE.Vector3(p.x - Math.cos(p.a) * 6, R.water + 4, p.z - Math.sin(p.a) * 6);
-      track = () => ({ cam: c0, look: new THREE.Vector3(lev.x, Math.max(o.level + 2, lev.y), lev.z) });
-      fov = 46;
+      // the titan rising in front of the camera, run on until it hangs clear of the sea (&after=s to catch the fall)
+      const p = out(9), ca = p.a, c0 = new THREE.Vector3(p.x - Math.cos(ca) * 6, R.water + 3.5, p.z - Math.sin(ca) * 6);
+      lev.x = p.x + Math.cos(ca) * 34; lev.z = p.z + Math.sin(ca) * 34; lev.y = o.level - 9; lev.vx = -Math.sin(ca) * 3; lev.vz = Math.cos(ca) * 3; lev.vy = 0; lev.gt = 30;
+      lev.breach = 0.001; lev.vy = 4;
+      cam = c0.clone(); look = new THREE.Vector3(lev.x, o.level + 5, lev.z); fov = 50;
+      engine.setScreen(g); g.cineCam = (c) => { c.position.copy(cam); c.lookAt(look); c.fov = fov; c.updateProjectionMatrix(); c.updateMatrixWorld(); };
+      const after = Number(P.get('after') ?? 0);
+      let top = false, tt = 0;
+      for (let i = 0; i < 400; i++) { engine.step(1 / 30, false); if (lev.vy < 0.5 && lev.y > o.level) top = true; if (top && (tt += 1 / 30) >= after) break; }
+      track = () => ({ cam: c0, look: new THREE.Vector3(lev.x, Math.max(o.level + 3, lev.y + 2), lev.z) });
     }
   }
   if (shot === 'splash' || P.has('splash')) {
     const p = out(3); const px = p.x + Math.cos(p.a) * 8, pz = p.z + Math.sin(p.a) * 8;
     cam = new THREE.Vector3(p.x - Math.cos(p.a) * 12 + Math.sin(p.a) * 5, R.water + 5, p.z - Math.sin(p.a) * 12 - Math.cos(p.a) * 5);
     look = new THREE.Vector3(px, R.water + 2, pz); fov = 46;
-    setTimeout(() => o.dropPod(px, pz, Number(P.get('alt') ?? 14)), Number(P.get('drop') ?? 3000));
+    // drop it now and run the game on to just after it hits (the crown at its height); &drop=ms drops it live instead
+    if (P.has('drop')) setTimeout(() => o.dropPod(px, pz, Number(P.get('alt') ?? 14)), Number(P.get('drop')));
+    else {
+      o.dropPod(px, pz, Number(P.get('alt') ?? 14));
+      engine.setScreen(g); g.cineCam = (c) => { c.position.copy(cam); c.lookAt(look); c.fov = fov; c.updateProjectionMatrix(); c.updateMatrixWorld(); };
+      const pod = o.splashes.pod!;
+      for (let i = 0; i < 300 && (pod.falling || pod.t < Number(P.get('after') ?? 0.45)); i++) engine.step(1 / 30, false);
+    }
   }
   // the land's water, for a look before the geology lays it out (&inland): a lake, a spring and a geyser, a waterfall
   if (P.has('inland')) {
@@ -129,6 +143,18 @@ export async function testOcean(engine: Engine, input: Input, P: URLSearchParams
     const inl = new Inland(o); g.world.terrain.group.add(inl.group); o.parts.push(inl);
     cam = new THREE.Vector3(L.x + 2, R.heightAt(L.x, L.z) + 9, L.z + 10); look = new THREE.Vector3(L.x, R.heightAt(L.x, L.z), L.z - 4);
   }
+  // a splashdown as the descent ends it: game.touchdown on open water, the shell gone, the golem hatching on the waves
+  if (landing) {
+    const p = out(4), x = p.x + Math.cos(p.a) * 6, z = p.z + Math.sin(p.a) * 6;
+    engine.setScreen(g);
+    g.touchdown(x, z); g.emerge();
+    for (let i = 0; i < Number(P.get('steps') ?? 90); i++) engine.step(0.1, false);
+    console.log('test=ocean landing at', x.toFixed(1), z.toFixed(1), 'core', g.veyr.core?.y.toFixed(2), 'level', o.level.toFixed(2), 'golem', g.player.started, (g.player as unknown as { y: number }).y.toFixed(2));
+    cam = new THREE.Vector3(x - Math.cos(p.a) * 9 + Math.sin(p.a) * 4, R.water + 5, z - Math.sin(p.a) * 9 - Math.cos(p.a) * 4); look = new THREE.Vector3(x, R.water + 1, z);
+    g.cineCam = (c) => { c.position.copy(cam); c.lookAt(look); c.fov = 45; c.updateProjectionMatrix(); c.updateMatrixWorld(); };
+    engine.start();
+    return;
+  }
   // the golem at work under the sea: hatched, set down by a seabed node, dived to it; the game's own camera follows
   if (shot === 'dive' || shot === 'play') {
     engine.setScreen(g);
@@ -144,6 +170,7 @@ export async function testOcean(engine: Engine, input: Input, P: URLSearchParams
     const built: string[] = [];
     for (const [k, x, z] of [['pontoon', bx, bz], ['pontoon', bx + 2, bz], ['pontoon', bx, bz + 2], ['pontoon', bx + 2, bz + 2], ['smelter', bx + 1, bz + 1], ['netpen', bx + 5, bz]] as [string, number, number][]) { const why = f.why(k, x, z, 0, true); if (!why) f.place(k, x, z, 0, true); built.push(k + ':' + (why ?? 'ok')); }
     console.log('test=ocean sea works', built.join(' '));
+    if (shot === 'play') { p.x = bx + 3; p.z = bz - 2.5; g.cam.dist = g.cam.distGoal = 16; }
     g.cam.yaw = g.cam.yawGoal = 0.7; g.cam.dist = g.cam.distGoal = 18;
     console.log('test=ocean dive', JSON.stringify(at), 'depth', o.dive.depth.toFixed(1), 'started', g.player.started);
     for (let i = 0; i < 30; i++) engine.step(0.1, false);
@@ -155,9 +182,10 @@ export async function testOcean(engine: Engine, input: Input, P: URLSearchParams
     c.position.copy(cam); c.lookAt(look); if (Math.abs(c.fov - fov) > 0.01) { c.fov = fov; c.updateProjectionMatrix(); } c.updateMatrixWorld();
   };
   (window as unknown as { __oceanCam: unknown }).__oceanCam = { cam, look };
-  // fast-forward the sea a little so the swell and the life have settled
-  engine.setScreen(g);
-  const ff = Number(P.get('t') ?? 2);
+  // fast-forward the sea a little so the swell and the life have settled (not past a splash already set up)
+  const set = engine.screen === g;
+  if (!set) engine.setScreen(g);
+  const ff = set ? 0 : Number(P.get('t') ?? 2);
   for (let i = 0; i < ff * 10; i++) engine.step(0.1, false);
   engine.start();
 }

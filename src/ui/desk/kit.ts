@@ -13,7 +13,7 @@ export function D(p: Pix | THREE.Texture, o: MatOpts = {}): DeskMat { return mat
 /** a decal quad sized to its texture (one texel per art pixel), lying in a parent's XY plane a hair in front */
 export function decal(p: Pix, o: MatOpts = {}, scale = 1) {
   const m = new THREE.Mesh(quad(p.w * scale, p.h * scale), D(p, { flat: 0.55, ...o }));
-  m.position.z = 0.35;
+  m.position.z = 0.35; m.userData.noCast = true;
   return m;
 }
 
@@ -28,7 +28,7 @@ export class LiveDecal {
     this.tex = tex(this.cv);
     this.mat = mat({ map: this.tex, flat: 1, ...o });
     this.mesh = new THREE.Mesh(quad(w, h), this.mat);
-    this.mesh.position.z = 0.35;
+    this.mesh.position.z = 0.35; this.mesh.userData.noCast = true;
   }
   clear(c?: number) { this.p.d.fill(0); if (c !== undefined) this.p.rect(0, 0, this.p.w, this.p.h, c); }
   flush() { this.g.putImageData(this.p.image(), 0, 0); this.tex.needsUpdate = true; }

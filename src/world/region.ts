@@ -3,6 +3,16 @@ import { Noise } from '../core/noise';
 import { Rand, clamp, smooth, hash01 } from '../core/rand';
 import { B } from './blockTex';
 import type { Palette } from './palette';
+import { planRanges, raiseRanges, passSites, passRoute, strata, gradePass, polyNear, type Spine, type Pass, type P2 } from './geo/ranges';
+import { hydraulic, thermal } from './geo/erosion';
+import { buildWater } from './geo/hydro';
+import { thermalField } from './geo/springs';
+import { fillFamilies, fillWater, placeOres, scanReveal, type OreId } from './geo/ores';
+import { formations } from './geo/formations';
+export type { Spine, Pass } from './geo/ranges';
+export type { OreId } from './geo/ores';
+export { ORES, ORE_BY_GEO } from './geo/ores';
+export { geyserState } from './geo/springs';
 
 /** sqrt-based length (Math.hypot is several times slower in the hot loops) */
 const hyp = (a: number, b: number, c = 0) => Math.sqrt(a * a + b * b + c * c);
@@ -33,6 +43,8 @@ export const BIOMES: Record<BiomeKey, Biome> = {
   ocean: { key: 'ocean', name: 'Open Sea', temp: 0.6, moist: 0.7, rough: 0.5, water: 0.6, terrace: 0.3, flora: 0.8, fauna: 0.5, sea: 0.9 },
 };
 
+/** strata riser height in the ranges (m) */
+const RISER: Partial<Record<BiomeKey, number>> = { highland: 3.2, tundra: 2.8, meadow: 2.6, jungle: 2.4, crystal: 3, ashland: 3, coast: 2.6, savanna: 2.4, desert: 2.8 };
 /** rolling hills per biome (m of middle-octave swell) */
 const HILLS: Partial<Record<BiomeKey, number>> = { meadow: 2.4, savanna: 1.6, jungle: 1.8, coast: 1.1, marsh: 0.3, tundra: 1.4, highland: 1.8, desert: 0.8, crystal: 1.1, ashland: 1.2 };
 /** the big landforms per biome: rim ranges (m), foothills (m), escarpment bench height (m, 0 none), mesa height (m) */
@@ -44,17 +56,50 @@ const RELIEF: Record<string, { range: number; foot: number; terrace: number; mes
   ashland: { range: 20, foot: 6, terrace: 3.2, mesa: 0 }, coast: { range: 10, foot: 3, terrace: 0, mesa: 0 },
 };
 
-export interface Deposit { x: number; z: number; kind: 'ore' | 'crystal'; amount: number; r: number }
-/** a sample along a river's centre line: position, water surface height, half width, arc length, flow speed */
-export interface RiverPt { x: number; z: number; y: number; w: number; s: number; v: number }
-/** rock families: granite (meadow, forest, tundra), sandstone (desert, savanna), basalt (ash), limestone (jungle, crystal) */
-export const enum RockMat { GRANITE, SANDSTONE, BASALT, LIMESTONE, WOOD }
-export type RockKind = 'boulder' | 'slab' | 'spire' | 'column' | 'arch' | 'pebble' | 'river' | 'log' | 'stump';
-/** one sculpted rock: base centre on the ground (x, y, z), size, yaw and a tilt of its up axis */
+/**
+ * A resource body. `kind` is the old two-way split every consumer understands ('ore' metal / coal / sulphur /
+ * gravium, 'crystal' quartz / lumen); `ore` and `item` say exactly what it is and what a miner yields (the factory
+ * item id). `amount` depletes from `max` (set by `richness`). Styles: 'outcrop' (a seam on open ground ringed by ore
+ * nodes), 'vein' (at the foot of a cliff banded with ore; `face` points at the cliff), 'buried' (hidden until a scan,
+ * drill-tier only: region.buried, region.scan), 'rare' (lumen, gravium: high-tier, in a dangerous place, `danger`).
+ */
+export interface Deposit {
+  x: number; z: number; kind: 'ore' | 'crystal'; amount: number; r: number;
+  ore?: OreId; item?: string; style?: 'outcrop' | 'vein' | 'buried' | 'rare';
+  max?: number; richness?: number;
+  /** 0 any miner, 1 drill-tier, 2 rare (high-tier recipes) */
+  tier?: number;
+  hidden?: boolean; drill?: boolean; depth?: number;
+  face?: [number, number]; danger?: string;
+}
+/** a sample along a river's centre line: position, water surface height, half width, arc length, flow speed;
+ *  rapid 0..1 white water, drop metres of fall over the next metre (at a waterfall) */
+export interface RiverPt { x: number; z: number; y: number; w: number; s: number; v: number; rapid?: number; drop?: number }
+/** a lake: its water level and outline (x, z), centre and rough radius; tarns sit high in the ranges */
+export interface Lake { level: number; poly: [number, number][]; kind?: 'fresh' | 'marsh' | 'mineral'; x: number; z: number; r: number; tarn?: boolean; cells?: number }
+/** a waterfall: lip centre at height top, falling to the pool surface at bottom, width w, unit flow direction */
+export interface Fall { x: number; z: number; top: number; bottom: number; w: number; dir: [number, number] }
+/** a thermal spring: pool centre, radius, water level; geysers erupt on their timer (geo/springs.ts geyserState):
+ *  every `period` s from `phase` (0..1), for `dur` s, a column `jet` m tall */
+export interface Spring {
+  x: number; z: number; r: number; level: number; kind: 'hot' | 'mineral' | 'geyser'; hue?: 'turquoise' | 'ochre' | 'rust' | 'green';
+  period?: number; phase?: number; dur?: number; jet?: number;
+}
+/** rock families: granite (meadow, forest, tundra), sandstone (desert, savanna), basalt (ash), limestone (jungle,
+ *  crystal), slate (the ranges' flanks), tuff (volcanic ash beds) */
+export const enum RockMat { GRANITE, SANDSTONE, BASALT, LIMESTONE, WOOD, SLATE, TUFF }
+export type RockKind = 'boulder' | 'slab' | 'spire' | 'column' | 'arch' | 'pebble' | 'river' | 'log' | 'stump'
+  | 'node' | 'crystal' | 'floater' | 'cave' | 'overhang';
+/** one sculpted rock: base centre on the ground (x, y, z), size, yaw and a tilt of its up axis. Ore nodes, crystals
+ *  and floaters carry the ore they show (geo B id, `oreId`), `glow` (lumen, gravium) and `float` (gravium bob, m) */
 export interface RockPiece {
   kind: RockKind; mat: RockMat; x: number; y: number; z: number; sx: number; sy: number; sz: number;
   yaw: number; tilt: number; tiltDir: number; seed: number; moss: number; wet: number;
+  ore?: number; oreId?: OreId; glow?: number; float?: number; hue?: 'quartz' | 'amethyst' | 'sapphire';
+  fam?: 'hoodoo' | 'pillar' | 'stack';
 }
+/** land regions are larger than sea ones: room for ranges, valleys and passes */
+export const LAND_N = 160;
 
 export class Region {
   readonly N: number;
@@ -84,21 +129,66 @@ export class Region {
   /** columns a walker (0.75 m climb) can reach from the landing over dry land and wadeable rivers (1) or not (0) */
   reach: Uint8Array = new Uint8Array(0);
 
-  constructor(readonly seed: number, readonly biome: Biome, readonly pal: Palette, N = 128) {
+  // ---------------------------------------------------------------- geology (src/world/geo)
+  /** mountain mask 0 (lowland) .. 1 (the core of a range: stepped cliffs, not walkable) */
+  readonly mount: Float32Array;
+  /** pass corridors: 2 the graded road bed, 1 the notch walls beside it */
+  readonly passMask: Uint8Array;
+  /** the graded passes over the ranges: saddle point and road height, the road's centre line, its half-width */
+  passes: Pass[] = [];
+  /** the ranges' ridgelines (the deploy scan and the far landscape can draw them) */
+  spines: Spine[] = [];
+  /** columns on the far side of the main range from the landing (reachable only over a pass) */
+  farSide: Uint8Array | null = null;
+  /** lakes (tarns, valley lakes, plunge pools, marsh pools): their cells carry riverY = level, so isWater sees them */
+  lakes: Lake[] = [];
+  /** waterfalls (lip, drop, width, flow direction) */
+  falls: Fall[] = [];
+  /** hot springs, mineral pools and geysers (their pools carry riverY = level) */
+  springs: Spring[] = [];
+  /** steam vents in a thermal field */
+  vents: { x: number; z: number; y: number; k: number }[] = [];
+  /** the thermal field, if the region has one */
+  thermal: { x: number; z: number; r: number } | null = null;
+  /** buried deposits a scan has not found yet (scan() moves them into deposits) */
+  buried: Deposit[] = [];
+  /** listeners told when a scan reveals a deposit (its index in deposits) */
+  onDeposit: ((d: Deposit, index: number) => void)[] = [];
+  /** ore bands painted into cliffs (deposit: its index in deposits, or -1 for out-of-reach veins) */
+  veins: { x: number; z: number; r: number; ore: OreId; deposit: number }[] = [];
+  /** roosts under rock overhangs: the sheltered point (x, z), the underside's height, the open direction */
+  overhangs: { x: number; z: number; y: number; dir: [number, number] }[] = [];
+  /** cave mouths (visual): the mouth's foot, the direction it opens toward, its half-width */
+  caves: { x: number; z: number; y: number; dir: [number, number]; r: number }[] = [];
+  /** dangerous places (thermal fields, cliff ledges, the far side): for the deploy scan and for den placement */
+  dangers: { x: number; z: number; r: number; kind: string; why?: string }[] = [];
+  /** per cell RGBA for the ground shader: R rock family, G vein strength, B ore kind, A spray / spring crust
+   *  (geo/ores.ts has the encoding); terrain.ts picks it up when it is built */
+  readonly geo: Uint8Array;
+
+  constructor(readonly seed: number, readonly biome: Biome, readonly pal: Palette, N = biome.sea ? 128 : LAND_N) {
     this.N = N;
     this.h = new Float32Array(N * N); this.b = new Uint8Array(N * N);
     this.wet = new Float32Array(N * N); this.fert = new Float32Array(N * N);
     this.riverY = new Float32Array(N * N); this.forest = new Float32Array(N * N); this.damp = new Float32Array(N * N); this.solid = new Uint8Array(N * N);
+    this.mount = new Float32Array(N * N); this.passMask = new Uint8Array(N * N); this.geo = new Uint8Array(N * N * 4);
     this.noise = new Noise(seed);
     this.generate();
-    // too much of the land walled off by cliffs and ranges: try again with gentler relief
-    if (this.reachShare() < 0.6) { this.resetFields(); this.generate(0.55); }
-    if (this.reachShare() < 0.6) { this.resetFields(); this.generate(0.2); }
+    // too much of the open land walled off: try again with gentler relief
+    if (this.openShare() < 0.6) { this.resetFields(); this.generate(0.7); }
+    if (this.openShare() < 0.6) { this.resetFields(); this.generate(0.35); }
   }
   private resetFields() {
     this.h.fill(0); this.b.fill(0); this.wet.fill(0); this.fert.fill(0); this.riverY.fill(0); this.forest.fill(0); this.damp.fill(0); this.solid.fill(0);
+    this.mount.fill(0); this.passMask.fill(0); this.geo.fill(0);
     this.deposits = []; this.rivers = []; this.rocks = []; this.dirty.clear();
+    this.passes = []; this.spines = []; this.farSide = null; this.lakes = []; this.falls = []; this.springs = []; this.vents = []; this.thermal = null;
+    this.buried = []; this.veins = []; this.overhangs = []; this.caves = []; this.dangers = []; this.isles = []; this.lagoon = null;
   }
+  /** reveal buried deposits within rad of (x, z): a scan. Returns the indices of the deposits found (appended) */
+  scan(x: number, z: number, rad: number): number[] { return scanReveal(this, x, z, rad); }
+  /** the deposit under a point (index into deposits), or -1 */
+  depositAt(x: number, z: number, pad = 0.5): number { return this.deposits.findIndex((d) => d.amount > 0 && hyp(d.x - x, d.z - z) < d.r + pad); }
 
   idx(x: number, z: number) { return z * this.N + x; }
   inside(x: number, z: number) { return x >= 0 && z >= 0 && x < this.N && z < this.N; }
@@ -167,22 +257,91 @@ export class Region {
       }
       S = T;
     }
-    // the big landforms go on after the blur so cliffs and crests stay sharp
+    // the ranges go on after the blur so crests stay sharp, then rain and frost wear them into valleys and scree
+    const land = !bi.sea;
+    if (land) {
+      // the low ground (the future sea) pulls the ranges to the far side of the map
+      let sx = 0, sz = 0, sn = 0;
+      for (let z = 0; z < N; z += 2) for (let x = 0; x < N; x += 2) if (S[z * N + x] < 4) { sx += x; sz += z; sn++; }
+      const sea: [number, number] | null = sn > (N * N) / 400 ? [sx / sn, sz / sn] : null;
+      const plan = planRanges(N, bi.key, new Rand(this.seed ^ 0x3a77), n, sea);
+      this.spines = plan.spines; this.hint = plan.hint;
+      raiseRanges(S, this.mount, N, this.spines, n, reliefK, 4);
+      const t0 = performance.now();
+      const rain = new Float32Array(N * N), soft = new Float32Array(N * N), talus = new Float32Array(N * N);
+      for (let i = 0; i < N * N; i++) { const m = this.mount[i]; rain[i] = 0.25 + m * 2.2; soft[i] = 1 - m * 0.55; talus[i] = 0.95 + m * 0.3; }
+      hydraulic(S, N, new Rand(this.seed ^ 0xe40), { drops: Math.round(N * N * 1.1), rain, soft, capacity: 2.2, erode: 0.22, deposit: 0.25, maxStep: 0.12, life: 44 });
+      thermal(S, N, 24, talus, 0.35);
+      this.erodeMs = performance.now() - t0;
+    }
     this.relief(S, ox, oz, reliefK);
     for (let i = 0; i < N * N; i++) this.h[i] = Math.max(1.5, S[i]);
     this.water = 3.9;
     if (bi.sea) this.oceanFloor(new Rand(this.seed ^ 0x0cea));
+    // the passes: their routes first (so the strata leave them be), the roads graded once the land is final
+    const routes: P2[][] = [];
+    if (land && this.spines.length) {
+      const keep = new Uint8Array(N * N);
+      for (const ps of passSites(this.spines, N)) {
+        const P = passRoute(this.h, this.mount, N, ps, 6);
+        if (P.length < 8) continue;
+        routes.push(P);
+        for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) if (this.mount[z * N + x] > 0.15 && polyNear(P, x + 0.5, z + 0.5)[0] < 9) keep[z * N + x] = 1;
+      }
+      strata(this.h, this.mount, N, n, RISER[bi.key] ?? 2.8, 4, keep);
+    }
     this.pickLanding(r);
     this.landingPad();
-    this.carveRivers(new Rand(this.seed ^ 0x51ae));
+    for (const P of routes) {
+      const y = gradePass(this.h, N, P, 2.6, 0.42, this.passMask);
+      const mid = P[Math.floor(P.length / 2)];
+      let best = mid, bd = -1;
+      for (const p of P) { const i = Math.floor(p[1]) * N + Math.floor(p[0]); if (this.mount[i] > bd) { bd = this.mount[i]; best = p; } }
+      this.passes.push({ x: best[0], z: best[1], y, path: P, w: 2.6 });
+    }
+    if (land && this.spines.length) this.sides();
+    buildWater(this, new Rand(this.seed ^ 0x51ae));
+    if (land) thermalField(this, new Rand(this.seed ^ 0x7e57));
     this.forestField();
+    fillFamilies(this);
     this.assignBlocks(r);
     this.trails(r);
-    this.formations(new Rand(this.seed ^ 0x70c5));
+    formations(this, new Rand(this.seed ^ 0x70c5));
     this.computeReach();
-    this.placeDeposits(r);
+    placeOres(this, new Rand(this.seed ^ 0x0e5));
+    fillWater(this);
     this.dampField();
     if (bi.sea) this.seabed(new Rand(this.seed ^ 0x5eab));
+  }
+  /** where the landing should go (the middle of the big valley), from the range plan */
+  private hint: [number, number] | null = null;
+  /** how long erosion took (ms) */
+  erodeMs = 0;
+  /** which side of the main range each column lies (farSide: the side away from the landing) */
+  private sides() {
+    const N = this.N, sp = this.spines.find((s) => s.kind === 'main') ?? this.spines[0], L = this.landing;
+    const side = (x: number, z: number) => {
+      let bd = 1e9, sg = 0;
+      for (let i = 0; i < sp.pts.length - 1; i++) {
+        const a = sp.pts[i], b = sp.pts[i + 1], ex = b[0] - a[0], ez = b[1] - a[1];
+        const t = clamp(((x - a[0]) * ex + (z - a[1]) * ez) / (ex * ex + ez * ez || 1), 0, 1);
+        const d = hyp(x - a[0] - ex * t, z - a[1] - ez * t);
+        if (d < bd) { bd = d; sg = Math.sign(ex * (z - a[1]) - ez * (x - a[0])); }
+      }
+      return sg;
+    };
+    const home = side(L.x, L.z), out = new Uint8Array(N * N);
+    for (let z = 0; z < N; z += 2) for (let x = 0; x < N; x += 2) {
+      const f = side(x + 1, z + 1) !== home ? 1 : 0;
+      for (let dz = 0; dz < 2; dz++) for (let dx = 0; dx < 2; dx++) if (x + dx < N && z + dz < N) out[(z + dz) * N + x + dx] = f;
+    }
+    this.farSide = out;
+  }
+  /** the share of the open land (outside the ranges, dry) a walker can reach from the landing */
+  openShare() {
+    let land = 0, got = 0;
+    for (let i = 0; i < this.N * this.N; i++) if (this.h[i] >= this.water && this.mount[i] < 0.3 && this.riverY[i] <= 0) { land++; if (this.reach[i]) got++; }
+    return land ? got / land : 1;
   }
 
   // ------------------------------------------------------------------------------------------------ landforms
@@ -200,21 +359,22 @@ export class Region {
       const e = Math.min(x, z, N - 1 - x, N - 1 - z), dc = hyp(x - c, z - c);
       // which sides carry a range (a slow field), and how close to the rim
       const side = n.fbm2(X * 0.011 + 700, Z * 0.011 - 300, 2) * 0.5 + 0.5;
-      const rim = smooth(32, 2, e) * smooth(0.32, 0.58, side);
+      const ranged = this.spines.length > 0, m = this.mount[i];
+      const rim = ranged ? 0 : smooth(32, 2, e) * smooth(0.32, 0.58, side);
       if (rim > 0 && K.range) {
         const rdg = Math.pow(n.ridge2(X * 0.026, Z * 0.026, 4), 1.9);
         v += K.range * k * rim * (0.35 + 0.65 * rdg) * (0.8 + n.fbm2(X * 0.05, Z * 0.05, 2) * 0.35);
       }
       // foothills: ridged spurs running in from the ranges
-      const foot = smooth(48, 12, e) * smooth(0.22, 0.5, side);
+      const foot = ranged ? 0 : smooth(48, 12, e) * smooth(0.22, 0.5, side);
       if (foot > 0 && K.foot) v += K.foot * k * foot * Math.pow(n.ridge2(X * 0.047 + 33, Z * 0.047 - 12, 3), 1.6);
       // mesas: flat-topped tables with sheer sides and a scree apron, kept off the middle of the map
       if (K.mesa) {
-        const m = n.fbm2(X * 0.028 + 400, Z * 0.028 - 50, 3) * 0.5 + 0.5, away = smooth(22, 36, dc);
-        v += (smooth(0.585, 0.62, m) * K.mesa + smooth(0.52, 0.585, m) * 1.1) * away * k;
+        const mz = n.fbm2(X * 0.028 + 400, Z * 0.028 - 50, 3) * 0.5 + 0.5, away = smooth(22, 36, hyp(x - (this.hint?.[0] ?? c), z - (this.hint?.[1] ?? c)));
+        v += (smooth(0.585, 0.62, mz) * K.mesa + smooth(0.52, 0.585, mz) * 1.1) * away * k * (1 - smooth(0.1, 0.4, m));
       }
       // escarpments: benches with cliff risers; a slow field opens ramps and passes through them
-      if (K.terrace && v > 5.2) {
+      if (K.terrace && v > 5.2 && m < 0.25) {
         const t = (v - 4) / K.terrace, f = t - Math.floor(t);
         const terr = 4 + (Math.floor(t) + smooth(0.86, 0.99, f)) * K.terrace;
         const ramp = smooth(0.4, 0.62, n.n2(X * 0.043 + 90, Z * 0.043) * 0.5 + 0.5);
@@ -256,394 +416,6 @@ export class Region {
   }
   /** the share of the dry land a walker can reach from the landing */
   reachShare() { let land = 0, got = 0; for (let i = 0; i < this.N * this.N; i++) if (this.h[i] >= this.water) { land++; if (this.reach[i]) got++; } return land ? got / land : 1; }
-
-  // ------------------------------------------------------------------------------------------------ rivers
-  /**
-   * Rivers enter at high ground on the map edge and find the cheapest way down to the sea (a least-cost path that
-   * hugs the valley floors), are smoothed and given gentle meanders, then cut into the heightfield: a parabolic
-   * channel under a water surface that only ever falls toward the mouth, low banks, and valley sides no steeper
-   * than a walker can climb, so every river stays wadeable. A second river may join the first as a tributary.
-   */
-  private carveRivers(r: Rand) {
-    const N = this.N, bi = this.biome, h = this.h, W = this.water, L = this.landing;
-    const want = bi.key === 'desert' || bi.key === 'ashland' ? 0 : bi.moist > 0.6 || bi.key === 'meadow' ? (r.chance(0.55) ? 2 : 1) : 1;
-    if (!want) return;
-    // big water bodies (not puddles) are the sea
-    const comp = new Int32Array(N * N).fill(-1), sizes: number[] = [];
-    for (let i = 0; i < N * N; i++) {
-      if (h[i] >= W || comp[i] >= 0) continue;
-      const id = sizes.length, st = [i]; comp[i] = id; let n = 0;
-      while (st.length) {
-        const c = st.pop()!; n++;
-        const x = c % N, z = (c / N) | 0;
-        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const X = x + dx, Z = z + dz; if (X < 0 || Z < 0 || X >= N || Z >= N) continue;
-          const j = Z * N + X; if (h[j] < W && comp[j] < 0) { comp[j] = id; st.push(j); }
-        }
-      }
-      sizes.push(n);
-    }
-    const isSea = (i: number) => comp[i] >= 0 && sizes[comp[i]] >= 30;
-    // distance to the sea: rivers should cross the shore, not run along it
-    const ds = new Float32Array(N * N).fill(99);
-    for (let i = 0; i < N * N; i++) if (isSea(i)) ds[i] = 0;
-    for (let pass = 0; pass < 2; pass++) for (let q = 0; q < N * N; q++) {
-      const i = pass ? N * N - 1 - q : q, x = i % N, z = (i / N) | 0, sg = pass ? 1 : -1;
-      if (x + sg >= 0 && x + sg < N) ds[i] = Math.min(ds[i], ds[i + sg] + 1);
-      if (z + sg >= 0 && z + sg < N) ds[i] = Math.min(ds[i], ds[i + sg * N] + 1);
-    }
-    const g = new Float32Array(N * N), from = new Int32Array(N * N), done = new Uint8Array(N * N);
-    const sources: [number, number][] = [];
-    for (let k = 0; k < want; k++) {
-      // source: a high point on the edge, away from other sources and from the landing
-      let src = -1, best = -1e9;
-      for (let t = 0; t < 160; t++) {
-        const e = r.int(0, 3), u = r.int(6, N - 7);
-        const x = e === 0 ? 0 : e === 1 ? N - 1 : u, z = e === 2 ? 0 : e === 3 ? N - 1 : u;
-        const i = z * N + x;
-        if (h[i] < W + 1) continue;
-        // high ground far from the sea, so the river crosses the land on its way down
-        let sc = (h[i] - W) * 0.6 + Math.min(ds[i], 90) * 0.12 + r.range(0, 1.5) - Math.max(0, 30 - hyp(x - L.x, z - L.z)) * 0.2;
-        for (const [sx, sz] of sources) if (hyp(sx - x, sz - z) < N * 0.45) sc -= 20;
-        if (sc > best) { best = sc; src = i; }
-      }
-      if (src < 0) continue;
-      const sx0 = src % N, sz0 = (src / N) | 0;
-      sources.push([sx0, sz0]);
-      // least-cost descent (Dijkstra): low ground is cheap, the landing and the map rim are expensive
-      g.fill(1e9); done.fill(0); from.fill(-1);
-      const heap = new MinHeap(g);
-      g[src] = 0; heap.push(src);
-      let end = -1;
-      let lo = 1e9; for (let i = 0; i < N * N; i++) lo = Math.min(lo, h[i]);
-      const span = Math.max(1, h[src] - lo);
-      while (heap.size) {
-        const c = heap.pop();
-        if (done[c]) continue;
-        done[c] = 1;
-        const cx = c % N, cz = (c / N) | 0;
-        if (c !== src && (isSea(c) || (this.riverY[c] > 0 && k > 0))) { end = c; break; }
-        if (!sizes.some((n) => n >= 30) && !this.rivers.length && (cx === 0 || cz === 0 || cx === N - 1 || cz === N - 1) && hyp(cx - sx0, cz - sz0) > N * 0.7) { end = c; break; }
-        for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
-          if (!dx && !dz) continue;
-          const X = cx + dx, Z = cz + dz; if (X < 0 || Z < 0 || X >= N || Z >= N) continue;
-          const j = Z * N + X; if (done[j]) continue;
-          const dl = hyp(X + 0.5 - L.x, Z + 0.5 - L.z), rim = Math.min(X, Z, N - 1 - X, N - 1 - Z);
-          const cost = (dx && dz ? 1.414 : 1) * (1 + Math.max(0, (h[j] - W) / span) * 14 + (dl < 17 ? 60 : 0) + (rim < 11 && hyp(X - sx0, Z - sz0) > 8 ? (11 - rim) * 7 : 0) + (ds[j] > 0 && ds[j] < 7 ? (7 - ds[j]) * 2.5 : 0) + this.noise.n2(X * 0.08 + k * 31, Z * 0.08) * 0.35);
-          if (g[c] + cost < g[j]) { g[j] = g[c] + cost; from[j] = c; heap.push(j); }
-        }
-      }
-      if (end < 0) continue;
-      const cells: number[] = [];
-      for (let c = end; c >= 0; c = from[c]) cells.push(c);
-      cells.reverse();
-      if (cells.length < 20) continue;
-      // centre line: start a little off the map, decimate, smooth (Chaikin), then meander gently
-      let P: [number, number][] = [];
-      const c0 = cells[0], c1 = cells[Math.min(cells.length - 1, 6)];
-      const ox = (c0 % N) - (c1 % N), oz = ((c0 / N) | 0) - ((c1 / N) | 0), ol = hyp(ox, oz) || 1;
-      P.push([(c0 % N) + 0.5 + (ox / ol) * 5, ((c0 / N) | 0) + 0.5 + (oz / ol) * 5]);
-      for (let i = 0; i < cells.length; i += 3) P.push([(cells[i] % N) + 0.5, ((cells[i] / N) | 0) + 0.5]);
-      const ce = cells[cells.length - 1];
-      P.push([(ce % N) + 0.5, ((ce / N) | 0) + 0.5]);
-      for (let it = 0; it < 3; it++) {
-        const Q: [number, number][] = [P[0]];
-        for (let i = 0; i < P.length - 1; i++) {
-          const a = P[i], b = P[i + 1];
-          Q.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
-        }
-        Q.push(P[P.length - 1]); P = Q;
-      }
-      // resample at 0.5 m with a sinuous offset that vanishes at both ends
-      const raw: [number, number][] = [];
-      let carry = 0;
-      for (let i = 0; i < P.length - 1; i++) {
-        const a = P[i], b = P[i + 1], l = hyp(b[0] - a[0], b[1] - a[1]);
-        let t = carry;
-        for (; t < l; t += 0.5) raw.push([a[0] + ((b[0] - a[0]) * t) / l, a[1] + ((b[1] - a[1]) * t) / l]);
-        carry = t - l;
-      }
-      const tot = raw.length * 0.5, amp = r.range(1.6, 3.2);
-      const pts: RiverPt[] = [];
-      for (let i = 0; i < raw.length; i++) {
-        const a = raw[Math.max(0, i - 2)], b = raw[Math.min(raw.length - 1, i + 2)];
-        const tx = b[0] - a[0], tz = b[1] - a[1], tl = hyp(tx, tz) || 1;
-        const s = i * 0.5, env = Math.sin(Math.PI * Math.min(1, s / tot)) ** 0.6;
-        const off = this.noise.n2(s * 0.035 + k * 17, 3.3) * amp * env;
-        let x = raw[i][0] - (tz / tl) * off, z = raw[i][1] + (tx / tl) * off;
-        const dl = hyp(x - L.x, z - L.z);
-        if (dl < 15) { x = L.x + ((x - L.x) / dl) * 15; z = L.z + ((z - L.z) / dl) * 15; }
-        pts.push({ x, z, y: 0, w: 0, s, v: 0 });
-      }
-      // water surface: falls monotonically from source to mouth, never above the valley floor
-      const big = k === 0, end2 = this.riverY[end] > 0 ? this.riverY[end] : W;
-      let ws = 1e9;
-      for (const p of pts) {
-        const gr = this.groundSmooth(clamp(p.x, 0, N), clamp(p.z, 0, N));
-        ws = Math.min(ws - 0.002, gr - 0.5);
-        p.y = Math.max(end2, ws);
-      }
-      // smooth the profile, then make it monotone again
-      const ys = pts.map((p) => p.y);
-      for (let i = 0; i < pts.length; i++) { let sum = 0, c = 0; for (let j = Math.max(0, i - 8); j <= Math.min(pts.length - 1, i + 8); j++) { sum += ys[j]; c++; } pts[i].y = sum / c; }
-      for (let i = 1; i < pts.length; i++) pts[i].y = Math.min(pts[i].y, pts[i - 1].y - 0.001);
-      for (const p of pts) p.y = Math.max(end2, p.y);
-      // trim where the river has run out into the sea (keep a few metres for the surface to blend)
-      let cut = pts.length;
-      for (let i = 0; i < pts.length; i++) if (pts[i].y <= W + 0.01 && this.groundSmooth(clamp(pts[i].x, 0, N), clamp(pts[i].z, 0, N)) < W - 0.3) { cut = Math.min(pts.length, i + 8); break; }
-      pts.length = cut;
-      for (let i = 0; i < pts.length; i++) {
-        const p = pts[i], t = p.s / Math.max(1, pts[pts.length - 1].s);
-        p.w = (big ? 1.5 + 1.2 * t : 1.0 + 0.6 * t) * (1 + this.noise.n2(p.s * 0.05, 9.1 + k) * 0.18);
-        const a = pts[Math.max(0, i - 6)], b = pts[Math.min(pts.length - 1, i + 6)];
-        const slope = (a.y - b.y) / Math.max(0.5, b.s - a.s);
-        p.v = clamp(0.45 + slope * 26, 0.45, 2.6);
-      }
-      this.cutChannel(pts);
-      this.rivers.push(pts);
-    }
-  }
-
-  /** carve one river's channel, banks and valley into the heightfield and mark its wetted columns */
-  private cutChannel(pts: RiverPt[]) {
-    const N = this.N, h = this.h;
-    const bestD = new Float32Array(N * N).fill(1e9), bestI = new Int32Array(N * N).fill(-1);
-    // valley sides at a walkable 0.62 (a walker's climb is 0.75 m per metre), as wide as the land needs
-    const BANK = 2.6, VAL = 22;
-    for (let k = 0; k < pts.length; k++) {
-      const p = pts[k], R = p.w + BANK + VAL;
-      for (let z = Math.max(0, Math.floor(p.z - R)); z <= Math.min(N - 1, Math.ceil(p.z + R)); z++)
-        for (let x = Math.max(0, Math.floor(p.x - R)); x <= Math.min(N - 1, Math.ceil(p.x + R)); x++) {
-          const d = hyp(x + 0.5 - p.x, z + 0.5 - p.z), i = z * N + x;
-          if (d < bestD[i]) { bestD[i] = d; bestI[i] = k; }
-        }
-    }
-    for (let i = 0; i < N * N; i++) {
-      const k = bestI[i]; if (k < 0) continue;
-      const p = pts[k], d = bestD[i], w = p.w, dep = 0.32 + 0.2 * w;
-      if (d > w + BANK + VAL) continue;
-      let t: number;
-      // the bed never drops below sea level: a river stays wadeable all the way down (walkers path over any
-      // column that is not sea), shoaling into a sand bar where it meets the sea
-      if (d < w) t = Math.max(this.water + 0.02, p.y - dep * (1 - (d / w) ** 2) - 0.04);
-      else if (d < w + BANK) t = p.y + 0.06 + (d - w) * 0.42;
-      else t = p.y + 0.06 + BANK * 0.42 + (d - w - BANK) * 0.62;
-      if (h[i] > t) h[i] = t;
-      else if (d < w + BANK && h[i] < p.y + 0.06 && p.y > this.water + 0.05 && this.riverY[i] <= 0) h[i] = t; // a low levee holds the water in
-      if (d < w + 0.35 && h[i] < p.y) this.riverY[i] = Math.max(this.riverY[i], p.y);
-    }
-  }
-
-  // ------------------------------------------------------------------------------------------------ rock formations
-  /**
-   * Geological formations, chosen per biome and sited where the land asks for them: granite tors on rises, glacial
-   * erratics in open ground, layered ledges along steep slopes with scree fanned out below, sandstone hoodoos and
-   * a rare arch in dry country, basalt column clusters in the ash, karst pillars in the jungle, sea stacks off the
-   * coast, moss-grown stones in damp woods and rounded stones along every river. Big pieces lift the ground under
-   * them, so walkers path around them and nothing spawns or grows inside.
-   */
-  private formations(r: Rand) {
-    const N = this.N, bi = this.biome, L = this.landing, h0 = Float32Array.from(this.h);
-    const mat: RockMat = bi.key === 'desert' || bi.key === 'savanna' ? RockMat.SANDSTONE : bi.key === 'ashland' ? RockMat.BASALT : bi.key === 'jungle' || bi.key === 'crystal' ? RockMat.LIMESTONE : RockMat.GRANITE;
-    const mossK: Record<string, number> = { meadow: 0.5, jungle: 0.95, savanna: 0.1, marsh: 0.9, highland: 0.4, tundra: 0.2, desert: 0, crystal: 0.15, ashland: 0.06, coast: 0.35 };
-    const moss0 = mossK[bi.key] ?? 0.3;
-    type F = 'tor' | 'erratic' | 'stones' | 'ledge' | 'hoodoo' | 'pillar' | 'columns' | 'stack' | 'arch';
-    const W: Record<string, [F, number][]> = {
-      meadow: [['tor', 3], ['erratic', 2], ['stones', 2], ['ledge', 1]],
-      jungle: [['pillar', 2], ['stones', 3], ['tor', 1]],
-      savanna: [['tor', 3], ['hoodoo', 1.2], ['erratic', 1], ['arch', 0.25]],
-      marsh: [['stones', 3], ['erratic', 1]],
-      highland: [['ledge', 3], ['tor', 2], ['erratic', 1]],
-      tundra: [['erratic', 3], ['tor', 1.5], ['ledge', 1]],
-      desert: [['hoodoo', 3], ['ledge', 2], ['arch', 0.6], ['erratic', 1]],
-      crystal: [['pillar', 2], ['hoodoo', 1], ['tor', 1]],
-      ashland: [['columns', 3], ['ledge', 1], ['erratic', 2]],
-      coast: [['stack', 2], ['tor', 1], ['erratic', 2], ['stones', 1]],
-    };
-    const COUNT: Record<string, number> = { highland: 14, desert: 12, ashland: 12, tundra: 10, savanna: 10, crystal: 11, meadow: 10, coast: 9, jungle: 9, marsh: 7 };
-    const g0 = (x: number, z: number) => {
-      const fx = clamp(x - 0.5, 0, N - 1.001), fz = clamp(z - 0.5, 0, N - 1.001), i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
-      return (h0[j * N + i] * (1 - u) + h0[j * N + i + 1] * u) * (1 - v) + (h0[(j + 1) * N + i] * (1 - u) + h0[(j + 1) * N + i + 1] * u) * v;
-    };
-    const cellOk = (x: number, z: number) => {
-      if (x < 3 || z < 3 || x > N - 3 || z > N - 3) return false;
-      const i = Math.floor(z) * N + Math.floor(x);
-      return h0[i] >= this.water + 0.3 && this.riverY[i] <= 0 && this.b[i] !== B.SOIL;
-    };
-    const grad = (x: number, z: number): [number, number] => [g0(x + 1, z) - g0(x - 1, z), g0(x, z + 1) - g0(x, z - 1)];
-    const prom = (x: number, z: number) => { let s = 0; for (let a = 0; a < 8; a++) s += g0(x + Math.cos(a * 0.785) * 6, z + Math.sin(a * 0.785) * 6); return g0(x, z) - s / 8; };
-    const centres: [number, number][] = [];
-    const add = (k: RockKind, x: number, z: number, sx: number, sy: number, sz: number, o: Partial<RockPiece> = {}) => {
-      // seat on the lowest ground under the footprint, sunk by a fraction of its height
-      let y = g0(x, z);
-      const rad = Math.min(sx, sz) * 0.7;
-      for (let a = 0; a < 6; a++) y = Math.min(y, g0(x + Math.cos(a * 1.047) * rad, z + Math.sin(a * 1.047) * rad));
-      const bury = o.y !== undefined ? 0 : sy * (k === 'spire' || k === 'column' || k === 'arch' ? 0.06 : r.range(0.14, 0.3));
-      this.rocks.push({ kind: k, mat, x, y: (o.y ?? y) - bury, z, sx, sy, sz, yaw: r.range(0, Math.PI * 2), tilt: 0, tiltDir: 0, seed: r.int(1, 1e9), moss: moss0, wet: 0, ...o, ...(o.y !== undefined ? { y: o.y } : {}) });
-      return this.rocks[this.rocks.length - 1];
-    };
-    const scree = (x: number, z: number, rad: number, n: number, size: number, downhill = 0) => {
-      const [gx, gz] = grad(x, z), gl = hyp(gx, gz) || 1;
-      for (let i = 0; i < n; i++) {
-        const a = r.range(0, Math.PI * 2), d = rad * Math.sqrt(r.next());
-        let px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d;
-        if (downhill) { const t = r.range(0, downhill); px -= (gx / gl) * t; pz -= (gz / gl) * t; }
-        if (!cellOk(px, pz) || hyp(px - L.x, pz - L.z) < 14) continue;
-        const s0 = size * r.range(0.35, 1) * (r.chance(0.12) ? 1.8 : 1);
-        add('pebble', px, pz, s0 * r.range(0.8, 1.3), s0 * r.range(0.5, 0.9), s0 * r.range(0.8, 1.3), { tilt: r.range(0, 0.5), tiltDir: r.range(0, 6.28) });
-      }
-    };
-    const want = COUNT[bi.key] ?? 9, table = W[bi.key] ?? W.meadow;
-    for (let f = 0, tries = 0; f < want && tries < want * 12; tries++) {
-      const type = r.weighted(table);
-      // pick the best of a handful of candidate sites for this kind
-      let bx = -1, bz = -1, bs = -1e9;
-      for (let t = 0; t < 24; t++) {
-        const x = r.range(8, N - 8), z = r.range(8, N - 8);
-        if (!cellOk(x, z)) continue;
-        const dl = hyp(x - L.x, z - L.z);
-        if (dl < (type === 'arch' || type === 'columns' ? 22 : 19)) continue;
-        if (centres.some(([cx, cz]) => hyp(cx - x, cz - z) < 13)) continue;
-        const i = Math.floor(z) * N + Math.floor(x), [gx, gz] = grad(x, z), sl = hyp(gx, gz) * 0.5;
-        let sc = r.range(0, 0.6);
-        if (type === 'tor') sc += prom(x, z) * 1.4 - sl * 0.3;
-        else if (type === 'ledge') sc += sl * 3 - (sl > 1.2 ? 2 : 0);
-        else if (type === 'stones') sc += this.forest[i] * 1.5 + this.wet[i];
-        else if (type === 'erratic') sc += 1 - this.forest[i] - sl * 0.5;
-        else if (type === 'hoodoo' || type === 'pillar') sc += prom(x, z) * 0.6 + (1 - this.forest[i]) * 0.5;
-        else if (type === 'stack') { let near = 99; for (let a = 0; a < 12; a++) for (const d of [3, 6, 9]) if (h0[clamp(Math.floor(z + Math.sin(a * 0.52) * d), 0, N - 1) * N + clamp(Math.floor(x + Math.cos(a * 0.52) * d), 0, N - 1)] < this.water) near = Math.min(near, d); sc += near < 99 ? 2 - near * 0.15 : -3; }
-        else if (type === 'arch') sc += 1 - sl * 2;
-        else sc += sl;
-        if (sc > bs) { bs = sc; bx = x; bz = z; }
-      }
-      if (bx < 0) continue;
-      const x = bx, z = bz, i = Math.floor(z) * N + Math.floor(x), [gx, gz] = grad(x, z), gl = hyp(gx, gz) || 1;
-      const mossy = clamp(moss0 + this.forest[i] * 0.3 + this.wet[i] * 0.15 - 0.1, 0, 1);
-      centres.push([x, z]); f++;
-      if (type === 'tor') {
-        // a granite tor: a pile of jointed, rounded blocks, some stacked, a skirt of fallen pieces
-        const R0 = r.range(1.5, 2.3), n = r.int(2, 4), core: RockPiece[] = [];
-        for (let k = 0; k < n; k++) {
-          const a = r.range(0, 6.28), d = k ? r.range(R0 * 0.6, R0 * 1.15) : 0, R = R0 * (k ? r.range(0.55, 0.85) : 1);
-          core.push(add('boulder', x + Math.cos(a) * d, z + Math.sin(a) * d, R * r.range(0.9, 1.15), R * r.range(0.75, 1.05), R * r.range(0.85, 1.1), { moss: mossy }));
-        }
-        if (r.chance(0.6)) { const b = core[0], R = R0 * r.range(0.45, 0.65); add('boulder', b.x + r.range(-0.4, 0.4), b.z + r.range(-0.4, 0.4), R, R * r.range(0.7, 0.95), R * r.range(0.8, 1), { y: b.y + b.sy * 0.82, moss: mossy * 0.6, tilt: r.range(0, 0.25), tiltDir: r.range(0, 6.28) }); }
-        for (let k = r.int(3, 6); k > 0; k--) { const a = r.range(0, 6.28), d = r.range(R0 * 1.4, R0 * 2.4), R = r.range(0.45, 0.95); if (cellOk(x + Math.cos(a) * d, z + Math.sin(a) * d)) add('boulder', x + Math.cos(a) * d, z + Math.sin(a) * d, R, R * r.range(0.6, 0.9), R * r.range(0.8, 1.2), { moss: mossy }); }
-        scree(x, z, R0 * 3, r.int(10, 18), 0.32, 3);
-      } else if (type === 'erratic') {
-        const R = r.range(1.1, 1.9);
-        add('boulder', x, z, R * r.range(1, 1.3), R * r.range(0.8, 1.1), R, { moss: mossy, tilt: r.range(0, 0.18), tiltDir: r.range(0, 6.28) });
-        for (let k = r.int(1, 3); k > 0; k--) { const a = r.range(0, 6.28), d = r.range(R * 1.3, R * 2.2), q = r.range(0.35, 0.7); add('boulder', x + Math.cos(a) * d, z + Math.sin(a) * d, q, q * 0.7, q, { moss: mossy }); }
-        scree(x, z, R * 2.6, r.int(4, 9), 0.28);
-      } else if (type === 'stones') {
-        // a mossy jumble of rounded stones, half sunk in the leaf mould
-        for (let k = r.int(4, 8); k > 0; k--) {
-          const a = r.range(0, 6.28), d = r.range(0, 4.5), R = r.range(0.4, 1.1), px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d;
-          if (cellOk(px, pz)) add('boulder', px, pz, R * r.range(1, 1.3), R * r.range(0.55, 0.85), R, { moss: clamp(mossy + 0.25, 0, 1) });
-        }
-        scree(x, z, 5, r.int(5, 10), 0.24);
-      } else if (type === 'ledge') {
-        // a stepped band of bedding slabs running along the contour, dipping gently, scree fanned out below
-        const sa = Math.atan2(gz, gx) + Math.PI / 2, ca = Math.cos(sa), sn = Math.sin(sa), n = r.int(3, 6), dip = r.range(0.06, 0.22);
-        let off = -((n - 1) / 2) * 2.8;
-        for (let k = 0; k < n; k++) {
-          const px = x + ca * off + (gx / gl) * r.range(-0.6, 0.6), pz = z + sn * off + (gz / gl) * r.range(-0.6, 0.6);
-          off += r.range(2.2, 3.4);
-          if (!cellOk(px, pz)) continue;
-          add('slab', px, pz, r.range(1.5, 2.6), r.range(0.8, 1.6) * (bi.key === 'highland' || bi.key === 'desert' ? 1.25 : 1), r.range(1.1, 1.7), { yaw: sa + r.range(-0.2, 0.2), tilt: dip, tiltDir: Math.atan2(-gz, -gx), moss: mossy * 0.8 });
-        }
-        scree(x - (gx / gl) * 3, z - (gz / gl) * 3, 4.5, r.int(14, 26), 0.3, 4);
-      } else if (type === 'hoodoo' || type === 'pillar' || type === 'stack') {
-        // spires: hoodoos with cap rocks, karst pillars, sea stacks
-        const n = type === 'stack' ? r.int(1, 3) : r.int(3, 7);
-        for (let k = 0; k < n; k++) {
-          const a = r.range(0, 6.28), d = k ? r.range(1.6, 5) : 0, px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d;
-          if (k && !cellOk(px, pz)) continue;
-          const R = type === 'stack' ? r.range(1.0, 1.7) : r.range(0.5, 1.0), H = type === 'stack' ? r.range(3.5, 6.5) : type === 'pillar' ? r.range(2.4, 5.2) : r.range(1.8, 5.5) * (k ? 0.8 : 1);
-          add('spire', px, pz, R, H, R * r.range(0.85, 1.15), { tilt: r.range(0, 0.06), tiltDir: r.range(0, 6.28), moss: type === 'pillar' ? clamp(mossy + 0.2, 0, 1) : mossy * 0.5 });
-        }
-        for (let k = r.int(1, 4); k > 0; k--) { const a = r.range(0, 6.28), d = r.range(1.5, 5), q = r.range(0.4, 0.9), px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d; if (cellOk(px, pz)) add('boulder', px, pz, q * 1.2, q * 0.7, q, { moss: mossy * 0.6, tilt: r.range(0, 0.4), tiltDir: r.range(0, 6.28) }); }
-        scree(x, z, 5.5, r.int(8, 16), 0.26);
-      } else if (type === 'columns') {
-        // columnar basalt: a cluster of hexagonal prisms, stepped like organ pipes
-        add('column', x, z, r.range(1.8, 3.2), r.range(1.6, 3.8), 1, { moss: mossy * 0.4 });
-        scree(x, z, 5, r.int(10, 18), 0.3, 2);
-      } else if (type === 'arch') {
-        // a natural arch, with the rest of its fin running on past both legs
-        const span = r.range(2.8, 4.2), A = add('arch', x, z, span, r.range(3, 4.6), r.range(0.9, 1.3), { moss: mossy * 0.5 });
-        for (const sg of [-1, 1]) {
-          const d = span + r.range(1.8, 2.6), px = x + Math.cos(A.yaw) * d * sg, pz = z + Math.sin(A.yaw) * d * sg;
-          if (cellOk(px, pz)) add('slab', px, pz, r.range(1.6, 2.3), A.sy * r.range(0.45, 0.8), A.sz * r.range(1.1, 1.4), { yaw: A.yaw + r.range(-0.15, 0.15), moss: mossy * 0.4 });
-        }
-        scree(x, z, span * 1.8, r.int(8, 14), 0.3);
-      }
-    }
-    // rounded stones along the rivers: on the banks, in the shallows, and as riffles where the water runs fast
-    for (const pts of this.rivers) for (let k = 4; k < pts.length - 4; k += 2) {
-      const p = pts[k];
-      if (!r.chance(p.v > 1.3 ? 0.42 : 0.2)) continue;
-      const q = pts[Math.min(pts.length - 1, k + 2)], tx = q.x - p.x, tz = q.z - p.z, tl = hyp(tx, tz) || 1;
-      const side = r.chance(0.5) ? 1 : -1, d = p.v > 1.3 && r.chance(0.4) ? r.range(0, p.w * 0.8) : p.w + r.range(-0.6, 1.3);
-      const px = p.x - (tz / tl) * d * side, pz = p.z + (tx / tl) * d * side;
-      if (px < 1 || pz < 1 || px > N - 1 || pz > N - 1 || hyp(px - L.x, pz - L.z) < 14) continue;
-      const R = r.range(0.22, 0.6) * (r.chance(0.1) ? 1.8 : 1);
-      this.rocks.push({ kind: 'river', mat: mat === RockMat.SANDSTONE ? RockMat.GRANITE : mat, x: px, y: g0(px, pz) - R * 0.2, z: pz, sx: R * r.range(1, 1.4), sy: R * r.range(0.45, 0.7), sz: R, yaw: r.range(0, 6.28), tilt: r.range(0, 0.25), tiltDir: r.range(0, 6.28), seed: r.int(1, 1e9), moss: bi.key === 'desert' ? 0 : r.range(0, 0.5), wet: 1 });
-    }
-    // the forest floor: fallen trunks lying along the slope, and old stumps, some broken off high
-    let fc = 0; for (let i = 0; i < N * N; i++) if (this.forest[i] > 0.5) fc++;
-    const nLogs = Math.round(fc * 0.0055), nStumps = Math.round(fc * 0.0035);
-    const clearOf = (x: number, z: number, d: number) => !this.rocks.some((q) => q.kind !== 'pebble' && hyp(q.x - x, q.z - z) < d + Math.max(q.sx, q.sz));
-    for (let t = 0, made = 0; t < nLogs * 10 && made < nLogs; t++) {
-      const x = r.range(4, N - 4), z = r.range(4, N - 4), i = Math.floor(z) * N + Math.floor(x);
-      if (this.forest[i] < 0.5 || !cellOk(x, z) || hyp(x - L.x, z - L.z) < 15 || !clearOf(x, z, 1.5)) continue;
-      const len = r.range(3, 6.2), rad = r.range(0.2, 0.42), yaw = r.range(0, Math.PI * 2), c = Math.cos(yaw), sn = Math.sin(yaw);
-      const ax = x - c * len * 0.5, az = z - sn * len * 0.5, bx = x + c * len * 0.5, bz = z + sn * len * 0.5;
-      if (!cellOk(ax, az) || !cellOk(bx, bz)) continue;
-      const ga = g0(ax, az), gb = g0(bx, bz), gm = g0(x, z);
-      if (Math.abs(ga - gb) > len * 0.45) continue;
-      this.rocks.push({ kind: 'log', mat: RockMat.WOOD, x, y: Math.min(gm, (ga + gb) / 2) - rad * 0.35, z, sx: len / 2, sy: rad, sz: rad, yaw, tilt: Math.atan2(Math.abs(ga - gb), len), tiltDir: gb < ga ? yaw : yaw + Math.PI, seed: r.int(1, 1e9), moss: clamp(moss0 + 0.25, 0, 1), wet: 0 });
-      made++;
-    }
-    for (let t = 0, made = 0; t < nStumps * 10 && made < nStumps; t++) {
-      const x = r.range(4, N - 4), z = r.range(4, N - 4), i = Math.floor(z) * N + Math.floor(x);
-      if (this.forest[i] < 0.45 || !cellOk(x, z) || hyp(x - L.x, z - L.z) < 15 || !clearOf(x, z, 1.2)) continue;
-      const rad = r.range(0.22, 0.46);
-      this.rocks.push({ kind: 'stump', mat: RockMat.WOOD, x, y: g0(x, z) - 0.05, z, sx: rad, sy: r.chance(0.3) ? r.range(0.9, 1.6) : r.range(0.3, 0.7), sz: rad, yaw: r.range(0, 6.28), tilt: r.range(0, 0.08), tiltDir: r.range(0, 6.28), seed: r.int(1, 1e9), moss: clamp(moss0 + 0.2, 0, 1), wet: 0 });
-      made++;
-    }
-    // the ground answers: solid under big pieces (lifted so walkers go round), bare rock and scree around them
-    const rockB = mat === RockMat.BASALT ? B.BASALT : B.ROCK;
-    for (const p of this.rocks) {
-      if (p.kind === 'pebble' || p.kind === 'river' || p.kind === 'log' || p.kind === 'stump') continue;
-      const c = Math.cos(p.yaw), sn = Math.sin(p.yaw);
-      const feet: [number, number, number, number][] = p.kind === 'arch' ? [[-p.sx, 0, p.sz * 1.1, p.sz * 1.1], [p.sx, 0, p.sz * 1.1, p.sz * 1.1]] : [[0, 0, p.sx, p.sz]];
-      // the lift stays inside the stone: low rocks are clambered over (lifted to near their top), big ones lift
-      // past any walker's step so paths go round them
-      const lift = Math.min(1.75, p.sy * (p.kind === 'spire' || p.kind === 'column' ? 0.8 : p.sy < 1.3 ? 0.82 : 0.68));
-      for (const [fx, fz, rx, rz] of feet) {
-        const cx = p.x + fx * c - fz * sn, cz = p.z + fx * sn + fz * c;
-        const ext = Math.ceil(Math.max(rx, rz) + 2);
-        for (let z = Math.floor(cz) - ext; z <= Math.floor(cz) + ext; z++) for (let x = Math.floor(cx) - ext; x <= Math.floor(cx) + ext; x++) {
-          if (!this.inside(x, z)) continue;
-          const i = z * N + x;
-          // footprint test in the rock's own frame: all four cell corners inside the base ellipse
-          const inE = (px: number, pz: number, k: number) => { const dx = px - cx, dz = pz - cz, u = dx * c + dz * sn, v = -dx * sn + dz * c; return (u / (rx * k)) ** 2 + (v / (rz * k)) ** 2 <= 1; };
-          const core = inE(x, z, 0.78) && inE(x + 1, z, 0.78) && inE(x, z + 1, 0.78) && inE(x + 1, z + 1, 0.78);
-          const centre = (p.kind === 'spire' || p.kind === 'column') && inE(x + 0.5, z + 0.5, 1);
-          if (core || centre) {
-            this.solid[i] = 1; this.fert[i] = 0;
-            if (lift > 0.3) this.h[i] = Math.max(this.h[i], p.y + lift);
-            this.b[i] = rockB;
-          } else if (inE(x + 0.5, z + 0.5, 1.25 + hash01(x, z, 77) * 0.45) && this.h[i] >= this.water && this.riverY[i] <= 0) {
-            // a ragged apron of rubble: grey scree round granite and basalt, mostly sand round sandstone
-            const hh = hash01(x, z, 78);
-            if (this.b[i] === B.GRASS || this.b[i] === B.DRY || this.b[i] === B.LITTER || this.b[i] === B.SAND) this.b[i] = mat === RockMat.SANDSTONE ? (hh < 0.3 ? B.GRAVEL : B.SAND) : hh < 0.5 ? B.GRAVEL : hh < 0.7 ? rockB : this.b[i];
-            this.fert[i] *= 0.6;
-          }
-        }
-      }
-    }
-  }
 
   // ------------------------------------------------------------------------------------------------ woodland
   private forestField() {
@@ -744,6 +516,15 @@ export class Region {
       else if (alt > 15 + v * 4) k = alt > 12 + bi.temp * 20 + v * 3 ? B.SNOW : alt > 19 + v * 4 || sl > 0.6 ? B.ROCK : B.GRAVEL;
       else k = w < 0.3 ? B.DRY : B.GRASS;
       if (k === B.GRASS && v < -0.5 && dw[i] < 12) k = B.CLAY;
+      // the ranges: scree on the steep slopes at their foot, bare rock and snow up high, the pass road worn to gravel
+      const m = this.mount[i];
+      if (m > 0.12 && above > 0.3) {
+        if (sl >= 0.95) k = bi.key === 'ashland' ? B.BASALT : B.ROCK;
+        else if (sl > 0.45 && m < 0.7) k = hash01(x, z, 31) < 0.6 ? B.GRAVEL : k;
+        else if (alt > 26 + bi.temp * 18 + v * 3) k = B.SNOW;
+        else if (alt > 18 + v * 4 && (k === B.GRASS || k === B.LITTER)) k = v > 0.1 ? B.GRAVEL : k;
+      }
+      if (this.passMask[i] === 2) k = hash01(x, z, 32) < 0.7 ? B.SOIL : B.GRAVEL;
       // woodland floor: leaf litter under the canopy, frayed at the edges
       if ((k === B.GRASS || k === B.DRY) && this.forest[i] > 0.55 + (hash01(x, z, 41) - 0.5) * 0.22 + n.n2(x * 0.3, z * 0.3) * 0.08) k = B.LITTER;
       this.b[i] = k;
@@ -756,40 +537,22 @@ export class Region {
   private pickLanding(r: Rand) {
     const N = this.N;
     let best = -1e9;
+    const H = this.hint;
     for (let t = 0; t < 400; t++) {
-      const x = r.int(Math.floor(N * 0.3), Math.floor(N * 0.7)), z = r.int(Math.floor(N * 0.3), Math.floor(N * 0.7));
+      // near the middle of the big valley when the ranges planned one, else the middle of the map
+      const x = H ? clamp(Math.round(H[0] + r.range(-20, 20)), 12, N - 13) : r.int(Math.floor(N * 0.3), Math.floor(N * 0.7));
+      const z = H ? clamp(Math.round(H[1] + r.range(-20, 20)), 12, N - 13) : r.int(Math.floor(N * 0.3), Math.floor(N * 0.7));
+      if (this.mount[z * N + x] > 0.08) continue;
       // flat, dry, not too high
       let s = 0, lo = 1e9, hi = -1e9;
       for (let dz = -6; dz <= 6; dz += 2) for (let dx = -6; dx <= 6; dx += 2) {
         const h = this.heightAt(x + dx, z + dz); lo = Math.min(lo, h); hi = Math.max(hi, h);
         if (h < this.water + 0.5) s -= 6;
       }
-      s -= (hi - lo) * 3 + hyp(x - N / 2, z - N / 2) * 0.05;
+      s -= (hi - lo) * 3 + hyp(x - (H ? H[0] : N / 2), z - (H ? H[1] : N / 2)) * 0.05;
+      // clear of the ranges' foot
+      for (let a = 0; a < 8; a++) { const X = clamp(Math.round(x + Math.cos(a * 0.785) * 16), 0, N - 1), Z = clamp(Math.round(z + Math.sin(a * 0.785) * 16), 0, N - 1); s -= this.mount[Z * N + X] * 4; }
       if (s > best) { best = s; this.landing = { x: x + 0.5, z: z + 0.5 }; }
-    }
-  }
-
-  private placeDeposits(r: Rand) {
-    const N = this.N, bi = this.biome;
-    const want = 7 + (bi.key === 'highland' || bi.key === 'crystal' ? 4 : 0);
-    for (let t = 0, made = 0; t < 600 && made < want; t++) {
-      const x = r.int(6, N - 7), z = r.int(6, N - 7);
-      if (this.h[z * N + x] < this.water + 0.5 || this.riverY[z * N + x] > 0) continue;
-      if (this.reach.length && !this.reach[z * N + x]) continue;
-      if (hyp(x - this.landing.x, z - this.landing.z) < (made < 2 ? 12 : 18)) continue;
-      let blocked = false;
-      for (let dz = -4; dz <= 4 && !blocked; dz++) for (let dx = -4; dx <= 4; dx++) if (this.inside(x + dx, z + dz) && this.solid[(z + dz) * N + x + dx]) { blocked = true; break; }
-      if (blocked) continue;
-      if (made < 2 && hyp(x - this.landing.x, z - this.landing.z) > 30) continue; // two starter seams nearby
-      if (this.deposits.some((d) => hyp(d.x - x, d.z - z) < 14)) continue;
-      const kind: Deposit['kind'] = bi.key === 'crystal' ? (r.chance(0.6) ? 'crystal' : 'ore') : r.chance(0.22) ? 'crystal' : 'ore';
-      const rad = r.range(1.6, 2.8);
-      for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
-        const d = hyp(dx, dz) + hash01(x + dx, z + dz, 5) * 0.8;
-        if (d <= rad && this.inside(x + dx, z + dz) && this.h[(z + dz) * N + x + dx] >= this.water) this.b[(z + dz) * N + x + dx] = kind === 'ore' ? B.ORE : B.CRYSTAL;
-      }
-      this.deposits.push({ x: x + 0.5, z: z + 0.5, kind, amount: kind === 'ore' ? 1600 : 1100, r: rad });
-      made++;
     }
   }
 
@@ -831,7 +594,7 @@ export class Region {
       const d = hyp(x + 0.5 - cx, z + 0.5 - cz) / R;
       if (d >= 1) continue;
       const f = (1 - d * d) ** 2, i = z * N + x;
-      this.h[i] = Math.min(16, Math.max(0.6, this.h[i] + amt * f));
+      this.h[i] = Math.min(this.water + 70, Math.max(0.6, this.h[i] + amt * f));
       if (amt > 0 && f > 0.25) this.b[i] = f > 0.62 && hash01(x, z, 5) < 0.7 ? B.ROCK : f > 0.4 ? B.GRAVEL : B.SOIL;
       if (amt < 0 && f > 0.3) this.b[i] = this.h[i] < this.water + 0.3 ? B.MUD : B.SOIL;
       this.fert[i] *= 1 - f * 0.4;
@@ -970,17 +733,5 @@ export class Region {
       for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) { const X = Math.floor(x) + dx, Z = Math.floor(z) + dz; if (this.inside(X, Z) && hyp(X + 0.5 - x, Z + 0.5 - z) < R * 0.85) { this.solid[Z * N + X] = 1; this.b[Z * N + X] = B.ROCK; } }
       placed.push([x, z]); k--;
     }
-  }
-}
-
-class MinHeap {
-  private a: number[] = [];
-  constructor(private f: Float32Array) {}
-  get size() { return this.a.length; }
-  push(i: number) { const a = this.a; a.push(i); let k = a.length - 1; while (k > 0) { const p = (k - 1) >> 1; if (this.f[a[p]] <= this.f[a[k]]) break; [a[p], a[k]] = [a[k], a[p]]; k = p; } }
-  pop(): number {
-    const a = this.a, top = a[0], last = a.pop()!;
-    if (a.length) { a[0] = last; let k = 0; for (;;) { const l = k * 2 + 1, r = l + 1; let m = k; if (l < a.length && this.f[a[l]] < this.f[a[m]]) m = l; if (r < a.length && this.f[a[r]] < this.f[a[m]]) m = r; if (m === k) break; [a[m], a[k]] = [a[k], a[m]]; k = m; } }
-    return top;
   }
 }

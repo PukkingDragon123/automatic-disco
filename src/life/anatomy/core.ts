@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import { Page, SkinB, pageTexture, type Region, type V3, type Wt } from '../kit';
 import { type CM, type Grid, subdivide } from '../cage';
+import { RAMPS } from '../../art/palette';
 
 export interface Chart {
   name: string; k: number; faces: number[];
@@ -49,7 +50,16 @@ export interface Piece {
   noOcc?: boolean;
   /** its charts keep texel alpha (translucent membranes) */
   cut?: boolean;
+  /** the lab's body region of its vertices (partPreview.ts: torso 1, back 2, head 3, eyes 4, crown 5, jaw 6, feelers 7,
+   *  legs 8, arms 9, tail 10, wings 11); written to the geometry as `aReg` */
+  reg?: number;
+  /** the flat colour of the quick build (far LOD): a ramp and step, and a belly ramp below a normal.y (falls back to the
+   *  look lookPaint was given) */
+  tone?: Tone;
+  /** left out of the quick build (teeth, whiskers, pupils: nothing a far silhouette needs) */
+  farSkip?: boolean;
 }
+export interface Tone { ramp: number[]; step: number; belly?: { ramp: number[]; step: number; below: number } }
 /** the surface under every texel of a chart */
 export interface GBuf {
   w: number; h: number;
@@ -203,18 +213,35 @@ export class Body {
   private gid = 1;
   /** triangles per piece family (debugging the budget) */
   stats = new Map<string, number>();
-  /** quick mode (placeholder silhouettes while the real model builds elsewhere): cage-level geometry, a tiny flat page */
+  /** quick mode (placeholder silhouettes while the real model builds elsewhere, and the far LOD): cage-level geometry
+   *  on a tiny page of ramp rows, each face one ramp (its piece's tone, the belly's below a line) and each vertex a
+   *  step of it by the light, so the far model still reads as the animal in hard-stepped planes */
   static quick = false;
   readonly quick: boolean;
-  constructor(size = 1024, h = size) { this.quick = Body.quick; if (this.quick) size = h = 64; this.page = new Page(size, h); this.B = new SkinB(size, h); }
+  /** subdivision steps of the quick build (titans 1, ordinary creatures 0) */
+  quickLevels = 1;
+  /** at most this many subdivision steps per piece (ordinary creatures keep to a triangle budget) */
+  levelCap = Infinity;
+  /** the lab region of every emitted vertex (geometry attribute aReg) */
+  private vreg: number[] = [];
+  constructor(size = 1024, h = size) { this.quick = Body.quick; if (this.quick) { size = 16; h = 128; } this.page = new Page(size, h); this.B = new SkinB(size, h); }
   add<T extends Piece>(p: T): T { this.pieces.push(p); return p; }
   /** subdivide a piece now (pieces that others sit on are finalized first) */
   finalize<T extends Piece>(p: T): T {
     if (p.done) return p;
     let m = p.m;
-    for (let l = 0; l < (this.quick ? Math.min(1, p.levels) : p.levels); l++) m = subdivide(m, p.grids);
+    const n = this.quick ? Math.min(this.quickLevels, p.levels) : Math.min(this.levelCap, p.levels);
+    for (let l = 0; l < n; l++) m = subdivide(m, p.grids);
     p.m = m; p.done = true;
     return p;
+  }
+  /** tag the vertices emitted since `from` with a piece's lab region */
+  private tagRegs(from: number, reg: number) { const n = this.B.P.length / 3; for (let i = from; i < n; i++) this.vreg[i] = reg; }
+  private withRegs(geo: THREE.BufferGeometry) {
+    const n = this.B.P.length / 3, a = new Float32Array(n);
+    let any = false; for (let i = 0; i < n; i++) { a[i] = this.vreg[i] ?? 0; if (a[i]) any = true; }
+    if (any) geo.setAttribute('aReg', new THREE.BufferAttribute(a, 1));
+    return geo;
   }
   /** subdivide, chart, pack, rasterise, occlude, paint and emit everything */
   build(o: { den?: number; maxScale?: number; occlusion?: boolean; snap?: (d: Uint8ClampedArray) => void } = {}): { geo: THREE.BufferGeometry; tex: THREE.DataTexture; tris: number; scale: number } {
@@ -229,27 +256,47 @@ export class Body {
     for (const p of this.pieces) for (const ch of p.ch!) p.paint(ch, p, this);
     o.snap?.(this.page.pc.data as unknown as Uint8ClampedArray);
     this.page.finish();
-    for (const p of this.pieces) { const t0 = this.B.tris; emitPiece(this.B, p, this.gid++); const k = p.name.replace(/[0-9_lrs.-]+$/, ''); this.stats.set(k, (this.stats.get(k) ?? 0) + this.B.tris - t0); }
+    for (const p of this.pieces) { const t0 = this.B.tris, v0 = this.B.P.length / 3; emitPiece(this.B, p, this.gid++); if (p.reg) this.tagRegs(v0, p.reg); const k = p.name.replace(/[0-9_lrs.-]+$/, ''); this.stats.set(k, (this.stats.get(k) ?? 0) + this.B.tris - t0); }
     // the surface buffers are big: let them go
     for (const p of this.pieces) for (const ch of p.ch!) ch.gb = undefined;
-    return { geo: this.B.build(), tex: pageTexture(this.page), tris: this.B.tris, scale };
+    return { geo: this.withRegs(this.B.build()), tex: pageTexture(this.page), tris: this.B.tris, scale };
+  }
+  /** the quick build: cage-level pieces on a palette page (a block of 8 rows per ramp, one texel per ramp step); each
+   *  face takes its piece's ramp (or the belly's), each vertex the step its normal's light gives, so the texture
+   *  coordinate runs along the ramp and nearest sampling cuts the faces into hard-stepped light planes */
+  buildQuick() {
+    const ramps: number[][] = [], rowOf = (R: number[]) => { let k = ramps.indexOf(R); if (k < 0) { if (ramps.length >= 15) return 0; ramps.push(R); k = ramps.length - 1; } return k; };
+    const grey = RAMPS.stone as unknown as number[];
+    rowOf(grey);
+    const reg = this.page.reg('pal', this.page.W, this.page.H);
+    reg.x = 0; reg.y = 0; reg.w = this.page.W; reg.h = this.page.H; reg.rot = false;
+    const L = this.light, W = this.page.W, H = this.page.H;
+    for (const p of this.pieces) {
+      if (p.farSkip) continue;
+      this.finalize(p); surfaceInfo(p);
+      const tone: Tone | undefined = p.tone ?? toneOf(p.paint);
+      const R0 = tone?.ramp ?? grey, Rb = tone?.belly?.ramp ?? R0, st0 = tone?.step ?? 3, stB = tone?.belly?.step ?? st0, below = tone?.belly?.below ?? -2;
+      const r0 = rowOf(R0), rb = rowOf(Rb);
+      const Wm = new Map<number, Wt>(), wOf = (i: number) => { let w = Wm.get(i); if (!w) Wm.set(i, (w = p.skin(p.m.V[i]))); return w; };
+      const v0 = this.B.P.length / 3, g = this.gid++;
+      for (const f of p.m.F) {
+        const fn = faceNormal(p.m.V, f), belly = fn[1] < below, row = belly ? rb : r0, R = belly ? Rb : R0, st = belly ? stB : st0;
+        const ids = f.map((vi) => {
+          const n = p.N![vi], lam = n[0] * L[0] + n[1] * L[1] + n[2] * L[2];
+          const v = Math.max(0, Math.min(R.length - 1, st + lam * 1.5 + 0.15 + n[1] * 0.35 - 0.6));
+          return this.B.vert(p.m.V[vi], reg, (v + 0.5) / W, (row * 8 + 4) / H, wOf(vi), g);
+        });
+        for (let k = 1; k + 1 < ids.length; k++) this.B.tri(ids[0], ids[k], ids[k + 1]);
+      }
+      if (p.reg) this.tagRegs(v0, p.reg);
+    }
+    for (let k = 0; k < ramps.length; k++) for (let y = k * 8; y < k * 8 + 8; y++) for (let x = 0; x < W; x++) this.page.pc.set(x, y, ramps[k][Math.min(ramps[k].length - 1, x)], 255);
+    return { geo: this.withRegs(this.B.build()), tex: pageTexture(this.page), tris: this.B.tris, scale: 1 };
   }
 }
-
-/** the quick build: every piece emitted against one flat region of a tiny page (a stone-grey silhouette) */
-Body.prototype.buildQuick = function (this: Body) {
-  const reg = this.page.reg('flat', 8, 8);
-  this.page.pack(1);
-  for (let y = 0; y < this.page.H; y++) for (let x = 0; x < this.page.W; x++) this.page.pc.set(x, y, 0x525150, 255);
-  for (const p of this.pieces) {
-    this.finalize(p);
-    const W = new Map<number, Wt>();
-    const ids = p.m.V.map((v, i) => { let w = W.get(i); if (!w) W.set(i, (w = p.skin(v))); return this.B.vert(v, reg, 0.5, 0.5, w, 1); });
-    for (const f of p.m.F) for (let k = 1; k + 1 < f.length; k++) this.B.tri(ids[f[0]], ids[f[k]], ids[f[k + 1]]);
-  }
-  return { geo: this.B.build(), tex: pageTexture(this.page), tris: this.B.tris, scale: 1 };
-};
-declare module './core' { interface Body { buildQuick(): { geo: THREE.BufferGeometry; tex: THREE.DataTexture; tris: number; scale: number } } }
+const faceNormal = (V: V3[], f: number[]): V3 => { let x = 0, y = 0, z = 0; for (let i = 0; i < f.length; i++) { const a = V[f[i]], b = V[f[(i + 1) % f.length]]; x += (a[1] - b[1]) * (a[2] + b[2]); y += (a[2] - b[2]) * (a[0] + b[0]); z += (a[0] - b[0]) * (a[1] + b[1]); } const l = Math.hypot(x, y, z) || 1; return [x / l, y / l, z / l]; };
+/** the tone a lookPaint painter carries (look.ts tags its painters with their look's ramp and belly) */
+const toneOf = (paint: unknown): Tone | undefined => (paint as { tone?: Tone }).tone;
 
 /** smooth vertex normals and a curvature (+ ridge, - valley, in units of the local edge length) for a piece */
 export function surfaceInfo(p: Piece) {

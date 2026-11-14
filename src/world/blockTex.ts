@@ -184,17 +184,20 @@ function blade1(pc: PixelCanvas, x: number, y: number, len: number, lean: number
  */
 function grassTop(pc: PixelCanvas, pal: Palette, base: number, seed: number, lush: number) {
   const r = new Rand(seed), S = RF(pal.soil), kin = kinRamps(base), G = kin[0], D = RF(pal.grassDry);
-  const P = plates(pc, r, 11, G, [2, 2, 3, 3]);
-  // bare earth in the thin places (whole plates, so the patches have drawn edges)
-  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) if ((((P.map[y * T + x] * 2654435761) >>> 0) >>> 24) / 256 < 0.18 - lush * 0.16) pc.set(x, y, S[(P.map[y * T + x] & 1) + 2]);
+  // the floor: small plates, mostly one green with the next step down among them (a calm turf, not camouflage)
+  const P = plates(pc, r, 8, G, [3, 3, 3, 2]);
+  // bare earth in the thin places (whole plates, so the patches have drawn edges); a mixed hash per plate, since a
+  // plain multiplicative one lines the bare plates up in columns
+  const bare = (c: number) => { let h = Math.imul(c ^ Math.imul(seed, 0x9e3779b1), 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) { const c = P.map[y * T + x]; if (bare(c) < 0.14 - lush * 0.12) pc.set(x, y, S[(c & 1) + 2]); }
   // blade marks on the floor: two-pixel strokes, a lit one over a shaded one
-  for (let i = 0; i < Math.round((70 + lush * 50) * AREA); i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); pc.set(x, y, G[4]); pc.set(x, y + 1, G[1]); }
+  for (let i = 0; i < Math.round((120 + lush * 70) * AREA); i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); pc.set(x, y, G[4]); pc.set(x, y + 1, G[1]); }
   // tussocks, kept apart, back (top) to front
   const tufts: { x: number; y: number; n: number; R: number[] }[] = [];
-  const want = Math.round((13 + lush * 12) * AREA);
+  const want = Math.round((19 + lush * 14) * AREA);
   for (let t = 0; tufts.length < want && t < want * 6; t++) {
     const x = r.int(0, T - 1), y = r.int(0, T - 1);
-    if (tufts.some((q) => Math.abs(q.x - x) < 4 && Math.abs(q.y - y) < 4)) continue;
+    if (tufts.some((q) => Math.abs(q.x - x) < 3 && Math.abs(q.y - y) < 3)) continue;
     tufts.push({ x, y, n: r.int(3, 6), R: r.chance(0.15) ? kin[1] : r.chance(0.12 + (1 - lush) * 0.3) ? D : G });
   }
   tufts.sort((a, b) => a.y - b.y);

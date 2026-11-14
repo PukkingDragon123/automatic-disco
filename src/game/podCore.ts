@@ -2,8 +2,8 @@
 // building keeps its role: hold, respawn point, HQ) and it sits where it landed, tipped over in a short scorched
 // skid, hatch open, steaming. Nothing is cleared: the jungle stands all round it, only the plants right under the
 // pod are pushed aside. Small fires burn where it hit (a few grass patches, the smouldering skid, the heat shield
-// still smoking) with a flickering light, and burn out over a minute or two, leaving a charred patch and a few
-// scorched plants. The parachute lies draped beside it.
+// still smoking) with a flickering light, and burn out over a minute or two, leaving the ground scorched
+// (terrain.scorch: ash and embers that grow back over a few days) and a few scorched plants. The parachute lies draped beside it.
 import * as THREE from 'three';
 import type { Game } from './game';
 import { makePod, type Pod } from '../ui/deployPod';
@@ -89,7 +89,15 @@ export function startCrashSite(g: Game, x: number, z: number, dirX: number, dirZ
   const dl = Math.hypot(dirX, dirZ) || 1; dirX /= dl; dirZ /= dl;
   const sx = -dirZ, sz = dirX;
   const gy = (px: number, pz: number) => R.groundSmooth(Math.min(R.N - 0.5, Math.max(0.5, px)), Math.min(R.N - 0.5, Math.max(0.5, pz)));
-  charDecal(bin, g, x, z, dirX, dirZ);
+  // the burn: the terrain's own scorch (ash with embers, fading back over a few days): a patch round the pod and a
+  // narrow smouldering skid back along where it slid in; the drawn decal only where the terrain has no scorch yet
+  const terr = g.world.terrain as unknown as { scorch?(x: number, z: number, r: number, k?: number): void };
+  if (terr.scorch) {
+    terr.scorch(x, z, 3.4, 1);
+    for (let k = 1.5; k <= 9; k += 1.5) terr.scorch(x - dirX * k, z - dirZ * k, 1.25 - k * 0.04, 0.95 - k * 0.04);
+    terr.scorch(x + sx * 2.2 + dirX * 1.2, z + sz * 2.2 + dirZ * 1.2, 1.1, 0.8);
+    terr.scorch(x - sx * 2.6 - dirX * 1.5, z - sz * 2.6 - dirZ * 1.5, 1.0, 0.75);
+  } else charDecal(bin, g, x, z, dirX, dirZ);
   if (o.chute !== false) { const cx = x + dirX * 4.2 + sx * 2.4, cz = z + dirZ * 4.2 + sz * 2.4; drapedChute(bin, g, cx, cz, x, z); }
   // a few scorched plants along the skid and round the pod (darkened, not removed)
   F.near(x, z, 4.5, (i) => F.setTint(i, 0x2a2018, 0.55 + hash(i, 1) * 0.3));

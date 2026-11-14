@@ -5,7 +5,7 @@
 //   lookPaint({ ramp: 'olive', step: 3, belly: { ramp: 'straw', step: 4, below: -0.35 }, scales: { size: 0.3 } })
 import { type RampName } from '../../art/palette';
 import type { V3 } from '../kit';
-import type { Body, Chart, Piece } from './core';
+import type { Body, Chart, Piece, Tone } from './core';
 import { Px, RP, type ScaleOpt, type FurOpt, cl } from './paint';
 
 export interface Look {
@@ -35,13 +35,18 @@ export interface Look {
 
 /** paint a chart with a look (or a look chosen per chart) */
 export function lookPaint(look: Look | ((c: Chart, p: Piece) => Look)) {
-  return (ch: Chart, p: Piece, b: Body) => {
+  const f = (ch: Chart, p: Piece, b: Body) => {
     const L = typeof look === 'function' ? look(ch, p) : look;
     const px = new Px(ch, b);
     paintLook(px, L);
     px.flush({ glow: L.glow ? (i) => L.glow!(px, i) : undefined, eye: L.eye ? () => true : undefined });
   };
+  // the quick build (far LOD) reads the flat tone off the painter
+  if (typeof look !== 'function') (f as unknown as { tone: Tone }).tone = toneOfLook(look);
+  return f;
 }
+/** a look's flat colours for the quick build */
+export const toneOfLook = (L: Look): Tone => ({ ramp: RP(L.ramp), step: L.step, belly: L.belly ? { ramp: RP(L.belly.ramp), step: L.belly.step, below: L.belly.below } : undefined });
 const _p: V3 = [0, 0, 0];
 export function paintLook(px: Px, L: Look) {
   const gb = px.gb, N = gb.N, M = gb.M, n = px.n;

@@ -1,4 +1,4 @@
-// Pixel painting on the carrier's atlas: regions (tiling or single cells) packed on shelves into one 2048 px
+// Pixel painting on the carrier's atlas: regions (tiling or single cells) packed on shelves into one 1024 px
 // sheet, a region painter that wraps for tiles, polygon fills and pixel stamps for drawn marks, and a 5x7 stencil
 // face (with stencil bridges and flaked paint) for the hull lettering. Colours come only from palette ramps.
 import { RAMPS } from '../../art/palette';

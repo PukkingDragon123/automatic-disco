@@ -6,7 +6,7 @@
 // lobe, and each carries a nail or a hooked claw (a keeled, tapering cage). The top of the limb is buried in the
 // trunk's shoulder or hip mass. LIMB_TYPES hold ready station sets per kind of leg.
 import type { V3, Wt } from '../kit';
-import { type CM, newCM, tube, crease, creaseRow, creaseCol, type Ring } from '../cage';
+import { type CM, newCM, tube, crease, creaseRow, creaseCol, sheetGrid, type Ring } from '../cage';
 import { type Piece, type Chart, type Body, chainSkin, addWeights } from './core';
 
 const TAU = Math.PI * 2;
@@ -36,12 +36,20 @@ export interface FootSpec {
   nail: 'nail' | 'claw' | 'hoof';
   /** depth of the lobes on the pad rim (x pad radius) */
   lobe?: number;
+  /** cage points round each toe and claw (8 for titans; 6 for small animals) */
+  toeAround?: number;
+  /** a webbed foot: membranes between neighbouring toes out to this fraction of their length */
+  web?: number;
+  /** no pad flaring at the sole: the limb's own last rings close it (a hoof is seated there instead) */
+  noPad?: boolean;
 }
 export interface LimbSpec {
   name: string; side: 1 | -1;
-  /** rest positions: the upper joint, the knee, the sole (the foot bone) */
-  hip: V3; knee: V3; sole: V3;
-  bones: { parent: number; up: number; lo: number; foot: number; flex?: number };
+  /** rest positions: the upper joint, the knee, (the hock of a three-segment leg,) the sole (the foot bone) */
+  hip: V3; knee: V3; sole: V3; hock?: V3;
+  /** t of each joint (hip, knee, [hock], sole); default [0, .5, 1], or [0, .38, .72, 1] with a hock */
+  tj?: number[];
+  bones: { parent: number; up: number; lo: number; foot: number; flex?: number; mid?: number };
   rings: LimbRing[];
   foot: FootSpec;
   /** cage points round (multiple of 4) */
@@ -50,23 +58,31 @@ export interface LimbSpec {
   /** claws and nails */
   clawPaint: (c: Chart, p: Piece, b: Body) => void;
   k?: number;
+  /** subdivision steps of the limb's skin (2 titans, 1 ordinary creatures) */
+  levels?: number;
 }
 export interface LimbOut { skin: Piece; toes: Piece; claws: Piece; frame: (t: number) => { c: V3; out: V3; fwd: V3; d: V3 } }
 
 /** the limb's axis frame at t */
 function frameAt(s: LimbSpec, t: number) {
-  const up = sub(s.hip, s.knee), top = add(s.hip, scl(nrm(up), 1));
-  const c = t < 0 ? add(s.hip, scl(nrm(up), -t * 2 * Math.hypot(...up))) : t < 0.5 ? lerp(s.hip, s.knee, t / 0.5) : lerp(s.knee, s.sole, (t - 0.5) / 0.5);
-  const d = nrm(t < 0.5 ? sub(s.knee, s.hip) : sub(s.sole, s.knee));
+  const J = s.hock ? [s.hip, s.knee, s.hock, s.sole] : [s.hip, s.knee, s.sole];
+  const TJ = s.tj ?? (s.hock ? [0, 0.38, 0.72, 1] : [0, 0.5, 1]);
+  const up = sub(s.hip, s.knee);
+  let c: V3, d: V3;
+  if (t < 0) { c = add(s.hip, scl(nrm(up), -t * 2 * Math.hypot(...up))); d = nrm(sub(s.knee, s.hip)); }
+  else {
+    let k = 0; while (k + 2 < TJ.length && t > TJ[k + 1]) k++;
+    const f = Math.min(1.2, (t - TJ[k]) / Math.max(1e-6, TJ[k + 1] - TJ[k]));
+    c = lerp(J[k], J[k + 1], f); d = nrm(sub(J[k + 1], J[k]));
+  }
   let out = sub([s.side, 0, 0], scl(d, d[0] * s.side)); out = nrm(out);
   let fwd = crs(out, d); if (fwd[2] < 0) fwd = scl(fwd, -1);
-  void top;
   return { c, out, fwd, d };
 }
 
 export function limb(s: LimbSpec): LimbOut {
   const C = s.around ?? 16, m: CM = newCM();
-  const ft = s.foot, fr = (t: number) => frameAt(s, t);
+  const ft = s.foot, fr = (t: number) => frameAt(s, t), TA = ft.toeAround ?? 8;
   // ring points start at the inner back (the seam), go round through the front
   const angles = Array.from({ length: C }, (_, j) => -135 + (j * 360) / C);
   const ringAt = (st: LimbRing, extra?: (a: number) => number): Ring => {
@@ -86,7 +102,7 @@ export function limb(s: LimbSpec): LimbOut {
   // the foot pad: rings flaring from the ankle to the sole rim, lobed at the toes, then turning in under the sole
   const sole = s.sole, fw = ft.fwd ?? 0.1;
   const lobes = (a: number) => { let k = 0; for (const t of ft.toes) k += (ft.lobe ?? 0.18) * gs(ang(a, (t.a * Math.PI) / 180), 0, 0.22); return k; };
-  const padSt: [number, number, number][] = [[ft.h * 0.85, 0.82, 0.3], [ft.h * 0.45, 0.97, 0.75], [ft.h * 0.12, 1.0, 1], [0, 0.94, 1], [0, 0.62, 0.4], [0, 0.28, 0]];
+  const padSt: [number, number, number][] = ft.noPad ? [] : [[ft.h * 0.85, 0.82, 0.3], [ft.h * 0.45, 0.97, 0.75], [ft.h * 0.12, 1.0, 1], [0, 0.94, 1], [0, 0.62, 0.4], [0, 0.28, 0]];
   const fz = fr(1);
   for (const [hh, rk, lk] of padSt) {
     const c = add(add(sole, [0, hh, 0]), scl(fz.fwd, ft.pad * fw * rk));
@@ -97,10 +113,11 @@ export function limb(s: LimbSpec): LimbOut {
   const R = rings.length;
   // creases: folds round the knee and the station rings asked for, the sole's rim, tendons down the back
   s.rings.forEach((st, i) => { if (st.crease) creaseRow(m, g, i, st.crease, !!st.ink); });
-  creaseRow(m, g, R - 3, 1.5, true); // the sole's rim
+  if (!ft.noPad) creaseRow(m, g, R - 3, 1.5, true); // the sole's rim
   // claws/nails and toes
   const toes = newCM(), claws = newCM(), tg: number[] = [];
   const toeGrids = [], clawGrids = [];
+  const toeTips: { base: V3; tip: V3; side: V3; r: number }[] = [];
   for (const t of ft.toes) {
     const a = (t.a * Math.PI) / 180, dir: V3 = nrm([Math.sin(a) * s.side, -0.15 - (t.drop ?? 0), Math.cos(a)]);
     const base = add(add(sole, [0, ft.h * 0.4, 0]), add(scl([Math.sin(a) * s.side, 0, Math.cos(a)], ft.pad * 0.55), scl(fz.fwd, ft.pad * fw)));
@@ -111,8 +128,9 @@ export function limb(s: LimbSpec): LimbOut {
     const st: [number, number, number][] = [[0, 0.9, 0], [0.45, 1.08, 0.05], [0.75, 1.0, 0.0], [1.0, 0.82, -0.08]];
     for (const [f, rk, dy] of st) {
       const c = add(add(base, scl(dir, tipD * f)), [0, t.r * dy - (f > 0.5 ? (f - 0.5) * t.r * 0.6 : 0), 0]);
-      tr.push({ c, x: side, y: upn, pts: Array.from({ length: 8 }, (_, j) => { const q = (j / 8) * TAU; return [Math.sin(q) * t.r * rk, Math.cos(q) * t.r * rk * (Math.cos(q) < 0 ? 0.62 : 0.85)]; }) });
+      tr.push({ c, x: side, y: upn, pts: Array.from({ length: TA }, (_, j) => { const q = (j / TA) * TAU; return [Math.sin(q) * t.r * rk, Math.cos(q) * t.r * rk * (Math.cos(q) < 0 ? 0.62 : 0.85)]; }) });
     }
+    toeTips.push({ base, tip: tr[tr.length - 1].c, side, r: t.r });
     const gt = tube(toes, tr, { tag: 0, capE: true });
     creaseRow(toes, gt, 1, 1, true); // the knuckle fold
     toeGrids.push(gt); tg.push(0);
@@ -126,21 +144,37 @@ export function limb(s: LimbSpec): LimbOut {
       const c = add(add(c0, scl(dir, (tipD * 0.42 + cl) * f * (1 - bend * 0.25))), scl(upn, -cl * bend * 0.9 + t.r * 0.25 * Math.sin(f * Math.PI) * (ft.nail === 'claw' ? 1 : 0.4)));
       const rr = cr * (f < 0.25 ? 1 : 1 - (f - 0.25) / 0.75 * (ft.nail === 'nail' || ft.nail === 'hoof' ? 0.5 : 0.96));
       // a keeled section: flat or hollow underneath, a ridge on top
-      const pts = Array.from({ length: 8 }, (_, j) => { const q = (j / 8) * TAU, cq = Math.cos(q); return [Math.sin(q) * rr * (ft.nail === 'claw' ? 0.62 : 1.05), (cq > 0 ? cq * (ft.nail === 'claw' ? 1.15 : 0.5) : cq * 0.25) * rr]; });
+      const pts = Array.from({ length: TA }, (_, j) => { const q = (j / TA) * TAU, cq = Math.cos(q); return [Math.sin(q) * rr * (ft.nail === 'claw' ? 0.62 : 1.05), (cq > 0 ? cq * (ft.nail === 'claw' ? 1.15 : 0.5) : cq * 0.25) * rr]; });
       // the claw's local frame turns down as it curls
       const dd = nrm(add(dir, scl(upn, -curl * f * 1.6))), uu = nrm(crs(side, dd));
       cr2.push({ c, x: side, y: uu, pts });
     }
     const gc = tube(claws, cr2, { tag: 0, capE: true, capS: true });
-    creaseCol(claws, gc, 0, 0, n - 1, 2, true); creaseCol(claws, gc, 4, 0, n - 1, 1.5, true);
+    creaseCol(claws, gc, 0, 0, n - 1, 2, true); creaseCol(claws, gc, Math.round(TA / 2), 0, n - 1, 1.5, true);
     creaseRow(claws, gc, 0, 2, true);
     clawGrids.push(gc);
   }
+  // webs: a thin membrane between neighbouring toes, scalloped back between their tips (frogs, paddlers)
+  if (ft.web && toeTips.length > 1) {
+    const order = toeTips.map((t, i) => ({ t, a: ft.toes[i].a })).sort((p, q) => p.a - q.a);
+    for (let i = 0; i + 1 < order.length; i++) {
+      const A = order[i].t, Bt = order[i + 1].t, rows: V3[][] = [];
+      for (let k = 0; k <= 3; k++) {
+        const f = (k / 3) * ft.web, sag = Math.sin((k / 3) * Math.PI) * 0.12;
+        const pa = lerp(A.base, A.tip, f), pb = lerp(Bt.base, Bt.tip, f), mid = lerp(lerp(pa, pb, 0.5), lerp(A.base, Bt.base, 0.5), sag + (k === 3 ? 0.35 : 0));
+        const th = Math.min(A.r, Bt.r) * 0.18;
+        rows.push([add(pa, [0, th, 0]), add(mid, [0, th * 0.6, 0]), add(pb, [0, th, 0]), add(pb, [0, -th, 0]), add(mid, [0, -th * 0.6, 0]), add(pa, [0, -th, 0])]);
+      }
+      toeGrids.push(sheetGrid(toes, rows, { tag: 0, out: () => [0, 1, 0], wrapCols: true, capS: true, capE: true }));
+    }
+  }
   void crease; void tg;
-  // skin weights: the chain hip -> knee -> ankle -> sole, the buried top blending into the trunk, the muscle belly
-  // of the upper segment partly on the flex bone (it swells as the joint closes)
+  // skin weights: the chain hip -> knee -> (hock ->) ankle -> sole, the buried top blending into the trunk, the
+  // muscle belly of the upper segment partly on the flex bone (it swells as the joint closes)
   const B = s.bones, ankle = add(sole, [0, ft.h * 1.6, 0]), top = fr(-0.2).c;
-  const chain = chainSkin([top, s.hip, s.knee, ankle, add(sole, [0, -1, 0])], [B.parent, B.up, B.lo, B.foot], 0.3);
+  const chain = s.hock && B.mid !== undefined
+    ? chainSkin([top, s.hip, s.knee, s.hock, ankle, add(sole, [0, -1, 0])], [B.parent, B.up, B.lo, B.mid, B.foot], 0.3)
+    : chainSkin([top, s.hip, s.knee, ankle, add(sole, [0, -1, 0])], [B.parent, B.up, B.lo, B.foot], 0.3);
   const legL = Math.hypot(...sub(s.hip, s.knee));
   const skin = (p: V3): Wt => {
     let w = chain(p);
@@ -148,11 +182,38 @@ export function limb(s: LimbSpec): LimbOut {
     return w;
   };
   const footW: Wt = [B.foot, 1];
-  const base = { levels: 2, k: s.k ?? 1 };
+  const base = { levels: s.levels ?? 2, k: s.k ?? 1 };
   const skinP: Piece = { name: s.name, m, grids: [g], skin, paint: s.paint, ...base };
   const toeP: Piece = { name: s.name + 'T', m: toes, grids: toeGrids, skin: () => footW, paint: s.paint, levels: 1, k: s.k ?? 1 };
   const clawP: Piece = { name: s.name + 'C', m: claws, grids: clawGrids, skin: () => footW, paint: s.clawPaint, levels: 1, k: (s.k ?? 1) * 1.3 };
   return { skin: skinP, toes: toeP, claws: clawP, frame: fr };
+}
+
+/** a hoof seated on the foot bone: the horn wall from a coronet band down to a flared, bevelled sole, the toe sloped
+ *  forward; `cleft` splits it into the two claws of a cloven hoof, each with a dewclaw behind the fetlock */
+export function hoof(o: { name: string; sole: V3; r: number; h: number; side: 1 | -1; bone: number; cleft?: boolean; dew?: boolean; paint: (c: Chart, p: Piece, b: Body) => void; k?: number; around?: number }): Piece {
+  const m = newCM(), grids = [], C = o.around ?? 10;
+  const halves = o.cleft ? [-1, 1] : [0];
+  for (const hv of halves) {
+    const cx = hv * o.r * 0.52, rs = o.cleft ? 0.56 : 1;
+    // stations up the wall: the sole (flared), the bearing edge, mid-wall, the coronet (narrower, sunk under the hair)
+    const st: [number, number, number][] = [[0.0, 1.0, 0.18], [0.08, 1.04, 0.16], [0.5, 0.92, 0.06], [0.92, 0.78, -0.04], [1.08, 0.7, -0.06]];
+    const rings: Ring[] = st.map(([f, k, fz]) => ({
+      c: add(o.sole, [cx, o.h * f, o.r * fz]), x: [1, 0, 0], y: [0, 0, 1],
+      // a rounded front, a flatter heel, the inner face of a cloven claw cut straight
+      pts: Array.from({ length: C }, (_, j) => { const q = (j / C) * TAU, sx = Math.sin(q), cy = Math.cos(q); const inner = hv !== 0 && Math.sign(sx) === -hv ? 0.55 : 1; return [sx * o.r * rs * k * inner, (cy > 0 ? cy * 1.18 : cy * 0.8) * o.r * k * (o.cleft ? 0.86 : 1)]; }),
+    }));
+    const gh = tube(m, rings, { tag: 0, capS: true, capE: true });
+    creaseRow(m, gh, 1, 2, true); creaseRow(m, gh, 3, 1, true);
+    grids.push(gh);
+    if (o.cleft && o.dew !== false) {
+      // the dewclaw: a small blunt horn cap behind and above
+      const dc = add(o.sole, [hv * o.r * 0.7, o.h * 1.9, -o.r * 0.95]);
+      const dr: Ring[] = [0, 0.5, 1].map((f) => ({ c: add(dc, [hv * o.r * 0.06 * f, -o.r * 0.32 * f, -o.r * 0.18 * f]), x: [1, 0, 0], y: [0, 0, 1], pts: Array.from({ length: 6 }, (_, j) => { const q = (j / 6) * TAU, rr = o.r * 0.16 * (1 - f * 0.6); return [Math.sin(q) * rr, Math.cos(q) * rr]; }) }));
+      grids.push(tube(m, dr, { tag: 0, capS: true, capE: true }));
+    }
+  }
+  return { name: o.name, m, grids, levels: 1, skin: () => [o.bone, 1], paint: o.paint, k: o.k ?? 1.3 };
 }
 
 /** ready station sets (radii in multiples of the limb's base radius `r`): heavy pillars, muscular striders */

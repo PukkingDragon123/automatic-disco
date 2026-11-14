@@ -43,7 +43,7 @@ export interface Hull {
 
 /**
  * A hull skin from the atlas as a plain repeating texture, for parts built outside the atlas builder (the bay's
- * door leaves, mapped by deployKit.tbox at 1/8 per metre): same plates, same 16 texels per metre.
+ * door leaves, mapped by deployKit.tbox at 1/8 per metre): same plates, same PPM texels per metre.
  */
 export function hullSkinTex(bin: Bin, name = 'hullB') {
   const A = paintAtlas(), r = A.regs.get(name)!;
@@ -97,10 +97,10 @@ export function buildHull(bin: Bin, root: THREE.Group, ext: THREE.Group): Hull {
   const droneB = new Builder();
   {
     const d = droneB;
-    d.sphere(s('ochreC', 8), 0.55, 10, 6, { fit: false });
-    for (const sx of [-1, 1]) { d.beam(s('gunT', 32), new THREE.Vector3(0, 0, 0), new THREE.Vector3(sx * 1.3, 0.1, 0), 0.08); d.at(sx * 1.35, 0.12, 0); d.cyl(s('rubber', 1), 0.35, 0.35, 0.06, 10); d.pop(); }
-    d.at(0, -0.45, 0.25); d.box(s('gunT', 32), 0.35, 0.3, 0.45); d.pop();
-    d.at(0, 0, 0.56, Math.PI / 2, 0, 0); d.cyl(s('lensWhite', 1), 0.16, 0.16, 0.05, 8); d.pop();
+    d.sphere(s('ochreC'), 0.55, 10, 6, { fit: false });
+    for (const sx of [-1, 1]) { d.beam(s('gunT'), new THREE.Vector3(0, 0, 0), new THREE.Vector3(sx * 1.3, 0.1, 0), 0.08); d.at(sx * 1.35, 0.12, 0); d.cyl(s('rubber'), 0.35, 0.35, 0.06, 10); d.pop(); }
+    d.at(0, -0.45, 0.25); d.box(s('gunT'), 0.35, 0.3, 0.45); d.pop();
+    d.at(0, 0, 0.56, Math.PI / 2, 0, 0); d.cyl(s('lensWhite'), 0.16, 0.16, 0.05, 8); d.pop();
   }
   const NDR = 6;
   const droneGeo = droneB.geometries().get('m')!;
@@ -156,7 +156,7 @@ export function buildHull(bin: Bin, root: THREE.Group, ext: THREE.Group): Hull {
   const sun = new THREE.DirectionalLight(0xfff0d8, 3.2); sun.castShadow = true; sun.position.set(-0.8, 0.38, -0.46).normalize().multiplyScalar(260);
   sun.shadow.mapSize.set(2048, 2048); const sc = sun.shadow.camera as THREE.OrthographicCamera; sc.left = sc.bottom = -170; sc.right = sc.top = 170; sc.near = 10; sc.far = 600; sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.6;
   root.add(sun, sun.target); lights.push(sun);
-  const bounce = new THREE.HemisphereLight(0x3a4656, 0x98b0cc, 1.5); root.add(bounce); lights.push(bounce);
+  const bounce = new THREE.HemisphereLight(0x3a4656, 0x98b0cc, 1.8); root.add(bounce); lights.push(bounce);
   const spot = (p: THREE.Vector3, at: THREE.Vector3, k: number, dist: number, ang: number) => { const l = new THREE.SpotLight(0xffd8a0, k, dist, ang, 0.6, 1.6); l.position.copy(p); l.target.position.copy(at); root.add(l, l.target); lights.push(l); };
   for (const sx of [-1, 1]) spot(new THREE.Vector3(sx * 12.2, 18.9, 58), new THREE.Vector3(sx * 18.2, 4.6, 46), 260, 60, 0.5);
   spot(new THREE.Vector3(-26.8, 37.5, 28.4), new THREE.Vector3(-7, 22.2, 50), 220, 60, 0.42);

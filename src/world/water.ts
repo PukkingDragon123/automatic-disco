@@ -387,25 +387,27 @@ void main() {
     float foam = 0.0;
     vec2 fq = p * 1.3 + uWindV * t * 0.12;
     float fpat = vn(fq * 2.1) * 0.6 + vn(fq * 5.3 + 2.0) * 0.4;
-    float thr = mix(1.05, 0.38, uWindK);
+    float thr = mix(1.05, 0.3, uWindK);
     foam = max(foam, smoothstep(thr, thr + 0.1, crestN + (fpat - 0.5) * 0.5) * step(1.2, depth));
     // in a gale the foam is torn into long streaks down the wind
     if (uWindK > 0.55) {
-      vec2 sq = vec2(dot(p, wd) * 0.18 - t * 0.5, dot(p, vec2(-wd.y, wd.x)) * 3.2);
+      vec2 sq = vec2(dot(p, wd) * 0.22 - t * 0.5, dot(p, vec2(-wd.y, wd.x)) * 7.0);
       float st = vn(sq + vec2(vn(sq * 0.3) * 2.0, 0.0));
-      foam = max(foam, step(0.74 - (uWindK - 0.55) * 0.3, st) * 0.6 * step(1.2, depth));
+      foam = max(foam, step(0.84 - (uWindK - 0.55) * 0.2, st) * 0.74 * step(1.2, depth) * step(0.2, crestN + 0.4));
     }
     if (sd < 14.0 && sd > -0.5) {
       float jitter = vn(p * 0.09 + 11.0) * 1.3;
       float ph = sd / 3.4 + t * 0.21 * (0.8 + uWindK * 0.5) + jitter;
       float band = fract(ph), id = floor(ph);
-      float zone = smoothstep(9.0, 2.5, sd) * smoothstep(-0.5, 0.2, sd);
+      // the surf stands up where the swell meets the shelf: strongest on coasts open to the swell, quiet in a lagoon
+      float exposed = clamp(uSwellH * 1.8, 0.25, 1.0) * smoothstep(0.4, 1.6, depth + sd * 0.25);
+      float zone = smoothstep(7.0, 2.0, sd) * smoothstep(-0.5, 0.2, sd) * exposed;
       float lineOn = step(0.32, vn(vec2(dot(p, vec2(-sh.z, sh.y)) * 0.6, id * 7.3)));
       float crestL = (1.0 - smoothstep(0.0, 0.07, band)) * lineOn;
       float trail = smoothstep(0.42, 0.0, band) * lineOn * step(0.5 - band * 0.6, fpat);
       if (band > 0.86 && zone > 0.3) col = deepF ? rampB(k - 1.0) : rampW(k - 1.0);
       foam = max(foam, max(crestL, trail * 0.8) * zone * smoothstep(4.0, 1.0, depth + 0.3) * (0.85 + uWindK * 0.4));
-      float lace = smoothstep(2.2, 0.2, sd) * step(0.62, vn(p * 3.2 + vec2(t * 0.3, 0.0)) * 0.5 + vn(p * 6.1 - t * 0.2) * 0.5);
+      float lace = smoothstep(1.4, 0.15, sd) * step(0.64, vn(p * 3.2 + vec2(t * 0.3, 0.0)) * 0.5 + vn(p * 6.1 - t * 0.2) * 0.5);
       foam = max(foam, lace * 0.68);
     }
     foam = max(foam, ia.y);
