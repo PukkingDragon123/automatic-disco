@@ -60,6 +60,39 @@ function boltFrom(c: Creature, w: World, x: number, z: number, t = 3) {
   setMind(c, 'flee');
   remember(mem(c).danger, x, z, w.time, 1);
 }
+/** the climate's big moments (game events 'climate-event', 'season', 'weather'): the reactions that happen at once,
+ *  on top of the steady behaviour each season brings in thinkWild */
+export function climateShock(w: World, ev: string, d: { event?: string; phase?: string; season?: string; weather?: string } | null) {
+  const wild = w.creatures.filter((c) => !c.dead && c.faction === 'wild');
+  const what = ev === 'climate-event' ? (d?.phase === 'start' ? d?.event : null) : ev === 'season' ? d?.season : ev === 'weather' ? d?.weather : null;
+  if (!what) return;
+  for (const c of wild) {
+    const P = profileOf(c, w);
+    switch (what) {
+      case 'eclipse':
+        // the sun goes out: the day-animals panic or drop where they stand; the night-hunters get up
+        if (P.sched === 'day' && c.mind !== 'sleep' && !c.titan) { if (Math.random() < 0.45) { const a = Math.random() * TAU; boltFrom(c, w, c.x + Math.cos(a) * 3, c.z + Math.sin(a) * 3, 3); } else { setMind(c, 'sleep'); emote(c, Emote.SLEEP, 3); } }
+        else if (P.sched !== 'day' && c.mind === 'sleep') { setMind(c, 'idle'); emote(c, Emote.WATCH, 2); }
+        break;
+      case 'bloodtide':
+        // the red moon rises: every hunter is up and roaring; the herds near them break and run
+        if (c.diet === 'carn' && !c.titan) { c.rage = 1; if (c.mind === 'sleep') setMind(c, 'idle'); c.cdHunt = 0; emote(c, Emote.ANGRY, 3); }
+        else if (!c.titan) { let p: Creature | null = null; w.near(c.x, c.z, 22, (o) => { if (!p && !o.dead && o.diet === 'carn' && o.faction === 'wild') p = o; }); if (p) { c.rage = 0.6; bolt(c, w, (p as Creature).id, 5); } }
+        break;
+      case 'storm': case 'snow': case 'ash': case 'dust': case 'redrain':
+        // look for shelter now
+        c.cdSeason = 0; c.thinkT = 9;
+        break;
+      case 'frost':
+        // the cold-blooded settle in to sleep the frost out
+        if (P.hibernate) { c.thinkT = 9; if (c.mind !== 'flee') { setMind(c, 'idle'); } }
+        break;
+      case 'thaw':
+        if (P.hibernate && c.mind === 'sleep') { c.thinkT = 9; }
+        break;
+    }
+  }
+}
 /** the season's and the weather's dangers: fire, lightning, rising water, the eclipse's panic. true when acted */
 function seasonDanger(c: Creature, w: World, P: Profile): boolean {
   if (c.mind === 'flee' || c.titan) return false;

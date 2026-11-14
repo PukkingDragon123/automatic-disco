@@ -944,9 +944,9 @@ export class Region {
       const i = z * N + x; if (h[i] >= W) continue;
       const d = W - h[i], sl = this.slope(x, z), v = n.fbm2(x * 0.09 + 200, z * 0.09, 3), rv = n.ridge2(x * 0.05 + 77, z * 0.05, 3);
       let k: number = B.SAND;
-      if (sl > 0.8 || (rv > 0.74 && d > 1.4)) k = B.ROCK;
-      else if (d > 9 && v > -0.2) k = B.MUD;
-      else if (v > 0.36) k = B.GRAVEL;
+      if (sl > 1.05 || (rv > 0.84 && d > 2.5)) k = B.ROCK;
+      else if (d > 10 && v > 0.1) k = B.MUD;
+      else if (v > 0.42) k = B.GRAVEL;
       this.b[i] = k; this.fert[i] = 0;
     }
     const mat = key === 'ocean' ? RockMat.BASALT : RockMat.LIMESTONE, L = this.landing;

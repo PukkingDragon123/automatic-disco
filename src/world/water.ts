@@ -353,10 +353,10 @@ void main() {
       // the face before the crest steepens (darker), the crest line bright, the foam trailing seaward
       float alongN = vn(vec2(dot(p, vec2(-sh.z, sh.y)) * 0.6, id * 7.3));
       float lineOn = step(0.32, alongN);
-      float crestL = (1.0 - smoothstep(0.0, 0.045, band)) * lineOn;
+      float crestL = (1.0 - smoothstep(0.0, 0.07, band)) * lineOn;
       float trail = smoothstep(0.42, 0.0, band) * lineOn * step(0.5 - band * 0.6, fpat);
       col *= 1.0 - smoothstep(0.86, 0.99, band) * 0.18 * zone;
-      foam = max(foam, max(crestL, trail * 0.75) * zone * smoothstep(3.6, 1.2, depth + 0.3) * (0.7 + uWindK * 0.4));
+      foam = max(foam, max(crestL, trail * 0.8) * zone * smoothstep(4.0, 1.0, depth + 0.3) * (0.85 + uWindK * 0.4));
       // lace: the spent foam spreading in a net close in to the beach
       float lace = smoothstep(2.2, 0.2, sd) * step(0.62, vn(p * 3.2 + vec2(t * 0.3, 0.0)) * 0.5 + vn(p * 6.1 - t * 0.2) * 0.5);
       foam = max(foam, lace * 0.7);

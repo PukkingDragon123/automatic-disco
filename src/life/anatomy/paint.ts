@@ -24,16 +24,20 @@ const h3 = (a: number, b: number, c: number) => { let x = Math.imul(a | 0, 0x27d
 export interface Cell { f1: number; f2: number; id: number; cx: number; cy: number; cz: number }
 const _cell: Cell = { f1: 0, f2: 0, id: 0, cx: 0, cy: 0, cz: 0 };
 export function cell3(x: number, y: number, z: number, size: number, seed = 0, sx = 1, sy = 1, sz = 1): Cell {
-  // anisotropic: stretch space by (sx, sy, sz) before the lattice (wrinkles that run round a joint)
+  // anisotropic: stretch space by (sx, sy, sz) before the lattice (wrinkles that run round a joint). The 2x2x2 cells
+  // nearest the point are searched (the jitter keeps every feature point inside its own cell)
   const X = (x * sx) / size, Y = (y * sy) / size, Z = (z * sz) / size, ix = Math.floor(X), iy = Math.floor(Y), iz = Math.floor(Z);
+  const ox = X - ix < 0.5 ? -1 : 0, oy = Y - iy < 0.5 ? -1 : 0, oz = Z - iz < 0.5 ? -1 : 0;
   let f1 = 1e9, f2 = 1e9, id = 0, cx = 0, cy = 0, cz = 0;
-  for (let k = -1; k <= 1; k++) for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
-    const a = ix + i, b = iy + j, c = iz + k, hs = h3(a, b, c + seed * 131);
-    const px = a + 0.15 + 0.7 * h3(a + 17, b, c + seed), py = b + 0.15 + 0.7 * h3(a, b + 29, c + seed), pz = c + 0.15 + 0.7 * h3(a, b, c + 41 + seed);
-    const dx = X - px, dy = Y - py, dz = Z - pz, d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (d < f1) { f2 = f1; f1 = d; id = Math.floor(hs * 1e6); cx = px; cy = py; cz = pz; } else if (d < f2) f2 = d;
+  for (let k = 0; k < 2; k++) for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) {
+    const a = ix + ox + i, b = iy + oy + j, c = iz + oz + k;
+    let hh = Math.imul(a, 0x27d4eb2d) ^ Math.imul(b, 0x165667b1) ^ Math.imul(c + seed * 977, 0x9e3779b1);
+    hh = Math.imul(hh ^ (hh >>> 15), 0x85ebca6b); hh = Math.imul(hh ^ (hh >>> 13), 0xc2b2ae35); hh ^= hh >>> 16;
+    const px = a + 0.12 + 0.76 * ((hh & 1023) / 1023), py = b + 0.12 + 0.76 * (((hh >>> 10) & 1023) / 1023), pz = c + 0.12 + 0.76 * (((hh >>> 20) & 1023) / 1023);
+    const dx = X - px, dy = Y - py, dz = Z - pz, d = dx * dx + dy * dy + dz * dz;
+    if (d < f1) { f2 = f1; f1 = d; id = hh >>> 0; cx = px; cy = py; cz = pz; } else if (d < f2) f2 = d;
   }
-  _cell.f1 = f1 * size; _cell.f2 = f2 * size; _cell.id = id; _cell.cx = (cx * size) / sx; _cell.cy = (cy * size) / sy; _cell.cz = (cz * size) / sz;
+  _cell.f1 = Math.sqrt(f1) * size; _cell.f2 = Math.sqrt(f2) * size; _cell.id = id % 1000003; _cell.cx = (cx * size) / sx; _cell.cy = (cy * size) / sy; _cell.cz = (cz * size) / sz;
   return _cell;
 }
 
@@ -89,9 +93,12 @@ export class Px {
   }
   ramp(R: number[]) { let k = this.rampT.indexOf(R); if (k < 0) { this.rampT.push(R); k = this.rampT.length - 1; } return k; }
   /** material and pattern: a ramp and a step for every texel */
-  base(fn: (i: number, x: number, y: number) => [number[], number]) {
-    for (let y = 0, i = 0; y < this.h; y++) for (let x = 0; x < this.w; x++, i++) { const [R, s] = fn(i, x, y); this.rampI[i] = this.ramp(R); this.step[i] = s; }
+  base(fn: (i: number, x: number, y: number) => [number[], number] | void) {
+    for (let y = 0, i = 0; y < this.h; y++) for (let x = 0; x < this.w; x++, i++) { const r = fn(i, x, y); if (r) { this.rampI[i] = this.ramp(r[0]); this.step[i] = r[1]; } }
   }
+  /** set a texel's ramp and step (inside base callbacks, without allocating) */
+  put(i: number, R: number[], step: number) { this.rampI[i] = R === this._lastR ? this._lastK : this.ramp(R); this._lastR = R; this._lastK = this.rampI[i]; this.step[i] = step; }
+  private _lastR: number[] | null = null; private _lastK = 0;
   /** the baked light: Lambert from the upper left in hard steps, occlusion, ridges and valleys */
   shadeAt(i: number) {
     const N = this.gb.N, L = this.body.light, lam = N[i * 3] * L[0] + N[i * 3 + 1] * L[1] + N[i * 3 + 2] * L[2];
@@ -288,30 +295,39 @@ export class Px {
   rosettes(sites: { c: V3; n: V3; r: number; R: number[]; cup?: number[] }[], o: { seed?: number } = {}) {
     if (!sites.length) return;
     const P = this.gb.P, tpm = 1 / this.mpt, seed = o.seed ?? 17;
-    // a spatial hash over the sites
-    const rmax = Math.max(...sites.map((s) => s.r)), cs = rmax * 2, grid = new Map<string, number[]>();
-    sites.forEach((s, k) => { const key = Math.floor(s.c[0] / cs) + ',' + Math.floor(s.c[1] / cs) + ',' + Math.floor(s.c[2] / cs); let l = grid.get(key); if (!l) grid.set(key, (l = [])); l.push(k); });
+    // cull to the sites near this chart, then hash each into every cell it covers
+    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+    for (let i = 0; i < this.n; i++) { const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (z < z0) z0 = z; if (z > z1) z1 = z; }
+    const near = sites.filter((s) => s.c[0] + s.r * 1.3 > x0 && s.c[0] - s.r * 1.3 < x1 && s.c[1] + s.r * 1.3 > y0 && s.c[1] - s.r * 1.3 < y1 && s.c[2] + s.r * 1.3 > z0 && s.c[2] - s.r * 1.3 < z1);
+    if (!near.length) return;
+    const cs = Math.max(...near.map((s) => s.r)) * 1.3, key = (a: number, b: number, c: number) => ((a & 1023) << 20) | ((b & 1023) << 10) | (c & 1023);
+    const grid = new Map<number, number[]>();
+    near.forEach((s, k) => {
+      const r = s.r * 1.3;
+      for (let a = Math.floor((s.c[0] - r) / cs); a <= Math.floor((s.c[0] + r) / cs); a++) for (let b = Math.floor((s.c[1] - r) / cs); b <= Math.floor((s.c[1] + r) / cs); b++) for (let c = Math.floor((s.c[2] - r) / cs); c <= Math.floor((s.c[2] + r) / cs); c++) {
+        const kk = key(a, b, c); let l = grid.get(kk); if (!l) grid.set(kk, (l = [])); l.push(k);
+      }
+    });
+    const rIdx = near.map((s) => this.ramp(s.R)), cIdx = near.map((s) => (s.cup ? this.ramp(s.cup) : -1));
     for (let i = 0; i < this.n; i++) {
-      const px = P[i * 3], py = P[i * 3 + 1], pz = P[i * 3 + 2], gx = Math.floor(px / cs), gy = Math.floor(py / cs), gz = Math.floor(pz / cs);
-      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
-        const l = grid.get(gx + a + ',' + (gy + b) + ',' + (gz + c)); if (!l) continue;
-        for (const k of l) {
-          const s = sites[k], dx = px - s.c[0], dy = py - s.c[1], dz = pz - s.c[2];
-          const nd = dx * s.n[0] + dy * s.n[1] + dz * s.n[2]; if (Math.abs(nd) > s.r * 0.8) continue;
-          const tx = dx - s.n[0] * nd, ty = dy - s.n[1] * nd, tz = dz - s.n[2] * nd, d = Math.hypot(tx, ty, tz);
-          if (d > s.r * 1.3) continue;
-          const t1: V3 = Math.abs(s.n[1]) < 0.9 ? [s.n[2], 0, -s.n[0]] : [1, 0, 0], ang = Math.atan2(tx * t1[0] + ty * t1[1] + tz * t1[2], (ty * s.n[2] - tz * s.n[1]) * 0.7 + 0.3 * tx);
-          const lobes = 5 + (k % 4), rr = s.r * (0.82 + 0.18 * Math.cos(ang * lobes + k) + 0.06 * Math.cos(ang * (lobes * 2 + 1)));
-          if (d > rr) continue;
-          const dT = (rr - d) * tpm;
-          this.rampI[i] = this.ramp(s.R);
-          let st = d < rr * 0.45 ? 2 : 3.4;
-          if (dT < 1) st = 1.2; else if (dT < 2.2) st = 4.6;
-          // concentric growth line and fruiting cups in the heart
-          if (Math.abs(d - rr * 0.62) * tpm < 0.6) st -= 1;
-          if (s.cup && d < rr * 0.5 && h3(Math.floor(tx * tpm / 2.5), Math.floor((ty + tz) * tpm / 2.5), k + seed) < 0.18) { this.rampI[i] = this.ramp(s.cup); st = 3; }
-          this.step[i] = st; this.mark[i] = 0;
-        }
+      const px = P[i * 3], py = P[i * 3 + 1], pz = P[i * 3 + 2];
+      const l = grid.get(key(Math.floor(px / cs), Math.floor(py / cs), Math.floor(pz / cs))); if (!l) continue;
+      for (const k of l) {
+        const s = near[k], dx = px - s.c[0], dy = py - s.c[1], dz = pz - s.c[2];
+        const nd = dx * s.n[0] + dy * s.n[1] + dz * s.n[2]; if (nd > s.r * 0.8 || nd < -s.r * 0.8) continue;
+        const tx = dx - s.n[0] * nd, ty = dy - s.n[1] * nd, tz = dz - s.n[2] * nd, d = Math.sqrt(tx * tx + ty * ty + tz * tz);
+        if (d > s.r * 1.3) continue;
+        const ang = Math.atan2(tx * s.n[2] - tz * s.n[0] + ty * 0.3, ty * s.n[2] - tz * s.n[1] + tx * 0.3);
+        const lobes = 5 + (k % 4), rr = s.r * (0.82 + 0.18 * Math.cos(ang * lobes + k) + 0.06 * Math.cos(ang * (lobes * 2 + 1)));
+        if (d > rr) continue;
+        const dT = (rr - d) * tpm;
+        this.rampI[i] = rIdx[k];
+        let st = d < rr * 0.45 ? 2 : 3.4;
+        if (dT < 1) st = 1.2; else if (dT < 2.2) st = 4.6;
+        if (Math.abs(d - rr * 0.62) * tpm < 0.6) st -= 1;
+        if (cIdx[k] >= 0 && d < rr * 0.5 && h3(Math.floor((tx * tpm) / 2.5), Math.floor(((ty + tz) * tpm) / 2.5), k + seed) < 0.18) { this.rampI[i] = cIdx[k]; st = 3; }
+        this.step[i] = st; this.mark[i] = 0;
+        break;
       }
     }
   }

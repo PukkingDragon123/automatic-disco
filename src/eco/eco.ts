@@ -101,6 +101,13 @@ export class Eco {
   /** where the camera looks (thunder and fire are staged near it) */
   focus: { x: number; z: number } | null = null;
   private lastSeason: Season | null = null;
+  /** the climate's water stage (-1 low .. 1 high) when it sets one (setSeason) */
+  private stage: number | null = null;
+  /** the climate's hook: the season (and its water stage, -1 drought low .. 1 flood high) */
+  setSeason(id: Season, stage?: number) {
+    if (SEASON[id]) this.climate.season = id;
+    if (typeof stage === 'number' && Number.isFinite(stage)) this.stage = clamp(stage, -1, 1);
+  }
   readonly year: number;
   private phase0: number;
   // ---- other systems' handles
@@ -473,7 +480,7 @@ export class Eco {
     const bi = this.w.region.biome;
     // the season sets the wet and the dry (its moisture shift as a -1..1 factor), and the plants' pace
     const fx = this.sfx, k = Math.min(1, dt / 20);
-    this.seasonK += (clamp(fx.moist * 5, -1, 1) - this.seasonK) * k;
+    this.seasonK += ((this.stage ?? clamp(fx.moist * 5, -1, 1)) - this.seasonK) * k;
     this.growK += (fx.grow - this.growK) * k;
     this.rain = Math.max(this.rain, this.climate.rain);
     if (this.lastSeason !== this.climate.season) { if (this.lastSeason) this.note('season', SEASON_NOTE[this.climate.season], this.w.region.landing.x, this.w.region.landing.z); this.lastSeason = this.climate.season; }
@@ -483,7 +490,7 @@ export class Eco {
     const amp = 0.1 + 0.16 * bi.moist;
     const daily = Math.sin((this.w.day - 0.1) * Math.PI * 2) * 0.015;
     const was = this.level;
-    this.level = clamp(this.seasonK * amp * 0.5 + fx.level + this.reservoir + daily, -0.45, 0.6);
+    this.level = clamp(this.stage !== null ? this.stage * 0.45 + this.reservoir + daily : this.seasonK * amp * 0.5 + fx.level + this.reservoir + daily, -0.45, 0.6);
     if (was <= 0.3 && this.level > 0.3) this.note('flood', 'RIVERS IN SPATE: LOW GROUND FLOODING', this.w.region.landing.x, this.w.region.landing.z);
   }
 
@@ -517,16 +524,17 @@ export class Eco {
       for (let c = 0; c < G * G; c++) {
         const f = this.fire[c]; if (f <= 0) continue;
         n++;
-        this.fire[c] = f - s * (wet ? 0.25 : 0.045) - this.waterF[c];
+        this.fire[c] = f - s * (wet ? 0.25 : 0.065) - this.waterF[c];
         this.danger[c] = 2; this.ash[c] = Math.min(1, this.ash[c] + s * 0.05); this.nutr[c] = Math.min(2, this.nutr[c] + s * 0.01);
         this.moist[c] = Math.max(0, this.moist[c] - s * 0.02);
-        if (f < 0.35 || wet) continue;
+        if (f < 0.5 || wet) continue;
         const x = c % G, z = (c / G) | 0;
         for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
           const X = x + dx, Z = z + dz; if ((!dx && !dz) || X < 0 || Z < 0 || X >= G || Z >= G) continue;
           const o = Z * G + X; if (this.fire[o] > 0 || this.ash[o] > 0.5) continue;
           const fuel = Math.min(1, this.veg[o]) * clamp(0.65 - this.moist[o], 0, 1) * (1 - this.waterF[o]);
-          if (Math.random() < s * fuel * 0.22) { this.fire[o] = 1; n++; }
+          // (dry brush carries a fire on in patches; moist ground stops it)
+          if (Math.random() < s * fuel * 0.03 * (dx && dz ? 0.7 : 1)) { this.fire[o] = 1; n++; }
         }
       }
       for (let c = 0; c < G * G; c++) if (this.fire[c] < 0) this.fire[c] = 0;
@@ -547,7 +555,7 @@ export class Eco {
           const k = this.cell(fl.x[i], fl.z[i]);
           this.nutr[k] = Math.min(2, this.nutr[k] + 0.15); this.seedN[k] = Math.min(20, this.seedN[k] + 3); this.seedSp[k] = fl.sp[i];
           this.pst[i] = 1; fruitShow(fl, i, 0); this.fruit[i] = 0;
-          fl.remove(i);
+          fl.remove(i); this.felled++;
           this.onFell?.(fl.x[i], fl.z[i]);
         }
       }
@@ -556,6 +564,8 @@ export class Eco {
   /** set by the view: a lightning bolt (for its flash) and a felled tree (for its dust) */
   onStrike: ((x: number, z: number) => void) | null = null;
   onFell: ((x: number, z: number) => void) | null = null;
+  /** trees felled by titans */
+  felled = 0;
 
   /** visit a slice of the plants */
   private plants(dt: number) {

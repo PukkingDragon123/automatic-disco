@@ -56,6 +56,8 @@ export function shell(s: ShellSpec): Piece {
   const out = (p: V3) => { const c = gridSurf(host.m, g, (s.u[0] + s.u[1]) / 2, (s.v[0] + s.v[1]) / 2).p; let best = c; void best; return outward(p, host, g, s); };
   const G = sheetGrid(m, P, { tag: 0, mat: s.mat, out });
   const R = P.length, C = P[0].length, rim = s.rim ?? 2;
+  // the curled edges carry material 1 (the plate's thickness: painters draw it as a dark edge)
+  for (let i = 0; i + 1 < R; i++) for (let j = 0; j + 1 < C; j++) if ((A0 && j === 0) || (A1 && j === C - 2) || (B0 && i === 0) || (B1 && i === R - 2)) m.mat[G.f[i][j]] = (s.mat ?? 0) + 1;
   // the rim: where the top meets the curled edge
   if (A0) creaseCol(m, G, 1, 0, R - 1, rim, true);
   if (A1) creaseCol(m, G, C - 2, 0, R - 1, rim, true);

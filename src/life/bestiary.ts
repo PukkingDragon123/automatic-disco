@@ -273,13 +273,13 @@ export const BEASTS: Record<string, Beast> = {
   },
   mirewalker: {
     id: 'mirewalker', name: 'Mirewalker', latin: 'Paludigigas longicollis', role: 'titan', plan: 'quadruped', lineage: 'vertebrate', cover: 'skin',
-    concept: 'A swamp titan forty metres from nose to tail: a neck as long as its body to crop the tops of the fen forests, pillar legs that sink a metre at every step, crusts of lichen on the wet grey hide and long-healed scars from things that tried.',
+    concept: 'A swamp titan with a body nearly forty metres long: a neck longer than its body to crop the tops of the fen forests, a nasal arch it trumpets through, a fringe of sensory barbels that tastes the water, breathing slits at the root of the neck, pillar legs that sink a metre at every step, crusts of lichen on the wet grey hide and long-healed scars from things that tried.',
     genes: ['vert_quadruped', 'leg_pillar', 'eye_camera', 'molars', 'tail_balance', 'fat_stores', 'ectotherm', 'live_birth'],
     sliders: { size: 1, len: 1, girth: 0.7, legLen: 0.55, legThick: 0.85, neck: 1, head: 0.2, tail: 1 },
     colors: { base: ['slate', 3], belly: ['stone', 4], pattern: ['slate', 2], accent: ['sage', 4], eye: ['ink', 1] }, pattern: 'flankSpots', patScale: 2.2,
     form: {
-      trunk: [[0.44, 0.52, 0.66], [0.5, 0.58, 0.66], [0.48, 0.56, 0.58], [0.46, 0.54, 0.5]], neckR: 0.5, nAng: 0.75, neckK: 3.0, headK: 0.45, snoutK: 0.9,
-      hK: 1.05, foreK: 1.05, hindK: 1, foreT: 1.1, hindT: 1.15, slope: 0.06, tailK: 1.6, scale: 8.5,
+      trunk: [[0.44, 0.52, 0.66], [0.5, 0.58, 0.66], [0.48, 0.56, 0.58], [0.46, 0.54, 0.5]], neckR: 0.5, nAng: 0.62, neckK: 2.05, headK: 0.45, snoutK: 0.9,
+      hK: 1.05, foreK: 1.05, hindK: 1, foreT: 1.1, hindT: 1.15, slope: 0.06, tailK: 1.05, scale: 8.5,
       skull: { rx: [0.34, 0.44, 0.48, 0.42, 0.34, 0.28, 0.24, 0.2], ry: [0.34, 0.44, 0.46, 0.4, 0.32, 0.28, 0.25, 0.21], hy: [0.06, 0.14, 0.16, 0.1, 0.03, -0.02, -0.05, -0.07], eye: [0.24, 1.15, 1.05, 0.06], cap: 0.3 },
       eyes: { pupil: 'round' }, fore: [0.62, 0.74, 0.62, 0.56, 0.62], hind: [0.66, 0.78, 0.62, 0.56, 0.62], limbSkin: true, cageFam: 'bovid', cage: { muzzle: 0.9, eye: 0.6 },
       parts: [{ k: 'plates', t0: 0.1, t1: 0.7, rows: 14, spread: 0.6, size: 0.18, ramp: 'sage' }, { k: 'colonies', ramp: 'bone', n: 60 }, { k: 'barbels', n: 10 }, { k: 'perchers', n: 4 }],

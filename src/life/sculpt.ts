@@ -14,6 +14,7 @@ import { shagCoat, mane, tassel, crest, wattle, tailFin, brushTail, sail, frill,
 import { BEASTS, type BeastForm } from './bestiary';
 import { CAGES, cageProfile, cageHead, morphCage, cageOrbit } from './cage';
 import { growBio } from './bioparts';
+import { isTitan, sculptTitan } from './titans';
 import { growBody, markBody, headFans, greatHorn, skullCrest, helm, noseleaf, barbels, mandiblePlates, type BodyMark } from './forms';
 import { SkinB, Page, type Region, KIT, oct, blade, sac, spline, chainWeights, ball, sheet, transport, hash, gauss, sub, addV, scl, norm, cross, len, lerpV, pageTexture, mixC, type V3, type Wt } from './kit';
 
@@ -1483,6 +1484,7 @@ function gastropod(S: Ctx) {
 // =============================================================================================== entry
 export interface Sculpt { geo: THREE.BufferGeometry; tex: THREE.DataTexture; tris: number; /** texels per metre on the flanks, page fill */ den: number; fill: number }
 export function sculpt(d: Design, rig: Rig, rest: V3[]): Sculpt {
+  if (isTitan(d)) return sculptTitan(d, rig, rest); // the titans are built whole from the anatomy library (titans/)
   const den = 104;
   const S = new Ctx(d, rig, rest, den);
   KIT.sq = 2.1; KIT.nMul = 1.05; // round organic sections at full ring density, smooth-shaded (the post pass keeps the ink outline)

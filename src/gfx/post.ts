@@ -208,6 +208,11 @@ void main() {
     col += uSunCol * sg * 3.0;
     float gl = h31(floor(P * 32.0) + floor(uTime * 5.0));
     if (gl > 0.993 && dot(rr, uSunDir) > 0.86) col += uSunCol * 1.6 * uDay;
+    // the night sky's stars caught in the water
+    if (uNight > 0.05 && rr.y > 0.0) {
+      float hs = h21(floor(vec2(atan(rr.z, rr.x) * 150.0, rr.y * 300.0)));
+      if (hs > 0.995) col += vec3(0.75, 0.8, 1.0) * uNight * (0.5 + 0.5 * sin(uTime * 2.3 + hs * 60.0)) * 0.9;
+    }
     if (uRed > 0.01) col = mix(col, rampBy(col, uAut[0], uAut[1], uAut[2]) * vec3(1.25, 0.55, 0.5), uRed * 0.75);
     if (uIce > 0.01) {
       vec2 wp = (floor(P.xz * 32.0) + 0.5) / 32.0;
@@ -218,9 +223,16 @@ void main() {
   }
   if (env && !bgC && water < 0.5) col = seasonal(col, P, N0, emitF, oC);
   if (env && !bgC) {
-    col *= 1.0 + emitF * uEclipse * 1.4;
+    // in the eclipse glowing life is the light
+    col *= 1.0 + emitF * uEclipse * 2.6;
     col += vec3(0.5, 0.56, 0.72) * uFlash * 0.3;
-    col += vec3(0.1, 0.5, 0.3) * uAurora * uNight * 0.015;
+    // aurora light rippling over the ground: slow bands of green and violet, hard-edged, drifting
+    if (uAurora > 0.01) {
+      vec2 ap = P.xz * 0.045 + vec2(uTime * 0.03, uTime * 0.011);
+      float n = vn2(ap + vec2(vn2(ap * 0.7 + uTime * 0.02) * 2.0, 0.0));
+      float b1 = step(0.58, n) * (1.0 - step(0.68, n)), b2 = step(0.72, n) * (1.0 - step(0.77, n));
+      col += (b2 > 0.5 ? vec3(0.5, 0.22, 0.85) : vec3(0.12, 0.8, 0.48)) * max(b1, b2) * uAurora * (0.05 + uNight * 0.09) * max(0.35, N0.y);
+    }
   }
   if (env && bgC) col = skyAt(rd);
   if (env && !bgC && water < 0.5) {
@@ -592,7 +604,7 @@ export class Post {
     U.uWet.value = e.wet; U.uRain.value = e.rain; U.uDew.value = e.dew; U.uHeat.value = lo ? 0 : e.heat;
     U.uSnow.value = e.snow; U.uFrost.value = e.frost; U.uIce.value = e.ice; U.uDry.value = e.dry; U.uAutumn.value = e.autumn;
     U.uDust.value = e.dust; U.uAsh.value = e.ash; U.uRed.value = e.red; U.uEclipse.value = e.eclipse; U.uFlash.value = e.flash;
-    U.uCloudK.value = lo ? 0 : e.cloudK; U.uAurora.value = e.aurora; U.uDay.value = e.day; U.uNight.value = Math.max(0, 1 - e.day * 2.2) * (1 - e.cloudK * 0.8);
+    U.uCloudK.value = lo ? 0 : e.cloudK; U.uAurora.value = e.aurora; U.uDay.value = e.day; U.uNight.value = Math.max(Math.max(0, 1 - e.day * 2.2), e.eclipse) * (1 - e.cloudK * 0.8);
     U.uTone.value = q === 'low' ? 0 : 1;
     // the sky: Rayleigh blue overhead from the fill light, the horizon brighter and warmed by a low sun
     (U.uSunSky.value as THREE.Vector3).copy(e.sunSky).normalize(); (U.uMoonSky.value as THREE.Vector3).copy(e.moonSky).normalize();
@@ -606,6 +618,8 @@ export class Post {
     if (e.dust > 0) { hz.lerp(dc, e.dust * 0.7); mc.lerp(dc, e.dust * 0.7); hor.lerp(dc, e.dust * 0.8); zen.lerp(dc, e.dust * 0.5); }
     if (e.ash > 0) { const ac = _t.setHex(RAMPS.stone[3]).multiplyScalar(0.3 + 0.7 * k); hz.lerp(ac, e.ash * 0.6); mc.lerp(ac, e.ash * 0.6); zen.lerp(ac, e.ash * 0.6); }
     if (e.red > 0) { const rc = _t.setHex(RAMPS.coral[3]).multiplyScalar(0.3 + 0.7 * k); hz.lerp(rc, e.red * 0.55); mc.lerp(rc, e.red * 0.5); hor.lerp(rc, e.red * 0.7); zen.lerp(_t.setHex(RAMPS.plum[2]), e.red * 0.6); }
+    // golden hour: pink-orange in the haze and the mist, a burning horizon
+    if (e.golden > 0) { const gc = _t.setHex(RAMPS.coral[5]).multiplyScalar(0.5 + 0.5 * k); hz.lerp(gc, e.golden * 0.6); mc.lerp(gc, e.golden * 0.45); hor.lerp(_t.setHex(RAMPS.rust[6]), e.golden * 0.7); }
     if (e.eclipse > 0) { zen.lerp(_t.setRGB(0.004, 0.006, 0.02), e.eclipse); hor.lerp(_t.setRGB(0.02, 0.03, 0.06), e.eclipse); hz.lerp(_t.setRGB(0.02, 0.03, 0.06), e.eclipse * 0.8); mc.lerp(_t.setRGB(0.04, 0.06, 0.1), e.eclipse * 0.8); }
     (U.uWind.value as THREE.Vector2).copy(e.wind);
     // shafts need the sun's shadow map (it exists after the first shadowed frame)

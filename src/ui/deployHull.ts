@@ -133,7 +133,7 @@ export function buildHull(bin: Bin, root: THREE.Group, ext: THREE.Group): Hull {
   // ---- the engines: throat glow inside each bell, the shimmering exhaust, a warm point light
   const nozU = { uCol: { value: new THREE.Color(1.6, 0.62, 0.2) }, uK: { value: 0.8 }, uT: { value: 0 } };
   const nozM = fxMat(bin, CONE_V, NOZ_F, nozU, 'add', { side: THREE.BackSide });
-  const plumeU = { uT: { value: 0 }, uK: { value: 0.5 } };
+  const plumeU = { uT: { value: 0 }, uK: { value: 0.32 } };
   const plumeM = fxMat(bin, PLUME_V, PLUME_F, plumeU, 'add', { side: THREE.DoubleSide });
   {
     // every bell's glow in one mesh, every plume in another (each plume vertex carries its own axis to wobble about)

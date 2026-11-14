@@ -49,7 +49,7 @@ export function stalk(o: {
 /** a horn: rooted under the skin at `base`, sweeping through `ctrl`, ringed, keeled, tapering to a point */
 export function horn(o: { name: string; ctrl: V3[]; r0: number; skin: (p: V3) => Wt; paint: Paint; flat?: number; rings?: number; k?: number }) {
   const path = curve(o.ctrl, 10);
-  return stalk({ name: o.name, path, r: (t) => o.r0 * Math.pow(1 - t * 0.94, 0.9) + o.r0 * 0.02, around: 8, sec: (a) => (Math.cos(a) > 0.7 ? 1.12 : 1) * (Math.abs(Math.sin(a)) > 0.7 ? o.flat ?? 0.85 : 1), ringEvery: o.rings ?? 2, keel: true, skin: o.skin, paint: o.paint, k: o.k });
+  return stalk({ name: o.name, path, r: (t) => o.r0 * Math.pow(1 - t * 0.94, 0.9) + o.r0 * 0.02, around: 8, sec: (a) => (Math.cos(a) > 0.7 ? 1.12 : 1) * (Math.abs(Math.sin(a)) > 0.7 ? o.flat ?? 0.85 : 1), ringEvery: o.rings ?? 2, keel: true, skin: o.skin, paint: o.paint, k: o.k, levels: 1 });
 }
 
 /** a rayed fin, sail or frill: `rays` bony rays run from points along a base line out to their tips; the membrane

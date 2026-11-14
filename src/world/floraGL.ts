@@ -95,6 +95,10 @@ attribute vec4 aW; attribute vec4 aP;
 attribute vec4 iA; attribute vec4 iB;
 uniform float uTime, uN, uH, uFlex, uPushK, uGround, uBob, uDay;
 uniform vec3 uCamPos; uniform vec4 uLod3;
+// seasons: A = (bloom, highsun, ember, frost), B = (eclipse, bloodtide, monsoon, thaw); per batch: deciduous, fungus,
+// small herb
+uniform vec4 uSeasonA, uSeasonB; uniform float uDecid, uFungus, uSmall;
+varying float vLeafR;
 uniform sampler2D uMoss, uField;
 uniform vec3 uBloom[8];
 varying float vWither, vUp, vTr, vTintK; varying vec2 vFade; varying vec3 vWorld;
@@ -118,20 +122,25 @@ float bB = floor(sB.a * 255.0 + 0.5);
 vGraft = vec4(sA.g, floor(bB / 64.0), sA.b, sA.a);
 vTint = sB.rgb; vTintK = mod(bB, 64.0) / 63.0;
 vBloom = uBloom[int(clamp(floor(iB.z), 0.0, 7.0))];
-vWither = wither; vBase = base; vKind = aP.w; vLocal = position;
+vWither = wither; vBase = base; vKind = aP.w; vLocal = position; vLeafR = fract(aW.w * 7.31 + seed * 3.7);
 vUp = clamp(position.y / max(0.05, uH), 0.0, 1.0);
 float grow = sA.a * (uGround > 0.5 ? (1.0 - wither) : (1.0 - wither * 0.45) * step(0.02, bio));
+// frost: herbs die back toward their dormant crowns
+grow *= 1.0 - uSmall * uSeasonA.w * 0.35;
 vec3 p = position;
 float kind = aP.w;
 // petals open by day and close at night; pods, bulbs and caps breathe round their pivot; trap lobes snap shut on
 // their hinge and tentacles curl in when prey comes near (closure from the per-plant state)
 float closure = stateC(iB.y).r;
 if (isK(kind, 2.0) || isK(kind, 7.0)) {
-  vec3 d = p - aP.xyz; float o = clamp(uDay * 1.15 - 0.05, 0.0, 1.0) * (0.96 + 0.04 * sin(t * 0.45 + ph + aW.w * 1.5));
+  vec3 d = p - aP.xyz; float o = max(clamp(uDay * 1.15 - 0.05, 0.0, 1.0), uSeasonA.x * 0.85) * (1.0 - uSeasonB.x) * (0.96 + 0.04 * sin(t * 0.45 + ph + aW.w * 1.5));
   float k = mix(0.32, 1.0, o);
-  d.xz *= k; d.y += (1.0 - k) * length(d.xz) * 1.1; p = aP.xyz + d;
+  // how many flowers are out: a few between seasons, all in the bloom, none in the frost
+  float hp = fract(sin(dot(aP.xyz, vec3(12.9898, 78.233, 37.719)) + seed * 13.1) * 43758.5453);
+  float keep = step(hp, 0.62 + 0.38 * uSeasonA.x - 0.64 * uSeasonA.w);
+  d.xz *= k; d.y += (1.0 - k) * length(d.xz) * 1.1; p = aP.xyz + d * keep;
 } else if ((isK(kind, 3.0) || isK(kind, 4.0)) && dot(aP.xyz, aP.xyz) > 0.0) {
-  p = aP.xyz + (p - aP.xyz) * (1.0 + sin(t * 1.4 + ph) * (kind < 3.5 ? 0.06 : 0.018));
+  p = aP.xyz + (p - aP.xyz) * (1.0 + sin(t * (1.4 + uFungus * uSeasonB.y * 2.0) + ph) * (kind < 3.5 ? 0.06 : 0.018 + uFungus * uSeasonB.y * 0.07));
 } else if (isK(kind, 8.0)) {
   float az = aW.w * 6.2831; vec3 ax = vec3(cos(az), 0.0, sin(az));
   float c0 = cos(aW.z * closure * 0.95), s0 = sin(aW.z * closure * 0.95);
@@ -143,6 +152,8 @@ if (isK(kind, 2.0) || isK(kind, 7.0)) {
 } else if (isK(kind, 11.0)) {
   p.y += sin(t * 1.7 + ph + p.x * 20.0) * 0.002;
 }
+// high sun: leaves wilt and curl down at their tips; eclipse: they fold down for the long night
+if (isK(kind, 1.0) && uGround < 0.5) p.y -= aW.z * (uSeasonA.y * 0.035 + uSeasonB.x * 0.05) * min(1.0, uH);
 p *= sc * grow;
 float Hh = max(0.05, uH * sc * grow);
 p = rotY(p, yaw);
@@ -154,7 +165,7 @@ vec2 fb = (fld.xy - 0.5) * 4.0;
 // floating growth (lily pads) drifts aside from whatever wades through
 p.xz += fb * 0.1 * uBob;
 vTr = fld.z;
-vec2 bend = wnd.xy * flex * uFlex + fb * uPushK;
+vec2 bend = (wnd.xy * flex * uFlex + fb * uPushK) * (1.0 + uSeasonB.z * 0.8);
 bend += uWindDir * sin(t * (0.6 + uFlex * 0.8) + ph) * 0.05 * uWind * (0.35 + wnd.z) * uFlex;
 // limbs swing out of phase with each other (phase continuous along a limb so joints never tear)
 float bp = dot(position, vec3(2.1, 1.3, 2.7)) + ph;
@@ -176,6 +187,8 @@ vFade = vec2(smoothstep(uLod3.x, uLod3.y, cd), smoothstep(uLod3.z, uLod3.w, cd))
 `;
 const FRAG_PARS_3D = /* glsl */`
 uniform sampler2D uBark, uVis; uniform float uN, uTime, uGround, uDay; uniform vec3 uDark; uniform vec3 uGraftCol[4];
+uniform vec4 uSeasonA, uSeasonB; uniform float uDecid, uFungus, uSmall; uniform vec3 uAutumn[4];
+varying float vLeafR;
 bool isK(float k, float v) { return abs(k - v) < 0.5; }
 varying float vWither, vUp, vTr, vTintK; varying vec2 vFade; varying vec3 vWorld;
 varying vec4 vGraft; varying vec3 vBase, vLocal, vTint, vBloom;
@@ -197,13 +210,15 @@ if (!barkK && !isK(vKind, 4.0) && !isK(vKind, 6.0) && !isK(vKind, 11.0) && !isK(
   float al = texel.a * (1.0 + max(0.0, log2(max(max(dd.x, dd.y), 1.0))) * 0.42);
   if (al < 0.5) discard;
 }
+// ember drops the deciduous leaves, frost leaves the crowns bare
+if (uGround < 0.5 && uDecid > 0.5 && isK(vKind, 1.0) && vLeafR < uSeasonA.z * 0.55 + uSeasonA.w * 0.92) discard;
 `;
 
 export interface FloraUniforms { [k: string]: THREE.IUniform }
 
 /** the 3D flora material (one per batch: uH, uFlex, uPushK, uGround differ) */
-export function plant3dMaterial(U: FloraUniforms, atlas: THREE.Texture, local: { uH: number; uFlex: number; uPushK: number; uGround?: boolean; uBob?: number; lod: THREE.IUniform }): { mat: THREE.MeshLambertMaterial; depth: THREE.MeshDepthMaterial } {
-  const LU = { ...U, uH: { value: local.uH }, uFlex: { value: local.uFlex }, uPushK: { value: local.uPushK }, uGround: { value: local.uGround ? 1 : 0 }, uBob: { value: local.uBob ?? 0 }, uLod3: local.lod };
+export function plant3dMaterial(U: FloraUniforms, atlas: THREE.Texture, local: { uH: number; uFlex: number; uPushK: number; uGround?: boolean; uBob?: number; lod: THREE.IUniform; decid?: boolean; fungus?: boolean; small?: boolean }): { mat: THREE.MeshLambertMaterial; depth: THREE.MeshDepthMaterial } {
+  const LU = { ...U, uH: { value: local.uH }, uFlex: { value: local.uFlex }, uPushK: { value: local.uPushK }, uGround: { value: local.uGround ? 1 : 0 }, uBob: { value: local.uBob ?? 0 }, uLod3: local.lod, uDecid: { value: local.decid ? 1 : 0 }, uFungus: { value: local.fungus ? 1 : 0 }, uSmall: { value: local.small ? 1 : 0 } };
   const m = new THREE.MeshLambertMaterial({ map: atlas, side: THREE.DoubleSide, vertexColors: true });
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, LU);
@@ -219,6 +234,21 @@ if (distance(vWorld, uCamPos) < 1.5) discard;
 if (uGround < 0.5 && (isK(vKind, 1.0) || isK(vKind, 2.0) || isK(vKind, 7.0) || isK(vKind, 10.0)) && stip(gl_FragCoord.xy, cutAt(vWorld, uCamPos)) > 0.5) discard;
 diffuseColor.rgb *= texel.rgb;
 if (isK(vKind, 7.0)) diffuseColor.rgb *= vBloom * 1.25;
+{
+  // the seasons on the growth: autumn colour, sun-cured grass and curled leaves, frost-browned herbs with rimed
+  // tips, fresh thaw growth, the monsoon's wet sheen, fungi flushing blood red in the bloodtide
+  float lumS = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
+  if (isK(vKind, 1.0)) {
+    vec3 aut = uAutumn[int(floor(vLeafR * 3.99))] * (0.45 + lumS * 1.6);
+    diffuseColor.rgb = mix(diffuseColor.rgb, aut, uSeasonA.z * (uGround > 0.5 ? 0.35 : uDecid > 0.5 ? 0.85 : 0.3));
+    vec3 straw = vec3(0.6, 0.5, 0.28) * (0.45 + lumS * 1.3);
+    diffuseColor.rgb = mix(diffuseColor.rgb, straw, uSeasonA.y * (uGround > 0.5 ? 0.6 : 0.22) + uSeasonA.w * (uGround > 0.5 ? 0.5 : 0.45 * uSmall));
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.84, 0.88, 0.93) * (0.6 + lumS), uSeasonA.w * vUp * 0.4);
+    diffuseColor.rgb *= 1.0 + uSeasonB.w * 0.12;
+  }
+  diffuseColor.rgb *= 1.0 - uSeasonB.z * 0.12;
+  if (uFungus > 0.5 && (isK(vKind, 3.0) || isK(vKind, 4.0))) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.5, 0.04, 0.05) * (0.6 + lumS * 1.4), uSeasonB.y * 0.6);
+}
 float lumW = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumW) * vec3(0.62, 0.5, 0.36), vWither * 0.85);
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumW) * vTint * 1.7, vTintK);
@@ -233,11 +263,13 @@ float night = 1.0 - uDay;
 float sss = ((vKind > 0.5 && vKind < 3.5) || (vKind > 6.5 && vKind < 10.5)) ? 0.17 : 0.05;
 totalEmissiveRadiance += diffuseColor.rgb * sss * (1.0 - vWither * 0.6) + graftE;
 // lures and glowing tissue: dim by day, bright at night
-if (isK(vKind, 3.0)) totalEmissiveRadiance += diffuseColor.rgb * (0.35 + 1.0 * night) * (0.85 + 0.3 * sin(uTime * 1.4 + vBase.x * 2.0)) * (1.0 - vWither);
-if (isK(vKind, 6.0)) totalEmissiveRadiance += diffuseColor.rgb * (0.4 + 0.4 * night);
-if (isK(vKind, 10.0)) totalEmissiveRadiance += diffuseColor.rgb * (0.12 + 0.55 * night);
+float ecl = 1.0 + uSeasonB.x * 2.5;
+if (uFungus > 0.5 && uSeasonB.y > 0.0 && (isK(vKind, 3.0) || isK(vKind, 4.0))) { float sp = h2(floor(vLocal.xz * 55.0) + floor(vLocal.y * 55.0) * 7.0); if (sp > 0.8) totalEmissiveRadiance += vec3(1.0, 0.1, 0.08) * uSeasonB.y * (0.5 + 0.6 * sin(uTime * 3.0 + sp * 40.0)); }
+if (isK(vKind, 3.0)) totalEmissiveRadiance += ecl * diffuseColor.rgb * (0.35 + 1.0 * night) * (0.85 + 0.3 * sin(uTime * 1.4 + vBase.x * 2.0)) * (1.0 - vWither);
+if (isK(vKind, 6.0)) totalEmissiveRadiance += ecl * diffuseColor.rgb * (0.4 + 0.4 * night);
+if (isK(vKind, 10.0)) totalEmissiveRadiance += ecl * diffuseColor.rgb * (0.12 + 0.55 * night);
 if (isK(vKind, 11.0)) totalEmissiveRadiance += diffuseColor.rgb * 0.25;
-if (isK(vKind, 12.0)) totalEmissiveRadiance += diffuseColor.rgb * (0.3 + 1.1 * night) * (0.85 + 0.3 * sin(uTime * 2.1 + vBase.z * 3.0));`)
+if (isK(vKind, 12.0)) totalEmissiveRadiance += ecl * diffuseColor.rgb * (0.3 + 1.1 * night) * (0.85 + 0.3 * sin(uTime * 2.1 + vBase.z * 3.0));`)
       .replace('#include <dithering_fragment>', `#include <dithering_fragment>
 gl_FragColor.rgb = applyFow(gl_FragColor.rgb, vBase);
 float outl = (vKind < 0.5 || (vKind > 3.5 && vKind < 4.5)) ? 1.0 : 0.0;
@@ -381,6 +413,7 @@ export function cardMaterial(U: FloraUniforms, atlas: THREE.Texture, ground: boo
 uniform sampler2D uVis; uniform float uN, uTime; uniform vec3 uDark; uniform vec3 uGraftCol[4];
 varying float vWither, vFlut, vFade; varying vec3 vBase, vWorld; varying vec4 vGraft; varying vec4 vGRect;
 uniform vec3 uCamPos; uniform float uGround;
+uniform vec4 uSeasonA, uSeasonB; uniform vec3 uAutumn[4];
 ${SHADER_NOISE}
 ${FOW_FN}
 ${CUT_PARS}`)
@@ -391,6 +424,14 @@ float glowA = sampledDiffuseColor.a;
 vec3 glowC = sampledDiffuseColor.rgb;
 float lumW = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumW) * vec3(0.62, 0.5, 0.36), vWither * 0.85);
+{
+  // the seasons on far growth: green turns to autumn colour in the ember, cures in the high sun, browns in the frost
+  float leafy = clamp((diffuseColor.g - max(diffuseColor.r, diffuseColor.b)) * 6.0 + 0.2, 0.0, 1.0), hs = fract(sin(dot(vBase.xz, vec2(12.9898, 78.233))) * 43758.5453);
+  vec3 aut = uAutumn[int(floor(hs * 3.99))] * (0.45 + lumW * 1.6), straw = vec3(0.6, 0.5, 0.28) * (0.45 + lumW * 1.3);
+  diffuseColor.rgb = mix(diffuseColor.rgb, aut, uSeasonA.z * leafy * (uGround > 0.5 ? 0.35 : 0.75));
+  diffuseColor.rgb = mix(diffuseColor.rgb, straw, leafy * (uSeasonA.y * (uGround > 0.5 ? 0.6 : 0.2) + uSeasonA.w * 0.5));
+  diffuseColor.rgb *= 1.0 - uSeasonB.z * 0.12;
+}
 ${GRAFT_CARD}`)
       .replace('#include <alphatest_fragment>', 'if (diffuseColor.a < 0.5) discard;')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\nif (glowA < 0.98) totalEmissiveRadiance += glowC * 1.3 * (1.0 - vWither);\ntotalEmissiveRadiance += diffuseColor.rgb * 0.22 + graftE;')

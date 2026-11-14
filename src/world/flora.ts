@@ -38,7 +38,7 @@ import { plant3dMaterial, cardMaterial, STATE_W } from './floraGL';
 import { settings, onSettings, type Quality } from '../settings';
 import { daylight } from '../game/daylight';
 import { gbuf } from '../gfx/gbuf';
-import { rampFor } from './pixelKit';
+import { rampFor, rampNamed } from './pixelKit';
 
 /** spare instance slots for plants sown during play */
 const SPARE = 320;
@@ -133,6 +133,8 @@ export class Flora {
       uMoss: { value: moss }, uVis: { value: vis }, uDark: { value: new THREE.Color(0x07080c) },
       uField: { value: this.field.tex }, uBark: { value: this.tex.bark },
       uFocus: { value: new THREE.Vector3() }, uCut: { value: new THREE.Vector4(0, 2.2, 3.4, 0) }, uDay: { value: 1 },
+      uSeasonA: { value: new THREE.Vector4() }, uSeasonB: { value: new THREE.Vector4() },
+      uAutumn: { value: [rampNamed('rust')[4], rampNamed('ochre')[5], rampNamed('coral')[4], rampNamed('plum')[3]].map((c) => new THREE.Color(c)) },
       uWindDir: { value: new THREE.Vector2(Math.cos(region.seed * 1.7), Math.sin(region.seed * 1.7)) }, uWind: { value: WIND[region.biome.key] ?? 1 },
       uGraftCol: { value: [VEYR.vein, ...RIVALS.map((r) => r.vein)].slice(0, 4).map((c) => new THREE.Color(c)) },
       uBloom: { value: Array.from({ length: 8 }, (_, i) => new THREE.Color(pal.bloom[i % pal.bloom.length]).convertSRGBToLinear()) },
@@ -371,7 +373,8 @@ export class Flora {
           tris += pg.tris;
           const small = this.isSmall(s), shrub = s.arch === 'shrub', U = this.U;
           const band = lod ? (shrub ? U.uLodBsh : small ? U.uLodBs : U.uLodB) : shrub ? U.uLodAsh : U.uLodA;
-          const { mat, depth } = plant3dMaterial(this.U, this.tex.tex, { uH: pg.H, uFlex: flex, uPushK: pushK, uBob: s.arch === 'lily' ? 1 : 0, lod: band });
+          const decid = s.arch === 'broadleaf' || s.arch === 'umbrella' || s.arch === 'shrub' || s.arch === 'weeper' || s.arch === 'bloom';
+          const { mat, depth } = plant3dMaterial(this.U, this.tex.tex, { uH: pg.H, uFlex: flex, uPushK: pushK, uBob: s.arch === 'lily' ? 1 : 0, lod: band, decid, fungus: s.arch === 'fungus', small: small && !s.tree });
           const b = new Batch(`flora3d:${s.arch}:${v}:${lod}`, pg.geo, mat, shadow ? depth : null, 8, I3D, per3d[si][v], nc2, 24);
           this.p3d[si][v][lod] = b; this.all.push(b);
         });
@@ -408,7 +411,7 @@ export class Flora {
       const pg = meshGround(f.form, f.v, this.tex, pal, this.region.seed);
       const flex = f.form === 'mush' ? 0.02 : f.form === 'clover' ? 0.12 : f.form === 'fern' ? 0.3 : f.form === 'flower' ? 0.38 : 0.55;
       const pushK = f.form === 'mush' ? 0.15 : f.form === 'clover' ? 0.5 : 1;
-      const { mat } = plant3dMaterial(this.U, this.tex.tex, { uH: pg.H, uFlex: flex, uPushK: pushK, uGround: true, lod: this.U.uLodG });
+      const { mat } = plant3dMaterial(this.U, this.tex.tex, { uH: pg.H, uFlex: flex, uPushK: pushK, uGround: true, lod: this.U.uLodG, fungus: f.form === 'mush', small: true });
       const b = new Batch(`ground3d:${f.key}`, pg.geo, mat, null, 8, I3D, f.per, nc2);
       this.g3d.push(b); this.all.push(b);
       this.stats.tris3d += pg.tris;
@@ -516,6 +519,27 @@ export class Flora {
     for (const b of this.g3d) ground += t(b);
     cards = t(this.pCards) + t(this.gFar) + t(this.gAlways);
     return { plants: Math.round(plants), ground: Math.round(ground), cards: Math.round(cards), draws: this.all.filter((b) => b.mesh.visible).length };
+  }
+
+  // ---------------------------------------------------------------- seasons (climate.ts calls it)
+  private seasonId = ''; private seasonPrev = '';
+  /** the planet's season and its progress k 0..1 (ids from the Climate contract): the growth answers it. bloom: every
+   *  flower out and wide open; highsun: leaves wilt and curl, grass cures; ember: autumn colour and leaf drop; frost:
+   *  bare deciduous crowns, herbs die back, rime on the tips; eclipse: flowers shut, leaves fold, the luminous species
+   *  blaze; bloodtide: fungi flush red and puff glowing spores; monsoon: wet, darker, wind-thrashed; thaw: fresh growth.
+   *  A new season eases in over its first sixth while the last one eases out. */
+  setSeason(id: string, k: number) {
+    if (id !== this.seasonId) { this.seasonPrev = this.seasonId; this.seasonId = id; }
+    const w = Math.min(1, Math.max(0, k / 0.16)), e = w * w * (3 - 2 * w), A = this.U.uSeasonA.value as THREE.Vector4, B = this.U.uSeasonB.value as THREE.Vector4;
+    A.set(0, 0, 0, 0); B.set(0, 0, 0, 0);
+    const add = (s: string, v: number) => {
+      switch (s) {
+        case 'bloom': A.x += v; break; case 'highsun': A.y += v; break; case 'ember': A.z += v; break; case 'frost': A.w += v; break;
+        case 'eclipse': B.x += v; break; case 'bloodtide': B.y += v; break; case 'monsoon': B.z += v; break; case 'thaw': B.w += v; break;
+      }
+    };
+    add(this.seasonId, e);
+    if (this.seasonPrev && this.seasonPrev !== this.seasonId) add(this.seasonPrev, 1 - e);
   }
 
   // ---------------------------------------------------------------- canopy cutaway

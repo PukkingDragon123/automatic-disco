@@ -36,7 +36,7 @@ class GB {
   }
   /** a lumpy faceted blob (an icosahedron, jittered), planar shading by facing */
   blob(c: V, r: V, ramp: RampName, step: number, seed: number, detail = 1, g = 0, w = 0) {
-    const ico = new THREE.IcosahedronGeometry(1, detail).toNonIndexed(), p = ico.attributes.position as THREE.BufferAttribute;
+    const ico = new THREE.IcosahedronGeometry(1, detail), p = ico.attributes.position as THREE.BufferAttribute;
     const jit = (x: number, y: number, z: number) => 1 + (hash01(Math.round(x * 97), Math.round(y * 97) + seed, Math.round(z * 97)) - 0.5) * 0.3;
     for (let i = 0; i < p.count; i += 3) {
       const v: V[] = [0, 1, 2].map((k) => { const x = p.getX(i + k), y = p.getY(i + k), z = p.getZ(i + k), j = jit(x, y, z); return [c[0] + x * r[0] * j, c[1] + Math.max(-0.2, y) * r[1] * j, c[2] + z * r[2] * j] as V; });
@@ -143,25 +143,28 @@ function seagrass(seed: number) {
   }
   return b;
 }
-/** kelp: a stalk from the bed to the surface (unit height, scaled per plant), straps of blade alternating up it with a
- *  gas bladder at each root, and a canopy of blades lying out on the surface */
-function kelp(seed: number) {
+/** kelp: a stipe from the bed to the surface (built at a real height H, scaled a little per plant), broad straps of
+ *  blade drooping off it with a gas bladder at each root, and a canopy of long blades tangled out on the surface */
+function kelp(seed: number, H: number) {
   const b = new GB(), r = new Rand(seed);
-  b.prism([0, 0, 0], [0, 1, 0], 0.025, 0.016, 3, 'olive', 2, 0, 1);
-  // a holdfast of root claws
-  for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; b.prism([0, 0.02, 0], [Math.cos(a) * 0.12, -0.03, Math.sin(a) * 0.12], 0.02, 0.006, 3, 'soil', 3, 0, 0, 0, false); }
-  for (let y = 0.08, s = 1; y < 0.95; y += r.range(0.06, 0.1), s = -s) {
-    const a = r.range(0, Math.PI * 2), L = r.range(0.16, 0.3), wdt = r.range(0.035, 0.06), up = r.range(0.06, 0.12);
-    const dx = Math.cos(a), dz = Math.sin(a), px = -dz * wdt, pz = dx * wdt;
-    const ramp: RampName = r.chance(0.5) ? 'ochre' : 'olive', st = r.int(2, 4);
-    const w0 = y, w1 = Math.min(1, y + 0.08);
-    b.quad([0, y, 0], [dx * L * 0.5 + px, y + up * 0.5, dz * L * 0.5 + pz], [dx * L, y + up, dz * L], [dx * L * 0.5 - px, y + up * 0.5, dz * L * 0.5 - pz], col(ramp, st), [w0, w1, w1, w1]);
-    b.blob([dx * 0.03, y, dz * 0.03], [0.022, 0.03, 0.022], 'ochre', 3, seed + Math.round(y * 100), 0, 0, w0);
+  // the stipe wanders a little on its way up
+  const pts: V[] = []; for (let i = 0; i <= 8; i++) { const y = (i / 8) * H; pts.push([Math.sin(i * 1.3 + seed) * 0.08 * (i / 8), y, Math.cos(i * 0.9 + seed) * 0.08 * (i / 8)]); }
+  for (let i = 0; i < 8; i++) b.prism(pts[i], pts[i + 1], 0.035, 0.03, 3, 'olive', 2, pts[i][1] / H, pts[i + 1][1] / H, 0, false);
+  for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; b.prism([0, 0.05, 0], [Math.cos(a) * 0.22, -0.05, Math.sin(a) * 0.22], 0.035, 0.01, 3, 'soil', 3, 0, 0, 0, false); }
+  for (let y = 0.35, side = 0; y < H - 0.3; y += r.range(0.28, 0.45), side++) {
+    const a = side * 2.4 + r.range(-0.4, 0.4), L = r.range(0.55, 1.0), wd = r.range(0.07, 0.12), droop = r.range(0.1, 0.35);
+    const dx = Math.cos(a), dz = Math.sin(a), px = -dz * wd, pz = dx * wd, k = y / H, k2 = Math.min(1, (y + 0.3) / H);
+    const ramp: RampName = r.chance(0.55) ? 'ochre' : 'olive', st = r.int(2, 4);
+    const m: V = [dx * L * 0.5, y + 0.12, dz * L * 0.5], e: V = [dx * L, y + 0.12 - droop, dz * L];
+    b.quad([0, y, 0], [m[0] + px, m[1], m[2] + pz], e, [m[0] - px, m[1], m[2] - pz], col(ramp, st), [k, k2, k2, k2]);
+    b.tri([m[0] + px, m[1], m[2] + pz], [m[0] + px * 0.2, m[1] + 0.01, m[2] + pz * 0.2], e, col(ramp, st + 1), [k2, k2, k2]);
+    b.blob([dx * 0.06, y, dz * 0.06], [0.045, 0.06, 0.045], 'ochre', 3, seed + Math.round(y * 100), 0, 0, k);
   }
-  // the canopy: long blades fanned out flat on the surface
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2 + r.range(-0.3, 0.3), L = r.range(0.5, 0.9), wdt = r.range(0.05, 0.08), dx = Math.cos(a), dz = Math.sin(a), px = -dz * wdt, pz = dx * wdt;
-    b.quad([0, 1, 0], [dx * L * 0.5 + px, 1.0, dz * L * 0.5 + pz], [dx * L, 0.995, dz * L], [dx * L * 0.5 - px, 1.0, dz * L * 0.5 - pz], col(i % 2 ? 'ochre' : 'olive', 3), [1, 1, 1, 1]);
+  // the canopy: long blades lying out on the surface, crossing each other
+  for (let i = 0; i < 11; i++) {
+    const a = r.range(0, Math.PI * 2), L = r.range(0.7, 1.6), wd = r.range(0.06, 0.11), dx = Math.cos(a), dz = Math.sin(a), px = -dz * wd, pz = dx * wd, o = r.range(0, 0.25);
+    const y0 = H - 0.02 + i * 0.002;
+    b.quad([dx * o, y0, dz * o], [dx * (o + L * 0.5) + px, y0, dz * (o + L * 0.5) + pz], [dx * (o + L), y0 - 0.01, dz * (o + L)], [dx * (o + L * 0.5) - px, y0, dz * (o + L * 0.5) - pz], col(i % 3 ? 'ochre' : 'olive', 3 + (i % 2)), [1, 1, 1, 1]);
   }
   return b;
 }
@@ -183,7 +186,7 @@ function crystals(seed: number) {
 
 // ------------------------------------------------------------------------------------------------ the material
 /** lit, vertex-coloured, swaying in the current and the swell, glowing a little at night */
-export function reefMaterial(U: { uTime: { value: number }; uCur: { value: THREE.Vector2 }; uGlowK: { value: number } }, amp: number, key: string) {
+export function reefMaterial(U: { uTime: { value: number }; uCur: { value: THREE.Vector2 }; uGlowK: { value: number } }, amp: number, key: string, outline = 1) {
   const m = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, U);
@@ -202,12 +205,13 @@ vGlow = aGlow * uGlowK;`);
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vGlow * 2.2;');
   };
   m.customProgramCacheKey = () => 'ocean-reef-' + key;
-  return gbuf(m, 1);
+  return gbuf(m, outline);
 }
 
 // ------------------------------------------------------------------------------------------------ the reef
 export interface Node { x: number; z: number; y: number; kind: 'ore' | 'crystal'; amount: number; max: number; i: number }
-interface Plant { x: number; y: number; z: number; s: number; yaw: number; h: number; carbon: number }
+interface Plant { x: number; y: number; z: number; s: number; yaw: number; h: number; carbon: number; cls?: number; j?: number }
+const nearestH = (KH: number[], h: number) => { let b = 0; for (let i = 1; i < KH.length; i++) if (Math.abs(KH[i] - h) < Math.abs(KH[b] - h)) b = i; return b; };
 
 export class Reef {
   readonly group = new THREE.Group();
@@ -215,7 +219,7 @@ export class Reef {
   readonly nodes: Node[] = [];
   /** kelp plants (carbon to take), with their instance */
   readonly kelp: Plant[] = [];
-  private kelpMesh: THREE.InstancedMesh | null = null;
+  private kelpMats: (THREE.InstancedMesh | null)[] = []; private kelpH: number[] = [];
   private nodeMesh = new Map<string, THREE.InstancedMesh>();
   /** coral heads per square metre of reef, for the fish to find (x, z, y) */
   readonly coral: [number, number, number][] = [];
@@ -277,9 +281,12 @@ export class Reef {
         if (r.next() < kk * 0.45) { const px = x + r.next(), pz = z + r.next(), y = R.groundSmooth(px, pz) - 0.05; this.kelp.push({ x: px, y, z: pz, s: r.range(0.8, 1.3), yaw: r.range(0, 6.28), h: W - y + r.range(-0.1, 0.25), carbon: 6 }); }
       }
     }
-    designs.forEach((ds, j) => { const m = this.inst(ds.geo, reefMaterial(this.U, ds.amp, ds.kind.replace(/\d/, '')), lists[j]); if (m) m.name = 'coral-' + ds.kind; else ds.geo.dispose(); });
-    this.inst(seagrass(R.seed).build(), reefMaterial(this.U, 0.16, 'grass'), grass);
-    this.kelpMesh = this.inst(kelp(R.seed).build(), reefMaterial(this.U, 0.35, 'kelp'), this.kelp.map((p) => ({ ...p, sy: p.h })));
+    designs.forEach((ds, j) => { const m = this.inst(ds.geo, reefMaterial(this.U, ds.amp, ds.kind.replace(/\d/, ''), ds.kind.startsWith('fan') || ds.kind.startsWith('anem') ? 0 : 1), lists[j]); if (m) m.name = 'coral-' + ds.kind; else ds.geo.dispose(); });
+    this.inst(seagrass(R.seed).build(), reefMaterial(this.U, 0.16, 'grass', 0), grass);
+    // kelp in three height classes, each plant scaled from the nearest
+    const KH = [4, 8, 13];
+    this.kelpMats = KH.map((H, c) => { const list = this.kelp.map((p, i) => ({ p, i })).filter(({ p }) => nearestH(KH, p.h) === c); list.forEach(({ p }, j) => { p.cls = c; p.j = j; }); return this.inst(kelp(R.seed + c * 7, H).build(), reefMaterial(this.U, 0.22, 'kelp', 0), list.map(({ p }) => ({ ...p, sy: p.h / H }))); });
+    this.kelpH = KH;
     // the harvest: ore nodule fields and crystal clusters on the open floor, kept apart
     if (oce) {
       for (let t = 0, made = 0; t < 600 && made < 7; t++) {
@@ -321,10 +328,10 @@ export class Reef {
     const got = Math.min(p.carbon, n); p.carbon -= got; this.setKelp(i); return got;
   }
   private setKelp(i: number) {
-    const p = this.kelp[i], m = this.kelpMesh; if (!m) return;
-    const k = Math.max(0, p.carbon / 6), M = new THREE.Matrix4();
-    M.compose(new THREE.Vector3(p.x, p.y, p.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.yaw), new THREE.Vector3(p.s, Math.max(0.02, p.h * (0.15 + 0.85 * k)), p.s));
-    m.setMatrixAt(i, M); m.instanceMatrix.needsUpdate = true;
+    const p = this.kelp[i], m = this.kelpMats[p.cls ?? 0]; if (!m || p.j === undefined) return;
+    const k = Math.max(0, p.carbon / 6), M = new THREE.Matrix4(), H = this.kelpH[p.cls ?? 0];
+    M.compose(new THREE.Vector3(p.x, p.y, p.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.yaw), new THREE.Vector3(p.s, Math.max(0.02, (p.h / H) * (0.15 + 0.85 * k)), p.s));
+    m.setMatrixAt(p.j, M); m.instanceMatrix.needsUpdate = true;
   }
   private regrowT = 0;
   update(dt: number, t: number, night: number, current: THREE.Vector2) {

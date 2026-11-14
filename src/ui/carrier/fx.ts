@@ -69,9 +69,11 @@ void main(){ float a = pow(vUv.y, 1.8) * pow(abs(dot(normalize(vN), normalize(vV
 const POOL_V = `varying vec2 vUv; void main(){ vUv = uv * 2.0 - 1.0; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
 const POOL_F = `uniform vec3 uCol; uniform float uK; varying vec2 vUv;
 void main(){
-  float r = length(vec2(vUv.x, vUv.y * 0.9 + 0.1 * vUv.x * vUv.x));
-  float a = r < 0.3 ? 0.34 : r < 0.55 ? 0.2 : r < 0.8 ? 0.1 : r < 1.0 ? 0.04 : 0.0;
-  gl_FragColor = vec4(uCol * a * uK, 0.0); gNormal = vec4(0.0);
+  float t = vUv.y * 0.5 + 0.5, hw = 0.32 + 0.6 * t, ax = abs(vUv.x);
+  if (ax > hw || t > 0.96 || t < 0.02) discard;
+  float along = t < 0.3 ? 1.0 : t < 0.62 ? 0.62 : t < 0.84 ? 0.34 : 0.16;
+  float across = ax < hw * 0.55 ? 1.0 : ax < hw * 0.82 ? 0.6 : 0.3;
+  gl_FragColor = vec4(uCol * 0.3 * along * across * uK, 0.0); gNormal = vec4(0.0);
 }`;
 export const NOZ_F = `uniform vec3 uCol; uniform float uK, uT; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
 void main(){ float a = pow(vUv.y, 1.6) * uK * (0.85 + 0.15 * sin(uT * 31.0 + vUv.x * 40.0)); a = floor(a * 8.0) / 8.0; gl_FragColor = vec4(uCol * a, 0.0); gNormal = vec4(0.0); }`;
@@ -84,12 +86,12 @@ float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }
 void main(){
   float y = vUv.y;
-  float n = vn(vec2(vUv.x * 14.0, y * 9.0 + uT * 7.0)) * 0.6 + vn(vec2(vUv.x * 31.0, y * 21.0 + uT * 13.0)) * 0.4;
+  float n = vn(vec2(vUv.x * 22.0, y * 2.5 + uT * 9.0)) * 0.7 + vn(vec2(vUv.x * 47.0, y * 5.0 + uT * 15.0)) * 0.3;
   float rim = abs(dot(normalize(vN), normalize(vV)));
-  float a = pow(y, 2.2) * smoothstep(0.35, 0.8, n + y * 0.4) * pow(rim, 2.0) * uK;
-  vec3 core = vec3(1.1, 1.3, 1.6), hot = vec3(1.6, 0.8, 0.28);
-  vec3 c = mix(hot, core, smoothstep(0.55, 0.95, y) * rim);
-  a = floor(a * 7.0) / 7.0;
+  float a = pow(y, 1.8) * (0.45 + 0.55 * n) * pow(rim, 1.6) * uK;
+  vec3 core = vec3(0.9, 1.1, 1.5), hot = vec3(1.5, 0.7, 0.25);
+  vec3 c = mix(hot, core, step(0.72, y) * step(0.5, rim));
+  a = floor(a * 6.0) / 6.0;
   gl_FragColor = vec4(c * a, 0.0);
   gNormal = vec4(0.0);
 }`;

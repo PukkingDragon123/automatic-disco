@@ -151,7 +151,7 @@ export function limb(s: LimbSpec): LimbOut {
   const base = { levels: 2, k: s.k ?? 1 };
   const skinP: Piece = { name: s.name, m, grids: [g], skin, paint: s.paint, ...base };
   const toeP: Piece = { name: s.name + 'T', m: toes, grids: toeGrids, skin: () => footW, paint: s.paint, levels: 1, k: s.k ?? 1 };
-  const clawP: Piece = { name: s.name + 'C', m: claws, grids: clawGrids, skin: () => footW, paint: s.clawPaint, levels: 2, k: (s.k ?? 1) * 1.3 };
+  const clawP: Piece = { name: s.name + 'C', m: claws, grids: clawGrids, skin: () => footW, paint: s.clawPaint, levels: 1, k: (s.k ?? 1) * 1.3 };
   return { skin: skinP, toes: toeP, claws: clawP, frame: fr };
 }
 
@@ -159,8 +159,8 @@ export function limb(s: LimbSpec): LimbOut {
 export const LIMB_TYPES: Record<string, (r: number) => LimbRing[]> = {
   /** an elephantine column: a heavy thigh, a broad knee with a skin fold either side, a straight shin, a flared ankle */
   pillar: (r) => [
-    { t: -0.22, r: r * 1.25, e: 1.1 },
-    { t: -0.05, r: r * 1.22, e: 1.12, b: [[0, 0.12, 40], [180, 0.1, 50]] },
+    { t: -0.22, r: r * 0.95, e: 1.1, off: [-0.35, 0] },
+    { t: -0.05, r: r * 1.16, e: 1.12, b: [[0, 0.12, 40], [180, 0.1, 50]], off: [-0.12, 0] },
     { t: 0.14, r: r * 1.12, e: 1.08, b: [[20, 0.14, 45], [180, 0.12, 45], [-90, -0.05, 40]] },
     { t: 0.3, r: r * 0.98, e: 1.04, b: [[10, 0.1, 40], [175, 0.1, 40]] },
     { t: 0.43, r: r * 0.9, e: 1.02, b: [[0, 0.08, 30], [150, 0.04, 30], [-150, 0.04, 30]], crease: 1, ink: true },
@@ -171,7 +171,7 @@ export const LIMB_TYPES: Record<string, (r: number) => LimbRing[]> = {
   ],
   /** a muscular strider: thigh muscle front and back, a bony knee cap, a lean shank with tendons behind, ankle knobs */
   strider: (r) => [
-    { t: -0.22, r: r * 1.2, e: 1.15 },
+    { t: -0.22, r: r * 0.95, e: 1.15, off: [-0.35, 0] },
     { t: -0.05, r: r * 1.18, e: 1.2, b: [[10, 0.16, 40], [175, 0.18, 45]] },
     { t: 0.13, r: r * 1.08, e: 1.18, b: [[15, 0.2, 40], [170, 0.2, 40], [-80, -0.06, 30]] },
     { t: 0.3, r: r * 0.88, e: 1.1, b: [[10, 0.12, 35], [175, 0.14, 35]] },

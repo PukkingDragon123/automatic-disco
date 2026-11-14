@@ -42,17 +42,20 @@ export function lookPaint(look: Look | ((c: Chart, p: Piece) => Look)) {
     px.flush({ glow: L.glow ? (i) => L.glow!(px, i) : undefined, eye: L.eye ? () => true : undefined });
   };
 }
+const _p: V3 = [0, 0, 0];
 export function paintLook(px: Px, L: Look) {
   const gb = px.gb, N = gb.N, M = gb.M, n = px.n;
   px.lightK = L.light ?? 1;
   const matOf = (i: number) => M[i] - 1;
   const lookOf = (i: number): Look => (L.mats && L.mats[matOf(i)]) || L;
   const R = RP(L.ramp), Rb = L.belly ? RP(L.belly.ramp) : R;
+  const matR = new Map<number, [number[], number]>();
+  if (L.mats) for (const k of Object.keys(L.mats)) matR.set(+k, [RP(L.mats[+k].ramp), L.mats[+k].step]);
   px.base((i) => {
-    const lk = lookOf(i);
-    if (lk !== L) return [RP(lk.ramp), lk.step];
-    if (L.belly && N[i * 3 + 1] < L.belly.below) return [Rb, L.belly.step];
-    return [R, L.step];
+    const mm = matR.get(M[i] - 1);
+    if (mm) px.put(i, mm[0], mm[1]);
+    else if (L.belly && N[i * 3 + 1] < L.belly.below) px.put(i, Rb, L.belly.step);
+    else px.put(i, R, L.step);
   });
   const isMain = (i: number) => lookOf(i) === L;
   const notBelly = (i: number) => (isMain(i) && (!L.belly || N[i * 3 + 1] >= L.belly.below + 0.06) ? 1 : 0);
@@ -73,7 +76,7 @@ export function paintLook(px: Px, L: Look) {
     if (lk.glints) px.glints(RP(lk.ramp), { mask, size: lk.glints.size, every: lk.glints.every });
     lk.extra?.(px, px.ch);
   }
-  if (L.mud) { const m = L.mud, top = typeof m.top === 'number' ? () => m.top as number : (i: number) => (m.top as (p: V3) => number)(px.P(i)); px.mud(top, RP(m.ramp ?? 'soil'), { clump: m.clump }); }
+  if (L.mud) { const m = L.mud, P = gb.P, tf = m.top, top = typeof tf === 'number' ? () => tf : (i: number) => { _p[0] = P[i * 3]; _p[1] = P[i * 3 + 1]; _p[2] = P[i * 3 + 2]; return tf(_p); }; px.mud(top, RP(m.ramp ?? 'soil'), { clump: m.clump }); }
   if (L.lichen?.length) px.rosettes(L.lichen.map((s) => ({ c: s.c, n: s.n, r: s.r, R: RP(s.ramp), cup: s.cup ? RP(s.cup) : undefined })));
   for (const s of L.scars ?? []) px.scar(s.pts, s.w, RP(s.ramp ?? 'hide'));
   if (L.glints) px.glints(R, { size: L.glints.size, every: L.glints.every, mask: (i) => (isMain(i) ? 1 : 0) });

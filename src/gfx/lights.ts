@@ -38,6 +38,8 @@ export interface Env {
   flash: number; cloudK: number; aurora: number;
   /** where the sun and the moon really are in the sky (the shadow light may be either), and the daylight 0..1 */
   sunSky: THREE.Vector3; moonSky: THREE.Vector3; day: number;
+  /** golden hour 0..1: the low sun's long warm light (pink-orange haze) */
+  golden: number;
 }
 
 const WARM_KEY = new THREE.Color(0xffd9a8), COOL_SKY = new THREE.Color(0x8fb4ff), WARM_BOUNCE = new THREE.Color(0x9a7450);
@@ -66,7 +68,7 @@ export class Sun {
     scene.userData.sun = this;
     this.env = { haze: 0.0045, mist: 0, mistY: 0, mistH: 1.4, patch: 0.6, rays: 0.5, wet: 0, rain: 0, dew: 0, heat: 0, wind: new THREE.Vector2(0.35, 0.12), sky: new THREE.Color().setHex(RAMPS.sky[4]),
       snow: 0, frost: 0, ice: 0, dry: 0, autumn: 0, dust: 0, ash: 0, red: 0, eclipse: 0, flash: 0, cloudK: 0, aurora: 0,
-      sunSky: this.dir.clone(), moonSky: new THREE.Vector3(0.4, 0.6, 0.5).normalize(), day: 1 };
+      sunSky: this.dir.clone(), moonSky: new THREE.Vector3(0.4, 0.6, 0.5).normalize(), day: 1, golden: 0 };
     this.setColors(pal, 1);
   }
   /** PCF radius in shadow texels: wider on the bigger map, wider still under cloud */

@@ -199,10 +199,12 @@ export class Body {
   /** the light the page is shaded for (upper left, a little in front) */
   light: V3 = nrm([-0.45, 0.82, 0.36]);
   private gid = 1;
+  /** triangles per piece family (debugging the budget) */
+  stats = new Map<string, number>();
   constructor(size = 1024, h = size) { this.page = new Page(size, h); this.B = new SkinB(size, h); }
-  add(p: Piece): Piece { this.pieces.push(p); return p; }
+  add<T extends Piece>(p: T): T { this.pieces.push(p); return p; }
   /** subdivide a piece now (pieces that others sit on are finalized first) */
-  finalize(p: Piece): Piece {
+  finalize<T extends Piece>(p: T): T {
     if (p.done) return p;
     let m = p.m;
     for (let l = 0; l < p.levels; l++) m = subdivide(m, p.grids);
@@ -221,7 +223,7 @@ export class Body {
     for (const p of this.pieces) for (const ch of p.ch!) p.paint(ch, p, this);
     o.snap?.(this.page.pc.data as unknown as Uint8ClampedArray);
     this.page.finish();
-    for (const p of this.pieces) emitPiece(this.B, p, this.gid++);
+    for (const p of this.pieces) { const t0 = this.B.tris; emitPiece(this.B, p, this.gid++); const k = p.name.replace(/[0-9_lrs.-]+$/, ''); this.stats.set(k, (this.stats.get(k) ?? 0) + this.B.tris - t0); }
     // the surface buffers are big: let them go
     for (const p of this.pieces) for (const ch of p.ch!) ch.gb = undefined;
     return { geo: this.B.build(), tex: pageTexture(this.page), tris: this.B.tris, scale };
@@ -333,15 +335,15 @@ export function rasterPiece(p: Piece) {
       }
     }
     // texels no triangle reached (planar charts' corners) take their nearest covered neighbour (a breadth-first fill)
-    const q: number[] = [];
-    for (let i = 0; i < n; i++) if (gb.M[i]) q.push(i);
-    for (let qi = 0; qi < q.length; qi++) {
+    const q = new Int32Array(n); let qn = 0;
+    for (let i = 0; i < n; i++) if (GM[i]) q[qn++] = i;
+    const take = (k: number, j: number) => { GP[k * 3] = GP[j * 3]; GP[k * 3 + 1] = GP[j * 3 + 1]; GP[k * 3 + 2] = GP[j * 3 + 2]; GN[k * 3] = GN[j * 3]; GN[k * 3 + 1] = GN[j * 3 + 1]; GN[k * 3 + 2] = GN[j * 3 + 2]; GK[k] = GK[j]; GA[k] = GA[j]; GM[k] = GM[j]; GF[k] = GF[j]; q[qn++] = k; };
+    for (let qi = 0; qi < qn; qi++) {
       const j = q[qi], x = j % w, y = (j - x) / w;
-      for (const k of [ch.wrap ? y * w + (x + 1) % w : x + 1 < w ? j + 1 : -1, ch.wrap ? y * w + (x - 1 + w) % w : x > 0 ? j - 1 : -1, y + 1 < h ? j + w : -1, y > 0 ? j - w : -1]) {
-        if (k < 0 || gb.M[k]) continue;
-        gb.P.copyWithin(k * 3, j * 3, j * 3 + 3); gb.N.copyWithin(k * 3, j * 3, j * 3 + 3); gb.K[k] = gb.K[j]; gb.A[k] = gb.A[j]; gb.M[k] = gb.M[j]; gb.F[k] = gb.F[j];
-        q.push(k);
-      }
+      if (x + 1 < w) { if (!GM[j + 1]) take(j + 1, j); } else if (ch.wrap && !GM[y * w]) take(y * w, j);
+      if (x > 0) { if (!GM[j - 1]) take(j - 1, j); } else if (ch.wrap && !GM[y * w + w - 1]) take(y * w + w - 1, j);
+      if (y + 1 < h && !GM[j + w]) take(j + w, j);
+      if (y > 0 && !GM[j - w]) take(j - w, j);
     }
   }
 }

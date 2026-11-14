@@ -25,7 +25,10 @@ export function tree(o: { name: string; base: V3; up: V3; h: number; r: number; 
     out.push(stalk({ name: o.name + 'b' + b, path: curve([at, add(at, scl(add(side, up), o.h * 0.12)), tip], 5), r: (t) => r * 0.42 * (1 - t * 0.7), around: 6, skin: o.skin, paint: o.bark, levels: 1 }));
     out.push(sac({ name: o.name + 'c' + b, at: tip, n: nrm(add(up, scl(side, 0.4))), r: [o.h * (0.28 + hs(S, b + 9) * 0.1), o.h * (0.2 + hs(S, b + 7) * 0.06), o.h * 0.22], sink: 0.5, skin: o.skin, paint: o.leaf, levels: 1 }));
   }
-  out.push(sac({ name: o.name + 'ct', at: add(top, scl(up, -o.h * 0.08)), n: up, r: [o.h * 0.34, o.h * 0.3, o.h * 0.28], sink: 0.45, skin: o.skin, paint: o.leaf, levels: 1 }));
+  for (let c = 0; c < 3; c++) {
+    const a = c * 2.4 + S, off: V3 = [Math.cos(a) * o.h * 0.22, -o.h * (0.05 + 0.1 * hs(S, c + 20)), Math.sin(a) * o.h * 0.22];
+    out.push(sac({ name: o.name + 'ct' + c, at: add(top, off), n: nrm(add(up, scl(off, 0.8))), r: [o.h * (0.26 + 0.1 * hs(S, c + 30)), o.h * (0.24 + 0.08 * hs(S, c + 40)), o.h * 0.16], sink: 0.4, skin: o.skin, paint: o.leaf, levels: 1 }));
+  }
   for (const p of out) p.noOcc = false;
   return out;
 }
@@ -42,5 +45,5 @@ export function crusts(o: { name: string; host: Piece; grid?: number; u: [number
       seats.push({ p: add(q.p, scl(q.n, -r * 0.2)), n: q.n, r, h: r * (o.cone ? 1.2 : 0.7), cone: o.cone });
     }
   }
-  return bulbs({ name: o.name, seats, skin: o.skin, paint: o.paint, levels: 1 });
+  return bulbs({ name: o.name, seats, skin: o.skin, paint: o.paint, levels: 0 });
 }

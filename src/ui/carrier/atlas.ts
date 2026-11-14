@@ -333,6 +333,13 @@ export function paintAtlas() {
       p.rect(x0 - 1, y0 - 1, ww + 2, wh + 2, INK[1]);
       for (let y = y0; y < y0 + wh; y++) for (let x = x0; x < x0 + ww; x++) {
         let c = AM[3], e = 210;
+        if (kind === 'bridge') {
+          const yy = y - y0;
+          c = yy < 2 ? AM[4] : yy < 4 ? AM[2] : yy < wh - 9 ? ((x - x0) % 11 < 1 ? AM[0] : AM[1]) : AM[2];
+          e = yy < 2 ? 255 : yy < 4 ? 140 : yy < wh - 9 ? 70 : 120;
+          if (state === 'dark') { c = (x - x0 + yy) % 9 === 3 ? SL[3] : SL[0]; e = 0; }
+          p.set(x, y, c, e); continue;
+        }
         if (state === 'dark') { c = (x - x0 + y - y0) === 3 ? SL[3] : SL[0]; e = 0; }
         else if (state === 'dim') { c = y - y0 < 2 ? AM[3] : AM[2]; e = 150; }
         else if (state === 'blind') { c = (y - y0) % 2 ? AM[2] : AM[3]; e = 170; }
@@ -344,7 +351,11 @@ export function paintAtlas() {
         const k = rnd();
         if (k < 0.35) { const fx = x0 + 2 + Math.floor(rnd() * (ww - 6)); p.stamp(fx, y0 + wh - 8, ['.##.', '.##.', '####', '####', '####', '####', '####', '####'], { '#': AM[0] }, { '#': 30 }); }
         else if (k < 0.65) p.rect(x0, y0 + wh - 3, ww, 3, AM[1], 40);
-        if (kind === 'bridge') { p.rect(x0, y0 + wh - 5, ww, 5, INK[2], 0); for (let x = x0 + 2; x < x0 + ww - 2; x += 4) p.set(x, y0 + wh - 4, [RD[3], RAMPS.glowTeal[3], AM[4]][(x >> 2) % 3], 255); }
+        if (kind === 'bridge') {
+          p.rect(x0, y0 + wh - 6, ww, 6, INK[2], 0); for (let x = x0; x < x0 + ww; x++) p.set(x, y0 + wh - 7, AM[3], 160);
+          for (let x = x0 + 2; x < x0 + ww - 2; x += 3) p.set(x, y0 + wh - 4, [RD[3], RAMPS.glowTeal[3], AM[4], AM[3]][(x * 7 + x0) % 4], 255);
+          if (rnd() < 0.6) { const fx = x0 + 3 + Math.floor(rnd() * (ww - 8)); p.stamp(fx, y0 + wh - 15, ['.##.', '####', '.##.', '####', '####', '####', '####', '####', '####'], { '#': INK[1] }, { '#': 0 }); }
+        }
       }
       // sill and lintel
       p.hl(x0 - 1, x0 + ww, y0 + wh + 1, HULL[7]); p.hl(x0 - 1, x0 + ww, y0 - 2, HULL[2]);

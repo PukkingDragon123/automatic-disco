@@ -113,6 +113,8 @@ export class Ocean {
     const cam = this.g.cam.cam, sy = this.surfaceAt(cam.position.x, cam.position.z);
     this.underwater = cam.position.y < sy - 0.04;
     this.under.update(t, cam, this.level, this.underwater);
+    // under the water the post pass's air (haze, mist, light shafts through the canopy) gives way to the water's own
+    if (this.underwater) { const e = this.g.world.sun.env; e.haze = 0; e.mist = 0; e.rays = 0; }
     // the sky dome: only when the view lifts toward the horizon (never in the RTS view, never over the descent's own sky)
     cam.getWorldDirection(_fw);
     this.sky.visible = _fw.y > -0.62 && !(window as unknown as { __descent?: unknown }).__descent;
@@ -163,6 +165,8 @@ export class Ocean {
     // the sky's ramp indexed by the light; a low sun warms the horizon (sunset), cloud greys it
     const oc = w.cloud, S = RAMPS.sky, si = k * 4.4 - oc * 1.4;
     setRamp(U.uSkyTop.value as THREE.Color, S, si - 0.5);
+    // a clear day's zenith over the sea leans to the blue of the deep sky
+    (U.uSkyTop.value as THREE.Color).lerp(C.setHex(RAMPS.sapphire[4]), clamp(k * 1.4 - 0.4, 0, 1) * (1 - oc) * 0.55);
     const hor = U.uSkyHor.value as THREE.Color; setRamp(hor, S, si + 0.8);
     const low = clamp((0.5 - dir.y) / 0.35, 0, 1) * clamp(k * 2 - 0.3, 0, 1) * (1 - oc * 0.7);
     if (low > 0.01) { C.copy(sc).multiplyScalar(0.5); hor.lerp(C2.setRGB(Math.min(1, C.r), Math.min(1, C.g * 0.75), Math.min(1, C.b * 0.5)), low * 0.7); }

@@ -19,6 +19,7 @@ import { clamp } from '../core/rand';
 import * as THREE from 'three';
 import { StubClimate, readClimate, type ClimateLike } from './climate';
 import { vfx2d } from '../game/vfx2d';
+import { climateShock } from '../game/ai';
 
 export type OverlayMode = 'off' | 'water' | 'soil' | 'life';
 const MODES: OverlayMode[] = ['off', 'water', 'soil', 'life'];
@@ -107,6 +108,8 @@ export class EcoView {
       const d = Math.hypot(x - game.cam.target.x, z - game.cam.target.z); if (d < 50) game.cam.shake(0.25 * (1 - d / 50), 0.3);
     };
     this.eco.onFell = (x, z) => { const y = game.world.surfaceY(x, z); vfx2d.play('dust', x, y + 0.3, z, { scale: 2.6 }); vfx2d.play('leaves', x, y + 2.5, z, { scale: 2 }); };
+    // the climate's big moments: the eclipse, the red moon, storms, the frost (ai.ts climateShock)
+    for (const ev of ['climate-event', 'season', 'weather']) game.on(ev, (d: unknown) => { try { climateShock(game.world, ev, d as never); } catch (e) { console.error('eco climate', e); } });
     // a live climate's own lightning, if it announces it
     game.on('lightning', (d: { x?: number; z?: number }) => { if (typeof d?.x === 'number' && typeof d?.z === 'number') this.eco.strike(d.x, d.z); });
     const wh = game.world.hooks, prev = wh.onBirth;
@@ -476,7 +479,7 @@ export class EcoView {
       <table class="es-t"><tr><th>SPECIES</th><th>ROLE</th><th>HRS</th><th>NO.</th><th>TREND</th><th>B / D</th><th>STATUS</th></tr>
       ${rows.slice(0, 14).map((r, i) => this.row(r, i)).join('')}
       </table>
-      <div class="es-sum">TOTAL ${tot} ANIMALS &nbsp;&middot;&nbsp; PLANTS LOST ${eco.diedPlants} / REGROWN ${eco.sprouted + eco.added}</div>
+      <div class="es-sum">TOTAL ${tot} ANIMALS &nbsp;&middot;&nbsp; PLANTS LOST ${eco.diedPlants} / REGROWN ${eco.sprouted + eco.added}${eco.felled ? ` &nbsp;&middot;&nbsp; TREES FELLED BY TITANS ${eco.felled}` : ''}</div>
       <div class="es-notes"><div class="es-nh">FIELD NOTES</div>${eco.notes.slice(-4).reverse().map((n) => `<div>D${n.day} &mdash; ${n.text.toLowerCase()}</div>`).join('') || '<div>nothing remarkable yet</div>'}</div>
       <div class="es-foot">[M] CLOSE &nbsp; [H] HABITAT OVERLAY: ${this.mode === 'off' ? 'OFF' : LEG[this.mode].title}</div>`;
     (s.querySelector('.es-x') as HTMLElement).onclick = () => this.toggleSurvey(false);

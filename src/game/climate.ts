@@ -11,6 +11,7 @@ import { clamp } from '../core/rand';
 import { RAMPS } from '../art/palette';
 import { Almanac } from '../ui/almanac';
 import { sfx, setNight } from '../audio/audio';
+import { daylight } from './daylight';
 
 export type Season = 'thaw' | 'bloom' | 'highsun' | 'monsoon' | 'eclipse' | 'ember' | 'bloodtide' | 'frost';
 export type Weather = 'clear' | 'cloudy' | 'rain' | 'storm' | 'fog' | 'snow' | 'dust' | 'ash' | 'redrain';
@@ -153,7 +154,7 @@ export class Climate {
     this.gustT -= dt;
     if (this.gustT <= 0) { this.gustT = 2 + Math.random() * 6; this.gust = Math.random() * (0.4 + this.wxT.gust); }
     const base = S.wind * (0.6 + this.wxT.gust * 0.9) + this.dust * 1.2, ang = Math.sin(this.t * 0.013) * 1.2 + this.g.region.seed;
-    const sp = base * (1 + this.gust * Math.max(0, Math.sin(this.t * 1.7)) * 0.8);
+    const sp = base * (1 + this.gust * Math.max(0, Math.sin(this.t * 1.7)) * 0.8) * (1 - this.eclipseK * 0.85);
     this.wind.set(Math.cos(ang) * sp, Math.sin(ang) * sp);
     this.lightning(dt);
     this.drive(dt);
@@ -222,16 +223,24 @@ export class Climate {
     env.sunSky.set(Math.sin(ang) * 0.75, elev * 0.92, -0.35 + Math.cos(ang) * 0.22).normalize();
     env.moonSky.set(-Math.sin(ang) * 0.6, Math.max(0.25, -elev * 0.8 + 0.3), 0.35).normalize();
     env.day = dayK;
-    if (!night) sun.dir.set(Math.sin(ang) * 0.75, Math.max(0.12, Math.abs(elev) * 0.92 + 0.08), -0.35 + Math.cos(ang) * 0.22).normalize();
+    // golden hours: a low sun throws long shadows (the key stays strong and warm right down to the horizon)
+    const golden = clamp(1 - Math.abs(elev) * 3.4, 0, 1) * (elev > -0.12 ? 1 : 0) * (1 - ecl);
+    if (!night) sun.dir.set(Math.sin(ang) * 0.75, Math.max(0.065, Math.abs(elev) * 0.92 + 0.05), -0.35 + Math.cos(ang) * 0.22).normalize();
     else sun.dir.set(-Math.sin(ang) * 0.6, 0.75, 0.35).normalize();
     // the key light's colour through the air, its strength by elevation; cloud dims and greys it
     const sc = sunThroughAir(Math.max(0.03, h), _c);
     const pal = this.g.region.pal;
     sun.overcast = Math.max(this.cloud * 0.85, this.dust * 0.6, this.ash * 0.7);
     sun.setColors(pal, Math.max(0.16, dayK));
-    if (!night) {
+    if (ecl > 0.3) {
+      // the eclipse: no sun, only the corona's cold blue-green rim light from where it hangs
+      sun.dir.copy(env.sunSky); sun.dir.y = Math.max(0.2, sun.dir.y); sun.dir.normalize();
+      sun.light.color.setRGB(0.32, 0.72, 0.78);
+      sun.light.intensity = 0.55 * ecl;
+    } else if (!night) {
       sun.light.color.copy(sc).multiply(_c2.set(pal.sun).lerp(_c2.clone().setRGB(1, 1, 1), 0.6));
-      sun.light.intensity = 3.4 * clamp(dayK, 0, 1) * (1 - sun.overcast * 0.6);
+      sun.light.color.lerp(_c2.setRGB(1, 0.5, 0.22), golden * 0.55);
+      sun.light.intensity = 3.4 * Math.max(clamp(dayK, 0, 1), golden * 0.62) * (1 - sun.overcast * 0.6);
     } else {
       // moonlight: the pale moon, and the red one in the bloodtide
       const moon = _c2.setRGB(0.42, 0.5, 0.72).lerp(_c.setRGB(0.85, 0.22, 0.16), this.bloodK);
@@ -244,19 +253,26 @@ export class Climate {
     sky.setRGB(0.36, 0.55, 0.95).multiplyScalar(0.25 + 0.75 * clamp(dayK * 1.3, 0, 1));
     sky.lerp(_c.copy(sc).multiplyScalar(0.9), low * 0.45 * (elev > -0.1 ? 1 : 0));
     if (night) sky.setRGB(0.1, 0.13, 0.24).lerp(_c.setRGB(0.3, 0.07, 0.06), this.bloodK * 0.6);
-    sky.lerp(_c.setRGB(0.06, 0.08, 0.16), ecl * 0.8);
+    // the eclipse: a deep indigo-black sky fill
+    sky.lerp(_c.setRGB(0.025, 0.03, 0.085), ecl * 0.95);
+    // golden hour: the fill takes the pink-orange of the low sky
+    sky.lerp(_c.setRGB(0.95, 0.5, 0.42), golden * 0.35);
     sky.lerp(_c.setRGB(0.62, 0.62, 0.66), sun.overcast * 0.45);
     sky.lerp(_c.setRGB(0.75, 0.6, 0.4), this.dust * 0.5);
     sky.lerp(_c.setRGB(0.8, 0.25, 0.18), this.bloodK * 0.45);
     const av = (w.terrain as unknown as { avg?: number[] }).avg, gc = av?.[0] ?? 0x5a7a3a;
     sun.hemi.groundColor.setRGB(lin((gc >> 16) & 255), lin((gc >> 8) & 255), lin(gc & 255)).multiplyScalar(0.55 + 1.6 * dayK).lerp(sun.light.color, 0.15);
-    sun.hemi.intensity = (0.5 + 1.15 * clamp(dayK * 1.2, 0.18, 1)) * (1 + sun.overcast * 0.25) + this.flash * 2.5;
+    sun.hemi.intensity = (0.5 + 1.15 * clamp(dayK * 1.2, 0.18, 1)) * (1 + sun.overcast * 0.25) * (1 - ecl * 0.45) + this.flash * 2.5;
     if (this.flash > 0) sun.hemi.color.lerp(_c.setRGB(0.85, 0.9, 1), this.flash * 0.6);
     // the grade: richer by day, cooler and vignetted by night, red in the bloodtide
     const gr = g.engine.post.grade, k = Math.max(0.16, dayK);
     gr.sat = 1.08 - (1 - k) * 0.22 + this.bloodK * 0.1; gr.vig = 0.36 + (1 - k) * 0.3; gr.bloom = 0.3 + (1 - k) * 0.25 + ecl * 0.3;
     w.terrain.U.uVeinGain.value = 1 + (1 - k) * 0.8 + ecl;
     this.light = k;
+    daylight.k = Math.max(0, Math.min(1, dayK));
+    // in the eclipse the bloom swells: glowing life is the light
+    if (ecl > 0.01) gr.bloom = Math.max(gr.bloom, 0.55 + ecl * 0.45);
+    sun.env.golden = golden;
     setNight(1 - k);
     return true;
   }
