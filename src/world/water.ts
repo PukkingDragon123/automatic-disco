@@ -15,7 +15,7 @@
 // drip, V-shaped Kelvin wakes with a foam lip round whatever wades or skims, raindrop rings while it rains. Water
 // marks itself in the G-buffer with flag bit 16 (+32 where it glows) so the post pass can tell it from wet ground.
 import * as THREE from 'three';
-import type { Region } from './region';
+import type { Region, RiverPt } from './region';
 import { GN_DECL } from '../gfx/gbuf';
 import { SHADER_NOISE, FOW_FN } from './glsl';
 import { VEYR } from './palette';
@@ -27,7 +27,7 @@ import { SceneGrab } from '../ocean/grab';
 
 /** the water's own pixel grid (texels per metre) as a GLSL literal: the ground's (blockTex.TS) up to 64 per metre, so
  *  shore lines, rings and foam stay a readable width at play zoom */
-const TSF = Math.min(TS, 64).toFixed(1);
+const TSF = Math.min(TS, 16).toFixed(1);
 /** the open sea's feature grid (texels per metre): foam, glitter and ripples are drawn on it */
 const SPF = '16.0';
 
@@ -43,6 +43,7 @@ uniform vec4 uRip[${RIP_N}];
 uniform vec4 uWake[${WAKE_N}];
 uniform float uWakeR[${WAKE_N}];
 uniform float uRainW;
+float uRapid = 0.0;
 ${SHADER_NOISE}
 ${FOW_FN}
 /** a hand-drawn ring's "radius": an octagon, never a circle */
@@ -117,11 +118,11 @@ vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
   bed *= 0.7 + caustic(bp, t) * 0.32 * exp(-depth * 0.9);
   // the bed seen through the water: red goes first, so a thin sheet only tints it and depth turns it to the body
   // colour (the water ramp's mid step in the shallows, its dark step deep down); never brighter than the bed
-  vec3 T = exp(-(depth + 0.1) * vec3(3.2, 1.5, 1.2));
-  vec3 body = mix(uShallow, uDeep, smoothstep(0.1, 2.4, depth));
+  vec3 T = floor(exp(-(depth + 0.1) * vec3(3.2, 1.5, 1.2)) * 5.0 + 0.5) / 5.0;
+  vec3 body = depth < 0.5 ? uShallow : depth < 1.3 ? mix(uShallow, uDeep, 0.5) : uDeep;
   vec3 c = bed * T * 0.9 + body * (1.0 - T);
   // slow mottling and a faint sky reflection (more of it where the water is deep and dark)
-  c *= 0.94 + (vn(p * 0.8 + vec2(t * 0.05, t * 0.03)) * 0.6 + vn(p * 2.1 - t * 0.07) * 0.4) * 0.1;
+  c *= 0.94 + floor((vn(p * 0.8 + vec2(t * 0.05, t * 0.03)) * 0.6 + vn(p * 2.1 - t * 0.07) * 0.4) * 3.0) / 3.0 * 0.1;
   c = mix(c, uSky, 0.05 + 0.07 * (1.0 - T.g));
   // the current
   float foam = 0.0;
@@ -139,7 +140,7 @@ vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
     if (ch > 0.8) c = mix(c, uShallow * 1.35 + 0.06, 0.3 * flowK);
     float edge = 1.0 - smoothstep(0.0, 0.07 + sp * 0.03, depth);
     float wake = texture2D(uFoamMap, p / uN).r;
-    float rapid = smoothstep(1.2, 2.3, sp) * smoothstep(0.52, 0.72, vn(vec2(fuv.x * 3.5, (fuv.y - t * sp * 1.4) * 1.1)));
+    float rapid = max(smoothstep(1.2, 2.3, sp), uRapid) * smoothstep(0.52, 0.72, vn(vec2(fuv.x * 3.5, (fuv.y - t * sp * 1.4) * 1.1)));
     float fn = vn(vec2(fuv.x * 7.0, (fuv.y - t * sp * 1.6) * 2.6));
     foam = max(max(edge * 0.75, wake), rapid) * (0.55 + fn * 0.9) * flowK;
   }
@@ -237,12 +238,17 @@ varying vec3 vWp; varying vec2 vRest; varying float vWave; varying float vDepth;
 float hAtV(vec2 p) { if (p.x < 0.0 || p.y < 0.0 || p.x >= uN || p.y >= uN) return uOutBed; return texture2D(uHeight, (floor(p) + 0.5) / uN).r; }
 void main() {
   vec4 w = modelMatrix * vec4(position, 1.0);
+#ifdef LAKE
+  w.y += uStage * 0.3;
+#else
   w.y = uWater + uStage * 0.5;
+#endif
   vec2 rest = w.xz;
   float depth = max(0.0, w.y - hAtV(rest));
   vec3 N; float crest;
   // waves too short for this cell of the grid are left to the fragment shader's normals
   vec3 d = vec3(0.0);
+#ifndef LAKE
   for (int i = 0; i < 8; i++) {
     vec4 a = uWv[i], b = uWq[i];
     float A = a.w * shoalK(depth, b.w) * smoothstep(aCell * 2.5, aCell * 5.0, b.w);
@@ -250,6 +256,7 @@ void main() {
     float th = a.z * dot(a.xy, rest) - b.x * uTime + b.y;
     d.xz += b.z * A * a.xy * cos(th); d.y += A * sin(th);
   }
+#endif
   w.xyz += d;
   vWp = w.xyz; vRest = rest; vWave = d.y; vDepth = depth;
   gl_Position = projectionMatrix * viewMatrix * w;
@@ -270,7 +277,11 @@ float glintAt(vec2 q, vec3 N, vec3 V, vec3 L, float t, float rough) {
 }
 void main() {
   float t = uTime;
+#ifdef LAKE
+  float surf = vWp.y;
+#else
   float surf = uWater + uStage * 0.5;
+#endif
   // everything on the sea is drawn on one texel grid in the swell's rest frame (so the pixels ride the waves)
   vec2 px = floor(vRest * ${SPF});
   vec2 p = (px + 0.5) / ${SPF};
@@ -278,7 +289,11 @@ void main() {
   // the swell's facet normal and crest measure at this texel; short waves fade with distance
   float fw = length(fwidth(vRest));
   vec3 N = vec3(0.0, 1.0, 0.0); float crest = 0.0, qs = 1e-4;
+#ifdef LAKE
+  for (int i = 0; i < 0; i++) {
+#else
   for (int i = 0; i < 8; i++) {
+#endif
     vec4 a = uWv[i], b = uWq[i];
     float A = a.w * shoalK(depth, b.w) * (1.0 - smoothstep(4.0, 9.0, fw * a.z * 6.0));
     if (A < 1e-5) continue;
@@ -301,7 +316,13 @@ void main() {
   N = normalize(N + vec3(chop.x, 0.0, chop.y));
   vec2 ia = interact(p, t);
   vec3 sh = shoreAt(p);
+#ifdef LAKE
+  // a lake laps at its own shore: no surf, only lace where it runs thin
+  float sd = 30.0 + depth;
+  if (depth < 0.12) ia.y = max(ia.y, step(0.55, vn(p * 3.0 + vec2(t * 0.2, 0.0))) * 0.6);
+#else
   float sd = (p.x < 0.0 || p.y < 0.0 || p.x > uN || p.y > uN) ? 40.0 : sh.x;
+#endif
   bool under = !gl_FrontFacing;
   vec3 V = normalize(cameraPosition - vWp), L = normalize(uSunDir);
   vec2 uv = gl_FragCoord.xy / uRes;
@@ -451,17 +472,18 @@ void main() {
 }`;
 
 const VERT_RIVER = /* glsl */`
-attribute vec2 aFlow; attribute vec2 aSpeed;
+attribute vec2 aFlow; attribute vec2 aSpeed; attribute float aRapid;
 uniform float uStage;
-varying vec3 vWp; varying vec2 vFlow; varying vec2 vSpeed;
+varying vec3 vWp; varying vec2 vFlow; varying vec2 vSpeed; varying float vRapid;
 // rivers take the full stage, easing to the sea's half where the current fades into it at the mouth
-void main() { vec4 w = modelMatrix * vec4(position, 1.0); w.y += uStage * mix(0.5, 1.0, aSpeed.y); vWp = w.xyz; vFlow = aFlow; vSpeed = aSpeed; gl_Position = projectionMatrix * viewMatrix * w; }`;
+void main() { vec4 w = modelMatrix * vec4(position, 1.0); w.y += uStage * mix(0.5, 1.0, aSpeed.y); vWp = w.xyz; vFlow = aFlow; vSpeed = aSpeed; vRapid = aRapid; gl_Position = projectionMatrix * viewMatrix * w; }`;
 const FRAG_RIVER = /* glsl */`
 ${GN_DECL}
 ${WATER_COMMON}
 ${WATER_FN}
-varying vec3 vWp; varying vec2 vFlow; varying vec2 vSpeed;
+varying vec3 vWp; varying vec2 vFlow; varying vec2 vSpeed; varying float vRapid;
 void main() {
+  uRapid = vRapid;
   // flow coordinates at the centre of this world pixel (so the current is pixel-snapped like everything else)
   vec2 wpS = (floor(vWp.xz * ${TSF}) + 0.5) / ${TSF};
   mat2 A = mat2(dFdx(vWp.xz), dFdy(vWp.xz)), Bm = mat2(dFdx(vFlow), dFdy(vFlow));
@@ -593,13 +615,45 @@ export function makeSea(R: Region, U: Record<string, THREE.IUniform>): THREE.Mes
   mesh.userData.sea = st;
   return mesh;
 }
+/** a lake from the geology (Region.lakes): its level and outline polygon (world x, z) */
+export interface LakeDef { level: number; poly: [number, number][]; kind?: 'fresh' | 'marsh' | 'mineral' }
+/**
+ * Every lake as one mesh, shaded by the sea's own shader without the swell (#define LAKE): the same pixel grid, ramps,
+ * refraction, caustics, ripples, reflections and glints, lace where the water runs thin. Drawn just before the sea and
+ * grabbing its own copy of the frame.
+ */
+export function makeLakes(lakes: LakeDef[], sea: THREE.Mesh): THREE.Mesh | null {
+  const pos: number[] = [], cell: number[] = [], idx: number[] = [];
+  for (const L of lakes) {
+    if (!L || !Array.isArray(L.poly) || L.poly.length < 3 || !isFinite(L.level)) continue;
+    const pts = L.poly.map(([x, z]) => new THREE.Vector2(x, z));
+    if (THREE.ShapeUtils.isClockWise(pts)) pts.reverse();
+    // a margin so the water reaches under the banks
+    let cx = 0, cz = 0; for (const q of pts) { cx += q.x; cz += q.y; } cx /= pts.length; cz /= pts.length;
+    const grown = pts.map((q) => { const dx = q.x - cx, dz = q.y - cz, l = Math.hypot(dx, dz) || 1; return new THREE.Vector2(q.x + (dx / l) * 0.6, q.y + (dz / l) * 0.6); });
+    const tris = THREE.ShapeUtils.triangulateShape(grown, []), base = pos.length / 3;
+    for (const q of grown) { pos.push(q.x, L.level, q.y); cell.push(1); }
+    for (const [a, b, c] of tris) idx.push(base + a, base + c, base + b);
+  }
+  if (!idx.length) return null;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aCell', new THREE.Float32BufferAttribute(cell, 1));
+  g.setIndex(idx); g.computeBoundingSphere();
+  const sm = sea.material as THREE.ShaderMaterial, st = seaState(sea)!;
+  const m = new THREE.ShaderMaterial({ uniforms: sm.uniforms, vertexShader: VERT_SEA, fragmentShader: FRAG_SEA, side: THREE.DoubleSide, defines: { LAKE: 1 } });
+  const mesh = new THREE.Mesh(g, m);
+  mesh.name = 'lakes'; mesh.renderOrder = 48; mesh.frustumCulled = false;
+  mesh.onBeforeRender = (renderer, _s, camera) => { st.grab.grab(renderer, camera); };
+  return mesh;
+}
 /** the sea's state (swell, coast field, uniforms) from the terrain's sea mesh */
 export function seaState(mesh: THREE.Object3D | null | undefined): SeaState | null { return (mesh?.userData.sea as SeaState) ?? null; }
 
 /** ribbons along the river centre lines, at the water surface, reaching under the banks on both sides */
 export function makeRivers(R: Region, U: Record<string, THREE.IUniform>): THREE.Mesh | null {
   if (!R.rivers.length) return null;
-  const pos: number[] = [], flow: number[] = [], speed: number[] = [], idx: number[] = [];
+  const pos: number[] = [], flow: number[] = [], speed: number[] = [], rapid: number[] = [], idx: number[] = [];
   for (const all of R.rivers) {
     // only the part over the map: off the rim there is no ground to hold it
     const pts = all.filter((q) => q.x > 0.25 && q.z > 0.25 && q.x < R.N - 0.25 && q.z < R.N - 0.25);
@@ -618,6 +672,7 @@ export function makeRivers(R: Region, U: Record<string, THREE.IUniform>): THREE.
         pos.push(p.x + nx * half * sg, y, p.z + nz * half * sg);
         flow.push(half * sg, p.s);
         speed.push(p.v, Math.max(0, fk));
+        rapid.push(Math.min(1, ((p as RiverPt & { rapid?: number; drop?: number }).rapid ?? 0) + ((p as RiverPt & { drop?: number }).drop ?? 0) * 2));
       }
       if (j < n - 1) { const q = base + j * 2; idx.push(q, q + 2, q + 1, q + 1, q + 2, q + 3); }
     }
@@ -626,6 +681,7 @@ export function makeRivers(R: Region, U: Record<string, THREE.IUniform>): THREE.
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('aFlow', new THREE.Float32BufferAttribute(flow, 2));
   g.setAttribute('aSpeed', new THREE.Float32BufferAttribute(speed, 2));
+  g.setAttribute('aRapid', new THREE.Float32BufferAttribute(rapid, 1));
   g.setIndex(idx);
   g.computeBoundingSphere();
   const m = new THREE.ShaderMaterial({ uniforms: uniforms(R, U), vertexShader: VERT_RIVER, fragmentShader: FRAG_RIVER, side: THREE.DoubleSide });

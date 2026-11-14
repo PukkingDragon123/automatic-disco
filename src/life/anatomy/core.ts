@@ -203,18 +203,22 @@ export class Body {
   private gid = 1;
   /** triangles per piece family (debugging the budget) */
   stats = new Map<string, number>();
-  constructor(size = 1024, h = size) { this.page = new Page(size, h); this.B = new SkinB(size, h); }
+  /** quick mode (placeholder silhouettes while the real model builds elsewhere): cage-level geometry, a tiny flat page */
+  static quick = false;
+  readonly quick: boolean;
+  constructor(size = 1024, h = size) { this.quick = Body.quick; if (this.quick) size = h = 64; this.page = new Page(size, h); this.B = new SkinB(size, h); }
   add<T extends Piece>(p: T): T { this.pieces.push(p); return p; }
   /** subdivide a piece now (pieces that others sit on are finalized first) */
   finalize<T extends Piece>(p: T): T {
     if (p.done) return p;
     let m = p.m;
-    for (let l = 0; l < p.levels; l++) m = subdivide(m, p.grids);
+    for (let l = 0; l < (this.quick ? Math.min(1, p.levels) : p.levels); l++) m = subdivide(m, p.grids);
     p.m = m; p.done = true;
     return p;
   }
   /** subdivide, chart, pack, rasterise, occlude, paint and emit everything */
   build(o: { den?: number; maxScale?: number; occlusion?: boolean; snap?: (d: Uint8ClampedArray) => void } = {}): { geo: THREE.BufferGeometry; tex: THREE.DataTexture; tris: number; scale: number } {
+    if (this.quick) return this.buildQuick();
     for (const p of this.pieces) { this.finalize(p); p.ch = (p.charts ?? defaultCharts)(p); surfaceInfo(p); }
     if (o.occlusion !== false) occlusion(this.pieces.filter((p) => !p.noOcc));
     const den = o.den ?? this.den;
@@ -231,6 +235,21 @@ export class Body {
     return { geo: this.B.build(), tex: pageTexture(this.page), tris: this.B.tris, scale };
   }
 }
+
+/** the quick build: every piece emitted against one flat region of a tiny page (a stone-grey silhouette) */
+Body.prototype.buildQuick = function (this: Body) {
+  const reg = this.page.reg('flat', 8, 8);
+  this.page.pack(1);
+  for (let y = 0; y < this.page.H; y++) for (let x = 0; x < this.page.W; x++) this.page.pc.set(x, y, 0x525150, 255);
+  for (const p of this.pieces) {
+    this.finalize(p);
+    const W = new Map<number, Wt>();
+    const ids = p.m.V.map((v, i) => { let w = W.get(i); if (!w) W.set(i, (w = p.skin(v))); return this.B.vert(v, reg, 0.5, 0.5, w, 1); });
+    for (const f of p.m.F) for (let k = 1; k + 1 < f.length; k++) this.B.tri(ids[f[0]], ids[f[k]], ids[f[k + 1]]);
+  }
+  return { geo: this.B.build(), tex: pageTexture(this.page), tris: this.B.tris, scale: 1 };
+};
+declare module './core' { interface Body { buildQuick(): { geo: THREE.BufferGeometry; tex: THREE.DataTexture; tris: number; scale: number } } }
 
 /** smooth vertex normals and a curvature (+ ridge, - valley, in units of the local edge length) for a piece */
 export function surfaceInfo(p: Piece) {

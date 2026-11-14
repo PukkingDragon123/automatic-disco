@@ -333,7 +333,7 @@ export class Game implements Screen {
   private key(e: KeyboardEvent) {
     if (this.harvest.blocking || qteActive() || this.storyBlock) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-    if (k === 'Escape') { if (this.mode.k !== 'normal') this.setMode({ k: 'normal' }); else if (this.menu !== 'main') { this.menu = 'main'; } else if (this.sel.length || this.selB) this.clearSel(); else this.opts.hooks?.openMenu?.(this); return; }
+    if (k === 'Escape') { if (this.mode.k !== 'normal') this.setMode({ k: 'normal' }); else if (this.menu !== 'main') { this.menu = 'main'; } else if (this.sel.length || this.selB) this.clearSel(); else if (!this.hud.escape()) this.opts.hooks?.openMenu?.(this); return; }
     if (k === 'p') { this.paused = !this.paused; toast(this.paused ? 'Paused' : 'Resumed'); return; }
     if (k === 't') { this.opts.hooks?.openTree?.(this); return; }
     if (k === 'c') { this.opts.hooks?.openBuilder?.(this); return; }

@@ -18,6 +18,7 @@ import { Fishery } from './fishery';
 import { Dive } from './dive';
 import { Splashes } from './splash';
 import { registerSeaWorks, hookFactory } from './pontoon';
+import { Inland } from './inland';
 
 const P = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
 const C = new THREE.Color(), _cur = new THREE.Vector2();
@@ -62,6 +63,8 @@ export class Ocean {
       try { this.fishery = new Fishery(this, this.reef); g.world.scene.add(this.fishery.group); } catch (e) { console.error('ocean: fish', e); }
     }
     this.splashes = new Splashes(this);
+    // the land's own water (lakes, falls, springs from the geology), drawn the sea's way
+    try { const inl = new Inland(this); if (!inl.empty) { g.world.terrain.group.add(inl.group); this.parts.push(inl); } } catch (e) { console.error('ocean: inland water', e); }
     this.dive = new Dive(this, this.reef, this.fishery);
     registerSeaWorks(this);
   }

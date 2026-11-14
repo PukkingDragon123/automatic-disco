@@ -61,12 +61,12 @@ const ring = (c: V3, r: number, y: number, seg: number, jag?: (i: number) => num
   Array.from({ length: seg + 1 }, (_, i) => { const a = ((i % seg) / seg) * TAU + ph, k = jag ? jag(i % seg) : 1; return [c[0] + Math.cos(a) * r * k, c[1] + y, c[2] + Math.sin(a) * r * k] as V3; });
 
 // ------------------------------------------------------------------------------------------------ trunks
-export interface TrunkStyle { slot: number; lobes: number; lobePh: number; flare: number; twist: number; plates: number; ridges: number; knots: [number, number, number][]; hollow: number; hollowA: number; lichen: number; lichenRamp: RampName }
+export interface TrunkStyle { slot: number; lobes: number; lobePh: number; flare: number; twist: number; plates: number; ridges: number; knots: [number, number, number][]; hollow: number; hollowA: number; lichen: number; lichenRamp: RampName; moss: number; mossA: number }
 /** a species' trunk character (stable per species): bark kind, buttresses, twist, knots and burls, a hollow, lichen */
 export function trunkStyle(sp: PlantSpecies, ringed: boolean): TrunkStyle {
   const r = new Rand(sp.id * 7907 + 11 + (sp.trunk & 0xffff));
-  const slot = ringed ? BARK.RING : sp.arch === 'umbrella' ? r.pick([BARK.FURROW, BARK.PLATE, BARK.SCALE]) : r.pick([BARK.FURROW, BARK.PLATE, BARK.SMOOTH, BARK.FIBRE, BARK.SCALE, BARK.FURROW]);
-  const [plates, ridges] = ({ [BARK.FURROW]: [0.045, 7], [BARK.PLATE]: [0.07, 4], [BARK.SCALE]: [0.06, 6], [BARK.FIBRE]: [0.035, 9], [BARK.SMOOTH]: [0.012, 3], [BARK.RING]: [0, 0] } as Record<number, [number, number]>)[slot] ?? [0.03, 5];
+  const slot = ringed ? BARK.RING : sp.arch === 'umbrella' ? r.pick([BARK.FURROW, BARK.PLATE, BARK.SCALE, BARK.SHAG]) : sp.arch === 'shrub' ? r.pick([BARK.SMOOTH, BARK.FURROW, BARK.PEEL, BARK.SHAG, BARK.FIBRE]) : r.pick([BARK.FURROW, BARK.PLATE, BARK.SMOOTH, BARK.FIBRE, BARK.SCALE, BARK.PEEL, BARK.SHAG]);
+  const [plates, ridges] = ({ [BARK.FURROW]: [0.045, 7], [BARK.PLATE]: [0.07, 4], [BARK.SCALE]: [0.06, 6], [BARK.FIBRE]: [0.035, 9], [BARK.SMOOTH]: [0.012, 3], [BARK.RING]: [0, 0], [BARK.PEEL]: [0.02, 4], [BARK.SHAG]: [0.055, 8] } as Record<number, [number, number]>)[slot] ?? [0.03, 5];
   const knots: [number, number, number][] = [];
   for (let k = r.int(1, 3); k > 0; k--) knots.push([r.range(0.25, 0.8), r.range(0, TAU), r.range(0.05, 0.1)]);
   if (!ringed && r.chance(0.45)) knots.push([r.range(0.05, 0.14), r.range(0, TAU), r.range(0.13, 0.2)]);
@@ -75,8 +75,9 @@ export function trunkStyle(sp: PlantSpecies, ringed: boolean): TrunkStyle {
     flare: ringed ? 0.42 : sp.arch === 'umbrella' ? r.range(0.3, 0.5) : r.range(0.55, 1.05),
     twist: ringed ? 0 : slot === BARK.FIBRE ? r.range(0.55, 0.95) : r.range(0.05, 0.3) * r.sign(),
     plates, ridges, knots: ringed ? [] : knots, hollow: !ringed && r.chance(0.32) ? r.range(0.2, 0.45) : 0, hollowA: r.range(0, TAU),
-    lichen: slot === BARK.SMOOTH || slot === BARK.FURROW || slot === BARK.PLATE ? (r.chance(0.65) ? r.int(2, 5) : 0) : 0,
+    lichen: slot === BARK.SMOOTH || slot === BARK.FURROW || slot === BARK.PLATE || slot === BARK.PEEL ? (r.chance(0.75) ? r.int(3, 7) : 1) : r.int(0, 2),
     lichenRamp: r.pick(['sage', 'straw', 'teal', 'ochre', 'moss'] as const),
+    moss: ringed || slot === BARK.SCALE ? 0 : r.chance(0.7) ? r.int(3, 7) : 0, mossA: r.range(0, TAU),
   };
 }
 export interface TrunkRings { rows: V3[][]; dirs: V3[][]; hs: number[]; ctr: V3[]; rad: number[] }
@@ -149,6 +150,17 @@ export function sculptTrunk(g: Geo, pts0: V3[], rad0: number[], st: TrunkStyle, 
     for (let k = 0; k < st.lichen; k++) {
       const i = Math.min(n - 2, 1 + Math.floor(rr.range(0.15, 0.7) * (n - 2))), s = rr.int(0, sides - 1);
       const q = [rows[i][s], rows[i][s + 1], rows[i + 1][s + 1], rows[i + 1][s]].map((p, j) => vadd(p, vmul(j === 1 || j === 2 ? dirs[i][s + 1] : dirs[i][s], 0.005)));
+      const nn = dirs[i][s];
+      g.quad(g.v(q[0], nn, rect.u0, rect.v0), g.v(q[1], nn, rect.u0 + rect.du, rect.v0), g.v(q[2], nn, rect.u0 + rect.du, rect.v0 + rect.dv), g.v(q[3], nn, rect.u0, rect.v0 + rect.dv));
+    }
+    g.kind = kind; g.col = col;
+  }
+  // moss cushions low on the shaded side of the trunk and round its foot
+  if (!lod && st.moss) {
+    const kind = g.kind; g.kind = KIND.LEAF; g.col = [1, 1, 1];
+    for (let k = 0; k < st.moss; k++) {
+      const i = Math.min(n - 2, 1 + (k % 3)), s = (Math.round((st.mossA / TAU) * sides) + k * 2 - st.moss + sides * 4) % sides, rect = tex.moss(rampNamed(k % 3 ? 'moss' : 'olive'), k);
+      const q = [rows[i][s], rows[i][s + 1], rows[i + 1][s + 1], rows[i + 1][s]].map((p, j) => vadd(p, vmul(j === 1 || j === 2 ? dirs[i][s + 1] : dirs[i][s], 0.006)));
       const nn = dirs[i][s];
       g.quad(g.v(q[0], nn, rect.u0, rect.v0), g.v(q[1], nn, rect.u0 + rect.du, rect.v0), g.v(q[2], nn, rect.u0 + rect.du, rect.v0 + rect.dv), g.v(q[3], nn, rect.u0, rect.v0 + rect.dv));
     }

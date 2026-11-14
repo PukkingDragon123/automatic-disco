@@ -270,6 +270,8 @@ export class FloraTex {
         bite: !o.petal && v === 2 ? r.range(0.4, 0.62) : undefined, hole: !o.petal && v === 2 && !long, curl: !o.petal && v === 1 ? 0.14 : 0,
         brown: !o.petal && v === 3 ? 1 : undefined, hairs: o.hairs ? 0 : undefined, glint: !o.petal && v < 2 ? 2 : undefined,
       });
+      if (o.petal && v === 1) for (let k = 0; k < 6; k++) { const y = Math.floor(H * (0.14 + (k % 3) * 0.08)), x = Math.floor(W / 2 + (k < 3 ? -1 : 1) * (1 + (k % 3))); if (P.get(x, y) >= 0) P.set(x, y, 0); }
+      if (o.petal && v === 2) for (let y = 1; y < H * 0.55; y++) { if (P.get(W / 2, y) >= 0) P.nudge(W / 2, y, -2); if (y < H * 0.3 && P.get(W / 2 - 1, y) >= 0) P.nudge(W / 2 - 1, y, -1); }
       if (!o.petal && v === 0) for (let k = 0; k < 2; k++) { const y = Math.floor(H * r.range(0.35, 0.8)); for (let x = k ? 0 : W - 1; k ? x < W : x >= 0; x += k ? 1 : -1) if (P.get(x, y) >= 0) { P.cut(x, y); P.nudge(x + (k ? 1 : -1), y, -1); break; } }
       return P;
     });
@@ -512,6 +514,8 @@ export class FloraTex {
         const x = Math.floor(r.range(S * 0.2, S * 0.76)), y = Math.floor(r.range(S * 0.2, S * 0.76));
         P.set(x, y, 2, 1); P.set(x + 1, y, 3, 1); P.set(x, y + 1, 1, 1); if (r.chance(0.5)) P.set(x + 1, y + 1, 2, 1);
       }
+      if (var_ % 3 === 1) for (let k = 0; k < 16; k++) { const x = Math.floor(r.range(S * 0.18, S * 0.8)), y = Math.floor(r.range(S * 0.18, S * 0.8)); if (P.get(x, y) >= 0) { P.set(x, y, 1); P.set(x + 1, y - 1, n - 1); P.set(x - 1, y - 1, n - 2); } }
+      if (var_ % 3 === 2) for (let k = 0; k < 4; k++) { const a = r.range(0, Math.PI * 2); let x = c + Math.cos(a) * S * 0.44, y = c + Math.sin(a) * S * 0.44; for (let j = 0; j < S * 0.22; j++) { P.set(x, y, 1); x -= Math.cos(a) + (j & 1 ? 0.5 : -0.5) * Math.sin(a); y -= Math.sin(a) - (j & 1 ? 0.5 : -0.5) * Math.cos(a); } }
       const hx = Math.floor(c - S * 0.19), hy = Math.floor(c - S * 0.19);
       P.set(hx, hy, n); P.set(hx + 1, hy, n); P.set(hx, hy + 1, n);
       P.glint(hx + 1, hy - 1, 2);
@@ -556,6 +560,9 @@ export class FloraTex {
         if (f === 1 && t > 0.26 && t < 0.36) i = n;
         P.set(x, y, Math.max(1, i));
       }
+      // growth scars across the pod and a few deliberate speckles
+      for (const sy of [Math.floor(H * 0.6), Math.floor(H * 0.82)]) for (let x = 0; x < W; x++) { P.nudge(x, sy, -2); P.nudge(x, sy - 1, 1); }
+      for (let k = 0; k < 10; k++) { const x = (k * 7 + 3) % W, y = Math.floor(H * 0.2) + ((k * 11) % Math.floor(H * 0.6)); P.nudge(x, y, -2); }
       if (!glow) P.glint(1, Math.floor(H * 0.28), 1);
       return P;
     });
@@ -678,6 +685,26 @@ export class FloraTex {
       fillPoly(outer, (x, y) => P.set(x, y, x + y < S ? n - 1 : n - 2));
       fillPoly(inner, (x, y) => P.set(x, y, n - 3));
       for (let k = r.int(1, 3); k > 0; k--) { const x = Math.floor(r.range(c - 3, c + 2)), y = Math.floor(r.range(c - 3, c + 2)); P.set(x, y, 4, 1); P.set(x + 1, y, 2, 1); P.set(x, y + 1, 1, 1); }
+      P.sel(0, 1);
+      return P;
+    });
+  }
+
+  /** a cushion of moss on bark, seen side-on (base at v0): a mound with a bumpy top, lit on the left, a few fruiting
+   *  stalks with dark capsules rising from it */
+  moss(ramp: number[], var_ = 0): Rect {
+    const W = q(12), H = q(8);
+    return this.get(`moss|${keyOf(ramp)}|${var_}`, W, H, (mk) => {
+      const P = mk([ramp, M('ochre')]), n = ramp.length - 1, bumps = [[3, 5, 6, 5, 7, 6, 4, 6, 7, 5, 4, 3], [4, 6, 7, 6, 5, 7, 8, 6, 5, 6, 4, 3], [2, 4, 6, 7, 6, 4, 5, 7, 6, 4, 3, 2]][var_ % 3];
+      for (let x = 0; x < W; x++) {
+        const top = Math.max(2, Math.round((bumps[Math.floor((x / W) * 12)] / 8) * H * 0.75));
+        for (let y = 0; y < top; y++) P.set(x, y, y === top - 1 ? (x < W * 0.5 ? n : n - 1) : y > top - 3 ? (x < W * 0.4 ? n - 1 : n - 2) : (x + y) % 5 === 0 ? n - 4 : n - 3);
+      }
+      for (const sx of [Math.floor(W * 0.3), Math.floor(W * 0.62), Math.floor(W * 0.8)].slice(0, 2 + (var_ % 2))) {
+        let y = 0; while (P.get(sx, y + 1) >= 0) y++;
+        for (let k = 1; k <= 3; k++) P.set(sx, y + k, 2, 1);
+        P.set(sx, y + 4, 0, 1); P.set(sx + 1, y + 4, 1, 1);
+      }
       P.sel(0, 1);
       return P;
     });

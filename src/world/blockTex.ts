@@ -501,27 +501,27 @@ function veinBands(pc: PixelCanvas, r: Rand, R: number[], n: number, thick: [num
     }
   }
 }
-function veinIron(pc: PixelCanvas, seed: number) { const r = new Rand(seed), Ru = rampNamed('rust'), Fe = rampNamed('iron'); veinBands(pc, r, Ru, 10, [2, 4], (x, y) => { pc.set(x, y, Fe[5]); pc.set(x + 1, y, Fe[2]); }); }
+function veinIron(pc: PixelCanvas, seed: number) { const r = new Rand(seed), Ru = rampNamed('rust'), Fe = rampNamed('iron'); veinBands(pc, r, Ru, 14, [3, 5], (x, y) => { pc.set(x, y, Fe[5]); pc.set(x + 1, y, Fe[2]); }); }
 function veinCopper(pc: PixelCanvas, seed: number) {
   const r = new Rand(seed), M = rampNamed('malachite'), Cu = rampNamed('copper');
   pc.clear();
-  for (let i = 0; i < 2 * AREA; i++) { let x = r.range(0, T), y = r.range(0, T); let a = r.range(-0.6, 0.6); for (let s = 0; s < r.int(14, 40); s++) { pc.set(Math.round(x), Math.round(y), M[s % 4 === 0 ? 5 : 3]); pc.set(Math.round(x), Math.round(y) + 1, M[1]); x += Math.cos(a); y += Math.sin(a); a += r.range(-0.3, 0.3); if (r.chance(0.06)) { pc.set(Math.round(x), Math.round(y) - 1, Cu[5]); pc.set(Math.round(x) + 1, Math.round(y) - 1, Cu[3]); } } }
+  for (let i = 0; i < 3 * AREA; i++) { let x = r.range(0, T), y = r.range(0, T); let a = r.range(-0.6, 0.6); for (let s = 0; s < r.int(14, 40); s++) { pc.set(Math.round(x), Math.round(y), M[s % 4 === 0 ? 5 : 4]); pc.set(Math.round(x), Math.round(y) + 1, M[3]); pc.set(Math.round(x), Math.round(y) + 2, M[1]); x += Math.cos(a); y += Math.sin(a); a += r.range(-0.3, 0.3); if (r.chance(0.06)) { pc.set(Math.round(x), Math.round(y) - 1, Cu[5]); pc.set(Math.round(x) + 1, Math.round(y) - 1, Cu[3]); } } }
 }
-function veinGold(pc: PixelCanvas, seed: number) { const r = new Rand(seed), Q = rampNamed('quartz'), Au = rampNamed('gold'); veinBands(pc, r, Q, 7, [3, 5], (x, y) => { pc.set(x, y, Au[6]); pc.set(x + 1, y, Au[4]); pc.set(x, y + 1, Au[3]); }); }
+function veinGold(pc: PixelCanvas, seed: number) { const r = new Rand(seed), Q = rampNamed('quartz'), Au = rampNamed('gold'); veinBands(pc, r, Q, 9, [3, 5], (x, y) => { pc.set(x, y, Au[6]); pc.set(x + 1, y, Au[5]); pc.set(x, y + 1, Au[4]); pc.set(x + 1, y + 1, Au[2]); }); }
 function veinCoal(pc: PixelCanvas, seed: number) { const r = new Rand(seed), C = rampNamed('basalt'), In = rampNamed('ink'); veinBands(pc, r, [In[0], In[0], C[0], C[1], C[2], C[3], C[4]], 6, [4, 7], (x, y) => pc.set(x, y, C[5])); }
 function veinSulphur(pc: PixelCanvas, seed: number) {
   const r = new Rand(seed), Y = rampNamed('gold'), St = rampNamed('straw');
   pc.clear();
-  for (let i = 0; i < 4 * AREA; i++) { const x = r.range(0, T), y = r.range(0, T), m = new Mask(Math.floor(x - 9), Math.floor(y - 6), 19, 13); fillPoly(blobPts(x, y, r.range(3, 8), r.range(1.5, 4), 8, r, 0.45), (X, Yy) => m.add(X, Yy)); m.ink(pc, r.chance(0.6) ? Y : St, (X, Yy) => (X + Yy < x + y ? 6 : 5), { dark: 3, lit: null }); }
+  for (let i = 0; i < 6 * AREA; i++) { const x = r.range(0, T), y = r.range(0, T), m = new Mask(Math.floor(x - 11), Math.floor(y - 7), 23, 15); fillPoly(blobPts(x, y, r.range(4, 10), r.range(2, 5), 8, r, 0.45), (X, Yy) => m.add(X, Yy)); m.ink(pc, r.chance(0.6) ? Y : St, (X, Yy) => (X + Yy < x + y ? 6 : 5), { dark: 3, lit: null }); }
 }
 function veinLumen(pc: PixelCanvas, seed: number) {
   const r = new Rand(seed), C = rampNamed('glowTeal');
   pc.clear();
-  for (let i = 0; i < 3 * AREA; i++) { const bx = r.range(4, T - 4), by = r.range(8, T - 2); for (let k = 0; k < r.int(2, 4); k++) prism(pc, bx + r.range(-3, 3), by, r.range(1.2, 2), r.range(4, 9), r.range(-0.5, 0.5), C, 190); }
+  for (let i = 0; i < 3 * AREA; i++) { const bx = r.range(4, T - 4), by = r.range(8, T - 2); for (let k = 0; k < r.int(3, 5); k++) prism(pc, bx + r.range(-4, 4), by, r.range(1.5, 2.6), r.range(6, 12), r.range(-0.5, 0.5), C, 190); }
 }
 function veinGravium(pc: PixelCanvas, seed: number) {
   const r = new Rand(seed), V = rampNamed('amethyst'), Gt = rampNamed('glowTeal');
-  veinBands(pc, r, V, 7, [2, 4]);
+  veinBands(pc, r, V, 10, [3, 5]);
   // floating speckles: lit motes drifting above the band, glowing
   for (let i = 0; i < 10 * AREA; i++) { const x = r.int(0, T - 1), y = r.int(0, T - 1); pc.set(x, y, r.chance(0.8) ? V[6] : Gt[4], 180); }
 }

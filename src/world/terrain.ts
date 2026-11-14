@@ -9,7 +9,7 @@
 // Hooks: ecoData()/ecoFlush() (R moisture, G fertility for src/eco; B trampled wear from game/details.ts), U.uWetG.
 import * as THREE from 'three';
 import { Region } from './region';
-import { BLOCKS, L, TS, TILE_M, TT, buildBlockTexture } from './blockTex';
+import { BLOCKS, L, TS, TILE_M, TT, FAMILY_SIDE, VEIN_LAYER, buildBlockTexture } from './blockTex';
 import { clamp01 } from '../core/rand';
 import { gbuf, GN_DECL } from '../gfx/gbuf';
 import { VEYR, RIVALS } from './palette';
@@ -87,13 +87,13 @@ export class Terrain {
     // each layer's mean brightness (linear): a texel brighter than its tile's mean stands proud in the height blend
     const lin = (c: number) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
     const avgL = avg.map((c) => lin((c >> 16) & 255) * 0.3 + lin((c >> 8) & 255) * 0.59 + lin(c & 255) * 0.11);
-    while (avgL.length < 40) avgL.push(0.3);
+    while (avgL.length < 48) avgL.push(0.3);
     // material id -> two array-layer variants
     const lay: number[] = [];
     for (let b = 0; b < 16; b++) { const d = BLOCKS[b] ?? BLOCKS[0]; lay.push(d.top[0], d.top[d.top.length - 1]); }
     this.U = {
       uBlocks: { value: tex }, uMoss: { value: this.moss }, uVis: { value: this.vis }, uHeight: { value: this.heightTex }, uMat: { value: this.matTex }, uShade: { value: this.shadeTex }, uDamp: { value: this.dampTex },
-      uLay: { value: lay }, uRockSide: { value: L.rockSide }, uEco: { value: this.ecoTex }, uBurn: { value: this.burnTex }, uGeo: { value: this.geoTex }, uAvgL: { value: avgL }, uWetG: { value: 0 },
+      uLay: { value: lay }, uRockSide: { value: L.rockSide }, uEco: { value: this.ecoTex }, uBurn: { value: this.burnTex }, uGeo: { value: this.geoTex }, uFamLay: { value: FAMILY_SIDE.slice() }, uVeinLay: { value: VEIN_LAYER.slice() }, uAvgL: { value: avgL }, uWetG: { value: 0 },
       // per block kind: how far its texels stand proud (+) or settle (-) in a blend, and how much it darkens wet
       uHB: { value: [0.09, 0.07, -0.04, 0.07, -0.09, -0.1, -0.02, 0.1, 0.05, 0.05, 0.08, 0.02, 0.0, 0.0, 0, 0] },
       uAbs: { value: [0.55, 0.6, 1, 0.2, 1, 0.6, 0.9, 0, 0.2, 0.2, 0, 0.7, 0.4, 0.3, 0, 0] },
@@ -229,7 +229,9 @@ uniform highp sampler2DArray uBlocks;
 uniform sampler2D uMoss, uVis, uMat, uShade, uDamp, uEco, uBurn, uGeo;
 uniform float uN, uTime, uRivalLayer, uVeinGain, uRockSide, uWetG, uWater;
 uniform float uLay[32];
-uniform float uAvgL[40];
+uniform float uAvgL[48];
+uniform float uFamLay[7];
+uniform float uVeinLay[7];
 uniform float uHB[16];
 uniform float uAbs[16];
 uniform vec3 uCore, uVein, uMossLight, uRivalVein, uRivalCore, uDark;
@@ -358,6 +360,17 @@ if (ridge > 0.02) contend(3, ridge * 0.9, 0.0, vRock, pc, bestS, bestT, bestId);
 // snow (the climate's cover, and the high ground above the snow line) settles on the flats, never on steep faces
 float snowK = clamp(uSnow * 1.15 + smoothstep(uSnowLine, uSnowLine + 10.0, hw) * 0.9 + (G1 - 0.5) * 0.35 + hol * 0.6 - slope * 2.4, 0.0, 1.0);
 if (snowK > 0.02) contend(7, snowK * 1.25, 0.15, 0.5, pc, bestS, bestT, bestId);
+// the geology: spring mineral crust (terraces) and waterfall spray (A channel)
+vec4 geoT = texture2D(uGeo, (floor(pc) + 0.5) / uN);
+float ga = geoT.a * 255.0, spray = ga < 127.5 ? ga / 127.0 : 0.0;
+if (ga > 128.5) {
+  float ck = floor((ga - 128.0) / 32.0), cs = mod(ga - 128.0, 32.0) / 31.0;
+  float cl = ck < 0.5 ? ${L.crustWhite}.0 : ck < 1.5 ? ${L.crustOchre}.0 : ${L.crustRust}.0;
+  vec4 tc = blk(cl, pc);
+  float lc = dot(tc.rgb, vec3(0.3, 0.59, 0.11)), ac = uAvgL[int(cl)];
+  float sc = cs * 1.7 + (clamp(0.5 + (lc - ac) / (ac + 0.03) * 0.6, 0.0, 1.0) - 0.5) * 0.55 - slope * 2.0;
+  if (sc > bestS) { bestS = sc; bestT = tc; }
+}
 // burnt ground (scorch): char and ash while fresh, dry soil as it fades
 float burn = texture2D(uBurn, pc / uN).r;
 bool charred = false;
@@ -378,20 +391,26 @@ if (vNw.y < 0.74) {
   vec2 pan = floor(uvs / ${TMF});
   vec4 geo = texture2D(uGeo, (floor(vWp.xz) + 0.5) / uN);
   int fam = int(geo.r * 255.0 + 0.5);
-  float lay = dom == 8 || fam == 2 ? ${L.basaltSide}.0 : uRockSide;
+  float lay = dom == 8 ? ${L.basaltSide}.0 : fam > 0 && fam < 7 ? uFamLay[fam] : uRockSide;
   vec2 cuv = (uvs + floor(vec2(h2(pan + 1.3), h2(pan + 7.9)) * ${TTF}) / ${TSF}) / ${TMF}, cgx = dFdx(uvs) * 0.5 / ${TMF}, cgy = dFdy(uvs) * 0.5 / ${TMF};
   vec4 tr = textureGrad(uBlocks, vec3(cuv, lay), cgx, cgy);
   // ore veins: where the geology says so, the painted ore strata show through, the proudest pixels first
   if (geo.g > 0.06) {
-    vec4 to = textureGrad(uBlocks, vec3(cuv, geo.b > 0.5 / 255.0 ? ${L.crystalSide}.0 : ${L.oreSide}.0), cgx, cgy);
-    float lo = dot(to.rgb, vec3(0.3, 0.59, 0.11)), lr = dot(tr.rgb, vec3(0.3, 0.59, 0.11));
-    if (geo.g * 1.4 + (lo - lr) * 2.0 + (vn(uvs * 0.9 + 5.0) - 0.5) * 0.8 > 0.75) tr = to;
+    int vk = int(clamp(geo.b * 255.0 + 0.5, 0.0, 6.0));
+    vec4 tv = textureGrad(uBlocks, vec3(cuv, uVeinLay[vk]), cgx, cgy);
+    // the vein's own pixels, more of them where the vein runs strong (a slow patchiness, never a fade)
+    if (tv.a > 0.1 && geo.g * 1.5 + (vn(uvs * 0.45 + 5.0) - 0.5) * 0.9 > 0.55) tr = vec4(tv.rgb, tv.a > 0.95 ? 1.0 : tv.a);
   }
   base = tr.rgb; glowA = tr.a; bestId = 3;
 } else {
   base = bestT.rgb; glowA = bestT.a;
   // frost: on cold nights the proudest pixels (blade tips, crests, pebble tops) rime over first
   if (uFrost > 0.01) { float l = dot(base, vec3(0.3, 0.59, 0.11)); if (l > 0.06 * (1.6 - uFrost) && fract(pxw.x * 0.37 + pxw.y * 0.61) < uFrost * 0.9) base = uFrostC; }
+}
+if (spray > 0.01) {
+  // spray: soaked darker, and a few of the proudest pixels catch the light as wet glints, twinkling
+  base *= 1.0 - 0.38 * spray;
+  if (h2(pxw + floor(uTime * 3.0 + h2(pxw) * 7.0) * 1.7) < spray * 0.05) base = mix(base, uFrostC, 0.75);
 }
 emis += base * (1.0 - glowA) * 2.0;
 // darker under canopy
@@ -477,9 +496,12 @@ diffuseColor.rgb *= base;
    * through dry soil back to the ground's own cover over about three in-game days. Drop pods, fires, blasts.
    */
   /**
-   * Geology per cell for the cliffs (the landscape generator's): N*N*4 bytes, R the rock family (0 the planet's rock,
-   * 2 basalt; others fall back to the planet's rock until they get their own strata), G ore-vein strength 0..255 (veins
-   * of the painted ore show through the strata where it is high), B the ore kind (0 ferrite, 1 lumen crystal), A spare.
+   * Geology per cell (the landscape generator's): N*N*4 bytes.
+   *   R rock family of the cliffs: 0 the planet's rock, 1 sandstone, 2 basalt, 3 limestone, 4 slate, 5 granite, 6 tuff
+   *   G ore-vein strength 0..255: painted veins show through the cliff strata, more of them the stronger
+   *   B ore kind: 0 iron, 1 lumen crystal, 2 copper, 3 gold, 4 coal, 5 sulphur, 6 gravium
+   *   A below 128: waterfall-spray wetness (A / 127: the ground darkens and glints); 128 and up: spring mineral crust,
+   *     kind (A - 128) >> 5 (0 white, 1 ochre, 2 rust) and strength ((A - 128) & 31) / 31, drawn as travertine terraces
    * Call again after the ground changes; a Region carrying `geo` is picked up at construction.
    */
   setGeo(data: Uint8Array) {

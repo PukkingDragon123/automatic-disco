@@ -1,26 +1,36 @@
-// The in-region HUD is Unit 07's own control console, built around the edges of the view so the middle stays
-// clear: a raw-materials rail of rolling drums with their hold caps and a status rail (hull, charge, core cells, held
-// ground) along the top, a switch bank with the big SKILLS switch; the terrain scope, the telemetry CRT, the command
-// key bank and the ordnance selector wheel along the bottom; a shortwave set for Calder's transmissions. Every
-// housing is painted pixel art; every value moves something. The console picks its own scale for the screen, folds
-// into a compact stack on narrow ones, and on touch screens keeps the bottom corners clear for the thumb controls.
-import { el, ui, Btn, Bar, iconImg, Tip, toast } from './kit';
+// The in-region HUD is Unit 07's cockpit desk: a real 3D console drawn as pixel art over the bottom of the view
+// (ui/desk/*). This file binds it to the game: what every instrument reads, what every object does when clicked, the
+// five MODES that reconfigure the desk (and open and close the other systems' panels with them), the inspection
+// clipboard for whatever is selected, the hover tags, keys, and the few DOM pieces that stay DOM (Calder's shortwave
+// transmissions, the field notes).
+//
+//   EXPLORE  the strip only: drum, hull and charge, the holds. The world stays clear; floating text keeps quiet.
+//   BUILD    the works catalogue comes up with the grid; the left wing carries the build tools and the works meter.
+//   COMMAND  the holo table (ping it, right-click it to send units), the telemetry CRT, ordnance, rally.
+//   BIO      the bioworks ledger, the life overlay, the lab, the family tree.
+//   SURVEY   the scan table, the habitat overlay, the orrery and calendar, the binoculars for the census sheet.
+import * as THREE from 'three';
+import { el, ui, Tip, toast } from './kit';
 import { sfx } from '../audio/audio';
 import { thumb } from './thumbs';
 import type { Hive } from '../game/hive';
-import { ABILITIES, RES_COL, type Ability } from '../game/hive';
+import { ABILITIES, type Ability } from '../game/hive';
 import type { World } from '../game/world';
 import type { Creature } from '../game/creature';
 import type { Building } from '../game/buildings';
 import type { Vision } from '../game/vision';
 import type { RtsCam } from '../app/rtsCam';
 import type { Game } from '../game/game';
-import { GENE, CAT_NAMES } from '../life/genes';
 import { RES, SKILL, SKILLS, type Res } from '../game/skills';
-import { PH, AM, CR, RD, hex } from './machine';
-import { Odometer, Nixie, PixText, Lamp, Toggle, BigSwitch, Gauge, Knob, crtSettings, meterFace, place, tip, u, steamVent } from './gadgets';
-import { RESM, STATM, BANK, PLATE, SCOPE, SEL, CMD, WHEEL, FAC, ECO, ecoArt, resArt, statArt, bankArt, bigSwitchArt, nameArt, scopeArt, selArt, cmdArt, radioArt, facArt, crack } from './hudArt';
 import { AbilityWheel } from './wheel';
+import { powerCost } from '../game/combat';
+import { Desk, MODES, type Mode } from './desk/desk';
+import { MODE_NAME } from './desk/parts';
+import type { Hot } from './desk/kit';
+import { R, text5, textW5, text3s, textW3s, Pix } from './desk/paint';
+import { FLOAT } from './floatText';
+import type { Climate } from '../game/climate';
+import { SEASON } from '../game/climate';
 
 export interface Cmd { icon: string; key: string; name: string; tip: () => string; disabled?: () => string | false; active?: () => boolean; run: () => void; cost?: string }
 export interface HudCtx {
@@ -32,7 +42,7 @@ export interface HudCtx {
   conquest: () => number; regionName: string;
   minimap: (x: number, z: number, button: number) => void;
   openTree: () => void; openBuilder: () => void; openMenu: () => void; openMirror: () => void;
-  /** arm (or disarm) a field power for targeting; falls back to the command list when absent */
+  /** arm (or disarm) a field power for targeting */
   ability?: (a: Ability) => void;
   /** the power currently armed, if any */
   armed?: () => Ability | null;
@@ -40,616 +50,545 @@ export interface HudCtx {
 
 const MIND: Record<string, string> = {
   idle: 'RESTING', wander: 'WANDERING', graze: 'GRAZING', eat: 'FEEDING', hunt: 'HUNTING', flee: 'FLEEING', scavenge: 'SCAVENGING', order: 'MOVING', attack: 'FIGHTING', held: 'HELD', rest: 'RESTING', follow: 'FOLLOWING', mate: 'COURTING',
-  // daily life and defence (game/ai.ts)
   drink: 'DRINKING', sleep: 'ASLEEP', travel: 'ON THE MOVE', stalk: 'STALKING', ambush: 'LYING IN WAIT', display: 'THREAT DISPLAY', carry: 'DRAGGING A KILL', watch: 'KEEPING WATCH', curl: 'CURLED UP',
 };
-const MM = 96;
-/** the scope's livery glyphs for the rival programmes (5 x 5 art pixels) */
-const glyph = (rows: string[]) => { const px: [number, number][] = []; rows.forEach((r, y) => { for (let x = 0; x < r.length; x++) if (r[x] === '#') px.push([x, y]); }); return px; };
-const GLYPH: Record<string, { px: [number, number][]; col: string; dim: string }> = {
-  soviet: { px: glyph(['..#..', '#####', '.###.', '.#.#.', '#...#']), col: '#e0503e', dim: '#8a3026' },
-  prc: { px: glyph(['..#..', '.###.', '#####', '.###.', '##.##']), col: '#e8c050', dim: '#94782e' },
-  expedition: { px: glyph(['..#..', '..#..', '##.##', '..#..', '..#..']), col: '#c8dce8', dim: '#7a8a96' },
-  rival: { px: glyph(['#...#', '.#.#.', '..#..', '.#.#.', '#...#']), col: '#ff6a4a', dim: '#9a4030' },
-};
-const ev2 = (c: HudCtx) => (c.game as unknown as { ecoView?: { mode?: string } } | undefined)?.ecoView;
-const isAbilityCmd = (c: Cmd) => !!(ABILITIES as any)[c.icon] && (ABILITIES as any)[c.icon].key === c.key;
 const SOURCE: Record<Res, string> = {
   ore: 'Shed by rock formations and seams: pull in the loose nuggets, or bore seams and boulders with the Ore Drill.',
   carbon: 'Husks under the plants; corpses and absorbed plants give more (Carbon Intake).',
   water: 'Dew globes beaded on damp-loving plants; the Water Siphon drinks rivers and the sea.',
   soil: 'Loose clods on bare ground; the Excavator scoops it anywhere.',
 };
-/** most device pixels per art pixel the console will use */
-const MAX_K = 8;
+const isAbilityCmd = (c: Cmd) => !!(ABILITIES as any)[c.icon] && (ABILITIES as any)[c.icon].key === c.key;
+type EcoV = { cycleOverlay(): void; toggleSurvey(on?: boolean): void; setOverlay(m: string): void; mode?: string };
+type BioU = { toggleLedger(force?: boolean): void; ledgerOpen: boolean };
+const store = { get(k: string, d: number) { try { const v = localStorage.getItem(k); return v === null ? d : +v; } catch { return d; } }, set(k: string, v: number) { try { localStorage.setItem(k, String(v)); } catch { /* private mode */ } } };
+/** the console's phosphor: GAIN (brightness of every screen) and TUNE (green P1 or amber P3 tubes) */
+export const crtSettings = {
+  gain: store.get('oddworld.crt.gain', 0.5),
+  tint: store.get('oddworld.crt.tint', 0),
+  apply() { document.documentElement.style.setProperty('--crt-gain', String(0.7 + this.gain * 0.6)); document.body.classList.toggle('p3', this.tint >= 0.5); },
+  setGain(v: number) { this.gain = Math.max(0, Math.min(1, v)); store.set('oddworld.crt.gain', this.gain); this.apply(); },
+  setTint(v: number) { this.tint = v; store.set('oddworld.crt.tint', v); this.apply(); },
+};
 
 export class Hud {
   readonly root: HTMLDivElement;
-  private mods: Record<string, HTMLDivElement> = {};
-  private odo = {} as Record<Res, Odometer>; private capT = {} as Record<Res, PixText>; private fill = {} as Record<Res, HTMLDivElement>; private rlamp = {} as Record<Res, Lamp>;
-  private flashT: Record<Res, number> = { ore: 0, carbon: 0, water: 0, soil: 0 };
-  private hullFill: HTMLDivElement; private hullTxt: PixText;
-  private chgNix: Nixie; private chgMax: PixText; private chgGauge: Gauge;
-  private cellNix: Nixie; private cellLamp: Lamp; private cellHot = 0;
-  private terFill: HTMLDivElement; private terTxt: PixText;
-  private skillSw: BigSwitch;
-  private clockNix: Nixie; private colon: HTMLDivElement; private dayLamp: Lamp;
-  private mm: HTMLCanvasElement; private mmG: CanvasRenderingContext2D; private mmBase: Uint8ClampedArray | null = null; private mmT = 0; private mmImg: ImageData;
-  private regionEl: HTMLDivElement;
-  private selBox: HTMLDivElement; private selKey = '-'; private selBars: { hp?: Bar; en?: Bar; pr?: Bar } = {};
-  private cmdBox: HTMLDivElement; private btns: Btn[] = []; private cmdKey = '';
+  readonly desk: Desk;
   readonly wheel: AbilityWheel;
-  private t = 0; private layoutKey = '';
   readonly dialog: HTMLDivElement;
   readonly objectives: HTMLDivElement;
-  private facPwr!: PixText; private facSto!: PixText; private facCrew!: PixText; private facLamp!: Lamp; private facGauge!: HTMLDivElement;
-  private ecoStage!: HTMLDivElement; private ecoLamp!: Lamp; private ecoOv!: Toggle; private ecoSv!: Toggle; private ecoT = 0; private ecoH = -1; private ecoOn = [false, false];
-  private onResize = () => this.layout();
+  mode: Mode = 'explore';
+  /** the climate (game/climate.ts hands it over through the almanac) */
+  climate: Climate | null = null;
+  private tag: HTMLDivElement; private tagHot: Hot | null = null; private tagT = 0; private tagTxt = '';
+  private t = 0; private slow = 0; private selKey = '-'; private cmdKey = ''; private cmds: Cmd[] = []; private keyHots: Hot[] = [];
+  private flashT: Record<Res, number> = { ore: 0, carbon: 0, water: 0, soil: 0 };
+  private lastHull = -1; private alarmT = 0; private cellHot = 0; private mapT = 0; private mapBuilt = 0; private crtT = 0;
+  private opened = { build: false, ledger: false, overlay: false, survey: false };
+  private thumbs = new Map<string, Pix | null>();
+  private onResize = () => { this.desk.layout(); this.cssVars(); };
 
   constructor(readonly c: HudCtx) {
     this.root = el('div', 'hud', ui());
-    this.root.style.setProperty('--radio', `url(${radioArt().url()})`);
-    const mod = (cls: string, w: number, h: number, art: string) => { const m = el('div', 'mod ' + cls, this.root); m.style.width = u(w); m.style.height = u(h); m.style.backgroundImage = `url(${art})`; m.addEventListener('pointerdown', (e) => e.stopPropagation()); this.mods[cls] = m; return m; };
-    const h = c.hive;
-
-    // ---- conduit runs along the top and bottom edges, behind the housings
-    el('div', 'conduit top', this.root); el('div', 'conduit bot', this.root);
-
-    // ---- raw materials: four drum counters, each with its hold cap, a fill tube and a lamp
-    const rm = mod('hud-res', RESM.w, RESM.h, resArt(RES.map((r) => RES_COL[r]), RES.map((r) => r.toUpperCase())).url());
-    RES.forEach((r, k) => {
-      const x = RESM.x0 + k * RESM.dx;
-      this.odo[r] = new Odometer(rm, 3, x, 13);
-      this.capT[r] = new PixText(rm, x + 26, 16, 18, 'left');
-      this.fill[r] = place(el('div', 'tube-fill res', rm), x + 26, 24, 0, 2);
-      this.fill[r].style.setProperty('--rc', hex(RES_COL[r]));
-      this.rlamp[r] = new Lamp(rm, x + 36, 3, 'g', 'off');
-      tip(place(el('div', 'hit', rm), x - 2, 2, 46, 26), () => this.resTip(r));
-    });
-
-    // ---- status: hull, charge, core cells, held ground
-    const sm = mod('hud-stat', STATM.w, STATM.h, statArt(h.winAt).url()), X = STATM;
-    this.hullFill = place(el('div', 'tube-fill hull', sm), X.hull, 13, 0, 7);
-    this.hullTxt = new PixText(sm, X.hull, 23, 40, 'left');
-    tip(place(el('div', 'hit', sm), X.hull - 2, 2, 44, 27), () => { const [a, b] = this.hull(); return `<h4>Hull Integrity</h4>${Math.ceil(a)} / ${Math.round(b)}. Plate Steel adds more. The crashed core patches the hull while Unit 07 stays close to it.`; });
-    // the charge meter took a stone once: its glass is cracked
-    this.chgGauge = new Gauge(sm, X.chg - 1, 10, { w: 30, h: 19, cx: 15, cy: 16, r: 12, a0: -1.45, a1: 1.45, face: (p) => meterFace(p, 15, 16, 12, -1.45, 1.45, { ticks: 6, red: [0, 0.18] }), glass: (p) => crack(p, 21, 6, [[2.6, 8], [0.9, 5], [1.9, 4]], 4) });
-    this.chgNix = new Nixie(sm, 3, X.chg + 32, 12);
-    this.chgMax = new PixText(sm, X.chg + 32, 4, 29, 'right');
-    tip(place(el('div', 'hit', sm), X.chg - 2, 2, 64, 27), () => `<h4>Charge</h4>Gravity energy for the field powers. Refills by itself; the Gravity Coil and Reactor Bloom hold more and refill faster.`);
-    this.cellNix = new Nixie(sm, 2, X.cel, 12);
-    this.cellLamp = new Lamp(sm, X.cel + 21, 15, 'a', 'off');
-    tip(place(el('div', 'hit', sm), X.cel - 2, 2, 30, 27), () => `<h4>Core Cells</h4>${this.points()} to spend on the skill tree. Earned by advancing: the first of each material, every load gathered, new species absorbed, ground held, big kills.`);
-    this.terFill = place(el('div', 'tube-fill dom', sm), X.ter, 13, 0, 7);
-    this.terTxt = new PixText(sm, X.ter, 23, 38, 'left');
-    tip(place(el('div', 'hit', sm), X.ter - 2, 2, 42, 27), () => `<h4>Held Ground</h4>${(c.conquest() * 100).toFixed(1)}% of this region's land is yours. Graft plants and convert creatures to claim more. Hold ${Math.round(h.winAt * 100)}% (the red mark) and break every rival heart to take the region.`);
-
-    // ---- name plate + chronometer
-    const np = mod('hud-plate', PLATE.w, PLATE.h, nameArt().url());
-    this.clockNix = new Nixie(np, 4, 7, 16, false);
-    this.clockNix.e.querySelectorAll('.nx').forEach((t, i) => { if (i >= 2) (t as HTMLElement).style.left = u(i * 10 + 3); });
-    this.colon = place(el('div', 'colon', np), 27, 19, 1, 7);
-    this.dayLamp = new Lamp(np, 92, 17, 'a', 'on');
-    tip(place(el('div', 'hit', np), 4, 14, 96, 18), () => '<h4>Chronometer</h4>Local time on this world. Night brings the hunters out.');
-
-    // ---- switch bank: the big SKILLS switch, the lab, the tree, the assembly bay, the menu
-    const bank = mod('hud-bank', BANK.w, BANK.h, bankArt().url()), T = BANK.tog;
-    this.skillSw = new BigSwitch(bank, BANK.big, 3, 'SKILLS', 'K', bigSwitchArt().url(), () => this.skillsTip(), () => this.openSkills());
-    new Toggle(bank, T[0], 4, 'LAB', 'L', () => '<h4>Field Laboratory</h4>The gene lab: put an absorbed species in the tank and rebuild it limb by limb.', () => this.openLab());
-    new Toggle(bank, T[1], 4, 'TREE', 'T', () => '<h4>Tree of Descent</h4>Every species you have met, made or watched branch off.', () => c.openTree());
-    new Toggle(bank, T[2], 4, 'ASSY', 'V', () => '<h4>Assembly Bay</h4>Refit Unit 07: paint, plating, lens and name.', () => c.openMirror());
-    new Toggle(bank, T[3], 4, 'MENU', 'ESC', () => '<h4>Menu</h4>Pause the survey.', () => c.openMenu());
-
-    // ---- the works: build mode, the production report, the crew roster (src/factory)
-    const fm = mod('hud-fac', FAC.w, FAC.h, facArt().url());
-    const fac = () => c.game?.factory;
-    new Toggle(fm, FAC.tog[0], 4, 'BUILD', 'B', () => `<h4>Build</h4>The Corps field works catalogue: miners, belts, machines, power, storage, land and water works.${c.game?.run.skills.has('works') ? '' : '<div class="tip-warn">Unlock Field Works on the skill tree</div>'}`, () => this.buildKey());
-    new Toggle(fm, FAC.tog[1], 4, 'STATS', 'O', () => '<h4>Production Report</h4>Items made and used per minute, the power grids, and the machines holding the line up.', () => fac()?.ui.toggleStats());
-    new Toggle(fm, FAC.tog[2], 4, 'CREW', 'N', () => '<h4>Crew Roster</h4>Your workers: their jobs, their appetites, their moods. Assign them to haul, operate, mine, forage or keep a pen.', () => fac()?.ui.toggleCrew());
-    this.facPwr = new PixText(fm, FAC.sx + 2, FAC.sy + 3, FAC.sw - 4, 'left');
-    this.facSto = new PixText(fm, FAC.sx + 2, FAC.sy + 12, FAC.sw - 4, 'left');
-    this.facCrew = new PixText(fm, FAC.sx + 2, FAC.sy + 21, FAC.sw - 4, 'left');
-    this.facLamp = new Lamp(fm, FAC.sx + FAC.sw - 9, FAC.sy + 2, 'g', 'off');
-    this.facGauge = place(el('div', 'tube-fill fac-pw', fm), FAC.sx + 2, FAC.sy + 10, 0, 1);
-    tip(place(el('div', 'hit', fm), FAC.sx - 2, FAC.sy - 2, FAC.sw + 4, FAC.sh + 4), () => { const f = fac(); if (!f) return ''; const p = f.power(); return `<h4>Works</h4>Power ${Math.round(p.demand)} of ${Math.round(p.cap)} MW in use on ${p.grids} grid${p.grids === 1 ? '' : 's'}. ${f.buildings.length} structures, ${f.workers.active.length} workers on jobs.`; });
-
-    // ---- the ecology panel beside the works: overlay (H), field survey (M), the season's water stage
-    const em = mod('hud-eco', ECO.w, ECO.h, ecoArt().url());
-    const ev = () => (c.game as unknown as { ecoView?: { cycleOverlay(): void; toggleSurvey(): void; mode?: string } } | undefined)?.ecoView;
-    this.ecoOv = new Toggle(em, ECO.tog[0], 4, 'ECO', 'H', () => `<h4>Ecology Overlay</h4>Moisture, fertility, forage, herds and danger drawn over the ground like a hand-inked survey map. Each press shows the next layer, then off.`, () => ev()?.cycleOverlay());
-    this.ecoSv = new Toggle(em, ECO.tog[1], 4, 'FIELD', 'M', () => `<h4>Field Survey</h4>The census sheet: the season, the water, every species' numbers and how they are doing.`, () => ev()?.toggleSurvey());
-    new Toggle(em, ECO.tog[2], 4, 'ARMS', 'F2', () => `<h4>Ordnance Bench</h4>Design weapons from parts (frame, power, barrel, ammo), then issue them to Unit 07, robot types and engineered creatures.`, () => { const g = c.game; if (g && g.engine.screen === g) import('../robots/weapons/bench').then((m) => m.openBench(g.engine, g)); });
-    this.ecoStage = place(el('div', 'tube-fill stage', em), ECO.tx, ECO.ty, 5, 0);
-    this.ecoLamp = new Lamp(em, ECO.tx - 1, 1, 'a', 'off');
-    tip(place(el('div', 'hit', em), ECO.tx - 3, ECO.ty - 3, 12, ECO.th + 6), () => {
-      const e = c.world.eco, lv = e.level;
-      return `<h4>Water Stage</h4>${e.seasonName()}. The rivers stand ${lv >= 0 ? '+' : ''}${lv.toFixed(2)} m on their usual level (the red scribe)${lv > 0.3 ? ': <b>in spate</b>, low ground flooding' : lv < -0.25 ? ': <b>low</b>, the shallows are drying' : ''}.`;
-    });
-
-    // ---- terrain scope (minimap)
-    const sc = mod('hud-scope', SCOPE.w, SCOPE.h, scopeArt().url());
-    this.regionEl = place(el('div', 'scr sc-name', sc), 7, 5, 100, 9);
-    this.regionEl.textContent = c.regionName.toUpperCase();
-    this.mm = place(el('canvas', 'mm', sc), SCOPE.sx, SCOPE.sy, SCOPE.ss, SCOPE.ss);
-    this.mm.width = MM; this.mm.height = MM;
-    this.mmG = this.mm.getContext('2d')!; this.mmImg = this.mmG.createImageData(MM, MM);
-    place(el('div', 'sweep', sc), SCOPE.sx, SCOPE.sy, SCOPE.ss, SCOPE.ss);
-    place(el('div', 'scr-glass', sc), SCOPE.sx, SCOPE.sy, SCOPE.ss, SCOPE.ss);
-    const N = c.world.region.N;
-    const mmEv = (e: PointerEvent) => { const r = this.mm.getBoundingClientRect(); c.minimap(((e.clientX - r.left) / r.width) * N, ((e.clientY - r.top) / r.height) * N, e.button); };
-    this.mm.addEventListener('pointerdown', (e) => { e.stopPropagation(); mmEv(e); this.mm.setPointerCapture(e.pointerId); });
-    this.mm.addEventListener('pointermove', (e) => { if (e.buttons & 1) mmEv(e); });
-    this.mm.addEventListener('contextmenu', (e) => e.preventDefault());
-
-    // ---- unit telemetry
-    const sl = mod('hud-sel', SEL.w, SEL.h, selArt().url());
-    this.selBox = place(el('div', 'scr sel-scr', sl), SEL.sx, SEL.sy, SEL.sw, SEL.sh);
-    new Lamp(sl, 191, 66, 'g', 'blink');
-    crtSettings.apply();
-    new Knob(sl, 187, 17, crtSettings.gain, 8, (v) => crtSettings.setGain(v), () => '<h4>Gain</h4>Phosphor brightness for every screen on the console. Drag or scroll.');
-    new Knob(sl, 187, 41, crtSettings.tint, 1, (v) => crtSettings.setTint(v), () => '<h4>Tune</h4>Swap the tubes: green P1 phosphor or amber P3. Drag or scroll.');
-
-    // ---- command bank
-    const cm = mod('hud-cmd', CMD.w, CMD.h, cmdArt().url());
-    this.cmdBox = place(el('div', 'cmd-grid', cm), CMD.kx, CMD.ky, 102, 76);
-
-    // ---- ordnance selector
-    this.wheel = new AbilityWheel(this.root, {
-      hive: h,
-      arm: (a) => {
-        if (c.ability) return c.ability(a);
-        const cmd = c.commands().find((x) => x.icon === a && isAbilityCmd(x)); if (cmd && !cmd.disabled?.()) cmd.run();
-      },
-      armed: () => {
-        if (c.armed) return c.armed();
-        const cmd = c.commands().find((x) => isAbilityCmd(x) && x.active?.()); return cmd ? (cmd.icon as Ability) : null;
-      },
-    });
-    steamVent(cm, 104, 12, 9);
-
-    // ---- shortwave set (researcher) + field notes
+    this.desk = new Desk(this.root);
+    this.tag = el('div', 'desk-tag', this.root);
     this.dialog = el('div', 'hud-dialog', this.root);
     this.objectives = el('div', 'px-dark hud-obj', this.root);
     this.objectives.style.display = 'none';
-    // power-on: the console wakes module by module
-    Array.from(this.root.querySelectorAll('.mod, .wl')).forEach((m, i) => { (m as HTMLElement).style.animationDelay = `${i * 70}ms`; m.classList.add('boot'); });
-    // the tubes light after their housings, each with a line roll
-    setTimeout(() => this.root.querySelectorAll('.scr').forEach((e) => e.classList.add('on')), 500);
-
-    // live feedback from the economy
+    this.wheel = new AbilityWheel({
+      hive: c.hive,
+      arm: (a) => { if (c.ability) return c.ability(a); const cmd = c.commands().find((x) => x.icon === a && isAbilityCmd(x)); if (cmd && !cmd.disabled?.()) cmd.run(); },
+      armed: () => { if (c.armed) return c.armed(); const cmd = c.commands().find((x) => isAbilityCmd(x) && x.active?.()); return cmd ? (cmd.icon as Ability) : null; },
+    });
+    crtSettings.apply();
+    this.bindDesk();
+    this.desk.onHover = (h) => { this.tagHot = h; this.tagT = 0; if (h) sfx('hover', 1, 0.35); };
     const g = c.game;
-    g?.on('gather', (d: { res: Res }) => { if (d?.res) this.flashT[d.res] = 0.25; });
-    g?.on('points', () => { this.cellHot = 2.5; this.cellNix.set(0); this.cellNix.set(this.points()); });
+    g?.on('gather', (d: { res: Res }) => { if (d?.res) { this.flashT[d.res] = 0.3; this.desk.vessels[d.res].kick(1.2); } });
+    g?.on('points', () => { this.cellHot = 2.5; });
     addEventListener('resize', this.onResize);
-    this.layout();
+    this.cssVars();
+    this.setMode('explore', true);
   }
 
-  // ------------------------------------------------------------------ layout
-  private isTouch() { return document.body.classList.contains('touch') || matchMedia('(pointer: coarse)').matches; }
-  /** pick a scale for the top rails and one for the bottom deck; stack everything on narrow screens; keep the bottom
-   *  corners free on touch screens. A scale is always a whole number of device pixels per art pixel (k / dpr), so the
-   *  pixel art stays razor sharp at 1080p, on retina laptops and on phones alike. */
-  layout() {
-    const W = innerWidth, H = innerHeight, dpr = devicePixelRatio || 1, touch = this.isTouch();
-    const key = `${W}x${H}@${dpr}|${touch}`;
-    if (key === this.layoutKey) return;
-    this.layoutKey = key;
-    /** the largest crisp scale (at most `max` CSS px per art px) that passes `ok` */
-    // native resolution: never more than 2 screen px per art px on a 1x screen (1080p and up), and on high-DPI screens
-    // no more than ~1.34 CSS px (whole device pixels either way)
-    const cap = dpr >= 1.5 ? 1.34 : 2;
-    const fit = (ok: (s: number) => boolean, max = 99) => { for (let k = MAX_K; k >= 1; k--) { const s = k / dpr; if (s <= max && s <= cap && ok(s)) return s; } return 1 / dpr; };
-    const topW = PLATE.w + RESM.w + STATM.w + BANK.w + 6, botW = SCOPE.w + SEL.w + CMD.w + WHEEL.w + 4;
-    const compact = topW > W;
-    const sT = fit((s) => topW * s <= W && BANK.h * s <= H * (touch ? 0.18 : 0.15));
-    const sB = fit((s) => botW * s <= W && WHEEL.h * s <= H * 0.45, sT);
-    const M = this.mods;
-    const px = (v: number) => `${Math.round(v * dpr) / dpr}px`;
-    const put = (e: HTMLElement | null | undefined, s: number, p: { l?: number; r?: number; t?: number; b?: number } | null) => {
-      if (!e) return;
-      // the shortwave set and the field notes show and hide themselves (story); only place them
-      if (e !== this.dialog && e !== this.objectives) e.style.display = p ? '' : 'none';
-      if (!p) return;
-      e.style.setProperty('--s', String(s));
-      e.style.left = p.l !== undefined ? px(p.l) : 'auto'; e.style.right = p.r !== undefined ? px(p.r) : 'auto';
-      e.style.top = p.t !== undefined ? px(p.t) : 'auto'; e.style.bottom = p.b !== undefined ? px(p.b) : 'auto';
-    };
-    const wl = this.root.querySelector('.wl') as HTMLElement | null, wd = this.root.querySelector('.wl-desc') as HTMLElement | null;
-    this.root.classList.toggle('compact', compact);
-    this.root.classList.toggle('touch', touch);
-    for (const c of this.root.querySelectorAll('.conduit')) (c as HTMLElement).style.setProperty('--s', String(compact ? 1 : sT));
-    if (!compact) {
-      // one rail across the top: plate left, bank right, the two rails centred in between
-      const free = W - (PLATE.w + BANK.w) * sT, grp = (RESM.w + STATM.w) * sT, l0 = PLATE.w * sT + Math.max(0, (free - grp) / 2);
-      put(M['hud-plate'], sT, { l: 0, t: 0 });
-      put(M['hud-res'], sT, { l: l0, t: 0 });
-      put(M['hud-stat'], sT, { l: l0 + RESM.w * sT, t: 0 });
-      put(M['hud-bank'], sT, { r: 0, t: 0 });
-      put(M['hud-fac'], sT, { r: 0, t: BANK.h * sT });
-      put(M['hud-eco'], sT, { r: FAC.w * sT, t: BANK.h * sT });
-      put(this.objectives, sT, { r: 2 * sT, t: (BANK.h + FAC.h + 3) * sT });
-      if (touch) {
-        // thumbs own the bottom corners: the scope tucks under the plate, the keys sit bottom centre
-        const sS = fit((s) => SCOPE.h * s <= H - PLATE.h * sT - 150 || s <= 1 / dpr, sT), sK = fit((s) => CMD.h * s <= H * 0.3 && CMD.w * s <= W - 300, sT);
-        put(M['hud-scope'], sS, { l: 0, t: PLATE.h * sT });
-        put(M['hud-sel'], sB, null);
-        put(M['hud-cmd'], sK, { l: (W - CMD.w * sK) / 2, b: 0 });
-        put(wl, sB, null); put(wd, sB, null);
-        put(this.dialog, sT, { l: Math.max(SCOPE.w * sS + 4, (W - 226 * sT) / 2), t: (STATM.h + 4) * sT });
-      } else {
-        const roomSel = botW * sB <= W;
-        put(M['hud-scope'], sB, { l: 0, b: 0 });
-        put(M['hud-sel'], sB, roomSel ? { l: SCOPE.w * sB, b: 0 } : null);
-        put(M['hud-cmd'], sB, { r: (WHEEL.w + 2) * sB, b: 0 });
-        put(wl, sB, { r: 0, b: 0 }); put(wd, sB, { r: 0, b: 152 * sB });
-        put(this.dialog, sB, { l: 2 * sB, b: (SCOPE.h + 4) * sB });
-      }
-      this.toastTop((STATM.h + 4) * sT);
-      this.textScale(sT * dpr, dpr);
-    } else {
-      // narrow screens (phones held upright): the rails stack at the top, the scope and the bank under them, the
-      // keys at the bottom centre; as large as the width allows, but never so large the view is lost
-      const sC = fit((s) => STATM.w * s <= W, 1.5);
-      const two = (RESM.w + STATM.w) * sC <= W, row = (two ? RESM.h : RESM.h * 2) * sC;
-      const sS = fit((s) => (SCOPE.w + BANK.w) * s <= W && SCOPE.h * s <= H * 0.24, sC);
-      put(M['hud-plate'], sC, null);
-      put(M['hud-res'], sC, { l: 0, t: 0 });
-      put(M['hud-stat'], sC, two ? { l: RESM.w * sC, t: 0 } : { l: 0, t: RESM.h * sC });
-      put(M['hud-bank'], sC, { r: 0, t: row });
-      put(M['hud-fac'], sC, { r: 0, t: row + BANK.h * sC });
-      // the ecology panel goes beside the works when the scope leaves room, else under them
-      const ecoSide = (SCOPE.w * sS + (FAC.w + ECO.w) * sC) <= W;
-      put(M['hud-eco'], sC, ecoSide ? { r: FAC.w * sC, t: row + BANK.h * sC } : { r: 0, t: row + (BANK.h + FAC.h) * sC });
-      const below = row + (BANK.h + FAC.h + (ecoSide ? 0 : ECO.h) + 3) * sC;
-      put(M['hud-scope'], sS, { l: 0, t: row });
-      put(this.objectives, sC, { r: 2, t: below });
-      put(this.dialog, sC, { l: 0, t: row + SCOPE.h * sS + 3 });
-      put(M['hud-sel'], sC, null);
-      // on touch the thumbs own the whole bottom edge, so the keys hang under the switch bank instead
-      const sK = touch ? fit((s) => CMD.w * s <= W * 0.5 && CMD.h * s <= H * 0.18, sC) : fit((s) => CMD.w * s <= W && CMD.h * s <= H * 0.16, sC);
-      put(M['hud-cmd'], sK, touch ? { r: 0, t: below } : { l: 0, b: 0 });
-      put(wl, sC, touch ? null : { r: 0, b: 0 }); put(wd, sC, touch ? null : { r: 0, b: 152 * sC });
-      this.toastTop(row + Math.max(SCOPE.h * sS, (BANK.h + 3) * sC) + 4);
-      this.textScale(sC * dpr, dpr);
+  // ------------------------------------------------------------------ the desk's objects
+  private hot(h: Hot) { return this.desk.addHot(h); }
+  private bindDesk() {
+    const d = this.desk, c = this.c, P = d.props, g = () => c.game;
+    // ---- MODE selector: click a stop, click the knob to step, scroll it
+    this.hot({ obj: d.knob.root, name: 'MODE SELECTOR', key: '1-5', tip: () => `<b>${MODE_NAME[this.mode]}</b>. ${MODES.map((m, i) => `${i + 1} ${MODE_NAME[m]}`).join(' · ')}`,
+      click: (h) => { const a = Math.atan2(h.local.x, h.local.y), r = Math.hypot(h.local.x, h.local.y); if (r > 12) { let best = 0, bd = 9; MODES.forEach((_, i) => { const dd = Math.abs(a - (-2 + i) * 34 * Math.PI / 180); if (dd < bd) { bd = dd; best = i; } }); this.setMode(MODES[best]); } else this.setMode(MODES[(MODES.indexOf(this.mode) + 1) % MODES.length]); },
+      wheel: (dy) => this.setMode(MODES[Math.max(0, Math.min(4, MODES.indexOf(this.mode) + (dy > 0 ? 1 : -1)))]) });
+    // ---- the holds
+    for (const r of RES) this.hot({ obj: d.vessels[r].root, name: `${r.toUpperCase()} HOLD`, tip: () => this.resTip(r) });
+    this.hot({ obj: d.hull.root, name: 'HULL INTEGRITY', tip: () => { const [a, b] = this.hull(); return `${Math.ceil(a)} / ${Math.round(b)}. Plate Steel adds more. The crashed core patches the hull while Unit 07 stays close to it.`; } });
+    this.hot({ obj: d.charge.root, name: 'CHARGE', tip: () => `Gravity energy for the field powers: ${Math.floor(c.hive.res.charge)} / ${c.hive.chargeCap}. Refills by itself; the Gravity Coil and Reactor Bloom hold more. The amber tick is what the chosen power costs.` });
+    this.hot({ obj: d.reactor.root, name: 'REACTOR CORE', tip: () => 'It pulses with the charge it holds.', click: () => { d.reactor.hot = 0.8; sfx('pulse', 1.4, 0.3); } });
+    // ---- the power drum: grab and flick it, scroll it, click a cartridge; the plunger fires
+    const W = this.wheel;
+    this.hot({ obj: d.drum.root, name: 'POWER DRUM', key: '[ ]', tip: () => this.powerTip(), wheel: (dy) => W.turn(dy > 0 ? 1 : -1),
+      drag: {
+        down: () => W.grab(),
+        move: (_h, _dx, dy) => { const cv = d.view.canvas, k = cv.getBoundingClientRect().height / d.view.H; W.dragBy(dy / (k * 13 * d.sc * 1.2)); },
+        up: () => W.release(),
+      },
+      click: (h) => {
+        // a click on the cartridge in front fires; one above or below turns the drum to it
+        const y = h.local.y - 18;
+        if (Math.abs(y) < 5) { if (W.trigger()) d.plunger.press(); setTimeout(() => d.plunger.release(), 120); } else W.turn(y > 0 ? -1 : 1);
+      } });
+    this.hot({ obj: d.plunger.root, name: 'FIRE', key: 'F', tip: () => this.powerTip(), click: () => { d.plunger.press(); setTimeout(() => d.plunger.release(), 140); W.trigger(); } });
+    this.hot({ obj: d.readout.mesh, name: 'POWER READOUT', tip: () => this.powerTip() });
+    // ---- the skill tree: the cells counter and the blueprint tube on the ledge
+    this.hot({ obj: d.cells.root, name: 'CORE CELLS', key: 'K', tip: () => this.skillsTip(), click: () => this.openSkills() });
+    this.hot({ obj: d.tube.root, lift: d.tube.body, name: 'BLUEPRINT TUBE · SKILL TREE', key: 'K', tip: () => this.skillsTip(), click: () => { sfx('open', 1.2, 0.5); this.openSkills(); } });
+    this.hot({ obj: d.clock.root, name: 'CHRONOMETER', tip: () => { const cl = this.climate; return `Local time on this world. Night brings the hunters out.${cl ? ` Day ${cl.day}, ${SEASON[cl.season].name}.` : ''}`; } });
+    this.hot({ obj: d.ground.root, name: 'HELD GROUND', tip: () => `${(c.conquest() * 100).toFixed(1)}% of this region's land is yours. Hold ${Math.round(c.hive.winAt * 100)}% and break every rival heart to take the region.` });
+    d.beacons.forEach((b) => this.hot({ obj: b.root, name: 'ALARM BEACON', tip: () => 'Turns when Unit 07 is under attack.' }));
+    this.hot({ obj: d.menuLever.root, name: 'PAUSE LEVER · MENU', key: 'ESC', tip: () => 'Stop the survey: the menu, settings, save.', click: () => { d.menuLever.throw(); sfx('click', 0.7, 0.8); setTimeout(() => c.openMenu(), 160); } });
+    this.hot({ obj: d.tuckLever.root, name: d.tucked ? 'RAISE THE DESK' : 'TUCK THE DESK AWAY', key: '`', tip: () => 'Lower the whole console for a clean view (or raise it again).', click: () => this.tuck() });
+    // ---- BUILD tools
+    const fac = () => g()?.factory;
+    this.hot({ obj: P.hat.root, lift: P.hat.body, name: 'HARD HAT · WORKS CATALOGUE', key: 'B', tip: () => `Miners, belts, machines, power, storage, land and water works.${g()?.run.skills.has('works') ? '' : '<div class="tip-warn">Unlock Field Works on the skill tree</div>'}`, click: () => this.buildToggle() });
+    this.hot({ obj: P.tin.root, lift: P.tin.body, name: 'PAINT TIN · ASSEMBLY BAY', key: 'V', tip: () => 'Refit Unit 07: paint, plating, lens and name.', click: () => c.openMirror() });
+    this.hot({ obj: P.clip.root, lift: P.clip.body, name: 'CLIPBOARD · PRODUCTION REPORT', key: 'O', tip: () => 'Items made and used per minute, the power grids, and the machines holding the line up.', click: () => fac()?.ui.toggleStats() });
+    this.hot({ obj: P.radio.root, lift: P.radio.body, name: 'HANDSET · CREW ROSTER', key: 'N', tip: () => 'Your workers: jobs, appetites, moods. Assign them to haul, operate, mine, forage or keep a pen.', click: () => fac()?.ui.toggleCrew() });
+    this.hot({ obj: d.works.root, name: 'WORKS METER', tip: () => { const f = fac(); if (!f) return ''; const p = f.power(); return `Power ${Math.round(p.demand)} of ${Math.round(p.cap)} MW on ${p.grids} grid${p.grids === 1 ? '' : 's'}. ${f.buildings.length} structures, ${f.workers.active.length} workers on jobs.`; }, click: () => fac()?.ui.toggleStats() });
+    this.hot({ obj: P.bobble.root, lift: P.bobble.body, name: 'DR. CALDER (BOBBLEHEAD)', tip: () => 'Corps issue, 1957. He nods at everything.', click: () => { P.bobble.bob(); sfx('call', 1.6, 0.25); } });
+    this.hot({ obj: P.mug.root, lift: P.mug.body, name: 'COFFEE', tip: () => 'Calder\'s. Long cold.', click: () => { P.mug.jostle(3); sfx('squelch', 1.8, 0.25); } });
+    // ---- COMMAND
+    this.hot({ obj: d.table.root, name: 'HOLO TABLE', tip: () => 'The region in relief. Click to look there, right-click to send the selected units, drag to tilt it.',
+      drag: { move: (_h, dx, dy) => { d.table.yawT += dx * 0.012; d.table.pitchT = Math.max(-0.25, Math.min(0.35, d.table.pitchT + dy * 0.006)); } },
+      click: (h) => this.tableClick(h.point, 0), alt: (h) => this.tableClick(h.point, 2) });
+    this.hot({ obj: d.crt.root, name: 'TELEMETRY', tip: () => 'Unit 07 and whatever it has linked. The knobs set GAIN and TUNE (green or amber tubes).' });
+    this.hot({ obj: d.crt.knobs[0], name: 'GAIN', tip: () => 'Phosphor brightness for every screen on the console. Drag or scroll.', wheel: (dy) => crtSettings.setGain(crtSettings.gain - Math.sign(dy) * 0.08),
+      drag: { move: (_h, dx, dy) => crtSettings.setGain(crtSettings.gain + (dx - dy) * 0.006) }, click: () => crtSettings.setGain(crtSettings.gain >= 0.95 ? 0.2 : crtSettings.gain + 0.2) });
+    this.hot({ obj: d.crt.knobs[1], name: 'TUNE', tip: () => 'Swap the tubes: green P1 phosphor or amber P3.', click: () => { crtSettings.setTint(crtSettings.tint >= 0.5 ? 0 : 1); sfx('click', 0.8, 0.5); }, wheel: () => crtSettings.setTint(crtSettings.tint >= 0.5 ? 0 : 1) });
+    this.hot({ obj: P.crate.root, lift: P.crate.body, name: 'AMMO CRATE · ORDNANCE BENCH', key: 'F2', tip: () => 'Design weapons from parts (frame, power, barrel, ammo), then issue them to Unit 07, robots and engineered creatures.', click: () => this.openBench() });
+    this.hot({ obj: P.horn.root, lift: P.horn.body, name: 'RALLY HORN', key: 'G', tip: () => 'Allies rally to Unit 07 and follow it; blow again to release them.', click: () => this.rally() });
+    this.hot({ obj: P.boom.root, lift: P.boom.body, name: P.boom.open ? 'SELF-DESTRUCT' : 'GUARDED SWITCH', tip: () => 'Corps standard. Lift the guard first.', click: (h) => this.selfDestruct(h.local) });
+    // ---- BIO
+    this.hot({ obj: P.jar.root, lift: P.jar.body, name: 'SPECIMEN JAR · BIOWORKS LEDGER', key: 'J', tip: () => 'Production per minute, upkeep, every producer, plant works, vats and habitats.', click: () => this.ledger() });
+    this.hot({ obj: P.scope.root, lift: P.scope.body, name: 'MICROSCOPE · GENE LAB', key: 'L', tip: () => 'Put an absorbed species in the tank and rebuild it limb by limb.', click: () => this.openLab() });
+    this.hot({ obj: P.scroll.root, lift: P.scroll.body, name: 'FAMILY TREE', key: 'T', tip: () => 'Every species you have met, made or watched branch off.', click: () => c.openTree() });
+    this.hot({ obj: P.die.root, lift: P.die.body, name: 'LUCKY DIE', tip: () => 'Corps regulations forbid it.', click: () => { const n = P.die.roll(); sfx('crack', 1.6, 0.3); setTimeout(() => { sfx('hit', 1.4, 0.3); this.tray(`The die says <b>${n}</b>.`); }, 900); } });
+    this.hot({ obj: P.fan.root, lift: P.fan.body, name: 'DESK FAN', tip: () => 'Three speeds and off.', click: () => { P.fan.speed = (P.fan.speed + 1) % 4; sfx('click', 1.3, 0.4); } });
+    // ---- SURVEY
+    for (const lens of [P.lens, P.lens2]) this.hot({ obj: lens.root, lift: lens.body, name: 'MAGNIFIER · HABITAT OVERLAY', key: 'H', tip: () => 'Moisture, fertility, life and danger inked over the ground. Each click shows the next layer, then off.', click: () => this.eco()?.cycleOverlay() });
+    this.hot({ obj: P.bino.root, lift: P.bino.body, name: 'BINOCULARS · FIELD SURVEY', key: 'M', tip: () => 'The census sheet: the season, the water, every species\' numbers and how they are doing.', click: () => this.eco()?.toggleSurvey() });
+    this.hot({ obj: d.orrery.root, name: 'ORRERY · ALMANAC', tip: () => this.almanacTip(), click: () => sfx('click', 1.5, 0.3) });
+    this.hot({ obj: P.cal.root, lift: P.cal.body, name: 'CALENDAR', tip: () => this.almanacTip(), click: () => { P.cal.jostle(3); sfx('click', 1.8, 0.3); } });
+  }
+
+  // ------------------------------------------------------------------ modes
+  /** switch the presentation: the desk reconfigures, the mode's panels open, the last mode's close */
+  setMode(m: Mode, quiet = false) {
+    const prev = this.mode;
+    if (m === prev && !quiet) return;
+    this.mode = m;
+    this.desk.setMode(m);
+    if (!quiet) { sfx('click', 0.6, 0.9); sfx('crack', 0.5, 0.3); this.desk.knob.kick(); }
+    FLOAT.quiet = m === 'explore';
+    document.body.dataset.deskMode = m;
+    const g = this.c.game, f = g?.factory, ev = this.eco(), bio = this.bio();
+    // close what the last mode opened
+    if (prev !== m) {
+      if (this.opened.build && f?.build.active) f.build.toggle();
+      if (this.opened.ledger && bio?.ledgerOpen) bio.toggleLedger(false);
+      if (this.opened.overlay && ev && ev.mode !== 'off') ev.setOverlay('off');
+      if (this.opened.survey) ev?.toggleSurvey(false);
+      if (prev === 'build' && f) { if (f.ui.showStats) f.ui.toggleStats(); if (f.ui.showCrew) f.ui.toggleCrew(); }
+      this.opened = { build: false, ledger: false, overlay: false, survey: false };
     }
+    if (m === 'build' && f) {
+      if (!f.build.active) { if (g?.run.skills.has('works')) { f.build.toggle(); this.opened.build = true; } else if (!quiet) this.tray('Buy <b>Field Works</b> on the skill tree to open the catalogue', 'warn'); }
+    }
+    if (m === 'bio') {
+      if (bio && !bio.ledgerOpen) { bio.toggleLedger(true); this.opened.ledger = true; }
+      if (ev && ev.mode === 'off') { ev.setOverlay('life'); this.opened.overlay = true; }
+    }
+    if (m === 'survey' && ev && ev.mode === 'off') { ev.setOverlay('water'); this.opened.overlay = true; }
+    if (m === 'explore' && f?.build.active) f.build.toggle();
+    this.desk.table.scan = m === 'survey' ? 1 : 0.3;
+    this.cssVars();
   }
-  /** tooltips and toasts: whole device pixels per font pixel, as large as the console's art pixels on high-DPI and
-   *  1080p+ screens, one device pixel on smaller 1x screens */
-  private textScale(k: number, dpr: number) {
-    const fk = dpr >= 1.5 || innerHeight >= 1000 ? Math.round(k) : Math.max(1, Math.round(k / 2));
-    document.documentElement.style.setProperty('--tf', String(fk / dpr));
-  }
-  /** toasts read just under the console's top stack */
-  private toastTop(y: number) { document.documentElement.style.setProperty('--hud-top', `${Math.round(y)}px`); }
+  /** Esc: back to EXPLORE (true when that was something to do) */
+  escape() { if (this.desk.tucked) { this.tuck(); return true; } if (this.mode !== 'explore') { this.setMode('explore'); return true; } return false; }
+  private tuck() { const d = this.desk; d.tucked = !d.tucked; d.tuckLever.on = d.tucked; d.tuckLever.throw(); sfx(d.tucked ? 'close' : 'open', 0.8, 0.6); }
 
-  // ------------------------------------------------------------------ keys and switches
-  /** keys the console owns (K skills, L lab, G rally allies, and the selector's turn / fire keys); true when used */
+  // ------------------------------------------------------------------ keys
+  /** keys the console owns; true when used */
   key(k: string) {
-    if (k === 'k') { this.skillSw.flick(); this.openSkills(); return true; }
-    if (k === 'b' && this.c.game?.factory) { this.buildKey(); return true; }
-    if (k === 'l' && this.c.game?.menu !== 'build') { this.openLab(); return true; }
-    if (k === 'g') {
-      const h = this.c.hive, why = h.rally();
-      if (why) { sfx('deny'); toast(why, 'warn', 1400); } else toast(h.follow ? 'ALLIES RALLY TO UNIT 07 &middot; [G] TO RELEASE' : 'ALLIES RELEASED: THEY ROAM AND CLAIM GROUND', 'good', 2200);
-      return true;
+    const n = '12345'.indexOf(k);
+    if (n >= 0 && k.length === 1) {
+      // a building's own numbered commands (the brood's gestation list) keep their keys
+      if (!this.c.commands().some((cm) => cm && cm.key === k && !isAbilityCmd(cm))) { this.setMode(this.mode === MODES[n] && n > 0 ? 'explore' : MODES[n]); return true; }
     }
+    if (k === '`') { this.tuck(); return true; }
+    if (k === 'k') { this.openSkills(); return true; }
+    if (k === 'b' && this.c.game?.factory) { this.buildToggle(); return true; }
+    if (k === 'l' && this.c.game?.menu !== 'build') { this.openLab(); return true; }
+    if (k === 'g') { this.rally(); return true; }
     return this.wheel.key(k);
   }
-  /** build mode on and off (once Field Works is bought) */
-  private buildKey() {
+  /** B: the works catalogue (and the BUILD desk with it) */
+  private buildToggle() {
     const g = this.c.game, f = g?.factory; if (!g || !f) return;
-    if (!f.build.active && !g.run.skills.has('works')) { sfx('deny'); toast('Buy <b>Field Works</b> on the skill tree to open the catalogue', 'warn', 2200); return; }
-    f.build.toggle();
+    if (!f.build.active && !g.run.skills.has('works')) { sfx('deny'); this.tray('Buy <b>Field Works</b> on the skill tree to open the catalogue', 'warn'); return; }
+    if (f.build.active) { f.build.toggle(); if (this.mode === 'build') this.setMode('explore'); }
+    else { if (this.mode !== 'build') this.setMode('build'); if (!f.build.active) f.build.toggle(); }
   }
-  private openSkills() {
-    const g = this.c.game, f = g?.opts.hooks?.openSkills;
-    if (g && f) f(g); else toast('The skill tree is not connected', 'warn', 1600);
+  private openSkills() { const g = this.c.game, f = g?.opts.hooks?.openSkills; if (g && f) f(g); else this.tray('The skill tree is not connected', 'warn'); }
+  private openLab() { const g = this.c.game, f = g?.opts.hooks?.openLab; if (g && f) f(g); else this.c.openBuilder(); }
+  private openBench() { const g = this.c.game; if (g && g.engine.screen === g) import('../robots/weapons/bench').then((m) => m.openBench(g.engine, g)); }
+  private ledger() { const b = this.bio(); if (b) b.toggleLedger(); else this.tray('The bioworks are not running here', 'warn'); }
+  private rally() {
+    const h = this.c.hive, why = h.rally();
+    this.desk.props.horn.jostle(2);
+    if (why) { sfx('deny'); this.tray(why, 'warn'); } else { sfx('call', 0.5, 0.6); this.tray(h.follow ? 'ALLIES RALLY TO UNIT 07 &middot; [G] TO RELEASE' : 'ALLIES RELEASED: THEY ROAM AND CLAIM GROUND', 'good'); }
   }
-  private openLab() {
-    const g = this.c.game, f = g?.opts.hooks?.openLab;
-    if (g && f) f(g); else this.c.openBuilder();
+  private selfDestruct(local: THREE.Vector3) {
+    const b = this.desk.props.boom;
+    if (!b.open || local.z < -3) { b.toggleGuard(); sfx('click', 0.7, 0.6); return; }
+    b.press(); sfx('deny'); sfx('hit', 0.6, 0.4);
+    const lines = ['SELF-DESTRUCT REFUSED. UNIT 07 HAS A LOT TO LIVE FOR.', 'REQUEST DENIED BY THE UNIT. IT WOULD RATHER NOT.', 'SELF-DESTRUCT: NO. (THE UNIT HAS FILED A COMPLAINT.)'];
+    this.tray(lines[Math.floor(Math.random() * lines.length)], 'warn');
+    setTimeout(() => { if (b.open) b.toggleGuard(); }, 2600);
   }
+  private eco() { return (this.c.game as unknown as { ecoView?: EcoV } | undefined)?.ecoView ?? null; }
+  private bio() { return (this.c.game as unknown as { bioUI?: BioU } | undefined)?.bioUI ?? null; }
+  /** the message tray: one compact line at a time (kit's toast, kept from piling up by style.css) */
+  private tray(html: string, kind: 'info' | 'warn' | 'good' = 'info') { toast(html, kind, 2200); }
+
+  // ------------------------------------------------------------------ tips
   private points() { return this.c.game?.run.skills.points ?? 0; }
-  /** skills it could buy right now */
-  private buyable() {
-    const run = this.c.game?.run; if (!run) return [];
-    return SKILLS.filter((s) => !run.skills.why(s.id, run.res));
+  private buyable() { const run = this.c.game?.run; if (!run) return []; return SKILLS.filter((s) => !run.skills.why(s.id, run.res)); }
+  private skillsTip() { const n = this.points(), b = this.buyable(); return `Build Unit 07 up, part by part, power by power. ${n} core cell${n === 1 ? '' : 's'} to spend.${b.length ? ` Ready now: ${b.slice(0, 4).map((s) => s.name).join(', ')}${b.length > 4 ? '…' : ''}` : ''}`; }
+  private resTip(r: Res) { const run = this.c.game?.run, h = this.c.hive; return `${Math.floor(run?.res[r] ?? 0)} / ${h.cap(r)} in the hold. ${SOURCE[r]}`; }
+  private powerTip() {
+    const a = this.wheel.current; if (!a) return 'No field powers installed: buy Telekinesis, Gravity Slam, Repulse and the rest on the skill tree to load the drum.';
+    const d = ABILITIES[a], why = this.c.hive.can(a);
+    return `<b>${d.name}</b> [${d.key}]: ${d.desc.replace(/<[^>]+>/g, '')}${why ? `<div class="tip-warn">${why}</div>` : ''}<div class="sub">Drag or scroll the drum to choose; the plunger or F arms it.</div>`;
   }
-  private skillsTip() {
-    const n = this.points(), b = this.buyable();
-    return `<h4>Skill Tree</h4>Build Unit 07 up, part by part, power by power. ${n} core cell${n === 1 ? '' : 's'} to spend.${b.length ? `<div class="sub" style="margin-top:3px">Ready now: ${b.slice(0, 4).map((s) => s.name).join(', ')}${b.length > 4 ? '…' : ''}</div>` : ''}`;
+  private almanacTip() {
+    const c = this.climate; if (!c) return 'The planet, its sun and its two moons.';
+    const S = SEASON[c.season], next = (s: Parameters<Climate['until']>[0]) => Math.ceil(c.until(s) / c.dayLength);
+    return `Year ${c.year}, day ${c.day}: <b>${S.name}</b> (${Math.round(c.seasonT * 100)}% through). ${Math.round(c.temp)}°C, ${c.weather}. Eclipse in ${next('eclipse')} days · bloodtide in ${next('bloodtide')} days.`;
   }
-  private resTip(r: Res) {
-    const run = this.c.game?.run, h = this.c.hive;
-    return `<h4>${r}</h4>${Math.floor(run?.res[r] ?? 0)} / ${h.cap(r)} in the hold. ${SOURCE[r]}`;
-  }
-  /** hull from the golem's controller if it keeps one, else the hive's fallback */
   private hull(): [number, number] {
     const pl = this.c.game?.player as any, ch = this.c.game?.child as any, h = this.c.hive;
     if (pl && typeof pl.hull === 'number') return [pl.hull, pl.hullMax || h.hullMax];
     if (ch && typeof ch.hp === 'number') return [ch.hp, ch.maxHp ?? ch.hpMax ?? ch.hullMax ?? h.hullMax];
-    if (ch && typeof ch.hull === 'number') return [ch.hull, ch.hullMax ?? ch.maxHull ?? h.hullMax];
     return [h.hull, h.hullMax];
   }
 
-  // ------------------------------------------------------------------ tick
+  // ------------------------------------------------------------------ per frame
   update(dt: number) {
     this.t += dt;
-    const c = this.c, h = c.hive, run = c.game?.run;
+    const c = this.c, h = c.hive, d = this.desk, run = c.game?.run;
     for (const r of RES) if (this.flashT[r] > 0) this.flashT[r] -= dt;
     this.cellHot = Math.max(0, this.cellHot - dt);
-    if (Math.floor(this.t * 8) !== Math.floor((this.t - dt) * 8)) {
-      h.countUnits();
-      // the touch class can arrive after the console is built (the first touch)
-      if (Math.floor(this.t * 2) !== Math.floor((this.t - dt) * 2)) this.layout();
-      // the centre console retracts while a genome is being taken apart
-      const fold = !!document.querySelector('.harvest');
-      if (fold !== this.root.classList.contains('fold')) { this.root.classList.toggle('fold', fold); sfx(fold ? 'close' : 'open', 1, 0.4); }
-      for (const r of RES) {
-        const v = run?.res[r] ?? 0, cap = h.cap(r), f = v / cap;
-        this.odo[r].set(v);
-        this.capT[r].set('/' + cap, CR[3]);
-        this.fill[r].style.width = u(Math.round(Math.max(0, Math.min(1, f)) * 16));
-        this.rlamp[r].set(f >= 0.999 ? 'blink' : this.flashT[r] > 0 ? 'on' : f >= 0.85 ? 'dim' : 'off', f >= 0.999 ? 'r' : f >= 0.85 ? 'a' : 'g');
-      }
-      const [hp, hm] = this.hull(), hf = Math.max(0, Math.min(1, hp / Math.max(1, hm)));
-      this.hullFill.style.width = u(Math.round(hf * 40));
-      this.hullFill.classList.toggle('low', hf < 0.3);
-      this.hullTxt.set(`${Math.ceil(hp)}/${Math.round(hm)}`, hf < 0.3 ? RD[6] : PH[8], true);
-      this.chgNix.set(h.res.charge); this.chgMax.set('/' + h.chargeCap, CR[3]);
-      const pts = this.points();
-      this.cellNix.set(pts);
-      const ready = this.buyable().length > 0;
-      this.cellLamp.set(this.cellHot > 0 ? 'fast' : pts > 0 ? (ready ? 'blink' : 'on') : 'off');
-      this.skillSw.lamp.set(ready ? 'blink' : pts > 0 ? 'on' : 'dim', ready ? 'g' : 'a');
-      const q = c.conquest();
-      this.terTxt.set(`${Math.floor(q * 100)}%`, q >= h.winAt ? AM[6] : PH[8], true);
-      this.terFill.style.width = u(Math.round(Math.max(0, Math.min(1, q / 0.6)) * 38));
-      const d = c.world.day, hh = Math.floor(d * 24), mi = Math.floor((d * 24 - hh) * 60), night = d > 0.75 || d < 0.22;
-      this.clockNix.set(hh * 100 + mi);
-      this.dayLamp.set(night ? 'dim' : 'on', night ? 'g' : 'a');
-      this.colon.classList.toggle('off', Math.floor(this.t * 2) % 2 === 1);
-      const fac = c.game?.factory;
-      if (fac) {
-        const pw = fac.power(), load = pw.cap ? pw.demand / pw.cap : 0;
-        this.facPwr.set(`${Math.round(pw.demand)}/${Math.round(pw.cap)}MW`, load > 0.95 ? RD[6] : load > 0.75 ? AM[6] : PH[8], true);
-        this.facGauge.style.width = u(Math.round(Math.min(1, load) * (FAC.sw - 4)));
-        this.facGauge.classList.toggle('low', load > 0.95);
-        let st = 0; for (const v of Object.values(fac.inventory)) st += v;
-        this.facSto.set(`STORE ${Math.floor(st)}`, PH[7], true);
-        const W = fac.workers.list.length, hungry = fac.workers.list.some((w) => w.job !== 'idle' && w.hunger < 0.3);
-        this.facCrew.set(`CREW ${fac.workers.active.length}/${W}`, hungry ? AM[6] : PH[7], true);
-        const bad = fac.buildings.some((b) => b.status === 'nopower');
-        this.facLamp.set(bad || load > 0.95 ? 'blink' : fac.build.active ? 'on' : pw.demand > 0 ? 'dim' : 'off', bad || load > 0.95 ? 'r' : 'g');
-      }
-    }
-    if ((this.ecoT -= dt) <= 0) {
-      this.ecoT = 0.3;
-      const e = c.world.eco, lv = e.level, k = Math.max(0, Math.min(1, (lv + 0.4) / 0.9)), hh = Math.round(k * ECO.th);
-      if (hh !== this.ecoH) { this.ecoH = hh; this.ecoStage.style.top = u(ECO.ty + ECO.th - hh); this.ecoStage.style.height = u(hh); }
-      this.ecoLamp.set(lv > 0.3 || lv < -0.25 ? 'blink' : 'off', lv > 0.3 ? 'a' : 'r');
-      // a toggle's lamp burns while its sheet or overlay is up
-      const v = ev2(c), ov = !!v && !!v.mode && v.mode !== 'off', sv = !!document.querySelector('.eco-sheet');
-      if (ov !== this.ecoOn[0]) { this.ecoOn[0] = ov; this.ecoOv.lamp.set(ov ? 'on' : 'dim'); }
-      if (sv !== this.ecoOn[1]) { this.ecoOn[1] = sv; this.ecoSv.lamp.set(sv ? 'on' : 'dim'); }
-    }
-    this.chgGauge.set(h.res.charge / Math.max(1, h.chargeCap)); this.chgGauge.update(dt);
-    this.minimap(dt);
-    this.selection();
-    this.commands();
     this.wheel.update(dt);
+    if (this.wheel.ticks) d.drum.tick();
+    // ---- the drum and its readout
+    if (d.drum.root.userData.load !== this.wheel.loadN) { d.drum.root.userData.load = this.wheel.loadN; d.drum.load(this.wheel.order.map((a) => this.wheel.icon(a))); }
+    d.drum.update(dt, this.wheel.ang, this.wheel.states(this.t));
+    const armed = c.armed?.() ?? null, cur = this.wheel.current, why = cur ? h.can(cur) : 'none';
+    d.plunger.update(dt, armed && armed === cur ? 'armed' : why ? 'dead' : 'idle', this.t);
+    this.readout();
+    // ---- gauges
+    const cap = Math.max(1, h.chargeCap);
+    d.charge.set(h.res.charge / cap); d.charge.setMark(cur && ABILITIES[cur].charge ? Math.min(1, powerCost(cur) / cap) : null);
+    d.reactor.level = Math.min(1, h.res.charge / cap);
+    const [hp, hm] = this.hull(), hf = Math.max(0, Math.min(1, hp / Math.max(1, hm)));
+    d.hull.set(hf);
+    if (this.lastHull >= 0 && hp < this.lastHull - 0.5) { const k = Math.min(3, (this.lastHull - hp) / Math.max(10, hm * 0.05)); d.jostle(0.6 + k); this.alarmT = 4; }
+    this.lastHull = hp;
+    this.alarmT = Math.max(0, this.alarmT - dt);
+    const shake = (c.cam as unknown as { shakeT?: number; shakeA?: number });
+    if ((shake.shakeT ?? 0) > 0.05 && Math.random() < dt * 8) d.jostle(Math.min(2, (shake.shakeA ?? 0.3) * 2));
+    for (const b of d.beacons) b.on = this.alarmT > 0 || hf < 0.25 ? 1 : 0;
+    if ((this.slow -= dt) <= 0) { this.slow = 0.125; this.slowUpdate(hp, hm, hf); }
+    // ---- the wings' instruments
+    if (d.mode === 'command' || d.mode === 'survey') this.tableUpdate(dt);
+    if ((this.crtT -= dt) <= 0) { this.crtT = 0.25; if (d.mode === 'command') this.crtPaint(); }
+    this.selection();
+    // ---- hover tag
+    this.tagUpdate(dt);
+    d.update(dt);
+    d.render();
+    void run;
   }
-
-  // ------------------------------------------------------------------ terrain scope
-  private minimap(dt: number) {
-    this.mmT -= dt;
-    if (this.mmT > 0) return;
-    this.mmT = 0.2;
-    const c = this.c, w = c.world, R = w.region, N = R.N, g = this.mmG, k = N / MM;
-    const col = (v: number) => [(v >> 16) & 255, (v >> 8) & 255, v & 255];
-    if (!this.mmBase) {
-      // terrain as phosphor luminance: height and cliff edges read as brighter traces
-      this.mmBase = new Uint8ClampedArray(MM * MM * 3);
-      const av = w.terrain.avg;
-      for (let y = 0; y < MM; y++) for (let x = 0; x < MM; x++) {
-        const i = Math.floor(y * k) * N + Math.floor(x * k);
-        const blk = R.b[i];
-        const wet = R.h[i] < R.water;
-        const cc = wet ? R.pal.water : av[[0, 27, 3, 4, 7, 9, 10, 11, 13, 15, 17, 19, 20, 30][blk] ?? 0];
-        const lum = (((cc >> 16) & 255) * 0.3 + ((cc >> 8) & 255) * 0.59 + (cc & 255) * 0.11) / 255;
-        const edge = x > 0 && R.h[i] > R.h[Math.floor(y * k) * N + Math.floor((x - 1) * k)] + 0.9;
-        const v = wet ? ((x + y) % 3 === 0 ? 2 : 1.4) : 2 + lum * 1.6 + (R.h[i] / 20) * 1.4 + (edge ? 1.2 : 0);
-        const p = col(PH[Math.max(0, Math.min(6, Math.round(v)))]);
-        this.mmBase.set(p, (y * MM + x) * 3);
-      }
+  private slowUpdate(hp: number, hm: number, hf: number) {
+    const c = this.c, h = c.hive, d = this.desk, run = c.game?.run;
+    h.countUnits();
+    // the centre console stays out of the way while a genome is being taken apart
+    const fold = !!document.querySelector('.harvest');
+    this.root.classList.toggle('fold', fold);
+    for (const r of RES) {
+      const v = run?.res[r] ?? 0, cap = h.cap(r), f = v / cap;
+      d.resCount[r].set(v); d.vessels[r].set(f);
+      const cp = d.resCap[r], key = '/' + cap;
+      if (cp.key !== key) { cp.key = key; cp.clear(); text3s(cp.p, key, Math.round((18 - textW3s(key)) / 2), 0, R.bone[3], R.ink[0]); cp.flush(); }
+      const lm = d.resLamp[r]; lm.col = f >= 0.999 ? R.stampRed[3] : f >= 0.85 ? R.glowAmber[3] : R.glowTeal[3]; lm.state = f >= 0.999 ? 'blink' : this.flashT[r] > 0 ? 'on' : f >= 0.85 ? 'on' : 'off';
     }
-    const d = this.mmImg.data, base = this.mmBase, vis = c.vision.vis, seen = c.vision.seen;
-    const mine = col(PH[8]), mineE = col(PH[7]), theirs = col(AM[4]), theirsD = col(AM[2]), dark = col(PH[1]), grid = col(PH[3]);
-    for (let y = 0; y < MM; y++) for (let x = 0; x < MM; x++) {
-      const i = Math.floor(y * k) * N + Math.floor(x * k), o = (y * MM + x) * 4, b = (y * MM + x) * 3;
-      let r = base[b], gg = base[b + 1], bb = base[b + 2];
-      if (w.moss[i] > 0.5) { const m = w.moss[i] > 0.9 || (x + y) % 3 === 0 ? mine : mineE; r = m[0]; gg = m[1]; bb = m[2]; }
-      else if (w.creep[i] > 0.5) { const m = (x + y) % 2 ? theirs : theirsD; r = m[0]; gg = m[1]; bb = m[2]; }
-      if (!seen[i]) { const gr = x % 12 === 0 || y % 12 === 0 ? ((x + y) % 2 ? grid : dark) : dark; r = gr[0]; gg = gr[1]; bb = gr[2]; } else if (!vis[i]) { r *= 0.5; gg *= 0.5; bb *= 0.5; }
-      d[o] = r; d[o + 1] = gg; d[o + 2] = bb; d[o + 3] = 255;
-    }
-    g.putImageData(this.mmImg, 0, 0);
-    const blink = Math.floor(this.t * 3) % 2 === 0;
-    for (const cr of w.creatures) {
-      if (cr.dead || !cr.visibleNow) continue;
-      const hostile = cr.faction === 'rival' || (cr.faction === 'wild' && cr.diet === 'carn');
-      if (hostile && !blink && cr.faction === 'rival') continue;
-      g.fillStyle = cr.faction === 'veyr' ? '#e0ffe0' : cr.faction === 'rival' ? '#ff5a3a' : cr.diet === 'carn' ? '#ffa432' : '#d0c8a4';
-      const s = cr.size > 1.5 ? 2 : 1;
-      g.fillRect(Math.floor(cr.x / k) - (s >> 1), Math.floor(cr.z / k) - (s >> 1), s, s);
-    }
-    for (const hv of w.hives) for (const b of hv.buildings) {
-      if (!b.visibleNow) continue;
-      g.fillStyle = hv.faction === 'veyr' ? '#ffffff' : '#ff6a4a';
-      const s = b.def.kind === 'core' ? 3 : 2;
-      g.fillRect(Math.floor(b.x / k) - (s >> 1), Math.floor(b.z / k) - (s >> 1), s, s);
-    }
-    // rival programmes: their structures as livery glyphs (a red star for the Soviets, a gold five-pointed star for the
-    // PRC, a compass rose for an expedition), the HQ lander ringed; their machines as dots; Corps robots as pale dots
-    const fac = c.game?.factions, vis2 = c.vision.vis, seen2 = c.vision.seen;
-    const at = (x: number, z: number) => Math.min(N - 1, Math.max(0, Math.floor(z))) * N + Math.min(N - 1, Math.max(0, Math.floor(x)));
+    this.plate(d.hullTxt, `${Math.ceil(hp)}/${Math.round(hm)}`, hf < 0.3 ? R.stampRed[3] : R.bone[4]);
+    this.plate(d.chgTxt, `${Math.floor(h.res.charge)}/${h.chargeCap}`, R.bone[4]);
+    const pts = this.points(), ready = this.buyable().length > 0;
+    d.cells.set(pts);
+    d.cellLamp.state = this.cellHot > 0 ? 'fast' : pts > 0 ? (ready ? 'blink' : 'on') : 'off';
+    const dd = c.world.day, hh = Math.floor(dd * 24), mi = Math.floor((dd * 24 - hh) * 60);
+    d.clock.set(hh * 100 + mi);
+    d.ground.set(Math.floor(c.conquest() * 100));
+    // works meter
+    const fac = c.game?.factory;
     if (fac) {
-      for (const st of fac.structures) {
-        if (st.dead || !seen2[at(st.x, st.z)]) continue;
-        const gl = GLYPH[st.faction as string]; if (!gl) continue;
-        const gx = Math.floor(st.x / k), gy = Math.floor(st.z / k), hq = st.kind === 'lander';
-        if (hq) { g.fillStyle = 'rgba(20,16,12,0.85)'; g.fillRect(gx - 4, gy - 4, 9, 9); g.fillStyle = blink ? gl.col : gl.dim; g.fillRect(gx - 4, gy - 4, 9, 1); g.fillRect(gx - 4, gy + 4, 9, 1); g.fillRect(gx - 4, gy - 4, 1, 9); g.fillRect(gx + 4, gy - 4, 1, 9); }
-        else { g.fillStyle = 'rgba(20,16,12,0.7)'; for (const [px, py] of gl.px) g.fillRect(gx + px - 2 + 1, gy + py - 2 + 1, 1, 1); }
-        g.fillStyle = gl.col;
-        for (const [px, py] of gl.px) g.fillRect(gx + px - 2, gy + py - 2, 1, 1);
-      }
+      const pw = fac.power(), load = pw.cap ? pw.demand / pw.cap : 0;
+      d.works.gauge.set(Math.min(1, load));
+      let st = 0; for (const v of Object.values(fac.inventory)) st += v;
+      d.works.store.set(st); d.works.crew.set(fac.workers.active.length);
+      const bad = fac.buildings.some((b) => b.status === 'nopower');
+      d.works.lamp.state = bad || load > 0.95 ? 'blink' : pw.demand > 0 ? 'on' : 'off';
     }
-    const units = (c.game?.robots ?? []) as { x: number; z: number; dead: boolean; faction: string }[];
-    const dot = (u: { x: number; z: number; dead: boolean; faction: string }) => {
-      if (u.dead || !vis2[at(u.x, u.z)]) return;
-      const gl = GLYPH[u.faction];
-      g.fillStyle = u.faction === 'veyr' ? '#d8f0dc' : gl ? (blink ? gl.col : gl.dim) : '#ff6a4a';
-      g.fillRect(Math.floor(u.x / k), Math.floor(u.z / k), u.faction === 'veyr' ? 1 : 2, u.faction === 'veyr' ? 1 : 2);
-    };
-    for (const u of units) dot(u);
-    if (fac?.stubs.length) for (const u of fac.stubs) dot(u as unknown as { x: number; z: number; dead: boolean; faction: string });
-    // Unit 07: a bright cross that pulses
-    const gp = c.hive.golem();
-    if (gp) {
-      const gx = Math.floor(gp.x / k), gy = Math.floor(gp.z / k);
-      g.fillStyle = blink ? '#ffffff' : '#c0ffc6';
-      g.fillRect(gx - 1, gy, 3, 1); g.fillRect(gx, gy - 1, 1, 3);
-      if (blink) { g.fillStyle = 'rgba(192,255,198,0.5)'; g.fillRect(gx - 2, gy, 1, 1); g.fillRect(gx + 2, gy, 1, 1); g.fillRect(gx, gy - 2, 1, 1); g.fillRect(gx, gy + 2, 1, 1); }
-    }
-    // camera footprint, dotted
-    const cam = c.cam, t = cam.target;
-    const hw = cam.dist * 0.62, hd = cam.dist * 0.42;
-    const sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw);
-    const pts = [[-hw, -hd * 1.4], [hw, -hd * 1.4], [hw * 0.7, hd], [-hw * 0.7, hd]].map(([x, z]) => [(t.x + x * cy + z * sy) / k, (t.z - x * sy + z * cy) / k]);
-    g.fillStyle = 'rgba(192,255,198,0.6)';
-    for (let e = 0; e < 4; e++) {
-      const [x0, y0] = pts[e], [x1, y1] = pts[(e + 1) % 4], n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0)));
-      for (let s = 0; s <= n; s += 2) g.fillRect(Math.round(x0 + ((x1 - x0) * s) / n), Math.round(y0 + ((y1 - y0) * s) / n), 1, 1);
-    }
+    this.cssVars();
+    // the mode knob's window and lamps
+    d.knob.show(MODES.indexOf(this.mode), MODE_NAME[this.mode], this.t);
+    // the tools that are open burn a little
+    const ev = this.eco(), bio = this.bio(), P = d.props;
+    const glow = (p: { body: THREE.Object3D }, on: boolean) => p.body.traverse((o) => { const m = (o as THREE.Mesh).material as any; if (m?.uniforms?.uGlow) m.uniforms.uGlow.value.setRGB(on ? 0.12 : 0, on ? 0.1 : 0, on ? 0.04 : 0); });
+    glow(P.hat, !!fac?.build.active); glow(P.clip, !!fac?.ui.showStats); glow(P.radio, !!fac?.ui.showCrew);
+    glow(P.jar, !!bio?.ledgerOpen); glow(P.bino, !!document.querySelector('.eco-sheet')); glow(P.lens, !!ev && ev.mode !== 'off'); glow(P.lens2, !!ev && ev.mode !== 'off');
+    void hm;
+  }
+  /** a small engraved readout under a gauge */
+  private plate(ld: { p: Pix; key: string; clear(c?: number): void; flush(): void }, s: string, col: number) {
+    const key = s + col; if (ld.key === key) return; ld.key = key;
+    ld.clear(); text3s(ld.p, s, Math.round((30 - textW3s(s)) / 2), 1, col, R.ink[0]); ld.flush();
+  }
+  /** the power readout: two lines of amber VFD under the drum's hood */
+  private readout() {
+    const [a, b, st] = this.wheel.lines(), ro = this.desk.readout;
+    const key = a + '|' + b + st + (st === 'arm' ? Math.floor(this.t * 3) % 2 : '');
+    if (ro.key === key) return; ro.key = key;
+    ro.clear(R.ink[0]);
+    const ink = st === 'bad' ? R.stampRed[3] : st === 'arm' ? (Math.floor(this.t * 3) % 2 ? R.glowAmber[4] : R.glowAmber[2]) : st === 'wait' ? R.glowAmber[2] : R.glowAmber[3];
+    text3s(ro.p, a.slice(0, 12), 2, 2, R.glowAmber[4]);
+    text3s(ro.p, b.slice(0, 12), 2, 9, ink);
+    ro.flush();
   }
 
-  // ------------------------------------------------------------------ unit telemetry
-  private selection() {
-    const sel = this.c.sel(), sb = this.c.selB(), run = this.c.game?.run;
-    const idleKey = run ? `i${run.skills.points}|${run.skills.owned.size}|${Math.floor(this.t / 2)}` : 'i';
-    const key = sb ? 'b' + sb.id + (sb.done ? 'd' : 'g') + sb.queue.join(',') : sel.length ? sel.map((s) => s.id).join(',') : idleKey;
-    const box = this.selBox;
-    if (key !== this.selKey) {
-      const wasIdle = this.selKey.startsWith('i');
-      this.selKey = key;
-      box.innerHTML = ''; this.selBars = {};
-      if (!(wasIdle && key.startsWith('i'))) { box.classList.remove('on'); void box.offsetWidth; box.classList.add('on'); }
-      if (sb) this.buildingInfo(sb);
-      else if (sel.length === 1) this.creatureInfo(sel[0]);
-      else if (sel.length > 1) {
-        el('div', 'sel-title', box, `&gt; ${sel.length} UNITS LINKED`);
-        const grid = el('div', 'sel-grid', box);
-        for (const s of sel.slice(0, 21)) {
-          const cell = el('div', 'sel-cell', grid);
-          const im = el('img', '', cell); im.src = thumb(s.sp);
-          const hb = new Bar(cell, PH[7], false); hb.set(s.hp / s.maxHp);
-          (cell as any).__c = s; (cell as any).__b = hb;
-        }
-      } else this.idleInfo();
+  // ------------------------------------------------------------------ holo table
+  private tableUpdate(dt: number) {
+    const c = this.c, w = c.world, Rg = w.region, N = Rg.N, d = this.desk, vis = c.vision.vis, seen = c.vision.seen;
+    const data = {
+      N, h: Rg.h as unknown as Float32Array, water: Rg.water,
+      cell: (i: number) => {
+        if (!seen[i]) return R.ink[1];
+        const wet = Rg.h[i] < Rg.water, dim = !vis[i];
+        if (wet) return dim ? R.water[1] : R.water[3];
+        if (w.moss[i] > 0.5) return dim ? R.malachite[3] : R.malachite[5];
+        if (w.creep[i] > 0.5) return dim ? R.glowAmber[1] : R.glowAmber[3];
+        const hh = Math.max(0, Math.min(3, Math.floor((Rg.h[i] - Rg.water) / 3)));
+        return R.glowTeal[Math.max(0, hh - (dim ? 1 : 0))];
+      },
+    };
+    this.mapT -= dt;
+    if (this.mapBuilt <= 0) { d.table.build(data); this.mapBuilt = 8; } else this.mapBuilt -= dt;
+    if (this.mapT > 0) return;
+    this.mapT = 0.3;
+    d.table.recolour(data);
+    const pins: [number, number, number, number][] = [];
+    const gp = c.hive.golem(); if (gp) pins.push([gp.x, gp.z, R.snow[5], 1.8]);
+    for (const hv of w.hives) for (const b of hv.buildings) if (b.visibleNow) pins.push([b.x, b.z, hv.faction === 'veyr' ? R.glowTeal[4] : R.stampRed[3], b.def.kind === 'core' ? 1.8 : 1.1]);
+    const fac = c.game?.factions;
+    if (fac) for (const st of fac.structures) { if (st.dead) continue; const i = Math.floor(st.z) * N + Math.floor(st.x); if (seen[i]) pins.push([st.x, st.z, R.stampRed[3], st.kind === 'lander' ? 2 : 1.2]); }
+    for (const u of (c.game?.robots ?? []) as { x: number; z: number; dead: boolean; faction: string }[]) { if (u.dead) continue; const i = Math.floor(u.z) * N + Math.floor(u.x); if (vis[i]) pins.push([u.x, u.z, u.faction === 'veyr' ? R.bone[4] : R.coral[4], 0.8]); }
+    let n = 0;
+    for (const cr of w.creatures) {
+      if (cr.dead || !cr.visibleNow || n > 110) continue; n++;
+      const hostile = cr.faction === 'rival' || (cr.faction === 'wild' && cr.diet === 'carn');
+      pins.push([cr.x, cr.z, cr.faction === 'veyr' ? R.bone[5] : hostile ? R.coral[4] : R.straw[4], cr.size > 1.5 ? 0.9 : 0.6]);
     }
-    if (sel.length === 1 && !sb) {
-      const s = sel[0];
-      this.selBars.hp?.set(s.hp / s.maxHp, `${Math.ceil(s.hp)} / ${Math.ceil(s.maxHp)}`);
-      this.selBars.en?.set(s.energy, s.dead ? `${Math.ceil(s.bio)} CARBON LEFT` : `${Math.round(s.energy * 100)}% FED`);
-      const m = box.querySelector('.mind'); if (m) m.textContent = s.dead ? (s.digest > 0 ? 'BEING TAKEN APART' : 'DEAD') : MIND[s.mind] ?? s.mind.toUpperCase();
-    } else if (sb) {
-      this.selBars.hp?.set(sb.hp / sb.maxHp, `${Math.ceil(sb.hp)} / ${sb.maxHp}`);
-      if (this.selBars.pr) {
-        if (!sb.done) this.selBars.pr.set(sb.progress, `GROWING ${Math.floor(sb.progress * 100)}%`);
-        else if (sb.def.kind === 'brood' && sb.queue.length) { const sp = this.c.world.reg.get(sb.queue[0]); this.selBars.pr.set(sb.qT / sp.pheno.buildTime, `GESTATING ${sp.name.toUpperCase()}`); }
-        else if (sb.def.kind === 'tap') { const d = this.c.world.region.deposits[sb.deposit]; this.selBars.pr.set(d ? d.amount / (d.kind === 'ore' ? 1600 : 1100) : 0, d ? `${Math.floor(d.amount)} LEFT` : 'DEPLETED'); }
-        else this.selBars.pr.set(1, 'NOMINAL');
-      }
-    } else for (const cell of Array.from(box.querySelectorAll('.sel-cell'))) { const s = (cell as any).__c as Creature; if (s) (cell as any).__b.set(s.hp / s.maxHp); }
+    d.table.setPins(N, pins);
+    const cam = c.cam, t = cam.target, hw = cam.dist * 0.62, hd = cam.dist * 0.42, sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw);
+    d.table.setFoot(N, [[-hw, -hd * 1.4], [hw, -hd * 1.4], [hw * 0.7, hd], [-hw * 0.7, hd]].map(([x, z]) => [t.x + x * cy + z * sy, t.z - x * sy + z * cy]) as [number, number][]);
   }
-  /** nothing linked: Unit 07's own readout and what to do next */
-  private idleInfo() {
-    const box = this.selBox, g = this.c.game, h = this.c.hive;
-    const run = g?.run;
-    const parts = ['head', 'torso', 'armR', 'armL', 'coil', 'plating1', 'plating2', 'reactor'].filter((id) => run?.skills.has(id));
-    const body = parts.length ? SKILL[parts[parts.length - 1]].name.toUpperCase() : 'SURVEY HEAD';
-    el('div', 'sel-title', box, `&gt; UNIT 07 &middot; ${body}`);
-    const [hp, hm] = this.hull();
-    el('div', 'sel-line', box, `HULL ${Math.round((hp / Math.max(1, hm)) * 100)}% &middot; GROUND ${(this.c.conquest() * 100).toFixed(1)}%<br>ALLIES ${h.allyCount()}/${h.allyCap()} &middot; HOLD ${h.cap('ore')}`);
-    el('div', 'sel-idle', box, this.hint() + '<span class="cur">&#9608;</span>');
+  private tableClick(p: THREE.Vector3, button: number) {
+    const d = this.desk, N = this.c.world.region.N;
+    const lp = d.table.relief.worldToLocal(p.clone());
+    const [x, z] = d.table.toRegion(N, lp);
+    if (x < 0 || z < 0 || x >= N || z >= N) return;
+    d.table.pingAt(lp);
+    this.c.minimap(x, z, button);
+    sfx(button === 2 ? 'call' : 'click', button === 2 ? 0.8 : 1.6, 0.4);
+  }
+
+  // ------------------------------------------------------------------ telemetry CRT
+  private crtPaint() {
+    const d = this.desk, crt = d.crt, p = crt.scr.p, c = this.c, h = c.hive, run = c.game?.run;
+    crt.amber = crtSettings.tint >= 0.5; crt.gain = crtSettings.gain;
+    crt.scr.clear(crt.bg());
+    const I = (i: number) => crt.ink(i);
+    let y = 2;
+    const line = (s: string, col = I(3)) => { text3s(p, s.slice(0, 22), 3, y, col); y += 7; };
+    const sel = c.sel(), sb = c.selB();
+    if (sel.length > 1) {
+      text5(p, `${sel.length} LINKED`, 3, y, I(4)); y += 10;
+      for (const s of sel.slice(0, 4)) line(`${s.sp.name.slice(0, 14).toUpperCase()} ${Math.round((s.hp / s.maxHp) * 100)}%`);
+    } else if (sel.length === 1 || sb) {
+      const nm = sb ? sb.def.name : sel[0].sp.name;
+      text5(p, nm.toUpperCase().slice(0, 14), 3, y, I(4)); y += 10;
+      if (sb) { line(`HULL ${Math.ceil(sb.hp)}/${sb.maxHp}`); line(sb.done ? 'NOMINAL' : `GROWING ${Math.floor(sb.progress * 100)}%`); }
+      else { const s = sel[0]; line(`HP ${Math.ceil(s.hp)}/${Math.ceil(s.maxHp)}`); line(s.dead ? 'DEAD' : MIND[s.mind] ?? s.mind.toUpperCase()); line(`${Math.round(s.energy * 100)}% FED`, I(2)); }
+    } else {
+      const parts = ['head', 'torso', 'armR', 'armL', 'coil', 'plating1', 'plating2', 'reactor'].filter((id) => run?.skills.has(id));
+      text5(p, 'UNIT 07', 3, y, I(4)); y += 10;
+      const [hp, hm] = this.hull();
+      line((parts.length ? SKILL[parts[parts.length - 1]].name : 'SURVEY HEAD').toUpperCase(), I(2));
+      line(`HULL ${Math.round((hp / Math.max(1, hm)) * 100)}% GND ${(c.conquest() * 100).toFixed(1)}%`);
+      line(`ALLIES ${h.allyCount()}/${h.allyCap()} HOLD ${h.cap('ore')}`);
+      const hint = this.hint(); const words = hint.split(' '); let ln = '';
+      for (const w of words) { if ((ln + ' ' + w).trim().length > 22) { line(ln, I(2)); ln = w; } else ln = (ln + ' ' + w).trim(); if (y > 40) break; }
+      if (ln && y <= 40) line(ln + (Math.floor(this.t * 2) % 2 ? '_' : ''), I(2));
+    }
+    crt.scanBand(p, this.t);
+    crt.scr.flush();
   }
   private hint() {
     const run = this.c.game?.run, h = this.c.hive;
     if (!run) return 'STANDING BY.';
     const S = run.skills, b = this.buyable();
-    if (b.length && S.points > 0) return `CORE CELLS READY: THROW THE SKILLS SWITCH [K]. NEXT: ${b[0].name.toUpperCase()}.`;
+    if (b.length && S.points > 0) return `CORE CELLS READY: OPEN THE BLUEPRINTS [K]. NEXT: ${b[0].name.toUpperCase()}.`;
     if (S.owned.size <= 1) return 'FLY CLOSE TO NUGGETS, HUSKS, DEW AND CLODS: THE FIELD PULLS THEM IN.';
     if (!S.has('graft')) return 'EVERY LOAD GATHERED EARNS CORE CELLS. PLANT GRAFT CLAIMS GROUND.';
-    const fac = this.c.game?.factory;
-    if (S.has('works') && fac && !fac.buildings.some((b) => b.def.extract)) return 'THE WORKS ARE OPEN [B]: A MINER ON A SEAM, A BELT, A SMELTER, AN UPLINK.';
-    if (fac && fac.buildings.some((b) => b.status === 'nopower')) return 'A MACHINE IS DARK: RUN POWER POLES BACK TO THE CORE OR A GENERATOR.';
     if (h.territory() < 0.05) return 'GRAFT PLANTS [E] TO CLAIM THE GROUND AROUND THEM.';
-    if (!S.has('convert')) return 'NEURAL GRAFT TURNS BEATEN CREATURES INTO ALLIES THAT CLAIM GROUND.';
-    if (S.has('command') && h.allyCount() && !h.follow) return '[G] RALLIES YOUR ALLIES. SELECT THEM, RIGHT-CLICK TO ORDER.';
+    if (S.has('command') && h.allyCount() && !h.follow) return '[G] RALLIES YOUR ALLIES. RIGHT-CLICK THE TABLE TO SEND THEM.';
     return `HOLD ${Math.round(h.winAt * 100)}% OF THE LAND AND BREAK EVERY RIVAL HEART.`;
   }
-  private creatureInfo(s: Creature) {
-    const box = this.selBox;
-    const row = el('div', 'sel-row', box);
-    const pf = el('div', 'portrait', row);
-    const im = el('img', '', pf); im.src = thumb(s.sp);
-    const info = el('div', 'sel-info', row);
-    el('div', 'sel-name', info, s.sp.name.toUpperCase());
-    const owner = s.faction === 'veyr' ? '<span class="ok">ALLY</span>' : s.faction === 'rival' ? '<span class="bad">RIVAL</span>' : `<span class="amb">${s.diet === 'carn' ? 'PREDATOR' : s.diet === 'herb' ? 'GRAZER' : s.diet === 'scav' ? 'SCAVENGER' : 'OMNIVORE'}</span>`;
-    el('div', 'sel-sub', info, `${owner} &middot; <span class="mind"></span>`).title = s.sp.design.latin;
-    this.selBars.hp = new Bar(info, PH[7]); this.selBars.en = new Bar(info, AM[5]);
-    const st = s.st;
-    el('div', 'stats', info, `ATK${st.attack.toFixed(0)} ARM${Math.round(st.armor * 100)}% SPD${st.speed.toFixed(1)} ${Math.round(s.mass)}KG`);
-    const genes = el('div', 'genes', info);
-    for (const g of s.sp.design.genes) {
-      const gd = GENE[g]; if (!gd) continue;
-      const gi = iconImg('cat-' + gd.cat, 'gene', genes);
-      gi.addEventListener('pointerenter', () => Tip.show(`<h4>${gd.name}</h4><div class="sub">${CAT_NAMES[gd.cat]} &middot; ${gd.lineage}</div>${gd.desc}`, gi));
-      gi.addEventListener('pointerleave', () => Tip.hide());
+
+  // ------------------------------------------------------------------ the inspection clipboard
+  private selection() {
+    const c = this.c, sel = c.sel(), sb = c.selB(), d = this.desk, bd = d.board;
+    const has = !!sb || sel.length > 0;
+    bd.shown = has && !d.tucked;
+    if (!has) { this.selKey = '-'; return; }
+    // the action keys (the old command bank, minus the powers: those live on the drum)
+    const ck = c.ctxKey();
+    if (ck !== this.cmdKey) {
+      this.cmdKey = ck;
+      this.cmds = c.commands().filter((x) => x && !isAbilityCmd(x)).slice(0, 7);
+      for (const hk of this.keyHots) this.removeHot(hk);
+      bd.setKeys(this.cmds.map((cm, i) => ({ id: String(i), icon: cm.icon, key: cm.key })));
+      this.keyHots = bd.keys.map((k, i) => {
+        const cm = this.cmds[i];
+        return this.hot({ obj: k.root, name: cm.name.toUpperCase(), key: cm.key === 'Escape' ? 'ESC' : cm.key, tip: () => cm.tip(), off: () => cm.disabled?.() ?? false,
+          click: () => { k.sp.kick(-40); const why = cm.disabled?.(); if (why) { sfx('deny'); this.tray(String(why), 'warn'); } else { sfx('click'); cm.run(); } } });
+      });
     }
+    bd.keys.forEach((k, i) => { const cm = this.cmds[i]; if (!cm) return; k.dim = !!cm.disabled?.(); k.act = !!cm.active?.(); });
+    // the paper: redrawn when what it shows changes (bars update twice a second)
+    const key = (sb ? 'b' + sb.id + (sb.done ? 'd' : 'g') + sb.queue.join(',') : sel.map((s) => s.id).join(',')) + '|' + Math.floor(this.t * 2);
+    if (key === this.selKey) return;
+    this.selKey = key;
+    const pp = bd.paper, p = pp.p, W = p.w;
+    pp.clear(R.paper[5]);
+    for (let y = 14; y < p.h; y += 7) p.hl(1, W - 2, y, R.sky[4]);
+    p.vl(8, 0, p.h - 1, R.coral[5]);
+    const ink = R.ink[2], bar = (x: number, y: number, w: number, f: number, col: number) => { p.rect(x, y, w, 4, R.paper[3]); p.rect(x, y, Math.round(w * Math.max(0, Math.min(1, f))), 4, col); p.hl(x, x + w - 1, y + 4, R.paper[2]); };
+    if (sb) {
+      text5(p, sb.def.name.toUpperCase().slice(0, 18), 12, 3, ink);
+      text3s(p, sb.faction === 'veyr' ? 'YOURS' : 'A RIVAL STRUCTURE', 12, 16, sb.faction === 'veyr' ? R.malachite[2] : R.stampRed[3]);
+      bar(12, 25, 70, sb.hp / sb.maxHp, R.malachite[3]); text3s(p, `${Math.ceil(sb.hp)}/${sb.maxHp}`, 86, 24, ink);
+      const pr = !sb.done ? sb.progress : 1;
+      bar(12, 33, 70, pr, R.ochre[4]); text3s(p, sb.done ? 'NOMINAL' : `${Math.floor(pr * 100)}%`, 86, 32, ink);
+      this.wrap(p, sb.faction === 'veyr' ? sb.def.desc : '', 12, 44, W - 16, ink);
+    } else if (sel.length === 1) {
+      const s = sel[0];
+      const th = this.thumbPix(s.sp);
+      if (th) p.blit(th, W - th.w - 3, 2);
+      text5(p, s.sp.name.toUpperCase().slice(0, 16), 12, 3, ink);
+      const owner = s.faction === 'veyr' ? 'ALLY' : s.faction === 'rival' ? 'RIVAL' : s.diet === 'carn' ? 'PREDATOR' : s.diet === 'herb' ? 'GRAZER' : s.diet === 'scav' ? 'SCAVENGER' : 'OMNIVORE';
+      text3s(p, `${owner} · ${s.dead ? 'DEAD' : MIND[s.mind] ?? s.mind.toUpperCase()}`, 12, 16, s.faction === 'veyr' ? R.malachite[2] : s.faction === 'rival' ? R.stampRed[3] : R.ochre[2]);
+      bar(12, 25, 60, s.hp / s.maxHp, R.malachite[3]); text3s(p, `${Math.ceil(s.hp)}/${Math.ceil(s.maxHp)}`, 76, 24, ink);
+      bar(12, 33, 60, s.energy, R.ochre[4]); text3s(p, `${Math.round(s.energy * 100)}% FED`, 76, 32, ink);
+      const st = s.st;
+      text3s(p, `ATK ${st.attack.toFixed(0)}  ARM ${Math.round(st.armor * 100)}%  SPD ${st.speed.toFixed(1)}  ${Math.round(s.mass)}KG`, 12, 42, ink);
+      text3s(p, s.sp.design.latin.toUpperCase().slice(0, 30), 12, 51, R.ink[1]);
+      text3s(p, `${s.sp.design.genes.length} GENES`, 12, 60, R.ink[1]);
+    } else {
+      text5(p, `${sel.length} UNITS LINKED`, 12, 3, ink);
+      sel.slice(0, 12).forEach((s, i) => {
+        const x = 12 + (i % 4) * 30, y = 16 + Math.floor(i / 4) * 16, th = this.thumbPix(s.sp, 14);
+        if (th) p.blit(th, x, y);
+        bar(x + 15, y + 5, 12, s.hp / s.maxHp, R.malachite[3]);
+      });
+    }
+    pp.flush();
   }
-  private buildingInfo(b: Building) {
-    const box = this.selBox;
-    const row = el('div', 'sel-row', box);
-    const pf = el('div', 'portrait', row);
-    iconImg(b.def.kind, 'bigico', pf);
-    const info = el('div', 'sel-info', row);
-    el('div', 'sel-name', info, b.def.name.toUpperCase());
-    el('div', 'sel-sub desc', info, b.faction === 'veyr' ? b.def.desc : 'A RIVAL STRUCTURE.');
-    this.selBars.hp = new Bar(info, PH[7]);
-    this.selBars.pr = new Bar(info, AM[5]);
-    if (b.def.kind === 'brood' && b.queue.length) {
-      const q = el('div', 'queue', info);
-      for (const id of b.queue) { const im = el('img', 'qimg', q); im.src = thumb(this.c.world.reg.get(id)); }
-    }
+  private wrap(p: Pix, s: string, x: number, y: number, w: number, col: number) {
+    let ln = '';
+    for (const word of s.toUpperCase().split(' ')) { if (textW3s((ln + ' ' + word).trim()) > w) { text3s(p, ln, x, y, col); y += 7; ln = word; if (y > p.h - 6) return; } else ln = (ln + ' ' + word).trim(); }
+    if (ln && y <= p.h - 6) text3s(p, ln, x, y, col);
+  }
+  /** a species portrait from the thumbnail renderer, shrunk to fit and snapped in for the clipboard */
+  private thumbPix(sp: { name: string } & object, size = 24): Pix | null {
+    const k = sp.name + size;
+    if (this.thumbs.has(k)) return this.thumbs.get(k)!;
+    this.thumbs.set(k, null);
+    const img = new Image();
+    img.onload = () => {
+      const cv = document.createElement('canvas'); cv.width = size; cv.height = size;
+      const g = cv.getContext('2d')!; g.imageSmoothingEnabled = false;
+      const s = Math.min(size / img.width, size / img.height);
+      g.drawImage(img, (size - img.width * s) / 2, (size - img.height * s) / 2, img.width * s, img.height * s);
+      const d = g.getImageData(0, 0, size, size).data, p = new Pix(size, size);
+      for (let i = 0; i < size * size; i++) if (d[i * 4 + 3] > 120) p.set(i % size, Math.floor(i / size), (d[i * 4] << 16) | (d[i * 4 + 1] << 8) | d[i * 4 + 2]);
+      this.thumbs.set(k, p); this.selKey = '-';
+    };
+    try { img.src = thumb(sp as never); } catch { /* no renderer */ }
+    return null;
+  }
+  private removeHot(h: Hot) { const i = this.desk.hots.indexOf(h); if (i >= 0) this.desk.hots.splice(i, 1); if (this.desk.hover === h) this.desk.hover = null; }
+
+  // ------------------------------------------------------------------ the hover tag
+  private tagUpdate(dt: number) {
+    const h = this.tagHot, tg = this.tag;
+    if (!h || this.desk.tucked && h.obj !== this.desk.tuckLever.root) { if (tg.style.display !== 'none') tg.style.display = 'none'; return; }
+    this.tagT += dt;
+    const off = h.off?.();
+    const name = h.name + (h.key ? ` [${h.key}]` : ''), n = Math.min(name.length, Math.floor(this.tagT * 70));
+    const tip = this.tagT > 0.25 ? (h.tip?.() ?? '') : '';
+    const html = `<div class="tg-n">${name.slice(0, n)}${n < name.length ? '<span class="cur">_</span>' : ''}</div>${tip ? `<div class="tg-t">${tip}</div>` : ''}${off ? `<div class="tg-w">${off}</div>` : ''}`;
+    if (html !== this.tagTxt) { this.tagTxt = html; tg.innerHTML = html; }
+    tg.style.display = 'block';
+    // above the object, clamped to the screen
+    const b = new THREE.Box3().setFromObject(h.lift ?? h.obj), v = new THREE.Vector3((b.min.x + b.max.x) / 2, b.max.y, (b.min.z + b.max.z) / 2);
+    const s = this.desk.view.toScreen(v);
+    const w = tg.offsetWidth, hh = tg.offsetHeight;
+    tg.style.left = Math.round(Math.max(4, Math.min(innerWidth - w - 4, s.x - w / 2))) + 'px';
+    tg.style.top = Math.round(Math.max(4, s.y - hh - 10)) + 'px';
+    Tip.hide();
+  }
+  /** publish where the desk is, so panels and toasts keep clear of it */
+  private cssKey = '';
+  private cssVars() {
+    const d = this.desk, r = document.documentElement.style;
+    const v = [d.stripTop, d.wingTop.L, d.wingTop.R, d.wingW].map(Math.round), key = v.join(',');
+    if (key === this.cssKey) return; this.cssKey = key;
+    r.setProperty('--desk-h', v[0] + 'px'); r.setProperty('--desk-wl', v[1] + 'px'); r.setProperty('--desk-wr', v[2] + 'px'); r.setProperty('--desk-ww', v[3] + 'px');
+    r.setProperty('--hud-top', '6px');
   }
 
-  // ------------------------------------------------------------------ command bank (powers live on the selector)
-  private commands() {
-    const key = this.c.ctxKey();
-    if (key !== this.cmdKey) {
-      this.cmdKey = key;
-      this.cmdBox.innerHTML = ''; this.btns = [];
-      const cmds = this.c.commands().filter((x) => x && !isAbilityCmd(x));
-      for (let i = 0; i < 12; i++) {
-        const cm = cmds[i];
-        if (!cm) { el('div', 'cmd-empty', this.cmdBox); continue; }
-        this.btns.push(new Btn(this.cmdBox, { icon: cm.icon, hotkey: cm.key === 'Escape' ? 'ESC' : cm.key, cost: cm.cost, tip: () => `<h4>${cm.name}</h4>${cm.tip()}`, disabled: cm.disabled, active: cm.active }, cm.run));
-      }
-      this.cmdBox.classList.remove('on'); void this.cmdBox.offsetWidth; this.cmdBox.classList.add('on');
-    }
-    for (const b of this.btns) b.refresh();
-  }
+  // ------------------------------------------------------------------ the almanac
+  /** game/climate.ts (through ui/almanac.ts): the orrery and the calendar follow the sky */
+  setClimate(c: Climate) { this.climate = c; }
   invalidate() { this.cmdKey = ''; this.selKey = '-'; }
-  dispose() { removeEventListener('resize', this.onResize); document.documentElement.style.removeProperty('--hud-top'); document.documentElement.style.removeProperty('--tf'); this.root.remove(); Tip.hide(); }
+  dispose() {
+    removeEventListener('resize', this.onResize);
+    for (const v of ['--hud-top', '--desk-h', '--desk-wl', '--desk-wr', '--desk-ww']) document.documentElement.style.removeProperty(v);
+    delete document.body.dataset.deskMode;
+    FLOAT.quiet = false;
+    this.desk.dispose(); this.root.remove(); Tip.hide();
+  }
 }
+void textW5;

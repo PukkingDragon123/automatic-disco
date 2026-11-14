@@ -27,7 +27,7 @@ const lin = (c: number) => Math.pow(c / 255, 2.2);
 /** a hex colour as linear rgb, times k */
 const linHex = (hex: number, k = 1): [number, number, number] => [lin((hex >> 16) & 255) * k, lin((hex >> 8) & 255) * k, lin(hex & 255) * k];
 /** mean linear value of each neutral bark slot (the tint compensates so a limb keeps its ramp colour) */
-const SLOT_GAIN: Record<number, number> = { [BARK.FURROW]: 1 / 0.3, [BARK.PLATE]: 1 / 0.32, [BARK.RING]: 1 / 0.32, [BARK.STEM]: 1 / 0.48, [BARK.FIBRE]: 1 / 0.6, [BARK.FLESH]: 1 / 0.48, [BARK.SMOOTH]: 1 / 0.6, [BARK.SCALE]: 1 / 0.3 };
+const SLOT_GAIN: Record<number, number> = { [BARK.FURROW]: 1 / 0.34, [BARK.PLATE]: 1 / 0.42, [BARK.RING]: 1 / 0.41, [BARK.STEM]: 1 / 0.49, [BARK.FIBRE]: 1 / 0.35, [BARK.FLESH]: 1 / 0.49, [BARK.SMOOTH]: 1 / 0.67, [BARK.SCALE]: 1 / 0.33, [BARK.PEEL]: 1 / 0.57, [BARK.SHAG]: 1 / 0.41 };
 export { SLOT_GAIN };
 
 // ------------------------------------------------------------------------------------------------ vector bits
@@ -260,6 +260,8 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
   const crown: V3 = [0, cn ? cy / cn / PXM : H * 0.6, 0];
   const tree = sp.tree, leafK = tree ? 1.35 : sp.arch === 'shrub' ? 1.25 : 1.1;
 
+  // every woody species wears its own bark on all its limbs (plated, furrowed, paper, shaggy, smooth, fibrous, scaled)
+  const woody = tree || sp.arch === 'shrub' ? trunkStyle(sp, false) : null;
   // ---- limbs: chains -> tubes (pixel-art twigs are a pixel thick; in 3D they thin out, short twigs merge)
   let i = 0;
   const limbs = P.limbs;
@@ -306,7 +308,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
       P2 = [P2[0], vadd(P2[0], vmul(vsub(P2[1], P2[0]), 0.2)), ...P2.slice(1)]; R2 = [R2[0] * 1.42, R2[0] * 1.12, ...R2.slice(1)];
     }
     const rootEnd = tree && isBark && !L1 && pts[pts.length - 1][1] < 0.03 && pts[0][1] > pts[pts.length - 1][1] + 0.02;
-    const slot = l0.ring ? BARK.RING : isBark ? ((l0.ridge ?? 0) >= 3 ? (sp.trunk & 1 ? BARK.PLATE : BARK.FURROW) : (l0.ridge ?? 0) >= 2 ? BARK.FURROW : sp.arch === 'coral' ? BARK.FLESH : BARK.STEM) : (l0.ridge ?? 0) >= 3 ? BARK.FIBRE : BARK.STEM;
+    const slot = l0.ring ? BARK.RING : isBark && woody ? woody.slot : isBark ? ((l0.ridge ?? 0) >= 3 ? (sp.trunk & 1 ? BARK.PLATE : BARK.FURROW) : (l0.ridge ?? 0) >= 2 ? BARK.FURROW : sp.arch === 'coral' ? BARK.FLESH : BARK.STEM) : (l0.ridge ?? 0) >= 3 ? BARK.FIBRE : BARK.STEM;
     const fslot = sp.arch === 'fungus' && isBark ? BARK.FIBRE : slot;
     const green = !isBark || sp.arch === 'coral';
     const rm = Math.max(...R2), sides = fine ? 3 : sp.arch === 'shrub' ? (L1 ? 3 : rm > 0.035 ? 5 : 3) : L1 ? (rm > 0.07 ? 6 : rm > 0.035 && !green ? 4 : 3) : rm > 0.09 ? 8 : rm > 0.045 ? 6 : rm > 0.022 && !(green && rm < 0.04) ? 4 : 3;
