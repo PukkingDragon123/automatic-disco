@@ -11,7 +11,7 @@ import type { Faction } from '../game/species';
 import type { Creature } from '../game/creature';
 import { FDEFS, DIRS, rotXZ, footW, footD, isBelt, type FKind, type FDef, type Cost } from './defs';
 import { ITEMS, ITEM_IDS, isRes, type ItemId } from './items';
-import { RECIPES, RECIPE, recipesAt, type Recipe } from './recipes';
+import { recipesAt, type Recipe } from './recipes';
 import { FactoryRender } from './render';
 import { Workers } from './workers';
 import { B } from '../world/blockTex';
@@ -783,5 +783,4 @@ export class Factory {
     return this.buildings.filter((b) => (b.def.station || b.def.extract) && (b.starve > 0.5 || b.block > 0.5 || b.status === 'nopower')).sort((a, b) => Math.max(b.starve, b.block) - Math.max(a.starve, a.block));
   }
   get barracks() { return this.buildings.filter((b) => b.kind === 'barracks').length; }
-  void(): void { void RECIPES; void RECIPE; }
 }

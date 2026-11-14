@@ -62,6 +62,13 @@ export async function testBiotech(engine: Engine, input: Input, P: URLSearchPara
   const fx = Math.min(R.N - 8, Math.max(8, far.x)), fz = Math.min(R.N - 8, Math.max(8, far.z));
   const spin = spawn(silk, fx, fz); if (spin) bt.assign(spin, 'produce', fx, fz);
   const pk = spawn(haul, core.x + 3, core.z - 4); if (pk) bt.assign(pk, 'haul', core.x, core.z);
+  // engineered plants around the base: resin trees and an orchard
+  { const fl = w.flora; let nTree = 0, nFruit = 0;
+    fl.near(core.x, core.z, 34, (i) => {
+      const sp = fl.species[fl.sp[i]]; if (fl.bio[i] < 0.3 || sp.water) return;
+      if (sp.tree) { if (nTree < 4 && !bt.engineerPlant(i, 'resin_bark', true)) nTree++; }
+      else if (sp.hmax > 0.5 && nFruit < 5 && !bt.engineerPlant(i, 'fruit_set', true)) nFruit++;
+    }); }
   // stores for the workers' upkeep
   f?.put?.('fruit', 80); f?.put?.('protein', 20);
   // the works around the core

@@ -226,7 +226,7 @@ export class EcoView {
     const band = new Int8Array(G * G);
     for (let n = 0; n < G * G; n++) band[n] = this.bandOf(n);
     // fills
-    c.globalAlpha = 0.2;
+    c.globalAlpha = 0.3;
     for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
       const n = j * G + i, b = band[n];
       if (b < 0) continue;
@@ -237,10 +237,12 @@ export class EcoView {
     }
     // contour lines where the band steps
     c.globalAlpha = 0.9; c.lineWidth = 1;
+    // an inked contour with a paler line beside it, like a hand-drawn survey boundary
     const edge = (p: number, q: number, b: number) => {
       if (!this.vok[p] || !this.vok[q]) return;
-      c.strokeStyle = L.line[b];
-      c.beginPath(); c.moveTo(Math.round(this.vx[p]) + 0.5, Math.round(this.vy[p]) + 0.5); c.lineTo(Math.round(this.vx[q]) + 0.5, Math.round(this.vy[q]) + 0.5); c.stroke();
+      const x0 = Math.round(this.vx[p]) + 0.5, y0 = Math.round(this.vy[p]) + 0.5, x1 = Math.round(this.vx[q]) + 0.5, y1 = Math.round(this.vy[q]) + 0.5;
+      c.strokeStyle = L.line[b]; c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke();
+      c.strokeStyle = L.fill[b]; c.beginPath(); c.moveTo(x0, y0 + 1); c.lineTo(x1, y1 + 1); c.stroke();
     };
     for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
       const n = j * G + i, b = band[n];
@@ -370,7 +372,9 @@ export class EcoView {
       });
       this.legend.set(this.mode + px, slip);
     }
-    this.g.drawImage(slip, Math.round(W / 2 - slip.width / 2), Math.round(46 * S));
+    // top centre, or clear of the survey sheet when it is open
+    const sr = this.sheet ? this.sheet.getBoundingClientRect().right + 8 : 0;
+    this.g.drawImage(slip, Math.round(Math.max(W / 2 - slip.width / 2, sr)), Math.round(46 * S));
   }
 
   // ---------------------------------------------------------------- notes, toasts
@@ -467,7 +471,7 @@ function injectStyle() {
   if (styled) return; styled = true;
   const st = document.createElement('style');
   st.textContent = `
-  .eco-sheet { position: fixed; left: calc(10px * var(--s, 1)); top: calc(40px * var(--s, 1)); width: calc(232px * var(--s, 1)); max-height: calc(100vh - 150px * var(--s, 1)); overflow: hidden; z-index: 11; pointer-events: auto;
+  .eco-sheet { position: fixed; left: calc(10px * var(--s, 1)); top: calc(40px * var(--s, 1)); width: calc(232px * var(--s, 1)); z-index: 11; pointer-events: auto;
     background-color: #d9d2bf; color: #3b3a36; font-family: 'VT', monospace; font-size: calc(5px * var(--s, 1)); line-height: calc(7px * var(--s, 1));
     padding: calc(7px * var(--s, 1)) calc(8px * var(--s, 1)) calc(6px * var(--s, 1)); transform: rotate(-0.6deg);
     background-image: repeating-linear-gradient(0deg, transparent 0, transparent calc(7px * var(--s, 1) - 1px), #9fb4c2 calc(7px * var(--s, 1) - 1px), #9fb4c2 calc(7px * var(--s, 1)));

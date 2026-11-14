@@ -46,9 +46,11 @@ export async function testEcosys(engine: Engine, input: Input, P: URLSearchParam
   if (focus === 'herd') {
     let best: Creature[] = [];
     for (const h of w.herds.values()) { const l = h.filter((c) => !c.dead && c.faction === 'wild'); if (l.length > best.length && l[0].diet !== 'carn') best = l; }
-    if (best.length) at = [best.reduce((s, c) => s + c.x, 0) / best.length, best.reduce((s, c) => s + c.z, 0) / best.length];
+    if (best.length) { const c = best.find((o) => o.mind !== 'flee') ?? best[0]; at = [c.x, c.z]; }
   } else if (focus === 'pred') { const p = wild.find((c) => c.diet === 'carn' && c.mature); if (p) at = [p.x, p.z]; }
-  else if (focus === 'water') { const d = wild.find((c) => c.mind === 'drink') ?? wild[0]; const s = d ? eco.shoreNear(d.x, d.z) : eco.shoreNear(L.x, L.z); if (s) at = s; }
+  else if (focus === 'water') { const d = wild.find((c) => c.mind === 'drink' && c.mass > 50) ?? wild.find((c) => c.mind === 'drink') ?? wild.find((c) => c.plan === 'drink'); if (d) at = [d.x, d.z]; else { const s = eco.shoreNear(L.x, L.z); if (s) at = s; } }
+  else if (focus === 'sleep') { const d = wild.find((c) => c.mind === 'watch') ?? wild.find((c) => c.mind === 'sleep' && c.mass > 50) ?? wild.find((c) => c.mind === 'sleep'); if (d) at = [d.x, d.z]; }
+  else if (focus) { const d = wild.find((c) => c.mind === focus); if (d) at = [d.x, d.z]; }
   // keep the camera over the region (a herd by the edge would put it outside, looking at the void)
   const N = g.region.N, m = 26;
   g.cam.lookAt(Math.min(N - m, Math.max(m, at[0])), Math.min(N - m, Math.max(m, at[1])), true);

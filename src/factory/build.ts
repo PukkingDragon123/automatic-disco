@@ -5,7 +5,7 @@
 // to build, drag to lay belts.
 import * as THREE from 'three';
 import type { Factory, FBuilding } from './factory';
-import { FDEFS, isBelt, isDrag, footW, footD, rotXZ, type FKind } from './defs';
+import { FDEFS, isBelt, isDrag, footW, footD, type FKind } from './defs';
 import { modelFor, beltGeo } from './models';
 import { machineMaterial } from './tex';
 import { RECIPE } from './recipes';
@@ -323,8 +323,9 @@ export class Build {
       if (this.tapAt !== key) { this.tapAt = key; sfx('click', 1.4, 0.4); return; }
       this.tapAt = null;
     }
+    // the tool stays in hand after a build, as in the field manuals: right-click or Escape puts it down
     this.commit();
-    if (!shift && this.tool === 'place' && this.kind && !isDrag(this.kind) && FDEFS[this.kind].cat !== 'logistics' && FDEFS[this.kind].cat !== 'eco' && FDEFS[this.kind].cat !== 'defence') { /* stays armed: Satisfactory keeps the tool in hand */ }
+    void shift;
   }
   /** build every valid ghost */
   private commit() {
@@ -380,8 +381,8 @@ export class Build {
 function turn(bp: Blueprint): Blueprint {
   const parts = bp.parts.map((p) => {
     const def = FDEFS[p.kind], w = footW(def, p.r), d = footD(def, p.r);
-    // cells (dx..dx+w-1, dz..dz+d-1) under (x, z) -> (-z, x)
-    const [a] = [rotXZ(0, 0, 1)]; void a;
+    // cells (dx..dx+w-1, dz..dz+d-1) under (x, z) -> (-z, x); w is not needed: the new min corner is (-(dz+d-1), dx)
+    void w;
     return { ...p, dx: -(p.dz + d - 1), dz: p.dx, r: (p.r + 1) & 3 };
   });
   const mx = Math.min(...parts.map((p) => p.dx)), mz = Math.min(...parts.map((p) => p.dz));
