@@ -148,8 +148,8 @@ export function mane(S: Ctx, T: SpineTs, W: number, head: V3, hl: number, hw: nu
   const k0 = at(S, T.head - 0.01), k1 = at(S, T.chest), RB = S.reg('MANEB', TAU * W * 0.6, len(sub(sp.pts[k1], sp.pts[k0])) * 1.2, 12, 96, 64);
   const pts = sp.pts.slice(k0, k1 + 1), n = pts.length;
   const env = (i: number) => { const t = i / Math.max(1, n - 1); return Math.sin(Math.PI * (0.2 + 0.8 * t)) ** 0.6; };
-  sac(S.B, RB, S.gid(), pts.map((p, i) => addV(p, [0, hh * 0.06 * env(i), 0])), pts.map((_, i) => [sp.ru[k0 + i] * 1.15 + hw * 0.36 * env(i), sp.rv[k0 + i] * 1.12 + hw * 0.3 * env(i)] as [number, number]),
-    pts.map((_, i) => sp.w[k0 + i]), { n: 16, start: false, end: true, bump: (a, t) => 0.13 * Math.sin(a * 6 + t * 7) * Math.sin(t * 13 + a * 2) + 0.06 * Math.cos(a * 11) });
+  sac(S.B, RB, S.gid(), pts.map((p, i) => addV(p, [0, hh * 0.05 * env(i), 0])), pts.map((_, i) => [sp.ru[k0 + i] * 1.1 + hw * 0.26 * env(i), sp.rv[k0 + i] * 1.08 + hw * 0.24 * env(i)] as [number, number]),
+    pts.map((_, i) => sp.w[k0 + i]), { n: 26, sq: 2, start: false, end: true, bump: (a, t) => 0.12 * Math.sin(a * 7 + t * 7) * Math.sin(t * 13 + a * 2) + 0.07 * Math.cos(a * 13 + t * 5) });
   S.paints.push(() => hide(S, RB, { L: hw * 2, rad: () => W * 0.5, seed: 97, kind: 'body', noPattern: true, ramp, clump: 1.5, flow: 1, down: 0.8 }));
   // heavy locks ringing the face
   for (let i = 0; i < 16; i++) {

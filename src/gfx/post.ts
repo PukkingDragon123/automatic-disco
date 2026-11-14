@@ -60,8 +60,9 @@ vec3 atmosphere(vec3 col, vec3 P, vec3 rd, float dist, bool bg) {
     // a forward lobe toward the sun, a broad floor so the beams read from above too
     float cosT = dot(rd, uSunDir);
     float phase = 0.6 + 1.6 * pow(max(0.0, cosT * 0.5 + 0.5), 6.0);
-    float a = (1.0 - exp(-uRays * span * 0.03)) * phase;
-    col = col * (1.0 - a * 0.35) + uSunCol * (a * lit * 0.22);
+    // lit air glows, shaded air stays clear: the beams read against the shade without veiling the sunlit ground
+    float a = (1.0 - exp(-uRays * span * 0.025)) * phase;
+    col = col * (1.0 - a * 0.1) + uSunCol * (a * lit * lit * 0.13);
   }
   // low mist: exponential height fog integrated along the ray, thickened in drifting patches near the ground
   if (uMist > 0.0) {

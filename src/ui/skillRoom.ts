@@ -203,7 +203,7 @@ export class OpsRoom {
 
   // ---------------------------------------------------------------------------------------------- lights
   private lights() {
-    this.scene.add(new THREE.HemisphereLight(0x8a9cb0, 0x2a241e, 0.5));
+    this.scene.add(new THREE.HemisphereLight(0x9aacc0, 0x3a342c, 0.95));
     const key = new THREE.SpotLight(0xf2e6d0, 22, 9, 0.75, 0.65, 1.5);
     key.position.set(0.6, 3.25, 0.8); key.target.position.set(0, TOP, 0);
     key.castShadow = true; key.shadow.mapSize.set(1024, 1024); key.shadow.bias = -0.0005; key.shadow.normalBias = 0.02; key.shadow.camera.near = 0.5; key.shadow.camera.far = 6;
@@ -254,7 +254,7 @@ export class OpsRoom {
     k.push().at(X0 + 0.02, 0, 3.2, Math.PI / 2).panel(0, 1.12, 0, 1.2, 2.2, 'door').panel(0, 2.5, 0.01, 0.9, 0.22, 'signAuth').pop();
     k.push().at(X1 - 0.02, 0, 3.4, -Math.PI / 2).panel(0, 2.4, 0, 0.5, 0.5, 'clock').panel(1.0, 1.7, 0, 0.42, 0.6, 'calendar').panel(-0.8, 1.6, 0, 0.36, 0.48, 'fuse').pop();
     this.add(k);
-    this.lamp(0.2, -0.9, 2.75, 0xf2dcc0, 5); this.lamp(-3.4, -1.2, 2.7, 0xf2dcc0, 5); this.lamp(3.4, -1.6, 2.7, 0xf2dcc0, 0); this.lamp(-0.4, 3.2, 2.8, 0xf2dcc0, 0);
+    this.lamp(0.2, -0.9, 2.75, 0xf2dcc0, 5); this.lamp(-3.4, -1.2, 2.7, 0xf2dcc0, 5); this.lamp(3.4, -1.6, 2.7, 0xf2dcc0, 5); this.lamp(-0.4, 3.2, 2.8, 0xf2dcc0, 0);
   }
 
   // ---------------------------------------------------------------------------------------------- the light table and its props
@@ -285,15 +285,13 @@ export class OpsRoom {
   }
   private buildCard() {
     const g = new THREE.Group();
-    const k = new Kit(); k.box(0, -0.01, 0, 0.46, 0.008, 0.31, 'oak', { col: 0x9a7a54 }).box(0, -0.002, -0.15, 0.12, 0.016, 0.035, 'gun');
+    const k = new Kit(); k.box(0, -0.01, 0, 0.5, 0.008, 0.34, 'oak', { col: 0x9a7a54 }).box(0, -0.004, -0.158, 0.13, 0.014, 0.03, 'gun', { col: 0xb8bcc0 });
     g.add(k.build(this.M));
     const cm = new THREE.MeshLambertMaterial({ map: this.cardTex, emissive: 0xffffff, emissiveMap: this.cardTex, emissiveIntensity: 0.06 }); gbuf(cm, 1);
-    const card = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.2625), cm); card.rotation.x = -Math.PI / 2; card.position.y = 0.0; card.name = 'cardFace';
+    const card = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.2875), cm); card.rotation.x = -Math.PI / 2; card.position.y = 0.0; card.name = 'cardFace';
     g.add(card);
     this.cardHome.set(0.98, TOP + 0.055, 0.58);
     g.position.copy(this.cardHome); g.rotation.set(0.62, -0.25, 0, 'YXZ');
-    // a little easel behind it
-    const st = new Kit(); st.box(0, 0, 0, 0.03, 0.18, 0.02, 'gun'); const sg = st.build(this.M); sg.position.set(0, -0.1, 0.08); sg.rotation.x = -0.7; g.add(sg);
     this.scene.add(g);
     return g;
   }
@@ -504,6 +502,14 @@ export class OpsRoom {
     }
   }
   ringing = 0;
+  /** put the props back and clear the moment's leftovers (the room is reused between openings) */
+  reset() {
+    this.stamp.position.copy(this.stampHome); this.stamp.rotation.set(0, 0, 0); this.stampHead.scale.set(1, 1, 1);
+    this.eraser.position.copy(this.eraserHome); this.eraser.rotation.set(0, 0.3, 0);
+    this.ov.visible = false; for (const a of this.arms) a.goal = 0; this.leverGoal = 0; this.wild = 0;
+    this.card.position.copy(this.cardHome); this.card.rotation.set(0.62, -0.25, 0, 'YXZ');
+    this.sheet.position.z = 0; this.ov.position.z = 0; this.sheet.rotation.z = 0;
+  }
   dispose() {
     this.scene.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry && !(o as any).isSkinnedMesh) m.geometry.dispose(); });
     for (const o of this.ops) (o.rig as any).dispose?.();

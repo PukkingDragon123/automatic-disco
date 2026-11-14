@@ -237,13 +237,13 @@ export function paintCard(c: HTMLCanvasElement, lines: CardLine[], n: number) {
   for (const ln of lines) {
     if (left <= 0) break;
     const t = ln.t.slice(0, left); left -= ln.t.length + 1;
-    g.font = `${(ln.big ? 26 : 17) * s}px VT, monospace`;
+    g.font = `${(ln.big ? 30 : 20) * s}px VT, monospace`;
     g.fillStyle = ln.red ? C.red : ln.dim ? 'rgba(59,58,54,0.6)' : C.graphite;
     // uneven ribbon: each character a hair lighter or darker
     let x = 18 * s;
     for (let i = 0; i < t.length; i++) { g.globalAlpha = 0.78 + hashf(i, y, 4) * 0.22; g.fillText(t[i], x, y * s + (hashf(i, y, 5) - 0.5) * 0.8 * s); x += g.measureText(t[i]).width; }
     g.globalAlpha = 1;
-    y += ln.big ? 30 : 24;
+    y += ln.big ? 32 : 24;
   }
   void textWidth;
 }

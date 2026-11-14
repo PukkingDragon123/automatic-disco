@@ -40,9 +40,11 @@ export class SkillTree implements Screen {
   static current: SkillTree | null = null;
   private room: OpsRoom; private bp: Blueprint;
   private root: HTMLDivElement; private hint: HTMLDivElement; private drawer: HTMLDivElement | null = null; private bar: HTMLDivElement | null = null;
-  private cardCv = document.createElement('canvas');
+  private cardCv: HTMLCanvasElement;
   private staged: string[] = [];
   private inking = new Set<string>();
+  /** bought but not yet bolted on in the hangar */
+  private uninstalled = new Set<string>();
   private hover: string | null = null; private sel: string | null = null; private hoverProp = '';
   private busy = false; private closed = false; private compact = false;
   private sig = ''; private lastRes: Record<Res, number>; private lastPts: number;
@@ -63,9 +65,10 @@ export class SkillTree implements Screen {
   constructor(readonly host: SkillHost, readonly opts: { close: () => void }) {
     SkillTree.current = this;
     this.compact = innerWidth < 760 || innerHeight < 460;
-    this.bp = new Blueprint(this.compact ? 1.3 : 1.6, 1);
-    this.cardCv.width = 768; this.cardCv.height = 480;
-    this.room = new OpsRoom(this.bp.cv, this.bp.ov, this.cardCv);
+    // the room is built once and kept: opening the drawing again is instant
+    if (!CACHE) { const bp = new Blueprint(this.compact ? 1.3 : 1.6, 1), cv = document.createElement('canvas'); cv.width = 768; cv.height = 480; CACHE = { bp, cv, room: new OpsRoom(bp.cv, bp.ov, cv) }; }
+    this.bp = CACHE.bp; this.cardCv = CACHE.cv; this.room = CACHE.room;
+    this.room.reset();
     this.lastRes = { ...host.run.res }; this.lastPts = host.run.skills.points;
     // DOM: a transparent layer for the pointer, a typed hint line, the close tag, bubbles, and on phones a drawer
     this.root = el('div', 'sk3', ui());
@@ -119,7 +122,7 @@ export class SkillTree implements Screen {
     this.bp.render(d);
     this.room.sheetTex.needsUpdate = true;
     this.room.setPulses(Object.entries(d.states).filter(([, s]) => s === 'can').map(([id]) => [NODES[id].bx, NODES[id].by] as [number, number]).slice(0, 48), 15);
-    this.room.golem.setParts([...this.host.run.skills.owned].filter((i) => !this.inking.has(i)), !first);
+    this.room.golem.setParts([...this.host.run.skills.owned].filter((i) => !this.inking.has(i) && !this.uninstalled.has(i)), !first);
     this.updateCard(true);
     if (this.bar) { const ap = this.bar.querySelector('.ap') as HTMLElement; ap.textContent = this.staged.length ? `APPROVE ${this.staged.length}` : 'APPROVE'; ap.classList.toggle('on', this.staged.length > 0); (this.bar.querySelector('.er') as HTMLElement).classList.toggle('on', this.staged.length > 0); }
     this.lastSig = this.sigOf();
@@ -194,7 +197,7 @@ export class SkillTree implements Screen {
     this.room.react('undo'); if (Math.random() < 0.6) this.say('undo');
     for (const id of ids) {
       const n = NODES[id], b = n.sk.bbox(), at = this.room.sheetToWorld(b.x + b.w / 2, b.y + b.h / 2), from = E.position.clone();
-      await this.tween(0.28, (k) => { E.position.lerpVectors(from, at, ease(k)); E.position.y = TOP + 0.01 + Math.sin(k * Math.PI) * 0.12; });
+      await this.tween(0.28, (k) => { E.position.lerpVectors(from, at, ease(k)); E.position.y = TOP + 0.004 + Math.sin(k * Math.PI) * 0.12; });
       const t0 = this.t;
       this.refresh();
       this.overlay(0.62, (bp) => { const a = 1 - (this.t - t0) / 0.6; if (a > 0) { bp.ov.getContext('2d')!.globalAlpha = Math.max(0, a); bp.circleOn(id, 1, 0); bp.ov.getContext('2d')!.globalAlpha = 1; } });
@@ -227,7 +230,7 @@ export class SkillTree implements Screen {
   private async approve() {
     this.busy = true;
     const sk = this.host.run.skills, res = this.host.run.res, list = [...this.staged], done: string[] = [];
-    for (const id of list) { if (!sk.buy(id, res)) break; done.push(id); this.inking.add(id); this.host.emit('skill', { id }); }
+    for (const id of list) { if (!sk.buy(id, res)) break; done.push(id); this.inking.add(id); this.uninstalled.add(id); this.host.emit('skill', { id }); }
     this.staged = [];
     this.lastRes = { ...res }; this.lastPts = sk.points;
     this.refresh();
@@ -244,7 +247,7 @@ export class SkillTree implements Screen {
       for (let i = 0; i < 8; i++) setTimeout(() => sfx('crack', 0.1, 0.12), i * 95);
       await this.tween(dur, (k) => { S.position.y = TOP + 0.185 + Math.sin(k * 9) * 0.006; });
       // THUMP
-      await this.tween(0.09, (k) => { S.position.y = TOP + 0.185 - ease(k) * 0.14; });
+      await this.tween(0.09, (k) => { S.position.y = TOP + 0.185 - ease(k) * 0.172; });
       sfx('hit', 1.5, 0.95); sfx('crack', 0.9, 0.6);
       this.inking.delete(id);
       this.refresh();
@@ -256,7 +259,7 @@ export class SkillTree implements Screen {
       this.revLog.push(`REV ${revLetter([...sk.owned].filter((i) => i !== 'head').length)}: ${SKILL[id].name.toUpperCase()}`.slice(0, 22));
       this.room.print(`REQ U7-${String(done.indexOf(id) + 1).padStart(2, '0')} ${SKILL[id].name.toUpperCase()} APPROVED`);
       for (let i = 0; i < 6; i++) setTimeout(() => sfx('crack', 0.2, 0.15), 200 + i * 45);
-      await this.tween(0.12, (k) => { S.position.y = TOP + 0.045 + ease(k) * 0.12; });
+      await this.tween(0.12, (k) => { S.position.y = TOP + 0.013 + ease(k) * 0.15; });
     }
     const from = S.position.clone();
     await this.tween(0.4, (k) => { S.position.lerpVectors(from, this.room.stampHome, ease(k)); S.position.y = this.room.stampHome.y + Math.sin(k * Math.PI) * 0.12; S.rotation.z = 0; });
@@ -268,12 +271,13 @@ export class SkillTree implements Screen {
   private async install(ids: string[]) {
     if (!ids.length || this.closed) return;
     const R = this.room, look = R.golemAt.clone().add(new THREE.Vector3(0, 2.4, 0));
-    await this.camTo(new THREE.Vector3(0.25, 2.15, -2.75), look, 1.1);
+    await this.camTo(new THREE.Vector3(0.35, 2.05, -2.15), look, 1.1);
     this.say('install'); R.react('install'); sfx('crack', 1.4, 0.5);
     await this.wait(0.35);
     for (const a of R.arms) a.goal = 1;
     sfx('pulse', 1, 0.35);
     await this.wait(0.7);
+    for (const id of ids) this.uninstalled.delete(id);
     R.golem.setParts([...this.host.run.skills.owned], true);
     const chassis = ids.filter((i) => SKILL[i].branch === 'chassis');
     if (!chassis.length) R.golem.cast(look.clone().add(new THREE.Vector3(0, 0, 4)));
@@ -483,9 +487,10 @@ export class SkillTree implements Screen {
     removeEventListener('pointermove', this.onMove); removeEventListener('pointerup', this.onUp); removeEventListener('pointercancel', this.onUp);
     for (const b of this.bubbles) b.dispose();
     this.root.remove(); Tip.hide();
-    this.room.dispose();
+    this.room.reset();
   }
 }
+let CACHE: { bp: Blueprint; cv: HTMLCanvasElement; room: OpsRoom } | null = null;
 
 // ------------------------------------------------------------------ wiring helpers
 /** open the skill tree over a game (idempotent: a second call while it is open does nothing) */
