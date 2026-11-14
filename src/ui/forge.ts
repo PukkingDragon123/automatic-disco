@@ -1,313 +1,397 @@
-// The Gene Forge: design a species from genes you own. Body plans are gated by the body genes absorbed; parts
-// must come from the same lineage unless your field can splice. The phenotype (stats, warnings, cost) updates
-// live, and the creature walks on a pedestal of flesh while you sculpt it.
-import * as THREE from 'three';
-import type { Screen } from '../app/engine';
+// The Gene Lab (formerly the Gene Forge). Put a species in the specimen tank and rebuild it limb by limb: click a
+// part of the floating specimen (or a tab) and a carousel of the genes you own for that body area slides up, each
+// shown as a spinning 3D model of just that part; pick one and the field emitters arc to the tank, the fluid
+// flashes and the specimen re-grows with it while the scientists react. Lineage, body plan and splice limits
+// follow labRules.ts (the Gene Splicer opens cross-species grafts, the Deep Sequencer adds slots, the Growth Vat
+// lifts the size cap). Filing the design hands it back through `done` (the flow adds it to run.reg) and emits
+// 'prefab' { kind: 'creature', name }. The specimen shelf loads any species you have absorbed.
+import type { Engine, Screen } from '../app/engine';
 import type { Post } from '../gfx/post';
 import type { Run } from '../game/run';
-import { GENE, GENES, CAT_NAMES, LINEAGE_NAMES, PLAN_LEGS, PLAN_LINEAGE, compatible, type GeneCat, type Plan, type GeneDef } from '../life/genes';
-import { pheno, type Design, type Pattern, type Cover, nameFor } from '../life/design';
-import { buildSpeciesModel } from '../life/creatureMesh';
-import { makeInstance } from '../life/creatureMesh';
-import { Animator } from '../life/anim';
-import { el, ui, panel, Btn, iconImg, Tip, toast, costHTML, S } from './kit';
+import type { Species } from '../game/species';
+import type { Game } from '../game/game';
+import { GENE, GENES, LINEAGE_NAMES, type GeneCat } from '../life/genes';
+import { pheno, nameFor, type Design } from '../life/design';
+import { toast, Tip, costHTML } from './kit';
 import { icon } from './pixelart';
 import { sfx } from '../audio/audio';
 import { Rand, clamp } from '../core/rand';
-import { binomial } from '../world/plantArt';
-import { gbuf } from '../gfx/gbuf';
-import { VEYR } from '../world/palette';
-import type { Species } from '../game/species';
-
-const PLAN_NAME: Record<Plan, string> = { hexapod: 'Hexapod', octopod: 'Arachnid', quadruped: 'Quadruped', biped: 'Biped', hexapodV: 'Six-Limbed', serpent: 'Serpent', gastropod: 'Gastropod', hominid: 'Hominid' };
-const LIMITS: Record<GeneCat, number> = { body: 1, limb: 3, sense: 3, feed: 2, defense: 3, meta: 2, repro: 1 };
-const SWATCH = [0x6a5a3a, 0x9a7a4a, 0xc8a040, 0xd8c08a, 0xe8e0c8, 0x5a6a3a, 0x3a7a5a, 0x2a6a7a, 0x3a4a7a, 0x5a3a7a, 0x8a3a5a, 0xa83a2a, 0xd86a2a, 0x2a2a30, 0x6a6a70, 0xb0a8a0, 0x7affe0, 0xffe070];
+import { LabScene, TANK } from './labScene';
+import { LabIcons } from './labIcons';
+import { LabUI, SWATCH, type CardSpec } from './labUI';
+import { CAT_COL } from '../game/dnaHarvest';
+import { thumb } from './thumbs';
+import {
+  TABS, TAB_ORDER, REG_TABS, REG_NAME, tabOf, install, remove, invalid, cost, limits, lockReason, ownedPlans, defaultsFor, intoTank, sizeCap, spliceLevel, fxLine, fixSegs, PLAN_NAME,
+  type TabId, type LabCtx, type Change,
+} from './labRules';
 
 export interface ForgeResult { design: Design; parent: number | null }
+export interface LabOpts {
+  /** game events ('prefab' on filing) */
+  emit?: (ev: string, data: unknown) => void;
+  /** the species for the jars (default: designs and everything absorbed this run) */
+  species?: Species[];
+}
+const CAT_SHORT: Record<GeneCat, string> = { body: 'PLAN', limb: 'LIMB', sense: 'SENSE', feed: 'FEED', defense: 'DEF', meta: 'META', repro: 'BROOD' };
+const SEL_COL = 0xffcd6e, HOV_COL = 0x7affe0;
+const maskOf = (regs: number[]) => regs.reduce((m, r) => m + 2 ** r, 0);
 
 export class Forge implements Screen {
-  private scene = new THREE.Scene();
-  private fx = new THREE.Scene();
-  private cam = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.05, 200);
-  private root: HTMLDivElement;
+  private L: LabScene;
+  private ui: LabUI;
+  private icons: LabIcons;
+  private ctx: LabCtx;
   private d: Design;
-  private mesh: THREE.SkinnedMesh | null = null; private anim: Animator | null = null;
-  private yaw = 0.6; private pitch = 0.32; private dist = 4; private distGoal = 4;
-  private drag: { x: number; y: number } | null = null;
-  private dirty = 0; private t = 0;
-  private statBox!: HTMLDivElement; private warnBox!: HTMLDivElement; private costBox!: HTMLDivElement; private nameIn!: HTMLInputElement;
-  private geneBox!: HTMLDivElement; private tab: GeneCat = 'limb';
-  private sliders: { key: keyof Design; set: (v: number) => void }[] = [];
-  private planRow!: HTMLDivElement;
-  private walk = true;
-  private spores: THREE.Points;
+  private start: Design;
+  private parent: number | null;
+  private tab: TabId | 'genome' = 'genome';
+  private hintTabs: TabId[] = [];
+  private cardList: CardSpec[] = [];
+  private jarSp: Species[] = [];
+  private dirty = 0; private iconDirty = 0;
+  private ptr: { id: number; x: number; y: number; sx: number; sy: number; moved: boolean; type: string } | null = null;
+  private pts = new Map<number, { x: number; y: number }>(); private pinch = 0;
+  private mouse: { x: number; y: number } | null = null; private hovT = 0; private hovReg = 0;
+  private closing = false; private closed = false; private frames = 0;
+  private canvas: HTMLCanvasElement;
+  private prevTouch = '';
+  private grade: { bloom: number; vig: number } | null = null;
 
-  constructor(readonly run: Run, readonly vaults: number, readonly helix: () => number, readonly base: Species | null, readonly done: (r: ForgeResult | null) => void) {
+  constructor(readonly run: Run, readonly vaults: number, readonly helix: () => number, readonly base: Species | null, readonly done: (r: ForgeResult | null) => void, readonly opts: LabOpts = {}) {
+    this.ctx = { run, vaults, helix };
     this.d = this.initial();
-    // ---- chamber: pedestal of flesh and moss, rim of glow, drifting spores
-    this.scene.background = new THREE.Color(0x05080a);
-    this.scene.add(new THREE.HemisphereLight(0x9ab8d0, 0x203828, 1.6));
-    const key = new THREE.DirectionalLight(0xfff0e0, 2.6); key.position.set(-3, 5, 4); key.castShadow = true; key.shadow.mapSize.set(1024, 1024);
-    const sc = key.shadow.camera as THREE.OrthographicCamera; sc.left = sc.bottom = -4; sc.right = sc.top = 4; sc.near = 0.5; sc.far = 20;
-    this.scene.add(key);
-    const rim = new THREE.DirectionalLight(0x7affe0, 1.6); rim.position.set(3, 2, -4); this.scene.add(rim);
-    const ped = new THREE.Group();
-    const m = new THREE.MeshLambertMaterial(); gbuf(m, 1);
-    const g = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-    const inst = new THREE.InstancedMesh(g, m, 400);
-    let n = 0; const mat = new THREE.Matrix4(); const col = new THREE.Color();
-    for (let z = -6; z <= 6; z++) for (let x = -6; x <= 6; x++) {
-      const r = Math.hypot(x, z); if (r > 6.3) continue;
-      const h = r < 5 ? 0 : -0.25;
-      mat.makeTranslation(x * 0.5, h - 0.25 + (r > 5.5 ? -0.1 : 0), z * 0.5);
-      inst.setMatrixAt(n, mat);
-      col.set(r > 5.2 ? 0x1e3a40 : (x * 7 + z * 3) % 5 === 0 ? VEYR.mossLight : (x + z) % 3 === 0 ? VEYR.mossDark : VEYR.moss);
-      inst.setColorAt(n++, col);
-    }
-    inst.count = n; inst.receiveShadow = true;
-    ped.add(inst);
-    this.scene.add(ped);
-    const sp = new Float32Array(300 * 3); for (let i = 0; i < 300; i++) { sp[i * 3] = (Math.random() - 0.5) * 14; sp[i * 3 + 1] = Math.random() * 6; sp[i * 3 + 2] = (Math.random() - 0.5) * 14; }
-    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
-    this.spores = new THREE.Points(sg, new THREE.PointsMaterial({ color: new THREE.Color(VEYR.vein).multiplyScalar(1.8), size: 2, sizeAttenuation: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
-    this.fx.add(this.spores);
-    this.root = this.buildUI();
-    this.rebuild();
+    this.start = JSON.parse(JSON.stringify(this.d));
+    this.parent = base?.owner === 'veyr' ? base.id : null;
+    this.L = new LabScene();
+    this.icons = new LabIcons(this.L.cam, this.ctx);
+    this.ui = new LabUI({
+      tab: (t) => this.openTab(t, true), card: (_g, i) => this.pickCard(i), hoverCard: (e) => this.icons.hover(e),
+      save: () => this.save(), leave: () => this.close(null), reset: () => this.load(this.start, this.parent, 'load'), reroll: () => this.reroll(), name: (s) => { this.d.name = s; this.ui.refresh(); },
+      slider: (k, v) => this.slider(k, v), color: (k, c) => { (this.d.colors as unknown as Record<string, number>)[k] = c; this.restyle(); }, pattern: (p) => { this.d.pattern = p; this.restyle(); }, cover: (c) => { this.d.cover = c; this.restyle(); },
+      shelf: (o) => { if (o) this.fillShelf(); }, jar: (i) => this.loadJar(i), hoverJar: (i) => { this.L.hoverJar = i; },
+      saveDisabled: () => invalid(this.ctx, this.d),
+    });
+    this.L.onSay = (i, text) => { const s = this.L.sci[i]; this.ui.say(i, s.name, text, s.col); };
+    // the shelves: your designs first, then everything you have absorbed
+    this.jarSp = opts.species ?? this.shelfSpecies();
+    this.L.setJars([...this.jarSp, ...new Array(Math.max(0, 18 - this.jarSp.length)).fill(null)].slice(0, 18));
+    this.L.setSpecimen(this.d, false, true);
+    this.openTab('genome', false);
+    this.refresh();
+    // input
+    this.canvas = document.getElementById('view') as HTMLCanvasElement;
+    this.prevTouch = this.canvas.style.touchAction; this.canvas.style.touchAction = 'none';
+    this.canvas.addEventListener('pointerdown', this.onDown);
     addEventListener('pointermove', this.onMove);
-    addEventListener('pointerup', this.onUp);
-    addEventListener('wheel', this.onWheel, { passive: true });
+    addEventListener('pointerup', this.onUp); addEventListener('pointercancel', this.onUp);
+    this.canvas.addEventListener('wheel', this.onWheel, { passive: true });
     addEventListener('keydown', this.onKey);
+    document.body.classList.add('lab-open');
+    sfx('open'); sfx('pulse', 0.6, 0.4);
+    setTimeout(() => { if (!this.closed) this.L.speak(0, 'idle', true); }, 1800);
   }
 
-  private plans(): Plan[] {
-    const out: Plan[] = [];
-    for (const g of this.run.genes.keys()) { const gd = GENE[g]; if (gd?.cat === 'body' && gd.plan) out.push(gd.plan); }
-    return out;
-  }
+  // ---------------------------------------------------------------------------------------------- the design
   private initial(): Design {
-    if (this.base) return JSON.parse(JSON.stringify(this.base.design));
-    const plans = this.plans();
-    const plan = plans[plans.length - 1] ?? 'hexapod';
-    return this.defaultsFor(plan);
-  }
-  private defaultsFor(plan: Plan): Design {
-    const r = new Rand(Date.now() & 0xffff);
-    const lin = PLAN_LINEAGE[plan];
-    const owned = [...this.run.genes.keys()].map((k) => GENE[k]).filter(Boolean);
-    const genes: string[] = [owned.find((g) => g.cat === 'body' && g.plan === plan)?.id ?? ''];
-    const legs = PLAN_LEGS[plan].find((l) => this.run.has(l)); if (legs) genes.push(legs);
-    for (const cat of ['sense', 'feed', 'meta', 'repro'] as GeneCat[]) { const g = owned.find((x) => x.cat === cat && x.lineage === lin && !genes.includes(x.id)); if (g) genes.push(g.id); }
-    const d: Design = {
-      name: '', latin: binomial(r), plan, lineage: lin, genes: genes.filter(Boolean), size: 0.3, len: 0.5, girth: 0.5, legLen: 0.5, legThick: 0.5, neck: 0.4, head: 0.5, tail: 0.4, segs: 3,
-      colors: { base: 0x2f8f6e, belly: 0xb8e8c8, pattern: 0x0e3a30, accent: VEYR.vein, eye: 0x7affe0 }, pattern: 'stripes', patScale: 1, cover: lin === 'arthropod' ? 'chitin' : lin === 'vertebrate' ? 'scales' : 'slime', seed: r.int(1, 1e6),
-    };
-    d.name = 'Veyr ' + nameFor(d, r).split(' ')[1];
+    if (this.base) return intoTank(this.ctx, this.base.design).d;
+    const plans = ownedPlans(this.run);
+    const last = [...this.run.reg.list].reverse().find((s) => s.owner === 'veyr' && s.role === 'design');
+    if (last && !plans.length) return intoTank(this.ctx, last.design).d;
+    const d = defaultsFor(this.run, plans[plans.length - 1] ?? 'hexapod');
+    d.size = Math.min(d.size, sizeCap(this.ctx));
     return d;
   }
+  private shelfSpecies(): Species[] {
+    const from = new Set([...this.run.genes.values()].map((g) => g.from));
+    const mine = this.run.reg.list.filter((s) => s.owner === 'veyr' && s.role === 'design').reverse();
+    const wild = this.run.reg.list.filter((s) => s.owner !== 'veyr' && from.has(s.name)).reverse();
+    const seen = new Set<string>(), out: Species[] = [];
+    for (const s of [...(this.base ? [this.base] : []), ...mine, ...wild]) { if (seen.has(s.name)) continue; seen.add(s.name); out.push(s); }
+    return out.slice(0, 18);
+  }
+  private fillShelf() {
+    this.ui.setShelf(this.jarSp.map((s) => ({ name: s.name, sub: s.owner === 'veyr' ? 'YOUR DESIGN' : `ABSORBED · ${LINEAGE_NAMES[s.design.lineage].toUpperCase()}`, img: '' })));
+    // portraits come in one per frame (each renders the species once)
+    this.jarSp.forEach((s, i) => setTimeout(() => { if (this.closed) return; const img = this.ui.shelfBox.querySelectorAll('.lb-jar img')[i] as HTMLImageElement | undefined; if (img) { try { img.src = thumb(s); } catch { /* no renderer */ } } }, 30 + i * 40));
+  }
+  private loadJar(i: number) {
+    const sp = this.jarSp[i]; if (!sp || this.closing) return;
+    this.ui.closeShelf();
+    const jar = this.L.jars[i];
+    if (jar) { this.L.fx.arc(jar.at, TANK.electrode, 0.5, 0x7affe0, 0.4); this.L.fx.burst(jar.at.x, jar.at.y, jar.at.z, 14, 0x7affe0, { glow: true, speed: 1, up: 1, size: 2, life: 0.6, grav: 0 }); }
+    const d = intoTank(this.ctx, sp.design);
+    if (sp.owner !== 'veyr') d.d.name = 'Veyr ' + (nameFor(d.d, new Rand(d.d.seed)).split(' ')[1] ?? 'Specimen');
+    this.load(d.d, sp.owner === 'veyr' ? sp.id : null, 'load');
+    if (d.capped) toast('The Growth Vat is needed to grow it to full size. Scaled down.', 'info', 3200);
+  }
+  private load(d: Design, parent: number | null, kind: 'load') {
+    this.d = JSON.parse(JSON.stringify(d)); this.parent = parent;
+    this.L.setSpecimen(this.d, true); this.L.edit(0.8); this.L.react(kind);
+    this.openTab('genome', false);
+    this.refresh();
+  }
+  /** apply a change to the specimen with the full effect */
+  private apply(ch: Change, gene: string) {
+    const prev = this.d;
+    this.d = ch.d; fixSegs(this.d);
+    const g = GENE[gene];
+    const kind = g?.cat === 'body' ? 'plan' : g && g.lineage !== this.d.lineage ? 'splice' : 'edit';
+    this.L.setSpecimen(this.d, true);
+    this.L.edit(kind === 'plan' ? 1.7 : kind === 'splice' ? 1.35 : 1);
+    const inv = invalid({ ...this.ctx, helix: () => 999 }, { ...this.d, name: this.d.name || 'x' });
+    this.L.react(inv && !invalid({ ...this.ctx, helix: () => 999 }, { ...prev, name: prev.name || 'x' }) ? 'bad' : kind);
+    if (ch.msg) toast(ch.msg, 'info', 2800);
+    if (kind === 'plan') this.hintTabs = [];
+    this.refresh();
+    if (this.tab !== 'genome') this.L.present(TABS[this.tab].regs[0] ?? 1);
+  }
+  private slider(k: keyof Design, v: number) {
+    if (k === 'size') v = Math.min(v, sizeCap(this.ctx));
+    (this.d as unknown as Record<string, number>)[k] = v;
+    fixSegs(this.d);
+    this.ui.setDesign(this.d, sizeCap(this.ctx));
+    this.dirty = 0.22; this.iconDirty = 0.6;
+    this.stats();
+  }
+  private restyle() { this.dirty = 0.08; this.iconDirty = 0.5; this.ui.showPaint(this.tab === 'hide', this.d); }
+  private reroll() {
+    const r = new Rand(Math.random() * 1e9);
+    this.d.colors = { base: r.pick(SWATCH), belly: r.pick(SWATCH), pattern: r.pick(SWATCH), accent: r.pick(SWATCH), eye: r.pick([0x7affe0, 0xffe070, 0xff6a4a, 0x101010]) };
+    this.d.pattern = r.pick(['plain', 'stripes', 'spots', 'bands', 'mottled', 'saddle', 'rings']);
+    this.d.name = 'Veyr ' + nameFor(this.d, r).split(' ')[1];
+    this.L.setSpecimen(this.d, false); this.L.edit(0.45);
+    this.iconDirty = 0.4;
+    this.refresh();
+  }
 
-  // ------------------------------------------------------------------ UI
-  private buildUI(): HTMLDivElement {
-    const root = el('div', 'forge', ui());
-    const top = panel('fg-top', root, 'dark');
-    el('div', 'hdr fg-title', top, 'GENE FORGE');
-    this.nameIn = el('input', 'fg-name', top) as HTMLInputElement;
-    this.nameIn.value = this.d.name; this.nameIn.maxLength = 28;
-    this.nameIn.addEventListener('input', () => { this.d.name = this.nameIn.value; });
-    this.nameIn.addEventListener('keydown', (e) => e.stopPropagation());
-    new Btn(top, { icon: 'dna', label: 'RE-ROLL', size: 'wide', tip: () => 'New colours and a new name.' }, () => { const r = new Rand(Math.random() * 1e9); this.d.colors = { base: r.pick(SWATCH), belly: r.pick(SWATCH), pattern: r.pick(SWATCH), accent: r.pick(SWATCH), eye: r.pick([0x7affe0, 0xffe070, 0xff6a4a, 0x101010]) }; this.d.pattern = r.pick(['plain', 'stripes', 'spots', 'bands', 'mottled', 'saddle', 'rings']); this.d.name = 'Veyr ' + nameFor(this.d, r).split(' ')[1]; this.nameIn.value = this.d.name; this.dirty = 0.01; this.refreshColors(); });
-    // ---- left: body
-    const left = panel('fg-left', root);
-    el('div', 'hdr fg-h', left, 'BODY PLAN');
-    this.planRow = el('div', 'fg-plans', left);
-    this.renderPlans();
-    el('div', 'hdr fg-h', left, 'PROPORTIONS');
-    const sl = (label: string, key: keyof Design, tip: string, show = () => true) => {
-      const row = el('div', 'fg-sl', left);
-      el('span', 'small', row, label);
-      const tr = el('div', 'track', row), knob = el('div', 'knob', tr);
-      const set = (v: number) => { knob.style.left = `calc(${v * 100}% - ${3 * S}px)`; };
-      set(this.d[key] as number);
-      const upd = (e: PointerEvent) => { const r = tr.getBoundingClientRect(); const v = clamp((e.clientX - r.left) / r.width, 0, 1); (this.d as any)[key] = v; set(v); this.dirty = 0.12; };
-      tr.addEventListener('pointerdown', (e) => { e.stopPropagation(); tr.setPointerCapture(e.pointerId); upd(e); sfx('click', 1, 0.4); });
-      tr.addEventListener('pointermove', (e) => { if (e.buttons & 1) upd(e); });
-      row.addEventListener('pointerenter', () => Tip.show(`<h4>${label}</h4>${tip}`, row)); row.addEventListener('pointerleave', () => Tip.hide());
-      this.sliders.push({ key, set });
-      (row as any).__show = show;
-      return row;
+  // ---------------------------------------------------------------------------------------------- tabs and cards
+  private openTab(t: TabId | 'genome', user: boolean) {
+    this.tab = t;
+    if (user && t !== 'genome') this.L.present(TABS[t].regs.length > 6 ? 1 : TABS[t].regs[0]);
+    if (t === 'genome') { this.hintTabs = []; this.L.targetGoal.set(0.3, 1.72, -0.3); this.L.distGoal = clamp(this.L.distGoal, 8.2, 10); }
+    else { this.L.targetGoal.set(0.25, 1.85, 0); if (this.L.distGoal > 7.6) this.L.distGoal = 7.2; }
+    this.ui.showPaint(t === 'hide', this.d);
+    this.cards();
+  }
+  private owned(tab: TabId) { return [...this.run.genes.keys()].filter((id) => GENE[id] && tabOf(id) === tab); }
+  private cards() {
+    const d = this.d, t = this.tab;
+    const L: CardSpec[] = [];
+    const geneCard = (id: string): CardSpec => {
+      const g = GENE[id], on = d.genes.includes(id) || (g.cat === 'body' && g.plan === d.plan), why = on ? null : lockReason(this.ctx, d, g);
+      const lv = this.run.genes.get(id)?.level;
+      const meta = g.cat === 'body' ? `${LINEAGE_NAMES[g.lineage].toUpperCase()} FRAME` : `${CAT_SHORT[g.cat]} · ${LINEAGE_NAMES[g.lineage].toUpperCase()}`;
+      const foreign = g.lineage !== d.lineage && g.cat !== 'body';
+      const tag = on ? (t === 'genome' ? TABS[tabOf(id)].short : 'IN') : why ? 'LOCKED' : foreign ? 'SPLICE' : 'GRAFT';
+      const tip = `<h4>${g.name}</h4>${g.desc}<div class="sub" style="margin-top:3px">${fxLine(g, 6) || 'No direct stat effect.'}</div>`
+        + (why ? `<div class="tip-warn">${why}</div>` : on ? (t === 'genome' ? '<div class="sub">Click to open its body area.</div>' : g.cat === 'body' ? '<div class="sub">The current body plan.</div>' : '<div class="sub">Installed. Click to remove it.</div>') : `<div class="sub">${foreign ? 'Cross-lineage splice. ' : ''}Click to graft it on.</div>`);
+      return { gene: id, name: g.cat === 'body' && g.plan ? PLAN_NAME[g.plan] : g.name, meta, fx: g.cat === 'body' && g.plan ? `${({ hexapod: '6 LEGS', octopod: '8 LEGS', quadruped: '4 LEGS', biped: '2 LEGS', hexapodV: '6 LEGS', hominid: '2 LEGS', serpent: 'NO LEGS', gastropod: 'ONE FOOT' } as Record<string, string>)[g.plan]} · ${g.tier === 3 ? 'RARE' : g.tier === 2 ? 'UNCOMMON' : 'COMMON'}` : fxLine(g), state: on ? 'on' : why ? 'lock' : 'ok', tag, col: CAT_COL[g.cat], lv, tip };
     };
-    sl('Size', 'size', 'Overall body size. Mass grows with the cube of length: big bodies are strong, slow to grow and hungry.');
-    sl('Length', 'len', 'Body length for its size.');
-    sl('Girth', 'girth', 'Width and depth of the torso: more mass, more organs, more food needed.');
-    sl('Leg length', 'legLen', 'Longer legs take longer strides: faster, but they must carry the body.');
-    sl('Leg thickness', 'legThick', 'Bone or chitin cross-section. Too thin for the mass and the animal is slow and fragile.');
-    sl('Neck', 'neck', 'Reach and grazing height.');
-    sl('Head', 'head', 'Bigger heads carry bigger eyes and jaws.');
-    sl('Tail', 'tail', 'Balance and counterweight.');
-    el('div', 'hdr fg-h', left, 'COLOUR');
-    const sw = el('div', 'fg-sw', left);
-    for (const [k, lab] of [['base', 'Body'], ['belly', 'Belly'], ['pattern', 'Pattern'], ['accent', 'Accent']] as const) {
-      const r = el('div', 'fg-swr', sw);
-      el('span', 'tiny', r, lab.toUpperCase());
-      const row = el('div', 'fg-chips', r);
-      for (const c of SWATCH) { const ch = el('div', 'chip', row); ch.style.background = '#' + c.toString(16).padStart(6, '0'); ch.dataset.k = k; ch.dataset.c = String(c); ch.addEventListener('click', () => { (this.d.colors as any)[k] = c; this.dirty = 0.05; this.refreshColors(); sfx('click', 1, 0.4); }); }
+    if (t === 'genome') {
+      const ids = [...d.genes].filter((id) => GENE[id]).sort((a, b) => TAB_ORDER.indexOf(tabOf(a)) - TAB_ORDER.indexOf(tabOf(b)));
+      for (const id of ids) L.push(geneCard(id));
+    } else {
+      const ids = this.owned(t);
+      const st = (id: string) => { const c = geneCard(id); return c.state === 'on' ? 0 : c.state === 'ok' ? 1 : 2; };
+      ids.sort((a, b) => st(a) - st(b) || GENE[a].tier - GENE[b].tier);
+      for (const id of ids) L.push(geneCard(id));
+      const unk = GENES.filter((g) => tabOf(g.id) === t && !this.run.has(g.id)).length;
+      if (unk) L.push({ gene: null, name: 'UNSEQUENCED', meta: `${unk} MORE IN THE WILD`, fx: 'ABSORB TO SEQUENCE', state: 'unk', tag: '?', col: 0x3a5a4a, tip: `<h4>Unsequenced</h4>${unk} more ${TABS[t].name.toLowerCase()} gene${unk > 1 ? 's' : ''} exist out there. Absorb the creatures that carry them.` });
     }
-    const pr = el('div', 'fg-pats', left);
-    for (const p of ['plain', 'stripes', 'spots', 'bands', 'mottled', 'saddle', 'rings'] as Pattern[]) { const b = el('button', 'fg-pat', pr, p.toUpperCase()); b.dataset.p = p; b.addEventListener('click', () => { this.d.pattern = p; this.dirty = 0.05; this.refreshColors(); sfx('click', 1, 0.4); }); }
-    const cr = el('div', 'fg-pats cover', left);
-    for (const c of ['chitin', 'fur', 'scales', 'skin', 'slime'] as Cover[]) { const b = el('button', 'fg-pat', cr, c.toUpperCase()); b.dataset.c = c; b.addEventListener('click', () => { this.d.cover = c; this.dirty = 0.05; this.refreshColors(); sfx('click', 1, 0.4); }); }
-    // ---- right: phenotype
-    const right = panel('fg-right', root);
-    el('div', 'hdr fg-h', right, 'PHENOTYPE');
-    this.statBox = el('div', 'fg-stats', right);
-    this.warnBox = el('div', 'fg-warn', right);
-    this.refreshColors();
-    // ---- bottom: genes
-    const bot = panel('fg-bot', root);
-    const tabs = el('div', 'fg-tabs', bot);
-    for (const c of ['limb', 'sense', 'feed', 'defense', 'meta', 'repro'] as GeneCat[]) {
-      const t = el('button', 'fg-tab', tabs); t.dataset.c = c;
-      iconImg('cat-' + c, 'ti', t); el('span', '', t, CAT_NAMES[c].toUpperCase());
-      t.addEventListener('click', () => { this.tab = c; this.renderGenes(); sfx('click', 1, 0.5); });
+    this.cardList = L;
+    const counts: Partial<Record<TabId | 'genome', number>> = { genome: d.genes.length };
+    for (const k of TAB_ORDER) counts[k] = this.owned(k).length;
+    const title = t === 'genome' ? `GENOME · ${d.genes.length} GENES` : TABS[t].name;
+    const sub = t === 'genome' ? 'Click a part of the specimen, or a tab, to change it.' : TABS[t].desc;
+    this.ui.setTab(t, this.hintTabs, counts, title, sub);
+    this.ui.setCards(L, t !== 'genome' && !L.length ? `NO ${TABS[t].name} GENES YET · ABSORB MORE CREATURES` : t === 'genome' && !L.length ? 'THE TANK IS EMPTY' : undefined);
+    this.icons.set(this.ui.cards.map((c, i) => ({ el: (c as HTMLDivElement & { win?: HTMLElement }).win!, gene: L[i].gene })), d);
+  }
+  private pickCard(i: number) {
+    const c = this.cardList[i]; if (!c || this.closing) return;
+    if (this.tab === 'genome') { if (c.gene) { const t = tabOf(c.gene); this.hintTabs = []; this.openTab(t, true); sfx('click'); } return; }
+    if (c.state === 'unk') { sfx('deny'); toast('Absorb more creatures to sequence these genes.', 'info', 2400); return; }
+    if (!c.gene) return;
+    const g = GENE[c.gene];
+    if (c.state === 'lock') { sfx('deny'); toast(lockReason(this.ctx, this.d, g) ?? 'Locked', 'warn', 2600); this.L.speak(2, 'bad', true); return; }
+    if (c.state === 'on') {
+      if (g.cat === 'body') { sfx('deny'); return; }
+      this.apply(remove(this.d, c.gene), c.gene); sfx('close');
+      return;
     }
-    this.geneBox = el('div', 'fg-genes', bot);
-    this.renderGenes();
-    // ---- actions
-    const act = el('div', 'fg-act', right);
-    this.costBox = el('div', 'fg-cost', act);
-    new Btn(act, { icon: 'brood', label: 'GROW SPECIES', size: 'big', disabled: () => this.invalid() }, () => this.finish());
-    new Btn(act, { icon: 'stop', label: 'DISCARD', size: 'wide' }, () => this.close(null));
-    const hint = el('div', 'tiny fg-hint', root, 'DRAG TO ORBIT · WHEEL ZOOMS · [W] WALK / STAND · [ESC] LEAVE');
-    void hint;
-    root.addEventListener('pointerdown', (e) => { if (e.target === root) { this.drag = { x: e.clientX, y: e.clientY }; } });
-    return root;
-  }
-  private renderPlans() {
-    this.planRow.innerHTML = '';
-    const owned = this.plans();
-    for (const p of ['hexapod', 'octopod', 'quadruped', 'biped', 'hexapodV', 'serpent', 'gastropod', 'hominid'] as Plan[]) {
-      const ok = owned.includes(p);
-      if (!ok && (p === 'hominid')) continue;
-      const b = new Btn(this.planRow, { label: PLAN_NAME[p].toUpperCase(), size: 'wide', active: () => this.d.plan === p, disabled: () => (ok ? false : `Absorb a ${LINEAGE_NAMES[PLAN_LINEAGE[p]].toLowerCase()} body plan first`), tip: () => `<h4>${PLAN_NAME[p]}</h4>${GENES.find((g) => g.plan === p)?.desc ?? ''}` }, () => {
-        if (this.d.plan === p) return;
-        const keep = this.d.colors, nm = this.d.name;
-        this.d = this.defaultsFor(p); this.d.colors = keep; if (nm) this.d.name = nm;
-        this.nameIn.value = this.d.name;
-        for (const s of this.sliders) s.set(this.d[s.key] as number);
-        this.renderPlans(); this.renderGenes(); this.refreshColors(); this.dirty = 0.01;
-      });
-      b.refresh();
-    }
-  }
-  private splice() { return this.run.splice(this.vaults); }
-  private geneState(g: GeneDef): string | null {
-    if (!compatible(g, this.d.lineage, this.splice())) return g.lineage !== this.d.lineage ? `${LINEAGE_NAMES[g.lineage]} gene: your field cannot graft it onto a ${LINEAGE_NAMES[this.d.lineage].toLowerCase()} yet` : 'Incompatible';
-    if (g.cat === 'limb' && g.part && PLAN_LEGS[this.d.plan].includes(g.id) === false && Object.values(PLAN_LEGS).flat().includes(g.id)) return 'Walking legs of another body plan';
-    return null;
-  }
-  private renderGenes() {
-    for (const t of Array.from(document.querySelectorAll('.fg-tab'))) (t as HTMLElement).classList.toggle('act', (t as HTMLElement).dataset.c === this.tab);
-    const box = this.geneBox; box.innerHTML = '';
-    const owned = [...this.run.genes.values()].map((o) => GENE[o.id]).filter((g) => g && g.cat === this.tab);
-    if (!owned.length) { el('div', 'small fg-none', box, `You own no ${CAT_NAMES[this.tab].toLowerCase()} genes yet. Digest more creatures.`); return; }
-    for (const g of owned) {
-      const on = this.d.genes.includes(g.id), why = this.geneState(g);
-      const card = el('div', 'h-card fg-card' + (on ? ' sel' : '') + (why ? ' locked' : ''), box);
-      iconImg('cat-' + g.cat, 'h-ico', card);
-      el('div', 'h-name', card, g.name);
-      el('div', 'tiny h-cat', card, `${LINEAGE_NAMES[g.lineage].toUpperCase()} · LV ${this.run.genes.get(g.id)!.level}`);
-      if (why) el('div', 'h-tag up', card, 'LOCKED');
-      card.addEventListener('pointerenter', () => Tip.show(`<h4>${g.name}</h4>${g.desc}${why ? `<div class="tip-warn">${why}</div>` : ''}`, card));
-      card.addEventListener('pointerleave', () => Tip.hide());
-      card.addEventListener('click', () => {
-        if (why) { sfx('deny'); return; }
-        if (on) { this.d.genes = this.d.genes.filter((x) => x !== g.id); }
-        else {
-          // walking legs are exclusive; categories have limits
-          if (PLAN_LEGS[this.d.plan].includes(g.id)) this.d.genes = this.d.genes.filter((x) => !PLAN_LEGS[this.d.plan].includes(x));
-          const inCat = this.d.genes.filter((x) => GENE[x]?.cat === g.cat);
-          if (inCat.length >= LIMITS[g.cat]) { const drop = inCat.find((x) => !PLAN_LEGS[this.d.plan].includes(x)) ?? inCat[0]; this.d.genes = this.d.genes.filter((x) => x !== drop); }
-          this.d.genes.push(g.id);
-        }
-        sfx('click', 1, 0.6); this.dirty = 0.01; this.renderGenes();
-      });
-    }
-  }
-  private refreshColors() {
-    for (const ch of Array.from(document.querySelectorAll('.fg-chips .chip'))) { const e = ch as HTMLElement; e.classList.toggle('on', (this.d.colors as any)[e.dataset.k!] === Number(e.dataset.c)); }
-    for (const b of Array.from(document.querySelectorAll('.fg-pat'))) { const e = b as HTMLElement; e.classList.toggle('on', e.dataset.p ? e.dataset.p === this.d.pattern : e.dataset.c === this.d.cover); }
+    this.apply(install(this.ctx, this.d, c.gene), c.gene);
+    sfx('build', 1, 0.6);
   }
 
-  private cost() { return 3 + Math.max(0, this.d.genes.length - 4); }
-  private invalid(): string | false {
-    if (!this.d.genes.some((g) => GENE[g]?.cat === 'body')) return 'No body plan';
-    if (!this.d.genes.some((g) => GENE[g]?.cat === 'feed')) return 'It needs a way to feed';
-    if (!this.d.genes.some((g) => GENE[g]?.cat === 'repro')) return 'It needs a way to reproduce';
-    if (PLAN_LEGS[this.d.plan].length && !this.d.genes.some((g) => PLAN_LEGS[this.d.plan].includes(g))) return 'It needs limbs to move';
-    if (this.helix() < this.cost()) return `Needs ${this.cost()} helix`;
-    if (!this.d.name.trim()) return 'Name it';
-    return false;
+  // ---------------------------------------------------------------------------------------------- readouts
+  private refresh() {
+    this.ui.setDesign(this.d, sizeCap(this.ctx));
+    this.stats();
+    this.cards();
   }
-  private updateStats() {
+  private stats() {
     const p = pheno(this.d), st = p.stats;
     const rows: [string, number, number, string][] = [
-      ['HEALTH', st.hp, 600, `${Math.round(st.hp)}`], ['ARMOUR', st.armor, 0.75, `${Math.round(st.armor * 100)}%`], ['SPEED', st.speed, 10, `${st.speed.toFixed(1)} m/s`],
-      ['ATTACK', st.attack, 40, st.attack.toFixed(1)], ['SIGHT', st.sight, 30, `${st.sight.toFixed(0)} m`], ['STEALTH', st.stealth, 0.9, `${Math.round(st.stealth * 100)}%`],
-      ['UPKEEP', st.upkeep, 0.6, st.upkeep.toFixed(2)], ['BROOD', st.litter, 5, `${st.litter} / ${Math.round(st.gestation)}s`],
+      ['HEALTH', st.hp, 600, `${Math.round(st.hp)}`], ['ARMOUR', st.armor, 0.75, `${Math.round(st.armor * 100)}%`], ['SPEED', st.speed, 10, `${st.speed.toFixed(1)} M/S`],
+      ['ATTACK', st.attack, 40, st.attack.toFixed(1)], ['SIGHT', st.sight, 30, `${st.sight.toFixed(0)} M`], ['STEALTH', st.stealth, 0.9, `${Math.round(st.stealth * 100)}%`],
+      ['UPKEEP', st.upkeep, 0.6, st.upkeep.toFixed(2)], ['BROOD', st.litter, 5, `${st.litter} / ${Math.round(st.gestation)}S`],
     ];
-    this.statBox.innerHTML = `<div class="fg-mass tiny">${p.length.toFixed(2)} M · ${p.stats.mass < 10 ? p.stats.mass.toFixed(1) : Math.round(p.stats.mass)} KG · ${p.diet === 'carn' ? 'CARNIVORE' : p.diet === 'herb' ? 'HERBIVORE' : p.diet === 'scav' ? 'SCAVENGER' : 'OMNIVORE'}${p.canFly ? ' · FLIES' : ''}</div>` +
-      rows.map(([n, v, max, txt]) => `<div class="fg-stat"><span class="tiny">${n}</span><div class="fg-sbar"><div style="width:${clamp(v / max, 0, 1) * 100}%"></div></div><span class="tiny v">${txt}</span></div>`).join('');
-    const inv = this.invalid();
-    this.warnBox.innerHTML = [...p.warnings, ...(inv ? [inv] : [])].map((w) => `<div class="tip-warn">▲ ${w}</div>`).join('') || '<div class="small" style="color:#7affe0">Anatomy sound.</div>';
-    this.costBox.innerHTML = `<div class="small">DESIGN</div><span class="c-chg"><img src="${icon('helix')}">${this.cost()}</span> <span class="small">/ ${this.helix()}</span><div class="small">EACH</div>${costHTML(p.cost, Math.round(st.armor * 60))} <span class="small">· ${p.buildTime.toFixed(0)}S</span>`;
+    this.ui.stats.innerHTML = `<div class="lb-mass">${PLAN_NAME[this.d.plan].toUpperCase()} · ${p.length.toFixed(2)} M · ${st.mass < 10 ? st.mass.toFixed(1) : Math.round(st.mass)} KG · ${p.diet === 'carn' ? 'CARNIVORE' : p.diet === 'herb' ? 'HERBIVORE' : p.diet === 'scav' ? 'SCAVENGER' : 'OMNIVORE'}${p.canFly ? ' · FLIES' : ''}</div>`
+      + rows.map(([n, v, max, txt]) => `<div class="lb-stat"><span>${n}</span><div class="lb-sbar"><div class="${n === 'UPKEEP' ? 'dn' : ''}" style="width:${clamp(v / max, 0, 1) * 100}%"></div></div><span class="v">${txt}</span></div>`).join('');
+    const inv = invalid(this.ctx, this.d);
+    const splice = spliceLevel(this.ctx);
+    const notes = [...p.warnings.map((w) => `<div class="tip-warn">▲ ${w}</div>`), ...(inv ? [`<div class="tip-warn">■ ${inv}</div>`] : [])];
+    this.ui.warn.innerHTML = (notes.join('') || '<div style="color:var(--hot)">ANATOMY SOUND. VIABLE.</div>') + `<div style="color:var(--dim);margin-top:2px">SPLICE ${splice >= 2 ? 'OPEN: ANY LINEAGE' : splice === 1 ? 'PARTIAL: ORGANS ONLY' : 'CLOSED: ONE LINEAGE'}${this.run.skills?.has('vat') ? ' · VAT ONLINE' : ''}</div>`;
+    const lim = limits(this.ctx);
+    this.ui.slots.innerHTML = (['limb', 'sense', 'feed', 'defense', 'meta', 'repro'] as GeneCat[]).map((c) => { const n = this.d.genes.filter((g) => GENE[g]?.cat === c).length; return `<div class="${n >= lim[c] ? 'full' : ''}">${CAT_SHORT[c]}<b>${n}/${lim[c]}</b></div>`; }).join('') + `<div>TOTAL<b>${this.d.genes.length}</b></div>`;
+    this.ui.cost.innerHTML = `<span>DESIGN</span><span class="c-chg"><img src="${icon('helix')}">${cost(this.d)}</span><span>/ ${Math.floor(this.helix())}</span><span>· EACH</span>${costHTML(p.cost, Math.round(st.armor * 60))}<span>· ${p.buildTime.toFixed(0)}S</span>`;
+    this.ui.refresh();
   }
 
-  // ------------------------------------------------------------------ preview
-  private rebuild() {
-    if (this.mesh) { this.mesh.removeFromParent(); (this.mesh.material as THREE.Material).dispose(); this.mesh.geometry.dispose(); }
-    this.d.segs = this.d.plan === 'serpent' ? Math.round(7 + this.d.len * 6) : Math.round(2 + this.d.len * 2);
-    const model = buildSpeciesModel(this.d);
-    const { mesh, bones } = makeInstance(model);
-    this.mesh = mesh; this.anim = new Animator(model.rig, bones, mesh);
-    const L = model.rig.length;
-    this.distGoal = clamp(L * 2.2 + model.rig.height * 1.4 + 1.2, 2.2, 14);
-    this.scene.add(mesh);
-    this.updateStats();
-  }
-  private onMove = (e: PointerEvent) => { if (!this.drag) return; this.yaw -= (e.clientX - this.drag.x) * 0.008; this.pitch = clamp(this.pitch + (e.clientY - this.drag.y) * 0.005, 0.05, 1.1); this.drag = { x: e.clientX, y: e.clientY }; };
-  private onUp = () => { this.drag = null; };
-  private onWheel = (e: WheelEvent) => { this.distGoal = clamp(this.distGoal * (e.deltaY > 0 ? 1.1 : 0.9), 1.5, 16); };
-  private onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') this.close(null); else if (e.key === 'w') this.walk = !this.walk; };
-
-  update(dt: number) {
-    this.t += dt;
-    if (this.dirty > 0) { this.dirty -= dt; if (this.dirty <= 0) { this.dirty = 0; this.rebuild(); } }
-    if (!this.drag) this.yaw += dt * 0.15;
-    this.dist += (this.distGoal - this.dist) * Math.min(1, dt * 5);
-    const h = this.mesh ? this.mesh.geometry.boundingSphere!.center.y : 0.5;
-    this.cam.position.set(Math.sin(this.yaw) * Math.cos(this.pitch) * this.dist, h + Math.sin(this.pitch) * this.dist, Math.cos(this.yaw) * Math.cos(this.pitch) * this.dist);
-    this.cam.lookAt(0, h * 0.8, 0);
-    this.cam.updateMatrixWorld();
-    if (this.mesh && this.anim) {
-      this.mesh.position.set(0, 0, 0);
-      this.mesh.updateMatrixWorld(true);
-      this.anim.update(dt, { speed: this.walk ? Math.min(1.6, pheno(this.d).stats.speed * 0.35) : 0, turn: 0, state: this.walk ? 'move' : 'idle', act: 0, lookYaw: Math.sin(this.t * 0.7) * 0.4, lookPitch: 0, ground: () => 0, air: 0 });
+  // ---------------------------------------------------------------------------------------------- input
+  private onDown = (e: PointerEvent) => {
+    if (this.closing) return;
+    this.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.pts.size === 2) { const [a, b] = [...this.pts.values()]; this.pinch = Math.hypot(a.x - b.x, a.y - b.y); this.ptr = null; return; }
+    this.ptr = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, type: e.pointerType };
+    Tip.hide();
+  };
+  private onMove = (e: PointerEvent) => {
+    if (this.pts.has(e.pointerId)) this.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.pts.size === 2 && this.pinch > 0) {
+      const [a, b] = [...this.pts.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+      this.L.distGoal = clamp(this.L.distGoal * (this.pinch / Math.max(20, d)), 3.4, 11); this.pinch = d; return;
     }
-    const p = this.spores.geometry.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < p.count; i++) { let y = p.getY(i) + dt * 0.25; if (y > 6) y = 0; p.setY(i, y); }
-    p.needsUpdate = true;
+    if (e.pointerType === 'mouse') this.mouse = (e.target === this.canvas) ? { x: e.clientX, y: e.clientY } : null;
+    const p = this.ptr; if (!p || p.id !== e.pointerId) return;
+    if (!p.moved && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > 7) p.moved = true;
+    if (p.moved) {
+      this.L.yawGoal = clamp(this.L.yawGoal - (e.clientX - p.x) * 0.0055, -0.95, 0.95);
+      this.L.pitchGoal = clamp(this.L.pitchGoal + (e.clientY - p.y) * 0.0035, -0.08, 0.55);
+      this.ui.tag(null);
+    }
+    p.x = e.clientX; p.y = e.clientY;
+  };
+  private onUp = (e: PointerEvent) => {
+    this.pts.delete(e.pointerId); if (this.pts.size < 2) this.pinch = 0;
+    const p = this.ptr; if (!p || p.id !== e.pointerId) return;
+    this.ptr = null;
+    if (p.moved || this.closing || e.type === 'pointercancel') return;
+    this.tap(e.clientX, e.clientY);
+  };
+  private onWheel = (e: WheelEvent) => { this.L.distGoal = clamp(this.L.distGoal * (e.deltaY > 0 ? 1.1 : 0.9), 3.4, 11); };
+  private onKey = (e: KeyboardEvent) => {
+    if (this.closing) return;
+    if (e.key === 'Escape') { if (this.ui.shelfBox.classList.contains('open')) this.ui.closeShelf(); else if (this.tab !== 'genome') this.openTab('genome', true); else this.close(null); }
+    else if (e.key === 'ArrowRight') this.ui.strip.scrollBy({ left: 160, behavior: 'smooth' });
+    else if (e.key === 'ArrowLeft') this.ui.strip.scrollBy({ left: -160, behavior: 'smooth' });
+  };
+  /** a click or tap on the lab: a part of the specimen opens its area; a jar loads its species */
+  private tap(x: number, y: number) {
+    const hit = this.L.pickRegion(x, y);
+    if (hit) {
+      const tabs = REG_TABS[hit.reg] ?? ['body'];
+      this.hintTabs = tabs;
+      sfx('click', 1.2, 0.7); sfx('zap', 2, 0.15);
+      this.L.fx.burst(hit.at.x, hit.at.y, hit.at.z, 10, HOV_COL, { glow: true, speed: 0.8, up: 0.4, size: 2, life: 0.5, grav: 0 });
+      this.openTab(tabs[0], false);
+      this.L.present(hit.reg);
+      this.flashReg = { reg: hit.reg, t: 0.8 };
+      return;
+    }
+    const j = this.L.pickJar(this.L.rayAt(x, y));
+    if (j >= 0) { this.loadJar(j); return; }
   }
-  render(post: Post, t: number) { post.render(this.scene, this.cam, this.fx, t); }
-  resize(w: number, h: number) { this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); }
+  private flashReg: { reg: number; t: number } | null = null;
 
-  private finish() {
-    const inv = this.invalid(); if (inv) { toast(inv, 'warn'); return; }
-    sfx('build');
-    this.close({ design: JSON.parse(JSON.stringify(this.d)), parent: this.base?.id ?? null });
+  // ---------------------------------------------------------------------------------------------- frame
+  update(dt: number) {
+    if (this.closed) return;
+    this.frames++;
+    if (this.frames === 3) this.ui.ready();
+    if (this.dirty > 0) { this.dirty -= dt; if (this.dirty <= 0) { this.dirty = 0; this.L.setSpecimen(this.d, false); } }
+    if (this.iconDirty > 0) { this.iconDirty -= dt; if (this.iconDirty <= 0) { this.iconDirty = 0; this.cards(); } }
+    // hover: what is under the mouse in the tank (a few times a second: picking walks every triangle)
+    this.hovT -= dt;
+    if (this.hovT <= 0) {
+      this.hovT = 0.09;
+      const m = this.mouse;
+      let reg = 0, jar = -1;
+      if (m && !this.ptr?.moved && !this.closing) {
+        const hit = this.L.pickRegion(m.x, m.y);
+        if (hit) reg = hit.reg; else jar = this.L.pickJar(this.L.rayAt(m.x, m.y));
+        if (reg && reg !== this.hovReg) sfx('hover', 1.4, 0.4);
+        if (reg) {
+          const t = REG_TABS[reg]?.[0];
+          const names = t ? this.d.genes.filter((g) => tabOf(g) === t).map((g) => GENE[g].name) : [];
+          this.ui.tag(`${REG_NAME[reg]}<i>${names.length ? names.join(' · ') : 'NOTHING GROWN HERE'} · CLICK TO EDIT</i>`, m.x, m.y);
+        } else if (jar >= 0) this.ui.tag(`SPECIMEN JAR<i>${this.jarSp[jar]?.name ?? ''} · CLICK TO LOAD</i>`, m.x, m.y);
+        else this.ui.tag(null);
+        this.canvas.style.cursor = reg || jar >= 0 ? 'pointer' : '';
+      } else if (!m) this.ui.tag(null);
+      this.hovReg = reg; this.L.hoverJar = jar;
+    }
+    if (this.flashReg) { this.flashReg.t -= dt; if (this.flashReg.t <= 0) this.flashReg = null; }
+    const showReg = this.hovReg || this.flashReg?.reg || 0;
+    if (showReg) this.L.hover(showReg, maskOf([showReg]), HOV_COL);
+    else if (this.tab !== 'genome' && TABS[this.tab].regs.length <= 6) this.L.hover(0, maskOf(TABS[this.tab].regs), SEL_COL);
+    else this.L.hover(0, 0, SEL_COL);
+    this.L.update(dt);
+    this.icons.update(dt);
+    this.ui.tickBubbles(dt, (i) => this.L.project(this.L.headPos(i)));
+  }
+  render(post: Post, t: number) {
+    if (!this.grade) { this.grade = { bloom: post.grade.bloom, vig: post.grade.vig }; post.grade.bloom = 0.42; post.grade.vig = 0.42; }
+    post.render(this.L.scene, this.L.cam, this.L.fxs, t);
+  }
+  resize(w: number, h: number) { this.L.cam.aspect = w / h; this.L.cam.updateProjectionMatrix(); }
+
+  // ---------------------------------------------------------------------------------------------- filing and leaving
+  private save() {
+    if (this.closing) return;
+    const inv = invalid(this.ctx, this.d);
+    if (inv) { toast(inv, 'warn'); this.L.react('bad'); return; }
+    this.closing = true;
+    const d: Design = JSON.parse(JSON.stringify(this.d));
+    this.L.react('save'); this.L.edit(0.7);
+    this.ui.stamp('FILED', `${d.name.toUpperCase()} · PREFAB No.${String(this.run.reg.list.length + 1).padStart(3, '0')}`);
+    sfx('build'); setTimeout(() => sfx('done'), 300);
+    try { this.opts.emit?.('prefab', { kind: 'creature', name: d.name }); } catch (e) { console.error('prefab event', e); }
+    setTimeout(() => this.close({ design: d, parent: this.parent }), 1500);
   }
   private close(r: ForgeResult | null) {
-    removeEventListener('pointermove', this.onMove); removeEventListener('pointerup', this.onUp); removeEventListener('wheel', this.onWheel); removeEventListener('keydown', this.onKey);
-    this.root.remove(); Tip.hide();
-    if (this.mesh) { this.mesh.removeFromParent(); (this.mesh.material as THREE.Material).dispose(); }
+    if (this.closed) return;
+    this.teardown();
     this.done(r);
   }
+  private teardown() {
+    if (this.closed) return;
+    this.closed = true;
+    this.canvas.removeEventListener('pointerdown', this.onDown);
+    removeEventListener('pointermove', this.onMove); removeEventListener('pointerup', this.onUp); removeEventListener('pointercancel', this.onUp);
+    this.canvas.removeEventListener('wheel', this.onWheel);
+    removeEventListener('keydown', this.onKey);
+    this.canvas.style.touchAction = this.prevTouch; this.canvas.style.cursor = '';
+    document.body.classList.remove('lab-open');
+    this.ui.dispose(); this.icons.dispose(); this.L.dispose();
+    const eng = (window as unknown as { __engine?: Engine }).__engine;
+    if (this.grade && eng) { eng.post.grade.bloom = this.grade.bloom; eng.post.grade.vig = this.grade.vig; }
+    Tip.hide();
+  }
+  dispose() { this.teardown(); }
+}
+/** the lab's own name; Forge stays for older call sites */
+export { Forge as Lab };
+
+/**
+ * Open the lab over a running region (the openBuilder / openLab hooks): filing adds the design to run.reg via
+ * game.addDesign (which charges the helix), and the 'prefab' event goes out on the game's bus.
+ */
+export function openLab(engine: Engine, game: Game, base: Species | null = null) {
+  if (game.run.skills && !game.run.skills.has('lab')) { sfx('deny'); toast('No laboratory yet. Build the <b>Field Laboratory</b> on the skill tree.', 'warn', 3200); return; }
+  engine.push(new Forge(game.run, game.vaults, () => game.veyr.res.helix, base, (res) => {
+    engine.pop();
+    if (res) game.addDesign(res.design, res.parent, cost(res.design));
+  }, { emit: (ev, d) => game.emit(ev, d) }));
 }

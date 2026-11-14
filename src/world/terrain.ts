@@ -1,6 +1,6 @@
-// Voxel terrain: 16 x 16-column chunks, Minecraft-style smooth AO, array-texture blocks. The fragment shader
-// overlays the Veyr's moss and rival creep from a coverage texture (organic, pixel-snapped growth fronts, drips
-// down cliff faces, glowing veins pulsing toward the core) and applies fog of war.
+// Voxel terrain: 16 x 16-column chunks, Minecraft-style smooth AO, array-texture blocks. The fragment shader tints
+// the ground the Veyr and its rivals hold (from a territory texture: a metallic sheen, hairline veins pulsing in the
+// owner's colour, a bright seam along the claim's edge) and applies fog of war.
 import * as THREE from 'three';
 import { Region } from './region';
 import { BLOCKS, L, buildBlockTexture } from './blockTex';
@@ -208,33 +208,38 @@ float damp = texture2D(uDamp, pc / uN).r;
 damp = clamp(damp + (vn(pc * 1.3) - 0.5) * 0.35, 0.0, 1.0);
 float dl = dot(base, vec3(0.3, 0.59, 0.11));
 base = mix(base, mix(vec3(dl), base, 1.18) * 0.66, smoothstep(0.25, 0.85, damp) * 0.85);
+// held ground (game/hive.ts writes the Veyr's claim into b, a rival's into a). No carpet: the soil itself is changed,
+// a faint cold metallic sheen, hairline veins in the owner's colour that pulse now and then, sparse rivet studs and a
+// bright seam along the edge of the claim
 vec4 cov = texture2D(uMoss, pc / uN);
-float nLow = vn(vWp.xz * 0.85) * 0.62 + vn(vWp.xz * 3.3) * 0.38;
-float thr = 0.3 + nLow * 0.4 + (h2(pxw) - 0.5) * 0.1;
-bool mossOn = cov.r > thr;
-bool creepOn = !mossOn && cov.g > thr + 0.02;
-if (mossOn || creepOn) {
-  vec4 mt = texture(uBlocks, vec3(vWp.xz, mossOn ? ${L.moss}.0 : uRivalLayer), -0.35);
-  base = mt.rgb;
-  float c = mossOn ? cov.r : cov.g;
-  vec3 vc = mossOn ? uVein : uRivalVein;
-  emis = mt.rgb * (1.0 - mt.a) * 1.1;
-  if (c - thr < 0.06) base = mix(base, mossOn ? uMossLight : vc, 0.4);
-  vec3 cc = mossOn ? uCore : uRivalCore;
-  vec2 dv = pc - cc.xz;
-  float rr = length(dv), ang = atan(dv.y, dv.x) / 6.2831853;
-  float lvl = clamp(floor(log2(max(rr, 2.0) / 2.2)), 0.0, 5.0);
-  float spokes = 4.0 * pow(2.0, lvl);
-  float wob = (vn(vec2(rr * 0.22, ang * 7.0)) - 0.5) * 0.45 + (vn(vec2(rr * 0.9, ang * 23.0)) - 0.5) * 0.08;
-  float fsec = fract(ang * spokes + wob * (1.0 + lvl * 0.3));
-  float across = abs(fsec - 0.5) * 6.2831853 * rr / spokes * 32.0;
-  float width = 0.9 + 1.6 * exp(-rr * 0.12);
-  if (across < width && c > thr + 0.14 && rr > 1.6) {
-    float ph = fract(rr * 0.13 + uTime * 0.42 + h2(vec2(floor(ang * spokes), lvl)) * 0.3);
-    float pulse = 0.25 + 2.6 * smoothstep(0.86, 1.0, ph);
-    base = mix(base, vc * 0.75, 0.75);
-    emis += vc * pulse * 0.7 * uVeinGain;
+float nT = vn(vWp.xz * 0.6) * 0.6 + vn(vWp.xz * 2.7) * 0.4;
+float thr = 0.42 + nT * 0.14 + (h2(pxw) - 0.5) * 0.05;
+bool mineT = cov.b > thr;
+bool theirT = !mineT && cov.a > thr;
+if (mineT || theirT) {
+  float c = mineT ? cov.b : cov.a;
+  vec3 vc = mineT ? uVein : uRivalVein;
+  float inner = smoothstep(thr, thr + 0.22, c);
+  float l = dot(base, vec3(0.3, 0.59, 0.11));
+  base = mix(base, vec3(l) * vec3(0.82, 0.92, 0.98) * 1.1 + vc * 0.04, 0.34 * inner);
+  // hairline veins: one-pixel contour lines of a slow noise field (a line wherever a contour crosses into the next pixel)
+  float vf = vn(pc * 0.11 + 5.0) * 0.75 + vn(pc * 0.37 + 2.0) * 0.25;
+  float vr = vn((pc + vec2(1.0 / 32.0, 0.0)) * 0.11 + 5.0) * 0.75 + vn((pc + vec2(1.0 / 32.0, 0.0)) * 0.37 + 2.0) * 0.25;
+  float vd = vn((pc + vec2(0.0, 1.0 / 32.0)) * 0.11 + 5.0) * 0.75 + vn((pc + vec2(0.0, 1.0 / 32.0)) * 0.37 + 2.0) * 0.25;
+  float lv = floor(vf * 7.0);
+  if ((lv != floor(vr * 7.0) || lv != floor(vd * 7.0)) && inner > 0.15 && h2(vec2(lv, 3.0)) > 0.25) {
+    float ph = fract(vf * 2.0 - uTime * 0.2 + h2(vec2(lv, 9.0)));
+    base = mix(base, vc * 0.6, 0.55 * inner);
+    emis += vc * (0.12 + 1.4 * smoothstep(0.9, 1.0, ph)) * 0.55 * inner * uVeinGain;
   }
+  vec2 rg = mod(pxw, 40.0);
+  if (rg.x < 1.0 && rg.y < 1.0 && inner > 0.6 && h2(floor(pxw / 40.0) + 3.0) > 0.5) { base = vec3(0.8, 0.86, 0.9) * (0.6 + l); emis += vc * 0.25; }
+  // the seam: this pixel is held and one of its four neighbours is not
+  float t0 = 0.42 + nT * 0.14, px1 = 1.0 / 32.0;
+  vec4 nA = texture2D(uMoss, (pc + vec2(px1, 0.0)) / uN), nB = texture2D(uMoss, (pc - vec2(px1, 0.0)) / uN);
+  vec4 nC = texture2D(uMoss, (pc + vec2(0.0, px1)) / uN), nD = texture2D(uMoss, (pc - vec2(0.0, px1)) / uN);
+  float nm = mineT ? min(min(nA.b, nB.b), min(nC.b, nD.b)) : min(min(nA.a, nB.a), min(nC.a, nD.a));
+  if (nm < t0 - 0.02) { base = mix(base, vc * 0.7, 0.6); emis += vc * 0.35 * uVeinGain; }
 }
 diffuseColor.rgb *= base;
 `)
@@ -246,9 +251,10 @@ diffuseColor.rgb *= base;
   }
 
   // ---------------------------------------------------------------- coverage / vision updates
-  /** veyr moss coverage [0,1] for a column */
-  setMoss(i: number, v: number) { (this.moss.image.data as Uint8Array)[i * 4] = Math.round(v * 255); }
-  setCreep(i: number, v: number) { (this.moss.image.data as Uint8Array)[i * 4 + 1] = Math.round(v * 255); }
+  /** Veyr territory [0,1] for a column (blue channel; red and green, the old moss and creep carpets, stay empty) */
+  setMoss(i: number, v: number) { (this.moss.image.data as Uint8Array)[i * 4 + 2] = Math.round(v * 255); }
+  /** rival territory [0,1] (alpha channel) */
+  setCreep(i: number, v: number) { (this.moss.image.data as Uint8Array)[i * 4 + 3] = Math.round(v * 255); }
   mossFlush() { this.moss.needsUpdate = true; }
   /** vision: r = visible now, g = explored */
   visData() { return this.vis.image.data as Uint8Array; }

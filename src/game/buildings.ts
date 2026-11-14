@@ -1,5 +1,5 @@
 // Grown structures. Each is a cluster of textured boxes (array-texture bio materials, emissive pixels flagged in
-// alpha) built procedurally, rising out of the moss while it grows, breathing and pulsing once alive.
+// alpha) built procedurally, rising out of held ground while it grows, breathing and pulsing once alive.
 import * as THREE from 'three';
 import { PixelCanvas, makeRamp, mixHex } from '../limbo/gfx/pixel';
 import { tileFbm, hashf } from '../limbo/core/rng';
@@ -8,27 +8,32 @@ import { Noise } from '../core/noise';
 import { gbuf, F_SEL, F_HOVER, F_ENEMY } from '../gfx/gbuf';
 import { VEYR } from '../world/palette';
 import type { Faction } from './species';
+import type { Res } from './skills';
 
 export type BKind = 'core' | 'spire' | 'tap' | 'brood' | 'vault' | 'maw' | 'thorn' | 'coil' | 'lure' | 'spore';
 export interface BDef {
   kind: BKind; name: string; desc: string; key: string;
+  /** what a rival pays (its biomass / minerals) */
   bio: number; min: number; time: number; hp: number; radius: number; sight: number; supply: number; em: number;
+  /** what the Veyr pays in raw materials, and the skill that unlocks it (fabrication structures) */
+  cost?: Partial<Record<Res, number>>; skill?: string;
   /** placement rule */
   onDeposit?: boolean;
 }
 export const BDEFS: Record<BKind, BDef> = {
-  core: { kind: 'core', name: 'Veyr Core', key: '', desc: 'The heart that fell from the sky. Lose it and you are only rock.', bio: 0, min: 0, time: 1, hp: 2400, radius: 1.1, sight: 18, supply: 6, em: 1 },
-  spire: { kind: 'spire', name: 'Nerve Spire', key: 'S', desc: 'Carries your field outward: moss can grow and buildings can root within its reach.', bio: 45, min: 0, time: 14, hp: 380, radius: 0.9, sight: 14, supply: 0, em: 1 },
-  tap: { kind: 'tap', name: 'Root Tap', key: 'T', desc: 'Drives roots into a ferrite or crystal seam and pumps minerals up.', bio: 35, min: 0, time: 12, hp: 320, radius: 1.1, sight: 8, supply: 0, em: 1, onDeposit: true },
-  brood: { kind: 'brood', name: 'Brood Womb', key: 'B', desc: 'Gestates your designs. Each womb also feeds six more of your creatures.', bio: 70, min: 15, time: 20, hp: 520, radius: 1.6, sight: 10, supply: 6, em: 1 },
-  maw: { kind: 'maw', name: 'Digestion Maw', key: 'M', desc: 'A ring of teeth around a pit. Drags nearby corpses in and digests them twice as fast.', bio: 50, min: 10, time: 15, hp: 420, radius: 1.4, sight: 9, supply: 0, em: 1 },
-  vault: { kind: 'vault', name: 'Gene Vault', key: 'V', desc: 'A helix of bone and light. Lets you absorb one more gene from every corpse, and bridges lineages.', bio: 90, min: 40, time: 26, hp: 460, radius: 1.2, sight: 9, supply: 0, em: 2 },
-  thorn: { kind: 'thorn', name: 'Thorn Bulb', key: 'H', desc: 'Fires barbed spines at anything hostile that comes near.', bio: 45, min: 20, time: 14, hp: 360, radius: 0.9, sight: 11, supply: 0, em: 1 },
-  coil: { kind: 'coil', name: 'Storm Coil', key: 'C', desc: 'Spends charge to throw lightning at intruders.', bio: 40, min: 45, time: 18, hp: 380, radius: 0.9, sight: 13, supply: 0, em: 2 },
-  lure: { kind: 'lure', name: 'Lure Bloom', key: 'L', desc: 'A sweet-smelling giant flower. Grazers wander in to feed on it.', bio: 30, min: 0, time: 10, hp: 220, radius: 1.0, sight: 8, supply: 0, em: 1 },
-  spore: { kind: 'spore', name: 'Spore Tower', key: 'P', desc: 'A towering sporangium. When the region is yours, it carries your seed to the next.', bio: 220, min: 140, time: 45, hp: 900, radius: 1.6, sight: 16, supply: 0, em: 4 },
+  core: { kind: 'core', name: 'Veyr Core', key: '', desc: 'The heart that fell from the sky: home, hold and the place Unit 07 wakes again. Lose it and you are only rock.', bio: 0, min: 0, time: 1, hp: 2400, radius: 1.1, sight: 18, supply: 6, em: 1 },
+  spire: { kind: 'spire', name: 'Nerve Spire', key: 'S', desc: 'Carries a rival\'s field outward and claims the ground around it.', bio: 45, min: 0, time: 14, hp: 380, radius: 0.9, sight: 14, supply: 0, em: 1 },
+  tap: { kind: 'tap', name: 'Root Tap', key: 'T', desc: 'Drives grafted roots into a ferrite or crystal seam on your ground and pumps ore into the hold.', bio: 35, min: 0, time: 12, hp: 320, radius: 1.1, sight: 8, supply: 0, em: 1, onDeposit: true, cost: { ore: 15, soil: 20 }, skill: 'drill' },
+  brood: { kind: 'brood', name: 'Brood Womb', key: 'B', desc: 'Gestates a rival\'s brood.', bio: 70, min: 15, time: 20, hp: 520, radius: 1.6, sight: 10, supply: 6, em: 1 },
+  maw: { kind: 'maw', name: 'Digestion Maw', key: 'M', desc: 'A ring of teeth around a pit. Drags nearby corpses in and renders them down into carbon for the hold.', bio: 50, min: 10, time: 15, hp: 420, radius: 1.4, sight: 9, supply: 0, em: 1, cost: { ore: 15, soil: 25 }, skill: 'intake' },
+  vault: { kind: 'vault', name: 'Gene Vault', key: 'V', desc: 'A helix of bone and light. Lets you absorb one more gene from every corpse, and bridges lineages.', bio: 90, min: 40, time: 26, hp: 460, radius: 1.2, sight: 9, supply: 0, em: 2, cost: { ore: 30, carbon: 30, water: 20 }, skill: 'lab' },
+  thorn: { kind: 'thorn', name: 'Thorn Bulb', key: 'H', desc: 'A grafted bulb that fires barbed spines at anything hostile that comes near.', bio: 45, min: 20, time: 14, hp: 360, radius: 0.9, sight: 11, supply: 0, em: 1, cost: { carbon: 20, ore: 15 }, skill: 'graft' },
+  coil: { kind: 'coil', name: 'Storm Coil', key: 'C', desc: 'Spends charge to throw lightning at intruders.', bio: 40, min: 45, time: 18, hp: 380, radius: 0.9, sight: 13, supply: 0, em: 2, cost: { ore: 45, water: 25 }, skill: 'reactor' },
+  lure: { kind: 'lure', name: 'Lure Bloom', key: 'L', desc: 'A sweet-smelling giant flower. Grazers wander in to feed on it.', bio: 30, min: 0, time: 10, hp: 220, radius: 1.0, sight: 8, supply: 0, em: 1, cost: { carbon: 15, water: 20 }, skill: 'sow' },
+  spore: { kind: 'spore', name: 'Spore Tower', key: 'P', desc: 'A towering sporangium.', bio: 220, min: 140, time: 45, hp: 900, radius: 1.6, sight: 16, supply: 0, em: 4 },
 };
-export const BUILD_ORDER: BKind[] = ['spire', 'tap', 'brood', 'maw', 'thorn', 'lure', 'vault', 'coil', 'spore'];
+/** what the Veyr can fabricate (each gated by a skill and paid in raw materials); rivals keep their own list */
+export const BUILD_ORDER: BKind[] = ['tap', 'maw', 'thorn', 'lure', 'vault', 'coil'];
 
 // ------------------------------------------------------------------ bio texture layers
 const BL = { flesh: 0, chitin: 1, bone: 2, membrane: 3, glow: 4, rock: 5, moss: 6, crystal: 7, petal: 8, tooth: 9 } as const;

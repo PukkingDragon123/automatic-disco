@@ -92,45 +92,60 @@ const BK2 = [0x0c0b0a, 0x1a1816, 0x2a2724, 0x3e3a35, 0x58534b, 0x7a7468];
 const BK3 = [0x080808, 0x121110, 0x1c1a18, 0x282522, 0x34302c];
 
 // ------------------------------------------------------------------ modules
-export const TOP = { w: 392, h: 31 };
-/** x positions of the rail's instruments */
-export const RAIL = { bio: 12, min: 78, chg: 146, hel: 213, sup: 249, fld: 290, dom: 336 };
-export function topArt() {
-  const { w, h } = TOP, X = RAIL;
-  const p = housing(w, h, { cut: [0, 0, 9, 9], seed: 21, rivetStep: 12, noRivets: ['t', 'l', 'r', 'b'], seamsX: [142, 285] });
+/** the raw-materials rail: four drum counters with their hold caps */
+export const RESM = { w: 190, h: 31, x0: 6, dx: 46 };
+export function resArt(cols: number[], labels: string[]) {
+  const { w, h, x0, dx } = RESM;
+  const p = housing(w, h, { cut: [0, 0, 9, 9], seed: 21, rivetStep: 12, noRivets: ['t', 'l', 'r', 'b'] });
   for (let x = 0; x < w; x++) { p.set(x, 0, INK); p.set(x, 1, OL[2]); }
-  const lab = (s: string, x: number) => stencil(p, s, x, 4, CR[3], x);
-  // BIOMASS / MINERALS: drums and a little rate CRT
-  for (const [n, x] of [['BIOMASS', X.bio], ['MINERALS', X.min]] as [string, number][]) {
-    lab(n, x); brassFrame(p, x, 13, 39, 11);
-    crtWell(p, x + 43, 14, 17, 9, 1);
-  }
-  // CHARGE meter + nixies
-  lab('CHARGE', X.chg); brassFrame(p, X.chg + 32, 12, 29, 15);
-  // HELIX
-  lab('HELIX', X.hel); brassFrame(p, X.hel, 12, 29, 15);
-  // SUPPLY
-  lab('SUPPLY', X.sup); brassFrame(p, X.sup, 13, 15, 11);
-  // FIELD level lamps + tube
-  lab('FIELD', X.fld);
-  for (let i = 0; i < 5; i++) socket(p, X.fld + i * 8, 12, 7, 7, GM[2]);
-  socket(p, X.fld, 22, 39, 4, 0x0a120c);
-  // DOMINION tube with the claim mark at its end
-  lab('DOMINION', X.dom);
-  socket(p, X.dom, 13, 46, 7, 0x0a120c);
-  for (let k = 0; k <= 4; k++) p.set(X.dom + Math.round((k * 45) / 4), 22, CR[2]);
-  for (let y = 11; y <= 23; y++) p.set(X.dom + 46, y, y === 11 || y === 23 ? RD[6] : RD[4]);
-  hazard(p, 4, h - 4, 5, 2, 4); hazard(p, w - 9, h - 4, 5, 2, 7, true);
-  bolt(p, 138, 21); bolt(p, 281, 21);
+  labels.forEach((lab, k) => {
+    const x = x0 + k * dx, c = cols[k];
+    // an enamel chip in the material's colour, the stencilled name, the drum window and a little fill tube
+    for (let j = 0; j < 5; j++) for (let i = 0; i < 4; i++) p.set(x + i, 4 + j, j === 0 || i === 0 ? mixc(c, 0xffffff, 0.35) : j === 4 || i === 3 ? mixc(c, 0x000000, 0.5) : c);
+    p.set(x + 4, 5, INK, 120); p.set(x + 1, 9, INK, 120);
+    stencil(p, lab, x + 6, 4, CR[3], x + 3);
+    brassFrame(p, x, 13, 23, 11);
+    socket(p, x + 26, 24, 16, 2, 0x0a120c);
+    if (k) for (let y = 4; y < h - 5; y++) { p.set(x - 3, y, OL[1]); p.set(x - 2, y, OL[5]); }
+  });
+  hazard(p, 3, h - 4, 4, 2, 4); hazard(p, w - 8, h - 4, 4, 2, 7, true);
   return p;
 }
-export const BANK = { w: 92, h: 50 };
+/** the status rail: hull, charge, core cells, territory */
+export const STATM = { w: 196, h: 31, hull: 6, chg: 52, cel: 120, ter: 152 };
+export function statArt(winFrac: number) {
+  const { w, h } = STATM, X = STATM;
+  const p = housing(w, h, { cut: [0, 0, 9, 9], seed: 27, rivetStep: 12, noRivets: ['t', 'l', 'r', 'b'] });
+  for (let x = 0; x < w; x++) { p.set(x, 0, INK); p.set(x, 1, OL[2]); }
+  const lab = (s: string, x: number) => stencil(p, s, x, 4, CR[3], x);
+  lab('HULL', X.hull); socket(p, X.hull, 13, 40, 7, 0x0c0a08);
+  for (let k = 1; k < 10; k++) p.set(X.hull + k * 4, 20, CR[1]);
+  lab('CHARGE', X.chg); brassFrame(p, X.chg + 32, 12, 29, 15);
+  lab('CELLS', X.cel); brassFrame(p, X.cel, 12, 19, 15);
+  lab('GROUND', X.ter); socket(p, X.ter, 13, 38, 7, 0x0a120c);
+  // the claim mark: hold this much and the region is yours
+  const mx = X.ter + Math.round(38 * winFrac / 0.6);
+  for (let y = 11; y <= 21; y++) p.set(mx, y, y === 11 || y === 21 ? RD[6] : RD[4]);
+  for (const x of [X.chg - 4, X.cel - 4, X.ter - 4]) for (let y = 4; y < h - 5; y++) { p.set(x, y, OL[1]); p.set(x + 1, y, OL[5]); }
+  hazard(p, 3, h - 4, 4, 2, 5); hazard(p, w - 8, h - 4, 4, 2, 8, true);
+  return p;
+}
+/** the switch bank: a big guarded SKILLS switch and four small toggles */
+export const BANK = { w: 126, h: 50, big: 6, tog: [38, 59, 80, 101] };
 export function bankArt() {
   const { w, h } = BANK;
   const p = housing(w, h, { cut: [0, 0, 0, 10], seed: 33, noRivets: ['t', 'r', 'b'], rivetStep: 12 });
   for (let x = 0; x < w; x++) { p.set(x, 0, INK); p.set(x, 1, OL[2]); }
-  for (let i = 0; i < 4; i++) {
-    const x = 7 + i * 21;
+  // the big switch sits on a hazard-banded red escutcheon
+  const bx = BANK.big;
+  for (let y = 10; y < 36; y++) for (let x = bx; x < bx + 26; x++) {
+    const edge = y === 10 || x === bx ? 0 : y === 35 || x === bx + 25 ? 1 : -1;
+    p.set(x, y, edge === 0 ? RD[6] : edge === 1 ? RD[1] : dv(RD, 2.2 - (y - 10) / 26 * 1.2 + (hashf(x, y, 9) - 0.5) * 0.5, x, y));
+  }
+  hazard(p, bx + 1, 11, 24, 2, 6);
+  for (let y = 11; y < 37; y++) p.shade(bx + 26, y, 0.55); for (let x = bx + 1; x < bx + 27; x++) p.shade(x, 36, 0.55);
+  screw(p, bx + 1, 31, 4); screw(p, bx + 20, 31, 5);
+  for (const x of BANK.tog) {
     // black Bakelite escutcheon behind each toggle: ON engraved above, a chrome rim
     for (let y = 11; y < 31; y++) for (let xx = x + 2; xx < x + 17; xx++) {
       const e = y === 11 || xx === x + 2 ? GM[7] : y === 30 || xx === x + 16 ? GM[2] : dv(BK3, 2.4 - (y - 11) / 20 * 1.2 + (hashf(xx, y, 4) - 0.5) * 0.4, xx, y);
@@ -138,6 +153,39 @@ export function bankArt() {
     }
     for (let y = 12; y < 32; y++) p.shade(x + 17, y, 0.55); for (let xx = x + 3; xx < x + 18; xx++) p.shade(xx, 31, 0.55);
     text(p, 'ON', x + 6, 12, CR[3]);
+  }
+  return p;
+}
+/** the big switch: two frames (up, thrown) of 22x22: a chrome guard cage, a knurled collar and a heavy bat with a red knob */
+export function bigSwitchArt() {
+  const W = 22, H = 22, p = new Pix(W * 2, H);
+  for (let f = 0; f < 2; f++) {
+    const o = f * W, cx = 11, cy = 12, up = f === 0;
+    // guard cage
+    for (let y = 2; y < 20; y++) { p.set(o + 2, y, GM[8]); p.set(o + 3, y, GM[5]); p.set(o + 18, y, GM[7]); p.set(o + 19, y, GM[3]); }
+    for (let x = 2; x < 20; x++) { p.set(o + x, 2, GM[9]); p.set(o + x, 3, GM[5]); }
+    p.set(o + 2, 2, 0xffffff);
+    for (let y = 4; y < 21; y++) { p.set(o + 4, y, INK, 90); p.set(o + 20, y, INK, 120); }
+    // collar
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const d = Math.hypot(x - cx, y - cy); if (d > 5.2) continue;
+      const lit = -((x - cx) * -0.55 + (y - cy) * -0.83) / Math.max(1, d);
+      if (d > 4.1) { const k = Math.abs(Math.round(Math.atan2(y - cy, x - cx) * 4)) % 2; p.set(o + x, y, lit > 0.3 ? GM[k ? 8 : 7] : lit < -0.3 ? GM[k ? 2 : 3] : GM[k ? 5 : 4]); }
+      else p.set(o + x, y, dv(GM, 5.5 + lit * 2 - d * 0.4, o + x, y));
+    }
+    p.disc(o + cx, cy, 1.4, INK);
+    // the bat and its knob
+    const tip = up ? 4 : 19, dir = up ? -1 : 1;
+    for (let k = 0; k <= Math.abs(tip - cy); k++) {
+      const y = cy + k * dir, wd = k < 4 ? 1 : 0;
+      for (let x = cx - wd; x <= cx + wd; x++) p.set(o + x, y, x < cx ? GM[9] : x > cx ? GM[5] : 0xf0f4f4);
+      p.set(o + cx + wd + 1, y + 1, INK, 140);
+    }
+    for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) {
+      const d = Math.hypot(x, y); if (d > 2.4) continue;
+      p.set(o + cx + x, tip + y, dv(RD, 5.2 - (x + y) * 0.6 - d * 0.4, o + cx + x, tip + y));
+    }
+    p.set(o + cx - 1, tip - 1, 0xffd0c0);
   }
   return p;
 }

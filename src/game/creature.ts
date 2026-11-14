@@ -7,6 +7,12 @@ import { clamp, wrapA, dampA } from '../core/rand';
 import type { World } from './world';
 import { F_SEL, F_HOVER, F_ENEMY } from '../gfx/gbuf';
 
+/** target id meaning "the golem" (it is not a creature) */
+export const GOLEM = -999999999;
+/** what creatures need to know about the golem to hunt it, fear it and hit it */
+export interface GolemTarget { x: number; y: number; z: number; alive: boolean; radius: number; mass: number; hurt(amt: number, from: Creature): void }
+export const GOLEM_REF: { g: GolemTarget | null } = { g: null };
+
 export type Mind = 'idle' | 'wander' | 'graze' | 'hunt' | 'flee' | 'eat' | 'scavenge' | 'order' | 'attack' | 'mate' | 'rest' | 'follow' | 'held';
 export interface Order { kind: 'move' | 'attack' | 'amove' | 'hold' | 'guard'; x: number; z: number; target?: number }
 
@@ -45,6 +51,14 @@ export class Creature {
   private turnRate = 0;
   boss = false;
   tag = '';
+  // ---- combat with the golem (player.ts / combat.ts / gore.ts)
+  /** seconds left of anger at the golem: provoked creatures fight back or bolt */
+  aggro = 0;
+  /** last time the golem hit it, and with what (kill attribution) */
+  golemHit = -99; golemBy: 'punch' | 'rock' | 'ability' | 'plow' = 'punch';
+  /** bones cut off (collapsed to their joint), mesh scale while being drawn into the intake */
+  severed: number[] = [];
+  shrink = 1;
 
   constructor(readonly sp: Species, public faction: Faction, x: number, z: number, juvenile = false) {
     this.x = x; this.z = z; this.homeX = x; this.homeZ = z;
@@ -122,7 +136,7 @@ export class Creature {
   sync(dt: number, w: World, animate: boolean) {
     const m = this.mesh;
     const s = this.growth;
-    m.scale.setScalar(s);
+    m.scale.setScalar(s * this.shrink);
     m.position.set(this.x, this.y + this.air, this.z);
     m.rotation.y = this.yaw;
     const fl = this.selected ? F_SEL : 0, hv = this.hovered ? (this.faction === 'veyr' ? F_HOVER : F_ENEMY) : 0;
@@ -140,6 +154,7 @@ export class Creature {
     let lookYaw = 0;
     const tg = this.target ? w.get(this.target) : null;
     if (tg && !this.dead) lookYaw = wrapA(Math.atan2(tg.x - this.x, tg.z - this.z) - this.yaw);
+    else if (this.target === GOLEM && GOLEM_REF.g && !this.dead) lookYaw = wrapA(Math.atan2(GOLEM_REF.g.x - this.x, GOLEM_REF.g.z - this.z) - this.yaw);
     this.anim.update(dt, { speed: sp / s, turn: this.turnRate, state, act: Math.max(0, this.atkAnim), lookYaw, lookPitch: 0, ground: (x, z) => w.surfaceYsmooth(x, z), air: 0.9 + Math.sin(this.anim.t * 2) * 0.15 });
   }
 

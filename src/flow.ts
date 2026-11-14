@@ -4,20 +4,29 @@
 import type { Engine } from './app/engine';
 import type { Input } from './app/input';
 import { Game } from './game/game';
-import { Forge } from './ui/forge';
+import { openLab } from './ui/forge';
 import { TreeScreen } from './ui/tree';
+import { openSkillTree } from './ui/skillTree';
 import { PlanetScreen } from './ui/planetScreen';
 import { MenuScreen, AscendScreen, type ArchiveEntry } from './ui/menu';
 import { BabyEditor } from './ui/babyEditor';
 import { loadLook } from './game/babyLook';
 import { makePlanet, owned, type Planet, type PRegion, type RState } from './world/planet';
-import { Run } from './game/run';
+import { Run, type PlantPrefab } from './game/run';
+import { RES, type Res } from './game/skills';
 import type { Design } from './life/design';
 import { GENE } from './life/genes';
 import { el, panel, ui, Btn, toast } from './ui/kit';
 import { sfx } from './audio/audio';
 
-interface Save { planet: number; states: RState[]; landings: number; run: { seed: number; genes: [string, number, string][]; helix: number; designs: Design[] } }
+interface Save {
+  planet: number; states: RState[]; landings: number;
+  run: {
+    seed: number; genes: [string, number, string][]; helix: number; designs: Design[];
+    /** Unit 07's progression: raw materials, skills and core cells, plant prefabs, run-level milestones */
+    res?: Partial<Record<Res, number>>; skills?: { owned?: string[]; points?: number }; plants?: PlantPrefab[]; flags?: Record<string, number>;
+  };
+}
 const SK = 'oddworld.save', AK = 'oddworld.archive';
 const read = <T>(k: string, d: T): T => { try { const s = localStorage.getItem(k); return s ? (JSON.parse(s) as T) : d; } catch { return d; } };
 const write = (k: string, v: unknown) => { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage off */ } };
@@ -50,6 +59,10 @@ export class Flow {
     const run = new Run(s.run.seed);
     for (const [id, lvl, from] of s.run.genes) if (GENE[id]) { run.add(id, from, 0); run.genes.get(id)!.level = lvl; }
     run.helix = s.run.helix;
+    for (const k of RES) run.res[k] = Math.max(0, Number(s.run.res?.[k]) || 0);
+    run.skills.load(s.run.skills);
+    run.plants = Array.isArray(s.run.plants) ? s.run.plants.filter((p) => p && typeof p.name === 'string') : [];
+    if (s.run.flags) Object.assign(run.flags, s.run.flags);
     for (const d of s.run.designs) run.reg.add(d, 'veyr', null, 'design', 0);
     this.run = run; this.landings = s.landings;
     this.planetView();
@@ -59,7 +72,8 @@ export class Flow {
     const r = this.run;
     write(SK, {
       planet: this.planet.seed, states: this.planet.regions.map((x) => x.state), landings: this.landings,
-      run: { seed: r.seed, genes: [...r.genes.values()].map((g) => [g.id, g.level, g.from]), helix: r.helix, designs: r.reg.list.filter((s) => s.owner === 'veyr' && s.role === 'design').map((s) => s.design) },
+      run: { seed: r.seed, genes: [...r.genes.values()].map((g) => [g.id, g.level, g.from]), helix: r.helix, designs: r.reg.list.filter((s) => s.owner === 'veyr' && s.role === 'design').map((s) => s.design),
+        res: { ...r.res }, skills: r.skills.toJSON(), plants: r.plants, flags: r.flags },
     } satisfies Save);
   }
   private planetView(note?: string) {
@@ -79,11 +93,13 @@ export class Flow {
     const g: Game = new Game(engine, this.input, {
       seed: r.seed, biome: r.biome, pal: p.palKey, regionName: r.name, run, story: this.landings === 1,
       hooks: {
-        openBuilder: (game) => engine.push(new Forge(game.run, game.vaults, () => game.veyr.res.helix, null, (res) => { engine.pop(); if (res) game.addDesign(res.design, res.parent, 3 + Math.max(0, res.design.genes.length - 4)); })),
+        openBuilder: (game) => openLab(engine, game),
+        openLab: (game) => openLab(engine, game),
         openTree: (game) => engine.push(new TreeScreen(game.run.reg, {
           close: () => engine.pop(), time: game.world.time,
-          evolve: (sp) => engine.push(new Forge(game.run, game.vaults, () => game.veyr.res.helix, sp, (res) => { engine.pop(); if (res) game.addDesign(res.design, res.parent, 3 + Math.max(0, res.design.genes.length - 4)); })),
+          evolve: (sp) => openLab(engine, game, sp),
         })),
+        openSkills: (game) => openSkillTree(engine, game),
         openMenu: (game) => this.pause(game, r),
         onWin: (game) => this.won(game, r),
         onLose: (game) => this.lost(game, r),

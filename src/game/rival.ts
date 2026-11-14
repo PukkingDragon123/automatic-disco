@@ -1,7 +1,8 @@
-// A rival asteroid: another seed of the same kind falls burning onto the region and plays the same game. It grows
-// its creep, raises structures on it, taps the seams, steals the genomes of whatever it digests (its brood are
-// recoloured, mutated cousins of the local fauna), keeps a guard at home, crushes intruders with its field, and
-// sends waves at the Veyr's nearest structure, sooner and larger as it grows.
+// A rival asteroid: another seed of the same kind falls burning onto the region and plays the same game. It grafts
+// the plants around it into its own growth (in its own colour, and it will take back Veyr grafts on its border), its
+// brood claim the ground they walk, it raises structures on what it holds, taps the seams, steals the genomes of
+// whatever dies on its ground (its brood are recoloured, mutated cousins of the local fauna), keeps a guard at home,
+// crushes intruders with its field, and sends waves at the Veyr's nearest structure, sooner and larger as it grows.
 import * as THREE from 'three';
 import { Hive } from './hive';
 import type { World } from './world';
@@ -74,6 +75,7 @@ export class RivalBrain {
     this.w.terrain.flushDirty(); this.w.flora.reseat(this.x, this.z, 9);
     this.hive.plantCore(this.x, this.z);
     this.w.hives.push(this.hive);
+    this.hive.spread(6, true);
     this.w.terrain.setRival(this.key, this.x, this.z);
     this.fx.burst(this.x, ground.y + 1, this.z, 90, 0x5a4048, { speed: 9, up: 9, size: 5, life: 2, grav: 9 });
     this.fx.burst(this.x, ground.y + 1, this.z, 60, col, { glow: true, speed: 6, up: 6, size: 4, life: 1.6, grav: 3 });
@@ -86,6 +88,8 @@ export class RivalBrain {
   private think() {
     const h = this.hive, core = h.core; if (!core) return;
     if (!this.species.length) this.adopt();
+    // its growth creeps outward a plant at a time (faster once it has sent a few waves)
+    h.spread(this.wave >= 2 ? 2 : 1, false);
     this.build();
     this.produce();
     const army = this.w.creatures.filter((c) => !c.dead && c.faction === 'rival');

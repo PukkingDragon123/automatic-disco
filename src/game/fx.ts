@@ -1,4 +1,5 @@
-// Effects: pixel-square particles (glow + matter), homing life-force motes, lightning arcs, writhing tendrils.
+// Effects: pixel-square particles (glow + matter), homing life-force motes, lightning arcs, writhing tendrils,
+// directional sprays (blood, sparks, grit) and vortex streams (matter spiralling into the golem's intake).
 import * as THREE from 'three';
 import { GN_DECL } from '../gfx/gbuf';
 import { VEYR } from '../world/palette';
@@ -47,6 +48,17 @@ class Pool {
     this.size[i] = size; this.life[i] = life; this.max[i] = life; this.grav[i] = grav; this.drag[i] = drag;
     if (home) this.home.set(home, i * 4); else this.home[i * 4 + 3] = 0;
   }
+  /** write particle i directly (streams re-place every particle each frame), then flush(n) */
+  put(i: number, x: number, y: number, z: number, c: THREE.Color, a: number, size: number) {
+    this.pos[i * 3] = x; this.pos[i * 3 + 1] = y; this.pos[i * 3 + 2] = z;
+    this.col[i * 4] = c.r; this.col[i * 4 + 1] = c.g; this.col[i * 4 + 2] = c.b; this.col[i * 4 + 3] = a; this.size[i] = size;
+  }
+  flush(n: number) {
+    for (let i = n; i < this.n; i++) { if (!this.col[i * 4 + 3]) break; this.col[i * 4 + 3] = 0; }
+    (this.g.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+    (this.g.attributes.aCol as THREE.BufferAttribute).needsUpdate = true;
+    (this.g.attributes.aSize as THREE.BufferAttribute).needsUpdate = true;
+  }
   update(dt: number) {
     const p = this.pos, v = this.vel;
     for (let i = 0; i < this.n; i++) {
@@ -78,13 +90,28 @@ class Pool {
 }
 
 interface Arc { a: THREE.Vector3; b: THREE.Vector3; t: number; life: number; col: THREE.Color; jag: number }
+type Get = () => THREE.Vector3 | null;
+interface Strm { a: Get; b: Get; t: number; sp: number; ang: number; angSp: number; rad: number; arc: number; r: number; g: number; b2: number; size: number; glow: boolean; A: THREE.Vector3; B: THREE.Vector3 }
+
+/** a point on a vortex path from A to B: it lifts, swirls round the line between them, tightening as it nears B */
+export function spiralPos(out: THREE.Vector3, A: THREE.Vector3, B: THREE.Vector3, t: number, ang: number, rad: number, arc = 0.4) {
+  const e = t * t * (3 - 2 * t);
+  out.lerpVectors(A, B, e);
+  const dx = B.x - A.x, dz = B.z - A.z, l = Math.hypot(dx, dz) || 1;
+  const px = -dz / l, pz = dx / l, k = rad * Math.pow(1 - t, 0.8) * Math.min(1, t * 6 + 0.2);
+  out.x += px * Math.cos(ang) * k; out.z += pz * Math.cos(ang) * k; out.y += Math.sin(ang) * k + Math.sin(t * Math.PI) * arc;
+  return out;
+}
 interface Tendril { root: THREE.Vector3; tip: () => THREE.Vector3 | null; t: number; life: number; seg: number; thick: number; phase: number; grow: number }
 
-const _c = new THREE.Color(), _v = new THREE.Vector3();
+const _c = new THREE.Color(), _c2 = new THREE.Color(), _v = new THREE.Vector3();
 
 export class Fx {
   readonly U = { uScale: { value: 600 } };
+  /** particle size multiplier: the close-up player camera shrinks the pixel squares so they keep a sane size */
+  sizeK = 1;
   readonly glow: Pool; readonly matter: Pool;
+  private sMatter: Pool; private sGlow: Pool;
   private arcs: Arc[] = [];
   private arcGeo = new THREE.BufferGeometry();
   private arcPos = new Float32Array(6 * 2000); private arcCol = new Float32Array(6 * 2000);
@@ -92,9 +119,11 @@ export class Fx {
   private tendrils: Tendril[] = [];
   readonly tendrilMesh: THREE.InstancedMesh;
   private tm = new THREE.Matrix4(); private tq = new THREE.Quaternion(); private ts = new THREE.Vector3();
+  private strm: Strm[] = [];
   constructor(fxScene: THREE.Scene, scene: THREE.Scene) {
     this.glow = new Pool(4096, true, this.U); this.matter = new Pool(2048, false, this.U);
-    fxScene.add(this.glow.points, this.matter.points);
+    this.sMatter = new Pool(1400, false, this.U); this.sGlow = new Pool(700, true, this.U);
+    fxScene.add(this.glow.points, this.matter.points, this.sMatter.points, this.sGlow.points);
     this.arcGeo.setAttribute('position', new THREE.BufferAttribute(this.arcPos, 3).setUsage(THREE.DynamicDrawUsage));
     this.arcGeo.setAttribute('color', new THREE.BufferAttribute(this.arcCol, 3).setUsage(THREE.DynamicDrawUsage));
     this.arcLines = new THREE.LineSegments(this.arcGeo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
@@ -125,6 +154,28 @@ export class Fx {
       pool.emit(x + (Math.random() - 0.5) * sp * 0.3, y + Math.random() * 0.2, z + (Math.random() - 0.5) * sp * 0.3, Math.cos(a) * s * sp, (o.up ?? 2) * (0.5 + Math.random()), Math.sin(a) * s * sp, _c, 1, (o.size ?? 3) * (0.7 + Math.random() * 0.6), (o.life ?? 0.8) * (0.6 + Math.random() * 0.8), o.grav ?? 6, 1.5);
     }
   }
+  /** a cone of particles along a direction (blood from a wound, sparks off steel, grit off a drill bit) */
+  spray(x: number, y: number, z: number, dx: number, dy: number, dz: number, n: number, col: number, o: { speed?: number; cone?: number; size?: number; life?: number; grav?: number; glow?: boolean; drag?: number; jitter?: number } = {}) {
+    const pool = o.glow ? this.glow : this.matter, l = Math.hypot(dx, dy, dz) || 1, cone = o.cone ?? 0.5, sp = o.speed ?? 3, j = o.jitter ?? 0.12;
+    dx /= l; dy /= l; dz /= l;
+    const base = _c2.set(col);
+    for (let i = 0; i < n; i++) {
+      const s = sp * (0.45 + Math.random() * 0.85);
+      _c.copy(base).multiplyScalar((o.glow ? 1.8 : 1) * (0.75 + Math.random() * 0.4));
+      pool.emit(x + (Math.random() - 0.5) * j, y + (Math.random() - 0.5) * j, z + (Math.random() - 0.5) * j,
+        (dx + (Math.random() - 0.5) * cone * 2) * s, (dy + (Math.random() - 0.5) * cone * 2) * s, (dz + (Math.random() - 0.5) * cone * 2) * s,
+        _c, 1, (o.size ?? 2.4) * (0.6 + Math.random() * 0.8), (o.life ?? 0.6) * (0.6 + Math.random() * 0.8), o.grav ?? 9, o.drag ?? 1.2);
+    }
+  }
+  /** matter streaming along a vortex from a to b (both re-read every frame); n particles over spread seconds */
+  stream(a: Get, b: Get, n: number, col: number, o: { dur?: number; rad?: number; arc?: number; size?: number; glow?: boolean; spread?: number } = {}) {
+    const A = a(), B = b(); if (!A || !B) return;
+    const c = _c2.set(col);
+    for (let i = 0; i < n && this.strm.length < 2000; i++) {
+      const k = 0.8 + Math.random() * 0.4;
+      this.strm.push({ a, b, t: -Math.random() * (o.spread ?? 0), sp: 1 / ((o.dur ?? 0.8) * (0.7 + Math.random() * 0.6)), ang: Math.random() * Math.PI * 2, angSp: 7 + Math.random() * 6, rad: (o.rad ?? 0.4) * (0.5 + Math.random()), arc: (o.arc ?? 0.3) * (0.5 + Math.random()), r: c.r * k, g: c.g * k, b2: c.b * k, size: (o.size ?? 2.2) * (0.7 + Math.random() * 0.6), glow: !!o.glow, A: A.clone(), B: B.clone() });
+    }
+  }
   /** a glowing mote that flies home (life force returning to the core) */
   mote(x: number, y: number, z: number, hx: number, hy: number, hz: number, col = VEYR.vein, speed = 4) {
     _c.set(col).multiplyScalar(2.6);
@@ -136,7 +187,23 @@ export class Fx {
   }
 
   update(dt: number, viewH: number, fovY: number) {
-    this.U.uScale.value = viewH / (2 * Math.tan((fovY * Math.PI) / 360)) * 0.032;
+    this.U.uScale.value = viewH / (2 * Math.tan((fovY * Math.PI) / 360)) * 0.032 * this.sizeK;
+    // vortex streams: every particle is re-placed on its spiral each frame
+    let nm = 0, ng = 0;
+    for (let i = this.strm.length - 1; i >= 0; i--) {
+      const p = this.strm[i];
+      p.t += dt * p.sp;
+      if (p.t < 0) continue;
+      const A = p.a(), B = p.b();
+      if (A) p.A.copy(A); if (B) p.B.copy(B);
+      if (p.t >= 1 || (!A && !B)) { this.strm[i] = this.strm[this.strm.length - 1]; this.strm.pop(); continue; }
+      p.ang += dt * p.angSp * (1 + p.t * 2.5);
+      spiralPos(_v, p.A, p.B, p.t, p.ang, p.rad, p.arc);
+      _c.setRGB(p.r, p.g, p.b2);
+      if (p.glow) { if (ng < this.sGlow.n) this.sGlow.put(ng++, _v.x, _v.y, _v.z, _c.multiplyScalar(1.8), 1, p.size * (1 - p.t * 0.5)); }
+      else if (nm < this.sMatter.n) this.sMatter.put(nm++, _v.x, _v.y, _v.z, _c, 1, p.size * (1 - p.t * 0.4));
+    }
+    this.sMatter.flush(nm); this.sGlow.flush(ng);
     this.glow.update(dt); this.matter.update(dt);
     // arcs: jagged polylines re-rolled every frame
     let n = 0;

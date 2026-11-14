@@ -9,6 +9,8 @@ export class Input {
   /** pointer is over the game canvas (not UI) */
   overCanvas = false;
   focused = true;
+  /** analog movement from the touch stick (ui/touch.ts): -1..1, screen space (+y is down the screen) */
+  stick = { x: 0, y: 0, on: false };
   private listeners: ((e: KeyboardEvent) => void)[] = [];
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -21,7 +23,7 @@ export class Input {
       if (['Tab', ' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault();
     });
     addEventListener('keyup', (e) => { const k = e.key.length === 1 ? e.key.toLowerCase() : e.key; this.keys.delete(k); });
-    addEventListener('blur', () => { this.keys.clear(); this.buttons.clear(); this.focused = false; });
+    addEventListener('blur', () => { this.keys.clear(); this.buttons.clear(); this.focused = false; this.stick.on = false; });
     addEventListener('focus', () => { this.focused = true; });
     addEventListener('pointermove', (e) => { this.mx = e.clientX; this.my = e.clientY; this.overCanvas = e.target === canvas; });
     canvas.addEventListener('pointerdown', (e) => { this.buttons.add(e.button); });

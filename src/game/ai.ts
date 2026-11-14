@@ -1,6 +1,8 @@
 // Minds. Every creature runs the same needs-driven loop; ownership changes priorities (orders, leash to home,
 // aggression). Wild species graze, hunt, scavenge, flee, herd and breed; offspring drift and can found subspecies.
-import { Creature } from './creature';
+// The golem is not a creature but takes part: predators hunt it, provoked animals fight back or bolt, small ones
+// keep clear of it, and a rival's brood goes for it on sight (target id GOLEM).
+import { Creature, GOLEM, GOLEM_REF } from './creature';
 import type { World } from './world';
 import { clamp } from '../core/rand';
 
@@ -78,6 +80,8 @@ export function think(c: Creature, w: World) {
     if (o.kind === 'hold') { const foe = enemyNear(c, w, c.st.reach + c.radius + 1); c.mind = foe ? 'attack' : 'idle'; c.target = foe?.id ?? 0; return; }
     c.mind = 'order'; return;
   }
+  // ---- the golem
+  if (c.faction !== 'veyr' && golemMind(c, w)) return;
   // ---- survival first
   if (c.faction === 'wild') {
     const th = threatOf(c, w);
@@ -129,6 +133,50 @@ export function think(c: Creature, w: World) {
   if (c.mind !== 'wander') c.mind = 'idle';
 }
 
+/** decide about the golem: true when it now drives this creature's mind */
+function golemMind(c: Creature, w: World): boolean {
+  const G = GOLEM_REF.g;
+  if (!G || !G.alive) { if (c.target === GOLEM) { c.target = 0; c.mind = 'idle'; } return false; }
+  const d = Math.hypot(G.x - c.x, G.z - c.z), sight = c.st.sight;
+  if (c.target === GOLEM && (c.mind === 'attack' || c.mind === 'hunt')) {
+    if (d > sight * 1.6 && c.aggro <= 0) { c.mind = 'idle'; c.target = 0; return false; }
+    if (c.faction === 'wild' && c.hp < c.maxHp * 0.2 && !c.boss) { c.mind = 'flee'; c.fleeT = 4; return true; }
+    return true;
+  }
+  if (c.target === GOLEM && c.mind === 'flee' && c.fleeT > 0) return true;
+  const fighter = c.boss || c.faction === 'rival' || c.diet === 'carn' || (c.diet === 'omni' && c.mass > G.mass * 0.6) || c.mass > G.mass * 5;
+  // provoked: fight back if it can, bolt if it can't
+  if (c.aggro > 0 && d < sight * 1.5) {
+    if (fighter && c.hp > c.maxHp * 0.25) { c.mind = 'attack'; c.target = GOLEM; c.path = null; return true; }
+    c.mind = 'flee'; c.target = GOLEM; c.fleeT = 3; return true;
+  }
+  // predators stalk it on sight; rival broods go straight for it
+  if (d < sight * 0.6 && ((c.diet === 'carn' && c.mass > G.mass * 0.7 && c.energy < 0.92 && Math.random() < 0.3) || (c.faction === 'rival' && Math.random() < 0.5))) {
+    c.mind = 'hunt'; c.target = GOLEM; c.aggro = Math.max(c.aggro, 8); c.path = null; return true;
+  }
+  // small timid things keep clear of it
+  if (!fighter && c.faction === 'wild' && d < 1.4 + c.radius && c.mass < G.mass * 3) { c.mind = 'flee'; c.target = GOLEM; c.fleeT = 1.2; return true; }
+  void w;
+  return false;
+}
+/** chase the golem and swing at it */
+function chaseGolem(c: Creature, w: World, dt: number) {
+  const G = GOLEM_REF.g;
+  if (!G || !G.alive) { c.mind = 'idle'; c.target = 0; return; }
+  const reach = c.st.reach + c.radius + G.radius;
+  const d = Math.hypot(G.x - c.x, G.z - c.z);
+  if (d > reach * 0.85) go(c, w, G.x, G.z, d < 10 ? 1 : 0.8, dt, true);
+  else { c.steer(w, c.x, c.z, 0, dt); c.face(G.x, G.z, dt); }
+  if (d < reach + 0.25 && c.atkT <= 0 && c.atkAnim < 0) { c.atkAnim = 0; c.atkT = 1 / c.st.attackRate; }
+}
+function strikeGolem(c: Creature) {
+  const G = GOLEM_REF.g;
+  if (!G || !G.alive) return;
+  const d = Math.hypot(G.x - c.x, G.z - c.z);
+  if (d > c.st.reach + c.radius + G.radius + 0.35 || Math.abs(G.y - (c.y + c.air)) > 1.2 + c.size) return;
+  G.hurt(c.st.attack * (0.6 + 0.4 * c.growth) * (0.85 + Math.random() * 0.3), c);
+}
+
 function enemyNear(c: Creature, w: World, r: number): Creature | null {
   let best: Creature | null = null, bd = r * r;
   w.near(c.x, c.z, r, (o) => {
@@ -148,12 +196,14 @@ export function act(c: Creature, w: World, dt: number) {
   if (c.stunT > 0) { c.stunT -= dt; c.vx *= 0.8; c.vz *= 0.8; return; }
   if (c.mind === 'held') { c.vx *= 0.6; c.vz *= 0.6; return; }
   if (c.fleeT > 0) c.fleeT -= dt;
+  if (c.aggro > 0) c.aggro -= dt;
   if (c.atkT > 0) c.atkT -= dt;
   if (c.atkAnim >= 0) {
     const prev = c.atkAnim;
     c.atkAnim += dt * Math.max(1.6, c.st.attackRate * 2);
     const t = w.get(c.target);
     if (prev < 0.5 && c.atkAnim >= 0.5 && t && !t.dead && Math.hypot(t.x - c.x, t.z - c.z) < c.st.reach + c.radius + t.radius + 0.6) c.strike(w, t);
+    else if (prev < 0.5 && c.atkAnim >= 0.5 && c.target === GOLEM) strikeGolem(c);
     if (c.atkAnim >= 1) c.atkAnim = -1;
   }
   switch (c.mind) {
@@ -166,6 +216,15 @@ export function act(c: Creature, w: World, dt: number) {
       break;
     }
     case 'flee': {
+      if (c.target === GOLEM) {
+        const G = GOLEM_REF.g;
+        if (!G) { c.mind = 'idle'; c.target = 0; break; }
+        const dx = c.x - G.x, dz = c.z - G.z, d = Math.hypot(dx, dz) || 1;
+        if (d > c.st.sight * 1.2 && c.fleeT <= 0) { c.mind = 'idle'; c.target = 0; break; }
+        if (c.fleeT <= 0 && d > 3) { c.mind = 'idle'; c.target = 0; break; }
+        c.steer(w, c.x + (dx / d) * 6, c.z + (dz / d) * 6, 1, dt);
+        break;
+      }
       const t = w.get(c.target);
       if (!t) { c.mind = 'idle'; break; }
       const dx = c.x - t.x, dz = c.z - t.z, d = Math.hypot(dx, dz) || 1;
@@ -205,6 +264,7 @@ export function act(c: Creature, w: World, dt: number) {
       break;
     }
     case 'hunt': case 'attack': {
+      if (c.target === GOLEM) { chaseGolem(c, w, dt); break; }
       const t = w.get(c.target);
       if (!t || t.dead) {
         if (c.mind === 'hunt' && t && t.dead) { c.mind = 'scavenge'; break; }

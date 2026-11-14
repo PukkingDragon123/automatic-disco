@@ -1,4 +1,5 @@
-// Fog of war for one faction: what its growth, structures and creatures can see right now, and what it has seen.
+// Fog of war for one faction: what its held ground, structures, creatures and Unit 07 can see right now, and what
+// it has seen.
 import type { World } from './world';
 import type { Hive } from './hive';
 
@@ -7,6 +8,8 @@ export class Vision {
   private dist: Float32Array;
   private t = 0;
   revealAll = false;
+  /** how far the golem's survey lens sees */
+  golemSight = 15;
   constructor(readonly w: World, readonly hive: Hive) {
     const n = w.region.N * w.region.N;
     this.vis = new Uint8Array(n); this.seen = new Uint8Array(n); this.dist = new Float32Array(n);
@@ -20,7 +23,7 @@ export class Vision {
     vis.fill(0);
     if (this.revealAll) vis.fill(1);
     else {
-      // growth sees 3 m around itself (two-pass chamfer distance)
+      // held ground sees 3 m around itself (two-pass chamfer distance)
       for (let i = 0; i < N * N; i++) D[i] = cov[i] > 0.45 ? 0 : 99;
       for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) { const i = z * N + x; if (x) D[i] = Math.min(D[i], D[i - 1] + 1); if (z) D[i] = Math.min(D[i], D[i - N] + 1); if (x && z) D[i] = Math.min(D[i], D[i - N - 1] + 1.41); if (z && x < N - 1) D[i] = Math.min(D[i], D[i - N + 1] + 1.41); }
       for (let z = N - 1; z >= 0; z--) for (let x = N - 1; x >= 0; x--) { const i = z * N + x; if (x < N - 1) D[i] = Math.min(D[i], D[i + 1] + 1); if (z < N - 1) D[i] = Math.min(D[i], D[i + N] + 1); if (x < N - 1 && z < N - 1) D[i] = Math.min(D[i], D[i + N + 1] + 1.41); if (z < N - 1 && x) D[i] = Math.min(D[i], D[i + N - 1] + 1.41); }
@@ -30,6 +33,9 @@ export class Vision {
         for (let Z = z0; Z <= z1; Z++) for (let X = x0; X <= x1; X++) if ((X + 0.5 - x) ** 2 + (Z + 0.5 - z) ** 2 <= r * r) vis[Z * N + X] = 1;
       };
       for (const b of this.hive.buildings) stamp(b.x, b.z, b.done ? b.def.sight : 4);
+      // Unit 07's lens
+      const g = this.hive.golem();
+      if (g) stamp(g.x, g.z, this.golemSight);
       for (const c of w.creatures) if (!c.dead && c.faction === this.hive.faction) stamp(c.x, c.z, Math.min(14, c.st.sight));
       for (const s of this.extra) stamp(s[0], s[1], s[2]);
     }

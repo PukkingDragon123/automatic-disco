@@ -1,11 +1,16 @@
-// Dr. Calder. The researcher from LIMBOPHOBIA (his rig, outfit, gestures and face are that project's
-// Researcher) is the last of a xenobiology survey. He finds you, names you, teaches you, studies you, and is
-// killed by the region's apex predator one night, leaving his camp behind.
+// Dr. Calder and the U.S.P.C. recovery team. Unit 07 was fired at this world as a rock with a mind in it; the
+// impact took everything but its head. Station Four's recovery team (Calder, Lt. Hollis, Dr. Brandt) comes down
+// to find it. Calder stays when the others fly home, teaches it to build a body out of ore, carbon, water and
+// soil, reacts to every part it adds, and is killed one night by the valley's apex predator. His journal and the
+// radio are what is left.
+//
+// The story runs the cutscenes (cinema.ts, scripts in ui/cineScenes.ts), the field-notes objectives for the new
+// loop, Calder's spoken reactions (the radio dialog box), milestone banners and floating text, and Calder's life
+// at camp between scenes. It listens to the shared game events (skills.ts): gather, skill, points, kill, throw,
+// absorb, graft, convert, prefab, territory, hurt.
 import * as THREE from 'three';
-import { Researcher, researcherOutfit, createResearcher, type ResearcherGesture } from '../limbo/entities/researcher';
-import type { Appearance } from '../limbo/entities/humanRig';
+import type { Researcher } from '../limbo/entities/researcher';
 import { worldMaterial } from '../limbo/gfx/materials';
-import { registerAllTextures } from '../limbo/gfx/textures/index';
 import { objDef, objectGeometry } from '../limbo/world/objects';
 import '../limbo/content/textures/materials';
 import '../limbo/content/furniture/b_survival';
@@ -15,124 +20,203 @@ import '../limbo/content/furniture/b_lab';
 import type { Game } from './game';
 import type { Creature } from './creature';
 import { Dialog, type Line } from '../ui/dialog';
-import { el, toast, iconImg } from '../ui/kit';
+import { el, ui, toast, iconImg } from '../ui/kit';
 import { sfx } from '../audio/audio';
-import { clamp, dampA, Rand } from '../core/rand';
-import { GENE } from '../life/genes';
+import { clamp, Rand } from '../core/rand';
 import { VEYR } from '../world/palette';
 import { gbuf } from '../gfx/gbuf';
+import { Cinema } from './cinema';
+import { Actor, calderRig, hollisRig, brandtRig, makeLander, makeSky, type Lander, type Sky } from '../ui/cineCast';
+import { SCENES, CAMP_PARTS, type SceneName } from '../ui/cineScenes';
+import { advance } from '../ui/cineUI';
+import { csfx } from '../ui/cineAudio';
+import { SKILL, RES, type Res } from './skills';
+import { floatText } from '../ui/floatText';
+import { skillIcon } from '../ui/icons';
+import { wildDesign } from '../life/design';
+import type { SpeciesModel } from '../life/creatureMesh';
+import { box, mat, glowMat, OL, CR } from '../ui/cineKit';
+export { calderRig, USE_ORIGINAL_LOOK } from '../ui/cineCast';
 
-/** LIMBOPHOBIA's researcher is Dr. Ines Varga / Calder, a woman. The brief calls him "him": same rig, outfit,
- * gestures and face system, a man's appearance. Set true to use her original look instead. */
-export const USE_ORIGINAL_LOOK = false;
-const CALDER_APP = {
-  skin: 0xd9a47c, hair: 0x3a2618, hairStyle: 'short', face: 2, build: 'average', height: 1.03, bodyShape: 0.1, eyeColor: 0x4a6a8a,
-  facialHair: 'stubble', freckles: 0.04, scars: 1, age: 0.38, jaw: 2, eyeShape: 1, brows: 1, nose: 2, mouth: 1, ears: 1,
-} as unknown as Appearance;
-
-let texReady = false;
-export function calderRig(): Researcher {
-  if (!texReady) { registerAllTextures(); texReady = true; }
-  if (USE_ORIGINAL_LOOK) return createResearcher({ glasses: true, name: 'Dr. Calder' });
-  const r = new Researcher(CALDER_APP, worldMaterial({ noVis: true, noFog: true, noGrid: true }));
-  (r as any).ggOverrides = { badge: { col: [52, 104, 150], name: 'Dr. Calder' }, glasses: { kind: 'rect', col: [58, 42, 38], thick: 1 } };
-  r.setOutfit(researcherOutfit({ glasses: true, slacks: true, blouse: 0x9ab0c0 }));
-  r.skin.castShadow = true;
-  r.setExpression('smile');
-  return r;
-}
-
-// ------------------------------------------------------------------ the man himself
-class Calder {
-  readonly rig: Researcher;
-  x: number; z: number; y = 0; yaw = 0;
-  path: number[] | null = null; pi = 0;
-  speed = 0; run = false;
-  dead = false;
-  sit = false;
-  look: THREE.Vector3 | null = null;
-  constructor(readonly g: Game, x: number, z: number) {
-    this.rig = calderRig();
-    this.x = x; this.z = z;
-    this.y = g.world.surfaceY(x, z);
-    this.rig.ragWorld = { ground: (px, pz) => g.world.surfaceY(clamp(px, 0, g.region.N - 0.01), clamp(pz, 0, g.region.N - 0.01)) };
-    g.world.scene.add(this.rig.root);
-  }
-  walkTo(tx: number, tz: number, run = false) {
-    this.path = this.g.world.pather.find(this.x, this.z, tx, tz, { step: 0.95, swim: false, fly: false }, 8000) ?? [tx, tz];
-    this.pi = 0; this.run = run; this.sit = false;
-  }
-  get moving() { return !!this.path; }
-  update(dt: number, visible: boolean) {
-    if (this.dead) { this.rig.update(dt, { speed: 0, ground: this.rig.ragWorld!.ground } as any); return; }
-    let want = 0;
-    if (this.path) {
-      const px = this.path[this.pi], pz = this.path[this.pi + 1];
-      const dx = px - this.x, dz = pz - this.z, d = Math.hypot(dx, dz);
-      if (d < 0.35) { this.pi += 2; if (this.pi >= this.path.length) { this.path = null; } }
-      else { want = this.run ? 3.6 : 1.35; this.yaw = dampA(this.yaw, Math.atan2(dx, dz), 8, dt); const s = Math.min(d, want * dt); this.x += (dx / d) * s; this.z += (dz / d) * s; }
-    } else if (this.look) this.yaw = dampA(this.yaw, Math.atan2(this.look.x - this.x, this.look.z - this.z), 3, dt);
-    this.speed += (want - this.speed) * Math.min(1, dt * 6);
-    this.y += (this.g.world.surfaceY(this.x, this.z) - this.y) * Math.min(1, dt * 10);
-    const r = this.rig;
-    r.root.position.set(this.x, this.y, this.z);
-    r.root.rotation.y = this.yaw;
-    r.root.visible = visible;
-    r.lookAt(this.look);
-    r.update(dt, { speed: this.speed, stance: 'stand', full: this.sit ? 'sit' : 'none', fidget: this.speed < 0.1, wx: this.x, wy: this.y, wz: this.z, wyaw: this.yaw, ground: r.ragWorld!.ground, panic: this.run ? 0.8 : 0 } as any);
-  }
-  gesture(g: ResearcherGesture, hold = false) { if (!this.dead) this.rig.gesture(g, { hold }); }
-  die(from: THREE.Vector3) {
-    this.dead = true; this.path = null;
-    const imp = new THREE.Vector3(this.x - from.x, 0.6, this.z - from.z).normalize().multiplyScalar(5);
-    this.rig.startRagdoll(new THREE.Vector3(imp.x * 0.6, 1.5, imp.z * 0.6), imp, 'torso_u');
-    this.rig.setExpression('pain', 99);
-  }
-}
-
-// ------------------------------------------------------------------ objectives
-interface Obj { id: string; text: string; done: boolean; opt?: boolean }
+const V3 = THREE.Vector3;
+type Beat = 'opening' | 'wake' | 'free' | 'after' | 'done';
+interface Obj { id: string; text: () => string; done: () => boolean; hint?: string; opt?: boolean; when?: () => boolean; fin?: number; said?: boolean }
 
 export class Story {
-  calder: Calder | null = null;
+  readonly cine: Cinema;
   readonly dialog: Dialog;
-  private portraitRig: Researcher;
-  camp: { x: number; z: number; meshes: THREE.Object3D[]; fire: THREE.PointLight | null } = { x: 0, z: 0, meshes: [], fire: null };
-  step = 'arrive';
-  private t = 0; private stepT = 0;
+  /** Dr. Calder (in the world between scenes, an actor in them) */
+  readonly calder: Actor;
+  hollis: Actor | null = null; brandt: Actor | null = null;
+  lander: Lander | null = null;
+  readonly landSpot = new V3();
+  camp: { x: number; z: number; meshes: THREE.Object3D[]; fire: THREE.PointLight | null; table: THREE.Vector3; tableTop: number; yaw: number } = { x: 0, z: 0, meshes: [], fire: null, table: new V3(), tableTop: 0.8, yaw: 0 };
+  /** scene props to clean up with the story (blood pools, the journal, ...) */
+  readonly props: THREE.Object3D[] = [];
+  beat: Beat = 'opening';
+  /** run the beats by themselves (test pages switch this off and call playScene) */
+  auto = true;
   objectives: Obj[] = [];
   friendship = 0;
+  private portraitRig: Researcher;
+  private t = 0; private beatT = 0; private sinceContact = -1;
   private seen = new Set<string>();
-  private beast: Creature | null = null;
-  private campTaken = false; private bodyTaken = false;
-  private ambientT = 40;
   private r = new Rand(7);
+  private queue: { name: SceneName; arg?: string }[] = [];
+  private st = { kinds: new Set<Res>(), kills: 0, punch: 0, throws: 0, absorbs: 0, grafts: 0, converts: 0, labs: 0, plants: 0, territory: 0, lastHurt: -99 };
+  private reveals: { x: number; z: number; r: number }[] = [];
+  private fireOn = true;
+  private path: number[] | null = null; private pi = 0;
+  private mode: 'home' | 'visit' | 'note' = 'home'; private modeT = 30; private ambientT = 45;
+  private beastC: Creature | null = null; private beastName = '';
+  private deathAt: THREE.Vector3 | null = null;
+  private bodyTaken = false;
+  private objBox: HTMLElement | null = null;
+  private G: any;
+  private sky: Sky = makeSky();
+
   constructor(readonly g: Game) {
+    this.G = g as any;
     this.portraitRig = calderRig();
     const self = this;
-    this.dialog = new Dialog(g.hud.dialog, g.engine.renderer, {
+    const dlgParent: HTMLElement = this.G.hud?.dialog ?? ui();
+    this.dialog = new Dialog(dlgParent, g.engine.renderer, {
       root: this.portraitRig.root,
       update(dt) { self.portraitRig.update(dt, { speed: 0, stance: 'stand', fidget: true } as any); },
       say(sec, expr) { self.portraitRig.say(sec, expr); if (sec > 2) self.portraitRig.gesture('talk', { dur: Math.min(3, sec) }); },
-      head(out) { const h = self.portraitRig.bones?.head ?? (self.portraitRig as any).j?.head; if (h) return h.getWorldPosition(out); return out.set(0, 1.65, 0); },
+      head(out) { const h = (self.portraitRig as any).bones?.head ?? (self.portraitRig as any).j?.head; if (h) return h.getWorldPosition(out); return out.set(0, 1.65, 0); },
     });
-    this.dialog.onLine = (l) => { if (this.calder && !this.calder.dead && l.who !== 'journal' && l.who !== 'radio') { this.calder.rig.say(3, l.expr); } };
+    this.dialog.onLine = (l) => { if (!this.calder.dead && (!l.who || l.who === 'calder')) this.calder.talk(3, l.expr); };
+    this.cine = new Cinema({
+      enter: () => { this.dialog.clear(); this.G.setMode?.({ k: 'normal' }); this.g.world.scene.add(this.sky.mesh); },
+      exit: () => { this.G.hud?.invalidate?.(); this.sky.mesh.removeFromParent(); },
+    });
+    this.cine.ui.root.remove(); ui().appendChild(this.cine.ui.root);
+    // camera hook: the cinema drives the game camera while a scene plays
+    this.G.cineCam = (cam: THREE.PerspectiveCamera) => { if (this.cine.active) this.cine.apply(cam); };
     this.placeCamp();
-    this.calder = new Calder(g, this.camp.x + 1.2, this.camp.z + 1.6);
-    this.calder.sit = true;
-    this.calder.look = new THREE.Vector3(g.veyr.core!.x, g.veyr.core!.y + 1, g.veyr.core!.z);
-    // events
-    g.on('harvest', (d: any) => this.onHarvest(d.sp.name, d.chosen));
-    g.on('design', (sp: any) => this.react('design', [`A ${sp.name}. You built that out of what you ate.`, 'Each one a little less like what you swallowed. More like you.', 'You named it. Or I did, in my head. Same thing.']));
-    g.on('built', (b: any) => { if (b.def.kind === 'tap') this.complete('tap'); if (b.def.kind === 'brood') this.complete('brood'); this.react('built:' + b.def.kind, BUILT[b.def.kind] ?? ['Something else grew today.']); });
-    g.on('birth', (c: any) => { if (c.faction === 'veyr') { this.complete('spawn'); this.react('birth', ['It just... stepped out of the sac. Wet and walking.', 'Another one. They look at me the way you do.']); } });
-    g.on('ability', (d: any) => { if (d.a === 'pulse' && d.ok) this.complete('pulse'); });
-    g.on('em', (lv: number) => this.react('em' + lv, [`My plumb line hangs crooked now. It leans toward you.`, 'I dropped a pebble by the core and it fell sideways.', 'Even from camp I feel lighter when I face you.']));
+    this.pickLandSpot();
+    this.calder = new Actor(calderRig(), this.ground, g.world.scene);
+    this.calder.place(this.camp.x + 1.2, this.camp.z + 1.6);
+    this.calder.visible = false;
+    this.buildObjectives();
+    // ---- the shared game events
+    g.on('gather', (d: any) => this.onGather(d.res));
+    g.on('skill', (d: any) => this.onSkill(d.id));
+    g.on('points', (d: any) => this.onPoints(d.n, d.why));
+    g.on('kill', (d: any) => this.onKill(d.species, d.by));
+    g.on('throw', () => { this.st.throws++; this.first('throw', ['Nice arm! I pitched for the Corps team once. You\'d have struck me out.', 'Ha! Like a ballgame.']); });
+    g.on('absorb', (d: any) => this.onAbsorb(d.species, d.genes ?? []));
+    g.on('graft', () => this.onGraft());
+    g.on('convert', (d: any) => this.onConvert(d.species));
+    g.on('prefab', (d: any) => this.onPrefab(d.kind, d.name));
+    g.on('territory', (d: any) => this.onTerritory(d.frac));
+    g.on('hurt', (d: any) => this.onHurt(d.amt));
+    (window as any).__story = this;
   }
 
-  // ------------------------------------------------------------------ camp
+  // ================================================================== helpers for the scenes
+  readonly ground = (x: number, z: number) => { const R = this.g.region; return this.g.world.surfaceY(clamp(x, 0, R.N - 0.01), clamp(z, 0, R.N - 0.01)); };
+  /** where the golem is (its body, near the ground) */
+  golem(): THREE.Vector3 {
+    const G = this.G;
+    const pl = G.player ?? G.golem;
+    if (pl && typeof pl.x === 'number' && typeof pl.z === 'number') return new V3(pl.x, this.ground(pl.x, pl.z), pl.z);
+    const p = pl?.pos;
+    if (p && typeof p.x === 'number') return new V3(p.x, this.ground(p.x, p.z), p.z);
+    const ch = G.child?.root;
+    if (ch && ch.visible !== false) { const q = ch.getWorldPosition(new V3()); q.y = this.ground(q.x, q.z); return q; }
+    const c = G.veyr?.core; if (c) return new V3(c.x, this.ground(c.x, c.z), c.z);
+    const L = this.g.region.landing; return new V3(L.x, this.ground(L.x, L.z), L.z);
+  }
+  /** the golem's head (the lens) */
+  golemHead(): THREE.Vector3 {
+    const G = this.G;
+    try { const h = G.player?.headPos?.() ?? G.golem?.headPos?.() ?? G.child?.headPos?.(); if (h && h.y > -1e5) return h.clone(); } catch { /* fall through */ }
+    return this.golem().add(new V3(0, 1.5, 0));
+  }
+  golemWave() { try { const o = [this.G.player, this.G.golem, this.G.child].find((x) => typeof x?.wave === 'function'); o?.wave(); } catch { /* optional */ } }
+  /** reveal fog of war around a point while a scene needs it; returns the undo */
+  reveal(x: number, z: number, r: number) { const e = { x, z, r }; this.reveals.push(e); return () => { const i = this.reveals.indexOf(e); if (i >= 0) this.reveals.splice(i, 1); }; }
+  /** keep a reveal for a while longer after a scene (then undo it) */
+  revealKeep(x: number, z: number, r: number, undo: () => void, sec = 25) { undo(); const u = this.reveal(x, z, r); setTimeout(u, sec * 1000); }
+  /** set the time of day for a scene; returns the restore */
+  timeOfDay(d: number) { const w = this.g.world as any, was = w.day; if (typeof was !== 'number') return () => {}; w.day = d; return () => { w.day = d > 0.7 || d < 0.2 ? Math.max(0.2, (was + 0.02) % 1) : was; }; }
+  makeLander(): Lander { if (!this.lander) { this.lander = makeLander(); this.g.world.scene.add(this.lander.root); } return this.lander; }
+  dropLander() { this.lander?.root.removeFromParent(); this.lander = null; }
+  makeCrew() {
+    if (!this.hollis) this.hollis = new Actor(hollisRig(), this.ground, this.g.world.scene);
+    if (!this.brandt) this.brandt = new Actor(brandtRig(), this.ground, this.g.world.scene);
+    return { hollis: this.hollis, brandt: this.brandt };
+  }
+  dropCrew() { this.hollis?.dispose(); this.brandt?.dispose(); this.hollis = this.brandt = null; }
+  campSeat() { return new V3(this.camp.x + 1.2, 0, this.camp.z + 1.6); }
+  campFire(on: boolean) { this.fireOn = on; }
+  /** the journal or the radio on the field table (world position of its top) */
+  campProp(k: 'book' | 'radio'): THREE.Vector3 {
+    const key = 'prop:' + k;
+    let m = this.props.find((p) => p.name === key);
+    if (!m) {
+      const t = this.camp.table, yaw = this.camp.yaw, off = k === 'book' ? -0.22 : 0.3;
+      const p = new V3(t.x + Math.cos(yaw) * off, this.camp.tableTop, t.z - Math.sin(yaw) * off);
+      if (k === 'book') {
+        const g = new THREE.Group();
+        box(0.2, 0.02, 0.26, mat({ color: 0x5e3424 }), 0, 0.01, 0, g);
+        box(0.19, 0.012, 0.25, mat({ color: 0xe8dcb8 }), 0, 0.025, 0, g);
+        box(0.004, 0.014, 0.25, mat({ color: 0x8a7a5a }), 0, 0.032, 0, g);
+        box(0.12, 0.008, 0.008, mat({ color: 0xd8a422 }), 0.04, 0.036, 0.06, g).rotation.y = 0.5;
+        m = g;
+      } else {
+        const g = new THREE.Group();
+        box(0.34, 0.2, 0.2, mat({ color: OL[5] }), 0, 0.1, 0, g);
+        box(0.14, 0.1, 0.01, glowMat(0x6ae088), -0.06, 0.12, 0.1, g);
+        box(0.05, 0.05, 0.03, mat({ color: CR[2] }), 0.1, 0.12, 0.1, g);
+        const ant = box(0.01, 0.5, 0.01, mat({ color: 0x9aa2a8 }), 0.13, 0.43, -0.05, g); ant.rotation.z = -0.2;
+        m = g;
+      }
+      m.name = key; m.position.copy(p); m.rotation.y = yaw + 0.3;
+      this.g.world.scene.add(m); this.props.push(m);
+    }
+    return m.position.clone();
+  }
+  /** the model and size the beast scene's puppet uses (the region's apex predator, or a new one) */
+  beastModel(): { model: SpeciesModel; scale: number } {
+    const b = this.findBeast();
+    if (b) {
+      this.beastName = b.sp.name;
+      // the real one waits out of sight while its puppet acts (releaseBeast brings it back)
+      const far = this.campAway(48); b.x = far.x; b.z = far.z; b.y = this.ground(far.x, far.z); b.stunT = 999; b.order = null; b.path = null;
+      return { model: b.sp.model, scale: b.growth };
+    }
+    const d = wildDesign('apex', this.g.region.pal, this.g.region.seed ^ 0xbea57);
+    const sp = this.g.run.reg.add(d, 'wild', null, 'apex', 0);
+    this.beastName = sp.name;
+    const away = this.campAway(24);
+    this.beastC = this.g.world.spawn(sp, 'wild', away.x, away.z);
+    if (this.beastC) { this.beastC.boss = true; this.beastC.stunT = 999; }
+    return { model: sp.model, scale: 1 };
+  }
+  /** the real beast goes back into the world where the puppet left it */
+  releaseBeast(p: THREE.Vector3) {
+    const b = this.beastC; if (!b || b.dead) return;
+    const R = this.g.region;
+    b.x = clamp(p.x, 3, R.N - 3); b.z = clamp(p.z, 3, R.N - 3); b.y = this.ground(b.x, b.z);
+    b.stunT = 0; b.order = null; b.mind = 'wander' as any; b.path = null;
+    b.goalX = clamp(b.x + (b.x - this.camp.x) * 0.5, 3, R.N - 3); b.goalZ = clamp(b.z + (b.z - this.camp.z) * 0.5, 3, R.N - 3);
+  }
+  gore(x: number, z: number) {
+    const gr = this.G.gore ?? this.G.player?.gore;
+    try { gr?.splat?.(x, z, 1.1, 0x7a120c, { cell: 5 }); gr?.splat?.(x + 0.6, z + 0.3, 0.6, 0x5e0e08, { cell: 4 }); } catch { /* the gore system is optional */ }
+  }
+  calderDied(at: THREE.Vector3) {
+    this.deathAt = at.clone();
+    this.fireOn = false;
+    this.g.run.flags.calderDead = 1;
+  }
+
+  // ================================================================== camp
   private placeCamp() {
-    const g = this.g, R = g.region, L = R.landing, r = new Rand(g.region.seed ^ 0xca1);
+    const g = this.g, R = g.region, L = R.landing, r = new Rand(R.seed ^ 0xca1);
     let best: [number, number] = [L.x + 24, L.z], bs = -1e9;
     for (let t = 0; t < 300; t++) {
       const a = r.range(0, Math.PI * 2), d = r.range(23, 30);
@@ -143,30 +227,33 @@ export class Story {
       const s = -(hi - lo) * 4 - wet * 3;
       if (s > bs) { bs = s; best = [x, z]; }
     }
-    // flatten the camp ground a little
     const [cx, cz] = best;
     const h0 = Math.round(R.heightAt(cx, cz) * 2) / 2;
     for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
       const X = Math.floor(cx) + dx, Z = Math.floor(cz) + dz; if (!R.inside(X, Z)) continue;
       const i = Z * R.N + X; if (Math.abs(R.h[i] - h0) <= 1) { R.h[i] = h0; R.dirty.add(i); }
     }
-    g.world.terrain.flushDirty();
+    try { (g.world as any).terrain?.flushDirty?.(); } catch { /* terrain refresh is best effort */ }
     this.camp.x = cx + 0.5; this.camp.z = cz + 0.5;
     const toCore = Math.atan2(L.x - this.camp.x, L.z - this.camp.z);
+    this.camp.yaw = toCore;
     const place = (key: string, ox: number, oz: number, rot: number) => {
-      const d = objDef(key); if (!d) return;
-      const geo = objectGeometry(d, { uid: 0, key, x: 0, y: 0, rot: 0, state: {} } as any); if (!geo) return;
+      const d = objDef(key); if (!d) return null;
+      const geo = objectGeometry(d, { uid: 0, key, x: 0, y: 0, rot: 0, state: {} } as any); if (!geo) return null;
       const m = new THREE.Mesh(geo, worldMaterial({ noVis: true, noFog: true, noGrid: true }));
       const c = Math.cos(toCore), s = Math.sin(toCore);
       const x = this.camp.x + ox * c + oz * s, z = this.camp.z - ox * s + oz * c;
-      m.position.set(x, g.world.surfaceY(x, z), z);
+      m.position.set(x, this.ground(x, z), z);
       m.rotation.y = toCore + rot;
       m.castShadow = true; m.receiveShadow = true;
       g.world.scene.add(m); this.camp.meshes.push(m);
+      return m;
     };
     place('campfire_unlit', 0, 0, 0);
     place('tent', -2.6, -1.8, 0.4);
-    place('zw_field_table', 2.4, -1.2, -0.3);
+    const table = place('zw_field_table', 2.4, -1.2, -0.3);
+    if (table) { (table as THREE.Mesh).geometry.computeBoundingBox(); const bb = (table as THREE.Mesh).geometry.boundingBox!; this.camp.table.copy(table.position); this.camp.tableTop = table.position.y + bb.max.y; }
+    else { this.camp.table.set(this.camp.x + 2, this.ground(this.camp.x + 2, this.camp.z), this.camp.z); this.camp.tableTop = this.camp.table.y + 0.75; }
     place('zw_hard_case', 1.6, 1.2, 0.8);
     place('zw_hard_case', 2.6, 0.6, -0.4);
     place('zw_floodlight', -1.4, 2.0, Math.PI);
@@ -174,314 +261,423 @@ export class Story {
     place('zw_cot', -3.4, 1.0, 1.2);
     place('crate_built', 3.4, -0.2, 0.2);
     place('bedroll', -1.8, -3.6, 0.1);
+    place('antenna_mast', -3.2, -3.9, 0.6);
     const fire = new THREE.PointLight(0xffa050, 3, 9, 1.6);
-    fire.position.set(this.camp.x, g.world.surfaceY(this.camp.x, this.camp.z) + 0.6, this.camp.z);
+    fire.position.set(this.camp.x, this.ground(this.camp.x, this.camp.z) + 0.6, this.camp.z);
     g.world.scene.add(fire); this.camp.fire = fire;
   }
-  private campVisible() { return this.g.vision.visibleAt(this.camp.x, this.camp.z); }
+  /** a point away from camp, on the side away from the golem's crater */
+  private campAway(d: number) {
+    const L = this.g.region.landing, R = this.g.region;
+    const a = Math.atan2(this.camp.z - L.z, this.camp.x - L.x) + 0.4;
+    return { x: clamp(this.camp.x + Math.cos(a) * d, 4, R.N - 4), z: clamp(this.camp.z + Math.sin(a) * d, 4, R.N - 4) };
+  }
+  /** a flat dry patch 12-15 m from the crater for the lander, toward the camp */
+  private pickLandSpot() {
+    const R = this.g.region, L = R.landing, r = new Rand(R.seed ^ 0x1a2d);
+    const toward = Math.atan2(this.camp.z - L.z, this.camp.x - L.x);
+    let best = new V3(L.x + Math.cos(toward) * 13, 0, L.z + Math.sin(toward) * 13), bs = -1e9;
+    for (let t = 0; t < 80; t++) {
+      const a = toward + r.range(-1.1, 1.1), d = r.range(11.5, 15);
+      const x = L.x + Math.cos(a) * d, z = L.z + Math.sin(a) * d;
+      if (x < 6 || z < 6 || x > R.N - 6 || z > R.N - 6) continue;
+      let lo = 1e9, hi = -1e9, wet = 0;
+      for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) { const h = R.heightAt(x + dx, z + dz); lo = Math.min(lo, h); hi = Math.max(hi, h); if (h < R.water + 0.3) wet++; }
+      const s = -(hi - lo) * 5 - wet * 4 - Math.abs(a - toward);
+      if (s > bs) { bs = s; best = new V3(x, 0, z); }
+    }
+    best.y = this.ground(best.x, best.z);
+    this.landSpot.copy(best);
+  }
 
-  // ------------------------------------------------------------------ objectives
-  private obj(id: string, text: string, opt = false) { if (!this.objectives.some((o) => o.id === id)) { this.objectives.push({ id, text, done: false, opt }); this.renderObjectives(); sfx('open', 1, 0.5); } }
-  complete(id: string) { const o = this.objectives.find((x) => x.id === id && !x.done); if (o) { o.done = true; this.renderObjectives(); sfx('done'); } }
+  // ================================================================== objectives
+  private buildObjectives() {
+    const sk = (id: string) => this.g.run.skills.has(id);
+    const res = () => { const n = new Set<Res>(this.st.kinds); for (const k of RES) if ((this.g.run.res[k] ?? 0) > 0) n.add(k); return n; };
+    this.objectives = [
+      { id: 'gather', text: () => `Gather ore, carbon, water and soil (${res().size}/4)`, done: () => res().size >= 4,
+        hint: 'Your intake works. Pull in whatever lies loose: ore from the dark rock, carbon from dead wood, water from the stream, soil from the ground.' },
+      { id: 'torso', text: () => 'Open the skill tree [K] and build the Core Housing', done: () => sk('torso'),
+        hint: 'That\'s enough to start. Open your blueprints with [K]. Build a chest first: everything else bolts to it.' },
+      { id: 'armR', text: () => 'Build a right arm', done: () => sk('armR'), hint: 'Now an arm. A head and a chest can\'t hold a wrench.' },
+      { id: 'punch', text: () => 'Punch a creature down', done: () => this.st.punch > 0 || (this.st.kills > 0 && sk('punch')), hint: 'Those crawlers keep sniffing at you. Show them what that arm is for.' },
+      { id: 'throw', text: () => 'Pick up a rock and throw it', done: () => this.st.throws > 0, hint: 'Pick up a stone and throw it. Like a ballgame.' },
+      { id: 'absorb', text: () => 'Absorb a creature\'s whole genome', done: () => this.st.absorbs > 0, hint: 'When one goes down, take it in. All of it. I want to see what you learn from it.' },
+      { id: 'lab', text: () => 'Build the Field Laboratory and rebuild a species in the tank', done: () => sk('lab') && this.st.labs > 0, hint: 'Build a field lab. Put what you\'ve absorbed in the tank and see if you can rebuild it, limb by limb.' },
+      { id: 'graft', text: () => `Graft plants to claim ground (${Math.min(3, this.st.grafts)}/3)`, done: () => this.st.grafts >= 3, hint: 'These plants... you could graft them. Make them yours. Every one you change claims the ground around it.' },
+      { id: 'convert', text: () => 'Beat a creature and convert it with a Neural Graft', done: () => this.st.converts > 0, hint: 'A beaten animal could be rewired. A Neural Graft. It would fight for you instead of against you.' },
+      { id: 'claim', text: () => `Claim the region for Earth (${Math.round(this.st.territory * 100)}% held)`, done: () => this.st.territory >= 0.6, hint: 'Hold this valley, Seven. All of it. For home.' },
+      { id: 'return', text: () => 'Go back to Calder\'s camp', done: () => this.seen.has('scene:final'), when: () => this.beat === 'after' || this.beat === 'done' },
+      { id: 'avenge', text: () => 'Hunt down the beast that killed him', done: () => this.seen.has('avenged'), opt: true, when: () => this.beat === 'after' || this.beat === 'done' },
+    ];
+  }
+  /** mark an objective done from outside (kept for old callers) */
+  complete(id: string) { this.seen.add('obj:' + id); }
+  private objDone(o: Obj) { return this.seen.has('obj:' + o.id) || o.done(); }
+  private tickObjectives() {
+    if (this.beat === 'opening' || this.beat === 'wake') return;
+    let changed = false, cur: Obj | null = null;
+    for (const o of this.objectives) {
+      if (o.when && !o.when()) continue;
+      if (o.fin === undefined && this.objDone(o)) {
+        o.fin = this.t; changed = true;
+        sfx('done'); csfx('chime', 0.4, 1.2);
+        const p = this.golem(); floatText(this.g, p.x, p.y + 2.6, p.z, 'OBJECTIVE COMPLETE', 'good', { life: 2.2 });
+      }
+      if (o.fin === undefined && !cur && !o.opt) cur = o;
+    }
+    if (cur && !cur.said && cur.hint && !this.calder.dead && !this.cine.active && this.sinceContact > 3) {
+      cur.said = true;
+      this.say([{ text: cur.hint }]);
+    }
+    if (changed || Math.floor(this.t * 2) !== Math.floor((this.t - 0.016) * 2)) this.renderObjectives();
+  }
   private renderObjectives() {
-    const box = this.g.hud.objectives;
-    box.style.display = this.objectives.length ? '' : 'none';
+    let box = this.G.hud?.objectives as HTMLElement | undefined;
+    if (!box) { if (!this.objBox) { this.objBox = el('div', 'px-dark hud-obj', ui()); this.objBox.style.cssText += ';position:fixed;right:calc(8px * var(--s));top:calc(60px * var(--s));max-width:calc(150px * var(--s));font-size:calc(8px * var(--s))'; } box = this.objBox; }
+    const show: Obj[] = [];
+    for (const o of this.objectives) {
+      if (o.when && !o.when()) continue;
+      if (o.fin !== undefined && this.t - o.fin > 5) continue;
+      show.push(o);
+    }
+    const list = [...show.filter((o) => o.fin !== undefined), ...show.filter((o) => o.fin === undefined && !o.opt).slice(0, 3), ...show.filter((o) => o.fin === undefined && o.opt)];
+    const key = list.map((o) => o.id + (o.fin !== undefined ? '+' : '') + o.text()).join('|');
+    if ((box as any).__k === key) return;
+    (box as any).__k = key;
+    box.style.display = list.length ? '' : 'none';
     box.innerHTML = '';
-    el('h4', '', box, 'FIELD NOTES');
-    for (const o of this.objectives.slice(-6)) {
-      const r = el('div', 'ob' + (o.done ? ' done' : ''), box);
-      iconImg(o.done ? 'helix' : o.opt ? 'skull' : 'move', 'oi', r).style.cssText = 'width:14px;height:14px;flex:none';
-      el('span', '', r, o.text);
+    el('h4', '', box, 'FIELD NOTES · DR. CALDER');
+    for (const o of list) {
+      const r = el('div', 'ob' + (o.fin !== undefined ? ' done' : ''), box);
+      iconImg(o.fin !== undefined ? 'helix' : o.opt ? 'skull' : 'move', 'oi', r).style.cssText = 'width:14px;height:14px;flex:none';
+      el('span', '', r, o.text());
     }
-  }
-  private isDone(id: string) { return !!this.objectives.find((o) => o.id === id)?.done; }
-  say(lines: (string | Line)[]) { this.dialog.say(lines.map((l) => (typeof l === 'string' ? { text: l } : l))); }
-  private react(key: string, pool: string[]) {
-    if (this.seen.has(key) || !this.calder || this.calder.dead) return;
-    this.seen.add(key);
-    this.friendship++;
-    this.say([this.r.pick(pool)]);
-  }
-  private onHarvest(name: string, chosen: string[]) {
-    this.complete('absorb');
-    if (!this.calder || this.calder.dead) return;
-    if (!this.seen.has('first-harvest')) {
-      this.seen.add('first-harvest');
-      const g = chosen[0] ? GENE[chosen[0]] : null;
-      this.say([{ text: `It took the ${name} apart. Not eating. Reading.`, expr: 'surprised' }, g ? `You kept the ${g.name.toLowerCase()}. Interesting choice.` : 'You let it all go. Picky.']);
-      return;
-    }
-    if (chosen.some((c) => GENE[c]?.cat === 'body')) this.react('body:' + chosen.find((c) => GENE[c]?.cat === 'body'), [`A whole new body plan. You could build anything with that.`, 'That one changes everything about what you can make.']);
   }
 
-  // ------------------------------------------------------------------ the arc
+  // ================================================================== talking
+  say(lines: (string | Line)[]) { this.dialog.say(lines.map((l) => (typeof l === 'string' ? { text: l } : l))); }
+  /** Calder says one line from the pool the first time something happens (the journal says it once he is gone) */
+  private first(key: string, pool: string[], journal?: string) {
+    if (this.seen.has(key)) return false;
+    this.seen.add(key);
+    if (this.beat === 'opening' || this.beat === 'wake') return true;
+    if (!this.calder.dead) { this.friendship++; this.say([{ text: this.r.pick(pool) }]); }
+    else if (journal) this.say([{ text: journal, who: 'journal' }]);
+    return true;
+  }
+  private atGolem(text: string, kind: Parameters<typeof floatText>[5] = 'skill', big = 1) {
+    const p = this.golemHead(); floatText(this.g, p.x, p.y + 1.1, p.z, text, kind, { big, life: 2.6 });
+  }
+
+  // ================================================================== events
+  private onGather(res: Res) {
+    if (!res) return;
+    const had = this.st.kinds.has(res); this.st.kinds.add(res);
+    if (had) return;
+    this.first('gather:' + res, [GATHER[res]]);
+    if (this.st.kinds.size === 4) { advance('ALL FOUR MATERIALS', 'ORE · CARBON · WATER · SOIL', 'skills', { kicker: 'FIELD SURVEY' }); }
+  }
+  private onSkill(id: string) {
+    const s = SKILL[id]; if (!s) return;
+    const name = s.name.toUpperCase();
+    advance(name, PART_SUB[s.branch] ?? 'ONLINE', skillIcon(id), { kicker: 'ADVANCEMENT', stamp: s.branch === 'chassis' ? 'ASSEMBLED' : 'ONLINE' });
+    csfx('sting', 0.5, 1.2);
+    // body parts get a little scene at camp while he is alive; everything else, a line
+    const part = CAMP_PARTS.includes(id);
+    if (part && !this.calder.dead && (this.beat === 'free') && !this.seen.has('camp:' + id)) { this.seen.add('camp:' + id); this.queue.push({ name: 'camp', arg: id }); return; }
+    const lines = SKILL_LINES[id];
+    if (lines) this.first('skill:' + id, lines, JOURNAL_SKILL);
+  }
+  private onPoints(n: number, why: string) {
+    if (!n) return;
+    if (why && n >= 2) advance(`+${n} CORE CELLS`, why.toUpperCase(), 'cell', { kicker: 'COMMENDATION', stamp: 'STATION 4' });
+  }
+  private onKill(species: string, by: string) {
+    this.st.kills++; if (by === 'punch') this.st.punch++;
+    this.first('kill', ['Remind me never to argue with you.', 'Well. That\'s one way to settle it.'], 'It fights now. He would have flinched, then written it down.');
+    if (by === 'punch' && this.first('kill:punch', ['Ha! Right on the button!'])) this.atGolem('FIRST KNOCKOUT', 'crit', 2);
+    if (this.beat === 'after' && species && species === this.beastName && !this.seen.has('avenged')) {
+      this.seen.add('avenged');
+      advance('THE BEAST IS DEAD', 'FOR DR. CALDER', 'skull', { kicker: 'SETTLED', stamp: 'U.S.P.C.' });
+      this.atGolem('FOR CALDER', 'crit', 3);
+      this.say([{ text: 'The thing that took him is dead. I hope that\'s the right word for it. For the record, it was quick.', who: 'journal' }]);
+    }
+  }
+  private onAbsorb(species: string, genes: string[]) {
+    this.st.absorbs++;
+    if (this.first('absorb', [`It took the ${species || 'creature'} apart. Not eating. Reading. ${genes.length} genes, all of them, filed away.`, 'You read it like a book. Every bone of it.'])) {
+      advance('GENOME ABSORBED', (species || 'SPECIMEN').toUpperCase(), 'absorb', { kicker: 'FIRST SPECIMEN' });
+      this.atGolem('GENOME ABSORBED', 'good', 2);
+    }
+  }
+  private onGraft() {
+    this.st.grafts++;
+    if (this.first('graft', ['You changed it. The leaves are turning your colour. Everything around it looks... claimed.', 'A garden. You\'re planting a garden for Earth.'])) {
+      advance('FIRST GRAFT', 'THE GROUND AROUND IT IS YOURS', 'graft', { kicker: 'TERRITORY' });
+      this.atGolem('GROUND CLAIMED', 'good', 2);
+    }
+  }
+  private onConvert(species: string) {
+    this.st.converts++;
+    if (this.first('convert', [`That ${species || 'animal'} is following you now. Like a dog. A dog that could eat a dog.`, 'You rewired it. It looks at you the way I do.'])) {
+      advance('FIRST CONVERT', (species || 'CREATURE').toUpperCase() + ' FIGHTS FOR YOU', 'ally', { kicker: 'NEURAL GRAFT' });
+      this.atGolem('CONVERTED', 'good', 2);
+    }
+  }
+  private onPrefab(kind: string, name: string) {
+    if (kind === 'creature') {
+      this.st.labs++;
+      if (this.first('prefab:creature', [`You rebuilt it in the tank. A ${name || 'whole animal'}. From memory.`, 'Limb by limb. I\'ve seen surgeons with less nerve.'])) advance('SPECIES ON FILE', (name || 'PREFAB').toUpperCase(), 'lab', { kicker: 'FIELD LABORATORY' });
+    } else {
+      this.st.plants++;
+      this.first('prefab:plant', ['You pressed it like a flower in a book. Now you can grow it anywhere.'], 'He kept pressed flowers in this journal. I found three.');
+    }
+  }
+  private onTerritory(frac: number) {
+    if (typeof frac !== 'number') return;
+    this.st.territory = frac;
+    for (const [k, line] of TERRITORY) {
+      if (frac >= k && !this.seen.has('terr:' + k)) {
+        this.seen.add('terr:' + k);
+        if (this.beat === 'opening' || this.beat === 'wake') continue;
+        advance(`${Math.round(k * 100)}% OF THE REGION`, 'HELD FOR EARTH', 'territory', { kicker: 'TERRITORY', stamp: 'CLAIMED' });
+        this.atGolem(`${Math.round(k * 100)}% CLAIMED`, 'good', 2);
+        if (!this.calder.dead) this.say([{ text: line }]);
+      }
+    }
+  }
+  private onHurt(amt: number) {
+    if (this.calder.dead || !(amt > 8) || this.t - this.st.lastHurt < 70 || this.cine.active) return;
+    const p = this.golem(); if (Math.hypot(p.x - this.calder.x, p.z - this.calder.z) > 40) return;
+    this.st.lastHurt = this.t;
+    this.say([{ text: this.r.pick(['Seven! Careful!', 'Get back from it, Seven!', 'Watch your plating!']), expr: 'surprised' }]);
+  }
+
+  // ================================================================== scenes
+  /** play a scene now (the ?test=cine page and the story's own triggers call this) */
+  async playScene(name: SceneName, arg?: string) {
+    const f = SCENES[name]; if (!f) return;
+    if (name === 'beast' && this.calder.dead) return;
+    this.seen.add('scene:' + name);
+    const was = this.beat;
+    if (name !== 'camp') this.calder.visible = true;
+    this.path = null;
+    await this.cine.play((c) => f(c, this, name === 'camp' ? arg ?? 'armR' : arg), { name });
+    if (name === 'opening') { this.beat = 'wake'; this.beatT = 0; }
+    if (name === 'contact') { this.beat = 'free'; this.beatT = 0; this.sinceContact = 0; this.goHome(); }
+    if (name === 'camp') { this.mode = 'visit'; this.modeT = 12; }
+    if (name === 'beast') { this.beat = 'after'; this.beatT = 0; }
+    if (name === 'final') { this.beat = 'done'; this.afterFinal(); }
+    void was;
+  }
+  private afterFinal() {
+    const g = this.g;
+    g.run.flags.calderNotes = 1;
+    advance('CALDER\'S NOTES', 'ONE MORE GENE FROM EVERY GENOME', 'journal', { kicker: 'RECOVERED', stamp: 'U.S.P.C.' });
+    if (typeof this.G.veyr?.absorbCap === 'number') this.G.veyr.absorbCap += 1;
+    const at = this.deathAt;
+    if (!this.bodyTaken && at && this.G.chooseCalder) {
+      this.bodyTaken = true;
+      setTimeout(() => this.G.chooseCalder((absorb: boolean) => {
+        if (absorb) { for (const id of ['hominid_frame', 'hands', 'hominid_eyes', 'omni_teeth']) g.run.add(id, 'Dr. Calder', g.world.time); toast('You take what he was. Upright. Curious. Yours.', 'story', 6000); }
+        else { g.run.flags.memorial = 1; toast('A pale flower grows where he lies. It never closes.', 'story', 6000); }
+        this.calder.rig.root.visible = !absorb;
+        if (absorb) g.fx.burst(at.x, at.y + 0.5, at.z, 40, VEYR.vein, { glow: true, up: 3, speed: 2, size: 3, life: 1.2 });
+        else this.memorial(at.x, at.z);
+      }), 600);
+    }
+  }
+  private memorial(x: number, z: number) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.9, 0.3), gbuf(new THREE.MeshLambertMaterial({ color: 0xf4f0e8, emissive: 0x4a6a60 }), 1 + 32));
+    m.position.set(x, this.ground(x, z) + 0.45, z);
+    this.g.world.scene.add(m); this.props.push(m);
+  }
+  private findBeast(): Creature | null {
+    if (this.beastC && !this.beastC.dead) return this.beastC;
+    const cs = this.g.world.creatures.filter((x) => !x.dead && x.faction === 'wild');
+    this.beastC = cs.find((x) => x.boss) ?? cs.filter((x) => x.diet === 'carn').sort((a, b) => b.mass - a.mass)[0] ?? null;
+    return this.beastC;
+  }
+
+  // ================================================================== the frame
   update(dt: number, real: number) {
-    const g = this.g, c = this.calder;
-    this.t += dt; this.stepT += dt;
+    const g = this.g;
+    this.t += real; this.beatT += real;
+    if (this.sinceContact >= 0) this.sinceContact += dt;
+    this.cine.update(real);
+    if (this.cine.active) {
+      const cam = this.G.cam?.cam ?? this.G.camera; if (cam) this.cine.apply(cam);
+      // the sky the RTS camera never shows: palette colours, darkened by night
+      const pal: any = this.g.region.pal, day = (this.g.world as any).day ?? 0.3;
+      const elev = Math.cos((day - 0.25) * Math.PI * 2), k = clamp(elev * 1.4 + 0.25, 0.16, 1);
+      if (cam) this.sky.mesh.position.copy(cam.position);
+      this.sky.set(pal.sky ?? 0x8ab0d0, pal.horizon ?? 0xc8d8e0, clamp((0.62 - k) * 1.8, 0, 1), (this.g.world as any).sun?.dir ?? new V3(0, 1, 0));
+      // the golem stands idle through a scene: nothing hurts it meanwhile
+      const pl = this.G.player; if (pl && typeof pl.invuln === 'number') pl.invuln = Math.max(pl.invuln, 0.6);
+    }
     this.dialog.update(real);
+    // camp fire: lit at night while he lives, cold after
+    const w: any = g.world;
+    const night = typeof w.day === 'number' && (w.day > 0.72 || w.day < 0.24);
     if (this.camp.fire) {
-      this.camp.fire.intensity = (g.world.day > 0.7 || g.world.day < 0.25 ? 4 : 1.5) * (0.85 + Math.sin(this.t * 13) * 0.08 + Math.sin(this.t * 7) * 0.07);
-      // flames: rising embers and tongues of light over the pit
-      if (g.vision.visibleAt(this.camp.x, this.camp.z) && Math.random() < real * 30) {
-        const fy = this.camp.fire.position.y - 0.45;
-        const hot = Math.random() < 0.6;
+      const on = this.fireOn && !this.calder.dead;
+      this.camp.fire.intensity = on ? (night ? 4 : 1.4) * (0.85 + Math.sin(this.t * 13) * 0.08 + Math.sin(this.t * 7) * 0.07) : 0;
+      if (on && Math.random() < real * 30) {
+        const fy = this.camp.fire.position.y - 0.45, hot = Math.random() < 0.6;
         g.fx.glow.emit(this.camp.x + (Math.random() - 0.5) * 0.3, fy, this.camp.z + (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3, 0.9 + Math.random() * 0.8, (Math.random() - 0.5) * 0.3,
           new THREE.Color(hot ? 0xffa030 : 0xff5a20).multiplyScalar(2.4), 1, hot ? 3 : 2, 0.5 + Math.random() * 0.4, -0.4, 1.2);
       }
     }
-    if (c) {
-      const vis = g.vision.visibleAt(c.x, c.z) || (c.dead && g.vision.seen[Math.floor(c.z) * g.region.N + Math.floor(c.x)] > 0);
-      c.update(dt, vis || this.step === 'arrive');
-      // the Veyr senses him: he reveals a little around himself
-      g.vision.extra = c.dead ? [] : [[c.x, c.z, 5]];
+    // the cast
+    this.calder.update(real); this.hollis?.update(real); this.brandt?.update(real);
+    // fog of war: he is seen; scenes reveal what they film
+    const vis = this.G.vision;
+    if (vis && Array.isArray(vis.extra)) {
+      const ex: [number, number, number][] = this.calder.dead || !this.calder.visible ? [] : [[this.calder.x, this.calder.z, 5]];
+      for (const r of this.reveals) ex.push([r.x, r.z, r.r]);
+      vis.extra = ex;
+      const seen = vis.seen?.[Math.floor(this.camp.z) * g.region.N + Math.floor(this.camp.x)] > 0;
+      for (const m of this.camp.meshes) m.visible = seen || this.cine.active || this.beat !== 'free';
     }
-    for (const m of this.camp.meshes) m.visible = g.vision.seen[Math.floor(this.camp.z) * g.region.N + Math.floor(this.camp.x)] > 0 || this.stepT < 0;
-    if (!c) return;
-    const core = g.veyr.core!;
-    switch (this.step) {
-      case 'arrive':
-        if (this.t > 10) {
-          const a = Math.atan2(c.x - core.x, c.z - core.z);
-          c.walkTo(core.x + Math.sin(a) * 9, core.z + Math.cos(a) * 9);
-          this.go('approach');
-        }
-        break;
-      case 'approach':
-        if (!c.moving) {
-          c.look = new THREE.Vector3(core.x, core.y + 1.5, core.z);
-          c.gesture('think');
-          this.say([
-            { text: 'Easy. Easy now. It\'s all right. I\'m on your side.', expr: 'surprised' },
-            'Three weeks we\'ve combed these hills for your impact site. You came down burning green.',
-            'Dr. Calder. U.S. Planetary Corps, recovery team, Station Four. The last one left, apparently.',
-            { text: 'And you\'re awake. Unit Seven. They swore the rock would never take.', expr: 'surprised' },
-            { text: 'You\'re floating. The gravity coil works. Washington owes me twenty dollars.', expr: 'surprised' },
-            { text: 'Half asteroid, half Earth steel, and something alive in between. Hello, big fella.', expr: 'smile' },
-            { text: 'Your orders haven\'t changed: take this world. For home. For everyone waiting up there.', expr: 'smile', onShow: () => c.gesture('present') },
-          ]);
-          this.go('t-spread');
-        }
-        break;
-      case 't-spread':
-        if (!this.dialog.busy) {
-          this.say([{ text: 'Your moss is spreading. It wants the grass. Push it outward. [G] lets you direct it.', onShow: () => c.gesture('point') }]);
-          this.obj('spread', 'Spread your moss (paint growth with G)');
-          this.go('w-spread');
-        }
-        break;
-      case 'w-spread':
-        if (g.veyr.cells > 420) { this.complete('spread'); this.go('t-snare'); }
-        break;
-      case 't-snare':
-        this.say([{ text: 'Those little crawlers keep stumbling onto your patch.', onShow: () => c.gesture('point') }, 'I wonder. Can you catch one? [1], then the creature. Time it.']);
-        this.obj('snare', 'Seize a creature on your moss (1)');
-        this.obj('absorb', 'Digest it and absorb its DNA');
-        this.go('w-snare');
-        break;
-      case 'w-snare':
-        if (g.run.absorbed > 0) { this.complete('snare'); this.complete('absorb'); this.go('t-tap'); }
-        break;
-      case 't-tap':
-        if (this.dialog.busy) break;
-        this.say([{ text: 'Those dark seams are heavy. Iron. I swear the rubble leans toward them when you look.', onShow: () => c.gesture('clipboard') }, 'If you could reach into it... [B], then a Root Tap on the seam.']);
-        this.obj('tap', 'Grow a Root Tap on a ferrite seam');
-        this.go('w-tap');
-        break;
-      case 'w-tap':
-        if (this.isDone('tap')) this.go('t-design');
-        if (this.stepT > 30 && !this.seen.has('gift')) this.gift();
-        break;
-      case 't-design': {
-        const has = (cat: string) => [...g.run.genes.keys()].some((k) => GENE[k]?.cat === cat);
-        if (this.dialog.busy) break;
-        if (has('body') && has('feed') && has('repro')) {
-          this.say([{ text: 'You have enough of a blueprint now. Could you... make one? [C] opens it.', expr: 'surprised' }, 'Then a womb to grow it in. [B].']);
-          this.obj('design', 'Design a species in the Gene Forge (C)');
-          this.obj('brood', 'Grow a Brood Womb');
-          this.obj('spawn', 'Gestate your first creature');
-          this.go('w-design');
-        } else if (this.stepT > 4 && !this.seen.has('need-genes')) {
-          this.seen.add('need-genes');
-          this.say(['To build a body you\'ll need more than legs. Something to eat with, a way to breed. Keep feeding.']);
-          this.obj('genes', 'Absorb feeding and reproduction genes');
-        }
-        if (has('body') && has('feed') && has('repro')) this.complete('genes');
+    if (this.cine.active) return;
+    // ---- beats
+    if (this.auto) switch (this.beat) {
+      case 'opening': if (this.beatT > 0.25) { this.beatT = -999; void this.playScene('opening'); } break;
+      case 'wake': if (this.beatT > 4.5 && this.beatT < 900) { this.beatT = -999; void this.playScene('contact'); } break;
+      case 'free': this.freeBeat(dt); break;
+      case 'after': {
+        const p = this.golem();
+        if (Math.hypot(p.x - this.camp.x, p.z - this.camp.z) < 8 && !this.dialog.busy) void this.playScene('final');
         break;
       }
-      case 'w-design':
-        if (g.run.reg.list.some((s) => s.owner === 'veyr')) this.complete('design');
-        if (this.isDone('spawn')) this.go('t-pulse');
-        if (this.stepT > 50 && !this.seen.has('gift')) this.gift();
-        break;
-      case 't-pulse':
-        this.say([{ text: 'My cup floated off the table this morning. Your pull is strong enough to push with now.', onShow: () => c.gesture('present') }, 'Try it on something that bothers you. [2].']);
-        this.obj('pulse', 'Discharge an EM pulse (2)');
-        this.go('w-pulse');
-        break;
-      case 'w-pulse':
-        if (this.isDone('pulse') || this.stepT > 70) this.go('bond');
-        break;
-      case 'bond':
-        if (this.dialog.busy) break;
-        this.say([{ text: 'Day nine. It knows me now. The moss parts where I walk.', who: 'journal' }, { text: 'I set the camera up facing you. For the record. In case nobody ever believes me.', expr: 'smile' }]);
-        this.obj('dominion', 'Take the region: 60% dominion');
-        this.go('w-night');
-        break;
-      case 'w-night': {
-        const night = g.world.day > 0.78 || g.world.day < 0.18;
-        if (this.stepT > 70 && night && this.findBeast()) this.go('beast');
-        else if (this.stepT > 70 && !night) g.world.day = Math.min(0.99, g.world.day + dt * 0.004);
-        break;
-      }
-      case 'beast': this.beastBeat(dt); break;
-      case 'after': this.afterBeat(); break;
     }
-    // ambient companionship
-    if (!c.dead && !this.dialog.busy && ['w-spread', 'w-snare', 'w-tap', 'w-design', 'w-pulse', 'w-night'].includes(this.step)) {
-      this.ambientT -= dt;
-      if (this.ambientT <= 0) { this.ambientT = 55 + this.r.range(0, 40); this.ambient(); }
-    }
+    // queued scenes (the camp vignettes) play once the dialog is quiet
+    if (this.queue.length && !this.dialog.busy && this.beat === 'free') { const q = this.queue.shift()!; void this.playScene(q.name, q.arg); return; }
+    this.calderLife(dt);
+    this.tickObjectives();
   }
-  private go(s: string) { this.step = s; this.stepT = 0; }
-
-  private ambient() {
-    const c = this.calder!, g = this.g;
-    const night = g.world.day > 0.75 || g.world.day < 0.2;
-    const k = this.r.int(0, 3);
-    if (night && k < 2) {
-      c.walkTo(this.camp.x + 1.2, this.camp.z + 1.6); c.sit = false;
-      setTimeout(() => { if (!c.dead) c.sit = true; }, 9000);
-      this.say([{ text: this.r.pick(JOURNAL), who: 'journal' }]);
-      return;
-    }
-    // wander to the moss edge and take notes
-    const core = g.veyr.core!;
-    const a = this.r.range(0, Math.PI * 2), d = 10 + g.veyr.emLevel * 3;
-    c.walkTo(clamp(core.x + Math.cos(a) * d, 4, g.region.N - 4), clamp(core.z + Math.sin(a) * d, 4, g.region.N - 4));
-    c.look = new THREE.Vector3(core.x, core.y + 1, core.z);
-    setTimeout(() => { if (!c.dead) c.gesture('clipboard'); }, 7000);
-    this.say([this.r.pick(MUSINGS)]);
+  /** the beast comes when the golem has grown enough, at night */
+  private freeBeat(dt: number) {
+    const g = this.g, w: any = g.world;
+    const ready = this.st.converts > 0 || this.g.run.skills.has('convert') || (this.sinceContact > 900 && this.g.run.skills.has('armR')) || this.sinceContact > 1800;
+    if (!ready || this.calder.dead) return;
+    const night = typeof w.day === 'number' && (w.day > 0.78 || w.day < 0.18);
+    if (night) { if (!this.queue.length && !this.dialog.busy) void this.playScene('beast'); }
+    else if (typeof w.day === 'number') w.day = Math.min(0.995, w.day + dt * 0.004);
+    if (!this.seen.has('omen')) { this.seen.add('omen'); this.say([{ text: 'Something big circles the camp after dark. I hear it breathing out past the reeds. Stay close tonight, Seven.', expr: 'think' }]); }
   }
-
-  /** he drags a dead animal to the edge of your moss */
-  private gift() {
-    this.seen.add('gift');
-    const g = this.g, c = this.calder!;
-    const small = g.world.creatures.filter((x) => !x.dead && x.faction === 'wild' && x.mass < 25 && x.mass > 1);
-    const pick = small[Math.floor(Math.random() * small.length)];
-    if (!pick) return;
-    const ng = g.veyr.nearestGrowth(c.x, c.z, 30); if (!ng) return;
-    pick.x = ng[0] + 0.5; pick.z = ng[1] + 0.5; pick.y = g.world.surfaceY(pick.x, pick.z);
-    g.world.kill(pick, null);
-    c.walkTo(ng[0] + 1.5, ng[1] + 1);
-    this.say([{ text: 'Found this one by the stream. Already dead, I promise. Thought you might want it.', expr: 'smile' }]);
-    this.friendship += 2;
+  // ---------------- Calder's day between scenes
+  private goHome() { const s = this.campSeat(); this.walk(s.x, s.z); this.mode = 'home'; this.modeT = 40 + this.r.range(0, 30); }
+  private walk(tx: number, tz: number) {
+    const c = this.calder, w: any = this.g.world;
+    let p: number[] | null = null;
+    try { p = w.pather?.find?.(c.x, c.z, tx, tz, { step: 0.95, swim: false, fly: false }, 8000) ?? null; } catch { p = null; }
+    this.path = p ?? [tx, tz]; this.pi = 0; c.full = '';
   }
-
-  // ------------------------------------------------------------------ the beast
-  private findBeast(): Creature | null {
-    const g = this.g;
-    this.beast = g.world.creatures.filter((x) => !x.dead && x.faction === 'wild' && x.boss)[0] ?? g.world.creatures.filter((x) => !x.dead && x.faction === 'wild' && x.diet === 'carn').sort((a, b) => b.mass - a.mass)[0] ?? null;
-    return this.beast;
-  }
-  private beastPhase = 0;
-  private beastBeat(dt: number) {
-    const g = this.g, c = this.calder!, b = this.beast;
-    if (!b || b.dead) { this.go('w-night'); return; }
-    if (this.beastPhase === 0) {
-      // he is at camp; the beast comes out of the dark on the far side
-      c.walkTo(this.camp.x + 1.2, this.camp.z + 1.6); c.sit = false;
-      const away = Math.atan2(this.camp.x - g.veyr.core!.x, this.camp.z - g.veyr.core!.z);
-      b.x = clamp(this.camp.x + Math.sin(away) * 20, 3, g.region.N - 3); b.z = clamp(this.camp.z + Math.cos(away) * 20, 3, g.region.N - 3);
-      b.y = g.world.surfaceY(b.x, b.z);
-      b.order = { kind: 'move', x: this.camp.x, z: this.camp.z }; b.mind = 'order'; b.path = null;
-      this.say([{ text: '...Do you hear that?', expr: 'surprised' }, { text: 'Something big. Out past the reeds.', expr: 'surprised' }]);
-      sfx('roar', 1, 0.6);
-      this.beastPhase = 1; this.stepT = 0;
-      g.vision.extra.push([this.camp.x, this.camp.z, 12]);
-      g.cam.lookAt(this.camp.x, this.camp.z); g.cam.distGoal = 26;
-      toast('Something is hunting near Calder\'s camp', 'warn', 5000);
-      return;
+  private calderLife(dt: number) {
+    const c = this.calder;
+    if (c.dead || this.beat === 'opening' || this.beat === 'wake') return;
+    c.visible = true;
+    // follow the path, waypoint by waypoint
+    if (this.path && !c.moving) {
+      if (this.pi >= this.path.length) { this.path = null; }
+      else { c.walkTo(this.path[this.pi], this.path[this.pi + 1], 1.35); this.pi += 2; }
     }
-    // fury: the beast shrugs off almost everything until it has him
-    b.hp = Math.max(b.hp, b.maxHp * 0.7); b.stunT = 0;
-    const d = Math.hypot(b.x - c.x, b.z - c.z);
-    if (this.beastPhase === 1 && (d < 13 || this.stepT > 9)) {
-      this.beastPhase = 2;
-      const core = g.veyr.core!;
-      const ng = g.veyr.nearestGrowth(c.x, c.z, 40) ?? [core.x, core.z];
-      c.walkTo(ng[0], ng[1], true);
-      this.say([{ text: 'Oh no. No no no—', expr: 'surprised' }, { text: 'Veyr! VEYR!', expr: 'surprised' }]);
-      sfx('roar');
-    }
-    if (this.beastPhase >= 2) {
-      b.order = { kind: 'move', x: c.x, z: c.z }; b.mind = 'order';
-      if (this.beastPhase === 2 && d < 1.6 + b.radius) {
-        this.beastPhase = 3;
-        b.atkAnim = 0; b.atkT = 2;
-        c.die(new THREE.Vector3(b.x, b.y, b.z));
-        g.cam.shake(0.8, 0.6); sfx('roar', 1, 1); sfx('death', 1.2, 1);
-        g.fx.burst(c.x, c.y + 1.1, c.z, 30, 0xa82a2a, { speed: 3, up: 3, size: 3, life: 1 });
-        this.dialog.clear();
-        this.say([{ text: '...Veyr...', expr: 'pain' }, { text: 'Station Four, this is Calder, do you copy— ...', who: 'radio' }]);
-        this.stepT = 0;
+    const w: any = this.g.world;
+    const night = typeof w.day === 'number' && (w.day > 0.75 || w.day < 0.2);
+    const golem = this.golem();
+    this.modeT -= dt;
+    if (!this.path && !c.moving) {
+      if (this.mode === 'home') {
+        const s = this.campSeat();
+        if (Math.hypot(c.x - s.x, c.z - s.z) < 0.6) { c.full = night ? 'sit' : ''; c.look = night ? null : golem.clone().setY(golem.y + 1.2); if (!night) c.face(golem.x, golem.z); }
+        if (this.modeT <= 0) {
+          const far = Math.hypot(golem.x - this.camp.x, golem.z - this.camp.z);
+          if (!night && far < 45) { this.mode = 'visit'; this.modeT = 22 + this.r.range(0, 14); const a = Math.atan2(this.camp.z - golem.z, this.camp.x - golem.x); this.walk(golem.x + Math.cos(a) * 6.5, golem.z + Math.sin(a) * 6.5); }
+          else { this.mode = 'note'; this.modeT = 14; const t = this.camp.table; this.walk(t.x + 0.6, t.z + 0.6); }
+        }
+      } else if (this.mode === 'visit') {
+        c.look = golem.clone().setY(golem.y + 1.3); c.face(golem.x, golem.z);
+        if (Math.hypot(golem.x - c.x, golem.z - c.z) > 16 && this.modeT > 4) { const a = Math.atan2(c.z - golem.z, c.x - golem.x); this.walk(golem.x + Math.cos(a) * 6.5, golem.z + Math.sin(a) * 6.5); }
+        if (this.modeT <= 0) this.goHome();
+      } else if (this.mode === 'note') {
+        c.action = this.modeT > 2 ? 'read' : '';
+        if (this.modeT <= 0) { c.action = ''; this.goHome(); }
       }
     }
-    if (this.beastPhase === 3 && this.stepT > 5) {
-      b.order = null; b.mind = 'wander'; b.goalX = clamp(b.x + 18, 3, g.region.N - 3); b.goalZ = b.z;
-      for (const o of this.objectives) if (!o.done && o.id !== 'dominion') o.done = true;
-      this.obj('avenge', 'Kill the beast that killed him', true);
-      this.obj('camp', 'Grow your moss over his camp', true);
-      this.renderObjectives();
-      g.vision.extra = [];
-      this.go('after');
+    // a musing now and then
+    this.ambientT -= dt;
+    if (this.ambientT <= 0 && !this.dialog.busy) {
+      this.ambientT = 70 + this.r.range(0, 50);
+      if (night) this.say([{ text: this.r.pick(JOURNAL), who: 'journal' }]);
+      else this.say([{ text: this.r.pick(MUSINGS) }]);
+      if (this.mode === 'visit') c.gesture('clipboard');
     }
-    void dt;
-  }
-  private afterBeat() {
-    const g = this.g, c = this.calder!;
-    if (this.beast?.dead) this.complete('avenge');
-    if (!this.campTaken && g.veyr.covAt(this.camp.x, this.camp.z) > 0.6) {
-      this.campTaken = true; this.complete('camp');
-      g.run.flags.calderNotes = 1;
-      g.veyr.absorbCap += 1;
-      this.say([
-        { text: 'Final entry. If the Corps finds this: Unit Seven isn\'t just a weapon. It learns. It chose to keep me alive.', who: 'journal' },
-        { text: 'Finish the job, Seven. Take this world home for us.', who: 'journal' },
-      ]);
-      toast('Calder\'s notes absorbed: you can take one more gene from every genome', 'story', 7000);
-      g.vision.revealAll = false;
-    }
-    if (!this.bodyTaken && c.dead && g.veyr.covAt(c.x, c.z) > 0.6) {
-      this.bodyTaken = true;
-      g.chooseCalder?.((absorb: boolean) => {
-        if (absorb) { for (const id of ['hominid_frame', 'hands', 'hominid_eyes', 'omni_teeth']) g.run.add(id, 'Dr. Calder', g.world.time); toast('You take what he was. Upright. Curious. Yours.', 'story', 6000); }
-        else { g.run.flags.memorial = 1; g.veyr.res.helix += 8; toast('The moss grows a pale flower where he lies. It never closes.', 'story', 6000); }
-        c.rig.root.visible = !absorb;
-        if (absorb) g.fx.burst(c.x, c.y + 0.5, c.z, 40, VEYR.vein, { glow: true, up: 3, speed: 2, size: 3, life: 1.2 });
-        else this.memorial(c.x, c.z);
-      });
-    }
-  }
-  private memorial(x: number, z: number) {
-    const g = this.g;
-    const m = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.9, 0.3), gbuf(new THREE.MeshLambertMaterial({ color: 0xf4f0e8, emissive: 0x4a6a60 }), 1 + 32));
-    m.position.set(x, g.world.surfaceY(x, z) + 0.45, z);
-    g.world.scene.add(m);
   }
 }
 
-const BUILT: Record<string, string[]> = {
-  tap: ['It\'s drinking the iron straight out of the ground.'], brood: ['A womb. You grew a womb.'], spire: ['A nerve, standing up out of the moss. The hum follows it.'],
-  maw: ['That pit has teeth. I\'ll walk around it.'], vault: ['A spiral of bone. It looks like the diagrams in my old textbooks.'], thorn: ['Note to self: do not touch the thorny one.'],
-  coil: ['Lightning rod or weapon. Both.'], lure: ['It smells like honey and something dead.'], spore: ['Is that... for leaving? You want to go further?'],
+// ------------------------------------------------------------------ words
+const GATHER: Record<Res, string> = {
+  ore: 'Iron ore! Heavy stuff. You pulled it right out of the rock. That\'s your plating, your pistons, everything.',
+  carbon: 'Carbon, out of dead wood. Good. You\'ll need that for anything that lives or burns.',
+  water: 'Water. I wasn\'t sure you could drink. You can drink!',
+  soil: 'Soil. Mud, grit, the stuff of mountains. Your body\'s going to be mostly that, I suspect.',
 };
+const PART_SUB: Record<string, string> = { chassis: 'ASSEMBLED', harvest: 'INSTALLED', gravity: 'FIELD POWER ONLINE', combat: 'COMBAT ROUTINE LOADED', fabrication: 'FABRICATOR ONLINE', lab: 'LABORATORY ONLINE' };
+const SKILL_LINES: Record<string, string[]> = {
+  head: ['That lens of yours. I wonder what you see through it.'],
+  plating2: ['More plate. You\'re turning into a bank vault.'],
+  plating3: ['Hazard stripes and all. Somebody back home is going to want those blueprints.'],
+  drill: ['A drill! You built a drill out of your own lens mount. Go find some seams.'],
+  intake: ['A furnace mouth. Feed it dead wood and you\'ll have carbon for days.'],
+  siphon: ['A hand pump and a hose. You\'re drinking the river.'],
+  excavate: ['A scoop. Mind the holes, I\'ll break an ankle out there.'],
+  magnet: ['Pebbles are rolling toward you on their own. That\'s eerie, Seven.'],
+  tanks: ['Storage tanks on your back. Like a milk truck. A very strange milk truck.'],
+  bore: ['Tungsten bits. You\'ll be through bedrock by supper.'],
+  refinery: ['A crucible in your chest. You\'re smelting as you go. Pittsburgh would weep.'],
+  lift: ['My cup just floated off the table. Was that you? That was you.', 'You lifted a rock without touching it. I need to sit down.'],
+  slam: ['The air just... dropped. Like a fist. Remind me where I\'m standing when you do that.'],
+  repulse: ['Everything flew away from you at once. My hat\'s in a tree.'],
+  shape: ['You moved the ground. You actually moved the ground.'],
+  well: ['A hole in the world that eats rocks. I\'d rather not stand near it.'],
+  storm: ['Every stone in the valley went up at once and came down where you looked. Lord.'],
+  amp: ['Your field\'s reaching further. My compass gave up an hour ago.'],
+  punch: ['A punch! Keep your guard up, champ.'],
+  rock: ['Pick up a stone and throw it. You\'ve got the arm for it now.'],
+  boulder: ['Two hands and a boulder. Stand back, everybody. That\'s everybody, meaning me.'],
+  shrapnel: ['The stones burst when they land now. Like grenades. You\'re a whole artillery battery.'],
+  frenzy: ['Both pistons at once! I can\'t even see your arms move.'],
+  plow: ['You flew straight through them. Bowling for animals.'],
+  servo: ['Higher pressure. I heard that punch from camp.'],
+  graft: ['You\'re going to change the plants? Make them yours? Show me.'],
+  sow: ['A seed press. You\'re going to plant copies. A gardener. I never pictured you a gardener.'],
+  grove: ['Your plants are spreading on their own now. Like ivy on a courthouse.'],
+  convert: ['A neural graft. You\'re going to rewire them. I\'m not sure how I feel about that. Show me anyway.'],
+  command: ['A relay in your skull. They answer you now. A pack.'],
+  print: ['A flesh printer. Living copies. Washington would give a year\'s budget to see this.'],
+  lab: ['A laboratory! Tank, tubes, the works. Now we\'re doing science.'],
+  splice: ['Mixing species. Parts from one, parts from another. Careful what you make, Seven.'],
+  sequencer: ['Reel-to-reel gene tape. You built a library in your chest.'],
+  vat: ['A growth vat. They\'ll come out bigger. Bigger than me, I expect.'],
+  cloner: ['Twins. Everything in pairs now. Noah would approve.'],
+};
+const JOURNAL_SKILL = 'It built something new today. I can hear him saying "Show me, Seven."';
+const TERRITORY: [number, string][] = [
+  [0.1, 'Look at that. A tenth of the valley is yours already. It\'s the first ground Earth has ever owned out here.'],
+  [0.25, 'A quarter of the region. They\'ll have to redraw the maps back home.'],
+  [0.5, 'Half the valley. I used to think that ridge was the edge of the world.'],
+  [0.75, 'Three quarters. Seven, you could actually do this.'],
+];
 const MUSINGS = [
-  'You don\'t eat the plants so much as fold them into yourself.', 'The insects avoid your edge now. They\'re learning faster than I am.',
-  'Every cell of that moss is the same organism. Every one. A single body the size of a village.', 'I\'ve stopped writing "it". I\'ve started writing "you".',
-  'Your veins pulse toward the core. Like blood going home.', 'There are bigger things in the hills. I hear them at night. Be careful.',
+  'You don\'t eat the rock so much as fold it into yourself.', 'The insects avoid your shadow now. They\'re learning faster than I am.',
+  'I\'ve stopped writing "it" in my notes. I\'ve started writing "you".', 'There are bigger things in the hills. I hear them at night. Be careful.',
+  'Every part you build, you look at it for a long time before you use it. So do I, with mine.', 'I radioed Station Four about you. They didn\'t believe a word. Their loss.',
+  'Ore, carbon, water, soil. Four ingredients and a stubborn rock. That\'s all a planet is, when you think about it.',
 ];
 const JOURNAL = [
   'Day six. Rations low. Radio silent. I talk to the rock now. It listens better than Station Four.', 'It glows brighter at night. I think it\'s dreaming.',
-  'I dreamed I was moss. I wasn\'t afraid.', 'Something circles the camp after dark. Big. Patient.',
+  'It brought me a stone today and set it down by the fire. I don\'t know why. I kept it.', 'Something circles the camp after dark. Big. Patient.',
 ];
+void RES;

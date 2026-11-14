@@ -1,15 +1,15 @@
-// The gene lab. A digested body is taken apart by science and something older:
-//  1 LIFT      a rune circle burns into the ground and three magnetic rings spin up into a trap around the corpse;
-//  2 SEPARATE  its cells boil out in a column and the field sorts them like a mass spectrometer, each cell line
-//              bending along its own arc into the orb of the gene it carries;
-//  3 CHOOSE    the genome hangs in the trap as orbs, each a spinning helix. Take as many as your capacity allows;
-//              once per harvest you may SPLICE one: the strands unzip and you cut and rewrite them in time
-//              (a clean cut makes the gene stronger, a bad one snaps it);
-//  4 ABSORB    the chosen strands are drawn along the field into the child's skull; the rest unravel into helix.
+// The genome harvest. When Unit 07 absorbs a corpse it takes ALL of it, in a few seconds (any click, tap or key
+// skips to the end):
+//  1 LIFT     a rune circle burns into the ground and three magnetic rings spin up around the body;
+//  2 UNSPOOL  the genome unwinds out of the corpse as a double helix rising into the air, one coloured run of
+//             base pairs per gene, while its cells boil out and spiral round the strands;
+//  3 TAKE     gene by gene, top first, the strand breaks into glowing capsules that fly into the golem's head; a
+//             counter ticks up, new genes are marked NEW and genes it already carries level up;
+//  4 SPENT    the rings unwind and the circle burns out. `done` gets every gene (the game applies them and emits
+//             'absorb'); the contract of start() is unchanged (cap is ignored now: nothing is left behind).
 import * as THREE from 'three';
-import { GENE, CAT_NAMES, LINEAGE_NAMES, type GeneCat } from '../life/genes';
-import { el, ui, panel, Btn, iconImg, Tip, toast } from '../ui/kit';
-import { QTE } from '../ui/qte';
+import { GENE, CAT_NAMES, type GeneCat } from '../life/genes';
+import { el, ui, iconImg } from '../ui/kit';
 import { sfx } from '../audio/audio';
 import type { Run } from './run';
 import type { Fx } from './fx';
@@ -18,20 +18,34 @@ import { gbuf, GN_DECL } from '../gfx/gbuf';
 
 export const CAT_COL: Record<GeneCat, number> = { body: 0xeee2c4, limb: 0xffd860, sense: 0x6ad0ff, feed: 0xff6a5a, defense: 0xffa040, meta: 0xff8ac0, repro: 0xb8ffb0 };
 const TAU = Math.PI * 2;
-const CELLS = 22;
+const RUNGS = 4;
+const CELLS = 64;
 
-interface Orb {
-  id: string; g: THREE.Group; helix: THREE.InstancedMesh; shell: THREE.Mesh; base: THREE.Vector3; card: HTMLDivElement; tag: HTMLDivElement; sel: boolean; hover: number; isNew: boolean;
-  t: number; fly: number; gone: boolean; got: number; unzip: number; unzipTo: number; spliced: number; dead: boolean; col: THREE.Color;
-}
-interface Cell { k: number; delay: number; dur: number; seed: number; p0: THREE.Vector3; p1: THREE.Vector3; p2: THREE.Vector3; done: boolean }
+const CSS = `
+.harvest.hv2 { gap: calc(2px * var(--s)); max-width: min(calc(360px * var(--s)), 96vw); padding: calc(1px * var(--s)) calc(4px * var(--s)) !important; }
+.hv2 .h-title { font-size: calc(10px * var(--s)); }
+.hv-count { display: flex; align-items: baseline; gap: calc(4px * var(--s)); justify-content: center; }
+.hv-count .big { font-size: calc(18px * var(--s)); line-height: 1; color: var(--hot); text-shadow: var(--phos-glow); letter-spacing: 2px; }
+.hv-count .big.tick { animation: hv-tick 160ms steps(3); }
+@keyframes hv-tick { 0% { color: #fff; transform: scale(1.25); } 100% { transform: none; } }
+.hv-count .sub { font-size: calc(7px * var(--s)); color: var(--dim); }
+.hv-count .sub b.n { color: #7affa0; } .hv-count .sub b.u { color: var(--gold); }
+.hv-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(1px * var(--s)); max-width: 100%; min-height: calc(12px * var(--s)); }
+.hv-chip { display: flex; align-items: center; gap: 1px; padding: 0 calc(2px * var(--s)); font-size: calc(7px * var(--s)); line-height: calc(10px * var(--s)); color: #1a1610; text-shadow: none; background: linear-gradient(180deg, #ece4c6, #d8cea8); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35), 0 0 0 1px var(--cc); animation: hv-in 200ms steps(4); white-space: nowrap; }
+.hv-chip img { width: calc(9px * var(--s)); height: calc(9px * var(--s)); }
+.hv-chip i { font-style: normal; font-size: calc(6px * var(--s)); padding: 0 calc(1px * var(--s)); color: #ece4c6; background: #1b6630; margin-left: 1px; }
+.hv-chip i.up { background: #8c4a12; } .hv-chip i.max { background: #4a4a4a; }
+@keyframes hv-in { 0% { transform: translateY(calc(-6px * var(--s))) scale(1.3); filter: brightness(2); } 100% { transform: none; filter: none; } }
+.hv-skip { font-size: calc(6px * var(--s)); color: var(--dim); animation: blink 1.2s steps(2) infinite; }
+.hv-tagf { position: fixed; z-index: 13; pointer-events: none; transform: translate(-50%, -120%); font-size: calc(7px * var(--s)); line-height: calc(7px * var(--s)); padding: 0 calc(2px * var(--s)); color: #fff; text-shadow: 0 0 2px #000, 0 0 4px var(--cc); white-space: nowrap; transition: opacity 200ms steps(2); }
+`;
+function css() { if (document.getElementById('hv2-css')) return; const s = document.createElement('style'); s.id = 'hv2-css'; s.textContent = CSS; document.head.appendChild(s); }
 
 const shellMat = (col: THREE.Color) => new THREE.ShaderMaterial({
   uniforms: { uCol: { value: col }, uK: { value: 1 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   vertexShader: 'varying vec3 vN; varying vec3 vV; void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
-  fragmentShader: GN_DECL + 'uniform vec3 uCol; uniform float uK; varying vec3 vN; varying vec3 vV; void main(){ float f = pow(1.0 - abs(dot(vN, vV)), 2.2); float q = floor(f * 5.0) / 5.0; gl_FragColor = vec4(uCol * (0.15 + q * 1.6) * uK, 1.0); gNormal = vec4(0.0); }',
+  fragmentShader: GN_DECL + 'uniform vec3 uCol; uniform float uK; varying vec3 vN; varying vec3 vV; void main(){ float f = pow(1.0 - abs(dot(vN, vV)), 2.2); float q = floor(f * 5.0) / 5.0; gl_FragColor = vec4(uCol * (0.2 + q * 1.7) * uK, 1.0); gNormal = vec4(0.0); }',
 });
-/** a glowing additive band (magnetic rings) */
 const bandMat = (col: number) => new THREE.ShaderMaterial({
   uniforms: { uCol: { value: new THREE.Color(col) }, uK: { value: 0 }, uT: { value: 0 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
@@ -54,300 +68,271 @@ function runeTexture() {
   const t = new THREE.CanvasTexture(c); t.magFilter = THREE.NearestFilter; t.minFilter = THREE.LinearMipmapLinearFilter;
   return t;
 }
+const bez = (out: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3, t: number) => {
+  const u = 1 - t;
+  return out.set(0, 0, 0).addScaledVector(a, u * u * u).addScaledVector(b, 3 * u * u * t).addScaledVector(c, 3 * u * t * t).addScaledVector(d, t * t * t);
+};
+
+interface Gene { id: string; col: THREE.Color; i: number; status: 'new' | 'up' | 'max'; lv: number; t0: number; fly: number; got: boolean; cap: THREE.Group | null; shell: THREE.Mesh | null; tag: HTMLDivElement | null; from: THREE.Vector3; c1: THREE.Vector3; c2: THREE.Vector3 }
+interface Cell { delay: number; dur: number; seed: number; r: number; h: number; col: THREE.Color }
 
 export class Harvest {
-  private orbs: Orb[] = [];
+  open = false;
+  child: VeyrChild | null = null;
+  private genes: Gene[] = [];
   private cells: Cell[] = [];
   private cellMesh: THREE.InstancedMesh | null = null;
+  private beads: THREE.InstancedMesh | null = null;
+  private rungs: THREE.InstancedMesh | null = null;
   private rings: THREE.Mesh[] = [];
   private rune: THREE.Mesh | null = null;
   private box: HTMLDivElement | null = null;
-  private status: HTMLDivElement | null = null;
-  private cardRow: HTMLDivElement | null = null;
-  private countEl: HTMLDivElement | null = null;
-  open = false;
-  child: VeyrChild | null = null;
-  private center = new THREE.Vector3();
-  private src = new THREE.Vector3();
+  private countEl: HTMLDivElement | null = null; private subEl: HTMLDivElement | null = null; private chips: HTMLDivElement | null = null; private status: HTMLDivElement | null = null;
+  private src = new THREE.Vector3(); private coreAt = new THREE.Vector3();
   private done: ((chosen: string[]) => void) | null = null;
-  private closing = 0;
-  private coreAt = new THREE.Vector3();
-  private phase: 'lift' | 'sep' | 'choose' | 'absorb' = 'lift';
-  private T = 0; private castT = 0; private zapT = 0;
-  private splices = 1; private splicing = false;
+  private T = 0; private end = 0; private fade = 0; private zapT = 0; private castT = 0;
+  private got = 0; private nNew = 0; private nUp = 0;
+  private N = 16; private step = 0.12; private spin = 0;
   private cam: THREE.Camera | null = null;
-  private cap = 1;
+  private onKey = (e: KeyboardEvent) => { if (this.blocking && (e.key === ' ' || e.key === 'Enter' || e.key === 'Escape')) { e.preventDefault(); this.skip(); } };
 
   constructor(readonly scene: THREE.Scene, readonly fxScene: THREE.Scene, readonly run: Run, readonly fx: Fx) {}
 
-  start(at: THREE.Vector3, speciesName: string, genes: string[], cap: number, core: THREE.Vector3, done: (chosen: string[]) => void) {
-    this.open = true; this.done = done; this.closing = 0; this.phase = 'lift'; this.T = 0; this.splices = 1; this.splicing = false; this.cap = cap;
-    this.src.copy(at);
-    this.center.copy(at).add(new THREE.Vector3(0, 2.6, 0));
-    this.coreAt.copy(core);
-    const unknown = genes.filter((g) => !this.run.has(g));
-    const known = genes.filter((g) => this.run.has(g) && this.run.genes.get(g)!.level < 3);
-    const offer = [...unknown, ...known].slice(0, 5);
+  start(at: THREE.Vector3, speciesName: string, genes: string[], _cap: number, core: THREE.Vector3, done: (chosen: string[]) => void) {
+    if (this.open) this.finish(true);
+    this.cleanup();
+    css();
+    this.open = true; this.done = done; this.T = 0; this.fade = 0; this.got = 0; this.nNew = 0; this.nUp = 0;
+    this.src.copy(at); this.coreAt.copy(core);
+    const ids = [...new Set(genes.filter((g) => GENE[g]))];
     sfx('pulse', 0.8, 0.8); sfx('absorb', 1, 0.6);
-    // ---- the trap: rune circle and magnetic rings
+    // ---- the trap
     const rm = new THREE.MeshBasicMaterial({ map: runeTexture(), color: new THREE.Color(0x7affe0).multiplyScalar(1.4), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
     gbuf(rm, 0);
     this.rune = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 5.2), rm);
     this.rune.rotation.x = -Math.PI / 2; this.rune.position.copy(at).add(new THREE.Vector3(0, 0.08, 0)); this.rune.scale.setScalar(0.01);
     this.scene.add(this.rune);
     for (let i = 0; i < 3; i++) {
-      const r = new THREE.Mesh(new THREE.TorusGeometry(1.25 + i * 0.45, 0.035, 6, 96), bandMat(i === 1 ? 0xb8a0ff : 0x7affe0));
-      r.position.copy(this.center); r.rotation.set(Math.PI / 2 + (i - 1) * 0.5, i * 0.7, 0);
+      const r = new THREE.Mesh(new THREE.TorusGeometry(1.0 + i * 0.4, 0.035, 6, 96), bandMat(i === 1 ? 0xb8a0ff : 0x7affe0));
+      r.position.copy(at).add(new THREE.Vector3(0, 0.6 + i * 0.7, 0)); r.rotation.set(Math.PI / 2 + (i - 1) * 0.35, i * 0.7, 0);
       this.scene.add(r); this.rings.push(r);
     }
-    // ---- UI (hidden until the genome hangs in the trap)
-    this.box = panel('harvest', ui(), 'dark');
-    el('div', 'hdr h-title', this.box, `GENOME OF THE ${speciesName.toUpperCase()}`);
-    this.status = el('div', 'small h-status', this.box, 'MAGNETIC LIFT · THE FIELD TAKES HOLD');
-    this.countEl = el('div', 'small h-count', this.box); this.countEl.style.display = 'none';
-    this.cardRow = el('div', 'h-cards', this.box); this.cardRow.style.display = 'none';
-    // ---- orbs and the cells that will fill them
-    const geo = new THREE.IcosahedronGeometry(0.06, 1);
-    const cellM = new THREE.ShaderMaterial({
+    // ---- the genome: one run of base pairs per gene, top gene first to leave
+    const n = Math.max(1, ids.length);
+    this.N = Math.max(16, n * RUNGS);
+    this.step = Math.min(0.16, 3.2 / this.N);
+    const stagger = Math.min(0.17, 1.7 / n);
+    this.genes = ids.map((id, i) => {
+      const g = this.run.genes.get(id);
+      const status: Gene['status'] = !g ? 'new' : g.level >= 3 ? 'max' : 'up';
+      return { id, col: new THREE.Color(CAT_COL[GENE[id].cat]), i, status, lv: !g ? 1 : Math.min(3, g.level + 1), t0: 1.75 + (n - 1 - i) * stagger, fly: 0, got: false, cap: null, shell: null, tag: null, from: new THREE.Vector3(), c1: new THREE.Vector3(), c2: new THREE.Vector3() };
+    });
+    this.end = this.genes.length ? Math.max(...this.genes.map((g) => g.t0)) + 0.95 : 1.2;
+    const bm = new THREE.MeshLambertMaterial({ color: 0xffffff }); gbuf(bm, 1 + 32);
+    this.beads = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.065, 0), bm, this.N * 2);
+    this.beads.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.N * 6), 3);
+    const rmat = new THREE.MeshLambertMaterial({ color: 0xffffff }); gbuf(rmat, 1 + 32);
+    this.rungs = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.035, 0.035), rmat, this.N);
+    this.rungs.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.N * 3), 3);
+    const back = new THREE.Color(0x7affe0).multiplyScalar(1.6), back2 = new THREE.Color(0xb8a0ff).multiplyScalar(1.4);
+    for (let j = 0; j < this.N; j++) {
+      const g = this.genes[Math.min(this.genes.length - 1, Math.floor(j / RUNGS))];
+      this.beads.setColorAt(j * 2, back); this.beads.setColorAt(j * 2 + 1, back2);
+      this.rungs.setColorAt(j, (g ? g.col : back).clone().multiplyScalar(j % RUNGS === 0 ? 2.6 : 1.8));
+    }
+    this.beads.frustumCulled = false; this.rungs.frustumCulled = false; this.beads.castShadow = true;
+    this.scene.add(this.beads, this.rungs);
+    // ---- its cells
+    const cm = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
       vertexShader: 'varying vec3 vC; varying vec3 vN; varying vec3 vV; void main(){\n#ifdef USE_INSTANCING_COLOR\n vC = instanceColor;\n#else\n vC = vec3(1.0);\n#endif\n vec4 mv = modelViewMatrix * instanceMatrix * vec4(position,1.0); vN = normalize(normalMatrix * mat3(instanceMatrix) * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
       fragmentShader: GN_DECL + 'varying vec3 vC; varying vec3 vN; varying vec3 vV; void main(){ float d = abs(dot(normalize(vN), vV)); float rim = pow(1.0 - d, 1.6); float nuc = smoothstep(0.82, 0.95, d); vec3 c = vC * (0.25 + rim * 1.6) * (1.0 - nuc * 0.85); gl_FragColor = vec4(c, 1.0); gNormal = vec4(0.0); }',
     });
-    this.cellMesh = new THREE.InstancedMesh(geo, cellM, Math.max(1, offer.length * CELLS));
-    this.cellMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, offer.length * CELLS) * 3), 3);
+    this.cellMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.07, 1), cm, CELLS);
+    this.cellMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(CELLS * 3), 3);
     this.cellMesh.frustumCulled = false;
+    this.cells = [];
+    for (let c = 0; c < CELLS; c++) {
+      const g = this.genes[c % Math.max(1, this.genes.length)];
+      const col = (g ? g.col : new THREE.Color(0x7affe0)).clone().multiplyScalar(1.3);
+      this.cells.push({ delay: 0.15 + (c / CELLS) * 1.4 + Math.random() * 0.2, dur: 1.1 + Math.random() * 0.6, seed: Math.random() * 100, r: 0.4 + Math.random() * 0.7, h: 0.6 + Math.random() * this.N * this.step, col });
+      this.cellMesh.setColorAt(c, col);
+    }
     this.scene.add(this.cellMesh);
-    offer.forEach((id, i) => {
-      const gd = GENE[id];
-      const isNew = !this.run.has(id);
-      const g = new THREE.Group();
-      const a = (i - (offer.length - 1) / 2) * 0.62;
-      const base = this.center.clone().add(new THREE.Vector3(Math.sin(a) * 2.2, Math.cos(a * 2) * 0.25, Math.cos(a) * 0.4));
-      g.position.copy(base); g.scale.setScalar(0.001);
-      const col = new THREE.Color(CAT_COL[gd.cat]);
-      const hm = new THREE.MeshLambertMaterial({ color: 0xffffff }); gbuf(hm, 1 + 32);
-      const helix = new THREE.InstancedMesh(new THREE.BoxGeometry(0.09, 0.09, 0.09), hm, 26);
-      helix.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(26 * 3), 3);
-      for (let k = 0; k < 26; k++) helix.setColorAt(k, k % 2 ? col.clone().multiplyScalar(2.2) : new THREE.Color(0x7affe0).multiplyScalar(1.8));
-      g.add(helix);
-      const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(0.46, 1), shellMat(col.clone()));
-      g.add(shell);
-      this.scene.add(g);
-      // card
-      const card = el('div', 'h-card', this.cardRow!);
-      iconImg('cat-' + gd.cat, 'h-ico', card);
-      el('div', 'h-name', card, gd.name);
-      el('div', 'tiny h-cat', card, `${CAT_NAMES[gd.cat].toUpperCase()} · ${LINEAGE_NAMES[gd.lineage].toUpperCase()}`);
-      const tag = el('div', 'h-tag ' + (isNew ? 'new' : 'up'), card, isNew ? 'NEW' : `REINFORCE → LV ${(this.run.genes.get(id)?.level ?? 0) + 1}`);
-      const sp = el('button', 'h-splice', card, 'SPLICE');
-      sp.addEventListener('click', (e) => { e.stopPropagation(); this.splice(orb); });
-      card.addEventListener('pointerenter', () => { orb.hover = 1; sfx('hover'); Tip.show(`<h4>${gd.name}</h4>${gd.desc}<div class="sub" style="margin-top:4px">SPLICE: unzip the strands and cut them in time. A clean cut strengthens the gene; a bad one snaps it.</div>`, card); });
-      card.addEventListener('pointerleave', () => { orb.hover = 0; Tip.hide(); });
-      card.addEventListener('click', () => this.toggle(orb));
-      const orb: Orb = { id, g, helix, shell, base, card, tag, sel: false, hover: 0, isNew, t: i * 0.7, fly: 0, gone: false, got: 0, unzip: 0, unzipTo: 0, spliced: 0, dead: false, col };
-      this.layHelix(orb);
-      this.orbs.push(orb);
-      // its cell line
-      for (let c = 0; c < CELLS; c++) {
-        const s = Math.random();
-        const p0 = at.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.9, Math.random() * 0.5, (Math.random() - 0.5) * 0.9));
-        const p1 = at.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.3, 1.3 + Math.random() * 0.6, (Math.random() - 0.5) * 0.3));
-        // the separator: heavier lines bend less; each category curves to its own side
-        const out = base.clone().sub(this.center); const side = new THREE.Vector3(-out.z, 0, out.x).normalize();
-        const p2 = this.center.clone().addScaledVector(out, 0.35).addScaledVector(side, (i % 2 ? 1 : -1) * (0.5 + i * 0.12)).add(new THREE.Vector3(0, 0.6, 0));
-        this.cells.push({ k: i, delay: 0.25 + (c / CELLS) * 1.6 + s * 0.25, dur: 1.2 + Math.random() * 0.5, seed: s * 100, p0, p1, p2, done: false });
-        this.cellMesh!.setColorAt(this.cells.length - 1, col.clone().multiplyScalar(1.3));
-      }
-    });
-    const row = el('div', 'h-row', this.box);
-    row.style.display = 'none'; (this as any).btnRow = row;
-    new Btn(row, { label: 'ABSORB', icon: 'dna', size: 'big' }, () => this.confirm());
-    new Btn(row, { label: 'LET IT GO', icon: 'skull', size: 'wide' }, () => { for (const o of this.orbs) o.sel = false; this.confirm(); });
-    this.updateCount();
-    if (!offer.length) this.confirm();
+    // ---- the readout
+    this.box = el('div', 'px-dark harvest hv2', ui());
+    el('div', 'hdr h-title', this.box, `ABSORBING THE GENOME OF THE ${speciesName.toUpperCase()}`);
+    this.status = el('div', 'small h-status', this.box, 'MAGNETIC LIFT · THE FIELD TAKES HOLD');
+    const row = el('div', 'hv-count', this.box);
+    this.countEl = el('div', 'big', row, `00/${String(this.genes.length).padStart(2, '0')}`);
+    this.subEl = el('div', 'sub', row, 'GENES');
+    this.chips = el('div', 'hv-chips', this.box);
+    el('div', 'hv-skip', this.box, 'CLICK, TAP OR [SPACE] TO SKIP');
+    this.box.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.skip(); });
+    addEventListener('keydown', this.onKey, true);
+    if (!this.genes.length) this.end = 1.0;
   }
 
-  private layHelix(o: Orb) {
-    const m = new THREE.Matrix4(), u = o.unzip;
-    for (let k = 0; k < 26; k++) {
-      const s = k % 2, t = Math.floor(k / 2) / 12, ang = t * Math.PI * 2.4 + s * Math.PI;
-      const r = 0.17 + u * 0.16, apart = (s ? 1 : -1) * u * 0.18 * Math.sin(Math.PI * t + 0.3);
-      m.makeTranslation(Math.cos(ang) * r + apart, (t - 0.5) * (0.75 + u * 0.25), Math.sin(ang) * r);
-      o.helix.setMatrixAt(k, m);
+  /** jump to the end: every gene arrives at once */
+  skip() {
+    if (!this.open || this.fade > 0) return;
+    for (const g of this.genes) if (!g.got) this.arrive(g, true);
+    sfx('absorb', 1.2, 0.8);
+    this.finish(false);
+  }
+  click(_mx: number, _my: number, cam: THREE.Camera): boolean { this.cam = cam; if (!this.blocking) return false; this.skip(); return true; }
+  hoverAt(_mx: number, _my: number, cam: THREE.Camera) { this.cam = cam; }
+  get blocking() { return this.open && this.fade <= 0; }
+
+  private target() { return this.child ? this.child.headPos() : this.coreAt.clone(); }
+  /** helix point j on strand s (0/1), world */
+  private strand(j: number, s: number, out: THREE.Vector3, k = 1) {
+    const a = j * 0.52 + this.spin + s * Math.PI, r = 0.3 * k;
+    return out.set(this.src.x + Math.cos(a) * r, this.src.y + 0.45 + j * this.step, this.src.z + Math.sin(a) * r);
+  }
+  private detach(g: Gene) {
+    const mid = this.strand(g.i * RUNGS + RUNGS / 2, 0, new THREE.Vector3(), 0); mid.x = this.src.x; mid.z = this.src.z;
+    g.from.copy(mid);
+    const to = this.target();
+    const side = new THREE.Vector3(to.z - mid.z, 0, mid.x - to.x).normalize().multiplyScalar((g.i % 2 ? 1 : -1) * (1.2 + Math.random()));
+    g.c1.copy(mid).add(new THREE.Vector3(0, 1.6 + Math.random(), 0)).add(side);
+    g.c2.copy(to).add(new THREE.Vector3(0, 2.2, 0)).add(side.multiplyScalar(0.4));
+    const cap = new THREE.Group(); cap.position.copy(mid);
+    const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), (() => { const m = new THREE.MeshBasicMaterial({ color: g.col.clone().multiplyScalar(2.2) }); gbuf(m, 1 + 32); return m; })());
+    const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 1), shellMat(g.col.clone()));
+    cap.add(core, shell); this.scene.add(cap);
+    g.cap = cap; g.shell = shell; g.fly = 0.0001;
+    this.fx.burst(mid.x, mid.y, mid.z, 12, g.col.getHex(), { glow: true, speed: 1.8, up: 0.8, size: 2.5, life: 0.6, grav: 0 });
+    this.fx.arc(mid, this.target(), 0.25, g.col.getHex(), 0.3);
+    const tag = el('div', 'hv-tagf', document.body, GENE[g.id].name.toUpperCase());
+    tag.style.setProperty('--cc', '#' + g.col.getHexString());
+    g.tag = tag;
+    sfx('zap', 1.6 + Math.random() * 0.4, 0.25);
+  }
+  private arrive(g: Gene, quiet = false) {
+    if (g.got) return;
+    g.got = true; this.got++;
+    if (g.status === 'new') this.nNew++; else if (g.status === 'up') this.nUp++;
+    const to = this.target();
+    if (!quiet) { this.fx.burst(to.x, to.y, to.z, 24, g.col.getHex(), { glow: true, up: 2.5, speed: 2.5, size: 3, life: 0.9 }); sfx('done', 1 + this.got * 0.03, 0.6); this.child?.cast(this.src); }
+    if (g.cap) { g.cap.removeFromParent(); g.cap.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } }); g.cap = null; }
+    g.tag?.remove(); g.tag = null;
+    if (this.countEl) { this.countEl.textContent = `${String(this.got).padStart(2, '0')}/${String(this.genes.length).padStart(2, '0')}`; this.countEl.classList.remove('tick'); void this.countEl.offsetWidth; this.countEl.classList.add('tick'); }
+    if (this.subEl) this.subEl.innerHTML = `GENES · <b class="n">${this.nNew} NEW</b> · <b class="u">${this.nUp} LEVEL UP</b>`;
+    if (this.chips) {
+      const c = el('div', 'hv-chip', this.chips); c.style.setProperty('--cc', '#' + g.col.getHexString());
+      iconImg('cat-' + GENE[g.id].cat, '', c);
+      el('span', '', c, GENE[g.id].name);
+      el('i', g.status === 'new' ? '' : g.status === 'up' ? 'up' : 'max', c, g.status === 'new' ? 'NEW' : g.status === 'up' ? `LV ${g.lv}` : 'MAX');
+      c.title = CAT_NAMES[GENE[g.id].cat];
     }
-    o.helix.instanceMatrix.needsUpdate = true;
   }
-  private toggle(o: Orb) {
-    if (this.phase !== 'choose' || o.dead || this.splicing) return;
-    if (o.sel) { o.sel = false; sfx('close'); }
-    else {
-      const n = this.orbs.filter((x) => x.sel).length;
-      if (n >= this.cap) { const first = this.orbs.find((x) => x.sel); if (first) first.sel = false; }
-      o.sel = true; sfx('click');
-    }
-    this.updateCount();
-  }
-  /** unzip a helix and cut it in time */
-  private async splice(o: Orb) {
-    if (this.phase !== 'choose' || this.splicing || this.splices <= 0 || o.dead || !this.cam) return;
-    this.splicing = true; this.splices--;
-    Tip.hide();
-    o.unzipTo = 1; sfx('zap', 1, 0.6);
-    this.child?.cast(o.g.position);
-    if (this.status) this.status.textContent = 'SPLICING · CUT THE STRAND WHERE IT SPLITS';
-    await new Promise((r) => setTimeout(r, 520));
-    const v = o.g.position.clone().project(this.cam);
-    const grade = await QTE.ring((v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight, 30, 'CUT!');
-    const p = o.g.position;
-    if (grade > 0) {
-      o.spliced = grade;
-      o.tag.className = 'h-tag splice'; o.tag.textContent = `SPLICED +${grade}`;
-      (o.shell.material as THREE.ShaderMaterial).uniforms.uCol.value.set(0xffe070);
-      this.fx.burst(p.x, p.y, p.z, 40, 0xffe070, { glow: true, speed: 2.5, up: 1, size: 3, life: 1, grav: -0.3 });
-      sfx('done'); toast(grade === 2 ? 'A clean cut. The strand rewrites itself <b>twice over</b>.' : 'The strand takes the cut.', 'good', 2600);
-      this.splicing = false;
-      if (!o.sel) this.toggle(o);
-    } else {
-      o.dead = true; o.sel = false;
-      this.fx.burst(p.x, p.y, p.z, 50, 0xff5a5a, { glow: true, speed: 4, up: 2, size: 3, life: 1.1, grav: 2 });
-      o.g.visible = false; o.card.classList.add('dead');
-      sfx('crack', 1, 0.8); toast('The strand snapped.', 'warn', 2200);
-    }
-    o.unzipTo = 0;
-    this.splicing = false;
-    for (const x of this.orbs) (x.card.querySelector('.h-splice') as HTMLElement).style.display = 'none';
-    if (this.status) this.status.textContent = 'THE GENOME HANGS IN THE FIELD';
-    this.updateCount();
-  }
-  private updateCount() {
-    const n = this.orbs.filter((x) => x.sel).length;
-    if (this.countEl) this.countEl.innerHTML = `CHOOSE ${this.cap} · <span style="color:#ffe070">${n} / ${this.cap}</span> TAKEN${this.splices > 0 ? ' · SPLICE ONE' : ''} · THE REST UNRAVEL INTO HELIX`;
-    for (const o of this.orbs) o.card.classList.toggle('sel', o.sel);
-  }
-  private confirm() {
-    if (!this.open || this.closing || this.splicing) return;
-    const picked = this.orbs.filter((o) => o.sel && !o.dead);
-    const chosen: string[] = [];
-    for (const o of picked) for (let k = 0; k <= o.spliced; k++) chosen.push(o.id);
-    this.closing = 1.8; this.phase = 'absorb';
-    sfx(chosen.length ? 'absorb' : 'close');
-    if (this.child) { this.coreAt.copy(this.child.headPos()); this.child.cast(this.center); }
-    for (const o of this.orbs) { if (o.dead) continue; if (!o.sel) this.fx.burst(o.g.position.x, o.g.position.y, o.g.position.z, 22, 0xffe070, { glow: true, speed: 2, up: 1, size: 2.5, life: 0.9, grav: -0.5 }); else o.fly = 0.001; }
-    this.box?.remove(); this.box = null; Tip.hide();
+  private finish(abrupt: boolean) {
+    if (this.fade > 0 && !abrupt) return;
+    if (this.status) this.status.textContent = `GENOME ABSORBED · ${this.genes.length} GENES TAKEN`;
+    this.fade = abrupt ? 0.01 : 0.9;
+    removeEventListener('keydown', this.onKey, true);
     const d = this.done; this.done = null;
-    d?.(chosen);
-  }
-  click(mx: number, my: number, cam: THREE.Camera): boolean {
-    this.cam = cam;
-    if (!this.open || this.closing || this.phase !== 'choose') return false;
-    const o = this.pick(mx, my, cam);
-    if (o) { this.toggle(o); return true; }
-    return false;
-  }
-  hoverAt(mx: number, my: number, cam: THREE.Camera) {
-    this.cam = cam;
-    if (!this.open || this.closing || this.phase !== 'choose') return;
-    const o = this.pick(mx, my, cam);
-    for (const x of this.orbs) { const h = x === o ? 1 : 0; if (h && !x.hover) sfx('hover'); x.card.classList.toggle('hov', !!h); if (!x.card.matches(':hover')) x.hover = h; }
-  }
-  private pick(mx: number, my: number, cam: THREE.Camera): Orb | null {
-    let best: Orb | null = null, bd = 46;
-    const v = new THREE.Vector3();
-    for (const o of this.orbs) {
-      if (o.dead) continue;
-      v.copy(o.g.position).project(cam);
-      const d = Math.hypot((v.x * 0.5 + 0.5) * innerWidth - mx, (-v.y * 0.5 + 0.5) * innerHeight - my);
-      if (d < bd) { bd = d; best = o; }
-    }
-    return best;
+    d?.(this.genes.map((g) => g.id));
+    if (abrupt) this.cleanup();
   }
 
   update(dt: number, cam?: THREE.Camera) {
     if (!this.open) return;
     if (cam) this.cam = cam;
-    this.T += dt;
-    const T = this.T;
-    // ---- phases
-    if (this.phase === 'lift' && T > 0.9) { this.phase = 'sep'; if (this.status) this.status.textContent = 'SEPARATING CELL LINES · THE FIELD SORTS THEM BY WHAT THEY CARRY'; }
-    if (this.phase === 'sep' && this.cells.every((c) => c.done)) {
-      this.phase = 'choose';
-      if (this.status) this.status.textContent = 'THE GENOME HANGS IN THE FIELD';
-      if (this.countEl) this.countEl.style.display = '';
-      if (this.cardRow) this.cardRow.style.display = '';
-      const row = (this as any).btnRow as HTMLDivElement | undefined; if (row) row.style.display = '';
-      sfx('open');
-    }
+    this.T += dt; const T = this.T;
+    this.spin += dt * 1.4;
+    const fading = this.fade > 0;
+    if (fading) { this.fade -= dt; if (this.fade <= 0) { this.cleanup(); return; } }
+    const fk = fading ? Math.max(0, this.fade / 0.9) : 1;
+    // ---- status
+    if (this.status && !fading) this.status.textContent = T < 0.6 ? 'MAGNETIC LIFT · THE FIELD TAKES HOLD' : T < 1.75 ? 'UNSPOOLING THE GENOME · CELLS SEPARATING' : 'TAKING EVERY GENE';
     // ---- the trap
-    const trapK = this.phase === 'absorb' ? Math.max(0, this.closing / 1.8) : Math.min(1, T * 1.6);
-    if (this.rune) { this.rune.scale.setScalar(0.01 + trapK); this.rune.rotation.z += dt * 0.25; (this.rune.material as THREE.MeshBasicMaterial).opacity = trapK * (0.75 + Math.sin(T * 3) * 0.15); }
+    const trapK = Math.min(1, T * 1.8) * fk;
+    if (this.rune) { this.rune.scale.setScalar(0.01 + trapK); this.rune.rotation.z += dt * 0.3; (this.rune.material as THREE.MeshBasicMaterial).opacity = trapK * (0.75 + Math.sin(T * 3) * 0.15); }
     this.rings.forEach((r, i) => {
       r.rotation.x += dt * (0.6 + i * 0.35) * (i % 2 ? 1 : -1); r.rotation.y += dt * (0.4 + i * 0.2);
-      const u = (r.material as THREE.ShaderMaterial).uniforms; u.uK.value = trapK * (this.phase === 'choose' ? 0.3 : 0.75); u.uT.value = T;
+      const u = (r.material as THREE.ShaderMaterial).uniforms; u.uK.value = trapK * 0.7; u.uT.value = T;
       r.scale.setScalar(0.4 + trapK * 0.6);
     });
-    if (this.phase === 'lift' || this.phase === 'sep') {
-      this.castT -= dt; if (this.castT <= 0) { this.castT = 0.7; this.child?.cast(this.center); }
+    if (!fading) {
       this.zapT -= dt;
       if (this.zapT <= 0) {
-        this.zapT = 0.06;
-        const r = this.rings[Math.floor(Math.random() * 3)], a = Math.random() * TAU, rr = 1.25 + Math.random() * 0.9;
-        const p = new THREE.Vector3(Math.cos(a) * rr, Math.sin(a) * rr, 0).applyEuler(r.rotation).add(this.center);
-        this.fx.arc(p, this.src.clone().add(new THREE.Vector3(0, 0.4 + Math.random(), 0)), 0.12, Math.random() < 0.5 ? 0x7affe0 : 0xb8a0ff, 0.18);
-        if (Math.random() < 0.15) sfx('zap', 1.4, 0.15);
-        if (this.child && Math.random() < 0.3) this.fx.arc(this.child.headPos(), this.center, 0.1, this.child.lookData.glow, 0.2);
+        this.zapT = 0.07;
+        const r = this.rings[Math.floor(Math.random() * 3)], a = Math.random() * TAU, rr = 1.0 + Math.random() * 0.8;
+        const p = new THREE.Vector3(Math.cos(a) * rr, Math.sin(a) * rr, 0).applyEuler(r.rotation).add(r.position);
+        this.fx.arc(p, this.src.clone().add(new THREE.Vector3(0, 0.3 + Math.random() * 0.6, 0)), 0.12, Math.random() < 0.5 ? 0x7affe0 : 0xb8a0ff, 0.18);
+        if (Math.random() < 0.12) sfx('zap', 1.4, 0.12);
       }
+      this.castT -= dt; if (this.castT <= 0) { this.castT = 0.8; this.child?.cast(this.src.clone().add(new THREE.Vector3(0, 1.5, 0))); }
     }
-    // ---- cells
+    // ---- the helix: unspools upward, then leaves gene by gene
+    if (this.beads && this.rungs) {
+      const grow = Math.min(1, Math.max(0, (T - 0.3) / 1.35));
+      const shown = this.N * grow;
+      const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p0 = new THREE.Vector3(), p1 = new THREE.Vector3(), c = new THREE.Vector3();
+      for (let j = 0; j < this.N; j++) {
+        const g = this.genes[Math.floor(j / RUNGS)];
+        let k = j < shown ? Math.min(1, shown - j) : 0;
+        if (g && g.fly > 0) k = Math.max(0, 1 - g.fly * 6);
+        if (fading) k *= fk;
+        const unz = Math.max(0, 1 - (shown - j) / 4) * 0.9; // the leading turn is still unzipping
+        this.strand(j, 0, p0, 1 + unz); this.strand(j, 1, p1, 1 + unz);
+        p0.y += unz * 0.12; p1.y -= unz * 0.12;
+        if (g && g.fly > 0) { c.copy(g.from); p0.lerp(c, 1 - k); p1.lerp(c, 1 - k); }
+        m.compose(p0, q.identity(), s.setScalar(k)); this.beads.setMatrixAt(j * 2, m);
+        m.compose(p1, q, s); this.beads.setMatrixAt(j * 2 + 1, m);
+        c.addVectors(p0, p1).multiplyScalar(0.5);
+        const len = p0.distanceTo(p1);
+        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.atan2(p1.z - p0.z, p1.x - p0.x));
+        m.compose(c, q, s.set(len * k, k, k)); this.rungs.setMatrixAt(j, m);
+      }
+      this.beads.instanceMatrix.needsUpdate = true; this.rungs.instanceMatrix.needsUpdate = true;
+    }
+    // ---- cells boil out and spiral up round the strands
     if (this.cellMesh) {
       const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
       this.cells.forEach((c, i) => {
-        const o = this.orbs[c.k];
         const u = (T - c.delay) / c.dur;
-        if (u <= 0 || c.done || this.phase === 'absorb') { m.makeScale(0, 0, 0); this.cellMesh!.setMatrixAt(i, m); return; }
-        if (u >= 1) { c.done = true; o.got += 1 / CELLS; if (Math.random() < 0.2) sfx('hover', 1.5 + Math.random(), 0.2); m.makeScale(0, 0, 0); this.cellMesh!.setMatrixAt(i, m); return; }
-        const a = 1 - u, P3 = o.base;
-        p.set(0, 0, 0)
-          .addScaledVector(c.p0, a * a * a).addScaledVector(c.p1, 3 * a * a * u).addScaledVector(c.p2, 3 * a * u * u).addScaledVector(P3, u * u * u);
-        const sw = (1 - u) * 0.22; p.x += Math.cos(u * TAU * 2 + c.seed) * sw; p.z += Math.sin(u * TAU * 2 + c.seed) * sw;
-        const sc = 0.7 + Math.sin(u * Math.PI) * 0.6;
-        m.compose(p, q, s.setScalar(sc)); this.cellMesh!.setMatrixAt(i, m);
+        if (u <= 0 || u >= 1 || fading) { m.makeScale(0, 0, 0); this.cellMesh!.setMatrixAt(i, m); return; }
+        const a = c.seed + u * TAU * 1.6, r = c.r * (1 - u * 0.55);
+        p.set(this.src.x + Math.cos(a) * r, this.src.y + 0.2 + c.h * Math.sin(u * Math.PI * 0.5), this.src.z + Math.sin(a) * r);
+        m.compose(p, q, s.setScalar(0.6 + Math.sin(u * Math.PI) * 0.8)); this.cellMesh!.setMatrixAt(i, m);
       });
       this.cellMesh.instanceMatrix.needsUpdate = true;
     }
-    // ---- orbs
-    for (const o of this.orbs) {
-      if (o.gone || o.dead) continue;
-      o.t += dt;
-      const k = o.hover || o.sel ? 1 : 0;
-      if (Math.abs(o.unzip - o.unzipTo) > 0.001) { o.unzip += (o.unzipTo - o.unzip) * Math.min(1, dt * 6); this.layHelix(o); }
-      if (o.fly > 0) {
-        o.fly += dt * 0.8;
-        o.g.position.lerp(this.coreAt, Math.min(1, dt * (1.5 + o.fly * 4)));
-        o.g.scale.setScalar(Math.max(0.05, 1 - o.fly * 0.5));
-        if (Math.random() < dt * 20) this.fx.arc(o.g.position.clone(), this.coreAt, 0.08, CAT_COL[GENE[o.id].cat], 0.15);
-        if (o.g.position.distanceTo(this.coreAt) < 0.5) { this.fx.burst(this.coreAt.x, this.coreAt.y, this.coreAt.z, 30, CAT_COL[GENE[o.id].cat], { glow: true, up: 3, speed: 3, size: 3, life: 1 }); o.gone = true; o.g.visible = false; sfx('done'); }
-      } else if (this.closing > 0) {
-        o.g.scale.multiplyScalar(Math.max(0, 1 - dt * 4));
-      } else {
-        o.g.position.lerp(o.base.clone().add(new THREE.Vector3(0, Math.sin(o.t * 1.6) * 0.12, 0)), Math.min(1, dt * 3));
-        const grow = this.phase === 'choose' ? 1 : 0.15 + Math.min(1, o.got) * 0.85;
-        const target = grow * (1 + k * 0.28 + Math.sin(o.t * 3) * 0.03 + o.unzip * 0.25);
-        o.g.scale.setScalar(o.g.scale.x + (target - o.g.scale.x) * Math.min(1, dt * 8));
+    // ---- capsules fly into the golem
+    const to = this.target(), tmp = new THREE.Vector3();
+    for (const g of this.genes) {
+      if (g.got) continue;
+      if (g.fly <= 0 && T >= g.t0 && !fading) this.detach(g);
+      if (g.fly > 0 && g.cap) {
+        g.fly += dt / 0.8;
+        const u = Math.min(1, g.fly), e = u * u * (3 - 2 * u);
+        g.c2.lerp(to.clone().add(new THREE.Vector3(0, 2.2, 0)), 0.1);
+        bez(tmp, g.from, g.c1, g.c2, to, e);
+        g.cap.position.copy(tmp);
+        g.cap.scale.setScalar(Math.max(0.2, 1 - e * 0.7));
+        g.cap.rotation.y += dt * 6;
+        if (Math.random() < dt * 14) this.fx.burst(tmp.x, tmp.y, tmp.z, 1, g.col.getHex(), { glow: true, speed: 0.2, up: 0.1, size: 2, life: 0.5, grav: 0 });
+        if (g.tag && this.cam) {
+          const v = tmp.clone().project(this.cam);
+          g.tag.style.left = (v.x * 0.5 + 0.5) * innerWidth + 'px'; g.tag.style.top = (-v.y * 0.5 + 0.5) * innerHeight + 'px';
+          g.tag.style.opacity = v.z < 1 ? String(1 - Math.max(0, e - 0.75) * 4) : '0';
+        }
+        if (u >= 1) this.arrive(g);
       }
-      o.helix.rotation.y += dt * (1.2 + k * 2.5) * (1 - o.unzip * 0.8);
-      (o.shell.material as THREE.ShaderMaterial).uniforms.uK.value = (0.8 + k * 0.9 + (o.sel ? 0.6 : 0)) * (1 - o.unzip * 0.6);
     }
-    if (this.closing > 0) {
-      this.closing -= dt;
-      if (this.closing <= 0) this.close();
-    }
+    if (!fading && T >= this.end) this.finish(false);
   }
-  private close() {
-    for (const o of this.orbs) { o.g.removeFromParent(); o.helix.geometry.dispose(); (o.helix.material as THREE.Material).dispose(); o.shell.geometry.dispose(); (o.shell.material as THREE.Material).dispose(); }
+  private cleanup() {
+    removeEventListener('keydown', this.onKey, true);
+    for (const g of this.genes) { if (g.cap) { g.cap.removeFromParent(); g.cap.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); } }); } g.tag?.remove(); }
     for (const r of this.rings) { r.removeFromParent(); r.geometry.dispose(); (r.material as THREE.Material).dispose(); }
     if (this.rune) { this.rune.removeFromParent(); this.rune.geometry.dispose(); const mm = this.rune.material as THREE.MeshBasicMaterial; mm.map?.dispose(); mm.dispose(); }
-    if (this.cellMesh) { this.cellMesh.removeFromParent(); this.cellMesh.geometry.dispose(); (this.cellMesh.material as THREE.Material).dispose(); }
-    this.orbs = []; this.cells = []; this.rings = []; this.rune = null; this.cellMesh = null; this.open = false; this.closing = 0;
+    for (const im of [this.cellMesh, this.beads, this.rungs]) if (im) { im.removeFromParent(); im.geometry.dispose(); (im.material as THREE.Material).dispose(); }
+    this.box?.remove();
+    this.genes = []; this.cells = []; this.rings = []; this.rune = null; this.cellMesh = null; this.beads = null; this.rungs = null; this.box = null;
+    this.open = false; this.fade = 0;
   }
-  get blocking() { return this.open && this.closing <= 0; }
 }

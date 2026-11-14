@@ -28,6 +28,7 @@ import { RivalBrain } from './rival';
 import { CoreAura } from './coreAura';
 import { RIVALS } from '../world/palette';
 import { VeyrChild } from './child';
+import { Player } from './player';
 import { BabyEditor } from '../ui/babyEditor';
 import { coreCapGeometry } from './buildings';
 import { panel, Btn } from '../ui/kit';
@@ -73,10 +74,14 @@ export class Game implements Screen {
   readonly regionName: string;
   storyBlock = false;
   story: Story | null = null;
+  /** cutscene camera hook (story.ts / cinema.ts): runs right after the game camera updates and may overwrite it */
+  cineCam: ((cam: THREE.PerspectiveCamera, dt: number) => void) | null = null;
   rivals: RivalBrain[] = [];
   aura: CoreAura | null = null;
   private rivalT = 210;
   child!: VeyrChild;
+  /** Unit 07 under direct control (player.ts) */
+  player!: Player;
   private cap: THREE.Mesh | null = null; private hatchT = 0;
   private handlers: Record<string, ((d: any) => void)[]> = {};
   on(ev: string, f: (d: any) => void) { (this.handlers[ev] ??= []).push(f); }
@@ -109,6 +114,7 @@ export class Game implements Screen {
     this.cam.dist = this.cam.distGoal = 30;
     this.harvest = new Harvest(this.world.scene, this.world.fxScene, this.run, this.fx);
     this.veyr.harvest = (c, sp) => this.openHarvest(c, sp);
+    this.on('absorb', (d: { species?: string }) => { if (d?.species) this.absorbSeen.set(d.species, performance.now()); });
     this.world.hooks = {
       onDeath: (c, by) => {
         sfx('death', Math.max(0.5, c.size), this.audible(c.x, c.z));
@@ -122,7 +128,7 @@ export class Game implements Screen {
       onDamage: (c, amt) => { if (amt > 2 && Math.random() < 0.5) sfx('hit', Math.max(0.5, c.size), this.audible(c.x, c.z) * 0.7); },
     };
     this.hud = new Hud({
-      hive: this.veyr, world: this.world, vision: this.vision, cam: this.cam,
+      hive: this.veyr, world: this.world, vision: this.vision, cam: this.cam, game: this,
       sel: () => this.sel, selB: () => this.selB, commands: () => this.commands(), ctxKey: () => this.ctxKey(),
       conquest: () => this.conquest(), regionName: this.regionName,
       minimap: (x, z, b) => this.minimapClick(x, z, b),
@@ -147,6 +153,7 @@ export class Game implements Screen {
     this.world.scene.add(this.child.root);
     this.harvest.child = this.child;
     this.child.onCast = () => this.aura?.pulse(1);
+    this.veyr.attach(this);
     this.cap = new THREE.Mesh(coreCapGeometry(core.x, core.z), core.mesh.material);
     this.cap.position.copy(core.mesh.position); this.cap.castShadow = true;
     this.world.scene.add(this.cap);
@@ -154,12 +161,13 @@ export class Game implements Screen {
     if (opts.story !== false) this.story = new Story(this);
     this.vision.update(0, true);
     this.veyr.flushCov();
+    this.player = new Player(this);
     (window as any).__game = this;
   }
 
   // ------------------------------------------------------------------ helpers
   audible(x: number, z: number) { const d = Math.hypot(x - this.cam.target.x, z - this.cam.target.z); return clamp(1.2 - d / 45, 0, 1); }
-  conquest() { return this.veyr.cells / Math.max(1, this.landN); }
+  conquest() { return this.veyr.territory(); }
   private resizeOverlay() { this.overlay.width = innerWidth; this.overlay.height = innerHeight; }
   resize(w: number, h: number) { this.cam.cam.aspect = w / h; this.cam.cam.updateProjectionMatrix(); this.resizeOverlay(); }
   screenOf(x: number, y: number, z: number): [number, number, boolean] {
@@ -225,7 +233,7 @@ export class Game implements Screen {
       }
       if (e.button === 0) {
         if (this.mode.k === 'paint') { this.paintStroke(e.clientX, e.clientY, true); this.drag = { x: e.clientX, y: e.clientY, on: true }; return; }
-        if (this.mode.k === 'normal') this.drag = { x: e.clientX, y: e.clientY, on: false };
+        if (this.mode.k === 'normal' && !this.player?.leftDown(e)) this.drag = { x: e.clientX, y: e.clientY, on: false };
         else this.clickMode(e.clientX, e.clientY, e.shiftKey);
       } else if (e.button === 2) {
         if (this.mode.k === 'paint') { this.paintStroke(e.clientX, e.clientY, false); this.drag = { x: e.clientX, y: e.clientY, on: true }; return; }
@@ -266,6 +274,7 @@ export class Game implements Screen {
     for (const cm of this.commands()) if (cm && cm.key.toLowerCase() === k) { if (!cm.disabled?.()) { sfx('click'); cm.run(); } else { sfx('deny'); toast(String(cm.disabled?.()), 'warn', 1600); } return; }
   }
   setMode(m: Mode) {
+    if (m.k === 'ability' && this.player && !this.player.canPower(m.a)) { sfx('deny'); toast('That field power is not installed yet: buy it on the skill tree', 'warn', 1800); return; }
     this.mode = m;
     document.body.classList.toggle('c-target', m.k === 'ability' || m.k === 'amove' || m.k === 'rally' || m.k === 'paint');
     document.body.classList.toggle('c-build', m.k === 'build');
@@ -306,7 +315,7 @@ export class Game implements Screen {
       const g = this.groundAt(mx, my); if (g) { this.selB.rally = [g.x, g.z]; this.fx.burst(g.x, g.y + 0.1, g.z, 8, VEYR.vein, { glow: true, up: 1, speed: 1, size: 2, life: 0.6 }); sfx('click'); }
       return;
     }
-    if (!own.length) return;
+    if (!own.length) { this.player?.moveTo(mx, my); return; }
     const tgt = this.pickCreature(mx, my, (c) => !c.dead && c.faction !== 'veyr');
     if (tgt) {
       for (const c of own) { c.order = { kind: 'attack', x: tgt.x, z: tgt.z, target: tgt.id }; c.path = null; }
@@ -533,18 +542,20 @@ export class Game implements Screen {
     const prevDist = this.cam.distGoal;
     this.cam.distGoal = 13;
     this.harvest.start(at, sp.name, genes, this.veyr.absorbCap, core ? new THREE.Vector3(core.x, core.y + 1.6, core.z) : at.clone(), (chosen) => {
-      for (const id of chosen) {
-        const r = this.run.add(id, sp.name, this.world.time);
-        this.veyr.res.helix += 2;
-        toast(r === 'new' ? `Absorbed <b>${GENE[id].name}</b>` : `<b>${GENE[id].name}</b> reinforced`, 'good', 4200);
-      }
+      // absorb all: every gene is taken (the harvest showed each one arrive), one summary toast
+      let nNew = 0;
+      for (const id of chosen) { if (this.run.add(id, sp.name, this.world.time) === 'new') nNew++; this.veyr.res.helix += 2; }
+      if (chosen.length) toast(`The whole genome of the <b>${sp.name}</b>: ${chosen.length} genes${nNew ? `, <b>${nNew} new</b>` : ''}`, 'good', 4200);
       const rest = genes.filter((g) => !chosen.includes(g)).length;
       this.veyr.res.helix += Math.min(3, rest);
       this.cam.followFn(null); this.cam.distGoal = prevDist;
       this.onHarvest?.(sp, chosen);
+      // the golem's intake already announces its own absorptions; the moss digesting a corpse does not
+      if (!(performance.now() - (this.absorbSeen.get(sp.name) ?? -1e9) < 20000)) this.emit('absorb', { species: sp.name, genes: chosen });
     });
   }
   onHarvest?: (sp: Species, chosen: string[]) => void;
+  private absorbSeen = new Map<string, number>();
 
   // ------------------------------------------------------------------ command card
   /** rival asteroids: the first falls a few minutes in, far from the Veyr */
@@ -585,9 +596,9 @@ export class Game implements Screen {
     const abilities = (['snare', 'pulse', 'pull', 'shape', 'repel', 'lode', 'bloom', 'lance', 'storm'] as Ability[]).map(ab);
     if (this.menu === 'build') {
       const cmds: Cmd[] = BUILD_ORDER.map((k) => ({
-        icon: k, key: BDEFS[k].key, name: BDEFS[k].name, cost: String(BDEFS[k].bio),
-        tip: () => `${BDEFS[k].desc}<div style="margin-top:4px">${costHTML(BDEFS[k].bio, BDEFS[k].min)}</div>`,
-        disabled: () => (BDEFS[k].em > h.emLevel ? `Needs field level ${BDEFS[k].em}` : h.res.bio < BDEFS[k].bio ? 'Not enough biomass' : h.res.min < BDEFS[k].min ? 'Not enough minerals' : false),
+        icon: k, key: BDEFS[k].key, name: BDEFS[k].name, cost: String(Object.values(BDEFS[k].cost ?? {}).reduce((s, v) => s + (v ?? 0), 0)),
+        tip: () => `${BDEFS[k].desc}<div style="margin-top:4px">${h.costHTML(BDEFS[k].cost ?? {})}</div>`,
+        disabled: () => h.whyBuild(k) || false,
         active: () => this.mode.k === 'build' && (this.mode as any).b === k,
         run: () => this.setMode({ k: 'build', b: k }),
       }));
@@ -622,8 +633,7 @@ export class Game implements Screen {
     return [
       ...abilities.slice(0, 4),
       ...abilities.slice(4),
-      { icon: 'brood', key: 'B', name: 'Grow a structure', tip: () => 'Structures grow from established moss inside your field.', run: () => { this.menu = 'build'; this.hud.invalidate(); } },
-      { icon: 'bloom', key: 'G', name: 'Direct growth', tip: () => 'Paint where your moss should spread first (left drag). Right drag erases. [G] again to stop.', active: () => this.mode.k === 'paint', run: () => this.setMode(this.mode.k === 'paint' ? { k: 'normal' } : { k: 'paint' }) },
+      { icon: 'brood', key: 'B', name: 'Fabricate', tip: () => 'Raise a structure on ground you hold. Each is unlocked on the skill tree and paid in raw materials.', disabled: () => (BUILD_ORDER.some((k) => this.run.skills.has(BDEFS[k].skill ?? '')) ? false : 'Unlock a structure on the skill tree first'), run: () => { this.menu = 'build'; this.hud.invalidate(); } },
       { icon: 'builder', key: 'C', name: 'Gene Forge', tip: () => 'Design a species from the genes you own.', run: () => this.opts.hooks?.openBuilder?.(this) },
     ];
   }
@@ -633,8 +643,9 @@ export class Game implements Screen {
     const inp = this.input;
     const block = this.harvest.blocking || this.storyBlock;
     const simDt = block || this.paused ? 0 : dt * this.speed * (qteActive() ? 0.22 : 1);
-    this.cam.enabled = !this.harvest.blocking;
+    this.cam.enabled = !this.harvest.blocking && !this.player?.started;
     this.cam.update(dt, inp);
+    this.cineCam?.(this.cam.cam, dt);
     this.world.update(simDt, this.cam.cam);
     if (simDt > 0) {
       for (const h of this.world.hives) h.update(simDt);
@@ -794,7 +805,7 @@ export class Game implements Screen {
     if (this.won || this.lostFlag) return;
     if (this.veyr.lost) { this.lostFlag = true; this.opts.hooks?.onLose?.(this); return; }
     const rivalsAlive = this.world.hives.some((h) => h !== this.veyr && !h.lost);
-    if (this.conquest() >= 0.6 && !rivalsAlive) { this.won = true; this.opts.hooks?.onWin?.(this); }
+    if (this.conquest() >= this.veyr.winAt && !rivalsAlive) { this.won = true; this.opts.hooks?.onWin?.(this); }
   }
 
   // ------------------------------------------------------------------ 2D overlay: bars, drag box, brushes, ranges

@@ -31,7 +31,7 @@ export class PlanetScreen implements Screen {
   constructor(readonly planet: Planet, readonly opts: PlanetOpts) {
     this.scene.background = new THREE.Color(0x03060a);
     this.scene.add(stars());
-    this.globe = makeGlobe(planet, 1);
+    this.globe = makeGlobe(planet, 1, { orbit: true });
     this.scene.add(this.globe.group);
     this.q.setFromEuler(new THREE.Euler(0.35, -0.6, 0));
     const rm = new THREE.MeshLambertMaterial({ color: 0x2a2436, emissive: new THREE.Color(VEYR.vein), emissiveIntensity: 0.8, flatShading: true }); gbuf(rm, 1);

@@ -2,7 +2,7 @@
 // 1x into canvases and shown at integer scale with nearest filtering.
 import { PixelCanvas, makeRamp, mixHex } from '../limbo/gfx/pixel';
 import { tileFbm, hashf } from '../limbo/core/rng';
-import { ICONS, PAL } from './icons';
+import { ICONS, PAL, hiIcon } from './icons';
 
 const cache = new Map<string, string>();
 export function toURL(pc: PixelCanvas): string {
@@ -11,8 +11,10 @@ export function toURL(pc: PixelCanvas): string {
   return c.toDataURL();
 }
 
-/** decode a 16 x 16 icon, add the outline (and an optional drop shadow), tint for disabled */
-export function iconCanvas(name: string, o: { dim?: boolean; shadow?: boolean } = {}): PixelCanvas {
+/** decode a 16 x 16 icon, add the outline (and an optional drop shadow), tint for disabled. With o.px, or for a
+ * name that only exists as a hi-res vignette (icons.ts), the vignette painted at o.px (default 18) square. */
+export function iconCanvas(name: string, o: { dim?: boolean; shadow?: boolean; px?: number } = {}): PixelCanvas {
+  if (o.px || !ICONS[name]) { const hi = hiIcon(name, o.px ?? 18, o); if (hi) return hi; }
   const g = ICONS[name] ?? ICONS.dna;
   const pc = new PixelCanvas(18, 18); pc.wrap = false; pc.clear();
   for (let y = 0; y < 16; y++) {
@@ -39,9 +41,14 @@ export function iconCanvas(name: string, o: { dim?: boolean; shadow?: boolean } 
   }
   return pc;
 }
-export function icon(name: string, o: { dim?: boolean; shadow?: boolean } = {}): string {
-  const k = 'i:' + name + (o.dim ? ':d' : '') + (o.shadow ? ':s' : '');
-  let u = cache.get(k); if (!u) cache.set(k, (u = toURL(iconCanvas(name, o))));
+/** an icon URL for an <img> box of 18 art px: the hi-res vignette at one source pixel per screen pixel (18 * --s
+ * square), else the legacy grid. o.px overrides the size. */
+export function icon(name: string, o: { dim?: boolean; shadow?: boolean; px?: number } = {}): string {
+  const s = Number(document.documentElement.style.getPropertyValue('--s')) || (innerHeight >= 1040 ? 3 : 2);
+  const px = o.px ?? 18 * s;
+  const k = 'i:' + name + ':' + px + (o.dim ? ':d' : '') + (o.shadow ? ':s' : '');
+  let u = cache.get(k);
+  if (!u) { const hi = hiIcon(name, px, o); cache.set(k, (u = toURL(hi ?? iconCanvas(name, o)))); }
   return u;
 }
 

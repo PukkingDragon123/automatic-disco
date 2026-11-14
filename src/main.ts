@@ -1,4 +1,4 @@
-// Boot: the full game flow (src/flow.ts); ?test=world|eco|game|studio|child|mirror|ui open single pieces for visual QA.
+// Boot: the full game flow (src/flow.ts); ?test=world|eco|game|studio|child|mirror|ui|skills|lab open single pieces for visual QA.
 import * as THREE from 'three';
 import { Engine } from './app/engine';
 import { Input } from './app/input';
@@ -140,24 +140,19 @@ async function testUI() {
 
 async function testGame() {
   const { Game } = await import('./game/game');
-  const { Forge } = await import('./ui/forge');
+  const { openLab } = await import('./ui/forge');
   const { TreeScreen } = await import('./ui/tree');
+  const { openSkillTree } = await import('./ui/skillTree');
   const g = new Game(engine, input, {
     seed: Number(P.get('seed') ?? 11), biome: (P.get('biome') ?? 'meadow') as BiomeKey, pal: P.get('pal') ?? undefined,
     hooks: {
-      openBuilder: (game) => {
-        const f = new Forge(game.run, game.vaults, () => game.veyr.res.helix, null, (r) => {
-          engine.pop();
-          if (r) game.addDesign(r.design, r.parent, 3 + Math.max(0, r.design.genes.length - 4));
-        });
-        engine.push(f);
-      },
+      openBuilder: (game) => openLab(engine, game),
+      openLab: (game) => openLab(engine, game),
       openTree: (game) => {
-        const evolve = (sp: any) => {
-          engine.push(new Forge(game.run, game.vaults, () => game.veyr.res.helix, sp, (r) => { engine.pop(); if (r) game.addDesign(r.design, r.parent, 3 + Math.max(0, r.design.genes.length - 4)); }));
-        };
+        const evolve = (sp: any) => openLab(engine, game, sp);
         engine.push(new TreeScreen(game.run.reg, { close: () => engine.pop(), evolve, time: game.world.time }));
       },
+      openSkills: (game) => openSkillTree(engine, game),
     },
   });
   if (P.has('genes')) { for (const id of P.get('genes')!.split(',')) g.run.add(id, 'test', 0); g.veyr.res.helix = 50; }
@@ -232,7 +227,12 @@ async function testMirror() {
   engine.start();
 }
 
-if (P.get('test') === 'mirror') testMirror();
+if (P.get('test') === 'lab') testLab();
+else if (P.get('test') === 'skills') testSkills();
+else if (P.get('test') === 'icons') import('./ui/cineTest').then((m) => m.testIcons(engine));
+else if (P.get('test') === 'cine') import('./ui/cineTest').then((m) => m.testCine(engine, input));
+else if (P.get('test') === 'menu') import('./ui/cineTest').then((m) => m.testMenu(engine));
+else if (P.get('test') === 'mirror') testMirror();
 else if (P.get('test') === 'studio') testStudio();
 else if (P.get('test') === 'child') testChild();
 else if (P.get('test') === 'game') testGame();
@@ -241,11 +241,83 @@ else if (P.get('test') === 'eco') testEco();
 else if (P.get('test') === 'world') testWorld();
 else startFlow();
 
+/** ?test=skills: the skill tree over a stand-in run (a few skills owned, some resources); &atlas shows every icon */
+async function testSkills() {
+  (await import('./ui/kit')).setupUI();
+  (await import('./ui/skillTree')).testSkills(engine, P);
+  engine.start();
+}
+
 async function startFlow() {
   const { Flow } = await import('./flow');
   (await import('./ui/kit')).setupUI();
   const f = new Flow(engine, input);
   (window as any).__flow = f;
   f.menu();
+  engine.start();
+}
+
+/**
+ * ?test=lab: the gene lab over a stand-in run. Several wild species are absorbed whole (every gene, as the harvest
+ * does), so the shelves hold their jars and the carousels are full. &skills=splice,sequencer,vat picks the lab skills
+ * (default: lab and splice); &harvest plays the absorb-all sequence instead, on a stand-in corpse.
+ */
+async function testLab() {
+  const kit = await import('./ui/kit'); kit.setupUI();
+  const { Run } = await import('./game/run');
+  const { Forge } = await import('./ui/forge');
+  const { initThumbs } = await import('./ui/thumbs');
+  initThumbs(engine.renderer);
+  const run = new Run(Number(P.get('seed') ?? 5));
+  const pal = planetPalette(Number(P.get('seed') ?? 5), P.get('pal') ?? 'amber');
+  const kinds = (P.get('kinds') ?? 'beetle,boar,lion,frog,moth,crab,sailback,snail').split(',');
+  kinds.forEach((k, i) => {
+    const d = wildDesign(k as Role, pal, 4100 + i * 37);
+    const sp = run.reg.add(d, 'wild', null, k, 0);
+    for (const id of d.genes) run.add(id, sp.name, 0);
+  });
+  for (const id of (P.get('skills') ?? 'lab,splice').split(',')) if (id) run.skills.owned.add(id);
+  const helix = Number(P.get('helix') ?? 60);
+  if (P.has('harvest')) { await testHarvest(run); return; }
+  const open = () => engine.setScreen(new Forge(run, 0, () => helix, P.has('base') ? run.reg.list[Number(P.get('base'))] ?? null : null, (r) => {
+    console.log('lab result', r ? `${r.design.name} [${r.design.genes.join(',')}]` : 'left');
+    if (r) run.reg.add(r.design, 'veyr', r.parent, 'design', 0);
+    setTimeout(open, 50);
+  }, { emit: (ev, d) => console.log('event', ev, JSON.stringify(d)) }));
+  (window as any).__run = run;
+  const t0 = performance.now(); open(); console.log('lab open ms', Math.round(performance.now() - t0));
+  engine.start();
+}
+
+/** ?test=lab&harvest: the absorb-all genome harvest on a stand-in corpse, Unit 07 hovering nearby (loops) */
+async function testHarvest(run: import('./game/run').Run) {
+  const { Harvest } = await import('./game/dnaHarvest');
+  const { VeyrChild } = await import('./game/child');
+  const { Fx } = await import('./game/fx');
+  const scene = new THREE.Scene(), fxs = new THREE.Scene();
+  scene.background = new THREE.Color(0x1a2430);
+  scene.add(new THREE.HemisphereLight(0xb8c8e0, 0x403020, 1.4));
+  const sun = new THREE.DirectionalLight(0xfff0dc, 2.4); sun.position.set(-3, 6, 4); sun.castShadow = true; scene.add(sun);
+  const gm = new THREE.MeshLambertMaterial({ color: 0x4a6a3a }); gbuf(gm, 1);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), gm); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+  const fx = new Fx(fxs, scene);
+  const child = new VeyrChild(fx, 1.25, undefined, { grown: true }); child.hatch = 1; child.root.position.set(-4, 0.2, 1.5); scene.add(child.root);
+  const sp = run.reg.list[Number(P.get('base') ?? 2)] ?? run.reg.list[0];
+  const { mesh } = makeInstance(sp.model); mesh.rotation.z = 1.4; mesh.position.set(0, 0.2, 0); scene.add(mesh);
+  const h = new Harvest(scene, fxs, run, fx); h.child = child;
+  const cam = new THREE.PerspectiveCamera(36, innerWidth / innerHeight, 0.1, 200);
+  cam.position.set(2.5, 4.2, 10); cam.lookAt(-1, 1.8, 0);
+  const go = () => h.start(new THREE.Vector3(0, 0.2, 0), sp.name, sp.design.genes, 1, new THREE.Vector3(-4, 1.6, 1.5), (genes) => {
+    for (const id of genes) run.add(id, sp.name, 0);
+    console.log('absorbed', genes.length, 'genes');
+    setTimeout(go, 2500);
+  });
+  go();
+  engine.canvas.addEventListener('pointerdown', (e) => h.click(e.clientX, e.clientY, cam));
+  engine.setScreen({
+    update(dt) { h.update(dt, cam); child.look.set(0, 2, 0); child.update(dt, cam); fx.update(dt, engine.h, cam.fov); },
+    render(post, t) { post.render(scene, cam, fxs, t); },
+    resize(w, hh) { cam.aspect = w / hh; cam.updateProjectionMatrix(); },
+  });
   engine.start();
 }

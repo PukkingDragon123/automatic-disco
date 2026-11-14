@@ -6,7 +6,7 @@ import { PixelCanvas, makeRamp, mixHex, scaleHex, toRGB } from '../limbo/gfx/pix
 import { Rand, clamp } from '../core/rand';
 import type { Palette } from './palette';
 import type { BiomeKey } from './region';
-import { PAINT as STYLE, ANIM } from './plantStyle';
+import { PAINT as STYLE, ANIM, GROW, FLAT, type Plant } from './plantStyle';
 import { paintGround, type GroundSprite } from './groundArt';
 
 export type Arch = 'tuft' | 'reed' | 'fern' | 'shrub' | 'broadleaf' | 'umbrella' | 'palm' | 'weeper' | 'spike' | 'rosette' | 'coral' | 'fungus' | 'bulb' | 'barrel' | 'crystalbloom' | 'lily' | 'eyeflower' | 'fiddle';
@@ -28,6 +28,8 @@ export interface PlantSpecies {
   /** 0 sway, 1 breathe, 2 bob, 3 shiver, 4 coil */
   anim: number;
   sprites: Sprite[];
+  /** per sprite variant: the grown 3D structure it was drawn from (null for the flat-painted kinds) and its height */
+  forms?: (Plant | null)[]; heights?: number[];
 }
 
 const R = (c: number, n = 6, s = 0.55, hs = 0.05) => makeRamp(c, n, { spread: s, hueShift: hs });
@@ -552,7 +554,7 @@ export function makeFlora(pal: Palette, biome: BiomeKey, seed: number): PlantSpe
 export interface FloraAtlas { tex: THREE.DataTexture; size: number; detail: Sprite[]; detailInfo: GroundSprite[] }
 
 /** paint every species' variants (plus ground-cover detail sprites) into one mipmapped atlas */
-export function buildFloraAtlas(species: PlantSpecies[], pal: Palette, seed: number, variants = 4): FloraAtlas {
+export function buildFloraAtlas(species: PlantSpecies[], pal: Palette, seed: number, variants = 3): FloraAtlas {
   const S = 2048;
   const data = new Uint8ClampedArray(S * S * 4);
   let sx = 1, sy = 1, rowH = 0;
@@ -570,7 +572,13 @@ export function buildFloraAtlas(species: PlantSpecies[], pal: Palette, seed: num
   const jobs: { sp: PlantSpecies; h: number; r: Rand }[] = [];
   for (const sp of species) for (let v = 0; v < variants; v++) jobs.push({ sp, h: sp.hmin + (sp.hmax - sp.hmin) * (v / Math.max(1, variants - 1)) * r.range(0.85, 1), r: r.fork(sp.id * 31 + v) });
   jobs.sort((a, b) => b.h - a.h);
-  for (const j of jobs) j.sp.sprites.push(place(PAINT[j.sp.arch](j.sp, j.h, j.r, pal), j.h));
+  for (const j of jobs) {
+    const g = GROW[j.sp.arch], sp = j.sp;
+    sp.forms ??= []; sp.heights ??= [];
+    if (g) { const P = g(sp, j.h, j.r, pal).normalize(); sp.sprites.push(place(P.raster(), j.h)); sp.forms.push(P); }
+    else { sp.sprites.push(place((FLAT[sp.arch] ?? PAINT[sp.arch])(sp, j.h, j.r, pal), j.h)); sp.forms.push(null); }
+    sp.heights.push(j.h);
+  }
   // ground cover: tussocks, clover, flowers, young ferns, mushrooms, sedges, pebbles, litter and twig decals
   const detail: Sprite[] = [], detailInfo: GroundSprite[] = [];
   for (const g of paintGround(pal, seed)) { detail.push(place(g.pc, 0.2)); detailInfo.push(g); }

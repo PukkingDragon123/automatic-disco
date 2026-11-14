@@ -121,6 +121,27 @@ export class Toggle {
   }
 }
 
+// ------------------------------------------------------------------ big guarded switch (momentary)
+/** a heavy guarded switch with a red knob and a status lamp; sheet: two 22x22 frames (up, thrown) */
+export class BigSwitch {
+  readonly e: HTMLDivElement; readonly lamp: Lamp; private bat: HTMLDivElement;
+  constructor(parent: HTMLElement, x: number, y: number, label: string, key: string, sheet: string, tipHtml: () => string, run: () => void) {
+    this.e = place(el('div', 'tog bsw', parent), x, y, 26, 44);
+    this.lamp = new Lamp(this.e, 9, 0, 'a', 'dim');
+    this.bat = place(el('div', 'bsw-bat', this.e), 2, 8, 22, 22);
+    this.bat.style.backgroundImage = `url(${sheet})`;
+    const lab = new PixText(this.e, 0, 32, 26, 'center'); lab.set(label, CR[4]);
+    const kt = new PixText(this.e, 0, 39, 26, 'center'); kt.set(key, BR[6]);
+    this.e.addEventListener('pointerenter', () => { sfx('hover'); Tip.show(tipHtml(), this.e); });
+    this.e.addEventListener('pointerleave', () => Tip.hide());
+    this.e.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.bat.classList.add('down'); sfx('crack', 0.5, 0.45); });
+    this.e.addEventListener('pointerup', () => { if (!this.bat.classList.contains('down')) return; setTimeout(() => this.bat.classList.remove('down'), 180); sfx('click', 0.8, 0.7); run(); });
+    this.e.addEventListener('pointercancel', () => this.bat.classList.remove('down'));
+  }
+  /** throw it from the keyboard */
+  flick() { this.bat.classList.add('down'); sfx('crack', 0.5, 0.45); setTimeout(() => this.bat.classList.remove('down'), 200); }
+}
+
 // ------------------------------------------------------------------ needle gauge
 export interface GaugeOpts { w: number; h: number; cx: number; cy: number; r: number; a0: number; a1: number; face: (p: Pix) => void; needle?: number; hub?: boolean }
 /** an analog meter: a pre-painted face and a sprung needle that swings and trembles */

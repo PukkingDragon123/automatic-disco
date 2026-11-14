@@ -1,129 +1,147 @@
-// Flora: plant instances on the region (food for herbivores, life force for the Veyr) drawn as instanced
-// pixel-art cards that lean back toward the camera, wither under moss and cast matching shadows, plus a dense
-// layer of ground cover (tussocks, clover, flower patches, young ferns, litter, mushrooms). Everything moves in one
-// wind field: gusts roll across the meadows, blades bend from the root with the tip doing most of the travelling,
-// each tuft with its own stiffness; shrubs sway, trees lean slowly while their leaves flutter; creatures brushing
-// through push the growth aside.
+// Flora: plant instances on the region (food for herbivores, life force for the Veyr), grown as real 3D plants
+// near the camera and drawn as their painted sprites far away, over a dense layer of 3D ground cover (grass
+// tussocks, sedges, meadow flowers, clover, young ferns, mushrooms) with pebble, litter and twig decals.
+//
+// Each species is grown (plantStyle) into a few variant structures; each structure is rasterised into the sprite
+// atlas (the far LOD) and meshed (floraMesh) with hi-res painted leaves, fronds, blades and bark (floraTex). Instances
+// are sorted into 8 m chunks per draw (floraBatch) and only chunks in view are drawn, 3D near, cards far, with a
+// dithered cross-fade. Everything moves in the shared wind field and in a physical spring field (floraField): what
+// walks through pushes the growth aside, heavy things trample it flat for a while, blasts whip it about.
+//
+// PUBLIC API (other systems):
+//   x, z, sp, bio, n, species, near(), eat(), tick(), reseat(), shade        simulation (unchanged)
+//   push(x, z, r, s)      hold growth aside this frame (call every frame while something is there): r metres,
+//                         s 0.3 brush past .. 1 heavy (tramples above ~0.45). setPush(list) does this for a list.
+//   impulse(x, z, r, s)   one-off outward kick (explosions, impacts): s 0.5 gust .. 3 blast (flattens above ~0.8)
+//   trampledAt(x, z)      0..1 how flattened the growth is
+//   setGraft(i, k, fac)   modified look (steel sheath climbing from the root, veins in faction colour 0 Veyr..3)
+//   setDissolve(i, k)     absorbed plant dissolves in sparks; setGrow(i, k) sown plants grow in
+//   setTint(i, rgb, k)    generic per-plant colour hook (0 off .. 1 full), e.g. poisoned, highlighted
+//   addPlant(kind, seed, x, z) -> index (spare slots), remove(i)
 import * as THREE from 'three';
 import { Region } from './region';
 import { makeFlora, buildFloraAtlas, type PlantSpecies, type FloraAtlas } from './plantArt';
 import type { GroundKind } from './groundArt';
 import { B } from './blockTex';
 import { Rand, hash01 } from '../core/rand';
-import { gbuf } from '../gfx/gbuf';
-import { SHADER_NOISE, FOW_FN, WIND_FN } from './glsl';
+import { VEYR, RIVALS } from './palette';
+import { FloraTex } from './floraTex';
+import { meshPlant, meshBarrel, meshCrystal, meshLily, meshGround, bladeSetOf, type GroundForm, type PlantGeo } from './floraMesh';
+import { FloraField } from './floraField';
+import { Batch, CH } from './floraBatch';
+import { plant3dMaterial, cardMaterial, STATE_W } from './floraGL';
 
-const VERT_PARS = /* glsl */`
-attribute vec3 iPos; attribute vec2 iSize; attribute vec4 iRect; attribute vec4 iParam; attribute vec2 iAnim;
-uniform vec4 uPush[12];
-uniform float uTime, uN, uLean, uHComp, uDetail;
-uniform vec3 uCamRight, uCamBack;
-uniform sampler2D uMoss;
-varying float vWither; varying vec3 vBase; varying float vGlowK; varying float vFlut;
-${SHADER_NOISE}
-${WIND_FN}
-`;
-const VERT_BEGIN = /* glsl */`
-float mc = texture2D(uMoss, iPos.xz / uN).r;
-float wither = clamp(max(1.0 - iParam.z, (mc - 0.4) * 1.8), 0.0, 1.0);
-if (uDetail > 0.5) wither = mc > 0.3 ? 1.0 : 0.0;
-vWither = wither; vBase = iPos; vFlut = 0.0;
-float sc = uDetail > 0.5 ? (1.0 - wither) : (1.0 - wither * 0.5) * step(0.02, iParam.z);
-vec2 sz = iSize * sc;
-vec3 transformed;
-vec3 wnd = windAt(iPos.xz, uTime);
-if (abs(iParam.w) > 1.5) {
-  // lying flat (lily pads, leaf litter): turned to its own angle, pads bob on the water
-  float br = 1.0 + sin(uTime * 1.2 + iParam.x) * 0.03 * step(0.5, iParam.y);
-  float a = iParam.x;
-  vec2 o = vec2(position.x * sz.x, (0.5 - position.y) * sz.y) * br;
-  o = vec2(o.x * cos(a) - o.y * sin(a), o.x * sin(a) + o.y * cos(a));
-  transformed = iPos + vec3(o.x, 0.04, o.y);
-} else {
-  vec3 up = normalize(vec3(0.0, cos(uLean), 0.0) - uCamBack * sin(uLean));
-  float yy = position.y, t = uTime + iParam.x, k = iParam.y, typ = iAnim.x, spd = iAnim.y;
-  bool tree = k < 0.5 && uDetail < 0.5;
-  // wind: stiffness k scales the bend; blades and stems bend from the root (tip-weighted), trees lean from the
-  // trunk with a slow sway of their own; a fast flutter rides on the gusts
-  float yy2 = yy * yy;
-  // tip travel in a full gust: ~35% of the height for grass, a few percent for a tree
-  float flex = tree ? 0.035 : 0.21 * k;
-  vec2 bendW = wnd.xy * flex;
-  float flutter = sin(t * (5.5 + k * 3.0) + iPos.x * 1.7) * (0.015 + 0.04 * wnd.z) * k * (tree ? 0.2 : 1.0) * uWind;
-  float bend = flutter + (tree ? sin(t * 0.7 + iPos.z * 0.13) * 0.012 : 0.0);
-  float sx = 1.0, sy = 1.0;
-  if (typ > 0.5 && typ < 1.5) { float b = sin(t * 1.7 * spd); sx = 1.0 + b * 0.06 * yy; sy = 1.0 + b * 0.04; }
-  else if (typ > 1.5 && typ < 2.5) { bend += sin(t * 2.6 * spd) * 0.07 * yy; sy = 1.0 + sin(t * 3.4 * spd) * 0.035 * yy; }
-  else if (typ > 2.5 && typ < 3.5) { bend += sin(t * 19.0 + iParam.x * 3.0) * 0.014 * smoothstep(0.5, 1.0, yy); }
-  else if (typ > 3.5) { bend += sin(t * 1.3 * spd) * 0.09 * yy; sx += cos(t * 1.3 * spd) * 0.05 * yy; }
-  // creatures brushing through push the plant aside
-  vec2 push = vec2(0.0);
-  for (int i = 0; i < 12; i++) {
-    vec4 p = uPush[i];
-    if (p.z <= 0.0) continue;
-    vec2 d = iPos.xz - p.xy; float dl = length(d), rr = p.z + sz.x * 0.35;
-    if (dl < rr) push += (d / max(dl, 0.001)) * (1.0 - dl / rr) * p.w;
-  }
-  vec2 off = bendW * sz.y * yy2;
-  transformed = iPos + uCamRight * (position.x * sz.x * sx + (bend * sz.y + dot(push, uCamRight.xz) * 0.6) * yy2) + up * (yy * sz.y * uHComp * sy - 0.06) + uCamBack * (dot(push, uCamBack.xz) * 0.35 * yy2);
-  transformed.xz += off;
-  // a bent stem is shorter
-  transformed.y -= (length(push) * 0.18 + dot(bendW, bendW) * 0.45) * yy2 * sz.y;
-  vFlut = uDetail < 0.5 && (tree || typ < 0.5) ? smoothstep(0.35, 1.0, yy) * (0.25 + wnd.z * 0.75) * uWind : 0.0;
-}
-`;
-const UV_PATCH = /* glsl */`
-#include <uv_vertex>
-float fu = iParam.w < 0.0 ? 1.0 - uv.x : uv.x;
-vMapUv = vec2(iRect.x + iRect.z * fu, iRect.y + iRect.w * (1.0 - uv.y));
-`;
-/** leaves flutter: in the upper crown, small blocks of texels shift a pixel back and forth with the gusts */
-const FLUTTER = /* glsl */`
-vec2 fTex = floor(vMapUv * 2048.0);
-float fBlk = h2(floor(fTex / 3.0) + floor(uTime * 6.0 + h2(floor(fTex / 7.0)) * 4.0) * 1.37);
-vec2 fUv = vMapUv;
-if (vFlut > 0.0 && fBlk > 1.0 - vFlut * 0.13) fUv.x += (fBlk > 1.0 - vFlut * 0.065 ? 1.0 : -1.0) / 2048.0;
-vec4 sampledDiffuseColor = texture2D(map, fUv);
-`;
-
+/** spare instance slots for plants sown during play */
+const SPARE = 320;
 /** sqrt-based length (Math.hypot is several times slower in the hot loops) */
 const hyp = (a: number, b: number, c = 0) => Math.sqrt(a * a + b * b + c * c);
 /** wind strength by biome: open steppe and savanna are windy, the jungle floor is still */
 const WIND: Partial<Record<string, number>> = { meadow: 1, jungle: 0.55, savanna: 1.15, marsh: 0.8, highland: 1.2, tundra: 1.25, desert: 1.05, crystal: 0.9, ashland: 0.9, coast: 1.2 };
 const STIFF: Partial<Record<GroundKind, number>> = { grass: 1.2, tall: 1.45, dry: 1.1, sedge: 1.0, flower: 1.0, fern: 0.6, clover: 0.2, mush: 0.05, pebble: 0, litter: 0, twig: 0 };
+/** ground cover kinds grown in 3D near the camera, and how many variants each has */
+const GROUND3D: Partial<Record<GroundKind, [GroundForm, number]>> = { grass: ['grass', 3], tall: ['tall', 2], dry: ['dry', 2], sedge: ['sedge', 2], clover: ['clover', 2], flower: ['flower', 4], fern: ['fern', 2], mush: ['mush', 2] };
+/** how a plant kind bends: wind flex, push response */
+const BENDS: Record<string, [number, number]> = {
+  tuft: [0.5, 1], reed: [0.4, 0.8], fern: [0.26, 0.7], shrub: [0.12, 0.35], broadleaf: [0.028, 0.03], umbrella: [0.03, 0.03], palm: [0.06, 0.04], weeper: [0.04, 0.04],
+  spike: [0.3, 0.75], rosette: [0.05, 0.2], coral: [0.06, 0.3], fungus: [0.02, 0.15], bulb: [0.3, 0.7], barrel: [0.0, 0.02], crystalbloom: [0.0, 0.0], lily: [0.05, 0.2], eyeflower: [0.25, 0.7], fiddle: [0.22, 0.6],
+};
+/** LOD ranges (camera distance, metres): full 3D fades to the lighter 3D mesh over LOD_NEAR, that to the painted
+ *  cards over LOD_PLANT; 3D ground cover fades to its cards over LOD_GROUND */
+const LOD_NEAR: [number, number] = [21, 23.5], LOD_PLANT: [number, number] = [59, 64], LOD_SMALL: [number, number] = [44, 48], LOD_GROUND: [number, number] = [42, 46];
+/** plants shorter than this hand over to their cards at the nearer LOD_SMALL range */
+const SMALL_H = 1.25;
+
+const I3D: [string, number, number][] = [['iA', 4, 0], ['iB', 4, 4]];
+const ICARD: [string, number, number][] = [['cA', 4, 0], ['cB', 4, 4], ['cR', 4, 8], ['cC', 4, 12]];
 
 export class Flora {
   readonly species: PlantSpecies[];
+  /** the painted sprites (far LOD, ground decals) */
   readonly atlas: FloraAtlas;
+  /** the hi-res 3D textures */
+  readonly tex: FloraTex;
+  /** the physical push / trample field */
+  readonly field: FloraField;
   n = 0;
   x!: Float32Array; z!: Float32Array; sp!: Uint8Array; bio!: Float32Array;
   /** spatial hash: cell (4 m) -> plant indices */
   private cells = new Map<number, number[]>();
+  /** far-LOD plant cards and ground-cover cards (kept for compatibility) */
   readonly mesh: THREE.Mesh;
   readonly detail: THREE.Mesh;
   readonly U: Record<string, THREE.IUniform>;
-  private param!: THREE.InstancedBufferAttribute;
   private recovering = new Set<number>();
   shade!: Float32Array;
   readonly group = new THREE.Group();
+  /** per-species, per-variant, per-LOD 3D draws */
+  private p3d: Batch[][][] = [];
+  private pGeo: PlantGeo[][][] = [];
+  private pCards!: Batch;
+  private g3d: Batch[] = [];
+  private gFar!: Batch; private gAlways!: Batch;
+  private all: Batch[] = [];
+  private nc: number;
+  private chunkY: Float32Array;
+  private state: Uint8Array; private stateTex: THREE.DataTexture; private stateRows = [1e9, -1]; private stateUp = false;
+  private variants = 3;
+  private lastT = -1;
+  readonly stats = { gen: 0, tris3d: 0, batches: 0, drawn: 0, inst3d: 0, tAtlas: 0, tPlace: 0, tPlants: 0, tGround: 0 };
+  private frustum = new THREE.Frustum(); private pm = new THREE.Matrix4();
 
   constructor(readonly region: Region, moss: THREE.Texture, vis: THREE.Texture) {
-    this.species = makeFlora(region.pal, region.biome.key, region.seed);
-    this.atlas = buildFloraAtlas(this.species, region.pal, region.seed);
+    const t0 = performance.now();
+    const pal = region.pal, N = region.N;
+    this.species = makeFlora(pal, region.biome.key, region.seed);
+    this.atlas = buildFloraAtlas(this.species, pal, region.seed, this.variants);
+    this.stats.tAtlas = performance.now() - t0;
+    this.tex = new FloraTex(region.seed);
+    this.field = new FloraField(N);
+    this.nc = Math.ceil(N / CH);
+    this.chunkY = new Float32Array(this.nc * this.nc * 2);
+    for (let c = 0; c < this.nc * this.nc; c++) { this.chunkY[c * 2] = 1e9; this.chunkY[c * 2 + 1] = -1e9; }
+    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+      const c = Math.floor(z / CH) * this.nc + Math.floor(x / CH), h = region.h[z * N + x];
+      this.chunkY[c * 2] = Math.min(this.chunkY[c * 2], h); this.chunkY[c * 2 + 1] = Math.max(this.chunkY[c * 2 + 1], h);
+    }
     this.U = {
-      uTime: { value: 0 }, uN: { value: region.N }, uLean: { value: 0.42 }, uHComp: { value: 1.08 }, uDetail: { value: 0 },
-      uCamRight: { value: new THREE.Vector3(1, 0, 0) }, uCamBack: { value: new THREE.Vector3(0, 0, 1) },
+      uTime: { value: 0 }, uN: { value: N }, uLean: { value: 0.42 }, uHComp: { value: 1.08 },
+      uCamRight: { value: new THREE.Vector3(1, 0, 0) }, uCamBack: { value: new THREE.Vector3(0, 0, 1) }, uCamPos: { value: new THREE.Vector3(0, 50, 0) },
+      uLod: { value: new THREE.Vector2(...LOD_PLANT) },
+      uLodA: { value: new THREE.Vector4(-2, -1, ...LOD_NEAR) }, uLodB: { value: new THREE.Vector4(...LOD_NEAR, ...LOD_PLANT) }, uLodBs: { value: new THREE.Vector4(...LOD_NEAR, ...LOD_SMALL) }, uLodG: { value: new THREE.Vector4(-2, -1, ...LOD_GROUND) },
+      uLodS: { value: new THREE.Vector2(...LOD_SMALL) }, uLodGr: { value: new THREE.Vector2(...LOD_GROUND) },
       uMoss: { value: moss }, uVis: { value: vis }, uDark: { value: new THREE.Color(0x07080c) },
-      uPush: { value: Array.from({ length: 12 }, () => new THREE.Vector4(0, 0, 0, 0)) },
+      uField: { value: this.field.tex }, uBark: { value: this.tex.bark },
       uWindDir: { value: new THREE.Vector2(Math.cos(region.seed * 1.7), Math.sin(region.seed * 1.7)) }, uWind: { value: WIND[region.biome.key] ?? 1 },
+      uGraftCol: { value: [VEYR.vein, ...RIVALS.map((r) => r.vein)].slice(0, 4).map((c) => new THREE.Color(c)) },
+      uBloom: { value: Array.from({ length: 8 }, (_, i) => new THREE.Color(pal.bloom[i % pal.bloom.length]).convertSRGBToLinear()) },
     };
+    let tq = performance.now();
     const { inst, det } = this.place();
-    this.mesh = this.makeMesh(inst, false);
-    this.detail = this.makeMesh(det, true);
-    this.mesh.castShadow = true;
-    this.group.add(this.mesh, this.detail);
+    this.stats.tPlace = performance.now() - tq; tq = performance.now();
+    const cap = inst.length + SPARE;
+    // per-plant state (2 texels each)
+    const rows = Math.ceil((cap * 2) / STATE_W);
+    this.state = new Uint8Array(STATE_W * rows * 4);
+    for (let i = 0; i < this.n; i++) { this.state[i * 8] = 255; this.state[i * 8 + 3] = 255; }
+    this.stateTex = new THREE.DataTexture(this.state, STATE_W, rows, THREE.RGBAFormat, THREE.UnsignedByteType);
+    this.stateTex.magFilter = this.stateTex.minFilter = THREE.NearestFilter; this.stateTex.generateMipmaps = false; this.stateTex.flipY = false;
+    this.stateTex.needsUpdate = true; this.stateTex.onUpdate = () => { this.stateUp = true; };
+    this.U.uState = { value: this.stateTex };
+    const grow = <T extends Float32Array | Uint8Array>(a: T, b: T) => { b.set(a); return b; };
+    this.x = grow(this.x, new Float32Array(cap)); this.z = grow(this.z, new Float32Array(cap));
+    this.sp = grow(this.sp, new Uint8Array(cap)); this.bio = grow(this.bio, new Float32Array(cap));
+    this.buildPlants(inst);
+    this.stats.tPlants = performance.now() - tq; tq = performance.now();
+    this.buildGround(det);
+    this.stats.tGround = performance.now() - tq;
+    this.mesh = this.pCards.mesh; this.detail = this.gFar.mesh;
+    this.tex.finish();
+    for (const b of this.all) this.group.add(b.mesh);
+    this.stats.batches = this.all.length;
+    this.stats.gen = performance.now() - t0;
   }
 
+  // ---------------------------------------------------------------- placement (where everything grows)
   private place() {
     const R = this.region, N = R.N, r = new Rand(R.seed ^ 0xf1), bi = R.biome, sp = this.species, nz = R.noise;
     const inst: number[][] = [], det: number[][] = [];
@@ -279,87 +297,103 @@ export class Flora {
     return { inst, det };
   }
 
-  private makeMesh(list: number[][], detail: boolean): THREE.Mesh {
-    const n = list.length;
-    const g = new THREE.InstancedBufferGeometry();
-    const SEG = detail ? 2 : 4, gp: number[] = [], gu: number[] = [], gi: number[] = [];
-    for (let k = 0; k <= SEG; k++) { const y = k / SEG; gp.push(-0.5, y, 0, 0.5, y, 0); gu.push(0, y, 1, y); if (k < SEG) { const a = k * 2; gi.push(a, a + 1, a + 3, a, a + 3, a + 2); } }
-    g.setAttribute('position', new THREE.Float32BufferAttribute(gp, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(gu, 2));
-    g.setIndex(gi);
-    const pos = new Float32Array(n * 3), size = new Float32Array(n * 2), rect = new Float32Array(n * 4), param = new Float32Array(n * 4), anim = new Float32Array(n * 2);
-    const r = new Rand(this.region.seed ^ (detail ? 0xd7 : 0xa1));
-    list.forEach((p, i) => {
-      const s = detail ? this.atlas.detail[p[3]] : this.species[p[3]].sprites[p[4]];
-      const gk = detail ? this.atlas.detailInfo[p[3]] : null;
-      const flat = detail ? gk!.flat : this.species[p[3]].arch === 'lily';
-      const k = detail ? r.range(0.85, 1.15) : r.range(0.92, 1.08);
-      pos.set([p[0], p[1], p[2]], i * 3);
-      size.set([s.w * k, s.h * k], i * 2);
-      rect.set([s.u0, s.v0, s.du, s.dv], i * 4);
-      // stiffness: grasses and sedges flex, flowers nod, low mats and stones barely stir; trees are stiff
-      const stiff = gk ? (STIFF[gk.kind] ?? 1) * r.range(0.75, 1.3) : this.species[p[3]].tree ? 0.35 : this.species[p[3]].arch === 'lily' ? 1 : r.range(0.75, 1.15);
-      param.set([r.range(0, 6.28), stiff, 1, (r.chance(0.5) ? 1 : -1) * (flat ? 2 : 1)], i * 4);
-      anim.set([detail ? 0 : this.species[p[3]].anim, r.range(0.8, 1.25)], i * 2);
+  private isSmall(s: PlantSpecies) { return !s.tree && s.hmax < SMALL_H + 0.3 && s.arch !== 'shrub'; }
+  private chunk(x: number, z: number) { const nc = this.nc; return Math.min(nc - 1, Math.max(0, Math.floor(z / CH))) * nc + Math.min(nc - 1, Math.max(0, Math.floor(x / CH))); }
+
+  // ---------------------------------------------------------------- plants: 3D near, cards far
+  /** one plant's 3D record: x y z yaw | scale id seed flex */
+  private rec3d(i: number, x: number, y: number, z: number, seed: number) {
+    const h = hash01(i, seed, 41), h2 = hash01(i, seed, 43);
+    return [x, y, z, h * Math.PI * 2, 0.9 + h2 * 0.2, i, hash01(i, 7, seed), 0.8 + hash01(i, 3, seed) * 0.4];
+  }
+  /** one plant's card record (far LOD) */
+  private recCard(i: number, x: number, y: number, z: number, spi: number, v: number, seed: number) {
+    const s = this.species[spi], spr = s.sprites[v], k = 0.92 + hash01(i, seed, 5) * 0.16, flat = s.arch === 'lily';
+    const stiff = s.tree ? 0.35 : flat ? 1 : 0.75 + hash01(i, seed, 9) * 0.4;
+    return [x, y, z, (hash01(i, seed, 13) < 0.5 ? 1 : -1) * (flat ? 2 : 1), spr.w * k, spr.h * k, hash01(i, seed, 17) * 6.28, stiff, spr.u0, spr.v0, spr.du, spr.dv, i, s.anim, 0.8 + hash01(i, seed, 19) * 0.45, this.isSmall(s) ? 2 : 1];
+  }
+  private buildPlants(inst: number[][]) {
+    const nc2 = this.nc * this.nc, sp = this.species, V = this.variants;
+    const per3d: number[][][][] = sp.map(() => Array.from({ length: V }, () => [] as number[][]));
+    const perCard: number[][] = [];
+    inst.forEach((p, i) => {
+      const c = this.chunk(p[0], p[2]), v = p[4] % V;
+      ((per3d[p[3]][v][c] ??= [])).push(...this.rec3d(i, p[0], p[1], p[2], 1));
+      (perCard[c] ??= []).push(...this.recCard(i, p[0], p[1], p[2], p[3], p[4], 1));
     });
-    g.setAttribute('iPos', new THREE.InstancedBufferAttribute(pos, 3));
-    g.setAttribute('iSize', new THREE.InstancedBufferAttribute(size, 2));
-    g.setAttribute('iRect', new THREE.InstancedBufferAttribute(rect, 4));
-    g.setAttribute('iAnim', new THREE.InstancedBufferAttribute(anim, 2));
-    const pa = new THREE.InstancedBufferAttribute(param, 4);
-    pa.setUsage(THREE.DynamicDrawUsage);
-    g.setAttribute('iParam', pa);
-    if (!detail) this.param = pa;
-    g.instanceCount = n;
-    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(this.region.N / 2, 5, this.region.N / 2), this.region.N);
-    const U = { ...this.U, uDetail: { value: detail ? 1 : 0 } };
-    const m = new THREE.MeshLambertMaterial({ map: this.atlas.tex, alphaTest: 0.5, side: THREE.DoubleSide });
-    m.onBeforeCompile = (sh) => {
-      Object.assign(sh.uniforms, U);
-      sh.vertexShader = sh.vertexShader
-        .replace('#include <common>', '#include <common>\n' + VERT_PARS)
-        .replace('#include <beginnormal_vertex>', 'vec3 objectNormal = normalize(vec3(0.0, 1.0, 0.0) + uCamBack * 0.15);')
-        .replace('#include <begin_vertex>', VERT_BEGIN)
-        .replace('#include <uv_vertex>', UV_PATCH);
-      sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', `#include <common>
-uniform sampler2D uVis; uniform float uN, uTime; uniform vec3 uDark;
-varying float vWither; varying vec3 vBase; varying float vFlut;
-${SHADER_NOISE}
-${FOW_FN}`)
-        .replace('#include <map_fragment>', `${FLUTTER}
-diffuseColor *= sampledDiffuseColor;
-float glowA = sampledDiffuseColor.a;
-vec3 glowC = sampledDiffuseColor.rgb;
-float lumW = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
-diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumW) * vec3(0.62, 0.5, 0.36), vWither * 0.85);`)
-        .replace('#include <alphatest_fragment>', 'if (diffuseColor.a < 0.5) discard;')
-        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\nif (glowA < 0.98) totalEmissiveRadiance += glowC * 1.3 * (1.0 - vWither);\ntotalEmissiveRadiance += diffuseColor.rgb * 0.22;')
-        .replace('#include <dithering_fragment>', '#include <dithering_fragment>\ngl_FragColor.rgb = applyFow(gl_FragColor.rgb, vBase);');
-    };
-    m.customProgramCacheKey = () => 'oddworld-flora';
-    gbuf(m, 0);
-    const mesh = new THREE.Mesh(g, m);
-    mesh.frustumCulled = false;
-    mesh.receiveShadow = true;
-    mesh.name = detail ? 'flora-detail' : 'flora';
-    if (!detail) {
-      const dm = new THREE.MeshDepthMaterial({ map: this.atlas.tex, alphaTest: 0.5, depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide });
-      dm.onBeforeCompile = (sh) => {
-        Object.assign(sh.uniforms, U);
-        sh.vertexShader = sh.vertexShader
-          .replace('#include <common>', '#include <common>\n' + VERT_PARS)
-          .replace('#include <begin_vertex>', VERT_BEGIN)
-          .replace('#include <uv_vertex>', UV_PATCH);
-      };
-      dm.customProgramCacheKey = () => 'oddworld-flora-depth';
-      mesh.customDepthMaterial = dm;
-    }
-    return mesh;
+    let tris = 0;
+    sp.forEach((s, si) => {
+      this.p3d[si] = []; this.pGeo[si] = [];
+      const bset = bladeSetOf(s.forms ?? []);
+      const [flex, pushK] = BENDS[s.arch] ?? [0.2, 0.5];
+      const shadow = s.tree || s.hmax > 1.05 || s.arch === 'shrub';
+      for (let v = 0; v < V; v++) {
+        const form = s.forms?.[v], h = s.heights?.[v] ?? s.hmax, seed = this.region.seed * 131 + si * 17 + v;
+        const pgs: PlantGeo[] = [];
+        if (form) { pgs.push(meshPlant(form, s, this.tex, seed, bset, 0), meshPlant(form, s, this.tex, seed, bset, 1)); s.forms![v] = null; }
+        else {
+          const pg = s.arch === 'barrel' ? meshBarrel(s, h, this.tex, seed) : s.arch === 'crystalbloom' ? meshCrystal(s, h, this.tex, seed, this.region.pal) : meshLily(s, h, this.tex, seed);
+          pgs.push(pg, pg);
+        }
+        this.pGeo[si][v] = pgs; this.p3d[si][v] = [];
+        pgs.forEach((pg, lod) => {
+          tris += pg.tris;
+          const small = this.isSmall(s);
+          const { mat, depth } = plant3dMaterial(this.U, this.tex.tex, { uH: pg.H, uFlex: flex, uPushK: pushK, uBob: s.arch === 'lily' ? 1 : 0, lod: lod ? (small ? this.U.uLodBs : this.U.uLodB) : this.U.uLodA });
+          const b = new Batch(`flora3d:${s.arch}:${v}:${lod}`, pg.geo, mat, shadow ? depth : null, 8, I3D, per3d[si][v], nc2, 24);
+          this.p3d[si][v][lod] = b; this.all.push(b);
+        });
+      }
+    });
+    this.stats.tris3d = tris;
+    const { mat, depth } = cardMaterial(this.U, this.atlas.tex, false, true);
+    this.pCards = new Batch('flora-cards', cardGeo(4), mat, depth, 16, ICARD, perCard, nc2, SPARE);
+    this.all.push(this.pCards);
   }
 
-  /** camera basis for the cards (call each frame before rendering) */
+  // ---------------------------------------------------------------- ground cover
+  private buildGround(det: number[][]) {
+    const nc2 = this.nc * this.nc, info = this.atlas.detailInfo, pal = this.region.pal;
+    const forms: { key: string; form: GroundForm; v: number; per: number[][] }[] = [];
+    const formIdx = new Map<string, number>();
+    const farCards: number[][] = [], alwaysCards: number[][] = [];
+    const r = new Rand(this.region.seed ^ 0xd7);
+    det.forEach((p, j) => {
+      const gi = info[p[3]], s = this.atlas.detail[p[3]], c = this.chunk(p[0], p[2]);
+      const g3 = GROUND3D[gi.kind];
+      const k = r.range(0.85, 1.15), stiff = (STIFF[gi.kind] ?? 1) * r.range(0.75, 1.3);
+      const L = ((g3 ? farCards : alwaysCards)[c] ??= []);
+      L.push(p[0], p[1], p[2], (r.chance(0.5) ? 1 : -1) * (gi.flat ? 2 : 1), s.w * k, s.h * k, r.range(0, 6.28), stiff, s.u0, s.v0, s.du, s.dv, -1, 0, r.range(0.8, 1.25), g3 ? 3 : 0);
+      if (!g3) return;
+      const [form, nv] = g3, v = gi.kind === 'flower' ? (hash01(gi.tint, 3, this.region.seed) * 4) | 0 : (p[3] + j) % nv;
+      const key = form + v;
+      let fi = formIdx.get(key);
+      if (fi === undefined) { fi = forms.length; formIdx.set(key, fi); forms.push({ key, form, v, per: [] }); }
+      const tint = gi.kind === 'flower' ? gi.tint % 8 : 0;
+      (forms[fi].per[c] ??= []).push(p[0], p[1], p[2], r.range(0, 6.2832), k, -1, tint + r.range(0, 0.999), r.range(0.75, 1.3));
+    });
+    for (const f of forms) {
+      const pg = meshGround(f.form, f.v, this.tex, pal, this.region.seed);
+      const flex = f.form === 'mush' ? 0.02 : f.form === 'clover' ? 0.12 : f.form === 'fern' ? 0.3 : f.form === 'flower' ? 0.38 : 0.55;
+      const pushK = f.form === 'mush' ? 0.15 : f.form === 'clover' ? 0.5 : 1;
+      const { mat } = plant3dMaterial(this.U, this.tex.tex, { uH: pg.H, uFlex: flex, uPushK: pushK, uGround: true, lod: this.U.uLodG });
+      const b = new Batch(`ground3d:${f.key}`, pg.geo, mat, null, 8, I3D, f.per, nc2);
+      this.g3d.push(b); this.all.push(b);
+      this.stats.tris3d += pg.tris;
+    }
+    const cg = cardGeo(2);
+    const far = cardMaterial(this.U, this.atlas.tex, true, false);
+    this.gFar = new Batch('ground-cards', cg, far.mat, null, 16, ICARD, farCards, nc2);
+    const alw = cardMaterial(this.U, this.atlas.tex, true, false);
+    this.gAlways = new Batch('ground-decals', cg, alw.mat, null, 16, ICARD, alwaysCards, nc2);
+    this.all.push(this.gFar, this.gAlways);
+  }
+
+  // ---------------------------------------------------------------- per frame
+  /** camera basis for the cards, LOD chunk lists, physics field (call each frame before rendering) */
   update(t: number, cam: THREE.Camera) {
+    const dt = this.lastT < 0 ? 1 / 60 : Math.max(0, Math.min(0.1, t - this.lastT));
+    this.lastT = t;
     this.U.uTime.value = t;
     const e = cam.matrixWorld.elements;
     const right = this.U.uCamRight.value as THREE.Vector3, back = this.U.uCamBack.value as THREE.Vector3;
@@ -370,13 +404,72 @@ diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumW) * vec3(0.62, 0.5, 0.36), vWi
     const lean = pitch * 0.62;
     this.U.uLean.value = lean;
     this.U.uHComp.value = 1 / Math.max(0.7, Math.cos(pitch - lean));
+    const cp = (this.U.uCamPos.value as THREE.Vector3).set(e[12], e[13], e[14]);
+    this.field.step(dt);
+    this.cull(cam as THREE.PerspectiveCamera, cp);
+    this.flushState();
   }
 
-  /** movers that part the plants: [x, z, radius, strength] */
-  setPush(list: [number, number, number, number][]) {
-    const arr = this.U.uPush.value as THREE.Vector4[];
-    for (let i = 0; i < 12; i++) { const p = list[i]; if (p) arr[i].set(p[0], p[1], p[2], p[3]); else arr[i].set(0, 0, 0, 0); }
+  private lists = { n0: new Int32Array(4096), n1: new Int32Array(4096), n1s: new Int32Array(4096), far: new Int32Array(4096), gNear: new Int32Array(4096), gFar: new Int32Array(4096), vis: new Int32Array(4096) };
+  private box = new THREE.Box3();
+  private cull(cam: THREE.PerspectiveCamera, cp: THREE.Vector3) {
+    cam.updateMatrixWorld();
+    this.pm.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    this.frustum.setFromProjectionMatrix(this.pm);
+    const nc = this.nc, L = this.lists, box = this.box, M = 2.5;
+    let n0 = 0, n1 = 0, n1s = 0, nF = 0, gN = 0, gF = 0, nV = 0;
+    let s0 = 17, s1 = 23, s1s = 29, sF = 31, sGN = 7, sGF = 11, sV = 3;
+    const mix = (h: number, c: number) => (Math.imul(h ^ (c + 0x9e37), 0x01000193) >>> 0);
+    for (let cz = 0; cz < nc; cz++) for (let cx = 0; cx < nc; cx++) {
+      const c = cz * nc + cx, y0 = this.chunkY[c * 2], y1 = this.chunkY[c * 2 + 1];
+      if (y0 > 1e8) continue;
+      // a margin for crowns overhanging the chunk, bending growth and shadows cast into view
+      const x0 = cx * CH, z0 = cz * CH, x1 = x0 + CH, z1 = z0 + CH;
+      box.min.set(x0 - M, y0 - 1.5, z0 - M); box.max.set(x1 + M, y1 + 7, z1 + M);
+      if (!this.frustum.intersectsBox(box)) continue;
+      const qx = Math.max(x0, Math.min(cp.x, x1)), qy = Math.max(y0, Math.min(cp.y, y1 + 3)), qz = Math.max(z0, Math.min(cp.z, z1));
+      const dmin = hyp(qx - cp.x, qy - cp.y, qz - cp.z) - M;
+      const fx = Math.abs(cp.x - x0) > Math.abs(cp.x - x1) ? x0 : x1, fz = Math.abs(cp.z - z0) > Math.abs(cp.z - z1) ? z0 : z1;
+      const dmax = hyp(fx - cp.x, cp.y - y0, fz - cp.z) + M;
+      L.vis[nV++] = c; sV = mix(sV, c);
+      if (dmin < LOD_NEAR[1]) { L.n0[n0++] = c; s0 = mix(s0, c); }
+      if (dmax > LOD_NEAR[0] && dmin < LOD_PLANT[1]) { L.n1[n1++] = c; s1 = mix(s1, c); }
+      if (dmax > LOD_NEAR[0] && dmin < LOD_SMALL[1]) { L.n1s[n1s++] = c; s1s = mix(s1s, c); }
+      if (dmax > LOD_SMALL[0]) { L.far[nF++] = c; sF = mix(sF, c); }
+      if (dmin < LOD_GROUND[1]) { L.gNear[gN++] = c; sGN = mix(sGN, c); }
+      if (dmax > LOD_GROUND[0]) { L.gFar[gF++] = c; sGF = mix(sGF, c); }
+    }
+    let drawn = 0, i3 = 0;
+    this.p3d.forEach((row, si) => { const small = this.isSmall(this.species[si]); for (const pair of row) {
+      pair[0].rebuild(L.n0, n0, s0);
+      if (small) pair[1].rebuild(L.n1s, n1s, s1s); else pair[1].rebuild(L.n1, n1, s1);
+      drawn += pair[0].count + pair[1].count; i3 += pair[0].count + pair[1].count;
+    } });
+    for (const b of this.g3d) { b.rebuild(L.gNear, gN, sGN); drawn += b.count; i3 += b.count; }
+    this.pCards.rebuild(L.far, nF, sF); this.gFar.rebuild(L.gFar, gF, sGF); this.gAlways.rebuild(L.vis, nV, sV);
+    drawn += this.pCards.count + this.gFar.count + this.gAlways.count;
+    this.stats.drawn = drawn; this.stats.inst3d = i3;
   }
+
+  /** triangles drawn by the flora this frame (colour pass), by group */
+  frameTris() {
+    const t = (b: Batch) => b.count * ((b.mesh.geometry.index?.count ?? 0) / 3);
+    let plants = 0, ground = 0, cards = 0;
+    for (const row of this.p3d) for (const pair of row) for (const b of pair) plants += t(b);
+    for (const b of this.g3d) ground += t(b);
+    cards = t(this.pCards) + t(this.gFar) + t(this.gAlways);
+    return { plants: Math.round(plants), ground: Math.round(ground), cards: Math.round(cards), draws: this.all.filter((b) => b.mesh.visible).length };
+  }
+
+  // ---------------------------------------------------------------- physics hooks
+  /** movers that part the plants: [x, z, radius, strength] (creatures, each frame) */
+  setPush(list: [number, number, number, number][]) { for (const p of list) this.field.push(p[0], p[1], p[2], p[3]); }
+  /** hold growth aside this frame (call every frame while something is there): s 0.3 brush .. 1 heavy (tramples) */
+  push(x: number, z: number, r: number, s: number) { this.field.push(x, z, r, s); }
+  /** one-off outward kick: explosions, thrown rocks landing (s 0.5 gust .. 3 blast; flattens above ~0.8) */
+  impulse(x: number, z: number, r: number, s: number) { this.field.impulse(x, z, r, s); }
+  /** how flattened the growth is at a point, 0..1 */
+  trampledAt(x: number, z: number) { return this.field.trampled(x, z); }
 
   // ---------------------------------------------------------------- simulation hooks
   near(x: number, z: number, rad: number, fn: (i: number, d2: number) => void) {
@@ -388,16 +481,24 @@ diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumW) * vec3(0.62, 0.5, 0.36), vWi
   }
   /** re-seat plants after the ground moved: they ride the earth up or down; drowned ones die back */
   reseat(x: number, z: number, rad: number) {
-    for (const g of [this.mesh.geometry, this.detail.geometry]) {
-      const pa = g.getAttribute('iPos') as THREE.InstancedBufferAttribute, a = pa.array as Float32Array;
-      for (let i = 0; i < pa.count; i++) {
-        const px = a[i * 3], pz = a[i * 3 + 2];
-        if ((px - x) ** 2 + (pz - z) ** 2 > rad * rad) continue;
-        a[i * 3 + 1] = this.region.heightAt(px, pz);
-      }
-      pa.needsUpdate = true;
+    const R = this.region, c0x = Math.floor((x - rad - 1) / CH), c1x = Math.floor((x + rad + 1) / CH), c0z = Math.floor((z - rad - 1) / CH), c1z = Math.floor((z + rad + 1) / CH);
+    for (const b of this.all) {
+      let hit = false;
+      b.forEach(c0x, c0z, c1x, c1z, this.nc, (a, o) => {
+        const px = a[o], pz = a[o + 2];
+        if ((px - x) ** 2 + (pz - z) ** 2 > rad * rad) return;
+        a[o + 1] = R.heightAt(px, pz); hit = true;
+      });
+      if (hit) b.dirty = true;
     }
-    this.near(x, z, rad, (i) => { if (this.region.heightAt(this.x[i], this.z[i]) < this.region.water - 0.05 && this.bio[i] > 0) { this.bio[i] = 0; this.setHealth(i); } });
+    for (let cz = Math.max(0, c0z); cz <= Math.min(this.nc - 1, c1z); cz++) for (let cx = Math.max(0, c0x); cx <= Math.min(this.nc - 1, c1x); cx++) {
+      const c = cz * this.nc + cx;
+      for (let zz = cz * CH; zz < (cz + 1) * CH; zz++) for (let xx = cx * CH; xx < (cx + 1) * CH; xx++) {
+        if (!R.inside(xx, zz)) continue;
+        const h = R.h[zz * R.N + xx]; this.chunkY[c * 2] = Math.min(this.chunkY[c * 2], h); this.chunkY[c * 2 + 1] = Math.max(this.chunkY[c * 2 + 1], h);
+      }
+    }
+    this.near(x, z, rad, (i) => { if (R.heightAt(this.x[i], this.z[i]) < R.water - 0.05 && this.bio[i] > 0) { this.bio[i] = 0; this.setHealth(i); } });
   }
   /** take up to amt (fraction of the plant); returns biomass gained */
   eat(i: number, amt: number): number {
@@ -408,11 +509,66 @@ diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumW) * vec3(0.62, 0.5, 0.36), vWi
     this.recovering.add(i);
     return take * this.species[this.sp[i]].food;
   }
-  private setHealth(i: number) {
-    const a = this.param.array as Float32Array;
-    a[i * 4 + 2] = this.bio[i];
-    this.param.addUpdateRange(i * 4 + 2, 1);
-    this.param.needsUpdate = true;
+  private sset(i: number, texel: number, ch: number, v: number) {
+    const o = (i * 2 + texel) * 4 + ch, b = Math.max(0, Math.min(255, Math.round(v)));
+    if (this.state[o] === b) return;
+    this.state[o] = b;
+    const row = ((i * 2 + texel) / STATE_W) | 0;
+    if (row < this.stateRows[0]) this.stateRows[0] = row;
+    if (row > this.stateRows[1]) this.stateRows[1] = row;
+  }
+  private flushState() {
+    const [a, b] = this.stateRows;
+    if (b < a) return;
+    const t = this.stateTex;
+    if (this.stateUp && b - a < 24) for (let r = a; r <= b; r++) t.addUpdateRange(r * STATE_W * 4, STATE_W * 4);
+    else t.clearUpdateRanges();
+    t.needsUpdate = true;
+    this.stateRows[0] = 1e9; this.stateRows[1] = -1;
+  }
+  private setHealth(i: number) { this.sset(i, 0, 0, this.bio[i] * 255); }
+
+  // ---------------------------------------------------------------- grafting, sowing, tinting (game/hive.ts)
+  private fac = new Uint8Array(0); private tintK = new Uint8Array(0);
+  private packB(i: number) {
+    if (this.fac.length <= i) { const f = new Uint8Array(this.x.length), k = new Uint8Array(this.x.length); f.set(this.fac); k.set(this.tintK); this.fac = f; this.tintK = k; }
+    this.sset(i, 1, 3, this.fac[i] * 64 + this.tintK[i]);
+  }
+  /** modified look: k 0..1 (sheathing climbs from the root), faction colour slot (0 Veyr, 1..3 rivals) */
+  setGraft(i: number, k: number, faction: number) {
+    this.packB(i); this.fac[i] = Math.max(0, Math.min(3, Math.round(faction))); this.packB(i);
+    this.sset(i, 0, 1, k * 255);
+  }
+  /** dissolve 0..1 (absorbed) */
+  setDissolve(i: number, k: number) { this.sset(i, 0, 2, k * 255); }
+  /** growth scale 0..1 (sown plants grow in) */
+  setGrow(i: number, k: number) { this.sset(i, 0, 3, k * 255); }
+  /** generic colour hook: blend the plant toward rgb (0xRRGGBB) by k 0..1 */
+  setTint(i: number, rgb: number, k: number) {
+    this.packB(i);
+    this.sset(i, 1, 0, (rgb >> 16) & 255); this.sset(i, 1, 1, (rgb >> 8) & 255); this.sset(i, 1, 2, rgb & 255);
+    this.tintK[i] = Math.max(0, Math.min(63, Math.round(k * 63))); this.packB(i);
+  }
+  /** take a plant out of the world for good */
+  remove(i: number) {
+    this.bio[i] = 0; this.setHealth(i); this.recovering.delete(i);
+    const c = this.cells.get((Math.floor(this.z[i] / 4) << 8) | Math.floor(this.x[i] / 4));
+    if (c) { const k = c.indexOf(i); if (k >= 0) c.splice(k, 1); }
+  }
+  /** plant a new instance of species `kind` (variant chosen by seed) in a spare slot; returns its index or -1 */
+  addPlant(kind: number, seed: number, x: number, z: number): number {
+    const sp = this.species[kind];
+    if (this.n >= this.x.length || !sp) return -1;
+    const i = this.n++, R = this.region, V = this.variants, v = ((seed % V) + V) % V;
+    const h = R.heightAt(x, z), ry = R.riverAt(x, z), y = R.isWater(x, z) ? (ry > 0 && h < ry + 0.05 ? ry : R.water) : h;
+    const c = this.chunk(x, z);
+    for (const b of this.p3d[kind][v]) b.add(c, this.rec3d(i, x, y, z, seed + 1));
+    this.pCards.add(c, this.recCard(i, x, y, z, kind, v % sp.sprites.length, seed + 1));
+    this.x[i] = x; this.z[i] = z; this.sp[i] = kind; this.bio[i] = 1;
+    this.sset(i, 0, 0, 255); this.sset(i, 0, 1, 0); this.sset(i, 0, 2, 0); this.sset(i, 0, 3, 255);
+    const key = (Math.floor(z / 4) << 8) | Math.floor(x / 4);
+    let cl = this.cells.get(key); if (!cl) this.cells.set(key, (cl = [])); cl.push(i);
+    return i;
   }
   /** regrowth tick */
   tick(dt: number) {
@@ -423,4 +579,14 @@ diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumW) * vec3(0.62, 0.5, 0.36), vWi
       if (this.bio[i] >= 1) this.recovering.delete(i);
     }
   }
+}
+
+/** a vertical card from x -0.5..0.5, y 0..1 with seg rows */
+function cardGeo(seg: number) {
+  const g = new THREE.BufferGeometry(), gp: number[] = [], gu: number[] = [], gi: number[] = [];
+  for (let k = 0; k <= seg; k++) { const y = k / seg; gp.push(-0.5, y, 0, 0.5, y, 0); gu.push(0, y, 1, y); if (k < seg) { const a = k * 2; gi.push(a, a + 1, a + 3, a, a + 3, a + 2); } }
+  g.setAttribute('position', new THREE.Float32BufferAttribute(gp, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(gu, 2));
+  g.setIndex(gi);
+  return g;
 }

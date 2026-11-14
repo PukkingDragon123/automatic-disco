@@ -1,5 +1,6 @@
-// The ordnance selector: a heavy machined revolver dial with the golem's nine field powers seated in brass
-// chambers around its rim. It turns with the mouse wheel, by dragging, by clicking a chamber or with the [ ] / , .
+// The ordnance selector: a heavy machined revolver dial with the golem's field powers seated in brass chambers
+// around its rim. Only installed powers (bought on the skill tree, see game/combat.ts powerOwned) get a chamber; a
+// new one is loaded into the cylinder with a clack. It turns with the mouse wheel, by dragging, by clicking a chamber or with the [ ] / , .
 // keys, ratcheting from detent to detent under a spring pawl. The chamber under the pawl is the selection: its
 // name, cost and readout print on the CRT above; the red mushroom button in the hub (or Enter / F, or the old
 // number keys) arms it. Lighting is computed in screen space every redraw, so the rim turns but the light stays.
@@ -11,14 +12,14 @@ import { Pix, GM, BR, RD, PH, AM, CR, HZ, INK, dv, text, mixc, hex } from './mac
 import { Gauge, Lamp, meterFace, place, steamVent, u } from './gadgets';
 import { WHEEL, DESC, wheelArt, descArt } from './hudArt';
 import { hashf } from '../limbo/core/rng';
+import { powerOwned } from '../game/combat';
 
 export interface WheelCtx { hive: Hive; arm(a: Ability): void; armed(): Ability | null }
 
-const ORDER: Ability[] = (Object.keys(ABILITIES) as Ability[]).sort((a, b) => +ABILITIES[a].key - +ABILITIES[b].key);
-const N = ORDER.length, STEP = (Math.PI * 2) / N;
+const ALL: Ability[] = (Object.keys(ABILITIES) as Ability[]).sort((a, b) => +ABILITIES[a].key - +ABILITIES[b].key);
 const SZ = WHEEL.ws, C = SZ / 2;
 const R_TOOTH = 61.6, R_ROOT = 58.2, R_KNURL = 52.6, R_HAZ0 = 18.5, R_HAZ1 = 23.5, R_CH = 37.6, R_LAMP = 51;
-const TEETH = N * 4;
+const TEETH = 36;
 const LX = -0.55, LY = -0.83; // light from the top left
 const wrap = (a: number) => { a %= Math.PI * 2; if (a > Math.PI) a -= Math.PI * 2; if (a < -Math.PI) a += Math.PI * 2; return a; };
 
@@ -127,6 +128,8 @@ export class AbilityWheel {
   private hover = -1; private dirty = true; private drawnAng = 99; private stateKey = ''; private t = 0;
   private wheelAcc = 0; private wheelT = 0; private flash = 0; private flashMsg = '';
   private settled = true; private lastArmed: Ability | null = null; private ptr: { x: number; y: number } | null = null;
+  /** the installed powers, in key order; chamber i holds order[i] */
+  private order: Ability[] = []; private n = 1; private step = Math.PI * 2; private ownKey = '';
 
   constructor(parent: HTMLElement, readonly c: WheelCtx) {
     precompute();
@@ -155,10 +158,7 @@ export class AbilityWheel {
     for (const x of [140, 154]) { const t = place(el('div', 'tube', this.root), x - 1, 66, 9, 20); this.tubes.push(t); }
     this.armLamp = new Lamp(this.root, 150, 102, 'r', 'off');
     steamVent(this.root, 153, 124, 7);
-    for (const a of ORDER) {
-      const n = iconCanvas(a, { shadow: true }), d = iconCanvas(a, { dim: true, shadow: true });
-      this.icons.push({ n: toCanvas(n), d: toCanvas(d) });
-    }
+    this.reload(true);
     // ---- input
     this.cv.addEventListener('pointerdown', (e) => this.down(e));
     this.cv.addEventListener('pointermove', (e) => this.move(e));
@@ -176,21 +176,45 @@ export class AbilityWheel {
   }
 
   // ------------------------------------------------------------------ controls
-  get current(): Ability { return ORDER[this.sel]; }
+  get current(): Ability { return this.order[this.sel]; }
+  /** load the cylinder with the installed powers (keeps the selection on the same power where it can) */
+  private reload(first = false) {
+    const prev = this.order[this.sel];
+    const next = ALL.filter((a) => powerOwned(a));
+    const added = first ? [] : next.filter((a) => !this.order.includes(a));
+    this.order = next; this.n = Math.max(1, next.length); this.step = (Math.PI * 2) / this.n;
+    this.ownKey = next.join(',');
+    this.icons = next.map((a) => ({ n: toCanvas(iconCanvas(a, { shadow: true })), d: toCanvas(iconCanvas(a, { dim: true, shadow: true })) }));
+    let i = added.length ? next.indexOf(added[0]) : prev ? next.indexOf(prev) : 0;
+    if (i < 0) i = 0;
+    this.sel = i; this.ang = this.target = i * this.step; this.vel = 0; this.lastDet = Math.floor(this.ang / (this.step / 2) + 0.5);
+    this.hover = -1; this.dirty = true;
+    if (added.length) {
+      this.flash = 2.2; this.flashMsg = 'LOADED: ' + ABILITIES[added[0]].name.toUpperCase();
+      this.vel = 9; this.settled = false; this.showDesc();
+      sfx('crack', 0.5, 0.5); sfx('hit', 0.6, 0.4);
+      this.root.classList.remove('kick'); void this.root.offsetWidth; this.root.classList.add('kick');
+    }
+  }
   /** turn by n detents (positive = clockwise = next) */
   turn(n: number) {
     const armed = this.c.armed();
     if (armed && armed === this.current) this.c.arm(armed);
+    if (!this.order.length) return;
+    const N = this.n;
     this.sel = (((this.sel + n) % N) + N) % N;
-    this.target += n * STEP;
+    this.target += n * this.step;
     this.settled = false; this.showDesc();
   }
   select(i: number) {
+    const N = this.n;
     let d = i - this.sel; if (d > N / 2) d -= N; if (d < -N / 2) d += N;
     if (d) this.turn(d);
   }
   trigger() {
-    const a = this.current, why = this.c.hive.can(a);
+    const a = this.current;
+    if (!a) { sfx('deny'); this.flash = 1.4; this.flashMsg = 'NO POWERS INSTALLED'; this.crt.classList.remove('err'); void this.crt.offsetWidth; this.crt.classList.add('err'); return; }
+    const why = this.c.hive.can(a);
     this.showDesc();
     if (why && this.c.armed() !== a) {
       sfx('deny'); this.flash = 1.4; this.flashMsg = why.toUpperCase(); this.gauge.kick(-1.5);
@@ -219,7 +243,7 @@ export class AbilityWheel {
   private local(e: PointerEvent) { const r = this.cv.getBoundingClientRect(); return { x: ((e.clientX - r.left) / r.width) * SZ, y: ((e.clientY - r.top) / r.height) * SZ }; }
   private chamberAt(x: number, y: number) {
     let best = -1, bd = 12.5;
-    for (let i = 0; i < N; i++) { const a = this.ang - i * STEP, px = C + Math.sin(a) * R_CH, py = C - Math.cos(a) * R_CH, d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; best = i; } }
+    for (let i = 0; i < this.order.length; i++) { const a = this.ang - i * this.step, px = C + Math.sin(a) * R_CH, py = C - Math.cos(a) * R_CH, d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; best = i; } }
     return best;
   }
   private down(e: PointerEvent) {
@@ -259,13 +283,13 @@ export class AbilityWheel {
   }
   /** after a drag: settle into the nearest detent */
   private snap() {
-    const k = Math.round(this.ang / STEP);
-    this.target = k * STEP;
+    const k = Math.round(this.ang / this.step), N = this.n;
+    this.target = k * this.step;
     this.sel = ((k % N) + N) % N;
     this.settled = false; this.showDesc();
   }
   private showDesc(i = -1) {
-    const a = ORDER[i >= 0 ? i : this.sel];
+    const a = this.order[i >= 0 ? i : this.sel] ?? '';
     this.descT = 4.5;
     if (this.descShown !== a) { this.descShown = a; this.typed = 0; }
   }
@@ -274,8 +298,11 @@ export class AbilityWheel {
   update(dt: number) {
     this.t += dt;
     const h = this.c.hive, armed = this.c.armed();
+    // the skill tree installed (or a load removed) a power: reload the cylinder
+    if (ALL.filter((a) => powerOwned(a)).join(',') !== this.ownKey) this.reload();
+    const N = this.n, STEP = this.step, ORDER = this.order;
     // a number key or the command card armed something: swing the dial round to it
-    if (armed !== this.lastArmed) { this.lastArmed = armed; if (armed && armed !== this.current && !this.drag) { const i = ORDER.indexOf(armed); let d = i - this.sel; if (d > N / 2) d -= N; if (d < -N / 2) d += N; this.sel = i; this.target += d * STEP; this.settled = false; this.showDesc(); } }
+    if (armed !== this.lastArmed) { this.lastArmed = armed; if (armed && armed !== this.current && !this.drag) { const i = Math.max(0, ORDER.indexOf(armed)); let d = i - this.sel; if (d > N / 2) d -= N; if (d < -N / 2) d += N; this.sel = i; this.target += d * STEP; this.settled = false; this.showDesc(); } }
     // spring into the detent, a little overshoot for weight
     if (!this.drag) {
       const k = 260, damp = 21;
@@ -304,6 +331,21 @@ export class AbilityWheel {
     const st2 = st + (blinks ? Math.floor(this.t * 2.5) % 2 : '');
     if (st2 !== this.stateKey) { this.stateKey = st2; this.dirty = true; }
     if (this.dirty) { this.render(armed); this.dirty = false; this.drawnAng = this.ang; }
+    // nothing installed yet: a dead button, an empty cylinder and a note on the CRT
+    if (!ORDER.length) {
+      this.fire.dataset.st = 'dead'; this.armLamp.set('off', 'r');
+      for (const t of this.tubes) t.dataset.st = 'warm';
+      const cap0 = 60 + h.emLevel * 40; this.gauge.set(h.res.charge / cap0); this.gauge.marks = []; this.gauge.red = false; this.gauge.update(dt);
+      this.flash = Math.max(0, this.flash - dt);
+      if (this.nameEl.textContent !== 'NO FIELD POWERS') this.nameEl.textContent = 'NO FIELD POWERS';
+      const c0 = this.flash > 0 ? `<span class="bad">${this.flashMsg}</span>` : 'SKILL TREE &middot; GRAVITY';
+      if (this.costEl.innerHTML !== c0) this.costEl.innerHTML = c0;
+      this.descT -= dt;
+      this.desc.classList.toggle('open', this.descT > 0);
+      const html = '<div class="dt-h">&gt; CYLINDER EMPTY</div><div class="dt-b">No field powers installed. Buy Telekinesis, Gravity Slam, Repulse and the rest on the skill tree to load them here.</div>';
+      if (this.descTxt.innerHTML !== html) this.descTxt.innerHTML = html;
+      return;
+    }
     // fire button state
     const a = this.current, why = h.can(a);
     this.fire.dataset.st = armed === a ? 'armed' : why ? 'dead' : 'idle';
@@ -317,10 +359,10 @@ export class AbilityWheel {
     // CRT name + cost
     this.flash = Math.max(0, this.flash - dt);
     const shown = this.hover >= 0 && !this.drag ? ORDER[this.hover] : this.drag ? ORDER[(((Math.round(this.ang / STEP)) % N) + N) % N] : a;
-    const sd = ABILITIES[shown];
-    const nm = `${sd.key} ${sd.name.toUpperCase()}`;
+    const sd = shown ? ABILITIES[shown] : null;
+    const nm = sd ? `${sd.key} ${sd.name.toUpperCase()}` : 'NO FIELD POWERS';
     if (this.nameEl.textContent !== nm) { this.nameEl.textContent = nm; this.crt.classList.remove('roll'); void this.crt.offsetWidth; this.crt.classList.add('roll'); }
-    const cost = this.flash > 0 ? `<span class="bad">${this.flashMsg}</span>` : armed === shown ? '<span class="arm">ARMED &middot; CLICK TARGET</span>' : this.costLine(shown);
+    const cost = this.flash > 0 ? `<span class="${this.flashMsg.startsWith('LOADED') ? 'arm' : 'bad'}">${this.flashMsg}</span>` : armed === shown ? '<span class="arm">ARMED &middot; CLICK TARGET</span>' : this.costLine(shown);
     if (this.costEl.innerHTML !== cost) this.costEl.innerHTML = cost;
     // the readout tray
     this.descT -= dt;
@@ -348,6 +390,7 @@ export class AbilityWheel {
 
   // ------------------------------------------------------------------ the pixels
   private render(armed: Ability | null) {
+    const N = this.order.length, STEP = this.step, ORDER = this.order;
     const { r: RR, th: TH, scratch, lit: LIT, face: FACE } = pre!, D = this.img.data, ang = this.ang, h = this.c.hive;
     const cosA = Math.cos(-ang), sinA = Math.sin(-ang);
     const put = (i: number, c: number) => { D[i * 4] = (c >> 16) & 255; D[i * 4 + 1] = (c >> 8) & 255; D[i * 4 + 2] = c & 255; D[i * 4 + 3] = 255; };
