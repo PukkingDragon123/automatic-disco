@@ -103,7 +103,6 @@ function style() {
 
 /** the carrier's placement and the light (the world is in metres; the ship is 180 m long) */
 const SHIP_YAW = 0.62;                                   // her bow swings toward the camera, a little right
-const SHIP_C = new V3(0, 4, -4);                         // her middle, ship-local
 const VIEW = new V3(0.05, 0.2, 0.98).normalize();        // from the ship toward the camera
 const SUN_L = new V3(-0.72, 0.52, 0.16).normalize();     // toward the sun, ship-local: the port side, raking
 const WORD_D = 165;                                      // how far in front of the camera the words float
@@ -141,7 +140,7 @@ export class MenuScreen implements Screen {
     const sroot = this.ship.carrier.ship.root;
     this.ship.carrier.ship.sun.position.copy(SUN_L).multiplyScalar(220);
     this.ship.group.updateMatrixWorld(true);
-    this.shipW.copy(SHIP_C).applyMatrix4(sroot.matrixWorld);
+    this.ship.bounds.getCenter(this.shipW).applyMatrix4(sroot.matrixWorld);
     // space: the galaxy band, nebulae, twinkling stars, dust drifting through the near field
     const sunW = SUN_L.clone().applyAxisAngle(new V3(0, 1, 0), SHIP_YAW);
     this.scene.add(makeSpace({ stars: 2800, radius: 4200, sun: sunW, dust: 300, dustR: [60, 420], nebula: true }).group);
@@ -235,10 +234,18 @@ export class MenuScreen implements Screen {
     r.fov = portrait ? 46 : 36;
     const tanV = Math.tan(THREE.MathUtils.degToRad(r.fov / 2));
     // distance so the ship's ~150 m of length fills the share of the width it is given
-    const share = portrait ? 0.95 : 0.6, dist = 150 / share / (2 * tanV * a);
-    r.look.copy(this.shipW); r.pos.copy(this.shipW).addScaledVector(VIEW, Math.max(190, dist));
-    const fwd = r.look.clone().sub(r.pos).normalize();
+    // fit the hull: its extent across and up the view (the corners of its boxes), given a share of the frame
+    const fwd = VIEW.clone().negate();
     r.right.crossVectors(fwd, new V3(0, 1, 0)).normalize(); r.up.crossVectors(r.right, fwd).normalize();
+    const b = this.ship.bounds, m = this.ship.carrier.ship.root.matrixWorld, c = new V3();
+    let ex0 = 1e9, ex1 = -1e9, ey0 = 1e9, ey1 = -1e9;
+    for (let i = 0; i < 8; i++) {
+      c.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z).applyMatrix4(m).sub(this.shipW);
+      const u = c.dot(r.right), v = c.dot(r.up); ex0 = Math.min(ex0, u); ex1 = Math.max(ex1, u); ey0 = Math.min(ey0, v); ey1 = Math.max(ey1, v);
+    }
+    const share = portrait ? 0.95 : 0.58, hShare = portrait ? 0.4 : 0.66;
+    const dist = Math.max((ex1 - ex0) / share / (2 * tanV * a), (ey1 - ey0) / hShare / (2 * tanV));
+    r.look.copy(this.shipW); r.pos.copy(this.shipW).addScaledVector(VIEW, Math.max(150, dist));
     // slide the camera so the ship sits where it should on screen (left of centre; high up in portrait)
     const D = r.pos.distanceTo(this.shipW), hy = D * tanV, hx = hy * a;
     const sx = portrait ? 0 : -0.36, sy = portrait ? 0.42 : 0.08;

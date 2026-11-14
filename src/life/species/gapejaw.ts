@@ -17,7 +17,6 @@ export const gapejaw: SpeciesFn = (d, rig) => {
     },
     parts: [
       { k: 'warts', n: 70, size: 0.07, c: sh(base, 1) },
-      { k: 'warts', n: 6, size: 0.18, c: sh(acc, -1) },
     ],
   };
 };

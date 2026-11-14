@@ -4,8 +4,8 @@
 import * as THREE from 'three';
 import { buildPlantObject, floraSpeciesFor } from '../../world/floraObject';
 import type { BiomeKey } from '../../world/region';
-export { TITANS, isTitan, sculptTitan, type TitanSculpt } from './builders';
-export { titanModel, TITAN_BUILD } from './async';
+export { TITANS, isTitan, sculptTitan, isAnatomy, sculptAnatomy, type TitanSculpt } from './builders';
+export { titanModel, anatomyModel, quickModel, TITAN_BUILD } from './async';
 
 /** where a titan carries growth (the Grovebacker's grove): a bone, the seat's offset from that bone's rest position,
  *  the ground's up direction, the plant's intended height (m) and its age class. Read from geo.userData.grove. */

@@ -309,6 +309,7 @@ export class Calendar extends Prop {
     const b = this.body;
     this.card.add(mesh(box(19, 25, 0.8), M('cream'), 0, 0, 0));
     this.page = new LiveDecal(17, 23, { flat: 0.55 });
+    this.page.mesh.position.z = 0.7;
     this.card.add(this.page.mesh);
     this.card.add(mesh(box(19, 2, 1.6), M('steel', { spec: 1 }), 0, 12.4, 0.2));
     this.card.position.set(0, 11.5, 0); this.card.rotation.x = -0.18;

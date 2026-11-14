@@ -116,7 +116,7 @@ export function legRings(kind: LegKind, fore: boolean, r: number, tj: number[], 
 
 /** the foot at the sole of a leg of a kind */
 export function legFoot(kind: LegKind, fore: boolean, r: number, o: { toes?: number; claw?: number; web?: number; small?: boolean } = {}): FootSpec {
-  const ta = o.small ? 6 : 8, cl = o.claw ?? 1;
+  const ta = 6, cl = o.claw ?? 1;
   const fan = (n: number, spread: number, len: number, tr: number, claw: number, curl: number, drop = 0.2): ToeSpec[] => Array.from({ length: n }, (_, i) => { const f = n === 1 ? 0 : i / (n - 1) - 0.5; return { a: f * spread * 2, len: len * (1 - Math.abs(f) * 0.5), r: tr * (1 - Math.abs(f) * 0.25), claw: claw * (1 - Math.abs(f) * 0.3), curl, drop }; });
   switch (kind) {
     case 'paw': {

@@ -138,7 +138,7 @@ export function limb(s: LimbSpec): LimbOut {
     const cl = t.claw, cr = t.r * (ft.nail === 'nail' ? 1.0 : ft.nail === 'hoof' ? 1.05 : 0.7), curl = t.curl ?? (ft.nail === 'claw' ? 0.6 : 0.15);
     const c0 = add(add(base, scl(dir, tipD * 0.62)), scl(upn, t.r * 0.25));
     const cr2: Ring[] = [];
-    const n = 5;
+    const n = TA <= 6 ? 4 : 5;
     for (let k = 0; k < n; k++) {
       const f = k / (n - 1), bend = curl * f * f;
       const c = add(add(c0, scl(dir, (tipD * 0.42 + cl) * f * (1 - bend * 0.25))), scl(upn, -cl * bend * 0.9 + t.r * 0.25 * Math.sin(f * Math.PI) * (ft.nail === 'claw' ? 1 : 0.4)));

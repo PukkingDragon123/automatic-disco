@@ -171,8 +171,11 @@ body.p3 { --crt-filter: grayscale(1) sepia(1) saturate(3.4) hue-rotate(-14deg) b
 .hud-dialog .dlg-pf, .hud-dialog .dlg-r, .hud-obj, .tip, .toast { filter: var(--crt-filter); }
 .hud-dialog .dlg-r { background: radial-gradient(ellipse at 50% 45%, #13241a 0%, #0b1610 60%, #070e0a 100%); border-radius: calc(3px * var(--s)); }
 .knob { position: absolute; image-rendering: pixelated; cursor: ns-resize; }
+/* Calder's shortwave set: a Bakelite radio housing (the desk's radio has no painted plate any more) */
+.hud-dialog .dlg { background: linear-gradient(180deg, #4a3022 0, #3a2418 calc(3px * var(--s)), #2a1c15 100%) !important; border-radius: calc(4px * var(--s));
+  box-shadow: inset 0 0 0 calc(1px * var(--s)) #5c3e2e, inset 0 0 0 calc(2px * var(--s)) #120c09, 0 calc(2px * var(--s)) 0 rgba(10, 8, 4, 0.55); }
 /* Calder's shortwave set and the field notes sit above the desk */
-.hud > .hud-dialog { left: 8px; bottom: calc(var(--desk-h, 0px) + 8px); z-index: 3; --s: var(--tf); }
+.hud > .hud-dialog { left: 8px; bottom: calc(var(--desk-wl, var(--desk-h, 0px)) + 8px); z-index: 3; --s: var(--tf); }
 .hud > .hud-obj { right: 8px; top: 34px; z-index: 3; --s: var(--tf); }
 body[data-desk-mode='bio'] .hud > .hud-obj, body[data-desk-mode='build'] .hud > .hud-obj { display: none !important; }
 

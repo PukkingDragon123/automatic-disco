@@ -8,7 +8,7 @@ export const knuckler: SpeciesFn = (d, rig) => {
   const W = rig.dims.W, base = rs(d.colors.base), belly = rs(d.colors.belly), eye = rs(d.colors.eye);
   return {
     trunk: { chest: [0.54, 0.66, 0.72], barrel: [0.5, 0.58, 0.62], waist: [0.42, 0.46, 0.46], hips: [0.4, 0.42, 0.4], prof: ['shoulder', 'barrel', 'sag', 'hips'], hump: 0.25, neck: { r0: 1.2, r1: 0.9 }, tail: { r0: 0.3, taper: 0.6 } },
-    head: { skull: 'brute', len: 0.95, wid: 1.15, hgt: 1.0, muzzle: 0.9, eyes: { r: 0.1, pupil: 'round', iris: eye, fwd: 0.65, lid: 0.2 }, ears: { len: 0.24, wid: 0.2, up: 0.5, out: 1, back: 0.6, cup: 0.6 }, nose: 'leather', teeth: { canine: 0.34, incisors: true }, tongue: 'plain' },
+    head: { skull: 'brute', len: 0.95, wid: 1.15, hgt: 1.0, muzzle: 0.9, eyes: { r: 0.1, pupil: 'round', iris: eye, fwd: 0.65, lid: 0.2 }, ears: { len: 0.24, wid: 0.2, up: 0.5, out: 1, back: 0.6, cup: 0.6 }, nose: 'leather', teeth: { canine: 0.24, incisors: true }, tongue: 'plain' },
     legs: { fore: { kind: 'knuckle', r: 1.9 }, hind: { kind: 'bear', r: 0.95, claw: 0.8 } },
     coat: {
       base, belly, bellyArc: 0.9,

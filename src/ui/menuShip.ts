@@ -42,6 +42,8 @@ export interface MenuCarrier {
   group: THREE.Group; carrier: Carrier;
   /** the ship's frame and hull boxes, for the apple's bounces (world matrices, refreshed by update) */
   boxes: { half: THREE.Vector3; m: THREE.Matrix4; inv: THREE.Matrix4; c: THREE.Vector3 }[];
+  /** the hull's extent, ship-local (from the same boxes), for framing the shot */
+  bounds: THREE.Box3;
   update(dt: number, t: number): void;
   dispose(): void;
 }
@@ -70,9 +72,11 @@ export function buildMenuCarrier(): MenuCarrier {
     return { g: s.g, path, dur, t: -delay, wait: 0, nav: s.nav, glow: s.glow, inbound };
   });
   const boxes = HULL_BOXES.map(([x, y, z, hx, hy, hz]) => ({ half: new V3(hx, hy, hz), m: new THREE.Matrix4(), inv: new THREE.Matrix4(), c: new V3(x, y, z) }));
+  const bounds = new THREE.Box3();
+  for (const [x, y, z, hx, hy, hz] of HULL_BOXES) bounds.union(new THREE.Box3(new V3(x - hx, y - hy, z - hz), new V3(x + hx, y + hy, z + hz)));
   const tan = new V3(), look = new V3(), mL = new THREE.Matrix4();
   return {
-    group, carrier, boxes,
+    group, carrier, boxes, bounds,
     update(dt, t) {
       carrier.update(dt);
       ship.root.updateMatrixWorld();

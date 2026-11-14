@@ -60,6 +60,7 @@ export class Desk {
   /** the touch layout: thumb pads on the strip's ends (ui/touch.ts docks its hit areas over them) */
   pads: Pads | null = null; touch = false;
   padState: Parameters<Pads['update']>[1] = null;
+  private boardHolder!: THREE.Group;
   private extras = new THREE.Group(); private menuLabel!: THREE.Object3D;
   // ---- interaction
   readonly hots: Hot[] = [];
@@ -196,11 +197,12 @@ export class Desk {
     // SURVEY: the orrery, the calendar, the binoculars and the overlay lens on the left; the table on the right
     this.put('L', 'survey', this.orrery.root, -66, -28, 0, 1.25);
     this.put('L', 'survey', P.cal.root, -28, -34);
+    P.cal.show('bloom', 'Bloom', 1); // until the almanac turns its first page
     this.put('L', 'survey', P.bino.root, 8, -14);
     this.put('L', 'survey', P.lens.root, 44, -26);
     // the inspection clipboard rides on the strip, left of centre
     this.board.root.position.set(-62, 0, 0);
-    const bh = new THREE.Group(); bh.position.set(0, RAIL_Y + 30, RAIL_Z - 2); bh.rotation.x = -0.32; bh.add(this.board.root);
+    const bh = new THREE.Group(); bh.position.set(0, RAIL_Y + 66, RAIL_Z - 8); bh.rotation.x = -0.32; bh.add(this.board.root); this.boardHolder = bh;
     this.strip.add(bh);
     void label; void decal;
   }
@@ -319,6 +321,8 @@ export class Desk {
   setMode(m: Mode) {
     if (m === this.mode) return;
     this.mode = m;
+    // the clipboard rides left of centre on the bare strip, in the gap between the wings when they are up
+    this.board.root.position.x = m === 'explore' ? -62 : this.touch ? -40 : 0;
     // the table travels: on the left in COMMAND, on the right in SURVEY
   }
   /** the wings sink, swap and rise; the holo table moves to whichever wing the mode puts it on */

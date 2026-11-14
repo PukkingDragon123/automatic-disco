@@ -21,6 +21,8 @@ import { duskwing } from './duskwing';
 import { gapejaw } from './gapejaw';
 
 export type SpeciesFn = (d: Design, rig: Rig) => VertSpec;
+/** the recipe a design is built from: its bestiary species', or none (the old sculptor) */
+export const recipeFor = (d: Design): SpeciesFn | undefined => (d.beast && SPECIES[d.beast] ? SPECIES[d.beast] : undefined);
 export const SPECIES: Record<string, SpeciesFn> = { mossback, stiltwool, lancehorn, scaleback, gallowneck, shellhunter, fanfin, gillnewt, woolpuff, spiracle, ribbon, reedneck, knuckler, duskwing, gapejaw };
 
 export { rs, sh } from './util';

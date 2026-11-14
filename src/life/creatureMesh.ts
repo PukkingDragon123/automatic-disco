@@ -6,30 +6,38 @@ import type { Design } from './design';
 import { gbuf, type GFlag } from '../gfx/gbuf';
 import { VEYR } from '../world/palette';
 import { sculpt } from './sculpt';
-import { growGrove, isTitan, titanModel, TITAN_BUILD } from './titans';
+import { growGrove, isAnatomy, anatomyModel, TITAN_BUILD } from './titans';
 import type { Upgradable } from './titans/async';
 
 export interface SpeciesModel {
   rig: Rig; geo: THREE.BufferGeometry; tex: THREE.DataTexture; inverses: THREE.Matrix4[];
   depthMat: THREE.MeshDepthMaterial; restWorld: V3[];
+  /** the far level of detail (anatomy models: the quick build's cages in flat stepped colours) */
+  far?: { geo: THREE.BufferGeometry; tex: THREE.DataTexture; depthMat: THREE.MeshDepthMaterial };
 }
 
 export function buildSpeciesModel(d: Design): SpeciesModel {
   const rig = buildRig(d);
   const restWorld: V3[] = rig.bones.map(() => [0, 0, 0]);
   rig.bones.forEach((bn, i) => { const p = bn.parent >= 0 ? restWorld[bn.parent] : [0, 0, 0] as V3; restWorld[i] = [p[0] + bn.pos[0], p[1] + bn.pos[1], p[2] + bn.pos[2]]; });
-  // titans build their full model in a worker: a placeholder silhouette now, upgraded in place when it lands
+  // anatomy models (titans, recipe species) build their full model in a worker: a placeholder now, upgraded in place
+  // when it lands, the placeholder kept as the far LOD
   let model: SpeciesModel | null = null;
-  const titan = isTitan(d);
-  const { geo, tex } = titan ? titanModel(d, rig, restWorld, () => model as unknown as Upgradable) : sculpt(d, rig, restWorld);
+  const anat = isAnatomy(d);
+  const built = anat ? anatomyModel(d, rig, restWorld, () => model as unknown as Upgradable) : sculpt(d, rig, restWorld);
+  const { geo, tex } = built;
   const inverses = restWorld.map((p) => new THREE.Matrix4().makeTranslation(-p[0], -p[1], -p[2]));
   const depthMat = new THREE.MeshDepthMaterial({ map: tex, alphaTest: 0.5, depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide });
-  model = { rig, geo, tex, inverses, depthMat, restWorld };
-  if (titan && TITAN_BUILD.mode === 'async') (model as unknown as Upgradable).live = new Set();
+  model = { rig, geo, tex, inverses, depthMat, restWorld, far: (built as { far?: SpeciesModel['far'] }).far };
+  if (anat && TITAN_BUILD.mode === 'async') (model as unknown as Upgradable).live = new Set();
   return model;
 }
 
 // --------------------------------------------------------------------------------------------- instances
+/** below this many pixels tall on screen an instance draws its far model */
+export const FAR_PX = 40;
+const _w = new THREE.Vector3(), _c = new THREE.Vector3(), _v2 = new THREE.Vector2();
+
 export interface CreatureFx { flag: GFlag; flash: { value: number }; flashCol: { value: THREE.Color }; decay: { value: number }; moss: { value: number }; dissolve: { value: number }; glow: { value: number } }
 
 export function makeInstance(m: SpeciesModel): { mesh: THREE.SkinnedMesh; bones: THREE.Bone[]; fx: CreatureFx } {
@@ -101,5 +109,21 @@ totalEmissiveRadiance += uFlashCol * uFlash * 0.9;`);
   mesh.castShadow = true; mesh.receiveShadow = true;
   mesh.customDepthMaterial = m.depthMat;
   mesh.frustumCulled = true;
+  // level of detail: once the model has a far version, an instance smaller than FAR_PX on screen draws it instead
+  // (switched for the next frame, with a little hysteresis)
+  let isFar = false;
+  mesh.onBeforeRender = (r, _s, cam) => {
+    const far = m.far; if (!far) return;
+    const e = cam.projectionMatrix.elements, persp = e[15] === 0;
+    _w.setFromMatrixPosition(mesh.matrixWorld);
+    const dist = persp ? Math.max(0.01, _w.distanceTo(_c.setFromMatrixPosition(cam.matrixWorld))) : 1;
+    const px = (Math.max(m.rig.height, m.rig.length * 0.6) * e[5] * 0.5 * r.getDrawingBufferSize(_v2).y) / dist;
+    const want = isFar ? px < FAR_PX * 1.15 : px < FAR_PX;
+    if (want === isFar) return;
+    isFar = want;
+    mesh.geometry = want ? far.geo : m.geo;
+    mat.map = want ? far.tex : m.tex;
+    mesh.customDepthMaterial = want ? far.depthMat : m.depthMat;
+  };
   return { mesh, bones, fx };
 }

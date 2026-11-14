@@ -155,7 +155,7 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
   skullCrest: (X, p) => {
     // a bony blade along the midline of the skull, sweeping back past the occiput
     const n = 5, roots: V3[] = [], dirs: V3[] = [], lens: number[] = [], side: V3[] = [];
-    for (let k = 0; k < n; k++) { const st = 0.3 + (k / (n - 1)) * 3.2, q = onSk(X, 0, 1, st); roots.push(sub(q.p, scl(q.n, X.hh * 0.05))); dirs.push(nrm(add(q.n, [0, 0, -0.9 - (1 - k / (n - 1)) * 0.8]))); lens.push(p.len * X.hl * (0.25 + 0.75 * Math.sin(((k + 0.6) / n) * Math.PI)) * p.h * 1.6); side.push([1, 0, 0]); }
+    for (let k = 0; k < n; k++) { const st = 0.3 + (k / (n - 1)) * 3.2, q = onSk(X, 0, 1, st); roots.push(sub(q.p, scl(q.n, X.hh * 0.05))); dirs.push(nrm(add(q.n, [0, 0, -1.4 - (1 - k / (n - 1)) * 0.6]))); lens.push(p.len * X.hl * (0.25 + 0.75 * Math.sin(((k + 0.6) / n) * Math.PI)) * p.h * 0.75); side.push([1, 0, 0]); }
     X.body.add(fin({ name: 'skcrest', roots, dirs, lens, side, ray: X.hl * 0.025, web: X.hl * 0.016, scallop: 0.15, steps: 3, skin: () => [X.iH, 1], paint: finPaint(p.c, roots, dirs, lens, X.hl * 0.025), levels: 1 })).reg = 5;
   },
   helm: (X, p) => {
@@ -202,8 +202,8 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
   },
   noseleaf: (X, p) => {
     // a spear of skin standing over the nostrils (aims the calls), ribbed
-    const q = onSk(X, 0, 1, 6.6), L = X.hl * 0.32 * p.size;
-    const roots: V3[] = [-1, -0.5, 0, 0.5, 1].map((k) => add(q.p, [k * X.hw * 0.16, 0, 0])), dirs = roots.map((_, k) => nrm([(k - 2) * 0.25, 1, -0.15])), lens = roots.map((_, k) => L * (1 - Math.abs(k - 2) * 0.32)), side = roots.map(() => [0, 0.2, 1] as V3);
+    const q = onSk(X, 0, 1, 6.2), L = X.hl * 0.22 * p.size;
+    const roots: V3[] = [-1, -0.5, 0, 0.5, 1].map((k) => add(q.p, [k * X.hw * 0.1, -X.hh * 0.02, 0])), dirs = roots.map((_, k) => nrm([(k - 2) * 0.2, 1, -0.35])), lens = roots.map((_, k) => L * (1 - Math.abs(k - 2) * 0.3)), side = roots.map(() => [0, 0.35, 1] as V3);
     X.body.add(fin({ name: 'leaf', roots, dirs, lens, side, ray: X.hl * 0.015, web: X.hl * 0.012, scallop: 0.1, steps: 3, skin: () => [X.iH, 1], paint: fleshFlat(p.c ?? X.spec.coat.face?.nose ?? ['hide', 2]), levels: 0 })).reg = 3;
   },
   barbels: (X, p) => {
@@ -250,7 +250,7 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
     const v0 = vT(X, p.t1), v1 = vT(X, p.t0), nb = p.bands, stepV = (v1 - v0) / nb, ua = 0.5 - p.spread * 0.2, ub = 0.5 + p.spread * 0.2;
     for (let k = 0; k < nb; k++) {
       const hk = 0.65 + 0.35 * Math.sin(Math.PI * (k + 0.5) / nb), bv0 = v0 + stepV * k - stepV * 0.28, bv1 = v0 + stepV * (k + 1);
-      X.body.add(shell({ name: 'band' + k, host: X.tr, u: [ua, ub], v: [bv0, bv1], nu: 10, nv: 3, sink: X.W * 0.03, rim: 2, ridges: [0.5], rings: [0.5],
+      X.body.add(shell({ name: 'band' + k, host: X.tr, u: [ua, ub], v: [bv0, bv1], nu: 8, nv: 3, sink: X.W * 0.03, rim: 2, ridges: [0.5], rings: [0.5],
         lift: (a, b) => { const x = Math.abs(a - 0.5) * 2, dome = Math.cos(Math.min(1, x) * Math.PI / 2) ** 0.5; return X.W * p.lift * 0.12 * (0.14 + 0.86 * hk * dome) * (1 + 0.45 * Math.pow(1 - b, 3)); },
         skin: X.spine, paint: L, k: 1.0, levels: 1 })).reg = 2;
       for (let s = 0; s < (p.spikes ?? 0); s++) {
@@ -286,7 +286,7 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
   },
   // ------------------------------------------------------------------------------------------- dorsal ridges
   crest: (X, p) => {
-    const v0 = vT(X, p.t1), v1 = vT(X, p.t0), n = Math.max(4, Math.round((v1 - v0) * 40));
+    const v0 = vT(X, p.t1), v1 = vT(X, p.t0), n = Math.max(4, Math.min(p.kind === 'fin' ? 16 : 30, Math.round((v1 - v0) * 40)));
     if (p.kind === 'spikes') {
       for (let k = 0; k < n; k++) { const v = v0 + ((k + 0.5) / n) * (v1 - v0), q = onTr(X, 0.5, v), hk = Math.sin(Math.PI * (k + 0.5) / n) * 0.6 + 0.4; X.body.add(spine({ levels: 0, around: 5, name: 'dsp' + k, at: sub(q.p, scl(q.n, X.W * 0.02)), dir: nrm(add(q.n, [0, 0, -0.6])), len: X.W * p.h * hk, r: X.W * p.h * 0.18 * hk, skin: X.spine, paint: keratinPaint(p.c[0], p.c[1]) })).reg = 2; }
       return;
@@ -299,7 +299,7 @@ const PARTS: { [K in VPart['k']]: (X: VCtx, p: Extract<VPart, { k: K }>) => void
     }
     const roots: V3[] = [], dirs: V3[] = [], lens: number[] = [], side: V3[] = [];
     for (let k = 0; k < n; k++) { const v = v0 + (k / (n - 1)) * (v1 - v0), q = onTr(X, 0.5, v); roots.push(sub(q.p, scl(q.n, X.W * 0.03))); dirs.push(nrm(add(q.n, [0, 0, -0.25]))); lens.push(X.W * p.h * (0.25 + 0.75 * Math.sin(Math.PI * k / (n - 1)) ** 0.6) * (1 + 0.15 * Math.sin(k * 2.3))); side.push([1, 0, 0]); }
-    X.body.add(fin({ name: 'crest', roots, dirs, lens, side, ray: X.W * 0.012, web: X.W * 0.007, scallop: 0.32, steps: 3, skin: (pp) => X.spine(pp), paint: finPaint(p.c, roots, dirs, lens, X.W * 0.012), levels: X.small ? 0 : 1 })).reg = 2;
+    X.body.add(fin({ name: 'crest', roots, dirs, lens, side, ray: X.W * 0.012, web: X.W * 0.007, scallop: 0.32, steps: 3, skin: (pp) => X.spine(pp), paint: finPaint(p.c, roots, dirs, lens, X.W * 0.012), levels: 0 })).reg = 2;
   },
   sail: (X, p) => {
     const v0 = vT(X, p.t1), v1 = vT(X, p.t0), n = p.rays ?? 12, roots: V3[] = [], dirs: V3[] = [], lens: number[] = [], side: V3[] = [];

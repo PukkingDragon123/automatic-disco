@@ -304,12 +304,12 @@ export function mandible(o: { name: string; skull: Skull; at: V3; hl: number; hw
     const x5 = at(s, 5, 0), y5 = at(s, 5, 1), y6 = at(s, 6, 1), dep = o.depth * (1 - 0.45 * f) * (i === n - 1 ? 0.8 : 1);
     const yb = y6 - dep, fl = o.flare ?? 1.04, xs = Math.max(0.04, x5) * (i === n - 1 ? 0.85 : 1);
     // relative to the station centre (yc): the top inside the mouth, the lip line, the cheek, the underside
-    const half = [[0, y5 + 0.03 - yc], [xs * 0.78, y5 + 0.03 - yc], [xs * 0.97, y5 - 0.01 - yc], [xs * fl, (y5 + yb) / 2 - yc], [xs * 0.9 * fl, yb + (y5 - yb) * 0.2 - yc], [xs * 0.5, yb - yc], [0, yb - 0.015 - yc]];
+    const half = [[0, y5 + 0.07 - yc], [xs * 0.8, y5 + 0.07 - yc], [xs * 0.98, y5 + 0.01 - yc], [xs * fl, (y5 + yb) / 2 - yc], [xs * 0.9 * fl, yb + (y5 - yb) * 0.2 - yc], [xs * 0.5, yb - yc], [0, yb - 0.015 - yc]];
     stations.push({ c: pos(z, yc), s: [o.hw, o.hh], p: half });
     if (i === 0) hinge = pos(z - 0.02, y5);
     if (i === n - 1) chin = pos(z, (y5 + yb) / 2);
   }
-  const piece = trunk({ name: o.name, stations, tween: 1, capS: true, capE: true, cols: [{ j: 2, a: 0, b: n - 1, s: 1.5, ink: true }], skin: () => [o.bone, 1], paint: o.paint, k: o.k ?? 1.5, levels: 1 });
+  const piece = trunk({ name: o.name, stations, tween: 0, capS: true, capE: true, cols: [{ j: 2, a: 0, b: n - 1, s: 1.5, ink: true }], skin: () => [o.bone, 1], paint: o.paint, k: o.k ?? 1.5, levels: 1 });
   return { piece, hinge, chin };
 }
 
@@ -348,7 +348,7 @@ export function eyeball(o: EyeSpec): Piece {
 }
 /** an upper eyelid: a thick band of skin over the top of the eye, on the lid bone (a blink turns it down) */
 export function eyelid(o: { name: string; c: V3; ax: V3; r: number; bone: number; paint: Paint; lower?: boolean; cover?: number }): Piece {
-  const m = newCM(), ax = nrm(o.ax), side = nrm(crs([0, 1, 0], ax)), up0 = crs(ax, side), up = o.lower ? scl(up0, -1) : up0;
+  const m = newCM(), ax = nrm(o.ax), sd0 = crs([0, 1, 0], ax), side = Math.hypot(...sd0) > 0.25 ? nrm(sd0) : nrm(crs([0, 0, 1], ax)), up0 = crs(ax, side), up = o.lower ? scl(up0, -1) : up0;
   const rows: V3[][] = [];
   const th1 = o.cover ?? 0.55, th0 = 1.75; // angles from the axis: margin .. the lid's root over the eye
   for (let k = 0; k <= 6; k++) {

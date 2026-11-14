@@ -531,7 +531,7 @@ export class Region {
       if (m > 0.12 && above > 0.3) {
         if (sl >= 0.95) k = bi.key === 'ashland' ? B.BASALT : B.ROCK;
         else if (sl > 0.45 && m < 0.7) k = hash01(x, z, 31) < 0.6 ? B.GRAVEL : k;
-        else if (alt > 26 + bi.temp * 18 + v * 3) k = B.SNOW;
+        else if (alt > 19 + bi.temp * 15 + v * 3) k = B.SNOW;
         else if (alt > 18 + v * 4 && (k === B.GRASS || k === B.LITTER)) k = v > 0.1 ? B.GRAVEL : k;
       }
       if (this.passMask[i] === 2) k = hash01(x, z, 32) < 0.7 ? B.SOIL : B.GRAVEL;

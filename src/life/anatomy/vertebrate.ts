@@ -19,6 +19,7 @@ import { pupilDisc, pinna, drawEarHollow, noseLeather, drawNostrils, tooth, tong
 import { legRings, legFoot, footHeight, type LegKind } from './legs';
 import { coatCtx, coatPaint, keratinPaint, type Coat, type BodyFrame, type CoatCtx } from './coat';
 import { RP } from './paint';
+import { sac } from './append';
 import { sideFrames } from '../cage';
 import { growParts, type VPart } from './vparts';
 import { growOrgans } from './organs';
@@ -175,7 +176,8 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
     const a = st[i - 2].c, b = st[i - 1].c, c = st[i].c, d0 = nrm(sub(b, a)), step = (c[0] - b[0]) * d0[0] + (c[1] - b[1]) * d0[1] + (c[2] - b[2]) * d0[2];
     if (step < W * 0.04 && names[i] !== 'nape') { st.splice(i, 1); names.splice(i, 1); i--; }
   }
-  const tr = body.add(trunk({ name: 'trunk', stations: st, tween: 1, capS: true, capE: true, k: 0.9, skin: spine, paint: () => void 0,
+  const tweens = names.map((n) => (n === 'tip' || n.startsWith('tail') ? 0 : 1));
+  const tr = body.add(trunk({ name: 'trunk', stations: st, tween: tweens, capS: true, capE: true, k: 0.9, skin: spine, paint: () => void 0,
     rings: [{ at: names.indexOf('withers'), s: 0.5 }] }));
   tr.reg = 1;
   body.finalize(tr);
@@ -216,7 +218,7 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
     const s = (k === 0 ? -1 : 1) as 1 | -1;
     const q = gridSurf(sk.m, sk.grids[0], skCol(seat.eye[1], s), skRow(seat.eye[0]));
     const fwd = ES.fwd ?? seat.eye[2], turret = ES.turret ?? 0;
-    const ax = nrm(add(scl(q.n, 1 - fwd), [s * 0.08 * fwd, 0.08 + turret * 0.3, fwd * 1.1]));
+    const qn: V3 = [q.n[0], Math.min(q.n[1], 0.45), q.n[2]], ax = nrm(add(scl(nrm(qn), 1 - fwd), [s * 0.08 * fwd, 0.08 + turret * 0.15, fwd * 1.1]));
     const sink = ES.sink ?? 0.42;
     const c = add(q.p, add(scl(q.n, -er * sink + turret * er * 1.1), [0, turret * er * 0.3, 0]));
     rig.bones[e.bone].pos = T3(sub(c, head)); rest[e.bone] = c;
@@ -225,8 +227,9 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
     body.add(eyeball({ name: 'eye' + k, c, ax, r: er, bone: e.bone, iris: RP(ES.iris[0]), pupil: ES.pupil === 'round' || ES.pupil === 'pin' ? 'pin' : ES.pupil, irisA: 0.66, sclera: ES.sclera ? RP(ES.sclera[0]) : undefined, levels: 0, around: small ? 10 : 12 })).reg = 4;
     if (ES.pupil !== 'w') body.add(pupilDisc({ name: 'pupil' + k, c, ax, r: er, kind: ES.pupil, size: ES.pupil === 'slit' ? 0.62 : ES.pupil === 'bar' ? 0.52 : 0.34, bone: e.pupil }));
     if (turret) {
-      // the eye raised on a turret of skin: a collar round the lower two thirds
-      body.add(eyelid({ name: 'turret' + k, c, ax: nrm(add(ax, [0, -0.6, 0])), r: er * 1.04, bone: iH, paint: coatPaint(C, 'lid'), lower: true, cover: 0.95 })).reg = 4;
+      // the eye raised on a turret of skin: a collar from the skull up round the lower part of the eyeball
+      const up = nrm(sub(c, q.p)), h = Math.max(er * 0.4, dst(c, q.p));
+      body.add(sac({ name: 'turret' + k, at: add(q.p, scl(up, -er * 0.3)), n: up, up: [0, 0, 1], r: [er * 1.12, er * 1.12, (h + er * 0.3) * 0.5], sink: 0.1, skin: () => [iH, 1], paint: coatPaint(C, 'head'), levels: 0 })).reg = 3;
     }
     const lid = rig.lids[k];
     if (lid && !ES.lidless) {
@@ -267,8 +270,8 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
   const toothP = keratinPaint('bone', 4, { glint: true });
   const T2 = HS.teeth;
   if (T2?.canine) for (const s of [-1, 1] as const) {
-    const up = gridSurf(sk.m, sk.grids[0], skCol(4.6, s), skRow(6.2)), cl = T2.canine * hh;
-    body.add(tooth({ name: 'fangU' + s, ctrl: [add(up.p, [0, cl * 0.2, 0]), add(up.p, [s * -cl * 0.04, -cl * 0.5, cl * 0.04]), add(up.p, [s * -cl * 0.06, -cl * 0.95, cl * 0.12])], r: cl * 0.2, bone: iH, paint: toothP }));
+    const up0 = gridSurf(sk.m, sk.grids[0], skCol(5, s), skRow(6.1)), cl = T2.canine * hh, upp = add(up0.p, scl(up0.n, -cl * 0.18));
+    body.add(tooth({ name: 'fangU' + s, ctrl: [add(upp, [0, cl * 0.25, 0]), add(upp, [s * -cl * 0.03, -cl * 0.45, cl * 0.03]), add(upp, [s * -cl * 0.05, -cl * 0.85, cl * 0.1])], r: cl * 0.18, bone: iH, paint: toothP }));
     const lo = add(lerp(hinge, chinP, 0.82), [s * jw * 0.62, jh * 0.6, 0]);
     body.add(tooth({ name: 'fangL' + s, ctrl: [add(lo, [0, -cl * 0.2, 0]), add(lo, [0, cl * 0.3, cl * 0.04]), add(lo, [0, cl * 0.6, cl * 0.1])], r: cl * 0.14, bone: iJ, paint: toothP }));
   }
@@ -355,7 +358,7 @@ function drawLips(px: PxC, _sk: TrunkPiece, fam: Skull, seat: NonNullable<Skull[
   const P = px.gb.P, tpm = 1 / px.mpt, z0 = seat.hinge[1] * hl, z1 = fam.z[7] * hl;
   for (let i = 0; i < px.n; i++) {
     const y = P[i * 3 + 1] - skC[1], z = P[i * 3 + 2] - skC[2];
-    const lz = z * cp + y * sp, ly = y * cp - z * sp;
+    const lz = z * cp - y * sp, ly = y * cp + z * sp;
     if (lz < z0 || lz > z1 + hl * 0.05) continue;
     // the lip line runs at the height of ring point 5 (interpolated along the stations)
     let k = 0; while (k < 6 && fam.z[k + 1] * hl < lz) k++;

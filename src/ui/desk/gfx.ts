@@ -62,7 +62,10 @@ void main() {
   // hard pixel shadows from the desk lamp (the light comes from the upper left): one plane step darker
   if (uShadowOn > 0.5) {
     vec3 s = vSh.xyz / vSh.w * 0.5 + 0.5;
-    if (s.x > 0.0 && s.x < 1.0 && s.y > 0.0 && s.y < 1.0 && s.z < 1.0 && s.z - uShadowBias > texture2D(tShadow, s.xy).r) l = min(l, 0.8) * 0.84;
+    // slope-scaled bias: planes that the light grazes need more (no acne on cards and panels), planes facing away
+    // are already in their own shade step
+    float bias = uShadowBias * (1.0 + 4.0 * (1.0 - clamp(d, 0.0, 1.0)));
+    if (d > 0.08 && s.x > 0.0 && s.x < 1.0 && s.y > 0.0 && s.y < 1.0 && s.z < 1.0 && s.z - bias > texture2D(tShadow, s.xy).r) l = min(l, 0.8) * 0.84;
   }
   l *= 1.0 - uDim;
   vec3 col = c * l * (1.0 + uHover * 0.3) + c * uEmit + uGlow;

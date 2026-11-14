@@ -406,7 +406,8 @@ export class Hud {
     const data = {
       N, h: Rg.h as unknown as Float32Array, water: Rg.water,
       cell: (i: number) => {
-        if (!seen[i]) return R.ink[1];
+        // unexplored ground: the relief still shows, as dim survey contour (the projector has the old charts)
+        if (!seen[i]) return Rg.h[i] < Rg.water ? R.ink[2] : R.teal[1];
         const wet = Rg.h[i] < Rg.water, dim = !vis[i];
         if (wet) return dim ? R.water[1] : R.water[3];
         if (w.moss[i] > 0.5) return dim ? R.malachite[3] : R.malachite[5];
@@ -493,7 +494,8 @@ export class Hud {
   private selection() {
     const c = this.c, sel = c.sel(), sb = c.selB(), d = this.desk, bd = d.board;
     const has = !!sb || sel.length > 0;
-    bd.shown = has && !d.tucked;
+    // (in BUILD the works catalogue owns the space: no clipboard there)
+    bd.shown = has && !d.tucked && this.mode !== 'build';
     if (!has) { this.selKey = '-'; return; }
     // the action keys (the old command bank, minus the powers: those live on the drum)
     const ck = c.ctxKey();

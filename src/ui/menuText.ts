@@ -5,7 +5,7 @@
 // toward the camera and lights up; worked, its blocks burst apart with a spin and spring back into place.
 import * as THREE from 'three';
 import { RAMPS } from '../art/palette';
-import { gbuf, F_HOVER } from '../gfx/gbuf';
+import { gbuf, F_HOVER, F_EMIT } from '../gfx/gbuf';
 
 const ST = RAMPS.steel, PA = RAMPS.paper, GA = RAMPS.glowAmber;
 const h1 = (i: number, s = 0) => { const v = Math.sin(i * 127.1 + s * 311.7) * 43758.5453; return v - Math.floor(v); };
@@ -28,10 +28,39 @@ export function glyphPixels(text: string, font: string, px: number) {
   return { w: x1 - x0 + 1, h: y1 - y0 + 1, pts };
 }
 
+/** one solid mesh for a word at rest: a front face per glyph pixel, a back, and side walls only round the outside of
+ *  the letters (no inner faces, so the outline and AO passes see clean planes); group 0 the face, group 1 the rest */
+function wordGeo(pts: [number, number][], w: number, h: number, vox: number, d: number) {
+  const on = new Set(pts.map(([x, y]) => x + ',' + y));
+  const P: number[] = [], N: number[] = [];
+  const A = new THREE.Vector3(), B = new THREE.Vector3(), Cc = new THREE.Vector3();
+  const quad = (q: number[][], n: number[]) => {
+    A.fromArray(q[1]).sub(B.fromArray(q[0])); Cc.fromArray(q[2]).sub(B); A.cross(Cc);
+    if (A.x * n[0] + A.y * n[1] + A.z * n[2] < 0) q = [q[0], q[3], q[2], q[1]];
+    for (const k of [0, 1, 2, 0, 2, 3]) { P.push(...q[k]); N.push(...n); }
+  };
+  const box = (x: number, y: number) => { const X0 = x * vox - w / 2, X1 = X0 + vox, Y1 = h / 2 - y * vox, Y0 = Y1 - vox; return [X0, X1, Y0, Y1, d / 2, -d / 2]; };
+  for (const [x, y] of pts) { const [X0, X1, Y0, Y1, Z1] = box(x, y); quad([[X0, Y0, Z1], [X1, Y0, Z1], [X1, Y1, Z1], [X0, Y1, Z1]], [0, 0, 1]); }
+  const nFront = P.length / 3;
+  for (const [x, y] of pts) {
+    const [X0, X1, Y0, Y1, Z1, Z0] = box(x, y);
+    quad([[X0, Y0, Z0], [X1, Y0, Z0], [X1, Y1, Z0], [X0, Y1, Z0]], [0, 0, -1]);
+    if (!on.has(x - 1 + ',' + y)) quad([[X0, Y0, Z0], [X0, Y0, Z1], [X0, Y1, Z1], [X0, Y1, Z0]], [-1, 0, 0]);
+    if (!on.has(x + 1 + ',' + y)) quad([[X1, Y0, Z0], [X1, Y0, Z1], [X1, Y1, Z1], [X1, Y1, Z0]], [1, 0, 0]);
+    if (!on.has(x + ',' + (y - 1))) quad([[X0, Y1, Z0], [X1, Y1, Z0], [X1, Y1, Z1], [X0, Y1, Z1]], [0, 1, 0]);
+    if (!on.has(x + ',' + (y + 1))) quad([[X0, Y0, Z0], [X1, Y0, Z0], [X1, Y0, Z1], [X0, Y0, Z1]], [0, -1, 0]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+  g.addGroup(0, nFront, 0); g.addGroup(nFront, P.length / 3 - nFront, 1);
+  return g;
+}
+
 export interface WordOpts { font?: string; px?: number; vox?: number; depth?: number; enabled?: boolean; yaw?: number; phase?: number }
 export class VoxelWord {
   readonly group = new THREE.Group();
-  readonly hit: THREE.Mesh; readonly mesh: THREE.InstancedMesh;
+  /** the word at rest (one clean mesh) and its blocks while they fly (instanced, shown only during a burst) */
+  readonly hit: THREE.Mesh; readonly solid: THREE.Mesh; readonly mesh: THREE.InstancedMesh;
   readonly w: number; readonly h: number; readonly d: number;
   enabled: boolean;
   /** 0..1, set by the screen; eased internally */
@@ -43,9 +72,11 @@ export class VoxelWord {
   private hv = 0; private n: number;
   private rest: Float32Array; private off: Float32Array; private vel: Float32Array; private rot: Float32Array; private spin: Float32Array;
   private active = false;
-  private mats: THREE.MeshLambertMaterial[];
-  private flag = { value: 1 };
-  private dummy = new THREE.Object3D(); private q = new THREE.Quaternion(); private ax = new THREE.Vector3();
+  private faces: THREE.MeshLambertMaterial[] = []; private sides: THREE.MeshLambertMaterial[] = []; private all: THREE.Material[] = [];
+  // G-buffer flags: the solid word is outlined (its silhouette only) and marked as an emitter (a lit face, AO mostly
+  // skipped); the flying blocks are not outlined at all, so they never turn into a speckle of edges
+  private flagSolid = { value: 1 + F_EMIT }; private flagBlocks = { value: F_EMIT };
+  private dummy = new THREE.Object3D(); private q = new THREE.Quaternion(); private q2 = new THREE.Quaternion(); private ax = new THREE.Vector3();
   private col = new THREE.Color(); private colK = -1;
   private lean = new THREE.Euler(); private jolt = 0;
   constructor(readonly id: string, readonly label: string, o: WordOpts = {}) {
@@ -53,14 +84,17 @@ export class VoxelWord {
     this.enabled = o.enabled !== false; this.yaw = o.yaw ?? 0.32; this.phase = o.phase ?? 0;
     const gp = glyphPixels(label, o.font ?? 'Jersey', px);
     this.n = gp.pts.length; this.w = gp.w * vox; this.h = gp.h * vox; this.d = depth * vox;
-    // flat steps of the ramp: a block face is one plane, one colour (a texture would only shimmer at this size)
-    const face = gbuf(new THREE.MeshLambertMaterial({ color: PA[4], flatShading: true }), this.flag);
-    const side = gbuf(new THREE.MeshLambertMaterial({ color: ST[3], flatShading: true }), this.flag);
-    const back = gbuf(new THREE.MeshLambertMaterial({ color: ST[1], flatShading: true }), this.flag);
-    this.mats = [face, side];
-    const geo = new THREE.BoxGeometry(vox * 1.002, vox * 1.002, this.d); // flush: the blocks read as one solid letter
-    this.mesh = new THREE.InstancedMesh(geo, [side, side, side, side, face, back], Math.max(1, this.n));
-    this.mesh.castShadow = true; this.mesh.receiveShadow = true; this.mesh.frustumCulled = false;
+    // flat steps of the ramp: the face enamel, the sides steel; one colour per plane
+    const mk = (c: number, flag: { value: number }, face: boolean) => {
+      const m = gbuf(new THREE.MeshLambertMaterial({ color: c, flatShading: true }), flag); this.all.push(m);
+      (face ? this.faces : this.sides).push(m); return m;
+    };
+    const fS = mk(PA[4], this.flagSolid, true), sS = mk(ST[3], this.flagSolid, false);
+    this.solid = new THREE.Mesh(wordGeo(gp.pts, this.w, this.h, vox, this.d), [fS, sS]);
+    this.solid.castShadow = true; this.solid.receiveShadow = true; this.group.add(this.solid);
+    const fB = mk(PA[4], this.flagBlocks, true), sB = mk(ST[3], this.flagBlocks, false), bB = mk(ST[1], this.flagBlocks, false);
+    this.mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(vox, vox, this.d), [sB, sB, sB, sB, fB, bB], Math.max(1, this.n));
+    this.mesh.castShadow = true; this.mesh.frustumCulled = false; this.mesh.visible = false;
     this.rest = new Float32Array(this.n * 3); this.off = new Float32Array(this.n * 3); this.vel = new Float32Array(this.n * 3);
     this.rot = new Float32Array(this.n * 4); this.spin = new Float32Array(this.n * 4);
     gp.pts.forEach(([x, y], i) => { this.rest.set([(x + 0.5) * vox - this.w / 2, this.h / 2 - (y + 0.5) * vox, 0], i * 3); this.rot[i * 4 + 3] = 1; });
@@ -83,12 +117,8 @@ export class VoxelWord {
   private tint(k: number) {
     if (Math.abs(k - this.colK) < 0.01) return;
     this.colK = k;
-    for (let i = 0; i < this.n; i++) {
-      // the top rows of every letter catch a little more light: a soft lit edge drawn into the blocks themselves
-      const top = this.rest[i * 3 + 1] > this.h * 0.28 ? 1.08 : 1;
-      this.mesh.setColorAt(i, this.col.setScalar(k * top));
-    }
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    for (const m of this.faces) m.color.setHex(PA[4]).multiplyScalar(k);
+    for (const m of this.sides) m.color.setHex(ST[3]).multiplyScalar(k);
   }
   /** blow the blocks apart; they spring back */
   burst(k = 1) {
@@ -100,10 +130,12 @@ export class VoxelWord {
       this.vel[i * 3 + 2] += (10 + h1(i, 4) * 18) * k * r;
       this.spin[i * 4] = (h1(i, 5) - 0.5) * 2; this.spin[i * 4 + 1] = (h1(i, 6) - 0.5) * 2; this.spin[i * 4 + 2] = (h1(i, 7) - 0.5) * 2; this.spin[i * 4 + 3] = (5 + h1(i, 8) * 9) * k;
     }
-    this.active = true;
+    this.active = true; this.mesh.visible = true; this.solid.visible = false;
   }
   /** a short refusing shake (a disabled option) */
   shake() { this.jolt = 1; this.burst(0.12); }
+  /** true while blocks are in flight */
+  get flying() { return this.active; }
   update(dt: number, t: number, cam: THREE.Camera) {
     this.hv += (this.hover - this.hv) * Math.min(1, dt * 9);
     const hv = this.hv;
@@ -116,45 +148,52 @@ export class VoxelWord {
     g.quaternion.multiply(this.q.setFromEuler(this.lean));
     g.scale.setScalar(this.size * (1 + hv * 0.07));
     g.translateZ(hv * 2.5 * this.size);
-    // light: brighter blocks, an amber glow in the enamel, the outline pass's hover flag
-    const k = (this.enabled ? 1 : 0.42) * (1 + hv * 0.28);
+    // light: the enamel face carries a little light of its own so the word reads against space; brighter and an
+    // amber glow when pointed at; the outline pass's hover flag
+    const k = (this.enabled ? 1 : 0.45) * (1 + hv * 0.22);
     this.tint(k);
-    const e = this.mats[0].emissive; e.setHex(GA[1]).multiplyScalar(hv * 0.55);
-    this.mats[1].emissive.setHex(GA[0]).multiplyScalar(hv * 0.3);
-    this.flag.value = hv > 0.5 ? 1 + F_HOVER : 1;
-    // the blocks: a damped spring home, spinning down
+    for (const m of this.faces) m.emissive.setHex(hv > 0.01 ? GA[1] : PA[1]).multiplyScalar(this.enabled ? 0.22 + hv * 0.4 : 0.08);
+    for (const m of this.sides) m.emissive.setHex(GA[0]).multiplyScalar(hv * 0.3);
+    this.flagSolid.value = 1 + F_EMIT + (hv > 0.5 ? F_HOVER : 0);
+    // the blocks: a damped spring home, spinning down; substepped, so it settles in real time at any frame rate
     if (!this.active) return;
-    let moving = false;
-    const K = 34, C = 7.5, f = Math.min(dt, 1 / 30);
-    for (let i = 0; i < this.n; i++) {
-      for (let a = 0; a < 3; a++) {
-        const j = i * 3 + a, v = this.vel[j] + (-K * this.off[j] - C * this.vel[j]) * f;
-        this.vel[j] = v; this.off[j] += v * f;
-        if (Math.abs(v) > 0.02 || Math.abs(this.off[j]) > 0.01) moving = true;
-      }
-      const s = this.spin[i * 4 + 3];
-      if (s > 0.01) {
-        this.ax.set(this.spin[i * 4], this.spin[i * 4 + 1], this.spin[i * 4 + 2]).normalize();
+    let moving = false, left = Math.min(dt, 0.25);
+    const K = 34, C = 7.5;
+    while (left > 1e-6) {
+      const f = Math.min(left, 1 / 60); left -= f; moving = false;
+      for (let i = 0; i < this.n; i++) {
+        for (let a = 0; a < 3; a++) {
+          const j = i * 3 + a, v = this.vel[j] + (-K * this.off[j] - C * this.vel[j]) * f;
+          this.vel[j] = v; this.off[j] += v * f;
+          if (Math.abs(v) > 0.03 || Math.abs(this.off[j]) > 0.015) moving = true;
+        }
+        const sp = this.spin[i * 4 + 3];
         this.q.set(this.rot[i * 4], this.rot[i * 4 + 1], this.rot[i * 4 + 2], this.rot[i * 4 + 3]);
-        this.q.premultiply(new THREE.Quaternion().setFromAxisAngle(this.ax, s * f));
-        this.spin[i * 4 + 3] = s * Math.exp(-f * 3.2); moving = true;
-        this.rot.set([this.q.x, this.q.y, this.q.z, this.q.w], i * 4);
-      } else {
-        // settle square to the word
-        this.q.set(this.rot[i * 4], this.rot[i * 4 + 1], this.rot[i * 4 + 2], this.rot[i * 4 + 3]).slerp(new THREE.Quaternion(), Math.min(1, f * 10));
-        this.rot.set([this.q.x, this.q.y, this.q.z, this.q.w], i * 4);
-        if (1 - Math.abs(this.q.w) > 1e-4) moving = true;
+        if (sp > 0.05) {
+          this.ax.set(this.spin[i * 4], this.spin[i * 4 + 1], this.spin[i * 4 + 2]).normalize();
+          this.q.premultiply(this.q2.setFromAxisAngle(this.ax, sp * f));
+          this.spin[i * 4 + 3] = sp * Math.exp(-f * 3.2); moving = true;
+        } else {
+          this.q.slerp(this.q2.identity(), Math.min(1, f * 10)); // settle square to the word
+          if (1 - Math.abs(this.q.w) > 1e-4) moving = true;
+        }
+        this.rot[i * 4] = this.q.x; this.rot[i * 4 + 1] = this.q.y; this.rot[i * 4 + 2] = this.q.z; this.rot[i * 4 + 3] = this.q.w;
       }
+      if (!moving) break;
     }
-    if (!moving) { this.off.fill(0); this.vel.fill(0); for (let i = 0; i < this.n; i++) this.rot.set([0, 0, 0, 1], i * 4); this.active = false; }
+    if (!moving) {
+      // home: back to the one clean mesh
+      this.off.fill(0); this.vel.fill(0); this.spin.fill(0); for (let i = 0; i < this.n; i++) this.rot.set([0, 0, 0, 1], i * 4);
+      this.active = false; this.mesh.visible = false; this.solid.visible = true;
+    }
     this.writeAll();
   }
   /** a box (in the word's own frame, before its scale) for things to bounce off */
   get halfSize() { return new THREE.Vector3(this.w / 2 + 0.5, this.h / 2 + 0.5, this.d / 2 + 0.5); }
   dispose() {
     this.group.removeFromParent();
-    this.mesh.geometry.dispose(); this.mesh.dispose();
-    (this.mesh.material as THREE.Material[]).forEach((m) => m.dispose());
+    this.mesh.geometry.dispose(); this.mesh.dispose(); this.solid.geometry.dispose();
+    this.all.forEach((m) => m.dispose());
     this.hit.geometry.dispose(); (this.hit.material as THREE.Material).dispose();
   }
 }

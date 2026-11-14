@@ -168,7 +168,7 @@ export function mouthLining(o: { name: string; back: V3; front: V3; w: number; h
   return {
     name: o.name, m, grids: [g], levels: 0, farSkip: true, noOcc: true, reg: 6, k: 0.5,
     skin: (p) => (p[1] > midY ? [o.head, 0.8, o.jaw, 0.2] : [o.jaw, 0.8, o.head, 0.2]),
-    paint: (ch, _p, b) => { const px = new Px(ch, b), N = px.gb.N; px.lightK = 0.3; px.base((i) => [RP('flesh'), N[i * 3 + 1] < -0.2 ? 2 : 1]); px.folds([0, 0, 1], o.back, Math.max(0.004, o.w * 0.35), { depth: 0.6 }); px.flush(); },
+    paint: (ch, _p, b) => { const px = new Px(ch, b), N = px.gb.N; px.lightK = 0.3; px.base((i) => [RP('flesh'), N[i * 3 + 1] < -0.2 ? 1 : 0]); px.folds([0, 0, 1], o.back, Math.max(0.004, o.w * 0.35), { depth: 0.6 }); px.flush(); },
   };
 }
 /** a vocal or display sac under the throat on the throat bone (it swells in croaks) */

@@ -42,7 +42,7 @@ export class HoloTable {
     g.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
     g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2), 2));
     g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
-    this.relief = new THREE.Mesh(g, mat({ vcol: true, flat: 0.25, emit: 0.35, outline: false }));
+    this.relief = new THREE.Mesh(g, mat({ vcol: true, flat: 0.35, emit: 0.55, outline: false }));
     this.tilt.add(this.relief);
     // pins: Unit 07, allies, wildlife, rivals, structures
     this.pins = new THREE.InstancedMesh(facet(new THREE.ConeGeometry(1.4, 4, 4).translate(0, 2, 0)), mat({ emit: 0.5, flat: 0.4 }), 200);
@@ -50,9 +50,9 @@ export class HoloTable {
     this.tilt.add(this.pins);
     // the scan sweep: a thin bright wedge turning round the table
     const sw = new THREE.BufferGeometry(), sp: number[] = [], K = 6;
-    for (let i = 0; i < K; i++) { const a0 = (i / K) * 0.5, a1 = ((i + 1) / K) * 0.5, r = S * 0.72; sp.push(0, 0, 0, Math.sin(a0) * r, 0, Math.cos(a0) * r, Math.sin(a1) * r, 0, Math.cos(a1) * r); }
+    for (let i = 0; i < K; i++) { const a0 = (i / K) * 0.22, a1 = ((i + 1) / K) * 0.22, r = S * 0.7; sp.push(0, 0, 0, Math.sin(a0) * r, 0, Math.cos(a0) * r, Math.sin(a1) * r, 0, Math.cos(a1) * r); }
     sw.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3)); sw.setAttribute('uv', new THREE.Float32BufferAttribute(new Array((sp.length / 3) * 2).fill(0.5), 2)); sw.computeVertexNormals();
-    this.sweepM = mat({ tint: R.glowTeal[3], glass: 0.22, flat: 1, emit: 0.6, side: THREE.DoubleSide });
+    this.sweepM = mat({ tint: R.glowTeal[2], glass: 0.18, flat: 1, emit: 0.3, side: THREE.DoubleSide });
     this.sweep = new THREE.Mesh(sw, this.sweepM); this.sweep.position.y = 9;
     this.tilt.add(this.sweep);
     this.ping = mesh(lathe([[5, -0.3], [6.2, -0.3], [6.2, 0.3], [5, 0.3]], 12), mat({ tint: R.glowAmber[4], emit: 1, flat: 1, outline: false }));
@@ -64,7 +64,7 @@ export class HoloTable {
   /** rebuild the relief from the region (heights and colours) */
   build(d: MapData) {
     const G = this.G, S = this.S, k = d.N / G, P = this.pos, C = this.col, c = new THREE.Color();
-    const hAt = (gx: number, gz: number) => { const x = Math.min(d.N - 1, Math.floor(gx * k)), z = Math.min(d.N - 1, Math.floor(gz * k)); return Math.max(-0.5, Math.min(9, (d.h[z * d.N + x] - d.water) * 0.3)); };
+    const hAt = (gx: number, gz: number) => { const x = Math.min(d.N - 1, Math.floor(gx * k)), z = Math.min(d.N - 1, Math.floor(gz * k)); return Math.max(-0.5, Math.min(11, (d.h[z * d.N + x] - d.water) * 0.45)); };
     let o = 0;
     for (let gz = 0; gz < G; gz++) for (let gx = 0; gx < G; gx++) {
       const x0 = (gx / G - 0.5) * S, x1 = ((gx + 1) / G - 0.5) * S, z0 = (gz / G - 0.5) * S, z1 = ((gz + 1) / G - 0.5) * S;
@@ -73,6 +73,7 @@ export class HoloTable {
       P.set(v, o * 3);
       const idx = Math.min(d.N - 1, Math.floor((gz + 0.5) * k)) * d.N + Math.min(d.N - 1, Math.floor((gx + 0.5) * k));
       c.setHex(d.cell(idx), THREE.LinearSRGBColorSpace);
+      if (gx % 4 === 0 || gz % 4 === 0) c.multiplyScalar(1.35);
       for (let j = 0; j < 6; j++) C.set([c.r, c.g, c.b], (o + j) * 3);
       o += 6;
     }
@@ -87,6 +88,7 @@ export class HoloTable {
     for (let gz = 0; gz < G; gz++) for (let gx = 0; gx < G; gx++) {
       const idx = Math.min(d.N - 1, Math.floor((gz + 0.5) * k)) * d.N + Math.min(d.N - 1, Math.floor((gx + 0.5) * k));
       c.setHex(d.cell(idx), THREE.LinearSRGBColorSpace);
+      if (gx % 4 === 0 || gz % 4 === 0) c.multiplyScalar(1.35);
       for (let j = 0; j < 6; j++) { C[(o + j) * 3] = c.r; C[(o + j) * 3 + 1] = c.g; C[(o + j) * 3 + 2] = c.b; }
       o += 6;
     }
@@ -113,7 +115,7 @@ export class HoloTable {
     this.tilt.rotation.y = this.yaw.step(this.yawT, dt);
     this.tilt.rotation.x = this.pitch.step(this.pitchT, dt);
     this.sweep.rotation.y = -this.t * 1.4;
-    this.sweepM.uniforms.uAlpha.value = 0.12 + this.scan * 0.25;
+    this.sweepM.uniforms.uAlpha.value = 0.1 + this.scan * 0.18;
     this.sweep.visible = this.scan > 0.02;
     this.pingT += dt;
     if (this.pingT < 1) { const s = 0.4 + this.pingT * 2.6; this.ping.scale.set(s, 1, s); this.ping.visible = Math.floor(this.pingT * 10) % 3 !== 2; } else this.ping.visible = false;
