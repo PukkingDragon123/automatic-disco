@@ -114,6 +114,11 @@ export class Ocean {
     if (this.underwater) { const e = this.g.world.sun.env; e.haze = 0; e.mist = 0; e.rays = 0; }
 
     setMuffle(this.underwater ? clamp((sy - cam.position.y) * 0.5 + 0.55, 0, 1) : 0);
+    // storm spray: crests torn off by the wind near the view
+    if (w.storm > 0.4 && Math.random() < dt * w.storm * 10) {
+      const tg = this.g.cam.target, x = tg.x + (Math.random() - 0.5) * 30, z = tg.z + (Math.random() - 0.5) * 30;
+      if (this.isSea(x, z) && this.depthAt(x, z) > 1.2) { const y = this.surfaceAt(x, z); this.g.fx.spray(x, y + 0.2, z, w.windDir.x, 0.35, w.windDir.y, 5, RAMPS.snow[4], { speed: 4 + w.wind * 0.3, cone: 0.4, size: 3, life: 1.1, grav: 4, drag: 0.8 }); }
+    }
     const night = U.uBio.value as number;
     this.reef?.update(dt, t, Math.max(night, w.eclipse), _cur.set(w.windDir.x, w.windDir.y).multiplyScalar(0.06 + w.storm * 0.2));
     this.dive.update(dt, t);

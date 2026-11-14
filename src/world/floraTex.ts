@@ -120,10 +120,10 @@ function leaflet(P: Px, x0: number, y0: number, ang: number, L: number, Wd: numb
     let t: number, ri = R;
     if (o.petal) { t = (u < 0.15 ? 1 : u < 0.35 ? 2 : u < 0.65 ? 3 : 4) + (onLit ? 1 : 0); if (onLit && Math.abs(v) > hw - 1.3 && u > 0.3) t = n; }
     else {
-      t = onLit ? n - 1 : n - 2;
+      t = onLit ? n - 2 : n - 3;
       if (u < 0.16) t--;
-      if (u > 0.72 && onLit) t = n;
-      if (onLit && Math.abs(v) > hw - 1.3 && u > 0.2 && u < 0.86) t = n;
+      if (u > 0.72 && onLit) t = n - 1;
+      if (onLit && Math.abs(v) > hw - 1.3 && u > 0.2 && u < 0.86) t = n - 1;
       if (o.curl && u > 1 - o.curl) t = onLit ? n - 2 : n - 3;
       if (Math.abs(v) < 0.55 && u < 0.9 && L >= 8) t += o.rib ?? 1;
       if (o.brown !== undefined && u > 0.84) { ri = o.brown; t = onLit ? 4 : 3; }
@@ -413,10 +413,10 @@ export class FloraTex {
             const cw = Math.ceil(w);
             for (let d = -cw; d <= cw; d++) {
               if (Math.abs(d) > w + 0.25) continue;
-              let i = d < 0 ? n : n - 1;
-              if (f > 0.75 && d <= 0) i = n;
+              let i = d < 0 ? n - 1 : n - 2;
+              if (f > 0.75 && d <= 0) i = n - 1;
               if (d === -cw && f > 0.15 && f < 0.8) i = n;
-              if (d === 0 && ww >= 2.5 && f < 0.8) i = n - 2;
+              if (d === 0 && ww >= 2.5 && f < 0.8) i = n - 3;
               if (d === cw && cw > 1) i = n - 3;
               P.set(x, y + d, Math.max(1, i), R);
             }

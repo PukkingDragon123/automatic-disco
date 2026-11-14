@@ -317,24 +317,24 @@ export class Desk {
     const groups: THREE.Object3D[] = [this.strip];
     for (const side of ['L', 'R'] as Side[]) if (this.wing[side].visible) groups.push(...this.wing[side].children.filter((c) => c.visible));
     for (const h of this.hots) if (visibleUp(h.obj)) groups.push(h.obj);
-    for (const g of groups) {
-      if (g === this.strip) {
-        // the strip: its rail line, then the things standing on it
-        for (const c of this.strip.children) if (c.visible) addBox(c);
-        continue;
-      }
-      addBox(g);
-    }
+    this.root.updateMatrixWorld(true);
+    for (const g of groups) addBox(g);
     function addBox(o: THREE.Object3D) {
-      box3.setFromObject(o); if (box3.isEmpty()) return;
-      let x0 = 1e9, x1 = -1e9, y0 = 1e9;
-      for (let i = 0; i < 8; i++) {
-        v.set(i & 1 ? box3.max.x : box3.min.x, i & 2 ? box3.max.y : box3.min.y, i & 4 ? box3.max.z : box3.min.z);
-        _proj(v);
-        x0 = Math.min(x0, v.x); x1 = Math.max(x1, v.x); y0 = Math.min(y0, v.y);
-      }
-      const c0 = Math.max(0, Math.floor(x0 / 6)), c1 = Math.min(cols - 1, Math.floor(x1 / 6));
-      for (let c = c0; c <= c1; c++) top[c] = Math.min(top[c], Math.max(0, y0 - 2));
+      // every visible mesh under o, by its own bounds (hidden parts do not take clicks)
+      o.traverseVisible((m) => {
+        const g = (m as THREE.Mesh).geometry as THREE.BufferGeometry | undefined;
+        if (!g || !(m as THREE.Mesh).isMesh || !visibleUp(m)) return;
+        if (!g.boundingBox) g.computeBoundingBox();
+        box3.copy(g.boundingBox!).applyMatrix4(m.matrixWorld);
+        let x0 = 1e9, x1 = -1e9, y0 = 1e9;
+        for (let i = 0; i < 8; i++) {
+          v.set(i & 1 ? box3.max.x : box3.min.x, i & 2 ? box3.max.y : box3.min.y, i & 4 ? box3.max.z : box3.min.z);
+          _proj(v);
+          x0 = Math.min(x0, v.x); x1 = Math.max(x1, v.x); y0 = Math.min(y0, v.y);
+        }
+        const c0 = Math.max(0, Math.floor(x0 / 6)), c1 = Math.min(cols - 1, Math.floor(x1 / 6));
+        for (let c = c0; c <= c1; c++) top[c] = Math.min(top[c], Math.max(0, y0 - 2));
+      });
     }
     const cam = this.view.cam;
     function _proj(p: THREE.Vector3) { p.project(cam); p.x = (p.x * 0.5 + 0.5) * r.width; p.y = (-p.y * 0.5 + 0.5) * r.height; }

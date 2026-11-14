@@ -1,526 +1,125 @@
-// The ordnance selector: a heavy machined revolver dial with the golem's field powers seated in brass chambers
-// around its rim. Only installed powers (bought on the skill tree, see game/combat.ts powerOwned) get a chamber; a
-// new one is loaded into the cylinder with a clack. It turns with the mouse wheel, by dragging, by clicking a chamber or with the [ ] / , .
-// keys, ratcheting from detent to detent under a spring pawl. The chamber under the pawl is the selection: its
-// name, cost and readout print on the CRT above; the red mushroom button in the hub (or Enter / F, or the old
-// number keys) arms it. Lighting is computed in screen space every redraw, so the rim turns but the light stays.
-import { el, Tip } from './kit';
+// The power drum's mechanism (the desk draws it: desk/parts.ts Drum). Only installed powers (bought on the skill tree,
+// see game/combat.ts powerOwned) get a cartridge; a new one is loaded with a clack. The reel turns with the mouse wheel
+// over it, by grabbing and flicking it (it carries on spinning, then drops into a detent under the pawl), by clicking a
+// cartridge, or with [ ] / , . on the keyboard. The cartridge facing the operator is the selection; the FIRE plunger,
+// Enter or F arms it.
 import { sfx } from '../audio/audio';
 import { ABILITIES, type Ability, type Hive } from '../game/hive';
-import { iconCanvas } from './pixelart';
-import { Pix, GM, RD as RD0, PH as PH0, AM as AM0, CR, OL, INK, dv, text, mixc, hex } from './machine';
-import { Gauge, Lamp, meterFace, place, steamVent, u } from './gadgets';
-import { WHEEL, DESC, wheelArt, descArt } from './hudArt';
-import { hashf } from '../limbo/core/rng';
 import { powerOwned, powerCost, ABILITY_SKILL } from '../game/combat';
 import { skillIcon } from './icons';
 
 export interface WheelCtx { hive: Hive; arm(a: Ability): void; armed(): Ability | null }
 
-/** every live power in key order (retired ones, em > 50, never get a chamber) */
+/** every live power in key order (retired ones, em > 50, never get a cartridge) */
 const ALL: Ability[] = (Object.keys(ABILITIES) as Ability[]).filter((a) => ABILITIES[a].em <= 50).sort((a, b) => +ABILITIES[a].key - +ABILITIES[b].key);
-/** the hive's own charge cap (it depends on the reactor and coil), with the old formula as a fallback */
-const capOf = (h: Hive) => (h as unknown as { chargeCap?: number }).chargeCap ?? 60 + h.emLevel * 40;
-// ART.md: physical, desaturated materials. Chambers are blued steel, not brass; the hub band is olive enamel worn to
-// steel, not hazard stripes; the one accent is the selected chamber's safety amber; lamps are soft phosphor
-const mute = (R: number[], k: number) => R.map((c) => mixc(c, 0x5a554c, k));
-const BR = GM.slice(1), AM = mute(AM0, 0.3), RD = mute(RD0, 0.4), PH = mute(PH0, 0.3);
-const SZ = WHEEL.ws, C = SZ / 2;
-/** the dial face is rendered at twice the art density (finer machining, 1 px lines); sprites ride on top at 1x */
-const QW = 2, SZ2 = SZ * QW;
-const R_TOOTH = 61.6, R_ROOT = 58.2, R_KNURL = 52.6, R_HAZ0 = 18.5, R_HAZ1 = 23.5, R_CH = 37.6, R_LAMP = 51;
-const TEETH = 36;
-const LX = -0.55, LY = -0.83; // light from the top left
-const wrap = (a: number) => { a %= Math.PI * 2; if (a > Math.PI) a -= Math.PI * 2; if (a < -Math.PI) a += Math.PI * 2; return a; };
+const TAU = Math.PI * 2;
 
-// ------------------------------------------------------------------ static art
-let pre: { r: Float32Array; th: Float32Array; scratch: Uint8Array; lit: Float32Array; face: Float32Array } | null = null;
-function precompute() {
-  if (pre) return pre;
-  const n = SZ2 * SZ2, r = new Float32Array(n), th = new Float32Array(n), scratch = new Uint8Array(SZ * SZ), lit = new Float32Array(n), face = new Float32Array(n);
-  const thL = Math.atan2(-LX, LY);
-  for (let y = 0; y < SZ2; y++) for (let x = 0; x < SZ2; x++) {
-    const i = y * SZ2 + x, dx = (x + 0.5) / QW - C, dy = (y + 0.5) / QW - C, rr = Math.hypot(dx, dy), t = Math.atan2(dx, -dy); // clockwise from 12 o'clock
-    r[i] = rr; th[i] = t;
-    const nx = dx / Math.max(1, rr), ny = dy / Math.max(1, rr);
-    lit[i] = -(nx * LX + ny * LY);
-    // machined face: a shallow dome, lathe rings, the spun-metal highlight cross (all fixed to the light, not the disc)
-    const dome = lit[i] * (rr / R_KNURL) * 1.3, lathe = Math.sin(rr * 4.2) * 0.2 + (hashf(Math.floor(rr * 4), 0, 9) - 0.5) * 0.3;
-    const spec = Math.pow(Math.max(0, Math.cos(2 * (t - thL))), 8) * 1.4;
-    face[i] = 4.2 + dome + lathe + spec - (rr < R_HAZ0 ? 0.8 : 0) - (rr > R_KNURL - 3 ? 0.9 : 0);
-  }
-  // machining scratches fixed to the disc (sampled in disc space)
-  for (let i = 0; i < 70; i++) {
-    const a = hashf(i, 1, 5) * Math.PI * 2, rr = 26 + hashf(i, 2, 5) * 24, len = 2 + hashf(i, 3, 5) * 6, da = (hashf(i, 4, 5) - 0.5) * 2.2;
-    for (let t = 0; t < len; t++) {
-      const x = Math.round(C + Math.sin(a) * rr + Math.cos(a + da) * t), y = Math.round(C - Math.cos(a) * rr + Math.sin(a + da) * t);
-      if (x >= 0 && y >= 0 && x < SZ && y < SZ) scratch[y * SZ + x] = 1 + (t % 3 === 0 ? 1 : 0);
-    }
-  }
-  return (pre = { r, th, scratch, lit, face });
-}
-/** brass chamber ring with a dark bore, 24x24, lit from the top left (drawn upright at any rotation) */
-let chamberPix: Pix | null = null, chamberSel: Pix | null = null;
-function chamber(sel: boolean) {
-  if (sel && chamberSel) return chamberSel; if (!sel && chamberPix) return chamberPix;
-  const p = new Pix(25, 25), c = 12;
-  for (let y = 0; y < 25; y++) for (let x = 0; x < 25; x++) {
-    const dx = x - c, dy = y - c, d = Math.hypot(dx, dy);
-    if (d > 12.2) continue;
-    const lit = -(dx * LX + dy * LY) / Math.max(1, d);
-    if (d > 11.3) p.set(x, y, INK);
-    else if (d > 9.6) p.set(x, y, dv(sel ? AM : BR, (sel ? 4.2 : 4.4) + lit * 2.6, x, y));
-    else if (d > 8.7) p.set(x, y, INK);
-    else {
-      // the bore: its upper-left inner wall falls into shadow, the lower-right wall catches light
-      const wall = Math.max(0, (d - 5.5) / 3.2);
-      p.set(x, y, dv(GM, 1.0 + wall * (-lit) * 1.6 + (sel ? 0.4 : 0), x, y));
-    }
-  }
-  if (sel) { chamberSel = p; return p; } chamberPix = p; return p;
-}
-/** spring pawl that rides the ratchet teeth, 15x14: a brass pivot boss, a hardened claw, a coil spring */
-function pawlURL() {
-  const p = new Pix(15, 14);
-  for (let y = 0; y < 7; y++) for (let x = 3; x < 12; x++) { const d = Math.hypot(x - 7, y - 3); if (d <= 3.4) p.set(x, y, d > 2.6 ? INK : dv(BR, 5 - (x - 7) * 0.5 - (y - 3) * 0.6, x, y)); }
-  p.set(7, 3, GM[2]); p.set(6, 2, BR[8]); p.set(8, 3, GM[5]);
-  for (let y = 6; y < 13; y++) {
-    const half = Math.max(0, Math.round(2.2 - (y - 6) * 0.36));
-    for (let x = 7 - half; x <= 7 + half; x++) p.set(x, y, x === 7 - half && half ? BR[7] : x === 7 + half && half ? BR[2] : y > 9 ? GM[8] : BR[5]);
-    p.set(7 - half - 1, y, INK); p.set(7 + half + 1, y, INK);
-  }
-  p.set(7, 13, INK);
-  for (let k = 0; k < 3; k++) { p.set(12, 3 + k * 2, GM[8]); p.set(13, 4 + k * 2, GM[4]); }
-  return p.url();
-}
-/** the red mushroom button in its chrome collar, 5 frames of 36x36: idle, hover, pressed, dead, armed */
-function fireSheet() {
-  const S = 36, p = new Pix(S * 5, S), c = 17.5;
-  const ramps = [RD, RD, RD, RD.map((x) => mixc(x, 0x241c1a, 0.55)), RD.map((x, i) => mixc(x, AM[Math.min(7, i + 1)], 0.35))];
-  for (let f = 0; f < 5; f++) {
-    const o = f * S, R = ramps[f], pressed = f === 2, glow = f === 1 || f === 4;
-    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-      const dx = x - c, dy = y - c, d = Math.hypot(dx, dy);
-      if (d > 17.4) continue;
-      const lit = -(dx * LX + dy * LY) / Math.max(1, d);
-      if (d > 16.6) { p.set(o + x, y, INK); continue; }
-      if (d > 13.4) { // chrome collar with machined rings
-        const ring = Math.floor(d * 1.5) % 2;
-        p.set(o + x, y, dv(GM, 5.6 + lit * 3.2 + ring * 0.5, o + x, y)); continue;
-      }
-      if (d > 12.6) { p.set(o + x, y, INK); continue; }
-      // the dome
-      const dd = d / 12.6, ox = pressed ? 0.6 : 0;
-      const nx = (dx - ox) / 12.6, ny = (dy - ox) / 12.6, nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
-      const sh = -(nx * LX + ny * LY) * 0.75 + nz * 0.55;
-      let v = 1.6 + sh * 4.2 - (pressed ? 0.9 : 0) + (glow ? 0.9 : 0) - dd * 0.4;
-      p.set(o + x, y, dv(R, v, o + x, y));
-    }
-    // specular highlight
-    if (f !== 3) { const hx = o + (pressed ? 13 : 12), hy = pressed ? 11 : 10; p.set(hx, hy, 0xffffff); p.set(hx + 1, hy, 0xffe8e0); p.set(hx, hy + 1, 0xffd8d0); p.set(hx + 2, hy - 1, 0xffd0c0, 160); p.set(hx - 1, hy + 2, 0xffd0c0, 140); }
-    // stamped ring of text on the collar
-    text(p, 'FIRE', o + 11, 27 + (pressed ? 1 : 0), f === 3 ? RD[3] : CR[4], 'shadow');
-  }
-  return p.url();
-}
-
-// ------------------------------------------------------------------ the dial
 export class AbilityWheel {
-  readonly root: HTMLDivElement;
-  private cv: HTMLCanvasElement; private g: CanvasRenderingContext2D; private img: ImageData;
-  private pawl: HTMLDivElement; private fire: HTMLDivElement;
-  private nameEl: HTMLDivElement; private costEl: HTMLDivElement; private crt: HTMLDivElement;
-  private desc: HTMLDivElement; private descTxt: HTMLDivElement; private descT = 0; private descShown = ''; private typed = 0;
-  private gauge: Gauge; private armLamp: Lamp; private tubes: HTMLDivElement[] = [];
-  private icons: { n: HTMLCanvasElement; d: HTMLCanvasElement }[] = [];
-  sel = 0; private ang = 0; private vel = 0; private target = 0; private lastDet = 0;
-  private drag: { a0: number; ang0: number; moved: boolean; x: number; y: number; id: number } | null = null;
-  private hover = -1; private dirty = true; private drawnAng = 99; private stateKey = ''; private t = 0;
-  private wheelAcc = 0; private wheelT = 0; private flash = 0; private flashMsg = '';
-  private settled = true; private lastArmed: Ability | null = null; private ptr: { x: number; y: number } | null = null;
-  /** the installed powers, in key order; chamber i holds order[i] */
-  private order: Ability[] = []; private n = 1; private step = Math.PI * 2; private ownKey = '';
+  /** the installed powers, in key order; cartridge i holds order[i] */
+  order: Ability[] = []; n = 1; step = TAU;
+  sel = 0; ang = 0; vel = 0; target = 0;
+  settled = true; grabbed = false;
+  /** a message for the readout (and how long it stays) */
+  flash = 0; flashMsg = ''; flashGood = false;
+  /** bumped when the cartridges change (the desk reloads its models) */
+  loadN = 0;
+  private lastDet = 0; private ownKey = ''; private lastArmed: Ability | null = null;
+  /** detents that passed the pawl this frame (the desk clicks the pawl) */
+  ticks = 0;
 
-  constructor(parent: HTMLElement, readonly c: WheelCtx) {
-    precompute();
-    const W = WHEEL;
-    this.root = place(el('div', 'wl', parent), 0, 0, W.w, W.h);
-    this.root.style.left = ''; this.root.style.top = '';
-    this.root.style.backgroundImage = `url(${wheelArt().url()})`;
-    // readout tray (slides up from behind the housing)
-    this.desc = el('div', 'wl-desc', parent);
-    this.desc.style.width = u(DESC.w); this.desc.style.height = u(DESC.h);
-    this.desc.style.backgroundImage = `url(${descArt().url()})`;
-    this.descTxt = place(el('div', 'scr wl-dtxt', this.desc), 7, 7, 158, 48);
-    // name CRT
-    this.crt = place(el('div', 'scr wl-crt', this.root), 10, 5, 122, 16);
-    this.nameEl = el('div', 'wl-name', this.crt); this.costEl = el('div', 'wl-cost', this.crt);
-    // the dial
-    this.cv = place(el('canvas', 'wl-dial', this.root), W.wx, W.wy, SZ, SZ);
-    this.cv.width = SZ2; this.cv.height = SZ2;
-    this.g = this.cv.getContext('2d')!; this.img = this.g.createImageData(SZ2, SZ2); this.g.imageSmoothingEnabled = false;
-    this.pawl = place(el('div', 'wl-pawl', this.root), W.wx + C - 7, W.wy - 8, 15, 14);
-    this.pawl.style.backgroundImage = `url(${pawlURL()})`;
-    this.fire = place(el('div', 'wl-fire', this.root), W.wx + C - 18, W.wy + C - 18, 36, 36);
-    this.fire.style.backgroundImage = `url(${fireSheet()})`;
-    // meter, tubes, lamp, vent
-    this.gauge = new Gauge(this.root, 137, 34, { w: 30, h: 28, cx: 15, cy: 16, r: 11, a0: -2.2, a1: 2.2, face: (p) => meterFace(p, 15, 16, 11, -2.2, 2.2, { full: true, ticks: 8, red: [0, 0.15] }) });
-    for (const x of [140, 154]) { const t = place(el('div', 'tube', this.root), x - 1, 66, 9, 20); this.tubes.push(t); }
-    this.armLamp = new Lamp(this.root, 150, 102, 'r', 'off');
-    steamVent(this.root, 153, 124, 7);
-    this.reload(true);
-    // ---- input
-    this.cv.addEventListener('pointerdown', (e) => this.down(e));
-    this.cv.addEventListener('pointermove', (e) => this.move(e));
-    this.cv.addEventListener('pointerup', (e) => this.up(e));
-    this.cv.addEventListener('pointercancel', () => { this.drag = null; this.snap(); });
-    this.cv.addEventListener('pointerleave', () => { this.ptr = null; if (!this.drag) { this.hover = -1; this.dirty = true; Tip.hide(); } });
-    this.root.addEventListener('wheel', (e) => { e.preventDefault(); e.stopPropagation(); this.onWheel(e.deltaY); }, { passive: false });
-    this.root.addEventListener('pointerdown', (e) => e.stopPropagation());
-    this.root.addEventListener('contextmenu', (e) => e.preventDefault());
-    this.fire.addEventListener('pointerenter', () => { this.fire.classList.add('hov'); sfx('hover'); this.showDesc(); });
-    this.fire.addEventListener('pointerleave', () => { this.fire.classList.remove('hov', 'prs'); });
-    this.fire.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.fire.classList.add('prs'); sfx('crack', 0.4, 0.3); });
-    this.fire.addEventListener('pointerup', () => { if (!this.fire.classList.contains('prs')) return; this.fire.classList.remove('prs'); this.trigger(); });
-    this.crt.addEventListener('pointerenter', () => this.showDesc());
-  }
-
-  // ------------------------------------------------------------------ controls
+  constructor(readonly c: WheelCtx) { this.reload(true); }
   get current(): Ability { return this.order[this.sel]; }
-  /** load the cylinder with the installed powers (keeps the selection on the same power where it can) */
+  icon(a: Ability) { return skillIcon(ABILITY_SKILL[a] ?? a); }
+
   private reload(first = false) {
     const prev = this.order[this.sel];
     const next = ALL.filter((a) => powerOwned(a));
     const added = first ? [] : next.filter((a) => !this.order.includes(a));
-    this.order = next; this.n = Math.max(1, next.length); this.step = (Math.PI * 2) / this.n;
+    this.order = next; this.n = Math.max(1, next.length); this.step = TAU / this.n;
     this.ownKey = next.join(',');
-    // each chamber shows its power's skill vignette, painted at the dial's own pixel density (18 art units x QW)
-    const icn = (a: Ability) => skillIcon(ABILITY_SKILL[a] ?? a);
-    this.icons = next.map((a) => { const n = toCanvas(iconCanvas(icn(a), { shadow: true, px: 18 * QW })); return { n, d: lockedLook(n) }; });
     let i = added.length ? next.indexOf(added[0]) : prev ? next.indexOf(prev) : 0;
     if (i < 0) i = 0;
-    this.sel = i; this.ang = this.target = i * this.step; this.vel = 0; this.lastDet = Math.floor(this.ang / (this.step / 2) + 0.5);
-    this.hover = -1; this.dirty = true;
+    this.sel = i; this.ang = this.target = i * this.step; this.vel = 0; this.lastDet = Math.round(this.ang / this.step);
+    this.loadN++;
     if (added.length) {
-      this.flash = 2.2; this.flashMsg = 'LOADED: ' + ABILITIES[added[0]].name.toUpperCase();
-      this.vel = 9; this.settled = false; this.showDesc();
+      this.say('LOADED: ' + ABILITIES[added[0]].name.toUpperCase(), true);
+      this.vel = 14; this.settled = false;
       sfx('crack', 0.5, 0.5); sfx('hit', 0.6, 0.4);
-      this.root.classList.remove('kick'); void this.root.offsetWidth; this.root.classList.add('kick');
     }
   }
-  /** turn by n detents (positive = clockwise = next) */
+  say(msg: string, good = false, t = 1.6) { this.flash = t; this.flashMsg = msg; this.flashGood = good; }
+  /** turn by n detents (positive = next) */
   turn(n: number) {
     const armed = this.c.armed();
     if (armed && armed === this.current) this.c.arm(armed);
-    if (!this.order.length) return;
+    if (!this.order.length) { sfx('deny'); return; }
     const N = this.n;
     this.sel = (((this.sel + n) % N) + N) % N;
-    this.target += n * this.step;
-    this.settled = false; this.showDesc();
+    this.target = Math.round(this.ang / this.step) * this.step + n * this.step;
+    this.vel = 0; this.grabbed = false; this.settled = false;
   }
-  select(i: number) {
-    const N = this.n;
-    let d = i - this.sel; if (d > N / 2) d -= N; if (d < -N / 2) d += N;
-    if (d) this.turn(d);
-  }
-  trigger() {
+  select(i: number) { const N = this.n; let d = i - this.sel; if (d > N / 2) d -= N; if (d < -N / 2) d += N; if (d) this.turn(d); }
+  trigger(): boolean {
     const a = this.current;
-    if (!a) { sfx('deny'); this.flash = 1.4; this.flashMsg = 'NO POWERS INSTALLED'; this.crt.classList.remove('err'); void this.crt.offsetWidth; this.crt.classList.add('err'); return; }
+    if (!a) { sfx('deny'); this.say('NO POWERS INSTALLED'); return false; }
     const why = this.c.hive.can(a);
-    this.showDesc();
-    if (why && this.c.armed() !== a) {
-      sfx('deny'); this.flash = 1.4; this.flashMsg = why.toUpperCase(); this.gauge.kick(-1.5);
-      this.crt.classList.remove('err'); void this.crt.offsetWidth; this.crt.classList.add('err');
-      return;
-    }
+    if (why && this.c.armed() !== a) { sfx('deny'); this.say(why.toUpperCase()); return false; }
     sfx('click', 0.8, 1); sfx('hit', 0.5, 0.35);
-    this.root.classList.remove('kick'); void this.root.offsetWidth; this.root.classList.add('kick');
     this.c.arm(a);
+    return true;
   }
-  /** keyboard: returns true when the key belonged to the selector */
+  /** keyboard: true when the key belonged to the drum */
   key(k: string) {
     if (k === '[' || k === ',') { this.turn(-1); return true; }
     if (k === ']' || k === '.') { this.turn(1); return true; }
     if (k === 'Enter' || k === 'f') { this.trigger(); return true; }
     return false;
   }
-  private onWheel(dy: number) {
-    const now = performance.now();
-    this.wheelAcc += dy;
-    if (Math.abs(this.wheelAcc) < 30 && Math.abs(dy) < 30) return;
-    if (now - this.wheelT < 70) { this.wheelAcc = 0; return; }
-    this.wheelT = now;
-    this.turn(this.wheelAcc > 0 ? 1 : -1); this.wheelAcc = 0;
-  }
-  private local(e: PointerEvent) { const r = this.cv.getBoundingClientRect(); return { x: ((e.clientX - r.left) / r.width) * SZ, y: ((e.clientY - r.top) / r.height) * SZ }; }
-  private chamberAt(x: number, y: number) {
-    let best = -1, bd = 12.5;
-    for (let i = 0; i < this.order.length; i++) { const a = this.ang - i * this.step, px = C + Math.sin(a) * R_CH, py = C - Math.cos(a) * R_CH, d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; best = i; } }
-    return best;
-  }
-  private down(e: PointerEvent) {
-    e.stopPropagation();
-    const { x, y } = this.local(e), d = Math.hypot(x - C, y - C);
-    if (d > R_TOOTH + 1 || d < R_HAZ0 - 1) return;
-    this.cv.setPointerCapture(e.pointerId);
-    this.drag = { a0: Math.atan2(x - C, -(y - C)), ang0: this.ang, moved: false, x: e.clientX, y: e.clientY, id: e.pointerId };
-    this.vel = 0;
-  }
-  private move(e: PointerEvent) {
-    const { x, y } = this.local(e);
-    this.ptr = { x, y };
-    if (this.drag) {
-      if (Math.hypot(e.clientX - this.drag.x, e.clientY - this.drag.y) > 4) this.drag.moved = true;
-      if (!this.drag.moved) return;
-      const a = Math.atan2(x - C, -(y - C));
-      this.ang = this.drag.ang0 + wrap(a - this.drag.a0);
-      this.drag.a0 = a; this.drag.ang0 = this.ang;
-      this.target = this.ang; this.dirty = true; this.settled = false;
-      this.showDesc();
-      return;
-    }
-    const h = Math.hypot(x - C, y - C) < R_KNURL ? this.chamberAt(x, y) : -1;
-    if (h !== this.hover) {
-      this.hover = h; this.dirty = true;
-      if (h >= 0) { sfx('hover'); this.showDesc(h); }
-    }
-  }
-  private up(e: PointerEvent) {
-    const d = this.drag; this.drag = null;
-    if (!d) return;
-    if (d.moved) { this.snap(); return; }
-    const { x, y } = this.local(e), i = this.chamberAt(x, y);
-    if (i < 0) return;
-    if (i === this.sel) this.trigger(); else { this.select(i); sfx('click', 1, 0.5); }
-  }
-  /** after a drag: settle into the nearest detent */
-  private snap() {
-    const k = Math.round(this.ang / this.step), N = this.n;
-    this.target = k * this.step;
-    this.sel = ((k % N) + N) % N;
-    this.settled = false; this.showDesc();
-  }
-  private showDesc(i = -1) {
-    const a = this.order[i >= 0 ? i : this.sel] ?? '';
-    this.descT = 4.5;
-    if (this.descShown !== a) { this.descShown = a; this.typed = 0; }
-  }
+  // ---- grabbing the reel
+  grab() { this.grabbed = true; this.vel = 0; }
+  dragBy(da: number, dt = 1 / 60) { this.ang += da; this.vel = da / Math.max(1 / 240, dt); this.settled = false; }
+  release() { this.grabbed = false; this.settled = false; }
 
-  // ------------------------------------------------------------------ per frame
   update(dt: number) {
-    this.t += dt;
-    const h = this.c.hive, armed = this.c.armed();
-    // the skill tree installed (or a load removed) a power: reload the cylinder
     if (ALL.filter((a) => powerOwned(a)).join(',') !== this.ownKey) this.reload();
-    const N = this.n, STEP = this.step, ORDER = this.order;
-    // a number key or the command card armed something: swing the dial round to it
-    if (armed !== this.lastArmed) { this.lastArmed = armed; if (armed && armed !== this.current && !this.drag) { const i = Math.max(0, ORDER.indexOf(armed)); let d = i - this.sel; if (d > N / 2) d -= N; if (d < -N / 2) d += N; this.sel = i; this.target += d * STEP; this.settled = false; this.showDesc(); } }
-    // spring into the detent, a little overshoot for weight
-    if (!this.drag) {
-      const k = 260, damp = 21;
-      this.vel += (k * (this.target - this.ang) - damp * this.vel) * dt;
-      this.ang += this.vel * dt;
-      if (Math.abs(this.target - this.ang) < 0.0015 && Math.abs(this.vel) < 0.01) { this.ang = this.target; this.vel = 0; if (!this.settled) { this.settled = true; sfx('hit', 0.45, 0.22); } }
-    }
-    // ratchet: every tooth that passes the pawl clicks it
-    const det = Math.floor(this.ang / (STEP / 2) + 0.5);
-    if (det !== this.lastDet) {
-      const n = Math.min(3, Math.abs(det - this.lastDet)); this.lastDet = det;
-      sfx('crack', 0.3, 0.16 + n * 0.04); sfx('qte-tick', 1, 0.5);
-      this.pawl.classList.remove('kick'); void this.pawl.offsetWidth; this.pawl.classList.add('kick');
-    }
-    if (Math.abs(this.ang - this.drawnAng) > 0.0008) {
-      this.dirty = true;
-      if (this.ptr && !this.drag) this.hover = Math.hypot(this.ptr.x - C, this.ptr.y - C) < R_KNURL ? this.chamberAt(this.ptr.x, this.ptr.y) : -1;
-    }
-    // states for lamps / shutters
-    const st = ORDER.map((a) => {
-      const d = ABILITIES[a];
-      const cd = h.cooldowns[a] ?? 0;
-      return d.em > h.emLevel ? 'L' : cd > 0 ? 'C' + Math.ceil((cd / d.cd) * 24) : h.res.charge < powerCost(a) || h.res.bio < d.bio ? 'P' : 'R';
-    }).join('|') + (armed ?? '') + this.hover;
-    const blinks = !!armed || ORDER.some((a) => (h.cooldowns[a] ?? 0) > 0);
-    const st2 = st + (blinks ? Math.floor(this.t * 2.5) % 2 : '');
-    if (st2 !== this.stateKey) { this.stateKey = st2; this.dirty = true; }
-    if (this.dirty) { this.render(armed); this.dirty = false; this.drawnAng = this.ang; }
-    // nothing installed yet: a dead button, an empty cylinder and a note on the CRT
-    if (!ORDER.length) {
-      this.fire.dataset.st = 'dead'; this.armLamp.set('off', 'r');
-      for (const t of this.tubes) t.dataset.st = 'warm';
-      const cap0 = capOf(h); this.gauge.set(h.res.charge / cap0); this.gauge.marks = []; this.gauge.red = false; this.gauge.update(dt);
-      this.flash = Math.max(0, this.flash - dt);
-      if (this.nameEl.textContent !== 'NO FIELD POWERS') this.nameEl.textContent = 'NO FIELD POWERS';
-      const c0 = this.flash > 0 ? `<span class="bad">${this.flashMsg}</span>` : 'SKILL TREE &middot; GRAVITY';
-      if (this.costEl.innerHTML !== c0) this.costEl.innerHTML = c0;
-      this.descT -= dt;
-      this.desc.classList.toggle('open', this.descT > 0);
-      const html = '<div class="dt-h">&gt; CYLINDER EMPTY</div><div class="dt-b">No field powers installed. Buy Telekinesis, Gravity Slam, Repulse and the rest on the skill tree to load them here.</div>';
-      if (this.descTxt.innerHTML !== html) { this.descTxt.innerHTML = html; this.rollDesc(); }
-      return;
-    }
-    // fire button state
-    const a = this.current, why = h.can(a);
-    this.fire.dataset.st = armed === a ? 'armed' : why ? 'dead' : 'idle';
-    this.armLamp.set(armed ? 'blink' : why ? 'off' : 'dim', armed ? 'a' : 'r');
-    for (const [i, t] of this.tubes.entries()) t.dataset.st = armed ? 'hot' : this.settled ? (i ? 'warm' : 'hot') : 'warm';
-    // charge meter, with the cost of the selected power marked on the rim
-    const cap = capOf(h), d = ABILITIES[a];
-    this.gauge.set(h.res.charge / cap); this.gauge.marks = d.charge ? [powerCost(a) / cap] : [];
-    this.gauge.red = h.res.charge < powerCost(a);
-    this.gauge.update(dt);
-    // CRT name + cost
+    const armed = this.c.armed(), N = this.n, STEP = this.step;
+    // a number key or another control armed something: swing the drum round to it
+    if (armed !== this.lastArmed) { this.lastArmed = armed; if (armed && armed !== this.current && !this.grabbed) { const i = Math.max(0, this.order.indexOf(armed)); this.select(i); } }
     this.flash = Math.max(0, this.flash - dt);
-    const shown = this.hover >= 0 && !this.drag ? ORDER[this.hover] : this.drag ? ORDER[(((Math.round(this.ang / STEP)) % N) + N) % N] : a;
-    const sd = shown ? ABILITIES[shown] : null;
-    const nm = sd ? `${sd.key} ${sd.name.toUpperCase()}` : 'NO FIELD POWERS';
-    if (this.nameEl.textContent !== nm) { this.nameEl.textContent = nm; this.crt.classList.remove('roll'); void this.crt.offsetWidth; this.crt.classList.add('roll'); }
-    const cost = this.flash > 0 ? `<span class="${this.flashMsg.startsWith('LOADED') ? 'arm' : 'bad'}">${this.flashMsg}</span>` : armed === shown ? '<span class="arm">ARMED &middot; CLICK TARGET</span>' : this.costLine(shown);
-    if (this.costEl.innerHTML !== cost) this.costEl.innerHTML = cost;
-    // the readout tray
-    this.descT -= dt;
-    const open = this.descT > 0 || !!this.drag || this.hover >= 0;
-    this.desc.classList.toggle('open', open);
-    if (open) {
-      const ab = ABILITIES[this.descShown as Ability] ?? sd;
-      const body = ab.desc.replace(/<[^>]+>/g, '');
-      this.typed = Math.min(body.length, this.typed + dt * 160);
-      const why2 = h.can(this.descShown as Ability);
-      const txt = body.slice(0, Math.floor(this.typed));
-      const html = `<div class="dt-h">&gt; ${ab.name.toUpperCase()}</div><div class="dt-b">${txt}${this.typed < body.length ? '<span class="cur">&#9608;</span>' : ''}</div>` +
-        `<div class="dt-f">${why2 ? `<span class="bad">&#9650; ${why2.toUpperCase()}</span>` : '<span>READY</span>'} &middot; KEY ${ab.key} &middot; CD ${ab.cd}S</div>`;
-      if (this.descTxt.innerHTML !== html) { this.descTxt.innerHTML = html; this.rollDesc(); }
-    }
+    if (!this.grabbed) {
+      if (Math.abs(this.vel) > 3) {
+        // spinning free: friction, then it drops into the nearest detent
+        this.ang += this.vel * dt; this.vel *= Math.exp(-dt * 2.6);
+        this.target = Math.round(this.ang / STEP) * STEP;
+        this.sel = ((Math.round(this.ang / STEP) % N) + N) % N;
+      } else {
+        const k = 220, damp = 20;
+        this.vel += (k * (this.target - this.ang) - damp * this.vel) * dt;
+        this.ang += this.vel * dt;
+        if (Math.abs(this.target - this.ang) < 0.002 && Math.abs(this.vel) < 0.02) { this.ang = this.target; this.vel = 0; if (!this.settled) { this.settled = true; sfx('hit', 0.45, 0.22); } }
+      }
+    } else this.sel = ((Math.round(this.ang / STEP) % N) + N) % N;
+    const det = Math.round(this.ang / STEP);
+    this.ticks = 0;
+    if (det !== this.lastDet) { this.ticks = Math.min(3, Math.abs(det - this.lastDet)); this.lastDet = det; sfx('crack', 0.3, 0.16 + this.ticks * 0.04); sfx('qte-tick', 1, 0.5); }
   }
-  /** the readout body wraps and rolls up like teletype paper as it types, so long text is never cut off */
-  private rollDesc() {
-    const b = this.descTxt.querySelector('.dt-b') as HTMLElement | null;
-    if (!b) return;
-    b.style.cssText = 'overflow:hidden;white-space:normal;overflow-wrap:anywhere;max-height:calc(30px * var(--s));min-height:0';
-    b.scrollTop = b.scrollHeight;
+  /** what each cartridge shows: how far out (sunk while recharging), dimmed (cannot pay), glowing (armed) */
+  states(t: number) {
+    const h = this.c.hive, armed = this.c.armed(), front = ((Math.round(this.ang / this.step) % this.n) + this.n) % this.n;
+    return this.order.map((a, i) => {
+      const d = ABILITIES[a], cd = h.cooldowns[a] ?? 0;
+      const poor = h.res.charge < powerCost(a) || h.res.bio < d.bio || d.em > h.emLevel;
+      return { out: cd > 0 ? 1 - cd / d.cd : 1, dim: poor || cd > 0, glow: armed === a ? (Math.floor(t * 3) % 2 ? 1 : 0.4) : 0, front: i === front };
+    });
   }
-  private costLine(a: Ability) {
-    const d = ABILITIES[a], h = this.c.hive, cd = h.cooldowns[a] ?? 0;
-    if (d.em > h.emLevel) return `<span class="bad">LOCKED &middot; FIELD LV ${d.em}</span>`;
-    const c = d.charge ? `<span class="${h.res.charge < powerCost(a) ? 'bad' : ''}">${Math.round(powerCost(a))} CHG</span>` : '';
-    const b = d.bio ? `<span class="${h.res.bio < d.bio ? 'bad' : ''}">${d.bio} BIO</span>` : '';
-    const r = cd > 0 ? `<span class="wait">RECHARGE ${cd.toFixed(1)}S</span>` : `CD ${d.cd}S`;
-    return [c, b, r].filter(Boolean).join(' &middot; ');
-  }
-
-  // ------------------------------------------------------------------ the pixels
-  private render(armed: Ability | null) {
-    const N = this.order.length, STEP = this.step, ORDER = this.order;
-    const { r: RR, th: TH, scratch, lit: LIT, face: FACE } = pre!, D = this.img.data, ang = this.ang, h = this.c.hive;
-    const cosA = Math.cos(-ang), sinA = Math.sin(-ang);
-    const put = (i: number, c: number) => { D[i * 4] = (c >> 16) & 255; D[i * 4 + 1] = (c >> 8) & 255; D[i * 4 + 2] = c & 255; D[i * 4 + 3] = 255; };
-    for (let y = 0; y < SZ2; y++) for (let x = 0; x < SZ2; x++) {
-      const i = y * SZ2 + x, r = RR[i], th = TH[i], ax = (x + 0.5) / QW, ay = (y + 0.5) / QW;
-      if (r > R_TOOTH + 0.5) { D[i * 4 + 3] = 0; continue; }
-      const phi = th - ang; // angle in disc space
-      const rimLit = LIT[i]; // -1..1, + facing the light
-      // ratchet teeth: a sawtooth profile around the outside
-      if (r > R_ROOT) {
-        const uu = (((phi / (Math.PI * 2)) * TEETH) % 1 + 1) % 1;
-        const top = R_ROOT + (R_TOOTH - R_ROOT) * (1 - uu);
-        if (r > top + 0.25) { D[i * 4 + 3] = 0; continue; }
-        const flank = uu > 0.93 || r > top - 0.35;
-        put(i, flank ? (rimLit > 0.1 ? GM[9] : INK) : dv(GM, 5.6 + rimLit * 2.6, x, y));
-        continue;
-      }
-      if (r > R_ROOT - 0.5) { put(i, INK); continue; }
-      // knurled grip band
-      if (r > R_KNURL) {
-        const k = Math.floor(((phi / (Math.PI * 2)) * 72 % 1 + 1) % 1 * 3);
-        const band = (r - R_KNURL) / (R_ROOT - R_KNURL);
-        const v = 5.2 + rimLit * (2.2 + band) + (k === 0 ? 1.3 : k === 1 ? 0 : -1.3) + (band > 0.8 ? 1.6 * rimLit : 0);
-        put(i, dv(GM, v, x, y)); continue;
-      }
-      if (r > R_KNURL - 0.5) { put(i, rimLit > 0 ? GM[2] : GM[7]); continue; }
-      // the hub band: olive enamel, worn through to steel where the thumb turns it, a cream index tick per chamber
-      if (r > R_HAZ0 && r < R_HAZ1) {
-        const edge = r < R_HAZ0 + 0.5 || r > R_HAZ1 - 0.5;
-        const sx = Math.round(C + (ax - C) * cosA - (ay - C) * sinA - 0.5), sy = Math.round(C + (ax - C) * sinA + (ay - C) * cosA - 0.5);
-        const wear = Math.sin(phi * 3 + 1.1) * 0.5 + (sx >= 0 && sy >= 0 && sx < SZ && sy < SZ ? hashf(sx, sy, 3) : 0) > 0.85;
-        const tick = N > 0 && Math.abs(wrap(phi - Math.round(phi / STEP) * STEP) * r) < 0.45 && r > R_HAZ1 - 2.6;
-        put(i, edge ? INK : tick ? CR[2] : wear ? dv(GM, 6 + rimLit * 1.5, x, y) : dv(OL, 3.6 + rimLit * 1.8, x, y));
-        continue;
-      }
-      let v = FACE[i];
-      // scratches belong to the disc: sample them rotated
-      const sx = Math.round(C + (ax - C) * cosA - (ay - C) * sinA - 0.5), sy = Math.round(C + (ax - C) * sinA + (ay - C) * cosA - 0.5);
-      if (sx >= 0 && sy >= 0 && sx < SZ && sy < SZ && scratch[sy * SZ + sx] && (x + y) % 2 === 0) v += scratch[sy * SZ + sx] === 2 ? 1.4 : 0.8;
-      // engraved spokes between the chambers
-      const between = wrap(phi + STEP / 2 - Math.round((phi + STEP / 2) / STEP) * STEP);
-      if (r > 25 && r < 51 && Math.abs(between * r) < 0.3) v = 1.4;
-      else if (r > 25 && r < 51 && Math.abs((between) * r - 0.6) < 0.3) v += 1.4;
-      put(i, dv(GM, v, x, y));
-    }
-    this.g.putImageData(this.img, 0, 0);
-    // chambers, icons, lamps and numerals: upright sprites riding the disc (drawn in art units)
-    const g = this.g;
-    g.setTransform(QW, 0, 0, QW, 0, 0); g.imageSmoothingEnabled = false;
-    for (let i = 0; i < N; i++) {
-      const a = ang - i * STEP, cx = C + Math.sin(a) * R_CH, cy = C - Math.cos(a) * R_CH;
-      const top = Math.abs(wrap(a)) < STEP * 0.3;
-      const ab = ORDER[i], d = ABILITIES[ab], cd = h.cooldowns[ab] ?? 0;
-      const locked = d.em > h.emLevel, poor = h.res.charge < powerCost(ab) || h.res.bio < d.bio;
-      const ch = chamber(top && !locked);
-      const X = Math.round(cx - 12.5), Y = Math.round(cy - 12.5);
-      drawPix(g, ch, X, Y);
-      const ic = this.icons[i];
-      if (locked) g.drawImage(ic.d, X + 4, Y + 4, 18, 18); // what is coming, greyed under a lock
-      else if (poor) { g.globalAlpha = 0.5; g.drawImage(ic.n, X + 4, Y + 4, 18, 18); g.globalAlpha = 1; }
-      else g.drawImage(ic.n, X + 4, Y + 4, 18, 18);
-      if (locked) { // two thin bars across the bore and a padlock hung on them: locked, not empty
-        g.fillStyle = 'rgba(14,16,18,0.55)'; for (const k of [9, 15]) g.fillRect(X + 5, Y + k + 0.5, 15, 1);
-        g.fillStyle = hex(GM[6]); for (const k of [9, 15]) g.fillRect(X + 5, Y + k, 15, 0.5);
-        const lx = X + 14.5, ly = Y + 13.5;
-        g.strokeStyle = hex(GM[7]); g.lineWidth = 1; g.beginPath(); g.arc(lx + 2.5, ly, 2, Math.PI, 0); g.stroke();
-        g.fillStyle = hex(GM[1]); g.fillRect(lx - 0.5, ly - 0.5, 7, 6);
-        g.fillStyle = hex(0xb08a40); g.fillRect(lx, ly, 6, 5);
-        g.fillStyle = hex(0xd8b468); g.fillRect(lx, ly, 6, 1);
-        g.fillStyle = hex(GM[0]); g.fillRect(lx + 2.5, ly + 1.5, 1, 2);
-      }
-      if (cd > 0) { // recharge shutter: a dark sweep that opens clockwise
-        const f = cd / d.cd;
-        g.save(); g.beginPath(); g.moveTo(X + 12.5, Y + 12.5); g.arc(X + 12.5, Y + 12.5, 9, -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2); g.closePath(); g.clip();
-        g.fillStyle = 'rgba(4,8,6,0.72)'; g.fillRect(X, Y, 25, 25); g.restore();
-      }
-      // status lamp just outside the chamber
-      const lx = Math.round(C + Math.sin(a) * R_LAMP - 1.5), ly = Math.round(C - Math.cos(a) * R_LAMP - 1.5);
-      const blink = Math.floor(this.t * 2.5) % 2 === 0;
-      const lc = locked ? [GM[2], GM[3]] : cd > 0 ? (blink ? [AM[4], AM[6]] : [AM[2], AM[3]]) : poor ? [RD[4], RD[6]] : [PH[6], PH[8]];
-      g.fillStyle = hex(INK); g.fillRect(lx - 1, ly - 1, 5, 5);
-      g.fillStyle = hex(lc[0]); g.fillRect(lx, ly, 3, 3); g.fillStyle = hex(lc[1]); g.fillRect(lx, ly, 2, 1); g.fillRect(lx, ly, 1, 2);
-      // hotkey numeral, stencilled at the top-left of the bore
-      const np = numPix(d.key, top ? AM[6] : CR[3]);
-      drawPix(g, np, X + 3, Y + 2);
-      // hover / armed rings
-      if (i === this.hover && !top) ring(g, cx, cy, 12.6, PH[7]);
-      if (top && armed === ab && blink) ring(g, cx, cy, 12.6, AM[6]);
-      else if (top && !locked && this.settled) ring(g, cx, cy, 12.6, poor ? RD[5] : PH[7]);
-    }
-    g.setTransform(1, 0, 0, 1, 0, 0);
+  /** the readout's two lines for the cartridge in front */
+  lines(): [string, string, 'ok' | 'bad' | 'arm' | 'wait'] {
+    if (!this.order.length) return ['NO FIELD POWERS', this.flash > 0 ? this.flashMsg : 'SKILL TREE: GRAVITY', 'bad'];
+    const a = this.current, d = ABILITIES[a], h = this.c.hive, cd = h.cooldowns[a] ?? 0;
+    if (this.flash > 0) return [d.name.toUpperCase(), this.flashMsg, this.flashGood ? 'arm' : 'bad'];
+    if (this.c.armed() === a) return [d.name.toUpperCase(), 'ARMED: CLICK A TARGET', 'arm'];
+    if (cd > 0) return [d.name.toUpperCase(), `RECHARGE ${cd.toFixed(1)}S`, 'wait'];
+    const cost = powerCost(a), poor = h.res.charge < cost;
+    return [d.name.toUpperCase(), `${d.charge ? Math.round(cost) + ' CHG  ' : ''}CD ${d.cd}S`, poor ? 'bad' : 'ok'];
   }
 }
-
-// ------------------------------------------------------------------ helpers
-/** the locked look of an icon: its own picture, desaturated toward cold steel and dimmed (still readable) */
-function lockedLook(src: HTMLCanvasElement) {
-  const c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
-  const g = c.getContext('2d')!; g.drawImage(src, 0, 0);
-  const im = g.getImageData(0, 0, c.width, c.height), d = im.data;
-  for (let i = 0; i < d.length; i += 4) { const l = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11; d[i] = l * 0.62 + 10; d[i + 1] = l * 0.66 + 12; d[i + 2] = l * 0.72 + 16; }
-  g.putImageData(im, 0, 0);
-  return c;
-}
-function toCanvas(pc: { w: number; h: number; toImageData(): ImageData }) { const c = document.createElement('canvas'); c.width = pc.w; c.height = pc.h; c.getContext('2d')!.putImageData(pc.toImageData(), 0, 0); return c; }
-const pixCache = new WeakMap<Pix, HTMLCanvasElement>();
-function drawPix(g: CanvasRenderingContext2D, p: Pix, x: number, y: number) { let c = pixCache.get(p); if (!c) { c = p.canvas(); pixCache.set(p, c); } g.drawImage(c, x, y); }
-const numCache = new Map<string, Pix>();
-function numPix(s: string, col: number) { const k = s + col; let p = numCache.get(k); if (!p) { p = new Pix(5, 7); text(p, s, 1, 1, col, 'shadow'); numCache.set(k, p); } return p; }
-function ring(g: CanvasRenderingContext2D, cx: number, cy: number, r: number, col: number) {
-  g.fillStyle = hex(col);
-  for (let k = 0; k < 144; k++) { const a = (k / 144) * Math.PI * 2; g.fillRect(Math.round((cx + Math.cos(a) * r) * QW - 0.5) / QW, Math.round((cy + Math.sin(a) * r) * QW - 0.5) / QW, 1 / QW, 1 / QW); }
-}
-void CR;

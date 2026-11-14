@@ -277,14 +277,16 @@ void main() {
   float bed = bedH(p), depth = max(0.0, surf - bed);
   // the swell's facet normal and crest measure at this texel; short waves fade with distance
   float fw = length(fwidth(vRest));
-  vec3 N = vec3(0.0, 1.0, 0.0); float crest = 0.0;
+  vec3 N = vec3(0.0, 1.0, 0.0); float crest = 0.0, qs = 1e-4;
   for (int i = 0; i < 8; i++) {
     vec4 a = uWv[i], b = uWq[i];
     float A = a.w * shoalK(depth, b.w) * (1.0 - smoothstep(4.0, 9.0, fw * a.z * 6.0));
     if (A < 1e-5) continue;
     float th = a.z * dot(a.xy, p) - b.x * t + b.y, s = sin(th), c = cos(th), kA = a.z * A;
-    N.xz -= a.xy * kA * c; N.y -= b.z * kA * s; crest += b.z * kA * s;
+    N.xz -= a.xy * kA * c; N.y -= b.z * kA * s; crest += b.z * kA * s; qs += b.z * kA;
   }
+  // how near this point is to the top of a crest (-1 trough .. 1 every wave cresting here)
+  float crestN = crest / qs;
   // ripples on the swell: three short wave trains crossing near the wind, their fronts bent by a slow warp
   float near = 1.0 - smoothstep(0.06, 0.32, fw);
   vec2 wd = normalize(uWindV + vec2(1e-4, 0.0)), wq = p + (vec2(vn(p * 0.17), vn(p * 0.17 + 5.3)) - 0.5) * 4.2 + (vec2(vn(p * 0.6 + 9.0), vn(p * 0.6 + 2.0)) - 0.5) * 0.8;
@@ -343,7 +345,7 @@ void main() {
     float base = deepF ? 2.4 - smoothstep(uDeepCut, uDeepCut * 3.0, path) * 1.2 : 4.7 - smoothstep(0.0, uDeepCut, path) * 2.5;
     float NdV = max(dot(N, V), 0.0), F = pow(1.0 - NdV, 4.0);
     float facet = (dot(N, L) - L.y) * 10.0;
-    float k = base + floor(clamp(facet, -1.5, 1.5) + 0.5) + floor(min(F, 0.95) * 3.0) - (1.0 - uSunK) * 2.6;
+    float k = base + floor(clamp(facet, -1.5, 1.5) + 0.5) + floor(min(F, 0.95) * 3.0) - (1.0 - uSunK) * 2.6 - max(0.0, uWindK - 0.6) * 2.0;
     vec3 wc = deepF ? rampB(k) : rampW(k);
     // the red tide: blooms of red-brown drifting over the water
     float red = uRed * step(0.5, vn(p * 0.045 + vec2(t * 0.004, -t * 0.003)) * 0.7 + vn(p * 0.16 + 3.0) * 0.3);
@@ -364,8 +366,14 @@ void main() {
     float foam = 0.0;
     vec2 fq = p * 1.3 + uWindV * t * 0.12;
     float fpat = vn(fq * 2.1) * 0.6 + vn(fq * 5.3 + 2.0) * 0.4;
-    float thr = mix(0.97, 0.42, uWindK);
-    foam = max(foam, smoothstep(thr, thr + 0.1, crest + (fpat - 0.5) * 0.45) * step(1.2, depth));
+    float thr = mix(1.05, 0.38, uWindK);
+    foam = max(foam, smoothstep(thr, thr + 0.1, crestN + (fpat - 0.5) * 0.5) * step(1.2, depth));
+    // in a gale the foam is torn into long streaks down the wind
+    if (uWindK > 0.55) {
+      vec2 sq = vec2(dot(p, wd) * 0.18 - t * 0.5, dot(p, vec2(-wd.y, wd.x)) * 3.2);
+      float st = vn(sq + vec2(vn(sq * 0.3) * 2.0, 0.0));
+      foam = max(foam, step(0.74 - (uWindK - 0.55) * 0.3, st) * 0.6 * step(1.2, depth));
+    }
     if (sd < 14.0 && sd > -0.5) {
       float jitter = vn(p * 0.09 + 11.0) * 1.3;
       float ph = sd / 3.4 + t * 0.21 * (0.8 + uWindK * 0.5) + jitter;
@@ -402,7 +410,7 @@ void main() {
     // bioluminescence: in the dark every disturbance of the water lights up blue-green
     float stir = max(foam, max(ia.y, clamp(ia.x, 0.0, 1.0)));
     if (uBio > 0.01) {
-      float spark = step(0.988 - stir * 0.1, h2(px * 0.5 + floor(t * 3.0 + h2(px) * 7.0))) * smoothstep(0.2, 0.9, crest + 0.4);
+      float spark = step(0.988 - stir * 0.1, h2(px * 0.5 + floor(t * 3.0 + h2(px) * 7.0))) * smoothstep(0.2, 0.9, crestN + 0.4);
       float bio = max(step(0.45, stir), spark);
       if (bio > 0.5) { col = mix(col, uGlowC, 0.75 * uBio) + uGlowC * uBio * 0.6; glow = max(glow, uBio); }
     }
@@ -421,7 +429,7 @@ void main() {
   } else {
     // ---------------- seen from below: Snell's window, and the dark mirror of total internal reflection outside it
     vec3 Tr = refract(-V, -N, 1.333);
-    float k0 = 1.5 + (uSunK - 1.0) * 2.0;
+    float k0 = 1.5 + (uSunK - 1.0) * 2.0 + crestN * 0.6;
     if (dot(Tr, Tr) < 0.5) {
       col = rampB(k0 + floor(vn(p * 0.8 + t * 0.2) * 2.0));
       if (-dot(V, N) > 0.62 && -dot(V, N) < 0.7) col = rampW(4.0 + uSunK);
@@ -434,7 +442,7 @@ void main() {
       }
       col = mix(s, rampW(4.0), 0.3);
       if (max(dot(Tr, L), 0.0) > 0.985) col = rampF(4.0) * uSunCol * 1.5;
-      if (crest > 0.35) col = mix(col, rampW(6.0), 0.4);
+      if (crestN > 0.55) col = mix(col, rampW(6.0), 0.4);
     }
     if (uBio > 0.01 && ia.y > 0.5) col = uGlowC * (0.6 + uBio);
   }
