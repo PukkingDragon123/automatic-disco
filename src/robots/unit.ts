@@ -154,6 +154,23 @@ export class RobotUnit {
     this.g.world.scene.add(this.mesh);
   }
   get fly() { return !!this.st.fly; }
+  /** carry a designed weapon: its numbers, and its hardware bolted on at the first muzzle (null: back to stock) */
+  equip(w: Weapon | null, mesh: THREE.Object3D | null = null) {
+    this.weapon = w ? { ...w } : { ...this.st.weapon };
+    const m = this.model, old = this.mesh.getObjectByName('equipped');
+    if (old) { old.removeFromParent(); if (m && old.userData.muzzles) m.muzzles.splice(0, m.muzzles.length, ...old.userData.muzzles); }
+    if (!w || !mesh) return;
+    const mz = m?.muzzles[0] ?? this.human?.muzzle;
+    if (!mz?.parent) return;
+    mesh.name = 'equipped';
+    mesh.userData.muzzles = m ? [...m.muzzles] : null;
+    mz.parent.add(mesh);
+    mesh.position.copy(mz.position);
+    if (this.human) mesh.rotation.set(0, Math.PI / 2, 0);
+    const nm = mesh.getObjectByName('muzzle');
+    if (m && nm) m.muzzles.splice(0, m.muzzles.length, nm);
+    else if (this.human && nm) (this.human as { muzzle: THREE.Object3D | null }).muzzle = nm;
+  }
   get alive() { return !this.dead; }
 
   // -------------------------------------------------------------------------------------------- orders and damage
@@ -698,16 +715,22 @@ const SHOTS = new WeakMap<object, Shots>(), DEBRIS = new WeakMap<object, Debris>
 function shots(g: Host) { let s = SHOTS.get(g); if (!s) SHOTS.set(g, (s = new Shots(g))); return s; }
 function debris(g: Host) { let s = DEBRIS.get(g); if (!s) DEBRIS.set(g, (s = new Debris(g))); return s; }
 
+/** systems that want to know about new units (the weapons workbench issues designs to them) */
+export const robotHooks = { spawn: [] as ((u: RobotUnit, game: object) => void)[] };
 /** make a unit and register it in game.robots */
 export function spawnRobot(game: Game, kind: RobotKind, faction: Faction, x: number, z: number): RobotUnit {
   const u = new RobotUnit(game, kind, faction, x, z);
   const h = game as unknown as Host;
   (h.robots ??= []).push(u);
+  for (const f of robotHooks.spawn) { try { f(u, game); } catch (e) { console.error('robot spawn hook', e); } }
   return u;
 }
+const INSTALLED = new WeakSet<object>();
 /** run every unit, the shots and the wreckage (game.ts calls this once a frame) */
 export function tickRobots(game: Game | object, dt: number) {
   const h = game as unknown as Host;
+  // the weapons workbench and the golem's mounts come with the first tick of a real game
+  if (!INSTALLED.has(game) && (game as { engine?: unknown }).engine) { INSTALLED.add(game); import('./weapons/store').then((m) => m.installWeapons(game as Game)).catch((e) => console.error('weapons', e)); }
   const L = h.robots;
   if (L) for (const u of [...L]) { try { u.update(dt); } catch (e) { console.error('robot', u.kind, e); u.dispose(); } }
   if (dt > 0) { SHOTS.get(h)?.update(dt); DEBRIS.get(h)?.update(dt); tickStatus(h, dt); }

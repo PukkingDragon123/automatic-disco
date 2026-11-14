@@ -2,7 +2,7 @@
 // camp|beast|final (a cutscene played in a real region), ?test=menu (the launch-control menu without the flow).
 import type { Engine } from '../app/engine';
 import type { Input } from '../app/input';
-import { HI_ICON_NAMES, hiIcon, SKILL_ICON, RES_ICON } from './icons';
+import { HI_ICON_NAMES, hiIcon, hiItem, ITEM_ICON_NAMES, SKILL_ICON, RES_ICON } from './icons';
 import { SKILLS } from '../game/skills';
 
 export function testIcons(engine: Engine) {
@@ -11,13 +11,13 @@ export function testIcons(engine: Engine) {
   const root = document.createElement('div');
   root.style.cssText = 'position:fixed;inset:0;overflow:auto;background:#101418;color:#cfe8c8;font:14px VT,monospace;padding:12px;z-index:9;pointer-events:auto';
   document.body.appendChild(root);
-  const section = (title: string, names: string[]) => {
+  const section = (title: string, names: string[], items = false) => {
     const h = document.createElement('div'); h.textContent = title; h.style.cssText = 'margin:8px 0 4px;color:#ffcd6e'; root.appendChild(h);
     const row = document.createElement('div'); row.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px'; root.appendChild(row);
     for (const n of names) {
       const cell = document.createElement('div'); cell.style.cssText = 'display:flex;flex-direction:column;align-items:center;background:#1c2228;padding:4px;border:1px solid #2c3640;min-width:60px';
       for (const s of sizes) {
-        const pc = hiIcon(n, s, { shadow: true }); if (!pc) continue;
+        const pc = items ? hiItem(n, s, { shadow: true }) : hiIcon(n, s, { shadow: true }); if (!pc) continue;
         const c = document.createElement('canvas'); c.width = pc.w; c.height = pc.h; c.getContext('2d')!.putImageData(pc.toImageData(), 0, 0);
         const z = Number(P.get('zoom') ?? (s <= 36 ? 2 : 1)); c.style.width = pc.w * z + 'px'; c.style.height = pc.h * z + 'px'; c.style.imageRendering = 'pixelated';
         cell.appendChild(c);
@@ -28,6 +28,7 @@ export function testIcons(engine: Engine) {
   };
   const only = P.get('only');
   if (only) { section('ICONS', only.split(',')); return; }
+  if (P.has('items')) { section('FACTORY ITEMS', ITEM_ICON_NAMES, true); return; }
   section('RESOURCES', Object.values(RES_ICON));
   section('SKILLS (by skill id)', SKILLS.map((s) => SKILL_ICON[s.id] ?? s.id));
   const rest = HI_ICON_NAMES.filter((n) => !Object.values(SKILL_ICON).includes(n) && !Object.values(RES_ICON).includes(n));

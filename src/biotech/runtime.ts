@@ -83,6 +83,8 @@ export class Biotech {
     this.patchWorld();
     // plant genes come from saving plant prefabs; the Gene-Lock comes from research as well
     game.on('prefab', (d: { kind?: string; name?: string }) => { if (d?.kind === 'plant' && d.name) this.plantGenes(d.name); });
+    // absorbing a gene again raises its level: the rates change
+    game.on('absorb', () => this.invalidate());
     game.on('skill', (d: { id?: string }) => { for (const g of BIO_GENES) if (g.bio.skill && g.bio.skill === d?.id && !this.run.has(g.id)) { this.run.add(g.id, 'research', this.w.time); toast(`Sequenced by research: <b>${g.name}</b>`, 'good', 3600); } });
   }
   private errs = 0;

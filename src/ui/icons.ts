@@ -1570,6 +1570,173 @@ export function iconEl(name: string, px = 36, cls = 'ico', parent?: HTMLElement,
   return i;
 }
 
+
+// ------------------------------------------------------------------ factory items
+// One object per icon, centred, a bold silhouette: realistic material ramps (iron, copper, gold, quartz, malachite),
+// the same outline, flat tone clusters, highlight edge and glints as the vignettes.
+const IRN = RAMPS.iron, CPR = RAMPS.copper, GLD = RAMPS.gold, QZ = RAMPS.quartz, MAL = RAMPS.malachite;
+/** a box seen from above and in front: lit top, front, shaded end (one object, one outline) */
+function slab(p: IP, x: number, y: number, w: number, h: number, d: number, R: Ramp, o: SOpt = {}) {
+  const part = o.part ?? ++p.pid, oo = { ...o, part };
+  const front = p.poly([x, y + d, x + w, y + d, x + w, y + d + h, x, y + d + h], R, P_MID, oo);
+  const top = p.poly([x, y + d, x + d, y, x + w + d, y, x + w, y + d], R, P_LIT, oo);
+  const side = p.poly([x + w, y + d, x + w + d, y, x + w + d, y + h, x + w, y + h + d], R, P_SH, oo);
+  return { part, inside: ((a: number, b: number) => front.inside(a, b) || top.inside(a, b) || side.inside(a, b)) as Inside };
+}
+/** a cast bar: top face, sloped front, end face */
+function ingot(p: IP, R: Ramp, mark = true) {
+  const part = ++p.pid;
+  p.poly([8, 12, 22, 10, 27, 13.5, 13, 15.8], R, P_LIT, { part });
+  p.poly([13, 15.8, 27, 13.5, 26, 20.5, 12, 23], R, P_MID, { part });
+  p.poly([8, 12, 13, 15.8, 12, 23, 6.5, 18.5], R, P_SH, { part });
+  if (mark) p.mark([15, 13.6, 17.5, 12.2, 20, 12.8], part, 1);
+}
+const ITEM_ART: Record<string, Art> = {
+  ore(p) { const r = p.rock(16, 17, 12, 7, IRN, { sq: 0.82, n: 8, jag: 0.22 }); p.clip = r.inside; for (const [x, y, rr, sd] of [[19.5, 12, 3, 1], [11, 19, 2.6, 2], [21, 21, 2.2, 3], [13, 11, 1.6, 4]]) p.rock(x, y, rr, 90 + sd, CU); p.clip = null; },
+  copper_ore(p) { const r = p.rock(16, 17, 12, 13, RK, { sq: 0.82, n: 8 }); p.clip = r.inside; p.seg(5, 14, 14, 19, 1.7, MAL); p.seg(14, 19, 25, 14.5, 1.4, MAL); p.seg(11, 24.5, 21, 25.5, 1.2, MAL); p.rock(19.5, 11, 2.4, 91, CPR); p.rock(9.5, 20.5, 2, 92, CPR); p.clip = null; },
+  coal(p) { p.rock(10.5, 20.5, 7.6, 21, BK, { n: 7, gloss: true }); p.rock(22, 21.5, 6.6, 22, BK, { n: 6, gloss: true }); p.rock(16, 12, 6.8, 23, BK, { n: 7, gloss: true }); },
+  crystal(p) { p.rock(16, 27.5, 9, 31, RK, { sq: 0.32 }); crystal(p, 9.5, 27, 2.6, 7, -1.6, QZ, 0.92); crystal(p, 22.5, 27.5, 2.4, 6, 1.8, QZ, 0.92); crystal(p, 16, 27, 3.6, 12.5, 0.4, QZ); },
+  carbon(p) {
+    for (const [x0, y0, x1, y1, i] of [[5, 22, 23, 9, 0], [7, 26, 26, 11, 1], [10, 28, 28, 15, 2], [5, 26, 21, 6, 3]]) p.seg(x0, y0, x1, y1, 2.3, i % 2 ? BW : SO);
+    p.seg(12, 12.5, 18, 21.5, 1.8, BR);
+    for (const [x, y] of [[23, 9], [21, 6], [26, 11]]) p.fdot(x, y, 0.6, FI[1]);
+  },
+  water(p) {
+    const c = p.tank(8, 6, 16, 22, GM, { r: 2 });
+    p.box(8, 12, 16, 9.5, WA, { bevel: 0.7, lum: 0.62, clip: c.inside });
+    p.gem([16, 13, 18, 16.6, 17.6, 19, 14.4, 19, 14, 16.6], CR, { crown: 0.3 });
+    p.box(8, 6, 16, 1.6, GM, { lum: 0.75, bevel: 0.3, clip: c.inside }); p.box(8, 26.2, 16, 1.6, GM, { lum: 0.35, bevel: 0.3, clip: c.inside });
+  },
+  soil(p) {
+    p.gem([3, 26, 6, 19.6, 11, 15.4, 17.5, 14.2, 23.6, 16, 28, 20.4, 29.5, 26], SO, { crown: 0.15, top: 0.45 });
+    p.ball(12, 19, 2.4, 1.7, SO, { n: 5 }); p.ball(21, 21.5, 2.6, 1.8, SO, { n: 6 }); p.rock(8, 23.5, 1.5, 2, RK); p.rock(24.6, 18.6, 1.2, 5, RK);
+  },
+  fruit(p) {
+    p.ball(16, 18.5, 10, 9.2, CO, { n: 9, gloss: true, crown: 0.3 });
+    p.seg(16.4, 10.5, 17.4, 5.5, 1, BW); p.leaf(17.4, 7, 24, 4.6, 3, PL, { bend: 0.12 });
+  },
+  iron_ingot(p) { ingot(p, IRN); }, copper_ingot(p) { ingot(p, CPR); }, steel_ingot(p) { ingot(p, GM); },
+  glass(p) { const g = p.bevel([9, 5.5, 25, 7.5, 23.4, 27.5, 7, 25.5], GL, { w: 1.1, lum: P_TOP }); p.clip = g.inside; p.fline(11, 15, 17, 8.5, SN[5]); p.fline(12, 18, 18.6, 11, SN[3]); p.fline(16, 25, 22, 18.6, SN[3]); p.clip = null; },
+  concrete(p) { const b = slab(p, 5, 9, 18, 13, 5, RK); for (const [x, y] of [[8, 18], [13, 21], [18, 17], [10, 24.5], [16, 25]]) p.mark([x, y, x + 1, y], b.part, 2); },
+  rubber(p) { const t = p.ring(16, 16, 5, 12.5, BK, { n: 10, gloss: true }); for (let i = 0; i < 10; i++) { const a = (i / 10) * TAU + 0.31; p.mark([16 + Math.cos(a) * 9.5, 16 + Math.sin(a) * 9.5, 16 + Math.cos(a) * 12.4, 16 + Math.sin(a) * 12.4], t.part, 0); } },
+  plastic(p) { slab(p, 5, 9, 18, 12, 6, RW, { gloss: true }); p.fline(9, 19.5, 18, 19.5, RW[4]); },
+  iron_plate(p) { const b = slab(p, 4, 8, 20, 14, 6, GM); for (const [x, y] of [[6.5, 16.5], [21.5, 16.5], [6.5, 25.5], [21.5, 25.5]]) p.disc(x, y, 0.8, INK[0], { part: b.part }); },
+  iron_rod(p) { for (const [x, y, k] of [[5, 22, 1], [8, 26, 0.9], [9, 19, 0.8]] as [number, number, number][]) { p.seg(x, y, x + 20, y - 13, 2.6, GM, { gain: k }); p.ball(x + 20, y - 13, 1.4, 1.4, GM, { n: 6, gain: k }); } },
+  screw(p) { const sh = p.seg(13, 13, 26, 26, 3, GM); for (let i = 0; i < 5; i++) { const t = 15 + i * 2.2; p.mark([t - 1.6, t + 1.6, t + 1.6, t - 1.6], sh.part, 1); } const h = p.gem([6, 9, 9.5, 5, 14.5, 6.5, 15.8, 11, 12.5, 15, 7.5, 13.5], GM, { crown: 0.25 }); p.mark([8.6, 12.4, 13.4, 7.6], h.part, 0); },
+  copper_wire(p) {
+    p.box(6, 4.5, 20, 3.6, BW, { bevel: 0.6 }); p.box(6, 24, 20, 3.6, BW, { bevel: 0.6 });
+    const w = p.tank(8, 8, 16, 16, CPR, { r: 0.5 });
+    for (let y = 9.5; y < 24; y += 1.7) p.mark([8.2, y, 23.8, y - 0.6], w.part, 2);
+    p.fline(24, 17, 29, 21, CPR[5]); p.fline(29, 21, 30, 26, CPR[5]);
+  },
+  cable(p) { for (const [r, k] of [[11, 1], [8.4, 0.9], [5.8, 0.8]] as [number, number][]) p.ring(15, 16, r - 2, r, BK, { n: 9, gain: k, gloss: true }); p.seg(23, 19, 29, 27, 2, BK); p.seg(28.2, 25.8, 30.4, 29, 1.2, CPR); },
+  steel_beam(p) {
+    const part = ++p.pid;
+    p.poly([4, 13, 9, 9, 29, 9, 24, 13], GL, P_LIT, { part }); p.poly([24, 13, 29, 9, 29, 11.4, 24, 15.4], GL, P_SH, { part });
+    p.poly([12.6, 15.4, 17.6, 11.4, 19.4, 11.4, 14.4, 15.4], GL, P_SH, { part });
+    p.poly([4, 13, 24, 13, 24, 15.4, 4, 15.4], GL, P_MID, { part }); p.poly([11.8, 15.4, 15.2, 15.4, 15.2, 22.6, 11.8, 22.6], GL, P_MID, { part });
+    p.poly([4, 22.6, 24, 22.6, 24, 25, 4, 25], GL, P_MID, { part }); p.poly([24, 22.6, 29, 18.6, 29, 21, 24, 25], GL, P_SH, { part });
+    p.poly([15.2, 15.4, 24, 15.4, 24, 22.6, 15.2, 22.6], GL, P_SH, { part });
+  },
+  gear(p) { cog(p, 16, 16, 12.5, GM, 10); },
+  reinforced_plate(p) { slab(p, 4, 11, 21, 6, 6, GM); slab(p, 4, 18, 21, 6, 6, GM, { gain: 0.85 }); for (const x of [8, 18]) p.box(x, 9, 3.4, 18.5, OL, { bevel: 0.5, lum: 0.6 }); for (const [x, y] of [[9.7, 13], [19.7, 13], [9.7, 24], [19.7, 24]]) p.rivet(x, y, 0.7, GM); },
+  rotor(p) { p.seg(3, 16, 29, 16, 2.4, GM); const s = p.box(9, 8, 14, 16, CPR, { bevel: 0.9, lum: 0.55 }); for (let x = 10.5; x < 22; x += 1.8) p.mark([x, 8.4, x, 23.6], s.part, 2); p.box(7, 10, 2, 12, GM, { lum: 0.5 }); p.box(23, 10, 2, 12, GM, { lum: 0.5 }); },
+  frame(p) { const q = [[6, 6], [26, 6], [26, 26], [6, 26]]; for (let i = 0; i < 4; i++) p.seg(q[i][0], q[i][1], q[(i + 1) % 4][0], q[(i + 1) % 4][1], 2.4, GM); p.seg(6, 26, 26, 6, 1.6, GM, { gain: 0.85 }); p.seg(6, 6, 16, 16, 1.6, GM, { gain: 0.85 }); for (const [x, y] of q) p.box(x - 1.8, y - 1.8, 3.6, 3.6, GM, { lum: 0.6, bevel: 0.5 }); },
+  circuit(p) {
+    const b = slab(p, 3, 9, 22, 15, 5, RW, { gloss: true });
+    p.clip = b.inside;
+    for (const [a, c, d, e] of [[5, 17, 11, 17], [11, 17, 13, 15], [13, 15, 21, 15], [6, 21, 15, 21], [15, 21, 17, 19], [17, 19, 23, 19]]) p.fline(a, c, d, e, CPR[5]);
+    p.clip = null;
+    p.box(8, 13.5, 4, 3, BK, { bevel: 0.3 }); p.box(16, 20, 5, 3, BK, { bevel: 0.3 }); p.box(19.5, 13, 2.4, 1.6, CO, { lum: 0.6 });
+  },
+  vacuum_tube(p) {
+    p.box(9, 23, 14, 4.5, BR, { bevel: 0.7 }); for (const x of [11.5, 14.5, 17.5, 20.5]) p.seg(x, 27.5, x, 30.5, 0.8, GM);
+    const g = p.tank(10, 3, 12, 20.5, GL, { r: 5.5, gain: 0.85 });
+    p.clip = g.inside; p.box(12.4, 10, 2, 11, GM, { lum: 0.6 }); p.box(17.6, 10, 2, 11, GM, { lum: 0.5 }); p.glow(16, 15, 3, FI, { ry: 2 }); p.fline(16, 10, 16, 20.5, FI[4]); p.clip = null;
+  },
+  motor(p) {
+    p.seg(23, 16, 30, 16, 2, GM);
+    const m = p.box(5, 8, 19, 16, OL, { r: 3, lum: 0.55, bevel: 1 });
+    for (let x = 8; x < 22; x += 2.4) p.mark([x, 8.4, x, 23.6], m.part, 1);
+    p.box(10, 4.5, 7, 4, OL, { bevel: 0.6, lum: 0.45 }); p.rivet(12, 6.3, 0.5, BR); p.rivet(15, 6.3, 0.5, BR);
+  },
+  ammo(p) { for (const [x, k] of [[8, 0.85], [15, 1], [22, 0.9]] as [number, number][]) { p.box(x - 2.4, 13, 4.8, 15, BR, { bevel: 0.6, lum: 0.6 * k + 0.1 }); p.bevel([x - 2.4, 13, x, 5.5, x + 2.4, 13], CPR, { w: 0.8, lum: P_TOP }); p.box(x - 2.8, 26.5, 5.6, 1.8, BR, { lum: 0.4, bevel: 0.3 }); } },
+  servo(p) { const b = slab(p, 5, 11, 15, 15, 5, OL); p.seg(15, 14, 28, 6, 2.4, GM); p.ball(15, 14, 2.6, 2.6, BR, { n: 7 }); cog(p, 11, 20.5, 3.4, GM, 7); p.fline(5, 28, 2, 30, CPR[4]); void b; },
+  control_unit(p) {
+    const b = slab(p, 3, 8, 22, 17, 5, OL); void b;
+    p.box(5.5, 15.5, 10, 7, LN, { lum: 0.08, bevel: 0.4 }); p.fline(6.5, 19.5, 9, 17.6, LN[3]); p.fline(9, 17.6, 11.5, 20.4, LN[3]); p.fline(11.5, 20.4, 14.4, 17.8, LN[3]);
+    p.ball(19.5, 17.5, 1.6, 1.6, BK, { n: 6, amb: 0.2 }); p.ball(19.5, 22.4, 1.3, 1.3, BR, { n: 5 }); p.fdot(23, 14.5, 0.6, FI[3]);
+  },
+  heavy_frame(p) { slab(p, 9, 14, 10, 9, 4, RK); const q = [[4, 6], [27, 6], [27, 27], [4, 27]]; for (let i = 0; i < 4; i++) p.seg(q[i][0], q[i][1], q[(i + 1) % 4][0], q[(i + 1) % 4][1], 3.2, GL); for (const [x, y] of q) p.box(x - 2.2, y - 2.2, 4.4, 4.4, GL, { lum: 0.6, bevel: 0.6 }); },
+  reactor_core(p) {
+    p.box(8, 3, 16, 3.5, GM, { bevel: 0.6 }); p.box(8, 25.5, 16, 3.5, GM, { bevel: 0.6 });
+    p.box(10, 6.5, 12, 19, INK, { lum: 0.5, bevel: 0.3 }); p.glow(16, 16, 4.6, LN, { ry: 2 });
+    for (const x of [10.5, 16, 21.5]) p.seg(x, 6.5, x, 25.5, 1.4, GM);
+    crystal(p, 16, 3.4, 1.4, 1.6, 0, QZ);
+  },
+  report(p) {
+    p.bevel([7, 6.5, 25, 5.5, 26.5, 27, 8.5, 28], CR, { w: 0.6, lum: P_MID, gain: 0.85 });
+    p.bevel([5.5, 5, 23.5, 4, 25, 25.5, 7, 26.5], CR, { w: 0.6, lum: P_TOP });
+    for (let i = 0; i < 6; i++) p.fline(8.5, 9 + i * 2.4, 21.5 - h1(i, 3) * 6, 8.6 + i * 2.4, INK[2]);
+    p.poly([14.5, 21.5, 21.5, 20.5, 22, 24, 15, 25], RE, P_TOP);
+    p.seg(11, 2.5, 11, 8, 1, GM);
+  },
+  tape(p) {
+    p.ring(16, 16, 3.4, 12.5, GM, { n: 10 }); p.ring(16, 16, 3.4, 9.6, BK, { n: 10, gloss: true });
+    for (let i = 0; i < 3; i++) { const a = (i / 3) * TAU + 0.5; p.seg(16 + Math.cos(a) * 3.6, 16 + Math.sin(a) * 3.6, 16 + Math.cos(a) * 9.4, 16 + Math.sin(a) * 9.4, 1.6, GM); }
+    p.disc(16, 16, 2, INK[0]);
+  },
+  steam(p) { for (const [x, y, r] of [[10, 20, 6], [19, 17, 7], [14, 11, 5.4], [23, 23, 4.6]] as [number, number, number][]) p.ball(x, y, r, r * 0.85, SN, { n: 7, gloss: false }); },
+  iron_pellet(p) { for (const [x, y, r] of [[9, 25, 3.4], [15.5, 25.5, 3.6], [22.5, 25, 3.4], [12, 19.5, 3.4], [19, 19.5, 3.5], [15.5, 13.8, 3.4], [25.6, 20.5, 2.6], [6, 20.5, 2.4]] as [number, number, number][]) p.ball(x, y, r, r, CU, { n: 6, gloss: true }); },
+  silk(p) {
+    p.box(8, 5, 16, 3, BW, { bevel: 0.5 }); p.box(8, 24, 16, 3, BW, { bevel: 0.5 });
+    const w = p.tank(9.5, 8, 13, 16, RAMPS.straw, { r: 1 });
+    for (let y = 9; y < 24; y += 1.6) p.mark([9.7, y, 22.3, y + 0.8], w.part, 3);
+    p.fline(22.5, 18, 27, 22, RAMPS.straw[5]); p.fline(27, 22, 26, 28, RAMPS.straw[5]);
+  },
+  resin(p) { const d = p.gem([16, 3.5, 19.4, 9, 24, 15, 25.2, 20.6, 22.6, 26, 16.6, 28.4, 10.4, 26, 7.6, 20.8, 9, 14.6, 13, 9], GLD, { crown: 0.3, gloss: true }); p.clip = d.inside; p.ball(19.4, 21.6, 2, 1.8, OR, { n: 6, gain: 0.6 }); p.clip = null; },
+  bio_oil(p) {
+    const b = p.bevel([13, 3.5, 19, 3.5, 19, 10, 25, 15.5, 25, 28.5, 7, 28.5, 7, 15.5, 13, 10], GL, { w: 1, lum: P_TOP, gain: 0.85 });
+    p.poly([7, 17.5, 25, 17.5, 25, 28.5, 7, 28.5], LB, P_TOP, { clip: b.inside, gloss: true });
+    p.box(13.6, 1.5, 4.8, 3.6, BW, { bevel: 0.5 });
+  },
+  glass_bead(p) { for (const [x, y, r] of [[10, 22, 4.2], [20, 23, 4.6], [15, 14, 4.4], [24, 14.5, 3.2], [8, 13.5, 2.8]] as [number, number, number][]) p.ball(x, y, r, r, WA, { n: 7, gloss: true, crown: 0.32 }); },
+  protein(p) {
+    p.bevel([12.5, 4, 19.5, 4, 19.5, 9, 24, 14, 24, 28.5, 8, 28.5, 8, 14, 12.5, 9], BN, { w: 1, lum: P_TOP });
+    p.box(12, 2, 8, 3.6, RE, { bevel: 0.5, lum: 0.6 });
+    p.box(9.5, 17, 13, 6.5, OR, { bevel: 0.5, lum: 0.62 });
+  },
+  algae_fuel(p) {
+    const c = p.box(5, 7, 20, 22, MAL, { r: 2, lum: 0.5, bevel: 1.1 });
+    p.mark([7, 9, 23, 27], c.part, 1); p.mark([23, 9, 7, 27], c.part, 1);
+    p.box(9, 3, 9, 3.6, GM, { bevel: 0.5 }); p.box(20, 3.6, 3.6, 3.6, GM, { bevel: 0.5 });
+  },
+  dung(p) { for (const [x, y, rx, ry] of [[16, 25, 10, 3.6], [15.5, 20, 7.6, 3.4], [16.5, 15.4, 5.2, 3], [16, 11.6, 3, 2.2]] as [number, number, number, number][]) p.ball(x, y, rx, ry, SO, { n: 7 }); for (const x of [8, 25]) { p.fline(x, 9, x + 1, 6.5, PL[4]); p.fline(x + 1, 6.5, x, 4, PL[4]); } },
+  herbicide(p) {
+    const d = p.tank(7, 5, 18, 23, GM, { r: 1.6 });
+    for (const y of [9, 23]) p.box(7, y, 18, 1.3, GM, { lum: 0.3, bevel: 0.3, clip: d.inside });
+    p.box(9, 12, 14, 8, LB, { lum: 0.62, bevel: 0.5, clip: d.inside });
+    p.gem([16, 13, 18.6, 16.4, 16, 19, 13.4, 16.4], INK, { crown: 0.2 });
+  },
+  crate(p) { const b = slab(p, 4, 9, 19, 16, 5, BW); p.mark([4.4, 25.4, 22.6, 9.6], b.part, 1); p.mark([4.4, 17, 22.6, 17], b.part, 1); for (const [x, y] of [[5.6, 10.6], [21.4, 10.6], [5.6, 23.6], [21.4, 23.6]]) p.rivet(x, y, 0.6, GM); },
+};
+export const ITEM_ICON_NAMES = Object.keys(ITEM_ART).filter((k) => k !== 'crate');
+/** a factory item drawn in the icon style (a crate for any item without its own drawing) */
+export function hiItem(id: string, px = 32, o: { dim?: boolean; shadow?: boolean } = {}): PixelCanvas {
+  px = Math.max(12, Math.round(px));
+  const key = `item:${id}|${px}|${o.dim ? 1 : 0}${o.shadow ? 1 : 0}`;
+  let pc = pcCache.get(key);
+  if (!pc) { pc = paint(ITEM_ART[id] ?? ITEM_ART.crate, px, o); pcCache.set(key, pc); }
+  return pc;
+}
+/** a data URL of a factory item's icon at px x px */
+export function itemIcon(id: string, px = 32, o: { dim?: boolean; shadow?: boolean } = { shadow: true }): string {
+  const key = `item:${id}|${px}|${o.dim ? 1 : 0}${o.shadow ? 1 : 0}`;
+  let u = urlCache.get(key);
+  if (!u) { u = pcURL(hiItem(id, px, o)); urlCache.set(key, u); }
+  return u;
+}
+
 /** skill id -> icon name (every skill in game/skills.ts has its own vignette) */
 export const SKILL_ICON: Record<string, string> = {
   head: 'head', torso: 'torso', armR: 'armR', armL: 'armL', coil: 'coil', plating1: 'plating1', plating2: 'plating2', reactor: 'reactor',

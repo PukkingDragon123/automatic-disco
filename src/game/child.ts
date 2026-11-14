@@ -155,6 +155,11 @@ export class VeyrChild {
   private ap = 0.6; private apGoal = 0.6;
   private prevP = new THREE.Vector3(); private hasPrev = false; private gait = 0; private gaitV = 0; private vFwd = 0; private stepSide = 0;
   private boltT = 0; private stageFx = 0; private pendingStage: string | null = null;
+  // ---- weapons (robots/weapons): a held / forearm weapon and a shoulder mount
+  private equip: { hand: THREE.Object3D | null; mount: THREE.Object3D | null } = { hand: null, mount: null };
+  private mountYaw = new THREE.Group(); private mountPitch = new THREE.Group();
+  /** while set, the gun arm and the mount aim here (the weapons system sets it when it fires) */
+  fireAim: THREE.Vector3 | null = null; private fireK = 0; private kick = 0;
   constructor(readonly fx: Fx, scale = 1.25, look?: BabyLook, opts: { grown?: boolean; parts?: Iterable<string>; stage?: GStage } = {}) {
     this.look_ = look ?? loadLook();
     this.baseScale = scale;
@@ -240,6 +245,40 @@ void main() { vec2 p = floor(gl_FragCoord.xy); if (mod(p.x + p.y, 2.0) < 0.5) di
     this.R = buildGolem({ look: this.look_, stage: st, has: (id) => this.has(id) }, this.mats);
     this.rig.add(this.R.model);
     this.hasPrev = false;
+    this.placeWeapons();
+  }
+  /** put a weapon on the golem (null takes it off): 'hand' rides the right forearm (or the chin of a bare drone),
+   *  'mount' sits on the left shoulder housing (or on the drone's crown) and turns to its target */
+  equipWeapon(slot: 'hand' | 'mount', obj: THREE.Object3D | null) {
+    this.equip[slot]?.removeFromParent();
+    this.equip[slot] = obj;
+    this.placeWeapons();
+  }
+  /** what is equipped */
+  weaponOn(slot: 'hand' | 'mount') { return this.equip[slot]; }
+  /** a weapon's muzzle in the world (null when that slot is empty) */
+  weaponMuzzle(slot: 'hand' | 'mount', out = new THREE.Vector3()): THREE.Vector3 | null {
+    const m = this.equip[slot]?.getObjectByName('muzzle'); if (!m || !this.root.visible) return null;
+    this.root.updateMatrixWorld(true); return m.getWorldPosition(out);
+  }
+  /** a recoil kick on the weapon arm */
+  recoil(k = 1) { this.kick = Math.max(this.kick, k); }
+  private placeWeapons() {
+    const R = this.R; if (!R) return;
+    const h = this.equip.hand, m = this.equip.mount;
+    const armR = R.arms.find((a) => a.id === 'armR') ?? R.arms[0];
+    if (h) {
+      if (armR) { armR.fore.add(h); h.position.set(armR.k * 0.06 * armR.s, -0.09 * armR.s, 0.0); h.rotation.set(Math.PI / 2, 0, 0); h.scale.setScalar(0.3 * armR.s); }
+      else { R.head.add(h); h.position.set(0, -0.15, 0.04); h.rotation.set(0, 0, 0); h.scale.setScalar(0.26); }
+    }
+    if (R.gun) R.gun.visible = !m;
+    if (m) {
+      const parent = R.body ?? R.head;
+      parent.add(this.mountYaw); this.mountYaw.add(this.mountPitch); this.mountPitch.add(m);
+      if (R.body) this.mountYaw.position.set(R.L.armX - 0.055, R.L.armY - R.L.bodyY + 0.07, 0.0);
+      else this.mountYaw.position.set(0, 0.17, -0.03);
+      m.position.set(0, 0.03, 0); m.rotation.set(0, 0, 0); m.scale.setScalar(R.body ? 0.34 : 0.22);
+    } else this.mountYaw.removeFromParent();
   }
   /** show exactly these chassis parts (stage skills such as reactor and colossus may be passed along). New ones fly in
    *  from all around and click into place (unless instant); a new stage unfolds and bolts on. Returns what was added */
@@ -525,6 +564,12 @@ void main() { vec2 p = floor(gl_FragCoord.xy); if (mod(p.x + p.y, 2.0) < 0.5) di
         rx = lerp(rx, -1.58, fwd); rz = lerp(rz, k * -0.15, fwd); fx = lerp(fx, -0.04, fwd); ext = lerp(ext, e * 0.075, fwd); curl = lerp(curl, 1.3, Math.min(1, fwd * 2));
         if (A.punch >= 1) A.punch = -1;
       }
+      // a weapon on this forearm: bring the arm up level and point it at the target
+      if (this.fireK > 0.01 && this.equip.hand && A === (R.arms.find((a) => a.id === 'armR') ?? R.arms[0]) && this.fireAim) {
+        const lp = R.body!.worldToLocal(_a.copy(this.fireAim));
+        const yawE = clamp(Math.atan2(lp.x - k * Lay.armX, lp.z), -0.9, 0.9), pitE = clamp(Math.atan2(lp.y - (Lay.armY - Lay.bodyY), Math.hypot(lp.x, lp.z)), -0.6, 0.6);
+        rx = lerp(rx, -Math.PI / 2 - pitE + this.kick * 0.25, this.fireK); rz = lerp(rz, yawE, this.fireK); fx = lerp(fx, -0.02, this.fireK); curl = lerp(curl, 1.0, this.fireK);
+      }
       A.root.position.set(0, 0, fwd * 0.03);
       A.root.rotation.set(rx, 0, rz);
       A.fore.rotation.set(fx, 0, k * up * Math.sin(t * 9) * 0.3);
@@ -575,6 +620,14 @@ void main() { vec2 p = floor(gl_FragCoord.xy); if (mod(p.x + p.y, 2.0) < 0.5) di
     if (R.dish) R.dish.rotation.y = t * 0.9 + c * 3;
     if (R.bulb) R.bulb.visible = Math.sin(t * 4) > 0.2 || c > 0;
     if (R.gun) R.gun.rotation.set(this.lookPitch * 0.6, this.lookYaw * 0.5, 0);
+    // the weapon mount turns to its target (or follows the look)
+    this.fireK = damp(this.fireK, this.fireAim ? 1 : 0, 8, dt); this.kick = Math.max(0, this.kick - dt * 6);
+    if (this.mountYaw.parent) {
+      let my = this.lookYaw * 0.5, mp = this.lookPitch * 0.5;
+      if (this.fireAim) { this.mountYaw.parent.updateMatrixWorld(true); const lp = this.mountYaw.parent.worldToLocal(_a.copy(this.fireAim)).sub(this.mountYaw.position); my = Math.atan2(lp.x, lp.z); mp = -Math.atan2(lp.y, Math.hypot(lp.x, lp.z)); }
+      this.mountYaw.rotation.y = damp(this.mountYaw.rotation.y, my, 10, dt); this.mountPitch.rotation.x = damp(this.mountPitch.rotation.x, clamp(mp, -0.8, 0.5), 10, dt);
+      this.mountPitch.position.z = -this.kick * 0.02;
+    }
     // the drone putters on its thruster; the coil and skirt breathe a little glow
     this.putT -= dt;
     if (this.putT <= 0 && h >= 1 && this.root.visible && R.thrusters.length) {
