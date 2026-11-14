@@ -3,10 +3,11 @@
 import { icon } from './pixelart';
 import { installTheme, cursorURL, segBarURL } from './machine';
 import { sfx } from '../audio/audio';
+import { uiScale, onSettings } from '../settings';
 
 export let S = 2;
 export function setupUI() {
-  S = innerHeight >= 1040 ? 3 : 2;
+  S = uiScale();
   const r = document.documentElement.style;
   r.setProperty('--s', String(S));
   installTheme(r);
@@ -14,7 +15,9 @@ export function setupUI() {
   r.setProperty('--cur-attack', `url(${cursorURL('attack')}) 16 14, crosshair`);
   r.setProperty('--cur-target', `url(${cursorURL('target')}) 16 16, crosshair`);
   r.setProperty('--cur-build', `url(${cursorURL('build')}) 14 14, crosshair`);
-  addEventListener('resize', () => { const n = innerHeight >= 1040 ? 3 : 2; if (n !== S) { S = n; r.setProperty('--s', String(S)); } });
+  const rescale = () => { const n = uiScale(); if (n !== S) { S = n; r.setProperty('--s', String(S)); } };
+  addEventListener('resize', rescale);
+  onSettings((_s, ch) => { if (ch.includes('uiScale')) rescale(); });
 }
 
 export function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', parent?: HTMLElement | null, html?: string): HTMLElementTagNameMap[K] {

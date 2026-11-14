@@ -74,6 +74,8 @@ export class Hive {
   private graftList: Graft[] = [];
   /** converted and printed creatures */
   allies = new Set<Creature>();
+  /** allies follow Unit 07 (Pack Relay rally) instead of roaming */
+  follow = false;
   private dissolving: { i: number; t: number; carbon: number }[] = [];
   private tick = 0; private claimT = 0; private claimDirty = true; private fieldDirty = true; private groveT = 3;
   private land: Uint8Array; private landN = 1; private lastFrac = -1;
@@ -129,6 +131,28 @@ export class Hive {
     g.on('absorb', (d: { species?: string }) => { if (d?.species) this.once('m.sp.' + d.species, 1, `genome of ${d.species}`); });
     g.on('prefab', (d: { kind?: string; name?: string }) => { if (d?.kind === 'creature' && d.name) this.once('m.cp.' + d.name, 1, `${d.name} saved as a prefab`); });
     g.on('hurt', (d: { amt?: number }) => { this.hull = Math.max(0, this.hull - (d?.amt ?? 0)); });
+    // Pack Relay: allies within reach of Unit 07 hit half again as hard
+    this.w.attackMul = (by) => {
+      if (by.faction !== 'veyr' || !this.has('command')) return 1;
+      const p = this.golem(); return p && (by.x - p.x) ** 2 + (by.z - p.z) ** 2 < 10 * 10 ? 1.5 : 1;
+    };
+  }
+  /** Pack Relay: allies rally to Unit 07 and follow it (true), or are released to roam and claim ground (false).
+   *  Returns why it cannot (null if done). */
+  rally(on = !this.follow): string | null {
+    if (!this.has('command')) return `Needs ${SKILL.command.name}`;
+    if (!this.golem()) return 'Unit 07 is not here';
+    if (!this.allyCount()) return 'No allies to call';
+    this.follow = on;
+    const g = this.golem()!;
+    for (const c of this.allies) {
+      if (c.dead) continue;
+      c.order = null; c.target = 0; c.mind = 'idle'; (c as any).__fT = 0;
+      if (!on) { c.homeX = c.x; c.homeZ = c.z; }
+    }
+    this.fx.burst(g.x, g.y + 0.6, g.z, 20, this.vein, { glow: true, speed: 3, up: 0.5, size: 2.4, life: 0.6, grav: 0 });
+    sfx('call', 0.8, 0.6);
+    return null;
   }
   /** Unit 07's position (feet), if it is about */
   golem(out = _v): THREE.Vector3 | null {
@@ -149,8 +173,16 @@ export class Hive {
   }
 
   // ================================================================== economy (the Veyr)
-  /** hold capacity for a raw material: the core's hold, doubled by the Core Housing, again by the Storage Tanks */
-  cap(r: Res) { return Math.round(30 * (this.has('torso') ? 2 : 1) * (this.has('tanks') ? 2.5 : 1)); }
+  /** hold capacity for a raw material: the core's hold (40), x2.5 with the Core Housing, x6 with the Storage Tanks
+   *  (600: room for the dearest node on the tree), and up to +60% more as the field level rises with held ground */
+  cap(_r?: Res) { return Math.round(40 * (this.has('torso') ? 2.5 : 1) * (this.has('tanks') ? 6 : 1) * (1 + 0.15 * (this.emLevel - 1))); }
+  /** speed multiplier for an active gathering job (drill, dig, siphon, intake): the Deep Bore triples drilling and
+   *  digging. Loose pickups and drops are not jobs. (The Field Refinery's +50% is applied inside gather.) */
+  gatherRate(res: Res, job: 'drill' | 'dig' | 'siphon' | 'intake' | 'loose' = res === 'ore' ? 'drill' : res === 'soil' ? 'dig' : 'loose') {
+    return (job === 'drill' || job === 'dig') && this.has('bore') ? 3 : 1;
+  }
+  /** Field Refinery: everything gathered yields half again */
+  private get yieldMul() { return this.has('refinery') ? 1.5 : 1; }
   caps(): Record<Res, number> { return { ore: this.cap('ore'), carbon: this.cap('carbon'), water: this.cap('water'), soil: this.cap('soil') }; }
   full(r: Res) { const run = this.run; return !!run && run.res[r] >= this.cap(r) - 0.01; }
   get chargeCap() { return this.isVeyr ? 40 + (this.has('torso') ? 20 : 0) + (this.has('coil') ? 30 : 0) + (this.has('reactor') ? 60 : 0) + (this.emLevel - 1) * 10 : 60 + this.emLevel * 40; }
@@ -175,6 +207,7 @@ export class Hive {
   gather(res: Res, amt: number, x: number, y: number, z: number, quiet = false): number {
     const run = this.run;
     if (!run || !(amt > 0)) return 0;
+    amt *= this.yieldMul;
     const cur = run.res[res], got = Math.max(0, Math.min(amt, this.cap(res) - cur));
     if (got <= 0) return 0;
     run.res[res] = cur + got;
@@ -201,7 +234,7 @@ export class Hive {
   /** credit to the hold without the golem (structures): motes fly to the core instead */
   private credit(res: Res, amt: number, x: number, y: number, z: number) {
     const run = this.run; if (!run || !(amt > 0)) return 0;
-    const got = Math.max(0, Math.min(amt, this.cap(res) - run.res[res]));
+    const got = Math.max(0, Math.min(amt * this.yieldMul, this.cap(res) - run.res[res]));
     run.res[res] += got; this.rate[res] += got;
     if (got > 0 && this.core && Math.random() < 0.35) this.fx.mote(x, y, z, this.core.x, this.core.y + 1, this.core.z, RES_COL[res], 3);
     return got;
@@ -522,21 +555,27 @@ export class Hive {
   print(designIdx: number): Creature | null {
     if (this.whyPrint(designIdx)) return null;
     const sp = this.designs()[designIdx], g = this.golem()!.clone();
-    let c: Creature | null = null;
-    for (let k = 0; k < 6 && !c; k++) { const a = Math.random() * Math.PI * 2, d = 1.4 + sp.pheno.length * 0.5 + k * 0.3; c = this.w.spawn(sp, 'veyr', g.x + Math.cos(a) * d, g.z + Math.sin(a) * d, false); }
-    if (!c) return null;
-    this.pay(this.printCost(sp));
-    c.energy = 0.9; c.homeX = c.x; c.homeZ = c.z;
-    if (this.has('vat')) { c.hp = c.maxHp; }
-    this.allies.add(c); this.mark(c);
-    c.fx.dissolve.value = 1; (c as any).__print = 1;
-    const head = this.game?.child.headPos() ?? g;
-    for (let k = 0; k < 5; k++) this.fx.arc(head, new THREE.Vector3(c.x + (Math.random() - 0.5) * c.radius * 2, c.y + Math.random() * c.size * 0.6, c.z + (Math.random() - 0.5) * c.radius * 2), 0.4, this.vein, 0.25);
-    this.fx.burst(c.x, c.y + c.size * 0.3, c.z, 24, this.vein, { glow: true, speed: 1.4, up: 2.4, size: 2.6, life: 1.1, grav: 0 });
+    // the Clone Bank prints a pair for the price of one (room permitting)
+    const n = this.has('cloner') && this.allyCount() + 2 <= this.allyCap() ? 2 : 1;
+    let first: Creature | null = null;
+    for (let j = 0; j < n; j++) {
+      let c: Creature | null = null;
+      for (let k = 0; k < 6 && !c; k++) { const a = Math.random() * Math.PI * 2, d = 1.4 + sp.pheno.length * 0.5 + k * 0.3; c = this.w.spawn(sp, 'veyr', g.x + Math.cos(a) * d, g.z + Math.sin(a) * d, false); }
+      if (!c) break;
+      if (!first) { first = c; this.pay(this.printCost(sp)); }
+      c.energy = 0.9; c.homeX = c.x; c.homeZ = c.z;
+      if (this.has('vat')) { c.hp = c.maxHp; }
+      this.allies.add(c); this.mark(c);
+      c.fx.dissolve.value = 1; (c as any).__print = 1;
+      const head = this.game?.child.headPos() ?? g;
+      for (let k = 0; k < 5; k++) this.fx.arc(head, new THREE.Vector3(c.x + (Math.random() - 0.5) * c.radius * 2, c.y + Math.random() * c.size * 0.6, c.z + (Math.random() - 0.5) * c.radius * 2), 0.4, this.vein, 0.25);
+      this.fx.burst(c.x, c.y + c.size * 0.3, c.z, 24, this.vein, { glow: true, speed: 1.4, up: 2.4, size: 2.6, life: 1.1, grav: 0 });
+    }
+    if (!first) return null;
     sfx('birth', 1, 0.8); sfx('zap', 0.7, 0.4);
-    this.game?.emit('print', { species: sp.name });
+    this.game?.emit('print', { species: sp.name, n });
     this.once('m.print', 1, 'first creature printed');
-    return c;
+    return first;
   }
   /** take a corpse apart with the field: its carbon comes in as it goes, then its genome is offered */
   absorbCorpse(c: Creature): boolean { return this.tryDigest(c, 1.6, true); }
@@ -656,6 +695,18 @@ export class Hive {
       if ((c as any).__print) { c.fx.dissolve.value = Math.max(0, c.fx.dissolve.value - dt * 0.8); if (c.fx.dissolve.value <= 0) (c as any).__print = 0; }
       if (!(c as any).__mk && Math.random() < dt * 2) this.recolor(c);
       if (c.fx.flash.value < 0.24) { c.fx.flashCol.value.setHex(this.vein); c.fx.flash.value = 0.1 + 0.07 * Math.sin(t * 2.2 + c.id); }
+      // rallied: keep up with Unit 07, fighting whatever is in the way, in a loose ring around it
+      const gp = this.follow ? this.golem() : null;
+      if (gp) {
+        (c as any).__fT = ((c as any).__fT ?? 0) - dt;
+        if ((c as any).__fT > 0 || c.mind === 'attack' || c.mind === 'hunt') continue;
+        (c as any).__fT = 0.8;
+        const a = (c.id * 2.399) % (Math.PI * 2), r = 2 + c.radius * 2 + (c.id % 3) * 0.8;
+        const fx = gp.x + Math.cos(a) * r, fz = gp.z + Math.sin(a) * r;
+        if (Math.hypot(c.x - fx, c.z - fz) > 3) { c.order = { kind: 'amove', x: fx, z: fz }; c.path = null; }
+        c.homeX = fx; c.homeZ = fz;
+        continue;
+      }
       if (c.order || (c.mind !== 'idle' && c.mind !== 'wander')) continue;
       if (Math.random() > dt / 14) continue;
       // a new home a few metres out, preferring ground nobody holds, within reach of the core or the golem
@@ -753,7 +804,7 @@ export class Hive {
           const d = w.region.deposits[b.deposit];
           if (d && d.amount > 0) {
             const r = (d.kind === 'crystal' ? 0.5 : 0.35) * dt;
-            if (this.isVeyr) { const got = this.credit('ore', r * (d.kind === 'crystal' ? 1.5 : 1), b.x, b.y + 2, b.z); d.amount -= got; }
+            if (this.isVeyr) { const got = this.credit('ore', r * (d.kind === 'crystal' ? 1.5 : 1), b.x, b.y + 2, b.z); d.amount -= got / this.yieldMul; }
             else { d.amount -= r * 3; this.res.min += r * 3; this.income.min = this.income.min * 0.98 + (r * 3) / dt * 0.02; }
           }
           break;

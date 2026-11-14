@@ -3,6 +3,7 @@
 // title cards, a typed location stamp, the skip hint, and the advancement banner (a brass plate that drops in with
 // a rubber stamp; used by the story outside cutscenes too). Its CSS is injected once from here.
 import { iconURL } from './icons';
+import { onSettings } from '../settings';
 
 export type SubStyle = 'radio' | 'film' | 'journal' | 'plain';
 
@@ -15,14 +16,14 @@ const CSS = /* css */`
 .cine .grain { position: absolute; inset: 0; opacity: calc(var(--lb) * 0.05); mix-blend-mode: screen; background-size: 256px 256px; animation: cine-grain 0.4s steps(4) infinite; }
 @keyframes cine-grain { 0% { background-position: 0 0; } 25% { background-position: -71px 33px; } 50% { background-position: 47px -89px; } 75% { background-position: -13px 61px; } }
 .cine .vig { position: absolute; inset: 0; opacity: var(--lb); background: radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.45) 100%); }
-.cine .skip { position: absolute; right: calc(8 * var(--u)); top: calc(3 * var(--u)); font-size: calc(8 * var(--u)); line-height: 1; color: rgba(230, 220, 184, 0.45); letter-spacing: 1px; opacity: calc(var(--lb)); transition: color 0.2s; pointer-events: auto; cursor: pointer; }
+.cine .skip { position: absolute; right: calc(8 * var(--u)); top: calc(3 * var(--u)); font-size: var(--cf-vt1); line-height: 1; color: rgba(230, 220, 184, 0.45); letter-spacing: 1px; opacity: calc(var(--lb)); transition: color 0.2s; pointer-events: auto; cursor: pointer; }
 .cine .skip b { color: var(--gold, #ffcd6e); }
 .cine .skip.arm { color: var(--gold, #ffcd6e); animation: cine-blink 0.5s steps(2) infinite; }
 @keyframes cine-blink { 50% { opacity: 0.4; } }
 /* subtitles */
 .cine .subs { position: absolute; left: 0; right: 0; bottom: calc(var(--lb) * 11.5vh + 2.2vh); display: flex; flex-direction: column; align-items: center; gap: calc(2 * var(--u)); }
-.cine .sub { max-width: min(86vw, calc(330 * var(--u))); font-size: calc(10 * var(--u)); line-height: calc(10 * var(--u)); animation: cine-sub-in 220ms steps(4); }
-.cine .sub .who { display: block; font-size: calc(8 * var(--u)); line-height: calc(9 * var(--u)); letter-spacing: 1px; }
+.cine .sub { max-width: min(86vw, calc(330 * var(--u))); font-size: var(--cf-vt2); line-height: var(--cf-vt2); animation: cine-sub-in 220ms steps(4); }
+.cine .sub .who { display: block; font-size: var(--cf-vt1); line-height: calc(var(--cf-vt1) + 2px); letter-spacing: 1px; }
 .cine .sub.out { opacity: 0; transition: opacity 220ms steps(3); }
 @keyframes cine-sub-in { 0% { opacity: 0; transform: translateY(calc(3 * var(--u))); } 100% { opacity: 1; transform: none; } }
 .cine .sub.radio { background: radial-gradient(ellipse at 50% 45%, #0c3418 0%, #06180c 60%, #031008 100%); border: calc(2 * var(--u)) solid #2a3121; outline: calc(1 * var(--u)) solid #07080a; border-radius: calc(3 * var(--u)); padding: calc(3 * var(--u)) calc(6 * var(--u)); color: var(--ink, #b8f0b4); text-shadow: var(--phos-glow); position: relative; overflow: hidden; box-shadow: 0 0 0 calc(1 * var(--u)) #5a6644 inset; }
@@ -36,9 +37,9 @@ const CSS = /* css */`
   radial-gradient(circle, #000 38%, transparent 42%) 0 calc(1 * var(--u)) / calc(10 * var(--u)) calc(4 * var(--u)) repeat-x,
   radial-gradient(circle, #000 38%, transparent 42%) 0 calc(100% - 1 * var(--u)) / calc(10 * var(--u)) calc(4 * var(--u)) repeat-x,
   linear-gradient(180deg, rgba(40, 32, 22, 0.86), rgba(20, 16, 12, 0.9)); border-top: calc(5 * var(--u)) solid rgba(58, 48, 34, 0.92); border-bottom: calc(5 * var(--u)) solid rgba(58, 48, 34, 0.92); }
-.cine .sub.film .who { color: #d8ab50; font-family: 'Silk', monospace; font-size: calc(6 * var(--u)); letter-spacing: 2px; margin-bottom: calc(2 * var(--u)); }
+.cine .sub.film .who { color: #d8ab50; font-family: 'Superwide', monospace; font-size: var(--cf-sw1); letter-spacing: 2px; margin-bottom: calc(2 * var(--u)); }
 .cine .sub.journal { color: #2a1c10; background: linear-gradient(180deg, transparent calc(9.6 * var(--u)), rgba(90, 120, 160, 0.35) calc(9.6 * var(--u)), transparent calc(10.2 * var(--u))) 0 calc(2 * var(--u)) / 100% calc(10 * var(--u)), #e9dfc0; padding: calc(4 * var(--u)) calc(8 * var(--u)) calc(4 * var(--u)) calc(14 * var(--u)); border-left: calc(2 * var(--u)) solid rgba(170, 60, 50, 0.6); transform: rotate(-0.6deg); box-shadow: calc(2 * var(--u)) calc(2 * var(--u)) 0 rgba(0, 0, 0, 0.5); }
-.cine .sub.journal .who { color: #7a5a3a; font-family: 'Silk', monospace; font-size: calc(6 * var(--u)); }
+.cine .sub.journal .who { color: #7a5a3a; font-family: 'Silk', monospace; font-size: var(--cf-ps1); }
 .cine .sub.plain { color: #f4f0e4; text-shadow: calc(1 * var(--u)) calc(1 * var(--u)) 0 #000, calc(-1 * var(--u)) 0 0 #000, 0 calc(-1 * var(--u)) 0 #000, calc(1 * var(--u)) 0 0 #000; text-align: center; }
 .cine .sub.plain .who { color: #9fd0ff; }
 .cine .sub .cur { animation: cine-blink 0.6s steps(2) infinite; }
@@ -47,12 +48,12 @@ const CSS = /* css */`
 .cine .card.on { opacity: 1; animation: cine-card-in 900ms steps(9); }
 .cine .card.off { opacity: 0; transition: opacity 600ms steps(6); }
 @keyframes cine-card-in { 0% { opacity: 0; letter-spacing: 6px; } 100% { opacity: 1; } }
-.cine .card .k { font-family: 'Silk', monospace; font-size: calc(6 * var(--u)); letter-spacing: 3px; color: #d8ab50; }
-.cine .card .t { font-family: 'Jersey', monospace; font-size: calc(30 * var(--u)); line-height: calc(30 * var(--u)); color: #f2e2b0; text-shadow: 0 calc(2 * var(--u)) 0 #5c3f13, 0 0 calc(8 * var(--u)) rgba(255, 180, 80, 0.35); margin: calc(3 * var(--u)) 0; }
-.cine .card .s { font-size: calc(9 * var(--u)); color: #c8bc98; letter-spacing: 1px; }
+.cine .card .k { font-family: 'Superwide', monospace; font-size: var(--cf-sw1); letter-spacing: 3px; color: #d8ab50; }
+.cine .card .t { font-family: 'Canned', monospace; font-size: var(--cf-sw4); line-height: var(--cf-sw4); color: #f2e2b0; text-shadow: 0 calc(2 * var(--u)) 0 #5c3f13, 0 0 calc(8 * var(--u)) rgba(255, 180, 80, 0.35); margin: calc(3 * var(--u)) 0; }
+.cine .card .s { font-size: var(--cf-vt1); color: #c8bc98; letter-spacing: 1px; }
 .cine .card .rule { height: calc(1 * var(--u)); margin: calc(3 * var(--u)) auto; width: 70%; background: linear-gradient(90deg, transparent, #d8ab50, transparent); }
 /* stamp */
-.cine .stamp { position: absolute; left: calc(10 * var(--u)); bottom: calc(var(--lb) * 11.5vh + 1.4vh); font-size: calc(9 * var(--u)); color: var(--amber, #ffa432); text-shadow: var(--amb-glow); letter-spacing: 1px; }
+.cine .stamp { position: absolute; left: calc(10 * var(--u)); bottom: calc(var(--lb) * 11.5vh + 1.4vh); font-size: var(--cf-vt1); color: var(--amber, #ffa432); text-shadow: var(--amb-glow); letter-spacing: 1px; }
 .cine .stamp.top { bottom: auto; top: calc(var(--lb) * 11.5vh + 1.4vh); }
 /* through Unit 07's lens: an iris, a green cast, scanlines, a reticle */
 .cine.pov .vig { opacity: 1; background: radial-gradient(circle at 50% 50%, transparent 30%, rgba(0, 20, 12, 0.55) 52%, #000 70%); }
@@ -74,18 +75,38 @@ const CSS = /* css */`
 @keyframes adv-out { to { transform: translate(-50%, calc(-12 * var(--u))); opacity: 0; } }
 .adv .ic { width: calc(36 * var(--u) / 2); height: calc(36 * var(--u) / 2); image-rendering: pixelated; flex: none; background: radial-gradient(circle, rgba(122, 255, 224, 0.25), transparent 70%); }
 .adv .tx { display: flex; flex-direction: column; }
-.adv .k { font-family: 'Silk', monospace; font-size: calc(5 * var(--u)); letter-spacing: 2px; color: #d8ab50; }
-.adv .t { font-size: calc(11 * var(--u)); line-height: calc(10 * var(--u)); color: #f2ead2; text-shadow: 0 calc(1 * var(--u)) 0 #111410; letter-spacing: 1px; }
-.adv .s { font-size: calc(7 * var(--u)); line-height: calc(7 * var(--u)); color: #c0ffc6; text-shadow: var(--phos-glow); }
-.adv .st { position: absolute; right: calc(-8 * var(--u)); top: calc(-7 * var(--u)); font-family: 'Silk', monospace; font-size: calc(6 * var(--u)); color: #c83a28; border: calc(1 * var(--u)) solid #c83a28; padding: 0 calc(2 * var(--u)); transform: rotate(12deg); background: rgba(240, 230, 200, 0.85); animation: adv-stamp 300ms 260ms steps(3) both; }
+.adv .k { font-family: 'Silk', monospace; font-size: var(--cf-ps1); letter-spacing: 2px; color: #d8ab50; }
+.adv .t { font-family: 'Superwide', monospace; font-size: var(--cf-sw2); line-height: var(--cf-sw2); color: #f2ead2; text-shadow: 0 calc(1 * var(--u)) 0 #111410; letter-spacing: 1px; }
+.adv .s { font-size: var(--cf-vt1); line-height: var(--cf-vt1); color: #c0ffc6; text-shadow: var(--phos-glow); }
+.adv .st { position: absolute; right: calc(-8 * var(--u)); top: calc(-7 * var(--u)); font-family: 'Silk', monospace; font-size: var(--cf-ps1); color: #c83a28; border: calc(1 * var(--u)) solid #c83a28; padding: 0 calc(2 * var(--u)); transform: rotate(12deg); background: rgba(240, 230, 200, 0.85); animation: adv-stamp 300ms 260ms steps(3) both; }
 @keyframes adv-stamp { 0% { transform: rotate(12deg) scale(2.6); opacity: 0; } 100% { transform: rotate(12deg) scale(1); opacity: 1; } }
 body.cine-on .hud, body.cine-on .overlay2d, body.cine-on .toasts, body.cine-on .hud-obj, body.cine-on .tip, body.cine-on .wl, body.cine-on .adv, body.cine-on .float-text, body.cine-on .tc-zone, body.cine-on .tc-pad, body.cine-on .tc-btn { visibility: hidden !important; }
 `;
 
+/** Crisp pixel-font sizes: every face is drawn on its own pixel grid (RoyaltyMono 'VT' 14 px, PixelSans 'Silk' /
+ * 'Pixelify' / 'Tiny5' 11 px, NanoPlus 'Jersey' / 'SilkB' 13 px, CannedPixels 'Canned' / 'Jacquard' and 'Superwide'
+ * 10 px), so text only stays sharp at whole multiples of that. These CSS variables give those multiples for the
+ * current UI scale: -1 small (body), -2 large, -4 title. */
+export function fontVars() {
+  const S = Math.max(2, Number(document.documentElement.style.getPropertyValue('--s')) || (innerHeight >= 1040 ? 3 : 2)), k1 = Math.max(1, Math.round(S / 2));
+  const r = document.documentElement.style, px = (n: number) => n + 'px';
+  r.setProperty('--cf-vt1', px(14 * k1)); r.setProperty('--cf-vt2', px(14 * S));
+  r.setProperty('--cf-ps1', px(11 * k1)); r.setProperty('--cf-ps2', px(11 * S));
+  r.setProperty('--cf-np1', px(13 * k1)); r.setProperty('--cf-np2', px(13 * S));
+  r.setProperty('--cf-sw1', px(10 * k1)); r.setProperty('--cf-sw2', px(10 * S)); r.setProperty('--cf-sw4', px(20 * S));
+}
+/** a font size that keeps a face on its pixel grid: the largest whole multiple of its native size not above want */
+export function crispPx(face: 'VT' | 'Silk' | 'Jersey' | 'Canned' | 'Superwide', want: number) {
+  const n = face === 'VT' ? 14 : face === 'Silk' ? 11 : face === 'Jersey' ? 13 : 10;
+  return n * Math.max(1, Math.floor(want / n));
+}
 let styled = false;
 function style() {
+  fontVars();
   if (styled) return; styled = true;
   const s = document.createElement('style'); s.id = 'cine-css'; s.textContent = CSS; document.head.appendChild(s);
+  addEventListener('resize', fontVars);
+  onSettings(() => setTimeout(fontVars, 0));
 }
 let grainURL = '';
 function grain() {

@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import type { Game } from './game';
 import type { Creature } from './creature';
-import type { Ability } from './hive';
+import { ABILITIES, type Ability } from './hive';
 import type { Res } from './skills';
 import { fluidOf, type Gore } from './gore';
 import { gbuf } from '../gfx/gbuf';
@@ -26,6 +26,8 @@ let SK: { has(id: string): boolean } | null = null;
 export function bindSkills(s: { has(id: string): boolean } | null) { SK = s; }
 /** owned by the golem? (true everywhere when no game is bound, e.g. a UI test page) */
 export function powerOwned(a: Ability) { if (!SK) return true; const id = ABILITY_SKILL[a]; return !!id && SK.has(id); }
+/** charge a field power really costs (the Field Amplifier takes a quarter off) */
+export function powerCost(a: Ability) { return ABILITIES[a].charge * (SK?.has('amp') ? 0.75 : 1); }
 
 // ------------------------------------------------------------------ hand-drawn 2D effects (game/vfx2d.ts, the details layer)
 /** resolved at build time: an empty map until vfx2d.ts exists, then its exports (Vite re-resolves when it appears) */

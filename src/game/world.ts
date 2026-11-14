@@ -149,8 +149,11 @@ export class World {
   }
 
   // ------------------------------------------------------------------ life and death
+  /** damage multiplier for an attacker (the Veyr's Pack Relay: allies fight harder near Unit 07) */
+  attackMul?: (by: Creature) => number;
   damage(c: Creature, amount: number, by: Creature | null) {
     if (c.dead || amount <= 0) return;
+    if (by && this.attackMul) amount *= this.attackMul(by);
     const dealt = amount * (1 - c.st.armor);
     c.hp -= dealt;
     c.fx.flash.value = 1;

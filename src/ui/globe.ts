@@ -24,6 +24,14 @@ float vn(vec3 p){ vec3 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
   return mix(mix(mix(h3(i), h3(i+vec3(1,0,0)), f.x), mix(h3(i+vec3(0,1,0)), h3(i+vec3(1,1,0)), f.x), f.y), mix(mix(h3(i+vec3(0,0,1)), h3(i+vec3(1,0,1)), f.x), mix(h3(i+vec3(0,1,1)), h3(i+vec3(1,1,1)), f.x), f.y), f.z); }
 float fbm(vec3 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++) { s += a * vn(p); p = p * 2.03 + 17.1; a *= 0.5; } return s; }
 float ridged(vec3 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 4; i++) { float v = 1.0 - abs(vn(p) * 2.0 - 1.0); s += a * v * v; p = p * 2.13 + 9.7; a *= 0.5; } return s; }
+/** a direction snapped to a square texel grid on the faces of a cube wrapped round the sphere; id names the texel */
+vec3 qdir(vec3 n, float G, out vec3 id) {
+  vec3 a = abs(n); vec2 uv; vec3 q;
+  if (a.x >= a.y && a.x >= a.z) { uv = (floor(n.yz / a.x * G) + 0.5) / G; q = vec3(sign(n.x), uv); id = vec3(sign(n.x) * 3.0, floor(n.yz / a.x * G)); }
+  else if (a.y >= a.z) { uv = (floor(n.xz / a.y * G) + 0.5) / G; q = vec3(uv.x, sign(n.y), uv.y); id = vec3(sign(n.y) * 5.0, floor(n.xz / a.y * G)); }
+  else { uv = (floor(n.xy / a.z * G) + 0.5) / G; q = vec3(uv, sign(n.z)); id = vec3(sign(n.z) * 7.0, floor(n.xy / a.z * G)); }
+  return normalize(q);
+}
 float bayer4(vec2 p) { vec2 q = mod(floor(p), 4.0); float i = q.x + q.y * 4.0;
   return (i == 0.0 ? 0.0 : i == 1.0 ? 8.0 : i == 2.0 ? 2.0 : i == 3.0 ? 10.0 : i == 4.0 ? 12.0 : i == 5.0 ? 4.0 : i == 6.0 ? 14.0 : i == 7.0 ? 6.0 :
           i == 8.0 ? 3.0 : i == 9.0 ? 11.0 : i == 10.0 ? 1.0 : i == 11.0 ? 9.0 : i == 12.0 ? 15.0 : i == 13.0 ? 7.0 : i == 14.0 ? 13.0 : 5.0) / 16.0 + 1.0 / 32.0; }
@@ -39,11 +47,22 @@ void regionAt(vec3 n, out int k, out float d1, out float d2) {
 }
 /** relief traits of region k's biome: (land bias, mountains, forest) */
 vec3 traits(int k) { return uBR[int(uBi[k] + 0.5)]; }
+uniform vec4 uCr[12];
+/** impact basins: a bowl inside a raised rim, a little ejecta beyond */
+float craters(vec3 n) {
+  float e = 0.0;
+  for (int i = 0; i < 12; i++) {
+    vec4 c = uCr[i]; if (c.w <= 0.0) continue;
+    float d = distance(n, c.xyz) / c.w; if (d > 1.6) continue;
+    e += (d < 1.0 ? -(1.0 - d * d) * 0.55 : 0.0) + exp(-pow((d - 1.0) / 0.16, 2.0)) * 0.42 + (d > 1.0 ? (1.6 - d) * 0.06 : 0.0);
+  }
+  return e;
+}
 /** base relief (no region terms) */
 float relief(vec3 n, float mtn) {
   float c = fbm(n * 1.7 + uSeed) - 0.5;
   float r = ridged(n * 4.2 + uSeed * 1.3);
-  return c * 1.9 + max(0.0, r - 0.42) * 1.6 * mtn + (vn(n * 22.0 + uSeed) - 0.5) * 0.06;
+  return c * 1.9 + max(0.0, r - 0.42) * 1.6 * mtn + (vn(n * 22.0 + uSeed) - 0.5) * 0.06 + craters(n);
 }
 float elevation(vec3 n, out int k, out float d1, out float d2) {
   regionAt(n, k, d1, d2);
@@ -53,6 +72,38 @@ float elevation(vec3 n, out int k, out float d1, out float d2) {
   // the poles are flat ice
   e = mix(e, 0.12, smoothstep(0.86, 0.95, abs(n.y)));
   return e;
+}
+`;
+
+/**
+ * The weather: a low deck of thick cloud carried round in latitude jets (each band at its own speed), wound into
+ * spiral cyclones with clear eyes and thick eye walls, broken into belts and cumulus; above it, thin cirrus streaks.
+ */
+const CLOUD = /* glsl */`
+uniform vec3 uSeedC; uniform vec4 uCyc[4];
+vec3 rotA(vec3 v, vec3 k, float a) { float c = cos(a), s = sin(a); return v * c + cross(k, v) * s + k * dot(k, v) * (1.0 - c); }
+vec3 cycC(int i) { return rotA(uCyc[i].xyz, vec3(0.0, 1.0, 0.0), uT * 0.009); }
+vec3 flowP(vec3 n) {
+  float jet = sin(n.y * 6.5) * 0.7 + sin(n.y * 15.0 + 1.3) * 0.3;
+  vec3 p = rotA(n, vec3(0.0, 1.0, 0.0), uT * 0.012 * (1.0 + jet));
+  for (int i = 0; i < 4; i++) {
+    vec3 c = cycC(i);
+    float w = smoothstep(0.46, 0.0, distance(p, c));
+    p = rotA(p, c, w * w * uCyc[i].w * 7.0);
+  }
+  return p;
+}
+float cloudLow(vec3 n) {
+  vec3 p = flowP(n);
+  float belts = 0.5 + 0.5 * sin(p.y * 16.0 + fbm(p * 2.2 + uSeedC) * 5.0);
+  float c = fbm(vec3(p.x * 2.6, p.y * 5.5, p.z * 2.6) + uSeedC) * 0.52 + fbm(p * 7.5 + uSeedC.zxy) * 0.38 + belts * 0.1;
+  for (int i = 0; i < 4; i++) { float d = distance(p, cycC(i)); c += smoothstep(0.24, 0.07, d) * 0.22 - smoothstep(0.05, 0.0, d) * 0.7; }
+  return smoothstep(0.5, 0.6, c);
+}
+float cloudHigh(vec3 n) {
+  vec3 p = rotA(n, vec3(0.0, 1.0, 0.0), uT * 0.021 * (1.0 + sin(n.y * 4.0) * 0.5));
+  float c = fbm(vec3(p.x * 1.5, p.y * 15.0, p.z * 1.5) + uSeedC.yzx) * 0.8 + vn(p * 11.0) * 0.2;
+  return smoothstep(0.6, 0.7, c) * 0.7;
 }
 `;
 
@@ -83,15 +134,11 @@ uniform float uSt[${MAXR}]; uniform int uHover; uniform float uT, uAsc, uG, uRel
 uniform vec3 uSun, uMoss, uVein, uCreep, uCreepVein, uSea, uSeaDeep, uShelf, uSnow, uRock, uSand, uAir;
 uniform mat4 modelMatrix;
 varying vec3 vP; varying vec3 vNw; varying vec3 vWp;
-float cloudAt(vec3 n) {
-  vec3 q = n * 3.1 + vec3(uT * 0.011, 0.0, uT * 0.006);
-  float c = fbm(q) * 0.75 + vn(n * 9.0 - vec3(uT * 0.02, 0.0, 0.0)) * 0.25;
-  return smoothstep(0.52, 0.66, c) * (0.55 + 0.45 * smoothstep(0.2, 0.7, abs(n.y)));
-}
+${CLOUD}
 void main(){
   vec3 n0 = normalize(vP);
-  vec3 tid = floor(n0 * uG);
-  vec3 n = normalize(tid / uG + 0.5 / uG);
+  vec3 tid;
+  vec3 n = qdir(n0, uG, tid);
   float g = h3(tid), g2 = h3(tid + 7.3);
   int k; float d1, d2;
   float e = elevation(n, k, d1, d2);
@@ -115,13 +162,15 @@ void main(){
     col = mix(uShelf, uSea, smoothstep(0.0, 0.12, -e));
     col = mix(col, uSeaDeep, dep);
     col *= 0.92 + g * 0.1;
-    if (e > -0.035) col = mix(col, vec3(0.86, 0.94, 0.92), 0.55);
+    // breakers along the coast and a second line where the shelf drops away, both shimmering
+    if (e > -0.03) col = mix(col, vec3(0.86, 0.94, 0.92), 0.4 + 0.3 * step(0.5, fract(uT * 0.6 + g * 3.0)));
+    else if (abs(e + 0.12) < 0.012) col = mix(col, uShelf * 1.2, 0.5);
     if (ice > 0.5) col = mix(uSnow * vec3(0.86, 0.94, 1.0), col, 0.25);
   } else {
     vec3 a = uBA[bi], b = uBB[bi];
     float hN = e / 0.9;
-    float pat = vn(n * 40.0 + uSeed) * 0.6 + vn(n * 95.0) * 0.4;
-    col = a * (0.86 + g * 0.18 + (pat - 0.5) * 0.25);
+    float pat = vn(n * 34.0 + uSeed) * 0.7 + vn(n * 80.0) * 0.3;
+    col = a * (pat > 0.56 ? 1.08 : pat < 0.4 ? 0.88 : 0.97) * (g > 0.93 ? 1.1 : 1.0);
     // tree clusters: a dark crown pixel with a lit pixel above-left, in clumps
     float forest = tr.z * smoothstep(0.35, 0.65, vn(n * 18.0 + uSeed + 5.0));
     if (g < forest * 0.85) col = b * (0.62 + g2 * 0.25);
@@ -168,8 +217,8 @@ void main(){
   float ndl = dot(N, uSun);
   float l = max(0.0, ndl) * 1.08 + 0.1;
   vec3 sunL = (inverse(mat3(modelMatrix)) * uSun);
-  float shadow = cloudAt(normalize(n + sunL * 0.03));
-  l *= 1.0 - shadow * 0.42;
+  float shadow = cloudLow(normalize(n + sunL * 0.035));
+  l *= 1.0 - shadow * 0.5 * (uAsc > 0.5 ? 0.5 : 1.0);
   l = floor(l * 6.0) / 6.0 + 0.08;
   // the night side: bioluminescent forests, glowing rivers and coasts, held ground shining in its owner's colour
   float night = smoothstep(0.08, -0.18, dot(Ns, uSun));
@@ -196,24 +245,33 @@ void main(){
 const CLOUD_FRAG = /* glsl */`
 ${GN_DECL}
 ${NOISE3}
-uniform float uT, uG, uAsc; uniform vec3 uSun;
+uniform float uT, uG, uAsc, uLayer, uHoverOn; uniform vec3 uSun, uHoverC;
+uniform mat4 modelMatrix;
 varying vec3 vP; varying vec3 vNw;
-float cloudAt(vec3 n) {
-  vec3 q = n * 3.1 + vec3(uT * 0.011, 0.0, uT * 0.006);
-  float c = fbm(q) * 0.75 + vn(n * 9.0 - vec3(uT * 0.02, 0.0, 0.0)) * 0.25;
-  return smoothstep(0.52, 0.66, c) * (0.55 + 0.45 * smoothstep(0.2, 0.7, abs(n.y)));
-}
+${CLOUD}
 void main(){
   vec3 n0 = normalize(vP);
-  vec3 tid = floor(n0 * uG);
-  vec3 n = normalize(tid / uG + 0.5 / uG);
-  float c = cloudAt(n) * (uAsc > 0.5 ? 0.5 : 1.0);
-  if (c < 0.05 || bayer4(gl_FragCoord.xy) > c * 1.15) discard;
+  vec3 tid;
+  vec3 n = qdir(n0, uG, tid);
+  bool low = uLayer < 0.5;
+  float c = low ? cloudLow(n) : cloudHigh(n);
+  c *= uAsc > 0.5 ? 0.5 : 1.0;
+  // the weather parts over the region under the cursor
+  c *= mix(1.0, 0.22, uHoverOn * smoothstep(0.42, 0.12, distance(n, uHoverC)));
   vec3 N = normalize(vNw);
-  float l = max(0.0, dot(N, uSun));
-  float lit = floor((0.18 + l * 0.95) * 5.0) / 5.0;
-  // thick cores shade grey underneath; the night side keeps a faint moonlit blue
-  vec3 col = mix(vec3(0.62, 0.66, 0.74), vec3(0.97, 0.97, 0.95), smoothstep(0.4, 0.95, c) * 0.5 + 0.5) * lit + vec3(0.03, 0.04, 0.07);
+  // thin out toward the limb (no glassy rim: the atmosphere owns the edge)
+  c *= smoothstep(0.02, 0.3, dot(N, normalize(cameraPosition - (modelMatrix * vec4(vP, 1.0)).xyz)));
+  if (c < 0.04 || bayer4(gl_FragCoord.xy) > c * (low ? 1.02 : 0.55)) discard;
+  float ndl = dot(N, uSun);
+  // self-shadowing: a deck that thickens toward the sun shades the cloud behind it; tops lit in five bands
+  vec3 sunL = inverse(mat3(modelMatrix)) * uSun;
+  float c2 = low ? cloudLow(normalize(n + sunL * 0.022)) : c;
+  float lit = clamp(ndl * 1.05 + 0.18, 0.0, 1.0) * (1.0 - clamp((c2 - c) * 1.6, 0.0, 0.45));
+  lit = floor(lit * 5.0) / 5.0;
+  vec3 day = c > 0.8 ? vec3(1.0, 0.99, 0.95) : c > 0.45 ? vec3(0.86, 0.88, 0.9) : vec3(0.7, 0.74, 0.82);
+  float term = smoothstep(-0.22, 0.04, ndl) * (1.0 - smoothstep(0.04, 0.42, ndl));
+  vec3 col = mix(day, vec3(1.0, 0.62, 0.45), step(0.35, term) * 0.7) * (0.1 + lit) + vec3(0.025, 0.035, 0.07);
+  if (!low) col = col * 1.08 + vec3(0.02, 0.03, 0.05);
   gl_FragColor = vec4(col, 1.0);
   gNormal = vec4(N * 0.5 + 0.5, 0.0);
 }`;
@@ -233,7 +291,7 @@ void main(){
   float b = dot(toC, -V);
   float d = length(toC + V * b) / uR;
   if (d < 0.985) discard;
-  float h = (d - 1.0) / 0.11;
+  float h = (d - 1.0) / 0.14;
   float dens = exp(-max(0.0, h) * 3.2) * smoothstep(0.985, 1.005, d);
   vec3 P = normalize(cameraPosition + (-V) * b - vC);
   float sd = dot(P, uSun);
@@ -255,7 +313,7 @@ ${NOISE3}
 uniform vec3 uSun;
 varying vec3 vP; varying vec3 vNw;
 void main(){
-  vec3 n0 = normalize(vP), tid = floor(n0 * 40.0), n = normalize(tid / 40.0 + 0.5 / 40.0);
+  vec3 n0 = normalize(vP), tid; vec3 n = qdir(n0, 28.0, tid);
   float g = h3(tid);
   // maria and craters: rims lit toward the sun, floors in shade
   float mar = smoothstep(0.45, 0.6, fbm(n * 2.3 + 4.0));
@@ -298,12 +356,18 @@ export function makeGlobe(p: Planet, radius = 1, opts: { ascended?: boolean; orb
   // land bias, mountains, forest cover per biome
   const BR = [[0.12, 0.6, 0.45], [0.16, 0.5, 0.95], [0.12, 0.4, 0.18], [-0.02, 0.15, 0.4], [0.2, 1.3, 0.3], [0.1, 0.8, 0.05], [0.12, 0.5, 0.0], [0.14, 1.0, 0.05], [0.12, 1.1, 0.02], [0.0, 0.4, 0.35]].map((v) => new THREE.Vector3(...v));
   const rival = RIVALS[p.seed % RIVALS.length];
-  const G = radius < 0.5 ? 70 : 180;
+  // impact basins (the planet has been struck before) and the cyclones of its weather
+  let rs = (p.seed * 2654435761) >>> 0;
+  const rnd = () => ((rs = (Math.imul(rs ^ (rs >>> 15), 0x2c1b3c6d) + 0x9e3779b9) >>> 0) / 4294967296);
+  const dir = () => new THREE.Vector3().randomDirection().set(rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1).normalize();
+  const CR = Array.from({ length: 12 }, (_, i) => { const d = dir(); return new THREE.Vector4(d.x, d.y, d.z, i < 9 ? 0.03 + rnd() * 0.07 : 0); });
+  const CY = Array.from({ length: 4 }, () => { const d = dir(); d.y = (rnd() < 0.5 ? -1 : 1) * (0.25 + rnd() * 0.45); d.normalize(); return new THREE.Vector4(d.x, d.y, d.z, (d.y > 0 ? 1 : -1) * (0.7 + rnd() * 0.5)); });
+  const G = radius < 0.5 ? 40 : 110;
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       uC: { value: C }, uBi: { value: BI }, uSt: { value: ST }, uN: { value: p.regions.length }, uHover: { value: -1 }, uT: { value: 0 }, uSeed: { value: seed },
-      uBA: { value: BA }, uBB: { value: BB }, uBR: { value: BR }, uR: { value: radius }, uRelief: { value: 0.03 }, uG: { value: G },
-      uSun: { value: new THREE.Vector3(-0.78, 0.38, 0.5).normalize() }, uMoss: { value: new THREE.Color(VEYR.moss) }, uVein: { value: new THREE.Color(VEYR.vein) },
+      uBA: { value: BA }, uBB: { value: BB }, uBR: { value: BR }, uR: { value: radius }, uRelief: { value: 0.042 }, uG: { value: G }, uCr: { value: CR }, uCyc: { value: CY }, uSeedC: { value: seed.clone().multiplyScalar(1.7).addScalar(5) },
+      uSun: { value: new THREE.Vector3(-0.86, 0.34, 0.38).normalize() }, uMoss: { value: new THREE.Color(VEYR.moss) }, uVein: { value: new THREE.Color(VEYR.vein) },
       uCreep: { value: new THREE.Color(rival.creep) }, uCreepVein: { value: new THREE.Color(rival.vein) },
       uSea: { value: linC(pal.water).lerp(linC(0x1e4256), 0.35) }, uSeaDeep: { value: linC(pal.waterDeep).lerp(linC(0x081a2c), 0.5) }, uShelf: { value: linC(pal.water).lerp(linC(0x9ae0d0), 0.35) },
       uSnow: { value: linC(pal.snow) }, uRock: { value: linC(pal.rock) }, uSand: { value: linC(pal.sand) }, uAir: { value: linC(0x8ab8e0) },
@@ -313,27 +377,35 @@ export function makeGlobe(p: Planet, radius = 1, opts: { ascended?: boolean; orb
     fragmentShader: SURF_FRAG,
   });
   (mat as any).__gb = true;
-  const detail = radius < 0.5 ? 18 : 72;
+  const detail = radius < 0.5 ? 18 : 100;
   const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(radius, detail), mat);
   mesh.name = 'globe';
-  // clouds: a dithered pixel shell drifting above the relief
-  const cloudMat = new THREE.ShaderMaterial({ uniforms: { uT: mat.uniforms.uT, uG: { value: G * 0.75 }, uAsc: mat.uniforms.uAsc, uSun: mat.uniforms.uSun }, vertexShader: SHELL_VERT, fragmentShader: CLOUD_FRAG });
-  (cloudMat as any).__gb = true;
-  const clouds = new THREE.Mesh(new THREE.IcosahedronGeometry(radius * 1.045, radius < 0.5 ? 10 : 36), cloudMat);
-  clouds.name = 'globe-clouds';
+  // the weather: a thick low deck and thin high cirrus, dithered pixel shells drifting above the relief
+  const hoverC = { value: new THREE.Vector3(0, 1, 0) }, hoverOn = { value: 0 };
+  const shell = (layer: number, r: number) => {
+    const m = new THREE.ShaderMaterial({
+      uniforms: { uT: mat.uniforms.uT, uG: { value: G * (layer ? 0.6 : 0.8) }, uAsc: mat.uniforms.uAsc, uSun: mat.uniforms.uSun, uLayer: { value: layer }, uHoverC: hoverC, uHoverOn: hoverOn, uSeedC: mat.uniforms.uSeedC, uCyc: mat.uniforms.uCyc },
+      vertexShader: SHELL_VERT, fragmentShader: CLOUD_FRAG,
+    });
+    (m as any).__gb = true;
+    const c = new THREE.Mesh(new THREE.IcosahedronGeometry(radius * r, radius < 0.5 ? 10 : 40), m);
+    c.name = layer ? 'globe-cirrus' : 'globe-clouds';
+    return c;
+  };
+  const clouds = shell(0, 1.055), cirrus = shell(1, 1.085);
   // the limb
-  const atmo = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.12, 64, 40), new THREE.ShaderMaterial({
+  const atmo = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.16, 64, 40), new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.BackSide,
     uniforms: { uCol: { value: new THREE.Color(opts.ascended ? VEYR.vein : 0x8ab0d0) }, uSun: mat.uniforms.uSun, uR: { value: radius } },
     vertexShader: ATMO_VERT, fragmentShader: ATMO_FRAG,
   }));
   atmo.name = 'globe-atmo';
-  const group = new THREE.Group(); group.add(mesh, clouds, atmo);
+  const group = new THREE.Group(); group.add(mesh, clouds, cirrus, atmo);
   if (opts.orbit) addOrbiters(group, radius, mat, mesh);
   const g: Globe = {
     group, mesh, mat, atmo,
     refresh() { p.regions.forEach((r, i) => { ST[i] = r.state === 'veyr' ? 1 : r.state === 'rival' ? 2 : r.state === 'lost' ? 3 : 0; }); },
-    setHover(i) { mat.uniforms.uHover.value = i; },
+    setHover(i) { mat.uniforms.uHover.value = i; hoverOn.value = i >= 0 ? 1 : 0; if (i >= 0) hoverC.value.copy(C[i]); },
     pick(ray) {
       const inv = new THREE.Matrix4().copy(mesh.matrixWorld).invert();
       const lr = ray.clone().applyMatrix4(inv);
@@ -437,52 +509,189 @@ function satellite(R: number, uSun: THREE.IUniform) {
   return g;
 }
 
-// ------------------------------------------------------------------------------------------------ sky
-/** a starfield shell with a faint pixel nebula behind it (G-buffer safe) */
-export function stars(n = 1400, R = 60) {
-  const group = new THREE.Group();
-  const p = new Float32Array(n * 3), c = new Float32Array(n * 3), sz = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const v = new THREE.Vector3().randomDirection().multiplyScalar(R * (0.8 + Math.random() * 0.4));
-    p.set([v.x, v.y, v.z], i * 3);
-    const k = 0.35 + Math.random() * 0.65, t = Math.random();
-    // most stars white, some blue-white, some amber, a few red
-    const col = t < 0.15 ? [0.75, 0.85, 1] : t < 0.3 ? [1, 0.85, 0.6] : t < 0.36 ? [1, 0.55, 0.45] : [0.95, 0.95, 0.92];
-    c.set([k * col[0], k * col[1], k * col[2]], i * 3);
-    sz[i] = Math.random() < 0.06 ? 3 : Math.random() < 0.3 ? 2 : 1;
-  }
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('color', new THREE.BufferAttribute(c, 3)); g.setAttribute('size', new THREE.BufferAttribute(sz, 1));
-  const uT = { value: 0 };
-  const m = new THREE.ShaderMaterial({
-    uniforms: { uT },
-    vertexShader: 'attribute vec3 color; attribute float size; uniform float uT; varying vec3 vC; void main(){ float tw = 0.75 + 0.25 * sin(uT * (1.5 + fract(position.x * 7.1) * 3.0) + position.y); vC = color * (size > 2.5 ? 1.6 : tw); gl_PointSize = size; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: GN_DECL + 'varying vec3 vC; void main(){ gl_FragColor = vec4(vC, 1.0); gNormal = vec4(0.0); }',
-  });
-  (m as any).__gb = true;
-  const pts = new THREE.Points(g, m);
-  pts.onBeforeRender = () => { uT.value = performance.now() / 1000; };
-  // the nebula: two drifting colour clouds, banded and dithered into pixels
-  const neb = new THREE.Mesh(new THREE.SphereGeometry(R * 1.35, 32, 16), new THREE.ShaderMaterial({
-    side: THREE.BackSide, depthWrite: false,
-    uniforms: { uA: { value: new THREE.Color(0x3a2a6a) }, uB: { value: new THREE.Color(0x174a5a) }, uS: { value: Math.random() * 40 } },
-    vertexShader: 'varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: GN_DECL + NOISE3 + `uniform vec3 uA, uB; uniform float uS; varying vec3 vD;
+// ------------------------------------------------------------------------------------------------ space
+export interface SpaceOpts {
+  /** star count and shell radius (keep inside the camera's far plane) */
+  stars?: number; radius?: number;
+  /** world direction of a distant sun drawn with its glare (null: none) */
+  sun?: THREE.Vector3 | null;
+  /** drifting dust motes (0 none); they fill a shell from dustR[0] to dustR[1] around the origin */
+  dust?: number; dustR?: [number, number];
+  nebula?: boolean; seed?: number;
+}
+export interface Space { group: THREE.Group; sun: THREE.Vector3 | null }
+
+const SPACE_NEB = /* glsl */`
+uniform vec3 uA, uB, uC2; uniform float uS, uT; uniform vec3 uGal;
+varying vec3 vD;
 void main(){
   vec3 d = normalize(vD);
-  float band = exp(-pow(dot(d, normalize(vec3(0.3, 1.0, 0.2))) * 2.6, 2.0));
-  float a = fbm(d * 2.4 + uS) , b = fbm(d * 3.1 - uS * 0.7 + 4.0);
-  float k = band * smoothstep(0.42, 0.75, a);
-  float k2 = band * smoothstep(0.48, 0.8, b) * 0.8;
-  float dust = smoothstep(0.55, 0.7, fbm(d * 6.0 + uS * 1.3)) * band;
-  vec3 col = uA * k + uB * k2;
-  col *= 1.0 - dust * 0.7;
-  float q = floor(length(col) * 18.0 + bayer4(gl_FragCoord.xy) * 0.9) / 18.0;
-  gl_FragColor = vec4(normalize(col + 1e-4) * q * 0.55, 1.0);
+  // the galaxy: a band along a great circle, a brighter core, dark dust lanes, a haze of unresolved stars
+  float gb = dot(d, uGal);
+  float band = exp(-gb * gb * 26.0), core = exp(-pow(distance(d, normalize(cross(uGal, vec3(0.3, 0.1, 0.9)))), 2.0) * 3.0);
+  float lanes = smoothstep(0.52, 0.68, fbm(d * 7.0 + uS)) * exp(-gb * gb * 120.0);
+  float haze = band * (0.55 + 0.45 * fbm(d * 11.0 + uS * 0.5)) * (1.0 - lanes * 0.85) * (0.6 + core * 0.8);
+  // two soft nebulae drifting very slowly
+  float a = fbm(d * 2.2 + uS + vec3(uT * 0.004, 0.0, 0.0)), b = fbm(d * 3.0 - uS * 0.7 + 4.0 - vec3(0.0, uT * 0.003, 0.0));
+  vec3 col = uA * smoothstep(0.45, 0.78, a) * 0.9 + uB * smoothstep(0.5, 0.8, b) * 0.8 + uC2 * haze * 0.55;
+  // pixel quantised with an ordered dither: no gradients, hand-placed steps
+  float L = length(col), q = floor(L * 16.0 + bayer4(gl_FragCoord.xy) * 0.95) / 16.0;
+  vec3 c = L > 1e-4 ? col / L * q : vec3(0.0);
+  // unresolved star dust inside the band: single bright pixels
+  float h = h3(floor(d * 900.0));
+  if (h > 1.0 - band * 0.012 - 0.0015) c += vec3(0.5, 0.48, 0.42) * (0.4 + 0.6 * h3(floor(d * 900.0) + 3.0));
+  gl_FragColor = vec4(c * 0.6, 1.0);
   gNormal = vec4(0.0);
-}`,
-  }));
-  (neb.material as any).__gb = true;
-  neb.renderOrder = -10;
-  group.add(neb, pts);
-  return group;
+}`;
+
+const SPACE_STAR_V = /* glsl */`
+attribute vec3 color; attribute vec2 kind; uniform float uT; varying vec3 vC; varying float vK; varying float vG;
+void main(){
+  float ph = kind.y * 6.2831;
+  float tw = 0.7 + 0.3 * sin(uT * (1.3 + fract(kind.y * 7.1) * 3.4) + ph);
+  // sparkle stars flare now and then into a glint cross
+  float g = kind.x > 1.5 ? pow(max(0.0, sin(uT * 0.37 + ph * 3.0)), 24.0) : 0.0;
+  vG = g; vK = kind.x;
+  vC = color * (kind.x > 1.5 ? 1.2 + g * 2.5 : tw);
+  gl_PointSize = kind.x > 1.5 ? 9.0 : kind.x > 0.5 ? 2.0 : 1.0;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+const SPACE_STAR_F = /* glsl */`
+varying vec3 vC; varying float vK; varying float vG;
+void main(){
+  if (vK > 1.5) {
+    // a pixel cross: a bright 2x2 heart, arms of falling brightness, longer while it glints
+    vec2 p = floor(gl_PointCoord * 9.0) - 4.0;
+    float ax = abs(p.x), ay = abs(p.y), arm = 1.0 + vG * 3.0;
+    float k = (ax < 0.5 && ay < 0.5) ? 1.0 : (ax < 0.5 && ay <= arm) || (ay < 0.5 && ax <= arm) ? 0.85 - max(ax, ay) * 0.18 : (ax == 1.0 && ay == 1.0) ? 0.25 * vG : 0.0;
+    if (k <= 0.0) discard;
+    gl_FragColor = vec4(vC * k, 1.0);
+  } else gl_FragColor = vec4(vC, 1.0);
+  gNormal = vec4(0.0);
+}`;
+
+/** the sun: a white-hot pixel disc, a ragged corona, eight rays; ghosts of it march across the lens */
+const SPACE_SUN_F = /* glsl */`
+uniform float uT; varying float vI; varying float vS;
+void main(){
+  vec2 p = (floor(gl_PointCoord * vS) + 0.5 - vS * 0.5) / (vS * 0.5);
+  float r = length(p), a = atan(p.y, p.x);
+  vec3 c = vec3(0.0);
+  if (vI < 0.5) {
+    float disc = step(r, 0.16), corona = smoothstep(0.42, 0.16, r + (sin(a * 9.0 + uT * 0.8) * 0.5 + 0.5) * 0.05);
+    float rays = pow(max(abs(cos(a * 2.0)), abs(sin(a * 2.0)) * 0.7), 40.0) * smoothstep(1.0, 0.18, r);
+    c = vec3(1.0, 0.97, 0.88) * disc * 6.0 + vec3(1.0, 0.82, 0.55) * corona * 1.4 + vec3(1.0, 0.9, 0.7) * rays * 1.2;
+    c += vec3(0.5, 0.35, 0.25) * smoothstep(1.0, 0.2, r) * 0.25;
+  } else {
+    // a ghost: a thin hexagonal ring, tinted
+    float hex = max(abs(p.x) * 0.866 + abs(p.y) * 0.5, abs(p.y));
+    float ring = step(abs(hex - 0.8), 0.07) + step(hex, 0.8) * 0.18;
+    c = mix(vec3(0.5, 0.9, 1.0), vec3(1.0, 0.6, 0.9), fract(vI * 0.37)) * ring * 0.22;
+  }
+  if (dot(c, c) < 1e-5) discard;
+  gl_FragColor = vec4(c, 1.0);
+  gNormal = vec4(0.0);
+}`;
+
+/** an animated space backdrop: galaxy band and nebulae, twinkling stars (some flare into glint crosses), a distant
+ *  sun with lens glare, slow dust. Self-animating (no update call needed); pixel-crisp; G-buffer safe. */
+export function makeSpace(o: SpaceOpts = {}): Space {
+  const R = o.radius ?? 60, n = o.stars ?? 1600;
+  let rs = ((o.seed ?? Math.floor(Math.random() * 1e9)) * 2654435761) >>> 0;
+  const rnd = () => ((rs = (Math.imul(rs ^ (rs >>> 15), 0x2c1b3c6d) + 0x9e3779b9) >>> 0) / 4294967296);
+  const group = new THREE.Group(); group.name = 'space';
+  const uT = { value: 0 };
+  const tick = () => { uT.value = performance.now() / 1000; };
+  const gal = new THREE.Vector3(rnd() - 0.5, 1, rnd() - 0.5).normalize();
+  if (o.nebula !== false) {
+    const neb = new THREE.Mesh(new THREE.SphereGeometry(R * 1.35, 32, 16), new THREE.ShaderMaterial({
+      side: THREE.BackSide, depthWrite: false,
+      uniforms: { uA: { value: new THREE.Color(0x46306e) }, uB: { value: new THREE.Color(0x184e60) }, uC2: { value: new THREE.Color(0xd8c8b0) }, uS: { value: rnd() * 40 }, uT, uGal: { value: gal } },
+      vertexShader: 'varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: GN_DECL + NOISE3 + SPACE_NEB,
+    }));
+    (neb.material as any).__gb = true;
+    neb.renderOrder = -10; neb.name = 'space-nebula';
+    neb.onBeforeRender = tick;
+    group.add(neb);
+  }
+  // stars: denser toward the galaxy band; white, blue-white, amber and a few red; 1 px, 2 px and sparkles
+  const p = new Float32Array(n * 3), c = new Float32Array(n * 3), k = new Float32Array(n * 2), v = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    v.set(rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1).normalize();
+    if (rnd() < 0.4) { v.addScaledVector(gal, -v.dot(gal) * 0.85).normalize(); }
+    v.multiplyScalar(R * (0.85 + rnd() * 0.3));
+    p.set([v.x, v.y, v.z], i * 3);
+    const t = rnd(), b = 0.35 + rnd() * 0.65;
+    const col = t < 0.16 ? [0.72, 0.84, 1] : t < 0.3 ? [1, 0.84, 0.58] : t < 0.35 ? [1, 0.5, 0.42] : [0.96, 0.95, 0.92];
+    c.set([b * col[0], b * col[1], b * col[2]], i * 3);
+    const big = rnd();
+    k.set([big < 0.018 ? 2 : big < 0.22 ? 1 : 0, rnd()], i * 2);
+  }
+  const sg = new THREE.BufferGeometry();
+  sg.setAttribute('position', new THREE.BufferAttribute(p, 3)); sg.setAttribute('color', new THREE.BufferAttribute(c, 3)); sg.setAttribute('kind', new THREE.BufferAttribute(k, 2));
+  const sm = new THREE.ShaderMaterial({ uniforms: { uT }, vertexShader: SPACE_STAR_V, fragmentShader: GN_DECL + SPACE_STAR_F });
+  (sm as any).__gb = true;
+  const pts = new THREE.Points(sg, sm); pts.name = 'space-stars'; pts.frustumCulled = false;
+  pts.onBeforeRender = tick;
+  group.add(pts);
+  // the sun and its lens ghosts (placed each frame along the line from the sun through the middle of the view)
+  let sunDir: THREE.Vector3 | null = null;
+  if (o.sun) {
+    sunDir = o.sun.clone().normalize();
+    const NG = 5, sp = new Float32Array((NG + 1) * 3), si = new Float32Array(NG + 1), ss = new Float32Array(NG + 1);
+    si[0] = 0; ss[0] = 72;
+    for (let g = 1; g <= NG; g++) { si[g] = g; ss[g] = [0, 18, 34, 12, 46, 24][g]; }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(sp, 3)); geo.setAttribute('aI', new THREE.BufferAttribute(si, 1)); geo.setAttribute('aS', new THREE.BufferAttribute(ss, 1));
+    const m = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uT, uFade: { value: 1 } },
+      vertexShader: 'attribute float aI, aS; uniform float uFade; varying float vI; varying float vS; void main(){ vI = aI; vS = aS; gl_PointSize = aS; vec4 cp = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = aI > 0.5 && uFade < 0.01 ? vec4(2.0, 2.0, 2.0, 1.0) : cp; }',
+      fragmentShader: GN_DECL + SPACE_SUN_F,
+    });
+    (m as any).__gb = true;
+    const sun = new THREE.Points(geo, m); sun.name = 'space-sun'; sun.frustumCulled = false; sun.renderOrder = 5;
+    const sw = new THREE.Vector3(), cp = new THREE.Vector3(), ndc = new THREE.Vector3(), q = new THREE.Vector3();
+    const pa = geo.getAttribute('position') as THREE.BufferAttribute;
+    sun.onBeforeRender = (_r, _s, cam) => {
+      tick();
+      cam.getWorldPosition(cp);
+      sw.copy(sunDir!).multiplyScalar(R * 0.9).add(cp);
+      group.worldToLocal(q.copy(sw)); pa.setXYZ(0, q.x, q.y, q.z);
+      ndc.copy(sw).project(cam);
+      const on = ndc.z < 1 && Math.abs(ndc.x) < 1.2 && Math.abs(ndc.y) < 1.2;
+      m.uniforms.uFade.value = on ? 1 : 0;
+      for (let g = 1; g <= NG; g++) {
+        const f = [0, 0.45, 0.9, 1.25, 1.6, 2.05][g];
+        q.set(ndc.x * (1 - f), ndc.y * (1 - f), 0.5).unproject(cam).sub(cp).normalize().multiplyScalar(R * 0.5).add(cp);
+        group.worldToLocal(q); pa.setXYZ(g, q.x, q.y, q.z);
+      }
+      pa.needsUpdate = true;
+    };
+    group.add(sun);
+  }
+  // dust: faint motes drifting through the scene, slower the further they are
+  const nd = o.dust ?? 0;
+  if (nd > 0) {
+    const [r0, r1] = o.dustR ?? [3, 14];
+    const dp = new Float32Array(nd * 3), dv = new Float32Array(nd * 3);
+    for (let i = 0; i < nd; i++) {
+      v.set(rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1).normalize().multiplyScalar(r0 + (r1 - r0) * Math.sqrt(rnd()));
+      dp.set([v.x, v.y, v.z], i * 3); dv.set([rnd() - 0.5, rnd() - 0.5, rnd() - 0.5], i * 3);
+    }
+    const dg = new THREE.BufferGeometry(); dg.setAttribute('position', new THREE.BufferAttribute(dp, 3)); dg.setAttribute('aV', new THREE.BufferAttribute(dv, 3));
+    const dm = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uT, uR: { value: r1 } },
+      vertexShader: 'attribute vec3 aV; uniform float uT, uR; varying float vA; void main(){ vec3 p = position + aV * uT * 0.06; p = mod(p + uR, 2.0 * uR) - uR; vA = 0.35 + 0.35 * sin(uT * 0.7 + aV.x * 40.0); vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_PointSize = -mv.z < 6.0 ? 2.0 : 1.0; gl_Position = projectionMatrix * mv; }',
+      fragmentShader: GN_DECL + 'varying float vA; void main(){ gl_FragColor = vec4(vec3(0.85, 0.78, 0.65) * vA * 0.5, 1.0); gNormal = vec4(0.0); }',
+    });
+    (dm as any).__gb = true;
+    const dust = new THREE.Points(dg, dm); dust.name = 'space-dust'; dust.frustumCulled = false;
+    dust.onBeforeRender = tick;
+    group.add(dust);
+  }
+  return { group, sun: sunDir };
 }
+
+/** a starfield shell with the galaxy and nebulae behind it (G-buffer safe); see makeSpace for the full backdrop */
+export function stars(n = 1400, R = 60) { return makeSpace({ stars: n, radius: R, sun: null, dust: 0 }).group; }

@@ -6,7 +6,7 @@ import type { Screen } from '../app/engine';
 import { type Post, resetGrade } from '../gfx/post';
 import { el, panel, ui, Btn, Tip } from './kit';
 import { sfx } from '../audio/audio';
-import { makeGlobe, stars, type Globe } from './globe';
+import { makeGlobe, makeSpace, type Globe } from './globe';
 import { type Planet, type PRegion, owned } from '../world/planet';
 import { BIOMES } from '../world/region';
 import { gbuf } from '../gfx/gbuf';
@@ -30,7 +30,8 @@ export class PlanetScreen implements Screen {
 
   constructor(readonly planet: Planet, readonly opts: PlanetOpts) {
     this.scene.background = new THREE.Color(0x03060a);
-    this.scene.add(stars());
+    // deep space: the galaxy band, sparkling stars, the system's sun glaring at the upper left, drifting dust
+    this.scene.add(makeSpace({ stars: 2000, radius: 70, sun: new THREE.Vector3(-0.4, 0.22, -0.89), dust: 160, dustR: [2.4, 9] }).group);
     this.globe = makeGlobe(planet, 1, { orbit: true });
     this.scene.add(this.globe.group);
     this.q.setFromEuler(new THREE.Euler(0.35, -0.6, 0));

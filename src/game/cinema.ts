@@ -17,6 +17,7 @@
 import * as THREE from 'three';
 import { CineUI, type SubStyle } from '../ui/cineUI';
 import { csfx, cloop, cvoice, type CineSfx, type Loop } from '../ui/cineAudio';
+import { settings } from '../settings';
 
 export type Ease = 'linear' | 'in' | 'out' | 'inOut' | 'outBack' | 'inExpo' | 'outExpo' | 'inCubic' | 'outCubic';
 export const EASE: Record<Ease, (t: number) => number> = {
@@ -76,7 +77,7 @@ export class CineCam {
   }
   /** follow something every frame (null stops); k is the damping rate */
   track(fn: (() => { pos?: THREE.Vector3; look?: THREE.Vector3 } | null) | null, k = 6) { this.trackFn = fn; this.trackK = k; }
-  shake(a: number, t = 0.4) { if (this.skipping) return; this.shakeA = Math.max(this.shakeA, a); this.shakeT = Math.max(this.shakeT, t); }
+  shake(a: number, t = 0.4) { if (this.skipping || !settings.shake) return; this.shakeA = Math.max(this.shakeA, a); this.shakeT = Math.max(this.shakeT, t); }
   private applyOrbit(u: number) {
     const o = this.orb!; const e = EASE[o.ease ?? 'inOut'](u);
     const a = o.from + (o.to - o.from) * e, R = o.radius + ((o.radiusTo ?? o.radius) - o.radius) * e, H = o.height + ((o.heightTo ?? o.height) - o.height) * e;

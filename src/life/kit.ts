@@ -16,19 +16,31 @@ export const KIT = { sq: 2, nMul: 1 };
 const NOISE = new Map<string, Float32Array>();
 export const hash = (a: number, b = 0) => { const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return s - Math.floor(s); };
 
-/** a rectangle of the page; u wraps (tubes), v clamps */
+/** a rectangle of the page; u wraps (tubes), v clamps. Regions are requested at a nominal size while the geometry
+ *  is built (UVs are stored region-local) and only placed when the page is packed, so the page is always filled */
 export class Region {
   /** alpha-cut region (fur cards): keeps transparent texels */
   cut = false;
-  constructor(public page: Page, public name: string, public x: number, public y: number, public w: number, public h: number) {}
+  x = 0; y = 0; w: number; h: number;
+  /** stored transposed on the page (long bodies lie across it) */
+  rot = false;
+  /** nominal size and texel-density priority (faces and eyes paint finer than flanks) */
+  readonly bw: number; readonly bh: number;
+  constructor(public page: Page, public name: string, w: number, h: number, public k = 1) { this.bw = this.w = w; this.bh = this.h = h; }
   /** angle in degrees of a column (0 = the centre column, which lofts put on top) */
   deg(x: number) { return ((x + 0.5) / this.w - 0.5) * 360; }
   th(x: number) { return ((x + 0.5) / this.w - 0.5) * Math.PI * 2; }
   X(deg: number) { return (0.5 + deg / 360) * this.w; }
   private ix(x: number, y: number) {
     const xx = ((Math.floor(x) % this.w) + this.w) % this.w, yy = Math.min(this.h - 1, Math.max(0, Math.floor(y)));
-    return [this.x + xx, this.y + yy];
+    return this.rot ? [this.x + yy, this.y + xx] : [this.x + xx, this.y + yy];
   }
+  /** page texel of a region-local texel (no wrapping) */
+  at(x: number, y: number) { return this.rot ? [this.x + y, this.y + x] : [this.x + x, this.y + y]; }
+  /** page UV of region-local (u, v) in 0..1 */
+  uv(u: number, v: number): [number, number] { return this.rot ? [this.x + v * this.h, this.y + u * this.w] : [this.x + u * this.w, this.y + v * this.h]; }
+  get pw() { return this.rot ? this.h : this.w; }
+  get ph() { return this.rot ? this.w : this.h; }
   inside(y: number) { return y >= 0 && y < this.h; }
   set(x: number, y: number, c: number, a = 255) { if (!this.inside(Math.floor(y))) return; const [p, q] = this.ix(x, y); this.page.pc.set(p, q, c, a); }
   get(x: number, y: number) { const [p, q] = this.ix(x, y); return this.page.pc.get(p, q); }
@@ -101,23 +113,70 @@ export class Region {
   }
 }
 
-/** a page split into regions by a shelf packer */
+/** a page split into regions: requested while modelling, then scaled to fill the page and skyline-packed */
 export class Page {
   pc: PixelCanvas;
   regs = new Map<string, Region>();
-  private cx = 0; private cy = 0; private rowH = 0;
+  /** the scale the last pack settled on (texels per nominal texel) and the fraction of the page it covers */
+  scale = 1; fill = 0;
   constructor(public W = 256, public H = 256) { this.pc = new PixelCanvas(W, H); this.pc.wrap = false; }
-  reg(name: string, w: number, h: number): Region {
+  reg(name: string, w: number, h: number, k = 1): Region {
     w = Math.max(2, Math.round(w)); h = Math.max(2, Math.round(h));
-    const W = w + KPAD * 2, H = h + KPAD * 2;
-    if (this.cx + W > this.W) { this.cx = 0; this.cy += this.rowH; this.rowH = 0; }
-    if (this.cy + H > this.H) throw new Error('page overflow: ' + name);
-    const r = new Region(this, name, this.cx + KPAD, this.cy + KPAD, w, h);
-    this.cx += W; this.rowH = Math.max(this.rowH, H);
+    const r = new Region(this, name, w, h, k);
     this.regs.set(name, r);
     return r;
   }
   R(name: string) { const r = this.regs.get(name); if (!r) throw new Error('no region ' + name); return r; }
+  /** size every region at the largest common scale (up to maxScale) that still packs, then place them */
+  pack(maxScale = 3) {
+    const rs = [...this.regs.values()];
+    let area = 0;
+    for (const r of rs) area += (r.bw * r.k + KPAD * 2) * (r.bh * r.k + KPAD * 2);
+    let s = Math.min(maxScale, Math.sqrt((this.W * this.H * 0.94) / Math.max(1, area)));
+    for (let n = 0; n < 60; n++, s *= 0.96) if (this.tryPack(rs, s)) { this.scale = s; return s; }
+    throw new Error('page overflow');
+  }
+  private tryPack(rs: Region[], s: number) {
+    const W = this.W, H = this.H;
+    for (const r of rs) {
+      r.w = Math.max(4, Math.min(W - KPAD * 2, Math.round(r.bw * r.k * s)));
+      r.h = Math.max(4, Math.min(H - KPAD * 2, Math.round(r.bh * r.k * s)));
+    }
+    // longest first, either way round; each goes where its top edge ends lowest on the skyline (bottom-left rule)
+    const order = [...rs].sort((a, b) => Math.max(b.h, b.w) - Math.max(a.h, a.w) || b.w * b.h - a.w * a.h);
+    let sky: { x: number; y: number; w: number }[] = [{ x: 0, y: 0, w: W }];
+    let used = 0;
+    for (const r of order) {
+      let bx = -1, by = Infinity, bt = Infinity, brot = false;
+      for (const rot of r.w === r.h ? [false] : [false, true]) {
+        const rw = (rot ? r.h : r.w) + KPAD * 2, rh = (rot ? r.w : r.h) + KPAD * 2;
+        for (let i = 0; i < sky.length; i++) {
+          const x = sky[i].x; if (x + rw > W) break;
+          let y = 0;
+          for (let j = i; j < sky.length && sky[j].x < x + rw; j++) y = Math.max(y, sky[j].y);
+          if (y + rh <= H && (y + rh < bt || (y + rh === bt && y < by))) { by = y; bx = x; bt = y + rh; brot = rot; }
+        }
+      }
+      if (bx < 0) return false;
+      r.rot = brot;
+      const rw = r.pw + KPAD * 2, rh = r.ph + KPAD * 2;
+      r.x = bx + KPAD; r.y = by + KPAD; used += rw * rh;
+      // raise the skyline under the new rectangle
+      const next: { x: number; y: number; w: number }[] = [];
+      for (const g of sky) {
+        const g1 = g.x + g.w;
+        if (g1 <= bx || g.x >= bx + rw) { next.push(g); continue; }
+        if (g.x < bx) next.push({ x: g.x, y: g.y, w: bx - g.x });
+        if (g1 > bx + rw) next.push({ x: bx + rw, y: g.y, w: g1 - bx - rw });
+      }
+      next.push({ x: bx, y: by + rh, w: rw });
+      next.sort((a, b) => a.x - b.x);
+      sky = [];
+      for (const g of next) { const l = sky[sky.length - 1]; if (l && l.y === g.y && l.x + l.w === g.x) l.w += g.w; else sky.push(g); }
+    }
+    this.fill = used / (W * H);
+    return true;
+  }
   /** extend every region into its padding (u wraps, v clamps) so mips never bleed */
   finish() {
     const d = this.pc.data, W = this.W;
@@ -126,16 +185,17 @@ export class Page {
         const sy = Math.min(r.h - 1, Math.max(0, y));
         for (let x = -KPAD; x < r.w + KPAD; x++) {
           if (y >= 0 && y < r.h && x >= 0 && x < r.w) continue;
-          if (r.y + y < 0 || r.y + y >= this.H || r.x + x < 0 || r.x + x >= W) continue;
-          const sx = ((x % r.w) + r.w) % r.w;
-          const si = ((r.y + sy) * W + r.x + sx) * 4, di = ((r.y + y) * W + r.x + x) * 4;
+          const [px, py] = r.at(x, y);
+          if (py < 0 || py >= this.H || px < 0 || px >= W) continue;
+          const [qx, qy] = r.at(((x % r.w) + r.w) % r.w, sy);
+          const si = (qy * W + qx) * 4, di = (py * W + px) * 4;
           d[di] = d[si]; d[di + 1] = d[si + 1]; d[di + 2] = d[si + 2]; d[di + 3] = d[si + 3];
         }
       }
     }
     // gaps between regions stay opaque so distant mips never punch holes (alpha < 1 marks glow); cut regions keep theirs
     const keep = new Uint8Array(this.W * this.H);
-    for (const r of this.regs.values()) if (r.cut) for (let y = r.y - KPAD; y < r.y + r.h + KPAD; y++) for (let x = r.x - KPAD; x < r.x + r.w + KPAD; x++) if (x >= 0 && y >= 0 && x < W && y < this.H) keep[y * W + x] = 1;
+    for (const r of this.regs.values()) if (r.cut) for (let y = r.y - KPAD; y < r.y + r.ph + KPAD; y++) for (let x = r.x - KPAD; x < r.x + r.pw + KPAD; x++) if (x >= 0 && y >= 0 && x < W && y < this.H) keep[y * W + x] = 1;
     for (let i = 3, p = 0; i < d.length; i += 4, p++) if (d[i] < 128 && !keep[p]) d[i] = 255;
   }
 }
@@ -158,10 +218,13 @@ export const usFor = (n: number) => Array.from({ length: n + 1 }, (_, i) => i / 
 // ------------------------------------------------------------------------------------------- geometry builder
 export class SkinB {
   P: number[] = []; UV: number[] = []; SI: number[] = []; SW: number[] = []; I: number[] = []; G: number[] = [];
+  /** the region each vertex's (region-local, 0..1) UV lives in: resolved to page UVs once the page is packed */
+  RG: Region[] = [];
   constructor(public W = 256, public H = 256) {}
-  vert(p: V3, px: number, py: number, w: Wt, g: number): number {
+  /** a vertex at region-local (u, v): u across the region's columns, v down its rows (0 = first row) */
+  vert(p: V3, reg: Region, u: number, v: number, w: Wt, g: number): number {
     this.P.push(p[0], p[1], p[2]);
-    this.UV.push(px / this.W, py / this.H); // flipY = false: page row 0 is v = 0
+    this.UV.push(u, v); this.RG.push(reg);
     this.G.push(g);
     let tot = 0;
     const si = [0, 0, 0, 0], sw = [0, 0, 0, 0];
@@ -184,7 +247,7 @@ export class SkinB {
     const n = us.length;
     const cents: V3[] = rings.map((r) => centroid(r.pts.slice(0, n - 1)));
     const W = (r: { w: Wt | ((j: number) => Wt) }, j: number) => (typeof r.w === 'function' ? r.w(j) : r.w);
-    const mk = (gg: number) => rings.map((r) => r.pts.map((p, j) => this.vert(p, reg.x + us[j] * reg.w, reg.y + (1 - r.v) * reg.h, W(r, j), gg)));
+    const mk = (gg: number) => rings.map((r) => r.pts.map((p, j) => this.vert(p, reg, us[j], 1 - r.v, W(r, j), gg)));
     const emit = (flip: boolean, rows: number[][]) => {
       for (let i = 0; i + 1 < rows.length; i++) {
         const ins = mid(cents[i], cents[i + 1]);
@@ -204,7 +267,7 @@ export class SkinB {
     const all = centroid(cents);
     const pole = (P: V3, ring: number[], v: number, w: Wt | ((j: number) => Wt)) => {
       for (let j = 0; j + 1 < n; j++) {
-        const pi = this.vert(P, reg.x + ((us[j] + us[j + 1]) / 2) * reg.w, reg.y + (1 - v) * reg.h, typeof w === 'function' ? w(j) : w, g);
+        const pi = this.vert(P, reg, (us[j] + us[j + 1]) / 2, 1 - v, typeof w === 'function' ? w(j) : w, g);
         this.triOut(pi, ring[j], ring[j + 1], all, !!o.flip);
       }
     };
@@ -216,7 +279,7 @@ export class SkinB {
   quad(a: V3, b: V3, c: V3, d: V3, reg: Region, subr: [number, number, number, number], w: Wt[], double = false, g = -1) {
     const [u0, v0, u1, v1] = subr;
     const uv = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
-    const mk = (gg: number) => [a, b, c, d].map((p, i) => this.vert(p, reg.x + uv[i][0] * reg.w, reg.y + (1 - uv[i][1]) * reg.h, w[i], gg));
+    const mk = (gg: number) => [a, b, c, d].map((p, i) => this.vert(p, reg, uv[i][0], 1 - uv[i][1], w[i], gg));
     const f = mk(g);
     this.tri(f[0], f[1], f[2]); this.tri(f[0], f[2], f[3]);
     if (double) { const q = mk(g < 0 ? -1 : g + 5000); this.tri(q[0], q[2], q[1]); this.tri(q[0], q[3], q[2]); }
@@ -247,7 +310,9 @@ export class SkinB {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.P, 3));
     g.setAttribute('normal', new THREE.BufferAttribute(N, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(this.UV, 2));
+    const UV = new Float32Array(nv * 2);
+    for (let i = 0; i < nv; i++) { const [px, py] = this.RG[i].uv(this.UV[i * 2], this.UV[i * 2 + 1]); UV[i * 2] = px / this.W; UV[i * 2 + 1] = py / this.H; } // flipY = false: page row 0 is v = 0
+    g.setAttribute('uv', new THREE.BufferAttribute(UV, 2));
     g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(this.SI, 4));
     g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(this.SW, 4));
     g.setIndex(nv > 65535 ? new THREE.Uint32BufferAttribute(this.I, 1) : new THREE.Uint16BufferAttribute(this.I, 1));
@@ -394,7 +459,7 @@ export function blade(B: SkinB, reg: Region, pts: V3[], width: number[], side: V
 export function sheet(B: SkinB, reg: Region, g: number, grid: V3[][], w: (i: number, j: number) => Wt) {
   const rows = grid.length, cols = grid[0].length;
   for (const side of [0, 1]) {
-    const ids = grid.map((row, i) => row.map((p, j) => B.vert(p, reg.x + (j / (cols - 1)) * reg.w, reg.y + (i / (rows - 1)) * reg.h, w(i, j), g + side * 5000)));
+    const ids = grid.map((row, i) => row.map((p, j) => B.vert(p, reg, j / (cols - 1), i / (rows - 1), w(i, j), g + side * 5000)));
     for (let i = 0; i + 1 < rows; i++) for (let j = 0; j + 1 < cols; j++) {
       const a = ids[i][j], b = ids[i][j + 1], c = ids[i + 1][j + 1], d = ids[i + 1][j];
       if (side === 0) { B.tri(a, b, c); B.tri(a, c, d); } else { B.tri(a, c, b); B.tri(a, d, c); }

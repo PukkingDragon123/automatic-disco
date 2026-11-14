@@ -29,9 +29,30 @@ export function isTouchDevice() {
 // ------------------------------------------------------------------ art
 const LX = -0.55, LY = -0.83;
 const VIO = [0x14081e, 0x26103a, 0x3a1a58, 0x522878, 0x6c3a98, 0x8a54b8, 0xa878d4, 0xc8a4ec, 0xe8d4ff];
-/** a round button: gunmetal bezel with rivets, a domed painted cap, a stencilled label. 3 frames: idle, pressed, dead */
-function buttonSheet(r: number, cap: number[], label: string, rivets = 6) {
-  const D = r * 2 + 2, p = new Pix(D * 3, D), c = r + 0.5;
+/** art pixels per layout pixel: the controls are painted at twice the HUD's pixel density, so their pixels are
+ *  finer (and the labels set in the NanoPlus face) while the layout still snaps to the console's grid */
+const Q = 2;
+/** a label in a pixel face, binarised: falls back to the 3x5 stencil (scaled) until the font has loaded */
+function labelMask(label: string): { m: Uint8Array; w: number; h: number } {
+  const face = '13px Jersey';
+  if (document.fonts?.check(face)) {
+    const c = document.createElement('canvas'); c.width = 120; c.height = 20;
+    const g = c.getContext('2d', { willReadFrequently: true })!; g.font = face; g.textBaseline = 'alphabetic'; g.fillStyle = '#fff'; g.fillText(label, 1, 13);
+    const w = Math.ceil(g.measureText(label).width) + 2, d = g.getImageData(0, 0, 120, 20).data, m = new Uint8Array(w * 20);
+    let top = 20, bot = 0;
+    for (let y = 0; y < 20; y++) for (let x = 0; x < w; x++) if (d[(y * 120 + x) * 4 + 3] > 127) { m[y * w + x] = 1; top = Math.min(top, y); bot = Math.max(bot, y); }
+    if (top <= bot) return { m: m.slice(top * w, (bot + 1) * w), w, h: bot - top + 1 };
+  }
+  const p = new Pix(textW(label) + 2, 7); text(p, label, 0, 0, 0xffffff);
+  const w = p.w * 2, h = 10, m = new Uint8Array(w * h);
+  for (let y = 0; y < 5; y++) for (let x = 0; x < p.w; x++) if (p.a(x, y)) for (let i = 0; i < 4; i++) m[(y * 2 + (i >> 1)) * w + x * 2 + (i & 1)] = 1;
+  return { m, w, h };
+}
+/** a round button: gunmetal bezel with rivets, a domed painted cap, a label. 3 frames: idle, pressed, dead.
+ *  r is in layout pixels; D comes back in layout pixels too (the sheet is Q times larger) */
+function buttonSheet(r1: number, cap: number[], label: string, rivets = 6) {
+  const r = r1 * Q, D = r * 2 + 2, p = new Pix(D * 3, D), c = r + 0.5, bz = 4 * Q;
+  const L = label ? labelMask(label) : null;
   for (let f = 0; f < 3; f++) {
     const o = f * D, pressed = f === 1, dead = f === 2;
     const C = dead ? cap.map((x) => mixc(x, 0x1e2227, 0.65)) : cap;
@@ -39,65 +60,78 @@ function buttonSheet(r: number, cap: number[], label: string, rivets = 6) {
       const dx = x - c, dy = y - c, d = Math.hypot(dx, dy);
       if (d > r + 0.4) continue;
       const lit = -(dx * LX + dy * LY) / Math.max(1, d);
-      if (d > r - 0.6) { p.set(o + x, y, INK); continue; }
-      if (d > r - 4) { // bezel: machined ring, lit from the top left
-        const ring = Math.floor(d * 1.3) % 2;
-        p.set(o + x, y, dv(GM, 4.4 + lit * 2.6 + ring * 0.4, o + x, y)); continue;
+      if (d > r - 1.2) { p.set(o + x, y, INK); continue; }
+      if (d > r - bz) { // bezel: a machined ring with lathe grooves, lit from the top left
+        const ring = Math.floor(d * 0.75) % 2, edge = d > r - 2.2 ? 1.2 : d < r - bz + 1.2 ? -1.1 : 0;
+        p.set(o + x, y, dv(GM, 4.4 + lit * 2.8 + ring * 0.35 + edge * lit, o + x, y)); continue;
       }
-      if (d > r - 5) { p.set(o + x, y, INK); continue; }
+      if (d > r - bz - 1.6) { p.set(o + x, y, INK); continue; }
       // the cap: a dome; pressed sinks and darkens
-      const rr = r - 5, ox = pressed ? 0.7 : 0, nx = (dx - ox) / rr, ny = (dy - ox) / rr, nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
-      const sh = -(nx * LX + ny * LY) * 0.7 + nz * 0.6;
-      p.set(o + x, y, dv(C, 1.6 + sh * 4 - (pressed ? 1 : 0) - (d / rr) * 0.5, o + x, y));
+      const rr = r - bz - 1.6, ox = pressed ? 1.4 : 0, nx = (dx - ox) / rr, ny = (dy - ox) / rr, nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
+      const sh = -(nx * LX + ny * LY) * 0.72 + nz * 0.6;
+      p.set(o + x, y, dv(C, 1.5 + sh * 4.2 - (pressed ? 1 : 0) - (d / rr) * 0.6, o + x, y));
     }
-    // rivets round the bezel
+    // rivets round the bezel: domed heads with a catch-light and a cast shadow
     for (let i = 0; i < rivets; i++) {
-      const a = (i / rivets) * Math.PI * 2 + 0.4, x = Math.round(o + c + Math.cos(a) * (r - 2) - 0.5), y = Math.round(c + Math.sin(a) * (r - 2) - 0.5);
-      p.set(x, y, GM[8]); p.set(x + 1, y + 1, GM[1]); p.set(x + 1, y, GM[5]); p.set(x, y + 1, GM[3]);
+      const a = (i / rivets) * Math.PI * 2 + 0.4, x = Math.round(o + c + Math.cos(a) * (r - bz / 2) - 1), y = Math.round(c + Math.sin(a) * (r - bz / 2) - 1);
+      p.set(x + 1, y + 2, GM[1]); p.set(x + 2, y + 2, GM[1]); p.set(x + 2, y + 1, GM[1]);
+      p.set(x, y, GM[9]); p.set(x + 1, y, GM[7]); p.set(x, y + 1, GM[7]); p.set(x + 1, y + 1, GM[5]);
     }
-    if (!dead) { const hx = o + Math.round(c - r * 0.35) + (pressed ? 1 : 0), hy = Math.round(c - r * 0.42) + (pressed ? 1 : 0); p.set(hx, hy, 0xffffff, 220); p.set(hx + 1, hy, 0xffffff, 150); p.set(hx, hy + 1, 0xffffff, 120); }
-    if (label) {
-      const w = textW(label), tx = Math.round(o + c - w / 2) + (pressed ? 1 : 0), ty = Math.round(c + r * 0.3) + (pressed ? 1 : 0);
-      text(p, label, tx, ty, dead ? GM[4] : CR[4], 'shadow', -1, C[0]);
+    if (!dead) { // a specular glint on the dome
+      const hx = o + Math.round(c - r * 0.36) + (pressed ? 2 : 0), hy = Math.round(c - r * 0.42) + (pressed ? 2 : 0);
+      p.rect(hx, hy, 3, 2, 0xffffff, 230); p.rect(hx, hy + 2, 2, 1, 0xffffff, 140); p.set(hx + 3, hy, 0xffffff, 120);
+    }
+    if (L) { // the label, painted on the cap with a dark under-shadow
+      const tx = Math.round(o + c - L.w / 2) + (pressed ? 2 : 0), ty = Math.round(c + r * 0.12) + (pressed ? 2 : 0);
+      for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) if (L.m[y * L.w + x]) { p.set(tx + x + 1, ty + y + 1, C[0], 230); }
+      for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) if (L.m[y * L.w + x]) p.set(tx + x, ty + y, dead ? GM[4] : y < L.h * 0.35 ? CR[4] : CR[3]);
     }
   }
-  return { url: p.url(), D };
+  return { url: p.url(), D: D / Q };
 }
 /** the stick's housing: a riveted ring round a recessed well with an engraved cross; and its bakelite knob */
 function stickArt() {
-  const R = 30, D = R * 2 + 2, p = new Pix(D, D), c = R + 0.5;
+  const R = 30 * Q, D = R * 2 + 2, p = new Pix(D, D), c = R + 0.5, bz = 5 * Q;
   for (let y = 0; y < D; y++) for (let x = 0; x < D; x++) {
     const dx = x - c, dy = y - c, d = Math.hypot(dx, dy);
     if (d > R + 0.4) continue;
     const lit = -(dx * LX + dy * LY) / Math.max(1, d);
-    if (d > R - 0.6) p.set(x, y, INK);
-    else if (d > R - 5) p.set(x, y, dv(GM, 4.2 + lit * 2.4 + (Math.floor(d * 1.3) % 2) * 0.4, x, y));
-    else if (d > R - 6) p.set(x, y, INK);
-    else { const wall = Math.max(0, (d - (R - 12)) / 6); p.set(x, y, dv(GM, 1.4 - wall * lit * 1.3, x, y), 230); }
+    if (d > R - 1.2) p.set(x, y, INK);
+    else if (d > R - bz) p.set(x, y, dv(GM, 4.2 + lit * 2.6 + (Math.floor(d * 0.7) % 2) * 0.4, x, y));
+    else if (d > R - bz - 2) p.set(x, y, INK);
+    else { const wall = Math.max(0, (d - (R - 12 * Q)) / (6 * Q)); p.set(x, y, dv(GM, 1.4 - wall * lit * 1.4, x, y), 230); }
   }
-  for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2 + 0.2, x = Math.round(c + Math.cos(a) * (R - 2.5) - 0.5), y = Math.round(c + Math.sin(a) * (R - 2.5) - 0.5); p.set(x, y, GM[8]); p.set(x + 1, y + 1, GM[1]); }
-  for (let k = -R + 9; k <= R - 9; k++) { if (Math.abs(k) < 4) continue; p.set(Math.round(c + k), Math.round(c), GM[0], 180); p.set(Math.round(c), Math.round(c + k), GM[0], 180); }
-  for (const [ax, ay] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) for (let t = 0; t < 3; t++) for (let s = -t; s <= t; s++) {
-    const x = Math.round(c + ax * (R - 9 - t) + (ay ? s : 0)), y = Math.round(c + ay * (R - 9 - t) + (ax ? s : 0));
-    p.set(x, y, PH[5]);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + 0.2, x = Math.round(c + Math.cos(a) * (R - bz / 2) - 1), y = Math.round(c + Math.sin(a) * (R - bz / 2) - 1);
+    p.set(x + 2, y + 2, GM[1]); p.set(x, y, GM[9]); p.set(x + 1, y, GM[7]); p.set(x, y + 1, GM[7]); p.set(x + 1, y + 1, GM[5]);
   }
-  const K = 12, KD = K * 2 + 2, k = new Pix(KD, KD), kc = K + 0.5;
+  const in0 = R - 9 * Q;
+  for (let k = -in0; k <= in0; k++) { if (Math.abs(k) < 4 * Q) continue; p.set(Math.round(c + k), Math.round(c), GM[0], 170); p.set(Math.round(c), Math.round(c + k), GM[0], 170); }
+  // four phosphor chevrons
+  for (const [ax, ay] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) for (let t = 0; t < 3 * Q; t++) for (let s = -t; s <= t; s++) {
+    const x = Math.round(c + ax * (R - 9 * Q - t) + (ay ? s : 0)), y = Math.round(c + ay * (R - 9 * Q - t) + (ax ? s : 0));
+    p.set(x, y, t < 2 ? PH[8] : PH[5]);
+  }
+  const K = 12 * Q, KD = K * 2 + 2, k = new Pix(KD, KD), kc = K + 0.5;
   for (let y = 0; y < KD; y++) for (let x = 0; x < KD; x++) {
     const dx = x - kc, dy = y - kc, d = Math.hypot(dx, dy);
     if (d > K + 0.4) continue;
-    if (d > K - 0.6) { k.set(x, y, INK); continue; }
+    if (d > K - 1.2) { k.set(x, y, INK); continue; }
     const nx = dx / K, ny = dy / K, nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny)), sh = -(nx * LX + ny * LY) * 0.7 + nz * 0.6;
-    if (d > K - 3.2 && d < K - 1.6) { k.set(x, y, dv(PH, 4 + sh * 4, x, y)); continue; }
-    k.set(x, y, dv(GM, 0.8 + sh * 4.5, x, y));
+    if (d > K - 3.4 * Q && d < K - 1.6 * Q) { k.set(x, y, dv(PH, 4 + sh * 4, x, y)); continue; }
+    // knurled grip rings on the bakelite
+    k.set(x, y, dv(GM, 0.8 + sh * 4.5 + (d < K * 0.5 && Math.floor(d) % 3 === 0 ? -0.6 : 0), x, y));
   }
-  k.set(Math.round(kc - 4), Math.round(kc - 5), 0xffffff, 200); k.set(Math.round(kc - 3), Math.round(kc - 5), 0xffffff, 120);
-  return { base: p.url(), D, knob: k.url(), KD };
+  k.rect(Math.round(kc - 4 * Q), Math.round(kc - 5 * Q), 3, 2, 0xffffff, 210);
+  return { base: p.url(), D: D / Q, knob: k.url(), KD: KD / Q };
 }
-/** a small lamp: off / green / amber */
+/** a small lamp: off / green / amber, painted at the controls' resolution */
 function lampSheet() {
-  const p = new Pix(15, 5);
-  const cols = [[GM[2], GM[3]], [PH[6], PH[9]], [AM[4], AM[7]]];
-  cols.forEach(([a, b], i) => { const o = i * 5; p.rect(o, 0, 5, 5, INK); p.rect(o + 1, 1, 3, 3, a); p.set(o + 1, 1, b); p.set(o + 2, 1, b); p.set(o + 1, 2, b); });
+  const s = 5 * Q, p = new Pix(s * 3, s);
+  const cols = [[GM[2], GM[3], GM[4]], [PH[6], PH[8], PH[9]], [AM[4], AM[6], AM[7]]];
+  cols.forEach(([a, b, h], i) => {
+    const o = i * s; p.rect(o, 0, s, s, INK); p.rect(o + 2, 2, s - 4, s - 4, a); p.rect(o + 2, 2, s - 5, 2, b); p.rect(o + 2, 2, 2, s - 5, b); p.set(o + 3, 3, h);
+  });
   return p.url();
 }
 const CSS = `
@@ -155,8 +189,8 @@ export class TouchControls {
       e.style.right = (cx - s.D / 2) * k + 'px'; e.style.bottom = (cy - s.D / 2) * k + 'px';
       this.pad.appendChild(e);
       const lamp = document.createElement('div'); lamp.className = 'tc-lamp';
-      lamp.style.width = lamp.style.height = 5 * k + 'px'; lamp.style.backgroundImage = `url(${lamps})`; lamp.style.backgroundSize = `${15 * k}px ${5 * k}px`;
-      lamp.style.left = (s.D / 2 - 2.5) * k + 'px'; lamp.style.top = k + 'px';
+      lamp.style.width = lamp.style.height = 5 * k / Q * 1.6 + 'px'; lamp.style.backgroundImage = `url(${lamps})`; lamp.style.backgroundSize = `${15 * k / Q * 1.6}px ${5 * k / Q * 1.6}px`;
+      lamp.style.left = (s.D / 2 - 2.5 * 1.6 / Q) * k + 'px'; lamp.style.top = k * 0.6 + 'px';
       e.appendChild(lamp);
       return { e, D: s.D, lamp, st: '', lampSt: '', id: null, x0: 0, y0: 0, dx: 0, dy: 0 };
     };
@@ -172,8 +206,18 @@ export class TouchControls {
       wheel: mk(9, BR, '', pW.x, pW.y),
     };
     // the wheel knob: a turning arrow
-    { const p = new Pix(9, 9); for (let a = 0; a < 18; a++) { const t = (a / 18) * Math.PI * 1.6 + 0.6; p.set(Math.round(4 + Math.cos(t) * 3.2), Math.round(4 + Math.sin(t) * 3.2), INK); } p.set(6, 1, INK); p.set(7, 2, INK); p.set(5, 2, INK);
+    { const n = 9 * Q, p = new Pix(n, n), cc = (n - 1) / 2;
+      for (let a = 0; a < 60; a++) { const t = (a / 60) * Math.PI * 1.55 + 0.7, rr = n * 0.36; for (const w of [0, 1]) p.set(Math.round(cc + Math.cos(t) * (rr - w)), Math.round(cc + Math.sin(t) * (rr - w)), INK); }
+      const tx = Math.round(cc + Math.cos(0.7) * n * 0.36), ty = Math.round(cc + Math.sin(0.7) * n * 0.36);
+      for (let i = 0; i < 4; i++) for (let j = 0; j <= i; j++) { p.set(tx - 3 + i, ty - 4 + j, INK); p.set(tx - 3 + j, ty - 4 + i, INK); }
       const ic = p.canvas(); ic.className = 'tc-ic'; ic.style.width = ic.style.height = 9 * k + 'px'; ic.style.top = '50%'; this.b.wheel.e.appendChild(ic); }
+    // the labels are set in the pixel face: repaint the caps once it has loaded
+    const relabel = () => {
+      for (const [id, r, cap, label] of [['punch', 21, RD, 'PUNCH'], ['use', 15, PH, 'USE'], ['throw', 15, AM, 'THROW'], ['power', 15, VIO, 'POWER']] as const) {
+        this.b[id].e.style.backgroundImage = `url(${buttonSheet(r, cap as unknown as number[], label).url})`;
+      }
+    };
+    if (!document.fonts?.check('13px Jersey')) document.fonts?.load('13px Jersey').then(relabel).catch(() => { /* keep the stencil */ });
     // ---- wiring
     this.press(this.b.punch, () => { this.punchHeld = true; host.punch(true); }, () => { this.punchHeld = false; host.punch(false); });
     this.press(this.b.use, () => { this.useHeld = true; host.useDown(); }, () => { this.useHeld = false; host.useUp(); });
@@ -275,7 +319,7 @@ export class TouchControls {
   update() {
     if (!this.active) return;
     const L = this.host.labels();
-    const lamp = (b: Btn, st: 0 | 1 | 2) => { const s = String(st); if (b.lampSt !== s) { b.lampSt = s; b.lamp.style.backgroundPositionX = `${-st * 5 * S}px`; } };
+    const lamp = (b: Btn, st: 0 | 1 | 2) => { const s = String(st); if (b.lampSt !== s) { b.lampSt = s; b.lamp.style.backgroundPositionX = `${-st * 5 * S / Q * 1.6}px`; } };
     const dead = (b: Btn, d: boolean) => { const s = d ? 'd' : ''; if (b.st !== s) { b.st = s; if (b.id === null) b.e.style.backgroundPositionX = d ? `${-b.D * 2 * S}px` : ''; } };
     lamp(this.b.punch, 1); dead(this.b.punch, false);
     lamp(this.b.use, L.use ? (L.useOk ? 1 : 2) : 0); dead(this.b.use, !L.use);
@@ -287,9 +331,11 @@ export class TouchControls {
       this.iconKey = key;
       this.b.power.ic?.remove(); this.b.power.ic = undefined;
       if (key) {
-        const pc = iconCanvas(key, { shadow: true }) as unknown as { w: number; h: number; toImageData(): ImageData };
+        // the hi-res icon where the art has one (twice the density, like the buttons)
+        const pc = iconCanvas(key, { shadow: true, px: 18 * Q }) as unknown as { w: number; h: number; toImageData(): ImageData };
         const cv = document.createElement('canvas'); cv.width = pc.w; cv.height = pc.h; cv.getContext('2d')!.putImageData(pc.toImageData(), 0, 0);
-        cv.className = 'tc-ic'; cv.style.width = pc.w * S + 'px'; cv.style.height = pc.h * S + 'px';
+        const sc = pc.w > 24 ? S / Q : S;
+        cv.className = 'tc-ic'; cv.style.width = pc.w * sc + 'px'; cv.style.height = pc.h * sc + 'px';
         this.b.power.e.appendChild(cv); this.b.power.ic = cv;
       }
     }

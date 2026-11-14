@@ -255,7 +255,7 @@ export function roundBox(w: number, h: number, d: number, r: number) {
 
 // ------------------------------------------------------------------------------------------------ the golem
 /** chassis parts the model can show, by skill id (skills.ts). 'head' is always there. */
-export const CHASSIS = ['head', 'torso', 'armR', 'armL', 'coil', 'plating1', 'plating2'] as const;
+export const CHASSIS = ['head', 'torso', 'armR', 'armL', 'coil', 'plating1', 'plating2', 'plating3'] as const;
 export type Work = 'drill' | 'dig' | 'intake' | 'siphon' | 'graft' | 'grit' | 'convert' | null;
 interface Arm { id: 'armR' | 'armL'; root: THREE.Group; upper: THREE.Group; fore: THREE.Group; hand: THREE.Group; pist: { g: THREE.Group; to: THREE.Group }[]; k: number; punch: number; spin: number }
 interface Rig {
@@ -379,6 +379,7 @@ void main() { vec2 p = floor(gl_FragCoord.xy); if (mod(p.x + p.y, 2.0) < 0.5) di
       });
       (this.ghostMat.uniforms.uCol.value as THREE.Color).set(this.look_.glow).multiplyScalar(1.3);
     }
+    this.ghostMat.uniforms.uPull.value = 0.72 * this.scale; // in front of its own surface at any size
     this.root.updateMatrixWorld(true);
     for (const { src, g } of this.ghosts) {
       let v = true; for (let o: THREE.Object3D | null = src; o && o !== this.root; o = o.parent) if (!o.visible) { v = false; break; }
@@ -421,8 +422,12 @@ void main() { vec2 p = floor(gl_FragCoord.xy); if (mod(p.x + p.y, 2.0) < 0.5) di
     if (animate && added.length) this.assemble(added);
     return added;
   }
-  /** a fixed size for the playable golem (no growing with the field) */
-  setScale(s: number) { this.baseScale = s; this.grow = this.growTo = 1; }
+  /** a fixed size for the playable golem (no growing with the field); smooth: grow into it over a few seconds */
+  setScale(s: number, smooth = false) { if (smooth) this.growTo = s / this.baseScale; else { this.baseScale = s; this.grow = this.growTo = 1; } }
+  /** current world scale of the model */
+  get scale() { return this.baseScale * this.grow; }
+  /** still growing toward a new size */
+  get growing() { return Math.abs(this.growTo - this.grow) > 0.01; }
   has(p: string) { return !this.parts || this.parts.has(p); }
   private assemble(ids: string[], scatter = false) {
     const R = this.R; if (!R) return;
@@ -519,6 +524,10 @@ void main() { vec2 p = floor(gl_FragCoord.xy); if (mod(p.x + p.y, 2.0) < 0.5) di
         plateOn('plating2', body, 0.27 * bb, 0.075, 0.035, [0, -0.19, tw[2] * 0.86], [0.42, 0, 0], true);
         plateOn('plating2', body, 0.3 * bb, 0.19, 0.035, [0, -0.03, -tw[2] * 1.0], [-0.12, 0, 0]);
       }
+      if (has('plating3')) { // hardened gorget and hazard-edged flank armour
+        plateOn('plating3', body, 0.3 * bb, 0.04, 0.2 * bb, [0, tw[1] * 0.92, 0.0], [0.12, 0, 0], true);
+        for (const k of [-1, 1]) plateOn('plating3', body, 0.045, 0.12, 0.24, [k * tw[0] * 1.12, -0.09, 0], [0, 0, k * 0.28], true);
+      }
     }
     // ---- the head: a rock floating free of the body, with an Earth-made face
     const head = new THREE.Group(); head.position.y = this.headY; wrap('head').add(head);
@@ -607,6 +616,7 @@ void main() { vec2 p = floor(gl_FragCoord.xy); if (mod(p.x + p.y, 2.0) < 0.5) di
       }
       if (has('plating1')) plateOn('plating1', root, 0.17 * ab, 0.035, 0.15 * ab, [k * 0.03, 0.1, 0], [0, 0, k * -0.45]);
       if (has('plating2')) plateOn('plating2', fore, 0.035, 0.12, 0.12 * ab, [k * 0.075 * ab, -0.02, 0.01], [0, 0, 0]);
+      if (has('plating3')) plateOn('plating3', upper, 0.04, 0.11, 0.1 * ab, [k * 0.062 * ab, 0, 0], [0, 0, k * 0.1], true);
       arms.push({ id, root, upper, fore, hand, pist, k, punch: -1, spin: 0 });
     }
     // ---- loose stones on tilted orbits (the field has a body to hold them round)
@@ -693,7 +703,13 @@ void main() { vec2 p = floor(gl_FragCoord.xy); if (mod(p.x + p.y, 2.0) < 0.5) di
     const h = this.hatch, t = this.t, R = this.R;
     this.root.visible = h > 0.05 && !this.broken;
     if (!R) return;
+    const g0 = this.grow;
     this.grow += (this.growTo - this.grow) * Math.min(1, dt * 0.8);
+    // growing into a bigger frame: the joints spark and steam as the rock swells
+    if (this.parts && Math.abs(this.grow - g0) > dt * 0.02 && Math.random() < dt * 25 && this.root.visible) {
+      const p = (R.body ?? R.head).localToWorld(_a.set((Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.4, (Math.random() - 0.5) * 0.4));
+      this.fx.spray(p.x, p.y, p.z, Math.random() - 0.5, 0.8, Math.random() - 0.5, 3, Math.random() < 0.5 ? 0xffd080 : this.look_.glow, { glow: true, speed: 1.5, size: 1.8, life: 0.35, grav: 5 });
+    }
     this.root.scale.setScalar(this.baseScale * this.grow);
     const c = Math.min(1, this.castT * 3);
     const torso = !!R.body;

@@ -12,7 +12,7 @@ import { CHASSIS, type Work } from './child';
 import { floatText, floatLayer } from '../ui/floatText';
 import { TouchControls, isTouchDevice, type TouchHost } from '../ui/touch';
 import { SKILL, type Res } from './skills';
-import type { Ability } from './hive';
+import { ABILITIES, type Ability } from './hive';
 import { sfx } from '../audio/audio';
 import { toast } from '../ui/kit';
 import { clamp, damp, dampA } from '../core/rand';
@@ -21,7 +21,9 @@ import { GENE } from '../life/genes';
 const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _c = new THREE.Color();
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 const SCALE = 0.45;
-const PART_NAME: Record<string, string> = { head: 'SURVEY HEAD ONLINE', torso: 'CORE HOUSING ONLINE', armR: 'RIGHT ARM ONLINE', armL: 'LEFT ARM ONLINE', coil: 'GRAVITY COIL ONLINE', plating1: 'PLATE STEEL BOLTED ON', plating2: 'HEAVY PLATE BOLTED ON' };
+const PART_NAME: Record<string, string> = { head: 'SURVEY HEAD ONLINE', torso: 'CORE HOUSING ONLINE', armR: 'RIGHT ARM ONLINE', armL: 'LEFT ARM ONLINE', coil: 'GRAVITY COIL ONLINE', plating1: 'PLATE STEEL BOLTED ON', plating2: 'HEAVY PLATE BOLTED ON', plating3: 'HARDENED ARMOUR BOLTED ON' };
+/** the Colossus Frame: full design height */
+const COLOSSUS = 2.6;
 const RES_NAME: Record<Res, string> = { ore: 'ORE', carbon: 'CARBON', water: 'WATER', soil: 'SOIL' };
 
 type CtxKind = 'drop' | 'grab' | 'drill' | 'grit' | 'intake' | 'gibs' | 'plantC' | 'convert' | 'plant' | 'siphon' | 'dig' | 'none';
@@ -72,7 +74,7 @@ export class Player implements GolemTarget, TouchHost {
     this.stones.onHit = (s, c, sp) => this.stoneHit(s, c, sp);
     this.loot.onCollect = (res, amt, p) => this.credit(res, amt, p);
     // the body as the skill tree has it; parts bought later fly in and click into place
-    g.child.setScale(SCALE);
+    g.child.setScale(SCALE * this.size);
     g.child.attachGhost(g.world.fxScene);
     g.child.setParts(this.chassis(), false);
     this.recalcHull(true);
@@ -85,6 +87,12 @@ export class Player implements GolemTarget, TouchHost {
     g.on('skill', (d: { id: string }) => { if (d?.id && !this.known.has(d.id)) { this.known.add(d.id); this.onSkill(d.id); } });
     g.on('points', (d: { n: number; why?: string }) => { if (d && d.n > 0) { this.cells(d.n); this.evPts += d.n; this.evT = 2; } });
     g.on('gather', (d: { res: Res }) => { if (d?.res) g.child.flash(RES_COL[d.res], 0.35); });
+    // Field Amplifier: field powers cost a quarter less charge (the costs live in hive ABILITIES; the check runs as if
+    // the discount were in the bank, and the spend gives it back)
+    const h = g.veyr, can0 = h.can.bind(h), spend0 = h.spend.bind(h);
+    h.can = (a: Ability) => { if (!this.has('amp')) return can0(a); const k = ABILITIES[a].charge * 0.25; h.res.charge += k; try { return can0(a); } finally { h.res.charge -= k; } };
+    h.spend = (a: Ability) => { spend0(a); if (this.has('amp')) h.res.charge += ABILITIES[a].charge * 0.25; };
+    this.unwrap = () => { delete (h as unknown as Record<string, unknown>).can; delete (h as unknown as Record<string, unknown>).spend; };
     // touch controls on touch screens (and the moment one is touched)
     if (isTouchDevice()) this.touch = new TouchControls(this);
     addEventListener('touchstart', this.onFirstTouch, { passive: true });
@@ -95,6 +103,7 @@ export class Player implements GolemTarget, TouchHost {
     g.dispose = () => { this.dispose(); dis(); };
     g.update$.push((dt) => { try { this.update(dt); } catch (e) { if (this.errs++ < 5) console.error('player', e); } });
   }
+  private unwrap: () => void = () => {};
   private known: Set<string>; private lastPts: number; private errs = 0; private evPts = 0; private evT = 0;
   private cells(n: number) {
     floatText(this.g, this.x, this.y + this.height + 0.2, this.z, `+${n} CORE CELL${n > 1 ? 'S' : ''}`, 'point', { big: 1, life: 2.2 });
@@ -108,18 +117,27 @@ export class Player implements GolemTarget, TouchHost {
   get skills() { return this.g.run.skills; }
   has(id: string) { return this.skills.has(id); }
   private chassis() { return CHASSIS.filter((p) => this.has(p)); }
-  get radius() { return this.has('torso') ? 0.24 : 0.14; }
-  get height() { return this.has('torso') ? 0.62 : 0.32; }
-  get mass() { return 2 + (this.has('torso') ? 4 : 0) + (this.has('armR') ? 1.5 : 0) + (this.has('armL') ? 1.5 : 0) + (this.has('coil') ? 1 : 0) + (this.has('plating1') ? 1.5 : 0) + (this.has('plating2') ? 2.5 : 0); }
+  /** 1, or the Colossus Frame's full height */
+  get size() { return this.has('colossus') ? COLOSSUS : 1; }
+  get radius() { return (this.has('torso') ? 0.24 : 0.14) * this.size; }
+  get height() { return (this.has('torso') ? 0.62 : 0.32) * this.size; }
+  get mass() { return (2 + (this.has('torso') ? 4 : 0) + (this.has('armR') ? 1.5 : 0) + (this.has('armL') ? 1.5 : 0) + (this.has('coil') ? 1 : 0) + (this.has('plating1') ? 1.5 : 0) + (this.has('plating2') ? 2.5 : 0) + (this.has('plating3') ? 3 : 0)) * this.size ** 3; }
   private get armor() { return this.has('plating2') ? 0.32 : this.has('plating1') ? 0.16 : 0; }
-  private calcHullMax() { return 24 + (this.has('torso') ? 26 : 0) + (this.has('armR') ? 8 : 0) + (this.has('armL') ? 8 : 0) + (this.has('coil') ? 6 : 0) + (this.has('plating1') ? 40 : 0) + (this.has('plating2') ? 70 : 0) + (this.has('reactor') ? 10 : 0); }
+  private calcHullMax() { return (24 + (this.has('torso') ? 26 : 0) + (this.has('armR') ? 8 : 0) + (this.has('armL') ? 8 : 0) + (this.has('coil') ? 6 : 0) + (this.has('plating1') ? 40 : 0) + (this.has('plating2') ? 70 : 0) + (this.has('plating3') ? 90 : 0) + (this.has('reactor') ? 10 : 0)) * (this.has('colossus') ? 2 : 1); }
+  /** Servo Pistons: punches and throws hit half again as hard */
+  private get servo() { return this.has('servo') ? 1.5 : 1; }
   private recalcHull(fill = false) { const m = this.calcHullMax(); if (fill) this.hull = m; else this.hull = Math.min(m, this.hull + Math.max(0, m - this.hullMax)); this.hullMax = m; }
-  private get speedMax() { return this.has('coil') ? 4.8 : this.has('torso') ? 3.5 : 3.1; }
-  private canGrab(s: Stone) { return s.big ? this.has('boulder') && this.g.child.arms.length >= 2 : this.has('rock') && this.g.child.arms.length >= 1; }
+  private get speedMax() { return (this.has('coil') ? 4.8 : this.has('torso') ? 3.5 : 3.1) * (this.has('colossus') ? 1.25 : 1); }
+  /** stones take one arm and Rock Throw; boulders both arms and Boulder Heave (one arm will do for a Colossus) */
+  private canGrab(s: Stone) {
+    const arms = this.g.child.arms.length;
+    return s.big ? (this.has('boulder') || this.has('colossus') && this.has('rock')) && arms >= (this.has('colossus') ? 1 : 2) : this.has('rock') && arms >= 1;
+  }
 
   private onSkill(id?: string) {
     if (!id) return;
     if ((CHASSIS as readonly string[]).includes(id)) { this.syncParts(true); return; }
+    if (id === 'colossus') { this.becomeColossus(); return; }
     const s = SKILL[id];
     const power = (['lift', 'slam', 'repulse', 'well', 'shape', 'storm'] as string[]).includes(id);
     floatText(this.g, this.x, this.y + this.height + 0.25, this.z, power ? `${s?.name ?? id} LOADED` : `${s?.name ?? id} INSTALLED`, 'skill', { big: 1 });
@@ -127,6 +145,17 @@ export class Player implements GolemTarget, TouchHost {
     this.g.fx.burst(this.x, this.y + this.height * 0.6, this.z, 24, this.g.child.lookData.glow, { glow: true, speed: 1.6, up: 2, size: 2, life: 0.8, grav: -0.5 });
     sfx('done', 1, 0.8);
     if (id === 'reactor') this.recalcHull();
+  }
+  /** the Colossus Frame: it swells to full height over a few seconds, the camera pulls back, the ground jumps */
+  private becomeColossus() {
+    const g = this.g;
+    g.child.setScale(SCALE * COLOSSUS, true);
+    this.recalcHull(); this.hull = this.hullMax;
+    g.cam.distGoal = clamp(g.cam.distGoal * 1.8, 6, 45);
+    floatText(g, this.x, this.y + this.height + 0.4, this.z, 'COLOSSUS FRAME', 'skill', { big: 2, life: 3.2 });
+    g.cam.shake(0.5, 1.4); sfx('pulse', 0.6, 1); sfx('build', 0.7, 0.8);
+    this.slam(1.4);
+    g.child.wiggle();
   }
   private syncParts(animate: boolean) {
     const added = this.g.child.setParts(this.chassis(), animate);
@@ -362,7 +391,7 @@ export class Player implements GolemTarget, TouchHost {
       if (d < 0.15) this.moveGoal = null; else { wx = dx / d * Math.min(1, d * 1.5); wz = dz / d * Math.min(1, d * 1.5); }
     }
     let sp = this.speedMax * (working ? 0.25 : 1) * (this.held?.big ? 0.65 : this.held ? 0.9 : 1);
-    if (this.dashT > 0) { this.dashT -= dt; sp = 0; }
+    if (this.dashT > 0) { this.dashT -= dt; sp = 0; if (this.dashT <= 0 && this.has('colossus')) this.slam(0.8); }
     const acc = this.dashT > 0 ? 0 : this.has('coil') ? 11 : 8;
     const k = 1 - Math.exp(-acc * dt);
     if (this.dashT <= 0) { this.vx += (wx * sp - this.vx) * k; this.vz += (wz * sp - this.vz) * k; }
@@ -399,9 +428,17 @@ export class Player implements GolemTarget, TouchHost {
     const fwd = this.vx * fs + this.vz * fc, side = this.vx * fc - this.vz * fs;
     g.child.lean.x = damp(g.child.lean.x, clamp(fwd * 0.07, -0.3, 0.35) + (this.dashT > 0 ? 0.35 : 0), 8, dt);
     g.child.lean.y = damp(g.child.lean.y, clamp(-side * 0.06, -0.3, 0.3), 8, dt);
-    // hover over the ground (and the water's surface)
+    // hover over the ground (and the water's surface); a Colossus dropping off a ledge lands with a slam, and its
+    // field presses the ground in heavy beats as it travels
     const gy = g.world.surfaceY(this.x, this.z);
+    if (this.has('colossus') && this.y - gy > 0.5) this.falling = true;
     this.y = damp(this.y, gy + 0.02, this.y > gy + 0.6 ? 4 : 12, dt);
+    if (this.falling && this.y - gy < 0.08) { this.falling = false; this.slam(0.6); }
+    if (this.has('colossus') && spd > 1.2 && (this.thumpT -= dt * spd) <= 0) {
+      this.thumpT = 2.2;
+      g.fx.burst(this.x, gy + 0.03, this.z, 8, 0x9a8a6a, { speed: 1.4, up: 0.7, size: 2.6, life: 0.5, grav: 3 });
+      flora(g).impulse?.(this.x, this.z, 1.4, 0.5); g.cam.shake(0.05, 0.15); sfx('hit', 0.45, 0.25);
+    }
     // dust and grit off the ground at speed; spray over water
     if (spd > 1.6 && Math.random() < dt * spd * 3) {
       const wet = R.isWater(this.x, this.z);
@@ -442,6 +479,21 @@ export class Player implements GolemTarget, TouchHost {
     } else ch.hold = 0;
     if (this.dashT > 0 && Math.random() < dt * 40) this.g.fx.burst(this.x, this.y + this.height * 0.4, this.z, 2, ch.lookData.glow, { glow: true, speed: 0.4, up: 0.2, size: 2, life: 0.3, grav: 0 });
   }
+  /** a Colossus coming down hard: the ground jumps, dust bursts in a ring, the grass flattens, small things are thrown */
+  private slam(k: number) {
+    const g = this.g, y = g.world.surfaceY(this.x, this.z) + 0.03, r = 1.2 + k * 1.6;
+    for (let i = 0; i < 26; i++) { const a = (i / 26) * Math.PI * 2; g.fx.matter.emit(this.x + Math.cos(a) * 0.3, y, this.z + Math.sin(a) * 0.3, Math.cos(a) * r * 2.2, 0.6 + Math.random(), Math.sin(a) * r * 2.2, _c.set(0x9a8a6a), 1, 3, 0.7, 3, 2.5); }
+    vfx2d(g, 'dust', this.x, y, this.z, { size: 1 + k });
+    flora(g).impulse?.(this.x, this.z, r + 0.6, 0.8 + k);
+    g.cam.shake(0.15 + k * 0.2, 0.35);
+    sfx('hit', 0.5, 0.6 * k); sfx('pulse', 1.4, 0.3 * k);
+    g.world.near(this.x, this.z, r, (c) => {
+      if (c.dead || c.faction === 'veyr' || c.mass > this.mass * 0.3) return;
+      const dx = c.x - this.x, dz = c.z - this.z, d = Math.hypot(dx, dz) || 1;
+      this.knocks.add(c, (dx / d) * 4 * k, (dz / d) * 4 * k, 3 * k); c.stunT = Math.max(c.stunT, 0.8);
+    });
+  }
+  private thumpT = 0; private falling = false;
   private dash() {
     if (!this.driving) return;
     const dirx = Math.hypot(this.vx, this.vz) > 0.5 ? this.vx : Math.sin(this.yaw), dirz = Math.hypot(this.vx, this.vz) > 0.5 ? this.vz : Math.cos(this.yaw);
@@ -491,6 +543,7 @@ export class Player implements GolemTarget, TouchHost {
   /** what the blow connects with: the nearest creature (all of them in front for a heavy blow), else a stone */
   private resolveHit(dmg: number, reach: number, knock: number, heavy: boolean, arm: boolean, side?: 'armR' | 'armL') {
     if (!this.alive) return;
+    reach *= this.size; knock *= Math.sqrt(this.size);
     const g = this.g, fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
     const hits: { c: Creature; d: number }[] = [];
     g.world.near(this.x, this.z, reach + 3, (c) => {
@@ -522,7 +575,7 @@ export class Player implements GolemTarget, TouchHost {
         this.knocks.add(c, fx * knock * 0.3, fz * knock * 0.3, 1.2);
         continue;
       }
-      strike(g, this.gore, this.knocks, c, dmg * (cr ? 2 : 1), _v.set(c.x - this.x + fx * 0.5, 0, c.z - this.z + fz * 0.5), 'punch', { knock: knock * (cr ? 1.5 : 1), up: heavy ? 4.5 : 2.2, crit: cr, stun: heavy ? 0.9 : 0.35, sever: heavy && cr });
+      strike(g, this.gore, this.knocks, c, dmg * (cr ? 2 : 1) * this.servo * (this.has('colossus') ? 1.6 : 1), _v.set(c.x - this.x + fx * 0.5, 0, c.z - this.z + fz * 0.5), 'punch', { knock: knock * (cr ? 1.5 : 1), up: heavy ? 4.5 : 2.2, crit: cr, stun: heavy ? 0.9 : 0.35, sever: heavy && cr });
       if (c.dead) killed = true;
     }
     // impact: sparks off the knuckles, hit-stop, shake
@@ -576,7 +629,8 @@ export class Player implements GolemTarget, TouchHost {
         if (this.held !== s) return;
         this.held = null; ch.hold = 0;
         const from = ch.holdPos(s.big, new THREE.Vector3());
-        this.stones.launch(s, from, target, { maxH: s.big ? 9 : 14, burst: this.has('shrapnel') });
+        const strong = this.has('colossus') ? 1.35 : 1;
+        this.stones.launch(s, from, target, { maxH: (s.big ? 9 : 14) * strong, burst: this.has('shrapnel') });
         this.g.emit('throw', { x: this.x, z: this.z });
         vfx2d(this.g, 'smear', from.x, from.y, from.z, { dir: [target.x - from.x, target.z - from.z], size: s.big ? 1.4 : 0.8 });
         this.g.fx.burst(from.x, from.y, from.z, 8, ch.lookData.glow, { glow: true, speed: 1.5, up: 0.5, size: 1.8, life: 0.3 });
@@ -586,7 +640,7 @@ export class Player implements GolemTarget, TouchHost {
     });
   }
   private stoneHit(s: Stone, c: Creature, sp: number) {
-    const dmg = Math.min(180, s.m * sp * (s.big ? 1 : 1.15));
+    const dmg = Math.min(180 * this.servo, s.m * sp * (s.big ? 1 : 1.15) * this.servo);
     const crit = sp > 11 && Math.random() < 0.2;
     strike(this.g, this.gore, this.knocks, c, dmg * (crit ? 1.6 : 1), _v.copy(s.v), 'rock', { knock: Math.sqrt(s.m) * sp * 0.4, up: s.big ? 5 : 2.5, crit, stun: s.big ? 1.4 : 0.4, sever: s.big });
     this.hitStop(s.big ? 0.1 : 0.035);
@@ -597,7 +651,7 @@ export class Player implements GolemTarget, TouchHost {
   // ------------------------------------------------------------------ taking damage
   hurt(amt: number, from: Creature) {
     if (!this.alive || this.invuln > 0 || !this.started) return;
-    const g = this.g, d = amt * (1 - this.armor);
+    const g = this.g, d = amt * (1 - this.armor) * (this.has('plating3') ? 0.5 : 1);
     this.hull -= d; this.lastHurt = g.world.time;
     from.aggro = Math.max(from.aggro, 10);
     const dx = this.x - from.x, dz = this.z - from.z, dl = Math.hypot(dx, dz) || 1;
@@ -1019,6 +1073,7 @@ export class Player implements GolemTarget, TouchHost {
   dispose() {
     this.unstop();
     if (GOLEM_REF.g === this) GOLEM_REF.g = null;
+    this.unwrap();
     bindSkills(null);
     removeEventListener('touchstart', this.onFirstTouch);
     this.touch?.dispose();

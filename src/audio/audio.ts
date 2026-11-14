@@ -1,9 +1,14 @@
 // Procedural audio: every sound is synthesised (no files). UI blips, organic squelches, chitin cracks, field zaps,
 // creature calls scaled by body size, the researcher's 8-bit voice, wind and a slow generative pad score.
+import { settings, onSettings } from '../settings';
 let ctx: AudioContext | null = null;
 let master: GainNode, sfxBus: GainNode, musicBus: GainNode, ambBus: GainNode, verb: ConvolverNode, verbIn: GainNode;
 let noiseBuf: AudioBuffer;
 export const vol = { master: 0.8, sfx: 0.9, music: 0.55, amb: 0.6 };
+// the player's volume settings (src/settings.ts) drive the buses
+const fromSettings = () => { vol.master = settings.master; vol.sfx = settings.sfx; vol.music = settings.music; vol.amb = 0.6 * Math.max(settings.music, settings.sfx); };
+fromSettings();
+onSettings((_s, ch) => { if (ch.some((k) => k === 'master' || k === 'music' || k === 'sfx')) { fromSettings(); setVolumes(); } });
 let started = false;
 
 function init() {

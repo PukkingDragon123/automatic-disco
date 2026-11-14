@@ -12,7 +12,7 @@ import { Pix, GM, BR, RD, PH, AM, CR, HZ, INK, dv, text, mixc, hex } from './mac
 import { Gauge, Lamp, meterFace, place, steamVent, u } from './gadgets';
 import { WHEEL, DESC, wheelArt, descArt } from './hudArt';
 import { hashf } from '../limbo/core/rng';
-import { powerOwned } from '../game/combat';
+import { powerOwned, powerCost } from '../game/combat';
 
 export interface WheelCtx { hive: Hive; arm(a: Ability): void; armed(): Ability | null }
 
@@ -325,7 +325,7 @@ export class AbilityWheel {
     const st = ORDER.map((a) => {
       const d = ABILITIES[a];
       const cd = h.cooldowns[a] ?? 0;
-      return d.em > h.emLevel ? 'L' : cd > 0 ? 'C' + Math.ceil((cd / d.cd) * 24) : h.res.charge < d.charge || h.res.bio < d.bio ? 'P' : 'R';
+      return d.em > h.emLevel ? 'L' : cd > 0 ? 'C' + Math.ceil((cd / d.cd) * 24) : h.res.charge < powerCost(a) || h.res.bio < d.bio ? 'P' : 'R';
     }).join('|') + (armed ?? '') + this.hover;
     const blinks = !!armed || ORDER.some((a) => (h.cooldowns[a] ?? 0) > 0);
     const st2 = st + (blinks ? Math.floor(this.t * 2.5) % 2 : '');
@@ -353,8 +353,8 @@ export class AbilityWheel {
     for (const [i, t] of this.tubes.entries()) t.dataset.st = armed ? 'hot' : this.settled ? (i ? 'warm' : 'hot') : 'warm';
     // charge meter, with the cost of the selected power marked on the rim
     const cap = 60 + h.emLevel * 40, d = ABILITIES[a];
-    this.gauge.set(h.res.charge / cap); this.gauge.marks = d.charge ? [d.charge / cap] : [];
-    this.gauge.red = h.res.charge < d.charge;
+    this.gauge.set(h.res.charge / cap); this.gauge.marks = d.charge ? [powerCost(a) / cap] : [];
+    this.gauge.red = h.res.charge < powerCost(a);
     this.gauge.update(dt);
     // CRT name + cost
     this.flash = Math.max(0, this.flash - dt);
@@ -382,7 +382,7 @@ export class AbilityWheel {
   private costLine(a: Ability) {
     const d = ABILITIES[a], h = this.c.hive, cd = h.cooldowns[a] ?? 0;
     if (d.em > h.emLevel) return `<span class="bad">LOCKED &middot; FIELD LV ${d.em}</span>`;
-    const c = d.charge ? `<span class="${h.res.charge < d.charge ? 'bad' : ''}">${d.charge} CHG</span>` : '';
+    const c = d.charge ? `<span class="${h.res.charge < powerCost(a) ? 'bad' : ''}">${Math.round(powerCost(a))} CHG</span>` : '';
     const b = d.bio ? `<span class="${h.res.bio < d.bio ? 'bad' : ''}">${d.bio} BIO</span>` : '';
     const r = cd > 0 ? `<span class="wait">RECHARGE ${cd.toFixed(1)}S</span>` : `CD ${d.cd}S`;
     return [c, b, r].filter(Boolean).join(' &middot; ');
@@ -444,7 +444,7 @@ export class AbilityWheel {
       const a = ang - i * STEP, cx = C + Math.sin(a) * R_CH, cy = C - Math.cos(a) * R_CH;
       const top = Math.abs(wrap(a)) < STEP * 0.3;
       const ab = ORDER[i], d = ABILITIES[ab], cd = h.cooldowns[ab] ?? 0;
-      const locked = d.em > h.emLevel, poor = h.res.charge < d.charge || h.res.bio < d.bio;
+      const locked = d.em > h.emLevel, poor = h.res.charge < powerCost(ab) || h.res.bio < d.bio;
       const ch = chamber(top && !locked);
       const X = Math.round(cx - 12.5), Y = Math.round(cy - 12.5);
       drawPix(g, ch, X, Y);

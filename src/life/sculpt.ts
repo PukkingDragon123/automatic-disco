@@ -29,6 +29,8 @@ export function interp(ts: number[], vs: number[], t: number) {
 export function chordTs(c: V3[]) { const cum = [0]; for (let i = 1; i < c.length; i++) cum.push(cum[i - 1] + len(sub(c[i], c[i - 1]))); const L = cum[cum.length - 1] || 1; return cum.map((v) => v / L); }
 
 export interface Paint { (): void }
+/** texel-density priority per region: the face reads first, so it paints finest */
+const DENSITY: Record<string, number> = { HEAD: 1.55, EYE: 1.6, LID: 1.4, NOSE: 1.5, JAW: 1.3, MOUTH: 1.1, EAR: 1.35, TEETH: 1.2, WHISK: 1.3, FOOT: 1.15, CLAW: 1.1, BODY: 1, LIMB: 1.05 };
 export class Ctx {
   B: SkinB; page: Page; g = 1; paints: Paint[] = [];
   /** spine samples for surface queries (quills, photophores) */
@@ -42,12 +44,12 @@ export class Ctx {
   }
   bi(n: string) { const i = this.rig.bones.findIndex((b) => b.name === n); if (i < 0) throw new Error('no bone ' + n); return i; }
   at(n: string | number): V3 { return this.rest[typeof n === 'number' ? n : this.bi(n)]; }
-  /** a page region sized in metres (shared if it already exists) */
+  /** a page region sized in metres (shared if it already exists); faces and eyes get a finer texel density */
   reg(name: string, wm: number, hm: number, min = 6, maxW = 160, maxH = 200): Region {
     const r = this.page.regs.get(name); if (r) return r;
-    return this.page.reg(name, clamp(Math.round(wm * this.den), min * 2, maxW * 2), clamp(Math.round(hm * this.den), min * 2, maxH * 2));
+    return this.page.reg(name, clamp(Math.round(wm * this.den), min * 2, maxW * 2), clamp(Math.round(hm * this.den), min * 2, maxH * 2), DENSITY[name] ?? 1);
   }
-  fixed(name: string, w: number, h: number) { return this.page.regs.get(name) ?? this.page.reg(name, w * 2, h * 2); }
+  fixed(name: string, w: number, h: number) { return this.page.regs.get(name) ?? this.page.reg(name, w * 2, h * 2, DENSITY[name] ?? 1); }
   gid() { return this.g++; }
 }
 
@@ -97,9 +99,141 @@ function coverK(cover: string, r: Region, x: number, y: number, th: number, t: n
     default: return Math.sin(y * 1.9 + r.fbm(x, y, 3, 2, seed) * 7) * 0.22 + (hash(x, y + seed) < 0.03 ? -0.8 : 0) + (r.fbm(x, y, 5, 3, seed + 2) - 0.5) * 1.3;
   }
 }
-export interface HideOpt { L: number; rad: (t: number) => number; belly?: number; seed: number; kind?: 'body' | 'limb' | 'head' | 'jaw' | 'foot'; plates?: number; cover?: string; noPattern?: boolean; bellyAll?: boolean }
+export interface HideOpt {
+  L: number; rad: (t: number) => number; belly?: number; seed: number; kind?: 'body' | 'limb' | 'head' | 'jaw' | 'foot' | 'ear'; plates?: number; cover?: string; noPattern?: boolean; bellyAll?: boolean;
+  /** hair flow along the region's rows (+1 toward its last row, -1 toward its first) and how far it turns down the sides */
+  flow?: number; down?: number;
+  /** clump size multiplier (short muzzle hair < 1 < shaggy coats) */
+  clump?: number;
+}
+
+// ---------------------------------------------------------------------------------------- shingles
+/** overlapping clumps laid on a jittered lattice and combed along a flow: fur locks and scales. Each covered texel
+ *  learns which clump lies on top there (upstream clumps cover the roots of those behind them) and where in it it
+ *  sits: s = 0 root .. 1 tip, e = -1..1 across. Uncovered texels (the underfur) get id -1. */
+interface ShingleOpt { cw: number; ch: number; len: number; flow: number; down: number; seed: number; round?: boolean; bend?: number }
+interface ShingleHit { id: Int32Array; s: Float32Array; e: Float32Array; rx: Float32Array; ry: Float32Array }
+function shingles(r: Region, o: ShingleOpt): ShingleHit {
+  const w = r.w, h = r.h, n = w * h;
+  const out: ShingleHit = { id: new Int32Array(n).fill(-1), s: new Float32Array(n), e: new Float32Array(n), rx: new Float32Array(n), ry: new Float32Array(n) };
+  const nc = Math.max(3, Math.round(w / o.cw)), cw = w / nc, ch = o.ch, nr = Math.ceil(h / ch) + 4;
+  const L = o.len * ch;
+  // splat clumps from the most downstream row to the most upstream, so upstream clumps land on top
+  for (let q = 0; q < nr; q++) {
+    const j = o.flow > 0 ? nr - 3 - q : q - 2 - Math.ceil(o.len);
+    for (let i = 0; i < nc; i++) {
+      const id = (j + 64) * nc + i, hs = hash(i * 13 + 1, j * 7 + o.seed);
+      const rx = (i + 0.5 + (j & 1) * 0.5 + (hash(i, j * 3 + o.seed) - 0.5) * 0.7) * cw, ry = (j + (hash(i * 5, j + o.seed * 3) - 0.5) * 0.6) * ch;
+      const sth = Math.sin(r.th(rx)), f0 = o.down * sth, fl = Math.hypot(f0, o.flow) || 1, fx = f0 / fl, fy = o.flow / fl;
+      const Lk = L * (0.82 + hs * 0.36), Wk = cw * (0.55 + hash(i, j + 91) * 0.22), bend = (hash(i * 3, j * 11 + o.seed) - 0.5) * (o.bend ?? 0.5) * Wk * 2;
+      const tx = rx + fx * Lk, ty = ry + fy * Lk, pad = Wk + Math.abs(bend) + 1;
+      const x0 = Math.floor(Math.min(rx, tx) - pad), x1 = Math.ceil(Math.max(rx, tx) + pad);
+      const y0 = Math.max(0, Math.floor(Math.min(ry, ty) - pad)), y1 = Math.min(h - 1, Math.ceil(Math.max(ry, ty) + pad));
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        const dx = x + 0.5 - rx, dy = y + 0.5 - ry;
+        const sl = (dx * fx + dy * fy) / Lk;
+        if (sl < 0 || sl > 1) continue;
+        const hw = o.round ? Wk * Math.sqrt(Math.max(0, 1 - (2 * sl - 1) ** 2)) * 1.05 : Wk * (1 - sl * sl * 0.82) + 0.35;
+        const el = (dx * -fy + dy * fx - bend * sl * sl) / hw;
+        if (el < -1 || el > 1) continue;
+        const p = y * w + (((x % w) + w) % w);
+        out.id[p] = id; out.s[p] = sl; out.e[p] = el; out.rx[p] = ((rx % w) + w) % w; out.ry[p] = ry;
+      }
+    }
+  }
+  return out;
+}
+
+/** fur: combed clumps over a dark underfur, dark roots and lit tips, a sheen on the side facing the light, pale guard hairs */
+function furHide(S: Ctx, r: Region, o: HideOpt) {
+  const d = S.d, P = S.P, Wn = Math.max(0.05, S.rig.width), seed = o.seed;
+  const long = has(d, 'shaggy') || !!S.rig.dims.bear ? 1.3 : has(d, 'leg_hooved') || has(d, 'whiskers') ? 0.85 : 1;
+  const ks = long * (o.clump ?? (o.kind === 'head' || o.kind === 'jaw' ? 0.72 : o.kind === 'limb' ? 0.85 : o.kind === 'foot' ? 0.7 : o.kind === 'ear' ? 0.6 : 1));
+  const H = shingles(r, { cw: 4.6 * ks, ch: 4.2 * ks, len: 2.3, flow: o.flow ?? 1, down: o.down ?? (o.kind === 'limb' || o.kind === 'foot' ? 0.12 : 0.55), seed: seed * 7 + 3, bend: 0.7 });
+  const patAt = (x: number, y: number) => {
+    const t = (y + 0.5) / r.h, th = r.th(x), ath = Math.abs(th);
+    const edge = (o.belly ?? 2.05) + (r.fbm(x, y, 5, 2, seed) - 0.5) * 0.8;
+    const bel = o.bellyAll || ath > edge;
+    let pv = !o.noPattern && !bel ? patternAt(d, r, x, y, (t * o.L) / Wn, (th * o.rad(t)) / Wn, th, seed + 17) : 0;
+    if (has(d, 'cryptic') && !bel && r.fbm(x, y, 6, 2, seed + 40) > 0.62) pv = 1;
+    return pv ? P.pat : bel ? P.belly : P.base;
+  };
+  // pattern and countershading are chosen per clump, so their edges break along the locks
+  const rampOf = new Map<number, number[]>();
+  for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
+    const p = y * r.w + x, id = H.id[p], th = r.th(x), t = (y + 0.5) / r.h;
+    let k = 3.0 + Math.cos(th) * 0.6 + (r.fbm(x, y, 3, 2, seed + 5) - 0.5) * 0.5;
+    if (o.kind === 'limb') k -= sm(clamp((t - 0.62) / 0.38, 0, 1)) * 0.9; // darker socks
+    if (o.kind === 'foot') k -= 0.4;
+    let RR: number[];
+    if (id < 0) { RR = patAt(x, y); k -= 1.5 + hash(x, y + seed) * 0.4; } // underfur
+    else {
+      let R0 = rampOf.get(id);
+      if (!R0) { R0 = patAt(Math.floor(H.rx[p]), Math.floor(H.ry[p] + 1.5)); rampOf.set(id, R0); }
+      RR = R0;
+      const sv = H.s[p], e = H.e[p], lit = (th >= 0 ? 1 : -1) * e, sc = (hash(id, 3) - 0.5) * 0.9;
+      k += sv < 0.42 ? -1.15 : -0.35 + 1.25 * sm(clamp((sv - 0.42) / 0.5, 0, 1)); // the root lies in the shadow of the clump above, the tip catches light
+      if (Math.abs(e) > 0.72) k -= 0.95; // the parting between locks
+      else if (lit > 0.18 && lit < 0.6 && sv > 0.48 && sv < 0.9) k += 0.75; // a sheen down the lit side
+      else if (Math.abs(e - sc) < 0.13 && sv > 0.35) k -= 0.5; // a strand line through the lock
+      k += (hash(id, 5) - 0.5) * 0.5; // clump tone
+    }
+    r.put(x, y, RR, k, 0.15);
+  }
+  // guard hairs: single long pale hairs combed past the clumps
+  const ng = Math.round((r.w * r.h) / (60 * ks * ks));
+  for (let i = 0; i < ng; i++) {
+    let x = hash(i, seed + 301) * r.w, y = hash(i, seed + 303) * r.h;
+    const th = r.th(x), fx = (o.down ?? 0.55) * Math.sin(th) * 0.8, fy = o.flow ?? 1, fl = Math.hypot(fx, fy);
+    const n = Math.round((3 + hash(i, seed + 305) * 4) * ks), R = patAt(x, y);
+    for (let j = 0; j < n; j++) { r.set(x, y, R[clamp(Math.round(3.6 + Math.cos(th) * 0.6 + j / n * 1.6), 0, R.length - 1)]); x += fx / fl; y += fy / fl; }
+  }
+}
+
+/** scales: overlapping rounded scales, each with its own tone and a highlight on its crown; big plates down the belly */
+function scaleHide(S: Ctx, r: Region, o: HideOpt) {
+  const d = S.d, P = S.P, Wn = Math.max(0.05, S.rig.width), seed = o.seed;
+  const ks = o.kind === 'head' || o.kind === 'jaw' ? 0.8 : o.kind === 'limb' || o.kind === 'foot' ? 0.7 : 1;
+  const H = shingles(r, { cw: 4.2 * ks, ch: 3.2 * ks, len: 1.5, flow: o.flow ?? 1, down: (o.down ?? 0.35), seed: seed * 5 + 1, round: true, bend: 0.2 });
+  const rampOf = new Map<number, number[]>();
+  for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
+    const p = y * r.w + x, id = H.id[p], th = r.th(x), ath = Math.abs(th), t = (y + 0.5) / r.h;
+    const edge = (o.belly ?? 2.05) + (r.fbm(x, y, 5, 2, seed) - 0.5) * 0.5;
+    const bel = o.bellyAll || ath > edge;
+    let k = 3.0 + Math.cos(th) * 0.7;
+    if (bel && o.kind !== 'limb' && o.kind !== 'foot') {
+      // ventral scutes: broad transverse plates
+      const ph = Math.round(5 * ks), yy = y % ph;
+      k += yy === 0 ? -1.4 : yy === 1 ? 0.6 : 0.2 - yy * 0.08;
+      if (Math.abs(Math.abs(th) - Math.PI) > 0.9 && (x + Math.floor(y / ph)) % 9 === 0) k -= 0.8;
+      r.put(x, y, P.belly, k, 0.4); continue;
+    }
+    let RR = P.base;
+    if (id < 0) { k -= 1.6; }
+    else {
+      let R0 = rampOf.get(id);
+      if (!R0) {
+        const sx = Math.floor(H.rx[p]), sy = Math.floor(H.ry[p] + 1), st = (sy + 0.5) / r.h, sth = r.th(sx);
+        let pv = !o.noPattern ? patternAt(d, r, sx, sy, (st * o.L) / Wn, (sth * o.rad(st)) / Wn, sth, seed + 17) : 0;
+        if (has(d, 'cryptic') && r.fbm(sx, sy, 6, 2, seed + 40) > 0.62) pv = 1;
+        R0 = pv ? P.pat : P.base; rampOf.set(id, R0);
+      }
+      RR = R0;
+      const sv = H.s[p], e = H.e[p], lit = (th >= 0 ? 1 : -1) * e;
+      k += 0.55 - Math.abs(e) * 0.55 - sv * 0.6 + (hash(id, 9) - 0.5) * 0.7;
+      if (sv > 0.82 || Math.abs(e) > 0.86) k -= 0.9; // the shadowed free edge
+      else if (sv > 0.18 && sv < 0.42 && lit > 0.05 && lit < 0.5) k += 1.1; // a glint on each scale's crown
+      if (has(d, 'crest') && ath < 0.3) k += 0.3;
+    }
+    if (t > 0.97) k -= 0.3;
+    r.put(x, y, RR, k, 0.3);
+  }
+}
+
 export function hide(S: Ctx, r: Region, o: HideOpt) {
   const d = S.d, P = S.P, Wn = Math.max(0.05, S.rig.width), cover = o.cover ?? d.cover, seed = o.seed;
+  if (cover === 'fur') { furHide(S, r, o); return; }
+  if (cover === 'scales' && r.w >= 12 && r.h >= 8) { scaleHide(S, r, o); return; }
   for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
     const t = (y + 0.5) / r.h, th = r.th(x), ath = Math.abs(th);
     const sn = (t * o.L) / Wn, cn = (th * o.rad(t)) / Wn;
@@ -116,8 +250,7 @@ export function hide(S: Ctx, r: Region, o: HideOpt) {
     r.put(x, y, RR, k, 0.55);
     if (has(d, 'chloro_skin') && !bel && r.fbm(x, y, 7, 2, seed + 5) > 0.6) r.blend(x, y, 0x3a8a3a, 0.35);
   }
-  // fur partings and lit tips, wet glints, veins
-  if (cover === 'fur') for (let i = 0; i < Math.max(4, r.w * r.h / 300); i++) r.crack(hash(i, seed) * r.w, hash(i + 9, seed) * r.h, 4 + Math.floor(hash(i + 3, seed) * 8), 80 + hash(i + 5, seed) * 30, P.dark[1], seed * 7 + i, 0.5, 0.1);
+  // wet glints, veins
   if (cover === 'skin' || cover === 'slime') for (let i = 0; i < Math.max(3, r.w * r.h / 500); i++) r.crack(hash(i, seed + 2) * r.w, hash(i + 4, seed) * r.h, 6 + Math.floor(hash(i + 6, seed) * 12), hash(i + 1, seed) * 360, P.skin[2], seed * 3 + i, 0.3, 0.2);
   if (cover === 'slime' || has(d, 'mucus')) for (let i = 0; i < r.w * r.h / 90; i++) { const gx = hash(i, seed + 40) * r.w, gy = hash(i + 2, seed + 40) * r.h; if (Math.abs(r.th(gx)) < 1.6) { r.blend(gx, gy, 0xffffff, 0.7); r.blend(gx + 1, gy, 0xffffff, 0.3); } }
   // photophores along the lateral line
@@ -981,27 +1114,23 @@ function gastropod(S: Ctx) {
 }
 
 // =============================================================================================== entry
-export interface Sculpt { geo: THREE.BufferGeometry; tex: THREE.DataTexture; tris: number }
+export interface Sculpt { geo: THREE.BufferGeometry; tex: THREE.DataTexture; tris: number; /** texels per metre on the flanks, page fill */ den: number; fill: number }
 export function sculpt(d: Design, rig: Rig, rest: V3[]): Sculpt {
-  let den = 104;
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const S = new Ctx(d, rig, rest, den);
-    KIT.sq = 2.7; KIT.nMul = 0.62; // chunky rounded-box sections, flat-shaded facets: blocky but detailed
-    try {
-      switch (d.plan) {
-        case 'hexapod': case 'octopod': arthropod(S); break;
-        case 'serpent': serpent(S); break;
-        case 'gastropod': gastropod(S); break;
-        default: vertebrate(S); break;
-      }
-    } catch (e) {
-      if (e instanceof Error && e.message.startsWith('page overflow')) { den *= 0.82; continue; }
-      throw e;
-    } finally { KIT.sq = 2; KIT.nMul = 1; }
-    for (const p of S.paints) p();
-    S.page.finish();
-    return { geo: S.B.build(), tex: pageTexture(S.page), tris: S.B.tris };
-  }
-  throw new Error('sculpt: page too small for ' + d.plan);
+  const den = 104;
+  const S = new Ctx(d, rig, rest, den);
+  KIT.sq = 2.7; KIT.nMul = 0.62; // chunky rounded-box sections, flat-shaded facets: blocky but detailed
+  try {
+    switch (d.plan) {
+      case 'hexapod': case 'octopod': arthropod(S); break;
+      case 'serpent': serpent(S); break;
+      case 'gastropod': gastropod(S); break;
+      default: vertebrate(S); break;
+    }
+  } finally { KIT.sq = 2; KIT.nMul = 1; }
+  // every region is laid out at the finest density that still fills one page, then painted at that size
+  const k = S.page.pack();
+  for (const p of S.paints) p();
+  S.page.finish();
+  return { geo: S.B.build(), tex: pageTexture(S.page), tris: S.B.tris, den: Math.round(den * k), fill: S.page.fill };
 }
 void scaleHex; void cross;

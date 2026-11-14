@@ -1,5 +1,6 @@
 // RTS camera: focus point on the ground, yaw, zoom distance; pitch eases lower as you zoom in.
 // WASD / arrows / screen edges pan, Q/E rotate, wheel zooms, middle-drag pans, Alt+drag or Ctrl+middle orbits.
+import { settings } from '../settings';
 import * as THREE from 'three';
 import type { Input } from './input';
 import { clamp, damp, dampA } from '../core/rand';
@@ -23,7 +24,7 @@ export class RtsCam {
     this.cam = new THREE.PerspectiveCamera(36, aspect, 0.5, 900);
   }
   pitch(d = this.dist) { const t = clamp((d - this.minDist) / (this.maxDist - this.minDist), 0, 1); return 0.86 + t * 0.32; }
-  shake(a: number, t = 0.35) { this.shakeA = Math.max(this.shakeA, a); this.shakeT = Math.max(this.shakeT, t); }
+  shake(a: number, t = 0.35) { if (!settings.shake) return; this.shakeA = Math.max(this.shakeA, a); this.shakeT = Math.max(this.shakeT, t); }
   lookAt(x: number, z: number, snap = false) { this.goal.set(x, 0, z); if (snap) { this.target.copy(this.goal); } }
   followFn(f: (() => THREE.Vector3 | null) | null) { this.follow = f; }
 

@@ -2,6 +2,7 @@
 // heavy machinery of the U.S.P.C. control room and the cutscenes. Klaxons, lever clunks, relay clicks, servo
 // whine, nixie countdown beeps, rocket ignition, retro-thrusters, radio squelch and static, Geiger clicks, a
 // heartbeat, a low dread drone and orchestral-ish stings. Everything is synthesised; nothing is loaded.
+import { settings, onSettings } from '../settings';
 let ctx: AudioContext | null = null;
 let out: GainNode, verbIn: GainNode, noiseBuf: AudioBuffer;
 export const cineVol = { k: 0.9 };
@@ -10,7 +11,7 @@ function init() {
   if (ctx) return;
   try { ctx = new AudioContext(); } catch { return; }
   const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 5; comp.connect(ctx.destination);
-  out = ctx.createGain(); out.gain.value = 0.7 * cineVol.k; out.connect(comp);
+  out = ctx.createGain(); out.gain.value = 0.7 * cineVol.k * settings.master * settings.sfx * 1.2; out.connect(comp);
   const verb = ctx.createConvolver();
   const len = Math.floor(ctx.sampleRate * 2.2), ir = ctx.createBuffer(2, len, ctx.sampleRate);
   for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
@@ -18,6 +19,7 @@ function init() {
   noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
   const nd = noiseBuf.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
 }
+onSettings(() => { if (ctx && out) out.gain.setTargetAtTime(0.7 * cineVol.k * settings.master * settings.sfx * 1.2, ctx.currentTime, 0.05); });
 function unlock() { init(); if (ctx && ctx.state === 'suspended') ctx.resume(); }
 addEventListener('pointerdown', unlock);
 addEventListener('keydown', unlock);

@@ -60,6 +60,8 @@ export class Game implements Screen {
   private held: Held[] = [];
   private pulls: Pull[] = [];
   private storms: { x: number; z: number; t: number }[] = [];
+  /** field powers reach further with the Field Amplifier skill ('amp') */
+  get powerReach() { return this.run.skills.has('amp') ? 1.5 : 1; }
   private shaping: { x: number; z: number; R: number; amt: number; t: number }[] = [];
   private knocks: { c: Creature; vx: number; vz: number; t: number }[] = [];
   private overlay: HTMLCanvasElement; private og: CanvasRenderingContext2D;
@@ -310,7 +312,8 @@ export class Game implements Screen {
     this.hud.invalidate();
   }
   private command(mx: number, my: number, queue: boolean) {
-    const own = this.sel.filter((c) => c.faction === 'veyr' && !c.dead);
+    // allies only answer orders once Unit 07 carries the Pack Relay
+    const own = this.run.skills.has('command') ? this.sel.filter((c) => c.faction === 'veyr' && !c.dead) : [];
     if (this.selB?.faction === 'veyr' && this.selB.def.kind === 'brood' && !own.length) {
       const g = this.groundAt(mx, my); if (g) { this.selB.rally = [g.x, g.z]; this.fx.burst(g.x, g.y + 0.1, g.z, 8, VEYR.vein, { glow: true, up: 1, speed: 1, size: 2, life: 0.6 }); sfx('click'); }
       return;
@@ -399,7 +402,7 @@ export class Game implements Screen {
       if (!g) return;
       if (!h.inField(g.x, g.z)) { toast('Outside your field', 'warn', 1400); return; }
       h.spend(a); this.setMode({ k: 'normal' });
-      const R = 5.5;
+      const R = 5.5 * this.powerReach;
       this.child.cast(g); this.ringFx(g, R, this.child.lookData.glow);
       sfx('pulse', 1.6, 0.9); sfx('zap', 0.7, 0.6); this.cam.shake(0.4, 0.4);
       for (let i = 0; i < 16; i++) { const an = (i / 16) * Math.PI * 2; const p = new THREE.Vector3(g.x + Math.cos(an) * R, 0, g.z + Math.sin(an) * R); p.y = this.world.surfaceY(p.x, p.z) + 0.3; this.fx.arc(g.clone().add(new THREE.Vector3(0, 0.4, 0)), p, 0.1, this.child.lookData.glow, 0.25); }
@@ -449,7 +452,7 @@ export class Game implements Screen {
       const [sx, sy] = this.screenOf(g.x, g.y + 1, g.z);
       const grade = await QTE.charge(sx, sy);
       this.busy = false;
-      const R = 4.5 + grade * 1.8;
+      const R = (4.5 + grade * 1.8) * this.powerReach;
       sfx('pulse'); this.cam.shake(0.35 + grade * 0.15, 0.5); this.child.cast(g);
       this.ringFx(g, R, VEYR.em);
       this.world.near(g.x, g.z, R, (c) => { if (c.dead || c.faction === 'veyr') return; c.stunT = 2 + grade; c.mind = c.faction === 'wild' ? 'idle' : c.mind; this.world.damage(c, 4 + grade * 4, null); c.fx.flashCol.value.setRGB(0.6, 0.5, 1); c.fx.flash.value = 1; });
@@ -498,7 +501,7 @@ export class Game implements Screen {
     if (why) { toast(why, 'warn', 1200); return; }
     const g = this.groundAt(mx, my); if (!g) return;
     if (!h.inField(g.x, g.z)) { toast('Outside your field', 'warn', 1400); return; }
-    const R = 3.2;
+    const R = 3.2 * this.powerReach;
     for (const hv of this.world.hives) for (const b of hv.buildings) if (Math.hypot(b.x - g.x, b.z - g.z) < R + b.def.radius) { toast('Too close to a structure', 'warn', 1400); return; }
     h.spend('shape');
     this.shaping.push({ x: g.x, z: g.z, R, amt: dir > 0 ? 1.7 : -1.5, t: 0.55 });
@@ -747,12 +750,12 @@ export class Game implements Screen {
       const s = this.storms[i]; s.t -= dt;
       if (s.t <= 0) { this.storms.splice(i, 1); continue; }
       if (Math.random() < dt * 18) {
-        const a = Math.random() * Math.PI * 2, r = Math.random() * 9;
+        const a = Math.random() * Math.PI * 2, r = Math.random() * 9 * this.powerReach;
         const p = new THREE.Vector3(s.x + Math.cos(a) * r, 0, s.z + Math.sin(a) * r); p.y = this.world.surfaceY(p.x, p.z);
         this.fx.arc(p.clone().add(new THREE.Vector3(0, 9, 0)), p, 0.18, VEYR.em, 0.5);
         this.fx.burst(p.x, p.y + 0.2, p.z, 6, 0x9a90a8, { speed: 3, up: 3, size: 3, life: 0.6 });
       }
-      this.world.near(s.x, s.z, 9, (c) => { if (!c.dead && c.faction !== 'veyr') { this.world.damage(c, 16 * dt, null); c.stunT = Math.max(c.stunT, 0.3); } });
+      this.world.near(s.x, s.z, 9 * this.powerReach, (c) => { if (!c.dead && c.faction !== 'veyr') { this.world.damage(c, 16 * dt, null); c.stunT = Math.max(c.stunT, 0.3); } });
     }
   }
   private daylight() {
@@ -841,8 +844,8 @@ export class Game implements Screen {
       if (this.mode.k === 'paint') this.circle(gnd, 3.4, '#9cea8a');
       if (this.mode.k === 'ability') {
         const a = this.mode.a;
-        if (a === 'pulse') this.circle(gnd, 4.5, '#c4b4ff');
-        if (a === 'storm') this.circle(gnd, 9, '#c4b4ff');
+        if (a === 'pulse') this.circle(gnd, 4.5 * this.powerReach, '#c4b4ff');
+        if (a === 'storm') this.circle(gnd, 9 * this.powerReach, '#c4b4ff');
         if (a === 'bloom') this.circle(gnd, 4.6, '#9cea8a');
         if (a === 'snare' || a === 'lance' || a === 'pull') {
           const c = this.pickCreature(this.input.mx, this.input.my, (o) => o.faction !== 'veyr' && (a === 'pull' || !o.dead));

@@ -236,6 +236,7 @@ export class Hud {
         put(this.dialog, sB, { l: 2 * sB, b: (SCOPE.h + 4) * sB });
       }
       this.toastTop((STATM.h + 4) * sT);
+      this.textScale(sT * dpr, dpr);
     } else {
       // narrow screens (phones held upright): the rails stack at the top, the scope and the bank under them, the
       // keys at the bottom centre; as large as the width allows, but never so large the view is lost
@@ -254,16 +255,28 @@ export class Hud {
       put(M['hud-cmd'], sK, touch ? { l: (W - CMD.w * sK) / 2, b: 0 } : { l: 0, b: 0 });
       put(wl, sC, touch ? null : { r: 0, b: 0 }); put(wd, sC, touch ? null : { r: 0, b: 152 * sC });
       this.toastTop(row + Math.max(SCOPE.h * sS, (BANK.h + 3) * sC) + 4);
+      this.textScale(sC * dpr, dpr);
     }
+  }
+  /** tooltips and toasts: whole device pixels per font pixel; on high-DPI screens as large as the console's art
+   *  pixels, on 1x screens half that (a pixel font reads fine at 1-2 device pixels there) */
+  private textScale(k: number, dpr: number) {
+    const fk = dpr >= 1.5 ? Math.round(k) : Math.max(1, Math.round(k / 2));
+    document.documentElement.style.setProperty('--tf', String(fk / dpr));
   }
   /** toasts read just under the console's top stack */
   private toastTop(y: number) { document.documentElement.style.setProperty('--hud-top', `${Math.round(y)}px`); }
 
   // ------------------------------------------------------------------ keys and switches
-  /** keys the console owns (K skills, L lab, and the selector's turn / fire keys); true when used */
+  /** keys the console owns (K skills, L lab, G rally allies, and the selector's turn / fire keys); true when used */
   key(k: string) {
     if (k === 'k') { this.skillSw.flick(); this.openSkills(); return true; }
     if (k === 'l' && this.c.game?.menu !== 'build') { this.openLab(); return true; }
+    if (k === 'g') {
+      const h = this.c.hive, why = h.rally();
+      if (why) { sfx('deny'); toast(why, 'warn', 1400); } else toast(h.follow ? 'ALLIES RALLY TO UNIT 07 &middot; [G] TO RELEASE' : 'ALLIES RELEASED: THEY ROAM AND CLAIM GROUND', 'good', 2200);
+      return true;
+    }
     return this.wheel.key(k);
   }
   private openSkills() {
@@ -456,20 +469,21 @@ export class Hud {
     const run = g?.run;
     const parts = ['head', 'torso', 'armR', 'armL', 'coil', 'plating1', 'plating2', 'reactor'].filter((id) => run?.skills.has(id));
     const body = parts.length ? SKILL[parts[parts.length - 1]].name.toUpperCase() : 'SURVEY HEAD';
-    el('div', 'sel-title', box, `&gt; UNIT 07 &middot; ${parts.length} PART${parts.length === 1 ? '' : 'S'} &middot; ${body}`);
+    el('div', 'sel-title', box, `&gt; UNIT 07 &middot; ${body}`);
     const [hp, hm] = this.hull();
-    el('div', 'sel-sub', box, `HULL ${Math.round((hp / Math.max(1, hm)) * 100)}% &middot; HOLD ${h.cap('ore')} &middot; ALLIES ${h.allyCount()}/${h.allyCap()} &middot; GROUND ${(this.c.conquest() * 100).toFixed(1)}%`);
+    el('div', 'sel-line', box, `HULL ${Math.round((hp / Math.max(1, hm)) * 100)}% &middot; GROUND ${(this.c.conquest() * 100).toFixed(1)}%<br>ALLIES ${h.allyCount()}/${h.allyCap()} &middot; HOLD ${h.cap('ore')}`);
     el('div', 'sel-idle', box, this.hint() + '<span class="cur">&#9608;</span>');
   }
   private hint() {
     const run = this.c.game?.run, h = this.c.hive;
     if (!run) return 'STANDING BY.';
     const S = run.skills, b = this.buyable();
-    if (b.length && S.points > 0) return `CORE CELLS READY. THROW THE SKILLS SWITCH [K]: ${b.slice(0, 2).map((s) => s.name.toUpperCase()).join(', ')}.`;
-    if (S.owned.size <= 1) return 'GATHER LOOSE GRIT: FLY CLOSE TO NUGGETS, HUSKS, DEW AND CLODS AND THE FIELD PULLS THEM IN.';
-    if (!S.has('graft')) return 'GATHER. EVERY LOAD EARNS CORE CELLS. PLANT GRAFT LETS YOU CLAIM GROUND.';
-    if (h.territory() < 0.05) return 'GRAFT PLANTS TO CLAIM THE GROUND AROUND THEM.';
-    if (!S.has('convert')) return 'HOLD MORE GROUND. NEURAL GRAFT TURNS BEATEN CREATURES INTO ALLIES THAT CLAIM AS THEY ROAM.';
+    if (b.length && S.points > 0) return `CORE CELLS READY: THROW THE SKILLS SWITCH [K]. NEXT: ${b[0].name.toUpperCase()}.`;
+    if (S.owned.size <= 1) return 'FLY CLOSE TO NUGGETS, HUSKS, DEW AND CLODS: THE FIELD PULLS THEM IN.';
+    if (!S.has('graft')) return 'EVERY LOAD GATHERED EARNS CORE CELLS. PLANT GRAFT CLAIMS GROUND.';
+    if (h.territory() < 0.05) return 'GRAFT PLANTS [E] TO CLAIM THE GROUND AROUND THEM.';
+    if (!S.has('convert')) return 'NEURAL GRAFT TURNS BEATEN CREATURES INTO ALLIES THAT CLAIM GROUND.';
+    if (S.has('command') && h.allyCount() && !h.follow) return '[G] RALLIES YOUR ALLIES. SELECT THEM, RIGHT-CLICK TO ORDER.';
     return `HOLD ${Math.round(h.winAt * 100)}% OF THE LAND AND BREAK EVERY RIVAL HEART.`;
   }
   private creatureInfo(s: Creature) {
@@ -479,12 +493,11 @@ export class Hud {
     const im = el('img', '', pf); im.src = thumb(s.sp);
     const info = el('div', 'sel-info', row);
     el('div', 'sel-name', info, s.sp.name.toUpperCase());
-    const owner = s.faction === 'veyr' ? '<span class="ok">YOURS</span>' : s.faction === 'rival' ? '<span class="bad">RIVAL</span>' : `<span class="amb">WILD &middot; ${s.diet === 'carn' ? 'PREDATOR' : s.diet === 'herb' ? 'GRAZER' : s.diet === 'scav' ? 'SCAVENGER' : 'OMNIVORE'}</span>`;
-    el('div', 'sel-sub', info, `<i>${s.sp.design.latin}</i> &middot; ${owner}`);
+    const owner = s.faction === 'veyr' ? '<span class="ok">ALLY</span>' : s.faction === 'rival' ? '<span class="bad">RIVAL</span>' : `<span class="amb">${s.diet === 'carn' ? 'PREDATOR' : s.diet === 'herb' ? 'GRAZER' : s.diet === 'scav' ? 'SCAVENGER' : 'OMNIVORE'}</span>`;
+    el('div', 'sel-sub', info, `${owner} &middot; <span class="mind"></span>`).title = s.sp.design.latin;
     this.selBars.hp = new Bar(info, PH[7]); this.selBars.en = new Bar(info, AM[5]);
-    el('div', 'sel-sub mind', info);
     const st = s.st;
-    el('div', 'stats', info, `ATK ${st.attack.toFixed(0)} ARM ${Math.round(st.armor * 100)}% SPD ${st.speed.toFixed(1)} SGT ${st.sight.toFixed(0)} ${Math.round(s.mass)}KG`);
+    el('div', 'stats', info, `ATK${st.attack.toFixed(0)} ARM${Math.round(st.armor * 100)}% SPD${st.speed.toFixed(1)} ${Math.round(s.mass)}KG`);
     const genes = el('div', 'genes', info);
     for (const g of s.sp.design.genes) {
       const gd = GENE[g]; if (!gd) continue;
@@ -526,5 +539,5 @@ export class Hud {
     for (const b of this.btns) b.refresh();
   }
   invalidate() { this.cmdKey = ''; this.selKey = '-'; }
-  dispose() { removeEventListener('resize', this.onResize); document.documentElement.style.removeProperty('--hud-top'); this.root.remove(); Tip.hide(); }
+  dispose() { removeEventListener('resize', this.onResize); document.documentElement.style.removeProperty('--hud-top'); document.documentElement.style.removeProperty('--tf'); this.root.remove(); Tip.hide(); }
 }
