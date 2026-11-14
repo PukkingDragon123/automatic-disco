@@ -72,17 +72,17 @@ export class FactoryUI {
     else if (!this.anyOpen && g.mode.k === 'factory') { g.setMode({ k: 'normal' }); this.modeSet = false; }
   }
   closeAll() {
-    this.sel = null; this.f.render.sel = null; this.insp.classList.remove('on');
+    this.sel = null; this.f.render.sel = null; this.insp.classList.remove('on'); this.root.classList.remove('insp-on', 'crew-on');
     this.showStats = false; this.showFlags = false; this.stats.classList.remove('on');
     this.showCrew = false; this.crew.classList.remove('on');
     this.syncMode();
   }
   toggleStats() { this.showStats = !this.showStats; this.showFlags = this.showStats; sfx(this.showStats ? 'open' : 'close', 1, 0.5); this.stats.classList.toggle('on', this.showStats); this.renderStats(); this.syncMode(); }
-  toggleCrew() { this.showCrew = !this.showCrew; sfx(this.showCrew ? 'open' : 'close', 1, 0.5); this.crew.classList.toggle('on', this.showCrew); this.renderCrew(); this.syncMode(); }
+  toggleCrew() { this.showCrew = !this.showCrew; sfx(this.showCrew ? 'open' : 'close', 1, 0.5); this.crew.classList.toggle('on', this.showCrew); this.root.classList.toggle('crew-on', this.showCrew); this.renderCrew(); this.syncMode(); }
   inspect(b: FBuilding | null) {
     this.sel = b; this.inspKey = '';
     this.f.render.sel = b;
-    this.insp.classList.toggle('on', !!b);
+    this.insp.classList.toggle('on', !!b); this.root.classList.toggle('insp-on', !!b);
     if (b) { sfx('open', 1.2, 0.4); this.renderInsp(); }
     this.syncMode();
   }

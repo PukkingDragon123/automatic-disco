@@ -412,13 +412,22 @@ export class RobotUnit {
     // legs: a two-bone reach for the ground, phased per leg
     if (m.legs.length) {
       const walk = clamp(speed / Math.max(0.3, this.st.speed * 0.5), 0, 1);
-      this.gait += dt * (speed / Math.max(0.05, m.stride * 2)) * Math.PI * 0.5 + dt * 0.0;
+      // one step cycle carries the foot 2 x stride back while planted: the cycle rate keeps planted feet still
+      this.gait += dt * (speed / Math.max(0.05, m.stride * 2)) * Math.PI;
       let bob = 0;
       for (const L of m.legs) {
         const ph = this.gait + L.ph;
         const ca = Math.cos(L.splay || 0);
         const hipH = L.hipH / Math.max(0.5, ca);
-        const zt = L.reach + Math.sin(ph) * m.stride * walk, lift = Math.max(0, Math.cos(ph)) * m.stride * 0.6 * walk;
+        let zt = L.reach + Math.sin(ph) * m.stride * walk;
+        const lift = Math.max(0, Math.cos(ph)) * m.stride * 0.6 * walk;
+        if (L.mount) {
+          // a radial leg: its foot rests out along the radius and swings fore and aft along the body's travel (lifted
+          // while it swings forward, planted while the body passes over it); the mount yaws to face the foot
+          const fx = (L.mx ?? 0) + Math.sin(L.ang ?? 0) * L.reach, fz = (L.mz ?? 0) + Math.cos(L.ang ?? 0) * L.reach + Math.sin(ph) * m.stride * walk;
+          L.mount.rotation.y = Math.atan2(fx - (L.mx ?? 0), fz - (L.mz ?? 0));
+          zt = Math.hypot(fx - (L.mx ?? 0), fz - (L.mz ?? 0));
+        }
         const yt = -(hipH - L.footH - lift / ca);
         const d = clamp(Math.hypot(zt, yt), 0.02, L.lt + L.ls - 0.002);
         const knee = Math.PI - Math.acos(clamp((L.lt * L.lt + L.ls * L.ls - d * d) / (2 * L.lt * L.ls), -1, 1));

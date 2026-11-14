@@ -15,7 +15,11 @@ export const ROBOT_KINDS = ['scout', 'worker', 'trooper', 'heavy', 'artillery', 
 export type RobotKind = typeof ROBOT_KINDS[number];
 export const HUMAN_KINDS: RobotKind[] = ['expedition_soldier', 'expedition_heavy', 'expedition_engineer', 'expedition_officer', 'expedition_crew'];
 
-export interface LegRig { hip: THREE.Group; knee: THREE.Group; foot: THREE.Group; lt: number; ls: number; ph: number; bird: boolean; hipH: number; footH: number; side: number; splay: number; reach: number }
+export interface LegRig {
+  hip: THREE.Group; knee: THREE.Group; foot: THREE.Group; lt: number; ls: number; ph: number; bird: boolean; hipH: number; footH: number; side: number; splay: number; reach: number;
+  /** a radial leg (the hexapod): its mount yaws so the foot steps along the body's travel; mount position and angle */
+  mount?: THREE.Group; mx?: number; mz?: number; ang?: number;
+}
 export interface UnitModel {
   root: THREE.Group; body: THREE.Group; turret: THREE.Group | null; gun: THREE.Group | null; recoil: THREE.Group[];
   muzzles: THREE.Object3D[]; legs: LegRig[]; wheels: { g: THREE.Group; r: number; side: number }[]; rotors: THREE.Group[]; jaws: THREE.Group[];
@@ -613,7 +617,7 @@ const BUILD: Record<string, Build> = {
   },
   /** the PRC mech: a turned hull on six legs, a rocket pod on a slewing mount, a sensor dome */
   prc_mech(c) {
-    const { k, m } = c; m.h = 1.6; m.r = 0.8; m.stride = 0.22;
+    const { k, m } = c; m.h = 1.6; m.r = 0.8; m.stride = 0.26;
     const hipY = 0.85;
     const hull = G(m.body, 0, hipY, 0, 'hull');
     k.on(hull);
@@ -624,7 +628,9 @@ const BUILD: Record<string, Build> = {
       const hx = Math.sin(a) * 0.38, hz = Math.cos(a) * 0.38;
       const mount = G(hull, hx, -0.04, hz, 'legmount'); mount.rotation.y = a;
       k.on(hull).push(hx, -0.04, hz, 0, a, 0).box(0, 0, -0.01, 0.1, 0.1, 0.06, 'st0', { ch: 0.01 }).pop();
-      c.leg(mount, 0, 0, 0, { lt: 0.45, ls: 0.55, w: 0.085, foot: 'claw', ph: i % 2 ? 0 : Math.PI, hipH: hipY - 0.04, side, splay: 0, paint: i, reach: 0.32 });
+      // a tripod gait: alternate legs (front and rear of one side, middle of the other) step together
+      const L = c.leg(mount, 0, 0, 0, { lt: 0.45, ls: 0.55, w: 0.085, foot: 'claw', ph: i % 2 ? 0 : Math.PI, hipH: hipY - 0.04, side, splay: 0, paint: i, reach: 0.34 });
+      L.mount = mount; L.mx = hx; L.mz = hz; L.ang = a;
     }
     k.on(hull);
     for (const s of [-1, 1]) k.push(s * 0.4, 0.05, 0.0, 0, s * Math.PI / 2, 0).mark(0, 0, 0.01, 0.14).pop();

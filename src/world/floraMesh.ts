@@ -300,7 +300,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
       if (!L1) trunkLife(g, tex, sp, T, st, col, r);
       continue;
     }
-    if (isBark && crowned && !fine && pts[0][1] > 0.1 && r0 > 0.016 && P2.length > 1) {
+    if (isBark && tree && !fine && pts[0][1] > 0.1 && r0 > 0.02 && P2.length > 1) {
       P2 = [P2[0], vadd(P2[0], vmul(vsub(P2[1], P2[0]), 0.2)), ...P2.slice(1)]; R2 = [R2[0] * 1.42, R2[0] * 1.12, ...R2.slice(1)];
     }
     const rootEnd = tree && isBark && !L1 && pts[pts.length - 1][1] < 0.03 && pts[0][1] > pts[pts.length - 1][1] + 0.02;

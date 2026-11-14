@@ -417,6 +417,7 @@ export class Programme implements SOwner {
     this.structures = this.structures.filter((q) => q !== s);
     this.producing.delete(s);
     if (s === this.hq) { this.eliminate(); return; }
+    if (this.state !== 'active') return;
     this.F.radio.say(this.f, 'lost', { N: s.id % 9 + 1 }, 30);
     // methodical Soviets rebuild what they lost; the PRC simply carries on expanding
     if (this.f === 'soviet' && s.kind !== 'miner') this.orderI = Math.max(0, Math.min(this.orderI, this.P.order.length) - 1);

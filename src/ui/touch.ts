@@ -1,4 +1,4 @@
-// Mobile controls: a virtual stick on the left, round machine buttons on the right (PUNCH, USE, THROW, POWER and
+// Mobile controls: a virtual stick on the left, round machine buttons on the right (PUNCH, USE, THROW, POWER, FIRE and
 // a small knob that turns the ability wheel), one-finger drag to swing the camera round, pinch to zoom and a
 // two-finger twist to rotate. Everything is pixel art in the console's style: riveted gunmetal bezels, painted
 // caps with stencilled labels, little lamps that light when the button can do something. Hidden on desktop.
@@ -8,6 +8,7 @@ import { Pix, GM, RD, PH, AM, CR, INK, BK, OL, dv, text, textW, mixc } from './m
 import { iconCanvas } from './pixelart';
 import { S } from './kit';
 import { sfx } from '../audio/audio';
+import { TRIGGER } from '../robots/weapons/trigger';
 
 export interface TouchHost {
   stick(x: number, y: number, on: boolean): void;
@@ -171,7 +172,7 @@ export class TouchControls {
   private style: HTMLStyleElement;
   private zone: HTMLDivElement; private base: HTMLDivElement; private knob: HTMLDivElement;
   private pad: HTMLDivElement;
-  private b: Record<'punch' | 'use' | 'throw' | 'power' | 'wheel', Btn>;
+  private b: Record<'punch' | 'use' | 'throw' | 'power' | 'wheel' | 'fire', Btn>;
   private stickId: number | null = null; private sx = 0; private sy = 0; private kx = 0; private ky = 0;
   private gest = new Map<number, { x: number; y: number }>();
   private gd = 0; private ga = 0;
@@ -213,13 +214,15 @@ export class TouchControls {
     const C = { x: 34, y: 32 };
     // (x, y are distances from the right and bottom edges: 0 deg is straight left of PUNCH, 90 deg straight above)
     const at = (deg: number, d: number) => ({ x: C.x + Math.cos((deg * Math.PI) / 180) * d, y: C.y + Math.sin((deg * Math.PI) / 180) * d });
-    const pU = at(0, 41), pT = at(48, 42), pP = at(94, 42), pW = at(70, 64);
+    const pU = at(0, 41), pT = at(48, 42), pP = at(94, 42), pW = at(70, 64), pF = at(24, 68);
     this.b = {
       punch: mk(21, RED, 'PUNCH', C.x, C.y),
       use: mk(15, BAK, 'USE', pU.x, pU.y),
       throw: mk(15, BAK, 'THROW', pT.x, pT.y),
       power: mk(15, BAK, 'POWER', pP.x, pP.y),
       wheel: mk(9, mute(OL, 0.1), '', pW.x, pW.y),
+      // the golem's mounted weapons (robots/weapons): held down, they fire where it aims
+      fire: mk(15, BAK, 'FIRE', pF.x, pF.y),
     };
     // the wheel knob: a turning arrow
     { const n = 9 * Q, p = new Pix(n, n), cc = (n - 1) / 2;
@@ -229,7 +232,7 @@ export class TouchControls {
       const ic = p.canvas(); ic.className = 'tc-ic'; ic.style.width = ic.style.height = 9 * k + 'px'; ic.style.top = '50%'; this.b.wheel.e.appendChild(ic); }
     // the labels are set in the pixel face: repaint the caps once it has loaded
     const relabel = () => {
-      for (const [id, r, cap, label] of [['punch', 21, RED, 'PUNCH'], ['use', 15, BAK, 'USE'], ['throw', 15, BAK, 'THROW'], ['power', 15, BAK, 'POWER']] as const) {
+      for (const [id, r, cap, label] of [['punch', 21, RED, 'PUNCH'], ['use', 15, BAK, 'USE'], ['throw', 15, BAK, 'THROW'], ['power', 15, BAK, 'POWER'], ['fire', 15, BAK, 'FIRE']] as const) {
         this.b[id].e.style.backgroundImage = `url(${buttonSheet(r, cap as unknown as number[], label).url})`;
       }
     };
@@ -240,6 +243,7 @@ export class TouchControls {
     this.press(this.b.throw, () => { this.holdingAtPress = host.labels().holding; host.throwPress(); }, (b) => { if (this.holdingAtPress) host.throwRelease(); void b; }, (b) => { if (this.holdingAtPress) host.throwAim(b.dx, b.dy); });
     this.press(this.b.power, () => host.powerPress(), (b) => host.powerRelease(b.dx, b.dy));
     this.press(this.b.wheel, () => host.turnWheel(), () => {});
+    this.press(this.b.fire, () => { TRIGGER.touch = true; }, () => { TRIGGER.touch = false; });
     // camera gestures on the open view: one finger swings it round, two pinch and twist
     addEventListener('pointerdown', this.gDown, true);
     addEventListener('pointermove', this.gMove, true);
@@ -384,6 +388,7 @@ export class TouchControls {
     lamp(this.b.use, L.use ? (L.useOk ? 1 : 2) : 0); dead(this.b.use, !L.use);
     lamp(this.b.throw, L.holding ? 2 : L.canThrow ? 1 : 0); dead(this.b.throw, !L.canThrow && !L.holding);
     lamp(this.b.power, L.power ? 1 : 0); dead(this.b.power, !L.power);
+    lamp(this.b.fire, TRIGGER.armed ? (TRIGGER.touch ? 2 : 1) : 0); dead(this.b.fire, !TRIGGER.armed);
     // the armed power's icon on its cap
     const key = L.power;
     if (key !== this.iconKey) {
@@ -402,7 +407,7 @@ export class TouchControls {
   setVisible(v: boolean) {
     this.active = v;
     this.zone.classList.toggle('tc-hide', !v); this.pad.classList.toggle('tc-hide', !v);
-    if (!v) { this.host.stick(0, 0, false); this.punchHeld = this.useHeld = false; }
+    if (!v) { this.host.stick(0, 0, false); this.punchHeld = this.useHeld = false; TRIGGER.touch = false; }
   }
   dispose() {
     removeEventListener('pointerdown', this.gDown, true); removeEventListener('pointermove', this.gMove, true);

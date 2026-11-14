@@ -467,7 +467,7 @@ function injectStyle() {
   if (styled) return; styled = true;
   const st = document.createElement('style');
   st.textContent = `
-  .eco-sheet { position: fixed; right: calc(8px * var(--s, 1)); top: calc(52px * var(--s, 1)); width: calc(232px * var(--s, 1)); z-index: 11; pointer-events: auto;
+  .eco-sheet { position: fixed; left: calc(10px * var(--s, 1)); top: calc(40px * var(--s, 1)); width: calc(232px * var(--s, 1)); max-height: calc(100vh - 150px * var(--s, 1)); overflow: hidden; z-index: 11; pointer-events: auto;
     background-color: #d9d2bf; color: #3b3a36; font-family: 'VT', monospace; font-size: calc(5px * var(--s, 1)); line-height: calc(7px * var(--s, 1));
     padding: calc(7px * var(--s, 1)) calc(8px * var(--s, 1)) calc(6px * var(--s, 1)); transform: rotate(-0.6deg);
     background-image: repeating-linear-gradient(0deg, transparent 0, transparent calc(7px * var(--s, 1) - 1px), #9fb4c2 calc(7px * var(--s, 1) - 1px), #9fb4c2 calc(7px * var(--s, 1)));

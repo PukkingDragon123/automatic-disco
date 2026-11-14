@@ -582,3 +582,6 @@ table.fc-tab td { position: relative; border-bottom: calc(1px * var(--tf)) dotte
 .fc-man-jobs .fc-btn { font-size: calc(11px * var(--tf)); line-height: calc(9px * var(--tf)); }
 .tube-fill.fac-pw.low { background: linear-gradient(180deg, #e0998a 0 calc(1px * var(--s)), #942e25 calc(1px * var(--s))); }
 @media (max-width: 700px) { .fc-card { flex-basis: calc(100px * var(--tf)); } .fc-plate { width: calc(96px * var(--tf)); height: calc(67px * var(--tf)); } }
+/* with an inspection form open on the right, the report moves over to the left */
+.fc-ui.insp-on .fc-stats { left: calc(4px * var(--tf)); translate: none; width: min(calc(640px * var(--tf)), calc(100vw - 316px * var(--tf))); }
+.fc-ui.insp-on.crew-on .fc-stats { left: auto; right: calc(310px * var(--tf)); }

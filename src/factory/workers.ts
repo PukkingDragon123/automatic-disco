@@ -83,6 +83,8 @@ export class Workers {
     const why = this.whyJob(job); if (why) return why;
     const w = this.enlist(c);
     this.release(c, true);
+    // the biotech runtime's own field jobs give way to the harness (game.biotech)
+    if (job !== 'idle') { const bt = (this.f.g as unknown as { biotech?: { assign?(c: Creature, job: string): unknown } }).biotech; try { bt?.assign?.(c, 'idle'); } catch { /* not ours */ } }
     w.job = job; w.target = target; w.seam = seam; w.state = 'find'; w.route = null; w.note = '';
     (c as unknown as { __job?: number }).__job = job === 'idle' ? 0 : 1;
     if (job === 'operate' && target) { if (target.operator && target.operator !== c) this.release(target.operator); target.operator = c; }

@@ -563,13 +563,30 @@ function paintBark(seed: number): THREE.DataTexture {
     }
   }
   for (let k = 0; k < 16; k++) { const x = r.int(0, SW - 1), y = r.int(0, BH - 1); put(BARK.FURROW, x, y, T[4]); put(BARK.FURROW, x + 1, y, T[3] + 10); put(BARK.FURROW, x, y + 1, T[1]); }
-  // plated bark: offset rows of plates, each outlined below and right, lit along its top and left edges, a crack in some
-  for (let y = 0; y < BH; y++) for (let x = 0; x < SW; x++) {
-    const row = Math.floor(y / 16), px = (x + (row & 1) * 8) % 16, py = y % 16;
-    if (py >= 14 || px >= 14) put(BARK.PLATE, x, y, T[0] - (py === 15 || px === 15 ? 22 : 10), 8, 0, -6);
-    else if (py === 0 || px === 0) put(BARK.PLATE, x, y, (x < 32 ? T[4] : T[3]) + 4);
-    else if (py === 1 || px === 1) put(BARK.PLATE, x, y, (x < 32 ? T[3] : T[2]) + 6);
-    else if ((px + py * 3 + row * 5) % 29 === 0) for (let j = 0; j < 4; j++) put(BARK.PLATE, x + j, y + (j >> 1), T[0]);
+  // plated bark: rows of different heights, each split into plates of different widths (wrapping round the trunk);
+  // a plate is lit along its top and left edge, seamed dark below and right, some split by a vertical crack
+  {
+    const rows: number[] = []; let acc = 0;
+    while (acc < BH) { let h = r.int(12, 20); if (BH - (acc + h) < 12) h = BH - acc; rows.push(h); acc += h; }
+    let y0 = 0;
+    for (const h of rows) {
+      const cuts: number[] = []; let x = r.int(0, 15);
+      while (cuts.length === 0 || x < cuts[0] + SW - 9) { cuts.push(x); x += r.int(10, 22); }
+      for (let k = 0; k < cuts.length; k++) {
+        const a = cuts[k], b = k + 1 < cuts.length ? cuts[k + 1] : cuts[0] + SW, tone = r.pick([0, 6, -6, 10]), crack = r.chance(0.35) ? r.int(a + 4, b - 4) : -1;
+        for (let yy = 0; yy < h; yy++) for (let xx = a; xx < b; xx++) {
+          const px = xx - a, w = b - a, lit = (xx % SW) < 32;
+          let v = (lit ? T[3] : T[2]) + tone;
+          if (yy >= h - 2 || px >= w - 2) v = T[0] - (yy === h - 1 || px === w - 1 ? 24 : 12);
+          else if (yy === 0 || px === 0) v = (lit ? T[4] : T[3]) + 6;
+          else if (yy === 1 || px === 1) v = (lit ? T[4] : T[3]) - 6;
+          else if (px > w * 0.6) v -= 14;
+          if (xx === crack && yy > 2 && yy < h - 4) v = T[0] - 8;
+          put(BARK.PLATE, xx, y0 + yy, v, yy >= h - 2 || px >= w - 2 ? 8 : 0, 0, yy >= h - 2 || px >= w - 2 ? -6 : 0);
+        }
+      }
+      y0 += h;
+    }
   }
   // a palm trunk: leaf-scar rings with a diamond weave between them, fibres hanging from each ring
   for (let y = 0; y < BH; y++) for (let x = 0; x < SW; x++) {
@@ -586,13 +603,17 @@ function paintBark(seed: number): THREE.DataTexture {
     const x = r.int(8, SW - 12), y = r.int(8, BH - 12);
     for (const [dx, dy, v] of [[0, 0, T[0] - 20], [1, 0, T[0] - 20], [0, 1, T[0] - 10], [1, 1, T[0]], [-1, 0, T[1]], [2, 1, T[1]], [0, -1, T[1]], [-1, 2, T[4]], [0, 2, T[4]], [2, -1, T[4]]] as [number, number, number][]) put(BARK.SMOOTH, x + dx, y + dy, v);
   }
-  // alien scales: offset rows of pointed plates, each lit on its upper left and outlined below
-  for (let y = 0; y < BH; y++) for (let x = 0; x < SW; x++) {
-    const row = Math.floor(y / 12), px = (x + (row & 1) * 6) % 12, py = y % 12;
-    const edge = py >= 10 || (py >= 6 && (px <= 1 || px >= 10)) || (py >= 8 && (px === 2 || px === 9));
-    if (edge) put(BARK.SCALE, x, y, T[0] - (py === 11 ? 16 : 4), 4, 0, 6);
-    else if (py <= 1 || px === 2 || px === 3) put(BARK.SCALE, x, y, T[3] + (py === 0 ? 20 : 4));
-    else if (px >= 7) put(BARK.SCALE, x, y, T[1]);
+  // alien scales: overlapping rows of pointed shields (each row's tips lie over the row below), lit on the upper left,
+  // a bright rim along the top, outlined below; every scale its own tone
+  for (let row = BH / 8 - 1; row >= 0; row--) for (let c = 0; c < SW / 16 + 1; c++) {
+    const x0 = c * 16 + (row & 1) * 8 - 8, y0 = row * 8, tone = ((c * 7 + row * 3) % 4) * 5 - 6;
+    for (let py = 0; py < 15; py++) for (let px = 0; px < 16; px++) {
+      const half = py < 6 ? 8 : 14 - py;
+      if (Math.abs(px + 0.5 - 8) > half) continue;
+      const edgeB = py >= 6 && Math.abs(px + 0.5 - 8) > half - 1.2, rim = py <= 1;
+      const v = edgeB || py === 14 ? T[0] - 18 : rim ? T[4] + 8 : px < 6 ? T[3] + tone : px < 9 ? T[2] + 10 + tone : T[1] + tone;
+      put(BARK.SCALE, x0 + px, y0 + py, v, edgeB ? 4 : 0, 0, edgeB ? 6 : 0);
+    }
   }
   // stems: fine lengthwise lines; fibres: pale and dark streaks; flesh: pore clusters
   for (let y = 0; y < BH; y++) { put(BARK.STEM, 12, y, T[4]); put(BARK.STEM, 13, y, T[4] - 10); put(BARK.STEM, 40, y, T[2] - 6); }

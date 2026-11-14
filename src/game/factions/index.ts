@@ -259,7 +259,13 @@ export class Factions {
   }
   /** the flattest open ground within ~12 m of a planned site, kept away from Unit 07's landing */
   settle(x: number, z: number, r: number): [number, number] {
-    const R = this.g.region, L = R.landing;
+    const R = this.g.region, L = R.landing, N = R.N;
+    // Unit 07 chose to drop right onto a planned site (deploy): the base sits back out of its way
+    if (Math.hypot(x - L.x, z - L.z) < 32) {
+      const d = Math.hypot(x - L.x, z - L.z), ux = d > 1 ? (x - L.x) / d : 1, uz = d > 1 ? (z - L.z) / d : 0;
+      x = clamp(L.x + ux * 36, r + 6, N - r - 6); z = clamp(L.z + uz * 36, r + 6, N - r - 6);
+      if (Math.hypot(x - L.x, z - L.z) < 28) { x = L.x < N / 2 ? N - 20 : 20; z = L.z < N / 2 ? N - 20 : 20; }
+    }
     let best: [number, number] = [x, z], bs = -1e9;
     for (let k = 0; k < 160; k++) {
       const a = k * 2.399, rr = Math.sqrt(k / 160) * 12;

@@ -3,6 +3,9 @@
 // It punches (piston arms, or a headbutt while it is only a head), picks up and throws stones and boulders, dashes
 // (a plow with the skill), works whatever is in front of it with [E] (drill, scrape, siphon, excavate, intake,
 // graft, press seed, convert), takes hits, breaks apart and reboots at the core. Its body follows the skill tree.
+// Weapons (robots/weapons/store.ts): while a designed weapon is on the golem, holding the RIGHT mouse button (or a
+// side button, or the touch FIRE button) fires it where the golem aims; fly-to and ally orders then move to
+// Ctrl + right click. Without a weapon the right button works as before.
 import * as THREE from 'three';
 import type { Game } from './game';
 import { type Creature, GOLEM_REF, type GolemTarget } from './creature';

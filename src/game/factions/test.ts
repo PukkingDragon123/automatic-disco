@@ -5,6 +5,7 @@
 //   &ff=20                     fast-forward the faction sim n seconds before showing
 //   &peace                     no waves (just the bases)      &seed=11 &biome=meadow
 //   &golem                     Unit 07 runs as usual (its camera follows it)
+//   &kill=prc|sov              destroy that programme's lander first (elimination, wrecks, fires)
 import type { Engine } from '../../app/engine';
 import type { Input } from '../../app/input';
 import type { BiomeKey } from '../../world/region';
@@ -38,6 +39,8 @@ export async function testFactions(engine: Engine, input: Input, P: URLSearchPar
     sov.debugWave(['sov_trooper', 'sov_trooper', 'sov_trooper', 'sov_trooper', 'sov_tank', 'sov_tank', 'sov_titan', 'sov_drone']);
     prc.debugWave(['prc_scout', 'prc_scout', 'prc_scout', 'prc_trooper', 'prc_trooper', 'prc_trooper', 'prc_mech'], true);
   }
+  // &kill=prc|sov: blow up that programme's lander (its machines lose their signal, its structures blow their charges)
+  const kill = P.get('kill'); if (kill) (kill === 'prc' ? prc : sov).hq?.destroy();
   for (let i = 0, n = Number(P.get('ff') ?? 0) * 10; i < n; i++) { F.update(0.1); tickRobots(g, 0.1); }
   const look = P.get('look') ?? 'sov';
   const centroid = (us: { x: number; z: number; dead: boolean }[], dflt: number[]) => { const a = us.filter((u) => !u.dead); return a.length ? [a.reduce((s, u) => s + u.x, 0) / a.length, a.reduce((s, u) => s + u.z, 0) / a.length] : dflt; };

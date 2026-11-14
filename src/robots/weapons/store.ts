@@ -11,9 +11,10 @@ import { buildWeaponMesh } from './model';
 import { robotHooks, fireWeapon, nearestHostile, type RobotUnit, type Shooter, type Weapon } from '../unit';
 import { liveryFor } from '../atlas';
 import { RAMPS } from '../../art/palette';
+import { TRIGGER } from './trigger';
 
 const KEY = 'oddworld.weapons.v1';
-export interface WeaponStore { designs: WeaponDesign[]; tooled: string[]; golem: { hand: string | null; mount: string | null }; issue: Record<string, string> }
+export interface WeaponStore { designs: WeaponDesign[]; tooled: string[]; golem: { hand: string | null; mount: string | null }; issue: Record<string, string>; /** the golem's mounts pick their own targets (off: they fire only on the trigger) */ auto?: boolean }
 let S: WeaponStore | null = null;
 export function store(): WeaponStore {
   if (S) return S;
@@ -88,18 +89,27 @@ function tickGolemGuns(g: Game, dt: number) {
   const guns = GUNS.get(g); if (!guns) return;
   const P = (g as unknown as { player?: { x: number; y: number; z: number; alive: boolean; started: boolean } }).player;
   const child = g.child as unknown as { aim: THREE.Vector3 | null; look: THREE.Vector3; fireAim: THREE.Vector3 | null; weaponMuzzle(s: 'hand' | 'mount', o?: THREE.Vector3): THREE.Vector3 | null; recoil(k?: number): void };
+  TRIGGER.armed = !!(guns.hand || guns.mount);
   if (!P || !P.started || !P.alive || dt <= 0) { child.fireAim = null; return; }
+  // the trigger (right mouse, a side button, touch FIRE) fires where the golem aims, snapping to an enemy close to
+  // that point; with AUTO-TARGET on, the mounts pick the nearest enemy themselves while the trigger is up
+  const manual = TRIGGER.mouse || TRIGGER.touch, auto = !!store().auto;
+  const aimPt = child.aim ?? child.look;
   let aim: THREE.Vector3 | null = null;
   for (const slot of ['hand', 'mount'] as const) {
     const G = guns[slot]; if (!G) continue;
     G.cd -= dt; G.heat = Math.max(0, G.heat - dt * 2.2);
     if (G.hot && G.heat < 3) G.hot = false;
-    const t = nearestHostile(g, 'veyr', P.x, P.z, G.w.range, child.aim ?? undefined);
-    if (!t) continue;
-    aim = t.p;
+    let tp: THREE.Vector3 | null = null;
+    if (manual) {
+      const near = TRIGGER.touch && !TRIGGER.mouse ? nearestHostile(g, 'veyr', P.x, P.z, G.w.range, aimPt) : nearestHostile(g, 'veyr', aimPt.x, aimPt.z, 1.6);
+      tp = near ? near.p : new THREE.Vector3(aimPt.x, Math.max(aimPt.y, g.world.surfaceY(aimPt.x, aimPt.z)) + 0.35, aimPt.z);
+    } else if (auto) tp = nearestHostile(g, 'veyr', P.x, P.z, G.w.range, aimPt)?.p ?? null;
+    if (!tp) continue;
+    aim = tp;
     if (G.cd > 0 || G.hot) continue;
     const mz = child.weaponMuzzle(slot, _m); if (!mz) continue;
-    fireWeapon(g, { faction: 'veyr', x: P.x, z: P.z } as Shooter, mz, t.p, G.w);
+    fireWeapon(g, { faction: 'veyr', x: P.x, z: P.z } as Shooter, mz, tp, G.w);
     G.cd = G.w.cd * (0.9 + Math.random() * 0.2);
     G.heat += G.heatPer; if (G.heat > 10) { G.hot = true; g.fx.burst(mz.x, mz.y, mz.z, 8, RAMPS.snow[4], { speed: 0.6, up: 1.4, size: 3, life: 1, grav: -0.8 }); }
     G.ammo += G.ammoPer; if (G.ammo >= 10) { G.ammo -= 10; factoryOf(g)?.take('ammo', 1); }
@@ -115,6 +125,18 @@ export function installWeapons(g: Game) {
   for (const u of (g as unknown as { robots?: RobotUnit[] }).robots ?? []) if (u.faction === 'veyr' && s.issue[u.kind]) equipUnit(u, designById(s.issue[u.kind]));
   for (const slot of ['hand', 'mount'] as const) if (s.golem[slot]) equipGolem(g, slot, s.golem[slot]);
   g.update$.push((dt) => { try { tickGolemGuns(g, dt); } catch (e) { console.error('golem guns', e); } });
+  // the trigger: holding the right button (or a side button) over the view fires while a weapon is on the golem;
+  // Ctrl + right click keeps the old right click (fly there, order the allies). Side buttons never navigate away.
+  const cv = g.engine.canvas;
+  const isFire = (e: MouseEvent) => (e.button === 2 && !e.ctrlKey) || e.button === 3 || e.button === 4;
+  const driving = () => !!(g as unknown as { player?: { driving?: boolean } }).player?.driving && g.engine.screen === g;
+  const down = (e: PointerEvent) => {
+    if (e.target !== cv || !isFire(e) || !TRIGGER.armed || !driving()) return;
+    e.stopImmediatePropagation(); e.preventDefault(); TRIGGER.mouse = true;
+  };
+  const up = (e: PointerEvent | MouseEvent) => { if (e.button === 2 || e.button === 3 || e.button === 4) { if (TRIGGER.mouse && e.button !== 2) e.preventDefault(); TRIGGER.mouse = false; } };
+  const nav = (e: MouseEvent) => { if ((e.button === 3 || e.button === 4) && TRIGGER.armed) e.preventDefault(); };
+  addEventListener('pointerdown', down, true); addEventListener('pointerup', up, true); addEventListener('mouseup', nav, true); addEventListener('blur', () => { TRIGGER.mouse = false; });
   // [F2] or the ORDNANCE tab on the right edge opens the workbench (every letter key is taken)
   const open = () => { if (g.engine.screen === g) import('./bench').then((m) => m.openBench(g.engine, g)); };
   g.input.onKey((e) => {
@@ -128,5 +150,5 @@ export function installWeapons(g: Game) {
   tab.onclick = open;
   document.body.appendChild(tab);
   g.update$.push(() => { const on = g.engine.screen === g; if ((tab.style.display !== 'none') !== on) tab.style.display = on ? '' : 'none'; });
-  const dis = g.dispose.bind(g); g.dispose = () => { tab.remove(); dis(); };
+  const dis = g.dispose.bind(g); g.dispose = () => { tab.remove(); removeEventListener('pointerdown', down, true); removeEventListener('pointerup', up, true); removeEventListener('mouseup', nav, true); TRIGGER.mouse = TRIGGER.touch = TRIGGER.armed = false; dis(); };
 }

@@ -182,6 +182,7 @@ export class WeaponBench implements Screen {
           <button data-act="hand" ${why || !tooled ? 'disabled' : ''}>GOLEM: ARM${s.golem.hand === d.id ? ' ✓' : ''}</button>
           <button data-act="mount" ${why || !tooled ? 'disabled' : ''}>GOLEM: MOUNT${s.golem.mount === d.id ? ' ✓' : ''}</button>
           <select data-act="issue" ${why || !tooled ? 'disabled' : ''}><option value="">ISSUE TO ROBOTS…</option>${kinds.map((k) => `<option value="${k}">${k.toUpperCase()}${s.issue[k] === d.id ? ' ✓' : ''}</option>`).join('')}</select>
+          <button data-act="auto" title="Off: the golem's weapons fire only while the trigger is held (right mouse, a side button, touch FIRE)">AUTO-TARGET: ${s.auto ? 'ON' : 'OFF'}</button>
           <button data-act="fire">${this.firing ? 'HOLD FIRE' : 'TEST FIRE'}</button>
           <button class="red" data-act="close">CLOSE [F2]</button>
         </div>
@@ -199,6 +200,7 @@ export class WeaponBench implements Screen {
     act('mount').onclick = () => { equipGolem(this.game, 'mount', store().golem.mount === d.id ? null : d.id); this.paint(); };
     (act('issue') as HTMLSelectElement).onchange = (e) => { const k = (e.target as HTMLSelectElement).value; if (k) issueTo(this.game, k, store().issue[k] === d.id ? null : d.id); this.paint(); };
     act('fire').onclick = () => { this.firing = !this.firing; this.paint(); };
+    act('auto').onclick = () => { const st = store(); st.auto = !st.auto; saveStore(); this.paint(); };
     act('close').onclick = () => this.close();
     drawElevation(this.el.querySelector<HTMLCanvasElement>('canvas.bp')!, d);
   }
