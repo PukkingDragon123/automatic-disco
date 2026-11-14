@@ -16,6 +16,9 @@ import { RAMPS } from '../art/palette';
 import { S, el, toast } from '../ui/kit';
 import { textSprite, floatText } from '../ui/floatText';
 import { clamp } from '../core/rand';
+import * as THREE from 'three';
+import { StubClimate, readClimate, type ClimateLike } from './climate';
+import { vfx2d } from '../game/vfx2d';
 
 export type OverlayMode = 'off' | 'water' | 'soil' | 'life';
 const MODES: OverlayMode[] = ['off', 'water', 'soil', 'life'];
@@ -95,6 +98,18 @@ export class EcoView {
     // the factory's buildings are structures the wildlife keeps clear of
     this.eco.structures = () => ((game as unknown as { factory?: { buildings?: { x: number; z: number }[] } }).factory?.buildings ?? []);
     this.eco.onNote = (n) => this.noted(n);
+    // the season's spectacle: lightning (drawn here until the climate draws its own), felled trees
+    this.eco.onStrike = (x, z) => {
+      if ((game as unknown as { climate?: unknown }).climate) return;
+      const y = game.world.surfaceY(x, z), top = new THREE.Vector3(x + (Math.random() - 0.5) * 4, y + 24, z + (Math.random() - 0.5) * 4);
+      game.fx.arc(top, new THREE.Vector3(x, y, z), 0.35, 0xe2e1d8, 0.6); game.fx.arc(top, new THREE.Vector3(x + 1.5, y, z - 1), 0.25, 0xcfd2cc, 0.45);
+      game.fx.burst(x, y + 0.2, z, 14, 0xe4cd98, { glow: true, speed: 3, up: 3, size: 3, life: 0.5 });
+      vfx2d.play('shock', x, y + 0.1, z, { scale: 2 });
+      const d = Math.hypot(x - game.cam.target.x, z - game.cam.target.z); if (d < 50) game.cam.shake(0.25 * (1 - d / 50), 0.3);
+    };
+    this.eco.onFell = (x, z) => { const y = game.world.surfaceY(x, z); vfx2d.play('dust', x, y + 0.3, z, { scale: 2.6 }); vfx2d.play('leaves', x, y + 2.5, z, { scale: 2 }); };
+    // a live climate's own lightning, if it announces it
+    game.on('lightning', (d: { x?: number; z?: number }) => { if (typeof d?.x === 'number' && typeof d?.z === 'number') this.eco.strike(d.x, d.z); });
     const wh = game.world.hooks, prev = wh.onBirth;
     wh.onBirth = (kid, par, nsp) => { prev?.(kid, par, nsp); if (kid.faction === 'wild') this.born(kid); };
     const off = game.input.onKey((e) => this.key(e));
@@ -140,8 +155,12 @@ export class EcoView {
   private update(dt: number) {
     const g = this.game;
     this.lastT = performance.now();
-    // the weather waters the land
+    // the weather waters the land; the climate (when it exists) drives the season
     this.eco.rain = (g as unknown as { details?: { raining: number } }).details?.raining ?? 0;
+    const gc = (g as unknown as { climate?: unknown }).climate;
+    if (gc) { if (this.eco.climate instanceof StubClimate) this.eco.climate = { ...this.eco.climate } as ClimateLike; readClimate(gc, this.eco.climate); }
+    this.eco.focus = { x: g.cam.target.x, z: g.cam.target.z };
+    this.spectacle(dt);
     const W = innerWidth, H = innerHeight;
     if (this.cv.width !== W || this.cv.height !== H) { this.cv.width = W; this.cv.height = H; }
     const c = this.g;
@@ -150,6 +169,40 @@ export class EcoView {
     if (this.mode !== 'off') this.drawOverlay(W, H);
     this.drawEmotes(dt);
     if (this.sheet && (this.sheetT -= dt) <= 0) { this.sheetT = 1; this.fillSheet(); }
+  }
+
+  // ---------------------------------------------------------------- fire and titans
+  private stomps = new WeakMap<Creature, number>();
+  private flameT = 0;
+  private spectacle(dt: number) {
+    const g = this.game, eco = this.eco, w = g.world, tx = g.cam.target.x, tz = g.cam.target.z;
+    if (dt <= 0) return;
+    // wildfire near the camera: flames licking up, smoke rolling off
+    if (eco.fires && (this.flameT -= dt) <= 0) {
+      this.flameT = 0.08;
+      const G = eco.G;
+      for (let k = 0; k < 6; k++) {
+        const c = Math.floor(Math.random() * G * G);
+        if (eco.fire[c] < 0.2) continue;
+        const x = eco.cx(c) + (Math.random() - 0.5) * CS, z = eco.cz(c) + (Math.random() - 0.5) * CS;
+        if ((x - tx) ** 2 + (z - tz) ** 2 > 60 * 60) continue;
+        const y = w.surfaceY(x, z);
+        g.fx.burst(x, y + 0.2, z, 3, Math.random() < 0.5 ? RAMPS.glowAmber[3] : RAMPS.rust[5], { glow: true, speed: 0.6, up: 2.4, size: 3, life: 0.7, grav: -1.2 });
+        if (Math.random() < 0.35) vfx2d.play('smoke', x, y + 1.2, z, { scale: 2.2 });
+      }
+    }
+    // titans: every heavy footfall shakes the camera nearby, throws dust and flattens the growth
+    for (const c of w.creatures) {
+      if (c.dead || !c.titan || !c.mesh.visible) continue;
+      const st = (c.anim as unknown as { stomp?: number }).stomp ?? 0, prev = this.stomps.get(c) ?? 0;
+      this.stomps.set(c, st);
+      if (!(st > 0.9 && prev < 0.6)) continue;
+      const d = Math.hypot(c.x - tx, c.z - tz);
+      if (d < 70) g.cam.shake(0.32 * (1 - d / 70) ** 2, 0.25);
+      const a = c.yaw + (Math.random() < 0.5 ? 0.6 : -0.6), r = c.radius * 0.7, fx = c.x + Math.sin(a) * r, fz = c.z + Math.cos(a) * r, fy = w.surfaceY(fx, fz);
+      vfx2d.play('dust', fx, fy + 0.2, fz, { scale: 1.6 + c.radius * 0.25 });
+      w.flora.impulse(fx, fz, 2.5 + c.radius * 0.3, 1.1);
+    }
   }
 
   // ---------------------------------------------------------------- bubbles
@@ -417,7 +470,7 @@ export class EcoView {
       <div class="es-top"><span>U.S. PLANETARY CORPS</span><span>FORM 7-E</span></div>
       <div class="es-title">FIELD SURVEY: FAUNA &amp; FLORA</div>
       <div class="es-meta">REGION <u>${g.regionName.toUpperCase()}</u> &nbsp; DAY <u>${eco.dayNo}</u> &nbsp; TIME <u>${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}</u></div>
-      <div class="es-meta">SEASON <u>${eco.seasonName()}</u></div>
+      <div class="es-meta">SEASON <u>${eco.seasonName()}</u> &nbsp; WEATHER <u>${eco.climate.weather.toUpperCase()}</u> &nbsp; <u>${Math.round(eco.climate.temp)}&deg;C</u>${eco.fires ? ` &nbsp; <b style="color:#b8382e">FIRE: ${eco.fires} CELLS</b>` : ''}</div>
       <div class="es-meta">WATER STAGE <u>${lv >= 0 ? '+' : '&minus;'}${Math.abs(lv).toFixed(2)} M ${lv > 0.25 ? 'IN SPATE' : lv < -0.15 ? 'LOW' : 'NORMAL'}</u> &nbsp; RAIN <u>${rain > 0.5 ? 'HEAVY' : rain > 0.1 ? 'SHOWERS' : 'NONE'}</u></div>
       <div class="es-meta">SOIL <u>${word(mo, ['PARCHED', 'DRY', 'MOIST', 'WET', 'SODDEN'])} ${mo.toFixed(2)}</u> &nbsp; FERTILITY <u>${fe.toFixed(2)}</u> &nbsp; FORAGE <u>${Math.round(ve * 100)}%</u></div>
       <table class="es-t"><tr><th>SPECIES</th><th>ROLE</th><th>HRS</th><th>NO.</th><th>TREND</th><th>B / D</th><th>STATUS</th></tr>

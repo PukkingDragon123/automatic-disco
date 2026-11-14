@@ -70,7 +70,11 @@ export class Sun {
     this.setColors(pal, 1);
   }
   /** PCF radius in shadow texels: wider on the bigger map, wider still under cloud */
-  private softness() { return (settings.quality === 'low' ? 1 : this.size > 1024 ? 2.2 : 1.6) + this.overcast * 3; }
+  private softness() {
+    // a low sun throws long, softer shadows; cloud diffuses them further
+    const low = 1 - Math.min(1, Math.max(0, this.dir.y));
+    return (settings.quality === 'low' ? 1 : this.size > 1024 ? 2 : 1.5) * (1 + low * 0.9) + this.overcast * 3;
+  }
   /** a new shadow map size takes a fresh map */
   applyQuality() {
     const n = qualityProfile().shadowMap, s = this.light.shadow;
@@ -97,6 +101,7 @@ export class Sun {
   }
   follow(target: THREE.Vector3, viewDist: number) {
     if (qualityProfile().shadowMap !== this.size) this.applyQuality();
+    this.light.shadow.radius = this.softness();
     const R = (this.radius = Math.max(26, Math.min(120, viewDist * 1.15)));
     const cam = this.light.shadow.camera;
     cam.left = -R; cam.right = R; cam.top = R; cam.bottom = -R;
