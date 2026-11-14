@@ -129,10 +129,10 @@ export class FloraTex {
           if (biteT > 0 && side > 0 && Math.abs(t - biteT) < 0.09) ws -= Math.max(0, 2.4 - Math.abs(t - biteT) * 30);
           if (Math.abs(sx) > ws || t > 0.985) continue;
           // two clean bands: lit left, shaded right; the base a step darker, the tip a step lighter
-          let i = sx < 0 ? n - 2 : n - 3;
+          let i = sx < 0 ? n - 1 : n - 2;
           if (t < 0.18) i--;
-          if (t > 0.72 && sx < 0) i++;
-          if (curl && t > 0.84) i = sx < 0 ? n - 3 : n - 4;
+          if (t > 0.72 && sx < 0) i = n;
+          if (curl && t > 0.84) i = sx < 0 ? n - 2 : n - 3;
           if (o.petal) i = Math.min(n, (t < 0.3 ? 2 : t < 0.65 ? 3 : 4) + (sx < 0 ? 1 : 0));
           P.set(x, y, i);
         }
@@ -332,9 +332,10 @@ export class FloraTex {
       const P = mk([ramp]), n = ramp.length - 1, per = Math.max(2, Math.round(16 / ribs));
       for (let y = 0; y < 24; y++) for (let x = 0; x < 16; x++) {
         const t = y / 24, f = x % per;
-        let i = f === 0 ? 1 : n - 2 + (glow && t > 0.3 && t < 0.7 ? 1 : 0);
-        if (f === 1 && t > 0.2 && t < 0.6) i = n;
-        P.set(x, y, i);
+        // a facet per rib: crease lines a step down, the facet body in one tone, a lit patch high on it
+        let i = f === 0 ? n - 4 : n - 3 + (glow && t > 0.3 && t < 0.7 ? 1 : 0);
+        if (f === 1 && t > 0.25 && t < 0.45) i = n - 2;
+        P.set(x, y, Math.max(1, i));
       }
       return P;
     });

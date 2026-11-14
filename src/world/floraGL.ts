@@ -52,6 +52,40 @@ if (vGraft.x > 0.0 || vGraft.z > 0.0) {
 `;
 
 // ------------------------------------------------------------------------------------------------ 3D
+/**
+ * The canopy cutaway: growth between the camera and the focus (the golem) is cut away inside a cone that widens
+ * toward the camera, and tall growth standing right over the focus is cut above its head, so the player always sees
+ * the golem and the ground round it. The cut is a hand-made stepped stipple (quarter, half, three-quarter, full), not a
+ * gradient; trunks and stems stay (the plant reads as cut back to its frame). Nothing renders inside 1.5 m of the
+ * camera. uCut = (on, focus radius, near radius, 0); uFocus = the focus point (world).
+ */
+const CUT_PARS = /* glsl */`
+uniform vec3 uFocus; uniform vec4 uCut;
+float stip(vec2 p, float k) {
+  vec2 q = mod(floor(p), 2.0);
+  if (k > 0.9) return 1.0;
+  if (k > 0.6) return q.x + q.y < 1.5 ? 1.0 : 0.0;
+  if (k > 0.35) return mod(q.x + q.y, 2.0) > 0.5 ? 1.0 : 0.0;
+  if (k > 0.1) return q.x + q.y > 1.5 ? 1.0 : 0.0;
+  return 0.0;
+}
+float cutAt(vec3 P, vec3 C) {
+  if (uCut.x < 0.5) return 0.0;
+  vec3 F = uFocus + vec3(0.0, 0.9, 0.0), D = F - C;
+  float t = dot(P - C, D) / max(1e-4, dot(D, D));
+  float k = 0.0;
+  if (t > 0.0 && t < 1.04) {
+    float R = mix(uCut.z, uCut.y, clamp(t, 0.0, 1.0)), d = length(P - (C + D * t));
+    k = 1.0 - clamp((d - R * 0.7) / (R * 0.6), 0.0, 1.0);
+  }
+  // tall growth over the focus: cut above head height
+  vec2 hz = P.xz - uFocus.xz;
+  float near = 1.0 - clamp((length(hz) - uCut.y * 0.8) / (uCut.y * 0.6), 0.0, 1.0);
+  k = max(k, near * clamp((P.y - uFocus.y - 1.3) / 0.8, 0.0, 1.0));
+  return floor(k * 4.0 + 0.5) / 4.0;
+}
+`;
+
 const VERT_PARS_3D = /* glsl */`
 attribute vec4 aW; attribute vec4 aP;
 attribute vec4 iA; attribute vec4 iB;
@@ -59,7 +93,7 @@ uniform float uTime, uN, uH, uFlex, uPushK, uGround, uBob;
 uniform vec3 uCamPos; uniform vec4 uLod3;
 uniform sampler2D uMoss, uField;
 uniform vec3 uBloom[8];
-varying float vWither, vUp, vTr, vTintK; varying vec2 vFade;
+varying float vWither, vUp, vTr, vTintK; varying vec2 vFade; varying vec3 vWorld;
 varying vec4 vGraft; varying vec3 vBase, vLocal, vTint, vBloom;
 flat varying float vKind;
 ${SHADER_NOISE}
@@ -116,17 +150,20 @@ p.xz += bd * (a1 - a0); p.y = y1;
 if (kind > 0.5 && kind < 3.5 || kind > 6.5) p += nW * sin(t * (7.0 + seed * 4.0) + aW.w * 37.0 + base.x * 1.3) * aW.z * 0.022 * (0.3 + wnd.z) * uWind * min(1.0, Hh);
 p.y += sin(t * 1.2 + ph) * 0.02 * uBob;
 vec3 transformed = base + p;
+vWorld = transformed;
 // LOD band: faded in over uLod3.xy (from the finer LOD), out over uLod3.zw (to the coarser one)
 float cd = distance(uCamPos, base);
 vFade = vec2(smoothstep(uLod3.x, uLod3.y, cd), smoothstep(uLod3.z, uLod3.w, cd));
 `;
 const FRAG_PARS_3D = /* glsl */`
-uniform sampler2D uBark, uVis; uniform float uN, uTime; uniform vec3 uDark; uniform vec3 uGraftCol[4];
-varying float vWither, vUp, vTr, vTintK; varying vec2 vFade;
+uniform sampler2D uBark, uVis; uniform float uN, uTime, uGround; uniform vec3 uDark; uniform vec3 uGraftCol[4];
+varying float vWither, vUp, vTr, vTintK; varying vec2 vFade; varying vec3 vWorld;
 varying vec4 vGraft; varying vec3 vBase, vLocal, vTint, vBloom;
 flat varying float vKind;
+uniform vec3 uCamPos;
 ${SHADER_NOISE}
 ${FOW_FN}
+${CUT_PARS}
 `;
 /** texel lookup (bark slots tile vertically in their own texture), mip-safe alpha cut, LOD dither */
 const FRAG_TEX_3D = /* glsl */`
@@ -158,6 +195,8 @@ export function plant3dMaterial(U: FloraUniforms, atlas: THREE.Texture, local: {
       .replace('#include <common>', '#include <common>\n' + FRAG_PARS_3D)
       .replace('void main() {', GN_DECL + 'void main() {')
       .replace('#include <map_fragment>', `${FRAG_TEX_3D}
+if (distance(vWorld, uCamPos) < 1.5) discard;
+if (uGround < 0.5 && !(vKind < 0.5) && stip(gl_FragCoord.xy, cutAt(vWorld, uCamPos)) > 0.5) discard;
 diffuseColor.rgb *= texel.rgb;
 if (vKind > 6.5) diffuseColor.rgb *= vBloom * 1.25;
 float lumW = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
@@ -209,7 +248,7 @@ attribute vec4 cA; attribute vec4 cB; attribute vec4 cR; attribute vec4 cC;
 uniform float uTime, uN, uLean, uHComp, uGround;
 uniform vec3 uCamRight, uCamBack, uCamPos; uniform vec2 uLod, uLodS, uLodGr;
 uniform sampler2D uMoss, uField;
-varying float vWither, vFlut, vFade; varying vec3 vBase; varying vec4 vGraft; varying vec4 vGRect;
+varying float vWither, vFlut, vFade; varying vec3 vBase, vWorld; varying vec4 vGraft; varying vec4 vGRect;
 ${SHADER_NOISE}
 ${WIND_FN}
 ${STATE_FN}
@@ -238,6 +277,7 @@ if (abs(cA.w) > 1.5) {
   vec2 o = vec2(position.x * sz.x, (0.5 - position.y) * sz.y) * br;
   o = vec2(o.x * cos(a) - o.y * sin(a), o.x * sin(a) + o.y * cos(a));
   transformed = cA.xyz + vec3(o.x, 0.04, o.y);
+  vWorld = transformed;
 } else {
   vec3 up = normalize(vec3(0.0, cos(uLean), 0.0) - uCamBack * sin(uLean));
   float yy = position.y, t = uTime + cB.z, k = cB.w, typ = cC.y, spd = cC.z;
@@ -256,6 +296,7 @@ if (abs(cA.w) > 1.5) {
   transformed = cA.xyz + uCamRight * (position.x * sz.x * sx + bend * sz.y * yy2) + up * (yy * sz.y * uHComp * sy - 0.06);
   transformed.xz += off;
   transformed.y -= dot(bendW, bendW) * 0.45 * yy2 * sz.y;
+  vWorld = transformed;
   vFlut = uGround < 0.5 && (tree || typ < 0.5) ? smoothstep(0.35, 1.0, yy) * (0.25 + wnd.z * 0.75) * uWind : 0.0;
 }
 `;
@@ -313,10 +354,12 @@ export function cardMaterial(U: FloraUniforms, atlas: THREE.Texture, ground: boo
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 uniform sampler2D uVis; uniform float uN, uTime; uniform vec3 uDark; uniform vec3 uGraftCol[4];
-varying float vWither, vFlut, vFade; varying vec3 vBase; varying vec4 vGraft; varying vec4 vGRect;
+varying float vWither, vFlut, vFade; varying vec3 vBase, vWorld; varying vec4 vGraft; varying vec4 vGRect;
+uniform vec3 uCamPos; uniform float uGround;
 ${SHADER_NOISE}
-${FOW_FN}`)
-      .replace('void main() {', GN_DECL + 'void main() {\nif (bayer4(gl_FragCoord.xy) >= vFade) discard;')
+${FOW_FN}
+${CUT_PARS}`)
+      .replace('void main() {', GN_DECL + 'void main() {\nif (bayer4(gl_FragCoord.xy) >= vFade) discard;\nif (distance(vWorld, uCamPos) < 1.5) discard;\nif (uGround < 0.5 && stip(gl_FragCoord.xy, cutAt(vWorld, uCamPos)) > 0.5) discard;')
       .replace('#include <map_fragment>', `${CARD_FLUTTER}
 diffuseColor *= sampledDiffuseColor;
 float glowA = sampledDiffuseColor.a;

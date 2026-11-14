@@ -41,7 +41,7 @@ export interface PlanetOpts {
 }
 
 const R = 900;
-const SUN = new V3(-0.8, 0.38, -0.46).normalize();
+const SUN = new V3(-0.55, 0.35, 0.76).normalize();
 const P = RAMPS;
 const css = (c: number) => '#' + c.toString(16).padStart(6, '0');
 
@@ -200,7 +200,7 @@ export class PlanetScreen implements Screen {
     // the carrier holding station off the planet, in the foreground (its own lights; the sun matched)
     this.carrier = buildCarrier({ people: false });
     const cg = this.carrier.group;
-    cg.position.set(-255, -150, 4.1 * R - 610); cg.rotation.set(0.08, Math.PI - 0.7, 0.05);
+    cg.position.set(-250, -95, 4.1 * R - 530); cg.rotation.set(0.1, Math.PI - 0.75, 0.05);
     this.carrier.ship.sun.position.copy(SUN.clone().applyQuaternion(cg.quaternion.clone().invert())).multiplyScalar(220);
     sc.add(cg);
     // DOM: the header, hover label, the carrier's tag, hints, the white of the cloud deck
@@ -422,7 +422,7 @@ export class PlanetScreen implements Screen {
     this.globe.mat.uniforms.uT.value = this.t;
     this.carrier.update(dt);
     // the carrier drifts a little on station
-    this.carrier.group.position.y = -150 + Math.sin(this.t * 0.21) * 3;
+    this.carrier.group.position.y = -95 + Math.sin(this.t * 0.21) * 3;
     this.carrier.group.rotation.z = 0.05 + Math.sin(this.t * 0.17) * 0.012;
     switch (this.mode) {
       case 'orbit': this.orbit(dt); break;

@@ -164,17 +164,30 @@ function leafCard(g: Geo, p: V3, d: V3, n: V3, len: number, hw: number, rect: Re
   }
 }
 
-/** a low sphere (metres) */
+/** a faceted berry / bead / fruit: a low, slightly irregular polyhedron with flat facets (no smooth spheres) */
 function sphere(g: Geo, c: V3, r: number, rect: Rect, seg = 8, rings = 5, sq = 1) {
-  const base = g.n;
+  const P: V3[][] = [];
   for (let j = 0; j <= rings; j++) {
-    const th = (j / rings) * Math.PI, y = Math.cos(th), s = Math.sin(th);
+    const th = (j / rings) * Math.PI, y = Math.cos(th), s = Math.sin(th), row: V3[] = [];
     for (let i = 0; i <= seg; i++) {
-      const a = (i / seg) * TAU, n: V3 = [Math.cos(a) * s, y, Math.sin(a) * s];
-      g.v([c[0] + n[0] * r, c[1] + n[1] * r * sq, c[2] + n[2] * r], n, rect.u0 + rect.du * (i / seg), rect.v0 + rect.dv * (j / rings), 0.2);
+      const a = (i / seg) * TAU + (j & 1) * (Math.PI / seg), k = j === 0 || j === rings ? 1 : 0.9 + (((i * 7 + j * 13) % 5) / 5) * 0.18;
+      row.push([c[0] + Math.cos(a) * s * r * k, c[1] + y * r * sq * (j === 0 ? 1.08 : 1), c[2] + Math.sin(a) * s * r * k]);
     }
+    P.push(row);
   }
-  for (let j = 0; j < rings; j++) for (let i = 0; i < seg; i++) { const a = base + j * (seg + 1) + i, b = a + seg + 1; g.quad(a, b, b + 1, a + 1); }
+  facetGrid(g, P, rect);
+}
+/** emit a grid of points as flat-shaded quads (each facet its own normal) */
+function facetGrid(g: Geo, P: V3[][], rect: Rect) {
+  const rows = P.length - 1, cols = P[0].length - 1;
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const a = P[j][i], b = P[j][i + 1], c = P[j + 1][i + 1], d = P[j + 1][i];
+    let n = vnrm(vcross(vsub(d, a), vsub(b, a)));
+    if (vlen(n) < 0.5) n = vnrm(vcross(vsub(c, b), vsub(a, b)));
+    const u0 = rect.u0 + rect.du * (i / cols), u1 = rect.u0 + rect.du * ((i + 1) / cols), v0 = rect.v0 + rect.dv * (j / rows), v1 = rect.v0 + rect.dv * ((j + 1) / rows);
+    const q = [g.v(a, n, u0, v0, 0.2), g.v(b, n, u1, v0, 0.2), g.v(c, n, u1, v1, 0.2), g.v(d, n, u0, v1, 0.2)];
+    g.quad(q[0], q[3], q[2], q[1]);
+  }
 }
 
 /** a lathe: profile [radius, y] from bottom to top around c (metres); ribs modulate the radius */
@@ -208,7 +221,7 @@ function disc(g: Geo, c: V3, n: V3, r: number, rect: Rect, seg = 10, dome = 0, u
 }
 
 // ------------------------------------------------------------------------------------------------ plants
-const ampOf = (a: number | undefined) => 0.32 + 0.74 * Math.pow(Math.max(0, Math.min(1, ((a ?? 0.6) - 0.05) / 0.55)), 0.9);
+const ampOf = (a: number | undefined) => 0.46 + 0.62 * Math.pow(Math.max(0, Math.min(1, ((a ?? 0.6) - 0.05) / 0.55)), 0.9);
 const PMAX: Partial<Record<Shape, number>> = {};
 const pmaxOf = (s: Shape) => { let v = PMAX[s]; if (v === undefined) { v = 0.01; for (let t = 0; t <= 1; t += 0.02) v = Math.max(v, PROF[s](t)); PMAX[s] = v; } return v; };
 
@@ -335,9 +348,10 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
       // a ribbed lantern pod: lathe with its own painted skin
       const rect = tex.pod(o.ramp, o.ribs * 2, o.glow !== undefined);
       g.kind = o.glow !== undefined ? KIND.GLOW : KIND.SOLID; g.col = [ao, ao, ao];
-      const sq = o.sq ?? 1, prof: [number, number][] = [];
-      for (let k = 0; k <= 6; k++) { const th = Math.PI * (1 - k / 6); prof.push([Math.max(0.002, Math.sin(th) * rr), Math.cos(th) * rr * sq]); }
-      lathe(g, c, L1 ? prof.filter((_, k) => k % 2 === 0) : prof, L1 ? 6 : 10, rect, o.ribs * 2, 0.12);
+      // a lantern pod: six flat facets, a broad shoulder, a pointed tip and a short neck at the stalk
+      const sq = o.sq ?? 1, sides = L1 ? 5 : 6, prof: [number, number][] = [[0.15, -1.0], [0.62, -0.72], [0.96, -0.15], [0.84, 0.42], [0.42, 0.85], [0.05, 1.12]];
+      const Pg: V3[][] = prof.map(([pr, py], j) => Array.from({ length: sides + 1 }, (_, i) => { const a = (i / sides) * TAU + (j & 1) * 0.25; return [c[0] + Math.cos(a) * pr * rr, c[1] + py * rr * sq, c[2] + Math.sin(a) * pr * rr] as V3; }));
+      facetGrid(g, Pg, rect);
     } else {
       g.kind = o.glow !== undefined ? KIND.GLOW : KIND.SOLID;
       g.col = linHex(o.ramp[Math.min(o.ramp.length - 1, 4)], ao * 1.35);

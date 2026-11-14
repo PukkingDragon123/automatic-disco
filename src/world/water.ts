@@ -11,6 +11,7 @@ import type { Region } from './region';
 import { GN_DECL } from '../gfx/gbuf';
 import { SHADER_NOISE, FOW_FN } from './glsl';
 import { VEYR } from './palette';
+import { RAMPS, type RampName } from '../art/palette';
 
 const RIP_N = 24, WAKE_N = 6;
 const WATER_FN = /* glsl */`
@@ -89,14 +90,16 @@ vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
   vec2 mp = bp + mw * 1.5 + mg * 0.55;
   float mid = floor(texture2D(uMat, (floor(clamp(mp, vec2(0.0), vec2(uN - 0.01))) + 0.5) / uN).r * 255.0 + 0.5);
   vec3 bed = texture(uBlocks, vec3(bp, uLay[int(mid) * 2]), -0.35).rgb;
-  bed *= 0.72 + caustic(bp, t) * 0.75 * exp(-depth * 0.8);
-  // the water body: clear and turquoise in the shallows, deep teal further down
-  float murk = 1.0 - exp(-depth * 1.35);
-  vec3 body = mix(uShallow, uDeep, smoothstep(0.15, 3.2, depth) * 0.82);
-  vec3 c = mix(bed * mix(vec3(1.0), uShallow * 1.5, 0.55), body, clamp(0.18 + murk * 0.9, 0.0, 1.0));
-  // slow mottling and a whisper of sky
-  c *= 0.93 + (vn(p * 0.8 + vec2(t * 0.05, t * 0.03)) * 0.6 + vn(p * 2.1 - t * 0.07) * 0.4) * 0.14;
-  c = mix(c, uSky, 0.06);
+  // the bed under water: wet (darker), lit by a little caustic light
+  bed *= 0.7 + caustic(bp, t) * 0.32 * exp(-depth * 0.9);
+  // the bed seen through the water: red goes first, so a thin sheet only tints it and depth turns it to the body
+  // colour (the water ramp's mid step in the shallows, its dark step deep down); never brighter than the bed
+  vec3 T = exp(-max(depth, 0.03) * vec3(2.6, 1.15, 0.95));
+  vec3 body = mix(uShallow, uDeep, smoothstep(0.12, 2.6, depth));
+  vec3 c = bed * T + body * (1.0 - T);
+  // slow mottling and a faint sky reflection (more of it where the water is deep and dark)
+  c *= 0.94 + (vn(p * 0.8 + vec2(t * 0.05, t * 0.03)) * 0.6 + vn(p * 2.1 - t * 0.07) * 0.4) * 0.1;
+  c = mix(c, uSky, 0.05 + 0.07 * (1.0 - T.g));
   // the current
   float foam = 0.0;
   if (flowK > 0.0) {
@@ -111,7 +114,7 @@ vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
     float ch = vn(vec2(fuv.x * 6.0, (fuv.y - t * sp * 1.25) * 2.6));
     c *= 1.0 + (ch - 0.5) * 0.22 * flowK;
     if (ch > 0.8) c = mix(c, uShallow * 1.35 + 0.06, 0.3 * flowK);
-    float edge = 1.0 - smoothstep(0.0, 0.16 + sp * 0.05, depth);
+    float edge = 1.0 - smoothstep(0.0, 0.07 + sp * 0.03, depth);
     float wake = texture2D(uFoamMap, p / uN).r;
     float rapid = smoothstep(1.2, 2.3, sp) * smoothstep(0.52, 0.72, vn(vec2(fuv.x * 3.5, (fuv.y - t * sp * 1.4) * 1.1)));
     float fn = vn(vec2(fuv.x * 7.0, (fuv.y - t * sp * 1.6) * 2.6));
@@ -131,19 +134,19 @@ vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
     c = mix(c, ph < 0.45 ? uFoam : uDeep, ring * 0.6);
     c *= 1.0 - uRainW * 0.1;
   }
-  // shoreline: a pale lapping rim
+  // shoreline: a thin, broken lapping line right at the water's edge (not a wash over thin water)
   float lap = 0.5 + 0.5 * sin(t * 1.3 + vn(p * 0.7) * 6.0);
-  float shore = 1.0 - smoothstep(0.0, 0.06 + lap * 0.1, depth);
-  foam = max(foam, shore * 0.8);
-  if (foam > 0.5) c = mix(c, uFoam, foam > 0.75 ? 0.82 : 0.5);
+  float rim = step(depth, 0.012 + lap * 0.02) * step(0.3, h2(floor(p * 3.0) + floor(t * 0.5)));
+  foam = max(foam, rim * 0.8);
+  if (foam > 0.5) c = mix(c, uFoam, foam > 0.75 ? 0.7 : 0.4);
   // glints: sparse twinkles, rarer bright sun sparkles on open water
   float g1 = h2(px + floor(t * 2.2 + h2(px) * 9.0) * 3.7);
   float g2 = h2(floor(px / 2.0) * 1.7 + floor(t * 1.4 + h2(floor(px / 2.0)) * 5.0));
   float gk = 1.0 - smoothstep(0.6, 2.5, depth) * 0.9;
   gk *= 1.0 - flowK * 0.55;
-  if (g1 > 1.0 - 0.01 * gk) c = mix(c, vec3(1.0), 0.38);
-  else if (g1 > 1.0 - 0.035 * gk) c = mix(c, uShallow * 1.3 + 0.05, 0.22);
-  if (g2 > 0.995 && depth > 0.25) c = mix(c, vec3(1.25, 1.2, 1.1), 0.7);
+  if (g1 > 1.0 - 0.01 * gk) c = mix(c, uFoam, 0.35);
+  else if (g1 > 1.0 - 0.035 * gk) c = mix(c, uShallow, 0.3);
+  if (g2 > 0.995 && depth > 0.25) c = mix(c, uFoam * 1.4, 0.7);
   // Veyr moss / rival creep reaching the water: floating mats along the margins
   vec4 cov = texture2D(uMoss, p / uN);
   if (cov.r > 0.55 + h2(px) * 0.25 && depth < 0.6) c = mix(c, uMossC, 0.45);
@@ -163,13 +166,26 @@ export const WATER_FX = {
 };
 export const RIPPLES = RIP_N, WAKES = WAKE_N;
 
+/** the planet's water drawn in the master palette: the water-like ramp nearest its own water colour */
+function waterRamp(c: number) {
+  const ch = (v: number) => [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+  const [r0, g0, b0] = ch(c);
+  let best: RampName = 'water', bd = Infinity;
+  for (const k of ['water', 'teal', 'sage', 'slate', 'violet'] as RampName[]) {
+    const r = RAMPS[k], [r1, g1, b1] = ch(r[Math.floor(r.length * 0.6)]), d = (r0 - r1) ** 2 + (g0 - g1) ** 2 + (b0 - b1) ** 2;
+    if (d < bd) { bd = d; best = k; }
+  }
+  const r = RAMPS[best], L = r.length;
+  return { shallow: r[L - 3], deep: r[1], foam: r[L - 1] };
+}
+
 function uniforms(R: Region, U: Record<string, THREE.IUniform>) {
-  const pal = R.pal;
+  const pal = R.pal, wr = waterRamp(pal.water);
   return {
     ...WATER_FX,
     uBlocks: U.uBlocks, uHeight: U.uHeight, uMat: U.uMat, uVis: U.uVis, uMoss: U.uMoss, uN: U.uN, uTime: U.uTime, uWater: U.uWater, uLay: U.uLay, uDark: U.uDark,
-    uShallow: { value: new THREE.Color(pal.water) }, uDeep: { value: new THREE.Color(pal.waterDeep) }, uFoam: { value: new THREE.Color(pal.foam) },
-    uSky: { value: new THREE.Color(pal.sky) }, uMossC: { value: new THREE.Color(VEYR.moss) },
+    uShallow: { value: new THREE.Color(wr.shallow) }, uDeep: { value: new THREE.Color(wr.deep) }, uFoam: { value: new THREE.Color(wr.foam) },
+    uSky: { value: new THREE.Color(RAMPS.sky[4]) }, uMossC: { value: new THREE.Color(VEYR.moss) },
     uFoamMap: { value: foamMap(R) },
   };
 }

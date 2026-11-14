@@ -11,10 +11,20 @@ import { clamp } from '../core/rand';
 import type { Design } from './design';
 import type { Rig } from './morph';
 import { shagCoat, mane, tassel, crest, wattle, tailFin, brushTail, sail, frill, roundEars, whiskers, tongue, throatSac, gills, ramHorns, palmAntlers, rack, bearPaw, toes, amphSkin, scuteShell, crabShell, beetleHorns, mothWings, plumes, type SpineTs, type HeadCtx } from './parts';
+import { BEASTS, type BeastForm } from './bestiary';
+import { growBody, markBody, headFans, greatHorn, skullCrest, type BodyMark } from './forms';
 import { SkinB, Page, type Region, KIT, oct, blade, sac, spline, chainWeights, ball, sheet, transport, hash, gauss, sub, addV, scl, norm, cross, len, lerpV, pageTexture, mixC, type V3, type Wt } from './kit';
 
 const TAU = Math.PI * 2;
 export const has = (d: Design, g: string) => d.genes.includes(g);
+/** the authored form of a bestiary species, if this design is one */
+export const beastForm = (d: Design): BeastForm | undefined => (d.beast ? BEASTS[d.beast]?.form : undefined);
+/** remember rows y0..y1 of a region and hand back a function that puts them back (paint one cover over another) */
+function keepRows(r: Region, y0: number, y1: number) {
+  const buf: number[] = [];
+  for (let y = y0; y < y1; y++) for (let x = 0; x < r.w; x++) buf.push(r.get(x, y));
+  return () => { let i = 0; for (let y = y0; y < y1; y++) for (let x = 0; x < r.w; x++) r.set(x, y, buf[i++]); };
+}
 /** the master-palette ramp nearest a colour, as seven steps with that colour's own step in the middle (index 3) */
 const RAMP_CACHE = new Map<number, number[]>();
 export function rampFor(c: number): number[] {
@@ -362,13 +372,15 @@ function vertebrate(S: Ctx) {
   const bear = !!D.bear, hump = D.hump ? 1 : 0, hop = !!D.hop, sprawl = !!D.sprawl, shellV = !!D.shell, amph = has(d, 'amphib_skin'), finT = has(d, 'tail_fin');
   const head = S.at('head'), neck = S.at('neck'), chest = S.at('chest'), hips = S.at('hips');
   const tails = rig.tail.map((i) => S.rest[i]);
+  // a bestiary species is sculpted from its own authored data and grows only the parts designed for it
+  const BF = beastForm(d), want = (k: string) => !BF || BF.parts.some((p) => p.k === k), marks: BodyMark[] = [];
   const iH = S.bi('head'), iN = S.bi('neck'), iC = S.bi('chest'), iP = S.bi('hips');
   // ------------------------------------------------ spine: back of the skull to the tail tip
   const ctrl: V3[] = [], ru: number[] = [], rv: number[] = [], cs: number[] = [], ids: number[] = [];
   // width, height above and below the spine line
   const push = (p: V3, a: number, top: number, bot: number, id: number) => { ctrl.push(p); ru.push(a); rv.push((top + bot) / 2); cs.push((top - bot) / 2); ids.push(id); };
   let kC = 4, kM = 5, kH = 6;
-  const nr = bear ? Math.min(nk * 0.5, hw * 0.5) : hop ? hw * 0.36 : Math.min(nk * 0.42, hw * 0.4);
+  const nr = BF ? hw * BF.neckR : bear ? Math.min(nk * 0.5, hw * 0.5) : hop ? hw * 0.36 : Math.min(nk * 0.42, hw * 0.4);
   push(addV(head, [0, 0, hl * 0.04]), hw * 0.28, hh * 0.28, hh * 0.28, iH);
   push(head, hw * 0.3, hh * 0.32, hh * 0.3, iN);
   push(lerpV(head, neck, 0.5), nr * 0.95, nr * 1.05, nr * 1.15, iN);
@@ -390,10 +402,11 @@ function vertebrate(S: Ctx) {
     // a deep keel of a chest narrow between the shoulders, the barrel of the ribs, a waist that tucks up before the hips
     const lean = has(d, 'leg_cursorial') || D.cat || (has(d, 'carnassials') && !bear), hoofd = has(d, 'leg_hooved');
     const [waW, waB] = bear ? [0.48, 0.6] : sprawl || shellV ? [0.47, 0.46] : lean ? [0.4, 0.36] : hoofd ? [0.44, 0.47] : [0.43, 0.44];
-    kC = ctrl.length; push(chest, W * 0.43, H * (0.47 + hump * 0.1), H * (bear ? 0.72 : sprawl ? 0.6 : 0.7), iC);
-    push(lerpV(chest, hips, 0.34), W * 0.5 * fat, H * 0.45, H * (bear ? 0.68 : sprawl ? 0.56 : 0.64) * fat, iC);
-    kM = ctrl.length; push(lerpV(chest, hips, 0.68), W * waW * fat, H * 0.42, H * waB * fat * tuck, iP);
-    kH = ctrl.length; push(hips, W * 0.46, H * (bear ? 0.5 : 0.48), H * 0.42 * tuck, iP);
+    const tr = BF?.trunk;
+    kC = ctrl.length; push(chest, W * (tr ? tr[0][0] : 0.43), H * (tr ? tr[0][1] : 0.47 + hump * 0.1), H * (tr ? tr[0][2] : bear ? 0.72 : sprawl ? 0.6 : 0.7), iC);
+    push(lerpV(chest, hips, 0.34), W * (tr ? tr[1][0] : 0.5 * fat), H * (tr ? tr[1][1] : 0.45), H * (tr ? tr[1][2] : (bear ? 0.68 : sprawl ? 0.56 : 0.64) * fat), iC);
+    kM = ctrl.length; push(lerpV(chest, hips, 0.68), W * (tr ? tr[2][0] : waW * fat), H * (tr ? tr[2][1] : 0.42), H * (tr ? tr[2][2] : waB * fat * tuck), iP);
+    kH = ctrl.length; push(hips, W * (tr ? tr[3][0] : 0.46), H * (tr ? tr[3][1] : bear ? 0.5 : 0.48), H * (tr ? tr[3][2] : 0.42 * tuck), iP);
     if (!tails.length) push(addV(hips, [0, H * 0.03, -T * 0.26]), W * 0.36, H * 0.36, H * 0.36, iP);
     let tw = W * (sprawl ? 0.36 : D.cat ? 0.17 : 0.3);
     const fl = finT ? 0.62 : 1, fv = finT ? 1.15 : 1;
@@ -450,11 +463,18 @@ function vertebrate(S: Ctx) {
   };
   sac(S.B, BODY, S.gid(), sp.pts, sp.pts.map((_, i) => [RU[i], RV[i]] as [number, number]), wts, { n: fur ? 20 : 18, up, bump, shift, start: true, end: true, wv });
   S.spine = { pts: sp.pts, fr: transport(sp.pts, up), ru: RU, rv: RV, w: wts, L: sp.L };
-  S.paints.push(() => { hide(S, BODY, { L: Lp, rad: (t) => interp(sp.t, RU, t), seed: d.seed % 211, kind: 'body', belly: hom ? 1.6 : sprawl || hop ? 1.85 : 2.05 }); if (amph) amphSkin(S, BODY); });
+  S.paints.push(() => {
+    const ho: HideOpt = { L: Lp, rad: (t) => interp(sp.t, RU, t), seed: d.seed % 211, kind: 'body', belly: hom ? 1.6 : sprawl || hop ? 1.85 : 2.05 };
+    hide(S, BODY, ho); if (amph) amphSkin(S, BODY);
+    // a scaled tail on a furred body: scales take over past the rump, the fur keeps the trunk
+    if (BF?.tailScales) { const y0 = Math.floor((tRump + 0.03) * BODY.h), keep = keepRows(BODY, 0, y0); hide(S, BODY, { ...ho, cover: 'scales' }); keep(); }
+    if (BF) markBody(S, BODY, BF, marks, TS);
+  });
 
   // ------------------------------------------------ head
   vertHead(S, { head, hl, hw, hh, sl, hom, fur });
-  if (fur) {
+  if (fur && BF) { if (want('shag') || want('wool')) shagCoat(S, TS, W); }
+  else if (fur) {
     // 2D pixel-art fur: a mane on the neck and shoulders, tufts down the back, a shaggy fringe, a tail brush, cheek ruffs
     const N = sp.pts.length - 1;
     if (has(d, 'shaggy')) shagCoat(S, TS, W);
@@ -471,18 +491,19 @@ function vertebrate(S: Ctx) {
     }
     void N;
   }
-  if (has(d, 'mane') && !hom) mane(S, TS, W, head, hl, hw, hh);
-  if (has(d, 'tail_brush') && tails.length && !D.cat) brushTail(S, TS, W, S.page.regs.get('SHAG') ?? furReg(S));
-  if (has(d, 'crest') && !hom) crest(S, TS, W, H);
+  if (BF ? want('mane') : has(d, 'mane') && !hom) mane(S, TS, W, head, hl, hw, hh);
+  if (!BF && has(d, 'tail_brush') && tails.length && !D.cat) brushTail(S, TS, W, S.page.regs.get('SHAG') ?? furReg(S));
+  if (!BF && has(d, 'crest') && !hom) crest(S, TS, W, H);
   if (finT && tails.length) tailFin(S, TS, H);
-  if (has(d, 'sail') && !hom) sail(S, TS, W, rig.length);
-  if (has(d, 'frill')) frill(S, TS, hw);
-  if (has(d, 'wattle') && !hom) wattle(S, TS, H);
+  if (!BF && has(d, 'sail') && !hom) sail(S, TS, W, rig.length);
+  if (!BF && has(d, 'frill')) frill(S, TS, hw);
+  if (!BF && has(d, 'wattle') && !hom) wattle(S, TS, H);
   // ------------------------------------------------ legs, arms, wings, armour
-  for (const lg of rig.legs) vertLeg(S, lg, lt, fur);
+  for (const lg of rig.legs) vertLeg(S, lg, lt * (BF ? (lg.kind === 'hind' ? BF.hindT : BF.foreT) : 1), fur);
+  if (BF) growBody(S, BF, TS, W, H, marks);
   if (biped) for (const ai of rig.mandibles) arm(S, ai, lt, hom, fur);
   for (const wi of rig.wings) patagium(S, wi, fur);
-  if (has(d, 'osteoderms') && !shellV) carapace(S, chest, hips, W, H, T);
+  if (!BF && has(d, 'osteoderms') && !shellV) carapace(S, chest, hips, W, H, T);
   if (shellV) scuteShell(S, chest, hips, W, H, T);
   if (has(d, 'quills')) quills(S, lt, H, tNeck, tRump);
   if (has(d, 'tail_club') && tails.length) {
@@ -545,7 +566,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
   const d = S.d, { head, hl, hw, hh, sl, hom, fur } = o;
   const iH = S.bi('head'), iN = S.bi('neck');
   const D = S.rig.dims, amph = has(d, 'amphib_skin'), bug = has(d, 'eye_bulging');
-  const fam = headFam(d, D), F = HEAD_PROF[fam];
+  const BF = beastForm(d), fam = headFam(d, D), F: HeadProf = BF ? { rx: BF.skull.rx, ry: BF.skull.ry, hy: BF.skull.hy, eye: [...BF.skull.eye, 40, 14] } : HEAD_PROF[fam];
   const beak = fam === 'beak', flat = fam === 'frog', bear = fam === 'bear', cat = fam === 'cat', hoof = fam === 'hoof', boar = fam === 'boar', liz = fam === 'lizard';
   const hk = hom ? 1.18 : 1;
   const z0 = hl * 0.38;
@@ -554,7 +575,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
   const ctrl = hz.map((z, i) => addV(head, [0, hy[i], z]));
   const cts = chordTs(ctrl);
   const sp = spline(ctrl, 16);
-  const fore = (has(d, 'eye_binocular') || has(d, 'hominid_eyes')) && !cat && !hom;
+  const fore = (has(d, 'eye_binocular') || has(d, 'hominid_eyes')) && !cat && !hom && !BF;
   const [ezK, eA, eYaw, erK0, irisA, pupA] = fore ? [0.36, 0.72, 0.5, 0.15, 44, 15] : F.eye, erK = hoof ? erK0 * 0.88 : erK0;
   const tEye = interp([hz[0], hz[hz.length - 1]], [0, 1], hl * (bug ? 0.12 : ezK)), tSn = cts[5];
   const eAng = bug ? 0.6 : eA;
@@ -578,15 +599,17 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
   };
   const HEAD = S.reg('HEAD', TAU * hw * 0.5 * hk, len(sub(ctrl[ctrl.length - 1], ctrl[0])), 16, 96, 64);
   const w = (i: number): Wt => (i < 2 ? [iH, 0.75, iN, 0.25] : [iH, 1]);
-  sac(S.B, HEAD, S.gid(), sp.pts, sp.t.map((t) => [interp(cts, rx, t), interp(cts, ry, t)] as [number, number]), w, { n: 18, bump, end: true, start: true, cap: cat ? 0.06 : boar || bear ? 0.16 : hoof ? 0.28 : 0.5 });
+  sac(S.B, HEAD, S.gid(), sp.pts, sp.t.map((t) => [interp(cts, rx, t), interp(cts, ry, t)] as [number, number]), w, { n: 18, bump, end: true, start: true, cap: BF ? BF.skull.cap : cat ? 0.06 : boar || bear ? 0.16 : hoof ? 0.28 : 0.5 });
   const Lh = sp.L;
   // ------------------------------------------------ eyes: a wet eyeball in a socket rim, an upper lid that blinks, a lower lid
-  const er = Math.max(0.02, hw * (bug ? 0.2 : erK)) * (hom ? 1.25 : 1);
+  const er = Math.max(0.012, hw * (bug ? 0.2 : BF ? erK : erK * 0.86)) * (hom ? 1.25 : 1);
   const EYE = S.fixed('EYE', 12, 12), LID = S.reg('LID', TAU * er * 1.1, er * 0.8, 6, 24, 8), LC = S.fixed('LIDC', 12, 10);
-  for (const s of [-1, 1]) {
-    // eyes sit on the head's actual surface (the profile at the eye's z, at the socket angle)
-    const ez = bug ? hl * 0.12 : hl * ezK, se = 2 / KIT.sq;
-    const sx = Math.pow(Math.sin(eAng), se) * interp(hz, rx, ez), sy = interp(hz, hy, ez) + Math.pow(Math.cos(eAng), se) * interp(hz, ry, ez);
+  const rows = BF?.eyes.rows ?? 1;
+  for (const s of [-1, 1]) for (let ri = 0; ri < rows; ri++) {
+    // eyes sit on the head's actual surface (the profile at the eye's z, at the socket angle); rows of eyes run back
+    // along the side of the skull, each a little higher
+    const ez = bug ? hl * 0.12 : hl * (ezK - ri * 0.11), eA2 = eAng - ri * 0.08, se = 2 / KIT.sq;
+    const sx = Math.pow(Math.sin(eA2), se) * interp(hz, rx, ez), sy = interp(hz, hy, ez) + Math.pow(Math.cos(eA2), se) * interp(hz, ry, ez);
     const off: V3 = bug ? [s * hw * 0.3, hh * 0.36, hl * 0.12] : [s * sx, sy, ez];
     const ax = norm(bug ? [s * 0.62, 0.62, 0.48] : [s * Math.sin(eYaw), hoof ? 0.2 : 0.12, Math.cos(eYaw)]);
     const c = addV(addV(head, off), scl(ax, -er * (bug ? -0.1 : hoof ? 0.5 : cat ? -0.08 : 0.4)));
@@ -596,6 +619,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     // lids: the upper one rides a bone centred on the eyeball and turns down over it to blink
     const u = norm(sub([0, 1, 0], scl(ax, ax[1]))), lid = S.rig.lids[s < 0 ? 0 : 1];
     const R = er * 1.07, heavy = bear || boar ? 0.12 : liz || flat ? 0.06 : 0;
+    if (rows > 1) continue; // rows of small eyes are lidless, like a spider's
     if (lid) {
       S.rig.bones[lid.bone].pos = sub(c, S.rest[iH]) as [number, number, number];
       S.rest[lid.bone] = c; lid.axis = norm(cross(u, ax)) as [number, number, number];
@@ -603,7 +627,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     }
     lidCap(S, LC, c, ax, scl(u, -1), R * 0.99, -0.75, 0.84 - heavy * 0.5, 1.75, [iH, 1], 3, 8);
   }
-  S.paints.push(() => paintEyeReg(S, EYE, { iris: irisA, pupilA: pupA, pupil: hoof || flat ? 'h' : 'round', sclera: hom ? 0xe8e2d8 : hoof ? 0xd8ccb8 : 0xc8b49a, irisC: hoof || boar ? mixHex(d.colors.eye, 0x3a2414, 0.8) : cat ? mixHex(d.colors.eye, 0xd8962a, 0.7) : undefined }));
+  S.paints.push(() => paintEyeReg(S, EYE, { iris: BF ? (rows > 1 ? 70 : 58) : hom || hoof ? irisA : Math.max(irisA, 52), pupilA: pupA, pupil: BF ? BF.eyes.pupil : hoof || flat ? 'h' : 'round', sclera: hom ? 0xe8e2d8 : hoof ? 0xd8ccb8 : 0xc8b49a, irisC: hoof || boar ? mixHex(d.colors.eye, 0x3a2414, 0.8) : cat ? mixHex(d.colors.eye, 0xd8962a, 0.7) : undefined }));
   S.paints.push(() => {
     hide(S, LID, { L: er, rad: () => er, seed: 61, kind: 'ear', noPattern: !amph, flow: -1 }); for (let x = 0; x < LID.w; x++) { LID.set(x, LID.h - 1, 0x140c0a); LID.set(x, LID.h - 2, S.P.dark[1]); }
     if (amph) amphSkin(S, LID, 0.5);
@@ -770,6 +794,11 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     sac(S.B, HORN, S.gid(), hs.pts, hs.t.map((t) => [r0 * (1 - t * 0.9) + 0.002, r0 * (1 - t * 0.9) + 0.002] as [number, number]), hs.pts.map(() => [iH, 1]), { n: 9, bump: (a, t) => 0.08 * Math.max(0, Math.sin(t * 60)) * (1 - t) });
     S.paints.push(() => keratin(HORN, mixHex(d.colors.pattern, 0xc8b490, 0.55), { rings: true }));
   }
+  if (BF) for (const p of BF.parts) {
+    if (p.k === 'horn') greatHorn(S, HC, p, S.P.base);
+    else if (p.k === 'crest') skullCrest(S, HC, p);
+    else if (p.k === 'headFans') headFans(S, HC, p);
+  }
   if (has(d, 'electro')) {
     const G = S.fixed('GLOW', 6, 6);
     for (let i = 0; i < 6; i++) { const s = i % 2 ? 1 : -1; ball(S.B, G, S.gid(), addV(head, [s * hw * (0.2 + (i >> 1) * 0.02), hh * 0.05, z0 + sl * (0.3 + (i >> 1) * 0.2)]), [s, 0.3, 0.2], [hw * 0.035, hw * 0.035, hw * 0.03], [iH, 1], { n: 6, rings: 4 }); }
@@ -793,7 +822,10 @@ export function earPaint(S: Ctx, r: Region, cup: number, L: number, rad: number)
   }
 }
 
-export function paintEyeReg(S: Ctx, r: Region, o: { pupil?: 'v' | 'h' | 'round'; iris?: number; pupilA?: number; sclera?: number; irisC?: number } = {}) {
+export type Pupil = 'v' | 'h' | 'round' | 'w' | 'crescent' | 'pinhole' | 'multi';
+/** distance from a point to a polyline (drawn strokes) */
+const toLine = (x: number, y: number, P: number[][]) => { let b = Infinity; for (let i = 0; i + 1 < P.length; i++) { const [ax, ay] = P[i], [bx, by] = P[i + 1], dx = bx - ax, dy = by - ay, t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy))); b = Math.min(b, Math.abs(x - ax - dx * t) + Math.abs(y - ay - dy * t)); } return b; };
+export function paintEyeReg(S: Ctx, r: Region, o: { pupil?: Pupil; iris?: number; pupilA?: number; sclera?: number; irisC?: number } = {}) {
   const d = S.d;
   const pupil = o.pupil ?? (has(d, 'carnassials') || d.cover === 'scales' ? 'v' : 'round');
   const lum = ((d.colors.eye >> 16 & 255) * 0.3 + (d.colors.eye >> 8 & 255) * 0.59 + (d.colors.eye & 255) * 0.11);
@@ -814,18 +846,20 @@ export function paintEyeReg(S: Ctx, r: Region, o: { pupil?: 'v' | 'h' | 'round';
       const a = Math.atan2(px, py) + Math.PI;
       if (q > rp * 1.15 && spokes.some((s2) => Math.abs(((a - s2 + Math.PI * 3) % TAU) - Math.PI) < 0.11)) k -= 1;
       c = IR[k];
+      const X = px / ri, Y = py / ri;
       const isP = pupil === 'v' ? Math.abs(px) < 0.12 * (1 - Math.abs(py) / (ri * 0.9)) && Math.abs(py) < ri * 0.9
         : pupil === 'h' ? Math.abs(py) < 0.11 && Math.abs(px) < ri * 0.78 && oct(px * 0.7, py) < ri * 0.6
-          : q < rp;
+          : pupil === 'w' ? toLine(X, Y, [[-0.62, 0.2], [-0.3, -0.3], [0, 0.08], [0.3, -0.3], [0.62, 0.2]]) < 0.16
+            : pupil === 'crescent' ? Math.abs(oct(X, Y + 0.1) - 0.42) < 0.12 && Y < 0.05
+              : pupil === 'pinhole' ? oct(X, Y) < 0.13
+                : pupil === 'multi' ? oct(X + 0.34, Y - 0.16) < 0.14 || oct(X - 0.34, Y - 0.16) < 0.14 || oct(X, Y + 0.3) < 0.14
+                  : q < rp;
       if (isP) c = INK[0];
     }
     r.set(x, y, c);
   }
-  // wet catchlights: a square glint up top, a small one below (symmetric, so both eyes agree)
-  const row = (a: number) => { for (let y = 0; y < r.h; y++) if (eyeAlpha((y + 0.5) / r.h) <= a) return y; return r.h - 1; };
-  const hy = row(24), hx = Math.floor(r.X(0)), big = r.w > 30 ? 2 : 1, L = RAMPS.snow;
-  for (let i = -big; i < big; i++) for (let j = 0; j < big + 1; j++) r.set(hx + i, hy + j, L[5]);
-  r.set(r.X(180), row(ai * 0.62), L[3]);
+  // the eyeball is wet: its texels carry a marker the shader lights with a real specular from the sun (no painted catchlights)
+  for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) r.alpha(x, y, 253);
 }
 
 /** a vertebrate leg: thigh to toes, muscled, knuckled, with paws, hooves, pillars or bird feet */
@@ -840,7 +874,8 @@ function vertLeg(S: Ctx, lg: Rig['legs'][number], lt: number, fur: boolean) {
   const segIds = [up, ...ids.slice(0, -1)];
   const cts = chordTs(ctrl);
   const slender = hoof || has(d, 'leg_cursorial');
-  const prof = bird ? [0.45, 0.66, 0.3, 0.2, 0.17] : pillar ? [0.5, 0.74, 0.66, 0.6, 0.64] : bear ? (hind ? [0.62, 0.8, 0.5, 0.42, 0.42] : [0.58, 0.74, 0.52, 0.44, 0.44])
+  const BFL = beastForm(d);
+  const prof = BFL ? (hind ? BFL.hind : BFL.fore) : bird ? [0.45, 0.66, 0.3, 0.2, 0.17] : pillar ? [0.5, 0.74, 0.66, 0.6, 0.64] : bear ? (hind ? [0.62, 0.8, 0.5, 0.42, 0.42] : [0.58, 0.74, 0.52, 0.44, 0.44])
     : hop ? (hind ? [0.6, 0.85, 0.48, 0.3, 0.2] : [0.32, 0.4, 0.28, 0.22, 0.2]) : sprawl ? [0.5, 0.62, 0.4, 0.3, 0.26]
       : slender ? (hind ? [0.7, 0.74, 0.34, 0.2, 0.19] : [0.62, 0.64, 0.3, 0.19, 0.19]) : hind ? [0.7, 0.76, 0.4, 0.27, 0.25] : [0.62, 0.66, 0.36, 0.28, 0.26];
   const rs = ctrl.map((_, i) => lt * prof[Math.min(prof.length - 1, i === ctrl.length - 1 ? prof.length - 1 : i)]);
@@ -869,7 +904,15 @@ function vertLeg(S: Ctx, lg: Rig['legs'][number], lt: number, fur: boolean) {
   const ell = (t: number): [number, number] => (mammal && t < k2 ? [0.86, 1.14] : mammal ? [0.94, 1.04] : [1, 1]);
   const LIMB = S.reg('LIMB', TAU * lt * 0.55, sp.L, 8, 64, 96);
   sac(S.B, LIMB, S.gid(), sp.pts, sp.t.map((t) => { const r = interp(cts, rs, t), e = ell(t); return [r * e[0], r * e[1]] as [number, number]; }), wts, { n: 15, sq: mammal || sprawl ? 2.05 : KIT.sq, up: [0, 0, 1], bump, start: true, end: false, cap: 0.6 });
-  if (!S.paints.some((p) => (p as any).LIMB)) { const p: Paint = () => { hide(S, LIMB, { L: sp.L, rad: () => lt * 0.45, seed: 29, kind: 'limb', belly: 2.4, noPattern: d.pattern !== 'stripes' && d.pattern !== 'rings' && d.pattern !== 'spots' && !amph }); if (amph) amphSkin(S, LIMB, 0.7); }; (p as any).LIMB = 1; S.paints.push(p); }
+  if (!S.paints.some((p) => (p as any).LIMB)) { const p: Paint = () => {
+    const lo: HideOpt = { L: sp.L, rad: () => lt * 0.45, seed: 29, kind: 'limb', belly: 2.4, noPattern: d.pattern !== 'stripes' && d.pattern !== 'rings' && d.pattern !== 'spots' && !amph };
+    hide(S, LIMB, lo); if (amph) amphSkin(S, LIMB, 0.7);
+    // bare-legged species: the coat ends at the elbow and knee, wrinkled skin below with tendons down the back
+    if (BFL?.limbSkin) {
+      const keep = keepRows(LIMB, 0, Math.floor(LIMB.h * 0.4)); hide(S, LIMB, { ...lo, cover: 'skin', noPattern: true }); keep();
+      for (let y = Math.floor(LIMB.h * 0.45); y < LIMB.h; y++) for (const a of [2.8, -2.8]) LIMB.set(LIMB.X((a * 180) / Math.PI), y, S.P.dark[2]);
+    }
+  }; (p as any).LIMB = 1; S.paints.push(p); }
   // ---- feet
   const iF = ids[ids.length - 1], F = J[J.length - 1], fw: Wt = [iF, 1];
   const shag = S.page.regs.get('SHAG');

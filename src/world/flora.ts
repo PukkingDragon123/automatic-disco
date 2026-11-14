@@ -123,6 +123,7 @@ export class Flora {
       uLodAsh: { value: new THREE.Vector4() }, uLodBsh: { value: new THREE.Vector4() }, uLodG: { value: new THREE.Vector4() },
       uMoss: { value: moss }, uVis: { value: vis }, uDark: { value: new THREE.Color(0x07080c) },
       uField: { value: this.field.tex }, uBark: { value: this.tex.bark },
+      uFocus: { value: new THREE.Vector3() }, uCut: { value: new THREE.Vector4(0, 2.2, 3.4, 0) },
       uWindDir: { value: new THREE.Vector2(Math.cos(region.seed * 1.7), Math.sin(region.seed * 1.7)) }, uWind: { value: WIND[region.biome.key] ?? 1 },
       uGraftCol: { value: [VEYR.vein, ...RIVALS.map((r) => r.vein)].slice(0, 4).map((c) => new THREE.Color(c)) },
       uBloom: { value: Array.from({ length: 8 }, (_, i) => new THREE.Color(pal.bloom[i % pal.bloom.length]).convertSRGBToLinear()) },
@@ -438,6 +439,7 @@ export class Flora {
     this.U.uLean.value = lean;
     this.U.uHComp.value = 1 / Math.max(0.7, Math.cos(pitch - lean));
     const cp = (this.U.uCamPos.value as THREE.Vector3).set(e[12], e[13], e[14]);
+    this.updateCut(cp, e, t);
     this.field.step(dt);
     this.cull(cam as THREE.PerspectiveCamera, cp);
     this.flushState();
@@ -497,6 +499,27 @@ export class Flora {
     for (const b of this.g3d) ground += t(b);
     cards = t(this.pCards) + t(this.gFar) + t(this.gAlways);
     return { plants: Math.round(plants), ground: Math.round(ground), cards: Math.round(cards), draws: this.all.filter((b) => b.mesh.visible).length };
+  }
+
+  // ---------------------------------------------------------------- canopy cutaway
+  private focusT = -1e9; private cutOn = true;
+  /** the point the player must always see (the golem): growth between it and the camera is cut away. Call every
+   *  frame; without it the flora focuses where the camera's centre ray meets the ground. */
+  setFocus(x: number, y: number, z: number) { (this.U.uFocus.value as THREE.Vector3).set(x, y, z); this.focusT = this.lastT; }
+  /** switch the cutaway on or off (e.g. off in cinematics) */
+  setCutaway(on: boolean) { this.cutOn = on; }
+  private updateCut(cp: THREE.Vector3, e: ArrayLike<number>, t: number) {
+    const f = this.U.uFocus.value as THREE.Vector3, c = this.U.uCut.value as THREE.Vector4;
+    if (t - this.focusT > 0.5) {
+      // the centre of the view on the ground
+      const dx = -e[8], dy = -e[9], dz = -e[10], R = this.region;
+      let hit = false;
+      for (let s = 2; s < 160 && !hit; s += 1.5) { const x = cp.x + dx * s, y = cp.y + dy * s, z = cp.z + dz * s; if (y <= R.heightAt(x, z)) { f.set(x, R.heightAt(x, z), z); hit = true; } }
+      if (!hit) { c.x = 0; return; }
+    }
+    const d = cp.distanceTo(f);
+    // a cone: about 2 m round the focus at the default view, wider toward the camera
+    c.set(this.cutOn ? 1 : 0, 1.6 + d * 0.025, 2.4 + d * 0.06, 0);
   }
 
   // ---------------------------------------------------------------- physics hooks

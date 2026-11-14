@@ -4,6 +4,7 @@
 import { lerp, Rand } from '../core/rand';
 import { bodyLength, type Design } from './design';
 import type { Plan } from './genes';
+import { BEASTS } from './bestiary';
 
 export type Mat = 'body' | 'belly' | 'head' | 'limb' | 'foot' | 'eye' | 'compound' | 'mouth' | 'teeth' | 'claw' | 'horn' | 'shell' | 'membrane' | 'fur' | 'lantern' | 'plate' | 'spike' | 'nose';
 export type V3 = [number, number, number];
@@ -74,16 +75,18 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
   const bear = has(d, 'leg_plantigrade') && !biped, humped = has(d, 'hump') && !biped;
   const hop = has(d, 'leg_leaping') && !biped, sprawl = has(d, 'leg_sprawl') && !biped && !hop, shellV = has(d, 'shell_scute') && !biped;
   const amph = has(d, 'amphib_skin');
+  // a bestiary species carries its own authored proportions (bestiary.ts)
+  const F = d.beast ? BEASTS[d.beast]?.form : undefined;
   const T = L * (biped ? 0.42 : hop ? 0.52 : sprawl ? 0.5 : bear ? 0.54 : 0.58);
-  const W = L * lerp(0.2, 0.36, d.girth) * (hop ? 1.3 : bear ? 1.12 : shellV ? 1.2 : sprawl ? 0.92 : 1);
-  const H = W * (biped ? 1.15 : hop ? 0.78 : sprawl ? 0.7 : bear ? 1.12 : shellV ? 0.85 : 1.05);
-  const legLen = L * lerp(0.28, 0.62, d.legLen) * (biped ? 1.35 : 1) * (bear ? 0.92 : sprawl ? 0.55 : shellV ? 0.55 : hop ? 0.5 : 1);
-  const lt = W * lerp(0.22, 0.42, d.legThick) * (bear ? 1.22 : hop ? 0.85 : 1);
+  const W = L * lerp(0.2, 0.36, d.girth) * (F ? 1 : hop ? 1.3 : bear ? 1.12 : shellV ? 1.2 : sprawl ? 0.92 : 1);
+  const H = W * (F ? F.hK : biped ? 1.15 : hop ? 0.78 : sprawl ? 0.7 : bear ? 1.12 : shellV ? 0.85 : 1.05);
+  const legLen = L * lerp(0.28, 0.62, d.legLen) * (biped ? 1.35 : 1) * (F ? (sprawl ? 0.55 : 1) * F.hindK : bear ? 0.92 : sprawl ? 0.55 : shellV ? 0.55 : hop ? 0.5 : 1);
+  const lt = W * lerp(0.22, 0.42, d.legThick) * (F ? 1 : bear ? 1.22 : hop ? 0.85 : 1);
   const hooves = has(d, 'leg_hooved'), pillars = has(d, 'leg_pillar'), runner = has(d, 'leg_cursorial');
   rig.rideH = hop ? H * 0.52 : sprawl ? H * 0.5 + legLen * 0.34 : legLen + H * 0.15;
   rig.width = W;
   const root = b.bone('hips', -1, [0, rig.rideH, biped ? 0 : -T * 0.42]);
-  const chest = b.bone('chest', root, biped ? [0, H * (d.plan === 'hominid' ? 0.9 : 0.08), T * (d.plan === 'hominid' ? 0.1 : 0.8)] : hop ? [0, H * 0.3, T * 0.78] : [0, H * (bear ? 0.08 : 0.05), T * 0.84]);
+  const chest = b.bone('chest', root, biped ? [0, H * (d.plan === 'hominid' ? 0.9 : 0.08), T * (d.plan === 'hominid' ? 0.1 : 0.8)] : hop ? [0, H * 0.3, T * 0.78] : [0, H * (bear ? 0.08 : 0.05) + (F ? legLen * (F.slope + (F.foreK - F.hindK)) : 0), T * 0.84]);
   rig.root = root; rig.spine = [root, chest];
   // torso: hips, chest, a belly join, a back line
   b.box(root, [0, 0, 0.02 * L], [W * 0.92, H * 0.88, T * 0.52], 'body');
@@ -104,13 +107,13 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
   // neck and head
   // cats carry the head low and level, the neck reaching forward from between the shoulders
   const cat = has(d, 'whiskers') && has(d, 'carnassials') && !sprawl && !biped;
-  const neckLen = hop ? L * 0.03 : L * lerp(0.1, biped ? 0.42 : bear ? 0.2 : cat ? 0.2 : 0.3, d.neck);
-  const nAng = hop ? 0.25 : biped ? 0.55 : bear ? 0.28 : cat ? 0.3 : sprawl ? 0.3 : shellV ? 0.45 : 0.7;
+  const neckLen = hop ? L * 0.03 : L * lerp(0.1, biped ? 0.42 : bear ? 0.2 : cat ? 0.2 : 0.3, d.neck) * (F ? F.neckK : 1);
+  const nAng = F ? F.nAng : hop ? 0.25 : biped ? 0.55 : bear ? 0.28 : cat ? 0.3 : sprawl ? 0.3 : shellV ? 0.45 : 0.7;
   const neck = b.bone('neck', chest, hop ? [0, H * 0.05, T * 0.2] : biped ? [0, H * 0.22, T * 0.2] : bear ? [0, H * 0.12, T * 0.24] : cat ? [0, H * 0.16, T * 0.24] : sprawl ? [0, H * 0.06, T * 0.24] : [0, H * 0.28, T * 0.22]);
   const nk = Math.max(lt * 1.2, W * (bear ? 0.7 : hop ? 0.8 : 0.55));
   b.box(neck, [0, Math.sin(nAng) * neckLen * 0.5, Math.cos(nAng) * neckLen * 0.5], [nk, nk, neckLen + nk * 1.0], 'body', { rx: -nAng });
   rig.neck = [neck];
-  let hl = L * lerp(0.16, 0.3, d.head) * (cat ? 0.82 : 1), hw = Math.max(W * 0.55, hl * 0.62), hh = hw * 0.85;
+  let hl = L * lerp(0.16, 0.3, d.head) * (cat ? 0.82 : 1) * (F ? F.headK : 1), hw = Math.max(W * 0.55 * (F ? F.headK : 1), hl * 0.62), hh = hw * 0.85;
   if (hop) { hl = L * lerp(0.24, 0.3, d.head); hw = W * 1.0; hh = hw * 0.5; }
   else if (amph && sprawl) { hl = L * lerp(0.1, 0.15, d.head); hw = W * 0.9; hh = hw * 0.55; }
   else if (sprawl) { hl = L * lerp(0.1, 0.16, d.head); hw = Math.max(W * 0.6, hl * 0.55); hh = hw * 0.66; }
@@ -121,7 +124,7 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
   const beak = has(d, 'beak');
   b.box(head, [0, hh * 0.1, hl * 0.12], [hw, hh, hl * 0.55], 'head');
   // snout + nose
-  const sl = hl * (hop ? 0.36 : amph ? 0.4 : beak ? 0.5 : bear ? 0.6 : cat ? 0.3 : has(d, 'carnassials') ? 0.55 : 0.6);
+  const sl = hl * (hop ? 0.36 : amph ? 0.4 : beak ? 0.5 : bear ? 0.6 : cat ? 0.3 : has(d, 'carnassials') ? 0.55 : 0.6) * (F ? F.snoutK : 1);
   if (cat) { hw = Math.max(hw, hl * 0.78); hh = hw * 0.92; }
   b.box(head, [0, -hh * 0.06, hl * 0.38 + sl * 0.38], [hw * 0.68, hh * 0.52, sl], beak ? 'horn' : 'head');
   if (!beak) b.box(head, [0, hh * 0.08, hl * 0.38 + sl * 0.88], [hw * 0.4, hh * 0.2, hl * 0.06], 'nose');
@@ -156,7 +159,7 @@ function vertebrate(d: Design, b: B, rig: Rig, L: number, r: Rand) {
     for (let t = 0; t < 3; t++) b.box(head, [bx + s * len * (0.22 + t * 0.12), by + len * (0.3 + t * 0.22), len * 0.1], [tk * 0.8, len * 0.3, tk * 0.8], 'horn', { rx: 0.7, rz: -s * 0.7 });
   }
   // tail
-  const tailLen = hop ? 0 : L * lerp(0.15, biped ? 0.95 : sprawl ? 0.95 : 0.6, d.tail) * (has(d, 'tail_balance') || has(d, 'tail_club') ? 1.2 : 0.7) * (bear || shellV ? 0.6 : 1);
+  const tailLen = hop ? 0 : L * lerp(0.15, biped ? 0.95 : sprawl ? 0.95 : 0.6, d.tail) * (has(d, 'tail_balance') || has(d, 'tail_club') ? 1.2 : 0.7) * (F ? F.tailK : bear || shellV ? 0.6 : 1);
   if (d.plan !== 'hominid' && !hop) {
     const n = sprawl || has(d, 'tail_fin') ? 6 : 4, seg = tailLen / n;
     let p = root, tw = W * 0.42;

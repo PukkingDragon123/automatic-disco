@@ -5,7 +5,7 @@
 // shimmer and rain. Post reads it for any scene the sun lights (scene.userData.sun); details.ts drives it in play.
 import * as THREE from 'three';
 import type { Palette } from '../world/palette';
-import { settings, qualityProfile, onSettings } from '../settings';
+import { settings, qualityProfile } from '../settings';
 import { RAMPS } from '../art/palette';
 
 export interface Env {
@@ -55,9 +55,7 @@ export class Sun {
     scene.userData.sun = this;
     this.env = { haze: 0.0045, mist: 0, mistY: 0, mistH: 1.4, patch: 0.6, rays: 0.5, wet: 0, rain: 0, dew: 0, heat: 0, wind: new THREE.Vector2(0.35, 0.12), sky: new THREE.Color().setHex(RAMPS.sky[4]) };
     this.setColors(pal, 1);
-    this.offSettings = onSettings((_s, ch) => { if (ch.includes('quality')) this.applyQuality(); });
   }
-  private offSettings: () => void;
   /** PCF radius in shadow texels: wider on the bigger map, wider still under cloud */
   private softness() { return (settings.quality === 'low' ? 1 : this.size > 1024 ? 2.2 : 1.6) + this.overcast * 3; }
   /** a new shadow map size takes a fresh map */
@@ -67,7 +65,8 @@ export class Sun {
     this.size = n; s.mapSize.set(n, n);
     s.map?.dispose(); (s as unknown as { map: THREE.WebGLRenderTarget | null }).map = null;
   }
-  dispose() { this.offSettings(); }
+  /** nothing to release: the sun holds no listeners (follow() picks up quality changes itself) */
+  dispose() { /* no-op */ }
   /** k: daylight 0 (night) .. 1 (full day) */
   setColors(pal: Palette, k = 1) {
     const oc = this.overcast;
@@ -84,6 +83,7 @@ export class Sun {
     this.light.shadow.radius = this.softness();
   }
   follow(target: THREE.Vector3, viewDist: number) {
+    if (qualityProfile().shadowMap !== this.size) this.applyQuality();
     const R = (this.radius = Math.max(26, Math.min(120, viewDist * 1.15)));
     const cam = this.light.shadow.camera;
     cam.left = -R; cam.right = R; cam.top = R; cam.bottom = -R;

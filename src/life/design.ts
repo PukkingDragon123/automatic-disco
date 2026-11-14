@@ -6,6 +6,7 @@ import { binomial } from '../world/plantArt';
 import { mixHex, scaleHex } from '../limbo/gfx/pixel';
 import type { Palette } from '../world/palette';
 import { RAMPS, type RampName } from '../art/palette';
+import { BEASTS, beastDesign, beastsFor } from './bestiary';
 
 export type Pattern = 'plain' | 'stripes' | 'spots' | 'bands' | 'mottled' | 'saddle' | 'rings';
 export type Cover = 'chitin' | 'fur' | 'scales' | 'skin' | 'slime';
@@ -19,6 +20,8 @@ export interface Design {
   segs: number;
   colors: Colors; pattern: Pattern; patScale: number; cover: Cover;
   seed: number;
+  /** a hand-designed bestiary species this individual belongs to (bestiary.ts): sculpted from its authored data */
+  beast?: string;
 }
 
 export interface Pheno {
@@ -316,7 +319,11 @@ function coverFor(lineage: Lineage, genes: string[], r: Rand): Cover {
 }
 
 /** a wild species for an ecological role (or a named kind), coloured from the planet */
-export function wildDesign(role: Role | Kind, pal: Palette, seed: number): Design {
+export function wildDesign(role: Role | Kind | string, pal: Palette, seed: number): Design {
+  // the bestiary first: a role is usually filled by one of the hand-designed species
+  if (role in BEASTS) return beastDesign(role, seed);
+  const bs = beastsFor(role);
+  if (bs.length && new Rand(seed ^ 0xb357).next() < 0.65) return beastDesign(bs[Math.floor(new Rand(seed ^ 0x51d).next() * bs.length)], seed);
   const r = new Rand(seed);
   const kind: Kind = role in ROLES ? r.weighted(ROLES[role as Role]) : (role as Kind) in KINDS ? (role as Kind) : 'grazer';
   const spec = KINDS[kind];
