@@ -123,6 +123,15 @@ export class Creature {
   dieCause = '';
   /** cooldowns for displays, courtship and hunts */
   cdDisplay = 0; cdHunt = 0; cdCurl = 0;
+  // ---- the seasons (ai.ts reacts to the climate)
+  /** blood up (0..1): the blood tide's frenzy in a hunter, a stampede in a herd. Faster, and it shows */
+  rage = 0;
+  /** bioluminescent display on (the eclipse, the night) */
+  lumen = false;
+  /** fleeing from a place rather than a creature (fire, a lightning strike, panic): flee with target 0 */
+  scareX = NaN; scareZ = NaN;
+  /** cooldown for seasonal moves (to high ground, to shelter) */
+  cdSeason = 0;
 
   constructor(readonly sp: Species, public faction: Faction, x: number, z: number, juvenile = false) {
     this.x = x; this.z = z; this.homeX = x; this.homeZ = z;
@@ -160,7 +169,7 @@ export class Creature {
   steer(w: World, tx: number, tz: number, run: number, dt: number) {
     const dx = tx - this.x, dz = tz - this.z, d = Math.hypot(dx, dz);
     // spent animals slow down (a predator's chase, prey running itself out)
-    const wind = this.stam < 0.25 ? 0.62 + this.stam * 1.5 : 1;
+    const wind = (this.stam < 0.25 ? 0.62 + this.stam * 1.5 : 1) * (1 + this.rage * 0.25);
     const sp = this.speed * run * (this.stunT > 0 ? 0 : 1) * (0.6 + 0.4 * this.growth) * (this.poison > 0 ? 0.8 : 1) * wind * w.moveMul(this);
     let ax = 0, az = 0;
     if (d > 0.05) { ax = (dx / d) * sp; az = (dz / d) * sp; }
@@ -222,6 +231,12 @@ export class Creature {
     const fl = this.selected ? F_SEL : 0, hv = this.hovered ? (this.faction === 'veyr' ? F_HOVER : F_ENEMY) : 0;
     this.fx.flag.value = 1 + fl + hv;
     this.fx.flash.value = Math.max(0, this.fx.flash.value - dt * 4);
+    // a frenzied hunter's red pulse; a glowing species' slow bioluminescent display (kept under the hit-flinch level)
+    if (!this.dead && this.faction === 'wild' && (this.rage > 0.5 && this.diet === 'carn' || this.lumen)) {
+      const t = this.anim.t, red = this.rage > 0.5 && this.diet === 'carn';
+      this.fx.flashCol.value.setHex(red ? 0xa2473a : 0x9cc5ae);
+      this.fx.flash.value = Math.max(this.fx.flash.value, red ? 0.16 + 0.14 * Math.max(0, Math.sin(t * 5 + this.id)) : 0.12 + 0.2 * (0.5 + 0.5 * Math.sin(t * 1.6 + this.id * 0.7)));
+    }
     // defence poses (the animator's curl hook): a full ball for rollers (rig.dims.roll), a hunch for the rest
     const an = this.anim as unknown as { curl?: (k: number) => void; rolling?: boolean; posture?: string };
     if (typeof an.curl === 'function') { an.curl(this.mind === 'curl' && !this.dead ? 1 : 0); an.rolling = this.mind === 'curl' && this.rolling; }
