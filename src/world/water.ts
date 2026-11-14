@@ -113,17 +113,18 @@ vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
     foam = max(max(edge * 0.75, wake), rapid) * (0.55 + fn * 0.9) * flowK;
   }
   // the rings and wakes: crisp light crests, darker troughs, white water where they break
-  c *= 1.0 + clamp(ia.x, -1.0, 1.0) * 0.14;
-  if (ia.x > 0.38) c = mix(c, uShallow * 1.4 + 0.1, 0.55);
-  else if (ia.x < -0.38) c *= 0.86;
+  // (a darker trough line keeps them readable on pale shallows too)
+  c *= 1.0 + clamp(ia.x, -1.0, 1.0) * 0.12;
+  if (ia.x > 0.36) c = mix(c, uShallow * 1.3 + 0.16, 0.6);
+  else if (ia.x < -0.3) c = mix(c, uDeep * 0.9, 0.38);
   foam = max(foam, ia.y);
   // rain: little rings popping all over the surface
   if (uRainW > 0.01) {
     vec2 q = p * 1.6, ci = floor(q), f = fract(q) - 0.5 - (vec2(h2(ci), h2(ci + 5.3)) - 0.5) * 0.5;
     float tc = t * 1.4 + h2(ci + 2.7), ph = fract(tc);
     float ring = (1.0 - step(0.035, abs(length(f) - ph * 0.36))) * step(h2(ci + floor(tc) * 1.3), uRainW) * step(ph, 0.85);
-    c = mix(c, uShallow * 1.35 + 0.08, ring * (1.0 - ph) * 0.8);
-    c *= 1.0 - uRainW * 0.08;
+    c = mix(c, mix(uDeep, uShallow, ph) * 0.95, ring * (1.0 - ph * 0.6) * 0.75);
+    c *= 1.0 - uRainW * 0.1;
   }
   // shoreline: a pale lapping rim
   float lap = 0.5 + 0.5 * sin(t * 1.3 + vn(p * 0.7) * 6.0);

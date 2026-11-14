@@ -744,7 +744,7 @@ export class Details {
     const d = w.day, elev = Math.cos((d - 0.25) * TAU);
     const dawn = clamp(1 - Math.abs(((d + 0.5) % 1) - 0.5 - 0.02) / 0.12, 0, 1);
     env.mistY = R.water + 0.15; env.mistH = 0.9 + hum * 1.1;
-    env.mist = (0.012 + hum * 0.07) * (1 + dawn * 1.4 + this.wetGround * 0.5) * (elev < 0 ? 1.3 : 1);
+    env.mist = (0.01 + hum * 0.05) * (1 + dawn * 1.4 + this.wetGround * 0.5) * (elev < 0 ? 1.3 : 1);
     env.patch = 0.75;
     env.haze = 0.0028 + hum * 0.0035 + this.rain * 0.005;
     env.rays = clamp((0.3 + hum * 0.7) * (1 + dawn * 0.6 + (elev < 0.5 ? 0.4 : 0)) * (1 - this.rain * 0.8), 0, 1.2);

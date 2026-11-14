@@ -66,8 +66,8 @@ export interface Ship {
   setNixies(s: string): void;
   table: { root: THREE.Group; map: THREE.Mesh; size: number; centre: V; pin: THREE.Group; cursor: THREE.Mesh; setMap(t: THREE.Texture): void };
   crew: Crew[]; officer: Actor;
-  /** 'ext': the sun, floodlights and the hull's own lamps; 'int': the hangar rig */
-  setView(v: 'ext' | 'int'): void;
+  /** 'ext': the sun, floodlights and the hull's own lamps; 'int': the hangar rig; 'both' (the launch, seen from outside) */
+  setView(v: 'ext' | 'int' | 'both'): void;
   /** the planet-light pouring in through the open doors (0..1) */
   doorLight: THREE.DirectionalLight;
   update(dt: number, t: number): void;
@@ -516,13 +516,13 @@ export function buildShip(bin: Bin, parent: THREE.Object3D): Ship {
   mkCrew('green', APP({ skin: 0xe8c09a, hair: 0xb89a6a, hairStyle: 'short', age: 0.18, face: 0 }), JERSEY.green, 0x4e6444, 'AN Moss', new V3(-5.6, 0, 26), new V3(-6.4, 0, 30));
 
   // ---- the light rigs
-  let view: 'ext' | 'int' = 'ext';
-  const setView = (v: 'ext' | 'int') => {
+  let view: 'ext' | 'int' | 'both' = 'ext';
+  const setView = (v: 'ext' | 'int' | 'both') => {
     view = v;
-    for (const l of extLights) l.visible = v === 'ext';
-    for (const l of intLights) l.visible = v === 'int';
-    sun.castShadow = v === 'ext'; key.castShadow = v === 'int';
-    for (const c of [...crew.map((c) => c.a), officer]) c.rig.root.visible = v === 'int' || doorU > 0.3;
+    for (const l of extLights) l.visible = v !== 'int';
+    for (const l of intLights) l.visible = v !== 'ext';
+    sun.castShadow = v !== 'int'; key.castShadow = v === 'int';
+    for (const c of [...crew.map((c) => c.a), officer]) c.rig.root.visible = v !== 'ext' || doorU > 0.3;
   };
   let beaconOn = false, doorU = 0;
   const w = (x: number, y: number, z: number, out = new V3()) => root.localToWorld(out.set(x, y, z));
@@ -554,7 +554,7 @@ export function buildShip(bin: Bin, parent: THREE.Object3D): Ship {
       nozU.uT.value = t;
       if (beaconOn) for (const [i, b] of beacons.entries()) b.g.rotation.y = t * 4.2 + i * 1.3;
       pod.update(dt, t);
-      if (view === 'int' || doorU > 0.3) { officer.update(dt); for (const c of crew) c.a.update(dt); }
+      if (view !== 'ext' || doorU > 0.3) { officer.update(dt); for (const c of crew) c.a.update(dt); }
     },
     w,
     dispose() { for (const k of keep) { k.rig.root.removeFromParent(); k.rig.dispose(); } root.removeFromParent(); },

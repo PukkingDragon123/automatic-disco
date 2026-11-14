@@ -26,6 +26,13 @@ import { makePod, portholeWorld, type Pod } from '../ui/deployPod';
 import { clamp, damp, lerp } from '../core/rand';
 
 export type Grade = 'BULLSEYE' | 'ON TARGET' | 'CLOSE' | 'WIDE' | 'AUTOPILOT';
+/** what a landing earns (applied to the run by the deployment): within 6 m a core cell and ore, close in some ore */
+export function bonusFor(g: Grade): { cells: number; res: Partial<Record<'ore' | 'carbon' | 'water' | 'soil', number>>; text: string } {
+  if (g === 'BULLSEYE') return { cells: 1, res: { ore: 15, carbon: 10 }, text: '+1 CORE CELL · +15 ORE · +10 CARBON' };
+  if (g === 'ON TARGET') return { cells: 0, res: { ore: 12, soil: 8 }, text: '+12 ORE · +8 SOIL' };
+  if (g === 'CLOSE' || g === 'AUTOPILOT') return { cells: 0, res: { ore: 6 }, text: '+6 ORE' };
+  return { cells: 0, res: {}, text: 'NO DROP BONUS' };
+}
 export interface DescentResult { x: number; z: number; dist: number; grade: Grade; auto: boolean; water: boolean }
 export interface DescentOpts {
   engine: Engine; input: Input; region: Region; pal: Palette; regionName: string; planetName: string;
@@ -762,7 +769,7 @@ export class Descent {
     if (Math.random() < dt * 8) this.fx.burst(P.x + (Math.random() - 0.5) * 2, P.y + 1, P.z + (Math.random() - 0.5) * 2, 1, Math.random() < 0.5 ? 0x5a5650 : 0x3e3a36, { speed: 0.3, up: 1.4, size: 6, life: 3, grav: -0.3 });
     if (this.landT > 2.2 && this.result) this.once('card', () => {
       const r = this.result!;
-      this.o.ui.card(r.grade === 'WIDE' ? 'TOUCHDOWN' : r.grade, `${Math.round(r.dist * 10) / 10} M FROM THE PIN`, 'UNIT 07 IS DOWN', r.grade === 'BULLSEYE' ? 'BULLSEYE' : 'U.S.P.C.');
+      this.o.ui.card(r.grade === 'WIDE' ? 'TOUCHDOWN' : r.grade, `${r.auto ? 'ON THE PIN' : `${Math.round(r.dist * 10) / 10} M FROM THE PIN`} · ${bonusFor(r.grade).text}`, 'UNIT 07 IS DOWN', r.grade === 'BULLSEYE' ? 'BULLSEYE' : 'U.S.P.C.');
       csfx('sting', 0.7);
     });
     if (this.landT > 6.4 && this.result) this.once('done', () => { this.o.ui.cardOff(); this.o.onDone(this.result!); });

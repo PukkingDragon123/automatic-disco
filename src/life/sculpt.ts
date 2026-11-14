@@ -469,7 +469,7 @@ const HEAD_PROF: Record<HeadFam, HeadProf> = {
   // a cat: a big domed cranium, eyes close-set at the front under heavy brows, a short broad blunt muzzle
   cat: { rx: [0.42, 0.56, 0.6, 0.58, 0.52, 0.46, 0.42, 0.37], ry: [0.42, 0.56, 0.58, 0.5, 0.42, 0.37, 0.33, 0.29], hy: [0.06, 0.2, 0.24, 0.17, 0.05, -0.01, -0.04, -0.06], eye: [0.33, 0.6, 0.32, 0.17, 52, 15] },
   // a bear: a broad high forehead dropping into a dished stop, a heavy straight muzzle, small eyes
-  bear: { rx: [0.4, 0.56, 0.62, 0.56, 0.4, 0.32, 0.29, 0.24], ry: [0.38, 0.52, 0.56, 0.44, 0.29, 0.27, 0.25, 0.21], hy: [0.06, 0.2, 0.24, 0.15, -0.01, -0.03, -0.05, -0.06], eye: [0.3, 1.0, 0.7, 0.095, 38, 14] },
+  bear: { rx: [0.38, 0.55, 0.6, 0.54, 0.41, 0.33, 0.29, 0.24], ry: [0.38, 0.52, 0.55, 0.46, 0.34, 0.28, 0.25, 0.21], hy: [0.06, 0.18, 0.21, 0.14, 0.03, -0.02, -0.04, -0.05], eye: [0.3, 1.04, 0.72, 0.108, 38, 14] },
   // deer and elk: a long narrow face, eyes high on the sides, a soft broad nose
   hoof: { rx: [0.3, 0.42, 0.46, 0.38, 0.28, 0.22, 0.19, 0.17], ry: [0.34, 0.46, 0.48, 0.4, 0.32, 0.28, 0.26, 0.22], hy: [0.08, 0.17, 0.18, 0.12, 0.04, -0.02, -0.05, -0.08], eye: [0.2, 1.08, 1.15, 0.15, 44, 0] },
   // a boar: a wedge from the high forehead straight down to the snout disc
@@ -526,7 +526,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     if (!beak && !flat && !liz) b += 0.06 * gauss(t, 0.93, 0.05) * gauss(aa, 0.45, 0.25); // nostril wings
     if (cat || fam === 'canid' || bear) b += 0.08 * sm(clamp((t - tSn) / 0.15, 0, 1)) * gauss(aa, 2.35, 0.3); // the upper lips hang over the jaw
     if (cat) b += 0.2 * gauss(t, 0.88, 0.07) * gauss(aa, 2.0, 0.42) - 0.04 * gauss(t, tSn + 0.02, 0.05) * gauss(aa, 0, 0.4) + 0.12 * gauss(t, tEye - 0.04, 0.04) * gauss(aa, eAng - 0.12, 0.25); // puffy whisker pads, the bridge, heavy brows
-    if (bear) b -= 0.08 * gauss(t, tSn - 0.04, 0.06) * gauss(aa, 0, 0.6); // the dished stop
+    if (bear) b -= 0.05 * gauss(t, tSn - 0.05, 0.06) * gauss(aa, 0, 0.6); // the dished stop
     if (hoof) b += 0.14 * gauss(t, tEye + 0.12, 0.09) * gauss(aa, 2.1, 0.45) + 0.08 * gauss(t, 0.95, 0.05) * gauss(aa, 1.3, 0.5); // jaw muscle, soft nose
     if (boar) b += 0.11 * gauss(t, tEye + 0.1, 0.08) * gauss(aa, 2.0, 0.4) + 0.05 * gauss(t, 0.97, 0.03); // jowls, the rim of the snout disc
     if (liz) b += 0.16 * gauss(t, 0.12, 0.1) * gauss(aa, 1.95, 0.5) + 0.1 * gauss(t, tEye - 0.03, 0.05) * gauss(aa, eAng - 0.42, 0.25); // jaw muscles, brow scales

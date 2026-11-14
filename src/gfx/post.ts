@@ -78,7 +78,7 @@ vec3 atmosphere(vec3 col, vec3 P, vec3 rd, float dist, bool bg) {
     n /= 3.0;
     float pt = mix(1.0, smoothstep(0.28, 0.78, n) * 2.0, uPatch);
     float m = 1.0 - exp(-uMist * integ * pt);
-    col = mix(col, uMistCol * mix(0.62, 1.0, lit), clamp(m, 0.0, 0.92));
+    col = mix(col, uMistCol * mix(0.62, 1.0, lit), clamp(m, 0.0, 0.6));
   }
   // aerial perspective: blue with distance (warmer toward the sun), a touch warm up close
   float hz = (1.0 - exp(-D * uHaze)) * (bg ? 0.75 : 1.0);
@@ -438,7 +438,7 @@ export class Post {
     const sky = U.uSkyCol.value as THREE.Color, hz = U.uHazeCol.value as THREE.Color, mc = U.uMistCol.value as THREE.Color;
     sky.copy(e.sky).multiplyScalar(0.25 + 0.75 * k);
     hz.copy(e.sky).lerp(sun.hemi.color, 0.35).multiplyScalar((0.2 + 0.8 * k) * 0.95);
-    mc.copy(e.sky).lerp(_w, 0.5).lerp(sun.hemi.color, 0.2).multiplyScalar(0.16 + 0.74 * k);
+    mc.copy(e.sky).lerp(_w, 0.3).lerp(sun.hemi.color, 0.3).multiplyScalar(0.14 + 0.62 * k);
     U.uHaze.value = e.haze; U.uMist.value = e.mist * (lo ? 0.35 : 1); U.uMistY.value = e.mistY; U.uMistH.value = e.mistH; U.uPatch.value = e.patch;
     U.uWet.value = e.wet; U.uRain.value = e.rain; U.uDew.value = e.dew; U.uHeat.value = lo ? 0 : e.heat;
     (U.uWind.value as THREE.Vector2).copy(e.wind);

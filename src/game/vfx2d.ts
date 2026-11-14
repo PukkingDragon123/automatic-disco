@@ -326,10 +326,11 @@ const DEFS: Record<VfxName, Def> = {
   },
   // rings spreading on water (flat): a crisp leading ring with a softer one behind, breaking up as they fade
   ripple: {
-    size: 48, holds: [3, 3, 3, 3, 3, 4, 4, 4], m: 1.0, flat: true, pal: [0x000000, 0x5a9ac0, 0x8acbe8, 0xcff2ff, 0xffffff], outline: 0,
+    size: 48, holds: [3, 3, 3, 3, 3, 4, 4, 4], m: 1.0, flat: true, pal: [0x000000, 0x3a78a4, 0x8acbe8, 0xcff2ff, 0xffffff], outline: 0,
     draw(g, f) {
       const c = 24, r = 3 + f * 2.7;
       const keep = f >= 5 ? (a: number) => Math.floor((a + 4) * (f >= 7 ? 5 : 4)) % 3 !== 0 : undefined;
+      g.ering(c, c, r + 1.1, r + 1.1, 1, SHD, keep);
       g.ering(c, c, r, r, 1.2, f <= 2 ? HI : LIT, keep);
       if (f >= 2) g.ering(c, c, r - 5, r - 5, 1, f <= 4 ? LIT : MID, keep);
       if (f >= 4 && f <= 6) g.ering(c, c, r - 10, r - 10, 1, MID, (a) => Math.floor((a + 4) * 4) % 2 === 0);
