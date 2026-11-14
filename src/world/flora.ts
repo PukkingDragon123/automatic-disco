@@ -30,7 +30,8 @@ import { Rand, hash01 } from '../core/rand';
 import { VEYR, RIVALS } from './palette';
 import { FloraTex } from './floraTex';
 import { meshPlant, meshBarrel, meshCrystal, meshGround, bladeSetOf, type GroundForm, type PlantGeo } from './floraMesh';
-import { HERO } from './floraHero';
+import { HERO, fruitGeometry, fruitFormOf, FRUIT_TOP } from './floraHero';
+import type { V3 } from './plantStyle';
 import { FloraField } from './floraField';
 import { Batch, CH } from './floraBatch';
 import { plant3dMaterial, cardMaterial, STATE_W } from './floraGL';
@@ -151,6 +152,7 @@ export class Flora {
     const grow = <T extends Float32Array | Uint8Array>(a: T, b: T) => { b.set(a); return b; };
     this.x = grow(this.x, new Float32Array(cap)); this.z = grow(this.z, new Float32Array(cap));
     this.sp = grow(this.sp, new Uint8Array(cap)); this.bio = grow(this.bio, new Float32Array(cap));
+    this.pvar = new Uint8Array(cap); this.pseed = new Float32Array(cap);
     this.buildPlants(inst);
     for (let i = 0; i < this.n; i++) this.trapCheck(i);
     this.stats.tPlants = performance.now() - tq; tq = performance.now();
@@ -345,7 +347,7 @@ export class Flora {
     const perCard: number[][] = [];
     inst.forEach((p, i) => {
       const c = this.chunk(p[0], p[2]), v = p[4] % V;
-      this.rec3d(i, p[0], p[1], p[2], 1, (per3d[p[3]][v][c] ??= []));
+      this.rec3d(i, p[0], p[1], p[2], 1, (per3d[p[3]][v][c] ??= [])); this.pvar[i] = v; this.pseed[i] = 1;
       this.recCard(i, p[0], p[1], p[2], p[3], p[4], 1, (perCard[c] ??= []));
     });
     let tris = 0;
@@ -364,7 +366,7 @@ export class Flora {
           pgs.push(pg, pg);
         }
         this.stats.tMesh += performance.now() - tm;
-        this.pGeo[si][v] = pgs; this.p3d[si][v] = [];
+        this.pGeo[si][v] = pgs; this.p3d[si][v] = []; (this.anchors[si] ??= [])[v] = pgs[0].anchors ?? [];
         pgs.forEach((pg, lod) => {
           tris += pg.tris;
           const small = this.isSmall(s), shrub = s.arch === 'shrub', U = this.U;
@@ -669,6 +671,7 @@ export class Flora {
     const h = R.heightAt(x, z), ry = R.riverAt(x, z), y = R.isWater(x, z) ? (ry > 0 && h < ry + 0.05 ? ry : R.water) : h;
     const c = this.chunk(x, z);
     for (const b of this.p3d[kind][v]) b.add(c, this.rec3d(i, x, y, z, seed + 1));
+    this.pvar[i] = v; this.pseed[i] = seed + 1;
     this.pCards.add(c, this.recCard(i, x, y, z, kind, v % sp.sprites.length, seed + 1));
     this.x[i] = x; this.z[i] = z; this.sp[i] = kind; this.bio[i] = 1;
     this.sset(i, 0, 0, 255); this.sset(i, 0, 1, 0); this.sset(i, 0, 2, 0); this.sset(i, 0, 3, 255);
@@ -710,44 +713,40 @@ export class Flora {
     this.setFruit(i, (this.fruitK[i] - 1) / 3);
     return 0.18 + this.species[this.sp[i]].food * 0.006;
   }
-  /** where fruit hangs on plant i (k: which fruit) and how big it is; false if it has none to show */
+  /** each plant's variant and instance seed (its yaw and size), and per species-variant where its fruit hangs */
+  private pvar = new Uint8Array(0); private pseed = new Float32Array(0);
+  private anchors: V3[][][] = [];
+  /** where fruit hangs on plant i (k: which fruit) and how big it is; 0 if it has none to show. Fruit hangs from the
+   *  plant's own twigs (the points its model grew fruit at), its stalk reaching up to the twig. */
   fruitPos(i: number, k: number, out: THREE.Vector3): number {
-    const s = this.species[this.sp[i]], g = Math.max(0.3, this.state[i * 12 + 3] / 255), h = s.hmax * 0.92 * g;
-    const pod = !s.tree && s.arch !== 'shrub', a = hash01(i, k, 61) * Math.PI * 2 + k * 2.4;
-    // tree fruit hangs under the crown close in to the trunk, shrub fruit sits among the twigs, pods ride the tops
+    const s = this.species[this.sp[i]], g = Math.max(0.3, this.state[i * 12 + 3] / 255), form = fruitFormOf(s);
+    const R = this.region, ry = R.riverAt(this.x[i], this.z[i]), gy = R.isWater(this.x[i], this.z[i]) ? Math.max(R.water, ry) : R.heightAt(this.x[i], this.z[i]);
+    const sz = (s.tree ? (form === 'nut' ? 0.085 : 0.075) : form === 'berries' ? 0.06 : form === 'pod' ? 0.05 : 0.055) * (0.85 + hash01(i, k, 64) * 0.3) * (0.6 + 0.4 * g);
+    const A = this.anchors[this.sp[i]]?.[this.pvar[i]];
+    if (A && A.length) {
+      const a = A[(k * 5 + i) % A.length], sd = this.pseed[i], yaw = hash01(i, sd, 41) * Math.PI * 2, sc = (0.9 + hash01(i, sd, 43) * 0.2) * g;
+      const c = Math.cos(yaw), sn = Math.sin(yaw), ax = a[0] * sc, az = a[2] * sc;
+      out.set(this.x[i] + c * ax - sn * az, gy + a[1] * sc - sz * FRUIT_TOP, this.z[i] + sn * ax + c * az);
+      return sz;
+    }
+    const h = s.hmax * 0.92 * g, pod = !s.tree && s.arch !== 'shrub', an = hash01(i, k, 61) * Math.PI * 2 + k * 2.4;
     const rr = (s.tree ? h * 0.16 : pod ? h * 0.1 : h * 0.26) * (0.75 + hash01(i, k, 62) * 0.4);
     const yk = s.tree ? 0.64 + hash01(i, k, 63) * 0.14 : pod ? 0.8 + hash01(i, k, 63) * 0.14 : 0.45 + hash01(i, k, 63) * 0.34;
-    const R = this.region, ry = R.riverAt(this.x[i], this.z[i]), gy = R.isWater(this.x[i], this.z[i]) ? Math.max(R.water, ry) : R.heightAt(this.x[i], this.z[i]);
-    out.set(this.x[i] + Math.cos(a) * rr, gy + h * yk, this.z[i] + Math.sin(a) * rr);
-    return (s.tree ? 0.1 : pod ? 0.065 : 0.075) * (0.85 + hash01(i, k, 64) * 0.3) * (0.6 + 0.4 * g);
+    out.set(this.x[i] + Math.cos(an) * rr, gy + h * yk - sz * FRUIT_TOP, this.z[i] + Math.sin(an) * rr);
+    return sz;
   }
-  /** two hand-cut forms, flat-lit in the master palette: a fruit (a six-sided lathe with a dimpled crown) and a long
-   *  pod, each on a short dark stalk (its own instanced mesh, sharing the fruit's matrix) */
-  private makeFruitMeshes() {
-    const N = 480;
-    const mk = (pod: boolean) => {
-      const prof = (pod ? [[0, -1.7], [0.3, -1.35], [0.55, -0.5], [0.52, 0.5], [0.3, 1.25], [0.08, 1.5], [0, 1.45]] : [[0, -0.95], [0.5, -0.82], [0.88, -0.35], [0.95, 0.2], [0.74, 0.7], [0.3, 0.92], [0.08, 0.8], [0, 0.84]]).map(([x, y]) => new THREE.Vector2(x, y));
-      const geo = new THREE.LatheGeometry(prof, 6).toNonIndexed();
-      const pos = geo.attributes.position as THREE.BufferAttribute, col = new Float32Array(pos.count * 3), top = pod ? 1.5 : 0.92;
-      // the crown darker (where the stalk sits), the underside a step down: planes of one ramp, lit from above
-      for (let v = 0; v < pos.count; v++) { const y = pos.getY(v) / top, kk = y > 0.78 ? 0.5 : y < -0.62 ? 0.78 : 1; col[v * 3] = col[v * 3 + 1] = col[v * 3 + 2] = kk; }
-      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-      geo.deleteAttribute('uv'); geo.computeVertexNormals();
-      const mat = gbuf(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), 1);
-      const m = new THREE.InstancedMesh(geo, mat, N);
-      m.count = 0; m.frustumCulled = false; m.name = pod ? 'flora-pods' : 'flora-fruit';
-      m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(N * 3), 3);
-      this.group.add(m);
-      return m;
-    };
-    // the stalk: a thin three-sided stem rising from the fruit's crown (in fruit units, so it scales with it)
-    const sg = new THREE.CylinderGeometry(0.07, 0.1, 1.6, 3, 1).toNonIndexed(); sg.translate(0, 0.8 + 0.75, 0); sg.deleteAttribute('uv'); sg.computeVertexNormals();
-    const stem = new THREE.InstancedMesh(sg, gbuf(new THREE.MeshLambertMaterial({ color: new THREE.Color(rampFor(this.region.pal.soil)[1]), flatShading: true }), 1), N * 2);
-    stem.count = 0; stem.frustumCulled = false; stem.name = 'flora-fruit-stalks';
-    this.group.add(stem);
-    this.fruitMesh = [mk(false), mk(true), stem];
+  /** each species' own fruit (drupe, pear, nut, berries, pod, lantern, capsule) on its stalk, faceted in its palette
+   *  ramps with a calyx and a glint; one instanced mesh per fruiting species, built when first needed */
+  private fruitMeshes = new Map<number, THREE.InstancedMesh>();
+  private fruitMeshFor(s: PlantSpecies) {
+    let m = this.fruitMeshes.get(s.id);
+    if (m) return m;
+    const geo = fruitGeometry(fruitFormOf(s), rampFor(s.accent), rampFor(s.leaf), rampFor(s.tree ? s.trunk : s.leaf));
+    m = new THREE.InstancedMesh(geo, gbuf(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide }), 1), s.tree ? 220 : 140);
+    m.count = 0; m.frustumCulled = false; m.name = 'flora-fruit:' + s.arch;
+    this.group.add(m); this.fruitMeshes.set(s.id, m); this.fruitMesh.push(m);
+    return m;
   }
-  private fruitCol = new Map<number, THREE.Color>();
   private fruitCand: number[] = [];
   private fruitFrame(dt: number, cp: THREE.Vector3, e: ArrayLike<number>) {
     if (!this.fruiting.size && !this.fruitMesh.length) return;
@@ -758,8 +757,7 @@ export class Flora {
     const moved = (lx - this.fruitAt0.x) ** 2 + (lz - this.fruitAt0.z) ** 2 > 16;
     if (this.fruitT > 0 || (!this.fruitDirty && !moved)) return;
     this.fruitT = 0.3; this.fruitDirty = false; this.fruitAt0.set(lx, 0, lz);
-    if (!this.fruitMesh.length) this.makeFruitMeshes();
-    const [fm, pm, sm] = this.fruitMesh, M = new THREE.Matrix4(), q = new THREE.Quaternion(), P = new THREE.Vector3(), S = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+    const M = new THREE.Matrix4(), q = new THREE.Quaternion(), P = new THREE.Vector3(), S = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
     const vd = (this.U.uVis.value as THREE.DataTexture).image?.data as Uint8Array | undefined, N = this.region.N;
     const R2 = Math.max(30, Math.min(60, cp.y * 1.4)) ** 2;
     // nearest first, so the instance budget goes to what is in front of the camera
@@ -771,27 +769,20 @@ export class Flora {
       cand.push(Math.floor(d2) * 65536 + i);
     }
     if (cand.length > 300) cand.sort((a, b) => a - b);
-    let nf = 0, np = 0;
+    for (const m of this.fruitMesh) m.count = 0;
     for (const ci of cand) {
-      const i = ci % 65536;
-      const s = this.species[this.sp[i]], pod = !s.tree && s.arch !== 'shrub', mesh = pod ? pm : fm;
-      let c = this.fruitCol.get(s.id);
-      if (!c) { const ramp = rampFor(s.accent); c = new THREE.Color(ramp[pod ? 3 : 4]); this.fruitCol.set(s.id, c); }
+      const i = ci % 65536, s = this.species[this.sp[i]], mesh = this.fruitMeshFor(s);
       const n = this.fruitK[i] * (s.tree ? 2 : 1);
       for (let k = 0; k < n; k++) {
-        if ((pod ? np : nf) >= mesh.instanceMatrix.count) break;
+        if (mesh.count >= mesh.instanceMatrix.count) break;
         const sz = this.fruitPos(i, k, P);
+        // hanging: a little swing off the vertical, turned at random
         q.setFromAxisAngle(Y, hash01(i, k, 65) * 6.28);
         M.compose(P, q, S.setScalar(sz));
-        const j = pod ? np++ : nf++;
-        mesh.setMatrixAt(j, M); mesh.setColorAt(j, c);
-        sm.setMatrixAt(nf + np - 1, M);
+        mesh.setMatrixAt(mesh.count++, M);
       }
     }
-    fm.count = nf; pm.count = np; sm.count = nf + np;
-    fm.instanceMatrix.needsUpdate = pm.instanceMatrix.needsUpdate = sm.instanceMatrix.needsUpdate = true;
-    if (fm.instanceColor) fm.instanceColor.needsUpdate = true;
-    if (pm.instanceColor) pm.instanceColor.needsUpdate = true;
+    for (const m of this.fruitMesh) m.instanceMatrix.needsUpdate = true;
   }
 
   /** regrowth tick */

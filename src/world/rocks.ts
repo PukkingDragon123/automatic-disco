@@ -12,7 +12,7 @@ import { Noise } from '../core/noise';
 import { gbuf } from '../gfx/gbuf';
 import { SHADER_NOISE, FOW_FN } from './glsl';
 import { buildRockTexture, RL } from './rockTex';
-import { L, B } from './blockTex';
+import { L, B, TILE_M } from './blockTex';
 
 /** sqrt-based length (Math.hypot is several times slower in the hot loops) */
 const hyp = (a: number, b: number, c = 0) => Math.sqrt(a * a + b * b + c * c);
@@ -495,7 +495,7 @@ vec3 emis = vec3(0.0);
 vec4 cov = texture2D(uMoss, vWp.xz / uN);
 float thr = 0.3 + (vn(vWp.xz * 0.85) * 0.62 + vn(vWp.xz * 3.3) * 0.38) * 0.4 + (n.y < 0.3 ? 0.18 : 0.0);
 if (cov.r > thr || cov.g > thr + 0.02) {
-  vec4 mt = texture(uBlocks, vec3(uv, cov.r > thr ? ${L.moss}.0 : uRivalLayer), -0.35);
+  vec4 mt = texture(uBlocks, vec3(uv / ${TILE_M.toFixed(1)}, cov.r > thr ? ${L.moss}.0 : uRivalLayer), -0.35);
   base = mt.rgb; emis = mt.rgb * (1.0 - mt.a) * 1.1;
 }
 diffuseColor.rgb *= base;

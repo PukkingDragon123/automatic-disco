@@ -6,6 +6,7 @@
 // lip, a hood and pooled liquid, sundews with curling, glistening tentacles. Alien growth: membrane sails between
 // spines, lure stalks spiralling up to a glowing bulb. Lily pads are slit pads, some with upturned rims, with flowers
 // rising from the water. Every surface uses a hand-drawn pixel texture (floraTex) or a master-palette ramp colour.
+import * as THREE from 'three';
 import { Rand } from '../core/rand';
 import { rampNamed, rampFor } from './pixelKit';
 import { FloraTex, BARK, barkU, type Rect } from './floraTex';
@@ -373,7 +374,7 @@ export function meshBloom(sp: PlantSpecies, h: number, tex: FloraTex, seed: numb
   const flen = h * sty.range(0.06, 0.085) * (n >= 8 ? 0.85 : 1), fwid = flen * (n >= 8 ? 0.22 : 0.42);
   g.kind = KIND.LEAF; g.pivot = [0, 0, 0];
   for (let k = lod ? 4 : 7; k > 0; k--) { const a = r.range(0, TAU), d = vnrm([Math.cos(a), r.range(0.35, 0.7), Math.sin(a)]); g.phase = r.next(); g.col = [0.9, 0.9, 0.9]; leafCard(g, [0, 0.01, 0], d, vnrm(vcross(d, vcross(UP, d))), h * r.range(0.2, 0.3), h * 0.06, leafR, 0.45, 0.3, null); }
-  const ns = r.int(2, lod ? 3 : 5);
+  const ns = r.int(2, lod ? 3 : 5), anchors: V3[] = [];
   for (let k = 0; k < ns; k++) {
     const a = (k / ns) * TAU + r.range(-0.4, 0.4), lean = r.range(0.08, 0.3), L = h * (k === 0 ? 0.95 : r.range(0.6, 0.9)), pts: V3[] = [];
     for (let s = 0; s <= 4; s++) { const t = s / 4; pts.push([Math.cos(a) * (lean * L * t * t + 0.01), L * t, Math.sin(a) * (lean * L * t * t + 0.01)]); }
@@ -386,11 +387,12 @@ export function meshBloom(sp: PlantSpecies, h: number, tex: FloraTex, seed: numb
       g.kind = KIND.LEAF; g.col = [0.95, 0.95, 0.95]; leafCard(g, pe, d, vnrm(vcross(d, vcross(UP, d))), h * 0.15 * (1.2 - m * 0.2), h * 0.04, leafR, 0.4, 0.2, null);
     }
     const tip = pts[4], ax = vnrm(vadd(vsub(pts[4], pts[3]), [0, 0.6, 0]));
+    anchors.push(pts[2], pts[3]);
     // the stage: the main stem flowers; the others are buds, opening, open or gone to seed
     const stage = k === 0 ? 0 : r.pick([0, 0, 0.35, 0.8, 1, 2]);
     flower(g, tex, tip, ax, { n, len: flen, wid: fwid, rect: pet, cup, layers, reflex, sepals: sep, stamens: n >= 8 ? 14 : 9, anther, pistil, receptacle: G, bud: stage >= 2 ? 0 : stage, fruit: stage >= 2 ? G : undefined }, r, lod);
   }
-  return { geo: g.build(h * 0.4), H: h, R: h * 0.4, tris: g.tris };
+  return { geo: g.build(h * 0.4), H: h, R: h * 0.4, tris: g.tris, anchors };
 }
 
 // ------------------------------------------------------------------------------------------------ carnivorous
@@ -567,7 +569,7 @@ export function meshLure(sp: PlantSpecies, h: number, tex: FloraTex, seed: numbe
   for (let k = 0; k < (lod ? 4 : 7); k++) { const a = (k / 7) * TAU + 0.3, d = vnrm([Math.cos(a), -0.2 + (k % 2) * 0.35, Math.sin(a)]); leafCard(g, vadd(top, [0, -0.008, 0]), d, vnrm([Math.cos(a) * 0.3, 1, Math.sin(a) * 0.3]), h * 0.13, h * 0.045, ruff, 0.35, 0.25, null); }
   g.kind = KIND.GLOW; g.col = linHex(rampNamed('glowTeal')[3], 0.95);
   sphere(g, vadd(top, [0, h * 0.045, 0]), h * 0.048, tex.speckle(), lod ? 5 : 7, lod ? 3 : 4, 1.25);
-  return { geo: g.build(h * 0.3), H: h, R: h * 0.3, tris: g.tris };
+  return { geo: g.build(h * 0.3), H: h, R: h * 0.3, tris: g.tris, anchors: [vadd(top, [h * 0.08, -0.01, 0]), vadd(top, [-h * 0.06, -0.01, h * 0.05]), pts[Math.floor(pts.length * 0.6)]] };
 }
 
 /** lily pads: slit pads, some species with an upturned rim, veined and a little tilted; flowers on stems rising from
@@ -617,3 +619,95 @@ export function meshLilyHero(sp: PlantSpecies, h: number, tex: FloraTex, seed: n
 export const HERO: Record<string, (sp: PlantSpecies, h: number, tex: FloraTex, seed: number, lod: number) => PlantGeo> = {
   snaptrap: meshSnaptrap, pitcher: meshPitcher, sundew: meshSundew, sail: meshSail, lure: meshLure, bloom: meshBloom, lily: meshLilyHero,
 };
+
+// ------------------------------------------------------------------------------------------------ fruit
+export type FruitForm = 'drupe' | 'pear' | 'berries' | 'pod' | 'lantern' | 'capsule' | 'nut';
+/** which fruit a species bears */
+export function fruitFormOf(sp: PlantSpecies): FruitForm {
+  const r = new Rand(sp.id * 41 + 17);
+  switch (sp.arch) {
+    case 'broadleaf': return r.pick<FruitForm>(['drupe', 'pear', 'drupe', 'nut']);
+    case 'palm': return 'nut';
+    case 'umbrella': return 'pod';
+    case 'shrub': case 'weeper': case 'coral': case 'fungus': return 'berries';
+    case 'bulb': case 'lure': return 'lantern';
+    case 'bloom': case 'eyeflower': case 'rosette': case 'spike': return 'capsule';
+    case 'barrel': return 'pear';
+    default: return r.pick<FruitForm>(['pod', 'capsule', 'berries']);
+  }
+}
+/**
+ * A fruit hanging from its stalk, in fruit units (radius about 1, origin at the fruit's centre, the stalk rising to
+ * y = FRUIT_TOP where it meets the twig). Faceted planes in master-palette ramp steps: the lit facets a step up, the
+ * underside a step down, a calyx of sepals at the crown, a glint on the upper left. Colours are baked per species.
+ */
+export const FRUIT_TOP = 2.4;
+export function fruitGeometry(form: FruitForm, fruitR: number[], leafR: number[], twigR: number[]): THREE.BufferGeometry {
+  const P: number[] = [], C: number[] = [];
+  const col = (hex: number, k = 1) => { const c = new THREE.Color(hex); return [c.r * k, c.g * k, c.b * k]; };
+  const tri = (a: V3, b: V3, c: V3, ca: number[]) => { P.push(...a, ...b, ...c); for (let i = 0; i < 3; i++) C.push(...ca); };
+  const quad = (a: V3, b: V3, c: V3, d: V3, ca: number[]) => { tri(a, b, c, ca); tri(a, c, d, ca); };
+  const n = fruitR.length - 1;
+  // a faceted lathe body around an axis (optionally bent), each facet one ramp step by where it faces
+  const body = (prof: [number, number][], sides: number, at: V3, sc: number, bend = 0) => {
+    const pt = (j: number, i: number): V3 => { const [rr, y] = prof[j], a = (i / sides) * TAU + (j & 1) * (Math.PI / sides); return [at[0] + Math.cos(a) * rr * sc + bend * y * y * sc, at[1] + y * sc, at[2] + Math.sin(a) * rr * sc]; };
+    for (let j = 0; j < prof.length - 1; j++) for (let i = 0; i < sides; i++) {
+      const a = pt(j, i), b = pt(j, i + 1), c = pt(j + 1, i + 1), d = pt(j + 1, i), mid = (j + 0.5) / (prof.length - 1), ang = ((i + 0.5) / sides) * TAU;
+      const faceLit = -Math.cos(ang) * 0.6 - Math.sin(ang) * 0.4 > 0.15;
+      const step = mid > 0.72 ? (faceLit ? n - 1 : n - 2) : mid < 0.25 ? n - 4 : faceLit ? n - 2 : n - 3;
+      quad(a, b, c, d, col(fruitR[Math.max(1, step)], (i & 1) ? 0.94 : 1));
+    }
+  };
+  const stalk = (from: V3, to: V3, w: number) => {
+    const c = col(twigR[Math.min(twigR.length - 1, 3)]);
+    for (let k = 0; k < 3; k++) {
+      const a0 = (k / 3) * TAU, a1 = ((k + 1) / 3) * TAU, o0: V3 = [Math.cos(a0) * w, 0, Math.sin(a0) * w], o1: V3 = [Math.cos(a1) * w, 0, Math.sin(a1) * w];
+      quad(vadd(from, o0), vadd(from, o1), vadd(to, vmul(o1, 0.7)), vadd(to, vmul(o0, 0.7)), c);
+    }
+  };
+  const calyx = (at: V3, rr: number, k: number) => {
+    const c = col(leafR[Math.min(leafR.length - 1, 3)]);
+    for (let s = 0; s < k; s++) { const a = (s / k) * TAU, b = a + TAU / k / 2; tri(at, vadd(at, [Math.cos(a) * rr * 0.25, 0.05, Math.sin(a) * rr * 0.25]), vadd(at, [Math.cos(b) * rr, -0.12 * rr, Math.sin(b) * rr]), c); }
+  };
+  const glint = (at: V3, s: number) => { const c = col(RAMPS_SNOW[5], 1.4); quad(vadd(at, [-s, s * 0.6, -s]), vadd(at, [0, s * 0.9, -s * 0.6]), vadd(at, [-s * 0.2, s * 0.2, -s * 0.2]), vadd(at, [-s * 0.9, 0, -s * 0.5]), c); };
+  if (form === 'berries') {
+    // a little bunch on a forked stalk
+    stalk([0, 1.2, 0], [0, FRUIT_TOP, 0], 0.08);
+    for (const [x, y, z] of [[-0.55, 0, 0.1], [0.5, 0.15, -0.2], [0, -0.55, 0.35]] as V3[]) {
+      stalk([x * 0.6, y + 0.45, z * 0.6], [0, 1.2, 0], 0.05);
+      body([[0, -0.55], [0.4, -0.42], [0.55, 0], [0.42, 0.38], [0.12, 0.52], [0, 0.48]], 6, [x, y, z], 1);
+      glint([x - 0.18, y + 0.2, z - 0.2], 0.12);
+    }
+  } else if (form === 'pod') {
+    // a long bean pod hanging and curving, ribbed seams, the seeds showing as bumps
+    stalk([0, 1.3, 0], [0, FRUIT_TOP, 0], 0.07);
+    body([[0.05, -2.2], [0.22, -1.9], [0.34, -1.2], [0.4, -0.6], [0.36, 0], [0.4, 0.5], [0.3, 1.0], [0.1, 1.3]], 5, [0, 0, 0], 1, 0.12);
+    glint([-0.2, 0.6, -0.2], 0.14);
+  } else if (form === 'lantern') {
+    // a ribbed lantern bladder, pointed at both ends
+    stalk([0, 1.05, 0], [0, FRUIT_TOP, 0], 0.07);
+    body([[0.08, -1.25], [0.55, -0.85], [0.95, -0.15], [0.85, 0.45], [0.45, 0.9], [0.08, 1.1]], 5, [0, 0, 0], 1);
+    calyx([0, 1.0, 0], 0.5, 5);
+  } else if (form === 'capsule') {
+    // a seed capsule: ribbed, flat-topped, a crown of dry sepal points
+    stalk([0, 0.8, 0], [0, FRUIT_TOP, 0], 0.07);
+    body([[0.1, -0.9], [0.6, -0.65], [0.72, 0], [0.62, 0.55], [0.4, 0.8], [0.45, 0.88], [0.1, 0.82]], 6, [0, 0, 0], 1);
+    calyx([0, 0.86, 0], 0.55, 6);
+  } else {
+    // drupe, pear or nut: a faceted body with a dimpled crown, sepals at the stalk, a glint
+    const prof: [number, number][] = form === 'pear' ? [[0, -1], [0.62, -0.85], [0.95, -0.35], [0.82, 0.25], [0.48, 0.7], [0.3, 1.05], [0.12, 1.2], [0, 1.16]]
+      : form === 'nut' ? [[0, -1.05], [0.6, -0.9], [0.98, -0.25], [0.92, 0.35], [0.6, 0.78], [0.2, 0.92], [0, 0.9]]
+        : [[0, -0.95], [0.55, -0.82], [0.92, -0.32], [1, 0.18], [0.8, 0.66], [0.36, 0.88], [0.1, 0.78], [0, 0.82]];
+    const top = prof[prof.length - 2][1];
+    stalk([0, top, 0], [0.08, FRUIT_TOP, 0], 0.08);
+    body(prof, form === 'nut' ? 6 : 7, [0, 0, 0], 1);
+    calyx([0, top + 0.02, 0], form === 'nut' ? 0.6 : 0.42, 5);
+    glint([-0.45, 0.42, -0.45], 0.2);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
+  g.computeVertexNormals();
+  return g;
+}
+const RAMPS_SNOW = rampNamed('snow');

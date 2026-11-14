@@ -8,7 +8,8 @@ import { openLab } from './ui/forge';
 import { TreeScreen } from './ui/tree';
 import { openSkillTree } from './ui/skillTree';
 import { PlanetScreen } from './ui/planetScreen';
-import { DeployScreen, type DeployResult } from './ui/deploy';
+import { DeployScreen } from './ui/deploy';
+import { GameDescent, bonusFor } from './game/descent';
 import type { Region } from './world/region';
 import { MenuScreen, AscendScreen, type ArchiveEntry } from './ui/menu';
 import { BabyEditor } from './ui/babyEditor';
@@ -93,23 +94,23 @@ export class Flow {
     }));
   }
 
-  /** the drop: the carrier's launch and the controllable descent (ui/deploy.ts), then the region itself */
+  /** the drop: the carrier's launch (ui/deploy.ts), then the region itself, which the pod falls into (game/descent.ts) */
   private deploy(r: PRegion, lz?: { x: number; z: number }, region?: Region) {
     this.engine.setScreen(new DeployScreen(this.engine, this.input, {
       planet: this.planet!, region: r, run: this.run, landings: this.landings, lz, regionData: region,
-      onDone: (res) => this.land(r, res),
+      onLaunched: (pin, first) => this.land(r, { pin, first }),
     }));
   }
 
   // ------------------------------------------------------------------ a region
-  private land(r: PRegion, drop?: DeployResult) {
+  /** drop: the pod is in the air over this region (the game starts in descent mode; the landing is where it comes down) */
+  private land(r: PRegion, drop?: { pin: { x: number; z: number }; first: boolean }) {
     const p = this.planet!, run = this.run!;
     this.landings++;
     for (const s of run.reg.list) s.alive = 0;
     const engine = this.engine;
-    // landing: where the pod came down (GameOpts takes it once game.ts reads opts.landing; see ui/deploy.ts)
-    const gopts: GameOpts & { landing?: { x: number; z: number } } = {
-      seed: r.seed, biome: r.biome, pal: p.palKey, regionName: r.name, run, story: this.landings === 1, danger: r.danger, landing: drop?.landing ?? undefined,
+    const gopts: GameOpts = {
+      seed: r.seed, biome: r.biome, pal: p.palKey, regionName: r.name, run, story: this.landings === 1, danger: r.danger, landing: drop?.pin, descent: !!drop,
       hooks: {
         openBuilder: (game) => openLab(engine, game),
         openLab: (game) => openLab(engine, game),
@@ -128,7 +129,10 @@ export class Flow {
     g.veyr.res.helix += run.helix;
     engine.setScreen(g);
     if (this.landings > 1) toast(`You fall on <b>${r.name}</b>. Everything you have absorbed came with you.`, 'story', 5000);
-    if (drop?.bonus) toast(`Drop ${drop.grade === 'BULLSEYE' ? '<b>dead on the pin</b>' : 'scored'}: ${drop.bonus.toLowerCase()}.`, 'good', 6000);
+    if (drop) new GameDescent({
+      game: g, lz: drop.pin, first: drop.first, planetName: p.name,
+      onDone: (res) => { const b = bonusFor(res.grade); if (b.cells || Object.keys(b.res).length) toast(`Drop ${res.grade === 'BULLSEYE' ? '<b>dead on the pin</b>' : 'scored'}: ${b.text.toLowerCase()}.`, 'good', 6000); },
+    });
   }
   private result(title: string, sub: string, lines: string[], btn: string, then: () => void) {
     const p = panel('choice', ui(), 'dark');

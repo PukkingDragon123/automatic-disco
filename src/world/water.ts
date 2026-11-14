@@ -13,10 +13,11 @@ import { GN_DECL } from '../gfx/gbuf';
 import { SHADER_NOISE, FOW_FN } from './glsl';
 import { VEYR } from './palette';
 import { RAMPS, type RampName } from '../art/palette';
-import { TS } from './blockTex';
+import { TS, TILE_M } from './blockTex';
 
-/** the ground's texel grid (texels per metre, blockTex.TS) as a GLSL literal: the water snaps to the same pixels */
-const TSF = TS.toFixed(1);
+/** the water's own pixel grid (texels per metre) as a GLSL literal: the ground's (blockTex.TS) up to 64 per metre, so
+ *  shore lines, rings and foam stay a readable width at play zoom */
+const TSF = Math.min(TS, 64).toFixed(1);
 
 const RIP_N = 24, WAKE_N = 6;
 const WATER_FN = /* glsl */`
@@ -94,7 +95,7 @@ vec3 waterShade(vec2 wp, float surf, float flowK, vec2 fuv, float sp) {
   vec2 mw = vec2(vn(bp * 0.55 + 3.1), vn(bp * 0.55 + 17.7)) - 0.5, mg = vec2(h2(px), h2(px + 31.0)) - 0.5;
   vec2 mp = bp + mw * 1.5 + mg * 0.55;
   float mid = floor(texture2D(uMat, (floor(clamp(mp, vec2(0.0), vec2(uN - 0.01))) + 0.5) / uN).r * 255.0 + 0.5);
-  vec3 bed = texture(uBlocks, vec3(bp, uLay[int(mid) * 2]), -0.35).rgb;
+  vec3 bed = texture(uBlocks, vec3(bp / ${TILE_M.toFixed(1)}, uLay[int(mid) * 2]), -0.35).rgb;
   // the bed under water: wet (darker), lit by a little caustic light
   bed *= 0.7 + caustic(bp, t) * 0.32 * exp(-depth * 0.9);
   // the bed seen through the water: red goes first, so a thin sheet only tints it and depth turns it to the body

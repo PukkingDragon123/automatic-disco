@@ -1,29 +1,30 @@
-// The controllable descent: Unit 07's drop pod falls from the entry interface to the ground of the chosen region,
-// and the player flies it. A small RCS thruster drifts the pod inside its descent cone (WASD / arrows / the touch
-// stick, a burst on Space or the BURST button) while cinematic cameras cut in and blend back out: the plasma sheath
-// glowing white-orange round the heat shield with streaks tearing past and the buffet shaking everything, the radio
-// blackout, the fireball seen from the ground, punching through the weather decks, the region itself rushing up
-// (the real Region heightfield the game will play on, its woods, rocks, rivers and seams, set in a stylised
-// landscape that curves away to the horizon), the red smoke of the drop zone, the chute blooming, the retro flare
-// and the impact: a dust shockwave and a white flash. Accuracy is scored against the pin set on the plotting table.
-// World frame: region cell (rx, rz) sits at (rx - N/2, height, rz - N/2), metres.
+// The controllable descent, INSIDE THE REAL GAME. The Game for the region is built first (descent mode: the core
+// waits hidden, no crater yet, the story waits), then Unit 07's drop pod falls out of the sky over the real map:
+// its terrain, flora, water, rocks, creatures and factions, all alive below. The player flies it: a small RCS
+// thruster drifts the pod inside its descent cone (WASD / arrows / the touch stick, a burst on Space or BURST)
+// while cinematic cameras cut in and blend back out (the plasma sheath and its streaks, the radio blackout, the
+// porthole, the fireball seen from the ground, punching through the weather decks, the chute, the retro flare).
+// Beyond the 128 m map a stylised landscape runs to a curved horizon under a sky that knows its altitude
+// (descentWorld.ts), fading away once the game's own camera has the view. IMPACT is on the real ground: the
+// crater is carved into the region, flora is flattened and creatures are thrown and scared off, a dust shockwave
+// and a white flash; then the pod's shell blows off on its bolts, the core is there in the crater and the golem
+// climbs out (the game's own hatching), with no cut. Then the camera eases into the game's and the story begins.
+// Accuracy is scored against the pin set from orbit and paid into the run.
+// Coordinates: the controller works in map-centred metres (x - N/2, z - N/2); its objects sit in a group offset
+// by (N/2, 0, N/2), so they line up with the game world (region cells at x, z).
 import * as THREE from 'three';
-import type { Engine } from '../app/engine';
-import type { Input } from '../app/input';
-import type { Post } from '../gfx/post';
-import { resetGrade } from '../gfx/post';
+import type { Game } from './game';
 import type { Region } from '../world/region';
 import type { Palette } from '../world/palette';
 import { gbuf } from '../gfx/gbuf';
-import { Fx } from './fx';
-import type { CineUI } from '../ui/cineUI';
+import { CineUI } from '../ui/cineUI';
 import { csfx, cloop, cvoice, type Loop } from '../ui/cineAudio';
 import { sfx } from '../audio/audio';
 import { settings } from '../settings';
 import { isTouchDevice } from '../ui/touch';
 import { Bin, lit, mesh, fxMat, rawMat, V3, TAU, sm, ease, hash, type V } from '../ui/deployKit';
 import { makePod, portholeWorld, type Pod } from '../ui/deployPod';
-import { makeWorld, buildGround, makeSky, skyAt, dropMarks, RP, type World, type Sky } from './descentWorld';
+import { makeWorld, buildFar, buildWater, makeSky, dropMarks, RP, type World, type Sky } from './descentWorld';
 import { clamp, damp, lerp } from '../core/rand';
 
 export type Grade = 'BULLSEYE' | 'ON TARGET' | 'CLOSE' | 'WIDE' | 'AUTOPILOT';
@@ -36,12 +37,14 @@ export function bonusFor(g: Grade): { cells: number; res: Partial<Record<'ore' |
 }
 export interface DescentResult { x: number; z: number; dist: number; grade: Grade; auto: boolean; water: boolean }
 export interface DescentOpts {
-  engine: Engine; input: Input; region: Region; pal: Palette; regionName: string; planetName: string;
-  /** the drop zone (region coordinates) */
+  /** the real game for the region, built in descent mode (opts.descent) */
+  game: Game;
+  /** the drop zone pinned from orbit (region coordinates) */
   lz: { x: number; z: number };
-  first: boolean; ui: CineUI;
-  onDone(r: DescentResult): void;
-  /** QA: freeze time when a named moment comes (entry, porthole, ground-up, cloud, low, chute, flare, impact) */
+  first: boolean; planetName: string;
+  /** after the golem is out and the game has the camera back (the bonus is already paid into game.run) */
+  onDone?(r: DescentResult): void;
+  /** QA: freeze time when a named moment comes (entry, porthole, ground-up, cloud, low, chute, flare, impact, out; alt:<m>) */
   hold?: string | null;
 }
 
@@ -170,22 +173,24 @@ const div = (cls: string, parent: HTMLElement, html = '') => { const e = documen
 interface Shot { name: string; t: number; dur: number; pose(t: number, pos: V, look: V): number }
 const _v = new V3(), _v2 = new V3(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4();
 
-export class Descent {
-  readonly scene = new THREE.Scene();
-  readonly fxScene = new THREE.Scene();
-  readonly cam = new THREE.PerspectiveCamera(56, 1, 0.3, 60000);
-  private bin = new Bin();
-  private fx: Fx;
+export class GameDescent {
+  /** everything this controller adds to the game scene (removed at the end); `far` is offset to the map's middle */
+  readonly root = new THREE.Group(); private far = new THREE.Group();
+  private g: Game; private ui = new CineUI(); private pal: Palette;
+  private O: V;
+  private cam!: THREE.PerspectiveCamera;
+  private bin = new Bin(); private debrisBin = new Bin();
+  /** the game's particles, taking map-centred coordinates */
+  private fx: { burst: (x: number, y: number, z: number, n: number, col: number, o?: any) => void; spray: (x: number, y: number, z: number, dx: number, dy: number, dz: number, n: number, col: number, o?: any) => void };
   private pod: Pod;
   private R: Region; private N: number;
   private W: World; private skyO: Sky; private sky: THREE.Mesh; private skyU: Record<string, THREE.IUniform>;
-  private sun: THREE.DirectionalLight; private hemi: THREE.HemisphereLight; private heatLight: THREE.PointLight;
+  private heatLight: THREE.PointLight;
   private clouds: { y: number; cover: number; slices: THREE.Mesh[]; u: Record<string, THREE.IUniform>[] }[] = [];
   private plasma: THREE.Mesh[] = []; private plasmaU: Record<string, THREE.IUniform>[] = [];
   private streaks: THREE.LineSegments; private streakP: Float32Array; private streakC: Float32Array; private streakSeed: Float32Array;
   private smokeU: Record<string, THREE.IUniform>; private smoke: THREE.Mesh;
   private shock: THREE.Mesh | null = null; private shockU: Record<string, THREE.IUniform> | null = null;
-  private scorch: THREE.Mesh;
   private strobe: THREE.Mesh;
   // state
   private alt: number; private alt0: number;
@@ -209,31 +214,39 @@ export class Descent {
   private hud: HTMLDivElement; private el: Record<string, HTMLElement> = {};
   private off: (() => void)[] = [];
   private touch = isTouchDevice();
+  private keys = new Set<string>();
+  // the hand-over: the shell, the golem, the camera easing into the game's
+  private shellT = -1; private outT = -1; private handT = -1; private rtsPos = new V3(); private rtsQ = new THREE.Quaternion(); private rtsFov = 36;
+  private saved: { fog: THREE.Fog | THREE.FogExp2 | null; bg: THREE.Color | THREE.Texture | null; far: number; near: number } | null = null;
+  private skyFade = 1; private finished = false;
+  private debris: { m: THREE.Mesh; v: V; w: V; rest: boolean; t: number }[] = [];
 
   constructor(readonly o: DescentOpts) {
     style();
-    const R = (this.R = o.region), N = (this.N = R.N), bin = this.bin, pal = o.pal;
+    const g = (this.g = o.game), R = (this.R = g.region), N = (this.N = R.N), bin = this.bin;
+    const pal = (this.pal = R.pal);
+    this.O = new V3(N / 2, 0, N / 2);
     this.lz = { ...o.lz };
     this.lzW.set(o.lz.x - N / 2, R.groundSmooth(o.lz.x, o.lz.z), o.lz.z - N / 2);
     this.alt0 = this.alt = o.first ? 2600 : 1800;
-    this.scene.background = new THREE.Color(0x05070a);
-    this.fx = new Fx(this.fxScene, this.scene);
-    // ---- sky
-    // the ground and the sky: the shared builders (descentWorld.ts), the same ones the orbital close-up uses
-    this.W = makeWorld(R, pal, bin, this.scene);
+    const gf = g.fx, ox = N / 2;
+    this.fx = {
+      burst: (x, y, z, n, col, oo) => gf.burst(x + ox, y, z + ox, n, col, oo),
+      spray: (x, y, z, dx, dy, dz, n, col, oo) => gf.spray(x + ox, y, z + ox, dx, dy, dz, n, col, oo),
+    };
+    g.world.scene.add(this.root); this.root.add(this.far); this.far.position.copy(this.O);
+    // the world beyond the map and the sky above it (the map itself is the game's own)
+    this.W = makeWorld(R, pal, bin, this.far);
     this.skyO = makeSky(this.W); this.sky = this.skyO.mesh; this.skyU = this.skyO.U;
-    // ---- light
-    const sd = this.skyU.uSun.value as V;
-    this.sun = new THREE.DirectionalLight(new THREE.Color(pal.sun).lerp(new THREE.Color(0xfff2dc), 0.5), 3.0);
-    this.sun.position.copy(sd).multiplyScalar(200);
-    this.sun.castShadow = true; this.sun.shadow.mapSize.set(1024, 1024);
-    const sc = this.sun.shadow.camera as THREE.OrthographicCamera; sc.left = sc.bottom = -30; sc.right = sc.top = 30; sc.near = 1; sc.far = 600; this.sun.shadow.bias = -0.0008; this.sun.shadow.normalBias = 0.05;
-    this.scene.add(this.sun, this.sun.target);
-    this.hemi = new THREE.HemisphereLight(new THREE.Color(pal.sky).lerp(new THREE.Color(0xb8c8d8), 0.5), new THREE.Color(pal.groundLight ?? 0x4a4030), 1.1);
-    this.scene.add(this.hemi);
-    this.scene.fog = new THREE.Fog(new THREE.Color(pal.horizon), 400, 16000);
-    // ---- the ground: far landscape, the region itself, water, woods, rocks
-    buildGround(this.W);
+    this.root.add(this.sky);
+    buildFar(this.W); buildWater(this.W);
+    // the game scene takes a fog and the long view for the fall; both are given back at the hand-over
+    const sc = g.world.scene;
+    this.saved = { fog: sc.fog, bg: sc.background as THREE.Color | THREE.Texture | null, far: g.cam.cam.far, near: g.cam.cam.near };
+    sc.fog = new THREE.Fog(new THREE.Color(pal.horizon), 400, 16000);
+    sc.background = new THREE.Color(0x05070a);
+    g.vision.revealAll = true; g.vision.update(0, true);
+    document.body.classList.add('cine-on');
     // ---- clouds: two weather decks, thicker over wet biomes
     const moist = R.biome.moist, cover = clamp(0.3 + moist * 0.45, 0.25, 0.85);
     for (const [y, cv] of [[820, cover], [470, cover * 0.75]] as [number, number][]) this.buildCloud(y, cv);
@@ -241,7 +254,7 @@ export class Descent {
     this.buildLZ();
     // ---- the pod, plasma, chute, streaks
     this.pod = makePod(bin);
-    this.scene.add(this.pod.root);
+    this.far.add(this.pod.root);
     this.pod.setHatch(0); this.pod.addChute(); this.pod.setChute(0, 0);
     this.heatLight = new THREE.PointLight(0xff7a30, 0, 30, 1.6); this.heatLight.position.set(0, -1.2, 0); this.pod.root.add(this.heatLight);
     for (const wake of [0, 1]) {
@@ -258,7 +271,7 @@ export class Descent {
     sg.setAttribute('position', new THREE.BufferAttribute(this.streakP, 3).setUsage(THREE.DynamicDrawUsage));
     sg.setAttribute('color', new THREE.BufferAttribute(this.streakC, 3).setUsage(THREE.DynamicDrawUsage));
     const sm2 = bin.m(gbuf(new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), 0));
-    this.streaks = new THREE.LineSegments(bin.g(sg), sm2); this.streaks.frustumCulled = false; this.scene.add(this.streaks);
+    this.streaks = new THREE.LineSegments(bin.g(sg), sm2); this.streaks.frustumCulled = false; this.far.add(this.streaks);
     // ---- the wind: a steady drift and the start offset (upwind of the pin, so it can be flown down)
     const rs = hash(o.lz.x, o.lz.z, R.seed % 97);
     const wa = rs * TAU, ws = (R.biome.key === 'coast' || R.biome.key === 'highland' || R.biome.key === 'tundra' ? 6 : 4) + rs * 2;
@@ -275,8 +288,15 @@ export class Descent {
     this.hud = div('dsc', document.body) as HTMLDivElement;
     this.buildHud();
     this.bindInput();
-    o.ui.letterbox(true, 0.6);
-    o.ui.stamp(`ENTRY INTERFACE · ${o.planetName.toUpperCase()} · ${o.regionName.toUpperCase()}`, true);
+    this.ui.fade(1, 0, '#f0d8b8'); this.ui.fade(0, 0.9, '#f0d8b8'); this.ui.flash('#ffb070', 0.8, 0.6);
+    this.ui.letterbox(true, 0.6);
+    this.ui.stamp(`ENTRY INTERFACE · ${o.planetName.toUpperCase()} · ${g.regionName.toUpperCase()}`, true);
+    // the game's camera is ours until the golem is out (its own camera still runs underneath: the shadows and the
+    // flora LOD follow the pod through its target)
+    this.cam = g.cam.cam;
+    g.cineCam = (cam, dt) => this.frame(cam, dt);
+    (window as any).__descent = this;
+    g.cam.followFn(() => new V3(this.p.x + this.O.x, 0, this.p.y + this.O.z));
     this.wind$ = cloop('drone', 0.5); this.fire$ = cloop('fire', 0.0); this.loops.push(this.wind$, this.fire$);
     csfx('whoosh', 1, 0.6); csfx('boom', 0.6, 0.7);
     this.say(o.first ? 'Unit Seven, clean separation. You are on your own now. Steer for the red smoke.' : 'Separation, Seven. Steer for the smoke.', 'Launch Control', 0.85);
@@ -286,10 +306,10 @@ export class Descent {
   private gH(x: number, z: number) { return this.R.groundSmooth(x + this.N / 2, z + this.N / 2); }
   private buildCloud(y: number, cover: number) {
     const L = { y, cover, slices: [] as THREE.Mesh[], u: [] as Record<string, THREE.IUniform>[] };
-    const lc = new THREE.Color(0xe8e6de), dc = new THREE.Color(this.o.pal.horizon).lerp(new THREE.Color(0x5a6470), 0.6);
+    const lc = new THREE.Color(0xe8e6de), dc = new THREE.Color(this.pal.horizon).lerp(new THREE.Color(0x5a6470), 0.6);
     for (const s of [-1.5, -0.5, 0.5, 1.5]) {
       const u = { uT: { value: 0 }, uCover: { value: cover }, uSlice: { value: s / 2 }, uShade: { value: s * 0.12 }, uLit: { value: lc }, uDark: { value: dc }, uCam: { value: new V3() }, uWind: { value: new THREE.Vector2(6, 2) }, uFadeNear: { value: 1 } };
-      const m = mesh(this.bin, new THREE.PlaneGeometry(40000, 40000), fxMat(this.bin, CLOUD_V, CLOUD_F, u, 'alpha', { side: THREE.DoubleSide }), this.scene, 0, y + s * 14, 0, false);
+      const m = mesh(this.bin, new THREE.PlaneGeometry(40000, 40000), fxMat(this.bin, CLOUD_V, CLOUD_F, u, 'alpha', { side: THREE.DoubleSide }), this.far, 0, y + s * 14, 0, false);
       m.rotation.x = -Math.PI / 2; m.frustumCulled = false; m.renderOrder = 2;
       L.slices.push(m); L.u.push(u);
     }
@@ -303,15 +323,11 @@ export class Descent {
     const sg = new THREE.CylinderGeometry(14, 1.4, 260, 20, 12, true); sg.translate(0, 130, 0);
     const p = sg.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < p.count; i++) { const yy = p.getY(i), k = (yy / 260) ** 1.6; p.setX(i, p.getX(i) + k * 70); }
-    this.smoke = mesh(bin, sg, fxMat(bin, PL_V, SMOKE_F, this.smokeU, 'alpha', { side: THREE.DoubleSide }), this.scene, L.x, L.y, L.z, false);
+    this.smoke = mesh(bin, sg, fxMat(bin, PL_V, SMOKE_F, this.smokeU, 'alpha', { side: THREE.DoubleSide }), this.far, L.x, L.y, L.z, false);
     this.smoke.renderOrder = 3;
     // a strobe at the pin, visible from altitude
     const stm = bin.m(gbuf(new THREE.MeshBasicMaterial({ color: 0xffd8b0, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), 0));
-    this.strobe = mesh(bin, new THREE.SphereGeometry(1, 10, 8), stm, this.scene, L.x, L.y + 1.2, L.z, false);
-    // the scorched disc left by the impact (hidden until then)
-    const scm = bin.m(gbuf(new THREE.MeshLambertMaterial({ color: 0x2a221c, transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }), 0));
-    this.scorch = mesh(bin, new THREE.CircleGeometry(4.2, 24), scm, this.scene, 0, 0, 0, false);
-    this.scorch.rotation.x = -Math.PI / 2; this.scorch.visible = false;
+    this.strobe = mesh(bin, new THREE.SphereGeometry(1, 10, 8), stm, this.far, L.x, L.y + 1.2, L.z, false);
   }
 
   // ================================================================ shots
@@ -323,7 +339,7 @@ export class Descent {
     // 1. alongside, through the sheath, the horizon curving behind
     add('plasma-side', a0 - 120, 3.0, (t, pos, look) => { rel(-17 + t * 1.5, -5 + t * 0.8, 7 - t * 1.4, pos); rel(1.5, -3.2, 0, look); return 40; });
     // 2. the porthole: Unit 07's lens in the orange light
-    add('porthole', 1700, 2.4, (t, pos, look) => { portholeWorld(this.pod, look); const out = look.clone().sub(P()).setY(0).normalize(); pos.copy(look).addScaledVector(out, 1.6 - t * 0.25).add(_v.set(0, 0.35, 0)); return 34; });
+    add('porthole', 1700, 2.4, (t, pos, look) => { portholeWorld(this.pod, look).sub(this.O); const out = look.clone().sub(P()).setY(0).normalize(); pos.copy(look).addScaledVector(out, 1.6 - t * 0.25).add(_v.set(0, 0.35, 0)); return 34; });
     // 3. from the ground at the pin: a fireball crossing the sky
     add('ground-up', 1180, 3.0, (t, pos, look) => { pos.set(this.lzW.x - this.F.x * 30 + this.Rt.x * 12, this.lzW.y + 1.7, this.lzW.z - this.F.y * 30 + this.Rt.y * 12); look.copy(P()); return 30 - t * 4; });
     // 4. under the first deck, looking up as the pod punches through
@@ -379,7 +395,7 @@ export class Descent {
     this.hud.classList.toggle('black', black);
     const showMk = !this.landed && !this.shot;
     // the pin
-    _v.copy(this.lzW).setY(this.lzW.y + 1).project(cam);
+    _v.copy(this.lzW).setY(this.lzW.y + 1).add(this.O).project(cam);
     let x = (_v.x * 0.5 + 0.5) * W, y = (-_v.y * 0.5 + 0.5) * H;
     const behind = _v.z > 1;
     const m = 34, on = !behind && x > m && x < W - m && y > H * 0.13 && y < H * 0.85;
@@ -389,7 +405,7 @@ export class Descent {
     (e.mk.lastElementChild as HTMLElement).textContent = black ? '- - -' : `PIN ${Math.round(d)} M`;
     // the predicted touchdown (green cross): where the pod lands if the stick is let go now
     const pr = this.predict(new THREE.Vector2());
-    _v.set(pr.x, this.gH(pr.x, pr.y) + 0.5, pr.y).project(cam);
+    _v.set(pr.x, this.gH(pr.x, pr.y) + 0.5, pr.y).add(this.O).project(cam);
     const px = (_v.x * 0.5 + 0.5) * W, py = (-_v.y * 0.5 + 0.5) * H;
     e.pip.style.display = showMk && _v.z < 1 && px > 0 && px < W && py > 0 && py < H ? '' : 'none';
     e.pip.style.left = `${px}px`; e.pip.style.top = `${py}px`;
@@ -405,13 +421,21 @@ export class Descent {
 
   // ================================================================ input
   private bindInput() {
-    const key = (e: KeyboardEvent) => {
+    const mine = (e: Event) => { const t = e.target as HTMLElement | null; return !!t?.closest?.('.dsc'); };
+    const down = (e: KeyboardEvent) => {
+      if (this.finished) return;
+      e.stopImmediatePropagation();
+      if (['Tab', ' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault();
+      this.keys.add(e.key.length === 1 ? e.key.toLowerCase() : e.key);
       if (e.repeat) return;
-      if (e.key === ' ') { e.preventDefault(); this.burst(); }
-      else if (e.key === 'Escape') { if (this.landed && this.result) this.once('done', () => { this.o.ui.cardOff(); this.o.onDone(this.result!); }); else this.engageAuto(); }
+      if (e.key === ' ') this.burst();
+      else if (e.key === 'Escape') { if (this.landed) this.hurry(); else this.engageAuto(); }
     };
-    addEventListener('keydown', key);
-    this.off.push(() => removeEventListener('keydown', key));
+    const up = (e: KeyboardEvent) => { if (this.finished) return; e.stopImmediatePropagation(); this.keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key); };
+    const eat = (e: Event) => { if (this.finished || mine(e)) return; e.stopImmediatePropagation(); if (e.cancelable) e.preventDefault(); };
+    addEventListener('keydown', down, true); addEventListener('keyup', up, true);
+    for (const ev of ['pointerdown', 'click', 'wheel', 'contextmenu', 'dblclick']) addEventListener(ev, eat, { capture: true, passive: false });
+    this.off.push(() => { removeEventListener('keydown', down, true); removeEventListener('keyup', up, true); for (const ev of ['pointerdown', 'click', 'wheel', 'contextmenu', 'dblclick']) removeEventListener(ev, eat, true); });
     const st = this.el.stick, kn = this.el.knob, bu = this.el.burst;
     if (st && kn) {
       const down = (e: PointerEvent) => { this.stickId = e.pointerId; this.stickO.set(e.clientX, e.clientY); kn.style.display = 'block'; kn.style.left = `${e.clientX}px`; kn.style.top = `${e.clientY}px`; st.setPointerCapture(e.pointerId); };
@@ -422,12 +446,10 @@ export class Descent {
     if (bu) bu.addEventListener('pointerdown', (e) => { e.preventDefault(); this.burst(); });
   }
   private steer(out: THREE.Vector2) {
-    const k = this.o.input.keys;
+    const k = this.keys;
     let x = 0, y = 0;
     if (k.has('a') || k.has('ArrowLeft')) x -= 1; if (k.has('d') || k.has('ArrowRight')) x += 1;
     if (k.has('w') || k.has('ArrowUp')) y += 1; if (k.has('s') || k.has('ArrowDown')) y -= 1;
-    const st = this.o.input.stick;
-    if (st.on) { x += st.x; y -= st.y; }
     x += this.stick.x; y -= this.stick.y;
     out.set(x, y); if (out.length() > 1) out.normalize();
     return out;
@@ -447,7 +469,7 @@ export class Descent {
     if (this.landed) return;
     if (!this.auto) { this.auto = true; this.el.warn.textContent = 'AUTOPILOT ENGAGED'; this.el.warn.classList.add('on'); setTimeout(() => this.el.warn?.classList.remove('on'), 2400); csfx('beepHi', 0.6); }
     this.ff = 4; this.shot = null; this.shots = this.shots.filter((s) => s.name === 'chute');
-    this.o.ui.endSub();
+    this.ui.endSub();
   }
   /** RCS gas: white puffs out of the ports facing away from the thrust */
   private puff(dir: THREE.Vector2, n: number) {
@@ -455,25 +477,30 @@ export class Descent {
       const d = _v.copy(port.d).applyQuaternion(this.pod.body.getWorldQuaternion(_q));
       if (d.x * dir.x + d.z * dir.y > -0.3) continue;
       const w = this.pod.body.localToWorld(_v2.copy(port.p));
-      this.fx.spray(w.x, w.y, w.z, d.x, d.y + 0.1, d.z, Math.ceil(n / 2), 0xe8ecf0, { speed: 9, cone: 0.25, size: 2.2, life: 0.4, drag: 5 });
+      this.g.fx.spray(w.x, w.y, w.z, d.x, d.y + 0.1, d.z, Math.ceil(n / 2), 0xe8ecf0, { speed: 9, cone: 0.25, size: 2.2, life: 0.4, drag: 5 });
     }
   }
   private say(text: string, who: string, pitch = 1, radio = true) {
     csfx('squelch', 0.6);
     const sec = cvoice(text, pitch, radio);
-    this.o.ui.sub(text, { who, style: 'radio', dur: Math.max(2.4, sec + 1.1, text.length * 0.05 + 1.2) }, () => {});
+    this.ui.sub(text, { who, style: 'radio', dur: Math.max(2.4, sec + 1.1, text.length * 0.05 + 1.2) }, () => {});
   }
   private once(id: string, f: () => void) { if (this.said.has(id)) return; this.said.add(id); f(); }
 
   // ================================================================ frame
-  update(dt: number) {
+  /** the game's camera hook: everything runs from here, once a frame, after the game's own camera has moved */
+  private frame(cam: THREE.PerspectiveCamera, dt: number) {
+    if (this.finished) return;
+    this.cam = cam;
+    this.rtsPos.copy(cam.position); this.rtsQ.copy(cam.quaternion); this.rtsFov = cam.fov;
+    this.ui.update(dt);
     const sdt = dt * this.ff;
     this.t += sdt;
     if (!this.landed) this.fly(sdt); else this.afterImpact(dt);
     this.effects(sdt, dt);
     this.camera(dt);
-    this.fx.update(dt, this.o.engine.h, this.cam.fov);
-    this.updateHud();
+    this.tickDebris(dt);
+    if (!this.finished) this.updateHud();
   }
   private fly(dt: number) {
     const auth = this.chute > 0 ? 0.35 : 1;
@@ -528,7 +555,7 @@ export class Descent {
     if (this.shot) { this.shot.t += dt; if (this.shot.t >= this.shot.dur) this.endShot(); }
     if (A <= 0) this.touchdown();
     const h = this.o.hold;
-    if (h && ((h.startsWith('alt:') && A < Number(h.slice(4))) || (h === 'entry' && A < this.alt0 - 300) || (h === 'low' && A < 230) || (h === 'cloud' && A < this.clouds[0].y + 6) || (h === 'flare' && A < 3.5) || (h === 'chute' && this.chute > 0.9 && A < CHUTE_ALT - 20) || (this.shot && this.shot.name === h && this.shot.t > this.shot.dur * 0.55))) { this.o.engine.timeScale = 0; this.o.hold = null; console.log('descent hold', h); }
+    if (h && ((h.startsWith('alt:') && A < Number(h.slice(4))) || (h === 'entry' && A < this.alt0 - 300) || (h === 'low' && A < 230) || (h === 'cloud' && A < this.clouds[0].y + 6) || (h === 'flare' && A < 3.5) || (h === 'chute' && this.chute > 0.9 && A < CHUTE_ALT - 20) || (this.shot && this.shot.name === h && this.shot.t > this.shot.dur * 0.55))) { this.g.engine.timeScale = 0; this.o.hold = null; console.log('descent hold', h); }
   }
   private compass(x: number, z: number) {
     // world -z is north on the chart
@@ -540,7 +567,7 @@ export class Descent {
     csfx('boom', 0.5, 1.6); csfx('whoosh', 0.8, 1.4); sfx('crack', 1.6, 0.7);
     this.pod.noseCap.visible = false;
     const w = this.pod.noseCap.getWorldPosition(new V3());
-    this.fx.burst(w.x, w.y, w.z, 14, 0x8a2e24, { speed: 6, up: 4, size: 3, life: 1.2, grav: 9 });
+    this.g.fx.burst(w.x, w.y, w.z, 14, 0x8a2e24, { speed: 6, up: 4, size: 3, life: 1.2, grav: 9 });
     this.shakeK = Math.max(this.shakeK, 0.9);
     this.vy *= 0.75;
     this.once('chute', () => this.say('Chute! Good chute!', 'Launch Control', 0.85));
@@ -558,40 +585,117 @@ export class Descent {
   }
   private touchdown() {
     this.landed = true; this.landT = 0; this.alt = 0;
-    const P = this.pod.root.position; P.y = this.gH(this.p.x, this.p.y);
+    const g = this.g, R = this.R, N = this.N;
     this.retro = 0; this.pod.setRetro(0, this.t);
-    // score
-    const rx = this.p.x + this.N / 2, rz = this.p.y + this.N / 2;
+    // score against the pin
+    const rx = this.p.x + N / 2, rz = this.p.y + N / 2;
     const dist = Math.hypot(this.p.x - this.lzW.x, this.p.y - this.lzW.z);
     const grade: Grade = this.auto ? 'AUTOPILOT' : dist <= 6 ? 'BULLSEYE' : dist <= 18 ? 'ON TARGET' : dist <= 45 ? 'CLOSE' : 'WIDE';
-    this.result = { x: clamp(rx, 6, this.N - 6), z: clamp(rz, 6, this.N - 6), dist, grade, auto: this.auto, water: this.R.isWater(rx, rz) };
-    // the impact: flash, shake, a ring of dust racing out, debris, the scorch
-    const ui = this.o.ui;
-    ui.flash('#fff', 0.9, 1);
+    const water = R.isWater(rx, rz);
+    // the real ground: the game carves the crater here and moves its core under the pod (hidden till the shell blows)
+    g.touchdown(rx, rz);
+    const L = R.landing;
+    this.p.set(L.x - N / 2, L.z - N / 2);
+    this.result = { x: L.x, z: L.z, dist, grade, auto: this.auto, water };
+    const core = g.veyr.core; if (core) core.mesh.visible = false;
+    const cap = (g as unknown as { cap: THREE.Mesh | null }).cap; if (cap) cap.visible = false;
+    // the blast: flora flattened, creatures thrown off their feet and the rest of the wildlife scared away
+    g.world.flora.impulse(L.x, L.z, 22, 3);
+    (g.world as unknown as { eco?: { scare?(x: number, z: number, a: number, r: number): void } }).eco?.scare?.(L.x, L.z, 1.6, 34);
+    const knocks = (g as unknown as { knocks?: { c: unknown; vx: number; vz: number; t: number }[] }).knocks;
+    for (const c of g.world.creatures) {
+      if (c.dead) continue;
+      const dx = c.x - L.x, dz = c.z - L.z, d = Math.hypot(dx, dz) || 1;
+      const cc = c as unknown as { mind: string; fleeT: number };
+      if (d < 34) { cc.mind = 'flee'; cc.fleeT = Math.max(cc.fleeT ?? 0, 5); }
+      if (d > 16) continue;
+      const k = 1 - d / 16;
+      knocks?.push({ c, vx: (dx / d) * 15 * k, vz: (dz / d) * 15 * k, t: 0.35 + k * 0.35 });
+      if (d < 6) g.world.damage(c, 40 * k, null);
+    }
+    // flash, shake, a ring of dust racing out, debris thrown up
+    const P = this.pod.root.position, gy = R.groundSmooth(L.x, L.z);
+    P.set(this.p.x, gy, this.p.y);
+    this.ui.flash('#fff', 0.9, 1);
     csfx('impact', 1, 0.8); csfx('boom', 1, 0.6); csfx('crunch', 0.8); sfx('crack', 3, 1);
     this.shakeK = 2.2; this.kick = 2;
-    const g = P.y;
-    for (let i = 0; i < 28; i++) { const a = (i / 28) * TAU; this.fx.spray(P.x + Math.cos(a) * 1.2, g + 0.3, P.z + Math.sin(a) * 1.2, Math.cos(a), 0.18, Math.sin(a), 5, i % 3 ? 0xb8a888 : 0x8a7a62, { speed: 14, cone: 0.35, size: 5, life: 2.2, grav: -0.3, drag: 1.6 }); }
-    this.fx.burst(P.x, g + 0.4, P.z, 40, 0x5a4a3a, { speed: 9, up: 9, size: 3, life: 1.6, grav: 14 });
-    this.fx.burst(P.x, g + 0.4, P.z, 24, 0xffb060, { glow: true, speed: 7, up: 6, size: 2, life: 0.7, grav: 10 });
+    for (let i = 0; i < 28; i++) { const a = (i / 28) * TAU; this.fx.spray(P.x + Math.cos(a) * 1.2, gy + 0.3, P.z + Math.sin(a) * 1.2, Math.cos(a), 0.18, Math.sin(a), 5, i % 3 ? 0xb8a888 : 0x8a7a62, { speed: 14, cone: 0.35, size: 5, life: 2.2, grav: -0.3, drag: 1.6 }); }
+    this.fx.burst(P.x, gy + 0.4, P.z, 40, 0x5a4a3a, { speed: 9, up: 9, size: 3, life: 1.6, grav: 14 });
+    this.fx.burst(P.x, gy + 0.4, P.z, 24, 0xffb060, { glow: true, speed: 7, up: 6, size: 2, life: 0.7, grav: 10 });
     this.shockU = { uK: { value: 1 }, uT: { value: 0 }, uCol: { value: new THREE.Color(0xc8b898) } };
     const rg = new THREE.RingGeometry(0.2, 1, 48, 1);
     const ruv = rg.attributes.uv as THREE.BufferAttribute, rp = rg.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < ruv.count; i++) ruv.setXY(i, Math.atan2(rp.getY(i), rp.getX(i)) / TAU + 0.5, Math.hypot(rp.getX(i), rp.getY(i)) > 0.6 ? 1 : 0);
-    this.shock = mesh(this.bin, rg, fxMat(this.bin, PL_V, SHOCK_F, this.shockU, 'alpha', { side: THREE.DoubleSide }), this.scene, P.x, g + 0.6, P.z, false);
+    this.shock = mesh(this.bin, rg, fxMat(this.bin, PL_V, SHOCK_F, this.shockU, 'alpha', { side: THREE.DoubleSide }), this.far, P.x, gy + 0.6, P.z, false);
     this.shock.rotation.x = -Math.PI / 2;
-    this.scorch.visible = true; this.scorch.position.set(P.x, g + 0.08, P.z);
-    // the pod settles half buried and tipped; the chute collapses downwind
-    this.pod.root.position.y = g - 0.45;
-    this.pod.root.rotation.set(0.14, this.spin, -0.1);
+    // the pod sits in its crater, a little tipped; the chute collapses downwind
+    P.y = gy - 0.3;
+    this.pod.root.rotation.set(0.1, this.spin, -0.07);
     this.endShot();
-    // the impact shot: wide and low
-    this.shot = { name: 'impact', t: 0, dur: 99, pose: (t, pos, look) => { pos.set(P.x - this.F.x * 26 + this.Rt.x * 14, g + 4.5 + t * 0.3, P.z - this.F.y * 26 + this.Rt.y * 14); look.set(P.x, g + 2, P.z); return 40 - Math.min(6, t * 2); } };
+    // the impact shot: wide and low, then in on the crater as the shell comes off and the golem climbs out
+    const cx = P.x, cz = P.z;
+    this.shot = { name: 'impact', t: 0, dur: 99, pose: (t, pos, look) => {
+      const k = ease.inOut(clamp((t - 2.2) / 6, 0, 1));
+      const d = lerp(27, 11, k), side = lerp(14, 5, k), h = lerp(4.5, 3.2, k);
+      pos.set(cx - this.F.x * d + this.Rt.x * side, this.gH(cx, cz) + h + t * 0.12, cz - this.F.y * d + this.Rt.y * side);
+      look.set(cx, this.gH(cx, cz) + lerp(2, 1.4, k), cz);
+      return lerp(40, 34, k);
+    } };
     this.blendT = 1;
     for (const l of this.loops) l.stop(0.4);
     const pn = this.o.planetName;
     const line = grade === 'BULLSEYE' ? 'Dead on the smoke. Beautiful flying, Seven.' : grade === 'ON TARGET' ? 'On target. Close enough to walk it.' : grade === 'CLOSE' ? 'You are down, Seven. A short walk to the pin.' : grade === 'AUTOPILOT' ? 'Autopilot put you down. Close to the pin.' : 'Long way from the pin, Seven. But you are down.';
-    setTimeout(() => this.say(`Touchdown. Welcome to ${pn}, Seven. ${line}`, 'Launch Control', 0.85), 900);
+    setTimeout(() => { if (!this.finished) this.say(`Touchdown. Welcome to ${pn}, Seven. ${line}`, 'Launch Control', 0.85); }, 900);
+  }
+  /** explosive bolts: the shell comes off in panels and the core is there in the crater; the golem climbs out */
+  private blowShell() {
+    const g = this.g, P = this.pod.root.position, O = this.O, gy = this.gH(P.x, P.z);
+    this.shellT = 0;
+    this.pod.root.visible = false;
+    const core = g.veyr.core; if (core) core.mesh.visible = true;
+    const cap = (g as unknown as { cap: THREE.Mesh | null }).cap; if (cap) cap.visible = true;
+    g.emerge();
+    csfx('boom', 0.8, 1.3); csfx('crunch', 0.7, 1.2); sfx('crack', 2.2, 0.9); csfx('steam', 0.9);
+    this.kick = 1.2;
+    for (let i = 0; i < 16; i++) { const a = (i / 16) * TAU; this.g.fx.burst(P.x + O.x + Math.cos(a) * 1.0, gy + 0.6 + (i % 4) * 0.5, P.z + O.z + Math.sin(a) * 1.0, 3, 0xffc070, { glow: true, speed: 5, up: 3, size: 2, life: 0.5, grav: 9 }); }
+    for (let i = 0; i < 18; i++) this.g.fx.burst(P.x + O.x, gy + 1.2, P.z + O.z, 1, 0xd8d8d0, { speed: 2.5, up: 3, size: 7, life: 2.2, grav: -0.6 });
+    // six skin panels, the heat shield and the nose fly off and tumble down round the crater
+    const bin = this.debrisBin;
+    const skin = lit(bin, 0x5a5d44), dark = lit(bin, 0x2a2420), red = lit(bin, 0x8a2e24);
+    const group = new THREE.Group(); g.world.scene.add(group); (this.debrisG = group);
+    for (let i = 0; i < 6; i++) {
+      const a0 = (i / 6) * TAU;
+      const geo = new THREE.CylinderGeometry(0.5, 1.05, 2.15, 4, 1, true, a0, TAU / 6);
+      const m = mesh(bin, geo, lit(bin, 0x5a5d44, { side: THREE.DoubleSide }), group, P.x + O.x, gy + 1.3, P.z + O.z);
+      void skin;
+      const am = a0 + TAU / 12;
+      this.debris.push({ m, v: new V3(Math.sin(am) * (6 + Math.random() * 3), 5 + Math.random() * 3, Math.cos(am) * (6 + Math.random() * 3)), w: new V3(Math.random() * 6 - 3, Math.random() * 4 - 2, Math.random() * 6 - 3), rest: false, t: 0 });
+    }
+    const shield = mesh(bin, new THREE.CylinderGeometry(1.12, 1.12, 0.2, 18), dark, group, P.x + O.x, gy + 0.2, P.z + O.z);
+    this.debris.push({ m: shield, v: new V3(this.F.x * 3, 3, this.F.y * 3), w: new V3(2, 0, 1), rest: false, t: 0 });
+    const nose = mesh(bin, new THREE.CylinderGeometry(0.3, 0.5, 0.9, 12), red, group, P.x + O.x, gy + 3, P.z + O.z);
+    this.debris.push({ m: nose, v: new V3(-this.Rt.x * 4, 9, -this.Rt.y * 4), w: new V3(5, 3, 2), rest: false, t: 0 });
+  }
+  private debrisG: THREE.Group | null = null;
+  /** the shell's pieces: thrown, tumbling, coming to rest, then slowly settling into the ground and gone */
+  private tickDebris(dt: number) {
+    const R = this.R;
+    for (const d of this.debris) {
+      d.t += dt;
+      const m = d.m;
+      if (!d.rest) {
+        d.v.y -= 9.8 * dt; m.position.addScaledVector(d.v, dt);
+        m.rotation.x += d.w.x * dt; m.rotation.y += d.w.y * dt; m.rotation.z += d.w.z * dt;
+        const gy = R.groundSmooth(m.position.x, m.position.z);
+        if (m.position.y < gy + 0.15) { m.position.y = gy + 0.15; if (Math.abs(d.v.y) > 2.5) { d.v.y = -d.v.y * 0.3; d.v.x *= 0.5; d.v.z *= 0.5; d.w.multiplyScalar(0.5); this.g.fx.burst(m.position.x, gy + 0.2, m.position.z, 4, 0xb8a888, { speed: 1.5, up: 1, size: 4, life: 0.8 }); } else { d.rest = true; m.rotation.x = Math.round(m.rotation.x / Math.PI) * Math.PI + 0.12; } }
+      } else if (d.t > 14) m.position.y -= dt * 0.08;
+    }
+  }
+  /** Esc after touchdown: hurry to the hand-over */
+  private hurry() {
+    if (this.shellT < 0) { this.landT = Math.max(this.landT, 1.9); return; }
+    const gh = this.g as unknown as { hatchT: number };
+    gh.hatchT = Math.max(gh.hatchT, 7.2);
   }
   private afterImpact(dt: number) {
     this.landT += dt;
@@ -600,15 +704,22 @@ export class Descent {
     // the chute settles over to one side
     const c = this.pod.chute;
     if (c) { c.root.rotation.z = Math.min(1.35, this.landT * 0.8); c.root.scale.y = Math.max(0.15, 1 - this.landT * 0.4); c.root.scale.x = c.root.scale.z = Math.max(0.5, 1 - this.landT * 0.15); }
-    if (this.shockU && this.shock) { const k = 1 - Math.exp(-this.landT * 1.6); this.shock.scale.setScalar(2 + k * 46); this.shockU.uK.value = Math.max(0, 1 - this.landT / 2.6); }
+    if (this.shockU && this.shock) { const k = 1 - Math.exp(-this.landT * 1.6); this.shock.scale.setScalar(2 + k * 46); this.shockU.uK.value = Math.max(0, 1 - this.landT / 2.6); this.shock.visible = this.shockU.uK.value > 0; }
     if (Math.random() < dt * 8) this.fx.burst(P.x + (Math.random() - 0.5) * 2, P.y + 1, P.z + (Math.random() - 0.5) * 2, 1, Math.random() < 0.5 ? 0x5a5650 : 0x3e3a36, { speed: 0.3, up: 1.4, size: 6, life: 3, grav: -0.3 });
-    if (this.o.hold === 'impact' && this.landT > 0.7) { this.o.engine.timeScale = 0; this.o.hold = null; }
-    if (this.landT > 2.2 && this.result) this.once('card', () => {
+    if (this.o.hold === 'impact' && this.landT > 0.7) { this.g.engine.timeScale = 0; this.o.hold = null; }
+    if (this.landT > 1.9 && this.shellT < 0) this.blowShell();
+    if (this.shellT >= 0) this.shellT += dt;
+    if (this.landT > 2.6 && this.result) this.once('card', () => {
       const r = this.result!;
-      this.o.ui.card(r.grade === 'WIDE' ? 'TOUCHDOWN' : r.grade, `${r.auto ? 'ON THE PIN' : `${Math.round(r.dist * 10) / 10} M FROM THE PIN`} · ${bonusFor(r.grade).text}`, 'UNIT 07 IS DOWN', r.grade === 'BULLSEYE' ? 'BULLSEYE' : 'U.S.P.C.');
+      this.ui.card(r.grade === 'WIDE' ? 'TOUCHDOWN' : r.grade, `${r.auto ? 'ON THE PIN' : `${Math.round(r.dist * 10) / 10} M FROM THE PIN`} · ${bonusFor(r.grade).text}`, 'UNIT 07 IS DOWN', r.grade === 'BULLSEYE' ? 'BULLSEYE' : 'U.S.P.C.');
       csfx('sting', 0.7);
     });
-    if (this.landT > 6.4 && this.result) this.once('done', () => { this.o.ui.cardOff(); this.o.onDone(this.result!); });
+    if (this.landT > 6.2) this.once('cardoff', () => this.ui.cardOff());
+    // the golem is out (the game's own hatching runs from the shell blowing): ease into the game's camera
+    const hatchT = (this.g as unknown as { hatchT: number }).hatchT;
+    if (this.o.hold === 'out' && this.shellT >= 0 && hatchT > 6.4) { this.g.engine.timeScale = 0; this.o.hold = null; console.log('descent hold out'); }
+    if (this.shellT >= 0 && hatchT >= 7.2 && this.handT < 0) { this.handT = 0; this.ui.letterbox(false, 1.4); this.hud.style.transition = 'opacity 800ms'; this.hud.style.opacity = '0'; }
+    if (this.handT >= 0) { this.handT += dt; if (this.handT >= 1.6) this.finish(); }
   }
   private effects(dt: number, rdt: number) {
     const A = this.alt, pod = this.pod, P = pod.root.position;
@@ -661,13 +772,14 @@ export class Descent {
     this.skyU.uDip.value = Math.sin(Math.sqrt((2 * Math.max(0, this.cam.position.y)) / RP));
     let white = 0; for (const L of this.clouds) white = Math.max(white, (1 - sm(4, 34, Math.abs(this.cam.position.y - L.y))) * clamp(L.cover * 1.3, 0, 1));
     this.skyU.uWhite.value = white;
-    const fog = this.scene.fog as THREE.Fog;
-    fog.color.copy(this.skyU.uHor.value as THREE.Color).lerp(new THREE.Color(0xd4d8dc), white);
-    fog.near = lerp(260 + A * 0.5, 4, white); fog.far = lerp(5500 + A * 5, 90, white);
-    (this.scene.background as THREE.Color).copy(fog.color).multiplyScalar(1 - altK * 0.9);
-    // the sun's shadow box follows the pod low down
-    this.sun.position.copy(this.skyU.uSun.value as V).multiplyScalar(220).add(P); this.sun.target.position.copy(P);
-    this.sun.castShadow = A < 260;
+    const gsc = this.g.world.scene, fog = gsc.fog as THREE.Fog;
+    if (fog && !this.finished) {
+      fog.color.copy(this.skyU.uHor.value as THREE.Color).lerp(new THREE.Color(0xd4d8dc), white);
+      fog.near = lerp(260 + A * 0.5, 4, white); fog.far = lerp(5500 + A * 5, 90, white);
+      if (gsc.background instanceof THREE.Color) gsc.background.copy(fog.color).multiplyScalar(1 - altK * 0.9);
+    }
+    // the sun's shadow box (it follows the game camera's target, which follows the pod) sized to the height
+    this.g.cam.dist = this.g.cam.distGoal = clamp(A * 0.25, 14, 90);
   }
   private camera(dt: number) {
     const cam = this.cam, P = this.pod.root.position, A = this.alt;
@@ -684,12 +796,14 @@ export class Descent {
     // never below the ground
     cpos.y = Math.max(cpos.y, this.gH(cpos.x, cpos.z) + 2);
     let fov = lerp(60, 48, low);
-    cam.position.copy(cpos); cam.up.set(0, 1, 0); cam.lookAt(clook);
+    const O = this.O;
+    if (cam.far < 50000) { cam.far = 60000; cam.near = 0.4; cam.updateProjectionMatrix(); }
+    cam.position.copy(cpos).add(O); cam.up.set(0, 1, 0); cam.lookAt(clook.add(O));
     // a cut overrides it; a blend eases back out
     if (this.shot) {
       const sp = new V3(), sl = new V3();
       fov = this.shotPose(sp, sl) ?? fov;
-      cam.position.copy(sp); cam.lookAt(sl);
+      cam.position.copy(sp).add(O); cam.lookAt(sl.add(O));
     } else if (this.blendT < 1) {
       this.blendT = Math.min(1, this.blendT + dt / 0.8);
       const e = ease.inOut(this.blendT);
@@ -697,6 +811,8 @@ export class Descent {
       cam.quaternion.slerpQuaternions(this.blendFrom.q, cam.quaternion, e);
       fov = lerp(this.blendFrom.fov, fov, e);
     }
+    // the hand-over: into the game's own camera (computed underneath every frame), no cut
+    if (this.handT >= 0) { const e = ease.inOut(clamp(this.handT / 1.6, 0, 1)); cam.position.lerp(this.rtsPos, e); cam.quaternion.slerp(this.rtsQ, e); fov = lerp(fov, this.rtsFov, e); }
     // shake: rotation jitter, scaled by buffet and kicks
     const s = (this.shakeK * 0.012 + this.kick * 0.01) * (settings.shake ? 1 : 0.15);
     this.kick = Math.max(0, this.kick - dt * 3);
@@ -705,27 +821,47 @@ export class Descent {
     cam.updateMatrixWorld();
     this.sky.position.copy(cam.position);
   }
-  render(post: Post, t: number) {
-    resetGrade(post.grade);
-    const g = post.grade, heat = this.plasmaU[0]?.uK.value ?? 0;
-    g.bloom = 0.42 + heat * 0.3; g.vig = 0.42; g.sat = 1.02;
-    g.gain.setRGB(1.1 + heat * 0.08, 1.07, 1.02 - heat * 0.05);
-    post.render(this.scene, this.cam, this.fxScene, t);
-  }
-  resize(w: number, h: number) { this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); }
-  /** the landing as it stands (for a skip): put the pod down at once */
-  finishNow(): DescentResult {
-    if (!this.result) {
-      const rx = this.lz.x, rz = this.lz.z;
-      this.result = { x: rx, z: rz, dist: 0, grade: 'AUTOPILOT', auto: true, water: false };
-    }
-    return this.result;
-  }
-  dispose() {
+  /** the golem is out: give the game its camera, fog, background and input back, pay the bonus, start the story */
+  private finish() {
+    if (this.finished) return;
+    this.finished = true;
+    const g = this.g, cam = g.cam.cam, sc = g.world.scene, sv = this.saved!;
+    if (g.cineCam) g.cineCam = null;
+    cam.far = sv.far; cam.near = sv.near; cam.updateProjectionMatrix();
+    // a neutral fog stays (no shader rebuild for the whole scene), the dark diorama background comes back
+    const fog = sc.fog as THREE.Fog | null; if (fog) { fog.near = 1e7; fog.far = 2e7; }
+    sc.background = sv.bg;
+    this.sky.visible = false;
+    for (const L of this.clouds) for (const m of L.slices) m.visible = false;
+    this.streaks.visible = false; this.smoke.visible = false; this.strobe.visible = false;
+    // the world beyond the map sinks away under the skirt, then everything of ours is freed
+    let sink = 0;
+    const far = this.far, root = this.root, bin = this.bin, debris = this.debrisG, dbin = this.debrisBin, list = this.debris;
+    const tick = (dt: number) => {
+      sink += Math.max(dt, 1 / 60);
+      far.position.y = -sink * sink * 6;
+      for (const d of list) if (d.rest && d.t > 14) d.m.position.y -= Math.max(dt, 1 / 60) * 0.08;
+      if (sink > 3.2 && far.parent) { root.removeFromParent(); bin.dispose(); }
+      if (sink > 24) { debris?.removeFromParent(); dbin.dispose(); const i = g.update$.indexOf(tick); if (i >= 0) g.update$.splice(i, 1); }
+    };
+    g.update$.push(tick);
+    // fog of war as the game plays it: what was seen from the sky is not known on the ground
+    g.vision.revealAll = false; g.vision.seen.fill(0); g.vision.update(0, true);
     for (const f of this.off.splice(0)) f();
-    for (const l of this.loops) l.stop(0.2);
+    for (const l of this.loops) l.stop(0.3);
     this.hud.remove();
-    this.bin.dispose();
-    this.scene.clear(); this.fxScene.clear();
+    const ui = this.ui; setTimeout(() => ui.dispose(), 1600);
+    document.body.classList.remove('cine-on');
+    // the bonus for the landing, paid into the run
+    const r = this.result!;
+    const b = bonusFor(r.grade), run = g.run;
+    run.skills.points += b.cells;
+    for (const k of Object.keys(b.res) as ('ore' | 'carbon' | 'water' | 'soil')[]) run.res[k] = (run.res[k] ?? 0) + (b.res[k] ?? 0);
+    run.flags.drops = (run.flags.drops ?? 0) + 1;
+    if (r.grade === 'BULLSEYE') run.flags.bullseyes = (run.flags.bullseyes ?? 0) + 1;
+    g.beginStory();
+    this.o.onDone?.(r);
+    if ((window as any).__descent === this) (window as any).__descent = null;
   }
 }
+

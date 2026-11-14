@@ -6,7 +6,7 @@
 //   (the drop point itself is picked from orbit on the planet screen and handed in)
 //   2. the launch: klaxons, the red beacons, the countdown on nixie tubes, the clamshell doors opening on the
 //      planet, the lever, the rail firing the pod out of the bow; the pod seen leaving the ship
-//   3. the descent (game/descent.ts): flown by the player, scored against the pin, with its own cinematic cuts
+//   3. the descent, inside the real game (game/descent.ts): flown by the player, scored against the pin, with its own cinematic cuts
 // The first landing plays all of it; later ones are a short version. Esc skips any cinematic part (the scene runs
 // through to its end state); in the descent Esc hands over to the autopilot and fast-forwards.
 import * as THREE from 'three';
@@ -23,30 +23,24 @@ import { Fx } from '../game/fx';
 import { VeyrChild } from '../game/child';
 import { loadLook } from '../game/babyLook';
 import type { Run } from '../game/run';
-import { Descent, bonusFor, type DescentResult, type Grade } from '../game/descent';
 import { Bin, V3, ease, type V } from './deployKit';
 import { buildShip, BAY, BOOTH, railVents, type Ship } from './deployShip';
 import { portholeWorld } from './deployPod';
 import { assessLZ, type LZInfo } from '../game/descentWorld';
 import { hashi } from '../core/rand';
 
-export interface DeployResult {
-  /** where the pod came down (region coordinates), for the game's core; null when skipped outright */
-  landing: { x: number; z: number } | null;
-  grade: Grade | 'SKIPPED'; dist: number;
-  /** what was added to the run */
-  bonus: string;
-}
 export interface DeployOpts {
   planet: Planet; region: PRegion; run: Run | null;
   /** landings made before this one (0: the full sequence plays) */
   landings: number;
-  onDone(r: DeployResult): void;
+  /** the pod has left the ship: build the real game for the region in descent mode now (game/descent.ts flies it
+   *  down); the screen is white while it builds */
+  onLaunched(lz: { x: number; z: number }, first: boolean): void;
   /** the drop point picked from orbit (region coordinates); the recommended LZ when absent */
   lz?: { x: number; z: number } | null;
   /** the Region already generated for this region (the planet screen's close-up), to save generating it again */
   regionData?: Region | null;
-  /** QA: start at 'launch' or 'descent' */
+  /** QA: start at 'launch', or 'descent' (straight into the game) */
   phase?: string | null;
   /** QA: freeze time (engine.timeScale = 0) when the named shot is reached, for screenshots */
   hold?: string | null;
@@ -62,8 +56,7 @@ export class DeployScreen implements Screen {
   private cam = new THREE.PerspectiveCamera(40, 1, 0.12, 15000);
   private ship: Ship | null = null; private globe: Globe | null = null; private fx: Fx | null = null; private child: VeyrChild | null = null;
   private region: Region; private pal: Palette;
-  private descent: Descent | null = null;
-  private mode: 'boot' | 'carrier' | 'descent' | 'done' = 'boot';
+  private mode: 'boot' | 'carrier' | 'done' = 'boot';
   private t = 0; private first: boolean;
   private lz: LZInfo;
   private op: string;
@@ -87,7 +80,7 @@ export class DeployScreen implements Screen {
   private async start() {
     try { await Promise.all(['20px Superwide', '14px VT', '20px Canned', '11px Silk'].map((f) => document.fonts?.load(f))); } catch { /* fall back */ }
     if (this.disposed) return;
-    if (this.o.phase === 'descent') { this.toDescent(); return; }
+    if (this.o.phase === 'descent') { this.handOff(); return; }
     this.buildCarrier();
     this.mode = 'carrier';
     if (this.o.phase === 'launch') { this.setLoaded(); this.cine.ui.fade(0, 0.4); void this.launch(); return; }
@@ -244,7 +237,7 @@ export class DeployScreen implements Screen {
     const lz = this.lz;
     await this.cine.play((c) => this.launchScript(c, lz, short), { name: 'deploy-launch' });
     if (this.disposed) return;
-    this.toDescent();
+    this.handOff();
   }
   private async launchScript(c: Cinema, lz: LZInfo, short: boolean) {
     const s = this.ship!, g = this.globe!;
@@ -346,31 +339,11 @@ export class DeployScreen implements Screen {
   }
 
   // ================================================================ 3. the descent
-  private toDescent() {
-    this.disposeCarrier();
-    this.mode = 'descent';
-    const lz = this.lz;
-    this.cine.ui.fade(1, 0); this.cine.ui.fade(0, 0.8, '#f0d8b8');
-    this.cine.ui.flash('#ffb070', 0.8, 0.6);
-    this.descent = new Descent({
-      engine: this.engine, input: this.input, region: this.region, pal: this.pal, regionName: this.o.region.name, planetName: this.o.planet.name,
-      lz: { x: lz.x, z: lz.z }, first: this.first, ui: this.cine.ui, hold: this.o.hold,
-      onDone: (r) => this.finish(r),
-    });
-    this.descent.resize(this.engine.w, this.engine.h);
-  }
-  private finish(r: DescentResult) {
+  /** the launch is over and the screen is white: the game is built behind it and the pod falls into it */
+  private handOff() {
     if (this.mode === 'done') return;
     this.mode = 'done';
-    const b = bonusFor(r.grade), run = this.o.run;
-    if (run) {
-      run.skills.points += b.cells;
-      for (const k of Object.keys(b.res) as ('ore' | 'carbon' | 'water' | 'soil')[]) run.res[k] = (run.res[k] ?? 0) + (b.res[k] ?? 0);
-      run.flags.drops = (run.flags.drops ?? 0) + 1;
-      if (r.grade === 'BULLSEYE') run.flags.bullseyes = (run.flags.bullseyes ?? 0) + 1;
-    }
-    this.cine.ui.fade(1, 0.5, '#000');
-    setTimeout(() => this.o.onDone({ landing: { x: r.x, z: r.z }, grade: r.grade, dist: r.dist, bonus: b.cells || Object.keys(b.res).length ? b.text : '' }), 520);
+    this.o.onLaunched({ x: this.lz.x, z: this.lz.z }, this.first);
   }
 
   // ================================================================ screen
@@ -391,17 +364,16 @@ export class DeployScreen implements Screen {
       }
       this.fx!.update(dt, this.engine.h, this.cam.fov);
       this.cine.apply(this.cam);
-    } else if (this.mode === 'descent' || this.mode === 'done') this.descent?.update(dt);
+    }
   }
   render(post: Post, t: number) {
     if (this.mode === 'carrier') {
       resetGrade(post.grade);
       post.grade.vig = 0.44; post.grade.bloom = 0.4; post.grade.sat = 1.0;
       post.render(this.scene, this.cam, this.fxScene, t);
-    } else if (this.descent) this.descent.render(post, t);
-    else { resetGrade(post.grade); post.render(this.scene, this.cam, undefined, t); }
+    } else { resetGrade(post.grade); post.render(this.scene, this.cam, undefined, t); }
   }
-  resize(w: number, h: number) { this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); this.descent?.resize(w, h); }
+  resize(w: number, h: number) { this.cam.aspect = w / h; this.cam.updateProjectionMatrix(); }
   private disposeCarrier() {
     this.ship?.dispose(); this.ship = null;
     this.bin.dispose();
@@ -413,7 +385,6 @@ export class DeployScreen implements Screen {
     this.disposed = true;
     this.cine.dispose();
     this.disposeCarrier();
-    this.descent?.dispose(); this.descent = null;
     if ((window as any).__deploy === this) (window as any).__deploy = null;
   }
 }
@@ -433,7 +404,7 @@ export async function testDeploy(engine: Engine, input: Input, P: URLSearchParam
   const go = () => engine.setScreen(new DeployScreen(engine, input, {
     planet, region, run, landings: P.has('later') ? 2 : 0, phase: P.get('phase'), hold: P.get('hold'),
     lz: P.has('lz') ? { x: Number(P.get('lz')!.split(',')[0]), z: Number(P.get('lz')!.split(',')[1]) } : null,
-    onDone: (r) => { console.log('deploy result', JSON.stringify(r), 'res', JSON.stringify(run.res), 'cells', run.skills.points); setTimeout(go, 1500); },
+    onLaunched: (lz, first) => { void intoGame(engine, input, planet, region, run, lz, first, P.get('hold')); },
   }));
   go();
   engine.start();
@@ -457,7 +428,7 @@ export async function testPlanet(engine: Engine, input: Input, P: URLSearchParam
       onBack: () => console.log('planet: back'), note: 'A NEW WORLD. CHOOSE WHERE TO FALL.',
       onLand: (r, lz, region) => engine.setScreen(new DeployScreen(engine, input, {
         planet, region: r, run, landings: P.has('later') ? 2 : 0, lz, regionData: region, hold: P.get('hold'), phase: P.get('phase'),
-        onDone: (res) => { console.log('deploy result', JSON.stringify(res)); setTimeout(orbit, 1500); },
+        onLaunched: (lz2, first) => { void intoGame(engine, input, planet, r, run, lz2, first, P.get('hold')); },
       })),
     });
     engine.setScreen(ps);
@@ -488,4 +459,13 @@ export async function testCarrier(engine: Engine, _input: Input, P: URLSearchPar
     dispose() { c.dispose(); bin.dispose(); },
   });
   engine.start();
+}
+
+/** test modes: build the real game for the region in descent mode and fly the pod into it (as flow.ts does) */
+async function intoGame(engine: Engine, input: Input, planet: Planet, pr: PRegion, run: Run, lz: { x: number; z: number }, first: boolean, hold: string | null) {
+  const { Game } = await import('../game/game');
+  const { GameDescent } = await import('../game/descent');
+  const g = new Game(engine, input, { seed: pr.seed, biome: pr.biome, pal: planet.palKey, regionName: pr.name, run, story: first, danger: pr.danger, landing: lz, descent: true });
+  engine.setScreen(g);
+  new GameDescent({ game: g, lz, first, planetName: planet.name, hold, onDone: (r) => console.log('descent result', JSON.stringify(r), 'res', JSON.stringify(run.res), 'cells', run.skills.points) });
 }

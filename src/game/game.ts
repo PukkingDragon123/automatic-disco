@@ -44,7 +44,7 @@ type Mode = { k: 'normal' } | { k: 'ability'; a: Ability } | { k: 'build'; b: BK
 interface Held { c: Creature; t: number; dur: number; dps: number; grip: number }
 interface Pull { c: Creature; tx: number; tz: number; t: number }
 
-export interface GameOpts { seed: number; biome: BiomeKey; pal?: string; regionName?: string; run?: Run; hooks?: GameHooks; story?: boolean; /** planet danger 1..3: which enemy programmes hold the region (factions/plan.ts) */ danger?: number; /** where the drop pod actually came down (deploy sequence); snapped to open ground */ landing?: { x: number; z: number } }
+export interface GameOpts { seed: number; biome: BiomeKey; pal?: string; regionName?: string; run?: Run; hooks?: GameHooks; story?: boolean; /** planet danger 1..3: which enemy programmes hold the region (factions/plan.ts) */ danger?: number; /** where the drop pod actually came down (deploy sequence); snapped to open ground */ landing?: { x: number; z: number }; /** descent mode: Unit 07 is still falling (game/descent.ts flies the pod down; touchdown() lands it, beginStory() starts the story) */ descent?: boolean }
 export interface GameHooks { onWin?(g: Game): void; onLose?(g: Game): void; openBuilder?(g: Game): void; openTree?(g: Game): void; openMenu?(g: Game): void; openSkills?(g: Game): void; openLab?(g: Game): void }
 
 const _v = new THREE.Vector3(), _ray = new THREE.Ray();
@@ -99,6 +99,8 @@ export class Game implements Screen {
   /** Unit 07 under direct control (player.ts) */
   player!: Player;
   private cap: THREE.Mesh | null = null; private hatchT = 0;
+  /** descent mode: the pod is still in the air (no core, no crater, no hatching yet) */
+  descending = false;
   private handlers: Record<string, ((d: any) => void)[]> = {};
   on(ev: string, f: (d: any) => void) { (this.handlers[ev] ??= []).push(f); }
   emit(ev: string, d?: any) { for (const f of this.handlers[ev] ?? []) { try { f(d); } catch (e) { console.error('event', ev, e); } } }
@@ -117,7 +119,7 @@ export class Game implements Screen {
       if (f) this.region.landing = { x: f[0], z: f[1] };
     }
     const L = this.region.landing;
-    this.region.carveCrater(L.x, L.z, 3.4, 1.3);
+    if (!opts.descent) this.region.carveCrater(L.x, L.z, 3.4, 1.3);
     this.region.dirty.clear();
     this.world = new World(this.region, this.run.reg, opts.seed);
     this.fx = new Fx(this.world.fxScene, this.world.scene);
@@ -179,7 +181,7 @@ export class Game implements Screen {
     this.cap.position.copy(core.mesh.position); this.cap.castShadow = true;
     this.world.scene.add(this.cap);
     this.cam.followFn(() => new THREE.Vector3(core.x, 0, core.z)); this.cam.dist = this.cam.distGoal = 13;
-    if (opts.story !== false) this.story = new Story(this);
+    if (opts.story !== false && !opts.descent) this.story = new Story(this);
     this.vision.update(0, true);
     this.veyr.flushCov();
     this.player = new Player(this);
@@ -188,8 +190,45 @@ export class Game implements Screen {
     this.factory = new Factory(this);
     this.factions = new Factions(this);
     installBiotech(this); // engineered creatures and plants at work, Bio-Works structures, work orders (src/biotech)
+    if (opts.descent) this.awaitPod();
     (window as any).__game = this;
   }
+
+  // ------------------------------------------------------------------ descent mode (game/descent.ts)
+  /** the core was planted at the pin to build the game; until the pod is down it is hidden and claims nothing */
+  private awaitPod() {
+    this.descending = true;
+    const core = this.veyr.core!, hv = this.veyr as unknown as { claim: Float32Array; cov: Float32Array; claimDirty: boolean };
+    for (let i = 0; i < hv.claim.length; i++) if (hv.claim[i] >= 0.5) hv.cov[i] = 0;
+    core.x = core.z = -999; hv.claimDirty = true;
+    core.mesh.visible = false; if (this.cap) this.cap.visible = false;
+    this.veyr.flushCov();
+  }
+  /** the pod is down at (x, z): crater, core, golem and camera all key off this point (the story waits for beginStory) */
+  touchdown(x: number, z: number) {
+    if (!this.descending) return;
+    const R = this.region, N = R.N, old = this.veyr.core!, hv = this.veyr as unknown as { buildings: Building[] };
+    const f = R.freeNear(clamp(x, 6, N - 6), clamp(z, 6, N - 6), 12);
+    R.landing = f ? { x: f[0], z: f[1] } : { x: clamp(x, 6, N - 6), z: clamp(z, 6, N - 6) };
+    const L = R.landing;
+    R.carveCrater(L.x, L.z, 3.4, 1.3);
+    this.world.terrain.flushDirty();
+    this.world.flora.reseat(L.x, L.z, 8);
+    old.mesh.removeFromParent(); hv.buildings = hv.buildings.filter((b) => b !== old);
+    this.veyr.plantCore(L.x, L.z);
+    const core = this.veyr.core!;
+    this.cap?.removeFromParent();
+    this.cap = new THREE.Mesh(coreCapGeometry(core.x, core.z), core.mesh.material);
+    this.cap.position.copy(core.mesh.position); this.cap.castShadow = true; this.world.scene.add(this.cap);
+    this.child.root.position.set(core.x, core.y + 1.05, core.z);
+    this.cam.lookAt(L.x, L.z + 4, true);
+    this.cam.followFn(() => new THREE.Vector3(core.x, 0, core.z)); this.cam.dist = this.cam.distGoal = 13;
+    this.vision.update(0, true); this.veyr.flushCov();
+  }
+  /** the golem is out of the shell: the hatching runs from here */
+  emerge() { this.descending = false; this.hatchT = 0; }
+  /** the opening and everything after it (descent mode starts it once the golem has climbed out) */
+  beginStory() { if (!this.story && this.opts.story !== false) this.story = new Story(this); }
 
   // ------------------------------------------------------------------ helpers
   audible(x: number, z: number) { const d = Math.hypot(x - this.cam.target.x, z - this.cam.target.z); return clamp(1.2 - d / 45, 0, 1); }
@@ -711,7 +750,7 @@ export class Game implements Screen {
   /** the shell cracks, its top bursts, the child rises, blinks, looks around */
   private hatching(dt: number) {
     const ch = this.child, core = this.veyr.core;
-    if (!core) return;
+    if (!core || this.descending) return;
     if (this.hatchT < 9) {
       this.hatchT += dt;
       const t = this.hatchT;

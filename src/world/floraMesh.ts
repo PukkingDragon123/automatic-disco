@@ -244,7 +244,7 @@ const ampOf = (a: number | undefined) => 0.46 + 0.62 * Math.pow(Math.max(0, Math
 const PMAX: Partial<Record<Shape, number>> = {};
 const pmaxOf = (s: Shape) => { let v = PMAX[s]; if (v === undefined) { v = 0.01; for (let t = 0; t <= 1; t += 0.02) v = Math.max(v, PROF[s](t)); PMAX[s] = v; } return v; };
 
-export interface PlantGeo { geo: THREE.BufferGeometry; H: number; R: number; tris: number; parts?: Record<string, number> }
+export interface PlantGeo { geo: THREE.BufferGeometry; H: number; R: number; tris: number; parts?: Record<string, number>; /** where fruit hangs (local metres, full mesh only) */ anchors?: V3[] }
 
 /** mesh a grown, normalised plant (its sprite pass ran first: limbs and leaves carry their sky light) */
 export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: number, bladeSet?: BladeSet, lod = 0): PlantGeo {
@@ -328,7 +328,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
   const fsty = new Rand(sp.id * 977 + 3), hairy = fsty.chance(0.3), thorny = (sp.arch === 'shrub' || sp.arch === 'umbrella') && fsty.chance(0.45);
   const sprayStyle: SprayStyle = sp.arch === 'umbrella' ? fsty.pick<SprayStyle>(['bipinnate', 'pinnate', 'alternate']) : sp.arch === 'shrub' ? fsty.pick<SprayStyle>(['alternate', 'trifoliate', 'whorl', 'alternate', 'palmate']) : fsty.pick<SprayStyle>(['alternate', 'pinnate', 'palmate', 'whorl', 'alternate']);
   const twigR = rampFor(sp.trunk), accR = rampFor(sp.accent), youngR = rampFor(mixHex(sp.leaf, 0xd8dca0, 0.3));
-  const budget = crown3 ? (sp.arch === 'shrub' ? (L1 ? 34 : 80) : L1 ? 140 : 520) : L1 ? 40 : 400;
+  const budget = crown3 ? (sp.arch === 'shrub' ? (L1 ? 34 : 80) : L1 ? 120 : 380) : L1 ? 40 : 400;
   const thin = Math.max(1, Math.round(nLeaf / budget)), grow = thin > 1 ? Math.sqrt(thin) * 0.9 : 1;
   let li = 0, vi = seed % 4;
   for (const l of P.leaves) {
@@ -392,7 +392,10 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
   const spk = tex.speckle();
   let oi = 0;
   const orbThin = Math.max(1, Math.round(P.orbs.length / (sp.arch === 'shrub' ? (L1 ? 3 : 6) : L1 ? 8 : 40)));
+  const anchors: V3[] = [];
   for (const o of P.orbs) {
+    // edible fruit is the ecosystem's (the fruit layer shows it, scaled by ripeness): here it only marks where it hangs
+    if (o.fruit) { if (!L1 && anchors.length < 10 && (anchors.length < 4 || r.chance(0.5))) anchors.push(M(o.c)); continue; }
     if (orbThin > 1 && !o.ribs && (oi++ % orbThin)) continue;
     const c = M(o.c), rr = (o.r / PXM) * (orbThin > 1 ? Math.min(1.5, Math.pow(orbThin, 0.3)) : 1), ao = ampOf(o.amb);
     g.phase = r.next(); g.pivot = c;
@@ -426,7 +429,17 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
     disc(g, M(e.p), vnrm(e.n), (e.r / PXM) * 1.1, rect, L1 ? 6 : 10, 0.35, UPV);
   }
   parts.rest = g.tris - parts.limbs - parts.leaves - parts.ribbons;
-  return { geo: g.build(R), H, R, tris: g.tris, parts };
+  if (!L1 && anchors.length < 3) {
+    // no modelled fruit: hang it under the crown's lower leaves (crowns) or at the tops of the stems
+    if (crown3) {
+      const cand = P.leaves.filter((l) => !l.skip3d && l.kind !== K.ACC && l.p[1] / PXM > H * 0.35).sort((a, b) => a.p[1] - b.p[1]);
+      for (let k = 0; k < cand.length && anchors.length < 6; k += Math.max(1, Math.floor(cand.length / 9))) anchors.push(M(cand[k].p));
+    } else {
+      const tips = P.limbs.filter((l) => !l.skip3d).map((l) => l.b).sort((a, b) => b[1] - a[1]);
+      for (let k = 0; k < tips.length && anchors.length < 4; k += 3) anchors.push(M(tips[k]));
+    }
+  }
+  return { geo: g.build(R), H, R, tris: g.tris, parts, anchors };
 }
 
 /** the distinct blade ramps of a species' variants: one blade texture serves them all */

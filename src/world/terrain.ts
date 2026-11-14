@@ -9,7 +9,7 @@
 // Hooks: ecoData()/ecoFlush() (R moisture, G fertility for src/eco; B trampled wear from game/details.ts), U.uWetG.
 import * as THREE from 'three';
 import { Region } from './region';
-import { BLOCKS, L, TS, buildBlockTexture } from './blockTex';
+import { BLOCKS, L, TS, TILE_M, TT, buildBlockTexture } from './blockTex';
 import { clamp01 } from '../core/rand';
 import { gbuf, GN_DECL } from '../gfx/gbuf';
 import { VEYR, RIVALS } from './palette';
@@ -20,8 +20,9 @@ import { SHADER_NOISE, FOW_FN } from './glsl';
 import { makeSea, makeRivers } from './water';
 import { Rocks } from './rocks';
 
-/** the ground's texel grid (blockTex.TS texels per metre) as GLSL literals: the grid itself and the rivet spacing */
-const TSF = TS.toFixed(1), RIV = (40 * TS / 32).toFixed(1);
+/** the ground's texel grid (blockTex.TS texels per metre) as GLSL literals: the grid itself, the painted tile size in
+ *  metres and texels */
+const TSF = TS.toFixed(1), TMF = TILE_M.toFixed(1), TTF = TT.toFixed(1);
 
 export class Terrain {
   readonly group = new THREE.Group();
@@ -44,6 +45,8 @@ export class Terrain {
   }
   readonly U: Record<string, THREE.IUniform>;
   readonly avg: number[];
+  /** how long painting the ground took (ms) */
+  readonly texMs: number;
   waterMesh: THREE.Mesh;
   riverMesh: THREE.Mesh | null;
   readonly rocks: Rocks;
@@ -52,7 +55,8 @@ export class Terrain {
 
   constructor(readonly region: Region) {
     const N = region.N;
-    const { tex, avg } = buildBlockTexture(region.pal, region.seed);
+    const { tex, avg, ms } = buildBlockTexture(region.pal, region.seed);
+    this.texMs = ms;
     this.avg = avg;
     const mk = (data: Uint8Array | Float32Array, type: THREE.TextureDataType, fmt: THREE.PixelFormat = THREE.RGBAFormat, nearest = false) => {
       const t = new THREE.DataTexture(data, N, N, fmt, type);
@@ -219,6 +223,34 @@ varying vec3 vWp; varying vec3 vNw; varying float vHol;
 ${SHADER_NOISE}
 ${FOW_FN}
 int matAt(vec2 cell) { return int(floor(texture2D(uMat, (clamp(cell, vec2(0.0), vec2(uN - 1.0)) + 0.5) / uN).r * 255.0 + 0.5)); }
+/** a painted tile's texel offset for one cell of the stochastic grid (whole texels, so the art stays on its grid) */
+vec2 tOff(vec2 c, float lay) { return floor(vec2(h2(c * 1.37 + lay * 7.13 + 0.5), h2(c * 2.11 + vec2(31.7, 3.3) + lay * 3.31)) * ${TTF}) / ${TSF}; }
+/**
+ * One material layer at p (metres) with no visible repeat: the plane is cut into tile-sized cells on a warped grid,
+ * each cell samples the painted tile at its own random offset, and across a band either side of a cell border the two
+ * cells contend texel by texel (the brighter, prouder texel wins, more so the nearer its own cell), so the seam is a
+ * ragged line through the art's own clusters rather than a straight cut.
+ */
+// the stochastic grid at this fragment (blkGrid sets it once; every layer reuses it)
+vec2 sgC, sgN, sgGu, sgGv; float sgD;
+void blkGrid(vec2 p, vec2 gx, vec2 gy) {
+  vec2 w = (vec2(vn(p * 0.37 + 2.3), vn(p * 0.37 + 9.1)) - 0.5) * 0.9;
+  vec2 q = (p + w) / ${TMF}, f;
+  sgC = floor(q); f = q - sgC;
+  vec2 e = min(f, 1.0 - f);
+  sgD = min(e.x, e.y);
+  sgN = sgC + (e.x < e.y ? vec2(f.x < 0.5 ? -1.0 : 1.0, 0.0) : vec2(0.0, f.y < 0.5 ? -1.0 : 1.0));
+  sgGu = gx / ${TMF}; sgGv = gy / ${TMF};
+}
+vec4 blk(float lay, vec2 p) {
+  vec4 a = textureGrad(uBlocks, vec3((p + tOff(sgC, lay)) / ${TMF}, lay), sgGu, sgGv);
+  const float band = 0.07;
+  if (sgD > band) return a;
+  vec4 b = textureGrad(uBlocks, vec3((p + tOff(sgN, lay)) / ${TMF}, lay), sgGu, sgGv);
+  float la = dot(a.rgb, vec3(0.3, 0.59, 0.11)), lb = dot(b.rgb, vec3(0.3, 0.59, 0.11));
+  float wb = 0.5 * (1.0 - sgD / band);
+  return (lb - la) * 2.2 + (wb - 0.5) * 1.6 > 0.0 ? b : a;
+}
 /** one contender for this texel: its weight, plus how proud its own texel stands (its brightness against its tile's) */
 /** (vb picks between the kind's two painted variants the same way: a preference, decided texel by texel) */
 void contend(int id, float w, float pref, float vb, vec2 pc, vec2 gx, vec2 gy, inout float bestS, inout vec4 bestT, inout int bestId) {
@@ -228,7 +260,7 @@ void contend(int id, float w, float pref, float vb, vec2 pc, vec2 gx, vec2 gy, i
     if (v == 1 && !two) break;
     float lay = uLay[id * 2 + v];
     if (two && (v == 0 ? vb > 0.8 : vb < 0.2)) continue;
-    vec4 t = textureGrad(uBlocks, vec3(pc, lay), gx, gy);
+    vec4 t = blk(lay, pc);
     float l = dot(t.rgb, vec3(0.3, 0.59, 0.11)), a = uAvgL[int(lay)];
     float h = clamp(0.5 + (l - a) / (a + 0.03) * 0.6, 0.0, 1.0);
     float sc = w + pref + uHB[id] + (h - 0.5) * 0.55 + (two ? (v == 0 ? 0.5 - vb : vb - 0.5) * 0.6 : 0.0);
@@ -240,6 +272,7 @@ vec3 emis = vec3(0.0);
 vec2 pxw = floor(vWp.xz * ${TSF});
 vec2 pc = (pxw + 0.5) / ${TSF};
 vec2 gx = dFdx(vWp.xz), gy = dFdy(vWp.xz);
+blkGrid(pc, gx, gy);
 vec4 eco = texture2D(uEco, pc / uN);
 float damp = texture2D(uDamp, pc / uN).r;
 // the cells round this texel, their borders bent by a slow warp (shape only: no per-pixel grain)
@@ -259,7 +292,8 @@ bool soft = dom == 0 || dom == 1 || dom == 2 || dom == 11 || dom == 6;
 float moist = max(damp, eco.r);
 float bestS = -1e9; vec4 bestT = vec4(0.5); int bestId = dom;
 // a grass cell on poor soil gives way to dry grass (fertility from the ecology)
-float dryK = smoothstep(0.42, 0.16, eco.g + (vn(pc * 0.3 + 4.0) - 0.5) * 0.18);
+// (plus broad patches of their own, 10-30 m across, so a meadow is never one even green)
+float dryK = smoothstep(0.42, 0.16, eco.g + (vn(pc * 0.3 + 4.0) - 0.5) * 0.18 + (vn(pc * 0.045 + 21.0) - 0.5) * 0.3);
 for (int a = 0; a < 4; a++) {
   int id = ids[a]; float w = ws[a];
   float vb = smoothstep(0.38, 0.62, vn(pc * 0.21 + 9.0 + float(id) * 3.7));
@@ -286,11 +320,27 @@ float glowA;
 if (vNw.y < 0.74) {
   // steep ground: rock strata projected on the dominant horizontal axis
   vec2 uvs = abs(vNw.x) > abs(vNw.z) ? vec2(vWp.z, -vWp.y) : vec2(vWp.x, -vWp.y);
-  vec4 tr = texture(uBlocks, vec3(uvs, uRockSide), -0.35);
+  vec4 tr = textureGrad(uBlocks, vec3(uvs / ${TMF}, uRockSide), dFdx(uvs) / ${TMF}, dFdy(uvs) / ${TMF});
   base = tr.rgb; glowA = tr.a; bestId = 3;
 } else {
   base = bestT.rgb; glowA = bestT.a;
+  // scattered stones: here and there a painted group of stones sits on the ground (more on stony and dry ground, none
+  // on water, snow or held ground), with its contact shadow
+  float stony = bestId == 3 || bestId == 12 || bestId == 8 ? 0.34 : bestId == 4 || bestId == 1 || bestId == 2 ? 0.16 : bestId == 7 || bestId == 5 ? 0.0 : 0.07;
+  vec2 sc = floor(pc / 1.6), so = vec2(h2(sc + 3.7), h2(sc + 8.9)) * 0.55;
+  vec2 sl = pc - sc * 1.6 - so;
+  if (stony > 0.0 && h2(sc + 0.31) < stony * (1.0 - smoothstep(0.1, 0.25, slope)) && hw > 0.08 && sl.x >= 0.0 && sl.y >= 0.0 && sl.x < 1.0 && sl.y < 1.0) {
+    float qd = floor(h2(sc + 5.5) * 4.0);
+    vec2 suv = (sl + vec2(mod(qd, 2.0), floor(qd / 2.0))) / ${TMF};
+    vec4 st = textureGrad(uBlocks, vec3(suv, ${L.scatter}.0), gx / ${TMF}, gy / ${TMF});
+    if (st.a > 0.6) { base = st.rgb; glowA = 1.0; bestId = 3; }
+    else if (st.a > 0.2) base *= 0.62;
+  }
 }
+// broad macro variation, 5-40 m: patches a touch darker (damp hollows) or lighter (sun-bleached), so tiles never read
+// as wallpaper from the overview
+float mac = vn(pc * 0.031 + 13.0) * 0.55 + vn(pc * 0.11 + 3.0) * 0.3 + vn(pc * 0.42 + 7.0) * 0.15;
+base *= 0.88 + 0.22 * mac;
 emis += base * (1.0 - glowA) * 2.0;
 // darker under canopy
 float shade = texture2D(uShade, pc / uN).r;
@@ -301,9 +351,11 @@ base *= 1.0 - (0.16 * smoothstep(0.3, 0.9, moist) + 0.24 * uWetG) * ab;
 // held ground (game/hive.ts writes the Veyr's claim into b, a rival's into a). No carpet: the soil itself is changed,
 // a faint cold metallic sheen, hairline veins in the owner's colour that pulse now and then, sparse rivet studs and a
 // bright seam along the edge of the claim
-vec4 cov = texture2D(uMoss, pc / uN);
+// (drawn on its own coarser 32 px/m grid, so its hairlines, studs and seam stay readable at play zoom)
+vec2 pxo = floor(vWp.xz * 32.0), pco = (pxo + 0.5) / 32.0;
+vec4 cov = texture2D(uMoss, pco / uN);
 float nT = vn(vWp.xz * 0.6) * 0.6 + vn(vWp.xz * 2.7) * 0.4;
-float thr = 0.42 + nT * 0.14 + (h2(pxw) - 0.5) * 0.05;
+float thr = 0.42 + nT * 0.14 + (h2(pxo) - 0.5) * 0.05;
 bool mineT = cov.b > thr;
 bool theirT = !mineT && cov.a > thr;
 if (mineT || theirT) {
@@ -315,23 +367,23 @@ if (mineT || theirT) {
   float l = dot(base, vec3(0.3, 0.59, 0.11));
   base = mix(base, vec3(l) * vec3(0.82, 0.92, 0.98) * 1.1 + vc * 0.04, 0.34 * inner);
   // hairline veins: one-pixel contour lines of a slow noise field (a line wherever a contour crosses into the next pixel)
-  float vf = vn(pc * 0.11 + 5.0) * 0.75 + vn(pc * 0.37 + 2.0) * 0.25;
-  float vr = vn((pc + vec2(1.0 / ${TSF}, 0.0)) * 0.11 + 5.0) * 0.75 + vn((pc + vec2(1.0 / ${TSF}, 0.0)) * 0.37 + 2.0) * 0.25;
-  float vd = vn((pc + vec2(0.0, 1.0 / ${TSF})) * 0.11 + 5.0) * 0.75 + vn((pc + vec2(0.0, 1.0 / ${TSF})) * 0.37 + 2.0) * 0.25;
+  float vf = vn(pco * 0.11 + 5.0) * 0.75 + vn(pco * 0.37 + 2.0) * 0.25;
+  float vr = vn((pco + vec2(1.0 / 32.0, 0.0)) * 0.11 + 5.0) * 0.75 + vn((pco + vec2(1.0 / 32.0, 0.0)) * 0.37 + 2.0) * 0.25;
+  float vd = vn((pco + vec2(0.0, 1.0 / 32.0)) * 0.11 + 5.0) * 0.75 + vn((pco + vec2(0.0, 1.0 / 32.0)) * 0.37 + 2.0) * 0.25;
   float lv = floor(vf * 7.0);
   if ((lv != floor(vr * 7.0) || lv != floor(vd * 7.0)) && inner > 0.15 && h2(vec2(lv, 3.0)) > 0.25) {
     float ph = fract(vf * 2.0 - uTime * 0.2 + h2(vec2(lv, 9.0)));
     base = mix(base, vc * 0.55, 0.4 * inner);
     emis += vc * (0.06 + 1.2 * smoothstep(0.92, 1.0, ph)) * 0.35 * inner * uVeinGain;
   }
-  vec2 rg = mod(pxw, ${RIV});
-  if (rg.x < 1.0 && rg.y < 1.0 && inner > 0.6 && h2(floor(pxw / ${RIV}) + 3.0) > 0.5) { base = vec3(0.8, 0.86, 0.9) * (0.6 + l); emis += vc * 0.25; }
+  vec2 rg = mod(pxo, 40.0);
+  if (rg.x < 1.0 && rg.y < 1.0 && inner > 0.6 && h2(floor(pxo / 40.0) + 3.0) > 0.5) { base = vec3(0.8, 0.86, 0.9) * (0.6 + l); emis += vc * 0.25; }
   // the seam: this pixel is held and one of its four neighbours is not
-  float t0 = 0.42 + nT * 0.14, px1 = 1.0 / ${TSF};
-  vec4 nA = texture2D(uMoss, (pc + vec2(px1, 0.0)) / uN), nB = texture2D(uMoss, (pc - vec2(px1, 0.0)) / uN);
-  vec4 nC = texture2D(uMoss, (pc + vec2(0.0, px1)) / uN), nD = texture2D(uMoss, (pc - vec2(0.0, px1)) / uN);
+  float t0 = 0.42 + nT * 0.14, px1 = 1.0 / 32.0;
+  vec4 nA = texture2D(uMoss, (pco + vec2(px1, 0.0)) / uN), nB = texture2D(uMoss, (pco - vec2(px1, 0.0)) / uN);
+  vec4 nC = texture2D(uMoss, (pco + vec2(0.0, px1)) / uN), nD = texture2D(uMoss, (pco - vec2(0.0, px1)) / uN);
   float nm = mineT ? min(min(nA.b, nB.b), min(nC.b, nD.b)) : min(min(nA.a, nB.a), min(nC.a, nD.a));
-  if (nm < t0 - 0.02 && h2(pxw * 0.5 + 4.0) > 0.18) { base = mix(base, vc * 0.6, 0.38); emis += vc * 0.1 * uVeinGain; }
+  if (nm < t0 - 0.02 && h2(pxo * 0.5 + 4.0) > 0.18) { base = mix(base, vc * 0.6, 0.38); emis += vc * 0.1 * uVeinGain; }
 }
 diffuseColor.rgb *= base;
 `)

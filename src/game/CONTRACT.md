@@ -61,3 +61,18 @@ code paths. Hostility: everyone fights everyone except their own; 'wild' fights 
   should not shoot buildings (they want them whole).
 - Events on game: 'faction-wave' {faction, n, x, z, vsOther}, 'faction-eliminated' {faction, name, left?},
   'captured' {target, by, x, z}.
+
+## Climate: seasons, weather, events (src/game/climate.ts, owned by the lighting/climate agent)
+The planet year has EIGHT seasons, two of them extraordinary:
+`'thaw' | 'bloom' | 'highsun' | 'monsoon' | 'eclipse' | 'ember' | 'bloodtide' | 'frost'`
+- thaw: melt, rising rivers, mud. bloom: flowering, breeding season. highsun: heat, drought, shimmer.
+  monsoon: storms, floods, high water. ember: dry lightning, wildfires, ash. frost: snow, ice on ponds, dormancy.
+- **eclipse** (special): the sun is swallowed for days; long dark, cold, auroras; bioluminescence everywhere;
+  diurnal life sleeps or panics, nocturnal life rules, plants close.
+- **bloodtide** (special): the red moon rises; red sky, red rain (spore and algae bloom), red tide in the ocean;
+  predators frenzy and hunt in packs, herds bunch and stampede, titans migrate. A violent season.
+`game.climate`: { season, seasonT (0..1 progress), year, day, weather ('clear' | 'cloudy' | 'rain' | 'storm' | 'fog' |
+'snow' | 'dust' | 'ash' | 'redrain'), temp (deg C), wind (THREE.Vector2), rain (0..1), cloud (0..1), light (0..1, also
+daylight.k), event ('eclipse' | 'bloodtide' | null), on(ev, fn) } with game events 'season' {season},
+'weather' {weather}, 'climate-event' {event, phase: 'start' | 'end'}. A season lasts a few in-game days (tunable;
+`?season=<id>` forces one for testing).
