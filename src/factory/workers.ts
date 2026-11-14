@@ -104,6 +104,8 @@ export class Workers {
   operating(b: FBuilding) { const c = b.operator; const w = c ? this.of(c) : null; return !!w && w.job === 'operate' && w.target === b && w.state === 'work'; }
   moodOf(c: Creature) { return this.of(c)?.mood ?? 0.5; }
   get active() { return this.list.filter((w) => w.job !== 'idle' && !w.c.dead); }
+  /** on a biotech field job (their runtime drives it) */
+  bio(c: Creature) { return (c as unknown as { __bjob?: number }).__bjob === 1; }
 
   // ------------------------------------------------------------------ movement
   private go(w: Worker, x: number, z: number, reach = 0.9): boolean {
@@ -133,6 +135,8 @@ export class Workers {
         if (!c.dead && c.faction !== 'veyr') (c as unknown as { __job?: number }).__job = 0;
         this.release(c); (c as unknown as { __wk?: Worker }).__wk = undefined; this.list.splice(i, 1); continue;
       }
+      // on a biotech field job (game.biotech): theirs, not ours
+      if ((c as unknown as { __bjob?: number }).__bjob === 1) { if (w.job !== 'idle') this.release(c); continue; }
       if (w.job === 'idle') { w.hunger = Math.min(1, w.hunger + dt / 200); w.mood = Math.min(1, w.mood + dt / 300); continue; }
       this.needs(w, dt);
       if (w.state === 'eat') { this.eat(w, dt); continue; }

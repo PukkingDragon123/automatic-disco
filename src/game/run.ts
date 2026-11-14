@@ -19,6 +19,8 @@ export class Run {
   res: Record<Res, number> = { ore: 0, carbon: 0, water: 0, soil: 0 };
   /** plants saved as prefabs */
   plants: PlantPrefab[] = [];
+  /** each region's works (src/factory: Factory.save), by region seed */
+  factories: Record<string, unknown> = {};
   constructor(readonly seed: number) {}
   has(id: string) { return this.genes.has(id); }
   add(id: string, from: string, at: number): 'new' | 'up' {

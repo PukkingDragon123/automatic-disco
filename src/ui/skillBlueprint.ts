@@ -92,7 +92,8 @@ export class Blueprint {
     bs.text(String(n.item), n.bx, n.by - 4.5, 9, { align: 'c', wobble: 0.05, slant: 0.04 });
     ink(g, bs, { col, a, wo: 1.1, wt: 0.75, fills: 1, hatch: false, centre: false }, 1);
     // label and the typed line under it
-    letter(g, n.label, n.lx, n.ly - 4, 8, col, a, k, { align: n.la, w: 0.7 });
+    const ls = n.lw ? Math.min(8, n.lw / Math.max(1, n.label.length * 0.9)) : 8;
+    letter(g, n.label, n.lx, n.ly - 4 + (8 - ls) * 0.5, ls, col, a, k, { align: n.la, w: 0.7 });
     const def = SKILL[id];
     const cost = RES.filter((r) => def.cost[r]).map((r) => `${def.cost[r]} ${RES_NAME[r]}`).concat(def.pts ? [`${def.pts} CELL${def.pts > 1 ? 'S' : ''}`] : []).join(' · ');
     const ty = n.ny - 3; let line = 0;

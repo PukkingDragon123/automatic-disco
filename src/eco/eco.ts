@@ -346,6 +346,34 @@ export class Eco {
     if ((this.trendT -= dt) <= 0) { this.trendT = 20; this.trendTick(); }
     if ((this.spreadT -= dt) <= 0) { this.spreadT = 2.5; this.spread(); }
     if ((this.immT -= dt) <= 0) { this.immT = 75; this.immigrate(); }
+    if ((this.groundT -= dt) <= 0) { this.groundT = 1; this.paintGround(); }
+  }
+
+  /** the ground shows it: the terrain's ecology map (R moisture, G fertility) takes each column's own starting value
+   *  shifted by how far its land has moved since (interpolated between cell centres, so there are no 4 m blocks) */
+  private ground0: Uint8Array | null = null; private groundT = 0.5;
+  private devM = new Float32Array(0); private devF = new Float32Array(0);
+  private paintGround() {
+    const T = this.w.terrain as unknown as { ecoData?: () => Uint8Array; ecoFlush?: () => void };
+    if (!T.ecoData || !T.ecoFlush) return;
+    const d = T.ecoData(), N = this.N, G = this.G, G2 = G * G;
+    if (!this.ground0) { this.ground0 = new Uint8Array(N * N * 2); for (let i = 0; i < N * N; i++) { this.ground0[i * 2] = d[i * 4]; this.ground0[i * 2 + 1] = d[i * 4 + 1]; } this.devM = new Float32Array(G2); this.devF = new Float32Array(G2); }
+    for (let c = 0; c < G2; c++) {
+      this.devM[c] = (this.moist[c] - this.moist0[c]) * 1.4 + this.floodF[c] * 0.4;
+      this.devF[c] = (this.fert[c] - this.fert0[c]) * 1.2 - this.poisonF[c] * 0.7 - (this.liveN0[c] > 6 ? Math.max(0, 1 - this.liveN[c] / this.liveN0[c]) * this.graze[c] * 0.4 : 0);
+    }
+    const b0 = this.ground0, at = (a: Float32Array, i: number, j: number) => a[clamp(j, 0, G - 1) * G + clamp(i, 0, G - 1)];
+    for (let z = 0; z < N; z++) {
+      const v = (z + 0.5) / CS - 0.5, j = Math.floor(v), fv = v - j;
+      for (let x = 0; x < N; x++) {
+        const u = (x + 0.5) / CS - 0.5, i = Math.floor(u), fu = u - i;
+        const lerp2 = (a: Float32Array) => (at(a, i, j) * (1 - fu) + at(a, i + 1, j) * fu) * (1 - fv) + (at(a, i, j + 1) * (1 - fu) + at(a, i + 1, j + 1) * fu) * fv;
+        const k = z * N + x;
+        d[k * 4] = clamp(Math.round(b0[k * 2] + lerp2(this.devM) * 255), 0, 255);
+        d[k * 4 + 1] = clamp(Math.round(b0[k * 2 + 1] + lerp2(this.devF) * 255), 0, 255);
+      }
+    }
+    T.ecoFlush();
   }
 
   private init() {

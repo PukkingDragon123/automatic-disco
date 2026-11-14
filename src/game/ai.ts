@@ -227,6 +227,9 @@ function leaderOf(w: World, c: Creature): Creature | null {
 export function think(c: Creature, w: World) {
   c.thinkT = 0;
   if (c.dead || c.mind === 'held') return;
+  // at work in the factory or the biotech works: their jobs drive them, not the daily round
+  const job = c as unknown as { __job?: number; __bjob?: number };
+  if (job.__job === 1 || job.__bjob === 1) return;
   // ---- orders (player / rival)
   if (c.order) {
     const o = c.order;

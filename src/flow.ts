@@ -27,6 +27,8 @@ interface Save {
     seed: number; genes: [string, number, string][]; helix: number; designs: Design[];
     /** Unit 07's progression: raw materials, skills and core cells, plant prefabs, run-level milestones */
     res?: Partial<Record<Res, number>>; skills?: { owned?: string[]; points?: number }; plants?: PlantPrefab[]; flags?: Record<string, number>;
+    /** each region's works (buildings, recipes, stores, workers), by region seed */
+    factories?: Record<string, unknown>;
   };
 }
 const SK = 'oddworld.save', AK = 'oddworld.archive';
@@ -38,6 +40,8 @@ export class Flow {
   run: Run | null = null;
   landings = 0;
   private inherit: string[] = [];
+  /** the region being played (its works are written into the run when the run is saved) */
+  private game: Game | null = null;
   constructor(readonly engine: Engine, readonly input: Input) {}
 
   menu() {
@@ -65,6 +69,7 @@ export class Flow {
     run.skills.load(s.run.skills);
     run.plants = Array.isArray(s.run.plants) ? s.run.plants.filter((p) => p && typeof p.name === 'string') : [];
     if (s.run.flags) Object.assign(run.flags, s.run.flags);
+    if (s.run.factories && typeof s.run.factories === 'object') run.factories = s.run.factories;
     for (const d of s.run.designs) run.reg.add(d, 'veyr', null, 'design', 0);
     this.run = run; this.landings = s.landings;
     this.planetView();
@@ -72,13 +77,15 @@ export class Flow {
   private persist() {
     if (!this.planet || !this.run) return;
     const r = this.run;
+    try { this.game?.factory?.store(); } catch (e) { console.error('factory save', e); }
     write(SK, {
       planet: this.planet.seed, states: this.planet.regions.map((x) => x.state), landings: this.landings,
       run: { seed: r.seed, genes: [...r.genes.values()].map((g) => [g.id, g.level, g.from]), helix: r.helix, designs: r.reg.list.filter((s) => s.owner === 'veyr' && s.role === 'design').map((s) => s.design),
-        res: { ...r.res }, skills: r.skills.toJSON(), plants: r.plants, flags: r.flags },
+        res: { ...r.res }, skills: r.skills.toJSON(), plants: r.plants, flags: r.flags, factories: r.factories },
     } satisfies Save);
   }
   private planetView(note?: string) {
+    this.game = null;
     const p = this.planet!;
     this.engine.setScreen(new PlanetScreen(p, {
       canLand: (r) => (r.state === 'veyr' ? 'Already yours.' : r.state === 'lost' ? 'Burnt out. Nothing will take root here again.' : null),
@@ -117,6 +124,7 @@ export class Flow {
       },
     };
     const g: Game = new Game(engine, this.input, gopts);
+    this.game = g;
     g.veyr.res.helix += run.helix;
     engine.setScreen(g);
     if (this.landings > 1) toast(`You fall on <b>${r.name}</b>. Everything you have absorbed came with you.`, 'story', 5000);

@@ -11,7 +11,8 @@ import type { Faction } from '../game/species';
 import type { Creature } from '../game/creature';
 import { FDEFS, DIRS, rotXZ, footW, footD, isBelt, type FKind, type FDef, type Cost } from './defs';
 import { ITEMS, ITEM_IDS, isRes, type ItemId } from './items';
-import { recipesAt, type Recipe } from './recipes';
+import { recipesAt, RECIPE, type Recipe } from './recipes';
+const RECIPE_BY_ID = (id: string): Recipe | undefined => RECIPE[id];
 import { FactoryRender } from './render';
 import { Workers } from './workers';
 import { B } from '../world/blockTex';
@@ -30,6 +31,17 @@ import { TICK, SPACING, STATUS_COL, STATUS_NAME, FLUIDS, type Status } from './s
 export { TICK, SPACING, STATUS_COL, STATUS_NAME, FLUIDS, type Status };
 export interface BeltItem { id: ItemId; t: number }
 export interface Seam { i: number; x: number; z: number; r: number; kind: 'ore' | 'crystal' | 'coal' | 'copper'; item: ItemId; amount: number; dep: number }
+/** a region's works in the save file (compact rows) */
+export interface FactorySave {
+  v: 1;
+  /** [kind, cx, cz, rotation, recipe id ('' = automatic), flags (1 off, 2 recipe set, priority << 2), store?, inBuf?, outBuf?, prefab?] */
+  b: [string, number, number, number, string, number, ...(Record<string, number> | 0 | string)[]][];
+  inv: Record<string, number>;
+  seams: [number, number][];
+  rs: number;
+  /** [species, job, building row (-1), seam, x, z, hunger, mood] */
+  w: [string, string, number, number, number, number, number, number][];
+}
 export interface Grid { id: number; supply: number; demand: number; cap: number; sat: number; gens: number; users: number }
 type Stock = Map<ItemId, number>;
 const add = (m: Stock, k: ItemId, n: number) => m.set(k, (m.get(k) ?? 0) + n);
@@ -142,6 +154,70 @@ export class Factory {
     this.ui = new FactoryUI(this, this.build);
     g.update$.push((dt) => { try { this.update(dt); } catch (e) { if (this.errs++ < 5) console.error('factory', e); } });
     this.findRobots();
+    // this region's works from an earlier visit (flow.ts keeps them in the run, by region seed)
+    const sv = g.run.factories?.[this.saveKey] as FactorySave | undefined;
+    if (sv) try { this.load(sv); } catch (e) { console.error('factory load', e); }
+  }
+  get saveKey() { return String(this.g.opts.seed); }
+
+  // ================================================================== save
+  /** the works as compact JSON: buildings [kind, cx, cz, r, recipe, flags, stores], stores, seams, research, workers */
+  save(): FactorySave {
+    const idx = new Map<FBuilding, number>();
+    const rows: FactorySave['b'] = [];
+    const order = [...this.buildings].sort((a, b) => (a.kind === 'found' ? 0 : 1) - (b.kind === 'found' ? 0 : 1));
+    const stock = (m: Map<ItemId, number>) => { const o: Record<string, number> = {}; for (const [k, v] of m) if (v >= 1 && k !== 'steam') o[k] = Math.floor(v); return Object.keys(o).length ? o : 0; };
+    for (const b of order) {
+      idx.set(b, rows.length);
+      const flags = (b.on ? 0 : 1) | (b.auto ? 0 : 2) | (b.priority << 2);
+      const st = stock(b.store), ib = stock(b.inBuf), ob = stock(b.outBuf);
+      const extra = (b as unknown as { prefab?: string }).prefab;
+      const row: FactorySave['b'][number] = [b.kind, b.cx, b.cz, b.r & 3, b.recipe && !b.auto ? b.recipe.id : '', flags];
+      if (st || ib || ob || extra) row.push(st || 0, ib || 0, ob || 0, extra ?? '');
+      rows.push(row);
+    }
+    const inv: Record<string, number> = {};
+    for (const [k, v] of Object.entries(this.inventory)) if (v >= 1) inv[k] = Math.floor(v);
+    // belt loads go back to the stores rather than ride the save
+    for (const b of this.buildings) for (const it of b.items) inv[it.id] = (inv[it.id] ?? 0) + 1;
+    const seams = this.seams.map((s) => [s.i, Math.floor(s.amount)] as [number, number]);
+    const w = this.workers.list.filter((x) => !x.c.dead && x.job !== 'idle').map((x) => [x.c.sp.name, x.job, x.target ? idx.get(x.target) ?? -1 : -1, x.seam, Math.round(x.c.x * 10) / 10, Math.round(x.c.z * 10) / 10, Math.round(x.hunger * 100) / 100, Math.round(x.mood * 100) / 100] as FactorySave['w'][number]);
+    return { v: 1, b: rows, inv, seams, rs: this.research, w };
+  }
+  /** write the works into the run (flow.ts calls this when it saves) */
+  store() { this.g.run.factories[this.saveKey] = this.save(); }
+  /** rebuild saved works (without paying again; anything that no longer fits is refunded to the stores) */
+  load(sv: FactorySave) {
+    if (!sv || sv.v !== 1) return;
+    for (const [k, n] of Object.entries(sv.inv ?? {})) this.inventory[k] = (this.inventory[k] ?? 0) + n;
+    for (const [i, a] of sv.seams ?? []) if (this.seams[i]) this.seams[i].amount = a;
+    this.research = sv.rs ?? 0;
+    const made: (FBuilding | null)[] = [];
+    for (const row of sv.b ?? []) {
+      const [kind, cx, cz, r, rid, fl, st, ib, ob, extra] = row;
+      if (!FDEFS[kind]) { made.push(null); continue; }
+      const b = this.place(kind, cx, cz, r, true);
+      if (!b) { this.refund(FDEFS[kind].cost); made.push(null); continue; }
+      b.on = !(fl & 1); b.priority = (((fl >> 2) & 3) as 0 | 1 | 2); b.rise = 1;
+      if (fl & 2 && rid && RECIPE_BY_ID(rid)) { b.recipe = RECIPE_BY_ID(rid)!; b.auto = false; }
+      for (const [m, o] of [[b.store, st], [b.inBuf, ib], [b.outBuf, ob]] as const) if (o && typeof o === 'object') for (const [k, n] of Object.entries(o)) m.set(k, n);
+      if (typeof extra === 'string' && extra) (b as unknown as { prefab?: string }).prefab = extra;
+      made.push(b);
+    }
+    // the crew comes back: a creature of each kind, in its harness, at its post
+    for (const [name, job, ti, seam, x, z, hunger, mood] of sv.w ?? []) {
+      const sp = this.g.run.reg.list.find((s) => s.name === name);
+      if (!sp) continue;
+      const c = this.g.world.spawn(sp, 'veyr', x, z, false);
+      if (!c) continue;
+      this.hive.adopt(c);
+      const w = this.workers.enlist(c);
+      w.hunger = hunger; w.mood = mood;
+      const tgt = ti >= 0 ? made[ti] ?? null : null;
+      if ((job === 'operate' || job === 'pen') && !tgt) continue;
+      this.workers.assign(c, job as never, tgt, seam);
+    }
+    this.onChange?.();
   }
   private errs = 0;
   has(skill: string) { return !SKILL[skill] || this.g.run.skills.has(skill); }

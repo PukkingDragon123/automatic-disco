@@ -13,6 +13,7 @@ import type { Rig } from './morph';
 import { shagCoat, mane, tassel, crest, wattle, tailFin, brushTail, sail, frill, roundEars, whiskers, tongue, throatSac, gills, ramHorns, palmAntlers, rack, bearPaw, toes, amphSkin, scuteShell, crabShell, beetleHorns, mothWings, plumes, type SpineTs, type HeadCtx } from './parts';
 import { BEASTS, type BeastForm } from './bestiary';
 import { CAGES, cageProfile, cageHead, morphCage, cageOrbit } from './cage';
+import { growBio } from './bioparts';
 import { growBody, markBody, headFans, greatHorn, skullCrest, helm, noseleaf, type BodyMark } from './forms';
 import { SkinB, Page, type Region, KIT, oct, blade, sac, spline, chainWeights, ball, sheet, transport, hash, gauss, sub, addV, scl, norm, cross, len, lerpV, pageTexture, mixC, type V3, type Wt } from './kit';
 
@@ -1486,6 +1487,7 @@ export function sculpt(d: Design, rig: Rig, rest: V3[]): Sculpt {
       case 'gastropod': gastropod(S); break;
       default: vertebrate(S); break;
     }
+    growBio(S); // the functional genes show their organs
   } finally { KIT.sq = 2; KIT.nMul = 1; }
   // every region is laid out at the finest density that still fills one page, then painted at that size
   const k = S.page.pack();

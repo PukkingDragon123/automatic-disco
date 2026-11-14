@@ -18,6 +18,8 @@ export interface NodeDef {
   lx: number; ly: number; la: 'l' | 'c' | 'r'; label: string;
   /** where pencil notes and status lines go */
   nx: number; ny: number; na: 'l' | 'c' | 'r';
+  /** room for the label (narrow details letter smaller) */
+  lw?: number;
   hit: Box; cx: number; cy: number;
   /** grid cell inside a detail (requirement routing) */
   cell?: { r: number; c: number; region: string };
@@ -30,7 +32,7 @@ export const REGIONS: Region[] = [
   { key: 'combat', title: 'DETAIL D  -  MOTION STUDIES  -  STROBE 1/24 S', x: 44, y: 352, w: 468, h: 292, cols: 4, cw: 117, ch: 136, rows: [['plow', 'punch', 'frenzy', 'servo'], ['shrapnel', 'rock', 'boulder', null]] },
   { key: 'gravity', title: 'DETAIL C  -  FIELD DIAGRAMS  -  NOT TO SCALE', x: 1008, y: 46, w: 468, h: 292, cols: 4, cw: 117, ch: 136, rows: [['repulse', 'lift', 'shape', 'amp'], [null, 'slam', 'well', 'storm']] },
   { key: 'fabrication', title: 'DETAIL E  -  GRAFT SCHEMATICS', x: 1008, y: 352, w: 468, h: 292, cols: 3, cw: 156, ch: 136, rows: [['graft', 'sow', 'grove'], ['command', 'convert', 'print']] },
-  { key: 'lab', title: 'DETAIL F  -  LABORATORY APPARATUS  -  SCALE 1:8', x: 44, y: 664, w: 1034, h: 196, cols: 5, cw: 206, ch: 150, rows: [['lab', 'splice', 'sequencer', 'vat', 'cloner']] },
+  { key: 'lab', title: 'DETAIL F  -  LABORATORY APPARATUS  -  SCALE 1:8', x: 44, y: 664, w: 950, h: 196, cols: 5, cw: 190, ch: 150, rows: [['lab', 'splice', 'sequencer', 'vat', 'cloner']] },
   { key: 'biotech', title: 'DETAIL G  -  BIOTECH INSTALLATIONS', x: 1008, y: 664, w: 468, h: 292, cols: 4, cw: 117, ch: 136, rows: [['bt_works', 'bt_reactor', 'bt_field', 'bt_dome'], ['bt_habitat', 'bt_lock', 'bt_vat', 'bt_clone']] },
   { key: 'industry', title: 'DETAIL H  -  FIELD INDUSTRY  -  PLANT LAYOUT, SCALE 1:50', x: 44, y: 874, w: 1034, h: 292, cols: 8, cw: 129, ch: 136, rows: [['works', 'miner2', 'miner3', 'belt2', 'belt3', 'turret', 'haul', 'operate'], ['assembler', 'manufacturer', 'robotics', 'atomic', 'steam', 'chem', 'blueprint', null]] },
 ];
@@ -584,7 +586,7 @@ for (const R of REGIONS) {
     const bx = cx - 56 * sc, by = cy - 40;
     NODES[id] = {
       id, item: ITEM[id], branch: SKILL[id].branch, chassis: false, sk: s, bx, by, leader: [cx - 46 * sc, cy - 30, bx, by],
-      lx: cx, ly: cy + 40, la: 'c', label: shortName(id), nx: cx, ny: cy + 52, na: 'c',
+      lx: cx, ly: cy + 40, la: 'c', label: shortName(id), nx: cx, ny: cy + 52, na: 'c', lw: cw - 10,
       hit: { x: cx - 64 * sc, y: cy - 52, w: 116 * sc, h: 104 }, cx, cy, cell: { r, c, region: R.key },
     };
   }));
