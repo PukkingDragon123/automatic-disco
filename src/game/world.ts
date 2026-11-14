@@ -316,7 +316,7 @@ export class World {
     // (wild hunters live on feast and famine: a slower burn between kills)
     // (hibernating through the frost: the heart barely beats)
     const hib = asleep && wild && this.eco.sfx.active < 1 && profileOf(c, this).hibernate;
-    const drain = clamp(0.0022 + st.upkeep * 0.01, 0.0018, wild ? 0.0055 : 0.009) * (running ? 1.6 : hib ? 0.08 : asleep ? 0.35 : c.mind === 'rest' ? 0.7 : 1) * (wild && c.diet === 'carn' ? 0.6 : 1);
+    const drain = clamp(0.0022 + st.upkeep * 0.01, 0.0018, wild ? 0.0055 : 0.009) * (running ? 1.6 : hib ? 0.08 : asleep ? 0.35 : c.mind === 'rest' || c.mind === 'curl' ? 0.7 : 1) * (wild && c.diet === 'carn' ? 0.6 : 1);
     c.energy -= drain * dt;
     /** a hurt that may be the last: name the cause first so the census can count it */
     const hurt = (amt: number, cause: string) => { if (c.hp - amt * (1 - st.armor) <= 0) c.dieCause = cause; this.damage(c, amt, null); };

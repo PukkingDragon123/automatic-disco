@@ -11,9 +11,9 @@ import { RAMPS } from '../../art/palette';
 import type { Skin } from './geo';
 
 // composite ramps, dark -> light (cool shadows, warm lights), 8 steps each
-export const HULL = [INK[1], SL[0], SL[1], SL[2], ST[3], ST[4], ST[5], ST[6]];
+export const HULL = [INK[1], SL[0], SL[1], SL[2], ST[2], ST[3], ST[4], ST[5], ST[6]];
 export const BLUE = [INK[1], SL[0], SL[1], SL[2], SL[3], SL[4], SL[5], ST[6]];
-export const ARMOR = [INK[0], ST[0], ST[1], SL[1], ST[2], ST[3], ST[4], ST[5]];
+export const ARMOR = [INK[0], ST[0], ST[1], SL[1], SL[2], ST[2], ST[3], ST[4], ST[5]];
 export const OLV = [INK[1], OL[0], OL[1], OL[2], OL[3], OL[4], OL[5], RAMPS.straw[3]];
 export const CREAM = [SL[1], ST[2], ST[3], PA[0], PA[1], PA[2], PA[3], PA[4]];
 const PRIMER = [RU[0], RU[1], RU[2], RU[3], RU[3], RU[4], RU[4], RU[5]];
@@ -47,10 +47,10 @@ const GRIME = [[1, 1, 2, 2, 3, 2, 2, 1], [2, 3, 3, 2, 1, 1, 2, 2, 3, 4, 3, 2], [
 interface PlateOpts {
   R: readonly number[]; base: number; seed: number;
   courses: number[]; widths: number[];
-  rivet?: number; bolts?: boolean; alt?: readonly number[]; altP?: number;
+  rivet?: number; bolts?: boolean; alt?: readonly number[]; altP?: number; twins?: number[];
   facet?: number; chips?: number; rust?: number; grime?: number; panels?: number; marks?: number; doubler?: number; primer?: number;
 }
-interface Plate { x0: number; y0: number; x1: number; y1: number; t: number; R: readonly number[] }
+interface Plate { x0: number; y0: number; x1: number; y1: number; t: number; R: readonly number[]; fill: number }
 
 /** steel plate in lapped courses: the shared painter behind every hull skin */
 function plates(p: P, o: PlateOpts) {
@@ -64,8 +64,9 @@ function plates(p: P, o: PlateOpts) {
       if (start + p.w - (x + w) < 14) w = start + p.w - x;
       const r = rnd();
       const R = o.alt && r < (o.altP ?? 0) ? o.alt : r > 0.985 && o.primer ? PRIMER : R0;
-      const t = R === R0 ? (r < 0.5 ? o.base : r < 0.78 ? o.base - 1 : r < 0.93 ? o.base + 1 : o.base) : o.base;
-      out.push({ x0: x, y0: y, x1: x + w, y1: y + ch, t, R });
+      const t = R === R0 ? (r < 0.7 ? o.base : r < 0.8 ? o.base - 1 : r < 0.88 ? o.base + 1 : o.base) : R === PRIMER ? 2 : o.base - 1;
+      const fill = R === R0 && o.twins && r >= 0.88 ? o.twins[Math.floor(rnd() * o.twins.length)] : -1;
+      out.push({ x0: x, y0: y, x1: x + w, y1: y + ch, t, R, fill });
       x += w;
     }
     y += ch;
@@ -73,20 +74,20 @@ function plates(p: P, o: PlateOpts) {
   // 1. fill, buckled facets, the seams and bevels
   for (const q of out) {
     const { x0, y0, x1, y1, t, R } = q, w = x1 - x0, h = y1 - y0;
-    p.rect(x0, y0, w, h, R[t]);
-    if (o.facet && w * h > 900 && rnd() < o.facet) {
-      const a = 0.25 + rnd() * 0.5, b = 0.2 + rnd() * 0.6;
-      if (rnd() < 0.5) p.poly([[x0 + w * a, y1], [x1, y0 + h * b], [x1, y1]], R[t - 1]);
-      else p.poly([[x0, y0], [x0 + w * (0.3 + a * 0.6), y0], [x0, y0 + h * b]], R[Math.min(R.length - 1, t + 1)]);
+    p.rect(x0, y0, w, h, q.fill >= 0 ? q.fill : R[t]);
+    if (o.facet && w * h > 1600 && rnd() < o.facet) {
+      // a plate dished between its frames: the lower-right plane turned from the light, one step down
+      const a = 0.35 + rnd() * 0.4, b = 0.3 + rnd() * 0.5;
+      p.poly([[x0 + w * a, y1], [x1, y0 + h * b], [x1, y1]], R[t - 1]);
     }
     p.hl(x0, x1 - 1, y0, R[1]); p.vl(x0, y0, y1 - 1, R[1]);
-    p.hl(x0 + 1, x1 - 1, y0 + 1, R[Math.min(7, t + 1)]); p.vl(x0 + 1, y0 + 1, y1 - 2, R[Math.min(7, t + 1)]);
+    p.hl(x0 + 1, x1 - 1, y0 + 1, R[Math.min(R.length - 1, t + 1)]); p.vl(x0 + 1, y0 + 1, y1 - 2, R[Math.min(R.length - 1, t + 1)]);
     p.hl(x0 + 1, x1 - 1, y1 - 1, R[t - 1]); p.vl(x1 - 1, y0 + 1, y1 - 1, R[t - 1]);
   }
   // 2. per plate detail
   for (const q of out) {
     const { x0, y0, x1, y1, t, R } = q, w = x1 - x0, h = y1 - y0;
-    const hi = R[Math.min(7, t + 2)], lo = R[Math.max(0, t - 2)];
+    const hi = R[Math.min(R.length - 1, t + 2)], lo = R[Math.max(0, t - 2)];
     // grime along the bottom of the plate: a ragged band in two steps
     if (o.grime && rnd() < o.grime) {
       const prof = GRIME[Math.floor(rnd() * GRIME.length)], sc = 1 + Math.floor(rnd() * 2);
@@ -101,24 +102,24 @@ function plates(p: P, o: PlateOpts) {
     }
     // rivets: top and bottom of the course, down each butt seam
     if (o.rivet) {
-      const rv = (x: number, yy: number) => { if (o.bolts) { p.set(x, yy, hi); p.set(x + 1, yy, R[Math.min(7, t + 1)]); p.set(x, yy + 1, R[Math.min(7, t + 1)]); p.set(x + 1, yy + 1, lo); } else { p.set(x, yy, hi); p.set(x + 1, yy + 1, lo); } };
+      const rv = (x: number, yy: number) => { if (o.bolts) { p.set(x, yy, hi); p.set(x + 1, yy, R[Math.min(R.length - 1, t + 1)]); p.set(x, yy + 1, R[Math.min(R.length - 1, t + 1)]); p.set(x + 1, yy + 1, lo); } else { p.set(x, yy, hi); p.set(x + 1, yy + 1, lo); } };
       for (let x = x0 + 3; x < x1 - 3; x += o.rivet) { rv(x, y0 + 3); rv(x, y1 - 4); }
       for (let yy = y0 + 3 + o.rivet; yy < y1 - 4; yy += o.rivet) { rv(x0 + 3, yy); rv(x1 - 4, yy); }
     } else if (rnd() < 0.6) {
       // a welded seam instead: a bead of alternating lit and dark
-      for (let yy = y0 + 1; yy < y1 - 1; yy++) p.set(x0 + 1, yy, (yy & 1) ? R[Math.min(7, t + 1)] : R[t - 1]);
+      for (let yy = y0 + 1; yy < y1 - 1; yy++) p.set(x0 + 1, yy, (yy & 1) ? R[Math.min(R.length - 1, t + 1)] : R[t - 1]);
     }
     // access panel with screws, sometimes a handle and a tag
     if (o.panels && w > 30 && h > 22 && rnd() < o.panels) {
       const pw = 10 + Math.floor(rnd() * 3) * 4, ph = 8 + Math.floor(rnd() * 2) * 4;
       const px = x0 + 6 + Math.floor(rnd() * Math.max(1, w - pw - 12)), py = y0 + 6 + Math.floor(rnd() * Math.max(1, h - ph - 12));
       p.rect(px, py, pw, ph, R[t]); p.hl(px - 1, px + pw, py - 1, R[1]); p.vl(px - 1, py - 1, py + ph, R[1]);
-      p.hl(px, px + pw - 1, py, R[Math.min(7, t + 1)]); p.vl(px, py, py + ph - 1, R[Math.min(7, t + 1)]);
-      p.hl(px, px + pw, py + ph, R[Math.min(7, t + 1)]); p.vl(px + pw, py, py + ph, R[Math.min(7, t + 1)]);
+      p.hl(px, px + pw - 1, py, R[Math.min(R.length - 1, t + 1)]); p.vl(px, py, py + ph - 1, R[Math.min(R.length - 1, t + 1)]);
+      p.hl(px, px + pw, py + ph, R[Math.min(R.length - 1, t + 1)]); p.vl(px + pw, py, py + ph, R[Math.min(R.length - 1, t + 1)]);
       p.hl(px + 1, px + pw - 1, py + ph - 1, R[t - 1]);
       for (const [sx, sy] of [[px + 1, py + 1], [px + pw - 2, py + 1], [px + 1, py + ph - 2], [px + pw - 2, py + ph - 2]]) p.set(sx, sy, hi);
-      if (rnd() < 0.5) { p.hl(px + (pw >> 1) - 2, px + (pw >> 1) + 1, py + (ph >> 1), R[1]); p.hl(px + (pw >> 1) - 2, px + (pw >> 1) + 1, py + (ph >> 1) - 1, R[Math.min(7, t + 1)]); }
-      else tiny(p, ['A', 'B', 'C', 'E', 'H', 'K'][Math.floor(rnd() * 6)] + (1 + Math.floor(rnd() * 9)), px + 2, py + 2, R[Math.min(7, t + 2)]);
+      if (rnd() < 0.5) { p.hl(px + (pw >> 1) - 2, px + (pw >> 1) + 1, py + (ph >> 1), R[1]); p.hl(px + (pw >> 1) - 2, px + (pw >> 1) + 1, py + (ph >> 1) - 1, R[Math.min(R.length - 1, t + 1)]); }
+      else tiny(p, ['A', 'B', 'C', 'E', 'H', 'K'][Math.floor(rnd() * 6)] + (1 + Math.floor(rnd() * 9)), px + 2, py + 2, R[Math.min(R.length - 1, t + 2)]);
     }
     // a doubler patch bolted over the plate
     if (o.doubler && w > 36 && rnd() < o.doubler) {
@@ -127,7 +128,7 @@ function plates(p: P, o: PlateOpts) {
       const tt = Math.min(6, t + 1);
       p.rect(dx, dy, dw, dh, R[tt]); p.hl(dx, dx + dw - 1, dy, R[tt + 1]); p.vl(dx, dy, dy + dh - 1, R[tt + 1]);
       p.hl(dx + 1, dx + dw, dy + dh, R[Math.max(1, t - 2)]); p.vl(dx + dw, dy + 1, dy + dh, R[Math.max(1, t - 2)]);
-      for (let x = dx + 2; x < dx + dw - 1; x += 3) { p.set(x, dy + 2, R[Math.min(7, tt + 1)]); p.set(x, dy + dh - 3, R[t - 1]); }
+      for (let x = dx + 2; x < dx + dw - 1; x += 3) { p.set(x, dy + 2, R[Math.min(R.length - 1, tt + 1)]); p.set(x, dy + dh - 3, R[t - 1]); }
     }
     // chipped paint at a corner or along the top edge: primer ring, bare steel inside, a shadow under the edge
     if (o.chips && rnd() < o.chips) {
@@ -155,7 +156,7 @@ function plates(p: P, o: PlateOpts) {
     const { x0, x1, y1, t } = q, n = 1 + Math.floor(rnd() * 2);
     for (let k = 0; k < n; k++) {
       const sx = x0 + 3 + Math.floor(rnd() * Math.max(1, (x1 - x0 - 6) / (o.rivet || 4))) * (o.rivet || 4), sy = y1 - 4;
-      const L = 6 + Math.floor(rnd() * 22);
+      const L = 10 + Math.floor(rnd() * 30);
       p.set(sx, sy, RU[3]); p.set(sx + 1, sy, RU[2]); p.set(sx, sy + 1, RU[2]); p.set(sx + 1, sy + 1, RU[1]);
       let wide = 2;
       for (let j = 2; j < L; j++) {
@@ -187,39 +188,42 @@ export function paintAtlas() {
   const S = new Sheet();
   // ---------------------------------------------------------------- shelf 1: the big hull plates (16 px per metre)
   const hullA = S.alloc('hullA', 1008, 512);
-  plates(hullA, { R: HULL, base: 4, seed: 11, courses: [40, 48, 36, 52, 44, 40, 56, 48, 36, 48, 64], widths: [48, 64, 72, 80, 96, 112, 56, 128], rivet: 4, alt: BLUE, altP: 0.1, facet: 0.35, chips: 0.35, rust: 0.18, grime: 0.55, panels: 0.18, marks: 0.12, doubler: 0.06, primer: 1 });
+  plates(hullA, { R: HULL, base: 6, seed: 11, courses: [40, 48, 44, 52, 44, 40, 56, 48, 40, 48, 52], widths: [96, 112, 128, 144, 160, 176, 80, 104], rivet: 4, alt: BLUE, altP: 0.04, twins: [RAMPS.stone[4], SL[4], RAMPS.iron[4], ST[4]], facet: 0.3, chips: 0.45, rust: 0.3, grime: 0.6, panels: 0.3, marks: 0.2, doubler: 0.12, primer: 1 });
   const hullB = S.alloc('hullB', 1008, 512);
-  plates(hullB, { R: ARMOR, base: 4, seed: 23, courses: [64, 56, 72, 64, 48, 80, 64, 64], widths: [80, 96, 128, 112, 144], rivet: 6, bolts: true, facet: 0.4, chips: 0.45, rust: 0.4, grime: 0.8, panels: 0.08, marks: 0.1, doubler: 0.12 });
+  plates(hullB, { R: ARMOR, base: 6, seed: 23, courses: [64, 56, 72, 64, 48, 80, 64, 64], widths: [128, 160, 192, 144, 224], rivet: 6, bolts: true, twins: [RAMPS.stone[3], RAMPS.iron[3], SL[3]], facet: 0.35, chips: 0.5, rust: 0.45, grime: 0.8, panels: 0.12, marks: 0.14, doubler: 0.16 });
   // ---------------------------------------------------------------- shelf 2
   const olive = S.alloc('olive', 1008, 256);
   plates(olive, { R: OLV, base: 4, seed: 5, courses: [28, 36, 32, 40, 28, 36, 32, 24], widths: [32, 40, 48, 56, 64, 72], rivet: 4, facet: 0.25, chips: 0.5, rust: 0.08, grime: 0.5, panels: 0.22, marks: 0.1, doubler: 0.04 });
   const scorch = S.alloc('scorch', 496, 256);
-  plates(scorch, { R: ARMOR, base: 4, seed: 41, courses: [32, 32, 32, 32, 32, 32, 32, 32], widths: [48, 64, 80], rivet: 6, bolts: true, facet: 0.3, chips: 0.2, rust: 0.1, grime: 0.6 });
+  plates(scorch, { R: ARMOR, base: 5, seed: 41, courses: [32, 32, 32, 32, 32, 32, 32, 32], widths: [48, 64, 80], rivet: 6, bolts: true, facet: 0.3, chips: 0.2, rust: 0.1, grime: 0.6 });
   {
-    // soot and heat: row 0 is the hot (aft) end. tongues of soot reaching forward, heat tint bands, burn-through
-    const p = scorch, rnd = rng(77);
-    for (let x = 0; x < p.w;) {
-      const w = 3 + Math.floor(rnd() * 8), d = 60 + Math.floor(rnd() * 150);
-      for (let i = 0; i < w; i++, x++) {
-        const dd = d - Math.abs(i - w / 2) * 6;
-        for (let y = 0; y < dd; y++) {
-          const k = y / dd;
-          if (k < 0.35) p.set(x, y, k < 0.15 ? INK[0] : ST[0]);
-          else if (k < 0.7) p.shift(x, y, ARMOR, -2);
-          else if ((x + y) % 3 === 0 || k < 0.85) p.shift(x, y, ARMOR, -1);
-        }
+    // soot and heat: row 0 is the hot (aft) end. broad tongues of soot licking forward (their front drawn as a
+    // max of hand-sized parabolic lobes, banded in three steps, the edge broken by a pixel), heat-tint bands at
+    // the hot end, a few soot runs past the front, and bare metal polished through where the exhaust scours
+    const p = scorch, rnd = rng(77), W = p.w;
+    const lobes: [number, number, number][] = [];
+    for (let x = 0; x < W + 60;) { const w = 26 + Math.floor(rnd() * 50), L = 50 + Math.floor(rnd() * 150); lobes.push([x, w, L]); x += Math.floor(w * (0.45 + rnd() * 0.3)); }
+    const D = (x: number) => { let d = 18; for (const [cx, w, L] of lobes) for (const o of [-W, 0, W]) { const u = (x - cx - o) / (w / 2); if (Math.abs(u) < 1) d = Math.max(d, L * (1 - u * u)); } return d; };
+    for (let x = 0; x < W; x++) {
+      const d = D(x) + (hh(x >> 1, 3, 77) < 0.3 ? 1 : 0) - (hh(x >> 2, 4, 77) < 0.25 ? 2 : 0);
+      for (let y = 0; y < d; y++) {
+        const k = y / d;
+        if (k < 0.32) p.set(x, y, k < 0.12 ? INK[0] : ST[0]);
+        else if (k < 0.62) p.set(x, y, (x + (y >> 1)) % 7 === 0 ? ST[0] : ST[1]);
+        else p.shift(x, y, ARMOR, -1);
       }
     }
-    for (let x = 0; x < p.w; x++) {
-      const b = 8 + Math.floor(hh(x >> 3, 1, 9) * 4);
-      for (let y = 0; y < b; y++) p.set(x, y, y < 3 ? RU[1] : y < 6 ? BR[1] : (x + y) % 4 ? RU[0] : ST[0]);
-      if (hh(x >> 2, 2, 9) < 0.12) for (let y = b; y < b + 6 + Math.floor(hh(x, 3, 9) * 14); y++) p.set(x, y, (y & 1) ? ST[4] : ST[3]);
+    for (let k = 0; k < 14; k++) { const sx = Math.floor(rnd() * W), d = D(sx), L = 12 + Math.floor(rnd() * 40); for (let y = Math.floor(d) - 2; y < d + L; y++) { p.set(sx, y, y < d + L * 0.5 ? ST[1] : ST[2]); if (y < d + L * 0.3) p.set(sx + 1, y, ST[1]); } }
+    for (let x = 0; x < W; x++) {
+      const b = 7 + (hh(x >> 4, 1, 9) < 0.5 ? 1 : 0) + (hh(x >> 3, 5, 9) < 0.3 ? 1 : 0);
+      for (let y = 0; y < b; y++) p.set(x, y, y < 2 ? INK[0] : y < 4 ? RU[1] : y < 6 ? BR[1] : RU[0]);
     }
+    for (let k = 0; k < 9; k++) { const sx = Math.floor(rnd() * W), sy = 10 + Math.floor(rnd() * 26), w = 4 + Math.floor(rnd() * 8); for (let j = 0; j < 3; j++) p.hl(sx + j, sx + w - j, sy + j, j === 0 ? ST[4] : ST[3]); }
   }
   const deck = S.alloc('deck', 496, 256);
   {
     const p = deck;
-    plates(p, { R: ARMOR, base: 3, seed: 61, courses: [64, 64, 64, 64], widths: [32, 48, 64], facet: 0.2, chips: 0.2, grime: 0.3, panels: 0.06, rust: 0.03 });
+    plates(p, { R: ARMOR, base: 5, seed: 61, courses: [64, 64, 64, 64], widths: [32, 48, 64], facet: 0.2, chips: 0.2, grime: 0.3, panels: 0.06, rust: 0.03 });
     // tie-down points on a 2 m grid, a painted guide line, tyre scuffs
     for (let y = 16; y < p.h; y += 32) for (let x = 16; x < p.w; x += 32) p.stamp(x - 2, y - 2, ['.a.', 'aba', '.a.'], { a: ARMOR[1], b: ARMOR[6] });
     for (let x = 0; x < p.w; x++) if ((x >> 3) % 3 !== 2) for (let y = 126; y < 129; y++) if (hh(x >> 1, y, 4) > 0.08) p.set(x, y, y === 128 ? BR[2] : BR[3]);
@@ -263,7 +267,9 @@ export function paintAtlas() {
   for (let x = 0; x < 256; x++) for (let y = 60; y < 68; y++) ctank.set(x, y, y === 60 ? RD[3] : y === 67 ? RD[0] : RD[2]);
   for (let x = 20; x < 256; x += 128) stencil(ctank, 'LH2', x, 61, 1, PA[4], { bridges: false, wear: 0 });
   const truss = S.alloc('truss', 64, 64);
-  plates(truss, { R: HULL, base: 4, seed: 31, courses: [16, 16, 16, 16], widths: [16, 24, 32], rivet: 3, facet: 0, chips: 0.2, rust: 0.15, grime: 0.3 });
+  plates(truss, { R: HULL, base: 6, seed: 31, courses: [16, 16, 16, 16], widths: [16, 24, 32], rivet: 3, facet: 0, chips: 0.2, rust: 0.15, grime: 0.3 });
+  const gunT = S.alloc('gunT', 64, 64);
+  plates(gunT, { R: ARMOR, base: 5, seed: 37, courses: [16, 16, 16, 16], widths: [24, 32, 40, 48], rivet: 3, facet: 0, chips: 0.3, rust: 0.25, grime: 0.4 });
   const nozzle = S.alloc('nozzle', 128, 128);
   {
     // bell outside, throat (row 0) to lip: heat bands, ring stiffeners, soot at the lip
@@ -310,15 +316,15 @@ export function paintAtlas() {
     for (let k = 0; k < 5; k++) { const sx = 10 + Math.floor(hh(k, 3, R[3]) * 108); for (let j = 4; j < 14 + k * 3; j++) p.set(sx, j, RU[1]); }
   }
   // small solid cells: lenses, glow, dark, brass, steel, rubber
-  const cell = (n: string, c: number, em = 0, sh = -1) => { const p = S.alloc(n, 16, 16, 'cell'); for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) p.set(x, y, sh >= 0 && (x + y) > 22 ? sh : c, em); };
+  const cell = (n: string, c: number, em = 0) => { const p = S.alloc(n, 16, 16, 'cell'); p.rect(0, 0, 16, 16, c, em); };
   cell('lensAmber', AM[4], 255); cell('lensRed', RD[3], 255); cell('lensGreen', RAMPS.glowTeal[2], 255); cell('lensWhite', PA[5], 255); cell('glow', AM[3], 230);
-  cell('dark', INK[0]); cell('steelC', ST[4], 0, ST[3]); cell('brassC', BR[4], 0, BR[3]); cell('rubber', INK[2]); cell('gunC', ST[2], 0, ST[1]); cell('redC', RD[2], 0, RD[1]); cell('oliveC', OL[3], 0, OL[2]);
-  cell('glass', SL[1], 0, SL[0]); cell('creamC', CREAM[5], 0, CREAM[4]); cell('ochreC', RAMPS.ochre[4], 0, RAMPS.ochre[3]);
+  cell('dark', INK[0]); cell('steelC', ST[4]); cell('brassC', BR[4]); cell('rubber', INK[2]); cell('gunC', ST[2]); cell('redC', RD[2]); cell('oliveC', OL[3]);
+  cell('glass', SL[1]); cell('creamC', CREAM[5]); cell('ochreC', RAMPS.ochre[4]);
   // ---------------------------------------------------------------- shelf 4: lights and stripes (v fits the band)
   S.shelf();
   const winBand = (n: string, seed: number, w: number, h: number, kind: 'office' | 'bridge' | 'hab') => {
     const p = S.alloc(n, w, h), rnd = rng(seed);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) p.set(x, y, kind === 'hab' ? OLV[3] : HULL[3]);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) p.set(x, y, kind === 'hab' ? OLV[3] : HULL[4]);
     const ww = kind === 'bridge' ? 22 : kind === 'hab' ? 10 : 12, gap = kind === 'bridge' ? 3 : 6, wh = h - (kind === 'bridge' ? 6 : 8);
     for (let x0 = 2; x0 + ww <= w; x0 += ww + gap) {
       const y0 = kind === 'bridge' ? 3 : 4, r = rnd();
@@ -341,14 +347,14 @@ export function paintAtlas() {
         if (kind === 'bridge') { p.rect(x0, y0 + wh - 5, ww, 5, INK[2], 0); for (let x = x0 + 2; x < x0 + ww - 2; x += 4) p.set(x, y0 + wh - 4, [RD[3], RAMPS.glowTeal[3], AM[4]][(x >> 2) % 3], 255); }
       }
       // sill and lintel
-      p.hl(x0 - 1, x0 + ww, y0 + wh + 1, HULL[6]); p.hl(x0 - 1, x0 + ww, y0 - 2, HULL[2]);
+      p.hl(x0 - 1, x0 + ww, y0 + wh + 1, HULL[7]); p.hl(x0 - 1, x0 + ww, y0 - 2, HULL[2]);
     }
     return p;
   };
   winBand('winA', 3, 256, 24, 'office'); winBand('winB', 9, 256, 24, 'office'); winBand('winBridge', 5, 256, 40, 'bridge'); winBand('winHab', 12, 128, 20, 'hab');
   {
     const p = S.alloc('port', 64, 16), rnd = rng(4);
-    for (let y = 0; y < 16; y++) for (let x = 0; x < 64; x++) p.set(x, y, HULL[4]);
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 64; x++) p.set(x, y, HULL[5]);
     for (let k = 0; k < 4; k++) {
       const x0 = k * 16 + 3, lit = rnd() > 0.25;
       p.stamp(x0, 3, ['..aaaa..', '.abbbba.', 'abccccbd', 'abccccbd', 'abceecbd', 'abceecbd', '.dbbbbd.', '..dddd..'],
@@ -367,7 +373,7 @@ export function paintAtlas() {
   {
     // numbered hatches (3 m) and a docking collar face
     for (let n = 1; n <= 8; n++) {
-      const p = S.alloc('hatch' + n, 48, 48, 'cell'), R = n > 4 ? OLV : HULL;
+      const p = S.alloc('hatch' + n, 48, 48, 'cell'), R = n > 4 ? OLV : HULL.slice(1);
       p.rect(0, 0, 48, 48, R[4]);
       p.bev(0, 0, 48, 48, R[3], R[6], R[1]); p.bev(3, 3, 42, 42, R[4], R[5], R[2]);
       p.rect(4, 4, 40, 3, R[2]); for (const hx of [8, 34]) { p.bev(hx, 4, 6, 5, ST[3], ST[5], ST[1]); }
@@ -375,9 +381,9 @@ export function paintAtlas() {
       stencil(p, String(n), 17, 13, 3, PA[4], { wear: 0.05, seed: n });
       p.hl(18, 29, 38, R[1]); p.hl(18, 29, 37, R[6]); p.set(17, 37, R[1]); p.set(30, 37, R[1]);
     }
-    for (let k = 0; k < 3; k++) { const p = S.alloc('vent' + k, 48, 32, 'cell'); p.rect(0, 0, 48, 32, HULL[4]); vent(p, 1, 1, 46, 30, k, HULL); }
+    for (let k = 0; k < 3; k++) { const p = S.alloc('vent' + k, 48, 32, 'cell'); p.rect(0, 0, 48, 32, HULL[5]); vent(p, 1, 1, 46, 30, k, HULL.slice(1)); }
     const d = S.alloc('dockFace', 64, 64, 'cell');
-    d.rect(0, 0, 64, 64, HULL[4]);
+    d.rect(0, 0, 64, 64, HULL[5]);
     d.poly([[20, 2], [44, 2], [62, 20], [62, 44], [44, 62], [20, 62], [2, 44], [2, 20]], ST[3]);
     d.poly([[22, 6], [42, 6], [58, 22], [58, 42], [42, 58], [22, 58], [6, 42], [6, 22]], ST[2]);
     d.poly([[24, 12], [40, 12], [52, 24], [52, 40], [40, 52], [24, 52], [12, 40], [12, 24]], OLV[4]);

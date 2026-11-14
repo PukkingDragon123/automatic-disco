@@ -187,10 +187,12 @@ uniform sampler2D uGrab, uGrabD;
 uniform float uGrabOn, uNear, uFar;
 uniform vec2 uRes;
 uniform mat4 uInvProj, uCamWorld;
-uniform vec3 uSunDir, uSunCol, uSkyTop, uSkyHor, uCloudCol, uSssC, uBodyS, uBodyD, uFoamHi, uFoamLo, uGlowC, uRedS, uRedD;
+uniform vec3 uSunDir, uSunCol, uSkyTop, uSkyHor, uCloudCol, uSssC, uBodyS, uBodyM, uBodyD, uFoamHi, uFoamLo, uGlowC, uRedS, uRedD;
 uniform vec2 uWindV;
 uniform float uCloud, uWindK, uBio, uRed, uTurb, uSunK, uOcean;
 float linZ(float d) { float z = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear)); }
+/** the colour the water itself scatters, by how much of it the light crosses: turquoise, teal, deep teal-blue (banded) */
+vec3 bodyAt(float path) { float b = floor(clamp(path / 11.0, 0.0, 1.0) * 6.0 + 0.5) / 6.0; return mix(mix(uBodyS, uBodyM, smoothstep(0.0, 0.45, b)), uBodyD, smoothstep(0.45, 1.0, b)); }
 vec3 worldAt(vec2 uv, float d) { vec4 v = uInvProj * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); v /= v.w; return (uCamWorld * v).xyz; }
 /** the sky in a direction: a banded gradient, drifting clouds, the sun's halo */
 vec3 skyCol(vec3 d) {
@@ -261,8 +263,16 @@ void main() {
   }
   // capillary chop on top: tiny ripples, sharper with the wind, fading with distance
   float near = 1.0 - smoothstep(0.08, 0.5, fw);
-  vec2 cq = p * 1.7 + uWindV * t * 0.18;
-  vec2 chop = vec2(vn(cq) - vn(cq + vec2(0.6, 0.0)), vn(cq + vec2(3.1, 0.0)) - vn(cq + vec2(3.1, 0.6))) * (0.25 + uWindK * 0.5) * near;
+  // (three short wave trains crossing near the wind, their fronts bent by a slow warp: the cross-hatch of real ripples)
+  vec2 wd = normalize(uWindV + vec2(1e-4, 0.0)), wq = p + (vec2(vn(p * 0.21), vn(p * 0.21 + 5.3)) - 0.5) * 2.4;
+  vec2 chop = vec2(0.0);
+  for (int i = 0; i < 3; i++) {
+    float fi = float(i), an = (fi - 1.0) * 0.62 + 0.15 * sin(fi * 7.1);
+    vec2 dd = vec2(wd.x * cos(an) - wd.y * sin(an), wd.x * sin(an) + wd.y * cos(an));
+    float kk = 6.2832 / (0.55 + fi * 0.42), ph = dot(wq, dd) * kk - t * sqrt(9.81 * kk) * 0.6 + fi * 2.1;
+    chop += dd * cos(ph) * (0.5 + 0.5 * vn(p * 0.5 + fi * 3.0)) / (1.0 + fi * 0.4);
+  }
+  chop *= (0.16 + uWindK * 0.3) * near;
   N = normalize(N + vec3(chop.x, 0.0, chop.y));
   vec2 ia = interact(p, t);
   vec3 sh = shoreAt(p);
@@ -275,14 +285,14 @@ void main() {
   if (!under) {
     // ---------------- seen from above
     float NdV = max(dot(N, V), 0.0);
-    float F = 0.02 + 0.98 * pow(1.0 - NdV, 5.0);
-    F = floor(min(F, 0.9) * 8.0 + 0.5) / 8.0;
+    float F = 0.04 + 0.96 * pow(1.0 - NdV, 4.0);
+    F = floor(min(F, 0.92) * 8.0 + 0.5) / 8.0;
     vec3 R = reflect(-V, N); R.y = abs(R.y);
     vec3 sky = skyCol(R);
     // what lies beneath: the frame so far, bent by the surface; how far the view ray travels through water to it
     vec3 refr;
     float zW = linZ(gl_FragCoord.z);
-    vec3 body = mix(uBodyS, uBodyD, smoothstep(0.8, 9.0, depth));
+    vec3 body = bodyAt(depth * 1.3);
     // red tide: drifting red-brown blooms over the body of the water
     float red = uRed * smoothstep(0.42, 0.62, vn(p * 0.045 + vec2(t * 0.004, -t * 0.003)) * 0.7 + vn(p * 0.16 + 3.0) * 0.3);
     body = mix(body, mix(uRedS, uRedD, smoothstep(0.8, 6.0, depth)), red);
@@ -302,8 +312,8 @@ void main() {
       // light on the bed: caustics dancing in the shallows, sand ripples along the shore, dimmer and bluer with depth
       if (!sky0) {
         vec2 bq = (floor(Pb.xz * ${SPF}) + 0.5) / ${SPF};
-        float ca = caustic(bq * 0.9, t * 1.3) + caustic(bq * 0.55 + 7.0, t) * 0.6;
-        bc *= 1.0 + floor(ca * 3.0) / 3.0 * 1.1 * exp(-bedDepth * 0.16) * uSunK * smoothstep(0.02, 0.3, bedDepth);
+        float ca = caustic(bq * 2.2, t * 1.6) * 0.7 + caustic(bq * 1.3 + 7.0, t * 1.2) * 0.45;
+        bc *= 1.0 + floor(ca * 3.0) / 3.0 * 0.75 * exp(-bedDepth * 0.2) * uSunK * smoothstep(0.02, 0.3, bedDepth);
         float mid = floor(texture2D(uMat, (floor(clamp(bq, vec2(0.0), vec2(uN - 0.01))) + 0.5) / uN).r * 255.0 + 0.5);
         if (abs(mid - 4.0) < 0.5 && bedDepth > 0.15) {
           vec3 s2 = shoreAt(bq);
@@ -311,12 +321,13 @@ void main() {
           float rr = fract(rp);
           bc *= rr < 0.18 ? 1.12 : rr < 0.42 ? 0.9 : 1.0;
         }
-        bc *= exp(-bedDepth * vec3(0.22, 0.055, 0.035));
+        bc *= exp(-bedDepth * vec3(0.3, 0.09, 0.06));
       }
-      vec3 sig = vec3(0.36, 0.085, 0.06) * uTurb;
+      vec3 sig = vec3(0.85, 0.16, 0.09) * uTurb;
       vec3 T = exp(-path * sig);
-      T = floor(T * 7.0 + 0.5) / 7.0;
-      refr = bc * T + body * uSunK * (1.0 - T);
+      T = floor(T * 6.0 + 0.5) / 6.0;
+      vec3 bd = mix(bodyAt(path), mix(uRedS, uRedD, smoothstep(0.8, 6.0, path)), red);
+      refr = bc * T * vec3(0.8, 1.0, 1.12) + bd * uSunK * (1.0 - T);
     } else {
       refr = waterShade(vWp.xz, surf, 0.0, vec2(0.0), 0.0);
       refr = mix(refr, body * uSunK, smoothstep(2.0, 10.0, depth));
@@ -532,7 +543,10 @@ export function makeSea(R: Region, U: Record<string, THREE.IUniform>): THREE.Mes
     uShore: { value: shore.tex },
     uSunDir: { value: new THREE.Vector3(-0.5, 0.82, -0.32).normalize() }, uSunCol: { value: new THREE.Color(1.2, 1.05, 0.85) },
     uSkyTop: { value: C(RAMPS.sky[3]) }, uSkyHor: { value: C(RAMPS.sky[5]) }, uCloudCol: { value: C(RAMPS.snow[4]) },
-    uSssC: { value: C(RAMPS.glowTeal[1]) }, uBodyS: { value: C(R.oceanic ? RAMPS.teal[3] : wr.shallow) }, uBodyD: { value: C(R.oceanic ? RAMPS.sapphire[1] : wr.deep) },
+    uSssC: { value: C(RAMPS.glowTeal[1]) },
+    uBodyS: { value: C(R.oceanic ? RAMPS.water[5] : wr.shallow).lerp(C(RAMPS.sapphire[5]), R.oceanic ? 0.55 : 0.2) },
+    uBodyM: { value: C(R.oceanic ? RAMPS.water[3] : wr.shallow).lerp(C(R.oceanic ? RAMPS.sapphire[3] : wr.deep), 0.45) },
+    uBodyD: { value: C(R.oceanic ? RAMPS.water[1] : wr.deep).lerp(C(RAMPS.sapphire[1]), R.oceanic ? 0.6 : 0.3) },
     uFoamHi: { value: C(RAMPS.snow[5]) }, uFoamLo: { value: C(RAMPS.sky[4]) }, uGlowC: { value: C(RAMPS.glowTeal[3]) },
     uRedS: { value: C(RAMPS.coral[2]) }, uRedD: { value: C(RAMPS.blood[1]) },
     uWindV: { value: new THREE.Vector2(swell.main.x, swell.main.y) },
@@ -547,6 +561,22 @@ export function makeSea(R: Region, U: Record<string, THREE.IUniform>): THREE.Mes
   mesh.onBeforeRender = (renderer, _scene, camera) => { grab.grab(renderer, camera); };
   const st: SeaState = { swell, shore, grab, U: m.uniforms };
   mesh.userData.sea = st;
+  return mesh;
+}
+/**
+ * The sky the sea reflects, as a dome round the camera (shown when the view looks out toward the horizon: low test
+ * cameras, a diving golem looking up; the RTS view never sees it). Drawn at the far plane so the post pass treats it as
+ * the background.
+ */
+export function makeSkyDome(sea: THREE.Mesh): THREE.Mesh {
+  const su = (sea.material as THREE.ShaderMaterial).uniforms;
+  const m = new THREE.ShaderMaterial({
+    uniforms: su, side: THREE.BackSide, depthWrite: false,
+    vertexShader: `varying vec3 vD; void main() { vD = normalize((modelMatrix * vec4(position, 0.0)).xyz); vec4 p = projectionMatrix * viewMatrix * vec4(cameraPosition + vD * 1000.0, 1.0); gl_Position = p.xyww; }`,
+    fragmentShader: `${GN_DECL}\nuniform float uTime, uN;\n${SHADER_NOISE}\n${SEA_UNI}\nvarying vec3 vD;\nvoid main() { vec3 d = normalize(vD); vec3 c = skyCol(vec3(d.x, max(d.y, 0.0), d.z)); if (d.y < 0.0) c = mix(c, uBodyD * uSunK, smoothstep(0.0, -0.08, d.y)); gl_FragColor = vec4(c, 1.0); gNormal = vec4(0.5, 1.0, 0.5, 0.0); }`,
+  });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 12), m);
+  mesh.frustumCulled = false; mesh.renderOrder = -10; mesh.name = 'sky';
   return mesh;
 }
 /** the sea's state (swell, coast field, uniforms) from the terrain's sea mesh */

@@ -39,7 +39,7 @@ export interface ForeOut { radar: Builder; dishS: Builder; dishL: Builder; dishR
 
 export function buildFore(C: Ctx): ForeOut {
   const { B, L, s } = C;
-  const hullA = s('hullA'), hullB = s('hullB'), olive = s('olive'), deck = s('deck'), truss = s('truss', 32), gun = s('gunC', 8), steel = s('steelC', 8), dark = s('dark', 1);
+  const hullA = s('hullA'), hullB = s('hullB'), olive = s('olive'), deck = s('deck'), truss = s('truss', 32), gun = s('gunT', 32), steel = s('steelC', 8), dark = s('dark', 1);
   const fx = C.fx;
   const S = sec(M.hw, M.top, M.bot, M.ct, M.cb);
 
@@ -68,6 +68,11 @@ export function buildFore(C: Ctx): ForeOut {
     for (let y = -16; y < 0; y += 4.2) B.boxAt(hullA, sx * 10.4, y, fz1, sx * 13.2, y + 3.6, fz1 + 0.25, { bev: 0.08 });
     for (let k = 0; k < 4; k++) fx.halos.push({ p: new V3(sx * 11.8, -14.4 + k * 3.6, fz1 + 0.5), col: NAV.amber, size: 0.9, mode: 3, ph: k * 0.06 });
     for (let k = 0; k < 4; k++) B.in(sx * 11.8, -14.4 + k * 3.6, fz1 + 0.3, Math.PI / 2, 0, 0, () => B.cyl(s('lensAmber', 1), 0.28, 0.28, 0.2, 8));
+  }
+  for (const [y, gapC] of [[-2.5, false], [-15.0, true]] as [number, boolean][]) for (let k = 0; k < 6; k++) {
+    const x0 = -9.2 + k * 3.07, x1 = x0 + 2.6;
+    if (gapC && x1 > -2 && x0 < 2) continue;
+    B.in((x0 + x1) / 2, y, 63.9, 0, 0, Math.PI / 2, () => { B.cyl(hullB, 0.55, 0.55, x1 - x0, 12); B.at(0, (x1 - x0) / 2 - 0.15, 0); B.cyl(gun, 0.62, 0.62, 0.3, 12); B.pop(); });
   }
   decal(B, s, 'tBay', new V3(0, -0.2, fz1 + 0.02), new V3(0, 0, 1), 9.6);
   // floods on the frame top, raking down across the mouth onto the apron
@@ -131,16 +136,27 @@ export function buildFore(C: Ctx): ForeOut {
     pipe(B, s('pipeRed', 32), gun, [new V3(X + sx * 0.5, -1.4, -43.5), new V3(X + sx * 0.5, -1.4, 58), new V3(X + sx * 0.5, -5, 61.8)], 0.32, 3);
     pipe(B, s('pipeOlive', 32), gun, [new V3(X + sx * 0.45, -0.6, -43.5), new V3(X + sx * 0.45, -0.6, 60.5)], 0.24, 3);
     // the Corps line and the roundel on the belt, the ship's name on the upper flank
-    decal(B, s, 'tCorps', new V3(X + sx * 0.4, -6.6, -8), out, 30);
+    decal(B, s, 'tCorps', new V3(X + sx * 0.4, -6.6, 2), out, 44);
     decal(B, s, 'insignia', new V3(X + sx * 0.4, -13.2, -30), out, 7.5);
     decal(B, s, 'patch', new V3(X + sx * 0.4, -13.2, 46), out, 2.6);
-    decal(B, s, 'tName', new V3(X, 4.6, 46), out, 15);
+    decal(B, s, 'tName', new V3(X, 4.4, 45.5), out, 20);
     // portholes along the upper flank (crew decks) and on the shoulder
     B.in(X + sx * 0.03, 8.45, 9.5, 0, sx * Math.PI / 2, 0, () => B.panel(s('port', 16), 103, 1.0, 103 * 16 / 64));
     for (const [z0, z1] of [[-40, -18], [-8, 26]] as [number, number][]) {
       const L2 = z1 - z0, nrm = new V3(sx, 1, 0).normalize();
-      B.push(new THREE.Matrix4().makeBasis(new V3(0, 0, -sx), new V3(-sx, 1, 0).normalize(), nrm).setPosition(sx * 16.5 + nrm.x * 0.03, 10.5 + nrm.y * 0.03, (z0 + z1) / 2));
+      B.push(new THREE.Matrix4().makeBasis(new V3(0, 0, -sx), new V3(-sx, 1, 0).normalize(), nrm).setPosition(sx * 16.0 + nrm.x * 0.22, 11.0 + nrm.y * 0.22, (z0 + z1) / 2));
       B.panel(s('port', 16), L2, 1.0, L2 * 16 / 64); B.pop();
+    }
+    // external stiffeners on the upper flank between the davit bays (frame spacing 4 m), a capping strake
+    for (const [za, zb] of [[-43, -35], [-17.4, -12.6], [4.6, 9.4], [26.6, 34], [57, 62.6]] as [number, number][]) {
+      for (let z = za; z <= zb + 0.01; z += 4) B.boxAt(hullB, X, -1.9, z - 0.22, X + sx * 0.32, 7.9, z + 0.22, { bev: 0.08 });
+    }
+    B.boxAt(hullB, X, 7.9, -44, X + sx * 0.45, 8.15, 63.6, { bev: 0.05 });
+    // the shoulder: a course of doubler plates between the deck edge and the side
+    for (let z = -43; z < 62; z += 7.5) {
+      const nrm = new V3(sx, 1, 0).normalize();
+      B.push(new THREE.Matrix4().makeBasis(new V3(0, 0, -sx), new V3(-sx, 1, 0).normalize(), nrm).setPosition(sx * 16.95 + nrm.x * 0.1, 10.05 + nrm.y * 0.1, z + 3.6));
+      B.box(hullA, 7.1, 1.3, 0.2, { bev: 0.06 }); B.pop();
     }
     // landing-craft davit bays: a hooded niche, cradle arms, a boarding tube, lamps in the hood
     for (const [i, cz] of [[1, -26], [2, -4], [3, 18]] as [number, number][]) {
@@ -205,6 +221,8 @@ export function buildFore(C: Ctx): ForeOut {
   // ================================================================ deck plating on top, deck edge rails
   B.boxAt(deck, -15, 12, -44, 15, 12.15, 62);
   for (const sx of [-1, 1]) {
+    for (const z of [-36, -24, -12, 0, 12, 26]) B.in(sx * 13.2, 12.15, z, 0, 0, 0, () => { B.cyl(gun, 0.45, 0.45, 1.3, 10); B.at(0, 0.85, 0); B.cyl(s('hullB', 16), 0.85, 0.7, 0.45, 10); B.pop(); });
+    for (const z of [8, 30]) B.in(sx * 12.6, 12.15, z, 0, 0, 0, () => { B.cyl(gun, 0.3, 0.32, 0.9, 8); B.at(0.7, 0, 0); B.cyl(gun, 0.3, 0.32, 0.9, 8); B.pop(); B.at(0.35, 0.3, 0); B.box(gun, 1.3, 0.2, 0.5); B.pop(); });
     railing(B, steel, new V3(sx * 14.6, 12.15, -43), new V3(sx * 14.6, 12.15, 31));
     B.boxAt(hullB, sx * 14.8, 12.0, -44, sx * 15.3, 12.7, 62.2, { bev: 0.1 });
   }
@@ -318,10 +336,10 @@ export function buildFore(C: Ctx): ForeOut {
     for (const sx of [-1, 1]) { B.in(sx * 16, 40.62, 22.5, 0, 0, 0, () => { B.cyl(gun, 1.2, 1.5, 0.8, 10); B.at(0, 1.4, 0); B.cyl(s('hullB', 16), 0.35, 0.45, 2.0, 8); B.pop(); }); }
   }
   const dishL = new Builder(), dishR = new Builder();
-  for (const d of [dishL, dishR]) { d.at(0, 0, 0, -0.9, 0, 0); dish(d, s, 2.6); d.pop(); d.at(0, -0.6, 0); d.box(s('gunC', 8), 0.8, 0.8, 0.8, { bev: 0.1 }); d.pop(); }
+  for (const d of [dishL, dishR]) { d.at(0, 0, 0, -0.9, 0, 0); dish(d, s, 2.6); d.pop(); d.at(0, -0.6, 0); d.box(s('gunT', 32), 0.8, 0.8, 0.8, { bev: 0.1 }); d.pop(); }
 
   // ================================================================ the lattice mast, its yardarm, search dish turret, radar, strobe
-  const MZ = 21.5, my0 = 40.6, my1 = 66;
+  const MZ = 21.5, my0 = 40.6, my1 = 61;
   {
     const leg = (k: number, y: number) => { const w = 1.6 - ((y - my0) / (my1 - my0)) * 1.1; return [[-w, -w], [w, -w], [w, w], [-w, w]][k] as [number, number]; };
     for (let k = 0; k < 4; k++) { const [x0, z0] = leg(k, my0), [x1, z1] = leg(k, my1); B.beam(truss, new V3(x0, my0, MZ + z0), new V3(x1, my1, MZ + z1), 0.16); }
@@ -336,27 +354,27 @@ export function buildFore(C: Ctx): ForeOut {
     // platforms: the dish turret at 50, the yardarm at 58, the radar head at the top
     B.boxAt(deck, -2.0, 49.6, MZ - 2.0, 2.0, 49.9, MZ + 7.4, { bev: 0.05 });
     for (const sx of [-1, 1]) B.beam(gun, new V3(sx * 1.4, 46.6, MZ + 1.4), new V3(sx * 1.6, 49.6, MZ + 7.0), 0.15);
-    B.beam(truss, new V3(-7, 58, MZ), new V3(7, 58, MZ), 0.22);
-    for (const x of [-6.4, -3.6, 3.6, 6.4]) { B.rod(steel, new V3(x, 58, MZ), new V3(x, 55.4, MZ), 0.035, 4); for (let k = 0; k < 4; k++) B.beam(steel, new V3(x - 0.5 + k * 0.05, 55.8 + k * 0.6, MZ), new V3(x + 0.5 - k * 0.05, 55.8 + k * 0.6, MZ), 0.03); }
-    for (const sx of [-1, 1]) { fx.halos.push({ p: new V3(sx * 7.1, 58.3, MZ), col: NAV.warm, size: 1.1, mode: 0, ph: 0 }); B.in(sx * 7.1, 58.25, MZ, 0, 0, 0, () => B.box(s('lensAmber', 1), 0.3, 0.3, 0.3)); }
+    B.beam(truss, new V3(-7, 56, MZ), new V3(7, 56, MZ), 0.22);
+    for (const x of [-6.4, -3.6, 3.6, 6.4]) { B.rod(steel, new V3(x, 56, MZ), new V3(x, 53.4, MZ), 0.035, 4); for (let k = 0; k < 4; k++) B.beam(steel, new V3(x - 0.5 + k * 0.05, 53.8 + k * 0.6, MZ), new V3(x + 0.5 - k * 0.05, 53.8 + k * 0.6, MZ), 0.03); }
+    for (const sx of [-1, 1]) { fx.halos.push({ p: new V3(sx * 7.1, 56.3, MZ), col: NAV.warm, size: 1.1, mode: 0, ph: 0 }); B.in(sx * 7.1, 56.25, MZ, 0, 0, 0, () => B.box(s('lensAmber', 1), 0.3, 0.3, 0.3)); }
     B.in(0, my1, MZ, 0, 0, 0, () => { B.cyl(gun, 0.8, 0.9, 0.8, 10); });
     fx.halos.push({ p: new V3(0, my1 + 4.2, MZ), col: NAV.white, size: 3.2, mode: 2, ph: 0 });
-    fx.halos.push({ p: new V3(0, 58.6, MZ + 0.3), col: NAV.red, size: 1.4, mode: 0, ph: 0 });
+    fx.halos.push({ p: new V3(0, 56.6, MZ + 0.3), col: NAV.red, size: 1.4, mode: 0, ph: 0 });
   }
   // the radar bar: a long billboard antenna on a turntable (animated)
   const radar = new Builder();
   {
     const r = radar;
     r.box(s('hullB', 16), 1.2, 0.6, 1.2, { bev: 0.1 });
-    r.at(0, 1.4, 0); r.box(s('gunC', 8), 13, 1.6, 0.28, { bev: 0.06 }); r.pop();
+    r.at(0, 1.4, 0); r.box(s('gunT', 32), 13, 1.6, 0.28, { bev: 0.06 }); r.pop();
     r.at(0, 1.4, 0.2); r.panel(s('grate', 32), 12.6, 1.4, 12.6 * 32 / 32); r.pop();
     for (let x = -6; x <= 6; x += 1.5) r.beam(s('steelC', 4), new V3(x, 0.4, -0.2), new V3(x * 0.1, 0.4, -0.2).setY(0.5), 0.05);
-    r.beam(s('gunC', 8), new V3(-6.2, 0.6, -0.15), new V3(6.2, 0.6, -0.15), 0.1);
+    r.beam(s('gunT', 32), new V3(-6.2, 0.6, -0.15), new V3(6.2, 0.6, -0.15), 0.1);
   }
   // the search dish on its turret at the 50 m platform (animated)
   const dishS = new Builder();
   dishS.at(0, 2.4, 0, -1.2, 0, 0); dish(dishS, s, 3.4); dishS.pop();
-  dishS.cyl(s('gunC', 8), 0.7, 0.9, 1.4, 10);
+  dishS.cyl(s('gunT', 32), 0.7, 0.9, 1.4, 10);
   dishS.at(0, 1.4, 0); dishS.box(s('hullB', 16), 1.4, 1.2, 1.4, { bev: 0.12 }); dishS.pop();
 
   // ================================================================ the aft deckhouse (crew quarters), the deep space dish, lifeboats

@@ -146,9 +146,11 @@ vec3 rampBy(vec3 col, vec3 a, vec3 b, vec3 c) {
   return s * clamp(l / ls, 0.55, 1.5);
 }
 /** the season on the ground: snow lying on whatever faces up, hoar frost, dry and autumn foliage, cloud shadows */
-vec3 seasonal(vec3 col, vec3 P, vec3 N, float emit) {
+vec3 seasonal(vec3 col, vec3 P, vec3 N, float emit, float obj) {
   vec2 wp = (floor(P.xz * 32.0) + 0.5) / 32.0;
   // foliage (green pixels) turns: straw in the drought, rust and ochre leaves in the ember season, cell by cell
+  // (the terrain paints its own snow, rime and drought; grass cards share its G-buffer flag, so snow and the dry turn
+  // reach everything, and only the rime is kept to drawn objects)
   if (uDry + uAutumn > 0.01 && col.g > col.r * 1.04 && col.g > col.b * 1.1) {
     vec2 cell = floor(P.xz * 1.6 + P.y * 0.7);
     float hc = h21(cell);
@@ -164,7 +166,7 @@ vec3 seasonal(vec3 col, vec3 P, vec3 N, float emit) {
     }
   }
   // hoar frost: a cold silver on everything that faces the sky
-  if (uFrost > 0.01 && emit < 0.5) {
+  if (obj > 0.5 && uFrost > 0.01 && emit < 0.5) {
     float l = dot(col, vec3(0.3, 0.59, 0.11));
     col = mix(col, vec3(l) * vec3(0.9, 1.0, 1.12) * 1.15, uFrost * 0.45 * smoothstep(0.2, 0.8, N.y));
   }
@@ -214,7 +216,7 @@ void main() {
       col = mix(col, ice * (1.0 - min(1.0, crack) * 0.3), smoothstep(0.1, 0.6, uIce) * 0.9);
     }
   }
-  if (env && !bgC && water < 0.5) col = seasonal(col, P, N0, emitF);
+  if (env && !bgC && water < 0.5) col = seasonal(col, P, N0, emitF, oC);
   if (env && !bgC) {
     col *= 1.0 + emitF * uEclipse * 1.4;
     col += vec3(0.5, 0.56, 0.72) * uFlash * 0.3;

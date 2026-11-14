@@ -440,7 +440,8 @@ export class EcoView {
   private noted(n: EcoNote) {
     const g = this.game, now = g.world.time;
     if (n.kind === 'birth') return;
-    const big = n.kind === 'drought' || n.kind === 'flood' || n.kind === 'extinct' || n.kind === 'season' || n.kind === 'arrive';
+    // (the climate announces the seasons itself; the survey sheet keeps the field note)
+    const big = n.kind === 'drought' || n.kind === 'flood' || n.kind === 'extinct' || n.kind === 'arrive' || n.text.startsWith('WILDFIRE');
     if (big && now - this.toastT > 25) { this.toastT = now; toast(`<b>FIELD NOTE</b> &middot; ${n.text.toLowerCase().replace(/^./, (m) => m.toUpperCase())}`, n.kind === 'extinct' || n.kind === 'drought' ? 'warn' : 'info', 4200); }
   }
   /** a typed slip over a newborn near the camera, now and then */

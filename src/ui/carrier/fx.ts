@@ -46,7 +46,7 @@ void main(){
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   vA = on * (1.0 - u);
   vS = aInfo.y * 7.31;
-  float sz = (0.8 + u * 4.5) * aInfo.w;
+  float sz = (0.5 + u * 2.8) * aInfo.w;
   gl_PointSize = on * clamp(sz * projectionMatrix[1][1] * uH * 0.5 / max(1.0, -mv.z), 0.0, 160.0);
   gl_Position = projectionMatrix * mv;
 }`;
@@ -57,7 +57,7 @@ void main(){
   float r = length(d) * (1.0 + 0.16 * sin(ang * 5.0 + vS) + 0.08 * sin(ang * 9.0 - vS * 1.7));
   float a = r < 0.45 ? 1.0 : r < 0.72 ? 0.6 : r < 0.92 ? 0.25 : 0.0;
   float lit = d.y < -0.15 - 0.2 * d.x ? 1.0 : 0.82;
-  a *= vA * 0.5;
+  a *= vA * 0.42;
   a = floor(a * 6.0) / 6.0;
   gl_FragColor = vec4(vec3(0.78, 0.77, 0.72) * lit * a, a);
   gNormal = vec4(0.0);
@@ -70,14 +70,14 @@ const POOL_V = `varying vec2 vUv; void main(){ vUv = uv * 2.0 - 1.0; gl_Position
 const POOL_F = `uniform vec3 uCol; uniform float uK; varying vec2 vUv;
 void main(){
   float r = length(vec2(vUv.x, vUv.y * 0.9 + 0.1 * vUv.x * vUv.x));
-  float a = r < 0.32 ? 0.5 : r < 0.58 ? 0.3 : r < 0.82 ? 0.14 : r < 1.0 ? 0.05 : 0.0;
+  float a = r < 0.3 ? 0.34 : r < 0.55 ? 0.2 : r < 0.8 ? 0.1 : r < 1.0 ? 0.04 : 0.0;
   gl_FragColor = vec4(uCol * a * uK, 0.0); gNormal = vec4(0.0);
 }`;
 export const NOZ_F = `uniform vec3 uCol; uniform float uK, uT; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
-void main(){ float a = pow(1.0 - vUv.y, 2.0) * uK * (0.85 + 0.15 * sin(uT * 31.0 + vUv.x * 40.0)); a = floor(a * 8.0) / 8.0; gl_FragColor = vec4(uCol * a, 0.0); gNormal = vec4(0.0); }`;
-export const PLUME_V = `uniform float uT; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
-void main(){ vUv = uv; vec3 p = position; float k = 1.0 - uv.y;
-  p.x += sin(uT * 13.0 + p.y * 0.9) * 0.16 * k * length(p.xz); p.z += cos(uT * 11.0 + p.y * 1.1) * 0.16 * k * length(p.xz);
+void main(){ float a = pow(vUv.y, 1.6) * uK * (0.85 + 0.15 * sin(uT * 31.0 + vUv.x * 40.0)); a = floor(a * 8.0) / 8.0; gl_FragColor = vec4(uCol * a, 0.0); gNormal = vec4(0.0); }`;
+export const PLUME_V = `uniform float uT; attribute vec3 aAxis; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+void main(){ vUv = uv; vec3 p = position; vec3 rel = p - aAxis; float k = 1.0 - uv.y, rr = length(rel.xy);
+  p.x += sin(uT * 13.0 + rel.z * 0.9 + aAxis.x) * 0.16 * k * rr; p.y += cos(uT * 11.0 + rel.z * 1.1 + aAxis.y) * 0.16 * k * rr;
   vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(p, 1.0); vV = -mv.xyz; gl_Position = projectionMatrix * mv; }`;
 export const PLUME_F = `uniform float uT, uK; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
 float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }

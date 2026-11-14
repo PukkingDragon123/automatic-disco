@@ -126,6 +126,8 @@ export class Terrain {
       // lichen, the prevailing wind (blade streaks, ripples, drifts), and the climate's terms (setClimate)
       ...matColours(region),
       uSnow: { value: 0 }, uFrost: { value: 0 }, uDry: { value: 0 },
+      // the height over the water where snow lies all year: low in cold country, out of reach in hot
+      uSnowLine: { value: 8 + region.biome.temp * 26 },
     };
     this.mat = this.makeMaterial();
     this.buildMesh();
@@ -291,7 +293,7 @@ vec4 blk(float lay, vec2 p) {
 uniform vec3 uMatA[14]; uniform vec3 uMatD[14]; uniform vec3 uMatL[14];
 uniform vec3 uSkyC, uLichen;
 uniform vec2 uWindXZ;
-uniform float uSnow, uFrost, uDry;
+uniform float uSnow, uFrost, uDry, uSnowLine;
 // toward the sun in the ground plane (gfx/lights.ts Sun.dir): the side of every lump that catches the light
 const vec2 LXZ = vec2(-0.842, -0.539);
 float Gm, G1, G2, G3, G4, Gpx, Gst;
@@ -342,10 +344,12 @@ vec4 mGrass(int id) {
 }
 vec4 mSoil(int id, vec2 p) {
   float edge = lF2 - lF1;
-  float t = 0.36 + (lId - 0.5) * 0.42 + (G2 - 0.5) * 0.3 + (G1 - 0.5) * 0.2 + (G3 - 0.5) * 0.2 + (G4 - 0.5) * 0.08;
-  t += smoothstep(0.3, 0.05, edge) * litOf(lD) * 0.36;
+  // clods only where the ground is broken up (in patches), smooth trodden dirt between
+  float clod = smoothstep(0.38, 0.68, G2 * 0.6 + G1 * 0.4 + uDry * 0.25);
+  float t = 0.36 + (lId - 0.5) * 0.42 * clod + (G2 - 0.5) * 0.3 + (G1 - 0.5) * 0.25 + (G3 - 0.5) * 0.22 + (G4 - 0.5) * 0.1;
+  t += smoothstep(0.3, 0.05, edge) * litOf(lD) * 0.36 * clod;
   vec3 c = tone(id, t);
-  c *= 1.0 - smoothstep(0.07, 0.0, edge) * (0.5 + uDry * 0.3);
+  c *= 1.0 - smoothstep(0.07, 0.0, edge) * (0.5 + uDry * 0.3) * clod;
   float h = 0.3 + smoothstep(0.0, 0.3, edge) * 0.2;
   // roots: pale threads where the soil is rooty
   float rt = abs(vn(p * vec2(2.6, 0.7) + 31.0) - 0.5);
@@ -389,7 +393,7 @@ vec4 mSand(vec2 p) {
   t += (cs * dot(a, LXZ) * 0.24 + smoothstep(0.85, 1.0, sn) * 0.1) * kSmall;
   t += (step(0.93, Gpx) - step(Gpx, 0.06)) * 0.12;
   vec3 c = tone(4, t);
-  if (sId > 0.985 && sF1 < 0.3) c = mix(uMatL[4], vec3(0.85, 0.8, 0.72), 0.6);
+  if (sId > 0.994 && sF1 < 0.3 && kSmall > 0.5) c = mix(uMatL[4], vec3(0.85, 0.8, 0.72), 0.6);
   return vec4(c, 0.2 + sn * 0.08);
 }
 vec4 mMud(vec2 p) {
@@ -509,7 +513,7 @@ if (gully > 0.02) contend(12, gully * 0.95, 0.0, pc, shadedFace, moist, bestS, b
 float ridge = smoothstep(-0.08, -0.35, hol) * smoothstep(0.06, 0.22, slope);
 if (ridge > 0.02) contend(3, ridge * 0.9, 0.0, pc, shadedFace, moist, bestS, bestT, bestId, bestG);
 // snow (the climate's cover, and always some on the high ground) settles on the flats, never on steep faces
-float snowK = clamp(uSnow * 1.15 + smoothstep(16.0, 28.0, hw) * 0.9 + (G1 - 0.5) * 0.35 + hol * 0.6 - slope * 2.4, 0.0, 1.0);
+float snowK = clamp(uSnow * 1.15 + smoothstep(uSnowLine, uSnowLine + 10.0, hw) * 0.9 + (G1 - 0.5) * 0.35 + hol * 0.6 - slope * 2.4, 0.0, 1.0);
 if (snowK > 0.02) contend(7, snowK * 1.25, 0.15, pc, shadedFace, moist, bestS, bestT, bestId, bestG);
 vec3 base;
 float glowA;

@@ -726,14 +726,18 @@ export class Eco {
     this.waterF.fill(0); this.riverF.fill(0); this.floodF.fill(0);
     const best = new Float32Array(G2).fill(1e9);
     this.shoreD.fill(-1);
-    const isW = (i: number) => { const h = R.h[i], ry = R.riverY[i]; return h < R.water || (ry > 0 && h < ry - 0.05); };
+    // in a drought the shallows dry out: only water deeper than the drop still counts (shores move to deep water)
+    const cut = Math.max(0, -this.level) * 1.3;
+    const isW = (i: number) => { const h = R.h[i], ry = R.riverY[i]; return h < R.water - cut || (ry > 0 && h < ry - 0.05 - cut); };
     const lvl = this.level;
     for (let z = 1; z < N - 1; z++) for (let x = 1; x < N - 1; x++) {
       const i = z * N + x, c = Math.floor(z / CS) * G + Math.floor(x / CS);
       if (isW(i)) { this.waterF[c] += 1 / (CS * CS); if (R.riverY[i] > 0) this.riverF[c] += 1 / (CS * CS); continue; }
       if (lvl > 0) { const ry = R.riverY[i], s = ry > 0 ? ry : R.water; if (R.h[i] < s + lvl * (ry > 0 ? 1 : 0.5)) this.floodF[c] += 1 / (CS * CS); }
-      if (R.solid[i]) continue;
-      if (isW(i - 1) || isW(i + 1) || isW(i - N) || isW(i + N)) {
+      // drinking spots stay on real land beside real water (a dried shallow still feeds no groundwater)
+      const realW = (k: number) => R.h[k] < R.water || (R.riverY[k] > 0 && R.h[k] < R.riverY[k] - 0.05);
+      if (R.solid[i] || realW(i)) continue;
+      if (realW(i - 1) || realW(i + 1) || realW(i - N) || realW(i + N)) {
         const d = (x + 0.5 - this.cx(c)) ** 2 + (z + 0.5 - this.cz(c)) ** 2;
         if (d < best[c]) { best[c] = d; this.shoreX[c] = x + 0.5; this.shoreZ[c] = z + 0.5; this.shoreD[c] = 0; }
       }

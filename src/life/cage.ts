@@ -367,3 +367,31 @@ export function tweenRings(keys: Ring[], n: number[] | number): Ring[] {
   }
   return out;
 }
+
+/** a sheet of quads over a 2D array of points (rows x cols), facing `out` (a direction field); wrapCols closes it
+ *  round. Used for parts that follow a host surface (shell bands, plates) and for fins. */
+export function sheetGrid(m: CM, P: V3[][], o: { tag: number; mat?: number; out: (p: V3) => V3; wrapCols?: boolean; capS?: boolean; capE?: boolean }): Grid {
+  const R = P.length, C = P[0].length, mat = o.mat ?? 0, wrap = !!o.wrapCols;
+  const v = P.map((row) => row.map((p) => { m.V.push([p[0], p[1], p[2]]); return m.V.length - 1; }));
+  let vote = 0;
+  const nc = wrap ? C : C - 1;
+  for (let i = 0; i + 1 < R; i++) for (let j = 0; j < nc; j++) {
+    const q = [v[i][j], v[i][(j + 1) % C], v[i + 1][(j + 1) % C], v[i + 1][j]].map((k) => m.V[k]);
+    const fc = vscl(vadd(vadd(q[0], q[1]), vadd(q[2], q[3])), 0.25);
+    vote += Math.sign(vdot(polyNormal(q), o.out(fc)));
+  }
+  const flip = vote < 0, f: number[][] = [];
+  for (let i = 0; i + 1 < R; i++) {
+    const row: number[] = [];
+    for (let j = 0; j < nc; j++) { const q = [v[i][j], v[i][(j + 1) % C], v[i + 1][(j + 1) % C], v[i + 1][j]]; m.F.push(flip ? q.reverse() : q); m.tag.push(o.tag); m.mat.push(mat); row.push(m.F.length - 1); }
+    f.push(row);
+  }
+  const caps: number[] = [];
+  if (wrap) for (const [i, on] of [[0, o.capS], [R - 1, o.capE]] as [number, boolean | undefined][]) {
+    if (!on) continue;
+    let ids = [...v[i]]; const pts = ids.map((k) => m.V[k]), cen = vscl(pts.reduce((a, b) => vadd(a, b), [0, 0, 0]), 1 / pts.length);
+    if (vdot(polyNormal(pts), o.out(cen)) < 0) ids = ids.reverse();
+    m.F.push(ids); m.tag.push(o.tag); m.mat.push(mat); caps.push(m.F.length - 1);
+  }
+  return { v, f, wrap, closed: false, caps };
+}

@@ -16,7 +16,7 @@ import { Builder } from './carrier/geo';
 import { paintAtlas, makeSkins } from './carrier/atlas';
 import { AW, AH } from './carrier/paint';
 import { atlasTextures, atlasMat } from './carrier/mat';
-import { newFx, buildFx, NAV, NOZ_F, PLUME_V, PLUME_F } from './carrier/fx';
+import { newFx, buildFx, merge, NAV, NOZ_F, PLUME_V, PLUME_F } from './carrier/fx';
 import { buildFore } from './carrier/fore';
 import { buildAft } from './carrier/aft';
 import { craft, type Ctx } from './carrier/kit';
@@ -39,6 +39,21 @@ export interface Hull {
   /** the exterior lights (the ship's view switch turns them on and off) */
   lights: THREE.Light[];
   update(t: number, dt: number): void;
+}
+
+/**
+ * A hull skin from the atlas as a plain repeating texture, for parts built outside the atlas builder (the bay's
+ * door leaves, mapped by deployKit.tbox at 1/8 per metre): same plates, same 16 texels per metre.
+ */
+export function hullSkinTex(bin: Bin, name = 'hullB') {
+  const A = paintAtlas(), r = A.regs.get(name)!;
+  const d = new Uint8Array(r.w * r.h * 4);
+  // rows reversed: tbox's v runs up the wall, the painting runs down it
+  for (let y = 0; y < r.h; y++) d.set(A.d.subarray(((r.y + y) * AW + r.x) * 4, ((r.y + y) * AW + r.x + r.w) * 4), (r.h - 1 - y) * r.w * 4);
+  const t = new THREE.DataTexture(d, r.w, r.h, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.NearestFilter; t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.generateMipmaps = true; t.anisotropy = 4; t.repeat.set((8 * 16) / r.w, (8 * 16) / r.h); t.needsUpdate = true;
+  return bin.t(t);
 }
 
 /** distance (m) beyond which the low-detail stand-in replaces the hero hull */
@@ -83,8 +98,8 @@ export function buildHull(bin: Bin, root: THREE.Group, ext: THREE.Group): Hull {
   {
     const d = droneB;
     d.sphere(s('ochreC', 8), 0.55, 10, 6, { fit: false });
-    for (const sx of [-1, 1]) { d.beam(s('gunC', 8), new THREE.Vector3(0, 0, 0), new THREE.Vector3(sx * 1.3, 0.1, 0), 0.08); d.at(sx * 1.35, 0.12, 0); d.cyl(s('rubber', 1), 0.35, 0.35, 0.06, 10); d.pop(); }
-    d.at(0, -0.45, 0.25); d.box(s('gunC', 8), 0.35, 0.3, 0.45); d.pop();
+    for (const sx of [-1, 1]) { d.beam(s('gunT', 32), new THREE.Vector3(0, 0, 0), new THREE.Vector3(sx * 1.3, 0.1, 0), 0.08); d.at(sx * 1.35, 0.12, 0); d.cyl(s('rubber', 1), 0.35, 0.35, 0.06, 10); d.pop(); }
+    d.at(0, -0.45, 0.25); d.box(s('gunT', 32), 0.35, 0.3, 0.45); d.pop();
     d.at(0, 0, 0.56, Math.PI / 2, 0, 0); d.cyl(s('lensWhite', 1), 0.16, 0.16, 0.05, 8); d.pop();
   }
   const NDR = 6;
@@ -120,12 +135,20 @@ export function buildHull(bin: Bin, root: THREE.Group, ext: THREE.Group): Hull {
   const nozM = fxMat(bin, CONE_V, NOZ_F, nozU, 'add', { side: THREE.BackSide });
   const plumeU = { uT: { value: 0 }, uK: { value: 0.5 } };
   const plumeM = fxMat(bin, PLUME_V, PLUME_F, plumeU, 'add', { side: THREE.DoubleSide });
-  for (const [x, y, z, r1, len] of Af.bells) {
-    const r0 = r1 * 0.4;
-    const gl = new THREE.Mesh(bin.g(new THREE.CylinderGeometry(r0 * 0.9, r1 * 0.9, len * 0.95, 22, 1, true)), nozM);
-    gl.rotation.x = Math.PI / 2; gl.position.set(x, y, z - len * 0.5); gl.renderOrder = 2; ext.add(gl);
-    const pl = new THREE.Mesh(bin.g(new THREE.CylinderGeometry(r1 * 0.85, r1 * 0.3, r1 * 4.5, 20, 6, true)), plumeM);
-    pl.rotation.x = Math.PI / 2; pl.position.set(x, y, z - len - r1 * 2.25); pl.renderOrder = 2; ext.add(pl);
+  {
+    // every bell's glow in one mesh, every plume in another (each plume vertex carries its own axis to wobble about)
+    const glows: THREE.BufferGeometry[] = [], plumes: THREE.BufferGeometry[] = [], axis: number[] = [];
+    const R = new THREE.Matrix4().makeRotationX(Math.PI / 2);
+    for (const [x, y, z, r1, len] of Af.bells) {
+      const r0 = r1 * 0.4, cz = z - len - r1 * 2.25;
+      glows.push(new THREE.CylinderGeometry(r0 * 0.9, r1 * 0.9, len * 0.95, 22, 1, true).applyMatrix4(R).translate(x, y, z - len * 0.5));
+      const pg = new THREE.CylinderGeometry(r1 * 0.85, r1 * 0.3, r1 * 4.5, 20, 6, true).toNonIndexed().applyMatrix4(R).translate(x, y, cz);
+      for (let i = 0; i < pg.attributes.position.count; i++) axis.push(x, y, cz);
+      plumes.push(pg);
+    }
+    const gl = new THREE.Mesh(bin.g(merge(glows)), nozM); gl.renderOrder = 2; ext.add(gl);
+    const pm = merge(plumes); pm.setAttribute('aAxis', new THREE.Float32BufferAttribute(axis, 3));
+    const pl = new THREE.Mesh(bin.g(pm), plumeM); pl.renderOrder = 2; ext.add(pl);
   }
   const engineGlow = new THREE.PointLight(0xffa060, 120, 90, 1.6); engineGlow.position.copy(Af.anchors.engine); root.add(engineGlow); lights.push(engineGlow);
 

@@ -17,7 +17,7 @@ export interface AftOut { ring: Builder; gantry: Builder; bells: [number, number
 
 export function buildAft(C: Ctx): AftOut {
   const { B, L, s } = C, fx = C.fx;
-  const hullA = s('hullA'), hullB = s('hullB'), truss = s('truss', 32), gun = s('gunC', 8), steel = s('steelC', 8), haz = s('haz', 16);
+  const hullA = s('hullA'), hullB = s('hullB'), truss = s('truss', 32), gun = s('gunT', 32), steel = s('steelC', 8), haz = s('haz', 16);
   const yc = SPINE.yc;
 
   // ================================================================ the neck fairing from the hull to the truss
@@ -50,7 +50,7 @@ export function buildAft(C: Ctx): AftOut {
   for (const sx of [-1, 1]) {
     pipe(B, s('pipeRed', 32), gun, [new V3(sx * 3.1, yc + 3.1, z0 + 2), new V3(sx * 3.1, yc + 3.1, z1 - 1)], 0.5, 3);
     pipe(B, s('pipeBrass', 32), gun, [new V3(sx * 3.3, yc - 3.4, z0 + 2), new V3(sx * 3.3, yc - 3.4, z1 - 1)], 0.42, 3);
-    B.boxAt(s('gunC', 8), sx * 1.4 - 0.35, top + 0.45, z1, sx * 1.4 + 0.35, top + 0.75, z0, { bev: 0.05 });
+    B.boxAt(s('gunT', 32), sx * 1.4 - 0.35, top + 0.45, z1, sx * 1.4 + 0.35, top + 0.75, z0, { bev: 0.05 });
   }
   // floodlights on the truss: one onto the hab hub, two onto the propellant farm
   flood(C, new V3(-hw - 0.6, top + 0.8, -60), new V3(-6, yc + 3, -66), { len: 10, spread: 0.32 });
@@ -112,10 +112,10 @@ export function buildAft(C: Ctx): AftOut {
   {
     const g = gantry, och = s('ochreC', 8);
     g.box(och, 8.0, 0.6, 0.9, { bev: 0.08 });
-    for (const sx of [-1, 1]) { g.at(sx * 3.6, -0.5, 0); g.box(s('gunC', 8), 0.6, 0.5, 1.6, { bev: 0.06 }); g.pop(); }
-    g.at(0.8, -0.6, 0); g.box(s('gunC', 8), 1.2, 0.6, 1.1, { bev: 0.08 }); g.pop();
+    for (const sx of [-1, 1]) { g.at(sx * 3.6, -0.5, 0); g.box(s('gunT', 32), 0.6, 0.5, 1.6, { bev: 0.06 }); g.pop(); }
+    g.at(0.8, -0.6, 0); g.box(s('gunT', 32), 1.2, 0.6, 1.1, { bev: 0.08 }); g.pop();
     g.rod(s('rubber', 1), new V3(0.8, -0.9, 0), new V3(0.8, -2.0, 0), 0.03, 4);
-    g.at(0.8, -2.2, 0); g.box(s('gunC', 8), 0.5, 0.4, 0.5); g.pop();
+    g.at(0.8, -2.2, 0); g.box(s('gunT', 32), 0.5, 0.4, 0.5); g.pop();
   }
 
   // ================================================================ the propellant farm: two stations of four spheres

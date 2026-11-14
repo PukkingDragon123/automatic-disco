@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { Bin, lit, lamp, mesh, box, cyl, tbox, beam, decal, loft, ptex, hullPix, enamelPix, treadPix, hazardPix, stencil, insignia, windowPix, fxMat, HAZE, V3, TAU, sm, hash, type V } from './deployKit';
 import { makePod, type Pod } from './deployPod';
-import { buildHull, HULL_RAMP } from './deployHull';
+import { buildHull, hullSkinTex } from './deployHull';
 import { gbuf } from '../gfx/gbuf';
 import { GM, OL, CR, AM, Pix, dv } from './machine';
 import { Actor } from './cineCast';
@@ -147,7 +147,7 @@ export function buildShip(bin: Bin, parent: THREE.Object3D, opts: { people?: boo
   const keep: { rig: Researcher }[] = [];
 
   // ---- materials
-  const hullDark = lit(bin, 0xc8cccc, { map: ptex(bin, hullPix(HULL_RAMP, 8, 256, 256, 48)) });
+  const hullDark = lit(bin, 0xffffff, { map: hullSkinTex(bin) });
   const steel = lit(bin, 0x8d8f8a, { phong: true, shininess: 50 });
   const gun = lit(bin, 0x4b4e50);
   const darkGun = lit(bin, 0x232527);

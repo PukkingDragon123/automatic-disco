@@ -1,4 +1,6 @@
-// Terrain block textures: high-resolution tileable pixel art, TS texels per metre (128) on painted macro tiles of
+// Terrain block textures (the procedural ground in terrain.ts draws grass, soil, rock, sand, mud, clay, snow and gravel
+// itself; these painted tiles still serve ore and crystal seams, leaf litter, impact glass, the territory layers, the
+// river and sea beds and the minimap's colours): high-resolution tileable pixel art, TS texels per metre (128) on painted macro tiles of
 // TILE_M x TILE_M metres (2 x 2 m, 256 x 256 texels), one layer per material and variant in a DataArrayTexture, plus
 // a sheet of scattered stones the terrain stamps here and there. The terrain shader (terrain.ts) samples each tile with
 // a random per-cell offset on a warped cell grid and knits neighbouring cells together texel by texel, so nothing
@@ -588,38 +590,41 @@ export function buildBlockTexture(pal: Palette, seed: number): { tex: THREE.Data
     avg[layer] = (Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n);
   };
   const s = seed * 131;
+  // the side and scatter layers are no longer drawn from (the terrain paints its cliffs and stones procedurally):
+  // a flat fill keeps the array's layout for anything that still indexes them
+  const flat = (c: number) => (p: PixelCanvas) => p.fill(c);
   paint(L.grassA, (p) => grassTop(p, pal, pal.grass, s + 1, 0.55));
   paint(L.grassB, (p) => grassTop(p, pal, pal.grass, s + 2, 1));
-  paint(L.grassSide, (p) => grassSide(p, pal.grass, pal.soil, s + 3));
+  paint(L.grassSide, flat(pal.soil));
   paint(L.soil, (p) => soilTop(p, pal.soil, s + 4));
   paint(L.rockA, (p) => rockTop(p, pal.rock, s + 5));
   paint(L.rockB, (p) => rockTop(p, pal.rock, s + 6, 56, 1.4));
-  paint(L.rockSide, (p) => rockSide(p, pal.rock, s + 7));
+  paint(L.rockSide, flat(pal.rock));
   paint(L.sandA, (p) => sand(p, pal.sand, s + 8, 1));
   paint(L.sandB, (p) => sand(p, pal.sand, s + 9, 0.5));
   paint(L.mud, (p) => mud(p, pal.mud, s + 10));
   paint(L.clay, (p) => clay(p, pal.clay, s + 11));
   paint(L.snow, (p) => snow(p, s + 12));
-  paint(L.snowSide, (p) => { rockSide(p, pal.rock, s + 13); const S = rampNamed('snow'), r = new Rand(s + 13); let l = 6 * K; for (let x = 0; x < T; x++) { if (x % (3 * K) === 0) l = Math.max(4 * K, Math.min(9 * K, l + r.pick([-K, 0, K]))); for (let y = 0; y < l; y++) p.set(x, y, S[y === l - 1 ? 1 : y < K ? 5 : 4]); } });
+  paint(L.snowSide, flat(pal.rock));
   paint(L.basalt, (p) => basalt(p, pal.basalt, s + 14, false));
-  paint(L.basaltSide, (p) => basalt(p, pal.basalt, s + 15, true));
+  paint(L.basaltSide, flat(pal.basalt));
   paint(L.ore, (p) => ore(p, pal.rock, s + 16, false));
-  paint(L.oreSide, (p) => ore(p, pal.rock, s + 17, true));
+  paint(L.oreSide, flat(pal.rock));
   paint(L.crystal, (p) => crystal(p, pal.rock, pal.crystal, s + 18, false));
-  paint(L.crystalSide, (p) => crystal(p, pal.rock, pal.crystal, s + 19, true));
+  paint(L.crystalSide, flat(pal.rock));
   paint(L.litter, (p) => litter(p, pal.soil, pal.foliage, s + 20));
   paint(L.gravel, (p) => gravel(p, pal.rock, s + 21));
   paint(L.moss, (p) => moss(p, 777));
-  paint(L.mossSide, (p) => mossSide(p, 778));
+  paint(L.mossSide, flat(VEYR.moss));
   paint(L.creep0, (p) => creep(p, 0, 801));
   paint(L.creep1, (p) => creep(p, 1, 802));
   paint(L.creep2, (p) => creep(p, 2, 803));
-  paint(L.creepSide, (p) => creep(p, 1, 804));
+  paint(L.creepSide, flat(RIVALS[1].creep));
   paint(L.dryA, (p) => grassTop(p, pal, pal.grassDry, s + 22, 0.1));
-  paint(L.drySide, (p) => grassSide(p, pal.grassDry, pal.soil, s + 23));
-  paint(L.mudSide, (p) => soilTop(p, pal.mud, s + 24, 0.4));
+  paint(L.drySide, flat(pal.soil));
+  paint(L.mudSide, flat(pal.mud));
   paint(L.crater, (p) => crater(p, s + 25));
-  paint(L.scatter, (p) => scatter(p, pal, s + 26), false);
+  paint(L.scatter, (p) => p.clear(), false);
   const tex = new THREE.DataArrayTexture(data, T, T, LAYERS);
   tex.format = THREE.RGBAFormat;
   tex.type = THREE.UnsignedByteType;
@@ -634,5 +639,6 @@ export function buildBlockTexture(pal: Palette, seed: number): { tex: THREE.Data
   tex.needsUpdate = true;
   return { tex, avg, ms: performance.now() - t0 };
 }
+void [grassSide, rockSide, mossSide, scatter];
 /** GPU memory of the block array with its mip chain, bytes (about 11 MB) */
 export const BLOCK_BYTES = Math.round((T * T * 4 * LAYERS * 4) / 3);

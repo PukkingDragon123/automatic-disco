@@ -5,7 +5,7 @@
 // pontoons it builds on (dive.ts), and the drop pod's splashdown (splash.ts).
 import * as THREE from 'three';
 import type { Game } from '../game/game';
-import { seaState, type SeaState } from '../world/water';
+import { seaState, makeSkyDome, type SeaState } from '../world/water';
 import { Underwater } from './under';
 import { RAMPS } from '../art/palette';
 import { setMuffle } from '../audio/audio';
@@ -13,9 +13,14 @@ import { daylight } from '../game/daylight';
 import { clamp, damp } from '../core/rand';
 import type { Swell } from './waves';
 import type { ShoreField } from './shore';
+import { Reef } from './reef';
+import { Fishery } from './fishery';
+import { Dive } from './dive';
+import { Splashes } from './splash';
+import { registerSeaWorks, hookFactory } from './pontoon';
 
 const P = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
-const C = new THREE.Color(), C2 = new THREE.Color();
+const C = new THREE.Color(), C2 = new THREE.Color(), _fw = new THREE.Vector3(), _cur = new THREE.Vector2();
 const setRamp = (c: THREE.Color, r: readonly number[], k: number) => c.setHex(r[clamp(Math.round(k), 0, r.length - 1)]);
 
 /** what the sea reads from the climate (game.climate when it exists, else the ecosystem's stand-in, else the URL) */
@@ -27,9 +32,17 @@ export class Ocean {
   readonly swell: Swell;
   readonly shore: ShoreField;
   readonly under: Underwater;
+  /** the sky the sea reflects, shown when the view looks out toward the horizon */
+  readonly sky: THREE.Mesh;
   readonly wx: SeaWeather = { wind: 4, windDir: new THREE.Vector2(1, 0), storm: 0, cloud: 0.3, rain: 0, red: 0, eclipse: 0 };
   /** the camera is below the surface */
   underwater = false;
+  readonly reef: Reef | null = null;
+  readonly fishery: Fishery | null = null;
+  readonly dive: Dive;
+  readonly splashes: Splashes;
+  /** the drop pod came down in the water (the core floats in it) */
+  splashed = false;
   /** systems that tick with the sea (reef, fish, the golem's dive, splashes); each gets dt and the time */
   readonly parts: { update(dt: number, t: number): void; dispose?(): void }[] = [];
   /** test hooks: force the light (the test page drives a sunset or a night) */
@@ -40,11 +53,32 @@ export class Ocean {
     if (!st) throw new Error('ocean: the terrain has no sea');
     this.mesh = mesh; this.sea = st; this.swell = st.swell; this.shore = st.shore;
     this.under = new Underwater(g.world.scene, st.grab);
+    this.sky = makeSkyDome(mesh); this.sky.visible = false; g.world.scene.add(this.sky);
     this.wx.windDir.copy(this.swell.main);
     // the camera rides the sea's surface, not the sea floor, when it looks out over the water
     const R = g.region;
     g.cam.ground = (x, z) => Math.max(R.groundSmooth(x, z), R.water);
+    // the life of the sea: reefs and kelp on the floor, and the animals over them
+    const sea = R.h.some((h) => h < R.water - 0.6);
+    if (sea) {
+      try { this.reef = new Reef(R, () => this.level); g.world.scene.add(this.reef.group); } catch (e) { console.error('ocean: reef', e); }
+      try { this.fishery = new Fishery(this, this.reef); g.world.scene.add(this.fishery.group); } catch (e) { console.error('ocean: fish', e); }
+    }
+    this.splashes = new Splashes(this);
+    this.dive = new Dive(this, this.reef, this.fishery);
+    registerSeaWorks(this);
   }
+  // ------------------------------------------------------------------ the water's surface, disturbed
+  /** a ring on the water (s ~0.2 drip .. 1.5 a big entry) */
+  ripple(x: number, z: number, s = 0.6) { this.splashes.ripple(x, z, s); }
+  /** something hit the water (size ~ metres) */
+  splash(x: number, z: number, size = 0.5) { this.splashes.splash(x, z, size); this.fishery?.splash(x, z, 3 + size * 4, Math.min(1, size)); }
+  /** a sea titan falling back into the sea */
+  titanSplash(x: number, z: number) { this.splashes.big(x, z, 1.3); }
+  /** game.touchdown: the drop pod hit the water here; it floats, the core rides in it, the golem climbs out */
+  splashdown(x: number, z: number) { this.splashed = true; this.splashes.splashdown(x, z, (window as unknown as { __descent?: unknown }).__descent ? 1.9 : 0); }
+  /** test pages: a pod falling from the sky onto the water */
+  dropPod(x: number, z: number, alt = 40) { this.splashed = true; this.splashes.dropPod(x, z, alt); }
   get region() { return this.g.region; }
   get time() { return this.g.world.time; }
   /** the stage the sea rides at (eco.level, halved like the shader) */
@@ -79,7 +113,16 @@ export class Ocean {
     const cam = this.g.cam.cam, sy = this.surfaceAt(cam.position.x, cam.position.z);
     this.underwater = cam.position.y < sy - 0.04;
     this.under.update(t, cam, this.level, this.underwater);
+    // the sky dome: only when the view lifts toward the horizon (never in the RTS view, never over the descent's own sky)
+    cam.getWorldDirection(_fw);
+    this.sky.visible = _fw.y > -0.62 && !(window as unknown as { __descent?: unknown }).__descent;
     setMuffle(this.underwater ? clamp((sy - cam.position.y) * 0.5 + 0.55, 0, 1) : 0);
+    const night = U.uBio.value as number;
+    this.reef?.update(dt, t, Math.max(night, w.eclipse), _cur.set(w.windDir.x, w.windDir.y).multiplyScalar(0.06 + w.storm * 0.2));
+    this.dive.update(dt, t);
+    this.fishery?.update(dt, t, this.dive.golem(), Math.max(night, w.eclipse), w.storm, w.red);
+    this.splashes.update(dt, t);
+    if (this.g.factory) hookFactory(this, this.g.factory);
     for (const p of this.parts) p.update(dt, t);
     // the coast field follows the ground (craters, earthshaping) every few seconds
     if ((this.shoreT -= dt) <= 0) { this.shoreT = 6; if (this.coastMoved()) this.shore.build(); }
@@ -134,7 +177,9 @@ export class Ocean {
     UU.uFogK.value = 0.06 + w.storm * 0.05 + (this.region.oceanic ? 0 : 0.04);
     void daylight;
   }
-  dispose() { for (const p of this.parts) p.dispose?.(); this.under.dispose(); setMuffle(0); }
+  /** the sea's census for the field survey: fish by kind, what was caught and lost, the harvest left on the floor */
+  census() { return { fish: this.fishery?.census() ?? {}, caught: this.fishery?.caught ?? 0, eaten: this.fishery?.eaten ?? 0, died: this.fishery?.died ?? 0, floor: this.reef?.stock() ?? null }; }
+  dispose() { for (const p of this.parts) p.dispose?.(); this.under.dispose(); this.reef?.dispose(); this.fishery?.dispose(); this.dive.dispose(); this.splashes.dispose(); this.sky.removeFromParent(); setMuffle(0); }
 }
 
 /** give a game its sea (game.ts calls this once, after the details system) */
