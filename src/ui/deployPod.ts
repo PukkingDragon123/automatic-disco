@@ -70,13 +70,15 @@ export function makePod(bin: Bin): Pod {
     const cell = (x % 6 === 0 || (y + (Math.floor(x / 6) % 2) * 3) % 6 === 0) ? -1.2 : 0;
     sp.set(x, y, dv([0x0e0c0b, 0x18140f, 0x221c16, 0x2e261d, 0x3a3024, 0x4a3e2e], 2.6 + cell + Math.sin(x * 0.7 + y * 0.3) * 0.4, x, y));
   }
-  const shieldMat = lit(bin, 0xffffff, { map: ptex(bin, sp) });
+  // (custom hooks go on before gbuf(), which chains them and adds the G-buffer write)
+  const shieldMat = bin.m(new THREE.MeshLambertMaterial({ color: 0xffffff, map: ptex(bin, sp), flatShading: true }));
   shieldMat.onBeforeCompile = (sh) => {
     sh.uniforms.uHeat = heat;
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uHeat;')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\nfloat hk = clamp(uHeat, 0.0, 1.6); totalEmissiveRadiance += mix(vec3(0.9, 0.18, 0.02), vec3(1.6, 0.85, 0.35), clamp(hk - 0.6, 0.0, 1.0)) * hk * (0.55 + 0.45 * diffuseColor.r * 6.0);');
   };
-  (shieldMat as any).customProgramCacheKey = () => 'deploy-shield';
+  shieldMat.customProgramCacheKey = () => 'deploy-shield';
+  gbuf(shieldMat, 1);
   // ---- heat shield (a shallow cap) and its rim ring
   const cap = new THREE.SphereGeometry(SHIELD_R * 2.1, 28, 6, 0, TAU, Math.PI - 0.56, 0.56);
   cap.translate(0, SHIELD_R * 2.1 * Math.cos(0.56), 0);
@@ -176,7 +178,8 @@ export function makePod(bin: Bin): Pod {
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uLens;')
       .replace('vec4 diffuseColor = vec4( diffuse, opacity );', 'vec4 diffuseColor = vec4( diffuse * (0.08 + uLens * 1.4), opacity );');
   };
-  (lensMat as any).customProgramCacheKey = () => 'deploy-lens';
+  lensMat.customProgramCacheKey = () => 'deploy-lens';
+  gbuf(lensMat, 32);
   bin.m(lensMat);
   // the glass: a dark disc with the lens (a small bright iris) set back behind it
   const glass = mesh(bin, new THREE.CircleGeometry(0.15, 16), lit(bin, 0x0c1414, { phong: true, shininess: 120 }), ring, 0, 0, -0.01, false);

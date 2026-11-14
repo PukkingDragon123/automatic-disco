@@ -97,8 +97,8 @@ export class DeployScreen implements Screen {
     const bin = this.bin, sc = this.scene, P = this.o.planet;
     sc.background = new THREE.Color(0x020306);
     // the planet ahead and below the bow, the chosen region turned to face the ship, lit from behind the ship
-    const R = 900, dir = new V3(0.12, -0.17, 1).normalize();
-    const sunDir = new V3(-0.55, 0.42, -0.72).normalize();
+    const R = 900, dir = new V3(0.07, -0.05, 1).normalize();
+    const sunDir = new V3(-0.8, 0.38, -0.46).normalize();
     const space = makeSpace({ stars: 2600, radius: 7000, sun: sunDir, dust: 0, seed: P.seed });
     sc.add(space.group); bin.adopt(space.group);
     const g = makeGlobe(P, R, {});
@@ -144,21 +144,21 @@ export class DeployScreen implements Screen {
     // ---- the flyover: under the hull, bow to stern, toward the planet
     const engine = c.loop('engine', 0.55), drone = c.loop('drone', 0.35);
     void drone;
-    c.cam.cut(this.w(5, -40, 150), this.w(5, -18, 250), 50);
+    c.cam.cut(this.w(6, -31, 100), this.w(6, -1, 200), 50);
     c.cam.handheld = 0.15;
     void c.fade(0, 2.4);
     c.sfx('swell', 0.8, 1.6);
     setTimeout(() => { if (c.active && !c.skipping) { c.ui.card(`OPERATION ${this.op}`, `HIGH ORBIT OVER ${this.o.planet.name.toUpperCase()} · U.S.S. VANGUARD CVS-01`, 'U.S. PLANETARY CORPS', 'TOP SECRET'); csfx('sting', 0.7); } }, 2200);
     setTimeout(() => { if (c.active && !c.skipping) c.ui.cardOff(); }, 6400);
     c.stamp(`D+${this.o.landings} · 04:12 ZULU · ALT 310 NMI`);
-    void c.tween(12, (u) => { const z = 150 - u * 330; c.cam.pos.set(5 + u * 4, -40 + u * 6, z); c.cam.look.set(5, -18 + u * 8, z + 100); }, 'linear');
+    void c.tween(12, (u) => { const z = 100 - u * 330; c.cam.pos.set(6 + u * 3, -31 + u * 3, z); c.cam.look.set(6 + u * 2, -1 - u * 12, z + 100); }, 'linear');
     await c.wait(4.2); this.mark('flyover');
     await c.wait(4.6); this.mark('flyover2');
     await c.wait(3.2);
     // ---- the profile: the long hull against the planet's limb
     c.cam.handheld = 0.3;
-    c.cam.cut(this.w(-175, 52, 70), this.w(0, -6, 10), 30);
-    void c.cam.move({ pos: this.w(-160, 46, -20), look: this.w(0, -8, 0), dur: 6.5, ease: 'linear' });
+    c.cam.cut(this.w(-150, 38, -150), this.w(0, -4, 30), 30);
+    void c.cam.move({ pos: this.w(-160, 30, -110), look: this.w(0, -6, 40), dur: 6.5, ease: 'linear' });
     c.sfx('klaxon', 0.35, 0.9);
     void c.say('All decks, condition one. Launch Bay Two, prepare Unit Seven for deployment.', { who: 'Vanguard Control', style: 'radio', pitch: 1.0 });
     await c.wait(3); this.mark('profile');
@@ -219,8 +219,8 @@ export class DeployScreen implements Screen {
     s.setView('ext'); g.group.visible = true;
     c.loop('engine', 0.4);
     c.cam.handheld = 0.3;
-    c.cam.cut(this.w(-170, 50, 60), this.w(0, -6, 8), 30);
-    void c.cam.move({ pos: this.w(-160, 46, 10), look: this.w(0, -8, 0), dur: 5, ease: 'linear' });
+    c.cam.cut(this.w(-150, 38, -150), this.w(0, -4, 30), 30);
+    void c.cam.move({ pos: this.w(-160, 30, -115), look: this.w(0, -6, 40), dur: 5, ease: 'linear' });
     void c.fade(0, 1.2);
     c.ui.card(`OPERATION ${this.op}`, `LANDING ${NUM[Math.min(10, this.o.landings + 1)]} · ${this.o.region.name.toUpperCase()}`, 'U.S. PLANETARY CORPS', 'TOP SECRET'); csfx('sting', 0.6);
     await c.wait(3.6);

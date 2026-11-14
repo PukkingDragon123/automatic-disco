@@ -468,7 +468,7 @@ interface HeadProf { rx: number[]; ry: number[]; hy: number[]; /** eye: station 
 const HEAD_PROF: Record<HeadFam, HeadProf> = {
   canid: { rx: [0.32, 0.48, 0.53, 0.47, 0.38, 0.31, 0.25, 0.17], ry: [0.34, 0.48, 0.52, 0.45, 0.36, 0.29, 0.24, 0.17], hy: [0.04, 0.14, 0.18, 0.13, 0.04, -0.02, -0.04, -0.05], eye: [0.32, 1.02, 0.8, 0.14, 42, 15] },
   // a cat: a big domed cranium, eyes close-set at the front under heavy brows, a short broad blunt muzzle
-  cat: { rx: [0.44, 0.58, 0.64, 0.62, 0.5, 0.42, 0.4, 0.36], ry: [0.44, 0.58, 0.6, 0.52, 0.44, 0.4, 0.37, 0.33], hy: [0.08, 0.22, 0.26, 0.2, 0.08, 0.02, -0.02, -0.05], eye: [0.37, 0.7, 0.28, 0.13, 50, 17] },
+  cat: { rx: [0.44, 0.58, 0.64, 0.62, 0.5, 0.42, 0.4, 0.36], ry: [0.44, 0.58, 0.6, 0.53, 0.43, 0.37, 0.35, 0.31], hy: [0.08, 0.19, 0.21, 0.18, 0.12, 0.08, 0.04, 0.0], eye: [0.37, 0.7, 0.28, 0.145, 50, 17] },
   // a bear: a broad high forehead dropping into a dished stop, a heavy straight muzzle, small eyes
   bear: { rx: [0.38, 0.55, 0.6, 0.54, 0.41, 0.33, 0.29, 0.24], ry: [0.38, 0.52, 0.55, 0.46, 0.34, 0.28, 0.25, 0.21], hy: [0.06, 0.18, 0.21, 0.14, 0.03, -0.02, -0.04, -0.05], eye: [0.3, 1.04, 0.72, 0.108, 38, 14] },
   // deer and elk: a long narrow face, eyes high on the sides, a soft broad nose
@@ -526,7 +526,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
       - 0.07 * gauss(aa, Math.PI, 0.6) * sm(clamp((t - tSn + 0.1) / 0.2, 0, 1)); // flat palate
     if (!beak && !flat && !liz) b += 0.06 * gauss(t, 0.93, 0.05) * gauss(aa, 0.45, 0.25); // nostril wings
     if (cat || fam === 'canid' || bear) b += 0.08 * sm(clamp((t - tSn) / 0.15, 0, 1)) * gauss(aa, 2.35, 0.3); // the upper lips hang over the jaw
-    if (cat) b += 0.12 * gauss(t, tEye - 0.05, 0.04) * gauss(aa, eAng - 0.15, 0.28) - 0.16 * gauss(t, tEye + 0.01, 0.045) * gauss(aa, eAng + 0.05, 0.24) + 0.1 * gauss(t, tEye + 0.02, 0.06) * gauss(aa, 1.9, 0.3); // heavy brows over deep sockets, broad cheeks
+    if (cat) b += 0.1 * gauss(t, tEye - 0.06, 0.035) * gauss(aa, eAng - 0.2, 0.26) - 0.06 * gauss(t, tEye, 0.04) * gauss(aa, eAng, 0.22) + 0.1 * gauss(t, tEye + 0.03, 0.06) * gauss(aa, 1.95, 0.3); // heavy brows over the sockets, broad cheeks
     if (bear) b -= 0.05 * gauss(t, tSn - 0.05, 0.06) * gauss(aa, 0, 0.6); // the dished stop
     if (hoof) b += 0.14 * gauss(t, tEye + 0.12, 0.09) * gauss(aa, 2.1, 0.45) + 0.08 * gauss(t, 0.95, 0.05) * gauss(aa, 1.3, 0.5); // jaw muscle, soft nose
     if (boar) b += 0.11 * gauss(t, tEye + 0.1, 0.08) * gauss(aa, 2.0, 0.4) + 0.05 * gauss(t, 0.97, 0.03); // jowls, the rim of the snout disc
@@ -548,7 +548,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     const sx = Math.pow(Math.sin(eAng), se) * interp(hz, rx, ez), sy = interp(hz, hy, ez) + Math.pow(Math.cos(eAng), se) * interp(hz, ry, ez);
     const off: V3 = bug ? [s * hw * 0.3, hh * 0.36, hl * 0.12] : [s * sx, sy, ez];
     const ax = norm(bug ? [s * 0.62, 0.62, 0.48] : [s * Math.sin(eYaw), hoof ? 0.2 : 0.12, Math.cos(eYaw)]);
-    const c = addV(addV(head, off), scl(ax, -er * (bug ? -0.1 : hoof ? 0.5 : cat ? 0.55 : 0.4)));
+    const c = addV(addV(head, off), scl(ax, -er * (bug ? -0.1 : hoof ? 0.5 : cat ? -0.08 : 0.4)));
     if (bug) sac(S.B, LID, S.gid(), [addV(c, scl(ax, -er * 1.3)), addV(c, scl(ax, -er * 0.55)), addV(c, scl(ax, -er * 0.05))], [[er * 1.05, er * 1.0], [er * 1.12, er * 1.06], [er * 1.08, er * 1.02]], [[iH, 1], [iH, 1], [iH, 1]], { n: 14, start: false, end: false });
     ball(S.B, EYE, S.gid(), c, ax, [er, er * 0.95, er * 0.86], [iH, 1], { n: 16, rings: 7, tv: EYE_TV, sq: 2 });
     sac(S.B, LID, S.gid(), [addV(c, scl(ax, -er * 0.02)), addV(c, scl(ax, er * 0.3)), addV(c, scl(ax, er * 0.5))], [[er * 1.22, er * 1.16], [er * 1.12, er * 1.06], [er * 1.02, er * 0.96]], [[iH, 1], [iH, 1], [iH, 1]], { n: 14, start: false, end: false, sq: 2.2 });

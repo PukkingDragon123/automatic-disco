@@ -196,7 +196,7 @@ export class AbilityWheel {
     this.ownKey = next.join(',');
     // each chamber shows its power's skill vignette, painted at the dial's own pixel density (18 art units x QW)
     const icn = (a: Ability) => skillIcon(ABILITY_SKILL[a] ?? a);
-    this.icons = next.map((a) => ({ n: toCanvas(iconCanvas(icn(a), { shadow: true, px: 18 * QW })), d: toCanvas(iconCanvas(icn(a), { dim: true, shadow: true, px: 18 * QW })) }));
+    this.icons = next.map((a) => { const n = toCanvas(iconCanvas(icn(a), { shadow: true, px: 18 * QW })); return { n, d: lockedLook(n) }; });
     let i = added.length ? next.indexOf(added[0]) : prev ? next.indexOf(prev) : 0;
     if (i < 0) i = 0;
     this.sel = i; this.ang = this.target = i * this.step; this.vel = 0; this.lastDet = Math.floor(this.ang / (this.step / 2) + 0.5);
@@ -468,12 +468,18 @@ export class AbilityWheel {
       const X = Math.round(cx - 12.5), Y = Math.round(cy - 12.5);
       drawPix(g, ch, X, Y);
       const ic = this.icons[i];
-      if (locked) g.drawImage(ic.d, X + 4, Y + 4, 18, 18);
+      if (locked) g.drawImage(ic.d, X + 4, Y + 4, 18, 18); // what is coming, greyed under a lock
       else if (poor) { g.globalAlpha = 0.5; g.drawImage(ic.n, X + 4, Y + 4, 18, 18); g.globalAlpha = 1; }
       else g.drawImage(ic.n, X + 4, Y + 4, 18, 18);
-      if (locked) { // padlock grate across the bore
-        g.fillStyle = hex(GM[2]); for (let k = 0; k < 4; k++) g.fillRect(X + 6, Y + 7 + k * 3, 13, 1);
-        g.fillStyle = hex(GM[6]); for (let k = 0; k < 4; k++) g.fillRect(X + 6, Y + 8 + k * 3, 13, 1);
+      if (locked) { // two thin bars across the bore and a padlock hung on them: locked, not empty
+        g.fillStyle = 'rgba(14,16,18,0.55)'; for (const k of [9, 15]) g.fillRect(X + 5, Y + k + 0.5, 15, 1);
+        g.fillStyle = hex(GM[6]); for (const k of [9, 15]) g.fillRect(X + 5, Y + k, 15, 0.5);
+        const lx = X + 14.5, ly = Y + 13.5;
+        g.strokeStyle = hex(GM[7]); g.lineWidth = 1; g.beginPath(); g.arc(lx + 2.5, ly, 2, Math.PI, 0); g.stroke();
+        g.fillStyle = hex(GM[1]); g.fillRect(lx - 0.5, ly - 0.5, 7, 6);
+        g.fillStyle = hex(0xb08a40); g.fillRect(lx, ly, 6, 5);
+        g.fillStyle = hex(0xd8b468); g.fillRect(lx, ly, 6, 1);
+        g.fillStyle = hex(GM[0]); g.fillRect(lx + 2.5, ly + 1.5, 1, 2);
       }
       if (cd > 0) { // recharge shutter: a dark sweep that opens clockwise
         const f = cd / d.cd;
@@ -499,6 +505,15 @@ export class AbilityWheel {
 }
 
 // ------------------------------------------------------------------ helpers
+/** the locked look of an icon: its own picture, desaturated toward cold steel and dimmed (still readable) */
+function lockedLook(src: HTMLCanvasElement) {
+  const c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d')!; g.drawImage(src, 0, 0);
+  const im = g.getImageData(0, 0, c.width, c.height), d = im.data;
+  for (let i = 0; i < d.length; i += 4) { const l = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11; d[i] = l * 0.62 + 10; d[i + 1] = l * 0.66 + 12; d[i + 2] = l * 0.72 + 16; }
+  g.putImageData(im, 0, 0);
+  return c;
+}
 function toCanvas(pc: { w: number; h: number; toImageData(): ImageData }) { const c = document.createElement('canvas'); c.width = pc.w; c.height = pc.h; c.getContext('2d')!.putImageData(pc.toImageData(), 0, 0); return c; }
 const pixCache = new WeakMap<Pix, HTMLCanvasElement>();
 function drawPix(g: CanvasRenderingContext2D, p: Pix, x: number, y: number) { let c = pixCache.get(p); if (!c) { c = p.canvas(); pixCache.set(p, c); } g.drawImage(c, x, y); }
