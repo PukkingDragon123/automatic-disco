@@ -34,6 +34,9 @@ export function makePlanet(seed: number): Planet {
     else if (lat > 0.55) biome = wet > 0.5 ? 'highland' : r.chance(0.5) ? 'tundra' : 'crystal';
     else if (lat < 0.25) biome = wet > 0.6 ? 'jungle' : wet > 0.35 ? 'savanna' : 'desert';
     else biome = wet > 0.75 ? 'marsh' : wet > 0.5 ? 'meadow' : wet > 0.3 ? 'coast' : r.chance(0.5) ? 'ashland' : 'savanna';
+    // about one region in five is sea (src/ocean): coral shallows in the tropics, archipelagos and open sea elsewhere
+    const sea = (hashi(seed, i, 11) % 1000) / 1000;
+    if (lat < 0.7 && sea > 0.8 && i > 0) biome = lat < 0.3 ? 'reef' : sea > 0.93 ? 'ocean' : 'archipelago';
     regions.push({ id: i, c, biome, name: `${cap(r.pick(SYL) + r.pick(SYL))} ${r.pick(PLACE)}`, danger: 1 + Math.floor(r.next() * 3), state: 'wild', seed: (seed * 131 + i * 977) >>> 0 });
   }
   // the gentlest temperate region is where most seeds land first
@@ -43,5 +46,6 @@ export function makePlanet(seed: number): Planet {
 export const BIOME_COL: Record<BiomeKey, number> = {
   meadow: 0x5e7a40, jungle: 0x2e4a2a, savanna: 0x9a8a56, marsh: 0x41503c, highland: 0x6e6a58, tundra: 0xc4ccd0,
   desert: 0xc2a878, crystal: 0x8a9eaa, ashland: 0x4a4240, coast: 0x5a7a6a,
+  archipelago: 0x2b5550, reef: 0x407162, ocean: 0x1e3c40,
 };
 export const owned = (p: Planet) => p.regions.filter((r) => r.state === 'veyr').length;

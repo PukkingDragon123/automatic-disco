@@ -226,7 +226,7 @@ export class Builder {
     }
     for (let i = 0; i < n - 1; i++) for (let j = 0; j < seg; j++) {
       const a = base + i * (seg + 1) + j, b = a + seg + 1;
-      k.i.push(a, b, b + 1, a, b + 1, a + 1);
+      k.i.push(a, b + 1, b, a, a + 1, b + 1);
     }
     if (caps) for (const [i, dir] of [[0, -1], [n - 1, 1]] as [number, number][]) {
       const pts: V[] = []; const t = T[i];
@@ -236,7 +236,7 @@ export class Builder {
     }
   }
   /** a surface of revolution round local y from a (radius, y) profile; u round, v down the profile by length */
-  lathe(s: Skin, prof: [number, number][], seg = 20, o: { fit?: boolean } = {}) {
+  lathe(s: Skin, prof: [number, number][], seg = 20, o: { fit?: boolean; flip?: boolean } = {}) {
     const k = this.bucket(s.b), M = this.M, NM = this.NM;
     const L: number[] = [0]; for (let i = 1; i < prof.length; i++) L.push(L[i - 1] + Math.hypot(prof[i][0] - prof[i - 1][0], prof[i][1] - prof[i - 1][1]));
     const rm = prof.reduce((a, p) => a + p[0], 0) / prof.length, circ = TAU * rm;
@@ -257,7 +257,7 @@ export class Builder {
     }
     for (let j = 0; j < prof.length - 1; j++) for (let i = 0; i < seg; i++) {
       const a = base + j * (seg + 1) + i, b = a + seg + 1;
-      k.i.push(a, b, b + 1, a, b + 1, a + 1);
+      if (o.flip) k.i.push(a, b + 1, b, a, a + 1, b + 1); else k.i.push(a, b, b + 1, a, b + 1, a + 1);
     }
   }
   /** a prism: a convex or concave-free polygon (x, y) extruded along local z from z0 to z1, walls planar-mapped */

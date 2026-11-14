@@ -29,6 +29,13 @@ uniform int uRaySteps;
 uniform mat4 uInvProj, uCamWorld, uShadowM;
 uniform vec3 uCamPos, uSunDir, uSunCol, uSkyCol, uHazeCol, uMistCol;
 uniform vec2 uWind;
+// climate and the sky
+uniform sampler2D tExpo;
+uniform float uTone, uSnow, uFrost, uIce, uDry, uAutumn, uDust, uAsh, uRed, uEclipse, uFlash, uCloudK, uAurora, uNight, uDay;
+uniform vec3 uSkyZen, uSkyHor, uSunSky, uMoonSky, uSunDisk;
+uniform vec3 uSnw[4];
+uniform vec3 uAut[9];
+uniform vec3 uIceC[3];
 
 float linZ(float d) { float z = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear)); }
 float h21(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
@@ -82,7 +89,7 @@ vec3 atmosphere(vec3 col, vec3 P, vec3 rd, float dist, bool bg) {
     col = mix(col, uMistCol * mix(0.62, 1.0, lit), clamp(m, 0.0, 0.6));
   }
   // aerial perspective: blue with distance (warmer toward the sun), a touch warm up close
-  float hz = (1.0 - exp(-D * uHaze)) * (bg ? 0.75 : 1.0);
+  float hz = (1.0 - exp(-D * uHaze)) * (bg ? 0.25 : 1.0);
   vec3 hc = mix(uHazeCol, uHazeCol * 0.55 + uSunCol * 0.3, pow(max(0.0, dot(rd, uSunDir)), 5.0));
   col *= mix(vec3(1.035, 1.0, 0.955), vec3(1.0), smoothstep(3.0, 36.0, D));
   return mix(col, hc, hz);
@@ -97,6 +104,78 @@ void flags(float a, out float outl, out float sel, out float hov, out float en) 
   outl = clamp(a, 0.0, 1.0);
 }
 vec3 srgb(vec3 c) { c = max(c, 0.0); return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
+
+/** the sky where nothing was drawn: Rayleigh blue overhead, a warm Mie aureole round the sun, the sun (or the
+ *  eclipse's black disc and corona), stars and two moons at night (the second red in the bloodtide), auroras, and the
+ *  glow of wildfires on the horizon in the ember season */
+vec3 skyAt(vec3 rd) {
+  float up = rd.y;
+  vec3 c = up > 0.0 ? mix(uSkyHor, uSkyZen, pow(up, 0.55)) : uSkyHor * (1.0 - min(1.0, -up * 3.0) * 0.4);
+  float cs = dot(rd, uSunSky), sd = acos(clamp(cs, -1.0, 1.0));
+  c += uSunDisk * (pow(max(cs, 0.0), 6.0) * 0.16 + pow(max(cs, 0.0), 90.0) * 0.55) * (1.0 - uEclipse);
+  if (uEclipse > 0.02) {
+    vec3 ax = normalize(cross(uSunSky, vec3(0.0, 1.0, 0.0))), ay = cross(ax, uSunSky);
+    float a = atan(dot(rd, ay), dot(rd, ax));
+    float ray = 0.55 + 0.45 * h21(vec2(floor(a * 7.6), 3.0));
+    c += vec3(1.0, 0.94, 0.82) * smoothstep(0.075 * ray, 0.017, sd) * 2.4 * uEclipse;
+    if (sd < 0.017) c = mix(uSunDisk * 8.0, vec3(0.004, 0.005, 0.01), uEclipse);
+  } else if (sd < 0.012) c = uSunDisk * 8.0;
+  if (uNight > 0.01 && up > 0.0) {
+    vec2 sg = floor(vec2(atan(rd.z, rd.x) * 150.0, up * 300.0));
+    float h = h21(sg);
+    if (h > 0.9965) c += vec3(0.8, 0.85, 1.0) * uNight * (0.55 + 0.45 * sin(uTime * 2.3 + h * 60.0)) * 1.3;
+  }
+  float m1 = acos(clamp(dot(rd, uMoonSky), -1.0, 1.0));
+  if (m1 < 0.028) c = mix(c, vec3(0.72, 0.75, 0.84) * (dot(rd - uMoonSky, normalize(uSunSky - uMoonSky)) > -0.006 ? 1.3 : 0.45), max(uNight, 0.25));
+  vec3 md2 = normalize(uMoonSky + vec3(0.3, 0.1, -0.22));
+  float m2 = acos(clamp(dot(rd, md2), -1.0, 1.0));
+  if (m2 < 0.016 + uRed * 0.006) c = mix(c, mix(vec3(0.62, 0.62, 0.7), vec3(1.6, 0.22, 0.12), uRed), max(max(uNight, uRed), 0.2));
+  if (uAurora > 0.01 && up > 0.04) {
+    float a = atan(rd.z, rd.x), n = vn2(vec2(a * 5.0 + uTime * 0.04, up * 3.0 + sin(a * 3.0 + uTime * 0.1)));
+    float band = step(0.6, n) * smoothstep(0.04, 0.2, up) * (1.0 - smoothstep(0.4, 0.75, up));
+    c += mix(vec3(0.15, 0.95, 0.55), vec3(0.65, 0.3, 1.0), step(0.75, n)) * band * uAurora * 0.7;
+  }
+  if (uAsh > 0.01) c += vec3(1.0, 0.36, 0.1) * uAsh * step(abs(up), 0.06) * (0.4 + 0.6 * vn2(vec2(atan(rd.z, rd.x) * 9.0, uTime * 0.4))) * 0.9;
+  return c;
+}
+/** a palette step by brightness: three tones of a ramp, scaled so the light and shade of the scene survive */
+vec3 rampBy(vec3 col, vec3 a, vec3 b, vec3 c) {
+  float l = dot(col, vec3(0.3, 0.59, 0.11));
+  vec3 s = l < 0.07 ? a : l < 0.2 ? b : c;
+  float ls = max(1e-3, dot(s, vec3(0.3, 0.59, 0.11)));
+  return s * clamp(l / ls, 0.55, 1.5);
+}
+/** the season on the ground: snow lying on whatever faces up, hoar frost, dry and autumn foliage, cloud shadows */
+vec3 seasonal(vec3 col, vec3 P, vec3 N, float emit) {
+  vec2 wp = (floor(P.xz * 32.0) + 0.5) / 32.0;
+  // foliage (green pixels) turns: straw in the drought, rust and ochre leaves in the ember season, cell by cell
+  if (uDry + uAutumn > 0.01 && col.g > col.r * 1.04 && col.g > col.b * 1.1) {
+    vec2 cell = floor(P.xz * 1.6 + P.y * 0.7);
+    float hc = h21(cell);
+    if (hc < uAutumn * 0.85) col = hc < uAutumn * 0.4 ? rampBy(col, uAut[0], uAut[1], uAut[2]) : rampBy(col, uAut[3], uAut[4], uAut[5]);
+    else if (hc < uAutumn * 0.85 + uDry * 0.75) col = rampBy(col, uAut[6], uAut[7], uAut[8]);
+  }
+  // snow: on up-facing surfaces, in clean patches that grow with the cover (planar tones of the snow ramp)
+  if (uSnow > 0.01 && emit < 0.5) {
+    float n = vn2(wp * 0.8 + 11.0) * 0.6 + vn2(wp * 2.6) * 0.4;
+    if (N.y > 0.4 && n < uSnow * 1.3 - (1.0 - N.y) * 1.2) {
+      float l = dot(col, vec3(0.3, 0.59, 0.11));
+      col = (l < 0.05 ? uSnw[0] : l < 0.12 ? uSnw[1] : l < 0.3 ? uSnw[2] : uSnw[3]) * (0.25 + 0.75 * uDay);
+    }
+  }
+  // hoar frost: a cold silver on everything that faces the sky
+  if (uFrost > 0.01 && emit < 0.5) {
+    float l = dot(col, vec3(0.3, 0.59, 0.11));
+    col = mix(col, vec3(l) * vec3(0.9, 1.0, 1.12) * 1.15, uFrost * 0.45 * smoothstep(0.2, 0.8, N.y));
+  }
+  // clouds sweeping over: their shadows run with the wind, in two hard steps
+  if (uCloudK > 0.05 && uDay > 0.05) {
+    float n = vn2((P.xz + uWind * uTime * 2.5) * 0.022) * 0.7 + vn2((P.xz + uWind * uTime * 2.5) * 0.06) * 0.3;
+    float th = 1.0 - uCloudK * 0.75;
+    col *= 1.0 - (step(th, n) * 0.22 + step(th + 0.05, n) * 0.12) * uDay;
+  }
+  return col;
+}
 
 void main() {
   vec2 px = 1.0 / uRes;
@@ -119,6 +198,29 @@ void main() {
   float dist = length(toP);
   vec3 rd = toP / max(dist, 1e-4);
   vec3 N0 = nC.xyz * 2.0 - 1.0;
+  float emitF = step(31.5, nC.a);
+  if (env && !bgC && water > 0.5) {
+    // still water freezes; the bloodtide turns it red; the sun glitters on it
+    vec3 rr = reflect(rd, vec3(0.0, 1.0, 0.0));
+    float sg = pow(max(0.0, dot(rr, uSunDir)), 260.0) * (1.0 - uCloudK * 0.8) * uDay;
+    col += uSunCol * sg * 3.0;
+    float gl = h31(floor(P * 32.0) + floor(uTime * 5.0));
+    if (gl > 0.993 && dot(rr, uSunDir) > 0.86) col += uSunCol * 1.6 * uDay;
+    if (uRed > 0.01) col = mix(col, rampBy(col, uAut[0], uAut[1], uAut[2]) * vec3(1.25, 0.55, 0.5), uRed * 0.75);
+    if (uIce > 0.01) {
+      vec2 wp = (floor(P.xz * 32.0) + 0.5) / 32.0;
+      vec3 ice = rampBy(col * 1.8, uIceC[0], uIceC[1], uIceC[2]) * (0.3 + 0.7 * uDay);
+      float crack = step(abs(vn2(wp * 1.3) - 0.5), 0.012) + step(abs(vn2(wp * 3.1 + 7.0) - 0.5), 0.01);
+      col = mix(col, ice * (1.0 - min(1.0, crack) * 0.3), smoothstep(0.1, 0.6, uIce) * 0.9);
+    }
+  }
+  if (env && !bgC && water < 0.5) col = seasonal(col, P, N0, emitF);
+  if (env && !bgC) {
+    col *= 1.0 + emitF * uEclipse * 1.4;
+    col += vec3(0.5, 0.56, 0.72) * uFlash * 0.3;
+    col += vec3(0.1, 0.5, 0.3) * uAurora * uNight * 0.015;
+  }
+  if (env && bgC) col = skyAt(rd);
   if (env && !bgC && water < 0.5) {
     // wet ground: darker and richer, puddles in the flat open hollows mirror the sky, the sun glints off the wet
     if (uWet > 0.002) {
@@ -232,6 +334,11 @@ void main() {
   col = mix(col, rim, rimA);
   // bloom
   col += texture2D(tBloom, vUv).rgb * uBloom;
+  // filmic tone mapping (ACES fit) after the eye's adaptation to the scene's light
+  if (env && uTone > 0.5) {
+    vec3 x = max(col, 0.0) * texture2D(tExpo, vec2(0.5)).r * 0.8;
+    col = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14);
+  }
   // grade
   col = max(col, 0.0);
   col = col * uGain + uLift * (1.0 - col);
@@ -245,6 +352,21 @@ void main() {
 }
 `;
 
+const EXPO = /* glsl */`
+precision highp float;
+varying vec2 vUv;
+uniform sampler2D tColor, tPrev; uniform float uRate, uKey;
+void main() {
+  // the eye adapts to the log-average light of the middle of the view (the console covers the edges)
+  float s = 0.0;
+  for (int y = 0; y < 8; y++) for (int x = 0; x < 12; x++) {
+    vec2 uv = 0.15 + (vec2(float(x), float(y)) + 0.5) / vec2(12.0, 8.0) * 0.7;
+    s += log(max(dot(texture2D(tColor, uv).rgb, vec3(0.2126, 0.7152, 0.0722)), 1e-4));
+  }
+  float target = clamp(uKey / max(exp(s / 96.0), 1e-4), 0.6, 1.9);
+  float prev = texture2D(tPrev, vec2(0.5)).r;
+  gl_FragColor = vec4(prev <= 0.0 ? target : mix(prev, target, uRate), 0.0, 0.0, 1.0);
+}`;
 const BRIGHT = /* glsl */`
 precision highp float;
 varying vec2 vUv;
@@ -301,6 +423,7 @@ export interface Grade { lift: THREE.Color; gamma: THREE.Color; gain: THREE.Colo
 export function resetGrade(g: Grade) { const d = defaultGrade(); g.lift.copy(d.lift); g.gamma.copy(d.gamma); g.gain.copy(d.gain); g.sat = d.sat; g.vig = d.vig; g.bloom = d.bloom; }
 export const defaultGrade = (): Grade => ({ lift: new THREE.Color(0.0035, 0.004, 0.007), gamma: new THREE.Color(1.06, 1.06, 1.07), gain: new THREE.Color(1.12, 1.09, 1.03), sat: 1.14, vig: 0.34, bloom: 0.34 });
 
+const _t = new THREE.Color();
 function rt(w: number, h: number, linear = true) {
   return new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, minFilter: linear ? THREE.LinearFilter : THREE.NearestFilter, magFilter: linear ? THREE.LinearFilter : THREE.NearestFilter, depthBuffer: false });
 }
@@ -316,6 +439,7 @@ export class Post {
   private scene = new THREE.Scene();
   private mComp: THREE.ShaderMaterial; private mBright: THREE.ShaderMaterial; private mDown: THREE.ShaderMaterial; private mUp: THREE.ShaderMaterial;
   private black: THREE.WebGLRenderTarget;
+  private expA!: THREE.WebGLRenderTarget; private expB!: THREE.WebGLRenderTarget; private mExpo!: THREE.ShaderMaterial; private lastT = 0;
   /** a cleared 1x1 depth texture with a compare function: what the shadow sampler reads when there are no shafts */
   private noShadow: THREE.WebGLRenderTarget;
   readonly grade: Grade = defaultGrade();
@@ -352,9 +476,21 @@ export class Post {
       uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uCamPos: { value: new THREE.Vector3() },
       uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color() }, uSkyCol: { value: new THREE.Color() },
       uHazeCol: { value: new THREE.Color() }, uMistCol: { value: new THREE.Color() },
+      tExpo: { value: null }, uTone: { value: 1 }, uSnow: { value: 0 }, uFrost: { value: 0 }, uIce: { value: 0 }, uDry: { value: 0 }, uAutumn: { value: 0 },
+      uDust: { value: 0 }, uAsh: { value: 0 }, uRed: { value: 0 }, uEclipse: { value: 0 }, uFlash: { value: 0 }, uCloudK: { value: 0 }, uAurora: { value: 0 },
+      uNight: { value: 0 }, uDay: { value: 1 },
+      uSkyZen: { value: new THREE.Color() }, uSkyHor: { value: new THREE.Color() }, uSunSky: { value: new THREE.Vector3(0, 1, 0) }, uMoonSky: { value: new THREE.Vector3(0, 1, 0) }, uSunDisk: { value: new THREE.Color() },
+      uSnw: { value: [5, 3, 2, 1].map((i) => new THREE.Color().setHex(RAMPS.snow[RAMPS.snow.length - i])) },
+      uAut: { value: [RAMPS.rust[2], RAMPS.rust[4], RAMPS.rust[5], RAMPS.ochre[2], RAMPS.ochre[4], RAMPS.ochre[5], RAMPS.straw[1], RAMPS.straw[3], RAMPS.straw[4]].map((c) => new THREE.Color().setHex(c)) },
+      uIceC: { value: [RAMPS.slate[3], RAMPS.snow[1], RAMPS.snow[3]].map((c) => new THREE.Color().setHex(c)) },
     };
     this.mComp = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: COMPOSITE, uniforms: this.U, depthTest: false, depthWrite: false });
-    this.mBright = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: BRIGHT, uniforms: { tColor: this.U.tColor, tNormal: this.U.tNormal, tFx: this.U.tFx, uFxOn: this.U.uFxOn, uTexel: { value: new THREE.Vector2() }, uThresh: { value: 1.0 } }, depthTest: false, depthWrite: false });
+    this.mBright = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: BRIGHT, uniforms: { tColor: this.U.tColor, tNormal: this.U.tNormal, tFx: this.U.tFx, uFxOn: this.U.uFxOn, uTexel: { value: new THREE.Vector2() }, uThresh: { value: 2.4 } }, depthTest: false, depthWrite: false });
+    // the eye's adaptation: two 1x1 targets, ping-ponged
+    this.expA = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
+    this.expB = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
+    this.mExpo = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: EXPO, uniforms: { tColor: this.U.tColor, tPrev: { value: this.expA.texture }, uRate: { value: 0.05 }, uKey: { value: 0.2 } }, depthTest: false, depthWrite: false });
+    this.U.tExpo.value = this.expA.texture;
     this.mDown = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: DOWN, uniforms: { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() } }, depthTest: false, depthWrite: false });
     this.mUp = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: UP, uniforms: { tSrc: { value: null }, tPrev: { value: null }, uTexel: { value: new THREE.Vector2() } }, depthTest: false, depthWrite: false });
   }
@@ -421,6 +557,14 @@ export class Post {
     this.U.uProj.value = this.h / (2 * Math.tan((camera.fov * Math.PI) / 360));
     this.U.uAO.value = qp.ssao ? this.ao : 0;
     this.atmosphere(scene, camera);
+    if (this.U.uEnv.value > 0.5 && this.U.uTone.value > 0.5) {
+      const dt = Math.min(0.25, Math.max(0, time - this.lastT)); this.lastT = time;
+      this.mExpo.uniforms.tPrev.value = this.expA.texture;
+      this.mExpo.uniforms.uRate.value = 1 - Math.exp(-dt * 1.4);
+      this.pass(this.mExpo, this.expB);
+      const t = this.expA; this.expA = this.expB; this.expB = t;
+      this.U.tExpo.value = this.expA.texture;
+    }
     this.pass(this.mComp, null);
   }
   /** contact-shadow strength (SSAO) when the quality tier has it on */
@@ -444,6 +588,23 @@ export class Post {
     sky.setHex(S[Math.min(S.length - 1, si + 1)]); hz.setHex(S[si]); mc.setHex(S[Math.max(0, si - 1)]);
     U.uHaze.value = e.haze; U.uMist.value = e.mist * (lo ? 0.35 : 1); U.uMistY.value = e.mistY; U.uMistH.value = e.mistH; U.uPatch.value = e.patch;
     U.uWet.value = e.wet; U.uRain.value = e.rain; U.uDew.value = e.dew; U.uHeat.value = lo ? 0 : e.heat;
+    U.uSnow.value = e.snow; U.uFrost.value = e.frost; U.uIce.value = e.ice; U.uDry.value = e.dry; U.uAutumn.value = e.autumn;
+    U.uDust.value = e.dust; U.uAsh.value = e.ash; U.uRed.value = e.red; U.uEclipse.value = e.eclipse; U.uFlash.value = e.flash;
+    U.uCloudK.value = lo ? 0 : e.cloudK; U.uAurora.value = e.aurora; U.uDay.value = e.day; U.uNight.value = Math.max(0, 1 - e.day * 2.2) * (1 - e.cloudK * 0.8);
+    U.uTone.value = q === 'low' ? 0 : 1;
+    // the sky: Rayleigh blue overhead from the fill light, the horizon brighter and warmed by a low sun
+    (U.uSunSky.value as THREE.Vector3).copy(e.sunSky).normalize(); (U.uMoonSky.value as THREE.Vector3).copy(e.moonSky).normalize();
+    const zen = U.uSkyZen.value as THREE.Color, hor = U.uSkyHor.value as THREE.Color, disk = U.uSunDisk.value as THREE.Color;
+    const low = Math.max(0, 1 - Math.abs(e.sunSky.y) * 3);
+    disk.copy(sun.light.color).multiplyScalar(e.day > 0.05 ? 1.2 : 0);
+    zen.copy(sun.hemi.color).multiplyScalar(0.55 + 0.6 * e.day);
+    hor.copy(sun.hemi.color).multiplyScalar(0.8 + 0.7 * e.day).lerp(disk, low * 0.55 * Math.min(1, e.day * 3));
+    // dust, ash and the bloodtide colour the air itself
+    const dc = _t.setHex(RAMPS.sand[4]).multiplyScalar(0.25 + 0.75 * k);
+    if (e.dust > 0) { hz.lerp(dc, e.dust * 0.7); mc.lerp(dc, e.dust * 0.7); hor.lerp(dc, e.dust * 0.8); zen.lerp(dc, e.dust * 0.5); }
+    if (e.ash > 0) { const ac = _t.setHex(RAMPS.stone[3]).multiplyScalar(0.3 + 0.7 * k); hz.lerp(ac, e.ash * 0.6); mc.lerp(ac, e.ash * 0.6); zen.lerp(ac, e.ash * 0.6); }
+    if (e.red > 0) { const rc = _t.setHex(RAMPS.coral[3]).multiplyScalar(0.3 + 0.7 * k); hz.lerp(rc, e.red * 0.55); mc.lerp(rc, e.red * 0.5); hor.lerp(rc, e.red * 0.7); zen.lerp(_t.setHex(RAMPS.plum[2]), e.red * 0.6); }
+    if (e.eclipse > 0) { zen.lerp(_t.setRGB(0.004, 0.006, 0.02), e.eclipse); hor.lerp(_t.setRGB(0.02, 0.03, 0.06), e.eclipse); hz.lerp(_t.setRGB(0.02, 0.03, 0.06), e.eclipse * 0.8); mc.lerp(_t.setRGB(0.04, 0.06, 0.1), e.eclipse * 0.8); }
     (U.uWind.value as THREE.Vector2).copy(e.wind);
     // shafts need the sun's shadow map (it exists after the first shadowed frame)
     const map = sun.light.castShadow ? sun.light.shadow.map : null, dt = map?.depthTexture ?? null;

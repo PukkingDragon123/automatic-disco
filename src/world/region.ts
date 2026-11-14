@@ -6,12 +6,15 @@ import type { Palette } from './palette';
 
 /** sqrt-based length (Math.hypot is several times slower in the hot loops) */
 const hyp = (a: number, b: number, c = 0) => Math.sqrt(a * a + b * b + c * c);
-export type BiomeKey = 'meadow' | 'jungle' | 'savanna' | 'marsh' | 'highland' | 'tundra' | 'desert' | 'crystal' | 'ashland' | 'coast';
+export type BiomeKey = 'meadow' | 'jungle' | 'savanna' | 'marsh' | 'highland' | 'tundra' | 'desert' | 'crystal' | 'ashland' | 'coast' | 'archipelago' | 'reef' | 'ocean';
 export interface Biome {
   key: BiomeKey; name: string;
   temp: number; moist: number; rough: number; water: number; terrace: number;
   /** flora density multiplier, fauna richness */
   flora: number; fauna: number;
+  /** ocean regions (src/ocean): the share of the map under the sea; the relief is redrawn as islands and sea floor
+   *  by Region.oceanFloor and the bed is dressed by Region.seabed */
+  sea?: number;
 }
 export const BIOMES: Record<BiomeKey, Biome> = {
   meadow: { key: 'meadow', name: 'Meadowland', temp: 0.55, moist: 0.55, rough: 0.35, water: 0.08, terrace: 0.35, flora: 1, fauna: 1 },
@@ -24,6 +27,21 @@ export const BIOMES: Record<BiomeKey, Biome> = {
   crystal: { key: 'crystal', name: 'Crystal Flats', temp: 0.5, moist: 0.3, rough: 0.6, water: 0.06, terrace: 0.65, flora: 0.6, fauna: 0.8 },
   ashland: { key: 'ashland', name: 'Ash Barrens', temp: 0.7, moist: 0.2, rough: 0.7, water: 0.03, terrace: 0.6, flora: 0.35, fauna: 0.6 },
   coast: { key: 'coast', name: 'Tidal Coast', temp: 0.6, moist: 0.7, rough: 0.3, water: 0.32, terrace: 0.3, flora: 1, fauna: 1.1 },
+  // ocean regions (src/ocean): mostly sea, the land is islands
+  archipelago: { key: 'archipelago', name: 'Archipelago', temp: 0.72, moist: 0.75, rough: 0.45, water: 0.6, terrace: 0.3, flora: 1.1, fauna: 0.8, sea: 0.68 },
+  reef: { key: 'reef', name: 'Coral Shallows', temp: 0.82, moist: 0.7, rough: 0.2, water: 0.6, terrace: 0.2, flora: 0.9, fauna: 0.6, sea: 0.85 },
+  ocean: { key: 'ocean', name: 'Open Sea', temp: 0.6, moist: 0.7, rough: 0.5, water: 0.6, terrace: 0.3, flora: 0.8, fauna: 0.5, sea: 0.9 },
+};
+
+/** rolling hills per biome (m of middle-octave swell) */
+const HILLS: Partial<Record<BiomeKey, number>> = { meadow: 2.4, savanna: 1.6, jungle: 1.8, coast: 1.1, marsh: 0.3, tundra: 1.4, highland: 1.8, desert: 0.8, crystal: 1.1, ashland: 1.2 };
+/** the big landforms per biome: rim ranges (m), foothills (m), escarpment bench height (m, 0 none), mesa height (m) */
+const RELIEF: Record<string, { range: number; foot: number; terrace: number; mesa: number }> = {
+  meadow: { range: 15, foot: 4, terrace: 0, mesa: 0 }, jungle: { range: 17, foot: 5, terrace: 0, mesa: 0 },
+  savanna: { range: 9, foot: 3, terrace: 2.6, mesa: 0 }, marsh: { range: 4, foot: 1, terrace: 0, mesa: 0 },
+  highland: { range: 30, foot: 9, terrace: 3.2, mesa: 0 }, tundra: { range: 22, foot: 6, terrace: 0, mesa: 0 },
+  desert: { range: 12, foot: 4, terrace: 0, mesa: 7.5 }, crystal: { range: 18, foot: 6, terrace: 2.6, mesa: 0 },
+  ashland: { range: 20, foot: 6, terrace: 3.2, mesa: 0 }, coast: { range: 10, foot: 3, terrace: 0, mesa: 0 },
 };
 
 export interface Deposit { x: number; z: number; kind: 'ore' | 'crystal'; amount: number; r: number }
@@ -63,6 +81,8 @@ export class Region {
   readonly solid: Uint8Array;
   /** sculpted rock formations */
   rocks: RockPiece[] = [];
+  /** columns a walker (0.75 m climb) can reach from the landing over dry land and wadeable rivers (1) or not (0) */
+  reach: Uint8Array = new Uint8Array(0);
 
   constructor(readonly seed: number, readonly biome: Biome, readonly pal: Palette, N = 128) {
     this.N = N;
@@ -71,6 +91,13 @@ export class Region {
     this.riverY = new Float32Array(N * N); this.forest = new Float32Array(N * N); this.damp = new Float32Array(N * N); this.solid = new Uint8Array(N * N);
     this.noise = new Noise(seed);
     this.generate();
+    // too much of the land walled off by cliffs and ranges: try again with gentler relief
+    if (this.reachShare() < 0.6) { this.resetFields(); this.generate(0.55); }
+    if (this.reachShare() < 0.6) { this.resetFields(); this.generate(0.2); }
+  }
+  private resetFields() {
+    this.h.fill(0); this.b.fill(0); this.wet.fill(0); this.fert.fill(0); this.riverY.fill(0); this.forest.fill(0); this.damp.fill(0); this.solid.fill(0);
+    this.deposits = []; this.rivers = []; this.rocks = []; this.dirty.clear();
   }
 
   idx(x: number, z: number) { return z * this.N + x; }
@@ -105,7 +132,7 @@ export class Region {
   }
   surfaceY(x: number, z: number) { const g = this.heightAt(x, z), ry = this.riverAt(x, z); return Math.max(g, this.water - 0.15, ry > 0 ? ry - 0.22 : -99); }
 
-  private generate() {
+  private generate(reliefK = 1) {
     const N = this.N, bi = this.biome, n = this.noise, r = new Rand(this.seed);
     const H = new Float32Array(N * N);
     const ox = r.range(0, 1000), oz = r.range(0, 1000);
@@ -115,6 +142,8 @@ export class Region {
       let v = n.fbm2(X * 0.008, Z * 0.008, 5) * (1.4 + bi.rough * 2.6);
       v += Math.pow(n.ridge2(X * 0.013, Z * 0.013, 4), 1.6) * bi.rough * 5.5;
       v += n.fbm2(X * 0.035, Z * 0.035, 2) * 0.22;
+      // rolling hills: a middle octave that gives meadows and savanna their swells
+      v += n.fbm2(X * 0.021 + 210, Z * 0.021 - 90, 3) * (HILLS[bi.key] ?? 1) * reliefK;
       if (bi.key === 'desert') v += Math.sin(X * 0.06 + n.n2(X * 0.02, Z * 0.02) * 3) * 0.6;
       // winding backwater channels in the mire (real rivers are carved later, downhill to the sea)
       if (bi.key === 'marsh') {
@@ -138,17 +167,95 @@ export class Region {
       }
       S = T;
     }
+    // the big landforms go on after the blur so cliffs and crests stay sharp
+    this.relief(S, ox, oz, reliefK);
     for (let i = 0; i < N * N; i++) this.h[i] = Math.max(1.5, S[i]);
     this.water = 3.9;
+    if (bi.sea) this.oceanFloor(new Rand(this.seed ^ 0x0cea));
     this.pickLanding(r);
+    this.landingPad();
     this.carveRivers(new Rand(this.seed ^ 0x51ae));
     this.forestField();
     this.assignBlocks(r);
     this.trails(r);
     this.formations(new Rand(this.seed ^ 0x70c5));
+    this.computeReach();
     this.placeDeposits(r);
     this.dampField();
+    if (bi.sea) this.seabed(new Rand(this.seed ^ 0x5eab));
   }
+
+  // ------------------------------------------------------------------------------------------------ landforms
+  /**
+   * Relief over the rolling base (water line ~4 m): mountain ranges along some sides of the map rising to the rim, their
+   * foothills reaching inward, escarpments (terraced benches with cliff risers, broken by ramps and passes) in the
+   * high and dry country, flat-topped mesas in the desert, and a coastal shelf (a flat beach, then a drop-off under the
+   * water). The middle of the map, where the landing goes, stays rolling and walkable.
+   */
+  private relief(S: Float32Array, ox: number, oz: number, k: number) {
+    const N = this.N, bi = this.biome, n = this.noise, K = RELIEF[bi.key] ?? RELIEF.meadow, c = N / 2;
+    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+      const i = z * N + x, X = x + ox, Z = z + oz;
+      let v = S[i];
+      const e = Math.min(x, z, N - 1 - x, N - 1 - z), dc = hyp(x - c, z - c);
+      // which sides carry a range (a slow field), and how close to the rim
+      const side = n.fbm2(X * 0.011 + 700, Z * 0.011 - 300, 2) * 0.5 + 0.5;
+      const rim = smooth(32, 2, e) * smooth(0.32, 0.58, side);
+      if (rim > 0 && K.range) {
+        const rdg = Math.pow(n.ridge2(X * 0.026, Z * 0.026, 4), 1.9);
+        v += K.range * k * rim * (0.35 + 0.65 * rdg) * (0.8 + n.fbm2(X * 0.05, Z * 0.05, 2) * 0.35);
+      }
+      // foothills: ridged spurs running in from the ranges
+      const foot = smooth(48, 12, e) * smooth(0.22, 0.5, side);
+      if (foot > 0 && K.foot) v += K.foot * k * foot * Math.pow(n.ridge2(X * 0.047 + 33, Z * 0.047 - 12, 3), 1.6);
+      // mesas: flat-topped tables with sheer sides and a scree apron, kept off the middle of the map
+      if (K.mesa) {
+        const m = n.fbm2(X * 0.028 + 400, Z * 0.028 - 50, 3) * 0.5 + 0.5, away = smooth(22, 36, dc);
+        v += (smooth(0.585, 0.62, m) * K.mesa + smooth(0.52, 0.585, m) * 1.1) * away * k;
+      }
+      // escarpments: benches with cliff risers; a slow field opens ramps and passes through them
+      if (K.terrace && v > 5.2) {
+        const t = (v - 4) / K.terrace, f = t - Math.floor(t);
+        const terr = 4 + (Math.floor(t) + smooth(0.86, 0.99, f)) * K.terrace;
+        const ramp = smooth(0.4, 0.62, n.n2(X * 0.043 + 90, Z * 0.043) * 0.5 + 0.5);
+        v = terr + (v - terr) * ramp;
+      }
+      // the coast: a flatter beach shelf just above the water, a quicker drop-off below it
+      if (v >= 4 && v < 6) v = 4 + (v - 4) * (0.55 + 0.45 * smooth(4, 6, v));
+      else if (v < 4 && v > 2) v = 4 - (4 - v) * (1.6 - 0.6 * smooth(4, 2, v));
+      S[i] = v;
+    }
+  }
+  /** the crash site: level ground round the landing, easing out into the land */
+  private landingPad() {
+    const N = this.N, L = this.landing, h = this.h;
+    let sum = 0, cnt = 0;
+    for (let dz = -6; dz <= 6; dz++) for (let dx = -6; dx <= 6; dx++) { const X = Math.floor(L.x) + dx, Z = Math.floor(L.z) + dz; if (!this.inside(X, Z)) continue; sum += h[Z * N + X]; cnt++; }
+    const avg = Math.max(this.water + 0.6, sum / Math.max(1, cnt));
+    for (let dz = -18; dz <= 18; dz++) for (let dx = -18; dx <= 18; dx++) {
+      const X = Math.floor(L.x) + dx, Z = Math.floor(L.z) + dz; if (!this.inside(X, Z)) continue;
+      const d = hyp(dx, dz), t = d < 8 ? 1 : d < 18 ? 1 - smooth(8, 18, d) : 0;
+      if (t > 0) { const i = Z * N + X; h[i] = h[i] + (avg - h[i]) * t * 0.85; }
+    }
+  }
+  /** flood the walkable ground from the landing (a 0.75 m climb, dry land or a wadeable river) */
+  private computeReach() {
+    const N = this.N, h = this.h, W = this.water, out = new Uint8Array(N * N);
+    const L = this.landing, s0 = Math.floor(L.z) * N + Math.floor(L.x), st = [s0];
+    out[s0] = 1;
+    while (st.length) {
+      const c = st.pop()!, x = c % N, z = (c / N) | 0;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const X = x + dx, Z = z + dz; if (X < 0 || Z < 0 || X >= N || Z >= N) continue;
+        const j = Z * N + X; if (out[j] || h[j] < W) continue;
+        if (Math.abs(h[j] - h[c]) > 0.75) continue;
+        out[j] = 1; st.push(j);
+      }
+    }
+    this.reach = out;
+  }
+  /** the share of the dry land a walker can reach from the landing */
+  reachShare() { let land = 0, got = 0; for (let i = 0; i < this.N * this.N; i++) if (this.h[i] >= this.water) { land++; if (this.reach[i]) got++; } return land ? got / land : 1; }
 
   // ------------------------------------------------------------------------------------------------ rivers
   /**
@@ -301,7 +408,8 @@ export class Region {
   private cutChannel(pts: RiverPt[]) {
     const N = this.N, h = this.h;
     const bestD = new Float32Array(N * N).fill(1e9), bestI = new Int32Array(N * N).fill(-1);
-    const BANK = 2.6, VAL = 8;
+    // valley sides at a walkable 0.62 (a walker's climb is 0.75 m per metre), as wide as the land needs
+    const BANK = 2.6, VAL = 22;
     for (let k = 0; k < pts.length; k++) {
       const p = pts[k], R = p.w + BANK + VAL;
       for (let z = Math.max(0, Math.floor(p.z - R)); z <= Math.min(N - 1, Math.ceil(p.z + R)); z++)
@@ -319,7 +427,7 @@ export class Region {
       // column that is not sea), shoaling into a sand bar where it meets the sea
       if (d < w) t = Math.max(this.water + 0.02, p.y - dep * (1 - (d / w) ** 2) - 0.04);
       else if (d < w + BANK) t = p.y + 0.06 + (d - w) * 0.42;
-      else t = p.y + 0.06 + BANK * 0.42 + (d - w - BANK) * 0.85;
+      else t = p.y + 0.06 + BANK * 0.42 + (d - w - BANK) * 0.62;
       if (h[i] > t) h[i] = t;
       else if (d < w + BANK && h[i] < p.y + 0.06 && p.y > this.water + 0.05 && this.riverY[i] <= 0) h[i] = t; // a low levee holds the water in
       if (d < w + 0.35 && h[i] < p.y) this.riverY[i] = Math.max(this.riverY[i], p.y);
@@ -548,7 +656,7 @@ export class Region {
       if (this.h[i] < this.water || this.riverY[i] > 0) continue;
       const v = n.fbm2(x * 0.028 + 500, z * 0.028 - 200, 4) * 0.5 + 0.5 + (this.wet[i] - 0.5) * 0.25;
       const lo = 0.66 - k * 0.3;
-      this.forest[i] = smooth(lo, lo + 0.14, v) * (this.h[i] > 10 ? 0.4 : 1);
+      this.forest[i] = smooth(lo, lo + 0.14, v) * (this.h[i] - this.water > 13 ? 0.35 : 1);
     }
   }
 
@@ -615,7 +723,7 @@ export class Region {
       if (Z >= 0 && Z < N) dw[i] = Math.min(dw[i], dw[Z * N + x] + 1);
     }
     for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
-      const i = z * N + x, h = this.h[i], ry = this.riverY[i], sl = this.slope(x, z), w = this.wet[i];
+      const i = z * N + x, h = this.h[i], ry = this.riverY[i], sl = this.slope(x, z), w = this.wet[i], alt = h - this.water;
       const above = h - (ry > 0 ? Math.max(ry, this.water) : this.water);
       const v = n.fbm2(x * 0.05 + 300, z * 0.05, 3);
       let k: number = B.GRASS;
@@ -628,12 +736,12 @@ export class Region {
       else if (ry > 0 && above < 0.7 && n.fbm2(x * 0.2, z * 0.2 + 70, 2) > 0.1) k = bi.key === 'desert' ? B.SAND : B.MUD;
       else if (sl >= 0.95) k = bi.key === 'ashland' ? B.BASALT : B.ROCK;
       else if (bi.key === 'desert') k = v > 0.45 ? B.ROCK : B.SAND;
-      else if (bi.key === 'tundra') k = h > 7 || v > 0.2 ? B.SNOW : (v > -0.2 ? B.GRASS : B.GRAVEL);
+      else if (bi.key === 'tundra') k = alt > 3 || v > 0.2 ? B.SNOW : (v > -0.2 ? B.GRASS : B.GRAVEL);
       else if (bi.key === 'ashland') k = v > 0.15 ? B.BASALT : (v > -0.2 ? B.DRY : B.GRAVEL);
       else if (bi.key === 'crystal') k = v > 0.4 ? B.ROCK : (v > 0.1 ? B.GRAVEL : B.DRY);
       else if (bi.key === 'savanna') k = w < 0.42 ? B.DRY : B.GRASS;
       else if (bi.key === 'marsh') k = w > 0.85 && v > 0.1 ? B.MUD : B.GRASS;
-      else if (h > 9.5) k = h > 11 && bi.temp < 0.5 ? B.SNOW : B.ROCK;
+      else if (alt > 15 + v * 4) k = alt > 12 + bi.temp * 20 + v * 3 ? B.SNOW : alt > 19 + v * 4 || sl > 0.6 ? B.ROCK : B.GRAVEL;
       else k = w < 0.3 ? B.DRY : B.GRASS;
       if (k === B.GRASS && v < -0.5 && dw[i] < 12) k = B.CLAY;
       // woodland floor: leaf litter under the canopy, frayed at the edges
@@ -667,6 +775,7 @@ export class Region {
     for (let t = 0, made = 0; t < 600 && made < want; t++) {
       const x = r.int(6, N - 7), z = r.int(6, N - 7);
       if (this.h[z * N + x] < this.water + 0.5 || this.riverY[z * N + x] > 0) continue;
+      if (this.reach.length && !this.reach[z * N + x]) continue;
       if (hyp(x - this.landing.x, z - this.landing.z) < (made < 2 ? 12 : 18)) continue;
       let blocked = false;
       for (let dz = -4; dz <= 4 && !blocked; dz++) for (let dx = -4; dx <= 4; dx++) if (this.inside(x + dx, z + dz) && this.solid[(z + dz) * N + x + dx]) { blocked = true; break; }
@@ -747,6 +856,119 @@ export class Region {
       else if (d < 1.4 && r.chance(0.5)) this.b[i] = B.GRAVEL;
       this.fert[i] = d < 1.2 ? 0 : this.fert[i] * 0.5;
       this.dirty.add(i);
+    }
+  }
+  // ------------------------------------------------------------------------------------------------ ocean regions (src/ocean)
+  /** ocean regions: the islands the land was drawn from (centre and radius in metres), for the sea's own systems */
+  isles: { x: number; z: number; r: number }[] = [];
+  /** reef regions: the lagoon (the cay's centre and the reef crest's radius) */
+  lagoon: { x: number; z: number; r: number } | null = null;
+  /** an ocean region (biome.sea): islands in the sea, the golem can splash down, dive and build on pontoons */
+  get oceanic() { return !!this.biome.sea; }
+  /**
+   * Ocean regions (biome.sea) redraw the relief as islands in the sea. Archipelago: a big island and a scatter of
+   * smaller ones, sandy shelves dropping into deep channels; reef: a low cay in a shallow lagoon, ringed by a reef
+   * crest broken by two passes, falling off steeply to the deep; open sea: one islet and a few rocks over deep water
+   * cut by a trench. Island interiors keep the land relief the main generator made, so hills still come from it. The
+   * map's rim is always deep water, so the sea runs on past it without a seam.
+   */
+  private oceanFloor(r: Rand) {
+    const N = this.N, key = this.biome.key, n = this.noise, W = this.water, h = this.h, TAU2 = Math.PI * 2;
+    const relief = Float32Array.from(h), isl = this.isles;
+    const c0x = N / 2 + r.range(-7, 7), c0z = N / 2 + r.range(-7, 7);
+    const free = (x: number, z: number, rad: number) => isl.every((o) => hyp(o.x - x, o.z - z) > o.r + rad + 7);
+    if (key === 'reef') isl.push({ x: c0x, z: c0z, r: r.range(10, 13) });
+    else if (key === 'ocean') {
+      isl.push({ x: c0x, z: c0z, r: r.range(13, 16) });
+      for (let t = 0, k = r.int(2, 4); t < 120 && k > 0; t++) {
+        const a = r.range(0, TAU2), d = r.range(30, 52), rad = r.range(2.2, 4.5), x = c0x + Math.cos(a) * d, z = c0z + Math.sin(a) * d;
+        if (x < 14 || z < 14 || x > N - 14 || z > N - 14 || !free(x, z, rad)) continue;
+        isl.push({ x, z, r: rad }); k--;
+      }
+    } else {
+      isl.push({ x: c0x, z: c0z, r: r.range(16, 20) });
+      for (let t = 0, k = r.int(4, 6); t < 240 && k > 0; t++) {
+        const rad = r.range(5, 12), x = r.range(12 + rad, N - 12 - rad), z = r.range(12 + rad, N - 12 - rad);
+        if (!free(x, z, rad)) continue;
+        isl.push({ x, z, r: rad }); k--;
+      }
+    }
+    const basin = key === 'ocean' ? 16 : key === 'reef' ? 13 : 10.5;
+    const RL = key === 'reef' ? r.range(38, 43) : 0;
+    if (key === 'reef') this.lagoon = { x: c0x, z: c0z, r: RL };
+    const passA = r.range(0, TAU2), passB = passA + r.range(2.2, 4);
+    const angD = (a: number, b: number) => Math.abs(((a - b + Math.PI * 3) % TAU2) - Math.PI);
+    const trench = key === 'ocean' || (key === 'archipelago' && this.seed % 2 === 0);
+    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+      const i = z * N + x, px = x + 0.5, pz = z + 0.5;
+      // signed distance to the coast (metres, + on land): the coastlines warped into bays and headlands
+      let sd = -1e9;
+      for (let k = 0; k < isl.length; k++) { const o = isl[k], w = 1 + 0.3 * n.fbm2(px * 0.045 + k * 17.3, pz * 0.045 - k * 5.1, 3); sd = Math.max(sd, o.r - hyp(px - o.x, pz - o.z) * w); }
+      const rim = Math.min(px, pz, N - px, N - pz);
+      let y: number;
+      if (sd > 0) {
+        // land: a beach, then the main generator's relief rising inland
+        const inland = smooth(1.5, 9, sd);
+        y = W + 0.18 + Math.min(sd * 0.28, 0.8) + Math.max(0, relief[i] - 3.6) * 0.7 * inland + inland * 0.7;
+      } else {
+        const e = -sd, bump = n.fbm2(px * 0.07 + 31, pz * 0.07, 3);
+        // the shelf: sand sloping out under the water, then the drop to the basin
+        const shelf = 0.1 + Math.min(e, 7) * 0.2;
+        let d = shelf + smooth(5, 26, e) * (basin - shelf) * (0.8 + 0.35 * n.fbm2(px * 0.02 + 7, pz * 0.02, 3));
+        d += bump * (0.35 + smooth(4, 20, e) * 1.3);
+        if (key === 'reef') {
+          const o = isl[0], dc = hyp(px - o.x, pz - o.z) * (1 + 0.08 * n.fbm2(px * 0.03, pz * 0.03 + 9, 2)), a = Math.atan2(pz - o.z, px - o.x);
+          const pass = Math.min(angD(a, passA), angD(a, passB)) < 0.1;
+          if (dc < RL) d = Math.min(d, 0.45 + smooth(0, 9, e) * 1.7 + Math.max(0, bump) * 1.1); // the lagoon
+          else if (dc < RL + 5) d = pass ? 2.4 : 0.3 + Math.abs(bump) * 0.5; // the crest, cut by two passes
+          else d = 0.7 + smooth(RL + 5, RL + 15, dc) * (basin - 0.7) + bump * 0.8; // the drop-off
+        }
+        if (trench) { const tv = Math.abs(n.n2(px * 0.011 + 50, pz * 0.011 - 20)); if (tv < 0.07) d += Math.pow(1 - tv / 0.07, 1.4) * 7 * smooth(8, 18, e); }
+        // the rim is always deep water: the sea runs on past the map
+        d = Math.max(d, smooth(16, 2, rim) * basin * 0.85);
+        y = W - Math.max(0.1, d);
+      }
+      h[i] = Math.max(W - 24, y);
+      this.wet[i] = sd > 0 ? this.wet[i] : 1;
+    }
+  }
+
+  /**
+   * Dress the sea floor of an ocean region: sand over the shelves, gravel and coral rubble in patches, dark silt in
+   * the deep basins, bare rock on the steep walls and along outcrop ridges; weed-grown boulders on the outcrops and
+   * sea stacks standing off the island shores (they are solid: walkers and the golem go round them).
+   */
+  private seabed(r: Rand) {
+    const N = this.N, W = this.water, n = this.noise, h = this.h, key = this.biome.key;
+    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+      const i = z * N + x; if (h[i] >= W) continue;
+      const d = W - h[i], sl = this.slope(x, z), v = n.fbm2(x * 0.09 + 200, z * 0.09, 3), rv = n.ridge2(x * 0.05 + 77, z * 0.05, 3);
+      let k: number = B.SAND;
+      if (sl > 0.8 || (rv > 0.74 && d > 1.4)) k = B.ROCK;
+      else if (d > 9 && v > -0.2) k = B.MUD;
+      else if (v > 0.36) k = B.GRAVEL;
+      this.b[i] = k; this.fert[i] = 0;
+    }
+    const mat = key === 'ocean' ? RockMat.BASALT : RockMat.LIMESTONE, L = this.landing;
+    const placed: [number, number][] = [];
+    const seat = (x: number, z: number) => this.groundSmooth(x, z);
+    for (let t = 0, made = 0; t < 400 && made < 16; t++) {
+      const x = r.range(6, N - 6), z = r.range(6, N - 6), i = Math.floor(z) * N + Math.floor(x), d = W - h[i];
+      if (d < 1.2 || d > 13 || this.b[i] !== B.ROCK || placed.some(([px, pz]) => hyp(px - x, pz - z) < 6)) continue;
+      const R = r.range(0.7, 1.8);
+      this.rocks.push({ kind: 'boulder', mat, x, y: seat(x, z) - R * 0.25, z, sx: R * r.range(1, 1.3), sy: R * r.range(0.6, 0.9), sz: R, yaw: r.range(0, 6.28), tilt: r.range(0, 0.3), tiltDir: r.range(0, 6.28), seed: r.int(1, 1e9), moss: r.range(0.5, 0.9), wet: 1 });
+      placed.push([x, z]); made++;
+    }
+    // sea stacks: off the shores of the islands, in a few metres of water, standing well clear of the landing
+    for (const o of this.isles) for (let t = 0, k = o.r > 8 ? r.int(1, 3) : r.int(0, 1); t < 60 && k > 0; t++) {
+      const a = r.range(0, 6.28), dd = o.r + r.range(3, 9), x = o.x + Math.cos(a) * dd, z = o.z + Math.sin(a) * dd;
+      if (x < 4 || z < 4 || x > N - 4 || z > N - 4 || hyp(x - L.x, z - L.z) < 16) continue;
+      const i = Math.floor(z) * N + Math.floor(x), d = W - h[i];
+      if (d < 0.5 || d > 4 || placed.some(([px, pz]) => hyp(px - x, pz - z) < 5)) continue;
+      const R = r.range(0.9, 1.6), y = seat(x, z) - 0.2;
+      this.rocks.push({ kind: 'spire', mat, x, y, z, sx: R, sy: d + r.range(2.5, 5.5), sz: R * r.range(0.85, 1.15), yaw: r.range(0, 6.28), tilt: r.range(0, 0.06), tiltDir: r.range(0, 6.28), seed: r.int(1, 1e9), moss: 0.45, wet: 1 });
+      for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) { const X = Math.floor(x) + dx, Z = Math.floor(z) + dz; if (this.inside(X, Z) && hyp(X + 0.5 - x, Z + 0.5 - z) < R * 0.85) { this.solid[Z * N + X] = 1; this.b[Z * N + X] = B.ROCK; } }
+      placed.push([x, z]); k--;
     }
   }
 }

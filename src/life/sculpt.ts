@@ -14,7 +14,7 @@ import { shagCoat, mane, tassel, crest, wattle, tailFin, brushTail, sail, frill,
 import { BEASTS, type BeastForm } from './bestiary';
 import { CAGES, cageProfile, cageHead, morphCage, cageOrbit } from './cage';
 import { growBio } from './bioparts';
-import { growBody, markBody, headFans, greatHorn, skullCrest, helm, noseleaf, type BodyMark } from './forms';
+import { growBody, markBody, headFans, greatHorn, skullCrest, helm, noseleaf, barbels, mandiblePlates, type BodyMark } from './forms';
 import { SkinB, Page, type Region, KIT, oct, blade, sac, spline, chainWeights, ball, sheet, transport, hash, gauss, sub, addV, scl, norm, cross, len, lerpV, pageTexture, mixC, type V3, type Wt } from './kit';
 
 const TAU = Math.PI * 2;
@@ -467,6 +467,7 @@ function vertebrate(S: Ctx) {
     if (!hom) b += 0.1 * gauss(t, tChest + 0.01, 0.05) * gauss(aa, Math.PI, 0.7); // brisket
     if (hump) b += 0.09 * gauss(t, tChest - 0.04, 0.1) * gauss(a, 0, 0.95); // the muscle mound over the shoulders
     if (amph) b += wart(a, t);
+    if (rig.length > 12 && t > tNeck - 0.08 && t < tChest - 0.01) b += 0.07 * Math.max(0, Math.sin(t * 260)) * (0.6 + 0.4 * Math.cos(a)); // titan neck folds
     return b;
   };
   const CS = sp.t.map((t) => interp(cts, cs, t));
@@ -604,7 +605,7 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
   const hk = hom ? 1.18 : 1;
   const z0 = hl * 0.38;
   // a hand-blocked cage head for the skull families that have one (cage.ts); its stations stand in for the loft's
-  const cageK = hom || flat || bug ? '' : BF?.earK ? 'bat' : BF && beak ? 'reptile' : cat ? 'felid' : bear ? 'brute' : hoof ? 'bovid' : '';
+  const cageK = hom || flat || bug ? '' : BF?.cageFam ? BF.cageFam : BF?.earK ? 'bat' : BF && beak ? 'reptile' : cat ? 'felid' : bear ? 'brute' : hoof ? 'bovid' : '';
   const CG = cageK ? morphCage(CAGES[cageK], BF?.cage) : undefined, cp = CG ? cageProfile(CG, hl, hw * hk, hh * hk) : undefined;
   const hz = cp ? cp.hz : cat ? [-0.2, -0.04, 0.12, 0.28, 0.39, 0.47, 0.58, 0.66].map((k) => k * hl) : [-hl * 0.24, -hl * 0.06, hl * 0.14, hl * 0.3, hl * 0.44, z0 + sl * 0.45, z0 + sl * 0.8, z0 + sl * (beak ? 1.15 : 1.0)];
   const hy = cp ? cp.hy : F.hy.map((k) => k * hh), rx = cp ? cp.rx : F.rx.map((k) => k * hw * hk), ry = cp ? cp.ry : F.ry.map((k) => k * hh * hk);
@@ -870,6 +871,8 @@ function vertHead(S: Ctx, o: { head: V3; hl: number; hw: number; hh: number; sl:
     else if (p.k === 'headFans') headFans(S, HC, p);
     else if (p.k === 'helm') helm(S, HC, ctrl, rx, ry, p.ramp);
     else if (p.k === 'noseleaf') noseleaf(S, HC);
+    else if (p.k === 'barbels') barbels(S, HC, p.n);
+    else if (p.k === 'mandibles') mandiblePlates(S, HC);
   }
   if (has(d, 'electro')) {
     const G = S.fixed('GLOW', 6, 6);
@@ -972,6 +975,7 @@ function vertLeg(S: Ctx, lg: Rig['legs'][number], lt: number, fur: boolean) {
     else if (hind && !bird) b += 0.22 * gauss(t, m1, 0.1) * gauss(aa, Math.PI, 0.9);
     else if (!bird) b += 0.12 * gauss(t, m1, 0.1) * gauss(a, 0, 0.9);
     if (bird) b += 0.16 * gauss(t, cts[1] * 0.9, 0.1);
+    if (S.rig.length > 12) for (const k of tj) b += 0.06 * Math.max(0, Math.sin(t * 160)) * gauss(t, k, 0.06); // wrinkled skin rings at the joints
     if (fur && t < 0.85) b += furF(a, t) * (bear || has(d, 'shaggy') ? 0.5 : 0.25);
     return b;
   };
@@ -989,6 +993,8 @@ function vertLeg(S: Ctx, lg: Rig['legs'][number], lt: number, fur: boolean) {
   if (!S.paints.some((p) => (p as any).LIMB)) { const p: Paint = () => {
     const lo: HideOpt = { L: sp.L, rad: () => lt * 0.45, seed: 29, kind: 'limb', belly: 2.4, noPattern: d.pattern !== 'stripes' && d.pattern !== 'rings' && d.pattern !== 'spots' && !amph };
     hide(S, LIMB, lo); if (amph) amphSkin(S, LIMB, 0.7);
+    // titans wade: dried mud caked up the lower legs, ragged at its upper edge
+    if (S.rig.length > 12) { const M = RAMPS.soil as unknown as number[]; for (let y = 0; y < LIMB.h; y++) for (let x = 0; x < LIMB.w; x++) { const f = y / LIMB.h; if (f > 0.68 + 0.05 * Math.sin(x * 0.7) + 0.03 * Math.sin(x * 2.3)) LIMB.set(x, y, M[f > 0.9 ? 2 : (x + y) % 5 === 0 ? 4 : 3]); } }
     // bare-legged species: the coat ends at the elbow and knee, wrinkled skin below with tendons down the back
     if (BFL?.limbSkin) {
       const keep = keepRows(LIMB, 0, Math.floor(LIMB.h * 0.4)); hide(S, LIMB, { ...lo, cover: 'skin', noPattern: true }); keep();

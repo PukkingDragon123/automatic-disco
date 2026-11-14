@@ -12,6 +12,7 @@ import { Eco, WILD_CAP } from '../eco/eco';
 import { profileOf, activity } from '../eco/profile';
 import { wildDesign, mutate, divergence, nameFor, type Role } from '../life/design';
 import { Rand, clamp, hash01 } from '../core/rand';
+import { BEASTS } from '../life/bestiary';
 import { B } from '../world/blockTex';
 import type { Palette } from '../world/palette';
 
@@ -21,7 +22,7 @@ export interface WorldHooks {
   onDamage?(c: Creature, amount: number, by: Creature | null): void;
 }
 
-const ROLE_GROUPS: Record<Role, [number, number, number]> = { mite: [4, 3, 5], grazer: [3, 3, 5], tank: [2, 2, 3], stalker: [3, 1, 2], apex: [1, 1, 1], scavenger: [3, 1, 2], flyer: [2, 3, 5], snail: [3, 2, 3] };
+const ROLE_GROUPS: Partial<Record<Role, [number, number, number]>> = { mite: [4, 3, 5], grazer: [3, 3, 5], tank: [2, 2, 3], stalker: [3, 1, 2], apex: [1, 1, 1], scavenger: [3, 1, 2], flyer: [2, 3, 5], snail: [3, 2, 3] };
 
 export class World {
   readonly scene = new THREE.Scene();
@@ -75,7 +76,7 @@ export class World {
       const d = wildDesign(role, R.pal, this.seed * 977 + i * 131);
       const sp = this.reg.add(d, 'wild', null, role, 0);
       this.roles.set(sp.id, role);
-      const [groups, a, b] = ROLE_GROUPS[role];
+      const [groups, a, b] = ROLE_GROUPS[role] ?? [1, 1, 2];
       const ng = Math.max(1, Math.round(groups * bi.fauna));
       for (let g = 0; g < ng; g++) {
         const at = this.spawnSpot(r, role === 'apex' ? 34 : 16, sp);
@@ -91,6 +92,29 @@ export class World {
         }
       }
     });
+    this.spawnTitans(r);
+  }
+
+  /** titans: rare colossi, by biome (0..2 per region; n forces the count) */
+  spawnTitans(r: Rand, n?: number, kind?: string) {
+    const R = this.region;
+    const BY: Partial<Record<string, string>> = { marsh: 'mirewalker', coast: 'mirewalker', meadow: 'grovebacker', jungle: 'grovebacker', highland: 'cragstrider', desert: 'cragstrider' };
+    kind ??= BY[R.biome.key];
+    if (!kind || !BEASTS[kind]) return;
+    n ??= r.chance(0.3) ? 0 : r.chance(0.7) ? 1 : 2;
+    if (n <= 0) return;
+    const d = wildDesign(kind, R.pal, this.seed * 977 + 911);
+    const sp = this.reg.add(d, 'wild', null, 'titan', 0);
+    this.roles.set(sp.id, 'titan' as Role);
+    const at = this.spawnSpot(r, 36, sp);
+    if (!at) return;
+    const herd = this.newHerd();
+    for (let k = 0; k < n; k++) {
+      const c = this.spawn(sp, 'wild', at[0] + k * 9 - 4, at[1] + r.range(-4, 4), false);
+      if (!c) continue;
+      c.herd = herd; c.energy = r.range(0.6, 0.95); c.titan = true;
+      this.herds.get(herd)!.push(c);
+    }
   }
 
   private spawnSpot(r: Rand, minFromLanding: number, sp: Species): [number, number] | null {
@@ -279,7 +303,8 @@ export class World {
       if (movers.length >= 12) break;
     }
     this.flora.setPush(movers);
-    this.flora.tick(dt);
+    // plants regrow at the season's pace (bloom quick, frost not at all)
+    this.flora.tick(dt * this.eco.growK);
     this.terrain.update(this.time);
     this.terrain.setStage(this.eco.level);
     this.flora.update(this.time, cam);
@@ -289,7 +314,9 @@ export class World {
     const st = c.st, wild = c.faction === 'wild', asleep = c.mind === 'sleep';
     const running = c.mind === 'flee' || c.mind === 'hunt';
     // (wild hunters live on feast and famine: a slower burn between kills)
-    const drain = clamp(0.0022 + st.upkeep * 0.01, 0.0018, wild ? 0.0055 : 0.009) * (running ? 1.6 : asleep ? 0.35 : c.mind === 'rest' ? 0.7 : 1) * (wild && c.diet === 'carn' ? 0.6 : 1);
+    // (hibernating through the frost: the heart barely beats)
+    const hib = asleep && wild && this.eco.sfx.active < 1 && profileOf(c, this).hibernate;
+    const drain = clamp(0.0022 + st.upkeep * 0.01, 0.0018, wild ? 0.0055 : 0.009) * (running ? 1.6 : hib ? 0.08 : asleep ? 0.35 : c.mind === 'rest' ? 0.7 : 1) * (wild && c.diet === 'carn' ? 0.6 : 1);
     c.energy -= drain * dt;
     /** a hurt that may be the last: name the cause first so the census can count it */
     const hurt = (amt: number, cause: string) => { if (c.hp - amt * (1 - st.armor) <= 0) c.dieCause = cause; this.damage(c, amt, null); };
@@ -303,10 +330,10 @@ export class World {
   }
   /** a wild animal's thirst, tiredness and gut */
   private needs(c: Creature, dt: number, asleep: boolean, running: boolean, hurt: (amt: number, cause: string) => void) {
-    const P = profileOf(c, this), eco = this.eco, bi = this.region.biome;
+    const P = profileOf(c, this), eco = this.eco, bi = this.region.biome, fx = eco.sfx;
     const sun = Math.max(0, Math.cos((this.day - 0.25) * Math.PI * 2));
     // thirst: faster in heat, at a run, in daylight; snails and mites drink the damp
-    c.thirst += dt * P.thirstK / (this.dayLen * 0.8) * (1 + bi.temp * 0.5 * sun) * (running ? 1.6 : asleep ? 0.25 : 1);
+    c.thirst += dt * P.thirstK / (this.dayLen * 0.8) * (1 + bi.temp * 0.5 * sun) * (running ? 1.6 : asleep ? (P.hibernate && fx.active < 1 ? 0.05 : 0.25) : 1) * fx.thirst;
     if (P.thirstK < 0.5 && eco.moisture(c.x, c.z) > 0.55) c.thirst -= dt * 0.01;
     if (c.walker.swim && this.region.isWater(c.x, c.z)) c.thirst -= dt * 0.05;
     c.thirst = clamp(c.thirst, 0, 1);
@@ -318,10 +345,11 @@ export class World {
     // what goes in comes out: dung feeds the soil and drops the seeds it carried
     if (c.seed >= 0) { c.seedT -= dt; if (c.seedT <= 0) { eco.dung(c.x, c.z, 0.5, c.seed); c.seed = -1; c.gut *= 0.5; } }
     if (c.gut > 0.9) { eco.dung(c.x, c.z, c.gut, -1); c.gut = 0; }
-    if (c.breedCD > 0) c.breedCD -= dt;
+    if (c.breedCD > 0) c.breedCD -= dt * (1 + Math.max(0, fx.mate) * 2.5);
     if (c.cdDisplay > 0) c.cdDisplay -= dt;
     if (c.cdHunt > 0) c.cdHunt -= dt;
     if (c.cdCurl > 0) c.cdCurl -= dt;
+    if (c.cdSeason > 0) c.cdSeason -= dt;
   }
 }
 

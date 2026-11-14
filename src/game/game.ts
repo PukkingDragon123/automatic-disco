@@ -832,6 +832,7 @@ export class Game implements Screen {
     }
   }
   private daylight() {
+    if ((this as unknown as { climate?: { daylight(): boolean } }).climate?.daylight()) return; // game/climate.ts lights the world
     const d = this.world.day;
     const ang = (d - 0.25) * Math.PI * 2;
     const elev = Math.cos(ang);

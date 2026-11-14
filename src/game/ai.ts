@@ -43,6 +43,70 @@ function travel(c: Creature, w: World, x: number, z: number, plan: Mind) {
   setMind(c, 'travel'); c.actT = 0;
 }
 function dist(c: Creature, x: number, z: number) { return Math.hypot(x - c.x, z - c.z); }
+/** how awake the climate lets it be: the eclipse puts the day-animals to sleep and lets the night ones roam all day,
+ *  frost sends the cold-blooded into hibernation, the blood tide keeps the hunters up */
+function awakeK(c: Creature, w: World, P: Profile) {
+  let a = activity(P.sched, w.day);
+  const cl = w.eco.climate;
+  if (cl.season === 'eclipse') a = P.sched === 'night' ? 1 : P.sched === 'dusk' ? Math.max(a, 0.8) : a * 0.2;
+  if (cl.season === 'frost' || cl.temp < -4) a = P.hibernate ? 0 : a * 0.8;
+  if (cl.season === 'bloodtide' && P.guild === 'predator') a = Math.max(a, 0.85);
+  return a;
+}
+/** flee from a place (fire, a lightning strike, a panic) */
+function boltFrom(c: Creature, w: World, x: number, z: number, t = 3) {
+  if (c.mind !== 'flee') emote(c, Emote.ALARM, 1.8);
+  c.target = 0; c.scareX = x; c.scareZ = z; c.fleeT = t + Math.random(); c.path = null; c.plan = null;
+  setMind(c, 'flee');
+  remember(mem(c).danger, x, z, w.time, 1);
+}
+/** the season's and the weather's dangers: fire, lightning, rising water, the eclipse's panic. true when acted */
+function seasonDanger(c: Creature, w: World, P: Profile): boolean {
+  if (c.mind === 'flee' || c.titan) return false;
+  const eco = w.eco, cl = eco.climate, R = w.region;
+  const fire = eco.fireNear(c.x, c.z, 13);
+  if (fire) { boltFrom(c, w, fire[0], fire[1], 4); pointAlarm(c, w, fire[0], fire[1]); return true; }
+  const s = eco.strikeNear(c.x, c.z, 24);
+  if (s && c.mind !== 'sleep' || s && (s.x - c.x) ** 2 + (s.z - c.z) ** 2 < 100) { boltFrom(c, w, s!.x, s!.z, 3); pointAlarm(c, w, s!.x, s!.z); return true; }
+  // the false night: day-animals that are still up lose their heads now and then
+  if (cl.season === 'eclipse' && P.sched === 'day' && c.mind !== 'sleep' && Math.random() < 0.02) {
+    const a = Math.random() * TAU; boltFrom(c, w, c.x + Math.cos(a) * 3, c.z + Math.sin(a) * 3, 2.5); pointAlarm(c, w, c.x + Math.cos(a) * 3, c.z + Math.sin(a) * 3); return true;
+  }
+  // floodwater: up to high ground
+  if (c.cdSeason <= 0 && !c.walker.swim && !c.canFly) {
+    const k = eco.cell(c.x, c.z);
+    if (eco.floodF[k] > 0.2 || (eco.level > 0.22 && R.heightAt(c.x, c.z) < eco.waterLevel(c.x, c.z) + 0.6)) {
+      c.cdSeason = 25;
+      let bx = c.x, bz = c.z, bh = R.heightAt(c.x, c.z);
+      for (let n = 0; n < 10; n++) { const a = Math.random() * TAU, d = 6 + Math.random() * 20, x = clamp(c.x + Math.cos(a) * d, 3, R.N - 3), z = clamp(c.z + Math.sin(a) * d, 3, R.N - 3); const h = R.heightAt(x, z) - d * 0.02; if (!R.isWater(x, z) && !R.isSolid(x, z) && h > bh) { bh = h; bx = x; bz = z; } }
+      if (bx !== c.x) { travel(c, w, bx, bz, 'rest'); emote(c, Emote.SEARCH, 2); return true; }
+    }
+  }
+  void P;
+  return false;
+}
+/** a place-alarm through the herd (fire, thunder, panic) */
+function pointAlarm(c: Creature, w: World, x: number, z: number) {
+  const h = c.herd ? w.herds.get(c.herd) : null;
+  if (h) for (const o of h) {
+    if (o === c || o.dead || o.mind === 'flee' || o.alarmT > 0 || (o.x - c.x) ** 2 + (o.z - c.z) ** 2 > 256) continue;
+    o.alarmT = 0.15 + Math.random() * 0.5; o.alarmBy = 0; o.scareX = x; o.scareZ = z;
+  }
+}
+/** shelter from the weather: under a tree, against a rock, or huddled with the herd in the snow */
+function goShelter(c: Creature, w: World, P: Profile, snow: boolean): boolean {
+  c.cdSeason = 30;
+  if (snow && c.herd && (P.social === 'herd' || P.social === 'swarm')) {
+    const hc = w.herdCenter(c);
+    if (hc) { const a = (c.id * 2.399) % TAU, r = 0.6 + c.radius * 1.4; const x = hc[0] + Math.cos(a) * r, z = hc[1] + Math.sin(a) * r; if (dist(c, x, z) > 1.5) { travel(c, w, x, z, 'rest'); return true; } setMind(c, 'rest'); return true; }
+  }
+  const t = treeNear(c, w, 16);
+  let spot: [number, number] | null = t ? [t[0] + Math.cos(c.id) * 1.3, t[1] + Math.sin(c.id) * 1.3] : null;
+  if (!spot) for (const r of w.region.rocks) { if (r.sy < 1.4 || Math.abs(r.x - c.x) > 18 || Math.abs(r.z - c.z) > 18) continue; const a = Math.atan2(c.z - r.z, c.x - r.x), o = Math.max(r.sx, r.sz) * 0.6 + c.radius + 0.4; spot = [r.x + Math.cos(a) * o, r.z + Math.sin(a) * o]; break; }
+  if (spot && dist(c, spot[0], spot[1]) > 1.4) { travel(c, w, spot[0], spot[1], 'rest'); emote(c, Emote.SHADE, 2); return true; }
+  setMind(c, 'rest');
+  return true;
+}
 /** where a target id is: the golem, a machine or a creature */
 function tAt(w: World, id: number): { x: number; z: number; radius: number } | null {
   if (id === GOLEM) return GOLEM_REF.g;
@@ -62,6 +126,9 @@ function threatOf(c: Creature, w: World): Creature | null {
     if (o.faction === 'wild' && c.faction === 'wild' && o.sp === c.sp) return;
     const dangerous = (o.diet === 'carn' || o.diet === 'omni' || o.faction !== 'wild') && o.mass > c.mass * 0.55;
     const attacking = o.target === c.id && (o.mind === 'hunt' || o.mind === 'attack' || o.mind === 'stalk');
+    // a titan's feet: everything gets out of the way (predators keep well clear)
+    const trample = o.titan && !c.titan && (o.x - c.x) ** 2 + (o.z - c.z) ** 2 < (o.radius + (c.diet === 'carn' ? 9 : 4)) ** 2;
+    if (trample) { const d = (o.x - c.x) ** 2 + (o.z - c.z) ** 2; if (d < bd) { bd = d; best = o; } return; }
     if (!dangerous && !attacking) return;
     if (c.diet === 'carn' && o.mass < c.mass * 1.2 && !attacking) return;
     const d = (o.x - c.x) ** 2 + (o.z - c.z) ** 2;
@@ -150,7 +217,7 @@ function bolt(c: Creature, w: World, by: number, t = 3) {
     const coming = !!th && w.get(by)?.target === c.id;
     if (close || coming) { curlUp(c, w, by); return; }
   }
-  c.target = by; c.fleeT = t + Math.random(); c.path = null; c.plan = null;
+  c.target = by; c.fleeT = (t + Math.random()) * (w.eco.climate.season === 'bloodtide' ? 1.8 : 1); c.path = null; c.plan = null;
   if (c.mind !== 'flee') emote(c, Emote.ALARM, 1.8);
   setMind(c, 'flee');
   const th = tAt(w, by);
@@ -190,7 +257,7 @@ function preyFor(c: Creature, w: World): Creature | null {
     if (o.dead || o === c || o.air > 1.5) return;
     if (o.sp === c.sp) return;
     if (c.faction !== 'wild' && o.faction === c.faction) return;
-    if (o.mass > c.mass * (c.boss ? 3 : 1.6)) return;
+    if (o.titan || o.mass > c.mass * (c.boss ? 3 : 1.6) * (c.rage > 0.5 ? 1.8 : 1)) return;
     if (o.canFly && !c.canFly && o.mind !== 'sleep') return;
     // a plated roller: hardly worth the teeth (mostly left alone, never while it is balled up)
     if (o.roller && (o.mind === 'curl' || (o.id + c.id) % 4 !== 0)) return;
@@ -345,9 +412,15 @@ function thinkOwned(c: Creature, w: World) {
 }
 
 function thinkWild(c: Creature, w: World) {
-  const P = profileOf(c, w), eco = w.eco;
-  const awake = activity(P.sched, w.day);
+  const P = profileOf(c, w), eco = w.eco, cl = eco.climate;
+  const awake = awakeK(c, w, P);
   const hunger = 1 - c.energy;
+  // the season in the blood: the blood tide's frenzy (hunters) and stampedes (herds); bioluminescence in the dark
+  const tide = cl.season === 'bloodtide';
+  c.titan = P.titan;
+  c.rage = tide ? (P.guild === 'predator' ? 1 : c.mind === 'flee' ? 0.6 : 0) : c.mind === 'flee' && c.fleeT > 3 ? 0.25 : 0;
+  c.lumen = P.glow && c.mind !== 'sleep' && (cl.season === 'eclipse' || cl.light < 0.35);
+  if (tide && P.guild === 'predator' && c.emote === Emote.NONE && Math.random() < 0.01) emote(c, Emote.ANGRY, 2);
   // ---- the herd saw the golem strike one of them
   if (c.herd && c.mind !== 'flee' && c.alarmT <= 0) {
     const h = w.herds.get(c.herd);
@@ -356,8 +429,8 @@ function thinkWild(c: Creature, w: World) {
       if (G && (P.guild !== 'predator' || c.mass < G.mass)) { bolt(c, w, GOLEM, 4); alarm(c, w, GOLEM); return; }
     }
   }
-  // ---- danger first
-  const th = threatOf(c, w);
+  // ---- danger first (a titan fears nothing)
+  const th = c.titan ? null : threatOf(c, w);
   if (th && c.mind === 'curl' && c.actT < 14 && keepGoing(c, w, P, awake)) { c.target = th.id; return; }
   if (th) {
     // cornered predators and big animals fight back; mothers stand over their young
@@ -372,6 +445,8 @@ function thinkWild(c: Creature, w: World) {
   }
   // ---- machines
   if (!th && machineMind(c, w, P)) return;
+  // ---- the weather and the season: fire, lightning, floodwater, the eclipse's panic
+  if (seasonDanger(c, w, P)) return;
   if (c.mind === 'flee' && c.fleeT > 0) return;
   // a hunter in view but keeping its distance: stop and watch it (head up, ears up)
   if (watched && (c.mind === 'idle' || c.mind === 'wander' || c.mind === 'graze') && Math.random() < 0.5) { const o = watched as Creature; setMind(c, 'idle'); c.goalX = o.x; c.goalZ = o.z; c.target = 0; c.alarmBy = -o.id; return; }
@@ -388,12 +463,18 @@ function thinkWild(c: Creature, w: World) {
   let uEat = Math.pow(hunger, 1.4) * (0.35 + 0.75 * awake) + (hunger > 0.78 ? 0.7 : 0) + (hunger > 0.9 ? 1.2 : 0);
   let uDrink = Math.pow(c.thirst, 1.3) * 1.25 + (c.thirst > 0.85 ? 0.8 : 0) + (morning(P.sched, w.day) && c.thirst > 0.12 ? 0.35 : 0) + (evening(P.sched, w.day) && c.thirst > 0.25 ? 0.5 : 0);
   const uSleep = sleepy * (1 - Math.max(0, hunger - 0.7)) - (c.thirst > 0.8 ? 0.4 : 0);
-  const hot = w.region.biome.temp > 0.6 || eco.moisture(c.x, c.z) < 0.25;
-  const uShade = P.shade && hot && midday(w.day) && awake > 0.5 ? 0.55 - hunger * 0.4 - c.thirst * 0.3 : 0;
-  const uMate = c.mature && c.preg <= 0 && c.breedCD <= 0 && c.energy > 0.66 && c.thirst < 0.5 && awake > 0.4 ? 0.45 + eco.seasonK * 0.1 : 0;
-  if (P.guild === 'predator' || P.guild === 'scavenger') uEat *= c.cdHunt > 0 ? 0.4 : 1;
+  const heat = cl.season === 'highsun' || cl.temp > 30;
+  const hot = w.region.biome.temp > 0.6 || eco.moisture(c.x, c.z) < 0.25 || heat;
+  const uShade = (P.shade || heat && !c.canFly && !c.titan) && hot && midday(w.day) && awake > 0.5 ? (heat ? 0.75 : 0.55) - hunger * 0.4 - c.thirst * 0.3 : 0;
+  const uMate = c.mature && c.preg <= 0 && c.breedCD <= 0 && c.energy > 0.66 && c.thirst < 0.5 && awake > 0.4 ? Math.max(0, 0.45 + eco.sfx.mate) : 0;
+  if (P.guild === 'predator' || P.guild === 'scavenger') uEat *= c.cdHunt > 0 && !tide ? 0.4 : 1;
+  // the red moon: hunters hunt whether they are hungry or not
+  if (tide && P.guild === 'predator') uEat += 0.65;
+  const wx = cl.weather, snow = wx === 'snow';
+  const uShelter = c.titan || c.cdSeason > 0 || c.mind === 'rest' ? 0 : (wx === 'storm' ? 0.85 : snow ? 0.6 : wx === 'ash' || wx === 'dust' ? 0.5 : wx === 'rain' || wx === 'redrain' ? 0.3 : 0) - hunger * 0.3;
   if (P.thirstK < 0.5 && eco.moisture(c.x, c.z) > 0.55) uDrink *= 0.3;
-  const best = Math.max(uEat, uDrink, uSleep, uShade, uMate, 0.22);
+  const best = Math.max(uEat, uDrink, uSleep, uShade, uMate, uShelter, 0.22);
+  if (best === uShelter && uShelter > 0.25 && goShelter(c, w, P, snow)) return;
   if (best === uSleep && uSleep > 0.3 && goSleep(c, w, P)) return;
   if (best === uDrink && uDrink > 0.25 && goDrink(c, w, P)) return;
   if (best === uEat && uEat > 0.2 && forage(c, w, P, hunger)) return;
@@ -419,7 +500,7 @@ function keepGoing(c: Creature, w: World, P: Profile, awake: number): boolean {
     case 'drink': return c.thirst > 0.03 && c.actT < 20;
     case 'sleep': {
       const wake = (awake > 0.55 && c.tired < 0.45) || (c.tired <= 0.02 && awake > 0.25) || c.energy < 0.12 || c.thirst > 0.92 || c.aggro > 0;
-      if (wake) { c.emote = Emote.NONE; return false; }
+      if (wake) { c.emote = Emote.NONE; if (w.eco.climate.season === 'thaw' && P.hibernate) emote(c, Emote.HUNGRY, 2.5); return false; }
       return true;
     }
     case 'watch': {
@@ -475,7 +556,7 @@ function juvenile(c: Creature, w: World, m: Creature) {
 function goSleep(c: Creature, w: World, P: Profile): boolean {
   const eco = w.eco;
   // an exhausted animal in its waking hours just naps where it is
-  if (activity(P.sched, w.day) > 0.55) { setMind(c, 'sleep'); emote(c, Emote.SLEEP, 3); return true; }
+  if (awakeK(c, w, P) > 0.55) { setMind(c, 'sleep'); emote(c, Emote.SLEEP, 3); return true; }
   if ((P.social === 'herd' || P.social === 'swarm' || P.social === 'pack') && c.herd && !P.den && !c.rooster) {
     // the herd beds down together; one keeps watch
     // a fresh bed each night (a spot older than most of a day is last night's)
@@ -614,7 +695,7 @@ function rival(c: Creature, w: World, P: Profile): boolean {
   const o = r as Creature;
   c.target = o.id; o.target = c.id; setMind(c, 'display'); setMind(o, 'display'); o.path = null; c.path = null;
   emote(c, Emote.ANGRY, 3); emote(o, Emote.ANGRY, 3);
-  c.cdDisplay = o.cdDisplay = 40 + Math.random() * 30;
+  c.cdDisplay = o.cdDisplay = (w.eco.climate.season === 'bloodtide' ? 12 : 40) + Math.random() * 30;
   return true;
 }
 
@@ -630,7 +711,13 @@ function forage(c: Creature, w: World, P: Profile, hunger: number): boolean {
       if (pr) {
         const d = dist(c, pr.x, pr.z);
         c.target = pr.id; c.path = null;
-        if (d < 4 + c.speed * 0.5) setMind(c, 'hunt'); else setMind(c, 'stalk');
+        if (d < 4 + c.speed * 0.5 || c.rage > 0.5) setMind(c, 'hunt'); else setMind(c, 'stalk');
+        // the red moon: the pack runs together
+        if (c.rage > 0.5) w.near(c.x, c.z, 26, (o) => {
+          if (o === c || o.dead || o.faction !== 'wild' || o.diet !== 'carn' || o.mind === 'hunt' || o.mind === 'eat' || o.mind === 'attack' || o.titan) return;
+          if (o.sp !== c.sp && o.herd !== c.herd) return;
+          o.target = pr.id; o.path = null; setMind(o, 'hunt'); emote(o, Emote.ANGRY, 1.5);
+        });
         return true;
       }
       // lie in wait where the herds drink
@@ -674,7 +761,38 @@ function forage(c: Creature, w: World, P: Profile, hunger: number): boolean {
 
 /** the daily round: follow the herd, answer lures, patrol, drift home in the evening */
 function roam(c: Creature, w: World, P: Profile, awake: number) {
-  const eco = w.eco, R = w.region;
+  const eco = w.eco, R = w.region, cl = eco.climate;
+  // titans: a slow migration from one side of the region to the other, a long way round
+  if (P.titan) {
+    const L = leaderOf(w, c) ?? c;
+    if (L === c && (dist(c, c.homeX, c.homeZ) < 10 + c.radius || Math.random() < 0.01)) {
+      let bx = c.homeX, bz = c.homeZ, bs = -1e9;
+      for (let k = 0; k < 8; k++) {
+        const x = clamp(R.N - c.x + (Math.random() - 0.5) * R.N * 0.6, 12, R.N - 12), z = clamp(R.N - c.z + (Math.random() - 0.5) * R.N * 0.6, 12, R.N - 12);
+        if (R.isWater(x, z) && !c.walker.swim) continue;
+        const s = eco.vegetation(x, z) + Math.hypot(x - c.x, z - c.z) * 0.01 + Math.random() * 0.3;
+        if (s > bs) { bs = s; bx = x; bz = z; }
+      }
+      c.homeX = bx; c.homeZ = bz;
+    }
+    if (L !== c) { c.homeX = L.homeX; c.homeZ = L.homeZ; }
+    const a = Math.random() * TAU, d = Math.min(18, dist(c, c.homeX, c.homeZ));
+    const tx = c.x + (c.homeX - c.x) / Math.max(1, dist(c, c.homeX, c.homeZ)) * d + Math.cos(a) * 3, tz = c.z + (c.homeZ - c.z) / Math.max(1, dist(c, c.homeX, c.homeZ)) * d + Math.sin(a) * 3;
+    c.mind = 'wander'; c.goalX = clamp(tx, 4, R.N - 4); c.goalZ = clamp(tz, 4, R.N - 4); c.path = null;
+    return;
+  }
+  // high sun: the herds hang about the shrinking water
+  if (cl.season === 'highsun' && P.guild !== 'predator' && !c.canFly && Math.random() < 0.5) {
+    const at = waterFor(c, w);
+    if (at && dist(c, at[0], at[1]) < 60) { const a = Math.random() * TAU, r = 3 + Math.random() * 6; c.mind = 'wander'; c.goalX = clamp(at[0] + Math.cos(a) * r, 2, R.N - 2); c.goalZ = clamp(at[1] + Math.sin(a) * r, 2, R.N - 2); c.path = null; if (P.social === 'herd') { c.homeX = at[0]; c.homeZ = at[1]; } return; }
+  }
+  // frost: the herds drift down to the low, sheltered ground
+  if (cl.season === 'frost' && P.social === 'herd' && c.herd && leaderOf(w, c) === c && c.cdSeason <= 0) {
+    c.cdSeason = 40;
+    let bx = c.homeX, bz = c.homeZ, bs = -1e9;
+    for (let k = 0; k < 8; k++) { const a = Math.random() * TAU, d = 10 + Math.random() * 30, x = clamp(c.x + Math.cos(a) * d, 4, R.N - 4), z = clamp(c.z + Math.sin(a) * d, 4, R.N - 4); if (R.isWater(x, z) || R.isSolid(x, z)) continue; const s = -R.heightAt(x, z) * 0.15 + eco.coverAt(x, z) - dangerAt(c, w, x, z); if (s > bs) { bs = s; bx = x; bz = z; } }
+    c.homeX = bx; c.homeZ = bz;
+  }
   // lures: bait, watered ground, the Veyr's fields
   const pull = eco.pullFor(c.x, c.z, P.guild);
   if (pull && Math.random() < 0.6) {
@@ -698,7 +816,9 @@ function roam(c: Creature, w: World, P: Profile, awake: number) {
   if (Math.random() < 0.38) {
     const hc = L ? w.herdCenter(c) : null;
     const cx = hc ? hc[0] * 0.6 + c.homeX * 0.4 : c.homeX, cz = hc ? hc[1] * 0.6 + c.homeZ * 0.4 : c.homeZ;
-    const rad = L ? P.spread + c.size * 2 : P.guild === 'predator' ? P.range * 0.5 : 6 + c.size * 4;
+    // (the blood tide and the snow bunch the herds up tight)
+    const bunch = cl.season === 'bloodtide' || cl.weather === 'snow' ? 0.45 : 1;
+    const rad = (L ? P.spread + c.size * 2 : P.guild === 'predator' ? P.range * 0.5 : 6 + c.size * 4) * bunch;
     const [x, z] = placeFor(c, w, P, cx, cz, rad, 5);
     c.mind = 'wander'; c.goalX = x; c.goalZ = z; c.path = null;
     return;
@@ -791,7 +911,8 @@ export function act(c: Creature, w: World, dt: number) {
     c.alarmT -= dt;
     if (c.alarmT <= 0 && c.mind !== 'flee' && c.faction === 'wild' && c.mind !== 'attack') {
       const by = c.alarmBy, th = by === GOLEM ? GOLEM_REF.g : w.get(by);
-      if (th && (by === GOLEM || !(th as Creature).dead)) { bolt(c, w, by, 2.5); alarm(c, w, by, 10); }
+      if (by === 0 && !Number.isNaN(c.scareX)) { boltFrom(c, w, c.scareX, c.scareZ, 2.5); pointAlarm(c, w, c.scareX, c.scareZ); }
+      else if (th && (by === GOLEM || !(th as Creature).dead)) { bolt(c, w, by, 2.5); alarm(c, w, by, 10); }
     }
   }
   // pregnancy runs its course
@@ -838,7 +959,7 @@ export function act(c: Creature, w: World, dt: number) {
       c.face(c.x + Math.sin(a) * 4, c.z + Math.cos(a) * 4, dt * 0.3);
       break;
     }
-    case 'wander': if (go(c, w, c.goalX, c.goalZ, c.faction === 'wild' && c.energy < 0.3 ? 0.5 : 0.38, dt) < 0.8) c.mind = 'idle'; break;
+    case 'wander': if (go(c, w, c.goalX, c.goalZ, c.titan ? 0.3 : c.faction === 'wild' && c.energy < 0.3 ? 0.5 : c.rage > 0 ? 0.6 : 0.38, dt) < 0.8 + (c.titan ? c.radius : 0)) c.mind = 'idle'; break;
     case 'travel': {
       const late = c.plan === 'sleep' || c.plan === 'watch';
       const urgent = c.plan === 'drink' && c.thirst > 0.7 || c.energy < 0.2;
@@ -879,6 +1000,12 @@ export function act(c: Creature, w: World, dt: number) {
     }
     case 'flee': {
       c.stam = Math.max(0, c.stam - dt / (4 + c.st.stamina * 0.16));
+      // from a place: fire, a lightning strike, a panic
+      if (c.target === 0) {
+        if (Number.isNaN(c.scareX) || c.fleeT <= 0) { c.mind = 'idle'; c.scareX = NaN; break; }
+        fleeFrom(c, w, c.scareX, c.scareZ, dt);
+        break;
+      }
       if (c.target === GOLEM) {
         const G = GOLEM_REF.g;
         if (!G) { c.mind = 'idle'; c.target = 0; break; }
@@ -1003,7 +1130,7 @@ export function act(c: Creature, w: World, dt: number) {
         // the weaker one backs down; now and then it comes to blows
         const sc = (o: Creature) => o.mass * (o.hp / o.maxHp) * (0.7 + Math.random() * 0.6) * (Math.hypot(o.x - o.homeX, o.z - o.homeZ) < 10 ? 1.25 : 1);
         const [win, lose] = sc(c) >= sc(t) ? [c, t] : [t, c];
-        if (Math.random() < 0.25) { setMind(win, 'attack'); win.target = lose.id; } else setMind(win, 'idle');
+        if (Math.random() < (w.eco.climate.season === 'bloodtide' ? 0.7 : 0.25)) { setMind(win, 'attack'); win.target = lose.id; } else setMind(win, 'idle');
         bolt(lose, w, win.id, 3.5); emote(lose, Emote.TIRED, 2);
       }
       break;

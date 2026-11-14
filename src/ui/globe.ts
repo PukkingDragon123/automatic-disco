@@ -14,7 +14,7 @@ import { VEYR, RIVALS, PALETTES } from '../world/palette';
 import type { BiomeKey } from '../world/region';
 
 const MAXR = 16;
-const BIOMES: BiomeKey[] = ['meadow', 'jungle', 'savanna', 'marsh', 'highland', 'tundra', 'desert', 'crystal', 'ashland', 'coast'];
+const BIOMES: BiomeKey[] = ['meadow', 'jungle', 'savanna', 'marsh', 'highland', 'tundra', 'desert', 'crystal', 'ashland', 'coast', 'archipelago', 'reef', 'ocean'];
 export interface Globe { group: THREE.Group; mesh: THREE.Mesh; mat: THREE.ShaderMaterial; atmo: THREE.Mesh; refresh(): void; setHover(i: number): void; pick(ray: THREE.Ray): number }
 
 // ------------------------------------------------------------------------------------------------ shared GLSL
@@ -39,7 +39,7 @@ float bayer4(vec2 p) { vec2 q = mod(floor(p), 4.0); float i = q.x + q.y * 4.0;
 /** regions (warped Voronoi), biome traits, and the elevation of the ground (0 = sea level) */
 const WORLD = /* glsl */`
 uniform vec3 uC[${MAXR}]; uniform float uBi[${MAXR}]; uniform int uN; uniform vec3 uSeed;
-uniform vec3 uBR[10];
+uniform vec3 uBR[13];
 void regionAt(vec3 n, out int k, out float d1, out float d2) {
   vec3 w = n + (vec3(vn(n * 9.0 + uSeed), vn(n * 9.0 + uSeed + 31.7), vn(n * 9.0 + uSeed + 63.1)) - 0.5) * 0.09;
   d1 = 9.0; d2 = 9.0; k = 0;
@@ -129,7 +129,7 @@ const SURF_FRAG = /* glsl */`
 ${GN_DECL}
 ${NOISE3}
 ${WORLD}
-uniform vec3 uBA[10]; uniform vec3 uBB[10];
+uniform vec3 uBA[13]; uniform vec3 uBB[13];
 uniform float uSt[${MAXR}]; uniform int uHover; uniform float uT, uAsc, uG, uRelief;
 uniform vec3 uSun, uMoss, uVein, uCreep, uCreepVein, uSea, uSeaDeep, uShelf, uSnow, uRock, uSand, uAir;
 uniform mat4 modelMatrix;
@@ -348,13 +348,16 @@ export function makeGlobe(p: Planet, radius = 1, opts: { ascended?: boolean; orb
   const BA = [
     mix(pal.grass, BIOME_COL.meadow, 0.3), mix(f[1] ?? pal.grass, 0x1e3a22, 0.45), mix(pal.grassDry, BIOME_COL.savanna, 0.35), mix(pal.grass, pal.mud, 0.45), mix(pal.grass, pal.rock, 0.45),
     mix(pal.snow, pal.rock, 0.35), mix(pal.sand, BIOME_COL.desert, 0.3), mix(pal.crystal, pal.rock, 0.55), mix(pal.basalt, 0x4a4240, 0.4), mix(pal.grass, BIOME_COL.coast, 0.4),
+    // the sea regions (src/ocean): island ground on mostly open water
+    mix(pal.grass, BIOME_COL.coast, 0.4), mix(pal.sand, BIOME_COL.coast, 0.3), mix(pal.basalt, BIOME_COL.coast, 0.4),
   ];
   const BB = [
     mix(f[0] ?? pal.grass, 0x1a3a1c, 0.35), mix(f[2] ?? f[0], 0x163020, 0.25), mix(f[3] ?? f[0], pal.grassDry, 0.4), mix(f[4] ?? f[0], 0x223a2a, 0.4), mix(f[5] ?? f[0], 0x2a3a2a, 0.45),
     mix(pal.rock, 0x3a4448, 0.4), mix(pal.sand, 0xa07040, 0.4), linC(pal.crystal), mix(pal.basalt, 0x1a1414, 0.5), mix(f[6] ?? f[0], 0x1e3a2a, 0.35),
+    mix(f[6] ?? f[0], 0x1e3a2a, 0.35), mix(pal.sand, 0xa07040, 0.4), mix(pal.basalt, 0x1a1414, 0.5),
   ];
   // land bias, mountains, forest cover per biome
-  const BR = [[0.12, 0.6, 0.45], [0.16, 0.5, 0.95], [0.12, 0.4, 0.18], [-0.02, 0.15, 0.4], [0.2, 1.3, 0.3], [0.1, 0.8, 0.05], [0.12, 0.5, 0.0], [0.14, 1.0, 0.05], [0.12, 1.1, 0.02], [0.0, 0.4, 0.35]].map((v) => new THREE.Vector3(...v));
+  const BR = [[0.12, 0.6, 0.45], [0.16, 0.5, 0.95], [0.12, 0.4, 0.18], [-0.02, 0.15, 0.4], [0.2, 1.3, 0.3], [0.1, 0.8, 0.05], [0.12, 0.5, 0.0], [0.14, 1.0, 0.05], [0.12, 1.1, 0.02], [0.0, 0.4, 0.35], [-0.3, 0.5, 0.3], [-0.42, 0.2, 0.2], [-0.5, 0.6, 0.1]].map((v) => new THREE.Vector3(...v));
   const rival = RIVALS[p.seed % RIVALS.length];
   // impact basins (the planet has been struck before) and the cyclones of its weather
   let rs = (p.seed * 2654435761) >>> 0;

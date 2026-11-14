@@ -22,6 +22,7 @@ import { B } from '../world/blockTex';
 import { gbuf, GN_DECL } from '../gfx/gbuf';
 import { RAMPS, type RampName } from '../art/palette';
 import { clamp } from '../core/rand';
+import { Climate } from './climate';
 
 const TAU = Math.PI * 2;
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
@@ -261,11 +262,14 @@ function debrisTex(kind: 'leaf' | 'twig', ramp: RampName) {
 // ------------------------------------------------------------------------------------------------ rain streaks
 const RAIN_VERT = /* glsl */`
 attribute vec3 aSeed;
-uniform vec3 uCenter, uBox, uFall; uniform float uTime, uLen, uPx; uniform vec2 uRes;
-varying float vT;
+uniform vec3 uCenter, uBox, uFall; uniform float uTime, uLen, uPx, uWob, uEmb; uniform vec2 uRes;
+varying float vT; varying float vEmb;
 void main() {
   vec3 lo = uCenter - uBox * 0.5;
   vec3 p = lo + mod(aSeed * uBox + uFall * uTime - lo, uBox);
+  // flakes and ash flutter as they fall
+  p.x += sin(uTime * 1.7 + aSeed.y * 40.0) * uWob; p.z += cos(uTime * 1.3 + aSeed.x * 40.0) * uWob;
+  vEmb = step(1.0 - uEmb, aSeed.z);
   vec4 a = projectionMatrix * viewMatrix * vec4(p, 1.0);
   vec4 b = projectionMatrix * viewMatrix * vec4(p - normalize(uFall) * uLen * (0.7 + aSeed.x * 0.6), 1.0);
   vec2 d = (b.xy / b.w - a.xy / a.w) * uRes;
@@ -277,11 +281,12 @@ void main() {
   gl_Position = P;
 }`;
 const RAIN_FRAG = /* glsl */`
-uniform vec3 uCol;
-varying float vT;
+uniform vec3 uCol, uEmbCol; uniform float uHead;
+varying float vT; varying float vEmb;
 void main() {
-  float a = vT < 0.15 ? 0.9 : 0.6;
-  gl_FragColor = vec4(uCol * (vT < 0.15 ? 1.5 : 1.0) * a, a);
+  if (vEmb > 0.5) { gl_FragColor = vec4(uEmbCol, 1.0); return; }
+  float a = vT < uHead ? 0.9 : 0.6;
+  gl_FragColor = vec4(uCol * (vT < uHead ? 1.5 : 1.0) * a, a);
 }`;
 
 // ------------------------------------------------------------------------------------------------ per-creature state
@@ -319,6 +324,9 @@ export class Details {
   private rainMesh: THREE.Mesh; private rainU: Record<string, THREE.IUniform>;
   private rain = 0; private rainGoal = 0; private showerT = 0; private showerDur = 0; private nextShower: number; private forced: number | null = null;
   private wetGround = 0; private hitAcc = 0;
+  /** what falls (set by the climate): rain, red rain, snow, dust, ash; and how hard */
+  private pKind = 'rain'; private pAmt = 0; private fall = 0;
+  readonly climate: Climate;
   // trampled ground: where creatures walk often the grass wears to a dirt path (terrain eco map, blue channel)
   private wear: Float32Array; private wearDirty = false; private wearT = 0;
   private gatherT = 0;
@@ -351,7 +359,8 @@ export class Details {
     const seeds = new Float32Array(N * 3); for (let i = 0; i < seeds.length; i++) seeds[i] = Math.random();
     rg.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seeds, 3));
     rg.instanceCount = 0;
-    this.rainU = { uCenter: { value: new THREE.Vector3() }, uBox: { value: new THREE.Vector3(24, 16, 24) }, uFall: { value: new THREE.Vector3(1, -11, 0.4) }, uTime: { value: 0 }, uLen: { value: 0.8 }, uPx: { value: 0.75 }, uRes: { value: new THREE.Vector2(1, 1) }, uCol: { value: new THREE.Color(0.72, 0.8, 0.95) } };
+    this.rainU = { uCenter: { value: new THREE.Vector3() }, uBox: { value: new THREE.Vector3(24, 16, 24) }, uFall: { value: new THREE.Vector3(1, -11, 0.4) }, uTime: { value: 0 }, uLen: { value: 0.8 }, uPx: { value: 0.75 }, uRes: { value: new THREE.Vector2(1, 1) }, uCol: { value: new THREE.Color(0.72, 0.8, 0.95) },
+      uWob: { value: 0 }, uEmb: { value: 0 }, uEmbCol: { value: new THREE.Color() }, uHead: { value: 0.15 } };
     this.rainMesh = new THREE.Mesh(rg, new THREE.ShaderMaterial({
       vertexShader: RAIN_VERT, fragmentShader: RAIN_FRAG, uniforms: this.rainU, transparent: true, depthWrite: false, depthTest: true, side: THREE.DoubleSide,
       blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
@@ -371,6 +380,7 @@ export class Details {
     const prev = w.hooks.onDamage;
     w.hooks.onDamage = (c, amt, by) => { prev?.(c, amt, by); this.damaged(c, amt, by); };
     (g as unknown as { details: Details }).details = this;
+    this.climate = new Climate(g);
     g.update$.push((dt) => { try { this.update(dt); } catch (e) { if (this.errs++ < 5) console.error('details', e); } });
   }
   private errs = 0;
@@ -386,6 +396,8 @@ export class Details {
   get raining() { return this.rain; }
   /** force the weather: an amount 0..1, or null to let it run by itself */
   setRain(a: number | null) { this.forced = a; }
+  /** the climate says what falls and how hard */
+  setPrecip(kind: string, amt: number) { this.pKind = kind; this.pAmt = amt; }
 
   // ------------------------------------------------------------------ water: rings, splashes
   /** a ring spreading on the water (strength ~0.2 drip .. 1.5 big entry) */
@@ -487,13 +499,13 @@ export class Details {
     let dt = Math.min(1 / 15, (now - this.last) / 1000) * g.engine.timeScale; this.last = now;
     if (g.paused || !(dt > 0)) dt = 0;
     this.t += dt;
-    void simDt;
     const w = g.world, sun = w.sun;
     // sprites take the scene's light (unlit sprites would glow at night)
     const L = this.vfx.light;
     L.copy(sun.hemi.color).multiplyScalar(sun.hemi.intensity * 0.42).add(_c.copy(sun.light.color).multiplyScalar(sun.light.intensity * 0.2));
     const lm = Math.max(L.r, L.g, L.b); if (lm > 1.05) L.multiplyScalar(1.05 / lm);
     this.weather(dt);
+    try { this.climate.update(simDt); } catch (e) { if (this.errs++ < 5) console.error('climate', e); }
     if (dt > 0) {
       this.creatures(dt);
       this.golem(dt);
@@ -773,8 +785,10 @@ export class Details {
   // ------------------------------------------------------------------ weather and humidity
   private weather(dt: number) {
     const g = this.g, w = g.world, R = g.region, sun = w.sun, env = sun.env, bi = R.biome, hum = bi.moist;
-    // showers come and go
+    // what falls is the climate's to say (a forced test value overrides it)
+    const wetKind = this.pKind === 'rain' || this.pKind === 'redrain';
     if (this.forced !== null) this.rainGoal = this.forced;
+    else if (this.climate) this.rainGoal = wetKind ? this.pAmt : 0;
     else if (this.showerDur > 0) {
       this.showerT += dt;
       const t = this.showerT, D = this.showerDur;
@@ -784,7 +798,8 @@ export class Details {
     // cloud gathers before the rain and lingers after it
     const goal = this.rainGoal;
     this.rain += (goal - this.rain) * Math.min(1, dt * 0.35);
-    sun.overcast += (Math.min(1, goal * 1.15) - sun.overcast) * Math.min(1, dt * (goal > sun.overcast ? 0.5 : 0.12));
+    this.fall += ((this.forced ?? (wetKind ? this.rain : this.pAmt)) - this.fall) * Math.min(1, dt * 0.35);
+    if (!this.climate) sun.overcast += (Math.min(1, goal * 1.15) - sun.overcast) * Math.min(1, dt * (goal > sun.overcast ? 0.5 : 0.12));
     // the ground soaks fast and dries slowly
     this.wetGround = this.rain > this.wetGround ? Math.min(1, this.wetGround + dt * this.rain / 18) : Math.max(0, this.wetGround - dt / 140);
     env.rain = this.rain; env.wet = this.wetGround;
@@ -800,29 +815,41 @@ export class Details {
     // dew on the morning leaves (and on everything after rain), shimmer over hot dry ground at midday
     env.dew = clamp(dawn * (0.4 + hum) + this.wetGround * 0.5 * (1 - this.rain), 0, 1);
     env.heat = clamp((bi.temp - 0.6) * 2.6, 0, 1) * clamp(1.2 - hum * 1.5, 0, 1) * clamp((elev - 0.3) * 2, 0, 1) * (1 - this.wetGround);
-    // wind wanders
-    env.wind.set(0.3 + Math.sin(this.t * 0.031) * 0.25 + this.rain * 0.6, 0.12 + Math.cos(this.t * 0.023) * 0.2);
-    // rain streaks and splash pops around the view
-    const rm = this.rainMesh, U = this.rainU, on = this.rain > 0.01;
+    // wind wanders (the climate drives it when there is one)
+    if (!this.climate) env.wind.set(0.3 + Math.sin(this.t * 0.031) * 0.25 + this.rain * 0.6, 0.12 + Math.cos(this.t * 0.023) * 0.2);
+    // whatever falls: rain streaks and splash pops, red rain, snowflakes, driven dust, ash with embers
+    const rm = this.rainMesh, U = this.rainU, amt = Math.max(this.rain, this.fall), on = amt > 0.01;
     rm.visible = on;
     if (!on) return;
     const tgt = g.cam.target, dist = g.cam.dist;
     const box = clamp(dist * 1.3, 18, 60);
     (U.uBox.value as THREE.Vector3).set(box, Math.min(26, box * 0.7), box);
     (U.uCenter.value as THREE.Vector3).set(tgt.x, tgt.y + Math.min(26, box * 0.7) * 0.35, tgt.z);
-    (U.uFall.value as THREE.Vector3).set(env.wind.x * 1.6, -11, env.wind.y * 1.6);
+    const K = this.forced !== null ? 'rain' : this.pKind, wx = env.wind.x, wz = env.wind.y, px = Math.max(0.6, g.engine.h / 900);
+    const P: Record<string, { fall: [number, number, number]; len: number; px: number; wob: number; col: number; emb: number; head: number }> = {
+      rain: { fall: [wx * 1.6, -11, wz * 1.6], len: 0.8, px, wob: 0, col: RAMPS.sky[5], emb: 0, head: 0.15 },
+      redrain: { fall: [wx * 1.6, -10, wz * 1.6], len: 0.75, px, wob: 0, col: RAMPS.coral[5], emb: 0, head: 0.15 },
+      snow: { fall: [wx * 0.9, -1.4, wz * 0.9], len: 0.035, px: px * 1.6, wob: 0.35, col: RAMPS.snow[5], emb: 0, head: 1 },
+      dust: { fall: [wx * 5.5, -0.7, wz * 5.5], len: 0.35, px, wob: 0.15, col: RAMPS.sand[4], emb: 0, head: 0 },
+      ash: { fall: [wx * 0.7, -0.9, wz * 0.7], len: 0.04, px: px * 1.4, wob: 0.4, col: RAMPS.stone[3], emb: 0.08, head: 1 },
+    };
+    const pk = P[K] ?? P.rain;
+    (U.uFall.value as THREE.Vector3).set(pk.fall[0], pk.fall[1], pk.fall[2]);
     U.uTime.value = this.t;
     (U.uRes.value as THREE.Vector2).set(g.engine.w, g.engine.h);
-    U.uPx.value = Math.max(0.6, g.engine.h / 900);
-    (U.uCol.value as THREE.Color).setHex(RAMPS.sky[5]).multiply(this.vfx.light);
+    U.uPx.value = pk.px; U.uLen.value = pk.len; U.uWob.value = pk.wob; U.uEmb.value = pk.emb; U.uHead.value = pk.head;
+    (U.uCol.value as THREE.Color).setHex(pk.col).multiply(this.vfx.light);
+    (U.uEmbCol.value as THREE.Color).setHex(RAMPS.glowAmber[4]).multiplyScalar(2.2);
     const maxN = (rm as unknown as { maxN: number }).maxN;
-    (rm.geometry as THREE.InstancedBufferGeometry).instanceCount = Math.floor(maxN * this.rain * clamp(box / 26, 0.65, 1));
+    (rm.geometry as THREE.InstancedBufferGeometry).instanceCount = Math.floor(maxN * amt * clamp(box / 26, 0.65, 1));
+    WATER_FX.uRainW.value = K === 'rain' || K === 'redrain' ? this.rain : 0;
+    if (K !== 'rain' && K !== 'redrain') return;
     this.hitAcc += dt * this.rain * 70;
     while (this.hitAcc >= 1) {
       this.hitAcc -= 1;
       const a = Math.random() * TAU, r = Math.sqrt(Math.random()) * Math.min(14, box * 0.45), x = tgt.x + Math.cos(a) * r, z = tgt.z + Math.sin(a) * r;
       if (x < 0.5 || z < 0.5 || x > R.N - 0.5 || z > R.N - 0.5 || R.isWater(x, z)) continue;
-      this.vfx.play('rainhit', x, R.heightAt(x, z) + 0.02, z, { scale: rnd(0.8, 1.2), flip: Math.random() < 0.5 });
+      this.vfx.play('rainhit', x, R.heightAt(x, z) + 0.02, z, { scale: rnd(0.8, 1.2), flip: Math.random() < 0.5, ramp: K === 'redrain' ? 'coral' : 'water' });
     }
   }
 }

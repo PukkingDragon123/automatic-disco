@@ -3,7 +3,7 @@
 // rows, a fleece swells round the trunk, horns rise from a collar of skin, fans spread from a fleshy base. Every part
 // paints the shadow it casts onto the body under it.
 import { RAMPS, type RampName } from '../art/palette';
-import { type Region, blade, sac, spline, sheet, hash, addV, scl, norm, cross, lerpV, sub, len, type V3, type Wt } from './kit';
+import { type Region, blade, sac, spline, sheet, ball, hash, addV, scl, norm, cross, lerpV, sub, len, type V3, type Wt } from './kit';
 import { type Ctx, hide, interp } from './sculpt';
 import { lock, crest, type SpineTs, type HeadCtx } from './parts';
 import type { BeastForm, BeastPart } from './bestiary';
@@ -30,6 +30,8 @@ export function growBody(S: Ctx, F: BeastForm, T: SpineTs, W: number, H: number,
     else if (p.k === 'tailFan') tailFan(S, p, W);
     else if (p.k === 'finCrest') crest(S, T, W, H * p.height / 0.32 * 0.32);
     else if (p.k === 'grove') grove(S, p, W);
+    else if (p.k === 'colonies') colonies(S, p, W);
+    else if (p.k === 'perchers') perchers(S, p, W);
   }
 }
 
@@ -158,12 +160,49 @@ function grove(S: Ctx, p: Extract<BeastPart, { k: 'grove' }>, W: number) {
     const h = W * (0.35 + hash(i, 9) * 0.3), up = norm(addV(n, [0, 1.6, 0])), w = S.spine!.w[k];
     sac(S.B, TR, S.gid(), [b, addV(b, scl(up, h * 0.5)), addV(b, scl(up, h))], [[W * 0.035, W * 0.035], [W * 0.025, W * 0.025], [W * 0.018, W * 0.018]], [w, w, w], { n: 6, sq: 2 });
     for (let j = 0; j < 3; j++) sac(S.B, CN, S.gid(), [addV(b, scl(up, h * (0.62 + j * 0.16))), addV(b, scl(up, h * (0.74 + j * 0.16)))], [[W * (0.2 - j * 0.05), W * (0.12 - j * 0.03)], [W * (0.06 - j * 0.015), W * 0.04]], [w, w], { n: 9, sq: 2.4 });
+    // roots gripping down over the shell, a fan of ferns at the foot
+    for (let r = 0; r < 3; r++) { const ra = a + (r - 1) * 0.25, { p: rp } = surf(S, at(S, t + (r - 1) * 0.02), ra + Math.sign(ra || 1) * 0.3, 1.2); sac(S.B, TR, S.gid(), [b, lerpV(b, rp, 0.5), rp], [[W * 0.02, W * 0.02], [W * 0.014, W * 0.014], [W * 0.006, W * 0.006]], [w, w, w], { n: 5 }); }
+    for (let f = 0; f < 5; f++) { const fa = (f / 5) * TAU, d = norm(addV(up, [Math.cos(fa) * 0.9, 0, Math.sin(fa) * 0.9])); blade(S.B, CN, [b, addV(b, scl(d, W * 0.08)), addV(b, scl(d, W * 0.15))], [W * 0.02, W * 0.035, W * 0.005], norm(cross(d, up)), [w, w, w], { offset: -0.5 }); }
   }
   S.paints.push(() => {
     const B = RP('soil'), G = RP('moss');
     TR.fill(B, (x, y) => (Math.cos(TR.th(x)) > 0.3 ? 4 : 2) + (x % 3 === 0 ? -1 : 0) + (y % 5 === 0 ? -1 : 0));
     CN.fill(G, (x, y) => (Math.cos(CN.th(x)) > 0.4 ? 5 : Math.cos(CN.th(x)) > -0.2 ? 4 : 2) + ((x + (y >> 1)) % 5 === 0 ? -1 : 0));
   });
+}
+
+// ---------------------------------------------------------------------------------------------- titan life
+/** barnacle and lichen colonies: clusters of small crusted cones and pads on the back and flanks */
+function colonies(S: Ctx, p: Extract<BeastPart, { k: 'colonies' }>, W: number) {
+  const R = S.fixed('COLONY', 8, 8), sp = S.spine!, N = sp.pts.length - 1;
+  for (let i = 0; i < p.n; i++) {
+    const k = Math.round((0.15 + hash(i, 41) * 0.75) * N), a = (hash(i, 43) - 0.5) * 3.6, { p: c, n } = surf(S, k, a, 1.0), w = sp.w[k];
+    for (let j = 0; j < 3; j++) { const o = addV(c, [(hash(i, j) - 0.5) * W * 0.06, (hash(j, i) - 0.5) * W * 0.03, (hash(i + j, 7) - 0.5) * W * 0.06]); sac(S.B, R, S.gid(), [o, addV(o, scl(n, W * 0.025)), addV(o, scl(n, W * 0.04))], [[W * 0.022, W * 0.022], [W * 0.016, W * 0.016], [W * 0.006, W * 0.006]], [w, w, w], { n: 6, sq: 2.6 }); }
+  }
+  S.paints.push(() => { const C = RP(p.ramp); R.fill(C, (x, y) => (Math.cos(R.th(x)) > 0.3 ? 4 : 2) + (y > R.h * 0.8 ? 1 : 0)); });
+}
+/** small birds and critters riding the back: a body, a head, a beak, sitting on the shell or hide */
+function perchers(S: Ctx, p: Extract<BeastPart, { k: 'perchers' }>, W: number) {
+  const R = S.fixed('PERCH', 6, 6), sp = S.spine!, N = sp.pts.length - 1;
+  for (let i = 0; i < p.n; i++) {
+    const k = Math.round((0.25 + hash(i, 31) * 0.5) * N), a = (hash(i, 33) - 0.5) * 1.2, { p: c, n } = surf(S, k, a, 1.28), w = sp.w[k], s = W * 0.03, fw = sp.fr[k].d;
+    ball(S.B, R, S.gid(), addV(c, scl(n, s)), fw, [s * 0.8, s * 0.8, s * 1.3], w, { n: 6, rings: 3 });
+    ball(S.B, R, S.gid(), addV(addV(c, scl(n, s * 1.9)), scl(fw, s * 1.0)), fw, [s * 0.5, s * 0.5, s * 0.5], w, { n: 6, rings: 3 });
+    sac(S.B, R, S.gid(), [addV(addV(c, scl(n, s * 1.9)), scl(fw, s * 1.4)), addV(addV(c, scl(n, s * 1.8)), scl(fw, s * 2.1))], [[s * 0.15, s * 0.12], [0.001, 0.001]], [w, w], { n: 4 });
+  }
+  S.paints.push(() => { const C = RP('ink'); R.fill(C, (x) => (Math.cos(R.th(x)) > 0.4 ? 2 : 1)); });
+}
+/** sensory barbels fringing a titan's mouth */
+export function barbels(S: Ctx, h: HeadCtx, n: number) {
+  const R = S.fixed('BARB', 4, 10), w: Wt = [h.iH, 1];
+  for (let i = 0; i < n; i++) { const s = i % 2 ? 1 : -1, j = i >> 1, b = addV(h.head, [s * h.hw * (0.12 + j * 0.05), -h.hh * 0.2, h.z0 + h.sl * (0.9 - j * 0.12)]), d = norm([s * 0.3, -1, 0.2]); sac(S.B, R, S.gid(), [b, addV(b, scl(d, h.hh * 0.3)), addV(addV(b, scl(d, h.hh * 0.6)), [0, 0, h.hh * 0.1])], [[h.hw * 0.025, h.hw * 0.025], [h.hw * 0.016, h.hw * 0.016], [0.002, 0.002]], [w, w, w], { n: 5 }); }
+  S.paints.push(() => { const C = RP('sage'); R.fill(C, (x, y) => (Math.cos(R.th(x)) > 0.3 ? 4 : 2) + (y % 4 === 0 ? -1 : 0)); });
+}
+/** mandible plates: two hinged blades of bone either side of the mouth */
+export function mandiblePlates(S: Ctx, h: HeadCtx) {
+  const R = S.fixed('MAND', 8, 10), w: Wt = [h.iH, 1];
+  for (const s of [-1, 1]) { const b = addV(h.head, [s * h.hw * 0.42, -h.hh * 0.25, h.z0]); blade(S.B, R, [b, addV(b, [s * h.hw * 0.08, -h.hh * 0.12, h.sl * 0.5]), addV(b, [-s * h.hw * 0.08, -h.hh * 0.2, h.sl * 0.95])], [h.hh * 0.16, h.hh * 0.22, h.hh * 0.05], [0, 1, 0], [w, w, w], { offset: -0.5 }); }
+  S.paints.push(() => { const C = RP('bone'); R.fill(C, (x, y) => (x / R.w < 0.4 ? 4 : 3) + (y % 4 === 0 ? -1 : 0) - (x / R.w > 0.9 ? 2 : 0)); });
 }
 
 // ---------------------------------------------------------------------------------------------- fans

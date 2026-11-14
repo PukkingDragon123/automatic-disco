@@ -10,6 +10,7 @@ import type { Game } from './game';
 import { clamp } from '../core/rand';
 import { RAMPS } from '../art/palette';
 import { Almanac } from '../ui/almanac';
+import { sfx, setNight } from '../audio/audio';
 
 export type Season = 'thaw' | 'bloom' | 'highsun' | 'monsoon' | 'eclipse' | 'ember' | 'bloodtide' | 'frost';
 export type Weather = 'clear' | 'cloudy' | 'rain' | 'storm' | 'fog' | 'snow' | 'dust' | 'ash' | 'redrain';
@@ -203,7 +204,7 @@ export class Climate {
     v?.play('shock', x, y + 0.04, z, { scale: 1.4, ramp: 'stone' });
     const dist = Math.hypot(x - tgt.x, z - tgt.z);
     // thunder follows the flash at the speed of sound (compressed for play)
-    setTimeout(() => { import('../audio/audio').then((m) => m.sfx('crack', 0.25 + Math.random() * 0.15, clamp(1.3 - dist / 50, 0.15, 1))).catch(() => { /* no audio */ }); }, Math.min(2500, dist * 40));
+    setTimeout(() => { try { sfx('crack', 0.25 + Math.random() * 0.15, clamp(1.3 - dist / 50, 0.15, 1)); } catch { /* no audio */ } }, Math.min(2500, dist * 40));
   }
 
   // ------------------------------------------------------------------ light and everything it touches
@@ -216,6 +217,11 @@ export class Climate {
     const dayK = clamp(elev * 1.6 + 0.12, 0, 1) * (1 - ecl * 0.93);
     // the sun's (or, at night, the moons') direction: the shadow-casting light follows whichever is up
     const night = dayK < 0.15;
+    // where the sun and the moons really are (the sky draws them; the shadow light follows whichever is up)
+    const env = sun.env;
+    env.sunSky.set(Math.sin(ang) * 0.75, elev * 0.92, -0.35 + Math.cos(ang) * 0.22).normalize();
+    env.moonSky.set(-Math.sin(ang) * 0.6, Math.max(0.25, -elev * 0.8 + 0.3), 0.35).normalize();
+    env.day = dayK;
     if (!night) sun.dir.set(Math.sin(ang) * 0.75, Math.max(0.12, Math.abs(elev) * 0.92 + 0.08), -0.35 + Math.cos(ang) * 0.22).normalize();
     else sun.dir.set(-Math.sin(ang) * 0.6, 0.75, 0.35).normalize();
     // the key light's colour through the air, its strength by elevation; cloud dims and greys it
@@ -251,15 +257,14 @@ export class Climate {
     gr.sat = 1.08 - (1 - k) * 0.22 + this.bloodK * 0.1; gr.vig = 0.36 + (1 - k) * 0.3; gr.bloom = 0.3 + (1 - k) * 0.25 + ecl * 0.3;
     w.terrain.U.uVeinGain.value = 1 + (1 - k) * 0.8 + ecl;
     this.light = k;
-    import('../audio/audio').then((m) => m.setNight(1 - k)).catch(() => { /* no audio */ });
+    setNight(1 - k);
     return true;
   }
 
   /** push the climate into the atmosphere, the weather layer, the flora, the ecology and the creatures */
   private drive(dt: number) {
-    const g = this.g, w = g.world, env = w.sun.env as unknown as Record<string, unknown> & { wind: THREE.Vector2 };
-    env.wind.copy(this.wind);
-    const E = env as unknown as { snow: number; frost: number; dry: number; autumn: number; dust: number; ash: number; red: number; eclipse: number; flash: number; cloudK: number; ice: number; moons: number; aurora: number; t: number };
+    const g = this.g, w = g.world, E = w.sun.env;
+    E.wind.copy(this.wind);
     const S = SEASON[this.season];
     E.snow = this.snowCover; E.frost = this.frost; E.ice = this.ice;
     E.dry = clamp(1 - S.green, 0, 1) * (1 - this.rain * 0.3); E.autumn = S.autumn;

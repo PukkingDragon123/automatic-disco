@@ -132,6 +132,8 @@ export class Creature {
   scareX = NaN; scareZ = NaN;
   /** cooldown for seasonal moves (to high ground, to shelter) */
   cdSeason = 0;
+  /** one of the colossal species (eco/profile.ts): migrates, fells trees, fears nothing */
+  titan = false;
 
   constructor(readonly sp: Species, public faction: Faction, x: number, z: number, juvenile = false) {
     this.x = x; this.z = z; this.homeX = x; this.homeZ = z;

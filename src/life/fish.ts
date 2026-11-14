@@ -26,7 +26,7 @@ const SPECS: Record<Exclude<FishKind, 'jelly'>, Spec> = {
   ray: { L: 1.6, prof: [[0.02, 0.02], [0.1, 0.04], [0.42, 0.06], [0.5, 0.07], [0.42, 0.06], [0.2, 0.05], [0.06, 0.03]], back: ['sand', 3], belly: ['bone', 5], accent: 'ochre', tail: 'whip', dorsal: 0, eyes: 2, wave: 'wing' },
   eel: { L: 1.4, prof: [[0.006, 0.01], [0.02, 0.03], [0.026, 0.035], [0.028, 0.036], [0.028, 0.036], [0.026, 0.034], [0.02, 0.026]], back: ['olive', 2], belly: ['straw', 3], accent: 'brass', tail: 'round', dorsal: 0.03, eyes: 2, wave: 'eel' },
   armourfish: { L: 0.6, prof: [[0.03, 0.03], [0.08, 0.06], [0.14, 0.09], [0.16, 0.1], [0.16, 0.09], [0.14, 0.07], [0.1, 0.05]], back: ['rust', 2], belly: ['sand', 4], accent: 'brass', tail: 'round', dorsal: 0.06, eyes: 2, wave: 'side' },
-  leviathan: { L: 32, prof: [[0.02, 0.015], [0.05, 0.04], [0.09, 0.08], [0.11, 0.1], [0.11, 0.1], [0.1, 0.09], [0.07, 0.06]], back: ['slate', 2], belly: ['stone', 4], accent: 'bone', tail: 'fluke', dorsal: 0.02, eyes: 2, wave: 'vert' },
+  leviathan: { L: 32, prof: [[0.02, 0.015], [0.05, 0.04], [0.08, 0.07], [0.1, 0.09], [0.115, 0.105], [0.125, 0.115], [0.11, 0.1]], back: ['slate', 2], belly: ['stone', 4], accent: 'bone', tail: 'fluke', dorsal: 0.02, eyes: 2, wave: 'vert' },
 };
 const R7 = (n: RampName, i: number) => { const R = RAMPS[n] as readonly number[]; return Array.from({ length: 7 }, (_, k) => R[Math.max(0, Math.min(R.length - 1, k - 3 + i))]); };
 
@@ -34,24 +34,29 @@ export function buildFish(kind: FishKind, seed = 1): FishModel {
   const page = new Page(256, 256), B = new SkinB(256, 256), w: Wt = [0, 1];
   let g = 1;
   if (kind === 'jelly') return jelly(page, B, seed);
-  const sp = SPECS[kind], L = sp.L, N = sp.prof.length;
+  const sp0 = SPECS[kind], L = sp0.L;
+  const prof: [number, number][] = Array.from({ length: 13 }, (_, i) => { const f = (i / 12) * (sp0.prof.length - 1), a = Math.floor(f), b = Math.min(sp0.prof.length - 1, a + 1), u = f - a; return [sp0.prof[a][0] + (sp0.prof[b][0] - sp0.prof[a][0]) * u, sp0.prof[a][1] + (sp0.prof[b][1] - sp0.prof[a][1]) * u]; });
+  const sp = { ...sp0, prof }, N = prof.length;
   const BODY = page.reg('BODY', 96, 64), FIN = page.reg('FIN', 32, 32), EYE = page.reg('EYE', 12, 12);
   // the body: tail (-z) to snout (+z)
   const pts: V3[] = sp.prof.map((_, i) => [0, kind === 'ray' ? 0 : (i - N / 2) * L * 0.004, -L / 2 + (L * i) / (N - 1)]);
-  sac(B, BODY, g++, pts, sp.prof.map(([a, b]) => [a * L, b * L] as [number, number]), pts.map(() => w), { n: kind === 'ray' ? 16 : 14, sq: kind === 'armourfish' ? 2.6 : 2, cap: kind === 'ray' ? 0.3 : 0.6 });
+  sac(B, BODY, g++, pts, sp.prof.map(([a, b]) => [a * L, b * L] as [number, number]), pts.map(() => w), { n: kind === 'ray' ? 24 : 20, sq: kind === 'armourfish' ? 2.6 : 2, cap: kind === 'ray' ? 0.3 : 0.6 });
   // fins: a rayed tail, a dorsal, a pair of pectorals
   const tz = -L / 2, th = sp.prof[0][1] * L;
   if (sp.tail === 'fork') { blade(B, FIN, [[0, 0, tz], [0, L * 0.12, tz - L * 0.14], [0, L * 0.2, tz - L * 0.2]], [L * 0.03, L * 0.04, L * 0.01], [0, 0, -1], [w, w, w], { offset: -0.5 }); blade(B, FIN, [[0, 0, tz], [0, -L * 0.1, tz - L * 0.14], [0, -L * 0.17, tz - L * 0.19]], [L * 0.03, L * 0.04, L * 0.01], [0, 0, -1], [w, w, w], { offset: -0.5 }); }
   else if (sp.tail === 'fluke') sheet(B, FIN, g++, [[[-L * 0.02, 0, tz], [0, 0, tz + L * 0.01], [L * 0.02, 0, tz]], [[-L * 0.14, 0, tz - L * 0.06], [0, 0, tz - L * 0.02], [L * 0.14, 0, tz - L * 0.06]], [[-L * 0.2, 0.002, tz - L * 0.1], [0, 0, tz - L * 0.04], [L * 0.2, 0.002, tz - L * 0.1]]], () => w);
   else if (sp.tail === 'whip') sac(B, BODY, g++, [[0, 0, tz], [0, 0, tz - L * 0.4], [0, 0, tz - L * 0.8]], [[L * 0.015, L * 0.015], [L * 0.008, L * 0.008], [0.001, 0.001]], [w, w, w], { n: 5 });
   else blade(B, FIN, [[0, 0, tz + L * 0.02], [0, 0, tz - L * 0.08], [0, 0, tz - L * 0.14]], [th * 1.4, th * 2.2, th * 1.8], [0, 1, 0], [w, w, w], { offset: -0.5 });
-  if (sp.dorsal > 0) { const top = sp.prof[3][1] * L; blade(B, FIN, [[0, top * 0.9, -L * 0.15], [0, top * 0.9, 0], [0, top * 0.9, L * 0.12]], [L * sp.dorsal * 0.4, L * sp.dorsal, L * sp.dorsal * 0.3], [0, 1, -0.3], [w, w, w], { offset: -0.1 }); }
-  if (kind !== 'ray' && kind !== 'eel') for (const s of [-1, 1]) { const x = sp.prof[4][0] * L; blade(B, FIN, [[s * x * 0.9, -L * 0.03, L * 0.12], [s * (x + L * 0.08), -L * 0.06, L * 0.06], [s * (x + L * 0.12), -L * 0.08, L * 0.0]], [L * 0.03, L * 0.04, L * 0.01], [0, 0, 1], [w, w, w], { offset: -0.5 }); }
+  if (sp.dorsal > 0) { const top = sp.prof[6][1] * L; blade(B, FIN, [[0, top * 0.9, -L * 0.15], [0, top * 0.9, 0], [0, top * 0.9, L * 0.12]], [L * sp.dorsal * 0.4, L * sp.dorsal, L * sp.dorsal * 0.3], [0, 1, -0.3], [w, w, w], { offset: -0.1 }); }
+  if (kind !== 'ray' && kind !== 'eel') for (const s of [-1, 1]) { const x = sp.prof[8][0] * L; blade(B, FIN, [[s * x * 0.9, -L * 0.03, L * 0.12], [s * (x + L * 0.08), -L * 0.06, L * 0.06], [s * (x + L * 0.12), -L * 0.08, L * 0.0]], [L * 0.03, L * 0.04, L * 0.01], [0, 0, 1], [w, w, w], { offset: -0.5 }); }
   // eyes: high on the head; the shark-kind carries four
   for (let e = 0; e < sp.eyes; e++) {
-    const s = e % 2 ? 1 : -1, row = e >> 1, i5 = sp.prof[5], ex = i5[0] * L * (kind === 'ray' ? 0.3 : 0.92), ey = i5[1] * L * (kind === 'ray' ? 1.1 : 0.35) - row * L * 0.025, ez = L * (0.3 - row * 0.05);
+    const s = e % 2 ? 1 : -1, row = e >> 1, i5 = sp.prof[9], ex = i5[0] * L * (kind === 'ray' ? 0.3 : 0.92), ey = i5[1] * L * (kind === 'ray' ? 1.1 : 0.35) - row * L * 0.025, ez = L * (0.3 - row * 0.05);
     ball(B, EYE, g++, [s * ex, ey, ez], [s, kind === 'ray' ? 1 : 0.2, 0.3], [L * 0.022, L * 0.022, L * 0.016], w, { n: 8, rings: 4, sq: 2 });
   }
+  if (kind === 'armourfish' || kind === 'eel' || kind === 'leviathan') for (let i = 0; i < 4; i++) { const s = i % 2 ? 1 : -1, b: V3 = [s * L * 0.02 * (1 + (i >> 1)), -sp.prof[11][1] * L * 0.7, L * (0.46 - (i >> 1) * 0.02)]; sac(B, FIN, g++, [b, [b[0] * 1.3, b[1] - L * 0.05, b[2] + L * 0.01], [b[0] * 1.5, b[1] - L * 0.09, b[2] - L * 0.01]], [[L * 0.006, L * 0.006], [L * 0.004, L * 0.004], [0.0005, 0.0005]], [w, w, w], { n: 4 }); }
+  if (kind === 'reeffish') for (const s of [-1, 1]) blade(B, FIN, [[s * sp.prof[9][0] * L * 0.8, sp.prof[9][1] * L * 0.3, L * 0.2], [s * sp.prof[9][0] * L * 1.3, sp.prof[9][1] * L * 0.5, L * 0.12], [s * sp.prof[9][0] * L * 1.5, sp.prof[9][1] * L * 0.6, L * 0.06]], [L * 0.03, L * 0.05, L * 0.02], [0, 1, 0], [w, w, w], { offset: -0.5, edge: 0.5, seed: 3 });
+  FIN.cut = true;
   page.pack(2);
   paintBody(BODY, sp, kind, seed); paintFin(FIN, sp); paintEye(EYE);
   return finish(page, B, kind, L, sp.wave);
@@ -71,8 +76,13 @@ function paintBody(r: Region, sp: Spec, kind: FishKind, seed: number) {
     if (kind === 'eel' && ath < edge && Math.abs(((t * 14 + ath * 0.3) % 1) - 0.5) < 0.14) k -= 1; // bands
     if (kind === 'armourfish' && (y % 6 === 0 || (x + (Math.floor(y / 6) & 1) * 4) % 8 === 0)) k -= 1.5; // plate seams
     if (kind === 'shark' && t > 0.6 && t < 0.72 && Math.abs(ath - 1.35) < 0.05) { R = R7('ink', 1); k = 0; } // spiracle slits
+    if ((kind === 'baitfish' || kind === 'reeffish' || kind === 'armourfish') && y % 3 === 0 && (x + (Math.floor(y / 3) & 1) * 2) % 4 === 0) k -= 0.8; // offset rows of drawn scales
+    for (let gk = 0; gk < (kind === 'shark' ? 0 : 3); gk++) if (ath > 0.7 && ath < 2.3 && Math.abs(t - (0.74 + gk * 0.025) - 0.02 * Math.cos(th)) < 0.006) k -= 1.4; // gill slits under the operculum
+    if (kind !== 'leviathan' && kind !== 'ray' && ath > 0.6 && ath < 2.3 && Math.abs(t - 0.82 - 0.03 * Math.cos(th)) < 0.007) k -= 1; // the operculum's edge
+    if (kind === 'leviathan' && t > 0.86 && ath > 2.0 && x % 3 === 0) { R = R7('bone', 3); k = 3; } // baleen plates along the jaw
     r.put(x, y, R, k);
     if (ath < 0.5 && (x + y * 3) % 23 === 0) r.set(x, y, RAMPS.snow[5]); // wet glints along the back
+    if ((kind === 'shark' || kind === 'eel') && Math.abs(ath - 2.1) < 0.06 && y % 5 === 0 && t > 0.2 && t < 0.8) { r.set(x, y, RAMPS.glowTeal[4]); r.alpha(x, y, 190); } // photophores
   }
   // the leviathan's hide: barnacle crusts and old scars
   if (kind === 'leviathan') for (let i = 0; i < 40; i++) { const cx = hash(i, 3) * r.w, cy = hash(i, 5) * r.h; if (Math.abs(r.th(cx)) > 1.4) continue; r.blob(cx, cy, 2, 2, RAMPS.bone[3]); r.set(cx - 1, cy - 1, RAMPS.bone[5]); r.set(cx + 1, cy + 1, RAMPS.stone[1]); }
@@ -80,7 +90,11 @@ function paintBody(r: Region, sp: Spec, kind: FishKind, seed: number) {
 }
 function paintFin(r: Region, sp: Spec) {
   const R = R7(sp.back[0], sp.back[1] + 1);
-  r.fill(R, (x, y) => (x % 4 === 0 ? 2 : 4) - (y > r.h * 0.85 ? 2 : 0) - (x === 0 || x === r.w - 1 ? 1 : 0));
+  for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
+    const f = y / r.h, edge = 0.82 + 0.1 * Math.abs(Math.sin((x / r.w) * Math.PI * 5));
+    if (f > edge) { r.set(x, y, R[4], 0); continue; } // the thin edge between the rays is gone: a ragged translucent margin
+    r.set(x, y, R[x % 4 === 0 ? 2 : f > edge - 0.08 ? 5 : 4], 255);
+  }
 }
 function paintEye(r: Region) {
   r.fill(R7('ink', 1), (x, y) => (y > r.h * 0.6 ? 0 : 2) + (Math.cos(r.th(x)) > 0.5 ? 1 : 0));
@@ -93,10 +107,10 @@ function jelly(page: Page, B: SkinB, seed: number): FishModel {
   const pts: V3[] = [[0, L * 0.3, 0], [0, L * 0.22, 0], [0, L * 0.08, 0], [0, -L * 0.02, 0]];
   sac(B, BELL, 1, pts, [[L * 0.06, L * 0.06], [L * 0.24, L * 0.24], [L * 0.3, L * 0.3], [L * 0.33, L * 0.33]], pts.map(() => w), { n: 18, sq: 2, up: [0, 0, 1], start: true, end: false, bump: (a, t) => (t > 0.9 ? 0.06 * Math.sin(a * 12) : 0) });
   for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2, x = Math.cos(a) * L * 0.3, z = Math.sin(a) * L * 0.3, len = L * (1.4 + hash(i, seed) * 0.8); blade(B, TEN, [[x, 0, z], [x * 1.05, -len * 0.5, z * 1.05], [x * 0.9, -len, z * 0.9]], [L * 0.012, L * 0.01, L * 0.004], [-Math.sin(a), 0, Math.cos(a)], [w, w, w], { offset: -0.5 }); }
-  for (let i = 0; i < 4; i++) { const a = (i / 4) * Math.PI * 2 + 0.4; blade(B, TEN, [[0, 0, 0], [Math.cos(a) * L * 0.05, -L * 0.35, Math.sin(a) * L * 0.05], [Math.cos(a) * L * 0.08, -L * 0.7, Math.sin(a) * L * 0.08]], [L * 0.05, L * 0.06, L * 0.02], [-Math.sin(a), 0, Math.cos(a)], [w, w, w], { offset: -0.5 }); }
+  for (let i = 0; i < 4; i++) { const a = (i / 4) * Math.PI * 2 + 0.4; blade(B, TEN, [[0, 0, 0], [Math.cos(a) * L * 0.05, -L * 0.35, Math.sin(a) * L * 0.05], [Math.cos(a) * L * 0.08, -L * 0.7, Math.sin(a) * L * 0.08]], [L * 0.05, L * 0.06, L * 0.02], [-Math.sin(a), 0, Math.cos(a)], [w, w, w], { offset: -0.5, edge: 0.8, seed: i + 3 }); }
   page.pack(2);
   const V = R7('violet', 4), G = R7('glowTeal', 2);
-  BELL.fill(V, (x, y) => (y < BELL.h * 0.3 ? 5 : 4) + ((x % 8 === 0 || y % 6 === 0) ? -1 : 0));
+  BELL.fill(V, (x, y) => (y < BELL.h * 0.3 ? 5 : 4) + (x % 6 === 0 ? -2 : 0) + (y === Math.floor(BELL.h * 0.55) ? -1 : 0));
   for (let x = 0; x < BELL.w; x += 3) BELL.set(x, BELL.h - 1, G[5]);
   TEN.fill(V, (x, y) => 3 + (y % 5 === 0 ? 1 : 0));
   return finish(page, B, 'jelly', L, 'side');
@@ -107,7 +121,7 @@ function finish(page: Page, B: SkinB, kind: FishKind, L: number, wave: Spec['wav
   const geo = B.build(); geo.deleteAttribute('skinIndex'); geo.deleteAttribute('skinWeight');
   const tex = pageTexture(page), jelly = kind === 'jelly';
   const uniforms = { uTime: { value: 0 }, uSwim: { value: 0.5 } };
-  const mat = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide, transparent: jelly, opacity: jelly ? 0.62 : 1, depthWrite: !jelly });
+  const mat = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide, transparent: jelly, opacity: jelly ? 0.62 : 1, depthWrite: !jelly, alphaTest: jelly ? 0 : 0.5 });
   const amp = wave === 'eel' ? 0.12 : wave === 'vert' ? 0.06 : wave === 'wing' ? 0.08 : 0.07;
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = uniforms.uTime; sh.uniforms.uSwim = uniforms.uSwim;
