@@ -380,7 +380,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
     } else {
       const total = polyLen(rb.pts) / PXM, lmax = (rb.lmax ?? 8) / PXM, fwd = rb.fwd ?? 0.4;
       const hw = lmax / Math.sqrt(1 + fwd * fwd) * 1.04;
-      const rect = tex.frond(rb.ramps ?? [rb.ramp], rb.ramp, { len: Math.max(0.3, total), hw, lmax, fwd, wr: rb.wr ?? 0.25, start: rb.start ?? 0.1, shape: rb.shape ?? 'lance', lobes: rb.lobes, dead: rb.dead });
+      const rect = tex.frond(rb.ramps ?? [rb.ramp], rb.ramp, { len: Math.max(0.3, total), hw, lmax, fwd, wr: rb.wr ?? 0.25, start: rb.start ?? 0.1, shape: rb.shape ?? 'lance', lobes: rb.lobes, dead: rb.dead, solid: L1 });
       g.col = [ao, ao, ao];
       const vMap = cumulative(pts);
       ribbonStrip(g, pts, pts.map((_, k) => hw * Math.min(1, 0.35 + vMap[k] * 3)), rect, { fold: rb.fold ?? 0.3, vMap, flutLen: true, flat: L1 && (rb.fold ?? 0.3) < 0.25 });
@@ -616,7 +616,7 @@ function clover3d(g: Geo, r: Rand, tex: FloraTex, pal: Palette) {
 /** a young fern: a few small arching fronds */
 function fern3d(g: Geo, r: Rand, tex: FloraTex, pal: Palette) {
   const c = mixHex(pal.foliage[r.int(0, pal.foliage.length - 1)], 0x3e7a34, 0.55), G = rampFor(c, 7);
-  const rect = tex.frond([G, rampFor(mixHex(c, 0xb09a50, 0.2), 7)], G, { len: 0.32, hw: 0.07, lmax: 0.075, fwd: 0.45, wr: 0.32, start: 0.12, shape: 'lobed', lobes: true, var: 2 });
+  const rect = tex.frond([G, rampFor(mixHex(c, 0xb09a50, 0.2), 7)], G, { len: 0.32, hw: 0.07, lmax: 0.075, fwd: 0.45, wr: 0.32, start: 0.12, shape: 'lobed', lobes: true, var: 2, solid: true });
   g.kind = KIND.LEAF; g.pivot = [0, 0, 0];
   for (let f = r.int(4, 6); f > 0; f--) {
     const a = r.range(0, TAU), L = r.range(0.22, 0.34), el = r.range(0.5, 1.0), pts: V3[] = [];

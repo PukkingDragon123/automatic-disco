@@ -271,6 +271,9 @@ export class Factions {
       const a = k * 2.399, rr = Math.sqrt(k / 160) * 12;
       const px = clamp(x + Math.cos(a) * rr, r + 5, R.N - r - 5), pz = clamp(z + Math.sin(a) * rr, r + 5, R.N - r - 5);
       if (R.isWater(px, pz) || R.isSolid(px, pz)) continue;
+      // ground a walker can reach from the landing (cliffs and ranges wall some of the map off)
+      const ri = Math.floor(pz) * R.N + Math.floor(px);
+      if (R.reach?.length && !R.reach[ri] && k < 150) continue;
       let lo = 1e9, hi = -1e9, wet = 0;
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7]]) {
         const qx = px + dx * (r + 1.5), qz = pz + dz * (r + 1.5);

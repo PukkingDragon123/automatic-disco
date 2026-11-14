@@ -363,7 +363,7 @@ void main() {
     vec2 uv = 0.15 + (vec2(float(x), float(y)) + 0.5) / vec2(12.0, 8.0) * 0.7;
     s += log(max(dot(texture2D(tColor, uv).rgb, vec3(0.2126, 0.7152, 0.0722)), 1e-4));
   }
-  float target = clamp(uKey / max(exp(s / 96.0), 1e-4), 0.6, 1.9);
+  float target = clamp(uKey / max(exp(s / 96.0), 1e-4), 0.5, 1.35);
   float prev = texture2D(tPrev, vec2(0.5)).r;
   gl_FragColor = vec4(prev <= 0.0 ? target : mix(prev, target, uRate), 0.0, 0.0, 1.0);
 }`;
@@ -489,7 +489,7 @@ export class Post {
     // the eye's adaptation: two 1x1 targets, ping-ponged
     this.expA = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
     this.expB = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
-    this.mExpo = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: EXPO, uniforms: { tColor: this.U.tColor, tPrev: { value: this.expA.texture }, uRate: { value: 0.05 }, uKey: { value: 0.2 } }, depthTest: false, depthWrite: false });
+    this.mExpo = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: EXPO, uniforms: { tColor: this.U.tColor, tPrev: { value: this.expA.texture }, uRate: { value: 0.05 }, uKey: { value: 0.15 } }, depthTest: false, depthWrite: false });
     this.U.tExpo.value = this.expA.texture;
     this.mDown = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: DOWN, uniforms: { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() } }, depthTest: false, depthWrite: false });
     this.mUp = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: UP, uniforms: { tSrc: { value: null }, tPrev: { value: null }, uTexel: { value: new THREE.Vector2() } }, depthTest: false, depthWrite: false });

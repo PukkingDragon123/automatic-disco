@@ -303,7 +303,8 @@ export class GameDescent {
   }
 
   // ================================================================ build
-  private gH(x: number, z: number) { return this.R.groundSmooth(x + this.N / 2, z + this.N / 2); }
+  /** the ground under a map-centred point; over open water the sea's surface (the pod splashes down on it, src/ocean) */
+  private gH(x: number, z: number) { const g = this.R.groundSmooth(x + this.N / 2, z + this.N / 2), o = (this.g as unknown as { ocean?: { level: number } | null }).ocean; return o ? Math.max(g, o.level) : g; }
   private buildCloud(y: number, cover: number) {
     const L = { y, cover, slices: [] as THREE.Mesh[], u: [] as Record<string, THREE.IUniform>[] };
     const lc = new THREE.Color(0xe8e6de), dc = new THREE.Color(this.pal.horizon).lerp(new THREE.Color(0x5a6470), 0.6);
@@ -616,7 +617,7 @@ export class GameDescent {
       if (d < 6) g.world.damage(c, 40 * k, null);
     }
     // flash, shake, a ring of dust racing out, debris thrown up
-    const P = this.pod.root.position, gy = R.groundSmooth(L.x, L.z);
+    const P = this.pod.root.position, gy = this.wet ? this.gH(this.p.x, this.p.y) : R.groundSmooth(L.x, L.z);
     P.set(this.p.x, gy, this.p.y);
     this.ui.flash('#fff', 0.9, 1);
     csfx('impact', 1, 0.8); csfx('boom', 1, 0.6); csfx('crunch', 0.8); sfx('crack', 3, 1);

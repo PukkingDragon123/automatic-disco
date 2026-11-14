@@ -236,7 +236,7 @@ export class Climate {
       // moonlight: the pale moon, and the red one in the bloodtide
       const moon = _c2.setRGB(0.42, 0.5, 0.72).lerp(_c.setRGB(0.85, 0.22, 0.16), this.bloodK);
       sun.light.color.copy(moon);
-      sun.light.intensity = (0.55 + this.bloodK * 0.35) * (1 - sun.overcast * 0.7);
+      sun.light.intensity = (0.38 + this.bloodK * 0.35) * (1 - sun.overcast * 0.7);
     }
     // sky fill: Rayleigh blue overhead by day, a deep blue night, a long warm horizon at sunrise and sunset;
     // the ground bounces back its own colour (cheap GI from the terrain's mean albedo)

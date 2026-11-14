@@ -55,6 +55,8 @@ export async function testEcosys(engine: Engine, input: Input, P: URLSearchParam
   else if (focus === 'water') { const d = wild.find((c) => c.mind === 'drink' && c.mass > 50) ?? wild.find((c) => c.mind === 'drink') ?? wild.find((c) => c.plan === 'drink'); if (d) at = [d.x, d.z]; else { const s = eco.shoreNear(L.x, L.z); if (s) at = s; } }
   else if (focus === 'irr') at = irr;
   else if (focus === 'sleep') { const d = wild.find((c) => c.mind === 'watch') ?? wild.find((c) => c.mind === 'sleep' && c.mass > 50) ?? wild.find((c) => c.mind === 'sleep'); if (d) at = [d.x, d.z]; }
+  else if (focus === 'hunt') { const d = wild.find((c) => c.mind === 'hunt' && c.mass > 30) ?? wild.find((c) => c.mind === 'hunt' || c.mind === 'stalk') ?? wild.find((c) => c.diet === 'carn' && c.mind !== 'sleep' && c.mass > 30) ?? wild.find((c) => c.diet === 'carn'); if (d) at = [d.x, d.z]; }
+  else if (focus === 'titan') { const d = wild.find((c) => c.titan); if (d) at = [d.x, d.z]; }
   else if (focus) { const d = wild.find((c) => c.mind === focus); if (d) at = [d.x, d.z]; }
   // keep the camera over the region (a herd by the edge would put it outside, looking at the void)
   const N = g.region.N, m = 26;

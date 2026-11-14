@@ -36,6 +36,7 @@ import { Player } from './player';
 import { Details } from './details';
 import { installBiotech } from '../biotech';
 import { attachEco } from '../eco/view';
+import { attachOcean, type Ocean } from '../ocean/ocean';
 import { BabyEditor } from '../ui/babyEditor';
 import { coreCapGeometry } from './buildings';
 import { panel, Btn } from '../ui/kit';
@@ -94,6 +95,8 @@ export class Game implements Screen {
   /** every robot, soldier and rover on the field, any faction (src/robots; spawnRobot registers them) */
   robots: RobotUnit[] = [];
   aura: CoreAura | null = null;
+  /** the sea: swell, underwater, sea life, diving, pontoons, splashdowns (src/ocean) */
+  ocean: Ocean | null = null;
   private rivalT = 210;
   child!: VeyrChild;
   /** Unit 07 under direct control (player.ts) */
@@ -187,6 +190,7 @@ export class Game implements Screen {
     this.player = new Player(this);
     new Details(this); // footprints, wetness, ripples, weather, hand-drawn VFX (game/details.ts; runs in update$)
     attachEco(this); // the ecosystem's overlay, activity bubbles, field survey sheet and API as game.eco (src/eco/view.ts)
+    attachOcean(this); // the sea, its life, diving and pontoons (src/ocean/ocean.ts; runs in update$)
     this.factory = new Factory(this);
     this.factions = new Factions(this);
     installBiotech(this); // engineered creatures and plants at work, Bio-Works structures, work orders (src/biotech)

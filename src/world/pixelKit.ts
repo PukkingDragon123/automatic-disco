@@ -25,6 +25,15 @@ const KIN: Partial<Record<RampName, RampName[]>> = {
   plum: ['violet', 'coral', 'rust'], rust: ['coral', 'ochre', 'clay'], coral: ['plum', 'rust', 'clay'], ochre: ['straw', 'rust', 'moss'],
   straw: ['ochre', 'sand', 'sage'], olive: ['moss', 'ochre', 'sage'], clay: ['rust', 'soil', 'coral'], slate: ['teal', 'violet', 'stone'],
 };
+/** living foliage never reads as stone: a leaf colour that lands on a neutral ramp is moved to the nearest living one */
+const LIVING: Partial<Record<RampName, RampName>> = {
+  stone: 'sage', slate: 'teal', basalt: 'olive', iron: 'olive', steel: 'teal', quartz: 'sage', snow: 'sage', paper: 'straw',
+  sky: 'teal', ink: 'teal', bone: 'straw', sand: 'straw', soil: 'olive', hide: 'olive', fur: 'ochre', water: 'teal',
+};
+export function foliageRamps(c: number, n = 7): number[][] {
+  const k0 = nearestRamp(c), k = LIVING[k0] ?? k0, list = [k, ...(KIN[k] ?? ['moss', 'olive', 'sage'])];
+  return list.map((x) => rampNamed(x, n));
+}
 export function kinRamps(c: number, n = 7): number[][] {
   const k = nearestRamp(c), list = [k, ...(KIN[k] ?? ['moss', 'olive', 'sage'])];
   return list.map((x) => rampNamed(x, n));

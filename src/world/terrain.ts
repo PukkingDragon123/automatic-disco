@@ -295,6 +295,9 @@ uniform float uSnow, uFrost, uDry;
 // toward the sun in the ground plane (gfx/lights.ts Sun.dir): the side of every lump that catches the light
 const vec2 LXZ = vec2(-0.842, -0.539);
 float Gm, G1, G2, G3, G4, Gpx, Gst;
+// detail that changes with scale: how much of each band survives at this fragment's footprint (m per pixel), so
+// distant ground reads by its broad forms instead of fizzing with sub-pixel grain
+float kFine, kSmall, kMid;
 float sF1, sF2, sId, lF1, lF2, lId; vec2 sD, lD;
 void cells(vec2 p, out float f1, out float f2, out float id, out vec2 d) {
   vec2 i = floor(p), f = p - i; f1 = 9.0; f2 = 9.0; id = 0.0; d = vec2(0.0);
@@ -305,12 +308,14 @@ void cells(vec2 p, out float f1, out float f2, out float id, out vec2 d) {
   }
   f1 = sqrt(f1); f2 = sqrt(f2);
 }
-void fields(vec2 p) {
+void fields(vec2 p, float fw) {
+  kFine = 1.0 - smoothstep(0.008, 0.03, fw); kSmall = 1.0 - smoothstep(0.03, 0.09, fw); kMid = 1.0 - smoothstep(0.09, 0.25, fw);
   Gm = vn(p * 0.035 + 13.0) * 0.6 + vn(p * 0.09 + 41.0) * 0.4;
-  G1 = vn(p * 0.17 + 5.0); G2 = vn(p * 0.71 + 9.0); G3 = vn(p * 3.1 + 2.0); G4 = vn(p * 11.0 + 7.0);
-  Gpx = h2(floor(p * ${TSF}) + 0.37);
+  G1 = vn(p * 0.17 + 5.0); G2 = vn(p * 0.71 + 9.0);
+  G3 = mix(0.5, vn(p * 3.1 + 2.0), kMid); G4 = mix(0.5, vn(p * 11.0 + 7.0), kSmall);
+  Gpx = mix(0.5, h2(floor(p * ${TSF}) + 0.37), kFine);
   vec2 w = uWindXZ, u = vec2(dot(p, w), dot(p, vec2(-w.y, w.x)));
-  Gst = vn(vec2(u.x * 3.4, u.y * 30.0) + G2 * 1.5) * 0.65 + vn(vec2(u.x * 7.0, u.y * 64.0) + 11.0) * 0.35;
+  Gst = mix(0.5, vn(vec2(u.x * 3.4, u.y * 30.0) + G2 * 1.5), kSmall) * 0.65 + mix(0.5, vn(vec2(u.x * 7.0, u.y * 64.0) + 11.0), kFine) * 0.35;
   cells(p * 8.0 + G3 * 0.6, sF1, sF2, sId, sD);
   cells(p * 1.8 + (G2 - 0.5) * 0.5, lF1, lF2, lId, lD);
 }
@@ -320,32 +325,42 @@ vec3 tone(int id, float t) { t = clamp(t, 0.0, 1.0); return t < 0.5 ? mix(uMatD[
 float litOf(vec2 d) { float l = length(d); return l > 1e-4 ? dot(d / l, LXZ) : 0.0; }
 
 vec4 mGrass(int id) {
-  float tuft = 1.0 - smoothstep(0.15, 0.75, sF1);
-  float t = 0.2 + Gst * 0.5 + tuft * 0.3 + (G3 - 0.5) * 0.25 + (Gpx - 0.5) * 0.12;
+  float tuft = mix(0.5, 1.0 - smoothstep(0.15, 0.75, sF1), kSmall);
+  // tussock groups ~0.5 m across (large cells) and 1-5 m patches: the structure that still reads from far off
+  float group = 1.0 - smoothstep(0.2, 0.85, lF1);
+  float t = 0.12 + Gst * 0.45 + tuft * 0.25 + group * 0.22 + (G2 - 0.5) * 0.3 + (G1 - 0.5) * 0.2 + (G3 - 0.5) * 0.2 + (Gpx - 0.5) * 0.12;
   // each tussock lit on its sun side; the ground between them in shade
-  t += litOf(sD) * tuft * 0.2 - (1.0 - tuft) * 0.12;
+  t += litOf(sD) * tuft * 0.2 * kSmall + litOf(lD) * group * 0.14 - (1.0 - tuft) * 0.1;
   vec3 c = tone(id, t);
   // greener and yellower patches and sun-cured tips (more in a drought)
   float dry = clamp(smoothstep(0.45, 0.85, Gm * 0.7 + G1 * 0.3) * 0.55 + uDry * 0.7, 0.0, 1.0);
   if (id == 0) c = mix(c, tone(1, t), dry * (0.3 + Gst * 0.5));
   // bare earth between the tussocks
-  float gap = smoothstep(0.62, 0.92, sF1) * smoothstep(0.55, 0.25, Gst) * (0.45 + G2 * 0.55);
+  float gap = smoothstep(0.6, 0.95, lF1) * smoothstep(0.6, 0.3, Gst) * smoothstep(0.35, 0.6, G2);
   c = mix(c, tone(2, 0.25 + G4 * 0.3), gap * 0.75);
   return vec4(c, 0.35 + tuft * 0.35 + Gst * 0.25 - gap * 0.3);
 }
 vec4 mSoil(int id, vec2 p) {
   float edge = lF2 - lF1;
-  float t = 0.38 + (lId - 0.5) * 0.3 + (G3 - 0.5) * 0.2 + (G4 - 0.5) * 0.08;
-  t += smoothstep(0.25, 0.05, edge) * litOf(lD) * 0.28;
+  float t = 0.36 + (lId - 0.5) * 0.42 + (G2 - 0.5) * 0.3 + (G1 - 0.5) * 0.2 + (G3 - 0.5) * 0.2 + (G4 - 0.5) * 0.08;
+  t += smoothstep(0.3, 0.05, edge) * litOf(lD) * 0.36;
   vec3 c = tone(id, t);
   c *= 1.0 - smoothstep(0.07, 0.0, edge) * (0.5 + uDry * 0.3);
   float h = 0.3 + smoothstep(0.0, 0.3, edge) * 0.2;
   // roots: pale threads where the soil is rooty
   float rt = abs(vn(p * vec2(2.6, 0.7) + 31.0) - 0.5);
   if (rt < 0.011 && G1 > 0.5) c = mix(c, uMatL[id] * 1.15, 0.7);
-  // pebbles in about one small cell in five, a lit face, a dark rim, a glint (brighter when wet)
-  float rad = 0.3 + (sId - 0.78) * 1.4;
-  if (sId > 0.78 && sF1 < rad) {
+  // a stone in one clod in twelve (~20 cm, reads from far off)
+  if (lId > 0.92 && lF1 < 0.42) {
+    float pl = litOf(lD), r = lF1 / 0.42;
+    c = tone(3, 0.38 + pl * 0.4 + (lId - 0.96) * 3.0);
+    if (r > 0.82) c *= 0.5;
+    if (pl > 0.65 && r > 0.35 && r < 0.62) c = mix(c, vec3(1.0), 0.35 * kSmall);
+    return vec4(c, 0.9);
+  }
+  // pebbles in about one small cell in four, a lit face, a dark rim, a glint (brighter when wet)
+  float rad = 0.3 + (sId - 0.74) * 1.2;
+  if (sId > 0.74 && sF1 < rad && kSmall > 0.2) {
     float pl = litOf(sD), r = sF1 / rad;
     c = tone(3, 0.35 + pl * 0.35 + (sId - 0.89) * 2.0);
     if (r > 0.8) c *= 0.55;
@@ -356,12 +371,12 @@ vec4 mSoil(int id, vec2 p) {
 }
 vec4 mRock(int id, vec2 p, float shadedFace, float moist) {
   float edge = lF2 - lF1;
-  float t = 0.42 + (lId - 0.5) * 0.35 + (G3 - 0.5) * 0.25 + (G4 - 0.5) * 0.1;
-  t += smoothstep(0.3, 0.06, edge) * litOf(lD) * 0.32;
+  float t = 0.42 + (lId - 0.5) * 0.45 + (G2 - 0.5) * 0.25 + (G3 - 0.5) * 0.22 + (G4 - 0.5) * 0.1;
+  t += smoothstep(0.3, 0.06, edge) * litOf(lD) * 0.4;
   vec3 c = tone(id, t);
   c *= 1.0 - smoothstep(0.06, 0.0, edge) * 0.65;
   float fr = abs(vn(p * 5.5 + 4.0) - 0.5);
-  c *= 1.0 - smoothstep(0.018, 0.0, fr) * 0.35;
+  c *= 1.0 - smoothstep(0.018, 0.0, fr) * 0.35 * kSmall;
   // lichen crusts, thicker on damp stone turned from the sun
   float lk = vn(p * 2.4 + 70.0) * 0.6 + G3 * 0.4;
   if (lk > 0.68 - shadedFace * 0.12 - moist * 0.08) c = mix(c, uLichen * (0.75 + G4 * 0.5), 0.7);
@@ -370,8 +385,8 @@ vec4 mRock(int id, vec2 p, float shadedFace, float moist) {
 vec4 mSand(vec2 p) {
   vec2 w = uWindXZ, a = vec2(-w.y, w.x);
   float ph = dot(p, a) * 7.5 + G2 * 4.0 + G3 * 0.8, sn = sin(ph), cs = cos(ph);
-  float t = 0.45 + (G1 - 0.5) * 0.25 + (G3 - 0.5) * 0.15;
-  t += cs * dot(a, LXZ) * 0.22 + smoothstep(0.85, 1.0, sn) * 0.1;
+  float t = 0.45 + (G1 - 0.5) * 0.3 + (G2 - 0.5) * 0.2 + (G3 - 0.5) * 0.15;
+  t += (cs * dot(a, LXZ) * 0.24 + smoothstep(0.85, 1.0, sn) * 0.1) * kSmall;
   t += (step(0.93, Gpx) - step(Gpx, 0.06)) * 0.12;
   vec3 c = tone(4, t);
   if (sId > 0.985 && sF1 < 0.3) c = mix(uMatL[4], vec3(0.85, 0.8, 0.72), 0.6);
@@ -445,7 +460,7 @@ vec2 pxw = floor(vWp.xz * ${TSF});
 vec2 pc = (pxw + 0.5) / ${TSF};
 vec2 gx = dFdx(vWp.xz), gy = dFdy(vWp.xz);
 blkGrid(pc, gx, gy);
-fields(pc);
+fields(pc, max(length(gx), length(gy)));
 vec4 eco = texture2D(uEco, pc / uN);
 float damp = texture2D(uDamp, pc / uN).r;
 // the cells round this texel, their borders bent by a slow warp (shape only: no per-pixel grain)

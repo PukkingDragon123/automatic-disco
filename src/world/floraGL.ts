@@ -194,7 +194,7 @@ vec4 tB = texture2D(uBark, vMapUv), tA = texture2D(map, vMapUv);
 vec4 texel = barkK ? tB : tA;
 if (!barkK && !isK(vKind, 4.0) && !isK(vKind, 6.0) && !isK(vKind, 11.0) && !isK(vKind, 12.0)) {
   vec2 dd = fwidth(vMapUv) * vec2(1024.0, 2048.0);
-  float al = texel.a * (1.0 + max(0.0, log2(max(max(dd.x, dd.y), 1.0))) * 0.3);
+  float al = texel.a * (1.0 + max(0.0, log2(max(max(dd.x, dd.y), 1.0))) * 0.42);
   if (al < 0.5) discard;
 }
 `;

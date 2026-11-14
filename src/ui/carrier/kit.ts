@@ -98,11 +98,12 @@ export function hatch(B: Builder, s: SkinFn, n: number, size = 3) {
   B.box(s('hullB', 16), size + 0.3, size + 0.3, 0.2, { bev: 0.08 });
   B.at(0, 0, 0.11); B.panel(s('hatch' + n, 1), size, size); B.pop();
 }
-/** a decal (transparent lettering / roundel) on a surface: centre, outward normal, width, up in the surface */
-export function decal(B: Builder, s: SkinFn, name: string, at: V, n: V, w: number, aspect: number, up = new V3(0, 1, 0)) {
+/** a decal (transparent lettering / roundel) on a surface: centre, outward normal, width (height from the art), up in the surface */
+export function decal(B: Builder, s: SkinFn, name: string, at: V, n: V, w: number, up = new V3(0, 1, 0)) {
+  const sk = s(name, 1, 'd'), aspect = sk.r[2] / sk.r[3];
   const z = n.clone().normalize(), x = up.clone().cross(z).normalize(), y = z.clone().cross(x);
   B.push(new THREE.Matrix4().makeBasis(x, y, z).setPosition(at.clone().addScaledVector(z, 0.04)));
-  B.panel(s(name, 1, 'd'), w, w / aspect);
+  B.panel(sk, w, w / aspect);
   B.pop();
 }
 
@@ -120,11 +121,11 @@ export function craft(B: Builder, s: SkinFn, label: string) {
   B.at(0, 1.4, 3.6, -0.75, 0, 0); B.panel(s('winBridge', 16), 1.6, 0.9, 0.1); B.pop();
   // delta wings with tip fins, twin rockets
   for (const sx of [-1, 1]) {
-    const W = [[1.8, 1.2], [5.8, -3.8], [5.8, -5.6], [1.8, -5.6]];
+    const W = [[1.8, 1.2], [3.9, -3.6], [3.9, -5.4], [1.8, -5.6]];
     const top = W.map(([x, z]) => new V3(sx * x, -0.55, z)), bot = W.map(([x, z]) => new V3(sx * x, -0.85, z)), c = new V3(sx * 3.5, -0.7, -3);
     B.poly(sk, top, new V3(sx * 3.5, -10, -3)); B.poly(sk, bot, new V3(sx * 3.5, 10, -3));
     for (let i = 0; i < 4; i++) { const j = (i + 1) % 4; B.poly(sk, [top[i], top[j], bot[j], bot[i]], c); }
-    B.at(sx * 5.86, -0.6, -5.5, 0, -Math.PI / 2, 0); B.prism(sk, [[0, 0], [1.8, 0], [0.5, 1.6], [0, 1.6]], -0.06, 0.06); B.pop();
+    B.at(sx * 3.96, -0.6, -5.4, 0, -Math.PI / 2, 0); B.prism(sk, [[0, 0], [1.8, 0], [0.5, 1.4], [0, 1.4]], -0.06, 0.06); B.pop();
     B.at(sx * 0.8, 0, -6.3, -Math.PI / 2, 0, 0); B.cyl(dark, 0.36, 0.52, 0.9, 10, { caps: false }); B.pop();
     B.at(sx * 0.8, 0, -6.15, -Math.PI / 2, 0, 0); B.cyl(s('dark', 1), 0.4, 0.4, 0.05, 10); B.pop();
   }
@@ -132,9 +133,8 @@ export function craft(B: Builder, s: SkinFn, label: string) {
   B.at(0, 1.3, -5.6, 0, -Math.PI / 2, 0); B.prism(sk, [[0, 0], [3.2, 0], [0.6, 2.4], [0, 2.4]], -0.07, 0.07); B.pop();
   // top hatch and the name
   B.at(0, 1.92, -0.5); B.cyl(dark, 0.6, 0.6, 0.12, 10); B.pop();
-  for (const sx of [-1, 1]) decalOn(B, s, 'tPC' + label, new V3(sx * 2.02, 0.4, -2.0), new V3(sx, 0, 0), 2.4, 3.9);
+  for (const sx of [-1, 1]) decal(B, s, 'tPC' + label, new V3(sx * 2.02, 0.4, -2.0), new V3(sx, 0, 0), 2.4);
 }
-function decalOn(B: Builder, s: SkinFn, name: string, at: V, n: V, w: number, aspect: number) { decal(B, s, name, at, n, w, aspect); }
 
 /** a 12 m freight container (along local z) with corner castings */
 export function container(B: Builder, s: SkinFn, kind: 'contOlive' | 'contRust' | 'contBlue', len = 12) {

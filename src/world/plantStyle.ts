@@ -8,7 +8,7 @@
 // finish it. Light comes from the upper left. The alien touch lives in the forms (eye-flowers that watch, lantern
 // pods, fiddle spires, glowing beads) and in a few odd hues, not in neon.
 import { PixelCanvas, mixHex } from '../limbo/gfx/pixel';
-import { rampFor, kinRamps, step, fillPoly, type P2 as KP2 } from './pixelKit';
+import { rampFor, foliageRamps, step, fillPoly, type P2 as KP2 } from './pixelKit';
 import { snapRGBA } from '../art/palette';
 import { hashf } from '../limbo/core/rng';
 import { Rand } from '../core/rand';
@@ -393,7 +393,7 @@ function tendril(P: Plant, r: Rand, p: V3, dir: V3, len: number, ramp: number[])
 }
 /** a species' leaf ramps: mostly the planet's foliage, with older warmer leaves, shaded bluer ones and a few fresh ones */
 function leafRamps(c: number, _spread = 0.62): [number[], number][] {
-  const k = kinRamps(c, 7);
+  const k = foliageRamps(c, 7);
   return [[k[0], 0.6], [k[1], 0.16], [k[2], 0.14], [k[3], 0.1]];
 }
 /** one leaf off a twig: angled out from it, drooping, its blade turned toward the sky and rolled a little */

@@ -12,6 +12,8 @@ export const TAU = Math.PI * 2;
 /** an atlas rect (u0, v0, du, dv in 0..1) and its tile repeats per metre (su, sv); b is the bucket (material) */
 export interface Skin { r: readonly [number, number, number, number]; su: number; sv: number; b: string; ou?: number; ov?: number }
 
+export interface BoxOpts { bev?: number; skip?: string; top?: Skin; side?: Skin; bot?: Skin }
+
 export class Bucket {
   p: number[] = []; n: number[] = []; t: number[] = []; r: number[] = []; i: number[] = [];
   get nv() { return this.p.length / 3; }
@@ -101,7 +103,7 @@ export class Builder {
    * A box (centred), optionally chamfered on every edge by `bev` (the chamfers catch the light like a pixel
    * artist's 1 px highlight). faces: skip mask by name (px nx py ny pz nz). side: a different skin for the walls.
    */
-  box(s: Skin, w: number, h: number, d: number, o: { bev?: number; skip?: string; top?: Skin; side?: Skin; bot?: Skin } = {}) {
+  box(s: Skin, w: number, h: number, d: number, o: BoxOpts = {}) {
     const hx = w / 2, hy = h / 2, hz = d / 2, c = Math.min(o.bev ?? 0, hx * 0.45, hy * 0.45, hz * 0.45);
     const skip = o.skip ?? '';
     const sk = (f: string) => (f === 'py' ? o.top ?? s : f === 'ny' ? o.bot ?? s : o.side ?? s);
@@ -127,7 +129,7 @@ export class Builder {
     for (const sx of S) for (const sy of S) for (const sz of S) this.poly(sk(sy > 0 ? 'py' : 'ny'), [X(sx, sy, sz), Y(sx, sy, sz), Z(sx, sy, sz)]);
   }
   /** a box from two corners (axis-aligned in the current frame) */
-  boxAt(s: Skin, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, o: Parameters<Builder['box']>[5] = {}) {
+  boxAt(s: Skin, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, o: BoxOpts = {}) {
     this.at((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2); this.box(s, Math.abs(x1 - x0), Math.abs(y1 - y0), Math.abs(z1 - z0), o); this.pop();
   }
   /** a square beam (truss member, rail, strut) between two points */

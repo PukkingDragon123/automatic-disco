@@ -10,11 +10,22 @@ const fromSettings = () => { vol.master = settings.master; vol.sfx = settings.sf
 fromSettings();
 onSettings((_s, ch) => { if (ch.some((k) => k === 'master' || k === 'music' || k === 'sfx')) { fromSettings(); setVolumes(); } });
 let started = false;
+let muffleF: BiquadFilterNode | null = null, muffleK = 0;
+/** muffle everything (0 open .. 1 deep under water): a lowpass sweeping down from the full band */
+export function setMuffle(k: number) {
+  k = Math.max(0, Math.min(1, k));
+  if (Math.abs(k - muffleK) < 0.01 || !ctx || !muffleF) { muffleK = k; return; }
+  muffleK = k;
+  muffleF.frequency.setTargetAtTime(22000 * Math.pow(420 / 22000, k), ctx.currentTime, 0.08);
+}
 
 function init() {
   if (ctx) return;
   try { ctx = new AudioContext(); } catch { return; }
-  master = ctx.createGain(); master.gain.value = vol.master; master.connect(ctx.destination);
+  master = ctx.createGain(); master.gain.value = vol.master;
+  // a lowpass on the way out: open, or muffled under water (setMuffle, src/ocean)
+  muffleF = ctx.createBiquadFilter(); muffleF.type = 'lowpass'; muffleF.frequency.value = 22000; muffleF.Q.value = 0.7;
+  master.connect(muffleF); muffleF.connect(ctx.destination);
   const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 4; comp.connect(master);
   sfxBus = ctx.createGain(); sfxBus.gain.value = vol.sfx; sfxBus.connect(comp);
   musicBus = ctx.createGain(); musicBus.gain.value = vol.music; musicBus.connect(comp);

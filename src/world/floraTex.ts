@@ -206,8 +206,31 @@ export class FloraTex {
     t.generateMipmaps = true; t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestMipmapLinearFilter;
     this.bark = paintBark(seed);
   }
-  /** upload once everything is painted */
-  finish() { this.tex.needsUpdate = true; }
+  /** upload once everything is painted, with a hand-built mip chain for the cut-out cards: each coarser texel takes
+   *  the colour of its opaque children only (no dark fringe bleeding in, so fine fronds stay green) and their mean
+   *  coverage as alpha (the shader's mip-level alpha bias then keeps thin leaflets as a solid silhouette instead of
+   *  letting them fall apart into a see-through grid) */
+  finish() {
+    const t = this.tex, levels: { data: Uint8Array; width: number; height: number }[] = [{ data: this.data, width: this.S, height: this.SH }];
+    let src = this.data, w = this.S, h = this.SH;
+    while (w > 1 || h > 1) {
+      const nw = Math.max(1, w >> 1), nh = Math.max(1, h >> 1), out = new Uint8Array(nw * nh * 4);
+      for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) {
+        let r = 0, g = 0, b = 0, a = 0, n = 0;
+        for (let k = 0; k < 4; k++) {
+          const i = ((Math.min(h - 1, y * 2 + (k >> 1))) * w + Math.min(w - 1, x * 2 + (k & 1))) * 4, al = src[i + 3];
+          a += al; if (al > 0) { r += src[i] * al; g += src[i + 1] * al; b += src[i + 2] * al; n += al; }
+        }
+        const o = (y * nw + x) * 4, i0 = (y * 2 * w + x * 2) * 4;
+        if (n > 0) { out[o] = r / n; out[o + 1] = g / n; out[o + 2] = b / n; } else { out[o] = src[i0]; out[o + 1] = src[i0 + 1]; out[o + 2] = src[i0 + 2]; }
+        out[o + 3] = a / 4;
+      }
+      levels.push({ data: out, width: nw, height: nh });
+      src = out; w = nw; h = nh;
+    }
+    t.mipmaps = levels; t.generateMipmaps = false; t.minFilter = THREE.NearestMipmapLinearFilter;
+    t.needsUpdate = true;
+  }
 
   private get(key: string, w: number, h: number, paint: (P: (ramps: number[][]) => Px) => Px): Rect {
     const hit = this.cache.get(key); if (hit) return hit;
@@ -359,8 +382,8 @@ export class FloraTex {
    * following the frond's profile; each pinna lit above with a bright upper edge, shaded below, a midvein on the
    * broad ones. hw: half width (m), len: frond length (m), lmax: longest pinna (m).
    */
-  frond(ramps: number[][], rach: number[], o: { len: number; hw: number; lmax: number; fwd: number; wr: number; start: number; shape: Shape; lobes?: boolean; dead?: boolean; var?: number }): Rect {
-    const key = `frond|${ramps.map(keyOf).join('/')}|${keyOf(rach)}|${Math.round(o.fwd * 4)}|${o.shape}|${o.lobes ? 1 : 0}|${o.dead ? 1 : 0}|${o.var ?? 0}`;
+  frond(ramps: number[][], rach: number[], o: { len: number; hw: number; lmax: number; fwd: number; wr: number; start: number; shape: Shape; lobes?: boolean; dead?: boolean; var?: number; solid?: boolean }): Rect {
+    const key = `frond|${ramps.map(keyOf).join('/')}|${keyOf(rach)}|${Math.round(o.fwd * 4)}|${o.shape}|${o.lobes ? 1 : 0}|${o.dead ? 1 : 0}|${o.var ?? 0}|${o.solid ? 1 : 0}`;
     const W = q(34) + 1, H = q(112);
     return this.get(key, W, H, (mk) => {
       const P = mk([...ramps, rach, M('ochre')]), RI = ramps.length, BR = RI + 1, r = new Rand(this.seed ^ (key.length * 31337) ^ ((o.var ?? 0) * 977));
@@ -368,6 +391,14 @@ export class FloraTex {
       const reach = W / 2 - 2, spacing = Math.max(q(2.6), Math.min(q(5), (o.lmax * 0.34) / pxY));
       const prof = PROF[o.shape];
       let pi = 0;
+      if (o.solid) {
+        // the mid-range frond: its silhouette filled first with the shaded backs of the leaflets behind, so the
+        // drawn leaflets read as one green blade instead of a see-through comb
+        for (let y = Math.floor(o.start * H); y < H - 3; y++) {
+          const t = y / H, k = (t - o.start) / (1 - o.start), ll = Math.pow(Math.sin(Math.PI * Math.min(1, 0.12 + k * 0.92)), 0.7), L = reach * ll * 0.9;
+          for (let u = 0; u < L; u += 0.5) for (const side of [-1, 1]) { const yy = y + u * slope * 0.92; P.set(cx + side * u, yy, u > L * 0.8 ? P.ramps[0].length - 3 : P.ramps[0].length - 4, 0); }
+        }
+      }
       for (let y0 = o.start * H; y0 < H - 3; y0 += spacing) {
         const t = y0 / H, k = (t - o.start) / (1 - o.start), ll = Math.pow(Math.sin(Math.PI * Math.min(1, 0.12 + k * 0.92)), 0.7);
         if (ll < 0.1) continue;
@@ -382,10 +413,10 @@ export class FloraTex {
             const cw = Math.ceil(w);
             for (let d = -cw; d <= cw; d++) {
               if (Math.abs(d) > w + 0.25) continue;
-              let i = d < 0 ? n - 1 : n - 2;
+              let i = d < 0 ? n : n - 1;
               if (f > 0.75 && d <= 0) i = n;
               if (d === -cw && f > 0.15 && f < 0.8) i = n;
-              if (d === 0 && ww >= 2.5 && f < 0.8) i = n - 3;
+              if (d === 0 && ww >= 2.5 && f < 0.8) i = n - 2;
               if (d === cw && cw > 1) i = n - 3;
               P.set(x, y + d, Math.max(1, i), R);
             }

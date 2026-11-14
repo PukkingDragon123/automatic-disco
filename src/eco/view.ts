@@ -100,7 +100,6 @@ export class EcoView {
     this.eco.onNote = (n) => this.noted(n);
     // the season's spectacle: lightning (drawn here until the climate draws its own), felled trees
     this.eco.onStrike = (x, z) => {
-      if ((game as unknown as { climate?: unknown }).climate) return;
       const y = game.world.surfaceY(x, z), top = new THREE.Vector3(x + (Math.random() - 0.5) * 4, y + 24, z + (Math.random() - 0.5) * 4);
       game.fx.arc(top, new THREE.Vector3(x, y, z), 0.35, 0xe2e1d8, 0.6); game.fx.arc(top, new THREE.Vector3(x + 1.5, y, z - 1), 0.25, 0xcfd2cc, 0.45);
       game.fx.burst(x, y + 0.2, z, 14, 0xe4cd98, { glow: true, speed: 3, up: 3, size: 3, life: 0.5 });

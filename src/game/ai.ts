@@ -50,7 +50,7 @@ function awakeK(c: Creature, w: World, P: Profile) {
   const cl = w.eco.climate;
   if (cl.season === 'eclipse') a = P.sched === 'night' ? 1 : P.sched === 'dusk' ? Math.max(a, 0.8) : a * 0.2;
   if (cl.season === 'frost' || cl.temp < -4) a = P.hibernate ? 0 : a * 0.8;
-  if (cl.season === 'bloodtide' && P.guild === 'predator') a = Math.max(a, 0.85);
+  if (cl.season === 'bloodtide' && (P.guild === 'predator' || c.diet === 'carn')) a = Math.max(a, 0.9);
   return a;
 }
 /** flee from a place (fire, a lightning strike, a panic) */
@@ -418,9 +418,12 @@ function thinkWild(c: Creature, w: World) {
   // the season in the blood: the blood tide's frenzy (hunters) and stampedes (herds); bioluminescence in the dark
   const tide = cl.season === 'bloodtide';
   c.titan = P.titan;
-  c.rage = tide ? (P.guild === 'predator' ? 1 : c.mind === 'flee' ? 0.6 : 0) : c.mind === 'flee' && c.fleeT > 3 ? 0.25 : 0;
+  const hunter = P.guild === 'predator' || c.diet === 'carn';
+  c.rage = tide ? (hunter ? 1 : c.mind === 'flee' ? 0.6 : 0) : c.mind === 'flee' && c.fleeT > 3 ? 0.25 : 0;
   c.lumen = P.glow && c.mind !== 'sleep' && (cl.season === 'eclipse' || cl.light < 0.35);
-  if (tide && P.guild === 'predator' && c.emote === Emote.NONE && Math.random() < 0.01) emote(c, Emote.ANGRY, 2);
+  if (tide && hunter && c.emote === Emote.NONE && Math.random() < 0.01) emote(c, Emote.ANGRY, 2);
+  // the red moon is up: no hunter sleeps through it
+  if (tide && hunter && c.mind === 'sleep' && c.energy > 0.1) { setMind(c, 'idle'); emote(c, Emote.ANGRY, 2); }
   // ---- the herd saw the golem strike one of them
   if (c.herd && c.mind !== 'flee' && c.alarmT <= 0) {
     const h = w.herds.get(c.herd);
@@ -469,7 +472,7 @@ function thinkWild(c: Creature, w: World) {
   const uMate = c.mature && c.preg <= 0 && c.breedCD <= 0 && c.energy > 0.66 && c.thirst < 0.5 && awake > 0.4 ? Math.max(0, 0.45 + eco.sfx.mate) : 0;
   if (P.guild === 'predator' || P.guild === 'scavenger') uEat *= c.cdHunt > 0 && !tide ? 0.4 : 1;
   // the red moon: hunters hunt whether they are hungry or not
-  if (tide && P.guild === 'predator') uEat += 0.65;
+  if (tide && hunter) uEat += 0.65;
   const wx = cl.weather, snow = wx === 'snow';
   const uShelter = c.titan || c.cdSeason > 0 || c.mind === 'rest' ? 0 : (wx === 'storm' ? 0.85 : snow ? 0.6 : wx === 'ash' || wx === 'dust' ? 0.5 : wx === 'rain' || wx === 'redrain' ? 0.3 : 0) - hunger * 0.3;
   if (P.thirstK < 0.5 && eco.moisture(c.x, c.z) > 0.55) uDrink *= 0.3;
@@ -706,7 +709,7 @@ function forage(c: Creature, w: World, P: Profile, hunger: number): boolean {
     const cp = corpseFor(c, w, P);
     if (cp) { setMind(c, 'scavenge'); c.target = cp.id; return true; }
     // hunters (and small carrion-eaters that will take what they can overpower)
-    if ((P.guild === 'predator' || P.guild === 'decomposer' && diet === 'carn') && c.cdHunt <= 0) {
+    if ((P.guild === 'predator' || P.guild === 'decomposer' && diet === 'carn') && (c.cdHunt <= 0 || c.rage > 0.5)) {
       const pr = preyFor(c, w);
       if (pr) {
         const d = dist(c, pr.x, pr.z);
