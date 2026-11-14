@@ -260,18 +260,18 @@ export class OpsRoom {
 
   // ---------------------------------------------------------------------------------------------- the light table and its props
   private table() {
-    const k = new Kit(), W = 2.6, D = 1.5;
+    const k = new Kit(), W = 2.6, D = 1.95;
     k.box(0, TOP - 0.07, 0, W, 0.07, D, 'gun', { col: 0x9aa088 }).box(0, TOP - 0.11, 0, W - 0.08, 0.04, D - 0.08, 'gun', { col: 0x6a6e66 });
     k.box(0, TOP - 0.004, 0, SHEET_W + 0.14, 0.004, SHEET_H + 0.12, 'gun', { col: 0x5a5e58 });
-    for (const [x, z] of [[-1.18, -0.64], [1.18, -0.64], [-1.18, 0.64], [1.18, 0.64]]) k.box(x, 0, z, 0.08, TOP - 0.11, 0.08, 'gun');
-    k.box(0, 0.22, 0, W - 0.3, 0.04, D - 0.3, 'gun').box(0.7, 0.45, 0.6, 0.9, 0.36, 0.12, 'olive', { col: 0x9aa088 });
+    for (const [x, z] of [[-1.18, -0.87], [1.18, -0.87], [-1.18, 0.87], [1.18, 0.87]]) k.box(x, 0, z, 0.08, TOP - 0.11, 0.08, 'gun');
+    k.box(0, 0.22, 0, W - 0.3, 0.04, D - 0.3, 'gun').box(0.7, 0.45, 0.82, 0.9, 0.36, 0.12, 'olive', { col: 0x9aa088 });
     // T-square along the near edge and a pencil, a mug, an ashtray
-    k.box(-0.15, TOP, 0.67, 1.6, 0.012, 0.05, 'cream', { col: 0xe2d6b8 }).box(-0.98, TOP - 0.03, 0.7, 0.06, 0.05, 0.16, 'oak');
-    k.push().at(0.72, TOP + 0.007, 0.62, 0.35, 0, Math.PI / 2).cyl(0, -0.08, 0, 0.007, 0.16, 6, 'olive', { col: 0x7a8060 }).cyl(0, 0.08, 0, 0.007, 0.018, 6, 'red', { rTop: 0.001 }).pop();
-    k.cyl(-1.12, TOP, 0.52, 0.045, 0.1, 14, 'porcelain', { col: 0xe8e2d4 }).torus(-1.165, TOP + 0.05, 0.52, 0.025, 0.007, 8, 4, 'porcelain');
-    k.cyl(-1.12, TOP + 0.085, 0.52, 0.04, 0.003, 14, 'oak', { col: 0x3a2418 });
-    k.cyl(1.12, TOP, -0.45, 0.07, 0.025, 14, 'gun', { rTop: 0.06 }).cyl(1.12, TOP + 0.02, -0.45, 0.05, 0.004, 14, 'rubber');
-    k.push().at(1.14, TOP + 0.026, -0.44, 0.6, 0, Math.PI / 2).cyl(0, -0.03, 0, 0.005, 0.06, 6, 'cream').pop();
+    k.box(-0.15, TOP, 0.9, 1.6, 0.012, 0.05, 'cream', { col: 0xe2d6b8 }).box(-0.98, TOP - 0.03, 0.93, 0.06, 0.05, 0.16, 'oak');
+    k.push().at(0.72, TOP + 0.007, 0.85, 0.35, 0, Math.PI / 2).cyl(0, -0.08, 0, 0.007, 0.16, 6, 'olive', { col: 0x7a8060 }).cyl(0, 0.08, 0, 0.007, 0.018, 6, 'red', { rTop: 0.001 }).pop();
+    k.cyl(-1.12, TOP, 0.75, 0.045, 0.1, 14, 'porcelain', { col: 0xe8e2d4 }).torus(-1.165, TOP + 0.05, 0.75, 0.025, 0.007, 8, 4, 'porcelain');
+    k.cyl(-1.12, TOP + 0.085, 0.75, 0.04, 0.003, 14, 'oak', { col: 0x3a2418 });
+    k.cyl(1.12, TOP, -0.62, 0.07, 0.025, 14, 'gun', { rTop: 0.06 }).cyl(1.12, TOP + 0.02, -0.62, 0.05, 0.004, 14, 'rubber');
+    k.push().at(1.14, TOP + 0.026, -0.61, 0.6, 0, Math.PI / 2).cyl(0, -0.03, 0, 0.005, 0.06, 6, 'cream').pop();
     // the stamp pad
     k.box(1.13, TOP, 0.3, 0.17, 0.02, 0.11, 'gun').box(1.13, TOP + 0.02, 0.3, 0.15, 0.004, 0.09, 'red', { col: 0x8a2c24 });
     this.add(k);
@@ -291,7 +291,7 @@ export class OpsRoom {
     const cm = new THREE.MeshLambertMaterial({ map: this.cardTex, emissive: 0xffffff, emissiveMap: this.cardTex, emissiveIntensity: 0.06 }); gbuf(cm, 1);
     const card = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.2875), cm); card.rotation.x = -Math.PI / 2; card.position.y = 0.0; card.name = 'cardFace';
     g.add(card);
-    this.cardHome.set(0.98, TOP + 0.055, 0.58);
+    this.cardHome.set(0.98, TOP + 0.055, 0.8);
     g.position.copy(this.cardHome); g.rotation.set(0.62, -0.25, 0, 'YXZ');
     this.scene.add(g);
     return g;
@@ -436,7 +436,7 @@ export class OpsRoom {
     void mk;
     const calder = calderRig();
     const put = (rig: Researcher, name: string, x: number, z: number, yaw: number, work: string) => { rig.root.position.set(x, 0, z); rig.root.rotation.y = yaw; this.scene.add(rig.root); this.ops.push({ rig, name, home: new THREE.Vector3(x, 0, z), yaw, work, t: 2 + Math.random() * 4, act: '', actT: 0, actDur: 99, look: null, pitch: 0 }); };
-    put(colonel, 'COL. WHITLOCK', 0.35, -1.2, 0, 'clipboard');
+    put(colonel, 'COL. WHITLOCK', 0.35, -1.45, 0, 'clipboard');
     put(calder, 'DR. CALDER', -1.72, 0.25, Math.PI / 2, 'think');
     put(radio, 'SGT. RUIZ', 4.15, -1.7, Math.PI / 2, 'type');
     put(tech, 'CPL. OKAFOR', -3.0, -3.35, Math.PI, 'type');

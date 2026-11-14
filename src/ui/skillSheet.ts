@@ -7,7 +7,7 @@
 import { SKILL, type Branch } from '../game/skills';
 import { Sk } from './skillDraft';
 
-export const SW = 1520, SH = 900;
+export const SW = 1520, SH = 1214;
 export interface Box { x: number; y: number; w: number; h: number }
 export interface NodeDef {
   id: string; item: number; branch: Branch; chassis: boolean;
@@ -31,15 +31,14 @@ export const REGIONS: Region[] = [
   { key: 'gravity', title: 'DETAIL C  -  FIELD DIAGRAMS  -  NOT TO SCALE', x: 1008, y: 46, w: 468, h: 292, cols: 4, cw: 117, ch: 136, rows: [['repulse', 'lift', 'shape', 'amp'], [null, 'slam', 'well', 'storm']] },
   { key: 'fabrication', title: 'DETAIL E  -  GRAFT SCHEMATICS', x: 1008, y: 352, w: 468, h: 292, cols: 3, cw: 156, ch: 136, rows: [['graft', 'sow', 'grove'], ['command', 'convert', 'print']] },
   { key: 'lab', title: 'DETAIL F  -  LABORATORY APPARATUS  -  SCALE 1:8', x: 44, y: 664, w: 1034, h: 196, cols: 5, cw: 206, ch: 150, rows: [['lab', 'splice', 'sequencer', 'vat', 'cloner']] },
+  { key: 'biotech', title: 'DETAIL G  -  BIOTECH INSTALLATIONS', x: 1008, y: 664, w: 468, h: 292, cols: 4, cw: 117, ch: 136, rows: [['bt_works', 'bt_reactor', 'bt_field', 'bt_dome'], ['bt_habitat', 'bt_lock', 'bt_vat', 'bt_clone']] },
+  { key: 'industry', title: 'DETAIL H  -  FIELD INDUSTRY  -  PLANT LAYOUT, SCALE 1:50', x: 44, y: 874, w: 1034, h: 292, cols: 8, cw: 129, ch: 136, rows: [['works', 'miner2', 'miner3', 'belt2', 'belt3', 'turret', 'haul', 'operate'], ['assembler', 'manufacturer', 'robotics', 'atomic', 'steam', 'chem', 'blueprint', null]] },
 ];
-export const TITLE: Box = { x: 1092, y: 664, w: 384, h: 196 };
+export const TITLE: Box = { x: 1092, y: 964, w: 384, h: 196 };
 export const VIEW_A: Box = { x: 524, y: 40, w: 476, h: 610 };
 const ITEM_ORDER = ['head', 'torso', 'armR', 'armL', 'coil', 'reactor', 'plating1', 'plating2', 'plating3', 'colossus',
-  'intake', 'siphon', 'drill', 'magnet', 'excavate', 'bore', 'tanks', 'refinery',
-  'lift', 'repulse', 'shape', 'slam', 'well', 'amp', 'storm',
-  'punch', 'frenzy', 'plow', 'rock', 'shrapnel', 'boulder', 'servo',
-  'graft', 'sow', 'grove', 'convert', 'command', 'print',
-  'lab', 'splice', 'sequencer', 'vat', 'cloner'];
+  ...REGIONS.flatMap((R) => R.rows.flat().filter((x): x is string => !!x))];
+for (const id of Object.keys(SKILL)) if (!ITEM_ORDER.includes(id)) ITEM_ORDER.push(id);
 export const ITEM: Record<string, number> = Object.fromEntries(ITEM_ORDER.map((id, i) => [id, i + 1]));
 
 // ------------------------------------------------------------------ little reusable drawings
@@ -72,6 +71,37 @@ function fist(s: Sk, x: number, y: number, r: number, seed: number) {
   for (let i = -1; i <= 1; i++) s.circ(x + r * 0.78, y + i * r * 0.42, r * 0.17, 't');
 }
 
+function minerTower(s: Sk, mk: number) {
+  for (let i = 0; i < 3; i++) s.line(-48, 14 + i * 6, 48, 14 + i * 6, i ? 't' : 'o');
+  s.hatch([-48, 20, 48, 20, 48, 26, -48, 26], 2.6);
+  const h = mk === 3 ? 44 : 36;
+  s.pl([-14, 14, 0, 14 - h, 14, 14]); for (let i = 1; i < 4; i++) { const y = 14 - (h / 4) * i, w = 14 - (14 / 4) * i; s.line(-w, y, w, y - 4, 't'); s.line(w, y, -w, y - 4, 't'); }
+  s.line(0, 14 - h + 4, 0, 30); s.pl([-3, 26, 0, 31, 3, 26], 'o', true);
+  if (mk === 3) { s.circ(0, 14 - h - 3, 4); s.fillEll(0, 14 - h - 3, 4, 4, 0.3); }
+  s.text('MK ' + 'I'.repeat(mk), 30, -10, 6, { align: 'c' });
+}
+function conveyor(s: Sk, decks: number) {
+  for (let d = 0; d < decks; d++) {
+    const y = 10 - d * 18;
+    for (let x = -40; x <= 40; x += 13.3) s.circ(x, y, 3.2, 't');
+    s.line(-40, y - 3.2, 40, y - 3.2); s.line(-40, y + 3.2, 40, y + 3.2);
+    for (let x = -34; x < 36; x += 20) s.box(x, y - 10, 8, 6.8);
+    arrow(s, 26 - d * 4, y - 14, 40, y - 14, 3, 't');
+  }
+  s.line(-40, 13.2, -40, 26); s.line(40, 13.2, 40, 26); ground(s, -48, 48, 26);
+}
+function machine(s: Sk, inputs: number) {
+  s.box(-18, -22, 36, 44); s.fill([-18, -22, 18, -22, 18, 22, -18, 22], 0.08); s.hatch([-18, 16, 18, 16, 18, 22, -18, 22], 2.2);
+  s.box(-8, -14, 16, 10, 't'); s.line(0, -4, 0, 6, 'o'); s.box(-6, 6, 12, 4, 't');
+  for (let i = 0; i < inputs; i++) { const y = -16 + (i * 30) / Math.max(1, inputs - 1); arrow(s, -46, inputs === 1 ? 0 : y, -20, inputs === 1 ? 0 : y, 3, 't'); }
+  arrow(s, 20, 0, 46, 0, 3.5, 'o');
+}
+function teslaMast(s: Sk, coils: number) {
+  ground(s, -48, 48, 26);
+  s.pl([-10, 26, -4, -16, 4, -16, 10, 26]); for (let i = 0; i < 4; i++) { const y = 20 - i * 9; s.line(-8 + i * 1.4, y, 8 - i * 1.4, y - 7, 't'); }
+  for (let i = 0; i < coils; i++) s.ell(0, -20 - i * 6, 12 + i * 3, 4);
+  s.arc(0, 26, 44, 44, Math.PI + 0.2, 2 * Math.PI - 0.2, 'h'); s.arc(0, 26, 38, 38, Math.PI + 0.3, 2 * Math.PI - 0.3, 'h');
+}
 // ------------------------------------------------------------------ each node's drawing (local coords, about 96 x 60)
 type Draw = (s: Sk) => void;
 const D: Record<string, Draw> = {
@@ -284,6 +314,108 @@ const D: Record<string, Draw> = {
     for (let y = 4; y <= 18; y += 3.5) s.line(-14, y, 14, y, 'x');
     s.line(-40, 2, 40, 2, 'c'); s.text('LAYER 41', 30, -4, 4.5, { align: 'c' });
   },
+  // ---- INDUSTRY: plant layout details
+  works(s) {
+    ground(s, -48, 48, 24);
+    s.pl([-40, 24, -40, -2, -28, -14, -28, -2, -16, -14, -16, -2, -4, -14, -4, -2, 8, -14, 8, 24]); s.fill([-40, 24, -40, -2, 8, -2, 8, 24], 0.08);
+    for (let x = -36; x < 6; x += 8) s.box(x, 6, 5, 8, 't');
+    s.box(16, -30, 8, 54); s.hatch([16, -30, 24, -30, 24, -24, 16, -24], 2);
+    for (let i = 0; i < 3; i++) s.arc(20 + i * 6, -36 - i * 4, 4 + i, 3 + i, Math.PI, 2 * Math.PI, 'h');
+    s.circ(36, 8, 9); s.circ(36, 8, 4, 't'); for (let i = 0; i < 8; i++) { const a = (i / 8) * 2 * Math.PI; s.line(36 + Math.cos(a) * 9, 8 + Math.sin(a) * 9, 36 + Math.cos(a) * 12, 8 + Math.sin(a) * 12); }
+  },
+  miner2(s) { minerTower(s, 2); },
+  miner3(s) { minerTower(s, 3); },
+  belt2(s) { conveyor(s, 1); s.text('120/MIN', 0, -30, 5, { align: 'c' }); },
+  belt3(s) { conveyor(s, 2); s.text('270/MIN', 0, -30, 5, { align: 'c' }); },
+  assembler(s) { machine(s, 2); },
+  manufacturer(s) { machine(s, 4); },
+  chem(s) {
+    ground(s, -48, 48, 26);
+    s.box(-30, -30, 16, 56); for (let y = -22; y < 22; y += 8) s.line(-30, y, -14, y, 't');
+    s.box(2, -10, 22, 36); s.ell(13, -10, 11, 3); s.hatch([2, 18, 24, 18, 24, 26, 2, 26], 2);
+    s.pl([-14, -20, -4, -20, -4, 0, 2, 0]); s.pl([24, 4, 34, 4, 34, 26]);
+    s.pl([36, -22, 40, -22, 40, -14, 46, -2, 30, -2, 36, -14]); s.line(32, -6, 44, -6, 'x');
+  },
+  steam(s) {
+    ground(s, -48, 48, 24);
+    s.ell(-30, 6, 6, 14); s.line(-30, -8, 6, -8); s.line(-30, 20, 6, 20); s.arc(6, 6, 6, 14, -Math.PI / 2, Math.PI / 2); s.hatch([-30, 12, 4, 12, 4, 20, -30, 20], 2.4);
+    s.box(-26, -26, 7, 18); for (let i = 0; i < 3; i++) s.arc(-22 + i * 5, -30 - i * 5, 4 + i * 1.5, 3 + i, Math.PI, 2 * Math.PI, 'h');
+    s.circ(32, 4, 12); s.circ(32, 4, 5, 't'); s.line(6, 4, 20, 4); s.text('30 MW', 32, 20, 5, { align: 'c' });
+  },
+  atomic(s) {
+    ground(s, -48, 48, 26);
+    s.pl([-24, 26, -20, -16, 20, -16, 24, 26]); s.arc(0, -16, 20, 8, Math.PI, 2 * Math.PI); s.hatch([-12, 26, -10, -6, 10, -6, 12, 26], 3);
+    for (const x of [-6, 0, 6]) s.line(x, -30, x, -6, 'o');
+    for (let i = 0; i < 3; i++) s.ell(34, -10, 11, 4, 't', (i * Math.PI) / 3); s.circ(34, -10, 1.6);
+    s.text('250 MW', 34, 6, 5, { align: 'c' });
+  },
+  robotics(s) {
+    s.box(-12, -30, 20, 14); s.circ(-6, -23, 2.5, 't'); s.circ(2, -23, 2.5, 't'); s.line(-2, -30, -2, -36); s.circ(-2, -37.5, 1.5);
+    s.box(-16, -14, 28, 26); s.fill([-16, -14, 12, -14, 12, 12, -16, 12], 0.1); s.box(-8, -8, 12, 8, 't');
+    s.pl([-16, -10, -26, 2, -24, 14]); s.pl([12, -10, 22, 2, 20, 14]); s.pl([-8, 12, -10, 28]); s.pl([4, 12, 6, 28]);
+    s.dim(-16, 12, 12, 12, 20, '1.8 M', 4.5);
+    s.pl([30, 26, 30, 8, 40, -6, 46, -2], 'o'); s.circ(30, 8, 2, 't'); s.circ(40, -6, 2, 't');
+  },
+  turret(s) {
+    ground(s, -48, 48, 24);
+    s.box(-16, 10, 32, 14); s.arc(0, 10, 18, 14, Math.PI, 2 * Math.PI); s.fill([-18, 10, 18, 10, 0, -4], 0.1);
+    s.line(6, 0, 40, -10); s.line(6, 4, 40, -6); s.line(6, -6, 40, -16); s.line(6, -2, 40, -12);
+    s.arc(0, 10, 34, 34, -1.2, -0.2, 'h'); s.arrowHead(Math.cos(-0.4) * 34, 10 + Math.sin(-0.4) * 34, Math.cos(-0.2) * 34, 10 + Math.sin(-0.2) * 34, 3);
+    s.hatch([-16, 18, 16, 18, 16, 24, -16, 24], 2.4);
+  },
+  haul(s) {
+    s.box(-46, -6, 18, 28); s.box(28, -6, 18, 28); ground(s, -48, 48, 22);
+    critter(s, 0, 8, 0.55); s.box(-6, -12, 12, 10); s.line(-4, -2, -2, 4, 't'); s.line(4, -2, 2, 4, 't');
+    arrow(s, -24, -18, 22, -18, 3.5, 't');
+  },
+  operate(s) {
+    s.box(4, -26, 30, 50); s.box(8, -20, 22, 14, 't'); for (let i = 0; i < 3; i++) s.circ(12 + i * 7, 2, 2.4, 't'); s.line(26, 10, 26, 18, 'o');
+    ground(s, -48, 48, 24); critter(s, -18, 12, 0.6);
+    s.text('X1.5', -30, -22, 6);
+  },
+  blueprint(s) {
+    s.box(-44, -24, 40, 30); s.box(4, -18, 40, 30, 'h');
+    for (let i = 0; i < 3; i++) { s.box(-40 + i * 12, -18, 8, 8, 't'); s.box(8 + i * 12, -12, 8, 8, 'h'); }
+    s.line(-40, -2, -10, -2, 't');
+    arrow(s, -4, -9, 4, -6, 3, 't'); s.text('COPY', 0, 18, 5, { align: 'c' });
+  },
+  // ---- BIOTECH: installations
+  bt_works(s) {
+    s.box(-30, -28, 40, 52); s.box(-26, -32, 12, 6, 't');
+    for (let y = -18; y < 18; y += 7) s.line(-26, y, 6, y, 't');
+    critter(s, 28, 4, 0.55); s.circ(28, 4, 16, 'h');
+    s.text('ORGAN +1', 28, 22, 4.5, { align: 'c' });
+  },
+  bt_reactor(s) {
+    ground(s, -48, 48, 24);
+    s.line(-26, 24, -26, -8); s.line(6, 24, 6, -8); s.arc(-10, -8, 16, 12, Math.PI, 2 * Math.PI); s.fill([-26, 24, -26, -8, 6, -8, 6, 24], 0.08);
+    s.box(-20, 10, 20, 10, 't'); for (let i = 0; i < 3; i++) s.pl([-16 + i * 6, 18, -14 + i * 6, 13, -12 + i * 6, 18], 't');
+    s.pl([6, 0, 20, 0, 20, -20]); s.circ(30, 6, 10); s.text('25 MW', 30, 20, 5, { align: 'c' });
+  },
+  bt_vat(s) {
+    s.ell(0, -24, 20, 5); s.line(-20, -24, -20, 20); s.line(20, -24, 20, 20); s.arc(0, 20, 20, 5, 0, Math.PI);
+    critter(s, -2, 0, 0.62);
+    for (let y = 14; y > -14; y -= 6) s.arc(0, y, 22, 4, 0.2, Math.PI - 0.2, 'h');
+    s.box(-24, 22, 48, 6); s.hatch([-24, 22, 24, 22, 24, 28, -24, 28], 2.2);
+  },
+  bt_habitat(s) {
+    ground(s, -48, 48, 22);
+    s.arc(-4, 22, 34, 34, Math.PI, 2 * Math.PI); for (let i = 1; i < 5; i++) { const a = Math.PI + (i / 5) * Math.PI; s.line(-4, 22, -4 + Math.cos(a) * 34, 22 + Math.sin(a) * 34, 't'); }
+    s.arc(-4, 22, 20, 20, Math.PI, 2 * Math.PI, 't');
+    critter(s, -6, 12, 0.4); s.box(34, 4, 12, 18); s.circ(40, 10, 3, 't');
+  },
+  bt_field(s) { teslaMast(s, 1); },
+  bt_dome(s) { teslaMast(s, 2); s.dim(-4, 26, 40, 26, 6, 'R 9.5 M', 4.5); },
+  bt_lock(s) {
+    const a: number[] = [], b: number[] = [];
+    for (let i = 0; i <= 30; i++) { const x = -44 + i * 2.2; a.push(x, Math.sin(i * 0.35) * 12); b.push(x, -Math.sin(i * 0.35) * 12); }
+    s.pl(a); s.pl(b, 'h');
+    s.arc(26, -6, 8, 9, Math.PI, 2 * Math.PI); s.box(16, -6, 20, 18); s.fill([16, -6, 36, -6, 36, 12, 16, 12], 0.12); s.circ(26, 2, 2, 't'); s.line(26, 4, 26, 8, 't');
+  },
+  bt_clone(s) {
+    critter(s, -22, 4, 0.6); critter(s, 22, 4, 0.6, { half: 'top' });
+    arrow(s, -6, -16, 8, -16, 3, 't'); s.text('X2', 0, 20, 6, { align: 'c' });
+  },
   // ---- LAB: apparatus
   lab(s) {
     s.ell(0, -26, 16, 4); s.line(-16, -26, -16, 22); s.line(16, -26, 16, 22); s.arc(0, 22, 16, 4, 0, Math.PI);
@@ -427,28 +559,38 @@ for (const id of Object.keys(CHASSIS_DRAW)) {
     hit: id === 'colossus' ? { x: AX - 248, y: 46, w: 32, h: 510 } : { x: bb.x, y: bb.y, w: bb.w, h: bb.h }, cx: id === 'colossus' ? AX - 232 : (bb.x + bb.w / 2), cy: id === 'colossus' ? 300 : (bb.y + bb.h / 2),
   };
 }
+// which detail an id belongs to: listed explicitly, or by what it grows from (the works, the bioworks), else by branch
+const LISTED = new Set(REGIONS.flatMap((R) => R.rows.flat()).filter(Boolean) as string[]);
+function needs(id: string, root: string, seen = new Set<string>()): boolean {
+  if (id === root) return true; if (seen.has(id) || !SKILL[id]) return false; seen.add(id);
+  return SKILL[id].req.some((r) => needs(r, root, seen));
+}
+const BY_BRANCH: Record<string, string> = { harvest: 'harvest', gravity: 'gravity', combat: 'combat', fabrication: 'fabrication', lab: 'lab', chassis: 'industry' };
+function regionFor(id: string) { return id.startsWith('bt_') || needs(id, 'bt_works') ? 'biotech' : needs(id, 'works') ? 'industry' : BY_BRANCH[SKILL[id].branch] ?? 'industry'; }
+for (const id of Object.keys(SKILL)) {
+  if (id === 'head' || NODES[id] || LISTED.has(id)) continue;
+  const R = REGIONS.find((r) => r.key === regionFor(id))!;
+  // the first empty cell in reading order, else a new column (the detail tightens to make room)
+  let put = false;
+  for (const row of R.rows) { const i = row.indexOf(null); if (i >= 0) { row[i] = id; put = true; break; } if (row.length < R.cols) { row.push(id); put = true; break; } }
+  if (!put) { const r = R.rows.reduce((b, row, i) => (row.length < R.rows[b].length ? i : b), 0); R.rows[r].push(id); }
+}
 for (const R of REGIONS) {
+  const cols = Math.max(R.cols, ...R.rows.map((r) => r.length)), cw = R.w / cols, sc = Math.min(1, cw / 117);
   R.rows.forEach((row, r) => row.forEach((id, c) => {
-    if (!id || !SKILL[id]) return;
-    const cx = R.x + c * R.cw + R.cw / 2 + 8, cy = R.y + 22 + r * R.ch + 50;
-    const s = new Sk(ITEM[id] * 17); s.at(cx, cy); (D[id] ?? D.drill)(s); s.at(0, 0);
-    const bx = cx - 56, by = cy - 40;
+    if (!id || !SKILL[id] || NODES[id]) return;
+    const cx = R.x + c * cw + cw / 2 + 8 * sc, cy = R.y + 22 + r * R.ch + 50;
+    const s = new Sk(ITEM[id] * 17); s.at(cx, cy, sc); (D[id] ?? generic)(s); s.at(0, 0);
+    const bx = cx - 56 * sc, by = cy - 40;
     NODES[id] = {
-      id, item: ITEM[id], branch: SKILL[id].branch, chassis: false, sk: s, bx, by, leader: [cx - 46, cy - 30, bx, by],
+      id, item: ITEM[id], branch: SKILL[id].branch, chassis: false, sk: s, bx, by, leader: [cx - 46 * sc, cy - 30, bx, by],
       lx: cx, ly: cy + 40, la: 'c', label: shortName(id), nx: cx, ny: cy + 52, na: 'c',
-      hit: { x: cx - 66, y: cy - 52, w: 116, h: 104 }, cx, cy, cell: { r, c, region: R.key },
+      hit: { x: cx - 64 * sc, y: cy - 52, w: 116 * sc, h: 104 }, cx, cy, cell: { r, c, region: R.key },
     };
   }));
 }
-// anything added to skills.ts later still gets a spot (in the general notes area)
-{
-  let k = 0;
-  for (const id of Object.keys(SKILL)) if (!NODES[id] && id !== 'head') {
-    const cx = 1110 + (k % 3) * 120, cy = 600, s = new Sk(k + 900); s.at(cx, cy); D.drill(s); s.at(0, 0);
-    NODES[id] = { id, item: 50 + k, branch: SKILL[id].branch, chassis: false, sk: s, bx: cx - 56, by: cy - 40, leader: null, lx: cx, ly: cy + 40, la: 'c', label: shortName(id), nx: cx, ny: cy + 52, na: 'c', hit: { x: cx - 66, y: cy - 52, w: 116, h: 104 }, cx, cy };
-    k++;
-  }
-}
+/** a part nobody has drawn yet: a blank detail frame with the item's name pencilled in */
+function generic(s: Sk) { s.box(-36, -24, 72, 48, 'h'); s.line(-36, -24, 36, 24, 't'); s.line(36, -24, -36, 24, 't'); s.text('TO BE DRAWN', 0, -3, 6, { align: 'c' }); }
 
 /** requirement lines inside a detail: from the prerequisite's balloon to the dependent's, along the balloon rows and
  *  the gutters between cells, ending in an arrowhead */

@@ -55,7 +55,7 @@ export class Blueprint {
     const g = c.getContext('2d')!, k = this.k;
     g.setTransform(k, 0, 0, k, 0, 0);
     paper(g, SW, SH); folds(g, SW, SH, k);
-    coffeeRing(g, 1010, 700, 46, k);
+    coffeeRing(g, 1032, 1086, 44, k);
     ink(g, base, { col: C.ink, a: 0.9, wo: 1.25, wt: 0.6, fills: 0, hatch: true, centre: true }, 1);
     return (this.bg = c);
   }

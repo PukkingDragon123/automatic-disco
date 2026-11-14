@@ -23,7 +23,8 @@ import { clamp } from '../core/rand';
 import { ITEMS, itemIcon } from '../factory/items';
 
 const CSS = `
-.bw { position: fixed; inset: 0; pointer-events: none; z-index: 3; font-family: 'Pixelify', monospace; color: ${PAL.graphite}; -webkit-font-smoothing: none; }
+/* a full-screen frame for the panels that never takes the mouse itself (#ui > * would give it pointer events) */
+.bw, #ui > .bw { position: fixed; inset: 0; pointer-events: none; z-index: 3; font-family: 'Pixelify', monospace; color: ${PAL.graphite}; -webkit-font-smoothing: none; }
 .bw .vt { font-family: 'VT', monospace; font-size: var(--vt); line-height: calc(var(--vt) * 1.05); }
 .bw .np { font-family: 'Jersey', monospace; font-size: var(--np); line-height: var(--np); letter-spacing: 0.05em; }
 .bw .ps { font-family: 'Pixelify', monospace; font-size: var(--ps); line-height: calc(var(--ps) * 1.2); }
@@ -48,6 +49,8 @@ const CSS = `
 .bw-tab.tr { background: linear-gradient(180deg, #a6a8a2, #8d8f8a); color: #23221f; }
 .bw-now { margin-top: calc(6 * var(--k)); border-top: 1px solid rgba(59, 58, 54, 0.45); padding-top: calc(4 * var(--k)); color: #3b3a36; }
 .bw-now div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bw > * { pointer-events: none; }
+.bw > .bw-slip, .bw > .bw-led, .bw > .bw-tag { pointer-events: auto; }
 .bw-hint { position: absolute; left: 50%; top: calc(64 * var(--k)); transform: translateX(-50%) rotate(-0.8deg); padding: calc(5 * var(--k)) calc(12 * var(--k)); pointer-events: none; display: none; box-shadow: 0 calc(2 * var(--k)) calc(5 * var(--k)) rgba(10, 8, 4, 0.5); }
 .bw-led { position: absolute; right: calc(34 * var(--k)); top: calc(70 * var(--k)); width: calc(330 * var(--k)); max-height: calc(100vh - 240 * var(--k)); overflow: hidden auto; scrollbar-width: none; padding: calc(14 * var(--k)) calc(12 * var(--k)) calc(12 * var(--k)); box-sizing: border-box; pointer-events: auto; transform: rotate(0.4deg); box-shadow: 0 calc(4 * var(--k)) calc(10 * var(--k)) rgba(10, 8, 4, 0.55); display: none; }
 .bw-led.open { display: block; animation: bw-in 240ms cubic-bezier(0.2, 0.9, 0.3, 1.15) both; }
@@ -425,7 +428,7 @@ export class BioUI {
   // ============================================================================================ frame
   update(dt: number) {
     this.t += dt;
-    this.tagB.style.display = this.active ? '' : 'none';
+    this.root.style.display = this.active ? '' : 'none';
     if (this.arm && (!this.active || (this.arm.k !== 'sow' && !this.selected().length))) this.disarm();
     this.renderSlip();
     if ((this.t % 0.5) < dt) this.renderLedger();

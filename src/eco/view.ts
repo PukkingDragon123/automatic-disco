@@ -159,7 +159,8 @@ export class EcoView {
     const list: { c: Creature; d: number }[] = [];
     for (const c of w.creatures) {
       if (c.dead || !c.mesh.visible || c.faction !== 'wild' && c.emote === Emote.NONE) continue;
-      if (c.emote === Emote.NONE && c.mind !== 'sleep') continue;
+      // asleep, drinking and keeping watch show for as long as they last; the rest pop up and go
+      if (c.emote === Emote.NONE && c.mind !== 'sleep' && c.mind !== 'drink' && c.mind !== 'watch') continue;
       const d = (c.x - tx) ** 2 + (c.z - tz) ** 2;
       if (d > R * R) continue;
       list.push({ c, d });
@@ -170,6 +171,11 @@ export class EcoView {
       const top = c.y + c.air + c.sp.pheno.height * c.growth * (1 - c.rest * 0.3) + 0.25;
       const [sx, sy, ok] = g.screenOf(c.x, top, c.z);
       if (!ok || sx < -40 || sy < -40 || sx > innerWidth + 40 || sy > innerHeight + 40) continue;
+      if (c.emote === Emote.NONE && (c.mind === 'drink' || c.mind === 'watch')) {
+        const b = this.bubble(c.mind === 'drink' ? Emote.DRINK : Emote.WATCH, px);
+        if (b) ctx.drawImage(b, Math.round(sx - 2 * px), Math.round(sy - b.height - Math.floor((t * 1.5 + c.id) % 2) * px));
+        continue;
+      }
       if (c.emote === Emote.NONE || c.emote === Emote.SLEEP) {
         if (c.mind !== 'sleep') continue;
         // asleep: a big Z and small z's drifting up and fading in steps
@@ -291,18 +297,19 @@ export class EcoView {
     if (!this.vok[b] || !this.vok[cc] || !this.vok[d]) return;
     c.beginPath(); c.moveTo(this.vx[a], this.vy[a]); c.lineTo(this.vx[b], this.vy[b]); c.lineTo(this.vx[cc], this.vy[cc]); c.lineTo(this.vx[d], this.vy[d]); c.closePath(); c.stroke();
   }
-  /** diagonal ruled hatching across a cell */
+  /** ruled diagonal hatching, 4 px apart on screen, clipped to the cell */
   private hatch(c: CanvasRenderingContext2D, a: number, col: string) {
     const G1 = this.eco.G + 1, b = a + 1, d = a + G1, e = a + G1 + 1;
     if (!this.vok[b] || !this.vok[d] || !this.vok[e]) return;
-    c.strokeStyle = col;
-    for (let k = 1; k < 4; k++) {
-      const t = k / 4;
-      c.beginPath();
-      c.moveTo(this.vx[a] + (this.vx[b] - this.vx[a]) * t, this.vy[a] + (this.vy[b] - this.vy[a]) * t);
-      c.lineTo(this.vx[a] + (this.vx[d] - this.vx[a]) * t, this.vy[a] + (this.vy[d] - this.vy[a]) * t);
-      c.stroke();
-    }
+    const xs = [this.vx[a], this.vx[b], this.vx[e], this.vx[d]], ys = [this.vy[a], this.vy[b], this.vy[e], this.vy[d]];
+    const x0 = Math.floor(Math.min(...xs)), x1 = Math.ceil(Math.max(...xs)), y0 = Math.floor(Math.min(...ys)), y1 = Math.ceil(Math.max(...ys));
+    if (x1 - x0 > 900 || y1 - y0 > 900) return;
+    c.save();
+    c.beginPath(); c.moveTo(xs[0], ys[0]); for (let k = 1; k < 4; k++) c.lineTo(xs[k], ys[k]); c.closePath(); c.clip();
+    c.fillStyle = col;
+    // stepped 1 px diagonals (no anti-aliasing)
+    for (let s = x0 - (y1 - y0) - ((x0 + y0) % 4 + 4) % 4; s < x1; s += 4) for (let y = y0; y <= y1; y++) { const x = s + (y - y0); if (x >= x0 && x <= x1) c.fillRect(x, y, 1, 1); }
+    c.restore();
   }
   private cross(c: CanvasRenderingContext2D, x: number, y: number, col: string) {
     c.fillStyle = col; x = Math.round(x); y = Math.round(y);

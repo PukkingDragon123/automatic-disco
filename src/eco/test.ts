@@ -21,7 +21,9 @@ export async function testEcosys(engine: Engine, input: Input, P: URLSearchParam
   // the whole region in view (pass &fog to keep the fog of war)
   if (!P.has('fog')) g.vision.revealAll = true;
   const w = g.world, eco = w.eco, L = g.region.landing;
-  if (P.has('irrigate')) eco.irrigate(L.x + 14, L.z + 6, 9, 1, Infinity);
+  // an engineering demo: a spring watering the ground east of the base for good
+  const irr: [number, number] = [Math.min(g.region.N - 20, L.x + 16), L.z + 4];
+  if (P.has('irrigate')) eco.irrigate(irr[0], irr[1], 10, 1, Infinity);
   const t0 = performance.now();
   const days = Number(P.get('days') ?? 1);
   let sim = days * w.dayLen;
@@ -49,6 +51,7 @@ export async function testEcosys(engine: Engine, input: Input, P: URLSearchParam
     if (best.length) { const c = best.find((o) => o.mind !== 'flee') ?? best[0]; at = [c.x, c.z]; }
   } else if (focus === 'pred') { const p = wild.find((c) => c.diet === 'carn' && c.mature); if (p) at = [p.x, p.z]; }
   else if (focus === 'water') { const d = wild.find((c) => c.mind === 'drink' && c.mass > 50) ?? wild.find((c) => c.mind === 'drink') ?? wild.find((c) => c.plan === 'drink'); if (d) at = [d.x, d.z]; else { const s = eco.shoreNear(L.x, L.z); if (s) at = s; } }
+  else if (focus === 'irr') at = irr;
   else if (focus === 'sleep') { const d = wild.find((c) => c.mind === 'watch') ?? wild.find((c) => c.mind === 'sleep' && c.mass > 50) ?? wild.find((c) => c.mind === 'sleep'); if (d) at = [d.x, d.z]; }
   else if (focus) { const d = wild.find((c) => c.mind === focus); if (d) at = [d.x, d.z]; }
   // keep the camera over the region (a herd by the edge would put it outside, looking at the void)

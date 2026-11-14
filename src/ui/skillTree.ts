@@ -52,8 +52,8 @@ export class SkillTree implements Screen {
   private revLog: string[] = [];
   private bubbles: SpeechBubble[] = [];
   // camera: an orbit over the table, or a pose (the hangar window, the opening crane)
-  private cam = { yaw: 0, pitch: 0.98, dist: 2.15, tx: 0.05, ty: TOP, tz: 0.08 };
-  private camGoal = { yaw: 0, pitch: 0.98, dist: 2.15, tx: 0.05, ty: TOP, tz: 0.08 };
+  private cam = { yaw: 0, pitch: 1.0, dist: 2.55, tx: 0.05, ty: TOP, tz: 0.12 };
+  private camGoal = { yaw: 0, pitch: 1.0, dist: 2.55, tx: 0.05, ty: TOP, tz: 0.12 };
   private pose: { from: THREE.Vector3; to: THREE.Vector3; look0: THREE.Vector3; look1: THREE.Vector3; k: number; dir: number } | null = null;
   private drag: { x: number; y: number; moved: boolean; id: number; b: number } | null = null;
   private touches = new Map<number, { x: number; y: number }>(); private pinch = 0;
@@ -79,7 +79,7 @@ export class SkillTree implements Screen {
     if (this.compact) {
       this.root.classList.add('compact');
       this.hint.innerHTML = 'DRAG \u00B7 PINCH \u00B7 TAP AN ITEM';
-      this.cam.dist = this.camGoal.dist = innerWidth < innerHeight ? 3.0 : 2.4;
+      this.cam.dist = this.camGoal.dist = innerWidth < innerHeight ? 3.4 : 2.8;
       this.drawer = el('div', 'sk3-card', this.root);
       this.bar = el('div', 'sk3-bar', this.root);
       const b = (label: string, cls: string, f: () => void) => { const e = el('div', 'sk3-btn ' + cls, this.bar!, label); e.addEventListener('pointerdown', (ev) => ev.stopPropagation()); e.addEventListener('click', (ev) => { ev.stopPropagation(); f(); }); return e; };
@@ -419,7 +419,7 @@ export class SkillTree implements Screen {
     if (this.ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -TOP), hit)) { c.tx += (hit.x - c.tx) * k; c.tz += (hit.z - c.tz) * k; }
     c.dist = nd; this.clampCam();
   }
-  private clampCam() { const c = this.camGoal; c.yaw = Math.max(-0.75, Math.min(0.75, c.yaw)); c.pitch = Math.max(0.42, Math.min(1.4, c.pitch)); c.tx = Math.max(-1.1, Math.min(1.1, c.tx)); c.tz = Math.max(-0.7, Math.min(0.75, c.tz)); }
+  private clampCam() { const c = this.camGoal; c.yaw = Math.max(-0.75, Math.min(0.75, c.yaw)); c.pitch = Math.max(0.42, Math.min(1.4, c.pitch)); c.tx = Math.max(-1.1, Math.min(1.1, c.tx)); c.tz = Math.max(-0.9, Math.min(0.95, c.tz)); }
   private onKey = (e: KeyboardEvent) => {
     if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
     const k = e.key;
