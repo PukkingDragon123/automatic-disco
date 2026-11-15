@@ -70,11 +70,14 @@ export class CannonView {
     const a = this.arm; if (!a) return;
     const muzzle = a.tip(new THREE.Vector3()), dir = a.muzzleDir(_d), piv = a.pivot(new THREE.Vector3());
     // behind the breech, a little above the barrel
-    const want = piv.clone().addScaledVector(dir, -2.6).add(new THREE.Vector3(0, 1.05, 0));
+    const want = piv.clone().addScaledVector(dir, -1.3).add(new THREE.Vector3(0, 1.45, 0));
+    // never inside the pod's hull: out to its skin, or up over its shoulder
+    const pod = this.c.pod, rx = want.x - pod.x, rz = want.z - pod.z, rd = Math.hypot(rx, rz), minR = 3.3;
+    if (rd < minR && want.y < pod.y + 4.6) { const k = minR / Math.max(0.01, rd); want.x = pod.x + rx * k; want.z = pod.z + rz * k; }
     if (!this.camInit) { this.camPos.copy(cam.position); this.camInit = true; }
     this.camPos.lerp(want, Math.min(1, dt * 6));
     cam.position.copy(this.camPos);
-    if (this.flashT > 0) cam.position.addScaledVector(dir, -this.flashT * 0.8).add(new THREE.Vector3((Math.random() - 0.5) * this.flashT, (Math.random() - 0.5) * this.flashT, 0));
+    if (this.flashT > 0) cam.position.add(new THREE.Vector3((Math.random() - 0.5) * this.flashT * 0.3, (Math.random() - 0.5) * this.flashT * 0.3, 0));
     cam.lookAt(muzzle.clone().addScaledVector(dir, 30).add(new THREE.Vector3(0, -1.5, 0)));
     cam.fov = this.fov; cam.updateProjectionMatrix(); cam.updateMatrixWorld();
   }

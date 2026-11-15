@@ -146,7 +146,7 @@ body.cx-paused .cx-frame { box-shadow: inset 0 0 0 6px rgba(229,219,195,0.55); }
 .cn-tag { position: absolute; left: 40px; top: calc(9vh + 18px); font-family: 'Title', monospace; font-size: 24px; color: #e5dbc3; }
 .cn-help { position: absolute; left: 0; right: 0; text-align: center; bottom: calc(9vh + 16px); font-family: 'Body', monospace; font-size: 22px; color: #e5dbc3; }
 .cn-help span { background: #e5dbc3; color: #13161c; padding: 0 5px; margin: 0 4px 0 14px; }
-body.cannon-on .cx > :not(.cx-alarm) { opacity: 0; } body.cannon-on .overlay2d { opacity: 0; }
+body.cannon-on .cx > :not(.cx-alarm) { opacity: 0; } body.cannon-on .overlay2d { opacity: 0; } body.cannon-on .crate-hud, body.cannon-on .hb, body.cannon-on .inv-hudcard { display: none !important; }
 
 /* ---------------- failure */
 .cf-screen { position: fixed; inset: 0; z-index: 70; pointer-events: none; }

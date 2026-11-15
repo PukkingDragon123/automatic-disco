@@ -519,6 +519,7 @@ export class Hud {
   // ------------------------------------------------------------------ the living vignette
   /** where the selection's live close-up goes (css px), or null when nothing is selected */
   vignetteRect() {
+    const c = this.colony; if (!c || c.ctl.k === 'cannon' || c.fail$.on) return null;
     if (this.root.style.display === 'none' || !this.selEl.classList.contains('on')) return null;
     const r = this.viewEl.getBoundingClientRect(); if (r.width < 10) return null;
     return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
