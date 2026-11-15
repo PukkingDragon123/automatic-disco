@@ -39,10 +39,26 @@ export function chitinPaint(c: C2, o: { pits?: number; glint?: number; setae?: n
     px.creaseInk(0.6, { dark: 2, lit: 1.2 });
     if (o.pits) px.pebbles(o.pits, { depth: 0.45, pores: 0.6 });
     if (o.setae) px.pelt({ len: o.setae, width: o.setae * 0.5, tooth: 0.2, clump: 0.05, strands: 0.5, flow: 1 });
+    // the sheen: a hard highlight streak where each plate turns square to the light (lacquered chitin), a dark
+    // reflected band just past it
+    const N = px.gb.N, L = b.light, Hh = nrm([L[0], L[1] + 0.3, L[2] + 0.8]);
+    for (let i = 0; i < px.n; i++) { const sp = N[i * 3] * Hh[0] + N[i * 3 + 1] * Hh[1] + N[i * 3 + 2] * Hh[2]; if (sp > 0.9) px.mark[i] += 1.6; else if (sp > 0.8) px.mark[i] += 0.7; else if (sp > 0.72 && sp < 0.76) px.mark[i] -= 0.6; }
     px.glints(RP('snow'), { every: o.glint ?? 0.7, size: (o.pits ?? 0.02) * 3 });
     px.flush();
   };
   (f as unknown as { tone: Tone }).tone = { ramp: RP(c[0]), step: c[1] };
+  return f;
+}
+/** a glossy simple eye: a dark dome, a deep blue-black heart, a hard highlight cluster up toward the light and a soft
+ *  reflected rim below (wet: the shader adds the sun's specular) */
+function glossEye() {
+  const f = (ch: Chart, _p: Piece, b: Body) => {
+    const px = new Px(ch, b), N = px.gb.N, L = b.light, Hh = nrm([L[0], L[1] + 0.3, L[2] + 0.8]);
+    px.lightK = 0.3;
+    px.base((i) => { const sp = N[i * 3] * Hh[0] + N[i * 3 + 1] * Hh[1] + N[i * 3 + 2] * Hh[2]; return sp > 0.93 ? [RP('snow'), 5] : sp > 0.82 ? [RP('sapphire'), 3] : N[i * 3 + 1] < -0.5 ? [RP('sapphire'), 2] : [RP('ink'), 1]; });
+    px.flush({ eye: () => true });
+  };
+  (f as unknown as { tone: Tone }).tone = { ramp: RP('ink'), step: 1 };
   return f;
 }
 /** a compound eye: a dome of drawn hexagonal facets, each lit on its own upper side with a dark rim, a few glinting */
@@ -129,7 +145,12 @@ export function buildArthropod(d: Design, rig: Rig, rest: V3[]) {
   const eyeC: C2 = ['ink', 2];
   if (spider) {
     const sites: [number, number, number][] = [[0.18, 0.5, 0.16], [0.34, 0.44, 0.1], [0.12, 0.72, 0.1], [0.4, 0.62, 0.08]];
-    for (const s of [-1, 1]) sites.forEach(([x, y, r], k) => body.add(eyeball({ name: 'se' + s + k, c: [s * capW * x * 1.4, head[1] + capH * y, hz1 - capL * 0.12 - k * capL * 0.05], ax: nrm([s * x, 0.4, 1]), r: capW * r, bone: iH, iris: RP('ink'), pupil: 'pin', irisA: 0.95, levels: 0, around: 8 })).reg = 4);
+    for (const s of [-1, 1]) sites.forEach(([x, y, r], k) => { const e = body.add(eyeball({ name: 'se' + s + k, c: [s * capW * x * 1.4, head[1] + capH * y, hz1 - capL * 0.12 - k * capL * 0.05], ax: nrm([s * x, 0.4, 1]), r: capW * r, bone: iH, iris: RP('ink'), pupil: 'pin', irisA: 0.95, levels: 0, around: 8 })); e.reg = 4; e.paint = glossEye(); });
+    // the pedipalps: short leg-like feelers either side of the fangs, three ringed segments ending in a swollen tip
+    for (const s of [-1, 1] as const) {
+      const b0: V3 = [s * capW * 0.55, head[1] - capH * 0.35, hz1 - capL * 0.1], j1 = add(b0, [s * capW * 0.25, capH * 0.35, capL * 0.35]), j2 = add(j1, [s * capW * 0.05, -capH * 0.2, capL * 0.35]), tip = add(j2, [-s * capW * 0.05, -capH * 0.5, capL * 0.15]);
+      body.add(stalk({ name: 'palp' + s, path: curve([b0, j1, j2, tip], 8), r: (t) => lt * 0.42 * (t > 0.8 ? 1.5 : 1 - t * 0.2), around: 6, ringEvery: 2, skin: () => [iH, 1], paint: chitinPaint(sh(base, -1), { pits: W * 0.02, glint: 0.8, setae: lt * 0.8 }), levels: 0 })).reg = 7;
+    }
   } else if (crab) {
     for (const s of [-1, 1] as const) {
       const b0: V3 = [s * W * 0.16, root[1] + tH * 0.6, zf], tip = add(b0, [s * W * 0.08, H * 0.38, W * 0.05]);
@@ -210,7 +231,7 @@ export function buildArthropod(d: Design, rig: Rig, rest: V3[]) {
     if (crab || g('chela')) {
       // the claw: a swollen palm, a fixed finger and the movable dactyl, toothed on their inner edges
       const pw = lt * (crab ? 3.0 : 2.0);
-      body.add(sac({ name: 'palm' + s, at: hand, n: [0, 0, 1], up: [0, 1, 0], r: [pw * 0.55, pw * 0.7, pw * 1.0], sink: 0.1, skin: () => w, paint: chitinPaint(acc, { glint: 0.9, pits: lt * 0.5 }), levels: 1 })).reg = 9;
+      body.add(stalk({ name: 'palm' + s, path: curve([add(hand, [0, 0, -pw * 0.2]), add(hand, [0, 0, pw * 0.4]), add(hand, [0, -pw * 0.05, pw * 0.95])], 6), r: (t) => pw * (0.42 + 0.3 * Math.sin(Math.PI * Math.min(1, t * 1.2))), around: 8, sec: (a) => (Math.abs(Math.sin(a)) > 0.7 ? 0.62 : 1) * (Math.cos(a) > 0.8 ? 1.08 : 1), keel: true, ringEvery: 2, capS: true, skin: () => w, paint: chitinPaint(acc, { glint: 0.9, pits: lt * 0.5 }), levels: 1 })).reg = 9;
       const tip0 = add(hand, [0, -pw * 0.1, pw * 1.6]);
       body.add(horn({ name: 'finger' + s, ctrl: [add(hand, [0, -pw * 0.2, pw * 0.7]), add(hand, [0, -pw * 0.3, pw * 1.6]), add(tip0, [-s * pw * 0.1, pw * 0.05, pw * 0.6])], r0: pw * 0.28, flat: 0.6, skin: () => w, paint: chitinPaint(sh(acc, -2), { glint: 0.9 }), rings: 9 })).reg = 9;
       body.add(horn({ name: 'dactyl' + s, ctrl: [add(hand, [0, pw * 0.3, pw * 0.7]), add(hand, [0, pw * 0.45, pw * 1.5]), add(tip0, [-s * pw * 0.1, pw * 0.15, pw * 0.65])], r0: pw * 0.25, flat: 0.6, skin: () => w, paint: chitinPaint(sh(acc, -2), { glint: 0.9 }), rings: 9 })).reg = 9;

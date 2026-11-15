@@ -153,12 +153,22 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
     for (let i = n - 1; i >= 0; i--) { const k = r0 * Math.pow(tap, i); push({ c: tails[i], s: [k * fl, k], p: 'ridge' }, 'tail' + i); }
     push({ c: add(lerp(tails[0], hips, 0.55), [0, hipH * 0.12, 0]), s: [hipsS.s[0] * 0.78, hipH * 0.8], p: 'hips' }, 'rump');
   } else push({ c: add(hips, [0, hipH * 0.1, -T * 0.22]), s: [hipsS.s[0] * 0.6, hipH * 0.6], p: 'round' }, 'rump');
-  push(hipsS, 'hips');
-  push(sec(lerp(hips, chest, 0.34), TS.waist, prof[2]), 'waist');
-  push(sec(lerp(hips, chest, 0.68), TS.barrel, prof[1]), 'barrel');
-  const ch = sec(add(chest, [0, 0, T * 0.03]), TS.chest, prof[0]);
+  // the masses a sculptor blocks first: the croup and the points of the hips standing out high on the flanks (the
+  // haunch), the loin tucked up behind the ribs, the ribcage deepest just behind the elbows (the girth), the withers
+  // and the scapula ridges over the shoulders, the brisket projecting ahead of the forelegs
+  const hz = sec(hips, TS.hips, prof[3], [[1, 0.04, 0.05], [2, 0.1, 0.03], [3, 0.12, -0.02], [6, -0.06, 0.04]]);
+  hz.c = add(hz.c, [0, H * 0.02, 0]);
+  push(hz, 'hips');
+  const loin: Sec = [TS.waist[0] * 0.96, TS.waist[1] * 0.96, Math.min(TS.waist[2], TS.barrel[2] * 0.84)];
+  push(sec(lerp(hips, chest, 0.3), loin, prof[2], [[3, -0.04, 0], [6, 0, 0.08], [7, 0, 0.06]]), 'waist');
+  push(sec(lerp(hips, chest, 0.6), TS.barrel, prof[1]), 'barrel');
+  const girth: Sec = [Math.max(TS.barrel[0], TS.chest[0]) * 1.02, TS.chest[1] * 0.98, Math.max(TS.barrel[2], TS.chest[2]) * 1.07];
+  push(sec(lerp(hips, chest, 0.84), girth, 'barrel', [[5, 0.02, -0.03], [7, 0, -0.03]]), 'girth');
+  const ch = sec(add(chest, [0, 0, T * 0.05]), [TS.chest[0] * 0.96, TS.chest[1] + 0.1, TS.chest[2] * 0.96], prof[0], [[1, 0.04, 0.06], [2, 0.06, 0.04], [7, -0.12, 0], [8, 0, -0.03]]);
   if (TS.hump) { ch.c = add(ch.c, [0, TS.hump * H * 0.5, 0]); ch.s = [ch.s[0], ch.s[1] + TS.hump * H * 0.5]; }
   push(ch, 'chest');
+  // the brisket: the breastbone's point ahead of the forelegs, narrow and deep, under the root of the neck
+  push(sec(add(lerp(chest, neck, 0.28), [0, -H * 0.06, 0]), [TS.chest[0] * 0.78, TS.chest[1] * 0.78, TS.chest[2] * 0.86], 'neck', [[7, -0.16, 0], [8, 0, 0.04]]), 'brisket');
   // the neck: from the withers to under the skull, arched, its radius blending from the chest to the head
   const nr0 = (TS.neck?.r0 ?? 0.8) * hw, nr1 = (TS.neck?.r1 ?? 0.52) * hw, arch = TS.neck?.arch ?? 0.08;
   const nape: V3 = add(skC, [0, hh * 0.05, -hl * 0.22]);
@@ -321,7 +331,7 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
     const Lg = limb({
       name: 'leg' + lg.pair + (s > 0 ? 'r' : 'l'), side: s, hip: J[0], knee: J[1], hock: three ? J[2] : undefined, sole: J[J.length - 1], tj,
       bones: { parent: rig.bones[B[0]].parent, up: B[0], lo: B[1], mid: three ? B[2] : undefined, foot: B[B.length - 1], flex: lg.flex },
-      rings: legRings(LS.kind, fore, r, tj, segL, fh), foot, around: L >= 2.5 ? 8 : 12, levels: L >= 2.5 ? 1 : 0, k: 1,
+      rings: legRings(LS.kind, fore, r, tj, segL, fh), foot, around: 12, levels: 0, k: 1,
       paint: coatPaint(C, 'limb', { inner: [-s, 0, 0], hipY: J[0][1] }), clawPaint,
     });
     Lg.skin.reg = 8; Lg.toes.reg = 8; Lg.claws.reg = 8; Lg.toes.levels = 0; Lg.claws.levels = 0; Lg.claws.farSkip = true;

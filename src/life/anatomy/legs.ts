@@ -22,7 +22,7 @@ export function legRings(kind: LegKind, fore: boolean, r: number, tj: number[], 
   const top: LimbRing[] = [R(-0.32, 0.8, 1.6, undefined, undefined, [-0.45, 0]), R(-0.1, 1.02, 1.5, [[0, 0.1, 50], [175, 0.2, 50]], undefined, [-0.15, 0])];
   switch (kind) {
     case 'hoof': case 'stilt': {
-      const k = kind === 'stilt' ? 0.72 : 1, hh = foot, three = n === 3;
+      const k = kind === 'stilt' ? 0.86 : 1, hh = foot, three = n === 3;
       const low = [
         R(up(hh * 2.5), 0.3 * k, 1.12, [[175, 0.16, 26]]),
         R(up(hh * 2.0), 0.37 * k, 1.12, [[0, 0.06, 40], [180, 0.22, 40], [90, 0.05, 30], [-90, 0.05, 30]], 1), // the fetlock
@@ -68,15 +68,18 @@ export function legRings(kind: LegKind, fore: boolean, r: number, tj: number[], 
         ...low];
     }
     case 'bear': case 'knuckle': {
+      // a heavy plantigrade limb: the shoulder or haunch mass flowing out of the body, a thick muscle belly, the elbow
+      // or knee knob, a forearm or shank tapering to a distinct wrist or ankle over the broad paw
       const kk = kind === 'knuckle' && fore ? 1.18 : 1;
       return [R(-0.32, 0.82, 1.55, undefined, undefined, [-0.45, 0]),
-        R(-0.1, 1.08 * kk, 1.4, [[0, 0.12, 50], [180, 0.16, 50]], undefined, [-0.15, 0]),
-        R(at(0, 0.3), 1.22 * kk, 1.18, [[15, 0.18, 45], [170, 0.2, 45], [-90, -0.04, 40]]),
-        R(at(0, 0.72), 0.95 * kk, 1.1, [[10, 0.1, 40], [175, 0.12, 40]]),
-        R(tj[1], 0.86 * kk, 1.05, [[0, 0.18, 32], [180, -0.06, 40]], 1),
-        R(at(1, 0.22), 0.86 * kk, 1.1, [[fore ? 10 : 170, 0.22, 45]]), // the forearm's or the calf's mass
-        R(at(1, 0.62), 0.7 * kk, 1.05, [[180, 0.1, 40]]),
-        R(up(foot * 1.6), 0.66 * kk, 1.0, [[90, 0.06, 30], [-90, 0.06, 30]]),
+        R(-0.1, 1.12 * kk, 1.45, [[0, 0.12, 50], [180, 0.18, 50]], undefined, [-0.15, 0]),
+        R(at(0, 0.28), 1.12 * kk, 1.25, [[15, 0.2, 45], [170, 0.22, 45], [-90, -0.06, 40]]),
+        R(at(0, 0.7), 0.8 * kk, 1.08, [[10, 0.08, 40], [175, 0.1, 40]]),
+        R(tj[1], 0.7 * kk, 1.02, [[fore ? 180 : 0, 0.26, 30], [fore ? 0 : 180, -0.06, 40]], 1), // the elbow point or the kneecap
+        R(at(1, 0.2), 0.76 * kk, 1.1, [[fore ? 15 : 170, 0.24, 45]]), // the forearm's or the calf's muscle
+        R(at(1, 0.58), 0.56 * kk, 1.02, [[180, 0.12, 30], [0, 0.04, 40]]),
+        R(up(foot * 2.2), 0.5 * kk, 0.98, [[90, 0.12, 25], [-90, 0.12, 25]], 1), // the wrist or the ankle bones
+        R(up(foot * 1.3), 0.58 * kk, 1.0),
       ];
     }
     case 'pillar': return LIMB_TYPES.pillar(r);

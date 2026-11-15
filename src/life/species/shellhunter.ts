@@ -8,7 +8,7 @@ export const shellhunter: SpeciesFn = (d, rig) => {
   const W = rig.dims.W, base = rs(d.colors.base), belly = rs(d.colors.belly), pat = rs(d.colors.pattern), eye = rs(d.colors.eye);
   return {
     trunk: { chest: [0.46, 0.52, 0.74], barrel: [0.5, 0.5, 0.64], waist: [0.42, 0.46, 0.44], hips: [0.46, 0.5, 0.48], prof: ['shoulder', 'barrel', 'sag', 'hips'], neck: { r0: 1.0, r1: 0.7, arch: 0.05 }, tail: { r0: 0.42, taper: 0.8 } },
-    head: { skull: 'felid', len: 1.0, wid: 1.0, muzzle: 1.25, pitch: 0.05, eyes: { r: 0.13, pupil: 'slit', iris: eye, fwd: 0.55, lid: 0.12 }, ears: { len: 0.3, wid: 0.22, up: 0.6, out: 0.8, back: 0.5, cup: 0.8 }, nose: 'leather', teeth: { canine: 0.26, incisors: true }, whiskers: 0.55, tongue: 'plain' },
+    head: { skull: 'felid', len: 1.08, wid: 1.18, hgt: 1.08, muzzle: 0.95, pitch: 0.05, eyes: { r: 0.13, pupil: 'slit', iris: eye, fwd: 0.55, lid: 0.12 }, ears: { len: 0.3, wid: 0.22, up: 0.6, out: 0.8, back: 0.5, cup: 0.8 }, nose: 'leather', teeth: { canine: 0.26, incisors: true }, whiskers: 0.55, tongue: 'plain' },
     legs: { fore: { kind: 'paw', r: 1.3, claw: 1.6 }, hind: { kind: 'paw', r: 1.15, claw: 1.4 } },
     coat: {
       base, belly, bellyArc: 1.0,

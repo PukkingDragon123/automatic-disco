@@ -16,10 +16,10 @@ export function rs(c: number): [RampName, number] {
 export const sh = (c: [RampName, number], k: number): [RampName, number] => [c[0], Math.max(0, Math.min(RAMPS[c[0]].length - 1, c[1] + k))];
 
 /** fur locks for an animal of body width W (k > 1 longer, shaggier) */
-export const fur = (W: number, k = 1, down = 0.5): Surf => ({ fur: { len: 0.16 * W * k, width: 0.058 * W * Math.sqrt(k), down } });
+export const fur = (W: number, k = 1, down = 0.5): Surf => ({ fur: { len: 0.24 * W * k, width: 0.095 * W * Math.sqrt(k), down } });
 /** scales of a kind, sized to the body */
-export const scales = (W: number, k = 1, kind: 'shield' | 'pebble' | 'scute' | 'keel' = 'shield', extra: Surf = {}): Surf => ({ scales: { size: 0.075 * W * k, kind }, creases: 0.8, ...extra });
+export const scales = (W: number, k = 1, kind: 'shield' | 'pebble' | 'scute' | 'keel' = 'shield', extra: Surf = {}): Surf => ({ scales: { size: 0.11 * W * k, kind }, creases: 0.8, ...extra });
 /** pebbled, wrinkled hide */
-export const hide = (W: number, k = 1, folds = 0): Surf => ({ pebbles: { size: 0.07 * W * k, depth: 0.9, pores: 0.4 }, folds: folds ? { spacing: 0.08 * W * folds, depth: 0.7 } : undefined, creases: 0.8 });
+export const hide = (W: number, k = 1, folds = 0): Surf => ({ pebbles: { size: 0.1 * W * k, depth: 0.9, pores: 0.4 }, folds: folds ? { spacing: 0.1 * W * folds, depth: 0.7 } : undefined, creases: 0.8 });
 /** smooth wet skin with glands */
-export const wet = (W: number, glands = 0.3, k = 1): Surf => ({ glands: glands ? { size: 0.12 * W * k, density: glands } : undefined, pebbles: { size: 0.03 * W * k, depth: 0.35 }, wet: 0.5, creases: 0.6 });
+export const wet = (W: number, glands = 0.3, k = 1): Surf => ({ glands: glands ? { size: 0.15 * W * k, density: glands } : undefined, pebbles: { size: 0.05 * W * k, depth: 0.3 }, wet: 0.5, creases: 0.6 });

@@ -84,7 +84,7 @@ export function geneRecipe(d: Design, rig: Rig): VertSpec {
   return {
     trunk: { ...trunk, hump: g('hump') ? 0.22 : undefined, neck: { r0: 0.82, r1: 0.55, arch: biped || hooved ? 0.1 : 0.05, dewlap: g('wattle') ? 0.2 : 0 }, tail: tailK },
     head: {
-      skull: skullFam, len: 1, wid: 1, muzzle: skullFam === 'cervid' ? 1.1 : 1, pitch: skullFam === 'cervid' ? 0.15 : 0.05,
+      skull: skullFam, len: 1.1, wid: 1.1, hgt: 1.05, muzzle: skullFam === 'cervid' ? 1.1 : 1, pitch: skullFam === 'cervid' ? 0.15 : 0.05,
       eyes: { r: g('eye_bulging') ? 0.2 : 0.13, pupil, iris: eye, fwd, turret: g('eye_bulging') ? 0.6 : undefined, lid: bear ? 0.15 : 0.06 },
       ears, nose, teeth: carn ? { canine: cat ? 0.24 : 0.18, incisors: true } : g('omni_teeth') ? { canine: 0.1, incisors: true } : undefined,
       tongue: g('tongue') ? (hop ? 'shoot' : 'flick') : 'plain', whiskers: g('whiskers') ? 0.5 : undefined, throat: hop || (amph && !sprawl) ? 0.6 : undefined,

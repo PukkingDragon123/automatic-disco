@@ -12,7 +12,7 @@ export const lancehorn: SpeciesFn = (d) => {
     coat: {
       base, belly, back: sh(base, -1), bellyArc: 0.9,
       pattern: { kind: 'saddle', c: pat },
-      surf: { body: { fur: { len: 0.14, width: 0.05, down: 0.6 } }, back: { fur: { len: 0.17, width: 0.055, down: 0.4 } }, limb: { fur: { len: 0.09, width: 0.04 } }, face: { fur: { len: 0.05, width: 0.03 } }, muzzle: { pebbles: { size: 0.03, depth: 0.7 }, creases: 0.8 } },
+      surf: { body: { fur: { len: 0.21, width: 0.08, down: 0.6 } }, back: { fur: { len: 0.25, width: 0.09, down: 0.4 } }, limb: { fur: { len: 0.13, width: 0.06 } }, face: { fur: { len: 0.07, width: 0.04 } }, muzzle: { pebbles: { size: 0.03, depth: 0.7 }, creases: 0.8 } },
       face: { muzzle: sh(base, 1), nose: ['hide', 2] }, claw: ['bone', 3], horn: ['violet', 2],
     },
     parts: [

@@ -279,7 +279,7 @@ export class Px {
    *  Each lock shifts its plane a little (clumps), a few carry a dark strand line or a lit hairline, and the gaps
    *  at the lock roots under a lit plane show a darker underfur notch. Records lockS like locks(). */
   pelt(o: { len: number; width: number; flow?: number; down?: number; mask?: (i: number) => number; seed?: number; tooth?: number; clump?: number; strands?: number }) {
-    const { w, h } = this, seed = o.seed ?? 37, flow = o.flow ?? 1, sy = o.len, tooth = o.tooth ?? 0.6, clump = o.clump ?? 0.18, strands = o.strands ?? 0.3, down = o.down ?? 0.5;
+    const { w, h } = this, seed = o.seed ?? 37, flow = o.flow ?? 1, sy = o.len, tooth = o.tooth ?? 0.8, clump = o.clump ?? 0.26, strands = o.strands ?? 0.16, down = o.down ?? 0.5;
     const mpt = this.mpt;
     const S = this.lockS ?? (this.lockS = new Float32Array(this.n).fill(-2));
     for (let y = 0; y < h; y++) {
