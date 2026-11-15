@@ -5,7 +5,9 @@ import * as THREE from 'three';
 import type { Engine } from '../../app/engine';
 import type { Input } from '../../app/input';
 import { gbuf } from '../../gfx/gbuf';
-import { panel } from '../intro/hw';
+import { Ink, INK, textW } from './doodle';
+import { SpeechBubble } from '../../ui/cineBubble';
+import { crewState } from './state';
 import { buildCrewModel, type CrewModel } from './model';
 import { ROSTER, CREW_IDS, SHIP_NAME, PROGRAM, type CrewId, type Act } from './roster';
 
@@ -73,34 +75,76 @@ export const ACT_COL: Record<Act, string> = {
 function style() { if (document.getElementById('crew-css')) return; const s = document.createElement('style'); s.id = 'crew-css'; s.textContent = CSS; document.head.appendChild(s); }
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 
-function sheetCard(id: CrewId) {
-  const d = ROSTER[id];
-  const el = document.createElement('div'); el.className = 'crew-sheet';
-  el.appendChild(panel(700, 1016, CREW_IDS.indexOf(id) + 3, [30, 28, 640, 962]));
-  const inner = document.createElement('div'); inner.className = 'in'; el.appendChild(inner);
-  const col = `rgb(${d.dept_col.join(',')})`;
-  const day = d.routine.map((b) => `<span style="width:${((b.to - b.from) / 24) * 100}%;background:${ACT_COL[b.act]}" title="${b.act}"></span>`).join('');
-  const acts = [...new Set(d.routine.map((b) => b.act))];
-  inner.innerHTML = `
-    <div class="k">${esc(PROGRAM)} · ${esc(SHIP_NAME)}</div>
-    <div class="stamp">CREW ${String(CREW_IDS.indexOf(id) + 1).padStart(2, '0')}/08</div>
-    <div class="nm">${esc(d.name)}</div>
-    <div class="rl">${esc(d.role)} · ${esc(d.rank)}</div>
-    <div class="band" style="background:linear-gradient(90deg, ${col} 0 70%, transparent 70%)"></div>
-    <div class="grid">
-      <b>AGE</b><span>${d.age}</span><b>FROM</b><span>${esc(d.origin)}</span>
-      <b>HEIGHT</b><span>${d.heightM.toFixed(2)} m</span><b>BODY</b><span>${esc(d.body)}</span>
-      <b>DEPT</b><span>${esc(d.dept)}</span><b>VOICE</b><span>pitch ${d.voice.pitch.toFixed(2)}, rate ${d.voice.rate.toFixed(2)}</span>
-    </div>
-    <h5>LOOK</h5><p>${esc(d.look)}</p>
-    <h5>KIT</h5><p>${esc(d.outfitNote)}</p>
-    <h5>PERSON</h5><p>${esc(d.personality)}</p>
-    <h5>HEARD AROUND THE SHIP</h5>${d.lines.idle.slice(0, 1).map((l) => `<div class="q">${esc(l)}</div>`).join('')}${d.lines.click.slice(0, 1).map((l) => `<div class="q">${esc(l)}</div>`).join('')}
-    <h5>A DAY ABOARD</h5><div class="day">${day}</div><div class="hrs"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
-    <div class="lg">${acts.map((a) => `<span><i style="background:${ACT_COL[a]}"></i>${a}</span>`).join('')}</div>`;
-  document.body.appendChild(el);
+/** what a gear piece is called on the sheet and the bone its callout points at */
+const GEAR_TAG: Partial<Record<string, [string, string]>> = {
+  toolBelt: ['TOOL BELT', 'hips'], goggles: ['WELDING GOGGLES', 'head'], kneePads: ['KNEE PADS', 'shinL'], earDefenders: ['EAR DEFENDERS', 'neck'],
+  stethoscope: ['STETHOSCOPE', 'chest'], medScanner: ['MED SCANNER', 'hips'], tablet: ['HER TABLET', 'handL'], stylus: ['STYLUS IN THE BUN', 'head'],
+  rankBoards: ['FOUR BARS', 'uarmL'], mug: ['MATE, ALWAYS', 'handR'], aviators: ['AVIATORS', 'head'], flightPatches: ['MISSION PATCHES', 'chest'],
+  headsetNeck: ['FLIGHT HEADSET', 'neck'], fieldVest: ['SAMPLE VEST', 'chest'], seedPouch: ['300 SEEDS', 'hips'], specimenJar: ['SPECIMEN JAR', 'handR'],
+  apron: ['APRON', 'spine'], ladle: ['LADLE', 'handR'], towel: ['TOWEL', 'chest'], tacVest: ['PLATE CARRIER', 'chest'], holster: ['STUN PISTOL', 'thighR'],
+  shoulderRadio: ['RADIO', 'chest'], wrench: ['WRENCH', 'handR'], wristComp: ['WRIST COMP', 'farmL'], patchL: ['UNAA CREST', 'uarmL'],
+};
+/** the sheet: hand-drawn callouts over the 3D vignette (name, role, gear with leader lines, height, mood, a line) */
+function sheetCallouts(id: CrewId, hero: CrewModel, turn: CrewModel[], cam: THREE.PerspectiveCamera, hook: (fn: (dt: number) => void) => void) {
+  const d = ROSTER[id], st = crewState();
+  const W = innerWidth, H = innerHeight;
+  const c = document.createElement('canvas'); c.style.cssText = 'position:fixed;left:0;top:0;z-index:5;pointer-events:none;image-rendering:pixelated'; document.body.appendChild(c);
+  const bub = new SpeechBubble(document.body);
+  const scr = (o: THREE.Object3D, dy = 0) => { const v = o.getWorldPosition(new THREE.Vector3()); v.y += dy; v.project(cam); return [Math.round(((v.x + 1) / 2) * W), Math.round(((1 - v.y) / 2) * H)] as [number, number]; };
+  const tags = d.gear.filter((g) => GEAR_TAG[g] && g !== 'patchL').slice(0, 4);
+  const mood = st.mood, moodWord = mood > 0.7 ? 'STEADY' : mood > 0.5 ? 'TIRED' : mood > 0.3 ? 'GRIEVING' : 'BROKEN';
+  let t = 0, last = -1, shown = false;
+  hook((dt) => {
+    t += dt;
+    const boil = Math.floor(t * 4);
+    if (!shown && t > 0.6) { shown = true; bub.show(d.lines.click[0], d.short); }
+    const hp = scr(hero.rig.j.head, 0.3);
+    bub.update(dt, hp[0], hp[1], true);
+    if (boil === last) return; last = boil;
+    const I = new Ink(W, H); I.seed = boil % 6 + 1;
+    // name, role, the facts: written top left
+    I.label(d.name, 40, 30, 'TitleL', 64, INK.light);
+    I.label(d.role.toUpperCase() + ' · ' + d.rank.toUpperCase(), 44, 104, 'Title', 24, INK.amber);
+    I.label(`${d.age} · ${d.origin}`, 44, 136, 'Body', 22, INK.mute);
+    I.stroke([[42, 166], [42 + Math.min(560, textW(d.role, 'Title', 24) * 1.4), 168]], 3, INK.amber, { outline: INK.dark, taper: true });
+    // gear: callouts with leader lines to the part, alternating sides of the hero
+    const hx = scr(hero.root)[0];
+    tags.forEach((g, i) => {
+      const [label, bone] = GEAR_TAG[g]!;
+      const b = (hero.rig.bones as Record<string, THREE.Object3D>)[bone] ?? hero.rig.j.chest;
+      const p = scr(b, bone === 'head' ? 0.12 : bone.startsWith('hand') ? -0.06 : 0.02);
+      const right = i % 2 === 1, ly = 300 + i * 150, lx = right ? hx + 300 : hx - 300 - textW(label, 'Title', 24);
+      I.label(label, lx, ly, 'Title', 24, INK.light);
+      I.leader([right ? lx - 8 : lx + textW(label, 'Title', 24) + 8, ly + 14], p, INK.light);
+    });
+    // the height: a bracket from the feet to the crown with the measure
+    const foot = scr(hero.root), crown = scr(hero.rig.j.head, 0.16 * hero.rig.s);
+    const bx = foot[0] - 230;
+    I.stroke([[bx, crown[1]], [bx, foot[1]]], 2, INK.mute, { outline: INK.dark });
+    I.stroke([[bx - 10, crown[1]], [bx + 10, crown[1]]], 2, INK.mute, { outline: INK.dark }).stroke([[bx - 10, foot[1]], [bx + 10, foot[1]]], 2, INK.mute, { outline: INK.dark });
+    I.label(d.heightM.toFixed(2) + ' m', bx - 12, (crown[1] + foot[1]) / 2 - 12, 'Title', 24, INK.light, 'right');
+    I.label(d.body, bx - 12, (crown[1] + foot[1]) / 2 + 16, 'Body', 22, INK.mute, 'right');
+    // the mood: a little face drawn by the head, its word
+    const mx = hp[0] + 250, my = hp[1] + 40;
+    I.loop(mx, my, 22, 22, 2, INK.light, { outline: INK.dark });
+    I.r(mx - 9, my - 6, 4, 4, INK.light).r(mx + 6, my - 6, 4, 4, INK.light);
+    const curve = mood > 0.6 ? 1 : mood > 0.4 ? 0 : -1;
+    I.stroke([[mx - 10, my + 7 - curve * 2], [mx, my + 7 + curve * 4], [mx + 10, my + 7 - curve * 2]], 2, INK.light, { outline: INK.dark, amp: 0.5 });
+    I.label('MOOD ' + moodWord, mx + 34, my - 26, 'Title', 24, INK.light);
+    I.label('voice ' + d.voice.pitch.toFixed(2), mx + 34, my + 2, 'Body', 22, INK.mute);
+    // the turnaround's labels
+    ['FRONT', 'SIDE', 'BACK'].forEach((s, i) => { const f = scr(turn[i].root); I.label(s, f[0], f[1] + 12, 'Body', 22, INK.mute, 'center'); });
+    // a day aboard: a strip of blocks drawn in ink, the acts under it
+    const x0 = W - 760, y0 = H - 112, w0 = 700;
+    I.label('A DAY ABOARD', x0, y0 - 36, 'Title', 24, INK.light);
+    d.routine.forEach((r) => { const xa = x0 + Math.round((r.from / 24) * w0), xb = x0 + Math.round((r.to / 24) * w0); I.r(xa, y0, xb - xa, 22, ACT_COL[r.act]); I.vl(xb - 1, y0, y0 + 21, INK.dark); });
+    I.stroke([[x0 - 2, y0 - 2], [x0 + w0 + 2, y0 - 2], [x0 + w0 + 2, y0 + 24], [x0 - 2, y0 + 24], [x0 - 2, y0 - 2]], 2, INK.light, { outline: INK.dark, amp: 0.6 });
+    [0, 6, 12, 18, 24].forEach((hh) => I.label(String(hh).padStart(2, '0'), x0 + (hh / 24) * w0, y0 + 30, 'Body', 11, INK.mute, 'center'));
+    const acts = [...new Set(d.routine.map((r) => r.act))].slice(0, 7);
+    acts.forEach((a, i) => { const xx = x0 + i * 100; I.r(xx, y0 + 52, 12, 12, ACT_COL[a]); I.label(a, xx + 18, y0 + 48, 'Body', 22, INK.light); });
+    const g = c.getContext('2d')!; c.width = I.c.width; c.height = I.c.height; c.style.width = W + 'px'; c.style.height = H + 'px'; g.drawImage(I.c, 0, 0);
+  });
 }
-
 export async function testCrew(engine: Engine, input: Input, P: URLSearchParams) {
   void input;
   style();
@@ -111,6 +155,7 @@ export async function testCrew(engine: Engine, input: Input, P: URLSearchParams)
   const scene = new THREE.Scene();
   const cam = new THREE.PerspectiveCamera(17, innerWidth / innerHeight, 0.1, 200);
   const models: { m: CrewModel; x: number; z: number; yaw: number; y?: number }[] = [];
+  let frameFn: ((dt: number) => void) | null = null;
   if (which === 'all') {
     studio(scene, { x0: -3.6, x1: 3.6 });
     const order: CrewId[] = ['quintero', 'kristiansen', 'castellanos', 'araujo', 'solano', 'baptiste', 'mamani', 'kowalczyk'];
@@ -119,23 +164,14 @@ export async function testCrew(engine: Engine, input: Input, P: URLSearchParams)
     const t = document.createElement('div'); t.className = 'crew-title'; t.innerHTML = `THE CREW OF THE ${esc(SHIP_NAME)}<small>${esc(PROGRAM)}: eight aboard, to scale</small>`; document.body.appendChild(t);
   } else {
     const id = (CREW_IDS as string[]).includes(which) ? which as CrewId : 'solano';
-    studio(scene, { x0: -1.2, x1: 2.2 });
+    studio(scene, { x0: 0.6, x1: 3.4 });
     const prop = DEFAULT_PROP[id];
     const mk = () => { const m = buildCrewModel(id); if (prop) m.showProp(prop); return m; };
-    cam.position.set(0, 1.05, 12); cam.lookAt(0, 1.0, 0); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); cam.updateMatrixWorld();
-    // place things by where they should land on screen: a world point at a depth along the ray through pixel (px, py)
-    const atScreen = (px: number, py: number, depth: number) => { const v = new THREE.Vector3((px / innerWidth) * 2 - 1, -(py / innerHeight) * 2 + 1, 0.5).unproject(cam).sub(cam.position).normalize(); return cam.position.clone().addScaledVector(v, depth / v.dot(cam.getWorldDirection(new THREE.Vector3()))); };
-    // the portrait: head and shoulders, big, on the left
-    const head = atScreen(innerWidth * 0.16, innerHeight * 0.36, 3.1);
-    const portrait = mk(); const hy = portrait.P.crown * portrait.def.scale;
-    models.push({ m: portrait, x: head.x, z: head.z, yaw: 0.38, y: head.y - hy + 0.12 });
-    // the turnaround: front, side, back, to scale on the floor in front of the height chart
-    for (const [i, yaw] of [[0, 0], [1, Math.PI / 2], [2, Math.PI]] as [number, number][]) {
-      const f = atScreen(innerWidth * (0.36 + i * 0.1), innerHeight * 0.5, 12);
-      models.push({ m: mk(), x: f.x, z: 0, yaw });
-    }
-    // the key light reaches the portrait too
-    sheetCard(id);
+    cam.fov = 24; cam.position.set(0, 1.0, 6.4); cam.lookAt(0, 0.9, 0); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); cam.updateMatrixWorld();
+    // the hero: full figure, three-quarter view, centre left; the turnaround (front, side, back) further back on the right
+    models.push({ m: mk(), x: -0.62, z: 0.6, yaw: 0.42 });
+    [0, Math.PI / 2, Math.PI].forEach((yaw, i) => models.push({ m: mk(), x: 1.45 + i * 0.62, z: -0.3, yaw }));
+    sheetCallouts(id, models[0].m, models.slice(1).map((o) => o.m), cam, (fn) => (frameFn = fn));
     const g = P.get('gesture'); if (g) setTimeout(() => models[0].m.rig.gesture(g as never), 300);
   }
   for (const o of models) { o.m.root.position.set(o.x, o.y ?? 0, o.z); o.m.root.rotation.y = o.yaw; scene.add(o.m.root); }
@@ -145,6 +181,7 @@ export async function testCrew(engine: Engine, input: Input, P: URLSearchParams)
   const v = new THREE.Vector3();
   engine.setScreen({
     update(dt) {
+      frameFn?.(dt);
       for (const o of models) o.m.update(dt, { speed: 0, fidget: !P.has('still') } as never);
       tags.forEach((e, i) => { v.set(models[i].x, -0.02, 0).project(cam); e.style.left = Math.round(((v.x + 1) / 2) * innerWidth - e.offsetWidth / 2) + 'px'; e.style.top = Math.round(((1 - v.y) / 2) * innerHeight + 14) + 'px'; });
     },

@@ -1,0 +1,489 @@
+{
+ "name": "Power Pack",
+ "description": "UNAA cyborg worker part (oddworld).",
+ "author": "oddworld",
+ "license": "CC0-1.0",
+ "density": 3,
+ "budget": {
+  "tris": 900,
+  "colors": 64
+ },
+ "light": {
+  "dir": [
+   -0.55,
+   1.0,
+   0.7
+  ],
+  "strength": 1.1,
+  "gradient": 0.35,
+  "ao": 0.9,
+  "ao_height": 3.0
+ },
+ "render": {
+  "background": "#20242c",
+  "hero": [
+   -34,
+   18
+  ],
+  "shadow": 0.45
+ },
+ "palette": {
+  "ramps": {
+   "shell": [
+    "#2b2321",
+    "#4a3c35",
+    "#76645a",
+    "#a8957f",
+    "#d2c2a4",
+    "#efe4c8",
+    "#fffaf0"
+   ],
+   "yellow": [
+    "#2a1c06",
+    "#5a3a08",
+    "#94640c",
+    "#c99316",
+    "#e8b428",
+    "#f6d460",
+    "#fff2b0"
+   ],
+   "metal": [
+    "#0f1114",
+    "#1d2126",
+    "#2e343b",
+    "#454d56",
+    "#66707b",
+    "#8f99a3",
+    "#c3cbd2"
+   ],
+   "glow": [
+    "#06202a",
+    "#0c4250",
+    "#13707e",
+    "#22a6a8",
+    "#58d6c8",
+    "#a8f0e0",
+    "#f0fff8"
+   ],
+   "red": [
+    "#2a0a0e",
+    "#5c1219",
+    "#9a1f26",
+    "#d63a35",
+    "#f2725a"
+   ],
+   "warn": [
+    "#3a2a06",
+    "#7a5a0a",
+    "#d9a514",
+    "#ffd23a"
+   ],
+   "rubber": [
+    "#0b0b0d",
+    "#18181c",
+    "#26262c",
+    "#383840",
+    "#4c4c56"
+   ]
+  }
+ },
+ "styles": {
+  "paint": {
+   "ramp": "yellow",
+   "tone": 3.8,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 2.0,
+     "amount": 0.25
+    },
+    {
+     "id": "panel",
+     "op": "panel",
+     "inset": 2,
+     "min_size": 10
+    },
+    {
+     "id": "grime",
+     "op": "patches",
+     "scale": 1.8,
+     "threshold": 0.72,
+     "shift": -0.5,
+     "faces": [
+      "-top"
+     ]
+    },
+    {
+     "id": "wear",
+     "op": "wear",
+     "width": 2,
+     "density": 0.18,
+     "ramp": "metal",
+     "tone": 2.2,
+     "post": true
+    },
+    {
+     "id": "rivets",
+     "op": "rivets",
+     "inset": 1,
+     "min_size": 8,
+     "post": true
+    }
+   ]
+  },
+  "shell": {
+   "ramp": "shell",
+   "tone": 3.9,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 2.0,
+     "amount": 0.25
+    },
+    {
+     "id": "panel",
+     "op": "panel",
+     "inset": 2,
+     "min_size": 10
+    },
+    {
+     "id": "grime",
+     "op": "patches",
+     "scale": 1.8,
+     "threshold": 0.72,
+     "shift": -0.5,
+     "faces": [
+      "-top"
+     ]
+    },
+    {
+     "id": "wear",
+     "op": "wear",
+     "width": 2,
+     "density": 0.18,
+     "ramp": "metal",
+     "tone": 2.2,
+     "post": true
+    },
+    {
+     "id": "rivets",
+     "op": "rivets",
+     "inset": 1,
+     "min_size": 8,
+     "post": true
+    }
+   ]
+  },
+  "gun": {
+   "ramp": "metal",
+   "tone": 2.9,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 1.6,
+     "amount": 0.35
+    },
+    {
+     "id": "scuffs",
+     "op": "wear",
+     "width": 1,
+     "density": 0.25,
+     "shift": 1.2,
+     "post": true
+    },
+    {
+     "id": "rivets",
+     "op": "rivets",
+     "inset": 1,
+     "min_size": 7,
+     "post": true
+    }
+   ]
+  },
+  "chrome": {
+   "ramp": "metal",
+   "tone": 5.0,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "streak",
+     "op": "stripes",
+     "axis": "y",
+     "period": 3.0,
+     "width": 0.2,
+     "shift": -1.5
+    }
+   ]
+  },
+  "rubber": {
+   "ramp": "rubber",
+   "tone": 2.0,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "ribs",
+     "op": "stripes",
+     "axis": "z",
+     "period": 1.2,
+     "width": 0.3,
+     "shift": -0.8
+    }
+   ]
+  },
+  "glow": {
+   "ramp": "glow",
+   "tone": 4.4,
+   "light": 0.25,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 0,
+    "light_shift": 1.5
+   },
+   "layers": [
+    {
+     "id": "hot",
+     "op": "noise",
+     "scale": 1.2,
+     "amount": 0.5
+    }
+   ]
+  },
+  "hazard": {
+   "ramp": "warn",
+   "tone": 2.6,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "chev",
+     "op": "stripes",
+     "axis": "x",
+     "period": 2.4,
+     "width": 0.5,
+     "ramp": "metal",
+     "tone": 0.6
+    }
+   ]
+  }
+ },
+ "parts": [
+  {
+   "id": "cell",
+   "shape": "box",
+   "size": [
+    12,
+    6,
+    8
+   ],
+   "pivot": [
+    0,
+    3,
+    0
+   ],
+   "style": "paint",
+   "chamfer": 0.9
+  },
+  {
+   "id": "fin0",
+   "shape": "box",
+   "size": [
+    0.5,
+    1.4,
+    7
+   ],
+   "pivot": [
+    -4.5,
+    6.7,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "fin1",
+   "shape": "box",
+   "size": [
+    0.5,
+    1.4,
+    7
+   ],
+   "pivot": [
+    -3.0,
+    6.7,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "fin2",
+   "shape": "box",
+   "size": [
+    0.5,
+    1.4,
+    7
+   ],
+   "pivot": [
+    -1.5,
+    6.7,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "fin3",
+   "shape": "box",
+   "size": [
+    0.5,
+    1.4,
+    7
+   ],
+   "pivot": [
+    0.0,
+    6.7,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "fin4",
+   "shape": "box",
+   "size": [
+    0.5,
+    1.4,
+    7
+   ],
+   "pivot": [
+    1.5,
+    6.7,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "fin5",
+   "shape": "box",
+   "size": [
+    0.5,
+    1.4,
+    7
+   ],
+   "pivot": [
+    3.0,
+    6.7,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "fin6",
+   "shape": "box",
+   "size": [
+    0.5,
+    1.4,
+    7
+   ],
+   "pivot": [
+    4.5,
+    6.7,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "gauge",
+   "shape": "box",
+   "size": [
+    4,
+    2.2,
+    0.4
+   ],
+   "pivot": [
+    0,
+    3.6,
+    4.1
+   ],
+   "style": "glow"
+  },
+  {
+   "id": "haz",
+   "shape": "box",
+   "size": [
+    10,
+    1.2,
+    0.4
+   ],
+   "pivot": [
+    0,
+    0.9,
+    4.1
+   ],
+   "style": "hazard"
+  },
+  {
+   "id": "port",
+   "shape": "prism",
+   "sides": 8,
+   "size": [
+    1.6,
+    1.6,
+    2
+   ],
+   "pivot": [
+    4.5,
+    4,
+    4.5
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "handle",
+   "shape": "box",
+   "size": [
+    10,
+    0.8,
+    0.8
+   ],
+   "pivot": [
+    0,
+    7.6,
+    -3
+   ],
+   "style": "chrome"
+  }
+ ]
+}

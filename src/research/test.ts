@@ -92,6 +92,7 @@ export async function testEvent(engine: Engine, input: Input, P: URLSearchParams
   (await import('../ui/kit')).setupUI();
   const g = new Game(engine, input, { seed: Number(P.get('seed') ?? 11), biome: (P.get('biome') ?? 'meadow') as never, pal: P.get('pal') ?? undefined, story: false });
   engine.setScreen(g);
+  if (P.has('scale')) { engine.scale = Number(P.get('scale')) || 1; engine.resize(); }
   engine.start();
   const G = g as any;
   G.director.auto = false;

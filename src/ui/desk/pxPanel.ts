@@ -193,3 +193,31 @@ export function fontText(p: Pix, s: string, x: number, y: number, col: number, o
 }
 /** make sure the faces are loaded before anything paints with them */
 export const fontsReady = (() => { try { return Promise.all([document.fonts.load("11px 'Body'"), document.fonts.load("24px 'Title'"), document.fonts.load("32px 'TitleL'")]).then(() => true); } catch { return Promise.resolve(true); } })();
+
+// ------------------------------------------------------------------ v6 LIVING VIGNETTES: hand-drawn paper and ink
+import { paperCard, stroke, scribble, tape as tapeStrip } from './ink';
+/** a doodled tab (nine-slice 20 x 16, slice 6): paper with a sketched ink outline; 'on' adds a red scribble mark */
+export function inkTabURL(state: 'up' | 'on' | 'down' = 'up', tint: 'paper' | 'red' | 'blue' = 'paper') {
+  return url(`itab|${state}|${tint}`, () => {
+    const p = new Pix(20, 16), T = tint === 'red' ? R.coral : tint === 'blue' ? R.sky : R.paper;
+    for (let y = 2; y < 14; y++) for (let x = 2; x < 18; x++) p.set(x, y, state === 'down' ? T[3] : T[T.length - 1]);
+    for (let x = 3; x < 17; x++) p.set(x, 13, T[Math.max(0, T.length - 3)]);
+    stroke(p, 1, 1, 18, 1, 3, { w: 1, over: 1, amp: 0.4 }); stroke(p, 18, 1, 18, 14, 4, { w: 1, over: 1, amp: 0.4 });
+    stroke(p, 18, 14, 1, 14, 5, { w: 2, over: 1, amp: 0.4 }); stroke(p, 1, 14, 1, 1, 6, { w: 1, over: 1, amp: 0.4 });
+    if (state === 'on') { stroke(p, 4, 12, 16, 11, 9, { col: R.stampRed[3], w: 1, over: 1, amp: 0.3 }); }
+    return p;
+  });
+}
+/** plain paper (nine-slice 24 x 24, slice 8) for tooltips and small cards */
+export function paperURL(seed = 1) { return url('paper|' + seed, () => paperCard(24, 24, seed)); }
+/** a note (nine-slice 32 x 24, slice 8): paper torn at the bottom, a strip of tape at the top left, an ink rule */
+export function noteURL(level: 'info' | 'good' | 'warn' | 'bad' | 'crit') {
+  return url('note|' + level, () => {
+    const tint = level === 'warn' ? R.straw : level === 'bad' || level === 'crit' ? R.coral : R.paper;
+    const p = paperCard(32, 24, level.length * 7, { tint, ink: level === 'crit' });
+    for (let x = 3; x < 29; x++) if ((x >> 1) % 2) p.clear(x, 21);
+    tapeStrip(p, 0, -1, 3, -0.4);
+    return p;
+  });
+}
+export { scribble };

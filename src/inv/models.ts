@@ -116,7 +116,7 @@ const BULK = (id: ItemId) => { const t = itemDef(id).tags; return t.includes('bu
 const LOOSE = new Set(['st_pit', 'st_bunker', 'silo', 'st_tank']);
 
 // ------------------------------------------------------------------ the model
-export interface ModelOpts { cutaway?: boolean; flag?: GFlag | null; shadow?: boolean }
+export interface ModelOpts { cutaway?: boolean; flag?: GFlag | null; shadow?: boolean; /** draw no load (the vignette lays real items itself) */ bare?: boolean }
 interface Bay { x0: number; z0: number; x1: number; z1: number; y: number; h: number }
 export class ContainerModel {
   readonly root = new THREE.Group();
@@ -145,7 +145,8 @@ export class ContainerModel {
     for (const m of this.mats.values()) m.dispose(); this.mats.clear();
     this.plateMesh = null; this.gauge = null; this.lamp = null;
     const P = new Parts();
-    const recipe = GLB[this.c.kind], got = recipe ? glbParts(recipe) : null;
+    // a cut-away view of a closed kind shows its procedural body with the lid off (the lowpix body has no inside)
+    const recipe = this.o.cutaway && !GLB[this.c.kind]?.open ? undefined : GLB[this.c.kind], got = recipe ? glbParts(recipe) : null;
     if (recipe && got) this.fromGlb(recipe, got, P);
     else {
       BUILD[this.c.kind](P, this, !!this.o.cutaway);
@@ -202,6 +203,8 @@ export class ContainerModel {
     if (!FONTS_OK) document.fonts?.ready.then(() => { FONTS_OK = true; if (this.plateMesh !== mesh) return; m.map?.dispose(); m.map = logoPlate(this.c.logo, this.c.color, this.c.label); m.needsUpdate = true; });
   }
   setBay(b: Bay) { this.bay = b; }
+  /** the interior floor where the load lies (container-local metres) */
+  bayOf(): Bay { return this.bay; }
   setGauge(m: THREE.Mesh) { this.gauge = m; this.body.add(m); }
   setLamp(m: THREE.Mesh) { this.lamp = m; this.body.add(m); }
   /** keep the model in step with the container (contents, paint, logo, power); cheap when nothing changed */
@@ -223,6 +226,7 @@ export class ContainerModel {
     for (const ch of [...this.load.children]) { this.load.remove(ch); (ch as THREE.Mesh).geometry?.dispose(); }
     const c = this.c, B = this.bay, fillK = c.fill();
     if (this.gauge) { const g = this.gauge; g.scale.y = Math.max(0.02, fillK); g.position.y = g.userData.y0 + (g.userData.h * g.scale.y) / 2; }
+    if (this.o.bare) return;
     if (c.kind === 'st_cabinet' && !this.o.cutaway) { this.jars(); return; }
     const visible = this.o.cutaway || c.info.open || this.glbOpen;
     if (!visible || !c.stacks.length) return;

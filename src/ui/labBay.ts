@@ -18,10 +18,31 @@ import '../limbo/content/furniture/b_industrial';
 import type { Fx } from '../game/fx';
 import { placeModel } from '../ship/hub/models';
 import { GN_DECL, gbuf, F_EMIT } from '../gfx/gbuf';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { WorkerProfile } from '../life/cyber/roles';
 import { SKILLS, SLOT_NAME, CYBER, type Slot } from '../life/cyber/catalog';
 
 const TAU = Math.PI * 2;
+// the lowpix-built part models (src/ui/assets/cyber/*.glb, specs beside them), normalised to a unit radius
+const PART_URLS = import.meta.glob('./assets/cyber/*.glb', { query: '?url', import: 'default', eager: true }) as Record<string, string>;
+const partUrl = (id: string) => { const f = id === 'cy_hydfore' || id === 'cy_hydhind' ? 'cy_hydleg' : id; return Object.entries(PART_URLS).find(([k]) => k.endsWith('/' + f + '.glb'))?.[1]; };
+const partCache = new Map<string, Promise<THREE.Object3D | null>>();
+let gltf: GLTFLoader | null = null;
+export function loadPart(id: string): Promise<THREE.Object3D | null> {
+  let p = partCache.get(id); if (p) return p;
+  const url = partUrl(id);
+  if (!url) { p = Promise.resolve(null); partCache.set(id, p); return p; }
+  gltf ??= new GLTFLoader();
+  p = gltf.loadAsync(url).then((g) => {
+    const root = g.scene;
+    root.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh) return; const src = m.material as THREE.MeshBasicMaterial; const map = src.map ?? null; if (map) { map.colorSpace = THREE.SRGBColorSpace; map.magFilter = THREE.NearestFilter; } m.material = gbuf(new THREE.MeshLambertMaterial({ map, emissive: 0x111111 }), 1); m.castShadow = true; });
+    const box = new THREE.Box3().setFromObject(root), c = box.getCenter(new THREE.Vector3()), r = box.getSize(new THREE.Vector3()).length() / 2 || 1;
+    const holder = new THREE.Group(); root.position.sub(c); holder.add(root); holder.scale.setScalar(1 / r);
+    return holder;
+  }).catch((e) => { console.warn('cyber part', id, e); return null; });
+  partCache.set(id, p);
+  return p;
+}
 const X0 = -6.8, X1 = 6.8, Z0 = -5.2, Z1 = 7, H = 4.8;
 
 const HAZE_V = 'varying vec3 vP; varying vec2 vUv; void main(){ vUv = uv; vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }';
@@ -57,7 +78,6 @@ export class FitBay {
     this.props();
     this.arms.push(this.arm(-1), this.arm(1));
     this.cables();
-    this.monitors();
     this.lights();
     this.weld = new THREE.PointLight(0xbfe4ff, 0, 4, 1.6); this.root.add(this.weld);
   }
@@ -113,7 +133,7 @@ export class FitBay {
   private props() {
     // the back wall: tape mainframes, a wall of CRTs, server racks, power cabinets
     this.obj('tape_mainframe', -4.4, Z0 + 0.6, 0);
-    this.obj('crt_bank', -1.7, Z0 + 0.6, 0);
+    this.obj('tape_mainframe', -1.9, Z0 + 0.6, 0);
     this.obj('server_rack', 1.1, Z0 + 0.55, 0); this.obj('server_rack', 1.8, Z0 + 0.55, 0); this.obj('server_rack', 2.5, Z0 + 0.55, 0);
     this.obj('electrical_cabinet', 4.0, Z0 + 0.45, 0); this.obj('transformer', 5.5, Z0 + 0.7, 0);
     // left wall: workbench and the tool chest, steel shelving with the parts waiting on it
@@ -254,6 +274,28 @@ export class FitBay {
   }
   setProfile(p: WorkerProfile, slot: Slot) { this.prof = p; this.slot = slot; this.scrT = 0; }
 
+  // ---------------------------------------------------------------------------------------------- candidate parts
+  /** the parts that fit the picked slot float round the specimen, each a lowpix-built model turning slowly; the
+   *  player drags one onto the body */
+  readonly cands: { id: string; obj: THREE.Group; home: THREE.Vector3; pos: THREE.Vector3; held: boolean; hover: number; spin: number }[] = [];
+  showCandidates(ids: string[], centre: THREE.Vector3, radius: number) {
+    this.clearCandidates();
+    const n = ids.length;
+    ids.forEach((id, i) => {
+      const a = -Math.PI * 0.45 + (n === 1 ? 0.45 * Math.PI : (i / (n - 1)) * Math.PI * 0.9), home = new THREE.Vector3(Math.sin(a) * radius, 0, Math.cos(a) * radius * 0.55 + 0.4).add(centre);
+      const obj = new THREE.Group(); obj.position.copy(home); obj.scale.setScalar(0.001); this.root.add(obj);
+      loadPart(id).then((m) => { if (m && obj.parent) obj.add(m.clone(true)); });
+      this.cands.push({ id, obj, home, pos: home.clone(), held: false, hover: 0, spin: i * 1.7 });
+    });
+  }
+  clearCandidates() { for (const c of this.cands) c.obj.removeFromParent(); this.cands.length = 0; }
+  /** which candidate sits under a screen point (by its projected position) */
+  candidateAt(x: number, y: number, cam: THREE.Camera): number {
+    let best = -1, bd = 70 * 70;
+    this.cands.forEach((c, i) => { const p = c.obj.position.clone().project(cam), sx = (p.x * 0.5 + 0.5) * innerWidth, sy = (-p.y * 0.5 + 0.5) * innerHeight, d = (sx - x) ** 2 + (sy - y) ** 2; if (d < bd) { bd = d; best = i; } });
+    return best;
+  }
+
   // ---------------------------------------------------------------------------------------------- frame
   update(dt: number) {
     if (!this.root.visible) return;
@@ -272,6 +314,12 @@ export class FitBay {
       this.weld.position.copy(p); this.weld.intensity = 6 + Math.random() * 14;
       if (Math.random() < 0.6) this.fx.burst(p.x, p.y, p.z, 4, Math.random() < 0.5 ? 0xffd890 : 0xbfe4ff, { glow: true, speed: 2.6, up: 1.2, size: 2, life: 0.45, grav: 6, spread: 1 });
     } else this.weld.intensity = Math.max(0, this.weld.intensity - dt * 40);
+    for (const c of this.cands) {
+      c.spin += dt * (0.6 + c.hover * 1.6);
+      if (!c.held) c.pos.lerp(new THREE.Vector3(c.home.x, c.home.y + Math.sin(t * 1.3 + c.spin) * 0.05, c.home.z), 1 - Math.exp(-6 * dt));
+      c.obj.position.copy(c.pos); c.obj.rotation.set(0.25, c.spin, 0);
+      const k = 0.62 * (1 + c.hover * 0.25 + (c.held ? 0.15 : 0)); c.obj.scale.setScalar(c.obj.scale.x + (k - c.obj.scale.x) * (1 - Math.exp(-8 * dt)));
+    }
     for (const h of this.hazes) h.uniforms.uT.value = t;
     this.scrT -= dt;
     if (this.scrT <= 0) { this.scrT = 0.25; for (const s of this.screens) { this.draw(s.cv, s.kind); s.tex.needsUpdate = true; } }
