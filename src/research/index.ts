@@ -28,6 +28,8 @@ const PLANT_ITEMS = /fruit|berr|leaf|leaves|fibre|fiber|wood|bark|resin|seed|tub
 let pending: Game | null = null;
 // registered at import, before any Factory builds its catalogue
 registerProgressionBuildings(() => pending);
+/** the test pages run the buildings against a stand-in host (src/research/test.ts) */
+export function bindTestHost(host: unknown) { pending = host as Game; }
 export function installProgression(game: Game) {
   const G = anyG(game);
   if (G.mastery) return;

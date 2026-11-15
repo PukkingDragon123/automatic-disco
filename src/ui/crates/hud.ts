@@ -14,7 +14,7 @@ import { injectCrateCSS } from './style';
 import { badgeURL, hudPlateURL, ctlURL, cardURL, loadMats, onMats, kindIcon, Pen } from './mat';
 import { sfx } from '../../audio/audio';
 
-const PER = 3, BW = 70, BH = 116, BG = 4, W = 234, H = 146;
+const PER = 3, BW = 70, BH = 116, BG = 4, H = 146;
 const ik = () => (innerHeight >= 1000 ? 2 : 1);
 const fmt = (n: number) => (n >= 10000 ? Math.round(n / 1000) + 'k' : n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n));
 export class CrateHud {
@@ -75,11 +75,13 @@ export class CrateHud {
   }
   private render(list: Container[]) {
     const k = ik(), now = performance.now();
-    Object.assign(this.root.style, { width: W * k + 'px', height: H * k + 'px', backgroundImage: `url(${hudPlateURL(W, H)})`, backgroundSize: `${W * k}px ${H * k}px` });
-    Object.assign(this.badges.style, { left: 8 * k + 'px', top: 8 * k + 'px', width: (PER * BW + (PER - 1) * BG) * k + 'px', height: BH * k + 'px' });
+    // (pod agent, per the lead) the plate is sized to the badges it shows: no big empty slab
+    const n = Math.max(1, Math.min(PER, list.length)), pw = 16 + n * BW + (n - 1) * BG, inner = n * BW + (n - 1) * BG;
+    Object.assign(this.root.style, { width: pw * k + 'px', height: H * k + 'px', backgroundImage: `url(${hudPlateURL(pw, H)})`, backgroundSize: `${pw * k}px ${H * k}px` });
+    Object.assign(this.badges.style, { left: 8 * k + 'px', top: 8 * k + 'px', width: inner * k + 'px', height: BH * k + 'px' });
     this.track.style.gap = BG * k + 'px';
     const row = this.root.querySelector<HTMLDivElement>('.row')!;
-    Object.assign(row.style, { left: 8 * k + 'px', top: (8 + BH + 4) * k + 'px', width: (PER * BW + (PER - 1) * BG) * k + 'px', height: 12 * k + 'px' });
+    Object.assign(row.style, { left: 8 * k + 'px', top: (8 + BH + 4) * k + 'px', width: inner * k + 'px', height: 12 * k + 'px' });
     this.track.innerHTML = list.map((c) => {
       const R = RAMPS[PAINTS[c.color].ramp], top = c.contents().slice(0, 3), b = this.born.get(c.id), fresh = b && now - b < 1200;
       const items = top.map((e, j) => `<div class="it" style="top:${(61 + j * 16) * k}px;width:${(BW - 10) * k}px"><img src="${itemIcon(e.item, 32)}"><span>${fmt(e.n)}</span></div>`).join('');

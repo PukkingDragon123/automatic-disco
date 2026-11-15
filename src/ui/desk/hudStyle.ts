@@ -114,7 +114,11 @@ body.cx-paused .cx-frame { box-shadow: inset 0 0 0 6px rgba(229,219,195,0.55); }
 .cx-wheel { right: 6px; bottom: 6px; width: 480px; height: 330px; padding: 0; }
 .cx-wheel canvas.dial { position: absolute; right: 8px; bottom: 6px; width: 320px; height: 320px; pointer-events: auto; cursor: pointer; image-rendering: pixelated; }
 .cx-wheel .info { position: absolute; left: 12px; top: 166px; width: 156px; padding: 0; font-size: 11px; line-height: 1.3; }
-.cx-wheel .info .tn { font-family: 'Title', monospace; font-size: 24px; line-height: 1; } .cx-wheel .info .un { color: #3d4346; margin-top: 6px; } .cx-wheel .info .ds { color: #3d4346; margin-top: 6px; }
+.cx-wheel .info .tn { font-family: 'Title', monospace; font-size: 24px; line-height: 1; } .cx-wheel .info .un { color: #3d4346; margin-top: 6px; }
+.cx-wheel .info .wrow { display: grid; grid-template-columns: 64px 1fr; grid-template-rows: auto auto; gap: 2px 6px; margin-top: 6px; align-items: center; }
+.cx-wheel .info .wrow > img:first-child { grid-row: 1 / 3; }
+.cx-wheel .info .pips { display: flex; gap: 4px; } .cx-wheel .info .pips i { width: 10px; height: 10px; background: #3d4346; box-shadow: 2px 2px 0 #18181b; } .cx-wheel .info .pips i.on { background: #de8f4e; }
+.cx-wheel .info .unit { width: 44px; height: 44px; } .cx-wheel .info .nou { font-family: 'Title', monospace; font-size: 24px; color: #8c2920; }
 .cx-wheel .info .lv { margin-top: 6px; color: #8c2920; }
 .cx-wheel .cfg { position: absolute; left: 10px; bottom: 16px; width: 156px; font-size: 11px; }
 .cx-slotcfg { right: 492px; bottom: 8px; width: 430px; padding: 18px 20px 20px; display: none; }
@@ -126,6 +130,11 @@ body.cx-paused .cx-frame { box-shadow: inset 0 0 0 6px rgba(229,219,195,0.55); }
 .cx-slotcfg .up { margin-top: 6px; font-size: 11px; line-height: 1.4; }
 .cx-tip { position: fixed; z-index: 60; pointer-events: none; max-width: 340px; padding: 0 2px; border-style: solid; border-width: 16px; border-image: url(__PAPER__) 8 fill / 16px stretch; image-rendering: pixelated; font-family: 'Body', monospace; font-size: 11px; line-height: 1.35; color: #1e232c; display: none; }
 .cx-tip b { color: #8c2920; font-weight: normal; } .cx-tip .w { color: #745820; } .cx-tip .r { color: #8c2920; }
+
+/* ---------------- the logistics hotbar in the HUD's materials (lead's request) */
+.hb-slot { border-image-source: url(__PAPER__) !important; border-image-slice: 8 fill !important; }
+.hb-slot.on, .hb-slot.drop { border-image-source: url(__NG__) !important; border-image-slice: 7 fill !important; }
+.hb-slot .n { color: #1e232c !important; }
 
 /* ---------------- cannon sight */
 .cn-view { position: fixed; inset: 0; z-index: 40; pointer-events: none; }

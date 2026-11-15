@@ -127,13 +127,14 @@ function sheetCallouts(id: CrewId, hero: CrewModel, turn: CrewModel[], cam: THRE
     // the turnaround's labels
     ['FRONT', 'SIDE', 'BACK'].forEach((s, i) => { const f = scr(turn[i].root); I.label(s, f[0], f[1] + 12, 'Body', 22, INK.mute, 'center'); });
     // a day aboard: a strip of blocks drawn in ink, the acts under it
-    const x0 = W - 760, y0 = H - 112, w0 = 700;
+    const x0 = W - 760, y0 = H - 136, w0 = 700;
     I.label('A DAY ABOARD', x0, y0 - 36, 'Title', 24, INK.light);
     d.routine.forEach((r) => { const xa = x0 + Math.round((r.from / 24) * w0), xb = x0 + Math.round((r.to / 24) * w0); I.r(xa, y0, xb - xa, 22, ACT_COL[r.act]); I.vl(xb - 1, y0, y0 + 21, INK.dark); });
     I.stroke([[x0 - 2, y0 - 2], [x0 + w0 + 2, y0 - 2], [x0 + w0 + 2, y0 + 24], [x0 - 2, y0 + 24], [x0 - 2, y0 - 2]], 2, INK.light, { outline: INK.dark, amp: 0.6 });
     [0, 6, 12, 18, 24].forEach((hh) => I.label(String(hh).padStart(2, '0'), x0 + (hh / 24) * w0, y0 + 30, 'Body', 11, INK.mute, 'center'));
-    const acts = [...new Set(d.routine.map((r) => r.act))].slice(0, 6);
-    acts.forEach((a, i) => { const xx = x0 + i * 116; I.r(xx, y0 + 52, 12, 12, ACT_COL[a]); I.label(a, xx + 18, y0 + 48, 'Body', 22, INK.light); });
+    const acts = [...new Set(d.routine.map((r) => r.act))];
+    let lx = x0, ly2 = y0 + 48;
+    for (const a of acts) { const w = 18 + textW(a, 'Body', 22) + 22; if (lx + w > x0 + w0 + 40) { lx = x0; ly2 += 28; } I.r(lx, ly2 + 4, 12, 12, ACT_COL[a]); I.label(a, lx + 18, ly2, 'Body', 22, INK.light); lx += w; }
     const g = c.getContext('2d')!; c.width = I.c.width; c.height = I.c.height; c.style.width = W + 'px'; c.style.height = H + 'px'; g.drawImage(I.c, 0, 0);
   });
 }

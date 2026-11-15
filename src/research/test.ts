@@ -13,7 +13,7 @@ import { FDEFS } from '../factory/defs';
 import { upState } from './buildings';
 import { pick } from './util';
 import { TECHS } from './tech';
-import './index';
+import { bindTestHost } from './index';
 
 export function testProgression(engine: Engine, P: URLSearchParams) {
   const fresh = P.has('fresh');
@@ -41,6 +41,7 @@ export function testProgression(engine: Engine, P: URLSearchParams) {
   const M = new Mastery(); M.now = () => world.time;
   const R = new Research(host, M), U = new Upgrades(host), Q = new Mission(host);
   host.mastery = M; host.research = R; host.upgrades = U; host.mission = Q;
+  bindTestHost(host);
   if (!fresh) {
     const xp: Record<PathId, number> = { plant: 1010, bio: 520, energy: 760, industry: 1460, robotics: 330 };
     for (const p of PATHS) M.setXp(p, xp[p]);

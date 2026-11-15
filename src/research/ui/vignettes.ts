@@ -197,7 +197,7 @@ export function photograph(engine: { post: { render(s: THREE.Scene, c: THREE.Cam
 let shipPhoto: Promise<string | null> | null = null;
 export function australPhoto(engine: Parameters<typeof photograph>[0] & { renderer: THREE.WebGLRenderer }): Promise<string | null> {
   return (shipPhoto ??= (async () => {
-    const v = new ShipVignette(engine.renderer); v.auto = 0; v.yaw = 0.5; v.dist = 13; v.pitch = 0.15;
+    const v = new ShipVignette(engine.renderer); v.auto = 0; v.yaw = 0.6; v.dist = 30; v.pitch = 0.24;
     for (let k = 0; k < 40 && !(v as unknown as { ext: unknown }).ext; k++) await new Promise((r) => setTimeout(r, 100));
     const c = photograph(engine, v, 640, 360); v.dispose();
     return c ? c.toDataURL() : null;

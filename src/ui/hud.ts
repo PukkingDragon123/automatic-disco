@@ -255,21 +255,32 @@ export class Hud {
   /** the relief in art pixels (124 x 124): moss ramp by height, one step brighter on contour lines, a step darker on
    *  slopes facing away from the light, water in the water ramp */
   private paintMapBase() {
-    const g = this.g!, Rg = g.region, N = Rg.N, S = 132, p = new Pix(S, S);
+    // the region itself in pixel art: ground by its material and height (hill-shaded from the upper left), forest
+    // canopy as lit tufts, rivers and lakes in the water ramp (deeper is darker, a pale shore line), contours faint
+    const g = this.g!, Rg = g.region, N = Rg.N, S = 132, p = new Pix(S, S), k = N / S;
+    const RB: (readonly number[])[] = [R.moss, R.straw, R.soil, R.stone, R.sand, R.soil, R.clay, R.snow, R.basalt, R.rust, R.quartz, R.olive, R.stone, R.basalt];
     let lo = 1e9, hi = -1e9; for (let i = 0; i < N * N; i++) { lo = Math.min(lo, Rg.h[i]); hi = Math.max(hi, Rg.h[i]); }
+    const wet = new Uint8Array(S * S);
     for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-      const wx = ((x + 0.5) / S) * N, wz = ((y + 0.5) / S) * N, h = Rg.heightAt(wx, wz);
-      if (Rg.isWater(wx, wz)) { p.set(x, y, (x + y) % 4 === 0 ? R.sky[2] : R.sky[4]); continue; }
-      const hx = Rg.heightAt(wx + 1, wz) - Rg.heightAt(wx - 1, wz), hz = Rg.heightAt(wx, wz + 1) - Rg.heightAt(wx, wz - 1);
-      const k = (h - lo) / Math.max(0.01, hi - lo), facing = -(hx * 0.6 + hz * 0.8);
-      const contour = Math.floor(h / 1.5) !== Math.floor(Rg.heightAt(wx + N / S, wz) / 1.5) || Math.floor(h / 1.5) !== Math.floor(Rg.heightAt(wx, wz + N / S) / 1.5);
-      // paper, hatched on the slopes that turn from the light, inked contours every metre and a half
-      let col = R.paper[5];
-      if (facing < -0.35 && (x + y) % 3 === 0) col = R.paper[3];
-      if (k > 0.75 && (x - y) % 4 === 0) col = R.paper[3];
-      if (contour) col = Math.floor(h / 1.5) % 4 === 0 ? R.ink[2] : R.paper[2];
-      p.set(x, y, col);
+      const wx = (x + 0.5) * k, wz = (y + 0.5) * k, ci = Math.min(N - 1, Math.floor(wz)) * N + Math.min(N - 1, Math.floor(wx));
+      if (Rg.isWater(wx, wz)) { wet[y * S + x] = 1; const d = Math.max(0, Rg.water - Rg.heightAt(wx, wz)); p.set(x, y, R.water[d > 1.6 ? 1 : d > 0.7 ? 2 : 3]); continue; }
+      const h = Rg.heightAt(wx, wz), hx = Rg.heightAt(wx + 1, wz) - Rg.heightAt(wx - 1, wz), hz = Rg.heightAt(wx, wz + 1) - Rg.heightAt(wx, wz - 1);
+      const facing = -(hx * 0.6 + hz * 0.8), kk = (h - lo) / Math.max(0.01, hi - lo);
+      const ramp = RB[Rg.b[ci]] ?? R.moss, n = ramp.length;
+      let step = Math.round(1.5 + kk * (n - 3)) + (facing > 0.45 ? 1 : facing < -0.45 ? -1 : 0);
+      const fo = Rg.forest[ci] ?? 0;
+      if (fo > 0.35 && ramp !== R.snow) {
+        // canopy tufts: 2x2 crowns on a staggered grid, lit on the upper-left pixel
+        const cx = x - ((y >> 1) & 1), on = (cx & 1) === 0 && (y & 1) === 0, tone = fo > 0.7 ? R.moss : R.sage;
+        const t2 = Math.max(1, Math.min(tone.length - 2, step));
+        p.set(x, y, on ? tone[Math.min(tone.length - 1, t2 + 1)] : (x & 1) && (y & 1) ? tone[Math.max(0, t2 - 1)] : tone[t2]);
+        continue;
+      }
+      if (Math.floor(h / 2) !== Math.floor(Rg.heightAt(wx + k, wz) / 2)) step -= 1;
+      p.set(x, y, ramp[Math.max(0, Math.min(n - 1, step))]);
     }
+    // a pale line along every shore
+    for (let y = 1; y < S - 1; y++) for (let x = 1; x < S - 1; x++) if (wet[y * S + x] && (!wet[y * S + x - 1] || !wet[(y - 1) * S + x])) p.set(x, y, R.water[5]);
     this.mapBase = p.canvas();
   }
   private drawMap(c: Colony) {
@@ -281,7 +292,7 @@ export class Hud {
     const img = x.getImageData(0, 0, S, S), p = new Pix(S, S); p.d.set(img.data);
     const k = S / N, vis = g.vision, P = (wx: number, wz: number): [number, number] => [Math.floor(wx * k), Math.floor(wz * k)];
     // unseen ground: drop to the darkest steps in a checker of 2 x 2 clusters (the fog of the survey)
-    for (let yy = 0; yy < S; yy++) for (let xx = 0; xx < S; xx++) { const wx = Math.floor((xx + 0.5) / k), wz = Math.floor((yy + 0.5) / k); if (!vis.seen[wz * N + wx]) p.set(xx, yy, (xx + yy) % 3 === 0 || (xx - yy) % 5 === 0 ? R.paper[2] : R.paper[3]); }
+    for (let yy = 0; yy < S; yy++) for (let xx = 0; xx < S; xx++) { const wx = Math.floor((xx + 0.5) / k), wz = Math.floor((yy + 0.5) / k); if (!vis.seen[wz * N + wx]) { p.shade(xx, yy, 0.55); if ((xx + yy) % 4 === 0) p.shade(xx, yy, 0.8); } }
     // control signal rings: dashed pixel circles
     const ring = (cx: number, cz: number, r: number, col: number) => { const n = Math.max(24, Math.round(r * k * 6)); for (let i = 0; i < n; i++) { if ((i >> 1) % 2) continue; const a = (i / n) * Math.PI * 2, [px, py] = P(cx + Math.cos(a) * r, cz + Math.sin(a) * r); p.set(px, py, col); } };
     ring(c.pod.x, c.pod.z, c.controlRadius, R.stampRed[3]);
@@ -480,14 +491,20 @@ export class Hud {
     else if (k.k === 'place') { const t = c.target, why = t.ok ? c.placeWhy(t.x, t.z) : ''; key += k.id + why; html = `<span class="big cx-sten">PLACING · ${CATALOG[k.id].name.toUpperCase()}</span>${why ? `<span style="color:#da876a;font-family:Body,monospace;font-size:22px">${esc(why.toUpperCase())}</span>` : '<span class="cx-ph">CLEAR TO BUILD</span>'}<span class="keys"><b>LMB</b> PLACE <b>SHIFT</b> KEEP PLACING <b>RMB</b>/<b>ESC</b> CANCEL</span>`; }
     if (key !== this.ctlKey) { this.ctlKey = key; this.ctlEl.innerHTML = html; this.ctlEl.classList.toggle('on', !!html); }
   }
+  /** the tool plate: the tool's picture, its name, level pips and the icon of the unit that runs it (no prose) */
   private drawWheelInfo(c: Colony) {
     const i = this.wheel.hover >= 0 ? this.wheel.hover : c.slots.active >= 0 ? c.slots.active : this.wheel.focus, s = c.slots.slots[i];
-    let h = '';
-    if (this.flashT > 0) h = `<div class="tn" style="color:#e2b04a">CANNOT</div><div class="ds" style="color:#e0b090">${esc(this.flashMsg)}</div>`;
-    else if (s.level <= 0) h = `<div class="tn">SLOT ${i + 1}</div><div class="un">LOCKED</div>`;
-    else if (!s.tool) h = `<div class="tn">SLOT ${i + 1}</div><div class="un">EMPTY</div>`;
-    else { const u = c.slots.unitOf(i), un = u ? (c.unitById(u) as { name?: string } | null)?.name : null; h = `<div class="tn">${TOOLS[s.tool].name.toUpperCase()}</div><div class="un">${un ? 'RUN BY ' + un : '<span style="color:#e0604a">NO UNIT</span>'}</div><div class="lv">SLOT ${i + 1} · LEVEL ${s.level}${c.slots.active === i ? ' · IN USE' : ''}</div>`; }
-    if (h !== (this.wheelInfo as unknown as { _h?: string })._h) { this.wheelInfo.innerHTML = h; (this.wheelInfo as unknown as { _h?: string })._h = h; }
+    const u = s.tool ? c.slots.unitOf(i) : null, ref = u ? c.unitById(u) : null;
+    const key = `${i}|${s.tool}|${s.level}|${u}|${this.flashT > 0 ? this.flashMsg : ''}|${c.slots.active === i}`;
+    if (key === (this.wheelInfo as unknown as { _k?: string })._k) return; (this.wheelInfo as unknown as { _k?: string })._k = key;
+    const W = this.wheelInfo; W.innerHTML = '';
+    if (this.flashT > 0) { el('div', 'tn', W, 'NO').style.color = '#8c2920'; el('div', 'un', W, esc(this.flashMsg.slice(0, 40))); return; }
+    el('div', 'tn', W, s.level <= 0 ? 'LOCKED' : s.tool ? esc(TOOLS[s.tool].name.toUpperCase().split(' ').pop()!) : 'EMPTY');
+    const row = el('div', 'wrow', W);
+    if (s.tool) row.appendChild(iconImg(TOOLS[s.tool].icon, 64));
+    const pips = el('div', 'pips', row); for (let k = 0; k < 3; k++) el('i', k < s.level ? 'on' : '', pips);
+    if (ref) { const kind = (ref as { kind?: string }).kind ?? '', ic = u!.startsWith('arm') ? (CATALOG[('arm_' + kind) as keyof typeof CATALOG]?.icon ?? 't-claw') : u!.startsWith('drone') ? (kind === 'scout' ? 't-scout' : kind === 'carrier' ? 't-carrier' : 't-repairdrone') : 't-pole'; const ui = iconImg(ic, 44); ui.classList.add('unit'); row.appendChild(ui); }
+    else if (s.tool) { const x = el('div', 'nou', row, '!'); x.title = 'no unit'; }
   }
   openCfg(i: number) { this.cfgSlot = i; this.cfgKey = ''; this.cfgEl.classList.add('on'); }
   private drawCfg(c: Colony) {

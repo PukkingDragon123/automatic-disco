@@ -68,9 +68,9 @@ export class MissionPage implements TabPage {
     const P = this.plate; P.innerHTML = '';
     const head = el('div', 'pp-row', P); head.style.gap = '18px';
     el('img', 'pp-ico', head).setAttribute('src', iconURL('arcs', 'phos')); (head.lastChild as HTMLElement).style.cssText = 'width:48px;height:48px';
-    el('div', 'pp-hl', head, SHIP);
-    head.appendChild(this.wave); this.wave.style.cssText = 'flex:1;height:40px;image-rendering:pixelated';
-    if (this.photo) { const im = el('img', 'pp-ico', head); im.src = this.photo; im.style.cssText = 'width:256px;height:144px;box-shadow:0 0 0 3px #1c2c48'; }
+    el('div', 'pp-hl', head, SHIP).style.whiteSpace = 'nowrap';
+    head.appendChild(this.wave); this.wave.style.cssText = 'flex:1;min-width:0;width:0;height:40px;image-rendering:pixelated';
+    if (this.photo) { const im = el('img', 'pp-ico', head); im.src = this.photo; im.style.cssText = 'flex:none;width:256px;height:144px;box-shadow:0 0 0 3px #1c2c48'; }
     el('div', 'pp-rule', P);
     const open = M.open();
     if (!open.length) el('div', 'pp-hl', P, M.recalled ? 'RECALLED' : `NEXT IN ${fmtTime(M.next - this.now())}`);

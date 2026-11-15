@@ -93,10 +93,13 @@ export class ToolWheel {
       if (lock) { p.rect(sx - 5, sy - 2, 11, 8, R.ochre[4]); p.hl(sx - 5, sx + 5, sy - 2, R.ochre[5]); p.hl(sx - 5, sx + 5, sy + 5, R.ochre[2]); for (const [x0, y0, x1, y1] of [[-3, -2, -3, -6], [3, -2, 3, -6], [-3, -7, 3, -7]]) p.line(sx + x0, sy + y0, sx + x1, sy + y1, R.steel[3]); p.set(sx, sy + 1, R.ink[1]); p.set(sx, sy + 2, R.ink[1]); }
       if (s.level > 0 && !s.tool) letter(p, '+', sx, sy - 7, R.bone[2], { align: 'center' });
     }
+    // the hub: a wrench (the tools), lit from the upper left; pips for the slot under the pointer
+    { const W2 = [[-9, 9], [-8, 8], [-7, 7], [-6, 6], [-5, 5], [-4, 4], [-3, 3], [-2, 2], [-1, 1], [0, 0], [1, -1], [2, -2], [3, -3]];
+      for (const [x, y] of W2) { p.rect(cx + x - 1, cy + y - 1, 3, 3, R.steel[1]); p.set(cx + x - 1, cy + y - 1, R.steel[5]); p.set(cx + x, cy + y - 1, R.steel[4]); p.set(cx + x, cy + y, R.steel[3]); }
+      for (let y = -9; y <= -2; y++) for (let x = 2; x <= 9; x++) { const d = Math.hypot(x - 6, y + 6); if (d > 4.6) continue; const slot = x - 6 > -1.5 && y + 6 < 1.5 && x - 6 + (y + 6) > -1; p.set(cx + x, cy + y, slot ? R.bone[4] : d > 3.6 ? R.steel[1] : x + y < 0 ? R.steel[5] : R.steel[3]); }
+      p.rect(cx - 11, cy + 8, 4, 4, R.rust[3]); p.set(cx - 11, cy + 8, R.rust[5]); }
     const show = this.hover >= 0 ? this.hover : c.slots.active, sl = show >= 0 ? c.slots.slots[show] : null;
-    if (sl && sl.tool) { letter(p, TOOLS[sl.tool].name.toUpperCase().split(' ').pop()!.slice(0, 7), cx, cy - 11, INK, { align: 'center' }); letter(p, `LV ${sl.level}`, cx, cy + 1, c.slots.active === show ? R.rust[3] : R.ink[2], { align: 'center' }); }
-    else if (sl && sl.level <= 0) letter(p, 'LOCKED', cx, cy - 6, R.ochre[2], { align: 'center' });
-    else { letter(p, 'TOOLS', cx, cy - 11, INK, { align: 'center' }); letter(p, 'PICK', cx, cy + 1, R.ink[2], { align: 'center' }); }
+    if (sl) for (let k = 0; k < 3; k++) { p.rect(cx - 7 + k * 6, cy + 14, 4, 4, R.ink[0]); p.rect(cx - 7 + k * 6, cy + 14, 3, 3, k < sl.level ? R.rust[5] : R.steel[2]); }
     const tmp = (this as unknown as { tmp?: HTMLCanvasElement }).tmp ?? document.createElement('canvas'); (this as unknown as { tmp: HTMLCanvasElement }).tmp = tmp;
     tmp.width = S; tmp.height = S; tmp.getContext('2d')!.putImageData(p.image(), 0, 0);
     g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = false; g.clearRect(0, 0, 320, 320); g.drawImage(tmp, 0, 0, 320, 320);
