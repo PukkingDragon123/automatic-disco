@@ -1,3 +1,5 @@
+> **v6 (newest, user-confirmed) overrides this file where they differ: read src/game/V6.md first.**
+
 # Design pillars
 
 ODDWORLD is a polished **base builder + Spore-like engineering game** about a living planet. The player is an

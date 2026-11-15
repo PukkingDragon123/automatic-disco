@@ -1,3 +1,5 @@
+> **v6 (newest, user-confirmed) overrides this file where they differ: read src/game/V6.md first.**
+
 # >>> THE GAME IS DETAILED PIXEL ART. EVERY SURFACE. <<<
 Ground, rock, water, plants, creatures, robots, ships, UI, VFX: all of it must read as deliberate, hand-made pixel art
 at gameplay zoom: visible pixels at a consistent density (about the same pixel size as the plants: chunky enough to

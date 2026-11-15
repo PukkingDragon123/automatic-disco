@@ -1,3 +1,5 @@
+> **v6 (newest, user-confirmed) overrides this file where they differ: read src/game/V6.md first.**
+
 # Contract: factory, factions and robots (v3)
 
 Three systems are built in parallel against this file. Keep these names stable; extend, don't rename.
