@@ -103,3 +103,53 @@ the ship, pod, rooms and furniture modelled in code are original work for ODDWOR
 ### Fonts
 Departure Mono ('Body') and Spleen ('Title', 'TitleL', 'TitleXL'), installed by the lead (see src/style.css and their
 licence files beside them).
+
+## Stores: items and containers (src/inv, src/ui/crates)
+
+### Container models: Poly Haven, restyled with lowpix
+Converted with `python3 -m lowpix convert polyhaven:<id> --style pixel-hd` into `public/inv/*.glb`. The crate HUD's
+badge illustrations (`public/inv/ui/kind_<kind>.png`) are renders of these same models (`?test=inv&icons`), shrunk,
+snapped to the palette and outlined by `src/inv/sprites/make_ui.py --icons`. All **CC0 1.0**.
+
+| file | asset | source | author(s) | license |
+|---|---|---|---|---|
+| `planter_box_02.glb` (crate) | Planter Box 02 | https://polyhaven.com/a/planter_box_02 | James Ray Cock | CC0 1.0 |
+| `planter_box_01.glb` (soil pit) | Planter Box 01 | https://polyhaven.com/a/planter_box_01 | James Ray Cock | CC0 1.0 |
+| `concrete_road_barrier.glb` (ore bunker) | Concrete Road Barrier | https://polyhaven.com/a/concrete_road_barrier | Amal Kumar | CC0 1.0 |
+| `old_military_crate.glb` (ammo bin) | Old Military Crate | https://polyhaven.com/a/old_military_crate | Jack Mava | CC0 1.0 |
+| `propane_tank.glb` (fluid tank) | Propane Tank | https://polyhaven.com/a/propane_tank | Slinc | CC0 1.0 |
+| `metal_jerrycan_green.glb` (fluid tank) | Metal Jerrycan Green | https://polyhaven.com/a/metal_jerrycan_green | Ulan Cabanilla | CC0 1.0 |
+| `drawer_cabinet.glb` (specimen cabinet) | Drawer Cabinet | https://polyhaven.com/a/drawer_cabinet | Ulan Cabanilla | CC0 1.0 |
+| `utility_box_02.glb` (cold store) | Utility Box 02 | https://polyhaven.com/a/utility_box_02 | James Ray Cock | CC0 1.0 |
+
+### Window materials: Poly Haven photo textures, stylised with lowpix
+Each container window, control and HUD badge is cut from a real photo texture stylised with
+`python3 -m lowpix photo polyhaven:<id> --style pixel-hd --size 192`, graded toward the container's paint and snapped to
+the palette (`src/inv/sprites/make_ui.py --photos` -> `public/inv/ui/mat_<name>.png`). All **CC0 1.0**.
+
+| field | texture | source | author(s) | license |
+|---|---|---|---|---|
+| `mat_crate` | Wood Planks | https://polyhaven.com/a/wood_planks | Amal Kumar | CC0 1.0 |
+| `mat_lacquer` | Dark Wood | https://polyhaven.com/a/dark_wood | Dario Barresi, Dimitrios Savva, Rico Cilliers | CC0 1.0 |
+| `mat_olive` | Green Metal Rust | https://polyhaven.com/a/green_metal_rust | Rob Tuytel | CC0 1.0 |
+| `mat_hold`, `mat_gun` | Metal Plate 02 | https://polyhaven.com/a/metal_plate_02 | Rob Tuytel | CC0 1.0 |
+| `mat_earth` | Dirt Floor | https://polyhaven.com/a/dirt_floor | eye-candy.xyz | CC0 1.0 |
+| `mat_concrete` | Concrete Floor Worn 001 | https://polyhaven.com/a/concrete_floor_worn_001 | Dimitrios Savva, Rico Cilliers | CC0 1.0 |
+| `mat_frost` (with Metal Plate 02 under it) | Snow 02 | https://polyhaven.com/a/snow_02 | Rob Tuytel | CC0 1.0 |
+| `mat_teal` | Blue Metal Plate | https://polyhaven.com/a/blue_metal_plate | Rob Tuytel | CC0 1.0 |
+| `mat_corr` | Worn Corrugated Iron | https://polyhaven.com/a/worn_corrugated_iron | Jenelle van Heerden, Dimitrios Savva | CC0 1.0 |
+| `mat_brass` | Metal Plate | https://polyhaven.com/a/metal_plate | Rob Tuytel | CC0 1.0 |
+| `mat_paper` (cards) | Beige Wall 001 | https://polyhaven.com/a/beige_wall_001 | Dimitrios Savva, Rico Cilliers | CC0 1.0 |
+
+### Item sprites
+Most item sprites (`src/inv/itemSprites.ts`) are painted with lowpix's sprite generators and stroke brush
+(`src/inv/sprites/make_items.py`). A few are renders of real Poly Haven models (converted with `lowpix convert
+--style pixel-hd`, rendered by `?test=inv&icons&glb=...`, shrunk and snapped by `make_items.py --real`). All **CC0 1.0**.
+
+| item | model | source | author(s) | license |
+|---|---|---|---|---|
+| `concrete` | Cement Bag | https://polyhaven.com/a/cement_bag | PierreB3D | CC0 1.0 |
+| `compost` | Compost Bag 02 | https://polyhaven.com/a/compost_bag_02 | Satyaki Mandal | CC0 1.0 |
+| `rock_granite` | Boulder 01 | https://polyhaven.com/a/boulder_01 | Rico Cilliers | CC0 1.0 |
+| `plastic` | Plastic Container | https://polyhaven.com/a/plastic_container | PierreB3D | CC0 1.0 |
+| `bio_oil` | Oil Tin | https://polyhaven.com/a/oil_tin | Niklas | CC0 1.0 |

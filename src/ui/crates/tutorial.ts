@@ -10,7 +10,8 @@ import { cardURL, arrowURL, ctlURL, GLYPH } from './mat';
 import { sfx } from '../../audio/audio';
 
 type Side = 'above' | 'below' | 'left' | 'right';
-interface Step { say: string; keys: string[]; wait: InvEvent[]; side: Side; target: () => DOMRect | null }
+/** a step points at `target`; the card and its arrow stand outside `outer` (the window or the HUD the target is in) */
+interface Step { say: string; keys: string[]; wait: InvEvent[]; side: Side; target: () => DOMRect | null; outer: () => DOMRect | null }
 const FLAG = 'inv.tut';
 const ik = () => (innerHeight >= 1000 ? 2 : 1);
 export class StoresTutorial {
@@ -21,11 +22,13 @@ export class StoresTutorial {
     injectCrateCSS();
     const q = (sel: string) => this.ui.wins[this.ui.wins.length - 1]?.root.querySelector(sel)?.getBoundingClientRect() ?? null;
     const union = (...rs: (DOMRect | null)[]) => { const v = rs.filter((r): r is DOMRect => !!r && r.width > 0); if (!v.length) return null; const x0 = Math.min(...v.map((r) => r.left)), y0 = Math.min(...v.map((r) => r.top)), x1 = Math.max(...v.map((r) => r.right)), y1 = Math.max(...v.map((r) => r.bottom)); return new DOMRect(x0, y0, x1 - x0, y1 - y0); };
+    const win = () => { const w = this.ui.wins[this.ui.wins.length - 1]; return w ? union(w.root.getBoundingClientRect(), w.settings ? w.setEl.getBoundingClientRect() : null) : null; };
+    const hudR = () => this.hud.root.getBoundingClientRect();
     this.steps = [
-      { say: 'open a store', keys: ['click'], wait: ['opened'], side: 'right', target: () => this.hud.slotRect(Math.min(1, this.hud.list().length - 1)) },
-      { say: 'sort · filter', keys: ['tabs', 'find'], wait: ['sorted', 'filtered'], side: 'above', target: () => union(q('.srt'), q('.chips'), q('.inv-search')) },
-      { say: 'drag to move', keys: ['drag', 'R turn', 'right-click ½'], wait: ['moved', 'merged', 'split'], side: 'right', target: () => q('.inv-grid') },
-      { say: 'set priority', keys: ['gear'], wait: ['priority', 'filterset'], side: 'above', target: () => (this.ui.wins.some((w) => w.settings) ? q('.inv-set') : q('.gear')) },
+      { say: 'open a store', keys: ['click'], wait: ['opened'], side: 'right', target: () => this.hud.slotRect(Math.min(1, this.hud.list().length - 1)), outer: hudR },
+      { say: 'sort · filter', keys: ['tabs', 'find'], wait: ['sorted', 'filtered'], side: 'above', target: () => union(q('.srt'), q('.chips'), q('.inv-search')), outer: win },
+      { say: 'drag to move', keys: ['drag', 'R turn', 'right-click ½'], wait: ['moved', 'merged', 'split'], side: 'left', target: () => q('.inv-grid'), outer: win },
+      { say: 'set priority', keys: ['gear'], wait: ['priority', 'filterset'], side: 'above', target: () => (this.ui.wins.some((w) => w.settings) ? q('.inv-set') : q('.gear')), outer: win },
     ];
     for (const ev of ['opened', 'sorted', 'filtered', 'split', 'moved', 'merged', 'priority', 'filterset'] as InvEvent[]) this.ui.on(ev, () => this.on(ev));
     st.on('container', () => this.check());
@@ -57,8 +60,9 @@ export class StoresTutorial {
   /** the card: the step's number on a dark chip, the words, the keys, a close tab */
   private fill(n: string, say: string, keys: string[]) {
     const c = this.card!, k = ik();
-    c.innerHTML = `<b class="n">${n}</b><span class="say">${say}</span><span class="keys">${keys.map((q) => `<span class="k">${q}</span>`).join('')}</span>` +
-      (this.i < this.steps.length ? `<img class="skip" title="Skip" src="${ctlURL('hold', 12, 12, 0, GLYPH.close, 5)}">` : '');
+    c.innerHTML = `<div class="t"><b class="n">${n}</b><span class="say">${say}</span>` +
+      (this.i < this.steps.length ? `<img class="skip" title="Skip" src="${ctlURL('hold', 12, 12, 0, GLYPH.close, 5)}">` : '') + '</div>' +
+      (keys.length ? `<div class="keys">${keys.map((q) => `<span class="k">${q}</span>`).join('')}</div>` : '');
     c.querySelector<HTMLElement>('.skip')?.addEventListener('click', () => this.end());
     c.style.width = ''; c.style.height = ''; c.style.backgroundImage = '';
     const r = c.getBoundingClientRect(), w = Math.ceil(r.width / k), h = Math.ceil(r.height / k);
@@ -94,16 +98,19 @@ export class StoresTutorial {
     }
     const pad = 3 * k;
     Object.assign(this.ring.style, { display: '', left: snap(r.left - pad) + 'px', top: snap(r.top - pad) + 'px', width: snap(r.width + 2 * pad) + 'px', height: snap(r.height + 2 * pad) + 'px' });
+    // the card stands clear of the window (or HUD) the target is in; the arrow bridges to the target's line
+    const o = s.outer() ?? r, A = new DOMRect(Math.min(o.left, r.left - pad), Math.min(o.top, r.top - pad), 0, 0);
+    const Ar = Math.max(o.right, r.right + pad), Ab = Math.max(o.bottom, r.bottom + pad);
     const AL = 18 * k, AT = 15 * k, gap = 4 * k;
-    const fits: Record<Side, boolean> = { above: r.top - pad - gap - AL - ch > 8, below: r.bottom + pad + gap + AL + ch < H - 8, left: r.left - pad - gap - AL - cw > 8, right: r.right + pad + gap + AL + cw < W - 8 };
+    const fits: Record<Side, boolean> = { above: A.top - gap - AL - ch > 8, below: Ab + gap + AL + ch < H - 8, left: A.left - gap - AL - cw > 8, right: Ar + gap + AL + cw < W - 8 };
     const order: Side[] = [s.side, ...(['right', 'above', 'left', 'below'] as Side[]).filter((q) => q !== s.side)];
     const side = order.find((q) => fits[q]) ?? s.side;
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
     let ax = 0, ay = 0, aw = AL, ah = AT, px = 0, py = 0, dir: 'l' | 'r' | 'u' | 'd' = 'd';
-    if (side === 'above') { dir = 'd'; aw = AT; ah = AL; ax = cx - aw / 2; ay = r.top - pad - gap - ah; px = cx - cw / 2; py = ay - ch + 2 * k; }
-    else if (side === 'below') { dir = 'u'; aw = AT; ah = AL; ax = cx - aw / 2; ay = r.bottom + pad + gap; px = cx - cw / 2; py = ay + ah - 2 * k; }
-    else if (side === 'left') { dir = 'r'; ax = r.left - pad - gap - aw; ay = cy - ah / 2; px = ax - cw + 2 * k; py = cy - ch / 2; }
-    else { dir = 'l'; ax = r.right + pad + gap; ay = cy - ah / 2; px = ax + aw - 2 * k; py = cy - ch / 2; }
+    if (side === 'above') { dir = 'd'; aw = AT; ah = AL; ax = cx - aw / 2; ay = A.top - gap - ah; px = cx - cw / 2; py = ay - ch + 2 * k; }
+    else if (side === 'below') { dir = 'u'; aw = AT; ah = AL; ax = cx - aw / 2; ay = Ab + gap; px = cx - cw / 2; py = ay + ah - 2 * k; }
+    else if (side === 'left') { dir = 'r'; ax = A.left - gap - aw; ay = cy - ah / 2; px = ax - cw + 2 * k; py = cy - ch / 2; }
+    else { dir = 'l'; ax = Ar + gap; ay = cy - ah / 2; px = ax + aw - 2 * k; py = cy - ch / 2; }
     px = Math.max(8, Math.min(W - cw - 8, px)); py = Math.max(8, Math.min(H - ch - 8, py));
     const src = arrowURL(dir);
     if (this.arrow.dataset.d !== dir) { this.arrow.src = src; this.arrow.dataset.d = dir; this.arrow.className = 'inv-coach-arrow ' + dir; }

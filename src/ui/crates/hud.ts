@@ -14,7 +14,7 @@ import { injectCrateCSS } from './style';
 import { badgeURL, hudPlateURL, ctlURL, cardURL, loadMats, onMats, kindIcon, Pen } from './mat';
 import { sfx } from '../../audio/audio';
 
-const PER = 3, BW = 70, BH = 112, BG = 4, W = 234, H = 142;
+const PER = 3, BW = 70, BH = 116, BG = 4, W = 234, H = 146;
 const ik = () => (innerHeight >= 1000 ? 2 : 1);
 const fmt = (n: number) => (n >= 10000 ? Math.round(n / 1000) + 'k' : n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n));
 export class CrateHud {
@@ -82,7 +82,7 @@ export class CrateHud {
     Object.assign(row.style, { left: 8 * k + 'px', top: (8 + BH + 4) * k + 'px', width: (PER * BW + (PER - 1) * BG) * k + 'px', height: 12 * k + 'px' });
     this.track.innerHTML = list.map((c) => {
       const R = RAMPS[PAINTS[c.color].ramp], top = c.contents().slice(0, 3), b = this.born.get(c.id), fresh = b && now - b < 1200;
-      const items = top.map((e, j) => `<div class="it" style="top:${(57 + j * 16) * k}px;width:${(BW - 10) * k}px"><img src="${itemIcon(e.item, 32)}"><span>${fmt(e.n)}</span></div>`).join('');
+      const items = top.map((e, j) => `<div class="it" style="top:${(61 + j * 16) * k}px;width:${(BW - 10) * k}px"><img src="${itemIcon(e.item, 32)}"><span>${fmt(e.n)}</span></div>`).join('');
       const bang = KIND_INFO[c.kind].power && !c.powered() ? '<b class="bang">!</b>' : '';
       return `<div class="badge${fresh ? ' pop flash' : ''}" data-c="${c.id}" style="width:${BW * k}px;height:${BH * k}px;background-image:url(${badgeURL(c.kind, BW, BH, LOGOS[c.logo], R, c.fill(), c.id)});background-size:${BW * k}px ${BH * k}px">` +
         `<div class="nm" style="width:${(BW - 4) * k}px">${c.label}</div>${items || '<div class="empty">-</div>'}${bang}</div>`;

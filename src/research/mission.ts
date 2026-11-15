@@ -7,7 +7,7 @@ import type { Game } from '../game/game';
 import { DATA_NAME, type DataKind } from './tech';
 import { pick, have, pay, give, anyG, gtime, itemName } from './util';
 
-export const SHIP = 'UNAA AUSTRAL';
+export { SHIP_NAME as SHIP } from '../ship/crew/roster';
 export type QKind = 'data' | 'items' | 'milestone';
 export interface Milestone { k: 'workers' | 'power' | 'building' | 'techs' | 'upgrades' | 'scans'; n: number; kind?: string; label: string }
 export interface Quota {

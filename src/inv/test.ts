@@ -22,6 +22,7 @@ export async function testInv(engine: Engine, input: Input, P: URLSearchParams) 
   if (P.has('sheet')) return sheet();
   (await import('./models')).preloadContainerModels();
   if (P.has('models')) return models(engine, P);
+  if (P.has('icons')) return icons(P);
   if (P.has('stage')) return stage(engine, P);
   return game(engine, input, P);
 }
@@ -104,6 +105,49 @@ function models(engine: Engine, P: URLSearchParams) {
   lab.style.fontFamily = 'Title'; lab.style.fontSize = '24px'; lab.style.letterSpacing = '0';
   lab.textContent = cut ? 'CONTAINERS · CUT AWAY (CRATE HUD MINIATURES)' : 'CONTAINERS · ' + kinds.map((k) => KIND_INFO[k].name.toUpperCase()).join(' · ');
   document.body.appendChild(lab);
+}
+
+// ------------------------------------------------------------------ badge illustrations: the real models, rendered
+/** each container kind's real model (Poly Haven bodies, lowpix-converted) rendered at 4x on a transparent ground from
+ *  the badge's three-quarter view; `window.__icons` = { kind: dataURL } once done. src/inv/sprites/make_ui.py --icons
+ *  shrinks them to 40 px art, snaps them to the palette and outlines them (public/inv/ui/kind_<kind>.png). */
+async function icons(P: URLSearchParams) {
+  const S = 256, kinds = [...CONTAINER_KINDS, 'hold' as ContainerKind];
+  const r = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+  r.setPixelRatio(1); r.setSize(S, S, false); r.outputColorSpace = THREE.SRGBColorSpace; r.setClearColor(0x000000, 0);
+  document.body.appendChild(r.domElement);
+  const scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xd8e0e4, 0x4a3c2c, 1.25));
+  const key = new THREE.DirectionalLight(0xffe8c8, 2.9); key.position.set(-4, 7, 6); scene.add(key);
+  const rim = new THREE.DirectionalLight(0x9fc4d0, 0.8); rim.position.set(5, 3, -4); scene.add(rim);
+  const cam = new THREE.PerspectiveCamera(18, 1, 0.1, 100);
+  const out: Record<string, string> = {};
+  // &glb=id=url,id=url renders those models instead (real 3D forms for item sprites: make_items.py --real)
+  const glb = P.get('glb')?.split(',').map((e) => e.split('=') as [string, string]) ?? null;
+  let objs: { id: string; root: THREE.Object3D; update?(): void; ready(): boolean }[];
+  if (glb) {
+    const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+    const ld = new GLTFLoader();
+    objs = await Promise.all(glb.map(async ([id, url]) => { const g = await ld.loadAsync(url); const root = new THREE.Group(); root.add(g.scene); root.rotation.y = -0.6; return { id, root, ready: () => true }; }));
+  } else {
+    objs = kinds.map((k, i) => { const c = new Container(k, i + 1); stock(c, i); const m = new ContainerModel(c); m.root.rotation.y = -0.5; return { id: k, root: m.root, update: () => m.update(), ready: () => (m.root.children[0]?.children.length ?? 0) > 1 }; });
+  }
+  const dir = new THREE.Vector3(0.22, glb ? 0.62 : 0.78, 1).normalize();
+  const shoot = () => {
+    for (const o of objs) {
+      o.update?.(); scene.add(o.root);
+      const box = new THREE.Box3().setFromObject(o.root), ctr = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
+      const rad = sz.length() / 2, dist = rad / Math.sin((cam.fov * Math.PI) / 360) * 1.02;
+      cam.position.copy(ctr).addScaledVector(dir, dist); cam.lookAt(ctr); cam.near = dist / 50; cam.far = dist * 4; cam.updateProjectionMatrix();
+      r.render(scene, cam); out[o.id] = r.domElement.toDataURL('image/png');
+      scene.remove(o.root);
+    }
+    (window as unknown as { __icons: unknown }).__icons = out;
+  };
+  // the Poly Haven bodies stream in: shoot once every model has its loaded body (or after a long wait)
+  const t0 = performance.now();
+  const wait = () => { const done = objs.every((o) => o.ready()) && performance.now() - t0 > (glb ? 500 : 6000); if (done || performance.now() - t0 > 40000) shoot(); else setTimeout(wait, 500); };
+  wait();
 }
 
 // ------------------------------------------------------------------ a region with the stores built
@@ -222,8 +266,13 @@ async function stage(engine: Engine, P: URLSearchParams) {
     const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now;
     for (const f of fg.update$) f(dt);
     for (const m of models) m.update();
+    // &still: the yard is drawn a few times while its models stream in, then left as a backdrop (fast QA shots)
+    if (still && now - t0 > 12000) return;
+    if (still && now - lastDraw < 2000) return;
+    lastDraw = now;
     r.setSize(innerWidth, innerHeight, false); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); r.setRenderTarget(null); r.render(scene, cam);
   };
+  const still = P.has('still'), t0 = performance.now(); let lastDraw = 0;
   loop();
   // the scripted views
   if (P.has('page')) hud.page = Number(P.get('page'));

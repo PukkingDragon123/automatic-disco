@@ -1,5 +1,5 @@
 // THE TEAMMATES' DEATH (scripted, once). After the colony's first real milestone a storm takes the relay mast that
-// links the pod to the Austral. Without it there are no quotas, no drops, no voice from the ship. The two crew who
+// links the pod to the Meridian. Without it there are no quotas, no drops, no voice from the ship. The two crew who
 // came down with the pod walk out into the storm to fix it, 41 metres out: beyond the reach of every arm Unit 07
 // has, and Unit 07 cannot move. They get the link back up. The mast takes the lightning with them still on it.
 // The relay carries their last words to the ship. Then a decision about what is left of them.
@@ -124,7 +124,7 @@ export const FALLEN: EventDef = {
     await c.fade(0, 1.4);
     c.stamp(`22:40 · RELAY MAST 2 · 41 M FROM THE POD`, true);
     c.cam.move({ pos: spot(st, P, a + 2.2, 9, 2.4), look: P.clone().setY(P.y + 1.4), dur: 7, ease: 'inOut' });
-    await c.say(`Seven, the relay's dead. The Austral can't hear a thing we send.`, { who: x.data.names[1].toUpperCase(), style: 'radio', pitch: 0.9 });
+    await c.say(`Seven, the relay's dead. The Meridian can't hear a thing we send.`, { who: x.data.names[1].toUpperCase(), style: 'radio', pitch: 0.9 });
     await c.say('Wind is at ninety. Wait for the cell to pass.', { who: 'UNIT 07', style: 'plain' });
     await c.say(`The quota window closes in an hour. We go now, we're back in twenty.`, { who: x.data.names[0].toUpperCase(), style: 'radio', pitch: 1.12 });
     // 2. they walk out
@@ -150,7 +150,7 @@ export const FALLEN: EventDef = {
     await c.say(`${String(x.data.names[0]).split(' ')[0]}, the lightning's walking this way. Leave it.`, { who: x.data.names[1].toUpperCase(), style: 'radio', pitch: 0.9 });
     await c.say(`Got it. Got it. Seven, check the link.`, { who: x.data.names[0].toUpperCase(), style: 'radio', pitch: 1.18 });
     c.sfx('beepHi', 0.7);
-    c.stamp('AUSTRAL UPLINK · CARRIER LOCKED');
+    c.stamp('MERIDIAN UPLINK · CARRIER LOCKED');
     await c.say('Link is up. Come back. Now.', { who: 'UNIT 07', style: 'plain' });
     // 5. the strike
     c.cam.cut(spot(st, M, a + Math.PI - 0.4, 14, 2.2), M.clone().setY(M.y + 3.5), 46);
@@ -180,11 +180,11 @@ export const FALLEN: EventDef = {
     await c.wait(0.6);
     await c.fade(0, 1.2);
   },
-  brief: (x) => `${x.data.names[0]} and ${x.data.names[1]} are dead at Relay Mast 2. The link to the Austral holds because of them.`,
+  brief: (x) => `${x.data.names[0]} and ${x.data.names[1]} are dead at Relay Mast 2. The link to the Meridian holds because of them.`,
   options: (x) => [
     { key: 'bury', label: 'BURY THEM BY THE POD', plus: ['Morale +20', 'Reputation +5', 'A memorial at the pod'], minus: ['Nothing recovered'], run: (f) => { E.morale(f, 20); E.rep(f, 5); const m = memorial(), P = x.st.pod(); m.position.set(P.x + 3, P.y, P.z + 3); anyG(x.g).world.scene.add(m); return 'Two cairns beside the pod, and a strip of hull plate with their names scratched in.'; } },
-    { key: 'home', label: 'SEND THEM HOME', plus: ['Reputation +15', 'The families are told the truth'], minus: ['Next supply drop halved'], run: (f) => { E.rep(f, 15); const M = anyG(x.g).mission; for (const q of M?.open?.() ?? []) for (const k in q.reward.items) q.reward.items[k] = Math.ceil(q.reward.items[k] / 2); f.out.push('Next drop carries half the cargo'); return 'The next lift took them up to the Austral, under a flag.'; } },
-    { key: 'salvage', label: 'SALVAGE THEIR SUITS', plus: [`+6 ${itemName(pick('circuit'))}, +2 ${itemName(pick('motor'))}, +8 ${itemName(pick('glass'))}`, 'Robotics mastery'], minus: ['Morale -15', 'Reputation -10'], run: (f) => { E.items(f, { [pick('circuit')]: 6, [pick('motor')]: 2, [pick('glass')]: 8 }); E.xp(f, 'robotics', 40); E.morale(f, -15); E.rep(f, -10); return 'The suits held good parts. The Austral read the inventory and said nothing for a long time.'; } },
+    { key: 'home', label: 'SEND THEM HOME', plus: ['Reputation +15', 'The families are told the truth'], minus: ['Next supply drop halved'], run: (f) => { E.rep(f, 15); const M = anyG(x.g).mission; for (const q of M?.open?.() ?? []) for (const k in q.reward.items) q.reward.items[k] = Math.ceil(q.reward.items[k] / 2); f.out.push('Next drop carries half the cargo'); return 'The next lift took them up to the Meridian, under a flag.'; } },
+    { key: 'salvage', label: 'SALVAGE THEIR SUITS', plus: [`+6 ${itemName(pick('circuit'))}, +2 ${itemName(pick('motor'))}, +8 ${itemName(pick('glass'))}`, 'Robotics mastery'], minus: ['Morale -15', 'Reputation -10'], run: (f) => { E.items(f, { [pick('circuit')]: 6, [pick('motor')]: 2, [pick('glass')]: 8 }); E.xp(f, 'robotics', 40); E.morale(f, -15); E.rep(f, -10); return 'The suits held good parts. The Meridian read the inventory and said nothing for a long time.'; } },
   ],
 };
 

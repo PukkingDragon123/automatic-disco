@@ -385,7 +385,7 @@ export function hazardTexSmooth(a = 0xd8a63a, b = 0x1c1b18) {
 }
 
 // ------------------------------------------------------------------ posters, signs, photos (the lived-in layer)
-export type PosterKind = 'unaa' | 'safety' | 'earth' | 'band' | 'chart' | 'kid' | 'calendar' | 'pinup' | 'bio' | 'reactor' | 'menu' | 'firstaid' | 'eye' | 'tools';
+export type PosterKind = 'unaa' | 'safety' | 'earth' | 'band' | 'chart' | 'kid' | 'calendar' | 'pinup' | 'bio' | 'reactor' | 'menu' | 'firstaid' | 'eye' | 'tools' | 'nebula' | 'saturn' | 'mars' | 'planet';
 export function posterTex(kind: PosterKind, seed = 1) { return pixPoster(kind, seed); }
 export function posterTexSmooth(kind: PosterKind, seed = 1) {
   return cached(`poster|${kind}|${seed}`, () => {

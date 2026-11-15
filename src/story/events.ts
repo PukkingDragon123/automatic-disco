@@ -165,9 +165,9 @@ export const EVENTS: EventDef[] = [
       await c.tween(4, (u) => { d.position.y = at.y + 18 - u * 16.2; });
       c.sfx('beep', 0.7);
       await c.say(x.data.f === 'prc' ? 'UNAA unit. The Consortium proposes an exchange. Your survey data for our stock.' : 'UNAA unit. The Concord offers terms. Share what you have learned and we will share what we have.', { who: x.data.name.toUpperCase() + ' ENVOY', style: 'radio' });
-      await c.say('The Austral will hear about any trade.', { who: 'UNIT 07', style: 'plain' });
+      await c.say('The Meridian will hear about any trade.', { who: 'UNIT 07', style: 'plain' });
     },
-    brief: (x) => `A ${x.data.name} drone hovers at the pod with an offer. Whatever you choose, the Austral logs the contact.`,
+    brief: (x) => `A ${x.data.name} drone hovers at the pod with an offer. Whatever you choose, the Meridian logs the contact.`,
     options: (x) => [
       { key: 'trade', label: 'TRADE DATA FOR STOCK', plus: [`+30 ${itemName(pick('iron_plate'))}, +2 ${itemName(pick('motor'))}`], minus: ['-15 BIO data', 'Reputation -5'], need: () => ((A(x.g).research?.data?.bio ?? 0) >= 15 ? null : 'Needs 15 BIO data'), run: (f) => { E.data(f, 'bio', -15); E.items(f, { [pick('iron_plate')]: 30, [pick('motor')]: 2 }); E.rep(f, -5); return 'The drone took the data packet and dropped a pallet.'; } },
       { key: 'truce', label: 'SHARE RESEARCH, BUY PEACE', plus: ['+20 XENO data', 'Their raids delayed 6 min'], minus: ['Reputation -12'], run: (f) => { E.data(f, 'xeno', 20); E.rivals(f, -360); E.rep(f, -12); return 'An uneasy quiet. Their machines turned away from the works.'; } },
@@ -244,7 +244,7 @@ export const EVENTS: EventDef[] = [
     brief: (x) => `A repeating signal from ${x.data.ruin ? x.data.ruin.name : 'beneath the ridge'}. Prime-number spacing. Not human.`,
     options: () => [
       { key: 'trace', label: 'TRACE IT', plus: ['+30 XENO data'], minus: ['Something may wake'], run: (f) => { E.data(f, 'xeno', 30); E.xp(f, 'robotics', 30); if (E.pct(0.45)) { E.damageBuildings(f, 2, 0.5); E.hurtWorkers(f, 0.3, 3); return 'The trace lit something underground. A shock wave ran through the works.'; } return 'The signal answered the probe, then went quiet. The recordings are extraordinary.'; } },
-      { key: 'relay', label: 'RELAY IT TO THE AUSTRAL', plus: ['+10 XENO data', 'Reputation +10'], minus: ['The ship keeps the find'], run: (f) => { E.data(f, 'xeno', 10); E.rep(f, 10); return 'The Austral took the recording. The program lead called it a career.'; } },
+      { key: 'relay', label: 'RELAY IT TO THE MERIDIAN', plus: ['+10 XENO data', 'Reputation +10'], minus: ['The ship keeps the find'], run: (f) => { E.data(f, 'xeno', 10); E.rep(f, 10); return 'The Meridian took the recording. The program lead called it a career.'; } },
       { key: 'jam', label: 'JAM IT', plus: ['Nothing happens'], minus: ['Nothing is learned'], run: () => 'The channel went flat. Whatever it was, it is still down there.' },
     ],
   },
@@ -267,13 +267,13 @@ export const EVENTS: EventDef[] = [
       c.cam.move({ pos: spot(st, at, 0.6, 12, 4), look: look(at, 1), dur: 4, ease: 'out' });
       await c.say('The capsule came down forty metres out, past the treeline. Half the cargo may have survived.', { who: SHIPNAME, style: 'radio' });
     },
-    brief: () => 'A supply capsule from the Austral overshot and crashed past the treeline. Predators will find it first.',
+    brief: () => 'A supply capsule from the Meridian overshot and crashed past the treeline. Predators will find it first.',
     options: (x) => [
       { key: 'workers', label: 'SEND WORKERS', plus: ['Recover most of the cargo'], minus: ['A worker may not come back'], run: (f) => { E.items(f, { [pick('iron_plate')]: 24, [pick('circuit')]: 4, [pick('motor')]: 1, [pick('glass')]: 8 }); if (E.pct(0.35)) E.killWorkers(f, 1, 'predators'); return 'They came back loaded. Not all of them came back.'; } },
       { key: 'drone', label: 'SEND A DRONE', plus: ['Safe recovery of half'], minus: ['Half the cargo stays out there'], need: () => ((A(x.g).colony?.drones?.length ?? 0) > 0 || (A(x.g).upgrades?.count?.('drone_') ?? 0) > 0 ? null : 'Needs a drone'), run: (f) => { E.items(f, { [pick('iron_plate')]: 12, [pick('circuit')]: 2 }); E.xp(f, 'robotics', 15); return 'The drone made three runs before the predators arrived.'; } },
-      { key: 'leave', label: 'WRITE IT OFF', plus: ['No risk'], minus: ['Cargo lost', 'Reputation -4'], run: (f) => { E.rep(f, -4); return 'The Austral logged the loss against the colony.'; } },
+      { key: 'leave', label: 'WRITE IT OFF', plus: ['No risk'], minus: ['Cargo lost', 'Reputation -4'], run: (f) => { E.rep(f, -4); return 'The Meridian logged the loss against the colony.'; } },
     ],
   },
 ];
-const SHIPNAME = 'UNAA AUSTRAL';
+const SHIPNAME = 'UNAA MERIDIAN';
 export const EVENT: Record<string, EventDef> = Object.fromEntries(EVENTS.map((e) => [e.id, e]));

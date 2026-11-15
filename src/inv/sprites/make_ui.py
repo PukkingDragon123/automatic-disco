@@ -1,10 +1,18 @@
 """Paint the stores' UI materials and container icons with the user's lowpix tool.
 
+v6 (user: "use real 3D or real images"): the window materials are REAL Poly Haven CC0 photo textures stylised with
+`lowpix photo polyhaven:<id> --style pixel-hd` (PHOTOS below; tinted toward the container's paint, then snapped to the
+master palette), and the badge illustrations are renders of the real container models (`?test=inv&icons` renders them
+in the browser; `--icons <renders.json>` here shrinks, snaps and outlines them). The stroke-painted FIELDS and KINDS
+remain as the offline fallback.
+
 Each container window is drawn in its container's own material; these are the material FIELDS (large textured
 surfaces painted with lowpix's stroke brush, then snapped to the master palette) that the browser cuts its frames,
 cells and controls from, plus a 32 px painted icon of every container kind for the crate HUD badges.
 
-  python3 src/inv/sprites/make_ui.py            -> public/inv/ui/mat_<name>.png, kind_<kind>.png, contact.png
+  python3 src/inv/sprites/make_ui.py            -> public/inv/ui/mat_<name>.png, kind_<kind>.png (UI_CONTACT=sheet.png)
+  python3 src/inv/sprites/make_ui.py --photos   -> mat_<name>.png from the Poly Haven photos (PHOTO_CACHE caches them)
+  python3 src/inv/sprites/make_ui.py --icons r.json -> kind_<kind>.png from model renders ({kind: dataURL})
 """
 from __future__ import annotations
 
@@ -20,7 +28,7 @@ from lowpix.sprite_gen import make, blob, catmull, _L  # noqa: E402
 from PIL import Image  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(__file__))
-from make_items import master_palette, snap  # noqa: E402
+from make_items import master_palette, snap, shrink_render  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 OUT = os.path.join(ROOT, "public", "inv", "ui")
@@ -205,7 +213,110 @@ KINDS = {
 }
 
 
+# ------------------------------------------------------------------ real photos (Poly Haven CC0), stylised by lowpix
+# name -> (polyhaven id, hue target deg or None, saturation x, value x, value lift[, contrast])
+PHOTOS = {
+    "crate": ("wood_planks", None, 1.15, 1.05, 0.0),
+    "lacquer": ("dark_wood", None, 1.0, 0.9, 0.0),
+    "olive": ("green_metal_rust", 64, 1.3, 1.2, 0.03, 0.6),
+    "hold": ("metal_plate_02", 60, 0.45, 1.0, 0.0),
+    "earth": ("dirt_floor", 30, 1.6, 0.8, 0.0, 0.7),
+    "concrete": ("concrete_floor_worn_001", None, 0.6, 1.0, 0.0),
+    "frost": ("metal_plate_02+snow_02", 205, 0.3, 1.25, 0.1),
+    "teal": ("blue_metal_plate", 172, 0.8, 1.2, 0.04),
+    "corr": ("worn_corrugated_iron", 42, 0.35, 1.08, 0.04),
+    "brass": ("metal_plate", 44, 1.1, 1.1, 0.02),
+    "paper": ("beige_wall_001", 38, 0.45, 1.12, 0.08, 0.6),
+    "gun": ("metal_plate_02", 205, 0.15, 0.62, 0.0, 0.7),
+}
+PHOTO_SIZE = 192
+
+
+def photo(pid):
+    import subprocess
+    cache = os.environ.get("PHOTO_CACHE", "/tmp/lowpix_photo_cache")
+    os.makedirs(cache, exist_ok=True)
+    out = os.path.join(cache, f"{pid}_{PHOTO_SIZE}.png")
+    if not os.path.exists(out):
+        subprocess.run([sys.executable, "-m", "lowpix", "photo", f"polyhaven:{pid}", "--style", "pixel-hd", "--size", str(PHOTO_SIZE),
+                        "--preview", "0", "-o", out], cwd=LOWPIX, check=True, stdout=subprocess.DEVNULL)
+    return Image.open(out).convert("RGB")
+
+
+def grade(img, hue, sat, val, lift, contrast=1.0):
+    """tint a stylised photo toward its container's paint: hue pulled to the target, saturation and value scaled, the
+    value range squeezed toward its mean (contrast < 1 quietens a busy photo)"""
+    hsv = np.asarray(img.convert("HSV")).astype(float)
+    if contrast != 1.0:
+        m = hsv[..., 2].mean()
+        hsv[..., 2] = m + (hsv[..., 2] - m) * contrast
+    if hue is not None:
+        h0 = hsv[..., 0] * 360 / 255
+        d = ((hue - h0 + 540) % 360) - 180
+        hsv[..., 0] = ((h0 + d * 0.85) % 360) * 255 / 360
+    hsv[..., 1] = np.clip(hsv[..., 1] * sat, 0, 255)
+    hsv[..., 2] = np.clip(hsv[..., 2] * val + lift * 255, 0, 255)
+    return Image.fromarray(hsv.astype(np.uint8), "HSV").convert("RGB")
+
+
+def photos():
+    """each field from its real photo (tileable), graded and snapped to the palette"""
+    os.makedirs(OUT, exist_ok=True)
+    P, cols = master_palette()
+    pal = np.array([[(c >> 16) & 255, (c >> 8) & 255, c & 255, 255] for c in cols] + [[0, 0, 0, 0]] * (256 - len(cols)), np.uint8)
+    sheet = []
+    for name, (pid, hue, sat, val, lift, *ct) in PHOTOS.items():
+        ct = ct[0] if ct else 1.0
+        if "+" in pid:  # a plate under a rime of a second photo: the over photo lies where it is brightest
+            base, over = pid.split("+")
+            b = np.asarray(grade(photo(base), hue, sat, val, lift)).astype(float)
+            o = np.asarray(grade(photo(over), hue, sat * 0.8, 1.1, lift)).astype(float)
+            lum = o.mean(2, keepdims=True) / 255
+            m = np.clip((lum - 0.55) * 4, 0, 1) * 0.85 + 0.15
+            im = Image.fromarray((b * (1 - m) + o * m).astype(np.uint8), "RGB")
+        else:
+            im = grade(photo(pid), hue, sat, val, lift, ct)
+        rgba = Image.fromarray(pal[snap(im, P)], "RGBA")
+        rgba.save(os.path.join(OUT, f"mat_{name}.png"))
+        sheet.append(rgba)
+        print("photo", name, pid)
+    if os.environ.get("UI_CONTACT"):
+        S = PHOTO_SIZE
+        sh = Image.new("RGBA", (6 * (S + 4), 2 * (S + 4)), (16, 18, 20, 255))
+        for i, im in enumerate(sheet):
+            sh.alpha_composite(im, ((i % 6) * (S + 4), (i // 6) * (S + 4)))
+        sh.save(os.environ["UI_CONTACT"])
+
+
+ICON_W, ICON_H = 56, 40
+
+
+def icons(path):
+    """the badge illustrations from renders of the real models (make_items.shrink_render: cropped, fitted, box-shrunk,
+    snapped to the palette, outlined)"""
+    import json
+    P, cols = master_palette()
+    pal = np.array([[(c >> 16) & 255, (c >> 8) & 255, c & 255, 255] for c in cols] + [[0, 0, 0, 0]] * (256 - len(cols)), np.uint8)
+    renders = json.load(open(path))
+    sheet = []
+    for kind, url in renders.items():
+        out = pal[shrink_render(url, ICON_W, ICON_H, P)]
+        rgba = Image.fromarray(out, "RGBA")
+        rgba.save(os.path.join(OUT, f"kind_{kind}.png"))
+        sheet.append(rgba)
+        print("icon", kind)
+    if os.environ.get("UI_CONTACT"):
+        sh = Image.new("RGBA", (len(sheet) * (ICON_W * 3 + 8), ICON_H * 3 + 8), (30, 32, 34, 255))
+        for i, im in enumerate(sheet):
+            sh.alpha_composite(im.resize((ICON_W * 3, ICON_H * 3), Image.NEAREST), (i * (ICON_W * 3 + 8) + 4, 4))
+        sh.save(os.environ["UI_CONTACT"])
+
+
 def main():
+    if "--photos" in sys.argv:
+        return photos()
+    if "--icons" in sys.argv:
+        return icons(sys.argv[sys.argv.index("--icons") + 1])
     os.makedirs(OUT, exist_ok=True)
     P, cols = master_palette()
     pal = np.array([[(c >> 16) & 255, (c >> 8) & 255, c & 255, 255] for c in cols] + [[0, 0, 0, 0]] * (256 - len(cols)), np.uint8)

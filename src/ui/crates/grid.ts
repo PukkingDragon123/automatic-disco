@@ -44,6 +44,8 @@ class InvWindow {
   group: ItemGroup | null = null; query = '';
   sortKey: SortKey | null = null;
   settings = false;
+  /** the settings plate shows every item it could take only when asked (else what it holds and what is set) */
+  allPicks = false;
   constructor(readonly ui: InvUI, readonly c: Container) {
     const r = (this.root = document.createElement('div'));
     r.className = 'inv-win pop';
@@ -88,7 +90,12 @@ class InvWindow {
     this.frame();
   }
   /** a panel that grew (the settings plate) slides up to stay on screen */
-  keepOnScreen() { const b = this.root.getBoundingClientRect(); if (b.bottom > innerHeight - 8) this.root.style.top = Math.round(Math.max(8, innerHeight - 8 - b.height)) + 'px'; }
+  keepOnScreen() {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const b = this.root.getBoundingClientRect(), sb = this.settings ? this.setEl.getBoundingClientRect() : null, bottom = Math.max(b.bottom, sb?.bottom ?? 0);
+      if (bottom > innerHeight - 8) { const k = ik(); this.root.style.top = Math.round(Math.max(8, b.top - (bottom - (innerHeight - 8))) / k) * k + 'px'; this.ui.moved = true; }
+    }));
+  }
   /** the painted panel, the header's logo plate and label, the priority pips, the controls */
   private renderHead() {
     const fillKey = Math.round(this.c.fill() * 12);
@@ -201,14 +208,15 @@ class InvWindow {
     el.style.display = this.settings ? '' : 'none';
     this.paintCtls();
     if (!this.settings) return;
-    const takes = ITEM_IDS.filter((id) => ITEMS[id].cat !== 'internal' && c.takesKind(id));
+    const takes = ITEM_IDS.filter((id) => ITEMS[id].cat !== 'internal' && c.takesKind(id) && (this.allPicks || c.allow.includes(id) || c.deny.includes(id) || c.stacks.some((s) => s.item === id)));
+    el.style.height = '';
     const crew = this.ui.store.linked(c);
     const g = gimg;
     el.innerHTML = `
       <div class="row">${g('type')}<input class="lbl inv-t" maxlength="10" value="${esc(c.label)}"></div>
       <div class="row">${LOGO_IDS.map((l) => `<img class="opt" data-l="${l}" title="${LOGO_NAME[l]}" src="${ctlURL(c.kind, 16, 16, c.logo === l ? 2 : 0, LOGOS[l], 31)}">`).join('')}</div>
       <div class="row">${g('drop')}${PAINT_IDS.map((p) => `<img class="opt sw" data-p="${p}" title="${PAINTS[p].name}" src="${swatchURL(PAINTS[p].ramp, c.color === p)}">`).join('')}<span class="sp"></span>${g('pin')}${[1, 2, 3, 4, 5].map((q) => `<img class="opt pip" data-pr="${q}" src="${pipURL(q <= c.priority)}">`).join('')}</div>
-      <div class="row picks">${g('funnel')}<div class="inv-picks">${takes.map((id) => `<button data-it="${id}" class="${c.allow.includes(id) ? 'allow' : c.deny.includes(id) ? 'deny' : ''}" title="${esc(ITEMS[id].name)}"><img src="${itemIcon(id, 32)}"></button>`).join('')}</div></div>
+      <div class="row picks">${g('funnel')}<div class="inv-picks">${takes.map((id) => `<button data-it="${id}" class="${c.allow.includes(id) ? 'allow' : c.deny.includes(id) ? 'deny' : ''}" title="${esc(ITEMS[id].name)}"><img src="${itemIcon(id, 32)}"></button>`).join('')}<img class="opt more" title="${this.allPicks ? 'Fewer' : 'Every item it takes'}" src="${ctlURL(c.kind, 14, 14, this.allPicks ? 2 : 0, this.allPicks ? GLYPH.left : GLYPH.plus, 43)}"></div></div>
       <div class="row">${g('worker')}${crew.map((w, i) => `<span class="w">${esc(w.c.sp.name)}<b data-un="${i}">×</b></span>`).join('')}<img class="opt link" title="Link the nearest idle worker" src="${ctlURL(c.kind, 14, 14, 0, GLYPH.plus, 41)}"></div>`;
     Object.assign(el.style, { width: L.w * k + 'px', top: L.h * k + 'px' });
     requestAnimationFrame(() => { const hh = Math.round(el.getBoundingClientRect().height / k); el.style.height = hh * k + 'px'; el.style.backgroundImage = `url(${plainURL(c.kind, L.w, hh, c.id + 3)})`; el.style.backgroundSize = `${L.w * k}px ${hh * k}px`; });
@@ -230,6 +238,7 @@ class InvWindow {
       b.onpointerleave = () => this.ui.tip(null);
     });
     el.querySelector<HTMLElement>('.link')!.onclick = () => this.linkWorker();
+    el.querySelector<HTMLElement>('.more')!.onclick = () => { this.allPicks = !this.allPicks; this.renderSettings(); this.keepOnScreen(); };
     el.querySelectorAll<HTMLElement>('[data-un]').forEach((b) => (b.onclick = () => { const w = crew[Number(b.dataset.un)]; const wk = (this.ui.g.factory as unknown as { workers?: { release(c: unknown): void } }).workers; if (w && wk) wk.release(w.c); this.renderSettings(); }));
   }
   private linkWorker() {
@@ -276,11 +285,11 @@ function swatchURL(name: keyof typeof RAMPS, on: boolean) {
   u = p.url(); small.set(key, u); return u;
 }
 /** a glyph as an img at whole-number scale */
-const gimg = (name: string) => { const g = GLYPH[name], k = ik(); return `<img class="gl" src="${glyphURL(name)}" style="width:${(g[0].length + 1) * k}px;height:${(g.length + 1) * k}px">`; };
-/** a glyph on its own, in light ink with a shadow */
-function glyphURL(name: string) {
-  const key = 'g' + name; let u = small.get(key); if (u) return u;
-  const g = GLYPH[name], p = new Pen(g[0].length + 1, g.length + 1); p.glyph(g, 0, 0, RAMPS.paper[5], RAMPS.ink[0]);
+const gimg = (name: string, dark = false) => { const g = GLYPH[name], k = ik(); return `<img class="gl" src="${glyphURL(name, dark)}" style="width:${(g[0].length + 1) * k}px;height:${(g.length + 1) * k}px">`; };
+/** a glyph on its own: light ink with a shadow (on the materials), or dark ink with a lit edge (on the paper cards) */
+function glyphURL(name: string, dark = false) {
+  const key = 'g' + name + dark; let u = small.get(key); if (u) return u;
+  const g = GLYPH[name], p = new Pen(g[0].length + 1, g.length + 1); p.glyph(g, 0, 0, dark ? RAMPS.ink[1] : RAMPS.paper[5], dark ? RAMPS.paper[5] : RAMPS.ink[0]);
   u = p.url(); small.set(key, u); return u;
 }
 
@@ -360,7 +369,7 @@ export class InvUI {
   card(w: InvWindow | null, s?: Stack, x = 0, y = 0) {
     if (!w || !s) { this.cardEl.style.display = 'none'; return; }
     const d = itemDef(s.item), p = d.perish, keep = w.c.keeps(s.item), k = ik();
-    const g = gimg;
+    const g = (n: string) => gimg(n, true);
     let spoil = '';
     if (p) { const days = s.fresh * p.days; spoil = `<span class="${keep ? 'ok' : s.fresh < 0.3 ? 'r' : ''}">${g('clock')}${keep ? 'cold' : days < 1 ? Math.max(1, Math.round((days * DAY) / 60)) + 'm' : days.toFixed(1) + 'd'}</span>`; }
     this.cardEl.innerHTML = `<img class="big" src="${itemIcon(s.item, 96)}"><div class="txt"><div class="nm inv-t">${esc(d.name)}</div>` +

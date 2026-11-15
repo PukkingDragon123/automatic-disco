@@ -103,7 +103,7 @@ export function panelURL(kind: ContainerKind, L: PanelLayout, seed: number): str
 }
 /** busy grain is quietened under the things that sit on it: a wash of the material's mid tone */
 function calm(p: Pen, kind: ContainerKind, x: number, y: number, w: number, h: number, k = 1) {
-  const a = ({ plank: 0.3, lacquer: 0.22, steel: 0.18, corr: 0.2, earth: 0.12, concrete: 0.12, frost: 0.1, pipe: 0.18, brass: 0.2 } as Record<Style, number>)[MAT[kind].style] * k;
+  const a = ({ plank: 0.3, lacquer: 0.22, steel: 0.3, corr: 0.25, earth: 0.32, concrete: 0.25, frost: 0.22, pipe: 0.25, brass: 0.25 } as Record<Style, number>)[MAT[kind].style] * k;
   if (a > 0) p.rect(x, y, w, h, MAT[kind].R[3], a);
 }
 function frame(p: Pen, kind: ContainerKind, L: PanelLayout, seed: number) {
@@ -233,7 +233,7 @@ function cells(p: Pen, kind: ContainerKind, L: PanelLayout, seed: number) {
         for (const [dx, dy] of [[3, 3], [s - 5, 3], [3, s - 5], [s - 5, s - 5]]) p.px(x + dx, y + dy, m.R[5]);
         break;
       case 'earth': { // pockets dug in the earth, ragged rims with pebbles
-        p.shade(x + 2, y + 2, s - 4, s - 4, -0.5);
+        p.rect(x + 2, y + 2, s - 4, s - 4, RAMPS.soil[0], 0.62); p.shade(x + 2, y + 2, s - 4, 3, -0.3);
         for (const [cx, cy] of [[x + 2, y + 2], [x + s - 3, y + 2], [x + 2, y + s - 3], [x + s - 3, y + s - 3]]) p.shade(cx, cy, 1, 1, 0.25);
         p.hl(x + 3, x + s - 4, y + 2, RAMPS.soil[1]); p.hl(x + 3, x + s - 4, y + s - 3, RAMPS.soil[5]);
         if (h1(i + j * 13, seed) < 0.5) { const sx = x + 4 + Math.floor(h1(i, j) * (s - 10)); p.rect(sx, y + s - 3, 2, 1, RAMPS.stone[5]); }
@@ -312,6 +312,7 @@ export function hudPlateURL(w: number, h: number): string {
   const key = `hud|${w}x${h}|${matsLoaded()}`; let u = cache.get(key); if (u) return u;
   const p = new Pen(w, h);
   p.field('gun', 0, 0, w, h, 30, 20, S[2]);
+  p.rect(0, 0, w, h, S[2], 0.5);
   p.bevel(0, 0, w, h, S[6], S[0]); p.bevel(1, 1, w - 2, h - 2, S[4], S[1]);
   for (let x = 8; x < w - 6; x += 20) { p.rivet(x, 2, S); p.rivet(x, h - 5, S); }
   for (let y = 22; y < h - 10; y += 20) { p.rivet(2, y, S); p.rivet(w - 5, y, S); }
@@ -323,6 +324,7 @@ export function plainURL(kind: ContainerKind, w: number, h: number, seed: number
   const key = `plain|${kind}|${w}x${h}|${seed}|${matsLoaded()}`; let u = cache.get(key); if (u) return u;
   const m = MAT[kind], p = new Pen(w, h);
   p.field(m.field, 0, 0, w, h, seed * 19, seed * 5, m.R[3]);
+  calm(p, kind, 0, 0, w, h, 1.5);
   frame(p, kind, { w, h, head: 0, gx: 0, gy: 0, cols: 0, rows: 0, cell: 1, fill: 0, frame: 6, ctrlY: 0 }, seed);
   u = p.url(); cache.set(key, u);
   return u;
@@ -333,15 +335,16 @@ export function badgeURL(kind: ContainerKind, w: number, h: number, logo: string
   let u = cache.get(key); if (u) return u;
   const m = MAT[kind], p = new Pen(w, h);
   p.field(m.field, 0, 0, w, h, seed * 21, seed * 11, m.R[3]);
+  calm(p, kind, 0, 0, w, h, 1.8);
   p.bevel(0, 0, w, h, m.light, m.ink); p.bevel(1, 1, w - 2, h - 2, m.R[Math.min(m.R.length - 1, 5)], m.R[1]);
   // the icon on a darker ground
-  p.shade(3, 3, w - 6, 38, -0.3); p.bevel(3, 3, w - 6, 38, m.ink, m.light, true);
-  const ic = kindIcon(kind); if (ic) p.x.drawImage(ic, Math.floor((w - 32) / 2), 6);
+  p.shade(3, 3, w - 6, 42, -0.3); p.bevel(3, 3, w - 6, 42, m.ink, m.light, true);
+  const ic = kindIcon(kind); if (ic) p.x.drawImage(ic, Math.floor((w - ic.width) / 2), 4 + Math.floor((42 - ic.height) / 2));
   // the logo, sprayed in the container's paint on a little plate
-  p.rect(w - 17, 26, 14, 14, paint[1]); p.rect(w - 16, 27, 12, 12, paint[3]);
-  p.glyph(logo, w - 16, 27, paint.length > 5 ? paint[5] : paint[paint.length - 1]);
+  p.rect(w - 17, 30, 14, 14, paint[1]); p.rect(w - 16, 31, 12, 12, paint[3]);
+  p.glyph(logo, w - 16, 31, paint.length > 5 ? paint[5] : paint[paint.length - 1]);
   // the item rows' tray, then the gauge
-  p.shade(3, 56, w - 6, h - 66, -0.22); p.bevel(3, 56, w - 6, h - 66, m.ink, m.light, true);
+  p.rect(3, 60, w - 6, h - 70, m.ink, 0.45); p.bevel(3, 60, w - 6, h - 70, m.ink, m.light, true);
   const gy = h - 7; p.rect(3, gy, w - 6, 4, RAMPS.ink[0]);
   const gw = Math.round((w - 8) * Math.min(1, fill)); const G = fill > 0.9 ? RAMPS.stampRed : RAMPS.moss;
   for (let x = 0; x < gw; x++) p.vl(4 + x, gy + 1, gy + 2, x % 3 === 2 ? G[2] : G[G.length - 2]);
@@ -353,7 +356,7 @@ export function cardURL(w: number, h: number, seed = 1, enamel = false): string 
   const key = `card|${w}x${h}|${seed}|${enamel}|${matsLoaded()}`; let u = cache.get(key); if (u) return u;
   const p = new Pen(w, h), P = RAMPS.paper;
   if (enamel) { p.rect(0, 0, w, h, P[5]); p.field('paper', 1, 1, w - 2, h - 2, 40, 10, P[4]); p.rect(1, 1, w - 2, h - 2, P[5], 0.45); }
-  else p.field('paper', 0, 0, w, h, seed * 23, seed * 7, P[4]);
+  else { p.field('paper', 0, 0, w, h, seed * 23, seed * 7, P[4]); p.rect(0, 0, w, h, P[4], 0.5); }
   p.hl(1, w - 2, 1, P[5]); p.vl(1, 1, h - 2, P[5]);
   p.hl(0, w - 1, 0, RAMPS.ink[1]); p.hl(0, w - 1, h - 1, RAMPS.ink[1]); p.vl(0, 0, h - 1, RAMPS.ink[1]); p.vl(w - 1, 0, h - 1, RAMPS.ink[1]);
   if (enamel) { // chipped enamel: dark chips at the edge, a hanging hole

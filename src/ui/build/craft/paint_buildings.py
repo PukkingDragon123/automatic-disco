@@ -1,7 +1,8 @@
 # The planner's building illustrations: every building repainted as 2D pixel art with lowpix's brush engine.
 #   1. node <scratch>/tools/dump_passes.mjs <passes dir>   (the &stills test page shoots a colour, an id and a normal pass)
 #   2. python3 src/ui/build/craft/paint_buildings.py <passes dir>
-# Each part (one mesh, split again by colour) gets its own hue-shifted ramp; the rendered light becomes a target tone that
+# Default (ART_STYLE=real): the real render stays faithful, its tone broken into lowpix brush strokes around the form and
+# snapped to a palette of its own colours; the cut-out is inked and shadowed. ART_STYLE=brush: each part (one mesh, split again by colour) gets its own hue-shifted ramp; the rendered light becomes a target tone that
 # lowpix's `quantise` lays down in strokes running around the form (from the normal pass), with material marks
 # (metal scratches, wood grain, brick). Seams between parts are cut one tone darker, the silhouette is inked, and a soft
 # contact shadow sits under the footing. Output: public/ui/build/art/<kind>.png (art pixels, shown at 2x).
@@ -195,11 +196,68 @@ def paint(kind, f=2, out_dir=OUT):
   return True
 
 
+
+def paint_real(kind, f=2, out_dir=OUT, k=30):
+  """The real render kept faithful: box-filtered to art pixels, nudged by lowpix brush strokes that run around the
+  form (so tone clusters break into strokes, not smooth bands), snapped to a palette of the render's own colours
+  (k-means), then cut out, inked and given a contact shadow."""
+  C2, N2 = (load(os.path.join(SRC, f'{kind}.{p}.png')) for p in ('color', 'normal'))
+  a2 = C2[..., 3] > 0.5
+  H, W = C2.shape[0] // f, C2.shape[1] // f
+  A = down(a2.astype(float), f)
+  mask = A >= 0.5
+  if mask.sum() < 20:
+    return False
+  w4 = a2[..., None].astype(float)
+  col = down(C2[..., :3] * w4, f) / np.maximum(down(w4, f), 1e-6)
+  nrm = down(N2[..., :3] * w4, f) / np.maximum(down(w4, f), 1e-6) * 2 - 1
+  # a touch of local contrast so forms read at this size
+  L = lum(col)
+  col = np.clip(col + (L - brush.blur(L, 3))[..., None] * 0.35, 0, 1)
+  # strokes: value offsets laid along the form
+  nx, ny = nrm[..., 0], -nrm[..., 1]
+  F = np.dstack([ny, -nx]); n = np.hypot(F[..., 0], F[..., 1])
+  F = np.where((n > 0.15)[..., None], F / np.maximum(n, 1e-6)[..., None], np.dstack([np.ones((H, W)), np.zeros((H, W))]))
+  F = brush.smooth_flow(F, mask, passes=2)
+  rng = np.random.default_rng(abs(hash(kind)) % (2 ** 31))
+  lab = np.where(mask, 0, -1)
+  sf = brush.stroke_field(lab, F, rng, length=4.0, width=1.2)
+  col = np.clip(col * (1 + 0.05 * np.clip(sf, -2, 2))[..., None], 0, 1)
+  # the render's own palette
+  X = col[mask]
+  kk = int(min(k, max(6, len(X) // 30)))
+  _, P = kmeans(X, kk, it=14, seed=3)
+  d = ((col[..., None, :] - P[None, None]) ** 2).sum(-1)
+  out = np.zeros((H, W, 4))
+  out[..., :3] = P[d.argmin(-1)]
+  out[..., 3] = mask
+  ys, xs = np.nonzero(mask)
+  by = ys.max()
+  foot = xs[ys >= by - max(3, (by - ys.min()) // 6)]
+  cx, rx = (foot.min() + foot.max()) / 2, (foot.max() - foot.min()) / 2 + 3
+  yy, xx = np.mgrid[0:H, 0:W]
+  sh = (((xx - cx) / max(rx, 4)) ** 2 + ((yy - (by - 1)) / 3.2) ** 2 <= 1) & ~mask
+  out[sh] = [0.04, 0.06, 0.12, 0.42]
+  edge = np.zeros((H, W), bool)
+  for dy, dx in ((0, 1), (1, 0), (0, -1), (-1, 0)):
+    edge |= shift(mask, dy, dx, False) & ~mask
+  out[edge] = [*INK, 1]
+  for dy, dx in ((-1, 0), (0, -1)):
+    lit = edge & shift(mask, dy, dx, False) & ~shift(mask, -dy, -dx, False)
+    src = shift(out[..., :3], dy, dx, 0.0)
+    out[lit, :3] = src[lit] * 0.45 + INK * 0.55
+  os.makedirs(out_dir, exist_ok=True)
+  Image.fromarray((np.clip(out, 0, 1) * 255).astype(np.uint8), 'RGBA').save(os.path.join(out_dir, f'{kind}.png'))
+  return True
+
+
 kinds = sorted({os.path.basename(p).split('.')[0] for p in glob.glob(os.path.join(SRC, '*.color.png'))})
-ok = [k for k in kinds if paint(k)]
-# small pins for the node map's cork board (half size, painted from the same passes)
+STYLE = os.environ.get('ART_STYLE', 'real')  # 'real': the render's own colours in strokes; 'brush': per-part ramps
+P = paint_real if STYLE == 'real' else paint
+ok = [k for k in kinds if P(k)]
+# small pins for the node map's cork board (half size, from the same passes)
 for k in ok:
-  paint(k, 4, os.path.join(OUT, 's'))
+  P(k, 4, os.path.join(OUT, 's'))
 print(len(ok), 'painted;', 'skipped:', sorted(set(kinds) - set(ok)))
 # the list the game reads (kinds without a painting fall back to a studio still)
 open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'artlist.ts'), 'w').write(

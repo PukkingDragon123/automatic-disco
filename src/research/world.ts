@@ -1,5 +1,5 @@
 // What the progression systems put into the world: alien RUINS to scan for xeno data (basalt monoliths with glyph
-// strips that glow faintly), and the Austral's SUPPLY CAPSULES falling to the pod when a quota is met.
+// strips that glow faintly), and the Meridian's SUPPLY CAPSULES falling to the pod when a quota is met.
 import * as THREE from 'three';
 import type { Game } from '../game/game';
 import { Rand } from '../core/rand';

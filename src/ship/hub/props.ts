@@ -8,6 +8,7 @@ import { Batch, Mats, Bin, box, cyl, tube, lathe, extrude, quad, V3, type V } fr
 import { posterTex, labelTex, type PosterKind, type Theme } from './tex';
 import { limbo, pixHazard, pixConsole } from './pix';
 import type { Screens, ScreenKind } from './screens';
+import { pic, picURL, glintMat } from './pics';
 
 export interface Anim { (dt: number, t: number): void }
 export interface Ctx {
@@ -61,9 +62,38 @@ export function screenPanel(c: Ctx, kind: ScreenKind, w: number, h: number, at: 
   return g;
 }
 export function poster(c: Ctx, kind: PosterKind, w: number, at: { x: number; y: number; z: number; ry?: number; rz?: number }, seed = 1) {
-  const t = posterTex(kind, seed), a = (t as any).aspect ?? 0.73;
-  const m = c.M.get('poster|' + kind + seed, { map: t, rough: 0.85, polyOffset: 1, flag: 0 });
+  // a real picture (pics.ts) when there is one: poster paper, faded, folded, taped, a corner torn (alpha-tested)
+  const P = pic(kind);
+  const t = P ? P.tex : posterTex(kind, seed), a = P ? P.aspect : (t as any).aspect ?? 0.73;
+  const m = c.M.get('poster|' + kind + seed, { map: t, rough: 0.85, polyOffset: 1, flag: 0, alphaTest: P ? 0.5 : 0 });
   c.B.add(quad(w, w / a), m, { x: at.x, y: at.y, z: at.z, ry: at.ry ?? 0, rz: at.rz ?? 0 });
+}
+/** a wall screen running a slideshow of real pictures (with the screen's glow and scanlines) */
+export function photoScreen(c: Ctx, names: string[], w: number, h: number, at: { x: number; y: number; z: number; ry?: number }, seed = 1) {
+  const tex = c.S.makeShow(names.map(picURL).filter((u): u is string => !!u), 256, Math.round(256 * h / w), seed);
+  const m = c.M.glow('scr|' + (scrN++), 0xffffff, 1.1, tex);
+  const g = new THREE.Group(); g.position.set(at.x, at.y, at.z); g.rotation.set(0, at.ry ?? 0, 0); c.root.add(g);
+  const s = new THREE.Mesh(c.bin.g(quad(w, h)), m); s.position.z = 0.012; g.add(s);
+  g.updateMatrix(); c.B.push(g.matrix); c.B.add(box(w + 0.08, h + 0.08, 0.04, 0.01), mat(c, 'black'), { z: -0.01 }); c.B.pop();
+  return g;
+}
+let glint: THREE.Material | null = null;
+/**
+ * A framed photo print behind glass: a moulded frame, a backing board, the print (a real picture from pics.ts), a
+ * glint across the glass. Hung on a wall, or standing on a shelf on its strut (tilted back a little).
+ */
+export function photoFrame(c: Ctx, name: string, w: number, at: { x: number; y: number; z: number; ry?: number }, o: { standing?: boolean; frame?: string } = {}) {
+  const P = pic(name); if (!P) return null;
+  const h = w / P.aspect, t = Math.max(0.018, w * 0.07), d = 0.02;
+  const g = new THREE.Group(); g.position.set(at.x, at.y + (o.standing ? h / 2 + t : 0), at.z); g.rotation.set(o.standing ? -0.14 : 0, at.ry ?? 0, 0, 'YXZ'); c.root.add(g);
+  const fm = mat(c, o.frame ?? 'woodD'), M = (geo: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number) => { const e = new THREE.Mesh(c.bin.g(geo), m); e.position.set(x, y, z); g.add(e); return e; };
+  M(box(w + 2 * t, h + 2 * t, 0.008), mat(c, 'dark'), 0, 0, -0.008);
+  M(box(w + 2 * t, t, d), fm, 0, h / 2 + t / 2, 0); M(box(w + 2 * t, t, d), fm, 0, -h / 2 - t / 2, 0);
+  M(box(t, h, d), fm, -w / 2 - t / 2, 0, 0); M(box(t, h, d), fm, w / 2 + t / 2, 0, 0);
+  M(quad(w, h), c.M.get('photo|' + name, { map: P.tex, rough: 0.6, polyOffset: 1, flag: 0 }), 0, 0, 0.001);
+  M(quad(w, h), (glint ??= c.bin.m(glintMat()) as THREE.Material), 0, 0, 0.007).renderOrder = 3;
+  if (o.standing) { const s = M(box(0.012, h * 0.85, 0.012), fm, 0, -h * 0.1, -0.06); s.rotation.x = 0.5; }
+  return g;
 }
 export function sign(c: Ctx, text: string, w: number, at: { x: number; y: number; z: number; ry?: number }, o: { fg?: number; bg?: number; size?: number; font?: string; border?: number; glow?: boolean } = {}) {
   const t = labelTex(text, { size: o.size ?? 64, fg: o.fg ?? 0xe8e4d4, bg: o.bg, border: o.border, font: o.font });

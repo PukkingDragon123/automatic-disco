@@ -1,4 +1,4 @@
-// MISSION, in 2D: a brushed, riveted steel wall with the Austral's TELEGRAPH PLATE on it, a chipped enamel sign that
+// MISSION, in 2D: a brushed, riveted steel wall with the Meridian's TELEGRAPH PLATE on it, a chipped enamel sign that
 // carries the open directives (an icon for the kind, the ask in one line, the deadline in big numerals, a progress
 // bar, the drop it pays in item icons, TRANSMIT), and a smaller enamel plate with the colony's standing: three strike
 // stamps (the third recalls the mission) and the reputation gauge. Icons first, few words.
@@ -11,6 +11,8 @@ import { fmtTime, gtime } from '../util';
 import { iconURL } from './icons';
 import type { TabPage } from '../../ui/skillTree';
 import type { Game } from '../../game/game';
+import type { Engine } from '../../app/engine';
+import { australPhoto } from './vignettes';
 
 /** a carrier trace drawn in ink (the telegraph's receipt strip) */
 export function waveDraw(cv: HTMLCanvasElement, t: number, k = 1, col = '#2a4a78') {
@@ -30,12 +32,14 @@ export class MissionPage implements TabPage {
   readonly el: HTMLElement;
   private plate: HTMLElement; private standing: HTMLElement; private wave: HTMLCanvasElement;
   private sig = ''; private t = 0;
-  constructor(readonly M: Mission, readonly g: Game, _renderer?: unknown) {
+  private photo: string | null = null;
+  constructor(readonly M: Mission, readonly g: Game, engine?: Engine) {
     this.el = el('div', '');
     el('div', 'pp-plate', this.el);
     this.plate = el('div', 'pp-enamel pp-col', this.el); this.plate.style.cssText = 'left:430px;right:70px;top:110px;gap:12px';
     this.standing = el('div', 'pp-enamel pp-col', this.el); this.standing.style.cssText = 'left:44px;top:110px;width:340px;gap:12px';
     this.wave = document.createElement('canvas');
+    if (engine) void australPhoto(engine).then((u) => { this.photo = u; this.sig = ''; });
     this.build();
   }
   private now() { return gtime(this.g); }
@@ -66,6 +70,7 @@ export class MissionPage implements TabPage {
     el('img', 'pp-ico', head).setAttribute('src', iconURL('arcs', 'phos')); (head.lastChild as HTMLElement).style.cssText = 'width:48px;height:48px';
     el('div', 'pp-hl', head, SHIP);
     head.appendChild(this.wave); this.wave.style.cssText = 'flex:1;height:40px;image-rendering:pixelated';
+    if (this.photo) { const im = el('img', 'pp-ico', head); im.src = this.photo; im.style.cssText = 'width:256px;height:144px;box-shadow:0 0 0 3px #1c2c48'; }
     el('div', 'pp-rule', P);
     const open = M.open();
     if (!open.length) el('div', 'pp-hl', P, M.recalled ? 'RECALLED' : `NEXT IN ${fmtTime(M.next - this.now())}`);

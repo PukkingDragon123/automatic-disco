@@ -120,7 +120,7 @@
 .nm-bot .sp { flex: 1; }
 
 /* the guide: Calder's card taped onto the table */
-.nm-tut { position: absolute; left: 10px; top: 24px; z-index: 8; width: 560px; display: none; color: var(--ink);
+.nm-tut { position: absolute; left: 10px; bottom: 40px; z-index: 8; width: 560px; display: none; color: var(--ink);
   border: 32px solid transparent; border-image: var(--sheet) 16 fill / 32px round; }
 .nm-tut > * { margin-left: -14px; margin-right: -14px; }
 .nm-tut::before { content: ''; position: absolute; left: 50%; top: -44px; translate: -50% 0; width: 96px; height: 36px; background: url(/ui/craft/tape.png) 0 0 / 96px 36px; image-rendering: pixelated; }

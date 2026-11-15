@@ -170,7 +170,7 @@ export async function testEventStage(engine: Engine, P: URLSearchParams) {
   put(await lowpixGlb('progression', 'upgrader', 3), -7, 4, 0.3);
   put(await lowpixGlb('colony', 'st_lamp', 1), 5, 5);
   put(await lowpixGlb('colony', 'st_sensor', 1.6), -5, -6);
-  for (let k = 0; k < 40; k++) {
+  for (let k = 0; k < 22; k++) {
     const a = k * 2.39, r = 16 + (k % 7) * 4, x = Math.cos(a) * r, z = Math.sin(a) * r;
     const t = new THREE.Group();
     const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 2.4, 6), lamb(0x5a3e28)); trunk.position.y = 1.2; t.add(trunk);

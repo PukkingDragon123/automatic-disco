@@ -153,7 +153,7 @@ export class InteriorLight {
   /** haze density for the beams and halos; the air volume's ceiling and floor heights (m) */
   haze = 1; ceilY = 3.4; floorY = 0;
   /** the light level the eye adapts toward, and the overall exposure */
-  key = 0.2; exposure = 1;
+  key = 0.16; exposure = 1;
   /** film grade: S-curve amount and the split tone (shadows, highlights) */
   contrast = 0.22;
   readonly splitLo = new THREE.Color(0.93, 0.98, 1.07);

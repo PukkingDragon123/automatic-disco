@@ -1,5 +1,5 @@
 // The progression layer on a planet game: MASTERY (learned by doing), RESEARCH (scan and study), the UPGRADER
-// (build-to-unlock), the MISSION (the Austral's quotas) and the event DIRECTOR (random cinematic choices, the
+// (build-to-unlock), the MISSION (the Meridian's quotas) and the event DIRECTOR (random cinematic choices, the
 // teammates' death). installProgression(game) attaches all of it; see src/game/V6.md for the API.
 import type { Game } from '../game/game';
 import { Mastery, type PathId } from './mastery';
@@ -102,10 +102,10 @@ export function installProgression(game: Game) {
   research.on('unlock', (d: { id: string }) => toast(`Research complete: <b>${TECH[d.id]?.name ?? d.id}</b>.`, 'good', 5200));
   // the ship's voice
   mission.on('quota', (d: { q: any; phase: string }) => {
-    const open = () => openTerminal(game, 'mission');
-    if (d.phase === 'new') transmission({ kind: 'new', q: d.q, left: d.q.due - gtime(game), open });
+    const open = () => openTerminal(game, 'mission'), engine = G.engine;
+    if (d.phase === 'new') transmission({ kind: 'new', q: d.q, left: d.q.due - gtime(game), open, engine });
     else if (d.phase === 'warn') transmission({ kind: 'warn', q: d.q, left: d.q.due - gtime(game), text: 'Ninety seconds on this directive. The board is watching.', open });
-    else if (d.phase === 'met') transmission({ kind: 'met', q: d.q, text: d.q.early ? 'Received early. A capsule is on its way down.' : 'Received. A capsule is on its way down.', open });
+    else if (d.phase === 'met') transmission({ kind: 'met', q: d.q, text: d.q.early ? 'Received early. A capsule is on its way down.' : 'Received. A capsule is on its way down.', open, engine });
     else if (d.phase === 'missed') transmission({ kind: 'missed', q: d.q, text: mission.strikes >= 2 ? 'Strike two. One more and the program pulls the mission.' : 'The directive lapsed. It is on your record.', open });
   });
   mission.on('recall', () => transmission({ kind: 'recall', text: 'The UNAA has recalled the mission. The colony will be abandoned.' }));
@@ -128,7 +128,7 @@ export function installProgression(game: Game) {
   G.update$?.push((dt: number) => {
     hookSlots();
     if (dt <= 0) return;
-    // the Austral's first drop: enough parts for a Research Station and an Upgrader, once per run
+    // the Meridian's first drop: enough parts for a Research Station and an Upgrader, once per run
     if (!director.done.has('kit') && !G.descending && gtime(game) > 45) {
       director.done.add('kit');
       mission.drop(resolve({ iron_plate: 24, copper_wire: 20, glass: 6, gear: 8, screw: 20 }));

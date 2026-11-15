@@ -438,7 +438,61 @@ def render(entry):
     return im
 
 
+def shrink_render(url, W, H, P):
+    """a real 3D render (a PNG data URL, transparent ground) made into pixel art: cropped to the model, fitted (aspect
+    kept) inside W x H with a pixel clear, shrunk with a box filter on premultiplied colour, lifted a touch, the alpha
+    cut, snapped to the palette (indices, 255 = clear) and ringed with a dark ink outline"""
+    import base64, io
+    big = Image.open(io.BytesIO(base64.b64decode(url.split(",", 1)[1]))).convert("RGBA")
+    x0, y0, x1, y1 = big.getbbox()
+    big = big.crop((x0, y0, x1, y1))
+    a = np.asarray(big).astype(float)
+    a[..., :3] *= a[..., 3:4] / 255
+    k = min((W - 2) / big.width, (H - 2) / big.height)
+    w, h = max(1, round(big.width * k)), max(1, round(big.height * k))
+    small = np.asarray(Image.fromarray(a.astype(np.uint8), "RGBA").resize((w, h), Image.BOX)).astype(float)
+    sm = np.zeros((H, W, 4), float)
+    ox, oy = (W - w) // 2, (H - h) // 2
+    sm[oy:oy + h, ox:ox + w] = small
+    al = sm[..., 3]
+    rgb = np.where(al[..., None] > 0, sm[..., :3] * 255 / np.maximum(al[..., None], 1), 0)
+    rgb = np.clip((rgb - 128) * 1.12 + 132, 0, 255)
+    hsv = np.asarray(Image.fromarray(rgb.astype(np.uint8), "RGB").convert("HSV")).astype(float)
+    hsv[..., 1] = np.clip(hsv[..., 1] * 1.15, 0, 255)
+    im = Image.fromarray(hsv.astype(np.uint8), "HSV").convert("RGB")
+    idx = snap(Image.merge("RGBA", (*im.split(), Image.fromarray(np.where(al > 110, 255, 0).astype(np.uint8)))), P)
+    solid = idx != 255
+    edge = np.zeros_like(solid)
+    for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+        edge |= np.roll(np.roll(solid, dy, 0), dx, 1) & ~solid
+    ink = int(np.argmin(((P - np.array([19, 22, 28])) ** 2).sum(1)))
+    idx[edge] = ink
+    return idx
+
+
+# item sprites that are renders of real Poly Haven models (CREDITS.md); a full regeneration keeps them
+REAL_IDS = {"concrete", "compost", "rock_granite", "plastic", "bio_oil"}
+
+
+def real(path, out):
+    """item sprites from renders of real models (`?test=inv&icons&glb=id=url,...`): patched into itemSprites.ts"""
+    import json
+    P, cols = master_palette()
+    renders = json.load(open(path))
+    src = open(out).read()
+    for id_, url in renders.items():
+        idx = shrink_render(url, S, S, P)
+        line = f"  {id_}: '{base64.b64encode(idx.astype(np.uint8).tobytes()).decode()}',"
+        src, n = re.subn(rf"^  {id_}: '[^']*',$", line, src, flags=re.M)
+        if not n:
+            src = src.replace("\n};\n", "\n" + line + "\n};\n")
+        print("real", id_)
+    open(out, "w").write(src)
+
+
 def main():
+    if "--real" in sys.argv:
+        return real(sys.argv[sys.argv.index("--real") + 1], os.path.join(ROOT, "src/inv/itemSprites.ts"))
     ap = argparse.ArgumentParser()
     ap.add_argument("--sheet", default="")
     ap.add_argument("--only", default="")
@@ -474,8 +528,10 @@ def main():
                  "export const SPRITE_PAL: number[] = [" + ", ".join("0x%06x" % c for c in cols) + "];",
                  "/** item id -> base64 of SPRITE_SIZE^2 palette indices (255 = clear) */",
                  "export const SPRITES: Record<string, string> = {"]
+        old = open(a.out).read() if os.path.exists(a.out) else ""
         for id_, idx in out.items():
-            lines.append(f"  {id_}: '{base64.b64encode(idx.tobytes()).decode()}',")
+            keep = re.search(rf"^  {id_}: '[^']*',$", old, re.M) if id_ in REAL_IDS else None  # renders of real models stay
+            lines.append(keep.group(0) if keep else f"  {id_}: '{base64.b64encode(idx.tobytes()).decode()}',")
         lines.append("};")
         open(a.out, "w").write("\n".join(lines) + "\n")
         print("wrote", a.out, len(out))

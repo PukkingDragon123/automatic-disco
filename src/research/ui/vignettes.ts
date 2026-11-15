@@ -2,7 +2,7 @@
 //   ScannerVignette   RESEARCH: the latest specimen on a turntable under a glass dome, a scan ring sweeping it
 //   BenchVignette     UPGRADER: the Upgrader (lowpix model) beside the pod (the colony's lowpix model), the part
 //                     being built hanging from the gantry, the pod's install slots marked for callouts
-//   ShipVignette      MISSION: the UNAA Austral (the ship agent's exterior) in orbit over the planet, stars behind
+//   ShipVignette      MISSION: the UNAA Meridian (the ship agent's exterior) in orbit over the planet, stars behind
 import * as THREE from 'three';
 import { Vignette, lam, glowM, mesh } from './stage3d';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -127,7 +127,7 @@ export class BenchVignette extends Vignette {
 // ------------------------------------------------------------------ MISSION
 export class ShipVignette extends Vignette {
   readonly anchors: Record<string, THREE.Object3D> = {};
-  private ship = new THREE.Group(); private ext: { update(dt: number, t: number, cam: THREE.Camera): void; dispose(): void } | null = null;
+  private ship = new THREE.Group(); ext: { update(dt: number, t: number, cam: THREE.Camera): void; dispose(): void } | null = null;
   constructor(renderer: THREE.WebGLRenderer) {
     super({ bg: 0x10141e, plinth: false });
     this.scene.fog = null;
@@ -161,4 +161,45 @@ export class ShipVignette extends Vignette {
   private disposers: (() => void)[] = [];
   override update(dt: number) { super.update(dt); this.ship.position.y = Math.sin(this.t * 0.4) * 0.15; this.ship.rotation.z = Math.sin(this.t * 0.3) * 0.03; try { this.ext?.update(dt, this.t, this.cam); } catch { /* ship fx */ } }
   override dispose() { super.dispose(); for (const f of this.disposers) f(); }
+}
+
+// ------------------------------------------------------------------ photographs: real renders of our own scenes for 2D art
+/** stylise a render for a card: broad strokes (half resolution), a warm film palette, posterised tones */
+export function stylise(src: HTMLCanvasElement, k = 2): HTMLCanvasElement {
+  const w = Math.max(8, Math.floor(src.width / k)), h = Math.max(8, Math.floor(src.height / k));
+  const small = document.createElement('canvas'); small.width = w; small.height = h;
+  const g = small.getContext('2d')!; g.imageSmoothingEnabled = true; g.drawImage(src, 0, 0, w, h);
+  const img = g.getImageData(0, 0, w, h), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const l = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
+    for (let c = 0; c < 3; c++) { let v = d[i + c] * 0.8 + l * 0.2; v = (v - 128) * 1.18 + 128 + (c === 0 ? 8 : c === 2 ? -6 : 0); d[i + c] = Math.round(Math.max(0, Math.min(255, v)) / 28) * 28; }
+  }
+  g.putImageData(img, 0, 0);
+  const out = document.createElement('canvas'); out.width = w * k; out.height = h * k;
+  const o = out.getContext('2d')!; o.imageSmoothingEnabled = false; o.drawImage(small, 0, 0, out.width, out.height);
+  return out;
+}
+/** render a vignette once through the engine's own post pipeline and read the frame back (the next frame redraws
+ *  the screen as usual); `frame` poses the camera, the crop is the centre `cw` x `ch` of the screen in CSS px */
+export function photograph(engine: { post: { render(s: THREE.Scene, c: THREE.Camera, fx?: THREE.Scene, t?: number): void }; canvas: HTMLCanvasElement; time: number }, vig: Vignette, cw: number, ch: number): HTMLCanvasElement | null {
+  try {
+    const W = innerWidth, H = innerHeight, save = vig.margins;
+    vig.margins = [0, 0]; vig.resize(W, H); vig.update(0);
+    engine.post.render(vig.scene, vig.cam, undefined, engine.time);
+    const src = engine.canvas, sx = src.width / W, sy = src.height / H;
+    const cv = document.createElement('canvas'); cv.width = Math.round(cw * sx); cv.height = Math.round(ch * sy);
+    cv.getContext('2d')!.drawImage(src, Math.round((W - cw) / 2 * sx), Math.round((H - ch) / 2 * sy), cv.width, cv.height, 0, 0, cv.width, cv.height);
+    vig.margins = save; vig.resize(W, H);
+    return stylise(cv, 2);
+  } catch (e) { console.warn('photograph', e); return null; }
+}
+/** the Meridian in orbit, rendered once from the ship agent's exterior model (cached) */
+let shipPhoto: Promise<string | null> | null = null;
+export function australPhoto(engine: Parameters<typeof photograph>[0] & { renderer: THREE.WebGLRenderer }): Promise<string | null> {
+  return (shipPhoto ??= (async () => {
+    const v = new ShipVignette(engine.renderer); v.auto = 0; v.yaw = 0.5; v.dist = 13; v.pitch = 0.15;
+    for (let k = 0; k < 40 && !(v as unknown as { ext: unknown }).ext; k++) await new Promise((r) => setTimeout(r, 100));
+    const c = photograph(engine, v, 640, 360); v.dispose();
+    return c ? c.toDataURL() : null;
+  })());
 }

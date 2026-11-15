@@ -124,7 +124,7 @@ function sheetCallouts(id: CrewId, hero: CrewModel, turn: CrewModel[], cam: THRE
     I.stroke([[bx - 10, crown[1]], [bx + 10, crown[1]]], 2, INK.mute, { outline: INK.dark }).stroke([[bx - 10, foot[1]], [bx + 10, foot[1]]], 2, INK.mute, { outline: INK.dark });
     I.label(d.heightM.toFixed(2) + ' m', bx - 12, (crown[1] + foot[1]) / 2 - 12, 'Title', 24, INK.light, 'right');
     // the mood: a little face drawn by the head, its word
-    const mx = hp[0] + 250, my = hp[1] + 40;
+    const mx = hp[0] + 340, my = hp[1] + 70;
     I.loop(mx, my, 22, 22, 2, INK.light, { outline: INK.dark });
     I.r(mx - 9, my - 6, 4, 4, INK.light).r(mx + 6, my - 6, 4, 4, INK.light);
     const curve = mood > 0.6 ? 1 : mood > 0.4 ? 0 : -1;
@@ -139,8 +139,8 @@ function sheetCallouts(id: CrewId, hero: CrewModel, turn: CrewModel[], cam: THRE
     d.routine.forEach((r) => { const xa = x0 + Math.round((r.from / 24) * w0), xb = x0 + Math.round((r.to / 24) * w0); I.r(xa, y0, xb - xa, 22, ACT_COL[r.act]); I.vl(xb - 1, y0, y0 + 21, INK.dark); });
     I.stroke([[x0 - 2, y0 - 2], [x0 + w0 + 2, y0 - 2], [x0 + w0 + 2, y0 + 24], [x0 - 2, y0 + 24], [x0 - 2, y0 - 2]], 2, INK.light, { outline: INK.dark, amp: 0.6 });
     [0, 6, 12, 18, 24].forEach((hh) => I.label(String(hh).padStart(2, '0'), x0 + (hh / 24) * w0, y0 + 30, 'Body', 11, INK.mute, 'center'));
-    const acts = [...new Set(d.routine.map((r) => r.act))].slice(0, 7);
-    acts.forEach((a, i) => { const xx = x0 + i * 100; I.r(xx, y0 + 52, 12, 12, ACT_COL[a]); I.label(a, xx + 18, y0 + 48, 'Body', 22, INK.light); });
+    const acts = [...new Set(d.routine.map((r) => r.act))].slice(0, 6);
+    acts.forEach((a, i) => { const xx = x0 + i * 116; I.r(xx, y0 + 52, 12, 12, ACT_COL[a]); I.label(a, xx + 18, y0 + 48, 'Body', 22, INK.light); });
     const g = c.getContext('2d')!; c.width = I.c.width; c.height = I.c.height; c.style.width = W + 'px'; c.style.height = H + 'px'; g.drawImage(I.c, 0, 0);
   });
 }

@@ -85,6 +85,7 @@ const CSS = `
 .inv-set .opt.sw { width: ${a(14)}; height: ${a(14)}; }
 .inv-set .opt.pip { width: ${a(6)}; height: ${a(6)}; padding: ${a(2)} ${a(1)}; }
 .inv-set .opt.link { width: ${a(14)}; height: ${a(14)}; }
+.inv-set .opt.more { width: ${a(14)}; height: ${a(14)}; margin: ${a(2)}; }
 .inv-set input.lbl { width: ${a(120)}; height: ${a(14)}; padding: 0 ${a(3)}; border: 0; outline: 0; background: rgba(10,11,13,.45); box-shadow: inset 0 ${a(1)} 0 rgba(0,0,0,.5), 0 ${a(1)} 0 rgba(255,246,220,.18); color: ${LIGHT}; text-transform: uppercase; ${OUT} }
 .inv-picks { display: flex; flex-wrap: wrap; gap: ${a(1)}; flex: 1; }
 .inv-picks button { width: ${a(18)}; height: ${a(18)}; padding: ${a(1)}; border: 0; cursor: pointer; background: rgba(10,11,13,.3); }
@@ -119,11 +120,11 @@ const CSS = `
 @keyframes hud-pop { 0% { transform: translateY(${a(30)}) scale(.4); opacity: 0; } 55% { transform: translateY(${a(-6)}) scale(1.08); opacity: 1; } 80% { transform: translateY(${a(2)}) scale(.98); } 100% { transform: none; } }
 .crate-hud .badge.flash::after { content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 0 ${a(2)} ${AMBER}; animation: hud-flash 900ms steps(6) 3 both; pointer-events: none; }
 @keyframes hud-flash { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
-.crate-hud .badge .nm { position: absolute; left: ${a(2)}; top: ${a(43)}; white-space: nowrap; overflow: hidden; text-align: center; ${OUT} }
+.crate-hud .badge .nm { position: absolute; left: ${a(2)}; top: ${a(47)}; white-space: nowrap; overflow: hidden; text-align: center; ${OUT} }
 .crate-hud .badge .it { position: absolute; left: ${a(5)}; width: ${a(54)}; height: ${a(16)}; display: flex; align-items: center; gap: ${a(2)}; }
 .crate-hud .badge .it img { width: ${a(16)}; height: ${a(16)}; }
 .crate-hud .badge .it span { flex: 1; text-align: right; ${OUT} }
-.crate-hud .badge .empty { position: absolute; left: 0; width: 100%; top: ${a(72)}; text-align: center; opacity: .55; ${OUT} }
+.crate-hud .badge .empty { position: absolute; left: 0; width: 100%; top: ${a(76)}; text-align: center; opacity: .55; ${OUT} }
 .crate-hud .badge .bang { position: absolute; right: ${a(5)}; top: ${a(5)}; color: ${RED}; ${OUT} }
 .crate-hud .row { display: flex; align-items: center; gap: ${a(4)}; }
 .crate-hud .row img.arw { width: ${a(12)}; height: ${a(12)}; cursor: pointer; flex: none; }
@@ -134,6 +135,7 @@ const CSS = `
 .inv-hudcard { position: fixed; z-index: 70; pointer-events: none; display: none; color: ${INK}; box-sizing: border-box; padding: ${a(5)} ${a(6)}; }
 .inv-hudcard .hd { display: flex; align-items: center; gap: ${a(4)}; margin-bottom: ${a(3)}; }
 .inv-hudcard .hd span { flex: 1; text-align: right; }
+.inv-hudcard .inv-t, .inv-card .inv-t { color: ${INK}; }
 .inv-hudcard .ls { display: grid; grid-template-columns: 1fr 1fr; column-gap: ${a(6)}; row-gap: ${a(1)}; }
 .inv-hudcard .ls div { display: flex; align-items: center; gap: ${a(3)}; }
 .inv-hudcard .ls img { width: ${a(16)}; height: ${a(16)}; }
@@ -141,7 +143,8 @@ const CSS = `
 .inv-hudcard .mu { opacity: .6; }
 
 /* ---------------- the coach ---------------- */
-.inv-coach { position: fixed; z-index: 82; box-sizing: border-box; padding: ${a(6)} ${a(8)} ${a(6)}; color: ${INK}; display: flex; align-items: center; gap: ${a(6)}; }
+.inv-coach { position: fixed; z-index: 82; box-sizing: border-box; padding: ${a(6)} ${a(7)} ${a(6)}; color: ${INK}; display: flex; flex-direction: column; align-items: flex-start; gap: ${a(4)}; }
+.inv-coach .t { display: flex; align-items: center; gap: ${a(5)}; }
 .inv-coach .n { flex: none; width: ${a(14)}; height: ${a(14)}; display: flex; align-items: center; justify-content: center; background: ${INK}; color: ${AMBER}; }
 .inv-coach .say { white-space: nowrap; }
 .inv-coach .keys { display: flex; gap: ${a(2)}; }

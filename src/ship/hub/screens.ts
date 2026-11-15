@@ -4,10 +4,10 @@
 import * as THREE from 'three';
 import { canvas, rgb, rgba } from './tex';
 
-export type ScreenKind = 'telemetry' | 'radar' | 'dna' | 'ekg' | 'reactor' | 'wave' | 'stores' | 'crew' | 'nav' | 'eye' | 'galley' | 'scan' | 'power' | 'galaxy' | 'pod' | 'bars';
+export type ScreenKind = 'telemetry' | 'radar' | 'dna' | 'ekg' | 'reactor' | 'wave' | 'stores' | 'crew' | 'nav' | 'eye' | 'galley' | 'scan' | 'power' | 'galaxy' | 'pod' | 'bars' | 'photos';
 const PH = { bg: 0x07110c, dim: 0x1d4a2c, mid: 0x3f8f58, hi: 0x8fe0a0, hot: 0xd4ffd8, amber: 0xe0a040, red: 0xe0503a, cyan: 0x6ad0d8 };
 
-interface Live { kind: ScreenKind; c: HTMLCanvasElement; g: CanvasRenderingContext2D; tex: THREE.CanvasTexture; seed: number; hz: number; acc: number; w: number; h: number; hist: number[]; tint: number }
+interface Live { kind: ScreenKind; c: HTMLCanvasElement; g: CanvasRenderingContext2D; tex: THREE.CanvasTexture; seed: number; hz: number; acc: number; w: number; h: number; hist: number[]; tint: number; imgs?: HTMLImageElement[] }
 
 export class Screens {
   private list: Live[] = [];
@@ -18,6 +18,13 @@ export class Screens {
     const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.NearestFilter; tex.generateMipmaps = false;
     const l: Live = { kind, c, g, tex, seed, hz: kind === 'radar' || kind === 'ekg' || kind === 'wave' ? 12 : 4, acc: 99, w, h, hist: [], tint };
     this.list.push(l); draw(l, 0);
+    return tex;
+  }
+  /** a slideshow of real pictures (urls), each held a few seconds, panning slowly, a flicker of static between */
+  makeShow(urls: string[], w = 256, h = 160, seed = 1): THREE.CanvasTexture {
+    const tex = this.make('photos', w, h, seed);
+    const l = this.list[this.list.length - 1];
+    l.imgs = urls.map((u) => { const im = new Image(); im.src = u; return im; }); l.hz = 8;
     return tex;
   }
   update(dt: number, t: number, budget = 6) {
@@ -162,6 +169,17 @@ function draw(l: Live, t: number) {
     txt(g, 'POD  ASSEMBLY', 8, 16, 14, T);
     const steps = ['FRAME', 'PLATING', 'GLAZING', 'AVIONICS', 'LIMBS'];
     steps.forEach((s, i) => { txt(g, s, 8, 40 + i * 20, 13, PH.mid); g.fillStyle = rgba(T, 0.25); g.fillRect(w * 0.45, 30 + i * 20, w * 0.5, 10); g.fillStyle = rgb(T); g.fillRect(w * 0.45, 30 + i * 20, w * 0.5 * Math.min(1, Math.max(0, ((t * 0.05 + seed) % 1.4) * 5 - i)), 10); });
+  } else if (kind === 'photos') {
+    const n = l.imgs?.length ?? 0, hold = 7, k = Math.floor((t + seed * 3) / hold), u = ((t + seed * 3) % hold) / hold;
+    const im = n ? l.imgs![k % n] : null;
+    if (im && im.complete && im.naturalWidth) {
+      // cover the screen, panning a little across the picture as it holds
+      const s = Math.max(w / im.naturalWidth, h / im.naturalHeight) * 1.12, dw = im.naturalWidth * s, dh = im.naturalHeight * s;
+      g.imageSmoothingEnabled = false;
+      g.drawImage(im, -(dw - w) * u, -(dh - h) * 0.5, dw, dh);
+      g.fillStyle = 'rgba(120,200,255,0.06)'; g.fillRect(0, 0, w, h);
+    }
+    if (u < 0.03) for (let i = 0; i < 500; i++) { g.fillStyle = h1(i, t * 60) < 0.5 ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.6)'; g.fillRect(h1(i, t) * w, h1(i + 9, t) * h, 3, 1); }
   } else {
     txt(g, 'SYSTEMS', 8, 16, 14, T);
     for (let i = 0; i < 8; i++) { const v = 0.4 + 0.5 * Math.abs(Math.sin(t * 0.4 + i * 0.9 + seed)); g.fillStyle = rgba(T, 0.2); g.fillRect(10 + i * ((w - 20) / 8), 26, (w - 20) / 8 - 4, h - 36); g.fillStyle = rgb(v > 0.85 ? PH.amber : T); g.fillRect(10 + i * ((w - 20) / 8), 26 + (h - 36) * (1 - v), (w - 20) / 8 - 4, (h - 36) * v); }

@@ -21,7 +21,7 @@ export interface Livery {
   serials: string[];
 }
 const L0: Record<LiveryId, Livery> = {
-  uspc: { id: 'uspc', a: 'olive', b: 'steel', glow: 'glowTeal', cable: 'stampRed', rock: 'basalt', wear: 1, serials: ['UNAA UNIT 07', 'AUSTRAL 07', 'UNIT 07', 'UNAA A-07'] },
+  uspc: { id: 'uspc', a: 'olive', b: 'steel', glow: 'glowTeal', cable: 'stampRed', rock: 'basalt', wear: 1, serials: ['UNAA UNIT 07', 'MERIDIAN 07', 'UNIT 07', 'UNAA A-07'] },
   // v6 rival blocs (ids kept): the Eurasian Concord in graphite and signal orange, the Pacific Consortium in ceramic white and teal
   sov: { id: 'sov', a: 'steel', b: 'rust', glow: 'glowAmber', cable: 'basalt', rock: 'basalt', wear: 2, serials: ['CONCORD K-114', 'EC T-57', 'CONCORD L-21', 'EC PD-09'] },
   prc: { id: 'prc', a: 'snow', b: 'teal', glow: 'glowTeal', cable: 'slate', rock: 'basalt', wear: 0, serials: ['PRX 52', 'TIDE-07', 'PRX R-18', 'REEF-25'] },

@@ -3,7 +3,7 @@
 //   MASTERY   the path as a living diorama that grows as it is mastered (src/ui/skillMastery.ts)
 //   RESEARCH  the latest specimen under the scanner dome, the tech index cards (src/research/ui/researchTab.ts)
 //   UPGRADER  the Upgrader beside the pod, the part on the hoist (src/research/ui/upgraderTab.ts)
-//   MISSION   the Austral in orbit, the directives on a telegram (src/research/ui/missionTab.ts)
+//   MISSION   the Meridian in orbit, the directives on a telegram (src/research/ui/missionTab.ts)
 // The game is suspended while it is open; the engine renders the vignette.
 import type { Engine, Screen } from '../app/engine';
 import type { Post } from '../gfx/post';
@@ -48,7 +48,7 @@ export class SkillTree implements Screen {
     this.close = opts.close;
     this.root = el('div', 'pp', ui());
     this.tabsEl = el('div', 'pp-tabs', this.root);
-    const tt = el('div', 'pp-title pp-tag', this.tabsEl); el('div', 'k', tt, 'UNIT 07 · UNAA AUSTRAL'); el('div', 't', tt, 'PROGRAM');
+    const tt = el('div', 'pp-title pp-tag', this.tabsEl); el('div', 'k', tt, 'UNIT 07 · UNAA MERIDIAN'); el('div', 't', tt, 'PROGRAM');
     for (const tb of TABS) {
       const b = el('div', 'pp-tab', this.tabsEl);
       const im = el('img', '', b); im.src = iconURL(tb.icon, 'phos');
@@ -74,9 +74,9 @@ export class SkillTree implements Screen {
     const H = this.host;
     try {
       if (id === 'mastery' && H.mastery) this.page = new MasteryPage(H.mastery, path ?? keepPath, () => H.emit?.('mastery-perk', {}));
-      else if (id === 'research' && H.research) this.page = new ResearchPage(H.research, H);
+      else if (id === 'research' && H.research) this.page = new ResearchPage(H.research, H, this.engine);
       else if (id === 'upgrader' && H.upgrades) this.page = new UpgraderPage(H.upgrades, H as never, H.research ?? null);
-      else if (id === 'mission' && H.mission) this.page = new MissionPage(H.mission, H as never);
+      else if (id === 'mission' && H.mission) this.page = new MissionPage(H.mission, H as never, this.engine);
     } catch (e) { console.error('program tab', id, e); }
     if (this.page) { this.root.insertBefore(this.page.el, this.tabsEl); this.page.vig?.resize(this.W, this.H); }
     if (!force) { csfx('page', 0.5, 1.1); sfx('click'); }

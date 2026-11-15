@@ -12,7 +12,9 @@ import { InteriorLight, type AreaLight, type Glow } from '../../gfx/lights';
 import { areaLit } from '../../gfx/gbuf';
 
 /** panel radiance per unit of the room's light strength, and how much of the old point light stays as fill */
-const PANEL_K = 15, FILL_K = 0.5;
+const PANEL_K = 17, FILL_K = 0.45;
+/** inside, the flat fills (the hub's sky hemisphere and overhead key) step back so the panels shape the rooms */
+const HEMI_IN = 0.5, KEY_IN = 0.55;
 const WHITE = new THREE.Color(0xfff2e2);
 
 export default function hubLight(hub: ShipHub) {
@@ -38,11 +40,21 @@ export default function hubLight(hub: ShipHub) {
     prac.push({ L, g: il.glow(new THREE.Vector3(), L.color, 0, Math.min(4, (L.distance || 6) * 0.6)) });
   });
   areaLit(hub.interior.root);
-  let relit = 0;
+  // the hub's flat fills: the hemisphere and the shadowed overhead key
+  let hemi: THREE.HemisphereLight | null = null, key: THREE.DirectionalLight | null = null;
+  for (const o of hub.scene.children) {
+    if ((o as THREE.HemisphereLight).isHemisphereLight) hemi = o as THREE.HemisphereLight;
+    else if ((o as THREE.DirectionalLight).isDirectionalLight && (o as THREE.DirectionalLight).castShadow) key = o as THREE.DirectionalLight;
+  }
+  let relit = 0, inside = hub.mode === 'exterior' ? 0 : 1;
   const wp = new THREE.Vector3();
   const off = hub.onUpdate((dt) => {
     // runs after the hub has set its lights for this frame (QA: deleting scene.userData.interior switches it all off)
     if (hub.scene.userData.interior !== il) return;
+    // (the roof comes off over about 2 s when boarding)
+    inside += Math.sign((hub.mode === 'exterior' ? 0 : 1) - inside) * Math.min(Math.abs((hub.mode === 'exterior' ? 0 : 1) - inside), dt / 2.2);
+    if (hemi) hemi.intensity *= 1 - (1 - HEMI_IN) * inside;
+    if (key) key.intensity *= 1 - (1 - KEY_IN) * inside;
     for (const r of rooms) {
       const b = hub.interior.rooms[r.id], k = b.baseK > 0 ? b.light.intensity / b.baseK : 0;
       for (const p of r.panels) { p.intensity = r.base * k; p.color.copy(b.light.color).lerp(WHITE, 0.45); }

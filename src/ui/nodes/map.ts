@@ -110,8 +110,11 @@ export class NodeMap {
     this.arrange();
     let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
     for (const n of ns) { const [x, z] = this.pos(n); x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
-    this.cam.x = (x0 + x1) / 2; this.cam.z = (z0 + z1) / 2;
-    this.cam.s = Math.max(2, Math.min(8, Math.min((this.W - 124) / Math.max(1, x1 - x0), (this.H - 96) / Math.max(1, z1 - z0))));
+    // as close as fits, but never so far out that the cards lose their second line; a board wider than the glass
+    // starts at its left edge (where the chains begin) and pans
+    this.cam.s = Math.max(5.2, Math.min(8, Math.min((this.W - 124) / Math.max(1, x1 - x0), (this.H - 96) / Math.max(1, z1 - z0))));
+    this.cam.x = (x1 - x0) * this.cam.s > this.W - 124 ? x0 + (this.W / 2 - 66) / this.cam.s : (x0 + x1) / 2;
+    this.cam.z = (z1 - z0) * this.cam.s > this.H - 96 ? z0 + (this.H / 2 - 50) / this.cam.s : (z0 + z1) / 2;
   }
   private size() {
     const r = this.glass.getBoundingClientRect();
@@ -164,6 +167,8 @@ export class NodeMap {
     this.toolsEl.querySelector('[data-a="tidy"]')!.addEventListener('click', () => this.tidy());
   }
 
+  /** zoomed out far enough that cards drop their second line */
+  private compact() { return this.cam.s < 5.2; }
   /** where a card sits on the board (world m): where the player pinned it, else the board's own arrangement */
   pos(n: LNode): [number, number] { return this.pinned(n) ? [n.x, n.z] : this.auto.get(n.id) ?? [n.x, n.z]; }
   private pinned(n: LNode) { return isLogic(n.kind) ? !!n.cfg.pin : !!n.tidy; }
@@ -176,7 +181,7 @@ export class NodeMap {
     this.autoKey = key;
     this.auto.clear();
     // spacing in art px at the reference zoom (6 px per m): room for a card and a tag between columns
-    const S0 = 6, CX = 170 / S0, CZ = 86 / S0, SX = 122 / S0, wired = new Set<string>();
+    const S0 = 6, CX = 190 / S0, CZ = 92 / S0, SX = 128 / S0, wired = new Set<string>();
     for (const r of L.routes) { wired.add(r.from); wired.add(r.to); }
     const depth = new Map<string, number>();
     for (const id of wired) if (!L.routes.some((r) => r.to === id)) depth.set(id, 0);
@@ -191,7 +196,9 @@ export class NodeMap {
     const ORDER = ['pod', 'container', 'building', 'site', 'deposit', 'field', 'split', 'merge', 'buffer', 'counter', 'gate', 'timer', 'sensor'];
     const rest = L.nodes.filter((n) => !wired.has(n.id)).sort((a, b) => (ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind)) || a.x - b.x);
     const per = Math.max(3, Math.floor((this.W - 30) / (SX * S0))), z0 = cz + (Math.max(1, rows) / 2 + 0.75) * CZ + (rows ? 0.5 : 0) * CZ;
-    rest.forEach((n, i) => { const row = Math.floor(i / per), inRow = Math.min(per, rest.length - row * per); this.auto.set(n.id, [cx + ((i % per) - (inRow - 1) / 2) * SX, z0 + row * CZ]); });
+    // shelves start under the first column of the chains (or sit centred when nothing is wired)
+    const xL = cols.size ? cx - (D / 2) * CX : null;
+    rest.forEach((n, i) => { const row = Math.floor(i / per), inRow = Math.min(per, rest.length - row * per); this.auto.set(n.id, [xL !== null ? xL + (i % per) * SX : cx + ((i % per) - (inRow - 1) / 2) * SX, z0 + row * CZ]); });
   }
   /** TIDY (T): every card the player moved goes back into the board's arrangement */
   tidy() {
@@ -348,7 +355,9 @@ export class NodeMap {
     for (const n of this.L.nodes) {
       const [bx, bz] = this.pos(n), [x, y] = this.proj(bx, 0, bz);
       const name = isLogic(n.kind) ? LOGIC_NAME[n.kind as LogicKind] : n.name;
-      const tw = Math.min(112, Math.max(56, this.tw(g, name) + 10, this.tw(g, this.subline(n)[0]) + 10)), th = 70;
+      // zoomed out, a card keeps its picture and its name; zoomed in, also what it holds or does
+      const small = this.compact(), sel = this.sel?.k === 'node' && this.sel.id === n.id;
+      const tw = small && !sel ? 76 : Math.min(104, Math.max(56, this.tw(g, name) + 10, this.tw(g, this.subline(n)[0]) + 10)), th = small && !sel ? 58 : 70;
       list.push({ n, x, y, tx: 0, ty: 0, tw, th, px: 0, py: 0, r: 0 });
     }
     for (let it = 0; it < 40; it++) {
@@ -479,7 +488,7 @@ export class NodeMap {
     this.R(g, tx, ty, tw, th, fill);
     const edge = sel ? PENCIL_R : hov ? '#57504a' : n.kind === 'field' ? '#24381e' : INK;
     this.R(g, tx + 1, ty, tw - 2, 1, edge); this.R(g, tx + 1, ty + th - 1, tw - 2, 1, edge); this.R(g, tx, ty + 1, 1, th - 2, edge); this.R(g, tx + tw - 1, ty + 1, 1, th - 2, edge);
-    if (n.kind === 'building' || n.kind === 'container' || n.kind === 'pod') this.R(g, tx + 3, ty + 44, tw - 6, 1, 'rgba(87,80,74,0.35)'); // the ruled line
+    if ((n.kind === 'building' || n.kind === 'container' || n.kind === 'pod') && th > 60) this.R(g, tx + 3, ty + 44, tw - 6, 1, 'rgba(87,80,74,0.35)'); // the ruled line
     // the picture
     const cx = tx + tw / 2, py = ty + 4;
     const b = L.bld(n), site = n.kind === 'site' ? L.site(n) : null;
@@ -498,7 +507,7 @@ export class NodeMap {
     }
     const [sub, sc] = this.subline(n);
     this.text(g, clip(g, logic ? LOGIC_NAME[n.kind as LogicKind] : n.name, tw - 8), tx + 4, ty + 45, ink);
-    this.text(g, clip(g, sub, tw - 8), tx + 4, ty + 56, n.kind === 'field' ? '#d8e8c8' : sc);
+    if (th > 60) this.text(g, clip(g, sub, tw - 8), tx + 4, ty + 56, n.kind === 'field' ? '#d8e8c8' : sc);
     const lc = this.lamp(n); if (lc) { this.R(g, tx + tw - 8, ty + 3, 5, 5, '#2b2622'); this.R(g, tx + tw - 7, ty + 4, 3, 3, lc); }
     // the pin
     const pin = this.img(`${BASE}ui/craft/pin.png`); if (pin.complete && pin.naturalWidth) g.drawImage(pin, Math.round(cx - 7), ty - 7, 14, 14);

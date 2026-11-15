@@ -15,6 +15,7 @@ import {
   wallLamp, plant, mug, books, toolbox, extinguisher, screenPanel, poster, sign, type Ctx,
 } from './props';
 import { buildPod } from './pod';
+import { photoFrame, photoScreen } from './props';
 import { beam, motes, steam } from './fx';
 import { objDef, objectGeometry } from '../../limbo/world/objects';
 import { worldMaterial } from '../../limbo/gfx/materials';
@@ -151,7 +152,18 @@ function floorCables(c: Ctx, pts: [number, number][], cols = ['cable', 'cableY',
 // =================================================================================================== rooms
 export function furnish(id: RoomId, c: Ctx) {
   ({ bridge, lab, medbay, core, quarters, workshop, mess, cargo, engineering } as Record<RoomId, (c: Ctx) => void>)[id](c);
+  pictures(id, c);
   atmos(id, c);
+}
+/** framed photos on the walls (real pictures, pics.ts), and the planet poster in the hold */
+function pictures(id: RoomId, c: Ctx) {
+  if (id === 'bridge') photoFrame(c, 'ph_earth', 0.34, { x: 5.93, y: 1.7, z: 13.3, ry: FX }, { frame: 'gun' });
+  if (id === 'mess') photoFrame(c, 'ph_wave', 0.4, { x: 2.75, y: 1.85, z: 5.92, ry: P });
+  if (id === 'medbay') photoFrame(c, 'ph_aurora', 0.26, { x: -2.6, y: 1.95, z: 11.92, ry: P }, { frame: 'white' });
+  if (id === 'core') photoFrame(c, 'ph_ship', 0.36, { x: -1.3, y: 1.95, z: 5.9, ry: FX }, { frame: 'gun' });
+  if (id === 'engineering') photoFrame(c, 'ph_mars', 0.34, { x: 6.92, y: 1.95, z: -7.0, ry: FX }, { frame: 'gun' });
+  if (id === 'cargo') poster(c, 'planet', 0.45, { x: 2.4, y: 2.2, z: -0.12, ry: P });
+  if (id === 'mess') photoScreen(c, ['earth', 'band', 'saturn', 'ph_himal', 'nebula', 'ph_mars'], 0.9, 0.56, { x: 4.4, y: 2.2, z: 5.9, ry: P }, 2);
 }
 
 function bridge(c: Ctx) {
@@ -336,7 +348,7 @@ function quarters(c: Ctx) {
   bunk(c, { x: -1.78, z: -4.85, seed: 1 }); bunk(c, { x: -1.78, z: -2.65, seed: 2 });
   for (const [gx, seed] of [[-5.9, 3], [-3.7, 4]] as [number, number][]) { const g = new THREE.Group(); g.position.set(gx, 0, 1.47); g.rotation.y = -P / 2; g.updateMatrix(); B.push(g.matrix); bunk(c, { x: 0, z: 0, seed }); B.pop(); }
   ph(c, 'alarm_clock_01', -1.55, 1.02, -5.7, -P / 2 - 0.3); ph(c, 'portable_cassette_player', -2.0, 0.62, -4.2, 0.3);
-  ph(c, 'gamepad', -1.95, 1.95, -2.2, 1.1); ph(c, 'round_spectacles', -1.7, 0.6, -2.0, 0.4); ph(c, 'standing_picture_frame_01', -1.55, 1.02, -3.4, -P / 2);
+  ph(c, 'gamepad', -1.95, 1.95, -2.2, 1.1); ph(c, 'round_spectacles', -1.7, 0.6, -2.0, 0.4); photoFrame(c, 'ph_crew', 0.2, { x: -1.55, y: 1.02, z: -3.4, ry: -P / 2 }, { standing: true });
   ph(c, 'rubber_boots', -2.6, 0, -4.0, 0.3); ph(c, 'rubber_boots', -5.0, 0, 0.6, -0.4);
   books(c, -6.8, 0.62, 1.15, 4, 0, 3); books(c, -4.5, 1.92, 1.2, 3, 0, 6);
   poster(c, 'band', 0.5, { x: wx - 0.01, y: 2.85, z: -4.9, ry: FX, rz: 0.03 }); poster(c, 'pinup', 0.4, { x: wx - 0.01, y: 1.25, z: -3.75, ry: FX, rz: -0.04 });
@@ -356,7 +368,7 @@ function quarters(c: Ctx) {
     if (i % 4 === 0) B.add(box(0.22, 0.06, 0.2, 0.03), mat(c, ['seatR', 'olive'][i % 2]), { x: -6.62, y: 0.98, z, ry: i });
     if (i % 4 === 2) B.add(box(0.3, 0.04, 0.22, 0.02), mat(c, 'sheet'), { x: -6.62, y: 0.97, z, ry: 0.3 });
   }
-  ph(c, 'standing_picture_frame_01', -6.6, 0.95, -4.0, P / 2); ph(c, 'portable_cassette_player', -6.6, 0.95, -2.5, P / 2 + 0.3);
+  photoFrame(c, 'ph_earth', 0.2, { x: -6.6, y: 0.95, z: -4.0, ry: P / 2 }, { standing: true, frame: 'gun' }); ph(c, 'portable_cassette_player', -6.6, 0.95, -2.5, P / 2 + 0.3);
   const rug = new THREE.PlaneGeometry(2.4, 2.0); rug.rotateX(-P / 2);
   B.add(rug, c.M.get('rug', { map: cached('rugtex', () => { const [cv, g] = canvas(96, 80); g.fillStyle = '#6a3a2a'; g.fillRect(0, 0, 96, 80); g.fillStyle = '#c8a050'; g.fillRect(4, 4, 88, 2); g.fillRect(4, 74, 88, 2); g.fillRect(4, 4, 2, 72); g.fillRect(90, 4, 2, 72); g.fillStyle = '#2a4a5a'; g.fillRect(10, 10, 76, 1); g.fillRect(10, 69, 76, 1); for (let i = 0; i < 5; i++) { g.fillStyle = '#c8a050'; g.fillRect(44, 18 + i * 10, 8, 4); } const t = toTex(cv, { repeat: false }); t.magFilter = THREE.NearestFilter; return t; }), polyOffset: 1, flag: 0 }), { x: -4.1, y: 0.006, z: -2.5 });
   table(c, { x: -4.1, z: -2.6, w: 1.1, d: 0.85, top: 'woodD' });
@@ -392,7 +404,7 @@ function quarters(c: Ctx) {
   B.add(box(0.5, 0.06, 1.3, 0.03), mat(c, 'leather'), { x: -6.0, y: 0.45, z: -0.9 }); for (const dz of [-0.5, 0.5]) B.add(box(0.06, 0.42, 0.06), mat(c, 'gun'), { x: -6.0, y: 0.21, z: -0.9 + dz });
   for (const dz of [-0.55, 0.55]) { B.add(cyl(0.12, 0.12, 0.05, 12), mat(c, 'black'), { x: -5.6, y: 0.12, z: -0.9 + dz, rz: P / 2 }); }
   B.add(cyl(0.02, 0.02, 1.2, 6), mat(c, 'chrome'), { x: -5.6, y: 0.12, z: -0.9, rx: P / 2 });
-  for (const [z, ry] of [[-5.75, 0], [-3.55, 0]] as [number, number][]) { B.add(box(0.2, 0.025, 0.7), mat(c, 'woodD'), { x: wx - 0.12, y: 2.55, z: z + 0.4, ry }); books(c, wx - 0.2, 2.565, z + 0.12, 5, P / 2, Math.round(-z)); ph(c, 'standing_picture_frame_01', wx - 0.15, 2.565, z + 0.6, -P / 2); }
+  for (const [z, ry] of [[-5.75, 0], [-3.55, 0]] as [number, number][]) { B.add(box(0.2, 0.025, 0.7), mat(c, 'woodD'), { x: wx - 0.12, y: 2.55, z: z + 0.4, ry }); books(c, wx - 0.2, 2.565, z + 0.12, 5, P / 2, Math.round(-z)); photoFrame(c, z < -4 ? 'ph_crew2' : 'ph_himal', 0.16, { x: wx - 0.15, y: 2.565, z: z + 0.6, ry: -P / 2 }, { standing: true }); }
   const lightsM = c.M.live(0xffd890, 2.4);
   for (let k = 0; k < 22; k++) { const u = k / 21, z = -5.8 + u * 7.4; B.add(new THREE.SphereGeometry(0.03, 6, 4), lightsM, { x: wx - 0.08, y: 3.0 - Math.sin(u * P * 5) * 0.12, z }); }
   c.anims.push((_dt, t) => { (lightsM as THREE.MeshBasicMaterial).color.setHex(0xffd890).multiplyScalar(2.0 + Math.sin(t * 1.3) * 0.4); });
@@ -401,8 +413,8 @@ function quarters(c: Ctx) {
   const fb = new THREE.Mesh(c.bin.g(cyl(0.06, 0.08, 0.3, 10)), mat(c, 'plasticW')); fb.position.y = 0.15; fan.add(fb);
   let fanOn = true; c.anims.push((dt) => { if (fanOn) blades.rotation.y += dt * 18; });
   inter(c, [-3.9, 0.75, -3.15, -3.5, 1.2, -2.75], 'DESK FAN', () => { fanOn = !fanOn; csfx('switch', 0.5); });
-  for (const [z, kind, y] of [[-5.2, 'kid', 1.0], [-2.0, 'chart', 1.2], [-1.2, 'unaa', 2.4]] as [number, any, number][]) poster(c, kind, 0.34, { x: wx - 0.01, y, z, ry: FX, rz: (z % 2) * 0.03 });
-  poster(c, 'band', 0.3, { x: -5.1, y: 2.6, z: 1.88, ry: P, rz: -0.04 }); poster(c, 'safety', 0.3, { x: -2.7, y: 2.75, z: 1.88, ry: P, rz: 0.05 });
+  for (const [z, kind, y] of [[-5.2, 'kid', 1.0], [-2.0, 'nebula', 1.2], [-1.2, 'unaa', 2.4]] as [number, any, number][]) poster(c, kind, 0.34, { x: wx - 0.01, y, z, ry: FX, rz: (z % 2) * 0.03 });
+  poster(c, 'band', 0.3, { x: -5.1, y: 2.6, z: 1.88, ry: P, rz: -0.04 }); poster(c, 'saturn', 0.3, { x: -2.7, y: 2.75, z: 1.88, ry: P, rz: 0.05 });
   shipCat(c, [new V3(-3.4, 0, -1.4), new V3(-5.2, 0, -3.6), new V3(-2.8, 0, -3.8), new V3(-4.6, 0, -0.6)]);
 }
 
@@ -498,7 +510,7 @@ function mess(c: Ctx) {
   sh.levels.slice(1).forEach((y, i) => { ph(c, i % 2 ? 'russian_food_cans_01' : 'long_life_food', 2.2, y, 5.66, P); ph(c, 'plastic_thermos', 3.0 - i * 0.12, y, 5.62, 0.4); });
   B.add(box(0.32, 1.1, 0.32, 0.02), mat(c, 'plasticW'), { x: 4.0, y: 0.55, z: 5.7 }); B.add(cyl(0.14, 0.14, 0.4, 14), c.M.get('water', { color: 0x8ac0d8, transparent: true, opacity: 0.6 }), { x: 4.0, y: 1.3, z: 5.7 });
   inter(c, [3.8, 0, 5.5, 4.2, 1.6, 5.9], 'WATER', () => { csfx('glass', 0.4); });
-  poster(c, 'menu', 0.5, { x: 4.9, y: 1.8, z: 5.88, ry: P }); poster(c, 'safety', 0.4, { x: 1.8, y: 2.6, z: 5.88, ry: P, rz: 0.02 });
+  poster(c, 'menu', 0.5, { x: 4.9, y: 1.8, z: 5.88, ry: P }); poster(c, 'mars', 0.4, { x: 1.8, y: 2.6, z: 5.88, ry: P, rz: 0.02 });
   table(c, { x: 3.8, z: 3.0, w: 0.9, d: 2.6, h: 0.76, top: 'wood' });
   for (const s of [-1, 1]) { B.add(box(0.34, 0.06, 2.4, 0.02), mat(c, 'wood'), { x: 3.8 + s * 0.85, y: 0.45, z: 3.0 }); for (const dz of [-1.0, 1.0]) B.add(box(0.06, 0.42, 0.3), mat(c, 'gun'), { x: 3.8 + s * 0.85, y: 0.21, z: 3.0 + dz }); }
   ph(c, 'wooden_bowl_01', 3.8, 0.76, 3.0, 0);
@@ -603,7 +615,7 @@ const CLUTTER: Record<RoomId, string[]> = {
   lab: ['crate', 'box', 'jar', 'cable', 'bin', 'plant'],
   medbay: ['box', 'crate', 'bin', 'laundry', 'case'],
   core: ['case', 'cable', 'crate', 'box', 'drum'],
-  quarters: ['laundry', 'boots', 'box', 'books', 'laundry', 'bag', 'dumbbell', 'bin', 'shoes'],
+  quarters: ['laundry', 'box', 'books', 'laundry', 'bag', 'dumbbell', 'bin', 'books'],
   workshop: ['jerry', 'crate', 'box', 'cable', 'tools', 'drum', 'bucket', 'case'],
   mess: ['crate', 'box', 'bag', 'bucket', 'cans'],
   cargo: ['crate', 'box', 'bag', 'drum', 'jerry', 'crate'],
@@ -647,7 +659,7 @@ export function clutter(id: RoomId, c: Ctx) {
     else if (kind === 'bucket') { B.add(cyl(0.16, 0.13, 0.3, 12), mat(c, R() < 0.5 ? 'blue' : 'yellow'), { x, y: 0.15, z }); }
     else if (kind === 'bin') { B.add(cyl(0.18, 0.15, 0.55, 12), mat(c, 'steel'), { x, y: 0.275, z }); B.add(box(0.2, 0.06, 0.16, 0.03), mat(c, 'paper'), { x, y: 0.57, z, ry }); }
     else if (kind === 'cable') { const a = R() * P; B.add(new THREE.TorusGeometry(0.22, 0.03, 6, 18), mat(c, ['cable', 'cableY', 'cableR'][Math.floor(R() * 3)]), { x, y: 0.03, z, rx: P / 2 }); B.add(new THREE.TorusGeometry(0.18, 0.03, 6, 18), mat(c, 'cable'), { x: x + Math.cos(a) * 0.05, y: 0.08, z: z + Math.sin(a) * 0.05, rx: P / 2 }); }
-    else if (kind === 'laundry') { B.add(lathe([[0, 0], [0.3, 0.02], [0.28, 0.1], [0.18, 0.17], [0, 0.18]], 9), mat(c, ['seat', 'seatR', 'olive', 'sheet'][Math.floor(R() * 4)]), { x, y: 0, z, ry, sx: 1.2 }); B.add(box(0.36, 0.05, 0.28, 0.02), mat(c, ['seatR', 'sheet', 'seat'][Math.floor(R() * 3)]), { x: x + 0.12, y: 0.16, z: z - 0.05, ry: ry + 0.7, rx: 0.1 }); }
+    else if (kind === 'laundry') { B.add(lathe([[0, 0], [0.22, 0.01], [0.2, 0.05], [0.12, 0.09], [0, 0.1]], 7), mat(c, ['seat', 'seatR', 'olive', 'sheet'][Math.floor(R() * 4)]), { x, y: 0, z, ry, sx: 1.3 }); B.add(box(0.36, 0.05, 0.28, 0.02), mat(c, ['seatR', 'sheet', 'seat'][Math.floor(R() * 3)]), { x: x + 0.12, y: 0.16, z: z - 0.05, ry: ry + 0.7, rx: 0.1 }); }
     else if (kind === 'boots' || kind === 'shoes') ph(c, 'rubber_boots', x, 0, z, ry);
     else if (kind === 'books') { books(c, x, 0, z, 5, ry, Math.floor(R() * 9)); }
     else if (kind === 'dumbbell') { for (const s of [-1, 1]) { B.add(cyl(0.025, 0.025, 0.3, 8), mat(c, 'chrome'), { x: x + s * 0.12, y: 0.06, z, rx: P / 2, ry }); B.add(cyl(0.07, 0.07, 0.05, 10), mat(c, 'black'), { x: x + s * 0.12, y: 0.07, z: z - 0.12, rx: P / 2 }); B.add(cyl(0.07, 0.07, 0.05, 10), mat(c, 'black'), { x: x + s * 0.12, y: 0.07, z: z + 0.12, rx: P / 2 }); } }

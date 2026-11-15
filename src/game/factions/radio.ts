@@ -1,5 +1,5 @@
 // Radio intercepts: enemy chatter Unit 07's receiver picks up, shown as typed subtitles under a stencilled tag
-// ("[CONCORD NET] Unit Granite-4: deposit secured"), and the Austral's warnings when a wave is coming (a relay toast;
+// ("[CONCORD NET] Unit Granite-4: deposit secured"), and the Meridian's warnings when a wave is coming (a relay toast;
 // the old story's Calder dialog when that legacy story runs).
 import type { Game } from '../game';
 import type { FactionId } from './plan';
@@ -80,11 +80,11 @@ export class Radio {
     if (this.queue.length > 4) this.queue.shift();
     this.queue.push({ tag, who, text, f });
   }
-  /** the warning voice: the Austral's lead scientist over the relay (the legacy story's Calder when it runs) */
+  /** the warning voice: the Meridian's lead scientist over the relay (the legacy story's Calder when it runs) */
   calder(text: string, expr: 'surprised' | 'think' | 'happy' | 'sad' = 'surprised') {
     const st = this.g.story as any;
     if (st && st.calder && !st.calder.dead && st.beat !== 'opening' && st.beat !== 'wake') { st.say([{ text, expr }]); return; }
-    toast(`<b>DR. SOLANO · AUSTRAL</b> · ${text}`, 'story', 6500);
+    toast(`<b>DR. SOLANO · MERIDIAN</b> · ${text}`, 'story', 6500);
     sfx('open', 1, 0.4);
   }
   update(dt: number) {

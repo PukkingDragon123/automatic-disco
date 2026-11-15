@@ -10,6 +10,8 @@ import type { Research } from '../research';
 import { iconURL } from './icons';
 import { fmtTime } from '../util';
 import type { TabPage } from '../../ui/skillTree';
+import type { Engine } from '../../app/engine';
+import { ScannerVignette, photograph, type SpecimenKind } from './vignettes';
 
 const DATA_ICON: Record<DataKind, string> = { bio: 'dna', geo: 'pick', energy: 'arcs', xeno: 'sensor' };
 const KIND_ICON: Record<string, string> = { species: 'claw', plant: 'sprout', ore: 'pick', crystal: 'core', vent: 'steam', ruin: 'sensor' };
@@ -21,8 +23,8 @@ export class ResearchPage implements TabPage {
   readonly el: HTMLElement;
   private kind: TechKind = 'building'; private sel: string | null = null;
   private spec: HTMLElement; private tokens: HTMLElement; private index: HTMLElement; private detail: HTMLElement; private kinds: HTMLElement;
-  private sig = '';
-  constructor(readonly R: Research, readonly host: Record<string, any>) {
+  private sig = ''; private specKey = ''; private photo: string | null = null; private lab: ScannerVignette | null = null;
+  constructor(readonly R: Research, readonly host: Record<string, any>, readonly engine?: Engine) {
     this.el = el('div', '');
     el('div', 'pp-board', this.el);
     this.spec = el('div', 'pp-fibre pp-col', this.el); this.spec.style.cssText = 'left:64px;top:118px;width:560px;gap:8px';
@@ -62,7 +64,9 @@ export class ResearchPage implements TabPage {
     const e = R.log[0], S = this.spec; S.innerHTML = '';
     el('div', 'pp-s', S, 'LAST SPECIMEN');
     const top = el('div', 'pp-row', S); top.style.gap = '20px';
-    el('img', 'pp-ico', top).setAttribute('src', iconURL(e ? KIND_ICON[e.kind] ?? 'lens' : 'lens', e ? 'phos' : 'dim')); (top.lastChild as HTMLElement).style.cssText = 'width:192px;height:192px';
+    this.shoot();
+    if (this.photo) { el('img', 'pp-ico', top).setAttribute('src', this.photo); (top.lastChild as HTMLElement).style.cssText = 'width:240px;height:180px;box-shadow:0 0 0 3px #2b2622'; }
+    else { el('img', 'pp-ico', top).setAttribute('src', iconURL(e ? KIND_ICON[e.kind] ?? 'lens' : 'lens', e ? 'phos' : 'dim')); (top.lastChild as HTMLElement).style.cssText = 'width:192px;height:192px'; }
     const nm = el('div', 'pp-col', top); nm.style.gap = '10px';
     el('div', 'pp-hx', nm, e ? e.name : 'NONE YET');
     if (e) { const got = el('div', 'pp-row', nm); got.style.gap = '16px'; for (const k of DATA_KINDS) if (e.data[k]) el('span', 'pp-row', got, `<img class="pp-ico" src="${iconURL(DATA_ICON[k], 'phos')}" style="width:48px;height:48px"><span class="pp-hl">+${Math.round(e.data[k]!)}</span>`); }
@@ -119,5 +123,16 @@ export class ResearchPage implements TabPage {
       const stall = R.stalled(); if (stall) el('div', 'pp-s pp-red', right, stall);
     }
   }
-  dispose() { this.el.remove(); }
+  /** photograph the newest specimen: a real render of it on the scanner table, stylised for the card */
+  private shoot() {
+    const e = this.R.log[0], key = e ? e.name + e.t : '';
+    if (!e || !this.engine || key === this.specKey) return; this.specKey = key;
+    const lab = (this.lab ??= new ScannerVignette());
+    lab.auto = 0; lab.sway = 0; lab.yaw = 0.7; lab.dist = 4.2; lab.pitch = 0.22; lab.target.set(0, 1.55, 0);
+    const sp = e.kind === 'species' ? (this.host.run?.reg?.list ?? []).find((s: any) => s.name === e.name) : null;
+    void lab.show(e.kind as SpecimenKind, e.name, sp).then(() => new Promise((r) => setTimeout(r, 250))).then(() => {
+      const c = photograph(this.engine!, lab, 640, 480); if (c) { this.photo = c.toDataURL(); this.sig = ''; }
+    });
+  }
+  dispose() { this.lab?.dispose(); this.el.remove(); }
 }
