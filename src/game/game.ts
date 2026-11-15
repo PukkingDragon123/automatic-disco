@@ -1029,6 +1029,8 @@ export class Game implements Screen {
     post.render(this.world.scene, this.cam.cam, this.world.fxScene, t);
     // v6: the selection's living vignette, drawn into its frame in the HUD after the main image
     const r = this.colony && this.hud.vignetteRect(); if (r) this.hud.vignetteDrawn(this.colony!.renderVignette(this.engine.renderer, r, Math.max(0, t - this.lastRenderT)), this.colony!.vcam, r);
+    // the HUD's 3D hardware (plates, instruments, keys, the tool drum), lit, over everything
+    if (this.colony) this.hud.render3d(this.engine.renderer, Math.min(0.1, Math.max(0, t - this.lastRenderT)));
     this.lastRenderT = t;
   }
   private lastRenderT = 0;

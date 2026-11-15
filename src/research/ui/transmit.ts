@@ -6,10 +6,21 @@ import { installFrames } from './frames';
 import { csfx } from '../../ui/cineAudio';
 import { SHIP, type Quota } from '../mission';
 import { fmtTime } from '../util';
-import { waveDraw } from './missionTab';
 import { australPhoto } from './vignettes';
 import './paper.css';
 
+/** the carrier trace on the telegraph plate (a clean oscilloscope line) */
+export function waveDraw(cv: HTMLCanvasElement, t: number, k = 1, col = '#2a4a78') {
+  const r = cv.getBoundingClientRect(), W = Math.max(10, Math.floor(r.width)), H = Math.max(10, Math.floor(r.height));
+  if (cv.width !== W) { cv.width = W; cv.height = H; }
+  const g = cv.getContext('2d')!; g.clearRect(0, 0, W, H); g.fillStyle = col;
+  let py = H / 2;
+  for (let x = 0; x < W; x += 2) {
+    const u = x / W, burst = Math.sin(u * 9 - t * 2.3) > 0.55 ? 1 : 0.25;
+    const y = H / 2 + (Math.sin(u * 80 + t * 11) * 0.5 + Math.sin(u * 23 - t * 5) * 0.35) * H * 0.4 * burst * k;
+    const a = Math.min(py, y), b = Math.max(py, y); g.fillRect(x, Math.floor(a), 2, Math.max(2, Math.ceil(b - a))); py = y;
+  }
+}
 let cur: HTMLElement | null = null;
 export function transmission(o: { kind: 'new' | 'warn' | 'met' | 'missed' | 'drop' | 'recall'; q?: Quota; left?: number; text?: string; open?: () => void; engine?: Parameters<typeof australPhoto>[0] }) {
   installFrames();

@@ -132,6 +132,18 @@ export const PERKS: Perk[] = [
   P('lg_auto', 'logic', 4, 'Colony Autopilot', 'auto', 'The network repairs its own routes.', ['Workers re-route around broken nodes', '+15% worker speed on routes'], { minus: ['The node map overrides direct orders'], mods: { 'worker.speed': 0.15 }, grants: ['cap.autopilot', 'logic.buffer'] }),
 ];
 export const PERK: Record<string, Perk> = Object.fromEntries(PERKS.map((p) => [p.id, p]));
+/** the simplified tree (user: "fewer, clearer perks"): six perks per path, taken in order, each opening at a level.
+ *  The other perks stay in the data (old saves keep what they own) but can no longer be taken. */
+export const CORE: Record<PathId, string[]> = {
+  plant: ['agro_furrow', 'terra_bind', 'silva_tap', 'agro_drip', 'terra_canopy', 'agro_engine'],
+  bio: ['gene_clean', 'cyb_socket', 'med_triage', 'gene_direct', 'cyb_servo', 'gene_apex'],
+  energy: ['grid_copper', 'bioe_digest', 'rx_loop', 'grid_cap', 'rx_over', 'grid_wireless'],
+  industry: ['ex_bits', 'rf_clean', 'as_jigs', 'ex_seam', 'as_std', 'as_full'],
+  robotics: ['lb_hydro', 'dr_gyro', 'lg_nodes', 'lb_socket', 'dr_work', 'lg_auto'],
+};
+export const CORE_LV = [1, 2, 4, 6, 8, 10];
+export const coreIndex = (id: string) => { const p = PERK[id]; return p ? CORE[p.path].indexOf(id) : -1; };
+const costOf = (p: Perk) => (coreIndex(p.id) >= 0 ? 1 : p.cost);
 
 /** cumulative XP needed to reach each level (index = level) */
 export const LV_XP = [0, 60, 160, 300, 480, 700, 980, 1300, 1680, 2120, 2600];
@@ -163,8 +175,8 @@ export class Mastery {
   /** progress to the next level, 0..1 */
   frac(path: PathId) { const l = this.level(path); if (l >= MAX_LV) return 1; const a = LV_XP[l], b = LV_XP[l + 1]; return (this.xp(path) - a) / (b - a); }
   /** points earned on a path (one per level) minus points spent there */
-  points(path: PathId) { let spent = 0; for (const id of this.owned) { const p = PERK[id]; if (p?.path === path) spent += p.cost; } return this.level(path) - spent; }
-  spent(path: PathId) { let s = 0; for (const id of this.owned) { const p = PERK[id]; if (p?.path === path) s += p.cost; } return s; }
+  points(path: PathId) { return Math.max(0, this.level(path) - this.spent(path)); }
+  spent(path: PathId) { let s = 0; for (const id of this.owned) { const p = PERK[id]; if (p?.path === path) s += costOf(p); } return s; }
   has(id: string) {
     if (this.owned.has(id)) return true;
     // a capability or feature id granted by an owned perk
@@ -198,13 +210,11 @@ export class Mastery {
   why(id: string): string | null {
     const p = PERK[id]; if (!p) return 'Unknown';
     if (this.owned.has(id)) return 'Installed';
-    const lv = this.level(p.path), need = TIER_LV[p.tier];
-    if (lv < need) return `Needs ${PATH[p.path].short} level ${need}`;
-    const f = this.foci[p.path];
-    if (p.tier >= 3 && f && f !== p.sub) return `Locked: focus is ${SUB[f].name}`;
-    if (p.tier >= 3 && !f) return `Choose a focus first`;
-    if (p.tier > 1) { const prev = PERKS.find((q) => q.sub === p.sub && q.tier === p.tier - 1); if (prev && !this.owned.has(prev.id)) return `Needs ${prev.name}`; }
-    if (this.points(p.path) < p.cost) return `Needs ${p.cost} point${p.cost > 1 ? 's' : ''}`;
+    const i = coreIndex(id); if (i < 0) return 'Retired';
+    const need = CORE_LV[i];
+    if (this.level(p.path) < need) return `Needs ${PATH[p.path].short} level ${need}`;
+    if (i > 0 && !this.owned.has(CORE[p.path][i - 1])) return `Needs ${PERK[CORE[p.path][i - 1]].name}`;
+    if (this.points(p.path) < 1) return 'Needs a mastery point';
     return null;
   }
   take(id: string) {
@@ -214,7 +224,7 @@ export class Mastery {
     return true;
   }
   /** focus can be chosen once per path, from level FOCUS_LV */
-  canFocus(path: PathId) { return !this.foci[path] && this.level(path) >= FOCUS_LV; }
+  canFocus(path: PathId) { void path; return false; }
   setFocus(path: PathId, sub: string) {
     if (!this.canFocus(path) || SUB[sub]?.path !== path) return false;
     this.foci[path] = sub; this.emit('focus', { path, sub });

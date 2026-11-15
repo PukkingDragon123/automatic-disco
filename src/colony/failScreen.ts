@@ -43,7 +43,7 @@ export class FailScreen {
         <canvas class="cf-stamp" width="150" height="48"></canvas>
         <div class="cf-btns"><button class="cf-btn retry"><i>></i> RETRY FROM LAST SAVE <small>${sv}</small></button><button class="cf-btn ship"><i>*</i> RETURN TO THE SHIP</button></div>
       </div>`;
-    skin(el.querySelector('.cf-card') as HTMLElement, (w, h) => platePix(w, h, { mat: 'enamel', seed: 31, rivets: true, hazard: true, wear: 1.6 }), 'failcard');
+    skin(el.querySelector('.cf-card') as HTMLElement, (w, h) => platePix(w, h, { mat: 'enamel', seed: 31, rivets: true, hazard: true, wear: 0.4 }), 'failcard');
     // the rubber stamp: a red box and the words, ink starved in places
     { const cv = el.querySelector('.cf-stamp') as HTMLCanvasElement, p = new Pix(150, 48), red = R.stampRed[3];
       p.rect(3, 3, 144, 3, red); p.rect(3, 42, 144, 3, red); p.rect(3, 3, 3, 42, red); p.rect(144, 3, 3, 42, red);

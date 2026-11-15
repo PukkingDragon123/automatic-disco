@@ -32,6 +32,9 @@ import { gaugeFace } from './desk/paint';
 import * as THREE from 'three';
 import './desk/toolIcons';
 import type { VitalId } from '../colony/vitals';
+import { Hud3D } from './hud3d';
+/** the HUD's hardware is drawn in 3D (hud3d.ts); `?hud2d` keeps the painted 2D plates */
+const HW3D = typeof location === 'undefined' || !location.search.includes('hud2d');
 
 export interface Cmd { icon: string; key: string; name: string; tip: () => string; disabled?: () => string | false; active?: () => boolean; run: () => void; cost?: string }
 export interface HudCtx {
@@ -74,10 +77,12 @@ export class Hud {
   private tipEl!: HTMLDivElement; private frame!: HTMLDivElement; private alarm!: HTMLDivElement;
   private slow = 0; private t = 0; private flashMsg = ''; private flashT = 0;
   private onResize = () => { this.mapBase = null; };
+  /** the 3D hardware layer (plates, instruments, keys, clock, the tool drum) */
+  readonly hw = new Hud3D();
 
   constructor(readonly c: HudCtx) {
     installHudStyle();
-    this.root = el('div', 'hud cx', ui());
+    this.root = el('div', 'hud cx' + (HW3D ? ' hw3d' : ''), ui());
     this.frame = el('div', 'cx-frame', this.root); this.alarm = el('div', 'cx-alarm', this.root);
     this.dialog = el('div', 'hud-dialog', this.root);
     this.objectives = el('div', 'px-dark hud-obj', this.root); this.objectives.style.display = 'none';
@@ -87,15 +92,16 @@ export class Hud {
     this.alertsEl = el('div', 'cx-alerts', this.root);
     this.buildSel();
     this.ctlEl = el('div', 'cx-plate gun cx-ctl', this.root);
-    skin(this.ctlEl, (w, h) => platePix(w, h, { mat: 'enamel', seed: 63, hazard: true, wear: 0.7 }));
+    this.plate3(this.ctlEl, (w, h) => platePix(w, h, { mat: 'enamel', seed: 63, hazard: true, wear: 0.7 }));
     // the wheel
     const wp = el('div', 'cx-plate cx-wheel', this.root);
-    const wcard = el('div', 'cx-plate', wp); wcard.style.cssText = 'left:0;top:150px;width:172px;height:164px'; skin(wcard, (w, h) => platePix(w, h, { mat: 'enamel', seed: 41, rivets: true, wear: 1 }), 'wcard');
+    const wcard = el('div', 'cx-plate', wp); wcard.style.cssText = 'left:0;top:150px;width:172px;height:164px'; this.plate3(wcard, (w, h) => platePix(w, h, { mat: 'enamel', seed: 41, rivets: true, wear: 1 }), 'wcard');
     this.wheelInfo = el('div', 'cx-glass info cx-ph', wp);
     this.wheel = new ToolWheel(wp, { colony: () => this.colony, config: (i) => this.openCfg(i), tip: (h, x, y) => this.tip(h, x, y), flash: (m, b) => this.flash(m, b) });
+    if (HW3D) { this.wheel.flat = false; this.hw.bindDrum(this.wheel.cv); }
     const cfg = el('button', 'cx-btn cfg', wp, 'CONFIGURE SLOTS'); cfg.onclick = () => this.openCfg(this.wheel.hover >= 0 ? this.wheel.hover : Math.max(0, this.colony?.slots.active ?? 0));
     this.cfgEl = el('div', 'cx-plate cx-slotcfg pe', this.root);
-    skin(this.cfgEl, (w, h) => platePix(w, h, { mat: 'enamel', seed: 57, rivets: true, wear: 1.1 }), 'cfg');
+    this.plate3(this.cfgEl, (w, h) => platePix(w, h, { mat: 'enamel', seed: 57, rivets: true, wear: 1.1 }), 'cfg');
     addEventListener('resize', this.onResize);
     this.root.style.display = 'none';
   }
@@ -108,7 +114,7 @@ export class Hud {
   private buildTop() {
     const top = el('div', 'cx-plate cx-top', this.root);
     
-    const id = el('div', 'cx-id', top); skin(id, (w, h) => platePix(w, h, { mat: 'enamel', seed: 5, wear: 1.0 }), 'id');
+    const id = el('div', 'cx-id', top); this.plate3(id, (w, h) => platePix(w, h, { mat: 'enamel', seed: 5, wear: 1.0 }), 'id');
     const rc = iconImg('u-pod', 56); rc.classList.add('pe'); id.appendChild(rc);
     const tx = el('div', '', id);
     el('div', 't1 cx-sten', tx, 'UNAA · CP-07');
@@ -124,17 +130,29 @@ export class Hud {
       this.hoverTip(e, () => this.vitalTip(v.id));
     }
     const tm = el('div', 'cx-plate gun cx-time', top);
-    skin(tm, (w, h) => platePix(w, h, { mat: 'steel', seed: 77, wear: 0.8 }), 'time');
+    this.plate3(tm, (w, h) => platePix(w, h, { mat: 'steel', seed: 77, wear: 0.8 }), 'time');
     const mk = (label: string, tip: string, f: () => void) => { const b = el('button', 'cx-btn', tm, label); b.onclick = (e) => { e.stopPropagation(); f(); }; this.hoverTip(b, () => tip); this.timeBtns.push(b); return b; };
     mk('II', '<b>PAUSE</b> [SPACE]<br>Orders, building and control still work while paused.', () => this.colony?.togglePause());
     mk('1x', '<b>NORMAL SPEED</b> [1]', () => this.colony?.setSpeed(1));
     mk('2x', '<b>FAST</b> [2]', () => this.colony?.setSpeed(2));
     mk('3x', '<b>FASTEST</b> [3]', () => this.colony?.setSpeed(3));
     this.clock = el('div', 'cx-glass clock cx-ph', tm);
+    if (HW3D) { this.hw.bindVitals(this.vitEls.map((e) => ({ id: e.id, el: e.el }))); this.hw.bindTime(this.timeBtns, this.clock); }
     this.pausebar = el('div', 'cx-plate gun cx-pausebar cx-sten', this.root, 'PAUSED');
-    skin(this.pausebar, (w, h) => platePix(w, h, { mat: 'enamel', seed: 81, hazard: true, wear: 0.6 }), 'pause');
+    this.plate3(this.pausebar, (w, h) => platePix(w, h, { mat: 'enamel', seed: 81, hazard: true, wear: 0.6 }), 'pause');
     this.count = el('div', 'cx-plate gun cx-count', this.root, '<div class="h cx-sten"></div><div class="v"></div>');
-    skin(this.count, (w, h) => platePix(w, h, { mat: 'orange', seed: 85, hazard: true }), 'count');
+    this.plate3(this.count, (w, h) => platePix(w, h, { mat: 'orange', seed: 85, hazard: true }), 'count');
+  }
+  /** a panel: a 3D slab with its painted face (or, with ?hud2d, the painted background) */
+  private plate3(e: HTMLElement, paint: (w: number, h: number) => Pix, key = '') {
+    if (!HW3D) { skin(e, paint, key); return; }
+    e.classList.add('cx-hw'); this.hw.plate(e, paint, { metal: key === 'map' || key === 'time' ? 0.45 : 0.1 });
+  }
+  /** draw the 3D hardware over the frame (Game.render, after the post pass and the vignette) */
+  render3d(renderer: THREE.WebGLRenderer, dt: number) {
+    const c = this.colony, g = this.g;
+    if (!HW3D || !c || !g || this.root.style.display === 'none' || c.ctl.k === 'cannon') return;
+    this.hw.render(renderer, c, dt, { paused: g.paused, speed: g.speed, drumAng: this.wheel.ang, pump: this.wheel.pump, hover: this.wheel.hover, focus: this.wheel.focus });
   }
   private vitalTip(id: VitalId) {
     const c = this.colony; if (!c) return '';
@@ -153,6 +171,15 @@ export class Hud {
    *  balance beside its battery lamps, the OXYGEN tank with a sight glass, enamel dials with needles for food, hull,
    *  health and morale; the reading on a stamped bone plate underneath, red when it fails */
   private drawVital(e: { id: VitalId; el: HTMLDivElement; cv: HTMLCanvasElement; icon: HTMLCanvasElement | null }, c: Colony) {
+    if (HW3D) {
+      const v = c.vitals, lvl = v.levels[e.id], val = Math.max(0, Math.min(1, v.value(e.id)));
+      let main = e.id === 'power' ? `${v.battery.toFixed(0)}KWH` : e.id === 'food' ? `${v.food.toFixed(0)}` : pct(val);
+      const tk = e.id === 'power' ? v.timers.power : e.id === 'oxygen' ? v.timers.oxygen : e.id === 'food' ? v.timers.food : e.id === 'health' ? v.timers.workers : null;
+      if (tk !== null && tk !== undefined) main = mmss(Math.max(0, tk));
+      this.hw.reading(e.id, main, lvl, lvl === 'crit' && Math.floor(this.t * 2.5) % 2 === 0);
+      e.el.classList.toggle('crit', lvl === 'crit');
+      return;
+    }
     const W = 52, H = 48, cv = e.cv;
     if (cv.width !== W) { cv.width = W; cv.height = H; }
     let base = this.vitBase.get(e.id);
@@ -211,7 +238,7 @@ export class Hud {
   // ------------------------------------------------------------------ minimap
   private buildMap() {
     const p = el('div', 'cx-plate cx-map pe', this.root);
-    skin(p, (w, h) => platePix(w, h, { mat: 'steel', seed: 23, wear: 1.2, rivets: true }), 'map');
+    this.plate3(p, (w, h) => platePix(w, h, { mat: 'steel', seed: 23, wear: 1.2, rivets: true }), 'map');
     this.mapHd = el('div', 'hd', p, '<span class="cx-sten">SURVEY</span><span class="cx-ph"></span>');
     const scr = el('div', 'cx-glass scr', p);
     this.mapCv = document.createElement('canvas'); scr.appendChild(this.mapCv);
@@ -322,7 +349,7 @@ export class Hud {
   // ------------------------------------------------------------------ the selected unit
   private buildSel() {
     this.selEl = el('div', 'cx-plate cx-sel pe', this.root);
-    skin(this.selEl, (w, h) => { const p = platePix(w, h, { mat: 'enamel', seed: 11, wear: 1.2, rivets: true }); for (let y = 8; y < 8 + 118; y++) for (let x = 9; x < 9 + 168; x++) p.clear(x, y); return p; });
+    this.plate3(this.selEl, (w, h) => { const p = platePix(w, h, { mat: 'enamel', seed: 11, wear: 1.2, rivets: true }); for (let y = 8; y < 8 + 118; y++) for (let x = 9; x < 9 + 168; x++) p.clear(x, y); return p; });
     this.viewEl = el('div', 'view', this.selEl);
     this.calloutCv = document.createElement('canvas'); this.viewEl.appendChild(this.calloutCv);
     this.selHd = el('div', 'hd', this.selEl);
@@ -588,6 +615,7 @@ export class Hud {
     const day = g.world.day, hh = Math.floor(((day + 0.25) % 1) * 24), mm = Math.floor(((((day + 0.25) % 1) * 24) % 1) * 60);
     const ck = `<span>SOL ${c.sol}</span><small>${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} · ${g.paused ? 'PAUSED' : g.speed + 'x'}</small>`;
     if (this.clock.innerHTML !== ck) this.clock.innerHTML = ck;
+    if (HW3D) this.hw.clock(`SOL ${c.sol}`, `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} · ${g.paused ? 'PAUSED' : g.speed + 'x'}`);
     const crit = Object.values(c.vitals.levels).includes('crit');
     this.alarm.classList.toggle('on', crit);
     const so = c.vitals.soonest();

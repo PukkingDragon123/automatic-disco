@@ -1,0 +1,21 @@
+/* The R&D station's few overlay words: holographic captions projected onto the 3D scene (names and cost chips under
+   the projected models, the perk badges). Crisp pixel fonts at their native sizes, no boxes, no blur. */
+.rd { position: fixed; inset: 0; z-index: 30; pointer-events: auto; user-select: none; font: 22px/26px 'Body', monospace; color: #bff6ff; }
+.rd * { box-sizing: border-box; }
+.rd-cap { position: absolute; transform: translate(-50%, 0); display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 14px; pointer-events: none; white-space: nowrap; text-shadow: 2px 2px 0 #041016; transition: opacity 200ms steps(4);
+  background: linear-gradient(90deg, rgba(2, 12, 16, 0) 0%, rgba(2, 12, 16, 0.72) 18%, rgba(2, 12, 16, 0.72) 82%, rgba(2, 12, 16, 0) 100%); border-top: 2px solid rgba(95, 232, 255, 0.55); }
+.rd-cap.sel { border-top-color: rgba(255, 204, 102, 0.8); }
+.rd-cap .n { font: 24px/24px 'Title'; color: #dffbff; }
+.rd-cap.sel .n { color: #ffe09a; }
+.rd-cap .c { display: flex; gap: 10px; align-items: center; font: 22px/22px 'Body'; color: #9fe8f4; }
+.rd-cap .c span { display: inline-flex; align-items: center; gap: 2px; }
+.rd-cap .c .short { color: #ff8a7a; }
+.rd-cap .c img { width: 24px; height: 24px; image-rendering: pixelated; }
+.rd-cap .s { font: 11px/13px 'Body'; letter-spacing: 2px; color: #7fd8e8; }
+.rd-cap .s.amb { color: #ffcc66; } .rd-cap .s.grn { color: #8dffb0; }
+.rd-cap.dim { opacity: 0.45; }
+.rd-badge { position: absolute; transform: translate(-50%, -50%); width: 64px; height: 64px; display: grid; place-items: center; pointer-events: none; }
+.rd-badge img { width: 48px; height: 48px; image-rendering: pixelated; }
+.rd-badge.locked img { filter: grayscale(1) brightness(0.6); }
+.rd-hint { position: absolute; left: 50%; bottom: 18px; transform: translate(-50%, 0); font: 11px/13px 'Body'; letter-spacing: 2px; color: #7fa8b0; pointer-events: none; text-shadow: 1px 1px 0 #000; }
+.rd-hint b { color: #dffbff; font-weight: normal; }

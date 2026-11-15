@@ -11,7 +11,12 @@ import { settings, setSettings, type Quality } from '../../settings';
 export interface Callout { at: [number, number, number]; icon?: string; title?: string; text: () => string; side?: 'l' | 'r' | 'u' | 'd'; /** a dial whose needle shows 0..1 */ gauge?: () => number }
 export interface Stamp { label: string; key?: string; icon?: string; run: () => void; disabled?: () => string | false; hot?: boolean }
 export interface Vignette { cam: { pos: THREE.Vector3; look: THREE.Vector3; fov: number }; callouts: Callout[]; stamps: (ctx: VCtx) => Stamp[] }
-export interface VCtx { actions: Partial<Record<string, () => void>>; redraw: () => void; game: any }
+export interface VCtx { actions: Partial<Record<string, () => any>>; redraw: () => void; game: any }
+/** the bridge hologram's state (set by the hub when the scan runs) */
+export interface HoloState { phase: string; world: string; diff: number; site: string; danger: number; canDeploy: boolean }
+let holoState: () => HoloState | null = () => null;
+export const setHoloState = (f: () => HoloState | null) => { holoState = f; };
+const hs = () => holoState() ?? { phase: 'off', world: '--', diff: 0, site: '--', danger: 0, canDeploy: false };
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -45,14 +50,24 @@ export const ROOM_CALLOUTS: Record<RoomId, Callout[]> = {
 const PW: [keyof ShipState['power'], string, string][] = [['life', 'i_medbay', 'LIFE'], ['lab', 'i_lab', 'LAB'], ['workshop', 'i_workshop', 'SHOP'], ['sensors', 'i_bridge', 'SENSE'], ['engines', 'i_engineering', 'DRIVE']];
 export const VIGNETTES: Record<RoomId, Vignette> = {
   bridge: {
-    cam: { pos: V(2.9, 2.6, 13.0), look: V(0, 1.3, 15.5), fov: 36 },
-    callouts: [{ at: [0, 1.5, 15.5], icon: 'i_bridge', title: 'KEPLER-442', text: () => '5 WORLDS · 1 SAFE', side: 'r' }, { at: [0, 2.8, 18.3], title: 'MONITOR', text: () => 'READY', side: 'u' }],
-    stamps: (c) => [{ label: 'SCAN', key: 'S', icon: 'i_bridge', hot: true, run: () => c.actions.monitor?.() }],
+    cam: { pos: V(2.1, 2.35, 12.55), look: V(0, 1.42, 15.5), fov: 42 },
+    callouts: [
+      { at: [0, 1.5, 15.5], title: 'SYSTEM', text: () => 'KEPLER-442' },
+      { at: [0, 1.5, 15.5], title: 'WORLD', text: () => hs().world },
+      { at: [0, 1.5, 15.5], title: 'DIFFICULTY', text: () => (hs().diff ? `${hs().diff} / 5` : '--'), gauge: () => hs().diff / 5 },
+      { at: [0, 1.5, 15.5], title: 'SITE', text: () => hs().site },
+      { at: [0, 1.5, 15.5], title: 'DANGER', text: () => (hs().canDeploy ? pct(hs().danger) : '--'), gauge: () => hs().danger },
+    ],
+    stamps: (c) => [
+      { label: 'SCAN', key: 'S', hot: hs().phase === 'off', run: () => c.actions.monitor?.() },
+      { label: 'SYSTEM', key: 'Y', disabled: () => (hs().phase === 'world' ? false : 'IN SYSTEM'), run: () => c.actions.holoBack?.() },
+      { label: 'DEPLOY', key: 'D', hot: hs().canDeploy, disabled: () => (hs().canDeploy ? false : 'PICK A SITE'), run: () => c.actions.deploy?.() },
+    ],
   },
   lab: {
     cam: { pos: V(3.0, 1.9, 7.6), look: V(4.05, 1.25, 11.4), fov: 38 },
     callouts: [{ at: [2.95, 1.2, 11.45], title: 'TANK 1', text: () => 'GRAZER EMBRYO', side: 'l' }, { at: [4.05, 1.7, 11.45], title: 'TANK 2', text: () => 'ROOT CULTURE', side: 'u' }, { at: [5.15, 1.2, 11.45], title: 'TANK 3', text: () => 'SPORE BLOOM', side: 'r' }],
-    stamps: (c) => [{ label: 'GENE LAB', key: 'G', icon: 'i_lab', hot: true, run: () => c.actions.lab?.() }],
+    stamps: (c) => [{ label: 'GENE LAB', key: 'G', icon: 'i_lab', hot: true, run: () => c.actions.lab?.() }, { label: 'R&D', key: 'R', run: () => c.actions.rnd?.() }],
   },
   medbay: {
     cam: { pos: V(-5.4, 2.5, 9.5), look: V(-2.2, 0.9, 9.5), fov: 42 },

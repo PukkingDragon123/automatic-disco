@@ -9,7 +9,7 @@ import type { PRegion } from '../../world/planet';
 import type { Region } from '../../world/region';
 import { ShipHub, type HubOpts } from './hub';
 import type { RoomAction } from './chrome';
-import { openMonitor } from './monitor';
+import { openMonitor, systemWorlds } from './monitor';
 import { podDrop } from './drop';
 import { csfx } from '../../ui/cineAudio';
 import { toast } from '../../ui/kit';
@@ -52,18 +52,31 @@ export function makeHub(flow: Flow, o: HubFlowOpts = {}): ShipHub {
   };
   hubUse = (id: RoomId) => {
     hub.vignette(id, { game: game(), actions: {
-      monitor: () => monitor(), lab, save, inspect, assemble,
+      monitor: () => scan(), lab, save, inspect, assemble,
+      holoBack: () => hub.holo?.back(),
+      deploy: () => { const ch = hub.holo?.choice(); if (!ch) return; hub.hideConsole(); void deploy(ch.seed, ch.r); },
+      rnd: () => rnd(),
       scan: () => { csfx('beepHi', 0.4); toast('Full scan: crew fit.', 'good', 2000); },
       settings: () => hub.chrome.coreSettings(),
       load: () => { if (flow.loadSave()) { csfx('chime', 0.5); toast('Mission loaded from the core.', 'good', 2400); } else toast('No saved mission in the core.', 'warn', 2400); },
       newGame: () => { flow.startRun(Math.floor(Math.random() * 1e9)); resetShip(); hub.podBuild(shipState().pod); toast('New mission logged.', 'good', 2400); },
       title: () => hub.outside(),
-      upgrades: () => { const g = game(); if (g) import('../../research/index').then((m) => m.openTerminal(g, 'upgrader')).catch((e) => console.warn(e)); else toast('The Upgrader is built on the surface.', 'warn', 2600); },
+      upgrades: () => rnd('upgrader'),
       hold: game() && (game() as any).storage?.hold ? () => { const g = game() as any; import('../../ui/crates/grid').then((m) => m.openInventory(g, g.storage.hold)).catch((e) => console.warn(e)); } : undefined,
     } });
+    // the bridge goes straight into the scan: the hologram rises over the holo table
+    if (id === 'bridge') scan();
     return true;
   };
-  const monitor = () => {
+  /** the long-range scan as the bridge hologram (the old flat monitor screen stays as a fallback: openMonitor) */
+  const scan = () => { if (!flow.run) flow.ensureRun(); hub.startHolo(systemWorlds(flow.run ? flow.run.seed : 1)); };
+  /** the R&D station (research, mastery, the Upgrader and mission in one; the progression agent's) */
+  const rnd = (tab?: string) => {
+    const g = game();
+    if (!g) { toast('The R&D station needs a colony.', 'warn', 2600); return; }
+    import('../../research/index').then((m: any) => { const f = m.openRnD ?? m.openStation ?? m.openRD; if (f) f(g, tab); else m.openTerminal(g, tab); }).catch((e) => console.warn(e));
+  };
+  const monitor = () => { // the flat monitor screen (fallback)
     if (!flow.run) flow.ensureRun();
     openMonitor(engine, hub, flow, {
       onDeploy: (planetSeed: number, r: PRegion, lz: { x: number; z: number } | undefined, region: Region | undefined) => deploy(planetSeed, r, lz, region),

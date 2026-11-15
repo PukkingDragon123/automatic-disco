@@ -19,6 +19,10 @@ export class ToolWheel {
   hover = -1; focus = 0; private dirty = true; private t = 0; private acc = 0; private lastKey = '';
   /** the drum's angle and spin (a sprung detent): the chosen slot comes round under the lens */
   ang = 0; private vel = 0; private sel = 0; private piston = 0;
+  /** false while hud3d draws the drum in 3D: the canvas stays (clear) for the clicks */
+  flat = true;
+  /** the piston's stroke, 0..1 */
+  get pump() { return this.piston; }
   constructor(parent: HTMLElement, readonly host: WheelHost) {
     this.cv = document.createElement('canvas'); this.cv.className = 'dial'; parent.appendChild(this.cv);
     this.g = this.cv.getContext('2d')!;
@@ -67,7 +71,7 @@ export class ToolWheel {
     const moving = this.vel !== 0 || this.piston > 0.01;
     if (!this.dirty && this.acc > 0 && !moving) return;
     this.acc = moving ? 0 : c.slots.active >= 0 ? 0.12 : 0.5; this.dirty = false;
-    this.draw(c);
+    if (this.flat) this.draw(c); else if (this.cv.width !== 320) { this.cv.width = 320; this.cv.height = 320; }
   }
   /** the device in art pixels (160 x 160, shown 2x), lit from the upper left: the housing ring with bolts, two side
    *  cogs and a piston, the toothed drum with its sockets and their hardware, the lens bracket, the brass hub */

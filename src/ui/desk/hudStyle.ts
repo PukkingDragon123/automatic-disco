@@ -148,6 +148,13 @@ body.cx-paused .cx-frame { box-shadow: inset 0 0 0 6px rgba(229,219,195,0.55); }
 .cn-help span { background: #e5dbc3; color: #13161c; padding: 0 5px; margin: 0 4px 0 14px; }
 body.cannon-on .cx > :not(.cx-alarm) { opacity: 0; } body.cannon-on .overlay2d { opacity: 0; } body.cannon-on .crate-hud, body.cannon-on .hb, body.cannon-on .inv-hudcard { display: none !important; }
 
+/* ---------------- 3D hardware (hud3d.ts draws the plates, instruments, keys, clock and drum; the DOM keeps clicks and words) */
+.cx.hw3d .cx-hw { background-image: none !important; }
+.cx.hw3d .cx-vit canvas { visibility: hidden; }
+.cx.hw3d .cx-time .cx-btn, .cx.hw3d .cx-time .cx-btn.on, .cx.hw3d .cx-time .cx-btn:active { border-image: none !important; border-color: transparent !important; background: transparent !important; color: transparent !important; filter: none !important; }
+.cx.hw3d .cx-time .clock { visibility: hidden; }
+.cx.hw3d .cx-wheel canvas.dial { opacity: 0; }
+
 /* ---------------- failure */
 .cf-screen { position: fixed; inset: 0; z-index: 70; pointer-events: none; }
 .cf-wash { position: absolute; inset: 0; background: rgba(30,4,2,0.45); opacity: 0; transition: opacity 2.4s; }

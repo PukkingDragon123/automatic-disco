@@ -136,6 +136,7 @@ export class HubChrome {
       if ((e.target as HTMLElement)?.tagName === 'INPUT' || e.ctrlKey || e.metaKey || this.hub.isLocked()) return;
       const k = e.key.toLowerCase();
       if (this.mode === 'exterior' && !this.cardEl.classList.contains('on')) { const a = this.titleKeys.find((x) => x.key?.toLowerCase() === k); if (a) { csfx('button', 0.5); a.run(); } return; }
+      if (this.vig && this.hub.console.pressKey(k)) return;
       const list: Stamp[] = this.vig ? this.vigStamps() : this.mode === 'room' ? this.roomActs.map((a) => ({ label: a.label, key: a.key, run: a.run, disabled: a.disabled })) : [];
       const a = list.find((x) => x.key?.toLowerCase() === k); if (a && !a.disabled?.()) { csfx('button', 0.5); a.run(); }
     };
@@ -236,14 +237,16 @@ export class HubChrome {
     this.drawVig();
     this.backEl.style.display = '';
   }
+  /** a vignette's function lives on the room's 3D hardware console (the hub raises it); the chrome keeps BACK */
   private drawVig() {
     if (!this.vig) return;
-    this.clearPins(); this.stampsEl.innerHTML = '';
-    for (const c of VIGNETTES[this.vig.id].callouts) this.callout(c);
-    this.vigStamps().forEach((s, i) => this.stamp(this.stampsEl, s, i));
+    this.clearPins(); this.stampsEl.innerHTML = ''; this.tabsEl.style.display = 'none';
+    this.hub.showConsole(this.vig.id, VIGNETTES[this.vig.id].callouts, this.vigStamps());
   }
+  redrawVig() { if (this.vig) this.drawVig(); }
   closeVignette(restore = true) {
     if (!this.vig) return false;
+    this.tabsEl.style.display = this.mode === 'overview' || this.mode === 'room' ? '' : 'none';
     const id = this.vig.id; this.vig = null; this.settingsOn = false;
     this.clearPins(); this.stampsEl.innerHTML = '';
     if (restore) this.openPanel(id, this.hub.getActions(id));
