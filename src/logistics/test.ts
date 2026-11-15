@@ -7,7 +7,7 @@
 //   &site            lay two construction sites (one awaiting materials, one being built)
 //   &nodes           open the node map; &sel=r:<n> | n:<node id> selects; &tut=<step> runs the guide from a step
 //   &build           open the construction planner; &tab=<cat> &pick=<kind>; &place=<kind> puts it in hand
-//   &speed=n         game speed; &dist=n camera distance
+//   &speed=n         game speed; &dist=n camera distance; &ff=s run the colony ahead; &noworld[=frames] skip drawing the region
 import type { Engine } from '../app/engine';
 import type { Input } from '../app/input';
 import type { BiomeKey } from '../world/region';
@@ -114,6 +114,8 @@ export async function testLogistics(engine: Engine, input: Input, P: URLSearchPa
     if (s1) { const k = Object.keys(s1.need)[0]; if (k) s1.got[k] = Math.floor((s1.need[k] ?? 0) / 2); }
   }
   (window as unknown as { __g: Game }).__g = g;
+  // &noworld skips drawing the region (headless software GPUs take minutes a frame; the UI is what is checked)
+  if (P.has('noworld')) { const gr = g as unknown as { render(p: unknown, t: number): void }; let n = 0; const rnd = gr.render.bind(g); gr.render = (p, t) => { if (n++ < Number(P.get('noworld') || 0)) rnd(p, t); }; }
   g.speed = Number(P.get('speed') ?? 1);
   engine.setScreen(g);
   engine.start();

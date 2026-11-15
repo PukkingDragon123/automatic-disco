@@ -15,6 +15,7 @@ import { Unit07 } from './unit07';
 import { ROSTER, CREW_IDS, type CrewId, type Act, type RoomKey, type Block } from './roster';
 import { crewState, onCrew, isAway } from './state';
 import { memorial } from './memorial';
+import { Ink, INK, textW } from './doodle';
 import type { RoomId } from '../hub/layout';
 
 /** the slice of the ship hub (src/ship/hub/hub.ts ShipHub) the crew needs */
@@ -78,6 +79,8 @@ export class CrewLife {
   scripted = false;
   /** a moment of silence pending (after a death): everyone gathers at the plaque once */
   private silence = 0;
+  /** the hand-drawn tag of the last crew member clicked (name, job, mood), pointing at them */
+  private tag: { c: HTMLCanvasElement; id: CrewId; t: number; boil: number } | null = null;
 
   constructor(readonly hub: HubLike, o: { hour?: number; bubbles?: HTMLElement; noUnit?: boolean; only?: CrewId[] } = {}) {
     this.hour = o.hour ?? (9 + (Date.now() / 1000 / SHIP_HOUR) % 12);
@@ -232,6 +235,7 @@ export class CrewLife {
       if (!this.scripted) { const r = roomOfPoint(this.hub, ag.actor.x, ag.actor.z); if (r && r !== ag.room) this.reparent(ag, r); }
       this.bubbleTick(ag, dt, cam);
     }
+    this.tagTick(dt, cam);
     // UNIT 07: drifts to the room the camera is on, looks at whoever spoke last
     if (!this.scripted) this.unitTick(dt);
     this.unit.camQ.copy(cam.quaternion);
@@ -377,8 +381,40 @@ export class CrewLife {
       if (d.clickGesture === 'salute') ag.m.rig.playEmote('salute'); else ag.m.rig.gesture(d.clickGesture as never, d.clickGesture === 'point' ? { at: u } : {});
     }
     ag.m.rig.setExpression(grief ? 'sad' : d.id === 'kristiansen' ? 'neutral' : 'smile', 3);
+    this.tag?.c.remove();
+    const c = document.createElement('canvas'); c.style.cssText = 'position:fixed;z-index:4;pointer-events:none;image-rendering:pixelated'; this.bubbleRoot.appendChild(c);
+    this.tag = { c, id, t: 0, boil: -1 };
     this.unit.lookAt(V(ag.actor.x, ag.actor.y + 1.55, ag.actor.z));
     if (this.unit.pos.distanceTo(V(ag.actor.x, 1.5, ag.actor.z)) > 3) this.unit.moveTo(V(ag.actor.x + 0.9, 1.55, ag.actor.z + 0.9), 3);
+  }
+
+  /** draw (and keep re-drawing a few times a second: the pen line boils) the clicked member's tag */
+  private tagTick(dt: number, cam: THREE.PerspectiveCamera) {
+    const T = this.tag; if (!T) return;
+    T.t += dt;
+    const ag = this.agents.get(T.id);
+    if (!ag || T.t > 4.5 || this.scripted) { T.c.remove(); this.tag = null; return; }
+    const hp = ag.m.rig.j.chest.getWorldPosition(V()).project(cam);
+    const x = Math.round(((hp.x + 1) / 2) * innerWidth), y = Math.round(((1 - hp.y) / 2) * innerHeight);
+    const boil = Math.floor(T.t * 4);
+    if (boil !== T.boil) {
+      T.boil = boil;
+      const d = ag.m.def, st = crewState(), mood = st.mood;
+      const w = Math.max(textW(d.short.toUpperCase(), 'Title', 24), textW(d.job, 'Body', 22)) + 90, H = 150;
+      const I = new Ink(w + 120, H); I.seed = boil % 5 + 1;
+      I.label(d.short.toUpperCase(), 120, 8, 'Title', 24, INK.light);
+      I.label(d.job, 120, 38, 'Body', 22, INK.amber);
+      // the mood face
+      const mx = 150 + textW(d.job, 'Body', 22), my = 52, cv = mood > 0.6 ? 1 : mood > 0.4 ? 0 : -1;
+      I.loop(mx, my, 13, 13, 2, INK.light, { outline: INK.dark });
+      I.r(mx - 6, my - 4, 3, 3, INK.light).r(mx + 4, my - 4, 3, 3, INK.light);
+      I.stroke([[mx - 6, my + 5 - cv], [mx, my + 5 + cv * 3], [mx + 6, my + 5 - cv]], 2, INK.light, { amp: 0.4 });
+      I.stroke([[118, 66], [114 + Math.min(w, 200), 68]], 2, INK.amber, { outline: INK.dark, taper: true });
+      I.leader([116, 30], [10, H - 12], INK.light);
+      T.c.width = I.c.width; T.c.height = I.c.height; T.c.style.width = I.c.style.width; T.c.style.height = I.c.style.height;
+      T.c.getContext('2d')!.drawImage(I.c, 0, 0);
+    }
+    T.c.style.left = (x - 10) + 'px'; T.c.style.top = (y - parseInt(T.c.style.height || '150') + 12) + 'px';
   }
 
   // ------------------------------------------------------------------ deaths

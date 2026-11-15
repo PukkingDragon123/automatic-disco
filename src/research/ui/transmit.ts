@@ -2,16 +2,16 @@
 // Austral issues a directive, when one is about to lapse, and when one is met or missed; click it to open the
 // MISSION tab. It types itself, with a live carrier trace under the text.
 import { el, ui } from '../../ui/kit';
-import { installHardware } from './hardware';
+import { installFrames } from './frames';
 import { csfx } from '../../ui/cineAudio';
 import { SHIP, type Quota } from '../mission';
 import { fmtTime } from '../util';
 import { waveDraw } from './missionTab';
-import './terminal.css';
+import './paper.css';
 
 let cur: HTMLElement | null = null;
 export function transmission(o: { kind: 'new' | 'warn' | 'met' | 'missed' | 'drop' | 'recall'; q?: Quota; left?: number; text?: string; open?: () => void }) {
-  installHardware();
+  installFrames();
   cur?.remove();
   const bad = o.kind === 'warn' || o.kind === 'missed' || o.kind === 'recall';
   const box = el('div', 'tx', ui()); cur = box;
@@ -29,7 +29,7 @@ export function transmission(o: { kind: 'new' | 'warn' | 'met' | 'missed' | 'dro
     if (!alive) return;
     t += 1 / 60; k = Math.min(text.length, k + 1.4);
     body.textContent = text.slice(0, Math.floor(k));
-    try { waveDraw(cv, t, k < text.length ? 1 : 0.35, bad ? '#cc6252' : '#7fb88a'); } catch { /* layout */ }
+    try { waveDraw(cv, t, k < text.length ? 1 : 0.35, bad ? '#a8332a' : '#2b2622'); } catch { /* layout */ }
     requestAnimationFrame(step);
   };
   requestAnimationFrame(step);

@@ -35,7 +35,7 @@ function studio(scene: THREE.Scene, o: { x0?: number; x1?: number; dark?: boolea
     const y = c.height - cm * 4 - 0.5, big = cm % 50 === 0, mid = cm % 10 === 0;
     g.strokeStyle = big ? 'rgba(210,220,210,0.45)' : mid ? 'rgba(160,190,200,0.22)' : 'rgba(160,190,200,0.08)'; g.lineWidth = big ? 2 : 1;
     g.beginPath(); g.moveTo(0, y); g.lineTo(c.width, y); g.stroke();
-    if (mid) { g.font = `${big ? 30 : 20}px VT, monospace`; g.fillStyle = big ? '#c9d2c8' : '#7d8e92'; g.fillText((cm / 100).toFixed(2) + ' m', 12, y - 6); }
+    if (mid) { g.font = `${big ? 22 : 11}px Body, monospace`; g.fillStyle = big ? '#c9d2c8' : '#7d8e92'; g.fillText((cm / 100).toFixed(2) + ' m', 12, y - 6); }
   }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
   const bm = new THREE.MeshLambertMaterial({ map: t }); gbuf(bm, 0);

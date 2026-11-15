@@ -99,3 +99,13 @@ export function leaderPath(ax: number, ay: number, bx: number, by: number, seed 
   return `M${ax},${ay} Q${mx},${my} ${bx},${by}`;
 }
 export const INK_HEX = hex(INK), PAPER_HEX = hex(PAPER[4]), RED_HEX = hex(RED[3]);
+const pins = new Map<string, string>();
+/** a drawing pin, pushed in (red) or lying loose (faded) */
+export function pinURL(on: boolean) {
+  const key = String(on); let u = pins.get(key); if (u) return u;
+  const c = document.createElement('canvas'); c.width = c.height = 12; const x = c.getContext('2d')!;
+  drawPin(x, 6, 5, 4, on ? RED[3] : PAPER[1]);
+  if (!on) { x.globalCompositeOperation = 'source-atop'; x.fillStyle = 'rgba(214,202,176,.45)'; x.fillRect(0, 0, 12, 12); }
+  u = c.toDataURL(); pins.set(key, u);
+  return u;
+}

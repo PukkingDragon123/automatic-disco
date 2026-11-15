@@ -9,6 +9,7 @@ import { preloadContainerModels } from './models';
 import { invUI } from '../ui/crates/grid';
 import { CrateHud } from '../ui/crates/hud';
 import { StoresTutorial } from '../ui/crates/tutorial';
+import { disposeOverlay } from '../ui/crates/vignette';
 
 export interface Inventory { storage: Storage; render: ContainerRender; hud: CrateHud | null; tutorial: StoresTutorial | null; dispose(): void }
 export function installInventory(g: Game, o: { hud?: boolean } = {}): Inventory {
@@ -21,7 +22,7 @@ export function installInventory(g: Game, o: { hud?: boolean } = {}): Inventory 
   const ui = invUI(g)!;
   const hud = o.hud === false ? null : new CrateHud(g, storage, ui);
   const tutorial = hud ? new StoresTutorial(g, storage, ui, hud) : null;
-  gg.inventory = { storage, render, hud, tutorial, dispose: () => { tutorial?.end(); hud?.dispose(); ui.dispose(); render.group.removeFromParent(); } };
+  gg.inventory = { storage, render, hud, tutorial, dispose: () => { tutorial?.end(); hud?.dispose(); ui.dispose(); disposeOverlay(); render.group.removeFromParent(); } };
   return gg.inventory;
 }
 export { registerContainers, attachStorage };

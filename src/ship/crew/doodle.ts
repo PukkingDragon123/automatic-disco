@@ -17,7 +17,7 @@ export class Ink extends Px {
   private wob(i: number, amp: number) { const s = this.seed; return [(Math.sin(i * 0.21 + s * 1.7) + Math.sin(i * 0.53 + s * 4.1) * 0.5) * amp, (Math.cos(i * 0.19 + s * 2.3) + Math.sin(i * 0.47 + s * 0.9) * 0.5) * amp]; }
   /** stamp a square brush along a polyline; reveal 0..1 draws only the first part (it draws itself) */
   stroke(pts: P2[], w: number, col: string, o: { outline?: string; amp?: number; reveal?: number; taper?: boolean } = {}) {
-    const amp = o.amp ?? 1.2, rev = o.reveal ?? 1;
+    const amp = o.amp ?? 1.2, rev = Math.max(0, Math.min(1, o.reveal ?? 1));
     // resample at 1 px
     const path: P2[] = [];
     for (let i = 0; i < pts.length - 1; i++) {

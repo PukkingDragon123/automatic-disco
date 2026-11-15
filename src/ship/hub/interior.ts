@@ -4,7 +4,7 @@
 // spine corridor with its light strip and conduits, and each room's light. Furniture comes from rooms.ts.
 import * as THREE from 'three';
 import { Batch, Mats, Bin, box, quad, V3 } from './kit';
-import { ROOMS, ROOM_IDS, WALL_H, CUT_H, CORRIDOR, type RoomId } from './layout';
+import { ROOMS, ROOM_IDS, WALL_H, CUT_H, CORRIDOR, HULL_X, type RoomId } from './layout';
 import { THEMES, wallTex, floorTex, capTex, hazardTex, poolTex, type Theme } from './tex';
 import { Screens } from './screens';
 import { mat, glow, wallLamp, sign, type Ctx, type Anim } from './props';
@@ -30,7 +30,7 @@ function sideH(id: RoomId, s: Side) {
   if (id === 'bridge') return s === 'nz' ? WALL_H : s === 'nx' ? CUT_H : WALL_H;
   const r = ROOMS[id], port = r.x1 <= 0;
   if (s === 'pz') return WALL_H;
-  if (s === 'nz') return r.z0 <= -26.9 ? CUT_H : WALL_H;
+  if (s === 'nz') return r.z0 <= CORRIDOR.z0 + 0.1 ? CUT_H : WALL_H;
   if (port) return s === 'px' ? WALL_H : CUT_H;
   return s === 'px' ? WALL_H : CUT_H;
 }
@@ -81,7 +81,7 @@ export function buildInterior(bin: Bin, M: Mats, onRoom?: (id: RoomId, c: Ctx) =
     // ---- floor
     const fm = M.get('floor|' + id, { map: floorTex(th), rough: th.floor === 'tiles' ? 0.35 : th.floor === 'tread' ? 0.5 : 0.8, metal: th.floor === 'tread' || th.floor === 'grate' ? 0.45 : 0.05 });
     const poly = id === 'bridge'
-      ? [[-8, 17], [8, 17], [8, 22], [5, 27], [-5, 27], [-8, 22]]
+      ? [[-6, 12], [6, 12], [6, 15], [3.6, 18.5], [-3.6, 18.5], [-6, 15]]
       : [[r.x0, r.z0], [r.x1, r.z0], [r.x1, r.z1], [r.x0, r.z1]];
     {
       const sh = new THREE.Shape(poly.map(([x, z]) => new THREE.Vector2(x, -z)));
@@ -96,19 +96,19 @@ export function buildInterior(bin: Bin, M: Mats, onRoom?: (id: RoomId, c: Ctx) =
     const V2 = (x: number, z: number) => new THREE.Vector2(x, z);
     const segs: Seg[] = [];
     if (id === 'bridge') {
-      const dp = V2(5, -3).normalize(), ds = V2(-5, -3).normalize();
-      segs.push({ s: 'd', a0: V2(-8, 17), b0: V2(-8, 22), inward: V2(1, 0), h: CUT_H, hull: false, doors: [] });
-      segs.push({ s: 'd', a0: V2(-8, 22), b0: V2(-5, 27), inward: dp, h: CUT_H, hull: false, doors: [] });
-      segs.push({ s: 'd', a0: V2(8, 17), b0: V2(8, 22), inward: V2(-1, 0), h: WALL_H, hull: false, doors: [] });
-      segs.push({ s: 'd', a0: V2(8, 22), b0: V2(5, 27), inward: ds, h: WALL_H, hull: false, doors: [] });
-      segs.push({ s: 'd', a0: V2(-5, 27), b0: V2(5, 27), inward: V2(0, -1), h: WALL_H, hull: false, doors: [] });
+      const dp = V2(3.5, -2.4).normalize(), ds = V2(-3.5, -2.4).normalize();
+      segs.push({ s: 'd', a0: V2(-6, 12), b0: V2(-6, 15), inward: V2(1, 0), h: CUT_H, hull: false, doors: [] });
+      segs.push({ s: 'd', a0: V2(-6, 15), b0: V2(-3.6, 18.5), inward: dp, h: CUT_H, hull: false, doors: [] });
+      segs.push({ s: 'd', a0: V2(6, 12), b0: V2(6, 15), inward: V2(-1, 0), h: WALL_H, hull: false, doors: [] });
+      segs.push({ s: 'd', a0: V2(6, 15), b0: V2(3.6, 18.5), inward: ds, h: WALL_H, hull: false, doors: [] });
+      segs.push({ s: 'd', a0: V2(-3.6, 18.5), b0: V2(3.6, 18.5), inward: V2(0, -1), h: WALL_H, hull: false, doors: [] });
     } else {
       const rect: [Side, THREE.Vector2, THREE.Vector2, THREE.Vector2][] = [
         ['nx', V2(r.x0, r.z0), V2(r.x0, r.z1), V2(1, 0)], ['px', V2(r.x1, r.z0), V2(r.x1, r.z1), V2(-1, 0)],
         ['nz', V2(r.x0, r.z0), V2(r.x1, r.z0), V2(0, 1)], ['pz', V2(r.x0, r.z1), V2(r.x1, r.z1), V2(0, -1)],
       ];
       for (const [s, a0, b0, inward] of rect) {
-        const hull = (s === 'nx' && r.x0 <= -9.9) || (s === 'px' && r.x1 >= 9.9);
+        const hull = (s === 'nx' && r.x0 <= -HULL_X + 0.1) || (s === 'px' && r.x1 >= HULL_X - 0.1);
         segs.push({ s, a0, b0, inward, h: sideH(id, s), hull, doors: dd.side === s ? [{ at: (s === 'nx' || s === 'px') ? dd.door.at : dd.door.at, w: dd.door.w }] : [] });
       }
     }
@@ -168,9 +168,9 @@ export function buildInterior(bin: Bin, M: Mats, onRoom?: (id: RoomId, c: Ctx) =
     }
     // ---- the room light: one point light high in the room, and its pool on the floor
     const cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2;
-    const L = new THREE.PointLight(r.light, 0, Math.max(r.x1 - r.x0, r.z1 - r.z0) * 1.6, 1.4);
+    const L = new THREE.PointLight(r.light, 0, Math.max(r.x1 - r.x0, r.z1 - r.z0) * 1.8, 1.4);
     L.position.set(cx + 0.4, 3.1, cz); rr.add(L);
-    const baseK = 15 * r.lightK;
+    const baseK = 9 * r.lightK;
     L.intensity = baseK;
     // floor pick box and the hover glow
     const bounds = new THREE.Box3(new V3(r.x0, 0, r.z0), new V3(r.x1, WALL_H, r.z1));
@@ -208,8 +208,8 @@ export function buildInterior(bin: Bin, M: Mats, onRoom?: (id: RoomId, c: Ctx) =
       B.add(new THREE.CylinderGeometry(rad, rad, L, 10), mat(c, col), { x: C.x0 + 0.25, y, z: (C.z0 + C.z1) / 2, rx: Math.PI / 2 });
     }
     for (let z = C.z0 + 1; z < C.z1; z += 2) B.add(box(0.5, 0.04, 0.06), mat(c, 'gun'), { x: C.x0 + 0.3, y: 3.33, z });
-    for (let z = C.z0 + 2; z < C.z1 - 1; z += 6) wallLamp(c, C.x0 + 0.08, 2.5, z, Math.PI / 2, 0xd8f0ff, 0.5);
-    const L2 = new THREE.PointLight(0xbfe0ea, 10, 22, 1.4); L2.position.set(0, 2.8, -5); corridor.add(L2);
+    for (let z = C.z0 + 2; z < C.z1 - 1; z += 5) wallLamp(c, C.x0 + 0.08, 2.5, z, Math.PI / 2, 0xd8f0ff, 0.5);
+    const L2 = new THREE.PointLight(0xbfe0ea, 8, 16, 1.4); L2.position.set(0, 2.8, -1); corridor.add(L2);
     B.flush(corridor, 'corridor');
   }
   return { root, rooms, anims, screens, corridor, fx };

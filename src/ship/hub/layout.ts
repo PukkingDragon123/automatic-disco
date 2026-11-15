@@ -21,7 +21,10 @@ export const ROOM_IDS: RoomId[] = ['bridge', 'lab', 'workshop', 'quarters', 'mes
 export const WALL_H = 3.4;
 /** how tall a cut (near-side) wall stands in the cutaway */
 export const CUT_H = 1.05;
-export const CORRIDOR = { x0: -1.4, x1: 1.4, z0: -27, z1: 17 };
+/** the deck: two columns of small, packed rooms either side of the spine corridor, the bridge across the bow */
+export const CORRIDOR = { x0: -1.2, x1: 1.2, z0: -14, z1: 12 };
+/** the outer hull walls (their room-side faces sit a quarter metre inside) */
+export const HULL_X = 7.2;
 export const SHIP_NAME = 'MERIDIAN';
 export const SHIP_REG = 'UNAA RV-07';
 
@@ -44,91 +47,91 @@ export const FACE = { pz: 0, px: D, nz: Math.PI, nx: -D };
 
 export const ROOMS: Record<RoomId, RoomDef> = {
   bridge: {
-    id: 'bridge', name: 'BRIDGE', short: 'BRG', deck: 'DECK 1 FWD', code: '01', role: 'Main monitor: scan the galaxy, choose a world, deploy',
-    x0: -8, x1: 8, z0: 17, z1: 27, light: 0x9fc6d8, lightK: 1.0,
+    id: 'bridge', name: 'BRIDGE', short: 'BRG', deck: 'DECK 1 FWD', code: '01', role: 'Main monitor: scan, choose a world, deploy',
+    x0: -6, x1: 6, z0: 12, z1: 18.5, light: 0x9fc6d8, lightK: 1.0,
     spots: {
-      door: { p: [0, 0, 17.5], f: FACE.pz }, center: { p: [0, 0, 21.5], f: FACE.pz },
-      captain: { p: [0, 0.62, 19.4], f: FACE.pz }, helm: { p: [-1.7, 0.3, 23.1], f: FACE.pz }, nav: { p: [1.7, 0.3, 23.1], f: FACE.pz },
-      comms: { p: [5.9, 0, 20.2], f: FACE.px }, monitor: { p: [0, 0.3, 25.4], f: FACE.nz },
+      door: { p: [0, 0, 12.4], f: FACE.pz }, center: { p: [0, 0, 15], f: FACE.pz },
+      captain: { p: [0, 0.62, 13.9], f: FACE.pz }, helm: { p: [-1.5, 0.3, 16.5], f: FACE.pz }, nav: { p: [1.5, 0.3, 16.5], f: FACE.pz },
+      comms: { p: [4.5, 0, 13.6], f: FACE.px }, monitor: { p: [0, 0, 17.1], f: FACE.nz },
     },
-    view: { el: 0.7, fov: 28, k: 0.82, look: [0.4, 0.8, 22.4] },
+    view: { el: 0.72, fov: 30, k: 0.95, look: [0.3, 0.9, 15.3] },
   },
   lab: {
     id: 'lab', name: 'RESEARCH LAB', short: 'LAB', deck: 'DECK 1 STBD', code: '02', role: 'Bio-engineering: design and print engineered life',
-    x0: 1.4, x1: 10, z0: 7, z1: 17, light: 0xc8f0d8, lightK: 1.0,
+    x0: 1.2, x1: 7.2, z0: 6, z1: 12, light: 0xc8f0d8, lightK: 1.0,
     spots: {
-      door: { p: [1.9, 0, 12], f: FACE.px }, center: { p: [5.7, 0, 12], f: FACE.pz },
-      bench: { p: [8.5, 0, 9.4], f: FACE.px }, scope: { p: [8.3, 0, 11.4], f: FACE.px }, tank: { p: [5.6, 0, 15.6], f: FACE.pz },
-      terminal: { p: [3.2, 0, 15.9], f: FACE.pz }, hull_breach: { p: [9.96, 1.45, 13.9], f: FACE.nx }, apple_throw: { p: [5.9, 0, 13.9], f: FACE.px },
+      door: { p: [1.6, 0, 8.6], f: FACE.px }, center: { p: [4.0, 0, 9.0], f: FACE.pz },
+      bench: { p: [5.9, 0, 7.6], f: FACE.px }, scope: { p: [5.9, 0, 9.0], f: FACE.px }, tank: { p: [3.6, 0, 10.6], f: FACE.pz },
+      terminal: { p: [2.4, 0, 6.9], f: FACE.nz }, hull_breach: { p: [6.95, 1.45, 10.7], f: FACE.nx }, apple_throw: { p: [4.4, 0, 10.7], f: FACE.px },
     },
   },
   medbay: {
     id: 'medbay', name: 'MEDBAY', short: 'MED', deck: 'DECK 1 PORT', code: '03', role: 'Crew health, triage and the bio-scanner',
-    x0: -10, x1: -1.4, z0: 9, z1: 17, light: 0xe8f2f4, lightK: 1.0,
+    x0: -7.2, x1: -1.2, z0: 7, z1: 12, light: 0xe8f2f4, lightK: 1.0,
     spots: {
-      door: { p: [-1.9, 0, 13], f: FACE.nx }, center: { p: [-5.7, 0, 13], f: FACE.pz },
-      bed1: { p: [-2.45, 0.78, 10.7], f: FACE.nx }, bed2: { p: [-2.45, 0.78, 15.2], f: FACE.nx },
-      doctor: { p: [-4.6, 0, 12.9], f: FACE.px }, scanner: { p: [-7.6, 0, 14.6], f: FACE.pz }, cabinet: { p: [-6.0, 0, 16.2], f: FACE.pz },
+      door: { p: [-1.6, 0, 9.5], f: FACE.nx }, center: { p: [-4.0, 0, 9.5], f: FACE.pz },
+      bed1: { p: [-1.65, 0.78, 7.9], f: FACE.nx }, bed2: { p: [-1.65, 0.78, 11.1], f: FACE.nx },
+      doctor: { p: [-3.9, 0, 9.5], f: FACE.px }, scanner: { p: [-4.7, 0, 8.6], f: FACE.nx }, cabinet: { p: [-5.2, 0, 11.3], f: FACE.pz },
     },
   },
   core: {
     id: 'core', name: 'AI CORE', short: 'CORE', deck: 'DECK 1 PORT', code: '04', role: 'Unit 07: settings, save and load',
-    x0: -10, x1: -1.4, z0: 1, z1: 9, light: 0x8fe0a8, lightK: 0.9,
+    x0: -7.2, x1: -1.2, z0: 2, z1: 7, light: 0x8fe0a8, lightK: 0.9,
     spots: {
-      door: { p: [-1.9, 0, 5], f: FACE.nx }, center: { p: [-5.7, 0, 5], f: FACE.pz },
-      core: { p: [-6.2, 0, 4.6], f: FACE.pz }, console: { p: [-3.6, 0, 7.4], f: FACE.pz }, racks: { p: [-2.6, 0, 3.0], f: FACE.px },
+      door: { p: [-1.6, 0, 4.5], f: FACE.nx }, center: { p: [-4.4, 0, 4.5], f: FACE.pz },
+      core: { p: [-4.6, 0, 4.5], f: FACE.pz }, console: { p: [-4.7, 0, 5.8], f: FACE.pz }, racks: { p: [-2.6, 0, 3.0], f: FACE.px },
     },
   },
   quarters: {
     id: 'quarters', name: 'LIVING QUARTERS', short: 'QTR', deck: 'DECK 1 PORT', code: '05', role: 'Bunks and lockers for the crew of eight',
-    x0: -10, x1: -1.4, z0: -12, z1: 1, light: 0xf2cf98, lightK: 0.95,
+    x0: -7.2, x1: -1.2, z0: -6, z1: 2, light: 0xf2cf98, lightK: 0.95,
     spots: {
-      door: { p: [-1.9, 0, -5.5], f: FACE.nx }, center: { p: [-5.7, 0, -5.5], f: FACE.pz },
-      // the bunks stand along the corridor wall, head at the aft end (pos = head on the mattress, facing = toward the feet)
-      bunk1: { p: [-2.0, 0.56, -11.55], f: FACE.pz }, bunk2: { p: [-2.0, 1.86, -11.55], f: FACE.pz },
-      bunk3: { p: [-2.0, 0.56, -9.15], f: FACE.pz }, bunk4: { p: [-2.0, 1.86, -9.15], f: FACE.pz },
-      bunk5: { p: [-2.0, 0.56, -4.15], f: FACE.pz }, bunk6: { p: [-2.0, 1.86, -4.15], f: FACE.pz },
-      bunk7: { p: [-2.0, 0.56, -1.75], f: FACE.pz }, bunk8: { p: [-2.0, 1.86, -1.75], f: FACE.pz },
-      locker1: { p: [-9.3, 0, 0.2], f: FACE.pz }, locker2: { p: [-8.75, 0, 0.2], f: FACE.pz }, locker3: { p: [-8.2, 0, 0.2], f: FACE.pz }, locker4: { p: [-7.65, 0, 0.2], f: FACE.pz },
-      locker5: { p: [-7.1, 0, 0.2], f: FACE.pz }, locker6: { p: [-6.55, 0, 0.2], f: FACE.pz }, locker7: { p: [-6.0, 0, 0.2], f: FACE.pz }, locker8: { p: [-5.45, 0, 0.2], f: FACE.pz },
-      table: { p: [-6.6, 0, -6.2], f: FACE.pz }, chair: { p: [-6.6, 0.46, -7.3], f: FACE.pz },
+      door: { p: [-1.6, 0, 0.6], f: FACE.nx }, center: { p: [-4.3, 0, -2.4], f: FACE.pz },
+      // two bunk units along the corridor wall (head aft), two along the bow wall (head to port); pos = head on the mattress
+      bunk1: { p: [-1.75, 0.56, -5.7], f: FACE.pz }, bunk2: { p: [-1.75, 1.86, -5.7], f: FACE.pz },
+      bunk3: { p: [-1.75, 0.56, -3.5], f: FACE.pz }, bunk4: { p: [-1.75, 1.86, -3.5], f: FACE.pz },
+      bunk5: { p: [-6.75, 0.56, 1.47], f: FACE.px }, bunk6: { p: [-6.75, 1.86, 1.47], f: FACE.px },
+      bunk7: { p: [-4.55, 0.56, 1.47], f: FACE.px }, bunk8: { p: [-4.55, 1.86, 1.47], f: FACE.px },
+      locker1: { p: [-6.2, 0, -5.45], f: FACE.nx }, locker2: { p: [-6.2, 0, -4.95], f: FACE.nx }, locker3: { p: [-6.2, 0, -4.45], f: FACE.nx }, locker4: { p: [-6.2, 0, -3.95], f: FACE.nx },
+      locker5: { p: [-6.2, 0, -3.45], f: FACE.nx }, locker6: { p: [-6.2, 0, -2.95], f: FACE.nx }, locker7: { p: [-6.2, 0, -2.45], f: FACE.nx }, locker8: { p: [-6.2, 0, -1.95], f: FACE.nx },
+      table: { p: [-4.1, 0, -2.6], f: FACE.pz }, chair: { p: [-4.1, 0.46, -3.4], f: FACE.pz },
     },
   },
   workshop: {
     id: 'workshop', name: 'WORKSHOP + HANGAR', short: 'HGR', deck: 'DECK 1 AFT', code: '06', role: 'Build the capsule pod and its upgrades',
-    x0: -10, x1: -1.4, z0: -27, z1: -12, light: 0xffe0b0, lightK: 1.05,
+    x0: -7.2, x1: -1.2, z0: -14, z1: -6, light: 0xffe0b0, lightK: 1.05,
     spots: {
-      door: { p: [-1.9, 0, -15.5], f: FACE.nx }, center: { p: [-5.7, 0, -19.5], f: FACE.pz },
-      pod_cradle: { p: [-6.0, 0.35, -19.8], f: FACE.pz }, bay_hatch: { p: [-6.0, 0, -19.8], f: FACE.pz },
-      workbench: { p: [-2.5, 0, -22.6], f: FACE.px }, toolwall: { p: [-2.4, 0, -25.4], f: FACE.px },
-      welder: { p: [-4.2, 0, -17.0], f: FACE.nz }, crane: { p: [-6.0, 4.6, -19.8], f: FACE.pz },
+      door: { p: [-1.6, 0, -7.4], f: FACE.nx }, center: { p: [-4.2, 0, -10], f: FACE.pz },
+      pod_cradle: { p: [-4.4, 0.35, -10.4], f: FACE.pz }, bay_hatch: { p: [-4.4, 0, -10.4], f: FACE.pz },
+      workbench: { p: [-2.1, 0, -12.6], f: FACE.px }, toolwall: { p: [-2.1, 0, -13.4], f: FACE.px },
+      welder: { p: [-2.6, 0, -8.6], f: FACE.nz }, crane: { p: [-4.4, 4.0, -10.4], f: FACE.pz },
     },
   },
   mess: {
     id: 'mess', name: 'MESS + GALLEY', short: 'MESS', deck: 'DECK 1 STBD', code: '07', role: 'Galley, coffee and the long table',
-    x0: 1.4, x1: 10, z0: -4, z1: 7, light: 0xffd49a, lightK: 1.0,
+    x0: 1.2, x1: 7.2, z0: 0, z1: 6, light: 0xffd49a, lightK: 1.0,
     spots: {
-      door: { p: [1.9, 0, 1.5], f: FACE.px }, center: { p: [5.2, 0, 1.5], f: FACE.pz },
-      seat1: { p: [4.3, 0.47, 0.3], f: FACE.px }, seat2: { p: [4.3, 0.47, 1.5], f: FACE.px }, seat3: { p: [4.3, 0.47, 2.7], f: FACE.px },
-      seat4: { p: [6.1, 0.47, 0.3], f: FACE.nx }, seat5: { p: [6.1, 0.47, 1.5], f: FACE.nx }, seat6: { p: [6.1, 0.47, 2.7], f: FACE.nx },
-      galley: { p: [8.6, 0, -1.6], f: FACE.px }, counter: { p: [8.6, 0, 0.8], f: FACE.px }, coffee: { p: [8.6, 0, 3.4], f: FACE.px },
+      door: { p: [1.6, 0, 0.8], f: FACE.px }, center: { p: [3.8, 0, 3.0], f: FACE.pz },
+      seat1: { p: [2.95, 0.47, 2.2], f: FACE.px }, seat2: { p: [2.95, 0.47, 3.0], f: FACE.px }, seat3: { p: [2.95, 0.47, 3.8], f: FACE.px },
+      seat4: { p: [4.65, 0.47, 2.2], f: FACE.nx }, seat5: { p: [4.65, 0.47, 3.0], f: FACE.nx }, seat6: { p: [4.65, 0.47, 3.8], f: FACE.nx },
+      galley: { p: [5.9, 0, 1.5], f: FACE.px }, counter: { p: [5.9, 0, 2.9], f: FACE.px }, coffee: { p: [5.9, 0, 4.3], f: FACE.px },
     },
   },
   cargo: {
     id: 'cargo', name: 'CARGO HOLD', short: 'CGO', deck: 'DECK 1 STBD', code: '08', role: 'Stores, spares and specimen crates',
-    x0: 1.4, x1: 10, z0: -15, z1: -4, light: 0xd8d0b8, lightK: 0.9,
+    x0: 1.2, x1: 7.2, z0: -6, z1: 0, light: 0xd8d0b8, lightK: 0.9,
     spots: {
-      door: { p: [1.9, 0, -9.5], f: FACE.px }, center: { p: [5.7, 0, -9.5], f: FACE.pz },
-      shelves: { p: [8.3, 0, -9.0], f: FACE.px }, crates: { p: [5.0, 0, -12.6], f: FACE.pz }, loader: { p: [3.4, 0, -6.4], f: FACE.pz },
+      door: { p: [1.6, 0, -3.0], f: FACE.px }, center: { p: [3.8, 0, -3.0], f: FACE.pz },
+      shelves: { p: [5.5, 0, -3.0], f: FACE.px }, crates: { p: [3.4, 0, -5.0], f: FACE.pz }, loader: { p: [2.3, 0, -1.2], f: FACE.pz },
     },
   },
   engineering: {
     id: 'engineering', name: 'ENGINEERING', short: 'ENG', deck: 'DECK 1 AFT', code: '09', role: 'Fusion reactor, power and life support',
-    x0: 1.4, x1: 10, z0: -27, z1: -15, light: 0xffb070, lightK: 1.0,
+    x0: 1.2, x1: 7.2, z0: -14, z1: -6, light: 0xffb070, lightK: 1.0,
     spots: {
-      door: { p: [1.9, 0, -18], f: FACE.px }, center: { p: [5.7, 0, -21], f: FACE.pz },
-      reactor: { p: [6.2, 0, -21.6], f: FACE.pz }, console: { p: [4.2, 0, -16.0], f: FACE.pz }, valves: { p: [9.0, 0, -24.4], f: FACE.px },
-      catwalk: { p: [3.7, 0, -21.6], f: FACE.px },
+      door: { p: [1.6, 0, -8.6], f: FACE.px }, center: { p: [4.0, 0, -10], f: FACE.pz },
+      reactor: { p: [4.1, 0, -10.4], f: FACE.pz }, console: { p: [3.0, 0, -7.3], f: FACE.pz }, valves: { p: [6.0, 0, -12.4], f: FACE.px },
+      catwalk: { p: [2.0, 0, -10.4], f: FACE.px },
     },
   },
 };
@@ -155,7 +158,7 @@ export function roomCam(id: RoomId): CamPreset {
   return { pos: look.clone().addScaledVector(viewDir(az, el), dist), look, fov };
 }
 /** the ship's extent (with the engines and the nose), for framing */
-export const SHIP_BOX = new THREE.Box3(new THREE.Vector3(-11.2, -3.6, -37.5), new THREE.Vector3(11.2, 3.6, 32));
+export const SHIP_BOX = new THREE.Box3(new THREE.Vector3(-8.0, -3.0, -23.5), new THREE.Vector3(8.0, 3.6, 21.5));
 /** the whole cutaway, fitted to the frame (top strip and dock kept clear) */
 export function overviewCam(aspect = 16 / 9, box = SHIP_BOX, dir = viewDir(), fov = VIEW.fov, margin = 1.06): CamPreset {
   const d = dir.clone().normalize(), up0 = new THREE.Vector3(0, 1, 0);
@@ -182,13 +185,13 @@ export function overviewCam(aspect = 16 / 9, box = SHIP_BOX, dir = viewDir(), fo
 // ------------------------------------------------------------------ the key props (click one to use the room)
 export type Box6 = [number, number, number, number, number, number];
 export const KEYS: Record<RoomId, { label: string; boxes: Box6[] }> = {
-  bridge: { label: 'MAIN MONITOR', boxes: [[-4.1, 0.5, 26.3, 4.1, 3.4, 27.0]] },
-  lab: { label: 'SPECIMEN TANKS · GENE LAB', boxes: [[3.8, 0, 15.8, 7.4, 2.7, 17.0]] },
-  medbay: { label: 'MED BEDS · CREW HEALTH', boxes: [[-3.8, 0, 10.1, -1.5, 1.2, 11.3], [-3.8, 0, 14.6, -1.5, 1.2, 15.8]] },
-  core: { label: 'AI CORE · UNIT 07', boxes: [[-7.4, 0, 3.4, -5.0, 3.4, 5.8]] },
-  quarters: { label: 'BUNKS · CREW + MORALE', boxes: [[-2.5, 0, -11.8, -1.5, 2.5, -9.6], [-2.5, 0, -9.4, -1.5, 2.5, -7.2], [-2.5, 0, -4.4, -1.5, 2.5, -2.2], [-2.5, 0, -2.0, -1.5, 2.5, 0.2]] },
-  workshop: { label: 'POD CRADLE · ASSEMBLY', boxes: [[-7.9, 0, -21.7, -4.1, 2.6, -17.9], [-2.4, 0, -24.1, -1.5, 2.6, -21.5]] },
-  mess: { label: 'GALLEY · STORES', boxes: [[9.0, 0, -3.8, 9.8, 2.3, 2.6]] },
-  cargo: { label: 'CARGO RACKS · STORES', boxes: [[8.7, 0, -14.5, 9.8, 3.0, -6.7]] },
-  engineering: { label: 'REACTOR · POWER BUS', boxes: [[4.0, 0, -23.8, 8.4, 4.1, -19.4]] },
+  bridge: { label: 'HOLO TABLE · SCAN', boxes: [[-0.9, 0, 14.6, 0.9, 2.2, 16.4]] },
+  lab: { label: 'SPECIMEN TANKS · GENE LAB', boxes: [[2.4, 0, 11.0, 5.7, 2.7, 12.0]] },
+  medbay: { label: 'MED BEDS · CREW HEALTH', boxes: [[-3.5, 0, 7.4, -1.3, 1.2, 8.4], [-3.5, 0, 10.6, -1.3, 1.2, 11.6]] },
+  core: { label: 'AI CORE · UNIT 07', boxes: [[-5.6, 0, 3.5, -3.6, 3.4, 5.5]] },
+  quarters: { label: 'BUNKS · CREW + MORALE', boxes: [[-2.3, 0, -6.0, -1.3, 2.5, -3.8], [-2.3, 0, -3.7, -1.3, 2.5, -1.5], [-7.0, 0, 1.0, -2.7, 2.5, 2.0]] },
+  workshop: { label: 'POD CRADLE · ASSEMBLY', boxes: [[-6.0, 0, -12.0, -2.8, 2.6, -8.8]] },
+  mess: { label: 'GALLEY · STORES', boxes: [[6.2, 0, 0.2, 7.0, 2.3, 3.9]] },
+  cargo: { label: 'CARGO RACKS · STORES', boxes: [[6.0, 0, -5.9, 7.0, 3.0, -0.2]] },
+  engineering: { label: 'REACTOR · POWER BUS', boxes: [[2.6, 0, -11.9, 5.6, 3.8, -8.9]] },
 };

@@ -162,21 +162,26 @@ export class ContainerView implements View {
     const box = new THREE.Box3().setFromObject(this.model.root), sz = box.getSize(new THREE.Vector3());
     const span = Math.max(sz.x, sz.z, 1.2);
     this.scene.add(this.model.root, this.items);
-    const b = base(Math.max(sz.x, 1) + 0.7, Math.max(sz.z, 1) + 0.7); this.scene.add(b);
+    const b = base(Math.max(sz.x, 1) + 0.36, Math.max(sz.z, 1) + 0.36); this.scene.add(b);
     lights(this.scene, span * 1.4);
     this.drop = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), gbuf(new THREE.MeshBasicMaterial({ color: 0x7fb88a, transparent: true, opacity: 0.35, depthWrite: false }), 0));
     this.drop.rotation.x = -Math.PI / 2; this.drop.visible = false; this.scene.add(this.drop);
     this.fit();
   }
-  /** look into the interior from the front and above, the whole container in frame */
+  /** look down into the interior from the front and above (about 64 degrees): the interior fills the sheet, the
+   *  walls and the earth it stands on frame it */
   private fit() {
-    const box = new THREE.Box3().setFromObject(this.model.root), sz = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+    const box = new THREE.Box3().setFromObject(this.model.root);
     const B = this.model.bayOf();
-    const tx = (B.x0 + B.x1) / 2, tz = (B.z0 + B.z1) / 2, ty = B.y;
-    const r = Math.max(sz.x * 0.62, sz.z * 0.8, sz.y * 0.55, 0.9);
-    this.cam.position.set(tx + r * 0.12, ty + r * 2.1, tz + r * 2.5);
-    this.cam.lookAt(tx, ty + Math.min(0.3, sz.y * 0.15), tz);
-    void ctr;
+    const tx = (B.x0 + B.x1) / 2, tz = (B.z0 + B.z1) / 2, ty = B.y + B.h * 0.25;
+    const vf = (this.cam.fov * Math.PI) / 180, hf = 2 * Math.atan(Math.tan(vf / 2) * this.cam.aspect);
+    // the interior, plus a margin of wall, fits both ways
+    const hw = (B.x1 - B.x0) / 2 + 0.22, hd = (B.z1 - B.z0) / 2 + 0.22, wall = Math.max(0, Math.min(box.max.y - B.y, 1.4));
+    const el = 1.12, az = 0.12;
+    const dw = hw / Math.tan(hf / 2), dd = (hd * Math.sin(el) + wall * Math.cos(el) * 0.6) / Math.tan(vf / 2);
+    const d = Math.max(dw, dd) * 1.04 + wall * 0.4;
+    this.cam.position.set(tx + Math.sin(az) * Math.cos(el) * d, ty + Math.sin(el) * d, tz + Math.cos(az) * Math.cos(el) * d);
+    this.cam.lookAt(tx, ty, tz);
   }
   get bay(): Bay { return this.model.bayOf(); }
   /** keep the items, the chalk grid and the model in step with the container */
@@ -184,7 +189,8 @@ export class ContainerView implements View {
     this.t += dt;
     this.model.update();
     const B = this.bay, key = `${B.x0},${B.z0},${B.x1},${B.z1},${B.y}`;
-    if (key !== this.bayKey) { this.bayKey = key; this.makeGrid(); this.fit(); this.ver = -1; }
+    if (key !== this.bayKey) { this.bayKey = key; this.makeGrid(); this.ver = -1; }
+    this.fit();
     if (this.ver !== this.c.ver) { this.ver = this.c.ver; this.layItems(); }
     // the hovered item lifts and turns a little; a lifted (dragged) stack fades
     for (const ch of this.items.children) {
@@ -212,12 +218,12 @@ export class ContainerView implements View {
     c.stacks.forEach((s, i) => {
       const [w, h] = c.dims(s.item, s.rot), lim = itemDef(s.item).stack, k = s.n / lim;
       const x = B.x0 + (s.x + w / 2) * cw, z = B.z0 + (s.y + h / 2) * cd;
-      const size = Math.min(w * cw, h * cd * 1.25) * 0.95;
+      const size = Math.max(0.14, Math.max(w * cw, h * cd) * 0.92);
       const copies = k > 0.66 ? 3 : k > 0.33 ? 2 : 1;
       for (let q = copies - 1; q >= 0; q--) {
         const m = itemMesh(s.item, size * (1 - q * 0.06));
         const ph = (i * 1.7 + q) % 6.28;
-        m.rotation.x = -0.32; m.userData = { stack: s, y: B.y + size * 0.47 + q * size * 0.08, ry: (Math.sin(i * 3.1 + q) * 0.18), ph };
+        m.rotation.x = -0.72; m.userData = { stack: s, y: B.y + size * 0.36 + q * size * 0.08, ry: (Math.sin(i * 3.1 + q) * 0.18), ph };
         m.position.set(x + (q - (copies - 1) / 2) * size * 0.18, m.userData.y, z - q * size * 0.22);
         this.items.add(m);
       }
@@ -269,7 +275,12 @@ export class PlinthView implements View {
   private holder = new THREE.Group();
   private t = 0;
   item: ItemId | null = null;
+  private r: THREE.WebGLRenderer | null = null; private canvas: HTMLCanvasElement;
   constructor(readonly el: HTMLElement) {
+    // its own small canvas inside its card, so the card stacks over the sheets like the paper it is
+    this.canvas = document.createElement('canvas'); this.canvas.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;image-rendering:pixelated';
+    el.appendChild(this.canvas);
+    try { this.r = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: false, powerPreference: 'low-power' }); this.r.outputColorSpace = THREE.SRGBColorSpace; this.r.setClearColor(0, 0); this.r.shadowMap.enabled = true; } catch { this.r = null; }
     lights(this.scene, 1.2);
     const stone = gbuf(new THREE.MeshLambertMaterial({ color: RAMPS.stone[5] }), 1), top = gbuf(new THREE.MeshLambertMaterial({ color: RAMPS.stone[6] }), 1);
     const p = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.48, 0.24, 10), [stone, top, stone]); p.position.y = -0.12; p.receiveShadow = true;
@@ -284,6 +295,15 @@ export class PlinthView implements View {
     const m = itemMesh(id, 0.7); m.position.y = 0.36; this.holder.add(m);
   }
   tick(dt: number) { this.t += dt; this.holder.rotation.y = this.t * 1.1; this.holder.position.y = Math.sin(this.t * 2) * 0.015; }
+  /** draw a frame into its own canvas (art resolution, blown up crisp) */
+  render(dt: number) {
+    const r = this.r; if (!r) return;
+    this.tick(dt);
+    const w = this.el.clientWidth, h = this.el.clientHeight, pr = (devicePixelRatio || 1) / (innerHeight >= 1000 ? 2 : 1);
+    if (this.canvas.width !== Math.round(w * pr) || this.canvas.height !== Math.round(h * pr)) { r.setPixelRatio(pr); r.setSize(w, h, false); }
+    this.cam.aspect = w / Math.max(1, h); this.cam.updateProjectionMatrix();
+    r.render(this.scene, this.cam);
+  }
   /** screen points on the turning item for the callouts: its top, its middle and its foot */
   points(): [number, number][] {
     const r = this.el.getBoundingClientRect();

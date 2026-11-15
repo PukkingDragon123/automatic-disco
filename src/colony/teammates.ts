@@ -19,25 +19,26 @@ export type CrewState = 'idle' | 'walk' | 'work' | 'inside' | 'dead' | 'scripted
 export type ScriptStep = { walkTo: [number, number]; run?: boolean } | { face: [number, number] } | { anim: 'kneel' | 'wave' | 'point' | 'idle' | 'fall' } | { say: string; t?: number } | { wait: number };
 
 export interface CrewSpec { id: string; name: string; role: 'engineer' | 'biologist'; accent: string }
+/** the crew agent's TEAMMATES (src/ship/crew/roster.ts): Sgt. Ivalu Kristiansen (security; she does the field
+ *  engineering on the ground) and Tupaq Mamani (xenobiologist) */
 export const DEFAULT_CREW: CrewSpec[] = [
-  { id: 'engineer', name: 'Ines Valdivia', role: 'engineer', accent: COL.orange },
-  { id: 'biologist', name: 'Tomas Achterberg', role: 'biologist', accent: '#2b7a6a' },
+  { id: 'kristiansen', name: 'Ivalu Kristiansen', role: 'engineer', accent: COL.orange },
+  { id: 'mamani', name: 'Tupaq Mamani', role: 'biologist', accent: '#2b7a6a' },
 ];
 /** the crew agent's model builder (src/ship/crew/*.ts exporting buildModel), found at build time if it exists */
-const CREW_MODS = import.meta.glob('../ship/crew/*.ts') as Record<string, () => Promise<unknown>>;
-let crewBuild: ((id: string) => unknown) | null = null, crewTried: Promise<void> | null = null;
-/** find the crew agent's buildModel (lazily: no import cycle, no cost if it is not there) */
-function loadCrewBuilder() {
+const CREW_MODS = import.meta.glob('../ship/crew/index.ts') as Record<string, () => Promise<unknown>>;
+/** the crew agent's model: root, update(dt, { speed }), die(how), dispose() (src/ship/crew/index.ts default export) */
+export interface CrewModelLike { root: THREE.Object3D; update(dt: number, inp?: Record<string, unknown>): void; die?(how?: string, from?: THREE.Vector3, k?: number): void; dispose?(): void; rig?: { ragWorld?: unknown } }
+interface CrewApi { buildModel(id: string, o?: { scale?: number }): CrewModelLike; on?(ev: string, f: (d: unknown) => void): void }
+let crewApi: CrewApi | null = null, crewTried: Promise<void> | null = null;
+/** find the crew agent's module (lazily: no import cycle, nothing loaded if it is not there) */
+export function loadCrewApi() {
   crewTried ??= Promise.all(Object.values(CREW_MODS).map((f) => f().catch(() => ({})))).then((ms) => {
-    for (const m of ms as { buildModel?: (id: string) => unknown }[]) if (typeof m.buildModel === 'function') { crewBuild = m.buildModel; break; }
+    for (const m of ms as { default?: CrewApi; crew?: CrewApi }[]) { const c = m.default ?? m.crew; if (c && typeof c.buildModel === 'function') { crewApi = c; break; } }
   });
   return crewTried;
 }
-function crewModel(id: string): THREE.Object3D | null {
-  if (!crewBuild) return null;
-  try { const r = crewBuild(id) as THREE.Object3D | { root?: THREE.Object3D } | null; const o = r && ((r as THREE.Object3D).isObject3D ? r as THREE.Object3D : (r as { root?: THREE.Object3D }).root); if (o) return o; } catch (e) { console.warn('crew.buildModel', e); }
-  return null;
-}
+export const crewModule = () => crewApi;
 
 interface Rig { hips: THREE.Group; torso: THREE.Group; head: THREE.Group; legL: THREE.Group; legR: THREE.Group; kneeL: THREE.Group; kneeR: THREE.Group; armL: THREE.Group; armR: THREE.Group; elbowL: THREE.Group; elbowR: THREE.Group; rifle: THREE.Object3D }
 const _v = new THREE.Vector3();
@@ -51,7 +52,7 @@ export class Teammate {
   job: Job | null = null; queue: Job[] = [];
   /** the story has them (no AI) */
   staged = false;
-  private rig: Rig | null = null; private ext = false; private suitModel!: THREE.Object3D; extModel: THREE.Object3D | null = null;
+  private rig: Rig | null = null; private ext = false; private suitModel!: THREE.Object3D; crewModel: CrewModelLike | null = null; private gone = false;
   private walkPh = 0; private speed = 0; private workT = 0; private anim: 'kneel' | 'wave' | 'point' | 'idle' | 'fall' | null = null;
   private shotT = 0; private sayT = 0; private thinkT = Math.random();
   readonly flag = { value: 1 };
@@ -62,12 +63,20 @@ export class Teammate {
     this.suitModel = this.buildSuit(spec.accent);
     this.root.add(this.suitModel);
     // the crew agent's model replaces the stand-in suit when its module is there
-    loadCrewBuilder().then(() => { const ext = crewModel(spec.id); if (ext && this.alive !== undefined) { this.ext = true; this.suitModel.removeFromParent(); this.rig = null; this.root.add(ext); this.extModel = ext; } });
+    loadCrewApi().then(() => {
+      if (!crewApi || this.gone) return;
+      try {
+        const m = crewApi.buildModel(spec.id, { scale: 1 }); if (!m?.root) return;
+        if (m.rig) m.rig.ragWorld = { ground: (x: number, z: number) => colony.g.region.heightAt(x, z) };
+        this.ext = true; this.suitModel.removeFromParent(); this.rig = null; this.root.add(m.root); this.crewModel = m;
+        m.root.traverse((o) => { const mm = o as THREE.Mesh; if (mm.isMesh) mm.castShadow = true; });
+      } catch (e) { console.warn('crew.buildModel', e); }
+    });
     colony.g.world.scene.add(this.root);
     this.root.userData.sel = { kind: 'crew', ref: this };
   }
   get short() { return this.name.split(' ')[0].toUpperCase(); }
-  get title() { return this.role === 'engineer' ? 'FIELD ENGINEER' : 'EXOBIOLOGIST'; }
+  get title() { return this.id === 'kristiansen' ? 'SECURITY · FIELD WORK' : this.id === 'mamani' ? 'XENOBIOLOGIST' : this.role === 'engineer' ? 'FIELD ENGINEER' : 'EXOBIOLOGIST'; }
 
   // ------------------------------------------------------------------ the suit
   private buildSuit(accent: string) {
@@ -131,6 +140,7 @@ export class Teammate {
   kill(cause = 'killed') {
     if (!this.alive) return;
     this.alive = false; this.hp = 0; this.state = 'dead'; this.anim = 'fall'; this.causeOfDeath = cause; this.job = null; this.queue = [];
+    try { if (this.crewModel && !(this.crewModel as { dead?: boolean }).dead) this.crewModel.die?.(cause); } catch { /* model gone */ }
     this.colony.teammateDied(this);
   }
   say(text: string, t = 3) { floatText(this.colony.g, this.x, this.y + 2.2, this.z, text, 'info' as never, { life: t }); this.sayT = t; }
@@ -239,7 +249,8 @@ export class Teammate {
     }
   }
   private animate(dt: number) {
-    const r = this.rig; if (!r) { this.root.position.y += Math.abs(Math.sin(this.walkPh)) * 0.04; this.walkPh += dt * this.speed * 4; return; }
+    const r = this.rig;
+    if (!r) { if (this.crewModel) { try { this.crewModel.update(dt, { speed: this.speed }); } catch { /* model error */ } } return; }
     const sp = this.speed;
     this.walkPh += dt * (2.2 + sp * 2.6);
     const sw = Math.min(1, sp / 2) * 0.55, ph = this.walkPh;
@@ -279,6 +290,6 @@ export class Teammate {
     const at = this.state === 'walk' ? 'EN ROUTE: ' : '';
     return at + ({ move: 'MOVING', inspect: 'INSPECTING', repair: 'REPAIRING', sample: 'SAMPLING', build: 'BUILDING', defend: 'DEFENDING', eat: 'EATING', sleep: 'SLEEPING', refill: 'REFILLING SUIT' } as Record<JobKind, string>)[j.k];
   }
-  dispose() { this.root.removeFromParent(); }
+  dispose() { this.gone = true; try { this.crewModel?.dispose?.(); } catch { /* gone */ } this.root.removeFromParent(); }
 }
 void TAU;

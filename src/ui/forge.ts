@@ -20,7 +20,8 @@ import { LabIcons } from './labIcons';
 import { LabUI, SWATCH, type CardSpec } from './labUI';
 import { CAT_COL } from '../game/dnaHarvest';
 import { thumb } from './thumbs';
-import { LabFit } from './labFit';
+import { LabFit, type Callout, type Ring } from './labFit';
+import * as THREE from 'three';
 import { type as typeText } from './labPaper';
 import { CYBER, SLOT_NAME, SLOT_DESC, partsFor, slotsFor, fitPart, unfitPart, fitCost, type Slot as FitSlot } from '../life/cyber/catalog';
 import { workerProfile } from '../life/cyber/roles';
@@ -74,7 +75,6 @@ export class Forge implements Screen {
   /** the fitting bay: robotic parts on the specimen */
   private fitUI: LabFit;
   private mode: 'genes' | 'fit' = 'genes';
-  private slot: FitSlot = 'tool';
 
   constructor(readonly run: Run, readonly vaults: number, readonly helix: () => number, readonly base: Species | null, readonly done: (r: ForgeResult | null) => void, readonly opts: LabOpts = {}) {
     this.ctx = { run, vaults, helix };
@@ -93,7 +93,7 @@ export class Forge implements Screen {
       suggest: (id) => this.suggestPick(id),
       fit: () => this.setMode(this.mode === 'fit' ? 'genes' : 'fit'), fitOn: () => this.mode === 'fit',
     });
-    this.fitUI = new LabFit({ mode: (m) => this.setMode(m), slot: (sl) => this.openSlot(sl) });
+    this.fitUI = new LabFit({ back: () => (this.opts.fit ? this.close(null) : this.setMode('genes')), file: () => this.save(), fileOk: () => this.mode === 'fit' ? (invalid(this.ctx, this.d) || this.short(fitCost(this.d.fit)) || false) : false });
     this.L.onSay = (i, text) => { const s = this.L.sci[i]; this.ui.say(i, s.name, text, s.col); };
     // the shelves: your designs first, then everything you have absorbed
     this.jarSp = opts.species ?? this.shelfSpecies();
@@ -287,22 +287,32 @@ export class Forge implements Screen {
   }
 
   // ---------------------------------------------------------------------------------------------- the fitting bay
+  // The bay is a living vignette: the animal stands drained on the grate and IS the interface. Hover it and a
+  // hand-drawn callout names the slot under the cursor; click and the parts that fit that slot float round it on
+  // sketched rings; drag one onto the body (or click it) and a robot arm swings in and welds it on. Every fitted
+  // part keeps a callout of what it gives; the role is a big tag pointing at the animal.
+  private slot: FitSlot | null = null;
+  private drag: { i: number; moved: boolean } | null = null;
+  private centres = new Map<number, THREE.Vector3>(); private centT = 0; private centSpec: unknown = null;
   private setMode(m: 'genes' | 'fit') {
     if (this.mode === m) { this.fitUI.setMode(m); return; }
     this.mode = m; this.fitUI.setMode(m); this.L.setBay(m === 'fit');
     if (m === 'fit') {
-      const slots = slotsFor(this.d.plan);
-      if (!slots.includes(this.slot)) this.slot = slots[0];
-      // a wide shot of the bay: the drained tank, both arms, the screens over the bench line
-      this.L.targetGoal.set(0, 1.95, -0.6); this.L.distGoal = 10.2; this.L.pitchGoal = 0.1; this.L.yawGoal = 0.05;
-      this.L.speak(0, 'idle', true);
-    } else this.openTab('genome', false);
+      this.slot = null; this.L.bay?.clearCandidates();
+      // a wide, low shot of the bay: the drained tank, both arms, the animal centre stage
+      this.L.targetGoal.set(0, 1.45, -0.2); this.L.distGoal = 8.6; this.L.pitchGoal = 0.08; this.L.yawGoal = 0.05;
+    } else { this.L.bay?.clearCandidates(); this.openTab('genome', false); }
     this.refresh();
   }
   private openSlot(sl: FitSlot) {
-    this.slot = sl; if (this.mode !== 'fit') { this.setMode('fit'); return; }
-    this.L.present(sl === 'head' || sl === 'collar' ? 3 : sl === 'fore' || sl === 'hind' ? 8 : sl === 'back' || sl === 'power' ? 2 : 1);
-    this.cards(); this.fitReadout();
+    if (this.mode !== 'fit') this.setMode('fit');
+    this.slot = sl;
+    const ids = partsFor(sl, this.d.plan).map((p) => p.id);
+    const c = this.regCentre(this.regOf(sl)).clone();
+    c.y = clamp(c.y, 0.9, 2.4);
+    this.L.bay?.showCandidates(ids, new THREE.Vector3(0, clamp(c.y, 1.0, 1.8), 1.9), ids.length <= 2 ? 1.1 : 1.8);
+    this.L.present(this.regOf(sl));
+    sfx('pulse', 1.4, 0.3);
   }
   /** what the stores lack for a part (null: enough, or no stores to check) */
   private short(cost: Record<string, number>): string | null {
@@ -310,49 +320,77 @@ export class Forge implements Screen {
     const miss = Object.entries(cost).filter(([id, n]) => n > 0 && st(id) < n).map(([id, n]) => `${n - st(id)} ${(ITEMS[id]?.name ?? id).toUpperCase()}`);
     return miss.length ? 'SHORT: ' + miss.join(', ') : null;
   }
-  private fitCards() {
-    const d = this.d, sl = this.slot, fitted = new Set(d.fit ?? []);
-    const L: CardSpec[] = partsFor(sl, d.plan).map((p) => {
-      const on = fitted.has(p.id), why = on ? null : this.short(p.cost);
-      const stat = [p.carry ? `+${p.carry} CARRY` : '', p.speed ? `${p.speed > 0 ? '+' : ''}${p.speed} M/S` : '', p.armour ? `+${Math.round(p.armour * 100)}% ARMOUR` : '', p.sight ? `+${p.sight} M SIGHT` : '', p.control ? 'OBEDIENCE' : '']
-        .filter(Boolean).slice(0, 2).join(' · ');
-      const top = Object.entries(p.skills).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))[0];
-      const costTxt = Object.entries(p.cost).filter(([, n]) => n > 0).map(([id, n]) => `${n} ${ITEMS[id]?.name ?? id}`).join(', ');
-      const tip = `<h4>${p.name}</h4>${p.desc}<div class="sub" style="margin-top:3px">${stat}${top ? ` · ${top[0].toUpperCase()} +${top[1]}` : ''}</div><div class="sub">COST: ${costTxt}</div>` + (why ? `<div class="tip-warn">${why}</div>` : on ? '<div class="sub">Fitted. Click to remove it.</div>' : '<div class="sub">Click to fit it.</div>');
-      return { gene: p.id, name: p.name.toUpperCase(), meta: SLOT_NAME[sl], fx: stat || (top ? `${top[0].toUpperCase()} +${top[1]}` : ''), state: on ? 'on' : why ? 'lock' : 'ok', tag: on ? 'FITTED' : '', col: 0x7fd48a, tip, cat: 'meta' } as CardSpec;
-    });
-    this.cardList = L;
-    const t = this.ui.area.querySelector('.vt') as HTMLElement | null, sb = this.ui.area.querySelector('.ps') as HTMLElement | null;
-    if (t) typeText(t, `FITTING BAY · ${SLOT_NAME[sl]}`, 60);
-    if (sb) typeText(sb, SLOT_DESC[sl], 120);
-    this.ui.setCards(L, L.length ? undefined : `NO ${SLOT_NAME[sl]} PARTS FIT A ${PLAN_NAME[d.plan].toUpperCase()}`, 'fit:' + sl);
-    this.icons.set(this.ui.cards.map((c, i) => ({ el: (c as HTMLDivElement & { win?: HTMLElement }).win!, gene: L[i].gene })), d);
-    this.fitUI.setSlots(slotsFor(d.plan).map((s2) => ({ slot: s2, part: (d.fit ?? []).find((id) => CYBER[id]?.slot === s2) ?? null })), sl);
-  }
+  private fitCards() { /* the fitting bay has no cards: the parts float in the scene */ }
   private pickPart(id: string | null, state: string) {
     const p = id ? CYBER[id] : null; if (!p) return;
-    if (state === 'lock') { sfx('deny'); toast(this.short(p.cost) ?? 'Not available', 'warn', 2600); this.L.speak(2, 'bad', true); return; }
     const on = (this.d.fit ?? []).includes(p.id);
+    if (!on && (state === 'lock' || this.short(p.cost))) { sfx('deny'); toast(this.short(p.cost) ?? 'Not available', 'warn', 2600); this.L.speak(2, 'bad', true); return; }
     this.d.fit = on ? unfitPart(this.d.fit, p.id) : fitPart(this.d.fit, p.id);
     // a robot arm swings in to where the part goes and welds it on, then the specimen re-grows with it
-    const sl = p.slot, reg = sl === 'head' || sl === 'collar' ? 3 : sl === 'fore' || sl === 'hind' ? 8 : sl === 'back' || sl === 'power' ? 2 : 1;
-    if (!on) this.L.bayFit(reg);
+    if (!on) this.L.bayFit(this.regOf(p.slot));
     this.L.setSpecimen(this.d, true);
     this.L.edit(on ? 0.6 : 1.2);
     this.L.react(on ? 'edit' : 'splice');
     sfx(on ? 'close' : 'build', 1, 0.6);
-    if (!on) toast(`${p.name} fitted. ${workerProfile(this.d).line}`, 'info', 2400);
+    this.centSpec = null;
     this.refresh();
   }
-  private fitReadout() {
-    const wp = workerProfile(this.d);
-    this.fitUI.setProfile(wp, { genes: this.d.genes.length, cost: fitCost(this.d.fit), stock: this.opts.stock });
-    this.L.bay?.setProfile(wp, this.slot);
+  private fitReadout() { this.L.bay?.setProfile(workerProfile(this.d), this.slot ?? 'tool'); }
+  private regOf(sl: FitSlot) { return sl === 'head' || sl === 'collar' ? 3 : sl === 'fore' || sl === 'hind' ? 8 : sl === 'back' || sl === 'power' ? 2 : sl === 'tool' ? 1 : 1; }
+  /** a body region's centre on the posed specimen (cached: the idle pose barely moves) */
+  private regCentre(reg: number): THREE.Vector3 {
+    const sp = this.L.spec; if (!sp) return new THREE.Vector3(0, 1.4, 0);
+    if (this.centSpec !== sp || this.centT <= 0) { this.centres.clear(); this.centSpec = sp; this.centT = 0.6; }
+    let c = this.centres.get(reg); if (!c) { c = sp.centreOf(reg); this.centres.set(reg, c); }
+    return c;
   }
-  /** which slot a clicked body region opens */
+  /** which slot a body region opens */
   private slotOf(reg: number): FitSlot {
-    const slots = slotsFor(this.d.plan), want: FitSlot = reg >= 3 && reg <= 7 ? 'head' : reg === 2 || reg === 11 ? 'back' : reg === 1 ? 'armour' : reg === 9 ? 'tool' : reg === 10 ? 'power' : reg === 8 ? (this.slot === 'fore' ? 'hind' : 'fore') : this.slot;
+    const slots = slotsFor(this.d.plan), want: FitSlot = reg >= 3 && reg <= 7 ? 'head' : reg === 2 || reg === 11 ? 'back' : reg === 1 ? 'armour' : reg === 9 ? 'tool' : reg === 10 ? 'power' : reg === 8 ? (this.slot === 'fore' ? 'hind' : 'fore') : this.slot ?? slots[0];
     return slots.includes(want) ? want : slots[0];
+  }
+  /** what a part gives, in one short line */
+  private gives(id: string): string {
+    const p = CYBER[id]; if (!p) return '';
+    if (p.carry && p.carry >= 10) return `CARRY +${p.carry}`;
+    if (p.armour) return `ARMOUR +${Math.round(p.armour * 100)}%`;
+    if (p.sight) return `SIGHT +${p.sight} M`;
+    if (p.control) return 'OBEDIENCE';
+    if (p.power < 0) return 'POWER CELL';
+    const top = Object.entries(p.skills).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))[0];
+    return top ? `${top[0].toUpperCase()} +${top[1]}` : p.name.toUpperCase();
+  }
+  /** this frame's callouts, rings and hint */
+  private doodle(dt: number) {
+    this.centT -= dt;
+    const L = this.L, calls: Callout[] = [], rings: Ring[] = [];
+    const proj = (v: THREE.Vector3) => { const q = L.project(v); return { x: q[0], y: q[1] }; };
+    // the role, pointing at the animal
+    const wp = workerProfile(this.d), torso = proj(this.regCentre(1));
+    if (L.spec) calls.push({ x: torso.x, y: torso.y - 30, text: wp.roleName, sub: `${wp.carry} UNITS · ${wp.speed.toFixed(1)} M/S`, big: true, side: -1, lift: 190 });
+    // what every fitted part gives, pointing at it: the tags stack in a column beside the tank, nearest first
+    const fitted = (this.d.fit ?? []).filter((id) => CYBER[id]).map((id) => ({ id, at: proj(this.regCentre(this.regOf(CYBER[id].slot)).clone().add(new THREE.Vector3(0, 0.12 * ((this.d.fit ?? []).indexOf(id) % 3), 0))) })).sort((a, b) => a.at.y - b.at.y);
+    const colX = proj(new THREE.Vector3(1.35, 1.6, 0.6)).x + 30, colY = proj(new THREE.Vector3(0, 2.6, 0)).y;
+    fitted.forEach((f, i) => calls.push({ x: f.at.x, y: f.at.y, text: this.gives(f.id), side: 1, tx: colX, ty: colY + i * 46 }));
+    // the parts on offer: a sketched ring under each, its name and its bill in item icons
+    const bay = L.bay;
+    if (bay) bay.cands.forEach((c, i) => {
+      c.hover = this.drag?.i === i ? 1 : this.mouse && bay.candidateAt(this.mouse.x, this.mouse.y, L.cam) === i ? 1 : 0;
+      const pts: { x: number; y: number }[] = [];
+      for (let k = 0; k < 18; k++) { const a = (k / 18) * Math.PI * 2; pts.push(proj(new THREE.Vector3(c.pos.x + Math.cos(a) * 0.42, c.pos.y - 0.38, c.pos.z + Math.sin(a) * 0.42))); }
+      rings.push({ pts, hot: c.hover > 0 });
+      const at = proj(c.pos), part = CYBER[c.id], fitted = (this.d.fit ?? []).includes(c.id);
+      const st = this.opts.stock;
+      calls.push({ x: at.x, y: at.y + 48, text: (fitted ? 'FITTED · ' : '') + part.name.toUpperCase().replace(/ & .*$/, ''), hot: c.hover > 0, side: at.x < innerWidth / 2 ? -1 : 1, lift: -64,
+        icons: Object.entries(part.cost).filter(([, n]) => n > 0).slice(0, 4).map(([id, n]) => ({ id, n, short: !!st && st(id) < n })) });
+    });
+    // the slot under the cursor
+    if (this.hovReg && this.mouse && !this.drag) {
+      const sl = this.slotOf(this.hovReg), fp = (this.d.fit ?? []).find((id) => CYBER[id]?.slot === sl);
+      calls.push({ x: this.mouse.x, y: this.mouse.y, text: SLOT_NAME[sl], sub: fp ? CYBER[fp].name.toUpperCase() : 'EMPTY · CLICK', hot: true, side: this.mouse.x < innerWidth / 2 ? -1 : 1, lift: 60 });
+    }
+    const hint = this.drag ? 'DROP IT ON THE BODY' : bay?.cands.length ? 'DRAG A PART ONTO THE BODY' : 'CLICK THE ANIMAL WHERE A PART GOES';
+    this.fitUI.frame(dt, calls, rings, hint);
   }
 
   // ---------------------------------------------------------------------------------------------- readouts
@@ -390,12 +428,26 @@ export class Forge implements Screen {
   // ---------------------------------------------------------------------------------------------- input
   private onDown = (e: PointerEvent) => {
     if (this.closing) return;
+    // the fitting bay: grab a floating part
+    if (this.mode === 'fit' && this.L.bay?.cands.length) {
+      const i = this.L.bay.candidateAt(e.clientX, e.clientY, this.L.cam);
+      if (i >= 0) { this.drag = { i, moved: false }; this.L.bay.cands[i].held = true; sfx('click', 1.5, 0.4); Tip.hide(); return; }
+    }
     this.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (this.pts.size === 2) { const [a, b] = [...this.pts.values()]; this.pinch = Math.hypot(a.x - b.x, a.y - b.y); this.ptr = null; return; }
     this.ptr = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, type: e.pointerType };
     Tip.hide();
   };
   private onMove = (e: PointerEvent) => {
+    if (this.drag && this.L.bay) {
+      // the held part follows the cursor on a plane facing the camera through where it floated
+      const c = this.L.bay.cands[this.drag.i]; if (!c) { this.drag = null; return; }
+      this.drag.moved = true;
+      const ray = this.L.rayAt(e.clientX, e.clientY), n = this.L.cam.getWorldDirection(new THREE.Vector3()), plane = new THREE.Plane().setFromNormalAndCoplanarPoint(n, new THREE.Vector3(0, c.home.y, 0.4));
+      const hit = ray.intersectPlane(plane, new THREE.Vector3()); if (hit) c.pos.copy(hit);
+      this.mouse = { x: e.clientX, y: e.clientY };
+      return;
+    }
     if (this.pts.has(e.pointerId)) this.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (this.pts.size === 2 && this.pinch > 0) {
       const [a, b] = [...this.pts.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
@@ -412,6 +464,17 @@ export class Forge implements Screen {
     p.x = e.clientX; p.y = e.clientY;
   };
   private onUp = (e: PointerEvent) => {
+    if (this.drag && this.L.bay) {
+      const d = this.drag, c = this.L.bay.cands[d.i]; this.drag = null;
+      if (c) {
+        c.held = false;
+        // dropped on the body (or just clicked): fit it; dropped elsewhere: it floats home
+        const onBody = !d.moved || !!this.L.pickRegion(e.clientX, e.clientY) || c.pos.distanceTo(new THREE.Vector3(0, c.pos.y, 0)) < 1.1;
+        if (onBody) { this.pickPart(c.id, 'ok'); this.L.bay.clearCandidates(); this.slot = null; }
+        else sfx('close', 1.4, 0.3);
+      }
+      return;
+    }
     this.pts.delete(e.pointerId); if (this.pts.size < 2) this.pinch = 0;
     const p = this.ptr; if (!p || p.id !== e.pointerId) return;
     this.ptr = null;
@@ -421,7 +484,7 @@ export class Forge implements Screen {
   private onWheel = (e: WheelEvent) => { this.L.distGoal = clamp(this.L.distGoal * (e.deltaY > 0 ? 1.1 : 0.9), 3.4, 11); };
   private onKey = (e: KeyboardEvent) => {
     if (this.closing) return;
-    if (e.key === 'Escape') { if (this.ui.shelfBox.classList.contains('open')) this.ui.closeShelf(); else if (this.mode === 'fit') this.setMode('genes'); else if (this.tab !== 'genome') this.openTab('genome', true); else this.close(null); }
+    if (e.key === 'Escape') { if (this.ui.shelfBox.classList.contains('open')) this.ui.closeShelf(); else if (this.mode === 'fit') { if (this.opts.fit) this.close(null); else this.setMode('genes'); } else if (this.tab !== 'genome') this.openTab('genome', true); else this.close(null); }
     else if (e.key === 'f' || e.key === 'F') { if (document.activeElement !== this.ui.nameIn) this.setMode(this.mode === 'fit' ? 'genes' : 'fit'); }
     else if (e.key === 'ArrowRight') this.ui.strip.scrollBy({ left: 160, behavior: 'smooth' });
     else if (e.key === 'ArrowLeft') this.ui.strip.scrollBy({ left: -160, behavior: 'smooth' });
@@ -468,10 +531,8 @@ export class Forge implements Screen {
         const hit = this.L.pickRegion(m.x, m.y);
         if (hit) reg = hit.reg; else jar = this.L.pickJar(this.L.rayAt(m.x, m.y));
         if (reg && reg !== this.hovReg) sfx('hover', 1.4, 0.4);
-        if (reg && this.mode === 'fit') {
-          const sl = this.slotOf(reg), fp = (this.d.fit ?? []).find((id) => CYBER[id]?.slot === sl);
-          this.ui.tag(`${SLOT_NAME[sl]}<i>${fp ? CYBER[fp].name.toUpperCase() : 'EMPTY'} · CLICK TO FIT</i>`, m.x, m.y);
-        } else if (reg) {
+        if (this.mode === 'fit') this.ui.tag(null);
+        else if (reg) {
           const t = REG_TABS[reg]?.[0];
           const names = t ? this.d.genes.filter((g) => tabOf(g) === t).map((g) => GENE[g].name) : [];
           this.ui.tag(`${REG_NAME[reg]}<i>${names.length ? names.join(' · ') : 'NOTHING GROWN HERE'} · CLICK TO EDIT</i>`, m.x, m.y);
@@ -488,6 +549,7 @@ export class Forge implements Screen {
     else this.L.hover(0, 0, SEL_COL);
     this.L.update(dt);
     this.icons.update(dt);
+    if (this.mode === 'fit') this.doodle(dt);
     this.ui.tickBubbles(dt, (i) => this.L.project(this.L.headPos(i)));
   }
   render(post: Post, t: number) {

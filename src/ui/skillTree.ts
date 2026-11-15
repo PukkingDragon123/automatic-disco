@@ -1,90 +1,86 @@
-// THE PROGRAM TERMINAL (replaces the old 1957 skill room): Unit 07's own console, opened with K. Four tabs on one
-// big phosphor CRT in a riveted gunmetal housing: MASTERY (the five engineering paths, src/ui/skillMastery.ts),
-// RESEARCH (data into tech, src/research/ui/researchTab.ts), UPGRADER (blueprints built from real parts and
-// installed on the pod) and MISSION (the Austral's quotas). The game is suspended while it is open.
+// THE PROGRAM (K): Unit 07's mastery, research, Upgrader and mission, each as ONE live 3D vignette with hand-drawn
+// paper pinned over it (lowpix stroke frames, ink text, callouts with leader lines to the thing itself):
+//   MASTERY   the path as a living diorama that grows as it is mastered (src/ui/skillMastery.ts)
+//   RESEARCH  the latest specimen under the scanner dome, the tech index cards (src/research/ui/researchTab.ts)
+//   UPGRADER  the Upgrader beside the pod, the part on the hoist (src/research/ui/upgraderTab.ts)
+//   MISSION   the Austral in orbit, the directives on a telegram (src/research/ui/missionTab.ts)
+// The game is suspended while it is open; the engine renders the vignette.
 import type { Engine, Screen } from '../app/engine';
 import type { Post } from '../gfx/post';
 import { el, ui, Tip } from './kit';
 import { sfx } from '../audio/audio';
 import { csfx } from './cineAudio';
-import { MasteryPage, type TabPage } from './skillMastery';
+import { MasteryPage } from './skillMastery';
 import { ResearchPage } from '../research/ui/researchTab';
 import { UpgraderPage } from '../research/ui/upgraderTab';
 import { MissionPage } from '../research/ui/missionTab';
 import { iconURL, iconsReady } from '../research/ui/icons';
-import { DATA_KINDS, DATA_NAME } from '../research/tech';
+import { installFrames } from '../research/ui/frames';
+import type { Vignette } from '../research/ui/stage3d';
 import type { Mastery, PathId } from '../research/mastery';
 import type { Research } from '../research/research';
 import type { Upgrades } from '../research/upgrades';
 import type { Mission } from '../research/mission';
-import { fmtTime, gtime } from '../research/util';
-import type { Game } from '../game/game';
-import { installHardware } from '../research/ui/hardware';
-import '../research/ui/terminal.css';
-import '../story/choice.css';
+import '../research/ui/paper.css';
 
 export type TabId = 'mastery' | 'research' | 'upgrader' | 'mission';
 const TABS: { id: TabId; name: string; icon: string; key: string }[] = [
-  { id: 'mastery', name: 'MASTERY', icon: 'gear', key: '1' },
+  { id: 'mastery', name: 'MASTERY', icon: 'sprout', key: '1' },
   { id: 'research', name: 'RESEARCH', icon: 'lens', key: '2' },
   { id: 'upgrader', name: 'UPGRADER', icon: 'wrench', key: '3' },
   { id: 'mission', name: 'MISSION', icon: 'arcs', key: '4' },
 ];
-/** what the terminal reads: the game (or a stand-in with the same fields) */
+/** what the screens read: the game (or a stand-in with the same fields) */
 export interface SkillHost { mastery?: Mastery; research?: Research; upgrades?: Upgrades; mission?: Mission; emit?(ev: string, d?: any): void; [k: string]: any }
+/** one tab: a vignette and the paper over it */
+export interface TabPage { vig: Vignette; el: HTMLElement; update(dt: number): void; dispose(): void; key?(e: KeyboardEvent): boolean }
 
 export class SkillTree implements Screen {
   static current: SkillTree | null = null;
-  private root: HTMLDivElement; private crt: HTMLDivElement; private tabsEl: HTMLDivElement; private clock: HTMLDivElement; private foot: HTMLDivElement;
+  private root: HTMLDivElement; private tabsEl: HTMLDivElement;
   private page: TabPage | null = null; tab: TabId;
-  private tabBtns = new Map<TabId, HTMLElement>(); private t = 0; private footT = 0;
-  constructor(readonly host: SkillHost, opts: { tab?: TabId; path?: PathId; close: () => void }) {
+  private tabBtns = new Map<TabId, HTMLElement>(); private lampT = 0;
+  private W = innerWidth; private H = innerHeight;
+  readonly close: () => void;
+  constructor(readonly host: SkillHost, readonly engine: Engine, opts: { tab?: TabId; path?: PathId; close: () => void }) {
     SkillTree.current = this;
-    installHardware();
+    installFrames();
     this.close = opts.close;
-    this.root = el('div', 'pt', ui());
-    const house = el('div', 'pt-house', this.root);
-    const top = el('div', 'pt-top', house);
-    const br = el('div', 'pt-brand', top); el('div', 'k', br, 'UNIT 07 · UNAA AUSTRAL'); el('div', 't', br, 'PROGRAM TERMINAL');
-    this.tabsEl = el('div', 'pt-tabs', top);
+    this.root = el('div', 'pp', ui());
+    this.tabsEl = el('div', 'pp-tabs', this.root);
+    const tt = el('div', 'pp-title pp-tag', this.tabsEl); el('div', 'k', tt, 'UNIT 07 · UNAA AUSTRAL'); el('div', 't', tt, 'PROGRAM');
     for (const tb of TABS) {
-      const b = el('div', 'pt-tab', this.tabsEl);
-      const im = el('img', 'pt-ico', b); im.src = iconURL(tb.icon, 'steel');
-      const tx = el('div', '', b); el('div', 'n', tx, `KEY ${tb.key}`); el('div', 'l', tx, tb.name);
-      el('div', 'dot', b);
+      const b = el('div', 'pp-tab', this.tabsEl);
+      const im = el('img', '', b); im.src = iconURL(tb.icon, 'phos');
+      el('span', '', b, tb.name); el('i', 'dot', b);
+      b.title = `key ${tb.key}`;
       b.addEventListener('click', () => this.show(tb.id));
       this.tabBtns.set(tb.id, b);
     }
-    this.clock = el('div', 'pt-clock', top);
-    const x = el('div', 'pt-x', top, 'CLOSE [K]');
+    const x = el('div', 'pp-key pp-close', this.tabsEl, 'CLOSE  K');
     x.addEventListener('click', () => this.close());
-    this.crt = el('div', 'pt-crt', house);
-    this.foot = el('div', 'pt-foot', house);
-    this.root.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.root.addEventListener('contextmenu', (e) => e.preventDefault());
     addEventListener('keydown', this.onKey, true);
     this.tab = opts.tab ?? 'mastery';
     this.show(this.tab, opts.path, true);
-    // the lowpix icon atlas arrives a moment later: rebuild the open page and the tab keys with it
-    void iconsReady.then(() => { if (SkillTree.current !== this) return; for (const [k, b] of this.tabBtns) { const im = b.querySelector('img'); const tb = TABS.find((q) => q.id === k); if (im && tb) im.src = iconURL(tb.icon, 'steel'); } if (this.tab !== 'mastery') this.show(this.tab, undefined, true); });
-    csfx('relay', 0.7); csfx('hum', 0.35);
+    void iconsReady.then(() => { if (SkillTree.current !== this) return; for (const [k, b] of this.tabBtns) { const im = b.querySelector('img'); const tb = TABS.find((q) => q.id === k); if (im && tb) im.src = iconURL(tb.icon, 'phos'); } this.show(this.tab, undefined, true); });
+    csfx('page', 0.6);
   }
-  readonly close: () => void;
-  show(id: TabId, path?: PathId, first = false) {
-    if (!first && id === this.tab && this.page) return;
+  show(id: TabId, path?: PathId, force = false) {
+    if (!force && id === this.tab && this.page) return;
+    const keepPath = this.page instanceof MasteryPage ? this.page.path : undefined;
     this.page?.dispose(); this.page = null; this.tab = id;
     for (const [k, b] of this.tabBtns) b.classList.toggle('on', k === id);
     const H = this.host;
     try {
-      if (id === 'mastery' && H.mastery) this.page = new MasteryPage(H.mastery, path, () => H.emit?.('mastery-perk', {}));
-      else if (id === 'research' && H.research) this.page = new ResearchPage(H.research);
-      else if (id === 'upgrader' && H.upgrades) this.page = new UpgraderPage(H.upgrades, H as unknown as Game, H.research ?? null);
-      else if (id === 'mission' && H.mission) this.page = new MissionPage(H.mission, H as unknown as Game);
-    } catch (e) { console.error('terminal tab', id, e); }
-    if (this.page) this.crt.appendChild(this.page.el);
-    else el('div', 'pt-page', this.crt, '<div class="pt-txt big">This console is not connected here.</div>');
-    if (!first) { csfx('relay', 0.5, 1.2); sfx('click'); }
-    this.footer();
+      if (id === 'mastery' && H.mastery) this.page = new MasteryPage(H.mastery, path ?? keepPath, () => H.emit?.('mastery-perk', {}));
+      else if (id === 'research' && H.research) this.page = new ResearchPage(H.research, H);
+      else if (id === 'upgrader' && H.upgrades) this.page = new UpgraderPage(H.upgrades, H as never, H.research ?? null);
+      else if (id === 'mission' && H.mission) this.page = new MissionPage(H.mission, H as never, this.engine.renderer);
+    } catch (e) { console.error('program tab', id, e); }
+    if (this.page) { this.root.insertBefore(this.page.el, this.tabsEl); this.page.vig.resize(this.W, this.H); }
+    if (!force) { csfx('page', 0.5, 1.1); sfx('click'); }
+    this.lamps();
   }
   private onKey = (e: KeyboardEvent) => {
     if (SkillTree.current !== this) return;
@@ -98,44 +94,36 @@ export class SkillTree implements Screen {
     if (k === 'tab') { e.preventDefault(); const i = TABS.findIndex((q) => q.id === this.tab); this.show(TABS[(i + (e.shiftKey ? 3 : 1)) % 4].id); return; }
     this.page?.key?.(e);
   };
-  private footer() {
-    const H = this.host, R = H.research, M = H.mission, f = this.foot; f.innerHTML = '';
-    if (R) for (const k of DATA_KINDS) el('div', 'pt-rd', f, `<span class="k">${DATA_NAME[k]}</span><b>${String(Math.floor(R.data[k])).padStart(3, '0')}</b>`);
-    if (H.mastery) { const pts = (['plant', 'bio', 'energy', 'industry', 'robotics'] as PathId[]).reduce((s, p) => s + Math.max(0, H.mastery!.points(p)), 0); el('div', 'pt-rd am', f, `<span class="k">POINTS</span><b>${pts}</b>`); }
-    if (M) el('div', 'pt-rd' + (M.strikes >= 2 ? ' am' : ''), f, `<span class="k">STRIKES</span><b>${M.strikes}/3</b><span class="k">REP</span><b>${Math.round(M.rep)}</b>`);
-    el('div', 'hint', f, `<b>1-4</b> TABS &nbsp;·&nbsp; <b>Q E</b> PAGE &nbsp;·&nbsp; <b>ENTER</b> CONFIRM &nbsp;·&nbsp; <b>K</b> CLOSE`);
-    // the tab lamps: something waiting on that tab
+  /** a red dot on a tab with something waiting on it */
+  private lamps() {
+    const H = this.host, R = H.research, M = H.mission;
+    const P: PathId[] = ['plant', 'bio', 'energy', 'industry', 'robotics'];
     const pend: Record<TabId, boolean> = {
-      mastery: !!H.mastery && (['plant', 'bio', 'energy', 'industry', 'robotics'] as PathId[]).some((p) => H.mastery!.points(p) > 0 || H.mastery!.canFocus(p)),
+      mastery: !!H.mastery && P.some((p) => H.mastery!.points(p) > 0 || H.mastery!.canFocus(p)),
       research: !!R && R.queue.length === 0,
       upgrader: !!H.upgrades && !!R && ['pod_plating', 'arm_grapple', 'drone_scout'].some((b) => R.unlocked(b) && !H.upgrades!.has(b)),
       mission: !!M && M.open().some((q) => M.progress(q).ok),
     };
     for (const [k, b] of this.tabBtns) b.querySelector('.dot')?.classList.toggle('on', pend[k]);
-    const G = H as unknown as Game, now = H.world ? gtime(G) : 0;
-    const day = Math.floor(now / 600) + 1, open = M?.open?.()[0];
-    this.clock.innerHTML = `<div class="pt-rd"><span class="k">SOL</span><b>${String(day).padStart(2, '0')}</b><b>${fmtTime(now % 600)}</b></div><div class="pt-rd${open && open.due - now < 120 ? ' am' : ''}"><span class="k">DUE</span><b>${open ? fmtTime(open.due - now) : '--:--'}</b></div>`;
   }
   update(dt: number) {
-    this.t += dt; this.footT -= dt;
-    // the colony's systems keep their own clocks: nothing ticks while the terminal is up, except the Upgrader page
-    try { this.page?.update(dt); } catch (e) { console.error('terminal page', e); }
-    if (this.footT <= 0) { this.footT = 0.5; this.footer(); }
+    this.lampT -= dt; if (this.lampT <= 0) { this.lampT = 0.5; this.lamps(); }
+    try { this.page?.vig.update(dt); this.page?.update(dt); } catch (e) { console.error('program page', e); }
   }
-  render(_post: Post, _t: number) { /* the CRT covers the screen */ }
+  render(post: Post, t: number) { this.page?.vig.render(post, t); }
+  resize(w: number, h: number) { this.W = innerWidth; this.H = innerHeight; void w; void h; this.page?.vig.resize(this.W, this.H); }
   dispose() {
     if (SkillTree.current === this) SkillTree.current = null;
     removeEventListener('keydown', this.onKey, true);
     this.page?.dispose(); this.root.remove(); Tip.hide();
-    csfx('relay', 0.5, 0.8);
   }
 }
 
 // ------------------------------------------------------------------ wiring helpers
-/** open the terminal over a game (idempotent) */
+/** open the program over a game (idempotent) */
 export function openSkillTree(engine: Engine, host: SkillHost, tab?: TabId, path?: PathId) {
   if (SkillTree.current) { if (tab) SkillTree.current.show(tab, path); return SkillTree.current; }
-  const s = new SkillTree(host, { tab, path, close: () => { if (engine.screen === s) engine.pop(); else s.dispose(); } });
+  const s = new SkillTree(host, engine, { tab, path, close: () => { if (engine.screen === s) engine.pop(); else s.dispose(); } });
   engine.push(s);
   return s;
 }

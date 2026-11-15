@@ -26,13 +26,10 @@ const CSS = /* css */`
 .cine .sub .who { display: block; font-size: var(--cf-vt1); line-height: calc(var(--cf-vt1) + 2px); letter-spacing: 1px; }
 .cine .sub.out { opacity: 0; transition: opacity 220ms steps(3); }
 @keyframes cine-sub-in { 0% { opacity: 0; transform: translateY(calc(3 * var(--u))); } 100% { opacity: 1; transform: none; } }
-.cine .sub.radio { background: #1b2329; border: calc(2 * var(--u)) solid #3e4245; outline: 1px solid #14161b; border-radius: calc(4 * var(--u)); padding: calc(3 * var(--u)) calc(6 * var(--u)); color: #9cc5ae; text-shadow: none; position: relative; overflow: hidden; box-shadow: 0 0 0 1px #55595b inset; }
-.cine .sub.radio::after { content: ''; position: absolute; inset: 0; background: var(--scan); pointer-events: none; animation: cine-roll 3s linear infinite; }
-@keyframes cine-roll { from { background-position: 0 0; } to { background-position: 0 calc(40 * var(--u)); } }
-.cine .sub.radio .who { color: #d2cab4; text-shadow: none; }
-.cine .sub.radio .who::before { content: '\\25C9  RX \\00B7  '; color: #c9a464; animation: cine-blink 1s steps(2) infinite; }
-.cine .sub.radio.static { animation: cine-sub-in 220ms steps(4), cine-static 120ms steps(2) 3; }
-@keyframes cine-static { 0% { filter: brightness(2) contrast(2); } 100% { filter: none; } }
+.cine .sub.radio { background: #e2dbc6; border: 2px solid #1a1714; padding: 6px 14px; color: #1f232b; box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.55); position: relative; }
+.cine .sub.radio .who { color: #8a3a2a; }
+.cine .sub.radio .who::before { content: '\\25C9  '; color: #b8382e; animation: cine-blink 1s steps(2) infinite; }
+.cine .sub.radio.static { animation: cine-sub-in 220ms steps(4); }
 .cine .sub.film { color: #e2dbc6; text-shadow: calc(1 * var(--u)) calc(1 * var(--u)) 0 #000, 0 0 calc(3 * var(--u)) rgba(0, 0, 0, 0.9); text-align: center; padding: calc(5 * var(--u)) calc(14 * var(--u)); background:
   linear-gradient(90deg, #14161b 0 40%, transparent 40%) 0 calc(1 * var(--u)) / calc(10 * var(--u)) calc(3 * var(--u)) repeat-x,
   linear-gradient(90deg, #14161b 0 40%, transparent 40%) 0 calc(100% - 1 * var(--u)) / calc(10 * var(--u)) calc(3 * var(--u)) repeat-x,

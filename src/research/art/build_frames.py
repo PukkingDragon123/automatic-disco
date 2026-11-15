@@ -13,11 +13,11 @@ from lowpix.sprite import render_sprite  # noqa: E402
 S = 128
 HERE = os.path.dirname(os.path.abspath(__file__))
 MATS = {
-    'paper': {'base': '#e6dcc4', 'steps': 4, 'texture': 'cloth', 'contrast': 0.28, 'hue_shift': 0.02},
-    'paper2': {'base': '#d8cdb0', 'steps': 4, 'texture': 'cloth', 'contrast': 0.3},
+    'paper': {'base': '#ece4d0', 'steps': 3, 'texture': 'cloth', 'contrast': 0.12, 'hue_shift': 0.01},
+    'paper2': {'base': '#e2d8c0', 'steps': 3, 'texture': 'cloth', 'contrast': 0.12},
     'ink': {'base': '#2b2622', 'steps': 4, 'contrast': 0.8},
     'red': {'base': '#a8332a', 'steps': 5},
-    'amber': {'base': '#d9a43a', 'steps': 4, 'texture': 'cloth', 'contrast': 0.35},
+    'amber': {'base': '#e8c070', 'steps': 3, 'texture': 'cloth', 'contrast': 0.14},
     'tape': {'base': '#d8c890', 'steps': 5, 'texture': 'cloth', 'contrast': 0.5},
     'pin': {'base': '#b8382e', 'steps': 6, 'spec': 1},
 }
@@ -57,13 +57,16 @@ def tape(cx, cy, ang, w=26, h=10):
     return {'type': 'polygon', 'points': pts, 'material': 'tape', 'form': 'pillow', 'bevel': 2, 'part': 'tape', 'z': 5}
 
 def frame(kind, seed):
+    global S
     rng = random.Random(seed)
-    m = 9
+    small = kind in ('tag', 'key', 'keyhot', 'tab', 'tabon')
+    S = 64 if small else 128
+    m = 5 if small else 9
     shapes = []
     if kind in ('card', 'note', 'key', 'keyhot', 'tab', 'tabon', 'tag'):
         mat = {'keyhot': 'amber', 'tabon': 'paper', 'tag': 'paper2'}.get(kind, 'paper')
         shapes.append(sheet(rng, m, m, S - m, S - m, mat, 0.6 if kind in ('key', 'keyhot', 'tab', 'tabon') else 1.0))
-        shapes += outline(rng, m, m, S - m, S - m, 'ink', 3.2 if kind in ('key', 'keyhot') else 2.6, tile=True)
+        shapes += outline(rng, m, m, S - m, S - m, 'ink', (2.6 if kind in ('key', 'keyhot') else 2.0) if small else 2.6, 2 if small else 3, tile=True)
     if kind == 'frame':
         shapes += outline(rng, m, m, S - m, S - m, 'ink', 2.8, tile=True)
     if kind == 'stamp':

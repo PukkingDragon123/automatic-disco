@@ -282,7 +282,8 @@ export class FitBay {
     this.clearCandidates();
     const n = ids.length;
     ids.forEach((id, i) => {
-      const a = -Math.PI * 0.45 + (n === 1 ? 0.45 * Math.PI : (i / (n - 1)) * Math.PI * 0.9), home = new THREE.Vector3(Math.sin(a) * radius, 0, Math.cos(a) * radius * 0.55 + 0.4).add(centre);
+      // an arc in front of the tank, spread across the shot
+      const f = n === 1 ? 0 : i / (n - 1) - 0.5, home = new THREE.Vector3(f * radius * 2, Math.abs(f) * 0.35, -Math.abs(f) * 0.5).add(centre);
       const obj = new THREE.Group(); obj.position.copy(home); obj.scale.setScalar(0.001); this.root.add(obj);
       loadPart(id).then((m) => { if (m && obj.parent) obj.add(m.clone(true)); });
       this.cands.push({ id, obj, home, pos: home.clone(), held: false, hover: 0, spin: i * 1.7 });

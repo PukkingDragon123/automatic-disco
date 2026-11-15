@@ -84,7 +84,10 @@ export class GameDescent {
     addEventListener('keydown', key, true); g.engine.canvas.addEventListener('pointerdown', click);
     this.off.push(() => removeEventListener('keydown', key, true), () => g.engine.canvas.removeEventListener('pointerdown', click));
     g.update$.push(this.tick);
+    (window as unknown as { __descent?: GameDescent }).__descent = this;
   }
+  /** QA: seconds into the drop */
+  get time() { return this.t; }
   private skip() { if (this.t < T_TOUCH) this.t = T_TOUCH - 0.01; else if (this.t < T_END - 0.5) this.t = T_END - 0.5; }
   /** the pod's height above the ground at time t */
   private alt(t: number) {

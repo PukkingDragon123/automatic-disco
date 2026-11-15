@@ -6,7 +6,6 @@ import type { NodeMap } from './map';
 import type { LNode, Route } from '../../logistics/network';
 import { itemFor } from '../../logistics/recipes';
 import { toast } from '../kit';
-import { paintHW } from '../build/hw';
 import { sfx } from '../../audio/audio';
 
 interface Step { h: string; b: () => string; done: () => boolean; marks: () => string[] }
@@ -17,7 +16,7 @@ export class Tutorial {
   private key = '';
   private t = 0;
   constructor(readonly m: NodeMap, host: HTMLElement) {
-    this.el = document.createElement('div'); this.el.className = 'nm-tut'; this.el.dataset.hw = 'paper'; host.appendChild(this.el);
+    this.el = document.createElement('div'); this.el.className = 'nm-tut'; host.appendChild(this.el);
     this.el.addEventListener('click', (e) => {
       const a = (e.target as HTMLElement).closest('[data-a]') as HTMLElement | null; if (!a) return;
       if (a.dataset.a === 'next') this.next();
@@ -50,9 +49,9 @@ export class Tutorial {
     const L = this.L;
     const need = (what: string, cat: string) => `<br><br>There is no <b>${what}</b> yet: close the map, press <b>B</b> and build one from <b>${cat}</b>. The crew will bring the materials and raise it.`;
     return [
-      { h: 'THE NODE MAP', b: () => 'Every card is a real thing in the colony: the pod\'s stores, buildings, containers, deposits and fields, where they stand. A <b>wire</b> between two cards is a route: workers walk it, carrying what the source has and the target takes. We will build an iron ingot chain.', done: () => false, marks: () => [] },
-      { h: 'DIG THE ORE', b: () => { const d = this.deposit(), c = this.containers()[0]; return d ? (c ? `Drag from the output tab (right edge) of <b>${this.name(d)}</b> to <b>${this.name(c)}</b>. Workers will dig the seam by hand and fill the container: it becomes the <b>ore bunker</b>.` : `Found <b>${this.name(d)}</b>.` + need('storage crate', 'STORAGE')) : 'No ore deposit near the colony. Scan the ground (X) to find one.'; }, done: () => !!this.bunkerRoute(), marks: () => [this.deposit()?.id ?? '', this.containers()[0]?.id ?? ''] },
-      { h: 'GIVE IT A WORKER', b: () => 'Click the new wire. In the inspector on the right, tick a worker under <b>WORKERS</b>: it is now dedicated to this route and will do nothing else. Free haulers can still help unless you switch that off.', done: () => (this.bunkerRoute()?.workers.length ?? 0) > 0, marks: () => [] },
+      { h: 'THE NODE MAP', b: () => 'This table is the colony in miniature: the pod, every building and container, the deposits and the fields, where they stand. Ink a <b>wire</b> between two of them and it becomes a route: workers walk it, carrying what the source has and the target takes. We will wire an iron ingot chain.', done: () => false, marks: () => [] },
+      { h: 'DIG THE ORE', b: () => { const d = this.deposit(), c = this.containers()[0]; return d ? (c ? `Drag from the plug (the ink ring by its tag) of <b>${this.name(d)}</b> to <b>${this.name(c)}</b>. Workers will dig the seam by hand and fill the container: it becomes the <b>ore bunker</b>.` : `Found <b>${this.name(d)}</b>.` + need('storage crate', 'STORAGE')) : 'No ore deposit near the colony. Scan the ground (X) to find one.'; }, done: () => !!this.bunkerRoute(), marks: () => [this.deposit()?.id ?? '', this.containers()[0]?.id ?? ''] },
+      { h: 'GIVE IT A WORKER', b: () => 'Click the new wire (or its tag). On the sheet to the right, tick a worker under <b>WORKERS</b>: it now walks this route and nothing else. Free haulers still help unless you switch that off.', done: () => (this.bunkerRoute()?.workers.length ?? 0) > 0, marks: () => [] },
       { h: 'FEED THE SMELTER', b: () => { const s = this.smelter(), br = this.bunkerRoute(); return s ? `Wire <b>${this.name(br ? L.node(br.to) : null)}</b> to <b>${this.name(s)}</b>. Then, on that wire, pick <b>IRON ORE</b> under ITEMS so nothing else is carried in.` : need('smelter', 'PROCESSING'); }, done: () => { const r = this.feedRoute(), d = this.deposit(); return !!r && r.filter.some((id) => id === this.ore() || id === L.seam(d!)?.item); }, marks: () => { const br = this.bunkerRoute(); return [br?.to ?? '', this.smelter()?.id ?? '']; } },
       { h: 'CLEAR THE INGOTS', b: () => { const c = this.containers().filter((n) => n.id !== this.bunkerRoute()?.to)[0]; return c ? `Wire <b>${this.name(this.smelter())}</b> to <b>${this.name(c)}</b>: the <b>ingot bin</b>. A smelter whose output is full stops.` : need('second storage crate', 'STORAGE'); }, done: () => !!this.binRoute(), marks: () => [this.smelter()?.id ?? '', this.containers().filter((n) => n.id !== this.bunkerRoute()?.to)[0]?.id ?? ''] },
       { h: 'WATCH IT RUN', b: () => { const r = this.binRoute(); return `Packets on the wires are loads in workers' arms. A wire that stalls says why, in amber, on its plate. Wait for the first ingots to reach the bin (${r?.moved ?? 0}/4).`; }, done: () => (this.binRoute()?.moved ?? 0) >= 4, marks: () => [] },
@@ -85,6 +84,5 @@ export class Tutorial {
     const manual = this.step === 1 || this.step === all.length;
     this.el.innerHTML = `<div class="st">FIRST CHAIN · STEP ${this.step} OF ${all.length}</div><div class="h">${st.h}</div><div class="b">${body}</div>
       <div class="row">${this.step === 7 ? '<span class="tb" data-a="save">SAVE IT</span>' : ''}${manual ? `<span class="tb" data-a="next">${this.step === all.length ? 'DONE' : 'BEGIN'}</span>` : '<span class="ok">WAITING FOR YOU TO DO IT</span>'}<span class="sp"></span><span class="tb ghost" data-a="skip">CLOSE GUIDE</span></div>`;
-    requestAnimationFrame(() => paintHW(this.el));
   }
 }

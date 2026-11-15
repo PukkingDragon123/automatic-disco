@@ -72,15 +72,14 @@ function engineTex() {
 // ------------------------------------------------------------------ lofting
 type Sec = { z: number; hw: number; top: number; bot: number; ct: number; cb: number };
 const SECS: Sec[] = [
-  { z: -28.6, hw: 9.2, top: 3.4, bot: -2.2, ct: 1.6, cb: 2.0 },
-  { z: -27.4, hw: 10.4, top: 4.1, bot: -3.0, ct: 1.1, cb: 2.2 },
-  { z: -26.0, hw: 10.75, top: 4.3, bot: -3.2, ct: 0.9, cb: 2.3 },
-  { z: 16.5, hw: 10.75, top: 4.3, bot: -3.2, ct: 0.9, cb: 2.3 },
-  { z: 21.0, hw: 9.6, top: 4.2, bot: -3.0, ct: 1.0, cb: 2.2 },
-  { z: 25.0, hw: 7.8, top: 4.0, bot: -2.6, ct: 1.1, cb: 2.0 },
-  { z: 28.0, hw: 5.9, top: 3.7, bot: -2.0, ct: 1.2, cb: 1.7 },
-  { z: 30.6, hw: 3.6, top: 2.6, bot: -1.0, ct: 1.0, cb: 1.1 },
-  { z: 31.6, hw: 1.6, top: 1.4, bot: -0.2, ct: 0.6, cb: 0.6 },
+  { z: -15.0, hw: 6.6, top: 3.4, bot: -2.0, ct: 1.4, cb: 1.8 },
+  { z: -14.4, hw: 7.3, top: 4.1, bot: -2.7, ct: 1.0, cb: 2.0 },
+  { z: -13.8, hw: 7.55, top: 4.3, bot: -2.9, ct: 0.9, cb: 2.1 },
+  { z: 11.6, hw: 7.55, top: 4.3, bot: -2.9, ct: 0.9, cb: 2.1 },
+  { z: 14.6, hw: 6.8, top: 4.25, bot: -2.7, ct: 0.9, cb: 2.0 },
+  { z: 17.5, hw: 5.1, top: 4.1, bot: -2.2, ct: 0.9, cb: 1.7 },
+  { z: 19.8, hw: 3.4, top: 3.7, bot: -1.4, ct: 0.8, cb: 1.2 },
+  { z: 21.2, hw: 1.6, top: 2.2, bot: -0.3, ct: 0.6, cb: 0.6 },
 ];
 /** a section's three arcs (x, y), each ordered around from starboard over the top / under the keel */
 function arcs(s: Sec) {
@@ -137,7 +136,7 @@ export function hullAt(z: number) {
 }
 
 // ------------------------------------------------------------------ the ship
-const ROOF_CUTS = [-28.6, -20, -12, -4, 4, 12, 16.5, 31.6];
+const ROOF_CUTS = [-15.0, -10, -5, 0, 5, 11.6, 21.2];
 
 export function buildExterior(bin: Bin, M: Mats, _renderer: THREE.WebGLRenderer): Exterior {
   const root = new THREE.Group(); root.name = 'exterior';
@@ -151,49 +150,49 @@ export function buildExterior(bin: Bin, M: Mats, _renderer: THREE.WebGLRenderer)
   const glassM = M.get('ext.glass', { color: 0x1a2a34, rough: 0.05, metal: 0.6, env: 1.6 });
   const haz = M.get('ext.haz', { map: hazardTex(), rough: 0.6 });
   // ---- the hull: lower (always), starboard upper (always), roof plates (lift away)
-  const low = new THREE.Mesh(bin.g(loftArc('low', -28.6, 31.6)), white); low.castShadow = true; low.receiveShadow = true; root.add(low);
-  const stb = new THREE.Mesh(bin.g(loftArc('stbd', -28.6, 16.5)), white); stb.castShadow = true; stb.receiveShadow = true; root.add(stb);
+  const low = new THREE.Mesh(bin.g(loftArc('low', -15.0, 21.2)), white); low.castShadow = true; low.receiveShadow = true; root.add(low);
+  const stb = new THREE.Mesh(bin.g(loftArc('stbd', -15.0, 11.6)), white); stb.castShadow = true; stb.receiveShadow = true; root.add(stb);
   const plates: { g: THREE.Group; i: number }[] = [];
   for (let i = 0; i < ROOF_CUTS.length - 1; i++) {
     const g = new THREE.Group(); g.name = 'roof' + i; root.add(g);
     const m = new THREE.Mesh(bin.g(loftArc('roof', ROOF_CUTS[i], ROOF_CUTS[i + 1])), white); m.castShadow = true; m.receiveShadow = true; g.add(m);
-    if (ROOF_CUTS[i + 1] > 16.5) { const z0 = Math.max(16.5, ROOF_CUTS[i]); const sm = new THREE.Mesh(bin.g(loftArc('stbd', z0, ROOF_CUTS[i + 1])), white); sm.castShadow = true; sm.receiveShadow = true; g.add(sm); }
+    if (ROOF_CUTS[i + 1] > 11.6) { const z0 = Math.max(11.6, ROOF_CUTS[i]); const sm = new THREE.Mesh(bin.g(loftArc('stbd', z0, ROOF_CUTS[i + 1])), white); sm.castShadow = true; sm.receiveShadow = true; g.add(sm); }
     plates.push({ g, i });
   }
   // the deck caps where the cut runs (between the skin and the interior walls)
   const capM = M.get('ext.cap', { color: 0x2a2e30, rough: 0.6, metal: 0.4 });
   const capB = new Batch(bin);
-  capB.add(box(0.75, 0.06, 43.4), capM, { x: -10.38, y: CUT_H + 0.03, z: -5.3 });
-  capB.add(box(0.75, 0.06, 43.4), capM, { x: 10.38, y: WALL_H + 0.03, z: -5.3 });
-  capB.add(box(20.8, 0.06, 1.4), capM, { x: 0, y: CUT_H + 0.03, z: -27.6 });
+  capB.add(box(0.4, 0.06, 25.6), capM, { x: -7.38, y: CUT_H + 0.03, z: -1.2 });
+  capB.add(box(0.4, 0.06, 25.6), capM, { x: 7.38, y: WALL_H + 0.03, z: -1.2 });
+  capB.add(box(15.0, 0.06, 1.2), capM, { x: 0, y: CUT_H + 0.03, z: -14.5 });
   // a bright edge line along the cut (the section's lit lip)
-  capB.add(box(0.04, 0.07, 43.4), M.glow('cutline', 0xd9a43a, 1.1), { x: -10.74, y: CUT_H + 0.035, z: -5.3 });
+  capB.add(box(0.04, 0.07, 25.6), M.glow('cutline', 0xd9a43a, 1.1), { x: -7.56, y: CUT_H + 0.035, z: -1.2 });
   // the stern plate up to the cut, the engine block, the bells
   const B = new Batch(bin);
-  const st = hullAt(-28.6);
+  const st = hullAt(-15.0);
   {
     const sh = new THREE.Shape();
     const pts = [...arcs(st).low, ...arcs(st).stbd.slice(1)];
     pts.forEach(([x, y], i) => (i ? sh.lineTo(x, y) : sh.moveTo(x, y)));
-    const g = new THREE.ShapeGeometry(sh); g.rotateY(Math.PI); B.add(g, dark, { z: -28.6 });
+    const g = new THREE.ShapeGeometry(sh); g.rotateY(Math.PI); B.add(g, dark, { z: -15.0 });
   }
   // the engine section: a low housing under the deck line (it never hides the rooms), side nacelles, the thrust
   // frame and three main bells with two smaller ones on the nacelles; pipes and tanks on top
-  B.add(box(12.6, 3.2, 6.0, 0.35), dark, { x: 0, y: -1.5, z: -31.6 });
-  B.add(box(13.0, 0.3, 6.2, 0.1), gun, { x: 0, y: 0.25, z: -31.6 });
-  for (let k = 0; k < 5; k++) B.add(box(10.6, 0.08, 0.3), black, { x: 0, y: 0.42, z: -33.8 + k * 1.1 });
-  for (const [x, col] of [[-3.2, 'pipeR'], [-2.6, 'pipeB'], [2.6, 'pipeB'], [3.2, 'pipeR']] as [number, string][]) B.add(cyl(0.16, 0.16, 6.4, 10), M.get('ext.' + col, { color: col === 'pipeR' ? 0x9a3a2e : 0x3a5a86, rough: 0.45, metal: 0.4 }), { x, y: 0.62, z: -31.6, rx: Math.PI / 2 });
+  B.add(box(10.0, 3.0, 5.0, 0.3), dark, { x: 0, y: -1.5, z: -17.5 });
+  B.add(box(10.4, 0.3, 5.2, 0.1), gun, { x: 0, y: 0.15, z: -17.5 });
+  for (let k = 0; k < 4; k++) B.add(box(8.6, 0.08, 0.3), black, { x: 0, y: 0.32, z: -19.4 + k * 1.1 });
+  for (const [x, col] of [[-3.2, 'pipeR'], [-2.6, 'pipeB'], [2.6, 'pipeB'], [3.2, 'pipeR']] as [number, string][]) B.add(cyl(0.14, 0.14, 5.2, 10), M.get('ext.' + col, { color: col === 'pipeR' ? 0x9a3a2e : 0x3a5a86 }), { x, y: 0.5, z: -17.5, rx: Math.PI / 2 });
   for (const s of [-1, 1]) {
-    B.add(new THREE.SphereGeometry(1.1, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), M.get('ext.tank', { color: 0xd8d4c4, rough: 0.5, metal: 0.2 }), { x: s * 5.0, y: 0.35, z: -30.2 });
-    B.add(cyl(1.3, 1.3, 9.0, 20), grey, { x: s * 8.7, y: -1.8, z: -31.4, rx: Math.PI / 2 });
-    B.add(cyl(1.42, 1.42, 0.5, 20), haz, { x: s * 8.7, y: -1.8, z: -27.4, rx: Math.PI / 2 });
-    B.add(lathe([[0, 0], [1.3, 0], [1.1, 1.2], [0.4, 1.8], [0, 1.9]], 20), grey, { x: s * 8.7, y: -1.8, z: -26.9, rx: Math.PI / 2 });
-    B.add(box(2.8, 0.5, 4.0, 0.1), gun, { x: s * 7.2, y: -1.2, z: -30.0 });
+    B.add(new THREE.SphereGeometry(1.1, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), M.get('ext.tank', { color: 0xd8d4c4, rough: 0.5, metal: 0.2 }), { x: s * 3.9, y: 0.25, z: -16.4 });
+    B.add(cyl(1.0, 1.0, 7.0, 20), grey, { x: s * 7.0, y: -1.8, z: -17.0, rx: Math.PI / 2 });
+    B.add(cyl(1.1, 1.1, 0.4, 20), haz, { x: s * 7.0, y: -1.8, z: -13.8, rx: Math.PI / 2 });
+    B.add(lathe([[0, 0], [1.0, 0], [0.85, 0.9], [0.3, 1.4], [0, 1.5]], 20), grey, { x: s * 7.0, y: -1.8, z: -13.5, rx: Math.PI / 2 });
+    B.add(box(2.2, 0.4, 3.2, 0.1), gun, { x: s * 5.8, y: -1.2, z: -16.6 });
   }
   const bells: THREE.Vector3[] = [];
   const bellG = lathe([[1.0, 0], [1.25, -0.4], [1.75, -1.6], [2.1, -2.9], [2.0, -2.9], [1.6, -1.7], [1.1, -0.5], [0.85, -0.05]], 32);
   const bellM = M.get('bell', { color: 0x4a4440, rough: 0.3, metal: 0.85, env: 1.0 });
-  for (const [x, y, z, s] of [[-4.0, -1.5, -34.6, 0.78], [0, -1.5, -34.6, 0.9], [4.0, -1.5, -34.6, 0.78], [-8.7, -1.8, -35.9, 0.5], [8.7, -1.8, -35.9, 0.5]] as [number, number, number, number][]) {
+  for (const [x, y, z, s] of [[-3.1, -1.5, -20.0, 0.62], [0, -1.5, -20.0, 0.72], [3.1, -1.5, -20.0, 0.62], [-7.0, -1.8, -20.5, 0.4], [7.0, -1.8, -20.5, 0.4]] as [number, number, number, number][]) {
     B.add(bellG.clone(), bellM, { x, y, z, rx: Math.PI / 2, s });
     B.add(cyl(1.05 * s, 1.15 * s, 0.6, 24), gun, { x, y, z: z + 0.1, rx: Math.PI / 2 });
     for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; B.add(box(0.12, 0.12, 1.2), gun, { x: x + Math.cos(a) * 1.2 * s, y: y + Math.sin(a) * 1.2 * s, z: z + 0.5 }); }
@@ -210,66 +209,66 @@ export function buildExterior(bin: Bin, M: Mats, _renderer: THREE.WebGLRenderer)
     const lit = M.glow('canopy', 0x9fc6d8, 0.55);
     for (let k = 0; k < 7; k++) {
       const a0 = -0.95 + k * 0.27;
-      const zc = 26.0 + Math.cos(a0) * 2.6, xc = Math.sin(a0) * 6.0;
-      cb.add(quad(1.7, 1.15), lit, { x: xc, y: 3.55, z: zc, ry: a0, rx: -0.75 });
-      cb.add(box(0.12, 1.25, 0.1), gun, { x: Math.sin(a0 - 0.135) * 6.05, y: 3.55, z: 26.0 + Math.cos(a0 - 0.135) * 2.65, ry: a0, rx: -0.75 });
+      const zc = 17.4 + Math.cos(a0) * 1.9, xc = Math.sin(a0) * 4.2;
+      cb.add(quad(1.2, 0.95), lit, { x: xc, y: 3.55, z: zc, ry: a0, rx: -0.75 });
+      cb.add(box(0.1, 1.05, 0.1), gun, { x: Math.sin(a0 - 0.135) * 4.25, y: 3.55, z: 17.4 + Math.cos(a0 - 0.135) * 1.95, ry: a0, rx: -0.75 });
     }
-    cb.add(box(13.0, 0.2, 0.3), gun, { x: 0, y: 4.05, z: 26.6, rx: -0.75 });
+    cb.add(box(9.0, 0.18, 0.28), gun, { x: 0, y: 4.0, z: 17.8, rx: -0.75 });
     cb.flush(bow, 'canopy');
   }
   // ---- windows where the rooms are (warm in the quarters and mess, cool in the lab and medbay)
   const winTex = cached('winrow', () => { const [c, g] = canvas(256, 64); g.fillStyle = '#1a1c1e'; g.fillRect(0, 0, 256, 64); for (let i = 0; i < 4; i++) { g.fillStyle = '#d8e0d8'; g.fillRect(8 + i * 62, 10, 50, 44); g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(8 + i * 62, 10, 50, 6); g.fillStyle = 'rgba(255,255,255,0.4)'; g.fillRect(12 + i * 62, 40, 20, 3); } return toTex(c, { repeat: false }); });
-  const windows: [number, number, number, number][] = [[-1, 12.5, 6, 0xe8f4f4], [-1, 5.0, 5, 0x9fe0b0], [-1, -5.5, 8, 0xffd8a0], [1, 12.0, 6, 0xd8f0e0], [1, 1.5, 7, 0xffd8a0], [1, -9.5, 6, 0xe8e0c8], [1, -21.0, 6, 0xffb070]];
+  const windows: [number, number, number, number][] = [[-1, 9.5, 3.5, 0xe8f4f4], [-1, 4.5, 3, 0x9fe0b0], [-1, -2.0, 5, 0xffd8a0], [1, 9.0, 4, 0xd8f0e0], [1, 3.0, 4, 0xffd8a0], [1, -3.0, 4, 0xe8e0c8], [1, -10.0, 5, 0xffb070]];
   for (const [s, z, w, col] of windows) {
     const m = M.glow('win' + col, col, 1.25, winTex);
     const target = s < 0 ? plates[ROOF_CUTS.findIndex((c, i) => z >= c && z < ROOF_CUTS[i + 1])].g : root;
-    const g = new THREE.Mesh(bin.g(quad(w, 0.62)), m); g.position.set(s * 10.77, 2.15, z); g.rotation.y = s * Math.PI / 2; target.add(g);
-    const fr = new THREE.Mesh(bin.g(box(0.12, 0.8, w + 0.2, 0.03)), gun); fr.position.set(s * 10.74, 2.15, z); target.add(fr);
+    const g = new THREE.Mesh(bin.g(quad(w, 0.62)), m); g.position.set(s * 7.57, 2.15, z); g.rotation.y = s * Math.PI / 2; target.add(g);
+    const fr = new THREE.Mesh(bin.g(box(0.12, 0.8, w + 0.2, 0.03)), gun); fr.position.set(s * 7.54, 2.15, z); target.add(fr);
   }
   // ---- the hangar door on the port side (upper leaf on the roof plate, the sill below the cut)
   {
-    const hz = -19.8, hw = 9.4;
+    const hz = -10.4, hw = 6.0;
     const dm = M.get('hangar.door', { map: pixHull('d', 0x8a9094) });
     const p = plates[ROOF_CUTS.findIndex((c, i) => hz >= c && hz < ROOF_CUTS[i + 1])].g;
-    const d = new THREE.Mesh(bin.g(box(0.25, WALL_H - CUT_H, hw, 0.05)), dm); d.position.set(-10.86, (WALL_H + CUT_H) / 2, hz); p.add(d);
-    for (const s of [-1, 1]) { const h = new THREE.Mesh(bin.g(box(0.3, WALL_H - CUT_H + 0.3, 0.4)), haz); h.position.set(-10.9, (WALL_H + CUT_H) / 2, hz + s * (hw / 2 + 0.2)); p.add(h); }
-    capB.add(box(0.3, CUT_H + 2.0, hw + 1.2, 0.05), haz, { x: -10.88, y: CUT_H / 2 - 1.0, z: hz });
+    const d = new THREE.Mesh(bin.g(box(0.25, WALL_H - CUT_H, hw, 0.05)), dm); d.position.set(-7.66, (WALL_H + CUT_H) / 2, hz); p.add(d);
+    for (const s of [-1, 1]) { const h = new THREE.Mesh(bin.g(box(0.3, WALL_H - CUT_H + 0.3, 0.4)), haz); h.position.set(-7.7, (WALL_H + CUT_H) / 2, hz + s * (hw / 2 + 0.2)); p.add(h); }
+    capB.add(box(0.3, CUT_H + 2.0, hw + 1.2, 0.05), haz, { x: -7.68, y: CUT_H / 2 - 1.0, z: hz });
     const lab = labelTex('HANGAR 1', { size: 64, fg: 0x1c1b18 });
     const lm = M.get('hangar.lbl', { map: lab, transparent: true, polyOffset: 2, rough: 0.6, flag: 0 });
-    const ql = new THREE.Mesh(bin.g(quad(3.2, 0.6)), lm); ql.position.set(-11.0, 2.9, hz); ql.rotation.y = -Math.PI / 2; p.add(ql);
+    const ql = new THREE.Mesh(bin.g(quad(3.2, 0.6)), lm); ql.position.set(-7.8, 2.9, hz); ql.rotation.y = -Math.PI / 2; p.add(ql);
   }
   // ---- markings: the program band, the name, the roundel, the registration
   const band = M.get('ext.band', { color: 0xd0662a, rough: 0.5, polyOffset: 1 });
   for (const s of [-1, 1]) {
     const tgt = s > 0 ? root : null;
-    const strip = (z0: number, z1: number) => { const g = new THREE.Mesh(bin.g(quad(z1 - z0, 0.45)), band); g.position.set(s * 10.78, 0.35, (z0 + z1) / 2); g.rotation.y = s * Math.PI / 2; (tgt ?? root).add(g); };
-    strip(-26, 16.5);
+    const strip = (z0: number, z1: number) => { const g = new THREE.Mesh(bin.g(quad(z1 - z0, 0.45)), band); g.position.set(s * 7.58, 0.35, (z0 + z1) / 2); g.rotation.y = s * Math.PI / 2; (tgt ?? root).add(g); };
+    strip(-13.6, 11.4);
   }
   const nameT = labelTex(SHIP_NAME, { size: 96, fg: 0x2a2e32 });
   const nameM = M.get('ext.name', { map: nameT, transparent: true, polyOffset: 2, rough: 0.6, flag: 0 });
-  const nm = new THREE.Mesh(bin.g(quad(10.5, 1.5)), nameM); nm.position.set(10.79, -0.95, 4); nm.rotation.y = Math.PI / 2; root.add(nm);
+  const nm = new THREE.Mesh(bin.g(quad(8.0, 1.2)), nameM); nm.position.set(7.59, -0.85, 0.5); nm.rotation.y = Math.PI / 2; root.add(nm);
   const regT = labelTex('UNAA   RV-07', { size: 64, fg: 0x2a2e32 });
   const regM = M.get('ext.reg', { map: regT, transparent: true, polyOffset: 2, rough: 0.6, flag: 0 });
-  const rg = new THREE.Mesh(bin.g(quad(5.0, 0.8)), regM); rg.position.set(10.79, -1.95, 4); rg.rotation.y = Math.PI / 2; root.add(rg);
-  const rgP = new THREE.Mesh(bin.g(quad(5.0, 0.8)), regM); rgP.position.set(-10.79, -0.95, 4); rgP.rotation.y = -Math.PI / 2; root.add(rgP);
+  const rg = new THREE.Mesh(bin.g(quad(5.0, 0.8)), regM); rg.position.set(7.59, -1.75, 0.5); rg.rotation.y = Math.PI / 2; root.add(rg);
+  const rgP = new THREE.Mesh(bin.g(quad(5.0, 0.8)), regM); rgP.position.set(-7.59, -0.85, 0.5); rgP.rotation.y = -Math.PI / 2; root.add(rgP);
   const roundel = cached('roundel', () => { const [c, g] = canvas(256, 256); g.fillStyle = '#e8e4d4'; g.beginPath(); g.arc(128, 128, 124, 0, 7); g.fill(); g.fillStyle = '#1d3b5a'; g.beginPath(); g.arc(128, 128, 112, 0, 7); g.fill(); g.strokeStyle = '#e8e4d4'; g.lineWidth = 6; for (const k of [0.35, 0.7, 1]) { g.beginPath(); g.ellipse(128, 128, 112 * k, 112, 0, 0, 7); g.stroke(); } for (const y of [-56, 0, 56]) { const w = Math.sqrt(112 * 112 - y * y); g.beginPath(); g.moveTo(128 - w, 128 + y); g.lineTo(128 + w, 128 + y); g.stroke(); } g.fillStyle = '#d9a43a'; g.beginPath(); g.moveTo(128, 40); g.lineTo(150, 128); g.lineTo(128, 216); g.lineTo(106, 128); g.fill(); const t = toTex(c, { repeat: false }); return t; });
   const rm = M.get('ext.roundel', { map: roundel, transparent: true, alphaTest: 0.5, polyOffset: 2, rough: 0.5, flag: 0 });
-  for (const [x, z, ry] of [[10.79, -14, Math.PI / 2]] as [number, number, number][]) { const q = new THREE.Mesh(bin.g(new THREE.CircleGeometry(1.4, 32)), rm); q.position.set(x, 1.1, z); q.rotation.y = ry; root.add(q); }
-  { const q = new THREE.Mesh(bin.g(new THREE.CircleGeometry(2.2, 32)), rm); q.position.set(0, 4.32, -8); q.rotation.x = -Math.PI / 2; plates[3].g.add(q); }
+  for (const [x, z, ry] of [[7.59, -8.6, Math.PI / 2]] as [number, number, number][]) { const q = new THREE.Mesh(bin.g(new THREE.CircleGeometry(1.4, 32)), rm); q.position.set(x, 1.1, z); q.rotation.y = ry; root.add(q); }
+  { const q = new THREE.Mesh(bin.g(new THREE.CircleGeometry(2.2, 32)), rm); q.position.set(0, 4.32, -2.5); q.rotation.x = -Math.PI / 2; plates[2].g.add(q); }
   // ---- dorsal details (on the roof plates, so they lift away with them)
   const dorsal = (i: number, f: (b: Batch) => void) => { const b = new Batch(bin); f(b); b.flush(plates[i].g, 'dorsal' + i); };
   // the sensor mast amidships: a lattice tower, a dish, whips, a phased-array plate
-  dorsal(4, (b) => {
-    b.add(box(2.4, 0.6, 3.2, 0.1), grey, { x: 2.5, y: 4.6, z: 7.0 });
-    for (const [x, z] of [[1.6, 6.0], [3.4, 6.0], [1.6, 8.0], [3.4, 8.0]]) b.add(box(0.14, 4.0, 0.14), steel, { x, y: 6.8, z });
-    for (let y = 5.2; y < 8.6; y += 0.7) { b.add(box(1.9, 0.08, 0.08), steel, { x: 2.5, y, z: 6.0 }); b.add(box(1.9, 0.08, 0.08), steel, { x: 2.5, y, z: 8.0 }); b.add(box(0.08, 0.08, 2.1), steel, { x: 1.6, y, z: 7 }); b.add(box(0.08, 0.08, 2.1), steel, { x: 3.4, y, z: 7 }); }
-    b.add(box(2.4, 0.2, 2.4), grey, { x: 2.5, y: 8.9, z: 7.0 });
-    b.add(cyl(0.025, 0.012, 3.0, 5), steel, { x: 1.7, y: 10.4, z: 6.2 }); b.add(cyl(0.025, 0.012, 2.2, 5), steel, { x: 3.3, y: 10.0, z: 7.8 });
-    b.add(box(3.6, 2.2, 0.16, 0.05), M.get('array', { map: cached('arr', () => { const [c, g] = canvas(128, 64); g.fillStyle = '#2a3036'; g.fillRect(0, 0, 128, 64); for (let y = 2; y < 64; y += 8) for (let x = 2; x < 128; x += 8) { g.fillStyle = '#4a5560'; g.fillRect(x, y, 6, 6); g.fillStyle = '#6a7884'; g.fillRect(x, y, 6, 1); } return toTex(c); }), rough: 0.4, metal: 0.5 }), { x: -4.0, y: 5.6, z: 2.0, rx: -0.5 });
-    b.add(box(0.3, 1.2, 0.3), gun, { x: -4.0, y: 4.8, z: 2.6 });
+  dorsal(3, (b) => {
+    b.add(box(2.4, 0.6, 3.2, 0.1), grey, { x: 2.5, y: 4.6, z: 2.5 });
+    for (const [x, z] of [[1.6, 1.5], [3.4, 1.5], [1.6, 3.5], [3.4, 3.5]]) b.add(box(0.14, 4.0, 0.14), steel, { x, y: 6.8, z });
+    for (let y = 5.2; y < 8.6; y += 0.7) { b.add(box(1.9, 0.08, 0.08), steel, { x: 2.5, y, z: 1.5 }); b.add(box(1.9, 0.08, 0.08), steel, { x: 2.5, y, z: 3.5 }); b.add(box(0.08, 0.08, 2.1), steel, { x: 1.6, y, z: 2.5 }); b.add(box(0.08, 0.08, 2.1), steel, { x: 3.4, y, z: 2.5 }); }
+    b.add(box(2.4, 0.2, 2.4), grey, { x: 2.5, y: 8.9, z: 2.5 });
+    b.add(cyl(0.025, 0.012, 3.0, 5), steel, { x: 1.7, y: 10.4, z: 1.7 }); b.add(cyl(0.025, 0.012, 2.2, 5), steel, { x: 3.3, y: 10.0, z: 3.3 });
+    b.add(box(3.6, 2.2, 0.16, 0.05), M.get('array', { map: cached('arr', () => { const [c, g] = canvas(128, 64); g.fillStyle = '#2a3036'; g.fillRect(0, 0, 128, 64); for (let y = 2; y < 64; y += 8) for (let x = 2; x < 128; x += 8) { g.fillStyle = '#4a5560'; g.fillRect(x, y, 6, 6); g.fillStyle = '#6a7884'; g.fillRect(x, y, 6, 1); } return toTex(c); }), rough: 0.4, metal: 0.5 }), { x: -4.0, y: 5.6, z: 3.6, rx: -0.5 });
+    b.add(box(0.3, 1.2, 0.3), gun, { x: -4.0, y: 4.8, z: 4.2 });
   });
   // the main dish on its turret (turns)
-  const dishG = new THREE.Group(); dishG.position.set(2.5, 9.1, 7.0); plates[4].g.add(dishG);
+  const dishG = new THREE.Group(); dishG.position.set(2.5, 9.1, 2.5); plates[3].g.add(dishG);
   {
     const db = new Batch(bin);
     db.add(cyl(0.5, 0.6, 0.6, 16), gun, { y: 0.3 });
@@ -278,31 +277,31 @@ export function buildExterior(bin: Bin, M: Mats, _renderer: THREE.WebGLRenderer)
     db.flush(dishG, 'dish');
   }
   // radiator fins aft (on both shoulders), vent stacks, a docking collar on the starboard side
+  dorsal(0, (b) => {
+    for (const s of [-1, 1]) for (let k = 0; k < 6; k++) b.add(box(3.2, 0.06, 1.0), M.get('rad', { color: 0x3a4044, rough: 0.35, metal: 0.7 }), { x: s * 5.4, y: 4.35, z: -14.2 + k * 0.75, rz: s * 0.15 });
+    for (const [x, z] of [[-2, -12.5], [2, -12.5], [-2, -11], [2, -11]]) { b.add(box(0.9, 0.7, 0.9, 0.1), grey, { x, y: 4.65, z }); b.add(box(0.7, 0.05, 0.7), black, { x, y: 5.01, z }); }
+  });
   dorsal(1, (b) => {
-    for (const s of [-1, 1]) for (let k = 0; k < 6; k++) b.add(box(3.2, 0.06, 1.0), M.get('rad', { color: 0x3a4044, rough: 0.35, metal: 0.7 }), { x: s * 7.6, y: 4.35 + k * 0.0, z: -18 + k * 1.2, rz: s * 0.15 });
-    for (const [x, z] of [[-3, -16], [3, -16], [-3, -13], [3, -13]]) { b.add(box(1.0, 0.8, 1.0, 0.1), grey, { x, y: 4.7, z }); b.add(box(0.8, 0.05, 0.8), black, { x, y: 5.11, z }); }
+    b.add(box(3.6, 0.5, 3.6, 0.15), grey, { x: -3.2, y: 4.55, z: -7.6 });
+    for (let k = 0; k < 3; k++) b.add(box(3.2, 0.12, 0.3), black, { x: -3.2, y: 4.83, z: -8.8 + k * 1.2 });
   });
-  dorsal(2, (b) => {
-    b.add(box(4.0, 0.5, 6.0, 0.15), grey, { x: -3.5, y: 4.55, z: -8 });
-    for (let k = 0; k < 5; k++) b.add(box(3.6, 0.12, 0.3), black, { x: -3.5, y: 4.83, z: -10.4 + k * 1.2 });
-  });
-  dorsal(5, (b) => { b.add(box(2.6, 0.7, 4.0, 0.2), grey, { x: -4.6, y: 4.6, z: 15 }); b.add(cyl(0.6, 0.6, 0.5, 16), gun, { x: -4.6, y: 5.2, z: 15.6 }); });
+  dorsal(4, (b) => { b.add(box(2.4, 0.7, 3.4, 0.2), grey, { x: -3.6, y: 4.6, z: 8.2 }); b.add(cyl(0.5, 0.5, 0.5, 16), gun, { x: -3.6, y: 5.2, z: 8.6 }); });
   // RCS quads at the four shoulders, on plates
   const rcs = (b: Batch, x: number, y: number, z: number, s: number) => {
     b.add(box(0.7, 0.7, 0.7, 0.08), gun, { x, y, z });
     for (const [dx, dy, dz, rx, rz] of [[s * 0.42, 0, 0, 0, s * Math.PI / 2], [0, 0.42, 0, 0, 0], [0, 0, 0.42, Math.PI / 2, 0], [0, 0, -0.42, -Math.PI / 2, 0]] as [number, number, number, number, number][]) b.add(cyl(0.09, 0.16, 0.24, 10), steel, { x: x + dx, y: y + dy, z: z + dz, rx, rz });
   };
-  dorsal(0, (b) => { rcs(b, -9.4, 3.9, -26.6, -1); rcs(b, 9.4, 3.9, -26.6, 1); });
-  dorsal(6, (b) => { rcs(b, -6.5, 3.6, 25.2, -1); rcs(b, 6.5, 3.6, 25.2, 1); });
+  dorsal(0, (b) => { rcs(b, -6.4, 3.9, -13.6, -1); rcs(b, 6.4, 3.9, -13.6, 1); });
+  dorsal(5, (b) => { rcs(b, -4.6, 3.6, 16.8, -1); rcs(b, 4.6, 3.6, 16.8, 1); });
   // keel: sensor blister, landing pads, hatch outlines, the drop bay doors under the workshop
-  B.add(lathe([[0, 0], [1.4, 0], [1.6, -0.5], [1.2, -1.0], [0, -1.15]], 20), grey, { x: 2.0, y: -3.2, z: 8 });
-  B.add(box(3.4, 0.12, 3.4), haz, { x: -6.0, y: -3.22, z: -19.8 });
-  for (const [x, z] of [[-7.5, -22], [7.5, -22], [-7.5, 12], [7.5, 12]]) { B.add(box(1.6, 0.3, 1.6, 0.08), gun, { x, y: -3.3, z }); }
+  B.add(lathe([[0, 0], [1.4, 0], [1.6, -0.5], [1.2, -1.0], [0, -1.15]], 20), grey, { x: 2.0, y: -2.9, z: 4 });
+  B.add(box(3.0, 0.12, 3.0), haz, { x: -4.4, y: -2.92, z: -10.4 });
+  for (const [x, z] of [[-5.2, -12], [5.2, -12], [-5.2, 9], [5.2, 9]]) { B.add(box(1.3, 0.3, 1.3, 0.08), gun, { x, y: -3.0, z }); }
   // the docking collar (starboard, amidships)
-  B.add(cyl(1.3, 1.4, 0.8, 20), gun, { x: 11.1, y: 1.0, z: -2.6, rz: Math.PI / 2 });
-  B.add(new THREE.TorusGeometry(1.15, 0.12, 8, 24), haz, { x: 11.55, y: 1.0, z: -2.6, ry: Math.PI / 2 });
+  B.add(cyl(1.0, 1.1, 0.7, 20), gun, { x: 7.85, y: 1.0, z: 6.2, rz: Math.PI / 2 });
+  B.add(new THREE.TorusGeometry(0.9, 0.1, 8, 24), haz, { x: 8.22, y: 1.0, z: 6.2, ry: Math.PI / 2 });
   // antenna whips along the starboard shoulder
-  for (const z of [-10, 0, 10]) B.add(cyl(0.02, 0.01, 2.2, 5), steel, { x: 10.6, y: 4.9, z, rz: -0.3 });
+  for (const z of [-6, 0, 6]) B.add(cyl(0.02, 0.01, 2.2, 5), steel, { x: 7.4, y: 4.9, z, rz: -0.3 });
   B.flush(root, 'ext');
   capB.flush(root, 'caps');
   // ---- lights: running lights, strobes, docking lights (small emitters with a bloom halo)
@@ -313,12 +312,12 @@ export function buildExterior(bin: Bin, M: Mats, _renderer: THREE.WebGLRenderer)
     const m = new THREE.MeshBasicMaterial({ color: col }); gbuf(m, F_EMIT); bin.m(m);
     const me = new THREE.Mesh(lampG, m); me.position.set(x, y, z); parent.add(me); lamps.push({ m, col, mode, ph });
   };
-  addLamp(root, -10.9, 0.6, 16, 0xff3020, 0); addLamp(root, 10.9, 0.6, 16, 0x30ff60, 0);
-  addLamp(root, -10.9, 0.6, -26, 0xff3020, 0); addLamp(root, 10.9, 0.6, -26, 0x30ff60, 0);
-  addLamp(plates[6].g, 0, 3.9, 30.2, 0xfff4e0, 1, 0.0); addLamp(root, 0, -3.4, -14, 0xfff4e0, 1, 0.5);
-  addLamp(plates[4].g, 2.5, 9.0, 8.3, 0xff3020, 2, 0.2);
-  for (let k = 0; k < 6; k++) addLamp(root, 0, -3.35, 22 - k * 7, 0xffb040, 3, k / 6);
-  for (const z of [-26, -16, -6, 4, 14]) addLamp(root, 10.86, -1.6, z, 0xd8f0ff, 4, z * 0.01);
+  addLamp(root, -7.7, 0.6, 11, 0xff3020, 0); addLamp(root, 7.7, 0.6, 11, 0x30ff60, 0);
+  addLamp(root, -7.7, 0.6, -13, 0xff3020, 0); addLamp(root, 7.7, 0.6, -13, 0x30ff60, 0);
+  addLamp(plates[5].g, 0, 3.6, 20.2, 0xfff4e0, 1, 0.0); addLamp(root, 0, -3.1, -6, 0xfff4e0, 1, 0.5);
+  addLamp(plates[3].g, 2.5, 9.0, 3.8, 0xff3020, 2, 0.2);
+  for (let k = 0; k < 6; k++) addLamp(root, 0, -3.05, 16 - k * 5.5, 0xffb040, 3, k / 6);
+  for (const z of [-13, -7, -1, 5, 11]) addLamp(root, 7.62, -1.5, z, 0xd8f0ff, 4, z * 0.01);
   // ---- the cut: roof plates lift and swing away in sequence (bow first)
   let cutK = 0;
   const setCut = (k: number) => {
@@ -334,7 +333,7 @@ export function buildExterior(bin: Bin, M: Mats, _renderer: THREE.WebGLRenderer)
   setCut(0);
   return {
     root, setCut,
-    heroCam() { return { pos: new V3(50, 15, 72), look: new V3(-13, -2.5, 6), fov: 34 }; },
+    heroCam() { return { pos: new V3(34, 10.5, 49), look: new V3(-8, -2.2, 4), fov: 34 }; },
     update(dt, t) {
       dishG.rotation.y = t * 0.15;
       throatM.color.setHex(0xffa860).multiplyScalar(2.2 + Math.sin(t * 23) * 0.15 + Math.sin(t * 7) * 0.1);

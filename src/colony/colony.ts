@@ -13,7 +13,7 @@ import { buildPod, POD_R, type PodModel } from './podModel';
 import { Arm, ARM_DEF, type ArmKind } from './arms';
 import { Drone, type DroneKind } from './drones';
 import { Structure, FIELD_R, type StructKind } from './structures';
-import { Teammate, DEFAULT_CREW, type Job } from './teammates';
+import { Teammate, DEFAULT_CREW, loadCrewApi, crewModule, type Job } from './teammates';
 import { Vitals, type VitalId, type Level } from './vitals';
 import { ToolSlots, TOOLS, type ToolId } from './tools';
 import { CATALOG, STARTING_CARGO, type CatId } from './catalog';
@@ -148,6 +148,8 @@ export class Colony {
     const d = this.pod.door;
     DEFAULT_CREW.forEach((spec, i) => this.teammates.push(new Teammate(this, spec, d.x + (i ? 0.9 : -0.9), d.z + 0.4)));
     if (o.restore) this.restore(o.restore); else for (const [id, n] of Object.entries(STARTING_CARGO)) this.stock.put(id, n);
+    // a death the crew agent / story stages (crew.kill(id)) lands on the colony's teammate too
+    loadCrewApi().then(() => crewModule()?.on?.('death', (d) => { const x = d as { id?: string; cause?: string }; const t = x?.id ? this.teammate(x.id) : null; if (t && t.alive) t.kill(x.cause ?? 'killed'); }));
     // keep held keys for drone steering (the Input class tracks them too, but colony keys must not leak into the camera)
     addEventListener('keyup', this.onKeyUp);
     (window as unknown as { __colony?: Colony }).__colony = this;
@@ -777,6 +779,57 @@ export class Colony {
     if (f.inventory) { for (const k of Object.keys(f.inventory)) f.inventory[k] = 0; for (const [k, n] of Object.entries(s.inv ?? {})) if (ITEMS[k]) f.inventory[k] = n; }
     if (typeof s.day === 'number') this.g.world.day = s.day;
     this.savedAt = { sol: this.sol, t: s.t };
+  }
+
+  // ------------------------------------------------------------------ the living vignette of the selection
+  readonly vcam = new THREE.PerspectiveCamera(30, 336 / 236, 0.1, 200);
+  private vT = 0;
+  /** what the selection panel's live close-up looks at, and the parts its callouts point to */
+  vignetteFocus(): { pos: THREE.Vector3; r: number; anchors: { p: THREE.Vector3; text: string; warn?: boolean }[] } | null {
+    const s = this.sel; if (!s) return null;
+    const P = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z), pct = (v: number) => `${Math.round(v * 100)}%`;
+    if (s.kind === 'pod') { const p = this.pod, v = this.vitals; return { pos: P(p.x, p.y + 3.2, p.z), r: 5.2, anchors: [
+      { p: this.pod.toWorld(P(0, 2.4, 2.7)), text: `HULL ${pct(p.hp / p.maxHp)}`, warn: p.hp < p.maxHp * 0.45 },
+      { p: this.pod.toWorld(P(2.0, 3.15, 1.9)), text: `ARMS ${this.arms.length}/6` },
+      { p: this.pod.toWorld(P(3.05, 1.95, 0.2)), text: `O2 ${Math.round(v.o2)}%`, warn: v.o2 < 35 },
+      { p: this.pod.toWorld(P(0, 7.1, 0)), text: this.linkOpen ? 'LINK OPEN' : 'SHIP LINK' }] }; }
+    if (s.kind === 'arm') { const a = s.ref, tip = a.tip(), piv = a.pivot(); return { pos: piv.clone().lerp(tip, 0.45), r: 3.6, anchors: [
+      { p: tip, text: a.kind === 'cannon' ? `RANGE ${Math.round(a.reach)}M` : `REACH ${a.reach.toFixed(1)}M` },
+      { p: piv, text: `LV ${a.level}` },
+      { p: a.root.getWorldPosition(new THREE.Vector3()), text: `HP ${pct(a.hp / a.maxHp)}`, warn: a.hp < a.maxHp * 0.4 }] }; }
+    if (s.kind === 'drone') { const d = s.ref; return { pos: P(d.x, d.y, d.z), r: 1.5, anchors: [
+      { p: P(d.x, d.y + 0.15, d.z), text: `BATT ${pct(d.battery / d.def.battery)}`, warn: d.battery < 30 },
+      { p: P(d.x, d.y + 0.5, d.z), text: d.signal() >= 1 ? 'SIGNAL OK' : 'SIGNAL WEAK', warn: d.signal() < 1 },
+      { p: d.tip(), text: d.kind === 'scout' ? 'SCANNER' : d.kind === 'carrier' ? (d.carrying ? 'HOOKED' : 'WINCH') : 'TORCH' }] }; }
+    if (s.kind === 'crew') { const t = s.ref, back = P(t.x - Math.sin(t.yaw) * 0.3, t.y + 1.3, t.z - Math.cos(t.yaw) * 0.3); return { pos: P(t.x, t.y + 1.05, t.z), r: 1.35, anchors: [
+      { p: back, text: `SUIT ${Math.round(t.suit)}`, warn: t.suit < 30 },
+      { p: P(t.x, t.y + 1.15, t.z), text: `HP ${Math.round(t.hp)}`, warn: t.hp < 50 },
+      { p: P(t.x, t.y + 1.75, t.z), text: t.jobLabel.slice(0, 14) }] }; }
+    if (s.kind === 'struct') { const st = s.ref; return { pos: P(st.x, st.y + st.height * 0.5, st.z), r: st.height * 0.62, anchors: [
+      { p: P(st.x, st.y + st.height * 0.9, st.z), text: st.done ? (st.kind === 'gravpole' ? `FIELD ${st.mode.toUpperCase()}` : 'ONLINE') : `BUILT ${pct(st.progress)}` },
+      { p: P(st.x, st.y + 0.3, st.z), text: `HP ${pct(st.hp / st.maxHp)}`, warn: st.hp < st.maxHp * 0.4 }] }; }
+    if (s.kind === 'creature') { const c = s.ref; return { pos: P(c.x, c.y + c.size * 0.5, c.z), r: Math.max(0.8, c.size * 1.2), anchors: [
+      { p: P(c.x, c.y + c.size * 0.9, c.z), text: c.dead ? 'DEAD' : c.mind.toUpperCase() },
+      { p: P(c.x, c.y + c.size * 0.4, c.z), text: `HP ${pct(c.hp / c.maxHp)}`, warn: c.hp < c.maxHp * 0.4 }] }; }
+    return null;
+  }
+  /** render the world, close up on the selection, into a rectangle of the screen (css px), after the main frame */
+  renderVignette(renderer: THREE.WebGLRenderer, rect: { x: number; y: number; w: number; h: number }, dt: number) {
+    const f = this.vignetteFocus(); if (!f) return null;
+    this.vT += dt;
+    const cam = this.vcam, yaw = this.vT * 0.3 + this.pod.yaw, pitch = 0.32, d = f.r / Math.tan((cam.fov * Math.PI) / 360) * 1.05;
+    cam.aspect = rect.w / rect.h; cam.updateProjectionMatrix();
+    cam.position.set(f.pos.x + Math.sin(yaw) * Math.cos(pitch) * d, f.pos.y + Math.sin(pitch) * d, f.pos.z + Math.cos(yaw) * Math.cos(pitch) * d);
+    const gy = this.g.world.surfaceY(cam.position.x, cam.position.z) + 0.4; if (cam.position.y < gy) cam.position.y = gy;
+    cam.lookAt(f.pos); cam.updateMatrixWorld();
+    const H = renderer.domElement.clientHeight || innerHeight;
+    const prevAuto = renderer.autoClear, prevTarget = renderer.getRenderTarget();
+    renderer.setRenderTarget(null);
+    renderer.setScissorTest(true); renderer.setScissor(rect.x, H - rect.y - rect.h, rect.w, rect.h); renderer.setViewport(rect.x, H - rect.y - rect.h, rect.w, rect.h);
+    renderer.autoClear = false; renderer.setClearColor(0xc1b59b, 1); renderer.clear(true, true, false);
+    try { renderer.render(this.g.world.scene, cam); } catch (e) { console.error('vignette', e); }
+    renderer.setScissorTest(false); renderer.setViewport(0, 0, renderer.domElement.clientWidth || innerWidth, H); renderer.autoClear = prevAuto; renderer.setRenderTarget(prevTarget);
+    return f;
   }
 
   /** QA and screenshots: finish every fitting now; 'full' also bolts on one of everything and stocks the stores */

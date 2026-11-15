@@ -19,8 +19,8 @@ export interface DNode { id: string; anchor: THREE.Object3D; set(st: NodeState):
 
 /** where perk (sub i, tier k) sits: three fans across the front, climbing and spreading with the tier */
 export function nodePos(i: number, k: number, path: PathId) {
-  const a = (i - 1) * 0.95, r = 0.45 + k * 0.42, y = 0.75 + k * 0.62 + (path === 'energy' ? -0.3 : 0);
-  return new V(Math.sin(a) * r, y, Math.cos(a) * r * 0.5 + 0.1);
+  const a = (i - 1) * 0.92, r = 0.55 + k * 0.52, y = 0.95 + k * 0.72 + (path === 'energy' ? -0.35 : 0);
+  return new V(Math.sin(a) * r, y, Math.cos(a) * r * 0.45 + 0.15);
 }
 const BG: Record<PathId, number> = { plant: 0xa7b89a, bio: 0x93aeae, energy: 0x8794a8, industry: 0xb0a088, robotics: 0x99a4ae };
 const TOP: Record<PathId, number> = { plant: 0x4a3626, bio: 0x3c4a44, energy: 0x2e3238, industry: 0x4a4038, robotics: 0x3a3e42 };
@@ -30,7 +30,7 @@ export class Diorama extends Vignette {
   private anim: ((dt: number, t: number) => void)[] = [];
   constructor(readonly path: PathId, readonly M: Mastery) {
     super({ bg: BG[path], top: TOP[path] });
-    this.target.set(0, 1.9, 0); this.dist = 8.6; this.pitch = 0.16;
+    this.target.set(0, 2.25, 0); this.dist = 10.5; this.pitch = 0.12;
     const lv = M.level(path), perks = PERKS.filter((p) => p.path === path), subs = SUBS.filter((s) => s.path === path);
     const pos = (p: Perk) => nodePos(subs.findIndex((s) => s.id === p.sub), p.tier, path);
     if (path === 'plant') this.plant(perks, pos, lv);
@@ -44,54 +44,65 @@ export class Diorama extends Vignette {
 
   // ---------------------------------------------------------------- PLANT
   private plant(perks: Perk[], pos: (p: Perk) => THREE.Vector3, lv: number) {
-    const bark = lam(0x6a4a2e), barkG = lam(0x5a6a2e), leafM = lam(0x5f8f3e, { side: THREE.DoubleSide }), leafM2 = lam(0x7aa84a, { side: THREE.DoubleSide });
-    const soil = mesh(new THREE.CylinderGeometry(1.1, 1.25, 0.18, 14), lam(0x3a2a1c), [0, 0.68, 0], this.root);
-    for (let k = 0; k < 9; k++) { const a = k * 2.4, r = 0.4 + (k % 3) * 0.25; mesh(new THREE.DodecahedronGeometry(0.06 + (k % 2) * 0.03, 0), lam(0x8a8478), [Math.cos(a) * r, 0.79, Math.sin(a) * r], this.root); }
-    void soil;
-    const top = 0.9 + 0.18 * Math.min(10, lv);
-    const trunk = new THREE.CatmullRomCurve3([new V(0, 0.75, 0), new V(0.04, 1.2, 0.02), new V(-0.03, top, 0)]);
-    mesh(new THREE.TubeGeometry(trunk, 12, 0.11, 7), bark, undefined, this.root);
+    const bark = lam(0x6a4a2e), barkG = lam(0x5e6a30), leafM = lam(0x5f8f3e, { side: THREE.DoubleSide }), leafM2 = lam(0x7aa84a, { side: THREE.DoubleSide }), leafM3 = lam(0x4a7a36, { side: THREE.DoubleSide });
+    mesh(new THREE.CylinderGeometry(1.15, 1.3, 0.2, 16), lam(0x3a2a1c), [0, 0.68, 0], this.root);
+    for (let k = 0; k < 14; k++) { const a = k * 2.4, r = 0.35 + (k % 4) * 0.22; mesh(new THREE.DodecahedronGeometry(0.06 + (k % 3) * 0.03, 0), lam(k % 2 ? 0x8a8478 : 0x6a6458), [Math.cos(a) * r, 0.8, Math.sin(a) * r], this.root); }
+    // moss and seedlings on the bed
+    for (let k = 0; k < 10; k++) { const a = k * 1.7 + 0.4, r = 0.5 + (k % 3) * 0.2; const l = mesh(new THREE.ConeGeometry(0.05, 0.18, 4), leafM2, [Math.cos(a) * r, 0.86, Math.sin(a) * r], this.root); l.rotation.z = Math.sin(k) * 0.4; }
+    const top = 1.1 + 0.1 * Math.min(10, lv);
     const sway = new THREE.Group(); this.root.add(sway);
-    const leaf = new THREE.Shape(); leaf.moveTo(0, 0); leaf.quadraticCurveTo(0.09, 0.08, 0, 0.26); leaf.quadraticCurveTo(-0.09, 0.08, 0, 0);
-    const leafG = new THREE.ShapeGeometry(leaf, 3);
-    const subsSeen = new Map<string, THREE.Vector3[]>();
-    for (const p of perks) { const a = subsSeen.get(p.sub) ?? []; a.push(pos(p)); subsSeen.set(p.sub, a); }
-    let li = 0;
-    for (const pts of subsSeen.values()) {
-      const all = [new V(0, Math.min(top, 1.05), 0), ...pts];
-      // the grown part of the branch (up to the highest tier reached) is wood, the rest a faint vine still to come
-      const reach = [1, 2, 3, 4].filter((k) => lv >= TIER_LV[k as 1]).length;
-      const grown = all.slice(0, Math.max(2, reach + 1)), rest = all.slice(Math.max(1, reach));
-      mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(grown), 18, 0.055, 6), barkG, undefined, sway);
-      if (rest.length > 1) mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rest), 14, 0.02, 4), lam(0x9aa88a, { transparent: true, opacity: 0.45 }), undefined, sway);
-      const cv = new THREE.CatmullRomCurve3(grown);
-      const nLeaves = 3 + Math.round(lv * 1.2);
+    // the trunk: a flared root, a thick tapering stem
+    mesh(new THREE.ConeGeometry(0.32, 0.4, 8), bark, [0, 0.95, 0], sway);
+    const trunk = new THREE.CatmullRomCurve3([new V(0, 0.8, 0), new V(0.05, 1.15, 0.03), new V(-0.02, top, 0)]);
+    mesh(new THREE.TubeGeometry(trunk, 12, 0.15, 8), bark, undefined, sway);
+    const leaf = new THREE.Shape(); leaf.moveTo(0, 0); leaf.quadraticCurveTo(0.16, 0.14, 0.02, 0.46); leaf.quadraticCurveTo(-0.15, 0.16, 0, 0);
+    const leafG = new THREE.ShapeGeometry(leaf, 4);
+    const bySub = new Map<string, THREE.Vector3[]>();
+    for (const p of perks) { const a = bySub.get(p.sub) ?? []; a.push(pos(p)); bySub.set(p.sub, a); }
+    const reach = [1, 2, 3, 4].filter((k) => lv >= TIER_LV[k as 1]).length;
+    let li = 0, si = 0;
+    for (const pts of bySub.values()) {
+      // the branch bows outward between its buds, like a real limb reaching for light
+      const start = new V(0, Math.min(top, 1.2 + si * 0.12), 0), all = [start];
+      for (let k = 0; k < pts.length; k++) { const prev = all[all.length - 1], p = pts[k]; all.push(new V((prev.x + p.x) / 2 * 1.12, (prev.y + p.y) / 2 - 0.05, (prev.z + p.z) / 2 + 0.05)); all.push(p); }
+      const cut = Math.max(2, 1 + reach * 2);
+      const grown = all.slice(0, cut + 1), rest = all.slice(cut);
+      const gcv = new THREE.CatmullRomCurve3(grown);
+      mesh(new THREE.TubeGeometry(gcv, 28, 0.075, 7), barkG, undefined, sway);
+      if (rest.length > 1) mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rest), 18, 0.025, 5), lam(0x9aa88a, { transparent: true, opacity: 0.5 }), undefined, sway);
+      const nLeaves = 6 + Math.round(lv * 2.2);
       for (let k = 0; k < nLeaves; k++) {
-        const u = 0.12 + (k / nLeaves) * 0.85, at = cv.getPoint(u), tan = cv.getTangent(u);
-        const l = mesh(leafG, (li++ % 3) ? leafM : leafM2, [at.x, at.y, at.z], sway);
-        l.rotation.set(-0.6 + (k % 2) * 0.3, Math.atan2(tan.x, tan.z) + (k % 2 ? 1.7 : -1.7), (k % 2 ? 0.7 : -0.7));
-        l.scale.setScalar(0.9 + (k % 3) * 0.25);
+        const u = 0.08 + (k / nLeaves) * 0.9, at = gcv.getPoint(u), tan = gcv.getTangent(u);
+        const l = mesh(leafG, [leafM, leafM2, leafM3][li++ % 3], [at.x, at.y, at.z], sway);
+        l.rotation.set(-0.5 + (k % 3) * 0.25, Math.atan2(tan.x, tan.z) + (k % 2 ? 1.6 : -1.6), (k % 2 ? 0.8 : -0.8));
+        l.scale.setScalar(1.0 + ((k * 7) % 5) * 0.12);
       }
+      si++;
     }
-    this.anim.push((_, t) => { sway.rotation.z = Math.sin(t * 0.9) * 0.025; sway.rotation.x = Math.sin(t * 0.7 + 1) * 0.02; });
+    this.anim.push((_, t) => { sway.rotation.z = Math.sin(t * 0.9) * 0.02; sway.rotation.x = Math.sin(t * 0.7 + 1) * 0.015; });
     // pollen drifting in the light
     const pollen = new THREE.Group(); this.root.add(pollen);
-    for (let k = 0; k < 24; k++) mesh(new THREE.BoxGeometry(0.025, 0.025, 0.025), glowM(0xf6e7a8), [(Math.random() - 0.5) * 3, 0.8 + Math.random() * 3, (Math.random() - 0.5) * 2], pollen);
-    this.anim.push((dt, t) => { pollen.children.forEach((c, k) => { c.position.y += dt * 0.08; c.position.x += Math.sin(t * 0.6 + k) * dt * 0.05; if (c.position.y > 4.2) c.position.y = 0.8; }); });
+    for (let k = 0; k < 30; k++) mesh(new THREE.BoxGeometry(0.03, 0.03, 0.03), glowM(0xf6e7a8), [(Math.random() - 0.5) * 4, 0.8 + Math.random() * 3.6, (Math.random() - 0.5) * 2], pollen);
+    this.anim.push((dt, t) => { pollen.children.forEach((c, k) => { c.position.y += dt * 0.08; c.position.x += Math.sin(t * 0.6 + k) * dt * 0.05; if (c.position.y > 4.8) c.position.y = 0.8; }); });
     // the perks: buds that swell when ready and open into flowers when installed
-    const petalS = new THREE.Shape(); petalS.moveTo(0, 0); petalS.quadraticCurveTo(0.08, 0.1, 0, 0.2); petalS.quadraticCurveTo(-0.08, 0.1, 0, 0);
-    const petalG = new THREE.ShapeGeometry(petalS, 3);
-    const COLS = [0xe07a6a, 0xe8c050, 0xb87ad0, 0xf0f0e0];
+    const petalS = new THREE.Shape(); petalS.moveTo(0, 0); petalS.quadraticCurveTo(0.15, 0.16, 0.02, 0.36); petalS.quadraticCurveTo(-0.14, 0.18, 0, 0);
+    const petalG = new THREE.ShapeGeometry(petalS, 4);
+    const COLS = [0xe07a6a, 0xe8c050, 0xb87ad0, 0xf2eee0];
     for (const p of perks) {
       const anchor = new THREE.Group(); anchor.position.copy(pos(p)); sway.add(anchor);
-      const bud = mesh(new THREE.ConeGeometry(0.07, 0.2, 6), lam(0x6f9e45), [0, 0.06, 0], anchor);
+      const bud = new THREE.Group(); anchor.add(bud);
+      const budM = lam(0x6f9e45);
+      mesh(new THREE.SphereGeometry(0.11, 7, 5), budM, [0, 0.05, 0], bud);
+      mesh(new THREE.ConeGeometry(0.09, 0.2, 6), lam(0x8ab85a), [0, 0.2, 0], bud);
+      for (let k = 0; k < 3; k++) { const s = mesh(new THREE.ConeGeometry(0.05, 0.16, 4), budM, [Math.cos(k * 2.1) * 0.08, 0.08, Math.sin(k * 2.1) * 0.08], bud); s.rotation.set(Math.sin(k * 2.1) * 0.6, 0, -Math.cos(k * 2.1) * 0.6); }
       const flower = new THREE.Group(); anchor.add(flower);
-      const col = COLS[p.tier - 1], petM = lam(col, { side: THREE.DoubleSide });
-      for (let k = 0; k < 6; k++) { const pt = mesh(petalG, petM, [0, 0.02, 0], flower); pt.rotation.set(-1.1, (k / 6) * Math.PI * 2, 0); }
-      mesh(new THREE.SphereGeometry(0.05, 6, 4), lam(0xf0c040), [0, 0.04, 0], flower);
-      const glow = mesh(new THREE.SphereGeometry(0.13, 8, 6), glowM(0xf6f0b0, 0.35), [0, 0.06, 0], anchor);
+      const col = COLS[p.tier - 1], petM = lam(col, { side: THREE.DoubleSide }), petM2 = lam(new THREE.Color(col).multiplyScalar(0.82).getHex(), { side: THREE.DoubleSide });
+      for (let k = 0; k < 7; k++) { const pt = mesh(petalG, k % 2 ? petM : petM2, [0, 0.03, 0], flower); pt.rotation.order = 'YXZ'; pt.rotation.set(-1.25, (k / 7) * Math.PI * 2, 0); }
+      mesh(new THREE.SphereGeometry(0.08, 7, 5), lam(0xf0c040), [0, 0.06, 0], flower);
+      flower.scale.setScalar(p.tier === 4 ? 1.9 : 1.55);
+      const glow = mesh(new THREE.SphereGeometry(0.2, 8, 6), glowM(0xf6f0b0, 0.35), [0, 0.1, 0], anchor);
       let st: NodeState = 'locked';
-      this.nodes.push({ id: p.id, anchor, set: (s) => { st = s; bud.visible = s !== 'owned'; flower.visible = s === 'owned'; glow.visible = s === 'ready'; (bud.material as THREE.MeshLambertMaterial).color.setHex(s === 'locked' || s === 'barred' ? 0x7a7a60 : 0x6f9e45); bud.scale.setScalar(s === 'ready' ? 1.35 : s === 'short' ? 1.1 : 0.8); },
+      this.nodes.push({ id: p.id, anchor, set: (s) => { st = s; bud.visible = s !== 'owned'; flower.visible = s === 'owned'; glow.visible = s === 'ready'; budM.color.setHex(s === 'locked' || s === 'barred' ? 0x8a8a6a : 0x6f9e45); bud.scale.setScalar(s === 'ready' ? 1.4 : s === 'short' ? 1.1 : 0.85); },
         tick: (_, t) => { if (st === 'ready') { const k = 1 + Math.sin(t * 3 + anchor.position.x * 5) * 0.12; glow.scale.setScalar(k); bud.rotation.y = t * 0.6; } if (st === 'owned') flower.rotation.y = Math.sin(t * 0.8 + anchor.position.y) * 0.25; } });
     }
   }

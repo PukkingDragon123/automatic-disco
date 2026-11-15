@@ -383,8 +383,8 @@ const GLB: Partial<Record<ContainerKind, GlbRecipe>> = {
   st_pit: { parts: [{ url: 'planter_box_01', fit: 'width', size: 1.9 }], plate: [-0.5, 0.45, 0.45, 0.36, 0], open: true, bay: { x0: -0.82, z0: -0.33, x1: 0.82, z1: 0.33, y: 0.15, h: 0.62 } },
   // three concrete road barriers stood in a U, open at the front for the tipper
   st_bunker: {
-    parts: [{ url: 'concrete_road_barrier', fit: 'width', size: 1.9, pos: [0, 0, -0.62] }, { url: 'concrete_road_barrier', fit: 'width', size: 1.5, pos: [-0.66, 0, 0.18], ry: Math.PI / 2 }, { url: 'concrete_road_barrier', fit: 'width', size: 1.5, pos: [0.66, 0, 0.18], ry: Math.PI / 2 }],
-    plate: [0, 0.62, -0.31, 0.4, 0], open: true, bay: { x0: -0.4, z0: -0.38, x1: 0.4, z1: 0.9, y: 0.04, h: 0.62 },
+    parts: [{ url: 'concrete_road_barrier', fit: 'width', size: 1.96, pos: [0, 0, -0.74] }, { url: 'concrete_road_barrier', fit: 'width', size: 1.5, pos: [-0.8, 0, 0.12], ry: Math.PI / 2 }, { url: 'concrete_road_barrier', fit: 'width', size: 1.5, pos: [0.8, 0, 0.12], ry: Math.PI / 2 }],
+    plate: [0, 0.62, -0.42, 0.4, 0], open: true, bay: { x0: -0.52, z0: -0.48, x1: 0.52, z1: 0.86, y: 0.06, h: 0.5 },
     extra: (P) => { P.box('concreteD', 0, 0.03, 0.12, 1.96, 0.06, 1.7); },
   },
   // two olive ammunition crates, lids thrown back

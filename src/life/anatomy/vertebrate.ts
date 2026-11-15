@@ -221,7 +221,9 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
     const a = st[i - 2].c, b = st[i - 1].c, c = st[i].c, d0 = nrm(sub(b, a)), step = (c[0] - b[0]) * d0[0] + (c[1] - b[1]) * d0[1] + (c[2] - b[2]) * d0[2];
     if (step < W * 0.04 && names[i] !== 'nape') { st.splice(i, 1); names.splice(i, 1); i--; }
   }
-  const tweens = names.map((n) => (n === 'tip' || n.startsWith('tail') ? 0 : 1));
+  // a worker fitted with six parts or more wears its machinery over a leaner body cage (the in-between rings go)
+  const lean = fitted.size >= 6;
+  const tweens = names.map((n) => (n === 'tip' || n.startsWith('tail') || (lean && !n.startsWith('neck') && n !== 'withers' && n !== 'chest') ? 0 : 1));
   const tr = body.add(trunk({ name: 'trunk', stations: st, tween: tweens, capS: true, capE: true, k: 0.9, skin: spine, paint: () => void 0,
     rings: names.includes('withers') ? [{ at: names.indexOf('withers'), s: 0.5 }] : [] }));
   tr.reg = 1;
@@ -420,6 +422,8 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
   // a back rig sits where the shag would hang: the coat's long locks thin out under the straps and the rack
   // the machinery takes its share of the triangle budget from the coat's plates and long locks
   if (fitted.size) X.spec = { ...X.spec, parts: X.spec.parts.map((p) => (p.k === 'plates' ? { ...p, rows: Math.max(4, Math.round(p.rows * 0.72)), size: p.size * 1.15 } : p)) };
+  // engineered to the max (five parts or more): the machinery is the silhouette, the coat's long locks go
+  if (fitted.size >= 5) X.spec = { ...X.spec, parts: X.spec.parts.filter((p) => !(p.k === 'shag' || p.k === 'mane' || p.k === 'tuft' || p.k === 'feathering' || (p.k === 'crest' && p.kind === 'bristle'))).map((p) => (p.k === 'plates' ? { ...p, rows: Math.max(3, Math.round(p.rows * 0.6)) } : p)) };
   if (fitted.has('cy_cargo') || fitted.has('cy_hopper')) X.spec = { ...X.spec, parts: X.spec.parts.filter((p) => !(p.k === 'crest' && p.kind === 'bristle')).map((p) => (p.k === 'shag' ? { ...p, density: (p.density ?? 1) * 0.55 } : p)) };
   growParts(X);
   growOrgans(X);

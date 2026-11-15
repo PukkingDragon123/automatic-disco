@@ -1,5 +1,5 @@
 // Build mode. B opens the CONSTRUCTION PLANNER (src/ui/build/menu.ts); a tile or a hotbar key (1-0) puts a building in
-// hand: a holographic ghost snapped to the 1 m grid under the cursor (phosphor green where it fits, stamp red where it
+// hand: a holographic ghost snapped to the 1 m grid under the cursor (blue pencil where it fits, red pencil where it
 // cannot go, with the reason and the bill of materials at the cursor), R to turn it, a grid drawn on the ground around
 // it. Placing lays a CONSTRUCTION SITE (src/logistics/sites.ts): workers bring the materials and build it over time.
 // Belts, pipes, walls, fences, dams and foundations are laid by dragging a path and go down at once (the pod's arm lays
@@ -16,6 +16,7 @@ import { gbufNone } from '../gfx/gbuf';
 import type { Hotbar } from '../ui/build/hotbar';
 import type { BuildMenu } from '../ui/build/menu';
 import { buildingLock } from '../logistics/unlocks';
+import { shapeOf } from '../logistics/catalog';
 import { RAMPS } from '../art/palette';
 import { toast } from '../ui/kit';
 import { sfx } from '../audio/audio';
@@ -66,7 +67,7 @@ export class Build {
   private tapAt: string | null = null;
   private meshes: THREE.Mesh[] = [];
   private okMat = machineMaterial(0, { ghost: true }); private badMat = machineMaterial(0, { ghost: true });
-  private holoOk = holoMaterial(0x7fd48a); private holoBad = holoMaterial(0xd2503e);
+  private holoOk = holoMaterial(0x6f9fd8); private holoBad = holoMaterial(0xd8503e);
   private holos: THREE.Mesh[] = [];
   /** the planner and the quick-slots (set by the factory UI) */
   menu?: BuildMenu; hotbar?: Hotbar;
@@ -84,8 +85,8 @@ export class Build {
   constructor(readonly f: Factory) {
     (this.badMat as unknown as { onBeforeCompile: unknown }).onBeforeCompile = ((prev) => (sh: THREE.WebGLProgramParametersWithUniforms, r: THREE.WebGLRenderer) => { prev.call(this.badMat, sh, r); (sh.uniforms.uGhost.value as THREE.Color).setHex(RAMPS.stampRed[3]); })(this.badMat.onBeforeCompile);
     this.badMat.customProgramCacheKey = () => 'fac-ghost-bad';
-    // the good ghost reads as phosphor green under the hologram
-    (this.okMat as unknown as { onBeforeCompile: unknown }).onBeforeCompile = ((prev) => (sh: THREE.WebGLProgramParametersWithUniforms, r: THREE.WebGLRenderer) => { prev.call(this.okMat, sh, r); (sh.uniforms.uGhost.value as THREE.Color).setHex(0x6fae7c); })(this.okMat.onBeforeCompile);
+    // the good ghost reads as a blue-pencil drawing under the hologram
+    (this.okMat as unknown as { onBeforeCompile: unknown }).onBeforeCompile = ((prev) => (sh: THREE.WebGLProgramParametersWithUniforms, r: THREE.WebGLRenderer) => { prev.call(this.okMat, sh, r); (sh.uniforms.uGhost.value as THREE.Color).setHex(0x7d9cc4); })(this.okMat.onBeforeCompile);
     this.okMat.customProgramCacheKey = () => 'fac-ghost-ok';
     const lm = gbufNone(new THREE.LineBasicMaterial({ color: RAMPS.sky[4], transparent: true, opacity: 0.55, depthWrite: false }));
     this.grid = new THREE.LineSegments(new THREE.BufferGeometry(), lm); this.grid.frustumCulled = false; this.grid.visible = false; this.grid.renderOrder = 3;
@@ -309,7 +310,7 @@ export class Build {
       const gh = this.ghosts[i];
       if (!gh) { m.visible = false; return; }
       const def = FDEFS[gh.kind], w = footW(def, gh.r), d = footD(def, gh.r);
-      const geo = isBelt(gh.kind) ? beltGeo('straight', gh.kind === 'pipe') : modelFor(gh.kind, def.model, def.hooks?.model).base;
+      const geo = isBelt(gh.kind) ? beltGeo('straight', gh.kind === 'pipe') : (() => { const sh = shapeOf(gh.kind); return modelFor(sh.key, def.model, sh.hook).base; })();
       if (m.geometry !== geo) m.geometry = geo;
       m.material = gh.ok ? this.okMat : this.badMat;
       const y = isBelt(gh.kind) || gh.kind === 'splitter' || gh.kind === 'merger' ? Math.max(R.water - 0.1, R.heightAt(gh.cx + 0.5, gh.cz + 0.5)) : def.extract === 'water' ? R.water - 0.05 : f.levelFor(gh.cx, gh.cz, w, d);

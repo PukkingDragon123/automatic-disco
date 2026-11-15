@@ -7,10 +7,11 @@
 import type { Colony } from '../colony/colony';
 import { TOOLS } from '../colony/tools';
 import { iconCanvas, lowpixIcon } from './desk/hudArt';
-import { Pix, R, fontText } from './desk/pxPanel';
+import { Pix, R } from './desk/pxPanel';
+import { stroke, scribble, letter, INK } from './desk/ink';
 import { sfx } from '../audio/audio';
 
-const TAU = Math.PI * 2, N = 8, R0 = 60, R1 = 140;
+const TAU = Math.PI * 2, N = 8;
 export interface WheelHost { colony(): Colony | null; config(i: number): void; tip(html: string | null, x?: number, y?: number): void; flash(msg: string, bad?: boolean): void }
 
 export class ToolWheel {
@@ -25,8 +26,8 @@ export class ToolWheel {
     this.cv.addEventListener('contextmenu', (e) => e.preventDefault());
   }
   private slotAt(e: PointerEvent | MouseEvent) {
-    const r = this.cv.getBoundingClientRect(), x = e.clientX - r.left - r.width / 2, y = e.clientY - r.top - r.height / 2, d = Math.hypot(x, y) * (304 / r.width);
-    if (d < R0 - 4 || d > R1 + 6) return -1;
+    const r = this.cv.getBoundingClientRect(), x = e.clientX - r.left - r.width / 2, y = e.clientY - r.top - r.height / 2, d = Math.hypot(x, y) * (320 / r.width);
+    if (d < 70 || d > 148) return -1;
     let a = Math.atan2(y, x) + Math.PI / 2 + Math.PI / N; a = ((a % TAU) + TAU) % TAU;
     return Math.floor(a / (TAU / N)) % N;
   }
@@ -57,89 +58,46 @@ export class ToolWheel {
     this.acc = c.slots.active >= 0 ? 0.06 : 0.5; this.dirty = false;
     this.draw(c);
   }
-  private base: Pix | null = null; private baseKey = '';
-  /** the dial in art pixels (152 x 152 at K = 2): a knurled steel bezel lit from the upper left, eight recessed sockets
-   *  between raised ribs, brass index notches, a brass hub ring and the hub's phosphor glass */
-  private paintBase(c: Colony, hover: number): Pix {
-    const S = 152, p = new Pix(S, S), cx = 75.5, cy = 75.5, step = TAU / N;
-    const st = c.slots.slots.map((s) => (s.level <= 0 ? 'L' : s.tool ? 'T' : 'E')).join('') + c.slots.active + '|' + hover;
-    if (this.base && this.baseKey === st) return this.base;
-    const lit = (nx: number, ny: number) => -(nx * 0.6 + ny * 0.8);
-    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-      const dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy); if (d > 75.2) continue;
-      const nx = dx / (d || 1), ny = dy / (d || 1);
-      let a = Math.atan2(dy, dx) + Math.PI / 2 + step / 2; a = ((a % TAU) + TAU) % TAU;
-      const si = Math.floor(a / step) % N, af = a - si * step, edgeA = Math.min(af, step - af) * d;
-      if (d > 74.2) { p.set(x, y, R.steel[0]); continue; }
-      if (d > 66) {
-        // the bezel: a rounded steel ring (lit outer slope above-left, lit inner slope below-right), knurled
-        const outer = d > 70, l = outer ? lit(nx, ny) : -lit(nx, ny);
-        let k = l > 0.55 ? 5 : l > 0.15 ? 4 : l > -0.3 ? 3 : 2;
-        if (d > 69 && d < 73 && Math.floor((a / TAU) * 180) % 2 === 0) k = Math.max(1, k - 1);
-        if (Math.abs(af - step / 2) * d < 1.2 && d > 68 && d < 73) { p.set(x, y, R.brass[af > step / 2 ? 2 : 5]); continue; }
-        p.set(x, y, R.steel[k]); continue;
-      }
-      if (d > 65) { p.set(x, y, R.ink[0]); continue; }
-      if (d > 31) {
-        const s = c.slots.slots[si], lock = s.level <= 0, act = c.slots.active === si, hv = hover === si;
-        if (edgeA < 1.6) { // the rib between sockets: raised, lit on its upper-left face
-          const ra = si * step - step / 2 - Math.PI / 2, rx = -Math.sin(ra), ry = Math.cos(ra);
-          const side = (dx * rx + dy * ry) > 0 ? 1 : -1; p.set(x, y, edgeA < 0.6 ? R.steel[1] : lit(rx * side, ry * side) > 0 ? R.steel[4] : R.steel[2]); continue;
-        }
-        // the recess: shadowed on the lip nearest the light, lit on the far lip; the floor flat
-        const nearOuter = 65 - d < 1.5, nearInner = d - 31 < 1.5, nearSide = edgeA < 2.6;
-        let col = lock ? R.ink[1] : hv ? R.olive[2] : act ? R.malachite[0] : R.olive[1];
-        if (lock && ((x + y) >> 2) % 2 === 0) col = R.ochre[1];
-        if (nearOuter) col = lit(nx, ny) > 0 ? R.ink[0] : R.olive[3];
-        else if (nearInner) col = lit(-nx, -ny) > 0 ? R.ink[0] : R.olive[3];
-        else if (nearSide) col = R.olive[0];
-        if (act && (nearOuter || nearInner || (edgeA < 2.6 && edgeA >= 1.6))) col = R.malachite[5];
-        p.set(x, y, col); continue;
-      }
-      if (d > 30) { p.set(x, y, R.ink[0]); continue; }
-      if (d > 26.5) { const l = lit(nx, ny); p.set(x, y, R.brass[l > 0.5 ? 5 : l > 0 ? 4 : l > -0.5 ? 3 : 2]); continue; }
-      if (d > 25.5) { p.set(x, y, R.ink[0]); continue; }
-      // the hub glass: scanlines, darker rim, a glare
-      const g2 = d > 23 ? R.ink[0] : y % 2 ? R.ink[0] : R.malachite[0];
-      p.set(x, y, g2);
-      const u = dx + dy; if (d < 22 && u > -22 && u < -20) p.set(x, y, R.malachite[1]);
-    }
-    this.base = p; this.baseKey = st;
-    return p;
-  }
+  /** the ring, hand-drawn (art 160 x 160 at 2x): a paper disc for each slot circled in ink, a sketched ring through
+   *  them, the slot numbers lettered outside, level pips as ink dots, a red scribble round the slot in use, a doodled
+   *  padlock on a closed slot; the tool renders (lowpix) sit on the discs at full resolution */
   private draw(c: Colony) {
-    const S = 152, cv = this.cv, g = this.g;
-    if (cv.width !== 304) { cv.width = 304; cv.height = 304; }
-    const p = new Pix(S, S); p.d.set(this.paintBase(c, this.hover).d);
-    const step = TAU / N, cx = 75.5, cy = 75.5;
-    // numbers, pips, NO UNIT in the house face
+    const S = 160, cv = this.cv, g = this.g, cx = 80, cy = 80, step = TAU / N, RS = 54;
+    if (cv.width !== 320) { cv.width = 320; cv.height = 320; }
+    const p = new Pix(S, S);
+    // the ring: two passes of a wobbling circle
+    for (const [r, sd, w] of [[RS, 3, 2], [RS + 2, 9, 1]] as [number, number, number][]) { const n = 140; for (let i = 0; i < n; i++) { const a0 = (i / n) * TAU, a1 = ((i + 1) / n) * TAU; if (w === 1 && i % 9 > 6) continue; stroke(p, cx + Math.cos(a0) * r, cy + Math.sin(a0) * r, cx + Math.cos(a1) * r, cy + Math.sin(a1) * r, sd + i, { w, over: 0, amp: 0.3 }); } }
+    // the hub: a paper disc with the tool's name
+    for (let y = -22; y <= 22; y++) for (let x = -22; x <= 22; x++) if (x * x + y * y <= 22 * 22) p.set(cx + x, cy + y, y > 14 ? R.paper[4] : R.paper[5]);
+    scribble(p, cx, cy, 22, 22, 5, INK);
     for (let i = 0; i < N; i++) {
-      const s = c.slots.slots[i], am = -Math.PI / 2 + i * step, a0 = am - step / 2 + 0.16;
-      fontText(p, String(i + 1), Math.round(cx + Math.cos(a0) * 58), Math.round(cy + Math.sin(a0) * 58) - 6, s.level <= 0 ? R.ochre[2] : R.paper[4], { shadow: R.ink[0], align: 'center' });
-      for (let k = 0; k < 3; k++) { const pa = am - 0.2 + k * 0.2, px = Math.round(cx + Math.cos(pa) * 36), py = Math.round(cy + Math.sin(pa) * 36); p.rect(px - 1, py - 1, 3, 3, R.ink[0]); p.rect(px - 1, py - 1, 2, 2, k < s.level ? R.ochre[5] : R.ochre[1]); }
-      if (s.level > 0 && s.tool && !c.slots.unitOf(i)) fontText(p, 'NO UNIT', Math.round(cx + Math.cos(am) * 48), Math.round(cy + Math.sin(am) * 48) + 7, R.coral[5], { shadow: R.ink[0], align: 'center' });
-      if (s.level > 0 && !s.tool) fontText(p, 'EMPTY', Math.round(cx + Math.cos(am) * 48), Math.round(cy + Math.sin(am) * 48) - 5, R.olive[3], { align: 'center' });
+      const s = c.slots.slots[i], am = -Math.PI / 2 + i * step, sx = Math.round(cx + Math.cos(am) * RS), sy = Math.round(cy + Math.sin(am) * RS);
+      const lock = s.level <= 0, act = c.slots.active === i, hv = this.hover === i;
+      for (let y = -16; y <= 16; y++) for (let x = -16; x <= 16; x++) if (x * x + y * y <= 16 * 16) p.set(sx + x, sy + y, lock ? R.paper[3] : hv ? R.straw[5] : y > 10 ? R.paper[4] : R.paper[5]);
+      scribble(p, sx, sy, 16, 16, 20 + i, act ? R.stampRed[3] : INK);
+      if (act) scribble(p, sx, sy, 19, 19, 40 + i, R.stampRed[3]);
+      // number outside, pips inside the rim
+      const nx = Math.round(cx + Math.cos(am) * (RS + 25)), ny = Math.round(cy + Math.sin(am) * (RS + 25));
+      letter(p, String(i + 1), nx, ny - 7, lock ? R.paper[2] : INK, { align: 'center' });
+      for (let k = 0; k < 3; k++) { const pa = am + (k - 1) * 0.16, px = Math.round(cx + Math.cos(pa) * (RS - 21)), py = Math.round(cy + Math.sin(pa) * (RS - 21)); p.rect(px - 1, py - 1, 3, 3, k < s.level ? R.stampRed[3] : R.paper[3]); }
+      if (lock) { for (let y = 0; y < 8; y++) for (let x = 0; x < 11; x++) p.set(sx - 5 + x, sy - 2 + y, R.ochre[4]); stroke(p, sx - 5, sy - 2, sx + 5, sy - 2, i, { w: 1, over: 0 }); stroke(p, sx - 3, sy - 2, sx - 3, sy - 7, i + 1, { w: 1, over: 0 }); stroke(p, sx + 3, sy - 2, sx + 3, sy - 7, i + 2, { w: 1, over: 0 }); stroke(p, sx - 3, sy - 7, sx + 3, sy - 7, i + 3, { w: 1, over: 0 }); p.set(sx, sy + 2, INK); }
+      if (s.level > 0 && !s.tool) letter(p, '+', sx, sy - 7, R.paper[2], { align: 'center' });
     }
-    // the hub's readout
     const show = this.hover >= 0 ? this.hover : c.slots.active, sl = show >= 0 ? c.slots.slots[show] : null;
-    const G = R.malachite;
-    if (sl && sl.tool) {
-      const nm = TOOLS[sl.tool].name.toUpperCase().split(' ').pop()!.slice(0, 7);
-      fontText(p, nm, 76, 61, G[5], { glow: G[1], align: 'center' });
-      fontText(p, `LV ${sl.level}`, 76, 73, c.slots.active === show ? R.ochre[5] : G[4], { glow: G[1], align: 'center' });
-    } else if (sl && sl.level <= 0) fontText(p, 'LOCKED', 76, 67, R.ochre[5], { glow: R.ochre[1], align: 'center' });
-    else { fontText(p, 'TOOLS', 76, 61, G[5], { glow: G[1], align: 'center' }); fontText(p, 'PICK', 76, 73, G[3], { align: 'center' }); }
-    // upscale the art 2x, then the tool vignettes at full resolution on top
+    if (sl && sl.tool) { letter(p, TOOLS[sl.tool].name.toUpperCase().split(' ').pop()!.slice(0, 7), cx, cy - 11, INK, { align: 'center' }); letter(p, `LV ${sl.level}`, cx, cy + 1, c.slots.active === show ? R.stampRed[3] : R.ink[2], { align: 'center' }); }
+    else if (sl && sl.level <= 0) letter(p, 'LOCKED', cx, cy - 6, R.ochre[2], { align: 'center' });
+    else { letter(p, 'TOOLS', cx, cy - 11, INK, { align: 'center' }); letter(p, 'PICK', cx, cy + 1, R.ink[2], { align: 'center' }); }
     const tmp = (this as unknown as { tmp?: HTMLCanvasElement }).tmp ?? document.createElement('canvas'); (this as unknown as { tmp: HTMLCanvasElement }).tmp = tmp;
     tmp.width = S; tmp.height = S; tmp.getContext('2d')!.putImageData(p.image(), 0, 0);
-    g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = false; g.clearRect(0, 0, 304, 304); g.drawImage(tmp, 0, 0, 304, 304);
+    g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = false; g.clearRect(0, 0, 320, 320); g.drawImage(tmp, 0, 0, 320, 320);
     for (let i = 0; i < N; i++) {
-      const s = c.slots.slots[i], am = -Math.PI / 2 + i * step, ix = Math.round(152 + Math.cos(am) * 98), iy = Math.round(152 + Math.sin(am) * 98);
-      const name = s.level <= 0 ? 'v-lock' : s.tool ? TOOLS[s.tool].icon : null; if (!name) continue;
-      const dim = s.level > 0 && !c.slots.unitOf(i), lp = s.level > 0 ? lowpixIcon(name) : null;
-      if (lp && lp.complete && lp.naturalWidth) { g.globalAlpha = dim ? 0.45 : 1; g.drawImage(lp, Math.round(ix - lp.naturalWidth / 2), Math.round(iy - lp.naturalHeight / 2 - (dim ? 6 : 0))); g.globalAlpha = 1; continue; }
-      const sz = s.level <= 0 ? 36 : 52, ic = iconCanvas(name, sz, dim);
-      if (ic) g.drawImage(ic, ix - sz / 2, iy - sz / 2 - (s.tool && dim ? 6 : 0), sz, sz);
+      const s = c.slots.slots[i]; if (s.level <= 0 || !s.tool) continue;
+      const am = -Math.PI / 2 + i * step, ix = Math.round(160 + Math.cos(am) * RS * 2), iy = Math.round(160 + Math.sin(am) * RS * 2);
+      const dim = !c.slots.unitOf(i), lp = lowpixIcon(TOOLS[s.tool].icon);
+      g.globalAlpha = dim ? 0.4 : 1;
+      if (lp && lp.complete && lp.naturalWidth) g.drawImage(lp, Math.round(ix - lp.naturalWidth / 2), Math.round(iy - lp.naturalHeight / 2));
+      else { const ic = iconCanvas(TOOLS[s.tool].icon, 44, dim); if (ic) g.drawImage(ic, ix - 22, iy - 22, 44, 44); }
+      g.globalAlpha = 1;
     }
   }
 }

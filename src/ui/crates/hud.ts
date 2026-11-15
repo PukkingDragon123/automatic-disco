@@ -10,13 +10,12 @@ import { ContainerModel } from '../../inv/models';
 import { itemDef, itemIcon } from '../../factory/items';
 import type { InvUI } from './grid';
 import { injectCrateCSS } from './style';
-import { panelURL, wellURL, lampURL } from './hw';
-import { PH } from '../machine';
+import { cardURL, pinURL } from './ink';
 import { sfx } from '../../audio/audio';
 
 const PER = 3, SPACE = 2.5;
 const ik = () => (innerHeight >= 1000 ? 2 : 1);
-interface Mini { m: ContainerModel; pivot: THREE.Group; born: number; ver: number; fit: number }
+interface Mini { m: ContainerModel; pivot: THREE.Group; born: number; ver: number; fit: number; kids: number }
 export class CrateHud {
   readonly root: HTMLDivElement;
   private bed: HTMLDivElement; private canvas: HTMLCanvasElement; private labels: HTMLDivElement; private dots: HTMLDivElement; private title: HTMLDivElement; private hov: HTMLDivElement;
@@ -31,7 +30,7 @@ export class CrateHud {
     const r = (this.root = document.createElement('div'));
     r.className = 'crate-hud';
     r.innerHTML = `<div class="bed"><canvas></canvas><div class="hov"></div><div class="labels"></div></div>
-      <div class="row"><button class="inv-key sq prev" title="Previous page (scroll)">${ARROW_L}</button><div class="t">STORES</div><div class="dots"></div><button class="inv-key sq next" title="Next page (scroll)">${ARROW_R}</button></div>`;
+      <div class="row"><button class="inv-ink prev" title="Previous page (scroll)">${ARROW_L}</button><div class="t">STORES</div><div class="dots"></div><button class="inv-ink next" title="Next page (scroll)">${ARROW_R}</button></div>`;
     this.bed = r.querySelector('.bed')!; this.canvas = r.querySelector('canvas')!; this.labels = r.querySelector('.labels')!; this.dots = r.querySelector('.dots')!; this.title = r.querySelector('.t')!; this.hov = r.querySelector('.hov')!;
     this.layoutHw();
     addEventListener('resize', () => this.layoutHw());
@@ -71,11 +70,11 @@ export class CrateHud {
   /** the hardware: a painted panel 216 x 132 art pixels, a glass bed, the key row (all at --ik) */
   private layoutHw() {
     const k = innerHeight >= 1000 ? 2 : 1, W = 216, H = 132;
-    Object.assign(this.root.style, { width: W * k + 'px', height: H * k + 'px', backgroundImage: `url(${panelURL(W, H, 0, 11)})`, backgroundSize: `${W * k}px ${H * k}px` });
-    const bw = 202, bh = 96;
-    Object.assign(this.bed.style, { left: 7 * k + 'px', top: 7 * k + 'px', width: bw * k + 'px', height: bh * k + 'px', backgroundImage: `url(${wellURL(bw, bh)})`, backgroundSize: `${bw * k}px ${bh * k}px` });
+    Object.assign(this.root.style, { width: W * k + 'px', height: H * k + 'px', backgroundImage: `url(${cardURL(W * k, H * k, k, 11, { paper: true, tape: true })})` });
+    const bw = 200, bh = 98;
+    Object.assign(this.bed.style, { left: 8 * k + 'px', top: 9 * k + 'px', width: bw * k + 'px', height: bh * k + 'px' });
     const row = this.root.querySelector<HTMLDivElement>('.row')!;
-    Object.assign(row.style, { left: 7 * k + 'px', top: 107 * k + 'px', width: bw * k + 'px', height: 20 * k + 'px' });
+    Object.assign(row.style, { left: 8 * k + 'px', top: 108 * k + 'px', width: bw * k + 'px', height: 16 * k + 'px' });
     this.dirty = true; this.labelKey = '';
   }
   /** the hold first, then the containers in the order they were built */
@@ -115,8 +114,18 @@ export class CrateHud {
         const box = new THREE.Box3().setFromObject(model.root), sz = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
         const fit = 2.0 / Math.max(sz.x, sz.z * 1.0, sz.y * 1.05);
         model.root.position.set(-ctr.x, -box.min.y, -ctr.z);
-        m = { m: model, pivot, born: performance.now() - c.born > 3000 ? 0 : performance.now(), ver: -1, fit };
+        m = { m: model, pivot, born: performance.now() - c.born > 3000 ? 0 : performance.now(), ver: -1, fit, kids: -1 };
         this.minis.set(c, m);
+      }
+      // re-fit when the body changed (a lowpix body landed after the fallback was fitted)
+      const kids = m.m.root.children[0]?.children.length ?? 0;
+      if (kids !== m.kids) {
+        m.kids = kids;
+        m.m.root.position.set(0, 0, 0);
+        const box = new THREE.Box3().setFromObject(m.m.root), sz = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+        m.fit = 2.0 / Math.max(sz.x, sz.z, sz.y * 1.05);
+        m.m.root.position.set(-ctr.x, -box.min.y, -ctr.z);
+        this.dirty = true;
       }
       m.pivot.position.x = i * SPACE;
       const on = Math.abs(i - (this.page * PER + 1)) <= PER + 1;
@@ -160,8 +169,8 @@ export class CrateHud {
     const key = p + '|' + vis.map((c) => `${c.id}:${c.label}:${Math.round(c.fill() * 100)}`).join(',') + '|' + list.length;
     if (key === this.labelKey) return;
     this.labelKey = key;
-    this.labels.innerHTML = Array.from({ length: PER }, (_, i) => { const c = vis[i]; return c ? `<div class="${c.fill() > 0.9 ? 'full' : ''}"><span class="nm">${c.label}</span><span class="g"><b style="width:${Math.round(c.fill() * 100)}%"></b></span></div>` : '<div></div>'; }).join('');
-    this.dots.innerHTML = Array.from({ length: this.pages }, (_, i) => `<img src="${lampURL(i === p, PH)}" data-p="${i}">`).join('');
+    this.labels.innerHTML = Array.from({ length: PER }, (_, i) => { const c = vis[i]; return c ? `<div class="${c.fill() > 0.9 ? 'full' : ''}"><span class="nm">${c.label.length > 9 ? c.label.slice(0, 9) : c.label}</span><span class="g"><b style="width:${Math.round(c.fill() * 100)}%"></b></span></div>` : '<div></div>'; }).join('');
+    this.dots.innerHTML = Array.from({ length: this.pages }, (_, i) => `<img src="${pinURL(i === p)}" data-p="${i}">`).join('');
     this.dots.querySelectorAll<HTMLElement>('img').forEach((d) => (d.onclick = () => { this.page = Number(d.dataset.p); this.dirty = true; }));
     this.title.textContent = `STORES ${list.length}`;
     (this.root.querySelector('.prev') as HTMLElement).classList.toggle('dis', p <= 0);

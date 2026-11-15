@@ -1025,7 +1025,13 @@ export class Game implements Screen {
     }
   }
 
-  render(post: Post, t: number) { post.render(this.world.scene, this.cam.cam, this.world.fxScene, t); }
+  render(post: Post, t: number) {
+    post.render(this.world.scene, this.cam.cam, this.world.fxScene, t);
+    // v6: the selection's living vignette, drawn into its frame in the HUD after the main image
+    const r = this.colony && this.hud.vignetteRect(); if (r) this.hud.vignetteDrawn(this.colony!.renderVignette(this.engine.renderer, r, Math.max(0, t - this.lastRenderT)), this.colony!.vcam, r);
+    this.lastRenderT = t;
+  }
+  private lastRenderT = 0;
   private act = true; private offKey: (() => void) | null = null;
   suspend() { this.act = false; this.hud.root.style.display = 'none'; this.overlay.style.display = 'none'; }
   resume() { this.act = true; this.hud.root.style.display = ''; this.overlay.style.display = ''; this.hud.invalidate(); this.input.endFrame(); this.colony?.resumed(); }

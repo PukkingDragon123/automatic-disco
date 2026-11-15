@@ -4,14 +4,12 @@
 // so the render sits with the hand-painted hardware around it. Tiles get cached stills; the detail panel gets a
 // turntable whose frames are shot one per tick and then replayed as images.
 import * as THREE from 'three';
-import { FDEFS, isBelt, type FKind } from '../../factory/defs';
-import { modelFor, beltGeo } from '../../factory/models';
-import { machineMaterial } from '../../factory/tex';
+import { FDEFS, type FKind } from '../../factory/defs';
+import { liveModel } from './vignette';
 
 let R: THREE.WebGLRenderer | null = null;
 const scene = new THREE.Scene();
 const cam = new THREE.PerspectiveCamera(24, 1, 0.1, 200);
-let mat: THREE.Material | null = null;
 const stills = new Map<string, string>();
 const groups = new Map<string, { g: THREE.Group; c: THREE.Vector3; r: number }>();
 const targets = new Map<string, THREE.WebGLRenderTarget>();
@@ -24,20 +22,14 @@ export function initStudio(r: THREE.WebGLRenderer) {
   const key = new THREE.DirectionalLight(0xfff1d8, 3.0); key.position.set(-4, 7, 5); scene.add(key);
   const fill = new THREE.DirectionalLight(0x9fb8d0, 0.8); fill.position.set(6, 2, 3); scene.add(fill);
   const rim = new THREE.DirectionalLight(0xd8f0e0, 1.4); rim.position.set(2, 4, -7); scene.add(rim);
-  mat = machineMaterial(1);
 }
 function group(kind: FKind) {
   let e = groups.get(kind);
   if (e) return e;
-  const def = FDEFS[kind];
-  const g = new THREE.Group();
-  if (isBelt(kind)) {
-    for (let i = -1; i <= 1; i++) { const m = new THREE.Mesh(beltGeo('straight', kind === 'pipe'), mat!); m.position.z = i; g.add(m); }
-  } else {
-    const md = modelFor(kind, def.model, def.hooks?.model);
-    g.add(new THREE.Mesh(md.base, mat!));
-    for (const p of md.parts) { const m = new THREE.Mesh(p.geo, mat!); m.position.set(...p.pivot); g.add(m); }
-  }
+  // the same live model the vignettes use (a lowpix .glb, a container with a load, or the factory's own model);
+  // when a .glb arrives later the stills of that kind are shot again
+  const lv = liveModel(kind, () => { groups.delete(kind); for (const k of [...stills.keys()]) if (k.startsWith(kind + '|') || k.startsWith('ph|' + kind + '|')) stills.delete(k); });
+  const g = new THREE.Group(); g.add(lv.root);
   g.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(g), c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
   e = { g, c, r: Math.max(s.x, s.z, s.y * 1.15) * 0.5 + 0.12 };

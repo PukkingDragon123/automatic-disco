@@ -1,0 +1,711 @@
+{
+ "name": "Feedstock Vat",
+ "description": "A riveted steel digestion tank on a pad, banded and lagged, a geared stirrer motor on the lid, a glass sight tube glowing with feedstock, a copper feed pipe.",
+ "license": "CC0-1.0",
+ "density": 2,
+ "budget": {
+  "tris": 1400,
+  "colors": 72
+ },
+ "light": {
+  "dir": [
+   -0.55,
+   1.0,
+   0.7
+  ],
+  "strength": 1.1,
+  "gradient": 0.3,
+  "ao": 0.9,
+  "ao_height": 6.0
+ },
+ "render": {
+  "background": "#ff00ff",
+  "hero": [
+   -34,
+   24
+  ],
+  "shadow": 0.0
+ },
+ "palette": {
+  "ramps": {
+   "brick": [
+    "#2a1410",
+    "#4a2218",
+    "#6e3424",
+    "#8f4a32",
+    "#ad6444",
+    "#c9845e",
+    "#e0a982"
+   ],
+   "iron": [
+    "#0f1114",
+    "#1d2126",
+    "#2e343b",
+    "#454d56",
+    "#66707b",
+    "#8f99a3",
+    "#c3cbd2"
+   ],
+   "rust": [
+    "#2a1409",
+    "#46220e",
+    "#663215",
+    "#86451b",
+    "#a65c25",
+    "#c47a3a"
+   ],
+   "wood": [
+    "#24160c",
+    "#3d2715",
+    "#5c3d20",
+    "#7d562e",
+    "#a07440",
+    "#c49a62",
+    "#e0c290"
+   ],
+   "gravel": [
+    "#26261f",
+    "#3a3a30",
+    "#4f4e42",
+    "#666454",
+    "#7f7c68",
+    "#9a9680"
+   ],
+   "olive": [
+    "#131410",
+    "#26281f",
+    "#323428",
+    "#4d5038",
+    "#5e6148",
+    "#74775d",
+    "#8d8f77"
+   ],
+   "cream": [
+    "#3b3a36",
+    "#57544a",
+    "#7c786b",
+    "#a29d8c",
+    "#c3bdab",
+    "#d9d2bf",
+    "#ece6d2"
+   ],
+   "soil": [
+    "#1e140c",
+    "#33230f",
+    "#4a3518",
+    "#634a24",
+    "#7d6234"
+   ],
+   "plant": [
+    "#0f1f0c",
+    "#1d3a14",
+    "#2e5a1c",
+    "#447d26",
+    "#62a032",
+    "#8cc44a"
+   ],
+   "glow": [
+    "#4a1d05",
+    "#8a3a08",
+    "#cf6a10",
+    "#f5a128",
+    "#ffd25a",
+    "#fff3b0"
+   ],
+   "phos": [
+    "#06110a",
+    "#0f2a17",
+    "#1d4a2a",
+    "#336240",
+    "#4a8457",
+    "#7fb88a",
+    "#b9dcbd"
+   ],
+   "warn": [
+    "#3a2a06",
+    "#7a5a0a",
+    "#d9a514",
+    "#ffd23a"
+   ],
+   "red": [
+    "#2a0a0e",
+    "#5c1219",
+    "#9a1f26",
+    "#b8382e",
+    "#e0634f"
+   ]
+  }
+ },
+ "styles": {
+  "brick": {
+   "ramp": "brick",
+   "tone": 3.6,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "courses",
+     "op": "scales",
+     "along": "x",
+     "size": [
+      6,
+      3
+     ],
+     "shape": "square",
+     "gap": 1,
+     "jitter": 0.4,
+     "highlight": 1,
+     "shadow": 1
+    },
+    {
+     "id": "soot",
+     "op": "patches",
+     "scale": 2.2,
+     "threshold": 0.68,
+     "shift": -1.1
+    },
+    {
+     "id": "wear",
+     "op": "wear",
+     "width": 1,
+     "density": 0.12,
+     "ramp": "brick",
+     "tone": 1.5,
+     "post": true
+    }
+   ]
+  },
+  "iron": {
+   "ramp": "iron",
+   "tone": 3.2,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 1.6,
+     "amount": 0.35
+    },
+    {
+     "id": "rust",
+     "op": "patches",
+     "scale": 1.5,
+     "threshold": 0.66,
+     "ramp": "rust",
+     "tone": 3.0
+    },
+    {
+     "id": "rivets",
+     "op": "rivets",
+     "inset": 1,
+     "min_size": 7,
+     "post": true
+    }
+   ]
+  },
+  "olive": {
+   "ramp": "olive",
+   "tone": 3.8,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 2.0,
+     "amount": 0.25
+    },
+    {
+     "id": "panel",
+     "op": "panel",
+     "inset": 2,
+     "min_size": 11
+    },
+    {
+     "id": "grime",
+     "op": "patches",
+     "scale": 1.8,
+     "threshold": 0.72,
+     "shift": -0.6,
+     "faces": [
+      "-top"
+     ]
+    },
+    {
+     "id": "wear",
+     "op": "wear",
+     "width": 2,
+     "density": 0.14,
+     "ramp": "iron",
+     "tone": 3.0,
+     "post": true
+    },
+    {
+     "id": "rivets",
+     "op": "rivets",
+     "inset": 1,
+     "min_size": 9,
+     "post": true
+    }
+   ]
+  },
+  "cream": {
+   "ramp": "cream",
+   "tone": 4.2,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 2.0,
+     "amount": 0.25
+    },
+    {
+     "id": "panel",
+     "op": "panel",
+     "inset": 2,
+     "min_size": 11
+    },
+    {
+     "id": "wear",
+     "op": "wear",
+     "width": 1,
+     "density": 0.12,
+     "ramp": "iron",
+     "tone": 3.0,
+     "post": true
+    }
+   ]
+  },
+  "wood": {
+   "ramp": "wood",
+   "tone": 3.6,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "grain",
+     "op": "stripes",
+     "axis": "y",
+     "period": 3,
+     "width": 0.3,
+     "shift": -0.8,
+     "wobble": 0.4
+    }
+   ]
+  },
+  "plank": {
+   "ramp": "wood",
+   "tone": 3.9,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "boards",
+     "op": "stripes",
+     "axis": "x",
+     "period": 6,
+     "width": 0.18,
+     "shift": -1.4
+    },
+    {
+     "id": "grain",
+     "op": "noise",
+     "scale": 1.4,
+     "amount": 0.4
+    }
+   ]
+  },
+  "gravel": {
+   "ramp": "gravel",
+   "tone": 2.8,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "stones",
+     "op": "spots",
+     "count": 40,
+     "radius": [
+      0.4,
+      1.0
+     ],
+     "shift": 1.1
+    }
+   ]
+  },
+  "soil": {
+   "ramp": "soil",
+   "tone": 2.6,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "none"
+   },
+   "layers": [
+    {
+     "id": "furrows",
+     "op": "stripes",
+     "axis": "z",
+     "period": 4,
+     "width": 0.35,
+     "shift": -0.9
+    }
+   ]
+  },
+  "plant": {
+   "ramp": "plant",
+   "tone": 3.6,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "lit",
+     "op": "noise",
+     "scale": 1.0,
+     "amount": 0.6
+    }
+   ]
+  },
+  "glow": {
+   "ramp": "glow",
+   "tone": 3.6,
+   "light": 0.3,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 0
+   }
+  },
+  "phos": {
+   "ramp": "phos",
+   "tone": 4.0,
+   "light": 0.3,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "all"
+   }
+  },
+  "warn": {
+   "ramp": "warn",
+   "tone": 2.4,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "hazard",
+     "op": "stripes",
+     "axis": [
+      1,
+      1,
+      0
+     ],
+     "period": 4,
+     "width": 0.5,
+     "ramp": "iron",
+     "tone": 0.6
+    }
+   ]
+  },
+  "rust": {
+   "ramp": "rust",
+   "tone": 3.2,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 1.5,
+     "amount": 0.4
+    }
+   ]
+  },
+  "red": {
+   "ramp": "red",
+   "tone": 3.0,
+   "dither": 0.0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 2.0,
+     "amount": 0.3
+    }
+   ]
+  }
+ },
+ "parts": [
+  {
+   "id": "pad",
+   "shape": "box",
+   "size": [
+    32,
+    2,
+    32
+   ],
+   "pivot": [
+    0,
+    1,
+    0
+   ],
+   "style": "gravel",
+   "chamfer": 1,
+   "hide": [
+    "bottom"
+   ]
+  },
+  {
+   "id": "tank",
+   "shape": "prism",
+   "size": [
+    23.0,
+    23.0,
+    20
+   ],
+   "pivot": [
+    0,
+    12.0,
+    0
+   ],
+   "style": "iron",
+   "sides": 12,
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "front_scale": [
+    1.0,
+    1.0
+   ]
+  },
+  {
+   "id": "band1",
+   "shape": "prism",
+   "size": [
+    23.8,
+    23.8,
+    1.2
+   ],
+   "pivot": [
+    0,
+    6.6,
+    0
+   ],
+   "style": "olive",
+   "sides": 12,
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "front_scale": [
+    1.0,
+    1.0
+   ]
+  },
+  {
+   "id": "band2",
+   "shape": "prism",
+   "size": [
+    23.8,
+    23.8,
+    1.2
+   ],
+   "pivot": [
+    0,
+    14.6,
+    0
+   ],
+   "style": "olive",
+   "sides": 12,
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "front_scale": [
+    1.0,
+    1.0
+   ]
+  },
+  {
+   "id": "lid",
+   "shape": "prism",
+   "size": [
+    20,
+    20,
+    2.2
+   ],
+   "pivot": [
+    0,
+    23.1,
+    0
+   ],
+   "style": "olive",
+   "sides": 12,
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "front_scale": [
+    0.85,
+    0.85
+   ]
+  },
+  {
+   "id": "motor",
+   "shape": "box",
+   "size": [
+    5,
+    5,
+    5
+   ],
+   "pivot": [
+    0,
+    26.5,
+    0
+   ],
+   "style": "olive",
+   "chamfer": 0.6
+  },
+  {
+   "id": "shaft",
+   "shape": "prism",
+   "size": [
+    1.8,
+    1.8,
+    3
+   ],
+   "pivot": [
+    0,
+    30.5,
+    0
+   ],
+   "style": "iron",
+   "sides": 6,
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "front_scale": [
+    1.0,
+    1.0
+   ]
+  },
+  {
+   "id": "sight",
+   "shape": "box",
+   "size": [
+    3,
+    12,
+    1
+   ],
+   "pivot": [
+    0,
+    12,
+    11.6
+   ],
+   "style": "phos"
+  },
+  {
+   "id": "pipe",
+   "shape": "prism",
+   "size": [
+    2.6,
+    2.6,
+    9
+   ],
+   "pivot": [
+    -11,
+    6.5,
+    9
+   ],
+   "style": "rust",
+   "sides": 6,
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "front_scale": [
+    1.0,
+    1.0
+   ]
+  },
+  {
+   "id": "pipe2",
+   "shape": "prism",
+   "size": [
+    2.4,
+    2.4,
+    6
+   ],
+   "pivot": [
+    -8.5,
+    11,
+    9
+   ],
+   "style": "rust",
+   "sides": 6,
+   "rotation": [
+    0,
+    90,
+    0
+   ]
+  }
+ ]
+}

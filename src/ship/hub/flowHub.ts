@@ -13,7 +13,6 @@ import { openMonitor } from './monitor';
 import { podDrop } from './drop';
 import { csfx } from '../../ui/cineAudio';
 import { toast } from '../../ui/kit';
-import { openTerminal } from './terminal';
 import { shipState, saveShip, resetShip } from './shipState';
 import type { RoomId } from './layout';
 
@@ -52,15 +51,16 @@ export function makeHub(flow: Flow, o: HubFlowOpts = {}): ShipHub {
     let t = 0; const off = hub.onUpdate((dt) => { t += dt; const k = Math.min(1, k0 + (t / 4) * (1 - k0)); hub.podBuild(k); if (Math.floor(t * 3) !== Math.floor((t - dt) * 3)) csfx('relay', 0.3); if (k >= 1) { off(); st.pod = 1; saveShip(); crane?.moveTo(-25.2); crane?.setHook(3.1); csfx('chime', 0.5); } });
   };
   hubUse = (id: RoomId) => {
-    if (id === 'bridge') { monitor(); return true; }
-    openTerminal({ hub, actions: {
+    hub.vignette(id, { game: game(), actions: {
       monitor: () => monitor(), lab, save, inspect, assemble,
+      scan: () => { csfx('beepHi', 0.4); toast('Full scan: crew fit.', 'good', 2000); },
+      settings: () => hub.chrome.coreSettings(),
       load: () => { if (flow.loadSave()) { csfx('chime', 0.5); toast('Mission loaded from the core.', 'good', 2400); } else toast('No saved mission in the core.', 'warn', 2400); },
       newGame: () => { flow.startRun(Math.floor(Math.random() * 1e9)); resetShip(); hub.podBuild(shipState().pod); toast('New mission logged.', 'good', 2400); },
       title: () => hub.outside(),
       upgrades: () => { const g = game(); if (g) import('../../research/index').then((m) => m.openTerminal(g, 'upgrader')).catch((e) => console.warn(e)); else toast('The Upgrader is built on the surface.', 'warn', 2600); },
       hold: game() && (game() as any).storage?.hold ? () => { const g = game() as any; import('../../ui/crates/grid').then((m) => m.openInventory(g, g.storage.hold)).catch((e) => console.warn(e)); } : undefined,
-    } }, id);
+    } });
     return true;
   };
   const monitor = () => {

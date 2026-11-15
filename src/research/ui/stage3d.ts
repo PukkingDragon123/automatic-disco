@@ -7,7 +7,7 @@ import type { Post } from '../../gfx/post';
 import { gbuf } from '../../gfx/gbuf';
 
 export const lam = (c: number, o: { emissive?: number; transparent?: boolean; opacity?: number; side?: THREE.Side; flag?: number } = {}) =>
-  gbuf(new THREE.MeshLambertMaterial({ color: c, emissive: o.emissive ?? 0, transparent: o.transparent, opacity: o.opacity ?? 1, side: o.side ?? THREE.FrontSide, flatShading: true, depthWrite: !o.transparent }), o.flag ?? 1);
+  gbuf(new THREE.MeshLambertMaterial({ color: c, emissive: o.emissive ?? 0, transparent: !!o.transparent, opacity: o.opacity ?? 1, side: o.side ?? THREE.FrontSide, flatShading: true, depthWrite: !o.transparent }), o.flag ?? 1);
 export const glowM = (c: number, opacity = 1) => gbuf(new THREE.MeshBasicMaterial({ color: c, transparent: opacity < 1, opacity, depthWrite: opacity >= 1 }), opacity < 1 ? 0 : 32);
 export const ghostM = (c: number) => gbuf(new THREE.MeshBasicMaterial({ color: c, wireframe: true, transparent: true, opacity: 0.32, depthWrite: false }), 0);
 export function mesh(g: THREE.BufferGeometry, m: THREE.Material, at?: [number, number, number], parent?: THREE.Object3D) {
@@ -33,8 +33,12 @@ export class Vignette {
     const sc = key.shadow.camera as THREE.OrthographicCamera; sc.left = sc.bottom = -5; sc.right = sc.top = 5; sc.near = 0.5; sc.far = 30; key.shadow.bias = -0.0006;
     this.scene.add(key, key.target);
     const rim = new THREE.DirectionalLight(0xbfe0ff, 0.9); rim.position.set(5, 4, -6); this.scene.add(rim);
-    // the backdrop floor fades into the fog
-    const fl = mesh(new THREE.CircleGeometry(30, 24), lam(new THREE.Color(bg).multiplyScalar(0.8).getHex()), [0, -0.02, 0], this.scene); fl.rotation.x = -Math.PI / 2;
+    // a soft studio backdrop: a vertical gradient dome behind everything (no floor line)
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(60, 24, 12), new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false,
+      uniforms: { top: { value: new THREE.Color(bg).offsetHSL(0, -0.05, 0.08) }, bot: { value: new THREE.Color(bg).offsetHSL(0, 0, -0.12) } },
+      vertexShader: 'varying float h; void main(){ h = normalize(position).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform vec3 top; uniform vec3 bot; varying float h; void main(){ gl_FragColor = vec4(mix(bot, top, smoothstep(-0.25, 0.6, h)), 1.0); }' }));
+    sky.frustumCulled = false; sky.renderOrder = -1; this.scene.add(sky);
     if (o.plinth !== false) this.scene.add(plinth(o.top ?? 0x4a3828));
     this.scene.add(this.root);
   }

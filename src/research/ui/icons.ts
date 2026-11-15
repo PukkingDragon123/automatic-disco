@@ -134,7 +134,7 @@ export const iconsReady: Promise<void> = new Promise((res) => {
   im.onerror = () => res();
   im.src = atlasUrl;
 });
-const DIM_RAMP = [0x0a110d, 0x0f1a14, 0x14261b, 0x1b3525, 0x264a32, 0x336240];
+const DIM_RAMP = [0x3a342c, 0x524a40, 0x6a6256, 0x8a8174, 0xa89e8e, 0xc4bba8];
 const RED_RAMP = [0x1c0907, 0x34100d, 0x521915, 0x72241d, 0x942e25, 0xb8382e, 0xcc6252];
 function fromAtlas(name: string, pal: PalKey | Pal): HTMLCanvasElement | null {
   const j = AIDX.index[name]; if (!atlas || j === undefined) return null;

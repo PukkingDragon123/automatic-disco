@@ -16,6 +16,7 @@ import { breachFx, type Breach } from './breach';
 import { closeTerminal } from './terminal';
 import { shipState } from './shipState';
 import { KEYS } from './layout';
+import { VIGNETTES } from './vignette';
 import { gbuf, F_EMIT } from '../../gfx/gbuf';
 import type { HubPod } from './pod';
 import { csfx, cloop, type Loop } from '../../ui/cineAudio';
@@ -183,14 +184,15 @@ export class ShipHub implements Screen {
   onRoomOpen(fn: (id: RoomId) => void) { this.roomFns.add(fn); return () => { this.roomFns.delete(fn); }; }
   onUpdate(fn: (dt: number, t: number) => void) { this.upd.add(fn); return () => { this.upd.delete(fn); }; }
   lockInput(on: boolean) { this.locked = on; if (on) this.setHover(null); }
+  isLocked() { return this.locked; }
   showChrome(on: boolean) { this.chrome.visible(on); }
   setActions(id: RoomId, a: RoomAction[]) { this.actions[id] = a; if (this.focused === id && this.mode === 'room') this.chrome.openPanel(id, a); }
   getActions(id: RoomId) { return this.actions[id] ?? []; }
   /** fly into a room (no panel) */
   focus(id: RoomId, o: { instant?: boolean } = {}): Promise<void> {
-    this.focused = id; this.mode = 'room'; this.setCut(1);
+    this.focused = id; this.vig = null; this.mode = 'room'; this.setCut(1);
     this.chrome.setMode('room', id);
-    return this.fly(this.rooms[id].cam, o.instant ? 0 : 1.25);
+    return this.fly(this.rooms[id].cam, o.instant ? 0 : 0.85);
   }
   /** fly into a room and open its function */
   async open(id: RoomId) {
@@ -201,9 +203,9 @@ export class ShipHub implements Screen {
     await p;
   }
   overview(o: { instant?: boolean } = {}): Promise<void> {
-    this.focused = null; this.mode = 'overview'; this.setCut(1);
+    this.focused = null; this.vig = null; this.mode = 'overview'; this.setCut(1);
     this.chrome.closePanel(); this.chrome.setMode('overview');
-    return this.fly(overviewCam(this.aspect()), o.instant ? 0 : 1.2);
+    return this.fly(overviewCam(this.aspect()), o.instant ? 0 : 0.85);
   }
   /** back out to the exterior title shot */
   outside(): Promise<void> {
@@ -277,18 +279,21 @@ export class ShipHub implements Screen {
       this.ptrIn = true; this.ptr.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
       if (!this.locked && (this.mode === 'overview' || this.mode === 'room')) this.setHover(this.pick(), e.clientX, e.clientY);
       else if (this.hovered) this.setHover(null);
-      const hot = !this.locked && this.mode === 'room' && this.pickKey();
+      const hot = !this.locked && this.mode === 'room' && !this.vig && this.pickKey();
       if (hot !== this.keyHot) { this.keyHot = hot; if (hot) csfx('hover', 0.5); }
-      if (this.focused) this.chrome.keyHint(hot ? KEYS[this.focused].label : null, e.clientX, e.clientY);
-      if (hot) this.engine.canvas.style.cursor = 'pointer';
+      const prop = !hot && !this.locked && this.mode === 'room' && !this.vig ? this.propAt() : null;
+      if (this.focused) this.chrome.keyHint(hot && !this.vig ? KEYS[this.focused].label : prop ? prop.label : null, e.clientX, e.clientY);
+      if (hot || prop) this.engine.canvas.style.cursor = 'pointer';
     };
     const leave = () => { this.ptrIn = false; this.setHover(null); };
     const down = (e: PointerEvent) => {
       if (this.locked) return;
       if (e.button === 2) { this.back(); return; }
       if (this.mode === 'exterior') return;
-      // inside a room, its key prop opens the room's function
-      if (this.mode === 'room' && this.focused && this.pickKey()) { csfx('button', 0.6); this.useRoom(this.focused); return; }
+      // inside a room, its key prop opens the room's function; other props do their little thing
+      if (this.mode === 'room' && this.focused && !this.vig && this.pickKey()) { csfx('button', 0.6); this.useRoom(this.focused); return; }
+      if (this.mode === 'room' && this.focused && this.clickProp()) return;
+      if (this.vig) return;
       const id = this.pick();
       if (id && (this.mode === 'overview' || (this.mode === 'room' && id !== this.focused))) { csfx('button', 0.5); this.open(id); }
     };
@@ -307,6 +312,7 @@ export class ShipHub implements Screen {
   back() {
     if (closeTerminal()) return;
     if (this.chrome.closeOverlay()) return;
+    if (this.chrome.inVignette()) { this.chrome.closeVignette(); this.vig = null; if (this.focused) this.fly(this.rooms[this.focused].cam, 0.7); return; }
     if (this.mode === 'room') { csfx('tick', 0.6); this.overview(); }
     else if (this.mode === 'overview' && !this.fromPlanet) { csfx('tick', 0.6); this.outside(); }
   }
@@ -317,9 +323,29 @@ export class ShipHub implements Screen {
     const k = this.keyBoxes[this.focused];
     return k.some((b) => this.ray.ray.intersectsBox(b));
   }
+  /** a small prop that does something when clicked (registered by the rooms: refs.props) */
+  private propAt(): { box: THREE.Box3; label: string; act: () => void } | null {
+    if (!this.ptrIn || !this.focused) return null;
+    this.ray.setFromCamera(this.ptr, this.camera);
+    const list = (this.interior.rooms[this.focused].ctx.refs.props ?? []) as { box: THREE.Box3; label: string; act: () => void }[];
+    let best: { box: THREE.Box3; label: string; act: () => void } | null = null, bd = Infinity;
+    const hit = new V3();
+    for (const p of list) { if (this.ray.ray.intersectBox(p.box, hit)) { const d = hit.distanceTo(this.ray.ray.origin); if (d < bd) { bd = d; best = p; } } }
+    return best;
+  }
+  private clickProp() { const p = this.propAt(); if (!p) return false; try { p.act(); } catch (e) { console.error('prop', e); } return true; }
   private keyBoxes = {} as Record<RoomId, THREE.Box3[]>;
   private keyLines = {} as Record<RoomId, THREE.LineSegments>;
   private keyHot = false;
+  /** the room function being shown as a vignette (the camera on the key prop, callouts on the objects) */
+  vig: RoomId | null = null;
+  vignette(id: RoomId, ctx: { actions: Partial<Record<string, () => void>>; game: any }) {
+    if (this.focused !== id) { this.focused = id; this.mode = 'room'; this.chrome.setMode('room', id); }
+    this.vig = id; this.setHover(null);
+    csfx('whoosh', 0.35);
+    this.fly(VIGNETTES[id].cam, 0.75);
+    this.chrome.openVignette(id, ctx);
+  }
   /** use a room: its function screen (the bridge: straight to the main monitor) */
   useRoom(id: RoomId) {
     for (const f of this.useFns) try { if (f(id)) return; } catch (e) { console.error('useRoom', e); }
@@ -348,7 +374,7 @@ export class ShipHub implements Screen {
       const k = ease(this.camT);
       this.cam.pos.lerpVectors(this.from.pos, this.to.pos, k);
       // arc the path up a little so fly-ins swoop rather than slide
-      this.cam.pos.y += Math.sin(Math.PI * k) * this.from.pos.distanceTo(this.to.pos) * 0.08;
+      this.cam.pos.y += Math.sin(Math.PI * k) * this.from.pos.distanceTo(this.to.pos) * 0.16;
       this.cam.look.lerpVectors(this.from.look, this.to.look, k);
       this.cam.fov = this.from.fov + (this.to.fov - this.from.fov) * k;
       if (this.camT >= 1) { const d = this.camDone; this.camDone = null; d?.(); }
@@ -376,7 +402,7 @@ export class ShipHub implements Screen {
       const gm = r.glow.material as THREE.MeshBasicMaterial;
       gm.color.setHex(ROOMS[id].light).multiplyScalar(0.18 * hk);
       r.light.intensity = r.baseK * (0.25 + 0.75 * ins) * (this.alarmOn ? 0.5 : 1) * this.powerK(id);
-      const kl = this.keyLines[id]; kl.visible = this.mode === 'room' && this.focused === id && !this.locked;
+      const kl = this.keyLines[id]; kl.visible = this.mode === 'room' && this.focused === id && !this.locked && !this.vig;
       if (kl.visible) (kl.material as THREE.LineBasicMaterial).color.setHex(0x7fe0a0).multiplyScalar(this.keyHot ? 2.4 : 0.7 + Math.sin(t * 3) * 0.3);
     }
     if (this.alarmOn) { const a = Math.sin(t * 6) > 0 ? 1 : 0; this.interior.rooms.lab.light.color.setHex(a ? 0xff3020 : ROOMS.lab.light); } else this.interior.rooms.lab.light.color.setHex(ROOMS.lab.light);

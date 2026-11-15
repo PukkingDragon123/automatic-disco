@@ -226,6 +226,36 @@ function glowRegion(g: G, x: number, y: number, w: number, h: number) {
 }
 const PH = '#8fe0b0', PH2 = '#4a9a74', AMB = '#e2b45a';
 
+/** the hand-drawn finish (after lowpix's stroke brush): the region is re-laid in short strokes that follow a flow
+ *  angle, each a touch lighter or darker than the paint under it, so fills read as brushwork, not gradients */
+function strokeFinish(g: G, k: string, ang: number, o: { len?: number; n?: number; k?: number; curl?: number } = {}) {
+  const [x, y, w, h] = R[k];
+  const d = g.getImageData(x, y, w, h), src = new Uint8ClampedArray(d.data);
+  const n = o.n ?? Math.round(w * h / 10), len = o.len ?? 7, kk = o.k ?? 0.09, curl = o.curl ?? 0.25;
+  for (let i = 0; i < n; i++) {
+    let px = h1(i, 101) * w, py = h1(i, 103) * h;
+    const j0 = ((py | 0) * w + (px | 0)) * 4; if (src[j0 + 3] < 128) continue;
+    const v = (h1(i, 107) - 0.5) * 2 * kk, a0 = ang + (h1(i, 109) - 0.5) * curl;
+    const r0 = src[j0], g0 = src[j0 + 1], b0 = src[j0 + 2];
+    const L = len * (0.6 + h1(i, 113) * 0.8), wide = h1(i, 127) < 0.3 ? 2 : 1;
+    for (let t = 0; t < L; t++) {
+      const a = a0 + t * curl * 0.04;
+      px += Math.cos(a); py += Math.sin(a);
+      for (let q = 0; q < wide; q++) {
+        const X = Math.round(px - Math.sin(a) * q), Y = Math.round(py + Math.cos(a) * q);
+        if (X < 0 || Y < 0 || X >= w || Y >= h) continue;
+        const j = (Y * w + X) * 4; if (src[j + 3] < 128) continue;
+        // the stroke carries the colour where it started (a smear), shifted in value
+        const m = 0.55;
+        d.data[j] = Math.max(0, Math.min(255, (src[j] * (1 - m) + r0 * m) * (1 + v)));
+        d.data[j + 1] = Math.max(0, Math.min(255, (src[j + 1] * (1 - m) + g0 * m) * (1 + v)));
+        d.data[j + 2] = Math.max(0, Math.min(255, (src[j + 2] * (1 - m) + b0 * m) * (1 + v * 0.8)));
+      }
+    }
+  }
+  g.putImageData(d, x, y);
+}
+
 function paintAll(g: G) {
   g.clearRect(0, 0, CW, CW);
   patchUNAA(g, ...(R.unaa.slice(0, 2) as [number, number]));
@@ -319,6 +349,10 @@ function paintAll(g: G) {
     text(g, 'PART ' + (i + 1) + '/4', x + w - 26, y + 15, 7, '#6a5a3a', { shadow: false });
   });
   paintPlaqueBase(g);
+  // the hand-laid stroke finish over the cloth, the patches and the leather
+  for (const [k, a] of [['canvas', 0.6], ['sage', 0.6], ['nylon', 0], ['leather', 0.3], ['apron', 1.2], ['orange', 0.7], ['web', 0], ['navy', 0.6], ['towel', 1.0], ['leaf', -1.4]] as [string, number][]) strokeFinish(g, k, a);
+  for (const k of ['unaa', 'austral', 'med', 'eng', 'sci', 'sec', 'wings', 'sparrow', 'sup', 'fl3']) strokeFinish(g, k, 0.75, { len: 6, k: 0.07, n: R[k][2] * R[k][3] / 14 });
+  for (const id of CREW_IDS) strokeFinish(g, 'name:' + id, 0.8, { len: 5, k: 0.06 });
 }
 function patchMini(g: G, cx: number, cy: number, r: number) {
   g.fillStyle = '#c9a464'; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();

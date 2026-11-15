@@ -144,3 +144,54 @@ export async function testLiveries(engine: Engine) {
   engine.setScreen({ update() {}, render(post, t) { post.render(scene, cam, undefined, t); }, resize(w, h) { cam.aspect = w / h; cam.updateProjectionMatrix(); } });
   engine.start();
 }
+
+/** ?test=stage&id=storm|envoy|fallen|...: the events on a light stand-in colony (no world generation): a grass
+ *  field, the pod, a relay mast, lamps, the Upgrader and a stand of trees, so the cinematics and the decisions can be
+ *  checked quickly. Teammates are the crew agent's stand-in bodies (there is no colony here). */
+export async function testEventStage(engine: Engine, P: URLSearchParams) {
+  const THREE = await import('three');
+  const { Director } = await import('../story/director');
+  const { lowpixGlb } = await import('./ui/vignettes');
+  const { gbuf } = await import('../gfx/gbuf');
+  const { Mission } = await import('./mission');
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x8fa4ae); scene.fog = new THREE.Fog(0x8fa4ae, 30, 90);
+  scene.add(new THREE.HemisphereLight(0xe8ecf0, 0x4a5a3a, 1.2));
+  const sun = new THREE.DirectionalLight(0xfff0dc, 2.2); sun.position.set(-20, 30, 15); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+  const sc = sun.shadow.camera as import('three').OrthographicCamera; sc.left = sc.bottom = -40; sc.right = sc.top = 40; sc.far = 120; scene.add(sun);
+  const lamb = (c: number) => gbuf(new THREE.MeshLambertMaterial({ color: c, flatShading: true }), 1);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(240, 240, 60, 60), lamb(0x5f7a3e));
+  const pa = ground.geometry.attributes.position as import('three').BufferAttribute;
+  for (let i = 0; i < pa.count; i++) pa.setZ(i, Math.sin(pa.getX(i) * 0.08) * 0.4 + Math.cos(pa.getY(i) * 0.06) * 0.5);
+  ground.geometry.computeVertexNormals(); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+  const ray = new THREE.Raycaster();
+  const surfaceY = (x: number, z: number) => { ray.set(new THREE.Vector3(x, 50, z), new THREE.Vector3(0, -1, 0)); const h = ray.intersectObject(ground)[0]; return h ? h.point.y : 0; };
+  const put = (o: import('three').Object3D | null, x: number, z: number, ry = 0) => { if (!o) return; o.position.set(x, surfaceY(x, z), z); o.rotation.y = ry; scene.add(o); };
+  put(await lowpixGlb('colony', 'pod', 4.2), 0, 0, 0.4);
+  put(await lowpixGlb('progression', 'upgrader', 3), -7, 4, 0.3);
+  put(await lowpixGlb('colony', 'st_lamp', 1), 5, 5);
+  put(await lowpixGlb('colony', 'st_sensor', 1.6), -5, -6);
+  for (let k = 0; k < 40; k++) {
+    const a = k * 2.39, r = 16 + (k % 7) * 4, x = Math.cos(a) * r, z = Math.sin(a) * r;
+    const t = new THREE.Group();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 2.4, 6), lamb(0x5a3e28)); trunk.position.y = 1.2; t.add(trunk);
+    for (let j = 0; j < 3; j++) { const c = new THREE.Mesh(new THREE.ConeGeometry(1.6 - j * 0.4, 1.8, 7), lamb(j % 2 ? 0x3f6a32 : 0x4f7a3a)); c.position.y = 2.4 + j * 0.9; c.castShadow = true; t.add(c); }
+    t.scale.setScalar(0.8 + (k % 5) * 0.15); put(t, x, z, k);
+  }
+  for (let k = 0; k < 30; k++) { const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.3 + (k % 4) * 0.2, 0), lamb(0x7a7468)); r.castShadow = true; put(r, Math.cos(k * 1.3) * (6 + k), Math.sin(k * 1.3) * (6 + k)); }
+  const cam = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 400); cam.position.set(14, 9, 16); cam.lookAt(0, 1, 0);
+  const handlers: Record<string, ((d: unknown) => void)[]> = {};
+  const g: any = {
+    world: { scene, surfaceY, creatures: [], time: 0, kill: () => {} }, cam: { cam }, cineCam: null, update$: [], paused: false,
+    on: (e: string, f: (d: unknown) => void) => (handlers[e] ??= []).push(f), emit: (e: string, d: unknown) => { for (const f of handlers[e] ?? []) f(d); },
+    veyr: { core: { x: 0, z: 0 } }, region: { landing: { x: 0, z: 0 }, N: 128 }, fx: { burst: () => {} }, engine,
+  };
+  g.mission = new Mission(g); g.director = new Director(g); g.director.auto = false;
+  (window as any).__game = g;
+  engine.setScreen({
+    update(dt) { g.world.time += dt; for (const f of g.update$) f(g.paused ? 0 : dt); g.director.tick(g.paused ? 0 : dt); g.cineCam?.(cam, dt); },
+    render(post, t) { post.render(scene, cam, undefined, t); },
+    resize(w, h) { cam.aspect = w / h; cam.updateProjectionMatrix(); },
+  });
+  engine.start();
+  const id = P.get('id'); if (id) setTimeout(() => g.director.trigger(id), Number(P.get('at') ?? 1.5) * 1000);
+}

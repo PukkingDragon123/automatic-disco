@@ -1,29 +1,38 @@
-// The RESEARCH tab: the four data reserves and the scan log on the left, the tech catalogue by kind in the middle
-// (known, researching, queued, available, locked with the reason), the selected tech and the station queue on the
-// right. Click a tile to select it; click again (or QUEUE) to put it on the station's queue.
+// RESEARCH: the latest specimen turning under the scanner dome (ScannerVignette), tagged with what its scan paid;
+// the data reserves as paper tags on the left with the scan log; the tech index on the right as a stack of cards by
+// kind (icons first, words sparse), the selected tech's card, and the station queue pinned under it.
 import { el } from '../../ui/kit';
 import { sfx } from '../../audio/audio';
 import { csfx } from '../../ui/cineAudio';
-import { TECHS, TECH, TECH_KINDS, DATA_KINDS, DATA_NAME, DATA_FROM, type TechKind, type Tech, type DataKind } from '../tech';
+import { TECHS, TECH, TECH_KINDS, DATA_KINDS, DATA_NAME, type TechKind, type Tech, type DataKind } from '../tech';
 import { PATH } from '../mastery';
 import type { Research } from '../research';
 import { BLUEPRINT } from '../upgrades';
 import { iconURL } from './icons';
 import { fmtTime } from '../util';
-import type { TabPage } from '../../ui/skillMastery';
+import { ScannerVignette, type SpecimenKind } from './vignettes';
+import { Callouts } from './callouts';
+import type { TabPage } from '../../ui/skillTree';
 
 const DATA_ICON: Record<DataKind, string> = { bio: 'dna', geo: 'pick', energy: 'arcs', xeno: 'sensor' };
-const KIND_ICON: Record<string, string> = { species: 'dna', plant: 'sprout', ore: 'pick', crystal: 'core', vent: 'steam', ruin: 'sensor' };
-export const chips = (cost: Tech['cost'], data?: Record<DataKind, number>) => DATA_KINDS.filter((k) => cost[k]).map((k) => `<span class="pt-chip${data && data[k] < (cost[k] ?? 0) ? ' short' : ''}"><span class="k">${DATA_NAME[k]}</span>${cost[k]}</span>`).join('');
+export const chips = (cost: Tech['cost'], data?: Record<DataKind, number>) => DATA_KINDS.filter((k) => cost[k]).map((k) => `<span class="pp-row" style="gap:2px"><img class="pp-ico" src="${iconURL(DATA_ICON[k], data && data[k] < (cost[k] ?? 0) ? 'dim' : 'phos')}" style="width:24px;height:24px"><span class="pp-t${data && data[k] < (cost[k] ?? 0) ? ' pp-red' : ''}">${cost[k]}</span></span>`).join('');
 
 export class ResearchPage implements TabPage {
   readonly el: HTMLElement;
+  readonly vig = new ScannerVignette();
   private kind: TechKind = 'building'; private sel: string | null = null;
-  private left: HTMLElement; private mid: HTMLElement; private right: HTMLElement; private grid!: HTMLElement;
-  private sig = ''; private t = 0;
-  constructor(readonly R: Research) {
-    this.el = el('div', 'pt-page pr');
-    this.left = el('div', 'pt-col', this.el); this.mid = el('div', 'pt-col', this.el); this.right = el('div', 'pt-col', this.el);
+  private left: HTMLElement; private right: HTMLElement; private calls: Callouts; private specTag: HTMLElement; private headTag: HTMLElement;
+  private sig = ''; private specKey = '';
+  constructor(readonly R: Research, readonly host: Record<string, any>) {
+    this.el = el('div', '');
+    const stage = el('div', 'pp-stage', this.el); this.vig.bind(stage);
+    this.vig.margins = [380, 500];
+    this.calls = new Callouts(this.el, this.vig);
+    this.left = el('div', 'pp-col', this.el); this.left.style.cssText = 'position:absolute;left:24px;top:100px;width:330px;gap:10px';
+    this.right = el('div', 'pp-card pp-col', this.el); this.right.style.cssText = 'right:28px;top:104px;width:480px;height:calc(100vh - 140px)';
+    this.specTag = el('div', 'pp-call', this.el); this.headTag = el('div', 'pp-call', this.el);
+    this.calls.add(this.specTag, this.vig.anchors.spec, -230, -60);
+    this.calls.add(this.headTag, this.vig.anchors.head, 150, -40);
     const first = TECHS.find((q) => !R.unlocked(q.id) && !R.why(q.id));
     if (first) { this.kind = first.kind; this.sel = first.id; }
     this.build();
@@ -35,109 +44,81 @@ export class ResearchPage implements TabPage {
     if (R.queue.includes(t.id)) return 'queued';
     return R.why(t.id) ? 'locked' : 'ready';
   }
-  private signature() { const R = this.R; return [this.kind, this.sel, R.queue.join(','), R.known().length, DATA_KINDS.map((k) => Math.floor(R.data[k])).join(','), R.log.length, R.stations().powered, Math.floor(R.headFrac() * 50)].join('|'); }
-  update(dt: number) { this.t += dt; const s = this.signature(); if (s !== this.sig) { this.sig = s; this.build(); } }
+  private signature() { const R = this.R; return [this.kind, this.sel, R.queue.join(','), R.known().length, DATA_KINDS.map((k) => Math.floor(R.data[k])).join(','), R.log.length, R.stations().powered, Math.floor(R.headFrac() * 40)].join('|'); }
+  update() { const s = this.signature(); if (s !== this.sig) { this.sig = s; this.build(); } this.calls.update(); }
   key(e: KeyboardEvent) {
     if (e.key === 'Enter' && this.sel) { this.queue(this.sel); return true; }
     const i = TECH_KINDS.findIndex((k) => k.k === this.kind);
-    if (e.key.toLowerCase() === 'q' || e.key.toLowerCase() === 'e') { this.kind = TECH_KINDS[(i + (e.key.toLowerCase() === 'q' ? -1 : 1) + TECH_KINDS.length) % TECH_KINDS.length].k; this.sig = ''; csfx('relay', 0.4); return true; }
+    if (e.key.toLowerCase() === 'q' || e.key.toLowerCase() === 'e') { this.kind = TECH_KINDS[(i + (e.key.toLowerCase() === 'q' ? -1 : 1) + TECH_KINDS.length) % TECH_KINDS.length].k; this.sig = ''; csfx('page', 0.4); return true; }
     return false;
   }
   private queue(id: string) {
     const R = this.R;
-    if (R.queue.includes(id)) { if (R.queue[0] !== id) { R.bump(id); csfx('relay', 0.6); } return; }
+    if (R.queue.includes(id)) { if (R.queue[0] !== id) { R.bump(id); csfx('page', 0.5); } return; }
     if (R.enqueue(id)) { csfx('thud', 0.7, 1.1); sfx('click'); } else sfx('deny');
     this.sig = '';
   }
+  /** the newest scan goes under the dome */
+  private specimen() {
+    const e = this.R.log[0], key = e ? e.name + e.t : 'none';
+    if (key === this.specKey) return; this.specKey = key;
+    const sp = e?.kind === 'species' ? (this.host.run?.reg?.list ?? []).find((s: any) => s.name === e.name) : null;
+    void this.vig.show((e?.kind ?? 'none') as SpecimenKind, e?.name ?? '', sp);
+  }
   private build() {
     const R = this.R;
-    // ---------------- left: reserves, stations, scan log
+    this.specimen();
+    const e = R.log[0];
+    this.specTag.innerHTML = e ? `<div class="pp-col" style="gap:0"><span class="pp-h">${e.name}</span><span class="pp-t">${DATA_KINDS.filter((k) => e.data[k]).map((k) => `+${e.data[k]} ${DATA_NAME[k]}`).join('  ')}</span></div>` : '<span class="pp-t">Nothing scanned yet</span>';
+    const s = R.stations();
+    this.headTag.innerHTML = `<img src="${iconURL('lens', s.powered ? 'phos' : 'dim')}"><span class="pp-t">${s.n ? `${s.powered}/${s.n} STATIONS · ${R.rate().toFixed(1)}x` : 'NO STATION'}</span>`;
+    // ---------------- left: reserves and the scan log
     const L = this.left; L.innerHTML = '';
-    el('div', 'pt-h', L, 'DATA RESERVES');
     for (const k of DATA_KINDS) {
-      const g = el('div', 'pr-gauge', L);
-      const im = el('img', 'pt-ico', g); im.src = iconURL(DATA_ICON[k], R.data[k] > 0 ? 'lit' : 'phos');
-      el('div', 'nm', g, DATA_NAME[k]);
-      el('div', 'v', g, String(Math.floor(R.data[k])).padStart(3, '0'));
-      el('div', 'f', g, DATA_FROM[k]);
+      const t = el('div', 'pp-tag', L); t.style.justifyContent = 'space-between';
+      el('div', 'pp-row', t, `<img class="pp-ico" src="${iconURL(DATA_ICON[k], R.data[k] > 0 ? 'phos' : 'dim')}" style="width:48px;height:48px;margin:-10px 0"><span class="pp-h">${DATA_NAME[k]}</span>`);
+      el('div', 'pp-hx', t, String(Math.floor(R.data[k])));
     }
-    const s = R.stations(), rate = R.rate();
-    const sb = el('div', 'pt-box' + (s.powered ? '' : ' hot'), L);
-    el('div', 'pt-h', sb, 'RESEARCH STATIONS');
-    el('div', 'pt-txt', sb, s.n ? `${s.n} built · ${s.powered} powered · speed ${rate.toFixed(2)}x` : '<span class="pt-warn">NONE BUILT</span>');
-    if (!s.n) el('div', 'pt-txt dim', sb, 'Build a Research Station [B] to work the queue.');
-    else if (!s.powered) el('div', 'pt-txt pt-amb', sb, 'No power reaches the station.');
-    el('div', 'pt-h', L, 'SCAN LOG');
-    const lg = el('div', 'pt-list', L); lg.style.flex = '1';
-    if (!R.log.length) el('div', 'pt-txt dim', lg, 'Scan species, plants, ore, vents and ruins. The first look at anything pays the most.');
-    for (const e of R.log.slice(0, 14)) {
-      const row = el('div', 'pt-log', lg);
-      const im = el('img', 'pt-ico', row); im.src = iconURL(KIND_ICON[e.kind] ?? 'lens', 'phos'); im.style.width = im.style.height = '24px'; im.style.marginTop = '1px';
-      el('span', '', row, `<b>${e.name}</b> ${DATA_KINDS.filter((k) => e.data[k]).map((k) => `+${e.data[k]} ${DATA_NAME[k]}`).join(' ')}`);
-    }
-    // ---------------- middle: the catalogue
-    const Mi = this.mid; Mi.innerHTML = '';
-    const head = el('div', 'pr-kinds', Mi);
-    for (const k of TECH_KINDS) {
-      const n = TECHS.filter((q) => q.kind === k.k), known = n.filter((q) => R.unlocked(q.id)).length;
-      const b = el('div', 'pr-kind' + (k.k === this.kind ? ' on' : ''), head, `${k.name} ${known}/${n.length}`);
-      b.addEventListener('click', () => { this.kind = k.k; this.sig = ''; csfx('relay', 0.4); });
-    }
-    this.grid = el('div', 'pr-grid pt-list', Mi); this.grid.style.flex = '1';
-    const list = TECHS.filter((q) => q.kind === this.kind && !q.start);
-    const order = { active: 0, queued: 1, ready: 2, locked: 3, known: 4 };
-    list.sort((a, b) => order[this.state(a)] - order[this.state(b)]);
-    for (const t of list) {
-      const st = this.state(t);
-      const c = el('div', `pr-tile ${st}${this.sel === t.id ? ' sel' : ''}`, this.grid);
-      const im = el('img', 'pt-ico', c); im.src = iconURL(t.icon, st === 'known' ? 'amber' : st === 'locked' ? 'dim' : 'phos');
-      el('div', 'nm', c, t.name);
-      el('div', 'cs', c, st === 'known' ? '' : chips(t.cost, R.data));
-      const sl = el('div', 'st', c);
-      if (st === 'known') sl.textContent = 'KNOWN';
-      else if (st === 'active') { sl.innerHTML = `RESEARCHING`; const b = el('div', 'pt-bar', sl); el('i', '', b).style.width = `calc(${R.headFrac() * 100}% - 4px)`; }
-      else if (st === 'queued') sl.textContent = `QUEUED #${R.queue.indexOf(t.id) + 1}`;
-      else if (st === 'locked') sl.textContent = (R.requirementOf(t.id) ?? R.why(t.id) ?? '').toUpperCase();
-      else sl.textContent = `${fmtTime(t.time)} AT ONE STATION`;
-      c.addEventListener('click', () => { if (this.sel === t.id && st !== 'known' && st !== 'locked') this.queue(t.id); else { this.sel = t.id; sfx('click'); } this.sig = ''; });
-    }
-    // ---------------- right: the card and the queue
+    const lg = el('div', 'pp-note pp-col', L); lg.style.position = 'relative'; lg.style.gap = '2px';
+    el('div', 'pp-h', lg, 'SCAN LOG');
+    if (!R.log.length) el('div', 'pp-t pp-dim', lg, 'Scan species, plants, ore, vents and ruins.');
+    for (const x of R.log.slice(1, 8)) el('div', 'pp-t', lg, `${x.name.length > 18 ? x.name.slice(0, 17) + '.' : x.name}`);
+    // ---------------- right: the tech index
     const Rt = this.right; Rt.innerHTML = '';
+    const kinds = el('div', 'pp-row', Rt); kinds.style.flexWrap = 'wrap';
+    for (const k of TECH_KINDS) {
+      const b = el('div', 'pp-tab' + (k.k === this.kind ? ' on' : ''), kinds, `<span class="pp-s" style="color:inherit">${k.name}</span>`); b.style.minHeight = '40px'; b.style.marginTop = '0';
+      b.addEventListener('click', () => { this.kind = k.k; this.sig = ''; csfx('page', 0.4); });
+    }
+    const list = el('div', 'pp-list pp-col', Rt); list.style.cssText = 'flex:1;min-height:0;gap:2px';
+    const order = { active: 0, queued: 1, ready: 2, locked: 3, known: 4 };
+    for (const t of TECHS.filter((q) => q.kind === this.kind && !q.start).sort((a, b) => order[this.state(a)] - order[this.state(b)])) {
+      const st = this.state(t);
+      const row = el('div', 'pp-row', list); row.style.cssText = `cursor:pointer;padding:2px 4px;${this.sel === t.id ? 'background:rgba(217,164,58,0.35)' : ''}`;
+      el('img', 'pp-ico', row).setAttribute('src', iconURL(t.icon, st === 'locked' ? 'dim' : 'phos')); (row.lastChild as HTMLElement).style.cssText = 'width:48px;height:48px';
+      const mid = el('div', 'pp-col', row); mid.style.cssText = 'flex:1;gap:0';
+      el('div', 'pp-h' + (st === 'locked' ? ' pp-dim' : ''), mid, t.name);
+      el('div', 'pp-row', mid, st === 'known' ? '<span class="pp-s pp-grn">KNOWN</span>' : st === 'active' ? `<span class="pp-s pp-amb">RESEARCHING ${Math.round(R.headFrac() * 100)}%</span>` : st === 'queued' ? `<span class="pp-s pp-amb">QUEUED ${R.queue.indexOf(t.id) + 1}</span>` : chips(t.cost, R.data));
+      row.addEventListener('click', () => { if (this.sel === t.id && st !== 'known' && st !== 'locked') this.queue(t.id); else { this.sel = t.id; sfx('click'); } this.sig = ''; });
+    }
+    el('div', 'pp-rule', Rt);
     const t = this.sel ? TECH[this.sel] : null;
     if (t) {
       const st = this.state(t);
-      el('div', 'pt-h', Rt, `${TECH_KINDS.find((k) => k.k === t.kind)?.name} · ${PATH[t.path].short}`);
-      const hd = el('div', '', Rt); hd.style.cssText = 'display:flex;gap:14px;align-items:center';
-      const im = el('img', 'pt-ico', hd); im.src = iconURL(t.icon, st === 'known' ? 'amber' : 'lit'); im.style.cssText = 'width:96px;height:96px';
-      const nm = el('div', '', hd); el('div', 'pm-det', nm, `<div class="nm">${t.name}</div>`);
-      el('div', 'pt-txt dim', nm, st === 'known' ? 'KNOWN' : `${fmtTime(t.time)} of station work`);
-      el('div', 'pt-txt big', Rt, t.desc);
-      const bx = el('div', 'pt-box', Rt);
-      if (t.cost && Object.keys(t.cost).length) el('div', 'pt-txt', bx, `COST&nbsp; ${chips(t.cost, R.data)}`);
-      if (t.needs?.length) el('div', 'pt-txt' + (t.needs.every((n) => R.unlocked(n)) ? ' dim' : ' pt-amb'), bx, `NEEDS ${t.needs.map((n) => TECH[n].name.toUpperCase()).join(', ')}`);
-      if (t.mastery) el('div', 'pt-txt dim', bx, `${PATH[t.mastery[0]].name} LV ${t.mastery[1]}`);
-      if (t.blueprint) el('div', 'pt-txt pt-plus', bx, `Blueprint: ${BLUEPRINT[t.blueprint]?.name}. Built at the Upgrader from real parts.`);
-      if (t.buildings?.length) el('div', 'pt-txt pt-plus', bx, `Opens ${t.buildings.length} building${t.buildings.length > 1 ? 's' : ''} in the build menu`);
-      if (t.grants?.length && !t.blueprint) el('div', 'pt-txt pt-plus', bx, `Opens ${t.grants.filter((g) => !g.startsWith('cap.')).length} catalogue entr${t.grants.length > 1 ? 'ies' : 'y'}`);
-      const short = R.short(t.id), why = R.why(t.id);
-      const lbl = st === 'known' ? 'KNOWN' : st === 'active' ? 'RESEARCHING' : st === 'queued' ? 'MOVE TO FRONT' : why ? 'LOCKED' : 'QUEUE  [ENTER]';
-      const k = el('div', 'pt-key' + (st === 'known' || why || st === 'active' ? ' dead' : ' arm'), Rt, lbl); k.style.alignSelf = 'flex-start';
-      if (why && st !== 'known') el('div', 'pt-warn', Rt, (R.requirementOf(t.id) ?? why).toUpperCase());
-      else if (short && st !== 'known') el('div', 'pt-txt pt-amb', Rt, `Waiting on data: ${short}`);
+      el('div', 'pp-row', Rt, `<img class="pp-ico" src="${iconURL(t.icon, 'phos')}" style="width:96px;height:96px"><div class="pp-col"><span class="pp-hl">${t.name}</span><span class="pp-s">${PATH[t.path].short} · ${fmtTime(t.time)} AT ONE STATION</span></div>`);
+      el('div', 'pp-t', Rt, t.blueprint ? `${t.desc} Built at the Upgrader: ${BLUEPRINT[t.blueprint]?.name}.` : t.desc);
+      const why = R.why(t.id), short = R.short(t.id);
+      if (st !== 'known' && why) el('div', 'pp-t pp-red', Rt, (R.requirementOf(t.id) ?? why).toLowerCase().replace(/^\w/, (m) => m.toUpperCase()));
+      else if (st !== 'known' && short) el('div', 'pp-t pp-amb', Rt, `Waiting on ${short}`);
+      const k = el('div', 'pp-key' + (st === 'known' || why || st === 'active' ? ' dead' : ' hot'), Rt, st === 'known' ? 'KNOWN' : st === 'active' ? 'RESEARCHING' : st === 'queued' ? 'TO THE FRONT' : 'QUEUE  ENTER'); k.style.alignSelf = 'flex-start';
       k.addEventListener('click', () => { if (st !== 'known' && !why) this.queue(t.id); });
     }
-    const qb = el('div', 'pt-col', Rt); qb.style.marginTop = 'auto';
-    el('div', 'pt-h', qb, `STATION QUEUE · ${R.queue.length}`);
-    if (!R.queue.length) el('div', 'pt-txt dim', qb, 'Empty. Select a tech and queue it.');
-    const stall = R.stalled();
-    R.queue.slice(0, 6).forEach((id, i) => {
-      const q = TECH[id], row = el('div', 'pr-q' + (i === 0 ? ' head' : ''), qb);
-      el('div', 'no', row, String(i + 1));
-      const im = el('img', 'pt-ico', row); im.src = iconURL(q.icon, i === 0 ? 'lit' : 'phos');
-      const mm = el('div', '', row); el('div', 'nm', mm, q.name);
-      if (i === 0) { if (stall) el('div', 'pt-warn', mm, stall); else { const b = el('div', 'pt-bar', mm); el('i', '', b).style.width = `calc(${R.headFrac() * 100}% - 4px)`; } }
-      const x = el('div', 'x', row, '×'); x.title = 'Remove'; x.addEventListener('click', (e) => { e.stopPropagation(); R.dequeue(id); this.sig = ''; sfx('click'); });
-    });
+    if (R.queue.length) {
+      const q = el('div', 'pp-row', Rt); q.style.flexWrap = 'wrap';
+      el('span', 'pp-s', q, 'QUEUE');
+      R.queue.slice(0, 5).forEach((id, i) => { const im = el('img', 'pp-ico', q); im.src = iconURL(TECH[id].icon, 'phos'); im.style.cssText = `width:48px;height:48px;${i === 0 ? 'outline:3px solid #d9a43a' : ''}`; im.title = TECH[id].name; im.addEventListener('click', () => { R.dequeue(id); this.sig = ''; }); });
+      const stall = R.stalled(); if (stall) el('span', 'pp-s pp-red', q, stall);
+    }
   }
-  dispose() { this.el.remove(); }
+  dispose() { this.calls.clear(); this.vig.dispose(); this.el.remove(); }
 }

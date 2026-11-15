@@ -30,38 +30,38 @@ function crewNames(): { name: string; role: string; alive: boolean }[] {
 
 // ------------------------------------------------------------------ the room's own callouts (shown while focused)
 export const ROOM_CALLOUTS: Record<RoomId, Callout[]> = {
-  bridge: [{ at: [0, 3.0, 26.6], icon: 'i_bridge', title: 'MAIN MONITOR', text: () => '5 WORLDS IN RANGE' }, { at: [0, 1.6, 22.2], icon: 'i_bridge', title: 'HOLO TABLE', text: () => 'CLICK TO SCAN' }],
-  lab: [{ at: [5.6, 2.4, 16.4], icon: 'i_lab', title: 'TANKS', text: () => '3 / 3 LIVE' }, { at: [9.3, 1.1, 11.4], title: 'SEQUENCER', text: () => 'IDLE' }],
-  medbay: [{ at: [-2.6, 1.0, 10.7], icon: 'i_medbay', title: 'BED A', text: () => 'FREE' }, { at: [-7.4, 1.6, 14.4], title: 'SCANNER', text: () => 'CALIBRATED' }],
-  core: [{ at: [-6.2, 2.0, 4.6], icon: 'i_core', title: 'UNIT 07', text: () => 'ONLINE' }, { at: [-2.4, 1.6, 2.4], title: 'MEMORY', text: () => '96.1%' }],
-  quarters: [{ at: [-2.0, 2.2, -9.0], icon: 'i_quarters', title: 'BUNKS', text: () => '8 BERTHS' }, { at: [-6.6, 0.9, -6.2], title: 'MORALE', text: () => pct(crewMood()) }],
-  workshop: [{ at: [-6.0, 2.4, -19.8], icon: 'i_workshop', title: 'POD', text: () => (shipState().pod >= 1 ? 'READY' : `${pct(shipState().pod)} BUILT`) }, { at: [-1.9, 1.2, -22.8], title: 'BENCH', text: () => '42 / 42 TOOLS' }],
-  mess: [{ at: [9.3, 1.4, -0.4], icon: 'i_mess', title: 'GALLEY', text: () => `${Math.round(shipState().supplies.rations)} DAYS FOOD` }, { at: [5.2, 1.0, 1.5], title: 'TABLE', text: () => 'SEATS 6' }],
-  cargo: [{ at: [9.2, 2.6, -10.6], icon: 'i_cargo', title: 'RACKS', text: () => '61% FULL' }, { at: [7.0, 1.3, -5.0], title: 'SPECIMENS', text: () => '2 SEALED' }],
-  engineering: [{ at: [6.2, 3.8, -21.6], icon: 'i_engineering', title: 'REACTOR', text: () => `${Math.round(600 + Math.sin(performance.now() / 1100) * 30)} MW` }, { at: [9.4, 1.4, -24.0], title: 'COOLANT', text: () => 'NOMINAL' }],
+  bridge: [{ at: [0, 3.0, 18.3], icon: 'i_bridge', title: 'MAIN MONITOR', text: () => '5 WORLDS IN RANGE', side: 'u' }, { at: [0, 1.5, 15.5], title: 'HOLO TABLE', text: () => 'CLICK TO SCAN', side: 'l' }],
+  lab: [{ at: [4.05, 2.4, 11.45], icon: 'i_lab', title: 'TANKS', text: () => '3 / 3 LIVE', side: 'u' }, { at: [6.5, 1.1, 9.3], title: 'SEQUENCER', text: () => 'IDLE', side: 'r' }],
+  medbay: [{ at: [-2.4, 1.0, 7.9], icon: 'i_medbay', title: 'BED A', text: () => 'FREE', side: 'd' }, { at: [-5.3, 1.6, 8.6], title: 'SCANNER', text: () => 'CALIBRATED', side: 'l' }],
+  core: [{ at: [-4.6, 2.0, 4.5], icon: 'i_core', title: 'UNIT 07', text: () => 'ONLINE', side: 'u' }, { at: [-1.8, 1.6, 3.1], title: 'MEMORY', text: () => '96.1%', side: 'r' }],
+  quarters: [{ at: [-1.8, 2.2, -3.8], icon: 'i_quarters', title: 'BUNKS', text: () => '8 BERTHS', side: 'u' }, { at: [-4.1, 0.9, -2.6], title: 'MORALE', text: () => pct(crewMood()), side: 'd' }],
+  workshop: [{ at: [-4.4, 2.4, -10.4], icon: 'i_workshop', title: 'POD', text: () => (shipState().pod >= 1 ? 'READY' : `${pct(shipState().pod)} BUILT`), side: 'u' }, { at: [-1.8, 1.2, -12.6], title: 'BENCH', text: () => '42 / 42 TOOLS', side: 'r' }],
+  mess: [{ at: [6.6, 1.4, 2.0], icon: 'i_mess', title: 'GALLEY', text: () => `${Math.round(shipState().supplies.rations)} DAYS FOOD`, side: 'u' }, { at: [3.8, 1.0, 3.0], title: 'TABLE', text: () => 'SEATS 6', side: 'd' }],
+  cargo: [{ at: [6.5, 2.6, -3.0], icon: 'i_cargo', title: 'RACKS', text: () => '61% FULL', side: 'u' }, { at: [5.2, 1.3, -0.5], title: 'SPECIMENS', text: () => '2 SEALED', side: 'r' }],
+  engineering: [{ at: [4.1, 3.8, -10.4], icon: 'i_engineering', title: 'REACTOR', text: () => `${Math.round(600 + Math.sin(performance.now() / 1100) * 30)} MW`, side: 'u' }, { at: [6.6, 1.4, -12.1], title: 'COOLANT', text: () => 'NOMINAL', side: 'r' }],
 };
 
 // ------------------------------------------------------------------ the vignettes (each room's function)
 const PW: [keyof ShipState['power'], string, string][] = [['life', 'i_medbay', 'LIFE'], ['lab', 'i_lab', 'LAB'], ['workshop', 'i_workshop', 'SHOP'], ['sensors', 'i_bridge', 'SENSE'], ['engines', 'i_engineering', 'DRIVE']];
 export const VIGNETTES: Record<RoomId, Vignette> = {
   bridge: {
-    cam: { pos: V(3.4, 2.7, 19.4), look: V(0, 1.35, 22.4), fov: 34 },
-    callouts: [{ at: [0, 1.6, 22.2], icon: 'i_bridge', title: 'KEPLER-442', text: () => '5 WORLDS · 1 RECOMMENDED', side: 'r' }, { at: [0, 2.6, 26.6], title: 'MONITOR', text: () => 'LONG RANGE SCAN READY', side: 'u' }],
+    cam: { pos: V(2.9, 2.6, 13.0), look: V(0, 1.3, 15.5), fov: 36 },
+    callouts: [{ at: [0, 1.5, 15.5], icon: 'i_bridge', title: 'KEPLER-442', text: () => '5 WORLDS · 1 RECOMMENDED', side: 'r' }, { at: [0, 2.8, 18.3], title: 'MONITOR', text: () => 'LONG RANGE SCAN READY', side: 'u' }],
     stamps: (c) => [{ label: 'SCAN THE SYSTEM', key: 'S', icon: 'i_bridge', hot: true, run: () => c.actions.monitor?.() }],
   },
   lab: {
-    cam: { pos: V(3.1, 1.9, 12.6), look: V(5.6, 1.25, 16.3), fov: 36 },
-    callouts: [{ at: [4.4, 1.2, 16.4], title: 'TANK 1', text: () => 'GRAZER EMBRYO', side: 'l' }, { at: [5.6, 1.6, 16.4], title: 'TANK 2', text: () => 'ROOT CULTURE', side: 'u' }, { at: [6.8, 1.2, 16.4], title: 'TANK 3', text: () => 'SPORE BLOOM', side: 'r' }],
+    cam: { pos: V(3.0, 1.9, 7.6), look: V(4.05, 1.25, 11.4), fov: 38 },
+    callouts: [{ at: [2.95, 1.2, 11.45], title: 'TANK 1', text: () => 'GRAZER EMBRYO', side: 'l' }, { at: [4.05, 1.7, 11.45], title: 'TANK 2', text: () => 'ROOT CULTURE', side: 'u' }, { at: [5.15, 1.2, 11.45], title: 'TANK 3', text: () => 'SPORE BLOOM', side: 'r' }],
     stamps: (c) => [{ label: 'OPEN GENE LAB', key: 'G', icon: 'i_lab', hot: true, run: () => c.actions.lab?.() }],
   },
   medbay: {
-    cam: { pos: V(-6.4, 2.4, 12.9), look: V(-2.6, 0.9, 12.9), fov: 38 },
-    callouts: [{ at: [-2.6, 1.0, 10.7], title: 'BED A', text: () => 'FREE', side: 'l' }, { at: [-2.6, 1.0, 15.2], title: 'BED B', text: () => 'FREE', side: 'r' }, { at: [-1.6, 1.8, 13.0], title: 'CREW', text: () => crewNames().slice(0, 4).map((n) => `${n.name}${n.alive ? '' : ' (LOST)'}`).join(' · '), side: 'u' }, { at: [-1.6, 1.4, 13.0], title: '', text: () => crewNames().slice(4).map((n) => `${n.name}${n.alive ? '' : ' (LOST)'}`).join(' · '), side: 'd' }],
+    cam: { pos: V(-5.4, 2.5, 9.5), look: V(-2.2, 0.9, 9.5), fov: 42 },
+    callouts: [{ at: [-2.4, 1.0, 7.9], title: 'BED A', text: () => 'FREE', side: 'l' }, { at: [-2.4, 1.0, 11.1], title: 'BED B', text: () => 'FREE', side: 'r' }, { at: [-1.4, 1.8, 9.5], title: 'CREW', text: () => crewNames().slice(0, 4).map((n) => `${n.name}${n.alive ? '' : ' (LOST)'}`).join(' · '), side: 'u' }, { at: [-1.4, 1.4, 9.5], title: '', text: () => crewNames().slice(4).map((n) => `${n.name}${n.alive ? '' : ' (LOST)'}`).join(' · '), side: 'd' }],
     stamps: (c) => [{ label: 'FULL SCAN', key: 'S', icon: 'i_medbay', run: () => c.actions.scan?.() }],
   },
   core: {
-    cam: { pos: V(-3.1, 2.7, 2.2), look: V(-6.2, 1.8, 4.6), fov: 36 },
-    callouts: [{ at: [-6.2, 2.0, 4.6], icon: 'i_core', title: 'UNIT 07', text: () => 'MEMORY 96% · UPLINK LOCKED', side: 'r' }],
+    cam: { pos: V(-2.2, 2.6, 2.4), look: V(-4.6, 1.8, 4.5), fov: 40 },
+    callouts: [{ at: [-4.6, 2.0, 4.5], icon: 'i_core', title: 'UNIT 07', text: () => 'MEMORY 96% · UPLINK LOCKED', side: 'r' }],
     stamps: (c) => [
       { label: 'SAVE', key: 'S', run: () => c.actions.save?.() }, { label: 'LOAD', key: 'L', run: () => c.actions.load?.() },
       { label: 'NEW MISSION', key: 'N', run: () => c.actions.newGame?.() }, { label: 'SETTINGS', key: 'O', run: () => c.actions.settings?.() },
@@ -69,33 +69,33 @@ export const VIGNETTES: Record<RoomId, Vignette> = {
     ],
   },
   quarters: {
-    cam: { pos: V(-5.6, 2.5, -6.4), look: V(-2.0, 1.2, -6.0), fov: 40 },
+    cam: { pos: V(-5.0, 2.6, -5.0), look: V(-2.4, 1.2, -2.0), fov: 44 },
     callouts: [
-      { at: [-2.0, 1.0, -10.7], title: 'BUNKS 1-2', text: () => crewNames().slice(0, 2).map((n) => n.name).join(' · '), side: 'l' },
-      { at: [-2.0, 1.0, -8.3], title: 'BUNKS 3-4', text: () => crewNames().slice(2, 4).map((n) => n.name).join(' · '), side: 'u' },
-      { at: [-2.0, 1.0, -3.3], title: 'BUNKS 5-6', text: () => crewNames().slice(4, 6).map((n) => n.name).join(' · '), side: 'u' },
-      { at: [-2.0, 1.0, -0.9], title: 'BUNKS 7-8', text: () => crewNames().slice(6, 8).map((n) => n.name).join(' · '), side: 'r' },
-      { at: [-6.6, 0.8, -6.2], icon: 'i_quarters', title: 'MORALE', text: () => `${pips(crewMood())} ${pct(crewMood())}`, side: 'd' },
+      { at: [-1.8, 1.0, -4.85], title: 'BUNKS 1-2', text: () => crewNames().slice(0, 2).map((n) => n.name).join(' · '), side: 'l' },
+      { at: [-1.8, 1.0, -2.65], title: 'BUNKS 3-4', text: () => crewNames().slice(2, 4).map((n) => n.name).join(' · '), side: 'u' },
+      { at: [-5.9, 1.0, 1.47], title: 'BUNKS 5-6', text: () => crewNames().slice(4, 6).map((n) => n.name).join(' · '), side: 'u' },
+      { at: [-3.7, 1.0, 1.47], title: 'BUNKS 7-8', text: () => crewNames().slice(6, 8).map((n) => n.name).join(' · '), side: 'r' },
+      { at: [-4.1, 0.8, -2.6], icon: 'i_quarters', title: 'MORALE', text: () => `${pips(crewMood())} ${pct(crewMood())}`, side: 'd' },
     ],
     stamps: (c) => [{ label: 'MOVIE NIGHT', key: 'M', run: () => { moodShift(0.06); c.redraw(); } }, { label: 'REST CYCLE', key: 'R', run: () => { moodShift(0.03); c.redraw(); } }],
   },
   workshop: {
-    cam: { pos: V(-9.6, 3.1, -24.3), look: V(-6.0, 1.2, -19.8), fov: 34 },
+    cam: { pos: V(-7.6, 3.0, -14.2), look: V(-4.4, 1.2, -10.4), fov: 36 },
     callouts: [
-      { at: [-6.0, 0.25, -19.8], title: 'SHIELD', text: () => (shipState().pod > 0.55 ? 'FITTED' : 'QUEUED'), side: 'd' },
-      { at: [-6.0, 1.5, -18.9], title: 'VISOR', text: () => (shipState().pod > 0.55 ? 'GLAZED' : 'QUEUED'), side: 'r' },
-      { at: [-6.9, 0.9, -20.6], title: 'LEGS', text: () => (shipState().pod > 0.72 ? 'FOLDED' : 'QUEUED'), side: 'l' },
-      { at: [-6.0, 2.3, -19.8], icon: 'i_workshop', title: 'POD', text: () => (shipState().pod >= 1 ? 'READY TO FLY' : `${pct(shipState().pod)} ASSEMBLED`), side: 'u' },
+      { at: [-4.4, 0.25, -10.4], title: 'SHIELD', text: () => (shipState().pod > 0.55 ? 'FITTED' : 'QUEUED'), side: 'd' },
+      { at: [-4.4, 1.5, -9.5], title: 'VISOR', text: () => (shipState().pod > 0.55 ? 'GLAZED' : 'QUEUED'), side: 'r' },
+      { at: [-5.3, 0.9, -11.2], title: 'LEGS', text: () => (shipState().pod > 0.72 ? 'FOLDED' : 'QUEUED'), side: 'l' },
+      { at: [-4.4, 2.3, -10.4], icon: 'i_workshop', title: 'POD', text: () => (shipState().pod >= 1 ? 'READY TO FLY' : `${pct(shipState().pod)} ASSEMBLED`), side: 'u' },
     ],
     stamps: (c) => [{ label: shipState().pod >= 1 ? 'POD READY' : 'ASSEMBLE POD', key: 'A', icon: 'i_workshop', hot: shipState().pod < 1, disabled: () => (shipState().pod >= 1 ? 'DONE' : false), run: () => c.actions.assemble?.() }, { label: 'UPGRADES', key: 'U', run: () => c.actions.upgrades?.() }],
   },
   mess: {
-    cam: { pos: V(5.6, 2.2, -0.6), look: V(9.2, 1.1, 0.4), fov: 40 },
+    cam: { pos: V(3.4, 2.3, 0.4), look: V(6.5, 1.1, 2.8), fov: 44 },
     callouts: [
-      { at: [9.3, 1.5, -2.0], title: 'RATIONS', text: () => `${Math.round(shipState().supplies.rations)} DAYS`, side: 'l' },
-      { at: [9.4, 1.3, 3.1], title: 'COFFEE', text: () => `${shipState().supplies.coffee.toFixed(1)} KG`, side: 'r' },
-      { at: [9.2, 1.4, 4.75], title: 'FRESH', text: () => `${shipState().supplies.fresh.toFixed(1)} KG`, side: 'u' },
-      { at: [5.2, 0.9, 1.5], icon: 'i_mess', title: 'MORALE', text: () => `${pips(crewMood())}`, side: 'd' },
+      { at: [6.6, 1.5, 1.4], title: 'RATIONS', text: () => `${Math.round(shipState().supplies.rations)} DAYS`, side: 'l' },
+      { at: [6.65, 1.3, 4.2], title: 'COFFEE', text: () => `${shipState().supplies.coffee.toFixed(1)} KG`, side: 'r' },
+      { at: [6.55, 1.4, 5.45], title: 'FRESH', text: () => `${shipState().supplies.fresh.toFixed(1)} KG`, side: 'u' },
+      { at: [3.8, 0.9, 3.0], icon: 'i_mess', title: 'MORALE', text: () => `${pips(crewMood())}`, side: 'd' },
     ],
     stamps: (c) => {
       const s = shipState().supplies;
@@ -106,13 +106,13 @@ export const VIGNETTES: Record<RoomId, Vignette> = {
     },
   },
   cargo: {
-    cam: { pos: V(4.6, 2.4, -10.4), look: V(9.2, 1.4, -10.6), fov: 40 },
-    callouts: [{ at: [9.2, 2.2, -12.6], title: 'RACK A', text: () => 'RATIONS · SPARES', side: 'l' }, { at: [9.2, 2.2, -8.6], title: 'RACK B', text: () => 'SEEDS · TOOLS', side: 'r' }, { at: [7.0, 1.0, -5.0], icon: 'i_cargo', title: 'SPECIMENS', text: () => '2 SEALED', side: 'd' }],
+    cam: { pos: V(2.6, 2.5, -3.0), look: V(6.4, 1.4, -3.0), fov: 46 },
+    callouts: [{ at: [6.5, 2.2, -4.55], title: 'RACK A', text: () => 'RATIONS · SPARES', side: 'l' }, { at: [6.5, 2.2, -1.45], title: 'RACK B', text: () => 'SEEDS · TOOLS', side: 'r' }, { at: [5.2, 1.0, -0.5], icon: 'i_cargo', title: 'SPECIMENS', text: () => '2 SEALED', side: 'd' }],
     stamps: (c) => [{ label: 'OPEN POD HOLD', key: 'H', icon: 'i_cargo', disabled: () => (c.actions.hold ? false : 'ON THE SURFACE'), run: () => c.actions.hold?.() }],
   },
   engineering: {
-    cam: { pos: V(2.7, 3.1, -17.2), look: V(6.2, 1.9, -21.6), fov: 38 },
-    callouts: [{ at: [6.2, 3.9, -21.6], icon: 'i_engineering', title: 'CORE', text: () => `${Math.round(600 + Math.sin(performance.now() / 1100) * 30)} MW`, side: 'u' }, { at: [9.4, 1.4, -24.0], title: 'COOLANT', text: () => 'NOMINAL', side: 'r' }],
+    cam: { pos: V(1.6, 3.0, -6.8), look: V(4.1, 1.9, -10.4), fov: 42 },
+    callouts: [{ at: [4.1, 3.8, -10.4], icon: 'i_engineering', title: 'CORE', text: () => `${Math.round(600 + Math.sin(performance.now() / 1100) * 30)} MW`, side: 'u' }, { at: [6.6, 1.4, -12.1], title: 'COOLANT', text: () => 'NOMINAL', side: 'r' }],
     stamps: (c) => {
       const p = shipState().power;
       const out: Stamp[] = [];

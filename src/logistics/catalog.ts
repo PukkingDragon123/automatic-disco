@@ -1,9 +1,11 @@
 // The build catalogue as the player sees it: ten category tabs (Techtonica-style), each building's place in them,
 // and the colony buildings this system adds (processing stations for the real-item chains, habitat and decoration).
 // Machines keep their FDEFS definitions (src/factory/defs.ts); this file only sorts and extends them.
+import * as THREE from 'three';
 import { FDEFS, FKINDS, registerBuilding, type FKind, type FDef } from '../factory/defs';
 import type { MG } from '../factory/models';
 import { L } from '../factory/tex';
+import { lowpixModel } from '../ui/build/vignette';
 
 export type BuildCat = 'extraction' | 'storage' | 'logistics' | 'processing' | 'power' | 'bio' | 'research' | 'defence' | 'habitat' | 'decor';
 export interface CatDef { k: BuildCat; name: string; short: string; key: string }
@@ -45,7 +47,15 @@ declare module '../factory/defs' {
     hidden?: boolean;
     /** worker-seconds of construction work once the materials are on site (else derived from cost and size) */
     work?: number;
+    /** the factory-kit stand-in of a building whose world model is a .glb (ghosts, scaffolds, previews) */
+    shape?: (m: MG) => void;
   }
+}
+/** the building's shape as the factory's geometry kit draws it (ghosts, scaffolds, previews): a lowpix building's
+ *  stand-in model, else its own model; `key` keeps the two apart in the model cache */
+export function shapeOf(kind: FKind): { key: string; hook?: (m: MG) => void } {
+  const d = FDEFS[kind] as FDef & { shape?: (m: MG) => void };
+  return d?.shape ? { key: kind + ':shape', hook: d.shape } : { key: kind, hook: d?.hooks?.model };
 }
 /** worker-seconds to raise a building once its materials are delivered */
 export function workOf(d: FDef): number {
@@ -181,8 +191,19 @@ const MODELS: Record<string, (m: MG) => void> = {
   },
 };
 
+/** the colony buildings the user's lowpix tool built (public/models/logistics/<kind>.glb from src/logistics/lowpix) */
+export const LOWPIX_KINDS = new Set(['kiln', 'sawbench', 'crusher', 'feedvat', 'cropplot', 'bunkhouse', 'messhall']);
+/** in the world a lowpix building is its .glb, set down when placed; the instanced factory model is an empty footing */
+const glbHooks = (kind: string) => ({
+  model: (m: MG) => { m.box([0, -3, 0], [0.01, 0.01, 0.01], L.CONCRETE); },
+  placed: (b: { x: number; y: number; z: number; r: number; dead: boolean }, f: { render: { group: THREE.Object3D } }) => {
+    const put = () => { if (b.dead) return; const g = lowpixModel(kind); if (!g) return; const o = g.clone(true); o.position.set(b.x, b.y, b.z); o.rotation.y = -b.r * Math.PI / 2; f.render.group.add(o); (b as unknown as { __lp?: THREE.Object3D }).__lp = o; };
+    if (lowpixModel(kind, put)) put();
+  },
+  removed: (b: unknown) => { const o = (b as { __lp?: THREE.Object3D }).__lp; o?.removeFromParent(); },
+});
 const B = (kind: string, name: string, bcat: BuildCat, w: number, d: number, h: number, cost: FDef['cost'], power: number, desc: string, x: Partial<FDef> = {}) =>
-  registerBuilding({ kind, name, bcat, cat: 'special', w, d, h, cost, power, hp: 400, desc, hooks: { model: MODELS[kind] }, ...x });
+  registerBuilding({ kind, name, bcat, cat: 'special', w, d, h, cost, power, hp: 400, desc, hooks: LOWPIX_KINDS.has(kind) ? glbHooks(kind) : { model: MODELS[kind] }, ...(LOWPIX_KINDS.has(kind) ? { shape: MODELS[kind] } : {}), ...x } as Partial<FDef> & Pick<FDef, 'kind' | 'name' | 'w' | 'd'>);
 
 let done = false;
 /** add the colony buildings (once, before the catalogue is shown) */

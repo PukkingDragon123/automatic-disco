@@ -13,7 +13,7 @@ import type { Worker } from '../factory/workers';
 import { toast } from '../ui/kit';
 import { sfx } from '../audio/audio';
 import { RAMPS } from '../art/palette';
-import { workOf } from './catalog';
+import { workOf, shapeOf } from './catalog';
 import { mod } from './unlocks';
 import type { Logistics, Job, LNode } from './network';
 
@@ -106,7 +106,7 @@ export class Sites {
     m.box([-w / 2 + 0.02, 0.12, 0], [0.02, 0.04, d], L.HAZARD); m.box([w / 2 - 0.02, 0.12, 0], [0.02, 0.04, d], L.HAZARD);
     const scaffold = new THREE.Mesh(m.geo(), this.mat);
     scaffold.castShadow = true;
-    const model = modelFor(s.kind, def.model, def.hooks?.model);
+    const sh = shapeOf(s.kind), model = modelFor(sh.key, def.model, sh.hook);
     const ghost = new THREE.Mesh(model.base, this.ghostMat); ghost.renderOrder = 4;
     const rise = new THREE.Mesh(model.base, this.mat); rise.scale.y = 0.02; rise.castShadow = true;
     s.rise = rise;

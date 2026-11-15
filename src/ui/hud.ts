@@ -26,9 +26,10 @@ import { ARM_DEF } from '../colony/arms';
 import { ITEMS } from '../factory/items';
 import { installHudStyle } from './desk/hudStyle';
 import { iconImg } from './desk/hudArt';
-import { skin, platePix, well, fontText, Pix, R } from './desk/pxPanel';
+import { skin, fontText, Pix, R } from './desk/pxPanel';
+import { paperCard, stroke, scribble, letter, doodle, tape, INK, textWidth } from './desk/ink';
+import * as THREE from 'three';
 import './desk/toolIcons';
-import { decalSheet, DECAL } from '../colony/tex';
 import type { VitalId } from '../colony/vitals';
 
 export interface Cmd { icon: string; key: string; name: string; tip: () => string; disabled?: () => string | false; active?: () => boolean; run: () => void; cost?: string }
@@ -65,6 +66,7 @@ export class Hud {
   private clock!: HTMLDivElement; private timeBtns: HTMLButtonElement[] = []; private pausebar!: HTMLDivElement; private count!: HTMLDivElement;
   private mapCv!: HTMLCanvasElement; private mapBase: HTMLCanvasElement | null = null; private mapT = 0; private mapHd!: HTMLDivElement;
   private alertsEl!: HTMLDivElement; private alertKey = '';
+  private viewEl!: HTMLDivElement; private calloutCv!: HTMLCanvasElement; private callT = 0;
   private selEl!: HTMLDivElement; private selHd!: HTMLDivElement; private selRows!: HTMLDivElement; private selActs!: HTMLDivElement; private selWorks!: HTMLDivElement; private selKey = ''; private worksTab: CatKind = 'arm'; private worksKey = '';
   private ctlEl!: HTMLDivElement; private ctlKey = '';
   private wheelInfo!: HTMLDivElement; private cfgEl!: HTMLDivElement; private cfgSlot = -1; private cfgKey = '';
@@ -84,15 +86,15 @@ export class Hud {
     this.alertsEl = el('div', 'cx-alerts', this.root);
     this.buildSel();
     this.ctlEl = el('div', 'cx-plate gun cx-ctl', this.root);
-    skin(this.ctlEl, (w, h) => platePix(w, h, { mat: 'steel', seed: 63, wear: 0.8 }));
+    skin(this.ctlEl, (w, h) => paperCard(w, h, 63, { tape: true }));
     // the wheel
-    const wp = el('div', 'cx-plate cx-wheel pe', this.root);
-    skin(wp, (w, h) => platePix(w, h, { mat: 'olive', seed: 41, label: 'TOOL WHEEL  ·  UNAA-7 SLOT RACK', labelAt: [9, 6], rivets: true, wear: 1.3, seams: [w - 162] }), 'wheel');
+    const wp = el('div', 'cx-plate cx-wheel', this.root);
+    const wcard = el('div', 'cx-plate', wp); wcard.style.cssText = 'left:0;top:44px;width:172px;height:270px'; skin(wcard, (w, h) => paperCard(w, h, 41, { tape: true }), 'wcard');
     this.wheelInfo = el('div', 'cx-glass info cx-ph', wp);
     this.wheel = new ToolWheel(wp, { colony: () => this.colony, config: (i) => this.openCfg(i), tip: (h, x, y) => this.tip(h, x, y), flash: (m, b) => this.flash(m, b) });
     const cfg = el('button', 'cx-btn cfg', wp, 'CONFIGURE SLOTS'); cfg.onclick = () => this.openCfg(this.wheel.hover >= 0 ? this.wheel.hover : Math.max(0, this.colony?.slots.active ?? 0));
     this.cfgEl = el('div', 'cx-plate cx-slotcfg pe', this.root);
-    skin(this.cfgEl, (w, h) => platePix(w, h, { mat: 'olive', seed: 57, wear: 1.1, rivets: true }), 'cfg');
+    skin(this.cfgEl, (w, h) => paperCard(w, h, 57, { tape: true }), 'cfg');
     addEventListener('resize', this.onResize);
     this.root.style.display = 'none';
   }
@@ -103,11 +105,10 @@ export class Hud {
 
   // ------------------------------------------------------------------ top bar
   private buildTop() {
-    const top = el('div', 'cx-plate cx-top pe', this.root);
-    skin(top, (w, h) => platePix(w, h, { mat: 'olive', seed: 3, rivets: false, seams: [Math.round(w * 0.215), Math.round(w * 0.785)], wear: 1.6, hazard: false }), 'top');
-    const id = el('div', 'cx-id', top);
-    const rc = document.createElement('canvas'); rc.className = 'roundel'; rc.width = 80; rc.height = 80; id.appendChild(rc);
-    const [x, y, w] = DECAL.roundel, img = decalSheet().image as HTMLCanvasElement; try { rc.getContext('2d')!.drawImage(img, x, y, w, w, 0, 0, 80, 80); } catch { /* no decal */ }
+    const top = el('div', 'cx-plate cx-top', this.root);
+    
+    const id = el('div', 'cx-id', top); skin(id, (w, h) => paperCard(w, h, 5, { tape: true }), 'id');
+    const rc = iconImg('u-pod', 56); rc.classList.add('pe'); id.appendChild(rc);
     const tx = el('div', '', id);
     el('div', 't1 cx-sten', tx, 'UNAA · CP-07');
     const t2 = el('div', 't2', tx, esc(this.c.regionName.toUpperCase())); void t2;
@@ -122,17 +123,17 @@ export class Hud {
       this.hoverTip(e, () => this.vitalTip(v.id));
     }
     const tm = el('div', 'cx-plate gun cx-time', top);
-    skin(tm, (w, h) => platePix(w, h, { mat: 'steel', seed: 77, screws: false, wear: 0.7 }), 'time');
+    skin(tm, (w, h) => paperCard(w, h, 77, { tape: true }), 'time');
     const mk = (label: string, tip: string, f: () => void) => { const b = el('button', 'cx-btn', tm, label); b.onclick = (e) => { e.stopPropagation(); f(); }; this.hoverTip(b, () => tip); this.timeBtns.push(b); return b; };
-    mk('❚❚', '<b>PAUSE</b> [SPACE]<br>Orders, building and control still work while paused.', () => this.colony?.togglePause());
-    mk('1×', '<b>NORMAL SPEED</b> [1]', () => this.colony?.setSpeed(1));
-    mk('2×', '<b>FAST</b> [2]', () => this.colony?.setSpeed(2));
-    mk('3×', '<b>FASTEST</b> [3]', () => this.colony?.setSpeed(3));
+    mk('II', '<b>PAUSE</b> [SPACE]<br>Orders, building and control still work while paused.', () => this.colony?.togglePause());
+    mk('1x', '<b>NORMAL SPEED</b> [1]', () => this.colony?.setSpeed(1));
+    mk('2x', '<b>FAST</b> [2]', () => this.colony?.setSpeed(2));
+    mk('3x', '<b>FASTEST</b> [3]', () => this.colony?.setSpeed(3));
     this.clock = el('div', 'cx-glass clock cx-ph', tm);
     this.pausebar = el('div', 'cx-plate gun cx-pausebar cx-sten', this.root, 'PAUSED · ORDERS ACCEPTED');
-    skin(this.pausebar, (w, h) => platePix(w, h, { mat: 'steel', seed: 81, hazard: true, wear: 0.6 }), 'pause');
+    skin(this.pausebar, (w, h) => paperCard(w, h, 81, { pin: true }), 'pause');
     this.count = el('div', 'cx-plate gun cx-count', this.root, '<div class="h cx-sten"></div><div class="v"></div>');
-    skin(this.count, (w, h) => { const p = platePix(w, h, { mat: 'steel', seed: 85, hazard: true }); return p; }, 'count');
+    skin(this.count, (w, h) => paperCard(w, h, 85, { tint: R.coral, pin: true }), 'count');
   }
   private vitalTip(id: VitalId) {
     const c = this.colony; if (!c) return '';
@@ -147,29 +148,85 @@ export class Hud {
     }
   }
   private vitBase = new Map<string, Pix>();
-  /** a vitals gauge, painted in art pixels (86 x 25): a steel plate, a sunk phosphor well, a pixel-font reading with
-   *  a hard glow, a segmented bar, the trend in small stencil, the collapse countdown in red when one runs */
+  /** a vital as a little living doodle (art 52 x 48, shown 2x): a taped paper card, the thing itself drawn in ink and
+   *  colour and animated (the oxygen tank's level and bubbles, the turbine turning with the power balance, the crop
+   *  growing with the food, the hull plate cracking, a heart beating, a face), its reading lettered underneath */
   private drawVital(e: { id: VitalId; el: HTMLDivElement; cv: HTMLCanvasElement; icon: HTMLCanvasElement | null }, c: Colony) {
-    const W = 86, H = 28, cv = e.cv;
+    const W = 52, H = 48, cv = e.cv;
     if (cv.width !== W) { cv.width = W; cv.height = H; }
     let base = this.vitBase.get(e.id);
-    if (!base) { base = platePix(W, H, { mat: 'steel', seed: 90 + e.id.length * 7, screws: false, wear: 0.6 }); well(base, 21, 2, 63, 24); this.vitBase.set(e.id, base); }
+    if (!base) { base = paperCard(W, H, 90 + e.id.length * 7); tape(base, 18, -2, e.id.length, (e.id.length % 3 - 1) * 0.3); this.vitBase.set(e.id, base); }
     const p = new Pix(W, H); p.d.set(base.d);
-    const v = c.vitals, lvl = v.levels[e.id], val = v.value(e.id), meta = VITALS.find((x) => x.id === e.id)!;
-    const RAMP = lvl === 'crit' ? R.coral : lvl === 'warn' ? R.ochre : R.malachite;
-    const hi = RAMP[RAMP.length - 2], glowC = RAMP[1];
-    fontText(p, meta.name, 25, 3, R.malachite[3]);
-    let main = pct(val), sub = '';
-    if (e.id === 'power') { main = `${v.battery.toFixed(0)} KWH`; const n = v.gen - v.draw; sub = `${n >= 0 ? '+' : ''}${n.toFixed(0)}`; }
-    if (e.id === 'oxygen' && v.levels.power === 'crit') sub = 'OFF';
-    if (e.id === 'food') main = `${v.food.toFixed(0)} MEALS`;
+    const v = c.vitals, lvl = v.levels[e.id], val = Math.max(0, Math.min(1, v.value(e.id))), t = this.t, seed = e.id.length * 11;
+    const warnC = lvl === 'crit' ? R.stampRed[3] : lvl === 'warn' ? R.ochre[3] : INK;
+    const cx = 26, top = 6, bot = 32;
+    switch (e.id) {
+      case 'oxygen': { // a tank: glass, a blue fill at its level, bubbles rising
+        const x0 = 18, x1 = 34, lvlY = Math.round(bot - (bot - top - 4) * val);
+        for (let y = lvlY; y < bot; y++) for (let x = x0 + 1; x < x1; x++) p.set(x, y, y === lvlY ? R.sky[5] : x < x0 + 4 ? R.sky[4] : R.sky[3]);
+        for (let i = 0; i < 4; i++) { const by = bot - 2 - ((t * 9 + i * 7) % Math.max(2, bot - lvlY - 2)), bx = x0 + 3 + ((i * 5 + Math.floor(t * 3)) % 10); if (by > lvlY + 1) p.set(bx, Math.round(by), R.sky[5]); }
+        stroke(p, x0, top + 3, x0, bot, seed, { w: 2, over: 0 }); stroke(p, x1, top + 3, x1, bot, seed + 1, { w: 2, over: 0 }); stroke(p, x0, bot, x1, bot, seed + 2, { w: 2, over: 1 });
+        stroke(p, x0, top + 3, x0 + 4, top, seed + 3, { w: 1, over: 0 }); stroke(p, x1, top + 3, x1 - 4, top, seed + 4, { w: 1, over: 0 }); stroke(p, x0 + 4, top, x1 - 4, top, seed + 5, { w: 1, over: 0 });
+        p.rect(cx - 2, top - 3, 5, 3, R.steel[3]); stroke(p, cx + 3, top - 2, cx + 8, top - 2, seed + 6, { w: 1, over: 0 });
+        letter(p, 'O2', x0 + 3, top + 5, R.ink[2]);
+        break;
+      }
+      case 'power': { // a turbine on a mast: the blades turn with the surplus, stall when the battery is flat
+        const sp = (v.gen - v.draw) / 10 + (v.battery > 1 ? 0.6 : 0), ang = t * 3 * Math.max(0, sp);
+        stroke(p, cx, 19, cx - 2, bot, seed, { w: 2, over: 0 }); stroke(p, cx, 19, cx + 3, bot, seed + 1, { w: 1, over: 0 });
+        for (let k = 0; k < 3; k++) { const a = ang + (k * Math.PI * 2) / 3; stroke(p, cx, 18, Math.round(cx + Math.cos(a) * 12), Math.round(18 + Math.sin(a) * 12), seed + 4 + k, { w: 2, over: 0, col: k === 0 ? R.rust[4] : INK }); }
+        p.rect(cx - 1, 17, 3, 3, R.steel[4]); p.set(cx - 1, 17, R.steel[6]);
+        // the battery bar beside it
+        for (let i = 0; i < 5; i++) { const on = val * 5 > i + 0.3; p.rect(41, 29 - i * 4, 5, 3, on ? (lvl === 'ok' ? R.moss[4] : warnC) : R.paper[3]); }
+        stroke(p, 40, 9, 40, 32, seed + 9, { w: 1, over: 0 }); stroke(p, 46, 9, 46, 32, seed + 10, { w: 1, over: 0 });
+        break;
+      }
+      case 'food': { // a crop: a stalk and leaves as tall as the stores are full, an ear of grain when it is high
+        const hgt = Math.round(4 + val * 22);
+        for (let x = 10; x < 42; x++) p.set(x, bot, R.soil[3]); for (let x = 12; x < 40; x += 3) p.set(x, bot - 1, R.soil[4]);
+        for (const [dx, k] of [[-8, 0.7], [0, 1], [8, 0.8]] as [number, number][]) {
+          const h2 = Math.round(hgt * k), sway = Math.round(Math.sin(t * 1.5 + dx) * 1);
+          stroke(p, cx + dx, bot - 1, cx + dx + sway, bot - h2, seed + dx, { w: 1, over: 0, col: R.moss[2] });
+          for (let j = 4; j < h2; j += 6) { stroke(p, cx + dx + sway, bot - j, cx + dx + sway + (j % 12 ? 4 : -4), bot - j - 3, seed + j, { w: 1, over: 0, col: R.moss[4] }); }
+          if (val > 0.5) p.rect(cx + dx + sway - 1, bot - h2 - 3, 3, 4, R.ochre[4]);
+        }
+        break;
+      }
+      case 'integrity': { // a hull plate with rivets; cracks open as it fails
+        for (let y = top + 2; y < bot; y++) for (let x = 14; x < 38; x++) p.set(x, y, y < top + 4 ? R.paper[5] : R.steel[5]);
+        inkRectSafe(p, 14, top + 2, 24, bot - top - 2, seed);
+        for (const [x, y] of [[17, top + 5], [34, top + 5], [17, bot - 4], [34, bot - 4]]) { p.set(x, y, R.steel[3]); p.set(x + 1, y + 1, R.steel[1]); }
+        const cracks = Math.round((1 - val) * 4);
+        for (let k = 0; k < cracks; k++) { let x = 20 + k * 4, y = top + 6; for (let s2 = 0; s2 < 8; s2++) { const nx = x + (((s2 + k) % 3) - 1), ny = y + 2; stroke(p, x, y, nx, ny, seed + k * 9 + s2, { w: 1, over: 0, col: R.stampRed[2] }); x = nx; y = ny; } }
+        if (c.pod.braced) letter(p, 'BR', 20, top + 10, R.ink[2]);
+        break;
+      }
+      case 'health': { // a heart that beats (faster when the crew suffer)
+        const beat = 1 + Math.max(0, Math.sin(t * (lvl === 'ok' ? 5 : 9))) * 0.18, sz = 9 * beat;
+        for (let y = -10; y <= 10; y++) for (let x = -12; x <= 12; x++) {
+          const X = x / sz, Y = -y / sz + 0.25, f = (X * X + Y * Y - 1) ** 3 - X * X * Y * Y * Y;
+          if (f <= 0) p.set(cx + x, 19 + y, x < -3 && y < -2 ? R.coral[5] : R.stampRed[3]);
+        }
+        stroke(p, cx - 11, 17, cx - 6, 10, seed, { w: 1, over: 0 }); stroke(p, cx + 11, 17, cx + 6, 10, seed + 1, { w: 1, over: 0 });
+        break;
+      }
+      case 'morale': { // a helmeted face: a smile that turns with morale
+        scribble(p, cx, 19, 11, 11, seed, INK);
+        for (let y = 13; y < 23; y++) for (let x = cx - 7; x <= cx + 7; x++) p.set(x, y, y < 16 ? R.ochre[5] : R.ochre[4]);
+        p.rect(cx - 4, 17, 2, 2, INK); p.rect(cx + 3, 17, 2, 2, INK);
+        const m = (val - 0.5) * 4; for (let x = -4; x <= 4; x++) p.set(cx + x, Math.round(22 - m * (1 - (x / 4) ** 2)), INK);
+        break;
+      }
+    }
+    // the reading, lettered underneath (and the countdown, in red, when one runs)
+    let main = pct(val);
+    if (e.id === 'power') main = `${v.battery.toFixed(0)}KWH`;
+    if (e.id === 'food') main = `${v.food.toFixed(0)}MEAL`;
     const tk = e.id === 'power' ? v.timers.power : e.id === 'oxygen' ? v.timers.oxygen : e.id === 'food' ? v.timers.food : e.id === 'health' ? v.timers.workers : null;
-    if (tk !== null && tk !== undefined) sub = mmss(Math.max(0, tk));
-    const blink = lvl === 'crit' && Math.floor(this.t * 2.5) % 2 === 0;
-    fontText(p, main, 25, 12, blink ? R.coral[2] : hi, { glow: glowC });
-    if (sub) fontText(p, sub, 82, 3, tk !== null && tk !== undefined ? R.coral[5] : lvl === 'ok' ? R.malachite[4] : hi, { align: 'right' });
-    const n = 14, fill = Math.round(Math.max(0, Math.min(1, val)) * n);
-    for (let i = 0; i < n; i++) { const x = 25 + i * 4; p.rect(x, 23, 3, 2, i < fill ? hi : R.malachite[0]); if (i < fill) p.set(x, 23, RAMP[RAMP.length - 1]); }
+    const blink = lvl === 'crit' && Math.floor(t * 2.5) % 2 === 0;
+    if (tk !== null && tk !== undefined) main = mmss(Math.max(0, tk));
+    letter(p, main, 26, 34, blink ? R.stampRed[1] : warnC, { align: 'center' });
+    if (lvl !== 'ok') stroke(p, 8, 46, 44, 45, seed + 30, { col: lvl === 'crit' ? R.stampRed[3] : R.ochre[3], w: 1, over: 2 });
     cv.getContext('2d')!.putImageData(p.image(), 0, 0);
     e.el.classList.toggle('crit', lvl === 'crit');
   }
@@ -177,7 +234,7 @@ export class Hud {
   // ------------------------------------------------------------------ minimap
   private buildMap() {
     const p = el('div', 'cx-plate cx-map pe', this.root);
-    skin(p, (w, h) => platePix(w, h, { mat: 'olive', seed: 23, wear: 1.2 }), 'map');
+    skin(p, (w, h) => paperCard(w, h, 23, { pin: true }), 'map');
     this.mapHd = el('div', 'hd', p, '<span class="cx-sten">SURVEY</span><span class="cx-ph"></span>');
     const scr = el('div', 'cx-glass scr', p);
     this.mapCv = document.createElement('canvas'); scr.appendChild(this.mapCv);
@@ -187,7 +244,7 @@ export class Hud {
     this.mapCv.addEventListener('pointermove', (e) => { if (drag && e.buttons & 1) { const p2 = at(e); if (p2) this.g!.cam.lookAt(p2.x, p2.z); } });
     addEventListener('pointerup', () => { drag = false; });
     this.mapCv.addEventListener('contextmenu', (e) => e.preventDefault());
-    this.hoverTip(this.mapCv, () => '<b>SURVEY MAP</b><br>Click to look there · right-click to send the selected drone or teammate.<br><span class="w">◆</span> seams · <span class="r">■</span> hostile contacts · dashed ring: control signal');
+    this.hoverTip(this.mapCv, () => '<b>SURVEY MAP</b><br>Click to look there · right-click to send the selected drone or teammate.<br><span class="w">*</span> seams · <span class="r">#</span> hostile contacts · dashed ring: control signal');
   }
   private mapOrder(x: number, z: number) {
     const c = this.colony; if (!c?.sel) return;
@@ -198,22 +255,25 @@ export class Hud {
   /** the relief in art pixels (124 x 124): moss ramp by height, one step brighter on contour lines, a step darker on
    *  slopes facing away from the light, water in the water ramp */
   private paintMapBase() {
-    const g = this.g!, Rg = g.region, N = Rg.N, S = 124, p = new Pix(S, S);
+    const g = this.g!, Rg = g.region, N = Rg.N, S = 132, p = new Pix(S, S);
     let lo = 1e9, hi = -1e9; for (let i = 0; i < N * N; i++) { lo = Math.min(lo, Rg.h[i]); hi = Math.max(hi, Rg.h[i]); }
     for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
       const wx = ((x + 0.5) / S) * N, wz = ((y + 0.5) / S) * N, h = Rg.heightAt(wx, wz);
-      if (Rg.isWater(wx, wz)) { p.set(x, y, (x + y) % 7 === 0 ? R.water[2] : R.water[1]); continue; }
+      if (Rg.isWater(wx, wz)) { p.set(x, y, (x + y) % 4 === 0 ? R.sky[2] : R.sky[4]); continue; }
       const hx = Rg.heightAt(wx + 1, wz) - Rg.heightAt(wx - 1, wz), hz = Rg.heightAt(wx, wz + 1) - Rg.heightAt(wx, wz - 1);
       const k = (h - lo) / Math.max(0.01, hi - lo), facing = -(hx * 0.6 + hz * 0.8);
-      let step = 1 + Math.floor(k * 3.5) + (facing > 0.5 ? 1 : facing < -0.5 ? -1 : 0);
       const contour = Math.floor(h / 1.5) !== Math.floor(Rg.heightAt(wx + N / S, wz) / 1.5) || Math.floor(h / 1.5) !== Math.floor(Rg.heightAt(wx, wz + N / S) / 1.5);
-      if (contour) step += 1;
-      p.set(x, y, R.moss[Math.max(0, Math.min(5, step))]);
+      // paper, hatched on the slopes that turn from the light, inked contours every metre and a half
+      let col = R.paper[5];
+      if (facing < -0.35 && (x + y) % 3 === 0) col = R.paper[3];
+      if (k > 0.75 && (x - y) % 4 === 0) col = R.paper[3];
+      if (contour) col = Math.floor(h / 1.5) % 4 === 0 ? R.ink[2] : R.paper[2];
+      p.set(x, y, col);
     }
     this.mapBase = p.canvas();
   }
   private drawMap(c: Colony) {
-    const g = this.g!, Rg = g.region, N = Rg.N, S = 124, cv = this.mapCv;
+    const g = this.g!, Rg = g.region, N = Rg.N, S = 132, cv = this.mapCv;
     if (!this.mapBase) this.paintMapBase();
     if (cv.width !== S) { cv.width = S; cv.height = S; }
     const x = cv.getContext('2d')!; x.imageSmoothingEnabled = false;
@@ -221,24 +281,24 @@ export class Hud {
     const img = x.getImageData(0, 0, S, S), p = new Pix(S, S); p.d.set(img.data);
     const k = S / N, vis = g.vision, P = (wx: number, wz: number): [number, number] => [Math.floor(wx * k), Math.floor(wz * k)];
     // unseen ground: drop to the darkest steps in a checker of 2 x 2 clusters (the fog of the survey)
-    for (let yy = 0; yy < S; yy++) for (let xx = 0; xx < S; xx++) { const wx = Math.floor((xx + 0.5) / k), wz = Math.floor((yy + 0.5) / k); if (!vis.seen[wz * N + wx]) p.set(xx, yy, ((xx >> 1) + (yy >> 1)) & 1 ? R.ink[0] : R.ink[1]); }
+    for (let yy = 0; yy < S; yy++) for (let xx = 0; xx < S; xx++) { const wx = Math.floor((xx + 0.5) / k), wz = Math.floor((yy + 0.5) / k); if (!vis.seen[wz * N + wx]) p.set(xx, yy, (xx + yy) % 3 === 0 || (xx - yy) % 5 === 0 ? R.paper[2] : R.paper[3]); }
     // control signal rings: dashed pixel circles
     const ring = (cx: number, cz: number, r: number, col: number) => { const n = Math.max(24, Math.round(r * k * 6)); for (let i = 0; i < n; i++) { if ((i >> 1) % 2) continue; const a = (i / n) * Math.PI * 2, [px, py] = P(cx + Math.cos(a) * r, cz + Math.sin(a) * r); p.set(px, py, col); } };
-    ring(c.pod.x, c.pod.z, c.controlRadius, R.malachite[5]);
-    for (const s2 of c.structures) if (s2.kind === 'relay' && s2.done) ring(s2.x, s2.z, 30, R.malachite[3]);
+    ring(c.pod.x, c.pod.z, c.controlRadius, R.stampRed[3]);
+    for (const s2 of c.structures) if (s2.kind === 'relay' && s2.done) ring(s2.x, s2.z, 30, R.stampRed[2]);
     // seams: small amber diamonds
     for (const d of Rg.deposits) if (d.amount > 0 && !d.hidden) { const [px, py] = P(d.x, d.z); p.set(px, py - 1, R.ochre[5]); p.set(px - 1, py, R.ochre[4]); p.set(px + 1, py, R.ochre[3]); p.set(px, py + 1, R.ochre[2]); p.set(px, py, R.ochre[6] ?? R.ochre[5]); }
     // contacts
-    for (const cr of g.world.creatures) { if (cr.dead || !cr.visibleNow) continue; const [px, py] = P(cr.x, cr.z); const hostile = cr.mind === 'hunt' || cr.mind === 'attack' || cr.sp.role === 'apex'; if (cr.faction === 'veyr') p.set(px, py, R.malachite[6]); else if (hostile) { p.rect(px - 1, py - 1, 2, 2, R.coral[5]); p.set(px + 1, py + 1, R.stampRed[1]); } else p.set(px, py, R.paper[2]); }
+    for (const cr of g.world.creatures) { if (cr.dead || !cr.visibleNow) continue; const [px, py] = P(cr.x, cr.z); const hostile = cr.mind === 'hunt' || cr.mind === 'attack' || cr.sp.role === 'apex'; if (cr.faction === 'veyr') p.set(px, py, R.moss[3]); else if (hostile) { p.set(px - 1, py - 1, R.stampRed[3]); p.set(px + 1, py + 1, R.stampRed[3]); p.set(px + 1, py - 1, R.stampRed[3]); p.set(px - 1, py + 1, R.stampRed[3]); p.set(px, py, R.stampRed[3]); } else p.set(px, py, R.ink[2]); }
     for (const st of g.factions?.structures ?? []) if (!st.dead && vis.seen[Math.floor(st.z) * N + Math.floor(st.x)]) { const [px, py] = P(st.x, st.z); p.rect(px - 1, py - 1, 3, 3, R.stampRed[3]); p.set(px - 1, py - 1, R.coral[5]); }
-    for (const s2 of c.structures) { const [px, py] = P(s2.x, s2.z); p.rect(px - 1, py - 1, 2, 2, s2.done ? R.paper[5] : R.paper[2]); p.set(px + 1, py + 1, R.ink[0]); }
+    for (const s2 of c.structures) { const [px, py] = P(s2.x, s2.z); p.rect(px - 1, py - 1, 3, 3, INK); p.set(px, py, s2.done ? R.ochre[4] : R.paper[5]); }
     for (const d of c.drones) { const [px, py] = P(d.x, d.z); p.set(px, py - 1, R.ochre[5]); p.set(px - 1, py, R.ochre[4]); p.set(px + 1, py, R.ochre[4]); p.set(px, py, R.ochre[6] ?? R.ochre[5]); }
-    for (const t of c.teammates) if (t.alive) { const [px, py] = P(t.x, t.z); p.set(px, py, R.sky[5]); p.set(px + 1, py, R.sky[3]); }
-    { const [px, py] = P(c.pod.x, c.pod.z); const D = [[0, -3], [-1, -2], [0, -2], [1, -2], [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1], [-3, 0], [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [3, 0], [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1], [-1, 2], [0, 2], [1, 2], [0, 3]]; for (const [dx, dy] of D) p.set(px + dx, py + dy, Math.abs(dx) + Math.abs(dy) === 3 ? R.ink[0] : dx + dy < 0 ? R.paper[5] : R.paper[3]); }
+    for (const t of c.teammates) if (t.alive) { const [px, py] = P(t.x, t.z); p.rect(px, py, 2, 2, R.sapphire[3]); }
+    { const [px, py] = P(c.pod.x, c.pod.z); const D = [[0, -3], [-1, -2], [0, -2], [1, -2], [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1], [-3, 0], [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [3, 0], [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1], [-1, 2], [0, 2], [1, 2], [0, 3]]; for (const [dx, dy] of D) p.set(px + dx, py + dy, Math.abs(dx) + Math.abs(dy) === 3 ? INK : dx + dy < 0 ? R.rust[5] : R.rust[3]); }
     // the camera's view: a hard pixel trapezoid
     const cs: [number, number][] = [];
     for (const [sx, sy] of [[0, 62], [innerWidth, 62], [innerWidth, innerHeight], [0, innerHeight]]) { const gp = this.groundRay(sx, sy); if (gp) cs.push(P(gp[0], gp[1])); }
-    if (cs.length === 4) for (let i = 0; i < 4; i++) { const [a0, b0] = cs[i], [a1, b1] = cs[(i + 1) % 4]; p.line(Math.max(-2, Math.min(S + 2, a0)), Math.max(-2, Math.min(S + 2, b0)), Math.max(-2, Math.min(S + 2, a1)), Math.max(-2, Math.min(S + 2, b1)), R.snow[5]); }
+    if (cs.length === 4) for (let i = 0; i < 4; i++) { const [a0, b0] = cs[i], [a1, b1] = cs[(i + 1) % 4]; stroke(p, Math.max(-2, Math.min(S + 2, a0)), Math.max(-2, Math.min(S + 2, b0)), Math.max(-2, Math.min(S + 2, a1)), Math.max(-2, Math.min(S + 2, b1)), i + 7, { w: 1, over: 1, col: R.ink[2] }); }
     x.putImageData(p.image(), 0, 0);
     const hd = this.mapHd.lastElementChild as HTMLElement; hd.textContent = `${Math.round(c.pod.x)}·${Math.round(c.pod.z)}  SIG ${c.controlRadius}M`;
   }
@@ -258,8 +318,11 @@ export class Hud {
       this.alertsEl.innerHTML = '';
       for (const a of list) {
         const e = el('div', `cx-al ${a.level}`, this.alertsEl);
-        el('i', 'lamp', e); el('div', '', e, esc(a.text)); el('div', 'tm', e, this.stamp(a));
-        if (a.n > 1) el('div', 'n', e, '×' + a.n);
+        const dc = document.createElement('canvas'); dc.width = 13; dc.height = 13; const dp = new Pix(13, 13);
+        doodle(dp, a.level === 'good' ? 'v' : a.level === 'warn' ? '^' : a.level === 'bad' || a.level === 'crit' ? '!' : 'i', 0, 0, a.id);
+        dc.getContext('2d')!.putImageData(dp.image(), 0, 0); e.appendChild(dc);
+        el('div', '', e, esc(a.text)); el('div', 'tm', e, this.stamp(a));
+        if (a.n > 1) el('div', 'n', e, 'x' + a.n);
         e.onclick = (ev) => { ev.stopPropagation(); if (a.at) this.g?.cam.lookAt(a.at.x, a.at.z); sfx('click', 1.2, 0.4); };
         (e as unknown as { _a: Alert })._a = a;
       }
@@ -271,7 +334,9 @@ export class Hud {
   // ------------------------------------------------------------------ the selected unit
   private buildSel() {
     this.selEl = el('div', 'cx-plate cx-sel pe', this.root);
-    skin(this.selEl, (w, h) => platePix(w, h, { mat: 'olive', seed: 11, wear: 1.4, rivets: true }));
+    skin(this.selEl, (w, h) => { const p = paperCard(w, h, 11, { tape: true }); for (let y = 8; y < 8 + 118; y++) for (let x = 9; x < 9 + 168; x++) p.clear(x, y); return p; });
+    this.viewEl = el('div', 'view', this.selEl);
+    this.calloutCv = document.createElement('canvas'); this.viewEl.appendChild(this.calloutCv);
     this.selHd = el('div', 'hd', this.selEl);
     const scr = el('div', 'cx-glass scr cx-ph', this.selEl);
     this.selRows = el('div', '', scr);
@@ -457,6 +522,42 @@ export class Hud {
     ub.onclick = (e) => { e.stopPropagation(); const err = c.slots.upgrade(i); if (err) { sfx('deny'); this.flash(err, true); } else { sfx('build'); sfx('done', 1, 0.6); } this.cfgKey = ''; };
   }
 
+  // ------------------------------------------------------------------ the living vignette
+  /** where the selection's live close-up goes (css px), or null when nothing is selected */
+  vignetteRect() {
+    if (this.root.style.display === 'none' || !this.selEl.classList.contains('on')) return null;
+    const r = this.viewEl.getBoundingClientRect(); if (r.width < 10) return null;
+    return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
+  }
+  /** the hand-drawn frame over the close-up and its callouts: leader lines from the parts to lettered paper scraps */
+  vignetteDrawn(f: { pos: THREE.Vector3; anchors: { p: THREE.Vector3; text: string; warn?: boolean }[] } | null, cam: THREE.PerspectiveCamera, rect: { w: number; h: number }) {
+    this.callT -= 1 / 30; if (this.callT > 0) return; this.callT = 0.08;
+    const W = Math.round(rect.w / 2), H = Math.round(rect.h / 2), cv = this.calloutCv;
+    if (cv.width !== W) { cv.width = W; cv.height = H; }
+    const p = new Pix(W, H);
+    // the frame: a sketched border, two strips of tape, a pin
+    stroke(p, 1, 1, W - 2, 1, 71, { w: 2, over: 2 }); stroke(p, W - 2, 1, W - 2, H - 2, 72, { w: 2, over: 2 }); stroke(p, W - 2, H - 2, 1, H - 2, 73, { w: 2, over: 2 }); stroke(p, 1, H - 2, 1, 1, 74, { w: 2, over: 2 });
+    tape(p, -2, 2, 3, -0.6); tape(p, W - 16, H - 9, 9, -0.5);
+    if (f) {
+      const used: number[] = [];
+      f.anchors.forEach((a, i) => {
+        const v = a.p.clone().project(cam); if (v.z > 1) return;
+        const ax = Math.round((v.x * 0.5 + 0.5) * W), ay = Math.round((-v.y * 0.5 + 0.5) * H);
+        if (ax < 2 || ay < 2 || ax > W - 3 || ay > H - 3) return;
+        const left = ax > W / 2, tw = textWidth(a.text) + 6;
+        let ly = Math.max(6, Math.min(H - 18, ay - 20 + (i % 2) * 10)); while (used.some((u) => Math.abs(u - ly) < 15)) ly += 15; used.push(ly);
+        const lx = left ? 6 : W - 6 - tw;
+        // leader: a dot on the part, an inked line to the scrap
+        p.rect(ax - 1, ay - 1, 3, 3, a.warn ? R.stampRed[3] : INK); p.set(ax, ay, R.paper[5]);
+        stroke(p, ax, ay, left ? lx + tw : lx, ly + 6, 80 + i, { w: 1, over: 0, amp: 0.5, col: a.warn ? R.stampRed[2] : INK });
+        for (let y = ly; y < ly + 13; y++) for (let x = lx; x < lx + tw; x++) p.set(x, y, a.warn ? R.coral[5] : R.paper[5]);
+        stroke(p, lx, ly + 13, lx + tw - 1, ly + 13, 90 + i, { w: 1, over: 1 });
+        letter(p, a.text, lx + 3, ly + 1, a.warn ? R.stampRed[1] : INK);
+      });
+    }
+    cv.getContext('2d')!.putImageData(p.image(), 0, 0);
+  }
+
   // ------------------------------------------------------------------ tooltips, flashes
   private hoverTip(e: HTMLElement, f: () => string) {
     e.addEventListener('pointerenter', (ev) => this.tip(f(), ev.clientX, ev.clientY));
@@ -487,10 +588,10 @@ export class Hud {
     this.drawCtl(c);
     this.slow -= dt;
     if (this.slow > 0) return;
-    this.slow = 0.2;
+    this.slow = 0.15;
     for (const e of this.vitEls) this.drawVital(e, c);
     const day = g.world.day, hh = Math.floor(((day + 0.25) % 1) * 24), mm = Math.floor(((((day + 0.25) % 1) * 24) % 1) * 60);
-    const ck = `<span>SOL ${c.sol}</span><small>${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} · ${g.paused ? 'PAUSED' : g.speed + '×'}</small>`;
+    const ck = `<span>SOL ${c.sol}</span><small>${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} · ${g.paused ? 'PAUSED' : g.speed + 'x'}</small>`;
     if (this.clock.innerHTML !== ck) this.clock.innerHTML = ck;
     const crit = Object.values(c.vitals.levels).includes('crit');
     this.alarm.classList.toggle('on', crit);
@@ -510,3 +611,5 @@ export class Hud {
   escape() { if (this.cfgSlot >= 0) { this.cfgSlot = -1; return true; } return false; }
   dispose() { removeEventListener('resize', this.onResize); this.root.remove(); this.tipEl.remove(); document.body.classList.remove('cx-paused'); }
 }
+/** a sketched box that never leaves the art (for small doodles) */
+function inkRectSafe(p: Pix, x: number, y: number, w: number, h: number, seed: number) { stroke(p, x, y, x + w - 1, y, seed, { w: 1, over: 1 }); stroke(p, x + w - 1, y, x + w - 1, y + h - 1, seed + 1, { w: 2, over: 1 }); stroke(p, x + w - 1, y + h - 1, x, y + h - 1, seed + 2, { w: 2, over: 1 }); stroke(p, x, y + h - 1, x, y, seed + 3, { w: 1, over: 1 }); }

@@ -1,0 +1,88 @@
+/* The progression screens over their live 3D vignettes: everything is hand-drawn paper (lowpix stroke frames from
+   src/research/art/frames) pinned or taped over the diorama, written in ink. Fonts: 'Body' at 11 / 22 / 33 / 44 px,
+   'Title' 24 / 48, 'TitleL' 32 / 64, 'TitleXL' 64. Text is never scaled, rotated or blurred. */
+.pp { position: fixed; inset: 0; z-index: 30; pointer-events: none; font: 22px/26px 'Body', monospace; color: #2b2622; text-shadow: none; }
+.pp * { box-sizing: border-box; text-shadow: none; }
+.pp > * { pointer-events: auto; }
+.pp-stage { position: absolute; inset: 0; pointer-events: auto; cursor: grab; }
+.pp-stage:active { cursor: grabbing; }
+.pp-ink { position: absolute; inset: 0; pointer-events: none !important; overflow: visible; }
+/* paper */
+.pp-card { position: absolute; border: 32px solid transparent; border-image: var(--pp-card) 40 fill / 40px / 8px round; image-rendering: pixelated; }
+.pp-note { position: absolute; border: 32px solid transparent; border-image: var(--pp-note) 40 fill / 40px / 8px round; image-rendering: pixelated; }
+.pp-frame { border: 32px solid transparent; border-image: var(--pp-frame) 40 / 40px / 8px round; image-rendering: pixelated; }
+.pp-tag { display: inline-flex; align-items: center; gap: 6px; border: 14px solid transparent; border-image: var(--pp-tag) 20 fill / 20px / 6px round; image-rendering: pixelated; }
+.pp-key { cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 6px; min-height: 48px; font: 24px/24px 'Title'; color: #2b2622; border: 14px solid transparent; border-image: var(--pp-key) 20 fill / 20px / 4px round; image-rendering: pixelated; white-space: nowrap; user-select: none; }
+.pp-key:hover { border-image-source: var(--pp-keyhot); }
+.pp-key.hot { border-image-source: var(--pp-keyhot); }
+.pp-key.dead { cursor: default; color: #8a8174; }
+.pp-key.dead:hover { border-image-source: var(--pp-key); }
+.pp-key img { width: 48px; height: 48px; margin: -12px 0; image-rendering: pixelated; }
+.pp-stamp { display: inline-block; padding: 0 4px; font: 24px/24px 'Title'; color: #a8332a; border: 20px solid transparent; border-image: var(--pp-stamp) 40 / 40px / 10px round; image-rendering: pixelated; }
+/* the tab strip */
+.pp-tabs { position: absolute; left: 20px; right: 20px; top: 14px; display: flex; align-items: flex-start; gap: 6px; pointer-events: none; }
+.pp-tabs > * { pointer-events: auto; }
+.pp-title { display: flex; flex-direction: column; margin-right: 18px; padding: 2px 6px; }
+.pp-title .k { font: 11px/13px 'Body'; letter-spacing: 1px; color: #3b342c; }
+.pp-title .t { font: 32px/32px 'TitleL'; color: #1e1a16; }
+.pp-tab { cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 0 8px; min-height: 56px; border: 14px solid transparent; border-image: var(--pp-tab) 20 fill / 20px / 4px round; image-rendering: pixelated; font: 24px/24px 'Title'; color: #3b342c; user-select: none; }
+.pp-tab:hover { color: #1e1a16; }
+.pp-tab.on { border-image-source: var(--pp-tabon); color: #1e1a16; margin-top: 6px; }
+.pp-tab img { width: 48px; height: 48px; image-rendering: pixelated; margin: -8px 0; }
+.pp-tab .dot { width: 11px; height: 11px; background: #a8332a; display: none; }
+.pp-tab .dot.on { display: block; }
+.pp-close { margin-left: auto; }
+/* type on paper */
+.pp-h { font: 24px/24px 'Title'; color: #1e1a16; }
+.pp-hl { font: 32px/32px 'TitleL'; color: #1e1a16; }
+.pp-hx { font: 48px/48px 'Title'; color: #1e1a16; }
+.pp-t { font: 22px/26px 'Body'; color: #2b2622; }
+.pp-s { font: 11px/13px 'Body'; letter-spacing: 1px; color: #5a5044; }
+.pp-dim { color: #6a5e4e; }
+.pp-red { color: #a8332a; }
+.pp-grn { color: #3f6a2a; }
+.pp-amb { color: #9a6a1a; }
+.pp-plus::before { content: '+ '; color: #3f6a2a; }
+.pp-minus { color: #8a3a22; } .pp-minus::before { content: '- '; color: #a8332a; }
+.pp-rule { height: 2px; margin: 6px 0; background: repeating-linear-gradient(90deg, #6a5e4e 0 6px, transparent 6px 10px); }
+.pp-row { display: flex; align-items: center; gap: 8px; }
+.pp-col { display: flex; flex-direction: column; gap: 6px; }
+.pp-list { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #8a8174 transparent; }
+.pp-pip { display: inline-block; width: 11px; height: 11px; margin-right: 3px; background: #c4bba8; box-shadow: inset 0 0 0 2px #6a5e4e; }
+.pp-pip.on { background: #d9a43a; }
+.pp-bar { position: relative; height: 11px; background: #c4bba8; box-shadow: inset 0 0 0 2px #6a5e4e; }
+.pp-bar > i { position: absolute; left: 2px; top: 2px; bottom: 2px; background: repeating-linear-gradient(90deg, #3f6a2a 0 6px, #5a8a3a 6px 8px); }
+.pp-bar.amb > i { background: repeating-linear-gradient(90deg, #9a6a1a 0 6px, #c28f3a 6px 8px); }
+.pp-ico { image-rendering: pixelated; flex: none; }
+/* callouts on the diorama */
+.pp-call { position: absolute; cursor: pointer; transform: none; display: flex; align-items: center; gap: 6px; padding: 0 2px; border: 14px solid transparent; border-image: var(--pp-tag) 20 fill / 20px / 6px round; image-rendering: pixelated; }
+.pp-call img { width: 48px; height: 48px; margin: -10px -6px; image-rendering: pixelated; }
+.pp-call .nm { font: 22px/22px 'Body'; color: #1e1a16; white-space: nowrap; display: none; padding-left: 6px; }
+.pp-call:hover .nm, .pp-call.sel .nm { display: block; }
+.pp-call.sel { border-image-source: var(--pp-keyhot); }
+.pp-call.locked img { opacity: 0.85; }
+.pp-call .st { position: absolute; right: -6px; top: -8px; width: 11px; height: 11px; background: #3f6a2a; box-shadow: 0 0 0 2px #1e1a16; }
+.pp-call.ready .st { background: #d9a43a; animation: pp-blink 1s steps(1) infinite; }
+.pp-call.locked .st, .pp-call.short .st { display: none; }
+.pp-call.barred .st { background: #a8332a; }
+@keyframes pp-blink { 50% { background: #f6e0a0; } }
+/* the path picker (paper index tabs down the left) */
+.pp-paths { position: absolute; left: 20px; top: 100px; width: 330px; display: flex; flex-direction: column; gap: 8px; }
+.pp-path { cursor: pointer; display: grid; grid-template-columns: 48px 1fr auto; column-gap: 8px; align-items: center; padding: 0 4px; min-height: 64px; border: 14px solid transparent; border-image: var(--pp-tab) 20 fill / 20px / 4px round; image-rendering: pixelated; }
+.pp-path.on { border-image-source: var(--pp-keyhot); margin-left: 14px; }
+.pp-path img { width: 48px; height: 48px; image-rendering: pixelated; grid-column: 1; grid-row: 1 / 3; }
+.pp-path .nm { grid-column: 2; grid-row: 1; font: 24px/24px 'Title'; color: #1e1a16; }
+.pp-path .lv { grid-column: 3; grid-row: 1 / 3; font: 48px/48px 'Title'; color: #1e1a16; }
+.pp-path .sub { grid-column: 2; grid-row: 2; font: 11px/13px 'Body'; letter-spacing: 1px; color: #5a5044; white-space: nowrap; overflow: hidden; }
+/* the incoming telegram (over the game) */
+.tx { position: fixed; right: 312px; top: 72px; z-index: 28; width: 520px; pointer-events: auto; cursor: pointer; font-family: 'Body'; color: #2b2622; border: 32px solid transparent; border-image: var(--pp-card) 40 fill / 40px / 8px round; image-rendering: pixelated; animation: tx-in 360ms steps(4); }
+@keyframes tx-in { from { opacity: 0; } to { opacity: 1; } }
+.tx.out { opacity: 0; transition: opacity 360ms steps(4); }
+.tx-k { display: flex; align-items: center; gap: 8px; font: 11px/13px 'Body'; letter-spacing: 1px; color: #5a5044; }
+.tx-k i { width: 11px; height: 11px; background: #3f6a2a; animation: pp-blink 0.8s steps(1) infinite; }
+.tx-k.bad { color: #a8332a; } .tx-k.bad i { background: #a8332a; }
+.tx-t { font: 32px/32px 'TitleL'; color: #1e1a16; margin: 6px 0 4px; }
+.tx-b { font: 22px/26px 'Body'; color: #2b2622; min-height: 52px; }
+.tx-f { display: flex; justify-content: space-between; margin-top: 6px; font: 11px/13px 'Body'; letter-spacing: 1px; color: #5a5044; }
+.tx-f b { color: #1e1a16; font-weight: normal; }
+.tx canvas { display: block; width: 100%; height: 28px; margin-top: 4px; image-rendering: pixelated; }

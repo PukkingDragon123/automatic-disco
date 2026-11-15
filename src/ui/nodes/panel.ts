@@ -110,7 +110,7 @@ export class Panel {
       const c = w.c, j = w.lj;
       const doing = j ? (j.act === 'build' ? `BUILDING ${esc(j.site?.def.name.toUpperCase() ?? '')}` : `${w.carry ? 'CARRYING' : j.act === 'dig' ? 'DIGGING' : j.act === 'harvest' ? 'HARVESTING' : 'FETCHING'} ${esc(short(j.item))} → ${esc(j.dst.name)}`) : w.state === 'eat' ? '<span class="amb">EATING</span>' : w.note ? `<span class="amb">${esc(w.note)}</span>` : JOB_NAME[w.job];
       const mark = act ? `<span class="nm-check ${on(c.id) ? 'on' : ''}" data-act="${act}" data-c="${c.id}">${on(c.id) ? '✓' : ''}</span>` : `<span class="nm-row">${(['haul', 'build', 'idle'] as Job[]).map((jb) => `<span class="nm-btn ${w.job === jb ? 'on' : ''}" data-act="w.job" data-c="${c.id}" data-v="${jb}">${jb === 'idle' ? 'FREE' : jb.toUpperCase()}</span>`).join('')}</span>`;
-      return `<div class="nm-man"><img src="${thumb(c.sp)}" alt=""><div><div class="n">${esc(c.sp.name.toUpperCase())}</div><div class="j pl-s">${doing}</div><div class="meters pl-s">FED ${meter(w.hunger, w.hunger < 0.3)} MOOD ${meter(w.mood, w.mood < 0.25)} CARRIES ${W.cap(c)}</div></div>${mark}</div>`;
+      return `<div class="nm-man"><img src="${thumb(c.sp)}" alt=""><div><div class="n">${esc(c.sp.name.toUpperCase())}</div><div class="j cr-s">${doing}</div><div class="meters cr-s">FED ${meter(w.hunger, w.hunger < 0.3)} MOOD ${meter(w.mood, w.mood < 0.25)} CARRIES ${W.cap(c)}</div></div>${mark}</div>`;
     }).join('');
   }
 
@@ -141,7 +141,7 @@ export class Panel {
     const ins = L.routes.filter((r) => r.to === n.id), outs = L.routes.filter((r) => r.from === n.id);
     h += `<div class="nm-lbl">WIRES <i>${ins.length} IN · ${outs.length} OUT</i></div><ul class="nm-list">`;
     for (const r of [...ins, ...outs]) { const o = L.node(r.to === n.id ? r.from : r.to); h += `<li data-act="sel.r" data-v="${r.id}"><span>${r.to === n.id ? '← ' : '→ '}${esc(o?.name ?? '?')}</span><span>${r.inflight ? `<span>${r.inflight} MOVING</span>` : r.note ? `<span class="amb">${esc(r.note)}</span>` : `<i>${Math.round(L.flow(r.id))}/MIN</i>`}</span></li>`; }
-    if (!ins.length && !outs.length) h += `<li><i>NOT WIRED: DRAG FROM ITS OUTPUT TAB (RIGHT EDGE) TO ANOTHER NODE</i></li>`;
+    if (!ins.length && !outs.length) h += `<li><i>NOT WIRED: DRAG FROM ITS PLUG TO ANOTHER NODE</i></li>`;
     h += `</ul>`;
     if (isLogic(n.kind) || n.kind === 'field') h += `<div class="nm-row" style="margin-top:10px"><span class="nm-btn red" data-act="n.del">REMOVE ${isLogic(n.kind) ? 'NODE' : 'FIELD'}</span></div>`;
     if (n.tidy && !isLogic(n.kind)) h += `<div class="nm-row" style="margin-top:6px"><span class="nm-btn" data-act="n.home">BACK TO ITS WORLD POSITION</span></div>`;
@@ -178,7 +178,7 @@ export class Panel {
     const flow = L.routes.reduce((a, r) => a + L.flow(r.id), 0), stalled = L.routes.filter((r) => r.on && r.note && !r.inflight);
     let h = `<div class="nm-h">COLONY LOGISTICS<small>SELECT A NODE OR A WIRE TO EDIT IT</small></div>`;
     h += `<div class="nm-kv" style="margin-top:8px"><div><div class="k">ROUTES</div><div class="v">${L.routes.length}</div></div><div><div class="k">FLOW</div><div class="v">${fmt(flow)}<small>/MIN</small></div></div><div><div class="k">ROUTED, EVER</div><div class="v">${Math.floor(L.xp)}</div></div></div>`;
-    if (!L.routes.length) h += `<div class="nm-p" style="margin-top:10px">Nothing is wired. Drag from a node's output tab (its right edge) to another node: workers will carry what the source has and the target takes. Start the <b style="color:var(--am);font-weight:normal">FIRST CHAIN GUIDE</b> at the top to learn it step by step.</div>`;
+    if (!L.routes.length) h += `<div class="nm-p" style="margin-top:10px">Nothing is wired. Drag from a node's plug (the ink ring by its tag) to another node: workers will carry what the source has and the target takes. Start the <b style="color:var(--am);font-weight:normal">FIRST CHAIN GUIDE</b> at the top to learn it step by step.</div>`;
     h += `<div class="nm-lbl">STALLED <i>${stalled.length}</i></div><ul class="nm-list">${stalled.map((r) => `<li data-act="sel.r" data-v="${r.id}"><span>${esc(L.node(r.from)?.name ?? '?')} → ${esc(L.node(r.to)?.name ?? '?')}</span><span class="amb">${esc(r.note)}</span></li>`).join('') || '<li><i>EVERY ROUTE IS MOVING OR READY</i></li>'}</ul>`;
     const sites = f.sites?.list ?? [];
     if (sites.length) h += `<div class="nm-lbl">CONSTRUCTION <i>${sites.length} SITE${sites.length > 1 ? 'S' : ''}</i></div><ul class="nm-list">${sites.map((s) => `<li data-act="sel.n" data-v="site:${s.id}"><span>${esc(s.def.name.toUpperCase())}</span><span>${s.stage === 'build' ? `<span class="amb">BUILDING ${Math.round(Math.min(1, s.work / s.workNeed) * 100)}%</span>` : `<i>SUPPLY ${Math.round(f.sites.progress(s) * 200)}%</i>`}</span></li>`).join('')}</ul>`;
@@ -300,11 +300,11 @@ export class Panel {
     const r = this.L.routes.find((x) => x.id === Number(c.dataset.spark)); if (!r) return;
     const g = c.getContext('2d')!, W = c.width, H = c.height, h = [...r.hist].reverse(), mx = Math.max(4, ...h);
     g.clearRect(0, 0, W, H);
-    g.fillStyle = '#0a110d'; g.fillRect(0, 0, W, H);
-    g.fillStyle = '#336240'; g.fillRect(0, 0, W, 1); g.fillRect(0, H - 1, W, 1); g.fillRect(0, 0, 1, H); g.fillRect(W - 1, 0, 1, H);
-    for (let y = 6; y < H - 1; y += 6) for (let x = 2; x < W - 2; x += 3) { g.fillStyle = '#14261b'; g.fillRect(x, y, 1, 1); }
+    // a pencil bar chart on the sheet: the baseline ruled, each 10 s a hatched bar, the newest in red pencil
+    g.fillStyle = '#57504a'; g.fillRect(0, H - 2, W, 1);
+    for (let y = 8; y < H - 2; y += 8) for (let x = 0; x < W; x += 4) { g.fillStyle = '#d2c7a6'; g.fillRect(x, y, 2, 1); }
     const bw = Math.floor((W - 4) / h.length);
-    h.forEach((v, i) => { const bh = Math.round((v / mx) * (H - 16)); g.fillStyle = i === h.length - 1 ? '#d9a43a' : '#4a8457'; g.fillRect(3 + i * bw, H - 2 - bh, bw - 3, bh); });
-    g.font = '11px Body, monospace'; g.textBaseline = 'top'; g.fillStyle = '#4a8457'; g.fillText('LAST 60 S · PER 10 S', 4, 2);
+    h.forEach((v, i) => { const bh = Math.round((v / mx) * (H - 16)), x0 = 3 + i * bw, col = i === h.length - 1 ? '#a8321f' : '#2b2622'; g.fillStyle = col; g.fillRect(x0, H - 2 - bh, 1, bh); g.fillRect(x0 + bw - 4, H - 2 - bh, 1, bh); g.fillRect(x0, H - 2 - bh, bw - 3, 1); for (let y = H - 3; y > H - 2 - bh; y -= 2) g.fillRect(x0 + ((y >> 1) % 3), y, bw - 5, 1); });
+    g.font = '11px Body, monospace'; g.textBaseline = 'top'; g.fillStyle = '#57504a'; g.fillText('LAST 60 S · PER 10 S', 4, 1);
   }
 }

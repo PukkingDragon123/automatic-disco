@@ -33,14 +33,14 @@ function sheet() {
   Object.assign(root.style, { position: 'fixed', inset: '0', overflow: 'auto', background: '#15181c var(--plate-dp) 0 0 / 128px', padding: '14px 18px', boxSizing: 'border-box', zIndex: '10' });
   const px = Number(new URLSearchParams(location.search).get('px') ?? 64);
   const all = ITEM_IDS.filter((i) => ITEMS[i].cat !== 'internal');
-  let html = `<div style="font-family:Superwide;font-size:16px;color:var(--cream);letter-spacing:1px;margin-bottom:8px">REAL ITEMS · ${all.length} KINDS <span style="font-family:VT;color:var(--dim);letter-spacing:0">· icons at ${px} px · size in grid cells · stack per cell · shelf life</span></div><div style="display:grid;grid-template-columns:repeat(12,1fr);gap:3px 5px">`;
+  let html = `<div style="font-family:Title;font-size:24px;line-height:24px;color:#d6cab0;margin-bottom:8px">REAL ITEMS · ${all.length} KINDS <span style="font-family:Body;font-size:22px;color:#8f856e">lowpix sprites, 32 px at 2x · size in cells · stack · shelf life</span></div><div style="display:grid;grid-template-columns:repeat(12,1fr);gap:3px 5px">`;
   for (const g of ITEM_GROUPS) {
     const ids = all.filter((i) => itemDef(i).group === g.k);
-    html += `<div style="display:flex;flex-direction:column;justify-content:center;align-items:flex-start;height:${px + 28}px;border-left:4px solid var(--amber);padding-left:8px;background:rgba(0,0,0,.25)"><div style="font-family:Superwide;font-size:10px;color:var(--amber);letter-spacing:1px">${g.name.toUpperCase()}</div><div style="font-family:VT;font-size:16px;color:var(--dim)">${ids.length} kinds</div></div>`;
+    html += `<div style="display:flex;flex-direction:column;justify-content:center;align-items:flex-start;height:${px + 28}px;border-left:4px solid var(--amber);padding-left:8px;background:rgba(0,0,0,.25)"><div style="font-family:Title;font-size:24px;line-height:24px;color:#d9a43a">${g.name.toUpperCase()}</div><div style="font-family:Body;font-size:22px;line-height:22px;color:#8f856e">${ids.length}</div></div>`;
     for (const id of ids) {
       const d = itemDef(id);
       html += `<div style="display:flex;flex-direction:column;align-items:center;height:${px + 28}px;background:rgba(4,18,9,.55);box-shadow:inset 0 0 0 2px #1b3525"><img src="${itemIcon(id, px)}" width="${px}" height="${px}" style="image-rendering:pixelated;margin-top:2px">` +
-        `<div style="font-family:Jersey;font-size:16px;line-height:14px;color:var(--cream);white-space:nowrap;overflow:hidden;max-width:100%">${d.name}</div><div style="font-family:VT;font-size:16px;line-height:14px;color:var(--ink)">${d.size[0]}×${d.size[1]} · ${d.stack}${d.perish ? ` · <span style="color:var(--amber)">${d.perish.days}d</span>` : ''}</div></div>`;
+        `<div style="font-family:Body;font-size:11px;line-height:11px;color:#e5dbc3;white-space:nowrap;overflow:hidden;max-width:100%">${d.name}</div><div style="font-family:Body;font-size:11px;line-height:11px;color:#a99c84">${d.size[0]}×${d.size[1]} · ${d.stack}${d.perish ? ` · <span style="color:var(--amber)">${d.perish.days}d</span>` : ''}</div></div>`;
     }
   }
   root.innerHTML = html + '</div>';
@@ -101,6 +101,7 @@ function models(engine: Engine, P: URLSearchParams) {
   // names under the models
   const lab = document.createElement('div');
   Object.assign(lab.style, { position: 'fixed', left: '0', right: '0', top: '18px', textAlign: 'center', fontFamily: 'Superwide', fontSize: '16px', color: '#d9d2bf', letterSpacing: '1px', zIndex: '5' });
+  lab.style.fontFamily = 'Title'; lab.style.fontSize = '24px'; lab.style.letterSpacing = '0';
   lab.textContent = cut ? 'CONTAINERS · CUT AWAY (CRATE HUD MINIATURES)' : 'CONTAINERS · ' + kinds.map((k) => KIND_INFO[k].name.toUpperCase()).join(' · ');
   document.body.appendChild(lab);
 }

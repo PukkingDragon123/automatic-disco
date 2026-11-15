@@ -149,7 +149,7 @@ export class CannonView {
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; cv.style.imageRendering = 'pixelated'; }
     g2.setTransform(1, 0, 0, 1, 0, 0); g2.imageSmoothingEnabled = false; g2.clearRect(0, 0, W, H);
     const hx = (c: number) => '#' + c.toString(16).padStart(6, '0');
-    const PH = R.malachite[5], PH2 = R.malachite[3], AMB = R.ochre[5], RED = R.coral[5];
+    const PH = R.paper[5], PH2 = R.paper[3], AMB = R.ochre[5], RED = R.coral[5];
     const px = (x: number, y: number, c: number) => { g2.fillStyle = hx(c); g2.fillRect(Math.round(x), Math.round(y), 1, 1); };
     const rect = (x: number, y: number, w: number, h: number, c: number) => { g2.fillStyle = hx(c); g2.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };
     const line = (x0: number, y0: number, x1: number, y1: number, c: number) => { x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1); const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1; let e = dx + dy; g2.fillStyle = hx(c); for (;;) { g2.fillRect(x0, y0, 1, 1); if (x0 === x1 && y0 === y1) break; const e2 = 2 * e; if (e2 >= dy) { e += dy; x0 += sx; } if (e2 <= dx) { e += dx; y0 += sy; } } };
@@ -161,7 +161,7 @@ export class CannonView {
     // reticle ring (broken in four), shadowed one pixel down-right
     const rr = 35;
     for (let i = 0; i < 360; i++) { const an = (i / 360) * Math.PI * 2; if ((i + 15) % 90 < 30) continue; px(cx + Math.cos(an) * rr + 1, cy + Math.sin(an) * rr + 1, R.ink[0]); px(cx + Math.cos(an) * rr, cy + Math.sin(an) * rr, PH); }
-    line(cx - 6, cy + 6, cx, cy, PH); line(cx, cy, cx + 6, cy + 6, PH); px(cx, cy, R.malachite[6]);
+    line(cx - 6, cy + 6, cx, cy, PH); line(cx, cy, cx + 6, cy + 6, PH); px(cx, cy, R.coral[5]);
     for (let i = -6; i <= 6; i++) { if (!i) continue; const L = i % 2 ? 3 : 6; rect(cx + i * 11, cy - L, 1, L * 2 + 1, PH2); }
     for (let i = 1; i <= 5; i++) { const L = i % 2 ? 4 : 8; rect(cx - L, cy + i * 13, L * 2 + 1, 1, PH2); text(String(i * 100), cx + 11, cy + i * 13 - 7, PH2); }
     // bearing tape
@@ -187,7 +187,7 @@ export class CannonView {
     // capacitors
     const bx = W - 128;
     text(this.charge >= 1 ? 'CAPACITORS READY' : 'CHARGING', bx, cy - 26, this.charge >= 1 ? PH : AMB);
-    for (let i = 0; i < 8; i++) { const on = this.charge * 8 > i + 0.5; rect(bx + i * 12, cy - 10, 9, 17, R.ink[0]); rect(bx + i * 12 + 1, cy - 9, 7, 15, R.malachite[0]); if (on) { rect(bx + i * 12 + 2, cy - 8, 5, 13, PH); rect(bx + i * 12 + 2, cy - 8, 5, 1, R.malachite[6]); } }
+    for (let i = 0; i < 8; i++) { const on = this.charge * 8 > i + 0.5; rect(bx + i * 12, cy - 10, 9, 17, R.ink[0]); rect(bx + i * 12 + 1, cy - 9, 7, 15, R.ink[1]); if (on) { rect(bx + i * 12 + 2, cy - 8, 5, 13, AMB); rect(bx + i * 12 + 2, cy - 8, 5, 1, R.paper[5]); } }
     if (!this.c.vitals.powerOk) text('NO POWER', bx, cy + 12, RED);
     text(`ZOOM ${(46 / this.fov).toFixed(1)}X`, bx, cy + 26, PH2);
     if (this.flashT > 0) { g2.fillStyle = `rgba(233,230,220,${Math.min(0.9, this.flashT * 1.4).toFixed(2)})`; g2.fillRect(0, 0, W, H); }

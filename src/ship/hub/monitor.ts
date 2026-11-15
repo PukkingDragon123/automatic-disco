@@ -23,9 +23,9 @@ export interface MonitorOpts { onDeploy: (planetSeed: number, r: PRegion, lz: { 
 /** fly into the main monitor, then the monitor becomes the screen */
 export async function openMonitor(engine: Engine, hub: ShipHub, flow: Flow, o: MonitorOpts) {
   hub.lockInput(true);
-  const mon = hub.interior.rooms.bridge.ctx.refs.monitor as THREE.Mesh;
-  const p = mon.getWorldPosition(new THREE.Vector3());
-  await hub.shot({ pos: p.clone().add(new THREE.Vector3(0, 0.05, -4.2)), look: p, fov: 36 }, 1.3);
+  const holo = hub.interior.rooms.bridge.ctx.refs.holo as THREE.Mesh;
+  const p = holo.getWorldPosition(new THREE.Vector3());
+  await hub.shot({ pos: p.clone().add(new THREE.Vector3(0.5, 0.9, -1.1)), look: p, fov: 40 }, 0.8);
   csfx('static', 0.5); csfx('beep', 0.5);
   const seed = flow.run ? flow.run.seed : 1;
   engine.push(new GalaxyScreen(engine, seed, {
@@ -82,51 +82,45 @@ function fx(vert: string, frag: string, u: Record<string, THREE.IUniform>, add =
 
 // ------------------------------------------------------------------ CSS
 const CSS = /* css */`
-.gmon { position: fixed; inset: 0; z-index: 6; pointer-events: none; font-family: 'Body'; color: #9fe0aa; --g: #7fd48a; --gd: #3f8f58; --gh: #d6ffd8; --am: #d9a43a;
-  --fs: 22px; --fl: 22px; --fx: 48px; --u: clamp(1px, 0.1vh, 2px); text-shadow: 0 0 calc(4 * var(--u)) rgba(127,212,138,0.45); }
+.gmon { position: fixed; inset: 0; z-index: 6; pointer-events: none; font-family: 'Body'; font-size: 22px; color: #e8dcc0; image-rendering: pixelated; text-shadow: 0 2px 0 #0a0806; }
 .gmon .pe { pointer-events: auto; }
-.gmon .crt { position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(0,0,0,0.16) 0 1px, rgba(0,0,0,0) 1px 3px), radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,8,4,0.55) 100%); }
-.gmon .bez { position: absolute; inset: 0; border: 16px solid transparent; border-image: var(--steel) 8 fill / 16px stretch; image-rendering: pixelated; background: none; -webkit-mask: none; }
-.gmon .bez { border-image-outset: 0; }
-.gmon .hd { position: absolute; left: calc(40 * var(--u)); top: calc(34 * var(--u)); }
-.gmon .hd .k { font-family: 'Body'; font-size: 22px; color: var(--gd); }
-.gmon .hd .t { font-family: 'Title'; font-size: 48px; color: var(--gh); line-height: 1.05; }
-.gmon .hd .s { font-size: var(--fl); color: var(--g); }
-.gmon .prog { position: absolute; left: calc(40 * var(--u)); bottom: calc(40 * var(--u)); font-size: var(--fl); }
-.gmon .prog .bar { width: calc(420 * var(--u)); height: calc(10 * var(--u)); border: calc(1 * var(--u)) solid var(--gd); margin-top: calc(6 * var(--u)); }
-.gmon .prog .bar i { display: block; height: 100%; background: var(--g); box-shadow: 0 0 calc(8 * var(--u)) var(--g); }
-.gmon .list { position: absolute; left: calc(40 * var(--u)); top: calc(170 * var(--u)); width: calc(430 * var(--u)); display: flex; flex-direction: column; gap: calc(6 * var(--u)); }
-.gmon .w { padding: calc(8 * var(--u)) calc(12 * var(--u)); border: calc(1 * var(--u)) solid rgba(127,212,138,0.35); background: rgba(4,16,8,0.62); cursor: pointer; animation: gm-in 360ms steps(6) both; }
-@keyframes gm-in { 0% { opacity: 0; clip-path: inset(0 100% 0 0); } 100% { opacity: 1; clip-path: inset(0 0 0 0); } }
-.gmon .w:hover, .gmon .w.h { border-color: var(--g); background: rgba(10,40,18,0.75); }
-.gmon .w .r1 { display: flex; justify-content: space-between; align-items: baseline; }
-.gmon .w .n { font-family: 'Title'; font-size: 24px; color: var(--gh); }
-.gmon .w .pips { font-size: var(--fl); }
-.gmon .w .pips b { color: var(--am); font-weight: normal; } .gmon .w .pips s { color: #2a4a32; text-decoration: none; }
-.gmon .w .b { font-family: 'Body'; font-size: 22px; color: #7fae88; }
-.gmon .w .rec { display: inline-block; margin-top: calc(4 * var(--u)); font-family: 'Body'; font-size: 22px; color: #0a1a0e; background: var(--g); padding: 0 calc(6 * var(--u)); text-shadow: none; }
-.gmon .lab { position: absolute; left: 0; top: 0; transform: translate(-50%, calc(-100% - 14 * var(--u))); white-space: nowrap; text-align: center; transition: opacity 200ms; }
-.gmon .lab .n { font-family: 'Title'; font-size: 24px; color: var(--gh); }
-.gmon .lab .d { font-size: var(--fs); color: var(--am); }
-.gmon .lab .rec { font-family: 'Body'; font-size: 11px; color: #0a1a0e; background: var(--g); padding: 0 calc(4 * var(--u)); text-shadow: none; }
-.gmon .det { position: absolute; right: calc(40 * var(--u)); top: calc(110 * var(--u)); width: calc(470 * var(--u)); padding: calc(14 * var(--u)) calc(16 * var(--u)); border: calc(1 * var(--u)) solid var(--g); background: rgba(4,16,8,0.72); animation: gm-in 420ms steps(8) both; }
-.gmon .det .n { font-family: 'Title'; font-size: 48px; color: var(--gh); line-height: 1; }
-.gmon .det .tg { font-family: 'Body'; font-size: 22px; color: #7fae88; margin: calc(6 * var(--u)) 0 calc(10 * var(--u)); }
-.gmon .det .f { display: flex; justify-content: space-between; font-size: var(--fl); line-height: 1.3; border-bottom: calc(1 * var(--u)) dashed rgba(127,212,138,0.18); }
-.gmon .det .f span:last-child { color: var(--gh); }
-.gmon .det .dif { margin: calc(10 * var(--u)) 0; font-size: var(--fl); }
-.gmon .det .dif b { color: var(--am); font-weight: normal; } .gmon .det .dif s { color: #2a4a32; text-decoration: none; }
-.gmon .btn { display: flex; justify-content: space-between; align-items: center; margin-top: calc(8 * var(--u)); padding: calc(10 * var(--u)) calc(14 * var(--u)); cursor: pointer; border: 16px solid transparent; border-image: var(--key) 8 fill / 16px stretch; image-rendering: pixelated; font-family: 'Title'; font-size: 24px; color: #e4f4e6; }
-.gmon .btn:hover { border-image: var(--keyHi) 8 fill / 16px stretch; image-rendering: pixelated; }
-.gmon .btn.pri { font-size: var(--fl); }
-.gmon .btn .hk { font-family: 'Jersey', monospace; color: #0a1a0e; background: var(--g); padding: 0 calc(5 * var(--u)); text-shadow: none; }
-.gmon .back { position: absolute; left: calc(40 * var(--u)); bottom: calc(36 * var(--u)); width: calc(260 * var(--u)); }
-.gmon .hint { position: absolute; right: calc(40 * var(--u)); bottom: calc(36 * var(--u)); font-family: 'Body'; font-size: 22px; color: #5f8a68; }
+.gmon .hd { position: absolute; left: 40px; top: 30px; }
+.gmon .hd .k { font-family: 'Body'; font-size: 22px; color: #c8b890; }
+.gmon .hd .t { font-family: 'TitleXL'; font-size: 64px; color: #ece2c8; line-height: 64px; text-shadow: 4px 4px 0 #1a1612; }
+.gmon .hd .s { font-size: 22px; color: #d8c8a0; }
+.gmon .prog { position: absolute; left: 40px; bottom: 40px; font-size: 22px; }
+.gmon .prog .bar { width: 420px; height: 12px; border: 2px solid #e2d8be; margin-top: 6px; box-shadow: 0 2px 0 #0a0806; }
+.gmon .prog .bar i { display: block; height: 100%; background: #b8402e; }
+.gmon .list { position: absolute; left: 32px; top: 170px; width: 470px; display: flex; flex-direction: column; gap: 4px; }
+.gmon .w { padding: 0 8px; border: 24px solid transparent; border-image: var(--tag) 12 fill / 24px stretch; cursor: pointer; color: #2a2622; text-shadow: none; animation: gm-in 360ms steps(6) both; }
+@keyframes gm-in { 0% { opacity: 0; transform: translateX(-30px); } 100% { opacity: 1; transform: none; } }
+.gmon .w:hover, .gmon .w.h { border-image: var(--tagHi) 12 fill / 24px stretch; transform: translateX(6px); }
+.gmon .w .r1 { display: flex; justify-content: space-between; align-items: baseline; margin-top: -12px; }
+.gmon .w .n { font-family: 'Title'; font-size: 24px; color: #2a2622; }
+.gmon .w .pips b { color: #b8402e; font-weight: normal; } .gmon .w .pips s { color: #b8ac94; text-decoration: none; }
+.gmon .w .b { font-family: 'Body'; font-size: 11px; color: #5a4a3a; }
+.gmon .w .rec { display: inline-block; margin: 2px 0 -12px; font-family: 'Body'; font-size: 11px; color: #e8dcc0; background: #b8402e; padding: 0 6px; }
+.gmon .lab { position: absolute; left: 0; top: 0; transform: translate(-50%, calc(-100% - 14px)); white-space: nowrap; text-align: center; transition: opacity 200ms; }
+.gmon .lab .n { font-family: 'Title'; font-size: 24px; color: #ece2c8; }
+.gmon .lab .d { font-size: 22px; color: #e0a040; }
+.gmon .lab .rec { font-family: 'Body'; font-size: 11px; color: #e8dcc0; background: #b8402e; padding: 0 4px; text-shadow: none; }
+.gmon .det { position: absolute; right: 40px; top: 100px; width: 520px; padding: 8px 14px; border: 36px solid transparent; border-image: var(--card) 24 fill / 36px stretch; color: #2a2622; text-shadow: none; animation: gm-in 420ms steps(8) both; transform: rotate(0.6deg); }
+.gmon .det .n { font-family: 'Title'; font-size: 48px; color: #2a2622; line-height: 48px; }
+.gmon .det .tg { font-family: 'Body'; font-size: 11px; color: #5a4a3a; margin: 6px 0 10px; }
+.gmon .det .f { display: flex; justify-content: space-between; font-size: 22px; line-height: 33px; border-bottom: 2px dashed #c8b890; }
+.gmon .det .f span:last-child { color: #8a2a1e; }
+.gmon .det .dif { margin: 10px 0; font-size: 22px; }
+.gmon .det .dif b { color: #b8402e; font-weight: normal; } .gmon .det .dif s { color: #c8b890; text-decoration: none; }
+.gmon .btn { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding: 0 10px; cursor: pointer; border: 20px solid transparent; border-image: var(--stamp) 10 fill / 20px stretch; font-family: 'Title'; font-size: 24px; color: #2a2622; text-shadow: none; }
+.gmon .btn:hover { border-image: var(--stampHi) 10 fill / 20px stretch; color: #8a2a1e; }
+.gmon .btn .hk { font-family: 'Body'; font-size: 11px; color: #7a6a58; }
+.gmon .back { position: absolute; left: 40px; bottom: 36px; width: 280px; }
+.gmon .hint { position: absolute; right: 40px; bottom: 36px; font-size: 22px; color: #c8b890; }
 `;
 let styled = false;
 function style() { if (styled) return; styled = true; const s = document.createElement('style'); s.textContent = CSS; document.head.appendChild(s); }
 const div = (cls: string, parent: HTMLElement, html = '') => { const e = document.createElement('div'); e.className = cls; e.innerHTML = html; parent.appendChild(e); return e; };
-const pips = (n: number) => `<b>${'■'.repeat(n)}</b><s>${'■'.repeat(5 - n)}</s>`;
+const pips = (n: number) => `<b>${'#'.repeat(n)}</b><s>${'#'.repeat(5 - n)}</s>`;
 const DIFF = ['', 'GENTLE', 'FAIR', 'HARSH', 'SEVERE', 'LETHAL'];
 
 type Phase = 'galaxy' | 'dive' | 'system' | 'world';
@@ -198,14 +192,13 @@ export class GalaxyScreen implements Screen {
     });
     // ---- DOM
     this.root = div('gmon', ui());
-    div('crt', this.root);
-    this.hd = div('hd', this.root, `<div class="k">MERIDIAN · MAIN MONITOR</div><div class="t">LONG RANGE SCAN</div><div class="s">SECTOR KEPLER-442 · ORION SPUR</div>`);
+    this.hd = div('hd', this.root, `<div class="k">MERIDIAN · HOLO TABLE</div><div class="t">LONG RANGE SCAN</div><div class="s">SECTOR KEPLER-442 · ORION SPUR</div>`);
     this.prog = div('prog', this.root, `<div>SWEEP <span class="pc">0%</span> · <span class="ct">0</span> SYSTEMS</div><div class="bar"><i style="width:0%"></i></div>`);
     this.list = div('list pe', this.root); this.list.style.display = 'none';
-    this.backEl = div('back btn pe', this.root, '◀ BRIDGE <span class="hk">ESC</span>');
+    this.backEl = div('back btn pe', this.root, '&lt; BRIDGE <span class="hk">ESC</span>');
     this.backEl.addEventListener('click', (e) => { e.stopPropagation(); this.back(); });
     div('hint', this.root, 'CLICK A WORLD · ESC BACK');
-    for (const w of this.worlds) { const l = div('lab', this.root); l.style.opacity = '0'; l.innerHTML = `<div class="n">${w.planet.name.toUpperCase()}</div><div class="d">${'■'.repeat(w.diff)}</div>`; this.labs.push(l); }
+    for (const w of this.worlds) { const l = div('lab', this.root); l.style.opacity = '0'; l.innerHTML = `<div class="n">${w.planet.name.toUpperCase()}</div><div class="d">${'#'.repeat(w.diff)}</div>`; this.labs.push(l); }
     this.root.addEventListener('pointerdown', (e) => e.stopPropagation());
     // ---- input
     const cv = engine.canvas;
@@ -250,7 +243,7 @@ export class GalaxyScreen implements Screen {
     const best = this.worlds.reduce((b, x, k) => (x.diff < this.worlds[b].diff ? k : b), 0);
     this.det = div('det pe', this.root, `<div class="n">${w.planet.name.toUpperCase()}</div><div class="tg">${w.tag}</div>${w.facts.map(([a, b]) => `<div class="f"><span>${a}</span><span>${b}</span></div>`).join('')}<div class="dif">DIFFICULTY ${pips(w.diff)} ${DIFF[w.diff]}${i === best ? ' · RECOMMENDED' : ''}</div>`);
     const go = div('btn pri', this.det, 'CHOOSE LANDING SITE <span class="hk">ENTER</span>'); go.addEventListener('click', (e) => { e.stopPropagation(); this.land(); });
-    const bk = div('btn', this.det, '◀ SYSTEM <span class="hk">ESC</span>'); bk.addEventListener('click', (e) => { e.stopPropagation(); this.back(); });
+    const bk = div('btn', this.det, '&lt; SYSTEM <span class="hk">ESC</span>'); bk.addEventListener('click', (e) => { e.stopPropagation(); this.back(); });
   }
   /** down to the orbital survey of the chosen world */
   private land() {
@@ -262,7 +255,7 @@ export class GalaxyScreen implements Screen {
       canLand: (r) => (r.state === 'veyr' ? 'Already yours.' : r.state === 'lost' ? 'Burnt out. Nothing will take root here again.' : null),
       onBack: () => { this.engine.pop(); this.root.style.display = ''; },
       onLand: (r, lz, region) => { this.engine.pop(); this.o.onDeploy(w.seed, r, lz, region); },
-      note: `DIFFICULTY ${'■'.repeat(w.diff)} ${DIFF[w.diff]} · CHOOSE A REGION, THEN THE DROP POINT`,
+      note: `DIFFICULTY ${w.diff} / 5 · ${DIFF[w.diff]} · CHOOSE A REGION, THEN THE DROP POINT`,
     }));
   }
   private back() {
@@ -285,7 +278,7 @@ export class GalaxyScreen implements Screen {
       if (Math.floor(this.T * 8) !== Math.floor((this.T - dt) * 8)) csfx('geiger', 0.25);
       if (this.T >= sweepEnd) {
         this.phase = 'dive'; this.T = 0; csfx('whoosh', 0.7);
-        this.hd.innerHTML = `<div class="k">MERIDIAN · MAIN MONITOR</div><div class="t">KEPLER-442</div><div class="s">5 WORLDS · SCANNING</div>`;
+        this.hd.innerHTML = `<div class="k">MERIDIAN · HOLO TABLE</div><div class="t">KEPLER-442</div><div class="s">5 WORLDS · SCANNING</div>`;
         this.prog.style.display = 'none';
         this.setCam(this.sysCam(), this.here.clone(), 2.4);
       }
