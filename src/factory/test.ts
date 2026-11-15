@@ -37,7 +37,7 @@ export async function testFactory(engine: Engine, input: Input, P: URLSearchPara
     if (!g.player.started) return;
     clearInterval(iv);
     const c = (g as unknown as { __line?: [number, number] }).__line;
-    if (c) { g.player.x = c[0] + 2.5; g.player.z = c[1] + 2; }
+    if (c) { const pl = g.player as unknown as { x: number; z: number }; pl.x = c[0] + 2.5; pl.z = c[1] + 2; }
     g.cam.distGoal = Number(P.get('dist') ?? 17);
     if (P.has('build')) f.build.open(null, 'select');
     void t0;

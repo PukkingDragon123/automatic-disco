@@ -9,6 +9,7 @@ const CSS = /* css */`
 .bub .bn { position: relative; font-family: 'Silk', monospace; font-size: var(--cf-ps1, 11px); line-height: var(--cf-ps1, 11px); color: #6f6858; letter-spacing: 1px; margin-bottom: 4px; }
 .bub .bt .cur { opacity: 0.6; }
 body.cine-on .bub { visibility: hidden; }
+body.cine-on .bub.keep { visibility: visible; z-index: 41; }
 `;
 let styled = false;
 const h1 = (i: number, s: number) => { const v = Math.sin(i * 127.1 + s * 311.7) * 43758.5453; return v - Math.floor(v); };

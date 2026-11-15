@@ -1,32 +1,19 @@
-// The controllable descent, INSIDE THE REAL GAME. The Game for the region is built first (descent mode: the core
-// waits hidden, no crater yet, the story waits), then Unit 07's drop pod falls out of the sky over the real map:
-// its terrain, flora, water, rocks, creatures and factions, all alive below. The player flies it: a small RCS
-// thruster drifts the pod inside its descent cone (WASD / arrows / the touch stick, a burst on Space or BURST)
-// while cinematic cameras cut in and blend back out (the plasma sheath and its streaks, the radio blackout, the
-// porthole, the fireball seen from the ground, punching through the weather decks, the chute, the retro flare).
-// Beyond the 128 m map a stylised landscape runs to a curved horizon under a sky that knows its altitude
-// (descentWorld.ts), fading away once the game's own camera has the view. IMPACT is on the real ground: the
-// crater is carved into the region, flora is flattened and creatures are thrown and scared off, a dust shockwave
-// and a white flash; then the pod's shell blows off on its bolts, the core is there in the crater and the golem
-// climbs out (the game's own hatching), with no cut. Then the camera eases into the game's and the story begins.
-// Accuracy is scored against the pin set from orbit and paid into the run.
-// Coordinates: the controller works in map-centred metres (x - N/2, z - N/2); its objects sit in a group offset
-// by (N/2, 0, N/2), so they line up with the game world (region cells at x, z).
+// v6 landing, kept simple: a short cinematic drop of the colony pod onto the chosen spot, then control is handed over.
+// The game for the region is built first in descent mode (the core waits hidden). Then, in about eight seconds:
+// fade in on a low ground camera at the landing site; the pod comes down under its orange-and-white canopy, swaying;
+// the chute is cut, the retro rockets light and kick up the dust; touchdown on the four struts (the scorch, the smoke
+// and the draped chute of game/podCore.ts), a shock ring of dust; the camera rises into the colony's RTS view while the
+// crew step down the ramp; a title card; control. Esc, Space or a click skips to the touchdown.
 import * as THREE from 'three';
 import type { Game } from './game';
-import type { Region } from '../world/region';
-import type { Palette } from '../world/palette';
-import { gbuf } from '../gfx/gbuf';
+import { buildPod } from '../colony/podModel';
+import { Kit, std, glow } from '../colony/kit';
 import { CineUI } from '../ui/cineUI';
-import { csfx, cloop, cvoice, type Loop } from '../ui/cineAudio';
+import { csfx } from '../ui/cineAudio';
 import { sfx } from '../audio/audio';
-import { settings } from '../settings';
-import { isTouchDevice } from '../ui/touch';
-import { Bin, lit, mesh, fxMat, rawMat, V3, TAU, sm, ease, hash, type V } from '../ui/deployKit';
-import { makePod, portholeWorld, type Pod } from '../ui/deployPod';
-import { makeWorld, buildFar, buildWater, makeSky, dropMarks, RP, type World, type Sky } from './descentWorld';
-import { clamp, damp, lerp } from '../core/rand';
+import { vfx2d } from './vfx2d';
 import { puffsFor } from './podCore';
+import { clamp, lerp } from '../core/rand';
 
 export type Grade = 'BULLSEYE' | 'ON TARGET' | 'CLOSE' | 'WIDE' | 'AUTOPILOT';
 /** what a landing earns (applied to the run by the deployment): within 6 m a core cell and ore, close in some ore */
@@ -38,821 +25,156 @@ export function bonusFor(g: Grade): { cells: number; res: Partial<Record<'ore' |
 }
 export interface DescentResult { x: number; z: number; dist: number; grade: Grade; auto: boolean; water: boolean }
 export interface DescentOpts {
-  /** the real game for the region, built in descent mode (opts.descent) */
   game: Game;
-  /** the drop zone pinned from orbit (region coordinates) */
   lz: { x: number; z: number };
   first: boolean; planetName: string;
-  /** after the golem is out and the game has the camera back (the bonus is already paid into game.run) */
   onDone?(r: DescentResult): void;
-  /** QA: freeze time when a named moment comes (entry, porthole, ground-up, cloud, low, chute, flare, impact, out; alt:<m>) */
+  /** QA: freeze at a moment ('chute', 'retro', 'touch', 'rise') */
   hold?: string | null;
 }
 
-const CHUTE_ALT = 115, RETRO_ALT = 7;
-/** descent rate by altitude (m/s), before the chute */
-const VTAB: [number, number][] = [[3000, 135], [1200, 122], [900, 86], [400, 56], [150, 42], [0, 40]];
-function vAt(alt: number) { for (let i = 0; i < VTAB.length - 1; i++) { const [a0, v0] = VTAB[i], [a1, v1] = VTAB[i + 1]; if (alt >= a1) return lerp(v1, v0, (alt - a1) / (a0 - a1)); } return VTAB[VTAB.length - 1][1]; }
-/** seconds to the ground from alt (free fall, chute and flare included, roughly) */
-function tToGround(alt: number) {
-  let t = 0, a = alt;
-  while (a > CHUTE_ALT) { const v = vAt(a); const step = Math.min(50, a - CHUTE_ALT); t += step / v; a -= step; }
-  return t + a / 11;
+const T_CUT = 3.4, T_TOUCH = 5.1, T_RISE = 5.4, T_END = 8.6, H0 = 150;
+const _v = new THREE.Vector3();
+
+/** the canopy: twelve gores in weathered orange and white, a vent at the apex, lines down to the riser */
+function buildChute() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64; const g = c.getContext('2d')!;
+  for (let i = 0; i < 12; i++) { g.fillStyle = i % 2 ? '#e6e1d4' : '#c8642c'; g.fillRect(i * 256 / 12, 0, 256 / 12 + 1, 64); }
+  g.fillStyle = 'rgba(60,40,20,0.25)'; for (let y = 8; y < 64; y += 14) g.fillRect(0, y, 256, 2);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const k = new Kit(), cloth = std(0xffffff, { map: tex, rough: 0.9, metal: 0, side: THREE.DoubleSide }), line = std(0x3a3630, { rough: 0.9 });
+  const pts: [number, number][] = []; for (let i = 0; i <= 10; i++) { const a = (i / 10) * Math.PI * 0.42; pts.push([Math.sin(a) * 7.5 + 0.3, Math.cos(a) * 4 - 4]); }
+  k.lathe(pts.reverse(), cloth, {}, 24);
+  for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; k.rod([Math.sin(a) * 7.2, -2.9, Math.cos(a) * 7.2], [0, -13, 0], 0.025, line, 3); }
+  return k.build('chute', false);
 }
-
-// ------------------------------------------------------------------ shaders
-const CLOUD_V = `varying vec2 vW; varying float vY; uniform vec3 uCam; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xz; vY = w.y; gl_Position = projectionMatrix * viewMatrix * w; }`;
-const CLOUD_F = `uniform float uT, uCover, uSlice, uShade, uFadeNear; uniform vec3 uLit, uDark, uCam; uniform vec2 uWind;
-varying vec2 vW; varying float vY;
-float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }
-float fbm(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++) { s += a * vn(p); p = p * 2.07 + 13.1; a *= 0.5; } return s; }
-void main(){
-  vec2 p = (vW + uWind * uT) * 0.0021;
-  float n = fbm(p) * 0.75 + fbm(p * 3.1 + 7.0) * 0.25;
-  // each slice is a level set of the same field: the cloud is thickest in the middle slices
-  float th = mix(0.62, 0.42, uCover) + abs(uSlice) * 0.07;
-  float a = smoothstep(th, th + 0.08, n);
-  float far = length(vW - uCam.xz);
-  a *= 1.0 - smoothstep(9000.0, 16000.0, far);
-  // never a hard sheet across the lens: fade a slice the camera is about to cross
-  a *= mix(1.0, smoothstep(2.0, 22.0, abs(vY - uCam.y)), uFadeNear);
-  a = floor(a * 5.0) / 5.0 * 0.9;
-  vec3 c = mix(uDark, uLit, clamp(0.5 + uShade + (n - th) * 2.5, 0.0, 1.0));
-  gl_FragColor = vec4(c * a, a);
-  gNormal = vec4(0.0);
-}`;
-const PL_V = `varying vec2 vUv; varying vec3 vN; varying vec3 vV; void main(){ vUv = uv; vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vV = -mv.xyz; gl_Position = projectionMatrix * mv; }`;
-/** the plasma sheath: white-hot at the shield, orange, then torn red streamers flowing up off the rim */
-const PLASMA_F = `uniform float uT, uK, uWake; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
-float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }
-void main(){
-  float v = uWake > 0.5 ? vUv.y : 1.0 - vUv.y;
-  float flow = vn(vec2(vUv.x * 18.0, v * 6.0 - uT * 14.0)) * 0.6 + vn(vec2(vUv.x * 41.0, v * 13.0 - uT * 23.0)) * 0.4;
-  float rim = abs(dot(normalize(vN), normalize(vV)));
-  float body = uWake > 0.5 ? pow(1.0 - v, 1.8) * smoothstep(0.45, 0.8, flow) * rim : pow(1.0 - rim, 1.6) * (0.5 + 0.6 * flow);
-  float a = body * uK;
-  vec3 hot = vec3(1.7, 1.15, 0.7), mid = vec3(1.45, 0.48, 0.1), cool = vec3(0.6, 0.1, 0.03);
-  float heat = uWake > 0.5 ? (1.0 - v) * (0.6 + flow * 0.5) : 0.7 + rim * 0.3;
-  vec3 c = heat > 0.66 ? mix(mid, hot, (heat - 0.66) * 3.0) : mix(cool, mid, heat * 1.5);
-  a = floor(a * 6.0) / 6.0;
-  gl_FragColor = vec4(c * a, 0.0);
-  gNormal = vec4(0.0);
-}`;
-/** a coloured smoke column: rising puffs, thinning and spreading with height */
-const SMOKE_F = `uniform float uT; uniform vec3 uCol; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
-float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }
-void main(){
-  float y = vUv.y;
-  float n = vn(vec2(vUv.x * 9.0, y * 22.0 - uT * 1.6)) * 0.65 + vn(vec2(vUv.x * 23.0, y * 51.0 - uT * 3.1)) * 0.35;
-  float rim = abs(dot(normalize(vN), normalize(vV)));
-  float a = smoothstep(0.3, 0.7, n) * pow(rim, 0.8) * (1.0 - y) * (0.35 + 0.65 * smoothstep(0.0, 0.05, y));
-  a = floor(a * 5.0) / 5.0 * 0.85;
-  vec3 c = uCol * (0.75 + 0.35 * n);
-  gl_FragColor = vec4(c * a, a);
-  gNormal = vec4(0.0);
-}`;
-/** the impact shockwave: a ring of dust racing outward, thick at its front */
-const SHOCK_F = `uniform float uK, uT; uniform vec3 uCol; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
-float h2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-void main(){
-  float r = vUv.y;
-  float a = smoothstep(0.0, 0.7, r) * (1.0 - smoothstep(0.85, 1.0, r)) * uK;
-  a *= 0.7 + 0.3 * h2(floor(vUv * vec2(64.0, 8.0)));
-  a = floor(a * 5.0) / 5.0;
-  gl_FragColor = vec4(uCol * a, a);
-  gNormal = vec4(0.0);
-}`;
-
-// ------------------------------------------------------------------ HUD
-const CSS = /* css */`
-.dsc { position: fixed; inset: 0; z-index: 41; pointer-events: none; font-family: 'VT', monospace; --u: calc(1px * var(--s, 2)); color: #d9d2bf; }
-.dsc .bar { position: absolute; left: 0; right: 0; height: 11.5vh; display: flex; align-items: center; gap: calc(10 * var(--u)); padding: 0 calc(12 * var(--u)); box-sizing: border-box; opacity: var(--hud, 1); transition: opacity 300ms; }
-.dsc .bar.b { bottom: 0; } .dsc .bar.t { top: 0; justify-content: space-between; }
-.dsc .blk { display: flex; flex-direction: column; justify-content: center; }
-.dsc .lbl { font-size: var(--cf-vt1, 14px); line-height: 1; color: #8d8f8a; letter-spacing: 1px; }
-.dsc .num { font-size: var(--cf-vt2, 28px); line-height: 1; color: #ffb060; text-shadow: 0 0 calc(3 * var(--u)) rgba(255, 120, 30, 0.55); letter-spacing: 1px; }
-.dsc .num.dim { color: #c8c2b0; text-shadow: none; }
-.dsc .gauge { width: calc(60 * var(--u)); height: calc(5 * var(--u)); border: 1px solid #5f6261; background: #16181a; position: relative; margin-top: calc(2 * var(--u)); }
-.dsc .gauge i { position: absolute; left: 0; top: 0; bottom: 0; background: repeating-linear-gradient(90deg, #7fb88a 0 calc(4 * var(--u)), transparent calc(4 * var(--u)) calc(5 * var(--u))); }
-.dsc .gauge.low i { background: repeating-linear-gradient(90deg, #d9a43a 0 calc(4 * var(--u)), transparent calc(4 * var(--u)) calc(5 * var(--u))); }
-.dsc .lamps { display: flex; gap: calc(3 * var(--u)); margin-top: calc(2 * var(--u)); }
-.dsc .lamps i { width: calc(6 * var(--u)); height: calc(6 * var(--u)); border-radius: 50%; background: #2a1a12; box-shadow: inset 0 0 0 1px #4b4e50; }
-.dsc .lamps i.on { background: #ff9a40; box-shadow: 0 0 calc(4 * var(--u)) rgba(255, 140, 40, 0.8), inset 0 0 0 1px #ffd8a0; }
-.dsc .wind { width: calc(14 * var(--u)); height: calc(14 * var(--u)); border: 1px solid #5f6261; border-radius: 50%; position: relative; margin-top: calc(1 * var(--u)); }
-.dsc .wind i { position: absolute; left: 50%; top: 50%; width: calc(12 * var(--u)); height: 2px; background: #c8c2b0; transform-origin: 0 50%; }
-.dsc .wind i::after { content: ''; position: absolute; right: -2px; top: -3px; border: 4px solid transparent; border-left: 6px solid #c8c2b0; }
-.dsc .sp { flex: 1; }
-.dsc .t .lbl { color: #9fb4c2; }
-.dsc .mk { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); text-align: center; }
-.dsc .mk .d { width: calc(14 * var(--u)); height: calc(14 * var(--u)); border: 2px solid #e05a3a; transform: rotate(45deg); margin: 0 auto; box-shadow: 0 0 calc(3 * var(--u)) rgba(255, 90, 50, 0.6); }
-.dsc .mk .m { font-size: var(--cf-vt1, 14px); color: #f0d8c0; text-shadow: 1px 1px 0 #000; margin-top: calc(3 * var(--u)); white-space: nowrap; }
-.dsc .mk.edge .d { border-color: #d9a43a; }
-.dsc .pip { position: absolute; left: 0; top: 0; width: calc(16 * var(--u)); height: calc(16 * var(--u)); transform: translate(-50%, -50%); }
-.dsc .pip::before, .dsc .pip::after { content: ''; position: absolute; background: #7fd48a; box-shadow: 0 0 calc(2 * var(--u)) rgba(127, 212, 138, 0.6); }
-.dsc .pip::before { left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; } .dsc .pip::after { top: 50%; left: 0; right: 0; height: 2px; margin-top: -1px; }
-.dsc .pip.hit::before, .dsc .pip.hit::after { background: #ffe0a0; }
-.dsc .hint { position: absolute; left: 50%; bottom: calc(11.5vh + 7vh); transform: translateX(-50%); font-size: var(--cf-vt1, 14px); letter-spacing: 1px; color: rgba(232, 238, 240, 0.85); text-shadow: 1px 1px 0 #000; transition: opacity 600ms; white-space: nowrap; }
-.dsc .hint b { color: #ffb060; font-weight: normal; }
-.dsc .warn { position: absolute; left: 50%; top: calc(11.5vh + 3vh); transform: translateX(-50%); font-family: 'Superwide', monospace; font-size: var(--cf-sw1, 10px); letter-spacing: 3px; color: #ffb060; opacity: 0; text-shadow: 0 0 calc(3 * var(--u)) rgba(255, 120, 30, 0.6); }
-.dsc .warn.on { opacity: 1; animation: dsc-blink 0.6s steps(2) infinite; }
-@keyframes dsc-blink { 50% { opacity: 0.35; } }
-.dsc.black .num, .dsc.black .lbl { animation: dsc-garble 0.18s steps(2) infinite; }
-@keyframes dsc-garble { 50% { opacity: 0.25; transform: translateX(1px); } }
-.dsc .stick { position: absolute; left: 0; top: 0; bottom: 0; width: 45%; pointer-events: auto; touch-action: none; }
-.dsc .burst { position: absolute; right: calc(16 * var(--u)); bottom: calc(11.5vh + 6 * var(--u)); width: calc(44 * var(--u)); height: calc(44 * var(--u)); border-radius: 50%; pointer-events: auto; touch-action: none;
-  background: radial-gradient(circle at 40% 35%, #a2463a, #72241d 60%, #34100d); box-shadow: 0 0 0 calc(3 * var(--u)) #3a3d40, 0 0 0 calc(4 * var(--u)) #16181a; font-family: 'Superwide', monospace; font-size: var(--cf-sw1, 10px); color: #ecd9c0; display: flex; align-items: center; justify-content: center; letter-spacing: 1px; }
-.dsc .knob { position: absolute; width: calc(26 * var(--u)); height: calc(26 * var(--u)); border-radius: 50%; transform: translate(-50%, -50%); background: radial-gradient(circle at 40% 35%, #5f6261, #2b2e31); box-shadow: 0 0 0 calc(18 * var(--u)) rgba(43, 46, 49, 0.35); display: none; }
-`;
-let styled = false;
-function style() { if (styled) return; styled = true; const s = document.createElement('style'); s.id = 'descent-css'; s.textContent = CSS; document.head.appendChild(s); }
-const div = (cls: string, parent: HTMLElement, html = '') => { const e = document.createElement('div'); e.className = cls; e.innerHTML = html; parent.appendChild(e); return e; };
-
-// ------------------------------------------------------------------ the descent
-interface Shot { name: string; t: number; dur: number; pose(t: number, pos: V, look: V): number }
-const _v = new V3(), _v2 = new V3(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4();
+/** the retro rockets' plumes under the skirt */
+function buildPlumes() {
+  const k = new Kit(), m = glow(0xffc070, 2.4, { additive: true, opacity: 0.85 }), m2 = glow(0x9ad8ff, 2, { additive: true, opacity: 0.7 });
+  for (let i = 0; i < 4; i++) { const a = Math.PI / 4 + (i * Math.PI) / 2, x = Math.sin(a) * 1.6, z = Math.cos(a) * 1.6; k.cone(0.32, 2.2, m, { p: [x, -0.2, z], r: [Math.PI, 0, 0] }, 10); k.cone(0.16, 1.4, m2, { p: [x, 0.2, z], r: [Math.PI, 0, 0] }, 8); }
+  return k.build('plumes', false);
+}
 
 export class GameDescent {
-  /** everything this controller adds to the game scene (removed at the end); `far` is offset to the map's middle */
-  readonly root = new THREE.Group(); private far = new THREE.Group();
-  private g: Game; private ui = new CineUI(); private pal: Palette;
-  private O: V;
-  private cam!: THREE.PerspectiveCamera;
-  private bin = new Bin(); private debrisBin = new Bin();
-  /** the game's particles, taking map-centred coordinates */
-  private fx: { burst: (x: number, y: number, z: number, n: number, col: number, o?: any) => void; spray: (x: number, y: number, z: number, dx: number, dy: number, dz: number, n: number, col: number, o?: any) => void };
-  private pod: Pod;
-  private R: Region; private N: number;
-  private W: World; private skyO: Sky; private sky: THREE.Mesh; private skyU: Record<string, THREE.IUniform>;
-  private heatLight: THREE.PointLight;
-  private clouds: { y: number; cover: number; slices: THREE.Mesh[]; u: Record<string, THREE.IUniform>[] }[] = [];
-  private plasma: THREE.Mesh[] = []; private plasmaU: Record<string, THREE.IUniform>[] = [];
-  private streaks: THREE.LineSegments; private streakP: Float32Array; private streakC: Float32Array; private streakSeed: Float32Array;
-  private smokeU: Record<string, THREE.IUniform>; private smoke: THREE.Mesh;
-  private shock: THREE.Mesh | null = null; private shockU: Record<string, THREE.IUniform> | null = null;
-  private strobe: THREE.Mesh; private marks: THREE.Group | null = null;
-  // state
-  private alt: number; private alt0: number;
-  private p = new THREE.Vector2(); private v = new THREE.Vector2(); private wind = new THREE.Vector2();
-  private vy = 120; private t = 0;
-  private F = new THREE.Vector2(0, -1); private Rt = new THREE.Vector2(1, 0);
-  private lzW = new V3(); private lz: { x: number; z: number };
-  private fuel = 1; private bursts = 3; private burstCD = 0; private thrusting = 0;
-  private chute = 0; private chuteT = -1; private retro = 0; private landed = false; private landT = 0; private auto = false;
-  private ff = 1;
-  private spin = 0; private sway = new THREE.Vector2(); private swayV = new THREE.Vector2(); private lean = new THREE.Vector2();
-  private shakeK = 0; private kick = 0;
-  private stick = new THREE.Vector2(); private stickId: number | null = null; private stickO = new THREE.Vector2();
-  private shots: Shot[] = []; private shot: Shot | null = null; private blendT = 1; private blendFrom = { pos: new V3(), q: new THREE.Quaternion(), fov: 56 };
-  private chase = { pos: new V3(), look: new V3(), init: false };
-  private said = new Set<string>();
-  private loops: Loop[] = []; private wind$: Loop | null = null; private fire$: Loop | null = null; private static$: Loop | null = null;
-  private blackout = false;
-  private result: DescentResult | null = null;
-  // HUD
-  private hud: HTMLDivElement; private el: Record<string, HTMLElement> = {};
-  private off: (() => void)[] = [];
-  private touch = isTouchDevice();
-  private keys = new Set<string>();
-  // the hand-over: the shell, the golem, the camera easing into the game's
-  private shellT = -1; private outT = -1; private handT = -1; private rtsPos = new V3(); private rtsQ = new THREE.Quaternion(); private rtsFov = 36;
-  private saved: { fog: THREE.Fog | THREE.FogExp2 | null; bg: THREE.Color | THREE.Texture | null; far: number; near: number; sun: unknown; uiVis: string } | null = null;
-  private skyFade = 1; private finished = false; private wet = false; private farTrees: THREE.Object3D[] = [];
-
+  private g: Game; private ui = new CineUI();
+  private pod = buildPod(); private chute = buildChute(); private plumes = buildPlumes();
+  private root = new THREE.Group();
+  private t = 0; private L: { x: number; z: number; y: number }; private yaw = Math.PI / 4;
+  private done = false; private touched = false; private chuteV = new THREE.Vector3(); private chuteFree = false;
+  private camA = new THREE.Vector3(); private lookA = new THREE.Vector3();
+  private off: (() => void)[] = []; private dustT = 0; private last = 0;
   constructor(readonly o: DescentOpts) {
-    style();
-    const g = (this.g = o.game), R = (this.R = g.region), N = (this.N = R.N), bin = this.bin;
-    const pal = (this.pal = R.pal);
-    this.O = new V3(N / 2, 0, N / 2);
-    this.lz = { ...o.lz };
-    this.lzW.set(o.lz.x - N / 2, R.groundSmooth(o.lz.x, o.lz.z), o.lz.z - N / 2);
-    this.alt0 = this.alt = o.first ? 2600 : 1800;
-    const gf = g.fx, ox = N / 2;
-    this.fx = {
-      burst: (x, y, z, n, col, oo) => gf.burst(x + ox, y, z + ox, n, col, oo),
-      spray: (x, y, z, dx, dy, dz, n, col, oo) => gf.spray(x + ox, y, z + ox, dx, dy, dz, n, col, oo),
-    };
-    g.world.scene.add(this.root); this.root.add(this.far); this.far.position.copy(this.O);
-    // the world beyond the map and the sky above it (the map itself is the game's own)
-    this.W = makeWorld(R, pal, bin, this.far);
-    this.skyO = makeSky(this.W); this.sky = this.skyO.mesh; this.skyU = this.skyO.U;
-    this.root.add(this.sky);
-    buildFar(this.W); buildWater(this.W);
-    this.farTrees = this.far.children.filter((o) => (o as THREE.InstancedMesh).isInstancedMesh);
-    // the game scene takes a fog and the long view for the fall; both are given back at the hand-over
-    const sc = g.world.scene;
-    const uiRoot = document.getElementById('ui');
-    this.saved = { fog: sc.fog, bg: sc.background as THREE.Color | THREE.Texture | null, far: g.cam.cam.far, near: g.cam.cam.near, sun: sc.userData.sun, uiVis: uiRoot?.style.visibility ?? '' };
-    // the game's atmosphere pass (haze, mist, shafts) is tuned for a camera thirty metres up; from the sky it would
-    // fog the whole map, so the fall has its own sky and fog and the pass waits for the hand-over. The game's own
-    // panels stay hidden till then too.
-    sc.userData.sun = undefined;
-    if (uiRoot) uiRoot.style.visibility = 'hidden';
-    sc.fog = new THREE.Fog(new THREE.Color(pal.horizon), 400, 16000);
-    sc.background = new THREE.Color(0x05070a);
+    const g = (this.g = o.game), R = g.region, N = R.N;
+    const f = R.freeNear(clamp(o.lz.x, 8, N - 8), clamp(o.lz.z, 8, N - 8), 12);
+    const x = f ? f[0] : clamp(o.lz.x, 8, N - 8), z = f ? f[1] : clamp(o.lz.z, 8, N - 8);
+    this.L = { x, z, y: R.heightAt(x, z) };
+    this.root.add(this.pod.root, this.chute, this.plumes); this.plumes.visible = false;
+    this.pod.root.rotation.y = this.yaw;
+    g.world.scene.add(this.root);
+    // the ground camera: off the hatch side, low, looking up the fall line
+    const a = this.yaw + 0.55;
+    this.camA.set(x + Math.sin(a) * 24, 0, z + Math.cos(a) * 24); this.camA.y = R.heightAt(this.camA.x, this.camA.z) + 2.2;
     g.vision.revealAll = true; g.vision.update(0, true);
-    document.body.classList.add('cine-on');
-    // ---- clouds: two weather decks, thicker over wet biomes
-    const moist = R.biome.moist, cover = clamp(0.3 + moist * 0.45, 0.25, 0.85);
-    for (const [y, cv] of [[820, cover], [470, cover * 0.75]] as [number, number][]) this.buildCloud(y, cv);
-    // ---- the drop zone: painted rings on the ground, red smoke, a strobe
-    this.buildLZ();
-    // ---- the pod, plasma, chute, streaks
-    this.pod = makePod(bin);
-    this.far.add(this.pod.root);
-    this.pod.setHatch(0); this.pod.addChute(); this.pod.setChute(0, 0);
-    this.heatLight = new THREE.PointLight(0xff7a30, 0, 30, 1.6); this.heatLight.position.set(0, -1.2, 0); this.pod.root.add(this.heatLight);
-    for (const wake of [0, 1]) {
-      const u = { uT: { value: 0 }, uK: { value: 0 }, uWake: { value: wake } };
-      const g = wake ? new THREE.CylinderGeometry(4.8, 1.25, 22, 24, 1, true) : new THREE.SphereGeometry(1.75, 24, 8, 0, TAU, Math.PI * 0.5, Math.PI * 0.5);
-      const m = mesh(bin, g, fxMat(bin, PL_V, PLASMA_F, u, 'add', { side: THREE.DoubleSide }), this.pod.root, 0, wake ? 11.2 : 0.05, 0, false);
-      if (!wake) m.scale.set(1, 0.6, 1);
-      this.plasma.push(m); this.plasmaU.push(u);
-    }
-    const NS = 180;
-    this.streakP = new Float32Array(NS * 6); this.streakC = new Float32Array(NS * 6); this.streakSeed = new Float32Array(NS * 3);
-    for (let i = 0; i < NS; i++) { this.streakSeed[i * 3] = Math.random() * TAU; this.streakSeed[i * 3 + 1] = 3 + Math.random() * 26; this.streakSeed[i * 3 + 2] = Math.random() * 80 - 40; }
-    const sg = new THREE.BufferGeometry();
-    sg.setAttribute('position', new THREE.BufferAttribute(this.streakP, 3).setUsage(THREE.DynamicDrawUsage));
-    sg.setAttribute('color', new THREE.BufferAttribute(this.streakC, 3).setUsage(THREE.DynamicDrawUsage));
-    const sm2 = bin.m(gbuf(new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), 0));
-    this.streaks = new THREE.LineSegments(bin.g(sg), sm2); this.streaks.frustumCulled = false; this.far.add(this.streaks);
-    // ---- the wind: a steady drift and the start offset (upwind of the pin, so it can be flown down)
-    const rs = hash(o.lz.x, o.lz.z, R.seed % 97);
-    const wa = rs * TAU, ws = (R.biome.key === 'coast' || R.biome.key === 'highland' || R.biome.key === 'tundra' ? 6 : 4) + rs * 2;
-    this.wind.set(Math.cos(wa), Math.sin(wa)).multiplyScalar(ws);
-    const startD = o.first ? 330 : 260, sa = wa + Math.PI + (hash(R.seed, 3) - 0.5) * 1.6;
-    this.p.set(this.lzW.x + Math.cos(sa) * startD, this.lzW.z + Math.sin(sa) * startD);
-    // the camera faces from the start toward the pin: forward on the stick flies toward it
-    this.F.set(this.lzW.x - this.p.x, this.lzW.z - this.p.y).normalize();
-    this.Rt.set(-this.F.y, this.F.x);
-    this.vy = vAt(this.alt);
-    // ---- cinematic cuts, by altitude
-    this.planShots();
-    // ---- HUD and input
-    this.hud = div('dsc', document.body) as HTMLDivElement;
-    this.buildHud();
-    this.bindInput();
-    this.ui.fade(1, 0, '#f0d8b8'); this.ui.fade(0, 0.9, '#f0d8b8'); this.ui.flash('#ffb070', 0.8, 0.6);
-    this.ui.letterbox(true, 0.6);
-    this.ui.stamp(`ENTRY INTERFACE · ${o.planetName.toUpperCase()} · ${g.regionName.toUpperCase()}`, true);
-    // the game's camera is ours until the golem is out (its own camera still runs underneath: the shadows and the
-    // flora LOD follow the pod through its target)
-    this.cam = g.cam.cam;
-    g.cineCam = (cam, dt) => this.frame(cam, dt);
-    (window as any).__descent = this;
-    g.cam.followFn(() => new V3(this.p.x + this.O.x, 0, this.p.y + this.O.z));
-    this.wind$ = cloop('drone', 0.5); this.fire$ = cloop('fire', 0.0); this.loops.push(this.wind$, this.fire$);
-    csfx('whoosh', 1, 0.6); csfx('boom', 0.6, 0.7);
-    this.say(o.first ? 'Unit Seven, clean separation. You are on your own now. Steer for the red smoke.' : 'Separation, Seven. Steer for the smoke.', 'Launch Control', 0.85);
+    g.cineCam = (cam, dt) => this.camera(cam, dt);
+    this.ui.letterbox(true, 0.01); this.ui.fade(1, 0); this.ui.fade(0, 1.2); this.ui.showSkip(true);
+    this.ui.stamp(`${o.planetName.toUpperCase()} · ${g.regionName.toUpperCase()} · COLONY POD CP-07 INBOUND`, true);
+    csfx('wind', 0.5);
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape' || e.key === ' ') { e.stopPropagation(); this.skip(); } };
+    const click = () => this.skip();
+    addEventListener('keydown', key, true); g.engine.canvas.addEventListener('pointerdown', click);
+    this.off.push(() => removeEventListener('keydown', key, true), () => g.engine.canvas.removeEventListener('pointerdown', click));
+    g.update$.push(this.tick);
   }
-
-  // ================================================================ build
-  /** the ground under a map-centred point; over open water the sea's surface (the pod splashes down on it, src/ocean) */
-  private gH(x: number, z: number) { const g = this.R.groundSmooth(x + this.N / 2, z + this.N / 2), o = (this.g as unknown as { ocean?: { level: number } | null }).ocean; return o ? Math.max(g, o.level) : g; }
-  private buildCloud(y: number, cover: number) {
-    const L = { y, cover, slices: [] as THREE.Mesh[], u: [] as Record<string, THREE.IUniform>[] };
-    const lc = new THREE.Color(0xe8e6de), dc = new THREE.Color(this.pal.horizon).lerp(new THREE.Color(0x5a6470), 0.6);
-    for (const s of [-1.5, -0.5, 0.5, 1.5]) {
-      const u = { uT: { value: 0 }, uCover: { value: cover }, uSlice: { value: s / 2 }, uShade: { value: s * 0.12 }, uLit: { value: lc }, uDark: { value: dc }, uCam: { value: new V3() }, uWind: { value: new THREE.Vector2(6, 2) }, uFadeNear: { value: 1 } };
-      const m = mesh(this.bin, new THREE.PlaneGeometry(40000, 40000), fxMat(this.bin, CLOUD_V, CLOUD_F, u, 'alpha', { side: THREE.DoubleSide }), this.far, 0, y + s * 14, 0, false);
-      m.rotation.x = -Math.PI / 2; m.frustumCulled = false; m.renderOrder = 2;
-      L.slices.push(m); L.u.push(u);
-    }
-    this.clouds.push(L);
+  private skip() { if (this.t < T_TOUCH) this.t = T_TOUCH - 0.01; else if (this.t < T_END - 0.5) this.t = T_END - 0.5; }
+  /** the pod's height above the ground at time t */
+  private alt(t: number) {
+    if (t < T_CUT) return H0 - t * 34;
+    const a0 = H0 - T_CUT * 34, k = clamp((t - T_CUT) / (T_TOUCH - T_CUT), 0, 1);
+    return a0 * (1 - k) * (1 - k * 0.55) * (1 - k * 0.2);
   }
-  private buildLZ() {
-    const bin = this.bin, L = this.lzW;
-    this.marks = dropMarks(this.W, L);
-    // red smoke column, leaning downwind
-    this.smokeU = { uT: { value: 0 }, uCol: { value: new THREE.Color(0xa83a2a) } };
-    const sg = new THREE.CylinderGeometry(14, 1.4, 260, 20, 12, true); sg.translate(0, 130, 0);
-    const p = sg.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < p.count; i++) { const yy = p.getY(i), k = (yy / 260) ** 1.6; p.setX(i, p.getX(i) + k * 70); }
-    this.smoke = mesh(bin, sg, fxMat(bin, PL_V, SMOKE_F, this.smokeU, 'alpha', { side: THREE.DoubleSide }), this.far, L.x, L.y, L.z, false);
-    this.smoke.renderOrder = 3;
-    // a strobe at the pin, visible from altitude
-    const stm = bin.m(gbuf(new THREE.MeshBasicMaterial({ color: 0xffd8b0, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), 0));
-    this.strobe = mesh(bin, new THREE.SphereGeometry(1, 10, 8), stm, this.far, L.x, L.y + 1.2, L.z, false);
-  }
-
-  // ================================================================ shots
-  private planShots() {
-    const a0 = this.alt0, P = () => this.pod.root.position;
-    // relative to the pod, in the camera's heading frame: side, up, forward
-    const rel = (s: number, u: number, f: number, out: V) => out.set(P().x + this.Rt.x * s + this.F.x * f, P().y + u, P().z + this.Rt.y * s + this.F.y * f);
-    const add = (name: string, alt: number, dur: number, pose: Shot['pose']) => { if (alt < a0 - 60) this.shots.push({ name, t: alt, dur, pose }); };
-    // 1. alongside, through the sheath, the horizon curving behind
-    add('plasma-side', a0 - 120, 3.0, (t, pos, look) => { rel(-17 + t * 1.5, -5 + t * 0.8, 7 - t * 1.4, pos); rel(1.5, -3.2, 0, look); return 40; });
-    // 2. the porthole: Unit 07's lens in the orange light
-    add('porthole', 1700, 2.4, (t, pos, look) => { portholeWorld(this.pod, look).sub(this.O); const out = look.clone().sub(P()).setY(0).normalize(); pos.copy(look).addScaledVector(out, 1.6 - t * 0.25).add(_v.set(0, 0.35, 0)); return 34; });
-    // 3. from the ground at the pin: a fireball crossing the sky
-    add('ground-up', 1180, 3.0, (t, pos, look) => { pos.set(this.lzW.x - this.F.x * 30 + this.Rt.x * 12, this.lzW.y + 1.7, this.lzW.z - this.F.y * 30 + this.Rt.y * 12); look.copy(P()); return 30 - t * 4; });
-    // 4. under the first deck, looking up as the pod punches through
-    add('cloud-punch', 860, 2.4, (t, pos, look) => { rel(16, -95 + t * 12, 6, pos); pos.y = Math.min(pos.y, this.clouds[0].y - 70); look.copy(P()); return 46; });
-    // 5. low and wide: the chute blooms
-    this.shots.push({ name: 'chute', t: CHUTE_ALT + 4, dur: 2.6, pose: (t, pos, look) => { rel(-14, -10 + t * 1.5, 10, pos); rel(0, 3 + t * 1.5, 0, look); return 40; } });
-  }
-  private shotPose(pos: V, look: V): number | null {
-    if (!this.shot) return null;
-    return this.shot.pose(clamp(this.shot.t, 0, this.shot.dur), pos, look);
-  }
-
-  // ================================================================ HUD
-  private buildHud() {
-    const h = this.hud, e = this.el;
-    const top = div('bar t', h);
-    div('', top, '<div class="lbl">U.S.P.C. &middot; UNIT 07 &middot; PLANETARY INSERTION</div>');
-    e.clock = div('lbl', top, 'T+00:00');
-    const bot = div('bar b', h);
-    const blk = (lbl: string, cls = 'num') => { const b = div('blk', bot); div('lbl', b, lbl); return div(cls, b); };
-    e.alt = blk('ALTITUDE');
-    e.vs = blk('DESCENT', 'num dim');
-    e.dist = blk('TO THE PIN', 'num dim');
-    const rcs = div('blk', bot); div('lbl', rcs, 'RCS'); e.gauge = div('gauge', rcs); e.fuel = document.createElement('i'); e.gauge.appendChild(e.fuel);
-    const bu = div('blk', bot); div('lbl', bu, 'BURST'); e.lamps = div('lamps', bu, '<i class="on"></i><i class="on"></i><i class="on"></i>');
-    const wi = div('blk', bot); div('lbl', wi, 'WIND'); e.wind = div('wind', wi, '<i></i>');
-    div('sp', bot);
-    e.mode = div('lbl', bot, 'MANUAL');
-    e.mk = div('mk', h, '<div class="d"></div><div class="m"></div>');
-    e.pip = div('pip', h);
-    e.warn = div('warn', h, '');
-    e.hint = div('hint', h, this.touch ? '<b>DRAG</b> LEFT SIDE TO STEER &middot; <b>BURST</b> BUTTON &middot; PUT THE <b>+</b> ON THE SMOKE' : '<b>WASD / ARROWS</b> STEER &middot; <b>SPACE</b> BURST &middot; PUT THE <b>+</b> ON THE SMOKE &middot; <b>ESC</b> AUTOPILOT');
-    setTimeout(() => { if (e.hint) e.hint.style.opacity = '0'; }, 7000);
-    if (this.touch) {
-      e.stick = div('stick', h); e.knob = div('knob', h); e.burst = div('burst', h, 'BURST');
-    }
-  }
-  private updateHud() {
-    const e = this.el, cam = this.cam, W = innerWidth, H = innerHeight;
-    const t = this.t, mm = Math.floor(t / 60), ss = Math.floor(t % 60);
-    e.clock.textContent = `T+${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-    const black = this.blackout;
-    const g = (s: string) => (black ? s.replace(/[0-9]/g, () => '#%&@'[Math.floor(Math.random() * 4)]) : s);
-    e.alt.textContent = g(`${String(Math.max(0, Math.round(this.alt))).padStart(4, '0')} M`);
-    e.vs.textContent = g(`${Math.round(this.landed ? 0 : this.vy)} M/S`);
-    const d = Math.hypot(this.p.x - this.lzW.x, this.p.y - this.lzW.z);
-    e.dist.textContent = g(`${Math.round(d)} M`);
-    e.fuel.style.width = `${Math.round(this.fuel * 100)}%`; e.gauge.classList.toggle('low', this.fuel < 0.25);
-    [...e.lamps.children].forEach((l, i) => l.classList.toggle('on', i < this.bursts));
-    const wr = this.wind.x * this.Rt.x + this.wind.y * this.Rt.y, wf = this.wind.x * this.F.x + this.wind.y * this.F.y;
-    (e.wind.firstElementChild as HTMLElement).style.transform = `rotate(${Math.atan2(-wf, wr)}rad)`;
-    e.mode.textContent = this.landed ? (this.wet ? 'SPLASHDOWN' : 'DOWN · SAFE') : this.auto ? 'AUTOPILOT' : this.chute > 0 ? 'UNDER CHUTE' : 'MANUAL';
-    this.hud.classList.toggle('black', black);
-    const showMk = !this.landed && !this.shot;
-    // the pin
-    _v.copy(this.lzW).setY(this.lzW.y + 1).add(this.O).project(cam);
-    let x = (_v.x * 0.5 + 0.5) * W, y = (-_v.y * 0.5 + 0.5) * H;
-    const behind = _v.z > 1;
-    const m = 34, on = !behind && x > m && x < W - m && y > H * 0.13 && y < H * 0.85;
-    if (!on) { const cx = W / 2, cy = H / 2; let dx = x - cx, dy = y - cy; if (behind) { dx = -dx; dy = -dy; } const k = Math.min((W / 2 - m) / Math.max(1, Math.abs(dx)), (H * 0.36) / Math.max(1, Math.abs(dy))); x = cx + dx * k; y = cy + dy * k; }
-    e.mk.style.display = showMk ? '' : 'none';
-    e.mk.style.left = `${x}px`; e.mk.style.top = `${y}px`; e.mk.classList.toggle('edge', !on);
-    (e.mk.lastElementChild as HTMLElement).textContent = black ? '- - -' : `PIN ${Math.round(d)} M`;
-    // the predicted touchdown (green cross): where the pod lands if the stick is let go now
-    const pr = this.predict(new THREE.Vector2());
-    _v.set(pr.x, this.gH(pr.x, pr.y) + 0.5, pr.y).add(this.O).project(cam);
-    const px = (_v.x * 0.5 + 0.5) * W, py = (-_v.y * 0.5 + 0.5) * H;
-    e.pip.style.display = showMk && _v.z < 1 && px > 0 && px < W && py > 0 && py < H ? '' : 'none';
-    e.pip.style.left = `${px}px`; e.pip.style.top = `${py}px`;
-    e.pip.classList.toggle('hit', Math.hypot(pr.x - this.lzW.x, pr.y - this.lzW.z) < 6);
-  }
-  /** where the pod would touch down with no more thrust: drift toward the wind over the time left */
-  private predict(out: THREE.Vector2) {
-    const T = this.landed ? 0 : this.chute > 0 ? this.alt / 11 : tToGround(this.alt);
-    const k = this.chute > 0 ? 0.9 : 0.16;
-    const f = (1 - Math.exp(-k * T)) / k;
-    return out.set(this.p.x + this.wind.x * T + (this.v.x - this.wind.x) * f, this.p.y + this.wind.y * T + (this.v.y - this.wind.y) * f);
-  }
-
-  // ================================================================ input
-  private bindInput() {
-    const mine = (e: Event) => { const t = e.target as HTMLElement | null; return !!t?.closest?.('.dsc'); };
-    const down = (e: KeyboardEvent) => {
-      if (this.finished) return;
-      e.stopImmediatePropagation();
-      if (['Tab', ' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) e.preventDefault();
-      this.keys.add(e.key.length === 1 ? e.key.toLowerCase() : e.key);
-      if (e.repeat) return;
-      if (e.key === ' ') this.burst();
-      else if (e.key === 'Escape') { if (this.landed) this.hurry(); else this.engageAuto(); }
-    };
-    const up = (e: KeyboardEvent) => { if (this.finished) return; e.stopImmediatePropagation(); this.keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key); };
-    const eat = (e: Event) => { if (this.finished || mine(e)) return; e.stopImmediatePropagation(); if (e.cancelable) e.preventDefault(); };
-    addEventListener('keydown', down, true); addEventListener('keyup', up, true);
-    for (const ev of ['pointerdown', 'click', 'wheel', 'contextmenu', 'dblclick']) addEventListener(ev, eat, { capture: true, passive: false });
-    this.off.push(() => { removeEventListener('keydown', down, true); removeEventListener('keyup', up, true); for (const ev of ['pointerdown', 'click', 'wheel', 'contextmenu', 'dblclick']) removeEventListener(ev, eat, true); });
-    const st = this.el.stick, kn = this.el.knob, bu = this.el.burst;
-    if (st && kn) {
-      const down = (e: PointerEvent) => { this.stickId = e.pointerId; this.stickO.set(e.clientX, e.clientY); kn.style.display = 'block'; kn.style.left = `${e.clientX}px`; kn.style.top = `${e.clientY}px`; st.setPointerCapture(e.pointerId); };
-      const move = (e: PointerEvent) => { if (e.pointerId !== this.stickId) return; const R = 46 * (Number(document.documentElement.style.getPropertyValue('--s')) || 2) / 2; this.stick.set((e.clientX - this.stickO.x) / R, (e.clientY - this.stickO.y) / R); if (this.stick.length() > 1) this.stick.normalize(); kn.style.left = `${this.stickO.x + this.stick.x * R}px`; kn.style.top = `${this.stickO.y + this.stick.y * R}px`; };
-      const up = (e: PointerEvent) => { if (e.pointerId !== this.stickId) return; this.stickId = null; this.stick.set(0, 0); kn.style.display = 'none'; };
-      st.addEventListener('pointerdown', down); st.addEventListener('pointermove', move); st.addEventListener('pointerup', up); st.addEventListener('pointercancel', up);
-    }
-    if (bu) bu.addEventListener('pointerdown', (e) => { e.preventDefault(); this.burst(); });
-  }
-  private steer(out: THREE.Vector2) {
-    const k = this.keys;
-    let x = 0, y = 0;
-    if (k.has('a') || k.has('ArrowLeft')) x -= 1; if (k.has('d') || k.has('ArrowRight')) x += 1;
-    if (k.has('w') || k.has('ArrowUp')) y += 1; if (k.has('s') || k.has('ArrowDown')) y -= 1;
-    x += this.stick.x; y -= this.stick.y;
-    out.set(x, y); if (out.length() > 1) out.normalize();
-    return out;
-  }
-  private burst() {
-    if (this.landed || this.bursts <= 0 || this.burstCD > 0 || this.auto) return;
-    const s = this.steer(new THREE.Vector2());
-    if (s.lengthSq() < 0.01) s.set(0, 1);
-    const dir = new THREE.Vector2(this.F.x * s.y + this.Rt.x * s.x, this.F.y * s.y + this.Rt.y * s.x).normalize();
-    const k = this.chute > 0 ? 0.45 : 1;
-    this.v.addScaledVector(dir, 11 * k);
-    this.bursts--; this.burstCD = 0.9; this.kick = 1;
-    csfx('thrust', 0.9, 0.35); csfx('relay', 0.5); sfx('hit', 0.6, 0.4);
-    this.puff(dir, 26);
-  }
-  private engageAuto() {
-    if (this.landed) return;
-    if (!this.auto) { this.auto = true; this.el.warn.textContent = 'AUTOPILOT ENGAGED'; this.el.warn.classList.add('on'); setTimeout(() => this.el.warn?.classList.remove('on'), 2400); csfx('beepHi', 0.6); }
-    this.ff = 4; this.shot = null; this.shots = this.shots.filter((s) => s.name === 'chute');
-    this.ui.endSub();
-  }
-  /** RCS gas: white puffs out of the ports facing away from the thrust */
-  private puff(dir: THREE.Vector2, n: number) {
-    for (const port of this.pod.rcsPorts) {
-      const d = _v.copy(port.d).applyQuaternion(this.pod.body.getWorldQuaternion(_q));
-      if (d.x * dir.x + d.z * dir.y > -0.3) continue;
-      const w = this.pod.body.localToWorld(_v2.copy(port.p));
-      this.g.fx.spray(w.x, w.y, w.z, d.x, d.y + 0.1, d.z, Math.ceil(n / 2), 0xe8ecf0, { speed: 9, cone: 0.25, size: 2.2, life: 0.4, drag: 5 });
-    }
-  }
-  private say(text: string, who: string, pitch = 1, radio = true) {
-    csfx('squelch', 0.6);
-    const sec = cvoice(text, pitch, radio);
-    this.ui.sub(text, { who, style: 'radio', dur: Math.max(2.4, sec + 1.1, text.length * 0.05 + 1.2) }, () => {});
-  }
-  private once(id: string, f: () => void) { if (this.said.has(id)) return; this.said.add(id); f(); }
-
-  // ================================================================ frame
-  /** the game's camera hook: everything runs from here, once a frame, after the game's own camera has moved */
-  private frame(cam: THREE.PerspectiveCamera, dt: number) {
-    if (this.finished) return;
-    this.cam = cam;
-    this.rtsPos.copy(cam.position); this.rtsQ.copy(cam.quaternion); this.rtsFov = cam.fov;
+  private tick = (_simDt: number) => {
+    if (this.done) return;
+    const now = performance.now(), dt = this.last ? Math.min(1 / 15, (now - this.last) / 1000) : 1 / 60; this.last = now;
+    const hold = this.o.hold;
+    const frozen = (hold === 'chute' && this.t > 1.8) || (hold === 'retro' && this.t > 4.4) || (hold === 'touch' && this.t > T_TOUCH + 0.4) || (hold === 'rise' && this.t > 6.8);
+    if (!frozen) this.t += dt;
+    const t = this.t, g = this.g, L = this.L;
     this.ui.update(dt);
-    const sdt = dt * this.ff;
-    this.t += sdt;
-    if (!this.landed) this.fly(sdt); else this.afterImpact(dt);
-    this.effects(sdt, dt);
-    this.camera(dt);
-    this.tickDebris(dt);
-    if (!this.finished) this.updateHud();
-  }
-  private fly(dt: number) {
-    const auth = this.chute > 0 ? 0.35 : 1;
-    // vertical: the table above, then the chute, then the flare
-    if (this.chute <= 0) this.vy = damp(this.vy, vAt(this.alt), 3, dt);
-    else this.vy = damp(this.vy, this.retro > 0 ? 2.5 : 11, this.retro > 0 ? 6 : 1.6, dt);
-    this.alt -= this.vy * dt;
-    if (this.alt < CHUTE_ALT && this.chute <= 0) this.deployChute();
-    if (this.chuteT >= 0) { this.chuteT += dt; this.chute = Math.min(1, this.chuteT / 1.6); this.pod.setChute(this.chute, this.t); }
-    if (this.alt < RETRO_ALT && this.retro <= 0) { this.retro = 1; csfx('ignite', 1); csfx('thrust', 1, 0.6); this.shakeK = Math.max(this.shakeK, 0.5); this.ff = 1; }
-    if (this.alt < 70 && this.ff > 1) this.ff = 1;
-    // lateral: stick, wind drag, autopilot
-    const s = this.steer(new THREE.Vector2());
-    if (this.auto) {
-      const T = Math.max(1.5, this.chute > 0 ? this.alt / 11 : tToGround(this.alt) * 0.8);
-      const want = new THREE.Vector2(this.lzW.x - this.p.x, this.lzW.z - this.p.y).divideScalar(T);
-      const dv = want.sub(this.v).multiplyScalar(1.5);
-      // to stick space
-      s.set(dv.x * this.Rt.x + dv.y * this.Rt.y, dv.x * this.F.x + dv.y * this.F.y).divideScalar(16 * auth);
-      if (s.length() > 1) s.normalize();
+    if (!this.touched) {
+      const h = this.alt(t), sway = t < T_CUT ? Math.sin(t * 1.7) * 0.09 : Math.sin(t * 3) * 0.03 * (1 - (t - T_CUT) / 2);
+      this.pod.root.position.set(L.x + Math.sin(t * 0.8) * (h / H0) * 3, L.y + h, L.z);
+      this.pod.root.rotation.set(sway, this.yaw + t * 0.05, sway * 0.6);
+      this.pod.update(t, dt, { power: 1 });
+      if (!this.chuteFree) {
+        this.chute.position.copy(this.pod.root.position).add(_v.set(0, 18, 0)); this.chute.rotation.set(sway * 0.5, t * 0.1, 0);
+        const open = clamp(t / 0.8, 0.2, 1); this.chute.scale.set(open, 1, open);
+      }
+      if (t >= T_CUT && !this.chuteFree) {
+        this.chuteFree = true; this.chuteV.set(3.5, 6, 1.5); this.plumes.visible = true;
+        csfx('ignite', 0.8); csfx('thrust', 0.7); sfx('pulse', 0.5, 0.6);
+        this.ui.stamp('CHUTE CUT · RETRO IGNITION', true);
+      }
+      if (this.chuteFree) {
+        this.chuteV.y -= dt * 4; this.chute.position.addScaledVector(this.chuteV, dt); this.chute.rotation.z += dt * 0.6; this.chute.scale.y = Math.max(0.2, this.chute.scale.y - dt * 0.5);
+        this.plumes.position.copy(this.pod.root.position).add(_v.set(0, 0.8, 0)); this.plumes.rotation.y = this.pod.root.rotation.y;
+        const fl = 0.8 + Math.random() * 0.4; this.plumes.scale.set(1, fl * (0.6 + clamp(h / 30, 0, 1)), 1);
+        // dust off the ground as the plume reaches it
+        this.dustT -= dt;
+        if (h < 22 && this.dustT <= 0) { this.dustT = 0.06; const a = Math.random() * Math.PI * 2, r = 2 + Math.random() * 5; vfx2d.play('dust', L.x + Math.cos(a) * r, L.y + 0.2, L.z + Math.sin(a) * r, { scale: 1.4 + (22 - h) / 10 }); }
+        if (h < 30 && Math.random() < dt * 20) g.fx.burst(L.x + (Math.random() - 0.5) * 3, L.y + 0.3, L.z + (Math.random() - 0.5) * 3, 3, 0xc8b090, { speed: 4, up: 1.5, size: 4, life: 1.2 });
+        g.cam.shake(0.05 * (1 - h / 60), 0.1);
+      }
+      if (t >= T_TOUCH) this.touchdown();
+    } else {
+      // the chute settles away downwind; the pod is the colony's now
+      if (this.chute.visible) { this.chuteV.y -= dt * 4; this.chute.position.addScaledVector(this.chuteV, dt); if (this.chute.position.y < L.y - 6) this.chute.visible = false; }
     }
-    const thrust = this.fuel > 0 || this.auto ? s.length() : 0;
-    this.thrusting = thrust;
-    const ax = (this.F.x * s.y + this.Rt.x * s.x) * 16 * auth * (thrust > 0 ? 1 : 0), az = (this.F.y * s.y + this.Rt.y * s.x) * 16 * auth * (thrust > 0 ? 1 : 0);
-    const drag = this.chute > 0 ? 0.9 : 0.16;
-    this.v.x += (ax + (this.wind.x - this.v.x) * drag) * dt;
-    this.v.y += (az + (this.wind.y - this.v.y) * drag) * dt;
-    if (this.v.length() > 48) this.v.setLength(48);
-    this.p.addScaledVector(this.v, dt);
-    // the descent cone narrows onto the map: low down the pod cannot drift off it
-    const lim = this.N / 2 - 8;
-    if (this.alt < 420) for (const k of ['x', 'y'] as const) {
-      const over = Math.abs(this.p[k]) - lim;
-      if (over > 0) { const sg = Math.sign(this.p[k]); this.v[k] -= sg * over * dt * (this.alt < 140 ? 4 : 1.2); if (this.v[k] * sg > 0) this.v[k] *= Math.exp(-dt * 3); if (this.alt < 25) this.p[k] = sg * Math.min(Math.abs(this.p[k]), lim + 2); }
-    }
-    if (thrust > 0.05 && !this.auto) this.fuel = Math.max(0, this.fuel - dt * 0.03 * thrust);
-    this.burstCD = Math.max(0, this.burstCD - dt);
-    if (thrust > 0.1 && Math.random() < dt * 14) this.puff(new THREE.Vector2(ax, az).normalize(), 4);
-    if (thrust > 0.1 && Math.random() < dt * 3) csfx('steam', 0.12, 0.6);
-    // the pod's attitude: a slow spin on entry, a lean into the thrust, a pendulum under the chute
-    this.spin += dt * (this.chute > 0 ? 0.1 : 0.6);
-    this.lean.x = damp(this.lean.x, -s.y * 0.12, 4, dt); this.lean.y = damp(this.lean.y, s.x * 0.12, 4, dt);
-    if (this.chute > 0) { this.swayV.x += (-this.sway.x * 3 - this.swayV.x * 0.4 + ax * 0.02) * dt; this.swayV.y += (-this.sway.y * 3 - this.swayV.y * 0.4 + az * 0.02) * dt; this.sway.addScaledVector(this.swayV, dt); }
-    const gy = this.gH(this.p.x, this.p.y);
-    const P = this.pod.root.position; P.set(this.p.x, gy + Math.max(0, this.alt), this.p.y);
-    this.pod.root.rotation.set(this.lean.x * this.F.x + this.sway.y * 0.6, this.spin, this.lean.y + this.sway.x * 0.6);
-    // radio and cues by altitude
-    const A = this.alt;
-    if (A < this.alt0 - 260) this.once('interface', () => this.say('Entry interface. Heat shield coming up to temperature.', 'Vanguard Control', 1.0));
-    if (A < 1950 && A > 1200) this.once('blackout', () => { this.say('Seven, you are going into blackout. See you on the other side.', 'Vanguard Control', 1.0); setTimeout(() => { if (!this.landed && this.alt > 1150) { this.blackout = true; this.static$ = cloop('radio', 0.6); this.loops.push(this.static$); } }, 2600); });
-    if (A < 1150 && this.blackout) { this.blackout = false; this.static$?.stop(0.3); this.once('reacquire', () => this.say('...Seven, Vanguard. We have you again. Good shield.', 'Vanguard Control', 1.0)); }
-    if (A < 980) this.once('weather', () => this.say('Weather deck at eight hundred. You will be blind for a moment.', 'Vanguard Control', 1.0));
-    if (A < 400) this.once('ground', () => { const dir = this.compass(-this.wind.x, -this.wind.y); this.say(`Ground in sight. Wind out of the ${dir} at ${Math.round(this.wind.length() * 1.94)} knots. Hold upwind of the smoke.`, 'Launch Control', 0.85); });
-    if (A < 34) this.once('retro', () => this.say('Retros armed. Stand by.', 'Launch Control', 0.85));
-    // shots: start the next one whose altitude has come
-    const nx = this.shots[0];
-    if (!this.shot && nx && A <= nx.t) { this.shots.shift(); this.startShot(nx); }
-    if (this.shot) { this.shot.t += dt; if (this.shot.t >= this.shot.dur) this.endShot(); }
-    if (A <= 0) this.touchdown();
-    const h = this.o.hold;
-    if (h && ((h.startsWith('alt:') && A < Number(h.slice(4))) || (h === 'entry' && A < this.alt0 - 300) || (h === 'low' && A < 230) || (h === 'cloud' && A < this.clouds[0].y + 6) || (h === 'flare' && A < 3.5) || (h === 'chute' && this.chute > 0.9 && A < CHUTE_ALT - 20) || (this.shot && this.shot.name === h && this.shot.t > this.shot.dur * 0.55))) { this.g.engine.timeScale = 0; this.o.hold = null; console.log('descent hold', h); }
-  }
-  private compass(x: number, z: number) {
-    // world -z is north on the chart
-    const a = (Math.atan2(x, -z) + TAU) % TAU;
-    return ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round(a / (TAU / 8)) % 8];
-  }
-  private deployChute() {
-    this.chuteT = 0; this.chute = 0.001;
-    csfx('boom', 0.5, 1.6); csfx('whoosh', 0.8, 1.4); sfx('crack', 1.6, 0.7);
-    this.pod.noseCap.visible = false;
-    const w = this.pod.noseCap.getWorldPosition(new V3());
-    this.g.fx.burst(w.x, w.y, w.z, 14, 0x8a2e24, { speed: 6, up: 4, size: 3, life: 1.2, grav: 9 });
-    this.shakeK = Math.max(this.shakeK, 0.9);
-    this.vy *= 0.75;
-    this.once('chute', () => this.say('Chute! Good chute!', 'Launch Control', 0.85));
-  }
-  private startShot(s: Shot) {
-    if (s.name === 'porthole' && this.shot) return;
-    s.t = 0; this.shot = s;
-    // a hard cut in
-    this.blendT = 1;
-  }
-  private endShot() {
-    // blend back to the chase camera from where the shot left it
-    this.blendFrom.pos.copy(this.cam.position); this.blendFrom.q.copy(this.cam.quaternion); this.blendFrom.fov = this.cam.fov;
-    this.blendT = 0; this.shot = null;
-  }
+    if (t >= T_RISE && t - dt < T_RISE) { this.ui.stampOff(); this.ui.card('COLONY ESTABLISHED', `${g.regionName.toUpperCase()} · SOL 1`, 'UNAA PLANETARY RESEARCH PROGRAM', 'UNAA'); csfx('sting', 0.5); }
+    if (t >= T_END - 1.2 && t - dt < T_END - 1.2) { this.ui.cardOff(); this.ui.letterbox(false, 1); }
+    if (t >= T_END) this.finish();
+  };
   private touchdown() {
-    this.landed = true; this.landT = 0; this.alt = 0;
-    const g = this.g, R = this.R, N = this.N;
-    this.retro = 0; this.pod.setRetro(0, this.t);
-    // score against the pin
-    const rx = this.p.x + N / 2, rz = this.p.y + N / 2;
-    const dist = Math.hypot(this.p.x - this.lzW.x, this.p.y - this.lzW.z);
-    const grade: Grade = this.auto ? 'AUTOPILOT' : dist <= 6 ? 'BULLSEYE' : dist <= 18 ? 'ON TARGET' : dist <= 45 ? 'CLOSE' : 'WIDE';
-    const water = R.isWater(rx, rz);
-    // a splashdown when the region has an ocean (src/ocean takes the pod and the golem from there)
-    this.wet = water && !!(g as unknown as { ocean?: unknown }).ocean;
-    // the skid: the way it was drifting (or the way it was flying, when it came straight down)
-    const sk = this.v.length() > 1.5 ? this.v.clone().normalize() : this.F.clone();
-    // the real ground: the game moves its core (the pod itself) here, aimed along the skid, and lights the crash site
-    g.touchdown(rx, rz, sk.x, sk.y);
-    const L = R.landing;
-    this.p.set(L.x - N / 2, L.z - N / 2);
-    this.result = { x: L.x, z: L.z, dist, grade, auto: this.auto, water };
-    // under the flash, the falling pod becomes the core's pod (same model, landed pose): its hatch shut till the golem stirs
-    this.pod.root.visible = false;
-    const cp = (g.veyr.core?.mesh.userData.podGroup as THREE.Object3D | undefined)?.userData.pod as Pod | undefined;
-    if (cp) { cp.setHatch(0); cp.heat.value = 1.1; this.corePod = cp; }
-    // the blast: creatures nearby thrown off their feet and the rest of the wildlife scared away (the plants stand)
-    (g.world as unknown as { eco?: { scare?(x: number, z: number, a: number, r: number): void } }).eco?.scare?.(L.x, L.z, 1.6, 34);
-    const knocks = (g as unknown as { knocks?: { c: unknown; vx: number; vz: number; t: number }[] }).knocks;
-    for (const c of g.world.creatures) {
-      if (c.dead) continue;
-      const dx = c.x - L.x, dz = c.z - L.z, d = Math.hypot(dx, dz) || 1;
-      const cc = c as unknown as { mind: string; fleeT: number };
-      if (d < 34) { cc.mind = 'flee'; cc.fleeT = Math.max(cc.fleeT ?? 0, 5); }
-      if (d > 11) continue;
-      const k = 1 - d / 11;
-      knocks?.push({ c, vx: (dx / d) * 15 * k, vz: (dz / d) * 15 * k, t: 0.35 + k * 0.35 });
-      if (d < 6) g.world.damage(c, 40 * k, null);
-    }
-    // flash, shake, a ring of dust racing out, debris thrown up
-    const P = this.pod.root.position, gy = this.wet ? this.gH(this.p.x, this.p.y) : R.groundSmooth(L.x, L.z);
-    P.set(this.p.x, gy, this.p.y);
-    this.ui.flash('#fff', 0.9, 1);
-    csfx('impact', 1, 0.8); csfx('boom', 1, 0.6); csfx('crunch', 0.8); sfx('crack', 3, 1);
-    this.shakeK = 2.2; this.kick = 2;
-    const dust = this.wet ? [0xe8f0f0, 0xb8d0d4] : [0xb8a888, 0x8a7a62];
-    for (let i = 0; i < 28; i++) { const a = (i / 28) * TAU; this.fx.spray(P.x + Math.cos(a) * 1.2, gy + 0.3, P.z + Math.sin(a) * 1.2, Math.cos(a), this.wet ? 0.6 : 0.18, Math.sin(a), 5, i % 3 ? dust[0] : dust[1], { speed: 14, cone: 0.35, size: 5, life: 2.2, grav: this.wet ? 9 : -0.3, drag: 1.6 }); }
-    this.fx.burst(P.x, gy + 0.4, P.z, 40, 0x5a4a3a, { speed: 9, up: 9, size: 3, life: 1.6, grav: 14 });
-    this.fx.burst(P.x, gy + 0.4, P.z, 24, 0xffb060, { glow: true, speed: 7, up: 6, size: 2, life: 0.7, grav: 10 });
-    this.shockU = { uK: { value: 1 }, uT: { value: 0 }, uCol: { value: new THREE.Color(0xc8b898) } };
-    const rg = new THREE.RingGeometry(0.2, 1, 48, 1);
-    const ruv = rg.attributes.uv as THREE.BufferAttribute, rp = rg.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < ruv.count; i++) ruv.setXY(i, Math.atan2(rp.getY(i), rp.getX(i)) / TAU + 0.5, Math.hypot(rp.getX(i), rp.getY(i)) > 0.6 ? 1 : 0);
-    this.shock = mesh(this.bin, rg, fxMat(this.bin, PL_V, SHOCK_F, this.shockU, 'alpha', { side: THREE.DoubleSide }), this.far, P.x, gy + 0.6, P.z, false);
-    this.shock.rotation.x = -Math.PI / 2;
-    // the pod sits in its crater, a little tipped; the chute collapses downwind
-    P.y = gy - 0.3;
-    this.pod.root.rotation.set(0.1, this.spin, -0.07);
-    this.endShot();
-    // the impact shot: wide and low, then in on the crater as the shell comes off and the golem climbs out
-    const cx = P.x, cz = P.z;
-    // look in toward the middle of the map (the jungle behind the pod), or along the approach near the middle
-    const inn = Math.hypot(cx, cz) > 14 ? new THREE.Vector2(-cx, -cz).normalize() : this.F.clone();
-    const side2 = new THREE.Vector2(-inn.y, inn.x);
-    this.shot = { name: 'impact', t: 0, dur: 99, pose: (t, pos, look) => {
-      const k = ease.inOut(clamp((t - 2.2) / 6, 0, 1));
-      const d = lerp(22, 10, k), side = lerp(11, 4.5, k), h = lerp(4.2, 3.0, k);
-      pos.set(cx - inn.x * d + side2.x * side, 0, cz - inn.y * d + side2.y * side);
-      pos.y = Math.max(this.gH(cx, cz), this.gH(pos.x, pos.z)) + h + t * 0.1;
-      look.set(cx, this.gH(cx, cz) + lerp(2, 1.4, k), cz);
-      return lerp(40, 34, k);
-    } };
-    this.blendT = 1;
-    for (const l of this.loops) l.stop(0.4);
-    const pn = this.o.planetName;
-    const line = grade === 'BULLSEYE' ? 'Dead on the smoke. Beautiful flying, Seven.' : grade === 'ON TARGET' ? 'On target. Close enough to walk it.' : grade === 'CLOSE' ? 'You are down, Seven. A short walk to the pin.' : grade === 'AUTOPILOT' ? 'Autopilot put you down. Close to the pin.' : 'Long way from the pin, Seven. But you are down.';
-    setTimeout(() => { if (!this.finished) this.say(`Touchdown. Welcome to ${pn}, Seven. ${line}`, 'Launch Control', 0.85); }, 900);
+    this.touched = true;
+    const g = this.g, L = this.L;
+    this.pod.root.removeFromParent(); this.plumes.visible = false;
+    g.touchdown(L.x, L.z, Math.sin(this.yaw + Math.PI), Math.cos(this.yaw + Math.PI));
+    g.emerge();
+    const c = g.colony; if (c) { c.pod.yaw = this.yaw; c.pod.model.root.rotation.y = this.yaw; }
+    const p = puffsFor(g);
+    for (let i = 0; i < 26; i++) { const a = (i / 26) * Math.PI * 2; vfx2d.play('dust', L.x + Math.cos(a) * 3.5, L.y + 0.2, L.z + Math.sin(a) * 3.5, { scale: 2.2, delay: i * 0.01 }); p.emit(L.x + Math.cos(a) * 3, L.y + 0.4, L.z + Math.sin(a) * 3, { size: 0.8, grow: 4, life: 3, vy: 0.6, ramp: 2, jitter: 1.2 }); }
+    vfx2d.play('shock', L.x, L.y + 0.1, L.z, { scale: 3.5 });
+    g.cam.shake(0.9, 0.6); csfx('thud', 1); csfx('crunch', 0.6); csfx('steam', 0.8); sfx('hit', 0.4, 1);
+    g.world.flora.impulse?.(L.x, L.z, 7, 2.2);
+    // the RTS view the camera rises into
+    g.cam.followFn(null); g.cam.lookAt(L.x + 2, L.z + 2, true); g.cam.dist = g.cam.distGoal = 34;
+    this.ui.stamp('TOUCHDOWN', true);
   }
-  private corePod: Pod | null = null;
-  /** the landed (core) pod's position in the world */
-  private cpWorld() { const o = new V3(); const c = this.g.veyr.core; if (c) o.set(c.x, this.R.groundSmooth(c.x, c.z), c.z); return o; }
-  private tickDebris(_dt: number) { /* the pod stays whole now: nothing is thrown off */ }
-  /** Esc after touchdown: hurry to the hand-over */
-  private hurry() {
-    if (this.shellT < 0) { this.landT = Math.max(this.landT, 1.9); return; }
-    const gh = this.g as unknown as { hatchT: number };
-    gh.hatchT = Math.max(gh.hatchT, 7.2);
-  }
-  private afterImpact(dt: number) {
-    this.landT += dt;
-    const P = this.pod.root.position;
-    if (this.shot) this.shot.t += dt;
-    // the chute settles over to one side
-    const c = this.pod.chute;
-    if (c) { c.root.rotation.z = Math.min(1.35, this.landT * 0.8); c.root.scale.y = Math.max(0.15, 1 - this.landT * 0.4); c.root.scale.x = c.root.scale.z = Math.max(0.5, 1 - this.landT * 0.15); }
-    if (this.shockU && this.shock) { const k = 1 - Math.exp(-this.landT * 1.6); this.shock.scale.setScalar(2 + k * 46); this.shockU.uK.value = Math.max(0, 1 - this.landT / 2.6); this.shock.visible = this.shockU.uK.value > 0; }
-    // the painted landing guide dissolves within a second of touchdown
-    const mk = this.marks; if (mk?.visible) { const f = mk.userData.fade as { value: number }; f.value = clamp(this.landT / 0.9, 0, 1); if (f.value >= 1) mk.visible = false; }
-    // dust and smoke hanging round the pod for the first seconds (soft pixel puffs, drifting off)
-    if (this.landT < 2.5 && Math.random() < dt * 4 * (1 - this.landT / 2.5)) puffsFor(this.g).emit(P.x + this.O.x + (Math.random() - 0.5) * 3, P.y + 0.3, P.z + this.O.z + (Math.random() - 0.5) * 3, { size: 0.5, grow: 2.6, life: 3, vy: 0.6, ramp: this.wet ? 2 : 0, jitter: 0.6 });
-    if (this.o.hold === 'impact' && this.landT > 0.7) { this.g.engine.timeScale = 0; this.o.hold = null; }
-    // on land the shell blows off its bolts; in the water the ocean has the pod: the golem just comes out
-    if (this.landT > 1.9 && this.shellT < 0) { this.shellT = 0; this.g.emerge(); if (!this.wet) { csfx('steam', 1); csfx('servo', 0.6, 0.8); } }
-    if (this.shellT >= 0) { this.shellT += dt; if (this.corePod) { this.corePod.setHatch(clamp((this.shellT - 0.4) / 1.1, 0, 1)); this.corePod.heat.value = Math.max(0, 1.1 - this.landT * 0.12); } }
-    if (this.shellT >= 0.4 && this.shellT < 1.6 && !this.wet && Math.random() < dt * 10) { const W = this.cpWorld(); puffsFor(this.g).emit(W.x, W.y + 1.8, W.z, { size: 0.35, grow: 3, life: 2.2, vy: 1.7, ramp: 2, jitter: 1.4 }); }
-    if (this.landT > 2.6 && this.result) this.once('card', () => {
-      const r = this.result!;
-      this.ui.card(r.grade === 'WIDE' ? 'TOUCHDOWN' : r.grade, `${r.auto ? 'ON THE PIN' : `${Math.round(r.dist * 10) / 10} M FROM THE PIN`} · ${bonusFor(r.grade).text}`, 'UNIT 07 IS DOWN', r.grade === 'BULLSEYE' ? 'BULLSEYE' : 'U.S.P.C.');
-      csfx('sting', 0.7);
-    });
-    if (this.landT > 6.2) this.once('cardoff', () => this.ui.cardOff());
-    // the golem is out (the game's own hatching runs from the shell blowing): ease into the game's camera
-    const hatchT = (this.g as unknown as { hatchT: number }).hatchT;
-    if (this.o.hold === 'out' && this.shellT >= 0 && hatchT > 6.4) { this.g.engine.timeScale = 0; this.o.hold = null; console.log('descent hold out'); }
-    if (this.shellT >= 0 && hatchT >= 7.2 && this.handT < 0) { this.handT = 0; this.ui.letterbox(false, 1.4); this.hud.style.transition = 'opacity 800ms'; this.hud.style.opacity = '0'; }
-    if (this.handT >= 0) { this.handT += dt; if (this.handT >= 1.6) this.finish(); }
-  }
-  private effects(dt: number, rdt: number) {
-    const A = this.alt, pod = this.pod, P = pod.root.position;
-    // plasma: builds after the interface, peaks, dies by the weather deck
-    const heat = this.landed ? 0 : sm(this.alt0 + 50, this.alt0 - 300, A) * (1 - sm(1300, 900, A));
-    for (const u of this.plasmaU) { u.uT.value = this.t; u.uK.value = heat * (u.uWake.value ? 0.42 : 0.6); }
-    this.plasma.forEach((m) => (m.visible = heat > 0.01));
-    pod.heat.value = Math.max(heat * 1.4, pod.heat.value - dt * 0.15);
-    this.heatLight.intensity = heat * 12;
-    this.fire$?.set(heat * 1.4);
-    this.wind$?.set(0.3 + (1 - heat) * 0.4 * (this.landed ? 0 : 1));
-    pod.lens.value = 0.8 + Math.sin(this.t * 3) * 0.2 + heat * 0.4;
-    pod.setRetro(this.retro, this.t);
-    pod.update(dt, this.t);
-    // buffet: dynamic pressure through the entry, turbulence in the decks, the chute's jolt
-    let q = heat * 0.8;
-    for (const L of this.clouds) q += (1 - sm(0, 60, Math.abs(A - L.y))) * 0.5;
-    this.shakeK = Math.max(q, this.shakeK - rdt * 1.5);
-    // smoke trail and glowing ablation shed off the shield
-    if (heat > 0.2 && Math.random() < rdt * 60) this.fx.burst(P.x + (Math.random() - 0.5) * 2, P.y + 2 + Math.random() * 4, P.z + (Math.random() - 0.5) * 2, 1, 0xff8a3a, { glow: true, speed: 2, up: this.vy * 0.25, size: 3, life: 0.6, grav: -this.vy * 0.4 });
-    if (heat > 0.05 && heat < 0.9 && Math.random() < rdt * 24) puffsFor(this.g).emit(P.x + this.O.x, P.y + 4, P.z + this.O.z, { size: 1.1, grow: 3, life: 2.6, vy: 0.3, ramp: 1, jitter: 1.2 });
-    if (this.retro > 0 && !this.landed) {
-      for (let i = 0; i < 6; i++) { const a = Math.random() * TAU; const g = this.gH(P.x, P.z); this.fx.spray(P.x + Math.cos(a) * 2, g + 0.3, P.z + Math.sin(a) * 2, Math.cos(a), 0.15, Math.sin(a), 2, 0xb8a888, { speed: 11, cone: 0.3, size: 5, life: 1.4, grav: -0.3, drag: 1.5 }); }
+  private camera(cam: THREE.PerspectiveCamera, dt: number) {
+    const t = this.t, L = this.L;
+    if (t < T_RISE) {
+      const P = this.touched ? new THREE.Vector3(L.x, L.y + 2.5, L.z) : this.pod.root.position.clone().add(_v.set(0, 2, 0));
+      this.lookA.lerp(P, this.lookA.lengthSq() ? Math.min(1, dt * 5) : 1);
+      cam.position.copy(this.camA); cam.fov = lerp(44, 38, clamp(t / T_TOUCH, 0, 1));
+      cam.lookAt(this.lookA); cam.updateProjectionMatrix(); cam.updateMatrixWorld();
+      return;
     }
-    // streaks: lines of torn air (orange in the plasma, grey wisps in cloud) rushing up past the pod
-    const sp = this.streakP, sc = this.streakC, ss = this.streakSeed, n = sp.length / 6;
-    let wisp = 0; for (const L of this.clouds) wisp = Math.max(wisp, 1 - sm(10, 70, Math.abs(A - L.y)));
-    const vis = this.landed ? 0 : Math.max(heat, wisp * 0.8, sm(400, 150, A) * 0.18);
-    const len = 3 + this.vy * 0.09;
-    for (let i = 0; i < n; i++) {
-      const a = ss[i * 3], r = ss[i * 3 + 1];
-      let y = ss[i * 3 + 2] + this.t * this.vy * 1.0;
-      y = ((y + 40) % 80 + 80) % 80 - 40;
-      const x = P.x + Math.cos(a) * r, z = P.z + Math.sin(a) * r, yy = P.y + y;
-      sp.set([x, yy, z, x, yy + len, z], i * 6);
-      const k = vis * (1 - Math.abs(y) / 40);
-      const cr = heat > wisp ? [1.4 * k, 0.6 * k, 0.2 * k] : [0.6 * k, 0.62 * k, 0.65 * k];
-      sc.set([cr[0], cr[1], cr[2], 0, 0, 0], i * 6);
-    }
-    (this.streaks.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-    (this.streaks.geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
-    for (const ft of this.farTrees) ft.visible = A > 160;
-    // the world: smoke, strobe, clouds drifting
-    this.smokeU.uT.value = this.t;
-    (this.strobe.material as THREE.MeshBasicMaterial).color.setScalar(Math.sin(this.t * 6) > 0.85 ? 3 : 0.0);
-    this.strobe.scale.setScalar(1 + clamp(A / 250, 0, 10));
-    for (const L of this.clouds) for (const u of L.u) { u.uT.value = this.t; (u.uCam.value as V).copy(this.cam.position); }
-    // sky, fog and light by altitude
-    const altK = sm(250, 2200, A);
-    this.skyU.uAlt.value = altK;
-    this.skyU.uDip.value = Math.sin(Math.sqrt((2 * Math.max(0, this.cam.position.y)) / RP));
-    let white = 0; for (const L of this.clouds) white = Math.max(white, (1 - sm(4, 34, Math.abs(this.cam.position.y - L.y))) * clamp(L.cover * 1.3, 0, 1));
-    this.skyU.uWhite.value = white;
-    const gsc = this.g.world.scene, fog = gsc.fog as THREE.Fog;
-    if (fog && !this.finished) {
-      fog.color.copy(this.skyU.uHor.value as THREE.Color).lerp(new THREE.Color(0xd4d8dc), white);
-      fog.near = lerp(260 + A * 0.5, 4, white); fog.far = lerp(5500 + A * 5, 90, white);
-      if (gsc.background instanceof THREE.Color) gsc.background.copy(fog.color).multiplyScalar(1 - altK * 0.9);
-    }
-    // the sun's shadow box (it follows the game camera's target, which follows the pod) sized to the height
-    this.g.cam.dist = this.g.cam.distGoal = clamp(A * 0.25, 14, 90);
+    // rise into the game's own camera (which the game has just placed)
+    const k = clamp((t - T_RISE) / (T_END - T_RISE - 0.6), 0, 1), e = k * k * (3 - 2 * k);
+    const gc = this.g.cam; gc.update(0, this.g.input);
+    const to = gc.cam.position.clone(), look = gc.target.clone().add(_v.set(0, 0.5, 0));
+    cam.position.lerpVectors(this.camA, to, e);
+    const lk = new THREE.Vector3(L.x, L.y + 2.5, L.z).lerp(look, e);
+    cam.fov = lerp(38, 36, e); cam.lookAt(lk); cam.updateProjectionMatrix(); cam.updateMatrixWorld();
   }
-  private camera(dt: number) {
-    const cam = this.cam, P = this.pod.root.position, A = this.alt;
-    // the chase rig: high and behind on the way down, closing in and coming level near the ground
-    const low = sm(320, 30, A);
-    const back = lerp(9, 12, low), up = lerp(19, 5.5, low);
-    const vx = this.v.x * 0.35, vz = this.v.y * 0.35;
-    // offsets from the pod are what is smoothed (a lag on the steering, none on the fall itself)
-    const wantOff = _v.set(-this.F.x * back - vx * 0.25, up, -this.F.y * back - vz * 0.25);
-    const lookOff = _v2.set(this.F.x * lerp(5, 18, low) + vx, -lerp(30, 4, low), this.F.y * lerp(5, 18, low) + vz);
-    if (!this.chase.init) { this.chase.pos.copy(wantOff); this.chase.look.copy(lookOff); this.chase.init = true; }
-    this.chase.pos.lerp(wantOff, 1 - Math.exp(-dt * 4)); this.chase.look.lerp(lookOff, 1 - Math.exp(-dt * 3));
-    const cpos = new V3().copy(P).add(this.chase.pos), clook = new V3().copy(P).add(this.chase.look);
-    // never below the ground
-    cpos.y = Math.max(cpos.y, this.gH(cpos.x, cpos.z) + 2);
-    let fov = lerp(60, 48, low);
-    const O = this.O;
-    if (cam.far < 50000) { cam.far = 60000; cam.near = 0.4; cam.updateProjectionMatrix(); }
-    cam.position.copy(cpos).add(O); cam.up.set(0, 1, 0); cam.lookAt(clook.add(O));
-    // a cut overrides it; a blend eases back out
-    if (this.shot) {
-      const sp = new V3(), sl = new V3();
-      fov = this.shotPose(sp, sl) ?? fov;
-      cam.position.copy(sp).add(O); cam.lookAt(sl.add(O));
-    } else if (this.blendT < 1) {
-      this.blendT = Math.min(1, this.blendT + dt / 0.8);
-      const e = ease.inOut(this.blendT);
-      cam.position.lerpVectors(this.blendFrom.pos, cam.position, e);
-      cam.quaternion.slerpQuaternions(this.blendFrom.q, cam.quaternion, e);
-      fov = lerp(this.blendFrom.fov, fov, e);
-    }
-    // the hand-over: into the game's own camera (computed underneath every frame), no cut
-    if (this.handT >= 0) { const e = ease.inOut(clamp(this.handT / 1.6, 0, 1)); cam.position.lerp(this.rtsPos, e); cam.quaternion.slerp(this.rtsQ, e); fov = lerp(fov, this.rtsFov, e); }
-    // shake: rotation jitter, scaled by buffet and kicks
-    const s = (this.shakeK * 0.012 + this.kick * 0.01) * (settings.shake ? 1 : 0.15);
-    this.kick = Math.max(0, this.kick - dt * 3);
-    if (s > 0.0005) cam.rotateX((Math.random() - 0.5) * s), cam.rotateY((Math.random() - 0.5) * s), cam.rotateZ((Math.random() - 0.5) * s * 0.6);
-    if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix(); }
-    cam.updateMatrixWorld();
-    this.sky.position.copy(cam.position);
-  }
-  /** the golem is out: give the game its camera, fog, background and input back, pay the bonus, start the story */
   private finish() {
-    if (this.finished) return;
-    this.finished = true;
-    const g = this.g, cam = g.cam.cam, sc = g.world.scene, sv = this.saved!;
-    if (g.cineCam) g.cineCam = null;
-    cam.far = sv.far; cam.near = sv.near; cam.updateProjectionMatrix();
-    // a neutral fog stays (no shader rebuild for the whole scene), the dark diorama background comes back
-    const fog = sc.fog as THREE.Fog | null; if (fog) { fog.near = 1e7; fog.far = 2e7; }
-    sc.background = sv.bg;
-    sc.userData.sun = sv.sun;
-    const uiRoot = document.getElementById('ui'); if (uiRoot) uiRoot.style.visibility = sv.uiVis;
-    this.sky.visible = false;
-    for (const L of this.clouds) for (const m of L.slices) m.visible = false;
-    this.streaks.visible = false; this.smoke.visible = false; this.strobe.visible = false;
-    this.marks?.removeFromParent(); this.marks = null;
-    // the world beyond the map sinks away under the skirt, then everything of ours is freed
-    let sink = 0;
-    const far = this.far, root = this.root, bin = this.bin;
-    const tick = (dt: number) => {
-      sink += Math.max(dt, 1 / 60);
-      far.position.y = -sink * sink * 6;
-      if (sink > 3.2) { root.removeFromParent(); bin.dispose(); this.debrisBin.dispose(); const i = g.update$.indexOf(tick); if (i >= 0) g.update$.splice(i, 1); }
-    };
-    g.update$.push(tick);
-    // fog of war as the game plays it: what was seen from the sky is not known on the ground
-    g.vision.revealAll = false; g.vision.seen.fill(0); g.vision.update(0, true);
-    for (const f of this.off.splice(0)) f();
-    for (const l of this.loops) l.stop(0.3);
-    this.hud.remove();
-    const ui = this.ui; setTimeout(() => ui.dispose(), 1600);
-    document.body.classList.remove('cine-on');
-    // the bonus for the landing, paid into the run
-    const r = this.result!;
-    const b = bonusFor(r.grade), run = g.run;
-    run.skills.points += b.cells;
-    for (const k of Object.keys(b.res) as ('ore' | 'carbon' | 'water' | 'soil')[]) run.res[k] = (run.res[k] ?? 0) + (b.res[k] ?? 0);
-    run.flags.drops = (run.flags.drops ?? 0) + 1;
-    if (r.grade === 'BULLSEYE') run.flags.bullseyes = (run.flags.bullseyes ?? 0) + 1;
+    if (this.done) return; this.done = true;
+    const g = this.g, L = this.L;
+    g.cineCam = null; g.vision.revealAll = false;
+    for (const f of this.off) f();
+    this.root.removeFromParent();
+    this.ui.dispose();
     g.beginStory();
-    this.o.onDone?.(r);
-    if ((window as any).__descent === this) (window as any).__descent = null;
+    const dist = Math.hypot(L.x - this.o.lz.x, L.z - this.o.lz.z);
+    this.o.onDone?.({ x: L.x, z: L.z, dist, grade: dist < 6 ? 'BULLSEYE' : dist < 12 ? 'ON TARGET' : 'AUTOPILOT', auto: true, water: false });
   }
 }
-

@@ -1,7 +1,7 @@
 // Dev contact sheet for the creature sculptor (src/life/zoo.html): several species side by side under studio light,
 // straight to the screen (no post pipeline), so sculpt and paint can be judged in one capture.
 //   ?c=lion:4,bear:3,elk:2   kind:seed[:gene+gene] cells     &cols=3   &face=1 frames the heads   &yaw=0.9 &pitch=0.25 &dist=3
-//   &mode=idle|move &spd=1.2   &t=2.4 seconds of animation before the capture   &lid=1 shuts the eyelids   &far=1 the far LOD
+//   kind:seed:cy_cargo+cy_collar fits robotic parts (life/cyber)   &mode=idle|move &spd=1.2   &t=2.4 seconds of animation before the capture   &lid=1 shuts the eyelids   &far=1 the far LOD
 import * as THREE from 'three';
 import { wildDesign, type Kind } from './design';
 import { buildSpeciesModel, makeInstance } from './creatureMesh';
@@ -26,7 +26,8 @@ const shots = (P.get('lineup') === '1' || P.get('group') === '1' || P.get('fish'
   const [kind, seedS, genes] = spec.split(':');
   const seed = Number(seedS ?? 3);
   const d = wildDesign(kind as Kind, planetPalette(seed, 'amber'), seed * 100);
-  if (genes) for (const g of genes.split('+')) if (!d.genes.includes(g)) d.genes.push(g);
+  // cy_* entries are robotic parts (cyborg workers), everything else a gene
+  if (genes) for (const g of genes.split('+')) { if (g.startsWith('cy_')) (d.fit ??= []).push(g); else if (!d.genes.includes(g)) d.genes.push(g); }
   const t0 = performance.now(), m = buildSpeciesModel(d), ms = performance.now() - t0;
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0x2a363e);
   scene.add(new THREE.HemisphereLight(0xdde8ff, 0x403828, 1.6));

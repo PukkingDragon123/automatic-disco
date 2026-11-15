@@ -197,7 +197,9 @@ export class Factory {
     return { v: 1, b: rows, inv, seams, ...(scan.length ? { scan } : {}), rs: this.research, w };
   }
   /** write the works into the run (flow.ts calls this when it saves) */
-  store() { this.g.run.factories[this.saveKey] = this.save(); }
+  store() { this.g.run.factories[this.saveKey] = this.save(); this.inv?.save(); }
+  /** the real-item stores (src/inv: containers and the pod's hold), when installed: count / take / put / add go there */
+  private get inv() { return (this.g as unknown as { storage?: import('../inv/storage').Storage }).storage ?? null; }
   /** rebuild saved works (without paying again; anything that no longer fits is refunded to the stores) */
   load(sv: FactorySave) {
     if (!sv || sv.v !== 1) return;
@@ -292,6 +294,7 @@ export class Factory {
   // ================================================================== stores
   /** how many of an item the base has: central stores, storage buildings, and (raw materials) the golem's hold */
   count(id: ItemId): number {
+    const st = this.inv; if (st) return st.count(id);
     let n = this.inventory[id] ?? 0;
     for (const b of this.buildings) if (b.def.store && b.kind !== 'barracks') n += b.store.get(id) ?? 0;
     if (isRes(id)) n += this.res[id] ?? 0;
@@ -300,6 +303,7 @@ export class Factory {
   /** take n of an item (all or nothing): central stores first, then storage, then the hold */
   take(id: ItemId, n: number): boolean {
     if (n <= 0) return true;
+    const st = this.inv; if (st) { const ok = st.take(id, n); if (ok) this.onChange?.(); return ok; }
     if (this.count(id) < n) return false;
     let left = n;
     const a = Math.min(left, this.inventory[id] ?? 0); this.inventory[id] -= a; left -= a;
@@ -311,6 +315,7 @@ export class Factory {
   /** put items into the central stores (raw materials go to the hold while it has room). Returns what fit */
   put(id: ItemId, n: number, x?: number, z?: number): number {
     if (n <= 0) return 0;
+    const st = this.inv; if (st) { const got = st.put(id, n, x, z); if (got) this.onChange?.(); return got; }
     let left = n;
     if (isRes(id)) {
       const room = Math.max(0, this.hive.cap(id) - this.res[id]), t = Math.min(room, left);
@@ -324,6 +329,7 @@ export class Factory {
    *  of x, z, else the central stores. Returns how many were taken */
   add(id: ItemId, n: number, x?: number, z?: number): number {
     if (!(n > 0)) return 0;
+    const st = this.inv; if (st) { const got = st.put(id, n, x, z, 40); if (got > 0) { this.stat(this.prodB, id, got); this.onChange?.(); } return got; }
     let left = n;
     if (x !== undefined && z !== undefined) {
       const near = this.buildings.filter((b) => b.def.store && b.kind !== 'barracks' && Math.hypot(b.x - x, b.z - z) < 30).sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z));
@@ -522,7 +528,7 @@ export class Factory {
     if (t.kind === 'depot') return Math.max(0, this.invCap(id) - this.inventory[id]) + (isRes(id) ? Math.max(0, this.hive.cap(id) - this.res[id]) : 0) > 0 ? 99 : 0;
     if (t.kind === 'barracks') return (ITEMS[id].food ?? 0) > 0 ? Math.max(0, (def.store ?? 60) - total(t.store)) : 0;
     if (ECO.has(t.kind)) return ecoWants(t, id) ? Math.max(0, (def.buf ?? 20) - (t.inBuf.get(id) ?? 0)) : 0;
-    if (def.store) return Math.max(0, def.store - total(t.store));
+    if (def.store) { const gs = t.store as { room?(id: ItemId): number }; return gs.room ? gs.room(id) : Math.max(0, def.store - total(t.store)); }
     if (t.kind === 'steamgen') return id === 'steam' ? Math.max(0, 12 - (t.inBuf.get('steam') ?? 0)) : 0;
     if (t.kind === 'turret') return id === 'ammo' ? Math.max(0, (def.buf ?? 60) - (t.inBuf.get('ammo') ?? 0)) : 0;
     if (def.station === 'boiler' || def.station === 'lab') {

@@ -8,7 +8,7 @@ export const stiltwool: SpeciesFn = (d, rig) => {
   return {
     trunk: { chest: [0.5, 0.58, 0.62], barrel: [0.56, 0.64, 0.66], waist: [0.56, 0.62, 0.62], hips: [0.5, 0.58, 0.52], prof: ['barrel', 'barrel', 'barrel', 'hips'], neck: { r0: 0.75, r1: 0.5, arch: 0.22 }, tail: { r0: 0.3, taper: 0.7 } },
     head: { skull: 'cervid', len: 1.0, wid: 0.95, pitch: 0.2, eyes: { r: 0.16, pupil: 'bar', iris: eye, lid: 0.05 }, ears: { len: 0.7, wid: 0.32, up: 0.35, out: 1, back: 0.3, cup: 0.9 }, nose: 'leather', tongue: 'plain' },
-    legs: { fore: { kind: 'stilt', r: 0.95 }, hind: { kind: 'stilt', r: 1.0 } },
+    legs: { fore: { kind: 'stilt', r: 1.2 }, hind: { kind: 'stilt', r: 1.25 } },
     coat: {
       base, belly, bellyArc: 0.8,
       surf: { body: { fur: { len: 0.07 * W, width: 0.075 * W, down: 0.8, tooth: 1.0, clump: 0.3 }, scales: { size: 0.085 * W * 0.7, kind: 'pebble', ink: 1.6 } }, limb: fur(W, 0.32, 0.8), sock: hide(W, 0.45, 0.6), face: fur(W, 0.45), muzzle: hide(W, 0.3) },

@@ -15,9 +15,13 @@ import { toast } from '../ui/kit';
 import { sfx } from '../audio/audio';
 import { SKILL } from '../game/skills';
 import { clamp } from '../core/rand';
+import { Logistics, type Job as LJob } from '../logistics/network';
+import { Sites } from '../logistics/sites';
+import { mod } from '../logistics/unlocks';
+import { workerProfile, type WorkerProfile } from '../life/cyber';
 
-export type Job = 'idle' | 'haul' | 'operate' | 'mine' | 'forage' | 'pen';
-export const JOB_NAME: Record<Job, string> = { idle: 'UNASSIGNED', haul: 'HAULING', operate: 'OPERATING', mine: 'MINING', forage: 'FORAGING', pen: 'PENNED' };
+export type Job = 'idle' | 'haul' | 'build' | 'operate' | 'mine' | 'forage' | 'pen';
+export const JOB_NAME: Record<Job, string> = { idle: 'UNASSIGNED', haul: 'HAULING', build: 'CONSTRUCTION', operate: 'OPERATING', mine: 'MINING', forage: 'FORAGING', pen: 'PENNED' };
 export const JOB_SKILL: Partial<Record<Job, string>> = { haul: 'haul', operate: 'operate', pen: 'haul' };
 type State = 'find' | 'toSrc' | 'toDst' | 'work' | 'eat' | 'rest' | 'wait';
 export interface Worker {
@@ -29,6 +33,10 @@ export interface Worker {
   carry: { id: ItemId; n: number } | null;
   hunger: number; mood: number; t: number; think: number; miser: number;
   plant: number; note: string;
+  /** the logistics job it is running (a node-map route, a site supply run or a build shift) */
+  lj: LJob | null;
+  /** seconds spent on the current leg (a stuck walk gives the job up) */
+  legT: number;
 }
 interface FloraFruit { fruitNear?(x: number, z: number, r: number): { id: number; x: number; z: number } | number | null; eatFruit?(id: number): unknown }
 /** who grows the fruit: the ecosystem (world.eco) or the flora itself, whichever has it */
@@ -38,8 +46,15 @@ function fruitSrc(f: Factory): FloraFruit {
   return f.g.world.flora as unknown as FloraFruit;
 }
 
+/** an item id if the catalogue has it, else a fallback */
+const itemOr = (id: string, fb: string) => (ITEMS[id] ? id : fb);
+
 export class Workers {
   list: Worker[] = [];
+  /** the node map's network: the authority for what haulers carry (src/logistics/network.ts) */
+  readonly L: Logistics;
+  readonly sites: Sites;
+  private loadL = true;
   private reserved = new Map<string, number>();
   private harness: THREE.InstancedMesh;
   constructor(readonly f: Factory) {
@@ -55,6 +70,14 @@ export class Workers {
     this.harness.geometry.setAttribute('aState', st); this.harness.geometry.setAttribute('aBelt', bl);
     this.harness.count = 0; this.harness.frustumCulled = false; this.harness.castShadow = true;
     f.render.group.add(this.harness);
+    // the logistics network and the construction sites hang off the factory (game.logistics, factory.sites)
+    this.L = new Logistics(f);
+    this.sites = this.L.sites = new Sites(f, this.L);
+    (f as unknown as { sites: Sites; logistics: Logistics }).sites = this.sites;
+    (f as unknown as { logistics: Logistics }).logistics = this.L;
+    (g as unknown as { logistics: Logistics }).logistics = this.L;
+    const store0 = f.store.bind(f);
+    f.store = () => { store0(); const run = g.run as unknown as { logistics?: Record<string, unknown> }; (run.logistics ??= {})[f.saveKey] = this.saveL(); };
     // every creature brought over becomes a worker on the roster (unassigned ones still roam and claim ground)
     g.on('convert', () => this.sync());
     g.on('print', () => this.sync());
@@ -71,13 +94,30 @@ export class Workers {
   of(c: Creature): Worker | null { return (c as unknown as { __wk?: Worker }).__wk ?? null; }
   enlist(c: Creature): Worker {
     const had = this.of(c); if (had) return had;
-    const w: Worker = { c, job: 'idle', state: 'find', target: null, seam: -1, route: null, src: null, dst: null, want: null, fromStores: false, carry: null, hunger: 1, mood: 0.8, t: 0, think: Math.random(), miser: 0, plant: -1, note: '' };
+    const w: Worker = { c, job: 'idle', state: 'find', target: null, seam: -1, route: null, src: null, dst: null, want: null, fromStores: false, carry: null, hunger: 1, mood: 0.8, t: 0, think: Math.random(), miser: 0, plant: -1, note: '', lj: null, legT: 0 };
     (c as unknown as { __wk?: Worker }).__wk = w;
     this.list.push(w);
     return w;
   }
   /** how much it can carry: big species carry more */
-  cap(c: Creature) { return clamp(Math.round(c.mass / 12), 2, 24); }
+  cap(c: Creature) {
+    // the engineered worker's profile (body, genes and robotic parts: src/life/cyber) says what it carries
+    const p = this.profile(c);
+    if (p && p.carry > 0) return clamp(Math.round(p.carry), 2, 60);
+    return clamp(Math.round(c.mass / 12), 2, 24);
+  }
+  private profiles = new Map<number, WorkerProfile | null>();
+  /** the creature agent's worker profile for a species (cached per species) */
+  profile(c: Creature): WorkerProfile | null {
+    const sp = c.sp as unknown as { id: number; design?: unknown };
+    if (!this.profiles.has(sp.id)) { let p: WorkerProfile | null = null; try { if (sp.design) p = workerProfile(sp.design as never); } catch { p = null; } this.profiles.set(sp.id, p); }
+    return this.profiles.get(sp.id) ?? null;
+  }
+  /** how good it is at a kind of work (1 = an ordinary animal; skills 0..10 from the profile) */
+  skill(c: Creature, s: 'haul' | 'dig' | 'farm' | 'build' | 'operate'): number {
+    const p = this.profile(c); const v = p?.skills?.[s as keyof WorkerProfile['skills']];
+    return typeof v === 'number' ? 0.6 + v * 0.14 : 1;
+  }
   whyJob(job: Job): string | null { const s = JOB_SKILL[job]; return s && !this.f.g.run.skills.has(s) ? `Needs ${SKILL[s]?.name ?? s}` : null; }
   assign(c: Creature, job: Job, target: FBuilding | null = null, seam = -1): string | null {
     const why = this.whyJob(job); if (why) return why;
@@ -97,6 +137,7 @@ export class Workers {
   release(c: Creature, keep = false) {
     const w = this.of(c); if (!w) return;
     for (const b of this.f.buildings) if (b.operator === c) b.operator = null;
+    if (w.lj) { this.L.abort(w); w.lj = null; }
     if (w.carry && !keep) { this.f.put(w.carry.id, w.carry.n); w.carry = null; }
     this.unreserve(w);
     if (!keep) { w.job = 'idle'; w.target = null; w.route = null; (c as unknown as { __job?: number }).__job = 0; c.order = null; }
@@ -138,11 +179,13 @@ export class Workers {
       // on a biotech field job (game.biotech): theirs, not ours
       if ((c as unknown as { __bjob?: number }).__bjob === 1) { if (w.job !== 'idle') this.release(c); continue; }
       if (w.job === 'idle') { w.hunger = Math.min(1, w.hunger + dt / 200); w.mood = Math.min(1, w.mood + dt / 300); continue; }
+      // dedicated to a route on the node map: it hauls, whatever it was doing
+      if (w.job !== 'haul' && w.job !== 'build' && this.L.dedicated(w)) { w.job = 'haul'; w.state = 'find'; }
       this.needs(w, dt);
       if (w.state === 'eat') { this.eat(w, dt); continue; }
       w.think -= dt;
       switch (w.job) {
-        case 'haul': this.haul(w, dt); break;
+        case 'haul': case 'build': this.haul(w, dt); break;
         case 'operate': this.operate(w, dt); break;
         case 'mine': this.mine(w, dt); break;
         case 'forage': this.forage(w, dt); break;
@@ -151,6 +194,9 @@ export class Workers {
     }
     this.draw();
     if (dt > 0) this.botTick(dt);
+    if (this.loadL && dt > 0) { this.loadL = false; this.loadSaved(); }
+    this.L.update(dt);
+    this.sites.update(dt);
   }
   /** hunger and mood; the animal's own appetite is kept out of it (we feed it) */
   private needs(w: Worker, dt: number) {
@@ -159,7 +205,7 @@ export class Workers {
     c.energy = Math.max(c.energy, 0.55);
     if (w.hunger < 0.15) w.mood = Math.max(0, w.mood - dt / 90);
     else if (w.hunger > 0.5) w.mood = Math.min(1, w.mood + dt / 260);
-    if (w.hunger < 0.3 && w.state !== 'eat' && !w.carry) { w.state = 'eat'; w.src = null; this.unreserve(w); }
+    if (w.hunger < 0.3 && w.state !== 'eat' && !w.carry) { if (w.lj) { this.L.abort(w); w.lj = null; } w.state = 'eat'; w.src = null; this.unreserve(w); }
     // a miserable worker slips its harness
     if (w.mood < 0.06) {
       w.miser += dt;
@@ -339,10 +385,20 @@ export class Workers {
   }
   private haul(w: Worker, dt: number) {
     const f = this.f, c = w.c;
+    if (w.lj) { this.runJob(w, dt); return; }
     if (w.state === 'find' || w.state === 'wait' || w.state === 'work') {
-      if (w.carry) { w.state = 'toDst'; return; }
+      if (w.carry) { w.state = 'toDst'; if (!w.dst) { const st = this.nearest(c.x, c.z, (b) => b.kind === 'depot' || (b.def.store !== undefined && b.kind !== 'barracks')); if (st) w.dst = st; else { f.put(w.carry.id, w.carry.n); w.carry = null; w.state = 'find'; } } return; }
       if (w.think > 0) return;
-      w.think = 1 + Math.random() * 0.5;
+      w.think = 0.6 + Math.random() * 0.4;
+      // the node map's routes and the construction sites come first
+      const lj = this.L.jobFor(w, this.cap(c));
+      if (lj) { w.lj = lj; w.legT = 0; w.note = ''; w.state = lj.act === 'build' || !lj.src ? 'toDst' : 'toSrc'; return; }
+      if (w.job === 'build' || !this.L.auto || this.L.dedicated(w)) {
+        w.state = 'wait'; w.note = this.L.dedicated(w) ? 'WAITING ON ITS ROUTE' : w.job === 'build' ? 'NO SITE TO BUILD' : 'NO ROUTE WANTS IT';
+        const home = this.nearest(c.x, c.z, (b) => b.kind === 'barracks' || b.kind === 'depot' || b.kind === 'bunkhouse');
+        if (home) this.goTo(w, home);
+        return;
+      }
       if (!this.plan(w)) {
         w.state = 'wait'; w.note = 'NOTHING TO CARRY';
         // wait by the nearest pen or uplink
@@ -385,6 +441,131 @@ export class Workers {
       this.unreserve(w); this.done(w);
       w.mood = Math.min(1, w.mood + 0.01);
     }
+  }
+  // ------------------------------------------------------------------ logistics jobs (node-map routes, sites)
+  /** a standing point beside a footprint rectangle */
+  private besideRect(cx: number, cz: number, fw: number, fd: number, c: Creature): [number, number] {
+    const p = 0.6 + c.radius * 0.5, x0 = cx - p, x1 = cx + fw + p, z0 = cz - p, z1 = cz + fd + p;
+    let x = clamp(c.x, x0, x1), z = clamp(c.z, z0, z1);
+    if (x > x0 && x < x1 && z > z0 && z < z1) { const dl = [x - x0, x1 - x, z - z0, z1 - z], m = Math.min(...dl); if (m === dl[0]) x = x0; else if (m === dl[1]) x = x1; else if (m === dl[2]) z = z0; else z = z1; }
+    return [x, z];
+  }
+  /** walk to a logistics node; true when there */
+  private goNode(w: Worker, n: NonNullable<LJob['src']>): boolean {
+    const L = this.L, c = w.c, b = L.bld(n);
+    if (b) return this.goTo(w, b);
+    if (n.kind === 'site') { const s = L.site(n); if (!s) return true; const [x, z] = this.besideRect(s.cx, s.cz, s.fw, s.fd, c); return this.go(w, x, z, 0.5); }
+    if (n.kind === 'pod') { const core = this.f.hive.core; if (!core) return true; const a = (c.id * 2.3) % (Math.PI * 2); return this.go(w, core.x + Math.cos(a) * 2.2, core.z + Math.sin(a) * 2.2, 0.6); }
+    if (n.kind === 'deposit') { const s = L.seam(n); if (!s) return true; const a = (c.id * 1.7) % (Math.PI * 2); return this.go(w, s.x + Math.cos(a) * (s.r + 0.3), s.z + Math.sin(a) * (s.r + 0.3), 0.5); }
+    const [x, z] = L.pos(n); return this.go(w, x, z, 0.8);
+  }
+  private endJob(w: Worker, aborted: boolean) {
+    if (aborted) this.L.abort(w);
+    w.lj = null; w.legT = 0; w.state = 'find'; w.think = 0.3;
+    if (w.carry) {
+      // what could not be delivered goes into the nearest store rather than vanish
+      const st = this.nearest(w.c.x, w.c.z, (b) => b.kind === 'depot' || (b.def.store !== undefined && b.kind !== 'barracks'));
+      if (st) { w.dst = st; w.want = null; w.state = 'toDst'; }
+      else { this.f.put(w.carry.id, w.carry.n); w.carry = null; }
+    }
+  }
+  private runJob(w: Worker, dt: number) {
+    const f = this.f, L = this.L, c = w.c, j = w.lj!;
+    if (!L.live.has(w)) { this.endJob(w, false); return; }
+    w.legT += dt;
+    // a leg that takes far too long (blocked path) gives the job up
+    if (w.legT > 90) { w.note = 'COULD NOT REACH IT'; this.endJob(w, true); return; }
+    const speed = mod(f.g, 'worker.speed') * (0.6 + 0.4 * w.mood);
+    if (j.act === 'build') {
+      const s = j.site;
+      if (!s || !this.sites.list.includes(s)) { this.L.live.delete(w); this.endJob(w, false); return; }
+      if (!this.goNode(w, j.dst)) return;
+      w.state = 'work';
+      this.face(c, s.cx + s.fw / 2, s.cz + s.fd / 2); this.workAnim(w, dt);
+      if (Math.random() < dt * 2) f.g.fx.burst(s.cx + s.fw / 2 + (Math.random() - 0.5) * s.fw * 0.6, s.y + 0.3 + Math.random() * s.def.h * 0.7, s.cz + s.fd / 2 + (Math.random() - 0.5) * s.fd * 0.6, 2, 0xd8c69a, { glow: true, speed: 1.4, up: 0.8, size: 1.8, life: 0.25 });
+      // big, strong animals build faster
+      const k = clamp(c.mass / 60, 0.6, 2) * speed * this.skill(c, 'build');
+      if (this.sites.work(s, dt, k)) { this.sites.release(j); this.L.live.delete(w); this.endJob(w, false); w.mood = Math.min(1, w.mood + 0.03); }
+      return;
+    }
+    if (w.state === 'toSrc' && j.src) {
+      const src = j.src;
+      if (src.kind === 'deposit') {
+        const s = L.seam(src);
+        if (!s || s.amount < 1 || s.drill) { this.endJob(w, true); return; }
+        if (!this.goNode(w, src)) return;
+        w.state = 'toSrc';
+        this.face(c, s.x, s.z); this.workAnim(w, dt);
+        const rate = 0.22 * clamp(c.mass / 60, 0.6, 2.2) * speed * mod(f.g, 'mine.rate') * this.skill(c, 'dig');
+        w.carry ??= { id: s.item, n: 0 };
+        const before = Math.floor(w.carry.n);
+        w.carry.n += rate * dt; s.amount -= rate * dt;
+        if (Math.floor(w.carry.n) > before) { f.g.fx.burst(s.x + (c.x - s.x) * 0.3, f.g.world.surfaceY(s.x, s.z) + 0.3, s.z + (c.z - s.z) * 0.3, 4, ITEMS[s.item].side, { speed: 1.4, up: 1.6, size: 2.2, life: 0.5, grav: 8 }); sfx('crack', 1.6, f.g.audible(c.x, c.z) * 0.2); }
+        w.note = 'DIGGING';
+        if (w.carry.n >= j.n) { w.carry.n = Math.floor(w.carry.n); L.picked(w, w.carry.n); w.state = 'toDst'; w.legT = 0; w.note = ''; }
+        return;
+      }
+      if (src.kind === 'field') {
+        const fl = L.fieldOf(src), flora = f.g.world.flora;
+        if (!fl) { this.endJob(w, true); return; }
+        // the nearest grown plant in the field: trees give wood, the rest fibre and leaves
+        if (w.plant < 0 || flora.bio[w.plant] < 0.25 || Math.hypot(flora.x[w.plant] - fl.x, flora.z[w.plant] - fl.z) > fl.r) {
+          w.plant = -1; let bd = 1e9;
+          flora.near(fl.x, fl.z, fl.r, (i, d2) => { if (flora.bio[i] > 0.5 && !f.hive.isGrafted(i)) { const tree = flora.species[flora.sp[i]]?.tree; const wantTree = j.item === itemOr('wood', j.item); if (tree === wantTree || j.item === 'carbon' || j.item === 'fruit') { const d = d2 + Math.hypot(flora.x[i] - c.x, flora.z[i] - c.z) * 3; if (d < bd) { bd = d; w.plant = i; } } } });
+          if (w.plant < 0) { w.note = 'FIELD IS BARE'; if (w.carry && w.carry.n >= 1) { w.carry.n = Math.floor(w.carry.n); L.picked(w, w.carry.n); w.state = 'toDst'; } else this.endJob(w, true); return; }
+        }
+        if (!this.go(w, flora.x[w.plant], flora.z[w.plant], 0.6)) return;
+        this.workAnim(w, dt); w.note = 'HARVESTING';
+        const got = flora.eat(w.plant, 0.1 * dt * speed * this.skill(c, 'farm'));
+        w.carry ??= { id: j.item, n: 0 };
+        w.carry.n += got * 1.6 + dt * 0.08;
+        if (Math.random() < dt * 3) f.g.fx.burst(flora.x[w.plant], f.g.world.surfaceY(flora.x[w.plant], flora.z[w.plant]) + 0.5, flora.z[w.plant], 2, ITEMS[j.item]?.side ?? 0x6a8a3a, { speed: 1, up: 1.2, size: 2, life: 0.4, grav: 5 });
+        if (w.carry.n >= j.n) { w.carry.n = Math.floor(w.carry.n); L.picked(w, w.carry.n); w.state = 'toDst'; w.legT = 0; w.note = ''; }
+        return;
+      }
+      if (!this.goNode(w, src)) return;
+      const [sx, sz] = L.pos(src); this.face(c, sx, sz); this.workAnim(w, dt);
+      const n = L.take(src, j.item, Math.min(j.n, this.cap(c)));
+      L.picked(w, n);
+      if (n < 1) { w.note = 'SOURCE WAS EMPTY'; this.endJob(w, true); return; }
+      w.carry = { id: j.item, n }; w.state = 'toDst'; w.legT = 0;
+      sfx('click', 0.6, f.g.audible(c.x, c.z) * 0.3);
+      return;
+    }
+    // to the target
+    if (!this.goNode(w, j.dst)) return;
+    const [dx, dz] = L.pos(j.dst); this.face(c, dx, dz);
+    const load = w.carry;
+    const got = load ? L.give(j.dst, load.id, load.n) : 0;
+    if (load) load.n -= got;
+    if (j.site) this.sites.landed(j, got);
+    L.delivered(w, got);
+    if (load && load.n < 1) w.carry = null;
+    w.mood = Math.min(1, w.mood + 0.01);
+    this.endJob(w, false);
+  }
+  /** the saved network, with buildings named by kind and cell (ids change between sessions) */
+  private saveL() {
+    const s = this.L.save(), name = (id: string) => { if (!id.startsWith('b:')) return id; const b = this.f.byId.get(Number(id.slice(2))); return b ? `k:${b.kind}@${b.cx},${b.cz}` : id; };
+    s.nodes = s.nodes.map(([id, x, z]) => [name(id), x, z]);
+    s.routes = s.routes.map((r) => ({ ...r, from: name(r.from), to: name(r.to) }));
+    const sites = this.sites.list.map((x) => ({ kind: x.kind, cx: x.cx, cz: x.cz, r: x.r, got: x.got, work: x.work }));
+    return { ...s, sites };
+  }
+  private loadSaved() {
+    const run = this.f.g.run as unknown as { logistics?: Record<string, unknown> };
+    const sv = run.logistics?.[this.f.saveKey] as (ReturnType<Workers['saveL']>) | undefined;
+    if (!sv) return;
+    const f = this.f, find = (id: string) => {
+      if (!id.startsWith('k:')) return id;
+      const m = /^k:(.+)@(-?\d+),(-?\d+)$/.exec(id); if (!m) return id;
+      const b = f.buildings.find((q) => q.kind === m[1] && q.cx === Number(m[2]) && q.cz === Number(m[3]));
+      return b ? 'b:' + b.id : id;
+    };
+    try {
+      for (const st of sv.sites ?? []) { const s = this.sites.restore(st.kind, st.cx, st.cz, st.r, st.got, st.work); void s; }
+      this.L.load({ ...sv, nodes: sv.nodes.map(([id, x, z]) => [find(id), x, z]), routes: sv.routes.map((r) => ({ ...r, from: find(r.from), to: find(r.to) })) });
+    } catch (e) { console.error('logistics load', e); }
   }
   // ------------------------------------------------------------------ operating
   private operate(w: Worker, dt: number) {

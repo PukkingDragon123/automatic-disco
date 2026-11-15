@@ -1,6 +1,6 @@
-// ?test=factions: a region with a dug-in Soviet base and a PRC station near Unit 07's landing, their build orders
-// raised at once, and waves already moving (the Soviet column at Unit 07's works, PRC raiders at the Soviets).
-//   &look=sov|prc|front|home|wave|raid   camera target (default sov; wave/raid: the Soviet / PRC wave)   &dist=40 &yaw=0.6
+// ?test=factions: a region with a dug-in Concord base and a Consortium station near Unit 07's landing, their build orders
+// raised at once, and waves already moving (the Concord column at Unit 07's works, Consortium raiders at the Concord).
+//   &look=sov|prc|front|home|wave|raid   camera target (default sov; wave/raid: the Concord / Consortium wave)   &dist=40 &yaw=0.6
 //   &exp=5                     a human expedition lands after 5 s (the parley dialog follows)
 //   &ff=20                     fast-forward the faction sim n seconds before showing
 //   &peace                     no waves (just the bases)      &seed=11 &biome=meadow
@@ -20,8 +20,8 @@ export async function testFactions(engine: Engine, input: Input, P: URLSearchPar
   const L = g.region.landing, N = g.region.N;
   const cl = (v: number) => Math.max(14, Math.min(N - 14, v));
   const plan: FactionSite[] = [
-    { faction: 'soviet', x: cl(L.x + 34), z: cl(L.z + 6), strength: 1.2, arrive: 0, name: 'ZARYA' },
-    { faction: 'prc', x: cl(L.x + 14), z: cl(L.z - 36), strength: 1.1, arrive: 0, name: 'HONGQI' },
+    { faction: 'soviet', x: cl(L.x + 34), z: cl(L.z + 6), strength: 1.2, arrive: 0, name: 'BASTION' },
+    { faction: 'prc', x: cl(L.x + 14), z: cl(L.z - 36), strength: 1.1, arrive: 0, name: 'TIDEWATER' },
   ];
   if (P.has('exp')) plan.push({ faction: 'expedition', x: cl(L.x - 30), z: cl(L.z + 10), strength: 0.9, arrive: Number(P.get('exp') || 5), name: 'MERIDIAN' });
   // replace the region's own plan with the test layout
@@ -31,7 +31,7 @@ export async function testFactions(engine: Engine, input: Input, P: URLSearchPar
   g.vision.revealAll = true;
   // skip the hatching; Unit 07 stays parked (free camera) unless &golem
   (g as any).hatchT = 9.5; (g as any).cap?.removeFromParent(); (g as any).cap = null;
-  if (!P.has('golem')) g.player.update = () => {};
+  if (!P.has('golem')) (g.player as unknown as { update?: () => void }).update = () => {};
   const [sov, prc] = F.programmes;
   sov.debugBuildAll(9); prc.debugBuildAll(8);
   for (const s of F.structures) s.built = Math.max(s.built, 0.999);

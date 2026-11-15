@@ -623,7 +623,7 @@ export class AscendScreen implements Screen {
       drone.set(0.8);
       await c.wait(1.2);
       await c.fade(1, 1.2);
-      await c.card(`${P.name.toUpperCase()}`, 'CLAIMED FOR HUMANITY', 'U.S.P.C. · WORLD ' + String(P.seed % 1000).padStart(3, '0'), 3.6, 'CLAIMED');
+      await c.card(`${P.name.toUpperCase()}`, 'CLAIMED FOR HUMANITY', 'UNAA · WORLD ' + String(P.seed % 1000).padStart(3, '0'), 3.6, 'CLAIMED');
       c.fade(0, 1.2);
       c.cam.cut(new V3(0, 0.35, 3.4), new V3(0, 0, 0), 32);
     }, { name: 'ascend' });

@@ -1,5 +1,5 @@
-// Faction livery and the hardware kit: palettes drawn from the master ramps, stencilled decal atlases (red star,
-// five-point star, Cyrillic / Chinese / Latin serials), shared materials, and a small mesh builder that bakes
+// Faction livery and the hardware kit: palettes drawn from the master ramps, stencilled decal atlases (the Concord's
+// hexagon and chevron, the Consortium's wave crest, Latin serials), shared materials, and a small mesh builder that bakes
 // primitives into one vertex-coloured, flat-shaded geometry per model (plus one decal and one lamp geometry).
 import * as THREE from 'three';
 import { gbuf } from '../../gfx/gbuf';
@@ -9,26 +9,24 @@ import type { FactionId } from './plan';
 export interface Livery {
   hull: number; hull2: number; dark: number; metal: number; trim: number; accent: number; star: number; stencil: number; glass: number; lamp: number; rust: number;
 }
-const O = RAMPS.olive, S = RAMPS.steel, SR = RAMPS.stampRed, SG = RAMPS.sage, P = RAMPS.paper, GA = RAMPS.glowAmber;
+const O = RAMPS.olive, S = RAMPS.steel, SR = RAMPS.stampRed, P = RAMPS.paper, GA = RAMPS.glowAmber, RU = RAMPS.rust, SN = RAMPS.snow, TL = RAMPS.teal, GT = RAMPS.glowTeal;
 export const LIVERY: Record<FactionId, Livery> = {
-  // riveted olive-drab steel, bare-metal machinery, a red star with a pale rim
-  soviet: { hull: O[4], hull2: O[3], dark: S[1], metal: S[4], trim: S[5], accent: SR[3], star: SR[3], stencil: P[4], glass: RAMPS.water[2], lamp: GA[4], rust: RAMPS.rust[3] },
-  // pale sage enamel, slimmer forms, red bands and a gold-rimmed five-point star
-  prc: { hull: SG[5], hull2: SG[4], dark: RAMPS.slate[1], metal: S[5], trim: RAMPS.bone[4], accent: SR[3], star: SR[3], stencil: SR[2], glass: RAMPS.water[2], lamp: GA[4], rust: RAMPS.ochre[3] },
+  // the EURASIAN CONCORD: graphite slab armour, bare machinery, signal-orange bands, an orange hexagon and chevron
+  soviet: { hull: S[3], hull2: S[2], dark: RAMPS.basalt[1], metal: S[4], trim: RU[5], accent: RU[5], star: RU[5], stencil: P[4], glass: RAMPS.water[2], lamp: GA[4], rust: RU[3] },
+  // the PACIFIC RIM CONSORTIUM: ceramic-white shells, slim forms, teal bands, a teal wave crest
+  prc: { hull: SN[4], hull2: SN[3], dark: RAMPS.slate[1], metal: S[5], trim: TL[4], accent: TL[4], star: TL[5], stencil: RAMPS.ink[1], glass: RAMPS.water[2], lamp: GT[4], rust: RAMPS.slate[3] },
   // an off-white private capsule with safety-amber bands, olive field kit
   expedition: { hull: P[3], hull2: O[4], dark: O[1], metal: S[4], trim: GA[2], accent: GA[3], star: GA[3], stencil: RAMPS.ink[1], glass: RAMPS.water[2], lamp: GA[4], rust: RAMPS.rust[3] },
 };
 
 // ------------------------------------------------------------------------------------------------ decal atlas
 const SERIALS: Record<FactionId, string[]> = {
-  soviet: ['СССР', 'КОСМОС-4', 'Л-3 №047', 'ОПАСНО', 'ВОСТОК-2', 'Т-57 №12', 'ГСМ', 'МОЛОТ-2', 'Р-7 №3', 'СТОП', 'РУДНИК-3', 'ЗАВОД 9', 'ДОТ-4', 'ПУШКА-1'],
-  prc: ['中国', '东方红-1', '红旗-7', '八一', '危险', '长征-3', '飞燕-3', '矿-2', '东风-5', '天山', '工-4', '燃料', '哨-6', '炮-2'],
+  soviet: ['CONCORD', 'EC GRANITE-4', 'L-3 N047', 'DANGER', 'BASTION-2', 'T-12 HEAVY', 'FUEL', 'ANVIL-2', 'R-7 N3', 'HALT', 'RIG-3', 'WORKS 9', 'BUNKER 4', 'GUN-1'],
+  prc: ['PRX', 'TIDEWATER-1', 'REEF-7', 'PRX-81', 'CAUTION', 'SKIFF-3', 'LANTERN-6', 'MINE-2', 'BREAKER-5', 'HALCYON', 'SHOP-4', 'FUEL', 'TOWER-6', 'GUN-2'],
   expedition: ['SURVEY 9', 'KEEP CLEAR', 'NO STEP', 'FUEL', 'CAMP 2', 'RADIO', 'MV-12', 'DANGER', 'HV-7', 'CREW 4', 'TENT B', 'MAST 1', 'POST 3', 'GUN 1'],
 };
-const NAME_LOCAL: Record<string, string> = {
-  ZARYA: 'ЗАРЯ-1', VOSTOK: 'ВОСТОК-1', KOSMOS: 'КОСМОС-1', RASSVET: 'РАССВЕТ-1', MOLNIYA: 'МОЛНИЯ-1', TAYGA: 'ТАЙГА-1',
-  HONGQI: '红旗-1', DONGFENG: '东风-1', CHANGZHENG: '长征-1', FEIYAN: '飞燕-1', TIANSHAN: '天山-1', HUANGHE: '黄河-1',
-};
+/** base names as stencilled on the hull */
+const NAME_LOCAL: Record<string, string> = {};
 /** serial strip index meanings: 0 the nation mark, 1 the base name, 2.. the serials above (in order) */
 export type Rect = [number, number, number, number];
 export interface Atlas { tex: THREE.CanvasTexture; star: Rect; roundel: Rect; hazard: Rect; plate: Rect; text: Rect[] }
@@ -50,6 +48,27 @@ function bevelStar(g: CanvasRenderingContext2D, cx: number, cy: number, R: numbe
     g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a1) * r, cy + Math.sin(a1) * r); g.lineTo(tx, ty); g.closePath(); g.fillStyle = lit; g.fill();
     g.beginPath(); g.moveTo(cx, cy); g.lineTo(tx, ty); g.lineTo(cx + Math.cos(a2) * r, cy + Math.sin(a2) * r); g.closePath(); g.fillStyle = shd; g.fill();
   }
+}
+/** the Concord mark: an orange hexagon with a pale rim and a dark chevron pointing up, split lit / shaded */
+function concordMark(g: CanvasRenderingContext2D, cx: number, cy: number, R: number, lit: string, shd: string, rim: string, ink: string) {
+  const hex = (r: number) => { g.beginPath(); for (let i = 0; i < 6; i++) { const a = -Math.PI / 2 + (i * Math.PI) / 3; g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); } g.closePath(); };
+  hex(R + 5); g.fillStyle = rim; g.fill();
+  hex(R); g.fillStyle = shd; g.fill();
+  g.save(); hex(R); g.clip(); g.fillStyle = lit; g.fillRect(cx - R, cy - R, R, R * 2); g.restore();
+  const w = R * 0.62, h = R * 0.5, t = R * 0.22;
+  g.beginPath(); g.moveTo(cx, cy - h); g.lineTo(cx + w, cy + h * 0.55); g.lineTo(cx + w - t * 1.2, cy + h * 0.55 + t * 0.9); g.lineTo(cx, cy - h + t * 1.5); g.lineTo(cx - w + t * 1.2, cy + h * 0.55 + t * 0.9); g.lineTo(cx - w, cy + h * 0.55); g.closePath();
+  g.fillStyle = ink; g.fill();
+}
+/** the Consortium mark: a teal disc with a pale rim, three wave crests rising over a horizon bar */
+function consortiumMark(g: CanvasRenderingContext2D, cx: number, cy: number, R: number, teal: string, tealD: string, pale: string) {
+  g.fillStyle = pale; g.beginPath(); g.arc(cx, cy, R + 5, 0, Math.PI * 2); g.fill();
+  g.fillStyle = teal; g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.fill();
+  g.save(); g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.clip();
+  g.fillStyle = tealD; g.fillRect(cx - R, cy + R * 0.25, R * 2, R);
+  g.strokeStyle = pale; g.lineWidth = R * 0.13; g.lineCap = 'butt';
+  for (let k = 0; k < 3; k++) { const y = cy - R * 0.35 + k * R * 0.3; g.beginPath(); for (let x = -R; x <= R; x += 2) { const u = x / R; g.lineTo(cx + x, y - Math.sin(u * Math.PI * 1.5 + k) * R * 0.1); } g.stroke(); }
+  g.fillStyle = pale; g.fillRect(cx - R, cy + R * 0.32, R * 2, R * 0.08);
+  g.restore();
 }
 /** stencil lettering: condensed, with the bridges a sign-painter's stencil leaves, and a little wear */
 function stencil(g: CanvasRenderingContext2D, s: string, x: number, y: number, w: number, h: number, col: string, cjk: boolean, seed: number) {
@@ -85,8 +104,9 @@ export function atlas(f: FactionId, name = ''): Atlas {
   const L = LIVERY[f];
   const red = hexCss(SR[3]), redD = hexCss(SR[2]), pale = hexCss(P[4]), gold = hexCss(RAMPS.ochre[5]), ink = hexCss(RAMPS.ink[1]), amber = hexCss(GA[3]);
   // 0: the emblem
-  if (f === 'soviet') bevelStar(g, 64, 68, 54, red, redD, pale, 4);
-  else if (f === 'prc') { bevelStar(g, 64, 68, 54, red, redD, gold, 5); }
+  const orange = hexCss(RU[5]), orangeD = hexCss(RU[3]), teal = hexCss(TL[4]), tealD = hexCss(TL[2]), snow = hexCss(SN[5]), basalt = hexCss(RAMPS.basalt[1]);
+  if (f === 'soviet') concordMark(g, 64, 64, 52, orange, orangeD, pale, basalt);
+  else if (f === 'prc') consortiumMark(g, 64, 64, 52, teal, tealD, snow);
   else { // expedition: a compass rose roundel
     g.fillStyle = ink; g.beginPath(); g.arc(64, 64, 58, 0, Math.PI * 2); g.fill();
     g.fillStyle = amber; g.beginPath(); g.arc(64, 64, 52, 0, Math.PI * 2); g.fill();
@@ -96,16 +116,18 @@ export function atlas(f: FactionId, name = ''): Atlas {
   // 1: roundel (star in a ring: unit markings)
   {
     const cx = 192, cy = 64;
-    g.fillStyle = f === 'expedition' ? amber : f === 'prc' ? gold : pale; g.beginPath(); g.arc(cx, cy, 58, 0, Math.PI * 2); g.fill();
-    g.fillStyle = f === 'expedition' ? ink : redD; g.beginPath(); g.arc(cx, cy, 50, 0, Math.PI * 2); g.fill();
-    if (f === 'expedition') { g.fillStyle = amber; g.fillRect(cx - 40, cy - 8, 80, 16); g.fillRect(cx - 8, cy - 40, 16, 80); }
-    else bevelStar(g, cx, cy + 3, 40, red, redD, f === 'prc' ? gold : pale, 3);
+    if (f === 'expedition') {
+      g.fillStyle = amber; g.beginPath(); g.arc(cx, cy, 58, 0, Math.PI * 2); g.fill();
+      g.fillStyle = ink; g.beginPath(); g.arc(cx, cy, 50, 0, Math.PI * 2); g.fill();
+      g.fillStyle = amber; g.fillRect(cx - 40, cy - 8, 80, 16); g.fillRect(cx - 8, cy - 40, 16, 80);
+    } else if (f === 'soviet') { g.fillStyle = basalt; g.fillRect(cx - 60, cy - 60, 120, 120); concordMark(g, cx, cy, 44, orange, orangeD, pale, basalt); }
+    else { g.fillStyle = snow; g.fillRect(cx - 60, cy - 60, 120, 120); consortiumMark(g, cx, cy, 46, teal, tealD, hexCss(RAMPS.ink[1])); }
   }
   // 2: hazard band (diagonal stripes)
   {
     g.save(); g.beginPath(); g.rect(256, 0, 128, 128); g.clip();
-    g.fillStyle = f === 'expedition' ? amber : f === 'prc' ? red : pale; g.fillRect(256, 0, 128, 128);
-    g.fillStyle = f === 'soviet' ? red : ink;
+    g.fillStyle = f === 'expedition' ? amber : f === 'prc' ? snow : orange; g.fillRect(256, 0, 128, 128);
+    g.fillStyle = f === 'prc' ? teal : ink;
     for (let i = -4; i < 8; i++) { g.beginPath(); g.moveTo(256 + i * 32, 128); g.lineTo(256 + i * 32 + 16, 128); g.lineTo(256 + i * 32 + 16 + 128, 0); g.lineTo(256 + i * 32 + 128, 0); g.closePath(); g.fill(); }
     g.restore();
   }
@@ -117,17 +139,17 @@ export function atlas(f: FactionId, name = ''): Atlas {
     g.fillStyle = hexCss(S[1]); for (let i = 0; i < 5; i++) g.fillRect(404, 40 + i * 12, 60 + ((i * 37) % 30), 4);
   }
   // text strips: 2 columns x 8 rows of 256 x 48 under the emblems
-  const texts = [f === 'soviet' ? 'СССР' : f === 'prc' ? '中国' : 'MERIDIAN', NAME_LOCAL[name] ?? (name || 'BASE 1'), ...SERIALS[f]];
+  const texts = [f === 'soviet' ? 'CONCORD' : f === 'prc' ? 'PRX' : 'MERIDIAN', NAME_LOCAL[name] ?? (name || 'BASE 1'), ...SERIALS[f]];
   const rects: Rect[] = [];
-  const cjk = f === 'prc';
+  const cjk = false;
   const col = hexCss(L.stencil);
   for (let i = 0; i < 16; i++) {
     const cx = (i % 2) * 512, cy = 128 + Math.floor(i / 2) * 48;
     const s = texts[i % texts.length];
-    if (i === 0 && f !== 'expedition') stencil(g, s, cx, cy, 256, 48, red, cjk, 7 + i);
+    if (i === 0 && f !== 'expedition') stencil(g, s, cx, cy, 256, 48, f === 'prc' ? teal : orange, cjk, 7 + i);
     else stencil(g, s, cx, cy, 256, 48, col, cjk && /[一-鿿]/.test(s), 7 + i);
     // the same text in pale stencil for dark hulls (second half of each row)
-    stencil(g, s, cx + 256, cy, 256, 48, i === 0 && f !== 'expedition' ? red : pale, cjk && /[一-鿿]/.test(s), 31 + i);
+    stencil(g, s, cx + 256, cy, 256, 48, i === 0 && f !== 'expedition' ? (f === 'prc' ? teal : orange) : pale, cjk && /[一-鿿]/.test(s), 31 + i);
     rects.push([cx / W, 1 - (cy + 48) / H, (cx + 256) / W, 1 - cy / H]);
   }
   for (let i = 0; i < 16; i++) { const r = rects[i]; rects.push([r[0] + 256 / W, r[1], r[2] + 256 / W, r[3]]); }

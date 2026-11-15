@@ -1,0 +1,506 @@
+{
+ "modern_arm_chair_01": {
+  "name": "Modern Arm Chair 01",
+  "authors": [
+   "Vibrant Nordic"
+  ],
+  "height": 1.0228520567470696
+ },
+ "metal_office_desk": {
+  "name": "Metal Office Desk",
+  "authors": [
+   "Ulan Cabanilla"
+  ],
+  "height": 0.7875000089406967
+ },
+ "binder_notebook": {
+  "name": "Binder Notebook",
+  "authors": [
+   "DaDrood"
+  ],
+  "height": 0.025289426557719707
+ },
+ "clipboard": {
+  "name": "Clipboard",
+  "authors": [
+   "ProgrammerOnCoffee"
+  ],
+  "height": 0.041990341851487756
+ },
+ "office_notepads": {
+  "name": "Office Notepads",
+  "authors": [
+   "Ulan Cabanilla"
+  ],
+  "height": 0.02199999988079071
+ },
+ "vintage_spacecraft_instrument": {
+  "name": "Vintage Spacecraft Instrument",
+  "authors": [
+   "Micha\u0142 Wi\u015bniewski"
+  ],
+  "height": 0.26928550004959106
+ },
+ "wall_clock": {
+  "name": "Wall Clock",
+  "authors": [
+   "PierreB3D"
+  ],
+  "height": 0.3204909861087799
+ },
+ "industrial_microscope": {
+  "name": "Industrial Microscope",
+  "authors": [
+   "Lukas Walzer"
+  ],
+  "height": 0.4617440301226452
+ },
+ "chemistry_set": {
+  "name": "Chemistry Set",
+  "authors": [
+   "Ji\u0159\u00ed Pt\u00e1\u010dek"
+  ],
+  "height": 0.42901350278407335
+ },
+ "bunsen_burner": {
+  "name": "Bunsen Burner",
+  "authors": [
+   "BKS"
+  ],
+  "height": 0.1731255203485489
+ },
+ "potted_plant_01": {
+  "name": "Potted Plant 01",
+  "authors": [
+   "Rico Cilliers"
+  ],
+  "height": 1.3507787585258484
+ },
+ "potted_plant_02": {
+  "name": "Potted Plant 02",
+  "authors": [
+   "Rico Cilliers"
+  ],
+  "height": 0.8411787391305552
+ },
+ "potted_plant_04": {
+  "name": "Potted Plant 04",
+  "authors": [
+   "James Ray Cock"
+  ],
+  "height": 0.2675964875961654
+ },
+ "planter_box_01": {
+  "name": "Planter Box 01",
+  "authors": [
+   "James Ray Cock"
+  ],
+  "height": 0.42496823612600565
+ },
+ "magnifying_glass_01": {
+  "name": "Magnifying Glass 01",
+  "authors": [
+   "Nazar Borodavka"
+  ],
+  "height": 0.2715718152341225
+ },
+ "retro_multimeter": {
+  "name": "Retro Multimeter",
+  "authors": [
+   "elli moeller"
+  ],
+  "height": 0.2786375405266881
+ },
+ "circuit_board": {
+  "name": "Circuit Board",
+  "authors": [
+   "Benny Weimer"
+  ],
+  "height": 0.07829589396715164
+ },
+ "metal_tool_chest": {
+  "name": "Metal Tool Chest",
+  "authors": [
+   "Yann Kervran",
+   "John Hutcheson"
+  ],
+  "height": 0.6518355906009674
+ },
+ "tool_cart": {
+  "name": "Tool Cart",
+  "authors": [
+   "Savva Zakharov"
+  ],
+  "height": 0.964644730091095
+ },
+ "bench_vice_01": {
+  "name": "Bench Vice 01",
+  "authors": [
+   "Yann Kervran",
+   "Antanas Kep"
+  ],
+  "height": 0.2716780751943588
+ },
+ "adjustable_wrench": {
+  "name": "Adjustable Wrench",
+  "authors": [
+   "Mateusz Sadek"
+  ],
+  "height": 0.2541303038597107
+ },
+ "combination_wrench": {
+  "name": "Combination Wrench",
+  "authors": [
+   "BKS"
+  ],
+  "height": 0.021513011306524277
+ },
+ "cross_pein_hammer": {
+  "name": "Cross Pein Hammer",
+  "authors": [
+   "Tics"
+  ],
+  "height": 0.3002498894929886
+ },
+ "pliers": {
+  "name": "Pliers",
+  "authors": [
+   "PierreB3D"
+  ],
+  "height": 0.17978323251008987
+ },
+ "screwdriver": {
+  "name": "Screwdriver",
+  "authors": [
+   "PierreB3D"
+  ],
+  "height": 0.20904450863599777
+ },
+ "portable_welding_cart": {
+  "name": "Portable Welding Cart",
+  "authors": [
+   "Georgii Gorbunov"
+  ],
+  "height": 1.5631701946258545
+ },
+ "steel_frame_shelves_01": {
+  "name": "Steel Frame Shelves 01",
+  "authors": [
+   "James Ray Cock"
+  ],
+  "height": 2.1405010361922905
+ },
+ "metal_toolbox": {
+  "name": "Metal Toolbox",
+  "authors": [
+   "Mateusz Sadek"
+  ],
+  "height": 0.34710586071014404
+ },
+ "korean_fire_extinguisher_01": {
+  "name": "Korean Fire Extinguisher 01",
+  "authors": [
+   "UM JOORIN"
+  ],
+  "height": 0.6592507164176169
+ },
+ "power_box_01": {
+  "name": "Power Box 01",
+  "authors": [
+   "Rico Cilliers",
+   "Yann Kervran"
+  ],
+  "height": 0.503142774105072
+ },
+ "hand_truck": {
+  "name": "Hand Truck",
+  "authors": [
+   "Mutanzom3D"
+  ],
+  "height": 1.40251275151968
+ },
+ "throw_pillows_01": {
+  "name": "Throw Pillows 01",
+  "authors": [
+   "Serhii Khromov"
+  ],
+  "height": 0.4501592831220478
+ },
+ "alarm_clock_01": {
+  "name": "Alarm Clock 01",
+  "authors": [
+   "Yann Kervran",
+   "James Ray Cock"
+  ],
+  "height": 0.17415538430213928
+ },
+ "portable_cassette_player": {
+  "name": "Portable Cassette Player",
+  "authors": [
+   "Mateusz Sadek"
+  ],
+  "height": 0.13030561804771423
+ },
+ "gamepad": {
+  "name": "Gamepad",
+  "authors": [
+   "Josh Dean"
+  ],
+  "height": 0.02
+ },
+ "standing_picture_frame_01": {
+  "name": "Standing Picture Frame 01",
+  "authors": [
+   "James Ray Cock"
+  ],
+  "height": 0.24965811520814896
+ },
+ "rubber_boots": {
+  "name": "Rubber Boots",
+  "authors": [
+   "L"
+  ],
+  "height": 0.37304434180259705
+ },
+ "decorative_book_set_01": {
+  "name": "Decorative Book Set 01",
+  "authors": [
+   "James Ray Cock"
+  ],
+  "height": 0.2856543071102351
+ },
+ "round_spectacles": {
+  "name": "Round Spectacles",
+  "authors": [
+   "Sean Buckley"
+  ],
+  "height": 0.04626242816448212
+ },
+ "metal_stool_01": {
+  "name": "Metal Stool 01",
+  "authors": [
+   "Ulan Cabanilla"
+  ],
+  "height": 0.8827742969733663
+ },
+ "vintage_electric_kettle": {
+  "name": "Vintage Electric Kettle",
+  "authors": [
+   "SV Garip"
+  ],
+  "height": 0.3047400116920471
+ },
+ "vintage_microwave": {
+  "name": "Vintage Microwave",
+  "authors": [
+   "Adam Nekola"
+  ],
+  "height": 0.5258261561393738
+ },
+ "tea_set_01": {
+  "name": "Tea Set 01",
+  "authors": [
+   "James Ray Cock",
+   "Rico Cilliers",
+   "Jurita Burger"
+  ],
+  "height": 0.16499304870376363
+ },
+ "bananas": {
+  "name": "Bananas",
+  "authors": [
+   "Alexander Shulha"
+  ],
+  "height": 0.1787654608488083
+ },
+ "long_life_food": {
+  "name": "Long Life Food",
+  "authors": [
+   "Mia Pecina Zorko"
+  ],
+  "height": 0.23757458478212357
+ },
+ "russian_food_cans_01": {
+  "name": "Russian Food Cans 01",
+  "authors": [
+   "Kosan Aziz"
+  ],
+  "height": 0.08489999175071716
+ },
+ "plastic_thermos": {
+  "name": "Plastic Thermos",
+  "authors": [
+   "PierreB3D"
+  ],
+  "height": 0.3204147517681122
+ },
+ "pot_enamel_01": {
+  "name": "Pot Enamel 01",
+  "authors": [
+   "Kuutti Siitonen"
+  ],
+  "height": 0.17826278507709503
+ },
+ "wooden_bowl_01": {
+  "name": "Wooden Bowl 01",
+  "authors": [
+   "Oliver Harries"
+  ],
+  "height": 0.09369255532510579
+ },
+ "food_apple_01": {
+  "name": "Food Apple 01",
+  "authors": [
+   "Oliver Harries"
+  ],
+  "height": 0.08538994403897959
+ },
+ "medical_box": {
+  "name": "Medical Box",
+  "authors": [
+   "Ulan Cabanilla"
+  ],
+  "height": 0.0975121483206749
+ },
+ "medical_tape": {
+  "name": "Medical Tape",
+  "authors": [
+   "Miroslav Turura"
+  ],
+  "height": 0.0250389501452446
+ },
+ "plastic_container": {
+  "name": "Plastic Container",
+  "authors": [
+   "PierreB3D"
+  ],
+  "height": 0.42968997440377776
+ },
+ "wheelchair_01": {
+  "name": "Wheelchair 01",
+  "authors": [
+   "Garreth Dean"
+  ],
+  "height": 1.1035015587694943
+ },
+ "portable_generator": {
+  "name": "Portable Generator",
+  "authors": [
+   "James Ray Cock"
+  ],
+  "height": 0.5769232391612604
+ },
+ "small_lpg_tank": {
+  "name": "Small Lpg Tank",
+  "authors": [
+   "Ulan Cabanilla"
+  ],
+  "height": 0.6419749736785434
+ },
+ "propane_tank": {
+  "name": "Propane Tank",
+  "authors": [
+   "Slinc"
+  ],
+  "height": 0.5537950303405523
+ },
+ "oil_tin": {
+  "name": "Oil Tin",
+  "authors": [
+   "Niklas"
+  ],
+  "height": 0.20537899754708633
+ },
+ "metal_jerrycan": {
+  "name": "Metal Jerrycan",
+  "authors": [
+   "Sean Buckley"
+  ],
+  "height": 0.4551599698197606
+ },
+ "small_oil_can_01": {
+  "name": "Small Oil Can 01",
+  "authors": [
+   "Raven van de Werken"
+  ],
+  "height": 0.23679310083389282
+ },
+ "plastic_crate_01": {
+  "name": "Plastic Crate 01",
+  "authors": [
+   "PierreB3D"
+  ],
+  "height": 0.2641694247722626
+ },
+ "plastic_crate_03": {
+  "name": "Plastic Crate 03",
+  "authors": [
+   "Pacific Penguin"
+  ],
+  "height": 0.26592550610776744
+ },
+ "old_military_crate": {
+  "name": "Old Military Crate",
+  "authors": [
+   "Jack Mava"
+  ],
+  "height": 0.300932839512825
+ },
+ "cardboard_box_01": {
+  "name": "Cardboard Box 01",
+  "authors": [
+   "Rahul Chaudhary"
+  ],
+  "height": 0.3417995423078537
+ },
+ "industrial_pastic_container": {
+  "name": "Industrial Plastic Container",
+  "authors": [
+   "Galo Benivegna"
+  ],
+  "height": 0.4231307804584503
+ },
+ "worn_metal_rack": {
+  "name": "Worn Metal Rack",
+  "authors": [
+   "Luca B"
+  ],
+  "height": 1.8999999766365256
+ },
+ "industrial_wall_lamp": {
+  "name": "Industrial Wall Lamp",
+  "authors": [
+   "Kuutti Siitonen"
+  ],
+  "height": 0.42990660667419434
+ },
+ "fire_alarm": {
+  "name": "Fire Alarm",
+  "authors": [
+   "Slinc"
+  ],
+  "height": 0.14364254474639893
+ },
+ "security_camera_01": {
+  "name": "Security Camera 01",
+  "authors": [
+   "Alexander Otterbeck",
+   "Yann Kervran"
+  ],
+  "height": 0.28604651242494583
+ },
+ "vintage_radio_transceiver": {
+  "name": "Vintage Radio Transceiver",
+  "authors": [
+   "Mateusz Sadek"
+  ],
+  "height": 0.43439279100857675
+ },
+ "classic_laptop": {
+  "name": "Classic Laptop",
+  "authors": [
+   "Arrangemonk"
+  ],
+  "height": 0.5428108091000468
+ }
+}

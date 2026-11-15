@@ -145,6 +145,8 @@ async function testGame() {
   const { openSkillTree } = await import('./ui/skillTree');
   const g = new Game(engine, input, {
     seed: Number(P.get('seed') ?? 11), biome: (P.get('biome') ?? 'meadow') as BiomeKey, pal: P.get('pal') ?? undefined,
+    // v6 QA: &descent plays the landing cinematic onto the region's landing spot
+    descent: P.has('descent'),
     hooks: {
       openBuilder: (game) => openLab(engine, game),
       openLab: (game) => openLab(engine, game),
@@ -157,6 +159,7 @@ async function testGame() {
   });
   if (P.has('genes')) { for (const id of P.get('genes')!.split(',')) g.run.add(id, 'test', 0); g.veyr.res.helix = 50; }
   engine.setScreen(g);
+  if (P.has('descent')) { const { GameDescent } = await import('./game/descent'); new GameDescent({ game: g, lz: { ...g.region.landing }, first: true, planetName: 'TEST', hold: P.get('hold') }); }
   engine.start();
 }
 
@@ -229,12 +232,16 @@ async function testMirror() {
 
 if (P.get('test') === 'lab') testLab();
 else if (P.get('test') === 'skills') testSkills();
+else if (P.get('test') === 'mastery') import('./ui/kit').then((k) => { k.setupUI(); return import('./research/test'); }).then((m) => { m.testProgression(engine, P); engine.start(); });
+else if (P.get('test') === 'event') import('./research/test').then((m) => m.testEvent(engine, input, P));
 else if (P.get('test') === 'icons') import('./ui/cineTest').then((m) => m.testIcons(engine));
 else if (P.get('test') === 'cine') import('./ui/cineTest').then((m) => m.testCine(engine, input));
 else if (P.get('test') === 'menu') import('./ui/cineTest').then((m) => m.testMenu(engine));
 else if (P.get('test') === 'deploy') import('./ui/deploy').then((m) => m.testDeploy(engine, input, P));
 else if (P.get('test') === 'planet') import('./ui/deploy').then((m) => m.testPlanet(engine, input, P));
 else if (P.get('test') === 'carrier') import('./ui/deploy').then((m) => m.testCarrier(engine, input, P));
+else if (P.get('test') === 'crew') import('./ship/crew/test').then((m) => m.testCrew(engine, input, P));
+else if (P.get('test') === 'intro') import('./ship/intro/test').then((m) => m.testIntro(engine, input, P));
 else if (P.get('test') === 'mirror') testMirror();
 else if (P.get('test') === 'studio') testStudio();
 else if (P.get('test') === 'child') testChild();
@@ -242,6 +249,8 @@ else if (P.get('test') === 'game') testGame();
 else if (P.get('test') === 'biotech') import('./biotech/test').then((m) => m.testBiotech(engine, input, P));
 else if (P.get('test') === 'ecosys') import('./eco/test').then((m) => m.testEcosys(engine, input, P));
 else if (P.get('test') === 'factory') import('./factory/test').then((m) => m.testFactory(engine, input, P));
+else if (P.get('test') === 'logistics') import('./logistics/test').then((m) => m.testLogistics(engine, input, P));
+else if (P.get('test') === 'inv') import('./inv/test').then((m) => m.testInv(engine, input, P));
 else if (P.get('test') === 'ocean') import('./ocean/test').then((m) => m.testOcean(engine, input, P));
 else if (P.get('test') === 'factions') import('./game/factions/test').then((m) => m.testFactions(engine, input, P));
 else if (P.get('test') === 'robots') import('./robots/testRobots').then((m) => m.testRobots(engine, input, P));
@@ -269,7 +278,8 @@ async function startFlow() {
 /**
  * ?test=lab: the gene lab over a stand-in run. Several wild species are absorbed whole (every gene, as the harvest
  * does), so the shelves hold their jars and the carousels are full. &skills=splice,sequencer,vat picks the lab skills
- * (default: lab and splice); &harvest plays the absorb-all sequence instead, on a stand-in corpse.
+ * (default: lab and splice); &harvest plays the absorb-all sequence instead, on a stand-in corpse. &fit opens the
+ * fitting bay (cyborg parts), &stock=6 stands in for the stores' item counts.
  */
 async function testLab() {
   const kit = await import('./ui/kit'); kit.setupUI();
@@ -292,7 +302,7 @@ async function testLab() {
     console.log('lab result', r ? `${r.design.name} [${r.design.genes.join(',')}]` : 'left');
     if (r) run.reg.add(r.design, 'veyr', r.parent, 'design', 0);
     setTimeout(open, 50);
-  }, { emit: (ev, d) => console.log('event', ev, JSON.stringify(d)) }));
+  }, { emit: (ev, d) => console.log('event', ev, JSON.stringify(d)), fit: P.has('fit'), stock: P.has('stock') ? () => Number(P.get('stock')) || 6 : undefined }));
   (window as any).__run = run;
   const t0 = performance.now(); open(); console.log('lab open ms', Math.round(performance.now() - t0));
   engine.start();

@@ -1,11 +1,18 @@
-// Factory items. Raw materials (ore, carbon, water, soil: the same four the golem gathers, plus the seams the
-// factory opens: copper, coal and quartz, and fruit for the workers), refined parts and assemblies, fuel, research
-// and ammunition. Each has a hand-drawn 16 px icon in the master palette: planes filled one ramp step each, light
-// from the upper left, selective outline. The icons also go on the belts (iconArray: one texture layer per item).
+// Real items. Nothing here is a currency: every item is a physical thing with a size on the grid (cells), a stack
+// limit per cell, a mass, the containers that will take it (tags) and, for living or wet things, a shelf life
+// (fruit rots unless frozen, specimens spoil outside a freezer or a specimen cabinet, sap sets to resin out of a tank,
+// seeds lose their viability outside a vault). Groups: bio (wood, bark, leaves, fibre, fruit, biomass, flesh),
+// seeds (by plant family), specimens (samples, eggs), earth (dirt, topsoil, clay, sand, gravel, rocks by family),
+// minerals and ores (the geology's seams, crystals), fluids, refined goods and parts.
+// The old four raw materials stay as ids: `ore` is Ferrite Ore, `soil` is Dirt, `water` is Water and `carbon` is
+// Biomass, and every item carries the old material CLASS it pays (`mat`): a build cost in carbon is paid by any
+// carbon-class item (wood, leaves, bark, fibre...), one in soil by any earth (dirt, topsoil, clay, sand, gravel...).
+// Each item has a hand-drawn icon in the master palette (ui/icons.ts hiItem; the new set lives in inv/itemArt.ts).
 import * as THREE from 'three';
 import { Pix, KPix, poly, selout, RA, INKC, type Pt } from './paint';
 import type { Res } from '../game/skills';
-import { itemIcon as hiItemURL, hiItem, ITEM_ICON_NAMES } from '../ui/icons';
+import { itemIcon as hiItemURL, hiItem, hasItemArt } from '../ui/icons';
+import { installItemArt } from '../inv/itemArt';
 
 export type BaseItemId =
   | 'ore' | 'carbon' | 'water' | 'soil' | 'copper_ore' | 'coal' | 'crystal' | 'fruit'
@@ -13,10 +20,36 @@ export type BaseItemId =
   | 'iron_plate' | 'iron_rod' | 'screw' | 'copper_wire' | 'cable' | 'steel_beam' | 'gear'
   | 'reinforced_plate' | 'rotor' | 'frame' | 'circuit' | 'vacuum_tube' | 'motor' | 'ammo'
   | 'servo' | 'control_unit' | 'heavy_frame' | 'reactor_core' | 'report' | 'tape' | 'steam'
-  | 'iron_pellet' | 'silk' | 'resin' | 'bio_oil' | 'glass_bead' | 'protein' | 'algae_fuel' | 'dung' | 'herbicide';
+  | 'iron_pellet' | 'silk' | 'resin' | 'bio_oil' | 'glass_bead' | 'protein' | 'algae_fuel' | 'dung' | 'herbicide'
+  // the real-item catalogue (v6)
+  | 'wood' | 'bark' | 'leaves' | 'fibre' | 'berries' | 'tuber' | 'kelp' | 'mushroom' | 'meat' | 'hide' | 'bone'
+  | 'seed_grass' | 'seed_reed' | 'spore_fern' | 'seed_shrub' | 'seed_tree' | 'seed_cone' | 'seed_palm' | 'spore_fungus'
+  | 'seed_bulb' | 'seed_cactus' | 'seed_crystal' | 'seed_flower' | 'seed_trap'
+  | 'tissue' | 'blood_sample' | 'egg' | 'embryo' | 'plant_cutting' | 'venom_gland'
+  | 'topsoil' | 'clay' | 'sand' | 'gravel' | 'peat' | 'compost' | 'ash'
+  | 'rock_granite' | 'rock_basalt' | 'rock_limestone' | 'rock_sandstone' | 'rock_slate' | 'rock_obsidian'
+  | 'malachite' | 'amethyst' | 'ruby' | 'salt' | 'saltpetre'
+  | 'brine' | 'sap'
+  | 'plank' | 'charcoal' | 'brick' | 'feed' | 'crushed_ore';
 /** item ids: the base set plus anything registered later (registerItem: the biotech producers add their own) */
 export type ItemId = BaseItemId | (string & {});
 export type ItemCat = 'raw' | 'bio' | 'refined' | 'part' | 'assembly' | 'advanced' | 'research' | 'internal';
+/** the inventory's categories (filter chips, sort by type) */
+export type ItemGroup = 'bio' | 'seed' | 'specimen' | 'earth' | 'mineral' | 'fluid' | 'refined' | 'part';
+export const ITEM_GROUPS: { k: ItemGroup; name: string }[] = [
+  { k: 'bio', name: 'Bio' }, { k: 'seed', name: 'Seeds' }, { k: 'specimen', name: 'Specimens' }, { k: 'earth', name: 'Earth' },
+  { k: 'mineral', name: 'Minerals' }, { k: 'fluid', name: 'Fluids' }, { k: 'refined', name: 'Refined' }, { k: 'part', name: 'Parts' },
+];
+/** what a container must offer to take an item (a container takes an item when they share a tag) */
+export type ItemTag = 'solid' | 'bulk' | 'ore' | 'fluid' | 'cold' | 'specimen' | 'seed' | 'grain' | 'food';
+export interface Perish {
+  /** in-game days from fresh to spoiled outside safe storage */
+  days: number;
+  /** what it turns into when spoiled (gone if unset) */
+  into?: ItemId;
+  /** container kinds where it keeps (no decay; a freezer only while powered) */
+  safe: string[];
+}
 export interface ItemDef {
   id: ItemId; name: string; cat: ItemCat; desc: string;
   /** colour of the crate sides on a belt */
@@ -25,62 +58,191 @@ export interface ItemDef {
   fuel?: number; food?: number;
   /** maps to one of the golem's raw materials (run.res) */
   res?: Res;
+  // ---- the real-item fields (filled for every item by complete(); optional so other systems can register freely)
+  group?: ItemGroup;
+  /** footprint on a container grid, cells [w, h] */
+  size?: [number, number];
+  /** how many share one footprint */
+  stack?: number;
+  /** kg each */
+  mass?: number;
+  /** trade value (sort by value, quotas) */
+  value?: number;
+  tags?: ItemTag[];
+  perish?: Perish;
+  /** the old material class this item pays */
+  mat?: Res;
 }
 const I = (id: ItemId, name: string, cat: ItemCat, side: number, desc: string, x: Partial<ItemDef> = {}): ItemDef => ({ id, name, cat, side, desc, ...x });
+const FRZ = ['st_freezer'], SPEC = ['st_freezer', 'st_cabinet'], SEEDS = ['st_vault', 'st_freezer', 'silo'];
 export const ITEMS: Record<ItemId, ItemDef> = {
-  ore: I('ore', 'Ferrite Ore', 'raw', RA.rust[2], 'Rust-red ore from the ferrite seams. Smelts to iron.', { res: 'ore' }),
-  carbon: I('carbon', 'Plant Carbon', 'raw', RA.ochre[2], 'Husk and stalk carbon. Burns in a boiler, feeds workers in a pinch, refines to rubber.', { res: 'carbon', fuel: 4, food: 0.5 }),
-  water: I('water', 'Water (canned)', 'raw', RA.water[4], 'Pumped and sealed in Corps-issue cans.', { res: 'water' }),
-  soil: I('soil', 'Soil', 'raw', RA.soil[3], 'Excavated earth: concrete, glass, and the grow sheds.', { res: 'soil' }),
-  copper_ore: I('copper_ore', 'Copper Ore', 'raw', RA.teal[3], 'Green-veined rock from the copper seams.'),
-  coal: I('coal', 'Coal', 'raw', RA.basalt[1], 'Black seam coal: boilers, steel and plastic.', { fuel: 8 }),
-  crystal: I('crystal', 'Quartz Crystal', 'raw', RA.sky[3], 'Clear quartz from the crystal seams: oscillators and reactor cores.'),
-  fruit: I('fruit', 'Fruit', 'raw', RA.coral[3], 'Ripe fruit from the plants and the grow sheds. What the workers like to eat.', { food: 1.5 }),
-  iron_ingot: I('iron_ingot', 'Iron Ingot', 'refined', RA.steel[3], 'Cast iron, still warm.'),
-  copper_ingot: I('copper_ingot', 'Copper Ingot', 'refined', RA.rust[4], 'Soft red copper.'),
-  steel_ingot: I('steel_ingot', 'Steel Ingot', 'refined', RA.slate[3], 'Iron and coal in the foundry: hard steel.'),
-  glass: I('glass', 'Glass', 'refined', RA.water[5], 'Soil silica melted clear.'),
-  concrete: I('concrete', 'Concrete', 'refined', RA.stone[5], 'Soil, burned and set.'),
-  rubber: I('rubber', 'Rubber', 'refined', RA.basalt[2], 'Plant carbon and water in the refinery.'),
-  plastic: I('plastic', 'Bakelite', 'refined', RA.clay[2], 'Phenolic plastic: coal and water, cooked.'),
-  iron_plate: I('iron_plate', 'Iron Plate', 'part', RA.steel[4], 'Rolled plate, punched for rivets.'),
-  iron_rod: I('iron_rod', 'Iron Rod', 'part', RA.steel[3], 'Drawn rod stock.'),
-  screw: I('screw', 'Screws', 'part', RA.steel[5], 'A box of machine screws.'),
-  copper_wire: I('copper_wire', 'Copper Wire', 'part', RA.rust[4], 'Drawn wire on a wooden spool.'),
-  cable: I('cable', 'Cable', 'part', RA.basalt[2], 'Rubber-sheathed wire. Power lines.'),
-  steel_beam: I('steel_beam', 'Steel Beam', 'part', RA.slate[4], 'An I-beam.'),
-  gear: I('gear', 'Gear', 'part', RA.steel[4], 'A cut spur gear.'),
-  reinforced_plate: I('reinforced_plate', 'Reinforced Plate', 'assembly', RA.olive[4], 'Plate strapped and screwed double.'),
-  rotor: I('rotor', 'Rotor', 'assembly', RA.rust[3], 'Rod, laminations and screws.'),
-  frame: I('frame', 'Modular Frame', 'assembly', RA.steel[4], 'A welded truss: the skeleton of every machine.'),
-  circuit: I('circuit', 'Circuit Board', 'assembly', RA.clay[3], 'Printed copper on Bakelite. Very modern.'),
-  vacuum_tube: I('vacuum_tube', 'Vacuum Tube', 'assembly', RA.glowAmber[1], 'A glass valve with a hot filament.'),
-  motor: I('motor', 'Motor', 'assembly', RA.olive[3], 'An enamelled electric motor.'),
-  ammo: I('ammo', 'Ammunition', 'assembly', RA.brass[3], 'Brass cartridges for the turrets.'),
-  servo: I('servo', 'Servo', 'advanced', RA.olive[4], 'Motor, gears and a feedback circuit: a robot joint.'),
-  control_unit: I('control_unit', 'Control Unit', 'advanced', RA.olive[3], 'An analog computer in a box: a robot brain.'),
-  heavy_frame: I('heavy_frame', 'Heavy Frame', 'advanced', RA.slate[3], 'Beams, frames and concrete ballast.'),
-  reactor_core: I('reactor_core', 'Reactor Core', 'advanced', RA.glowTeal[1], 'A quartz-moderated fuel assembly. Handle with tongs.', { fuel: 300 }),
-  report: I('report', 'Survey Report', 'research', RA.paper[4], 'Plates, wire and measurements, typed up. The research lab reads them.'),
-  tape: I('tape', 'Data Tape', 'research', RA.ink[2], 'A reel of recorded analysis. Worth a lot to the lab.'),
-  steam: I('steam', 'Steam', 'internal', RA.snow[4], 'Pressure from the boiler.'),
+  ore: I('ore', 'Ferrite Ore', 'raw', RA.rust[2], 'Rust-red iron ore from the ferrite seams. Smelts to iron.', { res: 'ore', mat: 'ore', group: 'mineral', tags: ['ore', 'solid'], stack: 25, mass: 4, value: 2 }),
+  carbon: I('carbon', 'Biomass', 'raw', RA.ochre[2], 'Chopped stalk, husk and pulp, baled tight. Burns in a boiler, feeds workers in a pinch, refines to rubber.', { res: 'carbon', mat: 'carbon', fuel: 4, food: 0.5, group: 'bio', tags: ['solid', 'bulk', 'grain'], stack: 30, mass: 2, value: 1 }),
+  water: I('water', 'Water', 'raw', RA.water[4], 'Clean water, drawn and sealed. Kept in a tank (the pod carries a few cans).', { res: 'water', mat: 'water', group: 'fluid', tags: ['fluid'], stack: 25, mass: 1, value: 1 }),
+  soil: I('soil', 'Dirt', 'raw', RA.soil[3], 'Plain excavated earth. Wants a pit or a bin: concrete, bricks, glass and the grow sheds.', { res: 'soil', mat: 'soil', group: 'earth', tags: ['bulk'], stack: 50, mass: 3, value: 0.5 }),
+  copper_ore: I('copper_ore', 'Copper Ore', 'raw', RA.teal[3], 'Green-veined rock from the copper seams.', { group: 'mineral', tags: ['ore', 'solid'], stack: 25, mass: 4, value: 3 }),
+  coal: I('coal', 'Coal', 'raw', RA.basalt[1], 'Black seam coal: boilers, steel and plastic.', { fuel: 8, group: 'mineral', tags: ['ore', 'solid', 'bulk'], stack: 30, mass: 2, value: 2 }),
+  crystal: I('crystal', 'Quartz Crystal', 'raw', RA.sky[3], 'Clear quartz from the crystal seams: oscillators and reactor cores.', { group: 'mineral', tags: ['ore', 'solid'], stack: 12, mass: 1, value: 8 }),
+  fruit: I('fruit', 'Fruit', 'raw', RA.coral[3], 'Ripe fruit from the plants and the grow sheds. What the workers like to eat. Rots in three days unless frozen.', { food: 1.5, group: 'bio', tags: ['food', 'cold', 'solid'], stack: 20, mass: 0.3, value: 2, perish: { days: 3, into: 'compost', safe: FRZ } }),
+  iron_ingot: I('iron_ingot', 'Iron Ingot', 'refined', RA.steel[3], 'Cast iron, still warm.', { stack: 30, mass: 5, value: 5 }),
+  copper_ingot: I('copper_ingot', 'Copper Ingot', 'refined', RA.rust[4], 'Soft red copper.', { stack: 30, mass: 5, value: 6 }),
+  steel_ingot: I('steel_ingot', 'Steel Ingot', 'refined', RA.slate[3], 'Iron and coal in the foundry: hard steel.', { stack: 30, mass: 5, value: 10 }),
+  glass: I('glass', 'Glass', 'refined', RA.water[5], 'Soil silica melted clear.', { stack: 20, mass: 2, value: 4 }),
+  concrete: I('concrete', 'Concrete', 'refined', RA.stone[5], 'Soil, burned and set.', { stack: 20, mass: 10, value: 3 }),
+  rubber: I('rubber', 'Rubber', 'refined', RA.basalt[2], 'Plant carbon and water in the refinery.', { stack: 30, mass: 1, value: 4 }),
+  plastic: I('plastic', 'Bakelite', 'refined', RA.clay[2], 'Phenolic plastic: coal and water, cooked.', { stack: 30, mass: 1, value: 5 }),
+  iron_plate: I('iron_plate', 'Iron Plate', 'part', RA.steel[4], 'Rolled plate, punched for rivets.', { stack: 40, mass: 3, value: 6 }),
+  iron_rod: I('iron_rod', 'Iron Rod', 'part', RA.steel[3], 'Drawn rod stock.', { stack: 40, mass: 2, value: 5 }),
+  screw: I('screw', 'Screws', 'part', RA.steel[5], 'A box of machine screws.', { stack: 200, mass: 0.02, value: 0.5 }),
+  copper_wire: I('copper_wire', 'Copper Wire', 'part', RA.rust[4], 'Drawn wire on a wooden spool.', { stack: 50, mass: 0.5, value: 3 }),
+  cable: I('cable', 'Cable', 'part', RA.basalt[2], 'Rubber-sheathed wire. Power lines.', { stack: 40, mass: 1, value: 8 }),
+  steel_beam: I('steel_beam', 'Steel Beam', 'part', RA.slate[4], 'An I-beam.', { size: [1, 2], stack: 10, mass: 40, value: 30 }),
+  gear: I('gear', 'Gear', 'part', RA.steel[4], 'A cut spur gear.', { stack: 40, mass: 1, value: 6 }),
+  reinforced_plate: I('reinforced_plate', 'Reinforced Plate', 'assembly', RA.olive[4], 'Plate strapped and screwed double.', { size: [2, 1], stack: 10, mass: 12, value: 40 }),
+  rotor: I('rotor', 'Rotor', 'assembly', RA.rust[3], 'Rod, laminations and screws.', { size: [2, 1], stack: 10, mass: 8, value: 45 }),
+  frame: I('frame', 'Modular Frame', 'assembly', RA.steel[4], 'A welded truss: the skeleton of every machine.', { size: [2, 2], stack: 5, mass: 30, value: 90 }),
+  circuit: I('circuit', 'Circuit Board', 'assembly', RA.clay[3], 'Printed copper on Bakelite. Very modern.', { stack: 20, mass: 0.4, value: 60 }),
+  vacuum_tube: I('vacuum_tube', 'Vacuum Tube', 'assembly', RA.glowAmber[1], 'A glass valve with a hot filament.', { stack: 20, mass: 0.2, value: 25 }),
+  motor: I('motor', 'Motor', 'assembly', RA.olive[3], 'An enamelled electric motor.', { size: [2, 1], stack: 4, mass: 25, value: 120 }),
+  ammo: I('ammo', 'Ammunition', 'assembly', RA.brass[3], 'Brass cartridges for the turrets.', { stack: 100, mass: 0.1, value: 2 }),
+  servo: I('servo', 'Servo', 'advanced', RA.olive[4], 'Motor, gears and a feedback circuit: a robot joint.', { stack: 8, mass: 6, value: 200 }),
+  control_unit: I('control_unit', 'Control Unit', 'advanced', RA.olive[3], 'An analog computer in a box: a robot brain.', { size: [2, 1], stack: 4, mass: 8, value: 350 }),
+  heavy_frame: I('heavy_frame', 'Heavy Frame', 'advanced', RA.slate[3], 'Beams, frames and concrete ballast.', { size: [2, 2], stack: 2, mass: 220, value: 500 }),
+  reactor_core: I('reactor_core', 'Reactor Core', 'advanced', RA.glowTeal[1], 'A quartz-moderated fuel assembly. Handle with tongs.', { fuel: 300, size: [1, 2], stack: 1, mass: 60, value: 900 }),
+  report: I('report', 'Survey Report', 'research', RA.paper[4], 'Plates, wire and measurements, typed up. The research lab reads them.', { stack: 20, mass: 0.2, value: 30 }),
+  tape: I('tape', 'Data Tape', 'research', RA.ink[2], 'A reel of recorded analysis. Worth a lot to the lab.', { stack: 10, mass: 0.5, value: 80 }),
+  steam: I('steam', 'Steam', 'internal', RA.snow[4], 'Pressure from the boiler.', { group: 'fluid', tags: [], stack: 1, mass: 0, value: 0 }),
   // the living route: what engineered creatures and plants produce, and what the pens and sheds give
-  iron_pellet: I('iron_pellet', 'Iron Pellets', 'bio', RA.rust[3], 'Rock eaten by ore-gizzard grazers and passed as clean iron pellets. Smelts faster than ore.'),
-  silk: I('silk', 'Silk', 'bio', RA.straw[4], 'Spun from engineered glands. Insulation, rope, cable.'),
-  resin: I('resin', 'Resin', 'bio', RA.ochre[4], 'Tapped from resin trees. Refines to Bakelite and rubber.'),
-  bio_oil: I('bio_oil', 'Bio-Oil', 'bio', RA.ichor[3], 'Pressed from oil fruit and seed. Burns in a boiler; refines to plastic.', { fuel: 6 }),
-  glass_bead: I('glass_bead', 'Glass Beads', 'bio', RA.water[5], 'Silica beads grown by crystal corals. Melts to glass.'),
-  protein: I('protein', 'Protein', 'bio', RA.flesh[4], 'Milk and meal from the herds. Good food for workers.', { food: 2.5 }),
-  algae_fuel: I('algae_fuel', 'Algae Fuel', 'bio', RA.ichor[2], 'Skimmed from biofuel ponds. A clean boiler fuel.', { fuel: 10 }),
-  dung: I('dung', 'Dung', 'bio', RA.soil[2], 'From the pens and the herds. The fertiliser spreader wants it.'),
-  herbicide: I('herbicide', 'Herbicide', 'refined', RA.ichor[4], 'A defoliant in drums: the sprayer kills plants and sickens creatures with it.'),
+  iron_pellet: I('iron_pellet', 'Iron Pellets', 'bio', RA.rust[3], 'Rock eaten by ore-gizzard grazers and passed as clean iron pellets. Smelts faster than ore.', { group: 'mineral', tags: ['ore', 'solid', 'grain'], stack: 40, mass: 1, value: 3 }),
+  silk: I('silk', 'Silk', 'bio', RA.straw[4], 'Spun from engineered glands. Insulation, rope, cable.', { stack: 30, mass: 0.2, value: 6 }),
+  resin: I('resin', 'Resin', 'bio', RA.ochre[4], 'Hard amber resin, set from tapped sap. Refines to Bakelite and rubber.', { stack: 30, mass: 0.5, value: 3 }),
+  bio_oil: I('bio_oil', 'Bio-Oil', 'bio', RA.ichor[3], 'Pressed from oil fruit and seed. Burns in a boiler; refines to plastic. Kept in a tank.', { fuel: 6, group: 'fluid', tags: ['fluid'], stack: 40, mass: 0.9, value: 4 }),
+  glass_bead: I('glass_bead', 'Glass Beads', 'bio', RA.water[5], 'Silica beads grown by crystal corals. Melts to glass.', { group: 'mineral', tags: ['solid', 'grain'], stack: 60, mass: 0.1, value: 2 }),
+  protein: I('protein', 'Protein', 'bio', RA.flesh[4], 'Milk and meal from the herds. Good food for workers. Spoils in three days unless frozen.', { food: 2.5, tags: ['food', 'cold', 'solid'], stack: 20, mass: 1, value: 4, perish: { days: 3, into: 'compost', safe: FRZ } }),
+  algae_fuel: I('algae_fuel', 'Algae Fuel', 'bio', RA.ichor[2], 'Skimmed from biofuel ponds. A clean boiler fuel. Kept in a tank.', { fuel: 10, group: 'fluid', tags: ['fluid'], stack: 40, mass: 0.9, value: 5 }),
+  dung: I('dung', 'Dung', 'bio', RA.soil[2], 'From the pens and the herds. The fertiliser spreader wants it.', { tags: ['bulk'], stack: 40, mass: 1, value: 0.5 }),
+  herbicide: I('herbicide', 'Herbicide', 'refined', RA.ichor[4], 'A defoliant in drums: the sprayer kills plants and sickens creatures with it.', { stack: 10, mass: 20, value: 12 }),
+
+  // ---------------------------------------------------------------- bio: what plants and creatures give
+  wood: I('wood', 'Log Wood', 'bio', RA.fur[3], 'Split trunk wood with the bark on. Planks, charcoal, frames; burns long.', { mat: 'carbon', fuel: 10, size: [1, 2], stack: 8, mass: 12, value: 3, tags: ['solid'] }),
+  bark: I('bark', 'Bark', 'bio', RA.fur[2], 'Stripped bark slabs: tannin, roof shingle, a slow fuel.', { mat: 'carbon', fuel: 4, stack: 30, mass: 0.8, value: 1, tags: ['solid', 'bulk'] }),
+  leaves: I('leaves', 'Leaves', 'bio', RA.moss[3], 'Cut foliage. Compost, feed, mulch for the fields.', { mat: 'carbon', food: 0.3, stack: 40, mass: 0.2, value: 0.5, tags: ['solid', 'bulk'] }),
+  fibre: I('fibre', 'Plant Fibre', 'bio', RA.straw[3], 'Stem and leaf fibre, retted and combed: rope, sacking, insulation.', { mat: 'carbon', stack: 40, mass: 0.3, value: 1.5, tags: ['solid'] }),
+  berries: I('berries', 'Berries', 'bio', RA.plum[3], 'A punnet of shrub berries. Sweet; spoils in two days unless frozen.', { food: 1, stack: 20, mass: 0.2, value: 2, tags: ['food', 'cold', 'solid'], perish: { days: 2, into: 'compost', safe: FRZ } }),
+  tuber: I('tuber', 'Tubers', 'bio', RA.clay[3], 'Starchy roots dug from bulb plants. Keeps a week; workers eat them.', { food: 2, stack: 16, mass: 0.6, value: 2, tags: ['food', 'cold', 'solid'], perish: { days: 8, into: 'compost', safe: FRZ } }),
+  kelp: I('kelp', 'Kelp', 'bio', RA.teal[2], 'Long fronds cut from the reef. Dries to biomass in four days.', { mat: 'carbon', food: 0.6, size: [1, 2], stack: 20, mass: 0.6, value: 1.5, tags: ['solid', 'cold', 'food'], perish: { days: 4, into: 'carbon', safe: FRZ } }),
+  mushroom: I('mushroom', 'Mushrooms', 'bio', RA.hide[4], 'Fungus caps from the damp ground. Food or culture stock; spoils in three days.', { food: 1, stack: 20, mass: 0.2, value: 2.5, tags: ['food', 'cold', 'solid'], perish: { days: 3, into: 'compost', safe: FRZ } }),
+  meat: I('meat', 'Raw Meat', 'bio', RA.flesh[3], 'Butchered from a carcass. Rich worker food; rots in a day and a half without a freezer.', { food: 4, size: [2, 1], stack: 6, mass: 3, value: 5, tags: ['food', 'cold', 'solid'], perish: { days: 1.5, into: 'compost', safe: FRZ } }),
+  hide: I('hide', 'Hide', 'bio', RA.hide[3], 'A scraped creature hide: leather straps, gaskets, harness.', { size: [2, 2], stack: 4, mass: 4, value: 8, tags: ['solid'] }),
+  bone: I('bone', 'Bone', 'bio', RA.bone[4], 'Clean bone: meal, glue, carved fittings, phosphate for the soil.', { size: [1, 2], stack: 10, mass: 1, value: 2, tags: ['solid'] }),
+
+  // ---------------------------------------------------------------- seeds by plant family
+  seed_grass: I('seed_grass', 'Grass Seed', 'bio', RA.straw[4], 'Threshed seed heads of the tussock grasses. Sow for pasture and fibre.', { group: 'seed', stack: 60, mass: 0.02, value: 2, tags: ['seed', 'grain', 'solid'], perish: { days: 20, into: 'carbon', safe: SEEDS } }),
+  seed_reed: I('seed_reed', 'Reed Seed', 'bio', RA.sand[3], 'Fluffy reed and lily seed. Sow at the water\'s edge.', { group: 'seed', stack: 60, mass: 0.02, value: 2, tags: ['seed', 'grain', 'solid'], perish: { days: 20, into: 'carbon', safe: SEEDS } }),
+  spore_fern: I('spore_fern', 'Fern Spores', 'bio', RA.sage[3], 'Spore dust tapped from fern fronds into a paper twist.', { group: 'seed', stack: 80, mass: 0.01, value: 2.5, tags: ['seed', 'solid'], perish: { days: 20, into: 'carbon', safe: SEEDS } }),
+  seed_shrub: I('seed_shrub', 'Shrub Pips', 'bio', RA.plum[2], 'Hard pips from shrub berries. Sow for hedges and berry bushes.', { group: 'seed', stack: 60, mass: 0.02, value: 2.5, tags: ['seed', 'grain', 'solid'], perish: { days: 20, into: 'carbon', safe: SEEDS } }),
+  seed_tree: I('seed_tree', 'Tree Nuts', 'bio', RA.fur[4], 'Winged nuts from the broadleaf trees. Sow a wood lot: timber in a season.', { group: 'seed', stack: 30, mass: 0.05, value: 4, tags: ['seed', 'grain', 'solid'], perish: { days: 20, into: 'carbon', safe: SEEDS } }),
+  seed_cone: I('seed_cone', 'Seed Cones', 'bio', RA.fur[3], 'Resinous cones from the spike trees. Each sheds a dozen seeds.', { group: 'seed', stack: 20, mass: 0.1, value: 4, tags: ['seed', 'solid'], perish: { days: 20, into: 'carbon', safe: SEEDS } }),
+  seed_palm: I('seed_palm', 'Palm Nuts', 'bio', RA.ochre[3], 'Fibrous palm nuts. Sow on warm ground; oil and fibre.', { group: 'seed', stack: 12, mass: 0.4, value: 4, tags: ['seed', 'solid'], perish: { days: 20, into: 'carbon', safe: SEEDS } }),
+  spore_fungus: I('spore_fungus', 'Fungal Spores', 'bio', RA.violet[4], 'A spore print scraped into a sealed vial. Inoculate logs and beds.', { group: 'seed', stack: 40, mass: 0.01, value: 3, tags: ['seed', 'specimen', 'solid'], perish: { days: 20, into: 'carbon', safe: SEEDS.concat('st_cabinet') } }),
+  seed_bulb: I('seed_bulb', 'Bulbs', 'bio', RA.clay[4], 'Dormant bulbs lifted from the ground. Plant out for tubers.', { group: 'seed', stack: 16, mass: 0.1, value: 3, tags: ['seed', 'solid'], perish: { days: 20, into: 'carbon', safe: SEEDS } }),
+  seed_cactus: I('seed_cactus', 'Barrel Seed', 'bio', RA.sage[2], 'Black seed from the barrel plants. Sows on dry, poor ground.', { group: 'seed', stack: 60, mass: 0.01, value: 3, tags: ['seed', 'grain', 'solid'], perish: { days: 20, into: 'carbon', safe: SEEDS } }),
+  seed_crystal: I('seed_crystal', 'Crystal Seed', 'bio', RA.amethyst[4], 'A faceted alien seed from the crystalbloom. Grows only on mineral ground.', { group: 'seed', stack: 10, mass: 0.05, value: 12, tags: ['seed', 'solid'], perish: { days: 20, into: 'carbon', safe: SEEDS } }),
+  seed_flower: I('seed_flower', 'Flower Seed', 'bio', RA.coral[4], 'Seed from the meadow blooms. Pollinators follow where it is sown.', { group: 'seed', stack: 60, mass: 0.01, value: 2.5, tags: ['seed', 'grain', 'solid'], perish: { days: 20, into: 'carbon', safe: SEEDS } }),
+  seed_trap: I('seed_trap', 'Trap-Plant Pods', 'bio', RA.ichor[3], 'Seed pods of the snap-traps and pitchers. Pest control that grows.', { group: 'seed', stack: 20, mass: 0.05, value: 5, tags: ['seed', 'solid'], perish: { days: 20, into: 'carbon', safe: SEEDS } }),
+
+  // ---------------------------------------------------------------- specimens: the lab's raw material
+  tissue: I('tissue', 'Tissue Sample', 'bio', RA.flesh[4], 'A biopsy in a stoppered tube. The gene lab reads it; spoils in a day outside a freezer or a specimen cabinet.', { group: 'specimen', stack: 10, mass: 0.1, value: 15, tags: ['specimen', 'cold'], perish: { days: 1, safe: SPEC } }),
+  blood_sample: I('blood_sample', 'Blood Sample', 'bio', RA.blood[3], 'Drawn blood, citrated. Immunity and diet markers; spoils in a day and a half.', { group: 'specimen', stack: 10, mass: 0.1, value: 12, tags: ['specimen', 'cold'], perish: { days: 1.5, safe: SPEC } }),
+  egg: I('egg', 'Creature Egg', 'bio', RA.bone[3], 'A laid egg, still warm. Hatch it in a vat or keep it frozen; spoils in two days.', { group: 'specimen', stack: 4, mass: 0.8, value: 40, tags: ['specimen', 'cold', 'food'], food: 1.5, perish: { days: 2, safe: SPEC } }),
+  embryo: I('embryo', 'Embryo Vial', 'bio', RA.glowTeal[2], 'An embryo in nutrient gel. The print vats grow a creature from it; dies in under a day unwarded.', { group: 'specimen', stack: 6, mass: 0.1, value: 60, tags: ['specimen', 'cold'], perish: { days: 0.8, safe: SPEC } }),
+  plant_cutting: I('plant_cutting', 'Plant Cutting', 'bio', RA.moss[4], 'A rooted cutting in a jar of water. Clone a plant you cannot seed; wilts in two days.', { group: 'specimen', stack: 6, mass: 0.2, value: 10, tags: ['specimen', 'cold'], perish: { days: 2, into: 'leaves', safe: SPEC } }),
+  venom_gland: I('venom_gland', 'Venom Gland', 'bio', RA.ichor[2], 'A venom sac, ligated. Weapon payloads and antivenom; spoils in two days.', { group: 'specimen', stack: 6, mass: 0.2, value: 35, tags: ['specimen', 'cold'], perish: { days: 2, safe: SPEC } }),
+
+  // ---------------------------------------------------------------- earth
+  topsoil: I('topsoil', 'Topsoil', 'raw', RA.soil[2], 'Dark crumbly topsoil with roots in it. The best ground for fields and grow sheds.', { mat: 'soil', group: 'earth', tags: ['bulk'], stack: 50, mass: 3, value: 1.5 }),
+  clay: I('clay', 'Clay', 'raw', RA.clay[3], 'Stiff river clay. Bricks, kilns, ceramic insulators.', { mat: 'soil', group: 'earth', tags: ['bulk'], stack: 40, mass: 4, value: 1 }),
+  sand: I('sand', 'Sand', 'raw', RA.sand[4], 'Washed sand: glass, concrete, moulds.', { mat: 'soil', group: 'earth', tags: ['bulk', 'grain'], stack: 50, mass: 3, value: 0.8 }),
+  gravel: I('gravel', 'Gravel', 'raw', RA.stone[4], 'Broken stone. Concrete aggregate, roads, drainage.', { mat: 'soil', group: 'earth', tags: ['bulk', 'grain', 'ore'], stack: 50, mass: 4, value: 0.8 }),
+  peat: I('peat', 'Peat', 'raw', RA.soil[1], 'Cut marsh peat, half rotted plants. Dries into a smoky fuel.', { mat: 'carbon', fuel: 6, group: 'earth', tags: ['bulk'], stack: 30, mass: 2, value: 1 }),
+  compost: I('compost', 'Compost', 'raw', RA.soil[2], 'Rotted leaves, fruit and dung. Turns poor ground fertile.', { mat: 'soil', group: 'earth', tags: ['bulk'], stack: 40, mass: 2, value: 1 }),
+  ash: I('ash', 'Ash', 'raw', RA.stone[3], 'Grey ash from the burns and the ash country. Potash for the fields, lye for soap.', { group: 'earth', tags: ['bulk', 'grain'], stack: 50, mass: 1, value: 0.6 }),
+  rock_granite: I('rock_granite', 'Granite', 'raw', RA.stone[4], 'Speckled igneous rock: hard building stone, crushed for gravel.', { group: 'earth', tags: ['solid', 'ore'], stack: 12, mass: 8, value: 1.5 }),
+  rock_basalt: I('rock_basalt', 'Basalt', 'raw', RA.basalt[3], 'Dense black lava rock. Rock wool, paving, furnace lining.', { group: 'earth', tags: ['solid', 'ore'], stack: 12, mass: 9, value: 1.5 }),
+  rock_limestone: I('rock_limestone', 'Limestone', 'raw', RA.bone[3], 'Pale sedimentary stone full of tiny shells. Burns to lime for concrete.', { group: 'earth', tags: ['solid', 'ore'], stack: 12, mass: 7, value: 2 }),
+  rock_sandstone: I('rock_sandstone', 'Sandstone', 'raw', RA.sand[3], 'Layered, warm-coloured sandstone. Easy to cut; crushes back to sand.', { group: 'earth', tags: ['solid', 'ore'], stack: 12, mass: 7, value: 1.2 }),
+  rock_slate: I('rock_slate', 'Slate', 'raw', RA.slate[3], 'Blue-grey slate that splits into sheets. Roofing, benches, tablets.', { group: 'earth', tags: ['solid', 'ore'], stack: 12, mass: 7, value: 1.5 }),
+  rock_obsidian: I('rock_obsidian', 'Obsidian', 'raw', RA.ink[2], 'Volcanic glass with a razor edge. Blades, lenses, scalpels.', { group: 'earth', tags: ['solid', 'ore'], stack: 12, mass: 5, value: 6 }),
+
+  // ---------------------------------------------------------------- minerals and crystals
+  malachite: I('malachite', 'Malachite', 'raw', RA.malachite[3], 'Banded green copper carbonate. A rich copper source and a pigment.', { group: 'mineral', tags: ['ore', 'solid'], stack: 12, mass: 3, value: 10 }),
+  amethyst: I('amethyst', 'Amethyst', 'raw', RA.amethyst[3], 'Violet quartz from geodes. Optics and resonators.', { group: 'mineral', tags: ['ore', 'solid'], stack: 10, mass: 0.5, value: 18 }),
+  ruby: I('ruby', 'Corundum', 'raw', RA.ruby[3], 'Red corundum, the second-hardest thing there is. Bearings, abrasives, laser rods.', { group: 'mineral', tags: ['ore', 'solid'], stack: 10, mass: 0.3, value: 30 }),
+  salt: I('salt', 'Rock Salt', 'raw', RA.snow[4], 'Halite from the dry lakes or boiled out of brine. Preserves meat; chlorine.', { group: 'mineral', tags: ['bulk', 'grain', 'solid'], stack: 50, mass: 1, value: 1.5 }),
+  saltpetre: I('saltpetre', 'Saltpetre', 'raw', RA.paper[4], 'Nitre crust from caves and dung heaps. Blasting powder and fertiliser.', { group: 'mineral', tags: ['bulk', 'grain', 'solid'], stack: 40, mass: 1, value: 4 }),
+
+  // ---------------------------------------------------------------- fluids
+  brine: I('brine', 'Brine', 'raw', RA.water[3], 'Sea water. Boil it for salt; desalinate it for water.', { group: 'fluid', tags: ['fluid'], stack: 25, mass: 1, value: 0.5 }),
+  sap: I('sap', 'Tree Sap', 'bio', RA.ochre[5], 'Fresh sap tapped from the resin trees. Sets to resin in five days outside a tank.', { group: 'fluid', tags: ['fluid'], stack: 40, mass: 1, value: 2, perish: { days: 5, into: 'resin', safe: ['st_tank'] } }),
+
+  // ---------------------------------------------------------------- refined goods
+  plank: I('plank', 'Timber Planks', 'refined', RA.ochre[3], 'Sawn planks: crates, scaffold, floors.', { size: [1, 2], stack: 20, mass: 4, value: 4, tags: ['solid'] }),
+  charcoal: I('charcoal', 'Charcoal', 'refined', RA.basalt[2], 'Wood charred in a clamp. A hot, clean fuel; the smelter likes it.', { fuel: 12, stack: 40, mass: 0.5, value: 3, tags: ['solid', 'bulk'] }),
+  brick: I('brick', 'Fired Brick', 'refined', RA.clay[4], 'Clay fired hard. Furnaces, chimneys, walls.', { stack: 40, mass: 3, value: 2, tags: ['solid'] }),
+  feed: I('feed', 'Feedstock', 'refined', RA.straw[2], 'Pressed pellets of biomass and meal. Keeps; workers and herds eat it.', { food: 2, stack: 40, mass: 1, value: 3, tags: ['grain', 'food', 'solid'], perish: { days: 12, into: 'compost', safe: ['st_freezer', 'silo'] } }),
+  crushed_ore: I('crushed_ore', 'Crushed Ferrite', 'refined', RA.iron[3], 'Ferrite ore crushed and washed. Smelts at half again the yield.', { group: 'mineral', tags: ['bulk', 'ore', 'grain'], stack: 40, mass: 3, value: 3 }),
 };
 export const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
 export const ITEM_INDEX: Record<ItemId, number> = Object.fromEntries(ITEM_IDS.map((k, i) => [k, i])) as Record<ItemId, number>;
+
+// ---------------------------------------------------------------- the real-item fields, defaulted by category
+const CAT_GROUP: Record<ItemCat, ItemGroup> = { raw: 'mineral', bio: 'bio', refined: 'refined', part: 'part', assembly: 'part', advanced: 'part', research: 'part', internal: 'part' };
+const CAT_STACK: Record<ItemCat, number> = { raw: 20, bio: 20, refined: 30, part: 40, assembly: 20, advanced: 6, research: 20, internal: 1 };
+const CAT_VALUE: Record<ItemCat, number> = { raw: 3, bio: 2, refined: 6, part: 8, assembly: 50, advanced: 300, research: 40, internal: 0 };
+/** the geology's items (registered from world/geo/items.ts) get real-item fields here */
+const GEO_META: Record<string, Partial<ItemDef>> = {
+  gold_ore: { group: 'mineral', tags: ['ore', 'solid'], stack: 20, mass: 4, value: 12 },
+  sulphur: { group: 'mineral', tags: ['ore', 'solid', 'bulk'], stack: 30, mass: 1, value: 4 },
+  lumen_crystal: { group: 'mineral', tags: ['ore', 'solid'], stack: 8, mass: 0.5, value: 40 },
+  gravium: { group: 'mineral', tags: ['ore', 'solid'], stack: 8, mass: 0.1, value: 60 },
+  gold_ingot: { stack: 30, mass: 6, value: 40 },
+  acid: { group: 'fluid', tags: ['fluid', 'solid'], stack: 10, mass: 2, value: 10 },
+  powder: { stack: 30, mass: 0.5, value: 8 },
+  gold_leaf: { stack: 60, mass: 0.05, value: 20 },
+  lumen_lens: { stack: 12, mass: 0.3, value: 90 },
+  grav_plate: { size: [2, 1], stack: 6, mass: 1, value: 160 },
+  precision_circuit: { stack: 12, mass: 0.4, value: 180 },
+  lumen_cell: { stack: 6, mass: 2, value: 400 },
+  grav_coil: { size: [1, 2], stack: 2, mass: 10, value: 700 },
+};
+/** fill an item's real-item fields from its category (idempotent) */
+function complete(d: ItemDef): ItemDef {
+  const geo = GEO_META[d.id];
+  if (geo) for (const [k, v] of Object.entries(geo)) if ((d as unknown as Record<string, unknown>)[k] === undefined) (d as unknown as Record<string, unknown>)[k] = v;
+  d.group ??= CAT_GROUP[d.cat] ?? 'part';
+  d.size ??= [1, 1];
+  d.stack ??= CAT_STACK[d.cat] ?? 20;
+  d.mass ??= 1;
+  d.value ??= CAT_VALUE[d.cat] ?? 2;
+  d.tags ??= d.group === 'fluid' ? ['fluid'] : d.group === 'mineral' ? ['ore', 'solid'] : d.group === 'earth' ? ['bulk'] : ['solid'];
+  return d;
+}
+for (const id of ITEM_IDS) complete(ITEMS[id]);
+/** an item's definition with every real-item field filled (unknown ids get a placeholder crate) */
+export function itemDef(id: ItemId): Required<Pick<ItemDef, 'group' | 'size' | 'stack' | 'mass' | 'value' | 'tags'>> & ItemDef {
+  const d = ITEMS[id] ?? complete(I(id, id, 'part', RA.steel[3], ''));
+  return d as Required<Pick<ItemDef, 'group' | 'size' | 'stack' | 'mass' | 'value' | 'tags'>> & ItemDef;
+}
+export const itemSize = (id: ItemId): [number, number] => itemDef(id).size;
+export const itemStack = (id: ItemId): number => itemDef(id).stack;
+/** items that pay an old material class, cheapest first (what a cost in carbon or soil spends) */
+export function matItems(res: Res): ItemId[] {
+  return ITEM_IDS.filter((k) => ITEMS[k].mat === res).sort((a, b) => (ITEMS[a].value ?? 0) - (ITEMS[b].value ?? 0) || (a === res ? -1 : b === res ? 1 : 0));
+}
 /** add an item (another system's producers): its definition and, optionally, an icon painter on a 16 px Pix */
 export function registerItem(def: ItemDef, icon?: (p: KPix) => void) {
   if (!ITEMS[def.id]) { ITEM_IDS.push(def.id); ITEM_INDEX[def.id] = ITEM_IDS.length - 1; }
-  ITEMS[def.id] = def;
+  ITEMS[def.id] = complete(def);
   if (icon) ICON[def.id] = icon;
   pixCache.delete(def.id); for (const k of [...urlCache.keys()]) if (k.startsWith(def.id + '@')) urlCache.delete(k);
   if (ARR) { ARR.dispose(); ARR = null; }
@@ -88,13 +250,13 @@ export function registerItem(def: ItemDef, icon?: (p: KPix) => void) {
 /** the raw materials that live in the golem's hold (run.res) */
 export const RAW_RES: ItemId[] = ['ore', 'carbon', 'water', 'soil'];
 export const isRes = (id: ItemId): id is Res => id === 'ore' || id === 'carbon' || id === 'water' || id === 'soil';
+installItemArt();
 
 // ------------------------------------------------------------------ icons
 /** the icon set in the target style lives in ui/icons.ts (hiItem); these 16-unit drawings, landing at 32 px with a
  *  coloured outline, are the fallback for anything it does not draw */
 const S = 32;
-const HI = new Set<string>(ITEM_ICON_NAMES);
-const hasHi = (id: ItemId) => HI.has(id) || !ICON[id];
+const hasHi = (id: ItemId) => hasItemArt(id) || !ICON[id];
 type Painter = (p: KPix) => void;
 /** a fractured lump: angular facets, each one ramp step by how it faces the light */
 function lump(p: KPix, R: number[], o: Pt[], cx: number, cy: number, base = 2) {

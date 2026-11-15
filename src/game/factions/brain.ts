@@ -1,12 +1,12 @@
-// A robot programme's mind (Soviet or PRC): its lander is the HQ; it mines the region's deposits with its own rigs,
+// A rival bloc's robot colony (the Eurasian Concord or the Pacific Consortium; ids 'soviet' / 'prc'): its lander is the HQ; it mines the region's deposits with its own rigs,
 // raises structures in a build order, produces robots, scouts, defends, and sends attack waves that grow with time
 // and with Unit 07's strength. It fights the other programmes too, and sometimes picks them as the target so they
 // wear each other down. Destroying the lander eliminates it: its remaining machines lose their signal and its
 // structures blow their demolition charges.
 //
-//   SOVIET: methodical; one structure at a time; bunkers and artillery batteries; troopers, then tanks, then titans;
-//           waves form up at a staging point and push as one heavy column at the American works.
-//   PRC:    fast expansion; two builds at once; rigs on far deposits guarded by watchtowers; swarms of scouts and
+//   CONCORD: methodical; one structure at a time; bunkers and artillery batteries; troopers, then tanks, then titans;
+//           waves form up at a staging point and push as one heavy column at the UNAA works.
+//   CONSORTIUM: fast expansion; two builds at once; rigs on far deposits guarded by watchtowers; swarms of scouts and
 //           troopers; raids that swing wide round a flank to hit miners, belts and workers.
 import type { Factions, Tgt } from './index';
 import type { FactionSite } from './plan';
@@ -93,7 +93,7 @@ export class Programme implements SOwner {
     if (site.arrive <= 0) this.arrive(true);
   }
   get name() { return this.site.name; }
-  get label() { return this.f === 'soviet' ? 'Soviet' : 'Chinese'; }
+  get label() { return this.f === 'soviet' ? 'Concord' : 'Consortium'; }
   get alive() { return this.state === 'active'; }
   get strength() { return this.site.strength * this.F.diff; }
 
@@ -115,8 +115,8 @@ export class Programme implements SOwner {
     F.radio.say(this.f, 'land', { B: this.site.name }, 0);
     const [px, pz] = F.playerCenter();
     F.radio.calder(this.f === 'soviet'
-      ? `That was a lander, Seven. Red star on the hull. The Soviets are down to the ${compass(this.x - px, this.z - pz)}.`
-      : `Another lander, Seven, to the ${compass(this.x - px, this.z - pz)}. Chinese markings. They'll spread fast.`);
+      ? `That was a lander, Seven. Graphite hull, orange bands: the Eurasian Concord is down to the ${compass(this.x - px, this.z - pz)}.`
+      : `Another lander, Seven, to the ${compass(this.x - px, this.z - pz)}. White hull, teal wave: the Pacific Consortium. They'll spread fast.`);
     for (const k of this.P.startUnits.slice(0, 3)) this.spawn(k, this.hq!);
     this.queue = [...this.P.start];
     this.res += 120;
@@ -290,7 +290,7 @@ export class Programme implements SOwner {
     const need = Math.round(this.P.waveSize(this.wave) * this.strength * (1 + F.playerPower() / 30));
     const overdue = this.waveT < -45;
     if (home.length < Math.max(3, need * 0.75) && !(overdue && home.length >= 3)) return;
-    // keep a guard: the slowest (Soviet) / the sturdiest (PRC) stay home
+    // keep a guard: the slowest (Concord) / the sturdiest (Consortium) stay home
     home.sort((a, b) => statOf(a.kind).speed - statOf(b.kind).speed);
     const guard = this.P.guard + (this.wave > 3 ? 1 : 0);
     const go = this.P.raid ? home.slice(0, Math.max(0, home.length - guard)).reverse() : home.slice(guard);
@@ -336,14 +336,14 @@ export class Programme implements SOwner {
       const dir = compass(this.x - px, this.z - pz);
       const heavy = go.some((u) => u.kind === 'sov_titan') ? ' A titan walks with them.' : go.some((u) => u.kind === 'sov_tank' || u.kind === 'prc_mech') ? ' Armour, too.' : '';
       const line = this.f === 'soviet'
-        ? `Seven, the Soviet column is moving: ${go.length} machines from the ${dir}.${heavy} Get the works ready.`
-        : `Chinese raiders, ${go.length} of them, swinging round from the ${dir}. They'll go for the miners and the belts.${heavy}`;
+        ? `Seven, the Concord column is moving: ${go.length} machines from the ${dir}.${heavy} Get the works ready.`
+        : `Consortium raiders, ${go.length} of them, swinging round from the ${dir}. They'll go for the miners and the belts.${heavy}`;
       F.radio.calder(this.wave === 0 ? line + ' This is their first push. Hold them.' : line);
-    } else if (this.r.chance(0.6)) F.radio.calder(`They're going for each other, Seven. ${this.label} machines are moving on the ${this.f === 'soviet' ? 'Chinese' : 'Soviet'} base. Let them.`, 'think');
+    } else if (this.r.chance(0.6)) F.radio.calder(`They're going for each other, Seven. ${this.label} machines are moving on the ${this.f === 'soviet' ? 'Consortium' : 'Concord'} base. Let them.`, 'think');
     F.g.emit('faction-wave', { faction: this.f, n: go.length, x: tgt.x, z: tgt.z, vsOther });
     return true;
   }
-  /** a player target: Soviets go for the biggest works nearest them, PRC raids for soft far-flung ones */
+  /** a player target: the Concord goes for the biggest works nearest it, the Consortium raids soft far-flung ones */
   pickPlayerTarget(not?: any): Tgt | null {
     const F = this.F, list = F.playerTargets().filter((t) => t.ref !== not);
     if (!list.length) { const gp = F.player(); return gp ? F.asTgt(gp) : null; }
@@ -419,7 +419,7 @@ export class Programme implements SOwner {
     if (s === this.hq) { this.eliminate(); return; }
     if (this.state !== 'active') return;
     this.F.radio.say(this.f, 'lost', { N: s.id % 9 + 1 }, 30);
-    // methodical Soviets rebuild what they lost; the PRC simply carries on expanding
+    // the methodical Concord rebuilds what it lost; the Consortium simply carries on expanding
     if (this.f === 'soviet' && s.kind !== 'miner') this.orderI = Math.max(0, Math.min(this.orderI, this.P.order.length) - 1);
   }
   eliminate() {
@@ -427,7 +427,7 @@ export class Programme implements SOwner {
     this.state = 'eliminated';
     const F = this.F;
     F.radio.say(this.f, 'eliminated', { B: this.site.name }, 0);
-    F.later(3, () => F.radio.calder(this.f === 'soviet' ? 'Their lander is down, Seven! That\'s the Soviets finished in this valley.' : 'The Chinese station is gone. Their machines are just... stopping. Well done, Seven.', 'happy'));
+    F.later(3, () => F.radio.calder(this.f === 'soviet' ? 'Their lander is down, Seven! That\'s the Concord finished in this valley.' : 'The Consortium station is gone. Their machines are just... stopping. Well done, Seven.', 'happy'));
     F.g.emit('faction-eliminated', { faction: this.f, name: this.site.name });
     this.producing.clear(); this.waves = []; this.scout = null;
     // no signal: the machines stop, then their charges go

@@ -13,6 +13,7 @@ import { tabOf, donorFor, TABS, REG, type LabCtx, type TabId } from './labRules'
 import { CAT_COL } from '../game/dnaHarvest';
 import { isBio } from '../life/genesBio';
 import { bioSymbol } from '../biotech/organs';
+import { cyberPartModel } from '../life/cyber/preview';
 
 interface Built { geo: THREE.BufferGeometry; tex: THREE.Texture; sym: boolean; used: number }
 interface Slot { el: HTMLElement; gene: string | null; key: string; obj: THREE.Group | null; part: THREE.Mesh | null; plate: THREE.Mesh; U: RegU; spin: number; hover: number; ready: boolean; tilt: number; pu: { uCol: { value: THREE.Color }; uT: { value: number }; uOn: { value: number } } }
@@ -58,6 +59,8 @@ export class LabIcons {
 
   /** what a gene's icon depends on (so a change elsewhere on the body does not re-grow it) */
   private keyOf(id: string, base: Design): string {
+    // a robotic part: fitted to this body, so it depends on the body's shape (not its other genes)
+    if (id.startsWith('cy_')) { const { plan, size, len, girth, legLen, legThick, neck, head, tail, seed, beast } = base; return 'cy|' + id + '|' + JSON.stringify([plan, size, len, girth, legLen, legThick, neck, head, tail, seed, beast, base.genes.length]); }
     if (SYMBOLIC.has(id) || !GENE[id] || isBio(id)) return 'sym:' + id;
     const tab = tabOf(id);
     const group = tab === 'eyes' || tab === 'senses' || tab === 'jaw' || tab === 'crown' ? ['eyes', 'senses', 'jaw', 'crown'] : tab === 'legs' || tab === 'arms' ? ['legs', 'arms'] : tab === 'tail' || tab === 'wings' ? [tab] : null;
@@ -75,7 +78,7 @@ export class LabIcons {
       let s = keep.get(c.el);
       if (s && s.key === key) { keep.delete(c.el); next.push(s); continue; }
       if (s) { keep.delete(c.el); this.drop(s); }
-      const pu = { uCol: { value: new THREE.Color(c.gene ? CAT_COL[GENE[c.gene]?.cat ?? 'meta'] : 0x3a5a4a) }, uT: { value: 0 }, uOn: { value: 0 } };
+      const pu = { uCol: { value: new THREE.Color(c.gene?.startsWith('cy_') ? 0x7fd48a : c.gene ? CAT_COL[GENE[c.gene]?.cat ?? 'meta'] : 0x3a5a4a) }, uT: { value: 0 }, uOn: { value: 0 } };
       const plate = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderMaterial({ uniforms: pu, vertexShader: PLATE_V, fragmentShader: PLATE_F }));
       plate.visible = false; this.root.add(plate);
       s = { el: c.el, gene: c.gene, key, obj: null, part: null, plate, U: regUniforms(), spin: Math.random() * 6, hover: 0, ready: false, tilt: 0.32, pu };
@@ -95,7 +98,11 @@ export class LabIcons {
     let b = this.cache.get(s.key);
     if (!b) {
       const id = s.gene ?? 'unknown';
-      if (!s.gene || SYMBOLIC.has(id) || !GENE[id] || isBio(id)) { const sym = s.gene && isBio(id) ? bioSymbol(id) : symbolFor(s.gene ? id : 'unknown'); b = { geo: sym.geo, tex: sym.tex, sym: true, used: 0 }; }
+      if (id.startsWith('cy_')) {
+        const pm = cyberPartModel((s as Slot & { base: Design }).base, id);
+        if (pm) b = { geo: pm.geo, tex: pm.tex, sym: false, used: 0 };
+        else { const sym = symbolFor('unknown'); b = { geo: sym.geo, tex: sym.tex, sym: true, used: 0 }; }
+      } else if (!s.gene || SYMBOLIC.has(id) || !GENE[id] || isBio(id)) { const sym = s.gene && isBio(id) ? bioSymbol(id) : symbolFor(s.gene ? id : 'unknown'); b = { geo: sym.geo, tex: sym.tex, sym: true, used: 0 }; }
       else {
         const donor = donorFor(this.ctx, (s as Slot & { base: Design }).base, id);
         const tab = tabOf(id), cut = cutFor(tab, id);
@@ -113,8 +120,8 @@ export class LabIcons {
       this.trim();
     }
     b.used = this.t;
-    const tab = s.gene && GENE[s.gene] ? tabOf(s.gene) : 'organs';
-    s.U.uMask.value = b.sym ? 0 : maskOf(TABS[tab].regs.length > 6 ? [] : TABS[tab].regs);
+    const tab = s.gene && GENE[s.gene] ? tabOf(s.gene) : 'organs', cy = !!s.gene?.startsWith('cy_');
+    s.U.uMask.value = b.sym || cy ? 0 : maskOf(TABS[tab].regs.length > 6 ? [] : TABS[tab].regs);
     (s.U.uCol.value as THREE.Color).set(0xcfdde6);
     s.U.uK.value = 0.45; s.U.uHolo.value = s.gene ? 0.16 : 0.5;
     const mat = b.sym ? symbolMaterial(b.tex, s.U) : partMaterial(b.tex, s.U);

@@ -5,7 +5,7 @@
 // the mire, snow on high peaks, ice caps at the poles, rivers threading down to the sea. A separate cloud shell
 // drifts over it and casts its shadows on the ground; the limb scatters blue on the day side and amber at the
 // terminator; the night side glows with bioluminescent forests and, where the Veyr or a rival holds ground, with
-// their veins. Region borders are glowing pixel lines. In orbit: the U.S.P.C. survey satellite and a small moon.
+// their veins. Region borders are glowing pixel lines. In orbit: a small moon.
 // Every material writes the G-buffer (outlined silhouette only; emitters flag bloom).
 import * as THREE from 'three';
 import { GN_DECL } from '../gfx/gbuf';
@@ -443,17 +443,16 @@ function vnJs(x: number, y: number, z: number) {
     L(L(h3Js(ix, iy, iz + 1), h3Js(ix + 1, iy, iz + 1), fx), L(h3Js(ix, iy + 1, iz + 1), h3Js(ix + 1, iy + 1, iz + 1), fx), fy), fz);
 }
 
-/** a small cratered moon on a wide orbit, and the U.S.P.C. survey satellite on a low inclined one; both orbit in
- *  the world frame (dragging the globe turns the planet, not the sky) and keep out of the camera's way */
+/** a small cratered moon on a wide orbit, in the world frame (dragging the globe turns the planet, not the sky),
+ *  kept out of the camera's way (v6: the survey satellite is gone) */
 function addOrbiters(group: THREE.Group, R: number, gm: THREE.ShaderMaterial, planet: THREE.Mesh) {
   const uT = gm.uniforms.uT, uSun = gm.uniforms.uSun;
   const moonMat = new THREE.ShaderMaterial({ uniforms: { uSun }, vertexShader: SHELL_VERT, fragmentShader: MOON_FRAG });
   (moonMat as any).__gb = true;
   const moon = new THREE.Mesh(new THREE.IcosahedronGeometry(R * 0.15, 6), moonMat);
   moon.name = 'globe-moon';
-  const sat = satellite(R, uSun);
-  group.add(moon, sat);
-  const wp = new THREE.Vector3(), cpos = new THREE.Vector3(), c = new THREE.Vector3(), ahead = new THREE.Vector3();
+  group.add(moon);
+  const wp = new THREE.Vector3(), cpos = new THREE.Vector3(), c = new THREE.Vector3();
   const place = (o: THREE.Object3D, cam: THREE.Camera, D: number, w: number, inc: number, ph: number, avoid: boolean) => {
     const a = (uT.value as number) * w + ph;
     c.setFromMatrixPosition(group.matrixWorld);
@@ -470,48 +469,8 @@ function addOrbiters(group: THREE.Group, R: number, gm: THREE.ShaderMaterial, pl
     place(moon, cam, R * 3.3, 0.035, 0.42, 2.0, true);
     moon.rotation.y = t * 0.02;
     moon.updateMatrixWorld();
-    const a = place(sat, cam, R * 1.42, 0.16, 0.62, 0.7, false);
-    // fly nose-first along the orbit
-    ahead.set(-Math.sin(a), Math.cos(a) * Math.sin(0.62), Math.cos(a) * Math.cos(0.62));
-    sat.updateMatrixWorld();
-    sat.lookAt(sat.getWorldPosition(wp).add(ahead));
-    sat.updateMatrixWorld(true);
-    (sat.userData.blink as THREE.IUniform).value = Math.sin(t * 4.2) > 0.6 ? 1 : 0;
   };
 }
-/** self-lit flat-shaded parts (the planet scene has no lights): colour, sun, optional glow */
-function selfLit(col: number, uSun: THREE.IUniform, glow?: THREE.IUniform, emit = 0) {
-  const m = new THREE.ShaderMaterial({
-    uniforms: { uCol: { value: new THREE.Color(col) }, uSun, uGlow: glow ?? { value: 0 }, uEm: { value: new THREE.Color(emit) } },
-    vertexShader: 'varying vec3 vWp; void main(){ vec4 wp = modelMatrix * vec4(position, 1.0); vWp = wp.xyz; gl_Position = projectionMatrix * viewMatrix * wp; }',
-    fragmentShader: GN_DECL + `uniform vec3 uCol, uSun, uEm; uniform float uGlow; varying vec3 vWp;
-void main(){ vec3 N = normalize(cross(dFdx(vWp), dFdy(vWp))); float l = floor((max(0.0, dot(N, uSun)) * 1.1 + 0.22) * 5.0) / 5.0;
-  vec3 e = uEm + uCol * uGlow * 3.0;
-  gl_FragColor = vec4(uCol * l + e, 1.0); gNormal = vec4(N * 0.5 + 0.5, 1.0 + (dot(e, e) > 0.05 ? 32.0 : 0.0)); }`,
-  });
-  (m as any).__gb = true;
-  return m;
-}
-function satellite(R: number, uSun: THREE.IUniform) {
-  const s = R * 0.022, g = new THREE.Group();
-  g.name = 'globe-satellite';
-  const hull = selfLit(0xd8d2c4, uSun), gold = selfLit(0xc89a3a, uSun), grey = selfLit(0x9a9a9a, uSun), white = selfLit(0xe8e4dc, uSun);
-  const cell = selfLit(0x24345e, uSun, undefined, 0x0a1430);
-  g.add(new THREE.Mesh(new THREE.BoxGeometry(s * 1.2, s * 1.0, s * 1.8), hull));
-  g.add(new THREE.Mesh(new THREE.BoxGeometry(s * 1.25, s * 0.25, s * 1.85), gold));
-  // solar wings: dark blue cells on a pale frame
-  for (const side of [-1, 1]) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(s * 0.9, s * 0.1, s * 0.1), grey); arm.position.x = side * s * 1.0; g.add(arm);
-    for (let k = 0; k < 3; k++) { const w = new THREE.Mesh(new THREE.BoxGeometry(s * 1.1, s * 0.05, s * 1.4), cell); w.position.x = side * (s * 1.9 + k * s * 1.2); g.add(w); }
-  }
-  const dish = new THREE.Mesh(new THREE.ConeGeometry(s * 0.7, s * 0.4, 10, 1, true), white); dish.rotation.x = Math.PI / 2; dish.position.z = -s * 1.2; g.add(dish);
-  const ant = new THREE.Mesh(new THREE.CylinderGeometry(s * 0.04, s * 0.04, s * 1.2, 4), grey); ant.position.y = s * 0.9; g.add(ant);
-  const blinkU = { value: 0 };
-  const blink = new THREE.Mesh(new THREE.SphereGeometry(s * 0.16, 6, 4), selfLit(0xff4030, uSun, blinkU)); blink.position.y = s * 1.5; g.add(blink);
-  g.userData.blink = blinkU;
-  return g;
-}
-
 // ------------------------------------------------------------------------------------------------ space
 export interface SpaceOpts {
   /** star count and shell radius (keep inside the camera's far plane) */

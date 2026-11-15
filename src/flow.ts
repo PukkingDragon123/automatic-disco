@@ -21,6 +21,8 @@ import type { Design } from './life/design';
 import { GENE } from './life/genes';
 import { el, panel, ui, Btn, toast } from './ui/kit';
 import { sfx } from './audio/audio';
+import { makeHub } from './ship/hub/flowHub';
+import { setShipHubOpener } from './ship/hub';
 
 interface Save {
   planet: number; states: RState[]; landings: number;
@@ -30,6 +32,8 @@ interface Save {
     res?: Partial<Record<Res, number>>; skills?: { owned?: string[]; points?: number }; plants?: PlantPrefab[]; flags?: Record<string, number>;
     /** each region's works (buildings, recipes, stores, workers), by region seed */
     factories?: Record<string, unknown>;
+    /** v6 progression (src/research: mastery, research, upgrades, events) */
+    prog?: unknown;
   };
 }
 const SK = 'oddworld.save', AK = 'oddworld.archive';
@@ -42,10 +46,54 @@ export class Flow {
   landings = 0;
   private inherit: string[] = [];
   /** the region being played (its works are written into the run when the run is saved) */
-  private game: Game | null = null;
-  constructor(readonly engine: Engine, readonly input: Input) {}
+  game: Game | null = null;
+  constructor(readonly engine: Engine, readonly input: Input) { setShipHubOpener((fp) => this.openShipHub(fp)); }
 
+  /** the ship hub is the main menu (src/ship/hub): the title, then the cutaway with every room's function */
   menu() {
+    const save = read<Save | null>(SK, null);
+    const hub = makeHub(this, {
+      hasSave: !!save,
+      onNew: () => { this.startRun(Math.floor(Math.random() * 1e9)); hub.isNewGame = true; hub.board(); },
+      onContinue: () => { if (this.loadSave()) hub.board(); },
+    });
+    this.engine.setScreen(hub);
+  }
+  /** the SHIP AI LINK: from the planet the hub goes over the paused game (BACK DOWN pops it) */
+  openShipHub(fromPlanet = false) {
+    if (!fromPlanet || !this.game) { this.menu(); return; }
+    const g = this.game, was = g.paused; g.paused = true;
+    const hub = makeHub(this, { fromPlanet: true, game: g, inside: true });
+    hub.onDispose(() => { g.paused = was; });
+    this.engine.push(hub);
+  }
+  /** a new mission: the run and the galaxy seed (the world is chosen on the bridge's main monitor) */
+  startRun(seed: number) { this.run = new Run(seed); this.planet = null; this.landings = 0; this.inherit = []; }
+  ensureRun() { if (!this.run) this.startRun(Math.floor(Math.random() * 1e9)); }
+  /** the world picked on the main monitor */
+  choosePlanet(seed: number) { if (!this.planet || this.planet.seed !== seed) { this.planet = makePlanet(seed); this.landings = 0; } this.persist(); }
+  /** the pod is away: the region loop starts (the descent plays in the game) */
+  landAt(r: PRegion, pin: { x: number; z: number }) { this.land(r, { pin, first: this.landings === 0 }); }
+  save() { this.persist(); }
+  /** load the saved run without leaving the screen */
+  loadSave(): boolean {
+    const s = read<Save | null>(SK, null); if (!s) return false;
+    this.planet = makePlanet(s.planet); s.states.forEach((st, i) => { if (this.planet!.regions[i]) this.planet!.regions[i].state = st; });
+    const run = new Run(s.run.seed);
+    for (const [id, lvl, from] of s.run.genes) if (GENE[id]) { run.add(id, from, 0); run.genes.get(id)!.level = lvl; }
+    run.helix = s.run.helix;
+    for (const k of RES) run.res[k] = Math.max(0, Number(s.run.res?.[k]) || 0);
+    run.skills.load(s.run.skills);
+    run.plants = Array.isArray(s.run.plants) ? s.run.plants.filter((p) => p && typeof p.name === 'string') : [];
+    if (s.run.flags) Object.assign(run.flags, s.run.flags);
+    if (s.run.factories && typeof s.run.factories === 'object') run.factories = s.run.factories;
+    if (s.run.prog && typeof s.run.prog === 'object') (run as unknown as { prog?: unknown }).prog = s.run.prog;
+    for (const d of s.run.designs) run.reg.add(d, 'veyr', null, 'design', 0);
+    this.run = run; this.landings = s.landings;
+    return true;
+  }
+  /** the old void menu (kept for ?test=menu) */
+  oldMenu() {
     const save = read<Save | null>(SK, null);
     this.engine.setScreen(new MenuScreen({
       hasSave: !!save, archive: read<ArchiveEntry[]>(AK, []),
@@ -71,6 +119,7 @@ export class Flow {
     run.plants = Array.isArray(s.run.plants) ? s.run.plants.filter((p) => p && typeof p.name === 'string') : [];
     if (s.run.flags) Object.assign(run.flags, s.run.flags);
     if (s.run.factories && typeof s.run.factories === 'object') run.factories = s.run.factories;
+    if (s.run.prog && typeof s.run.prog === 'object') (run as unknown as { prog?: unknown }).prog = s.run.prog;
     for (const d of s.run.designs) run.reg.add(d, 'veyr', null, 'design', 0);
     this.run = run; this.landings = s.landings;
     this.planetView();
@@ -82,7 +131,7 @@ export class Flow {
     write(SK, {
       planet: this.planet.seed, states: this.planet.regions.map((x) => x.state), landings: this.landings,
       run: { seed: r.seed, genes: [...r.genes.values()].map((g) => [g.id, g.level, g.from]), helix: r.helix, designs: r.reg.list.filter((s) => s.owner === 'veyr' && s.role === 'design').map((s) => s.design),
-        res: { ...r.res }, skills: r.skills.toJSON(), plants: r.plants, flags: r.flags, factories: r.factories },
+        res: { ...r.res }, skills: r.skills.toJSON(), plants: r.plants, flags: r.flags, factories: r.factories, prog: (r as unknown as { prog?: unknown }).prog },
     } satisfies Save);
   }
   private planetView(note?: string) {
@@ -104,7 +153,7 @@ export class Flow {
 
   // ------------------------------------------------------------------ a region
   /** drop: the pod is in the air over this region (the game starts in descent mode; the landing is where it comes down) */
-  private land(r: PRegion, drop?: { pin: { x: number; z: number }; first: boolean }) {
+  land(r: PRegion, drop?: { pin: { x: number; z: number }; first: boolean }) {
     const p = this.planet!, run = this.run!;
     this.landings++;
     for (const s of run.reg.list) s.alive = 0;

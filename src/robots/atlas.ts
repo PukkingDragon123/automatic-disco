@@ -21,9 +21,10 @@ export interface Livery {
   serials: string[];
 }
 const L0: Record<LiveryId, Livery> = {
-  uspc: { id: 'uspc', a: 'olive', b: 'steel', glow: 'glowTeal', cable: 'stampRed', rock: 'basalt', wear: 1, serials: ['U.S.P.C. UNIT 07', 'USPC 1957', 'UNIT 07', 'A-07 CORPS'] },
-  sov: { id: 'sov', a: 'sage', b: 'rust', glow: 'stampRed', cable: 'basalt', rock: 'basalt', wear: 2, serials: ['СССР К-114', 'ТБ-57', 'СССР Л-21', 'ПД-09'] },
-  prc: { id: 'prc', a: 'moss', b: 'sand', glow: 'glowAmber', cable: 'ochre', rock: 'basalt', wear: 1, serials: ['中国 工-52', '五一-07', '中国 三-18', '人工-25'] },
+  uspc: { id: 'uspc', a: 'olive', b: 'steel', glow: 'glowTeal', cable: 'stampRed', rock: 'basalt', wear: 1, serials: ['UNAA UNIT 07', 'AUSTRAL 07', 'UNIT 07', 'UNAA A-07'] },
+  // v6 rival blocs (ids kept): the Eurasian Concord in graphite and signal orange, the Pacific Consortium in ceramic white and teal
+  sov: { id: 'sov', a: 'steel', b: 'rust', glow: 'glowAmber', cable: 'basalt', rock: 'basalt', wear: 2, serials: ['CONCORD K-114', 'EC T-57', 'CONCORD L-21', 'EC PD-09'] },
+  prc: { id: 'prc', a: 'snow', b: 'teal', glow: 'glowTeal', cable: 'slate', rock: 'basalt', wear: 0, serials: ['PRX 52', 'TIDE-07', 'PRX R-18', 'REEF-25'] },
   exp: { id: 'exp', a: 'paper', b: 'slate', glow: 'glowTeal', cable: 'rust', rock: 'stone', wear: 0, serials: ['EXPED. 58', 'I.G.Y. 1958', 'EXP-3 SURVEY', 'FIELD 12'] },
 };
 export function livery(id: LiveryId, o: Partial<Livery> = {}): Livery { return { ...L0[id], ...o }; }
@@ -396,11 +397,23 @@ function paintMark(P: Page, L: Livery, bg: readonly number[]) {
     P.rect(4, 26, 56, 13, I[1]); P.rect(5, 27, 54, 11, Pp[4]); P.rect(5, 31, 54, 3, Rd[2]); P.hline(5, 58, 27, Pp[5]);
     star(P, 32, 33, 22, Pp[5], Pp[3], I[1], I[1]);
   } else if (L.id === 'sov') {
-    star(P, 32, 33, 25, Rd[3], Rd[1], Rd[0], Pp[2]);
+    // the Concord: an orange hexagon, lit on its upper-left facets, a dark chevron pointing up
+    const Ru = RAMPS.rust, B = RAMPS.basalt;
+    const hx: Pt[] = [[32, 7], [54, 19], [54, 45], [32, 57], [10, 45], [10, 19]];
+    P.poly(hx, Pp[2]);
+    P.poly([[32, 10], [51, 21], [51, 43], [32, 54], [13, 43], [13, 21]], Ru[4]);
+    P.poly([[32, 10], [32, 54], [13, 43], [13, 21]], Ru[5]);
+    P.poly([[32, 18], [46, 40], [41, 43], [32, 28], [23, 43], [18, 40]], B[1]);
+    P.line(51, 21, 51, 43, Ru[2]); P.line(51, 43, 32, 54, Ru[2]);
   } else if (L.id === 'prc') {
-    star(P, 32, 33, 25, Rd[3], Rd[1], Rd[0], O[5]);
-    stencil(P, '八', 23, 28, O[5], 2); // the Aug-1 characters on the star (八一)
-    stencil(P, '一', 31, 28, O[5], 2);
+    // the Consortium: a teal diamond, pale rim, three wave crests over a horizon bar
+    const T = RAMPS.teal, Sn = RAMPS.snow;
+    P.poly([[32, 5], [59, 32], [32, 59], [5, 32]], Sn[5]);
+    P.poly([[32, 9], [55, 32], [32, 55], [9, 32]], T[4]);
+    P.poly([[32, 9], [9, 32], [32, 32]], T[5]);
+    P.poly([[14, 37], [50, 37], [32, 55]], T[2]);
+    for (let k = 0; k < 3; k++) { const y = 22 + k * 5; for (let x = 18 - k * 3; x <= 46 + k * 3; x++) P.rect(x, y + Math.round(Math.sin(x * 0.45 + k) * 1.2), 1, 2, Sn[5]); }
+    P.rect(13, 36, 39, 2, Sn[4]);
   } else {
     P.rect(0, 26, 64, 12, Sl[2]); P.hline(0, 63, 26, Sl[4]); P.hline(0, 63, 37, Sl[0]);
     const pts: Pt[] = [[32, 6], [37, 27], [58, 32], [37, 37], [32, 58], [27, 37], [6, 32], [27, 27]];
@@ -429,7 +442,7 @@ export function atlasFor(L: Livery): Atlas {
   P.region('hz'); paintHazard(P, RAMPS.ochre, 3); P.region('hzB'); paintHazard(P, RAMPS.stampRed.concat([RAMPS.coral[4], RAMPS.coral[5]]), 5);
   P.region('gr'); paintGrille(P, S); P.region('vent'); paintGrille(P, A);
   P.region('tr'); paintTread(P);
-  P.region('cv'); paintCanvas(P, L.id === 'prc' ? RAMPS.sand : RAMPS.straw);
+  P.region('cv'); paintCanvas(P, L.id === 'prc' ? RAMPS.snow : RAMPS.straw);
   P.region('felt'); paintCanvas(P, RAMPS.olive);
   P.region('gauge'); paintGauge(P, 3);
   P.region('lens'); paintGlass(P, G, true, false); P.region('lensB'); paintGlass(P, RAMPS.glowAmber, true, false);

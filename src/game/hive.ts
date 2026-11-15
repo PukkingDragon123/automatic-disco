@@ -190,11 +190,13 @@ export class Hive {
   /** what is missing to pay a cost (null if it can be paid) */
   lack(c: Cost): string | null {
     const run = this.run; if (!run) return null;
+    const st = (this.game as unknown as { storage?: { lack(c: Cost): string | null } } | null)?.storage; if (st && this.isVeyr) return st.lack(c);
     for (const k of RES) { const n = c[k] ?? 0; if (n > 0 && run.res[k] < n) return `Needs ${n} ${k}`; }
     return null;
   }
   pay(c: Cost): boolean {
     const run = this.run; if (!run || this.lack(c)) return false;
+    const st = (this.game as unknown as { storage?: { pay(c: Cost): boolean } } | null)?.storage; if (st && this.isVeyr) return st.pay(c);
     for (const k of RES) run.res[k] = Math.max(0, run.res[k] - (c[k] ?? 0));
     return true;
   }

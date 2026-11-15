@@ -20,6 +20,11 @@ import { LabIcons } from './labIcons';
 import { LabUI, SWATCH, type CardSpec } from './labUI';
 import { CAT_COL } from '../game/dnaHarvest';
 import { thumb } from './thumbs';
+import { LabFit } from './labFit';
+import { type as typeText } from './labPaper';
+import { CYBER, SLOT_NAME, SLOT_DESC, partsFor, slotsFor, fitPart, unfitPart, fitCost, type Slot as FitSlot } from '../life/cyber/catalog';
+import { workerProfile } from '../life/cyber/roles';
+import { ITEMS } from '../factory/items';
 import { BIO, isBio, isPlantGene } from '../life/genesBio';
 import { profileOf, upkeepLabel, suggest, roleScore, sourceNote, labelFor, ROLES, ROLE_NAME, ROLE_SPEC, type Role } from '../biotech/functions';
 import {
@@ -33,6 +38,12 @@ export interface LabOpts {
   emit?: (ev: string, data: unknown) => void;
   /** the species for the jars (default: designs and everything absorbed this run) */
   species?: Species[];
+  /** the fitting bay's bill of real items: what the stores hold, and taking the items when a fitted design is filed
+   *  (the inventory system plugs in here; without it parts are free to design with) */
+  stock?: (item: string) => number;
+  spend?: (cost: Record<string, number>) => boolean;
+  /** open straight into the fitting bay */
+  fit?: boolean;
 }
 const CAT_SHORT: Record<GeneCat, string> = { body: 'PLAN', limb: 'LIMB', sense: 'SENSE', feed: 'FEED', defense: 'DEF', meta: 'META', repro: 'BROOD' };
 const SEL_COL = 0xffcd6e, HOV_COL = 0x7affe0;
@@ -60,6 +71,10 @@ export class Forge implements Screen {
   private grade: { bloom: number; vig: number } | null = null;
   /** the role planner's target */
   private role: Role = 'producer';
+  /** the fitting bay: robotic parts on the specimen */
+  private fitUI: LabFit;
+  private mode: 'genes' | 'fit' = 'genes';
+  private slot: FitSlot = 'tool';
 
   constructor(readonly run: Run, readonly vaults: number, readonly helix: () => number, readonly base: Species | null, readonly done: (r: ForgeResult | null) => void, readonly opts: LabOpts = {}) {
     this.ctx = { run, vaults, helix };
@@ -76,7 +91,9 @@ export class Forge implements Screen {
       saveDisabled: () => invalid(this.ctx, this.d),
       role: (r) => { this.role = r as Role; this.stats(); },
       suggest: (id) => this.suggestPick(id),
+      fit: () => this.setMode(this.mode === 'fit' ? 'genes' : 'fit'), fitOn: () => this.mode === 'fit',
     });
+    this.fitUI = new LabFit({ mode: (m) => this.setMode(m), slot: (sl) => this.openSlot(sl) });
     this.L.onSay = (i, text) => { const s = this.L.sci[i]; this.ui.say(i, s.name, text, s.col); };
     // the shelves: your designs first, then everything you have absorbed
     this.jarSp = opts.species ?? this.shelfSpecies();
@@ -84,6 +101,8 @@ export class Forge implements Screen {
     this.role = ROLES.reduce((a, b) => (roleScore(b, this.d) > roleScore(a, this.d) ? b : a), 'producer' as Role);
     this.L.setSpecimen(this.d, false, true);
     this.openTab('genome', false);
+    this.fitUI.setMode('genes');
+    if (opts.fit) this.setMode('fit');
     this.refresh();
     // input
     this.canvas = document.getElementById('view') as HTMLCanvasElement;
@@ -182,6 +201,7 @@ export class Forge implements Screen {
   }
   private owned(tab: TabId) { return [...this.run.genes.keys()].filter((id) => GENE[id] && tabOf(id) === tab && !isPlantGene(id)); }
   private cards() {
+    if (this.mode === 'fit') { this.fitCards(); return; }
     const d = this.d, t = this.tab;
     const L: CardSpec[] = [];
     const geneCard = (id: string): CardSpec => {
@@ -217,6 +237,7 @@ export class Forge implements Screen {
   }
   private pickCard(i: number) {
     const c = this.cardList[i]; if (!c || this.closing) return;
+    if (this.mode === 'fit') { this.pickPart(c.gene, c.state); return; }
     if (this.tab === 'genome') { if (c.gene) { const t = tabOf(c.gene); this.hintTabs = []; this.openTab(t, true); sfx('click'); } return; }
     if (c.state === 'unk') { sfx('deny'); toast('Absorb more creatures to sequence these genes.', 'info', 2400); return; }
     if (!c.gene) return;
@@ -265,6 +286,70 @@ export class Forge implements Screen {
     sfx('build', 1, 0.6);
   }
 
+  // ---------------------------------------------------------------------------------------------- the fitting bay
+  private setMode(m: 'genes' | 'fit') {
+    if (this.mode === m) { this.fitUI.setMode(m); return; }
+    this.mode = m; this.fitUI.setMode(m);
+    if (m === 'fit') {
+      const slots = slotsFor(this.d.plan);
+      if (!slots.includes(this.slot)) this.slot = slots[0];
+      this.L.targetGoal.set(0.25, 1.8, 0); if (this.L.distGoal > 8) this.L.distGoal = 7.6;
+      this.L.speak(0, 'idle', true);
+    } else this.openTab('genome', false);
+    this.refresh();
+  }
+  private openSlot(sl: FitSlot) {
+    this.slot = sl; if (this.mode !== 'fit') { this.setMode('fit'); return; }
+    this.L.present(sl === 'head' || sl === 'collar' ? 3 : sl === 'fore' || sl === 'hind' ? 8 : sl === 'back' || sl === 'power' ? 2 : 1);
+    this.cards(); this.fitReadout();
+  }
+  /** what the stores lack for a part (null: enough, or no stores to check) */
+  private short(cost: Record<string, number>): string | null {
+    const st = this.opts.stock; if (!st) return null;
+    const miss = Object.entries(cost).filter(([id, n]) => n > 0 && st(id) < n).map(([id, n]) => `${n - st(id)} ${(ITEMS[id]?.name ?? id).toUpperCase()}`);
+    return miss.length ? 'SHORT: ' + miss.join(', ') : null;
+  }
+  private fitCards() {
+    const d = this.d, sl = this.slot, fitted = new Set(d.fit ?? []);
+    const L: CardSpec[] = partsFor(sl, d.plan).map((p) => {
+      const on = fitted.has(p.id), why = on ? null : this.short(p.cost);
+      const stat = [p.carry ? `+${p.carry} CARRY` : '', p.speed ? `${p.speed > 0 ? '+' : ''}${p.speed} M/S` : '', p.armour ? `+${Math.round(p.armour * 100)}% ARMOUR` : '', p.sight ? `+${p.sight} M SIGHT` : '', p.control ? 'OBEDIENCE' : '']
+        .filter(Boolean).slice(0, 2).join(' · ');
+      const top = Object.entries(p.skills).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))[0];
+      const costTxt = Object.entries(p.cost).filter(([, n]) => n > 0).map(([id, n]) => `${n} ${ITEMS[id]?.name ?? id}`).join(', ');
+      const tip = `<h4>${p.name}</h4>${p.desc}<div class="sub" style="margin-top:3px">${stat}${top ? ` · ${top[0].toUpperCase()} +${top[1]}` : ''}</div><div class="sub">COST: ${costTxt}</div>` + (why ? `<div class="tip-warn">${why}</div>` : on ? '<div class="sub">Fitted. Click to remove it.</div>' : '<div class="sub">Click to fit it.</div>');
+      return { gene: p.id, name: p.name.toUpperCase(), meta: SLOT_NAME[sl], fx: stat || (top ? `${top[0].toUpperCase()} +${top[1]}` : ''), state: on ? 'on' : why ? 'lock' : 'ok', tag: on ? 'FITTED' : '', col: 0x7fd48a, tip, cat: 'meta' } as CardSpec;
+    });
+    this.cardList = L;
+    const t = this.ui.area.querySelector('.vt') as HTMLElement | null, sb = this.ui.area.querySelector('.ps') as HTMLElement | null;
+    if (t) typeText(t, `FITTING BAY · ${SLOT_NAME[sl]}`, 60);
+    if (sb) typeText(sb, SLOT_DESC[sl], 120);
+    this.ui.setCards(L, L.length ? undefined : `NO ${SLOT_NAME[sl]} PARTS FIT A ${PLAN_NAME[d.plan].toUpperCase()}`, 'fit:' + sl);
+    this.icons.set(this.ui.cards.map((c, i) => ({ el: (c as HTMLDivElement & { win?: HTMLElement }).win!, gene: L[i].gene })), d);
+    this.fitUI.setSlots(slotsFor(d.plan).map((s2) => ({ slot: s2, part: (d.fit ?? []).find((id) => CYBER[id]?.slot === s2) ?? null })), sl);
+  }
+  private pickPart(id: string | null, state: string) {
+    const p = id ? CYBER[id] : null; if (!p) return;
+    if (state === 'lock') { sfx('deny'); toast(this.short(p.cost) ?? 'Not available', 'warn', 2600); this.L.speak(2, 'bad', true); return; }
+    const on = (this.d.fit ?? []).includes(p.id);
+    this.d.fit = on ? unfitPart(this.d.fit, p.id) : fitPart(this.d.fit, p.id);
+    this.L.setSpecimen(this.d, true);
+    this.L.edit(on ? 0.6 : 1.2);
+    this.L.react(on ? 'edit' : 'splice');
+    sfx(on ? 'close' : 'build', 1, 0.6);
+    if (!on) toast(`${p.name} fitted. ${workerProfile(this.d).line}`, 'info', 2400);
+    this.refresh();
+  }
+  private fitReadout() {
+    const wp = workerProfile(this.d);
+    this.fitUI.setProfile(wp, { genes: this.d.genes.length, cost: fitCost(this.d.fit), stock: this.opts.stock });
+  }
+  /** which slot a clicked body region opens */
+  private slotOf(reg: number): FitSlot {
+    const slots = slotsFor(this.d.plan), want: FitSlot = reg >= 3 && reg <= 7 ? 'head' : reg === 2 || reg === 11 ? 'back' : reg === 1 ? 'armour' : reg === 9 ? 'tool' : reg === 10 ? 'power' : reg === 8 ? (this.slot === 'fore' ? 'hind' : 'fore') : this.slot;
+    return slots.includes(want) ? want : slots[0];
+  }
+
   // ---------------------------------------------------------------------------------------------- readouts
   private refresh() {
     this.ui.setDesign(this.d, sizeCap(this.ctx));
@@ -272,6 +357,7 @@ export class Forge implements Screen {
     this.cards();
   }
   private stats() {
+    this.fitReadout();
     const p = pheno(this.d), st = p.stats;
     const rows: [string, number, number, string][] = [
       ['HEALTH', st.hp, 600, `${Math.round(st.hp)}`], ['ARMOUR', st.armor, 0.75, `${Math.round(st.armor * 100)}%`], ['SPEED', st.speed, 10, `${st.speed.toFixed(1)} M/S`],
@@ -330,13 +416,21 @@ export class Forge implements Screen {
   private onWheel = (e: WheelEvent) => { this.L.distGoal = clamp(this.L.distGoal * (e.deltaY > 0 ? 1.1 : 0.9), 3.4, 11); };
   private onKey = (e: KeyboardEvent) => {
     if (this.closing) return;
-    if (e.key === 'Escape') { if (this.ui.shelfBox.classList.contains('open')) this.ui.closeShelf(); else if (this.tab !== 'genome') this.openTab('genome', true); else this.close(null); }
+    if (e.key === 'Escape') { if (this.ui.shelfBox.classList.contains('open')) this.ui.closeShelf(); else if (this.mode === 'fit') this.setMode('genes'); else if (this.tab !== 'genome') this.openTab('genome', true); else this.close(null); }
+    else if (e.key === 'f' || e.key === 'F') { if (document.activeElement !== this.ui.nameIn) this.setMode(this.mode === 'fit' ? 'genes' : 'fit'); }
     else if (e.key === 'ArrowRight') this.ui.strip.scrollBy({ left: 160, behavior: 'smooth' });
     else if (e.key === 'ArrowLeft') this.ui.strip.scrollBy({ left: -160, behavior: 'smooth' });
   };
   /** a click or tap on the lab: a part of the specimen opens its area; a jar loads its species */
   private tap(x: number, y: number) {
     const hit = this.L.pickRegion(x, y);
+    if (hit && this.mode === 'fit') {
+      sfx('click', 1.2, 0.7); sfx('zap', 2, 0.15);
+      this.L.fx.burst(hit.at.x, hit.at.y, hit.at.z, 10, 0x8fdc96, { glow: true, speed: 0.8, up: 0.4, size: 2, life: 0.5, grav: 0 });
+      this.openSlot(this.slotOf(hit.reg));
+      this.flashReg = { reg: hit.reg, t: 0.8 };
+      return;
+    }
     if (hit) {
       const tabs = REG_TABS[hit.reg] ?? ['body'];
       this.hintTabs = tabs;
@@ -369,7 +463,10 @@ export class Forge implements Screen {
         const hit = this.L.pickRegion(m.x, m.y);
         if (hit) reg = hit.reg; else jar = this.L.pickJar(this.L.rayAt(m.x, m.y));
         if (reg && reg !== this.hovReg) sfx('hover', 1.4, 0.4);
-        if (reg) {
+        if (reg && this.mode === 'fit') {
+          const sl = this.slotOf(reg), fp = (this.d.fit ?? []).find((id) => CYBER[id]?.slot === sl);
+          this.ui.tag(`${SLOT_NAME[sl]}<i>${fp ? CYBER[fp].name.toUpperCase() : 'EMPTY'} · CLICK TO FIT</i>`, m.x, m.y);
+        } else if (reg) {
           const t = REG_TABS[reg]?.[0];
           const names = t ? this.d.genes.filter((g) => tabOf(g) === t).map((g) => GENE[g].name) : [];
           this.ui.tag(`${REG_NAME[reg]}<i>${names.length ? names.join(' · ') : 'NOTHING GROWN HERE'} · CLICK TO EDIT</i>`, m.x, m.y);
@@ -399,6 +496,9 @@ export class Forge implements Screen {
     if (this.closing) return;
     const inv = invalid(this.ctx, this.d);
     if (inv) { toast(inv, 'warn'); this.L.react('bad'); return; }
+    const bill = fitCost(this.d.fit), short = this.short(bill);
+    if (short) { toast(`The stores cannot supply the fitted parts. ${short}.`, 'warn', 3200); this.L.react('bad'); return; }
+    if (Object.keys(bill).length && this.opts.spend && !this.opts.spend(bill)) { toast('The parts could not be drawn from the stores.', 'warn', 2800); return; }
     this.closing = true;
     const d: Design = JSON.parse(JSON.stringify(this.d));
     this.L.react('save'); this.L.edit(0.7);
@@ -421,7 +521,7 @@ export class Forge implements Screen {
     removeEventListener('keydown', this.onKey);
     this.canvas.style.touchAction = this.prevTouch; this.canvas.style.cursor = '';
     document.body.classList.remove('lab-open');
-    this.ui.dispose(); this.icons.dispose(); this.L.dispose();
+    this.ui.dispose(); this.icons.dispose(); this.L.dispose(); this.fitUI.dispose();
     const eng = (window as unknown as { __engine?: Engine }).__engine;
     if (this.grade && eng) { eng.post.grade.bloom = this.grade.bloom; eng.post.grade.vig = this.grade.vig; }
     Tip.hide();

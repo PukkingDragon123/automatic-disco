@@ -17,6 +17,10 @@ import { thumb } from '../ui/thumbs';
 import { sfx } from '../audio/audio';
 import { SKILL } from '../game/skills';
 import { hex } from '../ui/machine';
+import { BuildMenu, chip } from '../ui/build/menu';
+import { Hotbar } from '../ui/build/hotbar';
+import { NodeMap } from '../ui/nodes/map';
+import { isRun } from './build';
 
 const esc = (s: string) => s.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]!));
 const fmt = (n: number) => (n >= 100 ? Math.round(n).toString() : n >= 10 ? n.toFixed(0) : n.toFixed(1));
@@ -28,6 +32,8 @@ export class FactoryUI {
   private insp: HTMLDivElement; private sel: FBuilding | null = null; private inspKey = '';
   private stats: HTMLDivElement; private crew: HTMLDivElement; private bar: HTMLDivElement;
   private overlay: HTMLCanvasElement; private og: CanvasRenderingContext2D;
+  readonly menu: BuildMenu; readonly hotbar: Hotbar; readonly nodes: NodeMap;
+  private tag: HTMLDivElement; private tagKey = '';
   private t = 0; private slow = 0;
   showStats = false; showCrew = false; showFlags = false;
 
@@ -41,14 +47,24 @@ export class FactoryUI {
     this.crew = el('div', 'fc-sheet fc-crew', this.root);
     this.bar = el('div', 'fc-touchbar', this.root);
     for (const p of [this.cat, this.insp, this.stats, this.crew, this.bar]) { p.addEventListener('pointerdown', (e) => e.stopPropagation()); p.addEventListener('wheel', (e) => e.stopPropagation()); }
+    this.menu = b.menu = new BuildMenu(f, b);
+    this.hotbar = b.hotbar = new Hotbar(f, b);
+    this.nodes = new NodeMap(f);
+    b.onNodes = () => this.nodes.open();
+    this.tag = el('div', 'pl-tag', document.body);
     b.onChange = () => { this.catKey = ''; this.renderCat(); };
     b.onInspect = (bb) => this.inspect(bb);
     b.onDismiss = () => this.closeAll();
     const g = f.g;
     const sus = g.suspend.bind(g), res = g.resume.bind(g), dis = g.dispose.bind(g);
-    g.suspend = () => { sus(); this.root.style.display = 'none'; this.overlay.style.display = 'none'; };
-    g.resume = () => { res(); this.root.style.display = ''; this.overlay.style.display = ''; };
-    g.dispose = () => { this.root.remove(); this.overlay.remove(); b.dispose(); dis(); };
+    const mine = () => [this.root, this.overlay, this.menu.root, this.hotbar.root, this.nodes.root, this.tag];
+    // the node map covers the whole screen: the world is not drawn behind it (the simulation keeps running)
+    const gr = g as unknown as { render(post: unknown, t: number): void };
+    const rnd = gr.render.bind(g);
+    gr.render = (post, t) => { if (this.nodes.isOpen) return; rnd(post, t); };
+    g.suspend = () => { sus(); for (const e of mine()) e.style.display = 'none'; };
+    g.resume = () => { res(); for (const e of mine()) e.style.display = ''; };
+    g.dispose = () => { this.root.remove(); this.overlay.remove(); this.tag.remove(); this.menu.dispose(); this.hotbar.dispose(); this.nodes.dispose(); b.dispose(); dis(); };
     f.g.input.onKey((e) => this.key(e));
     this.renderCat();
   }
@@ -57,11 +73,13 @@ export class FactoryUI {
     if (!g.act || g.harvest.blocking || g.storyBlock || e.ctrlKey || e.metaKey) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (k === 'o') this.toggleStats();
-    else if (k === 'n') this.toggleCrew();
+    else if (k === 'n') { if (this.b.active) this.b.close(); this.nodes.toggle(); }
     else if (k === 'i') { const bb = this.b.pick(this.f.g.input.mx, this.f.g.input.my); this.inspect(bb); this.f.render.sel = bb; }
     void 0;
   }
   private get anyOpen() { return !!this.sel || this.showStats || this.showCrew; }
+  /** the crew roster, from the node map's workers panel */
+  openCrew() { if (!this.showCrew) this.toggleCrew(); }
   private modeSet = false;
   /** while a form is open the game is in 'factory' mode: Escape closes the forms (not the pause menu), a click in
    *  the field picks another machine or puts the paperwork away */
@@ -89,61 +107,17 @@ export class FactoryUI {
 
   // ================================================================== catalogue
   private renderCat() {
-    const f = this.f, b = this.b, on = b.active;
-    this.cat.classList.toggle('on', on);
-    this.bar.classList.toggle('on', on);
+    const b = this.b, on = b.active;
+    this.bar.classList.toggle('on', on && matchMedia('(pointer: coarse)').matches);
     document.body.classList.toggle('fc-building', on);
+    this.hotbar.render();
     if (!on) return;
-    const sk = f.g.run.skills;
-    const key = `${this.catTab}|${b.kind}|${b.tool}|${sk.owned.size}|${Math.floor(this.t / 1.5)}`;
-    if (key === this.catKey) return;
-    this.catKey = key;
-    const kinds = FKINDS.filter((k) => FDEFS[k].cat === this.catTab);
-    const r = f.g.engine.renderer;
-    let h = `<div class="fc-cat-head"><span class="fc-mast">U.S.P.C. FIELD WORKS CATALOGUE</span><span class="fc-ed">1957 ED. &middot; FORM 7-B</span>`;
-    h += `<div class="fc-tabs">${CATS.map((c) => `<button class="fc-tab ${c.k === this.catTab ? 'on' : ''}" data-tab="${c.k}"><i>${c.no}</i>${c.name}</button>`).join('')}</div></div>`;
-    h += `<div class="fc-cards">`;
-    let n = FKINDS.indexOf(kinds[0]) + 1;
-    for (const k of kinds) {
-      const d = FDEFS[k], locked = !!d.skill && !sk.has(d.skill);
-      const afford = !f.costLack(d.cost);
-      h += `<div class="fc-card ${locked ? 'locked' : ''} ${b.kind === k ? 'sel' : ''} ${!afford && !locked ? 'poor' : ''}" data-kind="${k}">
-        <div class="fc-no">No. ${String(n++).padStart(2, '0')}</div>
-        <img class="fc-plate" src="${drawing(r, k)}">
-        <div class="fc-name">${esc(d.name.toUpperCase())}</div>
-        <div class="fc-spec">${d.w}&times;${d.d} m${d.power > 0 ? ` &middot; ${d.power} MW` : d.power < 0 ? ` &middot; <b>+${-d.power} MW</b>` : ''}${d.belt ? ` &middot; ${Math.round(d.belt * 180)}/min` : ''}</div>
-        <div class="fc-cost">${costRow(f, d.cost)}</div>
-        ${locked ? `<div class="fc-stamp">LOCKED<small>${esc((SKILL[d.skill!]?.name ?? d.skill!).toUpperCase())}</small></div>` : ''}
-      </div>`;
-    }
-    h += `</div>`;
-    const sel = b.kind ? FDEFS[b.kind] : null;
-    h += `<div class="fc-foot"><div class="fc-desc">${sel ? `<b>${esc(sel.name)}.</b> ${esc(sel.desc)}` : b.tool === 'dismantle' ? '<b>DISMANTLE.</b> Click a machine to take it down. Everything it cost comes back.' : b.tool === 'copy' ? '<b>BLUEPRINT.</b> Drag a box over machines to copy them.' : b.tool === 'paste' ? '<b>BLUEPRINT.</b> Click to lay the copy. [R] turns it.' : b.tool === 'assign' ? '<b>ASSIGN.</b> Click the target for the worker.' : '<b>SELECT.</b> Pick a machine from the catalogue, or click one in the field to inspect it.'}</div>
-      <div class="fc-tools">
-        <button data-tool="select" class="${b.tool === 'select' ? 'on' : ''}">SELECT</button>
-        <button data-tool="dismantle" class="${b.tool === 'dismantle' ? 'on' : ''}">DISMANTLE <i>X</i></button>
-        <button data-tool="copy" class="${b.tool === 'copy' ? 'on' : ''}">COPY <i>Y</i></button>
-        <button data-tool="paste" class="${b.tool === 'paste' ? 'on' : ''}">PASTE <i>U</i></button>
-        <button data-act="rot">TURN <i>R</i></button>
-        <button data-act="close">CLOSE <i>B</i></button>
-      </div></div>`;
-    this.cat.innerHTML = h;
-    this.cat.querySelectorAll('[data-tab]').forEach((e) => e.addEventListener('click', () => { this.catTab = (e as HTMLElement).dataset.tab as FCat; this.catKey = ''; sfx('click', 1.2, 0.5); this.renderCat(); }));
-    this.cat.querySelectorAll('[data-kind]').forEach((e) => e.addEventListener('click', () => {
-      const k = (e as HTMLElement).dataset.kind as FKind, d = FDEFS[k];
-      if (d.skill && !f.g.run.skills.has(d.skill)) { sfx('deny'); toast(`<b>${d.name}</b> needs <b>${SKILL[d.skill]?.name ?? d.skill}</b> on the skill tree`, 'warn', 2200); return; }
-      b.choose(k);
-    }));
-    this.cat.querySelectorAll('[data-tool]').forEach((e) => e.addEventListener('click', () => b.setTool((e as HTMLElement).dataset.tool as never)));
-    this.cat.querySelector('[data-act="rot"]')?.addEventListener('click', () => b.rotate());
-    this.cat.querySelector('[data-act="close"]')?.addEventListener('click', () => b.close());
-    // touch: a big BUILD key beside the thumb
+    // the touch bar's keys (the planner itself is src/ui/build/menu.ts)
     this.bar.innerHTML = `<button data-a="rot">TURN</button><button data-a="ok" class="go">BUILD</button><button data-a="x">CANCEL</button>`;
     this.bar.querySelector('[data-a="rot"]')!.addEventListener('click', () => b.rotate());
     this.bar.querySelector('[data-a="ok"]')!.addEventListener('click', () => b.confirm());
-    this.bar.querySelector('[data-a="x"]')!.addEventListener('click', () => { if (b.kind) { b.kind = null; b.tool = 'select'; b.refresh(); this.catKey = ''; this.renderCat(); } else b.close(); });
+    this.bar.querySelector('[data-a="x"]')!.addEventListener('click', () => { if (b.kind) { b.kind = null; b.tool = 'select'; b.refresh(); } else b.close(); });
   }
-
   // ================================================================== inspection form
   private renderInsp() {
     const bb = this.sel, f = this.f;
@@ -155,7 +129,7 @@ export class FactoryUI {
     const bufs = (m: Map<ItemId, number>, cap?: (id: ItemId) => number) => [...m.entries()].filter(([, n]) => n >= 0.5 || cap).map(([id, n]) => `<span class="fc-buf">${itemChip(id, Math.floor(n))}${cap ? `<i>/${cap(id)}</i>` : ''}</span>`).join('') || '<i>empty</i>';
     if (key !== this.inspKey) {
       this.inspKey = key;
-      let h = `<div class="fc-form-head"><div class="fc-form-no">INSPECTION FORM 12 &middot; SERIAL ${String(bb.id).padStart(4, '0')}</div><div class="fc-form-title">${esc(d.name.toUpperCase())}</div><button class="fc-x" data-a="close">&times;</button></div>`;
+      let h = `<div class="fc-form-head"><div class="fc-form-no">MACHINE STATUS &middot; SERIAL ${String(bb.id).padStart(4, '0')}</div><div class="fc-form-title">${esc(d.name.toUpperCase())}</div><button class="fc-x" data-a="close">&times;</button></div>`;
       h += `<div class="fc-row"><span class="fc-k">STATUS</span><span class="fc-v fc-status">${lamp}<span class="st"></span></span></div>`;
       h += `<div class="fc-row"><span class="fc-k">HULL</span><span class="fc-v"><span class="fc-meter hp"><i></i></span><span class="hpv"></span></span></div>`;
       if (d.power) h += `<div class="fc-row"><span class="fc-k">POWER</span><span class="fc-v pw"></span></div>`;
@@ -187,10 +161,11 @@ export class FactoryUI {
       }
       const ex = d.hooks?.inspect?.(bb, f); if (ex) h += `<div class="fc-note">${ex}</div>`;
       h += `<div class="fc-note small">${esc(d.desc)}</div>`;
-      h += `<div class="fc-form-foot"><button class="fc-btn red" data-a="dis">DISMANTLE</button><span class="fc-sig">INSPECTED: U-07</span></div>`;
+      h += `<div class="fc-form-foot"><button class="fc-btn" data-a="nodes">ON THE NODE MAP</button> <button class="fc-btn red" data-a="dis">DISMANTLE</button></div>`;
       this.insp.innerHTML = h;
       const q = (s: string) => this.insp.querySelector(s);
       q('[data-a="close"]')?.addEventListener('click', () => this.inspect(null));
+      q('[data-a="nodes"]')?.addEventListener('click', () => { this.inspect(null); if (this.b.active) this.b.close(); this.nodes.open(); this.nodes.select({ k: 'node', id: 'b:' + bb.id }); });
       q('[data-a="dis"]')?.addEventListener('click', () => { f.remove(bb, true); toast(`Dismantled: <b>${d.name}</b>`, 'info', 1400); sfx('crack', 1.2, 0.6); this.inspect(null); });
       q('[data-a="on"]')?.addEventListener('click', () => { bb.on = true; this.inspKey = ''; sfx('click'); });
       q('[data-a="off"]')?.addEventListener('click', () => { bb.on = false; this.inspKey = ''; sfx('click'); });
@@ -242,7 +217,7 @@ export class FactoryUI {
     const f = this.f, rates = f.rates(), pw = f.power();
     const rows = Object.entries(rates).sort((a, b) => b[1].made - a[1].made);
     const maxR = Math.max(1, ...rows.map(([, r]) => Math.max(r.made, r.used)));
-    let h = `<div class="fc-form-head"><div class="fc-form-no">FORM 31-P &middot; PRODUCTION REPORT &middot; LAST 60 S</div><div class="fc-form-title">STATE OF THE WORKS</div><button class="fc-x" data-a="close">&times;</button></div>`;
+    let h = `<div class="fc-form-head"><div class="fc-form-no">PRODUCTION REPORT &middot; LAST 60 S</div><div class="fc-form-title">STATE OF THE WORKS</div><button class="fc-x" data-a="close">&times;</button></div>`;
     h += `<div class="fc-cols"><div class="fc-col">`;
     h += `<div class="fc-sub">ITEMS PER MINUTE</div><table class="fc-tab"><tr><th></th><th>MADE</th><th>USED</th><th>NET</th><th>STOCK</th></tr>`;
     for (const [id, r] of rows.slice(0, 18)) {
@@ -271,7 +246,7 @@ export class FactoryUI {
     const f = this.f, W = f.workers;
     W.sync();
     const h0 = f.hive;
-    let h = `<div class="fc-form-head"><div class="fc-form-no">FORM 9-L &middot; LABOUR ROSTER</div><div class="fc-form-title">THE CREW</div><button class="fc-x" data-a="close">&times;</button></div>`;
+    let h = `<div class="fc-form-head"><div class="fc-form-no">LABOUR ROSTER</div><div class="fc-form-title">THE CREW</div><button class="fc-x" data-a="close">&times;</button></div>`;
     h += `<div class="fc-note small">${W.list.length} in harness &middot; room for ${h0.allyCap()} (worker pens add 4 each). Creatures you convert, pen or breed join the roster.</div>`;
     if (!W.list.length) h += `<div class="fc-note"><i>No workers yet. Beat a creature and convert it (Neural Graft), or bait a capture pen.</i></div>`;
     h += `<div class="fc-roster">`;
@@ -302,6 +277,8 @@ export class FactoryUI {
   update(dt: number) {
     this.t += dt; this.slow -= dt;
     this.b.update();
+    this.menu.update(dt); this.hotbar.update(dt); this.nodes.update(dt);
+    this.renderTag();
     // Escape (the game drops 'factory' mode): the paperwork goes away
     if (!this.b.active && this.modeSet && this.anyOpen && this.f.g.mode.k !== ('factory' as string)) { this.modeSet = false; this.closeAll(); }
     else if (!this.b.active && !this.modeSet && this.anyOpen && this.f.g.mode.k === 'normal') this.syncMode();
@@ -337,8 +314,13 @@ export class FactoryUI {
       const c = w.c, [sx, sy, ok] = game.screenOf(c.x, c.y + c.sp.pheno.height * c.growth + 0.5, c.z); if (!ok) continue;
       this.bubble(g, sx, sy, w, k);
     }
-    // build cursor tag: what it costs, or why it cannot go
-    if (this.b.active && game.input.overCanvas && (this.b.kind || this.b.tool === 'dismantle')) {
+    // construction sites: what they still wait for, and how far the crew has got
+    if (f.sites) for (const s of f.sites.list) {
+      const [sx, sy, ok] = game.screenOf(s.cx + s.fw / 2, s.y + s.def.h + 0.6, s.cz + s.fd / 2); if (!ok || sx < -80 || sy < -40 || sx > W + 80 || sy > H + 40) continue;
+      this.siteTag(g, sx, sy, s, k);
+    }
+    // (the build cursor tag is DOM now: renderTag)
+    if (false as boolean) {
       const mx = game.input.mx + 18, my = game.input.my + 14;
       const txt = this.b.why ?? (this.b.tool === 'dismantle' ? 'DISMANTLE' : this.b.ghosts.length > 1 ? `${this.b.ghosts.length} PIECES` : this.b.kind ? FDEFS[this.b.kind].name.toUpperCase() : '');
       g.font = `${Math.round(8 * k)}px VT, monospace`;
@@ -347,6 +329,51 @@ export class FactoryUI {
       g.fillStyle = '#14161b'; g.fillRect(mx, my + 12 * k, w, k);
       g.fillStyle = this.b.why ? '#e2dbc6' : '#1f232b'; g.fillText(txt.toUpperCase(), mx + 5 * k, my + 9 * k);
     }
+  }
+  /** a site's plate: name, stage, the materials still owed or the build progress, a segmented bar */
+  private siteTag(g: CanvasRenderingContext2D, x: number, y: number, s: import('../logistics/sites').Site, k: number) {
+    const f = this.f, p = f.sites.progress(s), owed = f.sites.outstanding(s).concat([]);
+    const need = Object.entries(s.need).map(([id, n]) => [id, (n ?? 0) - (s.got[id] ?? 0)] as [string, number]).filter(([, n]) => n > 0);
+    const line = s.stage === 'build' ? `BUILDING · ${Math.round(Math.min(1, s.work / s.workNeed) * 100)}%${s.builders ? ` · ${s.builders} ON IT` : f.time - s.help > 8 ? ' · POD CRANE' : ''}` : need.length ? `AWAITING ${need.slice(0, 2).map(([id, n]) => `${n} ${(ITEMS[id]?.name ?? id).toUpperCase()}`).join(', ')}${need.length > 2 ? ' …' : ''}` : 'SUPPLIED';
+    void owed;
+    g.font = `${Math.round(8 * k)}px VT, monospace`;
+    const name = s.def.name.toUpperCase();
+    const w = Math.max(g.measureText(line).width, g.measureText(name).width) + 12 * k, h = 25 * k;
+    x = Math.round(x - w / 2); y = Math.round(y - h);
+    g.fillStyle = 'rgba(8,14,10,0.86)'; g.fillRect(x, y, w, h);
+    g.fillStyle = '#336240'; g.fillRect(x, y, w, k); g.fillRect(x, y + h - k, w, k); g.fillRect(x, y, k, h); g.fillRect(x + w - k, y, k, h);
+    g.fillStyle = '#b9dcbd'; g.fillText(name, x + 6 * k, y + 8 * k);
+    g.fillStyle = s.stage === 'build' ? '#d9a43a' : '#7fb88a'; g.fillText(line, x + 6 * k, y + 16 * k);
+    const segs = 16, sw = (w - 12 * k) / segs;
+    for (let i = 0; i < segs; i++) { g.fillStyle = i / segs < p ? (s.stage === 'build' ? '#d9a43a' : '#7fb88a') : '#1b3525'; g.fillRect(x + 6 * k + i * sw, y + 19 * k, Math.max(1, sw - k), 3 * k); }
+    g.fillStyle = 'rgba(8,14,10,0.86)'; g.beginPath(); g.moveTo(x + w / 2 - 4 * k, y + h); g.lineTo(x + w / 2 + 4 * k, y + h); g.lineTo(x + w / 2, y + h + 5 * k); g.fill();
+  }
+  /** the readout at the cursor while a building is in hand: what, where, what it costs (have/need), why not */
+  private renderTag() {
+    const b = this.b, game = this.f.g, t = this.tag;
+    const show = b.active && game.input.overCanvas && !this.menu.isOpen && (!!b.kind || b.tool === 'dismantle' || b.tool === 'paste' || b.tool === 'copy');
+    t.classList.toggle('on', show);
+    if (!show) return;
+    t.style.left = game.input.mx + 22 + 'px'; t.style.top = game.input.my + 18 + 'px';
+    const f = this.f, n = Math.max(1, b.ghosts.filter((g) => g.ok).length);
+    let key: string, h: string;
+    if (b.kind) {
+      const d = FDEFS[b.kind], run = isRun(b.kind), c = f.sites && !run ? f.sites.costOf(d) : d.cost;
+      const have = (id: string) => (f.sites ? f.sites.avail(id) : f.count(id));
+      key = `${b.kind}|${b.why}|${n}|${b.rot}|${Object.keys(c).map(have).join(',')}`;
+      if (key === this.tagKey) return;
+      h = `<div class="t">${esc(d.name.toUpperCase())}${b.ghosts.length > 1 ? ` <span class="ok">× ${n}</span>` : ''}</div>`;
+      h += b.why ? `<div class="bad">${esc(b.why.toUpperCase())}</div>` : `<div class="ok">${run ? 'LAID AT ONCE BY THE POD ARM' : 'STAKE OUT A CONSTRUCTION SITE'}</div>`;
+      h += `<div class="row">${Object.entries(c).map(([id, v]) => chip(id, have(id), (v ?? 0) * n)).join('')}</div>`;
+      h += `<div class="keys">LMB ${run ? 'DRAG A RUN' : 'PLACE'} · R TURN (${['S', 'W', 'N', 'E'][b.rot & 3]}) · RMB/ESC DROP</div>`;
+    } else {
+      key = `${b.tool}|${b.why}`;
+      if (key === this.tagKey) return;
+      h = b.tool === 'dismantle' ? `<div class="t bad">DISMANTLE</div><div>CLICK A BUILDING OR A SITE: EVERYTHING IT COST COMES BACK</div>` : b.tool === 'copy' ? `<div class="t">BLUEPRINT</div><div>DRAG A BOX OVER MACHINES TO COPY THEM</div>` : `<div class="t">PASTE BLUEPRINT</div>${b.why ? `<div class="bad">${esc(b.why.toUpperCase())}</div>` : ''}<div class="keys">LMB LAY · R TURN</div>`;
+    }
+    this.tagKey = key;
+    t.innerHTML = h;
+    t.classList.toggle('bad', !!b.why);
   }
   /** a pennant on a stick: red (no power), amber (blocked), rust (starved); hand-drawn, never round */
   private flag(g: CanvasRenderingContext2D, x: number, y: number, st: Status, k: number) {

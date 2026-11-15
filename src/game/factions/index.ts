@@ -1,4 +1,4 @@
-// The space race on one region: the Soviet and PRC robot programmes and the human expeditions that hold or reach it
+// The race on one region: the rival blocs' robot colonies (the Eurasian Concord and the Pacific Consortium) and the human expeditions that hold or reach it
 // (1-2 per region, from the region seed and danger: plan.ts), their structures, units and ordnance, the radio, and
 // the rules the region screen asks about (game.factions.cleared() gates the win).
 //
@@ -29,7 +29,7 @@ export interface Tgt { ref: any; x: number; z: number; r: number; f: Faction; so
 const SOFT = /miner|drill|belt|conveyor|splitter|merger|lift|pump|excavat|extract|pipe|well|harvest|pole/i;
 /** a factory building's footprint radius (FBuilding: fw x fd cells; .r is its rotation, not a radius) */
 const fbR = (b: any): number => b.radius ?? (b.fw ? Math.max(b.fw, b.fd ?? b.fw) * 0.5 : 1);
-const BAR: Record<string, string> = { soviet: '#a2473a', prc: '#c49580', expedition: '#c9a464' };
+const BAR: Record<string, string> = { soviet: '#c8693a', prc: '#5fa39b', expedition: '#c9a464' };
 
 export class Factions {
   readonly plan: FactionSite[];

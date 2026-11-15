@@ -22,6 +22,8 @@ export interface Design {
   seed: number;
   /** a hand-designed bestiary species this individual belongs to (bestiary.ts): sculpted from its authored data */
   beast?: string;
+  /** robotic parts fitted to it (cyborg workers: life/cyber/catalog.ts ids), built onto the body by the sculptor */
+  fit?: string[];
 }
 
 export interface Pheno {

@@ -146,6 +146,8 @@ export class Cinema {
   readonly ui: CineUI;
   readonly cam = new CineCam();
   active = false; skipping = false; skippable = true;
+  /** playable beats: pointer input passes through to the game (keys still skip) */
+  passPointer = false;
   t = 0; name = '';
   private waits: { at: number; res: () => void }[] = [];
   private tasks: { fn: (dt: number, t: number) => boolean | void; t0: number }[] = [];
@@ -174,7 +176,7 @@ export class Cinema {
     this.ui.clear(); this.ui.showSkip(false); this.ui.letterbox(false, skipped ? 0.2 : 0.6);
     if (skipped) { this.ui.fade(1, 0); this.ui.fade(0, 0.5); } else if (this.ui.fadeV > 0) this.ui.fade(0, 0.6);
     this.offInput?.(); this.offInput = null;
-    this.active = false; this.skipping = false; this.cam.skipping = false;
+    this.active = false; this.skipping = false; this.cam.skipping = false; this.passPointer = false;
     document.body.classList.remove('cine-on');
     this.host.exit?.(skipped);
     return skipped;
@@ -267,6 +269,7 @@ export class Cinema {
     const down = (e: PointerEvent) => {
       if (!this.active || this.stale()) return;
       if (isUI(e)) { e.stopImmediatePropagation(); this.skip(); return; }
+      if (this.passPointer) return;
       if (!onView(e)) return;
       e.stopImmediatePropagation(); e.preventDefault();
       this.ui.hurry();
@@ -274,7 +277,7 @@ export class Cinema {
       if (this.t - this.tapT < 2.2) this.skip();
       else { this.tapT = this.t; this.ui.showSkip(true, true); setTimeout(() => { if (this.active && !this.skipping) this.ui.showSkip(true, false); }, 2200); }
     };
-    const eat = (e: Event) => { if (this.active && !isUI(e) && onView(e) && !this.stale()) { e.stopImmediatePropagation(); if (e.cancelable) e.preventDefault(); } };
+    const eat = (e: Event) => { if (this.active && !this.passPointer && !isUI(e) && onView(e) && !this.stale()) { e.stopImmediatePropagation(); if (e.cancelable) e.preventDefault(); } };
     addEventListener('keydown', key, true);
     addEventListener('pointerdown', down, true);
     addEventListener('wheel', eat, { capture: true, passive: false });

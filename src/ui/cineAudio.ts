@@ -211,3 +211,41 @@ export function cvoice(text: string, pitch = 1, radio = false) {
   if (radio) noise(t0, t - t0, 0.015, 3000, 0.7, 'bandpass', 0.02);
   return t - t0;
 }
+
+// ------------------------------------------------------------------ voices: the browser's speech (Web Speech), the murmur as fallback
+export interface VoiceSpec { pitch: number; rate?: number; /** voice name fragments to prefer, in order */ hint?: string[]; female?: boolean }
+let synthVoices: SpeechSynthesisVoice[] = [];
+const synth = typeof window !== 'undefined' ? window.speechSynthesis : undefined;
+function loadVoices() { try { synthVoices = synth?.getVoices().filter((v) => /^en/i.test(v.lang) || /español|português|portugu|spanish/i.test(v.name)) ?? []; } catch { synthVoices = []; } }
+if (synth) { loadVoices(); try { synth.addEventListener('voiceschanged', loadVoices); } catch { /* old browsers */ } }
+/** spoken voices on (Web Speech); off falls back to the 8-bit murmur */
+export const speech = { on: true };
+const FEM = /female|woman|samantha|victoria|karen|moira|tessa|fiona|zira|aria|jenny|hazel|libby|susan|serena|allison|ava|nora|sara|luciana|joana|google uk english female/i;
+const MAL = /male|man|daniel|alex|fred|david|mark|guy|ryan|george|oliver|thomas|juan|diego|jorge|google uk english male/i;
+function pickVoice(v: VoiceSpec): SpeechSynthesisVoice | null {
+  if (!synthVoices.length) return null;
+  for (const h of v.hint ?? []) { if (h === 'female' || h === 'male') continue; const f = synthVoices.find((x) => x.name.toLowerCase().includes(h.toLowerCase())); if (f) return f; }
+  const en = synthVoices.filter((x) => /^en/i.test(x.lang));
+  const pool = en.length ? en : synthVoices;
+  return pool.find((x) => (v.female ? FEM.test(x.name) && !/\bmale\b/i.test(x.name) : MAL.test(x.name) && !FEM.test(x.name))) ?? pool[0] ?? null;
+}
+/** say a line in a character's voice: Web Speech when the browser has voices (the line before is cut off), else the
+ *  murmur. Returns the expected length in seconds (0 when silent). */
+export function cspeak(text: string, v: VoiceSpec, murmur = true, radio = false): number {
+  const vol = settings.master * settings.sfx;
+  if (!(vol > 0.01)) return 0;
+  const clean = text.replace(/["“”]/g, '').replace(/\.\.\./g, ', ');
+  if (speech.on && synth && synthVoices.length) {
+    try {
+      const u = new SpeechSynthesisUtterance(clean);
+      const vo = pickVoice(v); if (vo) u.voice = vo;
+      u.pitch = Math.max(0.1, Math.min(2, v.pitch)); u.rate = Math.max(0.5, Math.min(1.6, v.rate ?? 1)); u.volume = Math.min(1, vol * 1.1);
+      synth.cancel(); synth.speak(u);
+      if (radio) csfx('squelch', 0.5);
+      return clean.split(/\s+/).length / (2.7 * u.rate) + 0.3;
+    } catch { /* fall through to the murmur */ }
+  }
+  return murmur ? cvoice(text, v.pitch, radio) : 0;
+}
+/** stop any speech now (skips, scene ends) */
+export function hush() { try { synth?.cancel(); } catch { /* none */ } }

@@ -29,6 +29,8 @@ import { aimCorePod, startCrashSite, defaultSkid } from './podCore';
 import { RivalBrain } from './rival';
 import { Factions } from './factions';
 import { Factory } from '../factory/factory';
+import { installInventory, type Inventory } from '../inv';
+import type { Storage } from '../inv/storage';
 import { tickRobots, type RobotUnit } from '../robots/unit';
 import { CoreAura } from './coreAura';
 import { RIVALS } from '../world/palette';
@@ -36,6 +38,7 @@ import { VeyrChild } from './child';
 import { Player } from './player';
 import { Details } from './details';
 import { installBiotech } from '../biotech';
+import { installProgression } from '../research';
 import { attachEco } from '../eco/view';
 import { attachOcean, type Ocean } from '../ocean/ocean';
 import { BabyEditor } from '../ui/babyEditor';
@@ -44,13 +47,14 @@ import { panel, Btn } from '../ui/kit';
 import { GeoLive, type GeoHost } from '../world/geo/live';
 import { registerGeoItems } from '../world/geo/items';
 import { floatText } from '../ui/floatText';
+import { Colony } from '../colony/colony';
 
 type Mode = { k: 'normal' } | { k: 'ability'; a: Ability } | { k: 'build'; b: BKind } | { k: 'paint' } | { k: 'amove' } | { k: 'rally' } | { k: 'factory' };
 interface Held { c: Creature; t: number; dur: number; dps: number; grip: number }
 interface Pull { c: Creature; tx: number; tz: number; t: number }
 
-export interface GameOpts { seed: number; biome: BiomeKey; pal?: string; regionName?: string; run?: Run; hooks?: GameHooks; story?: boolean; /** planet danger 1..3: which enemy programmes hold the region (factions/plan.ts) */ danger?: number; /** where the drop pod actually came down (deploy sequence); snapped to open ground */ landing?: { x: number; z: number }; /** descent mode: Unit 07 is still falling (game/descent.ts flies the pod down; touchdown() lands it, beginStory() starts the story) */ descent?: boolean }
-export interface GameHooks { onWin?(g: Game): void; onLose?(g: Game): void; openBuilder?(g: Game): void; openTree?(g: Game): void; openMenu?(g: Game): void; openSkills?(g: Game): void; openLab?(g: Game): void }
+export interface GameOpts { seed: number; biome: BiomeKey; pal?: string; regionName?: string; run?: Run; hooks?: GameHooks; story?: boolean; /** planet danger 1..3: which enemy programmes hold the region (factions/plan.ts) */ danger?: number; /** where the drop pod actually came down (deploy sequence); snapped to open ground */ landing?: { x: number; z: number }; /** descent mode: Unit 07 is still falling (game/descent.ts flies the pod down; touchdown() lands it, beginStory() starts the story) */ descent?: boolean; /** v6: rebuild the colony from a save (colony.snapshot(); true: the last one) */ resumeColony?: unknown; /** v6: the old golem story (src/game/story.ts); off unless asked for */ legacyStory?: boolean }
+export interface GameHooks { /** v6: the ship hub through the pod's AI link (back() returns to the colony) */ openShip?(g: Game, back: () => void): void; /** v6: a retry rebuilt the region as a new Game */ onRetry?(g: Game): void; onWin?(g: Game): void; onLose?(g: Game): void; openBuilder?(g: Game): void; openTree?(g: Game): void; openMenu?(g: Game): void; openSkills?(g: Game): void; openLab?(g: Game): void }
 
 const _v = new THREE.Vector3(), _ray = new THREE.Ray();
 
@@ -96,6 +100,9 @@ export class Game implements Screen {
   factions: Factions | null = null;
   /** the industrial layer: grid buildings, belts, power, workers (src/factory) */
   factory!: Factory;
+  /** the real-item stores: containers, the pod's hold, the crate HUD (src/inv) */
+  storage!: Storage;
+  inventory?: Inventory;
   /** every robot, soldier and rover on the field, any faction (src/robots; spawnRobot registers them) */
   robots: RobotUnit[] = [];
   aura: CoreAura | null = null;
@@ -105,8 +112,10 @@ export class Game implements Screen {
   geo: GeoLive | null = null;
   private rivalT = 210;
   child!: VeyrChild;
-  /** Unit 07 under direct control (player.ts) */
+  /** v6: the stationary stand-in other systems target (player.ts): the pod */
   player!: Player;
+  /** v6: the landed colony pod, its arms, drones, structures, crew, vitals and tool slots (src/colony; null until touchdown) */
+  colony: Colony | null = null;
   private cap: THREE.Mesh | null = null; private hatchT = 0;
   /** descent mode: the pod is still in the air (no core, no crater, no hatching yet) */
   descending = false;
@@ -188,8 +197,10 @@ export class Game implements Screen {
     this.veyr.attach(this);
     // (the core is the drop pod: no rock cap to burst)
     this.cam.followFn(() => new THREE.Vector3(core.x, 0, core.z)); this.cam.dist = this.cam.distGoal = 13;
-    if (!opts.descent) { const sk = defaultSkid(L.x, L.z); aimCorePod(core.mesh.userData.podGroup, Math.atan2(sk.x, sk.z)); startCrashSite(this, L.x, L.z, sk.x, sk.z); }
-    if (opts.story !== false && !opts.descent) this.story = new Story(this);
+    if (!opts.descent) { const sk = defaultSkid(L.x, L.z); aimCorePod(core.mesh.userData.podGroup, Math.atan2(sk.x, sk.z)); if (!opts.resumeColony) startCrashSite(this, L.x, L.z, sk.x, sk.z, { chute: true }); }
+    if (opts.legacyStory && opts.story !== false && !opts.descent) this.story = new Story(this);
+    // v6: Unit 07 is the pod; the golem stays in its shell (other screens still use VeyrChild)
+    this.child.root.visible = false;
     this.vision.update(0, true);
     this.veyr.flushCov();
     this.player = new Player(this);
@@ -197,12 +208,15 @@ export class Game implements Screen {
     attachEco(this); // the ecosystem's overlay, activity bubbles, field survey sheet and API as game.eco (src/eco/view.ts)
     attachOcean(this); // the sea, its life, diving and pontoons (src/ocean/ocean.ts; runs in update$)
     registerGeoItems(); // gold, sulphur, lumen and gravium and what is made of them, before the works build their catalogue
+    installInventory(this); // containers, the pod's hold and the crate HUD (src/inv), before the works load
     this.factory = new Factory(this);
     this.geo = new GeoLive(this.region);
     this.on('geyser', (d: { x: number; z: number; phase: 'warn' | 'erupt' }) => this.geyser(d));
     this.factions = new Factions(this);
     installBiotech(this); // engineered creatures and plants at work, Bio-Works structures, work orders (src/biotech)
+    installProgression(this); // v6: mastery, research, the Upgrader, mission quotas, random events (src/research, src/story)
     if (opts.descent) this.awaitPod();
+    else this.landColony();
     (window as any).__game = this;
   }
 
@@ -239,10 +253,19 @@ export class Game implements Screen {
     this.cam.followFn(() => new THREE.Vector3(core.x, 0, core.z)); this.cam.dist = this.cam.distGoal = 13;
     this.vision.update(0, true); this.veyr.flushCov();
   }
-  /** the golem is out of the shell: the hatching runs from here */
-  emerge() { this.descending = false; this.hatchT = 0; }
-  /** the opening and everything after it (descent mode starts it once the golem has climbed out) */
-  beginStory() { if (!this.story && this.opts.story !== false) this.story = new Story(this); }
+  /** the pod is down: the colony takes over (descent mode calls touchdown() first) */
+  emerge() { this.descending = false; this.hatchT = 99; if (!this.colony) this.landColony(); }
+  /** the opening and everything after it (descent mode calls it when control is handed over) */
+  beginStory() { if (this.colony) { this.colony.ready = true; this.emit('colony-ready', this.colony); } if (!this.story && this.opts.legacyStory && this.opts.story !== false) this.story = new Story(this); }
+  /** v6: build the colony on the landed pod (or rebuild it from a save) */
+  private landColony() {
+    let restore = this.opts.resumeColony;
+    if (restore === true) { try { const s = localStorage.getItem(`oddworld.colony.${this.opts.seed}`); restore = s ? JSON.parse(s) : undefined; } catch { restore = undefined; } }
+    this.colony = new Colony(this, { restore });
+    this.cam.followFn(null); this.cam.lookAt(this.colony.pod.x + 2, this.colony.pod.z + 2, true); this.cam.dist = this.cam.distGoal = 34;
+    this.cam.minDist = 7;
+    if (!this.opts.descent) { this.colony.ready = true; this.colony.save(); queueMicrotask(() => this.emit('colony-ready', this.colony)); }
+  }
 
   // ------------------------------------------------------------------ helpers
   audible(x: number, z: number) { const d = Math.hypot(x - this.cam.target.x, z - this.cam.target.z); return clamp(1.2 - d / 45, 0, 1); }
@@ -306,6 +329,7 @@ export class Game implements Screen {
     const cv = this.engine.canvas;
     cv.addEventListener('pointerdown', (e) => {
       if (!this.act) return;
+      if (this.colony?.pointerDown(e)) return;
       if (this.harvest.blocking || qteActive() || this.storyBlock) {
         if (this.harvest.blocking && e.button === 0) this.harvest.click(e.clientX, e.clientY, this.cam.cam);
         return;
@@ -329,6 +353,7 @@ export class Game implements Screen {
     });
     addEventListener('pointerup', (e) => {
       if (!this.act) return;
+      this.colony?.pointerUp(e);
       if (e.button !== 0 || !this.drag) { if (e.button === 2 && this.mode.k === 'paint') this.drag = null; return; }
       const d = this.drag; this.drag = null;
       if (this.mode.k === 'paint') return;
@@ -340,17 +365,21 @@ export class Game implements Screen {
   }
   private key(e: KeyboardEvent) {
     if (this.harvest.blocking || qteActive() || this.storyBlock) return;
+    if (this.factory?.build.ate(e)) return; // build mode used it (hotbar 1-0, Esc one step back, B, R, X)
+    if (this.colony?.key(e)) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     if (k === 'Escape') { if (this.mode.k !== 'normal') this.setMode({ k: 'normal' }); else if (this.menu !== 'main') { this.menu = 'main'; } else if (this.sel.length || this.selB) this.clearSel(); else if (!this.hud.escape()) this.opts.hooks?.openMenu?.(this); return; }
     if (k === 'p') { this.paused = !this.paused; toast(this.paused ? 'Paused' : 'Resumed'); return; }
     if (k === 't') { this.opts.hooks?.openTree?.(this); return; }
+    if (k === 'k') { if (this.opts.hooks?.openSkills) this.opts.hooks.openSkills(this); else (this as unknown as { progression?: { open(): void } }).progression?.open(); return; } // v6: the program terminal (src/ui/skillTree.ts)
     if (k === 'c') { this.opts.hooks?.openBuilder?.(this); return; }
     if (k === 'v') { this.openMirror(); return; }
-    if (k === ' ') { if (this.veyr.core) this.cam.lookAt(this.veyr.core.x, this.veyr.core.z); return; }
+    if (k === ' ') { this.paused = !this.paused; return; }
     if (k === 'Tab') { this.clearSel(); for (const c of this.world.creatures) if (!c.dead && c.faction === 'veyr') this.addSel(c); return; }
     if (e.ctrlKey || e.metaKey) return;
     if (this.hud.key(k)) return;
-    for (const cm of this.commands()) if (cm && cm.key.toLowerCase() === k) { if (!cm.disabled?.()) { sfx('click'); cm.run(); } else { sfx('deny'); toast(String(cm.disabled?.()), 'warn', 1600); } return; }
+    // v6: the old moss powers (number keys) are retired; letter commands (build, forge) still answer
+    for (const cm of this.commands()) if (cm && cm.key.toLowerCase() === k && !/^[0-9]$/.test(k)) { if (!cm.disabled?.()) { sfx('click'); cm.run(); } else { sfx('deny'); toast(String(cm.disabled?.()), 'warn', 1600); } return; }
   }
   setMode(m: Mode) {
     if (m.k === 'ability' && this.player && !this.player.canPower(m.a)) { sfx('deny'); toast('That field power is not installed yet: buy it on the skill tree', 'warn', 1800); return; }
@@ -725,7 +754,7 @@ export class Game implements Screen {
     const inp = this.input;
     const block = this.harvest.blocking || this.storyBlock;
     const simDt = block || this.paused ? 0 : dt * this.speed * (qteActive() ? 0.22 : 1);
-    this.cam.enabled = !this.harvest.blocking && !this.player?.started;
+    this.cam.enabled = !this.harvest.blocking && !this.colony?.camLocked;
     this.cam.update(dt, inp);
     this.cineCam?.(this.cam.cam, dt);
     // the machines the wildlife flees or fights (ai.ts): every robot, plus any stand-in faction units
@@ -740,12 +769,8 @@ export class Game implements Screen {
       for (const c of this.world.creatures) if (c.dead && c.digest <= 0 && c.bio > 0.3) { for (const h of this.world.hives) if (h.tryDigest(c)) { if (h === this.veyr) sfx('squelch', Math.max(0.6, c.size), this.audible(c.x, c.z)); break; } }
       if (Math.random() < simDt * 0.4) { const c = this.world.creatures[Math.floor(Math.random() * this.world.creatures.length)]; if (c && !c.dead && c.mesh.visible) sfx('call', c.size, this.audible(c.x, c.z) * 0.35); }
     } else for (const h of this.world.hives) for (const b of h.buildings) b.sync(dt, this.world.time);
-    this.hatching(dt);
-    this.child.setGrowth(this.veyr.emLevel);
-    const vc = this.veyr.core;
-    if (vc && !this.aura) { this.aura = new CoreAura(vc, this.fx, VEYR.vein); this.world.scene.add(this.aura.group); }
-    if (this.aura && (!vc || this.aura.core !== vc)) { this.aura.dispose(); this.aura = null; }
-    this.aura?.update(dt, this.veyr.emLevel);
+    // v6: the colony (pod, arms, drones, structures, crew, vitals); servos and the UI run on real time, work on sim time
+    try { this.colony?.update(dt, simDt); } catch (e) { if (this.colErr++ < 5) console.error('colony', e); }
     for (const f of this.update$) f(simDt);
     try { this.geo?.update(simDt, this as unknown as GeoHost, this.cam.cam.position); } catch (e) { if (this.geoErr++ < 3) console.error('geo', e); }
     tickRobots(this, simDt);
@@ -764,7 +789,7 @@ export class Game implements Screen {
     this.checkEnd();
     inp.endFrame();
   }
-  private geoErr = 0; private geyserNote = new Map<string, number>();
+  private geoErr = 0; private colErr = 0; private geyserNote = new Map<string, number>();
   /** a geyser boils over or erupts: heard by how close it is; the golem is warned when it stands by the vent */
   private geyser(d: { x: number; z: number; phase: 'warn' | 'erupt' }) {
     if (!d) return;
@@ -910,7 +935,7 @@ export class Game implements Screen {
   }
   private checkEnd() {
     if (this.won || this.lostFlag) return;
-    if (this.veyr.lost) { this.lostFlag = true; this.opts.hooks?.onLose?.(this); return; }
+    // v6: losing is the colony's (colony.fail: collapse, the pod destroyed, a recall)
     const rivalsAlive = this.world.hives.some((h) => h !== this.veyr && !h.lost);
     if (this.conquest() >= this.veyr.winAt && !rivalsAlive && (this.factions?.cleared() ?? true)) { this.won = true; this.opts.hooks?.onWin?.(this); }
   }
@@ -936,6 +961,7 @@ export class Game implements Screen {
       g.fillRect(x, y, Math.round(w * f), px * 2);
     }
     this.factions?.drawOverlay(g);
+    this.colony && this.colonyOverlay(g);
     // drag box
     if (this.drag?.on && this.mode.k === 'normal') {
       const x0 = Math.min(this.drag.x, this.input.mx), y0 = Math.min(this.drag.y, this.input.my);
@@ -959,6 +985,33 @@ export class Game implements Screen {
       }
     }
   }
+  /** v6: the colony's ground marks: the controlled arm's reach, the signal edge while placing, selection rings, crew bars */
+  private colonyOverlay(g: CanvasRenderingContext2D) {
+    const c = this.colony!, ctl = c.ctl;
+    if (ctl.k === 'arm') this.circle(new THREE.Vector3(c.pod.x, 0, c.pod.z), ctl.arm.reach, '#e0b050');
+    if (ctl.k === 'place') this.circle(new THREE.Vector3(c.pod.x, 0, c.pod.z), c.controlRadius, '#7fd48a');
+    if (ctl.k === 'drone') { const d = ctl.drone; this.circle(new THREE.Vector3(d.x, 0, d.z), 1.2, '#7fd48a'); }
+    const s = c.sel;
+    if (s && (s.kind === 'crew' || s.kind === 'drone')) this.circle(new THREE.Vector3(s.ref.x, 0, s.ref.z), s.kind === 'crew' ? 0.7 : 1.1, '#9fe0a8');
+    if (s && s.kind === 'struct') this.circle(new THREE.Vector3(s.ref.x, 0, s.ref.z), s.ref.kind === 'gravpole' ? 6 : s.ref.radius + 0.6, '#9fe0a8');
+    if (s && s.kind === 'pod') this.circle(new THREE.Vector3(c.pod.x, 0, c.pod.z), 3.6, '#9fe0a8');
+    const px = S;
+    for (const t of c.teammates) {
+      if (!t.alive || !t.root.visible) continue;
+      const [sx, sy, ok] = this.screenOf(t.x, t.y + 2.05, t.z); if (!ok) continue;
+      const w = 22 * px, x = Math.round(sx - w / 2), y = Math.round(sy);
+      g.fillStyle = 'rgba(10,14,12,0.8)'; g.fillRect(x - px, y - px, w + 2 * px, 5 * px);
+      g.fillStyle = t.hp > 50 ? '#7fd48a' : t.hp > 25 ? '#e0b050' : '#e0604a'; g.fillRect(x, y, Math.round(w * t.hp / 100), px);
+      g.fillStyle = t.suit > 30 ? '#7ab8e0' : '#e0604a'; g.fillRect(x, y + 2 * px, Math.round(w * t.suit / 100), px);
+    }
+    for (const d of c.drones) {
+      if (d.docked && d.battery > d.def.battery * 0.95) continue;
+      const [sx, sy, ok] = this.screenOf(d.x, d.y + 0.7, d.z); if (!ok) continue;
+      const w = 18 * px, x = Math.round(sx - w / 2), y = Math.round(sy);
+      g.fillStyle = 'rgba(10,14,12,0.8)'; g.fillRect(x - px, y - px, w + 2 * px, 3 * px);
+      g.fillStyle = d.battery > 30 ? '#e0b050' : '#e0604a'; g.fillRect(x, y, Math.round(w * d.battery / d.def.battery), px);
+    }
+  }
   private circle(p: THREE.Vector3, r: number, col: string) {
     const g = this.og;
     g.fillStyle = col;
@@ -975,7 +1028,7 @@ export class Game implements Screen {
   render(post: Post, t: number) { post.render(this.world.scene, this.cam.cam, this.world.fxScene, t); }
   private act = true; private offKey: (() => void) | null = null;
   suspend() { this.act = false; this.hud.root.style.display = 'none'; this.overlay.style.display = 'none'; }
-  resume() { this.act = true; this.hud.root.style.display = ''; this.overlay.style.display = ''; this.hud.invalidate(); this.input.endFrame(); }
+  resume() { this.act = true; this.hud.root.style.display = ''; this.overlay.style.display = ''; this.hud.invalidate(); this.input.endFrame(); this.colony?.resumed(); }
   /** a finished design becomes a species of yours */
   addDesign(design: import('../life/design').Design, parent: number | null, helixCost: number) {
     const sp = this.run.reg.add(design, 'veyr', parent, 'design', this.world.time);
@@ -996,5 +1049,5 @@ export class Game implements Screen {
     new Btn(row, { icon: 'heart', label: 'LET HIM REST', size: 'big', tip: () => '<h4>Lay him to rest</h4>A pale flower grows where he lies. +8 helix.' }, () => fin(false));
   }
   get vaults() { return this.veyr.buildings.filter((b) => b.def.kind === 'vault' && b.done).length; }
-  dispose() { MACHINES.list = []; this.act = false; this.ocean?.dispose(); this.factions?.dispose(); this.offKey?.(); (window as any).__game === this && ((window as any).__game = null); this.hud.dispose(); this.overlay.remove(); ui().innerHTML = ''; }
+  dispose() { this.inventory?.dispose(); this.colony?.dispose(); MACHINES.list = []; this.act = false; this.ocean?.dispose(); this.factions?.dispose(); this.offKey?.(); (window as any).__game === this && ((window as any).__game = null); this.hud.dispose(); this.overlay.remove(); ui().innerHTML = ''; }
 }

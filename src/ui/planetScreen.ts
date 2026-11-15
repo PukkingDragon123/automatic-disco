@@ -220,7 +220,7 @@ export class PlanetScreen implements Screen {
     // DOM: the header, hover label, the carrier's tag, hints, the white of the cloud deck
     this.root = div('pls', document.body) as HTMLDivElement;
     this.hd = div('hd', this.root);
-    div('k', this.hd, 'U.S.P.C. ORBITAL SURVEY');
+    div('k', this.hd, 'UNAA ORBITAL SURVEY');
     div('t', this.hd, esc(planet.name.toUpperCase()));
     div('s', this.hd, esc(opts.note ?? `${owned(planet)} OF ${planet.goal} REGIONS HELD · HOLD ${planet.goal} AND THE WORLD BECOMES YOU`));
     this.rlab = div('lab rg', this.root); this.rlab.style.display = 'none';

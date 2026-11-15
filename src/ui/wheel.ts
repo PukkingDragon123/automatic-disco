@@ -1,128 +1,110 @@
-// The power drum's mechanism (the desk draws it: desk/parts.ts Drum). Only installed powers (bought on the skill tree,
-// see game/combat.ts powerOwned) get a cartridge; a new one is loaded with a clack. The reel turns with the mouse wheel
-// over it, by grabbing and flicking it (it carries on spinning, then drops into a detent under the pawl), by clicking a
-// cartridge, or with [ ] / , . on the keyboard. The cartridge facing the operator is the selection; the FIRE plunger,
-// Enter or F arms it.
+// The TOOL WHEEL: a machined dial of eight sockets, each a slot holding a tool run by a real unit (an arm, a drone or
+// an emplacement; colony/tools.ts). Click a socket to take control of that unit with its tool (the cannon puts you in
+// the gunner's seat); right-click it (or CONFIG) to choose the slot's tool and unit and to upgrade the slot with the
+// Upgrader. Each socket shows the tool's painted icon, its number, level pips, a lock when the slot is closed, a red
+// NO UNIT when nothing can run it, and a phosphor ring while it is in use. The hub's CRT names what is under the
+// pointer. [ and ] step the hover, F (or Enter) uses it.
+import type { Colony } from '../colony/colony';
+import { TOOLS } from '../colony/tools';
+import { iconCanvas } from './desk/hudArt';
 import { sfx } from '../audio/audio';
-import { ABILITIES, type Ability, type Hive } from '../game/hive';
-import { powerOwned, powerCost, ABILITY_SKILL } from '../game/combat';
-import { skillIcon } from './icons';
 
-export interface WheelCtx { hive: Hive; arm(a: Ability): void; armed(): Ability | null }
+const TAU = Math.PI * 2, N = 8, R0 = 60, R1 = 140, RH = 54;
+export interface WheelHost { colony(): Colony | null; config(i: number): void; tip(html: string | null, x?: number, y?: number): void; flash(msg: string, bad?: boolean): void }
 
-/** every live power in key order (retired ones, em > 50, never get a cartridge) */
-const ALL: Ability[] = (Object.keys(ABILITIES) as Ability[]).filter((a) => ABILITIES[a].em <= 50).sort((a, b) => +ABILITIES[a].key - +ABILITIES[b].key);
-const TAU = Math.PI * 2;
-
-export class AbilityWheel {
-  /** the installed powers, in key order; cartridge i holds order[i] */
-  order: Ability[] = []; n = 1; step = TAU;
-  sel = 0; ang = 0; vel = 0; target = 0;
-  settled = true; grabbed = false;
-  /** spinning free after a flick (until it slows into a detent) */
-  private free = false;
-  /** a message for the readout (and how long it stays) */
-  flash = 0; flashMsg = ''; flashGood = false;
-  /** bumped when the cartridges change (the desk reloads its models) */
-  loadN = 0;
-  private lastDet = 0; private ownKey = ''; private lastArmed: Ability | null = null;
-  /** detents that passed the pawl this frame (the desk clicks the pawl) */
-  ticks = 0;
-
-  constructor(readonly c: WheelCtx) { this.reload(true); }
-  get current(): Ability { return this.order[this.sel]; }
-  icon(a: Ability) { return skillIcon(ABILITY_SKILL[a] ?? a); }
-
-  private reload(first = false) {
-    const prev = this.order[this.sel];
-    const next = ALL.filter((a) => powerOwned(a));
-    const added = first ? [] : next.filter((a) => !this.order.includes(a));
-    this.order = next; this.n = Math.max(1, next.length); this.step = TAU / this.n;
-    this.ownKey = next.join(',');
-    let i = added.length ? next.indexOf(added[0]) : prev ? next.indexOf(prev) : 0;
-    if (i < 0) i = 0;
-    this.sel = i; this.ang = this.target = i * this.step; this.vel = 0; this.lastDet = Math.round(this.ang / this.step);
-    this.loadN++;
-    if (added.length) {
-      this.say('LOADED: ' + ABILITIES[added[0]].name.toUpperCase(), true);
-      this.vel = 14; this.free = true; this.settled = false;
-      sfx('crack', 0.5, 0.5); sfx('hit', 0.6, 0.4);
-    }
+export class ToolWheel {
+  readonly cv: HTMLCanvasElement; private g: CanvasRenderingContext2D;
+  hover = -1; focus = 0; private dirty = true; private t = 0; private acc = 0; private lastKey = '';
+  constructor(parent: HTMLElement, readonly host: WheelHost) {
+    this.cv = document.createElement('canvas'); this.cv.className = 'dial'; parent.appendChild(this.cv);
+    this.g = this.cv.getContext('2d')!;
+    this.cv.addEventListener('pointermove', (e) => this.move(e));
+    this.cv.addEventListener('pointerleave', () => { this.hover = -1; this.dirty = true; this.host.tip(null); });
+    this.cv.addEventListener('pointerdown', (e) => { e.stopPropagation(); const i = this.slotAt(e); if (i < 0) return; if (e.button === 2) { this.host.config(i); sfx('open', 1.4, 0.4); } else this.use(i); });
+    this.cv.addEventListener('contextmenu', (e) => e.preventDefault());
   }
-  say(msg: string, good = false, t = 1.6) { this.flash = t; this.flashMsg = msg; this.flashGood = good; }
-  /** turn by n detents (positive = next) */
-  turn(n: number) {
-    const armed = this.c.armed();
-    if (armed && armed === this.current) this.c.arm(armed);
-    if (!this.order.length) { sfx('deny'); return; }
-    const N = this.n;
-    this.sel = (((this.sel + n) % N) + N) % N;
-    this.target = Math.round(this.ang / this.step) * this.step + n * this.step;
-    this.vel = 0; this.grabbed = false; this.free = false; this.settled = false;
+  private slotAt(e: PointerEvent | MouseEvent) {
+    const r = this.cv.getBoundingClientRect(), x = e.clientX - r.left - r.width / 2, y = e.clientY - r.top - r.height / 2, d = Math.hypot(x, y) * (304 / r.width);
+    if (d < R0 - 4 || d > R1 + 6) return -1;
+    let a = Math.atan2(y, x) + Math.PI / 2 + Math.PI / N; a = ((a % TAU) + TAU) % TAU;
+    return Math.floor(a / (TAU / N)) % N;
   }
-  select(i: number) { const N = this.n; let d = i - this.sel; if (d > N / 2) d -= N; if (d < -N / 2) d += N; if (d) this.turn(d); }
-  trigger(): boolean {
-    const a = this.current;
-    if (!a) { sfx('deny'); this.say('NO POWERS INSTALLED'); return false; }
-    const why = this.c.hive.can(a);
-    if (why && this.c.armed() !== a) { sfx('deny'); this.say(why.toUpperCase()); return false; }
-    sfx('click', 0.8, 1); sfx('hit', 0.5, 0.35);
-    this.c.arm(a);
-    return true;
+  private move(e: PointerEvent) {
+    const i = this.slotAt(e);
+    if (i !== this.hover) { this.hover = i; this.dirty = true; if (i >= 0) sfx('hover', 1, 0.3); }
+    const c = this.host.colony(); if (!c || i < 0) { this.host.tip(null); return; }
+    const s = c.slots.slots[i], t = s.tool ? TOOLS[s.tool] : null, u = c.slots.unitOf(i), un = u ? (c.unitById(u) as { name?: string } | null)?.name ?? u : null;
+    this.host.tip(s.level <= 0 ? `<b>SLOT ${i + 1}</b> · LOCKED<br>Upgrade it with the Upgrader to open it.` : t ? `<b>${t.name.toUpperCase()}</b> · SLOT ${i + 1} · LV ${s.level}<br>${t.desc}<br>${un ? `UNIT: <b>${un}</b>` : '<span class="r">NO UNIT CAN RUN IT: BUILD ONE</span>'}<br><span class="w">CLICK</span> TAKE CONTROL · <span class="w">RIGHT-CLICK</span> CONFIGURE` : `<b>SLOT ${i + 1}</b> · EMPTY<br>Right-click to assign a tool.`, e.clientX, e.clientY);
   }
-  /** keyboard: true when the key belonged to the drum */
+  use(i: number) {
+    const c = this.host.colony(); if (!c) return;
+    const why = c.useSlot(i);
+    if (why) { sfx('deny', 1, 0.6); this.host.flash(why, true); } else { sfx('click', 0.9, 0.7); sfx('hit', 0.5, 0.3); }
+    this.dirty = true;
+  }
   key(k: string) {
-    if (k === '[' || k === ',') { this.turn(-1); return true; }
-    if (k === ']' || k === '.') { this.turn(1); return true; }
-    if (k === 'Enter' || k === 'f') { this.trigger(); return true; }
+    if (k === '[' || k === ']') { this.focus = (this.focus + (k === ']' ? 1 : -1) + N) % N; this.hover = this.focus; this.dirty = true; sfx('hover', 1.2, 0.4); return true; }
+    if (k === 'f') { this.use(this.hover >= 0 ? this.hover : this.focus); return true; }
     return false;
   }
-  // ---- grabbing the reel
-  grab() { this.grabbed = true; this.vel = 0; }
-  dragBy(da: number, dt = 1 / 60) { this.ang += da; this.vel = da / Math.max(1 / 240, dt); this.settled = false; }
-  release() { this.grabbed = false; this.settled = false; this.free = Math.abs(this.vel) > 3; if (!this.free) { this.target = Math.round(this.ang / this.step) * this.step; this.vel = 0; } }
-
   update(dt: number) {
-    if (ALL.filter((a) => powerOwned(a)).join(',') !== this.ownKey) this.reload();
-    const armed = this.c.armed(), N = this.n, STEP = this.step;
-    // a number key or another control armed something: swing the drum round to it
-    if (armed !== this.lastArmed) { this.lastArmed = armed; if (armed && armed !== this.current && !this.grabbed) { const i = Math.max(0, this.order.indexOf(armed)); this.select(i); } }
-    this.flash = Math.max(0, this.flash - dt);
-    if (!this.grabbed) {
-      if (this.free && Math.abs(this.vel) > 3) {
-        // spinning free: friction, then it drops into the nearest detent
-        this.ang += this.vel * dt; this.vel *= Math.exp(-dt * 2.6);
-        this.target = Math.round(this.ang / STEP) * STEP;
-        this.sel = ((Math.round(this.ang / STEP) % N) + N) % N;
-      } else {
-        this.free = false;
-        const k = 220, damp = 20;
-        this.vel += (k * (this.target - this.ang) - damp * this.vel) * dt;
-        this.ang += this.vel * dt;
-        if (Math.abs(this.target - this.ang) < 0.002 && Math.abs(this.vel) < 0.02) { this.ang = this.target; this.vel = 0; if (!this.settled) { this.settled = true; sfx('hit', 0.45, 0.22); } }
-      }
-    } else this.sel = ((Math.round(this.ang / STEP) % N) + N) % N;
-    const det = Math.round(this.ang / STEP);
-    this.ticks = 0;
-    if (det !== this.lastDet) { this.ticks = Math.min(3, Math.abs(det - this.lastDet)); this.lastDet = det; sfx('crack', 0.3, 0.16 + this.ticks * 0.04); sfx('qte-tick', 1, 0.5); }
+    this.t += dt; this.acc -= dt;
+    const c = this.host.colony(); if (!c) return;
+    const key = c.slots.slots.map((s) => `${s.tool}${s.level}${s.unit}`).join() + c.slots.active + c.arms.length + c.drones.length + c.structures.length + this.hover + (c.ctl.k);
+    if (key !== this.lastKey) { this.lastKey = key; this.dirty = true; }
+    if (!this.dirty && this.acc > 0) return;
+    this.acc = c.slots.active >= 0 ? 0.06 : 0.5; this.dirty = false;
+    this.draw(c);
   }
-  /** what each cartridge shows: how far out (sunk while recharging), dimmed (cannot pay), glowing (armed) */
-  states(t: number) {
-    const h = this.c.hive, armed = this.c.armed(), front = ((Math.round(this.ang / this.step) % this.n) + this.n) % this.n;
-    return this.order.map((a, i) => {
-      const d = ABILITIES[a], cd = h.cooldowns[a] ?? 0;
-      const poor = h.res.charge < powerCost(a) || h.res.bio < d.bio || d.em > h.emLevel;
-      return { out: cd > 0 ? 1 - cd / d.cd : 1, dim: poor || cd > 0, glow: armed === a ? (Math.floor(t * 3) % 2 ? 1 : 0.4) : 0, front: i === front };
-    });
-  }
-  /** the readout's two lines for the cartridge in front */
-  lines(): [string, string, 'ok' | 'bad' | 'arm' | 'wait'] {
-    if (!this.order.length) return ['NO FIELD POWERS', this.flash > 0 ? this.flashMsg : 'SKILL TREE: GRAVITY', 'bad'];
-    const a = this.current, d = ABILITIES[a], h = this.c.hive, cd = h.cooldowns[a] ?? 0;
-    if (this.flash > 0) return [d.name.toUpperCase(), this.flashMsg, this.flashGood ? 'arm' : 'bad'];
-    if (this.c.armed() === a) return [d.name.toUpperCase(), 'ARMED: CLICK A TARGET', 'arm'];
-    if (cd > 0) return [d.name.toUpperCase(), `RECHARGE ${cd.toFixed(1)}S`, 'wait'];
-    const cost = powerCost(a), poor = h.res.charge < cost;
-    return [d.name.toUpperCase(), `${d.charge ? Math.round(cost) + ' CHG  ' : ''}CD ${d.cd}S`, poor ? 'bad' : 'ok'];
+  private draw(c: Colony) {
+    const dpr = Math.min(2, Math.max(1, Math.round(devicePixelRatio || 1))), S = 304, cv = this.cv, g = this.g;
+    if (cv.width !== S * dpr) { cv.width = S * dpr; cv.height = S * dpr; }
+    g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, S, S); g.imageSmoothingEnabled = false;
+    const cx = S / 2, cy = S / 2;
+    // the bezel: machined steel ring, knurled, eight index notches
+    g.beginPath(); g.arc(cx, cy, 151, 0, TAU); g.fillStyle = '#2a2d2f'; g.fill();
+    g.beginPath(); g.arc(cx, cy, 148, 0, TAU); g.fillStyle = '#6d7174'; g.fill();
+    g.beginPath(); g.arc(cx, cy, 146, Math.PI * 0.75, Math.PI * 1.75); g.strokeStyle = 'rgba(230,232,225,0.35)'; g.lineWidth = 2; g.stroke();
+    g.beginPath(); g.arc(cx, cy, 146, Math.PI * 1.75, Math.PI * 2.75); g.strokeStyle = 'rgba(0,0,0,0.35)'; g.stroke();
+    for (let i = 0; i < 120; i++) { const a = (i / 120) * TAU; g.strokeStyle = i % 15 === 7 ? '#d9a43a' : 'rgba(30,32,34,0.6)'; g.lineWidth = i % 15 === 7 ? 3 : 1; g.beginPath(); g.moveTo(cx + Math.cos(a) * 143, cy + Math.sin(a) * 143); g.lineTo(cx + Math.cos(a) * 148, cy + Math.sin(a) * 148); g.stroke(); }
+    g.beginPath(); g.arc(cx, cy, R1 + 2, 0, TAU); g.fillStyle = '#161916'; g.fill();
+    // the sockets
+    const step = TAU / N;
+    for (let i = 0; i < N; i++) {
+      const s = c.slots.slots[i], a0 = -Math.PI / 2 - step / 2 + i * step + 0.035, a1 = a0 + step - 0.07;
+      const active = c.slots.active === i, hov = this.hover === i, lock = s.level <= 0;
+      const u = s.tool ? c.slots.unitOf(i) : null;
+      g.beginPath(); g.arc(cx, cy, R1 - 2, a0, a1); g.arc(cx, cy, R0 + 2, a1, a0, true); g.closePath();
+      g.fillStyle = lock ? '#1b1c19' : hov ? '#2a3326' : active ? '#1f2d22' : '#202320'; g.fill();
+      // the socket's inner lip: lit on the far side from the light, shadowed near it
+      g.lineWidth = 2; g.strokeStyle = 'rgba(0,0,0,0.55)'; g.stroke();
+      g.beginPath(); g.arc(cx, cy, R1 - 4, a0 + 0.02, a1 - 0.02); g.strokeStyle = 'rgba(200,205,190,0.10)'; g.lineWidth = 1; g.stroke();
+      if (lock) { g.save(); g.beginPath(); g.arc(cx, cy, R1 - 2, a0, a1); g.arc(cx, cy, R0 + 2, a1, a0, true); g.closePath(); g.clip(); g.strokeStyle = 'rgba(217,164,58,0.16)'; g.lineWidth = 3; for (let k = -320; k < 320; k += 12) { g.beginPath(); g.moveTo(cx + k, cy - 160); g.lineTo(cx + k + 160, cy + 160); g.stroke(); } g.restore(); }
+      if (active) { g.beginPath(); g.arc(cx, cy, R1 - 3, a0 + 0.01, a1 - 0.01); g.arc(cx, cy, R0 + 3, a1 - 0.01, a0 + 0.01, true); g.closePath(); g.strokeStyle = `rgba(143,224,154,${0.65 + 0.35 * Math.sin(this.t * 6)})`; g.lineWidth = 3; g.shadowColor = 'rgba(127,212,138,0.8)'; g.shadowBlur = 10; g.stroke(); g.shadowBlur = 0; }
+      const am = (a0 + a1) / 2, ix = cx + Math.cos(am) * 100, iy = cy + Math.sin(am) * 100;
+      if (lock) { const ic = iconCanvas('v-lock', 36); if (ic) g.drawImage(ic, Math.round(ix - 18), Math.round(iy - 18), 36, 36); }
+      else if (s.tool) {
+        const ic = iconCanvas(TOOLS[s.tool].icon, 52 * dpr, !u); if (ic) g.drawImage(ic, Math.round(ix - 26), Math.round(iy - 26), 52, 52);
+        if (!u) { g.font = "13px 'VT', monospace"; g.fillStyle = '#e0604a'; g.textAlign = 'center'; g.fillText('NO UNIT', ix, iy + 30); }
+      } else { g.font = "14px 'VT', monospace"; g.fillStyle = '#5c6a52'; g.textAlign = 'center'; g.fillText('EMPTY', ix, iy + 4); }
+      // number and level pips
+      const nx = cx + Math.cos(a0 + 0.13) * (R1 - 13), ny = cy + Math.sin(a0 + 0.13) * (R1 - 13);
+      g.font = "15px 'Jersey', sans-serif"; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = lock ? '#6a6450' : '#d9d1ae'; g.fillText(String(i + 1), nx, ny);
+      for (let k = 0; k < 3; k++) { const pa = am - 0.16 + k * 0.16, px = cx + Math.cos(pa) * (R0 + 11), py = cy + Math.sin(pa) * (R0 + 11); g.fillStyle = k < s.level ? '#e2b04a' : '#3a3628'; g.fillRect(Math.round(px - 3), Math.round(py - 3), 6, 6); }
+    }
+    // the hub: a CRT disc
+    g.beginPath(); g.arc(cx, cy, R0 - 2, 0, TAU); g.fillStyle = '#5d6064'; g.fill();
+    g.beginPath(); g.arc(cx, cy, RH, 0, TAU); g.fillStyle = '#0b130e'; g.fill();
+    for (let y = -RH; y < RH; y += 3) { g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(cx - RH, cy + y, RH * 2, 1); }
+    const show = this.hover >= 0 ? this.hover : c.slots.active;
+    const sl = show >= 0 ? c.slots.slots[show] : null;
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.shadowColor = 'rgba(127,212,138,0.6)'; g.shadowBlur = 6; g.fillStyle = '#8fe09a';
+    if (sl && sl.tool) {
+      g.font = "19px 'VT', monospace"; g.fillText(TOOLS[sl.tool].name.toUpperCase().split(' ')[0], cx, cy - 12);
+      g.font = "15px 'VT', monospace"; g.fillText(`SLOT ${show + 1} · LV ${sl.level}`, cx, cy + 8);
+      g.fillStyle = c.slots.active === show ? '#e2b04a' : '#5fae6c'; g.fillText(c.slots.active === show ? 'IN USE' : 'READY', cx, cy + 26);
+    } else if (sl && sl.level <= 0) { g.font = "17px 'VT', monospace"; g.fillStyle = '#e2b04a'; g.fillText('LOCKED', cx, cy); }
+    else { g.font = "18px 'VT', monospace"; g.fillText('TOOLS', cx, cy - 8); g.font = "13px 'VT', monospace"; g.fillStyle = '#5fae6c'; g.fillText('CLICK A SLOT', cx, cy + 12); }
+    g.shadowBlur = 0;
   }
 }

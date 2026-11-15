@@ -14,6 +14,8 @@ import { eyeball } from './head';
 import { Px, RP } from './paint';
 import { rs, sh } from '../species/util';
 import { drawNostrils } from './face';
+import { growCyber } from '../cyber/mount';
+import { CYBER } from '../cyber/catalog';
 
 const add = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const scl = (a: V3, k: number): V3 => [a[0] * k, a[1] * k, a[2] * k];
@@ -22,7 +24,8 @@ const lerp = (a: V3, b: V3, t: number): V3 => [a[0] + (b[0] - a[0]) * t, a[1] + 
 
 export function buildSerpent(d: Design, rig: Rig, rest: V3[]) {
   const D = rig.dims, W = D.W, L = rig.length, segs = rig.spine, n = segs.length, seed = (d.seed >>> 0) % 997, g = (x: string) => d.genes.includes(x);
-  const body = new Body(L > 3 ? 1024 : 512);
+  const fitted = (d.fit ?? []).filter((id) => CYBER[id]);
+  const body = new Body(L > 3 || fitted.length ? 1024 : 512);
   body.seed = d.seed; body.levelCap = 1; body.quickLevels = 0;
   const scaled = d.cover === 'scales';
   const base = rs(d.colors.base), belly = rs(d.colors.belly), pat = rs(d.colors.pattern), acc = rs(d.colors.accent);
@@ -61,6 +64,19 @@ export function buildSerpent(d: Design, rig: Rig, rest: V3[]) {
   if (g('ring_maw')) { const c = add(head, [0, -W * 0.02, D.seg * 0.62]); for (let k = 0; k < 10; k++) { const a = (k / 10) * Math.PI * 2, at = add(c, [Math.cos(a) * W * 0.17, Math.sin(a) * W * 0.15, 0]); body.add(spine({ name: 'mt' + k, at, dir: nrm([-Math.cos(a), -Math.sin(a), 0.6]), len: W * 0.12, r: W * 0.025, skin: () => [rig.head, 1], paint: flat(['bone', 4]), levels: 0, around: 4 })).farSkip = true; } }
   if (g('setae')) for (let i = 0; i < n; i += 1) for (const s of [-1, 1]) for (const up of [0.2, -0.3]) { const r = rOf(i), at = add(P[i], [s * r * 0.95, up * r, 0]); body.add(spine({ name: 'set' + i + s + up, at, dir: nrm([s, up - 0.3, -0.4]), len: r * 0.55, r: r * 0.05, skin: () => [segs[i], 1], paint: flat(['ochre', 2]), levels: 0, around: 3 })).farSkip = true; }
   void acc; void seed; void sh; void lerp; void scl;
+  // a cyborg worker's machinery: stations run from the tail (t 0) to the neck (t 1) down the segment bones
+  if (fitted.length) {
+    const ctr = (f: number): { c: V3; r: number; i: number } => { const i = Math.max(0, Math.min(n - 1, f)), i0 = Math.floor(i), i1 = Math.min(n - 1, i0 + 1), k = i - i0; return { c: lerp(P[i0], P[i1], k), r: rOf(i0) * (1 - k) + rOf(i1) * k, i: Math.round(i) }; };
+    const at = (t: number, a: number) => {
+      const q = ctr((1 - t) * (n - 1)), dir = nrm([Math.sin(a), Math.cos(a), 0]);
+      return { p: add(add(q.c, [0, -q.r * 0.04, 0]), [dir[0] * q.r * 1.06, dir[1] * q.r * 0.94, 0]), n: dir };
+    };
+    growCyber({
+      d, body, rig, rest, W, H: W, L, seed, spine: skin, at, chest: segs[0], hips: segs[n - 1], legs: [], arms: [], serpent: true,
+      head: { bone: rig.head, c: head, fwd: [0, 0, 1], up: [0, 1, 0], hw: W * 0.5, hh: W * 0.45, hl: D.seg * 0.9, eyes: [] },
+      neck: { bone: segs[0], c: lerp(P[0], head, 0.35), dir: nrm([head[0] - P[0][0], head[1] - P[0][1], head[2] - P[0][2]]), r: rOf(0) * 1.02 },
+    });
+  }
   const out = body.build({ den: 64, maxScale: 8, budget: 11600 });
   return { geo: out.geo, tex: out.tex, tris: out.tris, den: Math.round(body.den), fill: body.page.fill };
 }

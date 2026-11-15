@@ -63,7 +63,7 @@ export class Expedition implements SOwner {
     this.state = 'landing'; this.stateT = 0;
     this.lander = this.add('lander', this.x, this.z, { instant: true, yaw: this.r.range(0, 6.28), name: this.site.name, drop: 8 });
     const [px, pz] = this.F.playerCenter();
-    this.F.radio.calder(`A lander on a chute, Seven, coming down to the ${compass(this.x - px, this.z - pz)}. No star on it. Private outfit, or somebody else's flag. They'll have rifles.`, 'think');
+    this.F.radio.calder(`A lander on a chute, Seven, coming down to the ${compass(this.x - px, this.z - pz)}. No bloc markings on it. A private outfit. They'll have rifles.`, 'think');
     sfx('pulse', 0.4, 0.6);
   }
   private unload() {
@@ -89,7 +89,7 @@ export class Expedition implements SOwner {
     g.storyBlock = true;
     const p = this.dialog = panel('choice', ui(), 'dark');
     el('div', 'hdr ch-title', p, 'A VOICE ON THE OPEN BAND');
-    el('div', 'small ch-sub', p, `"${this.site.name} expedition to the American machine. We came for the ore, not for a war. Pay our way and we keep off your works."`);
+    el('div', 'small ch-sub', p, `"${this.site.name} expedition to the UNAA machine. We came for the ore, not for a war. Pay our way and we keep off your works."`);
     el('div', 'small', p, `They ask ${c.ore} ore and ${c.carbon} carbon. You hold ${Math.floor(res.ore)} ore, ${Math.floor(res.carbon)} carbon.`);
     el('div', 'small', p, `${this.units.length} rifles and engineers at their capsule.`);
     const row = el('div', 'ch-row', p);

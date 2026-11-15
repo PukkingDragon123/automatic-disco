@@ -16,7 +16,7 @@ export const TAB_ORDER: TabId[] = ['body', 'works', 'legs', 'arms', 'tail', 'win
 /** body regions painted onto the specimen's vertices (partPreview.ts writes them, the tank highlights them) */
 export const REG = { none: 0, torso: 1, back: 2, head: 3, eyes: 4, crown: 5, jaw: 6, feelers: 7, legs: 8, arms: 9, tail: 10, wings: 11 } as const;
 export type RegId = (typeof REG)[keyof typeof REG];
-export const REG_NAME: Record<number, string> = { 1: 'TORSO', 2: 'BACK', 3: 'HEAD', 4: 'EYES', 5: 'HORNS', 6: 'MOUTH', 7: 'FEELERS', 8: 'LEGS', 9: 'FORELIMBS', 10: 'TAIL', 11: 'WINGS' };
+export const REG_NAME: Record<number, string> = { 1: 'TORSO', 2: 'BACK', 3: 'HEAD', 4: 'EYES', 5: 'HORNS', 6: 'MOUTH', 7: 'FEELERS', 8: 'LEGS', 9: 'FORELIMBS', 10: 'TAIL', 11: 'WINGS', 12: 'MACHINE' };
 
 export interface TabDef { name: string; short: string; icon: string; cat: GeneCat; regs: number[]; desc: string }
 export const TABS: Record<TabId, TabDef> = {
@@ -38,7 +38,7 @@ export const TABS: Record<TabId, TabDef> = {
 export const REG_TABS: Record<number, TabId[]> = {
   1: ['body', 'organs', 'hide', 'back'], 2: ['back', 'hide', 'body', 'organs'], 3: ['senses', 'eyes', 'crown', 'jaw', 'hide'], 4: ['eyes', 'senses', 'crown', 'jaw'],
   5: ['crown', 'eyes', 'senses', 'jaw'], 6: ['jaw', 'eyes', 'senses', 'crown'], 7: ['senses', 'eyes', 'crown', 'jaw'], 8: ['legs', 'arms'], 9: ['arms', 'legs'],
-  10: ['tail', 'back'], 11: ['wings', 'arms'],
+  10: ['tail', 'back'], 11: ['wings', 'arms'], 12: ['works', 'body'],
 };
 
 const EYES = new Set(['eye_compound', 'eye_camera', 'eye_binocular', 'eye_bulging', 'eye_spots', 'eye_stalks', 'hominid_eyes']);

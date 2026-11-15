@@ -239,6 +239,8 @@ export interface LabHandlers {
   saveDisabled(): string | false;
   /** the role planner: target a role, graft a suggested gene */
   role(r: string): void; suggest(gene: string): void;
+  /** the fitting bay switch (robotic parts) */
+  fit?(): void; fitOn?(): boolean;
 }
 /** what the record sheet shows */
 export interface RecordData {
@@ -318,6 +320,7 @@ export class LabUI {
     this.latin = el('div', 'lb-latin', slip);
     this.ctls.push(new Ctl(top, { kind: 'knob', label: 'RE-ROLL', tip: () => '<h4>Re-roll</h4>New colours, pattern and a new name.' }, () => h.reroll()));
     this.ctls.push(new Ctl(top, { kind: 'push', label: 'FILE PREFAB', red: true, big: true, disabled: () => h.saveDisabled(), tip: () => '<h4>File as a prefab</h4>Stamp the record and add the design to your species. Grow it in a Brood Womb; with the Flesh Printer, print living copies.' }, () => h.save()));
+    if (h.fit) this.ctls.push(new Ctl(top, { kind: 'tog', label: 'FITTING BAY', on: () => !!h.fitOn?.(), tip: () => '<h4>Fitting bay</h4>Fit robotic parts to the specimen: hydraulic limbs, tool arms, cargo rigs, sensors, plating, a power pack and the control collar. Genes and parts stack. [F]' }, () => h.fit!()));
     this.ctls.push(new Ctl(top, { kind: 'tog', label: 'LEAVE', on: () => true, tip: () => 'Back to the field. An unfiled record is lost. [ESC]' }, () => h.leave()));
     this.ctls.push(new Ctl(top, { kind: 'push', label: 'RECORD', tip: () => 'The specimen record' }, () => { this.right.classList.toggle('open'); this.left.classList.remove('open'); }));
     this.ctls[this.ctls.length - 1].e.classList.add('lb-mtog');

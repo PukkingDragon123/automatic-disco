@@ -22,11 +22,16 @@ export interface FactionSite {
   name: string;
 }
 
-export const FACTION_LABEL: Record<FactionId, string> = { soviet: 'Soviet programme', prc: 'PRC programme', expedition: 'Private expedition' };
-export const FACTION_TAG: Record<FactionId, string> = { soviet: 'SOVIET RADIO', prc: 'PRC RADIO', expedition: 'EXPEDITION BAND' };
+// v6: two FUTURE human blocs (internal ids 'soviet' and 'prc' are kept so nothing else breaks):
+//   'soviet' = the EURASIAN CONCORD: heavy, disciplined, graphite hulls with signal-orange bands, a hexagon-and-chevron mark
+//   'prc'    = the PACIFIC RIM CONSORTIUM: fast, corporate, ceramic-white hulls with teal bands, a wave-crest mark
+export const FACTION_LABEL: Record<FactionId, string> = { soviet: 'Eurasian Concord', prc: 'Pacific Consortium', expedition: 'Private expedition' };
+/** the short name used in lines ('the Concord', 'Consortium machines') */
+export const FACTION_SHORT: Record<FactionId, string> = { soviet: 'Concord', prc: 'Consortium', expedition: 'expedition' };
+export const FACTION_TAG: Record<FactionId, string> = { soviet: 'CONCORD NET', prc: 'CONSORTIUM NET', expedition: 'EXPEDITION BAND' };
 const NAMES: Record<FactionId, string[]> = {
-  soviet: ['ZARYA', 'VOSTOK', 'KOSMOS', 'RASSVET', 'MOLNIYA', 'TAYGA'],
-  prc: ['HONGQI', 'DONGFENG', 'CHANGZHENG', 'FEIYAN', 'TIANSHAN', 'HUANGHE'],
+  soviet: ['BASTION', 'CALDERA', 'ARGENT', 'STEPPE-9', 'AURORA', 'GRANITE'],
+  prc: ['TIDEWATER', 'HALCYON', 'LEEWARD', 'CORAL', 'ATOLL', 'MONSOON'],
   expedition: ['MERIDIAN', 'HOLLANDER-VANCE', 'KESTREL', 'ALBION', 'NORDKAPP', 'CORDILLERA'],
 };
 
@@ -70,7 +75,7 @@ export function factionsForRegion(region: Pick<PRegion, 'seed' | 'danger'>, _pla
   return planFactions(region.seed, region.danger, N);
 }
 
-/** one line for a planet info panel: "SOVIET BASE · PRC BASE" */
+/** one line for a planet info panel: "CONCORD BASE · CONSORTIUM BASE" */
 export function factionSummary(region: Pick<PRegion, 'seed' | 'danger'>): string {
-  return factionsForRegion(region).map((s) => (s.faction === 'expedition' ? 'EXPEDITION (MID-GAME)' : s.faction === 'soviet' ? 'SOVIET BASE' : 'PRC BASE')).join(' · ');
+  return factionsForRegion(region).map((s) => (s.faction === 'expedition' ? 'EXPEDITION (MID-GAME)' : s.faction === 'soviet' ? 'CONCORD BASE' : 'CONSORTIUM BASE')).join(' · ');
 }

@@ -1,8 +1,11 @@
-// Build mode: a blueprint-blue ghost of the chosen machine snapped to the 1 m grid under the cursor (stamp red where
-// it cannot go, with the reason), R to turn it, a grid drawn on the ground around it; belts, pipes, walls, dams and
-// foundations are laid by dragging a path. X dismantles (full refund). Blueprints copy a rectangle of machines and
-// paste it elsewhere (turnable). The same pointer also assigns workers. On touch: tap to set the ghost, tap it again
-// to build, drag to lay belts.
+// Build mode. B opens the CONSTRUCTION PLANNER (src/ui/build/menu.ts); a tile or a hotbar key (1-0) puts a building in
+// hand: a holographic ghost snapped to the 1 m grid under the cursor (phosphor green where it fits, stamp red where it
+// cannot go, with the reason and the bill of materials at the cursor), R to turn it, a grid drawn on the ground around
+// it. Placing lays a CONSTRUCTION SITE (src/logistics/sites.ts): workers bring the materials and build it over time.
+// Belts, pipes, walls, fences, dams and foundations are laid by dragging a path and go down at once (the pod's arm lays
+// runs). X dismantles (full refund; a site is cancelled and its delivered materials returned). Blueprints copy a
+// rectangle of machines and paste it elsewhere (turnable). The same pointer also assigns workers. On touch: tap to set
+// the ghost, tap it again to build, drag to lay belts.
 import * as THREE from 'three';
 import type { Factory, FBuilding } from './factory';
 import { FDEFS, isBelt, isDrag, footW, footD, type FKind } from './defs';
@@ -10,6 +13,9 @@ import { modelFor, beltGeo } from './models';
 import { machineMaterial } from './tex';
 import { RECIPE } from './recipes';
 import { gbufNone } from '../gfx/gbuf';
+import type { Hotbar } from '../ui/build/hotbar';
+import type { BuildMenu } from '../ui/build/menu';
+import { buildingLock } from '../logistics/unlocks';
 import { RAMPS } from '../art/palette';
 import { toast } from '../ui/kit';
 import { sfx } from '../audio/audio';
@@ -20,6 +26,29 @@ export type Tool = 'place' | 'dismantle' | 'copy' | 'paste' | 'assign' | 'select
 export interface BlueprintPart { kind: FKind; dx: number; dz: number; r: number; recipe?: string }
 export interface Blueprint { w: number; d: number; parts: BlueprintPart[] }
 interface Ghost { kind: FKind; cx: number; cz: number; r: number; ok: boolean; why: string | null }
+/** laid as a run, at once (no construction site) */
+export const isRun = (k: FKind) => isDrag(k) || k === 'fence';
+/** a hologram: additive phosphor light with scanlines climbing the model and a bright rim where it turns away */
+function holoMaterial(col: number) {
+  const U = { uTime: { value: 0 }, uCol: { value: new THREE.Color(col) } };
+  const m = new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, U);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWp; varying vec3 vNw;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvec4 hw = modelMatrix * vec4(transformed, 1.0); vWp = hw.xyz; vNw = normalize(mat3(modelMatrix) * normal);');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uTime; uniform vec3 uCol; varying vec3 vWp; varying vec3 vNw;')
+      .replace('vec4 diffuseColor = vec4( diffuse, opacity );', `vec3 vd = normalize(cameraPosition - vWp);
+float fr = pow(1.0 - abs(dot(normalize(vNw), vd)), 2.2);
+float scan = step(0.6, fract(vWp.y * 10.0 - uTime * 1.8));
+float sweep = fract(vWp.y * 0.45 - uTime * 0.4);
+float band = smoothstep(0.0, 0.05, sweep) * (1.0 - smoothstep(0.05, 0.16, sweep));
+float top = max(0.0, normalize(vNw).y) * 0.18;
+vec4 diffuseColor = vec4(uCol * (0.45 + fr * 1.1 + band * 1.2 + top), 0.12 + fr * 0.5 + scan * 0.07 + band * 0.4);`);
+  };
+  m.customProgramCacheKey = () => 'holo-ghost';
+  (m as unknown as { __u: typeof U }).__u = U;
+  return gbufNone(m);
+}
 
 export class Build {
   active = false;
@@ -37,6 +66,15 @@ export class Build {
   private tapAt: string | null = null;
   private meshes: THREE.Mesh[] = [];
   private okMat = machineMaterial(0, { ghost: true }); private badMat = machineMaterial(0, { ghost: true });
+  private holoOk = holoMaterial(0x7fd48a); private holoBad = holoMaterial(0xd2503e);
+  private holos: THREE.Mesh[] = [];
+  /** the planner and the quick-slots (set by the factory UI) */
+  menu?: BuildMenu; hotbar?: Hotbar;
+  /** opens the node map (set by the factory UI) */
+  onNodes?: () => void;
+  /** the last key event this build mode used (game.ts skips its own handling of it) */
+  private eaten: KeyboardEvent | null = null;
+  ate(e: KeyboardEvent) { return this.eaten === e; }
   private grid: THREE.LineSegments; private foot: THREE.Mesh;
   private camDist = 0;
   onChange?: () => void;
@@ -46,6 +84,9 @@ export class Build {
   constructor(readonly f: Factory) {
     (this.badMat as unknown as { onBeforeCompile: unknown }).onBeforeCompile = ((prev) => (sh: THREE.WebGLProgramParametersWithUniforms, r: THREE.WebGLRenderer) => { prev.call(this.badMat, sh, r); (sh.uniforms.uGhost.value as THREE.Color).setHex(RAMPS.stampRed[3]); })(this.badMat.onBeforeCompile);
     this.badMat.customProgramCacheKey = () => 'fac-ghost-bad';
+    // the good ghost reads as phosphor green under the hologram
+    (this.okMat as unknown as { onBeforeCompile: unknown }).onBeforeCompile = ((prev) => (sh: THREE.WebGLProgramParametersWithUniforms, r: THREE.WebGLRenderer) => { prev.call(this.okMat, sh, r); (sh.uniforms.uGhost.value as THREE.Color).setHex(0x6fae7c); })(this.okMat.onBeforeCompile);
+    this.okMat.customProgramCacheKey = () => 'fac-ghost-ok';
     const lm = gbufNone(new THREE.LineBasicMaterial({ color: RAMPS.sky[4], transparent: true, opacity: 0.55, depthWrite: false }));
     this.grid = new THREE.LineSegments(new THREE.BufferGeometry(), lm); this.grid.frustumCulled = false; this.grid.visible = false; this.grid.renderOrder = 3;
     const fm = gbufNone(new THREE.MeshBasicMaterial({ color: RAMPS.sky[3], transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }));
@@ -73,9 +114,12 @@ export class Build {
     this.kind = kind; this.tool = tool; this.drag = null; this.tapAt = null;
     this.onChange?.();
   }
+  /** B: open the planner; while a building is in hand it comes back up; with it up, B leaves build mode */
+  openMenu() { if (!this.active) this.open(null, 'select'); this.kind = null; this.tool = 'select'; this.clearGhosts(); this.menu?.open(); this.onChange?.(); }
   close() {
     if (!this.active) return;
     this.active = false; this.kind = null; this.tool = 'place'; this.drag = null; this.pending = null;
+    this.menu?.close();
     this.clearGhosts(); this.grid.visible = false; this.foot.visible = false;
     const g = this.g;
     if (g.mode.k === ('factory' as string)) (g as unknown as { setMode(m: { k: string }): void }).setMode({ k: 'normal' });
@@ -84,12 +128,16 @@ export class Build {
     sfx('close', 1, 0.5);
     this.onChange?.();
   }
-  toggle() { if (this.active) this.close(); else this.open(null, 'select'); }
+  toggle() { if (this.active && (this.menu?.isOpen || !this.menu)) this.close(); else this.openMenu(); }
   choose(kind: FKind) {
-    const def = FDEFS[kind];
-    if (def.skill && !this.f.has(def.skill)) { sfx('deny'); toast(`Needs <b>${def.skill}</b> on the skill tree`, 'warn', 1800); return; }
+    const def = FDEFS[kind]; if (!def) return;
+    const lk = buildingLock(this.g, kind);
+    if (!lk.ok) { sfx('deny'); toast(`<b>${def.name}</b> is locked: ${lk.why.toLowerCase()}`, 'warn', 2000); return; }
+    this.menu?.close();
     this.open(kind, 'place'); sfx('click');
   }
+  /** keys build mode owns while it is open (game.ts asks before its own handling) */
+  wantsKey(k: string) { return this.active && /^[0-9]$/.test(k); }
   setTool(t: Tool) {
     if ((t === 'copy' || t === 'paste') && !this.g.run.skills.has('blueprint')) { sfx('deny'); toast('Blueprints need the <b>Blueprint Office</b> skill', 'warn', 1800); return; }
     if (t === 'paste' && !this.blueprint) { toast('Copy a blueprint first: drag a box over some machines', 'warn', 1800); this.open(null, 'copy'); return; }
@@ -119,6 +167,8 @@ export class Build {
       return;
     }
     e.stopPropagation(); e.preventDefault();
+    // a click in the world while the planner is up puts the planner away
+    if (this.menu?.isOpen) { this.menu.close(); this.onChange?.(); return; }
     if (e.button === 2) { if (this.tool !== 'select' || this.kind) { this.kind = null; this.tool = 'select'; this.pending = null; this.clearGhosts(); this.onChange?.(); } else this.close(); return; }
     if (e.button !== 0) return;
     this.hoverAt(e.clientX, e.clientY);
@@ -128,7 +178,7 @@ export class Build {
   private onMove = (e: PointerEvent) => {
     if (!this.active || !this.canvasEv(e) && !this.drag) return;
     if (this.drag && Math.hypot(e.clientX - this.drag.sx, e.clientY - this.drag.sy) > 8) this.drag.on = true;
-    if (this.drag?.touch && !(this.kind && isDrag(this.kind)) && this.tool !== 'copy') return;
+    if (this.drag?.touch && !(this.kind && isRun(this.kind)) && this.tool !== 'copy') return;
     this.hoverAt(e.clientX, e.clientY);
   };
   private tap: { x: number; y: number; t: number } | null = null;
@@ -141,17 +191,27 @@ export class Build {
     if (!this.active || !this.drag || e.button !== 0) return;
     const d = this.drag; this.drag = null;
     e.stopPropagation();
-    if (d.touch && d.on && !(this.kind && isDrag(this.kind)) && this.tool !== 'copy') return; // a pan, not a tap
+    if (d.touch && d.on && !(this.kind && isRun(this.kind)) && this.tool !== 'copy') return; // a pan, not a tap
     this.hoverAt(e.clientX, e.clientY);
     this.click(e.clientX, e.clientY, d, e.shiftKey);
   };
   private onKey(e: KeyboardEvent) {
-    if (!this.active || !(this.g as unknown as { act: boolean }).act) return;
+    if (!this.active || !(this.g as unknown as { act: boolean }).act || e.ctrlKey || e.metaKey) return;
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-    if (k === 'r') { this.g.input.keys.delete('r'); if (!e.repeat) this.rotate(); }
-    else if (k === 'x') this.setTool(this.tool === 'dismantle' ? 'select' : 'dismantle');
-    else if (k === 'y') this.setTool('copy');
-    else if (k === 'u') this.setTool('paste');
+    const eat = () => { this.eaten = e; };
+    if (this.menu?.isOpen && this.menu.key(k)) { eat(); return; }
+    if (/^[0-9]$/.test(k)) { eat(); if (!e.repeat) this.hotbar?.use((Number(k) + 9) % 10); return; }
+    if (k === 'Escape') {
+      // one step back at a time: the building in hand, the planner, then build mode itself (game.ts)
+      if (this.kind || this.tool !== 'select') { eat(); this.kind = null; this.tool = 'select'; this.pending = null; this.clearGhosts(); this.onChange?.(); sfx('click', 0.8, 0.4); return; }
+      if (this.menu?.isOpen) { eat(); this.menu.close(); this.onChange?.(); return; }
+      return;
+    }
+    if (k === 'b' && !this.menu?.isOpen) { eat(); this.openMenu(); return; }
+    if (k === 'r') { eat(); this.g.input.keys.delete('r'); if (!e.repeat) this.rotate(); }
+    else if (k === 'x') { eat(); this.menu?.close(); this.setTool(this.tool === 'dismantle' ? 'select' : 'dismantle'); }
+    else if (k === 'y') { eat(); this.menu?.close(); this.setTool('copy'); }
+    else if (k === 'u') { eat(); this.menu?.close(); this.setTool('paste'); }
   }
   rotate() { this.hoverKey = ''; this.rot = (this.rot + 1) & 3; if (this.tool === 'paste' && this.blueprint) this.blueprint = turn(this.blueprint); sfx('click', 1.3, 0.5); this.refresh(); }
   /** touch: build the ghost where it stands */
@@ -195,11 +255,11 @@ export class Build {
     const [x, z] = this.cell;
     if (this.tool === 'place' && this.kind) {
       const def = FDEFS[this.kind];
-      const cells = this.drag?.on && isDrag(this.kind) ? this.path(this.drag.x, this.drag.z, x, z, this.kind) : [[x, z, this.rot]] as [number, number, number][];
+      const cells = this.drag?.on && isRun(this.kind) ? this.path(this.drag.x, this.drag.z, x, z, this.kind) : [[x, z, this.rot]] as [number, number, number][];
       for (const [cx0, cz0, r] of cells) {
         const w = footW(def, r), d = footD(def, r);
-        const cx = isDrag(this.kind) && this.drag?.on ? cx0 : cx0 - Math.floor((w - 1) / 2), cz = isDrag(this.kind) && this.drag?.on ? cz0 : cz0 - Math.floor((d - 1) / 2);
-        const why = f.why(this.kind, cx, cz, r);
+        const cx = isRun(this.kind) && this.drag?.on ? cx0 : cx0 - Math.floor((w - 1) / 2), cz = isRun(this.kind) && this.drag?.on ? cz0 : cz0 - Math.floor((d - 1) / 2);
+        const why = isRun(this.kind) || !f.sites ? f.why(this.kind, cx, cz, r) : f.sites.why(this.kind, cx, cz, r);
         this.ghosts.push({ kind: this.kind, cx, cz, r, ok: !why, why });
         if (why && !this.why) this.why = why;
       }
@@ -241,7 +301,7 @@ export class Build {
     if (kind === 'wall' || kind === 'dam') for (const o of out) o[2] = o[2] === 1 || o[2] === 3 ? 1 : 0;
     return out.slice(0, 96);
   }
-  private clearGhosts() { for (const m of this.meshes) m.visible = false; }
+  private clearGhosts() { for (const m of this.meshes) m.visible = false; for (const m of this.holos) m.visible = false; }
   private drawGhosts() {
     const f = this.f, R = f.g.region;
     while (this.meshes.length < this.ghosts.length) { const m = new THREE.Mesh(new THREE.BufferGeometry(), this.okMat); m.renderOrder = 4; m.frustumCulled = false; f.render.group.add(m); this.meshes.push(m); }
@@ -256,7 +316,15 @@ export class Build {
       m.position.set(gh.cx + w / 2, y + 0.02, gh.cz + d / 2);
       m.rotation.set(0, -gh.r * Math.PI / 2, 0);
       m.visible = true;
+      // the hologram over the blueprint body
+      let hm = this.holos[i];
+      if (!hm) { hm = this.holos[i] = new THREE.Mesh(geo, this.holoOk); hm.renderOrder = 5; hm.frustumCulled = false; f.render.group.add(hm); }
+      if (hm.geometry !== geo) hm.geometry = geo;
+      hm.material = gh.ok ? this.holoOk : this.holoBad;
+      hm.position.copy(m.position); hm.rotation.copy(m.rotation); hm.scale.setScalar(1.012);
+      hm.visible = this.ghosts.length <= 24;
     });
+    for (let i = this.ghosts.length; i < this.holos.length; i++) this.holos[i].visible = false;
     // the grid around the cursor, and the footprint (or the copy box)
     const show = !!this.cell;
     this.grid.visible = show; this.foot.visible = show && (this.ghosts.length > 0 || this.tool === 'copy' && !!this.drag?.on);
@@ -292,6 +360,8 @@ export class Build {
     const f = this.f;
     if (this.tool === 'select' || this.tool === 'assign' && !this.pending) { const b = this.pick(mx, my); f.render.sel = b; this.onInspect?.(b); if (b) sfx('click', 1, 0.6); return; }
     if (this.tool === 'dismantle') {
+      const gp = this.g.groundAt(mx, my), site = gp && f.sites ? f.sites.siteAt(Math.floor(gp.x), Math.floor(gp.z)) : null;
+      if (site) { f.sites.cancel(site); toast(`Site cancelled: <b>${site.def.name}</b> (delivered materials returned)`, 'info', 1600); this.refresh(); return; }
       const b = this.pick(mx, my);
       if (!b) return;
       f.remove(b, true);
@@ -334,15 +404,26 @@ export class Build {
     if (this.why && this.ghosts.length === 1) { sfx('deny'); toast(this.why, 'warn', 1500); return; }
     let n = 0;
     const bp = this.tool === 'paste' ? this.blueprint : null;
+    let sites = 0;
     this.ghosts.forEach((gh, i) => {
       if (!gh.ok) return;
+      if (!isRun(gh.kind) && f.sites) {
+        // a machine: stake out a construction site; the crew brings the materials and builds it
+        const s = f.sites.place(gh.kind, gh.cx, gh.cz, gh.r);
+        if (!s) return;
+        n++; sites++;
+        const rid = bp?.parts[i]?.recipe; if (rid && RECIPE[rid]) f.sites.onDone = ((prev) => (st, b) => { prev?.(st, b); if (st === s) f.setRecipe(b, RECIPE[rid]); })(f.sites.onDone);
+        f.g.fx.burst(gh.cx + s.fw / 2, s.y + 0.2, gh.cz + s.fd / 2, 8, RAMPS.sky[4], { speed: 1.2, up: 1.2, size: 2.4, life: 0.5, grav: 4 });
+        return;
+      }
       const b = f.place(gh.kind, gh.cx, gh.cz, gh.r);
       if (!b) return;
       n++;
       const rid = bp?.parts[i]?.recipe; if (rid && RECIPE[rid]) f.setRecipe(b, RECIPE[rid]);
       f.g.fx.burst(b.x, b.y + 0.3, b.z, 8, RAMPS.straw[4], { speed: 1.4, up: 1.6, size: 2.6, life: 0.5, grav: 6 });
     });
-    if (n) { sfx('build', 1, 0.7); f.g.cam.shake(0.05, 0.12); }
+    if (n) { sfx(sites ? 'click' : 'build', sites ? 0.7 : 1, 0.7); f.g.cam.shake(0.05, 0.12); }
+    if (sites) toast(sites > 1 ? `<b>${sites}</b> construction sites staked out` : `Site staked out: <b>${FDEFS[this.ghosts.find((g) => g.ok)!.kind].name}</b> · the crew will bring the materials`, 'info', 1800);
     else if (this.why) { sfx('deny'); toast(this.why, 'warn', 1500); }
     this.refresh();
   }
@@ -372,6 +453,8 @@ export class Build {
     this.pending = null; this.tool = 'select'; this.onChange?.();
   }
   update() {
+    const t = performance.now() / 1000;
+    for (const m of [this.holoOk, this.holoBad]) (m as unknown as { __u: { uTime: { value: number } } }).__u.uTime.value = t;
     if (!this.active) return;
     const g = this.g;
     if (g.mode.k !== ('factory' as string)) { this.close(); return; }

@@ -24,7 +24,7 @@ export interface Upgradable {
 }
 
 /** what a model depends on: the species, its seed, its proportions, genes and colours */
-const keyOf = (d: Design) => `${VERSION}:${d.beast ?? d.plan}:${d.seed}:${[d.size, d.len, d.girth, d.legLen, d.legThick, d.neck, d.head, d.tail].map((v) => v.toFixed(4)).join(',')}:${[...d.genes].sort().join('+')}:${Object.values(d.colors).join(',')}:${d.pattern}:${d.patScale.toFixed(3)}:${d.cover}`;
+const keyOf = (d: Design) => `${VERSION}:${d.beast ?? d.plan}:${d.seed}:${[d.size, d.len, d.girth, d.legLen, d.legThick, d.neck, d.head, d.tail].map((v) => v.toFixed(4)).join(',')}:${[...d.genes].sort().join('+')}:${[...(d.fit ?? [])].sort().join('+')}:${Object.values(d.colors).join(',')}:${d.pattern}:${d.patScale.toFixed(3)}:${d.cover}`;
 let dbP: Promise<IDBDatabase | null> | null = null;
 function db(): Promise<IDBDatabase | null> {
   if (dbP) return dbP;

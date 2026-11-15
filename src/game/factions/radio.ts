@@ -1,6 +1,6 @@
 // Radio intercepts: enemy chatter Unit 07's receiver picks up, shown as typed subtitles under a stencilled tag
-// ("[SOVIET RADIO] Unit Kosmos-4: deposit secured"), and Dr. Calder's warnings when a wave is coming (his dialog
-// while he is with Unit 07, a shortwave toast otherwise).
+// ("[CONCORD NET] Unit Granite-4: deposit secured"), and the Austral's warnings when a wave is coming (a relay toast;
+// the old story's Calder dialog when that legacy story runs).
 import type { Game } from '../game';
 import type { FactionId } from './plan';
 import { FACTION_TAG } from './plan';
@@ -9,36 +9,38 @@ import { sfx } from '../../audio/audio';
 
 export type RadioEv = 'land' | 'deposit' | 'build' | 'wave' | 'raid' | 'sighted' | 'lost' | 'hit' | 'vsOther' | 'chatter' | 'eliminated' | 'exhausted' | 'arty' | 'truce' | 'refused' | 'capture' | 'leave';
 const CALL: Record<FactionId, string[]> = {
-  soviet: ['Unit Kosmos-4', 'Column Molot-2', 'Base {B}', 'Tank group Berkut', 'Battery Grom-1', 'Drone Sputnik-7', 'Commander Volkov'],
-  prc: ['Unit Dongfeng-7', 'Station {B}', 'Scout Feiyan-3', 'Raid group Jian-2', 'Tower Shao-6', 'Mech Leiting-4', 'Political officer Zhou'],
+  soviet: ['Unit Granite-4', 'Column Bastion-2', 'Base {B}', 'Armour group Tern', 'Battery Anvil-1', 'Drone Kite-7', 'Coordinator Varga'],
+  prc: ['Unit Tidewater-7', 'Station {B}', 'Scout Skiff-3', 'Raid group Reef-2', 'Tower Lantern-6', 'Mech Breaker-4', 'Compliance officer Hale'],
   expedition: ['Party leader', 'Camp {B}', 'Rifleman Ortega', 'Engineer Halvorsen', 'Radio op Pell'],
 };
 const LINES: Record<FactionId, Partial<Record<RadioEv, string[]>>> = {
+  // the Eurasian Concord: a disciplined bloc that works to a directive and says so
   soviet: {
-    land: ['Touchdown confirmed. The Motherland reaches the stars.', 'Lander down. Deploying the base per plan.'],
-    deposit: ['Deposit secured. Drilling begins.', 'Ore seam claimed. Output to begin at once.', 'Rig {N} turning. Plan quota will be met.'],
-    build: ['Assembly hall complete. Production to schedule.', 'Bunker poured. The perimeter holds.', 'Battery in position. Range tables ready.', 'Structure complete, Comrade Commander.'],
-    wave: ['Column, advance. Target the American works.', 'All units forward. Crush the capitalist machine.', 'Heavy group moving out. Steady pace, keep formation.', 'The plan calls for an offensive. Advance.'],
-    sighted: ['American machine sighted. Small. Cute, even. Logging it.', 'Enemy industry spotted, grid {G}.', 'I see their conveyors. They copy our methods.'],
-    lost: ['We have lost a structure. Rebuild per plan.', 'Rig {N} is silent. Send a repair crew.', 'Bunker destroyed! Reinforce the line.'],
+    land: ['Touchdown confirmed. The Concord holds this ground.', 'Lander down. Deploying the base to directive.'],
+    deposit: ['Deposit secured. Drilling begins.', 'Ore seam claimed. Output starts on the hour.', 'Rig {N} turning. The directive quota will be met.'],
+    build: ['Assembly hall complete. Production to schedule.', 'Bunker poured. The perimeter holds.', 'Battery in position. Firing tables loaded.', 'Structure complete, Coordinator.'],
+    wave: ['Column, advance. Target the UNAA works.', 'All units forward. Break their production.', 'Heavy group moving out. Steady pace, keep formation.', 'The directive calls for an offensive. Advance.'],
+    sighted: ['UNAA pod sighted. Stationary. Logging it.', 'Enemy industry spotted, grid {G}.', 'Their conveyors run like ours. Somebody copied somebody.'],
+    lost: ['We have lost a structure. Rebuild to directive.', 'Rig {N} is silent. Send a repair crew.', 'Bunker destroyed! Reinforce the line.'],
     hit: ['The base is under fire!', 'Contact at the perimeter!'],
-    vsOther: ['Chinese units at our deposit. Engage them.', 'The Chinese depot is weak. Take it.', 'Comrades in Beijing have overreached. Push them back.'],
-    chatter: ['Morning report: quota at one hundred and four percent.', 'Kosmos-4, your treads are leaking oil again.', 'Weather on this planet is worse than Norilsk.', 'Reminder: fraternisation with the native fauna is prohibited.', 'Tea ration is down to two cups. Morale holding.'],
-    eliminated: ['Base {B} is lost... all units, the plan has failed... ', 'Lander destroyed. Units, scatter... no response...'],
+    vsOther: ['Consortium units at our deposit. Engage them.', 'The Consortium depot is weak. Take it.', 'The Consortium has overreached. Push them back.'],
+    chatter: ['Morning report: output at one hundred and four percent.', 'Granite-4, your treads are leaking oil again.', 'This weather is worse than the polar test range.', 'Reminder: contact with the native fauna is prohibited.', 'Rations cut to two meals. Morale holding.'],
+    eliminated: ['Base {B} is lost... all units, the directive has failed...', 'Lander destroyed. Units, scatter... no response...'],
     exhausted: ['Deposit exhausted. Moving the rig.'],
     arty: ['Battery, fire for effect.', 'Shells away. Correct ten metres left.'],
   },
+  // the Pacific Rim Consortium: a corporate bloc that counts everything
   prc: {
-    land: ['Landing successful. Long live the expedition!', 'Station down. Expand at once.'],
-    deposit: ['New deposit claimed. Expansion ahead of schedule.', 'Mining point {N} established. Keep moving.', 'Another seam is ours. Faster, comrades.'],
+    land: ['Landing successful. Quarterly targets are within reach.', 'Station down. Expand at once.'],
+    deposit: ['New deposit claimed. Expansion ahead of schedule.', 'Mining point {N} established. Keep moving.', 'Another seam is ours. The board will be pleased.'],
     build: ['Workshop running. Send more troopers.', 'Watchtower raised. We see everything.', 'Construction complete. Next site.'],
     wave: ['Raid group, move out. Hit their miners and belts.', 'Swarm, go wide. Circle their flank.', 'Their supply lines are long. Cut them.'],
     raid: ['Flank route clear. Strike the belts.', 'Raiders in position. Their workers are unguarded.'],
-    sighted: ['American base sighted, grid {G}. Lightly guarded.', 'Enemy conveyor line spotted. Marking it for the raid.', 'I see the American machine. It is building.'],
+    sighted: ['UNAA base sighted, grid {G}. Lightly guarded.', 'Enemy conveyor line spotted. Marking it for the raid.', 'I see the UNAA pod. It is building.'],
     lost: ['Mining point lost! Rebuild farther out.', 'Tower down. Reposition the scouts.'],
-    hit: ['Station under attack!', 'Enemies at the workshop!'],
-    vsOther: ['Soviet column near our deposits. Harass them.', 'The Soviets are slow. Strike their rigs.', 'Soviet bunker spotted. Avoid it, take their ore.'],
-    chatter: ['Production up again. Report to the station.', 'Scout Feiyan-3, stop chasing the animals.', 'Study session at twenty hundred hours.', 'Our rigs outnumber theirs three to one.', 'Dust storm forecast tonight. Secure the tarpaulins.'],
+    hit: ['Station under attack!', 'Hostiles at the workshop!'],
+    vsOther: ['Concord column near our deposits. Harass them.', 'The Concord is slow. Strike their rigs.', 'Concord bunker spotted. Avoid it, take their ore.'],
+    chatter: ['Production up again. Log it with the station.', 'Skiff-3, stop chasing the animals.', 'Compliance review at twenty hundred hours.', 'Our rigs outnumber theirs three to one.', 'Dust storm forecast tonight. Secure the tarpaulins.'],
     eliminated: ['Station {B} destroyed... all units, return... return...', 'We have lost the station. Signal fading...'],
     exhausted: ['Point {N} empty. Find the next seam.'],
   },
@@ -78,11 +80,11 @@ export class Radio {
     if (this.queue.length > 4) this.queue.shift();
     this.queue.push({ tag, who, text, f });
   }
-  /** Dr. Calder on the shortwave */
+  /** the warning voice: the Austral's lead scientist over the relay (the legacy story's Calder when it runs) */
   calder(text: string, expr: 'surprised' | 'think' | 'happy' | 'sad' = 'surprised') {
     const st = this.g.story as any;
     if (st && st.calder && !st.calder.dead && st.beat !== 'opening' && st.beat !== 'wake') { st.say([{ text, expr }]); return; }
-    toast(`<b>DR. CALDER</b> · ${text}`, 'story', 6500);
+    toast(`<b>DR. SOLANO · AUSTRAL</b> · ${text}`, 'story', 6500);
     sfx('open', 1, 0.4);
   }
   update(dt: number) {
@@ -98,7 +100,7 @@ export class Radio {
       this.box.style.cssText = 'position:fixed;left:50%;bottom:calc(5px * var(--s, 1));transform:translateX(-50%);width:max-content;max-width:min(36vw, 640px);pointer-events:none;z-index:19;' +
         'background:rgba(20,22,27,0.82);border-top:1px solid #3b3a36;border-bottom:1px solid #3b3a36;padding:5px 12px 6px;text-align:center;transition:opacity 300ms steps(4)';
     }
-    const col = f === 'soviet' ? '#a2473a' : f === 'prc' ? '#c49580' : f === 'expedition' ? '#c9a464' : '#d9d2bf';
+    const col = f === 'soviet' ? '#c8693a' : f === 'prc' ? '#6fb3aa' : f === 'expedition' ? '#c9a464' : '#d9d2bf';
     this.box.innerHTML = '';
     const t = el('span', '', this.box, `[${tag}]`);
     t.style.cssText = `font-family:'Superwide','VT',monospace;font-size:11px;letter-spacing:2px;color:${col};border:1px solid ${col};padding:1px 5px 0;margin-right:8px;display:inline-block;transform:rotate(-1.2deg);opacity:0.92`;

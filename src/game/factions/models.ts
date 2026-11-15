@@ -1,4 +1,4 @@
-// The enemy programmes' hardware, built from the kit (livery.ts): 1957 riveted steel, enamel paint, stencils.
+// The rival blocs' hardware, built from the kit (livery.ts): riveted plate, enamel paint, stencils.
 // Structures: landers (the HQ), mining rigs, assembly halls, bunkers, artillery, watchtowers, radio masts, fuel
 // depots, expedition tents. Placeholder robots (used until src/robots provides spawnRobot) are built here too.
 // Each model is cached per faction + kind (+ base name for the serial on the lander).
@@ -73,7 +73,7 @@ function legPad(k: Kit, top: V3, foot: V3, col: number, pad: number) {
 }
 
 // ------------------------------------------------------------------------------------------------ landers
-/** Soviet: a riveted octagonal service drum on four splayed legs, a spherical descent module, strapped fuel spheres */
+/** Concord: a riveted octagonal service drum on four splayed legs, a spherical descent module, strapped fuel spheres */
 function sovLander(name: string): SModel {
   const L = LIVERY.soviet, A = atlas('soviet', name), k = new Kit();
   // legs
@@ -117,7 +117,7 @@ function sovLander(name: string): SModel {
   }
   return { main: k.build(), height: 7.7 };
 }
-/** PRC: a slimmer standing rocket body on three legs with fins, an ogive nose, red bands */
+/** Consortium: a slimmer standing rocket body on three legs with fins, an ogive nose, red bands */
 function prcLander(name: string): SModel {
   const L = LIVERY.prc, A = atlas('prc', name), k = new Kit();
   for (let i = 0; i < 3; i++) { const a = (i * Math.PI * 2) / 3 + Math.PI / 6; legPad(k, [Math.cos(a) * 1.1, 1.4, Math.sin(a) * 1.1], [Math.cos(a) * 2.5, 0.1, Math.sin(a) * 2.5], L.metal, L.dark); }
@@ -186,7 +186,7 @@ function sovMiner(f: FactionId): SModel {
   for (let i = 0; i < 4; i++) t.box(0.6, 0.04, 0.04, [0, 0, 0], SS[4], [0, 0, (i * Math.PI) / 4]);
   return { main: k.build(), turn: t.build(), turnAt: [0, 3.55, 0], turnAxis: 'z', height: 3.6 };
 }
-/** PRC: a low bucket-wheel digger feeding a conveyor to a hopper */
+/** Consortium: a low bucket-wheel digger feeding a conveyor to a hopper */
 function prcMiner(): SModel {
   const L = LIVERY.prc, A = atlas('prc'), k = new Kit(), t = new Kit();
   k.box(1.6, 0.7, 1.1, [0, 0.45, 0], L.hull);
@@ -231,7 +231,7 @@ function sovFactory(f: FactionId): SModel {
   k.decal(A.hazard, 1.9, 0.18, [0, 0.12, 1.86], 0, -Math.PI / 2 + 0.01);
   return { main: k.build(), stacks: [[-1.4, 4.3, -0.9], [1.5, 4.3, -0.9]], height: 4.3 };
 }
-/** PRC: a long low hall with a sawtooth roof */
+/** Consortium: a long low hall with a sawtooth roof */
 function prcFactory(): SModel {
   const L = LIVERY.prc, A = atlas('prc'), k = new Kit();
   k.box(5.2, 0.2, 3.0, [0, 0.1, 0], ST[4]);
@@ -442,7 +442,7 @@ function buildUnit(kind: string, f: FactionId): UModel {
     if (eng) t.rod([0.12, 0.6, -0.3], [0.12, 1.3, -0.35], 0.012, SS[5], 3);
     return { base: b.build(), top: t.build(), topY: 0.8, muzzle: [0.18, 0.35, 0.65], height: 1.75, hover: 0, legs: true };
   }
-  // troopers: a riveted biped (Soviet: boxy; PRC: slimmer with a domed visor head)
+  // troopers: a riveted biped (Concord: boxy; Consortium: slimmer with a domed visor head)
   const prc = kind.startsWith('prc');
   for (const s of [-1, 1]) {
     b.box(prc ? 0.16 : 0.22, 0.48, prc ? 0.2 : 0.26, [s * 0.17, 0.68, 0], L.hull2);

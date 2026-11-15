@@ -1721,6 +1721,17 @@ const ITEM_ART: Record<string, Art> = {
   crate(p) { const b = slab(p, 4, 9, 19, 16, 5, BW); p.mark([4.4, 25.4, 22.6, 9.6], b.part, 1); p.mark([4.4, 17, 22.6, 17], b.part, 1); for (const [x, y] of [[5.6, 10.6], [21.4, 10.6], [5.6, 23.6], [21.4, 23.6]]) p.rivet(x, y, 0.6, GM); },
 };
 export const ITEM_ICON_NAMES = Object.keys(ITEM_ART).filter((k) => k !== 'crate');
+/** another module's item drawings (inv/itemArt.ts: the real-item catalogue) join the set */
+export function registerItemArt(id: string, art: Art) {
+  if (!ITEM_ART[id]) ITEM_ICON_NAMES.push(id);
+  ITEM_ART[id] = art;
+  for (const k of [...pcCache.keys()]) if (k.startsWith(`item:${id}|`)) pcCache.delete(k);
+  for (const k of [...urlCache.keys()]) if (k.startsWith(`item:${id}|`)) urlCache.delete(k);
+}
+export const hasItemArt = (id: string) => !!ITEM_ART[id] && id !== 'crate';
+/** the painter and its shared item helpers, for item drawings authored elsewhere */
+export { P_SH, P_MID, P_TOP, P_LIT, slab as itemSlab, ingot as itemIngot, crystal as crystalForm };
+export type { Art as IconArt, Ramp as IconRamp };
 /** a factory item drawn in the icon style (a crate for any item without its own drawing) */
 export function hiItem(id: string, px = 32, o: { dim?: boolean; shadow?: boolean } = {}): PixelCanvas {
   px = Math.max(12, Math.round(px));
@@ -1937,3 +1948,9 @@ export const ICONS: Record<string, string[]> = {
     '................', '.....bbbbbb.....', '...bbBbbbbBbb...', '..bBbbbbbbbbBb..', '..bbbbbbbbbbbb..', '..bkkkbbbbkkkb..', '..bkkkbbbbkkkb..', '..bbbbbkkbbbbb..',
     '...bbbbkkbbbb...', '....bbbbbbbb....', '....bkbkbkbk....', '.....bbbbbb.....', '................', '................', '................', '................'],
 };
+
+// ------------------------------------------------------------------ v6 (pod agent): vignettes painted elsewhere
+/** the vignette painter, for modules that author their own icons with the same rules (src/ui/desk/toolIcons.ts) */
+export type IconPainter = IP;
+/** register a vignette painted with the shared painter (name space shared with ART; later wins) */
+export function registerHiIcon(name: string, art: (p: IP) => void) { ART[name] = art; if (!HI_ICON_NAMES.includes(name)) HI_ICON_NAMES.push(name); for (const k of [...pcCache.keys()]) if (k.startsWith(name + '|')) pcCache.delete(k); for (const k of [...urlCache.keys()]) if (k.startsWith(name + '|')) urlCache.delete(k); }

@@ -23,6 +23,9 @@ import { sac } from './append';
 import { sideFrames } from '../cage';
 import { growParts, type VPart } from './vparts';
 import { growOrgans } from './organs';
+import { growCyber, type CyLeg } from '../cyber/mount';
+import { CYBER } from '../cyber/catalog';
+import { stalk } from './append';
 
 type C2 = [RampName, number];
 export type Sec = [number, number, number];
@@ -131,7 +134,9 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
   const at = (n: string) => rest[bi(n)];
   const D = rig.dims, W = D.W, H = D.H, T = D.T, L = rig.length, seed = (d.seed >>> 0) % 997;
   const small = L < 1.2;
-  const body = new Body(spec.page ?? (L > 3 ? 1024 : 512));
+  // a fitted worker's machinery wants texture room: a full page
+  const fitted = new Set((d.fit ?? []).filter((id) => CYBER[id]));
+  const body = new Body(spec.page ?? (L > 3 || fitted.size ? 1024 : 512));
   body.seed = d.seed; body.levelCap = 1; body.quickLevels = 0;
   const spine = spineSkin(rig, rest, bi);
   const hips = at('hips'), chest = at('chest'), neck = at('neck'), head = rest[rig.head];
@@ -342,7 +347,7 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
     body.add(throatSac({ name: 'throat', at: tc, r: [HS.throat * hw, HS.throat * hw * 0.8, HS.throat * hw * 0.7], bone: rig.throat, paint: coatPaint(C, 'jaw', { light: 0.7 }) }));
   }
   // ---------------------------------------------------------------- legs
-  const legs: VCtx['legs'] = [];
+  const legs: VCtx['legs'] = [], cyLegs: CyLeg[] = [];
   const clawPaint = keratinPaint(spec.coat.claw?.[0] ?? 'basalt', spec.coat.claw?.[1] ?? 2, { rings: 0.01 });
   for (const lg of rig.legs) {
     if (lg.kind === 'insect' || lg.kind === 'spider') continue;
@@ -382,6 +387,14 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
       rings = [...root, ...rings.filter((g) => g.t >= free)];
     }
     const blendY = rootT >= 0 ? J[0][1] - (rootT + (tj[1] - rootT) * 0.22) * span : undefined;
+    cyLegs.push({ fore, side: s, pair: lg.pair, bones: B, J, r, rootT: Math.max(0.06, rootT) });
+    // a hydraulic replacement: only the stump stays, wearing the body's coat; the machine is fitted later
+    if (fitted.has(fore ? 'cy_hydfore' : 'cy_hydhind') && (!fore || lg.pair === 0)) {
+      const end = lerp(J[0], J[1], Math.min(0.9, (Math.max(0.06, rootT) * tot) / segL[0] + 0.12));
+      const st0 = body.add(stalk({ name: 'stump' + lg.pair + (s > 0 ? 'r' : 'l'), path: [add(J[0], [0, r * 0.8, 0]), lerp(J[0], end, 0.5), end], r: (t) => r * (1.45 - t * 0.35), around: 10, capE: true, skin: () => [B[0], 1], paint: coatPaint(C, 'limb', { inner: [-s, 0, 0], hipY: J[0][1], bodyY: J[J.length - 1][1] - 1 }), levels: 0 }));
+      st0.reg = 8;
+      continue;
+    }
     const Lg = limb({
       name: 'leg' + lg.pair + (s > 0 ? 'r' : 'l'), side: s, hip: J[0], knee: J[1], hock: three ? J[2] : undefined, sole: J[J.length - 1], tj,
       bones: { parent: rig.bones[B[0]].parent, up: B[0], lo: B[1], mid: three ? B[2] : undefined, foot: B[B.length - 1], flex: lg.flex },
@@ -390,8 +403,10 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
     });
     Lg.skin.reg = 8; Lg.toes.reg = 8; Lg.claws.reg = 8; Lg.toes.levels = 0; Lg.claws.levels = 0; Lg.claws.farSkip = true;
     Lg.toes.paint = coatPaint(C, 'foot');
-    body.add(Lg.skin); if (foot.toes.length) { body.add(Lg.toes); body.add(Lg.claws); }
-    if (LS.kind === 'hoof' || LS.kind === 'stilt') {
+    // digging claws sheathe the forefeet: no toes or hoof under the scoop
+    const sheathed = fore && lg.pair === 0 && fitted.has('cy_digclaw');
+    body.add(Lg.skin); if (foot.toes.length && !sheathed) { body.add(Lg.toes); body.add(Lg.claws); }
+    if ((LS.kind === 'hoof' || LS.kind === 'stilt') && !sheathed) {
       const hp2 = body.add(hoof({ name: 'hoof' + lg.pair + (s > 0 ? 'r' : 'l'), sole: J[J.length - 1], r: r * (LS.kind === 'stilt' ? 0.3 : 0.4), h: fh, side: s, bone: B[B.length - 1], cleft: LS.cleft !== false, paint: keratinPaint(spec.coat.horn?.[0] ?? 'basalt', spec.coat.horn?.[1] ?? 2, { rings: fh * 0.18 }), around: 8 }));
       hp2.reg = 8; hp2.levels = 0;
     }
@@ -399,8 +414,33 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
   }
   // ---------------------------------------------------------------- parts and organs
   const X: VCtx = { d, rig, rest, spec, body, C, F, D, W, H, T, L, bi, at, spine, tr, trV, sk, skC, hl, hw, hh, skRow, skCol, fam: famM, iH, iJ, hinge, chin: chinP, legs, seed, small };
+  // a biped with a tool arm fitted wears the machine in place of its own arms
+  const toolArm = ['cy_drill', 'cy_saw', 'cy_welder', 'cy_gripper'].some((t) => fitted.has(t));
+  if (toolArm && rig.mandibles.some((m) => /^arm/.test(rig.bones[m].name))) X.spec = { ...X.spec, parts: X.spec.parts.filter((p) => p.k !== 'arms') };
+  // a back rig sits where the shag would hang: the coat's long locks thin out under the straps and the rack
+  // the machinery takes its share of the triangle budget from the coat's plates and long locks
+  if (fitted.size) X.spec = { ...X.spec, parts: X.spec.parts.map((p) => (p.k === 'plates' ? { ...p, rows: Math.max(4, Math.round(p.rows * 0.72)), size: p.size * 1.15 } : p)) };
+  if (fitted.has('cy_cargo') || fitted.has('cy_hopper')) X.spec = { ...X.spec, parts: X.spec.parts.filter((p) => !(p.k === 'crest' && p.kind === 'bristle')).map((p) => (p.k === 'shag' ? { ...p, density: (p.density ?? 1) * 0.55 } : p)) };
   growParts(X);
   growOrgans(X);
+  if (fitted.size) {
+    const vH = trV('hips'), vC = trV('chest'), g0 = tr.grids[0];
+    const onBody = (t: number, a: number) => { const u = (((0.5 + a / (Math.PI * 2)) % 1) + 1) % 1, v = Math.max(0, Math.min(1, vH + (vC - vH) * t)); const q = gridSurf(tr.m, g0, u, v); return { p: q.p, n: q.n }; };
+    // the neck ring the collar closes round: the trunk's cross-section at the first neck station
+    let neckC: { bone: number; c: V3; dir: V3; r: number } | null = null;
+    const nv = names.includes('neck0') ? trV('neck0') : names.includes('withers') ? trV('withers') : -1;
+    if (nv >= 0) {
+      const ring = Array.from({ length: 8 }, (_, k) => gridSurf(tr.m, g0, k / 8, nv).p), cen = scl(ring.reduce((a2, b2) => add(a2, b2), [0, 0, 0] as V3), 1 / 8);
+      const rr = ring.reduce((m, q) => m + dst(q, cen), 0) / 8, nb = rig.neck.length ? rig.neck[0] : bi('neck');
+      neckC = { bone: nb, c: cen, dir: nrm(sub(skC, at('neck'))), r: rr };
+    }
+    const arms = rig.mandibles.filter((m) => /^arm/.test(rig.bones[m].name)).map((ai) => { const A = rest[ai], sg = (Math.sign(rig.bones[ai].pos[0]) || 1) as 1 | -1, al = L * 0.2; return { side: sg, bone: ai, A, hand: add(A, [sg * al * 0.03, -al * 0.62, al * 0.42]) }; });
+    growCyber({
+      d, body, rig, rest, W, H, L, seed, spine, at: onBody, chest: bi('chest'), hips: rig.root, legs: cyLegs, arms,
+      head: { bone: iH, c: skC, fwd: [0, 0, 1], up: [0, 1, 0], hw, hh, hl, eyes: (rig.eyes ?? []).map((e) => rest[e.bone]) },
+      neck: neckC,
+    });
+  }
   const out = body.build({ den: 64, maxScale: 6, budget: 11600 });
   if ((globalThis as { __vertStats?: boolean }).__vertStats) console.log(d.name, [...body.stats.entries()].sort((a, b) => b[1] - a[1]).slice(0, 16).map(([k, v]) => k + ':' + v).join(' '));
   return { geo: out.geo, tex: out.tex, tris: out.tris, den: Math.round(body.den), fill: body.page.fill };

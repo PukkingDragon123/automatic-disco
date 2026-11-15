@@ -86,14 +86,15 @@ function paintAtlas(ch: Chart, _b: Body, tiles: number[][], steps: number[] | un
     const fx = (x - v * TW) / TW, fy = (y - col * TH) / TH; // across 0..1, along 0..1 (root at 0)
     const e = (fx - 0.5) * 2, t = Math.max(0, Math.min(1, (fy - 0.03) / 0.94));
     // the outline: full to two thirds, then the tip splits into 2-3 points by variant
-    const pts = 2 + (v % 2), tipK = t > 0.62 ? (t - 0.62) / 0.38 : 0;
-    const lobe = Math.abs(Math.sin((e * 0.5 + 0.5) * Math.PI * pts + v));
-    const hw = (t < 0.15 ? 0.7 + t * 2 : 1) * (1 - tipK * (0.55 + 0.45 * (1 - lobe)));
-    const inside = Math.abs(e) < hw * 0.92 && t < 0.995 - (1 - lobe) * 0.18 * tipK;
+    // hair, not a leaf: the lock frays from just under half its length into three to five strand points
+    const pts = 3 + (v % 3), tipK = t > 0.45 ? (t - 0.45) / 0.55 : 0;
+    const lobe = Math.abs(Math.sin((e * 0.5 + 0.5) * Math.PI * pts + v * 1.7));
+    const hw = (t < 0.15 ? 0.7 + t * 2 : 1) * (1 - tipK * (0.35 + 0.65 * (1 - lobe)));
+    const inside = Math.abs(e) < hw * 0.92 && t < 0.995 - (1 - lobe) * 0.5 * tipK;
     if (!inside) { r.set(x, y, R[0], 0); continue; }
     // shading: dark at the root, lit along one edge, strands along the lock, a light tip
     let k = st - (t < 0.18 ? 1.2 : 0) + (e < -0.25 ? 0.8 : e > 0.55 ? -0.7 : 0) + (t > 0.7 ? 0.6 : 0);
-    const strand = Math.abs(((e * 2.2 + h3(v, col, seed) * 2) % 1 + 1) % 1 - 0.5) < 0.1;
+    const strand = Math.abs(((e * 3.4 + t * 0.6 + h3(v, col, seed) * 2) % 1 + 1) % 1 - 0.5) < 0.09;
     if (strand && t > 0.12 && t < 0.92) k -= 0.9;
     if (Math.abs(e) > hw * 0.78) k -= 1.1; // the outline
     r.set(x, y, R[Math.max(0, Math.min(R.length - 1, Math.round(k)))], 255);
