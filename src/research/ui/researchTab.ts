@@ -38,7 +38,7 @@ export class ResearchPage implements TabPage {
     this.kinds = el('div', 'pp-row', this.el); this.kinds.style.cssText = 'position:absolute;left:700px;top:100px;gap:6px';
     this.index = el('div', '', this.el); this.index.style.cssText = 'position:absolute;left:700px;top:182px;right:40px;bottom:340px;display:grid;grid-template-columns:repeat(auto-fill, 268px);grid-auto-rows:120px;gap:14px 16px;align-content:start;overflow-y:auto;padding-top:10px;scrollbar-width:none';
     px(this.drum.cv, 'left:700px;top:760px;width:420px;height:280px');
-    this.drumTag = el('div', 'pp-tag', this.el); this.drumTag.style.cssText = 'position:absolute;left:846px;top:874px;pointer-events:none';
+    this.drumTag = el('div', 'pp-t', this.el); this.drumTag.style.cssText = 'position:absolute;left:840px;top:880px;width:206px;white-space:nowrap;overflow:hidden;color:#1e1a16;pointer-events:none';
     this.detail = el('div', 'pp-fibre pp-row', this.el); this.detail.style.cssText = 'left:1140px;right:40px;top:760px;height:280px;gap:20px;align-items:flex-start';
     const first = TECHS.find((q) => !R.unlocked(q.id) && !R.why(q.id));
     if (first) { this.kind = first.kind; this.sel = first.id; }
@@ -99,7 +99,7 @@ export class ResearchPage implements TabPage {
     el('div', 'pp-s', d, `STATIONS ${R.rate().toFixed(1)}X`).style.color = '#aab1b4';
     // the head card's name beside the drum's reading line
     const head = R.queue[0] ? TECH[R.queue[0]] : null;
-    this.drumTag.innerHTML = head ? `<span class="pp-h">${head.name}</span><span class="pp-s" style="color:#3b2a10">${Math.round(R.headFrac() * 100)}%</span>` : '';
+    this.drumTag.textContent = head ? head.name : '';
     // ---------------- kind tabs and the index cards
     const K = this.kinds; K.innerHTML = '';
     for (const k of TECH_KINDS) {
