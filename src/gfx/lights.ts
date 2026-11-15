@@ -122,3 +122,77 @@ export class Sun {
   }
 }
 const _g = new THREE.Color(), _q = new THREE.Quaternion(), _qi = new THREE.Quaternion(), _z = new THREE.Vector3(), _p = new THREE.Vector3();
+
+// ================================================================ interiors
+/** a soft rectangular emitter (a ceiling panel, a troffer, a lit screen): centre, half-extent axes (it emits along
+ *  cross(u, v); a ceiling panel uses u = +x, v = +z and faces down), radiance = colour x intensity, range (m) */
+export interface AreaLight {
+  pos: THREE.Vector3; u: THREE.Vector3; v: THREE.Vector3; color: THREE.Color; intensity: number; range: number;
+  /** specular weight (0 = diffuse only) */
+  spec: number;
+  /** haze glow under it (volumetric cone toward the floor) 0..1 */
+  beam: number;
+  /** off when false */
+  on: boolean;
+}
+/** a light the air glows around (practicals: lamps, screens, the reactor): point-like, round halo */
+export interface Glow { pos: THREE.Vector3; color: THREE.Color; intensity: number; range: number; on: boolean }
+
+/**
+ * The light of an interior (`scene.userData.interior`; post.ts reads it): soft area panels on the ceiling, haze that
+ * glows in cones under them and round the practicals (subtle volumetric beams), strong close contact shadows (SSAO
+ * with coloured multi-bounce), and a film look of its own: eye adaptation that ignores the void outside, a soft
+ * shoulder that keeps colour in the lamps, a gentle S-curve with cool shadows and warm light.
+ * Materials join the panels through gbuf.areaLit(root).
+ */
+export class InteriorLight {
+  readonly areas: AreaLight[] = [];
+  readonly glows: Glow[] = [];
+  /** contact shadow strength and radius (m) */
+  ao = 1.15; aoRadius = 0.55;
+  /** haze density for the beams and halos; the air volume's ceiling and floor heights (m) */
+  haze = 1; ceilY = 3.4; floorY = 0;
+  /** the light level the eye adapts toward, and the overall exposure */
+  key = 0.2; exposure = 1;
+  /** film grade: S-curve amount and the split tone (shadows, highlights) */
+  contrast = 0.22;
+  readonly splitLo = new THREE.Color(0.93, 0.98, 1.07);
+  readonly splitHi = new THREE.Color(1.05, 1.0, 0.92);
+  constructor(readonly scene: THREE.Scene) { scene.userData.interior = this; }
+  /** a ceiling panel facing down at height y: w along x, d along z (m) */
+  panel(x: number, y: number, z: number, w: number, d: number, color: THREE.ColorRepresentation, intensity: number, range = 9, o: { spec?: number; beam?: number } = {}): AreaLight {
+    const a: AreaLight = { pos: new THREE.Vector3(x, y, z), u: new THREE.Vector3(w / 2, 0, 0), v: new THREE.Vector3(0, 0, d / 2), color: new THREE.Color(color), intensity, range, spec: o.spec ?? 1, beam: o.beam ?? 1, on: true };
+    this.areas.push(a); return a;
+  }
+  /** a wall or screen emitter facing direction n (horizontal), w wide, h tall */
+  wall(pos: THREE.Vector3, n: THREE.Vector3, w: number, h: number, color: THREE.ColorRepresentation, intensity: number, range = 5, o: { spec?: number; beam?: number } = {}): AreaLight {
+    const nn = n.clone().setY(0).normalize(), side = new THREE.Vector3(0, 1, 0).cross(nn).normalize();
+    // cross(u, v) = n: u = up x n (sideways), v = up
+    const u = side.multiplyScalar(w / 2), v = new THREE.Vector3(0, h / 2, 0);
+    if (u.clone().cross(v).dot(nn) < 0) u.negate();
+    const a: AreaLight = { pos: pos.clone(), u, v, color: new THREE.Color(color), intensity, range, spec: o.spec ?? 0.6, beam: o.beam ?? 0, on: true };
+    this.areas.push(a); return a;
+  }
+  glow(pos: THREE.Vector3, color: THREE.ColorRepresentation, intensity: number, range = 4): Glow {
+    const g: Glow = { pos: pos.clone(), color: new THREE.Color(color), intensity, range, on: true };
+    this.glows.push(g); return g;
+  }
+  dispose() { if (this.scene.userData.interior === this) delete this.scene.userData.interior; }
+
+  private sel: { a: AreaLight; k: number }[] = [];
+  /** the area lights worth shading this frame (on, lit, nearest the view first), at most `max` */
+  pick(cam: THREE.Camera, max: number): AreaLight[] {
+    const cp = _p.setFromMatrixPosition(cam.matrixWorld), fw = _z.set(0, 0, -1).transformDirection(cam.matrixWorld);
+    this.sel.length = 0;
+    for (const a of this.areas) {
+      if (!a.on || a.intensity <= 0) continue;
+      _g2.subVectors(a.pos, cp);
+      const d = _g2.length(), ahead = _g2.dot(fw) / Math.max(d, 1e-3);
+      // what the camera looks at (and what is close) first; behind the eye last
+      this.sel.push({ a, k: d * (ahead > 0.2 ? 1 : 3) - a.intensity * 0.5 });
+    }
+    this.sel.sort((x, y) => x.k - y.k);
+    return this.sel.slice(0, max).map((s) => s.a);
+  }
+}
+const _z = new THREE.Vector3(), _g2 = new THREE.Vector3();

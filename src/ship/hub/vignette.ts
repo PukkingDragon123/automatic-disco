@@ -80,7 +80,7 @@ export const VIGNETTES: Record<RoomId, Vignette> = {
     stamps: (c) => [{ label: 'MOVIE NIGHT', key: 'M', run: () => { moodShift(0.06); c.redraw(); } }, { label: 'REST CYCLE', key: 'R', run: () => { moodShift(0.03); c.redraw(); } }],
   },
   workshop: {
-    cam: { pos: V(-7.6, 3.0, -14.2), look: V(-4.4, 1.2, -10.4), fov: 36 },
+    cam: { pos: V(-6.3, 2.9, -13.1), look: V(-4.4, 1.25, -10.4), fov: 42 },
     callouts: [
       { at: [-4.4, 0.25, -10.4], title: 'SHIELD', text: () => (shipState().pod > 0.55 ? 'FITTED' : 'QUEUED'), side: 'd' },
       { at: [-4.4, 1.5, -9.5], title: 'VISOR', text: () => (shipState().pod > 0.55 ? 'GLAZED' : 'QUEUED'), side: 'r' },

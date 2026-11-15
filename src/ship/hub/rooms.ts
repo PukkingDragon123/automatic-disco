@@ -257,6 +257,11 @@ function lab(c: Ctx) {
   floorCables(c, [[3.9, 7.4], [3.5, 6.6], [4.8, 6.3], [6.1, 6.3]]);
   conduit(c, new V3(wx, 3.15, 6.2), new V3(wx, 3.15, 11.8), new V3(-1, 0, 0));
   wallLamp(c, wx - 0.02, 3.0, 9.8, FX, 0xe0fff0, 0.8);
+  lp(c, 'cryo_pod', 2.2, 10.2, 0);
+  for (const [cx, cz, k] of [[5.9, 10.4, 'white'], [6.3, 10.0, 'grey']] as [number, number, 'white' | 'grey'][]) crate(c, { x: cx, z: cz, w: 0.45, h: 0.35, d: 0.4, kind: k, ry: 0.3 });
+  ph(c, 'plastic_container', 6.0, 0.35, 10.4, 0.6);
+  B.add(box(0.5, 0.8, 0.4, 0.02), mat(c, 'steel'), { x: 3.1, y: 0.4, z: 10.4 }); ph(c, 'medical_box', 3.1, 0.8, 10.4, 0.2); // a sample trolley
+  floorCables(c, [[2.9, 10.9], [3.4, 10.0], [4.4, 9.8]], ['cableB', 'cable']);
   inter(c, [x - 0.4, 0.9, 9.1, x + 0.3, 1.4, 9.5], 'MICROSCOPE', () => { csfx('relay', 0.5); });
   inter(c, [3.6, 0.9, 7.5, 4.2, 1.3, 8.1], 'SEQUENCER', () => { csfx('beepHi', 0.4); });
 }
@@ -337,14 +342,21 @@ function quarters(c: Ctx) {
   poster(c, 'band', 0.5, { x: wx - 0.01, y: 2.85, z: -4.9, ry: FX, rz: 0.03 }); poster(c, 'pinup', 0.4, { x: wx - 0.01, y: 1.25, z: -3.75, ry: FX, rz: -0.04 });
   poster(c, 'kid', 0.36, { x: -6.3, y: 2.8, z: 1.88, ry: P, rz: 0.05 }); poster(c, 'earth', 0.5, { x: -2.2, y: 2.4, z: 1.88, ry: P });
   poster(c, 'calendar', 0.36, { x: wx - 0.01, y: 1.8, z: -0.8, ry: FX });
-  // lockers along the port hull (some swing open)
+  // half-height crew lockers along the low port hull (they stay under the cut; every other one swings open)
   for (let i = 0; i < 8; i++) {
     const z = -5.45 + i * 0.5, paint = i % 3 === 1 ? 'olive' : 'grey';
-    locker(c, { x: -6.62, z, ry: P / 2, n: i + 1, paint });
-    const door = new THREE.Group(); door.position.set(-6.35, 0.98, z - 0.24); c.root.add(door);
-    if (i % 2 === 0) { const d = new THREE.Mesh(c.bin.g(box(0.03, 1.86, 0.47)), mat(c, paint)); d.position.set(0.0, 0, 0.235); d.castShadow = true; door.add(d); }
-    inter(c, [-6.9, 0, z - 0.25, -6.35, 1.95, z + 0.25], `LOCKER ${i + 1}`, i % 2 === 0 ? hinge(c, door, 1.5) : () => { csfx('thud', 0.4); });
+    B.add(box(0.5, 0.95, 0.48, 0.015), mat(c, paint), { x: -6.62, y: 0.475, z });
+    for (let k = 0; k < 4; k++) B.add(box(0.012, 0.012, 0.26), mat(c, 'black'), { x: -6.36, y: 0.75 - k * 0.035, z });
+    sign(c, String(i + 1).padStart(2, '0'), 0.1, { x: -6.355, y: 0.58, z: z - 0.1, ry: P / 2 }, { fg: 0x2a2c2e, size: 22, font: 'Body' });
+    B.add(box(0.03, 0.12, 0.03, 0.01), mat(c, 'chrome'), { x: -6.35, y: 0.5, z: z + 0.16 });
+    const door = new THREE.Group(); door.position.set(-6.36, 0.47, z - 0.23); c.root.add(door);
+    if (i % 2 === 0) { const d = new THREE.Mesh(c.bin.g(box(0.03, 0.9, 0.46)), mat(c, paint)); d.position.set(0.0, 0, 0.23); d.castShadow = true; door.add(d); }
+    inter(c, [-6.9, 0, z - 0.25, -6.35, 0.95, z + 0.25], `LOCKER ${i + 1}`, i % 2 === 0 ? hinge(c, door, 1.5) : () => { csfx('thud', 0.4); });
+    // what sits on top: a cap, a towel, a photo, a radio
+    if (i % 4 === 0) B.add(box(0.22, 0.06, 0.2, 0.03), mat(c, ['seatR', 'olive'][i % 2]), { x: -6.62, y: 0.98, z, ry: i });
+    if (i % 4 === 2) B.add(box(0.3, 0.04, 0.22, 0.02), mat(c, 'sheet'), { x: -6.62, y: 0.97, z, ry: 0.3 });
   }
+  ph(c, 'standing_picture_frame_01', -6.6, 0.95, -4.0, P / 2); ph(c, 'portable_cassette_player', -6.6, 0.95, -2.5, P / 2 + 0.3);
   const rug = new THREE.PlaneGeometry(2.4, 2.0); rug.rotateX(-P / 2);
   B.add(rug, c.M.get('rug', { map: cached('rugtex', () => { const [cv, g] = canvas(96, 80); g.fillStyle = '#6a3a2a'; g.fillRect(0, 0, 96, 80); g.fillStyle = '#c8a050'; g.fillRect(4, 4, 88, 2); g.fillRect(4, 74, 88, 2); g.fillRect(4, 4, 2, 72); g.fillRect(90, 4, 2, 72); g.fillStyle = '#2a4a5a'; g.fillRect(10, 10, 76, 1); g.fillRect(10, 69, 76, 1); for (let i = 0; i < 5; i++) { g.fillStyle = '#c8a050'; g.fillRect(44, 18 + i * 10, 8, 4); } const t = toTex(cv, { repeat: false }); t.magFilter = THREE.NearestFilter; return t; }), polyOffset: 1, flag: 0 }), { x: -4.1, y: 0.006, z: -2.5 });
   table(c, { x: -4.1, z: -2.6, w: 1.1, d: 0.85, top: 'woodD' });

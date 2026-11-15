@@ -4,7 +4,7 @@ import json, os, subprocess, sys
 import tempfile
 D = tempfile.mkdtemp()
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '..', 'public', 'ui', 'craft')
-PAPER = {"base": "#e4dabd", "steps": 5, "hue_shift": 8, "spread": 0.28, "texture": "cloth", "contrast": 0.35}
+PAPER = {"base": "#e4dabd", "steps": 4, "hue_shift": 6, "spread": 0.14, "texture": "cloth", "contrast": 0.1}
 def wob(pts, seed, amt=0.6):
   import random; r = random.Random(seed)
   return [[round(x + (r.random() - 0.5) * amt * 2), round(y + (r.random() - 0.5) * amt * 2)] for x, y in pts]
@@ -17,8 +17,8 @@ def rect(w, h, m=2, seed=1):
   return wob(pts, seed)
 def sprite(name, size, shapes, outline_color="#221d19", mats=None, outline="black"):
   spec = {"size": size, "paint": "strokes", "light": [-0.6, -0.8, 0.5],
-          "materials": {"paper": PAPER, "paper2": {"base": "#f0e8d2", "steps": 5, "spread": 0.22, "texture": "cloth", "contrast": 0.3},
-                        "kraft": {"base": "#b98f5c", "steps": 5, "spread": 0.35, "texture": "cloth", "contrast": 0.4},
+          "materials": {"paper": PAPER, "paper2": {"base": "#f0e8d2", "steps": 4, "spread": 0.12, "texture": "cloth", "contrast": 0.08},
+                        "kraft": {"base": "#b98f5c", "steps": 5, "spread": 0.22, "texture": "cloth", "contrast": 0.18},
                         "tape": {"base": "#e8dca0", "steps": 4, "spread": 0.2, "contrast": 0.25},
                         "red": {"base": "#b8382e", "steps": 5, "spec": 1}, "steel": {"base": "#9aa3ab", "steps": 5, "spec": 1},
                         "ink": {"ramp": ["#1d1a17", "#2b2622", "#3b342e"]}, **(mats or {})},

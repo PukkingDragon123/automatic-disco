@@ -125,7 +125,17 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
 
   // ---- the props of the day
   const apple = { group: lp('food_apple_01', 0.085) }; own.push(apple.group);
-  const U0 = V(5.55, 1.47, 12.05);
+  // every position here comes from the hub's spots and bounds (the deck plan can change): T = where the thrower
+  // stands (facing the hull breach), H = the breach on the hull wall, LB = the lab's floor box
+  const LB = lab.bounds, T = LS.apple_throw.pos.clone().setY(0), H = LS.hull_breach.pos.clone();
+  const toH = V(H.x - T.x, 0, H.z - T.z).normalize(), side = V(toH.z, 0, -toH.x);
+  // keep the room's far (full-height) walls behind every shot: side points toward the room's +z half
+  if (side.z < 0) side.negate();
+  const inLab = (p: THREE.Vector3, m = 0.45) => { p.x = Math.max(LB.min.x + m, Math.min(LB.max.x - m, p.x)); p.z = Math.max(LB.min.z + m, Math.min(LB.max.z - m, p.z)); return p; };
+  const at = (base: THREE.Vector3, f: number, sd: number, y: number) => base.clone().addScaledVector(toH, f).addScaledVector(side, sd).setY(y);
+  const U0 = inLab(at(T, -0.2, -1.5, 0)).setY(1.47);
+  const throwSpot = at(T, 0.4, 0, 1.5);
+  const M0 = inLab(U0.clone().addScaledVector(toH, 0.8).addScaledVector(side, 0.75).setY(0));
   const cradle = buildCradle(); cradle.position.set(U0.x, 0, U0.z); add(cradle, lab.root);
   let breach: ReturnType<NonNullable<IntroHub['breach']>> | null = null;
   const fallbackHole = () => { const g = outerHole(); const p = LS.hull_breach.pos; g.position.copy(p).add(V(-0.02, 0, 0)); g.lookAt(p.clone().add(V(-1, 0, 0))); add(g); return { pos: p.clone(), normal: V(-1, 0, 0), patch: (k: number) => void k, done: () => {} }; };
@@ -146,7 +156,7 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
     ui.dispose(); ptr.dispose(); motes.dispose(); offUpd(); room?.stop(0.4); hush();
     frameFns.clear();
     unit.root.visible = true; unit.power = 1; unit.mood = 'calm'; unit.grav(null); unit.setSquint(0);
-    unit.place(V(0.9, 1.7, 24.0));
+    { const ms = hub.room('bridge')?.spots.monitor?.pos; unit.place(ms ? V(ms.x + 0.7, 1.7, ms.z - 1.6) : V(0, 1.7, 0)); }
     life.scripted = false; life.resume();
     const st = crewState(); st.intro = true; st.save();
     hub.lockInput?.(false); hub.showChrome?.(true); hub.release?.();
@@ -160,7 +170,7 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
     room = c.loop('room', 0.35);
     hub.podBuild?.(0);
     // ================================================================ a. BOOT
-    put('solano', 'lab', 6.45, 12.8, U0.x, U0.z);
+    put('solano', 'lab', M0.x, M0.z, U0.x, U0.z);
     unit.place(U0); unit.faceNow(head('solano'));
     if (from <= 0) {
       unit.power = 0; unit.root.visible = false; unit.mood = 'boot';
@@ -193,24 +203,23 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       await line('solano', 'Your job... is to be the robot. Come on, up you get.');
       // out of its eyes: the camera pulls back and there it is, lifting off the cradle
       ui.bootView(false);
-      c.cam.cut(V(4.0, 1.75, 10.4), U0.clone().add(V(0.3, 0.05, 0.3)), 34);
+      c.cam.cut(inLab(U0.clone().addScaledVector(toH, -1.5).addScaledVector(side, -1.4)).setY(1.75), U0.clone().addScaledVector(toH, 0.3).addScaledVector(side, 0.3), 34);
       unit.root.visible = true;
-      c.cam.move({ pos: V(3.5, 2.0, 10.0), look: V(6.4, 1.3, 12.7), fov: 38, dur: 5, ease: 'inOut' });
+      c.cam.move({ pos: inLab(U0.clone().addScaledVector(toH, -2.0).addScaledVector(side, -1.8), 0.2).setY(2.0), look: M0.clone().setY(1.3), fov: 40, dur: 5, ease: 'inOut' });
       await c.tween(1.6, (u) => { unit.power = u; }, 'out');
       unit.mood = 'calm'; c.sfx('servo', 0.6); c.sfx('hover', 0.7);
-      unit.moveTo(V(6.75, 1.5, 13.0), 0.6);
+      unit.moveTo(throwSpot, 0.6);
       await c.wait(1.2); mark('boot:lift'); await c.wait(1.0);
       unit.lookAt(head('solano'));
       modelOf('solano')?.rig.gesture('nod');
       await line('solano', 'Thrusters, stable. Optics, beautiful. Now the fun part.');
     }
-    unit.root.visible = true; unit.power = 1; unit.mood = 'calm'; unit.place(V(6.75, 1.5, 13.0));
+    unit.root.visible = true; unit.power = 1; unit.mood = 'calm'; unit.place(throwSpot);
     // ================================================================ b. GRAVITY
-    const throwSpot = V(6.75, 1.5, 13.0);
     let flown = false;
     if (from <= 1) {
-      put('solano', 'lab', 6.0, 12.05, throwSpot.x, throwSpot.z);
-      c.cam.cut(V(3.3, 2.25, 10.9), V(7.5, 1.3, 13.2), 44);
+      { const sp = inLab(at(T, -0.1, -0.95, 0)); put('solano', 'lab', sp.x, sp.z, throwSpot.x, throwSpot.z); }
+      c.cam.cut(inLab(at(T, -1.9, -1.9, 0), 0.15).setY(2.2), H.clone().lerp(throwSpot, 0.55).setY(1.3), 46);
       const sol = modelOf('solano')!;
       sol.rig.hold('R', apple.group, 'raw'); apple.group.position.set(0.0, -0.1, 0.06); apple.group.visible = true;
       sol.rig.gesture('present', { hold: true, dir: [0.6, 0.15, 1] });
@@ -283,7 +292,8 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       motes.emit(breach.pos, 40, 0xffc070, { dir: breach.normal, speed: 3, cone: 0.9, life: 0.6, size: 0.03, grav: 6 });
       const wind = c.loop('engine', 0.6);
       // decompression: the loose things in the lab take off for the hole
-      const lab0 = [V(8.9, 1.0, 9.0), V(8.6, 0.98, 10.2), V(8.8, 1.0, 11.0), V(5.4, 0.95, 15.9), V(6.2, 0.98, 15.8), V(3.3, 0.95, 16.0), V(7.8, 0.6, 14.8), V(4.6, 1.0, 13.4), V(8.4, 1.0, 12.0), V(5.2, 0.4, 11.0), V(6.8, 0.9, 16.2), V(3.9, 0.98, 15.7)];
+      // where the loose things start: spread over the lab's floor plan at bench and table heights
+      const lab0 = Array.from({ length: 12 }, (_, i) => V(LB.min.x + 0.5 + (((i * 0.618) % 1) * (LB.max.x - LB.min.x - 1)), [0.98, 0.95, 0.6, 1.0][i % 4], LB.min.z + 0.5 + (((i * 0.382 + 0.1) % 1) * (LB.max.z - LB.min.z - 1))));
       const fly = loose.map((g, i) => { add(g); g.position.copy(lab0[i % lab0.length]); g.rotation.set(Math.random(), Math.random() * 6, 0); return { g, v: V(), out: false, delay: i * 0.18 + Math.random() * 0.3 }; });
       suck = (dt: number) => {
         for (const f of fly) {
@@ -300,8 +310,8 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       const sola = actorOf('solano')!; sola.action = 'cover_ears'; modelOf('solano')?.rig.setExpression('fear', 6);
       unit.mood = 'alert'; unit.moveTo(breach.pos.clone().add(breach.normal.clone().multiplyScalar(1.2)), 1.2);
       c.cam.handheld = 0.03;
-      c.cam.cut(V(5.2, 1.8, 11.6), breach.pos.clone().add(V(-0.6, -0.1, 0)), 46);
-      c.cam.move({ pos: V(5.6, 1.7, 12.2), dur: 3, ease: 'out' });
+      c.cam.cut(inLab(at(T, -0.6, -1.7, 0), 0.2).setY(1.8), breach.pos.clone().addScaledVector(toH, -0.6).setY(breach.pos.y - 0.1), 46);
+      c.cam.move({ pos: inLab(at(T, -0.2, -1.4, 0), 0.2).setY(1.7), dur: 3, ease: 'out' });
       ui.sys('HULL BREACH · LAB STBD · [PRESSURE FALLING]', 4);
       mark('breach:inside');
       await line('solano', 'Breach! Hold on to something!', -0.6);
@@ -325,7 +335,7 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       wind.set(0.6);
       // back inside: red light, the crew running
       c.cam.handheld = 0.03;
-      c.cam.cut(V(4.6, 2.0, 10.6), V(8.4, 1.2, 13.6), 44);
+      c.cam.cut(inLab(at(T, -1.6, -1.8, 0), 0.15).setY(2.0), H.clone().addScaledVector(toH, -0.8).setY(1.2), 46);
       for (const id of ['quintero', 'castellanos'] as CrewId[]) { const m = modelOf(id); if (m) m.rig.setExpression('surprised', 3); }
       void wind;
     } else { apple.group.visible = false; }
@@ -334,15 +344,15 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
     if (from <= 2 && breach) {
       const br = breach;
       const pat = put('kowalczyk', 'lab', LS.door.pos.x, LS.door.pos.z, 9, 13)!;
-      pat.walkTo(8.75, 13.2, 3.6);
+      { const pt = inLab(H.clone().addScaledVector(toH, -1.0).addScaledVector(side, -0.6).setY(0)); pat.walkTo(pt.x, pt.z, 3.6); }
       c.sfx('step', 0.7); c.sfx('cover', 0.5);
-      c.cam.move({ look: V(6.8, 1.2, 12.8), dur: 1.4, ease: 'inOut' });
+      c.cam.move({ look: T.clone().lerp(H, 0.4).setY(1.2), dur: 1.4, ease: 'inOut' });
       mark('patch:arrive');
       await line('kowalczyk', 'WHO PUT A HOLE IN MY SHIP?!', -0.8);
       await c.until(() => !pat.moving, 6);
       pat.faceNow(br.pos.x, br.pos.z);
       // the plate goes down at her feet
-      add(plate); plate.position.set(8.3, 0.03, 12.6); plate.rotation.set(-Math.PI / 2, 0, 0.3); c.sfx('thud', 0.9); c.sfx('clamp', 0.6);
+      add(plate); plate.position.copy(inLab(H.clone().addScaledVector(toH, -1.5).addScaledVector(side, -0.2).setY(0.03))); plate.rotation.set(-Math.PI / 2, 0, 0.3); c.sfx('thud', 0.9); c.sfx('clamp', 0.6);
       await line('kowalczyk', 'Plate! You, bubble! Put it on the hole and HOLD it. I weld!');
       play(true);
       ui.prompt('CLICK', 'the plate to lift it to the hole');
@@ -382,7 +392,7 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       c.sfx('leverLock', 0.8); c.sfx('steam', 0.6);
       ui.sys('HULL INTEGRITY: [100%] · PRESSURE NOMINAL', 4);
       unit.mood = 'calm';
-      c.cam.cut(V(6.4, 1.75, 11.7), V(8.6, 1.45, 13.4), 34);
+      c.cam.cut(inLab(H.clone().addScaledVector(toH, -2.3).addScaledVector(side, -1.2), 0.2).setY(1.75), H.clone().addScaledVector(toH, -0.4).setY(1.45), 36);
       actorOf('solano')!.action = '';
       pat.faceNow(unit.pos.x, unit.pos.z); pat.look = unit.pos.clone();
       modelOf('kowalczyk')?.rig.gesture('point', { at: unit.pos.clone() });
@@ -390,21 +400,22 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       await line('kowalczyk', 'Sealed. ...You owe me an apple. And a hull plate.');
       modelOf('kowalczyk')?.rig.setExpression('smile', 3);
       await line('kowalczyk', 'Decent grip, though. For a bubble.');
-      put('solano', 'lab', 6.4, 12.3, 7.5, 13.0); modelOf('solano')?.rig.setExpression('smile', 4);
+      { const sp = inLab(at(T, 0.2, -1.0, 0)); put('solano', 'lab', sp.x, sp.z, H.x, H.z); } modelOf('solano')?.rig.setExpression('smile', 4);
       await line('solano', 'That was... a very memorable first throw. Let us call it a stress test.');
     }
     if (suck) { frameFns.delete(suck); suck = null; }
     // ================================================================ d. REPAIR
-    const term = LS.terminal.pos, tz = term.z + 0.75, tc = V(term.x, 1.02, tz);
+    const term = LS.terminal.pos.clone().setY(0), tf = LS.terminal.facing, tdir = V(Math.sin(tf), 0, Math.cos(tf)), tc = term.clone().addScaledVector(tdir, 0.7).setY(1.02);
+    const tside = V(tdir.z, 0, -tdir.x); { const c0 = LB.getCenter(V()); if (tside.dot(V(c0.x - term.x, 0, c0.z - term.z)) < 0) tside.negate(); }
     if (from <= 3) {
       // the terminal shorted in the decompression: sparks, smoke, its pieces on the deck
-      parts.forEach((g, i) => { add(g); g.position.set(term.x - 0.45 + i * 0.45, 0.03, term.z - 0.35 + (i % 2) * 0.2); g.rotation.set(0, i * 0.9, 0); });
+      parts.forEach((g, i) => { add(g); g.position.copy(term).addScaledVector(tside, -0.35 + i * 0.4).addScaledVector(tdir, i % 2 ? -0.15 : 0.1).setY(0.03); g.rotation.set(0, i * 0.9, 0); });
       let sparking = true;
-      const fizz = () => { if (sparking && Math.random() < 0.25) { motes.emit(tc, 6, 0xffd080, { dir: V(0, 0.4, -1), speed: 1.6, cone: 0.8, life: 0.4, size: 0.02, grav: 5 }); if (Math.random() < 0.3) csfx('switch', 0.3, 2); } if (sparking && Math.random() < 0.2) motes.emit(tc.clone().add(V(0, 0.2, 0)), 1, 0x605850, { dir: V(0, 1, 0), speed: 0.3, life: 1.6, size: 0.12, drag: 0.3 }); };
+      const fizz = () => { if (sparking && Math.random() < 0.25) { motes.emit(tc, 6, 0xffd080, { dir: tdir.clone().negate().setY(0.4), speed: 1.6, cone: 0.8, life: 0.4, size: 0.02, grav: 5 }); if (Math.random() < 0.3) csfx('switch', 0.3, 2); } if (sparking && Math.random() < 0.2) motes.emit(tc.clone().add(V(0, 0.2, 0)), 1, 0x605850, { dir: V(0, 1, 0), speed: 0.3, life: 1.6, size: 0.12, drag: 0.3 }); };
       frameFns.add(fizz);
-      put('solano', 'lab', term.x + 1.25, term.z - 1.1, term.x, tz);
-      unit.moveTo(V(term.x + 0.6, 1.45, term.z - 1.0), 1.2);
-      c.cam.cut(V(term.x + 2.9, 2.15, term.z - 3.1), V(term.x - 0.1, 0.75, term.z + 0.2), 42);
+      { const sp = inLab(term.clone().addScaledVector(tdir, -1.1).addScaledVector(tside, 1.0)); put('solano', 'lab', sp.x, sp.z, tc.x, tc.z); }
+      unit.moveTo(inLab(term.clone().addScaledVector(tdir, -0.9).addScaledVector(tside, 0.45)).setY(1.45), 1.2);
+      c.cam.cut(inLab(term.clone().addScaledVector(tdir, -3.0).addScaledVector(tside, 1.5), 0.1).setY(2.15), term.clone().addScaledVector(tdir, 0.2).setY(0.75), 44);
       await line('solano', 'The decompression fried the analysis terminal. Your other gift: you can build. And repair is just building backwards.');
       await line('solano', 'Pull the pieces back in. Each one where it belongs.');
       ui.sys('FABRICATION ARRAY: [ONLINE] · NANITE STOCK 100%');
@@ -452,14 +463,14 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
     const PC = shop.spots.pod_cradle.pos;
     if (from <= 4) {
       await c.fade(1, 0.8);
-      put('solano', 'workshop', PC.x + 2.2, PC.z + 2.6, PC.x, PC.z);
-      put('kowalczyk', 'workshop', PC.x - 2.0, PC.z + 2.5, PC.x, PC.z);
-      unit.place(V(PC.x + 1.2, 1.7, PC.z + 2.6)); unit.lookAt(PC.clone().add(V(0, 0.8, 0)));
-      const cpos = [V(PC.x + 2.1, 0, PC.z + 0.4), V(PC.x + 1.6, 0, PC.z - 2.0), V(PC.x - 1.8, 0, PC.z - 2.0), V(PC.x - 2.3, 0, PC.z + 0.5)];
+      const SB = shop.bounds, inShop = (p: THREE.Vector3, m = 0.55) => { p.x = Math.max(SB.min.x + m, Math.min(SB.max.x - m, p.x)); p.z = Math.max(SB.min.z + m, Math.min(SB.max.z - m, p.z)); return p; };
+      { const a = inShop(V(PC.x + 1.9, 0, PC.z + 2.4)), b = inShop(V(PC.x - 1.6, 0, PC.z + 2.3)); put('solano', 'workshop', a.x, a.z, PC.x, PC.z); put('kowalczyk', 'workshop', b.x, b.z, PC.x, PC.z); }
+      unit.place(inShop(V(PC.x + 0.9, 0, PC.z + 2.2)).setY(1.7)); unit.lookAt(PC.clone().add(V(0, 0.8, 0)));
+      const cpos = [V(PC.x + 2.0, 0, PC.z + 0.5), V(PC.x + 1.7, 0, PC.z - 1.9), V(PC.x - 1.7, 0, PC.z - 1.9), V(PC.x - 2.0, 0, PC.z + 0.6)].map((p) => inShop(p));
       crates.forEach((g, i) => { add(g); g.position.copy(cpos[i]); g.lookAt(V(PC.x, 0, PC.z)); });
       hub.podBuild?.(0);
-      c.cam.cut(V(PC.x + 4.6, 3.4, PC.z + 5.4), V(PC.x + 0.2, 0.9, PC.z), 44);
-      c.cam.move({ pos: V(PC.x + 4.1, 3.0, PC.z + 4.8), dur: 8, ease: 'inOut' });
+      c.cam.cut(V(PC.x + 4.2, 3.6, PC.z + 4.9), V(PC.x + 0.2, 0.8, PC.z), 46);
+      c.cam.move({ pos: V(PC.x + 3.8, 3.2, PC.z + 4.4), dur: 8, ease: 'inOut' });
       await c.fade(0, 1.0);
       c.stamp('WORKSHOP + HANGAR · DECK 1 AFT');
       await line('solano', 'Your body for the surface. A capsule pod: you ride it down, and once it lands, it is you.');
@@ -503,12 +514,14 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
     // ================================================================ f. MONITOR
     await c.fade(1, 0.9);
     const MS = bridge.spots;
-    put('solano', 'bridge', MS.monitor.pos.x - 0.9, MS.monitor.pos.z - 0.4, 0, MS.monitor.pos.z - 4, MS.monitor.pos.y);
+    put('solano', 'bridge', MS.monitor.pos.x - 0.9, MS.monitor.pos.z - 0.4, MS.monitor.pos.x - 0.9, MS.monitor.pos.z - 4, MS.monitor.pos.y);
     put('quintero', 'bridge', MS.captain.pos.x, MS.captain.pos.z + 0.9, MS.monitor.pos.x, MS.monitor.pos.z);
     put('castellanos', 'bridge', MS.helm.pos.x, MS.helm.pos.z - 0.2, MS.monitor.pos.x, MS.monitor.pos.z, MS.helm.pos.y);
-    unit.place(V(MS.monitor.pos.x + 0.7, 1.7, MS.monitor.pos.z - 1.6)); unit.lookAt(V(0, 1.8, 27));
-    c.cam.cut(V(0.0, 2.3, MS.captain.pos.z - 1.2), V(0, 1.7, 26.6), 40);
-    c.cam.move({ pos: V(0.2, 2.0, MS.captain.pos.z + 1.6), dur: 9, ease: 'inOut' });
+    const mon = MS.monitor.pos, mdir = V(Math.sin(MS.monitor.facing), 0, Math.cos(MS.monitor.facing)); // facing into the room: the screen is behind
+    const screen = mon.clone().addScaledVector(mdir, -1.0).setY(1.8);
+    unit.place(mon.clone().addScaledVector(mdir, 1.4).add(V(0.7, 1.7, 0))); unit.lookAt(screen);
+    c.cam.cut(MS.captain.pos.clone().addScaledVector(mdir, 1.4).setY(2.3), screen.clone().setY(1.6), 42);
+    c.cam.move({ pos: MS.captain.pos.clone().addScaledVector(mdir, -1.4).setY(2.0), dur: 9, ease: 'inOut' });
     await c.fade(0, 1.2);
     c.stamp('BRIDGE · UNAA MERIDIAN · RV-07');
     mark('monitor');

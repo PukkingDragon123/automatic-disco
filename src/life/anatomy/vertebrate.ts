@@ -223,7 +223,7 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
   }
   // a worker fitted with six parts or more wears its machinery over a leaner body cage (the in-between rings go)
   const lean = fitted.size >= 6;
-  const tweens = names.map((n) => (n === 'tip' || n.startsWith('tail') || (lean && !n.startsWith('neck') && n !== 'withers' && n !== 'chest') ? 0 : 1));
+  const tweens = names.map((n) => (n === 'tip' || n.startsWith('tail') || (lean && !n.startsWith('neck')) ? 0 : 1));
   const tr = body.add(trunk({ name: 'trunk', stations: st, tween: tweens, capS: true, capE: true, k: 0.9, skin: spine, paint: () => void 0,
     rings: names.includes('withers') ? [{ at: names.indexOf('withers'), s: 0.5 }] : [] }));
   tr.reg = 1;
