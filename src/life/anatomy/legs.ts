@@ -25,7 +25,7 @@ export function legRings(kind: LegKind, fore: boolean, r: number, tj: number[], 
       const k = kind === 'stilt' ? 0.86 : 1, hh = foot, three = n === 3;
       const low = [
         R(up(hh * 2.5), 0.3 * k, 1.12, [[175, 0.16, 26]]),
-        R(up(hh * 2.0), 0.37 * k, 1.12, [[0, 0.06, 40], [180, 0.22, 40], [90, 0.05, 30], [-90, 0.05, 30]], 1), // the fetlock
+        R(up(hh * 2.0), (kind === 'stilt' ? 0.46 : 0.37) * k, 1.12, [[0, 0.06, 40], [180, 0.22, 40], [90, 0.05, 30], [-90, 0.05, 30]], 1), // the fetlock
         R(up(hh * 1.45), 0.31 * k, 1.05, [[0, 0.04, 40]]), // the pastern
         R(up(hh * 0.98), 0.36 * k, 1.1, undefined, 1.2), // the coronet band
         R(up(hh * 0.55), 0.3 * k, 1.0),
@@ -33,17 +33,17 @@ export function legRings(kind: LegKind, fore: boolean, r: number, tj: number[], 
       if (three) return [...top,
         R(at(0, 0.45), 1.15 * (kind === 'stilt' ? 0.85 : 1), 1.35, [[15, 0.14, 45], [170, 0.26, 40], [-90, -0.05, 40]]),
         R(at(0, 0.86), 0.8 * k, 1.2, [[0, 0.16, 30], [180, 0.1, 40]]),
-        R(tj[1], 0.62 * k, 1.12, [[0, 0.26, 26]], 1), // the stifle
+        R(tj[1], (kind === 'stilt' ? 0.78 : 0.62) * k, 1.12, [[0, 0.26, 26]], 1), // the stifle
         R(at(1, 0.28), 0.6 * k, 1.3, [[170, 0.28, 40], [10, 0.06, 30]]), // the gaskin
         R(at(1, 0.72), 0.4 * k, 1.35, [[180, 0.32, 20]]), // the achilles tendon
-        R(tj[2], 0.4 * k, 1.38, [[180, 0.6, 22], [90, 0.12, 30], [-90, 0.12, 30]], 1.2), // the hock and its point
+        R(tj[2], (kind === 'stilt' ? 0.52 : 0.4) * k, 1.38, [[180, 0.6, 22], [90, 0.12, 30], [-90, 0.12, 30]], 1.2), // the hock and its point
         R(at(2, 0.16), 0.32 * k, 1.12, [[175, 0.16, 25]]),
         R(at(2, 0.5), 0.28 * k, 1.3, [[180, 0.26, 20]]), // the cannon, the flexor tendon behind
         ...low];
       return [...top,
         R(at(0, 0.32), 0.95 * (kind === 'stilt' ? 0.8 : 1), 1.15, [[10, 0.18, 45], [-70, 0.06, 40], [170, 0.08, 40]]), // the forearm's muscle
         R(at(0, 0.78), 0.56 * k, 1.05, [[0, 0.04, 40]]),
-        R(tj[1], 0.54 * k, 0.95, [[0, 0.12, 50], [180, 0.24, 25]], 1), // the knee (carpus): flat in front, the accessory bone behind
+        R(tj[1], (kind === 'stilt' ? 0.7 : 0.54) * k, 0.95, [[0, 0.12, 50], [180, 0.24, 25]], 1), // the knee (carpus): flat in front, the accessory bone behind
         R(at(1, 0.14), 0.4 * k, 1.05),
         R(at(1, 0.48), 0.3 * k, 1.3, [[180, 0.24, 22]]),
         ...low];

@@ -386,7 +386,8 @@ export class FloraTex {
    * so the lit upper-left ones land on top); the lower right of the spray sits a step darker than its lit upper left;
    * every leaf casts a 1 px shadow down-right onto the ones it overlaps; whole twigs take the species' second foliage
    * ramp and the twig ends its pale young growth (colour in clusters, never speckle); a tinted dark outline closes the
-   * shadow side. Crown clumps are filled with these cards (floraMesh). The card's top is the sky side.
+   * shadow side. Crown clumps are filled with these cards (floraMesh). The card's top is the sky side. big: fewer,
+   * larger leaves (shrubs, whose cards are small in the world).
    */
   crown(style: SprayStyle, shape: Shape, ramp: number[], o: { accent?: number[]; young?: number[]; twig?: number[]; bud?: number[]; var?: number; thorns?: boolean; hairs?: boolean; big?: boolean } = {}): Rect {
     const v = o.var ?? 0, S = 64, key = `crown|${style}|${shape}|${keyOf(ramp)}|${o.accent ? keyOf(o.accent) : ''}|${v}|${o.thorns ? 1 : 0}|${o.hairs ? 1 : 0}|${o.big ? 1 : 0}`;
@@ -397,7 +398,7 @@ export class FloraTex {
       const c = S / 2 - 0.5, shd = new Uint8Array(S * S);
       const long = shape === 'lance' || shape === 'linear' || shape === 'falcate' || shape === 'strap';
       const broad = shape === 'round' || shape === 'fan' || shape === 'deltoid' || shape === 'heart' || shape === 'spatula';
-      const bk = o.big ? 1.45 : 1.2, Lr: [number, number] = long ? [8 * bk, 11 * bk] : broad ? [6 * bk, 8 * bk] : [7 * bk, 9.5 * bk];
+      const bk = o.big ? 1.7 : 1.42, Lr: [number, number] = long ? [8 * bk, 11 * bk] : broad ? [6 * bk, 8 * bk] : [7 * bk, 9.5 * bk];
       const wr = long ? 0.3 : broad ? 0.66 : 0.48;
       // the spray's own light: the upper left of the card is lit, the lower right a step down, a ragged band between
       const lit = (x: number, y: number) => { const d = (x - c) * -0.45 + (y - c) * -0.85; return d > 1.5 ? 0 : d < -8 ? -1 : r.chance(0.5) ? 0 : -1; };
@@ -405,9 +406,9 @@ export class FloraTex {
       const nTw = style === 'needle' ? 7 : style === 'pinnate' || style === 'bipinnate' ? r.int(7, 8) : 6;
       const twA: number[] = [], twL: number[] = [], twR: number[] = [];
       const acc1 = r.int(0, nTw - 1), acc2 = r.chance(0.5) ? (acc1 + 3) % nTw : -1;
-      for (let i = 0; i < nTw; i++) { twA.push((i / nTw) * TAU2 + r.range(-0.25, 0.25) - Math.PI / 2); twL.push(r.range(16, 21)); twR.push(o.accent && (i === acc1 || i === acc2) ? AC : 0); }
+      for (let i = 0; i < nTw; i++) { twA.push((i / nTw) * TAU2 + r.range(-0.25, 0.25) - Math.PI / 2); twL.push(r.range(14, 19)); twR.push(o.accent && (i === acc1 || i === acc2) ? AC : 0); }
       const deadAt = v === 2 ? r.int(3, 9) : -1;
-      type L = [number, number, number, number, number, number, number]; // x, y, ang, len, wid, ramp, shade bias
+      type L = [number, number, number, number, number, number, number]; // x, y, ang, len, wid (needles: count), ramp, element (0 leaf, 100 needle fascicle, 200 pinna)
       const leaves: L[] = [], rach: [number, number, number, number][] = [];
       // shortened so a leaf's tip (and its width) stays on the card
       const room = (p: number, d: number) => (d > 1e-3 ? (S - 3 - p) / d : d < -1e-3 ? (2 - p) / d : 1e9);
@@ -467,7 +468,7 @@ export class FloraTex {
         }
       } else {
         // alternate: leaves strewn along the twigs, alternating sides, angled out
-        const n = Math.round(r.range(125, 150) / (o.big ? 1.35 : 1));
+        const n = Math.round(r.range(105, 125) / (o.big ? 1.3 : 1));
         for (let k = 0; k < n; k++) {
           // strewn through the twig's sector (Lerfolese: the angle jittered round the centre), each leaf angled off it
           const i = k % nTw, t = 0.14 + Math.sqrt(r.next()) * 0.86, a = twA[i] + r.range(-0.45, 0.45), d = twL[i] * t;

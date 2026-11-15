@@ -1,5 +1,6 @@
 // 3D flora meshes. A grown Plant (plantStyle) becomes real geometry: limb chains turn into tapered bark tubes with
-// rounded ends, every leaf into its own folded, drooping, double-sided card cut from a hi-res painted leaf, grass and
+// rounded ends, tree and shrub crowns into clumps of big leaf-spray cards at the branch tips (crownCards, after
+// Lerfolese), every other leaf into its own folded, drooping, double-sided card cut from a hi-res painted leaf, grass and
 // strap leaves into creased ribbons, fronds into ribbons whose two halves hang from the rachis carrying the painted
 // leaflets, mushroom caps into domes with gills beneath, berries and pods into little spheres. Barrel cacti, crystal
 // shards and lily pads are modelled directly, and so is the ground cover (grass tussocks, sedges, meadow flowers,

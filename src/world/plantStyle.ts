@@ -217,7 +217,7 @@ function drawLeaf(S: Scene, l: Leaf, sun: number, amb: number) {
     let w = prof(u) * (1 + asym * sg);
     if (sg === notchS && Math.abs(u - notchU) < 0.07) w *= 0.45;
     if (av > w) continue;
-    let val = (v >= 0 ? tA : tB) + (u - 0.4) * 0.1 - (l.dim ?? 0) * 0.36;
+    let val = (v >= 0 ? tA : tB) + (u - 0.4) * 0.1 - (l.dim ?? 0) * 0.45;
     if (l.vein && l.len >= 5 && av * bl < 0.55 && u > 0.06 && u < 0.9) val += l.vein > 0 ? 0.1 : -0.12;
     else if (l.lat && ((u * 5.5 + av * 1.1) % 1) < 0.16 && av < w * 0.85) val -= 0.08;
     if (l.teeth && av > w - 1.1 / Math.max(1, bl) && Math.floor(u * l.len * 0.7) % 2 === 0) val -= 0.12;
@@ -471,7 +471,7 @@ function crownClumps(P: Plant, r0: Rand, o: CrownOpt) {
     const out = nrm(sub(c, [cc[0], cc[1] - ey * 0.4, cc[2]]));
     // a clump sits a little out from its tip, droops a little
     const cp: V3 = add(c, [out[0] * rr * 0.25, -rr * 0.12, out[2] * rr * 0.25]);
-    return { c: cp, R: [rr, rr * o.ry * r.range(0.85, 1.1), rr], ramp: r.chance(0.55) ? main : r.weighted(ramps), flat: o.flat, lit: o.lit ?? 0.6 };
+    return { c: cp, R: [rr, rr * o.ry * r.range(0.85, 1.1), rr], ramp: r.chance(0.75) ? main : r.weighted(ramps), flat: o.flat, lit: o.lit ?? 0.6 };
   });
   // the leaves, regrown into the clumps (by volume)
   const total = Math.min(3600, Math.round(src.length * (o.keep ?? 1.15)));

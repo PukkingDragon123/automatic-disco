@@ -158,7 +158,7 @@ export const coatTone = (c: Coat): Tone => ({ ramp: RP(c.base[0]), step: c.base[
 
 /** the coat's zone and colour at any point of a kind of part: classify(q, ny, nx, nz) returns the zone index and
  *  leaves the ramp and step in R and st (painters, and parts that take their colour from the skin under them) */
-export function coatSampler(C: CoatCtx, part: PartKind, o: { hipY?: number; inner?: V3 } = {}) {
+export function coatSampler(C: CoatCtx, part: PartKind, o: { hipY?: number; inner?: V3; bodyY?: number; band?: number } = {}) {
   const c = C.coat, F = C.F, seed = C.seed;
   const Rb = RP(c.base[0]), Rbel = RP(c.belly[0]), Rbk = c.back ? RP(c.back[0]) : Rb, Rpat = c.pattern ? RP(c.pattern.c[0]) : Rb, Rh = c.pattern?.heart ? RP(c.pattern.heart[0]) : Rpat;
   const Rsock = c.socks ? RP(c.socks.c[0]) : Rb, Rmuz = c.face?.muzzle ? RP(c.face.muzzle[0]) : Rbel, Rchin = c.face?.chin ? RP(c.face.chin[0]) : Rbel;
@@ -174,6 +174,13 @@ export function coatSampler(C: CoatCtx, part: PartKind, o: { hipY?: number; inne
         const aa = Math.abs(a);
         z = aa > Math.PI - bellyArc + jit ? 'belly' : s < F.sRump ? 'tail' : s > F.sNeck ? 'neck' : aa < 0.9 + jit ? 'back' : 'flank';
         if (z === 'neck' && aa > Math.PI - bellyArc * 1.15 + jit) z = 'belly';
+      } else if (part === 'limb' && o.bodyY !== undefined && q[1] > o.bodyY + (h3(cell3(q[0], q[1], q[2], edgeCell, seed + 31).id, 5, seed) - 0.5) * (o.band ?? 0)) {
+        // the shoulder or thigh: body skin, wearing the trunk's coat (its pattern laid out in the body frame) down to
+        // the elbow or stifle, the flank on the outside, the pale belly on the inside, with no seam at the leg's top
+        const l = locate(F, q); s = l.s; a = l.a;
+        const inner = !!o.inner && (nx * o.inner[0] + nz * o.inner[2]) > 0.5;
+        z = inner ? 'belly' : ny > 0.72 ? 'back' : 'flank';
+        if (!inner && Math.abs(a) > Math.PI - 0.3) a = Math.sign(a || 1) * (Math.PI - 0.3) * 0.75;
       } else if (part === 'limb' || part === 'foot') {
         const sockH = c.socks ? c.socks.h : -1;
         z = part === 'foot' ? 'foot' : q[1] < sockH + (h3(Math.floor(q[0] * 40 + q[2] * 40), 3, seed) - 0.5) * 0.02 ? 'sock' : 'limb';
@@ -201,7 +208,7 @@ export function coatSampler(C: CoatCtx, part: PartKind, o: { hipY?: number; inne
 }
 
 /** a painter for one kind of part, drawing the coat's zones from the real surface under every texel */
-export function coatPaint(C: CoatCtx, part: PartKind, o: { flow?: number; extra?: (px: Px, ch: Chart) => void; before?: (px: Px, zone: Uint8Array) => void; hipY?: number; light?: number; inner?: V3 } = {}) {
+export function coatPaint(C: CoatCtx, part: PartKind, o: { flow?: number; extra?: (px: Px, ch: Chart) => void; before?: (px: Px, zone: Uint8Array) => void; hipY?: number; light?: number; inner?: V3; bodyY?: number; band?: number } = {}) {
   const f = (ch: Chart, _pc: Piece, b: Body) => {
     const px = new Px(ch, b), gb = px.gb, P = gb.P, N = gb.N, n = px.n, c = C.coat, F = C.F, seed = C.seed;
     if (o.light !== undefined) px.lightK = o.light;

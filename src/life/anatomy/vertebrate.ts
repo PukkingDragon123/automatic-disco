@@ -12,8 +12,8 @@ import type { V3, Wt } from '../kit';
 import type { Rig, LegDef } from '../morph';
 import type { Design } from '../design';
 import { Body, gridSurf, addWeights, type Piece } from './core';
-import { trunk, type Station, type TrunkPiece } from './trunk';
-import { limb, hoof } from './limb';
+import { trunk, PROFILES, type Station, type TrunkPiece } from './trunk';
+import { limb, hoof, type LimbRing } from './limb';
 import { skull, mandible, eyeball, eyelid, SKULLS, type PupilKind, type Skull } from './head';
 import { pupilDisc, pinna, drawEarHollow, noseLeather, drawNostrils, tooth, tongueP, mouthLining, throatSac, whiskers } from './face';
 import { legRings, legFoot, footHeight, type LegKind } from './legs';
@@ -99,7 +99,7 @@ function spineSkin(rig: Rig, rest: V3[], bi: (n: string) => number): (p: V3) => 
   const nose: V3 = [head[0], head[1], head[2] + (rig.dims.hl ?? 0.5) * 0.9];
   const J: V3[] = [tip, ...[...tails].reverse(), hips, chest, neck, head, nose];
   const SB = [...[...rig.tail].reverse(), rig.root, rig.root, bi('chest'), bi('neck'), rig.head];
-  const iC = bi('chest'), iR = rig.ribs, fore = rig.legs.filter((l) => l.kind === 'fore' && l.pair === 0);
+  const iC = bi('chest'), iR = rig.ribs, fore = rig.legs.filter((l) => l.kind === 'fore' && l.pair === 0), hind = rig.legs.filter((l) => l.kind === 'hind');
   const W = rig.dims.W, H = rig.dims.H, hipSeg = tails.length + 1;
   return (p) => {
     let best = 0, bd = Infinity, bt = 0;
@@ -120,6 +120,8 @@ function spineSkin(rig: Rig, rest: V3[], bi: (n: string) => number): (p: V3) => 
     const extra: [number, number][] = [];
     if (iR >= 0) { const r = rest[iR], k = 0.5 * gs(p[2], r[2], W * 0.45) * sst(r[1] + H * 0.25, r[1] - H * 0.2, p[1]); if (k > 0.03) extra.push([iR, k]); }
     for (const lg of fore) { const up = rest[lg.bones[0]], k = 0.42 * gs(p[2], up[2], W * 0.22) * gs(p[1], up[1] + H * 0.15, H * 0.22) * gs(p[0] * lg.side, Math.abs(up[0]) * 1.15, W * 0.2); if (k > 0.03) extra.push([lg.bones[0], k]); }
+    // the haunch over the thigh rides with the femur
+    for (const lg of hind) { const up = rest[lg.bones[0]], k = 0.36 * gs(p[2], up[2], W * 0.26) * gs(p[1], up[1] + H * 0.08, H * 0.24) * gs(p[0] * lg.side, Math.abs(up[0]) * 1.15, W * 0.22); if (k > 0.03) extra.push([lg.bones[0], k]); }
     return extra.length ? addWeights(w, extra) : w;
   };
 }
@@ -153,32 +155,60 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
     for (let i = n - 1; i >= 0; i--) { const k = r0 * Math.pow(tap, i); push({ c: tails[i], s: [k * fl, k], p: 'ridge' }, 'tail' + i); }
     push({ c: add(lerp(tails[0], hips, 0.55), [0, hipH * 0.12, 0]), s: [hipsS.s[0] * 0.78, hipH * 0.8], p: 'hips' }, 'rump');
   } else push({ c: add(hips, [0, hipH * 0.1, -T * 0.22]), s: [hipsS.s[0] * 0.6, hipH * 0.6], p: 'round' }, 'rump');
-  // the masses a sculptor blocks first: the croup and the points of the hips standing out high on the flanks (the
-  // haunch), the loin tucked up behind the ribs, the ribcage deepest just behind the elbows (the girth), the withers
-  // and the scapula ridges over the shoulders, the brisket projecting ahead of the forelegs
-  const hz = sec(hips, TS.hips, prof[3], [[1, 0.04, 0.05], [2, 0.1, 0.03], [3, 0.12, -0.02], [6, -0.06, 0.04]]);
+  // the masses a sculptor blocks first, written as a topline (height above the spine), an underline (depth below it)
+  // and a width at each station, so the side silhouette curves the way a real quadruped's does: the croup rounded
+  // over the hips and the haunch standing out over the thighs; the loin dipping and the belly line tucking up into a
+  // narrow waist and flank; the ribs deepening forward to the girth, deepest just behind the elbows; the withers and
+  // the scapula ridges rising over the forelegs, the shoulder mass bulging out over the upper arm; the brisket
+  // projecting ahead of the forelegs; the neck thick where it leaves the shoulders, tapering into the skull.
+  const legAt = (fore: boolean) => {
+    const lg = rig.legs.find((l) => (l.kind === 'fore') === fore && l.side > 0 && l.kind !== 'insect' && l.kind !== 'spider' && l.pair <= 1);
+    if (!lg) return undefined;
+    const LS = fore ? spec.legs.fore : spec.legs.hind, J = lg.bones.map((b) => rest[b]);
+    return { x: Math.abs(J[0][0]), y: J[0][1], knee: J[1][1], r: D.lt * 0.45 * (LS.r ?? 1), kind: LS.kind };
+  };
+  const LF = legAt(true), LH = legAt(false), sprawlF = LF?.kind === 'sprawl', sprawlH = LH?.kind === 'sprawl';
+  // the girth: the deepest the ribcage goes (a leggy runner's chest drops toward its elbows, within reason)
+  let G = Math.max(TS.chest[2], TS.barrel[2]) * 1.06;
+  if (LF && !sprawlF) G = Math.max(G, Math.min(G * 1.18, ((chest[1] - LF.knee) * 0.72) / H));
+  const sagging = prof[2] === 'sag' && TS.waist[2] >= G * 0.75;
+  const waistD = Math.min(TS.waist[2], G * (sagging ? 0.8 : 0.66)), waistW = Math.min(TS.waist[0], Math.max(TS.barrel[0], TS.chest[0]) * 0.84);
+  /** widen a station's flank points (profile indices `js`, half-widths) so they reach `need` metres out */
+  const bulge = (sw: number, P: string, need: number, js: [number, number][]): [number, number, number][] => {
+    const pr = PROFILES[P] ?? PROFILES.round, out: [number, number, number][] = [];
+    for (const [j, f] of js) { const want = (need / sw) * f; if (want > pr[j][0]) out.push([j, want - pr[j][0], 0]); }
+    return out;
+  };
+  const hzS: Sec = [TS.hips[0], TS.hips[1] + 0.06, TS.hips[2] + 0.03];
+  const hzW = hzS[0] * W, haunch = LH && !sprawlH ? LH.x + LH.r * 1.05 : 0;
+  const hz = sec(hips, hzS, prof[3], [[1, 0.04, 0.05], [2, 0.1, 0.03], ...bulge(hzW, prof[3], haunch, [[3, 0.97], [4, 1.0], [5, 0.96], [6, 0.78]])]);
   hz.c = add(hz.c, [0, H * 0.02, 0]);
   push(hz, 'hips');
-  const loin: Sec = [TS.waist[0] * 0.96, TS.waist[1] * 0.96, Math.min(TS.waist[2], TS.barrel[2] * 0.84)];
-  push(sec(lerp(hips, chest, 0.3), loin, prof[2], [[3, -0.04, 0], [6, 0, 0.08], [7, 0, 0.06]]), 'waist');
-  push(sec(lerp(hips, chest, 0.6), TS.barrel, prof[1]), 'barrel');
-  const girth: Sec = [Math.max(TS.barrel[0], TS.chest[0]) * 1.02, TS.chest[1] * 0.98, Math.max(TS.barrel[2], TS.chest[2]) * 1.07];
-  push(sec(lerp(hips, chest, 0.84), girth, 'barrel', [[5, 0.02, -0.03], [7, 0, -0.03]]), 'girth');
-  const ch = sec(add(chest, [0, 0, T * 0.05]), [TS.chest[0] * 0.96, TS.chest[1] + 0.1, TS.chest[2] * 0.96], prof[0], [[1, 0.04, 0.06], [2, 0.06, 0.04], [7, -0.12, 0], [8, 0, -0.03]]);
+  push(sec(lerp(hips, chest, 0.32), [waistW, TS.waist[1] * 0.94, waistD], sagging ? 'sag' : 'barrel', [[6, 0, 0.06], [7, 0, 0.05]]), 'waist');
+  const ribW = Math.max(TS.barrel[0], TS.chest[0]);
+  push(sec(lerp(hips, chest, 0.6), [TS.barrel[0] * 1.03, TS.barrel[1], G * 0.9], prof[1]), 'barrel');
+  push(sec(lerp(hips, chest, 0.84), [ribW * 1.02, (TS.barrel[1] + TS.chest[1]) / 2 + 0.03, G], 'barrel', [[5, 0.02, -0.03], [7, 0, -0.03]]), 'girth');
+  const chS: Sec = [TS.chest[0] * 0.94, TS.chest[1] + 0.13, G * 0.97], shoulder = LF && !sprawlF ? LF.x + LF.r * 1.05 : 0;
+  const ch = sec(add(chest, [0, 0, T * 0.05]), chS, prof[0], [[1, 0.04, 0.06], [2, 0.06, 0.04], [7, -0.12, 0], [8, 0, -0.03], ...bulge(chS[0] * W, prof[0], shoulder, [[3, 0.95], [4, 1.0], [5, 0.98], [6, 0.8]])]);
   if (TS.hump) { ch.c = add(ch.c, [0, TS.hump * H * 0.5, 0]); ch.s = [ch.s[0], ch.s[1] + TS.hump * H * 0.5]; }
   push(ch, 'chest');
   // the brisket: the breastbone's point ahead of the forelegs, narrow and deep, under the root of the neck
-  push(sec(add(lerp(chest, neck, 0.28), [0, -H * 0.06, 0]), [TS.chest[0] * 0.78, TS.chest[1] * 0.78, TS.chest[2] * 0.86], 'neck', [[7, -0.16, 0], [8, 0, 0.04]]), 'brisket');
-  // the neck: from the withers to under the skull, arched, its radius blending from the chest to the head
+  push(sec(add(lerp(chest, neck, 0.28), [0, -H * 0.04, 0]), [TS.chest[0] * 0.8, TS.chest[1] * 0.9 + 0.06, G * 0.86], 'neck', [[7, -0.16, 0], [8, 0, 0.04]]), 'brisket');
+  // the neck: from the withers to under the skull, arched; it leaves the shoulders nearly as deep as the chest and
+  // tapers (fast at first, then slowly) into the back of the skull
   const nr0 = (TS.neck?.r0 ?? 0.8) * hw, nr1 = (TS.neck?.r1 ?? 0.52) * hw, arch = TS.neck?.arch ?? 0.08;
   const nape: V3 = add(skC, [0, hh * 0.05, -hl * 0.22]);
   const nk = (t: number): V3 => { const p = lerp(neck, nape, t), len = dst(neck, nape); return add(p, [0, Math.sin(Math.PI * t) * len * arch, -Math.sin(Math.PI * t) * len * arch * 0.4]); };
-  const wd = sec(lerp(chest, neck, 0.62), [Math.max(TS.chest[0] * 0.72, nr0 * 1.15 / W), TS.chest[1] * 0.75, TS.chest[2] * 0.62], 'neck');
+  const wS: Sec = [Math.max(TS.chest[0] * 0.74, (nr0 * 1.15) / W), TS.chest[1] * 0.92 + 0.04, G * 0.66];
+  const wd = sec(add(lerp(chest, neck, 0.55), [0, 0, -T * 0.03]), wS, 'shoulder', [[0, 0, -0.04], [1, 0.02, 0.04]]);
   push(wd, 'withers');
-  const nl = dst(neck, nape), nst = nl > hw * 3 ? 4 : nl > hw * 1.5 ? 3 : 2;
+  const wHW = wd.s[0], wHH = wd.s[1], nl = dst(neck, nape), nst = nl > hw * 3 ? 4 : nl > hw * 1.5 ? 3 : 2;
+  const rootW = Math.max(nr0, wHW * 0.82), rootH = Math.max(nr0 * 1.08, wHH * 0.8);
   for (let k = 0; k < nst; k++) {
-    const t = (k + 0.5) / nst, r = nr0 + (nr1 - nr0) * t, dew = (TS.neck?.dewlap ?? 0) * (1 - t);
-    push({ c: add(nk(t), [0, -dew * r * 0.5, 0]), s: [r, r * (1.08 + dew)], p: 'neck' }, 'neck' + k);
+    const t = (k + 0.5) / nst, e = Math.pow(t, 0.75), dew = (TS.neck?.dewlap ?? 0) * (1 - t);
+    const rw = rootW + (nr1 - rootW) * e, rh = rootH + (nr1 * 1.04 - rootH) * e;
+    // the throat runs up from the brisket, the crest of the neck stays high: the centre sits a little above the axis
+    push({ c: add(nk(t), [0, (rh - Math.max(rw, nr1)) * 0.25 - dew * rw * 0.5, 0]), s: [rw, rh * (1 + dew)], p: 'neck' }, 'neck' + k);
   }
   push({ c: add(nape, [0, -hh * 0.05, hl * 0.12]), s: [nr1 * 0.92, nr1 * 0.98], p: 'neck' }, 'nape');
   // keep the stations marching forward (a frog's skull sits on its chest: no neck stations behind the withers)
@@ -328,11 +358,35 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
     // the knee bends forward on the forelegs too (a horse's carpus, a cat's wrist), unless the rig set a pole
     if (!lg.pole && fore && LS.kind !== 'sprawl') lg.pole = [0, -0.1, 1];
     const foot = legFoot(LS.kind, fore, r, { toes: LS.toes, claw: LS.claw, web: LS.web, small });
+    // the leg's root is part of the body: the shoulder (scapula, humerus and their muscle) or the thigh (pelvis, femur)
+    // is one broad mass under the body skin, flush with the trunk's flank, which leaves the body where the trunk's
+    // underline crosses the leg (the elbow behind the brisket, the stifle in the flank fold) and narrows from there;
+    // only the forearm and cannon, or shin and hock, stand free
+    let rings = legRings(LS.kind, fore, r, tj, segL, fh), rootT = -1;
+    const span = J[0][1] - J[J.length - 1][1];
+    if (span > 1e-6 && (LS.kind === 'paw' || LS.kind === 'hoof' || LS.kind === 'stilt' || LS.kind === 'bear' || LS.kind === 'knuckle')) {
+      // where the leg's axis leaves the trunk: the lowest trunk surface still as far out as the leg, near the leg
+      let exitY = J[0][1];
+      for (const v of tr.m.V) if (Math.abs(v[2] - J[0][2]) < W * 0.14 && v[0] * s >= Math.abs(J[0][0]) * 0.92 && v[1] < exitY) exitY = v[1];
+      rootT = Math.max(0.06, Math.min(tj[1] * 0.8, (J[0][1] - exitY) / span));
+      const free = rootT + (tj[1] - rootT) * 0.3, mass = (k: number) => 1.04 / k - 1;
+      // fore: the shoulder and triceps, long fore and aft; hind: the thigh, its hamstrings swelling out behind the femur
+      const big = LS.kind === 'stilt' ? 1.35 : fore ? 1.5 : 1.42, eF = fore ? 1.6 : 1.38, back = fore ? 0 : -0.14;
+      const root: LimbRing[] = [
+        { t: -0.3, r: r * big * 0.85, e: eF, off: [mass(big * 0.85) - 0.1, back] },
+        { t: -0.06, r: r * big, e: eF, off: [mass(big), back] },
+        { t: rootT * 0.55, r: r * big * 0.97, e: eF * 0.96, off: [mass(big * 0.97), back * 0.7], b: fore ? [[180, 0.12, 50]] : [[0, 0.1, 50], [180, 0.14, 50]] },
+        // the elbow point behind (the triceps' end) or the stifle in front, where the limb comes free of the body
+        { t: rootT, r: r * big * 0.82, e: eF * 0.86, off: [mass(big * 0.82) * 0.6, 0], b: fore ? [[180, 0.2, 35]] : [[10, 0.14, 40]] },
+      ];
+      rings = [...root, ...rings.filter((g) => g.t >= free)];
+    }
+    const blendY = rootT >= 0 ? J[0][1] - (rootT + (tj[1] - rootT) * 0.22) * span : undefined;
     const Lg = limb({
       name: 'leg' + lg.pair + (s > 0 ? 'r' : 'l'), side: s, hip: J[0], knee: J[1], hock: three ? J[2] : undefined, sole: J[J.length - 1], tj,
       bones: { parent: rig.bones[B[0]].parent, up: B[0], lo: B[1], mid: three ? B[2] : undefined, foot: B[B.length - 1], flex: lg.flex },
-      rings: legRings(LS.kind, fore, r, tj, segL, fh), foot, around: mid ? 8 : 12, levels: 0, k: 1, rise: r * 3.2,
-      paint: coatPaint(C, 'limb', { inner: [-s, 0, 0], hipY: J[0][1] }), clawPaint,
+      rings, foot, around: mid ? 8 : 12, levels: 0, k: 1, rise: r * 3.2,
+      paint: coatPaint(C, 'limb', { inner: [-s, 0, 0], hipY: J[0][1], bodyY: blendY, band: span * 0.06 }), clawPaint,
     });
     Lg.skin.reg = 8; Lg.toes.reg = 8; Lg.claws.reg = 8; Lg.toes.levels = 0; Lg.claws.levels = 0; Lg.claws.farSkip = true;
     Lg.toes.paint = coatPaint(C, 'foot');
