@@ -202,8 +202,21 @@ def paint_flat(kind, f=3, out_dir=OUT, k=12):
   of the render's own colours (flat clusters, no strokes), lone pixels folded into their neighbours, the seams between
   parts cut one shade darker, a crisp dark outline and a flat contact shadow."""
   C2, I2 = (load(os.path.join(SRC, f'{kind}.{p}.png')) for p in ('color', 'id'))
-  a2 = C2[..., 3] > 0.5
   H, W = C2.shape[0] // f, C2.shape[1] // f
+  # frame the building tightly (4:3, a small margin), then resample to exactly f x the target size
+  ys, xs = np.nonzero(C2[..., 3] > 0.5)
+  if len(ys):
+    y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+    bw, bh = (x1 - x0) * 1.12 + 4, (y1 - y0) * 1.12 + 4
+    if bw / bh < W / H: bw = bh * W / H
+    else: bh = bw * H / W
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2 + bh * 0.02
+    box_ = (cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2)
+    def rs(a, mode):
+      im = Image.fromarray((np.clip(a, 0, 1) * 255).astype(np.uint8), 'RGBA')
+      return np.asarray(im.transform((W * f, H * f), Image.EXTENT, box_, mode), float) / 255
+    C2, I2 = rs(C2, Image.BILINEAR), rs(I2, Image.NEAREST)
+  a2 = C2[..., 3] > 0.5
   mask = down(a2.astype(float), f) >= 0.5
   if mask.sum() < 12:
     return False

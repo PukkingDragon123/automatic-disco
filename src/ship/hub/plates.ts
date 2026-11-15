@@ -122,7 +122,7 @@ const PAINT: Record<PlateKind, (w: number, h: number, seed: number) => Pix> = {
 const CSS = /* css */`
 .pl { background-repeat: no-repeat; background-position: 0 0; image-rendering: pixelated; filter: drop-shadow(0 4px 0 rgba(10,8,6,0.5)); text-shadow: none; }
 .pl-brass, .pl-steelPlate { padding: 12px 24px; color: #31260f; text-shadow: 2px 2px 0 #cea457; }
-.pl-steelPlate { color: #1c1e20; text-shadow: 2px 2px 0 #b1b2aa; }
+.pl-steelPlate { color: #e3e6df; text-shadow: 2px 2px 0 #1c1e20; }
 .pl-hazard { padding: 12px 32px; color: #13161c; }
 .pl-enamel, .pl-enamelTeal, .pl-enamelBlue, .pl-enamelRust { padding: 10px 32px; color: #e0cfa6; text-shadow: 2px 2px 0 rgba(10,8,6,0.6); }
 .pl-enamelOchre, .pl-enamelMed, .pl-enamelBone { padding: 10px 32px; color: #15264f; }

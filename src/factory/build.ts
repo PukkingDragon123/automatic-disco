@@ -1,5 +1,5 @@
 // Build mode. B opens the CONSTRUCTION PLANNER (src/ui/build/menu.ts); a tile or a hotbar key (1-0) puts a building in
-// hand: a holographic ghost snapped to the 1 m grid under the cursor (blue pencil where it fits, red pencil where it
+// hand: a holographic ghost snapped to the 1 m grid under the cursor (blue where it fits, red where it
 // cannot go, with the reason and the bill of materials at the cursor), R to turn it, a grid drawn on the ground around
 // it. Placing lays a CONSTRUCTION SITE (src/logistics/sites.ts): workers bring the materials and build it over time.
 // Belts, pipes, walls, fences, dams and foundations are laid by dragging a path and go down at once (the pod's arm lays
@@ -85,7 +85,7 @@ export class Build {
   constructor(readonly f: Factory) {
     (this.badMat as unknown as { onBeforeCompile: unknown }).onBeforeCompile = ((prev) => (sh: THREE.WebGLProgramParametersWithUniforms, r: THREE.WebGLRenderer) => { prev.call(this.badMat, sh, r); (sh.uniforms.uGhost.value as THREE.Color).setHex(RAMPS.stampRed[3]); })(this.badMat.onBeforeCompile);
     this.badMat.customProgramCacheKey = () => 'fac-ghost-bad';
-    // the good ghost reads as a blue-pencil drawing under the hologram
+    // the good ghost reads blue under the hologram
     (this.okMat as unknown as { onBeforeCompile: unknown }).onBeforeCompile = ((prev) => (sh: THREE.WebGLProgramParametersWithUniforms, r: THREE.WebGLRenderer) => { prev.call(this.okMat, sh, r); (sh.uniforms.uGhost.value as THREE.Color).setHex(0x7d9cc4); })(this.okMat.onBeforeCompile);
     this.okMat.customProgramCacheKey = () => 'fac-ghost-ok';
     const lm = gbufNone(new THREE.LineBasicMaterial({ color: RAMPS.sky[4], transparent: true, opacity: 0.55, depthWrite: false }));

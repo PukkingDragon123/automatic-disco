@@ -4,7 +4,7 @@
    discipline plate on top. Fonts: 'Body' 11 / 22, 'Title' 24, 'TitleL' 32. */
 .nmap { position: fixed; inset: 0; z-index: 900; display: none; pointer-events: auto; box-sizing: border-box; image-rendering: pixelated;
   grid-template-columns: 184px 1fr 470px; grid-template-rows: 70px 1fr 34px; gap: 10px; padding: 14px 16px 8px; color: var(--ink);
-  background: #4d5865 url(/ui/craft/bay.png) 0 0 / 128px 128px repeat; box-shadow: inset 0 0 0 8px #2a3038, inset 0 0 0 12px #14181d, inset 0 0 160px rgba(8, 10, 14, 0.55);
+  background: #4d5865 url(/ui/craft/bay.png) 0 0 / 256px 192px repeat; box-shadow: inset 0 0 0 8px #2a3038, inset 0 0 0 12px #14181d, inset 0 0 160px rgba(8, 10, 14, 0.55);
   --card: url(/ui/craft/steel-card.png); --card-hi: url(/ui/craft/steel-card-hi.png); --card-sel: url(/ui/craft/steel-card-sel.png); --card-lock: url(/ui/craft/steel-card-lock.png);
   --sheet: url(/ui/craft/steel-sheet.png); --tab-on: url(/ui/craft/tab-steel-on.png); --kraft: #6a7480; }
 .nmap * { box-sizing: border-box; }

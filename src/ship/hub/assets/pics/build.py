@@ -75,20 +75,19 @@ def age(im, seed, fade=0.22, folds=True, tape=True, pins=False, torn=True):
                 c = px[x, y]
                 if c[3]: px[x, y] = tuple(int(v * 0.95) for v in c[:3]) + (c[3],)
     if torn:  # a corner torn away
-        cx = r.choice([0, 1]); n = r.randint(4, 7)
+        cx = r.choice([0, 1]); n = r.randint(2, 4)
         for j in range(n):
             for i in range(n - j - r.randint(0, 1)):
                 x = i if cx == 0 else W - 1 - i; y = H - 1 - j
                 px[x, y] = (0, 0, 0, 0)
     if tape:
-        for (x0, y0, ang) in ((2, -1, -0.35), (W - 18, -1, 0.3)):
+        for (x0, y0, ang) in ((-2, -2, -0.35), (W - 14, -2, 0.3)):
             c, s = math.cos(ang), math.sin(ang)
-            for j in range(-3, 4):
-                for i in range(-8, 9):
-                    if abs(i) > 7 - (1 if r.random() < 0.5 else 0): continue
+            for j in range(-1, 2):
+                for i in range(-4, 5):
                     X = int(round(x0 + 8 + i * c - j * s)); Y = int(round(y0 + 3 + i * s + j * c))
                     if 0 <= X < W and 0 <= Y < H:
-                        base = px[X, Y]; t = (0xde, 0xcd, 0x93) if j == -3 else (0xa9, 0x9c, 0x51) if j == 3 else (0xc5, 0xb3, 0x6e)
+                        base = px[X, Y]; t = (0xde, 0xcd, 0x93) if j == -1 else (0xa9, 0x9c, 0x51) if j == 1 else (0xc5, 0xb3, 0x6e)
                         a = 0.6
                         px[X, Y] = tuple(int(base[k] * (1 - a) + t[k] * a) for k in range(3)) + (255,)
     if pins:
@@ -114,12 +113,11 @@ def travel(name, srcname, W, H, title, sub, band, seed, crop=None, focus=(0.5, 0
     """full-bleed photo, a solid band at the foot with the title in Spleen and a line in Departure Mono"""
     im0 = src(srcname)
     if im0 is None: print("skip", name); return
-    bh = 34 if sub else 26
-    ph = posterise(fit(im0, W - 6, H - 6 - bh, crop, focus))
-    im = paper(W, H, seed); im.paste(ph, (3, 3))
-    d = ImageDraw.Draw(im); d.rectangle((3, H - 3 - bh, W - 4, H - 4), fill=band)
-    text(d, title, (W // 2, H - 3 - bh + 4), TITLE, tcol or PAPER[5], "ma")
-    if sub: text(d, sub, (W // 2, H - 3 - 12), BODY, tcol or PAPER[4], "ma")
+    bh = 14
+    ph = posterise(fit(im0, W - 4, H - 4 - bh, crop, focus), 32)
+    im = paper(W, H, seed); im.paste(ph, (2, 2))
+    d = ImageDraw.Draw(im); d.rectangle((2, H - 2 - bh, W - 3, H - 3), fill=band)
+    text(d, title, (W // 2, H - 2 - bh + 2), BODY, tcol or PAPER[5], "ma")
     save(name, age(im, seed), credit)
 
 def recruit(name, srcname, W, H, top, sub, seed, crop=None, focus=(0.5, 0.5), credit=None, col=(0x8c, 0x29, 0x20)):
@@ -127,27 +125,26 @@ def recruit(name, srcname, W, H, top, sub, seed, crop=None, focus=(0.5, 0.5), cr
     im0 = src(srcname)
     if im0 is None: print("skip", name); return
     im = paper(W, H, seed); d = ImageDraw.Draw(im)
-    d.rectangle((3, 3, W - 4, 30), fill=col); text(d, top, (W // 2, 6), TITLE, PAPER[5], "ma")
-    ph = posterise(fit(im0, W - 6, H - 30 - 26, crop, focus)); im.paste(ph, (3, 31))
-    d.rectangle((3, H - 25, W - 4, H - 4), fill=INK); text(d, sub, (W // 2, H - 20), BODY, PAPER[5], "ma")
+    d.rectangle((2, 2, W - 3, 15), fill=col); text(d, top, (W // 2, 3), BODY, PAPER[5], "ma")
+    ph = posterise(fit(im0, W - 4, H - 16 - 3, crop, focus), 32); im.paste(ph, (2, 16))
     save(name, age(im, seed), credit)
 
 def plate(name, srcname, W, H, caption, seed, crop=None, focus=(0.5, 0.5), credit=None, fade=0.18, keep_colour=True):
     """a print on white stock with a caption under it (art prints, anatomy plates, charts)"""
     im0 = src(srcname)
     if im0 is None: print("skip", name); return
-    cap = 16 if caption else 0
-    ph = fit(im0, W - 12, H - 12 - cap, crop, focus)
-    ph = posterise(ph if keep_colour else ImageEnhance.Color(ph).enhance(0.6))
-    im = paper(W, H, seed); im.paste(ph, (6, 6))
+    cap = 0
+    ph = fit(im0, W - 6, H - 6, crop, focus)
+    ph = posterise(ph if keep_colour else ImageEnhance.Color(ph).enhance(0.6), 32)
+    im = paper(W, H, seed); im.paste(ph, (3, 3))
     if caption: d = ImageDraw.Draw(im); text(d, caption, (W // 2, H - 6 - 12), BODY, INK, "ma")
     save(name, age(im, seed, fade=fade, folds=False, tape=True, pins=False), credit)
 
-def photo(name, srcname, W, H, seed, crop=None, focus=(0.5, 0.5), credit=None, border=3):
+def photo(name, srcname, W, H, seed, crop=None, focus=(0.5, 0.5), credit=None, border=2):
     """a photo print for a frame: white border, no wear (it sits behind glass)"""
     im0 = src(srcname)
     if im0 is None: print("skip", name); return
-    ph = posterise(fit(im0, W - border * 2, H - border * 2, crop, focus), 64)
+    ph = posterise(fit(im0, W - border * 2, H - border * 2, crop, focus), 32)
     im = Image.new("RGBA", (W, H), (0xe8, 0xe4, 0xd8, 255)); im.paste(ph, (border, border))
     save(name, im, credit)
 
@@ -163,28 +160,25 @@ def calendar(name, srcname, W, H, seed, credit=None):
     im0 = src(srcname)
     if im0 is None: print("skip", name); return
     im = paper(W, H, seed); d = ImageDraw.Draw(im)
-    ph = posterise(fit(im0, W - 8, H // 2 - 4)); im.paste(ph, (4, 4))
-    y0 = H // 2 + 2
-    text(d, "NOV", (6, y0), TITLE, (0x8c, 0x29, 0x20))
-    text(d, "2187", (W - 6, y0 + 9), BODY, INK, "ra")
-    gx, gy, cw, ch = 5, y0 + 26, (W - 10) // 7, (H - y0 - 30) // 5
+    ph = posterise(fit(im0, W - 4, H // 2 - 4), 32); im.paste(ph, (2, 2))
+    y0 = H // 2
+    text(d, "NOV", (3, y0), BODY, (0x8c, 0x29, 0x20))
+    gx, gy, cw, ch = 2, y0 + 12, (W - 4) // 7, (H - y0 - 14) // 5
     for k in range(30):
         c, rr = (k + 3) % 7, (k + 3) // 7
         x, y = gx + c * cw, gy + rr * ch
         d.rectangle((x, y, x + cw - 1, y + ch - 1), outline=PAPER[3])
-        digits(im.load(), str(k + 1), x + 2, y + 2, INK if c < 6 else (0x8c, 0x29, 0x20))
-        if k < 14:  # the days already gone, crossed off by hand
-            d.line((x + 1, y + 1, x + cw - 2, y + ch - 2), fill=(0xb1, 0x3c, 0x2b)); d.line((x + cw - 2, y + 1, x + 1, y + ch - 2), fill=(0xb1, 0x3c, 0x2b))
+        if ch >= 7 and cw >= 6: digits(im.load(), str(k + 1)[-1], x + 1, y + 1, INK if c < 6 else (0x8c, 0x29, 0x20))
+        if k < 14: d.rectangle((x + 1, y + 1, x + cw - 2, y + ch - 2), fill=PAPER[3])  # the days already gone, shaded
     save(name, age(im, seed, fade=0.12, folds=False, tape=False, pins=True, torn=False), credit)
 
 def eyechart(name, W, H, seed):
     im = paper(W, H, seed); d = ImageDraw.Draw(im)
-    big = ImageFont.truetype(FONTS + "spleen-32x64.otf", 64)
-    text(d, "E", (W // 2, 4), big, INK, "ma")
-    rows = [("F P", TITLE), ("T O Z", TITLE), ("L P E D", BODY), ("P E C F D", BODY), ("E D F C Z P", BODY)]
-    y = 68
+    text(d, "E", (W // 2, 3), TITLE, INK, "ma")
+    rows = [("FP", BODY), ("TOZ", BODY), ("LPED", BODY)]
+    y = 30
     for s, f in rows:
-        text(d, s, (W // 2, y), f, INK, "ma"); y += 24 if f is TITLE else 13
+        text(d, s, (W // 2, y), f, INK, "ma"); y += 12
     d.line((8, y + 2, W - 9, y + 2), fill=(0xb1, 0x3c, 0x2b))
     save(name, age(im, seed, fade=0.1, folds=False, tape=True, torn=False))
 
@@ -195,31 +189,31 @@ wm = lambda f: {"source": WM[f]["page"], "author": WM[f]["artist"], "licence": W
 RW = {"source": "render of the game's own assets", "author": "ODDWORLD", "licence": "original"}
 
 # posters (paper, folds, tape)
-travel("earth", "GSFC_20171208_Archive_e002130", 120, 160, "EARTH", "WHERE WE STARTED", (0x1e, 0x3a, 0x72), 3, credit=NASA("GSFC_20171208_Archive_e002130", "NASA Blue Marble 2007 East"))
-travel("band", "iss072e159172", 120, 160, "AURORA", "ORBIT 2140", (0x17, 0x3a, 0x25), 5, focus=(0.55, 0.55), credit=NASA("iss072e159172", "The aurora borealis blankets the Earth"))
-travel("tools", "S68-49399", 120, 160, "LAUNCH", "SATURN V", (0x8c, 0x29, 0x20), 7, focus=(0.6, 0.45), credit=NASA("S68-49399", "Prelaunch - Apollo 8 (Rollout)"))
-travel("reactor", "SSC-2015-00064", 160, 120, "FIRE TEST", "RS-25", (0x31, 0x26, 0x0f), 9, focus=(0.55, 0.5), credit=NASA("SSC-2015-00064", "Lighting up the Night (RS-25 test)"), tcol=(0xe9, 0xcb, 0x89))
-travel("mars", "PIA23898", 160, 120, "MARS", "MOUNT SHARP", (0x77, 0x37, 0x17), 11, crop=(0.3, 0.22, 0.78, 0.84), credit=JPL("PIA23898", "A Dramatic View of Mars' Mount Sharp", "NASA/JPL-Caltech/MSSS"))
-travel("saturn", "PIA11667", 120, 160, "SATURN", "EQUINOX", (0x2f, 0x1a, 0x13), 13, focus=(0.55, 0.5), credit=JPL("PIA11667", "The Rite of Spring", "NASA/JPL/Space Science Institute"))
-travel("nebula", "PIA19836", 120, 160, "NGC 2174", "MONKEY HEAD", (0x36, 0x21, 0x45), 15, credit=JPL("PIA19836", "Seeing Beyond the Monkey Head"))
-travel("chart", "PIA04921", 120, 160, "M31", "ANDROMEDA", (0x15, 0x26, 0x4f), 17, credit=JPL("PIA04921", "Andromeda Galaxy", "NASA/JPL/California Institute of Technology"))
-travel("menu", "s09-05-0153", 120, 160, "MENU", "TRAY 3 TODAY", (0x77, 0x37, 0x17), 19, focus=(0.55, 0.5), credit=NASA("s09-05-0153", "Space Shuttle food tray"))
-travel("planet", "planet", 120, 160, "NEW HOME", "KEPLER-442 B", (0x17, 0x3a, 0x25), 21, credit=RW)
-recruit("unaa", "ship", 120, 160, "UNAA", "COLONY CORPS", 23, credit=RW)
-recruit("safety", "pod2", 120, 160, "POD-7", "SEAL CHECK", 25, credit=RW, col=(0x99, 0x70, 0x2a))
-plate("pinup", "wm_wave", 160, 120, "", 27, credit=wm("img/raw/wm_wave.jpg"), fade=0.12)
-plate("firstaid", "wm_heart", 112, 150, "", 29, credit=wm("img/raw/wm_heart.png"), fade=0.1)
-plate("bio", "creature", 120, 160, "", 31, credit=RW, fade=0.08) if src("creature") else travel("bio", "PIA23126", 120, 160, "NURSERY", "CEPHEUS B", (0x17, 0x3a, 0x25), 31, focus=(0.75, 0.5), credit=JPL("PIA23126", "Cepheus C and Cepheus B Region by Spitzer"))
-plate("kid", "planet", 84, 108, "", 37, credit=RW, fade=0.06)
-calendar("calendar", "iss072e397138", 112, 160, 33, credit=NASA("iss072e397138", "The Himalayas separate China from a cloudy India"))
-eyechart("eye", 96, 160, 35)
+travel("earth", "GSFC_20171208_Archive_e002130", 60, 80, "EARTH", "WHERE WE STARTED", (0x1e, 0x3a, 0x72), 3, credit=NASA("GSFC_20171208_Archive_e002130", "NASA Blue Marble 2007 East"))
+travel("band", "iss072e159172", 60, 80, "AURORA", "ORBIT 2140", (0x17, 0x3a, 0x25), 5, focus=(0.55, 0.55), credit=NASA("iss072e159172", "The aurora borealis blankets the Earth"))
+travel("tools", "S68-49399", 60, 80, "LAUNCH", "SATURN V", (0x8c, 0x29, 0x20), 7, focus=(0.6, 0.45), credit=NASA("S68-49399", "Prelaunch - Apollo 8 (Rollout)"))
+travel("reactor", "SSC-2015-00064", 80, 60, "FIRE TEST", "RS-25", (0x31, 0x26, 0x0f), 9, focus=(0.55, 0.5), credit=NASA("SSC-2015-00064", "Lighting up the Night (RS-25 test)"), tcol=(0xe9, 0xcb, 0x89))
+travel("mars", "PIA23898", 80, 60, "MARS", "MOUNT SHARP", (0x77, 0x37, 0x17), 11, crop=(0.3, 0.22, 0.78, 0.84), credit=JPL("PIA23898", "A Dramatic View of Mars' Mount Sharp", "NASA/JPL-Caltech/MSSS"))
+travel("saturn", "PIA11667", 60, 80, "SATURN", "EQUINOX", (0x2f, 0x1a, 0x13), 13, focus=(0.55, 0.5), credit=JPL("PIA11667", "The Rite of Spring", "NASA/JPL/Space Science Institute"))
+travel("nebula", "PIA19836", 60, 80, "NGC2174", "MONKEY HEAD", (0x36, 0x21, 0x45), 15, credit=JPL("PIA19836", "Seeing Beyond the Monkey Head"))
+travel("chart", "PIA04921", 60, 80, "M31", "ANDROMEDA", (0x15, 0x26, 0x4f), 17, credit=JPL("PIA04921", "Andromeda Galaxy", "NASA/JPL/California Institute of Technology"))
+travel("menu", "s09-05-0153", 60, 80, "MENU", "TRAY 3 TODAY", (0x77, 0x37, 0x17), 19, focus=(0.55, 0.5), credit=NASA("s09-05-0153", "Space Shuttle food tray"))
+travel("planet", "planet", 60, 80, "NEW HOME", "KEPLER-442 B", (0x17, 0x3a, 0x25), 21, credit=RW)
+recruit("unaa", "ship", 60, 80, "UNAA", "COLONY CORPS", 23, credit=RW)
+recruit("safety", "pod2", 60, 80, "POD-7", "SEAL CHECK", 25, credit=RW, col=(0x99, 0x70, 0x2a))
+plate("pinup", "wm_wave", 80, 60, "", 27, credit=wm("img/raw/wm_wave.jpg"), fade=0.12)
+plate("firstaid", "wm_heart", 56, 75, "", 29, credit=wm("img/raw/wm_heart.png"), fade=0.1)
+plate("bio", "creature", 60, 80, "", 31, credit=RW, fade=0.08) if src("creature") else travel("bio", "PIA23126", 60, 80, "NURSERY", "CEPHEUS B", (0x17, 0x3a, 0x25), 31, focus=(0.75, 0.5), credit=JPL("PIA23126", "Cepheus C and Cepheus B Region by Spitzer"))
+plate("kid", "planet", 42, 54, "", 37, credit=RW, fade=0.06)
+calendar("calendar", "iss072e397138", 56, 80, 33, credit=NASA("iss072e397138", "The Himalayas separate China from a cloudy India"))
+eyechart("eye", 48, 80, 35)
 # framed photos (behind glass)
-photo("ph_earth", "PIA18033", 72, 56, 41, focus=(0.5, 0.5), credit=JPL("PIA18033", "Earth", "NASA"))
-photo("ph_himal", "iss072e397138", 72, 56, 43, credit=NASA("iss072e397138", "The Himalayas separate China from a cloudy India"))
-photo("ph_aurora", "iss072e159172", 56, 72, 45, credit=NASA("iss072e159172", "The aurora borealis blankets the Earth"))
-photo("ph_mars", "PIA23898", 72, 56, 47, crop=(0.3, 0.3, 0.7, 0.95), credit=JPL("PIA23898", "A Dramatic View of Mars' Mount Sharp", "NASA/JPL-Caltech/MSSS"))
-photo("ph_wave", "wm_wave", 72, 56, 49, credit=wm("img/raw/wm_wave.jpg"))
-photo("ph_crew", "pod2", 72, 56, 51, credit=RW)
-photo("ph_crew2", "planet", 56, 72, 53, credit=RW)
-photo("ph_ship", "ship", 72, 56, 55, credit=RW)
+photo("ph_earth", "PIA18033", 36, 28, 41, focus=(0.5, 0.5), credit=JPL("PIA18033", "Earth", "NASA"))
+photo("ph_himal", "iss072e397138", 36, 28, 43, credit=NASA("iss072e397138", "The Himalayas separate China from a cloudy India"))
+photo("ph_aurora", "iss072e159172", 28, 36, 45, credit=NASA("iss072e159172", "The aurora borealis blankets the Earth"))
+photo("ph_mars", "PIA23898", 36, 28, 47, crop=(0.3, 0.3, 0.7, 0.95), credit=JPL("PIA23898", "A Dramatic View of Mars' Mount Sharp", "NASA/JPL-Caltech/MSSS"))
+photo("ph_wave", "wm_wave", 36, 28, 49, credit=wm("img/raw/wm_wave.jpg"))
+photo("ph_crew", "pod2", 36, 28, 51, credit=RW)
+photo("ph_crew2", "planet", 28, 36, 53, credit=RW)
+photo("ph_ship", "ship", 36, 28, 55, credit=RW)
 json.dump(CREDITS, open(os.path.join(os.path.dirname(OUT.rstrip("/")), "pics_credits.json") if False else os.path.join(RAW, "..", "pics_credits.json"), "w"), indent=1)

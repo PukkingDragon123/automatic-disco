@@ -1,7 +1,7 @@
-// THE PROGRAM (K): Unit 07's mastery, research, Upgrader and mission, each as ONE live 3D vignette with hand-drawn
-// paper pinned over it (lowpix stroke frames, ink text, callouts with leader lines to the thing itself):
+// THE PROGRAM (K): Unit 07's mastery, research, Upgrader and mission as machined objects, never hand-drawn: clean
+// pixel-art plates (bevelled steel, enamel, brass tags, push keys) over live 3D vignettes or 2D rigs:
 //   MASTERY   the path as a living diorama that grows as it is mastered (src/ui/skillMastery.ts)
-//   RESEARCH  the latest specimen under the scanner dome, the tech index cards (src/research/ui/researchTab.ts)
+//   RESEARCH  the analysis rig: scanner cradle, data vials, the rotary card drum (src/research/ui/researchTab.ts)
 //   UPGRADER  the Upgrader beside the pod, the part on the hoist (src/research/ui/upgraderTab.ts)
 //   MISSION   the Meridian in orbit, the directives on a telegram (src/research/ui/missionTab.ts)
 // The game is suspended while it is open; the engine renders the vignette.

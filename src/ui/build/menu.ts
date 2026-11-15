@@ -231,7 +231,7 @@ export class BuildMenu {
     const scene = studioScene({ ground: null, shadow: true }), cam = new THREE.PerspectiveCamera(24, 2, 0.1, 100);
     const d = FDEFS[k];
     // a dark disc of blueprint under the plinth to catch the shadow
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(Math.max(d.w, d.d) * 0.62 + 1.1, 24), gbuf(new THREE.MeshLambertMaterial({ color: 0x1f3d60 })));
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(Math.max(d.w, d.d) * 0.5 + 0.7, 24), gbuf(new THREE.MeshLambertMaterial({ color: 0x1f3d60 })));
     disc.rotation.x = -Math.PI / 2; disc.position.y = -0.19; disc.receiveShadow = true; scene.add(disc);
     const plinth = new THREE.Mesh(new THREE.BoxGeometry(d.w + 0.8, 0.18, d.d + 0.8), gbuf(new THREE.MeshLambertMaterial({ color: 0x6f7a84 })));
     plinth.position.y = -0.09; plinth.receiveShadow = true; scene.add(plinth);

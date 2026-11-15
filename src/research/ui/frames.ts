@@ -1,6 +1,7 @@
-// The hand-drawn frames (src/research/art/frames/*.png, painted with lowpix's stroke brush by build_frames.py) as CSS
-// variables for border-image: paper cards with tape, pinned notes, ink outlines, red stamps, keys and tabs, and the
-// textured materials: a chipped enamel plate, brushed riveted steel, a foxed fibre card, stitched canvas, cork, a pin.
+// The machined frames (src/research/art/frames/*.png, clean pixel art painted at half resolution by build_frames.py)
+// as CSS variables for border-image: steel-bezelled plates with enamel faces, red-rimmed badges, push keys, tabs,
+// brass tags, a navy enamel sign, brushed riveted steel, pale plates, gunmetal decision plates, the rig's back panel
+// (`cork`, kept by name) and a screw head (`pin`).
 import card from '../art/frames/card.png';
 import note from '../art/frames/note.png';
 import frame from '../art/frames/frame.png';

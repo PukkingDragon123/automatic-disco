@@ -224,7 +224,7 @@ export class GalaxyScreen implements Screen {
     const best = order[0];
     order.forEach((i, k) => {
       const w = this.worlds[i];
-      const e = pdiv('w', this.list, `<div class="r1"><span class="n">${w.planet.name.toUpperCase()}</span><span class="pips">${pips(w.diff)}</span></div><div class="b">${DIFF[w.diff]} · ${w.tag}</div>${i === best ? '<span class="rec">RECOMMENDED</span>' : ''}`, i === best ? 'brass' : 'glass', 11 + i);
+      const e = pdiv('w', this.list, `<div class="r1"><span class="n">${w.planet.name.toUpperCase()}</span><span class="pips">${pips(w.diff)}</span></div><div class="b">${DIFF[w.diff]} · ${w.tag}</div>${i === best ? '<span class="rec">RECOMMENDED</span>' : ''}`, i === best ? 'brass' : 'steelPlate', 11 + i);
       e.style.animationDelay = `${k * 90}ms`;
       e.addEventListener('pointerenter', () => { this.hov = i; csfx('hover', 0.3); });
       e.addEventListener('pointerleave', () => { if (this.hov === i) this.hov = -1; });

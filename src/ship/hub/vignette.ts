@@ -8,7 +8,7 @@ import type { RoomId } from './layout';
 import { shipState, saveShip, setPower, type ShipState } from './shipState';
 import { settings, setSettings, type Quality } from '../../settings';
 
-export interface Callout { at: [number, number, number]; icon?: string; title?: string; text: () => string; side?: 'l' | 'r' | 'u' | 'd' }
+export interface Callout { at: [number, number, number]; icon?: string; title?: string; text: () => string; side?: 'l' | 'r' | 'u' | 'd'; /** a dial whose needle shows 0..1 */ gauge?: () => number }
 export interface Stamp { label: string; key?: string; icon?: string; run: () => void; disabled?: () => string | false; hot?: boolean }
 export interface Vignette { cam: { pos: THREE.Vector3; look: THREE.Vector3; fov: number }; callouts: Callout[]; stamps: (ctx: VCtx) => Stamp[] }
 export interface VCtx { actions: Partial<Record<string, () => void>>; redraw: () => void; game: any }
@@ -33,12 +33,12 @@ export const ROOM_CALLOUTS: Record<RoomId, Callout[]> = {
   bridge: [{ at: [0, 3.0, 18.3], icon: 'i_bridge', title: 'MONITOR', text: () => '5 WORLDS', side: 'u' }, { at: [0, 1.5, 15.5], title: 'HOLO TABLE', text: () => 'SCAN', side: 'l' }],
   lab: [{ at: [4.05, 2.4, 11.45], icon: 'i_lab', title: 'TANKS', text: () => '3 / 3 LIVE', side: 'u' }, { at: [6.5, 1.1, 9.3], title: 'SEQUENCER', text: () => 'IDLE', side: 'r' }],
   medbay: [{ at: [-2.4, 1.0, 7.9], icon: 'i_medbay', title: 'BED A', text: () => 'FREE', side: 'd' }, { at: [-5.3, 1.6, 8.6], title: 'SCANNER', text: () => 'OK', side: 'l' }],
-  core: [{ at: [-4.6, 2.0, 4.5], icon: 'i_core', title: 'UNIT 07', text: () => 'ONLINE', side: 'u' }, { at: [-1.8, 1.6, 3.1], title: 'MEMORY', text: () => '96.1%', side: 'r' }],
-  quarters: [{ at: [-1.8, 2.2, -3.8], icon: 'i_quarters', title: 'BUNKS', text: () => '8 BERTHS', side: 'u' }, { at: [-4.1, 0.9, -2.6], title: 'MORALE', text: () => pct(crewMood()), side: 'd' }],
-  workshop: [{ at: [-4.4, 2.4, -10.4], icon: 'i_workshop', title: 'POD', text: () => (shipState().pod >= 1 ? 'READY' : `${pct(shipState().pod)} BUILT`), side: 'u' }, { at: [-1.8, 1.2, -12.6], title: 'BENCH', text: () => '42 / 42', side: 'r' }],
-  mess: [{ at: [6.6, 1.4, 2.0], icon: 'i_mess', title: 'GALLEY', text: () => `${Math.round(shipState().supplies.rations)} DAYS FOOD`, side: 'u' }, { at: [3.8, 1.0, 3.0], title: 'TABLE', text: () => 'SEATS 6', side: 'd' }],
-  cargo: [{ at: [6.5, 2.6, -3.0], icon: 'i_cargo', title: 'RACKS', text: () => '61% FULL', side: 'u' }, { at: [5.2, 1.3, -0.5], title: 'SPECIMENS', text: () => '2 SEALED', side: 'r' }],
-  engineering: [{ at: [4.1, 3.8, -10.4], icon: 'i_engineering', title: 'REACTOR', text: () => `${Math.round(600 + Math.sin(performance.now() / 1100) * 30)} MW`, side: 'u' }, { at: [6.6, 1.4, -12.1], title: 'COOLANT', text: () => 'NOMINAL', side: 'r' }],
+  core: [{ at: [-4.6, 2.0, 4.5], icon: 'i_core', title: 'UNIT 07', text: () => 'ONLINE', side: 'u' }, { at: [-1.8, 1.6, 3.1], title: 'MEMORY', text: () => '96%', side: 'r', gauge: () => 0.96 }],
+  quarters: [{ at: [-1.8, 2.2, -3.8], icon: 'i_quarters', title: 'BUNKS', text: () => '8 BERTHS', side: 'u' }, { at: [-4.1, 0.9, -2.6], title: 'MORALE', text: () => pct(crewMood()), side: 'd', gauge: () => crewMood() }],
+  workshop: [{ at: [-4.4, 2.4, -10.4], icon: 'i_workshop', title: 'POD', text: () => (shipState().pod >= 1 ? 'READY' : `${pct(shipState().pod)} BUILT`), side: 'u', gauge: () => shipState().pod }, { at: [-1.8, 1.2, -12.6], title: 'BENCH', text: () => '42 / 42', side: 'r' }],
+  mess: [{ at: [6.6, 1.4, 2.0], icon: 'i_mess', title: 'GALLEY', text: () => `${Math.round(shipState().supplies.rations)} DAYS`, side: 'u', gauge: () => Math.min(1, shipState().supplies.rations / 300) }, { at: [3.8, 1.0, 3.0], title: 'TABLE', text: () => 'SEATS 6', side: 'd' }],
+  cargo: [{ at: [6.5, 2.6, -3.0], icon: 'i_cargo', title: 'RACKS', text: () => '61%', side: 'u', gauge: () => 0.61 }, { at: [5.2, 1.3, -0.5], title: 'SPECIMENS', text: () => '2 SEALED', side: 'r' }],
+  engineering: [{ at: [4.1, 3.8, -10.4], icon: 'i_engineering', title: 'REACTOR', text: () => `${Math.round(600 + Math.sin(performance.now() / 1100) * 30)} MW`, side: 'u', gauge: () => 0.3 + (Math.sin(performance.now() / 1100) * 30 + 30) / 60 * 0.6 }, { at: [6.6, 1.4, -12.1], title: 'COOLANT', text: () => 'NOMINAL', side: 'r' }],
 };
 
 // ------------------------------------------------------------------ the vignettes (each room's function)
@@ -75,7 +75,7 @@ export const VIGNETTES: Record<RoomId, Vignette> = {
       { at: [-1.8, 1.0, -2.65], title: 'BUNKS 3-4', text: () => crewNames().slice(2, 4).map((n) => n.name).join(' · '), side: 'u' },
       { at: [-5.9, 1.0, 1.47], title: 'BUNKS 5-6', text: () => crewNames().slice(4, 6).map((n) => n.name).join(' · '), side: 'u' },
       { at: [-3.7, 1.0, 1.47], title: 'BUNKS 7-8', text: () => crewNames().slice(6, 8).map((n) => n.name).join(' · '), side: 'r' },
-      { at: [-4.1, 0.8, -2.6], icon: 'i_quarters', title: 'MORALE', text: () => `${pips(crewMood())} ${pct(crewMood())}`, side: 'd' },
+      { at: [-4.1, 0.8, -2.6], title: 'MORALE', text: () => pct(crewMood()), side: 'd', gauge: () => crewMood() },
     ],
     stamps: (c) => [{ label: 'MOVIE NIGHT', key: 'M', run: () => { moodShift(0.06); c.redraw(); } }, { label: 'REST CYCLE', key: 'R', run: () => { moodShift(0.03); c.redraw(); } }],
   },
@@ -85,17 +85,17 @@ export const VIGNETTES: Record<RoomId, Vignette> = {
       { at: [-4.4, 0.25, -10.4], title: 'SHIELD', text: () => (shipState().pod > 0.55 ? 'FITTED' : 'QUEUED'), side: 'd' },
       { at: [-4.4, 1.5, -9.5], title: 'VISOR', text: () => (shipState().pod > 0.55 ? 'GLAZED' : 'QUEUED'), side: 'r' },
       { at: [-5.3, 0.9, -11.2], title: 'LEGS', text: () => (shipState().pod > 0.72 ? 'FOLDED' : 'QUEUED'), side: 'l' },
-      { at: [-4.4, 2.3, -10.4], icon: 'i_workshop', title: 'POD', text: () => (shipState().pod >= 1 ? 'READY TO FLY' : `${pct(shipState().pod)} ASSEMBLED`), side: 'u' },
+      { at: [-4.4, 2.3, -10.4], title: 'POD', text: () => (shipState().pod >= 1 ? 'READY' : pct(shipState().pod)), side: 'u', gauge: () => shipState().pod },
     ],
     stamps: (c) => [{ label: shipState().pod >= 1 ? 'POD READY' : 'ASSEMBLE POD', key: 'A', icon: 'i_workshop', hot: shipState().pod < 1, disabled: () => (shipState().pod >= 1 ? 'DONE' : false), run: () => c.actions.assemble?.() }, { label: 'UPGRADES', key: 'U', run: () => c.actions.upgrades?.() }],
   },
   mess: {
     cam: { pos: V(3.4, 2.3, 0.4), look: V(6.5, 1.1, 2.8), fov: 44 },
     callouts: [
-      { at: [6.6, 1.5, 1.4], title: 'RATIONS', text: () => `${Math.round(shipState().supplies.rations)} DAYS`, side: 'l' },
+      { at: [6.6, 1.5, 1.4], title: 'RATIONS', text: () => `${Math.round(shipState().supplies.rations)} DAYS`, side: 'l', gauge: () => Math.min(1, shipState().supplies.rations / 300) },
       { at: [6.65, 1.3, 4.2], title: 'COFFEE', text: () => `${shipState().supplies.coffee.toFixed(1)} KG`, side: 'r' },
       { at: [6.55, 1.4, 5.45], title: 'FRESH', text: () => `${shipState().supplies.fresh.toFixed(1)} KG`, side: 'u' },
-      { at: [3.8, 0.9, 3.0], icon: 'i_mess', title: 'MORALE', text: () => `${pips(crewMood())}`, side: 'd' },
+      { at: [3.8, 0.9, 3.0], title: 'MORALE', text: () => pct(crewMood()), side: 'd', gauge: () => crewMood() },
     ],
     stamps: (c) => {
       const s = shipState().supplies;
@@ -112,12 +112,12 @@ export const VIGNETTES: Record<RoomId, Vignette> = {
   },
   engineering: {
     cam: { pos: V(1.6, 3.0, -6.8), look: V(4.1, 1.9, -10.4), fov: 42 },
-    callouts: [{ at: [4.1, 3.8, -10.4], icon: 'i_engineering', title: 'CORE', text: () => `${Math.round(600 + Math.sin(performance.now() / 1100) * 30)} MW`, side: 'u' }, { at: [6.6, 1.4, -12.1], title: 'COOLANT', text: () => 'NOMINAL', side: 'r' }],
+    callouts: [{ at: [4.1, 3.8, -10.4], title: 'CORE', text: () => `${Math.round(600 + Math.sin(performance.now() / 1100) * 30)} MW`, side: 'u', gauge: () => 0.3 + (Math.sin(performance.now() / 1100) * 30 + 30) / 60 * 0.6 }, { at: [6.6, 1.4, -12.1], title: 'COOLANT', text: () => '412 K', side: 'r', gauge: () => 0.45 }],
     stamps: (c) => {
       const p = shipState().power;
       const out: Stamp[] = [];
       for (const [k, icon, name] of PW) {
-        out.push({ label: `${name} ${pips(p[k] / 0.6, 6)}`, icon, run: () => { setPower(k, p[k] + 0.05); c.redraw(); } });
+        out.push({ label: `${name} ${Math.round(p[k] * 100)}%`, icon, run: () => { setPower(k, p[k] + 0.05); c.redraw(); } });
       }
       out.push({ label: 'BALANCE', key: 'B', run: () => { Object.assign(p, { life: 0.3, lab: 0.2, workshop: 0.15, sensors: 0.15, engines: 0.2 }); saveShip(); c.redraw(); } });
       return out;

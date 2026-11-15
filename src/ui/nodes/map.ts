@@ -135,8 +135,8 @@ export class NodeMap {
   /** the steel panelling moves with the board */
   private board() {
     const gb = this.glass.getBoundingClientRect(), ox = Math.round(gb.left + (this.W / 2 - this.cam.x * this.cam.s) * VSC), oy = Math.round(gb.top + (this.H / 2 - this.cam.z * this.cam.s) * VSC);
-    const k = `${ox & 127},${oy & 127}`;
-    if (k !== this.bgKey) { this.bgKey = k; this.root.style.backgroundPosition = `${ox & 127}px ${oy & 127}px`; }
+    const bx = ((ox % 256) + 256) % 256, by = ((oy % 192) + 192) % 192, k = `${bx},${by}`;
+    if (k !== this.bgKey) { this.bgKey = k; this.root.style.backgroundPosition = `${bx}px ${by}px`; }
   }
   setTool(t: Tool) {
     if (isLogic(t as never)) { const id = 'logic.' + t; if (!this.L.unlocked(id)) { sfx('deny'); toast(`<b>${LOGIC_NAME[t as LogicKind]}</b>: ${this.L.lockWhy(id).toLowerCase()}`, 'warn', 2000); return; } }
@@ -184,7 +184,7 @@ export class NodeMap {
     this.autoKey = key;
     this.auto.clear();
     // spacing in art px at the reference zoom (6 px per m): room for a card and a tag between columns
-    const S0 = 6, CX = 190 / S0, CZ = 92 / S0, SX = 128 / S0, wired = new Set<string>();
+    const S0 = 6, CX = 200 / S0, CZ = 86 / S0, SX = 122 / S0, wired = new Set<string>();
     for (const r of L.routes) { wired.add(r.from); wired.add(r.to); }
     const depth = new Map<string, number>();
     for (const id of wired) if (!L.routes.some((r) => r.to === id)) depth.set(id, 0);
@@ -360,7 +360,7 @@ export class NodeMap {
       const name = isLogic(n.kind) ? LOGIC_NAME[n.kind as LogicKind] : n.name;
       // zoomed out, a module keeps its window and its name plate; zoomed in, also its read-out strip
       const small = this.compact(), sel = this.sel?.k === 'node' && this.sel.id === n.id;
-      const tw = small && !sel ? 76 : Math.min(104, Math.max(72, this.tw(g, name) + 14, this.tw(g, this.subline(n)[0]) + 14)), th = small && !sel ? 50 : 64;
+      const tw = small && !sel ? 76 : Math.min(94, Math.max(72, this.tw(g, name) + 14, this.tw(g, this.subline(n)[0]) + 14)), th = small && !sel ? 50 : 64;
       list.push({ n, x, y, tx: 0, ty: 0, tw, th, px: 0, py: 0, r: 0 });
     }
     for (let it = 0; it < 40; it++) {
@@ -421,13 +421,15 @@ export class NodeMap {
     const g = this.ctx, W = this.W, H = this.H, L = this.L;
     g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = false;
     g.clearRect(0, 0, W, H);
-    // signal lines (sensor probes, signal conditions): thin blue leads
+    // signal leads (sensor probes, signal conditions): thin blue wires
     for (const n of L.nodes) {
       const c = this.cards.get(n.id); if (!c) continue;
       const links: string[] = [];
       if (n.kind === 'sensor' && n.cfg.probe) links.push(n.cfg.probe);
       for (const cd of [...(n.cfg.conds ?? []), ...L.routes.filter((r) => r.from === n.id || r.to === n.id).flatMap((r) => r.conds)]) if (cd.k === 'signal' && cd.node) links.push(cd.node);
-      for (const id of links) { const o = this.cards.get(id); if (o) this.cable(g, [[o.x, o.ty + o.th], [o.x, o.ty + o.th + 20], [c.x, c.ty + c.th + 20], [c.x, c.ty + c.th]], n.sig || L.node(id)?.sig ? '#f0b040' : '#4a8ad0', 1, false, 0); }
+      const selId = this.sel?.k === 'node' ? this.sel.id : null, selR = this.sel?.k === 'route' ? L.routes.find((r) => r.id === (this.sel as { id: number }).id) : null;
+      // a signal lead shows while either end is picked or hovered (it would cross the whole bay otherwise)
+      for (const id of links) { const o = this.cards.get(id), on = selId === n.id || selId === id || this.hover.node === n.id || this.hover.node === id || !!selR?.conds.some((cd) => cd.node === id); if (o && on) this.cable(g, [[o.x, o.ty + o.th], [o.x, o.ty + o.th + 20], [c.x, c.ty + c.th + 20], [c.x, c.ty + c.th]], n.sig || L.node(id)?.sig ? '#f0b040' : '#4a8ad0', 1, false, 0); }
     }
     for (const c of this.cards.values()) this.module(g, c);
     for (const r of L.routes) this.wire(g, r);

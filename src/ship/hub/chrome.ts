@@ -1,17 +1,16 @@
-// The hub's UI, painted 2D pixel art over the living 3D ship (plates.ts): every room names itself in its own
-// material (brass on the bridge, a laminated card in the medbay, a taped note in the mess, frosted glass in the lab,
-// an embroidered patch in the quarters, a crate board in the hold, a hazard plate in engineering, enamel door plates
-// for the core and the workshop). Hover a room in the cutaway: its plate floats at it on an inked leader line.
-// Inside, its things carry small plates in the same material; using the key prop moves the camera into a vignette
-// told the same way, with keys painted in the room's material to act. A stitched leather strap of room icons sits at
-// the foot. Words are kept to names and numbers.
+// The hub's UI as hardware over the living 3D ship (plates.ts): every room names itself on a plate of its own (engraved
+// brass on the bridge, engraved steel in the hold, a hazard plate in engineering, enamel door plates elsewhere). Hover
+// a room in the cutaway: its plate stands off it on a straight machined pointer rod, bolted at the room. Inside, its
+// things carry small plates on rods; gauges are real dials whose needles swing, numbers turn on drum counters, and
+// actions are toggle switches that throw when used. The room selector is a rail of machined push-buttons at the
+// foot. No hand-drawn marks anywhere. Words are kept to names and numbers.
 import * as THREE from 'three';
 import type { ShipHub } from './hub';
 import { ROOMS, ROOM_IDS, SHIP_NAME, SHIP_REG, type RoomId } from './layout';
 import { ROOM_CALLOUTS, VIGNETTES, settingsStamps, type Callout, type Stamp, type VCtx } from './vignette';
 import { csfx } from '../../ui/cineAudio';
 import { ui } from '../../ui/kit';
-import { plate, strapURL, ROOM_PLATE, K, type PlateKind } from './plates';
+import { plate, railURL, buttonURL, toggleURL, lampURL, dialURL, ROOM_PLATE, K, type PlateKind } from './plates';
 
 export interface RoomAction { id: string; label: string; key?: string; run: () => void; disabled?: () => string | false; primary?: boolean; hint?: string }
 
@@ -32,6 +31,13 @@ const CSS = /* css */`
 .hd2 .pp i { display: inline-block; width: 6px; height: 14px; border: 2px solid currentColor; background: transparent; }
 .hd2 .pp i.on { background: #b13c2b; }
 .hd2 .stamp { position: relative; display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; white-space: nowrap; transition: transform 70ms; }
+.hd2 .stamp .tg { width: 20px; height: 32px; margin: -6px 2px -6px -8px; background: var(--tgUp) no-repeat 0 0 / 20px 32px; image-rendering: pixelated; flex: none; }
+.hd2 .stamp.thrown .tg { background-image: var(--tgDn); }
+.hd2 .stamp .lmp { position: absolute; left: 10px; top: -4px; width: 12px; height: 12px; background: var(--lampOff) no-repeat 0 0 / 12px 12px; image-rendering: pixelated; }
+.hd2 .stamp.hot .lmp { background-image: var(--lampOn); }
+.hd2 .dial { position: relative; display: inline-block; width: 56px; height: 40px; margin: -4px 4px -4px 0; background: var(--dial) no-repeat 0 0 / 56px 40px; image-rendering: pixelated; flex: none; }
+.hd2 .dial i { position: absolute; left: 26px; top: 10px; width: 4px; height: 24px; background: linear-gradient(#b13c2b 0 70%, #13161c 70%); transform-origin: 2px 22px; }
+.hd2 .dg { display: inline-block; min-width: 14px; padding: 0 1px; margin: 0 1px; text-align: center; background: #13161c; color: #e5dbc3; text-shadow: none; box-shadow: inset 0 2px 0 #2a323e, inset 0 -2px 0 #000; }
 .hd2 .stamp span:not(.k) { font-family: 'Body'; font-size: 22px; line-height: 22px; letter-spacing: 2px; }
 .hd2 .stamp:hover, .hd2 .stamp.hot:hover { filter: brightness(1.16) drop-shadow(0 6px 0 rgba(10,8,6,0.5)); transform: translateY(-2px); }
 .hd2 .stamp.hot { filter: brightness(1.06) drop-shadow(0 4px 0 rgba(10,8,6,0.5)); }
@@ -43,15 +49,17 @@ const CSS = /* css */`
 .hd2 .ship { position: absolute; left: 24px; top: 20px; }
 .hd2 .ship .t { font-family: 'Title'; font-size: 24px; line-height: 24px; letter-spacing: 0; }
 .hd2 .ship .s { font-size: 11px; line-height: 11px; }
-.hd2 .tabs { position: absolute; left: 24px; bottom: 20px; display: flex; gap: 4px; align-items: center; padding: 6px 18px; background-repeat: no-repeat; image-rendering: pixelated; filter: drop-shadow(0 4px 0 rgba(10,8,6,0.5)); }
-.hd2 .tabs .tb { position: relative; width: 40px; height: 52px; cursor: pointer; transition: transform 120ms; }
-.hd2 .tabs .tb img { width: 40px; height: 40px; display: block; image-rendering: pixelated; filter: drop-shadow(0 2px 0 rgba(0,0,0,0.55)); }
-.hd2 .tabs .tb .n { position: absolute; left: 0; right: 0; bottom: 0; text-align: center; font-family: 'Body'; font-size: 11px; line-height: 11px; color: #e0cfa6; text-shadow: 0 1px 0 #000; }
-.hd2 .tabs .tb:hover, .hd2 .tabs .tb.h { transform: translateY(-4px); }
-.hd2 .tabs .tb.on { transform: translateY(-8px); }
-.hd2 .tabs .tb.on::after { content: ''; position: absolute; left: 14px; right: 14px; top: -8px; height: 4px; background: #cea457; box-shadow: 0 2px 0 #000; }
+.hd2 .tabs { position: absolute; left: 24px; bottom: 20px; display: flex; gap: 4px; align-items: center; padding: 10px 20px 8px; background-repeat: no-repeat; image-rendering: pixelated; filter: drop-shadow(0 4px 0 rgba(10,8,6,0.5)); }
+.hd2 .tabs .tb { position: relative; width: 48px; height: 66px; cursor: pointer; }
+.hd2 .tabs .tb .b { position: absolute; left: 0; top: 0; width: 48px; height: 52px; background: var(--btnUp) no-repeat 0 0 / 48px 52px; image-rendering: pixelated; }
+.hd2 .tabs .tb:hover .b, .hd2 .tabs .tb.h .b { background-image: var(--btnHi); }
+.hd2 .tabs .tb.on .b { background-image: var(--btnDn); }
+.hd2 .tabs .tb img { position: absolute; left: 8px; top: 8px; width: 32px; height: 32px; image-rendering: pixelated; }
+.hd2 .tabs .tb.on img { top: 12px; filter: brightness(0.85); }
+.hd2 .tabs .tb .n { position: absolute; left: 0; right: 0; bottom: 0; text-align: center; font-family: 'Body'; font-size: 11px; line-height: 11px; color: #b1b2aa; text-shadow: 0 1px 0 #000; }
+.hd2 .tabs .tb.on .n { color: #e9cb89; }
 .hd2 .title { position: absolute; left: 64px; bottom: 72px; transition: opacity 600ms; }
-.hd2 .title.off { opacity: 0; pointer-events: none !important; }
+.hd2 .title.off { opacity: 0; visibility: hidden; transition: none; pointer-events: none !important; }
 .hd2 .title .pre { font-family: 'Body'; font-size: 22px; color: #d6cab0; text-shadow: 2px 2px 0 #000; letter-spacing: 4px; }
 .hd2 .title .big { font-family: 'TitleXL'; font-size: 64px; color: #e5dbc3; line-height: 64px; margin: 8px 0 4px; text-shadow: 4px 4px 0 #13161c; }
 .hd2 .title .sub { font-family: 'Body'; font-size: 22px; color: #c1b59b; text-shadow: 2px 2px 0 #000; margin-bottom: 24px; }
@@ -68,13 +76,19 @@ let styled = false;
 function style() {
   if (styled) return; styled = true;
   const s = document.createElement('style'); s.textContent = CSS; document.head.appendChild(s);
+  const r = document.documentElement.style;
+  r.setProperty('--btnUp', `url(${buttonURL('up')})`); r.setProperty('--btnHi', `url(${buttonURL('hi')})`); r.setProperty('--btnDn', `url(${buttonURL('down')})`);
+  r.setProperty('--tgUp', `url(${toggleURL(false)})`); r.setProperty('--tgDn', `url(${toggleURL(true)})`);
+  r.setProperty('--lampOn', `url(${lampURL(true)})`); r.setProperty('--lampOff', `url(${lampURL(false)})`); r.setProperty('--dial', `url(${dialURL()})`);
 }
 const div = (cls: string, parent: HTMLElement, html = '') => { const e = document.createElement('div'); e.className = cls; e.innerHTML = html; parent.appendChild(e); return e; };
 const NS = 'http://www.w3.org/2000/svg';
+/** numbers on drum counters: each digit in its own dark window */
+const drum = (s: string) => s.replace(/<[^>]*>|\d/g, (m) => (m.length === 1 ? `<b class="dg">${m}</b>` : m));
 const hsh = (a: number, b: number) => { const v = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return v - Math.floor(v); };
 
 /** a callout on screen: a tag, and the inked line from it to a 3D point */
-interface Pin { off: () => void; el: HTMLElement; at: THREE.Vector3; side: 'l' | 'r' | 'u' | 'd'; text?: () => string; tx?: HTMLElement; line: SVGPathElement; under: SVGPathElement; dot: SVGRectElement; seed: number }
+interface Pin { off: () => void; el: HTMLElement; at: THREE.Vector3; side: 'l' | 'r' | 'u' | 'd'; text?: () => string; tx?: HTMLElement; line: SVGPathElement; under: SVGPathElement; dot: SVGCircleElement; seed: number; gauge?: () => number; ndl?: HTMLElement; g: number }
 
 export class HubChrome {
   readonly root: HTMLDivElement;
@@ -97,10 +111,10 @@ export class HubChrome {
     this.shipEl = div('ship tag', this.root, `<span class="col"><span class="t">${SHIP_NAME}</span><span class="s">${SHIP_REG}</span></span>`);
     plate(this.shipEl, 'steel', 7);
     this.tabsEl = div('tabs pe', this.root);
-    new ResizeObserver(() => { const w = Math.floor(this.tabsEl.offsetWidth / K), h = Math.floor(this.tabsEl.offsetHeight / K); if (w > 8) { this.tabsEl.style.backgroundImage = `url(${strapURL(w, h)})`; this.tabsEl.style.backgroundSize = `${w * K}px ${h * K}px`; } }).observe(this.tabsEl);
+    new ResizeObserver(() => { const w = Math.floor(this.tabsEl.offsetWidth / K), h = Math.floor(this.tabsEl.offsetHeight / K); if (w > 8) { this.tabsEl.style.backgroundImage = `url(${railURL(w, h)})`; this.tabsEl.style.backgroundSize = `${w * K}px ${h * K}px`; } }).observe(this.tabsEl);
     for (const id of ROOM_IDS.slice().sort((a, b) => Number(ROOMS[a].code) - Number(ROOMS[b].code))) {
-      const t = div('tb', this.tabsEl, `<img src="${art(ICON[id])}" alt=""><span class="n">${Number(ROOMS[id].code)}</span>`);
-      t.addEventListener('click', (e) => { e.stopPropagation(); csfx('page', 0.5); this.hub.open(id); });
+      const t = div('tb', this.tabsEl, `<span class="b"></span><img src="${art(ICON[id])}" alt=""><span class="n">${Number(ROOMS[id].code)}</span>`);
+      t.addEventListener('click', (e) => { e.stopPropagation(); csfx('clamp', 0.45); csfx('relay', 0.3); this.hub.open(id); });
       t.addEventListener('pointerenter', () => { csfx('hover', 0.3); this.hover(id, 0, 0, true); });
       t.addEventListener('pointerleave', () => this.hover(null, 0, 0, true));
       this.tabs[id] = t;
@@ -130,15 +144,15 @@ export class HubChrome {
   }
   titleDefault() { this.titleKeys[0]?.run(); }
 
-  /** an inked stamp (a key): a little rotated, as if pressed by hand */
+  /** a key: a plate with a toggle switch that throws when used (and springs back), a lamp lit on the primary */
   /** the material the current place speaks in (the room's own, or cream enamel outside) */
   private kind(): PlateKind { const id = this.vig?.id ?? this.room; return id ? ROOM_PLATE[id] : 'enamelBone'; }
   private stamp(parent: HTMLElement, s: Stamp, i = 0, kind: PlateKind = this.kind()) {
-    const e = div('stamp pe' + (s.hot ? ' hot' : ''), parent, `${s.icon ? `<img src="${art(s.icon)}" alt="">` : ''}<span>${s.label}</span>${s.key ? `<span class="k">${s.key}</span>` : ''}`);
+    const e = div('stamp pe' + (s.hot ? ' hot' : ''), parent, `<i class="tg"></i><i class="lmp"></i>${s.icon ? `<img src="${art(s.icon)}" alt="">` : ''}<span>${s.label}</span>${s.key ? `<span class="k">${s.key}</span>` : ''}`);
     plate(e, kind, 31 + i * 7 + s.label.length);
     const why = s.disabled?.();
     if (why) { e.classList.add('dis'); e.title = why; }
-    e.addEventListener('click', (ev) => { ev.stopPropagation(); if (s.disabled?.()) { csfx('tick', 0.4); return; } csfx('button', 0.6); s.run(); });
+    e.addEventListener('click', (ev) => { ev.stopPropagation(); if (s.disabled?.()) { csfx('tick', 0.4); return; } csfx('clamp', 0.5); e.classList.add('thrown'); setTimeout(() => e.classList.remove('thrown'), 380); s.run(); });
     e.addEventListener('pointerenter', () => csfx('hover', 0.3));
     return e;
   }
@@ -147,18 +161,21 @@ export class HubChrome {
   private pin(at: THREE.Vector3 | [number, number, number], html: string, side: Pin['side'] = 'u', text?: () => string, kind: PlateKind = this.kind()): Pin {
     const el = div('tag', this.root, html);
     const off = plate(el, kind, 3 + Math.floor(hsh(at instanceof THREE.Vector3 ? at.x : at[0], at instanceof THREE.Vector3 ? at.z : at[2]) * 90));
-    const under = document.createElementNS(NS, 'path'), line = document.createElementNS(NS, 'path'), dot = document.createElementNS(NS, 'rect');
-    under.setAttribute('fill', 'none'); under.setAttribute('stroke', '#16120e'); under.setAttribute('stroke-width', '6'); under.setAttribute('stroke-linecap', 'square'); under.setAttribute('shape-rendering', 'crispEdges');
-    line.setAttribute('fill', 'none'); line.setAttribute('stroke', '#e2d8be'); line.setAttribute('stroke-width', '2'); line.setAttribute('stroke-linecap', 'square'); line.setAttribute('shape-rendering', 'crispEdges');
-    dot.setAttribute('width', '8'); dot.setAttribute('height', '8'); dot.setAttribute('fill', '#b8402e'); dot.setAttribute('stroke', '#16120e'); dot.setAttribute('stroke-width', '2');
+    // the rod: a dark body with a lit steel edge, square cut; a hex-head bolt where it meets the room
+    const under = document.createElementNS(NS, 'path'), line = document.createElementNS(NS, 'path'), dot = document.createElementNS(NS, 'circle');
+    under.setAttribute('fill', 'none'); under.setAttribute('stroke', '#2a2f32'); under.setAttribute('stroke-width', '6'); under.setAttribute('stroke-linecap', 'butt');
+    line.setAttribute('fill', 'none'); line.setAttribute('stroke', '#b1b2aa'); line.setAttribute('stroke-width', '2'); line.setAttribute('stroke-linecap', 'butt'); line.setAttribute('transform', 'translate(-1,-1)');
+    dot.setAttribute('r', '5'); dot.setAttribute('fill', '#8e9190'); dot.setAttribute('stroke', '#1c1e20'); dot.setAttribute('stroke-width', '2');
     this.svg.append(under, line, dot);
-    return { off, el, at: at instanceof THREE.Vector3 ? at.clone() : new THREE.Vector3(...at), side, text, tx: (el.querySelector('.s') as HTMLElement) ?? undefined, line, under, dot, seed: Math.random() * 100 };
+    return { off, el, at: at instanceof THREE.Vector3 ? at.clone() : new THREE.Vector3(...at), side, text, tx: (el.querySelector('.s') as HTMLElement) ?? undefined, line, under, dot, seed: Math.random() * 100, ndl: (el.querySelector('.dial i') as HTMLElement) ?? undefined, g: 0 };
   }
   private unpin(p: Pin) { p.off(); p.el.remove(); p.line.remove(); p.under.remove(); p.dot.remove(); }
   private clearPins() { this.pins.forEach((p) => this.unpin(p)); this.pins = []; }
   private callout(c: Callout) {
-    const html = `${c.icon ? `<img src="${art(c.icon)}" alt="">` : ''}<span class="col">${c.title ? `<span class="t">${c.title}</span>` : ''}<span class="s">${c.text()}</span></span>`;
-    this.pins.push(this.pin(c.at, html, c.side ?? 'u', c.text));
+    const txt = () => drum(c.text());
+    const html = `${c.gauge ? '<span class="dial"><i></i></span>' : c.icon ? `<img src="${art(c.icon)}" alt="">` : ''}<span class="col">${c.title ? `<span class="t">${c.title}</span>` : ''}<span class="s">${txt()}</span></span>`;
+    const p = this.pin(c.at, html, c.side ?? 'u', txt); p.gauge = c.gauge;
+    this.pins.push(p);
   }
   /** place a pin: the tag beside its 3D point, the inked line between, a red pin at the point */
   private place(p: Pin, cam: THREE.Camera, i: number) {
@@ -177,10 +194,9 @@ export class HubChrome {
     tx = Math.round(Math.max(12, Math.min(innerWidth - w - 12, tx)) / K) * K; ty = Math.round(Math.max(12, Math.min(innerHeight - h - 96, ty)) / K) * K;
     p.el.style.transform = `translate(${tx}px, ${ty}px)`;
     const ex = Math.round(Math.max(tx + 12, Math.min(tx + w - 12, ax))), ey = Math.round(ay < ty ? ty + 10 : ay > ty + h ? ty + h - 10 : ty + h / 2);
-    const mx = Math.round((ex + ax) / 2 + (hsh(p.seed, 1) - 0.5) * 6), my = Math.round((ey + ay) / 2 + (hsh(p.seed, 2) - 0.5) * 6);
-    const path = `M${ex},${ey} L${mx},${my} L${ax},${ay}`;
+    const path = `M${ex},${ey} L${ax},${ay}`;
     p.line.setAttribute('d', path); p.under.setAttribute('d', path);
-    p.dot.setAttribute('x', String(ax - 4)); p.dot.setAttribute('y', String(ay - 4));
+    p.dot.setAttribute('cx', String(ax)); p.dot.setAttribute('cy', String(ay));
   }
 
   // ---------------------------------------------------------------- modes
@@ -271,7 +287,12 @@ export class HubChrome {
     if (!this.shown) return;
     this.acc += dt;
     const live = this.acc > 0.5; if (live) this.acc = 0;
-    this.pins.forEach((p, i) => { if (live && p.text && p.tx) p.tx.innerHTML = p.text(); this.place(p, cam, i); });
+    this.pins.forEach((p, i) => {
+      if (live && p.text && p.tx) p.tx.innerHTML = p.text();
+      // a needle swings to its value with a little overshoot, like a damped movement
+      if (p.gauge && p.ndl) { const v = Math.max(0, Math.min(1, p.gauge())); p.g += (v - p.g) * Math.min(1, dt * 3); p.ndl.style.transform = `rotate(${Math.round((p.g * 180 - 90) / 4.5) * 4.5}deg)`; }
+      this.place(p, cam, i);
+    });
     if (this.hoverPin) this.place(this.hoverPin, cam, 0);
   }
   dispose() { this.offKey(); this.root.remove(); }

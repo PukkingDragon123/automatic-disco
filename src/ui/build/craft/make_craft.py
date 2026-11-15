@@ -78,7 +78,7 @@ sprite('enamel', [24, 24], [poly(box(24, 24), 'enamel', part='c', bevel=2)])
 sprite('enamel-on', [24, 24], [poly(box(24, 24), 'enamel_r', part='c', bevel=2)], outline_color='#3a0e0a')
 sprite('badge', [24, 24], [{"type": "ellipse", "center": [11.5, 11.5], "radii": [10.5, 10.5], "material": "brass", "form": "dome", "part": "b"}], outline_color='#3a2a10')
 # ---- the node map: a machined patch bay (a 64 art px steel panel with its seams and four screws; it tiles)
-sprite('bay', [64, 64], [poly([[0, 0], [63, 0], [63, 63], [0, 63]], 'steel_d', part='b', bevel=3), *rivets(64, 64, 4, 1.8)], outline_color='#14181d')
+sprite('bay', [128, 96], [poly([[0, 0], [127, 0], [127, 95], [0, 95]], 'steel_d', part='b', bevel=3), *rivets(128, 96, 4, 1.8)], outline_color='#14181d')
 # ---- the node map's side panels: light steel plates (same slicing as the paper card and sheet)
 MATS["steel_hi"] = {"base": "#a9b4bd", "steps": 5, "spread": 0.3, "spec": 1}
 MATS["steel_k"] = {"base": "#6a7480", "steps": 5, "spread": 0.3, "spec": 1}

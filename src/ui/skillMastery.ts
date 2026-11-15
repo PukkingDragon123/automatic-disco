@@ -1,7 +1,7 @@
 // MASTERY: the selected engineering path as a living diorama (src/research/ui/dioramas.ts) that grows as it is
 // mastered; its twelve perks are parts of the thing (buds, junctions, machine parts, gene vials, robot parts), each
-// pinned with a paper tag and an inked leader line. Paper index tabs on the left pick the path; the card on the
-// right reads the hovered or selected perk, or the path itself, and installs it.
+// marked with an engraved brass tag on a straight steel pointer. Machined keys on the left pick the path; the plate
+// on the right reads the hovered or selected perk, or the path itself, and installs it.
 import { el } from './kit';
 import { sfx } from '../audio/audio';
 import { csfx } from './cineAudio';

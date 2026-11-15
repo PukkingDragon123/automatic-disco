@@ -14,7 +14,7 @@ import type { Game } from '../../game/game';
 import type { Engine } from '../../app/engine';
 import { australPhoto } from './vignettes';
 
-/** a carrier trace drawn in ink (the telegraph's receipt strip) */
+/** the carrier trace on the telegraph plate (a clean oscilloscope line) */
 export function waveDraw(cv: HTMLCanvasElement, t: number, k = 1, col = '#2a4a78') {
   const r = cv.getBoundingClientRect(), W = Math.max(10, Math.floor(r.width)), H = Math.max(10, Math.floor(r.height));
   if (cv.width !== W) { cv.width = W; cv.height = H; }

@@ -332,16 +332,17 @@ export class FactoryUI {
     const name = s.def.name.toUpperCase();
     const w = Math.ceil(Math.max(g.measureText(line).width, g.measureText(name).width)) + 16, h = 40;
     x = Math.round(x - w / 2); y = Math.round(y - h - 6);
-    // a paper tag with an inked edge, a dog-ear, a pencil progress line and a string down to the scaffold
-    g.fillStyle = 'rgba(40,28,16,0.35)'; g.fillRect(x + 2, y + 2, w, h);
-    g.fillStyle = '#f0e8d2'; g.fillRect(x, y, w, h);
-    g.fillStyle = s.stage === 'build' ? '#a8321f' : '#2b2622'; g.fillRect(x + 1, y, w - 2, 2); g.fillRect(x + 1, y + h - 2, w - 2, 2); g.fillRect(x, y + 1, 2, h - 2); g.fillRect(x + w - 2, y + 1, 2, h - 2);
-    g.fillStyle = '#d8ccac'; g.fillRect(x + w - 8, y + 2, 6, 2);
-    g.fillStyle = '#2b2622'; g.fillText(name, x + 8, y + 5);
-    g.fillStyle = s.stage === 'build' ? '#a8321f' : '#57504a'; g.fillText(line, x + 8, y + 18);
+    // a machined plate: dark steel, lit top edge, an LED segment bar, a steel stem down to the scaffold
+    g.fillStyle = 'rgba(8,10,14,0.45)'; g.fillRect(x + 3, y + 3, w, h);
+    g.fillStyle = '#14181d'; g.fillRect(x, y, w, h);
+    g.fillStyle = '#3d4650'; g.fillRect(x + 2, y + 2, w - 4, h - 4);
+    g.fillStyle = '#6b7782'; g.fillRect(x + 2, y + 2, w - 4, 2); g.fillRect(x + 2, y + 2, 2, h - 4);
+    g.fillStyle = '#262c33'; g.fillRect(x + 2, y + h - 4, w - 4, 2); g.fillRect(x + w - 4, y + 2, 2, h - 4);
+    g.fillStyle = '#d8dee3'; g.fillText(name, x + 8, y + 5);
+    g.fillStyle = s.stage === 'build' ? '#f0b040' : '#8a96a2'; g.fillText(line, x + 8, y + 18);
     const segs = 20, sw = Math.floor((w - 16) / segs);
-    for (let i = 0; i < segs; i++) { g.fillStyle = i / segs < p ? (s.stage === 'build' ? '#a8321f' : '#3f6b3a') : '#d2c7a6'; g.fillRect(x + 8 + i * sw, y + 32, 2, 4); }
-    g.fillStyle = '#57504a'; for (let i = 0; i < 6; i++) g.fillRect(x + Math.floor(w / 2), y + h + i, 2, 1);
+    for (let i = 0; i < segs; i++) { g.fillStyle = i / segs < p ? (s.stage === 'build' ? '#f0b040' : '#7fe07a') : '#262c33'; g.fillRect(x + 8 + i * sw, y + 31, sw - 2, 4); }
+    g.fillStyle = '#c4ccd2'; g.fillRect(x + Math.floor(w / 2), y + h, 2, 6); g.fillStyle = '#14181d'; g.fillRect(x + Math.floor(w / 2) + 2, y + h, 1, 6);
     g.textBaseline = 'alphabetic';
   }
   /** the readout at the cursor while a building is in hand: what, where, what it costs (have/need), why not */

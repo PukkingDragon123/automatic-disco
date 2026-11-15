@@ -2,7 +2,8 @@
 
 Each icon's shapes (src/research/ui/icons.ts, exported as JSON) become a lowpix sprite spec: rectangles and polygons
 as bevelled plates, strokes as tubes, glints as hand-placed pixels, cut-outs as subtractions, in two materials (a
-steel body and an amber accent). lowpix paints them in strokes with a sel-out outline; this script packs the results
+steel body and an amber accent). lowpix paints them flat (clean, quantised light, no brush strokes) with a sel-out
+outline; this script packs the results
 into one 8 x 8 atlas of 48 px cells (icons.png). The screens recolour it per state (phosphor, amber, dim).
 
   python3 src/research/art/build_icons.py <icon_art.json> [only,names]
@@ -90,7 +91,7 @@ def spec_for(ops, name=''):
             _, x, y, t = o
             col = '#fff6dc' if t == 4 else '#ffe4a0'
             shapes.append({'type': 'pixels', 'at': [x * K, y * K], 'art': ['ab', 'b.'], 'key': {'a': col, 'b': '#d8dccf' if t == 4 else '#f0c060'}, 'z': 999})
-    return {'size': [48, 48], 'paint': 'strokes', 'materials': mats_for(name), 'shapes': shapes, 'outline': 'selout', 'inner': 'shade'}
+    return {'size': [48, 48], 'paint': 'flat', 'materials': mats_for(name), 'shapes': shapes, 'outline': 'selout', 'inner': 'shade'}
 
 def mat(t):
     return 'accent' if t >= 5 else ('dark' if t == 1 else 'steel')

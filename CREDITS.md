@@ -5,8 +5,8 @@
 ### 3D props: Poly Haven, restyled with lowpix
 All models in `src/ship/hub/assets/px/` come from [Poly Haven](https://polyhaven.com) and are licensed **CC0 1.0**
 (public domain; attribution not required, given with thanks). Each was downloaded as glTF and converted with the
-user's lowpix tool (`python3 -m lowpix convert polyhaven:<id> --style pixel-hd --density 96 --light 0.45 --grain 0.12
---smooth 1.8 --outline`, real-world height from the Poly Haven API): decimated, re-unwrapped, the texture transferred
+user's lowpix tool (`python3 -m lowpix convert polyhaven:<id> --style pixel --density 32 --light 0.45 --grain 0.04
+--smooth 1.2 --outline`, real-world height from the Poly Haven API): decimated, re-unwrapped, the texture transferred
 and quantised onto hue-shifted palette ramps with outlines, shipped as small glb files. Authors are from the Poly Haven API.
 
 | file | source asset | page | author(s) | licence |
@@ -89,10 +89,9 @@ the material textures on the hub's own furniture (wood, painted and bare metal, 
 mattress, pillow, glass, leaves), are the user's own LIMBOPHOBIA assets (`src/limbo/content/furniture`,
 `src/limbo/content/textures`), used as they are.
 
-### Hand-drawn UI art (lowpix stroke brush)
-`src/ship/hub/assets/ui/*.png` (nine room icons, paper tag, card, stamp, pin) were painted for this project with the
-user's lowpix sprite brush engine (`lowpix.sprite.render_sprite`, `paint: strokes`, stroke shapes and selective
-outlines). Original work for ODDWORLD.
+### UI icons
+`src/ship/hub/assets/ui/i_*.png` (nine 20 px room icons) are clean pixel art drawn in code from the master palette
+for this project. Original work for ODDWORLD.
 
 ### Real pictures (posters, prints, photos, screens)
 `src/ship/hub/assets/pics/*.png` are composed from real imagery by `src/ship/hub/assets/pics/build.py` (run on the
