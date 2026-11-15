@@ -471,8 +471,7 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       crates.forEach((g, i) => { add(g); g.position.copy(cpos[i]); g.lookAt(V(PC.x, 0, PC.z)); });
       hub.podBuild?.(0);
       // from over the room's full-height corridor and bow-side walls, looking down on the cradle
-      c.cam.cut(V(PC.x + 4.0, 4.6, PC.z + 4.6), V(PC.x + 0.2, 0.7, PC.z), 46);
-      c.cam.move({ pos: V(PC.x + 3.6, 4.2, PC.z + 4.2), dur: 8, ease: 'inOut' });
+      { const cp = inShop(V(PC.x + 2.2, 0, PC.z + 3.4), 0.3); c.cam.cut(cp.clone().setY(5.0), V(PC.x + 0.1, 0.6, PC.z), 46); c.cam.move({ pos: cp.clone().setY(4.6).add(V(-0.2, 0, -0.2)), dur: 8, ease: 'inOut' }); }
       await c.fade(0, 1.0);
       c.stamp('WORKSHOP + HANGAR · DECK 1 AFT');
       await line('solano', 'Your pod. Ride it down. Down there, it\'s you.');

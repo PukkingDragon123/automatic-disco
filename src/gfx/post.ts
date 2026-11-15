@@ -5,6 +5,8 @@
 // in drifting patches, light shafts through the canopy (the view ray marched through the sun's shadow map), wet
 // ground after rain (darker, richer, puddles reflecting the sky with raindrop rings), dew glints on leaves in the
 // morning, heat shimmer over hot ground. Water marks itself in the G-buffer with flag bit 16.
+// Sunlit ground also splits warm where the sun lands from the cool sky fill in the shade (the sun's shadow map, by
+// daylight; LIMBOPHOBIA's outdoor look) under a gentle film S-curve.
 //
 // For an interior (scene.userData.interior, an InteriorLight from lights.ts) it shades the soft ceiling panels on
 // area-lit materials (gbuf.areaLit), lays glowing haze under the panels and round the practicals (subtle volumetric
@@ -574,18 +576,13 @@ varying vec2 vUv;
 uniform sampler2D tDepth, tVel;
 uniform vec2 uRes;
 uniform float uNear, uFar, uMBK, uMBMax, uObjOn;
-uniform mat4 uInvProj, uCamWorld, uPrevVP;
+// this frame's clip space -> last frame's, in one matrix (last view-projection x camera x inverse projection: the
+// homogeneous divide makes the in-between scale irrelevant); the sky's version drops the camera's travel
+uniform mat4 uReproj, uReprojSky;
 float linZ(float d) { float z = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear)); }
 vec2 velAt(vec2 uv, float d) {
-  vec4 pc;
-  if (d >= 0.99999) {
-    // the sky: a direction, so only the camera's turn moves it
-    vec4 v = uInvProj * vec4(uv * 2.0 - 1.0, 1.0, 1.0);
-    pc = uPrevVP * vec4(mat3(uCamWorld) * normalize(v.xyz / v.w), 0.0);
-  } else {
-    vec4 v = uInvProj * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
-    pc = uPrevVP * vec4((uCamWorld * vec4(v.xyz / v.w, 1.0)).xyz, 1.0);
-  }
+  bool sky = d >= 0.99999;
+  vec4 pc = (sky ? uReprojSky : uReproj) * vec4(uv * 2.0 - 1.0, sky ? 1.0 : d * 2.0 - 1.0, 1.0);
   vec2 vel = pc.w > 1e-4 ? uv - (pc.xy / pc.w * 0.5 + 0.5) : vec2(0.0);
   if (uObjOn > 0.5) { vec4 o = texture2D(tVel, uv); if (o.a > 0.5) vel = o.xy; }
   vel *= uRes * uMBK;
@@ -728,7 +725,7 @@ interface Track {
   proxy?: THREE.Mesh; geo?: THREE.BufferGeometry; prevAttr?: THREE.InstancedBufferAttribute;
 }
 const TILE = 18;
-const _m4 = new THREE.Matrix4(), _v3 = new THREE.Vector3(), _v3b = new THREE.Vector3();
+const _m4 = new THREE.Matrix4(), _m4b = new THREE.Matrix4(), _v3 = new THREE.Vector3(), _v3b = new THREE.Vector3();
 
 /**
  * Camera + object motion blur as one reusable pass. Any pipeline: after the scene's main pass (depth written,
@@ -758,7 +755,7 @@ export class MotionBlur {
     this.U = {
       tDepth: { value: null }, tVel: { value: this.vel.texture }, tHdr: { value: null }, tTile: { value: this.tile.texture }, tNeigh: { value: this.neigh.texture },
       uRes: { value: new THREE.Vector2(4, 4) }, uNear: { value: 0.5 }, uFar: { value: 1000 }, uMBK: { value: 0 }, uMBMax: { value: 24 }, uObjOn: { value: 0 },
-      uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uPrevVP: { value: new THREE.Matrix4() },
+      uReproj: { value: new THREE.Matrix4() }, uReprojSky: { value: new THREE.Matrix4() }, uPrevVP: { value: new THREE.Matrix4() },
       uTileN: { value: TILE }, uTaps: { value: 12 }, uMBDebug: { value: Number(new URLSearchParams(location.search).get('mbdbg') ?? 0) },
     };
     const V = 'varying vec2 vUv;\nvoid main() { vUv = position.xy * 0.5 + 0.5; gl_Position = vec4(position.xy, 0.0, 1.0); }';
@@ -794,8 +791,11 @@ export class MotionBlur {
     const pos = _v3.setFromMatrixPosition(camera.matrixWorld), fw = _v3b.set(0, 0, -1).transformDirection(camera.matrixWorld);
     // a cut (another camera, a skipped frame, a jump) starts the history over
     const cont = this.cam === camera && this.camFrame === F - 1 && pos.distanceTo(this.prevPos) < 30 && fw.dot(this.prevFw) > Math.cos(0.52) && Math.abs(camera.fov - this.prevFov) < 8;
-    (U.uPrevVP.value as THREE.Matrix4).copy(cont ? this.prevVP : VP);
-    (U.uInvProj.value as THREE.Matrix4).copy(camera.projectionMatrixInverse); (U.uCamWorld.value as THREE.Matrix4).copy(camera.matrixWorld);
+    const pvp = (U.uPrevVP.value as THREE.Matrix4).copy(cont ? this.prevVP : VP);
+    (U.uReproj.value as THREE.Matrix4).multiplyMatrices(pvp, camera.matrixWorld).multiply(camera.projectionMatrixInverse);
+    const rot = _m4b.copy(camera.matrixWorld), re = rot.elements;
+    re[12] = re[13] = re[14] = 0; re[3] = re[7] = re[11] = re[15] = 0;
+    (U.uReprojSky.value as THREE.Matrix4).multiplyMatrices(pvp, rot).multiply(camera.projectionMatrixInverse);
     U.uNear.value = camera.near; U.uFar.value = camera.far; U.tDepth.value = depth;
     // blur radius per unit of screen travel per frame: half the travel over the exposure
     const expo = k * 0.03, mbk = (expo / dt) * 0.5;
