@@ -90,7 +90,7 @@ uniform vec4 uGlowC[GLOW_MAX];
 ${FINISH}
 // atmosphere
 uniform highp sampler2DShadow tShadow;
-uniform float uEnv, uHaze, uMist, uMistY, uMistH, uPatch, uRays, uWet, uRain, uDew, uHeat, uShadowOn;
+uniform float uEnv, uHaze, uMist, uMistY, uMistH, uPatch, uRays, uWet, uRain, uDew, uHeat, uShadowOn, uSplit;
 uniform int uRaySteps;
 uniform mat4 uInvProj, uCamWorld, uShadowM;
 uniform vec3 uCamPos, uSunDir, uSunCol, uSkyCol, uHazeCol, uMistCol;
@@ -313,6 +313,14 @@ void main() {
     }
   }
   if (env && !bgC && water < 0.5) col = seasonal(col, P, N0, emitF, oC);
+  // outdoors: warm where the sun lands, the cool sky fill in the shade (the sun's own shadow map), by daylight
+  if (env && !bgC && uSplit > 0.0 && uShadowOn > 0.5 && emitF < 0.5) {
+    vec4 sc = uShadowM * vec4(P + N0 * 0.08, 1.0);
+    float lit = 1.0;
+    if (sc.x > 0.001 && sc.x < 0.999 && sc.y > 0.001 && sc.y < 0.999 && sc.z < 1.0) lit = texture(tShadow, vec3(sc.xy, sc.z - 0.002));
+    lit *= smoothstep(0.0, 0.3, dot(N0, uSunDir));
+    col *= mix(vec3(1.0), mix(vec3(0.86, 0.93, 1.1), vec3(1.07, 1.0, 0.88), lit), uSplit * (1.0 - smoothstep(60.0, 140.0, dist)));
+  }
   if (env && !bgC) {
     // in the eclipse glowing life is the light
     col *= 1.0 + emitF * uEclipse * 2.6;
@@ -646,7 +654,7 @@ void main() {
     vec2 off = ((own && (i % 2 == 1)) ? vc : vn) * t;
     vec2 uv = clamp(vUv + off * px, px * 0.5, 1.0 - px * 0.5);
     float dy = texture2D(tDepth, uv).r, zy = linZ(dy);
-    float dist = length(off), ly = length(velAt(uv, dy));
+    float dist = length(off), ly = max(length(velAt(uv, dy)), 0.5);
     float a = softZ(zy, zc, S) * cone(dist, ly) + softZ(zc, zy, S) * cone(dist, lc) + cyl(dist, ly) * cyl(dist, lc) * 2.0;
     sum += texture2D(tHdr, uv).rgb * a; wsum += a;
   }
@@ -663,6 +671,16 @@ attribute mat4 aPrevInst;
 #endif
 #include <common>
 #include <skinning_pars_vertex>
+#ifdef USE_SKINNING
+// last frame's bone matrices (the limbs' own swing), and last frame's model x bind-inverse
+uniform highp sampler2D uPrevBones;
+uniform float uPrevBonesOn;
+uniform mat4 uPrevSkin;
+mat4 prevBone(float i) {
+  int size = textureSize(uPrevBones, 0).x, j = int(i) * 4, x = j % size, y = j / size;
+  return mat4(texelFetch(uPrevBones, ivec2(x, y), 0), texelFetch(uPrevBones, ivec2(x + 1, y), 0), texelFetch(uPrevBones, ivec2(x + 2, y), 0), texelFetch(uPrevBones, ivec2(x + 3, y), 0));
+}
+#endif
 varying vec4 vCur, vPrev;
 void main() {
   #include <begin_vertex>
@@ -674,6 +692,14 @@ void main() {
   vec4 wp = uPrevModel * ((uPrevInst > 0.5 ? aPrevInst : instanceMatrix) * lp);
 #else
   vec4 wc = modelMatrix * lp, wp = uPrevModel * lp;
+#endif
+#ifdef USE_SKINNING
+  if (uPrevBonesOn > 0.5) {
+    vec4 sv = bindMatrix * vec4(position, 1.0);
+    vec4 sk = prevBone(skinIndex.x) * sv * skinWeight.x + prevBone(skinIndex.y) * sv * skinWeight.y
+            + prevBone(skinIndex.z) * sv * skinWeight.z + prevBone(skinIndex.w) * sv * skinWeight.w;
+    wp = uPrevSkin * vec4(sk.xyz, 1.0);
+  }
 #endif
   vCur = projectionMatrix * (viewMatrix * wc);
   vPrev = uPrevVP * wp;
@@ -697,10 +723,12 @@ interface Track {
   cur: Float32Array; prev: Float32Array; f: number;
   /** instanced: the instance matrices this frame and last, the attribute's version */
   ic?: Float32Array; ip?: Float32Array; ver?: number; instMoved?: boolean;
+  /** skinned: the bone matrices this frame and last (a texture over the last), last frame's bind-inverse */
+  bc?: Float32Array; bp?: Float32Array; boneTex?: THREE.DataTexture; bi?: THREE.Matrix4; biPrev?: THREE.Matrix4; bonesOk?: boolean;
   proxy?: THREE.Mesh; geo?: THREE.BufferGeometry; prevAttr?: THREE.InstancedBufferAttribute;
 }
 const TILE = 18;
-const _m4 = new THREE.Matrix4(), _v3 = new THREE.Vector3(), _v3b = new THREE.Vector3(), _q = new THREE.Quaternion();
+const _m4 = new THREE.Matrix4(), _v3 = new THREE.Vector3(), _v3b = new THREE.Vector3();
 
 /**
  * Camera + object motion blur as one reusable pass. Any pipeline: after the scene's main pass (depth written,
@@ -770,7 +798,7 @@ export class MotionBlur {
     (U.uInvProj.value as THREE.Matrix4).copy(camera.projectionMatrixInverse); (U.uCamWorld.value as THREE.Matrix4).copy(camera.matrixWorld);
     U.uNear.value = camera.near; U.uFar.value = camera.far; U.tDepth.value = depth;
     // blur radius per unit of screen travel per frame: half the travel over the exposure
-    const expo = k * 0.03, mbk = (expo / dt) * 0.5, pxPerUv = Math.max(this.w, this.h);
+    const expo = k * 0.03, mbk = (expo / dt) * 0.5;
     U.uMBK.value = mbk; U.uMBMax.value = this.h * 0.035 * (0.55 + 0.6 * k); U.uTaps.value = o.taps ?? 12;
     // how far does the view move (probes at 4 m and 40 m in the middle and the corners)?
     let camPx = 0;
@@ -830,16 +858,29 @@ export class MotionBlur {
           tr.instMoved = instD > 1e-4;
         }
       }
+      // bones: copied every frame for skinned meshes in view (limbs swing without the mesh moving)
+      let boneD = 0;
+      const sk = (o as THREE.SkinnedMesh).isSkinnedMesh ? (o as THREE.SkinnedMesh).skeleton : null;
+      if (sk && sk.boneMatrices) {
+        const bm = sk.boneMatrices, smo = o as THREE.SkinnedMesh;
+        if (!tr.bc || tr.bc.length !== bm.length) { tr.bc = new Float32Array(bm); tr.bp = new Float32Array(bm); tr.boneTex = undefined; tr.bi = smo.bindMatrixInverse.clone(); tr.biPrev = tr.bi.clone(); tr.bonesOk = false; }
+        else {
+          const bc = tr.bc, bp = tr.bp!;
+          bp.set(bc); bc.set(bm); tr.biPrev!.copy(tr.bi!); tr.bi!.copy(smo.bindMatrixInverse); tr.bonesOk = fresh;
+          const nb = sk.bones.length * 16;
+          for (let i = 0; i < nb; i += 16) boneD = Math.max(boneD, Math.abs(bc[i + 12] - bp[i + 12]) + Math.abs(bc[i + 13] - bp[i + 13]) + Math.abs(bc[i + 14] - bp[i + 14]));
+        }
+      }
       if (!fresh || mbk <= 0) continue;
       const p = tr.prev;
       const dT = Math.hypot(e[12] - p[12], e[13] - p[13], e[14] - p[14]);
       let dB = 0;
       for (const c of [0, 4, 8]) dB = Math.max(dB, Math.hypot(e[c] - p[c], e[c + 1] - p[c + 1], e[c + 2] - p[c + 2]));
-      if (dT < 1e-6 && dB < 1e-6 && !tr.instMoved) continue;
+      if (dT < 1e-6 && dB < 1e-6 && !tr.instMoved && boneD < 1e-5) continue;
       const geo = o.geometry;
       if (!geo.boundingSphere) geo.computeBoundingSphere();
       const bs = geo.boundingSphere!, R = bs.radius + bs.center.length();
-      const disp = dT + dB * R + instD * (im ? Math.max(1, R) : 0);
+      const disp = Math.max(dT + dB * R + instD * (im ? Math.max(1, R) : 0), boneD);
       if (disp > 25) continue; // a teleport, not a motion
       const z = -(vi[2] * e[12] + vi[6] * e[13] + vi[10] * e[14] + vi[14]);
       if (disp * proj / Math.max(z, camera.near) * mbk < 0.5) continue;
@@ -852,7 +893,8 @@ export class MotionBlur {
     if (tr.proxy) (tr.proxy.material as THREE.Material).dispose();
     const U = this.U;
     const mat = new THREE.ShaderMaterial({ vertexShader: MB_VEL_VERT, fragmentShader: MB_VEL_FRAG,
-      uniforms: { tDepth: U.tDepth, uNear: U.uNear, uFar: U.uFar, uPrevVP: U.uPrevVP, uPrevModel: { value: new THREE.Matrix4() }, uPrevInst: { value: 0 } } });
+      uniforms: { tDepth: U.tDepth, uNear: U.uNear, uFar: U.uFar, uPrevVP: U.uPrevVP, uPrevModel: { value: new THREE.Matrix4() }, uPrevInst: { value: 0 },
+        uPrevBones: { value: null }, uPrevBonesOn: { value: 0 }, uPrevSkin: { value: new THREE.Matrix4() } } });
     let px: THREE.Mesh;
     if ((o as THREE.SkinnedMesh).isSkinnedMesh) {
       const sm = new THREE.SkinnedMesh(o.geometry, mat); sm.bindMode = THREE.DetachedBindMode; sm.skeleton = (o as THREE.SkinnedMesh).skeleton; px = sm;
@@ -878,6 +920,13 @@ export class MotionBlur {
       if ((o as THREE.SkinnedMesh).isSkinnedMesh) {
         const s = o as THREE.SkinnedMesh, ps = px as THREE.SkinnedMesh;
         ps.skeleton = s.skeleton; ps.bindMatrix.copy(s.bindMatrix); ps.bindMatrixInverse.copy(s.bindMatrixInverse);
+        // last frame's limbs: the copied bone matrices as a texture shaped like the skeleton's own
+        if (tr.bp && tr.bonesOk) {
+          if (!tr.boneTex) { const n = Math.round(Math.sqrt(tr.bp.length / 4)); tr.boneTex = new THREE.DataTexture(tr.bp, n, n, THREE.RGBAFormat, THREE.FloatType); }
+          tr.boneTex.needsUpdate = true;
+          mat.uniforms.uPrevBones.value = tr.boneTex; mat.uniforms.uPrevBonesOn.value = 1;
+          (mat.uniforms.uPrevSkin.value as THREE.Matrix4).fromArray(tr.prev).multiply(tr.biPrev!);
+        } else mat.uniforms.uPrevBonesOn.value = 0;
       }
       if ((o as THREE.InstancedMesh).isInstancedMesh) {
         const im = o as THREE.InstancedMesh, pi = px as THREE.InstancedMesh;
@@ -896,7 +945,6 @@ export class MotionBlur {
   }
 }
 const _p4 = new THREE.Vector4(), _p3 = new THREE.Vector3();
-void _q;
 
 export interface Grade { lift: THREE.Color; gamma: THREE.Color; gain: THREE.Color; sat: number; vig: number; bloom: number }
 /**
@@ -961,7 +1009,7 @@ export class Post {
       uLift: { value: gr.lift }, uGamma: { value: gr.gamma }, uGain: { value: gr.gain },
       uOutline: { value: new THREE.Color(0x07060c) }, uSelCol: { value: new THREE.Color(0x9dff6a) },
       uHoverCol: { value: new THREE.Color(0xf4f0d8) }, uEnemyCol: { value: new THREE.Color(0xff5a48) },
-      tShadow: { value: this.noShadow.depthTexture }, uShadowOn: { value: 0 }, uShadowM: { value: new THREE.Matrix4() }, uRaySteps: { value: 12 },
+      tShadow: { value: this.noShadow.depthTexture }, uShadowOn: { value: 0 }, uSplit: { value: 0 }, uShadowM: { value: new THREE.Matrix4() }, uRaySteps: { value: 12 },
       uEnv: { value: 0 }, uHaze: { value: 0 }, uMist: { value: 0 }, uMistY: { value: 0 }, uMistH: { value: 1.4 }, uPatch: { value: 0.6 },
       uRays: { value: 0 }, uWet: { value: 0 }, uRain: { value: 0 }, uDew: { value: 0 }, uHeat: { value: 0 }, uWind: { value: new THREE.Vector2() },
       uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uCamPos: { value: new THREE.Vector3() },
@@ -1071,7 +1119,7 @@ export class Post {
     this.U.uAO.value = qp.ssao && qp.ssaoTaps > 0 ? (ia ? ia.ao : this.ao) : 0;
     this.U.uAORad.value = ia ? ia.aoRadius : 1.15;
     this.U.uTone.value = 0; this.U.uContrast.value = 0;
-    this.atmosphere(scene, camera);
+    this.atmosphere(scene);
     this.interior(ia, camera, qp.beams);
     const tone = this.U.uTone.value as number;
     if (tone > 0.5) {
@@ -1142,12 +1190,11 @@ export class Post {
     U.uGlowN.value = n;
   }
 
-  private atmosphere(scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
+  private atmosphere(scene: THREE.Scene) {
     const U = this.U, sun = scene.userData.sun as Sun | undefined;
-    if (!sun || sun.light.parent !== scene) { U.uEnv.value = 0; U.uShadowOn.value = 0; U.tShadow.value = this.noShadow.depthTexture; return; }
+    if (!sun || sun.light.parent !== scene) { U.uEnv.value = 0; U.uShadowOn.value = 0; U.uSplit.value = 0; U.tShadow.value = this.noShadow.depthTexture; return; }
     const e = sun.env, q = settings.quality, lo = q === 'low';
     U.uEnv.value = 1;
-    void camera;
     (U.uSunDir.value as THREE.Vector3).copy(sun.dir).normalize();
     // daylight from the key's strength; the sun's colour as it stands after the day/night grading in the game
     const k = Math.min(1, sun.light.intensity / 3.3), sc = U.uSunCol.value as THREE.Color;
@@ -1181,8 +1228,14 @@ export class Post {
     // shafts need the sun's shadow map (it exists after the first shadowed frame)
     const map = sun.light.castShadow ? sun.light.shadow.map : null, dt = map?.depthTexture ?? null;
     const rays = lo || !dt || !dt.compareFunction ? 0 : e.rays;
-    U.uRays.value = rays; U.uShadowOn.value = rays > 0 ? 1 : 0; U.uRaySteps.value = q === 'high' ? 12 : 7;
-    U.tShadow.value = rays > 0 ? dt : this.noShadow.depthTexture;
-    if (rays > 0) (U.uShadowM.value as THREE.Matrix4).copy(sun.light.shadow.matrix);
+    // (the shadow map also splits warm sun from cool shade, whenever it exists)
+    const sh = !lo && !!dt && !!dt.compareFunction;
+    U.uRays.value = rays; U.uShadowOn.value = sh ? 1 : 0; U.uRaySteps.value = q === 'high' ? 12 : 7;
+    U.tShadow.value = sh ? dt : this.noShadow.depthTexture;
+    if (sh) (U.uShadowM.value as THREE.Matrix4).copy(sun.light.shadow.matrix);
+    U.uSplit.value = sh ? 0.5 * Math.min(1, e.day * 1.5) * (1 - sun.overcast * 0.7) * (1 - e.eclipse) : 0;
+    // a gentle film S-curve, cool in the shadows and warm in the light, by day
+    U.uContrast.value = 0.12 * Math.min(1, 0.4 + e.day);
+    (U.uSplitLo.value as THREE.Color).setRGB(0.97, 0.99, 1.03); (U.uSplitHi.value as THREE.Color).setRGB(1.02, 1.0, 0.97);
   }
 }

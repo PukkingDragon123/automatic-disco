@@ -343,6 +343,8 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
     // ================================================================ c. PATCH
     if (from <= 2 && breach) {
       const br = breach;
+      // Mira steps out of the shot (to the far side of the throw line from the camera)
+      { const sp = inLab(at(T, -0.4, 1.1, 0)); put('solano', 'lab', sp.x, sp.z, H.x, H.z); const a = actorOf('solano'); if (a) a.action = 'cover_ears'; }
       const pat = put('kowalczyk', 'lab', LS.door.pos.x, LS.door.pos.z, 9, 13)!;
       { const pt = inLab(H.clone().addScaledVector(toH, -1.0).addScaledVector(side, -0.6).setY(0)); pat.walkTo(pt.x, pt.z, 3.6); }
       c.sfx('step', 0.7); c.sfx('cover', 0.5);

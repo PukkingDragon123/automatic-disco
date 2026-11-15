@@ -66,11 +66,13 @@ export class Stage {
   still: HTMLCanvasElement | null = null;
   private snap(): HTMLCanvasElement | null {
     try {
-      const e = anyG(this.g).engine; if (!e?.screen) return null;
+      const g = anyG(this.g), e = g.engine; if (!e?.screen) return null;
+      // a skipped scene jumps its camera to the last pose; put it on the game camera before the frame is drawn
+      const cam = g.cam?.cam; if (cam && this.cine.active) { this.cine.apply(cam); cam.updateMatrixWorld?.(); }
       e.screen.render(e.post, e.time);
-      const src = e.canvas as HTMLCanvasElement, cv = document.createElement('canvas');
-      cv.width = Math.floor(src.width / 4); cv.height = Math.floor(src.height / 4);
-      const g = cv.getContext('2d')!; g.drawImage(src, 0, 0, cv.width, cv.height);
+      const src = e.canvas as HTMLCanvasElement, cv = document.createElement('canvas'), k = src.width > 1400 ? 2 : 1;
+      cv.width = Math.floor(src.width / k); cv.height = Math.floor(src.height / k);
+      const c2 = cv.getContext('2d')!; c2.drawImage(src, 0, 0, cv.width, cv.height);
       return cv;
     } catch { return null; }
   }

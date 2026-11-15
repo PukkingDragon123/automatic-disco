@@ -4,6 +4,7 @@
 // has, and Unit 07 cannot move. They get the link back up. The mast takes the lightning with them still on it.
 // The relay carries their last words to the ship. Then a decision about what is left of them.
 import * as THREE from 'three';
+import { ensureGBuffer } from '../gfx/gbuf';
 import type { Cinema } from '../game/cinema';
 import type { EventDef, EvCtx } from './events';
 import { spot } from './events';
@@ -61,7 +62,7 @@ function standIn(st: EvCtx['st'], id: string, scene: THREE.Object3D, x0: number,
     const gr = new THREE.Group(); const b = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 1.0, 4, 8), new THREE.MeshLambertMaterial({ color: 0x2c3a4c })); b.position.y = 0.85; gr.add(b); root = gr;
     upd = () => {}; die = () => { gr.rotation.x = -Math.PI / 2; gr.position.y += 0.2; };
   }
-  scene.add(root); st.props.push(root);
+  scene.add(root); ensureGBuffer(root); st.props.push(root);
   let x = x0, z = z0, yaw = 0, goal: [number, number] | null = null, face: V | null = null;
   root.position.set(x, st.ground(x, z), z);
   const w: Walker = {
@@ -96,7 +97,7 @@ export const FALLEN: EventDef = {
   async cine(c: Cinema, x: EvCtx) {
     const { st, g } = x, G = anyG(g), P = st.pod(), M: V = x.data.mastAt, a: number = x.data.a;
     const scene = G.world.scene as THREE.Scene;
-    const mast = relayMast(); mast.g.position.copy(M); mast.g.rotation.y = a + Math.PI; scene.add(mast.g); st.props.push(mast.g);
+    const mast = relayMast(); mast.g.position.copy(M); mast.g.rotation.y = a + Math.PI; scene.add(mast.g); ensureGBuffer(mast.g); st.props.push(mast.g);
     // the colony's own lowpix relay mast (src/colony/models.ts, tools/lowpix/st_relay.json) replaces the stand-in tower
     void import('../colony/models').then(async (mm) => {
       const r = await mm.lowpixModel?.('st_relay', { height: mast.H + 0.6, origin: 'ground' });
@@ -114,7 +115,7 @@ export const FALLEN: EventDef = {
     // the decision console comes after the deaths: the sim must run while they walk out
     const wasPaused = G.paused; G.paused = false; c.onEnd(() => { G.paused = wasPaused; });
     const lights: THREE.SpotLight[] = [];
-    for (const w of [A, B]) { if (!w.root) continue; try { const f = flashlight(); w.root.add(f.g); f.g.position.set(0.25, 1.15, 0.25); f.light.intensity = 9; f.light.distance = 18; lights.push(f.light); st.props.push(f.g); } catch { /* prop */ } }
+    for (const w of [A, B]) { if (!w.root) continue; try { const f = flashlight(); w.root.add(f.g); f.g.position.set(0.25, 1.15, 0.25); f.light.intensity = 9; f.light.distance = 18; lights.push(f.light); ensureGBuffer(f.g); st.props.push(f.g); } catch { /* prop */ } }
     const goal = (w: Walker) => { const s = w === A ? 1 : -1; return new V3(M.x - dir.x * 2.2 + side.x * s * 0.8, 0, M.z - dir.z * 2.2 + side.z * s * 0.8); };
     const walkTo = [goal(A), goal(B)];
     c.task((dt, t) => { lamp(mast, t); A.tick(dt); B.tick(dt); });

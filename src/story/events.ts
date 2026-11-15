@@ -3,6 +3,7 @@
 // time, revolts when morale is low, disease when the herd is large, faults when there is a generator to fail,
 // envoys when a rival bloc is on the region, and so on.
 import * as THREE from 'three';
+import { ensureGBuffer } from '../gfx/gbuf';
 import type { Game } from '../game/game';
 import type { Cinema } from '../game/cinema';
 import type { Stage } from './stage';
@@ -155,7 +156,7 @@ export const EVENTS: EventDef[] = [
     setup: (x) => { const p = rivalProg(x.g); x.data.f = p?.f ?? 'prc'; x.data.name = bloc(x.data.f); },
     async cine(c, x) {
       const { st, g } = x, P = st.pod(), d = envoyDrone(x.data.f), at = spot(st, P, 0.9, 7, 0);
-      d.position.set(at.x, at.y + 18, at.z); A(g).world.scene.add(d); st.props.push(d);
+      d.position.set(at.x, at.y + 18, at.z); A(g).world.scene.add(d); ensureGBuffer(d); st.props.push(d);
       c.task((dt, t) => { for (const ch of d.children) if (ch.userData.rotor) ch.rotation.y += dt * 40; d.rotation.y = Math.sin(t * 0.7) * 0.2; });
       c.cam.cut(spot(st, P, 1.6, 13, 2), look(at, 4), 42);
       await c.fade(0, 0.6);
@@ -253,7 +254,7 @@ export const EVENTS: EventDef[] = [
     weight: (g) => ((A(g).mission?.quotas?.length ?? 0) > 0 ? 0.9 : 0.4),
     async cine(c, x) {
       const { st, g } = x, P = st.pod(), at = spot(st, P, 3.6, 42, 0), cap = capsule();
-      A(g).world.scene.add(cap); st.props.push(cap);
+      A(g).world.scene.add(cap); ensureGBuffer(cap); st.props.push(cap);
       const from = new V3(at.x - 60, at.y + 90, at.z - 30);
       c.cam.cut(spot(st, P, 3.0, 16, 4), from.clone().lerp(at, 0.3), 50);
       await c.fade(0, 0.5);
