@@ -15,7 +15,7 @@ export class Screens {
   private cursor = 0;
   make(kind: ScreenKind, w = 256, h = 160, seed = 1, tint = PH.hi): THREE.CanvasTexture {
     const [c, g] = canvas(w, h);
-    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.NearestFilter; tex.generateMipmaps = false;
     const l: Live = { kind, c, g, tex, seed, hz: kind === 'radar' || kind === 'ekg' || kind === 'wave' ? 12 : 4, acc: 99, w, h, hist: [], tint };
     this.list.push(l); draw(l, 0);
     return tex;
@@ -51,7 +51,7 @@ function finish(l: Live) {
   v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)'); g.fillStyle = v; g.fillRect(0, 0, w, h);
 }
 function txt(g: CanvasRenderingContext2D, s: string, x: number, y: number, size: number, col: number, align: CanvasTextAlign = 'left') {
-  g.font = `${size}px 'VT', monospace`; g.textAlign = align; g.fillStyle = rgb(col); g.fillText(s, x, y);
+  g.font = `${size <= 16 ? 11 : size <= 30 ? 22 : 44}px Body`; g.textAlign = align; g.fillStyle = rgb(col); g.fillText(s, x, y);
 }
 
 function draw(l: Live, t: number) {

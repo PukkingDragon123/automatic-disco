@@ -39,10 +39,25 @@ export function iconCanvas(name: string, px: number, dim = false): HTMLCanvasEle
   const pc = hiIcon(name, px, { shadow: true, dim }); if (!pc) return null;
   const [cc, g] = cv(pc.w, pc.h); g.putImageData(pc.toImageData(), 0, 0); ICON_CV.set(key, cc); return cc;
 }
-/** an <img> of a vignette at px css pixels */
+/** icons rendered from the lowpix models (tools/lowpix -> public/icons/colony; `_s` is the ~56 px render) */
+const LOWPIX: Record<string, string> = {
+  't-scanner': 'scanner', 't-sampler': 'sampler', 't-seeder': 'seeder', 't-grab': 'grab', 't-drill': 'drill', 't-weld': 'weld', 't-lift': 'lift', 't-cannon': 'cannon', 't-carry': 'carry',
+  't-scout': 'drone_scout', 't-carrier': 'drone_carrier', 't-repairdrone': 'drone_repair', 't-pole': 'st_gravpole', 't-relay': 'st_relay', 't-lamp': 'st_lamp', 't-sensor': 'st_sensor', 'u-pod': 'pod',
+};
+const IMGS = new Map<string, HTMLImageElement>();
+/** the lowpix render for an icon name (small: the ~56 px one), or null; it may still be loading (check .complete) */
+export function lowpixIcon(name: string, small = true): HTMLImageElement | null {
+  const f = LOWPIX[name]; if (!f) return null;
+  const k = f + (small ? '_s' : ''); let i = IMGS.get(k);
+  if (!i) { i = new Image(); i.src = `${import.meta.env.BASE_URL ?? '/'}icons/colony/${k}.png`; IMGS.set(k, i); }
+  return i;
+}
+/** an <img> of an icon in a px box: the lowpix render at its own size (never resampled), else the painted vignette */
 export function iconImg(name: string, px: number, cls = 'cx-ico') {
-  const c = iconCanvas(name, px), i = document.createElement('img'); i.className = cls; i.width = px; i.height = px; i.draggable = false;
-  if (c) i.src = c.toDataURL();
+  const i = document.createElement('img'); i.className = cls; i.width = px; i.height = px; i.draggable = false; i.style.objectFit = 'none';
+  const lp = lowpixIcon(name, px < 70);
+  if (lp) i.src = lp.src;
+  else { const c = iconCanvas(name, px); if (c) i.src = c.toDataURL(); }
   return i;
 }
 /** four screws in the corners of a plate */

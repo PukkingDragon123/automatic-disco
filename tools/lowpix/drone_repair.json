@@ -1,0 +1,914 @@
+{
+ "name": "UNAA Repair Drone",
+ "description": "UNAA repair drone: steel-blue band, a welding arm with a torch and a gas bottle under the hull.",
+ "author": "pod agent",
+ "license": "CC0-1.0",
+ "density": 2,
+ "grounded": false,
+ "budget": {
+  "tris": 1600,
+  "colors": 64
+ },
+ "light": {
+  "dir": [
+   -0.55,
+   1.0,
+   0.7
+  ],
+  "strength": 1.1,
+  "gradient": 0.3,
+  "ao": 0.6,
+  "ao_height": 2.0
+ },
+ "render": {
+  "background": "#202432",
+  "hero": [
+   -34,
+   22
+  ],
+  "shadow": 0.45
+ },
+ "palette": {
+  "ramps": {
+   "shell": [
+    "#3b3a36",
+    "#5d5a52",
+    "#8f8a7e",
+    "#b7b2a4",
+    "#d6d2c4",
+    "#e9e6dc",
+    "#f6f4ec"
+   ],
+   "orange": [
+    "#2f1a13",
+    "#4e2817",
+    "#773717",
+    "#9f4621",
+    "#c36530",
+    "#de8f4e",
+    "#efb67b"
+   ],
+   "metal": [
+    "#1c1e20",
+    "#2a2f32",
+    "#3d4346",
+    "#54595c",
+    "#6e7373",
+    "#8e9190",
+    "#b1b2aa"
+   ],
+   "lens": [
+    "#0f2028",
+    "#14323b",
+    "#1d494f",
+    "#3e7a9c",
+    "#62a8d0",
+    "#a6d8f0",
+    "#e8f6ff"
+   ],
+   "red": [
+    "#401913",
+    "#672319",
+    "#8c2920",
+    "#b13c2b",
+    "#e06a4a"
+   ],
+   "green": [
+    "#0f2219",
+    "#1f5532",
+    "#459155",
+    "#73b073",
+    "#a8d09d"
+   ],
+   "steelblue": [
+    "#171b25",
+    "#212d38",
+    "#2d404c",
+    "#3f5362",
+    "#566f79",
+    "#759090",
+    "#a8c0c0"
+   ]
+  }
+ },
+ "styles": {
+  "enamel": {
+   "ramp": "shell",
+   "tone": 3.9,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 2.0,
+     "amount": 0.2
+    },
+    {
+     "id": "panel",
+     "op": "panel",
+     "inset": 2,
+     "min_size": 10
+    },
+    {
+     "id": "grime",
+     "op": "patches",
+     "scale": 1.6,
+     "threshold": 0.75,
+     "shift": -0.5,
+     "faces": [
+      "-top"
+     ]
+    },
+    {
+     "id": "wear",
+     "op": "wear",
+     "width": 2,
+     "density": 0.16,
+     "ramp": "metal",
+     "tone": 2.2,
+     "post": true
+    },
+    {
+     "id": "rivets",
+     "op": "rivets",
+     "inset": 1,
+     "min_size": 8,
+     "post": true
+    }
+   ]
+  },
+  "orange": {
+   "ramp": "orange",
+   "tone": 4.0,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 2.0,
+     "amount": 0.25
+    },
+    {
+     "id": "wear",
+     "op": "wear",
+     "width": 1,
+     "density": 0.2,
+     "ramp": "metal",
+     "tone": 2.6,
+     "post": true
+    }
+   ]
+  },
+  "gun": {
+   "ramp": "metal",
+   "tone": 3.0,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 1.6,
+     "amount": 0.3
+    },
+    {
+     "id": "scuffs",
+     "op": "wear",
+     "width": 1,
+     "density": 0.22,
+     "shift": 1.2,
+     "post": true
+    },
+    {
+     "id": "rivets",
+     "op": "rivets",
+     "inset": 1,
+     "min_size": 7,
+     "post": true
+    }
+   ]
+  },
+  "lens": {
+   "ramp": "lens",
+   "tone": 4.2,
+   "light": 0.4,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 0,
+    "light_shift": 1.5
+   }
+  },
+  "redlamp": {
+   "ramp": "red",
+   "tone": 3.8,
+   "light": 0.2,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 0
+   }
+  },
+  "greenlamp": {
+   "ramp": "green",
+   "tone": 3.8,
+   "light": 0.2,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 0
+   }
+  }
+ },
+ "parts": [
+  {
+   "id": "hull",
+   "shape": "taper",
+   "chamfer": 1.2,
+   "size": [
+    12,
+    5,
+    18
+   ],
+   "pivot": [
+    0,
+    10,
+    0
+   ],
+   "front_scale": [
+    0.82,
+    0.8
+   ],
+   "back_scale": [
+    0.9,
+    0.9
+   ],
+   "style": "enamel",
+   "paint": {
+    "layers": [
+     {
+      "id": "band",
+      "op": "band",
+      "axis": "z",
+      "from": -0.2,
+      "to": 0.15,
+      "ramp": "steelblue",
+      "tone": 4.0,
+      "faces": [
+       "sides",
+       "top",
+       "bevels"
+      ],
+      "bevel": true
+     },
+     {
+      "id": "vents",
+      "op": "grille",
+      "rect": [
+       0.15,
+       0.25,
+       0.85,
+       0.75
+      ],
+      "period": 2,
+      "faces": [
+       "back"
+      ]
+     }
+    ],
+    "stamps": [
+     {
+      "face": "top",
+      "at": [
+       3,
+       6
+      ],
+      "art": [
+       "kk.kk.k..k",
+       "k..k.k.k.k",
+       "kk.kk.kk.k",
+       "k.k..k.k.k"
+      ],
+      "key": {
+       "k": "metal:1"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "spine",
+   "parent": "hull",
+   "shape": "box",
+   "chamfer": 0.6,
+   "size": [
+    5,
+    2,
+    11
+   ],
+   "pivot": [
+    0,
+    3,
+    -1.5
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "vents",
+      "op": "grille",
+      "rect": [
+       0.1,
+       0.2,
+       0.9,
+       0.8
+      ],
+      "period": 2,
+      "faces": [
+       "top"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "nose",
+   "parent": "hull",
+   "shape": "box",
+   "chamfer": 0.5,
+   "size": [
+    6,
+    1.4,
+    1.2
+   ],
+   "pivot": [
+    0,
+    0.6,
+    8.6
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "screen",
+      "op": "rect",
+      "rect": [
+       0.15,
+       0.2,
+       0.85,
+       0.8
+      ],
+      "ramp": "green",
+      "tone": 3.6,
+      "faces": [
+       "front"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "boom",
+   "parent": "hull",
+   "shape": "box",
+   "chamfer": 0.4,
+   "size": [
+    2,
+    1.6,
+    10
+   ],
+   "pivot": [
+    4.5,
+    0.4,
+    5.5
+   ],
+   "offset": [
+    0,
+    0,
+    4.5
+   ],
+   "rotation": [
+    0,
+    45,
+    0
+   ],
+   "mirror": true,
+   "style": "gun",
+   "hide": [
+    "back"
+   ]
+  },
+  {
+   "id": "boom_back",
+   "parent": "hull",
+   "shape": "box",
+   "chamfer": 0.4,
+   "size": [
+    2,
+    1.6,
+    10
+   ],
+   "pivot": [
+    4.5,
+    0.4,
+    -5.5
+   ],
+   "offset": [
+    0,
+    0,
+    4.5
+   ],
+   "rotation": [
+    0,
+    135,
+    0
+   ],
+   "mirror": true,
+   "style": "gun",
+   "hide": [
+    "back"
+   ]
+  },
+  {
+   "id": "duct",
+   "parent": "boom",
+   "shape": "prism",
+   "sides": 12,
+   "size": [
+    10,
+    10,
+    3
+   ],
+   "pivot": [
+    0,
+    0,
+    10
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "hide": [
+    "front",
+    "back"
+   ],
+   "double_sided": true,
+   "style": "enamel",
+   "paint": {
+    "layers": [
+     {
+      "id": "lip",
+      "op": "band",
+      "axis": "z",
+      "from": 0.4,
+      "to": 1.0,
+      "ramp": "orange",
+      "tone": 3.8,
+      "bevel": true
+     },
+     {
+      "id": "wear",
+      "density": 0.04
+     },
+     {
+      "id": "rivets",
+      "off": true
+     },
+     {
+      "id": "panel",
+      "off": true
+     },
+     {
+      "id": "grime",
+      "off": true
+     }
+    ]
+   }
+  },
+  {
+   "id": "hub",
+   "parent": "duct",
+   "shape": "prism",
+   "sides": 8,
+   "size": [
+    2.4,
+    2.4,
+    2.4
+   ],
+   "pivot": [
+    0,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "blade",
+   "parent": "hub",
+   "shape": "box",
+   "size": [
+    8.6,
+    0.3,
+    1.2
+   ],
+   "pivot": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    10
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "blade2",
+   "parent": "hub",
+   "shape": "box",
+   "size": [
+    1.2,
+    8.6,
+    0.3
+   ],
+   "pivot": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    10,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "duct_b",
+   "parent": "boom_back",
+   "shape": "prism",
+   "sides": 12,
+   "size": [
+    10,
+    10,
+    3
+   ],
+   "pivot": [
+    0,
+    0,
+    10
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "hide": [
+    "front",
+    "back"
+   ],
+   "double_sided": true,
+   "style": "enamel",
+   "paint": {
+    "layers": [
+     {
+      "id": "lip",
+      "op": "band",
+      "axis": "z",
+      "from": 0.4,
+      "to": 1.0,
+      "ramp": "orange",
+      "tone": 3.8,
+      "bevel": true
+     },
+     {
+      "id": "wear",
+      "density": 0.04
+     },
+     {
+      "id": "rivets",
+      "off": true
+     },
+     {
+      "id": "panel",
+      "off": true
+     },
+     {
+      "id": "grime",
+      "off": true
+     }
+    ]
+   }
+  },
+  {
+   "id": "hub_b",
+   "parent": "duct_b",
+   "shape": "prism",
+   "sides": 8,
+   "size": [
+    2.4,
+    2.4,
+    2.4
+   ],
+   "pivot": [
+    0,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "blade_b",
+   "parent": "hub_b",
+   "shape": "box",
+   "size": [
+    8.6,
+    0.3,
+    1.2
+   ],
+   "pivot": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    -10
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "blade_b2",
+   "parent": "hub_b",
+   "shape": "box",
+   "size": [
+    1.2,
+    8.6,
+    0.3
+   ],
+   "pivot": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    -10,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "lamp_r",
+   "parent": "duct",
+   "shape": "prism",
+   "sides": 6,
+   "size": [
+    1,
+    1,
+    1
+   ],
+   "pivot": [
+    5.6,
+    0,
+    0
+   ],
+   "style": "redlamp"
+  },
+  {
+   "id": "lamp_g",
+   "parent": "duct_b",
+   "shape": "prism",
+   "sides": 6,
+   "size": [
+    1,
+    1,
+    1
+   ],
+   "pivot": [
+    5.6,
+    0,
+    0
+   ],
+   "style": "greenlamp"
+  },
+  {
+   "id": "strut",
+   "parent": "hull",
+   "shape": "box",
+   "size": [
+    0.8,
+    4,
+    0.8
+   ],
+   "pivot": [
+    3.6,
+    -3.2,
+    4
+   ],
+   "rotation": [
+    0,
+    0,
+    -12
+   ],
+   "mirror": true,
+   "style": "gun"
+  },
+  {
+   "id": "strut_b",
+   "parent": "hull",
+   "shape": "box",
+   "size": [
+    0.8,
+    4,
+    0.8
+   ],
+   "pivot": [
+    3.6,
+    -3.2,
+    -4
+   ],
+   "rotation": [
+    0,
+    0,
+    -12
+   ],
+   "mirror": true,
+   "style": "gun"
+  },
+  {
+   "id": "skid",
+   "parent": "hull",
+   "shape": "box",
+   "chamfer": 0.3,
+   "size": [
+    1,
+    1,
+    15
+   ],
+   "pivot": [
+    4.2,
+    -5.6,
+    0
+   ],
+   "mirror": true,
+   "style": "gun"
+  },
+  {
+   "id": "antenna",
+   "parent": "spine",
+   "shape": "box",
+   "size": [
+    1,
+    4,
+    1
+   ],
+   "pivot": [
+    1.2,
+    2.6,
+    -3
+   ],
+   "rotation": [
+    -10,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "armbase",
+   "parent": "hull",
+   "shape": "box",
+   "chamfer": 0.4,
+   "size": [
+    3,
+    2,
+    3
+   ],
+   "pivot": [
+    2.5,
+    -3.4,
+    5
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "weldarm",
+   "parent": "armbase",
+   "shape": "box",
+   "chamfer": 0.3,
+   "size": [
+    1.4,
+    1.4,
+    7
+   ],
+   "pivot": [
+    0,
+    -0.6,
+    0
+   ],
+   "offset": [
+    0,
+    0,
+    3.5
+   ],
+   "rotation": [
+    30,
+    0,
+    0
+   ],
+   "style": "orange"
+  },
+  {
+   "id": "torch",
+   "parent": "weldarm",
+   "shape": "prism",
+   "sides": 8,
+   "size": [
+    1.4,
+    1.4,
+    3
+   ],
+   "pivot": [
+    0,
+    0,
+    7
+   ],
+   "offset": [
+    0,
+    0,
+    1.2
+   ],
+   "rotation": [
+    40,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "tip",
+   "parent": "torch",
+   "shape": "prism",
+   "sides": 6,
+   "size": [
+    0.8,
+    0.8,
+    1
+   ],
+   "pivot": [
+    0,
+    0,
+    2.8
+   ],
+   "style": "lens"
+  },
+  {
+   "id": "bottle",
+   "parent": "hull",
+   "shape": "prism",
+   "sides": 8,
+   "size": [
+    2.6,
+    2.6,
+    8
+   ],
+   "pivot": [
+    -3,
+    -3.6,
+    0
+   ],
+   "style": "lens",
+   "paint": {
+    "layers": [
+     {
+      "id": "bands",
+      "op": "stripes",
+      "axis": "z",
+      "period": 3,
+      "width": 0.2,
+      "ramp": "metal",
+      "tone": 2
+     }
+    ]
+   }
+  }
+ ]
+}

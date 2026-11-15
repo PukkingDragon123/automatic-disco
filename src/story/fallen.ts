@@ -27,7 +27,7 @@ function relayMast() {
   const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.25, 0.3, 10), m(0xc3bdab)); dish.rotation.x = Math.PI / 2.6; dish.position.set(0, H - 1.1, 0.55); g.add(dish);
   const box = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.35), olive); box.position.set(0, 1.1, 0.62); g.add(box);
   const band = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.08, 0.37), red); band.position.set(0, 1.4, 0.62); g.add(band);
-  const lampM = new THREE.MeshBasicMaterial({ color: 0xff4030 }); const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.18), lampM); lamp.position.y = H + 0.1; g.add(lamp);
+  const lampM = new THREE.MeshBasicMaterial({ color: 0xff4030 }); const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.18), lampM); lamp.position.y = H + 0.1; lamp.userData.keep = true; g.add(lamp);
   const light = new THREE.PointLight(0xff4030, 3, 10); light.position.y = H + 0.2; g.add(light);
   const fire = new THREE.PointLight(0xff7a30, 0, 16); fire.position.set(0, H - 1, 0); g.add(fire);
   return { g, lamp: lampM, light, fire, H };
@@ -97,6 +97,13 @@ export const FALLEN: EventDef = {
     const { st, g } = x, G = anyG(g), P = st.pod(), M: V = x.data.mastAt, a: number = x.data.a;
     const scene = G.world.scene as THREE.Scene;
     const mast = relayMast(); mast.g.position.copy(M); mast.g.rotation.y = a + Math.PI; scene.add(mast.g); st.props.push(mast.g);
+    // the colony's own lowpix relay mast (src/colony/models.ts, tools/lowpix/st_relay.json) replaces the stand-in tower
+    void import('../colony/models').then(async (mm) => {
+      const r = await mm.lowpixModel?.('st_relay', { height: mast.H + 0.6, origin: 'ground' });
+      if (!r) return;
+      for (const ch of mast.g.children) if ((ch as THREE.Mesh).isMesh && !ch.userData.keep) ch.visible = false;
+      mast.g.add(r);
+    }).catch(() => { /* the stand-in stays */ });
     G.climate?.force?.(null, 'storm');
     const start = spot(st, P, a, 4, 0), dir = new V3(Math.sin(a), 0, Math.cos(a)), side = new V3(dir.z, 0, -dir.x);
     // the colony's teammates walk it themselves (staged: their AI stands down); without a colony, stand-ins do

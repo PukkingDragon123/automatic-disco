@@ -5,7 +5,9 @@ import type { Game } from '../../game/game';
 import type { Storage } from '../../inv/storage';
 import type { InvUI, InvEvent } from './grid';
 import type { CrateHud } from './hud';
-import { injectCrateCSS } from './style';
+import { injectCrateCSS, paintBg } from './style';
+import { panelURL, wellURL, lampURL } from './hw';
+import { AM, PH } from '../machine';
 import { sfx } from '../../audio/audio';
 
 interface Step { id: string; title: string; text: string; wait: InvEvent[]; target: () => DOMRect | null; need2?: boolean }
@@ -51,8 +53,9 @@ export class StoresTutorial {
     this.i = i;
     if (i >= this.steps.length) { this.finish(); return; }
     const s = this.steps[i];
-    this.card!.innerHTML = `<div class="scr2"><h3>${s.title}</h3><p>${s.text}</p></div><div class="ft"><div class="steps">${this.steps.map((_, k) => `<i class="${k < i ? 'done' : k === i ? 'on' : ''}"></i>`).join('')}</div><button class="inv-key w skip">SKIP</button></div>`;
+    this.card!.innerHTML = `<div class="scr2"><h3 class="inv-t">${s.title}</h3><p>${s.text}</p></div><div class="ft"><div class="steps">${this.steps.map((_, k) => `<img src="${lampURL(k <= i, k < i ? PH : AM)}">`).join('')}</div><button class="inv-key skip">SKIP</button></div>`;
     this.card!.querySelector<HTMLButtonElement>('.skip')!.onclick = () => this.end();
+    this.paint();
     sfx('click', 1.1, 0.5);
   }
   private on(ev: InvEvent) {
@@ -65,8 +68,18 @@ export class StoresTutorial {
   }
   private finish() {
     this.i = this.steps.length;
-    this.card!.innerHTML = `<div class="scr2"><h3>STORES READY</h3><p>Items go to the highest-priority container that takes them, then the nearest. The arms unload the pod's hold into containers within reach; link workers to a container to keep it stocked.</p></div><div class="ft"><div class="steps">${this.steps.map(() => '<i class="done"></i>').join('')}</div><button class="inv-key w ok">OK</button></div>`;
+    this.card!.innerHTML = `<div class="scr2"><h3 class="inv-t">STORES READY</h3><p>Items go to the highest-priority container that takes them, then the nearest. The arms unload the pod's hold into containers within reach; link workers to a container to keep it stocked.</p></div><div class="ft"><div class="steps">${this.steps.map(() => `<img src="${lampURL(true, PH)}">`).join('')}</div><button class="inv-key ok">OK</button></div>`;
     this.card!.querySelector<HTMLButtonElement>('.ok')!.onclick = () => this.end();
+    this.paint();
+  }
+  /** the card's painted panel and glass, at their exact sizes */
+  private paint() {
+    requestAnimationFrame(() => {
+      if (!this.card) return;
+      const k = innerHeight >= 1000 ? 2 : 1;
+      paintBg(this.card, (w, h) => panelURL(w, h, 0, 21), k);
+      const g = this.card.querySelector<HTMLElement>('.scr2'); if (g) paintBg(g, (w, h) => wellURL(w, h), k);
+    });
   }
   end() {
     cancelAnimationFrame(this.raf);

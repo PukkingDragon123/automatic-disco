@@ -1,89 +1,82 @@
-// The intro's screen furniture over the cinema: UNIT 07's own readouts (a phosphor line typed in the corner of its
-// vision: "GRAVITY FIELD: ONLINE"), the boot-up overlay (scanlines, a teal iris vignette, the boot log), the
-// playable-beat prompt plate (a worn machine plate with a key cap and the instruction) and the hold ring that
-// fills while the player keeps the button down.
+// The intro's screen furniture over the cinema, all painted pixel-art hardware (hw.ts): UNIT 07's own readouts
+// (phosphor lines typed into the corner of its vision), the boot-up overlay (scanlines and the dark iris vignette),
+// the playable-beat prompt plate (a gunmetal plate with a key cap and the instruction on phosphor glass), the target
+// brackets over what can be picked, and the hold dial (24 lamp segments) while the player keeps the button down.
+// Everything sits on whole pixels; the type is Departure Mono ('Body') at 22 px.
+import { promptPlate, holdDial, brackets } from './hw';
+
 const CSS = /* css */`
-.u7 { position: fixed; inset: 0; z-index: 42; pointer-events: none; font-family: 'VT', monospace; --u: calc(1px * var(--s, 2)); }
-.u7 .hud { position: absolute; left: calc(9 * var(--u)); top: calc(var(--lbh, 0px) + 6 * var(--u)); display: flex; flex-direction: column; gap: calc(1 * var(--u)); }
-.u7 .hud div { color: #8fe0b0; font-size: var(--cf-vt2, 26px); line-height: 1.05; text-shadow: 0 0 6px rgba(120, 230, 170, 0.45), 1px 1px 0 #000; opacity: 0; transition: opacity 0.6s; }
+.u7 { position: fixed; inset: 0; z-index: 42; pointer-events: none; }
+.u7 canvas { position: absolute; image-rendering: pixelated; }
+.u7 .hud { position: absolute; left: 36px; top: calc(11.5vh + 18px); display: flex; flex-direction: column; gap: 2px; }
+.u7 .hud div { font-family: 'Body', monospace; font-size: 22px; line-height: 26px; color: #8fe0b0; text-shadow: 2px 2px 0 #06100a; opacity: 0; transition: opacity 0.4s steps(4); -webkit-font-smoothing: none; white-space: pre; }
 .u7 .hud div.on { opacity: 1; }
 .u7 .hud div b { color: #e2b45a; font-weight: normal; }
-.u7 .boot { position: absolute; inset: 0; opacity: 0; transition: opacity 0.8s; background:
+.u7 .boot { position: absolute; inset: 0; opacity: 0; transition: opacity 0.8s steps(8); background:
   radial-gradient(circle at 50% 50%, transparent 34%, rgba(10, 30, 26, 0.55) 58%, #000 76%),
-  repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 3px); }
+  repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.2) 0 1px, transparent 1px 3px); }
 .u7 .boot.on { opacity: 1; }
-.u7 .boot::after { content: ''; position: absolute; inset: 0; background: rgba(100, 220, 190, 0.06); mix-blend-mode: screen; }
-.u7 .reticle { position: absolute; left: 50%; top: 50%; width: 22vh; height: 22vh; transform: translate(-50%, -50%); border: 1px solid rgba(143, 224, 176, 0.35); border-radius: 50%; opacity: 0; transition: opacity 0.6s; }
+.u7 .reticle { position: absolute; left: 50%; top: 50%; width: 22vh; height: 22vh; margin: -11vh 0 0 -11vh; border: 2px solid rgba(143, 224, 176, 0.35); border-radius: 50%; opacity: 0; }
 .u7 .reticle.on { opacity: 1; }
-.u7 .reticle::before, .u7 .reticle::after { content: ''; position: absolute; background: rgba(143, 224, 176, 0.5); }
-.u7 .reticle::before { left: 50%; top: -3vh; width: 1px; height: 3vh; }
-.u7 .reticle::after { top: 50%; right: -3vh; height: 1px; width: 3vh; }
-.u7 .prompt { position: absolute; left: 50%; bottom: calc(var(--lbh, 0px) + 7vh); transform: translate(-50%, 0) translateY(10px); display: flex; align-items: center; gap: calc(5 * var(--u)); padding: calc(4 * var(--u)) calc(9 * var(--u)) calc(4 * var(--u)) calc(5 * var(--u));
-  background: linear-gradient(180deg, #2a3036, #1c2126); border: calc(1 * var(--u)) solid #4a5258; outline: 1px solid #0c0f12; box-shadow: 0 0 0 1px #5c666c inset, 0 8px 24px rgba(0,0,0,0.5);
-  color: #dfe3dc; font-size: var(--cf-vt2, 26px); opacity: 0; transition: opacity 0.35s, transform 0.35s; }
-.u7 .prompt.on { opacity: 1; transform: translate(-50%, 0); }
-.u7 .prompt .key { font-family: 'Superwide', monospace; font-size: var(--cf-sw1, 12px); letter-spacing: 2px; color: #1e2228; background: linear-gradient(180deg, #e8e2cc, #b8b09a); border-radius: calc(2 * var(--u)); padding: calc(3 * var(--u)) calc(5 * var(--u)); box-shadow: 0 calc(2 * var(--u)) 0 #6a6450; }
-.u7 .prompt .tip { color: #8fe0b0; font-size: var(--cf-vt1, 20px); margin-left: calc(3 * var(--u)); }
-.u7 .ring { position: absolute; width: 96px; height: 96px; transform: translate(-50%, -50%); opacity: 0; transition: opacity 0.2s; }
-.u7 .ring.on { opacity: 1; }
-.u7 .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-.u7 .ring .lab { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 4px); color: #e2b45a; font-size: var(--cf-vt1, 20px); white-space: nowrap; text-shadow: 1px 1px 0 #000; }
-.u7 .mark { position: absolute; width: 64px; height: 64px; transform: translate(-50%, -50%); opacity: 0; transition: opacity 0.3s; }
-.u7 .mark.on { opacity: 1; }
-.u7 .mark::before, .u7 .mark::after { content: ''; position: absolute; inset: 0; border: 2px solid rgba(154, 140, 255, 0.85); border-radius: 50%; animation: u7-pulse 1.3s ease-out infinite; }
-.u7 .mark::after { animation-delay: 0.65s; }
-.u7 .mark .t { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 6px); color: #c8c0ff; font-size: var(--cf-vt1, 20px); white-space: nowrap; text-shadow: 1px 1px 0 #000; }
-@keyframes u7-pulse { 0% { transform: scale(0.55); opacity: 1; } 100% { transform: scale(1.35); opacity: 0; } }
+.u7 .pr { opacity: 0; transition: opacity 0.3s steps(3); }
+.u7 .pr.on { opacity: 1; }
 `;
 let styled = false;
 
 export class IntroUI {
   readonly root: HTMLDivElement;
   private hud: HTMLDivElement; private boot: HTMLDivElement; private reticle: HTMLDivElement;
-  private promptEl: HTMLDivElement; private ring: HTMLDivElement; private ringArc: SVGCircleElement; private ringLab: HTMLDivElement;
-  private markEl: HTMLDivElement;
+  private pr: HTMLCanvasElement | null = null; private prKey = '';
+  private ring: HTMLCanvasElement | null = null; private ringKey = '';
+  private mk: HTMLCanvasElement | null = null; private mkKey = '';
   constructor() {
     if (!styled) { styled = true; const s = document.createElement('style'); s.textContent = CSS; document.head.appendChild(s); }
     this.root = document.createElement('div'); this.root.className = 'u7'; document.body.appendChild(this.root);
     this.boot = this.div('boot'); this.reticle = this.div('reticle');
     this.hud = this.div('hud');
-    this.promptEl = this.div('prompt');
-    this.markEl = this.div('mark'); this.markEl.innerHTML = '<div class="t"></div>';
-    this.ring = this.div('ring');
-    this.ring.innerHTML = '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="rgba(20,24,28,0.55)" stroke="#3a4248" stroke-width="7"/><circle class="a" cx="50" cy="50" r="42" fill="none" stroke="#9a8cff" stroke-width="7" stroke-dasharray="264" stroke-dashoffset="264" stroke-linecap="butt"/></svg><div class="lab"></div>';
-    this.ringArc = this.ring.querySelector('circle.a') as SVGCircleElement; this.ringLab = this.ring.querySelector('.lab') as HTMLDivElement;
   }
   private div(c: string) { const d = document.createElement('div'); d.className = c; this.root.appendChild(d); return d; }
-  /** UNIT 07's own readout: a line typed into the corner of its vision */
+  private swap(old: HTMLCanvasElement | null, c: HTMLCanvasElement) { c.className = 'pr on'; if (old) old.replaceWith(c); else this.root.appendChild(c); return c; }
+  private lines: { d: HTMLDivElement; text: string; html: string; i: number; t: number; hold: number }[] = [];
+  /** UNIT 07's own readout: a line typed into the corner of its vision ([brackets] in amber); game-timed (update) */
   sys(text: string, hold = 4) {
-    const d = document.createElement('div'); this.hud.appendChild(d);
-    const html = text.replace(/\[(.+?)\]/g, '<b>$1</b>');
-    let i = 0; const plain = text.replace(/\[|\]/g, '');
-    requestAnimationFrame(() => d.classList.add('on'));
-    const tick = () => { i = Math.min(plain.length, i + 2); d.textContent = '> ' + plain.slice(0, i); if (i < plain.length) setTimeout(tick, 22); else d.innerHTML = '&gt; ' + html; };
-    tick();
-    setTimeout(() => { d.classList.remove('on'); setTimeout(() => d.remove(), 700); }, hold * 1000);
-    while (this.hud.children.length > 5) this.hud.firstElementChild?.remove();
+    const d = document.createElement('div'); this.hud.appendChild(d); d.classList.add('on');
+    this.lines.push({ d, text: text.replace(/\[|\]/g, ''), html: text.replace(/\[(.+?)\]/g, '<b>$1</b>'), i: 0, t: 0, hold });
+    while (this.lines.length > 5) this.lines.shift()!.d.remove();
+  }
+  /** type and expire the readouts (call every frame with the game's dt) */
+  update(dt: number) {
+    for (let k = this.lines.length - 1; k >= 0; k--) {
+      const L = this.lines[k]; L.t += dt;
+      if (L.i < L.text.length) { L.i = Math.min(L.text.length, Math.floor(L.t * 70)); L.d.textContent = '> ' + L.text.slice(0, L.i); if (L.i >= L.text.length) L.d.innerHTML = '&gt; ' + L.html; }
+      if (L.t > L.hold) L.d.classList.remove('on');
+      if (L.t > L.hold + 0.6) { L.d.remove(); this.lines.splice(k, 1); }
+    }
   }
   bootView(on: boolean) { this.boot.classList.toggle('on', on); this.reticle.classList.toggle('on', on); }
-  /** the prompt plate: a key cap and the instruction (null hides) */
+  /** the prompt plate, centred low on the screen (null hides) */
   prompt(key: string | null, text = '', tip = '') {
-    if (!key) { this.promptEl.classList.remove('on'); return; }
-    this.promptEl.innerHTML = `<span class="key">${key}</span><span>${text}</span>${tip ? `<span class="tip">${tip}</span>` : ''}`;
-    this.promptEl.classList.add('on');
+    if (!key) { this.pr?.remove(); this.pr = null; this.prKey = ''; return; }
+    const k = key + '|' + text + '|' + tip;
+    if (k !== this.prKey) { this.prKey = k; this.pr = this.swap(this.pr, promptPlate(key, text, tip)); }
+    const c = this.pr!, w = parseInt(c.style.width), h = parseInt(c.style.height);
+    c.style.left = Math.round(innerWidth / 2 - w / 2) + 'px'; c.style.top = Math.round(innerHeight * 0.885 - 30 - h) + 'px';
   }
-  /** a pulsing target mark at a screen point (null hides) */
+  /** target brackets at a screen point, pulsing in two steps (null hides) */
   mark(x: number | null, y = 0, label = '') {
-    if (x === null) { this.markEl.classList.remove('on'); return; }
-    this.markEl.classList.add('on'); this.markEl.style.left = x + 'px'; this.markEl.style.top = y + 'px';
-    const t = this.markEl.querySelector('.t') as HTMLDivElement; if (t.textContent !== label) t.textContent = label;
+    if (x === null) { this.mk?.remove(); this.mk = null; this.mkKey = ''; return; }
+    const t = (Math.floor(performance.now() / 380) % 2) as 0 | 1, k = label + t;
+    if (k !== this.mkKey) { this.mkKey = k; this.mk = this.swap(this.mk, brackets(label, t)); }
+    const c = this.mk!, w = parseInt(c.style.width);
+    c.style.left = Math.round(x - w / 2) + 'px'; c.style.top = Math.round(y - 36) + 'px';
   }
-  /** the hold ring at a screen point, k 0..1 (null hides) */
+  /** the hold dial at a screen point, k 0..1 (null hides) */
   hold(x: number | null, y = 0, k = 0, label = '') {
-    if (x === null) { this.ring.classList.remove('on'); return; }
-    this.ring.classList.add('on'); this.ring.style.left = x + 'px'; this.ring.style.top = y + 'px';
-    this.ringArc.setAttribute('stroke-dashoffset', String(264 * (1 - Math.max(0, Math.min(1, k)))));
-    if (this.ringLab.textContent !== label) this.ringLab.textContent = label;
+    if (x === null) { this.ring?.remove(); this.ring = null; this.ringKey = ''; return; }
+    const key = Math.round(k * 24) + '|' + label + '|' + Math.round(k * 100);
+    if (key !== this.ringKey) { this.ringKey = key; this.ring = this.swap(this.ring, holdDial(k, label)); }
+    const c = this.ring!;
+    c.style.left = Math.round(x - 50) + 'px'; c.style.top = Math.round(y - 50) + 'px';
   }
   clear() { this.prompt(null); this.mark(null); this.hold(null); this.bootView(false); this.hud.innerHTML = ''; }
   dispose() { this.root.remove(); }

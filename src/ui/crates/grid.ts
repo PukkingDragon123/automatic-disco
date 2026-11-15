@@ -10,14 +10,18 @@ import type { Container, Stack, SortKey } from '../../inv/container';
 import type { Storage } from '../../inv/storage';
 import { DAY } from '../../inv/storage';
 import { KIND_INFO, PAINTS, PAINT_IDS, LOGO_IDS } from '../../inv/kinds';
-import { drawLogoPlate } from '../../inv/tex';
+import { drawLogoBadge } from '../../inv/tex';
 import { logoURL, LOGO_NAME } from '../../inv/logos';
-import { injectCrateCSS } from './style';
+import { injectCrateCSS, paintBg } from './style';
+import { panelURL, screenURL, wellURL, lampURL } from './hw';
+import { PH, AM } from '../machine';
 import { sfx } from '../../audio/audio';
 
 const SORTS: { k: SortKey; name: string }[] = [{ k: 'type', name: 'TYPE' }, { k: 'name', name: 'NAME' }, { k: 'count', name: 'COUNT' }, { k: 'value', name: 'VALUE' }, { k: 'fresh', name: 'FRESH' }];
 const ik = () => (innerHeight >= 1000 ? 2 : 1);
-const cellPx = () => 26 * ik();
+/** a grid cell: 34 art pixels (a 32 px item sprite at 1:1 art, in a socket), shown at --ik */
+const CELL = 34, PAD = 4, MAN = 132;
+const cellPx = () => CELL * ik();
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const hexs = (c: number) => '#' + c.toString(16).padStart(6, '0');
 export type InvEvent = 'opened' | 'sorted' | 'filtered' | 'split' | 'moved' | 'merged' | 'settings' | 'priority' | 'filterset' | 'closed';
@@ -39,11 +43,11 @@ class InvWindow {
     const r = (this.root = document.createElement('div'));
     r.className = 'inv-win pop';
     r.innerHTML = `
-      <div class="inv-head"><canvas class="plate" width="96" height="48"></canvas>
-        <div class="inv-title"><div class="lab"></div><div class="kind"></div></div>
+      <div class="inv-head"><canvas class="plate" width="24" height="24"></canvas>
+        <div class="inv-title"><div class="lab inv-t"></div><div class="kind"></div></div>
         <div class="inv-pri" title="Priority: containers with a higher priority fill first"></div>
-        <button class="inv-key gear" title="Container settings: label, logo, paint, priority, filters, workers">${GEAR}</button>
-        <button class="inv-key x" title="Close (Esc)">${CROSS}</button></div>
+        <button class="inv-key sq gear" title="Container settings: label, logo, paint, priority, filters, workers">${GEAR}</button>
+        <button class="inv-key sq x" title="Close (Esc)">${CROSS}</button></div>
       <div class="inv-bar srt"><span class="k">SORT</span></div>
       <div class="inv-bar flt"><div class="inv-search"><input type="text" placeholder="SEARCH" spellcheck="false"></div></div>
       <div class="inv-bar chips"></div>
@@ -57,7 +61,7 @@ class InvWindow {
     this.drop = document.createElement('div'); this.drop.className = 'inv-drop'; this.drop.style.display = 'none';
     const srt = r.querySelector('.srt')!;
     for (const s of SORTS) {
-      const b = document.createElement('button'); b.className = 'inv-key w'; b.textContent = s.name; b.dataset.sort = s.k;
+      const b = document.createElement('button'); b.className = 'inv-key'; b.textContent = s.name; b.dataset.sort = s.k;
       b.title = `Sort by ${s.name.toLowerCase()} (click again to reverse)`;
       b.onclick = () => this.doSort(s.k);
       srt.appendChild(b);
@@ -93,12 +97,12 @@ class InvWindow {
     if (look === this.look) return;
     this.look = look;
     const x = this.plate.getContext('2d')!;
-    drawLogoPlate(x, this.c.logo, this.c.color, this.c.label, 96, 48);
+    drawLogoBadge(x, this.c.logo, this.c.color, 24, 24);
     this.root.querySelector('.lab')!.textContent = this.c.label;
     const I = KIND_INFO[this.c.kind];
-    this.root.querySelector('.kind')!.textContent = `${I.name.toUpperCase()} · ${this.c.W}×${this.c.H} GRID`;
+    this.root.querySelector('.kind')!.textContent = `${I.name.toUpperCase()} ${this.c.W}×${this.c.H}`;
     const pri = this.root.querySelector<HTMLDivElement>('.inv-pri')!;
-    pri.innerHTML = this.c.kind === 'hold' ? '' : [1, 2, 3, 4, 5].map((k) => `<i class="${k <= this.c.priority ? 'on' : ''}" style="height:${(3 + k * 2) * ik()}px"></i>`).join('');
+    pri.innerHTML = this.c.kind === 'hold' ? '' : [1, 2, 3, 4, 5].map((k) => `<img src="${lampURL(k <= this.c.priority, AM)}">`).join('');
     (this.root.querySelector('.gear') as HTMLElement).style.display = this.c.kind === 'hold' ? 'none' : '';
   }
   /** category chips with counts (a chip with nothing in this container is dimmed) */
@@ -127,26 +131,40 @@ class InvWindow {
   /** the grid: empty cells, then each stack spanning its cells, icon drawn at the size it is shown at */
   renderGrid() {
     const C = cellPx(), W = this.c.W, H = this.c.H, k = ik();
-    this.gridEl.style.width = W * C + 'px'; this.gridEl.style.height = H * C + 'px';
+    // the glass: painted to the grid's exact size, a socket per cell
+    const sw = W * CELL + PAD * 2, sh = H * CELL + PAD * 2;
+    Object.assign(this.screen.style, { width: sw * k + 'px', height: sh * k + 'px', backgroundImage: `url(${screenURL(W, H, CELL, PAD)})`, backgroundSize: `${sw * k}px ${sh * k}px` });
+    Object.assign(this.gridEl.style, { left: PAD * k + 'px', top: PAD * k + 'px', width: W * C + 'px', height: H * C + 'px' });
+    const manEl = this.man.parentElement as HTMLDivElement;
+    manEl.style.width = MAN * k + 'px'; manEl.style.height = sh * k + 'px';
+    manEl.style.backgroundImage = `url(${wellURL(MAN, sh)})`; manEl.style.backgroundSize = `${MAN * k}px ${sh * k}px`;
     let html = '';
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) html += `<div class="inv-cell" style="left:${x * C}px;top:${y * C}px;width:${C}px;height:${C}px"></div>`;
     this.c.stacks.forEach((s, i) => {
       const [w, h] = this.c.dims(s.item, s.rot), d = itemDef(s.item);
-      const px = Math.min(w, h) * C - 6 * k, ico = itemIcon(s.item, px);
+      const px = 32 * k, ico = itemIcon(s.item, 32);
       const p = d.perish, keep = this.c.keeps(s.item);
-      const fr = p ? `<div class="fr ${s.fresh < 0.25 ? 'bad' : s.fresh < 0.5 ? 'warn' : ''}"><b style="width:${Math.round(s.fresh * 100)}%"></b></div>` : '';
-      const rotS = s.rot && w !== h ? `transform:translate(-50%,-54%) rotate(90deg)` : '';
-      html += `<div class="inv-stack ${p && keep ? 'cold' : ''}" data-i="${i}" style="left:${s.x * C}px;top:${s.y * C}px;width:${w * C}px;height:${h * C}px">` +
-        `<img src="${ico}" width="${px}" height="${px}" style="width:${px}px;height:${px}px;${rotS}">${s.n > 1 ? `<span class="cnt">${s.n}</span>` : ''}${fr}</div>`;
+      const fr = p ? `<div class="fr ${keep ? 'keep' : s.fresh < 0.25 ? 'bad' : s.fresh < 0.5 ? 'warn' : ''}"><b style="width:${Math.round(s.fresh * 100)}%"></b></div>` : '';
+      const ix = (w * C - px) / 2, iy = (h * C - px) / 2;
+      const rotS = s.rot && w !== h ? 'transform:rotate(90deg);' : '';
+      html += `<div class="inv-stack" data-i="${i}" style="left:${s.x * C}px;top:${s.y * C}px;width:${w * C}px;height:${h * C}px">` +
+        `<img src="${ico}" style="left:${ix}px;top:${iy}px;width:${px}px;height:${px}px;${rotS}">${s.n > 1 ? `<span class="cnt">${s.n}</span>` : ''}${fr}</div>`;
     });
     this.gridEl.innerHTML = html;
     this.gridEl.appendChild(this.drop);
     this.gridEl.querySelectorAll<HTMLDivElement>('.inv-stack').forEach((el) => this.bindStack(el));
     this.applyFilter();
     this.renderManifest();
-    // the window hugs its grid and manifest; the bars wrap to that width
-    const bodyW = W * C + 2 * 2 * k + 16 * k + 3 * 2 * k + 112 * k;
-    this.root.style.width = Math.max(300 * k, bodyW + 24 * k) + 'px';
+    // the window hugs its grid and manifest; the bars wrap to that width; then its panel is painted to fit
+    this.root.style.width = Math.max(320 * k, (sw + MAN + 3 + 4 + 18) * k) + 'px';
+    requestAnimationFrame(() => this.paint());
+  }
+  /** the painted panel and wells, at the window's exact size */
+  paint() {
+    const k = ik();
+    paintBg(this.root, (w, h) => panelURL(w, h, 30, this.c.id), k);
+    const se = this.search.parentElement as HTMLElement;
+    paintBg(se, (w, h) => wellURL(w, h), k);
+    if (this.settings) paintBg(this.setEl, (w, h) => wellURL(w, h), k);
   }
   /** the cargo manifest: every kind held, its count, freshness and mass; hover lights its stacks, click searches it */
   private renderManifest() {
@@ -155,7 +173,7 @@ class InvWindow {
     this.man.innerHTML = rows.length ? rows.map((e) => {
       const d = itemDef(e.item), p = d.perish, keep = this.c.keeps(e.item);
       const fr = p ? `<i class="mf ${keep ? 'keep' : e.fresh < 0.25 ? 'bad' : e.fresh < 0.5 ? 'warn' : ''}"><b style="width:${Math.round(e.fresh * 100)}%"></b></i>` : '';
-      return `<div class="mrow" data-it="${e.item}"><img src="${itemIcon(e.item, 9 * k)}" width="${9 * k}" height="${9 * k}"><span class="nm">${esc(d.name)}</span><span class="n">${e.n}</span>${fr}</div>`;
+      return `<div class="mrow" data-it="${e.item}"><img src="${itemIcon(e.item, 32)}"><span class="nm">${esc(d.name)}</span><span class="n">${e.n}</span>${fr}</div>`;
     }).join('') : '<div class="mrow empty">EMPTY</div>';
     this.man.querySelectorAll<HTMLDivElement>('.mrow[data-it]').forEach((el) => {
       const id = el.dataset.it as ItemId;
@@ -216,6 +234,7 @@ class InvWindow {
     const c = this.c, el = this.setEl;
     this.root.querySelector('.gear')!.classList.toggle('act', this.settings);
     el.style.display = this.settings ? '' : 'none';
+    requestAnimationFrame(() => { this.root.dataset.bg = ''; this.setEl.dataset.bg = ''; this.paint(); });
     if (!this.settings) return;
     const I = KIND_INFO[c.kind];
     const takes = ITEM_IDS.filter((id) => ITEMS[id].cat !== 'internal' && c.takesKind(id));
@@ -226,7 +245,7 @@ class InvWindow {
       <span class="k">PAINT</span><div class="inv-paints">${PAINT_IDS.map((p) => `<button data-p="${p}" class="${c.color === p ? 'on' : ''}" title="${PAINTS[p].name}"><i style="background:${hexs(PAINTS[p].base)}"></i></button>`).join('')}</div>
       <span class="k">PRIORITY</span><div class="inv-mode">${[1, 2, 3, 4, 5].map((k) => `<button class="inv-key ${c.priority === k ? 'act' : ''}" data-pr="${k}">${k}</button>`).join('')}<span>&nbsp;${c.priority >= 4 ? 'FILLS FIRST' : c.priority <= 2 ? 'OVERFLOW' : 'NORMAL'}</span></div>
       <span class="k">FILTER</span><div><div class="inv-mode" style="margin-bottom:${ik()}px"><span>CLICK: ALLOW · AGAIN: DENY · AGAIN: CLEAR</span>${c.allow.length || c.deny.length ? `<button class="inv-key w clr">CLEAR ALL</button>` : ''}</div>
-        <div class="inv-picks">${takes.map((id) => `<button data-it="${id}" class="${c.allow.includes(id) ? 'allow' : c.deny.includes(id) ? 'deny' : ''}" title="${esc(ITEMS[id].name)}"><img src="${itemIcon(id, 14 * ik())}"></button>`).join('')}</div>
+        <div class="inv-picks">${takes.map((id) => `<button data-it="${id}" class="${c.allow.includes(id) ? 'allow' : c.deny.includes(id) ? 'deny' : ''}" title="${esc(ITEMS[id].name)}"><img src="${itemIcon(id, 32)}"></button>`).join('')}</div>
         <div class="inv-mode">${c.allow.length ? `ONLY ${c.allow.length} ALLOWED` : `TAKES ${I.accepts.join(', ').toUpperCase()}`}${c.deny.length ? ` · ${c.deny.length} DENIED` : ''}</div></div>
       <span class="k">WORKERS</span><div class="inv-crew">${crew.map((w, i) => `<span class="w">${esc(w.c.sp.name)} <b data-un="${i}" title="Unlink">×</b></span>`).join('')}<button class="inv-key w link">LINK WORKER</button><span class="inv-mode">${crew.length ? '' : 'LINKED HAULERS KEEP IT STOCKED'}</span></div>`;
     const lbl = el.querySelector<HTMLInputElement>('input.lbl')!;
@@ -354,7 +373,12 @@ export class InvUI {
     this.moved = false;
   }
   // ---------------------------------------------------------------- tooltip
-  tip(html: string | null, x = 0, y = 0) { if (!html) { this.tipEl.style.display = 'none'; return; } this.tipEl.innerHTML = html; this.tipEl.style.display = 'block'; this.tipMove(x, y); }
+  tip(html: string | null, x = 0, y = 0) {
+    if (!html) { this.tipEl.style.display = 'none'; return; }
+    this.tipEl.innerHTML = html.replace('<h4>', '<h4 class="inv-t">'); this.tipEl.style.display = 'block';
+    paintBg(this.tipEl, (w, h) => wellURL(w, h), ik());
+    this.tipMove(x, y);
+  }
   tipMove(x: number, y: number) { const r = this.tipEl.getBoundingClientRect(); this.tipEl.style.left = Math.min(innerWidth - r.width - 6, x + 16) + 'px'; this.tipEl.style.top = Math.min(innerHeight - r.height - 6, y + 14) + 'px'; }
   // ---------------------------------------------------------------- drag and drop
   startDrag(w: InvWindow, s: Stack, n: number, gx: number, gy: number, e: PointerEvent) {
@@ -375,11 +399,10 @@ export class InvUI {
     w.liftStack(s);
   }
   private paintGhost() {
-    const d = this.drag!; const [w, h] = d.w.c.dims(d.s.item, d.rot), C = cellPx(), px = Math.min(w, h) * C - 6 * ik();
+    const d = this.drag!; const [w, h] = d.w.c.dims(d.s.item, d.rot), C = cellPx(), px = 32 * ik();
     d.ghost.style.width = w * C + 'px'; d.ghost.style.height = h * C + 'px';
-    const rot = d.rot !== d.s.rot || d.rot ? '' : '';
     const sz = itemDef(d.s.item).size, turned = d.rot && sz[0] !== sz[1];
-    d.ghost.innerHTML = `<img src="${itemIcon(d.s.item, px)}" style="width:${px}px;height:${px}px;${turned ? 'transform:translate(-50%,-54%) rotate(90deg)' : ''}">${d.n > 1 ? `<span class="cnt">${d.n}</span>` : ''}${rot}`;
+    d.ghost.innerHTML = `<img src="${itemIcon(d.s.item, 32)}" style="left:${(w * C - px) / 2}px;top:${(h * C - px) / 2}px;width:${px}px;height:${px}px;${turned ? 'transform:rotate(90deg)' : ''}">${d.n > 1 ? `<span class="cnt">${d.n}</span>` : ''}`;
   }
   private rotateDrag() {
     const d = this.drag; if (!d) return;

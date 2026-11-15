@@ -178,3 +178,17 @@ export function overviewCam(aspect = 16 / 9, box = SHIP_BOX, dir = viewDir(), fo
   look.addScaledVector(u, -ty * dist * 0.04);
   return { pos: look.clone().addScaledVector(d, dist), look, fov };
 }
+
+// ------------------------------------------------------------------ the key props (click one to use the room)
+export type Box6 = [number, number, number, number, number, number];
+export const KEYS: Record<RoomId, { label: string; boxes: Box6[] }> = {
+  bridge: { label: 'MAIN MONITOR', boxes: [[-4.1, 0.5, 26.3, 4.1, 3.4, 27.0]] },
+  lab: { label: 'SPECIMEN TANKS · GENE LAB', boxes: [[3.8, 0, 15.8, 7.4, 2.7, 17.0]] },
+  medbay: { label: 'MED BEDS · CREW HEALTH', boxes: [[-3.8, 0, 10.1, -1.5, 1.2, 11.3], [-3.8, 0, 14.6, -1.5, 1.2, 15.8]] },
+  core: { label: 'AI CORE · UNIT 07', boxes: [[-7.4, 0, 3.4, -5.0, 3.4, 5.8]] },
+  quarters: { label: 'BUNKS · CREW + MORALE', boxes: [[-2.5, 0, -11.8, -1.5, 2.5, -9.6], [-2.5, 0, -9.4, -1.5, 2.5, -7.2], [-2.5, 0, -4.4, -1.5, 2.5, -2.2], [-2.5, 0, -2.0, -1.5, 2.5, 0.2]] },
+  workshop: { label: 'POD CRADLE · ASSEMBLY', boxes: [[-7.9, 0, -21.7, -4.1, 2.6, -17.9], [-2.4, 0, -24.1, -1.5, 2.6, -21.5]] },
+  mess: { label: 'GALLEY · STORES', boxes: [[9.0, 0, -3.8, 9.8, 2.3, 2.6]] },
+  cargo: { label: 'CARGO RACKS · STORES', boxes: [[8.7, 0, -14.5, 9.8, 3.0, -6.7]] },
+  engineering: { label: 'REACTOR · POWER BUS', boxes: [[4.0, 0, -23.8, 8.4, 4.1, -19.4]] },
+};

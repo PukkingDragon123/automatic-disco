@@ -101,7 +101,7 @@ export function platePix(w: number, h: number, o: PlateOpts = {}): Pix {
   for (const [cx, cy, sx, sy] of [[0, 0, 1, 1], [w - 1, 0, -1, 1], [0, h - 1, 1, -1], [w - 1, h - 1, -1, -1]]) { p.clear(cx, cy); p.clear(cx + sx, cy); p.clear(cx, cy + sy); p.set(cx + sx, cy + sy, Rm[0]); }
   if (o.screws !== false && w > 20 && h > 16) { screw(p, 3, 3, seed); screw(p, w - 8, 3, seed + 1); screw(p, 3, h - 8, seed + 2); screw(p, w - 8, h - 8, seed + 3); }
   for (const [x, y, ww, hh] of o.wells ?? []) well(p, x, y, ww, hh);
-  if (o.label) { const [lx, ly] = o.labelAt ?? [11, 4]; text3s(p, o.label, lx, ly, R.paper[4], Rm[0]); for (let i = 0; i < o.label.length; i += 4) p.set(lx + 1 + i * 4 + Math.floor(hash(seed, i) * 2), ly + 2, Rm[2]); }
+  if (o.label) { const [lx, ly] = o.labelAt ?? [11, 3]; const x1 = fontText(p, o.label, lx, ly, R.paper[4], { shadow: Rm[0] }); for (let i = lx + 3; i < x1 - 2; i += 7) p.set(i + Math.floor(hash(seed, i) * 3), ly + 6, Rm[2]); }
   return p;
 }
 
@@ -117,8 +117,8 @@ export function skin(el: HTMLElement, paint: (w: number, h: number) => Pix, key 
     if (k === last || !el.offsetWidth) return; last = k;
     el.style.backgroundImage = `url(${key ? url(k, () => paint(w, h)) : paint(w, h).url()})`;
   };
-  new ResizeObserver(apply).observe(el);
-  requestAnimationFrame(apply);
+  new ResizeObserver(() => fontsReady.then(apply)).observe(el);
+  fontsReady.then(() => requestAnimationFrame(apply));
   return apply;
 }
 
@@ -169,3 +169,27 @@ export function pixText(s: string, col: number, big = true, glow = -1) {
   return p;
 }
 export { Pix, R, text3s, text5, textW3s, textW5 };
+
+// ------------------------------------------------------------------ the house fonts as pixels
+// Departure Mono ('Body', 11 px grid) and Spleen ('Title' 12x24, 'TitleL' 16x32) drawn into art canvases with a hard
+// alpha threshold, so a glyph is exact pixels (at K = 2 they read as the 22 / 48 px sizes on screen).
+let fcv: HTMLCanvasElement | null = null, fg: CanvasRenderingContext2D | null = null;
+export type FontFace = 'Body' | 'Title' | 'TitleL';
+export function fontPx(face: FontFace) { return face === 'Body' ? 11 : face === 'Title' ? 24 : 32; }
+/** width of a string in the face (art px) */
+export function textWidth(s: string, face: FontFace = 'Body') { fcv ??= document.createElement('canvas'); fg ??= fcv.getContext('2d', { willReadFrequently: true })!; fg.font = `${fontPx(face)}px '${face}'`; return Math.ceil(fg.measureText(s).width); }
+/** draw text as hard pixels: col, with an optional 1 px hard shadow (down-right) or a 1 px glow ring */
+export function fontText(p: Pix, s: string, x: number, y: number, col: number, o: { face?: FontFace; shadow?: number; glow?: number; align?: 'left' | 'center' | 'right' } = {}) {
+  const face = o.face ?? 'Body', size = fontPx(face), w = textWidth(s, face) + 4, h = Math.ceil(size * 1.3) + 2;
+  if (w <= 4) return x;
+  if (fcv!.width < w || fcv!.height < h) { fcv!.width = Math.max(w, fcv!.width); fcv!.height = Math.max(h, fcv!.height); }
+  const g = fg!; g.clearRect(0, 0, fcv!.width, fcv!.height); g.font = `${size}px '${face}'`; g.textBaseline = 'top'; g.fillStyle = '#fff'; g.fillText(s, 1, 1);
+  const d = g.getImageData(0, 0, w, h).data, x0 = Math.round(o.align === 'center' ? x - w / 2 : o.align === 'right' ? x - w : x);
+  const on = (i: number, j: number) => i >= 0 && j >= 0 && i < w && j < h && d[(j * w + i) * 4 + 3] > 110;
+  if (o.glow !== undefined) for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (!on(i, j) && (on(i - 1, j) || on(i + 1, j) || on(i, j - 1) || on(i, j + 1))) p.set(x0 + i, y + j, o.glow);
+  if (o.shadow !== undefined) for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (on(i, j) && !on(i + 1, j + 1)) p.set(x0 + i + 1, y + j + 1, o.shadow);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (on(i, j)) p.set(x0 + i, y + j, col);
+  return x0 + w;
+}
+/** make sure the faces are loaded before anything paints with them */
+export const fontsReady = (() => { try { return Promise.all([document.fonts.load("11px 'Body'"), document.fonts.load("24px 'Title'"), document.fonts.load("32px 'TitleL'")]).then(() => true); } catch { return Promise.resolve(true); } })();

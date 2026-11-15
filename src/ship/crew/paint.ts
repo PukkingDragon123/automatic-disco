@@ -91,9 +91,16 @@ function stitch(g: G, path: () => void, col: string, w = 1.4, dash = 4) {
   g.translate(0.8, 0.8); path(); g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = w; g.stroke();
   g.translate(-0.8, -0.8); path(); g.strokeStyle = col; g.stroke(); g.restore();
 }
+/** the house faces only: Spleen ('Title') at 24 / 48, Departure Mono ('Body') at 11 / 22 / 33 (sizes snap down) */
+function face(size: number, font?: string) {
+  const body = !!font && /VT|Body/.test(font) || size < 20;
+  const steps = body ? [11, 22, 33, 44] : [24, 48];
+  let n = steps[0]; for (const k of steps) if (k <= size + 2) n = k;
+  return `${n}px '${body ? 'Body' : 'Title'}', monospace`;
+}
 function text(g: G, s: string, x: number, y: number, size: number, col: string, o: { font?: string; align?: CanvasTextAlign; shadow?: boolean; spacing?: number; maxW?: number } = {}) {
   g.save();
-  g.font = `${size}px ${o.font ?? "'Superwide', 'Jersey', sans-serif"}`; g.textAlign = o.align ?? 'center'; g.textBaseline = 'middle';
+  g.font = face(size, o.font); g.textAlign = o.align ?? 'center'; g.textBaseline = 'middle';
   if (o.spacing) (g as unknown as { letterSpacing: string }).letterSpacing = o.spacing + 'px';
   if (o.shadow !== false) { g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillText(s, x + 1, y + 1.5, o.maxW); }
   g.fillStyle = col; g.fillText(s, x, y, o.maxW);
@@ -101,7 +108,7 @@ function text(g: G, s: string, x: number, y: number, size: number, col: string, 
 }
 /** text set round an arc (patch rims) */
 function arcText(g: G, s: string, cx: number, cy: number, r: number, mid: number, size: number, col: string, inward = false) {
-  g.save(); g.font = `${size}px 'Superwide', 'Jersey', sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.save(); g.font = face(size); g.textAlign = 'center'; g.textBaseline = 'middle';
   const widths = [...s].map((ch) => g.measureText(ch).width * 1.12), tot = widths.reduce((a, b) => a + b, 0);
   let a = mid - (inward ? -1 : 1) * tot / r / 2;
   for (let i = 0; i < s.length; i++) {
@@ -126,8 +133,8 @@ function patchUNAA(g: G, X: number, Y: number) {
   // the rim band, a ring of ice-white text
   g.lineWidth = 34; g.strokeStyle = '#2b3a50'; g.beginPath(); g.arc(cx, cy, r - 20, 0, Math.PI * 2); g.stroke(); g.restore();
   stitch(g, () => { g.beginPath(); g.arc(cx, cy, r - 38, 0, Math.PI * 2); }, '#c9a464', 1.4, 3);
-  arcText(g, 'UNITED NATIONS', cx, cy, r - 20, -Math.PI / 2, 15, '#dfe3dc');
-  arcText(g, 'ANTARCTICA · AMERICAS', cx, cy, r - 20, Math.PI / 2, 13, '#dfe3dc', true);
+  arcText(g, 'UNITED NATIONS', cx, cy, r - 20, -Math.PI / 2, 24, '#dfe3dc');
+  arcText(g, 'ANTARCTICA · AMERICAS', cx, cy, r - 20, Math.PI / 2, 22, '#dfe3dc', true);
   // meridians on the field
   g.save(); g.beginPath(); g.arc(cx, cy, r - 40, 0, Math.PI * 2); g.clip();
   g.strokeStyle = 'rgba(160,190,210,0.28)'; g.lineWidth = 1.4;
@@ -159,8 +166,8 @@ function patchAustral(g: G, X: number, Y: number) {
   g.restore();
   // the banner
   g.fillStyle = '#c9a464'; poly(g, [[28, 166], [228, 166], [214, 190], [42, 190]], X, Y, 1); g.fill();
-  text(g, 'MERIDIAN', X + 128, Y + 179, 19, '#1e2634', { shadow: false });
-  text(g, 'RV-07', X + 128, Y + 210, 13, '#dfe3dc');
+  text(g, 'MERIDIAN', X + 128, Y + 179, 24, '#1e2634', { shadow: false });
+  text(g, 'RV-07', X + 128, Y + 210, 22, '#dfe3dc');
   g.save(); g.lineJoin = 'round'; g.lineWidth = 7; g.strokeStyle = '#c9a464'; poly(g, shield, X, Y, 1); g.stroke();
   g.lineWidth = 1; g.strokeStyle = 'rgba(0,0,0,0.5)'; poly(g, shield.map(([x, y]) => [x + (x < 128 ? 4 : -4), y + 4]), X, Y, 1); g.stroke(); g.restore();
 }
@@ -250,10 +257,10 @@ function paintAll(g: G) {
   { const [x, y] = icon('wings'); twill(g, x, y, 128, 128, '#3a3020', 0.8);
     satin(g, () => { g.beginPath(); g.moveTo(x + 64, y + 52); for (let i = 0; i < 6; i++) { g.lineTo(x + 60 - i * 9, y + 48 + i * 3); g.lineTo(x + 58 - i * 9, y + 60 + i * 2); } g.lineTo(x + 64, y + 72); for (let i = 5; i >= 0; i--) { g.lineTo(x + 70 + i * 9, y + 60 + i * 2); g.lineTo(x + 68 + i * 9, y + 48 + i * 3); } g.closePath(); }, '#c9a464', x + 8, y + 40, 112, 40, 0.1);
     satin(g, () => { g.beginPath(); g.arc(x + 64, y + 60, 12, 0, Math.PI * 2); }, '#2a3a50', x + 52, y + 48, 24, 24);
-    text(g, 'PILOT', x + 64, y + 96, 13, '#e8e0c8'); merrowRect(g, x + 2, y + 24, 124, 86, '#6a5430', 4); }
+    text(g, 'PILOT', x + 64, y + 96, 22, '#e8e0c8'); merrowRect(g, x + 2, y + 24, 124, 86, '#6a5430', 4); }
   { const [x, y] = icon('sparrow'), cx = x + 64, cy = y + 64; g.save(); g.beginPath(); g.arc(cx, cy, 58, 0, Math.PI * 2); g.clip(); twill(g, x, y, 128, 128, '#7a3a26', 1); g.restore();
     satin(g, () => poly(g, [[-30, 6], [-8, -4], [6, -20], [10, -6], [32, -10], [12, 6], [20, 22], [2, 10], [-14, 20], [-6, 8]], cx, cy, 1.2), '#e8dcc0', cx - 40, cy - 30, 80, 60);
-    text(g, 'SPARROW', cx, cy + 40, 12, '#f0e4c8'); merrowCircle(g, cx, cy, 58, '#3a1a12', 5); }
+    text(g, 'SPARROW', cx, cy + 40, 22, '#f0e4c8'); merrowCircle(g, cx, cy, 58, '#3a1a12', 5); }
   { const [x, y] = icon('fl3'), cx = x + 64, cy = y + 64; g.save(); poly(g, [[64, 6], [122, 64], [64, 122], [6, 64]], x, y, 1); g.clip(); twill(g, x, y, 128, 128, '#1e2c3e', 1); g.restore();
     satin(g, () => { g.beginPath(); g.arc(cx, cy + 6, 22, 0, Math.PI * 2); }, '#5a8aa0', cx - 22, cy - 16, 44, 44);
     g.strokeStyle = '#d9a43a'; g.lineWidth = 3; g.beginPath(); g.ellipse(cx, cy + 6, 36, 10, -0.3, 0, Math.PI * 2); g.stroke();
@@ -263,7 +270,7 @@ function paintAll(g: G) {
   // rank boards: navy with gold bars (captain four, lieutenant two)
   const board = (k: string, bars: number) => { const [x, y, w, h] = R[k]; twill(g, x, y, w, h, '#1c2534', 1); for (let i = 0; i < bars; i++) { g.fillStyle = '#c9a464'; g.fillRect(x + 20 + i * 22, y + 6, 12, h - 12); g.fillStyle = 'rgba(255,255,255,0.3)'; g.fillRect(x + 20 + i * 22, y + 6, 12, 2); } g.fillStyle = '#c9a464'; g.beginPath(); g.arc(x + w - 14, y + h / 2, 6, 0, Math.PI * 2); g.fill(); };
   board('rank', 4); board('rank2', 2);
-  { const [x, y, w, h] = R.cmd; twill(g, x, y, w, h, '#1c2534', 1); text(g, 'COMMAND', x + w / 2, y + h / 2, 14, '#c9a464'); merrowRect(g, x, y, w, h, '#c9a464', 3); }
+  { const [x, y, w, h] = R.cmd; twill(g, x, y, w, h, '#1c2534', 1); text(g, 'COMMAND', x + w / 2, y + h / 2, 22, '#c9a464'); merrowRect(g, x, y, w, h, '#c9a464', 3); }
   { const [x, y] = R.capb; patchMini(g, x + 32, y + 32, 28); }
   { const [x, y, w, h] = R.flag; // the program flag: navy, the white meridian band, the amber star
     g.fillStyle = '#26344a'; g.fillRect(x, y, w, h); g.fillStyle = '#dfe3dc'; g.fillRect(x + w * 0.42, y, w * 0.16, h); g.fillStyle = '#d9a43a'; g.beginPath(); for (let i = 0; i < 8; i++) { const a = -Math.PI / 2 + i / 8 * Math.PI * 2, rr = i % 2 ? 4 : 12; g.lineTo(x + w / 2 + Math.cos(a) * rr, y + h / 2 + Math.sin(a) * rr); } g.fill(); }
@@ -287,13 +294,13 @@ function paintAll(g: G) {
     g.beginPath(); g.ellipse(x + 70, y + 82, 42, 12, 0, 0, Math.PI * 2); g.stroke();
     g.fillStyle = AMB; g.beginPath(); g.arc(x + 82, y + 76, 9, 0, Math.PI * 2); g.fill();
     g.strokeStyle = PH2; g.lineWidth = 1; g.beginPath(); g.moveTo(x + 22, y + 140); g.lineTo(x + 118, y + 140); g.moveTo(x + 22, y + 134); g.lineTo(x + 22, y + 146); g.moveTo(x + 118, y + 134); g.lineTo(x + 118, y + 146); g.stroke();
-    text(g, 'UNIT 07', x + 190, y + 22, 18, PH, { font: "'VT', monospace", shadow: false });
+    text(g, 'UNIT 07', x + 190, y + 22, 22, PH, { font: 'Body', shadow: false });
     for (let i = 0; i < 6; i++) { g.fillStyle = PH2; g.fillRect(x + 140, y + 44 + i * 16, 60 + h1(i, 41) * 40, 6); }
     g.fillStyle = AMB; g.fillRect(x + 140, y + 140, 30, 8);
   });
-  screen(g, 'scan', (x, y, w, h) => { g.strokeStyle = '#e07060'; g.lineWidth = 2; g.beginPath(); for (let i = 0; i <= w; i += 2) { const t = i % 40; g.lineTo(x + i, y + h / 2 - (t > 18 && t < 22 ? (t - 18) * 9 * (t < 20 ? 1 : -1) : 0)); } g.stroke(); text(g, '72', x + w - 20, y + 14, 14, '#e8a060', { font: "'VT', monospace", shadow: false }); });
-  screen(g, 'radio', (x, y, w, h) => { text(g, 'CH 07', x + 40, y + h / 2, 16, AMB, { font: "'VT', monospace", shadow: false }); for (let i = 0; i < 5; i++) { g.fillStyle = i < 3 ? PH : PH2; g.fillRect(x + 80 + i * 8, y + h - 14 - i * 6, 5, 8 + i * 6); } }, '#140e06');
-  screen(g, 'wrist', (x, y, w, h) => { text(g, '98%', x + 36, y + h / 2, 18, PH, { font: "'VT', monospace", shadow: false }); g.strokeStyle = PH2; g.beginPath(); for (let i = 0; i < 50; i++) g.lineTo(x + 70 + i, y + h / 2 + Math.sin(i * 0.6) * 8); g.stroke(); });
+  screen(g, 'scan', (x, y, w, h) => { g.strokeStyle = '#e07060'; g.lineWidth = 2; g.beginPath(); for (let i = 0; i <= w; i += 2) { const t = i % 40; g.lineTo(x + i, y + h / 2 - (t > 18 && t < 22 ? (t - 18) * 9 * (t < 20 ? 1 : -1) : 0)); } g.stroke(); text(g, '72', x + w - 20, y + 14, 22, '#e8a060', { font: "'VT', monospace", shadow: false }); });
+  screen(g, 'radio', (x, y, w, h) => { text(g, 'CH 07', x + 40, y + h / 2, 22, AMB, { font: "'VT', monospace", shadow: false }); for (let i = 0; i < 5; i++) { g.fillStyle = i < 3 ? PH : PH2; g.fillRect(x + 80 + i * 8, y + h - 14 - i * 6, 5, 8 + i * 6); } }, '#140e06');
+  screen(g, 'wrist', (x, y, w, h) => { text(g, '98%', x + 36, y + h / 2, 22, PH, { font: "'VT', monospace", shadow: false }); g.strokeStyle = PH2; g.beginPath(); for (let i = 0; i < 50; i++) g.lineTo(x + 70 + i, y + h / 2 + Math.sin(i * 0.6) * 8); g.stroke(); });
   { const [x, y, w, h] = R.chrono; g.fillStyle = '#d8d2bc'; g.fillRect(x, y, w, h); for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; g.fillStyle = '#2a2420'; g.fillRect(x + h / 2 + Math.cos(a) * 26 - 1, y + h / 2 + Math.sin(a) * 26 - 1, 3, 3); } g.strokeStyle = '#2a2420'; g.lineWidth = 2; g.beginPath(); g.moveTo(x + h / 2, y + h / 2); g.lineTo(x + h / 2 + 14, y + h / 2 - 12); g.stroke(); }
   // a page of notes: blue-lined paper, a margin, handwriting in graphite, a doodle of UNIT 07
   { const [x, y, w, h] = R.memo; g.fillStyle = '#e8e4d6'; g.fillRect(x, y, w, h);
@@ -308,7 +315,7 @@ function paintAll(g: G) {
     const [x, y, w, h] = R['part' + i];
     g.fillStyle = '#d9a43a'; g.fillRect(x, y, w, h); g.fillStyle = '#1e2228'; for (let k = 0; k < w; k += 16) { g.beginPath(); g.moveTo(x + k, y); g.lineTo(x + k + 8, y); g.lineTo(x + k, y + 8); g.closePath(); g.fill(); }
     g.fillStyle = '#e8e4d8'; g.fillRect(x + 4, y + 10, w - 8, h - 14);
-    text(g, t, x + w / 2, y + 29, t.length > 12 ? 11 : 14, '#1e2228', { shadow: false, maxW: w - 12 });
+    text(g, t, x + w / 2, y + 29, t.length > 10 ? 11 : 22, '#1e2228', { shadow: false, maxW: w - 12 });
     text(g, 'PART ' + (i + 1) + '/4', x + w - 26, y + 15, 7, '#6a5a3a', { shadow: false });
   });
   paintPlaqueBase(g);
@@ -327,11 +334,11 @@ function paintPlaqueBase(g: G) {
   g.strokeStyle = '#c8a868'; g.lineWidth = 4; g.strokeRect(x + 8, y + 8, w - 16, h - 16); g.strokeStyle = '#3a2a14'; g.lineWidth = 1; g.strokeRect(x + 12, y + 12, w - 24, h - 24);
   patchMini(g, x + 48, y + 48, 26);
   engrave(g, 'IN MEMORY', x + w / 2 + 20, y + 38, 22);
-  engrave(g, SHIP_TAG, x + w / 2 + 20, y + 66, 12);
+  engrave(g, SHIP_TAG, x + w / 2 + 20, y + 66, 22, 'Body');
 }
 const SHIP_TAG = 'UNAA MERIDIAN · RV-07';
-function engrave(g: G, s: string, x: number, y: number, size: number, font = "'Superwide', 'Jersey', sans-serif") {
-  g.save(); g.font = `${size}px ${font}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+function engrave(g: G, s: string, x: number, y: number, size: number, font = 'Title') {
+  g.save(); g.font = face(size, font); g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillStyle = 'rgba(255,240,200,0.45)'; g.fillText(s, x + 1, y + 1); g.fillStyle = '#2a1c0c'; g.fillText(s, x, y); g.restore();
 }
 
@@ -358,8 +365,8 @@ export function paintPlaque(names: { name: string; role: string; how: string; da
   paintPlaqueBase(g);
   const [x, y, w] = R.plaque;
   names.slice(0, 4).forEach((n, i) => {
-    engrave(g, n.name.toUpperCase(), x + w / 2 + 20, y + 106 + i * 30, 15);
-    engrave(g, `${n.role} · DAY ${n.day}`, x + w / 2 + 20, y + 120 + i * 30, 9, "'VT', monospace");
+    engrave(g, n.name.toUpperCase(), x + w / 2 + 20, y + 104 + i * 30, 22, 'Body');
+    engrave(g, `${n.role} · DAY ${n.day}`, x + w / 2 + 20, y + 122 + i * 30, 11, 'Body');
   });
   t.needsUpdate = true;
 }

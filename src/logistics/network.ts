@@ -163,9 +163,10 @@ export class Logistics {
     }
     for (const s of f.seams) {
       if (s.amount <= 0) continue;
-      // deposits near the colony only (the map is of the colony, not the planet)
-      if (!this.nearColony(s.x, s.z, 70) && !keep.has('s:' + s.i)) continue;
-      add('s:' + s.i, 'deposit', s.i, s.x, s.z, `${(ITEMS[s.item]?.name ?? s.item).toUpperCase()} DEPOSIT`);
+      // deposits near the colony only (the map is of the colony, not the planet), and any already wired
+      const wired = this.routes.some((r) => r.from === 's:' + s.i);
+      if (!wired && !this.nearColony(s.x, s.z, 34)) continue;
+      add('s:' + s.i, 'deposit', s.i, s.x, s.z, (ITEMS[s.item]?.name ?? s.item).toUpperCase());
     }
     for (const fl of this.fields) add('f:' + fl.id, 'field', fl.id, fl.x, fl.z, fl.name);
     if (this.sites) for (const s of this.sites.list) add('site:' + s.id, 'site', s.id, s.cx + s.fw / 2, s.cz + s.fd / 2, `SITE: ${s.def.name.toUpperCase()}`);
@@ -181,7 +182,7 @@ export class Logistics {
   private nearColony(x: number, z: number, r: number) {
     const core = this.f.hive.core;
     if (core && D2(core.x, core.z, x, z) < r) return true;
-    for (const b of this.f.buildings) if (D2(b.x, b.z, x, z) < 24) return true;
+    for (const b of this.f.buildings) if (!isBelt(b.kind) && b.kind !== 'pole' && D2(b.x, b.z, x, z) < 14) return true;
     return false;
   }
   addLogic(kind: LogicKind, x: number, z: number): LNode | null {

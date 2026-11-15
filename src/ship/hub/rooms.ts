@@ -13,6 +13,7 @@ import {
   wallLamp, plant, mug, books, toolbox, extinguisher, screenPanel, poster, sign, type Ctx,
 } from './props';
 import { buildPod } from './pod';
+import { beam, motes, steam } from './fx';
 
 const P = Math.PI;
 const W_PORT = -1.48, W_STBD = 9.75; // the far x walls' inner faces (port rooms, starboard rooms)
@@ -63,6 +64,77 @@ function floorText(c: Ctx, s: string, x: number, z: number, w: number, ry = 0, c
 // =================================================================================================== rooms
 export function furnish(id: RoomId, c: Ctx) {
   ({ bridge, lab, medbay, core, quarters, workshop, mess, cargo, engineering } as Record<RoomId, (c: Ctx) => void>)[id](c);
+  atmos(id, c);
+}
+
+/** each room's practical accent light, its beams in the haze, dust in the light, steam where something vents */
+function atmos(id: RoomId, c: Ctx) {
+  const r = ROOMS[id];
+  const light = (x: number, y: number, z: number, col: number, k: number, d: number) => { const L = new THREE.PointLight(col, k, d, 1.6); L.position.set(x, y, z); c.root.add(L); c.lights.push(L); return L; };
+  const box3 = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) => new THREE.Box3(new V3(x0, y0, z0), new V3(x1, y1, z1));
+  if (id === 'bridge') {
+    const L = light(0, 2.1, 25.6, 0x5fd0e0, 9, 10); c.refs.monitorLight = L;
+    beam(c, new V3(0, 0.96, 22.2), new V3(0, 2.4, 22.2), 0.9, 0x5fd0e0, 0.12);
+    motes(c, box3(-3, 0.5, 20, 3, 3, 26), 70, 0x9fe0f0, 0.5);
+    c.anims.push((_dt, t) => { L.intensity = 8 + Math.sin(t * 3.1) * 0.6 + (Math.sin(t * 17) > 0.97 ? 2 : 0); });
+  } else if (id === 'lab') {
+    const L = light(5.6, 1.5, 15.4, 0x58e08a, 9, 7);
+    light(2.5, 1.4, 9.6, 0xc890ff, 3.5, 3.5);
+    beam(c, new V3(W_STBD - 0.12, 2.98, 12.6), new V3(8.2, 0.0, 12.6), 1.2, 0xe8fff0, 0.16);
+    for (const tx of [4.4, 5.6, 6.8]) beam(c, new V3(tx, 0.32, 16.4), new V3(tx, 2.3, 16.4), 0.42, 0x58e08a, 0.08);
+    motes(c, box3(3.5, 0.4, 13.5, 8, 2.8, 16.6), 60, 0xa8ffc8, 0.5);
+    c.anims.push((_dt, t) => { L.intensity = 8.5 + Math.sin(t * 0.8) * 0.8; });
+  } else if (id === 'medbay') {
+    light(-2.9, 2.2, 15.2, 0xf4fff8, 5, 4);
+    beam(c, new V3(-2.9, 2.46, 15.2), new V3(-2.9, 0.75, 15.2), 0.75, 0xf8fff8, 0.2);
+    const sc = light(-7.4, 1.2, 14.4, 0x5fd0e0, 4, 4);
+    c.anims.push((_dt, t) => { sc.position.z = 14.4 + Math.sin(t * 0.6) * 0.7; });
+    motes(c, box3(-4, 0.6, 14, -2, 2.4, 16.4), 40, 0xffffff, 0.45);
+  } else if (id === 'core') {
+    const L = light(-6.2, 1.9, 4.6, 0x6ae08a, 12, 9);
+    beam(c, new V3(-6.2, 0.3, 4.6), new V3(-6.2, 3.3, 4.6), 0.9, 0x6ae08a, 0.1);
+    motes(c, box3(-8.5, 0.4, 2.5, -4, 3, 7), 70, 0x9fffb8, 0.55);
+    c.anims.push((_dt, t) => { L.intensity = 11 + Math.sin(t * 2.2) * 2; });
+  } else if (id === 'quarters') {
+    light(-6.6, 1.7, -6.2, 0xffb070, 6, 6);
+    // a standing lamp by the sofa throws a warm cone
+    c.B.add(cyl(0.16, 0.2, 0.04, 12), mat(c, 'dark'), { x: -9.3, y: 0.02, z: -2.4 }); c.B.add(cyl(0.015, 0.015, 1.6, 6), mat(c, 'chrome'), { x: -9.3, y: 0.82, z: -2.4 });
+    c.B.add(cyl(0.12, 0.22, 0.24, 14, true), mat(c, 'cream'), { x: -9.3, y: 1.7, z: -2.4 });
+    c.B.add(new THREE.CircleGeometry(0.2, 14), glow(c, 0xffd090, 2.4), { x: -9.3, y: 1.58, z: -2.4, rx: Math.PI / 2 });
+    light(-9.3, 1.5, -2.4, 0xffc080, 4, 4);
+    beam(c, new V3(-9.3, 1.6, -2.4), new V3(-9.0, 0.0, -2.6), 0.75, 0xffc080, 0.18);
+    for (const z of [-11.6, -9.2, -4.2, -1.8]) beam(c, new V3(-1.62, 0.95, z + 0.12), new V3(-2.2, 0.6, z + 0.6), 0.35, 0xffd090, 0.12);
+    motes(c, box3(-9.8, 0.3, -4, -8.6, 1.8, -1), 30, 0xffe0b0, 0.5);
+  } else if (id === 'workshop') {
+    light(-2.6, 2.0, -22.8, 0xfff0d0, 6, 5);
+    beam(c, new V3(-1.6, 2.72, -22.8), new V3(-2.6, 0.9, -22.8), 1.1, 0xfff0d0, 0.17);
+    const pd = light(-6.0, 3.6, -19.8, 0xffe0a0, 7, 7);
+    beam(c, new V3(-6.0, 4.4, -19.8), new V3(-6.0, 0.0, -19.8), 2.0, 0xffe8c0, 0.08);
+    steam(c, new V3(-9.3, 0.1, -17.6), 1.6, 12, 0xd0d8dc, 0.3, 4.2);
+    motes(c, box3(-8, 0.4, -22, -4, 3.5, -17.5), 70, 0xfff0d0, 0.5);
+    void pd;
+  } else if (id === 'mess') {
+    light(5.2, 1.9, 1.5, 0xffc078, 7, 6);
+    light(W_STBD - 0.6, 1.3, -2.0, 0xff7a3a, 3, 3);
+    steam(c, new V3(W_STBD - 0.3, 1.0, -2.15), 0.8, 10, 0xe0e0e0, 0.32, 2.6);
+    steam(c, new V3(W_STBD - 0.45, 1.25, 3.1), 0.5, 8, 0xe0e0e0, 0.25, 2.0);
+    beam(c, new V3(W_STBD - 0.12, 2.93, 0.0), new V3(6.4, 0.0, 0.4), 1.4, 0xffe0b0, 0.13);
+    motes(c, box3(3.5, 0.4, -1, 8, 2.6, 4), 50, 0xffe0b0, 0.45);
+  } else if (id === 'cargo') {
+    const L = light(4.0, 2.8, -4.6, 0xffa020, 0, 6);
+    c.B.add(cyl(0.1, 0.12, 0.18, 10), c.M.glow('beacon', 0xff9020, 1.6), { x: 4.0, y: 3.1, z: -4.16 });
+    c.anims.push((_dt, t) => { L.intensity = Math.max(0, Math.sin(t * 4)) * 5; });
+    beam(c, new V3(W_STBD - 0.12, 2.98, -10.6), new V3(6.5, 0.0, -10.6), 1.4, 0xfff0d8, 0.14);
+    motes(c, box3(3, 0.4, -14, 8.5, 2.8, -6), 60, 0xfff0d8, 0.4);
+  } else if (id === 'engineering') {
+    const L = light(6.2, 2.2, -21.6, 0xff9a40, 14, 11);
+    c.anims.push((_dt, t) => { L.intensity = 13 + Math.sin(t * 3.1) * 1.5 + Math.sin(t * 7.3) * 0.8; });
+    beam(c, new V3(6.2, 4.02, -21.6), new V3(6.2, 6.5, -21.6), 1.0, 0xffa040, 0.14);
+    for (const z of [-23.2, -24.4]) steam(c, new V3(W_STBD - 0.4, 2.6, z), 1.0, 10, 0xd8dcdc, 0.3, 3.6);
+    steam(c, new V3(2.4, 0.15, -19.0), 1.4, 12, 0xd8dcdc, 0.25, 5.0);
+    motes(c, box3(3, 0.4, -25, 9, 3.5, -18), 80, 0xffc080, 0.55);
+  }
+  void r;
 }
 
 function bridge(c: Ctx) {

@@ -5,7 +5,8 @@
 // are separate meshes registered with the room's animators.
 import * as THREE from 'three';
 import { Batch, Mats, Bin, box, cyl, tube, lathe, extrude, quad, V3, type V } from './kit';
-import { metalTex, fabricTex, woodTex, posterTex, labelTex, hazardTex, type PosterKind, type Theme } from './tex';
+import { posterTex, labelTex, type PosterKind, type Theme } from './tex';
+import { limbo, pixHazard, pixConsole } from './pix';
 import type { Screens, ScreenKind } from './screens';
 
 export interface Anim { (dt: number, t: number): void }
@@ -21,54 +22,27 @@ export interface Ctx {
 }
 
 // ------------------------------------------------------------------ the shared palette of materials
+/** LIMBOPHOBIA's own material textures (pixel art, 32 texels per metre) with a tint per material key */
+const LMAT: Record<string, [string, number, { transparent?: boolean; opacity?: number; side?: THREE.Side }?]> = {
+  white: ['plastic_white', 0xffffff], cream: ['plastic_beige', 0xffffff], grey: ['metal_grey', 0xffffff], dark: ['metal_dark', 0xffffff],
+  black: ['plastic_black', 0xffffff], steel: ['metal_brushed', 0xffffff], chrome: ['chrome', 0xffffff], gun: ['metal_dark', 0xb4bcc2],
+  olive: ['metal_painted_green', 0xffffff], orange: ['plastic_yellow', 0xf09060], yellow: ['plastic_yellow', 0xffffff], red: ['plastic_red', 0xffffff],
+  teal: ['metal_painted_green', 0x9ad0d0], blue: ['plastic_blue', 0xffffff], rubber: ['rubber_black', 0xffffff], plastic: ['plastic_black', 0xffffff],
+  plasticW: ['plastic_white', 0xffffff], wood: ['wood_light', 0xffffff], woodD: ['wood_dark', 0xffffff], leather: ['leather_brown', 0xffffff],
+  seat: ['fabric_blue', 0xffffff], seatR: ['fabric_red', 0xffffff], mattress: ['mattress', 0xffffff], sheet: ['towel', 0xffffff], pillow: ['pillow', 0xffffff],
+  glass: ['glass', 0xffffff, { transparent: true, opacity: 0.35, side: THREE.DoubleSide }], cable: ['rubber_black', 0xffffff], cableR: ['plastic_red', 0xffffff],
+  cableY: ['plastic_yellow', 0xffffff], cableB: ['plastic_blue', 0xffffff], copper: ['metal_brass', 0xe8a070], brass: ['metal_brass', 0xffffff],
+  pipe: ['metal_sheet', 0xffffff], pipeR: ['plastic_red', 0xd8a0a0], pipeB: ['plastic_blue', 0xc0c8e0], pipeG: ['metal_painted_green', 0xffffff], pipeY: ['plastic_yellow', 0xe0d0a0],
+  soil: ['bark', 0x9a7a60], leaf: ['leaves', 0xffffff, { side: THREE.DoubleSide }], leafD: ['leaves', 0x8aa080, { side: THREE.DoubleSide }], ceramic: ['porcelain', 0xffffff],
+  terracotta: ['concrete', 0xd88a5a], rust: ['metal_rusty', 0xffffff], paper: ['paper', 0xffffff], cardboard: ['cardboard', 0xffffff], carpet: ['carpet_rug', 0xffffff],
+};
 export function mat(c: Ctx, k: string): THREE.Material {
-  const M = c.M;
-  switch (k) {
-    case 'white': return M.get(k, { color: 0xd8dad4, map: metalTex(0xffffff, 'w'), rough: 0.55, metal: 0.05 });
-    case 'cream': return M.get(k, { color: 0xd2c8ae, map: metalTex(0xffffff, 'c'), rough: 0.6 });
-    case 'grey': return M.get(k, { color: 0x8a9090, map: metalTex(0xffffff, 'g'), rough: 0.6, metal: 0.2 });
-    case 'dark': return M.get(k, { color: 0x34393d, map: metalTex(0xffffff, 'd'), rough: 0.55, metal: 0.25 });
-    case 'black': return M.get(k, { color: 0x16181a, rough: 0.5, metal: 0.1 });
-    case 'steel': return M.get(k, { color: 0xa8acaa, map: metalTex(0xffffff, 's', { brushed: true }), rough: 0.35, metal: 0.75 });
-    case 'chrome': return M.get(k, { color: 0xd8dcdc, rough: 0.18, metal: 0.95 });
-    case 'gun': return M.get(k, { color: 0x4c5154, map: metalTex(0xffffff, 'gun', { brushed: true }), rough: 0.4, metal: 0.6 });
-    case 'olive': return M.get(k, { color: 0x5d6243, map: metalTex(0xffffff, 'o'), rough: 0.65, metal: 0.15 });
-    case 'orange': return M.get(k, { color: 0xc8662e, map: metalTex(0xffffff, 'or'), rough: 0.55 });
-    case 'yellow': return M.get(k, { color: 0xd2a23c, map: metalTex(0xffffff, 'y'), rough: 0.55 });
-    case 'red': return M.get(k, { color: 0xa83a30, map: metalTex(0xffffff, 'r'), rough: 0.5 });
-    case 'teal': return M.get(k, { color: 0x3d7a7e, map: metalTex(0xffffff, 't'), rough: 0.55 });
-    case 'blue': return M.get(k, { color: 0x34507a, map: metalTex(0xffffff, 'b'), rough: 0.55 });
-    case 'rubber': return M.get(k, { color: 0x1c1d1e, rough: 0.92 });
-    case 'plastic': return M.get(k, { color: 0x2a2c2e, rough: 0.45 });
-    case 'plasticW': return M.get(k, { color: 0xc8ccc8, rough: 0.42 });
-    case 'wood': return M.get(k, { map: woodTex(0x8a6440, 'oak'), rough: 0.7 });
-    case 'woodD': return M.get(k, { map: woodTex(0x5a3e28, 'walnut'), rough: 0.7 });
-    case 'leather': return M.get(k, { color: 0x4a3226, map: fabricTex(0x8a7060, 'leather'), rough: 0.6 });
-    case 'seat': return M.get(k, { map: fabricTex(0x3a4650, 'seat'), rough: 0.85 });
-    case 'seatR': return M.get(k, { map: fabricTex(0x7a3a30, 'seatR'), rough: 0.85 });
-    case 'mattress': return M.get(k, { map: fabricTex(0xb8b4a6, 'mat', { stripe: 0x8c98a6 }), rough: 0.9 });
-    case 'sheet': return M.get(k, { map: fabricTex(0xd8d6cc, 'sheet'), rough: 0.9 });
-    case 'pillow': return M.get(k, { map: fabricTex(0xe2ded2, 'pil'), rough: 0.9 });
-    case 'glass': return M.get(k, { color: 0x9fc8d0, rough: 0.05, metal: 0.1, transparent: true, opacity: 0.22, env: 1.2, side: THREE.DoubleSide });
-    case 'haz': return M.get(k, { map: hazardTex(), rough: 0.6 });
-    case 'cable': return M.get(k, { color: 0x1a1a1c, rough: 0.7 });
-    case 'cableR': return M.get(k, { color: 0x8a2a22, rough: 0.6 });
-    case 'cableY': return M.get(k, { color: 0xb8902c, rough: 0.6 });
-    case 'cableB': return M.get(k, { color: 0x2a4a7a, rough: 0.6 });
-    case 'copper': return M.get(k, { color: 0xb87040, rough: 0.35, metal: 0.8 });
-    case 'brass': return M.get(k, { color: 0xb89a50, rough: 0.35, metal: 0.8 });
-    case 'pipe': return M.get(k, { color: 0x7a8280, map: metalTex(0xffffff, 'pipe', { brushed: true }), rough: 0.45, metal: 0.55 });
-    case 'pipeR': return M.get(k, { color: 0x9a3a2e, rough: 0.5, metal: 0.3 });
-    case 'pipeB': return M.get(k, { color: 0x3a5a86, rough: 0.5, metal: 0.3 });
-    case 'pipeG': return M.get(k, { color: 0x4a7a4a, rough: 0.5, metal: 0.3 });
-    case 'pipeY': return M.get(k, { color: 0xc89a34, rough: 0.5, metal: 0.3 });
-    case 'soil': return M.get(k, { color: 0x3a2a1c, rough: 0.95 });
-    case 'leaf': return M.get(k, { color: 0x4a7a3a, rough: 0.7, side: THREE.DoubleSide });
-    case 'leafD': return M.get(k, { color: 0x2e5a2e, rough: 0.7, side: THREE.DoubleSide });
-    case 'ceramic': return M.get(k, { color: 0xe8e4da, rough: 0.25 });
-    case 'terracotta': return M.get(k, { color: 0xa8603a, rough: 0.8 });
-  }
-  return M.get(k, { color: 0xff00ff });
+  if (k === 'haz') return c.M.get('haz', { map: pixHazard() });
+  const d = LMAT[k];
+  if (!d) return c.M.get(k, { color: 0xff00ff });
+  const L = limbo(d[0]);
+  L.tex.repeat.set(1 / L.mw, 1 / L.mh);
+  return c.M.get('L|' + k, { map: L.tex, color: d[1], transparent: d[2]?.transparent, opacity: d[2]?.opacity, side: d[2]?.side, flag: d[2]?.transparent ? 0 : 1 });
 }
 export const glow = (c: Ctx, color: number, k = 1.8) => c.M.glow('c' + color.toString(16) + '|' + k, color, k);
 

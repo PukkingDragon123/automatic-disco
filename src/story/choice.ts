@@ -2,6 +2,7 @@
 // with its gains (+) and costs (-) written plainly, a lock line when an option is out of reach, keys 1-3. After the
 // pick the chosen key is stamped EXECUTED and the true outcome is typed out under it.
 import { el, ui } from '../ui/kit';
+import { installHardware } from '../research/ui/hardware';
 import { sfx } from '../audio/audio';
 import { csfx } from '../ui/cineAudio';
 import type { Opt } from './events';
@@ -12,6 +13,7 @@ export interface ChoiceResult { key: string; text: string; lines: string[] }
 
 /** open the console; resolves once an option ran and the player continued */
 export function choose(spec: ChoiceSpec, run: (o: Opt) => { text: string; lines: string[] }): Promise<ChoiceResult> {
+  installHardware();
   return new Promise((resolve) => {
     const root = el('div', 'evc', ui());
     const box = el('div', 'evc-box', root);

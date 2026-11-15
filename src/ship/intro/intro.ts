@@ -11,7 +11,6 @@
 import * as THREE from 'three';
 import { Cinema } from '../../game/cinema';
 import { csfx, cloop, hush, type Loop } from '../../ui/cineAudio';
-import { Apple } from '../../ui/menuApple';
 import { Kit } from '../../robots/kit';
 import { crewMats } from '../crew/paint';
 import { CrewLife, type HubLike } from '../crew/life';
@@ -19,7 +18,7 @@ import { crewState } from '../crew/state';
 import type { CrewId } from '../crew/roster';
 import type { RoomId } from '../hub/layout';
 import { IntroUI } from './ui';
-import { Motes, looseThings, patchPlate, consoleParts, partCrate, partGhost, outerHole } from './props';
+import { Motes, looseThings, patchPlate, consoleParts, partCrate, partGhost, outerHole, lp, tickFits } from './props';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 /** where the intro is (QA captures wait on it) */
@@ -101,6 +100,8 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
   // the camera: the cinema's rig drives the hub camera every frame (after the hub has placed its own)
   const offUpd = hub.onUpdate((dt) => {
     cine.update(dt);
+    ui.update(dt);
+    tickFits();
     for (const f of frameFns) f(dt);
     motes.update(dt);
     if (cine.active) cine.apply(cam);
@@ -123,9 +124,9 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
   const put = (id: CrewId, rm: RoomId, x: number, z: number, faceX: number, faceZ: number, y = 0) => { const a = life.put(id, rm, x, z, 0, y); if (a) a.faceNow(faceX, faceZ); return a; };
 
   // ---- the props of the day
-  const apple = new Apple(0.045); apple.group.scale.setScalar(1); own.push(apple.group);
-  const cradle = buildCradle(); cradle.position.set(7.25, 0, 12.6); add(cradle, lab.root);
-  const U0 = V(7.25, 1.17, 12.6);
+  const apple = { group: lp('food_apple_01', 0.085) }; own.push(apple.group);
+  const U0 = V(5.55, 1.47, 12.05);
+  const cradle = buildCradle(); cradle.position.set(U0.x, 0, U0.z); add(cradle, lab.root);
   let breach: ReturnType<NonNullable<IntroHub['breach']>> | null = null;
   const fallbackHole = () => { const g = outerHole(); const p = LS.hull_breach.pos; g.position.copy(p).add(V(-0.02, 0, 0)); g.lookAt(p.clone().add(V(-1, 0, 0))); add(g); return { pos: p.clone(), normal: V(-1, 0, 0), patch: (k: number) => void k, done: () => {} }; };
   const loose = looseThings();
@@ -159,7 +160,7 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
     room = c.loop('room', 0.35);
     hub.podBuild?.(0);
     // ================================================================ a. BOOT
-    put('solano', 'lab', 6.15, 11.95, U0.x, U0.z);
+    put('solano', 'lab', 6.45, 12.8, U0.x, U0.z);
     unit.place(U0); unit.faceNow(head('solano'));
     if (from <= 0) {
       unit.power = 0; unit.root.visible = false; unit.mood = 'boot';
@@ -179,7 +180,7 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       mark('boot:face');
       modelOf('solano')?.rig.setExpression('smile', 6);
       actorOf('solano')!.look = eye.clone();
-      c.cam.move({ fov: 26, dur: 6, ease: 'inOut' });
+      c.cam.move({ fov: 30, dur: 6, ease: 'inOut' });
       await line('solano', 'There you are. Can you hear me? ...Blink if you can hear me.');
       unit.blink(); c.sfx('beep', 0.5);
       ui.sys('FACE MATCH: [DR. MIRA SOLANO] · CREATOR');
@@ -192,9 +193,9 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       await line('solano', 'Your job... is to be the robot. Come on, up you get.');
       // out of its eyes: the camera pulls back and there it is, lifting off the cradle
       ui.bootView(false);
-      c.cam.cut(V(4.2, 1.9, 9.6), U0.clone().add(V(-0.4, 0.15, 0)), 34);
+      c.cam.cut(V(4.0, 1.75, 10.4), U0.clone().add(V(0.3, 0.05, 0.3)), 34);
       unit.root.visible = true;
-      c.cam.move({ pos: V(3.6, 2.1, 10.2), look: V(6.7, 1.3, 12.6), fov: 38, dur: 5, ease: 'inOut' });
+      c.cam.move({ pos: V(3.5, 2.0, 10.0), look: V(6.4, 1.3, 12.7), fov: 38, dur: 5, ease: 'inOut' });
       await c.tween(1.6, (u) => { unit.power = u; }, 'out');
       unit.mood = 'calm'; c.sfx('servo', 0.6); c.sfx('hover', 0.7);
       unit.moveTo(V(6.75, 1.5, 13.0), 0.6);
@@ -543,11 +544,11 @@ function buildCradle(): THREE.Group {
   const g = new THREE.Group(), k = new Kit(12);
   k.on(g, 0);
   k.cyl(0, 0.04, 0, 0.26, 0.3, 0.08, 18, 'pb1'); k.cyl(0, 0.09, 0, 0.2, 0.24, 0.03, 18, 'st0');
-  k.cyl(0, 0.5, 0, 0.045, 0.06, 0.82, 12, 'pb0');
-  k.torus(0, 0.93, 0, 0.16, 0.022, 24, 6, 'st0');
-  for (let i = 0; i < 4; i++) { const a = (i / 4) * Math.PI * 2; k.push(Math.cos(a) * 0.16, 0.95, Math.sin(a) * 0.16).box(0, 0, 0, 0.03, 0.03, 0.03, 'br').pop(); }
+  k.cyl(0, 0.66, 0, 0.045, 0.06, 1.14, 12, 'pb0');
+  k.torus(0, 1.24, 0, 0.16, 0.022, 24, 6, 'st0');
+  for (let i = 0; i < 4; i++) { const a = (i / 4) * Math.PI * 2; k.push(Math.cos(a) * 0.16, 1.26, Math.sin(a) * 0.16).box(0, 0, 0, 0.03, 0.03, 0.03, 'br').pop(); }
   k.hose([0.04, 0.3, 0], [1, -1, 0], [0.3, 0.05, 0.1], [1, 0, 0], 0.014, 'hose');
-  k.on(g, 1); k.push(0, 0.42, 0.061).decal(0, 0, 0, 0.07, 0.07, 'cw:capb').pop();
+  k.on(g, 1); k.push(0, 0.6, 0.058).decal(0, 0, 0, 0.07, 0.07, 'cw:capb').pop();
   k.finish(crewMats());
   return g;
 }

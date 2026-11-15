@@ -26,7 +26,7 @@ import { ARM_DEF } from '../colony/arms';
 import { ITEMS } from '../factory/items';
 import { installHudStyle } from './desk/hudStyle';
 import { iconImg } from './desk/hudArt';
-import { skin, platePix, well, pixText, K, Pix, R, text3s, textW3s, text5, textW5 } from './desk/pxPanel';
+import { skin, platePix, well, fontText, Pix, R } from './desk/pxPanel';
 import './desk/toolIcons';
 import { decalSheet, DECAL } from '../colony/tex';
 import type { VitalId } from '../colony/vitals';
@@ -150,29 +150,26 @@ export class Hud {
   /** a vitals gauge, painted in art pixels (86 x 25): a steel plate, a sunk phosphor well, a pixel-font reading with
    *  a hard glow, a segmented bar, the trend in small stencil, the collapse countdown in red when one runs */
   private drawVital(e: { id: VitalId; el: HTMLDivElement; cv: HTMLCanvasElement; icon: HTMLCanvasElement | null }, c: Colony) {
-    const W = 86, H = 25, cv = e.cv;
+    const W = 86, H = 28, cv = e.cv;
     if (cv.width !== W) { cv.width = W; cv.height = H; }
     let base = this.vitBase.get(e.id);
-    if (!base) { base = platePix(W, H, { mat: 'steel', seed: 90 + e.id.length * 7, screws: false, wear: 0.6 }); well(base, 21, 2, 63, 21); this.vitBase.set(e.id, base); }
+    if (!base) { base = platePix(W, H, { mat: 'steel', seed: 90 + e.id.length * 7, screws: false, wear: 0.6 }); well(base, 21, 2, 63, 24); this.vitBase.set(e.id, base); }
     const p = new Pix(W, H); p.d.set(base.d);
     const v = c.vitals, lvl = v.levels[e.id], val = v.value(e.id), meta = VITALS.find((x) => x.id === e.id)!;
     const RAMP = lvl === 'crit' ? R.coral : lvl === 'warn' ? R.ochre : R.malachite;
-    const hi = RAMP[RAMP.length - 2], glowC = RAMP[2];
-    text3s(p, meta.name, 25, 5, R.malachite[3]);
+    const hi = RAMP[RAMP.length - 2], glowC = RAMP[1];
+    fontText(p, meta.name, 25, 3, R.malachite[3]);
     let main = pct(val), sub = '';
-    if (e.id === 'power') { main = `${v.battery.toFixed(0)}KWH`; const n = v.gen - v.draw; sub = `${n >= 0 ? '+' : ''}${n.toFixed(0)}KW`; }
-    if (e.id === 'oxygen' && v.levels.power === 'crit') sub = 'NO SCRUB';
+    if (e.id === 'power') { main = `${v.battery.toFixed(0)} KWH`; const n = v.gen - v.draw; sub = `${n >= 0 ? '+' : ''}${n.toFixed(0)}`; }
+    if (e.id === 'oxygen' && v.levels.power === 'crit') sub = 'OFF';
     if (e.id === 'food') main = `${v.food.toFixed(0)} MEALS`;
-    if (e.id === 'integrity' && c.pod.braced) sub = 'BRACED';
     const tk = e.id === 'power' ? v.timers.power : e.id === 'oxygen' ? v.timers.oxygen : e.id === 'food' ? v.timers.food : e.id === 'health' ? v.timers.workers : null;
     if (tk !== null && tk !== undefined) sub = mmss(Math.max(0, tk));
     const blink = lvl === 'crit' && Math.floor(this.t * 2.5) % 2 === 0;
-    const tp = pixText(main, blink ? R.coral[2] : hi, true, glowC);
-    p.blit(tp, 24, 10);
-    if (sub) { const sw = textW3s(sub); text3s(p, sub, 81 - sw, 5, tk !== null && tk !== undefined ? R.coral[5] : lvl === 'ok' ? R.malachite[4] : hi); }
-    // the bar: fourteen cells
+    fontText(p, main, 25, 12, blink ? R.coral[2] : hi, { glow: glowC });
+    if (sub) fontText(p, sub, 82, 3, tk !== null && tk !== undefined ? R.coral[5] : lvl === 'ok' ? R.malachite[4] : hi, { align: 'right' });
     const n = 14, fill = Math.round(Math.max(0, Math.min(1, val)) * n);
-    for (let i = 0; i < n; i++) { const x = 25 + i * 4; p.rect(x, 19, 3, 2, i < fill ? hi : R.malachite[0]); if (i < fill) p.set(x, 19, RAMP[RAMP.length - 1]); }
+    for (let i = 0; i < n; i++) { const x = 25 + i * 4; p.rect(x, 23, 3, 2, i < fill ? hi : R.malachite[0]); if (i < fill) p.set(x, 23, RAMP[RAMP.length - 1]); }
     cv.getContext('2d')!.putImageData(p.image(), 0, 0);
     e.el.classList.toggle('crit', lvl === 'crit');
   }
@@ -284,7 +281,7 @@ export class Hud {
   }
   private selName(s: Sel): [string, string, string] {
     switch (s.kind) {
-      case 'pod': return ['UNAA COLONY POD CP-07', 'HOME BASE · UNIT 07', 'v-integrity'];
+      case 'pod': return ['UNAA COLONY POD CP-07', 'HOME BASE · UNIT 07', 'u-pod'];
       case 'arm': return [s.ref.name, s.ref.def.name.toUpperCase(), CATALOG[('arm_' + s.ref.kind) as keyof typeof CATALOG]?.icon ?? 't-claw'];
       case 'drone': return [s.ref.name, s.ref.def.name.toUpperCase(), s.ref.kind === 'scout' ? 't-scout' : s.ref.kind === 'carrier' ? 't-carrier' : 't-repairdrone'];
       case 'crew': return [s.ref.name.toUpperCase(), s.ref.title, 'v-morale'];
@@ -304,7 +301,7 @@ export class Hud {
       this.selKey = key;
       const [nm, ty, ic] = this.selName(s);
       this.selHd.innerHTML = '';
-      const pic = el('div', 'cx-glass pic', this.selHd); pic.appendChild(iconImg(ic, 48));
+      const pic = el('div', 'cx-glass pic', this.selHd); pic.appendChild(iconImg(ic, 64));
       const tx = el('div', '', this.selHd); el('div', 'nm cx-sten', tx, esc(nm)); el('div', 'ty', tx, esc(ty));
       this.buildActs(c, s);
       this.worksKey = '';
@@ -394,14 +391,14 @@ export class Hud {
     const key = this.worksTab + '|' + CAT_ORDER.map((id) => c.canBuild(id)).join('|');
     if (key === this.worksKey) return; this.worksKey = key;
     const W = this.selWorks; W.innerHTML = '';
-    el('div', 'cx-sten', W, 'POD WORKS').style.cssText = 'font-size:12px;margin:2px 0 6px';
+    el('div', 'cx-sten', W, 'POD WORKS').style.cssText = 'margin:2px 0 6px';
     const tabs = el('div', 'cx-tabs', W);
     for (const [k, n] of [['arm', 'ARMS'], ['drone', 'DRONES'], ['structure', 'AREA'], ['limb', 'LIMBS']] as [CatKind, string][]) { const b = el('button', 'cx-btn' + (this.worksTab === k ? ' on' : ''), tabs, n); b.onclick = (e) => { e.stopPropagation(); this.worksTab = k; this.worksKey = ''; sfx('click', 1.3, 0.4); }; }
     const tiles = el('div', 'cx-tiles', W);
     for (const id of CAT_ORDER) {
       const e = CATALOG[id]; if (e.kind !== this.worksTab) continue;
       const why = c.canBuild(id), t = el('div', 'cx-tile' + (why ? ' no' : ''), tiles);
-      t.appendChild(iconImg(e.icon, 44));
+      t.appendChild(iconImg(e.icon, 58));
       const tx = el('div', '', t); el('div', 'n', tx, e.name.toUpperCase());
       el('div', 'c', tx, Object.entries(e.cost).map(([it, n]) => { const have = c.stock.count(it); return `${have >= n ? '<em>' : '<b>'}${n} ${esc(ITEMS[it]?.name ?? it)}${have >= n ? '</em>' : '</b>'}`; }).join(' · ') + ` · ${e.time}s${e.kw ? ` · ${e.kw} kW` : ''}`);
       this.hoverTip(t, () => `<b>${e.name.toUpperCase()}</b><br>${e.desc}${e.kind === 'arm' ? `<br>Reach ${(ARM_DEF[e.arm!].l1 + ARM_DEF[e.arm!].l2).toFixed(1)} m boom` : ''}${why ? `<br><span class="r">${esc(why)}</span>` : '<br><span class="w">CLICK TO BUILD</span>'}`);
@@ -415,7 +412,7 @@ export class Hud {
     let key = k.k, html = '';
     if (k.k === 'arm') { key += k.arm.id + k.tool; html = `<span class="big cx-sten">${k.arm.name}</span><span class="cx-ph">DIRECT CONTROL · ${TOOLS[k.tool].name.toUpperCase()}</span><span class="keys"><b>LMB</b> ${TOOLS[k.tool].hold ? 'HOLD TO WORK' : 'USE'} ${k.arm.kind === 'manipulator' ? '<b>[ ]</b> TOOL ' : ''}<b>RMB</b>/<b>ESC</b> RELEASE</span>`; }
     else if (k.k === 'drone') { const d = k.drone; key += d.id + Math.round(d.battery / 5) + (d.signal() >= 1 ? 1 : 0); html = `<span class="big cx-sten">${d.name}</span><span class="cx-ph">STEERING · BATT ${Math.round(d.battery)}% · ${d.signal() >= 1 ? 'SIGNAL OK' : '<span style="color:#e2b04a">SIGNAL WEAK</span>'}</span><span class="keys"><b>WASD</b> FLY <b>R</b>/<b>F</b> ALT <b>SHIFT</b> BOOST <b>LMB</b> ${k.tool ? TOOLS[k.tool].name.toUpperCase() : 'TOOL'} <b>RMB</b>/<b>ESC</b> RELEASE</span>`; }
-    else if (k.k === 'place') { const t = c.target, why = t.ok ? c.placeWhy(t.x, t.z) : ''; key += k.id + why; html = `<span class="big cx-sten">PLACING · ${CATALOG[k.id].name.toUpperCase()}</span>${why ? `<span style="color:#e0604a;font-family:VT,monospace;font-size:17px">${esc(why.toUpperCase())}</span>` : '<span class="cx-ph">CLEAR TO BUILD</span>'}<span class="keys"><b>LMB</b> PLACE <b>SHIFT</b> KEEP PLACING <b>RMB</b>/<b>ESC</b> CANCEL</span>`; }
+    else if (k.k === 'place') { const t = c.target, why = t.ok ? c.placeWhy(t.x, t.z) : ''; key += k.id + why; html = `<span class="big cx-sten">PLACING · ${CATALOG[k.id].name.toUpperCase()}</span>${why ? `<span style="color:#da876a;font-family:Body,monospace;font-size:22px">${esc(why.toUpperCase())}</span>` : '<span class="cx-ph">CLEAR TO BUILD</span>'}<span class="keys"><b>LMB</b> PLACE <b>SHIFT</b> KEEP PLACING <b>RMB</b>/<b>ESC</b> CANCEL</span>`; }
     if (key !== this.ctlKey) { this.ctlKey = key; this.ctlEl.innerHTML = html; this.ctlEl.classList.toggle('on', !!html); }
   }
   private drawWheelInfo(c: Colony) {
@@ -435,7 +432,7 @@ export class Hud {
     if (key === this.cfgKey) return; this.cfgKey = key;
     const E = this.cfgEl; [...E.querySelectorAll(':scope > :not(.cx-screw)')].forEach((x) => x.remove());
     const hd = el('div', '', E); hd.style.cssText = 'display:flex;justify-content:space-between;align-items:center';
-    el('div', 'cx-sten', hd, `SLOT ${i + 1} · LEVEL ${s.level}`).style.fontSize = '15px';
+    el('div', 'cx-sten', hd, `SLOT ${i + 1} · LEVEL ${s.level}`);
     const x = el('button', 'cx-btn', hd, 'CLOSE'); x.onclick = (e) => { e.stopPropagation(); this.cfgSlot = -1; sfx('close'); };
     if (s.level > 0) {
       el('div', 'cx-lbl', E, 'TOOL IN THIS SLOT').style.marginTop = '8px';

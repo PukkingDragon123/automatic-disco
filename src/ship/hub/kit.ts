@@ -31,14 +31,15 @@ export class Mats {
   private c = new Map<string, THREE.Material>();
   env: THREE.Texture | null = null;
   constructor(readonly bin: Bin) {}
-  get(key: string, o: MatOpts): THREE.MeshStandardMaterial {
-    let m = this.c.get(key) as THREE.MeshStandardMaterial | undefined;
+  get(key: string, o: MatOpts): THREE.MeshLambertMaterial {
+    let m = this.c.get(key) as THREE.MeshLambertMaterial | undefined;
     if (m) return m;
-    m = new THREE.MeshStandardMaterial({
-      color: o.color ?? 0xffffff, map: o.map ?? null, roughness: o.rough ?? 0.75, metalness: o.metal ?? 0.05,
+    // matte, like LIMBOPHOBIA's world material: pixel-art maps carry the shading, the lights carry the mood
+    m = new THREE.MeshLambertMaterial({
+      color: o.color ?? 0xffffff, map: o.map ?? null,
       emissive: o.emissive !== undefined ? new THREE.Color(o.emissive).multiplyScalar(o.emissiveK ?? 1) : new THREE.Color(0), emissiveMap: o.emissiveMap ?? null,
       side: o.side ?? THREE.FrontSide, transparent: !!o.transparent, opacity: o.opacity ?? 1, alphaTest: o.alphaTest ?? 0, flatShading: !!o.flat,
-      envMap: this.env, envMapIntensity: o.env ?? 0.55, depthWrite: o.depthWrite ?? !o.transparent,
+      depthWrite: o.depthWrite ?? !o.transparent,
     });
     if (o.polyOffset) { m.polygonOffset = true; m.polygonOffsetFactor = -o.polyOffset; m.polygonOffsetUnits = -o.polyOffset * 2; }
     gbuf(m, o.flag ?? (o.transparent ? 0 : 1));

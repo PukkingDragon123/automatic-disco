@@ -2,6 +2,8 @@
 // grid (polygons, bars, strokes, single pixels), then finished the way a pixel artist would: a 1 px outline in the
 // darkest step round the silhouette, a lit edge on the upper-left of each plane, a shadow edge on the lower-right,
 // and a glint where the form turns. Rendered in a ramp chosen by state (phosphor on the CRT, amber when owned).
+import atlasUrl from '../art/icons.png';
+import atlasIdx from '../art/icons.json';
 type Pt = [number, number];
 type Op = ['r', number, number, number, number, number] | ['p', Pt[], number] | ['l', number, number, number, number, number] | ['x', number, number, number] | ['c', number, number, number, number];
 const S = 24;
@@ -119,10 +121,44 @@ function raster(ops: Op[]): Uint8Array {
   return g;
 }
 const cache = new Map<string, HTMLCanvasElement>();
-/** a 24 x 24 icon canvas (scale it with image-rendering: pixelated / drawImage with smoothing off) */
+const urls = new Map<string, string>();
+// ------------------------------------------------------------------ the lowpix-painted atlas (src/research/art)
+// The shapes above are turned into lowpix sprite specs and painted in strokes, in real material colours, by
+// src/research/art/build_icons.py; the screens show that atlas. Locked states are re-inked into dark phosphor.
+let atlas: HTMLImageElement | null = null;
+const AIDX = atlasIdx as { cell: number; cols: number; index: Record<string, number> };
+export const iconsReady: Promise<void> = new Promise((res) => {
+  if (typeof Image === 'undefined') { res(); return; }
+  const im = new Image();
+  im.onload = () => { atlas = im; cache.clear(); urls.clear(); res(); };
+  im.onerror = () => res();
+  im.src = atlasUrl;
+});
+const DIM_RAMP = [0x0a110d, 0x0f1a14, 0x14261b, 0x1b3525, 0x264a32, 0x336240];
+const RED_RAMP = [0x1c0907, 0x34100d, 0x521915, 0x72241d, 0x942e25, 0xb8382e, 0xcc6252];
+function fromAtlas(name: string, pal: PalKey | Pal): HTMLCanvasElement | null {
+  const j = AIDX.index[name]; if (!atlas || j === undefined) return null;
+  const C = AIDX.cell, cv = document.createElement('canvas'); cv.width = C; cv.height = C;
+  const g = cv.getContext('2d')!; g.imageSmoothingEnabled = false;
+  g.drawImage(atlas, (j % AIDX.cols) * C, Math.floor(j / AIDX.cols) * C, C, C, 0, 0, C, C);
+  const ink = pal === 'dim' || Array.isArray(pal) ? DIM_RAMP : pal === 'red' ? RED_RAMP : null;
+  if (ink) {
+    const img = g.getImageData(0, 0, C, C), d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (!d[i + 3]) continue;
+      const l = (d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11) / 255, c = ink[Math.min(ink.length - 1, Math.floor(l * ink.length * 1.1))];
+      d[i] = (c >> 16) & 255; d[i + 1] = (c >> 8) & 255; d[i + 2] = c & 255;
+    }
+    g.putImageData(img, 0, 0);
+  }
+  return cv;
+}
+/** an icon canvas: 48 x 48 from the lowpix atlas once it has loaded, else 24 x 24 from the shapes (scale it with
+ *  image-rendering: pixelated, or drawImage with smoothing off, at whole multiples) */
 export function iconCanvas(name: string, pal: PalKey | Pal = 'phos'): HTMLCanvasElement {
   const key = name + ':' + (typeof pal === 'string' ? pal : pal.join(','));
   let cv = cache.get(key); if (cv) return cv;
+  const fa = fromAtlas(name, pal); if (fa) { cache.set(key, fa); return fa; }
   const P = typeof pal === 'string' ? PAL[pal] : pal, ops = ART[name] ?? ART.gear;
   const g = raster(ops);
   cv = document.createElement('canvas'); cv.width = S; cv.height = S;
@@ -150,6 +186,7 @@ export function iconCanvas(name: string, pal: PalKey | Pal = 'phos'): HTMLCanvas
   cache.set(key, cv);
   return cv;
 }
-const urls = new Map<string, string>();
 export function iconURL(name: string, pal: PalKey | Pal = 'phos') { const k = name + ':' + String(pal); let u = urls.get(k); if (!u) { u = iconCanvas(name, pal).toDataURL(); urls.set(k, u); } return u; }
 export const ICON_NAMES = Object.keys(ART);
+/** the shape ops behind each icon (scripts/lowpix-icons.py turns them into lowpix sprite specs) */
+export const ICON_ART = ART;

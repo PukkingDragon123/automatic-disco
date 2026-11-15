@@ -85,11 +85,12 @@ export class Director {
       if (e.id === 'fallen') { killTeammates(g, x.data.ids ?? []); this.done.add('fallen'); }
       // the decision: the colony waits
       const was = G.paused; G.paused = true;
+      document.body.classList.add('ev-on'); // the film grade holds through the decision
       const res = await choose({ kicker: e.kicker, title: e.title, brief: e.brief(x), options: e.options(x), stamp: e.id === 'fallen' ? 'THEIR LAST ORDERS' : undefined }, (o) => {
         const f = E.fx(g); const text = o.run(f);
         return { text, lines: f.out };
       });
-      G.paused = was;
+      G.paused = was; document.body.classList.remove('ev-on');
       this.history.push({ id: e.id, t: this.now(), choice: res.key });
       G.emit?.('story-event', { id: e.id, choice: res.key, phase: 'end' });
       if (e.once) this.done.add(e.id);

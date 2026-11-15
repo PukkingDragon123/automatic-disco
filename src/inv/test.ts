@@ -20,6 +20,7 @@ export async function testInv(engine: Engine, input: Input, P: URLSearchParams) 
   (await import('../world/geo/items')).registerGeoItems();
   injectCrateCSS();
   if (P.has('sheet')) return sheet();
+  (await import('./models')).preloadContainerModels();
   if (P.has('models')) return models(engine, P);
   if (P.has('stage')) return stage(engine, P);
   return game(engine, input, P);

@@ -1,0 +1,2624 @@
+{
+ "name": "UNAA Colony Pod CP-07",
+ "description": "The landed UNAA colony pod: charred ablative skirt, white plated hull with an orange program band and blue pinstripe, a gunmetal equipment band with six numbered arm hardpoints, the shoulder with RCS quads and floodlights, a glazed cupola, the SHIP AI LINK dish on its mast, four shock-strut legs, oxygen and hydrazine tanks, the hatch and its ramp, radiators, a ladder and conduits.",
+ "author": "pod agent",
+ "license": "CC0-1.0",
+ "density": 2,
+ "budget": {
+  "tris": 6000,
+  "colors": 80
+ },
+ "light": {
+  "dir": [
+   -0.55,
+   1.0,
+   0.7
+  ],
+  "strength": 1.1,
+  "gradient": 0.3,
+  "ao": 0.6,
+  "ao_height": 2.0
+ },
+ "render": {
+  "background": "#202432",
+  "hero": [
+   -34,
+   22
+  ],
+  "shadow": 0.45
+ },
+ "palette": {
+  "ramps": {
+   "shell": [
+    "#3b3a36",
+    "#5d5a52",
+    "#8f8a7e",
+    "#b7b2a4",
+    "#d6d2c4",
+    "#e9e6dc",
+    "#f6f4ec"
+   ],
+   "orange": [
+    "#2f1a13",
+    "#4e2817",
+    "#773717",
+    "#9f4621",
+    "#c36530",
+    "#de8f4e",
+    "#efb67b"
+   ],
+   "metal": [
+    "#1c1e20",
+    "#2a2f32",
+    "#3d4346",
+    "#54595c",
+    "#6e7373",
+    "#8e9190",
+    "#b1b2aa"
+   ],
+   "lens": [
+    "#0f2028",
+    "#14323b",
+    "#1d494f",
+    "#3e7a9c",
+    "#62a8d0",
+    "#a6d8f0",
+    "#e8f6ff"
+   ],
+   "red": [
+    "#401913",
+    "#672319",
+    "#8c2920",
+    "#b13c2b",
+    "#e06a4a"
+   ],
+   "green": [
+    "#0f2219",
+    "#1f5532",
+    "#459155",
+    "#73b073",
+    "#a8d09d"
+   ],
+   "violet": [
+    "#201b2d",
+    "#362145",
+    "#50305d",
+    "#664575",
+    "#86628a",
+    "#a98aa0",
+    "#d8c8e8"
+   ],
+   "brass": [
+    "#31260f",
+    "#4f3e13",
+    "#705719",
+    "#946c21",
+    "#b38737",
+    "#cea457",
+    "#e8cc88"
+   ],
+   "hazard": [
+    "#312715",
+    "#745820",
+    "#bc913a",
+    "#d8ac5b"
+   ],
+   "amber": [
+    "#503a1a",
+    "#825722",
+    "#b27d34",
+    "#d7a856",
+    "#eecc8e",
+    "#fff3c8"
+   ],
+   "char": [
+    "#18181b",
+    "#222225",
+    "#2f2e31",
+    "#3f3d3f",
+    "#524f4f",
+    "#6a645e",
+    "#8a7a64"
+   ],
+   "window": [
+    "#0f2028",
+    "#14323b",
+    "#503a1a",
+    "#b27d34",
+    "#d7a856",
+    "#eecc8e"
+   ],
+   "blue": [
+    "#0e1a2a",
+    "#172a40",
+    "#1f3d5b",
+    "#2b5884",
+    "#3f78a8",
+    "#6a9cc8"
+   ]
+  }
+ },
+ "styles": {
+  "enamel": {
+   "ramp": "shell",
+   "tone": 3.9,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 2.0,
+     "amount": 0.2
+    },
+    {
+     "id": "panel",
+     "op": "panel",
+     "inset": 2,
+     "min_size": 10
+    },
+    {
+     "id": "grime",
+     "op": "patches",
+     "scale": 1.6,
+     "threshold": 0.75,
+     "shift": -0.5,
+     "faces": [
+      "-top"
+     ]
+    },
+    {
+     "id": "wear",
+     "op": "wear",
+     "width": 2,
+     "density": 0.16,
+     "ramp": "metal",
+     "tone": 2.2,
+     "post": true
+    },
+    {
+     "id": "rivets",
+     "op": "rivets",
+     "inset": 1,
+     "min_size": 8,
+     "post": true
+    }
+   ]
+  },
+  "orange": {
+   "ramp": "orange",
+   "tone": 4.0,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 2.0,
+     "amount": 0.25
+    },
+    {
+     "id": "wear",
+     "op": "wear",
+     "width": 1,
+     "density": 0.2,
+     "ramp": "metal",
+     "tone": 2.6,
+     "post": true
+    }
+   ]
+  },
+  "gun": {
+   "ramp": "metal",
+   "tone": 3.0,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 1.6,
+     "amount": 0.3
+    },
+    {
+     "id": "scuffs",
+     "op": "wear",
+     "width": 1,
+     "density": 0.22,
+     "shift": 1.2,
+     "post": true
+    },
+    {
+     "id": "rivets",
+     "op": "rivets",
+     "inset": 1,
+     "min_size": 7,
+     "post": true
+    }
+   ]
+  },
+  "lens": {
+   "ramp": "lens",
+   "tone": 4.2,
+   "light": 0.4,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 0,
+    "light_shift": 1.5
+   }
+  },
+  "redlamp": {
+   "ramp": "red",
+   "tone": 3.8,
+   "light": 0.2,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 0
+   }
+  },
+  "greenlamp": {
+   "ramp": "green",
+   "tone": 3.8,
+   "light": 0.2,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 0
+   }
+  },
+  "brass": {
+   "ramp": "brass",
+   "tone": 4.0,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 1.6,
+     "amount": 0.3
+    },
+    {
+     "id": "gloss",
+     "op": "gloss",
+     "post": true,
+     "dash": true,
+     "density": 0.3
+    }
+   ]
+  },
+  "field": {
+   "ramp": "violet",
+   "tone": 5.0,
+   "light": 0.2,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 0
+   }
+  },
+  "amberglow": {
+   "ramp": "amber",
+   "tone": 4.6,
+   "light": 0.2,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 0
+   }
+  },
+  "hazard": {
+   "ramp": "hazard",
+   "tone": 2.5,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "stripes",
+     "op": "stripes",
+     "axis": [
+      1,
+      1,
+      0
+     ],
+     "period": 3,
+     "width": 0.5,
+     "ramp": "metal",
+     "tone": 1
+    }
+   ]
+  },
+  "shield": {
+   "ramp": "char",
+   "tone": 2.6,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 1.4,
+     "amount": 0.45
+    },
+    {
+     "id": "cracks",
+     "op": "cracks",
+     "scale": 2.5,
+     "width": 1,
+     "threshold": 0.8,
+     "shift": -1,
+     "bevel": true
+    },
+    {
+     "id": "scorch",
+     "op": "gradient",
+     "axis": "z",
+     "amount": 1.0
+    }
+   ]
+  },
+  "glass": {
+   "ramp": "window",
+   "tone": 1.2,
+   "light": 0.3,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 0
+   },
+   "layers": [
+    {
+     "id": "win",
+     "op": "stripes",
+     "axis": [
+      1,
+      0,
+      0
+     ],
+     "period": 8,
+     "width": 0.45,
+     "ramp": "window",
+     "tone": 4.2
+    },
+    {
+     "id": "win2",
+     "op": "stripes",
+     "axis": [
+      0,
+      0,
+      1
+     ],
+     "period": 8,
+     "width": 0.45,
+     "ramp": "window",
+     "tone": 4.2
+    }
+   ]
+  }
+ },
+ "parts": [
+  {
+   "id": "skirt",
+   "shape": "prism",
+   "sides": 12,
+   "size": [
+    106,
+    106,
+    9
+   ],
+   "pivot": [
+    0,
+    22.8,
+    0
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "front_scale": [
+    0.77,
+    0.77
+   ],
+   "style": "shield"
+  },
+  {
+   "id": "base",
+   "shape": "prism",
+   "sides": 12,
+   "size": [
+    82,
+    82,
+    2
+   ],
+   "pivot": [
+    0,
+    18.5,
+    0
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "style": "shield"
+  },
+  {
+   "id": "lip",
+   "shape": "prism",
+   "sides": 12,
+   "size": [
+    110,
+    110,
+    3
+   ],
+   "pivot": [
+    0,
+    28.6,
+    0
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "hull",
+   "shape": "prism",
+   "sides": 12,
+   "size": [
+    108,
+    108,
+    41
+   ],
+   "pivot": [
+    0,
+    50.5,
+    0
+   ],
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "style": "enamel",
+   "paint": {
+    "layers": [
+     {
+      "id": "panel",
+      "op": "panel",
+      "inset": 3,
+      "min_size": 12
+     },
+     {
+      "id": "band",
+      "op": "band",
+      "axis": "z",
+      "from": -0.28,
+      "to": -0.12,
+      "ramp": "orange",
+      "tone": 4.0,
+      "faces": [
+       "sides"
+      ],
+      "bevel": true
+     },
+     {
+      "id": "stripe",
+      "op": "band",
+      "axis": "z",
+      "from": -0.36,
+      "to": -0.31,
+      "ramp": "blue",
+      "tone": 3.0,
+      "faces": [
+       "sides"
+      ]
+     },
+     {
+      "id": "grime2",
+      "op": "gradient",
+      "axis": "z",
+      "amount": 0.6
+     }
+    ],
+    "stamps": [
+     {
+      "face": "side4",
+      "at": [
+       8,
+       18
+      ],
+      "art": [
+       "k...k.k...k..kkk...kkk..",
+       "k...k.kk..k.k...k.k...k.",
+       "k...k.k.k.k.k...k.k...k.",
+       "k...k.k.k.k.kkkkk.kkkkk.",
+       "k...k.k..kk.k...k.k...k.",
+       "k...k.k...k.k...k.k...k.",
+       ".kkk..k...k.k...k.k...k."
+      ],
+      "key": {
+       "k": "blue:1"
+      }
+     },
+     {
+      "face": "side2",
+      "at": [
+       10,
+       14
+      ],
+      "art": [
+       "...kkkkkkkkk......kkkkkkkkkkkkkkk...",
+       "...kkkkkkkkk......kkkkkkkkkkkkkkk...",
+       "...kkkkkkkkk......kkkkkkkkkkkkkkk...",
+       "kkk.........kkk...............kkk...",
+       "kkk.........kkk...............kkk...",
+       "kkk.........kkk...............kkk...",
+       "kkk......kkkkkk............kkk......",
+       "kkk......kkkkkk............kkk......",
+       "kkk......kkkkkk............kkk......",
+       "kkk...kkk...kkk.........kkk.........",
+       "kkk...kkk...kkk.........kkk.........",
+       "kkk...kkk...kkk.........kkk.........",
+       "kkkkkk......kkk......kkk............",
+       "kkkkkk......kkk......kkk............",
+       "kkkkkk......kkk......kkk............",
+       "kkk.........kkk......kkk............",
+       "kkk.........kkk......kkk............",
+       "kkk.........kkk......kkk............",
+       "...kkkkkkkkk.........kkk............",
+       "...kkkkkkkkk.........kkk............",
+       "...kkkkkkkkk.........kkk............"
+      ],
+      "key": {
+       "k": "metal:1"
+      }
+     },
+     {
+      "face": "side8",
+      "at": [
+       6,
+       18
+      ],
+      "art": [
+       ".kkk..kkkk.........kkk..kkkkk.",
+       "k...k.k...k.......k...k.....k.",
+       "k.....k...k.......k..kk....k..",
+       "k.....kkkk..kkkkk.k.k.k...k...",
+       "k.....k...........kk..k..k....",
+       "k...k.k...........k...k..k....",
+       ".kkk..k............kkk...k...."
+      ],
+      "key": {
+       "k": "metal:1"
+      }
+     },
+     {
+      "face": "side10",
+      "at": [
+       8,
+       18
+      ],
+      "art": [
+       "k...k.k...k..kkk...kkk..",
+       "k...k.kk..k.k...k.k...k.",
+       "k...k.k.k.k.k...k.k...k.",
+       "k...k.k.k.k.kkkkk.kkkkk.",
+       "k...k.k..kk.k...k.k...k.",
+       "k...k.k...k.k...k.k...k.",
+       ".kkk..k...k.k...k.k...k."
+      ],
+      "key": {
+       "k": "blue:1"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "band",
+   "shape": "prism",
+   "sides": 12,
+   "size": [
+    113,
+    113,
+    8
+   ],
+   "pivot": [
+    0,
+    63,
+    0
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "hide": [
+    "front",
+    "back"
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "vents",
+      "op": "grille",
+      "rect": [
+       0.1,
+       0.25,
+       0.9,
+       0.75
+      ],
+      "period": 2,
+      "faces": [
+       "sides"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "shoulder",
+   "shape": "prism",
+   "sides": 12,
+   "size": [
+    108,
+    108,
+    14
+   ],
+   "pivot": [
+    0,
+    78,
+    0
+   ],
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "front_scale": [
+    0.75,
+    0.75
+   ],
+   "style": "enamel"
+  },
+  {
+   "id": "collar",
+   "shape": "prism",
+   "sides": 12,
+   "size": [
+    82,
+    82,
+    2.4
+   ],
+   "pivot": [
+    0,
+    86,
+    0
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "windows",
+   "shape": "prism",
+   "sides": 12,
+   "size": [
+    64,
+    64,
+    6
+   ],
+   "pivot": [
+    0,
+    90,
+    0
+   ],
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "style": "glass"
+  },
+  {
+   "id": "dome",
+   "shape": "prism",
+   "sides": 12,
+   "size": [
+    64,
+    64,
+    14
+   ],
+   "pivot": [
+    0,
+    100,
+    0
+   ],
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "front_scale": [
+    0.45,
+    0.45
+   ],
+   "style": "enamel"
+  },
+  {
+   "id": "domecap",
+   "shape": "prism",
+   "sides": 12,
+   "size": [
+    30,
+    30,
+    3
+   ],
+   "pivot": [
+    0,
+    108.5,
+    0
+   ],
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "mast",
+   "shape": "prism",
+   "sides": 8,
+   "size": [
+    6,
+    6,
+    32
+   ],
+   "pivot": [
+    0,
+    125,
+    0
+   ],
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "style": "enamel",
+   "paint": {
+    "layers": [
+     {
+      "id": "rings",
+      "op": "stripes",
+      "axis": "z",
+      "period": 8,
+      "width": 0.2,
+      "ramp": "metal",
+      "tone": 2
+     }
+    ]
+   }
+  },
+  {
+   "id": "yoke",
+   "shape": "box",
+   "chamfer": 0.5,
+   "size": [
+    10,
+    3,
+    4
+   ],
+   "pivot": [
+    0,
+    141,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "dish",
+   "parent": "yoke",
+   "shape": "prism",
+   "sides": 12,
+   "size": [
+    24,
+    24,
+    5
+   ],
+   "pivot": [
+    0,
+    5,
+    1
+   ],
+   "rotation": [
+    -55,
+    0,
+    0
+   ],
+   "front_scale": [
+    1.0,
+    1.0
+   ],
+   "back_scale": [
+    0.35,
+    0.35
+   ],
+   "style": "enamel"
+  },
+  {
+   "id": "feed",
+   "parent": "dish",
+   "shape": "box",
+   "size": [
+    1,
+    1,
+    10
+   ],
+   "pivot": [
+    0,
+    0,
+    5
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "whip",
+   "shape": "box",
+   "size": [
+    0.8,
+    30,
+    0.8
+   ],
+   "pivot": [
+    18,
+    118,
+    -12
+   ],
+   "rotation": [
+    0,
+    0,
+    -10
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "whip2",
+   "shape": "box",
+   "size": [
+    0.8,
+    24,
+    0.8
+   ],
+   "pivot": [
+    -16,
+    116,
+    14
+   ],
+   "rotation": [
+    8,
+    0,
+    8
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "leg0",
+   "shape": "box",
+   "chamfer": 0.6,
+   "size": [
+    5,
+    5,
+    34
+   ],
+   "pivot": [
+    33.94112549695428,
+    31,
+    33.941125496954285
+   ],
+   "offset": [
+    0,
+    0,
+    17
+   ],
+   "rotation": [
+    42,
+    45.0,
+    0
+   ],
+   "style": "enamel",
+   "paint": {
+    "layers": [
+     {
+      "id": "hz",
+      "op": "band",
+      "axis": "z",
+      "from": -0.2,
+      "to": 0.05,
+      "ramp": "hazard",
+      "tone": 2.5
+     }
+    ]
+   }
+  },
+  {
+   "id": "piston0",
+   "shape": "prism",
+   "sides": 8,
+   "size": [
+    3,
+    3,
+    18
+   ],
+   "pivot": [
+    48.08326112068523,
+    14,
+    48.083261120685236
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "pad0",
+   "shape": "prism",
+   "sides": 10,
+   "size": [
+    22,
+    22,
+    3
+   ],
+   "pivot": [
+    52.32590180780451,
+    1.6,
+    52.32590180780452
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "bolts",
+      "op": "rivets",
+      "inset": 1,
+      "spacing": 4,
+      "post": true
+     }
+    ]
+   }
+  },
+  {
+   "id": "leg1",
+   "shape": "box",
+   "chamfer": 0.6,
+   "size": [
+    5,
+    5,
+    34
+   ],
+   "pivot": [
+    33.941125496954285,
+    31,
+    -33.94112549695428
+   ],
+   "offset": [
+    0,
+    0,
+    17
+   ],
+   "rotation": [
+    42,
+    135.0,
+    0
+   ],
+   "style": "enamel",
+   "paint": {
+    "layers": [
+     {
+      "id": "hz",
+      "op": "band",
+      "axis": "z",
+      "from": -0.2,
+      "to": 0.05,
+      "ramp": "hazard",
+      "tone": 2.5
+     }
+    ]
+   }
+  },
+  {
+   "id": "piston1",
+   "shape": "prism",
+   "sides": 8,
+   "size": [
+    3,
+    3,
+    18
+   ],
+   "pivot": [
+    48.083261120685236,
+    14,
+    -48.08326112068523
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "pad1",
+   "shape": "prism",
+   "sides": 10,
+   "size": [
+    22,
+    22,
+    3
+   ],
+   "pivot": [
+    52.32590180780452,
+    1.6,
+    -52.32590180780451
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "bolts",
+      "op": "rivets",
+      "inset": 1,
+      "spacing": 4,
+      "post": true
+     }
+    ]
+   }
+  },
+  {
+   "id": "leg2",
+   "shape": "box",
+   "chamfer": 0.6,
+   "size": [
+    5,
+    5,
+    34
+   ],
+   "pivot": [
+    -33.94112549695428,
+    31,
+    -33.941125496954285
+   ],
+   "offset": [
+    0,
+    0,
+    17
+   ],
+   "rotation": [
+    42,
+    225.0,
+    0
+   ],
+   "style": "enamel",
+   "paint": {
+    "layers": [
+     {
+      "id": "hz",
+      "op": "band",
+      "axis": "z",
+      "from": -0.2,
+      "to": 0.05,
+      "ramp": "hazard",
+      "tone": 2.5
+     }
+    ]
+   }
+  },
+  {
+   "id": "piston2",
+   "shape": "prism",
+   "sides": 8,
+   "size": [
+    3,
+    3,
+    18
+   ],
+   "pivot": [
+    -48.08326112068523,
+    14,
+    -48.08326112068524
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "pad2",
+   "shape": "prism",
+   "sides": 10,
+   "size": [
+    22,
+    22,
+    3
+   ],
+   "pivot": [
+    -52.32590180780451,
+    1.6,
+    -52.32590180780453
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "bolts",
+      "op": "rivets",
+      "inset": 1,
+      "spacing": 4,
+      "post": true
+     }
+    ]
+   }
+  },
+  {
+   "id": "leg3",
+   "shape": "box",
+   "chamfer": 0.6,
+   "size": [
+    5,
+    5,
+    34
+   ],
+   "pivot": [
+    -33.941125496954285,
+    31,
+    33.94112549695427
+   ],
+   "offset": [
+    0,
+    0,
+    17
+   ],
+   "rotation": [
+    42,
+    315.0,
+    0
+   ],
+   "style": "enamel",
+   "paint": {
+    "layers": [
+     {
+      "id": "hz",
+      "op": "band",
+      "axis": "z",
+      "from": -0.2,
+      "to": 0.05,
+      "ramp": "hazard",
+      "tone": 2.5
+     }
+    ]
+   }
+  },
+  {
+   "id": "piston3",
+   "shape": "prism",
+   "sides": 8,
+   "size": [
+    3,
+    3,
+    18
+   ],
+   "pivot": [
+    -48.08326112068524,
+    14,
+    48.08326112068522
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "pad3",
+   "shape": "prism",
+   "sides": 10,
+   "size": [
+    22,
+    22,
+    3
+   ],
+   "pivot": [
+    -52.32590180780453,
+    1.6,
+    52.325901807804506
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "bolts",
+      "op": "rivets",
+      "inset": 1,
+      "spacing": 4,
+      "post": true
+     }
+    ]
+   }
+  },
+  {
+   "id": "o2tank",
+   "shape": "prism",
+   "sides": 10,
+   "size": [
+    15,
+    15,
+    32
+   ],
+   "pivot": [
+    61,
+    39,
+    0
+   ],
+   "style": "enamel",
+   "paint": {
+    "layers": [
+     {
+      "id": "bandb",
+      "op": "band",
+      "axis": "z",
+      "from": -0.2,
+      "to": 0.2,
+      "ramp": "blue",
+      "tone": 3.2,
+      "bevel": true
+     },
+     {
+      "id": "panel",
+      "off": true
+     }
+    ]
+   }
+  },
+  {
+   "id": "fueltank",
+   "shape": "prism",
+   "sides": 10,
+   "size": [
+    15,
+    15,
+    32
+   ],
+   "pivot": [
+    -61,
+    39,
+    0
+   ],
+   "style": "orange",
+   "paint": {
+    "layers": [
+     {
+      "id": "bandk",
+      "op": "band",
+      "axis": "z",
+      "from": -0.2,
+      "to": 0.2,
+      "ramp": "metal",
+      "tone": 2,
+      "bevel": true
+     }
+    ]
+   }
+  },
+  {
+   "id": "strap1-10",
+   "shape": "box",
+   "size": [
+    17,
+    17,
+    2
+   ],
+   "pivot": [
+    61,
+    39,
+    -10
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "strap110",
+   "shape": "box",
+   "size": [
+    17,
+    17,
+    2
+   ],
+   "pivot": [
+    61,
+    39,
+    10
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "strap-1-10",
+   "shape": "box",
+   "size": [
+    17,
+    17,
+    2
+   ],
+   "pivot": [
+    -61,
+    39,
+    -10
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "strap-110",
+   "shape": "box",
+   "size": [
+    17,
+    17,
+    2
+   ],
+   "pivot": [
+    -61,
+    39,
+    10
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "hatch",
+   "shape": "box",
+   "chamfer": 0.8,
+   "size": [
+    32,
+    44,
+    6
+   ],
+   "pivot": [
+    0,
+    52,
+    54
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "door",
+      "op": "rect",
+      "rect": [
+       0.18,
+       0.08,
+       0.82,
+       0.92
+      ],
+      "ramp": "char",
+      "tone": 1,
+      "faces": [
+       "front"
+      ],
+      "bevel": true
+     },
+     {
+      "id": "light",
+      "op": "rect",
+      "rect": [
+       0.3,
+       0.02,
+       0.7,
+       0.07
+      ],
+      "ramp": "amber",
+      "tone": 4.6,
+      "faces": [
+       "front"
+      ]
+     },
+     {
+      "id": "hzh",
+      "op": "rect",
+      "rect": [
+       0.0,
+       0.0,
+       0.14,
+       1.0
+      ],
+      "ramp": "hazard",
+      "tone": 2.5,
+      "faces": [
+       "front"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "ramp",
+   "shape": "box",
+   "chamfer": 0.3,
+   "size": [
+    26,
+    2,
+    52
+   ],
+   "pivot": [
+    0,
+    15,
+    76
+   ],
+   "rotation": [
+    33,
+    0,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "treads",
+      "op": "stripes",
+      "axis": "z",
+      "period": 4,
+      "width": 0.25,
+      "ramp": "hazard",
+      "tone": 2.5,
+      "faces": [
+       "top"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "rail1",
+   "shape": "box",
+   "size": [
+    1,
+    1,
+    52
+   ],
+   "pivot": [
+    13,
+    24,
+    76
+   ],
+   "rotation": [
+    33,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "rail-1",
+   "shape": "box",
+   "size": [
+    1,
+    1,
+    52
+   ],
+   "pivot": [
+    -13,
+    24,
+    76
+   ],
+   "rotation": [
+    33,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "rad1",
+   "shape": "box",
+   "size": [
+    1.6,
+    36,
+    24
+   ],
+   "pivot": [
+    40,
+    48,
+    -50
+   ],
+   "rotation": [
+    0,
+    32,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "fins",
+      "op": "grille",
+      "rect": [
+       0.05,
+       0.05,
+       0.95,
+       0.95
+      ],
+      "period": 2,
+      "dir": "v",
+      "faces": [
+       "left",
+       "right"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "rad-1",
+   "shape": "box",
+   "size": [
+    1.6,
+    36,
+    24
+   ],
+   "pivot": [
+    -40,
+    48,
+    -50
+   ],
+   "rotation": [
+    0,
+    -32,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "fins",
+      "op": "grille",
+      "rect": [
+       0.05,
+       0.05,
+       0.95,
+       0.95
+      ],
+      "period": 2,
+      "dir": "v",
+      "faces": [
+       "left",
+       "right"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "ladder",
+   "shape": "box",
+   "size": [
+    10,
+    50,
+    1.4
+   ],
+   "pivot": [
+    30,
+    54,
+    47
+   ],
+   "rotation": [
+    0,
+    32,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "rungs",
+      "op": "stripes",
+      "axis": "y",
+      "period": 5,
+      "width": 0.3,
+      "ramp": "shell",
+      "tone": 4.5
+     }
+    ]
+   }
+  },
+  {
+   "id": "rcs0",
+   "shape": "box",
+   "chamfer": 0.6,
+   "size": [
+    8,
+    7,
+    7
+   ],
+   "pivot": [
+    33.94112549695428,
+    80,
+    33.941125496954285
+   ],
+   "rotation": [
+    25,
+    45.0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "rcs1",
+   "shape": "box",
+   "chamfer": 0.6,
+   "size": [
+    8,
+    7,
+    7
+   ],
+   "pivot": [
+    33.941125496954285,
+    80,
+    -33.94112549695428
+   ],
+   "rotation": [
+    25,
+    135.0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "rcs2",
+   "shape": "box",
+   "chamfer": 0.6,
+   "size": [
+    8,
+    7,
+    7
+   ],
+   "pivot": [
+    -33.94112549695428,
+    80,
+    -33.941125496954285
+   ],
+   "rotation": [
+    25,
+    225.0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "rcs3",
+   "shape": "box",
+   "chamfer": 0.6,
+   "size": [
+    8,
+    7,
+    7
+   ],
+   "pivot": [
+    -33.941125496954285,
+    80,
+    33.94112549695427
+   ],
+   "rotation": [
+    25,
+    315.0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "flood0",
+   "shape": "box",
+   "chamfer": 0.5,
+   "size": [
+    7,
+    4,
+    5
+   ],
+   "pivot": [
+    22.998238072949007,
+    84,
+    37.51107897061825
+   ],
+   "rotation": [
+    40,
+    31.51267873219528,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "lens",
+      "op": "rect",
+      "rect": [
+       0.1,
+       0.1,
+       0.9,
+       0.9
+      ],
+      "ramp": "amber",
+      "tone": 4.8,
+      "faces": [
+       "front"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "flood1",
+   "shape": "box",
+   "chamfer": 0.5,
+   "size": [
+    7,
+    4,
+    5
+   ],
+   "pivot": [
+    20.986428275445135,
+    84,
+    -38.67259789876544
+   ],
+   "rotation": [
+    40,
+    151.5126787321953,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "lens",
+      "op": "rect",
+      "rect": [
+       0.1,
+       0.1,
+       0.9,
+       0.9
+      ],
+      "ramp": "amber",
+      "tone": 4.8,
+      "faces": [
+       "front"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "flood2",
+   "shape": "box",
+   "chamfer": 0.5,
+   "size": [
+    7,
+    4,
+    5
+   ],
+   "pivot": [
+    -43.98466634839414,
+    84,
+    1.1615189281471565
+   ],
+   "rotation": [
+    40,
+    271.51267873219524,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "lens",
+      "op": "rect",
+      "rect": [
+       0.1,
+       0.1,
+       0.9,
+       0.9
+      ],
+      "ramp": "amber",
+      "tone": 4.8,
+      "faces": [
+       "front"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "hp1",
+   "shape": "prism",
+   "sides": 10,
+   "size": [
+    17,
+    17,
+    3
+   ],
+   "pivot": [
+    36.31749994728947,
+    63,
+    43.281511036222255
+   ],
+   "rotation": [
+    0,
+    40,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "bolts",
+      "op": "rivets",
+      "inset": 1,
+      "spacing": 4,
+      "post": true
+     },
+     {
+      "id": "plate",
+      "op": "rect",
+      "rect": [
+       0.25,
+       0.3,
+       0.75,
+       0.7
+      ],
+      "ramp": "hazard",
+      "tone": 3,
+      "faces": [
+       "front"
+      ]
+     }
+    ],
+    "stamps": [
+     {
+      "face": "front",
+      "at": "center",
+      "art": [
+       ".kkk....k...",
+       "k...k..kk...",
+       "k..kk...k...",
+       "k.k.k...k...",
+       "kk..k...k...",
+       "k...k...k...",
+       ".kkk...kkk.."
+      ],
+      "key": {
+       "k": "metal:0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "hp2",
+   "shape": "prism",
+   "sides": 10,
+   "size": [
+    17,
+    17,
+    3
+   ],
+   "pivot": [
+    56.28500044218362,
+    63,
+    -4.92429946524269
+   ],
+   "rotation": [
+    0,
+    95,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "bolts",
+      "op": "rivets",
+      "inset": 1,
+      "spacing": 4,
+      "post": true
+     },
+     {
+      "id": "plate",
+      "op": "rect",
+      "rect": [
+       0.25,
+       0.3,
+       0.75,
+       0.7
+      ],
+      "ramp": "hazard",
+      "tone": 3,
+      "faces": [
+       "front"
+      ]
+     }
+    ],
+    "stamps": [
+     {
+      "face": "front",
+      "at": "center",
+      "art": [
+       ".kkk...kkk..",
+       "k...k.k...k.",
+       "k..kk.....k.",
+       "k.k.k....k..",
+       "kk..k...k...",
+       "k...k..k....",
+       ".kkk..kkkkk."
+      ],
+      "key": {
+       "k": "metal:0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "hp3",
+   "shape": "prism",
+   "sides": 10,
+   "size": [
+    17,
+    17,
+    3
+   ],
+   "pivot": [
+    28.249999999999996,
+    63,
+    -48.93043531382079
+   ],
+   "rotation": [
+    0,
+    150,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "bolts",
+      "op": "rivets",
+      "inset": 1,
+      "spacing": 4,
+      "post": true
+     },
+     {
+      "id": "plate",
+      "op": "rect",
+      "rect": [
+       0.25,
+       0.3,
+       0.75,
+       0.7
+      ],
+      "ramp": "hazard",
+      "tone": 3,
+      "faces": [
+       "front"
+      ]
+     }
+    ],
+    "stamps": [
+     {
+      "face": "front",
+      "at": "center",
+      "art": [
+       ".kkk...kkk..",
+       "k...k.k...k.",
+       "k..kk.....k.",
+       "k.k.k...kk..",
+       "kk..k.....k.",
+       "k...k.k...k.",
+       ".kkk...kkk.."
+      ],
+      "key": {
+       "k": "metal:0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "hp4",
+   "shape": "prism",
+   "sides": 10,
+   "size": [
+    17,
+    17,
+    3
+   ],
+   "pivot": [
+    -28.250000000000007,
+    63,
+    -48.93043531382078
+   ],
+   "rotation": [
+    0,
+    210,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "bolts",
+      "op": "rivets",
+      "inset": 1,
+      "spacing": 4,
+      "post": true
+     },
+     {
+      "id": "plate",
+      "op": "rect",
+      "rect": [
+       0.25,
+       0.3,
+       0.75,
+       0.7
+      ],
+      "ramp": "hazard",
+      "tone": 3,
+      "faces": [
+       "front"
+      ]
+     }
+    ],
+    "stamps": [
+     {
+      "face": "front",
+      "at": "center",
+      "art": [
+       ".kkk.....k..",
+       "k...k...kk..",
+       "k..kk..k.k..",
+       "k.k.k.k..k..",
+       "kk..k.kkkkk.",
+       "k...k....k..",
+       ".kkk.....k.."
+      ],
+      "key": {
+       "k": "metal:0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "hp5",
+   "shape": "prism",
+   "sides": 10,
+   "size": [
+    17,
+    17,
+    3
+   ],
+   "pivot": [
+    -56.28500044218362,
+    63,
+    -4.924299465242691
+   ],
+   "rotation": [
+    0,
+    265,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "bolts",
+      "op": "rivets",
+      "inset": 1,
+      "spacing": 4,
+      "post": true
+     },
+     {
+      "id": "plate",
+      "op": "rect",
+      "rect": [
+       0.25,
+       0.3,
+       0.75,
+       0.7
+      ],
+      "ramp": "hazard",
+      "tone": 3,
+      "faces": [
+       "front"
+      ]
+     }
+    ],
+    "stamps": [
+     {
+      "face": "front",
+      "at": "center",
+      "art": [
+       ".kkk..kkkkk.",
+       "k...k.k.....",
+       "k..kk.kkkk..",
+       "k.k.k.....k.",
+       "kk..k.....k.",
+       "k...k.k...k.",
+       ".kkk...kkk.."
+      ],
+      "key": {
+       "k": "metal:0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "hp6",
+   "shape": "prism",
+   "sides": 10,
+   "size": [
+    17,
+    17,
+    3
+   ],
+   "pivot": [
+    -36.317499947289484,
+    63,
+    43.28151103622225
+   ],
+   "rotation": [
+    0,
+    320,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "bolts",
+      "op": "rivets",
+      "inset": 1,
+      "spacing": 4,
+      "post": true
+     },
+     {
+      "id": "plate",
+      "op": "rect",
+      "rect": [
+       0.25,
+       0.3,
+       0.75,
+       0.7
+      ],
+      "ramp": "hazard",
+      "tone": 3,
+      "faces": [
+       "front"
+      ]
+     }
+    ],
+    "stamps": [
+     {
+      "face": "front",
+      "at": "center",
+      "art": [
+       ".kkk...kkk..",
+       "k...k.k.....",
+       "k..kk.k.....",
+       "k.k.k.kkkk..",
+       "kk..k.k...k.",
+       "k...k.k...k.",
+       ".kkk...kkk.."
+      ],
+      "key": {
+       "k": "metal:0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "jbox0",
+   "shape": "box",
+   "chamfer": 0.4,
+   "size": [
+    8,
+    6,
+    3
+   ],
+   "pivot": [
+    50.70177289916435,
+    44,
+    22.57388369070691
+   ],
+   "rotation": [
+    0,
+    66,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "v",
+      "op": "grille",
+      "rect": [
+       0.15,
+       0.2,
+       0.85,
+       0.8
+      ],
+      "period": 2,
+      "faces": [
+       "front"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "jbox1",
+   "shape": "box",
+   "chamfer": 0.4,
+   "size": [
+    8,
+    6,
+    3
+   ],
+   "pivot": [
+    48.064409910036346,
+    50,
+    -27.74999999999999
+   ],
+   "rotation": [
+    0,
+    120,
+    0
+   ],
+   "style": "orange",
+   "paint": {
+    "layers": [
+     {
+      "id": "v",
+      "op": "grille",
+      "rect": [
+       0.15,
+       0.2,
+       0.85,
+       0.8
+      ],
+      "period": 2,
+      "faces": [
+       "front"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "jbox2",
+   "shape": "box",
+   "chamfer": 0.4,
+   "size": [
+    8,
+    6,
+    3
+   ],
+   "pivot": [
+    -48.06440991003633,
+    44,
+    -27.750000000000025
+   ],
+   "rotation": [
+    0,
+    240,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "v",
+      "op": "grille",
+      "rect": [
+       0.15,
+       0.2,
+       0.85,
+       0.8
+      ],
+      "period": 2,
+      "faces": [
+       "front"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "jbox3",
+   "shape": "box",
+   "chamfer": 0.4,
+   "size": [
+    8,
+    6,
+    3
+   ],
+   "pivot": [
+    -48.06440991003634,
+    50,
+    27.750000000000007
+   ],
+   "rotation": [
+    0,
+    300,
+    0
+   ],
+   "style": "orange",
+   "paint": {
+    "layers": [
+     {
+      "id": "v",
+      "op": "grille",
+      "rect": [
+       0.15,
+       0.2,
+       0.85,
+       0.8
+      ],
+      "period": 2,
+      "faces": [
+       "front"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "jbox4",
+   "shape": "box",
+   "chamfer": 0.4,
+   "size": [
+    8,
+    6,
+    3
+   ],
+   "pivot": [
+    -9.63747386051464,
+    44,
+    -54.656830292177546
+   ],
+   "rotation": [
+    0,
+    190,
+    0
+   ],
+   "style": "gun",
+   "paint": {
+    "layers": [
+     {
+      "id": "v",
+      "op": "grille",
+      "rect": [
+       0.15,
+       0.2,
+       0.85,
+       0.8
+      ],
+      "period": 2,
+      "faces": [
+       "front"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "pipe0",
+   "shape": "prism",
+   "sides": 6,
+   "size": [
+    2,
+    2,
+    36
+   ],
+   "pivot": [
+    25.914830265781173,
+    47,
+    48.73870712581277
+   ],
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "pipe1",
+   "shape": "prism",
+   "sides": 6,
+   "size": [
+    2,
+    2,
+    36
+   ],
+   "pivot": [
+    43.49819359909106,
+    47,
+    33.98451343797634
+   ],
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "pipe2",
+   "shape": "prism",
+   "sides": 6,
+   "size": [
+    2,
+    2,
+    36
+   ],
+   "pivot": [
+    43.49819359909106,
+    47,
+    -33.98451343797634
+   ],
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "pipe3",
+   "shape": "prism",
+   "sides": 6,
+   "size": [
+    2,
+    2,
+    36
+   ],
+   "pivot": [
+    7.6823551729956066,
+    47,
+    -54.662797394534685
+   ],
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "pipe4",
+   "shape": "prism",
+   "sides": 6,
+   "size": [
+    2,
+    2,
+    36
+   ],
+   "pivot": [
+    -43.49819359909107,
+    47,
+    -33.984513437976325
+   ],
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "pipe5",
+   "shape": "prism",
+   "sides": 6,
+   "size": [
+    2,
+    2,
+    36
+   ],
+   "pivot": [
+    -52.498319699492484,
+    47,
+    17.05773808949709
+   ],
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "pipe6",
+   "shape": "prism",
+   "sides": 6,
+   "size": [
+    2,
+    2,
+    36
+   ],
+   "pivot": [
+    -20.678283956558364,
+    47,
+    51.18054877208666
+   ],
+   "rotation": [
+    -90,
+    0,
+    0
+   ],
+   "style": "gun"
+  }
+ ]
+}

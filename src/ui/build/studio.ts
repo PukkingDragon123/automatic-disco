@@ -1,6 +1,8 @@
 // The planner's photo studio: every building rendered in full colour from a three-quarter view, under a key light,
-// a cool fill and a rim, on its own small WebGL canvas (so the detail panel can turn the model without reading
-// pixels back from the game's renderer). Tiles get cached stills; the detail panel gets a live turntable.
+// a cool fill and a rim, with the game's own renderer into an off-screen target (no second WebGL context), then
+// reduced to pixel art: shot at twice the size, filtered down, quantised to a few tones per channel with a dark rim
+// so the render sits with the hand-painted hardware around it. Tiles get cached stills; the detail panel gets a
+// turntable whose frames are shot one per tick and then replayed as images.
 import * as THREE from 'three';
 import { FDEFS, isBelt, type FKind } from '../../factory/defs';
 import { modelFor, beltGeo } from '../../factory/models';
@@ -12,23 +14,17 @@ const cam = new THREE.PerspectiveCamera(24, 1, 0.1, 200);
 let mat: THREE.Material | null = null;
 const stills = new Map<string, string>();
 const groups = new Map<string, { g: THREE.Group; c: THREE.Vector3; r: number }>();
-let ok = true;
+const targets = new Map<string, THREE.WebGLRenderTarget>();
 
-function init() {
-  if (R || !ok) return R;
-  try {
-    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 192;
-    R = new THREE.WebGLRenderer({ canvas: cv, alpha: true, antialias: false, preserveDrawingBuffer: true, powerPreference: 'low-power' });
-    R.setPixelRatio(1);
-    R.outputColorSpace = THREE.SRGBColorSpace;
-    R.toneMapping = THREE.ACESFilmicToneMapping; R.toneMappingExposure = 1.05;
-    scene.add(new THREE.HemisphereLight(0xe6eef5, 0x3a3325, 1.6));
-    const key = new THREE.DirectionalLight(0xfff1d8, 3.4); key.position.set(-4, 7, 5); scene.add(key);
-    const fill = new THREE.DirectionalLight(0x9fb8d0, 0.9); fill.position.set(6, 2, 3); scene.add(fill);
-    const rim = new THREE.DirectionalLight(0xd8f0e0, 1.6); rim.position.set(2, 4, -7); scene.add(rim);
-    mat = machineMaterial(1);
-  } catch { ok = false; R = null; }
-  return R;
+/** hand the studio the game's renderer (the factory UI does, once) */
+export function initStudio(r: THREE.WebGLRenderer) {
+  if (R) return;
+  R = r;
+  scene.add(new THREE.HemisphereLight(0xe6eef5, 0x3a3325, 1.5));
+  const key = new THREE.DirectionalLight(0xfff1d8, 3.0); key.position.set(-4, 7, 5); scene.add(key);
+  const fill = new THREE.DirectionalLight(0x9fb8d0, 0.8); fill.position.set(6, 2, 3); scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xd8f0e0, 1.4); rim.position.set(2, 4, -7); scene.add(rim);
+  mat = machineMaterial(1);
 }
 function group(kind: FKind) {
   let e = groups.get(kind);
@@ -48,61 +44,94 @@ function group(kind: FKind) {
   groups.set(kind, e);
   return e;
 }
-/** render a building into the studio canvas at w x h (css px times dpr), turned by `ang` */
+const _clear = new THREE.Color();
+/** render a building at w x h, turned by `ang`, into a fresh 2D canvas (null when the studio is not set up) */
 function shoot(kind: FKind, w: number, h: number, ang: number): HTMLCanvasElement | null {
-  const r = init(); if (!r || !FDEFS[kind]) return null;
+  const r = R; if (!r || !FDEFS[kind]) return null;
+  w = Math.max(8, Math.round(w)); h = Math.max(8, Math.round(h));
+  const key = w + 'x' + h;
+  let rt = targets.get(key);
+  if (!rt) { rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.UnsignedByteType }); rt.texture.colorSpace = THREE.SRGBColorSpace; targets.set(key, rt); }
   const e = group(kind);
-  if (r.domElement.width !== w || r.domElement.height !== h) r.setSize(w, h, false);
   scene.add(e.g);
   e.g.rotation.y = ang;
   const d = e.r / Math.tan((cam.fov * Math.PI) / 360) * (w / h < 1.2 ? 1.25 : 1.08);
   cam.aspect = w / h; cam.updateProjectionMatrix();
   cam.position.set(e.c.x + d * 0.62, e.c.y + d * 0.55, e.c.z + d * 0.78);
   cam.lookAt(e.c.x, e.c.y - e.r * 0.05, e.c.z);
-  r.setClearColor(0x000000, 0); r.clear();
-  r.render(scene, cam);
-  scene.remove(e.g);
-  return r.domElement;
+  const prev = r.getRenderTarget(), pc = r.getClearColor(_clear).getHex(), pa = r.getClearAlpha();
+  const px = new Uint8Array(w * h * 4);
+  try {
+    r.setRenderTarget(rt); r.setClearColor(0x000000, 0); r.clear();
+    r.render(scene, cam);
+    r.readRenderTargetPixels(rt, 0, 0, w, h, px);
+  } catch { return null; } finally { r.setRenderTarget(prev); r.setClearColor(pc, pa); scene.remove(e.g); }
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const g = cv.getContext('2d', { willReadFrequently: true })!, img = g.createImageData(w, h);
+  for (let y = 0; y < h; y++) img.data.set(px.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
+  g.putImageData(img, 0, 0);
+  return cv;
 }
-/** a cached still (data URL) */
-export function still(kind: FKind, w = 220, h = 150): string {
+/** halve a shot into pixel art: box-filter 2x2, a few tones per channel, hard alpha, a 1 px dark rim */
+function pixelate(src: HTMLCanvasElement, w: number, h: number): HTMLCanvasElement {
+  const s = src.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, w * 2, h * 2).data;
+  const o = document.createElement('canvas'); o.width = w; o.height = h;
+  const g = o.getContext('2d', { willReadFrequently: true })!, img = g.createImageData(w, h), d = img.data;
+  const q = (v: number) => Math.round(Math.round((v / 255) * 15) * 17);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let r = 0, gg = 0, b = 0, a = 0;
+    for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) { const k = ((y * 2 + j) * w * 2 + x * 2 + i) * 4; if (s[k + 3] > 40) { r += s[k]; gg += s[k + 1]; b += s[k + 2]; a++; } }
+    const k = (y * w + x) * 4;
+    if (a >= 2) { d[k] = q(r / a); d[k + 1] = q(gg / a); d[k + 2] = q(b / a); d[k + 3] = 255; }
+  }
+  const al = new Uint8Array(w * h); for (let i = 0; i < w * h; i++) al[i] = d[i * 4 + 3] ? 1 : 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x; if (al[i]) continue;
+    if ((x > 0 && al[i - 1]) || (x < w - 1 && al[i + 1]) || (y > 0 && al[i - w]) || (y < h - 1 && al[i + w])) { d[i * 4] = 8; d[i * 4 + 1] = 12; d[i * 4 + 2] = 10; d[i * 4 + 3] = 255; }
+  }
+  g.putImageData(img, 0, 0);
+  return o;
+}
+/** a cached still (data URL) at w x h art pixels (shown at an integer scale) */
+export function still(kind: FKind, w = 110, h = 70): string {
   const key = `${kind}|${w}x${h}`;
   const hit = stills.get(key); if (hit) return hit;
-  const cv = shoot(kind, w, h, 0);
+  const cv = shoot(kind, w * 2, h * 2, 0);
   if (!cv) return '';
-  const url = cv.toDataURL('image/png');
+  const url = pixelate(cv, w, h).toDataURL('image/png');
   stills.set(key, url);
   return url;
 }
-export const hasStill = (kind: FKind, w = 220, h = 150) => stills.has(`${kind}|${w}x${h}`);
-/** draw the turntable frame into a visible 2D canvas */
+/** the detail turntable: frames are shot one per call until the turn is complete, then replayed */
+const FRAMES = 36;
+let reel: { kind: FKind; w: number; h: number; f: (HTMLCanvasElement | null)[] } | null = null;
 export function turntable(kind: FKind, into: HTMLCanvasElement, ang: number) {
-  // rendered at twice the size and filtered down: clean edges without multisampling
-  const cv = shoot(kind, into.width * 2, into.height * 2, ang);
+  const w = into.width, h = into.height;
+  if (!reel || reel.kind !== kind || reel.w !== w || reel.h !== h) reel = { kind, w, h, f: new Array(FRAMES).fill(null) };
+  const i = ((Math.round((ang / (Math.PI * 2)) * FRAMES) % FRAMES) + FRAMES) % FRAMES;
+  if (!reel.f[i]) { const big = shoot(kind, w * 2, h * 2, (i / FRAMES) * Math.PI * 2); if (big) reel.f[i] = pixelate(big, w, h); }
+  const fr = reel.f[i] ?? reel.f.find((x) => !!x) ?? null;
   const g = into.getContext('2d'); if (!g) return;
-  g.clearRect(0, 0, into.width, into.height);
-  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
-  if (cv) g.drawImage(cv, 0, 0, into.width, into.height);
+  g.clearRect(0, 0, w, h);
+  if (fr) g.drawImage(fr, 0, 0);
 }
-/** the same render as a phosphor silhouette (category keys): one green, lit planes lighter */
+/** the render as a phosphor silhouette (category keys, node cards): one green, lit planes lighter */
 export function phosphor(kind: FKind, w: number, h: number, col: [number, number, number] = [127, 212, 138]): string {
   const key = `ph|${kind}|${w}x${h}|${col.join(',')}`;
   const hit = stills.get(key); if (hit) return hit;
-  const cv = shoot(kind, w, h, 0); if (!cv) return '';
-  const o = document.createElement('canvas'); o.width = w; o.height = h;
-  const g = o.getContext('2d')!; g.drawImage(cv, 0, 0);
+  const big = shoot(kind, w * 2, h * 2, 0); if (!big) return '';
+  const cv = pixelate(big, w, h);
+  const g = cv.getContext('2d', { willReadFrequently: true })!;
   const img = g.getImageData(0, 0, w, h), d = img.data;
   for (let i = 0; i < d.length; i += 4) {
     if (d[i + 3] < 40) { d[i + 3] = 0; continue; }
+    if (d[i] === 8 && d[i + 1] === 12) { d[i] = 4; d[i + 1] = 12; d[i + 2] = 7; continue; }
     const l = (d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11) / 255;
     const k = l > 0.55 ? 1 : l > 0.32 ? 0.72 : l > 0.16 ? 0.48 : 0.3;
     d[i] = col[0] * k; d[i + 1] = col[1] * k; d[i + 2] = col[2] * k; d[i + 3] = 255;
   }
-  // a 1 px dark rim around the silhouette
-  const a = new Uint8Array(w * h); for (let i = 0; i < w * h; i++) a[i] = d[i * 4 + 3] ? 1 : 0;
-  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) { const i = y * w + x; if (!a[i] && (a[i - 1] || a[i + 1] || a[i - w] || a[i + w])) { d[i * 4] = 6; d[i * 4 + 1] = 14; d[i * 4 + 2] = 9; d[i * 4 + 3] = 255; } }
   g.putImageData(img, 0, 0);
-  const url = o.toDataURL();
+  const url = cv.toDataURL();
   stills.set(key, url);
   return url;
 }

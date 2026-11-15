@@ -161,7 +161,7 @@ const CSS = `
 .lb-info .ps { color: #3e4a52; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lb-card .stamp { position: absolute; right: calc(5 * var(--k)); top: calc(76 * var(--k)); --r: -8deg; padding: calc(2 * var(--k)) calc(4 * var(--k)) 1px; border-width: calc(1.5 * var(--k)); }
 .lb-lv { position: absolute; right: calc(9 * var(--k)); top: calc(17 * var(--k)); font-family: 'VT', monospace; font-size: var(--vt); color: ${PAL.ink}; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6); pointer-events: none; }
-.lb-card .q { position: absolute; left: calc(8 * var(--k)); top: calc(14 * var(--k)); width: calc(108 * var(--k)); height: calc(84 * var(--k)); display: flex; align-items: center; justify-content: center; font-family: 'Pixelify'; font-size: calc(var(--ps) * 4); color: rgba(232, 238, 240, 0.55); pointer-events: none; }
+.lb-card .q { position: absolute; left: calc(8 * var(--k)); top: calc(14 * var(--k)); width: calc(108 * var(--k)); height: calc(84 * var(--k)); display: flex; align-items: center; justify-content: center; font-family: 'Pixelify'; font-size: 44px; color: rgba(232, 238, 240, 0.55); pointer-events: none; }
 .lb-hint { pointer-events: none; align-self: center; margin-bottom: calc(40 * var(--k)); padding: calc(6 * var(--k)) calc(10 * var(--k)); background: rgba(217, 210, 191, 0.92); transform: rotate(-1deg); }
 /* drawer front: enamel, a label holder, the divider tabs, a cup pull */
 .lb-front { pointer-events: auto; position: relative; height: calc(54 * var(--k)); display: flex; align-items: center; gap: calc(14 * var(--k)); padding: 0 calc(14 * var(--k)); box-shadow: 0 calc(-3 * var(--k)) calc(6 * var(--k)) rgba(10, 9, 6, 0.55); }
@@ -198,7 +198,7 @@ const CSS = `
 .lb-tag { position: absolute; pointer-events: none; padding: calc(4 * var(--k)) calc(8 * var(--k)) calc(4 * var(--k)) calc(16 * var(--k)); background: linear-gradient(180deg, #cdbd93, #bba982); clip-path: polygon(calc(8 * var(--k)) 0, 100% 0, 100% 100%, calc(8 * var(--k)) 100%, 0 50%); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); white-space: nowrap; transform: rotate(-2deg); }
 .lb-tag::before { content: ''; position: absolute; left: calc(6 * var(--k)); top: 50%; width: calc(5 * var(--k)); height: calc(5 * var(--k)); margin-top: calc(-2.5 * var(--k)); border-radius: 50%; background: #2a2c2a; box-shadow: 0 0 0 1px #8d8f8a; }
 .lb-tag .vt { display: block; } .lb-tag .ps { display: block; color: #5a5850; }
-.lb-stampbig { position: absolute; left: 50%; top: 38%; translate: -50% -50%; pointer-events: none; font-size: calc(var(--sw) * 4); line-height: calc(var(--sw) * 4); padding: calc(6 * var(--k)) calc(14 * var(--k)) calc(4 * var(--k)); border-width: calc(4 * var(--k)); --r: -7deg; text-align: center; }
+.lb-stampbig { position: absolute; left: 50%; top: 38%; translate: -50% -50%; pointer-events: none; font-size: 48px; line-height: calc(var(--sw) * 4); padding: calc(6 * var(--k)) calc(14 * var(--k)) calc(4 * var(--k)); border-width: calc(4 * var(--k)); --r: -7deg; text-align: center; }
 .lb-stampbig .np { display: block; font-size: var(--np); letter-spacing: 0.1em; margin-top: calc(4 * var(--k)); font-family: 'Jersey'; }
 .lb-veil { position: absolute; inset: 0; background: #0d0f0d; pointer-events: none; z-index: 9; display: flex; align-items: center; justify-content: center; transition: opacity 600ms; }
 .lb-veil .vt { color: ${PAL.phos}; opacity: 0.85; letter-spacing: 0.2em; text-shadow: 0 0 4px rgba(127, 212, 138, 0.35); animation: lb-warm 1.2s ease-out both; }
@@ -391,7 +391,9 @@ export class LabUI {
   /** pixel fonts stay crisp only at whole multiples of their own grid: 1x up to 1000 px tall, 2x above */
   private scale() {
     const k = innerHeight >= 1040 ? 2 : 1, r = this.root.style;
-    r.setProperty('--k', k + 'px'); r.setProperty('--vt', 14 * k + 'px'); r.setProperty('--ps', 11 * k + 'px'); r.setProperty('--np', 13 * k + 'px'); r.setProperty('--sw', 10 * k + 'px');
+    // v6 fonts: body text (Departure Mono, the 'VT'/'Pixelify' aliases) only at 11 or 22 px, titles (Spleen 12x24, the
+    // 'Jersey'/'Superwide' aliases) only at 24 or 48 px
+    r.setProperty('--k', k + 'px'); r.setProperty('--vt', 11 * k + 'px'); r.setProperty('--ps', 11 * k + 'px'); r.setProperty('--np', '24px'); r.setProperty('--sw', '24px');
     this.cardImg.clear();
     if (this.cards.length) requestAnimationFrame(() => this.dressCards());
   }

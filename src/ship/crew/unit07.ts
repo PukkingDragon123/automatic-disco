@@ -72,12 +72,13 @@ function drawShell(g: CanvasRenderingContext2D, W: number, H: number) {
   vents(xOf(PI * 1.5), yOf(0.3), 5, 90); vents(xOf(PI * 1.5), yOf(-0.65), 4, 80, true);
   // stencils: UNIT 07 on both flanks, UNAA on the crown band, a serial on the belly, chevrons by the thrusters
   const stencil = (s: string, x: number, y: number, size: number, col: string, spacing = 6) => {
-    g.save(); g.font = `${size}px 'Superwide', 'Jersey', sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; (g as unknown as { letterSpacing: string }).letterSpacing = spacing + 'px';
+    // the house faces only: Spleen at 32 / 64 ('TitleL') for the big stencils, Departure Mono at 22 for the small print
+    g.save(); g.font = size >= 30 ? `${size >= 56 ? 64 : 32}px 'TitleL', monospace` : `22px 'Body', monospace`; g.textAlign = 'center'; g.textBaseline = 'middle'; (g as unknown as { letterSpacing: string }).letterSpacing = spacing + 'px';
     g.fillStyle = col; g.fillText(s, x, y);
     // stencil bridges and a little wear: drawn gaps, not noise
     g.globalCompositeOperation = 'destination-out'; g.fillStyle = 'rgba(0,0,0,0.0)'; g.restore();
   };
-  stencil('UNIT 07', xOf(0.08), yOf(0.3), 58, '#2a3440'); stencil('UNIT 07', xOf(PI + 0.08), yOf(0.3), 58, '#2a3440');
+  stencil('UNIT 07', xOf(0.08), yOf(0.3), 64, '#2a3440'); stencil('UNIT 07', xOf(PI + 0.08), yOf(0.3), 64, '#2a3440');
   stencil('UNAA', xOf(PI * 1.5), yOf(0.72), 40, '#2a3440', 10);
   stencil('AI-07 · RV-07 · UNAA COLONISATION RESEARCH', xOf(PI * 1.5), yOf(-0.3), 22, '#c9c4b4', 3);
   stencil('07', xOf(PI / 2 + 0.75), yOf(0.62), 44, '#b8382e');

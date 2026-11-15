@@ -7,6 +7,7 @@
 // contents. Local frame: the footprint centred on the origin, the ground at y = 0, the front facing +z.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { gbuf, type GFlag } from '../gfx/gbuf';
 import { RAMPS } from '../art/palette';
 import { ITEMS, ITEM_IDS, itemDef, itemPix, type ItemId } from '../factory/items';
@@ -144,17 +145,57 @@ export class ContainerModel {
     for (const m of this.mats.values()) m.dispose(); this.mats.clear();
     this.plateMesh = null; this.gauge = null; this.lamp = null;
     const P = new Parts();
-    BUILD[this.c.kind](P, this, !!this.o.cutaway);
+    const recipe = GLB[this.c.kind], got = recipe ? glbParts(recipe) : null;
+    if (recipe && got) this.fromGlb(recipe, got, P);
+    else {
+      BUILD[this.c.kind](P, this, !!this.o.cutaway);
+      // the lowpix model is on its way: rebuild with it when it lands
+      if (recipe) loadRecipe(recipe).then(() => { if (!this.disposed) this.rebuild(); });
+    }
     P.build(this.mat, this.body, this.o.shadow !== false);
     this.look = this.lookKey(); this.ver = -1;
     this.update();
   }
+  private disposed = false;
+  /** the body from the lowpix-converted models (Poly Haven CC0, pixel-hd): each part fitted to its size and placed;
+   *  the recipe adds the stencilled plate, the load bay and any small fittings of our own */
+  private fromGlb(r: GlbRecipe, src: THREE.Group[], P: Parts) {
+    r.parts.forEach((part, i) => {
+      const g = src[i].clone(true);
+      const box = new THREE.Box3().setFromObject(g), sz = box.getSize(new THREE.Vector3());
+      const k = part.size / (part.fit === 'height' ? sz.y : part.fit === 'depth' ? sz.z : sz.x);
+      g.scale.setScalar(k);
+      const ctr = box.getCenter(new THREE.Vector3());
+      g.position.set(-ctr.x * k, -box.min.y * k, -ctr.z * k);
+      const holder = new THREE.Group(); holder.add(g); holder.userData.shared = true;
+      holder.position.set(part.pos?.[0] ?? 0, part.pos?.[1] ?? 0, part.pos?.[2] ?? 0); holder.rotation.y = part.ry ?? 0;
+      g.traverse((o) => {
+        const m = o as THREE.Mesh; if (!m.isMesh) return;
+        const old = m.material as THREE.MeshStandardMaterial;
+        const key = 'glb:' + r.parts[i].url + ':' + (old.map?.uuid ?? old.uuid);
+        let mat = this.mats.get(key);
+        if (!mat) {
+          if (old.map) { old.map.magFilter = THREE.NearestFilter; old.map.colorSpace = THREE.SRGBColorSpace; }
+          mat = gbuf(new THREE.MeshLambertMaterial({ map: old.map ?? null, color: old.map ? 0xffffff : old.color, side: THREE.DoubleSide }), this.flag);
+          this.mats.set(key, mat);
+        }
+        m.material = mat; m.castShadow = this.o.shadow !== false; m.receiveShadow = true;
+      });
+      this.body.add(holder);
+    });
+    r.extra?.(P, this, !!this.o.cutaway);
+    const [px, py, pz, pw, pry] = r.plate; this.plateAt(px, py, pz, pw, pry);
+    if (r.bay) this.setBay(r.bay);
+    this.glbOpen = !!r.open;
+  }
+  /** a lowpix body is open at the top (its load shows) */
+  glbOpen = false;
   private lookKey() { return `${this.c.color}|${this.c.logo}|${this.c.label}`; }
   /** the stencilled plate on the front face, at (x, y, z) facing +z (or rotated ry) */
   plateAt(x: number, y: number, z: number, w = 0.42, ry = 0) {
     const t = logoPlate(this.c.logo, this.c.color, this.c.label);
     const m = gbuf(new THREE.MeshLambertMaterial({ map: t }), this.flag);
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, w / 2), m);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, w / 3), m);
     mesh.position.set(x, y, z); mesh.rotation.y = ry;
     this.body.add(mesh); this.plateMesh = mesh;
     // the stencil face may not have loaded when the plate was first painted: paint it again once it has
@@ -183,8 +224,9 @@ export class ContainerModel {
     const c = this.c, B = this.bay, fillK = c.fill();
     if (this.gauge) { const g = this.gauge; g.scale.y = Math.max(0.02, fillK); g.position.y = g.userData.y0 + (g.userData.h * g.scale.y) / 2; }
     if (c.kind === 'st_cabinet' && !this.o.cutaway) { this.jars(); return; }
-    const visible = this.o.cutaway || c.info.open;
+    const visible = this.o.cutaway || c.info.open || this.glbOpen;
     if (!visible || !c.stacks.length) return;
+    if (this.o.cutaway && GLB[c.kind] && !GLB[c.kind]!.open && this.body.children.length) { this.display(); return; }
     const cw = (B.x1 - B.x0) / c.W, cd = (B.z1 - B.z0) / c.H;
     const cards: number[] = [], cuv: number[] = [], cn: number[] = [];
     const hash = (a: number, b: number) => { const v = Math.sin(a * 91.7 + b * 47.3) * 43758.5; return v - Math.floor(v); };
@@ -296,13 +338,93 @@ export class ContainerModel {
     if (!m) { m = gbuf(new THREE.MeshLambertMaterial({ vertexColors: true }), this.flag); this.mats.set('jars', m); }
     this.load.add(new THREE.Mesh(g, m));
   }
+  /** a closed lowpix body in the crate HUD: what it holds stands in front of it as item cards, a shop-window display */
+  private display() {
+    const c = this.c, items = c.contents().slice(0, 5);
+    const pos: number[] = [], uv: number[] = [], nor: number[] = [];
+    const box = new THREE.Box3().setFromObject(this.body), front = box.max.z + 0.05, w = box.max.x - box.min.x;
+    const sz = Math.min(0.62, (w * 1.2) / Math.max(1, items.length));
+    items.forEach((e, i) => {
+      const [u0, v0, u1, v1] = cardUV(e.item);
+      const x = (i - (items.length - 1) / 2) * sz * 0.9, y = 0.02 + (i % 2) * 0.04, z = front + (i % 2) * 0.12, h = sz / 2;
+      const P0 = [x - h, y, z], P1 = [x + h, y, z], P2 = [x + h, y + sz, z], P3 = [x - h, y + sz, z];
+      for (const [p, uu, vv] of [[P0, u0, v0], [P1, u1, v0], [P2, u1, v1], [P0, u0, v0], [P2, u1, v1], [P3, u0, v1]] as [number[], number, number][]) { pos.push(...p); uv.push(uu, vv); nor.push(0, 0, 1); }
+    });
+    if (!pos.length) return;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    let m = this.mats.get('cards') as THREE.MeshLambertMaterial | undefined;
+    const tex = atlas().tex;
+    if (!m || m.map !== tex) { m?.dispose(); m = gbuf(new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide }), this.flag); this.mats.set('cards', m); }
+    this.load.add(new THREE.Mesh(g, m));
+  }
   dispose() {
+    this.disposed = true;
     this.root.removeFromParent();
-    this.root.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose(); });
+    const own = (o: THREE.Object3D) => { for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q.userData.shared) return false; return true; };
+    this.root.traverse((o) => { const m = o as THREE.Mesh; if (own(o)) m.geometry?.dispose(); });
     for (const m of this.mats.values()) m.dispose();
     if (this.plateMesh) (this.plateMesh.material as THREE.MeshLambertMaterial).map?.dispose();
   }
 }
+
+// ------------------------------------------------------------------ lowpix bodies (Poly Haven CC0 models converted with
+// `lowpix convert polyhaven:<id> --style pixel-hd`; the .glb files live in public/inv/)
+interface GlbPart { url: string; fit: 'width' | 'height' | 'depth'; size: number; pos?: [number, number, number]; ry?: number }
+interface GlbRecipe { parts: GlbPart[]; plate: [number, number, number, number, number]; bay?: Bay; open?: boolean; extra?: Builder }
+const GLB: Partial<Record<ContainerKind, GlbRecipe>> = {
+  // an open slatted timber crate
+  crate: { parts: [{ url: 'planter_box_02', fit: 'width', size: 1.9 }], plate: [-0.45, 0.36, 0.37, 0.36, 0], open: true, bay: { x0: -0.82, z0: -0.25, x1: 0.82, z1: 0.25, y: 0.1, h: 0.5 } },
+  // a raised timber bed of earth
+  st_pit: { parts: [{ url: 'planter_box_01', fit: 'width', size: 1.9 }], plate: [-0.5, 0.45, 0.45, 0.36, 0], open: true, bay: { x0: -0.82, z0: -0.33, x1: 0.82, z1: 0.33, y: 0.15, h: 0.62 } },
+  // three concrete road barriers stood in a U, open at the front for the tipper
+  st_bunker: {
+    parts: [{ url: 'concrete_road_barrier', fit: 'width', size: 1.9, pos: [0, 0, -0.62] }, { url: 'concrete_road_barrier', fit: 'width', size: 1.5, pos: [-0.66, 0, 0.18], ry: Math.PI / 2 }, { url: 'concrete_road_barrier', fit: 'width', size: 1.5, pos: [0.66, 0, 0.18], ry: Math.PI / 2 }],
+    plate: [0, 0.62, -0.31, 0.4, 0], open: true, bay: { x0: -0.4, z0: -0.38, x1: 0.4, z1: 0.9, y: 0.04, h: 0.62 },
+    extra: (P) => { P.box('concreteD', 0, 0.03, 0.12, 1.96, 0.06, 1.7); },
+  },
+  // two olive ammunition crates, lids thrown back
+  st_bin: { parts: [{ url: 'old_military_crate', fit: 'width', size: 1.92 }], plate: [0.5, 0.17, 0.5, 0.3, 0], open: true, bay: { x0: -0.86, z0: -0.18, x1: 0.86, z1: 0.38, y: 0.05, h: 0.2 } },
+  // a standing gas cylinder for fluids, a jerrycan by its foot
+  st_tank: {
+    parts: [{ url: 'propane_tank', fit: 'height', size: 2.3, pos: [0, 0.14, 0] }, { url: 'metal_jerrycan_green', fit: 'height', size: 0.46, pos: [0.72, 0.14, 0.62], ry: -0.5 }],
+    plate: [0, 1.2, 0.76, 0.42, 0], extra: (P) => { P.cyl('concrete', 0, 0.07, 0, 0.92, 0.92, 0.14, { n: 20 }); },
+  },
+  // a drawer cabinet with open shelves on top: the specimen store
+  st_cabinet: { parts: [{ url: 'drawer_cabinet', fit: 'height', size: 1.65 }], plate: [0, 1.0, 0.23, 0.34, 0] },
+  // a green-enamelled cold store cabinet
+  st_freezer: {
+    parts: [{ url: 'utility_box_02', fit: 'width', size: 1.6, pos: [-0.12, 0, 0] }], plate: [-0.12, 1.25, 0.39, 0.4, 0],
+    extra: (P, M) => {
+      P.box('grille', 0.82, 0.42, 0, 0.28, 0.84, 0.7);
+      P.cyl('dark', 0.82, 0.55, 0.36, 0.11, 0.11, 0.02, { rx: Math.PI / 2, n: 12 });
+      for (const z of [-0.15, 0.15]) P.cyl('copper', 0.72, 1.0, z, 0.02, 0.02, 0.35, { n: 6 });
+      lamp(M, 0.82, 0.95, 0.36, 0.06);
+    },
+  },
+};
+const glbCache = new Map<string, Promise<THREE.Group>>(), glbReady = new Map<string, THREE.Group>();
+let loader: GLTFLoader | null = null;
+function loadGlb(name: string): Promise<THREE.Group> {
+  let p = glbCache.get(name);
+  if (!p) {
+    loader ??= new GLTFLoader();
+    p = loader.loadAsync(`/inv/${name}.glb`).then((g) => { glbReady.set(name, g.scene); return g.scene; });
+    p.catch((e) => console.warn('inventory model', name, e));
+    glbCache.set(name, p);
+  }
+  return p;
+}
+const loadRecipe = (r: GlbRecipe) => Promise.all(r.parts.map((q) => loadGlb(q.url)));
+/** the recipe's models when every one has loaded (else null, and they are requested) */
+function glbParts(r: GlbRecipe): THREE.Group[] | null {
+  const out = r.parts.map((q) => glbReady.get(q.url));
+  if (out.every(Boolean)) return out as THREE.Group[];
+  void loadRecipe(r);
+  return null;
+}
+/** start fetching every lowpix body (call early) */
+export function preloadContainerModels() { for (const r of Object.values(GLB)) if (r) void loadRecipe(r); }
 
 // ------------------------------------------------------------------ the kinds
 type Builder = (P: Parts, M: ContainerModel, cut: boolean) => void;

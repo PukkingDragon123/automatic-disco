@@ -8,6 +8,7 @@ import { machSheet, hazardTex, armSheet, COL } from './tex';
 import type { Colony } from './colony';
 import { clamp, damp } from '../core/rand';
 import { CATALOG, type CatId } from './catalog';
+import { lowpixModel, nodes } from './models';
 
 export type StructKind = 'gravpole' | 'relay' | 'lamp' | 'sensor';
 export type PoleMode = 'off' | 'lift' | 'push' | 'pull';
@@ -104,8 +105,19 @@ export class Structure {
       hk.sph(0.18, dark, { p: [0, -0.3, 0.15] }, 10, 8); hk.cyl(0.07, 0.07, 0.08, glow(0x9ad8ff, 2.2), { p: [0, -0.32, 0.32], r: [Math.PI / 2, 0, 0] }, 8);
       head.add(hk.build('sensor-head'));
     }
-    M.add(k.build(this.kind));
+    const kit = k.build(this.kind); M.add(kit);
     M.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && m !== this.field) m.castShadow = true; });
+    // the lowpix model (tools/lowpix/st_*.json) replaces the stand-in once loaded; the field, the lamp's light and
+    // the lens glow stay
+    const H = { gravpole: 6.6, relay: 9.9, lamp: 4.3, sensor: 5.0 }[this.kind];
+    lowpixModel('st_' + this.kind, { height: H, origin: 'ground', flag: this.flag }).then((m) => {
+      if (!m || this.gone) return;
+      kit.visible = false; for (const r of this.rings) r.visible = false; for (const sp of this.spin) sp.visible = this.kind === 'relay' ? sp.visible : false;
+      M.add(m);
+      if (this.kind === 'gravpole') this.rings = nodes(m, 'ring1', 'ring2', 'ring3');
+      if (this.kind === 'sensor') this.spin = nodes(m, 'radar');
+      if (this.kind === 'lamp' && this.lens) { const lens = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.34), this.lens); lens.rotation.x = Math.PI / 2 + 0.35; lens.position.set(0, 3.88, 0.86); M.add(lens); if (this.light) this.light.position.set(0, 3.5, 0.9); }
+    });
   }
   private buildScaffold() {
     const k = new Kit(), m = std(0xc79a2a, { rough: 0.6, metal: 0.3 }), h = this.height;
@@ -133,19 +145,20 @@ export class Structure {
     const pw = this.colony.vitals.powerOk ? 1 : 0;
     if (this.kind === 'gravpole') {
       const on = this.mode !== 'off' && pw > 0;
-      for (let i = 0; i < this.rings.length; i++) { const r = this.rings[i]; r.rotation.y += dt * (on ? 1.2 + i * 0.5 : 0.1) * (i & 1 ? -1 : 1); r.position.y = 2.4 + i * 1.15 + (on ? Math.sin(this.t * 2 + i) * 0.08 : 0); }
+      for (let i = 0; i < this.rings.length; i++) { const r = this.rings[i], lp = r.name.startsWith('ring'); if (lp) r.rotation.z += dt * (on ? 1.2 + i * 0.5 : 0.1) * (i & 1 ? -1 : 1); else { r.rotation.y += dt * (on ? 1.2 + i * 0.5 : 0.1) * (i & 1 ? -1 : 1); r.position.y = 2.4 + i * 1.15 + (on ? Math.sin(this.t * 2 + i) * 0.08 : 0); } }
       if (this.field) { const U = (this.field.material as THREE.ShaderMaterial).uniforms; U.uT.value = this.t * (this.mode === 'push' ? -1 : 1); U.uK.value = damp(U.uK.value as number, on ? 1 : 0, 3, dt); U.uCol.value.set(this.mode === 'push' ? 0xff9a7a : this.mode === 'pull' ? 0x7affd0 : 0x9a8aff); this.field.visible = (U.uK.value as number) > 0.02; }
       if (on && simDt > 0) this.colony.fieldTick(this, simDt);
     } else if (this.kind === 'lamp') {
       const night = 1 - clamp(this.colony.daylight() * 1.6 - 0.4, 0, 1);
       if (this.light) this.light.intensity = damp(this.light.intensity, pw * night * 7, 3, dt);
       if (this.lens) this.lens.color.setRGB(2.6, 2.4, 2.1).multiplyScalar(0.2 + 0.8 * pw * Math.max(0.3, night));
-    } else if (this.kind === 'sensor') { if (this.spin[0]) this.spin[0].rotation.y += dt * 1.1 * pw; }
+    } else if (this.kind === 'sensor') { for (const sp of this.spin) sp.rotation.y += dt * 1.1 * pw; }
     else if (this.kind === 'relay') { if (this.spin[0]) this.spin[0].visible = (this.t % 1.4) < 0.5; }
     if (simDt > 0 && this.hp < this.maxHp * 0.35 && Math.random() < simDt * 3) this.colony.g.fx.burst(this.x, this.y + this.height * 0.6, this.z, 2, 0x3a3a3a, { speed: 0.4, up: 1.5, size: 3, life: 1.2 });
   }
   damage(n: number) { this.hp = Math.max(0, this.hp - n); if (this.hp <= 0) this.colony.structureDown(this); }
   repair(n: number) { this.hp = Math.min(this.maxHp, this.hp + n); }
-  dispose() { this.root.removeFromParent(); this.light?.dispose(); }
+  private gone = false;
+  dispose() { this.gone = true; this.root.removeFromParent(); this.light?.dispose(); }
 }
 void clamp;

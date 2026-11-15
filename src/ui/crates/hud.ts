@@ -10,6 +10,8 @@ import { ContainerModel } from '../../inv/models';
 import { itemDef, itemIcon } from '../../factory/items';
 import type { InvUI } from './grid';
 import { injectCrateCSS } from './style';
+import { panelURL, wellURL, lampURL } from './hw';
+import { PH } from '../machine';
 import { sfx } from '../../audio/audio';
 
 const PER = 3, SPACE = 2.5;
@@ -29,8 +31,10 @@ export class CrateHud {
     const r = (this.root = document.createElement('div'));
     r.className = 'crate-hud';
     r.innerHTML = `<div class="bed"><canvas></canvas><div class="hov"></div><div class="labels"></div></div>
-      <div class="row"><button class="inv-key prev" title="Previous page (scroll)">${ARROW_L}</button><div class="t">STORES</div><div class="dots"></div><button class="inv-key next" title="Next page (scroll)">${ARROW_R}</button></div>`;
+      <div class="row"><button class="inv-key sq prev" title="Previous page (scroll)">${ARROW_L}</button><div class="t">STORES</div><div class="dots"></div><button class="inv-key sq next" title="Next page (scroll)">${ARROW_R}</button></div>`;
     this.bed = r.querySelector('.bed')!; this.canvas = r.querySelector('canvas')!; this.labels = r.querySelector('.labels')!; this.dots = r.querySelector('.dots')!; this.title = r.querySelector('.t')!; this.hov = r.querySelector('.hov')!;
+    this.layoutHw();
+    addEventListener('resize', () => this.layoutHw());
     r.querySelector<HTMLButtonElement>('.prev')!.onclick = () => this.turn(-1);
     r.querySelector<HTMLButtonElement>('.next')!.onclick = () => this.turn(1);
     this.canvas.addEventListener('wheel', (e) => { e.preventDefault(); e.stopPropagation(); this.turn(e.deltaY + e.deltaX > 0 ? 1 : -1); }, { passive: false });
@@ -54,7 +58,7 @@ export class CrateHud {
     });
     st.on('change', () => (this.dirty = true));
     try {
-      this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: true, powerPreference: 'low-power' });
+      this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: false, powerPreference: 'low-power' });
       this.renderer.outputColorSpace = THREE.SRGBColorSpace;
       this.renderer.setClearColor(0x000000, 0);
     } catch (e) { console.warn('crate hud: no WebGL', e); }
@@ -63,6 +67,16 @@ export class CrateHud {
     const rim = new THREE.DirectionalLight(0x8fb8a8, 0.9); rim.position.set(4, 2, -3); this.scene.add(rim);
     const loop = (t: number) => { this.raf = requestAnimationFrame(loop); this.frame(t); };
     this.raf = requestAnimationFrame(loop);
+  }
+  /** the hardware: a painted panel 216 x 132 art pixels, a glass bed, the key row (all at --ik) */
+  private layoutHw() {
+    const k = innerHeight >= 1000 ? 2 : 1, W = 216, H = 132;
+    Object.assign(this.root.style, { width: W * k + 'px', height: H * k + 'px', backgroundImage: `url(${panelURL(W, H, 0, 11)})`, backgroundSize: `${W * k}px ${H * k}px` });
+    const bw = 202, bh = 96;
+    Object.assign(this.bed.style, { left: 7 * k + 'px', top: 7 * k + 'px', width: bw * k + 'px', height: bh * k + 'px', backgroundImage: `url(${wellURL(bw, bh)})`, backgroundSize: `${bw * k}px ${bh * k}px` });
+    const row = this.root.querySelector<HTMLDivElement>('.row')!;
+    Object.assign(row.style, { left: 7 * k + 'px', top: 107 * k + 'px', width: bw * k + 'px', height: 20 * k + 'px' });
+    this.dirty = true; this.labelKey = '';
   }
   /** the hold first, then the containers in the order they were built */
   list(): Container[] { return this.st.all(); }
@@ -85,7 +99,7 @@ export class CrateHud {
   private summary(c: Container) {
     const top = c.contents().slice(0, 6);
     const mass = c.stacks.reduce((m, s) => m + itemDef(s.item).mass * s.n, 0);
-    const rows = top.map((e) => `<div class="row"><span><img src="${itemIcon(e.item, 9 * ik())}" style="vertical-align:middle;width:${9 * ik()}px;height:${9 * ik()}px"> ${itemDef(e.item).name}</span><span>${e.n}</span></div>`).join('');
+    const rows = top.map((e) => `<div class="row"><span><img src="${itemIcon(e.item, 32)}" style="width:${16 * ik()}px;height:${16 * ik()}px"> ${itemDef(e.item).name}</span><span>${e.n}</span></div>`).join('');
     const more = c.contents().length - top.length;
     return `<h4>${c.label}</h4><div class="row"><span class="g">${c.info.name.toUpperCase()}</span><span>${Math.round(c.fill() * 100)}%</span></div>${rows || '<div class="g">Empty</div>'}${more > 0 ? `<div class="g">+ ${more} more kinds</div>` : ''}<div class="row"><span class="g">MASS</span><span>${Math.round(mass)} KG</span></div><div class="g">Click to open</div>`;
   }
@@ -132,8 +146,9 @@ export class CrateHud {
     const slow = !this.dirty && !anim;
     if (slow && Math.floor(this.t * 12) === Math.floor((this.t - dt) * 12)) return;
     this.dirty = false;
-    const w = this.bed.clientWidth, h = this.bed.clientHeight, dpr = Math.min(2, devicePixelRatio || 1);
-    if (this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr)) { this.renderer.setPixelRatio(dpr); this.renderer.setSize(w, h, false); }
+    // rendered at art resolution (one art pixel = --ik screen pixels) and blown up crisp: the miniatures are pixel art
+    const w = this.canvas.clientWidth, h = this.canvas.clientHeight, pr = (devicePixelRatio || 1) / (innerHeight >= 1000 ? 2 : 1);
+    if (this.canvas.width !== Math.round(w * pr) || this.canvas.height !== Math.round(h * pr)) { this.renderer.setPixelRatio(pr); this.renderer.setSize(w, h, false); }
     this.cam.aspect = w / Math.max(1, h); this.cam.fov = 2 * Math.atan((SPACE * PER * 0.5) / (this.cam.aspect * 9.2)) * 180 / Math.PI;
     this.cam.position.set(this.camX, 4.4, 8.0); this.cam.lookAt(this.camX, 0.55, 0); this.cam.updateProjectionMatrix();
     this.renderer.render(this.scene, this.cam);
@@ -145,10 +160,10 @@ export class CrateHud {
     const key = p + '|' + vis.map((c) => `${c.id}:${c.label}:${Math.round(c.fill() * 100)}`).join(',') + '|' + list.length;
     if (key === this.labelKey) return;
     this.labelKey = key;
-    this.labels.innerHTML = Array.from({ length: PER }, (_, i) => { const c = vis[i]; return c ? `<div class="${c.fill() > 0.9 ? 'full' : ''}">${c.label} <span>${Math.round(c.fill() * 100)}%</span></div>` : '<div></div>'; }).join('');
-    this.dots.innerHTML = Array.from({ length: this.pages }, (_, i) => `<i class="${i === p ? 'on' : ''}" data-p="${i}"></i>`).join('');
-    this.dots.querySelectorAll<HTMLElement>('i').forEach((d) => (d.onclick = () => { this.page = Number(d.dataset.p); this.dirty = true; }));
-    this.title.textContent = `STORES · ${list.length}`;
+    this.labels.innerHTML = Array.from({ length: PER }, (_, i) => { const c = vis[i]; return c ? `<div class="${c.fill() > 0.9 ? 'full' : ''}"><span class="nm">${c.label}</span><span class="g"><b style="width:${Math.round(c.fill() * 100)}%"></b></span></div>` : '<div></div>'; }).join('');
+    this.dots.innerHTML = Array.from({ length: this.pages }, (_, i) => `<img src="${lampURL(i === p, PH)}" data-p="${i}">`).join('');
+    this.dots.querySelectorAll<HTMLElement>('img').forEach((d) => (d.onclick = () => { this.page = Number(d.dataset.p); this.dirty = true; }));
+    this.title.textContent = `STORES ${list.length}`;
     (this.root.querySelector('.prev') as HTMLElement).classList.toggle('dis', p <= 0);
     (this.root.querySelector('.next') as HTMLElement).classList.toggle('dis', p >= this.pages - 1);
   }

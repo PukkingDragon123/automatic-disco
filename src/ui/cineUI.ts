@@ -38,7 +38,7 @@ const CSS = /* css */`
   linear-gradient(90deg, #14161b 0 40%, transparent 40%) 0 calc(100% - 1 * var(--u)) / calc(10 * var(--u)) calc(3 * var(--u)) repeat-x,
   rgba(43, 36, 31, 0.9); border-top: calc(5 * var(--u)) solid rgba(62, 52, 43, 0.92); border-bottom: calc(5 * var(--u)) solid rgba(62, 52, 43, 0.92); }
 .cine .sub.film .who { color: #c9a464; font-family: 'Superwide', monospace; font-size: var(--cf-sw1); letter-spacing: 2px; margin-bottom: calc(2 * var(--u)); }
-.cine .sub.journal { color: #291c19; background: linear-gradient(180deg, transparent calc(9.6 * var(--u)), rgba(93, 107, 115, 0.35) calc(9.6 * var(--u)), transparent calc(10.2 * var(--u))) 0 calc(2 * var(--u)) / 100% calc(10 * var(--u)), #e2dbc6; padding: calc(4 * var(--u)) calc(8 * var(--u)) calc(4 * var(--u)) calc(14 * var(--u)); border-left: calc(2 * var(--u)) solid rgba(170, 60, 50, 0.6); transform: rotate(-0.6deg); box-shadow: calc(2 * var(--u)) calc(2 * var(--u)) 0 rgba(0, 0, 0, 0.5); }
+.cine .sub.journal { color: #291c19; background: linear-gradient(180deg, transparent calc(9.6 * var(--u)), rgba(93, 107, 115, 0.35) calc(9.6 * var(--u)), transparent calc(10.2 * var(--u))) 0 calc(2 * var(--u)) / 100% calc(10 * var(--u)), #e2dbc6; padding: calc(4 * var(--u)) calc(8 * var(--u)) calc(4 * var(--u)) calc(14 * var(--u)); border-left: calc(2 * var(--u)) solid rgba(170, 60, 50, 0.6); box-shadow: calc(2 * var(--u)) calc(2 * var(--u)) 0 rgba(0, 0, 0, 0.5); }
 .cine .sub.journal .who { color: #86503a; font-family: 'Silk', monospace; font-size: var(--cf-ps1); }
 .cine .sub.plain { color: #e2dbc6; text-shadow: calc(1 * var(--u)) calc(1 * var(--u)) 0 #000, calc(-1 * var(--u)) 0 0 #000, 0 calc(-1 * var(--u)) 0 #000, calc(1 * var(--u)) 0 0 #000; text-align: center; }
 .cine .sub.plain .who { color: #9ea9a6; }
@@ -51,10 +51,10 @@ const CSS = /* css */`
 .cine .card .k { font-family: 'Superwide', monospace; font-size: var(--cf-sw1); letter-spacing: 4px; color: #9ea9a6; }
 .cine .card .t { font-family: 'Canned', monospace; font-size: var(--cf-sw4); line-height: var(--cf-sw4); color: #e2e1d8; margin: calc(4 * var(--u)) 0; letter-spacing: 2px; }
 .cine .card .s { font-size: var(--cf-vt1); color: #bdb59f; letter-spacing: 2px; }
-.cine .card .ink { position: absolute; right: calc(-30 * var(--u)); top: calc(-16 * var(--u)); padding: calc(1 * var(--u)) calc(4 * var(--u)); font-family: 'Superwide', monospace; font-size: var(--cf-sw1); letter-spacing: 2px; color: rgba(162, 71, 58, 0.88); border: calc(2 * var(--u)) solid rgba(162, 71, 58, 0.8); border-radius: calc(2 * var(--u)); transform: rotate(-9deg); mix-blend-mode: screen; opacity: 0; }
+.cine .card .ink { position: absolute; right: calc(-30 * var(--u)); top: calc(-16 * var(--u)); padding: calc(1 * var(--u)) calc(4 * var(--u)); font-family: 'Superwide', monospace; font-size: var(--cf-sw1); letter-spacing: 2px; color: rgba(162, 71, 58, 0.88); border: calc(2 * var(--u)) solid rgba(162, 71, 58, 0.8); border-radius: calc(2 * var(--u)); mix-blend-mode: screen; opacity: 0; }
 .cine .card.on .ink { animation: cine-stamp 260ms 900ms cubic-bezier(.3,1.8,.5,1) both; }
 .cine .card .ink::after { content: attr(data-t); position: absolute; left: calc(1 * var(--u) + 1px); top: calc(1 * var(--u) + 1px); color: rgba(162, 71, 58, 0.35); padding: 0 calc(4 * var(--u)); }
-@keyframes cine-stamp { 0% { opacity: 0; transform: rotate(-9deg) scale(1.9); } 70% { opacity: 1; transform: rotate(-9deg) scale(0.94, 1.05); } 100% { opacity: 1; transform: rotate(-9deg) scale(1); } }
+@keyframes cine-stamp { 0% { opacity: 0; } 40% { opacity: 1; } 100% { opacity: 1; } }
 .cine .card .rule { height: 1px; margin: calc(4 * var(--u)) auto; width: 64%; background: rgba(226, 225, 216, 0.32); }
 /* stamp */
 .cine .stamp { position: absolute; left: calc(10 * var(--u)); bottom: calc(var(--lb) * 11.5vh + 1.4vh); font-size: var(--cf-vt1); color: #c9a464; letter-spacing: 2px; }
@@ -93,17 +93,19 @@ body.cine-on .hud, body.cine-on .overlay2d, body.cine-on .toasts, body.cine-on .
  * 10 px), so text only stays sharp at whole multiples of that. These CSS variables give those multiples for the
  * current UI scale: -1 small (body), -2 large, -4 title. */
 export function fontVars() {
-  const S = Math.max(2, Number(document.documentElement.style.getPropertyValue('--s')) || (innerHeight >= 1040 ? 3 : 2)), k1 = Math.max(1, Math.round(S / 2));
-  const r = document.documentElement.style, px = (n: number) => n + 'px';
-  r.setProperty('--cf-vt1', px(14 * k1)); r.setProperty('--cf-vt2', px(14 * S));
-  r.setProperty('--cf-ps1', px(11 * k1)); r.setProperty('--cf-ps2', px(11 * S));
-  r.setProperty('--cf-np1', px(13 * k1)); r.setProperty('--cf-np2', px(13 * S));
-  r.setProperty('--cf-sw1', px(10 * k1)); r.setProperty('--cf-sw2', px(10 * S)); r.setProperty('--cf-sw4', px(20 * S));
+  // the house faces at their native grids only: Departure Mono ('Body') at 11 / 22 / 33 / 44 px, Spleen ('Title')
+  // at 24 / 48 px (the old family names are aliases of these two)
+  const big = innerHeight >= 1000, r = document.documentElement.style, px = (n: number) => n + 'px';
+  r.setProperty('--cf-vt1', px(22)); r.setProperty('--cf-vt2', px(big ? 33 : 22));
+  r.setProperty('--cf-ps1', px(big ? 22 : 11)); r.setProperty('--cf-ps2', px(big ? 33 : 22));
+  r.setProperty('--cf-np1', px(24)); r.setProperty('--cf-np2', px(big ? 48 : 24));
+  r.setProperty('--cf-sw1', px(24)); r.setProperty('--cf-sw2', px(big ? 48 : 24)); r.setProperty('--cf-sw4', px(48));
 }
-/** a font size that keeps a face on its pixel grid: the largest whole multiple of its native size not above want */
-export function crispPx(face: 'VT' | 'Silk' | 'Jersey' | 'Canned' | 'Superwide', want: number) {
-  const n = face === 'VT' ? 14 : face === 'Silk' ? 11 : face === 'Jersey' ? 13 : 10;
-  return n * Math.max(1, Math.floor(want / n));
+/** the largest allowed size of a face not above want (Body: 11/22/33/44; Title: 24/48) */
+export function crispPx(face: 'VT' | 'Silk' | 'Jersey' | 'Canned' | 'Superwide' | 'Body' | 'Title', want: number) {
+  const steps = face === 'VT' || face === 'Silk' || face === 'Body' ? [11, 22, 33, 44] : [24, 48];
+  let best = steps[0]; for (const n of steps) if (n <= want) best = n;
+  return best;
 }
 let styled = false;
 function style() {

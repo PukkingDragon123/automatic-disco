@@ -13,6 +13,10 @@ import { buildInterior, type Interior } from './interior';
 import { buildExterior, type Exterior } from './exterior';
 import { HubChrome, type RoomAction } from './chrome';
 import { breachFx, type Breach } from './breach';
+import { closeTerminal } from './terminal';
+import { shipState } from './shipState';
+import { KEYS } from './layout';
+import { gbuf, F_EMIT } from '../../gfx/gbuf';
 import type { HubPod } from './pod';
 import { csfx, cloop, type Loop } from '../../ui/cineAudio';
 import { makeGlobe, makeSpace, type Globe } from '../../ui/globe';
@@ -131,6 +135,23 @@ export class ShipHub implements Screen {
       for (const [k, s] of Object.entries(r.spots)) spots[k] = { pos: new V3(...s.p), facing: s.f };
       this.rooms[id] = { id, name: r.name, root: b.root, bounds: b.bounds.clone(), cam: roomCam(id), spots };
     }
+    // the key props: pick boxes and the corner brackets that light up when the pointer is on one
+    const bm = gbuf(new THREE.LineBasicMaterial({ color: new THREE.Color(0x7fe0a0).multiplyScalar(1.6) }), F_EMIT); this.bin.m(bm);
+    for (const id of ROOM_IDS) {
+      this.keyBoxes[id] = KEYS[id].boxes.map((b) => new THREE.Box3(new V3(b[0], b[1], b[2]), new V3(b[3], b[4], b[5])));
+      const P: number[] = [];
+      for (const b of KEYS[id].boxes) {
+        const L = Math.min(0.4, (b[3] - b[0]) * 0.3, (b[5] - b[2]) * 0.3, (b[4] - b[1]) * 0.3);
+        for (const x of [b[0], b[3]]) for (const y of [b[1], b[4]]) for (const z of [b[2], b[5]]) {
+          const sx = x === b[0] ? 1 : -1, sy = y === b[1] ? 1 : -1, sz = z === b[2] ? 1 : -1;
+          P.push(x, y, z, x + sx * L, y, z, x, y, z, x, y + sy * L, z, x, y, z, x, y, z + sz * L);
+        }
+      }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); this.bin.g(g);
+      const ln = new THREE.LineSegments(g, bm); ln.visible = false; ln.renderOrder = 5; this.scene.add(ln); this.keyLines[id] = ln;
+    }
+    // the pod as the ship last left it
+    this.podBuild(shipState().pod);
     // the UI
     this.chrome = new HubChrome(this, { hasSave: !!opts.hasSave, fromPlanet: this.fromPlanet });
     this.bindInput();
@@ -218,6 +239,13 @@ export class ShipHub implements Screen {
   /** finish every running transition now (camera, roof): for tests and screenshots */
   snap() { this.cut = this.cutGoal; this.exterior.setCut(this.cut); if (this.camT < 1) { this.camT = 1; this.cam.pos.copy(this.to.pos); this.cam.look.copy(this.to.look); this.cam.fov = this.to.fov; const d = this.camDone; this.camDone = null; d?.(); } }
 
+  /** how much of its power a deck gets (engineering's bus): a starved deck dims */
+  powerK(id: RoomId) {
+    const p = shipState().power, share = id === 'lab' ? p.lab : id === 'workshop' ? p.workshop : id === 'bridge' ? p.sensors : id === 'engineering' ? p.engines : id === 'cargo' ? p.engines : p.life;
+    const nominal = id === 'lab' ? 0.2 : id === 'workshop' ? 0.15 : id === 'bridge' ? 0.15 : id === 'engineering' || id === 'cargo' ? 0.2 : 0.3;
+    return Math.max(0.35, Math.min(1.25, 0.55 + 0.45 * share / nominal));
+  }
+
   // ================================================================ camera
   aspect() { return Math.max(0.5, this.engine.w / Math.max(1, this.engine.h)); }
   private jump(c: CamPreset) { this.cam.pos.copy(c.pos); this.cam.look.copy(c.look); this.cam.fov = c.fov; this.to.pos.copy(c.pos); this.to.look.copy(c.look); this.to.fov = c.fov; this.camT = 1; this.applyCam(); }
@@ -249,12 +277,18 @@ export class ShipHub implements Screen {
       this.ptrIn = true; this.ptr.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
       if (!this.locked && (this.mode === 'overview' || this.mode === 'room')) this.setHover(this.pick(), e.clientX, e.clientY);
       else if (this.hovered) this.setHover(null);
+      const hot = !this.locked && this.mode === 'room' && this.pickKey();
+      if (hot !== this.keyHot) { this.keyHot = hot; if (hot) csfx('hover', 0.5); }
+      if (this.focused) this.chrome.keyHint(hot ? KEYS[this.focused].label : null, e.clientX, e.clientY);
+      if (hot) this.engine.canvas.style.cursor = 'pointer';
     };
     const leave = () => { this.ptrIn = false; this.setHover(null); };
     const down = (e: PointerEvent) => {
       if (this.locked) return;
       if (e.button === 2) { this.back(); return; }
       if (this.mode === 'exterior') return;
+      // inside a room, its key prop opens the room's function
+      if (this.mode === 'room' && this.focused && this.pickKey()) { csfx('button', 0.6); this.useRoom(this.focused); return; }
       const id = this.pick();
       if (id && (this.mode === 'overview' || (this.mode === 'room' && id !== this.focused))) { csfx('button', 0.5); this.open(id); }
     };
@@ -271,10 +305,28 @@ export class ShipHub implements Screen {
     this.off.push(() => { cv.removeEventListener('pointermove', move); cv.removeEventListener('pointerleave', leave); cv.removeEventListener('pointerdown', down); cv.removeEventListener('contextmenu', ctx); removeEventListener('keydown', key); });
   }
   back() {
+    if (closeTerminal()) return;
     if (this.chrome.closeOverlay()) return;
     if (this.mode === 'room') { csfx('tick', 0.6); this.overview(); }
     else if (this.mode === 'overview' && !this.fromPlanet) { csfx('tick', 0.6); this.outside(); }
   }
+  /** the focused room's key prop under the pointer */
+  private pickKey(): boolean {
+    if (!this.ptrIn || !this.focused) return false;
+    this.ray.setFromCamera(this.ptr, this.camera);
+    const k = this.keyBoxes[this.focused];
+    return k.some((b) => this.ray.ray.intersectsBox(b));
+  }
+  private keyBoxes = {} as Record<RoomId, THREE.Box3[]>;
+  private keyLines = {} as Record<RoomId, THREE.LineSegments>;
+  private keyHot = false;
+  /** use a room: its function screen (the bridge: straight to the main monitor) */
+  useRoom(id: RoomId) {
+    for (const f of this.useFns) try { if (f(id)) return; } catch (e) { console.error('useRoom', e); }
+  }
+  private useFns: ((id: RoomId) => boolean | void)[] = [];
+  /** the flow decides what using a room does (return true when handled) */
+  onUse(fn: (id: RoomId) => boolean | void) { this.useFns.unshift(fn); return () => { this.useFns = this.useFns.filter((f) => f !== fn); }; }
   private pick(): RoomId | null {
     if (!this.ptrIn) return null;
     this.ray.setFromCamera(this.ptr, this.camera);
@@ -311,9 +363,9 @@ export class ShipHub implements Screen {
     // one shadowed key: overhead inside, the star (warm, from starboard-forward-above) outside; a cool rim from
     // behind and the planet's blue bounce from below outside
     this.key.position.set(L(-14, -40), L(40, 55), L(-10, 55));
-    this.key.intensity = L(1.15, 2.7);
+    this.key.intensity = L(this.focused ? 0.55 : 0.8, 2.7);
     this.sun.intensity = L(0.2, 1.4);
-    this.hemi.intensity = L(0.9, 0.55);
+    this.hemi.intensity = L(this.focused ? 0.42 : 0.6, 0.55);
     this.hemi.color.setHex(0x9aa8b8).lerp(this.tmpC.setHex(0x40506a), ex);
     this.hemi.groundColor.setHex(0x2a2622).lerp(this.tmpC.setHex(0x284868), ex);
     this.globe.mat.uniforms.uT.value = t;
@@ -323,7 +375,9 @@ export class ShipHub implements Screen {
       const hk = id === this.hovered ? 1 : id === this.focused ? 0.35 : 0;
       const gm = r.glow.material as THREE.MeshBasicMaterial;
       gm.color.setHex(ROOMS[id].light).multiplyScalar(0.18 * hk);
-      r.light.intensity = r.baseK * (0.25 + 0.75 * ins) * (this.alarmOn ? 0.5 : 1);
+      r.light.intensity = r.baseK * (0.25 + 0.75 * ins) * (this.alarmOn ? 0.5 : 1) * this.powerK(id);
+      const kl = this.keyLines[id]; kl.visible = this.mode === 'room' && this.focused === id && !this.locked;
+      if (kl.visible) (kl.material as THREE.LineBasicMaterial).color.setHex(0x7fe0a0).multiplyScalar(this.keyHot ? 2.4 : 0.7 + Math.sin(t * 3) * 0.3);
     }
     if (this.alarmOn) { const a = Math.sin(t * 6) > 0 ? 1 : 0; this.interior.rooms.lab.light.color.setHex(a ? 0xff3020 : ROOMS.lab.light); } else this.interior.rooms.lab.light.color.setHex(ROOMS.lab.light);
     for (const a of this.interior.anims) a(dt, t);

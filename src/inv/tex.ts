@@ -190,9 +190,9 @@ export function grille() {
 }
 
 // ------------------------------------------------------------------ the logo plate (per container, redrawn on change)
-const PLATE_W = 96, PLATE_H = 48;
-/** a stencilled plate: the paint band, the logo in a sprayed stencil (bridges left in), the label under it, worn
- *  corners and screw heads */
+const PLATE_W = 192, PLATE_H = 64;
+/** a stencilled plate: a steel frame, the paint field, the logo sprayed through a stencil (bridges left in), the label
+ *  in Spleen 24 and the program line in Departure Mono 11, worn corners and screw heads */
 export function logoPlate(logo: LogoId, paint: PaintId, label: string): THREE.CanvasTexture {
   const c = document.createElement('canvas'); c.width = PLATE_W; c.height = PLATE_H;
   const x = c.getContext('2d')!;
@@ -205,24 +205,39 @@ const hexs = (c: number) => '#' + c.toString(16).padStart(6, '0');
 export function drawLogoPlate(x: CanvasRenderingContext2D, logo: LogoId, paint: PaintId, label: string, W: number, Hh: number) {
   const R = pr(paint), S = RAMPS.steel, P = RAMPS.paper;
   x.imageSmoothingEnabled = false;
-  x.fillStyle = hexs(S[2]); x.fillRect(0, 0, W, Hh);
-  x.fillStyle = hexs(R[3]); x.fillRect(2, 2, W - 4, Hh - 4);
-  x.fillStyle = hexs(R[4]); x.fillRect(2, 2, W - 4, 2);
-  x.fillStyle = hexs(R[1]); x.fillRect(2, Hh - 4, W - 4, 2);
-  // the logo, stencilled in cream (ink on pale paints)
+  x.fillStyle = hexs(S[1]); x.fillRect(0, 0, W, Hh);
+  x.fillStyle = hexs(S[4]); x.fillRect(1, 1, W - 2, 1); x.fillRect(1, 1, 1, Hh - 2);
+  x.fillStyle = hexs(R[3]); x.fillRect(3, 3, W - 6, Hh - 6);
+  x.fillStyle = hexs(R[4]); x.fillRect(3, 3, W - 6, 2);
+  x.fillStyle = hexs(R[1]); x.fillRect(3, Hh - 5, W - 6, 2);
+  // wear: chips to bare steel at the corners, a scrape across the field
+  x.fillStyle = hexs(S[5]); for (const [cx, cy, w] of [[4, 4, 3], [W - 9, Hh - 7, 4], [W * 0.62, 6, 2]]) x.fillRect(Math.floor(cx), cy, w, 1);
+  x.fillStyle = hexs(R[2]); x.fillRect(Math.floor(W * 0.3), Hh - 12, Math.floor(W * 0.25), 1);
   const ink = luma(R[3]) > 130 ? RAMPS.ink[1] : P[4];
-  drawLogo(x, logo, 6, 6, 3, ink, R[2]);
-  // the label in a stencil hand
-  x.fillStyle = hexs(ink);
-  x.font = '12px Superwide, Jersey, monospace'; x.textBaseline = 'middle';
-  const lines = label.toUpperCase().slice(0, 14);
-  x.fillText(lines, 46, 18, W - 50);
-  x.font = '9px VT, monospace'; x.fillStyle = hexs(luma(R[3]) > 130 ? RAMPS.ink[2] : R[5] ?? P[3]);
-  x.fillText('UNAA / U-07', 46, 33, W - 50);
-  // worn corners, screws
-  x.fillStyle = hexs(S[4]);
-  for (const [sx, sy] of [[4, 4], [W - 6, 4], [4, Hh - 6], [W - 6, Hh - 6]]) x.fillRect(sx, sy, 2, 2);
-  x.fillStyle = hexs(S[5]); x.fillRect(W - 12, 3, 3, 1); x.fillRect(3, Hh - 9, 1, 3);
+  drawLogo(x, logo, 8, 8, 4, ink, R[1]);
+  x.fillStyle = hexs(ink); x.textBaseline = 'top';
+  x.font = '24px Title, monospace';
+  x.fillText(label.toUpperCase().slice(0, 10), 64, 9);
+  x.font = '11px Body, monospace'; x.fillStyle = hexs(luma(R[3]) > 130 ? RAMPS.ink[2] : R[5] ?? P[3]);
+  x.fillText('UNAA / UNIT 07', 64, 40);
+  x.fillStyle = hexs(S[5]);
+  for (const [sx, sy] of [[3, 3], [W - 5, 3], [3, Hh - 5], [W - 5, Hh - 5]]) { x.fillRect(sx, sy, 2, 2); }
+  x.fillStyle = hexs(S[0]);
+  for (const [sx, sy] of [[4, 4], [W - 4, 4], [4, Hh - 4], [W - 4, Hh - 4]]) x.fillRect(sx, sy, 1, 1);
+}
+/** the window head's badge: the logo stencilled on its paint, in a steel bezel, w x h art pixels (no text) */
+export function drawLogoBadge(x: CanvasRenderingContext2D, logo: LogoId, paint: PaintId, W: number, Hh: number) {
+  const R = pr(paint), S = RAMPS.steel;
+  x.imageSmoothingEnabled = false;
+  x.fillStyle = hexs(S[0]); x.fillRect(0, 0, W, Hh);
+  x.fillStyle = hexs(S[4]); x.fillRect(1, 1, W - 2, 1); x.fillRect(1, 1, 1, Hh - 2);
+  x.fillStyle = hexs(S[2]); x.fillRect(1, Hh - 2, W - 2, 1); x.fillRect(W - 2, 1, 1, Hh - 2);
+  x.fillStyle = hexs(R[3]); x.fillRect(2, 2, W - 4, Hh - 4);
+  x.fillStyle = hexs(R[4]); x.fillRect(2, 2, W - 4, 1);
+  x.fillStyle = hexs(R[2]); x.fillRect(2, Hh - 3, W - 4, 1);
+  const ink = luma(R[3]) > 130 ? RAMPS.ink[1] : RAMPS.paper[4];
+  drawLogo(x, logo, Math.floor((W - 12) / 2), Math.floor((Hh - 12) / 2), 1, ink, R[1]);
+  x.fillStyle = hexs(S[5]); x.fillRect(3, 3, 1, 1); x.fillRect(W - 4, Hh - 4, 1, 1);
 }
 const luma = (c: number) => ((c >> 16) & 255) * 0.3 + ((c >> 8) & 255) * 0.59 + (c & 255) * 0.11;
 /** a 12 x 12 stencil logo at scale k, with a 1 px shadow in `shade` (sprayed paint) */
@@ -230,6 +245,7 @@ export function drawLogo(x: CanvasRenderingContext2D, logo: LogoId, ox: number, 
   const g = LOGOS[logo] ?? LOGOS.unaa;
   for (const [c, dx, dy] of [[shade, 1, 1], [col, 0, 0]] as [number, number, number][]) {
     x.fillStyle = hexs(c);
-    for (let j = 0; j < g.length; j++) for (let i = 0; i < g[j].length; i++) if (g[j][i] === '#') x.fillRect(ox + (i + dx * 0.34) * k, oy + (j + dy * 0.34) * k, k, k);
+    const o = Math.max(1, Math.floor(k / 3));
+    for (let j = 0; j < g.length; j++) for (let i = 0; i < g[j].length; i++) if (g[j][i] === '#') x.fillRect(ox + i * k + dx * o, oy + j * k + dy * o, k, k);
   }
 }

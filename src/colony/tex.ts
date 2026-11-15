@@ -150,7 +150,7 @@ export function hullSheet(seed = 7): Sheet {
 }
 
 /** gunmetal machinery: louvred vents, a mesh grille, bolted covers, cable clamps (512 x 512 over 2 x 2 m) */
-export function machSheet(seed = 3): Sheet {
+export function machSheetSmooth(seed = 3): Sheet {
   return cached('mach' + seed, () => {
     const W = 512, [c, g] = canvas(W, W), [bc, b] = canvas(W, W), r = rng(seed * 311 + 7);
     g.fillStyle = COL.gun; g.fillRect(0, 0, W, W); b.fillStyle = '#808080'; b.fillRect(0, 0, W, W);
@@ -205,7 +205,7 @@ export function foilSheet(): THREE.Texture {
 }
 
 /** worn hazard stripes (256 x 64): yellow and ink at 45 degrees, chipped */
-export function hazardTex(): THREE.Texture {
+export function hazardTexSmooth(): THREE.Texture {
   return cached('hazard', () => {
     const W = 256, H = 64, [c, g] = canvas(W, H), r = rng(17);
     g.fillStyle = COL.yellow; g.fillRect(0, 0, W, H);
@@ -231,7 +231,7 @@ export function radiatorSheet(): Sheet {
  * Industrial arm paint (512 x 512 over 1 x 1 m): UNAA safety orange enamel, scuffed through to primer and steel at
  * the edges, a stencilled serial, a joint-limit decal, grease runs.
  */
-export function armSheet(col = COL.orange, seed = 2): Sheet {
+export function armSheetSmooth(col = COL.orange, seed = 2): Sheet {
   return cached('arm' + col + seed, () => {
     const W = 512, [c, g] = canvas(W, W), [bc, b] = canvas(W, W), r = rng(seed * 71 + 3);
     g.fillStyle = col; g.fillRect(0, 0, W, W); b.fillStyle = '#808080'; b.fillRect(0, 0, W, W);
@@ -256,7 +256,7 @@ function shade(hex: string, k: number) {
 }
 
 /** EVA suit cloth: white beta cloth weave, quilting seams, a patch slot (256 x 256) */
-export function suitSheet(accent = COL.orange): THREE.Texture {
+export function suitSheetSmooth(accent = COL.orange): THREE.Texture {
   return cached('suit' + accent, () => {
     const W = 256, [c, g] = canvas(W, W), r = rng(23);
     g.fillStyle = '#dedbd2'; g.fillRect(0, 0, W, W);
@@ -343,3 +343,69 @@ export function windowTex(): THREE.Texture {
 /** small helper: a crisp 2D canvas for HUD art */
 export function hudCanvas(w: number, h: number) { return canvas(w, h); }
 export { rng, stencil, rand };
+
+// ------------------------------------------------------------------ v6 pixel-art sheets (the user's direction:
+// every surface hand-pixelled from the master ramps, nearest filtered, ~40-48 texels a metre like the lowpix models)
+import { Pix, fontText } from '../ui/desk/pxPanel';
+import { RAMPS as RP } from '../art/palette';
+const PCACHE = new Map<string, Sheet | THREE.Texture>();
+function pixTex(p: Pix, srgb = true) {
+  const t = new THREE.CanvasTexture(p.canvas());
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestMipmapNearestFilter; t.generateMipmaps = true; t.anisotropy = 4;
+  return t;
+}
+const h3 = (a: number, b: number, c = 0) => { let h = (a * 374761393 + b * 668265263 + c * 2147483647) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+/** a bump map from a Pix: luminance */
+function bumpOf(p: Pix) { const b = new Pix(p.w, p.h); for (let i = 0; i < p.w * p.h; i++) { const l = (p.d[i * 4] * 0.3 + p.d[i * 4 + 1] * 0.59 + p.d[i * 4 + 2] * 0.11) | 0; b.d[i * 4] = b.d[i * 4 + 1] = b.d[i * 4 + 2] = l; b.d[i * 4 + 3] = 255; } return pixTex(b, false); }
+/** painted enamel plate in one ramp: brush runs, seams with a lit lip, rivets, chips to steel, a hazard band, a stencil */
+function enamel(ramp: readonly number[], seed: number, W = 128, o: { hazard?: boolean; text?: string; seams?: number } = {}) {
+  const p = new Pix(W, W), n = ramp.length, base = ramp[Math.min(n - 1, 3)];
+  p.rect(0, 0, W, W, base);
+  for (let i = 0; i < 70; i++) { const x = Math.floor(h3(i, seed, 1) * W), y = Math.floor(h3(i, seed, 2) * W), L = 4 + Math.floor(h3(i, seed, 3) * 14); p.hl(x, Math.min(W - 1, x + L), y, ramp[Math.min(n - 1, h3(i, seed, 4) < 0.6 ? 4 : 2)]); }
+  const step = o.seams ?? 32;
+  for (let y = step - 1; y < W; y += step) { p.hl(0, W - 1, y, ramp[0]); p.hl(0, W - 1, y + 1 < W ? y + 1 : y, ramp[Math.min(n - 1, 5)]); for (let x = 4; x < W; x += 10) { p.set(x, y - 3, RP.steel[5]); p.set(x + 1, y - 3, RP.steel[3]); p.set(x + 1, y - 2, ramp[0]); } }
+  for (let x = 63; x < W; x += 64) { p.vl(x, 0, W - 1, ramp[0]); p.vl(x + 1, 0, W - 1, ramp[Math.min(n - 1, 5)]); }
+  for (let i = 0; i < 26; i++) { const x = Math.floor(h3(i, seed, 7) * W), y = (Math.floor(h3(i, seed, 8) * (W / step)) * step + step - 4 + W) % W, w = 2 + Math.floor(h3(i, seed, 9) * 4); for (let k = 0; k < w; k++) p.set(x + k, y, k ? RP.steel[3] : RP.steel[5]); p.set(x + w, y + 1, ramp[0]); }
+  for (let i = 0; i < 6; i++) { const x0 = Math.floor(h3(i, seed, 11) * W), y0 = Math.floor(h3(i, seed, 12) * W); for (let t = 0; t < 8; t++) { p.set(x0 + t, y0 + (t >> 1), ramp[Math.min(n - 1, 5)]); p.set(x0 + t, y0 + (t >> 1) + 1, ramp[1]); } }
+  if (o.hazard) for (let y = W - 12; y < W - 4; y++) for (let x = 0; x < W; x++) p.set(x, y, ((x + y) >> 2) & 1 ? RP.ochre[4] : RP.ink[1]);
+  if (o.text) fontText(p, o.text, 6, 6, RP.ink[1]);
+  return p;
+}
+const RAMP_OF: Record<string, readonly number[]> = { '#c8642c': RP.rust, '#b3542c': RP.coral, '#c79a2a': RP.ochre, '#5d7a8a': RP.slate, '#59604a': RP.olive, '#4b4f78': RP.violet };
+export function armSheet(col = COL.orange, seed = 2): Sheet {
+  const k = 'parm' + col + seed; let v = PCACHE.get(k) as Sheet | undefined;
+  if (!v) { const p = enamel(RAMP_OF[col] ?? RP.rust, seed * 7 + 3, 128, { hazard: true, text: 'UNAA ARM' }); v = { map: pixTex(p), bump: bumpOf(p) }; PCACHE.set(k, v); }
+  return v;
+}
+export function machSheet(seed = 3): Sheet {
+  const k = 'pmach' + seed; let v = PCACHE.get(k) as Sheet | undefined;
+  if (!v) {
+    const p = enamel(RP.steel, seed * 13 + 5, 128, { seams: 64 });
+    for (let y = 8; y < 40; y += 4) { p.hl(8, 56, y, RP.ink[0]); p.hl(8, 56, y + 1, RP.steel[5]); }
+    for (let y = 72; y < 120; y += 3) for (let x = 8; x < 56; x += 3) { p.set(x, y, RP.ink[0]); p.set(x + 1, y, RP.ink[1]); }
+    for (const [x, y] of [[70, 8], [118, 8], [70, 52], [118, 52]]) { p.set(x, y, RP.steel[6]); p.set(x + 1, y + 1, RP.steel[1]); }
+    p.rect(72, 72, 48, 6, RP.ochre[4]); for (let x = 72; x < 120; x += 6) p.rect(x, 72, 3, 6, RP.ink[1]);
+    v = { map: pixTex(p), bump: bumpOf(p) }; PCACHE.set(k, v);
+  }
+  return v;
+}
+export function hazardTex(): THREE.Texture {
+  let v = PCACHE.get('phaz') as THREE.Texture | undefined;
+  if (!v) { const p = new Pix(32, 16); for (let y = 0; y < 16; y++) for (let x = 0; x < 32; x++) p.set(x, y, ((x + y) >> 2) & 1 ? RP.ochre[4] : RP.ink[1]); p.hl(0, 31, 0, RP.ochre[5]); p.hl(0, 31, 15, RP.ink[0]); v = pixTex(p); PCACHE.set('phaz', v); }
+  return v;
+}
+export function suitSheet(accent = COL.orange): THREE.Texture {
+  const k = 'psuit' + accent; let v = PCACHE.get(k) as THREE.Texture | undefined;
+  if (!v) {
+    const p = new Pix(64, 64), B = RP.paper;
+    p.rect(0, 0, 64, 64, B[4]);
+    for (let y = 0; y < 64; y += 8) p.hl(0, 63, y, B[2]);
+    for (let x = 0; x < 64; x += 12) p.vl(x, 0, 63, B[3]);
+    for (let i = 0; i < 40; i++) p.set(Math.floor(h3(i, 5, 1) * 64), Math.floor(h3(i, 5, 2) * 64), B[5]);
+    const A = accent === COL.orange ? RP.rust : RP.teal; p.rect(0, 26, 64, 4, A[4]); p.hl(0, 63, 29, A[2]);
+    for (let i = 0; i < 12; i++) p.rect(Math.floor(h3(i, 6, 1) * 60), 50 + Math.floor(h3(i, 6, 2) * 12), 3, 1, RP.soil[3]);
+    v = pixTex(p); PCACHE.set(k, v);
+  }
+  return v;
+}

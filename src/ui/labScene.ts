@@ -721,6 +721,8 @@ export class LabScene {
     if (this.bay) this.bay.root.visible = on;
     this.retro.visible = !on;
     for (const j of this.jars) if (j.mesh) j.mesh.visible = !on;
+    // the old room's warm lamps give way to the bay's own light
+    for (const l of this.lamps) l.light.visible = !on;
     for (const g of this.jarObjs) g.visible = !on;
     sfx(on ? 'open' : 'close', 0.7, 0.5);
   }

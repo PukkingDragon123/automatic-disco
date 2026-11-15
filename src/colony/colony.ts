@@ -62,6 +62,7 @@ export class PodBase {
     const g = colony.g;
     this.x = x; this.z = z; this.y = g.region.heightAt(x, z); this.yaw = yaw;
     this.model = buildPod();
+    this.model.root.userData.flag = this.flag;
     this.model.root.position.set(x, this.y, z); this.model.root.rotation.y = yaw;
     this.model.root.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m && !(m as THREE.MeshBasicMaterial).isMeshBasicMaterial) gbuf(m, this.flag); });
     g.world.scene.add(this.model.root);

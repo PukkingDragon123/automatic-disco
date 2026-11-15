@@ -1,0 +1,1058 @@
+{
+ "name": "UNAA Upgrader",
+ "description": "A gantry over a parts bench: four legs, rails and a travelling bridge with a hoist and a three-finger tool head; a half-built part on the bench, a parts rack and a control lectern.",
+ "author": "progression agent",
+ "license": "CC0-1.0",
+ "density": 3,
+ "light": {
+  "dir": [
+   -0.55,
+   1.0,
+   0.7
+  ],
+  "strength": 1.1,
+  "gradient": 0.3,
+  "ao": 0.6,
+  "ao_height": 2.0
+ },
+ "render": {
+  "background": "#202432",
+  "hero": [
+   -34,
+   22
+  ],
+  "shadow": 0.45
+ },
+ "budget": {
+  "tris": 4000,
+  "colors": 72
+ },
+ "palette": {
+  "ramps": {
+   "shell": [
+    "#3b3a36",
+    "#5d5a52",
+    "#8f8a7e",
+    "#b7b2a4",
+    "#d6d2c4",
+    "#e9e6dc",
+    "#f6f4ec"
+   ],
+   "orange": [
+    "#2f1a13",
+    "#4e2817",
+    "#773717",
+    "#9f4621",
+    "#c36530",
+    "#de8f4e",
+    "#efb67b"
+   ],
+   "metal": [
+    "#1c1e20",
+    "#2a2f32",
+    "#3d4346",
+    "#54595c",
+    "#6e7373",
+    "#8e9190",
+    "#b1b2aa"
+   ],
+   "lens": [
+    "#0f2028",
+    "#14323b",
+    "#1d494f",
+    "#3e7a9c",
+    "#62a8d0",
+    "#a6d8f0",
+    "#e8f6ff"
+   ],
+   "red": [
+    "#401913",
+    "#672319",
+    "#8c2920",
+    "#b13c2b",
+    "#e06a4a"
+   ],
+   "green": [
+    "#0f2219",
+    "#1f5532",
+    "#459155",
+    "#73b073",
+    "#a8d09d"
+   ],
+   "violet": [
+    "#201b2d",
+    "#362145",
+    "#50305d",
+    "#664575",
+    "#86628a",
+    "#a98aa0",
+    "#d8c8e8"
+   ],
+   "brass": [
+    "#31260f",
+    "#4f3e13",
+    "#705719",
+    "#946c21",
+    "#b38737",
+    "#cea457",
+    "#e8cc88"
+   ],
+   "hazard": [
+    "#312715",
+    "#745820",
+    "#bc913a",
+    "#d8ac5b"
+   ],
+   "amber": [
+    "#503a1a",
+    "#825722",
+    "#b27d34",
+    "#d7a856",
+    "#eecc8e",
+    "#fff3c8"
+   ]
+  }
+ },
+ "styles": {
+  "enamel": {
+   "ramp": "shell",
+   "tone": 3.9,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 2.0,
+     "amount": 0.2
+    },
+    {
+     "id": "panel",
+     "op": "panel",
+     "inset": 2,
+     "min_size": 10
+    },
+    {
+     "id": "grime",
+     "op": "patches",
+     "scale": 1.6,
+     "threshold": 0.75,
+     "shift": -0.5,
+     "faces": [
+      "-top"
+     ]
+    },
+    {
+     "id": "wear",
+     "op": "wear",
+     "width": 2,
+     "density": 0.16,
+     "ramp": "metal",
+     "tone": 2.2,
+     "post": true
+    },
+    {
+     "id": "rivets",
+     "op": "rivets",
+     "inset": 1,
+     "min_size": 8,
+     "post": true
+    }
+   ]
+  },
+  "orange": {
+   "ramp": "orange",
+   "tone": 4.0,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 2.0,
+     "amount": 0.25
+    },
+    {
+     "id": "wear",
+     "op": "wear",
+     "width": 1,
+     "density": 0.2,
+     "ramp": "metal",
+     "tone": 2.6,
+     "post": true
+    }
+   ]
+  },
+  "gun": {
+   "ramp": "metal",
+   "tone": 3.0,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 1.6,
+     "amount": 0.3
+    },
+    {
+     "id": "scuffs",
+     "op": "wear",
+     "width": 1,
+     "density": 0.22,
+     "shift": 1.2,
+     "post": true
+    },
+    {
+     "id": "rivets",
+     "op": "rivets",
+     "inset": 1,
+     "min_size": 7,
+     "post": true
+    }
+   ]
+  },
+  "lens": {
+   "ramp": "lens",
+   "tone": 4.2,
+   "light": 0.4,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 0,
+    "light_shift": 1.5
+   }
+  },
+  "redlamp": {
+   "ramp": "red",
+   "tone": 3.8,
+   "light": 0.2,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 0
+   }
+  },
+  "greenlamp": {
+   "ramp": "green",
+   "tone": 3.8,
+   "light": 0.2,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 0
+   }
+  },
+  "brass": {
+   "ramp": "brass",
+   "tone": 4.0,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 1.6,
+     "amount": 0.3
+    },
+    {
+     "id": "gloss",
+     "op": "gloss",
+     "post": true,
+     "dash": true,
+     "density": 0.3
+    }
+   ]
+  },
+  "field": {
+   "ramp": "violet",
+   "tone": 5.0,
+   "light": 0.2,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 0
+   }
+  },
+  "amberglow": {
+   "ramp": "amber",
+   "tone": 4.6,
+   "light": 0.2,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 0
+   }
+  },
+  "hazard": {
+   "ramp": "hazard",
+   "tone": 2.5,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "stripes",
+     "op": "stripes",
+     "axis": [
+      1,
+      1,
+      0
+     ],
+     "period": 3,
+     "width": 0.5,
+     "ramp": "metal",
+     "tone": 1
+    }
+   ]
+  },
+  "concrete": {
+   "ramp": "shell",
+   "tone": 3.0,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 1.4,
+     "amount": 0.35
+    },
+    {
+     "id": "slabs",
+     "op": "panel",
+     "inset": 3,
+     "min_size": 12
+    },
+    {
+     "id": "grime",
+     "op": "patches",
+     "scale": 1.4,
+     "threshold": 0.68,
+     "shift": -0.6
+    }
+   ]
+  },
+  "hazardbar": {
+   "ramp": "hazard",
+   "tone": 2.6,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "stripes",
+     "op": "stripes",
+     "axis": [
+      1,
+      1,
+      0
+     ],
+     "period": 5,
+     "width": 0.45,
+     "ramp": "metal",
+     "tone": 1.0
+    },
+    {
+     "id": "wear",
+     "op": "wear",
+     "width": 1,
+     "density": 0.2,
+     "ramp": "metal",
+     "tone": 2.4,
+     "post": true
+    }
+   ]
+  },
+  "copper": {
+   "ramp": "orange",
+   "tone": 4.4,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 1,
+    "outline": "dark"
+   },
+   "layers": [
+    {
+     "id": "bands",
+     "op": "stripes",
+     "axis": "z",
+     "period": 3,
+     "width": 0.2,
+     "shift": -1.0
+    },
+    {
+     "id": "mottle",
+     "op": "noise",
+     "scale": 1.2,
+     "amount": 0.3
+    }
+   ]
+  },
+  "screen": {
+   "ramp": "green",
+   "tone": 3.4,
+   "light": 0.3,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 0,
+    "light_shift": 1.5
+   },
+   "layers": [
+    {
+     "id": "scan",
+     "op": "stripes",
+     "axis": "y",
+     "period": 1.5,
+     "width": 0.35,
+     "shift": -0.8
+    }
+   ]
+  },
+  "amberlamp": {
+   "ramp": "amber",
+   "tone": 4.6,
+   "light": 0.25,
+   "dither": 0,
+   "rim": {
+    "light": 1,
+    "dark": 0,
+    "light_shift": 1.5
+   }
+  }
+ },
+ "parts": [
+  {
+   "id": "base",
+   "shape": "box",
+   "chamfer": 0.6,
+   "size": [
+    30,
+    2,
+    30
+   ],
+   "pivot": [
+    0,
+    1,
+    0
+   ],
+   "style": "concrete"
+  },
+  {
+   "id": "deck",
+   "shape": "box",
+   "chamfer": 0.3,
+   "size": [
+    26,
+    0.6,
+    26
+   ],
+   "pivot": [
+    0,
+    2.3,
+    0
+   ],
+   "style": "hazardbar"
+  },
+  {
+   "id": "foot0",
+   "shape": "box",
+   "chamfer": 0.3,
+   "size": [
+    3.4,
+    1.2,
+    3.4
+   ],
+   "pivot": [
+    -12.8,
+    2.6,
+    -12.8
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "leg0",
+   "shape": "box",
+   "chamfer": 0.4,
+   "size": [
+    1.8,
+    25,
+    1.8
+   ],
+   "pivot": [
+    -12.8,
+    15.6,
+    -12.8
+   ],
+   "style": "orange"
+  },
+  {
+   "id": "foot1",
+   "shape": "box",
+   "chamfer": 0.3,
+   "size": [
+    3.4,
+    1.2,
+    3.4
+   ],
+   "pivot": [
+    12.8,
+    2.6,
+    -12.8
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "leg1",
+   "shape": "box",
+   "chamfer": 0.4,
+   "size": [
+    1.8,
+    25,
+    1.8
+   ],
+   "pivot": [
+    12.8,
+    15.6,
+    -12.8
+   ],
+   "style": "orange"
+  },
+  {
+   "id": "foot2",
+   "shape": "box",
+   "chamfer": 0.3,
+   "size": [
+    3.4,
+    1.2,
+    3.4
+   ],
+   "pivot": [
+    12.8,
+    2.6,
+    12.8
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "leg2",
+   "shape": "box",
+   "chamfer": 0.4,
+   "size": [
+    1.8,
+    25,
+    1.8
+   ],
+   "pivot": [
+    12.8,
+    15.6,
+    12.8
+   ],
+   "style": "orange"
+  },
+  {
+   "id": "foot3",
+   "shape": "box",
+   "chamfer": 0.3,
+   "size": [
+    3.4,
+    1.2,
+    3.4
+   ],
+   "pivot": [
+    -12.8,
+    2.6,
+    12.8
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "leg3",
+   "shape": "box",
+   "chamfer": 0.4,
+   "size": [
+    1.8,
+    25,
+    1.8
+   ],
+   "pivot": [
+    -12.8,
+    15.6,
+    12.8
+   ],
+   "style": "orange"
+  },
+  {
+   "id": "rail0",
+   "shape": "box",
+   "chamfer": 0.4,
+   "size": [
+    2,
+    2,
+    28
+   ],
+   "pivot": [
+    -12.8,
+    28.6,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "rail1",
+   "shape": "box",
+   "chamfer": 0.4,
+   "size": [
+    2,
+    2,
+    28
+   ],
+   "pivot": [
+    12.8,
+    28.6,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "bridge",
+   "shape": "box",
+   "chamfer": 0.4,
+   "size": [
+    27.6,
+    1.8,
+    2.6
+   ],
+   "pivot": [
+    0,
+    30.2,
+    2
+   ],
+   "style": "hazardbar"
+  },
+  {
+   "id": "carriage",
+   "shape": "box",
+   "chamfer": 0.5,
+   "size": [
+    4.4,
+    3.2,
+    4.4
+   ],
+   "pivot": [
+    2,
+    27.6,
+    2
+   ],
+   "style": "orange"
+  },
+  {
+   "id": "cable",
+   "shape": "prism",
+   "sides": 6,
+   "size": [
+    0.4,
+    0.4,
+    7.4
+   ],
+   "pivot": [
+    2,
+    26,
+    2
+   ],
+   "offset": [
+    0,
+    0,
+    3.7
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "wrist",
+   "shape": "prism",
+   "sides": 8,
+   "size": [
+    3,
+    3,
+    1.8
+   ],
+   "pivot": [
+    2,
+    18.4,
+    2
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "finger0",
+   "shape": "box",
+   "chamfer": 0.1,
+   "size": [
+    0.6,
+    3,
+    0.6
+   ],
+   "pivot": [
+    3.2,
+    17,
+    2.0
+   ],
+   "rotation": [
+    0.0,
+    0,
+    -18.0
+   ],
+   "style": "enamel"
+  },
+  {
+   "id": "finger1",
+   "shape": "box",
+   "chamfer": 0.1,
+   "size": [
+    0.6,
+    3,
+    0.6
+   ],
+   "pivot": [
+    1.4000000000000004,
+    17,
+    3.0392304845413265
+   ],
+   "rotation": [
+    15.588457268119896,
+    0,
+    8.999999999999996
+   ],
+   "style": "enamel"
+  },
+  {
+   "id": "finger2",
+   "shape": "box",
+   "chamfer": 0.1,
+   "size": [
+    0.6,
+    3,
+    0.6
+   ],
+   "pivot": [
+    1.3999999999999995,
+    17,
+    0.960769515458674
+   ],
+   "rotation": [
+    -15.58845726811989,
+    0,
+    9.000000000000007
+   ],
+   "style": "enamel"
+  },
+  {
+   "id": "benchtop",
+   "shape": "box",
+   "chamfer": 0.3,
+   "size": [
+    16,
+    1.2,
+    10
+   ],
+   "pivot": [
+    0,
+    7.2,
+    1
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "bench",
+   "shape": "box",
+   "chamfer": 0.5,
+   "size": [
+    15,
+    4,
+    9
+   ],
+   "pivot": [
+    0,
+    4.6,
+    1
+   ],
+   "style": "enamel"
+  },
+  {
+   "id": "work",
+   "shape": "prism",
+   "sides": 8,
+   "size": [
+    5,
+    5,
+    3
+   ],
+   "pivot": [
+    2,
+    9.3,
+    2
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "style": "copper"
+  },
+  {
+   "id": "workcap",
+   "shape": "box",
+   "chamfer": 0.3,
+   "size": [
+    4.2,
+    0.8,
+    4.2
+   ],
+   "pivot": [
+    2,
+    11.2,
+    2
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "rack",
+   "shape": "box",
+   "chamfer": 0.4,
+   "size": [
+    6,
+    12,
+    4
+   ],
+   "pivot": [
+    -10,
+    8.6,
+    -10
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "shelf0",
+   "shape": "box",
+   "size": [
+    5.6,
+    0.4,
+    1.6
+   ],
+   "pivot": [
+    -10,
+    5.2,
+    -8.2
+   ],
+   "style": "orange"
+  },
+  {
+   "id": "bin0",
+   "shape": "box",
+   "chamfer": 0.2,
+   "size": [
+    1.6,
+    1.4,
+    1.2
+   ],
+   "pivot": [
+    -11.5,
+    6.2,
+    -8
+   ],
+   "style": "copper"
+  },
+  {
+   "id": "shelf1",
+   "shape": "box",
+   "size": [
+    5.6,
+    0.4,
+    1.6
+   ],
+   "pivot": [
+    -10,
+    8.6,
+    -8.2
+   ],
+   "style": "orange"
+  },
+  {
+   "id": "bin1",
+   "shape": "box",
+   "chamfer": 0.2,
+   "size": [
+    1.6,
+    1.4,
+    1.2
+   ],
+   "pivot": [
+    -10.0,
+    9.6,
+    -8
+   ],
+   "style": "copper"
+  },
+  {
+   "id": "shelf2",
+   "shape": "box",
+   "size": [
+    5.6,
+    0.4,
+    1.6
+   ],
+   "pivot": [
+    -10,
+    12.0,
+    -8.2
+   ],
+   "style": "orange"
+  },
+  {
+   "id": "bin2",
+   "shape": "box",
+   "chamfer": 0.2,
+   "size": [
+    1.6,
+    1.4,
+    1.2
+   ],
+   "pivot": [
+    -8.5,
+    13.0,
+    -8
+   ],
+   "style": "copper"
+  },
+  {
+   "id": "lectern",
+   "shape": "box",
+   "chamfer": 0.4,
+   "size": [
+    4.4,
+    8,
+    4
+   ],
+   "pivot": [
+    10,
+    6.8,
+    -10
+   ],
+   "style": "enamel"
+  },
+  {
+   "id": "desk",
+   "shape": "taper",
+   "size": [
+    4.6,
+    0.8,
+    4.4
+   ],
+   "pivot": [
+    10,
+    11.2,
+    -9.6
+   ],
+   "rotation": [
+    -22,
+    0,
+    0
+   ],
+   "style": "gun"
+  },
+  {
+   "id": "screen",
+   "shape": "box",
+   "size": [
+    3.4,
+    0.3,
+    2.4
+   ],
+   "pivot": [
+    10,
+    11.7,
+    -9.4
+   ],
+   "rotation": [
+    -22,
+    0,
+    0
+   ],
+   "style": "screen"
+  },
+  {
+   "id": "beacon",
+   "shape": "prism",
+   "sides": 8,
+   "size": [
+    1.4,
+    1.4,
+    1.4
+   ],
+   "pivot": [
+    -12.8,
+    30.4,
+    -12.8
+   ],
+   "rotation": [
+    90,
+    0,
+    0
+   ],
+   "style": "amberlamp"
+  },
+  {
+   "id": "lamp2",
+   "shape": "box",
+   "size": [
+    1,
+    1,
+    1
+   ],
+   "pivot": [
+    13,
+    3.6,
+    13
+   ],
+   "style": "amberlamp"
+  }
+ ]
+}

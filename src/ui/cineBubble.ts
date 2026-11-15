@@ -5,8 +5,8 @@
 const CSS = /* css */`
 .bub { position: fixed; left: 0; top: 0; z-index: 4; pointer-events: auto; cursor: pointer; transform-origin: 50% 100%; opacity: 0; will-change: transform, opacity; }
 .bub canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
-.bub .bt { position: relative; font-family: 'VT', monospace; font-size: var(--cf-vt2, 28px); line-height: calc(var(--cf-vt2, 28px) + 2px); color: #1f232b; white-space: pre-wrap; }
-.bub .bn { position: relative; font-family: 'Silk', monospace; font-size: var(--cf-ps1, 11px); line-height: var(--cf-ps1, 11px); color: #6f6858; letter-spacing: 1px; margin-bottom: 4px; }
+.bub .bt { position: relative; font-family: 'Body', monospace; font-size: 22px; line-height: 26px; color: #1f232b; white-space: pre-wrap; -webkit-font-smoothing: none; }
+.bub .bn { position: relative; font-family: 'Body', monospace; font-size: 11px; line-height: 14px; color: #6f6858; letter-spacing: 1px; margin-bottom: 4px; -webkit-font-smoothing: none; }
 .bub .bt .cur { opacity: 0.6; }
 body.cine-on .bub { visibility: hidden; }
 body.cine-on .bub.keep { visibility: visible; z-index: 41; }
@@ -139,8 +139,9 @@ export class SpeechBubble {
     const p = this.place(x, y);
     const lift = (1 - this.alpha) * (this.want ? 10 : -14) * (p.up ? -1 : 1);
     const sc = 0.94 + this.alpha * 0.06;
-    this.el.style.transformOrigin = p.up ? `${p.tip}px 0` : `${p.tip}px 100%`;
-    this.el.style.transform = `translate(${Math.round(p.left)}px, ${Math.round(p.top + lift)}px) rotate(${this.tilt * this.alpha}deg) scale(${sc})`;
+    // whole-pixel placement only: no rotation or scale, so the type stays on its pixel grid
+    void sc;
+    this.el.style.transform = `translate(${Math.round(p.left)}px, ${Math.round(p.top + lift)}px)`;
     this.el.style.opacity = this.alpha.toFixed(3);
   }
   dispose() { this.el.remove(); }

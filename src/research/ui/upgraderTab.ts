@@ -82,8 +82,8 @@ export class UpgraderPage implements TabPage {
     if (b) {
       const k = this.known(b.id), n = U.count(b.id);
       const hd = el('div', '', R); hd.style.cssText = 'display:flex;gap:14px;align-items:center;margin-top:6px';
-      const im = el('img', 'pt-ico', hd); im.src = iconURL(b.icon, n ? 'amber' : 'lit'); im.style.cssText = 'width:72px;height:72px;background:#071209;box-shadow:inset 0 0 0 2px #264a32';
-      const nm = el('div', '', hd); el('div', 'pt-txt big', nm, `<span style="font-family:Jersey;font-size:30px;line-height:30px">${b.name}</span>`);
+      const im = el('img', 'pt-ico', hd); im.src = iconURL(b.icon, n ? 'amber' : 'lit'); im.style.cssText = 'width:96px;height:96px';
+      const nm = el('div', '', hd); el('div', 'pm-det', nm, `<div class="nm">${b.name}</div>`);
       el('div', 'pt-txt dim', nm, `${TARGET_NAME[b.target]} · ${fmtTime(b.time)} on the gantry`);
       el('div', 'pt-txt big', R, b.desc);
       el('div', 'pt-txt pt-plus', R, b.effect);
@@ -113,8 +113,8 @@ export class UpgraderPage implements TabPage {
     g.fillStyle = 'rgba(20, 38, 27, 0.55)';
     for (let x = 0; x < W; x += 24) g.fillRect(x, 0, 1, H);
     for (let y = 0; y < H; y += 24) g.fillRect(0, y, W, 1);
-    g.fillStyle = C.dim; g.font = '11px Superwide'; g.fillText('DWG U07-POD · INSTALL SLOTS · SIDE ELEVATION', 14, 22);
-    g.font = '18px VT'; g.fillText(`${U.list().reduce((s, u) => s + u.n, 0)} UPGRADES FITTED`, 14, 44);
+    g.fillStyle = C.dim; g.font = '24px Title'; g.fillText('DWG U07-POD · INSTALL SLOTS', 14, 26);
+    g.font = '22px Body'; g.fillText(`${U.list().reduce((s, u) => s + u.n, 0)} UPGRADES FITTED`, 14, 52);
     const cx = W / 2, cy = H * 0.5, R = Math.min(W * 0.17, H * 0.26);
     // the pod: an octagonal shell on three legs, hatch on top, lens at the front
     const pulse = 0.5 + 0.5 * Math.sin(t * 5);
@@ -126,7 +126,7 @@ export class UpgraderPage implements TabPage {
     g.fillStyle = C.faint;
     for (let k = -3; k <= 3; k++) g.fillRect(cx + k * R * 0.22, cy - R * 0.62, 1, R * 1.24);
     for (let k = 0; k < 16; k++) { const a = (k / 16) * Math.PI * 2; g.fillRect(cx + Math.cos(a) * R * 0.9 - 1, cy + Math.sin(a) * R * 0.77 - 1, 3, 3); }
-    g.fillStyle = C.dim; g.font = '9px Superwide'; g.textAlign = 'center'; g.fillText('3.80 M', cx, cy + R * 1.5); g.textAlign = 'left';
+    g.fillStyle = C.dim; g.font = '11px Body'; g.textAlign = 'center'; g.fillText('3.80 M', Math.round(cx), Math.round(cy + R * 1.5) + 4); g.textAlign = 'left';
     g.fillRect(cx - R, cy + R * 1.4, R * 2, 1); g.fillRect(cx - R, cy + R * 1.36, 1, 9); g.fillRect(cx + R, cy + R * 1.36, 1, 9);
     for (const s of [-1, 0, 1]) { g.strokeStyle = C.glow; g.lineWidth = 2; g.beginPath(); g.moveTo(cx + s * R * 0.5, cy + R * 0.8); g.lineTo(cx + s * R * 0.95, cy + R * 1.25); g.lineTo(cx + s * R * 1.1, cy + R * 1.25); g.stroke(); }
     g.fillStyle = C.faint; g.fillRect(cx - R * 1.4, cy + R * 1.25, R * 2.8, 2);
@@ -134,7 +134,7 @@ export class UpgraderPage implements TabPage {
     g.strokeStyle = C.hot; g.lineWidth = 2; g.strokeRect(cx + R * 0.55, cy - R * 0.15, R * 0.3, R * 0.3);
     g.fillStyle = 'rgba(185,220,189,0.25)'; g.fillRect(cx + R * 0.6, cy - R * 0.1, R * 0.2, R * 0.2);
     // slots: callouts in two columns at the sides, leader lines to the point on the drawing
-    const bw = Math.min(230, W * 0.22), bh = 36, lxL = 16, lxR = W - 16 - bw;
+    const bw = Math.min(250, Math.round(W * 0.24)), bh = 40, lxL = 16, lxR = W - 16 - bw;
     const slot = (id: string | string[], x: number, y: number, side: -1 | 1, fy: number, label: string, filled: boolean, sub = '') => {
       const ids = Array.isArray(id) ? id : [id], isSel = !!sel && ids.includes(sel.id);
       const col = filled ? C.amber : isSel ? `rgba(236,210,154,${0.5 + pulse * 0.5})` : C.dim;
@@ -144,8 +144,8 @@ export class UpgraderPage implements TabPage {
       g.fillStyle = col; g.fillRect(x - 3, y - 3, 6, 6);
       g.fillStyle = filled ? 'rgba(40,28,8,0.9)' : 'rgba(6,16,10,0.92)'; g.fillRect(bx, by, bw, bh);
       g.strokeStyle = col; g.lineWidth = isSel ? 2 : 1; g.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
-      g.fillStyle = filled ? C.amberHi : isSel ? C.hot : C.ink; g.font = '19px VT'; g.fillText(label, bx + 10, by + 17);
-      g.fillStyle = filled ? C.amber : C.dim; g.font = '9px Superwide'; g.fillText(sub || (filled ? 'FITTED' : 'EMPTY'), bx + 10, by + 30);
+      g.fillStyle = filled ? C.amberHi : isSel ? C.hot : C.ink; g.font = '22px Body'; g.fillText(label, bx + 8, by + 20);
+      g.fillStyle = filled ? C.amber : C.dim; g.font = '11px Body'; g.fillText(sub || (filled ? 'FITTED' : 'EMPTY'), bx + 8, by + 34);
     };
     slot('pod_capacitor', cx, cy - R * 0.55, -1, 0.17, 'CAPACITOR RING', U.has('pod_capacitor'), 'POD CORE');
     slot('pod_plating', cx - R * 0.92, cy - R * 0.36, -1, 0.29, 'POD PLATING', U.has('pod_plating'), 'POD CORE · HULL');
@@ -183,7 +183,7 @@ export class UpgraderPage implements TabPage {
     const busy = this.machines().find((b) => upState(b).job) as any;
     if (busy) {
       const st: UpgraderState = upState(busy), k = st.job!.t / st.job!.time;
-      g.fillStyle = C.amberHi; g.font = '11px Superwide'; g.fillText('GANTRY', 14, H - 40);
+      g.fillStyle = C.amberHi; g.font = '11px Body'; g.fillText('GANTRY', 14, H - 40);
       g.fillStyle = C.faint; g.fillRect(14, H - 30, W - 28, 10);
       g.fillStyle = C.amber; g.fillRect(16, H - 28, (W - 32) * k, 6);
       const hx = 16 + (W - 32) * k; g.fillRect(hx - 2, H - 40, 4, 22);

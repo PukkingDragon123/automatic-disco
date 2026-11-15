@@ -5,6 +5,7 @@
 // chips along edges that get knocked); noise only breaks up a fill by a whisker. Light falls from above.
 import * as THREE from 'three';
 import { Rand, hashStr } from '../../core/rand';
+import { pixWall, pixFloor, pixCap, pixHazard, pixSign, pixPoster, PTHEMES } from './pix';
 
 export type Ctx2 = CanvasRenderingContext2D;
 const cache = new Map<string, THREE.Texture>();
@@ -137,7 +138,8 @@ export const THEMES: Record<string, Theme> = {
 
 // ------------------------------------------------------------------ walls
 /** wall texture: 2 m wide (tiles along u), WALL_H tall mapped once along v. 512 x 1024. */
-export function wallTex(th: Theme, variant = 0) {
+export function wallTex(th: Theme, variant = 0) { return pixWall(PTHEMES[th.key] ?? PTHEMES.corridor, variant % 3); }
+export function wallTexSmooth(th: Theme, variant = 0) {
   return cached(`wall|${th.key}|${variant}`, () => {
     const W = 512, H = 1024, [c, g] = canvas(W, H), r = new Rand(hashStr(th.key) + variant * 77);
     const pxm = H / 3.4, Y = (m: number) => Math.round(H - m * pxm);
@@ -215,7 +217,8 @@ export function wallTex(th: Theme, variant = 0) {
 }
 
 /** a cut-wall cap: the wall's section, dark steel with a lit lip (top face of cut walls) */
-export function capTex() {
+export function capTex() { return pixCap(); }
+export function capTexSmooth() {
   return cached('cap', () => {
     const [c, g] = canvas(256, 32);
     g.fillStyle = rgb(0x24272a); g.fillRect(0, 0, 256, 32);
@@ -226,7 +229,8 @@ export function capTex() {
 }
 
 // ------------------------------------------------------------------ floors (2 m x 2 m per tile, 512 x 512)
-export function floorTex(th: Theme) {
+export function floorTex(th: Theme) { return pixFloor(PTHEMES[th.key] ?? PTHEMES.corridor); }
+export function floorTexSmooth(th: Theme) {
   return cached(`floor|${th.key}`, () => {
     const W = 512, [c, g] = canvas(W, W), r = new Rand(hashStr(th.key + 'f'));
     const A = th.floorA, B = th.floorB;
@@ -350,6 +354,9 @@ export function woodTex(base: number, key: string) {
 
 // ------------------------------------------------------------------ decals with alpha
 export function labelTex(s: string, o: { size?: number; fg?: number; bg?: number; pad?: number; font?: string; border?: number; wear?: number; w?: number; h?: number } = {}) {
+  return pixSign(s, { fg: o.fg, bg: o.bg, size: Math.max(10, Math.round((o.size ?? 48) / 3)), font: o.font, border: o.border });
+}
+export function labelTexSmooth(s: string, o: { size?: number; fg?: number; bg?: number; pad?: number; font?: string; border?: number; wear?: number; w?: number; h?: number } = {}) {
   const key = `label|${s}|${JSON.stringify(o)}`;
   return cached(key, () => {
     const size = o.size ?? 48, pad = o.pad ?? Math.round(size * 0.35);
@@ -366,7 +373,8 @@ export function labelTex(s: string, o: { size?: number; fg?: number; bg?: number
 }
 
 /** hazard stripes (tile along u) */
-export function hazardTex(a = 0xd8a63a, b = 0x1c1b18) {
+export function hazardTex(a = 0xd8a63a, b = 0x1c1b18) { return pixHazard(a, b); }
+export function hazardTexSmooth(a = 0xd8a63a, b = 0x1c1b18) {
   return cached(`haz|${a}|${b}`, () => {
     const [c, g] = canvas(256, 64);
     hazardStripes(g, 0, 0, 256, 64, 64, a, b);
@@ -378,7 +386,8 @@ export function hazardTex(a = 0xd8a63a, b = 0x1c1b18) {
 
 // ------------------------------------------------------------------ posters, signs, photos (the lived-in layer)
 export type PosterKind = 'unaa' | 'safety' | 'earth' | 'band' | 'chart' | 'kid' | 'calendar' | 'pinup' | 'bio' | 'reactor' | 'menu' | 'firstaid' | 'eye' | 'tools';
-export function posterTex(kind: PosterKind, seed = 1) {
+export function posterTex(kind: PosterKind, seed = 1) { return pixPoster(kind, seed); }
+export function posterTexSmooth(kind: PosterKind, seed = 1) {
   return cached(`poster|${kind}|${seed}`, () => {
     const W = 256, H = 352, [c, g] = canvas(W, H), r = new Rand(seed * 31 + kind.length);
     const paper = 0xd8cfb8;

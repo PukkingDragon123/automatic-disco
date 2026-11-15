@@ -16,6 +16,8 @@ import { sfx } from '../../audio/audio';
 const esc = (s: string) => String(s).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]!));
 const ichip = (id: ItemId, on: boolean, n?: number | string, act = '') => `<span class="nm-ichip ${on ? 'on' : ''}" ${act} title="${esc(ITEMS[id]?.name ?? id)}"><img src="${itemIcon(id, 40)}" alt="">${n !== undefined ? n : esc(short(id))}</span>`;
 const num = (path: string, v: number, step = 1) => `<span class="nm-num" data-num="${path}" data-step="${step}"><span data-d="-1">−</span><input value="${v}" inputmode="numeric"><span data-d="1">+</span></span>`;
+/** a ten-segment meter */
+const meter = (v: number, low: boolean) => `<span class="m ${low ? 'low' : ''}">${Array.from({ length: 10 }, (_, i) => `<i class="${i < Math.round(v * 10) ? 'on' : ''}"></i>`).join('')}</span>`;
 const fmt = (n: number) => (n >= 100 ? Math.round(n).toString() : n >= 10 ? n.toFixed(0) : n.toFixed(1).replace(/\.0$/, ''));
 
 export class Panel {
@@ -62,7 +64,7 @@ export class Panel {
     let h = `<div class="nm-h">ROUTE ${String(r.id).padStart(3, '0')}<small>${esc(a.name)} → ${esc(b.name)}</small></div>`;
     h += `<div class="nm-row" style="margin-top:8px"><span class="nm-sw ${r.on ? 'on' : ''}" data-act="r.on">${r.on ? 'RUNNING' : 'SWITCHED OFF'}<span class="lever"></span></span><span style="flex:1"></span><span class="nm-btn red" data-act="r.del">DELETE ROUTE</span></div>`;
     h += `<div class="nm-kv" style="margin-top:8px"><div><div class="k">FLOW</div><div class="v">${fmt(flow)}<small>/MIN</small></div></div><div><div class="k">MOVED</div><div class="v">${r.moved}</div></div><div><div class="k">${r.inflight ? 'IN FLIGHT' : 'STATUS'}</div><div class="v ${r.note && !r.inflight ? 'amb' : ''}">${r.inflight ? r.inflight + ' LOAD' + (r.inflight > 1 ? 'S' : '') : r.note ? esc(r.note) : 'READY'}</div></div></div>`;
-    h += `<canvas class="nm-spark" data-spark="${r.id}" width="400" height="46" style="margin-top:6px"></canvas>`;
+    h += `<canvas class="nm-spark" data-spark="${r.id}" width="246" height="32" style="margin-top:8px"></canvas>`;
     // items
     const offer = new Set<ItemId>([...(isLogic(a.kind) ? [] : L.offers(a)), ...r.filter]);
     if (isLogic(a.kind)) for (const ch of L.chains()) if (ch.path.includes(r)) for (const id of L.offers(ch.src)) offer.add(id);
@@ -108,7 +110,7 @@ export class Panel {
       const c = w.c, j = w.lj;
       const doing = j ? (j.act === 'build' ? `BUILDING ${esc(j.site?.def.name.toUpperCase() ?? '')}` : `${w.carry ? 'CARRYING' : j.act === 'dig' ? 'DIGGING' : j.act === 'harvest' ? 'HARVESTING' : 'FETCHING'} ${esc(short(j.item))} → ${esc(j.dst.name)}`) : w.state === 'eat' ? '<span class="amb">EATING</span>' : w.note ? `<span class="amb">${esc(w.note)}</span>` : JOB_NAME[w.job];
       const mark = act ? `<span class="nm-check ${on(c.id) ? 'on' : ''}" data-act="${act}" data-c="${c.id}">${on(c.id) ? '✓' : ''}</span>` : `<span class="nm-row">${(['haul', 'build', 'idle'] as Job[]).map((jb) => `<span class="nm-btn ${w.job === jb ? 'on' : ''}" data-act="w.job" data-c="${c.id}" data-v="${jb}">${jb === 'idle' ? 'FREE' : jb.toUpperCase()}</span>`).join('')}</span>`;
-      return `<div class="nm-man"><img src="${thumb(c.sp)}" alt=""><div><div class="n">${esc(c.sp.name.toUpperCase())}</div><div class="j">${doing}</div><div class="meters"><span title="fed"><i class="${w.hunger < 0.3 ? 'low' : ''}" style="width:${Math.round(w.hunger * 100)}%"></i></span><span title="mood"><i class="${w.mood < 0.25 ? 'low' : ''}" style="width:${Math.round(w.mood * 100)}%"></i></span><span style="background:none;width:auto;color:var(--ph-6)">CARRIES ${W.cap(c)}</span></div></div>${mark}</div>`;
+      return `<div class="nm-man"><img src="${thumb(c.sp)}" alt=""><div><div class="n">${esc(c.sp.name.toUpperCase())}</div><div class="j pl-s">${doing}</div><div class="meters pl-s">FED ${meter(w.hunger, w.hunger < 0.3)} MOOD ${meter(w.mood, w.mood < 0.25)} CARRIES ${W.cap(c)}</div></div>${mark}</div>`;
     }).join('');
   }
 
@@ -191,7 +193,7 @@ export class Panel {
     const ok = L.unlocked('routes.templates');
     let h = `<div class="nm-h">${ns.length} NODES SELECTED<small>${wires} WIRES BETWEEN THEM</small></div><ul class="nm-list" style="margin-top:8px">${ns.map((n) => `<li data-act="sel.n" data-v="${n.id}"><span>${esc(n.name)}</span><i>${n.kind.toUpperCase()}</i></li>`).join('')}</ul>`;
     h += `<div class="nm-lbl ${ok ? '' : 'lock'}">SAVE AS TEMPLATE <i>${ok ? 'A CHAIN TO LAY AGAIN' : esc(L.lockWhy('routes.templates'))}</i></div>`;
-    if (ok) h += `<div class="nm-row"><span class="bm-search" style="flex:1"><input data-ch="t.name" value="${esc(this.tplName)}" maxlength="28"></span><span class="nm-btn amb" data-act="t.save">SAVE</span></div>`;
+    if (ok) h += `<div class="nm-row"><span class="nm-in pl-ph"><input data-ch="t.name" value="${esc(this.tplName)}" maxlength="24"></span><span class="nm-btn amb" data-act="t.save">SAVE</span></div>`;
     h += `<div class="nm-row" style="margin-top:8px"><span class="nm-btn" data-act="m.clear">CLEAR SELECTION</span></div>`;
     return h;
   }
@@ -293,14 +295,16 @@ export class Panel {
     }
     this.done();
   }
-  /** the last minute of a route's flow, in 10 s bars */
+  /** the last minute of a route's flow, in 10 s bars (art pixels, shown at 2x) */
   private spark(c: HTMLCanvasElement) {
     const r = this.L.routes.find((x) => x.id === Number(c.dataset.spark)); if (!r) return;
     const g = c.getContext('2d')!, W = c.width, H = c.height, h = [...r.hist].reverse(), mx = Math.max(4, ...h);
     g.clearRect(0, 0, W, H);
-    g.strokeStyle = 'rgba(74,132,87,0.25)'; for (let y = 0; y < H; y += 10) { g.beginPath(); g.moveTo(0, y + 0.5); g.lineTo(W, y + 0.5); g.stroke(); }
-    const bw = W / h.length;
-    h.forEach((v, i) => { const bh = (v / mx) * (H - 12); g.fillStyle = i === h.length - 1 ? '#d9a43a' : '#4a8457'; g.fillRect(i * bw + 3, H - bh - 2, bw - 6, bh); });
-    g.fillStyle = '#336240'; g.font = '12px VT, monospace'; g.fillText('LAST 60 S · ITEMS PER 10 S', 6, 12);
+    g.fillStyle = '#0a110d'; g.fillRect(0, 0, W, H);
+    g.fillStyle = '#336240'; g.fillRect(0, 0, W, 1); g.fillRect(0, H - 1, W, 1); g.fillRect(0, 0, 1, H); g.fillRect(W - 1, 0, 1, H);
+    for (let y = 6; y < H - 1; y += 6) for (let x = 2; x < W - 2; x += 3) { g.fillStyle = '#14261b'; g.fillRect(x, y, 1, 1); }
+    const bw = Math.floor((W - 4) / h.length);
+    h.forEach((v, i) => { const bh = Math.round((v / mx) * (H - 16)); g.fillStyle = i === h.length - 1 ? '#d9a43a' : '#4a8457'; g.fillRect(3 + i * bw, H - 2 - bh, bw - 3, bh); });
+    g.font = '11px Body, monospace'; g.textBaseline = 'top'; g.fillStyle = '#4a8457'; g.fillText('LAST 60 S · PER 10 S', 4, 2);
   }
 }

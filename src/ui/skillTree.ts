@@ -11,7 +11,7 @@ import { MasteryPage, type TabPage } from './skillMastery';
 import { ResearchPage } from '../research/ui/researchTab';
 import { UpgraderPage } from '../research/ui/upgraderTab';
 import { MissionPage } from '../research/ui/missionTab';
-import { iconURL } from '../research/ui/icons';
+import { iconURL, iconsReady } from '../research/ui/icons';
 import { DATA_KINDS, DATA_NAME } from '../research/tech';
 import type { Mastery, PathId } from '../research/mastery';
 import type { Research } from '../research/research';
@@ -19,6 +19,7 @@ import type { Upgrades } from '../research/upgrades';
 import type { Mission } from '../research/mission';
 import { fmtTime, gtime } from '../research/util';
 import type { Game } from '../game/game';
+import { installHardware } from '../research/ui/hardware';
 import '../research/ui/terminal.css';
 import '../story/choice.css';
 
@@ -39,6 +40,7 @@ export class SkillTree implements Screen {
   private tabBtns = new Map<TabId, HTMLElement>(); private t = 0; private footT = 0;
   constructor(readonly host: SkillHost, opts: { tab?: TabId; path?: PathId; close: () => void }) {
     SkillTree.current = this;
+    installHardware();
     this.close = opts.close;
     this.root = el('div', 'pt', ui());
     const house = el('div', 'pt-house', this.root);
@@ -48,7 +50,7 @@ export class SkillTree implements Screen {
     for (const tb of TABS) {
       const b = el('div', 'pt-tab', this.tabsEl);
       const im = el('img', 'pt-ico', b); im.src = iconURL(tb.icon, 'steel');
-      const tx = el('div', '', b); el('div', 'n', tx, `KEY ${tb.key}`); el('div', '', tx, tb.name);
+      const tx = el('div', '', b); el('div', 'n', tx, `KEY ${tb.key}`); el('div', 'l', tx, tb.name);
       el('div', 'dot', b);
       b.addEventListener('click', () => this.show(tb.id));
       this.tabBtns.set(tb.id, b);
@@ -63,6 +65,8 @@ export class SkillTree implements Screen {
     addEventListener('keydown', this.onKey, true);
     this.tab = opts.tab ?? 'mastery';
     this.show(this.tab, opts.path, true);
+    // the lowpix icon atlas arrives a moment later: rebuild the open page and the tab keys with it
+    void iconsReady.then(() => { if (SkillTree.current !== this) return; for (const [k, b] of this.tabBtns) { const im = b.querySelector('img'); const tb = TABS.find((q) => q.id === k); if (im && tb) im.src = iconURL(tb.icon, 'steel'); } if (this.tab !== 'mastery') this.show(this.tab, undefined, true); });
     csfx('relay', 0.7); csfx('hum', 0.35);
   }
   readonly close: () => void;
@@ -96,9 +100,9 @@ export class SkillTree implements Screen {
   };
   private footer() {
     const H = this.host, R = H.research, M = H.mission, f = this.foot; f.innerHTML = '';
-    if (R) for (const k of DATA_KINDS) el('div', 'res', f, `${DATA_NAME[k]} <b>${Math.floor(R.data[k])}</b>`);
-    if (H.mastery) { const pts = (['plant', 'bio', 'energy', 'industry', 'robotics'] as PathId[]).reduce((s, p) => s + Math.max(0, H.mastery!.points(p)), 0); el('div', 'res', f, `MASTERY POINTS <b>${pts}</b>`); }
-    if (M) el('div', 'res', f, `STRIKES <b>${M.strikes}/3</b> &nbsp; REP <b>${Math.round(M.rep)}</b>`);
+    if (R) for (const k of DATA_KINDS) el('div', 'pt-rd', f, `<span class="k">${DATA_NAME[k]}</span><b>${String(Math.floor(R.data[k])).padStart(3, '0')}</b>`);
+    if (H.mastery) { const pts = (['plant', 'bio', 'energy', 'industry', 'robotics'] as PathId[]).reduce((s, p) => s + Math.max(0, H.mastery!.points(p)), 0); el('div', 'pt-rd am', f, `<span class="k">POINTS</span><b>${pts}</b>`); }
+    if (M) el('div', 'pt-rd' + (M.strikes >= 2 ? ' am' : ''), f, `<span class="k">STRIKES</span><b>${M.strikes}/3</b><span class="k">REP</span><b>${Math.round(M.rep)}</b>`);
     el('div', 'hint', f, `<b>1-4</b> TABS &nbsp;·&nbsp; <b>Q E</b> PAGE &nbsp;·&nbsp; <b>ENTER</b> CONFIRM &nbsp;·&nbsp; <b>K</b> CLOSE`);
     // the tab lamps: something waiting on that tab
     const pend: Record<TabId, boolean> = {
@@ -110,7 +114,7 @@ export class SkillTree implements Screen {
     for (const [k, b] of this.tabBtns) b.querySelector('.dot')?.classList.toggle('on', pend[k]);
     const G = H as unknown as Game, now = H.world ? gtime(G) : 0;
     const day = Math.floor(now / 600) + 1, open = M?.open?.()[0];
-    this.clock.innerHTML = `SOL <b>${String(day).padStart(2, '0')}</b> · ${fmtTime(now % 600)}<br>${open ? `NEXT DUE <b>${fmtTime(open.due - now)}</b>` : 'NO DIRECTIVE OPEN'}`;
+    this.clock.innerHTML = `<div class="pt-rd"><span class="k">SOL</span><b>${String(day).padStart(2, '0')}</b><b>${fmtTime(now % 600)}</b></div><div class="pt-rd${open && open.due - now < 120 ? ' am' : ''}"><span class="k">DUE</span><b>${open ? fmtTime(open.due - now) : '--:--'}</b></div>`;
   }
   update(dt: number) {
     this.t += dt; this.footT -= dt;

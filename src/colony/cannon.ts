@@ -9,7 +9,7 @@ import type { Arm } from './arms';
 import { sfx } from '../audio/audio';
 import { vfx2d } from '../game/vfx2d';
 import { clamp, damp } from '../core/rand';
-import { hudCanvas } from './tex';
+import { Pix, R, fontText, textWidth } from '../ui/desk/pxPanel';
 
 interface Shell { p: THREE.Vector3; v: THREE.Vector3; t: number; dmg: number }
 const G = 9.8, V0 = 78;
@@ -137,49 +137,60 @@ export class CannonView {
     (g.world.terrain as unknown as { scorch?(x: number, z: number, r: number, k?: number): void }).scorch?.(x, z, 2, 0.9);
     g.emit('cannon-hit', { x, z, kills });
   }
-  /** the sight: reticle, mil ticks, range, bearing tape, elevation, charge, the predicted fall */
+  private labels = new Map<string, HTMLCanvasElement>();
+  /** a label as hard pixels in the house face (cached) */
+  private label(t: string, col: number) { const k = t + col; let c = this.labels.get(k); if (!c) { const w = textWidth(t) + 4, p = new Pix(w, 15); fontText(p, t, 1, 1, col, { shadow: R.ink[0] }); c = p.canvas(); this.labels.set(k, c); if (this.labels.size > 300) this.labels.clear(); } return c; }
+  /** the sight, drawn in art pixels (half the screen's resolution, shown 2x): a broken reticle ring, a chevron,
+   *  stadia ticks, a bearing tape, an elevation ladder, eight capacitor cells, the predicted fall; the tube's edge
+   *  is three stepped bands of shade, never a gradient */
   private draw() {
     const cv = this.cv, g2 = this.g2, a = this.arm; if (!cv || !g2 || !a) return;
-    const dpr = Math.min(2, devicePixelRatio || 1), W = innerWidth, H = innerHeight;
-    if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
-    g2.setTransform(dpr, 0, 0, dpr, 0, 0); g2.clearRect(0, 0, W, H);
-    const cx = W / 2, cy = H / 2 + H * 0.06, ph = '#9fe0a8', amb = '#e0b050', red = '#e0604a';
-    g2.lineWidth = 1.5; g2.strokeStyle = ph; g2.fillStyle = ph; g2.font = "16px 'VT', monospace"; g2.textBaseline = 'middle';
-    // the vignette of the sight's tube
-    const grd = g2.createRadialGradient(cx, cy, Math.min(W, H) * 0.32, cx, cy, Math.max(W, H) * 0.75); grd.addColorStop(0, 'rgba(0,0,0,0)'); grd.addColorStop(1, 'rgba(4,8,6,0.78)'); g2.fillStyle = grd; g2.fillRect(0, 0, W, H); g2.fillStyle = ph;
-    // reticle: a broken ring, a chevron, stadia ticks
-    g2.beginPath(); for (let i = 0; i < 4; i++) { const a0 = i * Math.PI / 2 + 0.25; g2.moveTo(cx + Math.cos(a0) * 70, cy + Math.sin(a0) * 70); g2.arc(cx, cy, 70, a0, a0 + Math.PI / 2 - 0.5); } g2.stroke();
-    g2.beginPath(); g2.moveTo(cx - 12, cy + 12); g2.lineTo(cx, cy); g2.lineTo(cx + 12, cy + 12); g2.stroke();
-    for (let i = -6; i <= 6; i++) { if (!i) continue; const L = i % 2 ? 6 : 12; g2.beginPath(); g2.moveTo(cx + i * 22, cy - L); g2.lineTo(cx + i * 22, cy + L); g2.stroke(); }
-    for (let i = 1; i <= 5; i++) { g2.beginPath(); g2.moveTo(cx - (i % 2 ? 8 : 16), cy + i * 26); g2.lineTo(cx + (i % 2 ? 8 : 16), cy + i * 26); g2.stroke(); g2.fillText(String(i * 100), cx + 22, cy + i * 26); }
-    // bearing tape across the top
+    const W = Math.ceil(innerWidth / 2), H = Math.ceil(innerHeight / 2);
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; cv.style.imageRendering = 'pixelated'; }
+    g2.setTransform(1, 0, 0, 1, 0, 0); g2.imageSmoothingEnabled = false; g2.clearRect(0, 0, W, H);
+    const hx = (c: number) => '#' + c.toString(16).padStart(6, '0');
+    const PH = R.malachite[5], PH2 = R.malachite[3], AMB = R.ochre[5], RED = R.coral[5];
+    const px = (x: number, y: number, c: number) => { g2.fillStyle = hx(c); g2.fillRect(Math.round(x), Math.round(y), 1, 1); };
+    const rect = (x: number, y: number, w: number, h: number, c: number) => { g2.fillStyle = hx(c); g2.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };
+    const line = (x0: number, y0: number, x1: number, y1: number, c: number) => { x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1); const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1; let e = dx + dy; g2.fillStyle = hx(c); for (;;) { g2.fillRect(x0, y0, 1, 1); if (x0 === x1 && y0 === y1) break; const e2 = 2 * e; if (e2 >= dy) { e += dy; x0 += sx; } if (e2 <= dx) { e += dx; y0 += sy; } } };
+    const text = (t: string, x: number, y: number, c: number, align: 'l' | 'c' | 'r' = 'l') => { const l = this.label(t, c); g2.drawImage(l, Math.round(align === 'c' ? x - l.width / 2 : align === 'r' ? x - l.width : x), Math.round(y)); };
+    const cx = Math.round(W / 2), cy = Math.round(H / 2 + H * 0.06);
+    // the tube: stepped bands
+    const R0 = Math.min(W, H) * 0.42;
+    for (let y = 0; y < H; y += 1) { const dy = y - cy; for (const [k, al] of [[1.0, 0.35], [1.12, 0.55], [1.26, 0.82]] as [number, number][]) { const r = R0 * k; if (Math.abs(dy) < r) { const dx = Math.sqrt(r * r - dy * dy); g2.fillStyle = `rgba(19,22,28,${al})`; if (k === 1) { g2.fillRect(0, y, Math.max(0, cx - dx), 1); g2.fillRect(cx + dx, y, W, 1); } } else if (k === 1) { g2.fillStyle = 'rgba(19,22,28,0.82)'; g2.fillRect(0, y, W, 1); } } }
+    // reticle ring (broken in four), shadowed one pixel down-right
+    const rr = 35;
+    for (let i = 0; i < 360; i++) { const an = (i / 360) * Math.PI * 2; if ((i + 15) % 90 < 30) continue; px(cx + Math.cos(an) * rr + 1, cy + Math.sin(an) * rr + 1, R.ink[0]); px(cx + Math.cos(an) * rr, cy + Math.sin(an) * rr, PH); }
+    line(cx - 6, cy + 6, cx, cy, PH); line(cx, cy, cx + 6, cy + 6, PH); px(cx, cy, R.malachite[6]);
+    for (let i = -6; i <= 6; i++) { if (!i) continue; const L = i % 2 ? 3 : 6; rect(cx + i * 11, cy - L, 1, L * 2 + 1, PH2); }
+    for (let i = 1; i <= 5; i++) { const L = i % 2 ? 4 : 8; rect(cx - L, cy + i * 13, L * 2 + 1, 1, PH2); text(String(i * 100), cx + 11, cy + i * 13 - 7, PH2); }
+    // bearing tape
     const brg = ((((-this.yaw * 180) / Math.PI) % 360) + 360) % 360;
-    g2.save(); g2.beginPath(); g2.rect(cx - 260, 96, 520, 40); g2.clip();
-    for (let d = Math.floor(brg / 5) * 5 - 60; d <= brg + 60; d += 5) { const x = cx + (d - brg) * 4.3; g2.beginPath(); g2.moveTo(x, 100); g2.lineTo(x, d % 15 ? 108 : 116); g2.stroke(); if (d % 15 === 0) { g2.textAlign = 'center'; g2.fillText(String(((d % 360) + 360) % 360).padStart(3, '0'), x, 126); } }
-    g2.restore(); g2.textAlign = 'center'; g2.beginPath(); g2.moveTo(cx, 92); g2.lineTo(cx - 6, 84); g2.lineTo(cx + 6, 84); g2.closePath(); g2.fill();
-    // elevation ladder on the left
+    rect(cx - 131, 46, 263, 1, PH2);
+    for (let d = Math.floor(brg / 5) * 5 - 60; d <= brg + 60; d += 5) { const x = Math.round(cx + (d - brg) * 2.15); if (x < cx - 130 || x > cx + 130) continue; rect(x, 47, 1, d % 15 ? 3 : 6, PH2); if (d % 15 === 0) text(String(((d % 360) + 360) % 360).padStart(3, '0'), x, 55, PH, 'c'); }
+    rect(cx - 1, 40, 3, 4, AMB); px(cx, 44, AMB);
+    // elevation ladder
     const el = (this.pitch * 180) / Math.PI;
-    g2.textAlign = 'right'; g2.fillText(`ELV ${el >= 0 ? '+' : ''}${el.toFixed(1)}°`, 210, cy);
-    for (let k = -4; k <= 8; k++) { const y = cy - (k * 5 - el) * 6; if (y < 160 || y > H - 160) continue; g2.beginPath(); g2.moveTo(222, y); g2.lineTo(k % 2 ? 232 : 244, y); g2.stroke(); }
-    // the predicted fall: a diamond over the impact point with its range
+    text(`ELV ${el >= 0 ? '+' : ''}${el.toFixed(1)}`, 104, cy - 7, PH, 'r');
+    for (let k = -4; k <= 8; k++) { const y = Math.round(cy - (k * 5 - el) * 3); if (y < 80 || y > H - 80) continue; rect(110, y, k % 2 ? 4 : 8, 1, PH2); }
+    // the predicted fall
     if (this.impactOk) {
-      const p = this.impact.clone().project(this.c.g.cam.cam);
-      if (p.z < 1) {
-        const sx = (p.x * 0.5 + 0.5) * W, sy = (-p.y * 0.5 + 0.5) * H, rng = Math.hypot(this.impact.x - this.c.pod.x, this.impact.z - this.c.pod.z);
-        g2.strokeStyle = amb; g2.fillStyle = amb; g2.beginPath(); g2.moveTo(sx, sy - 12); g2.lineTo(sx + 12, sy); g2.lineTo(sx, sy + 12); g2.lineTo(sx - 12, sy); g2.closePath(); g2.stroke();
-        g2.textAlign = 'left'; g2.fillText(`IMPACT ${rng.toFixed(0)} M`, sx + 18, sy - 2);
-        let hostile = false; this.c.g.world.near(this.impact.x, this.impact.z, 4.2, (c) => { if (!c.dead && c.faction !== 'veyr') hostile = true; });
-        if (hostile) { g2.fillStyle = red; g2.fillText('TARGET IN BLAST', sx + 18, sy + 16); }
+      const pp = this.impact.clone().project(this.c.g.cam.cam);
+      if (pp.z < 1) {
+        const sx = Math.round((pp.x * 0.5 + 0.5) * W), sy = Math.round((-pp.y * 0.5 + 0.5) * H), rng = Math.hypot(this.impact.x - this.c.pod.x, this.impact.z - this.c.pod.z);
+        line(sx, sy - 6, sx + 6, sy, AMB); line(sx + 6, sy, sx, sy + 6, AMB); line(sx, sy + 6, sx - 6, sy, AMB); line(sx - 6, sy, sx, sy - 6, AMB);
+        text(`IMPACT ${rng.toFixed(0)} M`, sx + 10, sy - 9, AMB);
+        let hostile = false; this.c.g.world.near(this.impact.x, this.impact.z, 4.2, (cc) => { if (!cc.dead && cc.faction !== 'veyr') hostile = true; });
+        if (hostile) text('TARGET IN BLAST', sx + 10, sy + 3, RED);
       }
     }
-    // capacitor bank on the right: eight cells filling
-    g2.textAlign = 'left'; g2.fillStyle = ph; g2.strokeStyle = ph;
-    const bx = W - 250; g2.fillText(this.charge >= 1 ? 'CAPACITORS · READY' : 'CAPACITORS · CHARGING', bx, cy - 40);
-    for (let i = 0; i < 8; i++) { const on = this.charge * 8 > i + 0.5; g2.strokeRect(bx + i * 24, cy - 24, 18, 34); if (on) g2.fillRect(bx + i * 24 + 3, cy - 21, 12, 28); }
-    if (!this.c.vitals.powerOk) { g2.fillStyle = red; g2.fillText('NO POWER', bx, cy + 30); }
-    g2.fillStyle = ph; g2.fillText(`ZOOM ${(46 / this.fov).toFixed(1)}×`, bx, cy + 54);
-    if (this.flashT > 0) { g2.fillStyle = `rgba(220,240,255,${(this.flashT * 1.4).toFixed(2)})`; g2.fillRect(0, 0, W, H); }
+    // capacitors
+    const bx = W - 128;
+    text(this.charge >= 1 ? 'CAPACITORS READY' : 'CHARGING', bx, cy - 26, this.charge >= 1 ? PH : AMB);
+    for (let i = 0; i < 8; i++) { const on = this.charge * 8 > i + 0.5; rect(bx + i * 12, cy - 10, 9, 17, R.ink[0]); rect(bx + i * 12 + 1, cy - 9, 7, 15, R.malachite[0]); if (on) { rect(bx + i * 12 + 2, cy - 8, 5, 13, PH); rect(bx + i * 12 + 2, cy - 8, 5, 1, R.malachite[6]); } }
+    if (!this.c.vitals.powerOk) text('NO POWER', bx, cy + 12, RED);
+    text(`ZOOM ${(46 / this.fov).toFixed(1)}X`, bx, cy + 26, PH2);
+    if (this.flashT > 0) { g2.fillStyle = `rgba(233,230,220,${Math.min(0.9, this.flashT * 1.4).toFixed(2)})`; g2.fillRect(0, 0, W, H); }
   }
   dispose() { this.exit(); this.shells = []; }
 }
-void hudCanvas;

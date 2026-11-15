@@ -293,7 +293,8 @@ export class Forge implements Screen {
     if (m === 'fit') {
       const slots = slotsFor(this.d.plan);
       if (!slots.includes(this.slot)) this.slot = slots[0];
-      this.L.targetGoal.set(0.25, 1.8, 0); if (this.L.distGoal > 8) this.L.distGoal = 7.6;
+      // a wide shot of the bay: the drained tank, both arms, the screens over the bench line
+      this.L.targetGoal.set(0, 1.95, -0.6); this.L.distGoal = 10.2; this.L.pitchGoal = 0.1; this.L.yawGoal = 0.05;
       this.L.speak(0, 'idle', true);
     } else this.openTab('genome', false);
     this.refresh();
@@ -545,4 +546,15 @@ export function openLab(engine: Engine, game: Game, base: Species | null = null)
     engine.pop();
     if (res) game.addDesign(res.design, res.parent, cost(res.design));
   }, { emit: (ev, d) => game.emit(ev, d) }));
+}
+
+/**
+ * Open the lab from anywhere (the ship hub's LAB room calls this from its tank prop): pushes the lab screen over the
+ * current one and pops it when the player leaves or files a design. `fit` opens straight into the fitting bay;
+ * `stock` / `spend` plug in the stores (the bill of real items); `done` receives the filed design (or null).
+ */
+export function openLabScreen(engine: Engine, run: Run, o: { fit?: boolean; base?: Species | null; vaults?: number; helix?: () => number; stock?: (item: string) => number; spend?: (cost: Record<string, number>) => boolean; emit?: (ev: string, data: unknown) => void; done?: (r: ForgeResult | null) => void } = {}) {
+  const lab = new Forge(run, o.vaults ?? 0, o.helix ?? (() => 999), o.base ?? null, (res) => { engine.pop(); o.done?.(res); }, { emit: o.emit, stock: o.stock, spend: o.spend, fit: o.fit });
+  engine.push(lab);
+  return lab;
 }

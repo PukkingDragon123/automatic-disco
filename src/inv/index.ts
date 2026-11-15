@@ -5,6 +5,7 @@ import type { Game } from '../game/game';
 import { registerContainers } from './buildings';
 import { attachStorage, type Storage } from './storage';
 import { ContainerRender } from './render';
+import { preloadContainerModels } from './models';
 import { invUI } from '../ui/crates/grid';
 import { CrateHud } from '../ui/crates/hud';
 import { StoresTutorial } from '../ui/crates/tutorial';
@@ -14,6 +15,7 @@ export function installInventory(g: Game, o: { hud?: boolean } = {}): Inventory 
   const gg = g as unknown as { inventory?: Inventory };
   if (gg.inventory) return gg.inventory;
   registerContainers();
+  preloadContainerModels();
   const storage = attachStorage(g);
   const render = new ContainerRender(g, storage);
   const ui = invUI(g)!;

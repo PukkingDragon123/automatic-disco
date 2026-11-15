@@ -170,7 +170,7 @@ export function buildInterior(bin: Bin, M: Mats, onRoom?: (id: RoomId, c: Ctx) =
     const cx = (r.x0 + r.x1) / 2, cz = (r.z0 + r.z1) / 2;
     const L = new THREE.PointLight(r.light, 0, Math.max(r.x1 - r.x0, r.z1 - r.z0) * 1.6, 1.4);
     L.position.set(cx + 0.4, 3.1, cz); rr.add(L);
-    const baseK = 26 * r.lightK;
+    const baseK = 15 * r.lightK;
     L.intensity = baseK;
     // floor pick box and the hover glow
     const bounds = new THREE.Box3(new V3(r.x0, 0, r.z0), new V3(r.x1, WALL_H, r.z1));

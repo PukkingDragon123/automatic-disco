@@ -5,7 +5,8 @@ import { el } from './kit';
 import { sfx } from '../audio/audio';
 import { csfx } from './cineAudio';
 import { PATHS, PATH, SUBS, SUB, PERKS, PERK, TIER_LV, FOCUS_LV, LV_XP, MAX_LV, type PathId, type Perk, type Mastery } from '../research/mastery';
-import { iconCanvas, iconURL, type PalKey } from '../research/ui/icons';
+import { iconCanvas, iconURL, iconsReady, type PalKey } from '../research/ui/icons';
+import { nodeFrame, installHardware } from '../research/ui/hardware';
 
 export interface TabPage { el: HTMLElement; update(dt: number): void; dispose(): void; key?(e: KeyboardEvent): boolean }
 type NodeSt = 'owned' | 'ready' | 'short' | 'locked' | 'barred';
@@ -24,6 +25,7 @@ export class MasteryPage implements TabPage {
   private ro: ResizeObserver;
   constructor(readonly M: Mastery, path?: PathId, private onChange?: () => void) {
     this.path = path ?? PATHS.reduce((b, p) => (M.points(p) > M.points(b) ? p : b), 'plant' as PathId);
+    installHardware();
     this.el = el('div', 'pt-page pm');
     this.list = el('div', 'pt-col', this.el);
     this.treeBox = el('div', 'pm-tree', this.el);
@@ -34,8 +36,9 @@ export class MasteryPage implements TabPage {
     this.cv.addEventListener('click', (e) => { const h = this.hit(e); if (h?.startsWith('focus:')) { if (M.setFocus(this.path, h.slice(6))) { csfx('thud', 1, 0.8); sfx('done'); this.drawList(); this.drawDet(); this.onChange?.(); } return; } if (!h) { this.sel = null; this.drawDet(); this.draw(); return; } if (this.sel === h && !M.why(h)) { this.take(h); return; } this.sel = h; sfx('click'); this.drawDet(); this.draw(); });
     this.cv.addEventListener('dblclick', (e) => { const h = this.hit(e); if (h) this.take(h); });
     this.ro = new ResizeObserver(() => this.resize()); this.ro.observe(this.treeBox);
-    void document.fonts?.load?.('20px VT').then(() => this.draw());
+    void Promise.all(['22px Body', '24px Title', '32px TitleL', '48px Title'].map((f) => document.fonts?.load?.(f))).then(() => this.draw());
     this.drawList(); this.drawDet();
+    void iconsReady.then(() => { this.drawList(); this.drawDet(); this.draw(); });
   }
   private resize() {
     const r = this.treeBox.getBoundingClientRect(); this.dpr = Math.max(1, Math.min(2, devicePixelRatio || 1));
@@ -82,17 +85,17 @@ export class MasteryPage implements TabPage {
       const d = PATH[p], lv = M.level(p), pts = M.points(p), f = M.focus(p);
       const c = el('div', 'pm-path' + (p === this.path ? ' on' : ''), this.list);
       const img = el('img', 'pt-ico', c); img.src = iconURL(d.icon, p === this.path ? 'lit' : 'phos');
-      el('div', 'nm', c, d.name);
-      el('div', 'lv', c, `<small>LV</small>${lv}`);
+      el('div', 'nm', c, d.short);
+      el('div', 'lv', c, `LV ${lv}`);
       const bar = el('div', 'pt-bar', c); el('i', '', bar).style.width = `calc(${(lv >= MAX_LV ? 1 : M.frac(p)) * 100}% - 4px)`;
       el('div', 'sub', c, `<span>${f ? 'FOCUS ' + SUB[f].name : lv >= FOCUS_LV ? '<span class="pt-amb">FOCUS UNCHOSEN</span>' : Math.floor(M.xp(p)) + ' / ' + (LV_XP[Math.min(MAX_LV, lv + 1)]) + ' XP'}</span><span class="pts">${pts > 0 ? pts + ' PT' + (pts > 1 ? 'S' : '') : ''}</span>`);
       c.addEventListener('click', () => this.setPath(p));
     }
     const tot = PATHS.reduce((s, p) => s + M.level(p), 0);
     const b = el('div', 'pt-box', this.list);
-    el('div', 'pt-txt dim', b, `Every level is one point on its own path. A path tops out at ${MAX_LV} points; one sub-specialty costs 8 to finish.`);
-    el('div', 'pt-txt', b, `At level ${FOCUS_LV} a path asks for a FOCUS. The other two lose tiers III and IV.`).style.marginTop = '8px';
-    el('div', 'pt-log', b, `<span>TOTAL MASTERY</span><b>${tot} / ${MAX_LV * PATHS.length}</b>`).style.marginTop = '8px';
+    el('div', 'pt-txt', b, `1 point per level`);
+    el('div', 'pt-txt', b, `Focus at level ${FOCUS_LV}`);
+    el('div', 'pt-txt dim', b, `Mastery ${tot} / ${MAX_LV * PATHS.length}`);
   }
 
   // ---------------------------------------------------------------- right: the card
@@ -102,7 +105,7 @@ export class MasteryPage implements TabPage {
     const s = this.st(p);
     el('div', 'pt-h', this.det, `TIER ${ROMAN[p.tier]} · ${SUB[p.sub].name}${p.tier === 4 ? ' · CAPSTONE' : ''}`);
     const head = el('div', 'head', this.det);
-    const cv = el('canvas', '', head); cv.width = 96; cv.height = 96; const g = cv.getContext('2d')!; g.imageSmoothingEnabled = false; g.fillStyle = C.bg; g.fillRect(0, 0, 96, 96); g.drawImage(iconCanvas(p.icon, s === 'owned' ? 'lit' : s === 'locked' || s === 'barred' ? 'dim' : 'phos'), 0, 0, 96, 96);
+    const cv = el('canvas', '', head); cv.width = 96; cv.height = 96; const g = cv.getContext('2d')!; g.imageSmoothingEnabled = false; g.drawImage(iconCanvas(p.icon, s === 'owned' ? 'lit' : s === 'locked' || s === 'barred' ? 'dim' : 'phos'), 0, 0, 96, 96);
     const hh = el('div', '', head); el('div', 'nm', hh, p.name); el('div', 'k', hh, `${PATH[p.path].name} · ${p.cost} POINT${p.cost > 1 ? 'S' : ''}`);
     el('div', 'pt-txt big', this.det, p.desc);
     const box = el('div', 'pt-box', this.det);
@@ -145,21 +148,21 @@ export class MasteryPage implements TabPage {
     const lv = M.level(this.path), d = PATH[this.path], f = M.focus(this.path);
     // header
     g.textBaseline = 'alphabetic';
-    g.fillStyle = C.hot; g.font = '34px Jersey'; g.fillText(d.name, 12, 36);
-    g.fillStyle = C.dim; g.font = '19px VT'; g.fillText(d.motto, 12, 58);
-    g.textAlign = 'right'; g.fillStyle = C.hot; g.font = '40px VT'; g.fillText(`LV ${lv}`, W - 12, 38);
+    g.fillStyle = C.hot; g.font = '32px TitleL'; g.fillText(d.name, 12, 34);
+    g.fillStyle = C.dim; g.font = '22px Body'; g.fillText(d.motto, 12, 60);
+    g.textAlign = 'right'; g.fillStyle = C.hot; g.font = '48px Title'; g.fillText(`LV ${lv}`, W - 12, 40);
     const pts = M.points(this.path);
-    g.font = '12px Superwide'; g.fillStyle = pts > 0 ? C.amberHi : C.dim; g.fillText(pts > 0 ? `${pts} POINT${pts > 1 ? 'S' : ''} TO SPEND` : 'NO POINTS', W - 12, 58);
+    g.font = '22px Body'; g.fillStyle = pts > 0 ? C.amberHi : C.dim; g.fillText(pts > 0 ? `${pts} POINT${pts > 1 ? 'S' : ''} TO SPEND` : 'NO POINTS', W - 12, 64);
     g.textAlign = 'left';
     const canF = M.canFocus(this.path);
-    if (canF) { const k = 0.6 + 0.4 * Math.sin(t * 4); g.fillStyle = `rgba(236, 210, 154, ${k})`; g.font = '11px Superwide'; g.fillText('CHOOSE A FOCUS BELOW · THE OTHER TWO LOSE TIERS III AND IV · PERMANENT', 12, 80); }
+    if (canF) { const k = 0.6 + 0.4 * Math.sin(t * 4); g.fillStyle = k > 0.8 ? C.amberHi : C.amber; g.font = '22px Body'; g.fillText('CHOOSE A FOCUS: THE OTHER TWO LOSE TIERS III AND IV', 12, 88); }
     const top = 172, rail = 74, colW = (W - rail - 10) / 3, rowH = (H - top - 8) / 4;
     // tier rails and level gates
     for (let tr = 1 as 1 | 2 | 3 | 4; tr <= 4; tr = (tr + 1) as 1 | 2 | 3 | 4) {
       const y0 = top + (tr - 1) * rowH, reached = lv >= TIER_LV[tr];
-      if (!reached) { g.fillStyle = 'rgba(2, 6, 4, 0.55)'; g.fillRect(rail, y0, W - rail, rowH); for (let k = -H; k < W; k += 14) { g.strokeStyle = 'rgba(20, 38, 27, 0.45)'; g.lineWidth = 1; g.beginPath(); g.moveTo(rail + k, y0 + rowH); g.lineTo(rail + k + rowH, y0); g.stroke(); } }
-      g.fillStyle = reached ? C.glow : C.faint; g.font = '28px VT'; g.fillText(ROMAN[tr], 14, y0 + rowH / 2);
-      g.font = '10px Superwide'; g.fillText(`LV ${TIER_LV[tr]}`, 14, y0 + rowH / 2 + 18);
+      if (!reached) { const yy = Math.round(y0); g.fillStyle = 'rgba(2, 6, 4, 0.55)'; g.fillRect(rail, yy, W - rail, Math.round(rowH)); g.fillStyle = '#14261b'; for (let py = yy + 4; py < yy + rowH; py += 8) for (let px = rail + ((py >> 3) & 1) * 4; px < W; px += 8) g.fillRect(px, py, 2, 2); }
+      g.fillStyle = reached ? C.glow : C.faint; g.font = '32px TitleL'; g.fillText(ROMAN[tr], 14, Math.round(y0 + rowH / 2));
+      g.font = '22px Body'; g.fillText(`LV ${TIER_LV[tr]}`, 14, Math.round(y0 + rowH / 2 + 24));
       g.fillStyle = reached ? C.faint : C.deep; for (let x0 = rail; x0 < W - 4; x0 += 10) g.fillRect(x0, Math.round(y0), 6, 2);
     }
     // column heads
@@ -167,32 +170,32 @@ export class MasteryPage implements TabPage {
     const subs = SUBS.filter((s) => s.path === this.path);
     subs.forEach((s, i) => {
       const x0 = rail + i * colW, cxm = x0 + colW / 2, isF = f === s.id, barred = !!f && !isF;
-      g.drawImage(iconCanvas(s.icon, isF ? 'lit' : barred ? 'dim' : 'phos'), Math.round(cxm - 24), 76, 48, 48);
-      g.textAlign = 'center'; g.font = '13px Superwide'; g.fillStyle = isF ? C.amberHi : barred ? C.faint : C.ink;
-      g.fillText(s.name, cxm, 142);
-      g.font = '9px Superwide';
+      g.drawImage(iconCanvas(s.icon, barred ? 'dim' : 'phos'), Math.round(cxm - 24), 76, 48, 48);
+      g.textAlign = 'center'; g.font = '24px Title'; g.fillStyle = isF ? C.amberHi : barred ? C.faint : C.ink;
+      g.fillText(s.name, Math.round(cxm), 146);
+      g.font = '11px Body';
       if (canF) {
         const bw = 132, bx = Math.round(cxm - bw / 2), by = 150, hot = this.hover === 'focus:' + s.id;
         g.fillStyle = hot ? '#4f3816' : '#2a1d0c'; g.fillRect(bx, by, bw, 22);
         g.strokeStyle = hot ? C.amberHi : C.amber; g.lineWidth = 2; g.strokeRect(bx + 1, by + 1, bw - 2, 20);
-        g.fillStyle = hot ? '#fff3d6' : C.amberHi; g.fillText('SET FOCUS', cxm, by + 15);
+        g.fillStyle = hot ? '#fff3d6' : C.amberHi; g.fillText('SET FOCUS', Math.round(cxm), by + 15);
         this.hits.push({ id: 'focus:' + s.id, x: bx, y: by, w: bw, h: 22 });
-      } else if (isF) { g.fillStyle = C.amber; g.fillText('FOCUS', cxm, 158); }
-      else if (barred) { g.fillStyle = C.red; g.fillText('BARRED ABOVE TIER II', cxm, 158); }
-      else { g.fillStyle = C.dim; g.fillText(s.blurb.toUpperCase().replace(/\.$/, ''), cxm, 158); }
+      } else if (isF) { g.fillStyle = C.amber; g.fillText('FOCUS', Math.round(cxm), 164); }
+      else if (barred) { g.fillStyle = C.red; g.fillText('BARRED ABOVE TIER II', Math.round(cxm), 164); }
+      else { g.fillStyle = C.dim; g.fillText(s.blurb.toUpperCase().replace(/\.$/, ''), Math.round(cxm), 164); }
       g.textAlign = 'left';
     });
     // nodes and traces
     const pos = new Map<string, { x: number; y: number; s: number }>();
     for (const p of PERKS.filter((q) => q.path === this.path)) {
-      const i = subs.findIndex((s) => s.id === p.sub), s = p.tier === 4 ? 112 : 96;
+      const i = subs.findIndex((s) => s.id === p.sub), s = p.tier === 4 ? 124 : 112;
       const x = Math.round(rail + i * colW + colW / 2 - s / 2), y = Math.round(top + (p.tier - 1) * rowH + rowH / 2 - s / 2 - 14);
       pos.set(p.id, { x, y, s });
     }
     for (const p of PERKS.filter((q) => q.path === this.path && q.tier > 1)) {
       const prev = PERKS.find((q) => q.sub === p.sub && q.tier === p.tier - 1)!, a = pos.get(prev.id)!, b = pos.get(p.id)!;
       const lit = M.perks().includes(prev.id), on = lit && M.perks().includes(p.id);
-      const xm = a.x + a.s / 2, y0 = a.y + a.s + 22, y1 = b.y - 4;
+      const xm = Math.round(a.x + a.s / 2), y0 = a.y + a.s + 30, y1 = b.y - 4;
       g.fillStyle = on ? C.amber : lit ? C.glow : C.faint;
       g.fillRect(Math.round(xm - 2), y0, 4, y1 - y0);
       // pads and a travelling pulse on live traces
@@ -203,35 +206,24 @@ export class MasteryPage implements TabPage {
   }
   private node(p: Perk, q: { x: number; y: number; s: number }) {
     const g = this.cx, st = this.st(p), t = this.t, hov = this.hover === p.id, sel = this.sel === p.id;
-    const { x, y, s } = q, ch = 8;
+    const { x, y, s } = q, cap = p.tier === 4;
     const fl = this.flash.has(p.id) ? Math.max(0, 1 - (t - this.flash.get(p.id)!) / 0.8) : 0;
-    const path = () => { g.beginPath(); g.moveTo(x + ch, y); g.lineTo(x + s - ch, y); g.lineTo(x + s, y + ch); g.lineTo(x + s, y + s - ch); g.lineTo(x + s - ch, y + s); g.lineTo(x + ch, y + s); g.lineTo(x, y + s - ch); g.lineTo(x, y + ch); g.closePath(); };
-    // body
-    path(); g.fillStyle = st === 'owned' ? '#13281a' : st === 'ready' ? '#0d1d13' : '#081109'; g.fill();
-    // bevel: lit top-left, dark bottom-right
-    g.fillStyle = st === 'owned' ? '#336240' : '#1b3525'; g.fillRect(x + ch, y + 2, s - ch * 2, 2); g.fillRect(x + 2, y + ch, 2, s - ch * 2);
-    g.fillStyle = '#040805'; g.fillRect(x + ch, y + s - 4, s - ch * 2, 2); g.fillRect(x + s - 4, y + ch, 2, s - ch * 2);
-    // border
-    const pulse = st === 'ready' ? 0.5 + 0.5 * Math.sin(t * 4) : 0;
-    g.lineWidth = 2; path();
-    g.strokeStyle = fl > 0 ? C.amberHi : st === 'owned' ? C.amber : hov || sel ? C.hot : st === 'ready' ? `rgba(127, 184, 138, ${0.55 + pulse * 0.45})` : st === 'short' ? C.dim : C.faint;
-    g.stroke();
-    if (p.tier === 4) { g.lineWidth = 1; g.strokeStyle = st === 'owned' ? C.amber : C.faint; g.strokeRect(x + 7.5, y + 7.5, s - 15, s - 15); for (const [bx, by] of [[x + 4, y + 4], [x + s - 8, y + 4], [x + 4, y + s - 8], [x + s - 8, y + s - 8]]) { g.fillStyle = st === 'owned' ? C.amber : C.dim; g.fillRect(bx, by, 4, 4); } }
-    // glow for owned / hover
-    if (st === 'owned' || hov || fl) { g.save(); g.globalAlpha = 0.15 + fl * 0.5; g.fillStyle = st === 'owned' ? C.amber : C.glow; path(); g.fill(); g.restore(); }
-    // icon
-    const pal: PalKey = st === 'owned' ? 'lit' : st === 'locked' || st === 'barred' ? 'dim' : 'phos';
-    const isz = s >= 112 ? 72 : 72;
-    g.drawImage(iconCanvas(p.icon, pal), Math.round(x + (s - isz) / 2), Math.round(y + (s - isz) / 2), isz, isz);
-    if (st === 'barred') { g.strokeStyle = 'rgba(204, 98, 82, 0.7)'; g.lineWidth = 3; g.beginPath(); g.moveTo(x + 14, y + 14); g.lineTo(x + s - 14, y + s - 14); g.moveTo(x + s - 14, y + 14); g.lineTo(x + 14, y + s - 14); g.stroke(); }
-    if (st === 'owned') { g.fillStyle = C.amber; g.fillRect(x + s - 26, y - 6, 24, 14); g.fillStyle = '#150c04'; g.font = '9px Superwide'; g.textAlign = 'center'; g.fillText('ON', x + s - 14, y + 5); g.textAlign = 'left'; }
-    // cost pips
-    for (let k = 0; k < p.cost; k++) { g.fillStyle = st === 'owned' ? C.amber : st === 'ready' ? C.hot : C.faint; g.fillRect(x + 8 + k * 9, y + s - 12, 6, 4); }
-    // name
-    g.textAlign = 'center'; g.font = '19px Jersey'; g.fillStyle = st === 'owned' ? C.amberHi : st === 'locked' || st === 'barred' ? C.faint : hov || sel ? C.hot : C.ink;
-    g.fillText(p.name, x + s / 2, y + s + 19);
+    // the socket: painted pixel-art hardware at 2x, its lamp rim by state (ready pulses between two frames)
+    const fs = st === 'owned' || fl > 0 ? 'owned' : hov || sel ? 'hover' : st === 'ready' ? (Math.floor(t * 2) % 2 ? 'ready2' : 'ready') : st;
+    g.drawImage(nodeFrame(fs as never, cap), x, y, s, s);
+    // the lowpix-painted art behind the glass (re-inked dark when out of reach)
+    const pal: PalKey = st === 'locked' || st === 'barred' ? 'dim' : 'phos';
+    const off = (s - 96) / 2;
+    g.drawImage(iconCanvas(p.icon, pal), x + off, y + off, 96, 96);
+    if (st === 'short') { g.fillStyle = 'rgba(4, 10, 6, 0.35)'; g.fillRect(x + off, y + off, 96, 96); }
+    if (st === 'barred') { g.fillStyle = '#b8382e'; for (let k = 0; k < 88; k += 2) { g.fillRect(x + off + 4 + k, y + off + 4 + k, 2, 2); g.fillRect(x + off + 90 - k, y + off + 4 + k, 2, 2); } }
+    // cost pips along the bottom rim
+    for (let k = 0; k < p.cost; k++) { g.fillStyle = st === 'owned' ? '#d9a43a' : st === 'ready' ? '#b9dcbd' : '#264a32'; g.fillRect(x + off + 2 + k * 10, y + s - 6, 8, 4); }
+    // the name plate under the socket
+    g.textAlign = 'center'; g.font = '24px Title'; g.fillStyle = st === 'owned' ? C.amberHi : st === 'locked' || st === 'barred' ? C.faint : hov || sel ? C.hot : C.ink;
+    g.fillText(p.name, Math.round(x + s / 2), y + s + 22);
     g.textAlign = 'left';
-    this.hits.push({ id: p.id, x, y, w: s, h: s + 22 });
+    this.hits.push({ id: p.id, x, y, w: s, h: s + 26 });
   }
   dispose() { this.ro.disconnect(); this.el.remove(); }
 }

@@ -6,9 +6,11 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { gbuf } from '../../gfx/gbuf';
 
-const URLS = import.meta.glob('./assets/ph/*.glb', { query: '?url', import: 'default', eager: true }) as Record<string, string>;
+// the pixel-hd restyles (lowpix --style pixel-hd: palette-quantised, outlined, 96 texels per metre) win over the
+// older painted ones
+const PX = import.meta.glob('./assets/px/*.glb', { query: '?url', import: 'default', eager: true }) as Record<string, string>;
 const byId = new Map<string, string>();
-for (const [p, u] of Object.entries(URLS)) byId.set(p.replace(/^.*\/(.*)\.glb$/, '$1'), u);
+for (const [p, u] of Object.entries(PX)) byId.set(p.replace(/^.*\/(.*)\.glb$/, '$1'), u);
 export const MODEL_IDS = [...byId.keys()];
 
 interface Loaded { root: THREE.Object3D; size: THREE.Vector3 }
@@ -27,8 +29,8 @@ function load(id: string): Promise<Loaded | null> {
       const m = o as THREE.Mesh; if (!m.isMesh) return;
       const src = m.material as THREE.MeshBasicMaterial;
       const map = src.map ?? null;
-      if (map) { map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4; }
-      const mat = new THREE.MeshStandardMaterial({ map, color: 0xffffff, roughness: 0.72, metalness: 0.05, side: src.side ?? THREE.FrontSide, alphaTest: src.alphaTest || 0, transparent: false });
+      if (map) { map.colorSpace = THREE.SRGBColorSpace; map.magFilter = THREE.NearestFilter; map.minFilter = THREE.NearestMipmapLinearFilter; map.needsUpdate = true; }
+      const mat = new THREE.MeshLambertMaterial({ map, color: 0xffffff, side: src.side ?? THREE.FrontSide, alphaTest: src.alphaTest || 0, transparent: false });
       gbuf(mat, 1);
       m.material = mat; m.castShadow = true; m.receiveShadow = true;
       src.dispose();
@@ -55,9 +57,8 @@ export function placeModel(parent: THREE.Object3D, id: string, o: ModelPlace, en
     const c = l.root.clone(true);
     if (envMap || o.tint !== undefined) c.traverse((x) => {
       const m = x as THREE.Mesh; if (!m.isMesh) return;
-      const mm = (m.material as THREE.MeshStandardMaterial);
+      const mm = (m.material as THREE.MeshLambertMaterial);
       if (o.tint !== undefined) { const t = mm.clone(); t.color.setHex(o.tint); gbuf(t, 1); m.material = t; }
-      else if (envMap && !mm.envMap) { mm.envMap = envMap; mm.envMapIntensity = 0.35; mm.needsUpdate = true; }
     });
     g.add(c);
   });

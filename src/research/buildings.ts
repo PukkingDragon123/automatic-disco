@@ -9,6 +9,43 @@ import type { Game } from '../game/game';
 import { resolve, anyG } from './util';
 import { BLUEPRINT, type UpgraderState } from './upgrades';
 import { TECH } from './tech';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { gbuf } from '../gfx/gbuf';
+
+// ------------------------------------------------------------------ the lowpix models (src/research/art/*.json ->
+// public/models/progression/*.glb, built with the user's lowpix tool), restyled into the game's lighting
+const glb = new Map<string, Promise<THREE.Group | null>>();
+function lowpix(name: string): Promise<THREE.Group | null> {
+  let p = glb.get(name);
+  if (!p) {
+    p = new Promise((res) => new GLTFLoader().load(`${import.meta.env.BASE_URL ?? '/'}models/progression/${name}.glb`, (g) => {
+      g.scene.traverse((n) => {
+        const m = n as THREE.Mesh; if (!m.isMesh) return;
+        const old = m.material as THREE.MeshStandardMaterial, map = old.map;
+        if (map) { map.magFilter = THREE.NearestFilter; map.minFilter = THREE.NearestMipmapNearestFilter; map.colorSpace = THREE.SRGBColorSpace; map.needsUpdate = true; }
+        const mat = new THREE.MeshLambertMaterial({ map, side: old.side, alphaTest: 0.5 }); gbuf(mat, 1);
+        m.material = mat; m.castShadow = true; m.receiveShadow = true;
+      });
+      res(g.scene as THREE.Group);
+    }, undefined, (e) => { console.warn('progression model', name, e); res(null); }));
+    glb.set(name, p);
+  }
+  return p;
+}
+/** a building's lowpix body: footprint-wide, standing on its base, turned with the building */
+function dress(b: any, name: string, scene: () => THREE.Object3D | null) {
+  void lowpix(name).then((src) => {
+    const sc = scene(); if (!src || !sc || b.dead) return;
+    const root = src.clone(true), box = new THREE.Box3().setFromObject(root), size = box.getSize(new THREE.Vector3());
+    const k = (Math.min(b.fw ?? 3, b.fd ?? 3) * 0.98) / Math.max(size.x, size.z);
+    const holder = new THREE.Group(); holder.add(root); root.scale.setScalar(k);
+    const c = box.getCenter(new THREE.Vector3()); root.position.set(-c.x * k, -box.min.y * k, -c.z * k);
+    holder.position.set(b.x, b.y ?? 0, b.z); holder.rotation.y = -((b.r ?? 0) & 3) * Math.PI / 2;
+    holder.name = 'lowpix:' + name; sc.add(holder); b.__dress = holder;
+  });
+}
+const undress = (b: any) => { b.__dress?.removeFromParent(); b.__dress = null; };
 
 type V3 = [number, number, number];
 const knob = (m: MG, c: V3, r: number, layer: number, glow = 0) => m.cyl(c, r, r * 1.2, layer, { n: 8, glow });
@@ -81,6 +118,8 @@ function poleModel(m: MG) {
 export const upState = (b: any): UpgraderState => (b.up ??= { job: null, last: null, lastT: -99 });
 const powered = (b: any) => b.on !== false && (b.sat ?? 1) > 0.15;
 
+/** the Upgrader wears its lowpix model (set false to fall back to the geometry-kit drawing) */
+const LOWPIX_UPGRADER = true;
 export function registerProgressionBuildings(G: () => Game | null) {
   registerBuilding({
     kind: 'research_station', name: 'Research Station', cat: 'special', w: 3, d: 3, h: 2.6, power: 4, hp: 700, operable: true,
@@ -101,7 +140,10 @@ export function registerProgressionBuildings(G: () => Game | null) {
     cost: resolve({ 'iron_plate': 12, 'gear': 6, 'copper_wire': 8 }),
     desc: 'A gantry over a parts bench. Builds a researched blueprint from real items and installs it on the pod: plating, arm types, tools, drones.',
     hooks: {
-      model: upgraderModel,
+      // the lowpix model (src/research/art/upgrader.json) stands on a concrete pad the catalogue draws
+      model: (m: MG) => { if (LOWPIX_UPGRADER) m.box([0, 0.08, 0], [2.96, 0.16, 2.96], L.CONCRETE); else upgraderModel(m); },
+      placed: (b) => { if (LOWPIX_UPGRADER) dress(b, 'upgrader', () => anyG(G()!)?.world?.scene ?? null); },
+      removed: (b) => undress(b),
       tick: (b, dt) => {
         const st = upState(b), g = anyG(G()!);
         if (!st.job) { b.status = 'idle'; b.running = false; return; }

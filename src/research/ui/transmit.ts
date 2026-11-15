@@ -2,6 +2,7 @@
 // Austral issues a directive, when one is about to lapse, and when one is met or missed; click it to open the
 // MISSION tab. It types itself, with a live carrier trace under the text.
 import { el, ui } from '../../ui/kit';
+import { installHardware } from './hardware';
 import { csfx } from '../../ui/cineAudio';
 import { SHIP, type Quota } from '../mission';
 import { fmtTime } from '../util';
@@ -10,6 +11,7 @@ import './terminal.css';
 
 let cur: HTMLElement | null = null;
 export function transmission(o: { kind: 'new' | 'warn' | 'met' | 'missed' | 'drop' | 'recall'; q?: Quota; left?: number; text?: string; open?: () => void }) {
+  installHardware();
   cur?.remove();
   const bad = o.kind === 'warn' || o.kind === 'missed' || o.kind === 'recall';
   const box = el('div', 'tx', ui()); cur = box;

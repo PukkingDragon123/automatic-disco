@@ -72,7 +72,7 @@ export class ResearchPage implements TabPage {
     if (!R.log.length) el('div', 'pt-txt dim', lg, 'Scan species, plants, ore, vents and ruins. The first look at anything pays the most.');
     for (const e of R.log.slice(0, 14)) {
       const row = el('div', 'pt-log', lg);
-      const im = el('img', 'pt-ico', row); im.src = iconURL(KIND_ICON[e.kind] ?? 'lens', 'phos'); im.style.width = im.style.height = '24px';
+      const im = el('img', 'pt-ico', row); im.src = iconURL(KIND_ICON[e.kind] ?? 'lens', 'phos'); im.style.width = im.style.height = '24px'; im.style.marginTop = '1px';
       el('span', '', row, `<b>${e.name}</b> ${DATA_KINDS.filter((k) => e.data[k]).map((k) => `+${e.data[k]} ${DATA_NAME[k]}`).join(' ')}`);
     }
     // ---------------- middle: the catalogue
@@ -108,8 +108,8 @@ export class ResearchPage implements TabPage {
       const st = this.state(t);
       el('div', 'pt-h', Rt, `${TECH_KINDS.find((k) => k.k === t.kind)?.name} · ${PATH[t.path].short}`);
       const hd = el('div', '', Rt); hd.style.cssText = 'display:flex;gap:14px;align-items:center';
-      const im = el('img', 'pt-ico', hd); im.src = iconURL(t.icon, st === 'known' ? 'amber' : 'lit'); im.style.cssText = 'width:72px;height:72px;background:#071209;box-shadow:inset 0 0 0 2px #264a32';
-      const nm = el('div', '', hd); el('div', 'pt-txt big', nm, `<span style="font-family:Jersey;font-size:30px;line-height:30px">${t.name}</span>`);
+      const im = el('img', 'pt-ico', hd); im.src = iconURL(t.icon, st === 'known' ? 'amber' : 'lit'); im.style.cssText = 'width:96px;height:96px';
+      const nm = el('div', '', hd); el('div', 'pm-det', nm, `<div class="nm">${t.name}</div>`);
       el('div', 'pt-txt dim', nm, st === 'known' ? 'KNOWN' : `${fmtTime(t.time)} of station work`);
       el('div', 'pt-txt big', Rt, t.desc);
       const bx = el('div', 'pt-box', Rt);

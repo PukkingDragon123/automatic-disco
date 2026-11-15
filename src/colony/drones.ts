@@ -9,6 +9,7 @@ import { armSheet, machSheet, COL } from './tex';
 import type { Colony } from './colony';
 import type { Creature } from '../game/creature';
 import { clamp, damp, dampA } from '../core/rand';
+import { lowpixModel, nodes } from './models';
 
 export type DroneKind = 'scout' | 'carrier' | 'repair';
 export interface DroneDef { name: string; short: string; speed: number; battery: number; drain: number; hp: number; alt: number; paint: string; size: number }
@@ -23,7 +24,7 @@ const _v = new THREE.Vector3();
 export class Drone {
   readonly def: DroneDef;
   readonly root = new THREE.Group();
-  private body = new THREE.Group(); private fans: THREE.Group[] = []; private lamps: THREE.Mesh[] = [];
+  private body = new THREE.Group(); private fans: THREE.Object3D[] = []; private lamps: THREE.Mesh[] = [];
   readonly hook = new THREE.Group();
   x: number; z: number; y: number; vx = 0; vz = 0; vy = 0; yaw = 0; alt: number;
   hp: number; maxHp: number; battery: number;
@@ -85,7 +86,7 @@ export class Drone {
       k.cyl(0.03 * s, 0.02 * s, 0.16 * s, std(0xd0d4d6, { rough: 0.15, metal: 0.95 }), { p: [0.18 * s, -0.36 * s, 0.55 * s], r: [Math.PI / 2 + 0.4, 0, 0] }, 8);
       k.cyl(0.07 * s, 0.07 * s, 0.3 * s, std(0x2b5884, { rough: 0.4 }), { p: [-0.18 * s, -0.18 * s, 0], r: [Math.PI / 2, 0, 0] }, 10);
     }
-    this.body.add(k.build('drone'));
+    const kitModel = k.build('drone'); this.body.add(kitModel);
     if (this.kind === 'carrier') {
       const hk = new Kit(); hk.box(0.2 * s, 0.14 * s, 0.2 * s, dark, {}); hk.tor(0.08 * s, 0.02 * s, steel, { p: [0, -0.16 * s, 0], r: [0, 0, 0] }, 5, 12, Math.PI * 1.5);
       this.hook.add(hk.build('hook')); this.hook.position.set(0, -0.5 * s, 0); this.body.add(this.hook);
@@ -93,7 +94,16 @@ export class Drone {
     }
     this.root.add(this.body);
     this.root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) m.castShadow = true; });
+    // the lowpix model (tools/lowpix/drone_*.json) replaces the stand-in once it has loaded
+    lowpixModel('drone_' + this.kind, { width: 1.5 * s, origin: 'center', flag: this.flag }).then((m) => {
+      if (!m || this.gone) return;
+      kitModel.visible = false; for (const f of this.fans) f.visible = false; for (const l of this.lamps) l.visible = false;
+      for (const c of this.hook.children) c.visible = false; const line = this.body.getObjectByName('line'); if (line) line.visible = false;
+      m.position.y = 0.05 * s; this.body.add(m);
+      this.fans = nodes(m, 'hub'); this.fanAxis = 'z'; this.lamps = [];
+    });
   }
+  private fanAxis: 'y' | 'z' = 'y'; private gone = false;
 
   /** distance the control signal reaches here (1 = full, 0 = lost) */
   signal() { return this.colony.signalAt(this.x, this.z); }
@@ -162,7 +172,7 @@ export class Drone {
     const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
     this.body.rotation.set(this.bank.y * cy - this.bank.x * sy, 0, -(this.bank.x * cy + this.bank.y * sy));
     const spin = this.docked && this.y < c.padPos(this.pad).y + 0.5 ? 0.2 : 30;
-    for (let i = 0; i < this.fans.length; i++) this.fans[i].rotation.y += dt * spin * (i & 1 ? 1 : -1);
+    for (let i = 0; i < this.fans.length; i++) this.fans[i].rotation[this.fanAxis] += dt * spin * (i & 1 ? 1 : -1);
     for (let i = 0; i < this.lamps.length; i++) this.lamps[i].visible = ((this.t + i * 0.2) % 1.2) < 0.6;
     if (this.kind === 'carrier') {
       const line = this.body.getObjectByName('line') as THREE.Mesh | undefined, drop = this.carrying ? 1.4 : this.working ? 1.2 : 0.2;
@@ -181,5 +191,5 @@ export class Drone {
   tip(out = new THREE.Vector3()) { return this.kind === 'carrier' ? this.hook.getWorldPosition(out) : this.root.localToWorld(out.set(0, -0.3 * this.def.size, 0.5 * this.def.size)); }
   damage(n: number) { this.hp = Math.max(0, this.hp - n); if (this.hp <= 0) this.colony.droneDown(this); }
   repair(n: number) { this.hp = Math.min(this.maxHp, this.hp + n); }
-  dispose() { this.root.removeFromParent(); }
+  dispose() { this.gone = true; this.root.removeFromParent(); }
 }

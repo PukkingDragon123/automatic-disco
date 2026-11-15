@@ -18,6 +18,8 @@ import { sfx } from '../audio/audio';
 import { SKILL } from '../game/skills';
 import { hex } from '../ui/machine';
 import { BuildMenu, chip } from '../ui/build/menu';
+import { initStudio } from '../ui/build/studio';
+import { paintHW } from '../ui/build/hw';
 import { Hotbar } from '../ui/build/hotbar';
 import { NodeMap } from '../ui/nodes/map';
 import { isRun } from './build';
@@ -47,11 +49,12 @@ export class FactoryUI {
     this.crew = el('div', 'fc-sheet fc-crew', this.root);
     this.bar = el('div', 'fc-touchbar', this.root);
     for (const p of [this.cat, this.insp, this.stats, this.crew, this.bar]) { p.addEventListener('pointerdown', (e) => e.stopPropagation()); p.addEventListener('wheel', (e) => e.stopPropagation()); }
+    initStudio(f.g.engine.renderer);
     this.menu = b.menu = new BuildMenu(f, b);
     this.hotbar = b.hotbar = new Hotbar(f, b);
     this.nodes = new NodeMap(f);
     b.onNodes = () => this.nodes.open();
-    this.tag = el('div', 'pl-tag', document.body);
+    this.tag = el('div', 'pl-tag pl-glass', document.body); this.tag.dataset.hw = 'glass';
     b.onChange = () => { this.catKey = ''; this.renderCat(); };
     b.onInspect = (bb) => this.inspect(bb);
     b.onDismiss = () => this.closeAll();
@@ -319,34 +322,27 @@ export class FactoryUI {
       const [sx, sy, ok] = game.screenOf(s.cx + s.fw / 2, s.y + s.def.h + 0.6, s.cz + s.fd / 2); if (!ok || sx < -80 || sy < -40 || sx > W + 80 || sy > H + 40) continue;
       this.siteTag(g, sx, sy, s, k);
     }
-    // (the build cursor tag is DOM now: renderTag)
-    if (false as boolean) {
-      const mx = game.input.mx + 18, my = game.input.my + 14;
-      const txt = this.b.why ?? (this.b.tool === 'dismantle' ? 'DISMANTLE' : this.b.ghosts.length > 1 ? `${this.b.ghosts.length} PIECES` : this.b.kind ? FDEFS[this.b.kind].name.toUpperCase() : '');
-      g.font = `${Math.round(8 * k)}px VT, monospace`;
-      const w = g.measureText(txt).width + 10 * k;
-      g.fillStyle = this.b.why ? '#a2473a' : '#d2cab4'; g.fillRect(mx, my, w, 12 * k);
-      g.fillStyle = '#14161b'; g.fillRect(mx, my + 12 * k, w, k);
-      g.fillStyle = this.b.why ? '#e2dbc6' : '#1f232b'; g.fillText(txt.toUpperCase(), mx + 5 * k, my + 9 * k);
-    }
   }
-  /** a site's plate: name, stage, the materials still owed or the build progress, a segmented bar */
-  private siteTag(g: CanvasRenderingContext2D, x: number, y: number, s: import('../logistics/sites').Site, k: number) {
-    const f = this.f, p = f.sites.progress(s), owed = f.sites.outstanding(s).concat([]);
+  /** a site's plate over the scaffold: name, stage, what it still waits for or how far the crew has got, a
+   *  segmented bar (Body at 11 px on a dark phosphor plate with a painted pointer) */
+  private siteTag(g: CanvasRenderingContext2D, x: number, y: number, s: import('../logistics/sites').Site, _k: number) {
+    const f = this.f, p = f.sites.progress(s);
     const need = Object.entries(s.need).map(([id, n]) => [id, (n ?? 0) - (s.got[id] ?? 0)] as [string, number]).filter(([, n]) => n > 0);
-    const line = s.stage === 'build' ? `BUILDING · ${Math.round(Math.min(1, s.work / s.workNeed) * 100)}%${s.builders ? ` · ${s.builders} ON IT` : f.time - s.help > 8 ? ' · POD CRANE' : ''}` : need.length ? `AWAITING ${need.slice(0, 2).map(([id, n]) => `${n} ${(ITEMS[id]?.name ?? id).toUpperCase()}`).join(', ')}${need.length > 2 ? ' …' : ''}` : 'SUPPLIED';
-    void owed;
-    g.font = `${Math.round(8 * k)}px VT, monospace`;
+    const line = s.stage === 'build' ? `BUILDING ${Math.round(Math.min(1, s.work / s.workNeed) * 100)}%${s.builders ? ` · ${s.builders} ON IT` : f.time - s.help > 8 ? ' · POD CRANE' : ''}` : need.length ? `AWAITING ${need.slice(0, 2).map(([id, n]) => `${n} ${(ITEMS[id]?.name ?? id).toUpperCase()}`).join(', ')}${need.length > 2 ? ' +' : ''}` : 'SUPPLIED';
+    g.font = '11px Body, monospace'; g.textBaseline = 'top';
     const name = s.def.name.toUpperCase();
-    const w = Math.max(g.measureText(line).width, g.measureText(name).width) + 12 * k, h = 25 * k;
-    x = Math.round(x - w / 2); y = Math.round(y - h);
-    g.fillStyle = 'rgba(8,14,10,0.86)'; g.fillRect(x, y, w, h);
-    g.fillStyle = '#336240'; g.fillRect(x, y, w, k); g.fillRect(x, y + h - k, w, k); g.fillRect(x, y, k, h); g.fillRect(x + w - k, y, k, h);
-    g.fillStyle = '#b9dcbd'; g.fillText(name, x + 6 * k, y + 8 * k);
-    g.fillStyle = s.stage === 'build' ? '#d9a43a' : '#7fb88a'; g.fillText(line, x + 6 * k, y + 16 * k);
-    const segs = 16, sw = (w - 12 * k) / segs;
-    for (let i = 0; i < segs; i++) { g.fillStyle = i / segs < p ? (s.stage === 'build' ? '#d9a43a' : '#7fb88a') : '#1b3525'; g.fillRect(x + 6 * k + i * sw, y + 19 * k, Math.max(1, sw - k), 3 * k); }
-    g.fillStyle = 'rgba(8,14,10,0.86)'; g.beginPath(); g.moveTo(x + w / 2 - 4 * k, y + h); g.lineTo(x + w / 2 + 4 * k, y + h); g.lineTo(x + w / 2, y + h + 5 * k); g.fill();
+    const w = Math.ceil(Math.max(g.measureText(line).width, g.measureText(name).width)) + 16, h = 40;
+    x = Math.round(x - w / 2); y = Math.round(y - h - 6);
+    g.fillStyle = '#06070a'; g.fillRect(x - 2, y - 2, w + 4, h + 4);
+    g.fillStyle = '#0a110d'; g.fillRect(x, y, w, h);
+    for (let yy = y + 1; yy < y + h; yy += 2) { g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(x, yy, w, 1); }
+    g.fillStyle = s.stage === 'build' ? '#d9a43a' : '#336240'; g.fillRect(x, y, w, 2); g.fillRect(x, y + h - 2, w, 2); g.fillRect(x, y, 2, h); g.fillRect(x + w - 2, y, 2, h);
+    g.fillStyle = '#b9dcbd'; g.fillText(name, x + 8, y + 5);
+    g.fillStyle = s.stage === 'build' ? '#ecd29a' : '#7fb88a'; g.fillText(line, x + 8, y + 18);
+    const segs = 20, sw = Math.floor((w - 16) / segs);
+    for (let i = 0; i < segs; i++) { g.fillStyle = i / segs < p ? (s.stage === 'build' ? '#d9a43a' : '#7fb88a') : '#1b3525'; g.fillRect(x + 8 + i * sw, y + 32, sw - 2, 4); }
+    g.fillStyle = '#06070a'; for (let i = 0; i < 6; i++) g.fillRect(x + Math.floor(w / 2) - 6 + i, y + h + 2 + i, 12 - i * 2, 1);
+    g.textBaseline = 'alphabetic';
   }
   /** the readout at the cursor while a building is in hand: what, where, what it costs (have/need), why not */
   private renderTag() {
@@ -363,17 +359,18 @@ export class FactoryUI {
       key = `${b.kind}|${b.why}|${n}|${b.rot}|${Object.keys(c).map(have).join(',')}`;
       if (key === this.tagKey) return;
       h = `<div class="t">${esc(d.name.toUpperCase())}${b.ghosts.length > 1 ? ` <span class="ok">× ${n}</span>` : ''}</div>`;
-      h += b.why ? `<div class="bad">${esc(b.why.toUpperCase())}</div>` : `<div class="ok">${run ? 'LAID AT ONCE BY THE POD ARM' : 'STAKE OUT A CONSTRUCTION SITE'}</div>`;
+      h += b.why ? `<div class="bad pl-s">${esc(b.why.toUpperCase())}</div>` : `<div class="ok pl-s">${run ? 'LAID AT ONCE BY THE POD ARM' : 'STAKES OUT A CONSTRUCTION SITE'}</div>`;
       h += `<div class="row">${Object.entries(c).map(([id, v]) => chip(id, have(id), (v ?? 0) * n)).join('')}</div>`;
-      h += `<div class="keys">LMB ${run ? 'DRAG A RUN' : 'PLACE'} · R TURN (${['S', 'W', 'N', 'E'][b.rot & 3]}) · RMB/ESC DROP</div>`;
+      h += `<div class="keys pl-s">LMB ${run ? 'DRAG A RUN' : 'PLACE'} · R TURN (FACING ${['S', 'W', 'N', 'E'][b.rot & 3]}) · RMB OR ESC DROP</div>`;
     } else {
       key = `${b.tool}|${b.why}`;
       if (key === this.tagKey) return;
-      h = b.tool === 'dismantle' ? `<div class="t bad">DISMANTLE</div><div>CLICK A BUILDING OR A SITE: EVERYTHING IT COST COMES BACK</div>` : b.tool === 'copy' ? `<div class="t">BLUEPRINT</div><div>DRAG A BOX OVER MACHINES TO COPY THEM</div>` : `<div class="t">PASTE BLUEPRINT</div>${b.why ? `<div class="bad">${esc(b.why.toUpperCase())}</div>` : ''}<div class="keys">LMB LAY · R TURN</div>`;
+      h = b.tool === 'dismantle' ? `<div class="t bad">DISMANTLE</div><div class="pl-s">CLICK A BUILDING OR A SITE: EVERYTHING IT COST COMES BACK</div>` : b.tool === 'copy' ? `<div class="t">BLUEPRINT</div><div class="pl-s">DRAG A BOX OVER MACHINES TO COPY THEM</div>` : `<div class="t">PASTE BLUEPRINT</div>${b.why ? `<div class="bad pl-s">${esc(b.why.toUpperCase())}</div>` : ''}<div class="keys pl-s">LMB LAY · R TURN</div>`;
     }
     this.tagKey = key;
     t.innerHTML = h;
     t.classList.toggle('bad', !!b.why);
+    paintHW(t);
   }
   /** a pennant on a stick: red (no power), amber (blocked), rust (starved); hand-drawn, never round */
   private flag(g: CanvasRenderingContext2D, x: number, y: number, st: Status, k: number) {
@@ -382,7 +379,7 @@ export class FactoryUI {
     g.fillStyle = '#14161b'; g.fillRect(x, y - 14 * k, k, 15 * k);
     g.fillStyle = blink ? col : '#2c323c';
     g.beginPath(); g.moveTo(x + k, y - 14 * k); g.lineTo(x + 10 * k, y - 11 * k); g.lineTo(x + 8 * k, y - 9 * k); g.lineTo(x + 10 * k, y - 7 * k); g.lineTo(x + k, y - 7 * k); g.closePath(); g.fill();
-    g.fillStyle = '#e2dbc6'; g.font = `${Math.round(7 * k)}px VT, monospace`;
+    g.fillStyle = '#e2dbc6'; g.font = '11px Body, monospace';
     g.fillText(st === 'nopower' ? '!' : st === 'blocked' ? '=' : '?', x + 3 * k, y - 8.5 * k);
   }
   private icons = new Map<string, HTMLImageElement>();

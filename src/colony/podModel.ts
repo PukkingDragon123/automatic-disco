@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { Kit, std, glow, hullRing, TAU, rand } from './kit';
 import { hullSheet, machSheet, shieldSheet, foilSheet, hazardTex, radiatorSheet, decalSheet, decalUV, windowTex, COL } from './tex';
 import { gbuf } from '../gfx/gbuf';
+import { lowpixModel, nodes } from './models';
 
 export interface Hardpoint { i: number; angle: number; y: number; r: number; cap: THREE.Object3D; mount: THREE.Object3D }
 export interface PodModel {
@@ -211,13 +212,23 @@ export function buildPod(): PodModel {
   // a warm work light at the hatch (one real light; the rest are emissive)
   const hatchLight = new THREE.PointLight(0xffd8a0, 0, 9, 1.8); hatchLight.position.set(0, 3.2, POD_R + 1.2); root.add(hatchLight);
   const glassMat = M.glass;
+  // the pixel-art pod (tools/lowpix/pod.json, built with the user's lowpix tool) replaces the stand-in hull once it
+  // has loaded; the hardpoint mounts, the blinking lamps and the hatch light stay
+  lowpixModel('pod', { scale: 0.05, origin: 'none' }).then((m) => {
+    if (!m) return;
+    body.visible = false; for (const c of dish.children) c.visible = false;
+    for (const h of hardpoints) for (const c of h.cap.children) c.visible = false;
+    root.add(m);
+    const yoke = nodes(m, 'yoke')[0]; if (yoke) pod.dish = yoke;
+    m.traverse((o) => { const mm = (o as THREE.Mesh).material as THREE.Material | undefined; if (mm && root.userData.flag) gbuf(mm, root.userData.flag); });
+  });
   root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && m.castShadow === undefined) m.castShadow = true; });
   let dmg = 0;
   const pod: PodModel = {
     root, hardpoints, dish, door: new THREE.Vector3(0, 1.6, POD_R - 0.1), rampFoot: new THREE.Vector3(0, 0, POD_R + 2.7),
     update(t, dt, o = {}) {
       const link = !!o.link, alarm = o.alarm ?? 0, pw = o.power ?? 1;
-      dish.rotation.y = link ? dish.rotation.y + (0 - dish.rotation.y) * Math.min(1, dt * 2) : dish.rotation.y + dt * 0.25;
+      const dd = pod.dish; dd.rotation.y = link ? dd.rotation.y + (0 - dd.rotation.y) * Math.min(1, dt * 2) : dd.rotation.y + dt * 0.25;
       const blink = (period: number, on: number, ph = 0) => ((t + ph) % period) < on ? 1 : 0;
       (navR.material as THREE.MeshBasicMaterial).color.copy(baseCols[0]).multiplyScalar(0.25 + 0.75 * blink(1.6, 0.9));
       (navG.material as THREE.MeshBasicMaterial).color.copy(baseCols[1]).multiplyScalar(0.25 + 0.75 * blink(1.6, 0.9, 0.8));

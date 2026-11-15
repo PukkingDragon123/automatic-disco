@@ -16,6 +16,8 @@ import '../limbo/content/textures/materials';
 import '../limbo/content/furniture/b_lab';
 import '../limbo/content/furniture/b_industrial';
 import type { Fx } from '../game/fx';
+import { placeModel } from '../ship/hub/models';
+import { GN_DECL, gbuf, F_EMIT } from '../gfx/gbuf';
 import type { WorkerProfile } from '../life/cyber/roles';
 import { SKILLS, SLOT_NAME, CYBER, type Slot } from '../life/cyber/catalog';
 
@@ -23,7 +25,7 @@ const TAU = Math.PI * 2;
 const X0 = -6.8, X1 = 6.8, Z0 = -5.2, Z1 = 7, H = 4.8;
 
 const HAZE_V = 'varying vec3 vP; varying vec2 vUv; void main(){ vUv = uv; vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }';
-const HAZE_F = `uniform vec3 uCol; uniform float uT, uK; varying vec2 vUv;
+const HAZE_F = GN_DECL + `uniform vec3 uCol; uniform float uT, uK; varying vec2 vUv;
 void main(){
   // a beam of light in the haze: brightest near the lamp, fading down the cone and toward its edges, drifting motes
   float down = vUv.y, edge = 1.0 - abs(vUv.x - 0.5) * 2.0;
@@ -31,6 +33,7 @@ void main(){
   float mote = step(0.985, fract(sin(floor(vUv.x * 90.0) * 12.9898 + floor((vUv.y + uT * 0.02) * 60.0) * 78.233) * 43758.5453));
   a *= 0.85 + 0.3 * mote;
   gl_FragColor = vec4(uCol * a, a);
+  gNormal = vec4(0.5, 0.5, 1.0, 0.0);
 }`;
 
 interface Arm { base: THREE.Group; turret: THREE.Group; upper: THREE.Group; lower: THREE.Group; wrist: THREE.Group; tip: THREE.Object3D; l1: number; l2: number; rest: THREE.Vector3; goal: THREE.Vector3; cur: THREE.Vector3; busy: number; side: number }
@@ -125,6 +128,15 @@ export class FitBay {
     this.obj('pipes_cluster', X1 - 0.35, -4.2, -Math.PI / 2); this.obj('pipes_cluster', X0 + 0.35, -4.2, Math.PI / 2);
     this.obj('lab_cabinet', -5.6, -3.4, Math.PI / 2);
     this.obj('pallet_boxes', -4.9, 4.4, 0.3);
+    // real props (Poly Haven CC0, restyled by the user's lowpix converter): the welding cart and gas by the left arm,
+    // the tool chest and hand truck by the right, the bench vice and meter on the workbench, extinguisher, camera, lamps
+    const P = (id: string, x: number, z: number, ry = 0, y = 0, s = 1) => placeModel(this.root, id, { x, y, z, ry, s });
+    P('portable_welding_cart', -3.1, 1.7, 0.7); P('propane_tank', -3.7, 0.7, 0.2); P('small_lpg_tank', -3.35, 0.35, 1.2);
+    P('metal_tool_chest', 3.1, 2.0, -0.6); P('hand_truck', 4.7, 1.1, -1.1); P('power_box_01', X1 - 0.12, 1.3, 1.5, -Math.PI / 2);
+    P('bench_vice_01', X0 + 0.62, -1.25, Math.PI / 2, 0.98); P('retro_multimeter', X0 + 0.7, -2.0, Math.PI / 2 + 0.3, 0.98); P('circuit_board', X0 + 0.66, -1.65, 0.4, 0.99);
+    P('korean_fire_extinguisher_01', 5.9, -2.3, -0.4); P('old_military_crate', -5.2, 3.2, 0.2); P('plastic_crate_03', -4.5, 3.7, -0.3);
+    P('security_camera_01', X1 - 0.35, -4.7, -2.4, 3.9); P('industrial_wall_lamp', X0 + 0.08, -0.5, Math.PI / 2, 2.9); P('industrial_wall_lamp', X1 - 0.08, 1.0, -Math.PI / 2, 2.9);
+    P('metal_jerrycan', 2.6, 3.2, 0.9); P('oil_tin', 2.9, 3.0, 0.2);
   }
   // ---------------------------------------------------------------------------------------------- robot arms
   /** an industrial arm on a floor turret beside the tank: a yellow upper link and forearm, a wrist and a welder */
@@ -211,18 +223,18 @@ export class FitBay {
       const bz = new ModelBuilder(); bz.box(0, -h / 2 - 0.08, -0.08, w + 0.16, h + 0.16, 0.14, { all: 'metal_dark', south: 'q_crt_body' }); bz.box(0, h / 2 + 0.08, -0.03, w + 0.2, 0.06, 0.18, 'metal_grey'); this.mesh(bz, g);
       const cv = document.createElement('canvas'); cv.width = 440; cv.height = 260;
       const tex = new THREE.CanvasTexture(cv); tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.LinearFilter; tex.colorSpace = THREE.SRGBColorSpace;
-      const scr = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+      const scr = new THREE.Mesh(new THREE.PlaneGeometry(w, h), gbuf(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }), F_EMIT));
       scr.position.z = 0.0; scr.name = 'lab:screen'; g.add(scr);
       this.screens.push({ cv, tex, kind });
     });
   }
   private lights() {
     // cold work lights on the tank, warm sodium washes on the walls, haze cones under each
-    for (const [x, z, col, k] of [[-1.6, 1.2, 0xd8ecff, 60], [1.6, 1.2, 0xd8ecff, 60], [0, -1.6, 0x9fe8ff, 40]] as [number, number, number, number][]) {
+    for (const [x, z, col, k] of [[-1.6, 1.4, 0xd8ecff, 70], [1.7, -0.8, 0x9fe8ff, 50]] as [number, number, number, number][]) {
       const s = new THREE.SpotLight(col, k, 9, 0.42, 0.6, 1.4); s.position.set(x, H - 0.5, z); s.target.position.set(0, 1.4, 0); this.root.add(s, s.target);
       this.haze(new THREE.Vector3(x, H - 0.5, z), new THREE.Vector3(0, 0.6, 0), 0.08, 1.1, 0xbfe0ff, 0.16);
     }
-    for (const [x, z] of [[-5.6, 1.5], [5.6, -1.0], [-3.0, -4.6]] as [number, number][]) {
+    for (const [x, z] of [[-5.6, 1.5], [5.4, -2.0]] as [number, number][]) {
       const l = new THREE.PointLight(0xffb060, 9, 7, 1.6); l.position.set(x, 3.6, z); this.root.add(l);
       this.haze(new THREE.Vector3(x, H - 0.45, z), new THREE.Vector3(x, 0.2, z), 0.1, 1.4, 0xffb870, 0.07);
     }
@@ -238,7 +250,7 @@ export class FitBay {
   /** a fitted part waiting on the shelves (its preview model) */
   shelve(geo: THREE.BufferGeometry, tex: THREE.Texture) {
     const at = this.rack[this.rackUsed++ % this.rack.length];
-    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex })); m.scale.setScalar(0.24); m.position.copy(at).add(new THREE.Vector3(0.05, 0.12, 0)); m.rotation.y = Math.PI / 2 + (this.rackUsed % 3) * 0.4; m.castShadow = true; this.root.add(m);
+    const m = new THREE.Mesh(geo, gbuf(new THREE.MeshLambertMaterial({ map: tex }), 1)); m.scale.setScalar(0.24); m.position.copy(at).add(new THREE.Vector3(0.05, 0.12, 0)); m.rotation.y = Math.PI / 2 + (this.rackUsed % 3) * 0.4; m.castShadow = true; this.root.add(m);
   }
   setProfile(p: WorkerProfile, slot: Slot) { this.prof = p; this.slot = slot; this.scrT = 0; }
 
@@ -268,11 +280,11 @@ export class FitBay {
     const g = cv.getContext('2d')!, W = cv.width, Hh = cv.height, t = this.t, p = this.prof;
     g.fillStyle = '#06120a'; g.fillRect(0, 0, W, Hh);
     const ph = '#8fdc96', dim = '#3f7a48';
-    g.font = '20px VT, monospace'; g.textBaseline = 'top'; g.fillStyle = ph;
+    g.font = '22px Body, monospace'; g.textBaseline = 'top'; g.fillStyle = ph;
     if (kind === 'profile') {
       g.fillText('UNAA-07 · WORKER PROFILE', 14, 10); g.fillStyle = dim; g.fillRect(14, 34, W - 28, 1);
-      g.fillStyle = ph; g.font = '52px VT, monospace'; g.fillText(p ? p.roleName : 'NO SPECIMEN', 14, 44);
-      g.font = '20px VT, monospace';
+      g.fillStyle = ph; g.font = '48px Title, monospace'; g.fillText(p ? p.roleName : 'NO SPECIMEN', 14, 44);
+      g.font = '22px Body, monospace';
       const rows = p ? [['CARRY', `${p.carry} UNITS`], ['SPEED', `${p.speed.toFixed(1)} M/S`], ['ARMOUR', `${Math.round(p.armour * 100)}%`], ['OBEDIENCE', `${Math.round(p.control * 100)}%`], ['FOOD', `${p.needs.food.toFixed(1)}/MIN`], ['MAINT', `${p.needs.maint.toFixed(1)}/H`]] : [];
       rows.forEach(([k, v], i) => { const x = 14 + (i % 2) * 210, y = 110 + Math.floor(i / 2) * 26; g.fillStyle = dim; g.fillText(k, x, y); g.fillStyle = ph; g.fillText(v, x + 100, y); });
       g.fillStyle = dim; g.fillText(`SLOT > ${SLOT_NAME[this.slot]}`, 14, 196);

@@ -6,6 +6,19 @@ import { Cinema, type Script } from '../game/cinema';
 import type { Game } from '../game/game';
 import { ui } from '../ui/kit';
 import { anyG } from '../research/util';
+import './film.css';
+
+/** the film-still overlay: pixel grain (a 256 px noise tile painted once), vignette, gate and a scratch */
+let film: HTMLDivElement | null = null;
+function filmOverlay() {
+  if (film?.isConnected) return film;
+  film = document.createElement('div'); film.className = 'ev-film';
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128; const g = cv.getContext('2d')!, img = g.createImageData(128, 128);
+  for (let i = 0; i < img.data.length; i += 4) { const v = Math.random() < 0.5 ? 0 : 255, a = Math.random() < 0.35 ? 200 : 0; img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = a; }
+  g.putImageData(img, 0, 0);
+  film.innerHTML = `<div class="gr" style="background-image:url(${cv.toDataURL()})"></div><div class="vg"></div><div class="gt"></div><div class="sc"></div>`;
+  ui().appendChild(film); return film;
+}
 
 const V3 = THREE.Vector3;
 export class Stage {
@@ -16,7 +29,7 @@ export class Stage {
   props: THREE.Object3D[] = [];
   constructor(readonly g: Game) {
     this.cine = new Cinema({
-      enter: () => { anyG(g).setMode?.({ k: 'normal' }); document.body.classList.add('ev-on'); },
+      enter: () => { anyG(g).setMode?.({ k: 'normal' }); filmOverlay(); document.body.classList.add('ev-on'); },
       exit: () => { anyG(g).hud?.invalidate?.(); document.body.classList.remove('ev-on'); },
     });
     this.cine.ui.root.remove(); ui().appendChild(this.cine.ui.root);

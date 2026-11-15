@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { Kit } from '../../robots/kit';
 import { gbuf } from '../../gfx/gbuf';
 import { crewMats } from '../crew/paint';
+import { placeModel } from '../hub/models';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 
@@ -62,6 +63,32 @@ export class Motes {
   dispose() { this.points.removeFromParent(); this.geo.dispose(); }
 }
 
+// ------------------------------------------------------------------ real props: Poly Haven models through the lowpix converter
+const fits: { g: THREE.Group; h: number; done: boolean }[] = [];
+/** a lowpix-converted Poly Haven prop (the hub's model set), scaled to a height in metres once it has loaded */
+export function lp(id: string, height: number): THREE.Group {
+  const g = new THREE.Group(); g.name = 'lp:' + id;
+  placeModel(g, id, { x: 0, z: 0 });
+  fits.push({ g, h: height, done: false });
+  return g;
+}
+/** call every frame: fit the props that have arrived */
+export function tickFits() {
+  for (const f of fits) {
+    if (f.done) continue;
+    const inner = f.g.children[0]; if (!inner || !inner.children.length) continue;
+    // measure in the holder's own frame (it may already be placed and turned)
+    f.g.updateWorldMatrix(true, true);
+    const inv = f.g.matrixWorld.clone().invert();
+    const bb = new THREE.Box3().setFromObject(inner).applyMatrix4(inv), h = bb.max.y - bb.min.y;
+    if (!(h > 1e-4)) continue;
+    const k = f.h / h, c = bb.getCenter(new THREE.Vector3());
+    inner.scale.multiplyScalar(k);
+    inner.position.set((inner.position.x - c.x) * k, (inner.position.y - bb.min.y) * k, (inner.position.z - c.z) * k);
+    f.done = true;
+  }
+}
+
 // ------------------------------------------------------------------ kit-built props
 function build(fn: (k: Kit, g: THREE.Group) => void, dens = 10): THREE.Group {
   const g = new THREE.Group(); const k = new Kit(dens);
@@ -71,7 +98,7 @@ function build(fn: (k: Kit, g: THREE.Group) => void, dens = 10): THREE.Group {
 }
 /** the things that go out of the hole */
 export function looseThings(): THREE.Group[] {
-  const out: THREE.Group[] = [];
+  const out: THREE.Group[] = [lp('clipboard', 0.03), lp('office_notepads', 0.05), lp('binder_notebook', 0.06), lp('magnifying_glass_01', 0.04), lp('screwdriver', 0.03), lp('alarm_clock_01', 0.1)];
   for (let i = 0; i < 7; i++) out.push(build((k, g) => { k.on(g, 1); k.box(0, 0, 0, 0.21, 0.002, 0.29, 'cw:ceramic'); k.push(0, 0.0012, 0, -Math.PI / 2, 0, 0).decal(0, 0, 0, 0.19, 0.27, i % 3 === 0 ? 'cw:memo' : i % 3 === 1 ? 'cw:id' : 'cw:ceramic').pop(); }));
   out.push(build((k, g) => { k.on(g, 1); k.cyl(0, 0, 0, 0.038, 0.036, 0.095, 12, 'cw:ceramic', { caps: 'bot' }); k.push(0, 0, 0.0375).decal(0, 0, 0, 0.04, 0.04, 'cw:capb').pop(); k.on(g, 0); k.torus(-0.047, 0, 0, 0.022, 0.006, 10, 4, 'pb2', 'z'); }));
   for (let i = 0; i < 3; i++) out.push(build((k, g) => { k.on(g, 1); k.cyl(0, 0, 0, 0.011, 0.011, 0.12, 8, 'cw:glassG', { caps: 'bot' }); k.on(g, 0); k.cyl(0, 0.065, 0, 0.013, 0.013, 0.02, 8, i === 1 ? 'hzB' : 'pb0'); }));
@@ -100,15 +127,14 @@ export function consoleParts(): THREE.Group[] {
 }
 /** a stencilled part crate (index 0..3) with its lid */
 export function partCrate(i: number): THREE.Group {
-  return build((k, g) => {
-    k.on(g, 0);
-    k.box(0, 0.26, 0, 0.8, 0.52, 0.6, 'pb1', { ch: 0.02 });
-    for (const x of [-0.36, 0.36]) k.box(x, 0.26, 0, 0.06, 0.54, 0.62, 'st0', { ch: 0.006 });
-    k.box(0, 0.53, 0, 0.82, 0.04, 0.62, 'pb0', { ch: 0.008 });
-    k.box(0, 0.16, 0.302, 0.6, 0.04, 0.012, 'hz');
-    k.on(g, 1); k.push(0, 0.36, 0.303).decal(0, 0, 0, 0.52, 0.156, 'cw:part' + i).pop();
-    k.push(0, 0.551, 0, -Math.PI / 2, 0, 0).decal(0, 0, 0, 0.5, 0.15, 'cw:part' + i).pop();
-  });
+  const g = new THREE.Group();
+  g.add(lp(i % 2 ? 'plastic_crate_01' : 'metal_tool_chest', 0.55));
+  // the stencilled part plate on a stand in front of it
+  g.add(build((k, gg) => {
+    k.on(gg, 0); k.box(0, 0.3, 0.42, 0.56, 0.2, 0.02, 'pb0', { ch: 0.004 }); k.box(0, 0.1, 0.42, 0.04, 0.2, 0.04, 'st0');
+    k.on(gg, 1); k.push(0, 0.3, 0.431).decal(0, 0, 0, 0.52, 0.156, 'cw:part' + i).pop();
+  }));
+  return g;
 }
 /** the torn hole on the outer skin: a black ragged disc and petals bent outward */
 export function outerHole(): THREE.Group {

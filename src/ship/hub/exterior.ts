@@ -9,6 +9,7 @@ import { Mats, Bin, Batch, box, cyl, lathe, quad, V3 } from './kit';
 import { WALL_H, CUT_H, SHIP_NAME } from './layout';
 import { canvas, toTex, cached, rgb, rgba, shade, screw, stencilText, grain, chips, streak, hazardStripes, labelTex, hazardTex } from './tex';
 import { Rand } from '../../core/rand';
+import { pixHull } from './pix';
 import { gbuf, F_EMIT } from '../../gfx/gbuf';
 import type { CamPreset } from './layout';
 
@@ -140,9 +141,9 @@ const ROOF_CUTS = [-28.6, -20, -12, -4, 4, 12, 16.5, 31.6];
 
 export function buildExterior(bin: Bin, M: Mats, _renderer: THREE.WebGLRenderer): Exterior {
   const root = new THREE.Group(); root.name = 'exterior';
-  const white = M.get('hull.white', { map: hullTex('w', 0xc9cbc4), rough: 0.55, metal: 0.15, env: 0.8 });
-  const grey = M.get('hull.grey', { map: hullTex('g', 0x6c7276), rough: 0.5, metal: 0.3 });
-  const dark = M.get('hull.dark', { map: engineTex(), rough: 0.6, metal: 0.4 });
+  const white = M.get('hull.white', { map: pixHull('w', 0xc6c8c0) });
+  const grey = M.get('hull.grey', { map: pixHull('g', 0x6c7276) });
+  const dark = M.get('hull.dark', { map: pixHull('e', 0x383c3e) });
   const gun = M.get('ext.gun', { color: 0x4a4f53, rough: 0.45, metal: 0.6 });
   const steel = M.get('ext.steel', { color: 0x9aa0a0, rough: 0.3, metal: 0.8 });
   const orange = M.get('ext.orange', { color: 0xd0662a, rough: 0.5 });
@@ -228,7 +229,7 @@ export function buildExterior(bin: Bin, M: Mats, _renderer: THREE.WebGLRenderer)
   // ---- the hangar door on the port side (upper leaf on the roof plate, the sill below the cut)
   {
     const hz = -19.8, hw = 9.4;
-    const dm = M.get('hangar.door', { map: hullTex('d', 0x8a9094), rough: 0.5, metal: 0.35 });
+    const dm = M.get('hangar.door', { map: pixHull('d', 0x8a9094) });
     const p = plates[ROOF_CUTS.findIndex((c, i) => hz >= c && hz < ROOF_CUTS[i + 1])].g;
     const d = new THREE.Mesh(bin.g(box(0.25, WALL_H - CUT_H, hw, 0.05)), dm); d.position.set(-10.86, (WALL_H + CUT_H) / 2, hz); p.add(d);
     for (const s of [-1, 1]) { const h = new THREE.Mesh(bin.g(box(0.3, WALL_H - CUT_H + 0.3, 0.4)), haz); h.position.set(-10.9, (WALL_H + CUT_H) / 2, hz + s * (hw / 2 + 0.2)); p.add(h); }

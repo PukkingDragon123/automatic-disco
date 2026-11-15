@@ -1,6 +1,5 @@
 // The planet from orbit, and where on it to fall: one seamless 3D scene, no panels.
-//   ORBIT   the world turning in deep space, its cloud decks drifting, the U.S.S. VANGUARD holding station in the
-//           foreground. Drag turns the planet, the wheel or a pinch zooms. Hovering a region lights its border; a
+//   ORBIT   the world turning in deep space, its cloud decks drifting (seen on the MERIDIAN's main monitor). Drag turns the planet, the wheel or a pinch zooms. Hovering a region lights its border; a
 //           floating pixel label names it (biome, danger, who holds it). Held and burnt regions show on the globe.
 //   DIVE    click a region: the globe turns it to face you and the camera falls toward it, into the cloud deck...
 //   SURVEY  ...and out under it, above the region itself: the real Region the game will generate, in its landscape.
@@ -9,7 +8,7 @@
 //           crystal seams, open water, rivers, steep ground, dense woods, herds and predator sign, hostile creep
 //           and enemy bases (when the game knows of any), the recommended LZ.
 //   CHOOSE  click the ground to set the drop point: painted rings, the landing ellipse, a beacon, a verdict and the
-//           LAUNCH plate. Launch goes straight into the carrier's launch and the controllable descent.
+//           DEPLOY plate. Deploy hands back to the ship hub for the pod drop.
 //   Esc, right-click or the ORBIT tag backs out (from orbit: back to the menu). Touch: drag, pinch, tap.
 import * as THREE from 'three';
 import type { Screen } from '../app/engine';
@@ -17,7 +16,6 @@ import { type Post, resetGrade } from '../gfx/post';
 import { sfx } from '../audio/audio';
 import { csfx } from './cineAudio';
 import { makeGlobe, makeSpace, type Globe } from './globe';
-import { buildCarrier, type Carrier } from './deployShip';
 import { type Planet, type PRegion, owned } from '../world/planet';
 import { Region, BIOMES, ORES } from '../world/region';
 import { planetPalette, RIVALS } from '../world/palette';
@@ -100,20 +98,20 @@ const KIND_COL: Record<Kind, number> = {
 
 // ------------------------------------------------------------------ CSS: floating pixel labels only
 const CSS = /* css */`
-.pls { position: fixed; inset: 0; z-index: 20; pointer-events: none; --u: calc(1px * var(--s, 2)); font-family: 'VT', monospace; color: #c3bdab; }
+.pls { position: fixed; inset: 0; z-index: 20; pointer-events: none; --u: calc(1px * var(--s, 2)); font-family: 'Body'; color: #c3bdab; }
 .pls .hd { position: absolute; left: calc(12 * var(--u)); top: calc(10 * var(--u)); text-shadow: 0 1px 0 #06070a, 1px 0 0 #06070a; transition: opacity 400ms; }
-.pls .hd .k { font-family: 'Superwide', monospace; font-size: var(--cf-sw1, 10px); letter-spacing: 3px; color: #7d8888; }
-.pls .hd .t { font-family: 'Canned', monospace; font-size: var(--cf-sw4, 40px); line-height: 1; color: #d2cab4; margin: calc(2 * var(--u)) 0; letter-spacing: 2px; }
-.pls .hd .s { font-size: var(--cf-vt1, 14px); color: #a69d88; letter-spacing: 1px; }
-.pls .hint { position: absolute; left: 50%; bottom: calc(8 * var(--u)); transform: translateX(-50%); font-size: var(--cf-vt1, 14px); letter-spacing: 1px; color: rgba(194, 198, 189, 0.7); text-shadow: 0 1px 0 #06070a; white-space: nowrap; transition: opacity 400ms; }
+.pls .hd .k { font-family: 'Title'; font-size: 24px; color: #7d8888; }
+.pls .hd .t { font-family: 'TitleL'; font-size: 64px; line-height: 1; color: #d2cab4; margin: calc(2 * var(--u)) 0; }
+.pls .hd .s { font-size: 22px; color: #a69d88; }
+.pls .hint { position: absolute; left: 50%; bottom: calc(8 * var(--u)); transform: translateX(-50%); font-size: 22px; color: rgba(194, 198, 189, 0.7); text-shadow: 0 1px 0 #06070a; white-space: nowrap; transition: opacity 400ms; }
 .pls .hint b { color: #c9a464; font-weight: normal; }
-.pls .lab { position: absolute; left: 0; top: 0; white-space: nowrap; font-size: var(--cf-vt1, 14px); line-height: 1; text-shadow: 0 1px 0 #06070a, 1px 0 0 #06070a, -1px 0 0 #06070a, 0 -1px 0 #06070a; transform: translate(-50%, -100%); }
-.pls .rg .n { font-family: 'Superwide', monospace; font-size: var(--cf-sw2, 20px); color: #e2dbc6; letter-spacing: 2px; display: block; text-align: center; }
+.pls .lab { position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 22px; line-height: 1; text-shadow: 0 1px 0 #06070a, 1px 0 0 #06070a, -1px 0 0 #06070a, 0 -1px 0 #06070a; transform: translate(-50%, -100%); }
+.pls .rg .n { font-family: 'Title'; font-size: 24px; color: #e2dbc6; display: block; text-align: center; }
 .pls .rg .d { display: block; text-align: center; margin-top: calc(2 * var(--u)); color: #a69d88; }
 .pls .rg .w { display: block; text-align: center; margin-top: calc(2 * var(--u)); color: #a2473a; }
 .pls .rg.no { animation: pls-shake 300ms steps(6); }
 @keyframes pls-shake { 25% { margin-left: 4px; } 50% { margin-left: -4px; } 75% { margin-left: 2px; } }
-.pls .ship { color: #8c8471; font-size: var(--cf-vt1, 14px); }
+.pls .ship { color: #8c8471; font-size: 22px; }
 .pls .ship::before { content: ''; display: inline-block; width: calc(10 * var(--u)); height: 1px; background: #8c8471; vertical-align: middle; margin-right: calc(3 * var(--u)); }
 .pls .mk { display: flex; align-items: center; gap: calc(3 * var(--u)); transform: translate(calc(-6 * var(--u)), -100%); animation: pls-pop 260ms cubic-bezier(.3,1.8,.5,1) both; }
 .pls .mk img { width: calc(12 * var(--u)); height: calc(12 * var(--u)); image-rendering: pixelated; flex: none; }
@@ -121,17 +119,17 @@ const CSS = /* css */`
 .pls .mk i { position: absolute; left: calc(6 * var(--u)); top: 100%; width: 1px; height: var(--stalk, 20px); background: var(--c); opacity: 0.6; }
 @keyframes pls-pop { 0% { opacity: 0; transform: translate(calc(-6 * var(--u)), -60%) scale(0.4); } 100% { opacity: 1; transform: translate(calc(-6 * var(--u)), -100%) scale(1); } }
 .pls .rt { transform: translate(calc(10 * var(--u)), -50%); display: flex; flex-direction: column; gap: calc(3 * var(--u)); }
-.pls .rt .g { font-family: 'Superwide', monospace; font-size: var(--cf-sw1, 10px); letter-spacing: 2px; color: #e2dbc6; }
-.pls .rt .v { font-size: var(--cf-vt1, 14px); }
+.pls .rt .g { font-family: 'Title'; font-size: 24px; color: #e2dbc6; }
+.pls .rt .v { font-size: 22px; }
 .pls .rt .v.good { color: #9cc5ae; } .pls .rt .v.warn { color: #c9a464; } .pls .rt .v.bad { color: #a2473a; }
-.pls .go { pointer-events: auto; cursor: pointer; align-self: flex-start; font-family: 'Superwide', monospace; font-size: var(--cf-sw1, 10px); letter-spacing: 2px; color: #e2dbc6; padding: calc(4 * var(--u)) calc(9 * var(--u)) calc(4 * var(--u)) calc(7 * var(--u));
+.pls .go { pointer-events: auto; cursor: pointer; align-self: flex-start; font-family: 'Title'; font-size: 24px; color: #e2dbc6; padding: calc(4 * var(--u)) calc(9 * var(--u)) calc(4 * var(--u)) calc(7 * var(--u));
   background: var(--plate) center / 100% 100% no-repeat; image-rendering: pixelated; text-shadow: 0 1px 0 #1e1012; transition: filter 120ms; }
 .pls .go:hover { filter: brightness(1.18); }
 .pls .go:active { transform: translateY(1px); }
-.pls .back { position: absolute; left: calc(12 * var(--u)); bottom: calc(8 * var(--u)); pointer-events: auto; cursor: pointer; font-family: 'Superwide', monospace; font-size: var(--cf-sw1, 10px); letter-spacing: 2px; color: #a69d88; text-shadow: 0 1px 0 #06070a; }
+.pls .back { position: absolute; left: calc(12 * var(--u)); bottom: calc(8 * var(--u)); pointer-events: auto; cursor: pointer; font-family: 'Title'; font-size: 24px; color: #a69d88; text-shadow: 0 1px 0 #06070a; }
 .pls .back:hover { color: #e2dbc6; }
 .pls .flash { position: absolute; inset: 0; background: #e2e1d8; opacity: 0; }
-.pls .scanhud { position: absolute; right: calc(12 * var(--u)); top: calc(10 * var(--u)); text-align: right; font-size: var(--cf-vt1, 14px); color: #6c9e8c; text-shadow: 0 0 calc(2 * var(--u)) rgba(108, 158, 140, 0.4), 0 1px 0 #06070a; letter-spacing: 1px; line-height: 1.25; }
+.pls .scanhud { position: absolute; right: calc(12 * var(--u)); top: calc(10 * var(--u)); text-align: right; font-size: 22px; color: #6c9e8c; text-shadow: 0 0 calc(2 * var(--u)) rgba(108, 158, 140, 0.4), 0 1px 0 #06070a; line-height: 1.25; }
 `;
 let styled = false;
 function style() { if (styled) return; styled = true; const s = document.createElement('style'); s.id = 'planet-css'; s.textContent = CSS; document.head.appendChild(s); }
@@ -179,7 +177,7 @@ export class PlanetScreen implements Screen {
   private scene = new THREE.Scene(); private fxScene = new THREE.Scene();
   private cam = new THREE.PerspectiveCamera(38, 1, 0.5, 16000);
   private bin = new Bin();
-  private globe: Globe; private carrier: Carrier;
+  private globe: Globe;
   private q = new THREE.Quaternion(); private spin = new THREE.Vector2(0.0016, 0);
   private dist = 4.1 * R; private distGoal = 4.1 * R;
   // ---- the region close-up (built on the dive, freed on the way back up)
@@ -211,12 +209,6 @@ export class PlanetScreen implements Screen {
     this.globe.mat.uniforms.uSun.value.copy(SUN);
     sc.add(this.globe.group); bin.adopt(this.globe.group);
     this.q.setFromEuler(new THREE.Euler(0.35, -0.6, 0));
-    // the carrier holding station off the planet, in the foreground (its own lights; the sun matched)
-    this.carrier = buildCarrier({ people: false });
-    const cg = this.carrier.group;
-    cg.position.set(-205, -100, 4.1 * R - 560); cg.rotation.set(0.1, Math.PI - 0.75, 0.05);
-    this.carrier.ship.sun.position.copy(SUN.clone().applyQuaternion(cg.quaternion.clone().invert())).multiplyScalar(220);
-    sc.add(cg);
     // DOM: the header, hover label, the carrier's tag, hints, the white of the cloud deck
     this.root = div('pls', document.body) as HTMLDivElement;
     this.hd = div('hd', this.root);
@@ -224,11 +216,11 @@ export class PlanetScreen implements Screen {
     div('t', this.hd, esc(planet.name.toUpperCase()));
     div('s', this.hd, esc(opts.note ?? `${owned(planet)} OF ${planet.goal} REGIONS HELD · HOLD ${planet.goal} AND THE WORLD BECOMES YOU`));
     this.rlab = div('lab rg', this.root); this.rlab.style.display = 'none';
-    this.slab = div('lab ship', this.root, 'U.S.S. VANGUARD &middot; CVS-01 &middot; HOLDING ORBIT');
+    this.slab = div('lab ship', this.root, ''); this.slab.style.display = 'none';
     this.scanHud = div('scanhud', this.root); this.scanHud.style.display = 'none';
     this.ret = div('lab rt', this.root); this.ret.style.display = 'none';
     this.hint = div('hint', this.root, '<b>DRAG</b> TO TURN THE WORLD &middot; <b>WHEEL</b> TO ZOOM &middot; <b>CLICK</b> A REGION TO SURVEY IT &middot; <b>ESC</b> BACK');
-    this.back = div('back', this.root, '&#9664; MENU');
+    this.back = div('back', this.root, '&#9664; SYSTEM');
     this.back.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.goBack(); });
     this.flash = div('flash', this.root) as HTMLDivElement;
     addEventListener('pointerdown', this.onDown); addEventListener('pointermove', this.onMove); addEventListener('pointerup', this.onUp); addEventListener('pointercancel', this.onUp);
@@ -429,7 +421,7 @@ export class PlanetScreen implements Screen {
     csfx(a.ok ? 'thud' : 'deny', 0.6, 1.8); sfx('click', 1, 0.5); csfx('beep', 0.4, 1.4);
     const r = this.ret;
     r.style.display = '';
-    r.innerHTML = `<span class="g">DROP POINT &middot; GRID ${a.grid}</span><span class="v ${a.verdict === 'SUITABLE' ? 'good' : a.verdict === 'ROUGH' || a.verdict === 'SPLASHDOWN' ? 'warn' : 'bad'}">${a.verdict} &middot; ${esc(a.note)}${a.seam ? ` &middot; ${a.seam.kind === 'ore' ? 'FERRITE' : 'LUMEN'} ${Math.round(a.seam.dist)} M` : ''}</span>` + (a.ok ? `<span class="go" style="--plate:url(${launchPlate()})">LAUNCH &#9654;</span>` : '');
+    r.innerHTML = `<span class="g">DROP POINT &middot; GRID ${a.grid}</span><span class="v ${a.verdict === 'SUITABLE' ? 'good' : a.verdict === 'ROUGH' || a.verdict === 'SPLASHDOWN' ? 'warn' : 'bad'}">${a.verdict} &middot; ${esc(a.note)}${a.seam ? ` &middot; ${a.seam.kind === 'ore' ? 'FERRITE' : 'LUMEN'} ${Math.round(a.seam.dist)} M` : ''}</span>` + (a.ok ? `<span class="go" style="--plate:url(${launchPlate()})">DEPLOY &#9654;</span>` : '');
     const go = r.querySelector('.go') as HTMLElement | null;
     if (go) { go.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.launch(); }); go.addEventListener('pointerenter', () => sfx('hover', 1.2, 0.3)); }
     (r as any).__at = at;
@@ -466,10 +458,6 @@ export class PlanetScreen implements Screen {
   update(dt: number) {
     this.t += dt; this.T += dt;
     this.globe.mat.uniforms.uT.value = this.t;
-    this.carrier.update(dt);
-    // the carrier drifts a little on station
-    this.carrier.group.position.y = -100 + Math.sin(this.t * 0.21) * 3;
-    this.carrier.group.rotation.z = 0.05 + Math.sin(this.t * 0.17) * 0.012;
     switch (this.mode) {
       case 'orbit': this.orbit(dt); break;
       case 'dive': this.diving(dt); break;
@@ -566,8 +554,8 @@ export class PlanetScreen implements Screen {
         this.freeLocal();
         this.dist = 1.1 * R; this.distGoal = 4.1 * R; this.T = 0;
         this.whiteGoal = 0; this.mode = 'orbit';
-        this.back.innerHTML = '&#9664; MENU';
-        this.hd.style.opacity = '1'; this.slab.style.display = ''; this.hint.style.opacity = '1';
+        this.back.innerHTML = '&#9664; SYSTEM';
+        this.hd.style.opacity = '1'; this.hint.style.opacity = '1';
         this.hint.innerHTML = '<b>DRAG</b> TO TURN THE WORLD &middot; <b>WHEEL</b> TO ZOOM &middot; <b>CLICK</b> A REGION TO SURVEY IT &middot; <b>ESC</b> BACK';
         this.cam.fov = 38; this.cam.updateProjectionMatrix();
       }
@@ -602,7 +590,6 @@ export class PlanetScreen implements Screen {
         const p = this.globe.group.localToWorld(new V3(...r.c).multiplyScalar(R * 1.1));
         at(p, this.cam, this.rlab, -12);
       }
-      at(this.carrier.group.localToWorld(new V3(0, 30, -10)), this.cam, this.slab);
     }
     const L = this.local;
     if (L && (this.mode === 'survey')) {
@@ -652,7 +639,6 @@ export class PlanetScreen implements Screen {
     if (!this.closed) { this.closed = true; this.unbind(); }
     this.root.remove();
     this.freeLocal();
-    this.carrier.dispose();
     this.bin.dispose();
     this.scene.clear();
     if ((window as any).__planet === this) (window as any).__planet = null;

@@ -5,7 +5,8 @@
 import * as THREE from 'three';
 import type { ShipHub } from './hub';
 import { ROOMS, ROOM_IDS, SHIP_BOX, SHIP_NAME, SHIP_REG, type RoomId } from './layout';
-import { canvas, rgb, rgba, shade, screw } from './tex';
+import { canvas } from './tex';
+import { PixelCanvas, makeRamp, ph } from '../../limbo/gfx/pixel';
 import { csfx } from '../../ui/cineAudio';
 import { settings, setSettings, resetSettings, type Quality } from '../../settings';
 import { ui } from '../../ui/kit';
@@ -13,140 +14,150 @@ import { ui } from '../../ui/kit';
 export interface RoomAction { id: string; label: string; key?: string; run: () => void; disabled?: () => string | false; primary?: boolean; hint?: string }
 
 // ------------------------------------------------------------------ painted frames
+/**
+ * The UI hardware, hand-pixelled at 1x (shown at 2x, nearest): 24 x 24 nine-slice plates with 8 px corners.
+ * steel: a worn gunmetal housing, ink outline, lit top-left bevel, shadowed bottom-right, a groove, screws in the
+ * corners, scratches near the edges. crt: phosphor glass in a dark bezel with scanlines and an inner shadow.
+ * key / keyHi: a raised Bakelite key with its thickness under it and an indicator lamp (lit when hot).
+ */
 function plate(kind: 'steel' | 'crt' | 'key' | 'keyHi' | 'tag' | 'amber'): string {
-  const S = 2, W = 48 * S, [c, g] = canvas(W, W), r = 12 * S;
-  const base = kind === 'crt' ? 0x0a140e : kind === 'tag' ? 0x1a1f1c : kind === 'amber' ? 0x2a2214 : kind.startsWith('key') ? (kind === 'keyHi' ? 0x2f4a36 : 0x2a2f2c) : 0x262b2e;
-  // outer ink line, bevel lights and shadows, the face
-  g.fillStyle = rgb(0x07090a); g.fillRect(0, 0, W, W);
-  g.fillStyle = rgb(shade(base, kind === 'crt' ? 3.2 : 1.9)); g.fillRect(S, S, W - 2 * S, W - 2 * S);
-  g.fillStyle = rgb(shade(base, 0.55)); g.fillRect(2 * S, 2 * S, W - 3 * S, W - 3 * S);
-  g.fillStyle = rgb(base); g.fillRect(2 * S, 2 * S, W - 4 * S, W - 4 * S);
-  // brushed grain across the face
-  for (let i = 0; i < 260; i++) { g.fillStyle = rgba(i % 2 ? 0xffffff : 0x000000, 0.035); g.fillRect(2 * S + Math.random() * (W - 4 * S), 2 * S + Math.random() * (W - 4 * S), 6 * S, S * 0.5); }
+  const N = 24, pc = new PixelCanvas(N, N);
+  const base = kind === 'crt' ? 0x0c1a12 : kind === 'tag' ? 0x1c2420 : kind === 'amber' ? 0x3a2e1a : kind === 'keyHi' ? 0x2c3e30 : kind === 'key' ? 0x2e3230 : 0x30363a;
+  const R = makeRamp(base, 6, { spread: 0.55 }), INKC = 0x07090a;
+  pc.fill(R[2]);
+  // the face: two tones in soft clusters
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (ph(x >> 1, y >> 1, 7) < 0.22) pc.set(x, y, R[3]);
+  // outline and bevel
+  for (let i = 0; i < N; i++) { pc.set(i, 0, INKC); pc.set(i, N - 1, INKC); pc.set(0, i, INKC); pc.set(N - 1, i, INKC); }
+  for (let i = 1; i < N - 1; i++) { pc.set(i, 1, R[5]); pc.set(1, i, R[4]); pc.set(i, N - 2, R[0]); pc.set(N - 2, i, R[1]); }
   if (kind === 'crt') {
-    // phosphor glass: scanlines, an inner shadow
-    for (let y = 0; y < W; y += 2) { g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(2 * S, y, W - 4 * S, 1); }
-    const ig = g.createLinearGradient(0, 2 * S, 0, 8 * S); ig.addColorStop(0, 'rgba(0,0,0,0.5)'); ig.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = ig; g.fillRect(2 * S, 2 * S, W - 4 * S, 6 * S);
-    g.fillStyle = rgba(0x7fd48a, 0.25); g.fillRect(2 * S, W - 3 * S, W - 4 * S, S);
+    const G = makeRamp(0x0e2416, 5, { spread: 0.5 });
+    for (let y = 3; y < N - 3; y++) for (let x = 3; x < N - 3; x++) pc.set(x, y, y % 2 ? G[1] : G[2]);
+    for (let x = 3; x < N - 3; x++) { pc.set(x, 3, G[0]); pc.set(x, 4, G[0]); pc.set(x, N - 4, 0x3f8f58); }
+    for (let y = 3; y < N - 3; y++) { pc.set(3, y, G[0]); }
+    for (let i = 2; i < N - 2; i++) { pc.set(i, 2, R[0]); pc.set(2, i, R[0]); pc.set(i, N - 3, R[4]); pc.set(N - 3, i, R[4]); }
   } else if (kind === 'steel' || kind === 'amber') {
-    // a raised rim with a groove, screws in the corners
-    g.fillStyle = rgb(shade(base, 1.45)); g.fillRect(4 * S, 4 * S, W - 8 * S, S);
-    g.fillStyle = rgb(shade(base, 0.6)); g.fillRect(4 * S, 5 * S, W - 8 * S, S * 0.5);
-    for (const [x, y] of [[7 * S, 7 * S], [W - 7 * S, 7 * S], [7 * S, W - 7 * S], [W - 7 * S, W - 7 * S]]) screw(g, x, y, 2.2 * S, shade(base, 1.6), x + y);
-    if (kind === 'amber') { g.fillStyle = rgb(0xd9a43a); g.fillRect(2 * S, 2 * S, 3 * S, W - 4 * S); }
-  } else if (kind.startsWith('key')) {
-    const hi = kind === 'keyHi';
-    g.fillStyle = rgb(shade(base, hi ? 1.6 : 1.5)); g.fillRect(2 * S, 2 * S, W - 4 * S, S);
-    g.fillStyle = rgb(shade(base, 0.5)); g.fillRect(2 * S, W - 4 * S, W - 4 * S, 2 * S);
-    g.fillStyle = rgb(hi ? 0x7fd48a : 0x3f8f58); g.fillRect(4 * S, W / 2 - 3 * S, 2 * S, 6 * S);
+    for (let i = 4; i < N - 4; i++) { pc.set(i, 4, R[0]); pc.set(i, 5, R[4]); }
+    for (const [x, y] of [[3, 3], [N - 4, 3], [3, N - 4], [N - 4, N - 4]]) { pc.set(x, y, R[5]); pc.set(x + 1, y, R[3]); pc.set(x, y + 1, R[3]); pc.set(x + 1, y + 1, R[0]); pc.set(x - 1, y + 1, R[1]); pc.set(x + 1, y - 1, R[1]); }
+    for (const [x, y] of [[7, 2], [16, N - 3], [2, 15]]) { pc.set(x, y, R[5]); pc.set(x + 1, y, R[4]); }
+    if (kind === 'amber') for (let y = 2; y < N - 2; y++) { pc.set(2, y, 0xd9a43a); pc.set(3, y, 0x98702c); }
+  } else if (kind === 'key' || kind === 'keyHi') {
+    for (let i = 1; i < N - 1; i++) { pc.set(i, N - 3, R[0]); pc.set(i, N - 4, R[1]); }
+    const lit = kind === 'keyHi';
+    pc.set(4, 10, lit ? 0x9fffb0 : 0x1e3a26); pc.set(5, 10, lit ? 0x7fd48a : 0x1a3222); pc.set(4, 11, lit ? 0x7fd48a : 0x1a3222); pc.set(5, 11, lit ? 0x3f8f58 : 0x14281a);
+    pc.set(4, 9, R[0]); pc.set(5, 9, R[0]); pc.set(3, 10, R[0]); pc.set(3, 11, R[0]);
   } else {
-    g.fillStyle = rgb(0x7fd48a); g.fillRect(2 * S, 2 * S, 2 * S, W - 4 * S);
+    for (let y = 2; y < N - 2; y++) { pc.set(2, y, 0x7fd48a); pc.set(3, y, 0x3f8f58); }
   }
-  void r;
+  const c = document.createElement('canvas'); c.width = N; c.height = N;
+  c.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(pc.data), N, N), 0, 0);
   return c.toDataURL();
 }
 
 const CSS = /* css */`
-.shub { position: fixed; inset: 0; z-index: 4; pointer-events: none; font-family: 'VT', monospace; color: #cfe8d2; --g: #7fd48a; --gd: #3f8f58; --gh: #c9f5cf; --am: #d9a43a; --ink: #07090a;
-  --fs: clamp(13px, 1.25vh, 22px); --fl: clamp(18px, 1.9vh, 34px); --fx: clamp(28px, 3.6vh, 62px); --u: clamp(1px, 0.1vh, 2px); }
+.shub { position: fixed; inset: 0; z-index: 4; image-rendering: pixelated; pointer-events: none; font-family: 'Body'; color: #cfe8d2; --g: #7fd48a; --gd: #3f8f58; --gh: #c9f5cf; --am: #d9a43a; --ink: #07090a;
+  --fs: 22px; --fl: 22px; --fx: 48px; --u: clamp(1px, 0.1vh, 2px); }
 .shub * { box-sizing: border-box; }
 .shub .pe { pointer-events: auto; }
-.shub .frame { border: calc(12 * var(--u)) solid transparent; border-image: var(--steel) 24 fill / calc(12 * var(--u)) stretch; }
-.shub .crt { border: calc(6 * var(--u)) solid transparent; border-image: var(--crt) 24 fill / calc(6 * var(--u)) stretch; color: var(--g); text-shadow: 0 0 calc(4 * var(--u)) rgba(127,212,138,0.55); }
+.shub .frame { border: 16px solid transparent; border-image: var(--steel) 8 fill / 16px stretch; image-rendering: pixelated; }
+.shub .crt { border: 16px solid transparent; border-image: var(--crt) 8 fill / 16px stretch; image-rendering: pixelated; color: var(--g); text-shadow: 0 0 calc(4 * var(--u)) rgba(127,212,138,0.55); }
 /* top strip */
-.shub .top { position: absolute; left: 0; right: 0; top: 0; height: calc(58 * var(--u)); display: flex; align-items: stretch; gap: calc(8 * var(--u)); padding: 0 calc(10 * var(--u));
-  border: calc(10 * var(--u)) solid transparent; border-image: var(--steel) 24 fill / calc(10 * var(--u)) stretch; transition: transform 500ms cubic-bezier(.3,1.4,.5,1); }
+.shub .top { position: absolute; left: 0; right: 0; top: 0; height: 72px; white-space: nowrap; display: flex; align-items: stretch; gap: calc(8 * var(--u)); padding: 0 calc(10 * var(--u));
+  border: 16px solid transparent; border-image: var(--steel) 8 fill / 16px stretch; image-rendering: pixelated; transition: transform 500ms cubic-bezier(.3,1.4,.5,1); }
 .shub .top.off { transform: translateY(-120%); }
 .shub .top .id { display: flex; align-items: center; gap: calc(10 * var(--u)); padding-right: calc(14 * var(--u)); border-right: calc(2 * var(--u)) solid #15191b; }
 .shub .top .id canvas { width: calc(34 * var(--u)); height: calc(34 * var(--u)); }
-.shub .top .id .n { font-family: 'Superwide', monospace; font-size: var(--fl); letter-spacing: calc(3 * var(--u)); color: #e4e0cf; line-height: 1; }
-.shub .top .id .r { font-family: 'Jersey', monospace; font-size: var(--fs); color: #8e968c; letter-spacing: calc(2 * var(--u)); }
-.shub .top .loc { flex: 1; display: flex; align-items: center; padding: 0 calc(12 * var(--u)); font-size: var(--fl); }
+.shub .top .id .n { font-family: 'Title'; font-size: 24px; color: #e4e0cf; line-height: 1; }
+.shub .top .id .r { font-family: 'Body'; font-size: 22px; color: #8e968c; }
+.shub .top .loc { flex: 1; min-width: 0; overflow: hidden; display: flex; align-items: center; padding: 0 12px; font-size: 22px; white-space: nowrap; }
 .shub .top .loc b { color: var(--gh); font-weight: normal; }
 .shub .top .loc .sep { color: var(--gd); margin: 0 calc(10 * var(--u)); }
 .shub .top .vit { display: flex; gap: calc(6 * var(--u)); align-items: center; }
-.shub .top .v { display: flex; flex-direction: column; justify-content: center; min-width: calc(86 * var(--u)); padding: 0 calc(8 * var(--u)); height: 100%; }
-.shub .top .v .k { font-family: 'Jersey', monospace; font-size: calc(var(--fs) * 0.82); color: #6f8a74; letter-spacing: calc(2 * var(--u)); display: flex; align-items: center; gap: calc(4 * var(--u)); }
+.shub .top .v { display: flex; flex-direction: column; justify-content: center; min-width: 96px; padding: 0 8px; height: 100%; }
+.shub .top .v .k { font-family: 'Body'; font-size: 11px; color: #6f8a74; display: flex; align-items: center; gap: calc(4 * var(--u)); }
 .shub .top .v .k i { display: inline-block; width: calc(6 * var(--u)); height: calc(6 * var(--u)); background: var(--g); box-shadow: 0 0 calc(5 * var(--u)) var(--g); }
 .shub .top .v .k i.w { background: var(--am); box-shadow: 0 0 calc(5 * var(--u)) var(--am); }
 .shub .top .v .x { font-size: var(--fl); line-height: 1; color: var(--gh); }
 .shub .top .clock { font-size: var(--fl); padding: 0 calc(12 * var(--u)); display: flex; flex-direction: column; justify-content: center; }
-.shub .top .clock .k { font-family: 'Jersey', monospace; font-size: calc(var(--fs) * 0.82); color: #6f8a74; letter-spacing: calc(2 * var(--u)); }
+.shub .top .clock .k { font-family: 'Body'; font-size: 11px; color: #6f8a74; }
 /* room tags */
 .shub .tag { position: absolute; left: 0; top: 0; transform-origin: 0 100%; display: flex; flex-direction: column; align-items: flex-start; transition: opacity 250ms; white-space: nowrap; }
-.shub .tag .b { display: flex; align-items: center; gap: calc(6 * var(--u)); padding: calc(3 * var(--u)) calc(9 * var(--u)) calc(3 * var(--u)) calc(7 * var(--u)); border: calc(5 * var(--u)) solid transparent; border-image: var(--tag) 24 fill / calc(5 * var(--u)) stretch; }
-.shub .tag .c { font-family: 'Jersey', monospace; font-size: var(--fs); color: var(--gd); }
-.shub .tag .n { font-family: 'Superwide', monospace; font-size: calc(var(--fs) * 0.95); letter-spacing: calc(2 * var(--u)); color: #d8dccd; }
+.shub .tag .b { display: flex; align-items: center; gap: calc(6 * var(--u)); padding: calc(3 * var(--u)) calc(9 * var(--u)) calc(3 * var(--u)) calc(7 * var(--u)); border: 16px solid transparent; border-image: var(--tag) 8 fill / 16px stretch; image-rendering: pixelated; }
+.shub .tag .c { font-family: 'Body'; font-size: 22px; color: var(--gd); }
+.shub .tag .n { font-family: 'Title'; font-size: 24px; color: #d8dccd; }
 .shub .tag .ln { position: relative; width: calc(2 * var(--u)); height: calc(26 * var(--u)); background: linear-gradient(rgba(127,212,138,0.85), rgba(127,212,138,0.35)); }
 .shub .tag .ln::after { content: ''; position: absolute; left: calc(-3 * var(--u)); bottom: calc(-4 * var(--u)); width: calc(8 * var(--u)); height: calc(8 * var(--u)); border: calc(2 * var(--u)) solid var(--g); box-sizing: border-box; background: rgba(10,30,14,0.6); }
 .shub .tag.below { flex-direction: column-reverse; }
 .shub .tag.below .ln { background: linear-gradient(rgba(127,212,138,0.35), rgba(127,212,138,0.85)); }
 .shub .tag.below .ln::after { bottom: auto; top: calc(-4 * var(--u)); }
-.shub .tag.h .b { border-image: var(--keyHi) 24 fill / calc(5 * var(--u)) stretch; }
+.shub .tag.h .b { border-image: var(--keyHi) 8 fill / 16px stretch; image-rendering: pixelated; }
 .shub .tag.h .n { color: var(--gh); } .shub .tag.h .c { color: var(--g); }
 .shub .tag.dim { opacity: 0; }
 /* hover card */
 .shub .card { position: absolute; width: calc(300 * var(--u)); padding: calc(10 * var(--u)) calc(12 * var(--u)); opacity: 0; transform: translateY(calc(6 * var(--u))); transition: opacity 140ms, transform 160ms; }
 .shub .card.on { opacity: 1; transform: none; }
 .shub .card .h { display: flex; justify-content: space-between; align-items: baseline; }
-.shub .card .h .n { font-family: 'Superwide', monospace; font-size: var(--fl); color: #e4e0cf; letter-spacing: calc(2 * var(--u)); }
-.shub .card .h .k { font-family: 'Jersey', monospace; font-size: var(--fs); color: #1c2a20; background: var(--g); padding: 0 calc(5 * var(--u)); }
-.shub .card .d { font-family: 'Jersey', monospace; font-size: var(--fs); color: #8e968c; letter-spacing: calc(1 * var(--u)); margin-top: calc(2 * var(--u)); }
+.shub .card .h .n { font-family: 'Title'; font-size: 24px; color: #e4e0cf; }
+.shub .card .h .k { font-family: 'Body'; font-size: 22px; color: #1c2a20; background: var(--g); padding: 0 calc(5 * var(--u)); }
+.shub .card .d { font-family: 'Body'; font-size: 22px; color: #8e968c; margin-top: calc(2 * var(--u)); }
 .shub .card .ro { margin-top: calc(8 * var(--u)); padding: calc(6 * var(--u)) calc(8 * var(--u)); font-size: var(--fs); line-height: 1.25; }
 .shub .card .ro div { display: flex; justify-content: space-between; gap: calc(10 * var(--u)); }
 .shub .card .ro span:last-child { color: var(--gh); }
-.shub .card .go { margin-top: calc(8 * var(--u)); font-family: 'Jersey', monospace; font-size: var(--fs); color: var(--g); letter-spacing: calc(2 * var(--u)); }
+.shub .card .go { margin-top: calc(8 * var(--u)); font-family: 'Body'; font-size: 22px; color: var(--g); }
 /* room panel */
 .shub .panel { position: absolute; right: calc(18 * var(--u)); top: calc(76 * var(--u)); width: calc(400 * var(--u)); padding: calc(14 * var(--u)) calc(16 * var(--u)); transform: translateX(120%); transition: transform 420ms cubic-bezier(.3,1.25,.5,1); }
 .shub .panel.on { transform: none; }
-.shub .panel .code { font-family: 'Jersey', monospace; font-size: var(--fs); color: var(--gd); letter-spacing: calc(3 * var(--u)); }
-.shub .panel .n { font-family: 'Superwide', monospace; font-size: var(--fx); color: #ece8d8; line-height: 1.05; letter-spacing: calc(2 * var(--u)); margin: calc(2 * var(--u)) 0 calc(4 * var(--u)); }
+.shub .panel .code { font-family: 'Body'; font-size: 22px; color: var(--gd); }
+.shub .panel .n { font-family: 'Title'; font-size: 48px; color: #ece8d8; line-height: 1.05; margin: calc(2 * var(--u)) 0 calc(4 * var(--u)); }
 .shub .panel .role { font-size: var(--fl); color: #a9b3a5; line-height: 1.15; }
 .shub .panel .ro { margin: calc(12 * var(--u)) 0; padding: calc(8 * var(--u)) calc(10 * var(--u)); font-size: var(--fl); line-height: 1.2; min-height: calc(60 * var(--u)); }
 .shub .panel .ro div { display: flex; justify-content: space-between; }
 .shub .panel .ro span:last-child { color: var(--gh); }
 .shub .keys { display: flex; flex-direction: column; gap: calc(6 * var(--u)); }
 .shub .key { position: relative; display: flex; align-items: center; gap: calc(10 * var(--u)); padding: calc(8 * var(--u)) calc(12 * var(--u)) calc(8 * var(--u)) calc(18 * var(--u)); cursor: pointer;
-  border: calc(6 * var(--u)) solid transparent; border-image: var(--key) 24 fill / calc(6 * var(--u)) stretch; font-family: 'Superwide', monospace; font-size: var(--fs); letter-spacing: calc(2 * var(--u)); color: #d8dccd;
+  border: 16px solid transparent; border-image: var(--key) 8 fill / 16px stretch; image-rendering: pixelated; font-family: 'Title'; font-size: 24px; color: #d8dccd;
   transition: transform 60ms; user-select: none; }
-.shub .key:hover { border-image: var(--keyHi) 24 fill / calc(6 * var(--u)) stretch; color: #f0f6ee; }
+.shub .key:hover { border-image: var(--keyHi) 8 fill / 16px stretch; image-rendering: pixelated; color: #f0f6ee; }
 .shub .key:active { transform: translateY(calc(2 * var(--u))); }
-.shub .key .hk { margin-left: auto; font-family: 'Jersey', monospace; color: #1c2a20; background: var(--gd); padding: 0 calc(5 * var(--u)); }
+.shub .key .hk { margin-left: auto; font-family: 'Body'; font-size: 11px; color: #1c2a20; background: var(--gd); padding: 0 calc(5 * var(--u)); }
 .shub .key:hover .hk { background: var(--g); }
-.shub .key.pri { font-size: var(--fl); }
+.shub .key.pri { font-size: 24px; }
 .shub .key.dis { cursor: default; color: #6c726c; } .shub .key.dis .hk { background: #3a403a; }
-.shub .key .why { position: absolute; left: calc(18 * var(--u)); bottom: calc(-2 * var(--u)); font-family: 'Jersey', monospace; font-size: calc(var(--fs) * 0.8); color: var(--am); letter-spacing: calc(1 * var(--u)); }
+.shub .key .why { position: absolute; left: calc(18 * var(--u)); bottom: calc(-2 * var(--u)); font-family: 'Body'; font-size: 11px; color: var(--am); }
 .shub .back { position: absolute; left: calc(18 * var(--u)); top: calc(76 * var(--u)); display: none; }
 .shub .back.on { display: flex; }
 /* dock */
 .shub .dock { position: absolute; left: 50%; bottom: calc(14 * var(--u)); transform: translateX(-50%); display: flex; gap: calc(4 * var(--u)); padding: calc(6 * var(--u)); transition: transform 500ms cubic-bezier(.3,1.4,.5,1); }
 .shub .dock.off { transform: translate(-50%, 180%); }
-.shub .dock .d { display: flex; flex-direction: column; align-items: center; min-width: calc(92 * var(--u)); padding: calc(5 * var(--u)) calc(8 * var(--u)); cursor: pointer; border: calc(5 * var(--u)) solid transparent; border-image: var(--key) 24 fill / calc(5 * var(--u)) stretch; }
-.shub .dock .d:hover, .shub .dock .d.h { border-image: var(--keyHi) 24 fill / calc(5 * var(--u)) stretch; }
-.shub .dock .d.on { border-image: var(--keyHi) 24 fill / calc(5 * var(--u)) stretch; transform: translateY(calc(-4 * var(--u))); }
-.shub .dock .d .c { font-family: 'Jersey', monospace; font-size: calc(var(--fs) * 0.85); color: var(--gd); }
-.shub .dock .d .n { font-family: 'Superwide', monospace; font-size: calc(var(--fs) * 0.82); color: #d8dccd; letter-spacing: calc(1 * var(--u)); }
+.shub .dock .d { display: flex; flex-direction: column; align-items: center; min-width: calc(92 * var(--u)); padding: calc(5 * var(--u)) calc(8 * var(--u)); cursor: pointer; border: 16px solid transparent; border-image: var(--key) 8 fill / 16px stretch; image-rendering: pixelated; }
+.shub .dock .d:hover, .shub .dock .d.h { border-image: var(--keyHi) 8 fill / 16px stretch; image-rendering: pixelated; }
+.shub .dock .d.on { border-image: var(--keyHi) 8 fill / 16px stretch; image-rendering: pixelated; transform: translateY(calc(-4 * var(--u))); }
+.shub .dock .d .c { font-family: 'Body'; font-size: 11px; color: var(--gd); }
+.shub .dock .d .n { font-family: 'Title'; font-size: 24px; color: #d8dccd; }
 /* title */
 .shub .title { position: absolute; left: calc(56 * var(--u)); bottom: calc(64 * var(--u)); width: calc(520 * var(--u)); transition: opacity 600ms, transform 600ms; }
 .shub .title.off { opacity: 0; transform: translateX(calc(-30 * var(--u))); pointer-events: none !important; }
-.shub .title .pre { font-family: 'Jersey', monospace; font-size: var(--fl); color: #9aa49a; letter-spacing: calc(6 * var(--u)); }
-.shub .title .big { font-family: 'Superwide', monospace; font-size: calc(var(--fx) * 1.55); color: #ece8d8; letter-spacing: calc(8 * var(--u)); line-height: 1; margin: calc(6 * var(--u)) 0; text-shadow: 0 calc(3 * var(--u)) 0 #07090a; }
+.shub .title .pre { font-family: 'Body'; font-size: 22px; color: #9aa49a; }
+.shub .title .big { font-family: 'TitleXL'; font-size: 64px; color: #ece8d8; line-height: 1; margin: calc(6 * var(--u)) 0; text-shadow: 0 calc(3 * var(--u)) 0 #07090a; }
 .shub .title .sub { font-size: var(--fl); color: var(--g); text-shadow: 0 0 calc(4 * var(--u)) rgba(127,212,138,0.5); margin-bottom: calc(18 * var(--u)); }
 .shub .title .keys { width: calc(340 * var(--u)); }
-.shub .title .hint { margin-top: calc(14 * var(--u)); font-family: 'Jersey', monospace; font-size: var(--fs); color: #6f7a70; letter-spacing: calc(2 * var(--u)); }
+.shub .title .hint { margin-top: calc(14 * var(--u)); font-family: 'Body'; font-size: 22px; color: #6f7a70; }
 /* settings */
 .shub .over { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: calc(560 * var(--u)); padding: calc(18 * var(--u)) calc(22 * var(--u)); display: none; }
 .shub .over.on { display: block; animation: shub-in 260ms cubic-bezier(.3,1.4,.5,1); }
 @keyframes shub-in { 0% { transform: translate(-50%, -46%); opacity: 0; } 100% { transform: translate(-50%, -50%); opacity: 1; } }
-.shub .over .n { font-family: 'Superwide', monospace; font-size: var(--fl); color: #ece8d8; letter-spacing: calc(4 * var(--u)); margin-bottom: calc(12 * var(--u)); }
+.shub .over .n { font-family: 'Title'; font-size: 24px; color: #ece8d8; margin-bottom: calc(12 * var(--u)); }
 .shub .over .row { display: flex; align-items: center; gap: calc(10 * var(--u)); margin: calc(8 * var(--u)) 0; font-size: var(--fl); }
-.shub .over .row .l { flex: 0 0 calc(150 * var(--u)); font-family: 'Jersey', monospace; font-size: var(--fs); color: #9aa49a; letter-spacing: calc(2 * var(--u)); }
+.shub .over .row .l { flex: 0 0 calc(150 * var(--u)); font-family: 'Body'; font-size: 22px; color: #9aa49a; }
 .shub .over .row .opts { display: flex; gap: calc(4 * var(--u)); }
 .shub .over .row .opts .key { padding: calc(4 * var(--u)) calc(10 * var(--u)); }
-.shub .over .row .opts .key.sel { border-image: var(--keyHi) 24 fill / calc(6 * var(--u)) stretch; color: var(--gh); }
+.shub .over .row .opts .key.sel { border-image: var(--keyHi) 8 fill / 16px stretch; image-rendering: pixelated; color: var(--gh); }
 .shub .over input[type=range] { flex: 1; accent-color: #7fd48a; }
 .shub .over .foot { display: flex; justify-content: space-between; margin-top: calc(14 * var(--u)); gap: calc(8 * var(--u)); }
 .shub.hide > * { visibility: hidden; }
+.shub .khint { position: absolute; left: 0; top: 0; display: none; flex-direction: column; gap: 2px; padding: 4px 10px; border: 16px solid transparent; border-image: var(--keyHi) 8 fill / 16px stretch; font-family: 'Title'; font-size: 24px; color: #e8f4e6; pointer-events: none; }
+.shub .khint.on { display: flex; }
+.shub .khint .go { font-family: 'Body'; font-size: 11px; color: #7fd48a; }
 `;
 
 let styled = false;
@@ -186,7 +197,7 @@ export class HubChrome {
     // ---- the top strip
     this.top = div('top pe', this.root);
     const id = div('id', this.top); id.appendChild(emblem());
-    div('', id, `<div class="n">${SHIP_NAME}</div><div class="r">${SHIP_REG} · UNAA COLONY PROGRAM</div>`);
+    div('', id, `<div class="n">${SHIP_NAME}</div><div class="r">${SHIP_REG}</div>`);
     this.locEl = div('loc crt', this.top);
     this.clockEl = div('clock', this.top);
     const vit = div('vit', this.top);
@@ -231,6 +242,16 @@ export class HubChrome {
     this.root.addEventListener('pointerdown', (e) => e.stopPropagation());
   }
   private offKey: () => void;
+  private hintEl: HTMLElement | null = null;
+  /** the key prop's hint at the pointer (null hides it) */
+  keyHint(label: string | null, x: number, y: number) {
+    if (!this.hintEl) this.hintEl = div('khint', this.root);
+    const e = this.hintEl;
+    if (!label) { e.classList.remove('on'); return; }
+    e.innerHTML = `<span>${label}</span><span class="go">CLICK TO USE</span>`;
+    e.style.transform = `translate(${Math.round(Math.min(innerWidth - 420, x + 24))}px, ${Math.round(y + 20)}px)`;
+    e.classList.add('on');
+  }
   titleDefault() { this.titleKeys[0]?.run(); }
 
   private keys(parent: HTMLElement, acts: RoomAction[]) {
@@ -258,7 +279,7 @@ export class HubChrome {
   }
   private loc() {
     const r = this.room ? ROOMS[this.room] : null;
-    this.locEl.innerHTML = `DECK 1<span class="sep">›</span>${r ? `<b>${r.name}</b>` : this.mode === 'boarding' ? 'BOARDING' : '<b>SHIP OVERVIEW</b>'}${this.o.fromPlanet ? '<span class="sep">·</span>AI LINK FROM SURFACE' : ''}`;
+    this.locEl.innerHTML = `D1<span class="sep">›</span>${r ? `<b>${r.name}</b>` : this.mode === 'boarding' ? 'BOARDING' : '<b>SHIP OVERVIEW</b>'}${this.o.fromPlanet ? '<span class="sep">·</span>AI LINK FROM SURFACE' : ''}`;
   }
   openPanel(id: RoomId, acts: RoomAction[]) {
     const r = ROOMS[id];
@@ -341,30 +362,30 @@ export class HubChrome {
     // room tags: an annotated cutaway. Starboard rooms and the bridge are named above the ship, port rooms below,
     // each with a leader line down (or up) to the room
     const show = this.mode === 'overview';
-    let top = Infinity, bot = -Infinity;
-    for (const x of [SHIP_BOX.min.x, SHIP_BOX.max.x]) for (const y of [SHIP_BOX.min.y, SHIP_BOX.max.y]) for (const z of [SHIP_BOX.min.z, SHIP_BOX.max.z]) {
-      this.v.set(x, y, z).project(cam); const sy = (-this.v.y * 0.5 + 0.5) * innerHeight; top = Math.min(top, sy); bot = Math.max(bot, sy);
-    }
-    top = Math.max(top, 70 * this.u()); bot = Math.min(bot, innerHeight - 110 * this.u());
     for (const id of ROOM_IDS) {
       const r = ROOMS[id], tag = this.tags[id], up = r.x0 >= 0 || id === 'bridge';
-      this.v.set((r.x0 + r.x1) / 2 + (id === 'bridge' ? 0 : 0), 0.6, (r.z0 + r.z1) / 2).project(cam);
-      const ax = (this.v.x * 0.5 + 0.5) * innerWidth, ay = (-this.v.y * 0.5 + 0.5) * innerHeight;
-      const h = tag.offsetHeight || 30, lbY = up ? top - 10 * this.u() - h : bot + 10 * this.u();
+      const zc = (r.z0 + r.z1) / 2;
+      this.v.set(id === 'bridge' ? 0 : (r.x0 + r.x1) / 2, 0.6, id === 'bridge' ? 22 : zc).project(cam);
+      const ax = (this.v.x * 0.5 + 0.5) * innerWidth, ay = (-this.v.y * 0.5 + 0.5) * innerHeight, az = this.v.z;
+      // the hull's edge beside the room: above the starboard rim, below the port keel
+      this.v.set(up ? 10.9 : -10.9, up ? 3.6 : -3.4, id === 'bridge' ? 24 : zc).project(cam);
+      const ey = (-this.v.y * 0.5 + 0.5) * innerHeight;
+      const h = tag.offsetHeight || 40, w = tag.offsetWidth || 180;
+      const lbY = up ? Math.max(76, ey - 18 - h) : Math.min(innerHeight - 110 - h, ey + 18);
       tag.classList.toggle('below', !up);
       const ln = tag.querySelector('.ln') as HTMLElement;
       const len = up ? Math.max(4, ay - (lbY + h)) : Math.max(4, lbY - ay);
-      ln.style.height = len.toFixed(0) + 'px';
-      const bx = Math.max(8, Math.min(innerWidth - (tag.offsetWidth || 160) - 8, ax - 12 * this.u()));
-      tag.style.transform = `translate(${bx.toFixed(1)}px, ${(up ? lbY : ay).toFixed(1)}px)`;
-      ln.style.marginLeft = (ax - bx - 1).toFixed(1) + 'px';
-      tag.classList.toggle('dim', !show || this.v.z > 1);
+      ln.style.height = Math.round(len) + 'px';
+      const bx = Math.max(8, Math.min(innerWidth - w - 8, ax - 20));
+      tag.style.transform = `translate(${Math.round(bx)}px, ${Math.round(up ? lbY : ay)}px)`;
+      ln.style.marginLeft = Math.round(ax - bx - 1) + 'px';
+      tag.classList.toggle('dim', !show || az > 1);
     }
     this.acc += dt;
     if (this.acc > 0.5) {
       this.acc = 0;
       const day = 412 + Math.floor(t / 600), mins = Math.floor((t * 4) % 1440);
-      this.clockEl.innerHTML = `<div class="k">MISSION DAY</div><div>${day} · ${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}</div>`;
+      this.clockEl.innerHTML = `<div class="k">MISSION DAY ${day}</div><div>${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')} SHIP</div>`;
       const set = (k: string, v: string, warn = false) => { const e = this.vit[k]; e.querySelector('.x')!.textContent = v; e.querySelector('i')!.classList.toggle('w', warn); };
       set('pwr', `${(98 + Math.sin(t * 0.2)).toFixed(0)}%`); set('o2', this.hub.alarmOn ? '17.2%' : '20.9%', this.hub.alarmOn); set('hull', this.hub.alarmOn ? 'BREACH' : '100%', this.hub.alarmOn); set('crew', '8 / 8');
       if (this.mode === 'room' && this.room && this.panel.classList.contains('on')) { const ro = this.panel.querySelector('.ro'); if (ro) ro.innerHTML = this.readout(this.room, 4); }

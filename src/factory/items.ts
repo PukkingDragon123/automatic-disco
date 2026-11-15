@@ -13,6 +13,7 @@ import { Pix, KPix, poly, selout, RA, INKC, type Pt } from './paint';
 import type { Res } from '../game/skills';
 import { itemIcon as hiItemURL, hiItem, hasItemArt } from '../ui/icons';
 import { installItemArt } from '../inv/itemArt';
+import { SPRITES, SPRITE_PAL, SPRITE_SIZE } from '../inv/itemSprites';
 
 export type BaseItemId =
   | 'ore' | 'carbon' | 'water' | 'soil' | 'copper_ore' | 'coal' | 'crystal' | 'fruit'
@@ -571,18 +572,52 @@ const ICON: Partial<Record<ItemId, Painter>> = {
 };
 
 const pixCache = new Map<ItemId, Pix>(), urlCache = new Map<string, string>();
-/** a 32 px RGBA icon (the texture-array layer for belt crates) */
+/** the lowpix sprite of an item (32 x 32, palette-snapped; inv/itemSprites.ts), decoded once */
+const spriteCache = new Map<ItemId, Pix | null>();
+function sprite(id: ItemId): Pix | null {
+  let p = spriteCache.get(id);
+  if (p !== undefined) return p;
+  const b = SPRITES[id];
+  p = null;
+  if (b && SPRITE_SIZE === S) {
+    const raw = atob(b); p = new Pix(S, S);
+    for (let i = 0; i < raw.length; i++) {
+      const k = raw.charCodeAt(i); if (k === 255) continue;
+      const c = SPRITE_PAL[k], j = i * 4; p.d[j] = (c >> 16) & 255; p.d[j + 1] = (c >> 8) & 255; p.d[j + 2] = c & 255; p.d[j + 3] = 255;
+    }
+  }
+  spriteCache.set(id, p);
+  return p;
+}
+export const hasSprite = (id: ItemId) => !!SPRITES[id];
+/** a 32 px RGBA icon (the texture-array layer for belt crates): the lowpix sprite, else the painted icon */
 export function itemPix(id: ItemId): Pix {
   let p = pixCache.get(id);
   if (!p) {
-    if (hasHi(id)) { const pc = hiItem(id, S); p = new Pix(S, S); p.d.set(pc.data.subarray(0, S * S * 4)); }
+    const sp = sprite(id);
+    if (sp) p = sp;
+    else if (hasHi(id)) { const pc = hiItem(id, S); p = new Pix(S, S); p.d.set(pc.data.subarray(0, S * S * 4)); }
     else { const k = new KPix(S / 16); ICON[id]!(k); p = k.p; }
     pixCache.set(id, p);
   }
   return p;
 }
-/** a data URL of an item's icon at px x px (the target-style drawing, else the fallback scaled by whole pixels) */
+/** a data URL of an item's icon: its 32 px sprite blown up by the whole number nearest px / 32 (show it at any
+ *  whole multiple of 32 with image-rendering: pixelated), else the painted icon at px */
 export function itemIcon(id: ItemId, px = chipPx()): string {
+  const sp = sprite(id);
+  if (sp) {
+    const k = Math.max(1, Math.round(px / S)), key = id + '#' + k;
+    let u = urlCache.get(key);
+    if (!u) {
+      const c = document.createElement('canvas'); c.width = c.height = S * k;
+      const x = c.getContext('2d')!; const img = new ImageData(new Uint8ClampedArray(sp.d), S, S);
+      if (k === 1) x.putImageData(img, 0, 0);
+      else { const t = document.createElement('canvas'); t.width = t.height = S; t.getContext('2d')!.putImageData(img, 0, 0); x.imageSmoothingEnabled = false; x.drawImage(t, 0, 0, S * k, S * k); }
+      u = c.toDataURL(); urlCache.set(key, u);
+    }
+    return u;
+  }
   if (hasHi(id)) return hiItemURL(id, px);
   const key = id + '@' + px; let u = urlCache.get(key);
   if (u) return u;

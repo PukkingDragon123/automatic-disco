@@ -6,6 +6,7 @@ import type { NodeMap } from './map';
 import type { LNode, Route } from '../../logistics/network';
 import { itemFor } from '../../logistics/recipes';
 import { toast } from '../kit';
+import { paintHW } from '../build/hw';
 import { sfx } from '../../audio/audio';
 
 interface Step { h: string; b: () => string; done: () => boolean; marks: () => string[] }
@@ -16,7 +17,7 @@ export class Tutorial {
   private key = '';
   private t = 0;
   constructor(readonly m: NodeMap, host: HTMLElement) {
-    this.el = document.createElement('div'); this.el.className = 'nm-tut'; host.appendChild(this.el);
+    this.el = document.createElement('div'); this.el.className = 'nm-tut'; this.el.dataset.hw = 'paper'; host.appendChild(this.el);
     this.el.addEventListener('click', (e) => {
       const a = (e.target as HTMLElement).closest('[data-a]') as HTMLElement | null; if (!a) return;
       if (a.dataset.a === 'next') this.next();
@@ -82,7 +83,8 @@ export class Tutorial {
     this.key = key;
     this.el.classList.add('on');
     const manual = this.step === 1 || this.step === all.length;
-    this.el.innerHTML = `<span class="stamp">GUIDE</span><div class="st">FIRST CHAIN · STEP ${this.step} OF ${all.length}</div><div class="h">${st.h}</div><div class="b">${body}</div>
-      <div class="row">${this.step === 7 ? '<span class="tb" data-a="save">SAVE AS IRON INGOT</span>' : ''}${manual ? `<span class="tb" data-a="next">${this.step === all.length ? 'DONE' : 'BEGIN'}</span>` : '<span class="ok">WAITING FOR YOU</span>'}<span class="sp"></span><span class="tb ghost" data-a="skip">CLOSE GUIDE</span></div>`;
+    this.el.innerHTML = `<div class="st">FIRST CHAIN · STEP ${this.step} OF ${all.length}</div><div class="h">${st.h}</div><div class="b">${body}</div>
+      <div class="row">${this.step === 7 ? '<span class="tb" data-a="save">SAVE IT</span>' : ''}${manual ? `<span class="tb" data-a="next">${this.step === all.length ? 'DONE' : 'BEGIN'}</span>` : '<span class="ok">WAITING FOR YOU TO DO IT</span>'}<span class="sp"></span><span class="tb ghost" data-a="skip">CLOSE GUIDE</span></div>`;
+    requestAnimationFrame(() => paintHW(this.el));
   }
 }
