@@ -5,7 +5,6 @@ import * as THREE from 'three';
 import type { Colony } from './colony';
 import { sfx } from '../audio/audio';
 import { skin, platePix, Pix, R, fontText } from '../ui/desk/pxPanel';
-import { stroke } from '../ui/desk/ink';
 
 export type FailReason = 'collapse-power' | 'collapse-oxygen' | 'collapse-food' | 'collapse-workers' | 'pod-destroyed' | 'recalled';
 const TEXT: Record<FailReason, [string, string]> = {
@@ -47,7 +46,7 @@ export class FailScreen {
     skin(el.querySelector('.cf-card') as HTMLElement, (w, h) => platePix(w, h, { mat: 'enamel', seed: 31, rivets: true, hazard: true, wear: 1.6 }), 'failcard');
     // the rubber stamp: a red box and the words, ink starved in places
     { const cv = el.querySelector('.cf-stamp') as HTMLCanvasElement, p = new Pix(150, 48), red = R.stampRed[3];
-      stroke(p, 3, 3, 146, 4, 1, { col: red, w: 2, over: 0 }); stroke(p, 146, 4, 145, 44, 2, { col: red, w: 2, over: 0 }); stroke(p, 145, 44, 3, 43, 3, { col: red, w: 2, over: 0 }); stroke(p, 3, 43, 3, 3, 4, { col: red, w: 2, over: 0 });
+      p.rect(3, 3, 144, 3, red); p.rect(3, 42, 144, 3, red); p.rect(3, 3, 3, 42, red); p.rect(144, 3, 3, 42, red);
       fontText(p, 'MISSION FAILED', 75, 12, red, { face: 'Title', align: 'center' });
       for (let i = 0; i < 90; i++) { const x = Math.floor(Math.abs(Math.sin(i * 12.9898) * 43758.5) % 150), y = Math.floor(Math.abs(Math.sin(i * 78.233) * 12345.6) % 48); p.clear(x, y); p.clear(x + 1, y); }
       cv.getContext('2d')!.putImageData(p.image(), 0, 0); }

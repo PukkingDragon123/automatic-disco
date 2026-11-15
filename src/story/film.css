@@ -1,11 +1,7 @@
-/* Event cinematics graded as film stills: the world render pushed toward a printed-film look (contrast up, colour
-   pulled down and warmed), a coarse pixel grain that jumps every frame, a vignette and a gate edge. */
-body.ev-on #view { filter: contrast(1.16) saturate(0.74) sepia(0.16) brightness(0.94); }
+/* Event cinematics graded as stills: the world render pushed toward a printed look (contrast up, colour pulled down
+   and warmed), a soft vignette and a machined gate edge. Clean: no grain, no scratches. */
+body.ev-on #view { filter: contrast(1.12) saturate(0.8) sepia(0.12) brightness(0.95); }
 .ev-film { position: fixed; inset: 0; z-index: 39; pointer-events: none; opacity: 0; transition: opacity 600ms steps(6); }
 body.ev-on .ev-film { opacity: 1; }
-.ev-film .gr { position: absolute; inset: 0; background-size: 256px 256px; image-rendering: pixelated; opacity: 0.16; mix-blend-mode: overlay; animation: ev-grain 0.5s steps(5) infinite; }
-@keyframes ev-grain { 0% { background-position: 0 0; } 20% { background-position: -83px 41px; } 40% { background-position: 57px -97px; } 60% { background-position: -29px 73px; } 80% { background-position: 101px 13px; } }
-.ev-film .vg { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 48%, transparent 52%, rgba(12, 8, 4, 0.5) 100%); }
+.ev-film .vg { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 48%, transparent 55%, rgba(12, 8, 4, 0.45) 100%); }
 .ev-film .gt { position: absolute; top: 0; bottom: 0; left: 0; right: 0; box-shadow: inset 0 0 0 6px rgba(10, 8, 6, 0.65); }
-.ev-film .sc { position: absolute; top: 0; bottom: 0; width: 2px; left: 37%; background: rgba(230, 220, 200, 0.12); animation: ev-scratch 3.1s steps(1) infinite; }
-@keyframes ev-scratch { 0% { left: 37%; } 23% { left: 61%; opacity: 0; } 47% { left: 18%; opacity: 1; } 71% { left: 74%; } }

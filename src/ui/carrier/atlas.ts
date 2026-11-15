@@ -255,7 +255,7 @@ export function paintAtlas(): CarrierAtlas {
   const grate = S.alloc('grate', 8, 8);
   for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) grate.set(x, y, x % 2 === 1 && y % 2 === 1 ? INK[0] : y % 2 === 0 ? ST[4] : ST[3]);
   // container sides: corrugated, a frame, the owner's stencil
-  const conts: [string, readonly number[], string][] = [['contOlive', OLV, 'USPC 4471'], ['contRust', PRIMER, 'USPC 2038'], ['contBlue', BLUE, 'USPC 0915']];
+  const conts: [string, readonly number[], string][] = [['contOlive', OLV, 'UNAA 4471'], ['contRust', PRIMER, 'UNAA 2038'], ['contBlue', BLUE, 'UNAA 0915']];
   for (const [n, R, label] of conts) {
     const p = S.alloc(n, 64, 16);
     for (let y = 0; y < 16; y++) for (let x = 0; x < 64; x++) p.set(x, y, R[(x & 1) ? 4 : 5]);
@@ -358,8 +358,8 @@ export function paintAtlas(): CarrierAtlas {
   S.shelf();
   // ---------------------------------------------------------------- decals (transparent), drawn at the same density
   const words: [string, string, number, number, 'big' | 'tiny'][] = [
-    ['tCorps', 'UNITED STATES PLANETARY CORPS', 1, PA[4], 'big'], ['tName', 'U.S.S. VANGUARD', 1, PA[4], 'big'], ['tVanguard', 'VANGUARD', 1, PA[4], 'big'],
-    ['tHull', 'CVS-01', 1, PA[4], 'big'], ['t01', '01', 2, PA[4], 'big'], ['tUSPC', 'U.S.P.C.', 2, PA[4], 'big'], ['tNoStep', 'NO STEP', 1, RD[3], 'tiny'],
+    ['tCorps', 'UNAA PLANETARY SURVEY', 1, PA[4], 'big'], ['tName', 'UNAA MERIDIAN', 1, PA[4], 'big'], ['tVanguard', 'MERIDIAN', 1, PA[4], 'big'],
+    ['tHull', 'CVS-01', 1, PA[4], 'big'], ['t01', '01', 2, PA[4], 'big'], ['tUSPC', 'UNAA', 2, PA[4], 'big'], ['tNoStep', 'NO STEP', 1, RD[3], 'tiny'],
     ['tBay', 'LAUNCH BAY 2', 1, PA[4], 'big'], ['tDanger', 'DANGER', 1, RD[3], 'big'], ['tLH2', 'LH2', 1, RD[3], 'big'], ['tReactor', 'REACTOR - NO ENTRY', 1, BR[4], 'tiny'],
     ['tRad', 'RADIATION AREA', 1, BR[4], 'tiny'], ['tHab', 'HAB', 1, PA[4], 'tiny'], ['tDock1', 'DOCK 1', 1, PA[4], 'tiny'], ['tDock2', 'DOCK 2', 1, PA[4], 'tiny'],
     ['tBlast', 'CAUTION - EXHAUST', 1, RD[3], 'tiny'], ['t2', '2', 2, PA[4], 'big'], ['t3', '3', 1, PA[4], 'big'], ['t4', '4', 1, PA[4], 'big'], ['t5', '5', 1, PA[4], 'big'], ['t6', '6', 1, PA[4], 'big'],

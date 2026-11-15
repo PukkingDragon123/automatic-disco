@@ -56,7 +56,8 @@ function surfaces(P: Props, d: CrewDef): Surf {
 
 // ------------------------------------------------------------------ the gear builder
 class GearKit {
-  readonly k = new Kit(6.5);
+  /** 32 px per metre (a 64 px atlas tile spans 2 m): the gear reads as stylised flat colour */
+  readonly k = new Kit(0.5);
   private piv = new Map<THREE.Object3D, THREE.Vector3>();
   readonly props: Record<string, THREE.Object3D> = {};
   constructor(readonly rig: Researcher, readonly S: Surf) {

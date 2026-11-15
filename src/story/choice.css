@@ -1,6 +1,6 @@
-/* The decision that follows an event's cinematic: the film still stays up (graded, grained) and the choices are laid
-   over it as hand-drawn paper cards (lowpix stroke frames, src/research/art/frames), the situation typed on a taped
-   note above them. Ink on paper; 'Body' 11/22/33/44, 'Title' 24/48, 'TitleL' 32/64; never scaled or rotated. */
+/* The decision that follows an event's cinematic: the graded still stays up and the choices are laid over it as clean
+   machined plates (src/research/art/frames: gunmetal bezels, enamel faces, screws), the situation typed on a pale
+   plate above them. 'Body' 11/22/33/44, 'Title' 24/48, 'TitleL' 32/64; never scaled or rotated. */
 .evc { position: fixed; inset: 0; z-index: 46; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 14px; padding-bottom: 40px; pointer-events: auto; font-family: 'Body', monospace; color: #2b2622; text-shadow: none;
   background: linear-gradient(180deg, rgba(10, 8, 6, 0) 0%, rgba(10, 8, 6, 0.25) 45%, rgba(10, 8, 6, 0.65) 100%); animation: evc-dim 500ms steps(5); }
 .evc * { text-shadow: none; box-sizing: border-box; }
@@ -20,7 +20,9 @@
 .evc-opt:hover, .evc-opt.hot { margin-top: -10px; margin-bottom: 10px; }
 .evc-opt.off { cursor: default; filter: grayscale(0.8) brightness(0.85); }
 .evc-opt.off:hover { margin: 0; }
-.evc-art { display: block; width: 100%; aspect-ratio: 2 / 1; image-rendering: pixelated; margin: -8px 0 6px; box-shadow: 0 0 0 3px #2b2622; }
+.evc-pic { position: relative; margin: -8px 0 6px; box-shadow: 0 0 0 2px #15171b, 0 0 0 6px #3b4249, 0 0 0 8px #15171b; }
+.evc-art { display: block; width: 100%; aspect-ratio: 2 / 1; image-rendering: pixelated; }
+.evc-badge { position: absolute; right: 6px; bottom: 6px; width: 48px; height: 48px; image-rendering: pixelated; }
 .evc-key { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
 .evc-num { flex: none; width: 48px; height: 48px; display: grid; place-items: center; font: 24px/24px 'Title'; color: #1e1a16; border: 14px solid transparent; border-image: var(--pp-key) 20 fill / 20px / 4px round; image-rendering: pixelated; }
 .evc-opt:hover .evc-num, .evc-opt.hot .evc-num { border-image-source: var(--pp-keyhot); }

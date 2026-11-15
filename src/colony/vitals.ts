@@ -32,6 +32,7 @@ export class Vitals {
   /** a short history of each vital for the strip's sparkline (one sample every 2 s) */
   hist: Record<VitalId, number[]> = { power: [], oxygen: [], food: [], integrity: [], health: [], morale: [] };
   private flows = new Map<string, Flow>();
+  private hadWorkers = false;
   private spent = 0; private histT = 0;
   /** a one-off draw this frame (cannon shots, field pulses) */
   spend(kwh: number) { this.spent += kwh; }
@@ -123,7 +124,9 @@ export class Vitals {
     tick('power', blackout);
     tick('oxygen', this.o2 <= 0);
     tick('food', this.food <= 0 && c.teammates.some((t) => t.alive && t.hunger > 90));
-    tick('workers', !alive.length && !c.workers().length);
+    // the workforce fails only when the colony HAD workers and lost every one (the teammates alone die by design)
+    const w = c.workers().length; if (w > 0) this.hadWorkers = true;
+    tick('workers', this.hadWorkers && !alive.length && !w);
     if (c.pod.hp <= 0) c.fail('pod-destroyed');
     this.histT -= dt;
     if (this.histT <= 0) { this.histT = 2; for (const k of Object.keys(this.hist) as VitalId[]) { const h = this.hist[k]; h.push(this.value(k)); if (h.length > 60) h.shift(); } }

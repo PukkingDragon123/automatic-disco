@@ -1,6 +1,6 @@
 // The field laboratory's hand-painted pixel textures: linoleum checker floor, glazed wall tiles, cream plaster,
 // enamelled steel, brass, copper windings, cable rubber, oak and porcelain (tiling, world-projected at a high
-// texel density), plus one decal sheet painted with everything that has a face of its own: the U.S.P.C. banner,
+// texel density), plus one decal sheet painted with everything that has a face of its own: the UNAA MERIDIAN banner,
 // two chalkboards, warning signs, console fronts, the sequencer cabinet, tape reels, posters, a clock, a door.
 // Texels with alpha 200 glow (lamps, lit buttons); alpha below 128 is cut out (the banner's fringe, round reels).
 import * as THREE from 'three';
@@ -239,9 +239,9 @@ function paintBanner(s: Sub) {
   const star: [number, number][] = [];
   for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + (k * TAU) / 10, r = k % 2 ? 13 : 32; star.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); }
   poly(s.pc, star.map(([x, y]) => [x + s.r[0], y + s.r[1]] as [number, number]), white);
-  s.text('U.S.', cx, 40, gold, 3, { center: true, shadow: navy[0] });
-  s.text('PLANETARY', cx, 182, gold, 3, { center: true, shadow: navy[0] });
-  s.text('CORPS', cx, 202, gold, 3, { center: true, shadow: navy[0] });
+  s.text('UNAA', cx, 40, gold, 3, { center: true, shadow: navy[0] });
+  s.text('MERIDIAN', cx, 182, gold, 3, { center: true, shadow: navy[0] });
+  s.text('RV-07', cx, 202, gold, 3, { center: true, shadow: navy[0] });
   for (let x = 16; x < s.w - 16; x++) { s.set(x, 225, gold); }
   s.text('FIELD LABORATORY', cx, 232, white, 2, { center: true });
   s.text('STATION FOUR', cx, 248, white, 2, { center: true });
@@ -335,7 +335,7 @@ function paintReelFace(s: Sub) {
   for (let j = 0; j < 4; j++) for (let i = 0; i < 8; i++) s.lamp(38 + i * 7, 152 + j * 9, 1.6, j % 2 ? 0xffb040 : 0xff5a3a, hashf(i, j, 7) > 0.5);
   for (let y = 200; y < 244; y += 3) s.rect(12, y, s.w - 24, 1, M[0]);
   s.rect(0, s.h - 8, s.w, 8, 0x2a2c30);
-  s.text('U.S.P.C.', 64, 192, 0x1a1814, 1, { center: true });
+  s.text('UNAA', 64, 192, 0x1a1814, 1, { center: true });
 }
 function paintReelDisc(s: Sub) {
   const c = 32;
@@ -432,7 +432,7 @@ function paintPoster2(s: Sub) {
   for (let y = 122; y < 150; y++) for (let x = 38; x < 54; x++) if (hashf(x, y, 3) > (y - 122) / 28) s.set(x, y, y < 132 ? 0xffe070 : 0xff8a30, LIT);
   s.circle(46, 70, 4, 0x3a7aa8);
   s.text('REACH FOR', s.w / 2, 6, 0xf0e4c0, 2, { center: true }); s.text('NEW WORLDS', s.w / 2, 20, 0xffd060, 2, { center: true });
-  s.rect(0, s.h - 22, s.w, 22, 0xe8e0c8); s.text('JOIN THE', s.w / 2, s.h - 19, 0x1e2a4a, 1, { center: true }); s.text('PLANETARY CORPS', s.w / 2, s.h - 11, 0xb82a24, 1, { center: true });
+  s.rect(0, s.h - 22, s.w, 22, 0xe8e0c8); s.text('JOIN THE', s.w / 2, s.h - 19, 0x1e2a4a, 1, { center: true }); s.text('UNAA MERIDIAN', s.w / 2, s.h - 11, 0xb82a24, 1, { center: true });
 }
 function paintCentTop(s: Sub) {
   for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) {
@@ -472,7 +472,7 @@ function paintFuse(s: Sub) {
   s.rect(66, 112, 20, 12, 0xb82a24); s.text('MAIN', 48, 114, 0x101010);
   void M;
 }
-function paintCoilPlate(s: Sub) { s.rect(0, 0, s.w, s.h, 0x2a3a5a); s.bevel(0, 0, s.w, s.h, 0x5a6a8a, 0x101828); s.text('FIELD EMITTER', s.w / 2, 8, 0xe8e0c8, 1, { center: true }); s.text('500 KV', s.w / 2, 20, 0xffd060, 2, { center: true }); s.text('U.S.P.C.', s.w / 2, 36, 0xe8e0c8, 1, { center: true }); }
+function paintCoilPlate(s: Sub) { s.rect(0, 0, s.w, s.h, 0x2a3a5a); s.bevel(0, 0, s.w, s.h, 0x5a6a8a, 0x101828); s.text('FIELD EMITTER', s.w / 2, 8, 0xe8e0c8, 1, { center: true }); s.text('500 KV', s.w / 2, 20, 0xffd060, 2, { center: true }); s.text('UNAA', s.w / 2, 36, 0xe8e0c8, 1, { center: true }); }
 function paintMap(s: Sub) {
   for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) {
     const n = tileFbm(x, y, 192, 128, 5, 4, 77);
@@ -493,7 +493,7 @@ function paintCrate(s: Sub) {
   const W = makeRamp(0x9a7a4a, 7, { spread: 0.45 });
   for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) s.set(x, y, D(W, 3.4 + Math.sin(x * 0.4 + hashf(0, y >> 4, 2) * 9) * 0.4 + (hashf(x, y, 1) - 0.5) * 0.6 - ((y & 15) === 0 ? 2 : 0), s.r[0] + x, s.r[1] + y));
   s.stroke(0, 0, s.w, s.h, W[0]); s.line(0, 0, s.w, s.h, W[1]);
-  s.text('U.S.P.C.', s.w / 2, 30, 0x2a1a0a, 3, { center: true }); s.text('FRAGILE', s.w / 2, 56, 0x8a2a1a, 2, { center: true }); s.text('SPECIMEN GLASS', s.w / 2, 74, 0x2a1a0a, 1, { center: true });
+  s.text('UNAA', s.w / 2, 30, 0x2a1a0a, 3, { center: true }); s.text('FRAGILE', s.w / 2, 56, 0x8a2a1a, 2, { center: true }); s.text('SPECIMEN GLASS', s.w / 2, 74, 0x2a1a0a, 1, { center: true });
 }
 function paintTapeLabel(s: Sub) { s.rect(0, 0, s.w, s.h, 0xe8e0c8); s.text('REEL 07 GENOME', 4, 4, 0x2a2018); scribble(s.pc, s.r[0] + 4, s.r[1] + 14, 88, 0x4a4030, 2, 1); }
 function paintFlask(s: Sub) { for (let y = 0; y < s.h; y++) for (let x = 0; x < s.w; x++) s.set(x, y, mixHex(0x7affb0, 0xffffff, hashf(x, y, 1) * 0.3), LIT); }

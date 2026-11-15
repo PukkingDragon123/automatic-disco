@@ -3,7 +3,7 @@
  "description": "A gantry over a parts bench: four legs, rails and a travelling bridge with a hoist and a three-finger tool head; a half-built part on the bench, a parts rack and a control lectern.",
  "author": "progression agent",
  "license": "CC0-1.0",
- "density": 3,
+ "density": 3.2,
  "light": {
   "dir": [
    -0.55,

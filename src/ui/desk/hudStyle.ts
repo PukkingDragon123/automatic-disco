@@ -13,6 +13,7 @@ export function installHudStyle() {
   const st = document.createElement('style'); st.id = 'cx-style';
   const U: Record<string, string> = {
     __TAB__: keyURL('rubber'), __TABON__: keyURL('rubber', 'lit'), __TABD__: keyURL('rubber', 'down'), __TABR__: keyURL('red'), __TABB__: keyURL('blue'),
+    __KEYS__: keyURL('steel'), __KEYSL__: keyURL('steel', 'lit'), __KEYSD__: keyURL('steel', 'down'),
     __PAPER__: plateURL('enamel', 3), __NI__: signURL('info'), __NG__: signURL('good'), __NW__: signURL('warn'), __NB__: signURL('bad'), __NC__: signURL('crit'),
   };
   st.textContent = CSS.replace(/__[A-Z]+__/g, (m) => U[m] ?? m);
@@ -50,7 +51,8 @@ const CSS = `
 .cx-vit canvas { position: absolute; left: 0; top: 0; width: 104px; height: 96px; image-rendering: pixelated; }
 .cx-vit img { display: none; }
 .cx-time { display: flex; align-items: center; gap: 2px; padding: 10px 14px 12px; position: relative; }
-.cx-time .cx-btn { width: 50px; height: 44px; padding: 0; display: flex; align-items: center; justify-content: center; }
+.cx-time .cx-btn { width: 54px; height: 48px; padding: 0; display: flex; align-items: center; justify-content: center; border-image-source: url(__KEYS__); color: #e5dbc3; }
+.cx-time .cx-btn.on { border-image-source: url(__KEYSL__); color: #efb67b; } .cx-time .cx-btn:active { border-image-source: url(__KEYSD__); }
 .cx-time .clock { width: 122px; height: 50px; margin-left: 6px; display: flex; flex-direction: column; justify-content: center; align-items: center; line-height: 1; border-style: solid; border-width: 8px; border-image: url(__PAPER__) 8 fill / 8px stretch; padding: 0; }
 .cx-time .clock span { font-family: 'Title', monospace; font-size: 24px; } .cx-time .clock small { font-size: 11px; }
 .cx-pausebar { position: absolute; left: 0; right: 0; margin: 0 auto; width: fit-content; top: 112px; padding: 12px 26px 14px; display: none; color: #8c2920; }

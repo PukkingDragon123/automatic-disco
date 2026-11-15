@@ -1,4 +1,4 @@
-# The planner's building illustrations: every building repainted as 2D pixel art with lowpix's brush engine.
+# The planner's building illustrations: every building's REAL RENDER turned into clean, stylised low-resolution pixel art.
 #   1. node <scratch>/tools/dump_passes.mjs <passes dir>   (the &stills test page shoots a colour, an id and a normal pass)
 #   2. python3 src/ui/build/craft/paint_buildings.py <passes dir>
 # Default (ART_STYLE=real): the real render stays faithful, its tone broken into lowpix brush strokes around the form and
@@ -197,6 +197,59 @@ def paint(kind, f=2, out_dir=OUT):
 
 
 
+def paint_flat(kind, f=3, out_dir=OUT, k=12):
+  """CLEAN stylised pixel art from the real render: box-filtered down to a low resolution, snapped to a small palette
+  of the render's own colours (flat clusters, no strokes), lone pixels folded into their neighbours, the seams between
+  parts cut one shade darker, a crisp dark outline and a flat contact shadow."""
+  C2, I2 = (load(os.path.join(SRC, f'{kind}.{p}.png')) for p in ('color', 'id'))
+  a2 = C2[..., 3] > 0.5
+  H, W = C2.shape[0] // f, C2.shape[1] // f
+  mask = down(a2.astype(float), f) >= 0.5
+  if mask.sum() < 12:
+    return False
+  w4 = a2[..., None].astype(float)
+  col = down(C2[..., :3] * w4, f) / np.maximum(down(w4, f), 1e-6)
+  key2 = (np.round(I2[..., 0] * 31) * 1024 + np.round(I2[..., 1] * 31) * 32 + np.round(I2[..., 2] * 31)).astype(int)
+  idk = np.where(a2, key2, -1)[f // 2::f, f // 2::f][:H, :W]
+  idk = np.where(mask, idk, -1)
+  X = col[mask]
+  kk = int(min(k, max(4, len(X) // 25)))
+  _, P = kmeans(X, kk, it=16, seed=5)
+  lab = ((col[..., None, :] - P[None, None]) ** 2).sum(-1).argmin(-1)
+  lab = np.where(mask, lab, -1)
+  # fold lone pixels into the commonest neighbour (clean clusters)
+  for _ in range(2):
+    nbs = np.stack([shift(lab, dy, dx, -1) for dy, dx in ((0, 1), (1, 0), (0, -1), (-1, 0))])
+    lone = mask & (nbs != lab[None]).all(0)
+    for y, x in zip(*np.nonzero(lone)):
+      v = [n for n in nbs[:, y, x] if n >= 0]
+      if v:
+        lab[y, x] = max(set(v), key=v.count)
+  out = np.zeros((H, W, 4))
+  out[..., :3] = P[np.clip(lab, 0, len(P) - 1)]
+  out[..., 3] = mask
+  # seams between parts: the darker side one shade down
+  L = lum(out[..., :3])
+  for dy, dx in ((0, 1), (1, 0)):
+    nb_id, nb_L = shift(idk, -dy, -dx, -1), shift(L, -dy, -dx, 0.0)
+    seam = mask & (nb_id >= 0) & (nb_id != idk) & (L <= nb_L)
+    out[seam, :3] *= 0.72
+  ys, xs = np.nonzero(mask)
+  by = ys.max()
+  foot = xs[ys >= by - max(2, (by - ys.min()) // 6)]
+  cx, rx = (foot.min() + foot.max()) / 2, (foot.max() - foot.min()) / 2 + 2
+  yy, xx = np.mgrid[0:H, 0:W]
+  sh = (((xx - cx) / max(rx, 3)) ** 2 + ((yy - (by - 0.5)) / max(1.6, H / 28)) ** 2 <= 1) & ~mask
+  out[sh] = [0.04, 0.06, 0.12, 0.38]
+  edge = np.zeros((H, W), bool)
+  for dy, dx in ((0, 1), (1, 0), (0, -1), (-1, 0)):
+    edge |= shift(mask, dy, dx, False) & ~mask
+  out[edge] = [*INK, 1]
+  os.makedirs(out_dir, exist_ok=True)
+  Image.fromarray((np.clip(out, 0, 1) * 255).astype(np.uint8), 'RGBA').save(os.path.join(out_dir, f'{kind}.png'))
+  return True
+
+
 def paint_real(kind, f=2, out_dir=OUT, k=30):
   """The real render kept faithful: box-filtered to art pixels, nudged by lowpix brush strokes that run around the
   form (so tone clusters break into strokes, not smooth bands), snapped to a palette of the render's own colours
@@ -252,12 +305,18 @@ def paint_real(kind, f=2, out_dir=OUT, k=30):
 
 
 kinds = sorted({os.path.basename(p).split('.')[0] for p in glob.glob(os.path.join(SRC, '*.color.png'))})
-STYLE = os.environ.get('ART_STYLE', 'real')  # 'real': the render's own colours in strokes; 'brush': per-part ramps
-P = paint_real if STYLE == 'real' else paint
-ok = [k for k in kinds if P(k)]
-# small pins for the node map's cork board (half size, from the same passes)
-for k in ok:
-  P(k, 4, os.path.join(OUT, 's'))
+# 'flat' (default): clean stylised pixel art, 64 x 48 for the cards (shown at 3x) and 32 x 24 for the hotbar and the
+# node map's module windows (shown at 2x). 'real' / 'brush' are the older stroke styles, kept for reference.
+STYLE = os.environ.get('ART_STYLE', 'flat')
+if STYLE == 'flat':
+  ok = [k for k in kinds if paint_flat(k, 3, OUT, 16)]
+  for k in ok:
+    paint_flat(k, 6, os.path.join(OUT, 's'), k=8)
+else:
+  P = paint_real if STYLE == 'real' else paint
+  ok = [k for k in kinds if P(k)]
+  for k in ok:
+    P(k, 4, os.path.join(OUT, 's'))
 print(len(ok), 'painted;', 'skipped:', sorted(set(kinds) - set(ok)))
 # the list the game reads (kinds without a painting fall back to a studio still)
 open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'artlist.ts'), 'w').write(

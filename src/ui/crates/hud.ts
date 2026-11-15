@@ -11,10 +11,10 @@ import { LOGOS } from '../../inv/logos';
 import { RAMPS } from '../../art/palette';
 import type { InvUI } from './grid';
 import { injectCrateCSS } from './style';
-import { badgeURL, hudPlateURL, ctlURL, cardURL, loadMats, onMats, kindIcon, Pen } from './mat';
+import { badgeURL, hudPlateURL, buttonURL, lampURL, cardURL, loadMats, onMats, kindIcon } from './mat';
 import { sfx } from '../../audio/audio';
 
-const PER = 3, BW = 70, BH = 116, BG = 4, H = 146;
+const PER = 3, BW = 70, BH = 116, BG = 4, H = 150;
 const ik = () => (innerHeight >= 1000 ? 2 : 1);
 const fmt = (n: number) => (n >= 10000 ? Math.round(n / 1000) + 'k' : n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n));
 export class CrateHud {
@@ -81,7 +81,7 @@ export class CrateHud {
     Object.assign(this.badges.style, { left: 8 * k + 'px', top: 8 * k + 'px', width: inner * k + 'px', height: BH * k + 'px' });
     this.track.style.gap = BG * k + 'px';
     const row = this.root.querySelector<HTMLDivElement>('.row')!;
-    Object.assign(row.style, { left: 8 * k + 'px', top: (8 + BH + 4) * k + 'px', width: inner * k + 'px', height: 12 * k + 'px' });
+    Object.assign(row.style, { left: 8 * k + 'px', top: (8 + BH + 3) * k + 'px', width: inner * k + 'px', height: 16 * k + 'px' });
     this.track.innerHTML = list.map((c) => {
       const R = RAMPS[PAINTS[c.color].ramp], top = c.contents().slice(0, 3), b = this.born.get(c.id), fresh = b && now - b < 1200;
       const items = top.map((e, j) => `<div class="it" style="top:${(61 + j * 16) * k}px;width:${(BW - 10) * k}px"><img src="${itemIcon(e.item, 32)}"><span>${fmt(e.n)}</span></div>`).join('');
@@ -97,9 +97,15 @@ export class CrateHud {
     });
     this.place();
     const pr = this.root.querySelector<HTMLImageElement>('.prev')!, nx = this.root.querySelector<HTMLImageElement>('.next')!;
-    pr.src = ctlURL('hold', 12, 12, 0, ARW_L, 3); nx.src = ctlURL('hold', 12, 12, 0, ARW_R, 4);
-    pr.classList.toggle('dis', this.page <= 0); nx.classList.toggle('dis', this.page >= this.pages - 1);
-    this.dots.innerHTML = Array.from({ length: this.pages }, (_, i) => `<img src="${dotURL(i === this.page)}" data-p="${i}">`).join('');
+    // the page keys: chunky push buttons that sink while held; the page lamps
+    const key = (b: HTMLImageElement, dir: 'l' | 'r', off: boolean) => {
+      b.src = buttonURL(dir, 0, off); b.classList.toggle('dis', off);
+      b.onpointerdown = () => { if (!off) b.src = buttonURL(dir, 2); };
+      b.onpointerup = b.onpointerleave = () => (b.src = buttonURL(dir, 0, off));
+      b.onpointerenter = () => { if (!off) b.src = buttonURL(dir, 1); };
+    };
+    key(pr, 'l', this.page <= 0); key(nx, 'r', this.page >= this.pages - 1);
+    this.dots.innerHTML = Array.from({ length: this.pages }, (_, i) => `<img src="${lampURL(i === this.page)}" data-p="${i}">`).join('');
     this.dots.querySelectorAll<HTMLElement>('img').forEach((d) => (d.onclick = () => { this.page = Number(d.dataset.p); this.key = ''; }));
     if (this.hover) { const el = this.track.querySelector<HTMLElement>(`[data-c="${this.hover.id}"]`); if (el) this.showCard(this.hover, el); }
   }
@@ -122,13 +128,4 @@ export class CrateHud {
   /** a slot's screen rectangle on the current page (the tutorial points at it) */
   slotRect(i: number): DOMRect { const r = this.badges.getBoundingClientRect(), k = ik(); return new DOMRect(r.left + i * (BW + BG) * k, r.top, BW * k, BH * k); }
   dispose() { cancelAnimationFrame(this.raf); this.card.remove(); this.root.remove(); }
-}
-const ARW_L = ['..#', '.##', '###', '.##', '..#'], ARW_R = ['#..', '##.', '###', '##.', '#..'];
-const dots = new Map<boolean, string>();
-/** a page pip: a lamp in a bezel */
-function dotURL(on: boolean) {
-  let u = dots.get(on); if (u) return u;
-  const p = new Pen(6, 6), S = RAMPS.steel, A = RAMPS.glowAmber;
-  p.rect(0, 0, 6, 6, S[0]); p.rect(1, 1, 4, 4, on ? A[3] : S[2]); if (on) p.px(1, 1, A[4]); p.hl(1, 4, 4, on ? A[1] : S[1]);
-  u = p.url(); dots.set(on, u); return u;
 }

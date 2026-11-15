@@ -1,7 +1,6 @@
-// The crew's painted page: one 1024 px canvas of embroidered patches (the UNAA program crest, the MERIDIAN mission
-// patch, department patches, flight patches), name tapes, rank boards, small device screens and fabric tiles
-// (canvas, nylon webbing, leather, apron cloth), painted with brushes at native resolution: twill threads, merrowed
-// edges, stitch lines, fold shading, edge wear. Its regions are registered into the machine kit's region table
+// The crew's page: one canvas of patches (the UNAA program crest, the MERIDIAN mission patch, department and flight
+// patches), name tapes, rank boards, small device screens and cloth tiles, painted flat and stylised (solid fills,
+// clean rims, a light and a dark band) and then reduced to chunky pixels (a quarter resolution, nearest filtering). Its regions are registered into the machine kit's region table
 // (robots/atlas.ts REG, 'cw:' prefix) so the same Kit builds gear from both pages: material 0 is the kit's UNAA
 // livery atlas (steel, rubber, brass, lenses), material 1 is this page.
 import * as THREE from 'three';
@@ -41,58 +40,21 @@ type G = CanvasRenderingContext2D;
 // ------------------------------------------------------------------ brushes
 /** embroidery fill: the shape filled, then satin threads laid diagonally across it, lighter on the lit side */
 function satin(g: G, path: () => void, col: string, x: number, y: number, w: number, h: number, ang = 0.6, gap = 2.2) {
-  g.save(); path(); g.fillStyle = col; g.fill(); g.clip();
-  g.globalAlpha = 0.22; g.strokeStyle = '#ffffff'; g.lineWidth = 0.7;
-  const c = Math.cos(ang), s = Math.sin(ang), L = w + h;
-  for (let k = -L; k < L; k += gap) { g.beginPath(); g.moveTo(x + w / 2 + c * -L - s * k, y + h / 2 + s * -L + c * k); g.lineTo(x + w / 2 + c * L - s * k, y + h / 2 + s * L + c * k); g.stroke(); }
-  g.globalAlpha = 0.18; g.strokeStyle = '#000000';
-  for (let k = -L + gap / 2; k < L; k += gap) { g.beginPath(); g.moveTo(x + w / 2 + c * -L - s * k, y + h / 2 + s * -L + c * k); g.lineTo(x + w / 2 + c * L - s * k, y + h / 2 + s * L + c * k); g.stroke(); }
-  // light from the upper left, a soft fall-off to the lower right (thread sheen)
-  const gr = g.createLinearGradient(x, y, x + w, y + h); gr.addColorStop(0, 'rgba(255,255,255,0.12)'); gr.addColorStop(1, 'rgba(0,0,0,0.18)');
-  g.globalAlpha = 1; g.fillStyle = gr; g.fillRect(x, y, w, h);
-  g.restore();
+  // flat, stylised: one solid fill (the old thread hatching is gone)
+  void x; void y; void w; void h; void ang; void gap;
+  g.save(); path(); g.fillStyle = col; g.fill(); g.restore();
 }
 /** twill weave over a rectangle (patch backgrounds, tapes) */
-function twill(g: G, x: number, y: number, w: number, h: number, base: string, k = 1) {
-  g.fillStyle = base; g.fillRect(x, y, w, h);
-  g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
-  for (let i = -h; i < w + h; i += 3) {
-    g.strokeStyle = `rgba(255,255,255,${0.05 * k})`; g.lineWidth = 1; g.beginPath(); g.moveTo(x + i, y); g.lineTo(x + i + h, y + h); g.stroke();
-    g.strokeStyle = `rgba(0,0,0,${0.09 * k})`; g.beginPath(); g.moveTo(x + i + 1.5, y); g.lineTo(x + i + 1.5 + h, y + h); g.stroke();
-  }
-  g.restore();
-}
+function twill(g: G, x: number, y: number, w: number, h: number, base: string, k = 1) { void k; g.fillStyle = base; g.fillRect(x, y, w, h); }
 /** a merrowed (overlocked) border round a circle: dense radial whip stitches */
 function merrowCircle(g: G, cx: number, cy: number, r: number, col: string, wid = 9) {
-  g.save();
-  g.lineWidth = wid + 2; g.strokeStyle = 'rgba(0,0,0,0.55)'; g.beginPath(); g.arc(cx + 1, cy + 2, r, 0, Math.PI * 2); g.stroke();
-  g.lineWidth = wid; g.strokeStyle = col; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.stroke();
-  const n = Math.round(r * 1.6);
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2, a2 = a + 0.035;
-    g.strokeStyle = i % 2 ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.25)'; g.lineWidth = 1.1;
-    g.beginPath(); g.moveTo(cx + Math.cos(a) * (r - wid / 2), cy + Math.sin(a) * (r - wid / 2)); g.lineTo(cx + Math.cos(a2) * (r + wid / 2), cy + Math.sin(a2) * (r + wid / 2)); g.stroke();
-  }
-  g.restore();
+  g.save(); g.lineWidth = wid; g.strokeStyle = col; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.stroke(); g.restore();
 }
 function merrowRect(g: G, x: number, y: number, w: number, h: number, col: string, wid = 5) {
-  g.save();
-  g.lineWidth = wid; g.strokeStyle = col; g.strokeRect(x + wid / 2, y + wid / 2, w - wid, h - wid);
-  g.lineWidth = 1;
-  for (let i = 0; i < (w + h) * 2; i += 2.2) {
-    g.strokeStyle = (i | 0) % 2 ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.3)';
-    let px: number, py: number, dx: number, dy: number;
-    if (i < w) { px = x + i; py = y; dx = 0.6; dy = wid; } else if (i < w + h) { px = x + w; py = y + i - w; dx = -wid; dy = 0.6; } else if (i < 2 * w + h) { px = x + w - (i - w - h); py = y + h; dx = -0.6; dy = -wid; } else { px = x; py = y + h - (i - 2 * w - h); dx = wid; dy = -0.6; }
-    g.beginPath(); g.moveTo(px, py); g.lineTo(px + dx, py + dy); g.stroke();
-  }
-  g.restore();
+  g.save(); g.lineWidth = wid; g.strokeStyle = col; g.strokeRect(x + wid / 2, y + wid / 2, w - wid, h - wid); g.restore();
 }
 /** a running stitch along a path (dashes with a tiny shadow) */
-function stitch(g: G, path: () => void, col: string, w = 1.4, dash = 4) {
-  g.save(); g.setLineDash([dash, dash * 0.8]); g.lineCap = 'round';
-  g.translate(0.8, 0.8); path(); g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = w; g.stroke();
-  g.translate(-0.8, -0.8); path(); g.strokeStyle = col; g.stroke(); g.restore();
-}
+function stitch(g: G, path: () => void, col: string, w = 1.4, dash = 4) { void dash; g.save(); path(); g.strokeStyle = col; g.lineWidth = w; g.stroke(); g.restore(); }
 /** the house faces only: Spleen ('Title') at 24 / 48, Departure Mono ('Body') at 11 / 22 / 33 (sizes snap down) */
 function face(size: number, font?: string) {
   const body = !!font && /VT|Body/.test(font) || size < 20;
@@ -190,28 +152,13 @@ function nameTape(g: G, id: CrewId) {
   merrowRect(g, x, y, w, h, '#151c26', 4);
 }
 function fabric(g: G, k: string, base: number[], o: { weave?: number; stain?: number; seam?: boolean; grain?: 'leather' | 'web' | 'towel' } = {}) {
+  // flat and stylised: the cloth's colour, one lighter band and one darker band, a clean seam
   const [x, y, w, h] = R[k];
   g.fillStyle = rgb(base); g.fillRect(x, y, w, h);
-  g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
-  if (o.grain === 'leather') {
-    for (let i = 0; i < 700; i++) { const px = x + h1(i, 1) * w, py = y + h1(i, 2) * h; g.fillStyle = h1(i, 3) < 0.5 ? 'rgba(0,0,0,0.12)' : 'rgba(255,230,200,0.06)'; g.fillRect(px, py, 2 + h1(i, 4) * 3, 1); }
-    for (let i = 0; i < 9; i++) { g.strokeStyle = 'rgba(0,0,0,0.18)'; g.lineWidth = 1; g.beginPath(); const py = y + h1(i, 5) * h; g.moveTo(x, py); g.bezierCurveTo(x + w * 0.3, py + 6, x + w * 0.6, py - 6, x + w, py + 2); g.stroke(); }
-  } else if (o.grain === 'web') {
-    for (let j = 0; j < h; j += 4) { g.fillStyle = j % 8 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.16)'; g.fillRect(x, y + j, w, 2); }
-    for (let i = 0; i < w; i += 6) { g.fillStyle = 'rgba(0,0,0,0.07)'; g.fillRect(x + i, y, 1, h); }
-  } else if (o.grain === 'towel') {
-    for (let i = 0; i < 1600; i++) { const px = x + h1(i, 7) * w, py = y + h1(i, 8) * h; g.fillStyle = h1(i, 9) < 0.5 ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)'; g.fillRect(px, py, 1.5, 1.5); }
-    for (const yy of [18, 24, 100, 106]) { g.fillStyle = 'rgba(70,90,120,0.5)'; g.fillRect(x, y + yy, w, 3); }
-  } else {
-    const wv = o.weave ?? 1;
-    for (let j = 0; j < h; j += 2) for (let i = (j / 2) % 2; i < w; i += 2) { g.fillStyle = `rgba(0,0,0,${0.06 * wv})`; g.fillRect(x + i, y + j, 1, 1); }
-    for (let j = 1; j < h; j += 2) { g.fillStyle = `rgba(255,255,255,${0.035 * wv})`; g.fillRect(x, y + j, w, 1); }
-    // slub threads: a few thicker strands, placed
-    for (let i = 0; i < 14; i++) { g.fillStyle = 'rgba(0,0,0,0.08)'; g.fillRect(x, y + h1(i, 11) * h, w, 1); g.fillStyle = 'rgba(255,255,255,0.05)'; g.fillRect(x + h1(i, 12) * w, y, 1, h); }
-  }
-  if (o.stain) for (let i = 0; i < 5; i++) { const px = x + h1(i, 13) * w, py = y + h1(i, 14) * h, rr = 6 + h1(i, 15) * 14; const gr = g.createRadialGradient(px, py, 0, px, py, rr); gr.addColorStop(0, `rgba(70,50,30,${0.16 * o.stain})`); gr.addColorStop(1, 'rgba(70,50,30,0)'); g.fillStyle = gr; g.fillRect(px - rr, py - rr, rr * 2, rr * 2); }
-  if (o.seam) stitch(g, () => { g.beginPath(); g.moveTo(x, y + 6); g.lineTo(x + w, y + 6); g.moveTo(x, y + h - 6); g.lineTo(x + w, y + h - 6); }, 'rgba(230,220,190,0.55)', 1.2, 4);
-  g.restore();
+  g.fillStyle = rgb(base.map((v) => Math.min(255, v * 1.12))); g.fillRect(x, y, w, Math.round(h * 0.25));
+  g.fillStyle = rgb(base.map((v) => v * 0.86)); g.fillRect(x, y + Math.round(h * 0.75), w, Math.round(h * 0.25));
+  if (o.grain === 'web' || o.grain === 'towel') { g.fillStyle = rgb(base.map((v) => v * 0.8)); g.fillRect(x, y + Math.round(h * 0.5) - 4, w, 8); }
+  if (o.seam) { g.fillStyle = rgb(base.map((v) => v * 0.7)); g.fillRect(x, y + 6, w, 4); g.fillRect(x, y + h - 10, w, 4); }
 }
 function screen(g: G, k: string, draw: (x: number, y: number, w: number, h: number) => void, bg = '#06140e') {
   const [x, y, w, h] = R[k];
@@ -228,36 +175,12 @@ function glowRegion(g: G, x: number, y: number, w: number, h: number) {
 }
 const PH = '#8fe0b0', PH2 = '#4a9a74', AMB = '#e2b45a';
 
-/** the hand-drawn finish (after lowpix's stroke brush): the region is re-laid in short strokes that follow a flow
- *  angle, each a touch lighter or darker than the paint under it, so fills read as brushwork, not gradients */
-function strokeFinish(g: G, k: string, ang: number, o: { len?: number; n?: number; k?: number; curl?: number } = {}) {
-  const [x, y, w, h] = R[k];
-  const d = g.getImageData(x, y, w, h), src = new Uint8ClampedArray(d.data);
-  const n = o.n ?? Math.round(w * h / 10), len = o.len ?? 7, kk = o.k ?? 0.09, curl = o.curl ?? 0.25;
-  for (let i = 0; i < n; i++) {
-    let px = h1(i, 101) * w, py = h1(i, 103) * h;
-    const j0 = ((py | 0) * w + (px | 0)) * 4; if (src[j0 + 3] < 128) continue;
-    const v = (h1(i, 107) - 0.5) * 2 * kk, a0 = ang + (h1(i, 109) - 0.5) * curl;
-    const r0 = src[j0], g0 = src[j0 + 1], b0 = src[j0 + 2];
-    const L = len * (0.6 + h1(i, 113) * 0.8), wide = h1(i, 127) < 0.3 ? 2 : 1;
-    for (let t = 0; t < L; t++) {
-      const a = a0 + t * curl * 0.04;
-      px += Math.cos(a); py += Math.sin(a);
-      for (let q = 0; q < wide; q++) {
-        const X = Math.round(px - Math.sin(a) * q), Y = Math.round(py + Math.cos(a) * q);
-        if (X < 0 || Y < 0 || X >= w || Y >= h) continue;
-        const j = (Y * w + X) * 4; if (src[j + 3] < 128) continue;
-        // the stroke carries the colour where it started (a smear), shifted in value
-        const m = 0.55;
-        d.data[j] = Math.max(0, Math.min(255, (src[j] * (1 - m) + r0 * m) * (1 + v)));
-        d.data[j + 1] = Math.max(0, Math.min(255, (src[j + 1] * (1 - m) + g0 * m) * (1 + v)));
-        d.data[j + 2] = Math.max(0, Math.min(255, (src[j + 2] * (1 - m) + b0 * m) * (1 + v * 0.8)));
-      }
-    }
-  }
-  g.putImageData(d, x, y);
+/** reduce the page to chunky pixels: average down by k, then blow back up with no smoothing */
+function pixelate(g: G, k: number) {
+  const c = document.createElement('canvas'); c.width = c.height = CW / k; const s2 = c.getContext('2d')!;
+  s2.imageSmoothingEnabled = true; s2.drawImage(g.canvas, 0, 0, CW / k, CW / k);
+  g.save(); g.imageSmoothingEnabled = false; g.clearRect(0, 0, CW, CW); g.drawImage(c, 0, 0, CW, CW); g.restore();
 }
-
 function paintAll(g: G) {
   g.clearRect(0, 0, CW, CW);
   patchUNAA(g, ...(R.unaa.slice(0, 2) as [number, number]));
@@ -351,10 +274,8 @@ function paintAll(g: G) {
     text(g, 'PART ' + (i + 1) + '/4', x + w - 26, y + 15, 7, '#6a5a3a', { shadow: false });
   });
   paintPlaqueBase(g);
-  // the hand-laid stroke finish over the cloth, the patches and the leather
-  for (const [k, a] of [['canvas', 0.6], ['sage', 0.6], ['nylon', 0], ['leather', 0.3], ['apron', 1.2], ['orange', 0.7], ['web', 0], ['navy', 0.6], ['towel', 1.0], ['leaf', -1.4]] as [string, number][]) strokeFinish(g, k, a);
-  for (const k of ['unaa', 'austral', 'med', 'eng', 'sci', 'sec', 'wings', 'sparrow', 'sup', 'fl3']) strokeFinish(g, k, 0.75, { len: 6, k: 0.07, n: R[k][2] * R[k][3] / 14 });
-  for (const id of CREW_IDS) strokeFinish(g, 'name:' + id, 0.8, { len: 5, k: 0.06 });
+  // stylised: the page is reduced to chunky pixels (a quarter of the resolution, nearest), no strokes
+  pixelate(g, 4);
 }
 function patchMini(g: G, cx: number, cy: number, r: number) {
   g.fillStyle = '#c9a464'; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
@@ -387,7 +308,7 @@ export function crewPage(): { canvas: HTMLCanvasElement; tex: THREE.CanvasTextur
     paintAll(ctx);
     tex = new THREE.CanvasTexture(canvas);
     tex.flipY = false; tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
-    tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.generateMipmaps = true;
+    tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestMipmapNearestFilter; tex.generateMipmaps = true;
     // the faces are web fonts: paint again once they are in
     document.fonts?.ready.then(() => { paintAll(ctx!); if (plaqueNames.length) paintPlaque(plaqueNames); tex!.needsUpdate = true; });
   }

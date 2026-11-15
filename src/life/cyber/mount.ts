@@ -53,7 +53,8 @@ export function growCyber(c: CyCtx): number {
   const look: HullLook = { paint: liv.paint, accent: liv.accent, frame: liv.frame, panel: c.W * 0.32, wear: 0.55, grime: 0.6, seed: c.seed };
   const serial = `07-${String(c.d.seed % 997).padStart(3, '0')}`;
   let tris = 0;
-  const done = (h: Hull, skin: (p: V3) => Wt, k = 2.6) => { tris += h.tris; c.body.add(h.piece({ skin, paint: hullPaint(look, h.decals), k })); };
+  // machinery is textured at 32 px a metre (the body's page runs at 64 before packing): chunky, clean, stylised
+  const done = (h: Hull, skin: (p: V3) => Wt, k = 0.5) => { tris += h.tris; c.body.add(h.piece({ skin, paint: hullPaint(look, h.decals), k: Math.min(k, 0.5) })); };
   const rig1 = (bone: number) => (): Wt => [bone, 1];
   const hose = (name: string, pts: V3[], r: number, skin: (p: V3) => Wt) => { const p = c.body.add(stalk({ name, path: curve(pts, 7), r: () => r, around: 4, skin, paint: rubber(c.body), levels: 0, capE: true, capS: true })); p.reg = 12; p.k = 1.4; tris += 6 * 4 * 2; };
   const anchors: { at: V3; skin: (p: V3) => Wt }[] = [];

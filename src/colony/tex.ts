@@ -362,7 +362,7 @@ function bumpOf(p: Pix) { const b = new Pix(p.w, p.h); for (let i = 0; i < p.w *
 function enamel(ramp: readonly number[], seed: number, W = 128, o: { hazard?: boolean; text?: string; seams?: number } = {}) {
   const p = new Pix(W, W), n = ramp.length, base = ramp[Math.min(n - 1, 3)];
   p.rect(0, 0, W, W, base);
-  for (let i = 0; i < 70; i++) { const x = Math.floor(h3(i, seed, 1) * W), y = Math.floor(h3(i, seed, 2) * W), L = 4 + Math.floor(h3(i, seed, 3) * 14); p.hl(x, Math.min(W - 1, x + L), y, ramp[Math.min(n - 1, h3(i, seed, 4) < 0.6 ? 4 : 2)]); }
+  for (let i = 0; i < (W * W) / 230; i++) { const x = Math.floor(h3(i, seed, 1) * W), y = Math.floor(h3(i, seed, 2) * W), L = 4 + Math.floor(h3(i, seed, 3) * 14); p.hl(x, Math.min(W - 1, x + L), y, ramp[Math.min(n - 1, h3(i, seed, 4) < 0.6 ? 4 : 2)]); }
   const step = o.seams ?? 32;
   for (let y = step - 1; y < W; y += step) { p.hl(0, W - 1, y, ramp[0]); p.hl(0, W - 1, y + 1 < W ? y + 1 : y, ramp[Math.min(n - 1, 5)]); for (let x = 4; x < W; x += 10) { p.set(x, y - 3, RP.steel[5]); p.set(x + 1, y - 3, RP.steel[3]); p.set(x + 1, y - 2, ramp[0]); } }
   for (let x = 63; x < W; x += 64) { p.vl(x, 0, W - 1, ramp[0]); p.vl(x + 1, 0, W - 1, ramp[Math.min(n - 1, 5)]); }
@@ -375,17 +375,17 @@ function enamel(ramp: readonly number[], seed: number, W = 128, o: { hazard?: bo
 const RAMP_OF: Record<string, readonly number[]> = { '#c8642c': RP.rust, '#b3542c': RP.coral, '#c79a2a': RP.ochre, '#5d7a8a': RP.slate, '#59604a': RP.olive, '#4b4f78': RP.violet };
 export function armSheet(col = COL.orange, seed = 2): Sheet {
   const k = 'parm' + col + seed; let v = PCACHE.get(k) as Sheet | undefined;
-  if (!v) { const p = enamel(RAMP_OF[col] ?? RP.rust, seed * 7 + 3, 128, { hazard: true, text: 'UNAA ARM' }); v = { map: pixTex(p), bump: bumpOf(p) }; PCACHE.set(k, v); }
+  if (!v) { const p = enamel(RAMP_OF[col] ?? RP.rust, seed * 7 + 3, 64, { hazard: true, seams: 16 }); v = { map: pixTex(p), bump: bumpOf(p) }; PCACHE.set(k, v); }
   return v;
 }
 export function machSheet(seed = 3): Sheet {
   const k = 'pmach' + seed; let v = PCACHE.get(k) as Sheet | undefined;
   if (!v) {
-    const p = enamel(RP.steel, seed * 13 + 5, 128, { seams: 64 });
-    for (let y = 8; y < 40; y += 4) { p.hl(8, 56, y, RP.ink[0]); p.hl(8, 56, y + 1, RP.steel[5]); }
-    for (let y = 72; y < 120; y += 3) for (let x = 8; x < 56; x += 3) { p.set(x, y, RP.ink[0]); p.set(x + 1, y, RP.ink[1]); }
-    for (const [x, y] of [[70, 8], [118, 8], [70, 52], [118, 52]]) { p.set(x, y, RP.steel[6]); p.set(x + 1, y + 1, RP.steel[1]); }
-    p.rect(72, 72, 48, 6, RP.ochre[4]); for (let x = 72; x < 120; x += 6) p.rect(x, 72, 3, 6, RP.ink[1]);
+    const p = enamel(RP.steel, seed * 13 + 5, 64, { seams: 32 });
+    for (let y = 4; y < 20; y += 3) { p.hl(4, 28, y, RP.ink[0]); p.hl(4, 28, y + 1, RP.steel[5]); }
+    for (let y = 36; y < 60; y += 3) for (let x = 4; x < 28; x += 3) { p.set(x, y, RP.ink[0]); p.set(x + 1, y, RP.ink[1]); }
+    for (const [x, y] of [[35, 4], [59, 4], [35, 26], [59, 26]]) { p.set(x, y, RP.steel[6]); p.set(x + 1, y + 1, RP.steel[1]); }
+    p.rect(36, 36, 24, 4, RP.ochre[4]); for (let x = 36; x < 60; x += 4) p.rect(x, 36, 2, 4, RP.ink[1]);
     v = { map: pixTex(p), bump: bumpOf(p) }; PCACHE.set(k, v);
   }
   return v;

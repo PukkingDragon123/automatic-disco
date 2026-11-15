@@ -1,10 +1,12 @@
-/* NODE MAP: a cork board (public/ui/craft/cork.png, painted with lowpix's brush; it pans with the board). Cards,
-   yarn, tags and tokens are drawn on the glass canvas (src/ui/nodes/map.ts); around it, papers are pinned up:
-   the tool cards on the left, the inspector sheet on the right, the title tab and the discipline card on top.
-   Hand-drawn pieces from public/ui/craft (lowpix stroke brush). Fonts: 'Body' 11 / 22, 'Title' 24, 'TitleL' 32. */
+/* NODE MAP: a machined PATCH BAY. The board is steel panelling (public/ui/craft/bay.png, it pans with the board); the
+   modules, patch cables, jacks, dials and switches are drawn on the glass canvas (src/ui/nodes/map.ts) as clean pixel
+   art. Around it, riveted steel plates: the tool keys on the left, the inspector on the right, the title and the
+   discipline plate on top. Fonts: 'Body' 11 / 22, 'Title' 24, 'TitleL' 32. */
 .nmap { position: fixed; inset: 0; z-index: 900; display: none; pointer-events: auto; box-sizing: border-box; image-rendering: pixelated;
   grid-template-columns: 184px 1fr 470px; grid-template-rows: 70px 1fr 34px; gap: 10px; padding: 14px 16px 8px; color: var(--ink);
-  background: #9c6b3c var(--cork) 0 0 / 512px 512px repeat; box-shadow: inset 0 0 0 10px #4a3420, inset 0 0 0 14px #2b1d10, inset 0 0 120px rgba(30, 16, 6, 0.55); }
+  background: #4d5865 url(/ui/craft/bay.png) 0 0 / 128px 128px repeat; box-shadow: inset 0 0 0 8px #2a3038, inset 0 0 0 12px #14181d, inset 0 0 160px rgba(8, 10, 14, 0.55);
+  --card: url(/ui/craft/steel-card.png); --card-hi: url(/ui/craft/steel-card-hi.png); --card-sel: url(/ui/craft/steel-card-sel.png); --card-lock: url(/ui/craft/steel-card-lock.png);
+  --sheet: url(/ui/craft/steel-sheet.png); --tab-on: url(/ui/craft/tab-steel-on.png); --kraft: #6a7480; }
 .nmap * { box-sizing: border-box; }
 .nmap.on { display: grid; animation: nm-on 260ms steps(6); }
 @keyframes nm-on { from { opacity: 0; } to { opacity: 1; } }
@@ -119,11 +121,11 @@
 .nm-bot .amb { color: #f0c060; } .nm-bot .bad { color: #f0a090; }
 .nm-bot .sp { flex: 1; }
 
-/* the guide: Calder's card taped onto the table */
+/* the guide: Calder's plate, bolted to the bay */
 .nm-tut { position: absolute; left: 10px; bottom: 40px; z-index: 8; width: 560px; display: none; color: var(--ink);
   border: 32px solid transparent; border-image: var(--sheet) 16 fill / 32px round; }
 .nm-tut > * { margin-left: -14px; margin-right: -14px; }
-.nm-tut::before { content: ''; position: absolute; left: 50%; top: -44px; translate: -50% 0; width: 96px; height: 36px; background: url(/ui/craft/tape.png) 0 0 / 96px 36px; image-rendering: pixelated; }
+.nm-tut::before { display: none; content: ''; position: absolute; left: 50%; top: -44px; translate: -50% 0; width: 96px; height: 36px; background: url(/ui/craft/tape.png) 0 0 / 96px 36px; image-rendering: pixelated; }
 .nm-tut.on { display: block; }
 .nm-tut .st { font: 11px/13px 'Body', monospace; color: var(--ink-3); margin-top: -12px; }
 .nm-tut .h { font: 32px/34px 'TitleL', monospace; color: var(--ink); margin: 4px 0 6px; }

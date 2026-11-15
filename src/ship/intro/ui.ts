@@ -1,7 +1,7 @@
-// The intro's marks over the scene, all hand-drawn pixel pen strokes (crew/doodle.ts), never panels: an inked loop
-// round what to grab with a curved arrow from a scribbled word ("GRAB IT"), the instruction written low on the
-// frame with a pen underline, a loop that fills stroke by stroke while the button is held, and UNIT 07's own
-// readouts typed in cream and amber in the corner of its vision. Lines draw themselves in, then boil a little.
+// The intro's marks over the scene, clean pixel graphics (crew/doodle.ts), never panels and never hand-drawn: an
+// exact violet ring round what to grab with a straight arrow from a short label ("APPLE"), the instruction set low on
+// the frame with a clean underline, an amber ring that fills while the button is held, and UNIT 07's own readouts
+// typed in cream and amber in the corner of its vision.
 import { Ink, INK, textW } from '../crew/doodle';
 
 const CSS = /* css */`

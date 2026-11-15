@@ -14,7 +14,7 @@ import { KIND_INFO, PAINTS, PAINT_IDS, LOGO_IDS } from '../../inv/kinds';
 import { drawLogoBadge } from '../../inv/tex';
 import { LOGOS, LOGO_NAME } from '../../inv/logos';
 import { injectCrateCSS } from './style';
-import { panelURL, plainURL, ctlURL, cardURL, loadMats, onMats, gaugeRect, GLYPH, MAT, Pen, type PanelLayout } from './mat';
+import { panelURL, plainURL, ctlURL, cardURL, lampURL, loadMats, onMats, gaugeRect, GLYPH, MAT, Pen, type PanelLayout } from './mat';
 import { RAMPS } from '../../art/palette';
 import { sfx } from '../../audio/audio';
 
@@ -111,7 +111,7 @@ class InvWindow {
     const m = MAT[this.c.kind];
     r.querySelector<HTMLElement>('.lab')!.style.color = '#' + m.light.toString(16).padStart(6, '0');
     const pri = r.querySelector<HTMLDivElement>('.inv-pri')!;
-    pri.innerHTML = this.c.kind === 'hold' ? '' : [1, 2, 3, 4, 5].map((q) => `<img src="${pipURL(q <= this.c.priority)}">`).join('');
+    pri.innerHTML = this.c.kind === 'hold' ? '' : [1, 2, 3, 4, 5].map((q) => `<img src="${lampURL(q <= this.c.priority)}">`).join('');
     const gear = r.querySelector<HTMLImageElement>('.gear')!; gear.style.display = this.c.kind === 'hold' ? 'none' : '';
     const ctrls = r.querySelector<HTMLDivElement>('.inv-ctrls')!;
     Object.assign(ctrls.style, { left: px(F + 1), top: px(L.ctrlY), width: px(L.w - 2 * F - 2), height: px(CTRL) });
@@ -215,7 +215,7 @@ class InvWindow {
     el.innerHTML = `
       <div class="row">${g('type')}<input class="lbl inv-t" maxlength="10" value="${esc(c.label)}"></div>
       <div class="row">${LOGO_IDS.map((l) => `<img class="opt" data-l="${l}" title="${LOGO_NAME[l]}" src="${ctlURL(c.kind, 16, 16, c.logo === l ? 2 : 0, LOGOS[l], 31)}">`).join('')}</div>
-      <div class="row">${g('drop')}${PAINT_IDS.map((p) => `<img class="opt sw" data-p="${p}" title="${PAINTS[p].name}" src="${swatchURL(PAINTS[p].ramp, c.color === p)}">`).join('')}<span class="sp"></span>${g('pin')}${[1, 2, 3, 4, 5].map((q) => `<img class="opt pip" data-pr="${q}" src="${pipURL(q <= c.priority)}">`).join('')}</div>
+      <div class="row">${g('drop')}${PAINT_IDS.map((p) => `<img class="opt sw" data-p="${p}" title="${PAINTS[p].name}" src="${swatchURL(PAINTS[p].ramp, c.color === p)}">`).join('')}<span class="sp"></span>${g('pin')}${[1, 2, 3, 4, 5].map((q) => `<img class="opt pip" data-pr="${q}" src="${lampURL(q <= c.priority)}">`).join('')}</div>
       <div class="row picks">${g('funnel')}<div class="inv-picks">${takes.map((id) => `<button data-it="${id}" class="${c.allow.includes(id) ? 'allow' : c.deny.includes(id) ? 'deny' : ''}" title="${esc(ITEMS[id].name)}"><img src="${itemIcon(id, 32)}"></button>`).join('')}<img class="opt more" title="${this.allPicks ? 'Fewer' : 'Every item it takes'}" src="${ctlURL(c.kind, 14, 14, this.allPicks ? 2 : 0, this.allPicks ? GLYPH.left : GLYPH.plus, 43)}"></div></div>
       <div class="row">${g('worker')}${crew.map((w, i) => `<span class="w">${esc(w.c.sp.name)}<b data-un="${i}">×</b></span>`).join('')}<img class="opt link" title="Link the nearest idle worker" src="${ctlURL(c.kind, 14, 14, 0, GLYPH.plus, 41)}"></div>`;
     Object.assign(el.style, { width: L.w * k + 'px', top: L.h * k + 'px' });
@@ -270,13 +270,6 @@ class InvWindow {
 }
 const fmtKg = (kg: number) => (kg >= 1000 ? (kg / 1000).toFixed(1) + 't' : kg >= 10 ? Math.round(kg) + 'kg' : (Math.round(kg * 10) / 10) + 'kg');
 const small = new Map<string, string>();
-/** a priority pip: a lit amber lamp in a steel bezel, or dark */
-function pipURL(on: boolean) {
-  const key = 'pip' + on; let u = small.get(key); if (u) return u;
-  const p = new Pen(6, 6), A = RAMPS.glowAmber, S = RAMPS.steel;
-  p.rect(0, 0, 6, 6, S[1]); p.rect(1, 1, 4, 4, on ? A[3] : S[2]); if (on) { p.px(1, 1, A[4]); p.px(2, 1, A[4]); } p.hl(1, 4, 4, on ? A[1] : S[1]);
-  u = p.url(); small.set(key, u); return u;
-}
 /** a paint swatch: a daub of the enamel on a steel chip */
 function swatchURL(name: keyof typeof RAMPS, on: boolean) {
   const key = 'sw' + name + on; let u = small.get(key); if (u) return u;

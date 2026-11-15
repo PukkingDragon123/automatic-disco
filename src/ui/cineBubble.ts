@@ -1,7 +1,6 @@
-// A speech balloon drawn by hand on paper, floating over a speaker's head in world space: a sheet of the master
-// palette's paper with clipped corners, an ink outline that wobbles like a pen line, a few hatch strokes of shade in
-// one corner, a tail that points at the speaker, the line typed in as it is spoken, a small name in the corner. It settles in with a slight tilt and lifts away when done.
-// Drawn on a canvas at device resolution, so the line work is fine and crisp.
+// A speech plate floating over a speaker's head in world space: a clean bevelled plate (solid fill, a one-pixel
+// bevel, a dark rim, clipped corners) with a small straight tail pointing at the speaker, the line typed in as it
+// is spoken (Departure Mono 22), the speaker's name small over it. Drawn at whole pixels; it fades in and lifts away.
 const CSS = /* css */`
 .bub { position: fixed; left: 0; top: 0; z-index: 4; pointer-events: auto; cursor: pointer; transform-origin: 50% 100%; opacity: 0; will-change: transform, opacity; }
 .bub canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
@@ -57,8 +56,8 @@ export class SpeechBubble {
   private tipRel = -1; private up = false; private u = 2;
   /** paint the sheet with its tail leaving the bottom edge (or the top edge when flipped) at tipRel px from the left */
   private draw(u: number, tipRel = -1, up = false) {
-    // pixel art at whole pixels: a textured paper sheet (fibres, a little foxing, a fold) and a hand-inked border laid
-    // with a square pen that wobbles, the tail in the same stroke; a hard offset shadow under it
+    // a clean speech plate at whole pixels: a solid fill, a crisp one-pixel bevel (lit top-left, shaded bottom-right),
+    // a dark rim, clipped corners, a small straight tail, a hard offset shadow; no texture, no ink
     this.u = u;
     const k = Math.max(1, Math.round(devicePixelRatio || 1));
     const W = Math.round(this.w + 8 * u), H = Math.round(this.h + this.tail + 8 * u);
@@ -67,39 +66,19 @@ export class SpeechBubble {
     cv.style.imageRendering = 'pixelated';
     const g = cv.getContext('2d')!; g.setTransform(k, 0, 0, k, 0, 0); g.imageSmoothingEnabled = false;
     if (up) { g.translate(0, H); g.scale(1, -1); }
-    const x0 = Math.round(4 * u), y0 = Math.round(4 * u), w = Math.round(this.w), h = Math.round(this.h), c = Math.round(5 * u), s = this.seed;
-    const tr = tipRel < 0 ? Math.round(w * (0.34 + h1(s, 5) * 0.12) - 6 * u) : Math.round(tipRel);
-    const tipX = x0 + tr, tx = Math.round(Math.min(x0 + w - c - 9 * u, Math.max(x0 + c + 6 * u, tipX + 6 * u))), tipY = y0 + h + this.tail;
+    const x0 = Math.round(4 * u), y0 = Math.round(4 * u), w = Math.round(this.w), h = Math.round(this.h), c = Math.round(3 * u);
+    const tr = tipRel < 0 ? Math.round(w * 0.36) : Math.round(tipRel);
+    const tipX = x0 + tr, tw = Math.round(5 * u), tx = Math.round(Math.min(x0 + w - c - tw * 2, Math.max(x0 + c + tw, tipX))), tipY = y0 + h + Math.round(this.tail * 0.75);
     this.tipRel = tr; this.up = up;
-    // the outline points: a box with clipped corners, the tail in one stroke
-    const P: [number, number][] = [[x0 + c, y0], [x0 + w - c, y0], [x0 + w, y0 + c], [x0 + w, y0 + h - c], [x0 + w - c, y0 + h], [tx + 7 * u, y0 + h], [tipX, tipY], [tx - 2 * u, y0 + h], [x0 + c, y0 + h], [x0, y0 + h - c], [x0, y0 + c], [x0 + c, y0]];
-    const poly = (dx: number, dy: number) => { g.beginPath(); P.forEach(([px, py], i) => (i ? g.lineTo(px + dx, py + dy) : g.moveTo(px + dx, py + dy))); g.closePath(); };
-    g.fillStyle = 'rgba(14, 12, 10, 0.55)'; poly(3, 3); g.fill();
-    g.fillStyle = '#e4dcc6'; poly(0, 0); g.fill();
-    // paper: fibres (short 1 px strokes, a shade either way), foxing specks placed sparsely, a soft fold
-    g.save(); poly(0, 0); g.clip();
-    for (let i = 0; i < (w * h) / 22; i++) {
-      const fx = x0 + Math.floor(h1(i, s + 1) * w), fy = y0 + Math.floor(h1(i, s + 2) * h), L = 2 + Math.floor(h1(i, s + 3) * 4), dir = h1(i, s + 4) < 0.5;
-      g.fillStyle = h1(i, s + 6) < 0.55 ? '#d8cfb6' : '#efe8d6';
-      if (dir) g.fillRect(fx, fy, L, 1); else g.fillRect(fx, fy, 1, Math.max(1, L - 2));
-    }
-    for (let i = 0; i < 3; i++) { const fx = x0 + 8 + Math.floor(h1(i, s + 9) * (w - 16)), fy = y0 + 6 + Math.floor(h1(i, s + 10) * (h - 12)); g.fillStyle = '#cdb994'; g.fillRect(fx, fy, 2, 1); g.fillRect(fx + 1, fy + 1, 1, 1); if (i === 0) { g.fillStyle = '#d6c4a2'; g.fillRect(fx + 2, fy + 1, 2, 2); } }
-    const fold = x0 + Math.round(w * (0.55 + h1(s, 12) * 0.2));
-    g.fillStyle = 'rgba(150, 136, 110, 0.35)'; g.fillRect(fold, y0, 1, h); g.fillStyle = 'rgba(255, 252, 240, 0.4)'; g.fillRect(fold + 1, y0, 1, h);
-    g.fillStyle = 'rgba(120, 104, 80, 0.12)'; g.fillRect(x0 + w - 18 * u, y0 + h - 7 * u, 14 * u, 5 * u);
-    g.restore();
-    // the inked border: a square pen walked round the outline, drifting a little
-    const pen = (bw: number, col: string) => {
-      g.fillStyle = col; let n = 0;
-      for (let i = 0; i < P.length - 1; i++) {
-        const [ax, ay] = P[i], [bx, by] = P[i + 1], L = Math.max(1, Math.round(Math.hypot(bx - ax, by - ay)));
-        for (let j = 0; j < L; j++, n++) {
-          const t = j / L, d = (Math.sin(n * 0.17 + s) + Math.sin(n * 0.43 + s * 2.1) * 0.5) * 0.6;
-          g.fillRect(Math.round(ax + (bx - ax) * t - bw / 2 + d), Math.round(ay + (by - ay) * t - bw / 2 + d * 0.7), bw, bw);
-        }
-      }
-    };
-    pen(Math.max(2, Math.round(u)), '#1f1b17');
+    const r = (x: number, y: number, ww: number, hh: number, col: string) => { g.fillStyle = col; g.fillRect(x, y, ww, hh); };
+    const plate = (dx: number, dy: number, col: string) => { r(x0 + c + dx, y0 + dy, w - 2 * c, h, col); r(x0 + dx, y0 + c + dy, w, h - 2 * c, col); for (let i = 1; i < c; i++) { r(x0 + i + dx, y0 + c - i + dy, w - 2 * i, 1, col); r(x0 + i + dx, y0 + h - c + i - 1 + dy, w - 2 * i, 1, col); } };
+    const tail = (dx: number, dy: number, col: string, grow = 0) => { for (let yy = 0; yy <= tipY - (y0 + h) + grow; yy++) { const half = Math.max(0, Math.round((tw + grow) * (1 - yy / (tipY - (y0 + h) + 1 + grow)))); r(tx - half + dx + Math.round((tipX - tx) * yy / Math.max(1, tipY - y0 - h)), y0 + h - 1 + yy + dy, half * 2 + 1, 1, col); } };
+    // shadow, rim, fill, bevel
+    plate(3, 3, 'rgba(10, 12, 14, 0.55)'); tail(3, 3, 'rgba(10, 12, 14, 0.55)');
+    plate(-1, -1, '#23272c'); plate(1, 1, '#23272c'); plate(1, -1, '#23272c'); plate(-1, 1, '#23272c'); tail(0, 1, '#23272c', 1);
+    plate(0, 0, '#e8e4d8'); tail(0, 0, '#e8e4d8');
+    r(x0 + c, y0, w - 2 * c, 1, '#fbf9f2'); r(x0, y0 + c, 1, h - 2 * c, '#fbf9f2');
+    r(x0 + c, y0 + h - 1, w - 2 * c, 1, '#c4bfb0'); r(x0 + w - 1, y0 + c, 1, h - 2 * c, '#c4bfb0');
   }
   /** where to put the sheet so the tail touches (x, y): above or below, shifted sideways, clear of the HUD */
   private place(x: number, y: number) {

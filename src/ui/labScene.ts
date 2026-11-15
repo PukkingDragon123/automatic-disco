@@ -1,4 +1,4 @@
-// The U.S. Planetary Corps field laboratory, in three.js. A glass specimen tank of glowing fluid stands in the
+// The UNAA MERIDIAN's research lab, in three.js. A glass specimen tank of glowing fluid stands in the
 // middle of a 1950s lab, its bubbles rising past the specimen that floats inside, slowly turning, lit from below.
 // Around it: a bank of consoles with dials and live oscilloscopes, reel-to-reel sequencer cabinets, a centrifuge,
 // two field emitters that arc to the tank during an edit, cables and pipes, shelves of specimen jars holding the

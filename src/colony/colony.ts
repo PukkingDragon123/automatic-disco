@@ -184,6 +184,10 @@ export class Colony {
   /** '' when an entry can be built now, else why not */
   canBuild(id: CatId): string {
     const e = CATALOG[id];
+    // the progression agent's gates: research first, then the Upgrader for anything bolted onto the pod
+    const g = this.g as unknown as { research?: { requirementOf?(id: string): string | null }; upgrades?: { upgraderReady?(): boolean } };
+    const req = g.research?.requirementOf?.(id); if (req) return req;
+    if ((e.kind === 'arm' || e.kind === 'drone' || e.kind === 'limb') && g.upgrades && g.upgrades.upgraderReady && !g.upgrades.upgraderReady()) return 'BUILD AN UPGRADER';
     if (e.kind === 'arm' && this.arms.length + this.fitting.filter((f) => CATALOG[f.id].kind === 'arm').length >= this.pod.model.hardpoints.length) return 'Every hardpoint is taken';
     if (e.kind === 'drone' && this.drones.length >= 6) return 'The pad holds six drones';
     if (id === 'limb_brace' && this.pod.braced) return 'Already braced';

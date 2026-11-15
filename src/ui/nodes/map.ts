@@ -1,11 +1,13 @@
-// The NODE MAP (N): the colony's logistics as a CORK BOARD. Every node is pinned to it as a hand-painted pixel-art
-// card (each building's own illustration from src/ui/build/art.ts, painted with lowpix's brush; a pod badge; a rock
-// specimen tag for a deposit; a felt patch for a harvest field; a brass badge with a stamped glyph for each logic
-// gadget: splitter, merger, buffer, counter, gate, timer, sensor). Routes are lengths of yarn strung between the pins;
-// item tokens ride the yarn as workers carry them, and each length carries a paper luggage tag clipped on (its items,
-// rate, priority pips, an IF stamp for conditions, and why it stalls). Drag from a card's brass plug to another card to
-// wire it; drag a card to tidy it; wheel to zoom, drag the board (or right-drag) to pan.
-// The model: src/logistics/network.ts. The inspector sheet is ./panel.ts, the guide ./tutorial.ts.
+// The NODE MAP (N): the colony's logistics as a machined PATCH BAY. Every node is a module bolted to a steel panel:
+// a housing with corner screws, a glass window with the building's pixel picture (src/ui/build/art.ts; the pod, a
+// deposit's ore or a field's tree for the others), an engraved name plate, a read-out strip, a status LED and two
+// sockets, IN on the left and OUT on the right. The logic gadgets are physical modules: the splitter and merger have a
+// knurled selector knob that turns to the output it deals to, the buffer a level gauge, the counter an odometer, the
+// gate a toggle switch, the timer a clock dial, the sensor a needle meter. Routes are patch CABLES with jack plugs,
+// dragged from an OUT socket to an IN socket; light pulses and item tokens travel along them, and each carries an
+// engraved tag (its items, rate, priority lamps, a relay lamp for conditions, and why it stalls). The board lays
+// itself out (chains in columns, the rest on shelves). Wheel zooms, dragging the panel pans.
+// The model: src/logistics/network.ts. The inspector is ./panel.ts, the guide ./tutorial.ts.
 import './nodes.css';
 import '../build/build.css';
 import type { Factory } from '../../factory/factory';
@@ -14,7 +16,7 @@ import { ITEMS, itemIcon, type ItemId } from '../../factory/items';
 import { LOGIC, LOGIC_NAME, isLogic, type LNode, type Route, type LogicKind, type Chain, type Template } from '../../logistics/network';
 import { VSC } from '../build/vignette';
 import { art } from '../build/art';
-import { inkCurve, inkLine, bezAt, INK, PENCIL_R, PENCIL_B, PENCIL_G, AMBER, PAPER } from '../build/ink';
+import { bezAt } from '../build/ink';
 import { Panel } from './panel';
 import { Tutorial } from './tutorial';
 import { el, toast } from '../kit';
@@ -26,9 +28,10 @@ export type Sel = { k: 'node'; id: string } | { k: 'route'; id: number } | null;
 interface Card { n: LNode; x: number; y: number; tx: number; ty: number; tw: number; th: number; px: number; py: number; r: number }
 const D2 = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, ay - by);
 const FONT = '11px Body, monospace';
-/** yarn colours: strung, moving (the lighter twist crawls), stalled, off */
-const YARN = '#a82c22', YARN_LIT = '#f0846a', YARN_STALL = '#c8891e', YARN_OFF = '#6e665c';
-const BASE = (import.meta as unknown as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
+/** patch cable colours (by route), machined steel, LEDs */
+const CABLES = ['#c0392b', '#e0a020', '#2f7fc0', '#3fa04a', '#d0602a', '#8e5ab0', '#2aa0a0'];
+const STEEL = '#3d4650', STEEL_HI = '#6b7782', STEEL_LO = '#262c33';
+const LED_G = '#7fe07a', LED_A = '#f0b040', LED_R = '#ff5a40';
 
 export class NodeMap {
   readonly root: HTMLDivElement;
@@ -60,7 +63,7 @@ export class NodeMap {
     this.glass = el('div', 'nm-glass', r);
     this.cv = el('canvas', 'map', this.glass);
     this.ctx = this.cv.getContext('2d')!;
-    el('div', 'nm-legend cr-s', this.glass, `<span><i style="background:${YARN}"></i>WIRE</span><span><i style="background:${YARN_LIT}"></i>MOVING</span><span><i style="background:${YARN_STALL}"></i>STALLED</span><span><i style="background:#f0e8d2"></i>PICKED</span>`);
+    el('div', 'nm-legend cr-s', this.glass, `<span><i style="background:${CABLES[0]}"></i>CABLE</span><span><i style="background:#fff2b8"></i>FLOWING</span><span><i style="background:${LED_A}"></i>STALLED</span><span><i style="background:#59606a"></i>OFF</span>`);
     this.hintEl = el('div', 'nm-hint cr-s', this.glass);
     const side = el('div', 'nm-side', r);
     this.panel = new Panel(this, side);
@@ -129,11 +132,11 @@ export class NodeMap {
   private ground(ax: number, ay: number): [number, number] | null {
     return [this.cam.x + (ax - this.W / 2) / this.cam.s, this.cam.z + (ay - this.H / 2) / this.cam.s];
   }
-  /** the cork moves with the board */
+  /** the steel panelling moves with the board */
   private board() {
     const gb = this.glass.getBoundingClientRect(), ox = Math.round(gb.left + (this.W / 2 - this.cam.x * this.cam.s) * VSC), oy = Math.round(gb.top + (this.H / 2 - this.cam.z * this.cam.s) * VSC);
-    const k = `${ox & 511},${oy & 511}`;
-    if (k !== this.bgKey) { this.bgKey = k; this.root.style.backgroundPosition = `${ox & 511}px ${oy & 511}px`; }
+    const k = `${ox & 127},${oy & 127}`;
+    if (k !== this.bgKey) { this.bgKey = k; this.root.style.backgroundPosition = `${ox & 127}px ${oy & 127}px`; }
   }
   setTool(t: Tool) {
     if (isLogic(t as never)) { const id = 'logic.' + t; if (!this.L.unlocked(id)) { sfx('deny'); toast(`<b>${LOGIC_NAME[t as LogicKind]}</b>: ${this.L.lockWhy(id).toLowerCase()}`, 'warn', 2000); return; } }
@@ -323,15 +326,15 @@ export class NodeMap {
   }
 
   // ------------------------------------------------------------------ geometry on the overlay
-  /** a length of yarn from one pin to the next: it sags under its own weight */
+  /** a patch cable from the source module's OUT jack to the target's IN jack: it leaves and arrives level, and sags */
   wirePts(r: Route): number[][] | null {
     const a = this.cards.get(r.from), b = this.cards.get(r.to); if (!a || !b) return null;
-    const ax = a.px, ay = a.py, bx = b.tx + 2, by = b.ty + 8;
-    const dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy) || 1, sag = Math.min(34, 6 + L * 0.12);
-    return [[ax, ay], [ax + dx * 0.3, ay + dy * 0.3 + sag], [ax + dx * 0.7, ay + dy * 0.7 + sag], [bx, by]];
+    const ax = a.px + 7, ay = a.py, bx = b.tx - 10, by = b.ty + 18;
+    const dx = bx - ax, L = Math.hypot(dx, by - ay) || 1, reach = Math.max(26, Math.abs(dx) * 0.4), sag = Math.min(30, 4 + L * 0.1);
+    return [[ax, ay], [ax + reach, ay + sag], [bx - reach, by + sag], [bx, by]];
   }
-  /** the tag hangs just above the middle of its yarn */
-  private tagRect(r: Route): [number, number, number, number] | null { const pts = this.wirePts(r); if (!pts) return null; const m = bezAt(pts, 0.5); return [Math.round(m[0] - 29), Math.round(m[1] - 30), 58, 22]; }
+  /** the engraved tag hangs just above the middle of its cable */
+  private tagRect(r: Route): [number, number, number, number] | null { const pts = this.wirePts(r); if (!pts) return null; const m = bezAt(pts, 0.5); return [Math.round(m[0] - 29), Math.round(m[1] - 28), 58, 20]; }
 
   // ------------------------------------------------------------------ drawing
   update(dt: number) {
@@ -346,7 +349,7 @@ export class NodeMap {
     this.renderTop();
     this.botT -= dt; if (this.botT <= 0) { this.botT = 0.5; this.renderBot(); }
   }
-  /** every node's card: where its board point falls, then nudged apart until no two cards overlap */
+  /** every node's module: where its board point falls, then nudged apart until no two modules overlap */
   private layoutCards() {
     const g = this.ctx;
     this.cards.clear();
@@ -355,16 +358,16 @@ export class NodeMap {
     for (const n of this.L.nodes) {
       const [bx, bz] = this.pos(n), [x, y] = this.proj(bx, 0, bz);
       const name = isLogic(n.kind) ? LOGIC_NAME[n.kind as LogicKind] : n.name;
-      // zoomed out, a card keeps its picture and its name; zoomed in, also what it holds or does
+      // zoomed out, a module keeps its window and its name plate; zoomed in, also its read-out strip
       const small = this.compact(), sel = this.sel?.k === 'node' && this.sel.id === n.id;
-      const tw = small && !sel ? 76 : Math.min(104, Math.max(56, this.tw(g, name) + 10, this.tw(g, this.subline(n)[0]) + 10)), th = small && !sel ? 58 : 70;
+      const tw = small && !sel ? 76 : Math.min(104, Math.max(72, this.tw(g, name) + 14, this.tw(g, this.subline(n)[0]) + 14)), th = small && !sel ? 50 : 64;
       list.push({ n, x, y, tx: 0, ty: 0, tw, th, px: 0, py: 0, r: 0 });
     }
     for (let it = 0; it < 40; it++) {
       let moved = false;
       for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
         const a = list[i], b = list[j];
-        const ox = (a.tw + b.tw) / 2 + 14 - Math.abs(a.x - b.x), oy = (a.th + b.th) / 2 + 10 - Math.abs(a.y - b.y);
+        const ox = (a.tw + b.tw) / 2 + 22 - Math.abs(a.x - b.x), oy = (a.th + b.th) / 2 + 12 - Math.abs(a.y - b.y);
         if (ox <= 0 || oy <= 0) continue;
         moved = true;
         if (ox < oy * 1.3) { const d = (a.x <= b.x ? -1 : 1) * ox / 2; a.x += d; b.x -= d; } else { const d = (a.y <= b.y ? -1 : 1) * oy / 2; a.y += d; b.y -= d; }
@@ -373,7 +376,7 @@ export class NodeMap {
     }
     for (const c of list) {
       c.tx = Math.round(c.x - c.tw / 2); c.ty = Math.round(c.y - c.th / 2); c.x = c.tx + c.tw / 2; c.y = c.ty + c.th / 2;
-      c.px = c.tx + c.tw + 4; c.py = c.ty + 14; c.r = Math.max(c.tw, c.th) / 2;
+      c.px = c.tx + c.tw + 3; c.py = c.ty + 18; c.r = Math.max(c.tw, c.th) / 2;
       this.cards.set(c.n.id, c);
     }
   }
@@ -382,27 +385,52 @@ export class NodeMap {
   private R(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, c: string) { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
   private text(g: CanvasRenderingContext2D, s: string, x: number, y: number, c: string) { g.font = FONT; g.textBaseline = 'top'; g.fillStyle = c; g.fillText(s, Math.round(x), Math.round(y)); }
   private tw(g: CanvasRenderingContext2D, s: string) { g.font = FONT; return Math.ceil(g.measureText(s).width); }
-  /** a scrap of paper with an inked edge, a drop shadow and a dog-ear (tags, chits) */
-  private paper(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, edge = INK, fill = PAPER) {
-    this.R(g, x + 2, y + 2, w, h, 'rgba(40,28,16,0.35)');
-    this.R(g, x, y, w, h, fill);
-    this.R(g, x + 1, y, w - 2, 1, edge); this.R(g, x + 1, y + h - 1, w - 2, 1, edge); this.R(g, x, y + 1, 1, h - 2, edge); this.R(g, x + w - 1, y + 1, 1, h - 2, edge);
-    this.R(g, x + w - 4, y + 1, 3, 1, '#d8ccac');
+  /** a machined plate: dark outline, lit top and left edge, shaded bottom and right */
+  private plate(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, body = STEEL, out = '#14181d') {
+    this.R(g, x, y, w, h, out); this.R(g, x + 1, y + 1, w - 2, h - 2, body);
+    this.R(g, x + 1, y + 1, w - 2, 1, STEEL_HI); this.R(g, x + 1, y + 1, 1, h - 2, STEEL_HI);
+    this.R(g, x + 1, y + h - 2, w - 2, 1, STEEL_LO); this.R(g, x + w - 2, y + 1, 1, h - 2, STEEL_LO);
+  }
+  /** a recess cut into a plate */
+  private recess(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, fill = '#11161b') {
+    this.R(g, x, y, w, h, STEEL_LO); this.R(g, x + 1, y + 1, w - 1, h - 1, STEEL_HI); this.R(g, x + 1, y + 1, w - 2, h - 2, fill);
+  }
+  private screw(g: CanvasRenderingContext2D, x: number, y: number) { this.R(g, x, y, 3, 3, '#14181d'); this.R(g, x, y, 2, 2, '#c4ccd2'); this.R(g, x + 1, y, 1, 2, '#6b7782'); }
+  /** an LED in its bezel */
+  private led(g: CanvasRenderingContext2D, x: number, y: number, col: string | null, on = true) {
+    this.R(g, x - 1, y - 1, 6, 6, '#14181d'); this.R(g, x, y, 4, 4, col && on ? col : '#2a3038');
+    if (col && on) this.R(g, x, y, 2, 1, 'rgba(255,255,255,0.7)');
+  }
+  /** a filled disk, pixel by pixel */
+  private disk(g: CanvasRenderingContext2D, cx: number, cy: number, r: number, col: string) { g.fillStyle = col; for (let y = -r; y <= r; y++) { const w = Math.floor(Math.sqrt(r * r - y * y + r * 0.6)); g.fillRect(Math.round(cx - w), Math.round(cy + y), w * 2 + 1, 1); } }
+  private line(g: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, col: string, w = 1) {
+    const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1); g.fillStyle = col;
+    for (let i = 0; i <= n; i++) g.fillRect(Math.round(x0 + ((x1 - x0) * i) / n), Math.round(y0 + ((y1 - y0) * i) / n), w, w);
+  }
+  /** a socket: a dark ring with a hole, mounted on a module's edge */
+  private socket(g: CanvasRenderingContext2D, x: number, y: number, lit: boolean) {
+    this.disk(g, x, y, 4, '#14181d'); this.disk(g, x, y, 3, lit ? '#c49a3a' : '#8a96a2'); this.disk(g, x, y, 1, '#0a0d10'); this.R(g, x - 2, y - 3, 2, 1, '#f0f3f5');
+  }
+  /** a jack plug in a socket: a steel sleeve and a coloured boot, pointing along `dir` (+1 right, -1 left) */
+  private jack(g: CanvasRenderingContext2D, x: number, y: number, dir: number, col: string) {
+    const x0 = dir > 0 ? x : x - 8;
+    this.R(g, x0, y - 2, 8, 5, '#14181d'); this.R(g, x0 + (dir > 0 ? 0 : 3), y - 1, 5, 3, '#c4ccd2'); this.R(g, x0 + (dir > 0 ? 0 : 3), y - 1, 5, 1, '#f0f3f5');
+    this.R(g, x0 + (dir > 0 ? 5 : 0), y - 2, 3, 5, col); this.R(g, x0 + (dir > 0 ? 5 : 0), y - 2, 3, 1, 'rgba(255,255,255,0.35)');
   }
   private draw() {
     const g = this.ctx, W = this.W, H = this.H, L = this.L;
     g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = false;
     g.clearRect(0, 0, W, H);
-    // sensor probes and signal links: dotted blue pencil
+    // signal lines (sensor probes, signal conditions): thin blue leads
     for (const n of L.nodes) {
       const c = this.cards.get(n.id); if (!c) continue;
       const links: string[] = [];
       if (n.kind === 'sensor' && n.cfg.probe) links.push(n.cfg.probe);
       for (const cd of [...(n.cfg.conds ?? []), ...L.routes.filter((r) => r.from === n.id || r.to === n.id).flatMap((r) => r.conds)]) if (cd.k === 'signal' && cd.node) links.push(cd.node);
-      for (const id of links) { const o = this.cards.get(id); if (o) inkCurve(g, [[o.x, o.y], [o.x, o.y], [c.x, c.y], [c.x, c.y]], n.sig || L.node(id)?.sig ? AMBER : PENCIL_B, 7, 1, 1, 3); }
+      for (const id of links) { const o = this.cards.get(id); if (o) this.cable(g, [[o.x, o.ty + o.th], [o.x, o.ty + o.th + 20], [c.x, c.ty + c.th + 20], [c.x, c.ty + c.th]], n.sig || L.node(id)?.sig ? '#f0b040' : '#4a8ad0', 1, false, 0); }
     }
+    for (const c of this.cards.values()) this.module(g, c);
     for (const r of L.routes) this.wire(g, r);
-    for (const c of this.cards.values()) this.card(g, c);
     for (const r of L.routes) this.routeTag(g, r);
     for (const [w, j] of L.live) if (!j.chain && j.src && j.dst && w.carry) { const r = L.routes.find((x) => x.from === j.src!.id && x.to === j.dst!.id), pts = r ? this.wirePts(r) : null; if (pts) { const pt = bezAt(pts, this.prog(w, j.src, j.dst)); this.token(g, pt[0], pt[1], w.carry.id); } }
     for (const [w, j] of L.live) if (j.chain) this.chainToken(g, w, j.chain, j.item);
@@ -411,49 +439,64 @@ export class NodeMap {
       const a = this.cards.get(d.id!); if (a) {
         const h = this.hover.node ? L.node(this.hover.node) : null, src = L.node(d.id!)!;
         const bad = h && h.id !== src.id ? L.canWire(src, h) : null;
-        inkCurve(g, [[a.px, a.py], [a.px + 20, a.py], [d.x - 10, d.y], [d.x, d.y]], bad ? PENCIL_R : INK, 3, 1, 4, 2, -this.t * 14);
-        if (bad) { const w = this.tw(g, bad.toUpperCase()) + 10; this.paper(g, d.x + 8, d.y + 6, w, 15, PENCIL_R); this.text(g, bad.toUpperCase(), d.x + 13, d.y + 8, PENCIL_R); }
+        const ax = a.px + 7, ay = a.py;
+        this.cable(g, [[ax, ay], [ax + 26, ay + 12], [d.x - 26, d.y + 12], [d.x, d.y]], bad ? '#e0533e' : CABLES[L.routes.length % CABLES.length], 3, false, 0);
+        this.jack(g, a.px, a.py, 1, bad ? '#e0533e' : CABLES[L.routes.length % CABLES.length]);
+        this.jack(g, d.x + 8, d.y, -1, bad ? '#e0533e' : CABLES[L.routes.length % CABLES.length]);
+        if (bad) { const s = bad.toUpperCase(), w = this.tw(g, s) + 10; this.plate(g, d.x + 10, d.y + 8, w, 15, '#3a2020'); this.text(g, s, d.x + 15, d.y + 10, '#ff9a7a'); }
       }
     }
-    if (d?.mode === 'box' && d.on) { const x0 = Math.min(d.sx, d.x), y0 = Math.min(d.sy, d.y), x1 = Math.max(d.sx, d.x), y1 = Math.max(d.sy, d.y); for (const [a, b, c2, e2] of [[x0, y0, x1, y0], [x0, y1, x1, y1], [x0, y0, x0, y1], [x1, y0, x1, y1]]) inkLine(g, a, b, c2, e2, a + b, PENCIL_R); }
+    if (d?.mode === 'box' && d.on) {
+      const x0 = Math.min(d.sx, d.x), y0 = Math.min(d.sy, d.y), x1 = Math.max(d.sx, d.x), y1 = Math.max(d.sy, d.y);
+      for (let x = x0; x < x1; x += 4) { this.R(g, x, y0, 2, 1, '#f0b040'); this.R(g, x, y1, 2, 1, '#f0b040'); }
+      for (let y = y0; y < y1; y += 4) { this.R(g, x0, y, 1, 2, '#f0b040'); this.R(g, x1, y, 1, 2, '#f0b040'); }
+    }
   }
-  /** a length of yarn: red when strung, a lighter twist crawling along it while goods move, amber dashes when it
-   *  stalls, grey when switched off, chalk white when picked */
+  /** a cable along a bezier: shadow, body, a highlight along its top; `pulse` > 0 sends light pulses along it */
+  private cable(g: CanvasRenderingContext2D, pts: number[][], col: string, w: number, sel: boolean, pulse: number) {
+    let len = 0; for (let i = 0; i < 3; i++) len += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
+    const n = Math.max(8, Math.ceil(len / 1.2)), P: [number, number][] = [];
+    for (let i = 0; i <= n; i++) P.push(bezAt(pts, i / n));
+    g.fillStyle = 'rgba(8,10,14,0.4)'; for (const [x, y] of P) g.fillRect(Math.round(x) + 2, Math.round(y) + 3, w, w);
+    if (sel) { g.fillStyle = '#f0f3f5'; for (const [x, y] of P) g.fillRect(Math.round(x) - 1, Math.round(y) - 1, w + 2, w + 2); }
+    g.fillStyle = '#14181d'; for (const [x, y] of P) g.fillRect(Math.round(x), Math.round(y) + 1, w, w);
+    g.fillStyle = col; for (const [x, y] of P) g.fillRect(Math.round(x), Math.round(y), w, w);
+    if (w > 1) { g.fillStyle = 'rgba(255,255,255,0.32)'; for (const [x, y] of P) g.fillRect(Math.round(x), Math.round(y), w, 1); }
+    if (pulse > 0) for (let k = 0; k < pulse; k++) {
+      const [x, y] = bezAt(pts, ((this.t * 0.45) + k / pulse) % 1);
+      this.R(g, x - 2, y - 2, w + 4, w + 4, 'rgba(255,240,180,0.35)'); this.R(g, x - 1, y - 1, w + 2, w + 2, '#fff2b8');
+    }
+  }
+  /** a patch cable: coloured per route, pulses of light run along it while goods move, grey when switched off */
   private wire(g: CanvasRenderingContext2D, r: Route) {
     const pts = this.wirePts(r); if (!pts) return;
     const L = this.L, moving = r.inflight > 0 || (L.f.time - r.lastT < 12 && r.moved > 0);
     const sel = this.sel?.k === 'route' && this.sel.id === r.id, hov = this.hover.route === r.id;
-    const stalled = !!r.note && !moving;
-    inkCurve(g, pts.map(([x, y]) => [x + 2, y + 3]), 'rgba(40,22,10,0.35)', r.id, 2);
-    if (sel || hov) inkCurve(g, pts, sel ? 'rgba(240,232,210,0.55)' : 'rgba(240,232,210,0.3)', r.id, 4);
-    const col = sel ? '#f0e8d2' : !r.on ? YARN_OFF : stalled ? YARN_STALL : YARN;
-    if (!r.on) inkCurve(g, pts, col, r.id, 2, 3, 3);
-    else if (stalled) inkCurve(g, pts, col, r.id, 2, 5, 2);
-    else inkCurve(g, pts, col, r.id, 2);
-    if (moving && r.on) inkCurve(g, pts, YARN_LIT, r.id + 1, 1, 2, 4, -this.t * 12);
-    const p = bezAt(pts, 0.78), q = bezAt(pts, 0.8), a = Math.atan2(q[1] - p[1], q[0] - p[0]);
-    for (const sgn of [2.5, -2.5]) inkLine(g, p[0] + Math.cos(a + sgn) * 7, p[1] + Math.sin(a + sgn) * 7, p[0], p[1], r.id + sgn, col);
+    const col = !r.on ? '#59606a' : CABLES[r.id % CABLES.length];
+    this.cable(g, pts, col, 3, sel || hov, moving && r.on ? 3 : 0);
+    const a = this.cards.get(r.from)!, b = this.cards.get(r.to)!;
+    this.jack(g, a.px, a.py, 1, col);
+    this.jack(g, b.tx - 2, b.ty + 18, -1, col);
   }
-  /** the luggage tag clipped to a wire: its items, rate, priority pips, an IF stamp, and why it stalls */
+  /** the engraved tag on a cable: its items, rate, priority lamps, a relay lamp for conditions, and why it stalls */
   private routeTag(g: CanvasRenderingContext2D, r: Route) {
     const pts = this.wirePts(r), rc = this.tagRect(r); if (!pts || !rc) return;
     const L = this.L, flow = L.flow(r.id), moving = r.inflight > 0 || (L.f.time - r.lastT < 12 && r.moved > 0);
-    const m = bezAt(pts, 0.5), sel = this.sel?.k === 'route' && this.sel.id === r.id;
+    const m = bezAt(pts, 0.5), sel = this.sel?.k === 'route' && this.sel.id === r.id, stalled = !!r.note && !moving;
     const icons = r.filter.slice(0, 3);
     const rate = flow >= 1 ? `${Math.round(flow)}/M` : r.amount.mode === 'keep' ? `KEEP${r.amount.n}` : r.amount.mode === 'batch' ? `X${r.amount.n}` : r.amount.mode === 'rate' ? `<${r.amount.n}` : '';
-    const w = Math.max(rc[2], 12 + (icons.length ? icons.length * 17 : this.tw(g, 'ANY') + 2) + (rate ? this.tw(g, rate) + 4 : 0)), h = rc[3];
+    const w = Math.max(rc[2], 10 + (icons.length ? icons.length * 17 : this.tw(g, 'ANY') + 2) + (rate ? this.tw(g, rate) + 4 : 0) + (r.conds.length ? 12 : 0)), h = rc[3];
     const x0 = Math.round(m[0] - w / 2), y0 = rc[1];
-    inkLine(g, m[0], m[1], m[0], y0 + h, r.id * 3, INK); // the string from the clip up to the tag
-    this.R(g, m[0] - 2, m[1] - 2, 4, 4, '#8f99a3'); this.R(g, m[0] - 2, m[1] - 2, 4, 1, '#c3cbd2'); // the clip on the wire
-    this.paper(g, x0, y0, w, h, sel ? PENCIL_R : INK, r.note && !moving ? '#efd9a0' : PAPER);
-    this.R(g, x0 + 3, y0 + h / 2 - 1, 2, 2, INK); // the eyelet
-    let cx = x0 + 8;
-    if (icons.length) for (const id of icons) { const im = this.itemImg(id); if (im.complete && im.naturalWidth) g.drawImage(im, cx, y0 + 3, 16, 16); cx += 17; }
-    else { this.text(g, 'ANY', cx, y0 + 6, '#57504a'); cx += this.tw(g, 'ANY') + 2; }
-    if (rate) { this.text(g, rate, cx + 2, y0 + 6, moving ? PENCIL_G : INK); cx += this.tw(g, rate) + 4; }
-    for (let i = 0; i < 5; i++) this.R(g, x0 + 8 + i * 4, y0 + h - 3, 3, 2, i < r.priority ? (r.priority >= 4 ? PENCIL_R : INK) : '#c8bd9e');
-    if (r.conds.length) { const sx = x0 + w - 16, sy = y0 - 6; this.R(g, sx, sy, 18, 11, PAPER); this.R(g, sx, sy, 18, 1, PENCIL_R); this.R(g, sx, sy + 10, 18, 1, PENCIL_R); this.R(g, sx, sy, 1, 11, PENCIL_R); this.R(g, sx + 17, sy, 1, 11, PENCIL_R); this.text(g, 'IF', sx + 3, sy + 0, PENCIL_R); }
-    if (r.note && !moving) { const s = r.note, tw = this.tw(g, s) + 8; this.paper(g, x0, y0 + h + 2, tw, 14, AMBER, '#f6e6b8'); this.text(g, s, x0 + 4, y0 + h + 3, r.note === 'NOT CONNECTED' || r.note === 'NO WORKER ASSIGNED' ? PENCIL_R : '#6a4a10'); }
+    this.R(g, Math.round(m[0]), y0 + h, 1, Math.round(m[1]) - y0 - h, '#c4ccd2'); this.R(g, Math.round(m[0]) + 1, y0 + h, 1, Math.round(m[1]) - y0 - h, '#14181d'); // the stem
+    this.R(g, m[0] - 2, m[1] - 2, 5, 4, '#14181d'); this.R(g, m[0] - 1, m[1] - 1, 3, 2, '#c4ccd2'); // the clamp on the cable
+    this.plate(g, x0, y0, w, h, sel ? '#4d5865' : '#2f3740', sel ? '#f0b040' : '#14181d');
+    let cx = x0 + 5;
+    if (icons.length) for (const id of icons) { const im = this.itemImg(id); if (im.complete && im.naturalWidth) g.drawImage(im, cx, y0 + 2, 16, 16); cx += 17; }
+    else { this.text(g, 'ANY', cx, y0 + 4, '#8a96a2'); cx += this.tw(g, 'ANY') + 2; }
+    if (rate) { this.text(g, rate, cx + 2, y0 + 4, moving ? LED_G : '#d8dee3'); cx += this.tw(g, rate) + 4; }
+    if (r.conds.length) this.led(g, x0 + w - 8, y0 + 3, LED_A, true);
+    for (let i = 0; i < 5; i++) this.R(g, x0 + 5 + i * 4, y0 + h - 3, 3, 1, i < r.priority ? (r.priority >= 4 ? '#ff6a50' : LED_A) : '#4d5865');
+    if (stalled) { const s = r.note, tw = this.tw(g, s) + 8, on = Math.floor(this.t * 2) % 2 === 0; this.plate(g, x0, y0 + h + 1, tw, 13, '#2a2016'); this.text(g, s, x0 + 4, y0 + h + 2, on ? LED_A : '#a07020'); }
   }
   /** progress of a carrying worker from a source to a target, 0..1 */
   private prog(w: Worker, src: LNode, dst: LNode) {
@@ -467,84 +510,126 @@ export class NodeMap {
     const pt = bezAt(segs[i], f - i);
     this.token(g, pt[0], pt[1], item);
   }
-  /** an item token riding a wire: a little paper chit with the item drawn on it */
+  /** a load riding a cable: the item in a round steel bezel */
   private token(g: CanvasRenderingContext2D, x: number, y: number, item: ItemId) {
-    const s = 20, x0 = Math.round(x - s / 2), y0 = Math.round(y - s / 2 - 3 + Math.sin(this.t * 6 + x) * 1.5);
-    this.paper(g, x0, y0, s, s, INK);
-    const im = this.itemImg(item); if (im.complete && im.naturalWidth) g.drawImage(im, x0 + 2, y0 + 2, 16, 16);
+    const cx = Math.round(x), cy = Math.round(y) - 1;
+    this.disk(g, cx + 1, cy + 2, 10, 'rgba(8,10,14,0.4)'); this.disk(g, cx, cy, 10, '#14181d'); this.disk(g, cx, cy, 9, '#9aa6b0'); this.disk(g, cx, cy, 8, '#1b2026');
+    const im = this.itemImg(item); if (im.complete && im.naturalWidth) g.drawImage(im, cx - 8, cy - 8, 16, 16);
   }
-  private glyphs = new Map<string, HTMLCanvasElement>();
-  private glyphCv(kind: string) { let c = this.glyphs.get(kind); if (!c) { c = document.createElement('canvas'); c.width = 24; c.height = 24; glyph(c.getContext('2d')!, kind, true, '#3a2a10', '#7a1e14'); this.glyphs.set(kind, c); } return c; }
-  /** a node pinned to the board: its picture, its name, what it holds or does, a lamp, the pin and the brass plug */
-  private card(g: CanvasRenderingContext2D, c: Card) {
+  /** a node's module on the bay: a machined housing with corner screws, a glass window with its picture (or, for a
+   *  gadget, its dial or switch), an engraved name plate, a read-out strip, a status LED, and its IN and OUT sockets */
+  private module(g: CanvasRenderingContext2D, c: Card) {
     const n = c.n, L = this.L, { tx, ty, tw, th } = c;
     const sel = (this.sel?.k === 'node' && this.sel.id === n.id) || this.multi.has(n.id), hov = this.hover.node === n.id;
     const logic = isLogic(n.kind), flash = this.tut.highlight(n.id) && Math.floor(this.t * 3) % 2 === 0;
-    // the card: paper for buildings and the pod, a kraft tag for a deposit, felt for a field, enamel for a gadget
-    const fill = n.kind === 'deposit' ? '#d7b47a' : n.kind === 'field' ? '#4f7d44' : logic ? '#e9e2cc' : n.kind === 'site' ? '#efe2b8' : PAPER;
-    const ink = n.kind === 'field' ? '#f0e8d2' : INK;
-    this.R(g, tx + 3, ty + 4, tw, th, 'rgba(40,22,10,0.4)');
-    if (sel || flash) this.R(g, tx - 3, ty - 3, tw + 6, th + 6, sel ? '#f0e8d2' : AMBER);
-    this.R(g, tx, ty, tw, th, fill);
-    const edge = sel ? PENCIL_R : hov ? '#57504a' : n.kind === 'field' ? '#24381e' : INK;
-    this.R(g, tx + 1, ty, tw - 2, 1, edge); this.R(g, tx + 1, ty + th - 1, tw - 2, 1, edge); this.R(g, tx, ty + 1, 1, th - 2, edge); this.R(g, tx + tw - 1, ty + 1, 1, th - 2, edge);
-    if ((n.kind === 'building' || n.kind === 'container' || n.kind === 'pod') && th > 60) this.R(g, tx + 3, ty + 44, tw - 6, 1, 'rgba(87,80,74,0.35)'); // the ruled line
-    // the picture
-    const cx = tx + tw / 2, py = ty + 4;
+    this.R(g, tx + 3, ty + 4, tw, th, 'rgba(8,10,14,0.45)');
+    if (sel || flash) this.R(g, tx - 2, ty - 2, tw + 4, th + 4, sel ? '#f0b040' : '#c8891e');
+    this.plate(g, tx, ty, tw, th, hov ? '#4d5865' : n.kind === 'site' ? '#4a4636' : STEEL);
+    for (const [sx, sy] of [[tx + 3, ty + 3], [tx + tw - 6, ty + 3], [tx + 3, ty + th - 6], [tx + tw - 6, ty + th - 6]]) this.screw(g, sx, sy);
+    const cx = Math.round(tx + tw / 2), wx = cx - 18, wy = ty + 4;
+    // the window (or the gadget's control face)
+    this.recess(g, wx, wy, 36, 28, logic ? '#1b2026' : '#0f1a24');
     const b = L.bld(n), site = n.kind === 'site' ? L.site(n) : null;
-    if (b || site) {
-      const im = this.img(art((b?.kind ?? site!.kind) as never, 'small'));
-      if (site) g.globalAlpha = 0.45;
-      if (im.complete && im.naturalWidth) g.drawImage(im, Math.round(cx - 24), py, 48, 36);
-      g.globalAlpha = 1;
-      if (site) { const pr = site.stage === 'build' ? Math.min(1, site.work / site.workNeed) : this.f.sites.progress(site) * 0.5; this.R(g, tx + 6, py + 37, tw - 12, 3, '#c8bd9e'); this.R(g, tx + 6, py + 37, Math.round((tw - 12) * pr), 3, AMBER); }
-    } else if (n.kind === 'pod') this.pod(g, cx, py);
-    else if (n.kind === 'deposit') { const sm = L.seam(n); if (sm) { const im = this.itemImg(sm.item, 32); if (im.complete && im.naturalWidth) g.drawImage(im, Math.round(cx - 16), py + 3, 32, 32); } }
-    else if (n.kind === 'field') { const im = this.img(`${BASE}ui/craft/felt.png`); if (im.complete && im.naturalWidth) g.drawImage(im, Math.round(cx - 16), py + 3, 32, 32); this.tree(g, cx, py + 8); }
-    else if (logic) {
-      const im = this.img(`${BASE}ui/craft/badge.png`); if (im.complete && im.naturalWidth) g.drawImage(im, Math.round(cx - 18), py + 1, 36, 36);
-      g.drawImage(this.glyphCv(n.kind), Math.round(cx - 12), py + 7);
+    if (logic) this.control(g, n, wx + 1, wy + 1);
+    else {
+      if (b || site) {
+        const im = this.img(art((b?.kind ?? site!.kind) as never, 'small'));
+        if (site) g.globalAlpha = 0.45;
+        if (im.complete && im.naturalWidth) g.drawImage(im, wx + 2, wy + 2, 32, 24);
+        g.globalAlpha = 1;
+        if (site) { const pr = site.stage === 'build' ? Math.min(1, site.work / site.workNeed) : this.f.sites.progress(site) * 0.5; for (let i = 0; i < 8; i++) this.R(g, wx + 3 + i * 4, wy + 23, 3, 2, i < Math.round(pr * 8) ? LED_A : '#2a3038'); }
+      } else if (n.kind === 'pod') this.podGlyph(g, cx, wy + 3);
+      else if (n.kind === 'deposit') { const sm = L.seam(n); if (sm) { const im = this.itemImg(sm.item, 24); if (im.complete && im.naturalWidth) g.drawImage(im, cx - 12, wy + 2, 24, 24); } }
+      else if (n.kind === 'field') this.treeGlyph(g, cx, wy + 3);
+      // the glass: a glint across the top left
+      this.R(g, wx + 2, wy + 2, 6, 1, 'rgba(220,235,255,0.35)'); this.R(g, wx + 2, wy + 3, 3, 1, 'rgba(220,235,255,0.2)'); this.R(g, wx + 2, wy + 2, 1, 4, 'rgba(220,235,255,0.25)');
     }
-    const [sub, sc] = this.subline(n);
-    this.text(g, clip(g, logic ? LOGIC_NAME[n.kind as LogicKind] : n.name, tw - 8), tx + 4, ty + 45, ink);
-    if (th > 60) this.text(g, clip(g, sub, tw - 8), tx + 4, ty + 56, n.kind === 'field' ? '#d8e8c8' : sc);
-    const lc = this.lamp(n); if (lc) { this.R(g, tx + tw - 8, ty + 3, 5, 5, '#2b2622'); this.R(g, tx + tw - 7, ty + 4, 3, 3, lc); }
-    // the pin
-    const pin = this.img(`${BASE}ui/craft/pin.png`); if (pin.complete && pin.naturalWidth) g.drawImage(pin, Math.round(cx - 7), ty - 7, 14, 14);
-    // the plug: a brass ring on the card's edge, where the yarn starts
-    if (n.kind !== 'site' && n.kind !== 'sensor') {
-      const hp = this.hover.node === n.id && this.hover.port, col = hp ? '#f0c24a' : L.routes.some((r) => r.from === n.id) ? '#c49a3a' : '#8a7a52';
-      const x = c.px, y = c.py;
-      this.R(g, x - 3, y - 4, 7, 9, '#2b2622');
-      this.R(g, x - 2, y - 3, 5, 7, col); this.R(g, x - 1, y - 1, 3, 3, '#2b2622'); this.R(g, x - 2, y - 3, 5, 1, '#f0d890');
+    // the name plate and the read-out strip
+    const name = clip(g, logic ? LOGIC_NAME[n.kind as LogicKind] : n.name, tw - 10);
+    this.recess(g, tx + 4, ty + 34, tw - 8, 14, '#232930');
+    this.text(g, name, tx + 7, ty + 35, '#d8dee3');
+    if (th > 52) { const [sub, sc] = this.subline(n); this.recess(g, tx + 4, ty + 49, tw - 8, 12, '#0d1114'); this.text(g, clip(g, sub, tw - 12), tx + 7, ty + 49, sc); }
+    this.led(g, tx + tw - 10, ty + 6, this.lamp(n), true);
+    // sockets: IN on the left edge, OUT on the right (a site takes, a sensor only signals)
+    if (n.kind !== 'deposit' && n.kind !== 'field') this.socket(g, tx - 2, ty + 18, L.routes.some((r) => r.to === n.id));
+    if (n.kind !== 'site' && n.kind !== 'sensor') { const hp = this.hover.node === n.id && this.hover.port; this.socket(g, c.px, c.py, hp || L.routes.some((r) => r.from === n.id)); if (hp) this.R(g, c.px - 6, c.py - 6, 13, 1, '#f0b040'); }
+  }
+  /** a gadget's face: a selector knob, a gauge, an odometer, a toggle switch, a clock dial or a needle meter */
+  private control(g: CanvasRenderingContext2D, n: LNode, x: number, y: number) {
+    const L = this.L, cx = x + 17, cy = y + 13;
+    const knob = (a: number, ticks: number[]) => {
+      for (const t of ticks) this.line(g, cx + Math.cos(t) * 10, cy + Math.sin(t) * 10, cx + Math.cos(t) * 12, cy + Math.sin(t) * 12, '#c4ccd2');
+      this.disk(g, cx, cy, 8, '#14181d'); this.disk(g, cx, cy, 7, '#7d8994');
+      for (let i = 0; i < 16; i++) { const t = (i / 16) * Math.PI * 2; this.R(g, cx + Math.round(Math.cos(t) * 7), cy + Math.round(Math.sin(t) * 7), 1, 1, i % 2 ? '#4d5865' : '#c4ccd2'); } // knurling
+      this.disk(g, cx, cy, 4, '#9aa6b0'); this.R(g, cx - 2, cy - 3, 2, 1, '#f0f3f5');
+      this.line(g, cx, cy, cx + Math.cos(a) * 6, cy + Math.sin(a) * 6, '#e0533e', 2);
+    };
+    switch (n.kind) {
+      case 'split': case 'merge': {
+        const rs = L.routes.filter((r) => (n.kind === 'split' ? r.from : r.to) === n.id), k = Math.max(1, rs.length);
+        const base = n.kind === 'split' ? 0 : Math.PI, ticks = rs.map((_, i) => base + (k === 1 ? 0 : -0.9 + (1.8 * i) / (k - 1)));
+        const sent = Object.values(n.sent ?? {}).reduce((a, b) => a + b, 0), at = ticks.length ? ticks[sent % ticks.length] : base;
+        knob(at, ticks); break;
+      }
+      case 'buffer': {
+        const hi = n.cfg.hi ?? 30, lv = Math.min(1, (L.chains.length ? n.count : 0) / Math.max(1, hi));
+        this.recess(g, cx - 5, y + 1, 10, 24, '#0d1114'); const fh = Math.round(22 * (n.open ? 0.35 + lv * 0.4 : 0.95));
+        this.R(g, cx - 4, y + 24 - fh, 8, fh, n.open ? LED_G : LED_A); this.R(g, cx - 4, y + 24 - fh, 8, 1, 'rgba(255,255,255,0.4)');
+        for (const f of [0.25, 0.85]) this.R(g, cx + 6, y + 24 - Math.round(22 * f), 3, 1, '#c4ccd2');
+        break;
+      }
+      case 'counter': {
+        const s = String(Math.min(999, n.count)).padStart(3, '0');
+        for (let i = 0; i < 3; i++) { this.recess(g, x + 2 + i * 11, y + 6, 10, 15, '#e9e2cc'); this.text(g, s[i], x + 4 + i * 11, y + 7, '#1d2329'); }
+        break;
+      }
+      case 'gate': {
+        this.recess(g, cx - 8, cy + 2, 16, 8, '#2a3038'); this.screw(g, cx - 7, cy + 4); this.screw(g, cx + 5, cy + 4);
+        const ty2 = n.open ? cy - 10 : cy + 12; this.line(g, cx, cy + 5, cx, ty2, '#c4ccd2', 2);
+        this.disk(g, cx + 1, ty2, 3, '#14181d'); this.disk(g, cx + 1, ty2, 2, n.open ? '#6fd06a' : '#e0533e');
+        break;
+      }
+      case 'timer': {
+        const P = n.cfg.period ?? 120, on = n.cfg.on ?? 40, ph = (L.f.time % P) / P;
+        this.disk(g, cx, cy, 11, '#14181d'); this.disk(g, cx, cy, 10, '#e9e2cc');
+        for (let i = 0; i < 40; i++) { const f = i / 40; if (f <= on / P) { const t = -Math.PI / 2 + f * Math.PI * 2; this.R(g, cx + Math.round(Math.cos(t) * 9), cy + Math.round(Math.sin(t) * 9), 1, 1, '#3fa04a'); } }
+        for (let i = 0; i < 4; i++) { const t = (i / 4) * Math.PI * 2; this.R(g, cx + Math.round(Math.cos(t) * 8), cy + Math.round(Math.sin(t) * 8), 1, 1, '#1d2329'); }
+        const t = -Math.PI / 2 + ph * Math.PI * 2; this.line(g, cx, cy, cx + Math.cos(t) * 8, cy + Math.sin(t) * 8, '#c0392b'); this.R(g, cx - 1, cy - 1, 2, 2, '#1d2329');
+        break;
+      }
+      case 'sensor': {
+        const th0 = n.cfg.th ?? 10, v = Math.min(1.4, n.count / Math.max(1, th0)) / 1.4;
+        for (let i = 0; i <= 20; i++) { const t = Math.PI + (i / 20) * Math.PI; this.R(g, cx + Math.round(Math.cos(t) * 13), cy + 8 + Math.round(Math.sin(t) * 13), 1, 1, i > 14 ? '#e0533e' : '#c4ccd2'); }
+        const t = Math.PI + v * Math.PI; this.line(g, cx, cy + 8, cx + Math.cos(t) * 11, cy + 8 + Math.sin(t) * 11, n.sig ? LED_A : '#f0f3f5'); this.disk(g, cx, cy + 8, 2, '#7d8994');
+        break;
+      }
     }
   }
-  /** the pod: a capsule on three legs, in pixels */
-  private pod(g: CanvasRenderingContext2D, cx: number, y: number) {
-    const x = Math.round(cx - 14);
-    for (const [lx, h] of [[2, 6], [13, 7], [24, 6]] as const) this.R(g, x + lx, y + 28, 3, h, '#4b4e50');
-    this.R(g, x + 3, y + 13, 23, 16, INK); this.R(g, x + 4, y + 14, 21, 14, '#d8d0bc'); this.R(g, x + 4, y + 14, 6, 14, '#efe8d6');
-    this.R(g, x + 4, y + 19, 21, 4, '#2f5d8a');
-    for (let i = 0; i < 9; i++) { const w = Math.round(Math.sqrt(1 - ((i - 9) / 9) ** 2) * 11); this.R(g, x + 14 - w, y + 4 + i, w * 2 + 1, 1, i === 0 ? INK : '#c8891e'); this.R(g, x + 14 - w - 1, y + 4 + i, 1, 1, INK); this.R(g, x + 14 + w + 1, y + 4 + i, 1, 1, INK); }
-    this.R(g, x + 9, y + 7, 3, 2, '#f0d890');
+  /** the pod in its window: a capsule on legs */
+  private podGlyph(g: CanvasRenderingContext2D, cx: number, y: number) {
+    const x = cx - 10;
+    for (const lx of [2, 9, 16]) this.R(g, x + lx, y + 18, 2, 4, '#7d8994');
+    this.R(g, x + 2, y + 9, 17, 10, '#d8d0bc'); this.R(g, x + 2, y + 9, 4, 10, '#efe8d6'); this.R(g, x + 2, y + 13, 17, 3, '#2f5d8a');
+    for (let i = 0; i < 7; i++) { const w = Math.round(Math.sqrt(1 - ((i - 7) / 7) ** 2) * 8); this.R(g, x + 10 - w, y + 2 + i, w * 2 + 1, 1, '#c8891e'); }
+    this.R(g, x + 6, y + 4, 2, 2, '#f0d890');
   }
-  /** a little tree stitched on a field's felt */
-  private tree(g: CanvasRenderingContext2D, cx: number, y: number) {
-    const x = Math.round(cx);
-    this.R(g, x - 1, y + 14, 2, 6, '#5c3d20');
-    for (let i = 0; i < 12; i++) { const w = Math.floor(i / 2) + 1; this.R(g, x - w, y + 2 + i, w * 2, 1, i % 3 === 0 ? '#2e5a1c' : '#7fbf4a'); }
+  /** a tree for a harvest field */
+  private treeGlyph(g: CanvasRenderingContext2D, cx: number, y: number) {
+    this.R(g, cx - 1, y + 15, 2, 6, '#7a5a30');
+    for (let i = 0; i < 14; i++) { const w = Math.floor(i / 2) + 1; this.R(g, cx - w, y + 1 + i, w * 2, 1, i % 3 === 0 ? '#2e6a24' : '#6fbf4a'); }
   }
   private lamp(n: LNode): string | null {
     const b = this.L.bld(n);
-    if (b && (b.def.station || b.def.extract)) return b.status === 'working' ? PENCIL_G : b.status === 'nopower' ? PENCIL_R : b.status === 'idle' ? '#8a8072' : AMBER;
-    if (n.kind === 'gate' || n.kind === 'timer' || n.kind === 'counter' || n.kind === 'buffer') return n.open ? PENCIL_G : AMBER;
-    if (n.kind === 'sensor') return n.sig ? AMBER : '#8a8072';
+    if (b && (b.def.station || b.def.extract)) return b.status === 'working' ? LED_G : b.status === 'nopower' ? LED_R : b.status === 'idle' ? null : LED_A;
+    if (n.kind === 'gate' || n.kind === 'timer' || n.kind === 'counter' || n.kind === 'buffer') return n.open ? LED_G : LED_A;
+    if (n.kind === 'sensor') return n.sig ? LED_A : null;
+    if (n.kind === 'container' || n.kind === 'pod') return this.L.routes.some((r) => (r.to === n.id || r.from === n.id) && r.inflight > 0) ? LED_G : null;
     return null;
   }
   /** the second line of a tag: what it holds, makes, or is doing */
   private subline(n: LNode): [string, string] {
     const L = this.L, top = (ids: ItemId[], f: (id: ItemId) => number) => ids.map((id) => [id, f(id)] as [ItemId, number]).filter(([, v]) => v >= 1).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([id, v]) => `${short(id)} ${v}`).join(' ');
-    const dim = '#57504a', warn = '#6a4a10';
+    const dim = '#8a96a2', warn = LED_A, INK = '#d8dee3', PENCIL_G = LED_G;
     switch (n.kind) {
       case 'pod': return [top(L.offers(n), (id) => L.level(n, id)) || 'EMPTY', dim];
       case 'container': { const s = top(L.offers(n), (id) => L.level(n, id)); return [s || 'EMPTY', s ? INK : dim]; }
@@ -619,7 +704,7 @@ const GLYPH: Record<string, string[]> = {
   sensor: ['......................', '......................', '..........#...........', '.........#.#..........', '.....#...#.#....#.....', '....#.#..#.#...#.#....', '#####.#.#...#.#...####', '......#.#...#.#.......', '.......#.....#........', '......................'],
 };
 /** paint a glyph into a 24 x 24 canvas: '#' the inked stroke, 'O' a red pencil fill */
-export function glyph(g: CanvasRenderingContext2D, kind: string, lit = true, ink = INK, red = PENCIL_R) {
+export function glyph(g: CanvasRenderingContext2D, kind: string, lit = true, ink = '#1d2329', red = '#b23a2c') {
   g.clearRect(0, 0, 24, 24);
   const rows = GLYPH[kind] ?? [];
   const oy = Math.floor((24 - rows.length) / 2) + 1;

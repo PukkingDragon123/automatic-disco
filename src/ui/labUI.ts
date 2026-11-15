@@ -1,4 +1,4 @@
-// The gene lab's 2D panels, made of what a 1957 field lab had on the bench: an olive-enamel instrument strip with
+// The gene lab's 2D panels aboard the UNAA MERIDIAN, made of what a field lab has on the bench: an olive-enamel instrument strip with
 // Bakelite controls across the top, a masonite clipboard holding the typed specimen record (it types itself as the
 // specimen changes, the species name is rubber-stamped, Dr. Calder pencils his notes in the margin), a cyanotype
 // drawing of the body proportions, a typed catalogue of the specimen jars, and along the bottom a card file: manila
@@ -312,7 +312,7 @@ export class LabUI {
     const P = (e: HTMLElement, f: (w: number, h: number) => string) => { this.painted.push(e); paintEl(e, f); return e; };
     // ---- the instrument strip
     const top = P(el('div', 'lb-p lb-top', this.root), (w, hh) => enamel(w, hh, { seed: 21 }));
-    el('div', 'lb-title', top, '<span class="sw">GENE LAB</span><span class="np">U.S. PLANETARY CORPS · FIELD LAB 4</span>');
+    el('div', 'lb-title', top, '<span class="sw">GENE LAB</span><span class="np">UNAA MERIDIAN · LAB 4</span>');
     const holder = el('div', 'lb-holder', top), slip = P(el('div', 'lb-slip', holder), (w, hh) => paper(w, hh, { seed: 5, edge: 1 }));
     this.nameIn = el('input', 'lb-name', slip) as HTMLInputElement; this.nameIn.maxLength = 28; this.nameIn.spellcheck = false;
     this.nameIn.addEventListener('input', () => h.name(this.nameIn.value));
@@ -404,7 +404,7 @@ export class LabUI {
     const hd = el('div', 'rs-head', s);
     el('span', 'sw', hd, 'SPECIMEN RECORD');
     R.no = el('span', 'vt', hd);
-    el('div', 'np', s, 'U.S. PLANETARY CORPS · FORM LB-7 · FIELD LAB 4').style.cssText = 'color:#6a6658;margin:calc(3 * var(--k)) 0 calc(4 * var(--k))';
+    el('div', 'np', s, 'UNAA MERIDIAN · FORM LB-7 · LAB 4').style.cssText = 'color:#6a6658;margin:calc(3 * var(--k)) 0 calc(4 * var(--k))';
     const nm = el('div', 'rs-row rs-nm', s); el('span', 'rs-k', nm, 'SPECIES'); R.name = el('span', 'stamp', nm);
     const lt = el('div', 'rs-row', s); el('span', 'rs-k', lt, 'BINOMIAL'); R.latin = el('span', 'rs-v', lt);
     const two = el('div', 'rs-2', s);
@@ -423,7 +423,7 @@ export class LabUI {
     R.slots = el('div', 'rs-slots', s);
     el('div', 'rs-t', s, 'REQUISITION');
     R.cost = el('div', 'rs-v rs-cost', s); R.each = el('div', 'ps', s); R.each.style.color = '#5a5850';
-    const sig = el('div', 'rs-sig', s); el('span', 'rs-k', sig, 'EXAMINED'); const ln = el('span', 'ln', sig); el('span', 'pencil', ln, pencil('R. Calder', 3)); el('span', 'rs-k', sig, 'U.S.P.C.');
+    const sig = el('div', 'rs-sig', s); el('span', 'rs-k', sig, 'EXAMINED'); const ln = el('span', 'ln', sig); el('span', 'pencil', ln, pencil('R. Calder', 3)); el('span', 'rs-k', sig, 'UNAA');
   }
   /** fill the record; changed fields retype themselves, a new name is stamped again */
   record(d: RecordData) {

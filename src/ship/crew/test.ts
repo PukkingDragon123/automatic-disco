@@ -84,7 +84,7 @@ const GEAR_TAG: Partial<Record<string, [string, string]>> = {
   apron: ['APRON', 'spine'], ladle: ['LADLE', 'handR'], towel: ['TOWEL', 'chest'], tacVest: ['PLATE CARRIER', 'chest'], holster: ['STUN PISTOL', 'thighR'],
   shoulderRadio: ['RADIO', 'chest'], wrench: ['WRENCH', 'handR'], wristComp: ['WRIST COMP', 'farmL'], patchL: ['UNAA CREST', 'uarmL'],
 };
-/** the sheet: hand-drawn callouts over the 3D vignette (name, role, gear with leader lines, height, mood, a line) */
+/** the sheet: clean callouts over the 3D vignette (name, role, gear with leader lines, height, mood, a line) */
 function sheetCallouts(id: CrewId, hero: CrewModel, turn: CrewModel[], cam: THREE.PerspectiveCamera, hook: (fn: (dt: number) => void) => void) {
   const d = ROSTER[id], st = crewState();
   const W = innerWidth, H = innerHeight;

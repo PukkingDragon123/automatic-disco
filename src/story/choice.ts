@@ -3,31 +3,26 @@
 // pick the chosen key is stamped EXECUTED and the true outcome is typed out under it.
 import { el, ui } from '../ui/kit';
 import { installFrames } from '../research/ui/frames';
-import { iconCanvas } from '../research/ui/icons';
+import { iconURL } from '../research/ui/icons';
 
 /** an icon for each option key: the card's badge */
 const OPT_ICON: Record<string, string> = { shelter: 'shield', ride: 'bolt', ground: 'arcs', feed: 'heart', sedate: 'vial', cull: 'claw', corridor: 'nodes', turn: 'blast', capture: 'socket', trade: 'crate', truce: 'template', refuse: 'shield', scram: 'switch', send: 'cross', vent: 'steam', treat: 'flask', quarantine: 'shield', trace: 'sensor', relay: 'arcs', jam: 'switch', workers: 'muscle', drone: 'drone', leave: 'moon', bury: 'sapling', home: 'drone', salvage: 'wrench' };
 /** the card's picture: a crop of the scene's own last frame (a real render of the moment, not a drawing), each option
- *  framed a little further along the shot, graded like a film print (warm, a touch of grain, gentle tone steps) */
-function paint(still: HTMLCanvasElement | null | undefined, i: number, n: number, icon: string): HTMLCanvasElement {
-  const W = 320, H = 160, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+ *  framed a little further along the shot, brought down to a low resolution and a short tonal ramp (shown at 2x) */
+function paint(still: HTMLCanvasElement | null | undefined, i: number, n: number): HTMLCanvasElement {
+  const W = 160, H = 80, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const g = cv.getContext('2d')!;
   if (still && still.width > 8) {
     const cw = still.width * 0.46, ch = cw * H / W, span = (still.width - cw) * 0.6;
     const sx = (still.width - cw) / 2 + (n > 1 ? (i / (n - 1) - 0.5) * span : 0), sy = Math.max(0, Math.min(still.height - ch, (still.height - ch) * 0.5));
     g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(still, sx, sy, cw, ch, 0, 0, W, H);
     const img = g.getImageData(0, 0, W, H), d = img.data;
-    let seed = 7 + i * 131;
-    for (let k = 0, p = 0; k < d.length; k += 4, p++) {
-      const x = p % W, y = (p / W) | 0, dx = x / W - 0.5, dy = y / H - 0.5, vig = 1 - (dx * dx + dy * dy) * 0.9;
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff; const grain = ((seed >> 16) / 32768 - 0.5) * 14;
+    for (let k = 0; k < d.length; k += 4) {
       const l = d[k] * 0.3 + d[k + 1] * 0.59 + d[k + 2] * 0.11;
-      for (let c = 0; c < 3; c++) { let v = d[k + c] * 0.85 + l * 0.15; v = ((v - 128) * 1.12 + 128 + (c === 0 ? 9 : c === 2 ? -7 : 0)) * vig + grain; d[k + c] = Math.round(Math.max(0, Math.min(255, v)) / 10) * 10; }
+      for (let c = 0; c < 3; c++) { const v = (d[k + c] * 0.85 + l * 0.15 - 128) * 1.15 + 128 + (c === 0 ? 8 : c === 2 ? -6 : 0); d[k + c] = Math.round(Math.max(0, Math.min(255, v)) / 32) * 32; }
     }
     g.putImageData(img, 0, 0);
   } else { g.fillStyle = '#3a3a34'; g.fillRect(0, 0, W, H); }
-  // the option's badge, painted by lowpix, in the corner
-  g.imageSmoothingEnabled = false; g.drawImage(iconCanvas(icon, 'phos'), W - 60, H - 60, 48, 48);
   return cv;
 }
 import { sfx } from '../audio/audio';
@@ -66,7 +61,8 @@ export function choose(spec: ChoiceSpec, run: (o: Opt) => { text: string; lines:
     spec.options.forEach((o, i) => {
       const lock = o.need?.() ?? null;
       const c = el('div', 'evc-opt' + (lock ? ' off' : ''), opts);
-      const art = paint(spec.still, i, spec.options.length, OPT_ICON[o.key] ?? 'gear'); art.className = 'evc-art'; c.appendChild(art);
+      const pic = el('div', 'evc-pic', c); const art = paint(spec.still, i, spec.options.length); art.className = 'evc-art'; pic.appendChild(art);
+      const badge = el('img', 'evc-badge', pic) as HTMLImageElement; badge.src = iconURL(OPT_ICON[o.key] ?? 'gear', 'phos');
       const kk = el('div', 'evc-key', c);
       el('div', 'evc-num', kk, String(i + 1));
       el('div', 'evc-label', kk, o.label);

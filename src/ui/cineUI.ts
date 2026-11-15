@@ -1,5 +1,5 @@
 // The cinema's screen furniture, as DOM over the canvas: letterbox bars, a fade curtain, film grain, subtitles in
-// four styles (a green-phosphor radio CRT, a 1950s newsreel film strip, a field-journal page, plain), newsreel
+// four styles (a green-phosphor radio CRT, a old-school newsreel film strip, a field-journal page, plain), newsreel
 // title cards, a typed location stamp, the skip hint, and the advancement banner (a brass plate that drops in with
 // a rubber stamp; used by the story outside cutscenes too). Its CSS is injected once from here.
 import { iconURL } from './icons';
@@ -175,7 +175,7 @@ export class CineUI {
     c.el.classList.add('out'); setTimeout(() => c.el.remove(), 260);
     c.done();
   }
-  card(title: string, sub = '', kicker = '', stamp = 'U.S.P.C.') {
+  card(title: string, sub = '', kicker = '', stamp = 'UNAA') {
     this.cardEl.className = 'card';
     this.cardEl.innerHTML = (kicker ? `<div class="k">${esc(kicker)}</div><div class="rule"></div>` : '') + `<div class="t">${esc(title)}</div>` + (sub ? `<div class="rule"></div><div class="s">${esc(sub)}</div>` : '') + `<div class="ink" data-t="${esc(stamp)}">${esc(stamp)}</div>`;
     void this.cardEl.offsetWidth; this.cardEl.classList.add('on');
@@ -222,7 +222,7 @@ let advBusy = false;
 /** a brass-and-olive plate that drops in under the HUD's top bar: an icon, a kicker, a title and a phosphor sub line */
 export function advance(title: string, sub = '', icon = 'cell', o: { kicker?: string; stamp?: string } = {}) {
   style();
-  advQ.push({ title, sub, icon, kicker: o.kicker ?? 'ADVANCEMENT', stamp: o.stamp ?? 'U.S.P.C.' });
+  advQ.push({ title, sub, icon, kicker: o.kicker ?? 'ADVANCEMENT', stamp: o.stamp ?? 'UNAA' });
   if (!advBusy) nextAdv();
 }
 function nextAdv() {

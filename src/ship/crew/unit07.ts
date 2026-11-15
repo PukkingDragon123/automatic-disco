@@ -1,6 +1,6 @@
 // UNIT 07 aboard the ship: the program's AI as a small floating ball robot, 40 cm across. A glossy ceramic shell
-// over a slate belly, painted at native resolution (panel seams with a bevel, screw heads, vent slots, the UNIT 07
-// and UNAA stencils, warning chevrons by the thrusters, an amber pinstripe, edge wear along the seams), one big
+// over a slate belly, painted flat and stylised at low resolution (64 x 32 texels: panel seams, screw heads, the red
+// 07 figures, warning chevrons by the thrusters, an amber pinstripe, the UNAA flag on the crown), one big
 // sensor eye in a machined bezel (dark glass, a glowing iris with aperture blades, lids that blink and squint), two
 // sensor pods like ears with whip antennas, four small vectoring thrusters on the belly with flickering cores, the
 // gravity ring round its equator with eight emitter pads, and a hover glow under it. It bobs, banks into its motion,
@@ -23,79 +23,32 @@ export const GRAV_COL = 0x9a8cff;
 
 // ------------------------------------------------------------------ the shell, painted
 let shellTex: THREE.CanvasTexture | null = null;
+/** the shell at low resolution, flat and stylised: 64 x 32 texels round the ball (about 50 px/m), nearest filtered */
 function paintShell(): THREE.CanvasTexture {
   if (shellTex) return shellTex;
-  const c = document.createElement('canvas'); c.width = 2048; c.height = 1024;
-  drawShell(c.getContext('2d')!, 2048, 1024);
-  shellTex = new THREE.CanvasTexture(c); shellTex.colorSpace = THREE.SRGBColorSpace; shellTex.anisotropy = 8;
+  const W = 64, H = 32, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d')!;
+  const px = (x: number, y: number, col: string) => { g.fillStyle = col; g.fillRect(((x % W) + W) % W, y, 1, 1); };
+  const row = (y: number, col: string) => { g.fillStyle = col; g.fillRect(0, y, W, 1); };
+  // ceramic above (two tones, lit crown), the amber pinstripe, the slate belly (two tones)
+  for (let y = 0; y < H; y++) row(y, y < 4 ? '#eeece4' : y < 17 ? '#dcd9ce' : y === 17 ? '#c9963a' : y < 25 ? '#3e4e5c' : '#2c3844');
+  // seams: two latitude rings and the meridians (dark lines, a light line under each)
+  for (const y of [5, 11]) { row(y, '#a8a69c'); }
+  row(20, '#26323c');
+  for (let i = 0; i < 8; i++) { const x = i * 8 + 2; for (let y = 6; y < 11; y++) px(x, y, '#a8a69c'); for (let y = 12; y < 17; y++) px(x + 4, y, '#a8a69c'); for (let y = 21; y < 30; y++) px(x + 1, y, '#26323c'); }
+  // screw heads at the seam corners
+  for (let i = 0; i < 8; i++) { px(i * 8 + 3, 6, '#7a7870'); px(i * 8 + 7, 12, '#7a7870'); }
+  // '07' in red on both flanks (3 x 5 pixel figures), hazard chevrons by the thrusters, the UNAA flag on the crown
+  const glyph = (x0: number, y0: number, rows: string[], col: string) => rows.forEach((r, j) => [...r].forEach((ch, i) => { if (ch === '#') px(x0 + i, y0 + j, col); }));
+  const Z = ['###', '#.#', '#.#', '#.#', '###'], S7 = ['###', '..#', '.#.', '.#.', '.#.'];
+  for (const x0 of [5, 37]) { glyph(x0, 7, Z, '#b8382e'); glyph(x0 + 4, 7, S7, '#b8382e'); }
+  for (const x0 of [6, 22, 38, 54]) { px(x0, 23, '#d9a43a'); px(x0 + 1, 23, '#d9a43a'); px(x0 + 2, 23, '#1c2228'); px(x0 + 3, 23, '#d9a43a'); }
+  g.fillStyle = '#26344a'; g.fillRect(46, 2, 5, 3); px(48, 2, '#dfe3dc'); px(48, 3, '#d9a43a'); px(48, 4, '#dfe3dc');
+  shellTex = new THREE.CanvasTexture(c); shellTex.colorSpace = THREE.SRGBColorSpace;
+  shellTex.magFilter = THREE.NearestFilter; shellTex.minFilter = THREE.NearestFilter; shellTex.generateMipmaps = false;
   shellTex.wrapS = THREE.RepeatWrapping;
-  document.fonts?.ready.then(() => { drawShell(c.getContext('2d')!, 2048, 1024); shellTex!.needsUpdate = true; });
   return shellTex;
 }
-function drawShell(g: CanvasRenderingContext2D, W: number, H: number) {
-  const yOf = (lat: number) => (0.5 - lat / PI) * H; // latitude (radians, + north) -> row
-  const xOf = (lon: number) => ((lon / TAU) % 1 + 1) % 1 * W; // longitude: 0 = -x side, PI/2 = front (+z)
-  // ceramic above, slate below, a warm grey band between
-  const gr = g.createLinearGradient(0, 0, 0, H);
-  gr.addColorStop(0, '#eceae2'); gr.addColorStop(0.42, '#dcdad0'); gr.addColorStop(0.56, '#cfcdc2'); gr.addColorStop(0.575, '#3a4a58'); gr.addColorStop(1, '#2a3440');
-  g.fillStyle = gr; g.fillRect(0, 0, W, H);
-  // the lit cap: a soft pale bloom on the crown (ceramic glaze)
-  // subtle glaze mottling, placed: large faint patches
-  for (let i = 0; i < 60; i++) { const x = (i * 337) % W, y = (i * 191) % (H * 0.55); g.fillStyle = `rgba(${i % 2 ? 255 : 0},${i % 2 ? 250 : 0},${i % 2 ? 240 : 0},0.025)`; g.beginPath(); g.ellipse(x, y, 60 + (i % 5) * 20, 18 + (i % 3) * 8, 0, 0, TAU); g.fill(); }
-  // the amber pinstripe and the dark band edge
-  g.fillStyle = '#c9963a'; g.fillRect(0, yOf(-0.2) - 7, W, 6);
-  g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(0, yOf(-0.2) - 1, W, 3);
-  // panel seams: a groove (dark) with a highlight line under it (bevel), latitude rings and meridians, offset per row
-  const groove = (x0: number, y0: number, x1: number, y1: number, dark = 'rgba(30,34,40,0.75)') => {
-    g.lineCap = 'round';
-    g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x0 + 1, y0 + 2); g.lineTo(x1 + 1, y1 + 2); g.stroke();
-    g.strokeStyle = dark; g.lineWidth = 3; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
-  };
-  const lats = [0.95, 0.5, 0.12, -0.42, -0.95];
-  for (const la of lats) groove(0, yOf(la), W, yOf(la), la < -0.2 ? 'rgba(10,14,18,0.8)' : undefined);
-  const mer = (lon: number, la0: number, la1: number) => groove(xOf(lon), yOf(la0), xOf(lon), yOf(la1), la1 < -0.2 ? 'rgba(10,14,18,0.8)' : undefined);
-  for (let i = 0; i < 6; i++) { mer(i / 6 * TAU + 0.26, 0.95, 0.5); }
-  for (let i = 0; i < 8; i++) { mer(i / 8 * TAU, 0.5, 0.12); }
-  for (let i = 0; i < 8; i++) { mer(i / 8 * TAU + 0.39, -0.42, -0.95); }
-  for (let i = 0; i < 4; i++) { mer(i / 4 * TAU + 0.78, 0.12, -0.42); }
-  // screws at panel corners
-  const screw = (x: number, y: number, dark = false) => {
-    g.fillStyle = dark ? '#1a2028' : '#8a8a84'; g.beginPath(); g.arc(x, y, 6, 0, TAU); g.fill();
-    g.fillStyle = dark ? '#4a5a68' : '#c8c8c0'; g.beginPath(); g.arc(x - 1, y - 1, 4, 0, TAU); g.fill();
-    g.strokeStyle = dark ? '#10161c' : '#5a5a54'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x - 3, y - 1); g.lineTo(x + 2, y); g.stroke();
-  };
-  for (let i = 0; i < 8; i++) { const x = xOf(i / 8 * TAU); screw(x + 14, yOf(0.5) + 14); screw(x + 14, yOf(0.12) - 14); screw(x - 14, yOf(0.12) - 14); }
-  for (let i = 0; i < 8; i++) { const x = xOf(i / 8 * TAU + 0.39); screw(x + 14, yOf(-0.42) + 14, true); screw(x - 14, yOf(-0.42) + 14, true); }
-  // vent slots on the flanks (under the sensor pods) and the belly
-  const vents = (cx: number, cy: number, n: number, w: number, dark = false) => { for (let i = 0; i < n; i++) { const y = cy + (i - n / 2) * 11; g.fillStyle = dark ? '#0c1014' : '#3a3c40'; g.fillRect(cx - w / 2, y, w, 5); g.fillStyle = dark ? 'rgba(120,140,160,0.25)' : 'rgba(255,255,255,0.6)'; g.fillRect(cx - w / 2, y + 5, w, 2); } };
-  vents(xOf(0) + 0, yOf(-0.05), 4, 60); vents(xOf(PI), yOf(-0.05), 4, 60);
-  vents(xOf(PI * 1.5), yOf(0.3), 5, 90); vents(xOf(PI * 1.5), yOf(-0.65), 4, 80, true);
-  // stencils: UNIT 07 on both flanks, UNAA on the crown band, a serial on the belly, chevrons by the thrusters
-  const stencil = (s: string, x: number, y: number, size: number, col: string, spacing = 6) => {
-    // the house faces only: Spleen at 32 / 64 ('TitleL') for the big stencils, Departure Mono at 22 for the small print
-    g.save(); g.font = size >= 30 ? `${size >= 56 ? 64 : 32}px 'TitleL', monospace` : `22px 'Body', monospace`; g.textAlign = 'center'; g.textBaseline = 'middle'; (g as unknown as { letterSpacing: string }).letterSpacing = spacing + 'px';
-    g.fillStyle = col; g.fillText(s, x, y);
-    // stencil bridges and a little wear: drawn gaps, not noise
-    g.globalCompositeOperation = 'destination-out'; g.fillStyle = 'rgba(0,0,0,0.0)'; g.restore();
-  };
-  stencil('UNIT 07', xOf(0.08), yOf(0.3), 64, '#2a3440'); stencil('UNIT 07', xOf(PI + 0.08), yOf(0.3), 64, '#2a3440');
-  stencil('UNAA', xOf(PI * 1.5), yOf(0.72), 40, '#2a3440', 10);
-  stencil('AI-07 · RV-07 · UNAA COLONISATION RESEARCH', xOf(PI * 1.5), yOf(-0.3), 22, '#c9c4b4', 3);
-  stencil('07', xOf(PI / 2 + 0.75), yOf(0.62), 44, '#b8382e');
-  stencil('07', xOf(PI / 2 - 0.75), yOf(0.62), 44, '#b8382e');
-  for (const lon of [PI / 4, PI * 3 / 4, PI * 5 / 4, PI * 7 / 4]) {
-    const x = xOf(lon), y = yOf(-0.62);
-    for (let i = 0; i < 3; i++) { g.fillStyle = i % 2 ? '#1c2228' : '#d9a43a'; g.beginPath(); g.moveTo(x - 40 + i * 22, y - 14); g.lineTo(x - 26 + i * 22, y - 14); g.lineTo(x - 14 + i * 22, y + 14); g.lineTo(x - 28 + i * 22, y + 14); g.closePath(); g.fill(); }
-  }
-  // a small UNAA flag on the crown, behind the eye
-  { const x = xOf(PI * 1.5) - 40, y = yOf(0.86) - 16; g.fillStyle = '#26344a'; g.fillRect(x, y, 80, 34); g.fillStyle = '#dfe3dc'; g.fillRect(x + 34, y, 12, 34); g.fillStyle = '#d9a43a'; g.beginPath(); g.arc(x + 40, y + 17, 6, 0, TAU); g.fill(); }
-  // edge wear along the upper seams: chips of warm grey where hands and bumps found the edges, placed by hand
-  const chips: [number, number][] = [[0.3, 0.5], [1.1, 0.5], [2.3, 0.5], [3.7, 0.5], [4.6, 0.5], [5.5, 0.5], [0.8, 0.12], [2.0, 0.12], [4.1, 0.12], [5.9, 0.12], [1.6, 0.95], [3.2, 0.95]];
-  for (const [lon, la] of chips) { const x = xOf(lon), y = yOf(la); g.fillStyle = 'rgba(120,112,98,0.55)'; g.beginPath(); g.moveTo(x, y - 3); g.lineTo(x + 9, y - 1); g.lineTo(x + 6, y + 4); g.lineTo(x - 2, y + 3); g.closePath(); g.fill(); }
-  // grime pooled under the band and toward the belly
-  const gg = g.createLinearGradient(0, yOf(-0.2), 0, yOf(-0.5)); gg.addColorStop(0, 'rgba(20,16,10,0.0)'); gg.addColorStop(1, 'rgba(20,16,10,0.25)'); g.fillStyle = gg; g.fillRect(0, yOf(-0.2), W, yOf(-0.5) - yOf(-0.2));
-}
-
 function glowMat(col: number, opacity = 1): THREE.MeshBasicMaterial {
   const m = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false });
   gbuf(m, 0); return m;
@@ -155,7 +108,7 @@ export class Unit07 {
     this.head.add(sph);
     // ---- hardware from the kit (the UNAA livery page)
     const mats = [kitMaterial(unaaAtlas(), kitUniforms())];
-    const k = new Kit(14);
+    const k = new Kit(0.5); // 32 px per metre: flat stylised hardware
     k.on(this.head);
     // the eye bezel: a machined ring proud of the shell, a deep socket
     const ez = R * 0.86, ey = R * 0.12;

@@ -2,10 +2,11 @@
 // pixel art painted at art resolution and shown at an integer scale:
 //   - a TOOL-BOARD along the foot of the screen: a riveted steel pegboard, enamel chipped at the edges, brushed and
 //     scratched, with a row of enamel slot tabs (icons) across its top rail. The parts for the picked slot hang on
-//     wire hooks: lowpix-painted illustrations (src/ui/assets/cyber/art), each with a little enamel price tag of item
+//     wire hooks: lowpix illustrations, clean flat pixel art at 2x (src/ui/assets/cyber/art), each with an enamel price tag of item
 //     icons and counts. Drag one onto the animal (or click it) to fit it; a fitted one wears a stamped check.
-//   - ENAMEL TAGS: small enamel signs with a steel rim and chips, an icon and a number, hung by an inked leader line
-//     from the part on the body that gives it (CARRY +30 at the cargo frame); the role is a bigger sign.
+//   - ENAMEL TAGS: small stamped enamel plates in a steel rim, an icon and a number, hung on a thin steel wire with
+//     crimped ferrules from a pin on the part of the body that gives it (crate +30 at the cargo frame); the role is a
+//     bigger plate.
 //   - two enamel plates in the corners: BACK and FILE.
 // Text is sparse and only in the house fonts: Departure Mono ('Body', 22 px) and Spleen ('Title', 24/48 px).
 import { el, ui, Tip } from './kit';
@@ -183,7 +184,8 @@ export class LabFit {
       const hk = el('img', '', cell) as HTMLImageElement; hk.src = hooks.toDataURL(); hk.draggable = false;
       Object.assign(hk.style, { position: 'absolute', left: '50%', top: '0', width: 60 * K + 'px', marginLeft: -30 * K + 'px', pointerEvents: 'none' });
       const img = el('img', '', cell) as HTMLImageElement; img.src = artUrl(id); img.draggable = false;
-      Object.assign(img.style, { position: 'absolute', left: '50%', top: 6 * K + 'px', height: 74 * K + 'px', transform: 'translateX(-50%)', filter: short && !isOn ? 'grayscale(0.8) brightness(0.7)' : 'drop-shadow(0 4px 0 rgba(10,8,6,0.4))', pointerEvents: 'none' });
+      img.onload = () => { img.style.width = img.naturalWidth * K + 'px'; img.style.height = img.naturalHeight * K + 'px'; };
+      Object.assign(img.style, { position: 'absolute', left: '50%', top: 6 * K + 'px', transform: 'translateX(-50%)', filter: short && !isOn ? 'grayscale(0.8) brightness(0.7)' : 'drop-shadow(0 4px 0 rgba(10,8,6,0.4))', pointerEvents: 'none' });
       // the price tag: item icons and counts on enamel (a stamped check once fitted)
       const tag = enamelTag(slotW - 14, 20, seedOf(id), isOn ? 'teal' : short ? 'red' : 'cream', false);
       const tg = el('div', '', cell) as HTMLDivElement;
@@ -199,7 +201,8 @@ export class LabFit {
   private grab(id: string, src: string, e: PointerEvent) {
     this.held = id; this.downAt = { x: e.clientX, y: e.clientY, moved: false };
     const gh = el('img', '', this.root) as HTMLImageElement; gh.src = src; gh.draggable = false;
-    Object.assign(gh.style, { position: 'absolute', height: 74 * K + 'px', pointerEvents: 'none', opacity: '0', transform: 'translate(-50%, -60%)', filter: 'drop-shadow(0 6px 0 rgba(10,8,6,0.45))' });
+    gh.onload = () => { gh.style.width = gh.naturalWidth * K + 'px'; gh.style.height = gh.naturalHeight * K + 'px'; };
+    Object.assign(gh.style, { position: 'absolute', pointerEvents: 'none', opacity: '0', transform: 'translate(-50%, -60%)', filter: 'drop-shadow(0 6px 0 rgba(10,8,6,0.45))' });
     this.ghost = gh; this.place(e.clientX, e.clientY);
     sfx('click', 1.5, 0.4);
   }
@@ -217,14 +220,22 @@ export class LabFit {
     if (!this.h.drop(id, e.clientX, e.clientY)) sfx('close', 1.4, 0.3);
   };
   get dragging() { return !!this.held && !!this.downAt?.moved; }
-  /** an inked leader line drawn by hand: a dark underline and a pale line over it, each with its own wobble */
-  private ink(pts: { x: number; y: number }[], seed: number, hot: boolean) {
+  /** a thin steel wire, pixel-straight: a dark outline, a steel core lit along its upper edge */
+  private wire(pts: { x: number; y: number }[], hot: boolean) {
     const g = this.g;
-    for (const [col, lw, sd] of [['#13161c', 4, seed], [hot ? '#d8ac5b' : '#e5dbc3', 2, seed + 7]] as [string, number, number][]) {
-      const r = rnd(sd); g.strokeStyle = col; g.lineWidth = lw; g.lineCap = 'square'; g.lineJoin = 'miter'; g.beginPath();
-      pts.forEach((p, i) => { const x = Math.round(p.x + (r() - 0.5) * 1.4) + 0.5, y = Math.round(p.y + (r() - 0.5) * 1.4) + 0.5; if (i) g.lineTo(x, y); else g.moveTo(x, y); });
-      g.stroke();
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const a = pts[i], b = pts[i + 1], x0 = Math.round(a.x), y0 = Math.round(a.y), x1 = Math.round(b.x), y1 = Math.round(b.y);
+      const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) || 1;
+      for (let k = 0; k <= n; k++) { const x = Math.round(x0 + ((x1 - x0) * k) / n), y = Math.round(y0 + ((y1 - y0) * k) / n); g.fillStyle = '#13161c'; g.fillRect(x - 2, y - 2, 4, 4); }
+      for (let k = 0; k <= n; k++) { const x = Math.round(x0 + ((x1 - x0) * k) / n), y = Math.round(y0 + ((y1 - y0) * k) / n); g.fillStyle = hot ? '#bc913a' : '#6e7373'; g.fillRect(x - 1, y - 1, 2, 2); g.fillStyle = hot ? '#e9cb89' : '#b1b2aa'; g.fillRect(x - 1, y - 1, 2, 1); }
     }
+  }
+  /** a crimped ferrule where the wire meets a tag or the pin: a little steel sleeve, lit on top */
+  private ferrule(x: number, y: number, vertical: boolean) {
+    const g = this.g, w = vertical ? 6 : 10, h = vertical ? 10 : 6, X = Math.round(x - w / 2), Y = Math.round(y - h / 2);
+    g.fillStyle = '#13161c'; g.fillRect(X - 1, Y - 1, w + 2, h + 2);
+    g.fillStyle = '#8e9190'; g.fillRect(X, Y, w, h); g.fillStyle = '#b1b2aa'; g.fillRect(X, Y, w, 2); g.fillStyle = '#54595c'; g.fillRect(X, Y + h - 2, w, 2);
+    g.fillStyle = '#3d4346'; if (vertical) g.fillRect(X, Y + 4, w, 2); else g.fillRect(X + 4, Y, 2, h);
   }
   /** draw this frame's enamel tags and their leader lines */
   frame(tags: Tag[]) {
@@ -240,9 +251,11 @@ export class LabFit {
       if (!art) { art = enamelTag(aw, ah, seed, t.tone ?? 'cream', !!t.hot); glyph(art.getContext('2d')!, t.icon, 5, Math.floor((ah - 12) / 2), ramp(t.tone === 'amber' ? 'ochre' : t.tone === 'red' ? 'ruby' : t.tone === 'teal' ? 'teal' : 'brass')); this.tagCache.set(key, art); }
       const w = aw * K, hh = ah * K;
       const ex = Math.round(t.tx ?? t.x + side * (t.big ? 80 : 56)), ey = Math.round(t.ty ?? t.y - (t.lift ?? 60)), tx = side > 0 ? ex : ex - w, ty = ey - Math.round(hh / 2);
-      // the pin where it points, the line, the tag
-      g.fillStyle = '#13161c'; g.fillRect(Math.round(t.x) - 4, Math.round(t.y) - 4, 8, 8); g.fillStyle = t.hot ? '#d8ac5b' : '#b1b2aa'; g.fillRect(Math.round(t.x) - 2, Math.round(t.y) - 2, 4, 4);
-      this.ink([{ x: t.x, y: t.y }, { x: t.x + side * 12, y: ey }, { x: ex, y: ey }], seed, !!t.hot);
+      // the pin on the body, a steel wire crimped at both ends, the stamped plate
+      const px = Math.round(t.x), py = Math.round(t.y), kx = Math.round(t.x + side * 12);
+      this.wire([{ x: px, y: py }, { x: kx, y: py + Math.sign(ey - py) * Math.min(6, Math.abs(ey - py)) }, { x: kx, y: ey }, { x: ex, y: ey }], !!t.hot);
+      g.fillStyle = '#13161c'; g.fillRect(px - 5, py - 5, 10, 10); g.fillStyle = '#54595c'; g.fillRect(px - 4, py - 4, 8, 8); g.fillStyle = t.hot ? '#e9cb89' : '#b1b2aa'; g.fillRect(px - 4, py - 4, 4, 4);
+      this.ferrule(ex - side * 5, ey, false);
       g.drawImage(art, tx, ty, w, hh);
       g.fillStyle = '#2a2016'; g.font = t.big ? "48px 'Title', monospace" : "24px 'Title', monospace";
       g.fillText(t.text, tx + 20 * K, ty + Math.round((hh - (t.big ? 48 : 24)) / 2) + 1);

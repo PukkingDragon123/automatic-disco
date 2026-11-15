@@ -426,13 +426,17 @@ def snap(img, P):
     return idx.astype(np.uint8)
 
 
+# v6 "hand-drawn is banned": clean pixel art, lowpix's flat finish (no brush strokes)
+PAINT = os.environ.get("ITEM_PAINT", "flat")
+
+
 def render(entry):
     kind, params, seed = entry
     if kind == "custom":
         sp = params()
-        _, im = make(sp, seed=seed)
+        _, im = make(sp, seed=seed, paint=PAINT)
     else:
-        _, im = make(kind, seed=seed, size=S, **params)
+        _, im = make(kind, seed=seed, size=S, paint=PAINT, **params)
     if im.size != (S, S):
         im = im.resize((S, S), Image.NEAREST)
     return im

@@ -3,7 +3,7 @@
  "description": "The landed UNAA colony pod: charred ablative skirt, white plated hull with an orange program band and blue pinstripe, a gunmetal equipment band with six numbered arm hardpoints, the shoulder with RCS quads and floodlights, a glazed cupola, the SHIP AI LINK dish on its mast, four shock-strut legs, oxygen and hydrazine tanks, the hatch and its ramp, radiators, a ladder and conduits.",
  "author": "pod agent",
  "license": "CC0-1.0",
- "density": 2,
+ "density": 1.6,
  "budget": {
   "tris": 6000,
   "colors": 80

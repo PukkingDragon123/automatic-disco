@@ -1,9 +1,7 @@
-// Hand-drawn pixel-art strokes for the crew and intro UI: ink lines laid with a square pixel brush along a wobbling
-// pen path (a dark outline pass, then the light ink), loops drawn round a target in one overshooting stroke, curved
-// arrows with a two-flick head, leader lines that end in a dot, a strip of tape. No panels, no glow: the scene is
-// the star and these are the pen marks over it. Drawings "boil" (redrawn with a new wobble a few times a second) like
-// hand-drawn animation. Text is the house faces only (Departure Mono 'Body' 22, Spleen 'Title' 24 / 48), binarised
-// and outlined so it reads on any background.
+// Clean pixel graphics for the crew and intro UI (nothing hand-drawn): exact lines laid with a square pixel brush
+// (a dark rim pass, then the colour), exact rings round a target, straight arrows with a clean head, leader lines
+// that end in a dot, and the crew ID badge (a laminated card on a steel clip). Text is the house faces only
+// (Departure Mono 'Body' 22, Spleen 'Title' 24 / 48), binarised and rimmed so it reads on any background.
 import { Px, DPR } from '../intro/hw';
 
 export const INK = { light: '#efe6cf', dark: '#1a1714', amber: '#e8a83a', violet: '#a99cff', red: '#d8553e', mute: '#b8ae96' };
@@ -17,7 +15,8 @@ export class Ink extends Px {
   private wob(i: number, amp: number) { const s = this.seed; return [(Math.sin(i * 0.21 + s * 1.7) + Math.sin(i * 0.53 + s * 4.1) * 0.5) * amp, (Math.cos(i * 0.19 + s * 2.3) + Math.sin(i * 0.47 + s * 0.9) * 0.5) * amp]; }
   /** stamp a square brush along a polyline; reveal 0..1 draws only the first part (it draws itself) */
   stroke(pts: P2[], w: number, col: string, o: { outline?: string; amp?: number; reveal?: number; taper?: boolean } = {}) {
-    const amp = o.amp ?? 1.2, rev = Math.max(0, Math.min(1, o.reveal ?? 1));
+    // clean lines: no wobble, no taper (the options stay for callers, but the pen is exact)
+    const amp = 0, rev = Math.max(0, Math.min(1, o.reveal ?? 1)); void o.amp;
     // resample at 1 px
     const path: P2[] = [];
     for (let i = 0; i < pts.length - 1; i++) {
@@ -29,7 +28,7 @@ export class Ink extends Px {
     const pass = (ww: number, c: string) => {
       for (let i = 0; i < n; i++) {
         const [dx, dy] = this.wob(i, amp);
-        const t = o.taper ? Math.min(1, Math.min(i, path.length - i) / 10) : 1;
+        const t = 1;
         const bw = Math.max(1, Math.round(ww * (0.55 + 0.45 * t)));
         const x = Math.round(path[i][0] + dx - bw / 2), y = Math.round(path[i][1] + dy - bw / 2);
         this.r(x, y, bw, bw, c);
@@ -41,13 +40,13 @@ export class Ink extends Px {
   }
   /** a loop round a point, in one stroke that overshoots its start */
   loop(cx: number, cy: number, rx: number, ry: number, w: number, col: string, o: { outline?: string; reveal?: number; turns?: number } = {}) {
-    const pts: P2[] = [], turns = o.turns ?? 1.12, a0 = -2.2 + h1(this.seed, 3) * 0.6, n = Math.max(24, Math.round((rx + ry) * 1.2));
-    for (let i = 0; i <= n; i++) { const a = a0 + (i / n) * Math.PI * 2 * turns, k = 1 + (i / n) * 0.08 * Math.sin(this.seed); pts.push([cx + Math.cos(a) * rx * k, cy + Math.sin(a) * ry * k]); }
+    const pts: P2[] = [], turns = Math.min(1, o.turns ?? 1), a0 = -Math.PI / 2, n = Math.max(24, Math.round((rx + ry) * 1.6));
+    for (let i = 0; i <= n; i++) { const a = a0 + (i / n) * Math.PI * 2 * turns; pts.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]); }
     return this.stroke(pts, w, col, { outline: o.outline, reveal: o.reveal, amp: 1.4, taper: true });
   }
   /** a curved arrow from a to b (bend: sideways bow in px), with a two-flick head */
   arrow(a: P2, b: P2, w: number, col: string, o: { outline?: string; bend?: number; reveal?: number } = {}) {
-    const [ax, ay] = a, [bx, by] = b, bend = o.bend ?? 30;
+    const [ax, ay] = a, [bx, by] = b, bend = 0; void o.bend;
     const mx = (ax + bx) / 2, my = (ay + by) / 2, L = Math.hypot(bx - ax, by - ay) || 1, nx = -(by - ay) / L, ny = (bx - ax) / L;
     const cx = mx + nx * bend, cy = my + ny * bend;
     const pts: P2[] = []; for (let i = 0; i <= 24; i++) { const t = i / 24, u = 1 - t; pts.push([u * u * ax + 2 * u * t * cx + t * t * bx, u * u * ay + 2 * u * t * cy + t * t * by]); }
@@ -60,7 +59,7 @@ export class Ink extends Px {
   }
   /** a leader line from a label to a point, ending in a dot on the thing */
   leader(a: P2, b: P2, col: string, outline = INK.dark) {
-    this.stroke([a, [(a[0] + b[0]) / 2 + (h1(this.seed, 8) - 0.5) * 8, (a[1] + b[1]) / 2], b], 2, col, { outline, amp: 0.8 });
+    this.stroke([a, b], 2, col, { outline });
     this.r(b[0] - 3, b[1] - 3, 7, 7, outline).r(b[0] - 2, b[1] - 2, 5, 5, col);
     return this;
   }
@@ -104,7 +103,6 @@ export function idBadge(d: CrewDef, mood: number, scale = 1): HTMLCanvasElement 
   r(cx + 4, cy + 4, cw, ch, 'rgba(10, 8, 6, 0.5)');
   r(cx + 3, cy, cw - 6, ch, '#ece7da'); r(cx, cy + 3, cw, ch - 6, '#ece7da'); r(cx + 1, cy + 1, cw - 2, ch - 2, '#ece7da');
   // plastic grain and a gloss streak across the laminate
-  for (let i = 0; i < 900; i++) { const x = cx + 2 + ((i * 97) % (cw - 4)), y = cy + 2 + ((i * 53 + (i >> 3)) % (ch - 4)); r(x, y, 1, 1, i % 3 ? '#e2dccd' : '#f4f0e6'); }
   for (let i = 0; i < 26; i++) r(cx + 130 + i * 2 - (i >> 1), cy + 2 + i * 4, 18, 4, 'rgba(255, 255, 255, 0.28)');
   // bevel: lit top-left, shaded bottom-right, a dark rim
   r(cx + 3, cy, cw - 6, 1, '#fbf8f0'); r(cx, cy + 3, 1, ch - 6, '#fbf8f0');
@@ -112,7 +110,6 @@ export function idBadge(d: CrewDef, mood: number, scale = 1): HTMLCanvasElement 
   // the department band with the program name
   const col = d.dept_col;
   r(cx + 1, cy + 6, cw - 2, 30, hx(col)); r(cx + 1, cy + 6, cw - 2, 2, hx(col, 1.18)); r(cx + 1, cy + 34, cw - 2, 2, hx(col, 0.7));
-  for (let x = cx + 4; x < cx + cw - 4; x += 3) r(x, cy + 8 + ((x * 7) % 26), 1, 1, hx(col, 0.9));
   // the punched slot and the clip
   r(W / 2 - 15, cy + 10, 30, 6, '#3a3630'); r(W / 2 - 14, cy + 11, 28, 1, '#1a1714');
   r(W / 2 - 10, 2, 20, 22, '#6e747a'); r(W / 2 - 10, 2, 20, 2, '#b4bac0'); r(W / 2 - 10, 2, 2, 22, '#9aa0a6'); r(W / 2 + 8, 2, 2, 22, '#4a5056'); r(W / 2 - 10, 22, 20, 2, '#3a4046');

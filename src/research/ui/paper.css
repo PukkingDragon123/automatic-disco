@@ -1,5 +1,6 @@
-/* The progression screens over their live 3D vignettes: everything is hand-drawn paper (lowpix stroke frames from
-   src/research/art/frames) pinned or taped over the diorama, written in ink. Fonts: 'Body' at 11 / 22 / 33 / 44 px,
+/* The progression screens over their live 3D vignettes: machined objects, never hand-drawn. Clean pixel-art plates
+   (src/research/art/frames, painted at half resolution and shown 2x): bevelled steel bezels, enamel faces, screws,
+   brass tags, push keys; straight steel pointers to the 3D parts. Fonts: 'Body' at 11 / 22 / 33 / 44 px,
    'Title' 24 / 48, 'TitleL' 32 / 64, 'TitleXL' 64. Text is never scaled, rotated or blurred. */
 .pp { position: fixed; inset: 0; z-index: 30; pointer-events: none; font: 22px/26px 'Body', monospace; color: #2b2622; text-shadow: none; }
 .pp * { box-sizing: border-box; text-shadow: none; }
@@ -7,7 +8,7 @@
 .pp-stage { position: absolute; inset: 0; pointer-events: auto; cursor: grab; }
 .pp-stage:active { cursor: grabbing; }
 .pp-ink { position: absolute; inset: 0; pointer-events: none !important; overflow: visible; }
-/* paper */
+/* plates */
 .pp-card { position: absolute; border: 32px solid transparent; border-image: var(--pp-card) 40 fill / 40px / 8px round; image-rendering: pixelated; }
 .pp-note { position: absolute; border: 32px solid transparent; border-image: var(--pp-note) 40 fill / 40px / 8px round; image-rendering: pixelated; }
 .pp-frame { border: 32px solid transparent; border-image: var(--pp-frame) 40 / 40px / 8px round; image-rendering: pixelated; }
@@ -32,7 +33,7 @@
 .pp-tab .dot { width: 11px; height: 11px; background: #a8332a; display: none; }
 .pp-tab .dot.on { display: block; }
 .pp-close { margin-left: auto; }
-/* type on paper */
+/* type on the plates */
 .pp-h { font: 24px/24px 'Title'; color: #1e1a16; }
 .pp-hl { font: 32px/32px 'TitleL'; color: #1e1a16; }
 .pp-hx { font: 48px/48px 'Title'; color: #1e1a16; }
@@ -44,7 +45,7 @@
 .pp-amb { color: #9a6a1a; }
 .pp-plus::before { content: '+ '; color: #3f6a2a; }
 .pp-minus { color: #8a3a22; } .pp-minus::before { content: '- '; color: #a8332a; }
-.pp-rule { height: 2px; margin: 6px 0; background: repeating-linear-gradient(90deg, #6a5e4e 0 6px, transparent 6px 10px); }
+.pp-rule { height: 4px; margin: 6px 0; background: linear-gradient(180deg, rgba(20, 22, 26, 0.45) 0 2px, rgba(255, 255, 255, 0.55) 2px 4px); }
 .pp-row { display: flex; align-items: center; gap: 8px; }
 .pp-col { display: flex; flex-direction: column; gap: 6px; }
 .pp-list { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #8a8174 transparent; }
@@ -54,7 +55,7 @@
 .pp-bar > i { position: absolute; left: 2px; top: 2px; bottom: 2px; background: repeating-linear-gradient(90deg, #3f6a2a 0 6px, #5a8a3a 6px 8px); }
 .pp-bar.amb > i { background: repeating-linear-gradient(90deg, #9a6a1a 0 6px, #c28f3a 6px 8px); }
 .pp-ico { image-rendering: pixelated; flex: none; }
-/* callouts on the diorama */
+/* callouts on the diorama: engraved brass tags */
 .pp-call { position: absolute; cursor: pointer; transform: none; display: flex; align-items: center; gap: 6px; padding: 0 2px; border: 14px solid transparent; border-image: var(--pp-tag) 20 fill / 20px / 6px round; image-rendering: pixelated; }
 .pp-call img { width: 48px; height: 48px; margin: -10px -6px; image-rendering: pixelated; }
 .pp-call .nm { font: 22px/22px 'Body'; color: #1e1a16; white-space: nowrap; display: none; padding-left: 6px; }
@@ -66,7 +67,7 @@
 .pp-call.locked .st, .pp-call.short .st { display: none; }
 .pp-call.barred .st { background: #a8332a; }
 @keyframes pp-blink { 50% { background: #f6e0a0; } }
-/* the path picker (paper index tabs down the left) */
+/* the path picker (machined keys down the left) */
 .pp-paths { position: absolute; left: 20px; top: 100px; width: 330px; display: flex; flex-direction: column; gap: 8px; }
 .pp-path { cursor: pointer; display: grid; grid-template-columns: 48px 1fr auto; column-gap: 8px; align-items: center; padding: 0 4px; min-height: 64px; border: 14px solid transparent; border-image: var(--pp-tab) 20 fill / 20px / 4px round; image-rendering: pixelated; }
 .pp-path.on { border-image-source: var(--pp-keyhot); margin-left: 14px; }
@@ -74,7 +75,7 @@
 .pp-path .nm { grid-column: 2; grid-row: 1; font: 24px/24px 'Title'; color: #1e1a16; }
 .pp-path .lv { grid-column: 3; grid-row: 1 / 3; font: 48px/48px 'Title'; color: #1e1a16; }
 .pp-path .sub { grid-column: 2; grid-row: 2; font: 11px/13px 'Body'; letter-spacing: 1px; color: #5a5044; white-space: nowrap; overflow: hidden; }
-/* the incoming telegram (over the game) */
+/* the incoming transmission (over the game) */
 .tx { position: fixed; right: 312px; top: 72px; z-index: 28; width: 520px; pointer-events: auto; cursor: pointer; font-family: 'Body'; color: #2b2622; border: 32px solid transparent; border-image: var(--pp-card) 40 fill / 40px / 8px round; image-rendering: pixelated; animation: tx-in 360ms steps(4); }
 @keyframes tx-in { from { opacity: 0; } to { opacity: 1; } }
 .tx.out { opacity: 0; transition: opacity 360ms steps(4); }
@@ -87,13 +88,13 @@
 .tx-f b { color: #1e1a16; font-weight: normal; }
 .tx canvas { display: block; width: 100%; height: 28px; margin-top: 4px; image-rendering: pixelated; }
 
-/* ---------------- textured materials (each screen picks its own) ---------------- */
+/* ---------------- materials (each screen picks its own): enamel, brushed steel, pale plate, decision plate ---------------- */
 .pp-enamel { position: absolute; border: 30px solid transparent; border-image: var(--pp-enamel) 40 fill / 40px / 10px round; image-rendering: pixelated; color: #1c2c48; }
 .pp-metal { position: absolute; border: 30px solid transparent; border-image: var(--pp-metal) 40 fill / 40px / 10px round; image-rendering: pixelated; color: #14161a; }
 .pp-fibre { position: absolute; border: 30px solid transparent; border-image: var(--pp-fibre) 40 fill / 40px / 10px round; image-rendering: pixelated; color: #2b2622; }
 .pp-canvas { position: absolute; border: 30px solid transparent; border-image: var(--pp-canvas) 40 fill / 40px / 10px round; image-rendering: pixelated; color: #2b2622; }
-.pp-board { position: absolute; inset: 0; background: #7a5a38 var(--pp-cork) 0 0 / 256px 256px repeat; image-rendering: pixelated; box-shadow: inset 0 0 0 12px #4a3420, inset 0 0 0 16px #2a1c10; }
-.pp-plate { position: absolute; inset: 0; background: #5f6460 var(--pp-metal) 0 0 / 256px 256px repeat; image-rendering: pixelated; }
+.pp-board { position: absolute; inset: 0; background: #343a40 var(--pp-cork) 0 0 / 128px 128px repeat; image-rendering: pixelated; box-shadow: inset 0 0 0 4px #15171b; }
+.pp-plate { position: absolute; inset: 0; background: #5f6460 var(--pp-metal) 0 0 / 128px 128px repeat; image-rendering: pixelated; }
 .pp-pin { position: absolute; width: 32px; height: 32px; background: var(--pp-pin) 0 0 / 32px 32px; image-rendering: pixelated; pointer-events: none; }
 .pp-enamel .pp-h, .pp-enamel .pp-hl, .pp-enamel .pp-hx { color: #1c2c48; }
 .pp-metal .pp-h, .pp-metal .pp-hl { color: #0e1014; }

@@ -53,7 +53,7 @@ export async function testCine(engine: Engine, input: Input) {
   const st = g.story; if (st) { st.auto = P.has('auto'); st.beat = scene === 'opening' || scene === 'contact' ? 'opening' : 'free'; }
   // let the region settle a moment, then play the scene directly (the story's own triggers are bypassed)
   if (scene === 'talk' && st) {
-    // the in-game dialogue: Calder beside the golem, talking (balloon over his head, the talk camera framing them)
+    // the in-game dialogue: Tupaq beside the golem, talking (balloon over his head, the talk camera framing them)
     setTimeout(() => {
       const gp = st.golem(); st.calder.visible = true; st.calder.place(gp.x + 3.2, gp.z + 1.4); st.calder.faceNow(gp.x, gp.z);
       st.say([{ text: 'You built yourself an arm! Stones and pistons, and you put it together yourself.' }, { text: 'Go on, make a fist.' }]);

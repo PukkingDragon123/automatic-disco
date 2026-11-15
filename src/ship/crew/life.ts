@@ -79,7 +79,7 @@ export class CrewLife {
   scripted = false;
   /** a moment of silence pending (after a death): everyone gathers at the plaque once */
   private silence = 0;
-  /** the hand-drawn tag of the last crew member clicked (name, job, mood), pointing at them */
+  /** the ID card of the last crew member clicked (name, job, mood), on a leader line beside them */
   private tag: { c: HTMLCanvasElement; id: CrewId; t: number; boil: number } | null = null;
 
   constructor(readonly hub: HubLike, o: { hour?: number; bubbles?: HTMLElement; noUnit?: boolean; only?: CrewId[] } = {}) {

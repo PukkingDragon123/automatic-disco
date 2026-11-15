@@ -37,7 +37,7 @@ const CSS = `
 .inv-head canvas.plate { width: ${a(16)}; height: ${a(16)}; flex: none; }
 .inv-head .lab { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; ${OUT} }
 .inv-pri { display: flex; gap: ${a(1)}; }
-.inv-pri img { width: ${a(6)}; height: ${a(6)}; }
+.inv-pri img { width: ${a(7)}; height: ${a(7)}; }
 .inv-ctl { cursor: pointer; flex: none; }
 .inv-head .inv-ctl { width: ${a(16)}; height: ${a(16)}; }
 .inv-ctl:active { transform: translateY(${a(1)}); }
@@ -83,7 +83,7 @@ const CSS = `
 .inv-set .sp { flex: 1; }
 .inv-set .opt { cursor: pointer; width: ${a(16)}; height: ${a(16)}; }
 .inv-set .opt.sw { width: ${a(14)}; height: ${a(14)}; }
-.inv-set .opt.pip { width: ${a(6)}; height: ${a(6)}; padding: ${a(2)} ${a(1)}; }
+.inv-set .opt.pip { width: ${a(7)}; height: ${a(7)}; padding: ${a(2)} ${a(1)}; }
 .inv-set .opt.link { width: ${a(14)}; height: ${a(14)}; }
 .inv-set .opt.more { width: ${a(14)}; height: ${a(14)}; margin: ${a(2)}; }
 .inv-set input.lbl { width: ${a(120)}; height: ${a(14)}; padding: 0 ${a(3)}; border: 0; outline: 0; background: rgba(10,11,13,.45); box-shadow: inset 0 ${a(1)} 0 rgba(0,0,0,.5), 0 ${a(1)} 0 rgba(255,246,220,.18); color: ${LIGHT}; text-transform: uppercase; ${OUT} }
@@ -98,7 +98,7 @@ const CSS = `
 
 /* the item card and the one-line tip */
 .inv-card, .inv-tip { position: fixed; z-index: 70; pointer-events: none; display: none; color: ${INK}; }
-.inv-tip { padding: ${a(3)} ${a(5)}; white-space: nowrap; box-sizing: border-box; }
+.inv-tip { padding: ${a(4)} ${a(6)}; white-space: nowrap; box-sizing: border-box; }
 .inv-card { box-sizing: border-box; padding: ${a(5)}; }
 .inv-card .big { position: absolute; left: ${a(5)}; top: ${a(5)}; width: ${a(48)}; height: ${a(48)}; }
 .inv-card .txt { position: absolute; left: ${a(58)}; top: ${a(5)}; right: ${a(5)}; }
@@ -127,10 +127,10 @@ const CSS = `
 .crate-hud .badge .empty { position: absolute; left: 0; width: 100%; top: ${a(76)}; text-align: center; opacity: .55; ${OUT} }
 .crate-hud .badge .bang { position: absolute; right: ${a(5)}; top: ${a(5)}; color: ${RED}; ${OUT} }
 .crate-hud .row { display: flex; align-items: center; gap: ${a(4)}; }
-.crate-hud .row img.arw { width: ${a(12)}; height: ${a(12)}; cursor: pointer; flex: none; }
-.crate-hud .row img.arw.dis { opacity: .35; cursor: default; }
+.crate-hud .row img.arw { width: ${a(16)}; height: ${a(16)}; cursor: pointer; flex: none; }
+.crate-hud .row img.arw.dis { cursor: default; }
 .crate-hud .dots { flex: 1; display: flex; justify-content: center; gap: ${a(2)}; }
-.crate-hud .dots img { width: ${a(6)}; height: ${a(6)}; cursor: pointer; }
+.crate-hud .dots img { width: ${a(7)}; height: ${a(7)}; cursor: pointer; }
 .crate-hud .row .n { ${OUT} }
 .inv-hudcard { position: fixed; z-index: 70; pointer-events: none; display: none; color: ${INK}; box-sizing: border-box; padding: ${a(5)} ${a(6)}; }
 .inv-hudcard .hd { display: flex; align-items: center; gap: ${a(4)}; margin-bottom: ${a(3)}; }

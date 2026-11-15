@@ -10,7 +10,7 @@
 //     c.cam.cut(new V3(0, 3, 10), new V3(0, 1, 0), 38);
 //     c.fade(0, 1.2);
 //     c.cam.move({ pos: new V3(2, 2, 6), dur: 4, ease: 'inOut' });
-//     await c.say('Unit Seven, do you copy?', { who: 'Lt. Hollis', style: 'radio' });
+//     await c.say('Unit Seven, do you copy?', { who: 'Sgt. Kristiansen', style: 'radio' });
 //     await c.wait(1);
 //   });
 //   // every frame: cine.update(dt); cine.apply(camera)
@@ -232,7 +232,7 @@ export class Cinema {
     });
   }
   /** a newsreel title card */
-  async card(title: string, sub = '', kicker = '', dur = 3.2, stamp = 'U.S.P.C.') {
+  async card(title: string, sub = '', kicker = '', dur = 3.2, stamp = 'UNAA') {
     if (this.skipping) return;
     this.ui.card(title, sub, kicker, stamp); csfx('sting', 0.6);
     setTimeout(() => { if (!this.skipping) csfx('thud', 0.5, 1.4); }, 900);

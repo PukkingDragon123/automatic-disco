@@ -1,6 +1,6 @@
-// The cast and props of the cutscenes. The U.S.P.C. recovery team (Dr. Calder, Lt. Hollis the pilot and radio
-// man, Dr. Brandt the geologist with the Geiger counter) as LIMBOPHOBIA researcher rigs wrapped in a small actor
-// that walks, turns, kneels, gestures, talks and dies; their lander ("Recovery One", a 1950s retro-rocket on four
+// The cast and props of the cutscenes. The UNAA recovery team (Tupaq, Sgt. Kristiansen the pilot and radio
+// man, Dr. Baptiste the geologist with the Geiger counter) as LIMBOPHOBIA researcher rigs wrapped in a small actor
+// that walks, turns, kneels, gestures, talks and dies; their lander ("Lander One", a old-school retro-rocket on four
 // legs with a drop-down hatch); hand props (Geiger counter, flashlight with a real spotlight, radio handset); and
 // blood decals for the beast's attack.
 import * as THREE from 'three';
@@ -17,7 +17,7 @@ function ready() { if (!texReady) { registerAllTextures(); texReady = true; } }
 const wm = () => worldMaterial({ noVis: true, noFog: true, noGrid: true });
 
 // ------------------------------------------------------------------ the team
-/** LIMBOPHOBIA's researcher is a woman; Calder is a man here: same rig, outfit, gestures and face system. */
+/** LIMBOPHOBIA's researcher is a woman; Tupaq is a man here: same rig, outfit, gestures and face system. */
 export const USE_ORIGINAL_LOOK = false;
 const CALDER_APP = {
   skin: 0xd9a47c, hair: 0x3a2618, hairStyle: 'short', face: 2, build: 'average', height: 1.03, bodyShape: 0.1, eyeColor: 0x4a6a8a,
@@ -25,9 +25,9 @@ const CALDER_APP = {
 } as unknown as Appearance;
 export function calderRig(): Researcher {
   ready();
-  if (USE_ORIGINAL_LOOK) return createResearcher({ glasses: true, name: 'Dr. Calder' });
+  if (USE_ORIGINAL_LOOK) return createResearcher({ glasses: true, name: 'Tupaq' });
   const r = new Researcher(CALDER_APP, wm());
-  (r as any).ggOverrides = { badge: { col: [52, 104, 150], name: 'Dr. Calder' }, glasses: { kind: 'rect', col: [58, 42, 38], thick: 1 } };
+  (r as any).ggOverrides = { badge: { col: [52, 104, 150], name: 'Tupaq' }, glasses: { kind: 'rect', col: [58, 42, 38], thick: 1 } };
   r.setOutfit(researcherOutfit({ glasses: true, slacks: true, blouse: 0x9ab0c0 }));
   r.skin.castShadow = true;
   r.setExpression('smile');
@@ -37,11 +37,11 @@ const HOLLIS_APP = {
   skin: 0x8d5634, hair: 0x1c1612, hairStyle: 'buzz', face: 1, build: 'broad', height: 1.05, bodyShape: 0, eyeColor: 0x3a2a1a,
   facialHair: 'moustache', freckles: 0, scars: 0, age: 0.3, jaw: 3, eyeShape: 0, brows: 2, nose: 3, mouth: 2, ears: 2,
 } as unknown as Appearance;
-/** Lt. Ray Hollis: pilot, radio man. Olive flight suit, helmet, the radio pack on his back. */
+/** Lt. Ray Kristiansen: pilot, radio man. Olive flight suit, helmet, the radio pack on his back. */
 export function hollisRig(): Researcher {
   ready();
   const r = new Researcher(HOLLIS_APP, wm());
-  (r as any).ggOverrides = { badge: { col: [90, 110, 60], name: 'Lt. Hollis' } };
+  (r as any).ggOverrides = { badge: { col: [90, 110, 60], name: 'Sgt. Kristiansen' } };
   r.setOutfit({
     torso: { tex: 'c_jumpsuit', color: 0x5a6a3a, sleeve: 'long' }, legs: { tex: 'c_slacks', color: 0x56663a }, legsKind: 'pants',
     feet: { tex: 'c_shoes_boot', color: 0x2a2018 }, hands: { tex: 'c_gloves', color: 0x3a2a1c },
@@ -51,11 +51,11 @@ export function hollisRig(): Researcher {
   r.setExpression('neutral');
   return r;
 }
-/** Dr. Ada Brandt: geologist, the Geiger counter. Field jacket, slacks, boots, her hair up. */
+/** Dr. Ada Baptiste: geologist, the Geiger counter. Field jacket, slacks, boots, her hair up. */
 export function brandtRig(): Researcher {
   ready();
   const r = new Researcher(researcherAppearance({ hair: 'bun', hairColor: 0x9c7a46, skin: 0xe8b98f, eyeColor: 0x4a6a3a }), wm());
-  (r as any).ggOverrides = { badge: { col: [150, 110, 52], name: 'Dr. Brandt' }, glasses: { kind: 'round', col: [40, 30, 26], thick: 1 } };
+  (r as any).ggOverrides = { badge: { col: [150, 110, 52], name: 'Dr. Baptiste' }, glasses: { kind: 'round', col: [40, 30, 26], thick: 1 } };
   r.setOutfit({
     torso: { tex: 'c_shirt_button', color: 0xc8b48a, sleeve: 'long' }, torsoOuter: { tex: 'c_jacket', color: 0x6a6a44, sleeve: 'long' },
     legs: { tex: 'c_slacks', color: 0x4a4636 }, legsKind: 'pants', feet: { tex: 'c_shoes_boot', color: 0x2e241a },
@@ -169,7 +169,7 @@ function hullTex(): THREE.Texture {
   for (const y of [0, 16, 32]) p.hl(0, W - 1, y, OL[1]);
   for (let x = 4; x < W; x += 8) { rivet(p, x, 2, GM); rivet(p, x, H - 3, GM); }
   for (let x = 0; x < W; x++) for (let y = 20; y < 27; y++) p.set(x, y, y === 20 || y === 26 ? CR[1] : CR[3]);
-  text(p, 'U.S.P.C.', 6, 21, 0x1c2e6a); text(p, 'RECOVERY 1', 54, 21, RD[3]);
+  text(p, 'UNAA', 6, 21, 0x1c2e6a); text(p, 'LANDER 1', 54, 21, RD[3]);
   const t0 = textW('07'); void t0;
   return tex(p, true);
 }
@@ -181,7 +181,7 @@ function noseTex(): THREE.Texture {
   return tex(p, true);
 }
 export interface Lander { root: THREE.Group; hatch: THREE.Object3D; flame: THREE.Mesh; flameLight: THREE.PointLight; setFlame(k: number, t: number): void; setHatch(u: number): void; hatchPos(out?: THREE.Vector3): THREE.Vector3 }
-/** "Recovery One": hull, nose cone, four legs and pads, fins, engine bell, a hatch that drops into a ramp */
+/** "Lander One": hull, nose cone, four legs and pads, fins, engine bell, a hatch that drops into a ramp */
 export function makeLander(): Lander {
   const root = new THREE.Group();
   const hull = mat({ map: hullTex() }), nose = mat({ map: noseTex() }), steel = mat({ color: 0x6a7076, phong: true, shininess: 30 }), dark = mat({ color: 0x26282a });

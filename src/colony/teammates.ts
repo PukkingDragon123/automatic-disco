@@ -29,7 +29,7 @@ export const DEFAULT_CREW: CrewSpec[] = [
 const CREW_MODS = import.meta.glob('../ship/crew/index.ts') as Record<string, () => Promise<unknown>>;
 /** the crew agent's model: root, update(dt, { speed }), die(how), dispose() (src/ship/crew/index.ts default export) */
 export interface CrewModelLike { root: THREE.Object3D; update(dt: number, inp?: Record<string, unknown>): void; die?(how?: string, from?: THREE.Vector3, k?: number): void; dispose?(): void; rig?: { ragWorld?: unknown } }
-interface CrewApi { buildModel(id: string, o?: { scale?: number }): CrewModelLike; on?(ev: string, f: (d: unknown) => void): void }
+interface CrewApi { buildModel(id: string, o?: { scale?: number }): CrewModelLike; on?(ev: string, f: (d: unknown) => void): void; member?(id: string): { name?: string; short?: string } }
 let crewApi: CrewApi | null = null, crewTried: Promise<void> | null = null;
 /** find the crew agent's module (lazily: no import cycle, nothing loaded if it is not there) */
 export function loadCrewApi() {
@@ -45,7 +45,7 @@ const _v = new THREE.Vector3();
 
 export class Teammate {
   readonly root = new THREE.Group();
-  readonly id: string; readonly name: string; readonly role: CrewSpec['role'];
+  readonly id: string; name: string; readonly role: CrewSpec['role'];
   x: number; z: number; y = 0; yaw = 0;
   hp = 100; suit = 100; hunger = 10; fatigue = 10; morale = 75;
   alive = true; state: CrewState = 'idle';
@@ -65,6 +65,7 @@ export class Teammate {
     // the crew agent's model replaces the stand-in suit when its module is there
     loadCrewApi().then(() => {
       if (!crewApi || this.gone) return;
+      try { const m0 = crewApi.member?.(spec.id); if (m0?.name) this.name = m0.name; if (m0?.short) this.shortName = m0.short; } catch { /* roster optional */ }
       try {
         const m = crewApi.buildModel(spec.id, { scale: 1 }); if (!m?.root) return;
         if (m.rig) m.rig.ragWorld = { ground: (x: number, z: number) => colony.g.region.heightAt(x, z) };
@@ -75,7 +76,8 @@ export class Teammate {
     colony.g.world.scene.add(this.root);
     this.root.userData.sel = { kind: 'crew', ref: this };
   }
-  get short() { return this.name.split(' ')[0].toUpperCase(); }
+  shortName: string | null = null;
+  get short() { return (this.shortName ?? this.name.replace(/^(Dr|Sgt|Lt|Capt)\.\s*/, '').split(' ')[0]).toUpperCase(); }
   get title() { return this.id === 'kristiansen' ? 'SECURITY · FIELD WORK' : this.id === 'mamani' ? 'XENOBIOLOGIST' : this.role === 'engineer' ? 'FIELD ENGINEER' : 'EXOBIOLOGIST'; }
 
   // ------------------------------------------------------------------ the suit

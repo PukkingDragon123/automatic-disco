@@ -168,7 +168,7 @@ export class WeaponBench implements Screen {
     const seenB = new Set<string>(), beasts = reg.filter((sp) => sp.owner === 'veyr' && !seenB.has(sp.name) && (seenB.add(sp.name), true));
     this.el.innerHTML = `
       <div class="sheet">
-        <h1>ORDNANCE BRANCH · U.S.P.C.</h1>
+        <h1>ORDNANCE BRANCH · UNAA MERIDIAN</h1>
         <div class="no">DWG No. ${d.id.toUpperCase().slice(0, 10)} <input class="name" value="${d.name}" maxlength="22"></div>
         <div class="files">${files}<span data-new="1">+ NEW DRAWING</span></div>
         ${cards}

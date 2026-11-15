@@ -3,7 +3,7 @@
  "description": "UNAA cyborg worker part (oddworld).",
  "author": "oddworld",
  "license": "CC0-1.0",
- "density": 3,
+ "density": 2,
  "budget": {
   "tris": 900,
   "colors": 64
@@ -20,12 +20,12 @@
   "ao_height": 3.0
  },
  "render": {
-  "background": "#20242c",
+  "background": "#ff00ff",
   "hero": [
    -34,
    18
   ],
-  "shadow": 0.45
+  "shadow": 0
  },
  "palette": {
   "ramps": {
@@ -99,26 +99,10 @@
    },
    "layers": [
     {
-     "id": "mottle",
-     "op": "noise",
-     "scale": 2.0,
-     "amount": 0.25
-    },
-    {
      "id": "panel",
      "op": "panel",
      "inset": 2,
      "min_size": 10
-    },
-    {
-     "id": "grime",
-     "op": "patches",
-     "scale": 1.8,
-     "threshold": 0.72,
-     "shift": -0.5,
-     "faces": [
-      "-top"
-     ]
     },
     {
      "id": "wear",
@@ -149,26 +133,10 @@
    },
    "layers": [
     {
-     "id": "mottle",
-     "op": "noise",
-     "scale": 2.0,
-     "amount": 0.25
-    },
-    {
      "id": "panel",
      "op": "panel",
      "inset": 2,
      "min_size": 10
-    },
-    {
-     "id": "grime",
-     "op": "patches",
-     "scale": 1.8,
-     "threshold": 0.72,
-     "shift": -0.5,
-     "faces": [
-      "-top"
-     ]
     },
     {
      "id": "wear",
@@ -198,12 +166,6 @@
     "outline": "dark"
    },
    "layers": [
-    {
-     "id": "mottle",
-     "op": "noise",
-     "scale": 1.6,
-     "amount": 0.35
-    },
     {
      "id": "scuffs",
      "op": "wear",
@@ -271,14 +233,7 @@
     "dark": 0,
     "light_shift": 1.5
    },
-   "layers": [
-    {
-     "id": "hot",
-     "op": "noise",
-     "scale": 1.2,
-     "amount": 0.5
-    }
-   ]
+   "layers": []
   },
   "hazard": {
    "ramp": "warn",

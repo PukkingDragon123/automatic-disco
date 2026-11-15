@@ -1,7 +1,8 @@
-// RESEARCH, in 2D: a cork board. The latest specimen is a foxed fibre card pinned on the left (its painted sprite
-// big, its name, what the scan paid); the data reserves are four chipped enamel tokens under it; the tech index is a
-// field of small pinned cards on the right, filtered by kind; the selected tech and the station queue sit under it.
-// Icons first, numbers where they matter, few words.
+// RESEARCH: a machined analysis rig (clean pixel art, src/research/ui/rig.ts). The newest specimen sits in a scanner
+// cradle behind glass (a real render of it, brought down to a short ramp) with an enamel plate naming it and what the
+// scan paid; the data reserves fill four glass vials in a steel rack beside the stations dial; the tech catalogue is
+// a rack of stamped plates on the right, filtered by kind keys; the research queue is a rotary card drum that turns
+// when the queue moves on, next to the selected tech's plate. Icons first, numbers where they matter, few words.
 import { el } from '../../ui/kit';
 import { sfx } from '../../audio/audio';
 import { csfx } from '../../ui/cineAudio';
@@ -12,6 +13,7 @@ import { fmtTime } from '../util';
 import type { TabPage } from '../../ui/skillTree';
 import type { Engine } from '../../app/engine';
 import { ScannerVignette, photograph, type SpecimenKind } from './vignettes';
+import { Cradle, Vials, Drum } from './rig';
 
 const DATA_ICON: Record<DataKind, string> = { bio: 'dna', geo: 'pick', energy: 'arcs', xeno: 'sensor' };
 const KIND_ICON: Record<string, string> = { species: 'claw', plant: 'sprout', ore: 'pick', crystal: 'core', vent: 'steam', ruin: 'sensor' };
@@ -22,17 +24,22 @@ export const chips = (cost: Tech['cost'], data?: Record<DataKind, number>) => DA
 export class ResearchPage implements TabPage {
   readonly el: HTMLElement;
   private kind: TechKind = 'building'; private sel: string | null = null;
-  private spec: HTMLElement; private tokens: HTMLElement; private index: HTMLElement; private detail: HTMLElement; private kinds: HTMLElement;
+  private spec: HTMLElement; private vialTags: HTMLElement; private index: HTMLElement; private detail: HTMLElement; private kinds: HTMLElement; private drumTag: HTMLElement;
   private sig = ''; private specKey = ''; private photo: string | null = null; private lab: ScannerVignette | null = null;
+  private cradle = new Cradle(); private vials = new Vials(); private drum = new Drum(); private t = 0;
   constructor(readonly R: Research, readonly host: Record<string, any>, readonly engine?: Engine) {
     this.el = el('div', '');
     el('div', 'pp-board', this.el);
-    this.spec = el('div', 'pp-fibre pp-col', this.el); this.spec.style.cssText = 'left:64px;top:118px;width:560px;gap:8px';
-    el('div', 'pp-pin', this.el).style.cssText = 'left:328px;top:104px';
-    this.tokens = el('div', 'pp-row', this.el); this.tokens.style.cssText = 'position:absolute;left:56px;top:690px;width:600px;gap:14px;flex-wrap:wrap';
-    this.kinds = el('div', 'pp-row', this.el); this.kinds.style.cssText = 'position:absolute;left:700px;top:104px;gap:6px';
-    this.index = el('div', '', this.el); this.index.style.cssText = 'position:absolute;left:700px;top:186px;right:40px;bottom:296px;display:grid;grid-template-columns:repeat(auto-fill, 268px);grid-auto-rows:128px;gap:22px 16px;align-content:start;overflow-y:auto;padding-top:12px;scrollbar-width:none';
-    this.detail = el('div', 'pp-fibre pp-row', this.el); this.detail.style.cssText = 'left:700px;right:40px;bottom:32px;height:240px;gap:20px;align-items:flex-start';
+    const px = (c: HTMLCanvasElement, css: string) => { this.el.appendChild(c); c.style.cssText = `position:absolute;image-rendering:pixelated;${css}`; };
+    px(this.cradle.cv, 'left:40px;top:100px;width:620px;height:440px');
+    this.spec = el('div', 'pp-enamel pp-col', this.el); this.spec.style.cssText = 'left:40px;top:548px;width:620px;gap:6px';
+    px(this.vials.cv, 'left:40px;top:740px;width:620px;height:300px');
+    this.vialTags = el('div', '', this.el); this.vialTags.style.cssText = 'position:absolute;left:40px;top:960px;width:620px;height:80px';
+    this.kinds = el('div', 'pp-row', this.el); this.kinds.style.cssText = 'position:absolute;left:700px;top:100px;gap:6px';
+    this.index = el('div', '', this.el); this.index.style.cssText = 'position:absolute;left:700px;top:182px;right:40px;bottom:340px;display:grid;grid-template-columns:repeat(auto-fill, 268px);grid-auto-rows:120px;gap:14px 16px;align-content:start;overflow-y:auto;padding-top:10px;scrollbar-width:none';
+    px(this.drum.cv, 'left:700px;top:760px;width:420px;height:280px');
+    this.drumTag = el('div', 'pp-tag', this.el); this.drumTag.style.cssText = 'position:absolute;left:846px;top:874px;pointer-events:none';
+    this.detail = el('div', 'pp-fibre pp-row', this.el); this.detail.style.cssText = 'left:1140px;right:40px;top:760px;height:280px;gap:20px;align-items:flex-start';
     const first = TECHS.find((q) => !R.unlocked(q.id) && !R.why(q.id));
     if (first) { this.kind = first.kind; this.sel = first.id; }
     this.build();
@@ -45,7 +52,17 @@ export class ResearchPage implements TabPage {
     return R.why(t.id) ? 'locked' : 'ready';
   }
   private signature() { const R = this.R; return [this.kind, this.sel, R.queue.join(','), R.known().length, DATA_KINDS.map((k) => Math.floor(R.data[k])).join(','), R.log.length, R.stations().powered, Math.floor(R.headFrac() * 40)].join('|'); }
-  update() { const s = this.signature(); if (s !== this.sig) { this.sig = s; this.build(); } }
+  update(dt = 1 / 60) {
+    const s = this.signature(); if (s !== this.sig) { this.sig = s; this.build(); }
+    const R = this.R; this.t += dt;
+    const live = R.queue.length > 0 && R.stations().powered > 0;
+    this.cradle.draw(this.t, !!R.log[0]);
+    const sel = this.sel ? TECH[this.sel] : null;
+    const cap = (k: DataKind) => Math.max(40, Math.ceil(Math.max(R.data[k], sel?.cost[k] ?? 0) * 1.25 / 10) * 10);
+    this.vials.draw(dt, DATA_KINDS, DATA_KINDS.map((k) => R.data[k] / cap(k)), DATA_KINDS.map((k) => (sel && sel.cost[k] && !R.unlocked(sel.id) ? sel.cost[k]! / cap(k) : null)), R.rate(), live);
+    this.drum.draw(dt, R.queue, R.queue.map((id) => TECH[id]?.icon ?? 'gear'), R.headFrac());
+    this.drumTag.style.visibility = Math.abs(this.drum.rot) < 0.04 && R.queue.length ? 'visible' : 'hidden';
+  }
   key(e: KeyboardEvent) {
     if (e.key === 'Enter' && this.sel) { this.queue(this.sel); return true; }
     const i = TECH_KINDS.findIndex((k) => k.k === this.kind);
@@ -60,31 +77,29 @@ export class ResearchPage implements TabPage {
   }
   private build() {
     const R = this.R;
-    // ---------------- the specimen card
+    // ---------------- the specimen plate under the cradle
     const e = R.log[0], S = this.spec; S.innerHTML = '';
-    el('div', 'pp-s', S, 'LAST SPECIMEN');
-    const top = el('div', 'pp-row', S); top.style.gap = '20px';
     this.shoot();
-    if (this.photo) { el('img', 'pp-ico', top).setAttribute('src', this.photo); (top.lastChild as HTMLElement).style.cssText = 'width:240px;height:180px;box-shadow:0 0 0 3px #2b2622'; }
-    else { el('img', 'pp-ico', top).setAttribute('src', iconURL(e ? KIND_ICON[e.kind] ?? 'lens' : 'lens', e ? 'phos' : 'dim')); (top.lastChild as HTMLElement).style.cssText = 'width:192px;height:192px'; }
-    const nm = el('div', 'pp-col', top); nm.style.gap = '10px';
-    el('div', 'pp-hx', nm, e ? e.name : 'NONE YET');
-    if (e) { const got = el('div', 'pp-row', nm); got.style.gap = '16px'; for (const k of DATA_KINDS) if (e.data[k]) el('span', 'pp-row', got, `<img class="pp-ico" src="${iconURL(DATA_ICON[k], 'phos')}" style="width:48px;height:48px"><span class="pp-hl">+${Math.round(e.data[k]!)}</span>`); }
-    else el('div', 'pp-t', nm, 'Scan a creature, plant, ore or ruin.');
-    el('div', 'pp-rule', S);
-    const strip = el('div', 'pp-row', S); strip.style.gap = '6px';
-    for (const x of R.log.slice(1, 9)) { const im = el('img', 'pp-ico', strip); im.src = iconURL(KIND_ICON[x.kind] ?? 'lens', 'phos'); im.style.cssText = 'width:48px;height:48px'; im.title = x.name; }
-    // ---------------- the data tokens and the stations
-    const T = this.tokens; T.innerHTML = '';
-    for (const k of DATA_KINDS) {
-      const t = el('div', 'pp-enamel pp-col', T); t.style.cssText = 'position:relative;width:138px;align-items:center;gap:0';
-      el('img', 'pp-ico', t).setAttribute('src', iconURL(DATA_ICON[k], R.data[k] > 0 ? 'phos' : 'dim')); (t.lastChild as HTMLElement).style.cssText = 'width:48px;height:48px';
-      el('div', 'pp-hx', t, String(Math.floor(R.data[k])));
-      el('div', 'pp-s', t, DATA_NAME[k]);
-    }
+    const top = el('div', 'pp-row', S); top.style.gap = '16px';
+    el('div', 'pp-hl', top, e ? e.name : 'CRADLE EMPTY').style.flex = '1';
+    if (e) for (const k of DATA_KINDS) if (e.data[k]) el('span', 'pp-row', top, `<img class="pp-ico" src="${iconURL(DATA_ICON[k], 'phos')}" style="width:48px;height:48px"><span class="pp-h">+${Math.round(e.data[k]!)}</span>`).style.gap = '2px';
+    const strip = el('div', 'pp-row', S); strip.style.gap = '4px';
+    if (!e) el('div', 'pp-t', strip, 'Scan a creature, plant, ore or ruin.');
+    for (const x of R.log.slice(1, 11)) { const im = el('img', 'pp-ico', strip); im.src = iconURL(KIND_ICON[x.kind] ?? 'lens', 'phos'); im.style.cssText = 'width:48px;height:48px'; im.title = x.name; }
+    // ---------------- the engraved plates under the vials and the dial
+    const T = this.vialTags; T.innerHTML = '';
+    DATA_KINDS.forEach((k, i) => {
+      const t = el('div', 'pp-col', T); t.style.cssText = `position:absolute;left:${Vials.slot(i) * 2 - 60}px;width:120px;top:0;align-items:center;gap:0`;
+      el('div', 'pp-row', t, `<img class="pp-ico" src="${iconURL(DATA_ICON[k], R.data[k] > 0 ? 'phos' : 'dim')}" style="width:32px;height:32px"><span class="pp-h" style="color:#f3eedf">${Math.floor(R.data[k])}</span>`).style.gap = '4px';
+      el('div', 'pp-s', t, DATA_NAME[k]).style.color = '#aab1b4';
+    });
     const s = R.stations();
-    const st = el('div', 'pp-enamel pp-row', T); st.style.cssText = 'position:relative;gap:10px';
-    st.innerHTML = `<img class="pp-ico" src="${iconURL('lens', s.powered ? 'phos' : 'dim')}" style="width:48px;height:48px"><span class="pp-hl">${s.powered}/${s.n}</span><span class="pp-s">STATIONS · ${R.rate().toFixed(1)}X</span>`;
+    const d = el('div', 'pp-col', T); d.style.cssText = `position:absolute;left:${Vials.slot(4) * 2 - 60}px;width:120px;top:0;align-items:center;gap:0`;
+    el('div', 'pp-h', d, `${s.powered}/${s.n}`).style.color = '#f3eedf';
+    el('div', 'pp-s', d, `STATIONS ${R.rate().toFixed(1)}X`).style.color = '#aab1b4';
+    // the head card's name beside the drum's reading line
+    const head = R.queue[0] ? TECH[R.queue[0]] : null;
+    this.drumTag.innerHTML = head ? `<span class="pp-h">${head.name}</span><span class="pp-s" style="color:#3b2a10">${Math.round(R.headFrac() * 100)}%</span>` : '';
     // ---------------- kind tabs and the index cards
     const K = this.kinds; K.innerHTML = '';
     for (const k of TECH_KINDS) {
@@ -117,9 +132,7 @@ export class ResearchPage implements TabPage {
       const right = el('div', 'pp-col', D); right.style.cssText = 'gap:10px;align-items:flex-end';
       const k = el('div', 'pp-key' + (stt === 'known' || why || stt === 'active' ? ' dead' : ' hot'), right, stt === 'known' ? 'KNOWN' : stt === 'active' ? 'RUNNING' : stt === 'queued' ? 'FIRST' : 'QUEUE');
       k.addEventListener('click', () => { if (stt !== 'known' && !why) this.queue(t.id); });
-      const q = el('div', 'pp-row', right); q.style.gap = '4px';
-      R.queue.slice(0, 5).forEach((id, i) => { const im = el('img', 'pp-ico', q); im.src = iconURL(TECH[id].icon, 'phos'); im.style.cssText = `width:48px;height:48px;${i === 0 ? 'outline:3px solid #9a6a1a' : 'opacity:0.85'}`; im.title = TECH[id].name; im.addEventListener('click', () => { R.dequeue(id); this.sig = ''; }); });
-      if (R.queue.length) { const b = el('div', 'pp-bar amb', right); b.style.width = '260px'; el('i', '', b).style.width = `calc(${R.headFrac() * 100}% - 4px)`; }
+      if (stt === 'queued' || stt === 'active') { const x = el('div', 'pp-key', right, 'REMOVE'); x.addEventListener('click', () => { R.dequeue(t.id); csfx('page', 0.5); this.sig = ''; }); }
       const stall = R.stalled(); if (stall) el('div', 'pp-s pp-red', right, stall);
     }
   }
@@ -131,7 +144,7 @@ export class ResearchPage implements TabPage {
     lab.auto = 0; lab.sway = 0; lab.yaw = 0.7; lab.dist = 4.2; lab.pitch = 0.22; lab.target.set(0, 1.55, 0);
     const sp = e.kind === 'species' ? (this.host.run?.reg?.list ?? []).find((s: any) => s.name === e.name) : null;
     void lab.show(e.kind as SpecimenKind, e.name, sp).then(() => new Promise((r) => setTimeout(r, 250))).then(() => {
-      const c = photograph(this.engine!, lab, 640, 480); if (c) { this.photo = c.toDataURL(); this.sig = ''; }
+      const c = photograph(this.engine!, lab, 640, 480); if (c) { this.photo = c.toDataURL(); this.cradle.setPhoto(this.photo); this.sig = ''; }
     });
   }
   dispose() { this.lab?.dispose(); this.el.remove(); }

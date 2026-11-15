@@ -153,28 +153,13 @@ snapped to the palette and outlined by `src/inv/sprites/make_ui.py --icons`. All
 | `drawer_cabinet.glb` (specimen cabinet) | Drawer Cabinet | https://polyhaven.com/a/drawer_cabinet | Ulan Cabanilla | CC0 1.0 |
 | `utility_box_02.glb` (cold store) | Utility Box 02 | https://polyhaven.com/a/utility_box_02 | James Ray Cock | CC0 1.0 |
 
-### Window materials: Poly Haven photo textures, stylised with lowpix
-Each container window, control and HUD badge is cut from a real photo texture stylised with
-`python3 -m lowpix photo polyhaven:<id> --style pixel-hd --size 192`, graded toward the container's paint and snapped to
-the palette (`src/inv/sprites/make_ui.py --photos` -> `public/inv/ui/mat_<name>.png`). All **CC0 1.0**.
-
-| field | texture | source | author(s) | license |
-|---|---|---|---|---|
-| `mat_crate` | Wood Planks | https://polyhaven.com/a/wood_planks | Amal Kumar | CC0 1.0 |
-| `mat_lacquer` | Dark Wood | https://polyhaven.com/a/dark_wood | Dario Barresi, Dimitrios Savva, Rico Cilliers | CC0 1.0 |
-| `mat_olive` | Green Metal Rust | https://polyhaven.com/a/green_metal_rust | Rob Tuytel | CC0 1.0 |
-| `mat_hold`, `mat_gun` | Metal Plate 02 | https://polyhaven.com/a/metal_plate_02 | Rob Tuytel | CC0 1.0 |
-| `mat_earth` | Dirt Floor | https://polyhaven.com/a/dirt_floor | eye-candy.xyz | CC0 1.0 |
-| `mat_concrete` | Concrete Floor Worn 001 | https://polyhaven.com/a/concrete_floor_worn_001 | Dimitrios Savva, Rico Cilliers | CC0 1.0 |
-| `mat_frost` (with Metal Plate 02 under it) | Snow 02 | https://polyhaven.com/a/snow_02 | Rob Tuytel | CC0 1.0 |
-| `mat_teal` | Blue Metal Plate | https://polyhaven.com/a/blue_metal_plate | Rob Tuytel | CC0 1.0 |
-| `mat_corr` | Worn Corrugated Iron | https://polyhaven.com/a/worn_corrugated_iron | Jenelle van Heerden, Dimitrios Savva | CC0 1.0 |
-| `mat_brass` | Metal Plate | https://polyhaven.com/a/metal_plate | Rob Tuytel | CC0 1.0 |
-| `mat_paper` (cards) | Beige Wall 001 | https://polyhaven.com/a/beige_wall_001 | Dimitrios Savva, Rico Cilliers | CC0 1.0 |
+### Window materials
+Painted procedurally in the browser as clean pixel art from the palette ramps (`src/ui/crates/mat.ts`); no third-party
+textures.
 
 ### Item sprites
-Most item sprites (`src/inv/itemSprites.ts`) are painted with lowpix's sprite generators and stroke brush
-(`src/inv/sprites/make_items.py`). A few are renders of real Poly Haven models (converted with `lowpix convert
+Most item sprites (`src/inv/itemSprites.ts`) are painted with lowpix's sprite generators and specs in its clean `flat`
+finish (`src/inv/sprites/make_items.py`). A few are renders of real Poly Haven models (converted with `lowpix convert
 --style pixel-hd`, rendered by `?test=inv&icons&glb=...`, shrunk and snapped by `make_items.py --real`). All **CC0 1.0**.
 
 | item | model | source | author(s) | license |

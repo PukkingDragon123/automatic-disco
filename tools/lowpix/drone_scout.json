@@ -3,7 +3,7 @@
  "description": "UNAA colony scout drone: chamfered ivory enamel hull with an orange program band, four ducted fans on gunmetal booms, a belly sensor ball with a blue lens, landing skids, nav lamps. Panel grooves, rivets, vents, chipped paint.",
  "author": "pod agent",
  "license": "CC0-1.0",
- "density": 2,
+ "density": 1.2,
  "grounded": false,
  "budget": {
   "tris": 1600,

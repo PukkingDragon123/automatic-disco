@@ -1,5 +1,6 @@
-// Callouts: paper tags pinned around a live 3D vignette, each with a hand-inked leader line to the part of the thing
-// it describes (a world anchor projected every frame). Lines wobble a little, end in a dot, and are drawn in one SVG.
+// Callouts: engraved brass tags around a live 3D vignette, each with a straight machined pointer (a steel rod, dark
+// edged with a lit core) to the part of the thing it describes (a world anchor projected every frame), ending on a
+// rivet. All pointers are drawn in one SVG.
 import * as THREE from 'three';
 import type { Vignette } from './stage3d';
 
@@ -28,12 +29,12 @@ export class Callouts {
       const r = c.el.getBoundingClientRect(), bw = r.width || 64, bh = r.height || 48;
       const x = Math.round(p.x + c.dx - bw / 2), y = Math.round(p.y + c.dy - bh / 2);
       c.el.style.left = x + 'px'; c.el.style.top = y + 'px';
-      // the line leaves the tag from the edge nearest the anchor and ends on the part with a dot
-      const ex = Math.max(x + 6, Math.min(x + bw - 6, p.x)), ey = Math.max(y + 6, Math.min(y + bh - 6, p.y));
-      const mx = (ex + p.x) / 2 + Math.sin(c.seed) * 4, my = (ey + p.y) / 2 + Math.cos(c.seed * 1.7) * 4;
-      if (Math.hypot(ex - p.x, ey - p.y) > 10) path += `M${ex.toFixed(0)} ${ey.toFixed(0)} Q${mx.toFixed(0)} ${my.toFixed(0)} ${p.x.toFixed(0)} ${p.y.toFixed(0)} `;
-      dots += `<rect x="${Math.round(p.x) - 3}" y="${Math.round(p.y) - 3}" width="6" height="6" fill="#2b2622"/>`;
+      // the rod leaves the tag from the edge nearest the anchor, dead straight, and ends on a rivet over the part
+      const ex = Math.round(Math.max(x + 6, Math.min(x + bw - 6, p.x))), ey = Math.round(Math.max(y + 6, Math.min(y + bh - 6, p.y)));
+      const ax = Math.round(p.x), ay = Math.round(p.y);
+      if (Math.hypot(ex - ax, ey - ay) > 10) path += `M${ex} ${ey} L${ax} ${ay} `;
+      dots += `<rect x="${ax - 5}" y="${ay - 5}" width="10" height="10" fill="#15171b"/><rect x="${ax - 3}" y="${ay - 3}" width="6" height="6" fill="#aab1b4"/><rect x="${ax - 3}" y="${ay - 3}" width="3" height="3" fill="#d2d7d6"/>`;
     }
-    this.svg.innerHTML = `<path d="${path}" stroke="#2b2622" stroke-width="2" fill="none" stroke-linecap="square"/>${dots}`;
+    this.svg.innerHTML = `<path d="${path}" stroke="#15171b" stroke-width="4" fill="none" stroke-linecap="square" shape-rendering="crispEdges"/><path d="${path}" stroke="#858d93" stroke-width="2" fill="none" stroke-linecap="square" shape-rendering="crispEdges"/>${dots}`;
   }
 }

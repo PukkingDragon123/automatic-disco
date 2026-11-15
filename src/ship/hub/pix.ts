@@ -16,6 +16,8 @@ import { Pix, text as text3 } from '../../ui/machine';
 import { Rng, hashStr } from '../../limbo/core/rng';
 
 export const PPM = 64;
+/** the density the textures are shown at (painted at PPM, then halved) */
+export const SHOW_PPM = 32;
 const cache = new Map<string, THREE.Texture>();
 export function pcached(key: string, make: () => THREE.Texture) { let t = cache.get(key); if (!t) { t = make(); cache.set(key, t); } return t; }
 
@@ -31,6 +33,25 @@ export function texOf(data: Uint8ClampedArray | Uint8Array, w: number, h: number
   return t;
 }
 const T = (pc: PixelCanvas, o?: { repeat?: boolean; mips?: boolean }) => texOf(pc.data, pc.w, pc.h, o);
+/**
+ * Down to the house density (32 texels per metre, the user's choice): each 2 x 2 block becomes its most common colour
+ * (ties go to the darker, so grooves and seams survive), so the result stays on the ramps in clean chunky clusters.
+ */
+function half(pc: PixelCanvas) {
+  const W = pc.w >> 1, H = pc.h >> 1, d = pc.data, out = new Uint8ClampedArray(W * H * 4);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const idx = [((2 * y) * pc.w + 2 * x) * 4, ((2 * y) * pc.w + 2 * x + 1) * 4, ((2 * y + 1) * pc.w + 2 * x) * 4, ((2 * y + 1) * pc.w + 2 * x + 1) * 4];
+    let best = idx[0], bc = 0, bl = 1e9;
+    for (const i of idx) {
+      let c = 0; for (const j of idx) if (d[j] === d[i] && d[j + 1] === d[i + 1] && d[j + 2] === d[i + 2]) c++;
+      const l = d[i] * 3 + d[i + 1] * 6 + d[i + 2];
+      if (c > bc || (c === bc && l < bl)) { best = i; bc = c; bl = l; }
+    }
+    out.set(d.subarray(best, best + 4), (y * W + x) * 4);
+  }
+  return { data: out, w: W, h: H };
+}
+const T32 = (pc: PixelCanvas, o?: { repeat?: boolean; mips?: boolean }) => { const h = half(pc); return texOf(h.data, h.w, h.h, o); };
 
 // ------------------------------------------------------------------ LIMBOPHOBIA's materials, lifted out of its atlas
 /** a LIMBOPHOBIA atlas texture as a stand-alone repeating texture, and the metres one repeat covers */
@@ -95,24 +116,8 @@ export function measure(s: string, font: string, size: number) { const g = docum
  * (the way lowpix's brush.py lays tone), so ramp bands break into elongated, interlocking strokes instead of blobs.
  * angle: the flow (0 = along x); len: stroke length in texels; tiles on both axes.
  */
-export function strokeField(W: number, H: number, seed: number, angle = 0, len = 7, width = 1.4): Float32Array {
-  const n = new Float32Array(W * H), out = new Float32Array(W * H);
-  let s = (seed * 2654435761) >>> 0; const rnd = () => ((s = (Math.imul(s ^ (s >>> 15), 0x2c1b3c6d) + 0x9e3779b9) >>> 0) / 4294967296);
-  for (let i = 0; i < n.length; i++) n[i] = rnd() * 2 - 1;
-  // widen strokes across the flow a little (a box blur across)
-  const cx = -Math.sin(angle), cy = Math.cos(angle), fx = Math.cos(angle), fy = Math.sin(angle);
-  const wide = new Float32Array(W * H), wk = Math.max(0, Math.round(width - 1));
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let a = 0; for (let k = -wk; k <= wk; k++) { const X = ((Math.round(x + cx * k) % W) + W) % W, Y = ((Math.round(y + cy * k) % H) + H) % H; a += n[Y * W + X]; } wide[y * W + x] = a / (2 * wk + 1); }
-  let ss = 0;
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    let a = 0;
-    for (let k = -len; k <= len; k++) { const X = ((Math.round(x + fx * k) % W) + W) % W, Y = ((Math.round(y + fy * k) % H) + H) % H; a += wide[Y * W + X] * (1 - Math.abs(k) / (len + 1)); }
-    out[y * W + x] = a; ss += a * a;
-  }
-  const sd = Math.sqrt(ss / out.length) || 1;
-  for (let i = 0; i < out.length; i++) out[i] /= sd;
-  return out;
-}
+/** (retired: the hand-drawn stroke pass is banned) a flat field, so callers add nothing */
+export function strokeField(W: number, H: number, _seed = 0, _angle = 0, _len = 7, _width = 1.4): Float32Array { return new Float32Array(W * H); }
 
 // ------------------------------------------------------------------ themes (base colours; ramps derive from them)
 export interface PTheme { key: string; wall: number; low: number; band: number; rail: number; stripe: number; trim: number; floor: 'tread' | 'rubber' | 'carpet' | 'tiles' | 'deck' | 'grate' | 'lino'; fa: number; fb: number }
@@ -199,7 +204,7 @@ export function pixWall(th: PTheme, variant = 0) {
     const ky = Y(0.15);
     for (let y = ky; y < H; y++) for (let x = 0; x < W; x++) pc.set(x, y, ((x + y) % 6 < 2 && y > ky + 2) ? RT[1] : RT[2]);
     for (let x = 0; x < W; x++) { pc.set(x, ky, RT[4]); pc.set(x, ky + 1, RT[3]); pc.set(x, H - 1, RT[0]); if (ph(x, 4, seed) < 0.6) pc.set(x, H - 2, RT[0]); if (ph(x, 5, seed) < 0.3) pc.set(x, H - 3, RT[1]); }
-    return T(pc);
+    return T32(pc);
   });
 }
 
@@ -266,7 +271,7 @@ export function pixFloor(th: PTheme) {
       for (let y = 0; y < W; y += 16) for (let x = 0; x < W; x++) { pc.set(x, y, RB[4]); pc.set(x, y + 1, RB[3]); pc.set(x, y + 2, RB[1]); }
       for (const s of [0, 64]) { for (let k = 0; k < W; k++) { pc.set(k, s, RA[4]); pc.set(k, s + 1, RA[3]); pc.set(k, s + 2, RA[2]); pc.set(k, s + 3, RA[1]); pc.set(s, k, RA[4]); pc.set(s + 1, k, RA[3]); pc.set(s + 2, k, RA[2]); pc.set(s + 3, k, RA[1]); } }
     }
-    return T(pc);
+    return T32(pc);
   });
 }
 
@@ -277,7 +282,7 @@ export function pixCap() {
     const pc = new PixelCanvas(64, 8), R2 = makeRamp(0x34383c, 5, { spread: 0.5 });
     pc.fill(R2[1]);
     for (let x = 0; x < 64; x++) { pc.set(x, 0, R2[4]); pc.set(x, 7, R2[3]); if ((x % 16) < 10) { pc.set(x, 3, R2[0]); pc.set(x, 4, R2[2]); } }
-    return T(pc);
+    return T32(pc);
   });
 }
 export function pixHazard(a = 0xd8a63a, b = 0x1e1c18) {
@@ -302,7 +307,7 @@ export function pixConsole(seed = 1) {
     }
     for (let k = 0; k < 6; k++) { const x = 4 + k * 10; pc.rect(x, 19, 2, 4, R2[3]); pc.set(x, 19, R2[4]); }
     pc.hline(0, W - 1, 0, R2[4]); pc.hline(0, W - 1, H - 1, R2[0]);
-    return T(pc, { repeat: false, mips: false });
+    return T32(pc, { repeat: false, mips: false });
   });
 }
 /** server rack face: rows of blinking LEDs over dark bays (fit once) */
@@ -315,7 +320,7 @@ export function pixRack(seed = 1) {
       for (let x = 4; x < W - 4; x += 3) { const v = ph(x, y, seed); pc.set(x, y + 2, v > 0.82 ? 0xe0a040 : v > 0.35 ? 0x6ad08a : 0x1a3a24); }
       pc.set(W - 5, y + 2, R2[4]); pc.set(W - 4, y + 2, R2[2]);
     }
-    return T(pc, { repeat: false, mips: false });
+    return T32(pc, { repeat: false, mips: false });
   });
 }
 /** a sign: pixel-font text on a plate (or cut out), crisp */
@@ -464,38 +469,38 @@ export interface WearOpts {
   inside?: (x: number, z: number) => boolean;
 }
 /**
- * Everything the tiling floor cannot show, painted at 64 px/m across the whole room so nothing repeats: grime gathered
+ * Everything the tiling floor cannot show, painted at 32 px/m across the whole room so nothing repeats: grime gathered
  * against the walls, a polished lane worn from the door to each place people stand (scuffed with heel marks), tape
  * boxes round the key machine (peeling, trodden dirty), aisle lines, a drain, an access hatch, oil stains, and the
  * room's number stencilled by the door, half worn away. Binary alpha (alpha-tested), so it is crisp pixel art.
  */
 export function floorWear(key: string, x0: number, z0: number, x1: number, z1: number, o: WearOpts) {
   return pcached('wear|' + key, () => {
-    const W = Math.round((x1 - x0) * PPM), H = Math.round((z1 - z0) * PPM), p = new Pix(W, H), rng = new Rng(hashStr(key + 'wear'));
+    const WP = SHOW_PPM, W = Math.round((x1 - x0) * WP), H = Math.round((z1 - z0) * WP), p = new Pix(W, H), rng = new Rng(hashStr(key + 'wear'));
     const s = hashStr(key) % 977;
-    const P = (x: number, z: number) => [Math.round((x - x0) * PPM), Math.round((z - z0) * PPM)] as const;
-    const ok = (i: number, j: number) => i >= 0 && j >= 0 && i < W && j < H && (!o.inside || o.inside(x0 + i / PPM, z0 + j / PPM));
+    const P = (x: number, z: number) => [Math.round((x - x0) * WP), Math.round((z - z0) * WP)] as const;
+    const ok = (i: number, j: number) => i >= 0 && j >= 0 && i < W && j < H && (!o.inside || o.inside(x0 + i / WP, z0 + j / WP));
     const put = (i: number, j: number, c: number) => { if (ok(i, j)) p.set(i, j, c); };
     const dark = scaleHex(o.fa, 0.45), darker = scaleHex(o.fa, 0.3), lit = mixHex(scaleHex(o.fb, 1.25), 0xffffff, 0.12), grime = mixHex(scaleHex(o.fa, 0.55), 0x2a2218, 0.4);
     // grime against the walls: dense at the skirting, thinning out over ~20 cm, clumped
     for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
       const d = Math.min(i, j, W - 1 - i, H - 1 - j);
-      if (d > 14) continue;
-      const k = (1 - d / 14) ** 2 * 0.55 * (0.6 + ph(i >> 2, j >> 2, s) * 0.8);
-      if (ph(i, j, s + 1) < k) put(i, j, d < 3 && ph(i, j, s + 2) < 0.5 ? darker : grime);
+      if (d > 7) continue;
+      const k = (1 - d / 7) ** 2 * 0.55 * (0.6 + ph(i >> 1, j >> 1, s) * 0.8);
+      if (ph(i, j, s + 1) < k) put(i, j, d < 2 && ph(i, j, s + 2) < 0.5 ? darker : grime);
     }
     // worn lanes: polished where feet go (not on grates or carpet's pile, which flattens lighter), heel scuffs
     const lane = (a: readonly [number, number], b: readonly [number, number]) => {
       const L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 4) return;
       const ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L;
       for (let t = 0; t < L; t += 1) {
-        const cx = a[0] + ux * t + Math.sin(t * 0.05 + s) * 3, cy = a[1] + uy * t + Math.cos(t * 0.04 + s) * 3;
-        for (let w = -16; w <= 16; w++) {
-          const i = Math.round(cx - uy * w), j = Math.round(cy + ux * w), k = (1 - Math.abs(w) / 16) * 0.22;
-          if (o.kind !== 'grate' && ph(i, j, s + 3) < k * (0.5 + ph(i >> 3, j >> 3, s + 4))) put(i, j, o.kind === 'carpet' ? scaleHex(o.fb, 1.18) : lit);
+        const cx = a[0] + ux * t + Math.sin(t * 0.1 + s) * 1.5, cy = a[1] + uy * t + Math.cos(t * 0.08 + s) * 1.5;
+        for (let w = -8; w <= 8; w++) {
+          const i = Math.round(cx - uy * w), j = Math.round(cy + ux * w), k = (1 - Math.abs(w) / 8) * 0.22;
+          if (o.kind !== 'grate' && ph(i >> 1, j >> 1, s + 3) < k * (0.5 + ph(i >> 2, j >> 2, s + 4))) put(i, j, o.kind === 'carpet' ? scaleHex(o.fb, 1.18) : lit);
         }
         // heel marks: short dark strokes across the lane
-        if (rng.next() < 0.05) { const w = (rng.next() - 0.5) * 22, i = Math.round(cx - uy * w), j = Math.round(cy + ux * w), n = 2 + Math.floor(rng.next() * 4), a2 = (rng.next() - 0.5) * 1.2; for (let q2 = 0; q2 < n; q2++) put(i + Math.round(Math.cos(a2) * q2), j + Math.round(Math.sin(a2) * q2), o.kind === 'carpet' ? scaleHex(o.fa, 0.7) : darker); }
+        if (rng.next() < 0.06) { const w = (rng.next() - 0.5) * 11, i = Math.round(cx - uy * w), j = Math.round(cy + ux * w), n = 2 + Math.floor(rng.next() * 2), a2 = (rng.next() - 0.5) * 1.2; for (let q2 = 0; q2 < n; q2++) put(i + Math.round(Math.cos(a2) * q2), j + Math.round(Math.sin(a2) * q2), o.kind === 'carpet' ? scaleHex(o.fa, 0.7) : darker); }
       }
     };
     const D = P(o.door[0], o.door[1]);
@@ -507,12 +512,12 @@ export function floorWear(key: string, x0: number, z0: number, x1: number, z1: n
       let gap = 0;
       for (let t = 0; t < L; t++) {
         if (gap > 0) { gap--; continue; }
-        if (ph(t, seed, s) < 0.012) gap = 2 + Math.floor(ph(seed, t, s) * 6);
-        for (let w = 0; w < 4; w++) {
+        if (ph(t, seed, s) < 0.02) gap = 1 + Math.floor(ph(seed, t, s) * 3);
+        for (let w = 0; w < 2; w++) {
           const i = Math.round(a[0] + ux * t - uy * w), j = Math.round(a[1] + uy * t + ux * w);
-          const stripe = hz && ((t + w) % 12) < 6;
-          let c = stripe ? (w === 0 ? 0x2a2824 : 0x1a1916) : w === 0 ? Y[3] : w === 3 ? Y[1] : Y[2];
-          if (ph(i, j, seed + 7) < 0.1) c = grime;
+          const stripe = hz && ((t + w) % 6) < 3;
+          let c = stripe ? (w === 0 ? 0x2a2824 : 0x1a1916) : w === 0 ? Y[3] : Y[1];
+          if (ph(i, j, seed + 7) < 0.08) c = grime;
           put(i, j, c);
         }
       }
@@ -523,31 +528,31 @@ export function floorWear(key: string, x0: number, z0: number, x1: number, z1: n
       tapeRun([B2[0], B2[1]], [A[0], B2[1]], !!o.hazardTape, 3); tapeRun([A[0], B2[1]], [A[0], A[1]], !!o.hazardTape, 4);
     }
     if (o.aisle) {
-      const a = Math.round(o.aisle * PPM);
-      if (W > H) { tapeRun([8, a], [W - 8, a], false, 5); tapeRun([8, H - a], [W - 8, H - a], false, 6); }
-      else { tapeRun([a, 8], [a, H - 8], false, 5); tapeRun([W - a, 8], [W - a, H - 8], false, 6); }
+      const a = Math.round(o.aisle * WP);
+      if (W > H) { tapeRun([4, a], [W - 4, a], false, 5); tapeRun([4, H - a], [W - 4, H - a], false, 6); }
+      else { tapeRun([a, 4], [a, H - 4], false, 5); tapeRun([W - a, 4], [W - a, H - 4], false, 6); }
     }
     // a drain: a square grate with slots, a rust bloom running from it
     if (o.drain) {
-      const [cx, cy] = P(o.drain[0], o.drain[1]), r = 10;
-      for (let j = -r - 3; j <= r + 6; j++) for (let i = -r - 4; i <= r + 4; i++) if (j > r && ph(i, j, s + 9) < 0.3 * (1 - (j - r) / 7)) put(cx + i, cy + j, 0x5a2e1a);
+      const [cx, cy] = P(o.drain[0], o.drain[1]), r = 5;
+      for (let j = -r - 2; j <= r + 3; j++) for (let i = -r - 2; i <= r + 2; i++) if (j > r && ph(i, j, s + 9) < 0.35 * (1 - (j - r) / 4)) put(cx + i, cy + j, 0x5a2e1a);
       for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) {
         const e = Math.max(Math.abs(i), Math.abs(j));
-        put(cx + i, cy + j, e === r ? (i < 0 || j < 0 ? 0x8e9190 : 0x2a2f32) : e === r - 1 ? 0x54595c : (j + r) % 4 < 2 ? 0x101214 : 0x3d4346);
+        put(cx + i, cy + j, e === r ? (i < 0 || j < 0 ? 0x8e9190 : 0x2a2f32) : (j + r) % 2 ? 0x101214 : 0x3d4346);
       }
     }
     // an access hatch: a groove with a lit lip, four screws, a lift slot
     if (o.hatch) {
-      const [cx, cy] = P(o.hatch[0], o.hatch[1]), h2 = 24;
+      const [cx, cy] = P(o.hatch[0], o.hatch[1]), h2 = 12;
       for (let k = -h2; k <= h2; k++) { put(cx + k, cy - h2, darker); put(cx + k, cy - h2 + 1, lit); put(cx + k, cy + h2, darker); put(cx + k, cy + h2 + 1, lit); put(cx - h2, cy + k, darker); put(cx - h2 + 1, cy + k, lit); put(cx + h2, cy + k, darker); put(cx + h2 + 1, cy + k, lit); }
-      for (const [sx, sy] of [[-h2 + 4, -h2 + 4], [h2 - 5, -h2 + 4], [-h2 + 4, h2 - 5], [h2 - 5, h2 - 5]]) { put(cx + sx, cy + sy, 0xb1b2aa); put(cx + sx + 1, cy + sy, 0x6e7373); put(cx + sx, cy + sy + 1, 0x6e7373); put(cx + sx + 1, cy + sy + 1, 0x2a2f32); }
-      for (let k = -6; k <= 6; k++) { put(cx + k, cy - 1, darker); put(cx + k, cy, 0x101214); put(cx + k, cy + 1, lit); }
+      for (const [sx, sy] of [[-h2 + 2, -h2 + 2], [h2 - 2, -h2 + 2], [-h2 + 2, h2 - 2], [h2 - 2, h2 - 2]]) put(cx + sx, cy + sy, 0xb1b2aa);
+      for (let k = -3; k <= 3; k++) { put(cx + k, cy, 0x101214); put(cx + k, cy + 1, lit); }
     }
     // oil stains: dark pools with a ragged rim and a sheen
     for (let k = 0; k < (o.oil ?? 0); k++) {
-      const cx = 40 + rng.next() * (W - 80), cy = 40 + rng.next() * (H - 80), rx = 8 + rng.next() * 14, ry = 6 + rng.next() * 10;
-      for (let j = -ry - 3; j <= ry + 3; j++) for (let i = -rx - 3; i <= rx + 3; i++) {
-        const d = Math.hypot(i / rx, j / ry) + (ph(Math.round(cx + i) >> 1, Math.round(cy + j) >> 1, s + 11) - 0.5) * 0.5;
+      const cx = 20 + rng.next() * (W - 40), cy = 20 + rng.next() * (H - 40), rx = 4 + rng.next() * 7, ry = 3 + rng.next() * 5;
+      for (let j = -ry - 2; j <= ry + 2; j++) for (let i = -rx - 2; i <= rx + 2; i++) {
+        const d = Math.hypot(i / rx, j / ry) + (ph(Math.round(cx + i), Math.round(cy + j), s + 11) - 0.5) * 0.4;
         if (d < 1) put(Math.round(cx + i), Math.round(cy + j), d < 0.4 && ph(i, j, s + 12) < 0.12 ? 0x4a4e58 : 0x121110);
       }
     }
@@ -555,11 +560,11 @@ export function floorWear(key: string, x0: number, z0: number, x1: number, z1: n
     if (o.code) {
       const g = new Pix(16, 6); text3(g, o.code, 0, 0, 0xffffff);
       const [cx, cy] = P(o.door[0] + (o.door[0] > (x0 + x1) / 2 ? -0.9 : 0.9), o.door[1] + 0.55);
-      const S = 5, wd = 8 * S;
-      for (let j = 0; j < 5 * S; j++) for (let i = 0; i < wd; i++) if (g.a(Math.floor(i / S), Math.floor(j / S)) && ph(i, j, s + 13) > 0.3 + ph(i >> 3, j >> 3, s + 14) * 0.3) put(cx - wd / 2 + i, cy - 12 + j, 0xc9c3ad);
+      const S = 3, wd = 8 * S;
+      for (let j = 0; j < 5 * S; j++) for (let i = 0; i < wd; i++) if (g.a(Math.floor(i / S), Math.floor(j / S)) && ph(i >> 1, j >> 1, s + 13) > 0.25 + ph(i >> 2, j >> 2, s + 14) * 0.3) put(cx - wd / 2 + i, cy - 7 + j, 0xc9c3ad);
     }
     // scattered scuffs and specks everywhere else
-    for (let k = 0; k < (W * H) / 900; k++) { const i = Math.floor(rng.next() * W), j = Math.floor(rng.next() * H), n = 1 + Math.floor(rng.next() * 4); for (let q2 = 0; q2 < n; q2++) put(i + q2, j + (q2 >> 1), rng.next() < 0.7 ? dark : lit); }
+    for (let k = 0; k < (W * H) / 260; k++) { const i = Math.floor(rng.next() * W), j = Math.floor(rng.next() * H), n = 1 + Math.floor(rng.next() * 2); for (let q2 = 0; q2 < n; q2++) put(i + q2, j, rng.next() < 0.7 ? dark : lit); }
     return texOf(p.d, W, H, { repeat: false });
   });
 }

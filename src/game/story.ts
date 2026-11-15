@@ -1,11 +1,11 @@
-// Dr. Calder and the U.S.P.C. recovery team. Unit 07 was fired at this world as a rock with a mind in it; the
-// impact took everything but its head. Station Four's recovery team (Calder, Lt. Hollis, Dr. Brandt) comes down
-// to find it. Calder stays when the others fly home, teaches it to build a body out of ore, carbon, water and
+// Tupaq and the UNAA recovery team. Unit 07 was fired at this world as a rock with a mind in it; the
+// impact took everything but its head. the Meridian's recovery team (Tupaq, Sgt. Kristiansen, Dr. Baptiste) comes down
+// to find it. Tupaq stays when the others fly home, teaches it to build a body out of ore, carbon, water and
 // soil, reacts to every part it adds, and is killed one night by the valley's apex predator. His journal and the
 // radio are what is left.
 //
 // The story runs the cutscenes (cinema.ts, scripts in ui/cineScenes.ts), the field-notes objectives for the new
-// loop, Calder's spoken reactions (the radio dialog box), milestone banners and floating text, and Calder's life
+// loop, Tupaq's spoken reactions (the radio dialog box), milestone banners and floating text, and Tupaq's life
 // at camp between scenes. It listens to the shared game events (skills.ts): gather, skill, points, kill, throw,
 // absorb, graft, convert, prefab, territory, hurt.
 import * as THREE from 'three';
@@ -46,7 +46,7 @@ interface Obj { id: string; text: () => string; done: () => boolean; hint?: stri
 export class Story {
   readonly cine: Cinema;
   readonly dialog: Dialog;
-  /** Dr. Calder (in the world between scenes, an actor in them) */
+  /** Tupaq (in the world between scenes, an actor in them) */
   readonly calder: Actor;
   hollis: Actor | null = null; brandt: Actor | null = null;
   lander: Lander | null = null;
@@ -75,7 +75,7 @@ export class Story {
   private objBox: HTMLElement | null = null;
   private G: any;
   private bubble: SpeechBubble;
-  /** the talk camera: eases in to frame Calder and the golem while he speaks; any player input sends it home */
+  /** the talk camera: eases in to frame Tupaq and the golem while he speaks; any player input sends it home */
   private talk = { w: 0, goal: 0, until: 0, cool: 0 };
   private sky: Sky = makeSky();
 
@@ -96,7 +96,7 @@ export class Story {
       if (this.calder.dead || (l.who && l.who !== 'calder')) return;
       this.calder.talk(3, l.expr);
       if (this.cine.active || !this.calder.visible) return;
-      this.bubble.show(l.text, 'Dr. Calder');
+      this.bubble.show(l.text, 'Tupaq');
       // zoom in on the pair when he is close enough to frame and nothing is fighting the golem
       const gp = this.golem(), d = Math.hypot(gp.x - this.calder.x, gp.z - this.calder.z);
       if (d < 26 && this.t - this.st.lastHurt > 6 && this.t > this.talk.cool) { this.talk.goal = 1; this.talk.until = this.t + Math.min(5, 1.6 + l.text.length * 0.05); }
@@ -237,7 +237,7 @@ export class Story {
 
   private unbind: () => void = () => {};
   private _tq = new THREE.Quaternion(); private _tc = new THREE.PerspectiveCamera();
-  /** blend the game camera toward a two-shot of Calder and the golem (w eases in and out) */
+  /** blend the game camera toward a two-shot of Tupaq and the golem (w eases in and out) */
   private talkCam(cam: THREE.PerspectiveCamera, dt: number) {
     const T = this.talk;
     if (T.goal > 0 && (this.t > T.until || this.calder.dead)) T.goal = 0;
@@ -351,7 +351,7 @@ export class Story {
       { id: 'graft', text: () => `Graft plants to claim ground (${Math.min(3, this.st.grafts)}/3)`, done: () => this.st.grafts >= 3, hint: 'These plants... you could graft them. Make them yours. Every one you change claims the ground around it.' },
       { id: 'convert', text: () => 'Beat a creature and convert it with a Neural Graft', done: () => this.st.converts > 0, hint: 'A beaten animal could be rewired. A Neural Graft. It would fight for you instead of against you.' },
       { id: 'claim', text: () => `Claim the region for Earth (${Math.round(this.st.territory * 100)}% held)`, done: () => this.st.territory >= 0.6, hint: 'Hold this valley, Seven. All of it. For home.' },
-      { id: 'return', text: () => 'Go back to Calder\'s camp', done: () => this.seen.has('scene:final'), when: () => this.beat === 'after' || this.beat === 'done' },
+      { id: 'return', text: () => 'Go back to Tupaq\'s camp', done: () => this.seen.has('scene:final'), when: () => this.beat === 'after' || this.beat === 'done' },
       { id: 'avenge', text: () => 'Hunt down the beast that killed him', done: () => this.seen.has('avenged'), opt: true, when: () => this.beat === 'after' || this.beat === 'done' },
     ];
   }
@@ -391,7 +391,7 @@ export class Story {
     (box as any).__k = key;
     box.style.display = list.length ? '' : 'none';
     box.innerHTML = '';
-    el('h4', '', box, 'FIELD NOTES · DR. CALDER');
+    el('h4', '', box, 'FIELD NOTES · TUPAQ');
     for (const o of list) {
       const r = el('div', 'ob' + (o.fin !== undefined ? ' done' : ''), box);
       iconImg(o.fin !== undefined ? 'helix' : o.opt ? 'skull' : 'move', 'oi', r).style.cssText = 'width:14px;height:14px;flex:none';
@@ -401,7 +401,7 @@ export class Story {
 
   // ================================================================== talking
   say(lines: (string | Line)[]) { this.dialog.say(lines.map((l) => (typeof l === 'string' ? { text: l } : l))); }
-  /** Calder says one line from the pool the first time something happens (the journal says it once he is gone) */
+  /** Tupaq says one line from the pool the first time something happens (the journal says it once he is gone) */
   private first(key: string, pool: string[], journal?: string) {
     if (this.seen.has(key)) return false;
     this.seen.add(key);
@@ -443,8 +443,8 @@ export class Story {
     if (by === 'punch' && this.first('kill:punch', ['Ha! Right on the button!'])) this.atGolem('FIRST KNOCKOUT', 'crit', 2);
     if (this.beat === 'after' && species && species === this.beastName && !this.seen.has('avenged')) {
       this.seen.add('avenged');
-      advance('THE BEAST IS DEAD', 'FOR DR. CALDER', 'skull', { kicker: 'SETTLED', stamp: 'U.S.P.C.' });
-      this.atGolem('FOR CALDER', 'crit', 3);
+      advance('THE BEAST IS DEAD', 'FOR TUPAQ', 'skull', { kicker: 'SETTLED', stamp: 'UNAA' });
+      this.atGolem('FOR TUPAQ', 'crit', 3);
       this.say([{ text: 'The thing that took him is dead. I hope that\'s the right word for it. For the record, it was quick.', who: 'journal' }]);
     }
   }
@@ -518,13 +518,13 @@ export class Story {
   private afterFinal() {
     const g = this.g;
     g.run.flags.calderNotes = 1;
-    advance('CALDER\'S NOTES', 'ONE MORE GENE FROM EVERY GENOME', 'journal', { kicker: 'RECOVERED', stamp: 'U.S.P.C.' });
+    advance('TUPAQ\'S NOTES', 'ONE MORE GENE FROM EVERY GENOME', 'journal', { kicker: 'RECOVERED', stamp: 'UNAA' });
     if (typeof this.G.veyr?.absorbCap === 'number') this.G.veyr.absorbCap += 1;
     const at = this.deathAt;
     if (!this.bodyTaken && at && this.G.chooseCalder) {
       this.bodyTaken = true;
       setTimeout(() => this.G.chooseCalder((absorb: boolean) => {
-        if (absorb) { for (const id of ['hominid_frame', 'hands', 'hominid_eyes', 'omni_teeth']) g.run.add(id, 'Dr. Calder', g.world.time); toast('You take what he was. Upright. Curious. Yours.', 'story', 6000); }
+        if (absorb) { for (const id of ['hominid_frame', 'hands', 'hominid_eyes', 'omni_teeth']) g.run.add(id, 'Tupaq', g.world.time); toast('You take what he was. Upright. Curious. Yours.', 'story', 6000); }
         else { g.run.flags.memorial = 1; toast('A pale flower grows where he lies. It never closes.', 'story', 6000); }
         this.calder.rig.root.visible = !absorb;
         if (absorb) g.fx.burst(at.x, at.y + 0.5, at.z, 40, VEYR.vein, { glow: true, up: 3, speed: 2, size: 3, life: 1.2 });
@@ -616,7 +616,7 @@ export class Story {
     else if (typeof w.day === 'number') w.day = Math.min(0.995, w.day + dt * 0.004);
     if (!this.seen.has('omen')) { this.seen.add('omen'); this.say([{ text: 'Something big circles the camp after dark. I hear it breathing out past the reeds. Stay close tonight, Seven.', expr: 'think' }]); }
   }
-  // ---------------- Calder's day between scenes
+  // ---------------- Tupaq's day between scenes
   private goHome() { const s = this.campSeat(); this.walk(s.x, s.z); this.mode = 'home'; this.modeT = 40 + this.r.range(0, 30); }
   private walk(tx: number, tz: number) {
     const c = this.calder, w: any = this.g.world;
@@ -722,11 +722,11 @@ const TERRITORY: [number, string][] = [
 const MUSINGS = [
   'You don\'t eat the rock so much as fold it into yourself.', 'The insects avoid your shadow now. They\'re learning faster than I am.',
   'I\'ve stopped writing "it" in my notes. I\'ve started writing "you".', 'There are bigger things in the hills. I hear them at night. Be careful.',
-  'Every part you build, you look at it for a long time before you use it. So do I, with mine.', 'I radioed Station Four about you. They didn\'t believe a word. Their loss.',
+  'Every part you build, you look at it for a long time before you use it. So do I, with mine.', 'I radioed the Meridian about you. They didn\'t believe a word. Their loss.',
   'Ore, carbon, water, soil. Four ingredients and a stubborn rock. That\'s all a planet is, when you think about it.',
 ];
 const JOURNAL = [
-  'Day six. Rations low. Radio silent. I talk to the rock now. It listens better than Station Four.', 'It glows brighter at night. I think it\'s dreaming.',
+  'Day six. Rations low. Radio silent. I talk to the rock now. It listens better than the Meridian.', 'It glows brighter at night. I think it\'s dreaming.',
   'It brought me a stone today and set it down by the fire. I don\'t know why. I kept it.', 'Something circles the camp after dark. Big. Patient.',
 ];
 void RES;

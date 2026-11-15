@@ -3,7 +3,7 @@
  "description": "UNAA repair drone: steel-blue band, a welding arm with a torch and a gas bottle under the hull.",
  "author": "pod agent",
  "license": "CC0-1.0",
- "density": 2,
+ "density": 1.2,
  "grounded": false,
  "budget": {
   "tris": 1600,

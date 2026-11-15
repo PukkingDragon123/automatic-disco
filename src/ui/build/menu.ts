@@ -1,8 +1,8 @@
 // The CONSTRUCTION PLANNER (B): the build menu, Techtonica-style, as an ENGINEER'S STEEL DRAWER. Ten stamped steel
-// index tabs; a drawer of blueprint-cloth cards, each with a hand-painted 2D pixel-art illustration of the building
-// (./art.ts, painted with lowpix's brush); and a blueprint sheet where the selected machine works in a small 3D
-// vignette on its plinth, its inputs sliding in and its outputs coming out, with chalk callouts (in, out, power,
-// footprint), then its cost as real items with have/need and its recipes. Icons and numbers, few words.
+// index tabs; a drawer of clean blueprint cards, each with a stylised low-resolution pixel-art picture of the building
+// made from a real render of its model (./art.ts); and a blueprint sheet where the selected machine works in a small 3D
+// vignette on its plinth, its inputs sliding in and its outputs coming out, with its callouts (in, out, power,
+// footprint) on engraved steel tags with machined pointers, then its cost as real items with have/need and its recipes.
 // Click a card to look, again to place; drag it onto the hotbar.
 import './build.css';
 import * as THREE from 'three';
@@ -16,8 +16,14 @@ import { buildingLock, mod } from '../../logistics/unlocks';
 import { registerChains } from '../../logistics/recipes';
 import { art } from './art';
 import { attachLayer, addStage, removeStage, drawStages, studioScene, liveModel, frameCam, project, type Stage, type Live } from './vignette';
-const CHALK = '#e8eef4';
-import { inkLine, inkArrow } from './ink';
+/** a machined pointer: a straight polished-steel rod with a shadow, ending in a rivet head (art px on the overlay) */
+function pointer(g: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number) {
+  x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+  const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+  for (const [c, o] of [['#0f2238', 1], ['#c4ccd2', 0]] as const) { g.fillStyle = c; for (let i = 0; i <= n; i++) g.fillRect(Math.round(x0 + ((x1 - x0) * i) / n) + o, Math.round(y0 + ((y1 - y0) * i) / n) + o, 1, 1); }
+  g.fillStyle = '#0f2238'; g.fillRect(x1 - 1, y1 - 1, 4, 4); g.fillStyle = '#e8edf0'; g.fillRect(x1 - 2, y1 - 2, 4, 4); g.fillStyle = '#8a96a2'; g.fillRect(x1, y1, 2, 2);
+  g.fillStyle = '#0f2238'; g.fillRect(x0 - 1, y0 - 1, 3, 3); g.fillStyle = '#c4ccd2'; g.fillRect(x0 - 1, y0 - 1, 2, 2);
+}
 import { el } from '../kit';
 import { gbuf } from '../../gfx/gbuf';
 import { sfx } from '../../audio/audio';
@@ -267,7 +273,7 @@ export class BuildMenu {
   /** callouts sit in the corners of the stage; leader lines run from each to the part of the machine it is about */
   private drawCallouts() {
     const st = this.detStage, cv = this.ink; if (!st || !cv || !st.live || !cv.isConnected) return;
-    const pos: Record<string, string> = { in: 'left:0;top:34px', fp: 'left:0;bottom:4px', out: 'right:0;top:34px', pw: 'right:0;bottom:4px' };
+    const pos: Record<string, string> = { in: 'left:0;top:30px', fp: 'left:0;bottom:6px', out: 'right:0;top:30px', pw: 'right:0;bottom:6px' };
     const box = st.el.getBoundingClientRect();
     const W = Math.round(box.width / 2), H = Math.round(box.height / 2);
     if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
@@ -283,8 +289,7 @@ export class BuildMenu {
       const [px, py] = project(st, p);
       const cb = co.getBoundingClientRect();
       const ax = (co.classList.contains('r') ? cb.left - 4 : cb.right + 4) - box.left, ay = cb.top + cb.height / 2 - box.top;
-      inkLine(g, ax / 2, ay / 2, (px - box.left) / 2, (py - box.top) / 2, k.charCodeAt(0), CHALK);
-      inkArrow(g, ax / 2, ay / 2, (px - box.left) / 2, (py - box.top) / 2, CHALK);
+      pointer(g, ax / 2, ay / 2, (px - box.left) / 2, (py - box.top) / 2);
     }
   }
   private renderFoot() {

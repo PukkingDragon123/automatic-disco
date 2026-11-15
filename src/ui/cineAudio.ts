@@ -1,5 +1,5 @@
 // Cinematic and launch-control sound: a small synth of its own (the game's audio.ts stays untouched), for the
-// heavy machinery of the U.S.P.C. control room and the cutscenes. Klaxons, lever clunks, relay clicks, servo
+// heavy machinery of the UNAA control room and the cutscenes. Klaxons, lever clunks, relay clicks, servo
 // whine, nixie countdown beeps, rocket ignition, retro-thrusters, radio squelch and static, Geiger clicks, a
 // heartbeat, a low dread drone and orchestral-ish stings. Everything is synthesised; nothing is loaded.
 import { settings, onSettings } from '../settings';
@@ -59,7 +59,7 @@ export function csfx(name: CineSfx, v = 1, k = 1) {
   if ((last[name] ?? -1) > t - 0.03) return;
   last[name] = t;
   switch (name) {
-    case 'klaxon': { // a two-tone 1950s alert horn, a little sour
+    case 'klaxon': { // a two-tone old-school alert horn, a little sour
       for (let i = 0; i < 2; i++) {
         const t0 = t + i * 0.42;
         osc('sawtooth', 440 * k, t0, 0.36, 0.09 * v, 0.02, 470 * k, 0.25);

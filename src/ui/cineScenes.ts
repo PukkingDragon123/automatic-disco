@@ -1,10 +1,10 @@
 // The scientists' cutscenes, scripted against the Cinema (game/cinema.ts) and staged by the Story (game/story.ts):
-//   opening  the U.S.P.C. recovery team's lander comes down near the impact site; the crew search with a Geiger
+//   opening  the UNAA recovery team's lander comes down near the impact site; the crew search with a Geiger
 //            counter and the radio ("Unit Seven, do you copy?") and find the smoking crater
-//   contact  they find the head awake; Calder kneels and talks to it; the others fly home, he stays
-//   camp     the golem shows Calder a new part of its body ("You built yourself an arm!")
-//   beast    night at the camp: something in the dark; Calder runs for the golem and does not make it
-//   final    dawn: his last journal entry, and Station Four on the radio
+//   contact  they find the head awake; Tupaq kneels and talks to it; the others fly home, he stays
+//   camp     the golem shows Tupaq a new part of its body ("You built yourself an arm!")
+//   beast    night at the camp: something in the dark; Tupaq runs for the golem and does not make it
+//   final    dawn: his last journal entry, and the Meridian on the radio
 import * as THREE from 'three';
 import type { Cinema } from '../game/cinema';
 import type { Story } from '../game/story';
@@ -91,8 +91,8 @@ export async function opening(c: Cinema, S: Story) {
   });
   c.ui.fade(1, 0);
   await c.wait(0.4);
-  await c.card('RECOVERY TEAM', 'STATION FOUR · 3 HOURS AFTER IMPACT', 'U.S. PLANETARY CORPS', 3.4, 'CLASSIFIED');
-  // ---- 1. Recovery One comes down out of a pale sky
+  await c.card('LANDING TEAM', 'MERIDIAN · 3 HOURS AFTER IMPACT', 'UNAA COLONISATION RESEARCH', 3.4, 'CLASSIFIED');
+  // ---- 1. Lander One comes down out of a pale sky
   let alt = 42;
   const engine = c.loop('engine', 0.8), wind = c.loop('drone', 0.35);
   const descent = c.task((_, t) => {
@@ -105,13 +105,13 @@ export async function opening(c: Cinema, S: Story) {
   c.cam.track(() => ({ look: L.root.position.clone().setY(L.root.position.y + 2.2) }), 4);
   c.fade(0, 2.2);
   c.stamp('IMPACT ZONE · 06:12 LOCAL');
-  c.say('Station Four, this is Recovery One. Beginning descent over the impact zone.', { who: 'Lt. Hollis', style: 'radio', pitch: 0.85 });
+  c.say('the Meridian, this is Lander One. Beginning descent over the impact zone.', { who: 'Sgt. Kristiansen', style: 'radio', pitch: 0.85 });
   await c.tween(8.5, (u) => { alt = 42 * Math.pow(1 - u, 2.2); }, 'linear');
   descent(); L.root.position.y = groundL; L.setFlame(0, 0);
   engine.stop(1.2);
   c.sfx('thud', 1, 0.7); c.sfx('steam'); c.cam.shake(0.18, 0.5);
   dustRing(S, Lp, 2.2, 14); dustRing(S, Lp, 3.4, 12);
-  c.say('Touchdown. Recovery One is on the ground.', { who: 'Lt. Hollis', style: 'radio', pitch: 0.85 });
+  c.say('Touchdown. Lander One is on the ground.', { who: 'Sgt. Kristiansen', style: 'radio', pitch: 0.85 });
   await c.wait(2.4);
   // ---- 2. the hatch drops; the team steps out
   c.cam.track(null); c.cam.handheld = 0.02;
@@ -128,7 +128,7 @@ export async function opening(c: Cinema, S: Story) {
   stepOut(brandt, -1.4); brandt.hold(geiger()); brandt.action = 'scanner';
   await c.wait(0.9);
   stepOut(hollis, 1.5); hollis.hold(handset());
-  await c.say('Smell that? Ozone. Something came down hot around here.', { who: 'Dr. Calder', style: 'film', onShow: () => cal.talk(3, 'think') });
+  await c.say('Smell that? Ozone. Something came down hot around here.', { who: 'Tupaq', style: 'film', onShow: () => cal.talk(3, 'think') });
   // ---- 3. the search: Geiger clicks climbing, the radio calling into nothing
   let geigerT = 0;
   c.task((dt) => { const d = Math.hypot(brandt.x - G.x, brandt.z - G.z); geigerT -= dt; if (geigerT <= 0) { c.sfx('geiger', 0.7); geigerT = Math.max(0.03, Math.min(0.6, d * 0.03)) * (0.5 + Math.random()); } return false; });
@@ -137,18 +137,18 @@ export async function opening(c: Cinema, S: Story) {
   c.cam.cut(spot(S, mid, pL, -6, dL, 1, 1.4), up(Lp.clone().lerp(G, 0.2), 1.3), 36);
   c.cam.handheld = 0.06;
   c.cam.track(() => ({ look: up(new V3((cal.x + brandt.x) / 2, cal.y, (cal.z + brandt.z) / 2), 1.2), pos: spot(S, new V3(brandt.x, 0, brandt.z), pL, -4.6, dL, 2.2, 1.5) }), 1.6);
-  await c.say('Counter\'s climbing. Forty... sixty... it\'s off the dial.', { who: 'Dr. Brandt', style: 'film', pitch: 1.35, onShow: () => brandt.talk(3) });
+  await c.say('Counter\'s climbing. Forty... sixty... it\'s off the dial.', { who: 'Dr. Baptiste', style: 'film', pitch: 1.35, onShow: () => brandt.talk(3) });
   hollis.gesture('talk', { dur: 3 });
-  await c.say('Unit Seven, this is U.S.P.C. Recovery. Do you copy? Over.', { who: 'Lt. Hollis', style: 'radio', pitch: 0.85, onShow: () => hollis.talk(3) });
+  await c.say('Unit Seven, this is UNAA Recovery. Do you copy? Over.', { who: 'Sgt. Kristiansen', style: 'radio', pitch: 0.85, onShow: () => hollis.talk(3) });
   c.sfx('static', 0.8, 2.2);
   await c.wait(1.6);
-  await c.say('...Nothing, Doc. Not a peep.', { who: 'Lt. Hollis', style: 'film', pitch: 0.85, onShow: () => hollis.talk(2, 'sad') });
-  // ---- 4. Calder sees the scorch line
+  await c.say('...Nothing, Doc. Not a peep.', { who: 'Sgt. Kristiansen', style: 'film', pitch: 0.85, onShow: () => hollis.talk(2, 'sad') });
+  // ---- 4. Tupaq sees the scorch line
   c.cam.track(null); c.cam.handheld = 0.03;
   cal.walkTo(cal.x, cal.z); cal.arrive(); cal.faceNow(G.x, G.z);
   c.cam.cut(spot(S, new V3(cal.x, 0, cal.z), dL, -2.6, pL, 1.8, 1.55), headOf(cal), 30);
   cal.gesture('point', { at: H });
-  await c.say('There. The scorch line. It came in shallow and dug itself a grave.', { who: 'Dr. Calder', style: 'film', onShow: () => cal.talk(3.5, 'surprised') });
+  await c.say('There. The scorch line. It came in shallow and dug itself a grave.', { who: 'Tupaq', style: 'film', onShow: () => cal.talk(3.5, 'surprised') });
   // ---- 5. the crater: smoke, a dark lens, a heartbeat
   for (const [a, k] of [[cal, 0], [brandt, -1.6], [hollis, 1.7]] as [Actor, number][]) { const p = rim(k); a.walkTo(p.x, p.z, 1.0); }
   c.cam.cut(spot(S, G, pL, 3.6, dL, -1.2, 0.55), H, 34);
@@ -193,11 +193,11 @@ export async function contact(c: Cinema, S: Story) {
   c.fade(0, 1.4); c.sfx('hum', 0.7); c.sfx('static', 0.5, 1.5);
   c.stamp('UNIT 07 · OPTICAL · REBOOT', true);
   c.cam.move({ look: up(rim(-1.6), 1.75), fov: 40, dur: 3.2, ease: 'inOut' });
-  await c.say('Counter\'s pinned. Doc, don\'t get any closer.', { who: 'Dr. Brandt', style: 'film', pitch: 1.35, onShow: () => brandt.talk(3, 'surprised') });
+  await c.say('Counter\'s pinned. Doc, don\'t get any closer.', { who: 'Dr. Baptiste', style: 'film', pitch: 1.35, onShow: () => brandt.talk(3, 'surprised') });
   c.cam.move({ look: up(rim(0), 1.65), fov: 30, dur: 1.6 });
   await c.wait(1.2);
   c.ui.root.classList.remove('pov'); c.ui.stampOff();
-  // ---- 2. Calder climbs down into the crater and kneels in front of it
+  // ---- 2. Tupaq climbs down into the crater and kneels in front of it
   c.cam.cut(spot(S, G, pL, 7, dL, 1.4, 2.1), up(G.clone().lerp(rim(0), 0.5), 0.8), 34); c.cam.handheld = 0.03;
   cal.walkTo(kneel.x, kneel.z, 0.9);
   c.cam.track(() => ({ look: up(new V3(cal.x, cal.y, cal.z), 1.1) }), 3);
@@ -209,8 +209,8 @@ export async function contact(c: Cinema, S: Story) {
   // ---- 3. over the golem's shoulder
   const ots = spot(S, G, dL, -2.0, pL, 0.9, 1.55);
   c.cam.cut(ots, headOf(cal), 30); c.cam.handheld = 0.015;
-  await c.say('Easy... easy now. It\'s all right.', { who: 'Dr. Calder', style: 'film', onShow: () => cal.talk(2.5, 'smile') });
-  await c.say('Unit Seven? Can you hear me?', { who: 'Dr. Calder', style: 'film', onShow: () => cal.talk(2, 'think') });
+  await c.say('Easy... easy now. It\'s all right.', { who: 'Tupaq', style: 'film', onShow: () => cal.talk(2.5, 'smile') });
+  await c.say('Unit Seven? Can you hear me?', { who: 'Tupaq', style: 'film', onShow: () => cal.talk(2, 'think') });
   // ---- 4. the lens wakes
   c.cam.cut(spot(S, G, dL, 1.3, pL, -0.3, 1.25), H, 24);
   c.cam.move({ pos: spot(S, G, dL, 0.9, pL, -0.2, 1.3), fov: 20, dur: 3 });
@@ -218,37 +218,37 @@ export async function contact(c: Cinema, S: Story) {
   lensFlicker(S, H, 1); c.sfx('relay'); await c.wait(0.5);
   lensFlicker(S, H, 1.4); c.sfx('chime', 0.6, 0.7); S.golemWave();
   await c.wait(1.6);
-  // ---- 5. Calder's face
+  // ---- 5. Tupaq's face
   c.cam.cut(spot(S, kneel, dL, 1.6, pL, 0.7, 1.15), headOf(cal), 26);
   cal.expr('surprised', 4);
-  await c.say('It\'s looking at me. Hollis... it\'s looking at me!', { who: 'Dr. Calder', style: 'film', onShow: () => cal.talk(3, 'surprised') });
-  // ---- 6. the rim: Hollis on the radio
+  await c.say('It\'s looking at me. Kristiansen... it\'s looking at me!', { who: 'Tupaq', style: 'film', onShow: () => cal.talk(3, 'surprised') });
+  // ---- 6. the rim: Kristiansen on the radio
   const hp = new V3(hollis.x, hollis.y, hollis.z);
   c.cam.cut(spot(S, hp, dL, 1.6, pL, -1.6, 1.5), headOf(hollis), 30); c.cam.handheld = 0.03;
   hollis.gesture('talk', { dur: 4 });
-  await c.say('Station Four, Recovery. We have Unit Seven. ...What\'s left of it.', { who: 'Lt. Hollis', style: 'radio', pitch: 0.85, onShow: () => hollis.talk(3) });
-  // ---- 7. Calder talks to it
+  await c.say('the Meridian, Recovery. We have Unit Seven. ...What\'s left of it.', { who: 'Sgt. Kristiansen', style: 'radio', pitch: 0.85, onShow: () => hollis.talk(3) });
+  // ---- 7. Tupaq talks to it
   c.cam.cut(spot(S, kneel, pL, 2.4, dL, -0.6, 1.0), up(G.clone().lerp(kneel, 0.5), 0.95), 32); c.cam.handheld = 0.015;
   c.cam.move({ pos: spot(S, kneel, pL, 1.8, dL, -0.4, 1.05), dur: 9, ease: 'linear' });
-  await c.say('The impact took everything but your head, didn\'t it? Your body\'s out there in pieces.', { who: 'Dr. Calder', style: 'film', onShow: () => cal.talk(4, 'sad') });
+  await c.say('The impact took everything but your head, didn\'t it? Your body\'s out there in pieces.', { who: 'Tupaq', style: 'film', onShow: () => cal.talk(4, 'sad') });
   cal.gesture('present', { dur: 3 });
-  await c.say('Then we build you a new one. Ore, carbon, water, soil: this ground has all of it. Pull it in. Grow.', { who: 'Dr. Calder', style: 'film', onShow: () => cal.talk(4.5, 'smile') });
+  await c.say('Then we build you a new one. Ore, carbon, water, soil: this ground has all of it. Pull it in. Grow.', { who: 'Tupaq', style: 'film', onShow: () => cal.talk(4.5, 'smile') });
   // ---- 8. orders from orbit
   c.sfx('static', 0.7, 1.2);
-  await c.say('Recovery One, Station Four. Crate the unit and return to orbit. Over.', { who: 'Station Four', style: 'radio', pitch: 0.7 });
+  await c.say('Lander One, the Meridian. Crate the unit and return to orbit. Over.', { who: 'the Meridian', style: 'radio', pitch: 0.7 });
   cal.full = ''; await c.wait(0.6);
   cal.faceNow(hollis.x, hollis.z); cal.look = headOf(hollis);
   c.cam.cut(spot(S, kneel, dL, -1.4, pL, -1.2, 1.6), headOf(cal), 30);
-  await c.say('No. It\'s awake. Tell them it\'s awake.', { who: 'Dr. Calder', style: 'film', onShow: () => cal.talk(2.5, 'angry') });
+  await c.say('No. It\'s awake. Tell them it\'s awake.', { who: 'Tupaq', style: 'film', onShow: () => cal.talk(2.5, 'angry') });
   c.cam.cut(spot(S, hp, dL, 2.0, pL, 1.0, 1.55), headOf(hollis), 32);
-  await c.say('Lander\'s got fuel for one hop, Doc. We go now, or we don\'t go.', { who: 'Lt. Hollis', style: 'film', pitch: 0.85, onShow: () => hollis.talk(3) });
+  await c.say('Lander\'s got fuel for one hop, Doc. We go now, or we don\'t go.', { who: 'Sgt. Kristiansen', style: 'film', pitch: 0.85, onShow: () => hollis.talk(3) });
   c.cam.cut(spot(S, kneel, dL, -1.4, pL, -1.2, 1.6), headOf(cal), 28);
-  await c.say('Then go. I\'m staying with Seven.', { who: 'Dr. Calder', style: 'film', onShow: () => cal.talk(2.5, 'smile') });
+  await c.say('Then go. I\'m staying with Seven.', { who: 'Tupaq', style: 'film', onShow: () => cal.talk(2.5, 'smile') });
   const bp = new V3(brandt.x, brandt.y, brandt.z);
   c.cam.cut(spot(S, bp, dL, 2.0, pL, -1.0, 1.5), headOf(brandt), 32);
   brandt.action = '';
-  await c.say('Thirty days. We\'ll come back for you both.', { who: 'Dr. Brandt', style: 'film', pitch: 1.35, onShow: () => brandt.talk(2.5, 'sad') });
-  // ---- 9. Recovery One leaves
+  await c.say('Thirty days. We\'ll come back for you both.', { who: 'Dr. Baptiste', style: 'film', pitch: 1.35, onShow: () => brandt.talk(2.5, 'sad') });
+  // ---- 9. Lander One leaves
   const hatchAt = Lp.clone().addScaledVector(dL.clone().negate(), 2.0);
   hollis.walkTo(hatchAt.x + pL.x * 0.4, hatchAt.z + pL.z * 0.4, 1.5); brandt.walkTo(hatchAt.x - pL.x * 0.4, hatchAt.z - pL.z * 0.4, 1.5);
   cal.look = up(Lp, 3);
@@ -272,13 +272,13 @@ export async function contact(c: Cinema, S: Story) {
   cal.faceNow(G.x, G.z); cal.look = H.clone();
   c.cam.cut(spot(S, G, pL, 3.2, dL, 0.6, 1.3), up(G.clone().lerp(new V3(cal.x, cal.y, cal.z), 0.5), 1.15), 34);
   c.cam.move({ pos: spot(S, G, pL, 4.6, dL, 0.9, 1.8), dur: 6, ease: 'inOut' });
-  await c.say('Well. Just you and me, big fella. Let\'s get you a body.', { who: 'Dr. Calder', style: 'film', onShow: () => { cal.talk(3, 'smile'); cal.gesture('nod'); } });
+  await c.say('Well. Just you and me, big fella. Let\'s get you a body.', { who: 'Tupaq', style: 'film', onShow: () => { cal.talk(3, 'smile'); cal.gesture('nod'); } });
   await c.fade(1, 1.2);
-  await c.card('ODDWORLD', 'TAKE THIS WORLD FOR HUMANITY', 'U.S.P.C. · UNIT 07', 3.2, 'UNIT 07');
+  await c.card('ODDWORLD', 'TAKE THIS WORLD FOR HUMANITY', 'UNAA · UNIT 07', 3.2, 'UNIT 07');
   c.fade(0, 1.0);
 }
 
-// ================================================================== CAMP: the golem shows Calder a new part
+// ================================================================== CAMP: the golem shows Tupaq a new part
 const PART_LINES: Record<string, [string, string, string]> = {
   torso: ['CORE HOUSING', 'Look at you. A chest! With a porthole, and the reactor glowing in there like a furnace.', 'Now you\'ve got somewhere to keep what you gather. Arms next, I\'d think.'],
   armR: ['RIGHT ARM', 'You built yourself an arm! Stones and pistons, and you put it together yourself.', 'Go on, make a fist. ...Ha! Remind me never to shake hands with you.'],
@@ -304,17 +304,17 @@ export async function camp(c: Cinema, S: Story, part = 'armR') {
   c.sfx('servo', 0.9); c.sfx('clamp', 0.8);
   c.task((_, t) => { if (t < 2.2 && Math.random() < 0.3) sparks(S, new V3(G.x + (Math.random() - 0.5) * 0.9, H.y - 0.5 - Math.random() * 0.6, G.z + (Math.random() - 0.5) * 0.9), 3); return t > 2.4; });
   await c.wait(1.2); c.sfx('relay'); await c.wait(1.0); c.sfx('clamp', 0.6, 1.2); c.sfx('chime', 0.5);
-  // Calder has come over to look
+  // Tupaq has come over to look
   cal.visible = true; cal.place(P.x, P.z); cal.faceNow(G.x, G.z); cal.look = H.clone(); cal.full = '';
   await c.wait(1.8);
   // ---- 2. his reaction, over the golem's shoulder
   c.cam.cut(spot(S, G, toCamp, -1.6, side, 1.0, 1.6), headOf(cal), 30);
   c.cam.move({ pos: spot(S, G, toCamp, -1.2, side, 0.8, 1.55), dur: 8, ease: 'linear' });
   cal.gesture(part === 'colossus' ? 'shrug' : 'present', { dur: 3 });
-  await c.say(L[1], { who: 'Dr. Calder', style: 'film', onShow: () => cal.talk(4, 'surprised') });
+  await c.say(L[1], { who: 'Tupaq', style: 'film', onShow: () => cal.talk(4, 'surprised') });
   c.cam.cut(spot(S, P, toCamp, 1.9, side, -0.8, 1.45), up(G.clone().lerp(P, 0.45), 1.25), 32);
   cal.gesture(part === 'armR' ? 'point' : 'nod', { at: H, dur: 2.5 });
-  await c.say(L[2], { who: 'Dr. Calder', style: 'film', onShow: () => cal.talk(4, 'smile') });
+  await c.say(L[2], { who: 'Tupaq', style: 'film', onShow: () => cal.talk(4, 'smile') });
   await c.wait(0.4);
 }
 
@@ -349,14 +349,14 @@ export async function beast(c: Cinema, S: Story) {
   });
   c.ui.fade(1, 0);
   const night = c.loop('night', 0.8), fire = c.loop('fire', 0.6);
-  // ---- 1. the camp at night: Calder by the fire with his journal
+  // ---- 1. the camp at night: Tupaq by the fire with his journal
   cal.visible = true; cal.place(seat.x, seat.z); cal.faceNow(Cp.x, Cp.z); cal.full = 'sit'; cal.action = 'read'; cal.look = null;
   cal.hold(fl.g, 'R', 'along'); // in his hand, off (a light added mid-scene would stall every shader)
   c.cam.cut(spot(S, Cp, toG, -7.5, side, 3.5, 1.4), up(Cp, 0.8), 34);
   c.cam.handheld = 0.01;
   c.cam.move({ pos: spot(S, Cp, toG, -4.6, side, 2.2, 1.25), look: up(new V3(seat.x, 0, seat.z).setY(Cp.y), 0.9), dur: 11, ease: 'inOut' });
   c.fade(0, 2);
-  c.stamp('CALDER\'S CAMP · NIGHT 14');
+  c.stamp('TUPAQ\'S CAMP · NIGHT 14');
   await c.wait(1.6);
   await c.say('Day fourteen. Seven learns faster than I can write it down. Tonight it watched the stars with me.', { who: 'Field journal', style: 'journal', voice: false, hold: 0.6 });
   await c.say('I think it knows which one is home.', { who: 'Field journal', style: 'journal', voice: false, hold: 0.4 });
@@ -365,7 +365,7 @@ export async function beast(c: Cinema, S: Story) {
   await c.wait(0.8);
   cal.action = ''; cal.look = up(lair, 1); cal.expr('surprised', 5);
   c.cam.cut(spot(S, new V3(seat.x, 0, seat.z), toG, 1.2, side, -0.9, 1.05), up(new V3(seat.x, Cp.y, seat.z), 1.0), 28);
-  await c.say('...Seven? Is that you?', { who: 'Dr. Calder', style: 'film', onShow: () => cal.talk(1.5, 'surprised') });
+  await c.say('...Seven? Is that you?', { who: 'Tupaq', style: 'film', onShow: () => cal.talk(1.5, 'surprised') });
   // ---- 3. the flashlight
   cal.full = ''; await c.wait(0.7);
   cal.light = true; fl.light.intensity = 16; c.sfx('switch', 0.8);
@@ -383,12 +383,12 @@ export async function beast(c: Cinema, S: Story) {
   sw(); cal.yaw = Math.atan2(B.x - cal.x, B.z - cal.z);
   c.cam.move({ look: up(new V3(B.x, Cp.y, B.z), B.hgt * 0.7), fov: 26, dur: 1.4 });
   c.sfx('roar', 0.35, 1.4); c.sfx('stingDark', 0.8);
-  await c.say('Easy... easy...', { who: 'Dr. Calder', style: 'film', onShow: () => cal.talk(1.5, 'fear') });
+  await c.say('Easy... easy...', { who: 'Tupaq', style: 'film', onShow: () => cal.talk(1.5, 'fear') });
   // ---- 4. he runs for the golem; it comes out of the dark
   c.cam.track(null);
   const run = Cp.clone().addScaledVector(toG, 9);
   cal.panic = 1; cal.walkTo(run.x, run.z, 3.8);
-  c.say('SEVEN!', { who: 'Dr. Calder', style: 'film', pitch: 1.2, onShow: () => cal.talk(1, 'fear') });
+  c.say('SEVEN!', { who: 'Tupaq', style: 'film', pitch: 1.2, onShow: () => cal.talk(1, 'fear') });
   c.sfx('roar', 1, 0.9);
   B.state = 'move';
   let caught = false;
@@ -439,10 +439,10 @@ export async function beast(c: Cinema, S: Story) {
   c.cam.cut(spot(S, deathAt, toG, -2.4, side, 1.4, 1.0), up(deathAt, 0.3), 32); c.cam.handheld = 0.01;
   c.cam.move({ pos: spot(S, deathAt, toG, -1.6, side, 0.9, 1.9), dur: 9, ease: 'inOut' });
   c.sfx('static', 0.6, 1.6);
-  await c.say('Calder, this is Station Four. Do you copy? ...Calder?', { who: 'Station Four', style: 'radio', pitch: 0.7 });
+  await c.say('Tupaq, this is the Meridian. Do you copy? ...Tupaq?', { who: 'the Meridian', style: 'radio', pitch: 0.7 });
   await c.wait(1.2);
   await c.fade(1, 2);
-  await c.card('DR. EDWIN CALDER', '1911 – 1957', 'U.S. PLANETARY CORPS', 3, 'IN MEMORIAM');
+  await c.card('DR. EDWIN TUPAQ', '1911 – 2071', 'UNAA COLONISATION RESEARCH', 3, 'IN MEMORIAM');
   c.fade(0, 1.2);
 }
 
@@ -462,24 +462,24 @@ export async function final(c: Cinema, S: Story) {
   S.campFire(false);
   c.task(() => { smoke(S, up(Cp, 0.3), 0.35); return false; });
   c.fade(0, 2.4);
-  c.stamp('CALDER\'S CAMP · DAWN');
+  c.stamp('TUPAQ\'S CAMP · DAWN');
   await c.wait(4.5);
   // ---- 2. the journal, open on the field table
   c.cam.cut(up(book, 0.75).addScaledVector(toG, 0.35), book, 34);
   c.cam.move({ pos: up(book, 0.55).addScaledVector(toG, 0.25), dur: 16, ease: 'linear' });
   c.sfx('page', 0.6);
-  await c.say('Final entry. If the Corps finds this: Unit Seven is not just a weapon. It learns. It chose to keep me company.', { who: 'Field journal · E. Calder', style: 'journal', voice: false, hold: 0.8 });
+  await c.say('Final entry. If the Corps finds this: Unit Seven is not just a weapon. It learns. It chose to keep me company.', { who: 'Field journal · E. Tupaq', style: 'journal', voice: false, hold: 0.8 });
   c.sfx('page', 0.5);
-  await c.say('It rebuilt itself out of rock and river mud, piece by piece, and every piece it showed me first, like a child with a drawing.', { who: 'Field journal · E. Calder', style: 'journal', voice: false, hold: 0.8 });
-  await c.say('Don\'t crate it. Don\'t take it apart. Let it finish what we sent it here to do.', { who: 'Field journal · E. Calder', style: 'journal', voice: false, hold: 0.6 });
-  await c.say('Finish the job, Seven. Take this world home for us.', { who: 'Field journal · E. Calder', style: 'journal', voice: false, hold: 1.0 });
+  await c.say('It rebuilt itself out of rock and river mud, piece by piece, and every piece it showed me first, like a child with a drawing.', { who: 'Field journal · E. Tupaq', style: 'journal', voice: false, hold: 0.8 });
+  await c.say('Don\'t crate it. Don\'t take it apart. Let it finish what we sent it here to do.', { who: 'Field journal · E. Tupaq', style: 'journal', voice: false, hold: 0.6 });
+  await c.say('Finish the job, Seven. Take this world home for us.', { who: 'Field journal · E. Tupaq', style: 'journal', voice: false, hold: 1.0 });
   // ---- 3. the radio crackles
   c.cam.cut(up(radio, 0.5).addScaledVector(side, 0.6).addScaledVector(toG, 0.4), radio, 30);
   c.sfx('static', 0.9, 2.2); await c.wait(1.2);
   const radioLoop = c.loop('radio', 0.5);
-  await c.say('Station Four to Recovery camp. Doc, do you copy? We are inbound in nine days. ...Doc?', { who: 'Lt. Hollis · Station Four', style: 'radio', pitch: 0.85 });
+  await c.say('the Meridian to Recovery camp. Doc, do you copy? We are inbound in nine days. ...Doc?', { who: 'Sgt. Kristiansen · the Meridian', style: 'radio', pitch: 0.85 });
   await c.wait(0.8);
-  await c.say('Seven... if that\'s you on this channel. We\'re coming back. Hold the ground for us.', { who: 'Lt. Hollis · Station Four', style: 'radio', pitch: 0.85 });
+  await c.say('Seven... if that\'s you on this channel. We\'re coming back. Hold the ground for us.', { who: 'Sgt. Kristiansen · the Meridian', style: 'radio', pitch: 0.85 });
   radioLoop.stop(1);
   // ---- 4. crane up over the valley at dawn
   c.cam.cut(spot(S, Cp, toG, -2.0, side, 3.0, 2.0), up(Cp.clone().lerp(G, 0.5), 0.6), 40);
@@ -487,7 +487,7 @@ export async function final(c: Cinema, S: Story) {
   wind.set(0.8); csfx('swell', 0.6);
   await c.wait(6.5);
   await c.fade(1, 1.8);
-  await c.card('FOR CALDER', 'HOLD THE GROUND', 'U.S.P.C. · UNIT 07', 3.2, 'RECEIVED');
+  await c.card('FOR TUPAQ', 'HOLD THE GROUND', 'UNAA · UNIT 07', 3.2, 'RECEIVED');
   c.fade(0, 1.4);
 }
 

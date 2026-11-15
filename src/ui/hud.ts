@@ -27,7 +27,8 @@ import { ITEMS } from '../factory/items';
 import { installHudStyle } from './desk/hudStyle';
 import { iconImg } from './desk/hudArt';
 import { skin, fontText, platePix, rivet, Pix, R } from './desk/pxPanel';
-import { paperCard, stroke, scribble, letter, doodle, tape, INK, textWidth } from './desk/ink';
+import { textWidth } from './desk/ink';
+import { gaugeFace } from './desk/paint';
 import * as THREE from 'three';
 import './desk/toolIcons';
 import type { VitalId } from '../colony/vitals';
@@ -148,85 +149,61 @@ export class Hud {
     }
   }
   private vitBase = new Map<string, Pix>();
-  /** a vital as a little living doodle (art 52 x 48, shown 2x): a taped paper card, the thing itself drawn in ink and
-   *  colour and animated (the oxygen tank's level and bubbles, the turbine turning with the power balance, the crop
-   *  growing with the food, the hull plate cracking, a heart beating, a face), its reading lettered underneath */
+  /** a vital as a real instrument (art 52 x 48, shown 2x) on a riveted steel plate: the POWER turbine spinning with the
+   *  balance beside its battery lamps, the OXYGEN tank with a sight glass, enamel dials with needles for food, hull,
+   *  health and morale; the reading on a stamped bone plate underneath, red when it fails */
   private drawVital(e: { id: VitalId; el: HTMLDivElement; cv: HTMLCanvasElement; icon: HTMLCanvasElement | null }, c: Colony) {
     const W = 52, H = 48, cv = e.cv;
     if (cv.width !== W) { cv.width = W; cv.height = H; }
     let base = this.vitBase.get(e.id);
-    if (!base) { base = platePix(W, H, { mat: 'enamel', seed: 90 + e.id.length * 7, screws: false, wear: 0.8 }); rivet(base, 3, 3, R.bone); rivet(base, W - 6, 3, R.bone); this.vitBase.set(e.id, base); }
-    const p = new Pix(W, H); p.d.set(base.d);
-    const v = c.vitals, lvl = v.levels[e.id], val = Math.max(0, Math.min(1, v.value(e.id))), t = this.t, seed = e.id.length * 11;
-    const warnC = lvl === 'crit' ? R.stampRed[3] : lvl === 'warn' ? R.ochre[3] : INK;
-    const cx = 26, top = 6, bot = 32;
-    switch (e.id) {
-      case 'oxygen': { // a tank: glass, a blue fill at its level, bubbles rising
-        const x0 = 18, x1 = 34, lvlY = Math.round(bot - (bot - top - 4) * val);
-        for (let y = lvlY; y < bot; y++) for (let x = x0 + 1; x < x1; x++) p.set(x, y, y === lvlY ? R.sky[5] : x < x0 + 4 ? R.sky[4] : R.sky[3]);
-        for (let i = 0; i < 4; i++) { const by = bot - 2 - ((t * 9 + i * 7) % Math.max(2, bot - lvlY - 2)), bx = x0 + 3 + ((i * 5 + Math.floor(t * 3)) % 10); if (by > lvlY + 1) p.set(bx, Math.round(by), R.sky[5]); }
-        stroke(p, x0, top + 3, x0, bot, seed, { w: 2, over: 0 }); stroke(p, x1, top + 3, x1, bot, seed + 1, { w: 2, over: 0 }); stroke(p, x0, bot, x1, bot, seed + 2, { w: 2, over: 1 });
-        stroke(p, x0, top + 3, x0 + 4, top, seed + 3, { w: 1, over: 0 }); stroke(p, x1, top + 3, x1 - 4, top, seed + 4, { w: 1, over: 0 }); stroke(p, x0 + 4, top, x1 - 4, top, seed + 5, { w: 1, over: 0 });
-        p.rect(cx - 2, top - 3, 5, 3, R.steel[3]); stroke(p, cx + 3, top - 2, cx + 8, top - 2, seed + 6, { w: 1, over: 0 });
-        letter(p, 'O2', x0 + 3, top + 5, R.ink[2]);
-        break;
-      }
-      case 'power': { // a turbine on a mast: the blades turn with the surplus, stall when the battery is flat
-        const sp = (v.gen - v.draw) / 10 + (v.battery > 1 ? 0.6 : 0), ang = t * 3 * Math.max(0, sp);
-        stroke(p, cx, 19, cx - 2, bot, seed, { w: 2, over: 0 }); stroke(p, cx, 19, cx + 3, bot, seed + 1, { w: 1, over: 0 });
-        for (let k = 0; k < 3; k++) { const a = ang + (k * Math.PI * 2) / 3; stroke(p, cx, 18, Math.round(cx + Math.cos(a) * 12), Math.round(18 + Math.sin(a) * 12), seed + 4 + k, { w: 2, over: 0, col: k === 0 ? R.rust[4] : INK }); }
-        p.rect(cx - 1, 17, 3, 3, R.steel[4]); p.set(cx - 1, 17, R.steel[6]);
-        // the battery bar beside it
-        for (let i = 0; i < 5; i++) { const on = val * 5 > i + 0.3; p.rect(41, 29 - i * 4, 5, 3, on ? (lvl === 'ok' ? R.moss[4] : warnC) : R.paper[3]); }
-        stroke(p, 40, 9, 40, 32, seed + 9, { w: 1, over: 0 }); stroke(p, 46, 9, 46, 32, seed + 10, { w: 1, over: 0 });
-        break;
-      }
-      case 'food': { // a crop: a stalk and leaves as tall as the stores are full, an ear of grain when it is high
-        const hgt = Math.round(4 + val * 22);
-        for (let x = 10; x < 42; x++) p.set(x, bot, R.soil[3]); for (let x = 12; x < 40; x += 3) p.set(x, bot - 1, R.soil[4]);
-        for (const [dx, k] of [[-8, 0.7], [0, 1], [8, 0.8]] as [number, number][]) {
-          const h2 = Math.round(hgt * k), sway = Math.round(Math.sin(t * 1.5 + dx) * 1);
-          stroke(p, cx + dx, bot - 1, cx + dx + sway, bot - h2, seed + dx, { w: 1, over: 0, col: R.moss[2] });
-          for (let j = 4; j < h2; j += 6) { stroke(p, cx + dx + sway, bot - j, cx + dx + sway + (j % 12 ? 4 : -4), bot - j - 3, seed + j, { w: 1, over: 0, col: R.moss[4] }); }
-          if (val > 0.5) p.rect(cx + dx + sway - 1, bot - h2 - 3, 3, 4, R.ochre[4]);
-        }
-        break;
-      }
-      case 'integrity': { // a hull plate with rivets; cracks open as it fails
-        for (let y = top + 2; y < bot; y++) for (let x = 14; x < 38; x++) p.set(x, y, y < top + 4 ? R.paper[5] : R.steel[5]);
-        inkRectSafe(p, 14, top + 2, 24, bot - top - 2, seed);
-        for (const [x, y] of [[17, top + 5], [34, top + 5], [17, bot - 4], [34, bot - 4]]) { p.set(x, y, R.steel[3]); p.set(x + 1, y + 1, R.steel[1]); }
-        const cracks = Math.round((1 - val) * 4);
-        for (let k = 0; k < cracks; k++) { let x = 20 + k * 4, y = top + 6; for (let s2 = 0; s2 < 8; s2++) { const nx = x + (((s2 + k) % 3) - 1), ny = y + 2; stroke(p, x, y, nx, ny, seed + k * 9 + s2, { w: 1, over: 0, col: R.stampRed[2] }); x = nx; y = ny; } }
-        if (c.pod.braced) letter(p, 'BR', 20, top + 10, R.ink[2]);
-        break;
-      }
-      case 'health': { // a heart that beats (faster when the crew suffer)
-        const beat = 1 + Math.max(0, Math.sin(t * (lvl === 'ok' ? 5 : 9))) * 0.18, sz = 9 * beat;
-        for (let y = -10; y <= 10; y++) for (let x = -12; x <= 12; x++) {
-          const X = x / sz, Y = -y / sz + 0.25, f = (X * X + Y * Y - 1) ** 3 - X * X * Y * Y * Y;
-          if (f <= 0) p.set(cx + x, 19 + y, x < -3 && y < -2 ? R.coral[5] : R.stampRed[3]);
-        }
-        stroke(p, cx - 11, 17, cx - 6, 10, seed, { w: 1, over: 0 }); stroke(p, cx + 11, 17, cx + 6, 10, seed + 1, { w: 1, over: 0 });
-        break;
-      }
-      case 'morale': { // a helmeted face: a smile that turns with morale
-        scribble(p, cx, 19, 11, 11, seed, INK);
-        for (let y = 13; y < 23; y++) for (let x = cx - 7; x <= cx + 7; x++) p.set(x, y, y < 16 ? R.ochre[5] : R.ochre[4]);
-        p.rect(cx - 4, 17, 2, 2, INK); p.rect(cx + 3, 17, 2, 2, INK);
-        const m = (val - 0.5) * 4; for (let x = -4; x <= 4; x++) p.set(cx + x, Math.round(22 - m * (1 - (x / 4) ** 2)), INK);
-        break;
-      }
+    if (!base) {
+      base = platePix(W, H, { mat: 'steel', seed: 90 + e.id.length * 7, screws: false, wear: 0.5 });
+      rivet(base, 3, 3, R.steel); rivet(base, W - 6, 3, R.steel);
+      // the reading's stamped plate
+      base.rect(8, 36, 36, 10, R.steel[0]); base.rect(9, 37, 34, 8, R.bone[4]); base.hl(9, 42, 37, R.bone[5]); base.hl(9, 42, 44, R.bone[2]);
+      if (e.id !== 'power' && e.id !== 'oxygen') { const face = gaugeFace(30, { a0: -2.2, a1: 2.2, ticks: 8, red: [0, 0.25] }); dialBezel(base, 11, 3, 30); base.blit(face, 11, 3); }
+      this.vitBase.set(e.id, base);
     }
-    // the reading, lettered underneath (and the countdown, in red, when one runs)
+    const p = new Pix(W, H); p.d.set(base.d);
+    const v = c.vitals, lvl = v.levels[e.id], val = Math.max(0, Math.min(1, v.value(e.id))), t = this.t;
+    if (e.id === 'power') {
+      // the turbine: a steel shroud, four blades turning with the surplus (stalled when flat), a brass hub
+      const cx = 22, cy = 18, sp = (v.gen - v.draw) / 8 + (v.battery > 1 ? 0.5 : 0), ang = t * 4 * Math.max(0, sp);
+      for (let y = -15; y <= 15; y++) for (let x = -15; x <= 15; x++) { const d = Math.hypot(x + 0.5, y + 0.5); if (d > 15) continue; const l = -((x + 0.5) * 0.6 + (y + 0.5) * 0.8) / (d || 1); p.set(cx + x, cy + y, d > 14 ? R.steel[0] : d > 12 ? R.steel[l > 0.3 ? 5 : l > -0.3 ? 3 : 2] : R.ink[0]); }
+      for (let k = 0; k < 4; k++) { const a = ang + (k * Math.PI) / 2; for (let r = 2; r < 12; r++) for (let wdt = -1; wdt <= 1; wdt++) { const x = cx + Math.cos(a) * r - Math.sin(a) * wdt * (r / 6), y = cy + Math.sin(a) * r + Math.cos(a) * wdt * (r / 6); p.set(Math.round(x), Math.round(y), wdt < 0 ? R.steel[5] : wdt > 0 ? R.steel[2] : R.steel[4]); } }
+      p.rect(cx - 2, cy - 2, 4, 4, R.brass[4]); p.set(cx - 2, cy - 2, R.brass[5]); p.set(cx + 1, cy + 1, R.brass[2]);
+      // the battery: five lamps in a bezel
+      p.rect(41, 4, 8, 30, R.steel[0]);
+      for (let i = 0; i < 5; i++) { const on = val * 5 > i + 0.3, L = lvl === 'ok' ? R.malachite : lvl === 'warn' ? R.ochre : R.stampRed; p.rect(42, 28 - i * 6, 6, 5, on ? L[Math.min(L.length - 1, 4)] : R.ink[1]); if (on) p.set(42, 28 - i * 6, L[L.length - 1]); }
+    } else if (e.id === 'oxygen') {
+      // the tank: a lit steel cylinder, a valve, a sight glass with the blue level and bubbles
+      const x0 = 15, x1 = 37, y0 = 6, y1 = 34;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const u = (x - x0) / (x1 - x0), cap = y - y0 < 3 || y1 - y < 3; const k = u < 0.15 ? 3 : u < 0.4 ? 5 : u < 0.75 ? 4 : 2; if (cap && (x === x0 || x === x1 - 1)) continue; p.set(x, y, R.sky[Math.max(0, k - (cap ? 1 : 0))]); }
+      p.vl(x0 - 1, y0 + 1, y1 - 2, R.ink[0]); p.vl(x1, y0 + 1, y1 - 2, R.ink[0]); p.hl(x0 + 1, x1 - 2, y0 - 1, R.ink[0]); p.hl(x0 + 1, x1 - 2, y1, R.ink[0]);
+      p.rect(23, 1, 6, 5, R.steel[3]); p.hl(23, 28, 1, R.steel[5]); p.rect(29, 2, 5, 2, R.brass[4]);
+      const gx = 24, gy0 = 10, gy1 = 31, lv = Math.round(gy1 - (gy1 - gy0) * val);
+      p.rect(gx - 1, gy0 - 1, 6, gy1 - gy0 + 2, R.steel[0]);
+      for (let y = gy0; y < gy1; y++) p.hl(gx, gx + 3, y, y >= lv ? (y === lv ? R.water[6] : R.water[4]) : R.ink[1]);
+      for (let i = 0; i < 2; i++) { const by = gy1 - 1 - ((t * 6 + i * 9) % Math.max(1, gy1 - lv)); if (by > lv) p.set(gx + 1 + i, Math.round(by), R.water[6]); }
+      p.set(gx, gy0, R.snow[5]);
+    } else {
+      // a needle on the enamel dial
+      const cx = 26, cy = 18, a = -2.2 + 4.4 * val;
+      for (let r = 0; r < 11; r++) { const x = Math.round(cx + Math.sin(a) * r), y = Math.round(cy - Math.cos(a) * r); p.set(x, y, R.stampRed[3]); if (r < 6) p.set(x + 1, y, R.stampRed[2]); }
+      p.rect(cx - 1, cy - 1, 3, 3, R.steel[2]); p.set(cx - 1, cy - 1, R.steel[5]);
+      // an icon on the dial's face for what it measures
+      const ico = e.id === 'food' ? [[0, 0, R.moss[4]], [0, -1, R.moss[4]], [-1, -2, R.moss[3]], [1, -2, R.moss[5]], [0, 1, R.soil[3]]] : e.id === 'integrity' ? [[-1, -1, R.steel[3]], [0, -1, R.steel[4]], [1, -1, R.steel[3]], [-1, 0, R.steel[3]], [0, 0, R.steel[2]], [1, 0, R.steel[3]]] : e.id === 'health' ? [[-1, -1, R.stampRed[3]], [1, -1, R.stampRed[3]], [-1, 0, R.stampRed[3]], [0, 0, R.stampRed[3]], [1, 0, R.stampRed[3]], [0, 1, R.stampRed[2]]] : [[-1, -1, R.ink[1]], [1, -1, R.ink[1]], [-1, 1, R.ink[1]], [0, 2, R.ink[1]], [1, 1, R.ink[1]]];
+      for (const [dx, dy, col] of ico as [number, number, number][]) p.set(cx + dx, cy + 8 + dy, col);
+      p.set(cx - 7, cy - 8, R.snow[5]); p.set(cx - 6, cy - 9, R.snow[5]);
+    }
     let main = pct(val);
     if (e.id === 'power') main = `${v.battery.toFixed(0)}KWH`;
-    if (e.id === 'food') main = `${v.food.toFixed(0)}MEAL`;
+    if (e.id === 'food') main = `${v.food.toFixed(0)}`;
     const tk = e.id === 'power' ? v.timers.power : e.id === 'oxygen' ? v.timers.oxygen : e.id === 'food' ? v.timers.food : e.id === 'health' ? v.timers.workers : null;
     const blink = lvl === 'crit' && Math.floor(t * 2.5) % 2 === 0;
     if (tk !== null && tk !== undefined) main = mmss(Math.max(0, tk));
-    letter(p, main, 26, 34, blink ? R.stampRed[1] : warnC, { align: 'center' });
-    if (lvl !== 'ok') stroke(p, 8, 46, 44, 45, seed + 30, { col: lvl === 'crit' ? R.stampRed[3] : R.ochre[3], w: 1, over: 2 });
+    fontText(p, main, 26, 36, lvl === 'crit' ? (blink ? R.stampRed[1] : R.stampRed[3]) : lvl === 'warn' ? R.ochre[1] : R.ink[1], { align: 'center' });
+    if (lvl !== 'ok') { const L = lvl === 'crit' ? R.stampRed[3] : R.ochre[4]; p.rect(3, 40, 3, 3, blink ? R.ink[0] : L); p.rect(W - 6, 40, 3, 3, blink ? R.ink[0] : L); }
     cv.getContext('2d')!.putImageData(p.image(), 0, 0);
     e.el.classList.toggle('crit', lvl === 'crit');
   }
@@ -302,14 +279,14 @@ export class Hud {
     // contacts
     for (const cr of g.world.creatures) { if (cr.dead || !cr.visibleNow) continue; const [px, py] = P(cr.x, cr.z); const hostile = cr.mind === 'hunt' || cr.mind === 'attack' || cr.sp.role === 'apex'; if (cr.faction === 'veyr') p.set(px, py, R.moss[3]); else if (hostile) { p.set(px - 1, py - 1, R.stampRed[3]); p.set(px + 1, py + 1, R.stampRed[3]); p.set(px + 1, py - 1, R.stampRed[3]); p.set(px - 1, py + 1, R.stampRed[3]); p.set(px, py, R.stampRed[3]); } else p.set(px, py, R.ink[2]); }
     for (const st of g.factions?.structures ?? []) if (!st.dead && vis.seen[Math.floor(st.z) * N + Math.floor(st.x)]) { const [px, py] = P(st.x, st.z); p.rect(px - 1, py - 1, 3, 3, R.stampRed[3]); p.set(px - 1, py - 1, R.coral[5]); }
-    for (const s2 of c.structures) { const [px, py] = P(s2.x, s2.z); p.rect(px - 1, py - 1, 3, 3, INK); p.set(px, py, s2.done ? R.ochre[4] : R.paper[5]); }
+    for (const s2 of c.structures) { const [px, py] = P(s2.x, s2.z); p.rect(px - 1, py - 1, 3, 3, R.ink[1]); p.set(px, py, s2.done ? R.ochre[4] : R.paper[5]); }
     for (const d of c.drones) { const [px, py] = P(d.x, d.z); p.set(px, py - 1, R.ochre[5]); p.set(px - 1, py, R.ochre[4]); p.set(px + 1, py, R.ochre[4]); p.set(px, py, R.ochre[6] ?? R.ochre[5]); }
     for (const t of c.teammates) if (t.alive) { const [px, py] = P(t.x, t.z); p.rect(px, py, 2, 2, R.sapphire[3]); }
-    { const [px, py] = P(c.pod.x, c.pod.z); const D = [[0, -3], [-1, -2], [0, -2], [1, -2], [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1], [-3, 0], [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [3, 0], [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1], [-1, 2], [0, 2], [1, 2], [0, 3]]; for (const [dx, dy] of D) p.set(px + dx, py + dy, Math.abs(dx) + Math.abs(dy) === 3 ? INK : dx + dy < 0 ? R.rust[5] : R.rust[3]); }
+    { const [px, py] = P(c.pod.x, c.pod.z); const D = [[0, -3], [-1, -2], [0, -2], [1, -2], [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1], [-3, 0], [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [3, 0], [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1], [-1, 2], [0, 2], [1, 2], [0, 3]]; for (const [dx, dy] of D) p.set(px + dx, py + dy, Math.abs(dx) + Math.abs(dy) === 3 ? R.ink[1] : dx + dy < 0 ? R.rust[5] : R.rust[3]); }
     // the camera's view: a hard pixel trapezoid
     const cs: [number, number][] = [];
     for (const [sx, sy] of [[0, 62], [innerWidth, 62], [innerWidth, innerHeight], [0, innerHeight]]) { const gp = this.groundRay(sx, sy); if (gp) cs.push(P(gp[0], gp[1])); }
-    if (cs.length === 4) for (let i = 0; i < 4; i++) { const [a0, b0] = cs[i], [a1, b1] = cs[(i + 1) % 4]; stroke(p, Math.max(-2, Math.min(S + 2, a0)), Math.max(-2, Math.min(S + 2, b0)), Math.max(-2, Math.min(S + 2, a1)), Math.max(-2, Math.min(S + 2, b1)), i + 7, { w: 1, over: 1, col: R.ink[2] }); }
+    if (cs.length === 4) for (let i = 0; i < 4; i++) { const [a0, b0] = cs[i], [a1, b1] = cs[(i + 1) % 4]; p.line(Math.max(-2, Math.min(S + 2, a0)), Math.max(-2, Math.min(S + 2, b0)), Math.max(-2, Math.min(S + 2, a1)), Math.max(-2, Math.min(S + 2, b1)), R.snow[5]); }
     x.putImageData(p.image(), 0, 0);
     const hd = this.mapHd.lastElementChild as HTMLElement; hd.textContent = `${Math.round(c.pod.x)}·${Math.round(c.pod.z)}  SIG ${c.controlRadius}M`;
   }
@@ -330,7 +307,7 @@ export class Hud {
       for (const a of list) {
         const e = el('div', `cx-al ${a.level}`, this.alertsEl);
         const dc = document.createElement('canvas'); dc.width = 13; dc.height = 13; const dp = new Pix(13, 13);
-        doodle(dp, a.level === 'good' ? 'v' : a.level === 'warn' ? '^' : a.level === 'bad' || a.level === 'crit' ? '!' : 'i', 0, 0, a.id);
+        alertIcon(dp, a.level);
         dc.getContext('2d')!.putImageData(dp.image(), 0, 0); e.appendChild(dc);
         el('div', '', e, esc(a.text)); el('div', 'tm', e, this.stamp(a));
         if (a.n > 1) el('div', 'n', e, 'x' + a.n);
@@ -565,11 +542,11 @@ export class Hud {
         let ly = Math.max(6, Math.min(H - 18, ay - 20 + (i % 2) * 10)); while (used.some((u) => Math.abs(u - ly) < 15)) ly += 15; used.push(ly);
         const lx = left ? 6 : W - 6 - tw;
         // leader: a dot on the part, an inked line to the scrap
-        p.rect(ax - 1, ay - 1, 3, 3, a.warn ? R.stampRed[3] : INK); p.set(ax, ay, R.paper[5]);
-        stroke(p, ax, ay, left ? lx + tw : lx, ly + 6, 80 + i, { w: 1, over: 0, amp: 0.5, col: a.warn ? R.stampRed[2] : INK });
+        p.rect(ax - 1, ay - 1, 3, 3, a.warn ? R.stampRed[3] : R.ink[1]); p.set(ax, ay, R.paper[5]);
+        p.line(ax, ay, left ? lx + tw : lx, ly + 6, a.warn ? R.stampRed[3] : R.ink[0]);
         for (let y = ly; y < ly + 13; y++) for (let x = lx; x < lx + tw; x++) p.set(x, y, a.warn ? R.coral[5] : y === ly ? R.bone[5] : R.bone[4]); p.set(lx + 1, ly + 2, R.steel[4]); p.set(lx + tw - 2, ly + 2, R.steel[4]);
-        stroke(p, lx, ly + 13, lx + tw - 1, ly + 13, 90 + i, { w: 1, over: 1 });
-        letter(p, a.text, lx + 3, ly + 1, a.warn ? R.stampRed[1] : INK);
+        p.hl(lx, lx + tw - 1, ly + 13, R.ink[0]); p.vl(lx + tw, ly, ly + 13, R.ink[0]);
+        fontText(p, a.text, lx + 3, ly + 1, a.warn ? R.stampRed[1] : R.ink[1]);
       });
     }
     cv.getContext('2d')!.putImageData(p.image(), 0, 0);
@@ -628,5 +605,15 @@ export class Hud {
   escape() { if (this.cfgSlot >= 0) { this.cfgSlot = -1; return true; } return false; }
   dispose() { removeEventListener('resize', this.onResize); this.root.remove(); this.tipEl.remove(); document.body.classList.remove('cx-paused'); }
 }
-/** a sketched box that never leaves the art (for small doodles) */
-function inkRectSafe(p: Pix, x: number, y: number, w: number, h: number, seed: number) { stroke(p, x, y, x + w - 1, y, seed, { w: 1, over: 1 }); stroke(p, x + w - 1, y, x + w - 1, y + h - 1, seed + 1, { w: 2, over: 1 }); stroke(p, x + w - 1, y + h - 1, x, y + h - 1, seed + 2, { w: 2, over: 1 }); stroke(p, x, y + h - 1, x, y, seed + 3, { w: 1, over: 1 }); }
+/** a bezel round a dial: a lit steel ring */
+function dialBezel(p: Pix, x: number, y: number, D: number) {
+  const c = (D - 1) / 2, r = D / 2 + 1.6;
+  for (let j = -2; j < D + 2; j++) for (let i = -2; i < D + 2; i++) { const dx = i - c, dy = j - c, d = Math.hypot(dx, dy); if (d > r || d < r - 2.2) continue; const l = -(dx * 0.6 + dy * 0.8) / (d || 1); p.set(x + i, y + j, d > r - 0.8 ? R.steel[0] : R.steel[l > 0.3 ? 5 : l > -0.3 ? 3 : 2]); }
+}
+/** a clean pixel icon for an alert sign: a red triangle with a bang, an amber diamond, a green tick, a steel dot */
+function alertIcon(p: Pix, level: string) {
+  if (level === 'bad' || level === 'crit') { for (let y = 0; y < 11; y++) { const hw = Math.floor(y / 2); p.hl(6 - hw, 6 + hw, y + 1, y === 10 ? R.stampRed[1] : R.stampRed[3]); p.set(6 - hw, y + 1, R.coral[5]); } p.rect(6, 4, 1, 4, R.bone[5]); p.set(6, 9, R.bone[5]); }
+  else if (level === 'warn') { for (let y = 0; y < 11; y++) { const hw = 5 - Math.abs(5 - y); p.hl(6 - hw, 6 + hw, y + 1, R.ochre[4]); p.set(6 - hw, y + 1, R.ochre[5]); p.set(6 + hw, y + 1, R.ochre[2]); } p.rect(6, 3, 1, 5, R.ink[1]); p.set(6, 9, R.ink[1]); }
+  else if (level === 'good') { p.line(1, 7, 4, 10, R.moss[4]); p.line(4, 10, 11, 2, R.moss[4]); p.line(1, 8, 4, 11, R.moss[2]); p.line(4, 11, 11, 3, R.moss[2]); }
+  else { p.rect(3, 3, 7, 7, R.steel[3]); p.hl(3, 9, 3, R.steel[5]); p.vl(9, 3, 9, R.steel[1]); p.hl(3, 9, 9, R.steel[1]); p.rect(6, 5, 1, 3, R.ink[1]); }
+}
