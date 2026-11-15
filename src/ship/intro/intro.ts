@@ -516,11 +516,11 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
     await c.fade(1, 0.9);
     const MS = bridge.spots;
     put('solano', 'bridge', MS.monitor.pos.x - 0.9, MS.monitor.pos.z - 0.4, MS.monitor.pos.x - 0.9, MS.monitor.pos.z - 4, MS.monitor.pos.y);
-    put('quintero', 'bridge', MS.captain.pos.x, MS.captain.pos.z + 0.9, MS.monitor.pos.x, MS.monitor.pos.z);
+    put('quintero', 'bridge', MS.captain.pos.x - 1.0, MS.captain.pos.z + 0.2, MS.monitor.pos.x, MS.monitor.pos.z);
     put('castellanos', 'bridge', MS.helm.pos.x, MS.helm.pos.z - 0.2, MS.monitor.pos.x, MS.monitor.pos.z, MS.helm.pos.y);
     const mon = MS.monitor.pos, mdir = V(Math.sin(MS.monitor.facing), 0, Math.cos(MS.monitor.facing)); // facing into the room: the screen is behind
     const screen = mon.clone().addScaledVector(mdir, -1.0).setY(1.8);
-    unit.place(mon.clone().addScaledVector(mdir, 1.4).add(V(0.7, 1.7, 0))); unit.lookAt(screen);
+    unit.place(mon.clone().addScaledVector(mdir, 0.3).add(V(1.3, 1.7, 0))); unit.lookAt(screen);
     c.cam.cut(MS.captain.pos.clone().addScaledVector(mdir, 1.4).setY(2.3), screen.clone().setY(1.6), 42);
     c.cam.move({ pos: MS.captain.pos.clone().addScaledVector(mdir, 0.5).setY(2.15), dur: 9, ease: 'inOut' });
     await c.fade(0, 1.2);

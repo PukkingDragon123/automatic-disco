@@ -406,7 +406,8 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
     Lg.skin.reg = 8; Lg.toes.reg = 8; Lg.claws.reg = 8; Lg.toes.levels = 0; Lg.claws.levels = 0; Lg.claws.farSkip = true;
     Lg.toes.paint = coatPaint(C, 'foot');
     // digging claws sheathe the forefeet: no toes or hoof under the scoop
-    const sheathed = fore && lg.pair === 0 && fitted.has('cy_digclaw');
+    // (a heavily fitted six-legged worker's middle feet go plain too: the budget belongs to the machinery)
+    const sheathed = (fore && lg.pair === 0 && fitted.has('cy_digclaw')) || (mid && fitted.size >= 6);
     body.add(Lg.skin); if (foot.toes.length && !sheathed) { body.add(Lg.toes); body.add(Lg.claws); }
     if ((LS.kind === 'hoof' || LS.kind === 'stilt') && !sheathed) {
       const hp2 = body.add(hoof({ name: 'hoof' + lg.pair + (s > 0 ? 'r' : 'l'), sole: J[J.length - 1], r: r * (LS.kind === 'stilt' ? 0.3 : 0.4), h: fh, side: s, bone: B[B.length - 1], cleft: LS.cleft !== false, paint: keratinPaint(spec.coat.horn?.[0] ?? 'basalt', spec.coat.horn?.[1] ?? 2, { rings: fh * 0.18 }), around: 8 }));

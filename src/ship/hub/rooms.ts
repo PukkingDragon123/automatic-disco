@@ -384,6 +384,25 @@ function quarters(c: Ctx) {
   floorCables(c, [[-1.9, -1.6], [-2.6, -1.4], [-3.2, -1.9]], ['cable', 'cableR']);
   conduit(c, new V3(wx, 3.15, -5.8), new V3(wx, 3.15, 1.8), new V3(-1, 0, 0));
   wallLamp(c, wx - 0.02, 3.0, -1.0, FX, 0xffd8a0, 0.7);
+  // a clothes rail with shirts, an exercise corner (bike, weights bench), shelves of books and photos over the
+  // bunks, string lights along the wall top, a desk fan, a bin, drawings taped everywhere
+  B.add(box(0.03, 1.6, 0.03), mat(c, 'chrome'), { x: -2.8, y: 0.8, z: 1.75 }); B.add(box(0.03, 1.6, 0.03), mat(c, 'chrome'), { x: -2.8, y: 0.8, z: 0.75 });
+  B.add(box(0.03, 0.03, 1.05), mat(c, 'chrome'), { x: -2.8, y: 1.6, z: 1.25 });
+  for (let k = 0; k < 6; k++) B.add(box(0.06, 0.62, 0.42, 0.03), mat(c, ['seatR', 'seat', 'olive', 'sheet', 'leather', 'teal'][k]), { x: -2.8, y: 1.27, z: 0.85 + k * 0.16, ry: 0.15 * (k % 2 ? 1 : -1) });
+  B.add(box(0.5, 0.06, 1.3, 0.03), mat(c, 'leather'), { x: -6.0, y: 0.45, z: -0.9 }); for (const dz of [-0.5, 0.5]) B.add(box(0.06, 0.42, 0.06), mat(c, 'gun'), { x: -6.0, y: 0.21, z: -0.9 + dz });
+  for (const dz of [-0.55, 0.55]) { B.add(cyl(0.12, 0.12, 0.05, 12), mat(c, 'black'), { x: -5.6, y: 0.12, z: -0.9 + dz, rz: P / 2 }); }
+  B.add(cyl(0.02, 0.02, 1.2, 6), mat(c, 'chrome'), { x: -5.6, y: 0.12, z: -0.9, rx: P / 2 });
+  for (const [z, ry] of [[-5.75, 0], [-3.55, 0]] as [number, number][]) { B.add(box(0.2, 0.025, 0.7), mat(c, 'woodD'), { x: wx - 0.12, y: 2.55, z: z + 0.4, ry }); books(c, wx - 0.2, 2.565, z + 0.12, 5, P / 2, Math.round(-z)); ph(c, 'standing_picture_frame_01', wx - 0.15, 2.565, z + 0.6, -P / 2); }
+  const lightsM = c.M.live(0xffd890, 2.4);
+  for (let k = 0; k < 22; k++) { const u = k / 21, z = -5.8 + u * 7.4; B.add(new THREE.SphereGeometry(0.03, 6, 4), lightsM, { x: wx - 0.08, y: 3.0 - Math.sin(u * P * 5) * 0.12, z }); }
+  c.anims.push((_dt, t) => { (lightsM as THREE.MeshBasicMaterial).color.setHex(0xffd890).multiplyScalar(2.0 + Math.sin(t * 1.3) * 0.4); });
+  const fan = new THREE.Group(); fan.position.set(-3.7, 0.79, -2.95); c.root.add(fan);
+  const blades = new THREE.Mesh(c.bin.g(box(0.3, 0.02, 0.05)), mat(c, 'plasticW')); blades.position.y = 0.32; fan.add(blades);
+  const fb = new THREE.Mesh(c.bin.g(cyl(0.06, 0.08, 0.3, 10)), mat(c, 'plasticW')); fb.position.y = 0.15; fan.add(fb);
+  let fanOn = true; c.anims.push((dt) => { if (fanOn) blades.rotation.y += dt * 18; });
+  inter(c, [-3.9, 0.75, -3.15, -3.5, 1.2, -2.75], 'DESK FAN', () => { fanOn = !fanOn; csfx('switch', 0.5); });
+  for (const [z, kind, y] of [[-5.2, 'kid', 1.0], [-2.0, 'chart', 1.2], [-1.2, 'unaa', 2.4]] as [number, any, number][]) poster(c, kind, 0.34, { x: wx - 0.01, y, z, ry: FX, rz: (z % 2) * 0.03 });
+  poster(c, 'band', 0.3, { x: -5.1, y: 2.6, z: 1.88, ry: P, rz: -0.04 }); poster(c, 'safety', 0.3, { x: -2.7, y: 2.75, z: 1.88, ry: P, rz: 0.05 });
   shipCat(c, [new V3(-3.4, 0, -1.4), new V3(-5.2, 0, -3.6), new V3(-2.8, 0, -3.8), new V3(-4.6, 0, -0.6)]);
 }
 
@@ -576,6 +595,72 @@ function engineering(c: Ctx) {
   conduit(c, new V3(wx, 3.15, -13.8), new V3(wx, 3.15, -6.2), new V3(-1, 0, 0));
   wallLamp(c, wx - 0.02, 3.0, -9.6, FX, 0xffd0a0, 0.8);
   inter(c, [rx - 1.3, 0.3, rz - 1.3, rx + 1.3, 1.2, rz + 1.3], 'REACTOR', () => { surge = 1.2; csfx('hum', 0.6); });
+}
+
+// ------------------------------------------------------------------ the last layer: clutter in every free patch
+const CLUTTER: Record<RoomId, string[]> = {
+  bridge: ['box', 'case', 'cable', 'binder', 'crate'],
+  lab: ['crate', 'box', 'jar', 'cable', 'bin', 'plant'],
+  medbay: ['box', 'crate', 'bin', 'laundry', 'case'],
+  core: ['case', 'cable', 'crate', 'box', 'drum'],
+  quarters: ['laundry', 'boots', 'box', 'books', 'laundry', 'bag', 'dumbbell', 'bin', 'shoes'],
+  workshop: ['jerry', 'crate', 'box', 'cable', 'tools', 'drum', 'bucket', 'case'],
+  mess: ['crate', 'box', 'bag', 'bucket', 'cans'],
+  cargo: ['crate', 'box', 'bag', 'drum', 'jerry', 'crate'],
+  engineering: ['drum', 'jerry', 'cable', 'crate', 'tools', 'bucket'],
+};
+/**
+ * Fill the room's free floor: probe the floor with rays from above (anything already standing there is a hit above
+ * the deck), keep the crew's spots and the door clear, and drop a small themed thing into each free patch.
+ */
+export function clutter(id: RoomId, c: Ctx) {
+  const r = ROOMS[id], ray = new THREE.Raycaster(), down = new V3(0, -1, 0), hit: THREE.Intersection[] = [];
+  const targets: THREE.Object3D[] = []; c.root.traverse((o) => { if ((o as THREE.Mesh).isMesh && o.visible !== false && !(o as THREE.Mesh).userData.room) targets.push(o); });
+  const spots = Object.values(r.spots).map((s) => new V3(s.p[0], 0, s.p[2]));
+  const placed: V3[] = [];
+  const free = (x: number, z: number, rad: number) => {
+    for (const [dx, dz] of [[0, 0], [rad, 0], [-rad, 0], [0, rad], [0, -rad], [rad * 0.7, rad * 0.7], [-rad * 0.7, -rad * 0.7], [rad * 0.7, -rad * 0.7], [-rad * 0.7, rad * 0.7]]) {
+      ray.set(new V3(x + dx, 4.5, z + dz), down); hit.length = 0; ray.intersectObjects(targets, false, hit);
+      if (hit.length && hit[0].point.y > 0.03) return false;
+    }
+    return true;
+  };
+  const R = (() => { let s = id.length * 977 + 13; return () => { s = (s * 16807) % 2147483647; return s / 2147483647; }; })();
+  const list = CLUTTER[id], x0 = r.x0 + 0.45, x1 = r.x1 - 0.45, z0 = r.z0 + 0.45, z1 = r.z1 - 0.45;
+  let n = 0;
+  for (let k = 0; k < 120 && n < 16; k++) {
+    const x = x0 + R() * (x1 - x0), z = z0 + R() * (z1 - z0);
+    if (id === 'bridge' && Math.abs(x) > 6 - (z - 15 > 0 ? (z - 15) * 0.7 : 0) - 0.5) continue;
+    if (spots.some((p) => Math.hypot(p.x - x, p.z - z) < 0.75) || placed.some((p) => Math.hypot(p.x - x, p.z - z) < 0.55)) continue;
+    // keep a walking lane from the door into the room
+    const d = r.spots.door.p; if (Math.abs(z - d[2]) < 0.7 && Math.abs(x - d[0]) < 2.2) continue;
+    if (!free(x, z, 0.28)) continue;
+    placed.push(new V3(x, 0, z)); n++;
+    const kind = list[Math.floor(R() * list.length)], ry = R() * P * 2;
+    const B = c.B;
+    if (kind === 'box') lp(c, 'cardboard_box', x, z, ry, 0, 0.75);
+    else if (kind === 'crate') crate(c, { x, z, w: 0.5 + R() * 0.2, h: 0.35 + R() * 0.15, d: 0.4, ry, kind: (['olive', 'grey', 'white', 'blue'] as const)[Math.floor(R() * 4)] });
+    else if (kind === 'case') ph(c, 'metal_toolbox', x, 0, z, ry);
+    else if (kind === 'bag') lp(c, 'trash_bags', x, z, ry, 0, 0.7);
+    else if (kind === 'drum') barrel(c, x, z, ['blue', 'red', 'olive'][Math.floor(R() * 3)]);
+    else if (kind === 'jerry') ph(c, 'metal_jerrycan', x, 0, z, ry);
+    else if (kind === 'bucket') { B.add(cyl(0.16, 0.13, 0.3, 12), mat(c, R() < 0.5 ? 'blue' : 'yellow'), { x, y: 0.15, z }); }
+    else if (kind === 'bin') { B.add(cyl(0.18, 0.15, 0.55, 12), mat(c, 'steel'), { x, y: 0.275, z }); B.add(box(0.2, 0.06, 0.16, 0.03), mat(c, 'paper'), { x, y: 0.57, z, ry }); }
+    else if (kind === 'cable') { const a = R() * P; B.add(new THREE.TorusGeometry(0.22, 0.03, 6, 18), mat(c, ['cable', 'cableY', 'cableR'][Math.floor(R() * 3)]), { x, y: 0.03, z, rx: P / 2 }); B.add(new THREE.TorusGeometry(0.18, 0.03, 6, 18), mat(c, 'cable'), { x: x + Math.cos(a) * 0.05, y: 0.08, z: z + Math.sin(a) * 0.05, rx: P / 2 }); }
+    else if (kind === 'laundry') { B.add(lathe([[0, 0], [0.3, 0.02], [0.28, 0.1], [0.18, 0.17], [0, 0.18]], 9), mat(c, ['seat', 'seatR', 'olive', 'sheet'][Math.floor(R() * 4)]), { x, y: 0, z, ry, sx: 1.2 }); B.add(box(0.36, 0.05, 0.28, 0.02), mat(c, ['seatR', 'sheet', 'seat'][Math.floor(R() * 3)]), { x: x + 0.12, y: 0.16, z: z - 0.05, ry: ry + 0.7, rx: 0.1 }); }
+    else if (kind === 'boots' || kind === 'shoes') ph(c, 'rubber_boots', x, 0, z, ry);
+    else if (kind === 'books') { books(c, x, 0, z, 5, ry, Math.floor(R() * 9)); }
+    else if (kind === 'dumbbell') { for (const s of [-1, 1]) { B.add(cyl(0.025, 0.025, 0.3, 8), mat(c, 'chrome'), { x: x + s * 0.12, y: 0.06, z, rx: P / 2, ry }); B.add(cyl(0.07, 0.07, 0.05, 10), mat(c, 'black'), { x: x + s * 0.12, y: 0.07, z: z - 0.12, rx: P / 2 }); B.add(cyl(0.07, 0.07, 0.05, 10), mat(c, 'black'), { x: x + s * 0.12, y: 0.07, z: z + 0.12, rx: P / 2 }); } }
+    else if (kind === 'tools') toolbox(c, x, 0, z, ry, R() < 0.5 ? 'red' : 'blue');
+    else if (kind === 'binder') ph(c, 'binder_notebook', x, 0, z, ry);
+    else if (kind === 'jar') for (let j = 0; j < 3; j++) B.add(cyl(0.06, 0.06, 0.22, 10), c.M.get('jar' + j, { color: [0x9fd8a8, 0xd8c898, 0xa8c8e0][j], transparent: true, opacity: 0.75 }), { x: x + j * 0.13, y: 0.11, z });
+    else if (kind === 'plant') ph(c, 'potted_plant_04', x, 0, z, ry);
+    else if (kind === 'cans') ph(c, 'russian_food_cans_01', x, 0, z, ry);
+  }
+  // floor wear: a drain, an access grate, scuffed tape
+  const fx = (r.x0 + r.x1) / 2 + (R() - 0.5) * 2, fz = (r.z0 + r.z1) / 2 + (R() - 0.5) * 2;
+  const dr = new THREE.CircleGeometry(0.16, 14); dr.rotateX(-P / 2);
+  c.B.add(dr, c.M.get('drain', { map: cached('draintex', () => { const [cv, g] = canvas(32, 32); g.fillStyle = '#2a2c2e'; g.fillRect(0, 0, 32, 32); g.fillStyle = '#0c0d0e'; for (let k = 6; k < 28; k += 4) g.fillRect(6, k, 20, 2); g.fillStyle = '#6a6e70'; g.fillRect(0, 0, 32, 2); const t = toTex(cv, { repeat: false }); t.magFilter = THREE.NearestFilter; return t; }), polyOffset: 2, flag: 0 }), { x: fx, y: 0.006, z: fz });
 }
 
 /** each room's practical accent light, its beams in the haze, dust in the light, steam where something vents */

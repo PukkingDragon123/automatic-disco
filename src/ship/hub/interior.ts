@@ -8,7 +8,7 @@ import { ROOMS, ROOM_IDS, WALL_H, CUT_H, CORRIDOR, HULL_X, type RoomId } from '.
 import { THEMES, wallTex, floorTex, capTex, hazardTex, poolTex, type Theme } from './tex';
 import { Screens } from './screens';
 import { mat, glow, wallLamp, sign, type Ctx, type Anim } from './props';
-import { furnish } from './rooms';
+import { furnish, clutter } from './rooms';
 import { gbuf } from '../../gfx/gbuf';
 
 export interface RoomBuild {
@@ -185,6 +185,10 @@ export function buildInterior(bin: Bin, M: Mats, onRoom?: (id: RoomId, c: Ctx) =
     furnish(id, c);
     onRoom?.(id, c);
     B.flush(rr, 'room-static:' + id);
+    // the last layer: clutter dropped into whatever floor is still free (probed against what was just built)
+    rr.updateMatrixWorld(true);
+    clutter(id, c);
+    B.flush(rr, 'room-clutter:' + id);
   }
 
   // ---- the corridor: floor, the visible (port) face of the low starboard wall, a light strip, conduit
