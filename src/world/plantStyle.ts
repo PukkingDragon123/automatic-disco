@@ -83,7 +83,7 @@ export const PROF: Record<Shape, (u: number) => number> = {
 /** chain: limbs sharing a chain id, consecutive in the list, form one continuous tube in 3D; skip3d: drawn by a
  *  ribbon instead (blades, frond rachises) */
 export interface Limb { a: V3; b: V3; ra: number; rb: number; ramp: number[]; seed: number; ridge?: number; ring?: number; kind?: K; alpha?: number; chain?: number; skip3d?: boolean; amb?: number }
-export interface Leaf { p: V3; d: V3; n: V3; len: number; wid: number; shape: Shape; ramp: number[]; fold?: number; vein?: number; lat?: boolean; teeth?: boolean; kind?: K; alpha?: number; skip3d?: boolean; amb?: number }
+export interface Leaf { p: V3; d: V3; n: V3; len: number; wid: number; shape: Shape; ramp: number[]; fold?: number; vein?: number; lat?: boolean; teeth?: boolean; kind?: K; alpha?: number; skip3d?: boolean; amb?: number; /** crown clumps: shade toward the clump's core and underside, 0..1 */ dim?: number }
 export interface Orb { c: V3; r: number; ramp: number[]; seed: number; sq?: number; glow?: number; spots?: number; spotCol?: number; alpha?: number; ribs?: number; amb?: number; /** edible fruit: in 3D the ecosystem's fruit layer shows it (setFruit) */ fruit?: boolean }
 export interface Cap { c: V3; r: number; hr: number; ramp: number[]; gill: number[]; seed: number; spots: number; spotCol: number; alpha?: number; amb?: number }
 /**
@@ -91,6 +91,8 @@ export interface Cap { c: V3; r: number; hr: number; ramp: number[]; gill: numbe
  * frond (w = pinna length per point; the painted frond texture carries the leaflets, fold tilts the two halves).
  */
 export interface Ribbon { kind: 'blade' | 'frond' | 'strand'; out?: V3; pts: V3[]; w: number[]; ramp: number[]; dry?: number[]; dryFrom?: number; fold?: number; shape?: Shape; lobes?: boolean; start?: number; dead?: boolean; fwd?: number; wr?: number; lmax?: number; ramps?: number[][]; limbs?: Limb[] }
+/** a crown clump (plant px): an ellipsoid of leaves at a branch tip; the 3D crown fills it with leaf-spray cards */
+export interface Clump { c: V3; R: V3; ramp: number[]; flat?: boolean; lit?: number }
 /** an eye-flower's eye: a disc facing n */
 export interface Eye { p: V3; n: V3; r: number; iris: number[]; glow: boolean }
 
@@ -215,7 +217,7 @@ function drawLeaf(S: Scene, l: Leaf, sun: number, amb: number) {
     let w = prof(u) * (1 + asym * sg);
     if (sg === notchS && Math.abs(u - notchU) < 0.07) w *= 0.45;
     if (av > w) continue;
-    let val = (v >= 0 ? tA : tB) + (u - 0.4) * 0.1;
+    let val = (v >= 0 ? tA : tB) + (u - 0.4) * 0.1 - (l.dim ?? 0) * 0.36;
     if (l.vein && l.len >= 5 && av * bl < 0.55 && u > 0.06 && u < 0.9) val += l.vein > 0 ? 0.1 : -0.12;
     else if (l.lat && ((u * 5.5 + av * 1.1) % 1) < 0.16 && av < w * 0.85) val -= 0.08;
     if (l.teeth && av > w - 1.1 / Math.max(1, bl) && Math.floor(u * l.len * 0.7) % 2 === 0) val -= 0.12;
@@ -276,6 +278,8 @@ export class Plant {
   limbs: Limb[] = []; leaves: Leaf[] = []; orbs: Orb[] = []; caps: Cap[] = [];
   /** 3D-only: blades and fronds as ribbons, eyes as discs */
   ribbons: Ribbon[] = []; eyes: Eye[] = [];
+  /** crowned plants: the clumps their leaves gather in, and the branch tips the clumps grew from */
+  clumps: Clump[] = []; tips: V3[] = [];
   /** 2D overlays at a projected anchor, drawn after the 3D pass (the eye of an eye-flower) */
   post: { p: V3; f: (S: Scene, x: number, y: number, z: number, k: number) => void }[] = [];
   /** flatten depth (fan-shaped growths) */
@@ -303,6 +307,7 @@ export class Plant {
     for (const rb of this.ribbons) rb.pts = rb.pts.map(zf);
     for (const e of this.eyes) e.p = zf(e.p);
     for (const q of this.post) q.p = zf(q.p);
+    for (const k of this.clumps) { k.c = zf(k.c); k.R = [k.R[0], k.R[1], k.R[2] * this.zs]; }
     let top = 1;
     for (const l of this.limbs) top = Math.max(top, su(l.a) + l.ra, su(l.b) + l.rb);
     for (const l of this.leaves) top = Math.max(top, su(add(l.p, mul(l.d, l.len))));
@@ -318,6 +323,8 @@ export class Plant {
     for (const rb of this.ribbons) { rb.pts = rb.pts.map(sc); if (rb.kind === 'blade') rb.w = rb.w.map((w) => w * rf); }
     for (const e of this.eyes) { e.p = sc(e.p); e.r *= Math.sqrt(f); }
     for (const q of this.post) q.p = sc(q.p);
+    for (const k of this.clumps) { k.c = sc(k.c); k.R = sc(k.R); }
+    this.tips = [];
     return this;
   }
 
@@ -403,6 +410,106 @@ function twigLeaf(P: Plant, r: Rand, p: V3, d: V3, ls: LeafStyle) {
   const n = nrm(rot(faceUp(dir), dir, r.range(-ls.roll, ls.roll)));
   const len = r.range(ls.len[0], ls.len[1]);
   P.leaf({ p: add(p, mul(dir, ls.stalk ?? 0.8)), d: dir, n, len, wid: Math.max(0.6, len * ls.wr * r.range(0.85, 1.15)), shape: r.pick(ls.shapes), ramp: pickRamp(r, ls.ramps), fold: ls.fold, vein: len >= 6 ? ls.vein : 0, lat: !!ls.lat && len >= 8, teeth: ls.teeth });
+}
+
+// ------------------------------------------------------------------------------------------------ crown clumps
+/**
+ * A crown as clumps (after Lerfolese): the leaves gather into a handful of dense lumps at the branch tips, plus a few
+ * along the inner limbs, with sky between them. Seeds are the branch tips (k-means), each clump an ellipsoid sized from
+ * the spacing to its neighbours; the leaves are regrown inside the clumps (denser at the shell, turned out of the
+ * clump's centre, the clump keeping mostly one foliage ramp), so the painted sprite reads lumpy with shaded undersides
+ * and crevices, and the 3D crown fills each clump with leaf-spray cards (floraMesh).
+ */
+interface CrownOpt { k: number; inner: number; size: [number, number]; ry: number; droop?: number; skirt?: number; keep?: number; flat?: boolean; lit?: number }
+function kmeans(pts: V3[], k: number, r: Rand, it = 7): V3[] {
+  if (pts.length <= k) return pts.map((p) => [p[0], p[1], p[2]] as V3);
+  // farthest-point seeds, then Lloyd steps
+  const C: V3[] = [pts[r.int(0, pts.length - 1)]];
+  const d = new Float32Array(pts.length).fill(1e18);
+  while (C.length < k) {
+    const c = C[C.length - 1]; let bi = 0, bd = -1;
+    for (let i = 0; i < pts.length; i++) { const p = pts[i], e = (p[0] - c[0]) ** 2 + (p[1] - c[1]) ** 2 + (p[2] - c[2]) ** 2; if (e < d[i]) d[i] = e; if (d[i] > bd) { bd = d[i]; bi = i; } }
+    C.push(pts[bi]);
+  }
+  const out = C.map((c) => [c[0], c[1], c[2]] as V3), sum = out.map(() => [0, 0, 0, 0]);
+  for (let s = 0; s < it; s++) {
+    for (const q of sum) q.fill(0);
+    for (const p of pts) { let bi = 0, bd = 1e18; for (let j = 0; j < out.length; j++) { const c = out[j], e = (p[0] - c[0]) ** 2 + (p[1] - c[1]) ** 2 + (p[2] - c[2]) ** 2; if (e < bd) { bd = e; bi = j; } } const q = sum[bi]; q[0] += p[0]; q[1] += p[1]; q[2] += p[2]; q[3]++; }
+    for (let j = 0; j < out.length; j++) if (sum[j][3]) out[j] = [sum[j][0] / sum[j][3], sum[j][1] / sum[j][3], sum[j][2] / sum[j][3]];
+  }
+  return out;
+}
+function crownClumps(P: Plant, r0: Rand, o: CrownOpt) {
+  const r = r0.fork(0xc1c1);
+  const src = P.leaves.filter((l) => !l.skip3d && l.kind !== K.ACC);
+  if (src.length < 8) return;
+  const keepL = P.leaves.filter((l) => l.skip3d || l.kind === K.ACC);
+  const lp = src.map((l) => add(l.p, mul(l.d, l.len * 0.5)));
+  let cx = 0, cy = 0, cz = 0; for (const p of lp) { cx += p[0]; cy += p[1]; cz += p[2]; }
+  const cc: V3 = [cx / lp.length, cy / lp.length, cz / lp.length];
+  let ex = 1, ey = 1; for (const p of lp) { ex = Math.max(ex, Math.abs(p[0] - cc[0]), Math.abs(p[2] - cc[2])); ey = Math.max(ey, Math.abs(p[1] - cc[1])); }
+  // seeds: the branch tips out at the crown's shell, plus a few inner clumps along the big limbs
+  const tips = P.tips.length >= o.k ? P.tips : lp;
+  const C = kmeans(tips, o.k, r);
+  if (o.inner > 0) {
+    const inner = lp.filter((p) => ((p[0] - cc[0]) / ex) ** 2 + ((p[1] - cc[1]) / ey) ** 2 + ((p[2] - cc[2]) / ex) ** 2 < 0.3);
+    if (inner.length > o.inner * 4) C.push(...kmeans(inner, o.inner, r, 4));
+  }
+  if (o.skirt) for (let i = 0; i < o.skirt; i++) {
+    // a bush's skirt: low clumps all round, sitting on the ground
+    const a = (i / o.skirt) * TAU + r.range(-0.3, 0.3), d = ex * r.range(0.62, 0.85);
+    C.push([cc[0] + Math.cos(a) * d, o.size[1] * o.ry * 0.85, cc[2] + Math.sin(a) * d]);
+  }
+  // radii: a share of the gap to the nearest neighbour, clamped
+  const rampW = new Map<number[], number>(); for (const l of src) rampW.set(l.ramp, (rampW.get(l.ramp) ?? 0) + 1);
+  // a clump keeps mostly one of the species' main foliage ramps (the rarest, fresh one only as single leaves)
+  const all = [...rampW.entries()], main = all.reduce((a, b) => (b[1] > a[1] ? b : a))[0];
+  const ramps = all.filter((e) => e[1] >= src.length * 0.12);
+  const clumps: Clump[] = C.map((c, i) => {
+    let nd = 1e9; for (let j = 0; j < C.length; j++) if (j !== i) nd = Math.min(nd, hyp(C[j][0] - c[0], (C[j][1] - c[1]) * 1.3, C[j][2] - c[2]));
+    const rr = Math.max(o.size[0], Math.min(o.size[1], nd * 0.55)) * r.range(0.88, 1.12);
+    const out = nrm(sub(c, [cc[0], cc[1] - ey * 0.4, cc[2]]));
+    // a clump sits a little out from its tip, droops a little
+    const cp: V3 = add(c, [out[0] * rr * 0.25, -rr * 0.12, out[2] * rr * 0.25]);
+    return { c: cp, R: [rr, rr * o.ry * r.range(0.85, 1.1), rr], ramp: r.chance(0.55) ? main : r.weighted(ramps), flat: o.flat, lit: o.lit ?? 0.6 };
+  });
+  // the leaves, regrown into the clumps (by volume)
+  const total = Math.min(3600, Math.round(src.length * (o.keep ?? 1.15)));
+  let vol = 0; for (const cl of clumps) vol += cl.R[0] * cl.R[1] * cl.R[2];
+  const leaves: Leaf[] = [];
+  for (const cl of clumps) {
+    const n = Math.max(6, Math.round((total * cl.R[0] * cl.R[1] * cl.R[2]) / vol));
+    for (let k = 0; k < n; k++) {
+      let dx = 0, dy = 0, dz = 0, dd = 0;
+      do { dx = r.range(-1, 1); dy = r.range(-1, 1); dz = r.range(-1, 1); dd = dx * dx + dy * dy + dz * dz; } while (dd > 1 || dd < 1e-4);
+      const il = 1 / Math.sqrt(dd); dx *= il; dy *= il; dz *= il;
+      if (o.flat && dy < -0.2) dy *= 0.4;
+      const rr = 0.32 + 0.68 * Math.pow(r.next(), 0.5);
+      const p: V3 = [cl.c[0] + dx * cl.R[0] * rr, cl.c[1] + dy * cl.R[1] * rr - (o.droop ?? 0) * rr * rr * cl.R[1], cl.c[2] + dz * cl.R[2] * rr];
+      const t = src[r.int(0, src.length - 1)];
+      const dir = nrm([dx * 0.8 + r.range(-0.55, 0.55), dy * 0.5 + r.range(-0.45, 0.35) - 0.25, dz * 0.8 + r.range(-0.55, 0.55)]);
+      const fn = nrm(rot(faceUp(dir), dir, r.range(-0.7, 0.7)));
+      leaves.push({ ...t, p: sub(p, mul(dir, t.len * 0.5)), d: dir, n: fn, ramp: r.chance(0.6) ? cl.ramp : t.ramp, dim: Math.min(1, Math.max(0, -dy * 0.75 + (1 - rr) * 0.6 - 0.1)) });
+    }
+  }
+  P.leaves = [...keepL, ...leaves];
+  P.clumps = clumps;
+  // fruit and berries move out of the buried tips: hanging under the nearest clump on their stalks, or set on its shell
+  for (const f of P.orbs) {
+    if (!f.fruit) continue;
+    let best = clumps[0], bd = 1e18;
+    for (const cl of clumps) { const e = (cl.c[0] - f.c[0]) ** 2 + (cl.c[1] - f.c[1]) ** 2 + (cl.c[2] - f.c[2]) ** 2; if (e < bd) { bd = e; best = cl; } }
+    const stalk = P.limbs.find((l) => l.kind === K.ACC && Math.abs(l.b[0] - f.c[0]) + Math.abs(l.b[1] - f.c[1]) + Math.abs(l.b[2] - f.c[2]) < 0.01);
+    const a = r.range(0, TAU), k = r.range(0.2, 0.55);
+    if (stalk) {
+      const top: V3 = [best.c[0] + Math.cos(a) * best.R[0] * k, best.c[1] - best.R[1] * 0.55, best.c[2] + Math.sin(a) * best.R[2] * k];
+      const nc: V3 = add(top, [0, -r.range(2, 4) - f.r, 0]);
+      stalk.a = top; stalk.b = nc; f.c = nc;
+    } else {
+      const el = r.range(-0.5, 0.35), dir: V3 = [Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el)];
+      f.c = [best.c[0] + dir[0] * best.R[0] * 0.92, best.c[1] + dir[1] * best.R[1] * 0.92, best.c[2] + dir[2] * best.R[2] * 0.92];
+    }
+  }
 }
 
 interface GrowOpt {
@@ -522,10 +629,12 @@ const broadleaf: Grower = (sp, h, r) => {
     leafGen: 3, ramp: T, ridge: 4,
     onTwig: (p, d, gen, st) => { for (let k = st / (gen >= 5 ? 2.2 : 3.2); k > 0; k--) if (k >= 1 || r.chance(k)) twigLeaf(P, r, p, d, ls); },
     onTip: (p, d) => {
+      P.tips.push(p);
       for (let k = r.int(4, 7); k > 0; k--) twigLeaf(P, r, p, d, ls);
       if (fruit && r.chance(0.12)) { const f = add(p, [r.range(-1, 1), -r.range(2, 4), r.range(0, 2)]); P.limb(p, f, 0.5, 0.5, T, { kind: K.ACC, chain: P.chain() }); P.orb(f, Math.max(1.2, h * 0.45), A, { glow: sp.glow ? 0xfff0c0 : undefined, alpha: sp.glow ? 200 : 255, fruit: true }); }
     },
   }, [0, 0, 0], deviate(UP, r.range(0, 0.12), r.range(0, TAU)), H * r.range(0.36, 0.44), rad, 0);
+  crownClumps(P, r, { k: r.int(8, 11), inner: 2, size: [H * 0.12, H * 0.25], ry: 0.76, droop: 0.15 });
   return P.done(H, deepOf(G[0][0]));
 };
 
@@ -538,10 +647,17 @@ const umbrella: Grower = (sp, h, r) => {
   const top = H * r.range(0.86, 0.94), rx = H * r.range(0.4, 0.5), rad = Math.max(2, h * 1.3);
   roots(P, r, rad, T);
   const pad = (p: V3) => {
-    // a pad: a domed, flattened cloud of fine leaves, thickest in the middle
-    const pr = r.range(9, 14), n = Math.round(pr * pr * 0.75);
+    // a pad: two or three domed, flattened lobes of fine leaves, each thickest in its middle (a lumpy cushion with
+    // notches of sky between the lobes, never one round disc)
+    const pr = r.range(12, 17), n = Math.round(pr * pr * 0.8), m = r.int(2, 3), a0 = r.range(0, TAU), lr = pr * (m === 2 ? 0.66 : 0.58);
+    const lobes: V3[] = [];
+    for (let i = 0; i < m; i++) {
+      const a = a0 + (i / m) * TAU + r.range(-0.4, 0.4), d = pr * r.range(0.36, 0.48), q: V3 = add(p, [Math.cos(a) * d, r.range(-1.5, 2), Math.sin(a) * d * 0.8]);
+      lobes.push(q);
+      P.clumps.push({ c: [q[0], q[1] + 3.2, q[2]], R: [lr * 1.1, 4.4, lr * 0.95], ramp: pickRamp(r, G), flat: true, lit: 0.45 });
+    }
     for (let k = 0; k < n; k++) {
-      const a = r.range(0, TAU), d = Math.sqrt(r.next()) * pr, c = add(p, [Math.cos(a) * d, 1 + (1 - (d / pr) ** 2) * 4 + r.range(-1.5, 1.5), Math.sin(a) * d * 0.8]);
+      const q = lobes[k % m], a = r.range(0, TAU), d = Math.sqrt(r.next()) * lr, c = add(q, [Math.cos(a) * d, 1 + (1 - (d / lr) ** 2) * 4 + r.range(-1.5, 1.5), Math.sin(a) * d * 0.8]);
       const dir = polar(r.range(-0.3, 0.25), r.range(0, TAU));
       P.leaf({ p: c, d: dir, n: nrm(rot(faceUp(dir), dir, r.range(-0.4, 0.4))), len: r.range(ls.len[0], ls.len[1]), wid: 1.4, shape: r.pick(shapes), ramp: pickRamp(r, G), fold: 0.2 });
     }
@@ -588,8 +704,9 @@ const weeper: Grower = (sp, h, r) => {
     inside: (p) => p[1] < H * 0.98 && hyp(p[0], p[2]) < H * 0.45,
     leafGen: 2, ramp: T, ridge: 4,
     onTwig: (p, d, gen) => { if (r.chance(gen >= 3 ? 0.55 : 0.3)) strand(p, d); if (r.chance(0.5)) twigLeaf(P, r, p, d, ls); },
-    onTip: (p, d) => { strand(p, d); for (let k = r.int(2, 4); k > 0; k--) twigLeaf(P, r, p, d, ls); },
+    onTip: (p, d) => { P.tips.push(p); strand(p, d); for (let k = r.int(2, 4); k > 0; k--) twigLeaf(P, r, p, d, ls); },
   }, [0, 0, 0], deviate(UP, r.range(0, 0.12), r.range(0, TAU)), H * r.range(0.42, 0.5), rad, 0);
+  crownClumps(P, r, { k: r.int(7, 9), inner: 1, size: [H * 0.1, H * 0.21], ry: 0.7, droop: 0.35, keep: 1.3 });
   return P.done(H, deepOf(G[0][0]));
 };
 
@@ -624,19 +741,21 @@ const shrub: Grower = (sp, h, r) => {
   const P = new Plant(r), tr = traits(sp), H = h * PX, T = RAMP(mixHex(sp.trunk, sp.leaf, 0.2), 6, 0.5), A = RAMP(sp.accent, 6, 0.55), G = leafRamps(sp.leaf);
   const shapes = tr.pick<Shape[]>([['round', 'ovate'], ['ovate'], ['lance'], ['lobed', 'ovate'], ['needle'], ['spatula'], ['serrate'], ['linear'], ['oak']]), berries = tr.chance(0.55);
   const ls: LeafStyle = { len: shapes[0] === 'needle' ? [3, 4] : [2.5, 4.5], wr: shapes[0] === 'needle' ? 0.2 : 0.5, shapes, ramps: G, ang: [0.5, 1.3], droop: 0.25, roll: 0.9, fold: 0.35 };
-  const cy = H * 0.5, crx = H * r.range(0.6, 0.75), cry = H * 0.5;
+  const cy = H * 0.5, crx = H * r.range(0.78, 0.95), cry = H * 0.5;
   const opt: GrowOpt = {
     gens: 4, kids: [2, 3], spread: [0.4, 0.8], decay: [0.62, 0.8], taper: 0.7, trop: 0.04, wob: 0.22, seg: 3, apical: 0.2,
     inside: (p) => (p[0] / crx) ** 2 + ((p[1] - cy) / cry) ** 2 + (p[2] / crx) ** 2 < 1,
     leafGen: 2, ramp: T, ridge: 0,
     onTwig: (p, d, gen, st) => { for (let k = st / 1.9; k > 0; k--) if (k >= 1 || r.chance(k)) twigLeaf(P, r, p, d, ls); },
     onTip: (p, d) => {
+      P.tips.push(p);
       for (let k = r.int(3, 5); k > 0; k--) twigLeaf(P, r, p, d, ls);
       if (berries && r.chance(0.3)) P.orb(add(p, [r.range(-1, 1), r.range(-1, 1), 1]), r.range(0.8, 1.2), A, { glow: sp.glow ? 0xfff0c0 : undefined, alpha: sp.glow ? 200 : 255, fruit: true });
     },
   };
   for (let s = r.int(4, 7), i = 0; i < s; i++) grow(P, r, opt, [r.range(-2.5, 2.5), 0, r.range(-2.5, 2.5)], deviate(UP, r.range(0.2, 0.75), (i * TAU) / s + r.range(-0.4, 0.4)), H * r.range(0.32, 0.46), Math.max(0.8, h * 0.9), 1);
   for (let i = 0; i < 6; i++) blade(P, r, [r.range(-4, 4), 0, r.range(0, 4)], polar(r.range(0.9, 1.4), r.range(0, TAU)), H * r.range(0.12, 0.22), 0.8, 0.12, RAMP(mixHex(sp.leaf, 0x4a5a3a, 0.5)));
+  crownClumps(P, r, { k: r.int(7, 9), inner: 1, size: [H * 0.18, H * 0.34], ry: 0.8, skirt: r.int(5, 7), keep: 1.4, lit: 0.55 });
   return P.done(H, deepOf(G[0][0]));
 };
 

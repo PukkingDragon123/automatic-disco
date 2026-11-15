@@ -239,6 +239,63 @@ function disc(g: Geo, c: V3, n: V3, r: number, rect: Rect, seg = 10, dome = 0, u
   for (let i = 0; i < seg; i++) g.tri(ctr, base + i, base + i + 1);
 }
 
+/**
+ * A crown of clumps (after Lerfolese): each clump an ellipsoid filled with large leaf-spray cards, denser toward its
+ * shell. A card's normal blends the clump's outward direction with the crown's (lit) plus an upward bias, so every
+ * clump lights as one lump with a shaded underside; its vertex colour darkens toward the clump's core and underside
+ * and with the crown's own occlusion. Cards are turned so the painted spray's top is toward the sky. The light mesh
+ * keeps the outer cards only, fewer and bigger.
+ */
+function crownCards(g: Geo, P: Plant, sp: PlantSpecies, tex: FloraTex, r: Rand, L1: boolean, look: { style: SprayStyle; shape: Shape; ramps: number[][]; twig: number[]; accent: number[]; young: number[]; thorns: boolean; hairs: boolean }): V3[] {
+  const CL = P.clumps.map((k) => ({ c: M(k.c), R: M(k.R), ramp: k.ramp, flat: !!k.flat, lit: k.lit ?? 0.6 }));
+  const shrub = sp.arch === 'shrub', umb = sp.arch === 'umbrella';
+  // the crown's centre, a little low: the light wraps round the crown from above
+  let vs = 0; const cc: V3 = [0, 0, 0];
+  for (const k of CL) { const w = k.R[0] * k.R[1] * k.R[2]; cc[0] += k.c[0] * w; cc[1] += k.c[1] * w; cc[2] += k.c[2] * w; vs += w; }
+  cc[0] /= vs; cc[1] = cc[1] / vs - (umb ? 0.8 : shrub ? 0.15 : 0.35); cc[2] /= vs;
+  const budget = shrub ? (L1 ? 64 : 200) : L1 ? 140 : 420, shd = P.shade();
+  const sizeK = L1 ? (shrub ? 1.5 : 1.25) : shrub ? 1.2 : 0.88;
+  const cand: [number, V3][] = [];
+  CL.forEach((k, ci) => {
+    const n = Math.max(L1 ? 3 : 6, Math.round((budget * k.R[0] * k.R[1] * k.R[2]) / vs));
+    // the clump's own place in the crown: open sky above it or buried in it
+    const sky = Math.min(1, 0.45 + 0.75 * shd.sky([k.c[0] * PXM, (k.c[1] + k.R[1] * 0.5) * PXM, k.c[2] * PXM]));
+    const ramps = look.ramps, ri = Math.max(0, ramps.indexOf(k.ramp)), acc = ramps.length > 1 ? ramps[(ri + 1) % ramps.length] : look.accent;
+    const Rm = k.flat ? (k.R[0] + k.R[2]) * 0.45 : (k.R[0] + k.R[1] + k.R[2]) / 3;
+    for (let q = 0; q < n; q++) {
+      let dx = 0, dy = 0, dz = 0, dd = 0;
+      do { dx = r.range(-1, 1); dy = r.range(-1, 1); dz = r.range(-1, 1); dd = dx * dx + dy * dy + dz * dz; } while (dd > 1 || dd < 1e-4);
+      const il = 1 / Math.sqrt(dd); dx *= il; dy *= il; dz *= il;
+      if (k.flat && dy < -0.2) dy *= 0.4;
+      // the light mesh: only the outer shell (the inside is never seen from where it shows)
+      const rr = L1 ? 0.55 + 0.45 * Math.pow(r.next(), 0.6) : 0.3 + 0.7 * Math.pow(r.next(), 0.55);
+      const p: V3 = [k.c[0] + dx * k.R[0] * rr, k.c[1] + dy * k.R[1] * rr - 0.06 * rr * rr, k.c[2] + dz * k.R[2] * rr];
+      const nOut = vnrm([dx / k.R[0], dy / k.R[1], dz / k.R[2]]);
+      const nl = vnrm(vadd(vadd(vmul(nOut, k.lit), vmul(vnrm(vsub(p, cc)), 1 - k.lit)), [0, 0.18, 0]));
+      // the card's face: random, leaning out of the clump; its top turned up to the sky
+      const fn = vnrm([dx * 0.7 + r.range(-0.8, 0.8), dy * 0.7 + r.range(-0.8, 0.8), dz * 0.7 + r.range(-0.8, 0.8)]);
+      let up = vsub(UPV, vmul(fn, fn[1]));
+      if (vlen(up) < 0.25) up = vperp(fn);
+      up = vnrm(up);
+      const sd0 = vcross(up, fn), tw = r.range(-0.55, 0.55), ct = Math.cos(tw), st = Math.sin(tw);
+      const ax = vnrm(vadd(vmul(sd0, ct), vmul(up, st))), ay = vnrm(vsub(vmul(up, ct), vmul(sd0, st)));
+      const s = Rm * sizeK * r.range(0.78, 1.22);
+      // darker toward the clump's core and under it: each clump a lit lump over its own shade
+      const ao = Math.min(1.08, Math.max(0.36, 0.34 + 0.36 * rr + 0.4 * (nl[1] * 0.5 + 0.5) - (dy < -0.35 ? 0.1 : 0))) * sky, vv = r.range(0.93, 1.06);
+      g.col = [ao * vv, ao * vv, ao * vv * 0.98]; g.kind = KIND.LEAF; g.phase = r.next(); g.pivot = [0, 0, 0];
+      const rect = tex.crown(look.style, look.shape, k.ramp, { accent: acc, young: look.young, twig: look.twig, bud: look.accent, var: (ci + q) % 3 + (ci % 4 === 3 && q % 4 === 0 ? 1 : 0), thorns: look.thorns, hairs: look.hairs, big: shrub });
+      const fl = 0.5 + 0.5 * rr;
+      const a = g.v(vadd(p, vadd(vmul(ax, -s), vmul(ay, s))), nl, rect.u0, rect.v0, fl), b = g.v(vadd(p, vadd(vmul(ax, s), vmul(ay, s))), nl, rect.u0 + rect.du, rect.v0, fl);
+      const c = g.v(vadd(p, vadd(vmul(ax, s), vmul(ay, -s))), nl, rect.u0 + rect.du, rect.v0 + rect.dv, fl), d = g.v(vadd(p, vadd(vmul(ax, -s), vmul(ay, -s))), nl, rect.u0, rect.v0 + rect.dv, fl);
+      g.quad(a, b, c, d);
+    }
+    // fruit hangs under the clumps, the low and outer ones first
+    if (!k.flat || !umb) cand.push([k.c[1] - Math.hypot(k.c[0] - cc[0], k.c[2] - cc[2]) * 0.8, [k.c[0] + r.range(-0.4, 0.4) * k.R[0], k.c[1] - k.R[1] * 0.78, k.c[2] + r.range(-0.4, 0.4) * k.R[2]]]);
+    else cand.push([k.c[1], [k.c[0] + r.range(-0.3, 0.3) * k.R[0], k.c[1] - k.R[1] * 0.5, k.c[2] + r.range(-0.3, 0.3) * k.R[2]]]);
+  });
+  return L1 ? [] : cand.sort((a, b) => a[0] - b[0]).slice(0, 8).map((e) => e[1]);
+}
+
 // ------------------------------------------------------------------------------------------------ plants
 const ampOf = (a: number | undefined) => 0.46 + 0.62 * Math.pow(Math.max(0, Math.min(1, ((a ?? 0.6) - 0.05) / 0.55)), 0.9);
 const PMAX: Partial<Record<Shape, number>> = {};
@@ -331,11 +388,22 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
   const sprayStyle: SprayStyle = sp.arch === 'umbrella' ? fsty.pick<SprayStyle>(['bipinnate', 'pinnate', 'alternate']) : sp.arch === 'shrub' ? fsty.pick<SprayStyle>(['alternate', 'trifoliate', 'whorl', 'alternate', 'palmate']) : fsty.pick<SprayStyle>(['alternate', 'pinnate', 'palmate', 'whorl', 'alternate']);
   const twigR = rampFor(sp.trunk), accR = rampFor(sp.accent), youngR = rampFor(mixHex(sp.leaf, 0xd8dca0, 0.3));
   const budget = crown3 ? (sp.arch === 'shrub' ? (L1 ? 34 : 80) : L1 ? 120 : 380) : L1 ? 40 : 400;
+  // crowns grown as clumps (broadleaf, umbrella, weeper, shrub) are dressed clump by clump in big leaf-spray cards
+  const clumped = crown3 && P.clumps.length > 0;
+  let crownAnchors: V3[] = [];
+  if (clumped) {
+    const shapes = new Map<Shape, number>(), rampN = new Map<number[], number>();
+    for (const l of P.leaves) if (!l.skip3d && l.kind !== K.ACC) { shapes.set(l.shape, (shapes.get(l.shape) ?? 0) + 1); rampN.set(l.ramp, (rampN.get(l.ramp) ?? 0) + 1); }
+    for (const k of P.clumps) if (!rampN.has(k.ramp)) rampN.set(k.ramp, 1);
+    const shape = [...shapes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'ovate';
+    crownAnchors = crownCards(g, P, sp, tex, r, L1, { style: shape === 'needle' ? 'needle' : sprayStyle, shape, ramps: [...rampN.entries()].sort((a, b) => b[1] - a[1]).map((e) => e[0]), twig: twigR, accent: accR, young: youngR, thorns: thorny, hairs: hairy });
+  }
   const thin = Math.max(1, Math.round(nLeaf / budget)), grow = thin > 1 ? Math.sqrt(thin) * 0.9 : 1;
   let li = 0, vi = seed % 4;
   for (const l of P.leaves) {
     if (l.skip3d) continue;
     const petal = l.kind === K.ACC;
+    if (clumped && !petal) continue;
     if (!petal && thin > 1 && (li++ % thin)) continue;
     const needle = l.shape === 'needle' && !petal;
     if (crown3 && !petal) {
@@ -431,6 +499,8 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
     disc(g, M(e.p), vnrm(e.n), (e.r / PXM) * 1.1, rect, L1 ? 6 : 10, 0.35, UPV);
   }
   parts.rest = g.tris - parts.limbs - parts.leaves - parts.ribbons;
+  // a clumped crown's fruit hangs under its clumps (the tips the model grew it at are buried in the leaves now)
+  if (clumped && !L1 && crownAnchors.length) anchors.splice(0, anchors.length, ...crownAnchors);
   if (!L1 && anchors.length < 3) {
     // no modelled fruit: hang it under the crown's lower leaves (crowns) or at the tops of the stems
     if (crown3) {

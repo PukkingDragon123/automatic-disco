@@ -726,8 +726,8 @@ export class Player implements GolemTarget, TouchHost {
       if (best && bd < rad * 2.6) {
         const a = Math.atan2(best.x - this.x, -(best.z - this.z)), dirs = ['NORTH', 'NORTH-EAST', 'EAST', 'SOUTH-EAST', 'SOUTH', 'SOUTH-WEST', 'WEST', 'NORTH-WEST'];
         const dir = dirs[((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8];
-        floatText(g, this.x, this.y + this.height + 0.25, this.z, `FAINT ECHO ${dir}, ~${Math.round(bd / 10) * 10} M`, 'info', { life: 3.5 });
-      } else floatText(g, this.x, this.y + this.height + 0.25, this.z, R.buried.length ? 'NO ECHO IN RANGE' : 'NOTHING BURIED LEFT HERE', 'info', { life: 2.6 });
+        floatText(g, this.x, this.y + this.height + 0.25, this.z, `FAINT ECHO ${dir}, ~${Math.round(bd / 10) * 10} M`, 'good', { life: 3.5 });
+      } else floatText(g, this.x, this.y + this.height + 0.25, this.z, R.buried.length ? 'NO ECHO IN RANGE' : 'NOTHING BURIED LEFT HERE', 'warn', { life: 2.6 });
     }
     g.emit('scan', { x: this.x, z: this.z, r: rad, found: found.length });
     return found.length;

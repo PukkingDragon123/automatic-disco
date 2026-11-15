@@ -30,6 +30,7 @@ const GLINT = M('snow');
 const SHELF = [12, 18, 24, 30, 36, 46, 56, 64, 80, 96, 128, 170, 256];
 /** toward the light in texture space (upper left) */
 const LX = -Math.SQRT1_2, LY = -Math.SQRT1_2;
+const TAU2 = Math.PI * 2;
 const PMAX = new Map<Shape, number>();
 const pmaxOf = (s: Shape) => { let v = PMAX.get(s); if (v === undefined) { v = 0.01; for (let t = 0; t <= 1; t += 0.02) v = Math.max(v, PROF[s](t)); PMAX.set(s, v); } return v; };
 
@@ -39,11 +40,25 @@ const pmaxOf = (s: Shape) => { let v = PMAX.get(s); if (v === undefined) { v = 0
  */
 class Px {
   readonly a: Int8Array; readonly r: Uint8Array;
+  /** while set, every texel written is noted here (one element's pixels, for its drop shadow) */
+  mark: Set<number> | null = null;
   constructor(readonly w: number, readonly h: number, readonly ramps: number[][]) { this.a = new Int8Array(w * h).fill(-1); this.r = new Uint8Array(w * h); }
   set(x: number, y: number, i: number, ramp = 0) {
     x = Math.floor(x); y = Math.floor(y);
     if (x < 0 || y < 0 || x >= this.w || y >= this.h) return;
     const R = this.ramps[ramp]; this.a[y * this.w + x] = Math.max(0, Math.min(R.length - 1, Math.round(i))); this.r[y * this.w + x] = ramp;
+    if (this.mark) this.mark.add(y * this.w + x);
+  }
+  /** a tinted dark outline outside the shape on its shadow side (right and below): the darkest step of the ramp next to
+   *  it when that ramp is one of keep (a deep one), else of the first ramp */
+  rimOut(keep: number[] = [0]) {
+    const { w, h, a, r } = this, src = a.slice(), add: number[] = [];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x; if (src[i] >= 0) continue;
+      const s = x > 0 && src[i - 1] >= 0 ? i - 1 : y > 0 && src[i - w] >= 0 ? i - w : -1;
+      if (s >= 0) add.push(i, keep.includes(r[s]) ? r[s] : 0);
+    }
+    for (let k = 0; k < add.length; k += 2) { a[add[k]] = 0; r[add[k]] = add[k + 1]; }
   }
   get(x: number, y: number) { x = Math.floor(x); y = Math.floor(y); return x < 0 || y < 0 || x >= this.w || y >= this.h ? -1 : this.a[y * this.w + x]; }
   /** shift a texel by d ramp steps (keeps its ramp) */
@@ -360,6 +375,137 @@ export class FloraTex {
       if (v === 3 && o.berry) { const by = Math.floor(H * 0.14); for (const [bx, dy] of [[-3, 2], [2, 3], [0, 5]]) { stroke(P, cx, by, cx + bx, by + dy, 1, TW); bud(P, Math.floor(cx + bx), by + dy, bx < 0 ? -1 : bx > 0 ? 1 : 0, 1, BE); } }
       void berry;
       if (v === 1 && style !== 'needle') bud(P, Math.floor(cx) + 2, Math.floor(H * 0.22), 1, 1, YG);
+      return P;
+    });
+  }
+
+  /**
+   * A crown spray card (after Lerfolese's leafCard): a square card of twigs radiating from its centre, carrying a
+   * hundred and more small leaves in the species' own arrangement (alternate leaves, pinnate leaflets, palmate and
+   * trifoliate fans, whorls, bipinnate feathers, needle fascicles). Leaves go down back to front (lower right first,
+   * so the lit upper-left ones land on top); the lower right of the spray sits a step darker than its lit upper left;
+   * every leaf casts a 1 px shadow down-right onto the ones it overlaps; whole twigs take the species' second foliage
+   * ramp and the twig ends its pale young growth (colour in clusters, never speckle); a tinted dark outline closes the
+   * shadow side. Crown clumps are filled with these cards (floraMesh). The card's top is the sky side.
+   */
+  crown(style: SprayStyle, shape: Shape, ramp: number[], o: { accent?: number[]; young?: number[]; twig?: number[]; bud?: number[]; var?: number; thorns?: boolean; hairs?: boolean; big?: boolean } = {}): Rect {
+    const v = o.var ?? 0, S = 64, key = `crown|${style}|${shape}|${keyOf(ramp)}|${o.accent ? keyOf(o.accent) : ''}|${v}|${o.thorns ? 1 : 0}|${o.hairs ? 1 : 0}|${o.big ? 1 : 0}`;
+    return this.get(key, S, S, (mk) => {
+      const AC = 1, YG = 2, BR = 3, TW = 4, BU = 5, GL = 6;
+      const P = mk([ramp, o.accent ?? ramp, o.young ?? ramp, M('ochre'), o.twig ?? M('fur'), o.bud ?? M('ruby'), GLINT]);
+      const r = new Rand(this.seed ^ (key.length * 6151) ^ (v * 7919) ^ (ramp[3] & 0xffff));
+      const c = S / 2 - 0.5, shd = new Uint8Array(S * S);
+      const long = shape === 'lance' || shape === 'linear' || shape === 'falcate' || shape === 'strap';
+      const broad = shape === 'round' || shape === 'fan' || shape === 'deltoid' || shape === 'heart' || shape === 'spatula';
+      const bk = o.big ? 1.45 : 1.2, Lr: [number, number] = long ? [8 * bk, 11 * bk] : broad ? [6 * bk, 8 * bk] : [7 * bk, 9.5 * bk];
+      const wr = long ? 0.3 : broad ? 0.66 : 0.48;
+      // the spray's own light: the upper left of the card is lit, the lower right a step down, a ragged band between
+      const lit = (x: number, y: number) => { const d = (x - c) * -0.45 + (y - c) * -0.85; return d > 1.5 ? 0 : d < -8 ? -1 : r.chance(0.5) ? 0 : -1; };
+      // ramp by twig: one or two whole twigs in the second foliage ramp, young pale growth at the twig ends
+      const nTw = style === 'needle' ? 7 : style === 'pinnate' || style === 'bipinnate' ? r.int(7, 8) : 6;
+      const twA: number[] = [], twL: number[] = [], twR: number[] = [];
+      const acc1 = r.int(0, nTw - 1), acc2 = r.chance(0.5) ? (acc1 + 3) % nTw : -1;
+      for (let i = 0; i < nTw; i++) { twA.push((i / nTw) * TAU2 + r.range(-0.25, 0.25) - Math.PI / 2); twL.push(r.range(16, 21)); twR.push(o.accent && (i === acc1 || i === acc2) ? AC : 0); }
+      const deadAt = v === 2 ? r.int(3, 9) : -1;
+      type L = [number, number, number, number, number, number, number]; // x, y, ang, len, wid, ramp, shade bias
+      const leaves: L[] = [], rach: [number, number, number, number][] = [];
+      // shortened so a leaf's tip (and its width) stays on the card
+      const room = (p: number, d: number) => (d > 1e-3 ? (S - 3 - p) / d : d < -1e-3 ? (2 - p) / d : 1e9);
+      const fit = (x: number, y: number, a: number, L: number) => Math.min(L, room(x, Math.cos(a)), room(y, Math.sin(a)));
+      // (a leaf that would lose much of its length is left off: clipped tips would line up along the card's edge)
+      const leafAt = (x: number, y: number, a: number, L: number, W: number, ri: number, t: number, bias = 0) => { const Lf = fit(x, y, a, L); if (Lf >= 3.5 && Lf > L * 0.72) leaves.push([x, y, a, Lf, W, t > 0.82 && r.chance(0.55) ? YG : ri, bias]); };
+      // twigs: a curving stroke from the centre, thick at the base
+      const twigPts: [number, number, number][][] = [];
+      for (let i = 0; i < nTw; i++) {
+        const a = twA[i], L = twL[i], bend = r.range(-0.3, 0.3), pts: [number, number, number][] = [];
+        for (let k = 0; k <= 8; k++) { const t = k / 8, aa = a + bend * t; pts.push([c + Math.cos(aa) * L * t, c + Math.sin(aa) * L * t, aa]); }
+        twigPts.push(pts);
+      }
+      const at = (i: number, t: number) => { const pts = twigPts[i], f = Math.min(7.999, t * 8), k = Math.floor(f), u = f - k; return [pts[k][0] + (pts[k + 1][0] - pts[k][0]) * u, pts[k][1] + (pts[k + 1][1] - pts[k][1]) * u, pts[k][2]] as [number, number, number]; };
+      if (style === 'needle') {
+        // fascicles: fans of 1 px needles from short shoots along the twigs, pale tips
+        for (let i = 0; i < nTw; i++) for (let k = 0; k < 6; k++) {
+          const t = 0.2 + k * 0.15 + r.range(-0.04, 0.04), [x, y, a] = at(i, t), nn = r.int(9, 13), side = a + (k % 2 ? 0.6 : -0.6);
+          leaves.push([x, y, side, r.range(8, 12) * bk, nn, twR[i], 100]);
+        }
+      } else if (style === 'pinnate' || style === 'bipinnate') {
+        // compound leaves: each twig is a rachis with opposite leaflets (bipinnate: pinnae lined with tiny leaflets)
+        for (let i = 0; i < nTw; i++) {
+          const step = style === 'bipinnate' ? 4.5 : 3.2;
+          for (let s = 0.18 * twL[i]; s < twL[i] - 2; s += step) {
+            const t = s / twL[i], [x, y, a] = at(i, t);
+            for (const sd of [-1, 1]) {
+              const la = a + sd * r.range(0.85, 1.15) * (1 - t * 0.25);
+              if (style === 'bipinnate') {
+                const PL0 = r.range(7, 10) * bk * (1 - t * 0.3), PL = fit(x, y, la, PL0);
+                if (PL > 3.5 && PL > PL0 * 0.72) leaves.push([x, y, la, PL, 0, twR[i], 200]);
+              } else leafAt(x, y, la, r.range(Lr[0] - 1, Lr[1] - 1.5) * (1 - t * 0.3), 0, twR[i], t);
+            }
+          }
+          const [ex, ey, ea] = at(i, 1); leafAt(ex, ey, ea, Lr[0], 0, twR[i], 1);
+          // side compound leaves off the twig
+          if (style === 'pinnate') for (const t0 of [0.35, 0.68]) {
+            const [x0, y0, a0] = at(i, t0), sa = a0 + (t0 < 0.5 ? 0.75 : -0.75), sl = twL[i] * r.range(0.42, 0.55);
+            for (let s = 2.5; s < sl; s += 3) { const x = x0 + Math.cos(sa) * s, y = y0 + Math.sin(sa) * s; for (const sd of [-1, 1]) leafAt(x, y, sa + sd * r.range(0.9, 1.15), r.range(Lr[0] - 2, Lr[1] - 2.5), 0, twR[i], t0 + 0.3); }
+            rach.push([x0, y0, sa, sl]);
+          }
+        }
+      } else if (style === 'palmate' || style === 'trifoliate') {
+        // fans of leaflets from the ends of short petioles along the twigs
+        const nf = style === 'palmate' ? 5 : 3, spread = style === 'palmate' ? 2.3 : 1.5;
+        const nn = nf === 3 ? 6 : 4;
+        for (let i = 0; i < nTw; i++) for (let k = 0; k < nn; k++) {
+          const t = 0.22 + k * (0.78 / nn) + r.range(-0.03, 0.03), [x, y, a] = at(i, Math.min(1, t)), pa = a + (k % 2 ? 0.7 : -0.7);
+          const px = x + Math.cos(pa) * 2.5, py = y + Math.sin(pa) * 2.5;
+          for (let f = 0; f < nf; f++) { const u = f / (nf - 1) - 0.5; leafAt(px, py, pa + u * spread, r.range(Lr[0] - 1, Lr[1] - 1) * (1 - Math.abs(u) * 0.45), 0, twR[i], t); }
+        }
+      } else if (style === 'whorl') {
+        // whorls of leaves round each node
+        for (let i = 0; i < nTw; i++) for (let k = 0; k < 4; k++) {
+          const t = 0.22 + k * 0.24, [x, y, a] = at(i, Math.min(1, t)), nw = r.int(5, 6), a0 = r.range(0, 1);
+          for (let f = 0; f < nw; f++) leafAt(x, y, a + ((f + a0) / nw - 0.5) * 3.6, r.range(Lr[0] - 1.5, Lr[1] - 1.5), 0, twR[i], t);
+        }
+      } else {
+        // alternate: leaves strewn along the twigs, alternating sides, angled out
+        const n = Math.round(r.range(125, 150) / (o.big ? 1.35 : 1));
+        for (let k = 0; k < n; k++) {
+          // strewn through the twig's sector (Lerfolese: the angle jittered round the centre), each leaf angled off it
+          const i = k % nTw, t = 0.14 + Math.sqrt(r.next()) * 0.86, a = twA[i] + r.range(-0.45, 0.45), d = twL[i] * t;
+          const aa = a + (r.chance(0.5) ? 1 : -1) * r.range(0.45, 1.15);
+          leafAt(c + Math.cos(a) * d + r.range(-1.5, 1.5), c + Math.sin(a) * d + r.range(-1.5, 1.5), aa, r.range(Lr[0], Lr[1]), 0, twR[i], t);
+        }
+      }
+      for (let i = 0; i < nTw; i++) { const pts = twigPts[i]; for (let k = 0; k < 8; k++) stroke(P, pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1], k < 3 ? 2 : 1.2, TW); }
+      for (const [x, y, a, L] of rach) stroke(P, x, y, x + Math.cos(a) * L, y + Math.sin(a) * L, 1, TW);
+      if (o.thorns) for (let i = 0; i < nTw; i++) for (let t = 0.2; t < 0.8; t += 0.22) { const [x, y, a] = at(i, t), s = (Math.round(t * 10) & 1) ? 1 : -1; P.set(x + Math.cos(a + s * 1.4) * 1.5, y + Math.sin(a + s * 1.4) * 1.5, 1, TW); P.set(x + Math.cos(a + s * 1.2) * 2.5, y + Math.sin(a + s * 1.2) * 2.5, 4, TW); }
+      // back to front: lower right first
+      leaves.sort((p, q) => (q[0] + q[1]) - (p[0] + p[1]));
+      let li = 0;
+      for (const [x, y, a, Ln, W, ri, bias] of leaves) {
+        const sh = lit(x, y), k = li++;
+        P.mark = new Set();
+        if (bias === 100) {
+          // a needle fascicle
+          const nn = W;
+          for (let q2 = 0; q2 < nn; q2++) { const b = a + (q2 / (nn - 1) - 0.5) * 2.4, ln = fit(x, y, b, Ln * r.range(0.75, 1)); for (let s = 1; s <= ln; s += 0.7) P.set(x + Math.cos(b) * s, y + Math.sin(b) * s, (s > ln - 1.2 ? 5 : q2 % 3 ? 3 : 4) + sh, s > ln - 1.2 && ri !== AC ? YG : ri); }
+        } else if (bias === 200) {
+          // a pinna: a fine rachis lined with tiny leaflets
+          const ex = x + Math.cos(a) * Ln, ey = y + Math.sin(a) * Ln; stroke(P, x, y, ex, ey, 1, TW);
+          for (let s = 1.5; s < Ln; s += 2.1) for (const s2 of [-1, 1]) { const bx = x + Math.cos(a) * s, by = y + Math.sin(a) * s; leaflet(P, bx, by, a + s2 * 1.0, 4.8, 3, 'lance', { ri: s > Ln * 0.75 ? YG : ri, shade: sh, veins: 0 }); }
+        } else {
+          const dead = k === deadAt, W2 = Math.max(2.4, Ln * wr);
+          leaflet(P, x, y, a, Ln, W2, dead ? 'falcate' : shape, {
+            ri: dead ? BR : ri, shade: sh, bend: r.range(-0.6, 0.6), asym: r.range(-0.15, 0.15), teeth: shape === 'serrate' && Ln > 8, veins: 0,
+            curl: dead ? 0.3 : 0, hairs: o.hairs && k % 3 === 0 ? YG : undefined, glint: k % 11 === 4 && sh === 0 ? GL : undefined,
+          });
+        }
+        // the leaf's 1 px shadow onto what lies under it (down and right)
+        const own = P.mark; P.mark = null;
+        for (const i of own) { const x0 = i % S, y0 = (i / S) | 0; for (const [dx, dy] of [[1, 0], [1, 1], [0, 1]]) { const X = x0 + dx, Y = y0 + dy; if (X >= S || Y >= S) continue; const j = Y * S + X; if (own.has(j) || shd[j] || P.get(X, Y) < 1) continue; shd[j] = 1; P.nudge(X, Y, -1); } }
+      }
+      // life: a few buds or flowerets in the accent colour at twig ends (var 3), a resting bud at the centre
+      if (v === 3) for (let i = 0; i < nTw; i += 2) { const [x, y, a] = at(i, 1); bud(P, Math.floor(x + Math.cos(a) * 2), Math.floor(y + Math.sin(a) * 2), Math.round(Math.cos(a)), Math.round(Math.sin(a)), BU); }
+      P.rimOut([0, AC]);
       return P;
     });
   }
