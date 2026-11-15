@@ -113,7 +113,7 @@ body.cx-paused .cx-frame { box-shadow: inset 0 0 0 6px rgba(229,219,195,0.55); }
 /* ---------------- the tool ring */
 .cx-wheel { right: 6px; bottom: 6px; width: 480px; height: 330px; padding: 0; }
 .cx-wheel canvas.dial { position: absolute; right: 8px; bottom: 6px; width: 320px; height: 320px; pointer-events: auto; cursor: pointer; image-rendering: pixelated; }
-.cx-wheel .info { position: absolute; left: 10px; top: 60px; width: 156px; padding: 0; font-size: 11px; line-height: 1.3; }
+.cx-wheel .info { position: absolute; left: 12px; top: 166px; width: 156px; padding: 0; font-size: 11px; line-height: 1.3; }
 .cx-wheel .info .tn { font-family: 'Title', monospace; font-size: 24px; line-height: 1; } .cx-wheel .info .un { color: #3d4346; margin-top: 6px; } .cx-wheel .info .ds { color: #3d4346; margin-top: 6px; }
 .cx-wheel .info .lv { margin-top: 6px; color: #8c2920; }
 .cx-wheel .cfg { position: absolute; left: 10px; bottom: 16px; width: 156px; font-size: 11px; }

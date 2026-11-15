@@ -134,7 +134,7 @@ export function idBadge(d: CrewDef, mood: number, scale = 1): HTMLCanvasElement 
   const tx = cx + 96;
   I.text(d.short.toUpperCase(), tx * S, (cy + 44) * S, 'Title', 24 * S === 24 ? 24 : 48, '#1f1b17');
   I.text(d.job, tx * S, (cy + 72) * S, 'Body', 22 * S === 22 ? 22 : 44, '#3a342c');
-  I.text(d.rank.toUpperCase(), tx * S, (cy + 98) * S, 'Body', 11 * S === 11 ? 11 : 22, '#7a7060');
+  I.text(d.rank.toUpperCase() + ' · ' + d.heightM.toFixed(2) + ' M', tx * S, (cy + 98) * S, 'Body', 11 * S === 11 ? 11 : 22, '#7a7060');
   // mood: a little face and five pips
   g.save(); g.scale(S, S);
   const mx = tx + 8, my = cy + 124, on = Math.max(1, Math.round(mood * 5));

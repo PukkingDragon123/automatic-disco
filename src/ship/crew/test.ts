@@ -89,7 +89,7 @@ function sheetCallouts(id: CrewId, hero: CrewModel, turn: CrewModel[], cam: THRE
   const d = ROSTER[id], st = crewState();
   const W = innerWidth, H = innerHeight;
   const c = document.createElement('canvas'); c.style.cssText = 'position:fixed;left:0;top:0;z-index:5;pointer-events:none;image-rendering:pixelated'; document.body.appendChild(c);
-  const bub = new SpeechBubble(document.body);
+  const bub = null as SpeechBubble | null;
   const scr = (o: THREE.Object3D, dy = 0) => { const v = o.getWorldPosition(new THREE.Vector3()); v.y += dy; v.project(cam); return [Math.round(((v.x + 1) / 2) * W), Math.round(((1 - v.y) / 2) * H)] as [number, number]; };
   const tags = d.gear.filter((g) => GEAR_TAG[g] && g !== 'patchL').slice(0, 4);
   const mood = st.mood, moodWord = mood > 0.7 ? 'STEADY' : mood > 0.5 ? 'TIRED' : mood > 0.3 ? 'GRIEVING' : 'BROKEN';
@@ -98,9 +98,8 @@ function sheetCallouts(id: CrewId, hero: CrewModel, turn: CrewModel[], cam: THRE
   hook((dt) => {
     t += dt;
     const boil = Math.floor(t * 4);
-    if (!shown && t > 0.6) { shown = true; bub.show(d.lines.click[0], d.short); }
     const hp = scr(hero.rig.j.head, 0.3);
-    bub.update(dt, hp[0], hp[1], true);
+    void bub; void shown;
     if (boil === last) return; last = boil;
     const I = new Ink(W, H); I.seed = boil % 6 + 1;
     // the ID badge (2x) top left, the full name and two facts under it
@@ -117,12 +116,6 @@ function sheetCallouts(id: CrewId, hero: CrewModel, turn: CrewModel[], cam: THRE
       I.label(label, lx, ly, 'Title', 24, INK.light);
       I.leader([right ? lx - 8 : lx + textW(label, 'Title', 24) + 8, ly + 14], p, INK.light);
     });
-    // the height: a bracket from the feet to the crown with the measure
-    const foot = scr(hero.root), crown = scr(hero.rig.j.head, 0.16 * hero.rig.s);
-    const bx = foot[0] - 230;
-    I.stroke([[bx, crown[1]], [bx, foot[1]]], 2, INK.mute, { outline: INK.dark });
-    I.stroke([[bx - 10, crown[1]], [bx + 10, crown[1]]], 2, INK.mute, { outline: INK.dark }).stroke([[bx - 10, foot[1]], [bx + 10, foot[1]]], 2, INK.mute, { outline: INK.dark });
-    I.label(d.heightM.toFixed(2) + ' m', bx - 12, (crown[1] + foot[1]) / 2 - 12, 'Title', 24, INK.light, 'right');
     // the mood: a little face drawn by the head, its word
     const mx = hp[0] + 340, my = hp[1] + 70;
     I.loop(mx, my, 22, 22, 2, INK.light, { outline: INK.dark });
@@ -169,7 +162,7 @@ export async function testCrew(engine: Engine, input: Input, P: URLSearchParams)
     cam.fov = 24; cam.position.set(0, 1.0, 6.4); cam.lookAt(0, 0.9, 0); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); cam.updateMatrixWorld();
     // the hero: full figure, three-quarter view, centre left; the turnaround (front, side, back) further back on the right
     models.push({ m: mk(), x: -0.62, z: 0.6, yaw: 0.42 });
-    [0, Math.PI / 2, Math.PI].forEach((yaw, i) => models.push({ m: mk(), x: 1.45 + i * 0.62, z: -0.3, yaw }));
+    [0, Math.PI / 2, Math.PI].forEach((yaw, i) => models.push({ m: mk(), x: 1.2 + i * 0.52, z: -0.3, yaw }));
     sheetCallouts(id, models[0].m, models.slice(1).map((o) => o.m), cam, (fn) => (frameFn = fn));
     const g = P.get('gesture'); if (g) setTimeout(() => models[0].m.rig.gesture(g as never), 300);
   }

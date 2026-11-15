@@ -89,7 +89,7 @@ export class Hud {
     skin(this.ctlEl, (w, h) => platePix(w, h, { mat: 'enamel', seed: 63, hazard: true, wear: 0.7 }));
     // the wheel
     const wp = el('div', 'cx-plate cx-wheel', this.root);
-    const wcard = el('div', 'cx-plate', wp); wcard.style.cssText = 'left:0;top:44px;width:172px;height:270px'; skin(wcard, (w, h) => platePix(w, h, { mat: 'enamel', seed: 41, rivets: true, wear: 1 }), 'wcard');
+    const wcard = el('div', 'cx-plate', wp); wcard.style.cssText = 'left:0;top:150px;width:172px;height:164px'; skin(wcard, (w, h) => platePix(w, h, { mat: 'enamel', seed: 41, rivets: true, wear: 1 }), 'wcard');
     this.wheelInfo = el('div', 'cx-glass info cx-ph', wp);
     this.wheel = new ToolWheel(wp, { colony: () => this.colony, config: (i) => this.openCfg(i), tip: (h, x, y) => this.tip(h, x, y), flash: (m, b) => this.flash(m, b) });
     const cfg = el('button', 'cx-btn cfg', wp, 'CONFIGURE SLOTS'); cfg.onclick = () => this.openCfg(this.wheel.hover >= 0 ? this.wheel.hover : Math.max(0, this.colony?.slots.active ?? 0));

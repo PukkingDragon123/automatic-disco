@@ -164,6 +164,7 @@ export const EVENTS: EventDef[] = [
       c.sfx('hover', 0.8);
       c.cam.move({ look: look(at, 1.6), dur: 4, ease: 'inOut' });
       await c.tween(4, (u) => { d.position.y = at.y + 18 - u * 16.2; });
+      st.keep();
       c.sfx('beep', 0.7);
       await c.say(x.data.f === 'prc' ? 'UNAA unit. The Consortium proposes an exchange. Your survey data for our stock.' : 'UNAA unit. The Concord offers terms. Share what you have learned and we will share what we have.', { who: x.data.name.toUpperCase() + ' ENVOY', style: 'radio' });
       await c.say('The Meridian will hear about any trade.', { who: 'UNIT 07', style: 'plain' });

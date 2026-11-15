@@ -55,8 +55,8 @@ export class Stage {
     this.attach();
     const c = this.cine, g = anyG(this.g);
     c.cam.from(g.cam.cam, 20);
-    this.still = null;
-    const skipped = await c.play(async (cc) => { cc.ui.fade(1, 0); await script(cc); this.still = this.snap(); }, { name, skippable });
+    this.still = null; this.hero = null;
+    const skipped = await c.play(async (cc) => { cc.ui.fade(1, 0); await script(cc); this.still = this.hero ?? this.snap(); }, { name, skippable });
     for (const p of this.props.splice(0)) p.removeFromParent();
     // keep ticking the cinema UI for its fade-outs, then let the camera go
     setTimeout(() => { if (!c.active) this.detach(); }, 900);
@@ -64,6 +64,9 @@ export class Stage {
   }
   /** the last frame of the scene, read straight after a render (the decision cards paint their scenes from it) */
   still: HTMLCanvasElement | null = null;
+  private hero: HTMLCanvasElement | null = null;
+  /** keep THIS frame as the scene's still (a script calls it on its best shot; otherwise the last frame is used) */
+  keep() { this.hero = this.snap(); }
   private snap(): HTMLCanvasElement | null {
     try {
       const g = anyG(this.g), e = g.engine; if (!e?.screen) return null;
