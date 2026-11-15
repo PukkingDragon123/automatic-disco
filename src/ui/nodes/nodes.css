@@ -17,7 +17,7 @@
 .nm-title { display: inline-flex; align-items: center; height: 60px; padding: 0 10px; color: var(--ink); border: 16px solid transparent; border-bottom-width: 8px; border-image: var(--tab-on) 8 16 4 fill / 16px 32px 8px stretch; }
 .nm-sub { color: #f0e8d2; text-shadow: 2px 2px 0 #2b2622; }
 .nm-top .sp { flex: 1; }
-.nm-disc { display: grid; grid-template-columns: auto 300px; align-items: center; gap: 0 12px; height: 62px; padding: 0 4px; border: 14px solid transparent; border-image: var(--card) 12 fill / 24px stretch; }
+.nm-disc { display: grid; grid-template-columns: auto 300px; align-items: center; gap: 0 12px; height: 62px; padding: 0 4px; border: 14px solid transparent; border-image: var(--card) 12 fill / 24px round; }
 .nm-disc .t { grid-row: span 2; color: var(--ink-2); }
 .nm-disc .t b { display: block; font: 24px/24px 'Title', monospace; font-weight: normal; color: var(--ink); }
 .nm-disc .bar { height: 10px; display: flex; gap: 3px; }
@@ -29,7 +29,7 @@
 .nm-tools { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: auto; gap: 6px; align-content: start; overflow-y: auto; scrollbar-width: none; padding: 4px; }
 .nm-tools .h { grid-column: 1 / -1; color: #f0e8d2; text-shadow: 2px 2px 0 #2b2622; padding: 6px 2px 0; }
 .nm-tool { position: relative; display: grid; grid-template-rows: 48px 13px; justify-items: center; align-items: center; cursor: pointer; height: 86px; padding-top: 2px; user-select: none;
-  border: 12px solid transparent; border-image: var(--card) 12 fill / 24px stretch; }
+  border: 12px solid transparent; border-image: var(--card) 12 fill / 24px round; }
 .nm-tool canvas { width: 48px; height: 48px; image-rendering: pixelated; }
 .nm-tool .nm2 { color: var(--ink); white-space: nowrap; }
 .nm-tool .hk { position: absolute; right: -6px; top: -8px; color: var(--ink-3); }
@@ -45,11 +45,11 @@
 .nm-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .nm-legend i { display: inline-block; width: 22px; height: 4px; }
 .nm-hint { position: absolute; left: 50%; top: 10px; translate: -50% 0; z-index: 7; padding: 0 6px; color: var(--pencil-r); pointer-events: none; display: none; white-space: nowrap;
-  border: 12px solid transparent; border-image: var(--card) 12 fill / 24px stretch; }
+  border: 12px solid transparent; border-image: var(--card) 12 fill / 24px round; }
 .nm-hint.on { display: block; }
 
 /* the inspector sheet */
-.nm-side { display: flex; flex-direction: column; min-height: 0; border: 32px solid transparent; border-image: var(--sheet) 16 fill / 32px stretch; }
+.nm-side { display: flex; flex-direction: column; min-height: 0; border: 32px solid transparent; border-image: var(--sheet) 16 fill / 32px round; }
 .nm-side .scroll { overflow-y: auto; margin: -14px -14px -10px; padding: 4px 6px; flex: 1; scrollbar-width: thin; scrollbar-color: var(--kraft) transparent; position: relative; z-index: 1; }
 .nm-h { font: 32px/34px 'TitleL', monospace; color: var(--ink); }
 .nm-h small { display: block; font: 11px/13px 'Body', monospace; color: var(--ink-2); margin-top: 4px; }
@@ -60,32 +60,32 @@
 .nm-p b { font-weight: normal; color: var(--pencil-r); }
 .nm-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; }
 .nm-btn { display: inline-flex; align-items: center; cursor: pointer; color: var(--ink); white-space: nowrap; user-select: none; min-height: 32px; padding: 0 2px;
-  font: 11px/13px 'Body', monospace; border: 10px solid transparent; border-image: var(--chit) 6 fill / 10px stretch; }
+  font: 11px/13px 'Body', monospace; border: 10px solid transparent; border-image: var(--chit) 6 fill / 10px round; }
 .nm-btn:hover { filter: brightness(1.05); }
 .nm-btn.on { border-image-source: var(--chit-on); color: #f4e9d0; }
 .nm-btn.red { color: var(--pencil-r); }
 .nm-btn.amb { color: #6a4a10; }
 .nm-btn.off { opacity: 0.45; cursor: not-allowed; }
 .nm-ichip { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; padding: 0 2px; min-height: 36px; color: var(--ink-2); font: 11px/13px 'Body', monospace;
-  border: 10px solid transparent; border-image: var(--chit) 6 fill / 10px stretch; }
+  border: 10px solid transparent; border-image: var(--chit) 6 fill / 10px round; }
 .nm-ichip img { width: 22px; height: 22px; image-rendering: pixelated; }
 .nm-ichip.on { border-image-source: var(--chit-on); color: #f4e9d0; }
 .nm-num { display: inline-flex; align-items: stretch; height: 36px; gap: 2px; }
 .nm-num span { cursor: pointer; display: grid; place-items: center; width: 34px; color: var(--ink); font: 24px/24px 'Title', monospace; user-select: none;
-  border: 10px solid transparent; border-image: var(--chit) 6 fill / 10px stretch; }
+  border: 10px solid transparent; border-image: var(--chit) 6 fill / 10px round; }
 .nm-num input { all: unset; width: 70px; text-align: center; font: 22px/26px 'Body', monospace; color: var(--ink); border-bottom: 2px solid var(--ink); }
 .nm-sel { all: unset; cursor: pointer; max-width: 100%; font: 11px/13px 'Body', monospace; color: var(--ink); min-height: 32px; padding: 0 2px;
-  border: 10px solid transparent; border-image: var(--chit) 6 fill / 10px stretch; }
+  border: 10px solid transparent; border-image: var(--chit) 6 fill / 10px round; }
 .nm-sel option { background: #f0e8d2; color: #2b2622; font: 11px 'Body', monospace; }
 .nm-pri { display: inline-flex; gap: 4px; }
 .nm-pri span { cursor: pointer; width: 36px; height: 36px; display: grid; place-items: center; color: var(--ink-3); font: 22px/26px 'Body', monospace;
-  border: 10px solid transparent; border-image: var(--chit) 6 fill / 10px stretch; }
+  border: 10px solid transparent; border-image: var(--chit) 6 fill / 10px round; }
 .nm-pri span.on { color: #f4e9d0; border-image-source: var(--chit-on); }
 .nm-cond { display: grid; grid-template-columns: 50px 1fr auto; gap: 6px; align-items: center; padding: 2px 0; margin-bottom: 6px; border-bottom: 2px dotted #c8bd9e; }
 .nm-cond .if { font: 24px/24px 'Title', monospace; color: var(--pencil-r); }
 .nm-cond .args { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .nm-man { display: grid; grid-template-columns: 52px 1fr auto; gap: 10px; align-items: center; padding: 6px 2px; border-bottom: 2px dotted #c8bd9e; }
-.nm-man img { width: 52px; height: 52px; image-rendering: pixelated; border: 6px solid transparent; border-image: var(--chit) 6 fill / 6px stretch; }
+.nm-man img { width: 52px; height: 52px; image-rendering: pixelated; border: 6px solid transparent; border-image: var(--chit) 6 fill / 6px round; }
 .nm-man .n { font: 24px/24px 'Title', monospace; color: var(--ink); }
 .nm-man .j { color: var(--ink-2); margin-top: 2px; }
 .nm-man .j .amb { color: #6a4a10; } .nm-man .j .bad { color: var(--pencil-r); }
@@ -93,11 +93,11 @@
 .nm-man .meters span.m { display: inline-flex; gap: 2px; width: 70px; height: 8px; }
 .nm-man .meters span.m i { flex: 1; border-left: 2px solid #c8bd9e; } .nm-man .meters span.m i.on { border-left-color: var(--pencil-g); } .nm-man .meters span.m.low i.on { border-left-color: var(--pencil-r); }
 .nm-check { width: 36px; height: 36px; cursor: pointer; display: grid; place-items: center; color: #f4e9d0; font: 24px/24px 'Title', monospace;
-  border: 10px solid transparent; border-image: var(--chit) 6 fill / 10px stretch; }
+  border: 10px solid transparent; border-image: var(--chit) 6 fill / 10px round; }
 .nm-check.on { border-image-source: var(--chit-on); }
 .nm-spark { display: block; width: 100%; height: 64px; image-rendering: pixelated; }
 .nm-kv { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.nm-kv > div { padding: 0 2px; border: 10px solid transparent; border-image: var(--chit) 6 fill / 10px stretch; }
+.nm-kv > div { padding: 0 2px; border: 10px solid transparent; border-image: var(--chit) 6 fill / 10px round; }
 .nm-kv .k { font: 11px/13px 'Body', monospace; color: var(--ink-3); }
 .nm-kv .v { color: var(--ink); white-space: nowrap; overflow: hidden; }
 .nm-kv .v small { font: 11px/13px 'Body', monospace; color: var(--ink-2); }
@@ -107,7 +107,7 @@
 .nm-list li:hover { background: rgba(185, 143, 92, 0.18); }
 .nm-list li .amb { color: #6a4a10; } .nm-list li .bad { color: var(--pencil-r); } .nm-list li i { font-style: normal; color: var(--ink-3); }
 .nm-stock { display: flex; flex-wrap: wrap; gap: 4px 8px; }
-.nm-tpl { padding: 0 2px 4px; margin-bottom: 8px; border: 12px solid transparent; border-image: var(--card) 12 fill / 24px stretch; }
+.nm-tpl { padding: 0 2px 4px; margin-bottom: 8px; border: 12px solid transparent; border-image: var(--card) 12 fill / 24px round; }
 .nm-tpl .n { font: 24px/24px 'Title', monospace; color: var(--ink); }
 .nm-tpl .d { font: 11px/13px 'Body', monospace; color: var(--ink-2); margin: 4px 0 6px; }
 .nm-in { display: flex; align-items: center; flex: 1; height: 40px; padding: 0 6px; border-bottom: 2px solid var(--ink); }
@@ -121,7 +121,7 @@
 
 /* the guide: Calder's card taped onto the table */
 .nm-tut { position: absolute; left: 10px; top: 24px; z-index: 8; width: 560px; display: none; color: var(--ink);
-  border: 32px solid transparent; border-image: var(--sheet) 16 fill / 32px stretch; }
+  border: 32px solid transparent; border-image: var(--sheet) 16 fill / 32px round; }
 .nm-tut > * { margin-left: -14px; margin-right: -14px; }
 .nm-tut::before { content: ''; position: absolute; left: 50%; top: -44px; translate: -50% 0; width: 96px; height: 36px; background: url(/ui/craft/tape.png) 0 0 / 96px 36px; image-rendering: pixelated; }
 .nm-tut.on { display: block; }
@@ -132,7 +132,7 @@
 .nm-tut .row { display: flex; gap: 10px; margin-top: 10px; margin-bottom: -10px; align-items: center; }
 .nm-tut .row .sp { flex: 1; }
 .nm-tut .tb { cursor: pointer; font: 24px/24px 'Title', monospace; color: var(--ink); min-height: 44px; display: inline-flex; align-items: center; padding: 0 4px;
-  border: 12px solid transparent; border-image: var(--chit) 6 fill / 12px stretch; }
+  border: 12px solid transparent; border-image: var(--chit) 6 fill / 12px round; }
 .nm-tut .tb.ghost { font: 11px/13px 'Body', monospace; }
 .nm-tut .ok { font: 11px/13px 'Body', monospace; color: var(--pencil-g); }
 

@@ -182,7 +182,7 @@ export class InteriorLight {
   private sel: { a: AreaLight; k: number }[] = [];
   /** the area lights worth shading this frame (on, lit, nearest the view first), at most `max` */
   pick(cam: THREE.Camera, max: number): AreaLight[] {
-    const cp = _p.setFromMatrixPosition(cam.matrixWorld), fw = _z.set(0, 0, -1).transformDirection(cam.matrixWorld);
+    const cp = _p.setFromMatrixPosition(cam.matrixWorld), fw = _fw.set(0, 0, -1).transformDirection(cam.matrixWorld);
     this.sel.length = 0;
     for (const a of this.areas) {
       if (!a.on || a.intensity <= 0) continue;
@@ -195,4 +195,4 @@ export class InteriorLight {
     return this.sel.slice(0, max).map((s) => s.a);
   }
 }
-const _z = new THREE.Vector3(), _g2 = new THREE.Vector3();
+const _fw = new THREE.Vector3(), _g2 = new THREE.Vector3();

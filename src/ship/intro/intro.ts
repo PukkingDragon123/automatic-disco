@@ -469,8 +469,9 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       const cpos = [V(PC.x + 2.0, 0, PC.z + 0.5), V(PC.x + 1.7, 0, PC.z - 1.9), V(PC.x - 1.7, 0, PC.z - 1.9), V(PC.x - 2.0, 0, PC.z + 0.6)].map((p) => inShop(p));
       crates.forEach((g, i) => { add(g); g.position.copy(cpos[i]); g.lookAt(V(PC.x, 0, PC.z)); });
       hub.podBuild?.(0);
-      c.cam.cut(V(PC.x + 4.2, 3.6, PC.z + 4.9), V(PC.x + 0.2, 0.8, PC.z), 46);
-      c.cam.move({ pos: V(PC.x + 3.8, 3.2, PC.z + 4.4), dur: 8, ease: 'inOut' });
+      // from over the room's full-height corridor and bow-side walls, looking down on the cradle
+      c.cam.cut(V(PC.x + 4.0, 4.6, PC.z + 4.6), V(PC.x + 0.2, 0.7, PC.z), 46);
+      c.cam.move({ pos: V(PC.x + 3.6, 4.2, PC.z + 4.2), dur: 8, ease: 'inOut' });
       await c.fade(0, 1.0);
       c.stamp('WORKSHOP + HANGAR · DECK 1 AFT');
       await line('solano', 'Your body for the surface. A capsule pod: you ride it down, and once it lands, it is you.');
@@ -521,7 +522,7 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
     const screen = mon.clone().addScaledVector(mdir, -1.0).setY(1.8);
     unit.place(mon.clone().addScaledVector(mdir, 1.4).add(V(0.7, 1.7, 0))); unit.lookAt(screen);
     c.cam.cut(MS.captain.pos.clone().addScaledVector(mdir, 1.4).setY(2.3), screen.clone().setY(1.6), 42);
-    c.cam.move({ pos: MS.captain.pos.clone().addScaledVector(mdir, -1.4).setY(2.0), dur: 9, ease: 'inOut' });
+    c.cam.move({ pos: MS.captain.pos.clone().addScaledVector(mdir, 0.5).setY(2.15), dur: 9, ease: 'inOut' });
     await c.fade(0, 1.2);
     c.stamp('BRIDGE · UNAA MERIDIAN · RV-07');
     mark('monitor');

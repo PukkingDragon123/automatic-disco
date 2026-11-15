@@ -91,7 +91,7 @@ export class CrewLife {
       this.spawn(id);
     }
     this.unit = new Unit07();
-    if (!o.noUnit) { hub.scene.add(this.unit.root, this.unit.fx); this.unit.place(V(5.2, 1.45, 12.5)); }
+    if (!o.noUnit) { hub.scene.add(this.unit.root, this.unit.fx); const lc = hub.room('lab')?.spots.center?.pos; this.unit.place(lc ? V(lc.x, 1.45, lc.z) : V(0, 1.45, 0)); }
     this.off.push(hub.onUpdate((dt) => this.update(dt)));
     const cv = document.querySelector('canvas#view') as HTMLCanvasElement | null;
     const down = (e: PointerEvent) => this.click(e);

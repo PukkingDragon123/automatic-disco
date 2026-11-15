@@ -89,6 +89,31 @@ function fontText(s: string, font: string, size: number, fn: (x: number, y: numb
 }
 export function measure(s: string, font: string, size: number) { const g = document.createElement('canvas').getContext('2d')!; g.font = `${size}px ${font}`; return { w: Math.ceil(g.measureText(s).width) + 4, h: Math.ceil(size * 1.3) + 2 }; }
 
+// ------------------------------------------------------------------ brush strokes (after lowpix's brush engine)
+/**
+ * A field of brush strokes, about -1..1: white noise smeared along a flow direction by line-integral convolution
+ * (the way lowpix's brush.py lays tone), so ramp bands break into elongated, interlocking strokes instead of blobs.
+ * angle: the flow (0 = along x); len: stroke length in texels; tiles on both axes.
+ */
+export function strokeField(W: number, H: number, seed: number, angle = 0, len = 7, width = 1.4): Float32Array {
+  const n = new Float32Array(W * H), out = new Float32Array(W * H);
+  let s = (seed * 2654435761) >>> 0; const rnd = () => ((s = (Math.imul(s ^ (s >>> 15), 0x2c1b3c6d) + 0x9e3779b9) >>> 0) / 4294967296);
+  for (let i = 0; i < n.length; i++) n[i] = rnd() * 2 - 1;
+  // widen strokes across the flow a little (a box blur across)
+  const cx = -Math.sin(angle), cy = Math.cos(angle), fx = Math.cos(angle), fy = Math.sin(angle);
+  const wide = new Float32Array(W * H), wk = Math.max(0, Math.round(width - 1));
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let a = 0; for (let k = -wk; k <= wk; k++) { const X = ((Math.round(x + cx * k) % W) + W) % W, Y = ((Math.round(y + cy * k) % H) + H) % H; a += n[Y * W + X]; } wide[y * W + x] = a / (2 * wk + 1); }
+  let ss = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    let a = 0;
+    for (let k = -len; k <= len; k++) { const X = ((Math.round(x + fx * k) % W) + W) % W, Y = ((Math.round(y + fy * k) % H) + H) % H; a += wide[Y * W + X] * (1 - Math.abs(k) / (len + 1)); }
+    out[y * W + x] = a; ss += a * a;
+  }
+  const sd = Math.sqrt(ss / out.length) || 1;
+  for (let i = 0; i < out.length; i++) out[i] /= sd;
+  return out;
+}
+
 // ------------------------------------------------------------------ themes (base colours; ramps derive from them)
 export interface PTheme { key: string; wall: number; low: number; band: number; rail: number; stripe: number; trim: number; floor: 'tread' | 'rubber' | 'carpet' | 'tiles' | 'deck' | 'grate' | 'lino'; fa: number; fb: number }
 export const PTHEMES: Record<string, PTheme> = {
@@ -113,9 +138,10 @@ export function pixWall(th: PTheme, variant = 0) {
     const RW = makeRamp(th.wall, 6, { spread: 0.42 }), RL = makeRamp(th.low, 6, { spread: 0.45 }), RB = makeRamp(th.band, 5, { spread: 0.5 }), RR = makeRamp(th.rail, 5, { spread: 0.55 }), RT = makeRamp(th.trim, 5, { spread: 0.5 });
     const seed = hashStr(th.key) % 997;
     // the upper field: two or three calm tones in soft clusters, a touch lighter toward the top (lamps above)
+    const SF = strokeField(W, H, seed + variant * 31, Math.PI / 2 + 0.08, 6, 1.6);
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const v = 0.52 + (nz(pc, x, y, 4, 7, 2, seed) - 0.5) * 0.55 + (1 - y / H) * 0.08;
-      pc.set(x, y, q(RW.slice(1, 5), v, x, y, 0.35));
+      const v = 0.52 + (nz(pc, x, y, 4, 7, 2, seed) - 0.5) * 0.35 + SF[y * W + x] * 0.13 + (1 - y / H) * 0.08;
+      pc.set(x, y, q(RW.slice(1, 5), v, x, y, 0.2));
     }
     const top = Y(2.8), bot = Y(1.06);
     // the top band: a recess, the cable tray lip, conduit clamps
@@ -165,7 +191,8 @@ export function pixWall(th: PTheme, variant = 0) {
     for (let k = 0; k < 9; k++) chip(pc, Math.floor(rng.next() * W), ry0, RR[4], RR[1], rng.next());
     for (let x = 0; x < W; x++) { pc.set(x, ry1, RL[0]); pc.set(x, ry1 + 1, RL[1]); }
     // lower panels: darker, boot scuffs and cart rubs
-    for (let y = ry1 + 2; y < Y(0.15); y++) for (let x = 0; x < W; x++) pc.set(x, y, q(RL.slice(1, 5), 0.5 + (nz(pc, x, y, 5, 3, 2, seed + 7) - 0.5) * 0.6, x, y, 0.35));
+    const SL2 = strokeField(W, H, seed + 77, 0.05, 7, 1.4);
+    for (let y = ry1 + 2; y < Y(0.15); y++) for (let x = 0; x < W; x++) pc.set(x, y, q(RL.slice(1, 5), 0.5 + (nz(pc, x, y, 5, 3, 2, seed + 7) - 0.5) * 0.35 + SL2[y * W + x] * 0.15, x, y, 0.2));
     seamV(pc, 64 + (variant % 2) * 0, ry1 + 2, Y(0.15) - 1, RL); seamV(pc, 0, ry1 + 2, Y(0.15) - 1, RL);
     for (let k = 0; k < 14; k++) { const sx = Math.floor(rng.next() * W), sy = Y(0.18 + rng.next() * 0.5), sw = 3 + Math.floor(rng.next() * 10), c = rng.next() < 0.6 ? RL[1] : RL[4]; for (let x = 0; x < sw; x++) pc.set(sx + x, sy, c); }
     // the kick plate: dark steel with tread marks, grime at the floor
@@ -181,7 +208,8 @@ export function pixFloor(th: PTheme) {
   return pcached(`pf|${th.key}`, () => {
     const W = 128, pc = new PixelCanvas(W, W), rng = new Rng(hashStr(th.key + 'floor')), seed = hashStr(th.key) % 991;
     const RA = makeRamp(th.fa, 6, { spread: 0.45 }), RB = makeRamp(th.fb, 6, { spread: 0.45 });
-    const base = (R2: R, s = 0.45) => { for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) pc.set(x, y, q(R2.slice(1, 5), 0.5 + (nz(pc, x, y, 6, 6, 2, seed) - 0.5) * s * 2, x, y, 0.35)); };
+    const SFF = strokeField(W, W, seed + 5, 0.1, 6, 1.5);
+    const base = (R2: R, s = 0.45) => { for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) pc.set(x, y, q(R2.slice(1, 5), 0.5 + (nz(pc, x, y, 6, 6, 2, seed) - 0.5) * s * 1.2 + SFF[y * W + x] * 0.14, x, y, 0.2)); };
     if (th.floor === 'tread') {
       base(RA, 0.3);
       // diamond tread: raised lozenges in alternating diagonals, each a lit top-left pixel and a dark tail
@@ -199,7 +227,7 @@ export function pixFloor(th: PTheme) {
     } else if (th.floor === 'rubber' || th.floor === 'lino') {
       for (let ty = 0; ty < 4; ty++) for (let tx = 0; tx < 4; tx++) {
         const R2 = (tx + ty) % 2 ? RA : RB;
-        for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) pc.set(tx * 32 + x, ty * 32 + y, q(R2.slice(2, 5), 0.5 + (nz(pc, tx * 32 + x, ty * 32 + y, 8, 8, 2, seed + tx) - 0.5) * 0.5, x, y, 0.3));
+        for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) pc.set(tx * 32 + x, ty * 32 + y, q(R2.slice(2, 5), 0.5 + (nz(pc, tx * 32 + x, ty * 32 + y, 8, 8, 2, seed + tx) - 0.5) * 0.3 + SFF[(ty * 32 + y) * W + tx * 32 + x] * 0.13, x, y, 0.2));
         if (th.floor === 'rubber') for (let y = 4; y < 32; y += 7) for (let x = 4; x < 32; x += 7) { const X = tx * 32 + x, Yy = ty * 32 + y; pc.set(X, Yy, R2[5]); pc.set(X + 1, Yy, R2[4]); pc.set(X, Yy + 1, R2[4]); pc.set(X + 1, Yy + 1, R2[1]); pc.set(X + 2, Yy + 1, R2[1]); pc.set(X + 1, Yy + 2, R2[1]); }
         else for (let i = 0; i < 26; i++) pc.set(tx * 32 + Math.floor(rng.next() * 32), ty * 32 + Math.floor(rng.next() * 32), rng.next() < 0.5 ? R2[1] : R2[5]);
         pc.hline(tx * 32, tx * 32 + 31, ty * 32, RA[0]); pc.vline(tx * 32, ty * 32, ty * 32 + 31, RA[0]);
@@ -400,7 +428,8 @@ export function pixPoster(kind: string, seed = 1) {
 export function pixHull(key: string, base: number) {
   return pcached('phull|' + key, () => {
     const W = 128, pc = new PixelCanvas(W, W), rng = new Rng(hashStr(key)), R2 = makeRamp(base, 6, { spread: 0.4 }), seed = hashStr(key) % 997;
-    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) pc.set(x, y, q(R2.slice(2, 5), 0.5 + (nz(pc, x, y, 4, 4, 2, seed) - 0.5) * 0.45, x, y, 0.3));
+    const SH = strokeField(W, W, seed + 9, Math.PI / 2, 7, 1.4);
+    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) pc.set(x, y, q(R2.slice(2, 5), 0.5 + (nz(pc, x, y, 4, 4, 2, seed) - 0.5) * 0.3 + SH[y * W + x] * 0.14, x, y, 0.2));
     for (let cx = 0; cx < 4; cx++) {
       let y = -Math.floor(rng.next() * 16);
       while (y < W) {

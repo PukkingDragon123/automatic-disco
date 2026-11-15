@@ -17,16 +17,16 @@
 .cr-t { font: 24px/24px 'Title', monospace; }
 .cr-tl { font: 32px/32px 'TitleL', monospace; }
 /* paper pieces */
-.cr-card { border: 24px solid transparent; border-image: var(--card) 12 fill / 24px stretch; image-rendering: pixelated; }
-.cr-sheet { border: 32px solid transparent; border-image: var(--sheet) 16 fill / 32px stretch; image-rendering: pixelated; }
+.cr-card { border: 24px solid transparent; border-image: var(--card) 12 fill / 24px round; image-rendering: pixelated; }
+.cr-sheet { border: 32px solid transparent; border-image: var(--sheet) 16 fill / 32px round; image-rendering: pixelated; }
 .cr-chit { display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; user-select: none; white-space: nowrap; min-height: 40px; padding: 0 4px;
-  color: var(--ink); font: 24px/24px 'Title', monospace; border: 12px solid transparent; border-image: var(--chit) 6 fill / 12px stretch; image-rendering: pixelated; }
+  color: var(--ink); font: 24px/24px 'Title', monospace; border: 12px solid transparent; border-image: var(--chit) 6 fill / 12px round; image-rendering: pixelated; }
 .cr-chit.sm { font: 11px/13px 'Body', monospace; min-height: 32px; }
 .cr-chit:hover { filter: brightness(1.06); }
 .cr-chit.on { border-image-source: var(--chit-on); color: #f4e9d0; }
 .cr-chit.off { opacity: 0.5; cursor: not-allowed; }
 .cr-key { display: inline-grid; place-items: center; min-width: 26px; height: 26px; padding: 0; color: var(--ink); font: 11px/11px 'Body', monospace;
-  border: 8px solid transparent; border-image: var(--chit) 6 fill / 8px stretch; image-rendering: pixelated; }
+  border: 8px solid transparent; border-image: var(--chit) 6 fill / 8px round; image-rendering: pixelated; }
 .cr-pin { position: absolute; width: 28px; height: 28px; background: url(/ui/craft/pin.png) 0 0 / 28px 28px; image-rendering: pixelated; z-index: 7; pointer-events: none; }
 .cr-tape { position: absolute; width: 64px; height: 24px; background: url(/ui/craft/tape.png) 0 0 / 64px 24px; image-rendering: pixelated; z-index: 7; pointer-events: none; }
 .cr-chip { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; color: var(--ink); font: 11px/13px 'Body', monospace; }
@@ -38,7 +38,7 @@
 .cr-stamp { display: inline-block; padding: 2px 8px; color: var(--pencil-r); font: 24px/24px 'Title', monospace; border: 4px solid var(--pencil-r); rotate: -4deg; opacity: 0.9; }
 
 /* ------------------------------------------------------------------ the planner */
-.bm { position: fixed; left: 50%; top: 22px; translate: -50% 0; width: min(1680px, calc(100vw - 20px)); height: min(840px, calc(100vh - 138px));
+.bm { position: fixed; left: 50%; top: 22px; translate: -50% 0; width: min(1680px, calc(100vw - 20px)); height: min(910px, calc(100vh - 150px));
   z-index: 800; display: none; grid-template-rows: 54px 66px 1fr 30px; gap: 8px; pointer-events: auto; }
 .bm.on { display: grid; animation: bm-in 200ms steps(5); }
 @keyframes bm-in { from { opacity: 0; translate: -50% 16px; } to { opacity: 1; translate: -50% 0; } }
@@ -46,7 +46,7 @@
 .bm-head { display: flex; align-items: center; gap: 14px; }
 .bm-title { display: inline-flex; align-items: center; height: 54px; padding: 0 8px; border: 16px solid transparent; border-bottom-width: 8px; border-image: var(--tab-on) 8 16 4 fill / 16px 32px 8px stretch; image-rendering: pixelated; }
 .bm-head .sp { flex: 1; }
-.bm-search { display: inline-flex; align-items: center; gap: 8px; width: 360px; height: 48px; padding: 0 4px; border: 12px solid transparent; border-image: var(--chit) 6 fill / 12px stretch; image-rendering: pixelated; }
+.bm-search { display: inline-flex; align-items: center; gap: 8px; width: 360px; height: 48px; padding: 0 4px; border: 12px solid transparent; border-image: var(--chit) 6 fill / 12px round; image-rendering: pixelated; }
 .bm-search input { all: unset; flex: 1; min-width: 0; font: 22px/26px 'Body', monospace; color: var(--ink); caret-color: var(--pencil-r); }
 .bm-search input::placeholder { color: var(--ink-3); }
 .bm-tabs { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; align-items: end; }
@@ -63,7 +63,7 @@
 .bm-sec { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 12px; padding: 6px 4px 0; color: #f0e8d2; text-shadow: 2px 2px 0 #2b2622; }
 .bm-sec b { font: 24px/24px 'Title', monospace; font-weight: normal; }
 .bm-tile { position: relative; display: grid; grid-template-rows: 132px 26px 15px auto; cursor: pointer; user-select: none; min-height: 236px;
-  border: 24px solid transparent; border-image: var(--card) 12 fill / 24px stretch; image-rendering: pixelated; margin: 0; padding: 0; }
+  border: 24px solid transparent; border-image: var(--card) 12 fill / 24px round; image-rendering: pixelated; margin: 0; padding: 0; }
 .bm-tile > * { margin: 0 -10px; }
 .bm-tile .stage { position: relative; margin: -14px -14px 0; }
 .bm-tile .no { position: absolute; left: 0; top: -2px; color: var(--ink-3); z-index: 2; }
@@ -82,7 +82,7 @@
 .bm-tile .lock small { display: block; margin-top: 6px; font: 11px/13px 'Body', monospace; color: #6a1e14; background: rgba(240, 232, 210, 0.85); }
 .bm-empty { grid-column: 1 / -1; padding: 40px; text-align: center; color: #f0e8d2; text-shadow: 2px 2px 0 #2b2622; }
 /* the detail card: a live vignette with drawn callouts, then the paperwork */
-.bm-det { position: relative; display: grid; grid-template-rows: 300px auto 1fr auto; min-height: 0; border: 32px solid transparent; border-image: var(--sheet) 16 fill / 32px stretch; image-rendering: pixelated; }
+.bm-det { position: relative; display: grid; grid-template-rows: 300px auto 1fr auto; min-height: 0; border: 32px solid transparent; border-image: var(--sheet) 16 fill / 32px round; image-rendering: pixelated; }
 .bm-det > * { margin: 0 -14px; }
 .bm-det .stage { position: relative; margin: -18px -18px 0; }
 .bm-det .ink { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 6; pointer-events: none; image-rendering: pixelated; }
@@ -124,9 +124,9 @@
 
 /* ------------------------------------------------------------------ the hotbar: ten chits pinned to a strip of kraft card */
 .hb { position: fixed; left: 50%; bottom: var(--hb-bottom); translate: -50% 0; z-index: 805; display: flex; gap: 6px; align-items: center; padding: 4px 10px; height: 92px; pointer-events: auto;
-  border: 16px solid transparent; border-image: var(--card-lock) 12 fill / 24px stretch; }
+  border: 16px solid transparent; border-image: var(--card-lock) 12 fill / 24px round; }
 .hb.dim .hb-slot img { opacity: 0.75; }
-.hb-slot { position: relative; width: 70px; height: 62px; cursor: pointer; display: grid; place-items: center; border: 12px solid transparent; border-image: var(--chit) 6 fill / 12px stretch; image-rendering: pixelated; }
+.hb-slot { position: relative; width: 70px; height: 62px; cursor: pointer; display: grid; place-items: center; border: 12px solid transparent; border-image: var(--chit) 6 fill / 12px round; image-rendering: pixelated; }
 .hb-slot img { width: 64px; height: 44px; image-rendering: pixelated; margin: -10px; }
 .hb-slot .n { position: absolute; left: -6px; top: -8px; color: var(--ink-2); z-index: 2; }
 .hb-slot .lamp { position: absolute; right: -6px; top: -6px; width: 8px; height: 8px; background: var(--pencil-g); z-index: 2; }
@@ -135,17 +135,17 @@
 .hb-slot.on { border-image-source: var(--chit-on); }
 .hb-slot.drop { border-image-source: var(--chit-on); }
 .hb-name { position: absolute; left: 50%; bottom: calc(100% + 12px); translate: -50% 0; white-space: nowrap; display: none; padding: 0 6px; color: var(--ink); pointer-events: none;
-  border: 12px solid transparent; border-image: var(--chit) 6 fill / 12px stretch; image-rendering: pixelated; }
+  border: 12px solid transparent; border-image: var(--chit) 6 fill / 12px round; image-rendering: pixelated; }
 .hb:hover .hb-name.show { display: block; }
 
 /* dragging a tile */
 .pl-drag { position: fixed; z-index: 100; pointer-events: none; width: 140px; height: 100px; translate: -50% -50%; display: grid; place-items: center; rotate: -3deg;
-  border: 12px solid transparent; border-image: var(--card) 12 fill / 24px stretch; image-rendering: pixelated; }
+  border: 12px solid transparent; border-image: var(--card) 12 fill / 24px round; image-rendering: pixelated; }
 .pl-drag img { width: 104px; height: 60px; image-rendering: pixelated; margin: -10px; }
 
 /* the placement readout at the cursor: a chit of paper */
 .pl-tag { position: fixed; z-index: 26; pointer-events: none; display: none; min-width: 300px; max-width: 480px; color: var(--ink);
-  border: 24px solid transparent; border-image: var(--card) 12 fill / 24px stretch; image-rendering: pixelated; }
+  border: 24px solid transparent; border-image: var(--card) 12 fill / 24px round; image-rendering: pixelated; }
 .pl-tag > * { margin: 0 -8px; }
 .pl-tag.on { display: block; }
 .pl-tag.bad { border-image-source: var(--card-sel); }
@@ -158,7 +158,7 @@ body.fc-building .fc-cat { display: none !important; }
 /* ------------------------------------------------------------------ the inspection form, production report, crew roster on paper */
 body .fc-ui .fc-insp, body .fc-ui .fc-sheet {
   background: none; box-shadow: none; color: var(--ink); font: 22px/26px 'Body', monospace; padding: 0;
-  border: 32px solid transparent; border-image: var(--sheet) 16 fill / 32px stretch; image-rendering: pixelated; scrollbar-width: thin; scrollbar-color: var(--kraft) transparent;
+  border: 32px solid transparent; border-image: var(--sheet) 16 fill / 32px round; image-rendering: pixelated; scrollbar-width: thin; scrollbar-color: var(--kraft) transparent;
 }
 body .fc-ui .fc-insp { width: min(500px, calc(100vw - 24px)); right: 14px; }
 body .fc-ui .fc-insp b, body .fc-ui .fc-sheet b { color: var(--ink); font-weight: normal; }
@@ -174,7 +174,7 @@ body .fc-ui .fc-k { color: var(--ink-2); font: 11px/13px 'Body', monospace; min-
 body .fc-ui .fc-sub { margin-top: 10px; font: 11px/13px 'Body', monospace; color: var(--ink-2); border-bottom: 2px dashed var(--ink-3); letter-spacing: 0; }
 body .fc-ui .fc-note { color: var(--ink); font: 22px/26px 'Body', monospace; }
 body .fc-ui .fc-note.small { color: var(--ink-2); font: 11px/13px 'Body', monospace; }
-body .fc-ui .fc-rec { background: transparent; border: 12px solid transparent; border-image: var(--chit) 6 fill / 12px stretch; padding: 0; gap: 6px; line-height: 26px; }
+body .fc-ui .fc-rec { background: transparent; border: 12px solid transparent; border-image: var(--chit) 6 fill / 12px round; padding: 0; gap: 6px; line-height: 26px; }
 body .fc-ui .fc-rec.on { border-image-source: var(--card-sel); box-shadow: none; background: transparent; }
 body .fc-ui .fc-arrow, body .fc-ui .fc-time { color: var(--ink-2); }
 body .fc-ui .fc-time { font: 11px/13px 'Body', monospace; }
@@ -184,7 +184,7 @@ body .fc-ui .fc-chip img { width: 22px; height: 22px; }
 body .fc-ui .fc-chip b { color: var(--ink); }
 body .fc-ui .fc-chip.lack b { color: var(--pencil-r); text-decoration: none; }
 body .fc-ui .fc-btn { color: var(--ink); font: 11px/11px 'Body', monospace; background: transparent; box-shadow: none; padding: 0 2px; min-height: 30px;
-  border: 10px solid transparent; border-image: var(--chit) 6 fill / 10px stretch; image-rendering: pixelated; }
+  border: 10px solid transparent; border-image: var(--chit) 6 fill / 10px round; image-rendering: pixelated; }
 body .fc-ui .fc-btn:hover { filter: brightness(1.06); background: transparent; }
 body .fc-ui .fc-btn.on { border-image-source: var(--chit-on); color: #f4e9d0; transform: none; background: transparent; }
 body .fc-ui .fc-btn.red { color: var(--pencil-r); background: transparent; }
