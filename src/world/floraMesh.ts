@@ -254,7 +254,7 @@ function crownCards(g: Geo, P: Plant, sp: PlantSpecies, tex: FloraTex, r: Rand, 
   let vs = 0; const cc: V3 = [0, 0, 0];
   for (const k of CL) { const w = k.R[0] * k.R[1] * k.R[2]; cc[0] += k.c[0] * w; cc[1] += k.c[1] * w; cc[2] += k.c[2] * w; vs += w; }
   cc[0] /= vs; cc[1] = cc[1] / vs - (umb ? 0.8 : shrub ? 0.15 : 0.35); cc[2] /= vs;
-  const budget = shrub ? (L1 ? 64 : 200) : L1 ? 140 : 420, shd = P.shade();
+  const budget = shrub ? (L1 ? 64 : 200) : L1 ? 160 : 460, shd = P.shade();
   const sizeK = L1 ? (shrub ? 1.5 : 1.25) : shrub ? 1.2 : 0.88;
   const cand: [number, V3][] = [];
   CL.forEach((k, ci) => {
@@ -290,9 +290,12 @@ function crownCards(g: Geo, P: Plant, sp: PlantSpecies, tex: FloraTex, r: Rand, 
       const c = g.v(vadd(p, vadd(vmul(ax, s), vmul(ay, -s))), nl, rect.u0 + rect.du, rect.v0 + rect.dv, fl), d = g.v(vadd(p, vadd(vmul(ax, -s), vmul(ay, -s))), nl, rect.u0, rect.v0 + rect.dv, fl);
       g.quad(a, b, c, d);
     }
-    // fruit hangs under the clumps, the low and outer ones first
-    if (!k.flat || !umb) cand.push([k.c[1] - Math.hypot(k.c[0] - cc[0], k.c[2] - cc[2]) * 0.8, [k.c[0] + r.range(-0.4, 0.4) * k.R[0], k.c[1] - k.R[1] * 0.78, k.c[2] + r.range(-0.4, 0.4) * k.R[2]]]);
-    else cand.push([k.c[1], [k.c[0] + r.range(-0.3, 0.3) * k.R[0], k.c[1] - k.R[1] * 0.5, k.c[2] + r.range(-0.3, 0.3) * k.R[2]]]);
+    // fruit hangs under the clumps, the low and outer ones first (a bush's berries sit out on its clumps' flanks,
+    // never down on the ground under the skirt)
+    const hx = k.c[0] - cc[0], hz = k.c[2] - cc[2], hl = Math.hypot(hx, hz) || 1;
+    if (shrub) { if (k.c[1] > k.R[1] * 0.6) cand.push([-hl - k.c[1] * 0.3, [k.c[0] + (hx / hl) * k.R[0] * 0.8, k.c[1] - k.R[1] * 0.15, k.c[2] + (hz / hl) * k.R[2] * 0.8]]); }
+    else if (k.flat && umb) cand.push([k.c[1], [k.c[0] + r.range(-0.3, 0.3) * k.R[0], k.c[1] - k.R[1] * 0.5, k.c[2] + r.range(-0.3, 0.3) * k.R[2]]]);
+    else if (k.c[1] - k.R[1] > 0.4) cand.push([k.c[1] - hl * 0.8, [k.c[0] + r.range(-0.4, 0.4) * k.R[0], k.c[1] - k.R[1] * 0.78, k.c[2] + r.range(-0.4, 0.4) * k.R[2]]]);
   });
   return L1 ? [] : cand.sort((a, b) => a[0] - b[0]).slice(0, 8).map((e) => e[1]);
 }

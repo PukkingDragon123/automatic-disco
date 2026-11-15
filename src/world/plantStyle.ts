@@ -654,7 +654,7 @@ const umbrella: Grower = (sp, h, r) => {
     for (let i = 0; i < m; i++) {
       const a = a0 + (i / m) * TAU + r.range(-0.4, 0.4), d = pr * r.range(0.36, 0.48), q: V3 = add(p, [Math.cos(a) * d, r.range(-1.5, 2), Math.sin(a) * d * 0.8]);
       lobes.push(q);
-      P.clumps.push({ c: [q[0], q[1] + 3.2, q[2]], R: [lr * 1.1, 4.4, lr * 0.95], ramp: pickRamp(r, G), flat: true, lit: 0.45 });
+      P.clumps.push({ c: [q[0], q[1] + 3.2, q[2]], R: [lr * 1.1, 4.4, lr * 0.95], ramp: r.chance(0.75) ? G[0][0] : pickRamp(r, G), flat: true, lit: 0.45 });
     }
     for (let k = 0; k < n; k++) {
       const q = lobes[k % m], a = r.range(0, TAU), d = Math.sqrt(r.next()) * lr, c = add(q, [Math.cos(a) * d, 1 + (1 - (d / lr) ** 2) * 4 + r.range(-1.5, 1.5), Math.sin(a) * d * 0.8]);
