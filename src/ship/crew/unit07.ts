@@ -271,9 +271,9 @@ export class Unit07 {
     const talk = this.talkT > 0 ? 0.7 + 0.3 * Math.abs(Math.sin(t * 17) * Math.sin(t * 5.3)) : 1;
     this.talkT = Math.max(0, this.talkT - dt);
     const pw = this.power;
-    this.irisMat.color.copy(col).multiplyScalar(pw * talk * 1.6); this.ringMat.color.copy(col).multiplyScalar(pw * 0.9);
-    (this.pupil.material as THREE.MeshBasicMaterial).color.setRGB(0.95 * pw, pw, 0.97 * pw);
-    this.eyeLight.color.copy(col); this.eyeLight.intensity = 0.7 * pw * talk;
+    this.irisMat.color.copy(col).multiplyScalar(pw * talk * 0.85); this.ringMat.color.copy(col).multiplyScalar(pw * 0.55);
+    (this.pupil.material as THREE.MeshBasicMaterial).color.setRGB(0.72 * pw, 0.78 * pw, 0.75 * pw);
+    this.eyeLight.color.copy(col); this.eyeLight.intensity = 0.35 * pw * talk;
     const ap = 0.85 + Math.sin(t * 0.7) * 0.08 + (this.mood === 'alert' ? -0.25 : 0) + (this.talkT > 0 ? Math.sin(t * 13) * 0.08 : 0);
     this.iris.scale.setScalar(ap); this.pupil.scale.setScalar(0.7 + ap * 0.4);
     this.blades.forEach((b, i) => { const a = (i / 6) * TAU + t * 0.2; b.position.set(Math.cos(a) * 0.018 * ap, Math.sin(a) * 0.018 * ap, 0.0112); b.rotation.z = a + 0.6; });

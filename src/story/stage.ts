@@ -66,12 +66,14 @@ export class Stage {
   still: HTMLCanvasElement | null = null;
   private hero: HTMLCanvasElement | null = null;
   /** keep THIS frame as the scene's still (a script calls it on its best shot; otherwise the last frame is used) */
-  keep() { this.hero = this.snap(); }
-  private snap(): HTMLCanvasElement | null {
+  keep(frame?: { pos: THREE.Vector3; look: THREE.Vector3; fov?: number }) { this.hero = this.snap(frame); }
+  private snap(frame?: { pos: THREE.Vector3; look: THREE.Vector3; fov?: number }): HTMLCanvasElement | null {
     try {
       const g = anyG(this.g), e = g.engine; if (!e?.screen) return null;
       // a skipped scene jumps its camera to the last pose; put it on the game camera before the frame is drawn
-      const cam = g.cam?.cam; if (cam && this.cine.active) { this.cine.apply(cam); cam.updateMatrixWorld?.(); }
+      const cam = g.cam?.cam as THREE.PerspectiveCamera | undefined; if (cam && this.cine.active) { this.cine.apply(cam); cam.updateMatrixWorld?.(); }
+      // a still framed on purpose: pose the camera for this one frame (the cinema puts it back on the next)
+      if (cam && frame) { cam.position.copy(frame.pos); cam.lookAt(frame.look); if (frame.fov) { cam.fov = frame.fov; cam.updateProjectionMatrix(); } cam.updateMatrixWorld(); }
       e.screen.render(e.post, e.time);
       const src = e.canvas as HTMLCanvasElement, cv = document.createElement('canvas'), k = src.width > 1400 ? 2 : 1;
       cv.width = Math.floor(src.width / k); cv.height = Math.floor(src.height / k);

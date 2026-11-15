@@ -37,7 +37,8 @@
 .evc-out { display: none; gap: 18px; align-items: flex-end; }
 .evc-out.on { display: flex; }
 .evc-out-t { flex: 1; font: 22px/26px 'Body'; color: #2b2622; border: 32px solid transparent; border-image: var(--pp-card) 40 fill / 40px / 8px round; image-rendering: pixelated; min-height: 100px; }
-.evc-out-l { font: 22px/26px 'Body'; color: #7a2a1e; margin-top: 4px; }
+.evc-out-l { font: 22px/26px 'Body'; color: #4a4038; margin-top: 4px; }
+.evc-out-l .p { color: #2f4a22; } .evc-out-l .m { color: #7a2a1e; }
 .evc-go { flex: none; cursor: pointer; font: 24px/24px 'Title'; color: #1e1a16; padding: 0 12px; min-height: 56px; display: flex; align-items: center; border: 14px solid transparent; border-image: var(--pp-keyhot) 20 fill / 20px / 4px round; image-rendering: pixelated; }
 .evc-foot { width: min(1200px, calc(100vw - 48px)); display: flex; justify-content: space-between; padding: 0 8px; font: 11px/13px 'Body'; letter-spacing: 1px; color: #e8dcc0; }
 .evc-foot b { color: #fff4dc; font-weight: normal; }

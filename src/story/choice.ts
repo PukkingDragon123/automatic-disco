@@ -33,6 +33,8 @@ function paint(still: HTMLCanvasElement | null | undefined, i: number, n: number
 import { sfx } from '../audio/audio';
 import { csfx } from '../ui/cineAudio';
 import type { Opt } from './events';
+/** an outcome line reads as a gain, a loss or plain news */
+const tone = (l: string) => (/(^|\s)\+\d|joins|recovered|restored|gained/i.test(l) ? 'p' : /(^|\s)-\d|lost|dead|died|killed|destroyed|damaged|struck|halved|sick/i.test(l) ? 'm' : '');
 import './choice.css';
 
 export interface ChoiceSpec { kicker: string; title: string; brief: string; options: Opt[]; stamp?: string; still?: HTMLCanvasElement | null }
@@ -88,7 +90,7 @@ export function choose(spec: ChoiceSpec, run: (o: Opt) => { text: string; lines:
       const tx = el('div', '', t), ls = el('div', 'evc-out-l', t);
       const go = el('div', 'evc-go', out, 'CONTINUE');
       let n = 0;
-      const ty = setInterval(() => { n = Math.min(r.text.length, n + 2); tx.textContent = r.text.slice(0, n); if (n >= r.text.length) { clearInterval(ty); ls.innerHTML = r.lines.map((l) => '· ' + l).join('<br>'); } }, 18);
+      const ty = setInterval(() => { n = Math.min(r.text.length, n + 2); tx.textContent = r.text.slice(0, n); if (n >= r.text.length) { clearInterval(ty); ls.innerHTML = r.lines.map((l) => `<span class="${tone(l)}">· ${l}</span>`).join('<br>'); } }, 18);
       const fin = () => { clearInterval(ty); off(); root.remove(); resolve({ key: o.key, text: r.text, lines: r.lines }); };
       go.addEventListener('click', (e) => { e.stopPropagation(); fin(); });
       cont = fin;

@@ -164,7 +164,7 @@ export const FALLEN: EventDef = {
     c.task(() => { if (Math.random() < 0.5) G.fx?.burst?.(M.x + (Math.random() - 0.5), M.y + mast.H - 1 + Math.random(), M.z + (Math.random() - 0.5), 2, 0xff8030, { glow: true, speed: 0.6, up: 2.5, size: 4, life: 1, grav: -1 }); });
     rain.set(0.25);
     await c.wait(1.6);
-    st.keep();
+    st.keep({ pos: spot(st, M, a + Math.PI - 0.55, 11, 2.2), look: M.clone().setY(M.y + 1.1), fov: 46 });
     await c.wait(0.8);
     // 6. silence; the push-in
     c.cam.move({ pos: spot(st, M, a + Math.PI - 0.25, 6, 1.0), look: M.clone().setY(M.y + 0.6), fov: 34, dur: 9, ease: 'inOut' });

@@ -401,15 +401,16 @@ export class CrewLife {
       T.boil = 0;
       // the ID badge on a pen leader line that ends on the person
       const badge = idBadge(ag.m.def, crewState().mood);
-      const bw = parseInt(badge.style.width), bh = parseInt(badge.style.height), W = bw + 110, H = bh + 70;
+      // beside the person at chest height (the speech callout keeps the space over the head)
+      const bw = parseInt(badge.style.width), bh = parseInt(badge.style.height), W = bw + 120, H = bh + 24;
       const I = new Ink(W, H); I.seed = 2;
-      I.leader([112, bh - 30], [10, H - 12], INK.light);
-      I.g.save(); I.g.setTransform(1, 0, 0, 1, 0, 0); I.g.drawImage(badge, 108 * I.k, 0); I.g.restore();
+      I.leader([122, 24 + bh / 2], [10, 12], INK.light);
+      I.g.save(); I.g.setTransform(1, 0, 0, 1, 0, 0); I.g.drawImage(badge, 118 * I.k, 24 * I.k); I.g.restore();
       T.c.width = I.c.width; T.c.height = I.c.height; T.c.style.width = W + 'px'; T.c.style.height = H + 'px';
       T.c.getContext('2d')!.drawImage(I.c, 0, 0);
     }
     void boil;
-    T.c.style.left = (x - 10) + 'px'; T.c.style.top = (y - parseInt(T.c.style.height || '150') + 12) + 'px';
+    T.c.style.left = (x - 10) + 'px'; T.c.style.top = (y - 12) + 'px';
   }
 
   // ------------------------------------------------------------------ deaths

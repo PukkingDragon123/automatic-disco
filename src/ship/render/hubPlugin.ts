@@ -47,6 +47,7 @@ export default function hubLight(hub: ShipHub) {
     else if ((o as THREE.DirectionalLight).isDirectionalLight && (o as THREE.DirectionalLight).castShadow) key = o as THREE.DirectionalLight;
   }
   let relit = 0, inside = hub.mode === 'exterior' ? 0 : 1;
+  il.film = inside;
   const wp = new THREE.Vector3();
   const off = hub.onUpdate((dt) => {
     // runs after the hub has set its lights for this frame (QA: deleting scene.userData.interior switches it all off)
