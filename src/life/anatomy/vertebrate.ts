@@ -188,7 +188,7 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
   }
   const tweens = names.map((n) => (n === 'tip' || n.startsWith('tail') ? 0 : 1));
   const tr = body.add(trunk({ name: 'trunk', stations: st, tween: tweens, capS: true, capE: true, k: 0.9, skin: spine, paint: () => void 0,
-    rings: [{ at: names.indexOf('withers'), s: 0.5 }] }));
+    rings: names.includes('withers') ? [{ at: names.indexOf('withers'), s: 0.5 }] : [] }));
   tr.reg = 1;
   body.finalize(tr);
   const Rt = tr.grids[0].v.length, trV = (n: string) => tr.row(Math.max(0, names.indexOf(n))) / (Rt - 1);
@@ -331,7 +331,7 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
     const Lg = limb({
       name: 'leg' + lg.pair + (s > 0 ? 'r' : 'l'), side: s, hip: J[0], knee: J[1], hock: three ? J[2] : undefined, sole: J[J.length - 1], tj,
       bones: { parent: rig.bones[B[0]].parent, up: B[0], lo: B[1], mid: three ? B[2] : undefined, foot: B[B.length - 1], flex: lg.flex },
-      rings: legRings(LS.kind, fore, r, tj, segL, fh), foot, around: 12, levels: 0, k: 1,
+      rings: legRings(LS.kind, fore, r, tj, segL, fh), foot, around: mid ? 8 : 12, levels: 0, k: 1, rise: r * 3.2,
       paint: coatPaint(C, 'limb', { inner: [-s, 0, 0], hipY: J[0][1] }), clawPaint,
     });
     Lg.skin.reg = 8; Lg.toes.reg = 8; Lg.claws.reg = 8; Lg.toes.levels = 0; Lg.claws.levels = 0; Lg.claws.farSkip = true;
@@ -347,7 +347,7 @@ export function buildVertebrate(d: Design, rig: Rig, rest: V3[], spec: VertSpec)
   const X: VCtx = { d, rig, rest, spec, body, C, F, D, W, H, T, L, bi, at, spine, tr, trV, sk, skC, hl, hw, hh, skRow, skCol, fam: famM, iH, iJ, hinge, chin: chinP, legs, seed, small };
   growParts(X);
   growOrgans(X);
-  const out = body.build({ den: 64, maxScale: 6 });
+  const out = body.build({ den: 64, maxScale: 6, budget: 11600 });
   if ((globalThis as { __vertStats?: boolean }).__vertStats) console.log(d.name, [...body.stats.entries()].sort((a, b) => b[1] - a[1]).slice(0, 16).map(([k, v]) => k + ':' + v).join(' '));
   return { geo: out.geo, tex: out.tex, tris: out.tris, den: Math.round(body.den), fill: body.page.fill };
 }

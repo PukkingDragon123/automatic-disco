@@ -68,7 +68,7 @@ export function geneRecipe(d: Design, rig: Rig): VertSpec {
   if (g('shaggy')) parts.push({ k: 'shag', t0: -0.2, t1: 1.0, len: 0.3, density: 0.8, fringe: 1.2, flank: 0.7 });
   if (g('tail_brush')) parts.push({ k: 'tuft', len: 0.45 });
   else if (furry && D.cat) parts.push({ k: 'tuft', len: 0.2, c: sh(pat, 0) });
-  if (g('osteoderms') && !shell) parts.push(scaly || !furry ? { k: 'plates', t0: -0.1, t1: 1.1, rows: 12, per: 4, spread: 1.6, size: 0.42, c: sh(base, 1), keel: true } : { k: 'carapace', t0: -0.05, t1: 0.95, bands: 5, spread: 1.7, lift: 1.6, c: ['stone', 3], rim: ['stone', 4], dome: true });
+  if (g('osteoderms') && !shell) parts.push(scaly || !furry ? { k: 'plates', t0: -0.1, t1: 1.1, rows: 9, per: 4, spread: 1.6, size: 0.52, c: sh(base, 1), keel: true } : { k: 'carapace', t0: -0.05, t1: 0.95, bands: 5, spread: 1.7, lift: 1.6, c: ['stone', 3], rim: ['stone', 4], dome: true });
   if (g('shell_scute')) parts.push({ k: 'shell', c: base, scute: sh(acc, 0), h: 0.55 });
   if (g('crest')) parts.push({ k: 'crest', t0: -0.6, t1: 1.3, h: 0.22, kind: furry ? 'bristle' : wetSkin ? 'fin' : 'spikes', c: furry ? sh(base, -1) : sh(acc, 0) });
   if (g('sail')) parts.push({ k: 'sail', t0: -0.1, t1: 1.05, h: 0.9, c: sh(acc, 0), rays: 12 });

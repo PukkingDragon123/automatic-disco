@@ -65,7 +65,9 @@ function glossEye() {
 function compoundPaint(c: C2) {
   const f = (ch: Chart, _p: Piece, b: Body) => {
     const px = new Px(ch, b), P = px.gb.P, N = px.gb.N, L = b.light, tpm = 1 / px.mpt, size = Math.max(px.mpt * 3.2, 0.004);
-    px.base(() => [RP(c[0]), c[1]]);
+    // a glossy dome under the facets: a broad sheen toward the light, a reflected rim below
+    const Hh = nrm([L[0], L[1] + 0.3, L[2] + 0.8]);
+    px.base((i) => { const sp = N[i * 3] * Hh[0] + N[i * 3 + 1] * Hh[1] + N[i * 3 + 2] * Hh[2]; return [RP(sp > 0.8 ? 'sapphire' : c[0]), sp > 0.8 ? 2 : N[i * 3 + 1] < -0.55 ? c[1] + 1 : c[1]]; });
     for (let i = 0; i < px.n; i++) {
       const cc = cell3(P[i * 3], P[i * 3 + 1], P[i * 3 + 2], size, 5), gap = (cc.f2 - cc.f1) * tpm;
       const vx = P[i * 3] - cc.cx, vy = P[i * 3 + 1] - cc.cy, vz = P[i * 3 + 2] - cc.cz, face = (vx * L[0] + vy * L[1] + vz * L[2]) / (Math.hypot(vx, vy, vz) || 1);
@@ -128,7 +130,7 @@ export function buildArthropod(d: Design, rig: Rig, rest: V3[]) {
       body.add(shell({ name: 'terg' + k, host: ab, u: [0.2, 0.8], v: [Math.max(0, v0), Math.min(1, v1 + 0.02)], nu: 4, nv: 2, sink: ah * 0.04, rim: 2, curl: { b0: false }, lift: (a, bb) => ah * 0.07 * Math.sin(Math.PI * a) * (0.6 + 0.4 * bb), skin: abSkin, paint: plate, k: 1, levels: 0 })).reg = 2;
     }
     if (spider) for (let k = 0; k < 3; k++) body.add(spine({ name: 'spinn' + k, at: lerp(end, start, 0.04), dir: nrm([(k - 1) * 0.4, -0.5, -1]), len: W * 0.08, r: W * 0.025, skin: () => [rig.tail[n - 1], 1], paint: dark, levels: 0, around: 5 })).reg = 10;
-    if (g('stinger')) { const tb = rig.tail[n - 1]; body.add(horn({ name: 'sting', ctrl: [lerp(end, start, 0.05), add(end, [0, H * 0.1, -seg * 0.25]), add(end, [0, H * 0.35, -seg * 0.3]), add(end, [0, H * 0.45, -seg * 0.05])], r0: lt * 0.7, skin: () => [tb, 1], paint: chitinPaint(['ink', 2], { glint: 0.9 }), rings: 3 })).reg = 10; }
+    if (g('stinger')) { const tb = rig.tail[n - 1]; body.add(lvl0(horn({ name: 'sting', ctrl: [lerp(end, start, 0.05), add(end, [0, H * 0.1, -seg * 0.25]), add(end, [0, H * 0.35, -seg * 0.3]), add(end, [0, H * 0.45, -seg * 0.05])], r0: lt * 0.7, skin: () => [tb, 1], paint: chitinPaint(['ink', 2], { glint: 0.9 }), rings: 3 }))).reg = 10; }
     if (g('biolum')) { const tb = rig.tail[n - 1], q = gridSurf(ab.m, ab.grids[0], 0.0, 0.2); body.add(sac({ name: 'lantern', at: q.p, n: q.n, up: [0, 0, 1], r: [aw * 0.55, aw * 0.5, ah * 0.2], sink: 0.5, skin: () => [tb, 1], levels: 0, paint: (ch, p, b) => { const px = new Px(ch, b); px.base(() => [RP('glowTeal'), 3]); px.flush({ glow: () => true }); } })).reg = 2; }
     if (g('elytra')) for (const s of [-1, 1]) {
       // the elytra: two hardened forewings closed over the abdomen, domed, striate, meeting at the midline suture
@@ -155,7 +157,7 @@ export function buildArthropod(d: Design, rig: Rig, rest: V3[]) {
     for (const s of [-1, 1] as const) {
       const b0: V3 = [s * W * 0.16, root[1] + tH * 0.6, zf], tip = add(b0, [s * W * 0.08, H * 0.38, W * 0.05]);
       body.add(stalk({ name: 'estalk' + s, path: curve([b0, lerp(b0, tip, 0.5), tip], 4), r: () => lt * 0.4, around: 6, skin: () => [iH, 1], paint: plate, levels: 0 })).reg = 4;
-      body.add(eyeball({ name: 'ceye' + s, c: tip, ax: nrm([s, 0.6, 0.6]), r: lt * 0.8, bone: iH, iris: RP('ink'), pupil: 'pin', irisA: 1.2, levels: 0, around: 8 })).paint = compoundPaint(eyeC);
+      body.add(eyeball({ name: 'ceye' + s, c: tip, ax: nrm([s, 0.6, 0.6]), r: lt * 0.8, bone: iH, iris: RP('ink'), pupil: 'pin', irisA: 1.2, levels: 1, around: 8 })).paint = compoundPaint(eyeC);
     }
   } else if (g('eye_compound')) {
     for (const s of [-1, 1] as const) {
@@ -180,11 +182,11 @@ export function buildArthropod(d: Design, rig: Rig, rest: V3[]) {
     if (nm.startsWith('mand')) {
       if (g('venom_fangs')) {
         body.add(stalk({ name: 'chel' + s, path: curve([add(p, [0, H * 0.05, -hl * 0.05]), add(p, [0, -H * 0.02, hl * 0.1]), add(p, [0, -H * 0.1, hl * 0.12])], 4), r: () => capW * 0.28, around: 6, skin: () => [mi, 1], paint: plate, levels: 0 })).reg = 6;
-        body.add(horn({ name: 'fang' + s, ctrl: [add(p, [0, -H * 0.08, hl * 0.12]), add(p, [-s * capW * 0.1, -H * 0.2, hl * 0.12]), add(p, [-s * capW * 0.18, -H * 0.28, hl * 0.04])], r0: capW * 0.08, skin: () => [mi, 1], paint: chitinPaint(['ink', 1], { glint: 0.9 }), rings: 3 })).reg = 6;
+        body.add(lvl0(horn({ name: 'fang' + s, ctrl: [add(p, [0, -H * 0.08, hl * 0.12]), add(p, [-s * capW * 0.1, -H * 0.2, hl * 0.12]), add(p, [-s * capW * 0.18, -H * 0.28, hl * 0.04])], r0: capW * 0.08, skin: () => [mi, 1], paint: chitinPaint(['ink', 1], { glint: 0.9 }), rings: 3 }))).reg = 6;
       } else {
         // a curved toothed blade closing sideways
         const ctrl: V3[] = [add(p, [s * capW * 0.05, 0, -hl * 0.06]), add(p, [s * capW * 0.12, 0, hl * 0.16]), add(p, [0, -H * 0.02, hl * 0.32]), add(p, [-s * capW * 0.25, -H * 0.03, hl * 0.38])];
-        body.add(horn({ name: 'mand' + s, ctrl, r0: capW * 0.13, flat: 0.55, rings: 1, skin: () => [mi, 1], paint: chitinPaint(sh(base, -2), { glint: 0.8 }) })).reg = 6;
+        body.add(lvl0(horn({ name: 'mand' + s, ctrl, r0: capW * 0.13, flat: 0.55, rings: 1, skin: () => [mi, 1], paint: chitinPaint(sh(base, -2), { glint: 0.8 }) }))).reg = 6;
       }
     }
   }
@@ -218,7 +220,7 @@ export function buildArthropod(d: Design, rig: Rig, rest: V3[]) {
     const zdir = (lg.pair - (spider ? 1.5 : 1)) * 0.5, out = nrm([s, -0.15, -zdir * 0.6]), tl = l2 * 0.32;
     const tpts: V3[] = []; for (let k = 0; k <= 4; k++) tpts.push(add(add(ft, scl(out, tl * k / 4)), [0, lt * 0.3 * (1 - k / 4), 0]));
     body.add(stalk({ name: 'tars' + lg.pair + s, path: tpts, r: (t) => r0 * 0.5 * (1 - t * 0.4), around: 5, ringEvery: 1, skin: () => [iTa, 1], paint: legPaint, levels: 0 })).reg = 8;
-    for (const c of [-1, 1]) body.add(horn({ name: 'tclaw' + lg.pair + s + c, ctrl: [tpts[4], add(tpts[4], add(scl(out, r0 * 0.6), [0, 0, c * r0 * 0.3])), add(tpts[4], add(scl(out, r0 * 0.8), [0, -r0 * 0.6, c * r0 * 0.4]))], r0: r0 * 0.18, skin: () => [iTa, 1], paint: dark, rings: 9 })).farSkip = true;
+    for (const c of [-1, 1]) body.add(lvl0(horn({ name: 'tclaw' + lg.pair + s + c, ctrl: [tpts[4], add(tpts[4], add(scl(out, r0 * 0.6), [0, 0, c * r0 * 0.3])), add(tpts[4], add(scl(out, r0 * 0.8), [0, -r0 * 0.6, c * r0 * 0.4]))], r0: r0 * 0.18, skin: () => [iTa, 1], paint: dark, rings: 9 }))).farSkip = true;
     void l1;
   }
   // a crab's chelae and an insect's raptorial or pincer forelegs ride the mandible list's leg bones
@@ -231,13 +233,13 @@ export function buildArthropod(d: Design, rig: Rig, rest: V3[]) {
     if (crab || g('chela')) {
       // the claw: a swollen palm, a fixed finger and the movable dactyl, toothed on their inner edges
       const pw = lt * (crab ? 3.0 : 2.0);
-      body.add(stalk({ name: 'palm' + s, path: curve([add(hand, [0, 0, -pw * 0.2]), add(hand, [0, 0, pw * 0.4]), add(hand, [0, -pw * 0.05, pw * 0.95])], 6), r: (t) => pw * (0.42 + 0.3 * Math.sin(Math.PI * Math.min(1, t * 1.2))), around: 8, sec: (a) => (Math.abs(Math.sin(a)) > 0.7 ? 0.62 : 1) * (Math.cos(a) > 0.8 ? 1.08 : 1), keel: true, ringEvery: 2, capS: true, skin: () => w, paint: chitinPaint(acc, { glint: 0.9, pits: lt * 0.5 }), levels: 1 })).reg = 9;
+      body.add(stalk({ name: 'palm' + s, path: curve([add(hand, [0, 0, -pw * 0.2]), add(hand, [0, 0, pw * 0.4]), add(hand, [0, -pw * 0.05, pw * 0.95])], 6), r: (t) => pw * (0.4 + 0.2 * Math.sin(Math.PI * Math.min(1, t * 1.15))), around: 8, sec: (a) => (Math.abs(Math.sin(a)) > 0.7 ? 0.5 : 1) * (Math.abs(Math.cos(a)) > 0.8 ? 1.12 : 1), keel: true, ringEvery: 2, capS: true, skin: () => w, paint: chitinPaint(acc, { glint: 0.9, pits: lt * 0.35, band: sh(acc, -2), bandAt: (q) => q[2] - (hand[2] + pw * 0.72) }), levels: 1 })).reg = 9;
       const tip0 = add(hand, [0, -pw * 0.1, pw * 1.6]);
-      body.add(horn({ name: 'finger' + s, ctrl: [add(hand, [0, -pw * 0.2, pw * 0.7]), add(hand, [0, -pw * 0.3, pw * 1.6]), add(tip0, [-s * pw * 0.1, pw * 0.05, pw * 0.6])], r0: pw * 0.28, flat: 0.6, skin: () => w, paint: chitinPaint(sh(acc, -2), { glint: 0.9 }), rings: 9 })).reg = 9;
-      body.add(horn({ name: 'dactyl' + s, ctrl: [add(hand, [0, pw * 0.3, pw * 0.7]), add(hand, [0, pw * 0.45, pw * 1.5]), add(tip0, [-s * pw * 0.1, pw * 0.15, pw * 0.65])], r0: pw * 0.25, flat: 0.6, skin: () => w, paint: chitinPaint(sh(acc, -2), { glint: 0.9 }), rings: 9 })).reg = 9;
+      body.add(lvl0(horn({ name: 'finger' + s, ctrl: [add(hand, [0, -pw * 0.2, pw * 0.7]), add(hand, [0, -pw * 0.3, pw * 1.6]), add(tip0, [-s * pw * 0.1, pw * 0.05, pw * 0.6])], r0: pw * 0.28, flat: 0.6, skin: () => w, paint: chitinPaint(sh(acc, -2), { glint: 0.9, band: ['ink', 2], bandAt: (q) => q[2] - (tip0[2] + pw * 0.3) }), rings: 9 }))).reg = 9;
+      body.add(lvl0(horn({ name: 'dactyl' + s, ctrl: [add(hand, [0, pw * 0.3, pw * 0.7]), add(hand, [0, pw * 0.45, pw * 1.5]), add(tip0, [-s * pw * 0.1, pw * 0.15, pw * 0.65])], r0: pw * 0.25, flat: 0.6, skin: () => w, paint: chitinPaint(sh(acc, -2), { glint: 0.9, band: ['ink', 2], bandAt: (q) => q[2] - (tip0[2] + pw * 0.3) }), rings: 9 }))).reg = 9;
     } else {
       // a raptorial scythe: a spined femur and a folded tibia hooked at its tip
-      body.add(horn({ name: 'scythe' + s, ctrl: [hand, add(hand, [0, -fl * 0.2, fl * 0.2]), add(hand, [0, -fl * 0.45, fl * 0.1]), add(hand, [0, -fl * 0.5, -fl * 0.08])], r0: lt * 0.8, flat: 0.5, skin: () => w, paint: dark, rings: 2 })).reg = 9;
+      body.add(lvl0(horn({ name: 'scythe' + s, ctrl: [hand, add(hand, [0, -fl * 0.2, fl * 0.2]), add(hand, [0, -fl * 0.45, fl * 0.1]), add(hand, [0, -fl * 0.5, -fl * 0.08])], r0: lt * 0.8, flat: 0.5, skin: () => w, paint: dark, rings: 2 }))).reg = 9;
       for (let k = 0; k < 4; k++) body.add(spine({ name: 'ssp' + s + k, at: add(hand, [0, -fl * 0.1 * k, fl * 0.18 - k * fl * 0.02]), dir: nrm([0, -0.6, -1]), len: lt * 1.1, r: lt * 0.2, skin: () => w, paint: dark, levels: 0, around: 4 })).farSkip = true;
     }
   }
@@ -269,7 +271,9 @@ export function buildArthropod(d: Design, rig: Rig, rest: V3[]) {
     const wpc = body.add(fin({ name: 'wing' + s + k, roots: R2, dirs: Dd, lens: Ls, side: R2.map(() => [0, 1, 0] as V3), ray: lt * 0.12, web: lt * 0.05, scallop: scaled ? 0.12 : 0.05, steps: 3, skin: () => [wi, 1], paint: wp, levels: 0 }));
     wpc.reg = 11;
   }
-  const out = body.build({ den: 64, maxScale: 8 });
+  const out = body.build({ den: 64, maxScale: 8, budget: 11600 });
   return { geo: out.geo, tex: out.tex, tris: out.tris, den: Math.round(body.den), fill: body.page.fill };
 }
 export { T3 };
+/** a small part at cage level (claws, fangs, mandibles: their silhouette needs no smoothing) */
+function lvl0<P extends Piece>(p: P): P { p.levels = 0; return p; }

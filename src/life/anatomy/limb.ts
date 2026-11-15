@@ -54,6 +54,9 @@ export interface LimbSpec {
   foot: FootSpec;
   /** cage points round (multiple of 4) */
   around?: number;
+  /** the upper segment length the buried top of the limb (t < 0) is measured in, at most (m): a stilt-legged
+   *  animal's shoulder mass must not climb out through its back */
+  rise?: number;
   paint: (c: Chart, p: Piece, b: Body) => void;
   /** claws and nails */
   clawPaint: (c: Chart, p: Piece, b: Body) => void;
@@ -69,7 +72,7 @@ function frameAt(s: LimbSpec, t: number) {
   const TJ = s.tj ?? (s.hock ? [0, 0.38, 0.72, 1] : [0, 0.5, 1]);
   const up = sub(s.hip, s.knee);
   let c: V3, d: V3;
-  if (t < 0) { c = add(s.hip, scl(nrm(up), -t * 2 * Math.hypot(...up))); d = nrm(sub(s.knee, s.hip)); }
+  if (t < 0) { c = add(s.hip, scl(nrm(up), -t * 2 * Math.min(Math.hypot(...up), s.rise ?? Infinity))); d = nrm(sub(s.knee, s.hip)); }
   else {
     let k = 0; while (k + 2 < TJ.length && t > TJ[k + 1]) k++;
     const f = Math.min(1.2, (t - TJ[k]) / Math.max(1e-6, TJ[k + 1] - TJ[k]));

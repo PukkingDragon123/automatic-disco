@@ -61,7 +61,7 @@ export function buildSerpent(d: Design, rig: Rig, rest: V3[]) {
   if (g('ring_maw')) { const c = add(head, [0, -W * 0.02, D.seg * 0.62]); for (let k = 0; k < 10; k++) { const a = (k / 10) * Math.PI * 2, at = add(c, [Math.cos(a) * W * 0.17, Math.sin(a) * W * 0.15, 0]); body.add(spine({ name: 'mt' + k, at, dir: nrm([-Math.cos(a), -Math.sin(a), 0.6]), len: W * 0.12, r: W * 0.025, skin: () => [rig.head, 1], paint: flat(['bone', 4]), levels: 0, around: 4 })).farSkip = true; } }
   if (g('setae')) for (let i = 0; i < n; i += 1) for (const s of [-1, 1]) for (const up of [0.2, -0.3]) { const r = rOf(i), at = add(P[i], [s * r * 0.95, up * r, 0]); body.add(spine({ name: 'set' + i + s + up, at, dir: nrm([s, up - 0.3, -0.4]), len: r * 0.55, r: r * 0.05, skin: () => [segs[i], 1], paint: flat(['ochre', 2]), levels: 0, around: 3 })).farSkip = true; }
   void acc; void seed; void sh; void lerp; void scl;
-  const out = body.build({ den: 64, maxScale: 8 });
+  const out = body.build({ den: 64, maxScale: 8, budget: 11600 });
   return { geo: out.geo, tex: out.tex, tris: out.tris, den: Math.round(body.den), fill: body.page.fill };
 }
 
@@ -129,7 +129,7 @@ export function buildGastropod(d: Design, rig: Rig, rest: V3[]) {
     // the lip of the aperture
     body.add(sac({ name: 'lip', at: pts[steps], n: nrm([0, -0.6, 0.6]), up: [1, 0, 0], r: [rad[steps] * 1.05, rad[steps] * 1.05, rad[steps] * 0.15], sink: 0.5, skin: () => [ib, 1], paint: shellPaint, levels: 0 })).reg = 2;
   }
-  const out = body.build({ den: 64, maxScale: 8 });
+  const out = body.build({ den: 64, maxScale: 8, budget: 11600 });
   return { geo: out.geo, tex: out.tex, tris: out.tris, den: Math.round(body.den), fill: body.page.fill };
 }
 

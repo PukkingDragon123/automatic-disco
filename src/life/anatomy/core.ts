@@ -238,6 +238,20 @@ export class Body {
     p.m = m; p.done = true;
     return p;
   }
+  /** pieces the budget never coarsens (the body, the skull and the face read every frame up close) */
+  static firm = /^(trunk|sku|jaw|nose|l?lid|eye|pupi|mouth|tong)/;
+  /** keep under a triangle budget: take a subdivision step off whichever open piece it saves the most on (fins, fans,
+   *  ears, horns, plates before anything firm) until the estimate fits */
+  private fit(budget: number) {
+    const lv = (p: Piece) => (p.done ? 0 : Math.min(this.levelCap, p.levels));
+    let total = 0; for (const p of this.pieces) total += trisAfter(p.m, lv(p));
+    while (total > budget) {
+      let best: Piece | null = null, save = 0;
+      for (const p of this.pieces) { const l = lv(p); if (l < 1 || Body.firm.test(p.name)) continue; const sv = trisAfter(p.m, l) - trisAfter(p.m, l - 1); if (sv > save) { save = sv; best = p; } }
+      if (!best) break;
+      best.levels = lv(best) - 1; total -= save;
+    }
+  }
   /** tag the vertices emitted since `from` with a piece's lab region */
   private tagRegs(from: number, reg: number) { const n = this.B.P.length / 3; for (let i = from; i < n; i++) this.vreg[i] = reg; }
   private withRegs(geo: THREE.BufferGeometry) {
@@ -247,9 +261,10 @@ export class Body {
     return geo;
   }
   /** subdivide, chart, pack, rasterise, occlude, paint and emit everything */
-  build(o: { den?: number; maxScale?: number; occlusion?: boolean; snap?: (d: Uint8ClampedArray) => void } = {}): { geo: THREE.BufferGeometry; tex: THREE.DataTexture; tris: number; scale: number } {
+  build(o: { den?: number; maxScale?: number; occlusion?: boolean; budget?: number; snap?: (d: Uint8ClampedArray) => void } = {}): { geo: THREE.BufferGeometry; tex: THREE.DataTexture; tris: number; scale: number } {
     if (this.quick) return this.buildQuick();
     if (Body.keepPiece) { const k = Body.keepPiece; this.pieces = this.pieces.filter((p) => k(p)); }
+    if (o.budget) this.fit(o.budget);
     const T = (globalThis as { __bodyTimes?: Record<string, number> }).__bodyTimes, now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
     let t0 = now(); const lap = (k: string) => { if (T) { const t = now(); T[k] = (T[k] ?? 0) + t - t0; t0 = t; } };
     for (const p of this.pieces) { this.finalize(p); p.ch = (p.charts ?? defaultCharts)(p); surfaceInfo(p); }
@@ -427,6 +442,14 @@ export function rasterPiece(p: Piece) {
       if (y > 0 && !GM[j - w]) take(j - w, j);
     }
   }
+}
+
+/** the triangles a cage emits after `lv` Catmull-Clark steps (an n-gon becomes n quads, then each quad four) */
+function trisAfter(m: CM, lv: number): number {
+  let t = 0;
+  if (lv <= 0) { for (const f of m.F) t += f.length - 2; return t; }
+  for (const f of m.F) t += f.length;
+  return t * 2 * 4 ** (lv - 1);
 }
 
 /** emit a piece's faces into the skin builder, one vertex per (point, chart, uv) */

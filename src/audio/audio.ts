@@ -61,8 +61,9 @@ function osc(type: OscillatorType, f: number, t: number, dur: number, peak: numb
 }
 function noise(t: number, dur: number, peak: number, f: number, q: number, type: BiquadFilterType, bus: AudioNode, a = 0.004, fEnd?: number, wet = 0) {
   const s = ctx!.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
-  const fl = ctx!.createBiquadFilter(); fl.type = type; fl.frequency.setValueAtTime(f, t); fl.Q.value = q;
-  if (fEnd) fl.frequency.exponentialRampToValueAtTime(fEnd, t + dur);
+  // (a pitch scale k can push the cut-off past Nyquist: keep it in the filter's range)
+  const ny = ctx!.sampleRate * 0.45, fl = ctx!.createBiquadFilter(); fl.type = type; fl.frequency.setValueAtTime(Math.min(ny, Math.max(10, f)), t); fl.Q.value = q;
+  if (fEnd) fl.frequency.exponentialRampToValueAtTime(Math.min(ny, Math.max(20, fEnd)), t + dur);
   const g = ctx!.createGain(); env(g, t, a, peak, dur);
   s.connect(fl); fl.connect(g); g.connect(bus); if (wet) { const w = ctx!.createGain(); w.gain.value = wet; g.connect(w); w.connect(verbIn); }
   s.start(t, Math.random()); s.stop(t + a + dur + 0.05);

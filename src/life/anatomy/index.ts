@@ -29,7 +29,7 @@
 //   const body = new Body(pageSize)            one page, one skinned geometry; body.den = texels per metre requested
 //   body.add(piece) / body.finalize(piece)     finalize subdivides now, so other pieces can sit on its surface
 //   gridSurf(piece.m, piece.grids[0], u, v)    a point, normal and tangents on a finalized piece (u round, v along)
-//   body.build({ den, maxScale, occlusion })   -> { geo (skinIndex/skinWeight on the rig), tex, tris, scale }
+//   body.build({ den, maxScale, occlusion, budget })   -> { geo (skinIndex/skinWeight on the rig), tex, tris, scale }
 //   chainSkin(joints, bones, blend)            weights along a bone chain; addWeights(w, [[bone, k]]) mixes extras in
 //   A Piece = { name, m: CM (cage), grids, levels, skin(p) -> Wt, paint(chart, piece, body), k (texel priority) }.
 //
