@@ -123,7 +123,7 @@ body.cx-paused .cx-frame { box-shadow: inset 0 0 0 6px rgba(229,219,195,0.55); }
 .cx-wheel .info .unit { width: 44px; height: 44px; } .cx-wheel .info .nou { font-family: 'Title', monospace; font-size: 24px; color: #8c2920; }
 .cx-wheel .info .lv { margin-top: 6px; color: #8c2920; }
 .cx-wheel .cfg { position: absolute; left: 10px; bottom: 16px; width: 156px; font-size: 11px; }
-.cx-slotcfg { right: 492px; bottom: 8px; width: 430px; padding: 18px 20px 20px; display: none; }
+.cx-slotcfg { right: 492px; bottom: 104px; width: 430px; padding: 18px 20px 20px; display: none; }
 .cx-slotcfg.on { display: block; }
 .cx-slotcfg .tg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin: 6px 0; }
 .cx-slotcfg .tt { display: flex; flex-direction: column; align-items: center; gap: 0; padding: 0; border-style: solid; border-width: 12px; border-image: url(__NI__) 7 fill / 12px stretch; image-rendering: pixelated; cursor: pointer; pointer-events: auto; font-size: 11px; color: #1e232c; }

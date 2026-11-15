@@ -41,7 +41,9 @@ function paintShell(): THREE.CanvasTexture {
   // '07' in red on both flanks (3 x 5 pixel figures), hazard chevrons by the thrusters, the UNAA flag on the crown
   const glyph = (x0: number, y0: number, rows: string[], col: string) => rows.forEach((r, j) => [...r].forEach((ch, i) => { if (ch === '#') px(x0 + i, y0 + j, col); }));
   const Z = ['###', '#.#', '#.#', '#.#', '###'], S7 = ['###', '..#', '.#.', '.#.', '.#.'];
-  for (const x0 of [5, 37]) { glyph(x0, 7, Z, '#b8382e'); glyph(x0 + 4, 7, S7, '#b8382e'); }
+  // the sphere's u runs the other way round the flanks: the figures are laid mirrored so they read from outside
+  const mir = (rows: string[]) => rows.map((r) => [...r].reverse().join(''));
+  for (const x0 of [5, 37]) { glyph(x0, 7, mir(S7), '#b8382e'); glyph(x0 + 4, 7, mir(Z), '#b8382e'); }
   for (const x0 of [6, 22, 38, 54]) { px(x0, 23, '#d9a43a'); px(x0 + 1, 23, '#d9a43a'); px(x0 + 2, 23, '#1c2228'); px(x0 + 3, 23, '#d9a43a'); }
   g.fillStyle = '#26344a'; g.fillRect(46, 2, 5, 3); px(48, 2, '#dfe3dc'); px(48, 3, '#d9a43a'); px(48, 4, '#dfe3dc');
   shellTex = new THREE.CanvasTexture(c); shellTex.colorSpace = THREE.SRGBColorSpace;
@@ -224,8 +226,8 @@ export class Unit07 {
     const talk = this.talkT > 0 ? 0.7 + 0.3 * Math.abs(Math.sin(t * 17) * Math.sin(t * 5.3)) : 1;
     this.talkT = Math.max(0, this.talkT - dt);
     const pw = this.power;
-    this.irisMat.color.copy(col).multiplyScalar(pw * talk * 0.85); this.ringMat.color.copy(col).multiplyScalar(pw * 0.55);
-    (this.pupil.material as THREE.MeshBasicMaterial).color.setRGB(0.72 * pw, 0.78 * pw, 0.75 * pw);
+    this.irisMat.color.copy(col).multiplyScalar(pw * talk * 0.6); this.ringMat.color.copy(col).multiplyScalar(pw * 0.45);
+    (this.pupil.material as THREE.MeshBasicMaterial).color.setRGB(0.32 * pw, 0.38 * pw, 0.36 * pw);
     this.eyeLight.color.copy(col); this.eyeLight.intensity = 0.35 * pw * talk;
     const ap = 0.85 + Math.sin(t * 0.7) * 0.08 + (this.mood === 'alert' ? -0.25 : 0) + (this.talkT > 0 ? Math.sin(t * 13) * 0.08 : 0);
     this.iris.scale.setScalar(ap); this.pupil.scale.setScalar(0.7 + ap * 0.4);
