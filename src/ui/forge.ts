@@ -289,7 +289,7 @@ export class Forge implements Screen {
   // ---------------------------------------------------------------------------------------------- the fitting bay
   private setMode(m: 'genes' | 'fit') {
     if (this.mode === m) { this.fitUI.setMode(m); return; }
-    this.mode = m; this.fitUI.setMode(m);
+    this.mode = m; this.fitUI.setMode(m); this.L.setBay(m === 'fit');
     if (m === 'fit') {
       const slots = slotsFor(this.d.plan);
       if (!slots.includes(this.slot)) this.slot = slots[0];
@@ -333,6 +333,9 @@ export class Forge implements Screen {
     if (state === 'lock') { sfx('deny'); toast(this.short(p.cost) ?? 'Not available', 'warn', 2600); this.L.speak(2, 'bad', true); return; }
     const on = (this.d.fit ?? []).includes(p.id);
     this.d.fit = on ? unfitPart(this.d.fit, p.id) : fitPart(this.d.fit, p.id);
+    // a robot arm swings in to where the part goes and welds it on, then the specimen re-grows with it
+    const sl = p.slot, reg = sl === 'head' || sl === 'collar' ? 3 : sl === 'fore' || sl === 'hind' ? 8 : sl === 'back' || sl === 'power' ? 2 : 1;
+    if (!on) this.L.bayFit(reg);
     this.L.setSpecimen(this.d, true);
     this.L.edit(on ? 0.6 : 1.2);
     this.L.react(on ? 'edit' : 'splice');
@@ -343,6 +346,7 @@ export class Forge implements Screen {
   private fitReadout() {
     const wp = workerProfile(this.d);
     this.fitUI.setProfile(wp, { genes: this.d.genes.length, cost: fitCost(this.d.fit), stock: this.opts.stock });
+    this.L.bay?.setProfile(wp, this.slot);
   }
   /** which slot a clicked body region opens */
   private slotOf(reg: number): FitSlot {

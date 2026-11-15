@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { ROSTER, CREW_IDS, TEAMMATES, SHIP_NAME, type CrewId, type CrewDef } from './roster';
 import { buildCrewModel, type CrewModel } from './model';
-import { crewState, onCrew, emitCrew, resetCrew, moodShift, crewDay, type Death } from './state';
+import { crewState, onCrew, emitCrew, resetCrew, moodShift, crewDay, setAway, isAway, type Death } from './state';
 import type { CrewLife, HubLike } from './life';
 
 export type { CrewId, CrewDef, CrewModel, Death };
@@ -32,6 +32,8 @@ export const crew = {
     return { ...d, alive: !st.dead[k], death: st.dead[k] ?? null };
   },
   alive(id: string) { return !crewState().dead[idOf(id)]; },
+  /** away from the ship (a live model built with buildModel exists, e.g. on the planet): the ship leaves them out */
+  away(id: string) { return isAway(idOf(id)); },
   /** the living crew */
   living(): CrewId[] { const st = crewState(); return CREW_IDS.filter((id) => !st.dead[id]); },
   /** the two who ride the pod down (the living ones of TEAMMATES) */
@@ -45,9 +47,9 @@ export const crew = {
     const k = idOf(id);
     const m = buildCrewModel(k, o);
     let s = live.get(k); if (!s) live.set(k, (s = new Set()));
-    s.add(m);
+    s.add(m); setAway(k, 1);
     const dispose = m.dispose;
-    m.dispose = () => { s!.delete(m); dispose(); };
+    m.dispose = () => { if (s!.delete(m)) setAway(k, -1); dispose(); };
     if (crewState().dead[k]) m.die('', undefined, 0);
     return m;
   },

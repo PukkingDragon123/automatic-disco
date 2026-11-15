@@ -46,3 +46,8 @@ export function emitCrew(name: string, ...a: unknown[]) { for (const f of ev.get
 export function moodShift(k: number) { const s = crewState(); s.mood = Math.max(0, Math.min(s.moodCap, s.mood + k)); s.save(); emitCrew('mood', s.mood); return s.mood; }
 /** a day passes: the mood heals a little toward its ceiling */
 export function crewDay() { const s = crewState(); s.day++; s.mood = Math.min(s.moodCap, s.mood + 0.04); s.save(); emitCrew('mood', s.mood); }
+
+/** crew members with a live model elsewhere (the planet's teammates): the ship leaves them out while they are away */
+const awayN = new Map<CrewId, number>();
+export function setAway(id: CrewId, d: 1 | -1) { awayN.set(id, Math.max(0, (awayN.get(id) ?? 0) + d)); }
+export const isAway = (id: CrewId) => (awayN.get(id) ?? 0) > 0;

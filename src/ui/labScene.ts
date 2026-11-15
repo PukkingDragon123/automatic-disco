@@ -21,6 +21,7 @@ import { pheno, type Design } from '../life/design';
 import { attachRegions, regionHighlight, regUniforms, symbolFor, symbolMaterial, type RegU } from '../life/partPreview';
 import { GN_DECL, gbuf, F_HOVER } from '../gfx/gbuf';
 import { labTextures, type LabTex } from './labArt';
+import { FitBay } from './labBay';
 import { Kit, labMaterials, glowMaterial } from './labGeo';
 import type { Species } from '../game/species';
 import { sfx } from '../audio/audio';
@@ -35,7 +36,7 @@ export const TANK = { c: new THREE.Vector3(0, 1.82, 0), fit: 0.9, r: 1.1, y0: 0.
 // ================================================================================================ the specimen
 export class Specimen {
   readonly model: SpeciesModel; readonly mesh: THREE.SkinnedMesh; readonly fx: CreatureFx; readonly anim: Animator; readonly U: RegU;
-  readonly regions: Float32Array; readonly s: number; readonly off = new THREE.Vector3(); readonly fly: boolean;
+  readonly regions: Float32Array; readonly s: number; readonly off = new THREE.Vector3(); readonly fly: boolean; minY = 0;
   private wp: Float32Array | null = null; private wpT = -1;
   readonly present = new Set<number>();
   constructor(readonly d: Design) {
@@ -50,7 +51,7 @@ export class Specimen {
     this.mesh.frustumCulled = false;
     const g = this.model.geo; g.computeBoundingBox();
     const b = g.boundingBox!, sz = b.getSize(new THREE.Vector3());
-    b.getCenter(this.off);
+    b.getCenter(this.off); this.minY = b.min.y;
     this.s = clamp((TANK.fit * 2) / Math.max(sz.x, sz.y, sz.z, 0.05), 0.2, 7);
     this.fly = pheno(d).canFly;
   }
@@ -210,6 +211,9 @@ export class LabScene {
   private bub!: THREE.Points; private bubP!: Float32Array; private bubL!: Float32Array; private bubV!: Float32Array; private surge = 0;
   private tankLight!: THREE.PointLight; private arcLight!: THREE.PointLight; private ringMat!: THREE.MeshBasicMaterial;
   private surface!: THREE.Mesh;
+  // the fitting bay: the old room hidden, the tank drained and its glass raised, the bay set shown
+  private retro = new THREE.Group(); bay: FitBay | null = null; private bayOn = false; private bayK = 0;
+  private glass!: THREE.Mesh; private fluids: THREE.Mesh[] = [];
   // machinery
   private scopes: THREE.ShaderMaterial[] = [];
   private reels: { m: THREE.Object3D; w: number }[] = [];
@@ -235,10 +239,17 @@ export class LabScene {
     this.scene.background = new THREE.Color(0x07090a);
     this.scene.add(this.cam);
     this.lights();
+    const c0 = this.scene.children.length;
     this.room();
+    const c1 = this.scene.children.length;
     this.tank();
+    const c2 = this.scene.children.length;
     this.machines();
     this.dressing();
+    // the 1950s room, its machines and dressing: hidden while the fitting bay is up
+    const old = [...this.scene.children.slice(c0, c1), ...this.scene.children.slice(c2)];
+    for (const o of old) this.retro.add(o);
+    this.scene.add(this.retro);
     this.people();
     this.child = new VeyrChild(this.fx, 1.05, loadLook(), { grown: true });
     this.child.hatch = 1;
@@ -375,7 +386,7 @@ export class LabScene {
       const U = { ...this.fluidU, uBack: { value: back } };
       const m = new THREE.ShaderMaterial({ uniforms: U, vertexShader: FLUID_V, fragmentShader: FLUID_F, transparent: true, depthWrite: false, premultipliedAlpha: true, side });
       const mesh = new THREE.Mesh(new THREE.CylinderGeometry(TANK.r - 0.04, TANK.r - 0.04, H, 40, 1, true), m);
-      mesh.position.y = TANK.y0 + H / 2; mesh.renderOrder = order; this.fxs.add(mesh);
+      mesh.position.y = TANK.y0 + H / 2; mesh.renderOrder = order; this.fxs.add(mesh); this.fluids.push(mesh);
     };
     mk(THREE.BackSide, 1, 1); mk(THREE.FrontSide, 0, 4);
     const sg = new THREE.CircleGeometry(TANK.r - 0.04, 40, 0, TAU).rotateX(-Math.PI / 2);
@@ -383,7 +394,7 @@ export class LabScene {
     this.surface = new THREE.Mesh(sg, sm); this.surface.position.y = TANK.fluidTop; this.surface.renderOrder = 3; this.fxs.add(this.surface);
     const gm = new THREE.ShaderMaterial({ uniforms: { uT: this.fluidU.uT, uTint: { value: new THREE.Color(0xb8fff0) } }, vertexShader: FLUID_V, fragmentShader: GLASS_F, transparent: true, depthWrite: false, premultipliedAlpha: true });
     const glass = new THREE.Mesh(new THREE.CylinderGeometry(TANK.r, TANK.r, TANK.y1 - TANK.y0, 40, 1, true), gm);
-    glass.position.y = (TANK.y0 + TANK.y1) / 2; glass.renderOrder = 5; this.fxs.add(glass);
+    glass.position.y = (TANK.y0 + TANK.y1) / 2; glass.renderOrder = 5; this.fxs.add(glass); this.glass = glass;
     // bubbles
     const N = 220;
     this.bubP = new Float32Array(N * 3); this.bubL = new Float32Array(N); this.bubV = new Float32Array(N * 2);
@@ -702,8 +713,30 @@ export class LabScene {
   project(p: THREE.Vector3): [number, number, boolean] { const v = p.clone().project(this.cam); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight, v.z < 1]; }
 
   // ---------------------------------------------------------------------------------------------- frame
+  /** switch the room to the fitting bay (or back): the tank drains, its glass rises into the cap, the specimen
+   *  stands on the grate where the robot arms can reach it */
+  setBay(on: boolean) {
+    this.bayOn = on;
+    if (on && !this.bay) { this.bay = new FitBay(this.fx); this.scene.add(this.bay.root); }
+    if (this.bay) this.bay.root.visible = on;
+    this.retro.visible = !on;
+    for (const j of this.jars) if (j.mesh) j.mesh.visible = !on;
+    for (const g of this.jarObjs) g.visible = !on;
+    sfx(on ? 'open' : 'close', 0.7, 0.5);
+  }
+  /** a robot arm swings in to a region of the specimen and welds */
+  bayFit(reg: number) { if (!this.bay || !this.spec) return; this.bay.fitAt(this.spec.centreOf(reg)); this.shake = Math.max(this.shake, 0.02); }
   update(dt: number) {
     this.t += dt; const t = this.t;
+    this.bayK = damp(this.bayK, this.bayOn ? 1 : 0, 1.6, dt);
+    {
+      const k = this.bayK, H = TANK.fluidTop - TANK.y0, f = Math.max(0.02, 1 - k);
+      for (const m of this.fluids) { m.scale.y = f; m.position.y = TANK.y0 + (H * f) / 2; }
+      this.fluidU.uY1.value = TANK.y0 + H * f;
+      this.glass.position.y = (TANK.y0 + TANK.y1) / 2 + k * 2.3;
+      this.bub.visible = k < 0.6;
+    }
+    this.bay?.update(dt);
     // camera
     this.yaw = damp(this.yaw, this.yawGoal, 6, dt); this.pitch = damp(this.pitch, this.pitchGoal, 6, dt); this.dist = damp(this.dist, this.distGoal, 5, dt);
     this.target.lerp(this.targetGoal, 1 - Math.exp(-4 * dt));
@@ -724,12 +757,14 @@ export class LabScene {
       s.fx.flash.value = Math.max(0, s.fx.flash.value - dt * 2.2);
       s.U.uT.value = t;
       const bob = new THREE.Vector3(0, Math.sin(t * 0.8) * 0.045, 0).add(TANK.c);
+      // drained: it stands on the grate
+      if (this.bayK > 0.01) bob.lerp(new THREE.Vector3(0, TANK.y0 + 0.04 + (s.off.y - s.minY) * s.s, 0), this.bayK);
       s.pose(dt, this.specYaw, bob, t);
     }
     // fluid, bubbles, glow
     this.fluidU.uT.value = t;
     this.fluidU.uFlash.value = Math.max(0, this.fluidU.uFlash.value - dt * 1.3);
-    this.surface.position.y = TANK.fluidTop + Math.sin(t * 1.3) * 0.01;
+    this.surface.position.y = this.fluidU.uY1.value + Math.sin(t * 1.3) * 0.01;
     this.surge = Math.max(0, this.surge - dt);
     const P = this.bubP, L = this.bubL, V = this.bubV, n = L.length, sp = 1 + this.surge * 1.6;
     for (let i = 0; i < n; i++) {

@@ -1,12 +1,17 @@
-@font-face { font-family: 'Pixelify'; src: url('/fonts/hi/PixelSans.ttf') format('truetype'); font-display: block; }
-@font-face { font-family: 'Jersey'; src: url('/fonts/hi/NanoPlus.ttf') format('truetype'); font-display: block; }
-@font-face { font-family: 'Silk'; src: url('/fonts/hi/PixelSans.ttf') format('truetype'); font-display: block; }
-@font-face { font-family: 'SilkB'; src: url('/fonts/hi/NanoPlus.ttf') format('truetype'); font-display: block; }
-@font-face { font-family: 'Tiny5'; src: url('/fonts/hi/PixelSans.ttf') format('truetype'); font-display: block; }
-@font-face { font-family: 'Jacquard'; src: url('/fonts/hi/CannedPixels.ttf') format('truetype'); font-display: block; }
-@font-face { font-family: 'Superwide'; src: url('/fonts/hi/Superwide.ttf') format('truetype'); font-display: block; }
-@font-face { font-family: 'Canned'; src: url('/fonts/hi/CannedPixels.ttf') format('truetype'); font-display: block; }
-@font-face { font-family: 'VT'; src: url('/fonts/hi/RoyaltyMono.ttf') format('truetype'); font-display: block; }
+/* v6 fonts (user-chosen): Departure Mono for all text (crisp at 11/22/33/44 px), Spleen for titles (12x24 at 24/48 px, 16x32 at 32/64 px, 32x64 at 64 px). The old family names are kept as aliases so every screen switches over. */
+@font-face { font-family: 'Body'; src: url('/fonts/ui/DepartureMono-Regular.otf') format('opentype'); font-display: block; }
+@font-face { font-family: 'Title'; src: url('/fonts/ui/spleen-12x24.otf') format('opentype'); font-display: block; }
+@font-face { font-family: 'TitleL'; src: url('/fonts/ui/spleen-16x32.otf') format('opentype'); font-display: block; }
+@font-face { font-family: 'TitleXL'; src: url('/fonts/ui/spleen-32x64.otf') format('opentype'); font-display: block; }
+@font-face { font-family: 'Pixelify'; src: url('/fonts/ui/DepartureMono-Regular.otf') format('opentype'); font-display: block; }
+@font-face { font-family: 'Silk'; src: url('/fonts/ui/DepartureMono-Regular.otf') format('opentype'); font-display: block; }
+@font-face { font-family: 'Tiny5'; src: url('/fonts/ui/DepartureMono-Regular.otf') format('opentype'); font-display: block; }
+@font-face { font-family: 'VT'; src: url('/fonts/ui/DepartureMono-Regular.otf') format('opentype'); font-display: block; }
+@font-face { font-family: 'Jersey'; src: url('/fonts/ui/spleen-12x24.otf') format('opentype'); font-display: block; }
+@font-face { font-family: 'SilkB'; src: url('/fonts/ui/spleen-12x24.otf') format('opentype'); font-display: block; }
+@font-face { font-family: 'Jacquard'; src: url('/fonts/ui/spleen-12x24.otf') format('opentype'); font-display: block; }
+@font-face { font-family: 'Superwide'; src: url('/fonts/ui/spleen-12x24.otf') format('opentype'); font-display: block; }
+@font-face { font-family: 'Canned'; src: url('/fonts/ui/spleen-12x24.otf') format('opentype'); font-display: block; }
 
 /* The golem's control machinery: olive-drab housings, Bakelite keys, brass, and green P1 phosphor CRTs.
    All art is pixel art at an integer scale --s; sizes are written in art pixels as calc(Npx * var(--s)). */

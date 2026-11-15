@@ -10,10 +10,10 @@ const workers = files.filter((f) => f.endsWith('.js') && f.includes('.worker-'))
 const js = files.filter((f) => f.endsWith('.js') && !f.includes('.worker-'));
 if (js.length !== 1) throw new Error('expected one JS chunk, got ' + js.join(','));
 let css = files.filter((f) => f.endsWith('.css')).map((f) => fs.readFileSync(path.join(assets, f), 'utf8')).join('\n');
-css = css.replace(/url\((['"]?)([^)'"]+\.(woff2|ttf))\1\)/g, (m, q, u, ext) => {
+css = css.replace(/url\((['"]?)([^)'"]+\.(woff2|ttf|otf))\1\)/g, (m, q, u, ext) => {
   const p = [path.join(assets, u), path.join(dir, u.replace(/^(\.\.\/)+/, '')), path.join(dir, u.replace(/^\.?\//, ''))].find((x) => fs.existsSync(x));
   if (!p) throw new Error('font not found ' + u);
-  return `url(data:font/${ext === 'ttf' ? 'ttf' : 'woff2'};base64,${fs.readFileSync(p).toString('base64')})`;
+  return `url(data:font/${ext};base64,${fs.readFileSync(p).toString('base64')})`;
 });
 let code = fs.readFileSync(path.join(assets, js[0]), 'utf8');
 // self-contained workers become blob URLs (the page has no files beside it)

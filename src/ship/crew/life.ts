@@ -13,7 +13,7 @@ import { cspeak } from '../../ui/cineAudio';
 import { buildCrewModel, type CrewModel } from './model';
 import { Unit07 } from './unit07';
 import { ROSTER, CREW_IDS, type CrewId, type Act, type RoomKey, type Block } from './roster';
-import { crewState, onCrew } from './state';
+import { crewState, onCrew, isAway } from './state';
 import { memorial } from './memorial';
 import type { RoomId } from '../hub/layout';
 
@@ -84,7 +84,7 @@ export class CrewLife {
     this.bubbleRoot = o.bubbles ?? document.body;
     const st = crewState();
     for (const id of o.only ?? CREW_IDS) {
-      if (st.dead[id]) continue;
+      if (st.dead[id] || isAway(id)) continue;
       this.spawn(id);
     }
     this.unit = new Unit07();
@@ -158,7 +158,8 @@ export class CrewLife {
   private release(ag: Agent) { for (const [k, v] of this.taken) if (v === ag.id) this.taken.delete(k); }
 
   /** go into a block: plan the walk (or appear there at once) */
-  private enter(ag: Agent, blk: Block, instant = false) {
+  /** go into a block (QA may call it to jump the clock) */
+  enter(ag: Agent, blk: Block, instant = false) {
     ag.block = blk; ag.act = blk.act;
     const to = ROOM_OF[blk.room];
     const tgt = this.pick(ag, to, blk.act);
@@ -394,9 +395,9 @@ export class CrewLife {
   hold(id: CrewId, sec = Infinity) { const ag = this.agents.get(id); if (ag) { ag.hold = sec; ag.path = []; } }
   resume(id?: CrewId) { for (const ag of this.agents.values()) if (!id || ag.id === id) { ag.hold = 0; ag.block = null; } }
   /** move an actor to a room at once (keeps routines off until resume) */
-  put(id: CrewId, room: RoomId, x: number, z: number, yaw = 0) {
+  put(id: CrewId, room: RoomId, x: number, z: number, yaw = 0, y = 0) {
     const ag = this.agents.get(id); if (!ag) return null;
-    this.stand(ag); this.reparent(ag, room); ag.actor.place(x, z, yaw); ag.floorY = 0; ag.path = [];
+    this.stand(ag); this.reparent(ag, room); ag.floorY = y; ag.actor.place(x, z, yaw); ag.path = [];
     return ag.actor;
   }
   dispose() {
@@ -419,8 +420,14 @@ export function memorialSpot(mess: HubRoomLike) { const b = mess.bounds; return 
 
 export async function testLife(engine: import('../../app/engine').Engine, P: URLSearchParams) {
   const { hubForTest } = await import('./stubHub');
+  const { crew } = await import('./index');
   const hub = await hubForTest(engine, P);
-  const life = new CrewLife(hub, { hour: Number(P.get('hour') ?? 12.3) });
+  // the hub plugin brings the crew aboard on the real hub; the stand-in needs its own
+  let life = crew.life(hub);
+  for (let i = 0; i < 40 && !life && !hub.stub; i++) { await new Promise((r) => setTimeout(r, 250)); life = crew.life(hub); }
+  if (!life) { life = new CrewLife(hub); crew._setLife(hub, life); }
+  const h = Number(P.get('hour') ?? 12.3);
+  life.hour = h; life.resume();
+  for (const id of CREW_IDS) { const ag = life.agents.get(id); if (ag) { life.enter(ag, life.blockAt(id, h), true); } }
   (window as unknown as { __life: CrewLife }).__life = life;
-  if (P.has('ff')) { const n = Number(P.get('ff')); for (let i = 0; i < n * 20; i++) life.update(0.05); }
 }

@@ -120,7 +120,7 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
   const play = (on: boolean) => { cine.passPointer = on; cine.letterbox(!on, 0.5); if (!on) { ui.prompt(null); ui.mark(null); ui.hold(null); document.body.style.cursor = ''; } };
 
   // the cast's places
-  const put = (id: CrewId, rm: RoomId, x: number, z: number, faceX: number, faceZ: number) => { const a = life.put(id, rm, x, z); if (a) a.faceNow(faceX, faceZ); return a; };
+  const put = (id: CrewId, rm: RoomId, x: number, z: number, faceX: number, faceZ: number, y = 0) => { const a = life.put(id, rm, x, z, 0, y); if (a) a.faceNow(faceX, faceZ); return a; };
 
   // ---- the props of the day
   const apple = new Apple(0.045); apple.group.scale.setScalar(1); own.push(apple.group);
@@ -502,9 +502,9 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
     // ================================================================ f. MONITOR
     await c.fade(1, 0.9);
     const MS = bridge.spots;
-    put('solano', 'bridge', MS.monitor.pos.x - 0.9, MS.monitor.pos.z - 1.3, 0, MS.monitor.pos.z - 4);
+    put('solano', 'bridge', MS.monitor.pos.x - 0.9, MS.monitor.pos.z - 0.4, 0, MS.monitor.pos.z - 4, MS.monitor.pos.y);
     put('quintero', 'bridge', MS.captain.pos.x, MS.captain.pos.z + 0.9, MS.monitor.pos.x, MS.monitor.pos.z);
-    put('castellanos', 'bridge', MS.helm.pos.x, MS.helm.pos.z - 0.5, MS.monitor.pos.x, MS.monitor.pos.z);
+    put('castellanos', 'bridge', MS.helm.pos.x, MS.helm.pos.z - 0.2, MS.monitor.pos.x, MS.monitor.pos.z, MS.helm.pos.y);
     unit.place(V(MS.monitor.pos.x + 0.7, 1.7, MS.monitor.pos.z - 1.6)); unit.lookAt(V(0, 1.8, 27));
     c.cam.cut(V(0.0, 2.3, MS.captain.pos.z - 1.2), V(0, 1.7, 26.6), 40);
     c.cam.move({ pos: V(0.2, 2.0, MS.captain.pos.z + 1.6), dur: 9, ease: 'inOut' });
