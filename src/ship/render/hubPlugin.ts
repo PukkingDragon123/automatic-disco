@@ -53,6 +53,7 @@ export default function hubLight(hub: ShipHub) {
     if (hub.scene.userData.interior !== il) return;
     // (the roof comes off over about 2 s when boarding)
     inside += Math.sign((hub.mode === 'exterior' ? 0 : 1) - inside) * Math.min(Math.abs((hub.mode === 'exterior' ? 0 : 1) - inside), dt / 2.2);
+    il.film = inside; // (the exterior title keeps the ship agent's own grade)
     if (hemi) hemi.intensity *= 1 - (1 - HEMI_IN) * inside;
     if (key) key.intensity *= 1 - (1 - KEY_IN) * inside;
     for (const r of rooms) {

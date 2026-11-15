@@ -94,6 +94,37 @@ mattress, pillow, glass, leaves), are the user's own LIMBOPHOBIA assets (`src/li
 user's lowpix sprite brush engine (`lowpix.sprite.render_sprite`, `paint: strokes`, stroke shapes and selective
 outlines). Original work for ODDWORLD.
 
+### Real pictures (posters, prints, photos, screens)
+`src/ship/hub/assets/pics/*.png` are composed from real imagery by `src/ship/hub/assets/pics/build.py` (run on the
+downloaded originals listed below and on 1080p captures of the hub): photos downscaled and lightly posterised, then printed onto sun-faded, folded and taped
+poster paper, photo prints or a calendar. NASA media is used as public domain (no NASA logos or insignia, no
+identifiable people); Wikimedia Commons files are public domain only (each licence checked).
+
+| piece | original | author | licence | source |
+|---|---|---|---|---|
+| `band` | The aurora borealis blankets the Earth | NASA | Public domain (NASA media) | https://images.nasa.gov/details/iss072e159172 |
+| `bio` | Cepheus C and Cepheus B Region by Spitzer | NASA/JPL-Caltech | Public domain (NASA/JPL media) | https://images.nasa.gov/details/PIA23126 |
+| `calendar` | The Himalayas separate China from a cloudy India | NASA | Public domain (NASA media) | https://images.nasa.gov/details/iss072e397138 |
+| `chart` | Andromeda Galaxy | NASA/JPL/California Institute of Technology | Public domain (NASA/JPL media) | https://images.nasa.gov/details/PIA04921 |
+| `earth` | NASA Blue Marble 2007 East | NASA | Public domain (NASA media) | https://images.nasa.gov/details/GSFC_20171208_Archive_e002130 |
+| `firstaid` | File:Gray490.png | Henry Vandyke Carter | Public domain | https://commons.wikimedia.org/wiki/File:Gray490.png |
+| `mars` | A Dramatic View of Mars' Mount Sharp | NASA/JPL-Caltech/MSSS | Public domain (NASA/JPL media) | https://images.nasa.gov/details/PIA23898 |
+| `menu` | Space Shuttle food tray | NASA | Public domain (NASA media) | https://images.nasa.gov/details/s09-05-0153 |
+| `nebula` | Seeing Beyond the Monkey Head | NASA/JPL-Caltech | Public domain (NASA/JPL media) | https://images.nasa.gov/details/PIA19836 |
+| `ph_aurora` | The aurora borealis blankets the Earth | NASA | Public domain (NASA media) | https://images.nasa.gov/details/iss072e159172 |
+| `ph_earth` | Earth | NASA | Public domain (NASA/JPL media) | https://images.nasa.gov/details/PIA18033 |
+| `ph_himal` | The Himalayas separate China from a cloudy India | NASA | Public domain (NASA media) | https://images.nasa.gov/details/iss072e397138 |
+| `ph_mars` | A Dramatic View of Mars' Mount Sharp | NASA/JPL-Caltech/MSSS | Public domain (NASA/JPL media) | https://images.nasa.gov/details/PIA23898 |
+| `ph_wave` | File:Tsunami by hokusai 19th century.jpg | Katsushika Hokusai | Public domain | https://commons.wikimedia.org/wiki/File:Tsunami_by_hokusai_19th_century.jpg |
+| `pinup` | File:Tsunami by hokusai 19th century.jpg | Katsushika Hokusai | Public domain | https://commons.wikimedia.org/wiki/File:Tsunami_by_hokusai_19th_century.jpg |
+| `reactor` | Lighting up the Night (RS-25 test) | NASA | Public domain (NASA media) | https://images.nasa.gov/details/SSC-2015-00064 |
+| `saturn` | The Rite of Spring | NASA/JPL/Space Science Institute | Public domain (NASA/JPL media) | https://images.nasa.gov/details/PIA11667 |
+| `tools` | Prelaunch - Apollo 8 (Rollout) | NASA | Public domain (NASA media) | https://images.nasa.gov/details/S68-49399 |
+
+Renders of the game's own assets (original work for ODDWORLD): `kid`, `ph_crew`, `ph_crew2`, `ph_ship`, `planet`, `safety`, `unaa` (the MERIDIAN,
+the capsule pod and the planet, captured from the hub and composed with the Title and Body fonts). The eye chart
+`eye` is set in the house fonts.
+
 ### Procedural art
 Wall, floor, hull, sign and poster textures and the per-room floor wear (`src/ship/hub/pix.ts`), the hub's painted
 UI materials (`src/ship/hub/plates.ts`: brass, enamel, laminate, pad note, frosted glass, embroidered patch, crate

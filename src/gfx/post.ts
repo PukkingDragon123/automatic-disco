@@ -36,7 +36,7 @@ void main() { vUv = position.xy * 0.5 + 0.5; gl_Position = vec4(position.xy, 0.0
 /** the end of every frame: tone map, grade, vignette, fade, sRGB, film curve (the composite's, or the motion blur's) */
 const FINISH = /* glsl */`
 uniform sampler2D tExpo;
-uniform float uTone, uSat, uVig, uFade, uContrast, uExpK;
+uniform float uTone, uSat, uVig, uFade, uContrast, uExpK, uFilm;
 uniform vec3 uLift, uGamma, uGain, uFadeCol, uSplitLo, uSplitHi;
 vec3 srgb(vec3 c) { c = max(c, 0.0); return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
 vec3 finish(vec3 col, vec2 uv) {
@@ -53,7 +53,7 @@ vec3 finish(vec3 col, vec2 uv) {
     c *= Lt / max(L, 1e-5);
     float m = max(c.r, max(c.g, c.b));
     if (m > 1.0) c = Lt + (c - Lt) * ((1.0 - Lt) / max(m - Lt, 1e-4));
-    col = c;
+    col = mix(col, c, uFilm);
   }
   col = max(col, 0.0);
   col = col * uGain + uLift * (1.0 - col);
@@ -84,7 +84,7 @@ uniform int uAOTaps;
 uniform vec3 uOutline, uSelCol, uHoverCol, uEnemyCol;
 // interiors: haze glowing under the ceiling panels (cones) and round the practicals
 #define GLOW_MAX 16
-uniform float uIntr, uBeam, uCeilY, uFloorY;
+uniform float uIntr, uBeam, uCeilY, uFloorY, uRealism;
 uniform mat4 uViewProj;
 uniform int uGlowN;
 uniform vec4 uGlowP[GLOW_MAX];
@@ -437,7 +437,8 @@ void main() {
   }
   // contact shadows: deeper in the corners, the surface's own colour bouncing in the occlusion (multi-bounce, after
   // Jimenez's GTAO fit, with the lit colour's chroma standing in for the albedo), losing the warm key first
-  if (occ > 0.0) {
+  if (occ > 0.0 && uRealism < 0.5) col *= 1.0 - uAO * occ * fade * (1.0 - step(31.5, nC.a) * 0.6) * vec3(1.0, 0.96, 0.88);
+  else if (occ > 0.0) {
     float vis = clamp(1.0 - uAO * occ * fade * (1.0 - step(31.5, nC.a) * 0.6), 0.0, 1.0);
     vec3 alb = clamp(col / max(max(col.r, max(col.g, col.b)), 1e-4), 0.0, 1.0) * 0.7;
     vec3 ma = 2.0404 * alb - 0.3324, mb = -4.7951 * alb + 0.6417, mc = 2.7552 * alb + 0.6903;
@@ -731,8 +732,8 @@ const _m4 = new THREE.Matrix4(), _m4b = new THREE.Matrix4(), _v3 = new THREE.Vec
  * Camera + object motion blur as one reusable pass. Any pipeline: after the scene's main pass (depth written,
  * camera matrices current) call prepare(); when it returns true, run apply(hdrColour, target). Post wires it with
  * its own finish (tone map + grade), so the blur costs no extra full-screen pass; standalone it writes linear HDR.
- * Exposure: strength x 30 ms (the high default is about a 1/45 s shutter at any frame rate), the blur radius capped
- * at about 3.5% of the screen height. The first frame of a camera, and a cut (a jump of 30 m or 30 degrees), never blur.
+ * Exposure: strength x 25 ms (the high default is a 1/50 s shutter at any frame rate), the blur radius capped at
+ * about 2.9% of the screen height (HIGH; 3.2% at MAX). The first frame of a camera, and a cut (a jump of 30 m or 30 degrees), never blur.
  */
 export class MotionBlur {
   readonly U: Record<string, THREE.IUniform>;
@@ -798,8 +799,8 @@ export class MotionBlur {
     (U.uReprojSky.value as THREE.Matrix4).multiplyMatrices(pvp, rot).multiply(camera.projectionMatrixInverse);
     U.uNear.value = camera.near; U.uFar.value = camera.far; U.tDepth.value = depth;
     // blur radius per unit of screen travel per frame: half the travel over the exposure
-    const expo = k * 0.03, mbk = (expo / dt) * 0.5;
-    U.uMBK.value = mbk; U.uMBMax.value = this.h * 0.035 * (0.55 + 0.6 * k); U.uTaps.value = o.taps ?? 12;
+    const expo = k * 0.025, mbk = (expo / dt) * 0.5;
+    U.uMBK.value = mbk; U.uMBMax.value = this.h * 0.028 * (0.55 + 0.6 * k); U.uTaps.value = o.taps ?? 12;
     // how far does the view move (probes at 4 m and 40 m in the middle and the corners)?
     let camPx = 0;
     if (cont && k > 0) {
@@ -1023,9 +1024,9 @@ export class Post {
       uAut: { value: [RAMPS.rust[2], RAMPS.rust[4], RAMPS.rust[5], RAMPS.ochre[2], RAMPS.ochre[4], RAMPS.ochre[5], RAMPS.straw[1], RAMPS.straw[3], RAMPS.straw[4]].map((c) => new THREE.Color().setHex(c)) },
       uIceC: { value: [RAMPS.slate[3], RAMPS.snow[1], RAMPS.snow[3]].map((c) => new THREE.Color().setHex(c)) },
       // contact shadows by tier; interiors (beams, film curve)
-      uAOTaps: { value: 12 }, uViewProj: { value: new THREE.Matrix4() }, uIntr: { value: 0 }, uBeam: { value: 0 }, uCeilY: { value: 3.4 }, uFloorY: { value: 0 },
+      uAOTaps: { value: 12 }, uRealism: { value: 1 }, uViewProj: { value: new THREE.Matrix4() }, uIntr: { value: 0 }, uBeam: { value: 0 }, uCeilY: { value: 3.4 }, uFloorY: { value: 0 },
       uGlowN: { value: 0 }, uGlowP: { value: Array.from({ length: 16 }, () => new THREE.Vector4()) }, uGlowC: { value: Array.from({ length: 16 }, () => new THREE.Vector4()) },
-      uContrast: { value: 0 }, uExpK: { value: 1 }, uSplitLo: { value: new THREE.Color(1, 1, 1) }, uSplitHi: { value: new THREE.Color(1, 1, 1) },
+      uContrast: { value: 0 }, uExpK: { value: 1 }, uFilm: { value: 1 }, uSplitLo: { value: new THREE.Color(1, 1, 1) }, uSplitHi: { value: new THREE.Color(1, 1, 1) },
     };
     this.mComp = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: COMPOSITE, uniforms: this.U, depthTest: false, depthWrite: false });
     this.mCompHdr = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: COMPOSITE, uniforms: this.U, defines: { HDR_OUT: '' }, depthTest: false, depthWrite: false });
@@ -1121,6 +1122,8 @@ export class Post {
     this.U.uTone.value = 0; this.U.uContrast.value = 0;
     this.atmosphere(scene);
     this.interior(ia, camera, qp.beams);
+    this.U.uRealism.value = this.realism ? 1 : 0;
+    if (!this.realism) { this.U.uSplit.value = 0; if (!ia) this.U.uContrast.value = 0; }
     const tone = this.U.uTone.value as number;
     if (tone > 0.5) {
       // the eye's adaptation (snaps on a new scene, then eases)
@@ -1140,6 +1143,9 @@ export class Post {
   }
   /** contact-shadow strength (SSAO) when the quality tier has it on */
   ao = 0.82;
+  /** QA: false renders the sunlit look as it was before the realism pass (no coloured multi-bounce occlusion, no warm
+   *  sun / cool shade split, no film curve); interiors switch off by deleting scene.userData.interior */
+  realism = true;
 
   /** the motion blur strength for this scene: the setting, for scenes that opt in (sunlit and interiors by default) */
   private blurK(scene: THREE.Scene) {
@@ -1168,7 +1174,7 @@ export class Post {
   private interior(ia: InteriorLight | undefined, camera: THREE.Camera, beams: boolean) {
     const U = this.U;
     if (!ia) { U.uIntr.value = 0; U.uGlowN.value = 0; return; }
-    U.uIntr.value = 1; U.uTone.value = 2; U.uContrast.value = ia.contrast; U.uExpK.value = ia.exposure;
+    U.uIntr.value = 1; U.uTone.value = 2; U.uFilm.value = ia.film; U.uContrast.value = ia.contrast * ia.film; U.uExpK.value = ia.exposure;
     (U.uSplitLo.value as THREE.Color).copy(ia.splitLo); (U.uSplitHi.value as THREE.Color).copy(ia.splitHi);
     U.uCeilY.value = ia.ceilY; U.uFloorY.value = ia.floorY;
     U.uBeam.value = beams ? ia.haze * 0.0035 : 0;

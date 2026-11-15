@@ -154,8 +154,9 @@ export class InteriorLight {
   haze = 1; ceilY = 3.4; floorY = 0;
   /** the light level the eye adapts toward, and the overall exposure */
   key = 0.16; exposure = 1;
-  /** film grade: S-curve amount and the split tone (shadows, highlights) */
-  contrast = 0.22;
+  /** film grade: S-curve amount and the split tone (shadows, highlights); film 0..1 fades the whole film look
+   *  (exposure, shoulder, curve) in, e.g. as a camera moves from outside the hull to inside */
+  contrast = 0.22; film = 1;
   readonly splitLo = new THREE.Color(0.93, 0.98, 1.07);
   readonly splitHi = new THREE.Color(1.05, 1.0, 0.92);
   constructor(readonly scene: THREE.Scene) { scene.userData.interior = this; }
