@@ -617,7 +617,7 @@ export function clutter(id: RoomId, c: Ctx) {
   const r = ROOMS[id], ray = new THREE.Raycaster(), down = new V3(0, -1, 0), hit: THREE.Intersection[] = [];
   const targets: THREE.Object3D[] = []; c.root.traverse((o) => { if ((o as THREE.Mesh).isMesh && o.visible !== false && !(o as THREE.Mesh).userData.room) targets.push(o); });
   const spots = Object.values(r.spots).map((s) => new V3(s.p[0], 0, s.p[2]));
-  const placed: V3[] = [];
+  const placed: THREE.Vector3[] = [];
   const free = (x: number, z: number, rad: number) => {
     for (const [dx, dz] of [[0, 0], [rad, 0], [-rad, 0], [0, rad], [0, -rad], [rad * 0.7, rad * 0.7], [-rad * 0.7, -rad * 0.7], [rad * 0.7, -rad * 0.7], [-rad * 0.7, rad * 0.7]]) {
       ray.set(new V3(x + dx, 4.5, z + dz), down); hit.length = 0; ray.intersectObjects(targets, false, hit);

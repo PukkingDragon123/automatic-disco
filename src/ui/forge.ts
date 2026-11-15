@@ -20,7 +20,7 @@ import { LabIcons } from './labIcons';
 import { LabUI, SWATCH, type CardSpec } from './labUI';
 import { CAT_COL } from '../game/dnaHarvest';
 import { thumb } from './thumbs';
-import { LabFit, type Callout, type Ring } from './labFit';
+import { LabFit, SLOT_GLYPH, type Tag, type Glyph } from './labFit';
 import * as THREE from 'three';
 import { type as typeText } from './labPaper';
 import { CYBER, SLOT_NAME, SLOT_DESC, partsFor, slotsFor, fitPart, unfitPart, fitCost, type Slot as FitSlot } from '../life/cyber/catalog';
@@ -93,7 +93,13 @@ export class Forge implements Screen {
       suggest: (id) => this.suggestPick(id),
       fit: () => this.setMode(this.mode === 'fit' ? 'genes' : 'fit'), fitOn: () => this.mode === 'fit',
     });
-    this.fitUI = new LabFit({ back: () => (this.opts.fit ? this.close(null) : this.setMode('genes')), file: () => this.save(), fileOk: () => this.mode === 'fit' ? (invalid(this.ctx, this.d) || this.short(fitCost(this.d.fit)) || false) : false });
+    this.fitUI = new LabFit({
+      back: () => (this.opts.fit ? this.close(null) : this.setMode('genes')), file: () => this.save(),
+      fileOk: () => (this.mode === 'fit' ? invalid(this.ctx, this.d) || this.short(fitCost(this.d.fit)) || false : false),
+      slot: (sl) => this.openSlot(sl), pick: (id) => this.pickPart(id, 'ok'),
+      drop: (id, x, y) => { const sp = this.L.spec, onBody = !!this.L.pickRegion(x, y) || (!!sp && Math.hypot(x - this.L.project(this.regCentre(1))[0], y - this.L.project(this.regCentre(1))[1]) < 160); if (onBody && !(this.d.fit ?? []).includes(id)) this.pickPart(id, 'ok'); return onBody; },
+      bill: (id) => Object.entries(CYBER[id]?.cost ?? {}).filter(([, n]) => n > 0).map(([it, n]) => ({ id: it, n, short: !!this.opts.stock && this.opts.stock(it) < n })),
+    });
     this.L.onSay = (i, text) => { const s = this.L.sci[i]; this.ui.say(i, s.name, text, s.col); };
     // the shelves: your designs first, then everything you have absorbed
     this.jarSp = opts.species ?? this.shelfSpecies();
@@ -298,22 +304,21 @@ export class Forge implements Screen {
     if (this.mode === m) { this.fitUI.setMode(m); return; }
     this.mode = m; this.fitUI.setMode(m); this.L.setBay(m === 'fit');
     if (m === 'fit') {
-      this.slot = null; this.L.bay?.clearCandidates();
-      // a wide, low shot of the bay: the drained tank, both arms, the animal centre stage
-      this.L.targetGoal.set(0, 1.45, -0.2); this.L.distGoal = 8.6; this.L.pitchGoal = 0.08; this.L.yawGoal = 0.05;
-    } else { this.L.bay?.clearCandidates(); this.openTab('genome', false); }
+      const slots = slotsFor(this.d.plan);
+      this.slot = slots.find((x) => !(this.d.fit ?? []).some((id) => CYBER[id]?.slot === x)) ?? slots[0];
+      // a wide, low shot of the bay: the drained tank, both arms, the animal centre stage above the tool-board
+      this.L.targetGoal.set(0, 1.2, -0.2); this.L.distGoal = 8.6; this.L.pitchGoal = 0.1; this.L.yawGoal = 0.05;
+      this.board();
+    } else this.openTab('genome', false);
     this.refresh();
   }
   private openSlot(sl: FitSlot) {
     if (this.mode !== 'fit') this.setMode('fit');
-    this.slot = sl;
-    const ids = partsFor(sl, this.d.plan).map((p) => p.id);
-    const c = this.regCentre(this.regOf(sl)).clone();
-    c.y = clamp(c.y, 0.9, 2.4);
-    this.L.bay?.showCandidates(ids, new THREE.Vector3(0, clamp(c.y, 1.0, 1.8), 1.9), ids.length <= 2 ? 1.1 : 1.8);
+    this.slot = sl; this.board();
     this.L.present(this.regOf(sl));
     sfx('pulse', 1.4, 0.3);
   }
+  private board() { this.fitUI.setBoard(slotsFor(this.d.plan), this.slot, this.slot ? partsFor(this.slot, this.d.plan).map((p) => p.id) : [], this.d.fit ?? []); }
   /** what the stores lack for a part (null: enough, or no stores to check) */
   private short(cost: Record<string, number>): string | null {
     const st = this.opts.stock; if (!st) return null;
@@ -333,6 +338,7 @@ export class Forge implements Screen {
     this.L.react(on ? 'edit' : 'splice');
     sfx(on ? 'close' : 'build', 1, 0.6);
     this.centSpec = null;
+    this.board();
     this.refresh();
   }
   private fitReadout() { this.L.bay?.setProfile(workerProfile(this.d), this.slot ?? 'tool'); }
@@ -349,48 +355,36 @@ export class Forge implements Screen {
     const slots = slotsFor(this.d.plan), want: FitSlot = reg >= 3 && reg <= 7 ? 'head' : reg === 2 || reg === 11 ? 'back' : reg === 1 ? 'armour' : reg === 9 ? 'tool' : reg === 10 ? 'power' : reg === 8 ? (this.slot === 'fore' ? 'hind' : 'fore') : this.slot ?? slots[0];
     return slots.includes(want) ? want : slots[0];
   }
-  /** what a part gives, in one short line */
-  private gives(id: string): string {
-    const p = CYBER[id]; if (!p) return '';
-    if (p.carry && p.carry >= 10) return `CARRY +${p.carry}`;
-    if (p.armour) return `ARMOUR +${Math.round(p.armour * 100)}%`;
-    if (p.sight) return `SIGHT +${p.sight} M`;
-    if (p.control) return 'OBEDIENCE';
-    if (p.power < 0) return 'POWER CELL';
-    const top = Object.entries(p.skills).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))[0];
-    return top ? `${top[0].toUpperCase()} +${top[1]}` : p.name.toUpperCase();
-  }
-  /** this frame's callouts, rings and hint */
+  /** this frame's enamel tags: the role at the animal, what each fitted part gives at that part, the slot under the cursor */
   private doodle(dt: number) {
     this.centT -= dt;
-    const L = this.L, calls: Callout[] = [], rings: Ring[] = [];
+    const L = this.L, tags: Tag[] = [];
     const proj = (v: THREE.Vector3) => { const q = L.project(v); return { x: q[0], y: q[1] }; };
-    // the role, pointing at the animal
+    const ROLE_ICON: Record<string, Glyph> = { hauler: 'crate', miner: 'pick', farmer: 'sprout', builder: 'wrench', operator: 'gear', guard: 'shield', scout: 'eye' };
     const wp = workerProfile(this.d), torso = proj(this.regCentre(1));
-    if (L.spec) calls.push({ x: torso.x, y: torso.y - 30, text: wp.roleName, sub: `${wp.carry} UNITS · ${wp.speed.toFixed(1)} M/S`, big: true, side: -1, lift: 190 });
+    if (L.spec) tags.push({ x: torso.x, y: torso.y - 20, icon: ROLE_ICON[wp.role] ?? 'gear', text: wp.roleName, big: true, side: -1, lift: 200, tone: 'amber' });
     // what every fitted part gives, pointing at it: the tags stack in a column beside the tank, nearest first
-    const fitted = (this.d.fit ?? []).filter((id) => CYBER[id]).map((id) => ({ id, at: proj(this.regCentre(this.regOf(CYBER[id].slot)).clone().add(new THREE.Vector3(0, 0.12 * ((this.d.fit ?? []).indexOf(id) % 3), 0))) })).sort((a, b) => a.at.y - b.at.y);
-    const colX = proj(new THREE.Vector3(1.35, 1.6, 0.6)).x + 30, colY = proj(new THREE.Vector3(0, 2.6, 0)).y;
-    fitted.forEach((f, i) => calls.push({ x: f.at.x, y: f.at.y, text: this.gives(f.id), side: 1, tx: colX, ty: colY + i * 46 }));
-    // the parts on offer: a sketched ring under each, its name and its bill in item icons
-    const bay = L.bay;
-    if (bay) bay.cands.forEach((c, i) => {
-      c.hover = this.drag?.i === i ? 1 : this.mouse && bay.candidateAt(this.mouse.x, this.mouse.y, L.cam) === i ? 1 : 0;
-      const pts: { x: number; y: number }[] = [];
-      for (let k = 0; k < 18; k++) { const a = (k / 18) * Math.PI * 2; pts.push(proj(new THREE.Vector3(c.pos.x + Math.cos(a) * 0.42, c.pos.y - 0.38, c.pos.z + Math.sin(a) * 0.42))); }
-      rings.push({ pts, hot: c.hover > 0 });
-      const at = proj(c.pos), part = CYBER[c.id], fitted = (this.d.fit ?? []).includes(c.id);
-      const st = this.opts.stock;
-      calls.push({ x: at.x, y: at.y + 48, text: (fitted ? 'FITTED · ' : '') + part.name.toUpperCase().replace(/ & .*$/, ''), hot: c.hover > 0, side: at.x < innerWidth / 2 ? -1 : 1, lift: -64,
-        icons: Object.entries(part.cost).filter(([, n]) => n > 0).slice(0, 4).map(([id, n]) => ({ id, n, short: !!st && st(id) < n })) });
-    });
+    const fitted = (this.d.fit ?? []).filter((id) => CYBER[id]).map((id, k) => ({ id, at: proj(this.regCentre(this.regOf(CYBER[id].slot)).clone().add(new THREE.Vector3(0, 0.1 * (k % 3), 0))) })).sort((a, b) => a.at.y - b.at.y);
+    const colX = proj(new THREE.Vector3(1.4, 1.6, 0.6)).x + 24, colY = proj(new THREE.Vector3(0, 2.7, 0)).y;
+    fitted.forEach((f, i) => { const g = this.gives(f.id); tags.push({ x: f.at.x, y: f.at.y, icon: g.icon, text: g.text, side: 1, tx: colX, ty: colY + i * 46, tone: 'cream' }); });
     // the slot under the cursor
-    if (this.hovReg && this.mouse && !this.drag) {
-      const sl = this.slotOf(this.hovReg), fp = (this.d.fit ?? []).find((id) => CYBER[id]?.slot === sl);
-      calls.push({ x: this.mouse.x, y: this.mouse.y, text: SLOT_NAME[sl], sub: fp ? CYBER[fp].name.toUpperCase() : 'EMPTY · CLICK', hot: true, side: this.mouse.x < innerWidth / 2 ? -1 : 1, lift: 60 });
+    if (this.hovReg && this.mouse && !this.fitUI.dragging) {
+      const sl = this.slotOf(this.hovReg);
+      tags.push({ x: this.mouse.x, y: this.mouse.y, icon: SLOT_GLYPH[sl], text: SLOT_NAME[sl], hot: true, side: this.mouse.x < innerWidth / 2 ? -1 : 1, lift: 56 });
     }
-    const hint = this.drag ? 'DROP IT ON THE BODY' : bay?.cands.length ? 'DRAG A PART ONTO THE BODY' : 'CLICK THE ANIMAL WHERE A PART GOES';
-    this.fitUI.frame(dt, calls, rings, hint);
+    this.fitUI.frame(tags);
+  }
+  /** what a part gives: an icon and a number */
+  private gives(id: string): { icon: Glyph; text: string } {
+    const p = CYBER[id];
+    if (p.carry && p.carry >= 10) return { icon: 'crate', text: `+${p.carry}` };
+    if (p.armour) return { icon: 'shield', text: `+${Math.round(p.armour * 100)}%` };
+    if (p.sight) return { icon: 'eye', text: `+${p.sight} M` };
+    if (p.control) return { icon: 'ring', text: `${Math.round(workerProfile(this.d).control * 100)}%` };
+    if (p.power < 0) return { icon: 'bolt', text: `+${p.speed ?? 0} M/S` };
+    const SK: Record<string, Glyph> = { haul: 'crate', dig: 'pick', farm: 'sprout', build: 'wrench', operate: 'gear', guard: 'shield', scout: 'eye' };
+    const top = Object.entries(p.skills).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))[0];
+    return top ? { icon: SK[top[0]] ?? 'gear', text: `+${top[1]}` } : { icon: 'gear', text: '' };
   }
 
   // ---------------------------------------------------------------------------------------------- readouts

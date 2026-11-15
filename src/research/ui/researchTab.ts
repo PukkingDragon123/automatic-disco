@@ -1,38 +1,36 @@
-// RESEARCH: the latest specimen turning under the scanner dome (ScannerVignette), tagged with what its scan paid;
-// the data reserves as paper tags on the left with the scan log; the tech index on the right as a stack of cards by
-// kind (icons first, words sparse), the selected tech's card, and the station queue pinned under it.
+// RESEARCH, in 2D: a cork board. The latest specimen is a foxed fibre card pinned on the left (its painted sprite
+// big, its name, what the scan paid); the data reserves are four chipped enamel tokens under it; the tech index is a
+// field of small pinned cards on the right, filtered by kind; the selected tech and the station queue sit under it.
+// Icons first, numbers where they matter, few words.
 import { el } from '../../ui/kit';
 import { sfx } from '../../audio/audio';
 import { csfx } from '../../ui/cineAudio';
 import { TECHS, TECH, TECH_KINDS, DATA_KINDS, DATA_NAME, type TechKind, type Tech, type DataKind } from '../tech';
-import { PATH } from '../mastery';
 import type { Research } from '../research';
-import { BLUEPRINT } from '../upgrades';
 import { iconURL } from './icons';
 import { fmtTime } from '../util';
-import { ScannerVignette, type SpecimenKind } from './vignettes';
-import { Callouts } from './callouts';
 import type { TabPage } from '../../ui/skillTree';
 
 const DATA_ICON: Record<DataKind, string> = { bio: 'dna', geo: 'pick', energy: 'arcs', xeno: 'sensor' };
-export const chips = (cost: Tech['cost'], data?: Record<DataKind, number>) => DATA_KINDS.filter((k) => cost[k]).map((k) => `<span class="pp-row" style="gap:2px"><img class="pp-ico" src="${iconURL(DATA_ICON[k], data && data[k] < (cost[k] ?? 0) ? 'dim' : 'phos')}" style="width:24px;height:24px"><span class="pp-t${data && data[k] < (cost[k] ?? 0) ? ' pp-red' : ''}">${cost[k]}</span></span>`).join('');
+const KIND_ICON: Record<string, string> = { species: 'claw', plant: 'sprout', ore: 'pick', crystal: 'core', vent: 'steam', ruin: 'sensor' };
+const KIND_TAB: Record<TechKind, string> = { building: 'factory', recipe: 'flask', logic: 'nodes', tool: 'wrench', arm: 'arm', drone: 'drone', pod: 'shield' };
+/** a tech's data cost as icon + number pairs */
+export const chips = (cost: Tech['cost'], data?: Record<DataKind, number>) => DATA_KINDS.filter((k) => cost[k]).map((k) => { const s = !!data && data[k] < (cost[k] ?? 0); return `<span class="pp-row" style="gap:0"><img class="pp-ico" src="${iconURL(DATA_ICON[k], s ? 'dim' : 'phos')}" style="width:24px;height:24px"><span class="pp-t${s ? ' pp-red' : ''}">${cost[k]}</span></span>`; }).join('');
 
 export class ResearchPage implements TabPage {
   readonly el: HTMLElement;
-  readonly vig = new ScannerVignette();
   private kind: TechKind = 'building'; private sel: string | null = null;
-  private left: HTMLElement; private right: HTMLElement; private calls: Callouts; private specTag: HTMLElement; private headTag: HTMLElement;
-  private sig = ''; private specKey = '';
+  private spec: HTMLElement; private tokens: HTMLElement; private index: HTMLElement; private detail: HTMLElement; private kinds: HTMLElement;
+  private sig = '';
   constructor(readonly R: Research, readonly host: Record<string, any>) {
     this.el = el('div', '');
-    const stage = el('div', 'pp-stage', this.el); this.vig.bind(stage);
-    this.vig.margins = [380, 500];
-    this.calls = new Callouts(this.el, this.vig);
-    this.left = el('div', 'pp-col', this.el); this.left.style.cssText = 'position:absolute;left:24px;top:100px;width:330px;gap:10px';
-    this.right = el('div', 'pp-card pp-col', this.el); this.right.style.cssText = 'right:28px;top:104px;width:480px;height:calc(100vh - 140px)';
-    this.specTag = el('div', 'pp-call', this.el); this.headTag = el('div', 'pp-call', this.el);
-    this.calls.add(this.specTag, this.vig.anchors.spec, -230, -60);
-    this.calls.add(this.headTag, this.vig.anchors.head, 150, -40);
+    el('div', 'pp-board', this.el);
+    this.spec = el('div', 'pp-fibre pp-col', this.el); this.spec.style.cssText = 'left:64px;top:118px;width:560px;gap:8px';
+    el('div', 'pp-pin', this.el).style.cssText = 'left:328px;top:104px';
+    this.tokens = el('div', 'pp-row', this.el); this.tokens.style.cssText = 'position:absolute;left:56px;top:690px;width:600px;gap:14px;flex-wrap:wrap';
+    this.kinds = el('div', 'pp-row', this.el); this.kinds.style.cssText = 'position:absolute;left:700px;top:104px;gap:6px';
+    this.index = el('div', '', this.el); this.index.style.cssText = 'position:absolute;left:700px;top:186px;right:40px;bottom:296px;display:grid;grid-template-columns:repeat(auto-fill, 268px);grid-auto-rows:128px;gap:22px 16px;align-content:start;overflow-y:auto;padding-top:12px;scrollbar-width:none';
+    this.detail = el('div', 'pp-fibre pp-row', this.el); this.detail.style.cssText = 'left:700px;right:40px;bottom:32px;height:240px;gap:20px;align-items:flex-start';
     const first = TECHS.find((q) => !R.unlocked(q.id) && !R.why(q.id));
     if (first) { this.kind = first.kind; this.sel = first.id; }
     this.build();
@@ -45,7 +43,7 @@ export class ResearchPage implements TabPage {
     return R.why(t.id) ? 'locked' : 'ready';
   }
   private signature() { const R = this.R; return [this.kind, this.sel, R.queue.join(','), R.known().length, DATA_KINDS.map((k) => Math.floor(R.data[k])).join(','), R.log.length, R.stations().powered, Math.floor(R.headFrac() * 40)].join('|'); }
-  update() { const s = this.signature(); if (s !== this.sig) { this.sig = s; this.build(); } this.calls.update(); }
+  update() { const s = this.signature(); if (s !== this.sig) { this.sig = s; this.build(); } }
   key(e: KeyboardEvent) {
     if (e.key === 'Enter' && this.sel) { this.queue(this.sel); return true; }
     const i = TECH_KINDS.findIndex((k) => k.k === this.kind);
@@ -58,67 +56,68 @@ export class ResearchPage implements TabPage {
     if (R.enqueue(id)) { csfx('thud', 0.7, 1.1); sfx('click'); } else sfx('deny');
     this.sig = '';
   }
-  /** the newest scan goes under the dome */
-  private specimen() {
-    const e = this.R.log[0], key = e ? e.name + e.t : 'none';
-    if (key === this.specKey) return; this.specKey = key;
-    const sp = e?.kind === 'species' ? (this.host.run?.reg?.list ?? []).find((s: any) => s.name === e.name) : null;
-    void this.vig.show((e?.kind ?? 'none') as SpecimenKind, e?.name ?? '', sp);
-  }
   private build() {
     const R = this.R;
-    this.specimen();
-    const e = R.log[0];
-    this.specTag.innerHTML = e ? `<div class="pp-col" style="gap:0"><span class="pp-h">${e.name}</span><span class="pp-t">${DATA_KINDS.filter((k) => e.data[k]).map((k) => `+${e.data[k]} ${DATA_NAME[k]}`).join('  ')}</span></div>` : '<span class="pp-t">Nothing scanned yet</span>';
-    const s = R.stations();
-    this.headTag.innerHTML = `<img src="${iconURL('lens', s.powered ? 'phos' : 'dim')}"><span class="pp-t">${s.n ? `${s.powered}/${s.n} STATIONS · ${R.rate().toFixed(1)}x` : 'NO STATION'}</span>`;
-    // ---------------- left: reserves and the scan log
-    const L = this.left; L.innerHTML = '';
+    // ---------------- the specimen card
+    const e = R.log[0], S = this.spec; S.innerHTML = '';
+    el('div', 'pp-s', S, 'LAST SPECIMEN');
+    const top = el('div', 'pp-row', S); top.style.gap = '20px';
+    el('img', 'pp-ico', top).setAttribute('src', iconURL(e ? KIND_ICON[e.kind] ?? 'lens' : 'lens', e ? 'phos' : 'dim')); (top.lastChild as HTMLElement).style.cssText = 'width:192px;height:192px';
+    const nm = el('div', 'pp-col', top); nm.style.gap = '10px';
+    el('div', 'pp-hx', nm, e ? e.name : 'NONE YET');
+    if (e) { const got = el('div', 'pp-row', nm); got.style.gap = '16px'; for (const k of DATA_KINDS) if (e.data[k]) el('span', 'pp-row', got, `<img class="pp-ico" src="${iconURL(DATA_ICON[k], 'phos')}" style="width:48px;height:48px"><span class="pp-hl">+${Math.round(e.data[k]!)}</span>`); }
+    else el('div', 'pp-t', nm, 'Scan a creature, plant, ore or ruin.');
+    el('div', 'pp-rule', S);
+    const strip = el('div', 'pp-row', S); strip.style.gap = '6px';
+    for (const x of R.log.slice(1, 9)) { const im = el('img', 'pp-ico', strip); im.src = iconURL(KIND_ICON[x.kind] ?? 'lens', 'phos'); im.style.cssText = 'width:48px;height:48px'; im.title = x.name; }
+    // ---------------- the data tokens and the stations
+    const T = this.tokens; T.innerHTML = '';
     for (const k of DATA_KINDS) {
-      const t = el('div', 'pp-tag', L); t.style.justifyContent = 'space-between';
-      el('div', 'pp-row', t, `<img class="pp-ico" src="${iconURL(DATA_ICON[k], R.data[k] > 0 ? 'phos' : 'dim')}" style="width:48px;height:48px;margin:-10px 0"><span class="pp-h">${DATA_NAME[k]}</span>`);
+      const t = el('div', 'pp-enamel pp-col', T); t.style.cssText = 'position:relative;width:138px;align-items:center;gap:0';
+      el('img', 'pp-ico', t).setAttribute('src', iconURL(DATA_ICON[k], R.data[k] > 0 ? 'phos' : 'dim')); (t.lastChild as HTMLElement).style.cssText = 'width:48px;height:48px';
       el('div', 'pp-hx', t, String(Math.floor(R.data[k])));
+      el('div', 'pp-s', t, DATA_NAME[k]);
     }
-    const lg = el('div', 'pp-note pp-col', L); lg.style.position = 'relative'; lg.style.gap = '2px';
-    el('div', 'pp-h', lg, 'SCAN LOG');
-    if (!R.log.length) el('div', 'pp-t pp-dim', lg, 'Scan species, plants, ore, vents and ruins.');
-    for (const x of R.log.slice(1, 8)) el('div', 'pp-t', lg, `${x.name.length > 18 ? x.name.slice(0, 17) + '.' : x.name}`);
-    // ---------------- right: the tech index
-    const Rt = this.right; Rt.innerHTML = '';
-    const kinds = el('div', 'pp-row', Rt); kinds.style.flexWrap = 'wrap';
+    const s = R.stations();
+    const st = el('div', 'pp-enamel pp-row', T); st.style.cssText = 'position:relative;gap:10px';
+    st.innerHTML = `<img class="pp-ico" src="${iconURL('lens', s.powered ? 'phos' : 'dim')}" style="width:48px;height:48px"><span class="pp-hl">${s.powered}/${s.n}</span><span class="pp-s">STATIONS · ${R.rate().toFixed(1)}X</span>`;
+    // ---------------- kind tabs and the index cards
+    const K = this.kinds; K.innerHTML = '';
     for (const k of TECH_KINDS) {
-      const b = el('div', 'pp-tab' + (k.k === this.kind ? ' on' : ''), kinds, `<span class="pp-s" style="color:inherit">${k.name}</span>`); b.style.minHeight = '40px'; b.style.marginTop = '0';
+      const b = el('div', 'pp-tab' + (k.k === this.kind ? ' on' : ''), K, `<img src="${iconURL(KIND_TAB[k.k], 'phos')}"><span class="pp-s" style="color:inherit">${k.name}</span>`); b.style.marginTop = k.k === this.kind ? '6px' : '0';
       b.addEventListener('click', () => { this.kind = k.k; this.sig = ''; csfx('page', 0.4); });
     }
-    const list = el('div', 'pp-list pp-col', Rt); list.style.cssText = 'flex:1;min-height:0;gap:2px';
+    const I = this.index; I.innerHTML = '';
     const order = { active: 0, queued: 1, ready: 2, locked: 3, known: 4 };
     for (const t of TECHS.filter((q) => q.kind === this.kind && !q.start).sort((a, b) => order[this.state(a)] - order[this.state(b)])) {
-      const st = this.state(t);
-      const row = el('div', 'pp-row', list); row.style.cssText = `cursor:pointer;padding:2px 4px;${this.sel === t.id ? 'background:rgba(217,164,58,0.35)' : ''}`;
-      el('img', 'pp-ico', row).setAttribute('src', iconURL(t.icon, st === 'locked' ? 'dim' : 'phos')); (row.lastChild as HTMLElement).style.cssText = 'width:48px;height:48px';
-      const mid = el('div', 'pp-col', row); mid.style.cssText = 'flex:1;gap:0';
-      el('div', 'pp-h' + (st === 'locked' ? ' pp-dim' : ''), mid, t.name);
-      el('div', 'pp-row', mid, st === 'known' ? '<span class="pp-s pp-grn">KNOWN</span>' : st === 'active' ? `<span class="pp-s pp-amb">RESEARCHING ${Math.round(R.headFrac() * 100)}%</span>` : st === 'queued' ? `<span class="pp-s pp-amb">QUEUED ${R.queue.indexOf(t.id) + 1}</span>` : chips(t.cost, R.data));
-      row.addEventListener('click', () => { if (this.sel === t.id && st !== 'known' && st !== 'locked') this.queue(t.id); else { this.sel = t.id; sfx('click'); } this.sig = ''; });
+      const stt = this.state(t);
+      const c = el('div', 'pp-note pp-col', I); c.style.cssText = `position:relative;cursor:pointer;gap:2px;${stt === 'locked' ? 'filter:grayscale(0.7) brightness(0.92)' : ''}${this.sel === t.id ? ';margin-top:-10px;margin-bottom:10px' : ''}`;
+      const row = el('div', 'pp-row', c);
+      el('img', 'pp-ico', row).setAttribute('src', iconURL(t.icon, stt === 'locked' ? 'dim' : 'phos')); (row.lastChild as HTMLElement).style.cssText = 'width:48px;height:48px;margin:-6px 0';
+      el('div', 'pp-h' + (this.sel === t.id ? ' pp-amb' : ''), row, t.name);
+      el('div', 'pp-row', c, stt === 'known' ? '<span class="pp-s pp-grn">KNOWN</span>' : stt === 'active' ? `<span class="pp-s pp-amb">${Math.round(R.headFrac() * 100)}%</span>` : stt === 'queued' ? `<span class="pp-s pp-amb">QUEUE ${R.queue.indexOf(t.id) + 1}</span>` : chips(t.cost, R.data));
+      c.addEventListener('click', () => { if (this.sel === t.id && stt !== 'known' && stt !== 'locked') this.queue(t.id); else { this.sel = t.id; sfx('click'); } this.sig = ''; });
     }
-    el('div', 'pp-rule', Rt);
+    // ---------------- the selected tech and the queue
+    const D = this.detail; D.innerHTML = '';
     const t = this.sel ? TECH[this.sel] : null;
     if (t) {
-      const st = this.state(t);
-      el('div', 'pp-row', Rt, `<img class="pp-ico" src="${iconURL(t.icon, 'phos')}" style="width:96px;height:96px"><div class="pp-col"><span class="pp-hl">${t.name}</span><span class="pp-s">${PATH[t.path].short} · ${fmtTime(t.time)} AT ONE STATION</span></div>`);
-      el('div', 'pp-t', Rt, t.blueprint ? `${t.desc} Built at the Upgrader: ${BLUEPRINT[t.blueprint]?.name}.` : t.desc);
-      const why = R.why(t.id), short = R.short(t.id);
-      if (st !== 'known' && why) el('div', 'pp-t pp-red', Rt, (R.requirementOf(t.id) ?? why).toLowerCase().replace(/^\w/, (m) => m.toUpperCase()));
-      else if (st !== 'known' && short) el('div', 'pp-t pp-amb', Rt, `Waiting on ${short}`);
-      const k = el('div', 'pp-key' + (st === 'known' || why || st === 'active' ? ' dead' : ' hot'), Rt, st === 'known' ? 'KNOWN' : st === 'active' ? 'RESEARCHING' : st === 'queued' ? 'TO THE FRONT' : 'QUEUE  ENTER'); k.style.alignSelf = 'flex-start';
-      k.addEventListener('click', () => { if (st !== 'known' && !why) this.queue(t.id); });
-    }
-    if (R.queue.length) {
-      const q = el('div', 'pp-row', Rt); q.style.flexWrap = 'wrap';
-      el('span', 'pp-s', q, 'QUEUE');
-      R.queue.slice(0, 5).forEach((id, i) => { const im = el('img', 'pp-ico', q); im.src = iconURL(TECH[id].icon, 'phos'); im.style.cssText = `width:48px;height:48px;${i === 0 ? 'outline:3px solid #d9a43a' : ''}`; im.title = TECH[id].name; im.addEventListener('click', () => { R.dequeue(id); this.sig = ''; }); });
-      const stall = R.stalled(); if (stall) el('span', 'pp-s pp-red', q, stall);
+      const stt = this.state(t), why = R.why(t.id), short = R.short(t.id);
+      el('img', 'pp-ico', D).setAttribute('src', iconURL(t.icon, 'phos')); (D.lastChild as HTMLElement).style.cssText = 'width:144px;height:144px';
+      const mid = el('div', 'pp-col', D); mid.style.cssText = 'flex:1;gap:8px';
+      el('div', 'pp-hl', mid, t.name);
+      el('div', 'pp-t', mid, t.desc);
+      el('div', 'pp-row', mid, `${chips(t.cost, R.data)}<span class="pp-s">${fmtTime(t.time)}</span>`).style.gap = '14px';
+      if (stt !== 'known' && why) el('div', 'pp-t pp-red', mid, (R.requirementOf(t.id) ?? why).toLowerCase().replace(/^\w/, (m) => m.toUpperCase()));
+      else if (stt !== 'known' && short) el('div', 'pp-t pp-amb', mid, `Needs ${short.toLowerCase()}`);
+      const right = el('div', 'pp-col', D); right.style.cssText = 'gap:10px;align-items:flex-end';
+      const k = el('div', 'pp-key' + (stt === 'known' || why || stt === 'active' ? ' dead' : ' hot'), right, stt === 'known' ? 'KNOWN' : stt === 'active' ? 'RUNNING' : stt === 'queued' ? 'FIRST' : 'QUEUE');
+      k.addEventListener('click', () => { if (stt !== 'known' && !why) this.queue(t.id); });
+      const q = el('div', 'pp-row', right); q.style.gap = '4px';
+      R.queue.slice(0, 5).forEach((id, i) => { const im = el('img', 'pp-ico', q); im.src = iconURL(TECH[id].icon, 'phos'); im.style.cssText = `width:48px;height:48px;${i === 0 ? 'outline:3px solid #9a6a1a' : 'opacity:0.85'}`; im.title = TECH[id].name; im.addEventListener('click', () => { R.dequeue(id); this.sig = ''; }); });
+      if (R.queue.length) { const b = el('div', 'pp-bar amb', right); b.style.width = '260px'; el('i', '', b).style.width = `calc(${R.headFrac() * 100}% - 4px)`; }
+      const stall = R.stalled(); if (stall) el('div', 'pp-s pp-red', right, stall);
     }
   }
-  dispose() { this.calls.clear(); this.vig.dispose(); this.el.remove(); }
+  dispose() { this.el.remove(); }
 }

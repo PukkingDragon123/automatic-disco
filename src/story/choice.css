@@ -12,14 +12,15 @@
 .evc-title { font: 64px/64px 'TitleL'; color: #f4ecd8; }
 .evc-req { margin-left: auto; font: 24px/24px 'Title'; color: #a8332a; padding: 0 4px; border: 20px solid transparent; border-image: var(--pp-stamp) 40 / 40px / 10px round; image-rendering: pixelated; background: rgba(240, 228, 200, 0.85); background-clip: padding-box; }
 .evc-crt { width: min(1200px, calc(100vw - 48px)); display: flex; flex-direction: column; gap: 14px; }
-.evc-brief { font: 22px/26px 'Body'; color: #2b2622; min-height: 52px; border: 32px solid transparent; border-image: var(--pp-card) 40 fill / 40px / 8px round; image-rendering: pixelated; }
+.evc-brief { font: 22px/26px 'Body'; color: #2b2622; min-height: 52px; border: 30px solid transparent; border-image: var(--pp-fibre) 40 fill / 40px / 10px round; image-rendering: pixelated; }
 .evc-brief .cur { animation: evc-cur 0.6s steps(1) infinite; }
 @keyframes evc-cur { 50% { opacity: 0; } }
 .evc-opts { display: grid; grid-template-columns: repeat(var(--n, 3), 1fr); gap: 18px; }
-.evc-opt { position: relative; cursor: pointer; display: flex; flex-direction: column; gap: 4px; min-height: 210px; border: 32px solid transparent; border-image: var(--pp-note) 40 fill / 40px / 8px round; image-rendering: pixelated; transition: margin 120ms steps(2); }
+.evc-opt { position: relative; cursor: pointer; display: flex; flex-direction: column; gap: 4px; min-height: 210px; border: 30px solid transparent; border-image: var(--pp-canvas) 40 fill / 40px / 10px round; image-rendering: pixelated; transition: margin 120ms steps(2); }
 .evc-opt:hover, .evc-opt.hot { margin-top: -10px; margin-bottom: 10px; }
 .evc-opt.off { cursor: default; filter: grayscale(0.8) brightness(0.85); }
 .evc-opt.off:hover { margin: 0; }
+.evc-art { display: block; width: 100%; aspect-ratio: 2 / 1; image-rendering: pixelated; margin: -8px 0 6px; box-shadow: 0 0 0 3px #2b2622; }
 .evc-key { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
 .evc-num { flex: none; width: 48px; height: 48px; display: grid; place-items: center; font: 24px/24px 'Title'; color: #1e1a16; border: 14px solid transparent; border-image: var(--pp-key) 20 fill / 20px / 4px round; image-rendering: pixelated; }
 .evc-opt:hover .evc-num, .evc-opt.hot .evc-num { border-image-source: var(--pp-keyhot); }

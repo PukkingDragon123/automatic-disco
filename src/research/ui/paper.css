@@ -86,3 +86,20 @@
 .tx-f { display: flex; justify-content: space-between; margin-top: 6px; font: 11px/13px 'Body'; letter-spacing: 1px; color: #5a5044; }
 .tx-f b { color: #1e1a16; font-weight: normal; }
 .tx canvas { display: block; width: 100%; height: 28px; margin-top: 4px; image-rendering: pixelated; }
+
+/* ---------------- textured materials (each screen picks its own) ---------------- */
+.pp-enamel { position: absolute; border: 30px solid transparent; border-image: var(--pp-enamel) 40 fill / 40px / 10px round; image-rendering: pixelated; color: #1c2c48; }
+.pp-metal { position: absolute; border: 30px solid transparent; border-image: var(--pp-metal) 40 fill / 40px / 10px round; image-rendering: pixelated; color: #14161a; }
+.pp-fibre { position: absolute; border: 30px solid transparent; border-image: var(--pp-fibre) 40 fill / 40px / 10px round; image-rendering: pixelated; color: #2b2622; }
+.pp-canvas { position: absolute; border: 30px solid transparent; border-image: var(--pp-canvas) 40 fill / 40px / 10px round; image-rendering: pixelated; color: #2b2622; }
+.pp-board { position: absolute; inset: 0; background: #7a5a38 var(--pp-cork) 0 0 / 256px 256px repeat; image-rendering: pixelated; box-shadow: inset 0 0 0 12px #4a3420, inset 0 0 0 16px #2a1c10; }
+.pp-plate { position: absolute; inset: 0; background: #5f6460 var(--pp-metal) 0 0 / 256px 256px repeat; image-rendering: pixelated; }
+.pp-pin { position: absolute; width: 32px; height: 32px; background: var(--pp-pin) 0 0 / 32px 32px; image-rendering: pixelated; pointer-events: none; }
+.pp-enamel .pp-h, .pp-enamel .pp-hl, .pp-enamel .pp-hx { color: #1c2c48; }
+.pp-metal .pp-h, .pp-metal .pp-hl { color: #0e1014; }
+.pp-metal .pp-t { color: #14161a; }
+.pp-metal .pp-s { color: #2a2e34; }
+.tx.enamel { border: 30px solid transparent; border-image: var(--pp-enamel) 40 fill / 40px / 10px round; color: #1c2c48; }
+.tx.enamel .tx-t, .tx.enamel .tx-f b { color: #14243e; }
+.tx.enamel .tx-b { color: #1c2c48; }
+.tx.enamel .tx-k { color: #2a4a78; }

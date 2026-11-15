@@ -97,7 +97,7 @@ export class BenchVignette extends Vignette {
   progress = -1;
   constructor() {
     super({ bg: 0xa8a090, top: 0x4a4038, plinth: false });
-    this.target.set(0.6, 1.1, 0); this.dist = 9.2; this.pitch = 0.24; this.sway = 0.3;
+    this.target.set(0.5, 1.3, 0); this.dist = 15; this.pitch = 0.3; this.sway = 0.3;
     // a poured pad under both
     mesh(new THREE.BoxGeometry(7.4, 0.2, 4.4), lam(0x8a8478), [0.6, 0.1, 0], this.root);
     void lowpixGlb('progression', 'upgrader', 3).then((u) => { if (u) { u.position.set(-1.4, 0.2, 0); this.root.add(u); } else mesh(new THREE.BoxGeometry(2.8, 2.6, 2.8), lam(0x9f4621), [-1.4, 1.5, 0], this.root); });

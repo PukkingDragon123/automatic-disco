@@ -4,7 +4,8 @@
 // spine corridor with its light strip and conduits, and each room's light. Furniture comes from rooms.ts.
 import * as THREE from 'three';
 import { Batch, Mats, Bin, box, quad, V3 } from './kit';
-import { ROOMS, ROOM_IDS, WALL_H, CUT_H, CORRIDOR, HULL_X, type RoomId } from './layout';
+import { ROOMS, ROOM_IDS, WALL_H, CUT_H, CORRIDOR, HULL_X, KEYS, type RoomId } from './layout';
+import { floorWear, type WearOpts } from './pix';
 import { THEMES, wallTex, floorTex, capTex, hazardTex, poolTex, type Theme } from './tex';
 import { Screens } from './screens';
 import { mat, glow, wallLamp, sign, type Ctx, type Anim } from './props';
@@ -89,6 +90,28 @@ export function buildInterior(bin: Bin, M: Mats, onRoom?: (id: RoomId, c: Ctx) =
       const uv = g.attributes.uv as THREE.BufferAttribute, p = g.attributes.position as THREE.BufferAttribute;
       for (let i = 0; i < uv.count; i++) uv.setXY(i, p.getX(i) / 2, p.getZ(i) / 2);
       B.add(g, fm);
+      // the unrepeated wear layer over it: grime at the walls, lanes worn to where people stand, tape, a drain...
+      const bx0 = Math.min(...poly.map((v) => v[0])), bx1 = Math.max(...poly.map((v) => v[0])), bz0 = Math.min(...poly.map((v) => v[1])), bz1 = Math.max(...poly.map((v) => v[1]));
+      const k6 = KEYS[id].boxes[0], pad = 0.3;
+      const W_: Partial<Record<RoomId, Partial<WearOpts>>> = {
+        bridge: { hatch: [-4.2, 13.2] },
+        lab: { drain: [2.2, 7.0], tapeBox: [k6[0] - pad, k6[2] - pad, k6[3] + pad, k6[5] - 0.05] },
+        medbay: { drain: [-4.6, 9.5] },
+        core: { hatch: [-2.4, 5.6], tapeBox: [-5.6, 3.2, -3.4, 5.9], hazardTape: true },
+        quarters: {},
+        workshop: { tapeBox: [-6.1, -12.4, -2.7, -8.4], hazardTape: true, oil: 3, aisle: 0.55 },
+        mess: { drain: [4.6, 0.8] },
+        cargo: { aisle: 0.6, hatch: [4.2, -3.0], oil: 1 },
+        engineering: { tapeBox: [2.4, -12.2, 5.8, -8.6], hazardTape: true, drain: [6.2, -7.0], oil: 2 },
+      };
+      const inPoly = (x: number, z: number) => { let c2 = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, zi] = poly[i], [xj, zj] = poly[j]; if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c2 = !c2; } return c2; };
+      const sp = Object.entries(r.spots).filter(([k]) => k !== 'door').map(([, v]) => [v.p[0], v.p[2]] as [number, number]);
+      const wt = floorWear(id, bx0, bz0, bx1, bz1, {
+        fa: th.floorA, fb: th.floorB, kind: th.floor, door: [r.spots.door.p[0], r.spots.door.p[2]], spots: sp, code: r.code,
+        inside: id === 'bridge' ? inPoly : undefined, ...W_[id],
+      });
+      const wg = new THREE.PlaneGeometry(bx1 - bx0, bz1 - bz0); wg.rotateX(-Math.PI / 2);
+      B.add(wg, M.get('wear|' + id, { map: wt, alphaTest: 0.5, polyOffset: 1 }), { x: (bx0 + bx1) / 2, y: 0.003, z: (bz0 + bz1) / 2 });
     }
     // ---- walls (inner faces) and their caps
     const dd = doorOf(id);
@@ -200,6 +223,12 @@ export function buildInterior(bin: Bin, M: Mats, onRoom?: (id: RoomId, c: Ctx) =
     const fg = new THREE.PlaneGeometry(C.x1 - C.x0, L); fg.rotateX(-Math.PI / 2);
     const uv = fg.attributes.uv as THREE.BufferAttribute; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (C.x1 - C.x0) / 2, uv.getY(i) * L / 2);
     B.add(fg, M.get('floor|corridor', { map: floorTex(th), rough: 0.7, metal: 0.1 }), { x: 0, z: (C.z0 + C.z1) / 2 });
+    {
+      const doorsZ = ROOM_IDS.filter((id) => id !== 'bridge').map((id) => [Math.sign(ROOMS[id].x0 + ROOMS[id].x1) * 0.9, ROOMS[id].spots.door.p[2]] as [number, number]);
+      const wt = floorWear('corridor', C.x0, C.z0, C.x1, C.z1, { fa: th.floorA, fb: th.floorB, kind: th.floor, door: [0, C.z1 - 0.3], spots: [[0, C.z0 + 0.5], ...doorsZ], aisle: 0.22, hatch: [0, -3.2], drain: [0.55, 4.4] });
+      const wg = new THREE.PlaneGeometry(C.x1 - C.x0, L); wg.rotateX(-Math.PI / 2);
+      B.add(wg, M.get('wear|corridor', { map: wt, alphaTest: 0.5, polyOffset: 1 }), { x: (C.x0 + C.x1) / 2, y: 0.003, z: (C.z0 + C.z1) / 2 });
+    }
     // the centre light strip set in the deck
     B.add(box(0.12, 0.01, L - 1), glow(c, 0xbfe8f0, 1.6), { x: 0, y: 0.006, z: (C.z0 + C.z1) / 2 });
     // the low starboard wall's corridor face (doors cut through it)

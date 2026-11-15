@@ -135,6 +135,8 @@ export async function testLogistics(engine: Engine, input: Input, P: URLSearchPa
       if (P.has('pick')) ui.menu.select(P.get('pick') as FKind);
     }
     if (P.has('place')) f.build.choose(P.get('place') as FKind);
+    // &stills: window.__passes(kinds, w, h) shoots the colour / id / normal passes the offline illustration painter reads
+    if (P.has('stills')) void import('../ui/build/studio').then((st) => { (window as unknown as Record<string, unknown>).__passes = (kinds: FKind[], w: number, h: number) => Object.fromEntries(kinds.map((k) => [k, st.passes(k, w, h)])); });
     if (P.has('nodes')) {
       ui.nodes.open();
       const s = P.get('sel');

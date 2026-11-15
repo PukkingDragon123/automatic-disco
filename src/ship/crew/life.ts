@@ -15,7 +15,7 @@ import { Unit07 } from './unit07';
 import { ROSTER, CREW_IDS, type CrewId, type Act, type RoomKey, type Block } from './roster';
 import { crewState, onCrew, isAway } from './state';
 import { memorial } from './memorial';
-import { Ink, INK, textW } from './doodle';
+import { Ink, INK, idBadge } from './doodle';
 import type { RoomId } from '../hub/layout';
 
 /** the slice of the ship hub (src/ship/hub/hub.ts ShipHub) the crew needs */
@@ -397,23 +397,18 @@ export class CrewLife {
     const hp = ag.m.rig.j.chest.getWorldPosition(V()).project(cam);
     const x = Math.round(((hp.x + 1) / 2) * innerWidth), y = Math.round(((1 - hp.y) / 2) * innerHeight);
     const boil = Math.floor(T.t * 4);
-    if (boil !== T.boil) {
-      T.boil = boil;
-      const d = ag.m.def, st = crewState(), mood = st.mood;
-      const w = Math.max(textW(d.short.toUpperCase(), 'Title', 24), textW(d.job, 'Body', 22)) + 90, H = 150;
-      const I = new Ink(w + 120, H); I.seed = boil % 5 + 1;
-      I.label(d.short.toUpperCase(), 120, 8, 'Title', 24, INK.light);
-      I.label(d.job, 120, 38, 'Body', 22, INK.amber);
-      // the mood face
-      const mx = 150 + textW(d.job, 'Body', 22), my = 52, cv = mood > 0.6 ? 1 : mood > 0.4 ? 0 : -1;
-      I.loop(mx, my, 13, 13, 2, INK.light, { outline: INK.dark });
-      I.r(mx - 6, my - 4, 3, 3, INK.light).r(mx + 4, my - 4, 3, 3, INK.light);
-      I.stroke([[mx - 6, my + 5 - cv], [mx, my + 5 + cv * 3], [mx + 6, my + 5 - cv]], 2, INK.light, { amp: 0.4 });
-      I.stroke([[118, 66], [114 + Math.min(w, 200), 68]], 2, INK.amber, { outline: INK.dark, taper: true });
-      I.leader([116, 30], [10, H - 12], INK.light);
-      T.c.width = I.c.width; T.c.height = I.c.height; T.c.style.width = I.c.style.width; T.c.style.height = I.c.style.height;
+    if (T.boil < 0) {
+      T.boil = 0;
+      // the ID badge on a pen leader line that ends on the person
+      const badge = idBadge(ag.m.def, crewState().mood);
+      const bw = parseInt(badge.style.width), bh = parseInt(badge.style.height), W = bw + 110, H = bh + 70;
+      const I = new Ink(W, H); I.seed = 2;
+      I.leader([112, bh - 30], [10, H - 12], INK.light);
+      I.g.save(); I.g.setTransform(1, 0, 0, 1, 0, 0); I.g.drawImage(badge, 108 * I.k, 0); I.g.restore();
+      T.c.width = I.c.width; T.c.height = I.c.height; T.c.style.width = W + 'px'; T.c.style.height = H + 'px';
       T.c.getContext('2d')!.drawImage(I.c, 0, 0);
     }
+    void boil;
     T.c.style.left = (x - 10) + 'px'; T.c.style.top = (y - parseInt(T.c.style.height || '150') + 12) + 'px';
   }
 

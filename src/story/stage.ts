@@ -55,11 +55,24 @@ export class Stage {
     this.attach();
     const c = this.cine, g = anyG(this.g);
     c.cam.from(g.cam.cam, 20);
-    const skipped = await c.play(async (cc) => { cc.ui.fade(1, 0); await script(cc); }, { name, skippable });
+    this.still = null;
+    const skipped = await c.play(async (cc) => { cc.ui.fade(1, 0); await script(cc); this.still = this.snap(); }, { name, skippable });
     for (const p of this.props.splice(0)) p.removeFromParent();
     // keep ticking the cinema UI for its fade-outs, then let the camera go
     setTimeout(() => { if (!c.active) this.detach(); }, 900);
     return skipped;
+  }
+  /** the last frame of the scene, read straight after a render (the decision cards paint their scenes from it) */
+  still: HTMLCanvasElement | null = null;
+  private snap(): HTMLCanvasElement | null {
+    try {
+      const e = anyG(this.g).engine; if (!e?.screen) return null;
+      e.screen.render(e.post, e.time);
+      const src = e.canvas as HTMLCanvasElement, cv = document.createElement('canvas');
+      cv.width = Math.floor(src.width / 4); cv.height = Math.floor(src.height / 4);
+      const g = cv.getContext('2d')!; g.drawImage(src, 0, 0, cv.width, cv.height);
+      return cv;
+    } catch { return null; }
   }
   dispose() { this.detach(); this.cine.dispose(); }
 }

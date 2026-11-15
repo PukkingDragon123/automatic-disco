@@ -95,8 +95,10 @@ user's lowpix sprite brush engine (`lowpix.sprite.render_sprite`, `paint: stroke
 outlines). Original work for ODDWORLD.
 
 ### Procedural art
-Wall, floor, hull, sign and poster textures (`src/ship/hub/pix.ts`), live screens (`screens.ts`) and the ship, pod,
-rooms and furniture modelled in code are original work for ODDWORLD.
+Wall, floor, hull, sign and poster textures and the per-room floor wear (`src/ship/hub/pix.ts`), the hub's painted
+UI materials (`src/ship/hub/plates.ts`: brass, enamel, laminate, pad note, frosted glass, embroidered patch, crate
+board, hazard plate, leather strap, from the master palette `src/art/palette.ts`), live screens (`screens.ts`) and
+the ship, pod, rooms and furniture modelled in code are original work for ODDWORLD.
 
 ### Fonts
 Departure Mono ('Body') and Spleen ('Title', 'TitleL', 'TitleXL'), installed by the lead (see src/style.css and their

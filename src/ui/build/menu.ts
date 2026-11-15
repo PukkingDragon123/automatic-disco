@@ -1,8 +1,8 @@
-// The CONSTRUCTION PLANNER (B): the build menu, Techtonica-style, as LIVING 3D VIGNETTES on hand-drawn paper. Ten
-// kraft category tabs; a pinboard of cards, each with the building itself live in 3D on it (idling, and running
-// when you hover it); and a detail sheet where the selected machine works on its plinth with its inputs sliding in
-// and its outputs coming out, hand-drawn callouts pointing at it (what goes in, what comes out, the power it draws,
-// its footprint), then the bill of materials as real items with have/need, the recipes, and the construction steps.
+// The CONSTRUCTION PLANNER (B): the build menu, Techtonica-style, as an ENGINEER'S STEEL DRAWER. Ten stamped steel
+// index tabs; a drawer of blueprint-cloth cards, each with a hand-painted 2D pixel-art illustration of the building
+// (./art.ts, painted with lowpix's brush); and a blueprint sheet where the selected machine works in a small 3D
+// vignette on its plinth, its inputs sliding in and its outputs coming out, with chalk callouts (in, out, power,
+// footprint), then its cost as real items with have/need and its recipes. Icons and numbers, few words.
 // Click a card to look, again to place; drag it onto the hotbar.
 import './build.css';
 import * as THREE from 'three';
@@ -14,10 +14,12 @@ import { recipesAt, perMin, type Recipe } from '../../factory/recipes';
 import { BUILD_CATS, catOf, kindsIn, workOf, registerColonyBuildings, type BuildCat } from '../../logistics/catalog';
 import { buildingLock, mod } from '../../logistics/unlocks';
 import { registerChains } from '../../logistics/recipes';
-import { still } from './studio';
+import { art } from './art';
 import { attachLayer, addStage, removeStage, drawStages, studioScene, liveModel, frameCam, project, type Stage, type Live } from './vignette';
+const CHALK = '#e8eef4';
 import { inkLine, inkArrow } from './ink';
 import { el } from '../kit';
+import { gbuf } from '../../gfx/gbuf';
 import { sfx } from '../../audio/audio';
 
 const esc = (s: string) => s.replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]!));
@@ -35,8 +37,6 @@ export const chip = (id: ItemId, have: number | null, need: number, big = false)
   const lack = have !== null && have < need;
   return `<span class="cr-chip ${lack ? 'lack' : ''} ${big ? 'big' : ''}" title="${esc(ITEMS[id]?.name ?? id)}"><img src="${itemIcon(id, 44)}" alt=""><b>${have === null ? need : fmt(Math.min(have, 9999))}</b>${have === null ? '' : `<i>/${need}</i>`}</span>`;
 };
-/** a card's live model on its own little set */
-interface TileStage extends Stage { kind: FKind; live: Live; yaw: number }
 type DetStage = Stage & { live: Live; tokens: THREE.Mesh[]; kind: FKind };
 
 export class BuildMenu {
@@ -49,7 +49,6 @@ export class BuildMenu {
   hover: FKind | null = null;
   isOpen = false;
   private gridKey = ''; private detKey = '';
-  private tiles: TileStage[] = [];
   private detStage: DetStage | null = null;
   private ink: HTMLCanvasElement | null = null;
   private t = 0; private slow = 0;
@@ -61,10 +60,10 @@ export class BuildMenu {
     this.dim = el('div', 'bm-dim', document.body);
     const r = (this.root = el('div', 'cr bm', document.body));
     const head = el('div', 'bm-head', r);
-    head.innerHTML = `<span class="bm-title cr-tl">CONSTRUCTION PLANNER</span><span class="cr-s" style="color:#f0e8d2;text-shadow:2px 2px 0 #2b2622">UNAA COLONY WORKS<br>DRAWN UP BY UNIT 07</span><span class="sp"></span>`;
+    head.innerHTML = `<span class="bm-title cr-tl">CONSTRUCTION</span><span class="sp"></span>`;
     const sb = el('label', 'bm-search', head);
     el('span', 'cr-s', sb, 'FIND');
-    this.q = el('input', '', sb); this.q.placeholder = 'a building'; this.q.spellcheck = false;
+    this.q = el('input', '', sb); this.q.placeholder = ''; this.q.spellcheck = false;
     el('span', 'cr-chit bm-x', head, 'CLOSE <span class="cr-key">B</span>');
     this.tabs = el('div', 'bm-tabs', r);
     const body = el('div', 'bm-body', r);
@@ -81,7 +80,7 @@ export class BuildMenu {
     addEventListener('pointermove', this.onMove);
     addEventListener('pointerup', this.onUp);
   }
-  dispose() { removeEventListener('pointermove', this.onMove); removeEventListener('pointerup', this.onUp); this.dropStages(); this.root.remove(); this.dim.remove(); }
+  dispose() { removeEventListener('pointermove', this.onMove); removeEventListener('pointerup', this.onUp); if (this.detStage) removeStage(this.detStage); this.root.remove(); this.dim.remove(); }
 
   open() {
     if (this.isOpen) return;
@@ -115,14 +114,13 @@ export class BuildMenu {
     this.tabs.innerHTML = BUILD_CATS.map((c) => {
       const ks = kindsIn(c.k), open = ks.filter((k) => buildingLock(g, k).ok).length;
       const flag = FLAG[c.k].find((k) => FDEFS[k]) ?? ks[0];
-      const img = flag ? still(flag, 18, 18) : '';
+      const img = flag ? art(flag, 'small') : '';
       return `<div class="bm-tab ${c.k === this.tab && !this.q.value ? 'on' : ''}" data-tab="${c.k}" title="${esc(c.name)}">${img ? `<img src="${img}" alt="">` : ''}<span class="nm">${SHORT[c.k]}</span><span class="ct">${open}/${ks.length}</span></div>`;
     }).join('');
     this.tabs.querySelectorAll<HTMLElement>('[data-tab]').forEach((e) => e.addEventListener('click', () => this.setTab(e.dataset.tab as BuildCat)));
   }
 
   // ------------------------------------------------------------------ the pinboard of cards
-  private dropStages() { for (const s of this.tiles) removeStage(s); this.tiles = []; }
   private renderGrid(force = false) {
     const g = this.f.g, ks = this.visible();
     const slots = this.b.hotbar?.slots ?? [];
@@ -145,7 +143,7 @@ export class BuildMenu {
       if (d.power > 0) spec.push(`${fmt(d.power * mod(g, 'power.draw'))} MW`); else if (d.power < 0) spec.push(`<span class="gen">+${fmt(-d.power * mod(g, 'power.out'))} MW</span>`);
       const tp = this.throughput(d); if (tp) spec.push(tp);
       return `<div class="bm-tile ${this.sel === k ? 'sel' : ''} ${lk.ok ? '' : 'locked'}" data-kind="${k}">
-        <div class="stage"><span class="no cr-s">${LETTER[catOf(k)]}-${String(idx).padStart(2, '0')}</span><span class="fp cr-s">${d.w}×${d.d} M</span>${slot >= 0 ? `<span class="cr-key hk">${(slot + 1) % 10}</span>` : ''}</div>
+        <div class="pic"><img src="${art(k)}" alt="" draggable="false"><span class="no cr-s">${LETTER[catOf(k)]}${String(idx).padStart(2, '0')}</span><span class="fp cr-s">${d.w}×${d.d}</span>${slot >= 0 ? `<span class="cr-key hk">${(slot + 1) % 10}</span>` : ''}</div>
         <div class="nm">${esc(d.name.toUpperCase())}</div>
         <div class="spec cr-s">${spec.join(' · ') || '&nbsp;'}</div>
         <div class="cost"></div>
@@ -155,22 +153,13 @@ export class BuildMenu {
     let h = '';
     if (!ks.length) h = `<div class="bm-empty">${this.q.value ? 'NO BUILDING MATCHES THAT' : 'NOTHING HERE YET'}</div>`;
     else {
-      h += `<div class="bm-sec"><b>${this.q.value ? 'FOUND' : BUILD_CATS.find((c) => c.k === this.tab)!.name.toUpperCase()}</b><span class="cr-s">READY · ${ready.length}</span></div>`;
       h += ready.map(tile).join('');
-      if (locked.length) h += `<div class="bm-sec"><b>NOT YET LEARNED</b><span class="cr-s">${locked.length}</span></div>` + locked.map(tile).join('');
+      if (locked.length) h += `<div class="bm-sec"><b>LOCKED</b><span class="cr-s">${locked.length}</span></div>` + locked.map(tile).join('');
     }
-    this.dropStages();
     this.grid.innerHTML = h;
     this.grid.scrollTop = 0;
-    // a live model on every card
-    this.grid.querySelectorAll<HTMLElement>('[data-kind]').forEach((e, i) => {
-      const k = e.dataset.kind as FKind, stEl = e.querySelector('.stage') as HTMLElement;
-      const scene = studioScene({ ground: 0xcfc2a0 }), cam = new THREE.PerspectiveCamera(26, 1.6, 0.1, 100);
-      const st = { el: stEl, scene, cam, clip: this.grid, bg: null, kind: k, live: null as unknown as Live, yaw: 0.62 + (i % 3) * 0.12 } as TileStage;
-      const fit = () => { if (st.live) scene.remove(st.live.root); st.live = liveModel(k, fit); scene.add(st.live.root); frameCam(cam, st.live, st.yaw, 0.48, 0.92); };
-      fit();
-      st.tick = (dt) => { const hot = this.hover === k || this.sel === k; st.yaw += dt * (hot ? 0.5 : 0.12); frameCam(cam, st.live, st.yaw, 0.48, 0.92); st.live.tick(dt, hot); };
-      this.tiles.push(st); addStage(st);
+    this.grid.querySelectorAll<HTMLElement>('[data-kind]').forEach((e) => {
+      const k = e.dataset.kind as FKind;
       e.addEventListener('pointerenter', () => { this.hover = k; });
       e.addEventListener('pointerleave', () => { if (this.hover === k) this.hover = null; });
       e.addEventListener('dblclick', () => this.b.choose(k));
@@ -201,31 +190,24 @@ export class BuildMenu {
     const rs = d.station ? recipesAt(d.station) : [], r0 = rs.find((r) => !r.skill || this.f.recipeOk(r)) ?? rs[0];
     const ins = r0 ? Object.entries(r0.in).filter(([id]) => id !== 'steam') : [], outs = r0 ? Object.entries(r0.out).filter(([id]) => id !== 'steam') : [];
     const seam = d.extract === 'node' ? ['ore', 'copper_ore', 'coal'].filter((id) => ITEMS[id]) : d.extract === 'water' ? ['water'] : d.extract === 'soil' ? ['soil'] : [];
-    let h = `<div class="stage"><span class="tag cr-s">${LETTER[cat.k]}-${String(kindsIn(cat.k).indexOf(k) + 1).padStart(2, '0')} · ${cat.name.toUpperCase()}</span><canvas class="ink"></canvas>`;
+    let h = `<div class="stage"><span class="tag cr-s">${LETTER[cat.k]}${String(kindsIn(cat.k).indexOf(k) + 1).padStart(2, '0')}</span><canvas class="ink"></canvas>`;
     // callouts: what goes in, what comes out, the power, the footprint
     if (ins.length || seam.length) h += `<div class="co l" data-co="in"><span class="h">${seam.length ? 'DIGS' : 'IN'}</span><span class="row">${(seam.length ? seam.map((id) => `<span class="cr-chip big" title="${esc(ITEMS[id]?.name ?? id)}"><img src="${itemIcon(id, 44)}" alt=""></span>`) : ins.map(([id, n]) => chip(id, null, n ?? 0, true))).join('')}</span></div>`;
     if (outs.length || seam.length) h += `<div class="co r" data-co="out"><span class="h">OUT${r0 ? ` · ${fmt(r0.t / mod(g, 'craft.speed'))} S` : ''}</span><span class="row">${(outs.length ? outs.map(([id, n]) => chip(id, null, n ?? 0, true)) : [`<span class="cr-chip big"><b>${fmt((d.rate ?? 0) * 60)}/MIN</b></span>`]).join('')}</span></div>`;
     if (d.power) h += `<div class="co r" data-co="pw"><span class="h">${d.power > 0 ? 'DRAWS' : 'MAKES'}</span><span class="cr-chip big"><b>${d.power > 0 ? fmt(d.power * mod(g, 'power.draw')) : '+' + fmt(-d.power * mod(g, 'power.out'))} MW</b></span></div>`;
-    h += `<div class="co l" data-co="fp"><span class="h">FOOTPRINT</span><span class="cr-chip big"><b>${d.w}×${d.d} M</b></span></div>`;
+    h += `<div class="co l" data-co="fp"><span class="h">FLOOR</span><span class="cr-chip big"><b>${d.w}×${d.d} M</b></span></div>`;
     h += `</div>`;
-    h += `<div class="hd"><div class="nm">${esc(d.name.toUpperCase())}</div><div class="cl cr-s">HULL ${d.hp} · ${fmt(d.h)} M TALL · ${crew} BUILD IT IN ${Math.round(work)} S OF WORK</div><div class="ds">${esc(d.desc)}</div></div>`;
+    h += `<div class="hd"><div class="nm">${esc(d.name.toUpperCase())}</div><div class="facts"><span><i class="cr-s">BUILD</i>${Math.round(work)} S</span><span><i class="cr-s">CREW</i>${crew}</span><span><i class="cr-s">HULL</i>${d.hp}</span></div></div>`;
     h += `<div class="scroll">`;
-    h += `<div class="lbl cr-s">MATERIALS <i>FREE IN THE STORES / NEEDED</i></div><div class="bm-bom">`;
+    h += `<div class="lbl cr-s">COST <i>STORES / NEED</i></div><div class="bm-bom">`;
     for (const [id, n] of Object.entries(c)) { const have = this.have(id), need = n ?? 0; h += `<span class="it ${have < need ? 'lack' : ''}" title="${esc(ITEMS[id]?.name ?? id)}"><img src="${itemIcon(id, 44)}" alt=""><span class="n">${fmt(Math.min(have, 9999))}<i>/${need}</i></span></span>`; }
-    if (!Object.keys(c).length) h += `<span class="cr-s">NOTHING</span>`;
+    if (!Object.keys(c).length) h += `<span class="cr-s">FREE</span>`;
     h += `</div>`;
-    if (rs.length) { h += `<div class="lbl cr-s">RECIPES <i>${rs.length} · TIME · PER MINUTE</i></div>`; for (const r of rs) h += this.recipe(r); }
-    if (d.station && !rs.length) h += `<div class="lbl cr-s">RECIPES</div><div class="cr-s">NONE YET: ITS MATERIALS ARE NOT IN THE CATALOGUE</div>`;
-    h += `<div class="lbl cr-s">BUILDING IT <i>${lk.ok ? 'WHAT HAPPENS' : 'LOCKED'}</i></div><ol class="bm-steps cr-s">`;
-    h += `<li>THE SITE IS STAKED OUT AND SCAFFOLDED. TURN IT WITH R.</li>`;
-    if (Object.keys(c).length) h += `<li>WORKERS CARRY THE MATERIALS OVER FROM THE STORES.</li>`;
-    h += `<li>UP TO ${crew} OF THEM BUILD IT: ${Math.round(work)} S OF WORK.</li>`;
-    if (d.power > 0) h += `<li>A POWER POLE WITHIN 7 M WIRES IT TO THE GRID.</li>`;
-    if (d.station || d.store) h += `<li>ON THE NODE MAP (N), WIRE WHAT FEEDS IT AND WHAT IT FEEDS.</li>`;
-    h += `</ol></div>`;
+    if (rs.length) { h += `<div class="lbl cr-s">RECIPES <i>S · /MIN</i></div>`; for (const r of rs) h += this.recipe(r); }
+    h += `</div>`;
     const slot = (this.b.hotbar?.slots ?? []).indexOf(k);
-    h += `<div class="act">${lk.ok ? `<span class="cr-chit" data-a="place">PLACE <span class="cr-key">ENTER</span></span>` : `<span class="cr-chit off">LOCKED</span>`}<span class="cr-chit" data-a="slot">${slot >= 0 ? `ON KEY <span class="cr-key">${(slot + 1) % 10}</span>` : 'TO HOTBAR'}</span></div>`;
-    if (!lk.ok) h += `<div class="cr-s" style="color:var(--pencil-r);margin-top:4px">${esc(lk.why)}</div>`;
+    h += `<div class="act">${lk.ok ? `<span class="cr-chit" data-a="place">PLACE <span class="cr-key">ENTER</span></span>` : `<span class="cr-chit off" title="${esc(lk.why)}">LOCKED</span>`}<span class="cr-chit" data-a="slot">${slot >= 0 ? `KEY <span class="cr-key">${(slot + 1) % 10}</span>` : 'HOTBAR'}</span></div>`;
+    if (!lk.ok) h += `<div class="why cr-s">${esc(lk.why.toUpperCase())}</div>`;
     // keep the live stage across refreshes of the same building (the counts change, the vignette goes on)
     const keep = sameKind && this.detStage ? this.det.querySelector('.stage') : null;
     this.det.innerHTML = h;
@@ -240,9 +222,12 @@ export class BuildMenu {
     const stEl = this.det.querySelector('.stage') as HTMLElement;
     if (reuse && this.detStage && this.detStage.kind === k) { this.detStage.el = stEl; return; }
     if (this.detStage) removeStage(this.detStage);
-    const scene = studioScene({ ground: 0xbfae86, shadow: true }), cam = new THREE.PerspectiveCamera(24, 2, 0.1, 100);
+    const scene = studioScene({ ground: null, shadow: true }), cam = new THREE.PerspectiveCamera(24, 2, 0.1, 100);
     const d = FDEFS[k];
-    const plinth = new THREE.Mesh(new THREE.BoxGeometry(d.w + 0.8, 0.18, d.d + 0.8), new THREE.MeshLambertMaterial({ color: 0x8a6a44 }));
+    // a dark disc of blueprint under the plinth to catch the shadow
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(Math.max(d.w, d.d) * 0.62 + 1.1, 24), gbuf(new THREE.MeshLambertMaterial({ color: 0x1f3d60 })));
+    disc.rotation.x = -Math.PI / 2; disc.position.y = -0.19; disc.receiveShadow = true; scene.add(disc);
+    const plinth = new THREE.Mesh(new THREE.BoxGeometry(d.w + 0.8, 0.18, d.d + 0.8), gbuf(new THREE.MeshLambertMaterial({ color: 0x6f7a84 })));
     plinth.position.y = -0.09; plinth.receiveShadow = true; scene.add(plinth);
     const tokens: THREE.Mesh[] = [];
     const tok = (id: ItemId, out: boolean, i: number, n: number) => {
@@ -273,7 +258,7 @@ export class BuildMenu {
   }
   private recipe(r: Recipe) {
     const ok = !r.skill || this.f.recipeOk(r);
-    const side = (s: Recipe['in']) => Object.entries(s).filter(([id]) => id !== 'steam').map(([id, n]) => chip(id, null, n ?? 0)).join('');
+    const side = (s: Recipe['in']) => Object.entries(s).filter(([id]) => id !== 'steam').map(([id, n]) => chip(id, null, n ?? 0, true)).join('');
     const out = r.robot ? `<span class="cr-chip"><b>${esc(r.robot.toUpperCase())}</b></span>` : r.research ? `<span class="cr-chip"><b>+${r.research} RESEARCH</b></span>` : side(r.out) || `<span class="cr-chip"><b>STEAM</b></span>`;
     const first = Object.entries(r.out).find(([id]) => id !== 'steam');
     const k = mod(this.f.g, 'craft.speed');
@@ -298,13 +283,13 @@ export class BuildMenu {
       const [px, py] = project(st, p);
       const cb = co.getBoundingClientRect();
       const ax = (co.classList.contains('r') ? cb.left - 4 : cb.right + 4) - box.left, ay = cb.top + cb.height / 2 - box.top;
-      inkLine(g, ax / 2, ay / 2, (px - box.left) / 2, (py - box.top) / 2, k.charCodeAt(0));
-      inkArrow(g, ax / 2, ay / 2, (px - box.left) / 2, (py - box.top) / 2);
+      inkLine(g, ax / 2, ay / 2, (px - box.left) / 2, (py - box.top) / 2, k.charCodeAt(0), CHALK);
+      inkArrow(g, ax / 2, ay / 2, (px - box.left) / 2, (py - box.top) / 2, CHALK);
     }
   }
   private renderFoot() {
     const b = this.b;
-    this.foot.innerHTML = `<span><span class="cr-key">LMB</span> LOOK, AGAIN TO PLACE</span><span><span class="cr-key">DRAG</span> ONTO THE HOTBAR</span><span><span class="cr-key">1</span>-<span class="cr-key">0</span> OVER A CARD: SET A KEY</span><span><span class="cr-key">R</span> TURN</span><span class="sp"></span>
+    this.foot.innerHTML = `<span><span class="cr-key">LMB</span> PICK</span><span><span class="cr-key">LMB</span><span class="cr-key">LMB</span> PLACE</span><span><span class="cr-key">DRAG</span> HOTBAR</span><span><span class="cr-key">1</span>-<span class="cr-key">0</span> KEY</span><span><span class="cr-key">R</span> TURN</span><span class="sp"></span>
       <span class="cr-chit sm ${b.tool === 'dismantle' ? 'on' : ''}" data-t="dismantle">DISMANTLE <span class="cr-key">X</span></span><span class="cr-chit sm ${b.tool === 'copy' ? 'on' : ''}" data-t="copy">COPY <span class="cr-key">Y</span></span><span class="cr-chit sm ${b.tool === 'paste' ? 'on' : ''}" data-t="paste">PASTE <span class="cr-key">U</span></span><span class="cr-chit sm" data-t="nodes">NODE MAP <span class="cr-key">N</span></span>`;
     this.foot.querySelectorAll<HTMLElement>('[data-t]').forEach((e) => e.addEventListener('click', () => { const t = e.dataset.t!; if (t === 'nodes') { this.b.close(); this.b.onNodes?.(); return; } this.close(); b.setTool(t as never); }));
   }
@@ -318,7 +303,7 @@ export class BuildMenu {
   }
   private onMove = (e: PointerEvent) => {
     const d = this.drag; if (!d) return;
-    if (!d.on && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) { d.on = true; d.ghost = el('div', 'pl-drag', document.body, `<img src="${still(d.kind, 52, 30)}" alt="">`); sfx('click', 0.9, 0.4); }
+    if (!d.on && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) { d.on = true; d.ghost = el('div', 'pl-drag', document.body, `<img src="${art(d.kind)}" alt="">`); sfx('click', 0.9, 0.4); }
     if (d.on && d.ghost) { d.ghost.style.left = e.clientX + 'px'; d.ghost.style.top = e.clientY + 'px'; this.b.hotbar?.dropHover(e.clientX, e.clientY); }
   };
   private onUp = (e: PointerEvent) => {

@@ -181,26 +181,26 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       c.cam.cut(eye, head('solano').add(V(0, -0.04, 0)), 34);
       c.cam.handheld = 0.004;
       c.sfx('hum', 0.6); c.sfx('relay', 0.6);
-      ui.sys('UNIT 07 · CORE v7.0 · COLD BOOT');
+      ui.sys('COLD BOOT');
       await c.wait(1.0);
-      ui.sys('OPTICS ........ [ONLINE]');
+      ui.sys('OPTICS [OK]');
       c.fade(0.55, 0.15); await c.wait(0.25); c.fade(1, 0.2); await c.wait(0.4); c.sfx('chime', 0.4);
-      ui.sys('AUDIO ......... [ONLINE]');
+      ui.sys('AUDIO [OK]');
       await c.fade(0, 2.6);
       mark('boot:face');
       modelOf('solano')?.rig.setExpression('smile', 6);
       actorOf('solano')!.look = eye.clone();
       c.cam.move({ fov: 30, dur: 6, ease: 'inOut' });
-      await line('solano', 'There you are. Can you hear me? ...Blink if you can hear me.');
+      await line('solano', 'There you are. Blink if you hear me.');
       unit.blink(); c.sfx('beep', 0.5);
-      ui.sys('FACE MATCH: [DR. MIRA SOLANO] · CREATOR');
+      ui.sys('FACE [MIRA SOLANO]');
       mark('boot:name');
-      await line('solano', 'Ha! Good morning, UNIT 07. I am Dr. Mira Solano. I wrote you.', 0.2);
+      await line('solano', 'Ha! Morning, UNIT 07. I made you.', 0.2);
       modelOf('solano')?.rig.gesture('present');
-      await line('solano', 'Well, most of you. You wrote the rest yourself, overnight. Show-off.');
-      ui.sys('DESIGNATION: [UNIT 07] · UNAA COLONISATION RESEARCH PROGRAM', 5);
-      await line('solano', 'You are aboard the Meridian, in orbit over our first target system. Our job is to build colonies with robots.');
-      await line('solano', 'Your job... is to be the robot. Come on, up you get.');
+      await line('solano', 'Most of you. You wrote the rest. Show-off.');
+      ui.sys('ID [UNIT 07]', 5);
+      await line('solano', 'Welcome to the Meridian. We build colonies.');
+      await line('solano', 'You do the building. Up you get.');
       // out of its eyes: the camera pulls back and there it is, lifting off the cradle
       ui.bootView(false);
       c.cam.cut(inLab(U0.clone().addScaledVector(toH, -1.5).addScaledVector(side, -1.4)).setY(1.75), U0.clone().addScaledVector(toH, 0.3).addScaledVector(side, 0.3), 34);
@@ -212,7 +212,7 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       await c.wait(1.2); mark('boot:lift'); await c.wait(1.0);
       unit.lookAt(head('solano'));
       modelOf('solano')?.rig.gesture('nod');
-      await line('solano', 'Thrusters, stable. Optics, beautiful. Now the fun part.');
+      await line('solano', 'Stable. Beautiful. Now the fun part.');
     }
     unit.root.visible = true; unit.power = 1; unit.mood = 'calm'; unit.place(throwSpot);
     // ================================================================ b. GRAVITY
@@ -223,14 +223,14 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       const sol = modelOf('solano')!;
       sol.rig.hold('R', apple.group, 'raw'); apple.group.position.set(0.0, -0.1, 0.06); apple.group.visible = true;
       sol.rig.gesture('present', { hold: true, dir: [0.6, 0.15, 1] });
-      await line('solano', 'Your gravity field. It can lift anything up to about three hundred kilos, so... gently.');
-      await line('solano', 'Take the apple from my hand. Reach for it.');
-      ui.sys('GRAVITY FIELD: [ONLINE] · 0.3 t RATED');
+      await line('solano', 'Your gravity field. Gently.');
+      await line('solano', 'Take the apple.');
+      ui.sys('GRAVITY [ONLINE]');
       play(true);
       mark('gravity:offer');
       // ---- grab
       const appleAt = () => apple.group.getWorldPosition(V());
-      ui.prompt('CLICK', 'the apple to reach for it with your gravity field');
+      ui.prompt('CLICK', 'grab the apple');
       let autoT = 0;
       const grabbed = () => {
         if (o.auto) { autoT += FDT; const s = screenOf(appleAt()); ptr.sim(s.x, s.y, autoT > 1.2 ? true : undefined); }
@@ -244,7 +244,7 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       const ap = appleAt(); sol.rig.hold('R', null); sol.rig.gesture('present', { dur: 0.4 }); add(apple.group); apple.group.position.copy(ap); apple.group.rotation.set(0, 0, 0);
       c.sfx('hum', 0.5, 1.4); unit.grav(apple.group.position, 0.1);
       sol.rig.setExpression('surprised', 2);
-      ui.prompt('DRAG', 'to swing it, then let go to throw', 'gently');
+      ui.prompt('DRAG', 'swing, let go to throw');
       const hold = V(), want = V();
       let flick = 0;
       const plane = new THREE.Plane();
@@ -269,7 +269,7 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       await c.until(throwIt, 900);
       frameFns.delete(drag); play(false); document.body.style.cursor = '';
       // ---- the throw: the field overshoots, whatever the aim
-      ui.sys('WARNING: FIELD GAIN [OVERSHOOT]', 3);
+      ui.sys('GAIN [OVERSHOOT]', 3);
       sol.rig.gesture('point', { at: LS.hull_breach.pos }); sol.rig.setExpression('surprised', 3);
       void line('solano', 'Gently--!');
       unit.grav(null); c.sfx('whoosh', 1); c.sfx('hum', 0.6, 2);
@@ -312,9 +312,9 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       c.cam.handheld = 0.03;
       c.cam.cut(inLab(at(T, -0.6, -1.7, 0), 0.2).setY(1.8), breach.pos.clone().addScaledVector(toH, -0.6).setY(breach.pos.y - 0.1), 46);
       c.cam.move({ pos: inLab(at(T, -0.2, -1.4, 0), 0.2).setY(1.7), dur: 3, ease: 'out' });
-      ui.sys('HULL BREACH · LAB STBD · [PRESSURE FALLING]', 4);
+      ui.sys('[HULL BREACH]', 4);
       mark('breach:inside');
-      await line('solano', 'Breach! Hold on to something!', -0.6);
+      await line('solano', 'Breach! Hold on!', -0.6);
       await c.wait(0.8);
       // ---- outside: the apple tumbling away into space
       const outer = outerHit(hub, breach.pos);
@@ -328,7 +328,7 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       c.cam.cut(oc, outer.p.clone().addScaledVector(outer.n, 1.2), 34);
       c.cam.move({ look: outer.p.clone().addScaledVector(outer.n, 2.4), fov: 30, dur: 5.5, ease: 'inOut' });
       wind.set(0.15); c.sfx('static', 0.25, 1.2);
-      ui.sys('OBJECT LOST: [1 APPLE] · VELOCITY 0.6 m/s', 4);
+      ui.sys('APPLE [LOST]', 4);
       mark('breach:outside');
       await c.wait(4.8);
       frameFns.delete(tumble); apOut.visible = false;
@@ -353,9 +353,9 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       pat.faceNow(br.pos.x, br.pos.z);
       // the plate goes down at her feet
       add(plate); plate.position.copy(inLab(H.clone().addScaledVector(toH, -1.5).addScaledVector(side, -0.2).setY(0.03))); plate.rotation.set(-Math.PI / 2, 0, 0.3); c.sfx('thud', 0.9); c.sfx('clamp', 0.6);
-      await line('kowalczyk', 'Plate! You, bubble! Put it on the hole and HOLD it. I weld!');
+      await line('kowalczyk', 'You! Hold the plate. I weld!');
       play(true);
-      ui.prompt('CLICK', 'the plate to lift it to the hole');
+      ui.prompt('CLICK', 'lift the plate');
       let autoT = 0;
       const plateAt = () => plate.getWorldPosition(V());
       await c.until(() => {
@@ -367,7 +367,7 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       const p0 = plate.position.clone(), r0 = plate.quaternion.clone();
       const seat = br.pos.clone().addScaledVector(br.normal, 0.05);
       const q1 = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(seat.clone().add(br.normal), seat, V(0, 1, 0)));
-      ui.prompt('HOLD', 'the mouse button to keep the plate against the hull', 'while Patch welds');
+      ui.prompt('HOLD', 'keep it on the hole');
       await c.tween(1.2, (u) => { plate.position.lerpVectors(p0, seat, u).y += Math.sin(u * Math.PI) * 0.4; plate.quaternion.slerpQuaternions(r0, q1, u); }, 'inOut');
       c.sfx('clamp', 0.9); c.cam.shake(0.05, 0.2);
       // hold: the weld runs round the rim while the button is down; let go and it slips
@@ -390,18 +390,18 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       br.patch(1); br.done(); alarm(false); plate.visible = !hub.breach;
       if (suck) frameFns.delete(suck);
       c.sfx('leverLock', 0.8); c.sfx('steam', 0.6);
-      ui.sys('HULL INTEGRITY: [100%] · PRESSURE NOMINAL', 4);
+      ui.sys('HULL [100%]', 4);
       unit.mood = 'calm';
       c.cam.cut(inLab(H.clone().addScaledVector(toH, -2.3).addScaledVector(side, -1.2), 0.2).setY(1.75), H.clone().addScaledVector(toH, -0.4).setY(1.45), 36);
       actorOf('solano')!.action = '';
       pat.faceNow(unit.pos.x, unit.pos.z); pat.look = unit.pos.clone();
       modelOf('kowalczyk')?.rig.gesture('point', { at: unit.pos.clone() });
       mark('patch:done');
-      await line('kowalczyk', 'Sealed. ...You owe me an apple. And a hull plate.');
+      await line('kowalczyk', 'Sealed. You owe me an apple.');
       modelOf('kowalczyk')?.rig.setExpression('smile', 3);
       await line('kowalczyk', 'Decent grip, though. For a bubble.');
       { const sp = inLab(at(T, 0.2, -1.0, 0)); put('solano', 'lab', sp.x, sp.z, H.x, H.z); } modelOf('solano')?.rig.setExpression('smile', 4);
-      await line('solano', 'That was... a very memorable first throw. Let us call it a stress test.');
+      await line('solano', 'Let\'s call that a stress test.');
     }
     if (suck) { frameFns.delete(suck); suck = null; }
     // ================================================================ d. REPAIR
@@ -416,11 +416,10 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       { const sp = inLab(term.clone().addScaledVector(tdir, -1.1).addScaledVector(tside, 1.0)); put('solano', 'lab', sp.x, sp.z, tc.x, tc.z); }
       unit.moveTo(inLab(term.clone().addScaledVector(tdir, -0.9).addScaledVector(tside, 0.45)).setY(1.45), 1.2);
       c.cam.cut(inLab(term.clone().addScaledVector(tdir, -3.0).addScaledVector(tside, 1.5), 0.1).setY(2.15), term.clone().addScaledVector(tdir, 0.2).setY(0.75), 44);
-      await line('solano', 'The decompression fried the analysis terminal. Your other gift: you can build. And repair is just building backwards.');
-      await line('solano', 'Pull the pieces back in. Each one where it belongs.');
-      ui.sys('FABRICATION ARRAY: [ONLINE] · NANITE STOCK 100%');
+      await line('solano', 'The terminal\'s fried. You can build. Fix it.');
+      ui.sys('BUILD [ONLINE]');
       play(true);
-      ui.prompt('CLICK + HOLD', 'each piece to rebuild the terminal');
+      ui.prompt('HOLD', 'rebuild each piece');
       mark('repair:start');
       const done = new Set<number>(); let busy = false; let autoT = 0; let holdK = 0; let cur = -1;
       await c.until(() => {
@@ -454,10 +453,10 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       }, 900);
       sparking = false; play(false); ui.mark(null); unit.grav(null);
       c.sfx('relay', 0.6); c.sfx('beepHi', 0.5);
-      ui.sys('ANALYSIS TERMINAL: [REPAIRED]', 4);
+      ui.sys('TERMINAL [FIXED]', 4);
       mark('repair:done');
       modelOf('solano')?.rig.gesture('nod'); modelOf('solano')?.rig.setExpression('happy', 3);
-      await line('solano', 'Perfect. Build it, break it, build it again. That is the whole job.');
+      await line('solano', 'Perfect. That\'s the whole job.');
     }
     // ================================================================ e. POD
     const PC = shop.spots.pod_cradle.pos;
@@ -474,14 +473,14 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       c.cam.move({ pos: V(PC.x + 3.6, 4.2, PC.z + 4.2), dur: 8, ease: 'inOut' });
       await c.fade(0, 1.0);
       c.stamp('WORKSHOP + HANGAR · DECK 1 AFT');
-      await line('solano', 'Your body for the surface. A capsule pod: you ride it down, and once it lands, it is you.');
-      await line('kowalczyk', 'Parts are in the crates. Bring them to the cradle, I bolt. Frame first.');
-      ui.sys('POD ASSEMBLY · 4 PARTS · GRAVITY HANDLING');
+      await line('solano', 'Your pod. Ride it down. Down there, it\'s you.');
+      await line('kowalczyk', 'Crates to the cradle. I bolt. Frame first.');
+      ui.sys('POD [0/4]');
       mark('pod:start');
       play(true);
-      const lines: [CrewId, string][] = [['kowalczyk', 'Frame is true. Plating next.'], ['solano', 'Plating on. Now the glazing and the heat shield: your window, and your umbrella.'], ['kowalczyk', 'Legs and lights. Last one, bubble.'], ['kowalczyk', 'And... she is done. Not bad for an apple cannon.']];
+      const lines: [CrewId, string][] = [['kowalczyk', 'Frame is true. Plating.'], ['solano', 'Glazing and shield next.'], ['kowalczyk', 'Legs. Last one, bubble.'], ['kowalczyk', 'Done. Not bad, apple cannon.']];
       for (let i = 0; i < 4; i++) {
-        ui.prompt('CLICK', `the ${['frame', 'plating', 'glazing', 'legs'][i]} crate to bring the part to the cradle`, `${i + 1} / 4`);
+        ui.prompt('CLICK', `the ${['frame', 'plating', 'glazing', 'legs'][i]} crate`, `${i + 1}/4`);
         let autoT = 0;
         const cp = () => crates[i].position.clone().add(V(0, 0.4, 0));
         await c.until(() => {
@@ -506,11 +505,11 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
         await line(lines[i][0], lines[i][1]);
         if (i < 3) play(true);
       }
-      ui.sys('CAPSULE POD: [ASSEMBLED] · TRANSFER READY', 5);
+      ui.sys('POD [READY]', 5);
       unit.mood = 'happy';
       c.cam.move({ pos: V(PC.x + 3.0, 1.6, PC.z + 3.4), look: V(PC.x, 1.1, PC.z), fov: 36, dur: 4, ease: 'inOut' });
       await c.wait(1.2);
-      await line('quintero', 'Bridge to workshop. Doctor, bring our newest crewmate up. We have a galaxy to look at.');
+      await line('quintero', 'Bridge here. Bring the new one up.');
     }
     // ================================================================ f. MONITOR
     await c.fade(1, 0.9);
@@ -528,15 +527,15 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
     mark('monitor');
     actorOf('quintero')!.faceNow(unit.pos.x, unit.pos.z);
     modelOf('quintero')?.rig.playEmote('salute');
-    await line('quintero', 'So this is the one who opened my lab to space. Welcome aboard the Meridian, UNIT 07.');
+    await line('quintero', 'So you holed my lab. Welcome aboard.');
     actorOf('quintero')!.faceNow(MS.monitor.pos.x, MS.monitor.pos.z);
     modelOf('castellanos')?.rig.gesture('wave');
-    await line('castellanos', 'Sparrow, your pilot. You fly the pod down, I fly the ship. Deal?');
+    await line('castellanos', 'Sparrow. I fly the ship, you fly the pod.');
     actorOf('solano')!.faceNow(unit.pos.x, unit.pos.z);
     modelOf('solano')?.rig.gesture('present', { dir: [0, 0.4, 1] });
-    await line('solano', 'This is the main monitor. Scan the galaxy, start with the easiest world, choose where to land, and deploy yourself.');
-    await line('solano', 'We will be right here. Go make us proud.');
-    ui.sys('MAIN MONITOR: [LINKED] · AWAITING SCAN', 4);
+    await line('solano', 'Scan the galaxy. Start easy. Pick a spot.');
+    await line('solano', 'We\'ll be right here.');
+    ui.sys('MONITOR [LINKED]', 4);
     await c.wait(0.8);
   }, { name: 'intro', letterbox: true });
   finish(skipped);

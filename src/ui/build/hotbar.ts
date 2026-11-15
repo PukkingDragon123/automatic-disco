@@ -1,5 +1,5 @@
 // The HOTBAR: ten quick-slots under the view (keys 1-0 in build mode), filled by dragging tiles from the planner.
-// Each slot is a small phosphor window with the building's studio render, its key, and a pilot lamp: green when it
+// Each slot is a blueprint chit on a riveted steel rail with the building's painted illustration, its key, and a lamp: green when it
 // can be built now, red when the stores lack its materials, dark while it is still locked. Drag a slot off the bar to
 // clear it, onto another slot to swap. The layout lives in V6.md (pod agent owns the HUD; it may move --hb-bottom).
 import './build.css';
@@ -8,7 +8,7 @@ import type { Build } from '../../factory/build';
 import { FDEFS, type FKind } from '../../factory/defs';
 import { buildingLock } from '../../logistics/unlocks';
 import { registerColonyBuildings } from '../../logistics/catalog';
-import { still } from './studio';
+import { art } from './art';
 import { el } from '../kit';
 import { sfx } from '../../audio/audio';
 
@@ -64,7 +64,7 @@ export class Hotbar {
   dropHover(x: number, y: number) { const i = x < 0 ? -1 : this.dropAt(x, y); this.els.forEach((e, j) => e.classList.toggle('drop', j === i)); }
   private onMove = (e: PointerEvent) => {
     const d = this.drag; if (!d) return;
-    if (!d.on && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6 && this.slots[d.i]) { d.on = true; d.ghost = el('div', 'pl-drag', document.body, `<img src="${still(this.slots[d.i]!, 52, 30)}" alt="">`); }
+    if (!d.on && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6 && this.slots[d.i]) { d.on = true; d.ghost = el('div', 'pl-drag', document.body, `<img src="${art(this.slots[d.i]!)}" alt="">`); }
     if (d.on && d.ghost) { d.ghost.style.left = e.clientX + 'px'; d.ghost.style.top = e.clientY + 'px'; this.dropHover(e.clientX, e.clientY); }
   };
   private onUp = (e: PointerEvent) => {
@@ -95,7 +95,7 @@ export class Hotbar {
       const k = this.slots[i];
       e.classList.toggle('empty', !k);
       e.classList.toggle('on', !!k && b.active && b.kind === k);
-      e.innerHTML = `<span class="n cr-s">${(i + 1) % 10}</span>${k ? `<img src="${still(k, 32, 22)}" alt="" draggable="false"><span class="lamp ${st[i] === 'n' ? 'no' : st[i] === 'l' ? 'lk' : ''}"></span>` : ''}`;
+      e.innerHTML = `<span class="n cr-s">${(i + 1) % 10}</span>${k ? `<img src="${art(k, 'small')}" alt="" draggable="false"><span class="lamp ${st[i] === 'n' ? 'no' : st[i] === 'l' ? 'lk' : ''}"></span>` : ''}`;
     });
   }
   private t = 0;

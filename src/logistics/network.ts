@@ -39,6 +39,8 @@ export type AmountMode = 'all' | 'keep' | 'batch' | 'rate';
 export const AMOUNT_NAME: Record<AmountMode, string> = { all: 'EVERYTHING', keep: 'KEEP TARGET STOCKED TO', batch: 'IN FULL BATCHES OF', rate: 'NO MORE THAN (PER MIN)' };
 
 export interface LogicCfg {
+  /** the node map: a gadget the player set down or moved stays where it was put (else the board arranges it) */
+  pin?: boolean;
   /** splitter: weight per out route id; merger: weight per in route id */
   w?: Record<number, number>;
   /** buffer high and low marks; counter target; sensor threshold */

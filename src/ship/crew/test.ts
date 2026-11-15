@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import type { Engine } from '../../app/engine';
 import type { Input } from '../../app/input';
 import { gbuf } from '../../gfx/gbuf';
-import { Ink, INK, textW } from './doodle';
+import { Ink, INK, textW, idBadge } from './doodle';
 import { SpeechBubble } from '../../ui/cineBubble';
 import { crewState } from './state';
 import { buildCrewModel, type CrewModel } from './model';
@@ -93,6 +93,7 @@ function sheetCallouts(id: CrewId, hero: CrewModel, turn: CrewModel[], cam: THRE
   const scr = (o: THREE.Object3D, dy = 0) => { const v = o.getWorldPosition(new THREE.Vector3()); v.y += dy; v.project(cam); return [Math.round(((v.x + 1) / 2) * W), Math.round(((1 - v.y) / 2) * H)] as [number, number]; };
   const tags = d.gear.filter((g) => GEAR_TAG[g] && g !== 'patchL').slice(0, 4);
   const mood = st.mood, moodWord = mood > 0.7 ? 'STEADY' : mood > 0.5 ? 'TIRED' : mood > 0.3 ? 'GRIEVING' : 'BROKEN';
+  const badge = idBadge(d, mood, 2);
   let t = 0, last = -1, shown = false;
   hook((dt) => {
     t += dt;
@@ -102,18 +103,17 @@ function sheetCallouts(id: CrewId, hero: CrewModel, turn: CrewModel[], cam: THRE
     bub.update(dt, hp[0], hp[1], true);
     if (boil === last) return; last = boil;
     const I = new Ink(W, H); I.seed = boil % 6 + 1;
-    // name, role, the facts: written top left
-    I.label(d.name, 40, 30, 'TitleL', 64, INK.light);
-    I.label(d.role.toUpperCase() + ' · ' + d.rank.toUpperCase(), 44, 104, 'Title', 24, INK.amber);
-    I.label(`${d.age} · ${d.origin}`, 44, 136, 'Body', 22, INK.mute);
-    I.stroke([[42, 166], [42 + Math.min(560, textW(d.role, 'Title', 24) * 1.4), 168]], 3, INK.amber, { outline: INK.dark, taper: true });
+    // the ID badge (2x) top left, the full name and two facts under it
+    I.g.save(); I.g.setTransform(1, 0, 0, 1, 0, 0); I.g.drawImage(badge, 32 * I.k, 24 * I.k); I.g.restore();
+    I.label(d.name, 44, 384, 'Title', 24, INK.light);
+    I.label(`${d.age} · ${d.origin.split(',')[0]}`, 44, 414, 'Body', 22, INK.mute);
     // gear: callouts with leader lines to the part, alternating sides of the hero
     const hx = scr(hero.root)[0];
     tags.forEach((g, i) => {
       const [label, bone] = GEAR_TAG[g]!;
       const b = (hero.rig.bones as Record<string, THREE.Object3D>)[bone] ?? hero.rig.j.chest;
       const p = scr(b, bone === 'head' ? 0.12 : bone.startsWith('hand') ? -0.06 : 0.02);
-      const right = i % 2 === 1, ly = 300 + i * 150, lx = right ? hx + 300 : hx - 300 - textW(label, 'Title', 24);
+      const right = i % 2 === 1, ly = 470 + i * 120, lx = right ? hx + 300 : hx - 300 - textW(label, 'Title', 24);
       I.label(label, lx, ly, 'Title', 24, INK.light);
       I.leader([right ? lx - 8 : lx + textW(label, 'Title', 24) + 8, ly + 14], p, INK.light);
     });
@@ -123,7 +123,6 @@ function sheetCallouts(id: CrewId, hero: CrewModel, turn: CrewModel[], cam: THRE
     I.stroke([[bx, crown[1]], [bx, foot[1]]], 2, INK.mute, { outline: INK.dark });
     I.stroke([[bx - 10, crown[1]], [bx + 10, crown[1]]], 2, INK.mute, { outline: INK.dark }).stroke([[bx - 10, foot[1]], [bx + 10, foot[1]]], 2, INK.mute, { outline: INK.dark });
     I.label(d.heightM.toFixed(2) + ' m', bx - 12, (crown[1] + foot[1]) / 2 - 12, 'Title', 24, INK.light, 'right');
-    I.label(d.body, bx - 12, (crown[1] + foot[1]) / 2 + 16, 'Body', 22, INK.mute, 'right');
     // the mood: a little face drawn by the head, its word
     const mx = hp[0] + 250, my = hp[1] + 40;
     I.loop(mx, my, 22, 22, 2, INK.light, { outline: INK.dark });

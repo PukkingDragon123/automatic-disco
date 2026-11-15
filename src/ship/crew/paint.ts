@@ -31,6 +31,8 @@ reg('navy', 0, 640, 128, 128); reg('towel', 128, 640, 128, 128); reg('glassG', 2
 reg('tablet', 512, 640, 256, 160); reg('scan', 768, 640, 128, 64); reg('radio', 896, 640, 128, 64); reg('wrist', 768, 704, 128, 64); reg('chrono', 896, 704, 128, 64);
 reg('plaque', 0, 800, 512, 224); reg('memo', 512, 800, 256, 224);
 
+/** a region of the crew page in canvas pixels [x, y, w, h] */
+export const pageRegion = (k: string) => R[k];
 const hex = (n: number) => '#' + (n & 0xffffff).toString(16).padStart(6, '0');
 const rgb = (c: number[], a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 const h1 = (i: number, s = 0) => { const v = Math.sin(i * 127.1 + s * 311.7) * 43758.5453; return v - Math.floor(v); };

@@ -447,3 +447,119 @@ export function pixHull(key: string, base: number) {
     return T(pc);
   });
 }
+
+// ------------------------------------------------------------------ floor wear: one unrepeated layer per room
+export interface WearOpts {
+  /** the floor's two tones (the wear is drawn in their shades) */
+  fa: number; fb: number;
+  /** where people walk: from the door to each spot */
+  door: [number, number]; spots: [number, number][];
+  /** the floor's kind (grates get no polish; carpet wears lighter and fluffier) */
+  kind: string;
+  /** a taped box round the key prop (x0, z0, x1, z1), hazard striped or plain yellow */
+  tapeBox?: [number, number, number, number]; hazardTape?: boolean;
+  /** aisle lines along the long walls, inset this far */
+  aisle?: number;
+  drain?: [number, number]; hatch?: [number, number]; oil?: number; code?: string;
+  inside?: (x: number, z: number) => boolean;
+}
+/**
+ * Everything the tiling floor cannot show, painted at 64 px/m across the whole room so nothing repeats: grime gathered
+ * against the walls, a polished lane worn from the door to each place people stand (scuffed with heel marks), tape
+ * boxes round the key machine (peeling, trodden dirty), aisle lines, a drain, an access hatch, oil stains, and the
+ * room's number stencilled by the door, half worn away. Binary alpha (alpha-tested), so it is crisp pixel art.
+ */
+export function floorWear(key: string, x0: number, z0: number, x1: number, z1: number, o: WearOpts) {
+  return pcached('wear|' + key, () => {
+    const W = Math.round((x1 - x0) * PPM), H = Math.round((z1 - z0) * PPM), p = new Pix(W, H), rng = new Rng(hashStr(key + 'wear'));
+    const s = hashStr(key) % 977;
+    const P = (x: number, z: number) => [Math.round((x - x0) * PPM), Math.round((z - z0) * PPM)] as const;
+    const ok = (i: number, j: number) => i >= 0 && j >= 0 && i < W && j < H && (!o.inside || o.inside(x0 + i / PPM, z0 + j / PPM));
+    const put = (i: number, j: number, c: number) => { if (ok(i, j)) p.set(i, j, c); };
+    const dark = scaleHex(o.fa, 0.45), darker = scaleHex(o.fa, 0.3), lit = mixHex(scaleHex(o.fb, 1.25), 0xffffff, 0.12), grime = mixHex(scaleHex(o.fa, 0.55), 0x2a2218, 0.4);
+    // grime against the walls: dense at the skirting, thinning out over ~20 cm, clumped
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+      const d = Math.min(i, j, W - 1 - i, H - 1 - j);
+      if (d > 14) continue;
+      const k = (1 - d / 14) ** 2 * 0.55 * (0.6 + ph(i >> 2, j >> 2, s) * 0.8);
+      if (ph(i, j, s + 1) < k) put(i, j, d < 3 && ph(i, j, s + 2) < 0.5 ? darker : grime);
+    }
+    // worn lanes: polished where feet go (not on grates or carpet's pile, which flattens lighter), heel scuffs
+    const lane = (a: readonly [number, number], b: readonly [number, number]) => {
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 4) return;
+      const ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L;
+      for (let t = 0; t < L; t += 1) {
+        const cx = a[0] + ux * t + Math.sin(t * 0.05 + s) * 3, cy = a[1] + uy * t + Math.cos(t * 0.04 + s) * 3;
+        for (let w = -16; w <= 16; w++) {
+          const i = Math.round(cx - uy * w), j = Math.round(cy + ux * w), k = (1 - Math.abs(w) / 16) * 0.22;
+          if (o.kind !== 'grate' && ph(i, j, s + 3) < k * (0.5 + ph(i >> 3, j >> 3, s + 4))) put(i, j, o.kind === 'carpet' ? scaleHex(o.fb, 1.18) : lit);
+        }
+        // heel marks: short dark strokes across the lane
+        if (rng.next() < 0.05) { const w = (rng.next() - 0.5) * 22, i = Math.round(cx - uy * w), j = Math.round(cy + ux * w), n = 2 + Math.floor(rng.next() * 4), a2 = (rng.next() - 0.5) * 1.2; for (let q2 = 0; q2 < n; q2++) put(i + Math.round(Math.cos(a2) * q2), j + Math.round(Math.sin(a2) * q2), o.kind === 'carpet' ? scaleHex(o.fa, 0.7) : darker); }
+      }
+    };
+    const D = P(o.door[0], o.door[1]);
+    for (const sp of o.spots) lane(D, P(sp[0], sp[1]));
+    // tape: 4 px wide, a lit edge, a dark edge, peeling gaps, boot dirt trodden into it
+    const tapeRun = (a: readonly [number, number], b: readonly [number, number], hz: boolean, seed: number) => {
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]), ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L;
+      const Y = makeRamp(0xd8a63a, 4, { spread: 0.35 });
+      let gap = 0;
+      for (let t = 0; t < L; t++) {
+        if (gap > 0) { gap--; continue; }
+        if (ph(t, seed, s) < 0.012) gap = 2 + Math.floor(ph(seed, t, s) * 6);
+        for (let w = 0; w < 4; w++) {
+          const i = Math.round(a[0] + ux * t - uy * w), j = Math.round(a[1] + uy * t + ux * w);
+          const stripe = hz && ((t + w) % 12) < 6;
+          let c = stripe ? (w === 0 ? 0x2a2824 : 0x1a1916) : w === 0 ? Y[3] : w === 3 ? Y[1] : Y[2];
+          if (ph(i, j, seed + 7) < 0.1) c = grime;
+          put(i, j, c);
+        }
+      }
+    };
+    if (o.tapeBox) {
+      const [a0, b0, a1, b1] = o.tapeBox, A = P(a0, b0), B2 = P(a1, b1);
+      tapeRun([A[0], A[1]], [B2[0], A[1]], !!o.hazardTape, 1); tapeRun([B2[0], A[1]], [B2[0], B2[1]], !!o.hazardTape, 2);
+      tapeRun([B2[0], B2[1]], [A[0], B2[1]], !!o.hazardTape, 3); tapeRun([A[0], B2[1]], [A[0], A[1]], !!o.hazardTape, 4);
+    }
+    if (o.aisle) {
+      const a = Math.round(o.aisle * PPM);
+      if (W > H) { tapeRun([8, a], [W - 8, a], false, 5); tapeRun([8, H - a], [W - 8, H - a], false, 6); }
+      else { tapeRun([a, 8], [a, H - 8], false, 5); tapeRun([W - a, 8], [W - a, H - 8], false, 6); }
+    }
+    // a drain: a square grate with slots, a rust bloom running from it
+    if (o.drain) {
+      const [cx, cy] = P(o.drain[0], o.drain[1]), r = 10;
+      for (let j = -r - 3; j <= r + 6; j++) for (let i = -r - 4; i <= r + 4; i++) if (j > r && ph(i, j, s + 9) < 0.3 * (1 - (j - r) / 7)) put(cx + i, cy + j, 0x5a2e1a);
+      for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) {
+        const e = Math.max(Math.abs(i), Math.abs(j));
+        put(cx + i, cy + j, e === r ? (i < 0 || j < 0 ? 0x8e9190 : 0x2a2f32) : e === r - 1 ? 0x54595c : (j + r) % 4 < 2 ? 0x101214 : 0x3d4346);
+      }
+    }
+    // an access hatch: a groove with a lit lip, four screws, a lift slot
+    if (o.hatch) {
+      const [cx, cy] = P(o.hatch[0], o.hatch[1]), h2 = 24;
+      for (let k = -h2; k <= h2; k++) { put(cx + k, cy - h2, darker); put(cx + k, cy - h2 + 1, lit); put(cx + k, cy + h2, darker); put(cx + k, cy + h2 + 1, lit); put(cx - h2, cy + k, darker); put(cx - h2 + 1, cy + k, lit); put(cx + h2, cy + k, darker); put(cx + h2 + 1, cy + k, lit); }
+      for (const [sx, sy] of [[-h2 + 4, -h2 + 4], [h2 - 5, -h2 + 4], [-h2 + 4, h2 - 5], [h2 - 5, h2 - 5]]) { put(cx + sx, cy + sy, 0xb1b2aa); put(cx + sx + 1, cy + sy, 0x6e7373); put(cx + sx, cy + sy + 1, 0x6e7373); put(cx + sx + 1, cy + sy + 1, 0x2a2f32); }
+      for (let k = -6; k <= 6; k++) { put(cx + k, cy - 1, darker); put(cx + k, cy, 0x101214); put(cx + k, cy + 1, lit); }
+    }
+    // oil stains: dark pools with a ragged rim and a sheen
+    for (let k = 0; k < (o.oil ?? 0); k++) {
+      const cx = 40 + rng.next() * (W - 80), cy = 40 + rng.next() * (H - 80), rx = 8 + rng.next() * 14, ry = 6 + rng.next() * 10;
+      for (let j = -ry - 3; j <= ry + 3; j++) for (let i = -rx - 3; i <= rx + 3; i++) {
+        const d = Math.hypot(i / rx, j / ry) + (ph(Math.round(cx + i) >> 1, Math.round(cy + j) >> 1, s + 11) - 0.5) * 0.5;
+        if (d < 1) put(Math.round(cx + i), Math.round(cy + j), d < 0.4 && ph(i, j, s + 12) < 0.12 ? 0x4a4e58 : 0x121110);
+      }
+    }
+    // the room's number, stencilled by the door and half worn away
+    if (o.code) {
+      const g = new Pix(16, 6); text3(g, o.code, 0, 0, 0xffffff);
+      const [cx, cy] = P(o.door[0] + (o.door[0] > (x0 + x1) / 2 ? -0.9 : 0.9), o.door[1] + 0.55);
+      const S = 5, wd = 8 * S;
+      for (let j = 0; j < 5 * S; j++) for (let i = 0; i < wd; i++) if (g.a(Math.floor(i / S), Math.floor(j / S)) && ph(i, j, s + 13) > 0.3 + ph(i >> 3, j >> 3, s + 14) * 0.3) put(cx - wd / 2 + i, cy - 12 + j, 0xc9c3ad);
+    }
+    // scattered scuffs and specks everywhere else
+    for (let k = 0; k < (W * H) / 900; k++) { const i = Math.floor(rng.next() * W), j = Math.floor(rng.next() * H), n = 1 + Math.floor(rng.next() * 4); for (let q2 = 0; q2 < n; q2++) put(i + q2, j + (q2 >> 1), rng.next() < 0.7 ? dark : lit); }
+    return texOf(p.d, W, H, { repeat: false });
+  });
+}

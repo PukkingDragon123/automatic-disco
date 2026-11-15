@@ -3,12 +3,34 @@
 // pick the chosen key is stamped EXECUTED and the true outcome is typed out under it.
 import { el, ui } from '../ui/kit';
 import { installFrames } from '../research/ui/frames';
+import { iconCanvas } from '../research/ui/icons';
+
+/** an icon for each option key: the card's badge */
+const OPT_ICON: Record<string, string> = { shelter: 'shield', ride: 'bolt', ground: 'arcs', feed: 'heart', sedate: 'vial', cull: 'claw', corridor: 'nodes', turn: 'blast', capture: 'socket', trade: 'crate', truce: 'template', refuse: 'shield', scram: 'switch', send: 'cross', vent: 'steam', treat: 'flask', quarantine: 'shield', trace: 'sensor', relay: 'arcs', jam: 'switch', workers: 'muscle', drone: 'drone', leave: 'moon', bury: 'sapling', home: 'drone', salvage: 'wrench' };
+/** a painted vignette of the scene for one card: the still cropped, reduced to broad strokes and a warm film palette */
+function paint(still: HTMLCanvasElement | null | undefined, i: number, n: number, icon: string): HTMLCanvasElement {
+  const W = 192, H = 96, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d')!;
+  if (still && still.width > 8) {
+    const cw = still.width * 0.55, ch = cw * H / W, sx = (still.width - cw) * (n > 1 ? i / (n - 1) : 0.5), sy = Math.max(0, (still.height - ch) * 0.45);
+    g.imageSmoothingEnabled = true; g.drawImage(still, sx, sy, cw, ch, 0, 0, W / 2, H / 2);
+    const img = g.getImageData(0, 0, W / 2, H / 2), d = img.data;
+    for (let k = 0; k < d.length; k += 4) {
+      const l = (d[k] * 0.3 + d[k + 1] * 0.59 + d[k + 2] * 0.11);
+      for (let c = 0; c < 3; c++) { let v = d[k + c] * 0.7 + l * 0.3; v = (v - 128) * 1.25 + 128 + (c === 0 ? 10 : c === 2 ? -8 : 0); d[k + c] = Math.round(Math.max(0, Math.min(255, v)) / 36) * 36; }
+    }
+    g.putImageData(img, 0, 0); g.imageSmoothingEnabled = false; g.drawImage(cv, 0, 0, W / 2, H / 2, 0, 0, W, H);
+  } else { g.fillStyle = '#3a3a34'; g.fillRect(0, 0, W, H); }
+  // the option's badge, painted by lowpix, in the corner
+  g.imageSmoothingEnabled = false; g.drawImage(iconCanvas(icon, 'phos'), W - 52, H - 52, 48, 48);
+  return cv;
+}
 import { sfx } from '../audio/audio';
 import { csfx } from '../ui/cineAudio';
 import type { Opt } from './events';
 import './choice.css';
 
-export interface ChoiceSpec { kicker: string; title: string; brief: string; options: Opt[]; stamp?: string }
+export interface ChoiceSpec { kicker: string; title: string; brief: string; options: Opt[]; stamp?: string; still?: HTMLCanvasElement | null }
 export interface ChoiceResult { key: string; text: string; lines: string[] }
 
 /** open the console; resolves once an option ran and the player continued */
@@ -37,6 +59,7 @@ export function choose(spec: ChoiceSpec, run: (o: Opt) => { text: string; lines:
     spec.options.forEach((o, i) => {
       const lock = o.need?.() ?? null;
       const c = el('div', 'evc-opt' + (lock ? ' off' : ''), opts);
+      const art = paint(spec.still, i, spec.options.length, OPT_ICON[o.key] ?? 'gear'); art.className = 'evc-art'; c.appendChild(art);
       const kk = el('div', 'evc-key', c);
       el('div', 'evc-num', kk, String(i + 1));
       el('div', 'evc-label', kk, o.label);

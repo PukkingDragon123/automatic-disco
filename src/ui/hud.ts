@@ -26,7 +26,7 @@ import { ARM_DEF } from '../colony/arms';
 import { ITEMS } from '../factory/items';
 import { installHudStyle } from './desk/hudStyle';
 import { iconImg } from './desk/hudArt';
-import { skin, fontText, Pix, R } from './desk/pxPanel';
+import { skin, fontText, platePix, rivet, Pix, R } from './desk/pxPanel';
 import { paperCard, stroke, scribble, letter, doodle, tape, INK, textWidth } from './desk/ink';
 import * as THREE from 'three';
 import './desk/toolIcons';
@@ -86,15 +86,15 @@ export class Hud {
     this.alertsEl = el('div', 'cx-alerts', this.root);
     this.buildSel();
     this.ctlEl = el('div', 'cx-plate gun cx-ctl', this.root);
-    skin(this.ctlEl, (w, h) => paperCard(w, h, 63, { tape: true }));
+    skin(this.ctlEl, (w, h) => platePix(w, h, { mat: 'enamel', seed: 63, hazard: true, wear: 0.7 }));
     // the wheel
     const wp = el('div', 'cx-plate cx-wheel', this.root);
-    const wcard = el('div', 'cx-plate', wp); wcard.style.cssText = 'left:0;top:44px;width:172px;height:270px'; skin(wcard, (w, h) => paperCard(w, h, 41, { tape: true }), 'wcard');
+    const wcard = el('div', 'cx-plate', wp); wcard.style.cssText = 'left:0;top:44px;width:172px;height:270px'; skin(wcard, (w, h) => platePix(w, h, { mat: 'enamel', seed: 41, rivets: true, wear: 1 }), 'wcard');
     this.wheelInfo = el('div', 'cx-glass info cx-ph', wp);
     this.wheel = new ToolWheel(wp, { colony: () => this.colony, config: (i) => this.openCfg(i), tip: (h, x, y) => this.tip(h, x, y), flash: (m, b) => this.flash(m, b) });
     const cfg = el('button', 'cx-btn cfg', wp, 'CONFIGURE SLOTS'); cfg.onclick = () => this.openCfg(this.wheel.hover >= 0 ? this.wheel.hover : Math.max(0, this.colony?.slots.active ?? 0));
     this.cfgEl = el('div', 'cx-plate cx-slotcfg pe', this.root);
-    skin(this.cfgEl, (w, h) => paperCard(w, h, 57, { tape: true }), 'cfg');
+    skin(this.cfgEl, (w, h) => platePix(w, h, { mat: 'enamel', seed: 57, rivets: true, wear: 1.1 }), 'cfg');
     addEventListener('resize', this.onResize);
     this.root.style.display = 'none';
   }
@@ -107,7 +107,7 @@ export class Hud {
   private buildTop() {
     const top = el('div', 'cx-plate cx-top', this.root);
     
-    const id = el('div', 'cx-id', top); skin(id, (w, h) => paperCard(w, h, 5, { tape: true }), 'id');
+    const id = el('div', 'cx-id', top); skin(id, (w, h) => platePix(w, h, { mat: 'enamel', seed: 5, wear: 1.0 }), 'id');
     const rc = iconImg('u-pod', 56); rc.classList.add('pe'); id.appendChild(rc);
     const tx = el('div', '', id);
     el('div', 't1 cx-sten', tx, 'UNAA · CP-07');
@@ -123,17 +123,17 @@ export class Hud {
       this.hoverTip(e, () => this.vitalTip(v.id));
     }
     const tm = el('div', 'cx-plate gun cx-time', top);
-    skin(tm, (w, h) => paperCard(w, h, 77, { tape: true }), 'time');
+    skin(tm, (w, h) => platePix(w, h, { mat: 'steel', seed: 77, wear: 0.8 }), 'time');
     const mk = (label: string, tip: string, f: () => void) => { const b = el('button', 'cx-btn', tm, label); b.onclick = (e) => { e.stopPropagation(); f(); }; this.hoverTip(b, () => tip); this.timeBtns.push(b); return b; };
     mk('II', '<b>PAUSE</b> [SPACE]<br>Orders, building and control still work while paused.', () => this.colony?.togglePause());
     mk('1x', '<b>NORMAL SPEED</b> [1]', () => this.colony?.setSpeed(1));
     mk('2x', '<b>FAST</b> [2]', () => this.colony?.setSpeed(2));
     mk('3x', '<b>FASTEST</b> [3]', () => this.colony?.setSpeed(3));
     this.clock = el('div', 'cx-glass clock cx-ph', tm);
-    this.pausebar = el('div', 'cx-plate gun cx-pausebar cx-sten', this.root, 'PAUSED · ORDERS ACCEPTED');
-    skin(this.pausebar, (w, h) => paperCard(w, h, 81, { pin: true }), 'pause');
+    this.pausebar = el('div', 'cx-plate gun cx-pausebar cx-sten', this.root, 'PAUSED');
+    skin(this.pausebar, (w, h) => platePix(w, h, { mat: 'enamel', seed: 81, hazard: true, wear: 0.6 }), 'pause');
     this.count = el('div', 'cx-plate gun cx-count', this.root, '<div class="h cx-sten"></div><div class="v"></div>');
-    skin(this.count, (w, h) => paperCard(w, h, 85, { tint: R.coral, pin: true }), 'count');
+    skin(this.count, (w, h) => platePix(w, h, { mat: 'orange', seed: 85, hazard: true }), 'count');
   }
   private vitalTip(id: VitalId) {
     const c = this.colony; if (!c) return '';
@@ -155,7 +155,7 @@ export class Hud {
     const W = 52, H = 48, cv = e.cv;
     if (cv.width !== W) { cv.width = W; cv.height = H; }
     let base = this.vitBase.get(e.id);
-    if (!base) { base = paperCard(W, H, 90 + e.id.length * 7); tape(base, 18, -2, e.id.length, (e.id.length % 3 - 1) * 0.3); this.vitBase.set(e.id, base); }
+    if (!base) { base = platePix(W, H, { mat: 'enamel', seed: 90 + e.id.length * 7, screws: false, wear: 0.8 }); rivet(base, 3, 3, R.bone); rivet(base, W - 6, 3, R.bone); this.vitBase.set(e.id, base); }
     const p = new Pix(W, H); p.d.set(base.d);
     const v = c.vitals, lvl = v.levels[e.id], val = Math.max(0, Math.min(1, v.value(e.id))), t = this.t, seed = e.id.length * 11;
     const warnC = lvl === 'crit' ? R.stampRed[3] : lvl === 'warn' ? R.ochre[3] : INK;
@@ -234,7 +234,7 @@ export class Hud {
   // ------------------------------------------------------------------ minimap
   private buildMap() {
     const p = el('div', 'cx-plate cx-map pe', this.root);
-    skin(p, (w, h) => paperCard(w, h, 23, { pin: true }), 'map');
+    skin(p, (w, h) => platePix(w, h, { mat: 'steel', seed: 23, wear: 1.2, rivets: true }), 'map');
     this.mapHd = el('div', 'hd', p, '<span class="cx-sten">SURVEY</span><span class="cx-ph"></span>');
     const scr = el('div', 'cx-glass scr', p);
     this.mapCv = document.createElement('canvas'); scr.appendChild(this.mapCv);
@@ -334,7 +334,7 @@ export class Hud {
   // ------------------------------------------------------------------ the selected unit
   private buildSel() {
     this.selEl = el('div', 'cx-plate cx-sel pe', this.root);
-    skin(this.selEl, (w, h) => { const p = paperCard(w, h, 11, { tape: true }); for (let y = 8; y < 8 + 118; y++) for (let x = 9; x < 9 + 168; x++) p.clear(x, y); return p; });
+    skin(this.selEl, (w, h) => { const p = platePix(w, h, { mat: 'enamel', seed: 11, wear: 1.2, rivets: true }); for (let y = 8; y < 8 + 118; y++) for (let x = 9; x < 9 + 168; x++) p.clear(x, y); return p; });
     this.viewEl = el('div', 'view', this.selEl);
     this.calloutCv = document.createElement('canvas'); this.viewEl.appendChild(this.calloutCv);
     this.selHd = el('div', 'hd', this.selEl);
@@ -484,9 +484,9 @@ export class Hud {
     const i = this.wheel.hover >= 0 ? this.wheel.hover : c.slots.active >= 0 ? c.slots.active : this.wheel.focus, s = c.slots.slots[i];
     let h = '';
     if (this.flashT > 0) h = `<div class="tn" style="color:#e2b04a">CANNOT</div><div class="ds" style="color:#e0b090">${esc(this.flashMsg)}</div>`;
-    else if (s.level <= 0) h = `<div class="tn">SLOT ${i + 1}</div><div class="un">LOCKED</div><div class="ds">Open it with the Upgrader.</div>`;
-    else if (!s.tool) h = `<div class="tn">SLOT ${i + 1}</div><div class="un">EMPTY</div><div class="ds">Right-click to assign a tool.</div>`;
-    else { const u = c.slots.unitOf(i), un = u ? (c.unitById(u) as { name?: string } | null)?.name : null; h = `<div class="tn">${TOOLS[s.tool].name.toUpperCase()}</div><div class="un">${un ? 'RUN BY ' + un : '<span style="color:#e0604a">NO UNIT</span>'}</div><div class="ds">${TOOLS[s.tool].desc}</div><div class="lv">SLOT ${i + 1} · LEVEL ${s.level}${c.slots.active === i ? ' · IN USE' : ''}</div>`; }
+    else if (s.level <= 0) h = `<div class="tn">SLOT ${i + 1}</div><div class="un">LOCKED</div>`;
+    else if (!s.tool) h = `<div class="tn">SLOT ${i + 1}</div><div class="un">EMPTY</div>`;
+    else { const u = c.slots.unitOf(i), un = u ? (c.unitById(u) as { name?: string } | null)?.name : null; h = `<div class="tn">${TOOLS[s.tool].name.toUpperCase()}</div><div class="un">${un ? 'RUN BY ' + un : '<span style="color:#e0604a">NO UNIT</span>'}</div><div class="lv">SLOT ${i + 1} · LEVEL ${s.level}${c.slots.active === i ? ' · IN USE' : ''}</div>`; }
     if (h !== (this.wheelInfo as unknown as { _h?: string })._h) { this.wheelInfo.innerHTML = h; (this.wheelInfo as unknown as { _h?: string })._h = h; }
   }
   openCfg(i: number) { this.cfgSlot = i; this.cfgKey = ''; this.cfgEl.classList.add('on'); }
@@ -536,8 +536,8 @@ export class Hud {
     if (cv.width !== W) { cv.width = W; cv.height = H; }
     const p = new Pix(W, H);
     // the frame: a sketched border, two strips of tape, a pin
-    stroke(p, 1, 1, W - 2, 1, 71, { w: 2, over: 2 }); stroke(p, W - 2, 1, W - 2, H - 2, 72, { w: 2, over: 2 }); stroke(p, W - 2, H - 2, 1, H - 2, 73, { w: 2, over: 2 }); stroke(p, 1, H - 2, 1, 1, 74, { w: 2, over: 2 });
-    tape(p, -2, 2, 3, -0.6); tape(p, W - 16, H - 9, 9, -0.5);
+    // the window's sunk bevel: shaded on top and left, a lit lip below and right
+    p.hl(0, W - 1, 0, R.ink[0]); p.vl(0, 0, H - 1, R.ink[0]); p.hl(1, W - 2, 1, R.ink[1]); p.vl(1, 1, H - 2, R.ink[1]); p.hl(0, W - 1, H - 1, R.bone[5]); p.vl(W - 1, 0, H - 1, R.bone[5]); p.hl(1, W - 2, H - 2, R.bone[3]); p.vl(W - 2, 1, H - 2, R.bone[3]);
     if (f) {
       const used: number[] = [];
       f.anchors.forEach((a, i) => {
@@ -550,7 +550,7 @@ export class Hud {
         // leader: a dot on the part, an inked line to the scrap
         p.rect(ax - 1, ay - 1, 3, 3, a.warn ? R.stampRed[3] : INK); p.set(ax, ay, R.paper[5]);
         stroke(p, ax, ay, left ? lx + tw : lx, ly + 6, 80 + i, { w: 1, over: 0, amp: 0.5, col: a.warn ? R.stampRed[2] : INK });
-        for (let y = ly; y < ly + 13; y++) for (let x = lx; x < lx + tw; x++) p.set(x, y, a.warn ? R.coral[5] : R.paper[5]);
+        for (let y = ly; y < ly + 13; y++) for (let x = lx; x < lx + tw; x++) p.set(x, y, a.warn ? R.coral[5] : y === ly ? R.bone[5] : R.bone[4]); p.set(lx + 1, ly + 2, R.steel[4]); p.set(lx + tw - 2, ly + 2, R.steel[4]);
         stroke(p, lx, ly + 13, lx + tw - 1, ly + 13, 90 + i, { w: 1, over: 1 });
         letter(p, a.text, lx + 3, ly + 1, a.warn ? R.stampRed[1] : INK);
       });

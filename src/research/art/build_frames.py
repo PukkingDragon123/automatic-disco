@@ -20,6 +20,19 @@ MATS = {
     'amber': {'base': '#e8c070', 'steps': 3, 'texture': 'cloth', 'contrast': 0.14},
     'tape': {'base': '#d8c890', 'steps': 5, 'texture': 'cloth', 'contrast': 0.5},
     'pin': {'base': '#b8382e', 'steps': 6, 'spec': 1},
+    'enamel': {'base': '#efe8d4', 'steps': 3, 'spec': 1, 'contrast': 0.07},
+    'enamelblue': {'base': '#2a4a78', 'steps': 5, 'spec': 1, 'contrast': 0.5},
+    'chip': {'base': '#2b2e31', 'steps': 4, 'texture': 'metal'},
+    'steel': {'base': '#8e9592', 'steps': 5, 'texture': 'metal', 'contrast': 0.3, 'spec': 1},
+    'rivet': {'base': '#a8aca6', 'steps': 5, 'spec': 1},
+    'fibre': {'base': '#efe6d2', 'steps': 3, 'texture': 'cloth', 'contrast': 0.1},
+    'fox': {'base': '#b8946a', 'steps': 3},
+    'coffee': {'base': '#8a5a34', 'steps': 3},
+    'canvas': {'base': '#d8cba8', 'steps': 3, 'texture': 'cloth', 'contrast': 0.2},
+    'thread': {'base': '#7a3a2a', 'steps': 3},
+    'cork': {'base': '#a87a4c', 'steps': 5, 'texture': 'stone', 'contrast': 0.4},
+    'corkdark': {'base': '#6a4626', 'steps': 3},
+    'corklight': {'base': '#d0a26a', 'steps': 3},
 }
 
 def wob(rng, a, b, n=7, amp=1.4):
@@ -80,12 +93,81 @@ def frame(kind, seed):
     return {'size': [S, S], 'paint': 'strokes', 'materials': MATS, 'shapes': shapes, 'outline': 'none', 'inner': 'none',
             'strokes': {'length': 5, 'rough': 0.6}}
 
+def rivets(m, S):
+    out = []
+    for x, y in [(m + 7, m + 7), (S - m - 7, m + 7), (m + 7, S - m - 7), (S - m - 7, S - m - 7)]:
+        out.append({'type': 'ellipse', 'center': [x, y], 'radii': [3.2, 3.2], 'material': 'rivet', 'form': 'dome', 'z': 8})
+    return out
+
+def material(kind, seed):
+    """the textured material frames: enamel plate, riveted steel, specimen fibre card, stitched canvas, cork tile"""
+    global S
+    rng = random.Random(seed)
+    S = 128
+    m = 6
+    sh = []
+    if kind == 'enamel':
+        sh.append(sheet(rng, m, m, S - m, S - m, 'enamelblue', 0.3))
+        sh.append(dict(sheet(rng, m + 9, m + 9, S - m - 9, S - m - 9, 'enamel', 0.2), z=1))
+        # chips knocked off the enamel, showing the dark steel under it
+        for (cx, cy, r) in [(m + 3, 40, 4), (S - m - 2, 92, 5), (70, S - m - 2, 4), (m + 30, m + 1, 3), (S - m - 14, m + 12, 3)]:
+            pts = [[cx + r * (0.8 + rng.random() * 0.5) * __import__('math').cos(a), cy + r * (0.8 + rng.random() * 0.5) * __import__('math').sin(a)] for a in [k * 1.05 for k in range(6)]]
+            sh.append({'type': 'polygon', 'points': pts, 'material': 'chip', 'form': 'flat', 'z': 6})
+        sh += rivets(m + 1, S)
+        sh += outline(rng, m, m, S - m, S - m, 'ink', 2.2, 1, tile=True)
+    elif kind == 'metal':
+        sh.append({**sheet(rng, m, m, S - m, S - m, 'steel', 0.15), 'flow': [1, 0], 'edge': {'light': 1, 'dark': -1}})
+        sh += rivets(m, S)
+        sh += outline(rng, m, m, S - m, S - m, 'ink', 2.2, 1, tile=True)
+    elif kind == 'fibre':
+        sh.append(sheet(rng, m, m, S - m, S - m, 'fibre', 0.8))
+        for _ in range(9):
+            x, y = rng.choice([(rng.uniform(m + 4, 34), rng.uniform(m + 4, S - m - 4)), (rng.uniform(S - 34, S - m - 4), rng.uniform(m + 4, S - m - 4))])
+            sh.append({'type': 'ellipse', 'center': [x, y], 'radii': [rng.uniform(1.0, 2.6)] * 2, 'material': 'fox', 'form': 'flat', 'z': 3})
+        # a coffee ring in the lower right corner
+        sh.append({'type': 'ellipse', 'center': [S - 26, S - 24], 'radii': [15, 13], 'material': 'coffee', 'form': 'flat', 'z': 4})
+        sh.append({'type': 'ellipse', 'center': [S - 26, S - 24], 'radii': [13, 11], 'material': 'fibre', 'form': 'flat', 'z': 5})
+        sh += outline(rng, m, m, S - m, S - m, 'ink', 1.4, 1, tile=True)
+    elif kind == 'canvas':
+        sh.append(sheet(rng, m, m, S - m, S - m, 'canvas', 0.6))
+        # stitching round the edge, short dashes of red thread
+        for side in range(4):
+            for k in range(14):
+                t0, t1 = 0.06 + k * 0.064, 0.06 + k * 0.064 + 0.035
+                if side == 0: a, b = (m + 6 + t0 * (S - 2 * m - 12), m + 6), (m + 6 + t1 * (S - 2 * m - 12), m + 6)
+                elif side == 1: a, b = (S - m - 6, m + 6 + t0 * (S - 2 * m - 12)), (S - m - 6, m + 6 + t1 * (S - 2 * m - 12))
+                elif side == 2: a, b = (m + 6 + t0 * (S - 2 * m - 12), S - m - 6), (m + 6 + t1 * (S - 2 * m - 12), S - m - 6)
+                else: a, b = (m + 6, m + 6 + t0 * (S - 2 * m - 12)), (m + 6, m + 6 + t1 * (S - 2 * m - 12))
+                sh.append({'type': 'stroke', 'points': [list(a), list(b)], 'width': 1.6, 'material': 'thread', 'form': 'cylinder', 'z': 4})
+        sh += outline(rng, m, m, S - m, S - m, 'ink', 2.4, 1, tile=True)
+    elif kind == 'cork':
+        S = 128
+        sh.append({'type': 'polygon', 'points': [[-2, -2], [S + 2, -2], [S + 2, S + 2], [-2, S + 2]], 'material': 'cork', 'form': 'flat'})
+        for _ in range(170):
+            x, y = rng.uniform(0, S), rng.uniform(0, S)
+            mat = rng.choice(['corkdark', 'corkdark', 'corklight'])
+            r = rng.uniform(0.6, 1.8)
+            for ox in (-S, 0, S):
+                for oy in (-S, 0, S):
+                    if -4 < x + ox < S + 4 and -4 < y + oy < S + 4:
+                        sh.append({'type': 'ellipse', 'center': [x + ox, y + oy], 'radii': [r * rng.uniform(0.8, 1.5), r], 'material': mat, 'form': 'flat', 'z': 2})
+    elif kind == 'pin':
+        S = 32
+        sh.append({'type': 'stroke', 'points': [[16, 18], [19, 27]], 'width': 1.4, 'material': 'rivet', 'form': 'cylinder'})
+        sh.append({'type': 'ellipse', 'center': [15, 13], 'radii': [7, 6], 'material': 'pin', 'form': 'dome', 'z': 2})
+    return {'size': [S, S], 'paint': 'strokes', 'materials': MATS, 'shapes': sh, 'outline': 'selout' if kind == 'pin' else 'none', 'inner': 'none', 'strokes': {'length': 5, 'rough': 0.6}}
+
 def main():
     out = {}
     for i, k in enumerate(['card', 'note', 'frame', 'stamp', 'key', 'keyhot', 'tab', 'tabon', 'tag']):
         img = render_sprite(frame(k, 11 + i * 7), seed=i)
         p = os.path.join(HERE, 'frames', k + '.png')
         img.save(p)
+        out[k] = 'frames/' + k + '.png'
+        print('ok', k, flush=True)
+    for i, k in enumerate(['enamel', 'metal', 'fibre', 'canvas', 'cork', 'pin']):
+        img = render_sprite(material(k, 101 + i * 13), seed=50 + i)
+        img.save(os.path.join(HERE, 'frames', k + '.png'))
         out[k] = 'frames/' + k + '.png'
         print('ok', k, flush=True)
     json.dump(out, open(os.path.join(HERE, 'frames', 'index.json'), 'w'))

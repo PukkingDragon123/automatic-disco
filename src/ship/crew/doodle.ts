@@ -84,3 +84,70 @@ export function textW(s: string, face: 'Body' | 'Title' | 'TitleL', size: number
   const g = document.createElement('canvas').getContext('2d')!; g.font = `${size}px '${face}', monospace`; return Math.ceil(g.measureText(s).width);
 }
 export { DPR };
+
+// ------------------------------------------------------------------ the crew ID badge (a laminated card on a clip)
+import { crewPage, pageRegion } from './paint';
+import type { CrewDef } from './roster';
+const PATCH_OF: Record<string, string> = { solano: 'sci', quintero: 'unaa', kowalczyk: 'eng', castellanos: 'sparrow', baptiste: 'med', mamani: 'sci', araujo: 'sup', kristiansen: 'sec' };
+const hx = (c: [number, number, number], k = 1) => `rgb(${Math.round(c[0] * k)},${Math.round(c[1] * k)},${Math.round(c[2] * k)})`;
+/**
+ * A crew member's ID badge, pixel art at whole pixels: a steel clip with its rivet on a punched slot, the laminated
+ * card (plastic grain, a gloss streak, bevelled edges), the department band, the embroidered department patch as the
+ * picture, the name, job and rank, five mood pips with a little face, and a barcode. Returns the canvas (w x h CSS px).
+ */
+export function idBadge(d: CrewDef, mood: number, scale = 1): HTMLCanvasElement {
+  const S = Math.max(1, Math.round(scale)), W = 300, H = 176;
+  const I = new Ink(W * S, H * S); const g = I.g; g.save(); g.scale(S, S);
+  const r = (x: number, y: number, w: number, h: number, c: string) => { g.fillStyle = c; g.fillRect(x, y, w, h); };
+  const cy = 22, ch = H - cy - 4, cw = W - 8, cx = 4;
+  // shadow, card body with clipped corners
+  r(cx + 4, cy + 4, cw, ch, 'rgba(10, 8, 6, 0.5)');
+  r(cx + 3, cy, cw - 6, ch, '#ece7da'); r(cx, cy + 3, cw, ch - 6, '#ece7da'); r(cx + 1, cy + 1, cw - 2, ch - 2, '#ece7da');
+  // plastic grain and a gloss streak across the laminate
+  for (let i = 0; i < 900; i++) { const x = cx + 2 + ((i * 97) % (cw - 4)), y = cy + 2 + ((i * 53 + (i >> 3)) % (ch - 4)); r(x, y, 1, 1, i % 3 ? '#e2dccd' : '#f4f0e6'); }
+  for (let i = 0; i < 26; i++) r(cx + 130 + i * 2 - (i >> 1), cy + 2 + i * 4, 18, 4, 'rgba(255, 255, 255, 0.28)');
+  // bevel: lit top-left, shaded bottom-right, a dark rim
+  r(cx + 3, cy, cw - 6, 1, '#fbf8f0'); r(cx, cy + 3, 1, ch - 6, '#fbf8f0');
+  r(cx + 3, cy + ch - 1, cw - 6, 1, '#a8a090'); r(cx + cw - 1, cy + 3, 1, ch - 6, '#a8a090');
+  // the department band with the program name
+  const col = d.dept_col;
+  r(cx + 1, cy + 6, cw - 2, 30, hx(col)); r(cx + 1, cy + 6, cw - 2, 2, hx(col, 1.18)); r(cx + 1, cy + 34, cw - 2, 2, hx(col, 0.7));
+  for (let x = cx + 4; x < cx + cw - 4; x += 3) r(x, cy + 8 + ((x * 7) % 26), 1, 1, hx(col, 0.9));
+  // the punched slot and the clip
+  r(W / 2 - 15, cy + 10, 30, 6, '#3a3630'); r(W / 2 - 14, cy + 11, 28, 1, '#1a1714');
+  r(W / 2 - 10, 2, 20, 22, '#6e747a'); r(W / 2 - 10, 2, 20, 2, '#b4bac0'); r(W / 2 - 10, 2, 2, 22, '#9aa0a6'); r(W / 2 + 8, 2, 2, 22, '#4a5056'); r(W / 2 - 10, 22, 20, 2, '#3a4046');
+  for (let y = 6; y < 20; y += 3) r(W / 2 - 7, y, 14, 1, '#7e848a');
+  r(W / 2 - 3, 10, 6, 6, '#3a4046'); r(W / 2 - 2, 11, 3, 3, '#c8ced4'); r(W / 2 - 1, 12, 1, 1, '#ffffff');
+  g.restore();
+  // type on the band and the card (whole pixels, outlined only where it sits on colour)
+  I.label('UNAA', (cx + 10) * S, (cy + 9) * S, 'Title', 24 * S === 24 ? 24 : 48, '#f4f0e6');
+  I.text('MERIDIAN RV-07', (W - 12) * S, (cy + 17) * S, 'Body', 11 * S, '#f4f0e6', { align: 'right' });
+  // the picture: the department's embroidered patch from the crew page
+  const pr = pageRegion('unaa') && pageRegion(PATCH_OF[d.id] ?? 'unaa');
+  if (pr) {
+    const src = crewPage().canvas; g.imageSmoothingEnabled = false;
+    const ps = 72;
+    g.fillStyle = '#d8d0bc'; g.fillRect((cx + 10) * S, (cy + 44) * S, (ps + 6) * S, (ps + 6) * S);
+    g.fillStyle = '#b8ae98'; g.fillRect((cx + 10) * S, (cy + 44 + ps + 5) * S, (ps + 6) * S, S);
+    g.drawImage(src, pr[0], pr[1], pr[2], pr[3], (cx + 13) * S, (cy + 47) * S, ps * S, ps * S);
+  }
+  const tx = cx + 96;
+  I.text(d.short.toUpperCase(), tx * S, (cy + 44) * S, 'Title', 24 * S === 24 ? 24 : 48, '#1f1b17');
+  I.text(d.job, tx * S, (cy + 72) * S, 'Body', 22 * S === 22 ? 22 : 44, '#3a342c');
+  I.text(d.rank.toUpperCase(), tx * S, (cy + 98) * S, 'Body', 11 * S === 11 ? 11 : 22, '#7a7060');
+  // mood: a little face and five pips
+  g.save(); g.scale(S, S);
+  const mx = tx + 8, my = cy + 124, on = Math.max(1, Math.round(mood * 5));
+  const face = mood > 0.6 ? 1 : mood > 0.4 ? 0 : -1;
+  r(mx - 6, my - 7, 12, 1, '#1f1b17'); r(mx - 6, my + 6, 12, 1, '#1f1b17'); r(mx - 7, my - 6, 1, 12, '#1f1b17'); r(mx + 6, my - 6, 1, 12, '#1f1b17');
+  r(mx - 6, my - 6, 12, 12, '#f0c860'); r(mx - 3, my - 3, 2, 2, '#1f1b17'); r(mx + 2, my - 3, 2, 2, '#1f1b17');
+  if (face === 1) { r(mx - 3, my + 2, 1, 1, '#1f1b17'); r(mx - 2, my + 3, 5, 1, '#1f1b17'); r(mx + 3, my + 2, 1, 1, '#1f1b17'); }
+  else if (face === 0) r(mx - 3, my + 2, 7, 1, '#1f1b17');
+  else { r(mx - 3, my + 3, 1, 1, '#1f1b17'); r(mx - 2, my + 2, 5, 1, '#1f1b17'); r(mx + 3, my + 3, 1, 1, '#1f1b17'); }
+  for (let i = 0; i < 5; i++) { const c = i < on ? (mood > 0.6 ? '#5a9a5a' : mood > 0.4 ? '#c8a040' : '#b84a3a') : '#cfc8b6'; r(mx + 14 + i * 12, my - 4, 9, 9, '#1f1b17'); r(mx + 15 + i * 12, my - 3, 7, 7, c); r(mx + 15 + i * 12, my - 3, 7, 1, 'rgba(255,255,255,0.35)'); }
+  // the barcode
+  let bx = cx + cw - 96; const by = cy + ch - 26;
+  for (let i = 0; bx < cx + cw - 12; i++) { const w = ((d.id.charCodeAt(i % d.id.length) + i * 7) % 3) + 1; if (i % 2 === 0) r(bx, by, w, 16, '#2a2622'); bx += w + 1; }
+  g.restore();
+  return I.c;
+}

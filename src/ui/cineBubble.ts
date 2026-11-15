@@ -57,41 +57,49 @@ export class SpeechBubble {
   private tipRel = -1; private up = false; private u = 2;
   /** paint the sheet with its tail leaving the bottom edge (or the top edge when flipped) at tipRel px from the left */
   private draw(u: number, tipRel = -1, up = false) {
+    // pixel art at whole pixels: a textured paper sheet (fibres, a little foxing, a fold) and a hand-inked border laid
+    // with a square pen that wobbles, the tail in the same stroke; a hard offset shadow under it
     this.u = u;
-    const dpr = Math.max(1, Math.min(3, devicePixelRatio || 1));
-    const W = this.w + 8 * u, H = this.h + this.tail + 8 * u;
-    const cv = this.cv; cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
-    cv.style.width = W + 'px'; cv.style.height = H + 'px'; cv.style.left = -4 * u + 'px'; cv.style.top = (up ? -4 * u - this.tail : -4 * u) + 'px';
-    const g = cv.getContext('2d')!; g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (up) { g.translate(0, H); g.scale(1, -1); } // flipped: the same drawing mirrored, tail up (the text sits on top of it)
-    const x0 = 4 * u, y0 = 4 * u, w = this.w, h = this.h, r = 7 * u, s = this.seed;
-    const tr = tipRel < 0 ? w * (0.34 + h1(s, 5) * 0.12) - 6 * u : tipRel;
-    const tipX = x0 + tr, tx = Math.min(x0 + w - r - 9 * u, Math.max(x0 + r + 6 * u, tipX + 6 * u)), tipY = y0 + h + this.tail;
+    const k = Math.max(1, Math.round(devicePixelRatio || 1));
+    const W = Math.round(this.w + 8 * u), H = Math.round(this.h + this.tail + 8 * u);
+    const cv = this.cv; cv.width = W * k; cv.height = H * k;
+    cv.style.width = W + 'px'; cv.style.height = H + 'px'; cv.style.left = Math.round(-4 * u) + 'px'; cv.style.top = Math.round(up ? -4 * u - this.tail : -4 * u) + 'px';
+    cv.style.imageRendering = 'pixelated';
+    const g = cv.getContext('2d')!; g.setTransform(k, 0, 0, k, 0, 0); g.imageSmoothingEnabled = false;
+    if (up) { g.translate(0, H); g.scale(1, -1); }
+    const x0 = Math.round(4 * u), y0 = Math.round(4 * u), w = Math.round(this.w), h = Math.round(this.h), c = Math.round(5 * u), s = this.seed;
+    const tr = tipRel < 0 ? Math.round(w * (0.34 + h1(s, 5) * 0.12) - 6 * u) : Math.round(tipRel);
+    const tipX = x0 + tr, tx = Math.round(Math.min(x0 + w - c - 9 * u, Math.max(x0 + c + 6 * u, tipX + 6 * u))), tipY = y0 + h + this.tail;
     this.tipRel = tr; this.up = up;
-    // the outline as a pen would go round it: a box with its corners clipped, its points nudged off true, the tail in one stroke
-    const pts: [number, number][] = [];
-    const seg = (ax: number, ay: number, bx: number, by: number) => { const n = Math.max(2, Math.round(Math.hypot(bx - ax, by - ay) / (6 * u))); for (let k = 0; k < n; k++) { const t = k / n; pts.push([ax + (bx - ax) * t, ay + (by - ay) * t]); } };
-    const arc = (cx: number, cy: number, a0: number) => { // a clipped corner: two straight cuts, not an arc
-      const c = Math.cos(a0), si = Math.sin(a0), c2 = Math.cos(a0 + Math.PI / 2), s2 = Math.sin(a0 + Math.PI / 2);
-      pts.push([cx + c * r, cy + si * r], [cx + (c + c2) * r * 0.55, cy + (si + s2) * r * 0.55]);
-    };
-    seg(x0 + r, y0, x0 + w - r, y0); arc(x0 + w - r, y0 + r, -Math.PI / 2);
-    seg(x0 + w, y0 + r, x0 + w, y0 + h - r); arc(x0 + w - r, y0 + h - r, 0);
-    seg(x0 + w - r, y0 + h, tx + 7 * u, y0 + h);
-    pts.push([tx + 3 * u, y0 + h + this.tail * 0.45], [tipX, tipY], [tx - 1 * u, y0 + h + this.tail * 0.35]);
-    seg(tx - 4 * u, y0 + h, x0 + r, y0 + h); arc(x0 + r, y0 + h - r, Math.PI / 2);
-    seg(x0, y0 + h - r, x0, y0 + r); arc(x0 + r, y0 + r, Math.PI);
-    const wob = (k: number) => (h1(k, s) - 0.5) * 0.9;
-    const path = () => { g.beginPath(); pts.forEach(([px, py], k) => { const X = px + wob(k), Y = py + wob(k + 99); if (k) g.lineTo(X, Y); else g.moveTo(X, Y); }); g.closePath(); };
-    g.save(); g.translate(2 * u, up ? -3 * u : 3 * u); path(); g.fillStyle = 'rgba(20, 22, 27, 0.5)'; g.fill(); g.restore();
-    path(); g.fillStyle = '#e2dbc6'; g.fill();
-    // shade drawn in, not sprinkled: a few hatch strokes in the corner away from the light
-    g.save(); path(); g.clip(); g.strokeStyle = '#bdb59f'; g.lineWidth = Math.max(1, u * 0.6); g.lineCap = 'butt';
-    for (let k = 0; k < 4; k++) { const hx = x0 + w - (5 + k * 4.2) * u, hy = y0 + h - 2.5 * u; g.beginPath(); g.moveTo(hx, hy); g.lineTo(hx + (3.2 + h1(k, s) * 1.4) * u, hy - (3.2 + h1(k, s) * 1.4) * u); g.stroke(); }
+    // the outline points: a box with clipped corners, the tail in one stroke
+    const P: [number, number][] = [[x0 + c, y0], [x0 + w - c, y0], [x0 + w, y0 + c], [x0 + w, y0 + h - c], [x0 + w - c, y0 + h], [tx + 7 * u, y0 + h], [tipX, tipY], [tx - 2 * u, y0 + h], [x0 + c, y0 + h], [x0, y0 + h - c], [x0, y0 + c], [x0 + c, y0]];
+    const poly = (dx: number, dy: number) => { g.beginPath(); P.forEach(([px, py], i) => (i ? g.lineTo(px + dx, py + dy) : g.moveTo(px + dx, py + dy))); g.closePath(); };
+    g.fillStyle = 'rgba(14, 12, 10, 0.55)'; poly(3, 3); g.fill();
+    g.fillStyle = '#e4dcc6'; poly(0, 0); g.fill();
+    // paper: fibres (short 1 px strokes, a shade either way), foxing specks placed sparsely, a soft fold
+    g.save(); poly(0, 0); g.clip();
+    for (let i = 0; i < (w * h) / 22; i++) {
+      const fx = x0 + Math.floor(h1(i, s + 1) * w), fy = y0 + Math.floor(h1(i, s + 2) * h), L = 2 + Math.floor(h1(i, s + 3) * 4), dir = h1(i, s + 4) < 0.5;
+      g.fillStyle = h1(i, s + 6) < 0.55 ? '#d8cfb6' : '#efe8d6';
+      if (dir) g.fillRect(fx, fy, L, 1); else g.fillRect(fx, fy, 1, Math.max(1, L - 2));
+    }
+    for (let i = 0; i < 3; i++) { const fx = x0 + 8 + Math.floor(h1(i, s + 9) * (w - 16)), fy = y0 + 6 + Math.floor(h1(i, s + 10) * (h - 12)); g.fillStyle = '#cdb994'; g.fillRect(fx, fy, 2, 1); g.fillRect(fx + 1, fy + 1, 1, 1); if (i === 0) { g.fillStyle = '#d6c4a2'; g.fillRect(fx + 2, fy + 1, 2, 2); } }
+    const fold = x0 + Math.round(w * (0.55 + h1(s, 12) * 0.2));
+    g.fillStyle = 'rgba(150, 136, 110, 0.35)'; g.fillRect(fold, y0, 1, h); g.fillStyle = 'rgba(255, 252, 240, 0.4)'; g.fillRect(fold + 1, y0, 1, h);
+    g.fillStyle = 'rgba(120, 104, 80, 0.12)'; g.fillRect(x0 + w - 18 * u, y0 + h - 7 * u, 14 * u, 5 * u);
     g.restore();
-    g.lineJoin = 'round'; g.lineCap = 'round';
-    path(); g.strokeStyle = '#1f232b'; g.lineWidth = Math.max(1.5, u * 0.9); g.stroke();
-    g.save(); g.translate(0.6, -0.4); path(); g.strokeStyle = 'rgba(44, 50, 60, 0.3)'; g.lineWidth = 1; g.stroke(); g.restore();
+    // the inked border: a square pen walked round the outline, drifting a little
+    const pen = (bw: number, col: string) => {
+      g.fillStyle = col; let n = 0;
+      for (let i = 0; i < P.length - 1; i++) {
+        const [ax, ay] = P[i], [bx, by] = P[i + 1], L = Math.max(1, Math.round(Math.hypot(bx - ax, by - ay)));
+        for (let j = 0; j < L; j++, n++) {
+          const t = j / L, d = (Math.sin(n * 0.17 + s) + Math.sin(n * 0.43 + s * 2.1) * 0.5) * 0.6;
+          g.fillRect(Math.round(ax + (bx - ax) * t - bw / 2 + d), Math.round(ay + (by - ay) * t - bw / 2 + d * 0.7), bw, bw);
+        }
+      }
+    };
+    pen(Math.max(2, Math.round(u)), '#1f1b17');
   }
   /** where to put the sheet so the tail touches (x, y): above or below, shifted sideways, clear of the HUD */
   private place(x: number, y: number) {

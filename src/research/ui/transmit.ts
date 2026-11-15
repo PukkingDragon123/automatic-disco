@@ -14,7 +14,7 @@ export function transmission(o: { kind: 'new' | 'warn' | 'met' | 'missed' | 'dro
   installFrames();
   cur?.remove();
   const bad = o.kind === 'warn' || o.kind === 'missed' || o.kind === 'recall';
-  const box = el('div', 'tx', ui()); cur = box;
+  const box = el('div', 'tx enamel', ui()); cur = box;
   const inn = el('div', 'tx-in', box);
   el('div', 'tx-k' + (bad ? ' bad' : ''), inn, `<i></i>${o.kind === 'new' ? 'INCOMING DIRECTIVE' : o.kind === 'warn' ? 'DIRECTIVE LAPSING' : o.kind === 'met' ? 'DIRECTIVE RECEIVED' : o.kind === 'missed' ? 'DIRECTIVE MISSED · STRIKE' : o.kind === 'drop' ? 'SUPPLY DROP' : 'MISSION RECALLED'} · ${SHIP}`);
   const title = o.q ? o.q.title : o.kind === 'drop' ? 'CAPSULE INBOUND' : 'RETURN ORDER';
@@ -29,7 +29,7 @@ export function transmission(o: { kind: 'new' | 'warn' | 'met' | 'missed' | 'dro
     if (!alive) return;
     t += 1 / 60; k = Math.min(text.length, k + 1.4);
     body.textContent = text.slice(0, Math.floor(k));
-    try { waveDraw(cv, t, k < text.length ? 1 : 0.35, bad ? '#a8332a' : '#2b2622'); } catch { /* layout */ }
+    try { waveDraw(cv, t, k < text.length ? 1 : 0.35, bad ? '#a8332a' : '#2a4a78'); } catch { /* layout */ }
     requestAnimationFrame(step);
   };
   requestAnimationFrame(step);

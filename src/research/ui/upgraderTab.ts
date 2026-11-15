@@ -29,10 +29,10 @@ export class UpgraderPage implements TabPage {
     this.el = el('div', '');
     const stage = el('div', 'pp-stage', this.el); this.vig.bind(stage);
     this.calls = new Callouts(this.el, this.vig);
-    this.left = el('div', 'pp-card pp-col', this.el); this.left.style.cssText = 'left:28px;top:104px;width:360px;height:calc(100vh - 140px)';
-    this.right = el('div', 'pp-card pp-col', this.el); this.right.style.cssText = 'right:28px;top:104px;width:450px;max-height:calc(100vh - 140px)';
-    for (const tg of TARGETS) { const t = el('div', 'pp-call', this.el); this.slotTags.set(tg, t); this.calls.add(t, this.vig.anchors[ANCHOR[tg]], tg === 'arm' ? 130 : tg === 'pod' ? 60 : tg === 'tool' ? 120 : 120, tg === 'pod' ? -80 : tg === 'drone' ? 60 : 0); }
-    this.gantryTag = el('div', 'pp-call', this.el); this.calls.add(this.gantryTag, this.vig.anchors.gantry, -40, -90);
+    this.left = el('div', 'pp-metal pp-col', this.el); this.left.style.cssText = 'left:28px;top:104px;width:360px;height:calc(100vh - 140px)';
+    this.right = el('div', 'pp-metal pp-col', this.el); this.right.style.cssText = 'right:28px;top:104px;width:450px;max-height:calc(100vh - 140px)';
+    for (const tg of TARGETS) { const t = el('div', 'pp-call', this.el); this.slotTags.set(tg, t); this.calls.add(t, this.vig.anchors[ANCHOR[tg]], tg === 'arm' ? 150 : tg === 'pod' ? 40 : tg === 'tool' ? -40 : 90, tg === 'pod' ? -110 : tg === 'drone' ? 110 : tg === 'tool' ? 120 : -10); }
+    this.gantryTag = el('div', 'pp-call', this.el); this.calls.add(this.gantryTag, this.vig.anchors.gantry, -60, -70);
     this.vig.margins = [400, 480];
     this.sel = BLUEPRINTS.find((b) => this.known(b.id) && this.U.count(b.id) < b.max)?.id ?? BLUEPRINTS.find((b) => this.known(b.id))?.id ?? null;
     this.off = U.on('install', (d) => { this.doneT = this.t; this.doneId = d.id; csfx('thud', 1, 0.8); this.sig = ''; });

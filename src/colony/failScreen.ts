@@ -4,8 +4,8 @@
 import * as THREE from 'three';
 import type { Colony } from './colony';
 import { sfx } from '../audio/audio';
-import { skin, Pix, R, fontText } from '../ui/desk/pxPanel';
-import { paperCard, stroke } from '../ui/desk/ink';
+import { skin, platePix, Pix, R, fontText } from '../ui/desk/pxPanel';
+import { stroke } from '../ui/desk/ink';
 
 export type FailReason = 'collapse-power' | 'collapse-oxygen' | 'collapse-food' | 'collapse-workers' | 'pod-destroyed' | 'recalled';
 const TEXT: Record<FailReason, [string, string]> = {
@@ -44,7 +44,7 @@ export class FailScreen {
         <canvas class="cf-stamp" width="150" height="48"></canvas>
         <div class="cf-btns"><button class="cf-btn retry"><i>></i> RETRY FROM LAST SAVE <small>${sv}</small></button><button class="cf-btn ship"><i>*</i> RETURN TO THE SHIP</button></div>
       </div>`;
-    skin(el.querySelector('.cf-card') as HTMLElement, (w, h) => paperCard(w, h, 31, { tape: true, pin: true }), 'failcard');
+    skin(el.querySelector('.cf-card') as HTMLElement, (w, h) => platePix(w, h, { mat: 'enamel', seed: 31, rivets: true, hazard: true, wear: 1.6 }), 'failcard');
     // the rubber stamp: a red box and the words, ink starved in places
     { const cv = el.querySelector('.cf-stamp') as HTMLCanvasElement, p = new Pix(150, 48), red = R.stampRed[3];
       stroke(p, 3, 3, 146, 4, 1, { col: red, w: 2, over: 0 }); stroke(p, 146, 4, 145, 44, 2, { col: red, w: 2, over: 0 }); stroke(p, 145, 44, 3, 43, 3, { col: red, w: 2, over: 0 }); stroke(p, 3, 43, 3, 3, 4, { col: red, w: 2, over: 0 });

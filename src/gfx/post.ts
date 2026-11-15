@@ -5,14 +5,71 @@
 // in drifting patches, light shafts through the canopy (the view ray marched through the sun's shadow map), wet
 // ground after rain (darker, richer, puddles reflecting the sky with raindrop rings), dew glints on leaves in the
 // morning, heat shimmer over hot ground. Water marks itself in the G-buffer with flag bit 16.
+//
+// For an interior (scene.userData.interior, an InteriorLight from lights.ts) it shades the soft ceiling panels on
+// area-lit materials (gbuf.areaLit), lays glowing haze under the panels and round the practicals (subtle volumetric
+// beams), deepens the contact shadows, and grades like a film: eye adaptation that ignores the void outside, a soft
+// shoulder that keeps the lamps' colour, an S-curve with cool shadows and warm light (LIMBOPHOBIA's look).
+// Contact shadows (SSAO) everywhere take the surface's own colour as they deepen (multi-bounce), not grey.
+//
+// MOTION BLUR (MotionBlur, exported for any pipeline): every pixel's motion from the depth buffer reprojected with
+// the last frame's view-projection (camera blur), plus the real motion of fast objects (thrown things, drones,
+// creatures, debris: any mesh, skinned mesh or small instanced mesh that moved this frame gets its own velocity in a
+// side pass), tile-max / neighbour-max velocity and a depth-aware reconstruction gather (McGuire 2012, with half
+// the taps along the pixel's own motion), in linear HDR before the tone map so lamps streak. Strength: settings
+// motionBlur (motionBlurK()); off on low quality and under prefers-reduced-motion. On for scenes lit by a Sun or
+// an InteriorLight; any other scene opts in with scene.userData.motionBlur = true (or a 0..1 strength) and a mesh
+// opts out with mesh.userData.noBlur = true. The DOM UI is never touched.
 import * as THREE from 'three';
-import type { Sun } from './lights';
-import { settings, qualityProfile } from '../settings';
+import type { Sun, InteriorLight } from './lights';
+import { settings, qualityProfile, motionBlurK } from '../settings';
 import { RAMPS } from '../art/palette';
+import { AREA_U, AREA_MAX } from './gbuf';
 
 const VERT = /* glsl */`
 varying vec2 vUv;
 void main() { vUv = position.xy * 0.5 + 0.5; gl_Position = vec4(position.xy, 0.0, 1.0); }
+`;
+
+/** the end of every frame: tone map, grade, vignette, fade, sRGB, film curve (the composite's, or the motion blur's) */
+const FINISH = /* glsl */`
+uniform sampler2D tExpo;
+uniform float uTone, uSat, uVig, uFade, uContrast, uExpK;
+uniform vec3 uLift, uGamma, uGain, uFadeCol, uSplitLo, uSplitHi;
+vec3 srgb(vec3 c) { c = max(c, 0.0); return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
+vec3 finish(vec3 col, vec2 uv) {
+  if (uTone > 0.5 && uTone < 1.5) {
+    // filmic tone mapping (ACES fit) after the eye's adaptation to the scene's light
+    vec3 x = max(col, 0.0) * texture2D(tExpo, vec2(0.5)).r * 0.8;
+    col = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14);
+  } else if (uTone > 1.5) {
+    // interiors: exposure, then a soft shoulder on luminance only (lamps and screens roll off, every colour keeps
+    // its saturation); a channel past white burns toward a creamy white instead of clipping to a flat primary
+    vec3 c = max(col, 0.0) * texture2D(tExpo, vec2(0.5)).r * uExpK;
+    float L = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    float Lt = L < 0.6 ? L : 0.6 + (L - 0.6) / (1.0 + (L - 0.6) / 0.4);
+    c *= Lt / max(L, 1e-5);
+    float m = max(c.r, max(c.g, c.b));
+    if (m > 1.0) c = Lt + (c - Lt) * ((1.0 - Lt) / max(m - Lt, 1e-4));
+    col = c;
+  }
+  col = max(col, 0.0);
+  col = col * uGain + uLift * (1.0 - col);
+  col = pow(max(col, 0.0), 1.0 / uGamma);
+  float l = dot(col, vec3(0.299, 0.587, 0.114));
+  col = mix(vec3(l), col, uSat);
+  vec2 q = uv - 0.5;
+  col *= 1.0 - uVig * dot(q, q) * 1.6;
+  col = mix(col, uFadeCol, uFade);
+  vec3 s = srgb(col);
+  if (uContrast > 0.0) {
+    // film: a light S-curve in display space over cool shadows and warm light
+    vec3 sc = clamp(s, 0.0, 1.0);
+    s = mix(s, sc * sc * (3.0 - 2.0 * sc), uContrast);
+    s *= mix(uSplitLo, uSplitHi, smoothstep(0.04, 0.85, dot(s, vec3(0.299, 0.587, 0.114))));
+  }
+  return s;
+}
 `;
 
 const COMPOSITE = /* glsl */`
@@ -20,8 +77,17 @@ precision highp float;
 varying vec2 vUv;
 uniform sampler2D tColor, tNormal, tDepth, tBloom, tFx;
 uniform vec2 uRes;
-uniform float uNear, uFar, uBloom, uSat, uVig, uFade, uCrease, uTime, uFxOn, uDebug, uAO, uAORad, uProj;
-uniform vec3 uLift, uGamma, uGain, uOutline, uSelCol, uHoverCol, uEnemyCol, uFadeCol;
+uniform float uNear, uFar, uBloom, uCrease, uTime, uFxOn, uDebug, uAO, uAORad, uProj;
+uniform int uAOTaps;
+uniform vec3 uOutline, uSelCol, uHoverCol, uEnemyCol;
+// interiors: haze glowing under the ceiling panels (cones) and round the practicals
+#define GLOW_MAX 16
+uniform float uIntr, uBeam, uCeilY, uFloorY;
+uniform mat4 uViewProj;
+uniform int uGlowN;
+uniform vec4 uGlowP[GLOW_MAX];
+uniform vec4 uGlowC[GLOW_MAX];
+${FINISH}
 // atmosphere
 uniform highp sampler2DShadow tShadow;
 uniform float uEnv, uHaze, uMist, uMistY, uMistH, uPatch, uRays, uWet, uRain, uDew, uHeat, uShadowOn;
@@ -30,8 +96,7 @@ uniform mat4 uInvProj, uCamWorld, uShadowM;
 uniform vec3 uCamPos, uSunDir, uSunCol, uSkyCol, uHazeCol, uMistCol;
 uniform vec2 uWind;
 // climate and the sky
-uniform sampler2D tExpo;
-uniform float uTone, uSnow, uFrost, uIce, uDry, uAutumn, uDust, uAsh, uRed, uEclipse, uFlash, uCloudK, uAurora, uNight, uDay;
+uniform float uSnow, uFrost, uIce, uDry, uAutumn, uDust, uAsh, uRed, uEclipse, uFlash, uCloudK, uAurora, uNight, uDay;
 uniform vec3 uSkyZen, uSkyHor, uSunSky, uMoonSky, uSunDisk;
 uniform vec3 uSnw[4];
 uniform vec3 uAut[9];
@@ -105,7 +170,31 @@ void flags(float a, out float outl, out float sel, out float hov, out float en) 
   sel = step(1.5, a); a -= 2.0 * sel;
   outl = clamp(a, 0.0, 1.0);
 }
-vec3 srgb(vec3 c) { c = max(c, 0.0); return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
+/** the in-scatter of the interior's lights along the view ray (closed form: a 1 / d^2 scatter integrates to an
+ *  arctangent of the ray's closest approach), over the ray's stretch inside the room air */
+vec3 beams(vec3 rd, float dist, bool bg) {
+  float ta = 0.0, tb = bg ? 400.0 : dist;
+  if (rd.y < -1e-4) { ta = max(ta, (uCamPos.y - uCeilY) / -rd.y); tb = min(tb, (uCamPos.y - uFloorY) / -rd.y); }
+  else if (uCamPos.y > uCeilY) return vec3(0.0);
+  else if (rd.y > 1e-4) tb = min(tb, (uCeilY - uCamPos.y) / rd.y);
+  if (tb <= ta) return vec3(0.0);
+  vec3 acc = vec3(0.0);
+  for (int i = 0; i < GLOW_MAX; i++) {
+    if (i >= uGlowN) break;
+    vec4 lp = uGlowP[i];
+    vec3 w = lp.xyz - uCamPos;
+    float s0 = dot(w, rd);
+    float h = sqrt(max(dot(w, w) - s0 * s0, 0.0) + 0.03);
+    if (h > lp.w) continue;
+    float I = (atan((tb - s0) / h) - atan((ta - s0) / h)) / h;
+    float fall = 1.0 - h / lp.w; fall *= fall;
+    // ceiling panels throw their light down: the glow hangs as a soft cone toward the floor, not a ball
+    vec3 C = uCamPos + rd * clamp(s0, ta, tb);
+    float lobe = uGlowC[i].w > 0.5 ? smoothstep(-0.1, 0.85, (lp.y - C.y) / h) : 1.0;
+    acc += uGlowC[i].rgb * (I * fall * lobe);
+  }
+  return acc * uBeam;
+}
 
 /** the sky where nothing was drawn: Rayleigh blue overhead, a warm Mie aureole round the sun, the sun (or the
  *  eclipse's black disc and corona), stars and two moons at night (the second red in the bloodtide), auroras, and the
@@ -298,7 +387,26 @@ void main() {
   // ---- ambient occlusion (screen space, against the local tangent plane so open ground stays clean):
   // contact shadow under canopies and creatures, between stones, at the foot of every wall. Bayer-rotated taps.
   float occ = 0.0;
-  if (!bgC && uAO > 0.0) {
+  if (!bgC && uAO > 0.0 && uIntr > 0.5) {
+    // interiors: a normal-oriented hemisphere of world-space probes, each tested against the depth it lands on, so
+    // every corner, skirting and the floor under every table and stool darkens (LIMBOPHOBIA's contact shadows)
+    vec3 N = normalize(N0);
+    vec3 T = normalize(cross(N, abs(N.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0))), B = cross(N, T);
+    vec2 fc = mod(floor(gl_FragCoord.xy), 4.0);
+    float ang = mod(fc.x * 4.0 + fc.y * 7.0 + fc.x * fc.y * 3.0, 16.0) / 16.0 * 6.2831853, ca = cos(ang), sa = sin(ang);
+    for (int i = 0; i < 12; i++) {
+      if (i >= uAOTaps) break;
+      float fi = (float(i) + 0.5) / float(uAOTaps), r = sqrt(fi), ph = float(i) * 2.399963;
+      vec2 k = vec2(cos(ph), sin(ph)) * r;
+      k = vec2(k.x * ca - k.y * sa, k.x * sa + k.y * ca);
+      vec3 S = P + (T * k.x + B * k.y + N * (sqrt(max(0.0, 1.0 - r * r)) + 0.12)) * (uAORad * mix(0.25, 1.0, fi * fi));
+      vec4 cs = uViewProj * vec4(S, 1.0);
+      vec2 su = cs.xy / cs.w * 0.5 + 0.5;
+      float diff = cs.w - linZ(texture2D(tDepth, su).r);
+      occ += step(0.02, diff) * (1.0 - smoothstep(uAORad * 0.8, uAORad * 2.0, diff));
+    }
+    occ = min(occ / float(max(uAOTaps, 1)) * 1.5, 0.85 / max(uAO, 0.01));
+  } else if (!bgC && uAO > 0.0) {
     float zL = 1.0 / wL, zR2 = 1.0 / wR, zD = 1.0 / wD, zU2 = 1.0 / wU;
     float gx = abs(zR2 - zC) < abs(zC - zL) ? zR2 - zC : zC - zL;
     float gy = abs(zU2 - zC) < abs(zC - zD) ? zU2 - zC : zC - zD;
@@ -306,6 +414,7 @@ void main() {
     vec2 fc = mod(floor(gl_FragCoord.xy), 4.0);
     float bay = mod(fc.x * 4.0 + fc.y * 7.0 + fc.x * fc.y * 3.0, 16.0) / 16.0;
     for (int i = 0; i < 12; i++) {
+      if (i >= uAOTaps) break;
       float fi = float(i);
       float a = fi * 2.39996 + bay * 6.2831;
       float rr = rp * (0.2 + 0.8 * fract(fi * 0.618 + bay * 0.37));
@@ -314,10 +423,17 @@ void main() {
       float d = (zC + gx * op.x + gy * op.y) - zs;
       occ += smoothstep(0.03 + zC * 0.0015, 0.12 + zC * 0.004, d) * (1.0 - smoothstep(uAORad, uAORad * 3.0, d));
     }
-    occ /= 12.0;
+    occ /= float(max(uAOTaps, 1));
   }
-  // contact shadows lose the warm key first: a faintly cool occlusion
-  col *= 1.0 - uAO * occ * fade * (1.0 - step(31.5, nC.a) * 0.6) * vec3(1.0, 0.96, 0.88);
+  // contact shadows: deeper in the corners, the surface's own colour bouncing in the occlusion (multi-bounce, after
+  // Jimenez's GTAO fit, with the lit colour's chroma standing in for the albedo), losing the warm key first
+  if (occ > 0.0) {
+    float vis = clamp(1.0 - uAO * occ * fade * (1.0 - step(31.5, nC.a) * 0.6), 0.0, 1.0);
+    vec3 alb = clamp(col / max(max(col.r, max(col.g, col.b)), 1e-4), 0.0, 1.0) * 0.7;
+    vec3 ma = 2.0404 * alb - 0.3324, mb = -4.7951 * alb + 0.6417, mc = 2.7552 * alb + 0.6903;
+    vec3 mvis = max(vec3(vis), ((vis * ma + mb) * vis + mc) * vis);
+    col *= mvis * mix(vec3(1.0, 0.96, 0.88), vec3(1.0), vis);
+  }
   float edge = max(sil, cr) * fade;
 
   // ---- selection / hover rims: outside pixels within 2 px of a nearer flagged pixel
@@ -339,47 +455,57 @@ void main() {
   if (uDebug > 0.5) {
     if (uDebug < 1.5) { gl_FragColor = vec4(nC.rgb, 1.0); return; }
     if (uDebug < 2.5) { gl_FragColor = vec4(oC, sC, fract(nC.a / 32.0), 1.0); return; }
-    gl_FragColor = vec4(vec3(1.0 - edge), 1.0); return;
+    if (uDebug < 3.5) { gl_FragColor = vec4(vec3(1.0 - edge), 1.0); return; }
+    // 4: contact shadows
+    gl_FragColor = vec4(vec3(clamp(1.0 - uAO * occ * fade, 0.0, 1.0)), 1.0); return;
   }
   vec3 lineCol = uOutline;
   if (sC > 0.5) lineCol = mix(uOutline, uSelCol * 0.55, 0.7);
   col = mix(col, lineCol, edge);
   if (env) col = atmosphere(col, P, rd, dist, bgC);
+  if (uIntr > 0.5 && uGlowN > 0) col += beams(rd, dist, bgC);
   // transparent fx layer (particles, fields) composited over the outlined opaque image
   if (uFxOn > 0.5) { vec4 fx = texture2D(tFx, vUv); col = col * (1.0 - fx.a) + fx.rgb; }
   col = mix(col, rim, rimA);
   // bloom
   col += texture2D(tBloom, vUv).rgb * uBloom;
-  // filmic tone mapping (ACES fit) after the eye's adaptation to the scene's light
-  if (env && uTone > 0.5) {
-    vec3 x = max(col, 0.0) * texture2D(tExpo, vec2(0.5)).r * 0.8;
-    col = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14);
-  }
-  // grade
-  col = max(col, 0.0);
-  col = col * uGain + uLift * (1.0 - col);
-  col = pow(max(col, 0.0), 1.0 / uGamma);
-  float l = dot(col, vec3(0.299, 0.587, 0.114));
-  col = mix(vec3(l), col, uSat);
-  vec2 q = vUv - 0.5;
-  col *= 1.0 - uVig * dot(q, q) * 1.6;
-  col = mix(col, uFadeCol, uFade);
-  gl_FragColor = vec4(srgb(col), 1.0);
+#ifdef HDR_OUT
+  // (the motion blur gathers this linear image, then finishes it)
+  gl_FragColor = vec4(max(col, 0.0), 1.0);
+#else
+  gl_FragColor = vec4(finish(col, vUv), 1.0);
+#endif
 }
 `;
 
 const EXPO = /* glsl */`
 precision highp float;
 varying vec2 vUv;
-uniform sampler2D tColor, tPrev; uniform float uRate, uKey;
+uniform sampler2D tColor, tPrev, tDepth; uniform float uRate, uKey, uMode;
 void main() {
-  // the eye adapts to the log-average light of the middle of the view (the console covers the edges)
-  float s = 0.0;
-  for (int y = 0; y < 8; y++) for (int x = 0; x < 12; x++) {
-    vec2 uv = 0.15 + (vec2(float(x), float(y)) + 0.5) / vec2(12.0, 8.0) * 0.7;
-    s += log(max(dot(texture2D(tColor, uv).rgb, vec3(0.2126, 0.7152, 0.0722)), 1e-4));
+  float target;
+  if (uMode < 0.5) {
+    // the eye adapts to the log-average light of the middle of the view (the console covers the edges)
+    float s = 0.0;
+    for (int y = 0; y < 8; y++) for (int x = 0; x < 12; x++) {
+      vec2 uv = 0.15 + (vec2(float(x), float(y)) + 0.5) / vec2(12.0, 8.0) * 0.7;
+      s += log(max(dot(texture2D(tColor, uv).rgb, vec3(0.2126, 0.7152, 0.0722)), 1e-4));
+    }
+    target = clamp(uKey / max(exp(s / 96.0), 1e-4), 0.5, 1.15);
+  } else {
+    // interiors: centre weighted, the void outside the hull is nothing the eye adapts to; a narrow band, so a dim
+    // room opens up and a blazing one settles, never murky, never blown
+    float s = 0.0, w = 0.0;
+    for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) {
+      vec2 uv = 0.5 + ((vec2(float(x), float(y)) + 0.5) / 8.0 - 0.5) * 0.92;
+      if (texture2D(tDepth, uv).r >= 0.99999) continue;
+      vec2 d = uv - 0.5;
+      float cw = exp(-dot(d, d) * 7.0);
+      s += log(min(dot(texture2D(tColor, uv).rgb, vec3(0.2126, 0.7152, 0.0722)), 4.0) + 0.03) * cw; w += cw;
+    }
+    float avg = w > 0.01 ? exp(s / w) - 0.03 : uKey;
+    target = clamp(pow(uKey / max(avg, 1e-3), 0.5), 0.82, 1.45);
   }
-  float target = clamp(uKey / max(exp(s / 96.0), 1e-4), 0.5, 1.15);
   float prev = texture2D(tPrev, vec2(0.5)).r;
   gl_FragColor = vec4(prev <= 0.0 ? target : mix(prev, target, uRate), 0.0, 0.0, 1.0);
 }`;
@@ -431,6 +557,347 @@ void main() {
 }
 `;
 
+// ================================================================ motion blur
+/** what every motion pass knows: the pixel's world point from depth, last frame's view-projection, the object
+ *  velocity layer; velAt() gives the blur's half extent in pixels (clamped) */
+const MB_COMMON = /* glsl */`
+precision highp float;
+varying vec2 vUv;
+uniform sampler2D tDepth, tVel;
+uniform vec2 uRes;
+uniform float uNear, uFar, uMBK, uMBMax, uObjOn;
+uniform mat4 uInvProj, uCamWorld, uPrevVP;
+float linZ(float d) { float z = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear)); }
+vec2 velAt(vec2 uv, float d) {
+  vec4 pc;
+  if (d >= 0.99999) {
+    // the sky: a direction, so only the camera's turn moves it
+    vec4 v = uInvProj * vec4(uv * 2.0 - 1.0, 1.0, 1.0);
+    pc = uPrevVP * vec4(mat3(uCamWorld) * normalize(v.xyz / v.w), 0.0);
+  } else {
+    vec4 v = uInvProj * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+    pc = uPrevVP * vec4((uCamWorld * vec4(v.xyz / v.w, 1.0)).xyz, 1.0);
+  }
+  vec2 vel = pc.w > 1e-4 ? uv - (pc.xy / pc.w * 0.5 + 0.5) : vec2(0.0);
+  if (uObjOn > 0.5) { vec4 o = texture2D(tVel, uv); if (o.a > 0.5) vel = o.xy; }
+  vel *= uRes * uMBK;
+  float l = length(vel);
+  return l > uMBMax ? vel * (uMBMax / l) : vel;
+}
+`;
+/** the strongest motion in each tile (6 x 6 probes per tile) */
+const MB_TILE = MB_COMMON + /* glsl */`
+uniform float uTileN;
+void main() {
+  vec2 base = floor(gl_FragCoord.xy) * uTileN;
+  vec2 best = vec2(0.0); float bl = 0.0;
+  for (int y = 0; y < 6; y++) for (int x = 0; x < 6; x++) {
+    vec2 uv = min((base + (vec2(float(x), float(y)) + 0.5) * (uTileN / 6.0)) / uRes, vec2(0.9999));
+    vec2 v = velAt(uv, texture2D(tDepth, uv).r);
+    float l = dot(v, v);
+    if (l > bl) { bl = l; best = v; }
+  }
+  gl_FragColor = vec4(best, 0.0, 1.0);
+}
+`;
+/** ... and over its 3 x 3 neighbourhood, so a fast thing's streak reaches past its own tile */
+const MB_NEIGH = /* glsl */`
+precision highp float;
+uniform sampler2D tTile;
+void main() {
+  ivec2 c = ivec2(gl_FragCoord.xy), mx = textureSize(tTile, 0) - 1;
+  vec2 best = vec2(0.0); float bl = 0.0;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    vec2 v = texelFetch(tTile, clamp(c + ivec2(x, y), ivec2(0), mx), 0).xy;
+    float l = dot(v, v);
+    if (l > bl) { bl = l; best = v; }
+  }
+  gl_FragColor = vec4(best, 0.0, 1.0);
+}
+`;
+/** the reconstruction gather (McGuire et al. 2012): each tap counts if it is in front and its own blur reaches
+ *  here, or behind and this pixel's blur reaches it, or both are blurred; half the taps follow this pixel's own
+ *  motion (Jimenez 2014) so a turning view blurs along each pixel's own arc. Foreground edges keep their shape. */
+const mbGather = (finish: string) => MB_COMMON + finish + /* glsl */`
+uniform sampler2D tHdr, tNeigh;
+uniform float uTileN, uMBDebug;
+uniform int uTaps;
+float cone(float d, float l) { return clamp(1.0 - d / l, 0.0, 1.0); }
+float cyl(float d, float l) { return 1.0 - smoothstep(0.95 * l, 1.05 * l, d); }
+float softZ(float za, float zb, float s) { return clamp(1.0 - (za - zb) / s, 0.0, 1.0); }
+void main() {
+  vec2 px = 1.0 / uRes;
+  vec3 c0 = texture2D(tHdr, vUv).rgb;
+  vec2 vn = texelFetch(tNeigh, ivec2(gl_FragCoord.xy / uTileN), 0).xy;
+  float ln = length(vn);
+  if (uMBDebug > 0.5) { float dc = texture2D(tDepth, vUv).r; vec2 v = velAt(vUv, dc); gl_FragColor = vec4(0.5 + v / max(uMBMax, 1.0) * 0.5, texture2D(tVel, vUv).a, 1.0); return; }
+  if (ln < 0.6) { gl_FragColor = vec4(FINISH_FN(c0, vUv), 1.0); return; }
+  float dc = texture2D(tDepth, vUv).r, zc = linZ(dc);
+  vec2 vc = velAt(vUv, dc);
+  float lc = max(length(vc), 0.5);
+  float S = 0.05 + zc * 0.012;
+  float wsum = 1.0 / lc;
+  vec3 sum = c0 * wsum;
+  float j = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) - 0.5;
+  bool own = lc > 1.5;
+  for (int i = 0; i < 16; i++) {
+    if (i >= uTaps) break;
+    float t = mix(-1.0, 1.0, (float(i) + j + 1.0) / (float(uTaps) + 1.0));
+    vec2 off = ((own && (i % 2 == 1)) ? vc : vn) * t;
+    vec2 uv = clamp(vUv + off * px, px * 0.5, 1.0 - px * 0.5);
+    float dy = texture2D(tDepth, uv).r, zy = linZ(dy);
+    float dist = length(off), ly = length(velAt(uv, dy));
+    float a = softZ(zy, zc, S) * cone(dist, ly) + softZ(zc, zy, S) * cone(dist, lc) + cyl(dist, ly) * cyl(dist, lc) * 2.0;
+    sum += texture2D(tHdr, uv).rgb * a; wsum += a;
+  }
+  gl_FragColor = vec4(FINISH_FN(sum / wsum, vUv), 1.0);
+}
+`;
+/** a moving object's own velocity (its last frame's world matrix, and last frame's instance matrices for instanced
+ *  meshes), kept only where it is the visible surface (tested against the scene's depth) */
+const MB_VEL_VERT = /* glsl */`
+uniform mat4 uPrevVP, uPrevModel;
+uniform float uPrevInst;
+#ifdef USE_INSTANCING
+attribute mat4 aPrevInst;
+#endif
+#include <common>
+#include <skinning_pars_vertex>
+varying vec4 vCur, vPrev;
+void main() {
+  #include <begin_vertex>
+  #include <skinbase_vertex>
+  #include <skinning_vertex>
+  vec4 lp = vec4(transformed, 1.0);
+#ifdef USE_INSTANCING
+  vec4 wc = modelMatrix * (instanceMatrix * lp);
+  vec4 wp = uPrevModel * ((uPrevInst > 0.5 ? aPrevInst : instanceMatrix) * lp);
+#else
+  vec4 wc = modelMatrix * lp, wp = uPrevModel * lp;
+#endif
+  vCur = projectionMatrix * (viewMatrix * wc);
+  vPrev = uPrevVP * wp;
+  gl_Position = vCur;
+}
+`;
+const MB_VEL_FRAG = /* glsl */`
+precision highp float;
+uniform sampler2D tDepth;
+uniform float uNear, uFar;
+varying vec4 vCur, vPrev;
+float linZ(float d) { float z = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear)); }
+void main() {
+  float zs = linZ(texelFetch(tDepth, ivec2(gl_FragCoord.xy), 0).r), zf = linZ(gl_FragCoord.z);
+  if (zf > zs * 1.02 + 0.04) discard;
+  gl_FragColor = vec4((vCur.xy / vCur.w - vPrev.xy / max(vPrev.w, 1e-4)) * 0.5, 0.0, 1.0);
+}
+`;
+
+interface Track {
+  cur: Float32Array; prev: Float32Array; f: number;
+  /** instanced: the instance matrices this frame and last, the attribute's version */
+  ic?: Float32Array; ip?: Float32Array; ver?: number; instMoved?: boolean;
+  proxy?: THREE.Mesh; geo?: THREE.BufferGeometry; prevAttr?: THREE.InstancedBufferAttribute;
+}
+const TILE = 18;
+const _m4 = new THREE.Matrix4(), _v3 = new THREE.Vector3(), _v3b = new THREE.Vector3(), _q = new THREE.Quaternion();
+
+/**
+ * Camera + object motion blur as one reusable pass. Any pipeline: after the scene's main pass (depth written,
+ * camera matrices current) call prepare(); when it returns true, run apply(hdrColour, target). Post wires it with
+ * its own finish (tone map + grade), so the blur costs no extra full-screen pass; standalone it writes linear HDR.
+ * Exposure: strength x 30 ms (the high default is about a 1/45 s shutter at any frame rate), the blur radius capped
+ * at about 3.5% of the screen height. The first frame of a camera, and a cut (a jump of 30 m or 30 degrees), never blur.
+ */
+export class MotionBlur {
+  readonly U: Record<string, THREE.IUniform>;
+  private vel: THREE.WebGLRenderTarget; private tile: THREE.WebGLRenderTarget; private neigh: THREE.WebGLRenderTarget;
+  private mTile: THREE.ShaderMaterial; private mNeigh: THREE.ShaderMaterial; private mGather: THREE.ShaderMaterial;
+  private quad: THREE.Mesh; private ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1); private qs = new THREE.Scene();
+  private velScene = new THREE.Scene();
+  private tracks = new WeakMap<THREE.Object3D, Track>();
+  private movers: { o: THREE.Mesh; tr: Track }[] = [];
+  private frame = 0; private cam: THREE.Camera | null = null; private camFrame = -9;
+  private prevVP = new THREE.Matrix4(); private prevPos = new THREE.Vector3(); private prevFw = new THREE.Vector3(); private prevFov = 0;
+  private lastT = 0; private lastNow = 0;
+  w = 1; h = 1;
+  /** objects that moved this frame got their own velocity (diagnostics) */
+  moving = 0;
+  constructor(private renderer: THREE.WebGLRenderer, o: { finish?: string; uniforms?: Record<string, THREE.IUniform> } = {}) {
+    const opt = { type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false };
+    this.vel = new THREE.WebGLRenderTarget(4, 4, { ...opt, depthBuffer: true });
+    this.tile = new THREE.WebGLRenderTarget(1, 1, opt); this.neigh = new THREE.WebGLRenderTarget(1, 1, opt);
+    this.U = {
+      tDepth: { value: null }, tVel: { value: this.vel.texture }, tHdr: { value: null }, tTile: { value: this.tile.texture }, tNeigh: { value: this.neigh.texture },
+      uRes: { value: new THREE.Vector2(4, 4) }, uNear: { value: 0.5 }, uFar: { value: 1000 }, uMBK: { value: 0 }, uMBMax: { value: 24 }, uObjOn: { value: 0 },
+      uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uPrevVP: { value: new THREE.Matrix4() },
+      uTileN: { value: TILE }, uTaps: { value: 12 }, uMBDebug: { value: Number(new URLSearchParams(location.search).get('mbdbg') ?? 0) },
+    };
+    const V = 'varying vec2 vUv;\nvoid main() { vUv = position.xy * 0.5 + 0.5; gl_Position = vec4(position.xy, 0.0, 1.0); }';
+    const mk = (fs: string, u: Record<string, THREE.IUniform>) => new THREE.ShaderMaterial({ vertexShader: V, fragmentShader: fs, uniforms: u, depthTest: false, depthWrite: false });
+    this.mTile = mk(MB_TILE, this.U); this.mNeigh = mk(MB_NEIGH, this.U);
+    const fin = o.finish ?? 'vec3 finishLinear(vec3 c, vec2 uv) { return c; }\n';
+    this.mGather = mk(mbGather(fin).replace(/FINISH_FN/g, o.finish ? 'finish' : 'finishLinear'), { ...(o.uniforms ?? {}), ...this.U });
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
+    this.quad = new THREE.Mesh(g); this.quad.frustumCulled = false; this.qs.add(this.quad);
+    this.velScene.matrixWorldAutoUpdate = false;
+  }
+  setSize(w: number, h: number) {
+    this.w = w; this.h = h; this.vel.setSize(w, h);
+    const tw = Math.ceil(w / TILE), th = Math.ceil(h / TILE);
+    this.tile.setSize(tw, th); this.neigh.setSize(tw, th);
+    (this.U.uRes.value as THREE.Vector2).set(w, h);
+  }
+  dispose() { this.vel.dispose(); this.tile.dispose(); this.neigh.dispose(); this.mTile.dispose(); this.mNeigh.dispose(); this.mGather.dispose(); }
+
+  /**
+   * After the main pass: works out this frame's camera motion and which objects moved, renders their velocity.
+   * k: strength 0..1 (0 = off; the camera history is still kept so switching on never flashes). Returns whether
+   * apply() should run this frame (false: nothing moves enough to see).
+   */
+  prepare(scene: THREE.Scene, camera: THREE.PerspectiveCamera, depth: THREE.Texture, time: number, k: number, o: { taps?: number; objects?: boolean } = {}): boolean {
+    const F = ++this.frame, U = this.U;
+    const now = performance.now();
+    let dt = time - this.lastT;
+    if (!(dt > 1e-4) || dt > 0.25) dt = (now - this.lastNow) / 1000;
+    dt = Math.min(1 / 15, Math.max(1 / 240, dt || 1 / 60));
+    this.lastT = time; this.lastNow = now;
+    const VP = _m4.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    const pos = _v3.setFromMatrixPosition(camera.matrixWorld), fw = _v3b.set(0, 0, -1).transformDirection(camera.matrixWorld);
+    // a cut (another camera, a skipped frame, a jump) starts the history over
+    const cont = this.cam === camera && this.camFrame === F - 1 && pos.distanceTo(this.prevPos) < 30 && fw.dot(this.prevFw) > Math.cos(0.52) && Math.abs(camera.fov - this.prevFov) < 8;
+    (U.uPrevVP.value as THREE.Matrix4).copy(cont ? this.prevVP : VP);
+    (U.uInvProj.value as THREE.Matrix4).copy(camera.projectionMatrixInverse); (U.uCamWorld.value as THREE.Matrix4).copy(camera.matrixWorld);
+    U.uNear.value = camera.near; U.uFar.value = camera.far; U.tDepth.value = depth;
+    // blur radius per unit of screen travel per frame: half the travel over the exposure
+    const expo = k * 0.03, mbk = (expo / dt) * 0.5, pxPerUv = Math.max(this.w, this.h);
+    U.uMBK.value = mbk; U.uMBMax.value = this.h * 0.035 * (0.55 + 0.6 * k); U.uTaps.value = o.taps ?? 12;
+    // how far does the view move (probes at 4 m and 40 m in the middle and the corners)?
+    let camPx = 0;
+    if (cont && k > 0) {
+      const ip = camera.projectionMatrixInverse, cw = camera.matrixWorld, pv = this.prevVP;
+      for (const [x, y] of [[0, 0], [-0.9, -0.9], [0.9, -0.9], [-0.9, 0.9], [0.9, 0.9]]) for (const D of [4, 40]) {
+        _p4.set(x, y, 0.5, 1).applyMatrix4(ip); _p3.set(_p4.x / _p4.w, _p4.y / _p4.w, _p4.z / _p4.w).normalize().multiplyScalar(D).applyMatrix4(cw);
+        _p4.set(_p3.x, _p3.y, _p3.z, 1).applyMatrix4(pv);
+        if (_p4.w <= 1e-4) continue;
+        const du = (x * 0.5 + 0.5) - (_p4.x / _p4.w * 0.5 + 0.5), dv = (y * 0.5 + 0.5) - (_p4.y / _p4.w * 0.5 + 0.5);
+        camPx = Math.max(camPx, Math.hypot(du * this.w, dv * this.h) * mbk);
+      }
+    }
+    this.prevVP.copy(VP); this.prevPos.copy(pos); this.prevFw.copy(fw); this.prevFov = camera.fov; this.cam = camera; this.camFrame = F;
+    // objects: what moved since its last frame (any frame the camera was not cut)
+    this.moving = 0; U.uObjOn.value = 0;
+    if (o.objects !== false && k > 0) this.trackMovers(scene, camera, F, cont ? mbk : 0);
+    if (k <= 0 || !cont) return false;
+    if (this.movers.length) this.renderVelocity(camera);
+    if (camPx < 0.45 && !this.movers.length) return false;
+    // the tile and neighbourhood maxima
+    this.pass(this.mTile, this.tile); this.pass(this.mNeigh, this.neigh);
+    return true;
+  }
+  /** blur `color` (linear) into `target` (null = the screen), finishing it on the way when Post wired a finish */
+  apply(color: THREE.Texture, target: THREE.WebGLRenderTarget | null) { this.U.tHdr.value = color; this.pass(this.mGather, target); }
+
+  private pass(m: THREE.Material, t: THREE.WebGLRenderTarget | null) { this.quad.material = m; this.renderer.setRenderTarget(t); this.renderer.render(this.qs, this.ortho); }
+
+  private trackMovers(scene: THREE.Scene, camera: THREE.PerspectiveCamera, F: number, mbk: number) {
+    this.movers.length = 0;
+    const items = this.renderer.renderLists.get(scene, 0).opaque;
+    const vi = camera.matrixWorldInverse.elements, proj = this.h / (2 * Math.tan((camera.fov * Math.PI) / 360));
+    for (const it of items) {
+      const o = it.object as THREE.Mesh;
+      if (!o || !o.isMesh || o.userData.noBlur) continue;
+      let tr = this.tracks.get(o);
+      if (tr && tr.f === F) continue;
+      const e = o.matrixWorld.elements;
+      const im = (o as THREE.InstancedMesh).isInstancedMesh ? (o as THREE.InstancedMesh) : null;
+      if (im && im.count > 2048) continue;
+      if (!tr) { tr = { cur: new Float32Array(e), prev: new Float32Array(e), f: F }; this.tracks.set(o, tr); }
+      const fresh = tr.f === F - 1;
+      tr.prev.set(tr.cur); tr.cur.set(e); tr.f = F;
+      // instance matrices: copied only when their buffer changed
+      let instD = 0;
+      if (im) {
+        const arr = im.instanceMatrix.array as Float32Array, n = im.count * 16;
+        if (!tr.ic || tr.ic.length < arr.length) { tr.ic = new Float32Array(arr); tr.ip = new Float32Array(arr); tr.ver = im.instanceMatrix.version; tr.instMoved = false; continue; }
+        tr.instMoved = false;
+        if (im.instanceMatrix.version !== tr.ver) {
+          tr.ver = im.instanceMatrix.version;
+          const ic = tr.ic, ip = tr.ip!;
+          ip.set(ic); ic.set(arr);
+          for (let i = 0; i < n; i += 16) instD = Math.max(instD, Math.abs(ic[i + 12] - ip[i + 12]) + Math.abs(ic[i + 13] - ip[i + 13]) + Math.abs(ic[i + 14] - ip[i + 14])
+            + (Math.abs(ic[i] - ip[i]) + Math.abs(ic[i + 5] - ip[i + 5]) + Math.abs(ic[i + 10] - ip[i + 10]) + Math.abs(ic[i + 2] - ip[i + 2])) * 0.5);
+          tr.instMoved = instD > 1e-4;
+        }
+      }
+      if (!fresh || mbk <= 0) continue;
+      const p = tr.prev;
+      const dT = Math.hypot(e[12] - p[12], e[13] - p[13], e[14] - p[14]);
+      let dB = 0;
+      for (const c of [0, 4, 8]) dB = Math.max(dB, Math.hypot(e[c] - p[c], e[c + 1] - p[c + 1], e[c + 2] - p[c + 2]));
+      if (dT < 1e-6 && dB < 1e-6 && !tr.instMoved) continue;
+      const geo = o.geometry;
+      if (!geo.boundingSphere) geo.computeBoundingSphere();
+      const bs = geo.boundingSphere!, R = bs.radius + bs.center.length();
+      const disp = dT + dB * R + instD * (im ? Math.max(1, R) : 0);
+      if (disp > 25) continue; // a teleport, not a motion
+      const z = -(vi[2] * e[12] + vi[6] * e[13] + vi[10] * e[14] + vi[14]);
+      if (disp * proj / Math.max(z, camera.near) * mbk < 0.5) continue;
+      this.movers.push({ o, tr });
+    }
+  }
+
+  private proxy(o: THREE.Mesh, tr: Track): THREE.Mesh {
+    if (tr.proxy && tr.geo === o.geometry) return tr.proxy;
+    if (tr.proxy) (tr.proxy.material as THREE.Material).dispose();
+    const U = this.U;
+    const mat = new THREE.ShaderMaterial({ vertexShader: MB_VEL_VERT, fragmentShader: MB_VEL_FRAG,
+      uniforms: { tDepth: U.tDepth, uNear: U.uNear, uFar: U.uFar, uPrevVP: U.uPrevVP, uPrevModel: { value: new THREE.Matrix4() }, uPrevInst: { value: 0 } } });
+    let px: THREE.Mesh;
+    if ((o as THREE.SkinnedMesh).isSkinnedMesh) {
+      const sm = new THREE.SkinnedMesh(o.geometry, mat); sm.bindMode = THREE.DetachedBindMode; sm.skeleton = (o as THREE.SkinnedMesh).skeleton; px = sm;
+    } else if ((o as THREE.InstancedMesh).isInstancedMesh) {
+      const src = o.geometry, g = new THREE.BufferGeometry();
+      g.index = src.index; for (const k of Object.keys(src.attributes)) g.setAttribute(k, src.attributes[k]);
+      tr.prevAttr = new THREE.InstancedBufferAttribute(tr.ip!, 16); g.setAttribute('aPrevInst', tr.prevAttr);
+      g.drawRange = src.drawRange;
+      const im = new THREE.InstancedMesh(g, mat, 1); im.instanceMatrix = (o as THREE.InstancedMesh).instanceMatrix; px = im;
+    } else px = new THREE.Mesh(o.geometry, mat);
+    px.matrixAutoUpdate = false; px.frustumCulled = false;
+    tr.proxy = px; tr.geo = o.geometry;
+    return px;
+  }
+
+  private renderVelocity(camera: THREE.Camera) {
+    const r = this.renderer, vs = this.velScene;
+    vs.children.length = 0;
+    for (const { o, tr } of this.movers) {
+      const px = this.proxy(o, tr), mat = px.material as THREE.ShaderMaterial;
+      px.matrixWorld.copy(o.matrixWorld);
+      (mat.uniforms.uPrevModel.value as THREE.Matrix4).fromArray(tr.prev);
+      if ((o as THREE.SkinnedMesh).isSkinnedMesh) {
+        const s = o as THREE.SkinnedMesh, ps = px as THREE.SkinnedMesh;
+        ps.skeleton = s.skeleton; ps.bindMatrix.copy(s.bindMatrix); ps.bindMatrixInverse.copy(s.bindMatrixInverse);
+      }
+      if ((o as THREE.InstancedMesh).isInstancedMesh) {
+        const im = o as THREE.InstancedMesh, pi = px as THREE.InstancedMesh;
+        pi.instanceMatrix = im.instanceMatrix; pi.count = im.count;
+        if (tr.prevAttr && tr.prevAttr.array !== tr.ip) { tr.prevAttr.array = tr.ip!; }
+        if (tr.prevAttr) tr.prevAttr.needsUpdate = true;
+        mat.uniforms.uPrevInst.value = tr.instMoved ? 1 : 0;
+      }
+      vs.children.push(px); (px as unknown as { parent: THREE.Object3D }).parent = vs;
+    }
+    const ac = r.autoClear;
+    r.setRenderTarget(this.vel); r.setClearColor(0x000000, 0); r.clear(true, true, false);
+    r.autoClear = false; r.render(vs, camera); r.autoClear = ac;
+    vs.children.length = 0;
+    this.moving = this.movers.length; this.U.uObjOn.value = 1;
+  }
+}
+const _p4 = new THREE.Vector4(), _p3 = new THREE.Vector3();
+void _q;
+
 export interface Grade { lift: THREE.Color; gamma: THREE.Color; gain: THREE.Color; sat: number; vig: number; bloom: number }
 /**
  * A restrained, slightly filmic look: below-neutral saturation, a faint cool lift in the shadows against a
@@ -439,7 +906,7 @@ export interface Grade { lift: THREE.Color; gamma: THREE.Color; gain: THREE.Colo
 export function resetGrade(g: Grade) { const d = defaultGrade(); g.lift.copy(d.lift); g.gamma.copy(d.gamma); g.gain.copy(d.gain); g.sat = d.sat; g.vig = d.vig; g.bloom = d.bloom; }
 export const defaultGrade = (): Grade => ({ lift: new THREE.Color(0.0035, 0.004, 0.007), gamma: new THREE.Color(1.06, 1.06, 1.07), gain: new THREE.Color(1.12, 1.09, 1.03), sat: 1.14, vig: 0.34, bloom: 0.34 });
 
-const _t = new THREE.Color();
+const _t = new THREE.Color(), _a = new THREE.Vector3(), _n3 = new THREE.Matrix3();
 function rt(w: number, h: number, linear = true) {
   return new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, minFilter: linear ? THREE.LinearFilter : THREE.NearestFilter, magFilter: linear ? THREE.LinearFilter : THREE.NearestFilter, depthBuffer: false });
 }
@@ -456,6 +923,13 @@ export class Post {
   private mComp: THREE.ShaderMaterial; private mBright: THREE.ShaderMaterial; private mDown: THREE.ShaderMaterial; private mUp: THREE.ShaderMaterial;
   private black: THREE.WebGLRenderTarget;
   private expA!: THREE.WebGLRenderTarget; private expB!: THREE.WebGLRenderTarget; private mExpo!: THREE.ShaderMaterial; private lastT = 0;
+  private expoScene: THREE.Scene | null = null;
+  /** the composite's linear HDR image, when the motion blur gathers it */
+  private hdr: THREE.WebGLRenderTarget; private mCompHdr: THREE.ShaderMaterial;
+  /** camera + object motion blur (settings motionBlur) */
+  readonly blur: MotionBlur;
+  /** whether the last frame ran the motion blur (diagnostics) */
+  blurred = false;
   /** a cleared 1x1 depth texture with a compare function: what the shadow sampler reads when there are no shafts */
   private noShadow: THREE.WebGLRenderTarget;
   readonly grade: Grade = defaultGrade();
@@ -467,6 +941,7 @@ export class Post {
     this.main = new THREE.WebGLRenderTarget(4, 4, { count: 2, type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true, depthTexture: depth });
     this.fx = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true, depthTexture: depth });
     this.black = rt(1, 1);
+    this.hdr = rt(4, 4);
     const nd = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType);
     nd.compareFunction = THREE.LessEqualCompare; nd.minFilter = nd.magFilter = THREE.LinearFilter;
     this.noShadow = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: true, depthTexture: nd });
@@ -499,13 +974,19 @@ export class Post {
       uSnw: { value: [5, 3, 2, 1].map((i) => new THREE.Color().setHex(RAMPS.snow[RAMPS.snow.length - i])) },
       uAut: { value: [RAMPS.rust[2], RAMPS.rust[4], RAMPS.rust[5], RAMPS.ochre[2], RAMPS.ochre[4], RAMPS.ochre[5], RAMPS.straw[1], RAMPS.straw[3], RAMPS.straw[4]].map((c) => new THREE.Color().setHex(c)) },
       uIceC: { value: [RAMPS.slate[3], RAMPS.snow[1], RAMPS.snow[3]].map((c) => new THREE.Color().setHex(c)) },
+      // contact shadows by tier; interiors (beams, film curve)
+      uAOTaps: { value: 12 }, uViewProj: { value: new THREE.Matrix4() }, uIntr: { value: 0 }, uBeam: { value: 0 }, uCeilY: { value: 3.4 }, uFloorY: { value: 0 },
+      uGlowN: { value: 0 }, uGlowP: { value: Array.from({ length: 16 }, () => new THREE.Vector4()) }, uGlowC: { value: Array.from({ length: 16 }, () => new THREE.Vector4()) },
+      uContrast: { value: 0 }, uExpK: { value: 1 }, uSplitLo: { value: new THREE.Color(1, 1, 1) }, uSplitHi: { value: new THREE.Color(1, 1, 1) },
     };
     this.mComp = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: COMPOSITE, uniforms: this.U, depthTest: false, depthWrite: false });
+    this.mCompHdr = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: COMPOSITE, uniforms: this.U, defines: { HDR_OUT: '' }, depthTest: false, depthWrite: false });
+    this.blur = new MotionBlur(renderer, { finish: FINISH, uniforms: this.U });
     this.mBright = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: BRIGHT, uniforms: { tColor: this.U.tColor, tNormal: this.U.tNormal, tFx: this.U.tFx, uFxOn: this.U.uFxOn, uTexel: { value: new THREE.Vector2() }, uThresh: { value: 2.4 } }, depthTest: false, depthWrite: false });
     // the eye's adaptation: two 1x1 targets, ping-ponged
     this.expA = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
     this.expB = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
-    this.mExpo = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: EXPO, uniforms: { tColor: this.U.tColor, tPrev: { value: this.expA.texture }, uRate: { value: 0.05 }, uKey: { value: 0.13 } }, depthTest: false, depthWrite: false });
+    this.mExpo = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: EXPO, uniforms: { tColor: this.U.tColor, tDepth: this.U.tDepth, tPrev: { value: this.expA.texture }, uRate: { value: 0.05 }, uKey: { value: 0.13 }, uMode: { value: 0 } }, depthTest: false, depthWrite: false });
     this.U.tExpo.value = this.expA.texture;
     this.mDown = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: DOWN, uniforms: { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() } }, depthTest: false, depthWrite: false });
     this.mUp = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: UP, uniforms: { tSrc: { value: null }, tPrev: { value: null }, uTexel: { value: new THREE.Vector2() } }, depthTest: false, depthWrite: false });
@@ -516,6 +997,8 @@ export class Post {
     this.w = w; this.h = h;
     this.main.setSize(w, h);
     this.fx.setSize(w, h);
+    this.hdr.setSize(w, h);
+    this.blur.setSize(w, h);
     (this.U.uRes.value as THREE.Vector2).set(w, h);
     for (const r of [...this.bloomRts, ...this.upRts]) r.dispose();
     this.bloomRts = []; this.upRts = [];
@@ -529,14 +1012,23 @@ export class Post {
     this.renderer.render(this.scene, this.ortho);
   }
 
-  /** opaque scene -> main MRT; optional transparent scene -> fx layer; then composite to screen */
+  /** opaque scene -> main MRT; optional transparent scene -> fx layer; then composite to screen (through the motion
+   *  blur when anything moves) */
   render(scene: THREE.Scene, camera: THREE.PerspectiveCamera, fxScene?: THREE.Scene, time = 0) {
     const r = this.renderer;
     const ac = r.autoClear;
+    const qp = qualityProfile();
+    const ia = scene.userData.interior as InteriorLight | undefined;
+    // the camera as it will draw (the area lights go to the materials in view space)
+    if (camera.parent === null) camera.updateMatrixWorld(); else camera.updateWorldMatrix(true, false);
+    this.areaLights(ia, camera, qp.area);
     r.setRenderTarget(this.main);
     r.setClearColor(0x000000, 0);
     r.clear(true, true, true);
     r.render(scene, camera);
+    // the motion of the view and of what moved in it (reads this pass's draw list: before anything else renders)
+    const mbk = this.blurK(scene);
+    const blur = this.blur.prepare(scene, camera, this.U.tDepth.value as THREE.Texture, time, mbk, { taps: qp.blurTaps, objects: qp.blurObjects }) && qp.blurTaps > 0;
     if (fxScene && fxScene.children.length) {
       r.autoClear = false;
       r.setRenderTarget(this.fx);
@@ -548,7 +1040,6 @@ export class Post {
     } else this.U.uFxOn.value = 0;
     // bloom chain
     const B = this.bloomRts, Ups = this.upRts;
-    const qp = qualityProfile();
     if (B.length && this.grade.bloom > 0 && qp.bloom) {
       (this.mBright.uniforms.uTexel.value as THREE.Vector2).set(1 / this.w, 1 / this.h);
       this.pass(this.mBright, B[0]);
@@ -571,29 +1062,92 @@ export class Post {
     this.U.uBloom.value = qp.bloom ? gr.bloom : 0; this.U.uSat.value = gr.sat; this.U.uVig.value = gr.vig;
     this.U.uNear.value = camera.near; this.U.uFar.value = camera.far; this.U.uTime.value = time;
     this.U.uProj.value = this.h / (2 * Math.tan((camera.fov * Math.PI) / 360));
-    this.U.uAO.value = qp.ssao ? this.ao : 0;
+    // every scene: the camera for the depth -> world reconstruction
+    (this.U.uInvProj.value as THREE.Matrix4).copy(camera.projectionMatrixInverse);
+    (this.U.uCamWorld.value as THREE.Matrix4).copy(camera.matrixWorld);
+    (this.U.uCamPos.value as THREE.Vector3).setFromMatrixPosition(camera.matrixWorld);
+    (this.U.uViewProj.value as THREE.Matrix4).multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    this.U.uAOTaps.value = qp.ssaoTaps;
+    this.U.uAO.value = qp.ssao && qp.ssaoTaps > 0 ? (ia ? ia.ao : this.ao) : 0;
+    this.U.uAORad.value = ia ? ia.aoRadius : 1.15;
+    this.U.uTone.value = 0; this.U.uContrast.value = 0;
     this.atmosphere(scene, camera);
-    if (this.U.uEnv.value > 0.5 && this.U.uTone.value > 0.5) {
+    this.interior(ia, camera, qp.beams);
+    const tone = this.U.uTone.value as number;
+    if (tone > 0.5) {
+      // the eye's adaptation (snaps on a new scene, then eases)
+      if (this.expoScene !== scene) { this.expoScene = scene; r.setRenderTarget(this.expA); r.setClearColor(0x000000, 0); r.clear(true, false, false); }
       const dt = Math.min(0.25, Math.max(0, time - this.lastT)); this.lastT = time;
       this.mExpo.uniforms.tPrev.value = this.expA.texture;
       this.mExpo.uniforms.uRate.value = 1 - Math.exp(-dt * 1.4);
+      this.mExpo.uniforms.uMode.value = tone > 1.5 ? 1 : 0;
+      this.mExpo.uniforms.uKey.value = tone > 1.5 ? ia!.key : 0.13;
       this.pass(this.mExpo, this.expB);
       const t = this.expA; this.expA = this.expB; this.expB = t;
       this.U.tExpo.value = this.expA.texture;
     }
-    this.pass(this.mComp, null);
+    this.blurred = blur;
+    if (blur) { this.pass(this.mCompHdr, this.hdr); this.blur.apply(this.hdr.texture, null); }
+    else this.pass(this.mComp, null);
   }
   /** contact-shadow strength (SSAO) when the quality tier has it on */
   ao = 0.82;
+
+  /** the motion blur strength for this scene: the setting, for scenes that opt in (sunlit and interiors by default) */
+  private blurK(scene: THREE.Scene) {
+    const ud = scene.userData, o = ud.motionBlur;
+    const on = typeof o === 'number' ? o : typeof o === 'boolean' ? (o ? 1 : 0) : ud.sun || ud.interior ? 1 : 0;
+    return on > 0 ? motionBlurK() * Math.min(1, on) : 0;
+  }
+
+  /** the interior's area lights nearest the view, into the shared (view space) uniforms of area-lit materials */
+  private areaLights(ia: InteriorLight | undefined, camera: THREE.Camera, on: boolean) {
+    const A = AREA_U;
+    if (!ia || !on) { A.uAreaN.value = 0; return; }
+    const list = ia.pick(camera, AREA_MAX), vm = camera.matrixWorldInverse, n3 = _n3.setFromMatrix4(vm);
+    let n = 0;
+    for (const a of list) {
+      _a.copy(a.pos).applyMatrix4(vm); A.uAreaP.value[n].set(_a.x, _a.y, _a.z, a.range);
+      _a.copy(a.u).applyMatrix3(n3); A.uAreaU.value[n].set(_a.x, _a.y, _a.z, 0);
+      _a.copy(a.v).applyMatrix3(n3); A.uAreaV.value[n].set(_a.x, _a.y, _a.z, 0);
+      A.uAreaC.value[n].set(a.color.r * a.intensity, a.color.g * a.intensity, a.color.b * a.intensity, a.spec);
+      n++;
+    }
+    A.uAreaN.value = n;
+  }
+
+  /** interiors: the film look, and the haze glowing under the panels nearest the view and round the practicals */
+  private interior(ia: InteriorLight | undefined, camera: THREE.Camera, beams: boolean) {
+    const U = this.U;
+    if (!ia) { U.uIntr.value = 0; U.uGlowN.value = 0; return; }
+    U.uIntr.value = 1; U.uTone.value = 2; U.uContrast.value = ia.contrast; U.uExpK.value = ia.exposure;
+    (U.uSplitLo.value as THREE.Color).copy(ia.splitLo); (U.uSplitHi.value as THREE.Color).copy(ia.splitHi);
+    U.uCeilY.value = ia.ceilY; U.uFloorY.value = ia.floorY;
+    U.uBeam.value = beams ? ia.haze * 0.0035 : 0;
+    let n = 0;
+    if (beams && ia.haze > 0) {
+      const P = U.uGlowP.value as THREE.Vector4[], C = U.uGlowC.value as THREE.Vector4[];
+      for (const a of ia.pick(camera, 10)) {
+        if (a.beam <= 0) continue;
+        const k = a.intensity * a.beam;
+        P[n].set(a.pos.x, a.pos.y - 0.04, a.pos.z, Math.min(a.range, 3.2)); C[n].set(a.color.r * k, a.color.g * k, a.color.b * k, 1); n++;
+      }
+      const cp = _a.setFromMatrixPosition(camera.matrixWorld);
+      const gl = ia.glows.filter((g) => g.on && g.intensity > 0).sort((x, y) => x.pos.distanceToSquared(cp) - y.pos.distanceToSquared(cp));
+      for (const g of gl) {
+        if (n >= 16) break;
+        P[n].set(g.pos.x, g.pos.y, g.pos.z, g.range); C[n].set(g.color.r * g.intensity, g.color.g * g.intensity, g.color.b * g.intensity, 0); n++;
+      }
+    }
+    U.uGlowN.value = n;
+  }
 
   private atmosphere(scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     const U = this.U, sun = scene.userData.sun as Sun | undefined;
     if (!sun || sun.light.parent !== scene) { U.uEnv.value = 0; U.uShadowOn.value = 0; U.tShadow.value = this.noShadow.depthTexture; return; }
     const e = sun.env, q = settings.quality, lo = q === 'low';
     U.uEnv.value = 1;
-    (U.uInvProj.value as THREE.Matrix4).copy(camera.projectionMatrixInverse);
-    (U.uCamWorld.value as THREE.Matrix4).copy(camera.matrixWorld);
-    (U.uCamPos.value as THREE.Vector3).setFromMatrixPosition(camera.matrixWorld);
+    void camera;
     (U.uSunDir.value as THREE.Vector3).copy(sun.dir).normalize();
     // daylight from the key's strength; the sun's colour as it stands after the day/night grading in the game
     const k = Math.min(1, sun.light.intensity / 3.3), sc = U.uSunCol.value as THREE.Color;

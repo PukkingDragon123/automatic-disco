@@ -30,12 +30,12 @@ function crewNames(): { name: string; role: string; alive: boolean }[] {
 
 // ------------------------------------------------------------------ the room's own callouts (shown while focused)
 export const ROOM_CALLOUTS: Record<RoomId, Callout[]> = {
-  bridge: [{ at: [0, 3.0, 18.3], icon: 'i_bridge', title: 'MAIN MONITOR', text: () => '5 WORLDS IN RANGE', side: 'u' }, { at: [0, 1.5, 15.5], title: 'HOLO TABLE', text: () => 'CLICK TO SCAN', side: 'l' }],
+  bridge: [{ at: [0, 3.0, 18.3], icon: 'i_bridge', title: 'MONITOR', text: () => '5 WORLDS', side: 'u' }, { at: [0, 1.5, 15.5], title: 'HOLO TABLE', text: () => 'SCAN', side: 'l' }],
   lab: [{ at: [4.05, 2.4, 11.45], icon: 'i_lab', title: 'TANKS', text: () => '3 / 3 LIVE', side: 'u' }, { at: [6.5, 1.1, 9.3], title: 'SEQUENCER', text: () => 'IDLE', side: 'r' }],
-  medbay: [{ at: [-2.4, 1.0, 7.9], icon: 'i_medbay', title: 'BED A', text: () => 'FREE', side: 'd' }, { at: [-5.3, 1.6, 8.6], title: 'SCANNER', text: () => 'CALIBRATED', side: 'l' }],
+  medbay: [{ at: [-2.4, 1.0, 7.9], icon: 'i_medbay', title: 'BED A', text: () => 'FREE', side: 'd' }, { at: [-5.3, 1.6, 8.6], title: 'SCANNER', text: () => 'OK', side: 'l' }],
   core: [{ at: [-4.6, 2.0, 4.5], icon: 'i_core', title: 'UNIT 07', text: () => 'ONLINE', side: 'u' }, { at: [-1.8, 1.6, 3.1], title: 'MEMORY', text: () => '96.1%', side: 'r' }],
   quarters: [{ at: [-1.8, 2.2, -3.8], icon: 'i_quarters', title: 'BUNKS', text: () => '8 BERTHS', side: 'u' }, { at: [-4.1, 0.9, -2.6], title: 'MORALE', text: () => pct(crewMood()), side: 'd' }],
-  workshop: [{ at: [-4.4, 2.4, -10.4], icon: 'i_workshop', title: 'POD', text: () => (shipState().pod >= 1 ? 'READY' : `${pct(shipState().pod)} BUILT`), side: 'u' }, { at: [-1.8, 1.2, -12.6], title: 'BENCH', text: () => '42 / 42 TOOLS', side: 'r' }],
+  workshop: [{ at: [-4.4, 2.4, -10.4], icon: 'i_workshop', title: 'POD', text: () => (shipState().pod >= 1 ? 'READY' : `${pct(shipState().pod)} BUILT`), side: 'u' }, { at: [-1.8, 1.2, -12.6], title: 'BENCH', text: () => '42 / 42', side: 'r' }],
   mess: [{ at: [6.6, 1.4, 2.0], icon: 'i_mess', title: 'GALLEY', text: () => `${Math.round(shipState().supplies.rations)} DAYS FOOD`, side: 'u' }, { at: [3.8, 1.0, 3.0], title: 'TABLE', text: () => 'SEATS 6', side: 'd' }],
   cargo: [{ at: [6.5, 2.6, -3.0], icon: 'i_cargo', title: 'RACKS', text: () => '61% FULL', side: 'u' }, { at: [5.2, 1.3, -0.5], title: 'SPECIMENS', text: () => '2 SEALED', side: 'r' }],
   engineering: [{ at: [4.1, 3.8, -10.4], icon: 'i_engineering', title: 'REACTOR', text: () => `${Math.round(600 + Math.sin(performance.now() / 1100) * 30)} MW`, side: 'u' }, { at: [6.6, 1.4, -12.1], title: 'COOLANT', text: () => 'NOMINAL', side: 'r' }],
@@ -46,13 +46,13 @@ const PW: [keyof ShipState['power'], string, string][] = [['life', 'i_medbay', '
 export const VIGNETTES: Record<RoomId, Vignette> = {
   bridge: {
     cam: { pos: V(2.9, 2.6, 13.0), look: V(0, 1.3, 15.5), fov: 36 },
-    callouts: [{ at: [0, 1.5, 15.5], icon: 'i_bridge', title: 'KEPLER-442', text: () => '5 WORLDS · 1 RECOMMENDED', side: 'r' }, { at: [0, 2.8, 18.3], title: 'MONITOR', text: () => 'LONG RANGE SCAN READY', side: 'u' }],
-    stamps: (c) => [{ label: 'SCAN THE SYSTEM', key: 'S', icon: 'i_bridge', hot: true, run: () => c.actions.monitor?.() }],
+    callouts: [{ at: [0, 1.5, 15.5], icon: 'i_bridge', title: 'KEPLER-442', text: () => '5 WORLDS · 1 SAFE', side: 'r' }, { at: [0, 2.8, 18.3], title: 'MONITOR', text: () => 'READY', side: 'u' }],
+    stamps: (c) => [{ label: 'SCAN', key: 'S', icon: 'i_bridge', hot: true, run: () => c.actions.monitor?.() }],
   },
   lab: {
     cam: { pos: V(3.0, 1.9, 7.6), look: V(4.05, 1.25, 11.4), fov: 38 },
     callouts: [{ at: [2.95, 1.2, 11.45], title: 'TANK 1', text: () => 'GRAZER EMBRYO', side: 'l' }, { at: [4.05, 1.7, 11.45], title: 'TANK 2', text: () => 'ROOT CULTURE', side: 'u' }, { at: [5.15, 1.2, 11.45], title: 'TANK 3', text: () => 'SPORE BLOOM', side: 'r' }],
-    stamps: (c) => [{ label: 'OPEN GENE LAB', key: 'G', icon: 'i_lab', hot: true, run: () => c.actions.lab?.() }],
+    stamps: (c) => [{ label: 'GENE LAB', key: 'G', icon: 'i_lab', hot: true, run: () => c.actions.lab?.() }],
   },
   medbay: {
     cam: { pos: V(-5.4, 2.5, 9.5), look: V(-2.2, 0.9, 9.5), fov: 42 },
@@ -61,7 +61,7 @@ export const VIGNETTES: Record<RoomId, Vignette> = {
   },
   core: {
     cam: { pos: V(-2.2, 2.6, 2.4), look: V(-4.6, 1.8, 4.5), fov: 40 },
-    callouts: [{ at: [-4.6, 2.0, 4.5], icon: 'i_core', title: 'UNIT 07', text: () => 'MEMORY 96% · UPLINK LOCKED', side: 'r' }],
+    callouts: [{ at: [-4.6, 2.0, 4.5], icon: 'i_core', title: 'UNIT 07', text: () => '96%', side: 'r' }],
     stamps: (c) => [
       { label: 'SAVE', key: 'S', run: () => c.actions.save?.() }, { label: 'LOAD', key: 'L', run: () => c.actions.load?.() },
       { label: 'NEW MISSION', key: 'N', run: () => c.actions.newGame?.() }, { label: 'SETTINGS', key: 'O', run: () => c.actions.settings?.() },

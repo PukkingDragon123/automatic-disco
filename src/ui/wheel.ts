@@ -36,7 +36,7 @@ export class ToolWheel {
     if (i !== this.hover) { this.hover = i; this.dirty = true; if (i >= 0) sfx('hover', 1, 0.3); }
     const c = this.host.colony(); if (!c || i < 0) { this.host.tip(null); return; }
     const s = c.slots.slots[i], t = s.tool ? TOOLS[s.tool] : null, u = c.slots.unitOf(i), un = u ? (c.unitById(u) as { name?: string } | null)?.name ?? u : null;
-    this.host.tip(s.level <= 0 ? `<b>SLOT ${i + 1}</b> · LOCKED<br>Upgrade it with the Upgrader to open it.` : t ? `<b>${t.name.toUpperCase()}</b> · SLOT ${i + 1} · LV ${s.level}<br>${t.desc}<br>${un ? `UNIT: <b>${un}</b>` : '<span class="r">NO UNIT CAN RUN IT: BUILD ONE</span>'}<br><span class="w">CLICK</span> TAKE CONTROL · <span class="w">RIGHT-CLICK</span> CONFIGURE` : `<b>SLOT ${i + 1}</b> · EMPTY<br>Right-click to assign a tool.`, e.clientX, e.clientY);
+    this.host.tip(s.level <= 0 ? `<b>SLOT ${i + 1}</b> LOCKED` : t ? `<b>${t.name.toUpperCase()}</b> LV ${s.level}<br>${un ? un : '<span class="r">NO UNIT</span>'}` : `<b>SLOT ${i + 1}</b> EMPTY`, e.clientX, e.clientY);
   }
   use(i: number) {
     const c = this.host.colony(); if (!c) return;
@@ -65,26 +65,36 @@ export class ToolWheel {
     const S = 160, cv = this.cv, g = this.g, cx = 80, cy = 80, step = TAU / N, RS = 54;
     if (cv.width !== 320) { cv.width = 320; cv.height = 320; }
     const p = new Pix(S, S);
-    // the ring: two passes of a wobbling circle
-    for (const [r, sd, w] of [[RS, 3, 2], [RS + 2, 9, 1]] as [number, number, number][]) { const n = 140; for (let i = 0; i < n; i++) { const a0 = (i / n) * TAU, a1 = ((i + 1) / n) * TAU; if (w === 1 && i % 9 > 6) continue; stroke(p, cx + Math.cos(a0) * r, cy + Math.sin(a0) * r, cx + Math.cos(a1) * r, cy + Math.sin(a1) * r, sd + i, { w, over: 0, amp: 0.3 }); } }
-    // the hub: a paper disc with the tool's name
-    for (let y = -22; y <= 22; y++) for (let x = -22; x <= 22; x++) if (x * x + y * y <= 22 * 22) p.set(cx + x, cy + y, y > 14 ? R.paper[4] : R.paper[5]);
-    scribble(p, cx, cy, 22, 22, 5, INK);
+    // the ring: a machined steel band, lit on its upper-left slope, knurled, with orange index marks
+    const lit = (nx: number, ny: number) => -(nx * 0.6 + ny * 0.8);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const dx = x - cx + 0.5, dy = y - cy + 0.5, d = Math.hypot(dx, dy); if (d < RS - 5 || d > RS + 5) continue;
+      if (d > RS + 4 || d < RS - 4) { p.set(x, y, R.steel[0]); continue; }
+      const l = lit(dx / d, dy / d) * (d > RS ? 1 : -1); let k = l > 0.5 ? 5 : l > 0.1 ? 4 : l > -0.3 ? 3 : 2;
+      const a = Math.atan2(dy, dx); if (Math.floor(((a + Math.PI) / TAU) * 160) % 2 === 0 && Math.abs(d - RS) < 2) k = Math.max(1, k - 1);
+      p.set(x, y, R.steel[k]);
+    }
+    // the hub: a cream enamel dial with a steel bezel
+    for (let y = -24; y <= 24; y++) for (let x = -24; x <= 24; x++) { const d = Math.hypot(x + 0.5, y + 0.5); if (d > 24) continue; const l = lit((x + 0.5) / (d || 1), (y + 0.5) / (d || 1)); p.set(cx + x, cy + y, d > 23 ? R.steel[0] : d > 20.5 ? R.steel[l > 0.3 ? 5 : l > -0.3 ? 3 : 2] : d > 19.5 ? R.steel[1] : y < -12 ? R.bone[5] : R.bone[4]); }
     for (let i = 0; i < N; i++) {
       const s = c.slots.slots[i], am = -Math.PI / 2 + i * step, sx = Math.round(cx + Math.cos(am) * RS), sy = Math.round(cy + Math.sin(am) * RS);
       const lock = s.level <= 0, act = c.slots.active === i, hv = this.hover === i;
-      for (let y = -16; y <= 16; y++) for (let x = -16; x <= 16; x++) if (x * x + y * y <= 16 * 16) p.set(sx + x, sy + y, lock ? R.paper[3] : hv ? R.straw[5] : y > 10 ? R.paper[4] : R.paper[5]);
-      scribble(p, sx, sy, 16, 16, 20 + i, act ? R.stampRed[3] : INK);
-      if (act) scribble(p, sx, sy, 19, 19, 40 + i, R.stampRed[3]);
+      // a socket: an enamel cup in a steel rim (orange enamel when in use), chipped on one edge
+      for (let y = -17; y <= 17; y++) for (let x = -17; x <= 17; x++) {
+        const d = Math.hypot(x + 0.5, y + 0.5); if (d > 17) continue; const l = lit((x + 0.5) / (d || 1), (y + 0.5) / (d || 1));
+        const E = act ? R.rust : lock ? R.basalt : R.bone, n = E.length;
+        p.set(sx + x, sy + y, d > 16 ? R.steel[0] : d > 14 ? R.steel[l > 0.3 ? 5 : l > -0.3 ? 3 : 2] : d > 13 ? (l > 0 ? R.ink[1] : E[Math.max(0, n - 3)]) : hv ? E[n - 1] : y < -6 ? E[n - 1] : E[Math.max(0, n - 2)]);
+      }
+      p.set(sx + 9, sy + 10, R.steel[4]); p.set(sx + 10, sy + 9, R.steel[4]); p.set(sx + 10, sy + 10, R.steel[2]);
       // number outside, pips inside the rim
       const nx = Math.round(cx + Math.cos(am) * (RS + 25)), ny = Math.round(cy + Math.sin(am) * (RS + 25));
-      letter(p, String(i + 1), nx, ny - 7, lock ? R.paper[2] : INK, { align: 'center' });
-      for (let k = 0; k < 3; k++) { const pa = am + (k - 1) * 0.16, px = Math.round(cx + Math.cos(pa) * (RS - 21)), py = Math.round(cy + Math.sin(pa) * (RS - 21)); p.rect(px - 1, py - 1, 3, 3, k < s.level ? R.stampRed[3] : R.paper[3]); }
-      if (lock) { for (let y = 0; y < 8; y++) for (let x = 0; x < 11; x++) p.set(sx - 5 + x, sy - 2 + y, R.ochre[4]); stroke(p, sx - 5, sy - 2, sx + 5, sy - 2, i, { w: 1, over: 0 }); stroke(p, sx - 3, sy - 2, sx - 3, sy - 7, i + 1, { w: 1, over: 0 }); stroke(p, sx + 3, sy - 2, sx + 3, sy - 7, i + 2, { w: 1, over: 0 }); stroke(p, sx - 3, sy - 7, sx + 3, sy - 7, i + 3, { w: 1, over: 0 }); p.set(sx, sy + 2, INK); }
-      if (s.level > 0 && !s.tool) letter(p, '+', sx, sy - 7, R.paper[2], { align: 'center' });
+      letter(p, String(i + 1), nx, ny - 7, lock ? R.steel[3] : R.paper[5], { align: 'center', shadow: R.ink[0] });
+      for (let k = 0; k < 3; k++) { const pa = am + (k - 1) * 0.16, px = Math.round(cx + Math.cos(pa) * (RS - 21)), py = Math.round(cy + Math.sin(pa) * (RS - 21)); p.rect(px - 1, py - 1, 3, 3, R.ink[0]); p.rect(px - 1, py - 1, 2, 2, k < s.level ? R.rust[5] : R.steel[2]); }
+      if (lock) { p.rect(sx - 5, sy - 2, 11, 8, R.ochre[4]); p.hl(sx - 5, sx + 5, sy - 2, R.ochre[5]); p.hl(sx - 5, sx + 5, sy + 5, R.ochre[2]); for (const [x0, y0, x1, y1] of [[-3, -2, -3, -6], [3, -2, 3, -6], [-3, -7, 3, -7]]) p.line(sx + x0, sy + y0, sx + x1, sy + y1, R.steel[3]); p.set(sx, sy + 1, R.ink[1]); p.set(sx, sy + 2, R.ink[1]); }
+      if (s.level > 0 && !s.tool) letter(p, '+', sx, sy - 7, R.bone[2], { align: 'center' });
     }
     const show = this.hover >= 0 ? this.hover : c.slots.active, sl = show >= 0 ? c.slots.slots[show] : null;
-    if (sl && sl.tool) { letter(p, TOOLS[sl.tool].name.toUpperCase().split(' ').pop()!.slice(0, 7), cx, cy - 11, INK, { align: 'center' }); letter(p, `LV ${sl.level}`, cx, cy + 1, c.slots.active === show ? R.stampRed[3] : R.ink[2], { align: 'center' }); }
+    if (sl && sl.tool) { letter(p, TOOLS[sl.tool].name.toUpperCase().split(' ').pop()!.slice(0, 7), cx, cy - 11, INK, { align: 'center' }); letter(p, `LV ${sl.level}`, cx, cy + 1, c.slots.active === show ? R.rust[3] : R.ink[2], { align: 'center' }); }
     else if (sl && sl.level <= 0) letter(p, 'LOCKED', cx, cy - 6, R.ochre[2], { align: 'center' });
     else { letter(p, 'TOOLS', cx, cy - 11, INK, { align: 'center' }); letter(p, 'PICK', cx, cy + 1, R.ink[2], { align: 'center' }); }
     const tmp = (this as unknown as { tmp?: HTMLCanvasElement }).tmp ?? document.createElement('canvas'); (this as unknown as { tmp: HTMLCanvasElement }).tmp = tmp;

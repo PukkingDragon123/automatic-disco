@@ -33,7 +33,7 @@ const TABS: { id: TabId; name: string; icon: string; key: string }[] = [
 /** what the screens read: the game (or a stand-in with the same fields) */
 export interface SkillHost { mastery?: Mastery; research?: Research; upgrades?: Upgrades; mission?: Mission; emit?(ev: string, d?: any): void; [k: string]: any }
 /** one tab: a vignette and the paper over it */
-export interface TabPage { vig: Vignette; el: HTMLElement; update(dt: number): void; dispose(): void; key?(e: KeyboardEvent): boolean }
+export interface TabPage { vig?: Vignette; el: HTMLElement; update(dt: number): void; dispose(): void; key?(e: KeyboardEvent): boolean }
 
 export class SkillTree implements Screen {
   static current: SkillTree | null = null;
@@ -76,9 +76,9 @@ export class SkillTree implements Screen {
       if (id === 'mastery' && H.mastery) this.page = new MasteryPage(H.mastery, path ?? keepPath, () => H.emit?.('mastery-perk', {}));
       else if (id === 'research' && H.research) this.page = new ResearchPage(H.research, H);
       else if (id === 'upgrader' && H.upgrades) this.page = new UpgraderPage(H.upgrades, H as never, H.research ?? null);
-      else if (id === 'mission' && H.mission) this.page = new MissionPage(H.mission, H as never, this.engine.renderer);
+      else if (id === 'mission' && H.mission) this.page = new MissionPage(H.mission, H as never);
     } catch (e) { console.error('program tab', id, e); }
-    if (this.page) { this.root.insertBefore(this.page.el, this.tabsEl); this.page.vig.resize(this.W, this.H); }
+    if (this.page) { this.root.insertBefore(this.page.el, this.tabsEl); this.page.vig?.resize(this.W, this.H); }
     if (!force) { csfx('page', 0.5, 1.1); sfx('click'); }
     this.lamps();
   }
@@ -108,10 +108,10 @@ export class SkillTree implements Screen {
   }
   update(dt: number) {
     this.lampT -= dt; if (this.lampT <= 0) { this.lampT = 0.5; this.lamps(); }
-    try { this.page?.vig.update(dt); this.page?.update(dt); } catch (e) { console.error('program page', e); }
+    try { this.page?.vig?.update(dt); this.page?.update(dt); } catch (e) { console.error('program page', e); }
   }
-  render(post: Post, t: number) { this.page?.vig.render(post, t); }
-  resize(w: number, h: number) { this.W = innerWidth; this.H = innerHeight; void w; void h; this.page?.vig.resize(this.W, this.H); }
+  render(post: Post, t: number) { this.page?.vig?.render(post, t); }
+  resize(w: number, h: number) { this.W = innerWidth; this.H = innerHeight; void w; void h; this.page?.vig?.resize(this.W, this.H); }
   dispose() {
     if (SkillTree.current === this) SkillTree.current = null;
     removeEventListener('keydown', this.onKey, true);

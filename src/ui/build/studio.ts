@@ -64,6 +64,22 @@ function shoot(kind: FKind, w: number, h: number, ang: number): HTMLCanvasElemen
   g.putImageData(img, 0, 0);
   return cv;
 }
+/** the three passes the offline painter reads (colour, a flat id per mesh, view-space normals), as PNG data URLs.
+ *  src/ui/build/craft/paint_buildings.py repaints them with lowpix's brush into the planner's illustrations. */
+export function passes(kind: FKind, w: number, h: number): { color: string; id: string; normal: string } | null {
+  const e = group(kind);
+  const meshes: THREE.Mesh[] = [];
+  e.g.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh); });
+  const keep = meshes.map((m) => m.material);
+  const url = (cv: HTMLCanvasElement | null) => (cv ? cv.toDataURL('image/png') : '');
+  const color = url(shoot(kind, w, h, 0));
+  meshes.forEach((m, i) => { const c = new THREE.Color().setHSL(((i * 0.618034) % 1), 0.9, 0.3 + ((i * 7) % 5) * 0.1); m.material = new THREE.MeshBasicMaterial({ color: c }); });
+  const id = url(shoot(kind, w, h, 0));
+  meshes.forEach((m) => { m.material = new THREE.MeshNormalMaterial(); });
+  const normal = url(shoot(kind, w, h, 0));
+  meshes.forEach((m, i) => { (m.material as THREE.Material).dispose(); m.material = keep[i]; });
+  return color ? { color, id, normal } : null;
+}
 /** halve a shot into pixel art: box-filter 2x2, a few tones per channel, hard alpha, a 1 px dark rim */
 function pixelate(src: HTMLCanvasElement, w: number, h: number): HTMLCanvasElement {
   const s = src.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, w * 2, h * 2).data;

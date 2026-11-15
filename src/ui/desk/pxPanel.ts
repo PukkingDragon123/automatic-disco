@@ -8,8 +8,8 @@ import { Pix, swatch, text3s, textW3s, text5, textW5, R } from './paint';
 
 export const K = 2;
 const hash = (a: number, b: number, c = 0) => { let h = (a * 374761393 + b * 668265263 + c * 2147483647) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
-export type Mat = 'olive' | 'steel' | 'deck';
-const RAMP: Record<Mat, readonly number[]> = { olive: R.olive, steel: R.steel, deck: R.olive };
+export type Mat = 'olive' | 'steel' | 'deck' | 'enamel' | 'orange';
+const RAMP: Record<Mat, readonly number[]> = { olive: R.olive, steel: R.steel, deck: R.olive, enamel: R.bone, orange: R.rust };
 export interface PlateOpts {
   mat?: Mat; seed?: number;
   /** screws in the corners */
@@ -69,7 +69,7 @@ export function well(p: Pix, x: number, y: number, w: number, h: number, o: { am
 /** the plate itself */
 export function platePix(w: number, h: number, o: PlateOpts = {}): Pix {
   const p = new Pix(w, h), mat = o.mat ?? 'olive', Rm = RAMP[mat], seed = o.seed ?? 1, wear = o.wear ?? 1;
-  const sw = swatch(mat === 'steel' ? 'steel' : mat === 'deck' ? 'deck' : 'olive');
+  const sw = swatch(mat === 'steel' ? 'steel' : mat === 'deck' ? 'deck' : mat === 'enamel' ? 'cream' : mat === 'orange' ? 'red' : 'olive');
   const ox = Math.floor(hash(seed, 1) * 64), oy = Math.floor(hash(seed, 2) * 64);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = (((y + oy) & 63) * 64 + ((x + ox) & 63)) * 4; p.set(x, y, (sw.d[i] << 16) | (sw.d[i + 1] << 8) | sw.d[i + 2]); }
   // grime along the foot: runs of the shade step, longer near the bottom
@@ -123,8 +123,8 @@ export function skin(el: HTMLElement, paint: (w: number, h: number) => Pix, key 
 }
 
 // ------------------------------------------------------------------ nine-slice pieces (keys, tags, wells)
-export type KeyCol = 'bake' | 'olive' | 'red' | 'blue' | 'amber' | 'steel';
-const KEYR: Record<KeyCol, readonly number[]> = { bake: R.clay, olive: R.olive, red: R.stampRed, blue: R.sapphire, amber: R.ochre, steel: R.steel };
+export type KeyCol = 'bake' | 'olive' | 'red' | 'blue' | 'amber' | 'steel' | 'rubber' | 'cream';
+const KEYR: Record<KeyCol, readonly number[]> = { bake: R.clay, olive: R.olive, red: R.stampRed, blue: R.sapphire, amber: R.ochre, steel: R.steel, rubber: R.basalt, cream: R.bone };
 /** a key cap 16 x 16 (slice 5): outline, a lit cap face with a highlight corner, the darker skirt below; down: sunk,
  *  no skirt; lit: a phosphor lamp line along the cap's top */
 export function keyURL(col: KeyCol, state: 'up' | 'down' | 'lit' = 'up') {
@@ -140,7 +140,7 @@ export function keyURL(col: KeyCol, state: 'up' | 'down' | 'lit' = 'up') {
     p.hl(2, 13, c0, Rk[n - 1]); p.vl(2, c0, c1 - 1, Rk[Math.min(n - 1, 4)]);
     p.hl(2, 13, c1 - 1, Rk[2]); p.vl(13, c0, c1 - 1, Rk[2]);
     p.set(3, c0 + 1, Rk[n - 1]); p.set(4, c0 + 1, Rk[Math.min(n - 1, 4)]);
-    if (state === 'lit') { p.hl(4, 11, c0 + 1, R.malachite[5]); p.hl(4, 11, c0 + 2, R.malachite[3]); }
+    if (state === 'lit') { p.hl(4, 11, c0 + 1, R.rust[5]); p.hl(4, 11, c0 + 2, R.rust[3]); }
     // outline (coloured, chamfered)
     p.hl(1, 14, top, R.ink[0]); p.hl(1, 14, 15, R.ink[0]); p.vl(0, top + 1, 14, R.ink[0]); p.vl(15, top + 1, 14, R.ink[0]);
     return p;
@@ -221,3 +221,21 @@ export function noteURL(level: 'info' | 'good' | 'warn' | 'bad' | 'crit') {
   });
 }
 export { scribble };
+
+/** an enamel sign (nine-slice 32 x 20, slice 7): a pressed steel sign in coloured enamel, a lit rolled edge, chips
+ *  to the steel at the corners, two rivets */
+export function signURL(level: 'info' | 'good' | 'warn' | 'bad' | 'crit') {
+  return url('sign|' + level, () => {
+    const E = level === 'good' ? R.moss : level === 'warn' ? R.ochre : level === 'bad' ? R.rust : level === 'crit' ? R.stampRed : R.bone, n = E.length;
+    const p = new Pix(32, 20);
+    p.rect(1, 1, 30, 18, E[Math.min(n - 1, n > 5 ? 4 : 3)]);
+    for (let i = 0; i < 8; i++) p.hl(3 + ((i * 7) % 20), 6 + ((i * 11) % 20), 3 + ((i * 5) % 14), E[Math.min(n - 1, n > 5 ? 5 : 3)]);
+    p.hl(1, 30, 1, E[n - 1]); p.vl(1, 1, 18, E[Math.min(n - 1, n - 2)]); p.hl(1, 30, 18, E[1]); p.vl(30, 1, 18, E[1]);
+    for (const [x, y] of [[2, 2], [3, 2], [2, 3], [28, 16], [29, 16], [29, 15]]) p.set(x, y, R.steel[4]);
+    p.hl(0, 31, 0, R.ink[1]); p.hl(0, 31, 19, R.ink[0]); p.vl(0, 0, 19, R.ink[1]); p.vl(31, 0, 19, R.ink[0]);
+    rivet(p, 4, 8, E); rivet(p, 26, 8, E);
+    return p;
+  });
+}
+/** a riveted steel plate for small pieces (nine-slice 24 x 24, slice 8) */
+export function plateURL(mat: Mat = 'steel', seed = 1) { return url(`plate9|${mat}|${seed}`, () => platePix(24, 24, { mat, seed, screws: false, wear: 0.4 })); }

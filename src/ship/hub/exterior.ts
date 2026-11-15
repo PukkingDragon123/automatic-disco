@@ -183,7 +183,6 @@ export function buildExterior(bin: Bin, M: Mats, _renderer: THREE.WebGLRenderer)
   for (let k = 0; k < 4; k++) B.add(box(8.6, 0.08, 0.3), black, { x: 0, y: 0.32, z: -19.4 + k * 1.1 });
   for (const [x, col] of [[-3.2, 'pipeR'], [-2.6, 'pipeB'], [2.6, 'pipeB'], [3.2, 'pipeR']] as [number, string][]) B.add(cyl(0.14, 0.14, 5.2, 10), M.get('ext.' + col, { color: col === 'pipeR' ? 0x9a3a2e : 0x3a5a86 }), { x, y: 0.5, z: -17.5, rx: Math.PI / 2 });
   for (const s of [-1, 1]) {
-    B.add(new THREE.SphereGeometry(1.1, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), M.get('ext.tank', { color: 0xd8d4c4, rough: 0.5, metal: 0.2 }), { x: s * 3.9, y: 0.25, z: -16.4 });
     B.add(cyl(1.0, 1.0, 7.0, 20), grey, { x: s * 7.0, y: -1.8, z: -17.0, rx: Math.PI / 2 });
     B.add(cyl(1.1, 1.1, 0.4, 20), haz, { x: s * 7.0, y: -1.8, z: -13.8, rx: Math.PI / 2 });
     B.add(lathe([[0, 0], [1.0, 0], [0.85, 0.9], [0.3, 1.4], [0, 1.5]], 20), grey, { x: s * 7.0, y: -1.8, z: -13.5, rx: Math.PI / 2 });
@@ -302,6 +301,18 @@ export function buildExterior(bin: Bin, M: Mats, _renderer: THREE.WebGLRenderer)
   B.add(new THREE.TorusGeometry(0.9, 0.1, 8, 24), haz, { x: 8.22, y: 1.0, z: 6.2, ry: Math.PI / 2 });
   // antenna whips along the starboard shoulder
   for (const z of [-6, 0, 6]) B.add(cyl(0.02, 0.01, 2.2, 5), steel, { x: 7.4, y: 4.9, z, rz: -0.3 });
+  // ---- the detail pass: frames, pipe runs, greebles, tanks, decals, more lights
+  const PB = plates.map(() => new Batch(bin));
+  const plateOf = (z: number) => { const i = ROOF_CUTS.findIndex((c, k) => z >= c && z < ROOF_CUTS[k + 1]); return i < 0 ? -1 : i; };
+  const decals: { tex: THREE.Texture; w: number; x: number; y: number; z: number; ry: number; rx?: number; plate: number }[] = [];
+  greebles({ B, PB, plateOf, M, decals, mats: { white, grey, dark, gun, steel, orange, black, haz } });
+  PB.forEach((b, i) => b.flush(plates[i].g, 'greeble' + i));
+  for (const d of decals) {
+    const img = d.tex.image as { width: number; height: number }, h = d.w * img.height / img.width;
+    const m = M.get('decal|' + d.tex.uuid, { map: d.tex, transparent: true, alphaTest: 0.4, polyOffset: 2, flag: 0 });
+    const q = new THREE.Mesh(bin.g(quad(d.w, h)), m); q.position.set(d.x, d.y, d.z); q.rotation.set(d.rx ?? 0, d.ry, 0, 'YXZ');
+    (d.plate >= 0 ? plates[d.plate].g : root).add(q);
+  }
   B.flush(root, 'ext');
   capB.flush(root, 'caps');
   // ---- lights: running lights, strobes, docking lights (small emitters with a bloom halo)
@@ -318,6 +329,17 @@ export function buildExterior(bin: Bin, M: Mats, _renderer: THREE.WebGLRenderer)
   addLamp(plates[3].g, 2.5, 9.0, 3.8, 0xff3020, 2, 0.2);
   for (let k = 0; k < 6; k++) addLamp(root, 0, -3.05, 16 - k * 5.5, 0xffb040, 3, k / 6);
   for (const z of [-13, -7, -1, 5, 11]) addLamp(root, 7.62, -1.5, z, 0xd8f0ff, 4, z * 0.01);
+  // deck lights under the roof line, beacons on the nacelle noses, amber service lamps on the engine block
+  for (let z = -12.5; z < 11; z += 3) { addLamp(root, 7.66, 3.25, z, 0xbfe0ff, 4, 0); const pi = plateOf(z); if (pi >= 0) addLamp(plates[pi].g, -7.66, 3.25, z, 0xbfe0ff, 4, 0); }
+  for (const sx of [-1, 1]) { addLamp(root, sx * 7.0, -1.8, -12.0, 0xff3020, 2, sx * 0.5); addLamp(root, sx * 5.1, 0.55, -19.6, 0xffb040, 3, sx * 0.3); }
+  // portholes along the lower deck (warm, some dark)
+  const portM = M.glow('porthole', 0xffd8a0, 1.3), portD = M.get('porthole.d', { color: 0x1a2a34 });
+  const ringG = bin.g(new THREE.TorusGeometry(0.2, 0.05, 6, 16)), discG = bin.g(new THREE.CircleGeometry(0.17, 14));
+  for (const sx of [-1, 1]) for (let z = -12.8; z < 10.5; z += 1.6) {
+    const lit = Math.sin(z * 3.1 + sx) > -0.4;
+    const d = new THREE.Mesh(discG, lit ? portM : portD); d.position.set(sx * 7.585, -0.05, z); d.rotation.y = sx * Math.PI / 2; root.add(d);
+    const r = new THREE.Mesh(ringG, gun); r.position.set(sx * 7.58, -0.05, z); r.rotation.y = Math.PI / 2; root.add(r);
+  }
   // ---- the cut: roof plates lift and swing away in sequence (bow first)
   let cutK = 0;
   const setCut = (k: number) => {
@@ -350,6 +372,100 @@ export function buildExterior(bin: Bin, M: Mats, _renderer: THREE.WebGLRenderer)
     },
     dispose() { /* everything is in the hub's bin */ },
   };
+}
+// ------------------------------------------------------------------ the detail pass
+interface GOpts {
+  B: Batch; PB: Batch[]; plateOf: (z: number) => number; M: Mats;
+  decals: { tex: THREE.Texture; w: number; x: number; y: number; z: number; ry: number; rx?: number; plate: number }[];
+  mats: Record<'white' | 'grey' | 'dark' | 'gun' | 'steel' | 'orange' | 'black' | 'haz', THREE.Material>;
+}
+/**
+ * Everything that makes the hull read as a built thing at hero distance: structural frames round the lower hull,
+ * pipe and conduit runs with brackets under the roof line, a keel crowded with boxes, conduits and drains, roof
+ * plates with vents, junction boxes, hatches and handrails, strapped capsule tanks and manifolds on the engine block,
+ * gimbal actuators on the bells, ribbed nacelles, and stencils everywhere a crew would need one.
+ */
+function greebles(o: GOpts) {
+  const { B, PB, plateOf, M, decals } = o, { grey, dark, gun, steel, orange, black, haz } = o.mats;
+  const r = new Rand(4242), rn = () => r.next();
+  const pipeR = M.get('ext.pipeR', { color: 0x9a3a2e }), pipeB = M.get('ext.pipeB', { color: 0x3a5a86 }), pipeY = M.get('ext.pipeY', { color: 0xc89a3a });
+  const tank = M.get('ext.tank', { color: 0xd8d4c4 });
+  const HW = 7.55;
+  // structural frames: a raised rib round the lower hull every 3 m (side, chamfer, bottom)
+  for (let z = -12.5; z <= 10; z += 3) {
+    for (const sx of [-1, 1]) {
+      if (!(sx > 0 && Math.abs(z - 0.5) < 4.3)) B.add(box(0.14, 0.5, 0.22), grey, { x: sx * (HW + 0.05), y: -0.55, z });
+      B.add(box(0.14, 3.0, 0.22), grey, { x: sx * 6.53, y: -1.88, z, rz: -sx * Math.PI / 4 });
+    }
+    B.add(box(10.8, 0.12, 0.22), grey, { x: 0, y: -2.95, z });
+  }
+  // conduit runs under the roof line on both sides, bracketed every 1.6 m (port runs ride the roof plates)
+  for (const sx of [-1, 1]) {
+    const runs: [number, THREE.Material, number][] = [[2.95, pipeB, 0.07], [3.12, steel, 0.05], [2.8, pipeR, 0.055]];
+    const segs = sx > 0 ? [[-13.6, 11.4]] : [[-7.1, -5], [-5, 0], [0, 5], [5, 11.4]];
+    for (const [z0, z1] of segs) {
+      const pi = sx < 0 ? plateOf((z0 + z1) / 2) : -1, b = pi >= 0 ? PB[pi] : B;
+      for (const [y, m, rad] of runs) b.add(cyl(rad, rad, z1 - z0 - 0.05, 8), m, { x: sx * (HW + 0.1 + rad), y, z: (z0 + z1) / 2, rx: Math.PI / 2 });
+      for (let z = z0 + 0.6; z < z1; z += 1.6) b.add(box(0.2, 0.5, 0.1), gun, { x: sx * (HW + 0.12), y: 2.96, z });
+    }
+  }
+  // the keel: a crowd of boxes, two long conduits, drain grilles
+  for (const x of [-1.3, 1.3]) B.add(cyl(0.1, 0.1, 23, 8), x < 0 ? pipeY : steel, { x, y: -3.02, z: -1.2, rx: Math.PI / 2 });
+  for (let k = 0; k < 70; k++) {
+    const x = (rn() - 0.5) * 9.8, z = -13.2 + rn() * 24, w = 0.25 + rn() * 1.3, d = 0.25 + rn() * 1.8, h = 0.08 + rn() * 0.3;
+    if (Math.hypot(x - 2.0, z - 4) < 2.0 || (Math.abs(x + 4.4) < 2 && Math.abs(z + 10.4) < 2) || Math.abs(x) < 1.6 && rn() < 0.6) continue;
+    B.add(box(w, h, d, 0.03), rn() < 0.3 ? gun : rn() < 0.5 ? dark : grey, { x, y: -2.9 - h / 2, z });
+    if (rn() < 0.25) B.add(box(w * 0.8, 0.02, d * 0.6), black, { x, y: -2.9 - h - 0.01, z });
+  }
+  // roof plates: vents, junction boxes, hatches with hazard rims, handrails along both edges
+  const keep = (x: number, z: number) => (z > 0.5 && z < 4.6 && x > 0.8 && x < 4.2) || (Math.abs(x + 4) < 2.2 && Math.abs(z - 3.6) < 1.6) || Math.hypot(x, z + 2.5) < 2.5 || z > 13.6 || (Math.abs(x + 3.2) < 2.1 && Math.abs(z + 7.6) < 2.1) || (Math.abs(x + 3.6) < 1.5 && Math.abs(z - 8.2) < 2.0) || (z < -10.5 && (Math.abs(x) > 3.6 || Math.abs(x) < 2.6));
+  for (let k = 0; k < 140; k++) {
+    const x = (rn() - 0.5) * 12.4, z = -14.6 + rn() * 28.5, pi = plateOf(z);
+    if (pi < 0 || keep(x, z)) continue;
+    const b = PB[pi], t = rn(), y = 4.3;
+    if (t < 0.35) { const w = 0.3 + rn() * 0.9, d = 0.3 + rn() * 1.2, h = 0.12 + rn() * 0.3; b.add(box(w, h, d, 0.03), rn() < 0.5 ? grey : gun, { x, y: y + h / 2, z }); }
+    else if (t < 0.55) { b.add(box(0.7, 0.32, 0.7, 0.05), grey, { x, y: y + 0.16, z }); for (let j = 0; j < 4; j++) b.add(box(0.6, 0.03, 0.06), black, { x, y: y + 0.33, z: z - 0.24 + j * 0.16 }); }
+    else if (t < 0.7) { b.add(cyl(0.45, 0.45, 0.06, 16), haz, { x, y: y + 0.03, z }); b.add(cyl(0.36, 0.36, 0.1, 16), grey, { x, y: y + 0.06, z }); b.add(box(0.36, 0.05, 0.05), steel, { x, y: y + 0.14, z }); }
+    else if (t < 0.82) { b.add(cyl(0.12, 0.12, 0.5, 8), steel, { x, y: y + 0.25, z }); b.add(cyl(0.2, 0.2, 0.06, 10), gun, { x, y: y + 0.52, z }); }
+    else { const L = 0.8 + rn() * 2.4; b.add(cyl(0.05, 0.05, L, 6), rn() < 0.5 ? pipeB : pipeR, { x, y: y + 0.08, z, rx: Math.PI / 2 }); for (const dz of [-L / 2 + 0.1, L / 2 - 0.1]) b.add(box(0.14, 0.12, 0.08), gun, { x, y: y + 0.06, z: z + dz }); }
+  }
+  for (const sx of [-1, 1]) for (let z = -13.4; z < 13.4; z += 1.5) { const pi = plateOf(z); if (pi < 0) continue; PB[pi].add(box(0.04, 0.32, 0.04), steel, { x: sx * 6.45, y: 4.46, z }); PB[pi].add(box(0.04, 0.04, 1.5), steel, { x: sx * 6.45, y: 4.62, z: z + 0.75 }); }
+  // the engine block: ribs and vent grilles on its flanks, strapped capsule tanks with saddles, valves and feeds,
+  // a manifold of pipes running aft, heat shields and gimbal actuators on the bells, banded nacelles
+  for (let z = -19.6; z <= -15.4; z += 0.7) for (const sx of [-1, 1]) B.add(box(0.12, 2.8, 0.16), gun, { x: sx * 5.05, y: -1.5, z });
+  for (const sx of [-1, 1]) for (let k = 0; k < 3; k++) { const z = -19.1 + k * 1.4; B.add(box(0.06, 0.8, 1.0), black, { x: sx * 5.06, y: -0.9, z }); for (let j = 0; j < 5; j++) B.add(box(0.08, 0.05, 0.95), steel, { x: sx * 5.09, y: -1.22 + j * 0.16, z }); }
+  for (const sx of [-1, 1]) {
+    const x = sx * 3.9, y = 1.25, z0 = -17.5, L = 3.6, R0 = 0.85;
+    B.add(cyl(R0, R0, L, 20), tank, { x, y, z: z0, rx: Math.PI / 2 });
+    for (const e of [-1, 1]) B.add(new THREE.SphereGeometry(R0, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), tank, { x, y, z: z0 + e * L / 2, rx: e * Math.PI / 2 });
+    for (const dz of [-1.2, 0, 1.2]) { B.add(cyl(R0 + 0.04, R0 + 0.04, 0.12, 20), gun, { x, y, z: z0 + dz, rx: Math.PI / 2 }); B.add(box(1.5, 0.5, 0.2), gun, { x, y: 0.55, z: z0 + dz }); }
+    B.add(cyl(R0 + 0.02, R0 + 0.02, 0.35, 20), orange, { x, y, z: z0 + 0.6, rx: Math.PI / 2 });
+    B.add(cyl(0.12, 0.12, 0.5, 8), steel, { x, y: y + R0 + 0.2, z: z0 + 1.3 }); B.add(new THREE.TorusGeometry(0.16, 0.035, 6, 12), pipeR, { x, y: y + R0 + 0.47, z: z0 + 1.3, rx: Math.PI / 2 });
+    B.add(cyl(0.09, 0.09, 1.1, 8), pipeB, { x: x - sx * 0.6, y: 0.75, z: z0 + L / 2 + 0.5 });
+    B.add(cyl(0.09, 0.09, 0.9, 8), pipeB, { x: x - sx * 0.6, y: 1.25, z: z0 + L / 2 + 0.05, rx: Math.PI / 2 });
+    decals.push({ tex: labelTex(sx < 0 ? 'LOX 1' : 'LOX 2', { size: 40, fg: 0x2a2e32 }), w: 1.0, x, y: y + R0 + 0.01, z: z0 - 0.5, ry: 0, rx: -Math.PI / 2, plate: -1 });
+  }
+  for (let k = 0; k < 5; k++) { const x = -1.6 + k * 0.8; B.add(cyl(0.08, 0.08, 4.4, 8), [pipeY, steel, pipeR, steel, pipeB][k], { x, y: 0.42, z: -17.6, rx: Math.PI / 2 }); B.add(box(0.2, 0.2, 0.2), gun, { x, y: 0.42, z: -15.3 }); }
+  for (let z = -19.4; z <= -15.6; z += 0.95) B.add(box(4.2, 0.1, 0.12), gun, { x: 0, y: 0.52, z });
+  for (const [x, y, sc] of [[-3.1, -1.5, 0.62], [0, -1.5, 0.72], [3.1, -1.5, 0.62]] as [number, number, number][]) {
+    B.add(cyl(1.35 * sc + 0.2, 1.35 * sc + 0.2, 0.12, 24), dark, { x, y, z: -20.07, rx: Math.PI / 2 });
+    for (const a of [0.6, 2.6, 4.4]) B.add(cyl(0.07, 0.07, 0.9, 8), steel, { x: x + Math.cos(a) * (1.25 * sc + 0.18), y: y + Math.sin(a) * (1.25 * sc + 0.18), z: -20.5, rx: Math.PI / 2 });
+  }
+  for (const sx of [-1, 1]) for (let z = -19.8; z < -13.8; z += 0.9) B.add(cyl(1.04, 1.04, 0.1, 20), gun, { x: sx * 7.0, y: -1.8, z, rx: Math.PI / 2 });
+  for (const sx of [-1, 1]) { B.add(box(1.4, 0.25, 4.6, 0.05), grey, { x: sx * 7.0, y: -0.75, z: -17.0 }); for (let k = 0; k < 4; k++) B.add(box(0.9, 0.04, 0.12), black, { x: sx * 7.0, y: -0.61, z: -18.8 + k * 1.2 }); }
+  // stencils
+  const T = (s: string, size = 40) => labelTex(s, { size, fg: 0x2a2e32 });
+  for (const sx of [-1, 1]) {
+    const ry = sx * Math.PI / 2, X = sx * (HW + 0.03);
+    for (const [s, z, y, w] of [['NO STEP', -11.5, 2.5, 1.2], ['O2 FILL', -6.8, 0.7, 1.1], ['H2O', 6.6, 0.7, 0.7], ['VENT', 9.8, 2.55, 0.8], ['F-04', -9.6, -0.25, 0.6], ['F-10', 8.4, -0.25, 0.6], ['RCS DANGER', -13.0, 2.55, 1.6]] as [string, number, number, number][]) {
+      const pi = sx < 0 && y > 1.1 ? plateOf(z) : -1;
+      decals.push({ tex: T(s), w, x: X, y, z, ry, plate: pi });
+    }
+  }
+  for (const [s, x, z] of [['NO STEP', -3.0, -4.0], ['NO STEP', 3.4, -9.0], ['HATCH 3', 4.6, 7.0], ['NO STEP', -4.6, 11.0]] as [string, number, number][]) { const pi = plateOf(z); if (pi >= 0) decals.push({ tex: T(s), w: 1.3, x, y: 4.31, z, ry: Math.PI, rx: -Math.PI / 2, plate: pi }); }
+  decals.push({ tex: T('CAUTION HOT', 48), w: 2.4, x: 0, y: 0.31, z: -14.95, ry: 0, plate: -1 });
+  decals.push({ tex: T('RV-07', 64), w: 1.8, x: 0, y: 0.58, z: -16.0, ry: Math.PI, rx: -Math.PI / 2, plate: -1 });
+  decals.push({ tex: T('DOCK A'), w: 1.2, x: 7.6, y: 2.2, z: 6.2, ry: Math.PI / 2, plate: -1 });
 }
 // unused helpers kept for the decal pass
 void rgba; void hazardStripes;

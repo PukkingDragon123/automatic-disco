@@ -156,7 +156,7 @@ export async function testEventStage(engine: Engine, P: URLSearchParams) {
   const { Mission } = await import('./mission');
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0x8fa4ae); scene.fog = new THREE.Fog(0x8fa4ae, 30, 90);
   scene.add(new THREE.HemisphereLight(0xe8ecf0, 0x4a5a3a, 1.2));
-  const sun = new THREE.DirectionalLight(0xfff0dc, 2.2); sun.position.set(-20, 30, 15); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+  const sun = new THREE.DirectionalLight(0xfff0dc, 2.2); sun.position.set(-20, 30, 15); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
   const sc = sun.shadow.camera as import('three').OrthographicCamera; sc.left = sc.bottom = -40; sc.right = sc.top = 40; sc.far = 120; scene.add(sun);
   const lamb = (c: number) => gbuf(new THREE.MeshLambertMaterial({ color: c, flatShading: true }), 1);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(240, 240, 60, 60), lamb(0x5f7a3e));
@@ -192,6 +192,7 @@ export async function testEventStage(engine: Engine, P: URLSearchParams) {
     render(post, t) { post.render(scene, cam, undefined, t); },
     resize(w, h) { cam.aspect = w / h; cam.updateProjectionMatrix(); },
   });
+  if (P.has('scale')) { engine.scale = Number(P.get('scale')) || 1; engine.resize(); }
   engine.start();
   const id = P.get('id'); if (id) setTimeout(() => g.director.trigger(id), Number(P.get('at') ?? 1.5) * 1000);
 }

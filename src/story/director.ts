@@ -86,7 +86,7 @@ export class Director {
       // the decision: the colony waits
       const was = G.paused; G.paused = true;
       document.body.classList.add('ev-on'); // the film grade holds through the decision
-      const res = await choose({ kicker: e.kicker, title: e.title, brief: e.brief(x), options: e.options(x), stamp: e.id === 'fallen' ? 'THEIR LAST ORDERS' : undefined }, (o) => {
+      const res = await choose({ kicker: e.kicker, title: e.title, brief: e.brief(x), options: e.options(x), stamp: e.id === 'fallen' ? 'THEIR LAST ORDERS' : undefined, still: st.still }, (o) => {
         const f = E.fx(g); const text = o.run(f);
         return { text, lines: f.out };
       });

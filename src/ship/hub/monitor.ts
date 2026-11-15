@@ -15,6 +15,7 @@ import { makeGlobe, makeSpace, type Globe } from '../../ui/globe';
 import { PlanetScreen } from '../../ui/planetScreen';
 import { GN_DECL, gbuf, F_EMIT } from '../../gfx/gbuf';
 import { hashi } from '../../core/rand';
+import { plate, type PlateKind } from './plates';
 import { csfx } from '../../ui/cineAudio';
 import { ui } from '../../ui/kit';
 
@@ -92,34 +93,34 @@ const CSS = /* css */`
 .gmon .prog .bar { width: 420px; height: 12px; border: 2px solid #e2d8be; margin-top: 6px; box-shadow: 0 2px 0 #0a0806; }
 .gmon .prog .bar i { display: block; height: 100%; background: #b8402e; }
 .gmon .list { position: absolute; left: 32px; top: 170px; width: 470px; display: flex; flex-direction: column; gap: 4px; }
-.gmon .w { padding: 0 8px; border: 24px solid transparent; border-image: var(--tag) 12 fill / 24px stretch; cursor: pointer; color: #2a2622; text-shadow: none; animation: gm-in 360ms steps(6) both; }
+.gmon .w { cursor: pointer; animation: gm-in 360ms steps(6) both; }
 @keyframes gm-in { 0% { opacity: 0; transform: translateX(-30px); } 100% { opacity: 1; transform: none; } }
-.gmon .w:hover, .gmon .w.h { border-image: var(--tagHi) 12 fill / 24px stretch; transform: translateX(6px); }
-.gmon .w .r1 { display: flex; justify-content: space-between; align-items: baseline; margin-top: -12px; }
-.gmon .w .n { font-family: 'Title'; font-size: 24px; color: #2a2622; }
-.gmon .w .pips b { color: #b8402e; font-weight: normal; } .gmon .w .pips s { color: #b8ac94; text-decoration: none; }
-.gmon .w .b { font-family: 'Body'; font-size: 11px; color: #5a4a3a; }
-.gmon .w .rec { display: inline-block; margin: 2px 0 -12px; font-family: 'Body'; font-size: 11px; color: #e8dcc0; background: #b8402e; padding: 0 6px; }
+.gmon .w:hover, .gmon .w.h { filter: brightness(1.14) drop-shadow(0 4px 0 rgba(10,8,6,0.5)); transform: translateX(6px); }
+.gmon .w .r1 { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.gmon .w .n { font-family: 'Body'; font-size: 22px; letter-spacing: 2px; }
+.gmon .pips b { color: #b13c2b; font-weight: normal; text-shadow: none; } .gmon .pips s { opacity: 0.35; text-decoration: none; }
+.gmon .w .b { font-family: 'Body'; font-size: 11px; opacity: 0.8; margin-top: 4px; }
+.gmon .w .rec { display: inline-block; margin-top: 6px; font-family: 'Body'; font-size: 11px; color: #e5dbc3; background: #8c2920; padding: 2px 6px; text-shadow: none; }
 .gmon .lab { position: absolute; left: 0; top: 0; transform: translate(-50%, calc(-100% - 14px)); white-space: nowrap; text-align: center; transition: opacity 200ms; }
 .gmon .lab .n { font-family: 'Title'; font-size: 24px; color: #ece2c8; }
 .gmon .lab .d { font-size: 22px; color: #e0a040; }
 .gmon .lab .rec { font-family: 'Body'; font-size: 11px; color: #e8dcc0; background: #b8402e; padding: 0 4px; text-shadow: none; }
-.gmon .det { position: absolute; right: 40px; top: 100px; width: 520px; padding: 8px 14px; border: 36px solid transparent; border-image: var(--card) 24 fill / 36px stretch; color: #2a2622; text-shadow: none; animation: gm-in 420ms steps(8) both; transform: rotate(0.6deg); }
-.gmon .det .n { font-family: 'Title'; font-size: 48px; color: #2a2622; line-height: 48px; }
-.gmon .det .tg { font-family: 'Body'; font-size: 11px; color: #5a4a3a; margin: 6px 0 10px; }
-.gmon .det .f { display: flex; justify-content: space-between; font-size: 22px; line-height: 33px; border-bottom: 2px dashed #c8b890; }
-.gmon .det .f span:last-child { color: #8a2a1e; }
-.gmon .det .dif { margin: 10px 0; font-size: 22px; }
-.gmon .det .dif b { color: #b8402e; font-weight: normal; } .gmon .det .dif s { color: #c8b890; text-decoration: none; }
-.gmon .btn { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding: 0 10px; cursor: pointer; border: 20px solid transparent; border-image: var(--stamp) 10 fill / 20px stretch; font-family: 'Title'; font-size: 24px; color: #2a2622; text-shadow: none; }
-.gmon .btn:hover { border-image: var(--stampHi) 10 fill / 20px stretch; color: #8a2a1e; }
-.gmon .btn .hk { font-family: 'Body'; font-size: 11px; color: #7a6a58; }
+.gmon .det { position: absolute; right: 40px; top: 100px; width: 520px; padding: 28px 32px !important; animation: gm-in 420ms steps(8) both; }
+.gmon .det .n { font-family: 'Title'; font-size: 48px; line-height: 48px; }
+.gmon .det .tg { font-family: 'Body'; font-size: 11px; opacity: 0.8; margin: 8px 0 12px; }
+.gmon .det .f { display: flex; justify-content: space-between; font-size: 22px; line-height: 34px; border-bottom: 2px solid rgba(10,8,6,0.35); }
+.gmon .det .f span:last-child { color: #e9cb89; }
+.gmon .det .dif { margin: 12px 0; font-size: 22px; }
+.gmon .btn { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; cursor: pointer; font-family: 'Body'; font-size: 22px; letter-spacing: 2px; }
+.gmon .btn:hover { filter: brightness(1.16) drop-shadow(0 6px 0 rgba(10,8,6,0.5)); transform: translateY(-2px); }
+.gmon .btn .hk { font-family: 'Body'; font-size: 11px; padding: 2px 4px; border: 2px solid currentColor; opacity: 0.7; letter-spacing: 0; }
 .gmon .back { position: absolute; left: 40px; bottom: 36px; width: 280px; }
-.gmon .hint { position: absolute; right: 40px; bottom: 36px; font-size: 22px; color: #c8b890; }
 `;
 let styled = false;
 function style() { if (styled) return; styled = true; const s = document.createElement('style'); s.textContent = CSS; document.head.appendChild(s); }
 const div = (cls: string, parent: HTMLElement, html = '') => { const e = document.createElement('div'); e.className = cls; e.innerHTML = html; parent.appendChild(e); return e; };
+/** a div painted in one of the hub's materials */
+const pdiv = (cls: string, parent: HTMLElement, html: string, kind: PlateKind, seed = 1) => { const e = div(cls, parent, html); plate(e, kind, seed); return e; };
 const pips = (n: number) => `<b>${'#'.repeat(n)}</b><s>${'#'.repeat(5 - n)}</s>`;
 const DIFF = ['', 'GENTLE', 'FAIR', 'HARSH', 'SEVERE', 'LETHAL'];
 
@@ -192,12 +193,11 @@ export class GalaxyScreen implements Screen {
     });
     // ---- DOM
     this.root = div('gmon', ui());
-    this.hd = div('hd', this.root, `<div class="k">MERIDIAN · HOLO TABLE</div><div class="t">LONG RANGE SCAN</div><div class="s">SECTOR KEPLER-442 · ORION SPUR</div>`);
+    this.hd = div('hd', this.root, `<div class="t">LONG RANGE SCAN</div><div class="s">KEPLER-442</div>`);
     this.prog = div('prog', this.root, `<div>SWEEP <span class="pc">0%</span> · <span class="ct">0</span> SYSTEMS</div><div class="bar"><i style="width:0%"></i></div>`);
     this.list = div('list pe', this.root); this.list.style.display = 'none';
-    this.backEl = div('back btn pe', this.root, '&lt; BRIDGE <span class="hk">ESC</span>');
+    this.backEl = pdiv('back btn pe', this.root, '&lt; BRIDGE <span class="hk">ESC</span>', 'steel', 3);
     this.backEl.addEventListener('click', (e) => { e.stopPropagation(); this.back(); });
-    div('hint', this.root, 'CLICK A WORLD · ESC BACK');
     for (const w of this.worlds) { const l = div('lab', this.root); l.style.opacity = '0'; l.innerHTML = `<div class="n">${w.planet.name.toUpperCase()}</div><div class="d">${'#'.repeat(w.diff)}</div>`; this.labs.push(l); }
     this.root.addEventListener('pointerdown', (e) => e.stopPropagation());
     // ---- input
@@ -224,7 +224,7 @@ export class GalaxyScreen implements Screen {
     const best = order[0];
     order.forEach((i, k) => {
       const w = this.worlds[i];
-      const e = div('w', this.list, `<div class="r1"><span class="n">${w.planet.name.toUpperCase()}</span><span class="pips">${pips(w.diff)}</span></div><div class="b">${DIFF[w.diff]} · ${w.tag}</div>${i === best ? '<span class="rec">RECOMMENDED · START HERE</span>' : ''}`);
+      const e = pdiv('w', this.list, `<div class="r1"><span class="n">${w.planet.name.toUpperCase()}</span><span class="pips">${pips(w.diff)}</span></div><div class="b">${DIFF[w.diff]} · ${w.tag}</div>${i === best ? '<span class="rec">RECOMMENDED</span>' : ''}`, i === best ? 'brass' : 'glass', 11 + i);
       e.style.animationDelay = `${k * 90}ms`;
       e.addEventListener('pointerenter', () => { this.hov = i; csfx('hover', 0.3); });
       e.addEventListener('pointerleave', () => { if (this.hov === i) this.hov = -1; });
@@ -241,9 +241,9 @@ export class GalaxyScreen implements Screen {
     const w = this.worlds[i];
     this.det?.remove();
     const best = this.worlds.reduce((b, x, k) => (x.diff < this.worlds[b].diff ? k : b), 0);
-    this.det = div('det pe', this.root, `<div class="n">${w.planet.name.toUpperCase()}</div><div class="tg">${w.tag}</div>${w.facts.map(([a, b]) => `<div class="f"><span>${a}</span><span>${b}</span></div>`).join('')}<div class="dif">DIFFICULTY ${pips(w.diff)} ${DIFF[w.diff]}${i === best ? ' · RECOMMENDED' : ''}</div>`);
-    const go = div('btn pri', this.det, 'CHOOSE LANDING SITE <span class="hk">ENTER</span>'); go.addEventListener('click', (e) => { e.stopPropagation(); this.land(); });
-    const bk = div('btn', this.det, '&lt; SYSTEM <span class="hk">ESC</span>'); bk.addEventListener('click', (e) => { e.stopPropagation(); this.back(); });
+    this.det = pdiv('det pe', this.root, `<div class="n">${w.planet.name.toUpperCase()}</div><div class="tg">${w.tag}</div>${w.facts.map(([a, b]) => `<div class="f"><span>${a}</span><span>${b}</span></div>`).join('')}<div class="dif">DIFFICULTY ${pips(w.diff)} ${DIFF[w.diff]}</div>`, 'steel', 17 + i);
+    const go = pdiv('btn pri', this.det, 'LANDING SITE <span class="hk">ENTER</span>', 'enamelRust', 5); go.addEventListener('click', (e) => { e.stopPropagation(); this.land(); });
+    const bk = pdiv('btn', this.det, '&lt; SYSTEM <span class="hk">ESC</span>', 'enamelBone', 6); bk.addEventListener('click', (e) => { e.stopPropagation(); this.back(); });
   }
   /** down to the orbital survey of the chosen world */
   private land() {
@@ -255,7 +255,7 @@ export class GalaxyScreen implements Screen {
       canLand: (r) => (r.state === 'veyr' ? 'Already yours.' : r.state === 'lost' ? 'Burnt out. Nothing will take root here again.' : null),
       onBack: () => { this.engine.pop(); this.root.style.display = ''; },
       onLand: (r, lz, region) => { this.engine.pop(); this.o.onDeploy(w.seed, r, lz, region); },
-      note: `DIFFICULTY ${w.diff} / 5 · ${DIFF[w.diff]} · CHOOSE A REGION, THEN THE DROP POINT`,
+      note: `${DIFF[w.diff]} · ${'#'.repeat(w.diff)}`,
     }));
   }
   private back() {
