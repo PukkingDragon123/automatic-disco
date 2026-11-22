@@ -6,6 +6,8 @@ import { plate, pxCanvas, type Mat } from '../kit/mat';
 import { Counter, placeDust, burst } from '../kit/juice';
 import { transition, type TransitionKind } from '../kit/transitions';
 import { floatIcon } from '../kit/floatIcon';
+import { mTurret, animTurret, mCradle, animCradle, mBay, animBay, mJig, animJig, mGearBox, animGearBox, mPiston, animPiston } from '../kit/hardware';
+import { mCustomTool } from '../kit/models';
 import { markGlyph, timeGlyph, batteryGlyph, o2Glyph, compassGlyph, type MarkKind } from './glyphs';
 
 export function kitSheet() {
@@ -17,6 +19,12 @@ export function kitSheet() {
   for (const id of Object.keys(DOCK_MODELS) as (keyof typeof DOCK_MODELS)[]) { const v = new ModelView(DOCK_MODELS[id], { w: 96, h: 84, scale: 2, spin: 0.4, anim: DOCK_ANIM[id], liveFps: id === 'lab' ? 10 : undefined, pitch: id === 'build' ? 0.75 : 0.45 }); box(id.toUpperCase()).append(v.cv); }
   for (const id of Object.keys(TOOL_MODELS)) { const v = new ModelView(TOOL_MODELS[id], { w: 64, h: 56, scale: 2, spin: 0.4, anim: TOOL_ANIM[id] }); box(id.toUpperCase()).append(v.cv); }
   { const v = new ModelView(mCrate, { w: 64, h: 56, scale: 2, spin: 0.3, pitch: 0.6 }); box('CRATE').append(v.cv); }
+  { const v = new ModelView(() => mTurret([TOOL_MODELS.scanner, TOOL_MODELS.drill, TOOL_MODELS.weld, TOOL_MODELS.grab]), { w: 150, h: 118, scale: 2, spin: 0, yaw0: -0.38, rock: 0.1, pitch: 0.36, anim: (r, t) => animTurret(r, t), liveFps: 10, zoom: 1.12 }); box('TURRET').append(v.cv); let k = 0; setInterval(() => { const st = v.state<{ slot: number }>(); if (st) st.slot = ++k % 4; }, 2500); }
+  { const v = new ModelView(() => mCradle(TOOL_MODELS.drill, true), { w: 96, h: 92, scale: 2, spin: 0, yaw0: 0.3, pitch: 0.42, anim: (r, t) => animCradle(r, t, true), liveFps: 10 }); box('CRADLE').append(v.cv); }
+  { const v = new ModelView(() => mBay(TOOL_MODELS.sampler), { w: 80, h: 70, scale: 2, spin: 0, yaw0: 0.4, pitch: 0.5, anim: (r, t) => animBay(r, t, false), liveFps: 10 }); box('BAY').append(v.cv); }
+  { const v = new ModelView(() => mJig(() => mCustomTool({ head: 'bit', core: 'reactor', grip: 'brace', mod: 'scope' })), { w: 200, h: 150, scale: 2, spin: 0, yaw0: -0.3, pitch: 0.5, anim: (r, t) => animJig(r, t, false), liveFps: 12 }); box('JIG').append(v.cv); }
+  { const v = new ModelView(mGearBox, { w: 56, h: 72, scale: 2, spin: 0, yaw0: 0.35, pitch: 0.2, anim: (r, t) => animGearBox(r, t), liveFps: 12 }); box('GEARS').append(v.cv); }
+  { const v = new ModelView(mPiston, { w: 36, h: 96, scale: 2, spin: 0, yaw0: 0.3, pitch: 0.15, anim: (r) => animPiston(r), liveFps: 12 }); box('PISTON').append(v.cv); }
   const mats: Mat[] = ['steel', 'gun', 'enamel', 'brass', 'olive', 'paper', 'blueprint', 'wood', 'glass', 'leather', 'rubber', 'orange', 'copper'];
   for (const m of mats) box(m.toUpperCase()).append(pxCanvas(plate(70, 44, { mat: m, seed: 3, screws: true, wear: 0.9, hazard: m === 'olive' ? 5 : 0 }), 2));
   const g = box('GLYPHS'); const gr = document.createElement('div'); gr.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;max-width:520px;align-items:flex-end'; g.append(gr);

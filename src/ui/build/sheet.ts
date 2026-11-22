@@ -148,7 +148,8 @@ export class BlueprintSheet {
   }
   private recipes(): Recipe[] { const d = this.b?.def; return d?.station && d.station !== 'boiler' && d.station !== 'lab' ? recipesAt(d.station) : d?.station ? recipesAt(d.station) : []; }
   private renderRecipes() {
-    const b = this.b!, rs = this.recipes().slice(0, 3);
+    // the running recipe first, then the others it could switch to
+    const b = this.b!, all = this.recipes(), rs = [...all].sort((x, y) => Number(y === b.recipe) - Number(x === b.recipe) || Number(this.f.recipeOk(y)) - Number(this.f.recipeOk(x))).slice(0, 3);
     if (!rs.length) {
       // no recipe: what the building does, as icons (an extractor's seam, a store's contents)
       this.recs.innerHTML = '';
@@ -159,7 +160,7 @@ export class BlueprintSheet {
       const ok = this.f.recipeOk(r), on = b.recipe === r;
       const out = r.robot ? `<span class="bs-it"><img src="${itemIcon('iron_plate', 32)}" alt=""></span>` : side(r.out);
       const rate = Object.entries(r.out)[0];
-      return `<div class="bs-rec ${on ? 'on' : ''} ${ok ? '' : 'locked'}" data-rec="${r.id}"><span class="bs-in">${side(r.in)}</span><img class="bs-arrow" src="${arrowUrl()}" alt=""><span class="bs-out">${out}</span><span class="bs-time k7-t16">${r.t}s${rate && !r.robot ? ` · ${fmt(perMin(r, rate[1] ?? 0))}/m` : ''}</span></div>`;
+      return `<div class="bs-rec ${on ? 'on' : ''} ${ok ? '' : 'locked'}" data-rec="${r.id}"><span class="bs-in">${side(r.in)}</span><img class="bs-arrow" src="${arrowUrl()}" alt=""><span class="bs-out">${out}</span><span class="bs-time k7-t16">${r.t}s${rate && !r.robot ? `  ${fmt(perMin(r, rate[1] ?? 0))}/m` : ''}</span></div>`;
     }).join('');
   }
   private pickRecipe(e: MouseEvent) {

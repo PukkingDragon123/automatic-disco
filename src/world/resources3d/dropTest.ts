@@ -29,7 +29,7 @@ export async function dropTest(engine: Engine, P: URLSearchParams) {
   const fm = new THREE.MeshLambertMaterial({ map: colorTex('dirt') }); gbuf(fm, 0);
   const ground = new THREE.Mesh(fg, fm); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
   const cam = new THREE.PerspectiveCamera(Number(P.get('fov') ?? 32), innerWidth / innerHeight, 0.05, 100);
-  cam.position.set(Number(P.get('cx') ?? 0.4), Number(P.get('cy') ?? 4.6), Number(P.get('cz') ?? 5.4)); cam.lookAt(Number(P.get('lx') ?? 0.2), 0.3, Number(P.get('lz') ?? 0.1));
+  cam.position.set(Number(P.get('cx') ?? 0.3), Number(P.get('cy') ?? 6.4), Number(P.get('cz') ?? 6.2)); cam.lookAt(Number(P.get('lx') ?? 0.1), 0.25, Number(P.get('lz') ?? -0.25));
   const handlers: Record<string, ((d: unknown) => void)[]> = {};
   const fx = new Fx(fxScene, scene);
   const fg2 = {

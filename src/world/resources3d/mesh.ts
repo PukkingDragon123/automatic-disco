@@ -68,14 +68,14 @@ export class Mesher {
 
   /** a prism along +y from y = 0 to len: n sides, radius r0 at the base and r1 at the top, each ring jittered; caps
    *  flat (capMat) or pointed (tip > 0); smooth sides for round things */
-  prism(k: MatKey, o: { n?: number; r0: number; r1?: number; len: number; rings?: number; jit?: number; seed?: number; cap0?: MatKey | null; cap1?: MatKey | null; tip0?: number; tip1?: number; smooth?: boolean; bend?: number; ry?: number; sq?: number; rot?: number }) {
+  prism(k: MatKey, o: { n?: number; r0: number; r1?: number; len: number; rings?: number; jit?: number; seed?: number; cap0?: MatKey | null; cap1?: MatKey | null; tip0?: number; tip1?: number; smooth?: boolean; bend?: number; ry?: number; sq?: number; rot?: number; /** the top end sawn at a slant (y offset per metre of x) */ cut1?: number }) {
     const n = o.n ?? 7, R = o.rings ?? 1, rnd = new Rnd(o.seed ?? 1), jit = o.jit ?? 0, r1 = o.r1 ?? o.r0, sq = o.sq ?? 1, rot = o.rot ?? rnd.r(0, Math.PI * 2);
     const ring: V3[][] = [];
     const rad: number[][] = [];
     for (let j = 0; j <= R; j++) {
       const t = j / R, y = t * o.len, r = o.r0 + (r1 - o.r0) * t, bx = (o.bend ?? 0) * Math.sin(t * Math.PI) * o.len;
       const row: V3[] = [], rr: number[] = [];
-      for (let i = 0; i < n; i++) { const a = rot + (i / n) * Math.PI * 2, k2 = 1 + (rnd.next() - 0.5) * 2 * jit; rr.push(r * k2); row.push([Math.cos(a) * r * k2 + bx, y, Math.sin(a) * r * k2 * sq]); }
+      for (let i = 0; i < n; i++) { const a = rot + (i / n) * Math.PI * 2, k2 = 1 + (rnd.next() - 0.5) * 2 * jit, px = Math.cos(a) * r * k2 + bx; rr.push(r * k2); row.push([px, y + (j === R && o.cut1 ? (px - bx) * o.cut1 : 0), Math.sin(a) * r * k2 * sq]); }
       ring.push(row); rad.push(rr);
     }
     const circ = Math.PI * 2 * Math.max(o.r0, r1);
@@ -147,8 +147,8 @@ export class Mesher {
     g.dispose();
   }
   /** a rock: the hull of points on a squashed, jittered ellipsoid; n points (more = rounder) */
-  rock(k: MatKey, rx: number, ry: number, rz: number, seed: number, o: { n?: number; jag?: number; flat?: number; top?: MatKey } = {}) {
-    const rnd = new Rnd(seed), n = o.n ?? 14, jag = o.jag ?? 0.25, pts: THREE.Vector3[] = [];
+  rock(k: MatKey, rx: number, ry: number, rz: number, seed: number, o: { n?: number; jag?: number; flat?: number; top?: MatKey; chips?: number } = {}) {
+    const rnd = new Rnd(seed), n = o.n ?? 18, jag = o.jag ?? 0.25, pts: THREE.Vector3[] = [];
     for (let i = 0; i < n; i++) {
       // a fibonacci sphere, jittered: points spread evenly, so facets come out of even size
       const t = (i + 0.5) / n, phi = Math.acos(1 - 2 * t), th = Math.PI * (1 + Math.sqrt(5)) * i + rnd.r(-0.4, 0.4);
@@ -156,6 +156,14 @@ export class Mesher {
       let y = Math.cos(phi) * ry * k2;
       if (o.flat && y < -ry * (1 - o.flat)) y = -ry * (1 - o.flat);
       pts.push(new THREE.Vector3(Math.sin(phi) * Math.cos(th) * rx * k2, y, Math.sin(phi) * Math.sin(th) * rz * k2));
+    }
+    // cleavage: a few planes knock the corners off (broad flat facets beside the small ones, like a struck stone)
+    const nc = o.chips ?? 2;
+    for (let c = 0; c < nc; c++) {
+      const a = rnd.r(0, Math.PI * 2), e = rnd.r(-0.2, 0.9), nrm = new THREE.Vector3(Math.cos(a) * Math.cos(e), Math.sin(e), Math.sin(a) * Math.cos(e));
+      const d = rnd.r(0.5, 0.78);
+      // in the rock's normalised space a plane stays a plane: points past it are pressed onto it
+      for (const p of pts) { const q = (p.x / rx) * nrm.x + (p.y / ry) * nrm.y + (p.z / rz) * nrm.z; if (q > d) { p.x -= nrm.x * (q - d) * rx; p.y -= nrm.y * (q - d) * ry; p.z -= nrm.z * (q - d) * rz; } }
     }
     this.hull(k, pts, o.top);
   }

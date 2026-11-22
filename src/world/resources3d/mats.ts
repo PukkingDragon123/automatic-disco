@@ -27,11 +27,12 @@ export function worldMat(k: string, flag: GFlag = DEF): THREE.Material {
   const emits = isSolid(k) ? !!(fl & F_EMIT) : !!emitTex(k, WORLD_PPM);
   const shiny = !!(fl & (F_GLOSS | F_METAL | F_GLASS));
   const P: THREE.MeshPhongMaterialParameters & THREE.MeshLambertMaterialParameters = { flatShading: true };
-  if (isSolid(k)) P.color = new THREE.Color(colorOf(c));
-  else if (hasMat(k)) P.map = colorTex(k, WORLD_PPM);
+  // every key is a painted tile (a single step 's:...' is that step mottled with its ramp neighbours)
+  if (hasMat(k)) P.map = colorTex(k, WORLD_PPM); else P.color = new THREE.Color(colorOf(c));
   if (emits) {
-    if (isSolid(k)) { P.emissive = new THREE.Color(colorOf(c)); P.emissiveIntensity = 1.3; }
-    else { P.emissive = new THREE.Color(0xffffff); P.emissiveMap = emitTex(k, WORLD_PPM)!; P.emissiveIntensity = 1.2; }
+    const et = emitTex(k, WORLD_PPM);
+    if (et) { P.emissive = new THREE.Color(0xffffff); P.emissiveMap = et; P.emissiveIntensity = 1.2; }
+    else { P.emissive = new THREE.Color(colorOf(c)); P.emissiveIntensity = 1.3; }
   }
   if (shiny) {
     const metal = !!(fl & F_METAL);

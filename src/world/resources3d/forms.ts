@@ -9,7 +9,7 @@ import { F_EMIT, F_GLOSS, F_METAL, F_GLASS } from './codes';
 
 type V3 = [number, number, number];
 /** a single palette step as a material */
-export const S = (r: RampName, i: number, f = 0): MatKey => `s:${r}:${i}:${f}`;
+export const S = (r: RampName | (string & {}), i: number, f = 0): MatKey => `s:${r}:${i}:${f}`;
 const GL = F_GLOSS | F_GLASS, MT = F_METAL | F_GLOSS;
 export type PileKind = 'logs' | 'boards' | 'chunks' | 'mound' | 'stack' | 'bales' | 'cans' | 'crates' | 'packs' | 'rack';
 export type Sound = 'wood' | 'stone' | 'metal' | 'dirt' | 'glass' | 'soft' | 'liquid' | 'gravel';
@@ -32,21 +32,21 @@ const PI = Math.PI;
 
 // ------------------------------------------------------------------ wood
 const BARKS = ['bark', 'bark', 'barkPine', 'barkBirch'] as const;
-/** a log along +x, its end grain in rings (bark, sapwood, heartwood rings, pith) */
-export function log(M: Mesher, o: { len: number; r: number; seed: number; bark?: MatKey; stub?: boolean; taper?: number; n?: number }) {
-  const n = o.n ?? 8, bark = o.bark ?? 'bark', pine = bark === 'barkPine', birch = bark === 'barkBirch';
-  const sap = pine ? S('clay', 5) : birch ? S('bone', 5) : S('ochre', 5), heart = pine ? S('clay', 4) : birch ? S('sand', 4) : S('ochre', 4), ringC = pine ? S('clay', 3) : birch ? S('sand', 3) : S('ochre', 3);
-  const barkRing = pine ? S('hide', 1) : birch ? S('bone', 2) : S('fur', 1);
+/** a log along +x: lumpy bark (every ring of the trunk jittered), a bark rim round each sawn end, the end grain's
+ *  growth rings and checks painted on it; optionally a sawn branch stub, a bend, an end sawn at a slant */
+export function log(M: Mesher, o: { len: number; r: number; seed: number; bark?: MatKey; stub?: boolean; taper?: number; n?: number; bend?: number; cut?: number }) {
+  const n = o.n ?? 10, bark = o.bark ?? 'bark', pine = bark === 'barkPine', birch = bark === 'barkBirch';
+  const rim = pine ? S('m_barkP', 1) : birch ? S('m_birch', 2) : S('m_bark', 1);
   M.at([-o.len / 2, o.r, 0], [0, 0, -PI / 2], 1, () => {
-    const { ring } = M.prism(bark, { n, r0: o.r * (1 + (o.taper ?? 0.06)), r1: o.r * (1 - (o.taper ?? 0.06)), len: o.len, rings: 2, jit: 0.07, seed: o.seed, cap0: null, cap1: null });
-    disc(M, ring[0], [0.84, 0.6, 0.42, 0.2], [barkRing, sap, heart, ringC, S('fur', 2)], true);
-    disc(M, ring[ring.length - 1], [0.84, 0.62, 0.4, 0.18], [barkRing, sap, heart, ringC, S('fur', 2)], false);
+    const { ring } = M.prism(bark, { n, r0: o.r * (1 + (o.taper ?? 0.06)), r1: o.r * (1 - (o.taper ?? 0.06)), len: o.len, rings: 4, jit: 0.085, seed: o.seed, cap0: null, cap1: null, bend: o.bend ?? 0, cut1: o.cut ?? 0 });
+    disc(M, ring[0], [0.86], [rim, 'endgrain'], true);
+    disc(M, ring[ring.length - 1], [0.86], [rim, 'endgrain'], false);
     if (o.stub) {
-      // a sawn-off branch stub: a short tapered prism out of the side, its own end grain
+      // a sawn-off branch stub out of the side, with its own end grain
       const a = new Rnd(o.seed).r(0.4, 1.2);
-      M.at([Math.cos(a) * o.r * 0.82, o.len * 0.62, Math.sin(a) * o.r * 0.82], [0, -a, -PI / 2 + 0.55], 1, () => {
-        const st = M.prism(bark, { n: 6, r0: o.r * 0.34, r1: o.r * 0.28, len: o.r * 0.9, seed: o.seed + 3, cap0: null, cap1: null, jit: 0.05 });
-        disc(M, st.ring[st.ring.length - 1], [0.7, 0.3], [barkRing, sap, heart], false);
+      M.at([Math.cos(a) * o.r * 0.8, o.len * 0.62, Math.sin(a) * o.r * 0.8], [0, -a, -PI / 2 + 0.55], 1, () => {
+        const st = M.prism(bark, { n: 7, r0: o.r * 0.34, r1: o.r * 0.27, len: o.r * 0.9, seed: o.seed + 3, cap0: null, cap1: null, jit: 0.06 });
+        disc(M, st.ring[st.ring.length - 1], [0.8], [rim, 'endgrain'], false);
       });
     }
   });
@@ -97,10 +97,10 @@ function board(M: Mesher, o: { len: number; w: number; t: number; seed: number; 
 /** a rock of a family: 0 rounded cobble, 1 angular block, 2 flat slab, 3 wedge */
 export function stoneUnit(M: Mesher, mat: MatKey, r: number, seed: number, shape: number) {
   const s = shape % 4;
-  if (s === 0) M.rock(mat, r, r * 0.72, r * 0.86, seed, { n: 15, jag: 0.16, flat: 0.25 });
-  else if (s === 1) M.rock(mat, r * 1.05, r * 0.8, r * 0.8, seed, { n: 9, jag: 0.3, flat: 0.3 });
-  else if (s === 2) M.rock(mat, r * 1.15, r * 0.42, r * 0.95, seed, { n: 11, jag: 0.22, flat: 0.15 });
-  else M.rock(mat, r * 1.2, r * 0.7, r * 0.6, seed, { n: 8, jag: 0.35, flat: 0.35 });
+  if (s === 0) M.rock(mat, r, r * 0.72, r * 0.86, seed, { n: 24, jag: 0.14, flat: 0.25, chips: 2 });
+  else if (s === 1) M.rock(mat, r * 1.05, r * 0.8, r * 0.8, seed, { n: 16, jag: 0.26, flat: 0.3, chips: 3 });
+  else if (s === 2) M.rock(mat, r * 1.15, r * 0.42, r * 0.95, seed, { n: 18, jag: 0.2, flat: 0.15, chips: 2 });
+  else M.rock(mat, r * 1.2, r * 0.7, r * 0.6, seed, { n: 14, jag: 0.3, flat: 0.35, chips: 3 });
 }
 /** a part built in its own mesher, rotated and scaled, then dropped so its lowest point rests on y = pos[1] */
 export function rest(M: Mesher, build: (t: Mesher) => void, pos: V3 = [0, 0, 0], rot: V3 = [0, 0, 0], s = 1) {
@@ -108,6 +108,14 @@ export function rest(M: Mesher, build: (t: Mesher) => void, pos: V3 = [0, 0, 0],
   const r = new Mesher(); r.m = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(...rot)).scale(new THREE.Vector3(s, s, s)); r.merge(t);
   const rb = r.bounds();
   M.at([pos[0], pos[1] - rb.min.y, pos[2]], [0, 0, 0], 1, () => M.merge(r));
+}
+/** crystals or nuggets of the ore's metal breaking out of a chunk's upper surface */
+function oreBits(M: Mesher, mat: MatKey, r: number, seed: number, n: number) {
+  const rnd = new Rnd(seed + 77);
+  for (let i = 0; i < n; i++) {
+    const a = rnd.r(0, PI * 2), d = r * rnd.r(0.15, 0.55), y = r * rnd.r(0.35, 0.55);
+    M.at([Math.cos(a) * d, y, Math.sin(a) * d * 0.8], [rnd.r(-0.6, 0.6), rnd.r(0, PI), rnd.r(-0.6, 0.6)], 1, () => M.crystal(mat, r * rnd.r(0.08, 0.14), r * rnd.r(0.25, 0.45), { n: rnd.i(4, 6), seed: seed + i, tip: r * 0.12 }));
+  }
 }
 /** a crystal point leaning out from p: radius r, length h */
 function point(M: Mesher, mat: MatKey, p: V3, r: number, h: number, tilt: [number, number], seed: number, n = 6) {
@@ -184,13 +192,17 @@ export function crateBox(M: Mesher, w: number, h: number, d: number, open = fals
   // stencilled band on the front
   M.at([0, h * 0.55, d / 2 + 0.002], [0, 0, 0], 1, () => M.box(S('stampRed', 2), w * 0.3, h * 0.12, 0.002));
 }
-/** an ingot along x: a cast trapezoid, top narrower than the base, its top face stamped */
+/** an ingot along x: a cast trapezoid, its top edges bevelled, the top face stamped, a little casting flash */
 function ingot(M: Mesher, mat: MatKey, o: { l?: number; w?: number; h?: number; seed: number; stamp?: MatKey }) {
   const l = o.l ?? 0.2, w = o.w ?? 0.08, h = o.h ?? 0.05, i = 0.16, rnd = new Rnd(o.seed);
   const pts: THREE.Vector3[] = [];
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) { pts.push(new THREE.Vector3(sx * l / 2, 0, sz * w / 2)); pts.push(new THREE.Vector3(sx * l / 2 * (1 - i) + rnd.r(-0.003, 0.003), h, sz * w / 2 * (1 - i * 1.6))); }
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    pts.push(new THREE.Vector3(sx * l / 2 + sx * rnd.r(0, 0.003), 0, sz * w / 2 + sz * rnd.r(0, 0.002)));
+    pts.push(new THREE.Vector3(sx * l / 2 * (1 - i * 0.8), h * 0.82, sz * w / 2 * (1 - i * 1.3)));
+    pts.push(new THREE.Vector3(sx * l / 2 * (1 - i * 1.15) + rnd.r(-0.002, 0.002), h, sz * w / 2 * (1 - i * 2.2)));
+  }
   M.hull(mat, pts);
-  if (o.stamp) M.at([0, h + 0.0008, 0], [0, 0, 0], 1, () => M.box(o.stamp!, l * 0.28, 0.0016, w * 0.32));
+  if (o.stamp) M.at([0, h + 0.0008, 0], [0, 0, 0], 1, () => M.box(o.stamp!, l * 0.28, 0.0016, w * 0.3));
 }
 /** a spur gear lying flat: hub, web and teeth */
 function gear(M: Mesher, mat: MatKey, r: number, th: number, teeth: number) {
@@ -246,11 +258,11 @@ const POUCH = (body: MatKey, tie?: MatKey): Form => ({ unit: (M, v, sd) => sack(
 const CAN = (build: (M: Mesher, v: number) => void, dust: RampName = 'stone', sound: Sound = 'metal'): Form => ({ unit: (M, v) => build(M, v), variants: 1, pile: 'cans', icon: { n: 1 }, sound, dust });
 const PART = (build: (M: Mesher, v: number, sd: number) => void, pile: PileKind = 'packs', o: Partial<Form> = {}): Form => ({ unit: build, variants: 1, pile, icon: { n: 1 }, sound: 'metal', dust: 'stone', ...o });
 const INGOT = (mat: MatKey, stamp: MatKey): Form => ({ unit: (M, v, sd) => ingot(M, mat, { seed: sd, stamp: v === 1 ? stamp : undefined, l: 0.2 + (v === 2 ? 0.02 : 0) }), variants: 3, pile: 'stack', icon: { n: 3 }, sound: 'metal', dust: 'stone' });
-const ORE = (mat: MatKey, heap: MatKey, r = 0.1, o: Partial<Form> = {}): Form => ({ unit: (M, v, sd) => stoneUnit(M, mat, r * (0.85 + (v % 3) * 0.1), sd, v === 2 ? 3 : v), variants: 3, pile: 'mound', heap, icon: { n: 3 }, sound: 'gravel', dust: 'stone', ...o });
+const ORE = (mat: MatKey, heap: MatKey, r = 0.1, o: Partial<Form> = {}, bit?: MatKey): Form => ({ unit: (M, v, sd) => { stoneUnit(M, mat, r * (0.85 + (v % 3) * 0.1), sd, v === 2 ? 3 : v); if (bit) oreBits(M, bit, r * (0.85 + (v % 3) * 0.1), sd, 2 + v); }, variants: 3, pile: 'mound', heap, icon: { n: 3 }, sound: 'gravel', dust: 'stone', ...o });
 
 export const FORMS: Record<string, Form> = {
   // ---- wood and plants
-  wood: { unit: (M, v, sd) => log(M, { len: 0.9 - (v === 2 ? 0.1 : 0), r: 0.13 + (v === 1 ? 0.02 : 0) - (v >= 2 ? 0.02 : 0), seed: sd, stub: v === 1, bark: BARKS[v] }), variants: 4, pile: 'logs', icon: { n: 3, seed: 3 }, sound: 'wood', dust: 'fur' },
+  wood: { unit: (M, v, sd) => log(M, { len: [0.92, 0.86, 0.8, 0.74][v], r: [0.13, 0.15, 0.115, 0.105][v], seed: sd, stub: v === 1, bark: BARKS[v], bend: [0, 0.02, 0.035, 0.015][v], cut: [0, 0, 0.5, 0.7][v], taper: [0.06, 0.08, 0.1, 0.05][v] }), variants: 4, pile: 'logs', icon: { n: 3, seed: 3 }, sound: 'wood', dust: 'fur' },
   plank: { unit: (M, v, sd) => board(M, { len: v === 2 ? 0.7 : 1, w: 0.15 + (v === 1 ? 0.03 : 0), t: 0.035, seed: sd, face: v === 2 ? 'wood' : 'plank' }), variants: 3, pile: 'boards', icon: { n: 6, as: 'pile', pitch: 0.6, yaw: 1.0 }, sound: 'wood', dust: 'ochre' },
   bark: { unit: (M, v, sd) => { const rnd = new Rnd(sd), a0 = rnd.r(0.7, 0.95), L = 0.32 + v * 0.05, R = 0.16; const pts: THREE.Vector3[] = []; for (const x of [-L / 2, L / 2]) for (let i = 0; i <= 5; i++) { const a = -a0 + (i / 5) * 2 * a0; for (const rr of [R, R - 0.022]) pts.push(new THREE.Vector3(x + rnd.r(-0.02, 0.02), Math.cos(a) * rr - R + 0.03, Math.sin(a) * rr)); } bark2(M, pts, v === 2 ? 'barkPine' : 'bark'); }, variants: 3, pile: 'chunks', icon: { n: 2 }, sound: 'wood', dust: 'fur' },
   leaves: { unit: (M, v, sd) => { const rnd = new Rnd(sd); M.at([-0.12, 0.02, 0], [0, 0, -PI / 2 + 0.08], 1, () => M.prism(S('fur', 2), { n: 5, r0: 0.007, r1: 0.004, len: 0.26 })); for (let i = 0; i < 6 + v; i++) { const t = i / (6 + v); M.at([-0.12 + t * 0.24, 0.025 + rnd.r(0, 0.01), 0], [rnd.r(-0.3, 0.3), (i % 2 ? 1 : -1) * rnd.r(0.6, 1.1), 0], 1, () => leafCard(M, 'leaf', 0.09 + rnd.r(0, 0.03), 0.045, S('moss', 2))); } }, variants: 2, pile: 'mound', heap: 'leafLitter', icon: { n: 1, pitch: 0.9 }, sound: 'soft', dust: 'moss' },
@@ -310,10 +322,10 @@ export const FORMS: Record<string, Form> = {
   rock_slate: { unit: (M, v, sd) => M.rock('slate', 0.16 + v * 0.02, 0.022, 0.12, sd, { n: 10, jag: 0.12, flat: 0.1 }), variants: 3, pile: 'boards', icon: { n: 3 }, sound: 'stone', dust: 'slate' },
   rock_obsidian: { unit: (M, v, sd) => { M.at([0, 0, 0], [0, 0, 0.4 + v * 0.2], 1, () => M.crystal('obsidian', 0.05, 0.16, { n: 5, tip: 0.07, seed: sd, base: 1.3 })); }, variants: 3, pile: 'chunks', icon: { n: 3 }, sound: 'glass', dust: 'basalt' },
   // ---- ores and minerals
-  ore: ORE('ferrite', 'crushed', 0.1, { dust: 'rust' }),
-  copper_ore: ORE('copperOre', 'gravel', 0.1, { dust: 'stone' }),
+  ore: ORE('ferrite', 'crushed', 0.1, { dust: 'rust' }, S('m_iron', 5, MT)),
+  copper_ore: ORE('copperOre', 'gravel', 0.1, { dust: 'stone' }, S('m_cumetal', 5, MT)),
   coal: ORE('coal', 'charcoal', 0.09, { unit: (M, v, sd) => M.rock('coal', 0.09 + v * 0.01, 0.07, 0.08, sd, { n: 8, jag: 0.25, flat: 0.35 }), dust: 'basalt' }),
-  gold_ore: ORE('goldOre', 'gravel', 0.09, { dust: 'quartz' }),
+  gold_ore: ORE('goldOre', 'gravel', 0.09, { dust: 'quartz' }, S('m_gold', 6, MT)),
   sulphur: ORE('sulphur', 'sulphur', 0.08, { dust: 'straw', unit: (M, v, sd) => { M.rock('sulphur', 0.08 + v * 0.01, 0.05, 0.07, sd, { n: 13, jag: 0.22, flat: 0.3 }); const r = new Rnd(sd); for (let i = 0; i < 3; i++) point(M, S('straw', 5, F_GLOSS), [r.r(-0.04, 0.04), 0.03, r.r(-0.03, 0.03)], 0.01, 0.035, [r.r(-0.5, 0.5), r.r(-0.5, 0.5)], sd + i, 4); } }),
   crystal: { unit: (M, v, sd) => cluster(M, S('quartz', 5, GL), 'granite', sd, { n: 3 + v }), variants: 3, pile: 'chunks', icon: { n: 1 }, sound: 'glass', dust: 'quartz' },
   lumen_crystal: { unit: (M, v, sd) => cluster(M, S('glowTeal', 3, F_EMIT | GL), 'basalt', sd, { n: 4 + v, sides: 5 }), variants: 2, pile: 'chunks', icon: { n: 1 }, sound: 'glass', dust: 'teal' },
@@ -371,7 +383,7 @@ export const FORMS: Record<string, Form> = {
   lumen_cell: PART((M) => { M.prism(S('steel', 3, MT), { n: 8, r0: 0.05, len: 0.03 }); M.at([0, 0.03, 0], [0, 0, 0], 1, () => M.prism(S('water', 5, GL), { n: 8, r0: 0.045, len: 0.1, cap0: null, cap1: null })); M.at([0, 0.035, 0], [0, 0, 0], 1, () => M.crystal(S('glowTeal', 4, F_EMIT), 0.022, 0.08, { n: 5 })); M.at([0, 0.13, 0], [0, 0, 0], 1, () => M.prism(S('steel', 3, MT), { n: 8, r0: 0.05, len: 0.03, cap1: S('brass', 4, MT) })); }, 'crates'),
   grav_coil: PART((M) => { M.prism(S('violet', 2), { n: 10, r0: 0.03, len: 0.2, cap1: S('amethyst', 5, F_EMIT) }); coil(M, 'copper', 0.042, 0.008, 6, 0.16); }, 'crates'),
 };
-function bark2(M: Mesher, pts: THREE.Vector3[], bark: MatKey) { hullBy(M, pts, (n) => (n.y > 0.55 ? bark : n.y < -0.55 ? S('ochre', 5) : S('fur', 1))); }
+function bark2(M: Mesher, pts: THREE.Vector3[], bark: MatKey) { hullBy(M, pts, (n) => (n.y > 0.55 ? bark : n.y < -0.55 ? 'wood' : S('m_bark', 1))); }
 /** a fallback for items without a form: a small shipping crate */
 export const CRATE_FORM: Form = { unit: (M) => crateBox(M, 0.24, 0.18, 0.2, false), variants: 1, pile: 'crates', icon: { n: 1 }, sound: 'wood', dust: 'ochre' };
 export function formOf(id: string): Form { return FORMS[id] ?? CRATE_FORM; }

@@ -31,9 +31,17 @@ float bay(vec2 p) {
   float w = floor(x / 2.0) * 2.0 + floor(y / 2.0) * 3.0 - floor(x / 2.0) * floor(y / 2.0) * 4.0;
   return (v * 4.0 + w) / 16.0;
 }
-vec3 steel(float i) { int k = int(clamp(floor(i + 0.5), 0.0, 6.0)); vec3 c = uSteel[0]; for (int j = 0; j < 7; j++) if (j == k) c = uSteel[j]; return c; }
-// brushed metal: long horizontal streaks of a step up or down
-float brush(vec2 a, float seed) { float row = a.y; float len = 9.0 + floor(h1(vec2(row, seed)) * 14.0); float s = h1(vec2(floor(a.x / len), row + seed * 7.0)); return s > 0.84 ? 1.0 : s < 0.1 ? -1.0 : 0.0; }
+vec3 steel(float i) { int k = int(clamp(floor(i), 0.0, 6.0)); vec3 c = uSteel[0]; for (int j = 0; j < 7; j++) if (j == k) c = uSteel[j]; return c; }
+float vn(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h1(i), h1(i + vec2(1.0, 0.0)), u.x), mix(h1(i + vec2(0.0, 1.0)), h1(i + vec2(1.0, 1.0)), u.x), u.y); }
+// worn metal: soft mottling, a faint sheen stretched along x, clumped pits (no lines)
+float brush(vec2 a, float seed) {
+  float m = (vn(a / 22.0 + seed) - 0.5) * 1.5 + (vn(a / 7.0 + seed * 3.0) - 0.5) * 0.6 + (vn(vec2(a.x / 14.0, a.y / 1.7) + seed) - 0.5) * 0.8;
+  if (h1(a + seed) < 0.03 && vn(a / 6.0) > 0.5) m -= 1.6;
+  return m;
+}
+// the clustered dither threshold (Limbophobia): smooth noise at ~3 px plus a 2 x 2 jitter
+float clT(vec2 a) { return clamp(0.5 + (vn(a / 3.0 + 17.0) - 0.5) * 1.7 + (h1(floor(a / 2.0) + 5.0) - 0.5) * 0.22, 0.02, 0.98); }
 void main() {
   vec2 a = floor(gl_FragCoord.xy / uS); a.y = uRes.y - 1.0 - a.y;
   vec4 col = vec4(0.0);
@@ -56,8 +64,8 @@ void main() {
       float id = floor(u), f = fract(u);
       float w = 1.1 / max(8.0, dist) / seg;
       float base = 2.2 + mod(id, 2.0) * 1.1 + (1.0 - f) * 1.8 - clamp(out_ / 260.0, 0.0, 1.0) * 0.9;
-      base += brush(vec2(floor(a.x * 0.7 + a.y * 0.7), floor(a.y * 0.7 - a.x * 0.7) + id * 31.0), id) * 0.6;
-      vec3 c = steel(base + (bay(a) - 0.5) * 0.7);
+      base += brush(a + id * 37.0, id) * 0.7;
+      vec3 c = steel(floor(base) + (fract(base) > clT(a) ? 1.0 : 0.0));
       if (f < w * 2.0) c = uInk;                 // the seam: ink
       else if (f < w * 3.2) c = uSteel[6];       // its lit lip
       else if (f > 1.0 - w * 1.5) c = uSteel[1]; // the shaded far edge
@@ -80,7 +88,7 @@ void main() {
     if (ly >= 0.0) {
       float x = a.x;
       float v = 3.0 + brush(vec2(x, a.y), isTop ? 1.0 : 2.0) * 0.9 - clamp(ly / 260.0, 0.0, 1.0) * 1.2;
-      vec3 c = steel(v + (bay(a) - 0.5) * 0.6);
+      vec3 c = steel(floor(v) + (fract(v) > clT(a) ? 1.0 : 0.0));
       // the hazard band along the leading edge
       if (ly >= 3.0 && ly < 15.0) { float s = mod(x + ly * (isTop ? 1.0 : -1.0), 16.0); c = s < 8.0 ? uHaz : uInk; if (ly < 4.0 || ly > 13.0) c = uInk; if (h1(floor(a / 2.0)) > 0.93 && s < 8.0) c = uSteel[4]; }
       if (ly < 1.0) c = uInk; else if (ly < 2.0) c = uSteel[6]; else if (ly < 3.0) c = uSteel[5];

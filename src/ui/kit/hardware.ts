@@ -154,7 +154,7 @@ export function animTurret(root: THREE.Object3D, t: number) {
   for (let i = 0; i < 4; i++) leds['led' + i] = st.locked[i] ? 'off' : i === st.slot ? (st.live ? 'blink' : 'on') : 'pulse';
   leds.ledP = Math.abs(d) > 0.02 ? 'blink' : 'on';
   leds.strip = st.live ? 'on' : 'pulse';
-  leds.lens = st.live ? 'blink' : st.flash > t ? 'on' : 'pulse';
+  leds.lens = st.live ? 'blink' : st.flash > performance.now() / 1000 ? 'on' : 'pulse';
   pulseLeds(root, t, leds);
 }
 
@@ -246,7 +246,7 @@ export function animJig(root: THREE.Object3D, t: number, hot: boolean) {
   s.spin += dt * (hot ? 1.2 : 0.35);
   if (tt) tt.rotation.y = s.spin;
   const locked = s.c > 0.9;
-  pulseLeds(root, t, { ledL: locked ? 'on' : 'blink', ledR: locked ? 'on' : 'blink', ring: s.flash > t ? 'on' : 'pulse' });
+  pulseLeds(root, t, { ledL: locked ? 'on' : 'blink', ledR: locked ? 'on' : 'blink', ring: s.flash > performance.now() / 1000 ? 'on' : 'pulse' });
 }
 
 // ================================================================== decor: a gear train, a piston

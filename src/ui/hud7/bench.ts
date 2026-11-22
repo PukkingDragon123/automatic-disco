@@ -1,12 +1,14 @@
-// HUD v7 · THE CUSTOM TOOL BENCH (from the arsenal, or B in it). A planked workbench with a steel vice: the tool being
-// built turns in the vice as a live outlined 3D model. Four part trays (HEAD what it does, CORE its power, GRIP its
-// handling, MOD an extra) hold the parts as small turning models; click one (or drag it onto the vice) to fit it: it
-// drops in with a bounce, a puff of sawdust and a knock. The tool's numbers (power, reach, speed, draw, weight) sit on
-// stamped gauges and change as you fit parts; the bill of parts shows as item icons with counts (red when short).
-// FORGE takes the parts from the stores and hangs the new tool in the arsenal.
+// HUD v7 · THE CUSTOM TOOL BENCH (from the arsenal, or B in it). A machined steel workbench: in its middle a 3D JIG
+// (src/ui/kit/hardware.ts), a turntable between two clamp jaws on lead screws, holds the tool being built as a live
+// outlined model. Four anodised part trays (HEAD what it does, CORE its power, GRIP its handling, MOD an extra) hold the
+// parts as small 3D renders; click one to fit it: the jaws wind open (their gears turning), the part drops on with a
+// puff and a knock, the jaws lock (green LEDs). The tool's numbers sit on lit cell gauges and change as you fit parts;
+// the bill of parts shows as item icons with counts (red when short). FORGE takes the parts from the stores and hangs
+// the new tool in the arsenal (sparks, a heavy thud, the ring lights).
 import type { Game } from '../../game/game';
 import { ModelView, snapshot } from '../kit/model3d';
 import { mCustomTool } from '../kit/models';
+import { mJig, animJig } from '../kit/hardware';
 import { plate, skin, pxCanvas } from '../kit/mat';
 import { Px, P, INK, cellBar, rivet, screw } from '../kit/px';
 import { uiSfx } from '../kit/sound';
@@ -46,12 +48,12 @@ export class Bench {
     installKitStyle(); injectBenchCSS();
     const el = this.el = document.createElement('div'); el.className = 'h7-bench';
     const top = document.createElement('div'); top.className = 'h7-bench-top';
-    skin(top, (W, H) => { const p = plate(W, H, { mat: 'wood', seed: 91, chamfer: 6, wear: 1.2, grime: 0.7, screws: true }); return p; });
+    skin(top, (W, H) => plate(W, H, { mat: 'steel', seed: 91, chamfer: 8, wear: 0.9, grime: 0.6, screws: true, rivets: true, hazard: 8 }));
     // trays
     const trays = document.createElement('div'); trays.className = 'h7-trays';
     for (const slot of PART_SLOTS) {
       const tray = document.createElement('div'); tray.className = 'h7-tray';
-      skin(tray, (W, H) => plate(W, H, { mat: 'olive', seed: 92 + slot.length, chamfer: 3, wear: 0.9, lip: 1 }));
+      skin(tray, (W, H) => plate(W, H, { mat: 'gun', seed: 92 + slot.length, chamfer: 4, wear: 0.6, lip: 2, wells: [[6, 20, W - 12, H - 26, 0x0b0e12]] }));
       const lab = document.createElement('div'); lab.className = 'k7-t16 h7-tray-n'; lab.textContent = SLOT_NAME[slot]; tray.append(lab);
       const row = document.createElement('div'); row.className = 'h7-tray-row';
       for (const pd of PARTS[slot]) {
@@ -69,7 +71,6 @@ export class Bench {
     }
     // the vice with the assembly
     this.viceEl = document.createElement('div'); this.viceEl.className = 'h7-vice';
-    this.viceEl.append(pxCanvas(viceArt(), 2, 'h7-vice-art'));
     // the stats and the bill
     const side = document.createElement('div'); side.className = 'h7-bench-side';
     this.statEl = document.createElement('div'); this.statEl.className = 'h7-bstats';
@@ -107,15 +108,23 @@ export class Bench {
     this.rebuild(true);
   }
   private rebuild(fitted: boolean) {
-    const v = new ModelView(() => mCustomTool(this.parts), { w: 168, h: 132, scale: 2, spin: 0.35, hotSpin: 1.4, pitch: 0.42, zoom: 1.08 });
+    // the jig keeps its place; only the tool in it is rebuilt (the jaws open, the part goes on, the jaws lock)
+    const prev = this.view;
+    const v = new ModelView(() => mJig(() => mCustomTool(this.parts)), { w: 200, h: 150, scale: 2, spin: 0, yaw0: -0.3, rock: 0.12, hotSpin: 0, pitch: 0.5, anim: (r, t, hot) => animJig(r, t, hot), liveFps: 15, zoom: 1.08 });
     v.cv.classList.add('h7-bench-model');
-    this.view?.dispose(); this.view = v;
-    this.viceEl.prepend(v.cv);
     v.cv.addEventListener('pointerenter', () => v.hot(true)); v.cv.addEventListener('pointerleave', () => v.hot(false)); v.cv.addEventListener('pointermove', (e) => v.point(e.clientX, e.clientY));
-    if (fitted) {
-      v.cv.animate([{ transform: 'translateY(-26px) scale(.96, 1.06)' }, { transform: 'translateY(0) scale(1.1, .88)', offset: 0.35 }, { transform: 'translateY(-6px) scale(.98, 1.03)', offset: 0.6 }, { transform: 'none' }], { duration: 480, easing: 'ease-out' });
-      setTimeout(() => { const r = this.viceEl.getBoundingClientRect(); placeDust(r.left + r.width / 2, r.top + r.height * 0.72, 0.45, { layer: 'ui', ground: 'sand' }); uiSfx('metal', 0.5); }, 160);
-    }
+    if (fitted && prev) {
+      // open the old jig's jaws, then swap in the new one with its jaws open and lock them
+      const ps = prev.state<{ clamp: number }>(); if (ps) ps.clamp = 0;
+      uiSfx('winch', 0.45, 1.2);
+      setTimeout(() => {
+        prev.dispose(); this.viceEl.prepend(v.cv); this.view = v;
+        const go = () => { const st = v.state<{ clamp: number; c?: number; flash: number }>(); if (!st) { setTimeout(go, 30); return; } st.c = 0; st.clamp = 0; setTimeout(() => { st.clamp = 1; st.flash = performance.now() / 1000 + 0.5; uiSfx('clunk', 0.6); uiSfx('metal', 0.45, 0.9); }, 220); };
+        go();
+        v.cv.animate([{ transform: 'translateY(-10px)' }, { transform: 'translateY(0)' }], { duration: 260, easing: 'cubic-bezier(.5,0,.9,.5)' });
+        const r = this.viceEl.getBoundingClientRect(); placeDust(r.left + r.width / 2, r.top + r.height * 0.62, 0.4, { layer: 'ui', ground: 'metal' });
+      }, 260);
+    } else { prev?.dispose(); this.viceEl.prepend(v.cv); this.view = v; }
     for (const [k, b] of this.trayEls) { const [slot, id] = k.split('|'); b.classList.toggle('on', this.parts[slot as PartSlot] === id); }
     this.syncStats();
   }
@@ -153,7 +162,8 @@ export class Bench {
     placeDust(r.left + r.width / 2, r.top + r.height * 0.75, 0.7, { layer: 'ui', ground: 'metal' });
     floatUp(r.left + r.width / 2, r.top, name, { size: 32, color: '#ffe39a' });
     uiSfx('confirm', 0.7); uiSfx('slam', 0.5);
-    this.view?.poke(16); this.view?.press(1.5);
+    this.view?.press(1.5);
+    { const st = this.view?.state<{ flash: number; spin: number }>(); if (st) { st.flash = performance.now() / 1000 + 1.2; st.spin += 6; } }
     this.syncStats();
   }
 }
@@ -165,12 +175,12 @@ function injectBenchCSS() {
   s.textContent = `
 .h7-bench { position: fixed; inset: 0; z-index: 9250; display: none; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 50%, rgba(8,9,12,.5), rgba(8,9,12,.88)); }
 .h7-bench.on { display: flex; }
-.h7-bench-top { position: relative; width: 1500px; height: 640px; display: grid; grid-template-columns: 520px 1fr 380px; gap: 10px; padding: 34px 34px 30px; box-sizing: border-box; }
+.h7-bench-top { position: relative; width: 1560px; height: 660px; display: grid; grid-template-columns: 520px 1fr 380px; gap: 10px; padding: 34px 34px 30px; box-sizing: border-box; }
 .h7-bench-top > * { position: relative; z-index: 1; }
 .h7-trays { display: flex; flex-direction: column; gap: 10px; }
 .h7-tray { position: relative; padding: 6px 10px 6px 12px; height: 128px; box-sizing: border-box; }
 .h7-tray > * { position: relative; z-index: 1; }
-.h7-tray-n { color: var(--k7-warm); margin-bottom: 0; }
+.h7-tray-n { color: #9fe0d0; margin-bottom: 2px; }
 .h7-tray-row { display: flex; gap: 4px; align-items: flex-end; }
 .h7-part { position: relative; display: flex; flex-direction: column; align-items: center; border: 0; background: none; padding: 0; margin: 0; cursor: pointer; width: 112px; transition: transform .2s cubic-bezier(.2,.9,.3,1.6), filter .15s; filter: drop-shadow(3px 4px 0 rgba(5,6,8,.45)); }
 .h7-part canvas { display: block; }
@@ -179,7 +189,7 @@ function injectBenchCSS() {
 .h7-part.on .h7-part-n { color: var(--k7-amber); }
 .h7-part-n { color: var(--k7-dim); }
 .h7-vice { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 40px; }
-.h7-bench-model { position: relative; z-index: 2; display: block; margin-bottom: -40px; filter: drop-shadow(6px 8px 0 rgba(5,6,8,.4)); }
+.h7-bench-model { position: relative; z-index: 2; display: block; filter: drop-shadow(6px 8px 0 rgba(5,6,8,.4)); }
 .h7-vice-art { position: relative; z-index: 1; display: block; }
 .h7-bench-side { display: flex; flex-direction: column; gap: 14px; align-items: flex-start; padding-top: 30px; }
 .h7-bstats { display: flex; flex-direction: column; gap: 4px; }

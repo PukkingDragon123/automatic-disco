@@ -11,7 +11,8 @@ import * as THREE from 'three';
 import { formOf } from './forms';
 import { iconMesher } from './piles';
 import { codeTex } from './paint';
-import { keyCode, isSolid } from './mats';
+import { keyCode } from './mats';
+import { hasMat } from './paint';
 import { rampOf, cRamp, cStep, cFlags, F_EMIT, F_GLOSS, F_METAL, F_GLASS, INK } from './codes';
 
 const VERT_C = /* glsl */`
@@ -60,7 +61,7 @@ export function renderIcon(r: THREE.WebGLRenderer, id: string, o: IconOpts): Ico
   const cMats: THREE.ShaderMaterial[] = [], meshes: THREE.Mesh[] = [];
   for (const p of parts) {
     let m: THREE.ShaderMaterial;
-    if (isSolid(p.mat)) { const c = keyCode(p.mat); m = new THREE.ShaderMaterial({ vertexShader: VERT_C, fragmentShader: FRAG_C, uniforms: { uMap: { value: blank }, uCode: { value: new THREE.Vector4(cRamp(c) / 255, cStep(c) / 255, cFlags(c) / 255, 1) }, uUse: { value: 0 }, uS: { value: 1 } } }); }
+    if (!hasMat(p.mat)) { const c = keyCode(p.mat); m = new THREE.ShaderMaterial({ vertexShader: VERT_C, fragmentShader: FRAG_C, uniforms: { uMap: { value: blank }, uCode: { value: new THREE.Vector4(cRamp(c) / 255, cStep(c) / 255, cFlags(c) / 255, 1) }, uUse: { value: 0 }, uS: { value: 1 } } }); }
     else { const t = codeTex(p.mat, tp); m = new THREE.ShaderMaterial({ vertexShader: VERT_C, fragmentShader: FRAG_C, uniforms: { uMap: { value: t }, uCode: { value: new THREE.Vector4() }, uUse: { value: 1 }, uS: { value: t.repeat.x } } }); }
     cMats.push(m);
     const mesh = new THREE.Mesh(p.geo, m); holder.add(mesh); meshes.push(mesh);

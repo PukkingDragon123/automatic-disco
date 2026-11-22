@@ -179,3 +179,21 @@ trimmed and loudness-matched for the user's Limbophobia and reused here (same au
 | `woodhit_1-3`, `woodfall_1`, `metalfall_1` | 100 CC0 metal and wood SFX / 75 CC0 breaking, falling, hit sfx | rubberduck | https://opengameart.org/content/100-cc0-metal-and-wood-sfx, https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx | CC0 1.0 |
 | `rockhit_1-3` | 75 CC0 breaking, falling, hit sfx | rubberduck | https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx | CC0 1.0 |
 | `splash_1`, `plop_1-2` | 40 CC0 water / splash / slime SFX | rubberduck | https://opengameart.org/content/40-cc0-water-splash-slime-sfx | CC0 1.0 |
+
+## UI sounds (src/ui/kit/sound.ts, public/sfx/ui/)
+Recorded CC0 1.0 samples, ported from the author's Limbophobia project (cut, trimmed, loudness-matched mono MP3s; see its
+CREDITS-AUDIO.md). CC0 needs no attribution; credited with thanks.
+
+| files | pack | author | source | licence |
+|---|---|---|---|---|
+| `ui_back`, `ui_bong`, `ui_close`, `ui_confirm`, `ui_error`, `ui_glitch`, `ui_max`, `ui_min`, `ui_open`, `ui_pluck`, `ui_scratch`, `ui_scroll`, `ui_select`, `ui_switch`, `ui_tick`, `ui_toggle` | Interface Sounds | Kenney | https://opengameart.org/content/interface-sounds | CC0 |
+| `ui_click`, `ui_sw`, `switch` | 51 UI sound effects (buttons, switches and clicks) | Kenney | https://opengameart.org/content/51-ui-sound-effects-buttons-switches-and-clicks | CC0 |
+| `creak` | 50 RPG sound effects | Kenney | https://opengameart.org/content/50-rpg-sound-effects | CC0 |
+| `metalhit`, `metalclose` | 100 CC0 metal and wood SFX | rubberduck | https://opengameart.org/content/100-cc0-metal-and-wood-sfx | CC0 |
+| `glassclink` | 100 CC0 SFX | rubberduck | https://opengameart.org/content/100-cc0-sfx | CC0 |
+| `fs_gravel` | 100 CC0 SFX #2 | rubberduck | https://opengameart.org/content/100-cc0-sfx-2 | CC0 |
+| `hit`, `fall`, `metalslam` | 75 CC0 breaking / falling / hit sfx | rubberduck | https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx | CC0 |
+| `chain` | 80 CC0 RPG SFX | rubberduck | https://opengameart.org/content/80-cc0-rpg-sfx | CC0 |
+| `fs_dirt` | Different steps on wood, stone, leaves, gravel and mud | TinyWorlds | https://opengameart.org/content/different-steps-on-wood-stone-leaves-gravel-and-mud | CC0 |
+| `camera` | 202 More Sound Effects | OwlishMedia | https://opengameart.org/content/202-more-sound-effects | CC0 |
+| `winch` | Chain winch sounds | bart | https://opengameart.org/content/chain-winch-sounds | CC0 |

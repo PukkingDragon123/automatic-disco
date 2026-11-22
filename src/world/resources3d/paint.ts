@@ -1,448 +1,507 @@
-// The resource materials, painted by hand in code space (codes.ts) the way a pixel artist paints a tile: drawn
-// marks, not noise. Bark is cut into fissured plates lit on their upper-left lip; sawn wood carries straight grain
-// with a knot; each rock family has its own read (speckled granite, vesicular basalt, shelly limestone, cross-bedded
-// sandstone, split slate, glassy obsidian); ores carry their mineral as placed nuggets and stains; loose earth is
-// packed clods, pebbles and grains, each lit on top and shaded underneath. Feature sizes are in metres, strokes are
-// one texel, so the same recipe paints the world's 32 px/m tiles and an icon's finer ones without mixed pixel sizes.
+// The resource materials, painted the Limbophobia way (its pixel toolkit, src/limbo/gfx/pixel.ts and textures/*):
+// each material has its own hue-shifted ramp (makeRamp: shadows drift cool, lights drift warm); its body is a
+// tileable fbm field mapped through that ramp with CLUSTERED organic dithering (clumps that break along wavy
+// contours, never a checkerboard, never a flat fill); then the real-material detail is laid in as deliberate
+// marks, lit from the upper left: fissured bark ridges and lichen, end-grain growth rings and radial checks,
+// mineral grains and hairline cracks in stone, metallic crystal glints in ore, crumbs, pebbles and rootlets in soil,
+// twisted rope fibre, rust blooms and chipped enamel. At 32 px/m it reads as a real material in a few pixels.
+// Everything is painted in code space (codes.ts) so the icon renderer can shade along the same ramps. Feature
+// sizes are in metres (strokes stay one texel), so one recipe paints the world's tiles and an icon's finer ones.
 import * as THREE from 'three';
-import { type RampName } from '../../art/palette';
-import { code, shift, colorOf, cFlags, cRamp, cStep, F_EMIT, F_GLOSS, F_METAL, F_GLASS, type Code } from './codes';
+import { makeRamp } from '../../limbo/gfx/pixel';
+import { tileNoise2, hashf } from '../../limbo/core/rng';
+import { code, codeI, regRamp, shift, colorOf, cFlags, cRamp, cStep, cLen, F_EMIT, F_GLOSS, F_METAL, F_GLASS, type Code } from './codes';
 
 export const H = (x: number, y: number, s = 0) => { let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(s | 0, 2246822519)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+const sstep = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const fract = (x: number) => x - Math.floor(x);
 
+// ------------------------------------------------------------------ the material ramps (hue-shifted, 8 steps)
+const R = (name: string, base: number, steps = 8, o: { hueShift?: number; spread?: number; satShift?: number } = {}) => regRamp(name, makeRamp(base, steps, { hueShift: 0.045, spread: 0.62, satShift: 0.1, ...o }));
+const RP = (name: string, cols: readonly number[]) => regRamp(name, cols);
+const BARK = R('m_bark', 0x55402e), BARKP = R('m_barkP', 0x6a4436), BIRCH = R('m_birch', 0xc9c0a8, 8, { spread: 0.55 }), LICHEN = R('m_lichen', 0x8a9a6a, 6), MOSS = R('m_moss', 0x5d7a30, 6);
+const ENDW = R('m_end', 0xb58c58), WOOD = R('m_wood', 0xb89660), PLANK = R('m_plank', 0xa47b45), GREY = R('m_greywood', 0x8a8070), CRATE = R('m_crate', 0x9c7a4a);
+const GRAN = R('m_granite', 0x8d877d), FELD = R('m_feld', 0xb88a78, 6), BAS = R('m_basalt', 0x4b4847), LIME = R('m_lime', 0xc2b48e), SANDS = R('m_sandst', 0xb8915e), SANDS2 = R('m_sandst2', 0xa36a44, 6);
+const SLATE = R('m_slate', 0x4e6470), OBS = R('m_obsid', 0x26252d, 8, { spread: 0.5 }), FER = R('m_ferrite', 0x6a5c54), RUST = R('m_rust', 0xa4542a), HEM = R('m_hem', 0x7a3424, 6);
+const CUORE = R('m_cuhost', 0x6e6a64), MALA = R('m_mala', 0x3f8a56), CUM = R('m_cumetal', 0xc4783e), COAL = R('m_coal', 0x2c2b2e, 8, { spread: 0.55 }), QTZ = R('m_quartz', 0xd4d1c6), GOLD = R('m_gold', 0xd4a63a);
+const SUL = R('m_sulph', 0xd2bd4c), GRAV = R('m_grav', 0x4a3a62), GLOWV = RP('m_glowv', [0x6a4a9a, 0x8a62c0, 0xb08ae0, 0xd6c0f4]);
+const DIRT = R('m_dirt', 0x6c533a), TOPS = R('m_tops', 0x4a3a2a), CLAY = R('m_clay', 0x9c6038), SAND = R('m_sand', 0xc9ad78), STONE = R('m_stone', 0x857f76), PEAT = R('m_peat', 0x3c2e24);
+const ASH = R('m_ash', 0x8e8b86), ROOT = R('m_root', 0xc0a070, 6), STRAW = R('m_straw', 0xc4a85e), BURL = R('m_burlap', 0xa8925f), HIDE = R('m_hide', 0x8c6450), PAPER = R('m_paper', 0xd8ccb2, 8, { spread: 0.45 });
+const LEAF = R('m_leaf', 0x5f7c34), STEEL = R('m_steel', 0x7a7e80, 8, { hueShift: 0.02 }), IRON = R('m_iron', 0x5c5e60, 8, { hueShift: 0.02 }), COP = R('m_copper', 0xba723c), BRASS = R('m_brass', 0xb48838), VERD = R('m_verd', 0x4f9a86, 6);
+const OLIVE = R('m_olive', 0x666a3a), RUBB = R('m_rubber', 0x3a3838, 8, { spread: 0.45 }), BAKE = R('m_bake', 0x5e3424), CONC = R('m_conc', 0xa29e96), BRICK = R('m_brick', 0xa45a3a), GLASS = R('m_glass', 0x6aa898, 8, { spread: 0.55 });
+const PCB = R('m_pcb', 0x2a5a48, 6), SALT = R('m_salt', 0xdcdcd4, 6, { spread: 0.4 }), EGG = R('m_egg', 0xd8c8a4, 6), RED = R('m_red', 0x8c2a22, 6);
+
+// ------------------------------------------------------------------ the tile and its tools
 /** a tile of codes, wrapping on both axes */
 export class CTile {
   readonly d: Int32Array;
+  private cl: Float32Array | null = null;
   constructor(readonly w: number, readonly h: number, fill: Code) { this.d = new Int32Array(w * h).fill(fill); }
   private i(x: number, y: number) { const w = this.w, h = this.h; x = ((Math.floor(x) % w) + w) % w; y = ((Math.floor(y) % h) + h) % h; return y * w + x; }
   get(x: number, y: number) { return this.d[this.i(x, y)]; }
   set(x: number, y: number, c: Code) { this.d[this.i(x, y)] = c; }
   /** move a texel along its own ramp */
   nudge(x: number, y: number, k: number) { const j = this.i(x, y); this.d[j] = shift(this.d[j], k); }
-  rect(x: number, y: number, w: number, h: number, c: Code) { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) this.set(x + i, y + j, c); }
-  line(x0: number, y0: number, x1: number, y1: number, c: Code | ((x: number, y: number) => void)) {
-    x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
-    const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
-    let e = dx + dy;
-    for (let n = 0; n < 4096; n++) { if (typeof c === 'number') this.set(x0, y0, c); else c(x0, y0); if (x0 === x1 && y0 === y1) break; const e2 = 2 * e; if (e2 >= dy) { e += dy; x0 += sx; } if (e2 <= dx) { e += dx; y0 += sy; } }
+  /** the clustered dither threshold (Limbophobia's clusterT): smooth noise at ~3 texels plus 2x2 jitter, tiling */
+  ct(x: number, y: number) {
+    if (!this.cl) {
+      const W = this.w, Hh = this.h, f = new Float32Array(W * Hh), cx = Math.max(1, Math.round(W / 3)), cy = Math.max(1, Math.round(Hh / 3)), seed = (W * 73 + Hh * 151) % 997;
+      for (let j = 0; j < Hh; j++) for (let i = 0; i < W; i++) f[j * W + i] = Math.min(0.98, Math.max(0.02, 0.5 + (tileNoise2((i / W) * cx, (j / Hh) * cy, cx, cy, seed) - 0.5) * 1.7 + (hashf(i >> 1, j >> 1, seed + 5) - 0.5) * 0.22));
+      this.cl = f;
+    }
+    return this.cl[this.i(x, y)];
   }
-  /** an axis-aligned ellipse, filled (x, y may wrap) */
-  ellipse(cx: number, cy: number, rx: number, ry: number, c: Code | ((x: number, y: number, u: number, v: number) => void)) {
+  /** fill from a 0..1 field through a ramp (clustered dither between steps) */
+  field(ramp: number, fn: (x: number, y: number) => number, flags = 0, dither = 1) {
+    const n = cLen(codeI(ramp, 0));
+    for (let y = 0; y < this.h; y++) for (let x = 0; x < this.w; x++) {
+      const v = Math.max(0, Math.min(1, fn(x, y))) * (n - 1); let k = Math.floor(v);
+      if (v - k > 0.5 + (this.ct(x, y) - 0.5) * dither) k++;
+      this.d[y * this.w + x] = codeI(ramp, Math.min(n - 1, k), flags);
+    }
+  }
+  /** shift a texel by d steps where t beats the cluster threshold */
+  dshift(x: number, y: number, d: number, t: number) { if (t > this.ct(x, y)) this.nudge(x, y, d); }
+  /** put a code where t beats the cluster threshold */
+  dput(x: number, y: number, c: Code, t: number) { if (t > this.ct(x, y)) this.set(x, y, c); }
+  /** an organic blob (ditherBlob): soft clumped edge, filled by f(x, y, depth 0..1) */
+  blob(cx: number, cy: number, rx: number, ry: number, f: (x: number, y: number, k: number) => void, strength = 1.2) {
     for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
-      const u = (x + 0.5 - cx) / rx, v = (y + 0.5 - cy) / ry;
-      if (u * u + v * v > 1) continue;
-      if (typeof c === 'number') this.set(x, y, c); else c(x, y, u, v);
+      const dx = (x + 0.5 - cx) / rx, dy = (y + 0.5 - cy) / ry, d = Math.sqrt(dx * dx + dy * dy);
+      if (d <= 1 && (1 - d) * strength > this.ct(x, y) * 0.9) f(x, y, 1 - d);
     }
   }
-  poly(pts: [number, number][], c: Code) {
-    let y0 = Infinity, y1 = -Infinity; for (const p of pts) { y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
-    for (let y = Math.floor(y0); y <= Math.ceil(y1); y++) {
-      const xs: number[] = [], yy = y + 0.5;
-      for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; if ((a[1] <= yy) !== (b[1] <= yy)) xs.push(a[0] + ((yy - a[1]) / (b[1] - a[1])) * (b[0] - a[0])); }
-      xs.sort((a, b) => a - b);
-      for (let k = 0; k + 1 < xs.length; k += 2) for (let x = Math.round(xs[k]); x < Math.round(xs[k + 1]); x++) this.set(x, y, c);
+  /** a hairline crack: a wandering dark line with a lit lip beside it, now and then a short branch */
+  crack(x: number, y: number, len: number, ang: number, seed: number, dark = -3, lit = 1) {
+    let a = ang;
+    for (let i = 0; i < len; i++) {
+      const hz = Math.abs(Math.cos(a)) > 0.7;
+      this.nudge(x, y, dark); this.nudge(x + (hz ? 0 : 1), y + (hz ? 1 : 0), lit);
+      a += (H(i, seed, 3) - 0.5) * 0.9; x += Math.round(Math.cos(a)); y += Math.round(Math.sin(a));
+      if (H(i, seed, 7) < 0.05) { const b = a + (H(i, seed, 8) < 0.5 ? 1 : -1) * 0.9; let bx = x, by = y; for (let j = 0; j < len / 4; j++) { bx += Math.round(Math.cos(b)); by += Math.round(Math.sin(b)); this.nudge(bx, by, dark + 1); } }
     }
   }
 }
-
-// ------------------------------------------------------------------ marks
-/** irregular plates (a wrapped jittered-grid Voronoi, stretched by sx / sy): each plate keeps one tone, a dark
- *  groove on its lower-right border, a shaded row inside it and a lit lip on its upper-left */
-export function plates(t: CTile, nx: number, ny: number, seed: number, tone: (cell: number) => Code, o: { sx?: number; sy?: number; groove?: Code | null; lit?: number; dark?: number; jit?: number } = {}) {
-  const W = t.w, Ht = t.h, cw = W / nx, ch = Ht / ny, sx = o.sx ?? 1, sy = o.sy ?? 1, jit = o.jit ?? 0.8;
-  const px: number[] = [], py: number[] = [];
-  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { px.push((i + 0.5 + (H(i, j, seed) - 0.5) * jit) * cw); py.push((j + 0.5 + (H(i, j, seed + 1) - 0.5) * jit) * ch); }
-  const id = new Int32Array(W * Ht);
-  for (let y = 0; y < Ht; y++) for (let x = 0; x < W; x++) {
-    let best = 0, bd = Infinity;
-    const gi = Math.floor(x / cw), gj = Math.floor(y / ch);
-    for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) {
-      const ii = ((gi + di) % nx + nx) % nx, jj = ((gj + dj) % ny + ny) % ny, k = jj * nx + ii;
-      let dx = x + 0.5 - px[k], dy = y + 0.5 - py[k];
-      dx -= Math.round(dx / W) * W; dy -= Math.round(dy / Ht) * Ht;
-      const d = (dx * dx) / (sx * sx) + (dy * dy) / (sy * sy);
-      if (d < bd) { bd = d; best = k; }
-    }
-    id[y * W + x] = best;
-  }
-  const at = (x: number, y: number) => id[(((y % Ht) + Ht) % Ht) * W + (((x % W) + W) % W)];
-  for (let y = 0; y < Ht; y++) for (let x = 0; x < W; x++) {
-    const c = at(x, y); let v = tone(c);
-    if (at(x + 1, y) !== c || at(x, y + 1) !== c) { if (o.groove !== null) v = o.groove ?? shift(v, -2); }
-    else if (at(x + 2, y) !== c || at(x, y + 2) !== c) v = shift(v, o.dark ?? -1);
-    else if (at(x - 1, y) !== c || at(x, y - 1) !== c) v = shift(v, o.lit ?? 1);
-    t.set(x, y, v);
-  }
-  return { id, at, n: nx * ny };
+/** tileable anisotropic fbm over a tile: cx x cy cells at the base octave */
+export function nz(t: CTile, x: number, y: number, cx: number, cy: number, oct: number, seed: number) {
+  let amp = 0.5, sum = 0, norm = 0, a = Math.max(1, Math.round(cx)), b = Math.max(1, Math.round(cy));
+  for (let i = 0; i < oct; i++) { sum += amp * tileNoise2((x / t.w) * a, (y / t.h) * b, a, b, seed + i * 131); norm += amp; amp *= 0.5; a *= 2; b *= 2; }
+  return sum / norm;
 }
-/** small placed marks on a jittered grid (one per cell, some cells skipped): grains, specks, pits */
+/** placed marks on a jittered grid (one per cell, some skipped) */
 export function specks(t: CTile, cell: number, seed: number, draw: (x: number, y: number, r: number) => void, keep = 1) {
   const nx = Math.max(1, Math.round(t.w / cell)), ny = Math.max(1, Math.round(t.h / cell)), cw = t.w / nx, ch = t.h / ny;
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
     const r = H(i, j, seed + 7); if (r > keep) continue;
-    draw(Math.floor((i + 0.15 + H(i, j, seed) * 0.7) * cw), Math.floor((j + 0.15 + H(i, j, seed + 3) * 0.7) * ch), r / keep);
+    draw(Math.floor((i + 0.1 + H(i, j, seed) * 0.8) * cw), Math.floor((j + 0.1 + H(i, j, seed + 3) * 0.8) * ch), r / keep);
   }
 }
-/** a speck shape: 1, 2 or 3 texels */
-export function speck(t: CTile, x: number, y: number, c: Code, r: number, big = false) {
-  t.set(x, y, c);
-  if (r < 0.33) t.set(x + 1, y, c); else if (r < 0.55) t.set(x, y + 1, c);
-  if (big) { t.set(x + 1, y, c); t.set(x, y + 1, c); if (r > 0.5) t.set(x + 1, y + 1, c); }
-}
-/** a raised grain: its body, a lit texel on top-left, a shade texel under it */
-export function grain(t: CTile, x: number, y: number, c: Code, w = 2, h = 1) {
-  t.rect(x, y, w, h, c); t.set(x, y - 1, shift(c, 1)); if (w > 1) t.set(x + 1, y - 1, shift(c, 1));
-  t.set(x, y + h, shift(c, -2)); if (w > 1) t.set(x + w - 1, y + h, shift(c, -1));
-}
-/** horizontal bands with stepped, wavering borders: each band lit on its top row, shaded on its bottom row */
-export function bands(t: CTile, seed: number, layers: { c: Code; h: number }[], wave = 1.5, period = 0.5) {
-  const tot = layers.reduce((a, b) => a + b.h, 0);
-  for (let x = 0; x < t.w; x++) {
-    const off = Math.round(Math.sin((x / t.w) * Math.PI * 2 * Math.max(1, Math.round(t.w * period / 16)) + seed) * wave + (H(Math.floor(x / 5), 0, seed) - 0.5) * wave);
-    let y = 0, k = 0;
-    while (y < t.h) {
-      const L = layers[k % layers.length], hh = Math.max(1, Math.round((L.h / tot) * t.h));
-      for (let j = 0; j < hh; j++) {
-        const yy = y + j + off; let c = L.c;
-        if (j === 0) c = shift(c, 1); else if (j === hh - 1 && hh > 2) c = shift(c, -1);
-        t.set(x, yy, c);
-      }
-      y += hh; k++;
-    }
-  }
-}
-/** long strokes along the tile's height (wood grain, fibres): each wanders a texel now and then */
-export function strands(t: CTile, n: number, seed: number, c: (k: number) => Code, len: [number, number], wander = 0.15) {
-  for (let k = 0; k < n; k++) {
-    let x = Math.floor(H(k, 1, seed) * t.w); const y0 = Math.floor(H(k, 2, seed) * t.h), L = Math.round(len[0] + H(k, 3, seed) * (len[1] - len[0]));
-    const cc = c(k);
-    for (let i = 0; i < L; i++) { if (H(k, i >> 2, seed + 9) < wander && (i & 3) === 0) x += H(k, i, seed + 4) < 0.5 ? -1 : 1; t.set(x, y0 + i, cc); }
-  }
-}
-/** long strokes along the tile's width (sawn grain): each wanders a texel now and then */
-export function hstrands(t: CTile, n: number, seed: number, c: (k: number) => Code, len: [number, number], wander = 0.12) {
-  for (let k = 0; k < n; k++) {
-    let y = Math.floor(H(k, 1, seed) * t.h); const x0 = Math.floor(H(k, 2, seed) * t.w), L = Math.round(len[0] + H(k, 3, seed) * (len[1] - len[0]));
-    const cc = c(k);
-    for (let i = 0; i < L; i++) { if (H(k, i >> 2, seed + 9) < wander && (i & 3) === 0) y += H(k, i, seed + 4) < 0.5 ? -1 : 1; t.set(x0 + i, y, cc); }
-  }
-}
-/** packed round stones (gravel, pebbles): drawn top to bottom so lower ones overlap; each with a lit crown, a shade
- *  crescent and a dark rim at its foot */
-export function pebbles(t: CTile, cell: number, seed: number, tone: (k: number) => Code, o: { rx?: [number, number]; ry?: number; rim?: Code } = {}) {
-  const nx = Math.max(1, Math.round(t.w / cell)), ny = Math.max(1, Math.round(t.h / cell)), cw = t.w / nx, chh = t.h / ny;
-  const list: [number, number, number, number, Code][] = [];
-  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const k = j * nx + i, rx = cw * ((o.rx?.[0] ?? 0.42) + H(i, j, seed + 5) * ((o.rx?.[1] ?? 0.62) - (o.rx?.[0] ?? 0.42)));
-    list.push([(i + 0.5 + (H(i, j, seed) - 0.5) * 0.5) * cw, (j + 0.5 + (H(i, j, seed + 1) - 0.5) * 0.5) * chh, rx, rx * (o.ry ?? 0.78), tone(k)]);
-  }
-  list.sort((a, b) => a[1] - b[1]);
-  for (const [cx, cy, rx, ry, c] of list) {
-    t.ellipse(cx, cy, rx + 0.7, ry + 0.7, o.rim ?? shift(c, -3));
-    t.ellipse(cx, cy, rx, ry, (x, y, u, v) => {
-      const l = -u * 0.6 - v * 0.8;
-      t.set(x, y, l > 0.55 ? shift(c, 2) : l > 0.15 ? shift(c, 1) : l < -0.55 ? shift(c, -1) : c);
-    });
-  }
+/** a mineral grain or crumb: 1-4 texels of a code, lit on its upper left, a shade texel under it */
+export function grain(t: CTile, x: number, y: number, c: Code, size: number, r: number) {
+  const pts: [number, number][] = size <= 1 ? [[0, 0]] : size === 2 ? [[0, 0], [r < 0.5 ? 1 : 0, r < 0.5 ? 0 : 1]] : [[0, 0], [1, 0], [0, 1], ...(r < 0.5 ? [[1, 1] as [number, number]] : [])];
+  for (const [dx, dy] of pts) t.set(x + dx, y + dy, c);
+  t.set(x, y, shift(c, 1));
+  t.nudge(x, y + (size > 2 ? 2 : 1), -1);
 }
 
 // ------------------------------------------------------------------ the recipes
-type Recipe = (t: CTile, s: number, seed: number) => void;
+type Recipe = (t: CTile, s: number, sd: number, m: number) => void;
 interface Mat { base: Code; m: number; paint: Recipe }
-const C = code;
-/** stone-like plates in a ramp, each tone picked from steps */
-const toneOf = (r: RampName, steps: number[], seed: number, f = 0) => (k: number) => C(r, steps[Math.floor(H(k, 3, seed) * steps.length)], f);
+const C = (r: number, i: number, f = 0) => codeI(r, i, f);
+const cells = (m: number, f: number) => Math.max(1, Math.round(m / f));
+
+/** a stone body: two scales of mottling through its ramp */
+function stoneBody(t: CTile, ramp: number, m: number, sd: number, mid = 0.55, big = 0.12, small = 0.03, k = 1, flags = 0) {
+  t.field(ramp, (x, y) => mid + (nz(t, x, y, cells(m, big), cells(m, big), 3, sd) - 0.5) * 0.55 * k + (nz(t, x, y, cells(m, small), cells(m, small), 2, sd + 9) - 0.5) * 0.3 * k, flags);
+}
+function cracks(t: CTile, n: number, s: number, sd: number) { for (let i = 0; i < n; i++) t.crack(Math.floor(H(i, 1, sd) * t.w), Math.floor(H(i, 2, sd) * t.h), Math.round((0.06 + H(i, 3, sd) * 0.1) * s), H(i, 4, sd) * 6.28, sd + i * 17); }
+/** lichen or moss patches: clumped blotches in the plant's ramp with a darker rim */
+function lichen(t: CTile, ramp: number, m: number, sd: number, cover = 0.3, size = 0.08) {
+  for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) {
+    const v = nz(t, x, y, cells(m, size), cells(m, size), 3, sd);
+    if (v > 1 - cover) { const k = (v - (1 - cover)) / cover; if (k > t.ct(x, y) * 0.6) t.set(x, y, C(ramp, Math.round(1 + k * 3 + (H(x, y, sd) - 0.5)))); }
+    else if (v > 1 - cover - 0.03 && H(x, y, sd + 2) < 0.5) t.set(x, y, C(ramp, 0));
+  }
+}
+/** rust: a bloom of the rust ramp, darker at its heart, with a run down the surface */
+function rustBloom(t: CTile, cx: number, cy: number, r: number, sd: number) {
+  t.blob(cx, cy, r, r * 0.8, (x, y, k) => t.set(x, y, C(RUST, Math.round(2 + (1 - k) * 3 + (H(x, y, sd) - 0.5) * 1.5))), 1.4);
+  for (let i = 0; i < r * 2.5; i++) t.dput(cx + Math.round(Math.sin(i * 0.4 + sd) * 0.7), cy + r * 0.6 + i, C(RUST, 2 + (i % 2)), 0.7 - i / (r * 3));
+}
+/** a mottled overlay: where the field passes a threshold, the texel takes a step of another ramp */
+function overlay(t: CTile, ramp: number, m: number, size: number, thr: number, sd: number, base = 1, span = 10, oct = 3) {
+  for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) { const v = nz(t, x, y, cells(m, size), cells(m, size), oct, sd); if (v > thr) t.dput(x, y, C(ramp, Math.round(base + (v - thr) * span + (H(x, y, sd) - 0.5) * 1.5)), (v - thr) * 6); }
+}
 
 const MATS: Record<string, Mat> = {
-  // ---- wood
-  bark: { base: C('fur', 2), m: 1, paint: (t, s, sd) => {
-    // long fissured ridges down the trunk: narrow plates, ink-dark grooves, the ridge tops lit, a little lichen
-    plates(t, Math.max(3, Math.round(t.w / (0.055 * s))), Math.max(1, Math.round(t.h / (0.5 * s))), sd, toneOf('fur', [2, 2, 3], sd), { sx: 0.45, sy: 2.6, groove: C('fur', 0), jit: 0.7 });
-    specks(t, Math.max(4, 0.22 * s), sd + 3, (x, y, r) => { if (r < 0.2) { t.set(x, y, C('sage', 3)); t.set(x + 1, y, C('sage', 4)); t.set(x, y + 1, C('sage', 2)); } }, 0.3);
+  // ---------------------------------------------------------------- wood
+  bark: { base: C(BARK, 3), m: 1, paint: (t, s, sd, m) => {
+    // deep fissured ridges running down the trunk, warped round each other; the ridge tops catch the light on their
+    // left flank; cross-checks break the ridges into long plates; lichen in patches, a few insect holes
+    const nR = cells(m, 0.055);
+    t.field(BARK, (x, y) => {
+      const u = x / t.w, w = nz(t, x, y, nR / 3, cells(m, 0.45), 3, sd) - 0.5;
+      const r = fract(u * nR + w * 1.6), ridge = 1 - Math.abs(2 * r - 1);
+      const plate = nz(t, x, y, nR, cells(m, 0.16), 2, sd + 5);
+      const cross = plate < 0.3 ? (0.3 - plate) * 2.2 : 0;
+      return 0.1 + 0.62 * sstep(0.12, 0.62, ridge) - cross * ridge + (r < 0.5 ? 0.1 : -0.06) * ridge + (nz(t, x, y, cells(m, 0.02), cells(m, 0.03), 2, sd + 2) - 0.5) * 0.22;
+    });
+    lichen(t, LICHEN, m, sd + 30, 0.16, 0.07);
+    specks(t, Math.max(4, 0.2 * s), sd + 4, (x, y, r) => { if (r < 0.35) { t.set(x, y, C(BARK, 0)); t.nudge(x + 1, y + 1, 1); } }, 0.4);
   } },
-  barkPine: { base: C('hide', 2), m: 1, paint: (t, s, sd) => {
-    // puzzle plates of pine: wider, shorter, each lit along its top
-    plates(t, Math.max(2, Math.round(t.w / (0.09 * s))), Math.max(2, Math.round(t.h / (0.14 * s))), sd, toneOf('hide', [2, 3, 3], sd), { sx: 1, sy: 0.9, groove: C('hide', 0) });
+  barkPine: { base: C(BARKP, 3), m: 1, paint: (t, s, sd, m) => {
+    // puzzle plates of pine: each plate a mottled tone, curling at its edges (lit lip above, deep shadow below)
+    const nx = cells(m, 0.09), ny = cells(m, 0.13), W = t.w, Hh = t.h, cw = W / nx, ch = Hh / ny;
+    const px: number[] = [], py: number[] = [];
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { px.push((i + 0.5 + (H(i, j, sd) - 0.5) * 0.8) * cw); py.push((j + 0.5 + (H(i, j, sd + 1) - 0.5) * 0.8) * ch); }
+    const near = (x: number, y: number): [number, number] => { let b = 0, bd = 1e9, b2 = 1e9; const gi = Math.floor(x / cw), gj = Math.floor(y / ch); for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = ((gi + di) % nx + nx) % nx, jj = ((gj + dj) % ny + ny) % ny, k = jj * nx + ii; let dx = x + 0.5 - px[k], dy = y + 0.5 - py[k]; dx -= Math.round(dx / W) * W; dy -= Math.round(dy / Hh) * Hh; const d = Math.hypot(dx, dy * 0.85); if (d < bd) { b2 = bd; bd = d; b = k; } else if (d < b2) b2 = d; } return [b, b2 - bd]; };
+    t.field(BARKP, (x, y) => { const [k, e] = near(x, y); const edge = sstep(0, 2.4, e); return 0.08 + edge * (0.45 + H(k, 3, sd) * 0.25) + (nz(t, x, y, cells(m, 0.03), cells(m, 0.03), 2, sd + 4) - 0.5) * 0.25 + (edge < 1 && near(x, y - 1)[1] > e ? 0.15 : 0); });
+    lichen(t, LICHEN, m, sd + 30, 0.08, 0.05);
   } },
-  barkBirch: { base: C('bone', 4), m: 1, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('bone', 4));
-    bands(t, sd, [{ c: C('bone', 4), h: 5 }, { c: C('paper', 4), h: 3 }, { c: C('bone', 5), h: 4 }], 0.6, 0.2);
-    // dark lenticel dashes across the trunk, some long scars
-    specks(t, Math.max(3, 0.06 * s), sd, (x, y, r) => { const L = 1 + Math.round(r * 2 * Math.max(1, s / 48)); t.line(x, y, x + L, y, C('ink', r < 0.4 ? 0 : 1)); if (r > 0.8) t.set(x + 1, y + 1, C('stone', 2)); }, 0.55);
+  barkBirch: { base: C(BIRCH, 5), m: 1, paint: (t, s, sd, m) => {
+    t.field(BIRCH, (x, y) => 0.68 + (nz(t, x, y, cells(m, 0.2), cells(m, 0.06), 3, sd) - 0.5) * 0.3);
+    // lenticels: short dark scars of irregular length; dark diamond scars where twigs fell
+    specks(t, Math.max(3, 0.05 * s), sd + 2, (x, y, r) => { const L = 1 + Math.round(r * 0.04 * s); for (let i = 0; i < L; i++) t.dput(x + i, y, C(BIRCH, r < 0.3 ? 0 : 1), 0.95 - (i / (L + 1)) * 0.5); }, 0.6);
+    specks(t, Math.max(6, 0.3 * s), sd + 3, (x, y, r) => { if (r > 0.4) return; const k = Math.max(2, 0.03 * s); t.blob(x, y, k * 1.4, k, (xx, yy, d) => t.set(xx, yy, C(BIRCH, d > 0.5 ? 0 : 1))); });
   } },
-  wood: { base: C('sand', 4), m: 1, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('sand', 4));
-    // a fresh split face: growth rings show as long bands along the grain, fibres in two tones
-    for (let y = 0; y < t.h; y++) { const b = Math.floor((y + Math.round(Math.sin(y * 0.5 + sd) * 1.2)) / Math.max(2, 0.03 * s)); if (b % 3 === 0) for (let x = 0; x < t.w; x++) if (H(x >> 3, y, sd) < 0.85) t.set(x, y, C('sand', 3)); }
-    hstrands(t, Math.round(t.h * 0.6), sd + 4, (k) => C(k % 3 ? 'sand' : 'ochre', k % 3 ? 2 : 4), [t.w * 0.15, t.w * 0.5], 0.1);
+  endgrain: { base: C(ENDW, 4), m: 1, paint: (t, s, sd) => {
+    // a log's sawn end, centred on the tile corner: growth rings that wander, darker heartwood, radial checks
+    const ring = 0.011;
+    t.field(ENDW, (x, y) => {
+      let dx = x + 0.5, dy = y + 0.5; dx -= Math.round(dx / t.w) * t.w; dy -= Math.round(dy / t.h) * t.h;
+      const r = Math.hypot(dx, dy) / s, a = Math.atan2(dy, dx);
+      const rr = r + (tileNoise2(((a + Math.PI) / 6.283) * 7, r * 30, 7, 100000, sd) - 0.5) * 0.008;
+      const f = fract(rr / ring), late = f > 0.72 ? -0.22 : f > 0.6 ? -0.08 : 0.04;
+      return 0.6 + late - (r < 0.07 ? 0.12 : 0) + (hashf(x >> 1, y >> 1, sd) - 0.5) * 0.12;
+    });
+    for (let k = 0; k < 4; k++) { const a = H(k, 1, sd) * 6.28, L = (0.04 + H(k, 2, sd) * 0.06) * s; for (let i = 1; i < L; i++) { const x = Math.round(Math.cos(a) * i), y = Math.round(Math.sin(a) * i); t.nudge(x, y, -3); t.nudge(x + 1, y, -1); } }
+    t.nudge(0, 0, -3); t.nudge(-1, 0, -2);
   } },
-  plank: { base: C('ochre', 3), m: 1, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('ochre', 3));
-    // sawn grain along the board, a darker flatsawn arch, a knot with the grain swirling past it
-    hstrands(t, Math.round(t.h * 0.55), sd, (k) => C(k % 5 === 0 ? 'fur' : 'ochre', k % 5 === 0 ? 3 : k % 2 ? 4 : 2), [t.w * 0.3, t.w * 0.9], 0.05);
-    const kx = Math.floor(t.w * (0.3 + H(1, 1, sd) * 0.4)), ky = Math.floor(t.h * H(2, 2, sd)), kr = Math.max(1.2, 0.012 * s);
-    t.ellipse(kx, ky, kr * 2.4 + 1, kr * 1.5 + 1, C('ochre', 2)); t.ellipse(kx, ky, kr * 1.4, kr, C('fur', 2)); t.set(kx, ky, C('fur', 1)); t.set(kx - 1, ky - 1, C('ochre', 4));
+  wood: { base: C(WOOD, 4), m: 1, paint: (t, s, sd, m) => {
+    // a fresh split face: long fibre streaks along the grain, the growth bands warped, torn fibres lit
+    t.field(WOOD, (x, y) => { const w = nz(t, x, y, 2, cells(m, 0.15), 2, sd) - 0.5; const band = fract((y / t.h) * cells(m, 0.03) + w * 1.4); return 0.6 + (band > 0.7 ? -0.18 : 0) + (nz(t, x, y, cells(m, 0.25), cells(m, 0.006), 2, sd + 3) - 0.5) * 0.35; });
+    specks(t, Math.max(4, 0.06 * s), sd + 5, (x, y, r) => { if (r < 0.4) { const L = 2 + Math.round(r * 0.06 * s); for (let i = 0; i < L; i++) t.nudge(x + i, y, i === 0 ? 2 : 1); t.nudge(x, y + 1, -2); } }, 0.5);
   } },
-  crateWood: { base: C('ochre', 3), m: 1, paint: (t, s, sd) => {
+  plank: { base: C(PLANK, 4), m: 1, paint: (t, s, sd, m) => {
+    // sawn timber: grain streaks flowing along the board and round a knot, late-wood darker, the knot with a
+    // dark core and a little check running from it
+    const kx = t.w * (0.3 + H(1, 1, sd) * 0.4), ky = t.h * H(2, 2, sd), kr = 0.018 * s;
+    t.field(PLANK, (x, y) => {
+      let dx = x - kx, dy = y - ky; dx -= Math.round(dx / t.w) * t.w; dy -= Math.round(dy / t.h) * t.h;
+      const near = Math.exp(-(dx * dx) / (kr * kr * 30) - (dy * dy) / (kr * kr * 6));
+      const flow = (y / t.h) * cells(m, 0.028) + (nz(t, x, y, 2, cells(m, 0.2), 2, sd) - 0.5) * 1.6 + near * Math.sign(dy || 1) * 1.2;
+      const band = fract(flow);
+      return 0.58 + (band > 0.74 ? -0.2 : band > 0.62 ? -0.07 : 0) + (nz(t, x, y, cells(m, 0.3), cells(m, 0.007), 2, sd + 4) - 0.5) * 0.3;
+    });
+    t.blob(kx, ky, kr * 1.9, kr * 1.2, (x, y, k) => t.set(x, y, C(PLANK, k > 0.55 ? 0 : k > 0.3 ? 1 : 3)));
+    t.crack(Math.round(kx + kr * 1.6), Math.round(ky), Math.round(kr * 2), 0, sd, -2, 0);
+  } },
+  crateWood: { base: C(CRATE, 4), m: 1, paint: (t, s, sd, m) => {
+    // weathered crate boards: greying grain, dark gaps between boards, rusty nail heads bleeding a streak, grime
     const bw = Math.max(4, Math.round(0.12 * s)), nb = Math.max(1, Math.round(t.h / bw));
-    for (let b = 0; b < nb; b++) {
-      const y0 = Math.round((b * t.h) / nb), y1 = Math.round(((b + 1) * t.h) / nb), base = [3, 4, 3, 2][b % 4];
-      t.rect(0, y0, t.w, y1 - y0, C('ochre', base));
-      for (let k = 0; k < 5; k++) { const yy = y0 + 1 + Math.floor(H(b, k, sd) * Math.max(1, y1 - y0 - 2)), x0 = Math.floor(H(b, k, sd + 1) * t.w); t.line(x0, yy, x0 + Math.round(t.w * 0.3), yy, C('ochre', base + (k % 2 ? 1 : -1))); }
-      t.line(0, y0, t.w - 1, y0, C('ochre', Math.min(6, base + 2))); t.line(0, y1 - 1, t.w - 1, y1 - 1, C('fur', 1));
-      for (const nx of [2, t.w - 3]) { t.set(nx, y0 + Math.floor((y1 - y0) / 2), C('steel', 5)); t.set(nx + 1, y0 + Math.floor((y1 - y0) / 2) + 1, C('steel', 2)); }
-    }
-  } },
-  charcoal: { base: C('basalt', 1), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('basalt', 1));
-    // charred checking: a grid of cracks across the grain, glossy ridges
-    plates(t, Math.max(2, Math.round(t.w / (0.035 * s))), Math.max(2, Math.round(t.h / (0.05 * s))), sd, toneOf('basalt', [1, 2, 2], sd, F_GLOSS), { groove: C('ink', 0), sx: 1.3, sy: 0.7 });
-    specks(t, Math.max(3, 0.04 * s), sd + 1, (x, y, r) => { if (r < 0.4) t.set(x, y, C('slate', 3, F_GLOSS)); }, 0.6);
-  } },
-  // ---- plant matter
-  leaf: { base: C('moss', 3), m: 0.25, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('moss', 3));
-    const mid = Math.floor(t.w / 2);
-    for (let y = 0; y < t.h; y++) t.set(mid, y, C('moss', 5));
-    for (let y = 0; y < t.h; y += Math.max(3, Math.round(0.03 * s))) for (let i = 1; i < t.w / 2; i++) { t.set(mid - i, y + Math.floor(i * 0.6), C('moss', 4)); t.set(mid + i, y + Math.floor(i * 0.6), C('moss', 2)); }
-  } },
-  fibre: { base: C('straw', 3), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('straw', 3));
-    strands(t, Math.round(t.w * 1.4), sd, (k) => C('straw', [1, 2, 4, 5, 3][k % 5]), [t.h * 0.3, t.h], 0.05);
-  } },
-  straw: { base: C('ochre', 4), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('ochre', 4));
-    // a baled face: short stalks lying every which way in two tones, hollow ends here and there
-    specks(t, Math.max(3, 0.04 * s), sd, (x, y, r) => { const L = 2 + Math.round(r * 4 * Math.max(1, s / 64)); const d = r < 0.5 ? 1 : -1; t.line(x, y, x + L, y + d * Math.round(L * 0.4), C('straw', r < 0.3 ? 5 : r < 0.7 ? 4 : 2)); t.set(x + L + 1, y + d * Math.round(L * 0.4), C('ochre', 1)); });
-  } },
-  burlap: { base: C('sand', 3), m: 0.25, paint: (t, s, sd) => {
-    const p = Math.max(2, Math.round(0.006 * s));
-    for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) { const a = Math.floor(x / p) + Math.floor(y / p); t.set(x, y, C('sand', a % 2 ? 3 : (x + y) % 3 ? 2 : 4)); }
-    specks(t, Math.max(4, 0.05 * s), sd, (x, y, r) => { if (r < 0.3) t.line(x, y, x + 3, y, C('sand', 1)); }, 0.5);
-  } },
-  hide: { base: C('hide', 3), m: 0.5, paint: (t, s, sd) => {
-    plates(t, Math.max(2, Math.round(t.w / (0.12 * s))), Math.max(2, Math.round(t.h / (0.12 * s))), sd, toneOf('hide', [3, 3, 4], sd), { groove: null, lit: 1, dark: -1 });
-    specks(t, Math.max(3, 0.03 * s), sd, (x, y, r) => { t.line(x, y, x + 1, y + 2, C('hide', r < 0.5 ? 2 : 5)); }, 0.7);
-  } },
-  paper: { base: C('paper', 4), m: 0.25, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('paper', 4));
-    specks(t, Math.max(4, 0.03 * s), sd, (x, y, r) => { if (r < 0.4) t.set(x, y, C('paper', 3)); else if (r < 0.5) t.set(x, y, C('paper', 5)); }, 0.6);
-  } },
-  egg: { base: C('bone', 4), m: 0.1, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('bone', 4));
-    specks(t, Math.max(4, 0.012 * s), sd, (x, y, r) => { if (r < 0.45) { t.set(x, y, C('fur', 3)); if (r < 0.2) t.set(x + 1, y, C('fur', 3)); } else if (r < 0.55) t.set(x, y, C('bone', 2)); }, 0.7);
-  } },
-  // ---- rocks by family
-  granite: { base: C('stone', 4), m: 0.5, paint: (t, s, sd) => {
-    plates(t, Math.max(2, Math.round(t.w / (0.09 * s))), Math.max(2, Math.round(t.h / (0.09 * s))), sd, toneOf('stone', [4, 4, 5, 3], sd), { groove: null, lit: 1, dark: -1 });
-    specks(t, Math.max(3, 0.018 * s), sd + 1, (x, y, r) => { speck(t, x, y, r < 0.45 ? C('stone', 1) : r < 0.75 ? C('stone', 6) : C('clay', 5), r, s > 96); });
-  } },
-  basalt: { base: C('basalt', 3), m: 0.5, paint: (t, s, sd) => {
-    plates(t, Math.max(2, Math.round(t.w / (0.11 * s))), Math.max(2, Math.round(t.h / (0.16 * s))), sd, toneOf('basalt', [2, 3, 3, 4], sd), { groove: C('basalt', 0), sy: 1.4 });
-    // vesicles: dark pits with a lit lower lip
-    specks(t, Math.max(4, 0.035 * s), sd + 1, (x, y, r) => { if (r > 0.55) return; t.set(x, y, C('basalt', 0)); if (r < 0.3) t.set(x + 1, y, C('basalt', 0)); t.set(x, y + 1, C('basalt', 5)); });
-  } },
-  limestone: { base: C('bone', 3), m: 0.5, paint: (t, s, sd) => {
-    plates(t, Math.max(2, Math.round(t.w / (0.12 * s))), Math.max(2, Math.round(t.h / (0.08 * s))), sd, toneOf('bone', [3, 4, 4, 2], sd), { groove: C('bone', 1), sx: 1.4 });
-    // little shells: an arc of three texels with a dark mouth
-    specks(t, Math.max(5, 0.05 * s), sd + 2, (x, y, r) => { if (r > 0.6) return; t.set(x, y, C('bone', 5)); t.set(x + 1, y - 1, C('bone', 5)); t.set(x + 2, y, C('bone', 5)); t.set(x + 1, y, C('bone', 1)); });
-    specks(t, Math.max(3, 0.02 * s), sd + 3, (x, y, r) => { if (r < 0.35) t.set(x, y, C('bone', 1)); }, 0.7);
-  } },
-  sandstone: { base: C('sand', 3), m: 0.5, paint: (t, s, sd) => {
-    const L = (r: RampName, i: number, h: number) => ({ c: C(r, i), h });
-    bands(t, sd, [L('sand', 3, 4), L('sand', 4, 3), L('clay', 4, 2), L('sand', 2, 3), L('sand', 4, 4), L('clay', 5, 2)], Math.max(1, 0.012 * s), 0.6);
-    specks(t, Math.max(3, 0.025 * s), sd + 1, (x, y, r) => { if (r < 0.3) t.set(x, y, C('sand', 1)); else if (r < 0.45) t.set(x, y, C('sand', 5)); }, 0.6);
-  } },
-  slate: { base: C('slate', 3), m: 0.5, paint: (t, s, sd) => {
-    bands(t, sd, [{ c: C('slate', 3), h: 3 }, { c: C('slate', 2), h: 2 }, { c: C('slate', 4), h: 2 }, { c: C('slate', 3), h: 4 }, { c: C('slate', 2), h: 2 }], Math.max(0.6, 0.006 * s), 0.3);
-    specks(t, Math.max(4, 0.06 * s), sd + 1, (x, y, r) => { if (r < 0.5) t.line(x, y, x + 2 + Math.round(r * 4), y, C('slate', 5)); }, 0.5);
-  } },
-  obsidian: { base: C('ink', 1, F_GLOSS), m: 0.5, paint: (t, s, sd) => {
-    plates(t, Math.max(2, Math.round(t.w / (0.1 * s))), Math.max(2, Math.round(t.h / (0.1 * s))), sd, toneOf('ink', [0, 1, 1, 2], sd, F_GLOSS), { groove: null, lit: 1, dark: -1 });
-    // conchoidal ripples: concentric arcs of the cold sheen
-    specks(t, Math.max(6, 0.08 * s), sd + 2, (x, y, r) => { if (r > 0.6) return; const R = 2 + Math.round(r * 4 * Math.max(1, s / 64)); for (let a = 0; a < 5; a++) { const an = -2.4 + a * 0.35; t.set(x + Math.round(Math.cos(an) * R), y + Math.round(Math.sin(an) * R), C('slate', a === 2 ? 4 : 3, F_GLOSS)); } });
-  } },
-  // ---- ores (the host rock with its mineral laid in as nuggets and stains)
-  ferrite: { base: C('iron', 3), m: 0.5, paint: (t, s, sd) => {
-    plates(t, Math.max(2, Math.round(t.w / (0.08 * s))), Math.max(2, Math.round(t.h / (0.08 * s))), sd, toneOf('iron', [2, 3, 3, 4], sd), { groove: C('iron', 0) });
-    const p = plates(new CTile(t.w, t.h, 0), Math.max(2, Math.round(t.w / (0.14 * s))), Math.max(2, Math.round(t.h / (0.14 * s))), sd + 9, () => 0, { groove: null });
-    for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) if (H(p.at(x, y), 1, sd) < 0.38) { const c = t.get(x, y); t.set(x, y, C('rust', Math.max(1, Math.min(5, cStep(c) + 1)))); }
-    specks(t, Math.max(4, 0.04 * s), sd + 2, (x, y, r) => { if (r < 0.5) grain(t, x, y, C('rust', 5), 2, 1); else if (r < 0.62) t.set(x, y, C('iron', 6, F_METAL)); });
-  } },
-  copperOre: { base: C('stone', 3), m: 0.5, paint: (t, s, sd) => {
-    plates(t, Math.max(2, Math.round(t.w / (0.08 * s))), Math.max(2, Math.round(t.h / (0.08 * s))), sd, toneOf('stone', [3, 3, 4, 2], sd), { groove: C('stone', 1) });
-    specks(t, Math.max(4, 0.045 * s), sd + 2, (x, y, r) => {
-      if (r < 0.45) { t.ellipse(x, y, 1.6 + r * 2, 1.2 + r, C('malachite', 4)); t.set(x - 1, y - 1, C('malachite', 6)); t.set(x + 1, y + 1, C('malachite', 2)); }
-      else if (r < 0.7) grain(t, x, y, C('copper', 5, F_METAL), 2, 1);
+    t.field(CRATE, (x, y) => {
+      const b = Math.floor((y / t.h) * nb), yy = (y / t.h) * nb - b;
+      const gr = nz(t, x, y + b * 7, cells(m, 0.3), cells(m, 0.008), 2, sd + b);
+      const edge = yy < 1 / bw ? -0.32 : yy > 1 - 1.5 / bw ? 0.12 : 0;
+      return 0.55 + (gr - 0.5) * 0.45 + edge + (H(b, 0, sd) - 0.5) * 0.14 - sstep(0.6, 0.95, nz(t, x, y, cells(m, 0.25), cells(m, 0.25), 2, sd + 40)) * 0.2;
     });
+    for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) if (nz(t, x, y, cells(m, 0.18), cells(m, 0.12), 3, sd + 50) > 0.62) t.dput(x, y, C(GREY, cStep(t.get(x, y))), 0.8);
+    for (let b = 0; b < nb; b++) for (const nx of [Math.round(0.04 * s), t.w - Math.round(0.06 * s)]) { const ny = Math.round(((b + 0.5) * t.h) / nb); t.set(nx, ny, C(IRON, 2)); t.set(nx, ny - 1, C(IRON, 4)); rustBloom(t, nx, ny + 1, Math.max(1, 0.01 * s), sd + b); }
   } },
-  coal: { base: C('basalt', 1), m: 0.5, paint: (t, s, sd) => {
-    plates(t, Math.max(2, Math.round(t.w / (0.06 * s))), Math.max(2, Math.round(t.h / (0.05 * s))), sd, toneOf('basalt', [0, 1, 1, 2], sd, F_GLOSS), { groove: C('ink', 0), lit: 2 });
-    specks(t, Math.max(4, 0.05 * s), sd + 2, (x, y, r) => { if (r < 0.5) t.line(x, y, x + 1 + Math.round(r * 3), y, C('slate', 3, F_GLOSS)); }, 0.6);
+  charcoal: { base: C(COAL, 2), m: 0.5, paint: (t, s, sd, m) => {
+    // charred wood: the grain still there, broken across into blocks by checking, a silvery sheen on the ridges
+    t.field(COAL, (x, y) => { const g = nz(t, x, y, cells(m, 0.2), cells(m, 0.01), 2, sd); const chk = fract((x / t.w) * cells(m, 0.03) + (nz(t, x, y, 3, 3, 2, sd + 3) - 0.5) * 0.8); return 0.35 + (g - 0.5) * 0.4 - (chk < 0.12 ? 0.3 : 0) + (chk > 0.12 && chk < 0.25 ? 0.18 : 0); }, F_GLOSS);
   } },
-  goldOre: { base: C('quartz', 4), m: 0.5, paint: (t, s, sd) => {
-    plates(t, Math.max(2, Math.round(t.w / (0.08 * s))), Math.max(2, Math.round(t.h / (0.08 * s))), sd, toneOf('quartz', [3, 4, 4, 5], sd), { groove: C('quartz', 1) });
-    specks(t, Math.max(4, 0.05 * s), sd + 3, (x, y, r) => { if (r < 0.3) { t.ellipse(x, y, 2, 1.4, C('rust', 4)); } });
-    specks(t, Math.max(4, 0.04 * s), sd + 2, (x, y, r) => { if (r < 0.55) { grain(t, x, y, C('gold', 5, F_METAL), r < 0.2 ? 3 : 2, r < 0.2 ? 2 : 1); t.set(x, y, C('gold', 6, F_METAL)); } });
+  // ---------------------------------------------------------------- plant matter
+  leaf: { base: C(LEAF, 4), m: 0.25, paint: (t, s, sd, m) => {
+    t.field(LEAF, (x, y) => 0.56 + (nz(t, x, y, cells(m, 0.03), cells(m, 0.03), 3, sd) - 0.5) * 0.3 + (Math.abs(x - t.w / 2) < 1 ? 0.2 : 0));
+    for (let k = 0; k < 6; k++) { const y0 = Math.round((k * t.h) / 6); for (let i = 1; i < t.w / 2; i++) { t.dshift(t.w / 2 - i, y0 + Math.round(i * 0.7), 1, 0.7); t.dshift(t.w / 2 + i, y0 + Math.round(i * 0.7), -1, 0.7); } }
   } },
-  sulphur: { base: C('straw', 4), m: 0.5, paint: (t, s, sd) => {
-    plates(t, Math.max(2, Math.round(t.w / (0.04 * s))), Math.max(2, Math.round(t.h / (0.04 * s))), sd, (k) => H(k, 2, sd) < 0.2 ? C('ochre', 4) : C('straw', [3, 4, 5, 4][Math.floor(H(k, 3, sd) * 4)]), { groove: C('ochre', 2), lit: 1 });
-    specks(t, Math.max(3, 0.03 * s), sd + 1, (x, y, r) => { if (r < 0.3) t.set(x, y, C('gold', 6)); }, 0.6);
+  fibre: { base: C(STRAW, 4), m: 0.5, paint: (t, s, sd, m) => {
+    // combed fibre: long streaks of slightly different straw tones, the odd darker retted strand, frayed hairs
+    t.field(STRAW, (x, y) => 0.55 + (nz(t, x, y, cells(m, 0.006), cells(m, 0.25), 2, sd) - 0.5) * 0.55 + (nz(t, x, y, cells(m, 0.05), 2, 1, sd + 3) - 0.5) * 0.2);
+    specks(t, Math.max(4, 0.04 * s), sd + 2, (x, y, r) => { if (r < 0.3) for (let i = 0; i < 3 + r * 6; i++) t.nudge(x + (i > 3 ? 1 : 0), y + i, r < 0.15 ? -2 : 2); }, 0.5);
   } },
-  malachite: { base: C('malachite', 3), m: 0.25, paint: (t, s, sd) => {
-    // concentric botryoidal banding
-    const cx = t.w * H(1, 1, sd), cy = t.h * H(2, 2, sd), bw = Math.max(1.5, 0.008 * s);
-    for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) { let dx = x - cx, dy = y - cy; dx -= Math.round(dx / t.w) * t.w; dy -= Math.round(dy / t.h) * t.h; const b = Math.floor(Math.hypot(dx, dy * 1.3) / bw + Math.sin(x * 0.3) * 0.5); t.set(x, y, C('malachite', [2, 3, 5, 3, 4, 1][b % 6])); }
+  rope: { base: C(STRAW, 3), m: 0.25, paint: (t, s, sd, m) => {
+    // twisted rope: strands laid in a helix, each lit along its crown and dark in the lay groove, hairy
+    const lay = cells(m, 0.025);
+    t.field(STRAW, (x, y) => { const p = fract((x / t.w) * lay * 0.5 + (y / t.h) * lay); return 0.2 + Math.sin(p * Math.PI) * 0.55 + (nz(t, x, y, cells(m, 0.01), cells(m, 0.01), 2, sd) - 0.5) * 0.2; });
   } },
-  gravium: { base: C('violet', 2), m: 0.5, paint: (t, s, sd) => {
-    plates(t, Math.max(2, Math.round(t.w / (0.07 * s))), Math.max(2, Math.round(t.h / (0.07 * s))), sd, toneOf('violet', [1, 2, 2, 3], sd), { groove: C('amethyst', 5, F_EMIT) });
+  straw: { base: C(STRAW, 4), m: 0.5, paint: (t, s, sd, m) => {
+    // a baled face: stalks lying every which way, hollow cut ends dark, chaff in the gaps
+    t.field(STRAW, (x, y) => 0.35 + (nz(t, x, y, cells(m, 0.03), cells(m, 0.03), 2, sd) - 0.5) * 0.3);
+    specks(t, Math.max(2, 0.018 * s), sd, (x, y, r) => { const L = 2 + Math.round(r * 0.05 * s), a = H(x, y, sd) * 3.1, c = C(STRAW, r < 0.3 ? 6 : r < 0.7 ? 5 : 4); for (let i = 0; i < L; i++) { const xx = x + Math.round(Math.cos(a) * i), yy = y + Math.round(Math.sin(a) * i); t.set(xx, yy, i === 0 ? shift(c, 1) : c); t.nudge(xx, yy + 1, -1); } if (r < 0.2) t.set(x + Math.round(Math.cos(a) * L), y + Math.round(Math.sin(a) * L), C(STRAW, 0)); });
   } },
-  saltpetre: { base: C('paper', 4), m: 0.5, paint: (t, s, sd) => {
-    plates(t, Math.max(2, Math.round(t.w / (0.05 * s))), Math.max(2, Math.round(t.h / (0.04 * s))), sd, toneOf('paper', [3, 4, 5, 4], sd), { groove: C('paper', 1) });
-    specks(t, Math.max(3, 0.02 * s), sd + 1, (x, y, r) => { if (r < 0.3) t.set(x, y, C('snow', 5)); }, 0.6);
+  burlap: { base: C(BURL, 4), m: 0.25, paint: (t, s, sd, m) => {
+    // woven sacking: over-under weave with slubby threads (thicker and thinner runs), dirt worked in
+    const p = Math.max(2, Math.round(0.005 * s));
+    t.field(BURL, (x, y) => { const over = (Math.floor(x / p) + Math.floor(y / p)) & 1; const slub = nz(t, over ? x : y, over ? y : x, cells(m, 0.04), cells(m, 0.04), 2, sd + over); return 0.42 + (over ? 0.16 : -0.04) + (slub - 0.5) * 0.3 + ((over ? x : y) % p === 0 ? -0.12 : 0); });
+    for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) if (nz(t, x, y, cells(m, 0.08), cells(m, 0.08), 3, sd + 9) > 0.66) t.dshift(x, y, -1, 0.7);
   } },
-  // ---- loose earth
-  dirt: { base: C('soil', 3), m: 0.5, paint: (t, s, sd) => {
-    plates(t, Math.max(2, Math.round(t.w / (0.06 * s))), Math.max(2, Math.round(t.h / (0.05 * s))), sd, toneOf('soil', [2, 3, 3, 4], sd), { groove: C('soil', 0) });
-    specks(t, Math.max(4, 0.05 * s), sd + 1, (x, y, r) => { if (r < 0.45) grain(t, x, y, C('stone', 4), 2, 1); }, 0.7);
+  hide: { base: C(HIDE, 4), m: 0.5, paint: (t, s, sd, m) => {
+    // scraped hide: mottled, pores in clumps, creases with a lit lip
+    t.field(HIDE, (x, y) => 0.55 + (nz(t, x, y, cells(m, 0.1), cells(m, 0.1), 3, sd) - 0.5) * 0.45);
+    specks(t, Math.max(3, 0.015 * s), sd + 1, (x, y, r) => { if (r < 0.4 && nz(t, x, y, cells(m, 0.06), cells(m, 0.06), 2, sd + 5) > 0.45) t.nudge(x, y, -2); }, 0.8);
+    cracks(t, 3, s * 0.8, sd + 7);
   } },
-  topsoil: { base: C('soil', 2), m: 0.5, paint: (t, s, sd) => {
-    plates(t, Math.max(2, Math.round(t.w / (0.05 * s))), Math.max(2, Math.round(t.h / (0.04 * s))), sd, toneOf('soil', [1, 2, 2, 3], sd), { groove: C('soil', 0) });
-    // roots and rootlets: pale threads
-    specks(t, Math.max(6, 0.08 * s), sd + 2, (x, y, r) => { if (r > 0.6) return; const L = 2 + Math.round(r * 5 * Math.max(1, s / 64)); t.line(x, y, x + L, y + Math.round(L * (r - 0.3)), C('straw', 2)); });
-    specks(t, Math.max(4, 0.05 * s), sd + 3, (x, y, r) => { if (r < 0.25) t.set(x, y, C('moss', 3)); }, 0.6);
+  paper: { base: C(PAPER, 5), m: 0.25, paint: (t, s, sd, m) => {
+    t.field(PAPER, (x, y) => 0.64 + (nz(t, x, y, cells(m, 0.06), cells(m, 0.02), 3, sd) - 0.5) * 0.14);
+    specks(t, Math.max(3, 0.02 * s), sd, (x, y, r) => { if (r < 0.25) t.nudge(x, y, -1); else if (r > 0.95) t.nudge(x, y, -3); }, 0.7);
   } },
-  clay: { base: C('clay', 3), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('clay', 3));
-    // spade cuts: long smooth strokes with a lit and a shade edge
-    for (let k = 0; k < 4; k++) { const y = Math.floor(H(k, 1, sd) * t.h); for (let x = 0; x < t.w; x++) { const yy = y + Math.round(Math.sin(x * 0.12 + k) * 1.5); t.set(x, yy, C('clay', 4)); t.set(x, yy + 1, C('clay', 2)); } }
-    specks(t, Math.max(4, 0.05 * s), sd + 1, (x, y, r) => { if (r < 0.3) t.set(x, y, C('clay', 5)); }, 0.5);
+  egg: { base: C(EGG, 4), m: 0.1, paint: (t, s, sd, m) => {
+    t.field(EGG, (x, y) => 0.62 + (nz(t, x, y, cells(m, 0.02), cells(m, 0.02), 2, sd) - 0.5) * 0.2);
+    specks(t, Math.max(3, 0.008 * s), sd, (x, y, r) => { if (r < 0.5) t.blob(x, y, 0.5 + r * 0.004 * s, 0.5 + r * 0.003 * s, (xx, yy, k) => t.set(xx, yy, C(BARKP, k > 0.5 ? 3 : 4))); }, 0.6);
   } },
-  sand: { base: C('sand', 4), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('sand', 4));
-    // wind ripples, then sparse dark and pale grains
-    for (let k = 0; k < Math.max(2, t.h / Math.max(3, 0.05 * s)); k++) { const y = Math.round((k * t.h) / Math.max(2, t.h / Math.max(3, 0.05 * s))); for (let x = 0; x < t.w; x++) { const yy = y + Math.round(Math.sin(x * 0.25 + k * 1.7) * 1.2); t.set(x, yy, C('sand', 5)); t.set(x, yy + 1, C('sand', 3)); } }
-    specks(t, Math.max(3, 0.02 * s), sd + 1, (x, y, r) => { if (r < 0.3) t.set(x, y, C('sand', 2)); else if (r < 0.4) t.set(x, y, C('stone', 2)); }, 0.6);
+  // ---------------------------------------------------------------- rocks by family
+  granite: { base: C(GRAN, 4), m: 0.5, paint: (t, s, sd, m) => {
+    // coarse crystalline: grey body, black mica flakes, pink feldspar and glassy quartz grains, hairline cracks
+    stoneBody(t, GRAN, m, sd, 0.6, 0.12, 0.025, 0.8);
+    specks(t, Math.max(2, 0.009 * s), sd + 1, (x, y, r) => { const sz = 1 + Math.round(H(x, y, sd) * 0.006 * s); if (r < 0.3) grain(t, x, y, C(GRAN, 1), sz, r); else if (r < 0.5) grain(t, x, y, C(FELD, 3), sz + 1, r); else if (r < 0.62) grain(t, x, y, C(GRAN, 7), sz, r); });
+    cracks(t, 2, s, sd + 3);
   } },
-  gravel: { base: C('stone', 3), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('stone', 1));
-    pebbles(t, Math.max(3, 0.035 * s), sd, (k) => { const r = H(k, 4, sd); return r < 0.55 ? C('stone', 4) : r < 0.75 ? C('sand', 3) : r < 0.9 ? C('slate', 4) : C('stone', 5); }, { rim: C('stone', 0) });
+  basalt: { base: C(BAS, 3), m: 0.5, paint: (t, s, sd, m) => {
+    // dense dark rock: fine grain, gas vesicles (a pit with a lit far rim), iron staining weathered in patches
+    stoneBody(t, BAS, m, sd, 0.45, 0.15, 0.02, 0.7);
+    overlay(t, HEM, m, 0.12, 0.68, sd + 20, 1, 8);
+    specks(t, Math.max(3, 0.025 * s), sd + 2, (x, y, r) => { if (r > 0.6) return; const k = 1 + Math.round(r * 0.008 * s); t.blob(x, y, k, k * 0.8, (xx, yy) => t.set(xx, yy, C(BAS, 0))); t.nudge(x, y + k + 1, 2); });
+    cracks(t, 2, s, sd + 3);
   } },
-  peat: { base: C('soil', 1), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('soil', 1));
-    strands(t, Math.round(t.w * 0.9), sd, (k) => C(k % 3 ? 'soil' : 'fur', k % 3 ? 2 : 3), [t.h * 0.1, t.h * 0.3], 0.3);
-    specks(t, Math.max(4, 0.04 * s), sd + 1, (x, y, r) => { if (r < 0.3) t.set(x, y, C('soil', 3)); }, 0.6);
+  limestone: { base: C(LIME, 5), m: 0.5, paint: (t, s, sd, m) => {
+    // pale and soft: chalky mottle, shell fragments, pits weathered out, a grey lichen crust
+    stoneBody(t, LIME, m, sd, 0.6, 0.15, 0.03, 0.7);
+    specks(t, Math.max(4, 0.04 * s), sd + 2, (x, y, r) => { if (r < 0.4) { const R2 = 1 + r * 0.01 * s; for (let a = 0; a < 3.2; a += 0.5) t.nudge(x + Math.round(Math.cos(a) * R2), y - Math.round(Math.sin(a) * R2 * 0.7), 2); t.nudge(x, y, -2); } else if (r < 0.7) { t.nudge(x, y, -3); t.nudge(x, y + 1, 1); } });
+    lichen(t, STONE, m, sd + 30, 0.12, 0.06);
+    cracks(t, 2, s, sd + 3);
   } },
-  compost: { base: C('soil', 2), m: 0.5, paint: (t, s, sd) => {
-    plates(t, Math.max(2, Math.round(t.w / (0.04 * s))), Math.max(2, Math.round(t.h / (0.04 * s))), sd, toneOf('soil', [1, 2, 2, 3], sd), { groove: C('soil', 0) });
-    specks(t, Math.max(4, 0.045 * s), sd + 2, (x, y, r) => { if (r < 0.25) t.line(x, y, x + 2, y + 1, C('straw', 3)); else if (r < 0.4) { t.set(x, y, C('moss', 2)); t.set(x + 1, y, C('moss', 3)); } else if (r < 0.48) t.set(x, y, C('ochre', 3)); });
+  sandstone: { base: C(SANDS, 4), m: 0.5, paint: (t, s, sd, m) => {
+    // bedded and cross-bedded: soft bands of warm tones, warped; an iron-red band; sand grains glinting
+    t.field(SANDS, (x, y) => { const w = nz(t, x, y, cells(m, 0.3), cells(m, 0.3), 2, sd) - 0.5; const b = fract((y / t.h) * cells(m, 0.045) + w * 1.8); return 0.55 + Math.sin(b * 6.283) * 0.14 + (nz(t, x, y, cells(m, 0.015), cells(m, 0.015), 2, sd + 4) - 0.5) * 0.22; });
+    for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) { const w = nz(t, x, y, cells(m, 0.3), cells(m, 0.3), 2, sd) - 0.5; const b = fract((y / t.h) * cells(m, 0.12) + w * 1.2); if (b > 0.82) t.dput(x, y, C(SANDS2, Math.round(2 + (b - 0.82) * 10)), 0.75); }
+    specks(t, Math.max(2, 0.01 * s), sd + 5, (x, y, r) => { if (r < 0.15) t.nudge(x, y, 2); else if (r > 0.9) t.nudge(x, y, -2); }, 0.8);
   } },
-  ash: { base: C('stone', 4), m: 0.5, paint: (t, s, sd) => {
-    plates(t, Math.max(2, Math.round(t.w / (0.05 * s))), Math.max(2, Math.round(t.h / (0.05 * s))), sd, toneOf('stone', [4, 5, 5, 3], sd), { groove: null });
-    specks(t, Math.max(4, 0.05 * s), sd + 1, (x, y, r) => { if (r < 0.3) t.set(x, y, C('basalt', 1)); else if (r < 0.36) t.set(x, y, C('rust', 4)); }, 0.6);
+  slate: { base: C(SLATE, 3), m: 0.5, paint: (t, s, sd, m) => {
+    // fine laminations warped through the stone, split ledges catching the light, rusty pyrite cubes
+    t.field(SLATE, (x, y) => { const w = nz(t, x, y, cells(m, 0.25), cells(m, 0.25), 2, sd) - 0.5; return 0.42 + Math.sin(((y / t.h) * cells(m, 0.01) + w * 3) * 6.283) * 0.06 + (nz(t, x, y, cells(m, 0.08), cells(m, 0.02), 3, sd + 4) - 0.5) * 0.35; });
+    specks(t, Math.max(6, 0.12 * s), sd + 2, (x, y, r) => { if (r < 0.5) { const L = Math.round((0.03 + r * 0.08) * s); for (let i = 0; i < L; i++) { const yy = y + Math.round(Math.sin(i * 0.2 + r) * 1); t.nudge(x + i, yy, 2); t.nudge(x + i, yy + 1, -2); } } else if (r < 0.6) grain(t, x, y, C(RUST, 3), 2, r); });
   } },
-  crushed: { base: C('iron', 2), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('iron', 1));
-    pebbles(t, Math.max(3, 0.02 * s), sd, (k) => H(k, 5, sd) < 0.4 ? C('rust', 3) : C('iron', 3), { rx: [0.35, 0.5], ry: 0.7, rim: C('iron', 0) });
+  obsidian: { base: C(OBS, 2, F_GLOSS), m: 0.5, paint: (t, s, sd, m) => {
+    // volcanic glass: near black, big soft swirls of flow banding, conchoidal ripple sheen
+    t.field(OBS, (x, y) => 0.25 + (nz(t, x, y, cells(m, 0.2), cells(m, 0.08), 3, sd) - 0.5) * 0.35, F_GLOSS);
+    specks(t, Math.max(6, 0.08 * s), sd + 2, (x, y, r) => { if (r > 0.6) return; const R2 = 2 + r * 0.03 * s; for (let k = 0; k < 2; k++) for (let a = -2.6; a < -0.6; a += 0.25) t.nudge(x + Math.round(Math.cos(a) * (R2 + k * 2)), y + Math.round(Math.sin(a) * (R2 + k * 2)), k ? 1 : 3); });
   } },
-  salt: { base: C('snow', 4), m: 0.25, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('snow', 2));
-    specks(t, Math.max(3, 0.02 * s), sd, (x, y, r) => { const w = 2 + Math.round(r * 2); t.rect(x, y, w, w, C('snow', 4)); t.line(x, y, x + w - 1, y, C('snow', 5)); t.line(x + w - 1, y + 1, x + w - 1, y + w - 1, C('snow', 1)); });
+  // ---------------------------------------------------------------- ores (host rock, the mineral laid in)
+  ferrite: { base: C(FER, 3), m: 0.5, paint: (t, s, sd, m) => {
+    // iron ore: dark host, rusty hematite blooms through it, metallic crystal glints of magnetite
+    stoneBody(t, FER, m, sd, 0.45, 0.12, 0.02, 0.8);
+    overlay(t, RUST, m, 0.1, 0.56, sd + 20, 1, 12);
+    specks(t, Math.max(3, 0.022 * s), sd + 2, (x, y, r) => { if (r < 0.45) { grain(t, x, y, C(IRON, 3, F_METAL), 2 + (r < 0.15 ? 1 : 0), r); t.set(x, y, C(IRON, 7, F_METAL)); } });
+    cracks(t, 2, s, sd + 3);
   } },
-  grainSeed: { base: C('straw', 3), m: 0.25, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('straw', 1));
-    pebbles(t, Math.max(3, 0.012 * s), sd, (k) => C('straw', [3, 4, 2][k % 3]), { rx: [0.4, 0.55], ry: 0.6, rim: C('straw', 0) });
+  copperOre: { base: C(CUORE, 3), m: 0.5, paint: (t, s, sd, m) => {
+    // copper ore: grey host, green malachite crusts in the hollows, bright native copper and chalcopyrite glints
+    stoneBody(t, CUORE, m, sd, 0.5, 0.12, 0.02, 0.8);
+    overlay(t, MALA, m, 0.07, 0.6, sd + 20, 1, 14);
+    specks(t, Math.max(3, 0.025 * s), sd + 2, (x, y, r) => { if (r < 0.35) { grain(t, x, y, C(CUM, 3, F_METAL), 2, r); t.set(x, y, C(CUM, 7, F_METAL)); } else if (r < 0.5) grain(t, x, y, C(GOLD, 4, F_METAL), 1, r); });
   } },
-  leafLitter: { base: C('moss', 2), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('moss', 1));
-    // fallen leaves packed edge to edge, each a little lit oval with a midrib; mostly green, a few turned
-    const sz = Math.max(1.5, 0.022 * s);
-    specks(t, Math.max(3, sz * 1.7), sd, (x, y, r) => {
-      const rr = H(x, y, sd), c = C(rr < 0.72 ? 'moss' : rr < 0.9 ? 'olive' : 'ochre', rr < 0.3 ? 3 : 2);
-      const L = Math.max(1, Math.round(sz * (0.8 + r * 0.6)));
-      t.poly([[x - L, y], [x, y - L * 0.55], [x + L, y], [x, y + L * 0.55]], c);
-      t.line(x - L + 1, y, x + L - 1, y, shift(c, 1)); t.set(x + L - 1, y + 1, shift(c, -1));
-    });
+  coal: { base: C(COAL, 2, F_GLOSS), m: 0.5, paint: (t, s, sd, m) => {
+    // coal: black with dull and bright layers (vitrain bands), blocky cleat cracks, glassy glints
+    t.field(COAL, (x, y) => { const w = nz(t, x, y, cells(m, 0.2), cells(m, 0.2), 2, sd) - 0.5; const b = fract((y / t.h) * cells(m, 0.03) + w); return 0.3 + (b > 0.6 ? 0.18 : 0) + (nz(t, x, y, cells(m, 0.04), cells(m, 0.04), 2, sd + 4) - 0.5) * 0.2; }, F_GLOSS);
+    cracks(t, 4, s * 0.8, sd + 3);
+    specks(t, Math.max(3, 0.03 * s), sd + 2, (x, y, r) => { if (r < 0.35) { t.set(x, y, C(COAL, 7, F_GLOSS)); t.set(x + 1, y, C(COAL, 5, F_GLOSS)); } });
   } },
-  dung: { base: C('soil', 2), m: 0.25, paint: (t, s, sd) => {
-    plates(t, Math.max(2, Math.round(t.w / (0.03 * s))), Math.max(2, Math.round(t.h / (0.03 * s))), sd, toneOf('soil', [2, 3, 2], sd), { groove: C('soil', 0) });
-    specks(t, Math.max(4, 0.03 * s), sd + 1, (x, y, r) => { if (r < 0.35) t.line(x, y, x + 2, y, C('straw', 2)); }, 0.6);
+  goldOre: { base: C(QTZ, 5), m: 0.5, paint: (t, s, sd, m) => {
+    // milky vein quartz stained with rust along its cracks, gold flecks and wires catching the light
+    stoneBody(t, QTZ, m, sd, 0.66, 0.1, 0.02, 0.7);
+    overlay(t, RUST, m, 0.08, 0.6, sd + 20, 3, 8);
+    cracks(t, 3, s, sd + 3);
+    specks(t, Math.max(3, 0.028 * s), sd + 2, (x, y, r) => { if (r < 0.5) { grain(t, x, y, C(GOLD, 4, F_METAL), r < 0.2 ? 3 : 2, r); t.set(x, y, C(GOLD, 7, F_METAL)); } });
   } },
-  // ---- made things
-  steel: { base: C('steel', 4, F_METAL), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('steel', 4, F_METAL));
-    // brushed: long faint streaks, a few scratches and a worn spot
-    strands(t, Math.round(t.h * 0.3), sd, (k) => C('steel', k % 2 ? 5 : 3, F_METAL), [t.w * 0.2, t.w * 0.7], 0);
-    specks(t, Math.max(5, 0.08 * s), sd + 1, (x, y, r) => { if (r < 0.4) t.line(x, y, x + 3, y + 1, C('steel', 6, F_METAL)); }, 0.5);
+  sulphur: { base: C(SUL, 4), m: 0.5, paint: (t, s, sd, m) => {
+    // a crust of tiny sulphur crystals: each a lit facet and a shaded one, orange staining between
+    t.field(SUL, (x, y) => 0.5 + (nz(t, x, y, cells(m, 0.05), cells(m, 0.05), 2, sd) - 0.5) * 0.35);
+    specks(t, Math.max(2, 0.012 * s), sd + 1, (x, y, r) => { const c = C(SUL, 4 + Math.round(r * 2)); t.set(x, y, shift(c, 2)); t.set(x + 1, y, c); t.set(x, y + 1, shift(c, -1)); t.set(x + 1, y + 1, shift(c, -3)); }, 0.75);
+    overlay(t, RUST, m, 0.1, 0.68, sd + 20, 4, 4);
   } },
-  iron: { base: C('steel', 3, F_METAL), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('steel', 3, F_METAL));
-    // cast skin: sand-mould pits and a little bloom of rust
-    specks(t, Math.max(3, 0.02 * s), sd, (x, y, r) => { if (r < 0.35) t.set(x, y, C('steel', 2, F_METAL)); else if (r < 0.45) t.set(x, y, C('steel', 5, F_METAL)); else if (r < 0.5) t.set(x, y, C('rust', 3)); }, 0.7);
+  malachite: { base: C(MALA, 3), m: 0.25, paint: (t, s, sd, m) => {
+    // botryoidal malachite: concentric bands warped round the bubbles, light and dark greens
+    const cx = t.w * H(1, 1, sd), cy = t.h * H(2, 2, sd);
+    t.field(MALA, (x, y) => { let dx = x - cx, dy = y - cy; dx -= Math.round(dx / t.w) * t.w; dy -= Math.round(dy / t.h) * t.h; const r = Math.hypot(dx, dy * 1.2) / s + (nz(t, x, y, 4, 4, 2, sd) - 0.5) * 0.03; const b = fract(r / 0.007); return 0.5 + (b > 0.65 ? -0.25 : b < 0.2 ? 0.2 : 0) + (nz(t, x, y, cells(m, 0.02), cells(m, 0.02), 2, sd + 3) - 0.5) * 0.15; });
   } },
-  copper: { base: C('copper', 4, F_METAL), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('copper', 4, F_METAL));
-    specks(t, Math.max(3, 0.025 * s), sd, (x, y, r) => { if (r < 0.3) t.set(x, y, C('copper', 3, F_METAL)); else if (r < 0.4) t.set(x, y, C('copper', 5, F_METAL)); else if (r < 0.45) t.set(x, y, C('malachite', 3)); }, 0.7);
+  gravium: { base: C(GRAV, 3), m: 0.5, paint: (t, s, sd, m) => {
+    // gravity ore: dark violet rock threaded with glowing veins that wander
+    stoneBody(t, GRAV, m, sd, 0.45, 0.12, 0.02, 0.8);
+    for (let k = 0; k < 4; k++) { let x = H(k, 1, sd) * t.w, y = H(k, 2, sd) * t.h, a = H(k, 3, sd) * 6.28; for (let i = 0; i < 0.3 * s; i++) { t.set(x, y, C(GLOWV, 1 + (i % 3 === 0 ? 1 : 0), F_EMIT)); t.nudge(x + 1, y + 1, -2); a += (H(i, k, sd) - 0.5) * 0.8; x += Math.cos(a); y += Math.sin(a); } }
   } },
-  gold: { base: C('gold', 4, F_METAL), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('gold', 4, F_METAL));
-    specks(t, Math.max(3, 0.03 * s), sd, (x, y, r) => { if (r < 0.3) t.set(x, y, C('gold', 3, F_METAL)); else if (r < 0.4) t.set(x, y, C('gold', 5, F_METAL)); }, 0.6);
+  saltpetre: { base: C(PAPER, 4), m: 0.5, paint: (t, s, sd, m) => {
+    stoneBody(t, PAPER, m, sd, 0.6, 0.06, 0.015, 0.9);
+    specks(t, Math.max(2, 0.012 * s), sd + 1, (x, y, r) => { if (r < 0.4) grain(t, x, y, C(SALT, 4), 2, r); }, 0.8);
   } },
-  brass: { base: C('brass', 4, F_METAL), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('brass', 4, F_METAL));
-    specks(t, Math.max(3, 0.03 * s), sd, (x, y, r) => { if (r < 0.35) t.set(x, y, C('brass', 3, F_METAL)); }, 0.6);
+  // ---------------------------------------------------------------- loose earth
+  dirt: { base: C(DIRT, 4), m: 0.5, paint: (t, s, sd, m) => {
+    // dug earth: mottled, damp darker patches, crumbs lit on top, small stones, pale rootlets
+    t.field(DIRT, (x, y) => 0.5 + (nz(t, x, y, cells(m, 0.1), cells(m, 0.1), 3, sd) - 0.5) * 0.45 + (nz(t, x, y, cells(m, 0.02), cells(m, 0.02), 2, sd + 3) - 0.5) * 0.3);
+    specks(t, Math.max(2, 0.014 * s), sd + 1, (x, y, r) => { if (r < 0.45) grain(t, x, y, C(DIRT, 4 + Math.round(r * 4)), 1 + Math.round(r * 2), r); }, 0.8);
+    specks(t, Math.max(4, 0.05 * s), sd + 2, (x, y, r) => { if (r < 0.4) grain(t, x, y, C(STONE, 4 + Math.round(r * 3)), 2 + (r < 0.15 ? 1 : 0), r); });
+    specks(t, Math.max(8, 0.15 * s), sd + 3, (x, y, r) => { if (r < 0.5) { let a = r * 6, xx = x, yy = y; for (let i = 0; i < 0.04 * s; i++) { t.set(xx, yy, C(ROOT, 2 + (i % 2))); a += H(i, x, sd) - 0.5; xx += Math.round(Math.cos(a)); yy += Math.round(Math.sin(a)); } } });
   } },
-  olive: { base: C('olive', 3), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('olive', 3));
-    // enamel with chips to the steel under it and a little rust
-    specks(t, Math.max(5, 0.07 * s), sd, (x, y, r) => { if (r < 0.35) { t.rect(x, y, 2, 1, C('steel', 4)); t.set(x, y + 1, C('olive', 1)); } else if (r < 0.45) t.set(x, y, C('rust', 3)); }, 0.7);
+  topsoil: { base: C(TOPS, 4), m: 0.5, paint: (t, s, sd, m) => {
+    t.field(TOPS, (x, y) => 0.45 + (nz(t, x, y, cells(m, 0.08), cells(m, 0.08), 3, sd) - 0.5) * 0.5);
+    specks(t, Math.max(2, 0.012 * s), sd + 1, (x, y, r) => { if (r < 0.5) grain(t, x, y, C(TOPS, 3 + Math.round(r * 5)), 1 + Math.round(r * 2), r); }, 0.85);
+    specks(t, Math.max(5, 0.08 * s), sd + 3, (x, y, r) => { if (r < 0.6) { let a = r * 6, xx = x, yy = y; for (let i = 0; i < 0.05 * s; i++) { t.set(xx, yy, C(ROOT, 1 + (i % 3 === 0 ? 1 : 0))); a += H(i, y, sd) - 0.5; xx += Math.round(Math.cos(a)); yy += Math.round(Math.sin(a)); } } else if (r < 0.75) grain(t, x, y, C(MOSS, 3), 2, r); });
   } },
-  rubber: { base: C('basalt', 2), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('basalt', 2));
-    specks(t, Math.max(4, 0.05 * s), sd, (x, y, r) => { if (r < 0.3) t.set(x, y, C('basalt', 3)); }, 0.6);
+  clay: { base: C(CLAY, 4), m: 0.5, paint: (t, s, sd, m) => {
+    // stiff clay: smooth and slightly wet (a soft sheen), spade facets, drying cracks
+    t.field(CLAY, (x, y) => 0.5 + (nz(t, x, y, cells(m, 0.15), cells(m, 0.1), 3, sd) - 0.5) * 0.35 + (nz(t, x, y, cells(m, 0.3), cells(m, 0.05), 2, sd + 5) > 0.7 ? 0.15 : 0), F_GLOSS);
+    cracks(t, 4, s * 0.7, sd + 3);
+    specks(t, Math.max(4, 0.05 * s), sd + 2, (x, y, r) => { if (r < 0.3) grain(t, x, y, C(STONE, 3), 1, r); });
   } },
-  bakelite: { base: C('clay', 2, F_GLOSS), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('clay', 2, F_GLOSS));
-    strands(t, Math.round(t.h * 0.2), sd, (k) => C('clay', k % 2 ? 1 : 3, F_GLOSS), [t.w * 0.2, t.w * 0.5], 0.2);
+  sand: { base: C(SAND, 5), m: 0.5, paint: (t, s, sd, m) => {
+    // washed sand: fine grains in clumps of lighter and darker, soft wind ripples, the odd dark mineral grain
+    t.field(SAND, (x, y) => { const w = nz(t, x, y, cells(m, 0.2), cells(m, 0.2), 2, sd) - 0.5; const rip = Math.sin(((y / t.h) * cells(m, 0.05) + w * 1.5) * 6.283); return 0.56 + rip * 0.08 + (nz(t, x, y, cells(m, 0.012), cells(m, 0.012), 2, sd + 3) - 0.5) * 0.4; });
+    specks(t, Math.max(2, 0.01 * s), sd + 1, (x, y, r) => { if (r < 0.12) t.set(x, y, C(STONE, 1)); else if (r < 0.3) t.nudge(x, y, 2); }, 0.7);
   } },
-  concrete: { base: C('stone', 5), m: 0.5, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('stone', 5));
-    specks(t, Math.max(3, 0.025 * s), sd, (x, y, r) => { if (r < 0.35) t.set(x, y, C('stone', 3)); else if (r < 0.5) t.set(x, y, C('stone', 6)); else if (r < 0.56) { t.set(x, y, C('stone', 2)); t.set(x + 1, y, C('stone', 2)); } }, 0.8);
+  gravel: { base: C(STONE, 4), m: 0.5, paint: (t, s, sd) => {
+    // packed gravel: rounded stones of mixed rock, each lit on its crown with a dark contact shadow, grit between
+    t.field(STONE, (x, y) => 0.18 + hashf(x, y, sd) * 0.15);
+    const cell = Math.max(3, 0.035 * s), nx = Math.max(1, Math.round(t.w / cell)), ny = Math.max(1, Math.round(t.h / cell)), cw = t.w / nx, ch = t.h / ny;
+    const list: [number, number, number, number][] = [];
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) list.push([(i + 0.5 + (H(i, j, sd) - 0.5) * 0.6) * cw, (j + 0.5 + (H(i, j, sd + 1) - 0.5) * 0.6) * ch, cw * (0.4 + H(i, j, sd + 2) * 0.25), H(i, j, sd + 3)]);
+    list.sort((a, b) => a[1] - b[1]);
+    const rmp = [STONE, GRAN, SANDS, SLATE, BAS];
+    for (const [cx, cy, r, k] of list) { const ramp = rmp[Math.floor(k * rmp.length)]; t.blob(cx, cy + 1, r + 0.6, r * 0.8 + 0.6, (x, y) => t.set(x, y, C(STONE, 0)), 2); t.blob(cx, cy, r, r * 0.78, (x, y, d) => { const dx = (x - cx) / r, dy = (y - cy) / r; const l = -dx * 0.6 - dy * 0.8 + d * 0.4; t.set(x, y, C(ramp, Math.round(3 + l * 2.6 + (H(x, y, sd) - 0.5)))); }, 3); }
   } },
-  brick: { base: C('clay', 4), m: 0.25, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('clay', 4));
-    specks(t, Math.max(3, 0.02 * s), sd, (x, y, r) => { if (r < 0.3) t.set(x, y, C('clay', 2)); else if (r < 0.45) t.set(x, y, C('clay', 5)); else if (r < 0.5) t.set(x, y, C('soil', 1)); }, 0.7);
+  peat: { base: C(PEAT, 3), m: 0.5, paint: (t, s, sd, m) => {
+    t.field(PEAT, (x, y) => 0.42 + (nz(t, x, y, cells(m, 0.06), cells(m, 0.06), 3, sd) - 0.5) * 0.4);
+    specks(t, Math.max(3, 0.02 * s), sd + 2, (x, y, r) => { if (r < 0.6) { const a = r * 9, L = 2 + r * 0.04 * s; for (let i = 0; i < L; i++) t.set(x + Math.round(Math.cos(a) * i), y + Math.round(Math.sin(a) * i), C(r < 0.3 ? ROOT : PEAT, r < 0.3 ? 1 : 6)); } });
   } },
-  glass: { base: C('water', 5, F_GLASS), m: 0.25, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('water', 4, F_GLASS));
-    for (let k = 0; k < 3; k++) { const x0 = Math.floor(H(k, 1, sd) * t.w); t.line(x0, 0, x0 + Math.round(t.h * 0.6), t.h - 1, C('water', 6, F_GLASS)); }
+  compost: { base: C(TOPS, 3), m: 0.5, paint: (t, s, sd, m) => {
+    t.field(TOPS, (x, y) => 0.38 + (nz(t, x, y, cells(m, 0.05), cells(m, 0.05), 3, sd) - 0.5) * 0.5);
+    specks(t, Math.max(3, 0.03 * s), sd + 2, (x, y, r) => { if (r < 0.25) { const a = r * 12; for (let i = 0; i < 3 + r * 10; i++) t.set(x + Math.round(Math.cos(a) * i), y + Math.round(Math.sin(a) * i), C(STRAW, 3 + (i % 2))); } else if (r < 0.4) t.blob(x, y, 1.5, 1.1, (xx, yy, k) => t.set(xx, yy, C(LEAF, k > 0.4 ? 1 : 2))); else if (r < 0.55) grain(t, x, y, C(TOPS, 6), 2, r); });
   } },
-  board: { base: C('teal', 1), m: 0.25, paint: (t, s, sd) => {
-    t.rect(0, 0, t.w, t.h, C('teal', 1));
-    // copper traces in right angles, pads at their ends
+  ash: { base: C(ASH, 5), m: 0.5, paint: (t, s, sd, m) => {
+    t.field(ASH, (x, y) => 0.6 + (nz(t, x, y, cells(m, 0.08), cells(m, 0.08), 3, sd) - 0.5) * 0.35);
+    specks(t, Math.max(3, 0.025 * s), sd + 1, (x, y, r) => { if (r < 0.35) grain(t, x, y, C(COAL, 1 + Math.round(r * 4)), 1 + Math.round(r * 3), r); else if (r < 0.38) t.set(x, y, C(RUST, 6)); }, 0.8);
+  } },
+  crushed: { base: C(FER, 3), m: 0.5, paint: (t, s, sd) => {
+    t.field(FER, (x, y) => 0.25 + hashf(x, y, sd) * 0.15);
+    specks(t, Math.max(2, 0.016 * s), sd, (x, y, r) => { const c = r < 0.45 ? C(RUST, 3 + Math.round(r * 4)) : C(FER, 3 + Math.round(r * 4)); grain(t, x, y, c, 2 + (r < 0.2 ? 1 : 0), r); if (r > 0.9) t.set(x, y, C(IRON, 7, F_METAL)); }, 1);
+  } },
+  salt: { base: C(SALT, 4), m: 0.25, paint: (t, s, sd, m) => {
+    t.field(SALT, (x, y) => 0.4 + (nz(t, x, y, cells(m, 0.03), cells(m, 0.03), 2, sd) - 0.5) * 0.3);
+    specks(t, Math.max(2, 0.012 * s), sd, (x, y, r) => { const w = 2 + Math.round(r * 0.006 * s); for (let j = 0; j < w; j++) for (let i = 0; i < w; i++) t.set(x + i, y + j, C(SALT, i === 0 || j === 0 ? 5 : i === w - 1 || j === w - 1 ? 2 : 4)); });
+  } },
+  leafLitter: { base: C(LEAF, 3), m: 0.5, paint: (t, s, sd) => {
+    // fallen leaves overlapping: each an oval with a lit side, fresh and turned greens, a few browns
+    t.field(LEAF, (x, y) => 0.15 + hashf(x, y, sd) * 0.1);
+    const sz = Math.max(1.5, 0.025 * s);
+    specks(t, Math.max(2, sz * 1.1), sd, (x, y, r) => {
+      const ramp = r < 0.62 ? LEAF : r < 0.82 ? MOSS : r < 0.94 ? PLANK : RUST, a = H(x, y, sd) * 3.14, L = sz * (0.9 + r * 0.5);
+      t.blob(x, y, L, L * 0.5, (xx, yy, k) => { const side = (xx - x) * Math.cos(a) + (yy - y) * Math.sin(a); t.set(xx, yy, C(ramp, Math.round(2 + k * 2 + (side < 0 ? 1 : -0.4)))); }, 2.5);
+    }, 1);
+  } },
+  dung: { base: C(DIRT, 2), m: 0.25, paint: (t, s, sd, m) => {
+    t.field(DIRT, (x, y) => 0.3 + (nz(t, x, y, cells(m, 0.03), cells(m, 0.03), 3, sd) - 0.5) * 0.4, F_GLOSS);
+    specks(t, Math.max(3, 0.02 * s), sd + 1, (x, y, r) => { if (r < 0.3) for (let i = 0; i < 3; i++) t.set(x + i, y + (i >> 1), C(STRAW, 2)); }, 0.6);
+  } },
+  // ---------------------------------------------------------------- made things
+  steel: { base: C(STEEL, 4, F_METAL), m: 0.5, paint: (t, s, sd, m) => {
+    // worked steel: soft mottling, grime gathered in patches, a few bright scratches, the odd rust pit
+    t.field(STEEL, (x, y) => 0.55 + (hashf(Math.floor(x / Math.max(2, 0.05 * s)), y, sd) - 0.5) * 0.1 + (nz(t, x, y, cells(m, 0.15), cells(m, 0.15), 3, sd + 3) - 0.5) * 0.28, F_METAL);
+    specks(t, Math.max(5, 0.08 * s), sd + 1, (x, y, r) => { if (r < 0.35) { const a = r * 6, L = 3 + r * 0.06 * s; for (let i = 0; i < L; i++) t.nudge(x + Math.round(Math.cos(a) * i), y + Math.round(Math.sin(a) * i), 2); } else if (r < 0.42) rustBloom(t, x, y, Math.max(1, 0.006 * s), sd); }, 0.6);
+  } },
+  iron: { base: C(IRON, 4, F_METAL), m: 0.5, paint: (t, s, sd, m) => {
+    // cast iron: sand-mould skin (fine pits), darker mill scale in patches, rust blooms
+    t.field(IRON, (x, y) => 0.5 + (nz(t, x, y, cells(m, 0.1), cells(m, 0.1), 3, sd) - 0.5) * 0.35 + (hashf(x >> 1, y >> 1, sd) - 0.5) * 0.12, F_METAL);
+    specks(t, Math.max(2, 0.012 * s), sd + 1, (x, y, r) => { if (r < 0.3) { t.nudge(x, y, -2); t.nudge(x, y + 1, 1); } }, 0.7);
+    for (let k = 0; k < 3; k++) rustBloom(t, H(k, 1, sd) * t.w, H(k, 2, sd) * t.h, Math.max(1.2, 0.012 * s), sd + k);
+  } },
+  copper: { base: C(COP, 4, F_METAL), m: 0.5, paint: (t, s, sd, m) => {
+    t.field(COP, (x, y) => 0.56 + (nz(t, x, y, cells(m, 0.1), cells(m, 0.1), 3, sd) - 0.5) * 0.35, F_METAL);
+    overlay(t, VERD, m, 0.08, 0.66, sd + 20, 1, 12);
+  } },
+  gold: { base: C(GOLD, 5, F_METAL), m: 0.5, paint: (t, s, sd, m) => {
+    t.field(GOLD, (x, y) => 0.6 + (nz(t, x, y, cells(m, 0.08), cells(m, 0.08), 3, sd) - 0.5) * 0.3, F_METAL);
+    specks(t, Math.max(4, 0.04 * s), sd + 1, (x, y, r) => { if (r < 0.3) { t.nudge(x, y, 2); t.nudge(x + 1, y, 1); } }, 0.6);
+  } },
+  brass: { base: C(BRASS, 4, F_METAL), m: 0.5, paint: (t, s, sd, m) => {
+    t.field(BRASS, (x, y) => 0.55 + (nz(t, x, y, cells(m, 0.1), cells(m, 0.1), 3, sd) - 0.5) * 0.35, F_METAL);
+    overlay(t, VERD, m, 0.06, 0.7, sd + 20, 1, 6);
+  } },
+  olive: { base: C(OLIVE, 4), m: 0.5, paint: (t, s, sd, m) => {
+    // enamelled steel: paint mottled with wear, chips knocked through to bright steel with a dark lip, rust
+    // creeping out of the deeper chips and running down, grime in patches
+    t.field(OLIVE, (x, y) => 0.52 + (nz(t, x, y, cells(m, 0.15), cells(m, 0.15), 3, sd) - 0.5) * 0.25);
+    specks(t, Math.max(5, 0.07 * s), sd, (x, y, r) => { if (r > 0.55) return; const k = 1 + r * 0.02 * s; t.blob(x, y, k * 1.3, k, (xx, yy, d) => t.set(xx, yy, d > 0.25 ? C(STEEL, 5, F_METAL) : C(OLIVE, 1))); if (r < 0.15) rustBloom(t, x, y, k * 0.8, sd); });
+    for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) if (nz(t, x, y, cells(m, 0.2), cells(m, 0.2), 3, sd + 30) > 0.66) t.dshift(x, y, -1, 0.7);
+  } },
+  rubber: { base: C(RUBB, 3), m: 0.5, paint: (t, s, sd, m) => {
+    t.field(RUBB, (x, y) => 0.42 + (nz(t, x, y, cells(m, 0.06), cells(m, 0.06), 3, sd) - 0.5) * 0.25);
+    specks(t, Math.max(3, 0.03 * s), sd, (x, y, r) => { if (r < 0.3) t.nudge(x, y, 2); else if (r < 0.4) t.nudge(x, y, -2); }, 0.6);
+  } },
+  bakelite: { base: C(BAKE, 3, F_GLOSS), m: 0.5, paint: (t, s, sd, m) => {
+    // phenolic moulding: dark red-brown with wood-flour swirls in the resin, a glossy skin
+    t.field(BAKE, (x, y) => 0.45 + (nz(t, x, y, cells(m, 0.06), cells(m, 0.2), 3, sd) - 0.5) * 0.45, F_GLOSS);
+  } },
+  concrete: { base: C(CONC, 4), m: 0.5, paint: (t, s, sd, m) => {
+    // cast concrete: mottled cement, exposed aggregate, air pits with a lit far rim, a hairline crack
+    stoneBody(t, CONC, m, sd, 0.55, 0.2, 0.03, 0.6);
+    specks(t, Math.max(3, 0.025 * s), sd + 1, (x, y, r) => { if (r < 0.35) grain(t, x, y, C(r < 0.15 ? GRAN : SANDS, 3 + Math.round(r * 8)), 2, r); else if (r < 0.5) { t.nudge(x, y, -3); t.nudge(x, y + 1, 2); } });
+    cracks(t, 1, s, sd + 3);
+  } },
+  brick: { base: C(BRICK, 4), m: 0.25, paint: (t, s, sd, m) => {
+    stoneBody(t, BRICK, m, sd, 0.52, 0.08, 0.015, 0.7);
+    specks(t, Math.max(3, 0.015 * s), sd + 1, (x, y, r) => { if (r < 0.25) grain(t, x, y, C(BRICK, 6), 1, r); else if (r < 0.35) { t.nudge(x, y, -3); t.nudge(x, y + 1, 1); } else if (r < 0.4) grain(t, x, y, C(STONE, 5), 2, r); }, 0.8);
+  } },
+  glass: { base: C(GLASS, 5, F_GLASS), m: 0.25, paint: (t, s, sd, m) => {
+    // sheet glass: a deep green body, a long soft reflection, a few seeds (bubbles)
+    t.field(GLASS, (x, y) => 0.55 + (nz(t, x, y, cells(m, 0.3), cells(m, 0.06), 2, sd) - 0.5) * 0.2 + (fract((x + y * 0.6) / t.w) < 0.12 ? 0.25 : 0), F_GLASS);
+    specks(t, Math.max(5, 0.05 * s), sd, (x, y, r) => { if (r < 0.3) { t.set(x, y, C(GLASS, 7, F_GLASS)); t.nudge(x, y + 1, -2); } }, 0.6);
+  } },
+  board: { base: C(PCB, 2), m: 0.25, paint: (t, s, sd) => {
+    t.field(PCB, (x, y) => 0.32 + hashf(x >> 1, y >> 1, sd) * 0.08);
     const g = Math.max(3, Math.round(0.006 * s));
     for (let k = 0; k < Math.max(4, t.w / g); k++) {
-      let x = Math.floor(H(k, 1, sd) * t.w / g) * g, y = Math.floor(H(k, 2, sd) * t.h / g) * g;
-      for (let seg = 0; seg < 3; seg++) { const L = (2 + Math.floor(H(k, seg + 3, sd) * 4)) * g, h = H(k, seg + 9, sd) < 0.5; const x2 = h ? x + L : x, y2 = h ? y : y + L; t.line(x, y, x2, y2, C('copper', 4)); x = x2; y = y2; }
-      t.rect(x - 1, y - 1, 2, 2, C('brass', 5));
+      let x = Math.floor((H(k, 1, sd) * t.w) / g) * g, y = Math.floor((H(k, 2, sd) * t.h) / g) * g;
+      for (let seg = 0; seg < 3; seg++) { const L = (2 + Math.floor(H(k, seg + 3, sd) * 4)) * g, hz = H(k, seg + 9, sd) < 0.5; for (let i = 0; i <= L; i++) t.set(hz ? x + i : x, hz ? y : y + i, C(COP, 5, F_METAL)); if (hz) x += L; else y += L; }
+      t.set(x, y, C(BRASS, 6, F_METAL)); t.set(x - 1, y, C(BRASS, 5, F_METAL)); t.set(x, y - 1, C(BRASS, 5, F_METAL));
     }
   } },
-  enamelRed: { base: C('stampRed', 2), m: 0.5, paint: (t, s, sd) => { t.rect(0, 0, t.w, t.h, C('stampRed', 2)); specks(t, Math.max(5, 0.07 * s), sd, (x, y, r) => { if (r < 0.3) t.set(x, y, C('steel', 4)); }, 0.6); } },
+  enamelRed: { base: C(RED, 3), m: 0.5, paint: (t, s, sd, m) => { t.field(RED, (x, y) => 0.5 + (nz(t, x, y, cells(m, 0.15), cells(m, 0.15), 3, sd) - 0.5) * 0.3); specks(t, Math.max(5, 0.07 * s), sd, (x, y, r) => { if (r < 0.3) t.blob(x, y, 1.6, 1.2, (xx, yy, d) => t.set(xx, yy, d > 0.3 ? C(STEEL, 5) : C(RED, 0))); }, 0.6); } },
 };
+/** a single palette step as a material ('s:ramp:step:flags'): never a flat fill, but that step mottled with its
+ *  neighbours on the ramp in clustered clumps, plus the surface's own marks (scratches on metal, pores on matter,
+ *  a soft streak on glass), at 4 m to the tile so small parts keep their density */
+const solidCache = new Map<string, Mat>();
+function solidMat(k: string): Mat | null {
+  if (!k.startsWith('s:')) return null;
+  let M = solidCache.get(k);
+  if (M) return M;
+  const [, r, i, f] = k.split(':'), fl = Number(f) || 0, base = code(r, Number(i), fl), ramp = cRamp(base), st = cStep(base), n = cLen(base);
+  M = { base, m: 0.25, paint: (t, sc, sd, m) => {
+    const amp = fl & F_GLASS ? 0.55 : fl & F_EMIT ? 0.5 : fl & (F_METAL | F_GLOSS) ? 0.75 : 0.95;
+    t.field(ramp, (x, y) => (st + (nz(t, x, y, cells(m, 0.06), cells(m, 0.06), 3, sd) - 0.5) * amp * 1.5 + (nz(t, x, y, cells(m, 0.015), cells(m, 0.015), 2, sd + 5) - 0.5) * amp * 0.55) / Math.max(1, n - 1), fl);
+    if (fl & F_METAL) specks(t, Math.max(4, 0.05 * sc), sd + 2, (x, y, q) => { if (q < 0.4) { const a = q * 7, L = 2 + q * 0.04 * sc; for (let j = 0; j < L; j++) t.nudge(x + Math.round(Math.cos(a) * j), y + Math.round(Math.sin(a) * j), 1); } }, 0.6);
+    else if (fl & F_GLASS) { for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) if (fract((x + y * 0.7) / t.w) < 0.1) t.nudge(x, y, 1); }
+    else if (!(fl & F_EMIT)) specks(t, Math.max(3, 0.02 * sc), sd + 3, (x, y, q) => { if (q < 0.25) { t.nudge(x, y, -1); t.nudge(x, y + 1, 1); } }, 0.7);
+  } };
+  solidCache.set(k, M);
+  return M;
+}
+const matOf = (k: string): Mat | undefined => MATS[k] ?? solidMat(k) ?? undefined;
 export const MAT_KEYS = Object.keys(MATS);
-export const hasMat = (k: string) => k in MATS;
-/** a material's base code (the flat tone a solid or a far LOD uses) */
-export const matBase = (k: string): Code => MATS[k]?.base ?? code('stone', 3);
+export const hasMat = (k: string) => !!matOf(k);
+/** a material's base code (the tone a far LOD uses) */
+export const matBase = (k: string): Code => matOf(k)?.base ?? code('stone', 3);
 
 // ------------------------------------------------------------------ tiles, textures
 const tileCache = new Map<string, { tile: CTile; metres: number }>();
 /** a material's tile at a texel density (px per metre), with the metres it spans */
 export function tileOf(key: string, ppm: number, seed = 0): { tile: CTile; metres: number } {
-  const M = MATS[key] ?? MATS.granite;
+  const M = matOf(key) ?? MATS.granite;
   const T = Math.max(8, Math.min(256, Math.round(M.m * ppm)));
   const ck = `${key}|${T}|${seed}`;
   let e = tileCache.get(ck);
-  if (!e) { const t = new CTile(T, T, M.base); M.paint(t, T / M.m, (seed * 101 + key.length * 17 + 5) | 0); e = { tile: t, metres: M.m }; tileCache.set(ck, e); }
+  if (!e) { const t = new CTile(T, T, M.base); M.paint(t, T / M.m, (seed * 101 + key.length * 17 + 5) | 0, M.m); e = { tile: t, metres: M.m }; tileCache.set(ck, e); }
   return e;
 }
 const texCache = new Map<string, THREE.DataTexture>();

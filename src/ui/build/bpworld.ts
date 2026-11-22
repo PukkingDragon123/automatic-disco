@@ -59,11 +59,12 @@ uniform vec2 uRes, uWipeC;
 uniform float uTime, uMix, uWipe, uN, uFovK, uK, uHand, uSeam, uTray, uSelPulse;
 uniform vec3 uCursor;
 
-const float BAY[16] = float[16](0.,8.,2.,10.,12.,4.,14.,6.,3.,11.,1.,9.,15.,7.,13.,5.);
-float bayer(vec2 p) { vec2 q = mod(p, 4.0); return BAY[int(q.y) * 4 + int(q.x)] / 16.0; }
 float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y); }
+// the kit's CLUSTERED dither threshold (src/ui/kit/paint.ts clusterT): smooth noise at ~3 art px plus a 2 x 2 jitter,
+// so tone steps break along wavy clumps like hand pixelling (never a bayer checker or a line pattern)
+float clusterT(vec2 p) { return clamp(0.5 + (vnoise(p / 3.0 + 91.7) - 0.5) * 1.7 + (h21(floor(p / 2.0) + 5.3) - 0.5) * 0.22, 0.02, 0.98); }
 // the blueprint ramp (palette: sapphire, quartz light)
 vec3 rampC(float i) {
   if (i < 0.5) return vec3(0.051, 0.090, 0.188);
@@ -92,7 +93,8 @@ vec4 cellAt(vec2 xz) { return texture2D(tCell, (floor(xz) + 0.5) / uN); }
 bool same(vec4 a, vec4 b) { return abs(a.r - b.r) < 0.004 && length(a.gb - b.gb) < 0.16; }
 
 void main() {
-  vec2 cp = floor(gl_FragCoord.xy / uK);
+  // drawn at the art resolution (one fragment per art pixel), then blown up with nearest filtering
+  vec2 cp = floor(gl_FragCoord.xy);
   vec2 fc = (cp + 0.5) * uK;
   vec2 uv = fc / uRes, dx = vec2(uK / uRes.x, 0.0), dy = vec2(0.0, uK / uRes.y);
   // the wipe: a dissolving front, art pixel by art pixel
@@ -117,17 +119,17 @@ void main() {
   if (!obj) L += clamp((hs - 0.8) * 1.6, -0.8, 0.35);
   float fib = h21(cp);
   L += (fib - 0.5) * 0.18;
-  if (h21(vec2(floor(cp.x / 5.0), cp.y) + 11.0) > 0.965) L += 0.55; // paper fibres
-  if (h21(vec2(cp.x, floor(cp.y / 4.0)) + 23.0) > 0.975) L -= 0.5;
+  if (h21(cp + 11.0) > 0.985) L += 0.6; // paper flecks
+  if (h21(cp * 1.31 + 23.0) > 0.99) L -= 0.5;
   if (s.sky) L = 2.0 + (fib - 0.5) * 0.4;
   if (water) {
+    // water: a deeper tone with soft ripple glints drifting over it (clumps, not lines)
     L = 1.55 + (vnoise(s.P.xz * 0.3 + uTime * 0.05) - 0.5) * 0.5;
-    float wy = cp.y + floor(sin(s.P.x * 1.7 + uTime * 0.6) * 1.2);
-    if (mod(wy, 4.0) < 1.0) L += 1.25;
+    if (vnoise(vec2(s.P.x * 1.1, s.P.z * 2.6) + vec2(uTime * 0.21, -uTime * 0.13)) > 0.74) L += 1.0;
   }
   float tray = uTray * clamp(1.0 - fc.y / (uRes.y * 0.24), 0.0, 1.0);
   L -= tray * tray * 1.6;
-  L = clamp(floor(L + bayer(cp) - 0.5 + 0.5), 0.0, 4.0);
+  float Lf = floor(L); L = clamp(Lf + step(clusterT(cp), L - Lf), 0.0, 4.0);
   vec3 col = rampC(L);
 
   // ---- grid (ground only) and contours
@@ -145,7 +147,7 @@ void main() {
   // ---- seams (ore under the ground): stippled, outlined
   if (!obj && cell.b > 0.5) {
     float k = 0.35 + uSeam * 0.45;
-    if (mod(cp.x + cp.y, 2.0) < 1.0 && mod(cp.y, 2.0) < 1.0) col = mix(col, rampC(6.0), k);
+    if (clusterT(cp + 40.0) < 0.3) col = mix(col, rampC(6.0), k);
     vec4 cr = cellAt(sr.P.xz), cu = cellAt(su.P.xz);
     if (cr.b < 0.5 || cu.b < 0.5) col = mix(col, uSeam > 0.5 ? OKL : rampC(6.0), 0.8);
   } else if (!obj) {
@@ -154,14 +156,18 @@ void main() {
   }
   // ---- where the building in hand can go (near the cursor)
   if (nearC > 0.0 && !s.sky) {
-    if (cur.r < 0.5) { if (mod(cp.x - cp.y, 5.0) < 1.0) col = mix(col, BADL, 0.55 * nearC + 0.1); }
-    else if (!obj && mod(cp.x, 2.0) < 1.0 && mod(cp.y, 2.0) < 1.0 && fract(s.P.x) < 0.12 && fract(s.P.z) < 0.12) col = mix(col, OKL, nearC);
+    if (cur.r < 0.5) col = mix(col, clusterT(cp * 0.8 + 3.0) < 0.38 ? BADL : BADC, (0.3 + 0.25 * nearC) * nearC + 0.06);
+    else if (!obj) {
+      // a small cross at each free cell's corner, the cells it may use lighting up round the cursor
+      vec2 q = abs(fract(s.P.xz + 0.5) - 0.5);
+      if ((q.x < pxW * 0.6 && q.y < 0.14) || (q.y < pxW * 0.6 && q.x < 0.14)) col = mix(col, OKL, nearC);
+    }
   }
   // ---- flora, rocks, creatures: stippled masses with a pale outline
   if (obj) {
     // a site plan's vegetation: a quiet mass one tone down, its crowns lit on the upper left
     float oh = clamp((hs + 0.1) * 1.2, 0.0, 1.0);
-    col = rampC(clamp(floor(L - 0.6 + oh * 0.9 + bayer(cp) * 0.6), 1.0, 3.0));
+    col = rampC(clamp(floor(L - 0.6 + oh * 0.9 + clusterT(cp + 17.0) * 0.6), 1.0, 3.0));
   }
   if ((obj != objR || obj != objU) && !s.sky) col = mix(col, rampC(4.0), 0.35);
   // the printed grid runs over everything on the sheet (1 m minor, 5 m major)
@@ -187,12 +193,12 @@ void main() {
     else if (k == 8.0) { col = WHITE; }
     else if (k == 6.0) {
       col = mix(col, rampC(3.0), 0.6);
-      if (mod(cp.x + cp.y * 2.0, 3.0) < 1.0) col = mix(col, rampC(6.0), 0.5);
+      if (clusterT(cp + 61.0) < 0.3) col = mix(col, rampC(6.0), 0.5);
       if (sil || crease) col = rampC(6.0);
     } else if (k == 2.0) {
-      // a construction site: a pale plan, crosshatched, dashed in amber
+      // a construction site: a pale plan washed amber in clumps, dashed in amber
       col = mix(col, rampC(3.0), 0.55);
-      if (mod(cp.x - cp.y, 6.0) < 1.0 || mod(cp.x + cp.y, 6.0) < 1.0) col = mix(col, AMBD, 0.5);
+      if (clusterT(cp + 7.0) < 0.3) col = mix(col, AMBD, 0.45);
       if (sil) col = mix(col, AMB, dash);
       else if (crease) col = mix(col, rampC(5.0), 0.6);
     } else if (k == 3.0 || k == 4.0) {
@@ -202,8 +208,7 @@ void main() {
       float sweep = fract((s.P.x + s.P.z) * 0.18 - uTime * 0.7);
       float band = smoothstep(0.0, 0.06, sweep) * (1.0 - smoothstep(0.06, 0.18, sweep));
       col = mix(col, fill, 0.42 + band * 0.3 + (wall ? 0.08 : 0.0));
-      if (wall && mod(cp.x + cp.y, 4.0) < 1.0) col = mix(col, line, 0.45);
-      if (mod(cp.y + floor(uTime * 8.0), 3.0) < 1.0) col = mix(col, line, 0.12);
+      if (wall && clusterT(cp) < 0.4) col = mix(col, line, 0.3);
       if (crease) col = mix(col, line, 0.75);
       if (sil) col = mix(line, WHITE, 0.35);
     } else if (k == 10.0) {
@@ -214,7 +219,7 @@ void main() {
       // a building: white technical drawing
       bool hot = k == 5.0 || k == 9.0;
       col = mix(col, rampC(wall ? 3.0 : 4.0), wall ? 0.55 : 0.5);
-      if (wall && mod(cp.x + cp.y, 4.0) < 1.0) col = mix(col, rampC(5.0), 0.5);
+      if (wall && clusterT(cp + 29.0) < 0.32) col = mix(col, rampC(4.0), 0.6);
       if (!wall && h21(cp * 0.37) > 0.93) col = mix(col, rampC(5.0), 0.4);
       if (crease) col = mix(col, rampC(6.0), hot ? 1.0 : 0.85);
       if (sil) col = WHITE;
@@ -232,8 +237,13 @@ void main() {
   // ---- the wipe front: a bright, printing edge
   if (glowK > 0.0) col = mix(col, rampC(6.0), glowK * 0.18);
   if (edgeK > 0.0 && uWipe < 0.999) col = mix(col, WHITE, edgeK * (0.6 + 0.4 * step(0.5, h21(cp + floor(uTime * 20.0)))));
-  gl_FragColor = vec4(col, uMix);
+  gl_FragColor = vec4(col, 1.0);
 }`;
+const BLIT_F = /* glsl */`
+precision highp float;
+varying vec2 vUv;
+uniform sampler2D tArt; uniform float uMix;
+void main() { vec4 c = texture2D(tArt, vUv); if (c.a < 0.5) discard; gl_FragColor = vec4(c.rgb, uMix); }`;
 
 /** world -> blueprint */
 export class BlueprintWorld {
@@ -250,7 +260,7 @@ export class BlueprintWorld {
   marks = new Map<THREE.Object3D, number>();
   /** the factory's selected building (drawn singly) is the one being carried: draw it as the faint original */
   selMoving = false;
-  private maskRT: THREE.WebGLRenderTarget;
+  private maskRT: THREE.WebGLRenderTarget; private artRT: THREE.WebGLRenderTarget; private blit: THREE.ShaderMaterial;
   private quad: THREE.Mesh; private qs = new THREE.Scene(); private ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private mat: THREE.ShaderMaterial;
   private maskMats = new Map<number, THREE.ShaderMaterial>(); private lineMats = new Map<number, THREE.ShaderMaterial>();
@@ -263,6 +273,8 @@ export class BlueprintWorld {
   constructor(readonly f: Factory) {
     const N = f.N;
     this.maskRT = new THREE.WebGLRenderTarget(4, 4, { type: THREE.UnsignedByteType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
+    this.artRT = new THREE.WebGLRenderTarget(4, 4, { type: THREE.UnsignedByteType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false });
+    this.blit = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: BLIT_F, transparent: true, depthTest: false, depthWrite: false, uniforms: { tArt: { value: this.artRT.texture }, uMix: { value: 1 } } });
     this.cellData = new Uint8Array(N * N * 4);
     this.cellTex = new THREE.DataTexture(this.cellData, N, N, THREE.RGBAFormat, THREE.UnsignedByteType);
     this.cellTex.minFilter = this.cellTex.magFilter = THREE.NearestFilter; this.cellTex.needsUpdate = true;
@@ -297,7 +309,7 @@ export class BlueprintWorld {
   }
   dispose() {
     if (this.origRender) { const post = this.f.g.engine.post; post.render = this.origRender; this.origRender = null; }
-    this.maskRT.dispose(); this.cellTex.dispose(); this.hgtTex.dispose(); this.mat.dispose();
+    this.maskRT.dispose(); this.artRT.dispose(); this.blit.dispose(); this.cellTex.dispose(); this.hgtTex.dispose(); this.mat.dispose();
     for (const m of [...this.maskMats.values(), ...this.lineMats.values()]) m.dispose();
   }
 
@@ -376,15 +388,23 @@ export class BlueprintWorld {
     (U.uWipeC.value as THREE.Vector2).set(this.wipeAt[0] * sc, post.h - this.wipeAt[1] * sc);
     U.uTime.value = this.t; U.uMix.value = this.mix; U.uWipe.value = this.wipe;
     U.uFovK.value = 2 * Math.tan((cam.fov * Math.PI) / 360);
-    U.uK.value = Math.max(1, Math.round(2 * sc));
+    const K = Math.max(1, Math.round(2 * sc));
+    U.uK.value = K;
     U.uHand.value = this.hand ? 1 : 0; U.uTray.value = this.tray;
     U.uSeam.value = this.hand && FDEFS[this.hand]?.extract === 'node' ? 1 : 0;
     U.uSelPulse.value = 0.5 + 0.5 * Math.sin(this.t * 5);
     (U.uCursor.value as THREE.Vector3).set(this.cursor[0], this.cursor[1], 11);
-    const prev = r.getRenderTarget(), ac = r.autoClear;
-    r.setRenderTarget(null); r.autoClear = false;
-    r.render(this.qs, this.ortho);
-    r.autoClear = ac; r.setRenderTarget(prev);
+    const aw = Math.ceil(post.w / K), ah = Math.ceil(post.h / K);
+    if (this.artRT.width !== aw || this.artRT.height !== ah) this.artRT.setSize(aw, ah);
+    const prev = r.getRenderTarget(), ac = r.autoClear, pc = r.getClearColor(new THREE.Color()).getHex(), pa = r.getClearAlpha();
+    // the blueprint at one fragment per art pixel, then laid over the image (nearest: crisp 2 x 2 pixels)
+    r.setRenderTarget(this.artRT); r.setClearColor(0x000000, 0); r.autoClear = false; r.clear(true, false, false);
+    this.quad.material = this.mat; r.render(this.qs, this.ortho);
+    r.setRenderTarget(null);
+    this.blit.uniforms.uMix.value = this.mix;
+    this.quad.material = this.blit; r.render(this.qs, this.ortho);
+    this.quad.material = this.mat;
+    r.autoClear = ac; r.setRenderTarget(prev); r.setClearColor(pc, pa);
   }
 
   // ------------------------------------------------------------------ the cell maps

@@ -58,7 +58,8 @@ export function floatIcon(o: FloatIconOpts): FloatIcon {
   let view: ModelView | null = null;
   if (o.build) { view = new ModelView(o.build, { w, h, scale: sc, ...(o.view ?? {}) }); bob.append(view.cv); }
   else if (o.canvas) { o.canvas.classList.add('k7-model'); bob.append(o.canvas); }
-  ic.append(sh, bob);
+  const gl = document.createElement('span'); gl.className = 'k7-glow';
+  ic.append(gl, sh, bob);
   const nm = document.createElement('span'); nm.className = `k7-name k7-t${o.nameSize ?? 32}`; nm.textContent = o.name;
   b.append(ic, nm);
   if (o.hint) { const hn = document.createElement('span'); hn.className = 'k7-hint k7-t16'; hn.textContent = o.hint; b.append(hn); }

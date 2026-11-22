@@ -33,7 +33,10 @@ export function installKitStyle() {
 @keyframes k7-bob { from { transform: translateY(2px); } to { transform: translateY(-4px); } }
 @keyframes k7-shade { from { opacity: .95; } to { opacity: .7; } }
 .k7-fi .k7-name { position: relative; z-index: 2; margin-top: -6px; color: #efe4c4; pointer-events: none; }
-.k7-fi.hot .k7-ic, .k7-fi:focus-visible .k7-ic { transform: translateY(-12px) scale(1.06); filter: brightness(1.18) drop-shadow(0 0 8px color-mix(in srgb, var(--glow) 65%, transparent)); }
+.k7-fi .k7-glow { position: absolute; left: 50%; bottom: -14px; width: 150%; height: 70%; transform: translateX(-50%) scale(.6); z-index: 0; opacity: 0; pointer-events: none; transition: opacity .2s, transform .25s cubic-bezier(.2,.9,.3,1.4);
+  background: radial-gradient(ellipse 50% 40% at 50% 60%, color-mix(in srgb, var(--glow) 55%, transparent), color-mix(in srgb, var(--glow) 18%, transparent) 55%, transparent 75%); }
+.k7-fi.hot .k7-glow, .k7-fi:focus-visible .k7-glow { opacity: 1; transform: translateX(-50%) scale(1); }
+.k7-fi.hot .k7-ic, .k7-fi:focus-visible .k7-ic { transform: translateY(-14px); filter: brightness(1.2) drop-shadow(0 0 3px color-mix(in srgb, var(--glow) 90%, transparent)) drop-shadow(0 0 10px color-mix(in srgb, var(--glow) 60%, transparent)); }
 .k7-fi.hot .k7-sh { opacity: .45; }
 .k7-fi.hot .k7-name, .k7-fi:focus-visible .k7-name { color: #fff4cf; transform: perspective(240px) rotateX(6deg) translateY(-3px); }
 .k7-fi.down .k7-ic { transform: translateY(2px) scale(.97); filter: brightness(1.35) drop-shadow(0 0 10px var(--glow)); transition-duration: .05s; }

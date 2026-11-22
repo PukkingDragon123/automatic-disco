@@ -28,9 +28,10 @@ const fmt = (n: number) => (n >= 10000 ? Math.round(n / 1000) + 'k' : n >= 1000 
 /** the shelf: a planked board with a lit top edge and a shaded front, on two riveted steel brackets */
 function shelfArt(w: number): Px {
   const h = 22, p = new Px(w, h);
-  const board = plate(w - 4, 9, { mat: 'wood', seed: 5, chamfer: 1, wear: 0.4, lip: 1, grime: 0.2 });
+  const board = plate(w - 4, 9, { mat: 'gun', seed: 5, chamfer: 2, wear: 0.5, lip: 1, grime: 0.2 });
   p.blit(board, 2, 2);
-  p.hl(3, w - 4, 2, P.soil[6]);
+  p.hl(3, w - 4, 2, P.steel[6]);
+  for (let x = 12; x < w - 12; x += 22) { p.rect(x, 6, 3, 2, INK); p.set(x + 1, 6, P.glowTeal[3]); }
   for (const bx of [14, w - 22]) {
     // an L bracket under the board
     p.rect(bx, 11, 8, 3, P.steel[3]); p.rect(bx, 11, 3, 10, P.steel[3]);
