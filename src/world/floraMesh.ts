@@ -440,6 +440,8 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
     if (L1 && clumpedCrown && isBark && r0 < 0.035 && pts[0][1] > 0.05) continue;
     // and the finest stalks and twigs of the herbs
     if (L2 && !crowned && r0 < 0.009 && pts.length > 2) continue;
+    // short twig stubs on branching herbs (corals): what they carry hangs on a hair's gap at that range
+    if (L2 && !crowned && isBark && r0 < 0.03 && pts[0][1] > 0.05 && polyLen(pts) < 0.12) continue;
     // merge short steps on thin limbs
     let P2 = pts, R2 = rad;
     if (L1 && !isBark && r0 < 0.012) continue;
