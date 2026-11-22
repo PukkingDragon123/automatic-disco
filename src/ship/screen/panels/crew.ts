@@ -32,11 +32,11 @@ export function crewPanel(ctx: PanelCtx): Panel {
   mood.set(moodPct());
   const pc = div('s7-abs k7-t16', host); place(pc, 92, 24); pc.textContent = '%'; pc.style.color = '#3a2a14'; pc.style.textShadow = 'none';
   const st = shipState();
+  let lastFilm = (() => { try { return Number(sessionStorage.getItem('s7.film') ?? 0); } catch { return 0; } })();
   const meal = keyCap(host, { label: 'MEAL', icon: iconOf('wheat', 'amber'), w: 84, h: 28, mat: 'orange', off: () => (st.supplies.rations < 6 ? 'NO RATIONS' : false), onClick: () => lift('meal') });
   place(meal.el, W - 186, 14).style.position = 'absolute';
   const movie = keyCap(host, { label: 'FILM', icon: iconOf('lens', 'amber'), w: 80, h: 28, mat: 'olive', off: () => (Date.now() - lastFilm < 45000 ? 'NOT YET' : false), onClick: () => lift('film') });
   place(movie.el, W - 98, 14).style.position = 'absolute';
-  let lastFilm = Number(sessionStorage.getItem('s7.film') ?? 0);
   const lift = (k: 'meal' | 'film') => {
     if (k === 'meal') { st.supplies.rations -= 6; saveShip(); crew.moodShift?.(0.05); }
     else { lastFilm = Date.now(); try { sessionStorage.setItem('s7.film', String(lastFilm)); } catch { /* */ } crew.moodShift?.(0.04); }

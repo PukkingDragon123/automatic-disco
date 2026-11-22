@@ -77,7 +77,7 @@ export function partModel(slot: PartSlot, id: string, lod: Lod = 'hud'): THREE.G
   if (slot === 'grip') obj = gripModel(id, lod);
   else {
     const src = SRC[id]; if (!src) return null;
-    const m = buildToolModel(src[0], { lod, animated: true, state: 'active' }); if (!m) return null;
+    const m = buildToolModel(src[0], { lod, animated: true }); if (!m) return null;
     const c = component(m, src[1]); if (!c) return null;
     isolate(m, c);
     // re-centre the visible component (the model keeps its own transforms so its animation still drives it)

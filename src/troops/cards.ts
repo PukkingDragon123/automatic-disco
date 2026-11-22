@@ -60,7 +60,7 @@ export class Cards {
     const row1 = document.createElement('div'), row2 = document.createElement('div');
     row1.className = row2.className = 'tr-krow';
     const K = (id: string, glyphName: string, name: string, cap: Parameters<typeof keyModel>[1]['cap'], act: () => void, row: HTMLElement) => {
-      const fi = floatIcon({ build: keyModel(glyphName, { cap }), name, size: [36, 32], scale: 2, nameSize: 16, sound: '', view: { pitch: 0.95, spin: 0, yaw0: 0.3, rock: 0.18, hotSpin: 0.7, zoom: 1.12, lift: 0.02 }, onClick: (e) => { e.stopPropagation(); act(); }, aria: id });
+      const fi = floatIcon({ build: keyModel(glyphName, { cap }), name, size: [34, 30], scale: 2, nameSize: 16, sound: '', view: { pitch: 0.95, spin: 0, yaw0: 0.3, rock: 0.18, hotSpin: 0.7, zoom: 1.12, lift: 0.02 }, onClick: (e) => { e.stopPropagation(); act(); }, aria: id });
       fi.el.classList.add('tr-key'); fi.el.dataset.key = id;
       row.append(fi.el); this.keys.set(id, fi);
     };
@@ -119,8 +119,8 @@ export class Cards {
     const s = this.book.stateOf(t);
     const wrap = document.createElement('div'); wrap.className = 'tr-one';
     const port = document.createElement('div'); port.className = 'tr-port';
-    const v = this.view(t, 92, 84, 2, true, { spin: 0.35, zoom: 1.0 });
-    port.append(pxCanvas(shadowBlob(70, 10, 0.5), 2, 'tr-port-sh'), v.cv);
+    const v = this.view(t, 84, 76, 2, true, { spin: 0.35, zoom: 1.0 });
+    port.append(pxCanvas(shadowBlob(66, 10, 0.5), 2, 'tr-port-sh'), v.cv);
     port.addEventListener('pointerenter', () => v.hot(true)); port.addEventListener('pointerleave', () => v.hot(false));
     port.addEventListener('pointermove', (e) => v.point(e.clientX, e.clientY));
     port.addEventListener('click', () => { v.poke(10); this.rts.focus([t]); });
@@ -219,7 +219,11 @@ export class Cards {
     this.el.style.visibility = vis ? '' : 'hidden';
     if (!vis) return;
     this.acc = (this.acc ?? 0) + dt;
-    if (this.acc > 0.2) { this.acc = 0; this.live?.(); this.syncKeys(); }
+    if (this.acc > 0.2) {
+      this.acc = 0; this.live?.(); this.syncKeys();
+      const sel = this.rts.troops(), bad = sel.some((t) => t.hp01 < 0.3 || this.book.stateOf(t).morale < 0.22);
+      this.pan.lamp(0, !bad); this.pan.lamp(1, !!this.rts.arm); this.pan.lamp(2, bad && Math.floor(this.liveT * 3) % 2 === 0);
+    }
   }
   private acc = 0;
 }
@@ -246,9 +250,9 @@ body.tr-armed canvas { cursor: crosshair; }
 .h7-dock { transition: transform .34s cubic-bezier(.3,1.5,.55,1), opacity .25s; }
 body.tr-cards-on .h7-dock { transform: translate(-50%, 230px); opacity: 0; transition: transform .26s cubic-bezier(.55,0,.8,.3), opacity .25s; }
 body.tr-cards-on { --sub7-y: 236px; }
-.tr-cards { position: fixed; left: 50%; bottom: 6px; z-index: 41; width: 940px; height: 196px; transform: translate(-50%, 240px); transition: transform .34s cubic-bezier(.55,0,.8,.3); pointer-events: none; }
+.tr-cards { position: fixed; left: 50%; bottom: 4px; z-index: 41; width: 960px; height: 216px; transform: translate(-50%, 240px); transition: transform .34s cubic-bezier(.55,0,.8,.3); pointer-events: none; }
 .tr-cards.on { transform: translate(-50%, 0); transition: transform .42s cubic-bezier(.25,1.45,.5,1); }
-.tr-cards .tr-plate { position: absolute; left: 0; right: 0; bottom: 0; height: 184px; pointer-events: auto; }
+.tr-cards .tr-plate { position: absolute; left: 0; right: 0; bottom: 0; height: 196px; pointer-events: auto; }
 .tr-cards .tr-plate > .kp-body { display: flex; align-items: stretch; height: 100%; }
 .tr-cards .tr-body { position: relative; z-index: 1; flex: 1; display: flex; align-items: center; padding: 0 8px 0 10px; min-width: 0; }
 .tr-cards .tr-keys { position: relative; z-index: 1; width: 304px; display: flex; flex-direction: column; justify-content: center; gap: 0; padding-right: 2px; }
@@ -258,9 +262,9 @@ body.tr-cards-on { --sub7-y: 236px; }
 .tr-cards .tr-key .k7-name { margin-top: -10px; }
 .tr-cards .tr-key.on .k7-ic { filter: brightness(1.2) drop-shadow(0 0 6px rgba(255,200,110,.8)); transform: translateY(3px); }
 .tr-one { display: flex; align-items: center; gap: 14px; height: 100%; }
-.tr-port { position: relative; width: 184px; height: 168px; cursor: pointer; flex: none; margin-top: -30px; }
+.tr-port { position: relative; width: 168px; height: 152px; cursor: pointer; flex: none; margin-top: -8px; }
 .tr-port canvas.k7-model { position: absolute; left: 0; top: 0; }
-.tr-port .tr-port-sh { position: absolute; left: 22px; bottom: 6px; }
+.tr-port .tr-port-sh { position: absolute; left: 14px; bottom: 6px; }
 .tr-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .tr-head { display: flex; align-items: center; gap: 8px; }
 .tr-head canvas { image-rendering: pixelated; }
@@ -287,7 +291,7 @@ body.tr-cards-on { --sub7-y: 236px; }
 .tr-mini .tr-minibar { position: absolute; left: 4px; bottom: 2px; image-rendering: pixelated; }
 .tr-more { align-self: center; color: #ffe7a8; }
 .tr-cards .tr-roster { position: absolute !important; right: 2px; top: -30px; z-index: 3; width: 70px; }
-.tr-groups { position: absolute; left: 26px; top: 0; height: 26px; display: flex; gap: 6px; pointer-events: auto; z-index: 2; }
+.tr-groups { position: absolute; left: 230px; top: 2px; height: 26px; display: flex; gap: 6px; pointer-events: auto; z-index: 2; }
 .tr-gtag { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border: 0; background: none; cursor: pointer; transition: transform .14s cubic-bezier(.3,1.6,.5,1); }
 .tr-gtag:hover { transform: translateY(-3px); }
 .tr-gtag .k7-t16 { position: relative; z-index: 1; color: #2a1c0c; text-shadow: 0 1px 0 rgba(255,240,200,.5); }

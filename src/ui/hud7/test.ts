@@ -1,5 +1,5 @@
 // ?test=hud7: the HUD v7 and the UI kit without the 3D world (a light page for visual QA on a slow machine).
-//   &view=dock|kit|tool|arsenal|bench|map|storage|hud   what to show (default hud: everything over a painted region)
+//   &view=dock|kit|panels|tool|arsenal|bench|map|storage|hud   what to show (default hud: everything over a painted region)
 //   &hover=build   a dock slot drawn hot      &tr=iris|shutter|dissolve|swoop&k=0.6   a transition frozen mid-frame
 //   &open=1        the storage expanded       &seed=11&biome=meadow
 import type { Engine } from '../../app/engine';
@@ -14,6 +14,7 @@ export async function testHud7(_engine: Engine, _input: Input, P: URLSearchParam
   const g = await makeStandIn(P);
   const { installHud7 } = await import('./index');
   if (view === 'kit') { (await import('./kitSheet')).kitSheet(); return; }
+  if (view === 'panels') { await (await import('./panelSheet')).panelSheet(); return; }
   const hud = installHud7(g, { only: view === 'hud' ? undefined : view });
   (window as unknown as { __hud7: unknown }).__hud7 = hud;
   if (P.get('hover')) setTimeout(() => { const el = hud.dock?.icon(P.get('hover') as never); el?.dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse' })); }, 300);

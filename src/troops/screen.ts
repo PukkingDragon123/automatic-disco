@@ -14,7 +14,8 @@ import type { OrderBook, Squad, Stance } from './orders';
 import { SQUAD_COLORS } from './orders';
 import type { Rts } from './rts';
 import type { DockCtx } from '../ui/hud7/dock';
-import { plate, skin, strip, pxCanvas, shadowBlob } from '../ui/kit/mat';
+import { pxCanvas, shadowBlob } from '../ui/kit/mat';
+import { panel, type Panel } from '../ui/kit/panel';
 import { Px, P, INK, cellBar, glassWell, hex } from '../ui/kit/px';
 import { ModelView, toon } from '../ui/kit/model3d';
 import { floatIcon } from '../ui/kit/floatIcon';
@@ -109,6 +110,7 @@ export class TroopsScreen {
   private teardown() {
     removeEventListener('keydown', this.onKey, true); removeEventListener('pointermove', this.onMove); removeEventListener('pointerup', this.onUp);
     for (const v of this.views) v.dispose(); this.views = []; this.live = [];
+    for (const p of this.panels) p.dispose(); this.panels = [];
     this.stop?.(); this.stop = null;
     this.el?.remove(); this.el = null; document.body.classList.remove('trs-on'); this.drag?.ghost.remove(); this.drag = null;
     this.book.save();
@@ -124,6 +126,7 @@ export class TroopsScreen {
   // ------------------------------------------------------------------ squads
   private squadsCol!: HTMLDivElement; private detailCol!: HTMLDivElement; private prodCol!: HTMLDivElement;
   private squadEls = new Map<number | null, HTMLDivElement>();
+  private panels: Panel[] = [];
   private buildSquads() {
     const col = this.squadsCol; col.innerHTML = ''; this.squadEls.clear();
     for (const sq of this.book.squads) col.append(this.squadPlate(sq));
@@ -139,37 +142,36 @@ export class TroopsScreen {
     col.append(this.squadPlate(null));
   }
   private squadPlate(sq: Squad | null): HTMLDivElement {
-    const p = div('trs-sq' + (sq ? '' : ' pool'));
+    // the kit's standard housing: the squad's name printed on its hood plate (click it to rename), lamps for its state
+    const pn = panel({ tone: sq ? 'olive' : 'gun', seed: 60 + (sq?.id ?? 9), title: sq ? sq.name : 'RESERVE', head: 34, foot: 12, side: 8, lamps: sq ? ['green', 'amber'] : ['white'], hazard: false, glands: sq ? 1 : 0, cls: 'trs-sq' + (sq ? '' : ' pool') });
+    const p = pn.el, body = pn.body;
     p.dataset.sq = sq ? String(sq.id) : 'pool';
-    skin(p, (w, h) => plate(w, h, { mat: sq ? 'olive' : 'gun', seed: 60 + (sq?.id ?? 9), chamfer: 6, screws: true, wear: 0.8, grime: 0.6 }));
     this.squadEls.set(sq?.id ?? null, p);
+    this.panels.push(pn);
     const top = div('trs-sq-top');
     if (sq) {
-      const ns = div('trs-name'); skin(ns, (w, h) => strip(w, h, 'brass', 30 + sq.id));
-      const pinC = document.createElement('i'); pinC.className = 'trs-swatch'; pinC.style.background = hex(sq.color);
-      const inp = document.createElement('input'); inp.className = 'k7-t32 trs-in'; inp.value = sq.name; inp.maxLength = 10; inp.spellcheck = false;
-      inp.addEventListener('change', () => { sq.name = (inp.value.trim() || sq.name).toUpperCase().slice(0, 10); inp.value = sq.name; uiSfx('scratch', 0.45); pop(ns, 0.4); this.book.save(); });
-      inp.addEventListener('focus', () => uiSfx('tick', 0.4));
-      ns.append(pinC, inp);
+      const inp = document.createElement('input'); inp.className = 'k7-t16 trs-in'; inp.value = sq.name; inp.maxLength = 10; inp.spellcheck = false; inp.setAttribute('aria-label', 'squad name');
+      inp.addEventListener('change', () => { sq.name = (inp.value.trim() || sq.name).toUpperCase().slice(0, 10); inp.value = sq.name; pn.setTitle(sq.name); uiSfx('scratch', 0.45); pop(p, 0.15); this.book.save(); });
+      inp.addEventListener('focus', () => { uiSfx('tick', 0.4); inp.select(); });
+      p.append(inp);
+      const sw = document.createElement('i'); sw.className = 'trs-swatch'; sw.style.background = hex(sq.color);
       const st = div('trs-stance');
       for (const s of STANCES) {
         const b = document.createElement('button'); b.type = 'button'; b.className = 'trs-st' + (sq.stance === s ? ' on' : ''); b.title = s;
         b.append(glyphCanvas(s, s === 'aggressive' ? 'red' : s === 'defensive' ? 'brass' : 'blue', 3));
-        b.addEventListener('click', () => { sq.stance = s; for (const o of st.children) o.classList.toggle('on', o === b); squash(b, 0.8); uiSfx('switch', 0.55); this.book.save(); });
+        b.addEventListener('click', () => { sq.stance = s; for (const o of st.children) o.classList.toggle('on', o === b); squash(b, 0.8); uiSfx('switch', 0.55); pn.lamp(1, s === 'aggressive'); this.book.save(); });
         st.append(b);
       }
       const area = document.createElement('button'); area.type = 'button'; area.className = 'trs-area' + (sq.area ? ' set' : ''); area.append(glyphCanvas('area', sq.area ? 'amber' : 'dim', 3));
       area.addEventListener('click', () => { this.armArea = sq.id; this.mapCv?.classList.add('arm'); uiSfx('pluck', 0.5); pop(area, 0.6); for (const a of this.squadsCol.querySelectorAll('.trs-area')) a.classList.toggle('arm', a === area); });
       area.addEventListener('contextmenu', (e) => { e.preventDefault(); sq.area = null; area.classList.remove('set'); area.innerHTML = ''; area.append(glyphCanvas('area', 'dim', 3)); uiSfx('back', 0.4); this.book.save(); });
-      const go = document.createElement('button'); go.type = 'button'; go.className = 'trs-go'; go.append(glyphCanvas('troops', 'cream', 2));
+      const go = document.createElement('button'); go.type = 'button'; go.className = 'trs-go'; go.append(glyphCanvas('troops', 'cream', 3));
       go.addEventListener('click', () => { const m = this.book.members(sq.id); if (!m.length) { shake(go, 4); uiSfx('error', 0.4); return; } this.rts.select(m); this.close(); });
-      top.append(ns, st, area, go);
-    } else {
-      const ns = div('trs-name pool'); const t = document.createElement('span'); t.className = 'k7-t32'; t.textContent = 'RESERVE'; ns.append(t);
-      top.append(ns);
+      top.append(sw, st, area, go);
+      pn.lamp(0, true); pn.lamp(1, sq.stance === 'aggressive');
     }
     const row = div('trs-members');
-    p.append(top, row);
+    body.append(top, row);
     this.fillMembers(sq?.id ?? null);
     return p;
   }
@@ -229,14 +231,16 @@ export class TroopsScreen {
   };
 
   // ------------------------------------------------------------------ the unit
+  private detPanel: Panel | null = null;
   private det: { port: HTMLDivElement; info: HTMLDivElement; hist: HTMLCanvasElement; wounds: HTMLDivElement } | null = null;
   private buildDetail() {
-    const p = div('trs-detail'); skin(p, (w, h) => plate(w, h, { mat: 'gun', seed: 77, chamfer: 7, screws: true, rivets: true, wear: 0.8 }));
+    const pn = panel({ tone: 'gun', seed: 77, head: 20, foot: 14, side: 10, lamps: ['green', 'amber', 'red'], knobs: 2, cls: 'trs-detail' }); this.panels.push(pn); this.detPanel = pn;
+    const p = pn.body;
     const port = div('trs-dport'), info = div('trs-dinfo');
     const histW = div('trs-hist'); const hist = document.createElement('canvas'); hist.width = 272; hist.height = 62; hist.style.width = '544px'; hist.style.height = '124px'; histW.append(hist);
     const wounds = div('trs-wounds');
     p.append(port, info, histW, wounds);
-    this.detailCol.append(p);
+    this.detailCol.append(pn.el);
     this.det = { port, info, hist, wounds };
   }
   private show(t: Troop | null) {
@@ -320,7 +324,8 @@ export class TroopsScreen {
 
   // ------------------------------------------------------------------ the survey map
   private buildMap() {
-    const p = div('trs-map'); skin(p, (w, h) => plate(w, h, { mat: 'steel', seed: 88, chamfer: 6, screws: true, wear: 0.6 }));
+    const pn = panel({ tone: 'steel', seed: 88, head: 14, foot: 12, side: 10, lamps: [], hazard: false, cls: 'trs-map' }); this.panels.push(pn);
+    const p = pn.body;
     const cv = document.createElement('canvas'); cv.className = 'trs-mapcv';
     const R = this.g.region, N = R?.N ?? 128, size = 264;
     this.mapK = size / N;
@@ -337,7 +342,7 @@ export class TroopsScreen {
       } else { this.g.cam?.lookAt?.(x, z); uiSfx('tick', 0.4); }
     });
     p.append(cv); this.mapCv = cv;
-    this.detailCol.append(p);
+    this.detailCol.append(pn.el);
   }
   private mapT = 0;
   private drawMap() {
@@ -369,9 +374,8 @@ export class TroopsScreen {
   private buildProduction() {
     const col = this.prodCol; col.innerHTML = '';
     // THE ROBOT FOUNDRY
-    const fp = div('trs-prod fdy'); skin(fp, (w, h) => plate(w, h, { mat: 'gun', seed: 91, chamfer: 7, screws: true, rivets: true, wear: 0.9, hazard: 5 }));
-    const fh = div('trs-ph'); fh.append(glyphCanvas('build', 'brass', 3)); const ft = document.createElement('span'); ft.className = 'k7-t32'; ft.textContent = 'FOUNDRY'; fh.append(ft);
-    fp.append(fh);
+    const fpn = panel({ tone: 'gun', seed: 91, title: 'FOUNDRY', serial: 'RF-07', lamps: ['green', 'amber'], hazard: true, vents: true, cls: 'trs-prod fdy' }); this.panels.push(fpn);
+    const fp = fpn.body;
     const fs = this.foundry.foundries();
     if (!fs.length) {
       const lock = div('trs-lock'); lock.append(glyphCanvas('stop', 'dim', 4));
@@ -409,22 +413,22 @@ export class TroopsScreen {
         if (kind !== curKind) { curKind = kind; if (cv0) { cv0.dispose(); this.views.splice(this.views.indexOf(cv0), 1); cv0 = null; } cur.innerHTML = ''; if (kind) { let v: ModelView | null = null; v = new ModelView(bareBuild(() => robotBody(kind)), { w: 64, h: 56, scale: 2, spin: 0.6, pitch: 0.35, zoom: 1.05, anim: (root) => holdLights(root, v?.yaw ?? 0) }); cv0 = v; this.views.push(v); cur.append(v.cv); } else cur.append(glyphCanvas('build', 'dim', 4)); }
         const pb = new Px(120, 9); cellBar(pb, 1, 1, 118, 7, b.running ? b.prog ?? 0 : 0, P.glowAmber, performance.now() / 1000); pb.canvas(bar);
         st.textContent = String(b.status ?? '').toUpperCase();
+        fpn.lamp(0, !!b.running); fpn.lamp(1, b.status === 'starved' || b.status === 'blocked' || b.status === 'nopower');
         if (qrow.children.length && this.foundry.queue(b).length !== [...qrow.children].filter((c) => !c.classList.contains('empty')).length) drawQ();
       };
       upd(); this.live.push(upd);
     }
-    col.append(fp);
+    col.append(fpn.el);
     // THE LAB: the designs the colony can print
-    const lp = div('trs-prod lab'); skin(lp, (w, h) => plate(w, h, { mat: 'enamel', seed: 97, chamfer: 7, screws: true, wear: 0.7 }));
-    const lh = div('trs-ph'); lh.append(glyphCanvas('part', 'teal', 3)); const lt = document.createElement('span'); lt.className = 'k7-t32'; lt.textContent = 'LAB'; lh.append(lt);
-    lp.append(lh);
+    const lpn = panel({ tone: 'cream', seed: 97, title: 'LAB', lamps: ['teal'], hazard: false, cls: 'trs-prod lab' }); this.panels.push(lpn);
+    const lp = lpn.body;
     const hive = this.g.veyr;
     const ds: any[] = hive?.designs?.() ?? [];
     const grid = div('trs-opts');
     if (!ds.length) { const lock = div('trs-lock'); lock.append(glyphCanvas('part', 'dim', 4)); const l = document.createElement('span'); l.className = 'k7-t16'; l.textContent = 'NO DESIGNS YET'; lock.append(l); lp.append(lock); }
     ds.slice(0, 8).forEach((sp, i) => grid.append(this.designOpt(sp, i)));
     lp.append(grid);
-    col.append(lp);
+    col.append(lpn.el);
   }
   private robotStill(kind: string, w: number): HTMLCanvasElement {
     const v = new ModelView(bareBuild(() => robotBody(kind)), { w, h: w, scale: 2, spin: 0, rock: 0.2, pitch: 0.35, zoom: 1.1 });
@@ -505,17 +509,17 @@ function injectCSS() {
 .trs-col.a { left: 0; width: 610px; }
 .trs-col.b { left: 628px; width: 584px; }
 .trs-col.c { left: 1230px; width: 610px; }
-.trs-sq { position: relative; height: 188px; display: flex; flex-direction: column; padding: 12px 18px 10px; transition: transform .16s cubic-bezier(.3,1.6,.5,1), filter .16s; flex: none; }
+.trs-sq { position: relative; height: 188px; transition: transform .16s cubic-bezier(.3,1.6,.5,1), filter .16s; flex: none; }
 .trs-sq.pool { flex: 1; min-height: 150px; }
-.trs-sq > * { position: relative; z-index: 1; }
+.trs-sq > .kp-body { display: flex; flex-direction: column; height: 100%; }
 .trs-sq.drop { transform: translateY(-3px); filter: brightness(1.18) drop-shadow(0 0 8px rgba(255,210,120,.55)); }
-.trs-sq-top { display: flex; align-items: center; gap: 10px; height: 48px; }
+.trs-sq-top { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 4px; }
 .trs-name { position: relative; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; width: 250px; }
 .trs-name.pool { width: auto; padding: 0 4px; }
 .trs-name.pool .k7-t32 { color: #c8bfa0; }
 .trs-swatch { display: inline-block; width: 12px; height: 12px; position: relative; z-index: 1; box-shadow: 0 0 0 2px #08090c; }
-.trs-in { position: relative; z-index: 1; width: 196px; border: 0; outline: 0; background: transparent; color: #2a1c0c; caret-color: #2a1c0c; padding: 0; text-shadow: 0 2px 0 rgba(255,236,190,.5) !important; }
-.trs-in:focus { color: #000; }
+.trs-in { position: absolute; z-index: 3; left: 25px; top: 3px; width: 170px; height: 22px; border: 0; outline: 0; padding: 0 0 0 12px; background: transparent; color: transparent; caret-color: #1a1408; cursor: text; text-shadow: none !important; }
+.trs-in:focus { background: #e2c254; color: #1a1408; box-shadow: 0 0 0 2px #08090c, 0 0 10px rgba(255,210,110,.7); }
 .trs-stance { display: flex; gap: 2px; margin-left: 6px; }
 .trs-st, .trs-area, .trs-go, .trs-add { position: relative; border: 0; background: none; padding: 2px; cursor: pointer; line-height: 0; transition: transform .16s cubic-bezier(.3,1.6,.5,1), filter .16s; filter: saturate(.35) brightness(.7) drop-shadow(0 3px 0 rgba(0,0,0,.35)); }
 .trs-st:hover, .trs-area:hover, .trs-go:hover, .trs-add:hover { transform: translateY(-4px); filter: saturate(.8) brightness(1.05) drop-shadow(0 5px 0 rgba(0,0,0,.3)); }
@@ -536,12 +540,12 @@ function injectCSS() {
 .trs-ghost { position: fixed; z-index: 9500; pointer-events: none; width: 60px; height: 68px; image-rendering: pixelated; filter: drop-shadow(0 10px 6px rgba(0,0,0,.5)); transform: rotate(-6deg) scale(1.15); }
 .trs-empty { opacity: .45; align-self: center; margin: 0 auto; }
 .trs-more { color: #ffe7a8; align-self: center; margin-left: 6px; }
-.trs-detail { position: relative; height: 560px; flex: none; padding: 18px; }
-.trs-detail > * { position: relative; z-index: 1; }
-.trs-dport { position: absolute !important; left: 6px; top: 10px; width: 240px; height: 224px; cursor: pointer; }
+.trs-detail { position: relative; height: 560px; flex: none; }
+.trs-detail > .kp-body { height: 100%; }
+.trs-dport { position: absolute !important; left: 0; top: 0; width: 240px; height: 224px; cursor: pointer; }
 .trs-dport canvas.k7-model { position: absolute; left: 0; top: 0; }
 .trs-dport .trs-dport-sh { position: absolute; left: 30px; bottom: 6px; }
-.trs-dinfo { position: absolute !important; left: 262px; top: 18px; right: 18px; display: flex; flex-direction: column; gap: 10px; }
+.trs-dinfo { position: absolute !important; left: 250px; top: 2px; right: 4px; display: flex; flex-direction: column; gap: 10px; }
 .trs-dcall { color: #f6ecd0; }
 .trs-dtype { color: var(--k7-dim); margin-top: -8px; }
 .trs-dbars { display: flex; flex-direction: column; gap: 6px; }
@@ -552,21 +556,18 @@ function injectCSS() {
 .trs-gi canvas { display: block; }
 .trs-gi .k7-t16 { color: #f2ead2; }
 .trs-job { color: #ffd98a !important; }
-.trs-hist { position: absolute !important; left: 20px; right: 20px; top: 258px; height: 126px; }
+.trs-hist { position: absolute !important; left: 2px; right: 2px; top: 236px; height: 126px; }
 .trs-hist canvas { display: block; }
-.trs-wounds { position: absolute !important; left: 22px; right: 22px; top: 398px; bottom: 18px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 10px 22px; }
+.trs-wounds { position: absolute !important; left: 6px; right: 6px; top: 376px; bottom: 4px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 10px 22px; }
 .trs-gi.wound .k7-t16 { color: #ff9a80; }
 .trs-age { color: var(--k7-dim) !important; }
-.trs-map { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; }
+.trs-map { position: relative; flex: 1; }
+.trs-map > .kp-body { height: 100%; display: flex; align-items: center; justify-content: center; }
 .trs-mapcv { position: relative; z-index: 1; image-rendering: pixelated; cursor: crosshair; box-shadow: 0 0 0 2px #08090c, 0 0 0 4px #6a6e70; }
 .trs-mapcv.arm { box-shadow: 0 0 0 2px #08090c, 0 0 0 4px #ffc560, 0 0 16px rgba(255,200,100,.6); }
-.trs-prod { position: relative; padding: 14px 18px 22px; flex: none; }
-.trs-prod.fdy { height: 520px; }
+.trs-prod { position: relative; flex: none; }
+.trs-prod.fdy { height: 540px; }
 .trs-prod.lab { flex: 1; }
-.trs-prod > * { position: relative; z-index: 1; }
-.trs-ph { display: flex; align-items: center; gap: 10px; height: 44px; }
-.trs-ph .k7-t32 { color: #f2ead2; }
-.trs-prod.lab .trs-ph .k7-t32 { color: #2a2014; text-shadow: 0 2px 0 rgba(255,240,210,.5); }
 .trs-lock { display: flex; align-items: center; gap: 12px; padding: 18px 6px; opacity: .85; }
 .trs-lock .k7-t16 { color: #c8bfa0; }
 .trs-now { display: grid; grid-template-columns: 128px 1fr; grid-template-rows: 1fr auto; align-items: center; column-gap: 14px; height: 120px; }
@@ -581,13 +582,11 @@ function injectCSS() {
 .trs-opt { display: flex; flex-direction: column; align-items: center; width: 136px; }
 .trs-opt .k7-fi { width: 128px; }
 .trs-opt .k7-name { white-space: nowrap; }
-.trs-prod.lab .trs-opt .k7-name { color: #2a2014; text-shadow: 0 2px 0 rgba(255,240,210,.55) !important; }
 .trs-bill { display: flex; gap: 2px; margin-top: 2px; }
 .trs-bi { display: inline-flex; align-items: center; gap: 0; }
 .trs-bi img { image-rendering: pixelated; display: block; }
 .trs-bi .k7-t16 { color: #f2ead2; margin-left: -4px; }
 .trs-bi.short .k7-t16 { color: #ff8a70; }
-.trs-prod.lab .trs-bi .k7-t16 { color: #2a2014; text-shadow: none; }
 `;
   document.head.append(s);
 }
