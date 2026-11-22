@@ -1,7 +1,7 @@
 // ?test=hud7&view=panels: the kit's standard detailed boxes on one sheet (panel, slot, slotGrid, meter, pkey) in every
 // tone, with real content: the bench's part bins (part icons from the tool models), an item record card, a specs
 // readout and a bill of materials.
-import { panel, slotGrid, slot, meter, pkey } from '../kit/panel';
+import { panel, slotGrid, slot, meter, pkey, kv } from '../kit/panel';
 import { ModelView } from '../kit/model3d';
 import { bitReady } from '../kit/bitfont';
 import { partIcon, partModel, customModel, fitVisible } from './parts3d';
@@ -34,20 +34,23 @@ export async function panelSheet() {
 
   // ---- an item record card (Limbophobia's item panel, ODDWORLD's hardware)
   const card = panel({ title: 'CORE BIT', tone: 'olive', serial: 'PT-0412', lamps: ['amber'], hazard: true, glands: 1, stencil: 'HEAD' });
-  card.el.style.width = '360px';
+  card.el.style.width = '420px';
   const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:12px;align-items:flex-start';
   const well = panel({ tone: 'dark', head: 8, foot: 8, side: 6, lamps: [], hazard: false, glands: 0, vents: false });
   well.el.style.cssText += ';width:150px;height:150px;flex:none';
   const mv = new ModelView(() => fitVisible(partModel('head', 'bit', 'hud')!), { w: 62, h: 62, scale: 2, spin: 0.5, pitch: 0.4, liveFps: 10 });
   well.body.append(mv.cv);
-  const info = document.createElement('div'); info.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding-top:2px';
-  const line = (k: string, v: string) => { const d = document.createElement('div'); d.className = 'k7-t16'; d.style.cssText = 'display:flex;gap:8px'; const a = document.createElement('span'); a.style.color = '#d8b060'; a.textContent = k; const b = document.createElement('span'); b.textContent = v; d.append(a, b); return d; };
-  info.append(line('SLOT', 'HEAD'), line('MASS', '2 KG'), line('BASE', 'DRILL'));
+  const info = document.createElement('div'); info.style.cssText = 'display:flex;flex-direction:column;gap:2px;flex:1;min-width:0';
+  info.append(kv('Slot', 'HEAD').el, kv('Works as', 'Core Drill').el, kv('Mass', 2, { unit: 'kg' }).el, kv('Output', 15, { unit: 'kW' }).el, kv('Reach', 2, { unit: 'm' }).el);
   row.append(well.el, info);
   card.body.append(row);
-  const mm = document.createElement('div'); mm.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:12px';
-  mm.append(meter('PWR', 3 / 8, { w: 180, col: 'amber', value: 3 }).el, meter('RCH', 2 / 14, { w: 180, col: 'teal', value: 2 }).el, meter('WEAR', 0.82, { w: 180, col: 'green', value: '82%' }).el);
+  card.section('RECORD', 'PT-0412');
+  card.text('Twin-flute spinning bit from the core drill. The tool bores rock and ore seams; short reach, heavy.');
+  const mm = document.createElement('div'); mm.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin:4px 0';
+  mm.append(meter('OUTPUT', 3 / 8, { w: 150, col: 'amber', value: '15 kW' }).el, meter('WEAR', 0.82, { w: 150, col: 'green', value: '82 %' }).el);
   card.body.append(mm);
+  card.kv('Cost', '1 Steel Beam, 2 Iron Rod');
+  card.status('Fitted on the jig. Click another head to swap it.', 'ok');
   root.append(card.el);
 
   // ---- the specs readout + the bill

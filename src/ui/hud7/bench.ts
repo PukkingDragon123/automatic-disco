@@ -277,7 +277,7 @@ export class Bench {
     this.t += dt;
     // the jaws slide to the clamp, the turntable lifts and spins on the reveal, the tool's parts work
     rig.jaws.forEach((j, i) => { const s = i ? 1 : -1, goal = s * (0.17 + (1 - rig.clamp) * 0.08); j.position.z += (goal - j.position.z) * Math.min(1, dt * 12); });
-    rig.hold.position.y = 0.2 + rig.reveal * 0.35; rig.hold.rotation.y += dt * (0.15 + rig.reveal * 4);
+    rig.hold.position.y = 0.2 + rig.reveal * 0.2; rig.hold.rotation.y += dt * (0.15 + rig.reveal * 4);
     rig.table.rotation.y = rig.hold.rotation.y;
     (rig.hold.userData.update as ((dt: number) => void) | undefined)?.(dt);
     (rig.grip.userData.update as ((dt: number) => void) | undefined)?.(dt);

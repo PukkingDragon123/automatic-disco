@@ -20,7 +20,13 @@ interface Mark { x: number; z: number; k: MarkK; t: number; life: number; big: b
 const VERT = /* glsl */`
 attribute vec4 col; attribute float mode;
 varying vec2 vUv; varying vec4 vCol; varying float vMode;
-void main() { vUv = uv; vCol = col; vMode = mode; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+void main() {
+  vUv = uv; vCol = col; vMode = mode;
+  // pulled a little toward the eye: the marks read over grass and ground cover, still behind units and trees
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  mv.xyz -= normalize(mv.xyz) * 0.45;
+  gl_Position = projectionMatrix * mv;
+}`;
 const FRAG = /* glsl */`
 layout(location = 1) out highp vec4 gNormal;
 uniform sampler2D uAtlas;

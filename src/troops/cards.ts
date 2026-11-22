@@ -23,7 +23,7 @@ import { uiSfx } from '../ui/kit/sound';
 import { pop, squash, onFrame } from '../ui/kit/juice';
 import { DOCK_MODELS } from '../ui/kit/models';
 import { glyphCanvas, glyph, keyModel, portraitBuild, holdLights, pip, hpRamp } from './art';
-import { orderText, moraleWord, needLabels, KIND_WORD, KIND_PLURAL, typeShort, STANCE_INFO, KEY_INFO, ORDER_NAME, tname, pct, tip } from './words';
+import { orderText, moraleWord, needLabels, KIND_WORD, KIND_PLURAL, typeShort, STANCE_INFO, KEY_INFO, ORDER_NAME, VERB, tname, pct, tip } from './words';
 
 type G = Game & Record<string, any>;
 const JOB_GLYPH: [RegExp, string][] = [[/ENGAG|ATTACK|ADVANC|DEFEND/, 'attack'], [/MOV|FLY|EN ROUTE|RETURN|FALL/, 'move'], [/GUARD/, 'guard'], [/PATROL/, 'patrol'], [/HOLD|STANDBY|STOP|HOVER|DOCK/, 'hold'], [/HAUL|GATHER|MIN|FORAG|SAMPL|WORK/, 'gather'], [/BUILD|CONSTR/, 'build'], [/REPAIR|WELD/, 'repair'], [/FOLLOW/, 'follow'], [/EAT|SLEEP|REFILL|CHARG|REST/, 'rest']];
@@ -157,7 +157,7 @@ export class Cards {
     const ty = document.createElement('div'); ty.className = 'k7-t16 trp-type'; ty.textContent = `${t.typeName} · ${KIND_WORD[t.kind]}`;
     const job = document.createElement('div'); job.className = 'trp-job';
     const jg = document.createElement('span'); const jt = document.createElement('span'); jt.className = 'k7-t16'; job.append(jg, jt);
-    const hpG = this.gauge('HEALTH', 'heart', 'red', 70), moG = this.gauge('MORALE', 'morale', 'blue', 70);
+    const hpG = this.gauge('HEALTH', 'heart', 'red', 56), moG = this.gauge('MORALE', 'morale', 'blue', 56);
     c1.append(head, ty, job, hpG.row, moG.row);
     // column 2: the needs and the weapon
     const c2 = document.createElement('div'); c2.className = 'trp-col needs';
@@ -165,7 +165,7 @@ export class Cards {
     const n0 = t.needs(s), L = needLabels(t);
     const needIcon = { food: t.kind === 'robot' || t.kind === 'drone' ? 'battery' : 'food', rest: 'rest', maint: t.kind === 'crew' ? 'suit' : 'maint' } as const;
     const nb: Partial<Record<'food' | 'rest' | 'maint', { cv: HTMLCanvasElement; v: HTMLSpanElement }>> = {};
-    for (const k of ['food', 'rest', 'maint'] as const) { if (n0[k] === null) continue; const b = this.gauge(L[k], needIcon[k], 'cream', 34); c2.append(b.row); nb[k] = b; }
+    for (const k of ['food', 'rest', 'maint'] as const) { if (n0[k] === null) continue; const b = this.gauge(L[k], needIcon[k], 'cream', 28); c2.append(b.row); nb[k] = b; }
     const gear = t.gear()[0];
     if (gear) { const gl = document.createElement('div'); gl.className = 'k7-t16 trp-gear'; gl.textContent = gear.val ? `${gear.name} · ${gear.val}${t.kind === 'robot' ? ' DMG' : ''}` : gear.name; c2.append(gl); }
     wrap.append(port, c1, c2);
@@ -234,9 +234,9 @@ export class Cards {
       for (const t of sel) by[t.kind] = (by[t.kind] ?? 0) + 1;
       const parts = (['robot', 'worker', 'crew', 'drone'] as const).filter((k) => by[k]).map((k) => `${by[k]} ${KIND_PLURAL[k][by[k] > 1 ? 1 : 0]}`);
       const hp = sel.reduce((a, t) => a + t.hp01, 0) / sel.length, mo = sel.reduce((a, t) => a + this.book.stateOf(t).morale, 0) / sel.length;
-      const ords = new Map<string, number>(); for (const t of sel) { const o = this.book.route(t)[0]; const w = o ? ORDER_NAME[o.k] : 'IDLE'; ords.set(w, (ords.get(w) ?? 0) + 1); }
+      const ords = new Map<string, number>(); for (const t of sel) { const o = this.book.route(t)[0]; const w = o ? VERB[o.k] : 'IDLE'; ords.set(w, (ords.get(w) ?? 0) + 1); }
       const top = [...ords.entries()].sort((a, b) => b[1] - a[1])[0];
-      st = `${sel.length} SELECTED: ${parts.join(', ')} · HEALTH ${pct(hp)} · MORALE ${pct(mo)} ${moraleWord(mo)} · ${top ? (top[0] === 'IDLE' ? `${top[1]} IDLE` : `${top[1]} ON ${top[0]}`) : ''} · ${this.book.formation.toUpperCase()}`;
+      st = `${sel.length} SELECTED: ${parts.join(', ')} · HEALTH ${pct(hp)} · MORALE ${pct(mo)} ${moraleWord(mo)} · ${top ? `${top[1]} ${top[0]}` : ''} · ${this.book.formation.toUpperCase()} FORMATION`;
     }
     if (this.status.textContent !== st) this.status.textContent = st;
     const it = this.rts.intent, arm = this.rts.arm;
@@ -329,9 +329,9 @@ body.trp-cards-on { --sub7-y: 286px; }
 .trp-sqtag .k7-t16 { position: relative; z-index: 1; color: #2a1c0c; text-shadow: 0 1px 0 rgba(255,240,200,.45); }
 .trp-type { color: #d8ceb0; margin-top: -4px; }
 .trp-g { display: flex; align-items: center; gap: 6px; }
-.trp-gl { width: 74px; color: #d8ceb0; }
-.trp-col.needs .trp-gl { width: 84px; }
-.trp-gv { color: #f6ecd0; min-width: 52px; }
+.trp-gl { width: 70px; color: #d8ceb0; }
+.trp-col.needs .trp-gl { width: 76px; }
+.trp-gv { color: #f6ecd0; min-width: 40px; white-space: nowrap; }
 .trp-sec { color: #ffd98a; }
 .trp-gear { color: #d8ceb0; margin-top: 2px; }
 .trp-job { display: flex; align-items: center; gap: 6px; }
@@ -347,7 +347,7 @@ body.trp-cards-on { --sub7-y: 286px; }
 .trp-mini .trp-mini-sh { position: absolute; left: 5px; top: 44px; }
 .trp-mini .trp-minibar { position: absolute; left: 0; bottom: 0; image-rendering: pixelated; }
 .trp-more { align-self: center; color: #ffe7a8; }
-.trp-cards .trp-roster { position: absolute !important; right: 4px; top: -36px; z-index: 3; width: 90px; }
+.trp-cards .trp-roster { position: absolute !important; left: 120px; top: -34px; z-index: 3; width: 90px; }
 .trp-groups { position: absolute; left: 260px; top: 0; height: 26px; display: flex; gap: 6px; pointer-events: auto; z-index: 2; }
 .trp-gtag { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border: 0; background: none; cursor: pointer; transition: transform .14s cubic-bezier(.3,1.6,.5,1); }
 .trp-gtag:hover { transform: translateY(-3px); }

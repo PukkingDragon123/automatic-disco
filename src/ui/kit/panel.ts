@@ -359,7 +359,7 @@ export function installPanelCSS() {
 .kslot.locked .kslot-ic { filter: grayscale(1) brightness(.45); }
 .kslot-n { position: absolute; right: 5px; bottom: 2px; color: #fff4d0; pointer-events: none; }
 .kslot-grid { display: grid; }
-.kmeter { display: grid; grid-template-columns: 44px auto 1fr; align-items: center; gap: 8px; }
+.kmeter { display: grid; grid-template-columns: minmax(44px, auto) auto 1fr; align-items: center; gap: 8px; }
 .kmeter-l { color: #d8c890; }
 .kmeter-cv { image-rendering: pixelated; display: block; }
 .kmeter-v { color: #fff4d0; text-align: right; min-width: 28px; }

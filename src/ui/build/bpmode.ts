@@ -381,7 +381,7 @@ export class BuildMode {
     for (const s of this.f.seams) {
       if (s.amount <= 0) continue;
       const y = game.region.heightAt(s.x, s.z);
-      const [sx, sy, ok] = game.screenOf(s.x, y, s.z); if (!ok || sx < -60 || sy < -60 || sx > innerWidth + 60 || sy > innerHeight + 60) continue;
+      const [sx, sy, ok] = game.screenOf(s.x, y, s.z); if (!ok || sx < -60 || sy < -60 || sx > innerWidth + 60 || sy > innerHeight - 330) continue; // (not under the tray)
       const [ex] = game.screenOf(s.x + s.r, y, s.z), r = Math.max(10, Math.abs(ex - sx));
       g.strokeStyle = want ? OKL : BLUE[6]; g.lineWidth = 2; g.setLineDash([6, 6]); g.lineDashOffset = -performance.now() / 120;
       g.beginPath(); g.arc(Math.round(sx), Math.round(sy), r, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);

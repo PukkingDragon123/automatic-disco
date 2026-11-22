@@ -56,3 +56,16 @@ export function troopsQA(game: Game, o: { robots?: string[]; workers?: number; f
   }
   return { robots: made.length, workers: cr.length, spot: [Math.round(best.x), Math.round(best.z), best.s] };
 }
+/** the most open ground (fewest plants taller than knee height, no rock, no water) between r0 and r1 of (x, z) */
+export function openSpot(game: Game, x: number, z: number, r0 = 6, r1 = 18): [number, number] {
+  const g = game as Game & Record<string, any>, fl = g.world.flora as any, R = g.region;
+  let best: [number, number] = [x, z], bs = 1e9;
+  for (let r = r0; r <= r1; r += 3) for (let k = 0; k < 16; k++) {
+    const a = (k / 16) * Math.PI * 2, px = x + Math.sin(a) * r, pz = z + Math.cos(a) * r;
+    if (px < 6 || pz < 6 || px > R.N - 6 || pz > R.N - 6) continue;
+    let n = 0; fl?.near?.(px, pz, 6, (i: number) => { const sp = fl.species?.[fl.sp?.[i]]; if ((fl.bio?.[i] ?? 1) > 0.1) n += (sp?.hmax ?? 0) > 0.5 ? 1 : 0.15; });
+    for (let j = 0; j < 8; j++) { const b = (j / 8) * Math.PI * 2; if (R.isSolid(px + Math.sin(b) * 5, pz + Math.cos(b) * 5) || R.isWater?.(px + Math.sin(b) * 5, pz + Math.cos(b) * 5)) n += 8; }
+    if (n < bs) { bs = n; best = [px, pz]; }
+  }
+  return best;
+}

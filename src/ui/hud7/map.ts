@@ -303,7 +303,7 @@ function injectMapCSS() {
 .h7-mini-icon { position: absolute !important; left: -46px; bottom: -10px; z-index: 2; }
 .h7-map { position: fixed; inset: 0; z-index: 9300; display: none; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 50%, rgba(6,7,9,.6), rgba(6,7,9,.92)); }
 .h7-map.on { display: flex; gap: 22px; }
-.h7-map-leg { width: 300px; flex: none; align-self: center; }
+.h7-map-leg { width: 336px; flex: none; align-self: center; }
 .h7-leg { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
 .h7-leg-r { display: flex; align-items: center; gap: 6px; min-height: 26px; }
 .h7-leg-g { image-rendering: pixelated; flex: none; }

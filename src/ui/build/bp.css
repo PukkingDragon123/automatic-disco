@@ -93,7 +93,7 @@ body.bp-on .hud.cx > .cx-top { translate: 0 -120%; opacity: 0; pointer-events: n
   text-shadow: -1px -1px 0 #08090c, 0 -1px 0 #08090c, 1px -1px 0 #08090c, -1px 0 0 #08090c, 1px 0 0 #08090c, -1px 1px 0 #08090c, 0 1px 0 #08090c, 1px 1px 0 #08090c, 1px 2px 0 #3a2a14, 2px 3px 0 #08090c; }
 .bt-mini.hot .bt-name { opacity: 1; color: #fff4cf; }
 .bt-mini.locked .bt-name { color: #9aa8b8; }
-.bt-cost { position: absolute; left: 50%; bottom: 132px; transform: translate(-50%, 8px); opacity: 0; pointer-events: none; z-index: 6; transition: opacity .15s, transform .22s cubic-bezier(.2,.9,.3,1.4); width: 380px; }
+.bt-cost { position: absolute; left: 50%; bottom: 200px; transform: translate(-50%, 8px); opacity: 0; pointer-events: none; z-index: 6; transition: opacity .15s, transform .22s cubic-bezier(.2,.9,.3,1.4); width: 380px; }
 .bt-mini.hot .bt-cost { opacity: 1; transform: translate(-50%, 0); }
 /* locked: dimmed, a padlock and the icon of what opens it */
 .bt-mini.locked { cursor: not-allowed; }
@@ -268,3 +268,6 @@ body.bp-on .hud.cx > .cx-top { translate: 0 -120%; opacity: 0; pointer-events: n
 .bs-cap, .bs-role, .bs-none { font-family: 'Alagard', monospace; font-size: 16px; line-height: 16px; white-space: nowrap; text-shadow: -1px -1px 0 #08090c, 1px -1px 0 #08090c, -1px 1px 0 #08090c, 1px 1px 0 #08090c; }
 .bs-cap { color: #f2ead2; } .bs-role { color: #9fe08a; } .bs-none { color: #a8c4db; }
 .bs .bfi .bfi-t { display: block; }
+
+/* while a miniature's card is up, the section header steps back */
+.bt:has(.bt-mini.hot) .bt-head { opacity: .2; transition: opacity .15s; }

@@ -25,7 +25,7 @@ export function tname(t: Target | null | undefined): string {
     default: return '';
   }
 }
-const VERB: Record<OrderK, string> = { move: 'MOVING', amove: 'ATTACK-MOVING', attack: 'ATTACKING', gather: 'GATHERING', build: 'BUILDING', repair: 'REPAIRING', follow: 'FOLLOWING', guard: 'GUARDING', patrol: 'PATROLLING', hold: 'HOLDING POSITION', stop: 'STOPPED' };
+export const VERB: Record<OrderK, string> = { move: 'MOVING', amove: 'ATTACK-MOVING', attack: 'ATTACKING', gather: 'GATHERING', build: 'BUILDING', repair: 'REPAIRING', follow: 'FOLLOWING', guard: 'GUARDING', patrol: 'PATROLLING', hold: 'HOLDING POSITION', stop: 'STOPPED' };
 export const ORDER_NAME: Record<OrderK, string> = { move: 'MOVE', amove: 'ATTACK-MOVE', attack: 'ATTACK', gather: 'GATHER', build: 'BUILD', repair: 'REPAIR', follow: 'FOLLOW', guard: 'GUARD', patrol: 'PATROL', hold: 'HOLD', stop: 'STOP' };
 /** what a unit is doing, in words: the order, its target, how far, and what is queued after it */
 export function orderText(book: OrderBook, t: Troop): string {
@@ -62,7 +62,7 @@ export function typeShort(t: Troop): string {
 }
 export const STANCE_INFO: Record<Stance, [string, string]> = {
   aggressive: ['AGGRESSIVE', 'CHASES AND FIGHTS ANY ENEMY IT SEES'],
-  defensive: ['DEFENSIVE', 'FIGHTS WHAT COMES IN RANGE, THEN RETURNS TO ITS POST'],
+  defensive: ['DEFENSIVE', 'FIGHTS WHAT COMES IN RANGE, KEEPS ITS POST'],
   passive: ['PASSIVE', 'NEVER OPENS FIRE ON ITS OWN; ONLY OBEYS ORDERS'],
 };
 export const FORM_INFO: Record<Formation, string> = { line: 'LINE: SIDE BY SIDE, FACING THE MARCH', wedge: 'WEDGE: A POINT UNIT, THE REST FANNED BEHIND', column: 'COLUMN: IN FILE, NARROW PASSAGES' };

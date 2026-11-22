@@ -28,6 +28,7 @@ import { jobGlyph } from './cards';
 import { orderText, moraleWord, needLabels, KIND_WORD, STANCE_INFO, pct, tip } from './words';
 import { STATS } from '../robots/unit';
 import { ITEMS } from '../factory/items';
+import { workerProfile } from '../life/cyber';
 import { paintTerrain } from '../ui/hud7/mapPaint';
 import { RECIPE, recipesAt } from '../factory/recipes';
 import { itemIcon } from '../factory/items';
@@ -89,7 +90,7 @@ export class TroopsScreen {
     // the three columns
     const colA = div('trs-col a'), colB = div('trs-col b'), colC = div('trs-col c');
     board.append(colA, colB, colC);
-    for (const [cls, t] of [['a', 'SQUADS · DRAG A PORTRAIT FROM PLATE TO PLATE TO REASSIGN IT · CLICK ONE FOR ITS RECORD'], ['b', 'THE SELECTED UNIT · ITS RECORD, AND WHERE EVERYONE IS'], ['c', 'PRODUCTION · NEW ROBOTS FROM THE FOUNDRY, NEW WORKERS FROM THE LAB']] as const) { const h = document.createElement('div'); h.className = 'k7-t16 trs-colh ' + cls; h.textContent = t; board.append(h); }
+    for (const [cls, t] of [['a', 'SQUADS · DRAG PORTRAITS BETWEEN PLATES · CLICK ONE FOR ITS RECORD'], ['b', 'THE CHOSEN UNIT · WHERE EVERYONE IS'], ['c', 'PRODUCTION · NEW ROBOTS FROM THE FOUNDRY, NEW WORKERS FROM THE LAB']] as const) { const h = document.createElement('div'); h.className = 'k7-t16 trs-colh ' + cls; h.textContent = t; board.append(h); }
     this.squadsCol = colA; this.detailCol = colB; this.prodCol = colC;
     this.buildSquads();
     this.buildDetail();
@@ -278,7 +279,7 @@ export class TroopsScreen {
     const head = div('trs-dhead');
     const nm = document.createElement('div'); nm.className = 'k7-t48 trs-dcall'; nm.textContent = s.call;
     const sqd = this.book.squad(s.squad);
-    const ty = document.createElement('div'); ty.className = 'k7-t16 trs-dtype'; ty.textContent = `${t.typeName} · ${KIND_WORD[t.kind]}${sqd ? ' · SQUAD ' + sqd.name : ' · RESERVE'}`;
+    const ty = document.createElement('div'); ty.className = 'k7-t16 trs-dtype'; ty.textContent = `${t.typeName}${sqd ? ' · SQUAD ' + sqd.name : ' · RESERVE'}`; ty.title = KIND_WORD[t.kind];
     head.append(nm, ty);
     const job = div('trs-gi trs-now2'); const jg = document.createElement('span'); const jt = document.createElement('span'); jt.className = 'k7-t16 trs-job'; job.append(jg, jt);
     const bars = div('trs-dbars');
@@ -350,11 +351,11 @@ export class TroopsScreen {
     const pn = panel({ tone: 'steel', seed: 88, title: 'SURVEY MAP', head: 34, foot: 12, side: 10, well: 'none', lamps: [], hazard: false, cls: 'trs-map' }); this.panels.push(pn);
     const p = pn.body;
     const cv = document.createElement('canvas'); cv.className = 'trs-mapcv';
-    const R = this.g.region, N = R?.N ?? 128, size = 184;
+    const R = this.g.region, N = R?.N ?? 128, size = 156;
     this.mapK = size / N;
     cv.width = size; cv.height = size; cv.style.width = size * 2 / 2 * 1.0 + 'px';
     try { const k = Math.max(0.4, Math.min(2, size / N)); const pt = paintTerrain(R, R.pal, k); this.mapBase = pt.px.canvas(); this.mapK = pt.px.w / N; cv.width = pt.px.w; cv.height = pt.px.h; } catch (e) { console.warn('troops map', e); }
-    const scale = Math.max(1, Math.floor(184 / cv.width));
+    const scale = Math.max(1, Math.floor(156 / cv.width));
     cv.style.width = cv.width * scale + 'px'; cv.style.height = cv.height * scale + 'px';
     cv.addEventListener('pointerdown', (e) => {
       const r = cv.getBoundingClientRect(), x = ((e.clientX - r.left) / r.width) * cv.width / this.mapK, z = ((e.clientY - r.top) / r.height) * cv.height / this.mapK;
@@ -407,7 +408,7 @@ export class TroopsScreen {
     if (!fs.length) {
       const lock = div('trs-lock'); lock.append(glyphCanvas('stop', 'dim', 4));
       const why = this.g.unlocks?.lockLine?.('robotfab') ?? null;
-      const l = document.createElement('div'); l.className = 'k7-t16'; l.innerHTML = ''; const l1 = document.createElement('div'); l1.textContent = why ?? 'NO ROBOT FOUNDRY YET'; const l2 = document.createElement('div'); l2.className = 'trs-dimt'; l2.textContent = 'BUILD ONE FROM THE BUILD DOCK (SPECIAL WORKS); THESE ARE THE ROBOTS IT MAKES.'; l.append(l1, l2); lock.append(l);
+      const l = document.createElement('div'); l.className = 'k7-t16'; l.innerHTML = ''; const l1 = document.createElement('div'); l1.textContent = why ?? 'NO ROBOT FOUNDRY YET'; const l2 = document.createElement('div'); l2.className = 'trs-dimt trs-wrap'; l2.textContent = 'BUILD ONE FROM THE BUILD DOCK (SPECIAL WORKS); THESE ARE THE ROBOTS IT MAKES.'; l.append(l1, l2); lock.append(l);
       fp.append(lock);
       // what it would build, behind glass until there is a foundry
       const opts = div('trs-opts locked');
@@ -499,7 +500,7 @@ export class TroopsScreen {
     wrap.append(fi.el);
     if (fi.view) this.views.push(fi.view);
     let cost: Record<string, number> = {}; try { cost = hive?.printCost?.(sp) ?? {}; } catch { /* */ }
-    const role = document.createElement('div'); role.className = 'k7-t16 trs-dimt'; role.textContent = String(sp.role ?? 'WORKER').toUpperCase(); wrap.append(role);
+    let rn = 'WORKER'; try { rn = String(workerProfile(sp.design).roleName ?? rn); } catch { /* no profile */ } const role = document.createElement('div'); role.className = 'k7-t16 trs-dimt'; role.textContent = rn.toUpperCase(); wrap.append(role);
     wrap.append(this.bill(cost));
     tip(wrap, () => { const why = hive?.whyPrint?.(i); return { title: `PRINT: ${String(sp.name ?? 'DESIGN').toUpperCase()}`, lines: ['COST: ' + this.billWords(cost), why ? 'CANNOT PRINT: ' + String(why).toUpperCase() : 'CLICK: PRINT ONE BESIDE THE POD'] }; });
     return wrap;
@@ -560,11 +561,12 @@ function injectCSS() {
 .trs-cnt { color: #f2ead2; margin-left: 8px; }
 .trs-gl { width: 96px; color: #d8ceb0; }
 .trs-gv { color: #f6ecd0; }
-.trs-hcap { position: absolute !important; left: 4px; top: 312px; color: #d8ceb0; }
+.trs-hcap { position: absolute !important; left: 4px; top: 350px; color: #d8ceb0; }
 .trs-mapcap { color: #2a2418; text-shadow: 0 1px 0 rgba(255,255,255,.35) !important; margin-bottom: 6px; }
 .trs-legend { display: flex; gap: 14px; margin-top: 6px; }
 .trs-legend .k7-t16 { color: #2a2418; text-shadow: 0 1px 0 rgba(255,255,255,.35) !important; }
 .trs-dimt { color: #b8ae90; }
+.trs-wrap { white-space: normal !important; max-width: 480px; line-height: 20px; }
 .trs-now2 .k7-t16 { color: #ffd98a; }
 .trs-sq { position: relative; height: 206px; transition: transform .16s cubic-bezier(.3,1.6,.5,1), filter .16s; flex: none; }
 .trs-sq.pool { flex: 1; min-height: 150px; }
@@ -597,25 +599,25 @@ function injectCSS() {
 .trs-ghost { position: fixed; z-index: 9500; pointer-events: none; width: 60px; height: 68px; image-rendering: pixelated; filter: drop-shadow(0 10px 6px rgba(0,0,0,.5)); transform: rotate(-6deg) scale(1.15); }
 .trs-empty { opacity: .45; align-self: center; margin: 0 auto; }
 .trs-more { color: #ffe7a8; align-self: center; margin-left: 6px; }
-.trs-detail { position: relative; height: 590px; flex: none; }
+.trs-detail { position: relative; height: 624px; flex: none; }
 .trs-detail > .kp-body { height: 100%; }
 .trs-dport { position: absolute !important; left: 0; top: 0; width: 240px; height: 224px; cursor: pointer; }
 .trs-dport canvas.k7-model { position: absolute; left: 0; top: 0; }
 .trs-dport .trs-dport-sh { position: absolute; left: 30px; bottom: 6px; }
-.trs-dinfo { position: absolute !important; left: 250px; top: 0; right: 4px; display: flex; flex-direction: column; gap: 5px; }
+.trs-dinfo { position: absolute !important; left: 250px; top: 0; right: 4px; display: flex; flex-direction: column; gap: 3px; }
 .trs-dcall { color: #f6ecd0; }
 .trs-dtype { color: var(--k7-dim); margin-top: -8px; }
 .trs-dbars { display: flex; flex-direction: column; gap: 6px; }
 .trs-g { display: flex; align-items: center; gap: 8px; }
 .trs-g canvas { display: block; }
-.trs-gear, .trs-tally { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
+.trs-gear, .trs-tally { display: flex; flex-wrap: wrap; gap: 2px 16px; align-items: center; }
 .trs-gi { display: inline-flex; align-items: center; gap: 6px; }
 .trs-gi canvas { display: block; }
 .trs-gi .k7-t16 { color: #f2ead2; }
 .trs-job { color: #ffd98a !important; }
-.trs-hist { position: absolute !important; left: 2px; right: 2px; top: 334px; height: 126px; }
+.trs-hist { position: absolute !important; left: 2px; right: 2px; top: 372px; height: 126px; }
 .trs-hist canvas { display: block; }
-.trs-wounds { position: absolute !important; left: 6px; right: 6px; top: 466px; bottom: 0; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+.trs-wounds { position: absolute !important; left: 6px; right: 6px; top: 502px; bottom: 0; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
 .trs-gi.wound .k7-t16 { color: #ff9a80; }
 .trs-age { color: var(--k7-dim) !important; }
 .trs-map { position: relative; flex: 1; }
@@ -623,7 +625,7 @@ function injectCSS() {
 .trs-mapcv { position: relative; z-index: 1; image-rendering: pixelated; cursor: crosshair; box-shadow: 0 0 0 2px #08090c, 0 0 0 4px #6a6e70; }
 .trs-mapcv.arm { box-shadow: 0 0 0 2px #08090c, 0 0 0 4px #ffc560, 0 0 16px rgba(255,200,100,.6); }
 .trs-prod { position: relative; flex: none; }
-.trs-prod.fdy { height: 590px; }
+.trs-prod.fdy { height: 624px; }
 .trs-prod.lab { flex: 1; }
 .trs-lock { display: flex; align-items: center; gap: 12px; padding: 18px 6px; opacity: .85; }
 .trs-lock .k7-t16 { color: #c8bfa0; }
