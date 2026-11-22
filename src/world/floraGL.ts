@@ -212,7 +212,8 @@ const FRAG_TEX_3D = /* glsl */`
 float bay = bayer4(gl_FragCoord.xy);
 if (bay >= vFade.x || bay < vFade.y) discard;
 bool barkK = vKind < 0.5 || (vKind > 4.5 && vKind < 5.5), massK = isK(vKind, 13.0);
-vec4 tB = texture2D(uBark, vMapUv), tA = texture2D(map, vMapUv);
+// (foliage masses keep their painted leaves a mip sharper: far crowns stay leafy instead of averaging to a flat tone)
+vec4 tB = texture2D(uBark, vMapUv), tA = texture2D(map, vMapUv, massK ? -1.0 : 0.0);
 vec4 texel = barkK ? tB : tA;
 // mip-safe coverage: thin leaflets stay a solid silhouette far away
 vec2 dd = fwidth(vMapUv) * vec2(1024.0, 2048.0);
@@ -244,7 +245,10 @@ if (massK) {
   // a foliage mass: between the painted leaves, the crown's deep shade; along the silhouette (the surface turning
   // away from the eye) the gaps are cut out, so the edge is leaves against the sky; inside faces are the deep shade
   float ndv = abs(dot(normalize(vNormal), normalize(vViewPosition)));
-  if (alM < 0.5) { if (ndv < 0.36 && gl_FrontFacing) discard; texel.rgb = vFill; }
+  if (alM < 0.5) { if (ndv < 0.36) discard; texel.rgb = vFill; }
+  // and leaf-sized cells drop out toward the rim at any range, so no outline is a straight polygon edge
+  vec3 qc = floor(vLocal * 11.0);
+  if (h2(qc.xy + qc.z * 7.13 + 3.0) < (1.0 - smoothstep(0.08, 0.5, ndv)) * 0.85) discard;
   if (!gl_FrontFacing) texel.rgb = vFill * 0.7;
 }
 diffuseColor.rgb *= texel.rgb;

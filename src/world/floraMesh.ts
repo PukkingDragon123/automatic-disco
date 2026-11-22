@@ -283,7 +283,7 @@ function crownMasses(g: Geo, P: Plant, sp: PlantSpecies, tex: FloraTex, r: Rand,
   for (const k of CL) { const w = k.R[0] * k.R[1] * k.R[2]; cc[0] += k.c[0] * w; cc[1] += k.c[1] * w; cc[2] += k.c[2] * w; vs += w; }
   cc[0] /= vs; cc[1] = cc[1] / vs - (umb ? 0.8 : shrub ? 0.15 : 0.35); cc[2] /= vs;
   const shd = P.shade();
-  const seg = lod ? (lod > 1 && shrub ? 5 : 6) : 8, rings = lod ? (lod > 1 || shrub ? 3 : 4) : 5, jag = lod > 1 ? 0.13 : 0.15;
+  const seg = lod ? 6 : 8, rings = lod ? (lod > 1 || shrub ? 3 : 4) : 5, jag = lod > 1 ? 0.13 : 0.15;
   const cand: [number, V3][] = [];
   // the light and low meshes leave out clumps that sit mostly inside a bigger neighbour (no change to the silhouette)
   const vol = (k: (typeof CL)[number]) => k.R[0] * k.R[1] * k.R[2], inK = lod > 1 ? 0.95 : 0.7;
