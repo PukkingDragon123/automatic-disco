@@ -25,6 +25,8 @@ export interface Form {
   sound: Sound;
   /** dust colour ramp when it lands */
   dust: RampName;
+  /** a fine loose load: its mound carries no clods */
+  fine?: boolean;
 }
 const PI = Math.PI;
 
@@ -249,11 +251,11 @@ const ORE = (mat: MatKey, heap: MatKey, r = 0.1, o: Partial<Form> = {}): Form =>
 export const FORMS: Record<string, Form> = {
   // ---- wood and plants
   wood: { unit: (M, v, sd) => log(M, { len: 0.9 - (v === 2 ? 0.1 : 0), r: 0.13 + (v === 1 ? 0.02 : 0) - (v >= 2 ? 0.02 : 0), seed: sd, stub: v === 1, bark: BARKS[v] }), variants: 4, pile: 'logs', icon: { n: 3, seed: 3 }, sound: 'wood', dust: 'fur' },
-  plank: { unit: (M, v, sd) => board(M, { len: v === 2 ? 0.7 : 1, w: 0.15 + (v === 1 ? 0.03 : 0), t: 0.035, seed: sd, face: v === 2 ? 'wood' : 'plank' }), variants: 3, pile: 'boards', icon: { n: 4, as: 'pile', pitch: 0.5, yaw: 0.5 }, sound: 'wood', dust: 'ochre' },
+  plank: { unit: (M, v, sd) => board(M, { len: v === 2 ? 0.7 : 1, w: 0.15 + (v === 1 ? 0.03 : 0), t: 0.035, seed: sd, face: v === 2 ? 'wood' : 'plank' }), variants: 3, pile: 'boards', icon: { n: 6, as: 'pile', pitch: 0.6, yaw: 1.0 }, sound: 'wood', dust: 'ochre' },
   bark: { unit: (M, v, sd) => { const rnd = new Rnd(sd), a0 = rnd.r(0.7, 0.95), L = 0.32 + v * 0.05, R = 0.16; const pts: THREE.Vector3[] = []; for (const x of [-L / 2, L / 2]) for (let i = 0; i <= 5; i++) { const a = -a0 + (i / 5) * 2 * a0; for (const rr of [R, R - 0.022]) pts.push(new THREE.Vector3(x + rnd.r(-0.02, 0.02), Math.cos(a) * rr - R + 0.03, Math.sin(a) * rr)); } bark2(M, pts, v === 2 ? 'barkPine' : 'bark'); }, variants: 3, pile: 'chunks', icon: { n: 2 }, sound: 'wood', dust: 'fur' },
   leaves: { unit: (M, v, sd) => { const rnd = new Rnd(sd); M.at([-0.12, 0.02, 0], [0, 0, -PI / 2 + 0.08], 1, () => M.prism(S('fur', 2), { n: 5, r0: 0.007, r1: 0.004, len: 0.26 })); for (let i = 0; i < 6 + v; i++) { const t = i / (6 + v); M.at([-0.12 + t * 0.24, 0.025 + rnd.r(0, 0.01), 0], [rnd.r(-0.3, 0.3), (i % 2 ? 1 : -1) * rnd.r(0.6, 1.1), 0], 1, () => leafCard(M, 'leaf', 0.09 + rnd.r(0, 0.03), 0.045, S('moss', 2))); } }, variants: 2, pile: 'mound', heap: 'leafLitter', icon: { n: 1, pitch: 0.9 }, sound: 'soft', dust: 'moss' },
-  fibre: { unit: (M, v, sd) => { const r = new Rnd(sd); for (let i = 0; i < 11; i++) { const a = (i / 11) * PI * 2 + r.r(-0.2, 0.2), rr = i < 3 ? 0.012 : 0.03 + r.r(0, 0.012); M.at([-0.2 + r.r(-0.02, 0.02), 0.045 + Math.sin(a) * rr, Math.cos(a) * rr], [r.r(-0.05, 0.05), r.r(-0.05, 0.05), -PI / 2 + r.r(-0.03, 0.03)], 1, () => M.prism(S('straw', [2, 3, 4, 3][i % 4]), { n: 4, r0: 0.013, r1: 0.009, len: 0.4, rings: 2, bend: r.r(-0.02, 0.02), seed: sd + i, tip1: 0.02 })); } for (const x of [-0.07, 0.07]) M.at([x, 0.045, 0], [0, 0, -PI / 2], 1, () => M.prism(S('fur', 2), { n: 9, r0: 0.05, len: 0.022 })); void v; }, variants: 2, pile: 'bales', icon: { n: 2 }, sound: 'soft', dust: 'straw' },
-  resin: { unit: (M, v, sd) => M.rock(S('ochre', 3, GL), 0.04 + v * 0.008, 0.032, 0.035, sd, { n: 12, jag: 0.2, flat: 0.3, top: S('ochre', 4, GL) }), variants: 3, pile: 'chunks', icon: { n: 3 }, sound: 'stone', dust: 'ochre' },
+  fibre: { unit: (M, v, sd) => { const r = new Rnd(sd); for (let i = 0; i < 11; i++) { const a = (i / 11) * PI * 2 + r.r(-0.2, 0.2), rr = i < 3 ? 0.012 : 0.03 + r.r(0, 0.012); M.at([-0.15 + r.r(-0.02, 0.02), 0.045 + Math.sin(a) * rr, Math.cos(a) * rr], [r.r(-0.05, 0.05), r.r(-0.05, 0.05), -PI / 2 + r.r(-0.03, 0.03)], 1, () => M.prism(S('straw', [2, 3, 4, 3][i % 4]), { n: 4, r0: 0.015, r1: 0.011, len: 0.3, rings: 2, bend: r.r(-0.02, 0.02), seed: sd + i, tip1: 0.02 })); } for (const x of [-0.05, 0.05]) M.at([x, 0.045, 0], [0, 0, -PI / 2], 1, () => M.prism(S('fur', 2), { n: 9, r0: 0.05, len: 0.022 })); void v; }, variants: 2, pile: 'bales', icon: { n: 3, as: 'heap', pitch: 0.62 }, sound: 'soft', dust: 'straw' },
+  resin: { unit: (M, v, sd) => M.rock(S('rust', 3, GL), 0.04 + v * 0.008, 0.032, 0.035, sd, { n: 12, jag: 0.2, flat: 0.3, top: S('ochre', 3, GL) }), variants: 3, pile: 'chunks', icon: { n: 3 }, sound: 'stone', dust: 'ochre' },
   fruit: { unit: (M, v, sd) => fruitUnit(M, v === 1 ? S('plum', 4) : S('coral', 4), 0.04, sd, v !== 2), variants: 3, pile: 'chunks', icon: { n: 3 }, sound: 'soft', dust: 'coral' },
   berries: { unit: (M, v, sd) => punnet(M, S('plum', 3), sd), variants: 1, pile: 'packs', icon: { n: 1 }, sound: 'soft', dust: 'plum' },
   tuber: { unit: (M, v, sd) => M.rock(S('clay', 4), 0.07 + v * 0.01, 0.04, 0.045, sd, { n: 16, jag: 0.12, flat: 0.2 }), variants: 3, pile: 'chunks', icon: { n: 3 }, sound: 'dirt', dust: 'soil' },
@@ -264,8 +266,8 @@ export const FORMS: Record<string, Form> = {
   bone: { unit: (M, v, sd) => M.at([-0.18, 0.025, 0], [0, 0, -PI / 2], 1, () => M.lathe(S('bone', 4), [[0, 0], [0.025, 0.005], [0.03, 0.03], [0.014, 0.07], [0.012, 0.29], [0.026, 0.33], [0.03, 0.35], [0, 0.36]], { n: 8, smooth: true, jit: 0.06, seed: sd + v })), variants: 2, pile: 'logs', icon: { n: 2 }, sound: 'wood', dust: 'bone' },
   carbon: { unit: (M, v, sd) => { M.at([0, 0.13, 0], [0, 0, 0], 1, () => M.box('straw', 0.42, 0.26, 0.3, 0.025, { jit: 0.08, seed: sd })); for (const x of [-0.11, 0.11]) M.at([x, 0.13, 0], [0, 0, 0], 1, () => M.box(S('fur', 2), 0.014, 0.268, 0.308)); void v; }, variants: 2, pile: 'bales', icon: { n: 1 }, sound: 'soft', dust: 'straw' },
   silk: { unit: (M) => spool(M, S('bone', 5, F_GLOSS), 0.045, 0.075), variants: 1, pile: 'packs', icon: { n: 1 }, sound: 'soft', dust: 'straw' },
-  dung: HEAP('dung', clod('dung', 0.05), { dust: 'soil' }),
-  iron_pellet: ORE(S('rust', 3), 'crushed', 0.025, { pile: 'mound', icon: { n: 4 } }),
+  dung: HEAP('dung', clod('dung', 0.05), { dust: 'soil', fine: true }),
+  iron_pellet: ORE(S('rust', 3), 'crushed', 0.025, { unit: (M, v, sd) => M.lathe(v % 2 ? S('rust', 3) : S('iron', 3), [[0, 0], [0.014, 0.003], [0.019, 0.013], [0.014, 0.024], [0, 0.027]], { n: 7, jit: 0.12, seed: sd + v }), icon: { n: 7, as: 'heap' } }),
   glass_bead: { unit: (M, v, sd) => M.lathe(S('water', 5, GL), [[0, 0], [0.01, 0.002], [0.014, 0.012], [0.01, 0.022], [0, 0.024]], { n: 8, smooth: true, seed: sd + v }), variants: 1, pile: 'chunks', icon: { n: 5 }, sound: 'glass', dust: 'snow' },
   protein: CAN((M) => { M.lathe((j) => (j === 2 ? S('paper', 4) : j === 3 ? S('flesh', 3) : S('steel', 4, MT)), [[0, 0], [0.05, 0], [0.052, 0.01], [0.052, 0.03], [0.052, 0.075], [0.052, 0.1], [0.052, 0.12], [0.048, 0.125], [0, 0.125]], { n: 12 }); }, 'paper'),
   bio_oil: CAN((M) => drum(M, S('ichor', 3), { band: S('ichor', 1) }), 'ichor'),
@@ -293,14 +295,14 @@ export const FORMS: Record<string, Form> = {
   plant_cutting: { unit: (M) => { bottle(M, S('water', 4, GL), { h: 0.12, r: 0.035, fill: 0.6, cork: S('ochre', 4) }); M.at([0, 0.03, 0], [0.1, 0, 0.12], 1, () => M.prism(S('moss', 3), { n: 4, r0: 0.003, len: 0.13 })); M.at([0.005, 0.15, 0], [0, 0.5, -0.4], 1, () => leafCard(M, 'leaf', 0.05, 0.025, S('moss', 2))); M.at([-0.005, 0.13, 0], [0, 2.4, -0.5], 1, () => leafCard(M, 'leaf', 0.045, 0.022, S('moss', 2))); }, variants: 1, pile: 'rack', icon: { n: 1 }, sound: 'glass', dust: 'moss' },
   venom_gland: { unit: (M, v, sd) => { M.lathe(S('ichor', 2), [[0, 0], [0.025, 0.005], [0.034, 0.025], [0.026, 0.05], [0.01, 0.06], [0.008, 0.07]], { n: 9, smooth: true, jit: 0.08, seed: sd + v }); M.at([0, 0.058, 0], [0, 0, 0], 1, () => M.prism(S('bone', 5), { n: 6, r0: 0.01, len: 0.006, cap0: null })); }, variants: 1, pile: 'rack', icon: { n: 1 }, sound: 'soft', dust: 'ichor' },
   // ---- earth
-  soil: HEAP('dirt', clod('dirt', 0.06)),
-  topsoil: HEAP('topsoil', clod('topsoil', 0.06)),
+  soil: HEAP('dirt', clod('dirt', 0.06), { fine: true }),
+  topsoil: HEAP('topsoil', clod('topsoil', 0.06), { fine: true }),
   clay: HEAP('clay', (M, v, sd) => M.at([0, 0.04, 0], [0, (v - 1) * 0.4, 0], 1, () => M.box('clay', 0.16, 0.08, 0.11, 0.015, { jit: 0.12, seed: sd })), { dust: 'clay' }),
-  sand: HEAP('sand', clod('sand', 0.04), { dust: 'sand', sound: 'gravel' }),
+  sand: HEAP('sand', clod('sand', 0.04), { dust: 'sand', sound: 'gravel', fine: true }),
   gravel: HEAP('gravel', pebble(['granite', 'sandstone', 'slate'], 0.03), { dust: 'stone', sound: 'gravel', icon: { n: 4 } }),
   peat: { unit: (M, v, sd) => M.at([0, 0.045, 0], [0, 0, 0], 1, () => M.box('peat', 0.24, 0.09, 0.12, 0.012, { jit: 0.1, seed: sd + v })), variants: 2, pile: 'stack', icon: { n: 3 }, sound: 'dirt', dust: 'soil' },
-  compost: HEAP('compost', clod('compost', 0.05)),
-  ash: HEAP('ash', clod('ash', 0.04), { dust: 'stone' }),
+  compost: HEAP('compost', clod('compost', 0.05), { fine: true }),
+  ash: HEAP('ash', clod('ash', 0.04), { dust: 'stone', fine: true }),
   rock_granite: RK('granite', 0.12),
   rock_basalt: RK('basalt', 0.12, { dust: 'basalt' }),
   rock_limestone: RK('limestone', 0.12, { dust: 'bone' }),

@@ -33,6 +33,7 @@ import * as THREE from 'three';
 import './desk/toolIcons';
 import type { VitalId } from '../colony/vitals';
 import { Hud3D } from './hud3d';
+import { installHud7, HUD7_ON, type Hud7 } from './hud7';
 /** the HUD's hardware is drawn in 3D (hud3d.ts); `?hud2d` keeps the painted 2D plates */
 const HW3D = typeof location === 'undefined' || !location.search.includes('hud2d');
 
@@ -79,6 +80,8 @@ export class Hud {
   private onResize = () => { this.mapBase = null; };
   /** the 3D hardware layer (plates, instruments, keys, clock, the tool drum) */
   readonly hw = new Hud3D();
+  /** v7 (UI CORE): the dock, tools, storage, map and corner (src/ui/hud7); `?hud6` keeps the old pieces */
+  readonly h7: Hud7 | null = null;
 
   constructor(readonly c: HudCtx) {
     installHudStyle();
@@ -112,6 +115,7 @@ export class Hud {
     this.plate3(this.cfgEl, (w, h) => platePix(w, h, { mat: 'enamel', seed: 57, rivets: true, wear: 0.3 }), 'cfg');
     addEventListener('resize', this.onResize);
     this.root.style.display = 'none';
+    if (HUD7_ON && c.game) (this as { h7: Hud7 | null }).h7 = installHud7(c.game);
   }
   get colony(): Colony | null { return this.c.game?.colony ?? null; }
   get g() { return this.c.game; }
@@ -621,7 +625,8 @@ export class Hud {
     this.slow -= dt;
     if (this.slow > 0) return;
     this.slow = 0.15;
-    for (const e of this.vitEls) this.drawVital(e, c);
+    this.h7?.ping();
+    if (!this.h7) for (const e of this.vitEls) this.drawVital(e, c);
     const day = g.world.day, hh = Math.floor(((day + 0.25) % 1) * 24), mm = Math.floor(((((day + 0.25) % 1) * 24) % 1) * 60);
     const ck = `<span>SOL ${c.sol}</span><small>${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} · ${g.paused ? 'PAUSED' : g.speed + 'x'}</small>`;
     if (this.clock.innerHTML !== ck) this.clock.innerHTML = ck;
@@ -631,18 +636,19 @@ export class Hud {
     const so = c.vitals.soonest();
     this.count.classList.toggle('on', !!so && c.ctl.k === 'rts');
     if (so) { (this.count.firstElementChild as HTMLElement).textContent = `COLLAPSE · ${so.k === 'workers' ? 'NO WORKERS' : so.k.toUpperCase()}`; (this.count.lastElementChild as HTMLElement).textContent = mmss(Math.max(0, so.t)); }
-    this.mapT -= 0.2; if (this.mapT <= 0) { this.mapT = 0.4; this.drawMap(c); }
+    if (!this.h7) { this.mapT -= 0.2; if (this.mapT <= 0) { this.mapT = 0.4; this.drawMap(c); } }
     this.drawAlerts(c);
     this.drawSel(c);
     this.drawWheelInfo(c);
     this.drawCfg(c);
   }
   key(k: string) {
+    if (this.h7?.key(k)) return true;
     if (this.wheel.key(k)) return true;
     return false;
   }
   escape() { if (this.cfgSlot >= 0) { this.cfgSlot = -1; return true; } return false; }
-  dispose() { removeEventListener('resize', this.onResize); this.root.remove(); this.tipEl.remove(); document.body.classList.remove('cx-paused'); document.body.classList.remove('hw3d'); }
+  dispose() { this.h7?.dispose(); removeEventListener('resize', this.onResize); this.root.remove(); this.tipEl.remove(); document.body.classList.remove('cx-paused'); document.body.classList.remove('hw3d'); }
 }
 /** a bezel round a dial: a lit steel ring */
 function dialBezel(p: Pix, x: number, y: number, D: number) {

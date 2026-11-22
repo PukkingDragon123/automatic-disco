@@ -56,7 +56,7 @@ export class Bench {
       const row = document.createElement('div'); row.className = 'h7-tray-row';
       for (const pd of PARTS[slot]) {
         const b = document.createElement('button'); b.type = 'button'; b.className = 'h7-part'; b.title = '';
-        const cv = pd.id === 'none' ? null : snapshot(`part|${slot}|${pd.id}`, () => mCustomTool({ [slot]: pd.id } as Record<PartSlot, string>, slot), 36, 30, { yaw: 0.6, pitch: 0.4, zoom: 1.1 });
+        const cv = pd.id === 'none' ? null : snapshot(`part|${slot}|${pd.id}`, () => mCustomTool({ [slot]: pd.id } as Record<PartSlot, string>, slot), 36, 30, { yaw: slot === 'head' ? 1.1 : 0.6, pitch: 0.4, zoom: 1.1 });
         if (cv) { const c2 = document.createElement('canvas'); c2.width = cv.width; c2.height = cv.height; c2.getContext('2d')!.drawImage(cv, 0, 0); c2.style.width = cv.width * 2 + 'px'; c2.style.height = cv.height * 2 + 'px'; c2.style.imageRendering = 'pixelated'; b.append(c2); }
         else { const x = document.createElement('span'); x.className = 'k7-t32'; x.textContent = '-'; x.style.width = '72px'; x.style.textAlign = 'center'; b.append(x); }
         const n = document.createElement('span'); n.className = 'k7-t16 h7-part-n'; n.textContent = pd.name; b.append(n);
@@ -107,7 +107,7 @@ export class Bench {
     this.rebuild(true);
   }
   private rebuild(fitted: boolean) {
-    const v = new ModelView(() => mCustomTool(this.parts), { w: 120, h: 96, scale: 2, spin: 0.35, hotSpin: 1.4, pitch: 0.42, zoom: 1.05 });
+    const v = new ModelView(() => mCustomTool(this.parts), { w: 168, h: 132, scale: 2, spin: 0.35, hotSpin: 1.4, pitch: 0.42, zoom: 1.08 });
     v.cv.classList.add('h7-bench-model');
     this.view?.dispose(); this.view = v;
     this.viceEl.prepend(v.cv);
@@ -135,8 +135,8 @@ export class Bench {
     for (const [it, n] of Object.entries(cost)) {
       const have = this.g.storage?.count?.(it) ?? 0;
       const e = document.createElement('div'); e.className = 'h7-bill' + (have >= n ? '' : ' short');
-      const ic = document.createElement('img'); ic.src = itemIcon(it, 32); ic.alt = ITEMS[it]?.name ?? it; ic.className = 'h7-bill-ic';
-      const t = document.createElement('span'); t.className = 'k7-t16'; t.textContent = `${n}`;
+      const ic = document.createElement('img'); ic.src = itemIcon(it, 64); ic.alt = ITEMS[it]?.name ?? it; ic.className = 'h7-bill-ic';
+      const t = document.createElement('span'); t.className = 'k7-t32'; t.textContent = `${n}`;
       e.title = (ITEMS[it]?.name ?? it); e.append(ic, t); this.costEl.append(e);
     }
   }
@@ -178,7 +178,7 @@ function injectBenchCSS() {
 .h7-part.on { filter: brightness(1.2) drop-shadow(0 0 8px rgba(255,180,70,.85)); }
 .h7-part.on .h7-part-n { color: var(--k7-amber); }
 .h7-part-n { color: var(--k7-dim); }
-.h7-vice { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 40px; }
+.h7-vice { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 40px; }
 .h7-bench-model { position: relative; z-index: 2; display: block; margin-bottom: -40px; filter: drop-shadow(6px 8px 0 rgba(5,6,8,.4)); }
 .h7-vice-art { position: relative; z-index: 1; display: block; }
 .h7-bench-side { display: flex; flex-direction: column; gap: 14px; align-items: flex-start; padding-top: 30px; }
@@ -187,8 +187,8 @@ function injectBenchCSS() {
 .h7-bstat canvas { display: block; }
 .h7-bcost { display: flex; flex-wrap: wrap; gap: 6px 14px; max-width: 360px; }
 .h7-bill { display: flex; align-items: center; gap: 2px; }
-.h7-bill-ic { width: 32px; height: 32px; image-rendering: pixelated; filter: drop-shadow(2px 2px 0 rgba(5,6,8,.5)); }
-.h7-bill.short .k7-t16 { color: var(--k7-red); }
+.h7-bill-ic { width: 64px; height: 64px; image-rendering: pixelated; filter: drop-shadow(2px 2px 0 rgba(5,6,8,.5)); }
+.h7-bill.short .k7-t32 { color: var(--k7-red); }
 .h7-bench-back { position: absolute !important; right: 30px; top: 18px; }
 `;
   document.head.append(s);

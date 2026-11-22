@@ -15,6 +15,8 @@ type G = Game & Record<string, any>;
 export interface Hud7 {
   root: HTMLDivElement; dock: Dock | null; corner: Corner | null; storage: StorageWidget | null; tool: ToolWidget | null; mini: MiniMap | null; map: MapScreen | null;
   key(k: string): boolean; setVisible(on: boolean): void; dispose(): void;
+  /** the game HUD calls this every frame it runs: without it (another screen on top) the HUD v7 hides */
+  ping(): void;
 }
 export const HUD7_ON = typeof location === 'undefined' || !location.search.includes('hud6');
 
@@ -33,10 +35,11 @@ export function installHud7(game: Game, o: { only?: string } = {}): Hud7 {
   for (const x of [dock, corner, storage, tool, mini]) if (x) root.append(x.el);
   if (dock) { g.dock = dock; (window as unknown as { __dock: Dock }).__dock = dock; }
   if (map) g.map7 = map;
-  let alive = true;
+  let alive = true, lastPing = -1;
   onFrame((dt) => {
     if (!alive) return false;
-    const c = g.colony, show = !c || (c.ready !== false && !c.fail$?.on && c.ctl?.k !== 'cannon');
+    const c = g.colony, pinged = lastPing < 0 || performance.now() - lastPing < 300;
+    const show = pinged && (!c || (c.ready !== false && !c.fail$?.on && c.ctl?.k !== 'cannon'));
     root.style.display = show ? '' : 'none';
     if (!show) return true;
     corner?.update(dt); storage?.update(dt); tool?.update(dt);
@@ -48,6 +51,7 @@ export function installHud7(game: Game, o: { only?: string } = {}): Hud7 {
       if (k === 'm' && map) { const r = mini?.el.getBoundingClientRect(); map.open(!map.isOpen, r ? { x: r.left + r.width / 2, y: r.top + 140 } : undefined); return true; }
       return tool?.key(k) ?? false;
     },
+    ping() { lastPing = performance.now(); },
     setVisible(on: boolean) { root.style.visibility = on ? '' : 'hidden'; },
     dispose() { alive = false; root.remove(); map?.el.remove(); document.body.classList.remove('h7'); if ((window as unknown as { __dock?: Dock }).__dock === dock) delete (window as unknown as { __dock?: Dock }).__dock; },
   };

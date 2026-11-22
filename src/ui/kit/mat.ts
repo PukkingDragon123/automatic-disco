@@ -58,21 +58,24 @@ export function materialField(mat: Mat, x: number, y: number, seed = 1, w = 64, 
       return g + (r(x, y, 13) > 0.96 ? 1 : 0);
     }
     case 'wood': {
-      // planks 14 px tall: grain lines that wander, knots, a dark seam between planks
+      // planks 14 px tall: a dark seam and a lit edge between them, long wandering grain lines, knots, end joints
       const plank = Math.floor(y / 14), yy = y % 14;
       if (yy === 0) return -3;
       if (yy === 1) return 1;
-      const wob = Math.sin(x * 0.07 + plank * 1.7) * 2 + Math.sin(x * 0.19 + plank) * 0.8;
-      const g = Math.round(yy + wob) % 4 === 0 ? -1 : 0;
-      const kx = Math.floor(r(plank, 3, 14) * w), kd = Math.hypot((x - kx) * 0.5, yy - 7);
-      if (kd < 2.2) return -2; if (kd < 3.4) return -1;
-      return g + (r(x >> 3, plank, 15) > 0.85 ? 1 : 0);
+      const joint = Math.floor(r(plank, 0, 30) * 60) + 40;
+      if ((x + plank * 37) % joint === 0) return -2;
+      const wob = Math.sin(x * 0.045 + plank * 1.7) * 1.6 + Math.sin(x * 0.13 + plank * 0.6) * 0.6;
+      const gy = yy + wob;
+      const kx = Math.floor(r(plank, 3, 14) * w), kd = Math.hypot((x - kx) * 0.45, yy - 7);
+      if (kd < 1.6) return -2; if (kd < 2.8) return -1;
+      const ring = Math.abs(((gy + kd * 0.4) % 4.5) - 2.25) < 0.45;
+      return ring ? -1 : (yy === 2 || yy === 13) ? (yy === 2 ? 0 : -1) : 0;
     }
     case 'glass': return (x + y * 2) % 23 < 2 ? 2 : 0;
     case 'leather': {
       // soft mottling (big, low-contrast blotches), a fine pebble grain, a few creases
-      const bx = Math.floor(x / 7), by = Math.floor(y / 5), m = r(bx, by, 16) * 0.6 + r(bx + 1, by, 16) * 0.2 + r(bx, by + 1, 16) * 0.2;
-      let v = m > 0.68 ? 1 : m < 0.28 ? -1 : 0;
+      const m = (r(x >> 2, y >> 2, 16) + r((x + 2) >> 2, (y + 1) >> 2, 16) + r((x + 1) >> 3, y >> 3, 20) * 2) / 4;
+      let v = m > 0.72 ? 1 : m < 0.24 ? -1 : 0;
       if ((x * 5 + y * 3) % 11 === 0 && r(x, y, 17) > 0.5) v -= 1;
       const cr = (x + Math.floor(r(0, Math.floor(y / 9), 18) * 30) + y * 2) % 41;
       if (cr === 0 && r(x >> 2, y >> 2, 19) > 0.4) v -= 1;

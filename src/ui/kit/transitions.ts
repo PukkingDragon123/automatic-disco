@@ -55,11 +55,12 @@ void main() {
       float u = (th - rot - twist) / seg;
       float id = floor(u), f = fract(u);
       float w = 1.1 / max(8.0, dist) / seg;
-      float base = 3.0 + mod(id, 2.0) * 0.8 + (1.0 - f) * 1.2 - clamp(out_ / 220.0, 0.0, 1.0) * 0.8;
-      base += brush(vec2(a.x * 0.7 + a.y * 0.7, a.y * 0.7 - a.x * 0.7 + id * 31.0), id) * 0.8;
+      float base = 2.2 + mod(id, 2.0) * 1.1 + (1.0 - f) * 1.8 - clamp(out_ / 260.0, 0.0, 1.0) * 0.9;
+      base += brush(vec2(floor(a.x * 0.7 + a.y * 0.7), floor(a.y * 0.7 - a.x * 0.7) + id * 31.0), id) * 0.6;
       vec3 c = steel(base + (bay(a) - 0.5) * 0.7);
-      if (f < w) c = uInk;                       // the seam: ink
-      else if (f < w * 2.2) c = uSteel[6];       // its lit lip
+      if (f < w * 2.0) c = uInk;                 // the seam: ink
+      else if (f < w * 3.2) c = uSteel[6];       // its lit lip
+      else if (f > 1.0 - w * 1.5) c = uSteel[1]; // the shaded far edge
       if (out_ < 1.0) c = uInk;                  // the aperture edge
       else if (out_ < 2.0) c = uSteel[6];
       else if (out_ < 3.0) c = uSteel[5];
@@ -99,13 +100,14 @@ void main() {
       if (g < 6.0 && bay(a) < (6.0 - g) / 7.0) col = vec4(0.0, 0.0, 0.0, 0.6);
     }
   } else if (uKind == 2) {
-    // DISSOLVE: ordered blocks with a burning edge
-    float v = h1(floor(a / 3.0)) * 0.55 + bay(a) * 0.45;
-    float k = uK * 1.08;
+    // DISSOLVE: a wave of pixel blocks spreading out from the point, a burning amber front
+    float R = length(uRes) * 0.75;
+    float v = clamp(length(a - uC) / R, 0.0, 1.0) * 0.72 + h1(floor(a / 4.0)) * 0.16 + bay(a) * 0.12;
+    float k = uK * 1.04;
     if (v < k) {
-      vec3 c = mix(vec3(0.035, 0.04, 0.05), vec3(0.08, 0.085, 0.1), h1(floor(a / 4.0)) * 0.6);
+      vec3 c = mix(vec3(0.035, 0.04, 0.05), vec3(0.075, 0.08, 0.1), h1(floor(a / 6.0)) * 0.7);
       float edge = k - v;
-      if (edge < 0.05) c = uAmb[3]; else if (edge < 0.09) c = uAmb[1];
+      if (edge < 0.025) c = uAmb[4]; else if (edge < 0.05) c = uAmb[2]; else if (edge < 0.07) c = uAmb[0];
       col = vec4(c, 1.0);
     }
   } else {
@@ -119,14 +121,14 @@ void main() {
       if (edge < close_ + 0.012) c = uSteel[4];
       col = vec4(c, 1.0);
     } else {
-      float b = floor((th + 3.14159) * 64.0);
+      float b = floor((th + 3.14159) * 90.0);
       float r1 = h1(vec2(b, 3.0));
-      if (r1 > 0.55) {
-        float sp = 260.0 + r1 * 420.0, len = 18.0 + h1(vec2(b, 5.0)) * 60.0;
+      if (r1 > 0.35) {
+        float sp = 300.0 + r1 * 520.0, len = 40.0 + h1(vec2(b, 5.0)) * 120.0;
         float p0 = mod(uT * sp + h1(vec2(b, 7.0)) * R, R);
         if (dist > p0 && dist < p0 + len * uK && dist > 30.0) {
           float k2 = uK * clamp((dist - 30.0) / 120.0, 0.0, 1.0);
-          if (bay(a) < k2 * 0.9) col = vec4(mix(uSteel[6], vec3(1.0, 0.95, 0.85), 0.4), 0.85);
+          if (bay(a) < k2 * 1.4) col = vec4(mix(uSteel[6], vec3(1.0, 0.95, 0.85), 0.6), 0.95);
         }
       }
     }

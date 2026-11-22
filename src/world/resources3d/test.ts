@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import type { Engine } from '../../app/engine';
 import { resetGrade } from '../../gfx/post';
 import { gbuf } from '../../gfx/gbuf';
-import { ITEM_IDS, ITEMS, ITEM_GROUPS, itemDef, type ItemId } from '../../factory/items';
+import { ITEM_IDS, ITEMS, ITEM_GROUPS, itemDef, itemIcon, type ItemId } from '../../factory/items';
 import { renderIcon, iconURL } from './icon';
 import { pileGeo, unitOf } from './piles';
 import { formOf } from './forms';
@@ -48,10 +48,10 @@ function sheetSet(engine: Engine, root: HTMLElement, px: number, k: number, P: U
     head.textContent = g.name;
     root.appendChild(head);
     for (const id of ids) {
-      const ic = renderIcon(engine.renderer, id, { size: px, line: 1 });
+      const url = P.has('baked') ? itemIcon(id, px) : iconURL(renderIcon(engine.renderer, id, { size: px, line: 1 }), k);
       const cell = document.createElement('div');
       Object.assign(cell.style, { width: `${px * k + pad}px`, height: `${px * k + pad}px`, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#3d4346', boxShadow: 'inset 0 0 0 2px #2f2e31, inset 2px 2px 0 2px #54595c' });
-      const img = document.createElement('img'); img.src = iconURL(ic, k); img.width = px * k; img.height = px * k; img.style.imageRendering = 'pixelated'; img.title = id;
+      const img = document.createElement('img'); img.src = url; img.width = px * k; img.height = px * k; img.style.imageRendering = 'pixelated'; img.title = id;
       cell.appendChild(img); root.appendChild(cell);
     }
   }

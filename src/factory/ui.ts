@@ -23,6 +23,9 @@ import { Hotbar } from '../ui/build/hotbar';
 import { NodeMap } from '../ui/nodes/map';
 import { isRun } from './build';
 import { BuildMode } from '../ui/build/bpmode';
+import { BlueprintSheet } from '../ui/build/sheet';
+/** ?insp6 keeps the old steel inspection form instead of the blueprint sheet */
+const OLD_INSP = typeof location !== 'undefined' && new URLSearchParams(location.search).has('insp6');
 
 const esc = (s: string) => s.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]!));
 const fmt = (n: number) => (n >= 100 ? Math.round(n).toString() : n >= 10 ? n.toFixed(0) : n.toFixed(1));
@@ -37,6 +40,8 @@ export class FactoryUI {
   readonly menu: BuildMenu; readonly hotbar: Hotbar; readonly nodes: NodeMap;
   /** V7: the blueprint build mode (top-down blueprint world, the tray, drag / move / rotate, drops) */
   readonly bp: BuildMode;
+  /** V7: clicking a building opens its BLUEPRINT SHEET (src/ui/build/sheet.ts) */
+  readonly sheet: BlueprintSheet;
   private tag: HTMLDivElement; private tagKey = '';
   private t = 0; private slow = 0;
   showStats = false; showCrew = false; showFlags = false;
@@ -56,6 +61,10 @@ export class FactoryUI {
     this.hotbar = b.hotbar = new Hotbar(f, b);
     this.nodes = new NodeMap(f);
     this.bp = b.bp = new BuildMode(f, b);
+    this.sheet = new BlueprintSheet(f, b, {
+      closed: () => { if (this.sel) { this.sel = null; this.f.render.sel = null; this.syncMode(); } },
+      nodes: (bb) => { if (this.b.active) this.b.close(); this.nodes.open(); this.nodes.select({ k: 'node', id: 'b:' + bb.id }); },
+    });
     b.onNodes = () => this.nodes.open();
     this.tag = el('div', 'cr pl-tag', document.body);
     b.onChange = () => { this.catKey = ''; this.renderCat(); };
@@ -63,14 +72,14 @@ export class FactoryUI {
     b.onDismiss = () => this.closeAll();
     const g = f.g;
     const sus = g.suspend.bind(g), res = g.resume.bind(g), dis = g.dispose.bind(g);
-    const mine = () => [this.root, this.overlay, this.menu.root, this.hotbar.root, this.nodes.root, this.tag, ...this.bp.els];
+    const mine = () => [this.root, this.overlay, this.menu.root, this.hotbar.root, this.nodes.root, this.tag, ...this.bp.els, this.sheet.root];
     // the node map covers the whole screen: the world is not drawn behind it (the simulation keeps running)
     const gr = g as unknown as { render(post: unknown, t: number): void };
     const rnd = gr.render.bind(g);
     gr.render = (post, t) => { if (this.nodes.isOpen) return; rnd(post, t); };
     g.suspend = () => { sus(); for (const e of mine()) e.style.display = 'none'; };
     g.resume = () => { res(); for (const e of mine()) e.style.display = ''; };
-    g.dispose = () => { this.root.remove(); this.overlay.remove(); this.tag.remove(); this.menu.dispose(); this.hotbar.dispose(); this.nodes.dispose(); this.bp.dispose(); b.dispose(); dis(); };
+    g.dispose = () => { this.root.remove(); this.overlay.remove(); this.tag.remove(); this.menu.dispose(); this.hotbar.dispose(); this.nodes.dispose(); this.bp.dispose(); this.sheet.dispose(); b.dispose(); dis(); };
     f.g.input.onKey((e) => this.key(e));
     this.renderCat();
   }
@@ -96,6 +105,7 @@ export class FactoryUI {
     else if (!this.anyOpen && g.mode.k === 'factory') { g.setMode({ k: 'normal' }); this.modeSet = false; }
   }
   closeAll() {
+    if (this.sheet.isOpen) { this.sel = null; this.sheet.close(); }
     this.sel = null; this.f.render.sel = null; this.insp.classList.remove('on'); this.root.classList.remove('insp-on', 'crew-on');
     this.showStats = false; this.showFlags = false; this.stats.classList.remove('on');
     this.showCrew = false; this.crew.classList.remove('on');
@@ -106,6 +116,12 @@ export class FactoryUI {
   inspect(b: FBuilding | null) {
     this.sel = b; this.inspKey = '';
     this.f.render.sel = b;
+    if (!OLD_INSP) {
+      // the blueprint sheet slides in (or swaps to the new building); null puts it away
+      if (b) this.sheet.open(b); else if (this.sheet.isOpen) { this.sel = null; this.sheet.close(); }
+      this.syncMode();
+      return;
+    }
     this.insp.classList.toggle('on', !!b); this.root.classList.toggle('insp-on', !!b);
     if (b) { sfx('open', 1.2, 0.4); this.renderInsp(); }
     this.syncMode();
@@ -284,6 +300,7 @@ export class FactoryUI {
     this.t += dt; this.slow -= dt;
     this.b.update();
     this.bp.update(dt);
+    this.sheet.update(dt);
     this.menu.update(dt); this.hotbar.update(dt); this.nodes.update(dt);
     this.renderTag();
     // Escape (the game drops 'factory' mode): the paperwork goes away
@@ -292,7 +309,7 @@ export class FactoryUI {
     if (this.slow <= 0) {
       this.slow = 0.25;
       if (this.b.active) this.renderCat();
-      if (this.sel) this.renderInsp();
+      if (this.sel && OLD_INSP) this.renderInsp();
       if (this.showStats && Math.floor(this.t) !== Math.floor(this.t - 0.25)) this.renderStats();
       if (this.showCrew && Math.floor(this.t) !== Math.floor(this.t - 0.25)) this.renderCrew();
     }

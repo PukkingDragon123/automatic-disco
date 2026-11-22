@@ -104,7 +104,7 @@ export class Corner {
     const blink = Math.floor(this.t * 3) % 2 === 0;
     const set = (gg: Corner['pw'], lvl: string, art: Px, timer: number | null | undefined) => {
       art.canvas(gg.cv); gg.cv.style.width = art.w * 2 + 'px'; gg.cv.style.height = art.h * 2 + 'px';
-      if (lvl !== gg.lvl) { gg.lvl = lvl; gg.el.className = 'h7-gauge ' + lvl; if (lvl !== 'ok') { shake(gg.el, 5); uiSfx(lvl === 'crit' ? 'error' : 'bong', 0.5); } }
+      if (lvl !== gg.lvl) { gg.lvl = lvl; gg.el.className = 'h7-gauge h7-' + lvl; if (lvl !== 'ok') { shake(gg.el, 5); uiSfx(lvl === 'crit' ? 'error' : 'bong', 0.5); } }
       const tt = lvl === 'ok' ? '' : timer !== null && timer !== undefined ? mmss(Math.max(0, timer)) : lvl === 'crit' ? '!' : '';
       if (gg.t.textContent !== tt) gg.t.textContent = tt;
     };
@@ -132,10 +132,10 @@ function injectCornerCSS() {
 .h7-vit { display: flex; align-items: center; gap: 10px; pointer-events: auto; }
 .h7-gauge { position: relative; display: flex; align-items: center; gap: 4px; opacity: .78; transform: scale(.82); transform-origin: 0 50%; transition: transform .25s cubic-bezier(.2,.9,.3,1.5), opacity .2s, filter .2s; filter: drop-shadow(2px 3px 0 rgba(5,6,8,.45)); }
 .h7-gauge canvas { display: block; }
-.h7-gauge.warn { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 6px rgba(255,190,80,.6)); }
-.h7-gauge.crit { opacity: 1; transform: scale(1.1); filter: drop-shadow(0 0 8px rgba(255,80,60,.75)); animation: h7-throb .7s ease-in-out infinite; }
+.h7-gauge.h7-warn { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 6px rgba(255,190,80,.6)); }
+.h7-gauge.h7-crit { opacity: 1; transform: scale(1.1); filter: drop-shadow(0 0 8px rgba(255,80,60,.75)); animation: h7-throb .7s ease-in-out infinite; }
 .h7-gauge .h7-gt { color: var(--k7-amber); }
-.h7-gauge.crit .h7-gt { color: var(--k7-red); }
+.h7-gauge.h7-crit .h7-gt { color: var(--k7-red); }
 @keyframes h7-throb { 50% { transform: scale(1.18); } }
 `;
   document.head.append(s);

@@ -224,7 +224,7 @@ export class Arsenal {
     for (let i = 0; i < 4; i++) {
       const H = this.holsters[i], s = this.g.colony?.slots?.slots?.[i], qc = quickCustom(this.g, i), key = `${s?.tool}|${qc?.id ?? ''}|${s?.level}`;
       H.el.classList.toggle('lock', (s?.level ?? 1) <= 0);
-      H.el.classList.toggle('cur', i === this.w.current);
+      H.el.classList.toggle('h7-cur', i === this.w.current);
       if (key === H.key) continue;
       H.key = key; H.view?.dispose(); H.view = null;
       if (s?.tool && s.level > 0) { H.view = new ModelView(toolBuild(s.tool, qc), { w: 52, h: 44, scale: 2, spin: 0, yaw0: 0.5, pitch: 0.35, frames: 24 }); H.view.cv.classList.add('h7-hol-model'); H.el.prepend(H.view.cv); }
@@ -298,7 +298,7 @@ function injectArsenalCSS() {
 .h7-hol { position: absolute; top: 0; width: 128px; height: 176px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; cursor: pointer; transition: transform .2s cubic-bezier(.2,.9,.3,1.6), filter .15s; }
 .h7-hol .h7-hol-model { display: block; margin-top: -24px; filter: drop-shadow(3px 4px 0 rgba(5,6,8,.5)); }
 .h7-hol-n { position: absolute; bottom: 22px; color: #c9a77c; }
-.h7-hol.cur .h7-hol-n { color: var(--k7-amber); }
+.h7-hol.h7-cur .h7-hol-n { color: var(--k7-amber); }
 .h7-hol.hot, .h7-hol.drop { transform: translateY(-6px); filter: brightness(1.2) drop-shadow(0 0 10px rgba(255,200,110,.7)); }
 .h7-hol.lock { filter: grayscale(.8) brightness(.55); }
 .h7-ghost { position: fixed; z-index: 9600; transform: translate(-50%, -50%) rotate(-8deg); pointer-events: none; image-rendering: pixelated; filter: drop-shadow(6px 10px 0 rgba(5,6,8,.45)) brightness(1.15); }

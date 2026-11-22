@@ -113,8 +113,8 @@ function mound(M: Mesher, id: string, n: number, seed: number) {
   M.at([0, 0, 0], [0, r.r(0, PI), 0], 1, () => M.mound(f.heap ?? 'dirt', R, Hh, seed + 3, { rz: R * r.r(0.85, 1), rings: 5, n: 15, lump: 0.1, peak: 1.7 }));
   // the mound's own profile (as Mesher.mound draws it), for sitting things on it
   const prof = (t: number) => Hh * Math.pow(Math.max(0, 1 - Math.pow(Math.min(1, t), 1.7)), 0.85) * (0.75 + 0.25 * (1 - t));
-  const k = Math.max(1, Math.min(14, Math.round(n * 0.55)));
-  heap(M, id, k, seed + 1, { base: (x, z) => prof(Math.hypot(x, z) / R) * 0.96, R: R * 1.02, sink: 0.4 });
+  const k = f.fine ? 0 : Math.max(1, Math.min(14, Math.round(n * 0.55)));
+  if (k) heap(M, id, k, seed + 1, { base: (x, z) => prof(Math.hypot(x, z) / R) * 0.97, R: R * 0.95, sink: 0.25 });
   void u0;
 }
 /** neat layers, each turned a quarter from the one under it */

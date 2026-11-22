@@ -1,6 +1,7 @@
 // Test pages for the progression layer.
 //   ?test=mastery&tab=mastery|research|upgrader|mission&path=plant   the program terminal over a stand-in colony
 //        &fresh (an early colony) &job=pod_sensor (the Upgrader at work) &done=pod_sensor (just installed)
+//   ?test=mastery&v7=tree|pod|reveal   v7: the skill tree, the pod interior, a dock slot's reveal over a stand-in colony
 //   ?test=event&id=storm|revolt|migration|envoy|reactor|disease|signal|supplycrash|fallen   a real region, the event
 //        played after the world settles (&at=seconds), choice included
 import type { Engine, Screen } from '../app/engine';
@@ -16,6 +17,7 @@ import { TECHS } from './tech';
 import { bindTestHost } from './index';
 
 export function testProgression(engine: Engine, P: URLSearchParams) {
+  if (P.has('v7')) { void import('./test7').then((m) => m.testV7(engine, P)); return; }
   const fresh = P.has('fresh');
   const stock = new Map<string, number>();
   const put = (id: string, n: number) => stock.set(id, (stock.get(id) ?? 0) + n);
