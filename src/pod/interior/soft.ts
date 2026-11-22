@@ -423,10 +423,11 @@ export class PodPhysics {
         if (!pushOut(col, A.x, k, 0.002)) continue;
         const dx = A.x[k] - ox, dy = A.x[k + 1] - oy, dz = A.x[k + 2] - oz;
         // A's point takes its share; C moves the other way as a whole
-        A.x[k] = ox + dx * (1 - f); A.x[k + 1] = oy + dy * (1 - f); A.x[k + 2] = oz + dz * (1 - f);
+        A.x[k] = ox + dx * f; A.x[k + 1] = oy + dy * f; A.x[k + 2] = oz + dz * f;
         A.p[k] += (A.x[k] - A.p[k]) * A.fr * 0.5; A.p[k + 2] += (A.x[k + 2] - A.p[k + 2]) * A.fr * 0.5;
         // the whole of C steps back by its share (halved: many corners can push in one pass)
-        for (let j = 0; j < C.n; j++) { C.x[j * 3] -= dx * f * 0.5; C.x[j * 3 + 1] -= dy * f * 0.5; C.x[j * 3 + 2] -= dz * f * 0.5; }
+        const g2 = (1 - f) * 0.5;
+        for (let j = 0; j < C.n; j++) { C.x[j * 3] -= dx * g2; C.x[j * 3 + 1] -= dy * g2; C.x[j * 3 + 2] -= dz * g2; }
         if (!C.awake && Math.hypot(dx, dy, dz) > 0.002) C.wake();
       }
     }

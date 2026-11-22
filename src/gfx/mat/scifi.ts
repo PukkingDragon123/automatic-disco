@@ -312,6 +312,20 @@ function frost(pc: PixelCanvas, rng: Rng) {
   }
 }
 
+// ------------------------------------------------------------------ smoke / steam puff (alpha)
+/** a billow of smoke or steam: lumpy round cells lit from the upper left, stepped alpha thinning at the rim (tint it) */
+function puff(pc: PixelCanvas) {
+  pc.wrap = false;
+  const R = makeRamp(0xc8c8c4, 5, { spread: 0.5, hueShift: 0.02 }), N = pc.w, C = N / 2;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const dx = (x + 0.5 - C) / (C - 1), dy = (y + 0.5 - C) / (C - 1), d = Math.sqrt(dx * dx + dy * dy) * (0.78 + nz(pc, x, y, 3, 3, 3, 1301) * 0.45);
+    const k = clamp(1 - d);
+    if (k <= 0 || k * 1.5 < pc.clusterT(x, y) * 0.9) continue;
+    const lit = clamp(0.5 - dx * 0.35 - dy * 0.45 + (nz(pc, x, y, 4, 4, 2, 1302) - 0.5) * 0.5);
+    pc.set(x, y, R[Math.min(4, Math.floor(lit * 5))], k > 0.45 ? 235 : k > 0.2 ? 165 : 90);
+  }
+}
+
 /** the new set's names (also MAT_FAMILIES.scifi) */
 export const SCIFI_MATS: string[] = [];
 addTextureModule(() => {
@@ -342,4 +356,5 @@ addTextureModule(() => {
   add('panel_hull_white', 64, 64, hullWhite, 'tile');
   add('deck_plate', 64, 64, deckPlate, 'metal');
   add('decal_frost', 64, 64, frost);
+  add('fx_puff', 32, 32, puff);
 });
