@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { shipMini, MINI_YAW0, MINI_PITCH0, type ShipMini, type MiniView } from './mini';
 import { ROOM_IDS, ROOMS, SHIP_NAME, type RoomId } from '../hub/layout';
 import { ROOM_FNS, FN, ROOM_ICON, ROOM_SHORT, roomOpen, fnOpen, ROOM_FEAT, type FnId } from './gates';
-import { shipCSS, div, place, artCanvas, S, iconOf, reqChips, chipRow, padlock, clean } from './ui';
+import { shipCSS, div, place, artCanvas, S, iconOf, reqChips, chipRow, padlock, clean, pxPoly, pxLine } from './ui';
 import { PANELS, type Panel, type PanelCtx } from './panels';
 import { plate, strip } from '../../ui/kit/mat';
 import { Px, P, INK, hex, glassWell, bevel, rivet, screw, hash, mixHex } from '../../ui/kit/px';
@@ -173,7 +173,6 @@ export class ShipScreen {
     if (!c.isConnected) this.shutter.append(c);
     c.width = W; c.height = H; c.style.width = W * S + 'px'; c.style.height = H * S + 'px';
     const g = c.getContext('2d')!; g.putImageData(p.image(), 0, 0);
-    bitText(g, 'SELECT A ROOM', W / 2, Math.round(H * 0.42 + r + 14), { color: hex(P.bone[5]), extrude: [1, hex(P.olive[0])], align: 'center' });
   }
   private makePin(id: RoomId) {
     const el = div('s7-pin', this.frameEl); el.style.zIndex = '4';
@@ -225,7 +224,7 @@ export class ShipScreen {
     if (this.mini && (!this.yaw.settled || !this.pitch.settled || this.fitZ === 1)) this.fitZ = this.mini.fitZoom({ w: this.miniCv.width, h: this.miniCv.height, yaw: this.yaw.x, pitch: this.pitch.x });
     this.renderAcc += dt;
     const moving = !this.yaw.settled || !this.pitch.settled || !this.zk.settled;
-    if (moving && this.renderAcc > 1 / 30) { this.renderAcc = 0; this.renderMini(); }
+    if (moving && this.renderAcc > 1 / (this.idleT > 4 ? 12 : 30)) { this.renderAcc = 0; this.renderMini(); }
     else if (!moving) this.renderMini();
     this.drawOverlay(dt);
     this.panel?.update?.(dt);
@@ -233,7 +232,7 @@ export class ShipScreen {
   private drawOverlay(dt: number) {
     const c = this.ovc, v = this.view, m = this.mini;
     c.clearRect(0, 0, this.ov.width, this.ov.height);
-    if (!m) { bitText(c, 'LINKING...', this.ov.width / 2, this.ov.height / 2, { color: '#ffd890', align: 'center' }); return; }
+    if (!m) return;
     // the locked rooms: a cold veil over their floor
     for (const id of ROOM_IDS) {
       const open = roomOpen(this.o.game, id), hot = this.hover === id, sel = this.sel === id;
@@ -248,8 +247,8 @@ export class ShipScreen {
       if (col.length > 7) continue;
       const pulse = sel ? 0.75 + Math.sin(this.t * 5) * 0.25 : 1;
       c.globalAlpha = pulse;
-      line(c, pts, '#08090c', 3); line(c, pts, col, 1);
-      if (open) { c.globalAlpha = pulse * 0.6; line(c, top, col, 1); for (let i = 0; i < pts.length; i++) seg(c, pts[i], top[i], col); }
+      pxPoly(c, pts, '#08090c', 3); pxPoly(c, pts, col, 1);
+      if (open) { c.globalAlpha = pulse * 0.6; pxPoly(c, top, col, 1); for (let i = 0; i < pts.length; i++) pxLine(c, pts[i][0], pts[i][1], top[i][0], top[i][1], col); }
       c.globalAlpha = 1;
     }
     // weld-bright sparks (a room just opened)
@@ -452,12 +451,6 @@ export class ShipScreen {
 }
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
-function line(c: CanvasRenderingContext2D, pts: [number, number][], col: string, w: number) {
-  c.strokeStyle = col; c.lineWidth = w; c.beginPath();
-  pts.forEach(([x, y], i) => (i ? c.lineTo(Math.round(x) + 0.5, Math.round(y) + 0.5) : c.moveTo(Math.round(x) + 0.5, Math.round(y) + 0.5))); c.closePath(); c.stroke();
-}
-function seg(c: CanvasRenderingContext2D, a: [number, number], b: [number, number], col: string) { c.strokeStyle = col; c.lineWidth = 1; c.beginPath(); c.moveTo(Math.round(a[0]) + 0.5, Math.round(a[1]) + 0.5); c.lineTo(Math.round(b[0]) + 0.5, Math.round(b[1]) + 0.5); c.stroke(); }
-void hash; void burst;
 
 /** the BACK key's model: a hatch lever, red enamel grip on a steel boss */
 function backModel(): THREE.Group {

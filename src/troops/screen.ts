@@ -116,7 +116,9 @@ export class TroopsScreen {
   private onKey = (e: KeyboardEvent) => {
     if (!this.el) return;
     const tg = e.target as HTMLElement; if (tg?.tagName === 'INPUT') { if (e.key === 'Enter' || e.key === 'Escape') tg.blur(); e.stopPropagation(); return; }
-    if (e.key === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); if (this.armArea !== null) { this.armArea = null; this.mapCv?.classList.remove('arm'); uiSfx('back', 0.4); } else this.close(); }
+    if (e.key === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); if (this.armArea !== null) { this.armArea = null; this.mapCv?.classList.remove('arm'); uiSfx('back', 0.4); } else this.close(); return; }
+    // the board has the keyboard: the colony's mode keys wait until it is put away
+    if (!e.ctrlKey && !e.metaKey) e.stopImmediatePropagation();
   };
 
   // ------------------------------------------------------------------ squads

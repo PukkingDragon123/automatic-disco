@@ -49,6 +49,8 @@ export abstract class Troop {
   abstract readonly ref: any;
   constructor(readonly g: G) {}
   abstract get alive(): boolean;
+  /** gone for good (killed, scrapped), not just out of hand (a staged scene, docked) */
+  get dead(): boolean { return !this.alive; }
   abstract get x(): number; abstract get z(): number; abstract get y(): number;
   abstract get height(): number; abstract get radius(): number;
   abstract get hp01(): number;
@@ -138,6 +140,7 @@ export class WorkerTroop extends Troop {
   readonly kind = 'worker'; readonly key: string; readonly type: string;
   constructor(g: G, readonly ref: any) { super(g); this.key = 'c:' + ref.id; this.type = 'worker:' + (ref.sp?.id ?? ref.sp?.name); }
   get alive() { return !this.ref.dead && this.ref.faction === 'veyr'; }
+  get dead() { return !!this.ref.dead; }
   get x() { return this.ref.x; } get z() { return this.ref.z; } get y() { return this.ref.y + (this.ref.air ?? 0); }
   get height() { return Math.max(0.5, (this.ref.sp?.pheno?.height ?? this.ref.size * 0.7) * (this.ref.growth ?? 1)); }
   get radius() { return this.ref.radius ?? 0.4; }
@@ -206,6 +209,7 @@ export class CrewTroop extends Troop {
   readonly kind = 'crew'; readonly key: string; readonly type = 'crew';
   constructor(g: G, readonly ref: any) { super(g); this.key = 't:' + ref.id; }
   get alive() { return !!this.ref.alive && !this.ref.staged; }
+  get dead() { return !this.ref.alive; }
   get x() { return this.ref.x; } get z() { return this.ref.z; } get y() { return this.ref.y; }
   get height() { return 1.85; } get radius() { return 0.35; }
   get hp01() { return Math.max(0, this.ref.hp / 100); }

@@ -15,6 +15,7 @@ import { Barks } from './barks';
 import { TroopsScreen, Foundry } from './screen';
 import { WorkerTroop, type Troop } from './units';
 import { uiSfx } from '../ui/kit/sound';
+import { onFrame } from '../ui/kit/juice';
 import { CYBER } from '../life/cyber/catalog';
 
 type G = Game & Record<string, any>;
@@ -39,9 +40,12 @@ export function installTroops(game: Game): TroopsApi {
   });
   // the frame: ground marks and reactions go in just before the world is drawn, the 2D layer right after
   const r0 = g.render.bind(g);
-  let lastT = -1;
+  let lastT = -1, drawnAt = 0;
+  // another screen over the game (the ship, the lab): the layers stand down until the colony is drawn again
+  onFrame(() => { if (!alive) return false; const on = performance.now() - drawnAt < 400; rts.cv.style.visibility = on ? '' : 'hidden'; barks.el.style.visibility = on ? '' : 'hidden'; return true; });
   g.render = (post: unknown, t: number) => {
     const dt = lastT < 0 ? 0 : Math.min(0.1, Math.max(0, t - lastT)); lastT = t;
+    drawnAt = performance.now();
     try { rts.frame(dt); barks.apply(); } catch (e) { console.error('troops frame', e); }
     try { r0(post as never, t); } finally { barks.restore(); }
     try { rts.overlay(); barks.frame(dt); } catch (e) { console.error('troops overlay', e); }

@@ -120,7 +120,8 @@ export class Rts {
     const g = this.g;
     const gp = g.groundAt(mx, my);
     const ground = (k: OrderK): Intent | null => gp ? { k, tgt: null, x: gp.x, z: gp.z } : null;
-    if (this.arm) return ground(this.arm);
+    if (this.arm === 'patrol') return ground('patrol');
+    if (this.arm === 'amove') { this.arm = null; const it = this.context(mx, my, sel); this.arm = 'amove'; return it?.k === 'attack' ? it : ground('amove'); }
     const T = (kind: Target['kind'], ref: any, x: number, z: number): Target => ({ kind, ref, x, z });
     // enemies: robots, creatures, faction structures
     let foe: any = null, fd = 26;
@@ -200,7 +201,6 @@ export class Rts {
       if (d.on) {
         const inside = this.book.troops.filter((t) => this.inBox(t, d.x0, d.y0, d.x1, d.y1));
         if (inside.length) { this.select(inside, d.add); uiSfx('select', 0.55); } else if (!d.add) this.select([]);
-        e.stopImmediatePropagation();
         return;
       }
       if (d.took) {
@@ -211,7 +211,6 @@ export class Rts {
         } else if (d.add && this.has(t)) { this.deselect(t); uiSfx('back', 0.35); }
         else { this.select([t], d.add); uiSfx('select', 0.5); }
         this.lastClick = { t: now, key: t.key };
-        e.stopImmediatePropagation();
         return;
       }
       // a plain click on the ground lets go of the selection
@@ -228,7 +227,6 @@ export class Rts {
         const it = this.context(r.x0, r.y0, sel);
         if (it) this.order(it, r.shift || e.shiftKey);
       }
-      e.stopImmediatePropagation();
     }
   }
   /** give the selection an order: the book runs it, the ground gets its marker */

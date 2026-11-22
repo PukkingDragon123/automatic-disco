@@ -18,7 +18,7 @@ import { ModelView } from '../ui/kit/model3d';
 import { floatIcon, type FloatIcon } from '../ui/kit/floatIcon';
 import { uiSfx } from '../ui/kit/sound';
 import { pop, squash, onFrame } from '../ui/kit/juice';
-import { bitCanvas } from '../ui/kit/bitfont';
+import { DOCK_MODELS } from '../ui/kit/models';
 import { glyphCanvas, glyph, keyModel, portraitBuild, holdLights, pip, hpRamp } from './art';
 
 type G = Game & Record<string, any>;
@@ -43,6 +43,9 @@ export class Cards {
     this.body = document.createElement('div'); this.body.className = 'tr-body'; pl.append(this.body);
     this.keysEl = document.createElement('div'); this.keysEl.className = 'tr-keys'; pl.append(this.keysEl);
     this.buildKeys();
+    // the roster: the TROOPS screen from the card (the dock is down while units are selected)
+    const ros = floatIcon({ build: DOCK_MODELS.troops, name: '', size: [30, 26], scale: 2, sound: 'open', view: { pitch: 0.5, spin: 0, yaw0: 0.5, zoom: 1.3, lift: 0.03 }, onClick: (e) => { e.stopPropagation(); void this.g.dock?.open?.('troops'); }, aria: 'TROOPS' });
+    ros.el.classList.add('tr-roster'); el.append(ros.el);
     document.body.append(el);
     rts.onChange = () => this.refresh();
     rts.onGroups = () => this.drawGroups();
@@ -279,6 +282,7 @@ body.tr-cards-on { --sub7-y: 236px; }
 .tr-mini .tr-mini-sh { position: absolute; left: 8px; top: 58px; }
 .tr-mini .tr-minibar { position: absolute; left: 4px; bottom: 2px; image-rendering: pixelated; }
 .tr-more { align-self: center; color: #ffe7a8; }
+.tr-cards .tr-roster { position: absolute !important; right: 2px; top: -30px; z-index: 3; width: 70px; }
 .tr-groups { position: absolute; left: 26px; top: 0; height: 26px; display: flex; gap: 6px; pointer-events: auto; z-index: 2; }
 .tr-gtag { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border: 0; background: none; cursor: pointer; transition: transform .14s cubic-bezier(.3,1.6,.5,1); }
 .tr-gtag:hover { transform: translateY(-3px); }

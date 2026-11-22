@@ -301,6 +301,9 @@ export class Forge implements Screen {
   private drag: { i: number; moved: boolean } | null = null;
   private centres = new Map<number, THREE.Vector3>(); private centT = 0; private centSpec: unknown = null;
   private setMode(m: 'genes' | 'fit') {
+    // v7: fitting parts is the LAB's fitting bench (src/ui/lab7/fit.ts: a 2D frame round the creature as an outlined 3D
+    // element, parts dragged onto its slots), opened over the gene lab with this design on the bench
+    if (m === 'fit') { void import('./lab7/fit').then((x) => x.openLabFit((window as unknown as { __game?: unknown }).__game ?? null, { base: this.d })); if (this.mode === 'genes') return; m = 'genes' as 'genes' | 'fit'; }
     if (this.mode === m) { this.fitUI.setMode(m); return; }
     this.mode = m; this.fitUI.setMode(m); this.L.setBay(m === 'fit');
     if (m === 'fit') {

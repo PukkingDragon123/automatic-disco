@@ -152,7 +152,7 @@ export class OrderBook {
     // the dead: a last word, and the squad remembers
     if (list.length !== this.list0 || dt > 0) {
       const alive = new Set(list.map((t) => t.key));
-      for (const t of this.troops) if (!alive.has(t.key)) { const s = this.st.get(t.key); if (s && !s.dead && !t.alive) { s.dead = true; this.onEvent?.('died', t, s); this.mourn(t, list); } }
+      for (const t of this.troops) if (!alive.has(t.key)) { const s = this.st.get(t.key); if (s && !s.dead && t.dead) { s.dead = true; this.onEvent?.('died', t, s); this.mourn(t, list); } }
       this.list0 = list.length;
     }
     this.troops = list;

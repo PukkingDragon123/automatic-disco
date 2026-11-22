@@ -13,10 +13,10 @@ export const LIB: Record<string, string> = {
   brass: 'metal_brass', copper: 'q_pipe_copper', enamel: 'enamel_cream', teal: 'enamel_green', olive: 'enamel_olive',
   orange: 'enamel_white', red: 'enamel_red', white: 'enamel_white', rubber: 'rubber_seal', leather: 'rubber_seal',
   wood: 'plank', ochreWood: 'plank', stone: 'stone_rough', ore: 'stone_rough', paper: 'paper', blueprint: 'paper',
-  glass: 'glass', blue: 'metal_anodised_blue', hull: 'panel_hull_white', deck: 'deck_plate', galv: 'steel_galvanised',
+  glass: 'glass', blue: 'metal_anodised_blue', yellowPaint: 'enamel_white', hull: 'panel_hull_white', deck: 'deck_plate', galv: 'steel_galvanised',
 };
 /** tints applied by luminance remap (for kit colours the library has no paint for) */
-const TINT: Record<string, [number, number]> = { orange: [0xb85a22, 0xffb070], blueprint: [0x1a3a78, 0x7fa6e0], ochreWood: [0x7a5a22, 0xe0b870] };
+const TINT: Record<string, [number, number]> = { yellowPaint: [0x5a3c04, 0xffd858], orange: [0xb85a22, 0xffb070], blueprint: [0x1a3a78, 0x7fa6e0], ochreWood: [0x7a5a22, 0xe0b870] };
 type Pix = { w: number; h: number; data: Uint8ClampedArray | Uint8Array };
 const cache = new Map<string, Pix>();
 export function libSample(name: string, hd: 1 | 2 | 4 = 2): Pix {

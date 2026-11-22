@@ -7,7 +7,7 @@
 // (its job, carry, speed, armour, sight, control, power). FILE pays the parts' bill from the stores and files the
 // fitted worker as a new design. No full 3D room, no text slop.
 import * as THREE from 'three';
-import { shipCSS, div, place, artCanvas, S, keyCap, chip, iconOf, itemImg, clean } from '../../ship/screen/ui';
+import { shipCSS, div, place, artCanvas, S, keyCap, chip, iconOf, itemImg, clean, ringSprite } from '../../ship/screen/ui';
 import { KitView, type KView } from '../../ship/screen/kitview';
 import { plate, strip } from '../kit/mat';
 import { Px, P, INK, hex, bevel, rivet, screw, mixHex, glassWell } from '../kit/px';
@@ -353,7 +353,7 @@ export class LabFit {
     const move = (ev: PointerEvent) => {
       const dx = ev.clientX - (r.left + this.drag!.ox), dy = ev.clientY - (r.top + this.drag!.oy);
       if (!moved && Math.hypot(dx, dy) > 4) { moved = true; this.hideTag(); uiSfx('swishIn', 0.3); }
-      el.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px) rotate(${Math.max(-12, Math.min(12, dx * 0.02))}deg) scale(1.15)`;
+      el.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px) rotate(${Math.max(-12, Math.min(12, dx * 0.02))}deg) scale(1.15)`; el.style.opacity = '0.88';
       v.hot(true);
       const c = this.cv.getBoundingClientRect(), lx = (ev.clientX - c.left) / S, ly = (ev.clientY - c.top) / S;
       const over = lx >= 0 && ly >= 0 && lx < this.cv.width && ly < this.cv.height;
@@ -379,7 +379,7 @@ export class LabFit {
         // not on its slot: it floats home
         uiSfx('back', 0.4);
         const m = /translate\((-?\d+)px, (-?\d+)px\)/.exec(el.style.transform), dx = m ? Number(m[1]) : 0, dy = m ? Number(m[2]) : 0;
-        void tween(320, (k) => { el.style.transform = `translate(${Math.round(dx * (1 - k))}px, ${Math.round(dy * (1 - k))}px) scale(${1.15 - k * 0.15})`; }, ease.outBack).then(() => { el.style.transform = ''; el.style.zIndex = ''; });
+        void tween(320, (k) => { el.style.transform = `translate(${Math.round(dx * (1 - k))}px, ${Math.round(dy * (1 - k))}px) scale(${1.15 - k * 0.15})`; }, ease.outBack).then(() => { el.style.transform = ''; el.style.zIndex = ''; el.style.opacity = ''; });
       }
       this.hotSlot = null; this.wantSlot = null; this.dirty = true;
     };
@@ -480,18 +480,18 @@ export class LabFit {
   }
   private drawOverlay(dt: number) {
     const c = this.oc; c.clearRect(0, 0, this.ov.width, this.ov.height);
-    if (!this.spec) { bitText(c, 'GROWING...', this.ov.width / 2, this.ov.height / 2, { color: '#ffd890', align: 'center' }); return; }
+    if (!this.spec) return;
     for (const p of this.slotPts()) {
       const hot = p.s === this.hotSlot, want = p.s === this.wantSlot, R = hot ? 10 + Math.sin(this.t * 10) : want ? 9 + Math.sin(this.t * 6) * 1.5 : p.fitted ? 8 : 7;
       const x = Math.round(p.x), y = Math.round(p.y);
       c.globalAlpha = p.facing || hot || want ? 1 : 0.45;
-      // a ring socket: ink, then brass (fitted) or steel; hot ones glow amber
-      c.fillStyle = '#08090c'; c.beginPath(); c.arc(x, y, R + 2, 0, Math.PI * 2); c.fill();
-      c.fillStyle = p.fitted ? '#c8a050' : hot ? '#ffcf6a' : want ? '#e8b050' : '#7a8288'; c.beginPath(); c.arc(x, y, R + 1, 0, Math.PI * 2); c.fill();
-      c.fillStyle = '#14181c'; c.beginPath(); c.arc(x, y, R - 1, 0, Math.PI * 2); c.fill();
-      const ic = iconOf(SLOT_ICON[p.s], p.fitted ? 'amber' : hot || want ? 'lit' : 'steel'), s = R * 2 - 2;
-      c.drawImage(ic, x - s / 2, y - s / 2, s, s);
-      if (hot || want) { c.strokeStyle = 'rgba(255,210,120,0.55)'; c.lineWidth = 1; c.beginPath(); c.arc(x + 0.5, y + 0.5, R + 5 + (this.t * 20) % 6, 0, Math.PI * 2); c.stroke(); }
+      // a socket ring: brass when a part sits in it, steel when empty, glowing amber while a part hovers over it
+      const Ri = Math.round(R), sp = ringSprite(Ri, p.fitted ? P.brass : hot ? P.glowAmber : want ? P.ochre : P.steel);
+      c.drawImage(sp, x - sp.width / 2, y - sp.height / 2);
+      const ic = iconOf(SLOT_ICON[p.s], p.fitted ? 'amber' : hot || want ? 'lit' : 'steel'), s = Ri * 2 - 2;
+      c.drawImage(ic, Math.round(x - s / 2), Math.round(y - s / 2), s, s);
+      // corner brackets closing in on the target slot
+      if (hot || want) { const rr = Ri + (hot ? 9 : 4) + Math.floor((this.t * 12) % 4); c.fillStyle = hot ? '#fff0c0' : '#ffc560'; for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const bx = Math.round(x + sx * rr), by = Math.round(y + sy * rr); c.fillRect(sx < 0 ? bx : bx - 3, by, 4, 1); c.fillRect(bx, sy < 0 ? by : by - 3, 1, 4); } }
       c.globalAlpha = 1;
     }
     // weld flashes: a white star that fades to amber
@@ -503,7 +503,8 @@ export class LabFit {
       c.fillRect(Math.round(f.x - r * 0.3), Math.round(f.y - r * 0.3), Math.round(r * 0.6), Math.round(r * 0.6));
       c.globalAlpha = 1;
     }
-    if (this.prevSpec) { bitText(c, 'WELDING', this.ov.width / 2, 8, { color: '#ffd890', align: 'center' }); }
+    // while the regrown body is on its way the weld keeps spitting sparks at the slot
+    if (this.prevSpec && this.ghostSlot && Math.random() < 0.3) { const q = this.slotPts().find((s) => s.s === this.ghostSlot); if (q) { const r = this.cv.getBoundingClientRect(); burst(r.left + q.x * S, r.top + q.y * S, { n: 3, ramp: P.glowAmber, kind: 'spark', layer: 'ui', speed: 160, life: 0.4 }); } }
   }
   private onKey = (e: KeyboardEvent) => {
     if (!this.el.isConnected || this.closing) return;

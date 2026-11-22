@@ -11,3 +11,5 @@ export * from './models';
 export * from './floatIcon';
 export { installKitStyle } from './style';
 export * from './libmat';
+export * from './panel';
+export * as machine from './machine';

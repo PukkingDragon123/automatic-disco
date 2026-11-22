@@ -210,3 +210,23 @@ export function padlock(sc = 1): HTMLCanvasElement {
   const c = p.canvas(); c.style.width = 14 * S * sc + 'px'; c.style.height = 16 * S * sc + 'px';
   return c;
 }
+
+/** a whole-pixel line on a canvas (Bresenham, 1 art px), so traces stay crisp at 2x */
+export function pxLine(c: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, col: string, w = 1) {
+  x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, o = Math.floor(w / 2);
+  let e = dx + dy; c.fillStyle = col;
+  for (let n = 0; n < 4096; n++) { c.fillRect(x0 - o, y0 - o, w, w); if (x0 === x1 && y0 === y1) break; const e2 = 2 * e; if (e2 >= dy) { e += dy; x0 += sx; } if (e2 <= dx) { e += dx; y0 += sy; } }
+}
+export function pxPoly(c: CanvasRenderingContext2D, pts: [number, number][], col: string, w = 1) { for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; pxLine(c, a[0], a[1], b[0], b[1], col, w); } }
+const rings = new Map<string, HTMLCanvasElement>();
+/** a socket ring sprite: ink, a metal rim lit from the upper left, a dark well (whole pixels) */
+export function ringSprite(R: number, rim: readonly number[], well = 0x14181c): HTMLCanvasElement {
+  const k = R + ':' + rim[3] + ':' + well; let c = rings.get(k); if (c) return c;
+  const s = R * 2 + 6, p = new Px(s, s), m = s / 2;
+  p.disc(m, m, R + 2.5, () => INK);
+  p.disc(m, m, R + 1.5, (_d, lit) => rim[Math.max(0, Math.min(rim.length - 1, Math.round(3 + lit * 2)))]);
+  p.disc(m, m, R - 0.5, () => INK);
+  p.disc(m, m, R - 1.5, (_d, lit) => mixHex(well, 0x000000, 0.2 - lit * 0.2));
+  c = p.canvas(); rings.set(k, c); return c;
+}
