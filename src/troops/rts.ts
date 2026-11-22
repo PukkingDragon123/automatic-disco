@@ -265,6 +265,8 @@ export class Rts {
       this.onKeyOrder?.('group' + n);
       this.eat(e); return;
     }
+    // T: the TROOPS roster (the dock's slot says so), once it is learned
+    if (k === 't' && !e.ctrlKey && !e.metaKey && !e.altKey && (this.g.unlocks?.has?.('dock:troops') ?? true) && this.g.dock?.open) { void this.g.dock.open('troops'); this.eat(e); return; }
     if (!this.sel.length) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (k === 'Escape') { if (this.arm) { this.arm = null; uiSfx('back', 0.4); } else this.select([]); this.eat(e); return; }

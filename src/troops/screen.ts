@@ -284,10 +284,10 @@ export class TroopsScreen {
     const job = div('trs-gi trs-now2'); const jg = document.createElement('span'); const jt = document.createElement('span'); jt.className = 'k7-t16 trs-job'; job.append(jg, jt);
     const bars = div('trs-dbars');
     const bar = (label: string, icon: string, pal: string, w: number) => { const r = div('trs-g'); r.append(glyphCanvas(icon, pal as never, 2)); const l = document.createElement('span'); l.className = 'k7-t16 trs-gl'; l.textContent = label; const cv = document.createElement('canvas'); cv.width = w; cv.height = 8; cv.style.width = w * 2 + 'px'; cv.style.height = '16px'; const v = document.createElement('span'); v.className = 'k7-t16 trs-gv'; r.append(l, cv, v); bars.append(r); return { cv, v }; };
-    const hpC = bar('HEALTH', 'heart', 'red', 70), moC = bar('MORALE', 'morale', 'blue', 70);
+    const hpC = bar('HEALTH', 'heart', 'red', 62), moC = bar('MORALE', 'morale', 'blue', 62);
     const nd0 = t.needs(s), needC: Partial<Record<'food' | 'rest' | 'maint', { cv: HTMLCanvasElement; v: HTMLSpanElement }>> = {}, NL = needLabels(t);
     const nI = { food: t.kind === 'robot' || t.kind === 'drone' ? 'battery' : 'food', rest: 'rest', maint: t.kind === 'crew' ? 'suit' : 'maint' };
-    for (const k of ['food', 'rest', 'maint'] as const) if (nd0[k] !== null) needC[k] = bar(NL[k], nI[k], 'cream', 70);
+    for (const k of ['food', 'rest', 'maint'] as const) if (nd0[k] !== null) needC[k] = bar(NL[k], nI[k], 'cream', 62);
     const gh = document.createElement('div'); gh.className = 'k7-t16 trs-sec'; gh.textContent = 'GEAR';
     const gear = div('trs-gear');
     for (const g0 of t.gear()) { const gi = div('trs-gi'); gi.append(glyphCanvas(g0.icon.startsWith('part:') ? 'part' : g0.icon, 'steel', 2)); const n = document.createElement('span'); n.className = 'k7-t16'; n.textContent = g0.val ? `${g0.name} ${g0.val}${g0.icon === 'range' ? ' M' : g0.icon === 'speed' ? ' M/S' : g0.icon === 'armour' ? '%' : ''}` : g0.name; gi.append(n); gear.append(gi); }
