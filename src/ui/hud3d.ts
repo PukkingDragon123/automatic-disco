@@ -20,7 +20,7 @@ import type { Colony } from '../colony/colony';
 import type { VitalId, Level } from '../colony/vitals';
 import { TOOLS } from '../colony/tools';
 import { gaugeFace } from './desk/paint';
-import { Pix, R, fontText, platePix } from './desk/pxPanel';
+import { Pix, R, fontText, platePix, textWidth, fontsReady } from './desk/pxPanel';
 import { lowpixIcon } from './desk/hudArt';
 import { tex32, K3, type TexKind } from './kit3d/tex';
 import { physicalKey, type PhysicalKey } from './kit3d/physicalKey';
@@ -82,12 +82,33 @@ function readingPix(s: string, lvl: Level, blink: boolean) {
   return p;
 }
 /** a play triangle pointing right (metres, for a key legend) */
+/** each dial's own enamel face, ink, icon colour and icon (9 x 7) */
+const DIAL: Record<string, [number, number, number, string[]]> = {
+  food: [R.malachite[6], R.malachite[1], R.malachite[2], ['....#....', '.#.###.#.', '..#####..', '...###...', '.#.###.#.', '..#####..', '....#....']],
+  integrity: [R.steel[6], R.steel[1], R.steel[2], ['#########', '#.#...#.#', '#.......#', '#.......#', '.#.....#.', '..#...#..', '...###...']],
+  health: [R.coral[5], R.coral[0], R.stampRed[1], ['.##...##.', '####.####', '#########', '.#######.', '..#####..', '...###...', '....#....']],
+  morale: [R.ochre[6], R.ochre[1], R.ochre[1], ['..#####..', '.#.....#.', '#..#.#..#', '#.......#', '#.#...#.#', '.#.###.#.', '..#####..']],
+};
+/** an engraved metal plate (1 texel = 1 CSS px): brushed steel or brass with a bevel, the lines cut in (dark, a lit lower lip) */
+function engraved(w: number, h: number, lines: { s: string; face: 'Body' | 'Title' }[], metal: 'steel' | 'brass' = 'steel') {
+  const p = new Pix(w, h), Rm = metal === 'brass' ? R.brass : R.steel, top = Rm[Rm.length - 1];
+  p.rect(0, 0, w, h, Rm[4]);
+  for (let y = 1; y < h - 1; y++) { let x = (y * 7) % 13; while (x < w) { const L = 5 + ((x * 13 + y * 7) % 19); if ((x + y * 3) % 4 === 0) p.hl(x, Math.min(w - 2, x + L), y, Rm[5]); x += L + 6 + ((x + y) % 9); } }
+  p.hl(0, w - 1, 0, top); p.vl(0, 0, h - 1, Rm[5]); p.hl(1, w - 1, h - 1, Rm[1]); p.vl(w - 1, 1, h - 1, Rm[1]);
+  const blocks = lines.map((l) => { const t = new Pix(w, 40); fontText(t, l.s, Math.round(w / 2), 0, R.ink[1], { face: l.face, align: 'center', shadow: top }); let y0 = 99, y1 = -1; for (let y = 0; y < t.h; y++) for (let x = 0; x < w; x++) if (t.a(x, y)) { y0 = Math.min(y0, y); y1 = Math.max(y1, y); } return { t, y0, hh: y1 >= 0 ? y1 - y0 + 1 : 0 }; });
+  const total = blocks.reduce((a, b) => a + b.hh, 0) + 4 * (blocks.length - 1); let y = Math.round((h - total) / 2);
+  for (const b of blocks) { p.blit(b.t, 0, y - b.y0); y += b.hh + 4; }
+  return p;
+}
+/** a CSS background-image url */
+const urlOf = (bg: string) => /url\(["']?(.*?)["']?\)/.exec(bg)?.[1] ?? '';
 const tri = () => new THREE.Shape([new THREE.Vector2(-0.022, -0.032), new THREE.Vector2(0.026, 0), new THREE.Vector2(-0.022, 0.032)]);
 const bar = () => new THREE.Shape([new THREE.Vector2(-0.01, -0.034), new THREE.Vector2(0.01, -0.034), new THREE.Vector2(0.01, 0.034), new THREE.Vector2(-0.01, 0.034)]);
 
 interface Plate { el: HTMLElement | null; rect: (() => DOMRect | null) | null; paint: (w: number, h: number) => Pix; mesh: THREE.Mesh | null; key: string; metal: number; screws: boolean; seed: number }
 interface Inst { id: VitalId; el: HTMLElement; g: THREE.Group; needle: THREE.Object3D | null; val: number; tex: THREE.CanvasTexture; cv: HTMLCanvasElement; text: string; lamps: THREE.Mesh[] }
 interface Socket { floor: THREE.Mesh; icon: THREE.Mesh; collar: THREE.Mesh; bolts: THREE.Object3D; cap: THREE.Object3D; tool: string | null; z: number }
+interface Dyn { sel: string; clip?: string; paint?: (w: number, h: number, lit: boolean) => Pix; img?: boolean; screws?: boolean; metal?: number; z?: number; lit?: (el: HTMLElement) => boolean; pool: { mesh: THREE.Mesh; key: string }[] }
 export interface HwState { paused: boolean; speed: number; drumAng: number; pump: number; hover: number; focus: number }
 
 export class Hud3D {
@@ -95,14 +116,17 @@ export class Hud3D {
   readonly cam = new THREE.PerspectiveCamera(FOV, 1, 10, 10000);
   private t = 0; private envDone = false; private failed = false;
   private M: Record<string, Std>;
-  private plates: Plate[] = [];
+  private plates: Plate[] = []; private dyns: Dyn[] = []; private imgs = new Map<string, THREE.Texture>();
+  // the colony nameplate and the SHIP AI LINK guarded switch
+  private idTx: HTMLElement | null = null; private idPlate: THREE.Mesh | null = null;
+  private link: { el: HTMLElement; g: THREE.Group; guard: THREE.Group; btn: THREE.Mesh; open: number; hot: boolean; press: number } | null = null;
   private heads: THREE.InstancedMesh; private slots: THREE.InstancedMesh;
   // instruments
   private insts: Inst[] = []; private turbine = new THREE.Group(); private batLamps: THREE.Mesh[] = []; private fluid: THREE.Mesh | null = null; private o2 = 0.5;
   // time keys and clock
   private keys: { k: PhysicalKey; el: HTMLElement; legend: THREE.Mesh[]; on: boolean; z: number }[] = []; private clockEl: HTMLElement | null = null; private screen: GlassScreen | null = null; private clockText = '';
   // the drum
-  private drumCv: HTMLCanvasElement | null = null; private drum = new THREE.Group(); private drumBody = new THREE.Group(); private cogs: THREE.Mesh[] = []; private rod!: THREE.Mesh; private lens!: THREE.Mesh; private pips: THREE.Mesh[] = []; private sockets: Socket[] = [];
+  private drumCv: HTMLCanvasElement | null = null; private drum = new THREE.Group(); private drumBody = new THREE.Group(); private cogs: THREE.Mesh[] = []; private plunger!: THREE.Group; private lens!: THREE.Mesh; private nameCv!: HTMLCanvasElement; private nameTex!: THREE.CanvasTexture; private nameText = ''; private cfgKey: PhysicalKey | null = null; private pips: THREE.Mesh[] = []; private sockets: Socket[] = [];
 
   constructor() {
     this.M = {
@@ -126,6 +150,8 @@ export class Hud3D {
       amber: std(0xffc070, null, { emissive: new THREE.Color(0xd88a28), emissiveIntensity: 1.5, roughness: 0.12, metalness: 0 }),
       pipOn: std(0xe6874a, null, { emissive: new THREE.Color(0x8a3a10), roughness: 0.35, metalness: 0 }),
       legend: std(0xeadfc6, null, { roughness: 0.4, metalness: 0 }),
+      linkBlue: std(0x3f78a8, null, { roughness: 0.3, metalness: 0.1, emissive: new THREE.Color(0x0c2c4c) }),
+      guard: (() => { const m = new THREE.MeshStandardMaterial({ color: 0xd8482a, metalness: 0, roughness: 0.15, transparent: true, opacity: 0.6, depthWrite: false }); gbuf(m, 0); return m; })(),
       legendOn: std(0x3a1e04, null, { roughness: 0.4, metalness: 0 }),
       // domed glass: a pure reflection layer added over the face
       glass: (() => { const m = new THREE.MeshStandardMaterial({ color: 0x1a2026, metalness: 1, roughness: 0.06, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }); gbuf(m, 0); return m; })(),
@@ -152,8 +178,18 @@ export class Hud3D {
     const el = target instanceof HTMLElement ? target : null;
     this.plates.push({ el, rect: el ? null : (target as () => DOMRect | null), paint, mesh: null, key: '', metal: o.metal ?? 0.15, screws: o.screws ?? true, seed: this.plates.length * 7 + 3 });
   }
-  private syncPlates() {
+  /** four real screw heads over a painted plate's corner screws */
+  private screws4(n: number, x0: number, y0: number, W: number, H: number, seed: number, z = 0) {
     const hm = new THREE.Matrix4(), q = new THREE.Quaternion(), s1 = new THREE.Vector3(1, 1, 1), pos = new THREE.Vector3(), zr = new THREE.Vector3(0, 0, 1);
+    for (let c = 0; c < 4 && n < 96; c++, n++) {
+      const sx = c % 2 ? x0 + W - 11 : x0 + 11, sy = c < 2 ? y0 + 11 : y0 + H - 11;
+      pos.set(sx, -sy, z + 1.2); hm.compose(pos, q.identity(), s1); this.heads.setMatrixAt(n, hm);
+      pos.z = z + 2.9; q.setFromAxisAngle(zr, hash(seed, c) * Math.PI); hm.compose(pos, q, s1); this.slots.setMatrixAt(n, hm);
+    }
+    return n;
+  }
+  private slab(W: number, H: number) { const g = facedBox(W, H, 10, 3); g.translate(0, 0, -5); return g; }
+  private syncPlates() {
     let n = 0;
     for (const p of this.plates) {
       const r = p.el ? (p.el.isConnected ? p.el.getBoundingClientRect() : null) : p.rect!();
@@ -161,21 +197,102 @@ export class Hud3D {
       const w = Math.max(8, Math.round(r.width / TEXEL)), h = Math.max(8, Math.round(r.height / TEXEL)), k = `${w}x${h}`, W = w * TEXEL, H = h * TEXEL;
       if (k !== p.key) {
         p.key = k;
-        const geo = facedBox(W, H, 10, 3); geo.translate(0, 0, -5);
-        const map = pixTex(p.paint(w, h));
+        const geo = this.slab(W, H), map = pixTex(p.paint(w, h));
         if (!p.mesh) { const m = new THREE.MeshStandardMaterial({ map, metalness: p.metal, roughness: 0.5, alphaTest: 0.5 }); gbuf(m, 1); p.mesh = new THREE.Mesh(geo, m); this.scene.add(p.mesh); }
         else { p.mesh.geometry.dispose(); p.mesh.geometry = geo; const m = p.mesh.material as Std; m.map?.dispose(); m.map = map; m.needsUpdate = true; }
       }
       const m = p.mesh!; m.visible = true;
       const x0 = Math.round(r.left), y0 = Math.round(r.top);
       m.position.set(x0 + W / 2, -(y0 + H / 2), 0);
-      if (p.screws && w > 20 && h > 16) for (let c = 0; c < 4 && n < 96; c++, n++) {
-        const sx = c % 2 ? x0 + W - 11 : x0 + 11, sy = c < 2 ? y0 + 11 : y0 + H - 11;
-        pos.set(sx, -sy, 1.2); hm.compose(pos, q.identity(), s1); this.heads.setMatrixAt(n, hm);
-        pos.z = 2.9; q.setFromAxisAngle(zr, hash(p.seed, c) * Math.PI); hm.compose(pos, q, s1); this.slots.setMatrixAt(n, hm);
-      }
+      if (p.screws && w > 20 && h > 16) n = this.screws4(n, x0, y0, W, H, p.seed);
     }
+    n = this.syncDyn(n);
     this.heads.count = n; this.slots.count = n; this.heads.instanceMatrix.needsUpdate = true; this.slots.instanceMatrix.needsUpdate = true;
+  }
+  /** slabs for every element matching `sel` (looked up each frame, so other modules' HUDs join in): each wears its own
+   *  inline background image (`img`) or `paint(w, h, lit)`; `lit` elements sink and glow like a latched key */
+  dyn(sel: string, o: Omit<Dyn, 'sel' | 'pool'>) { this.dyns.push({ sel, ...o, pool: [] }); }
+  private imgTex(url: string) {
+    let t = this.imgs.get(url);
+    if (!t) {
+      const im = new Image(); t = new THREE.Texture(im); t.colorSpace = THREE.SRGBColorSpace; t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
+      const tt = t; im.onload = () => { tt.needsUpdate = true; }; im.src = url; this.imgs.set(url, t);
+      if (this.imgs.size > 80) { const [k0, t0] = this.imgs.entries().next().value as [string, THREE.Texture]; t0.dispose(); this.imgs.delete(k0); }
+    }
+    const im = t.image as HTMLImageElement; return im.complete && im.naturalWidth ? t : null;
+  }
+  private syncDyn(n: number) {
+    for (const d of this.dyns) {
+      const els = document.querySelectorAll<HTMLElement>(d.sel);
+      els.forEach((el, i) => {
+        let e = d.pool[i];
+        if (!e) { const m = new THREE.MeshStandardMaterial({ metalness: d.metal ?? 0.12, roughness: 0.5, alphaTest: 0.5 }); gbuf(m, 1); e = { mesh: new THREE.Mesh(this.slab(8, 8), m), key: '' }; this.scene.add(e.mesh); d.pool.push(e); }
+        const r = el.getBoundingClientRect(); let vis = r.width > 8 && r.height > 8;
+        if (vis && d.clip) { const cr = el.closest(d.clip)?.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2; vis = !!cr && cx > cr.left && cx < cr.right && cy > cr.top && cy < cr.bottom; }
+        const mm = e.mesh.material as Std;
+        if (!vis) { e.mesh.visible = false; return; }
+        const w = Math.max(4, Math.round(r.width / TEXEL)), h = Math.max(4, Math.round(r.height / TEXEL)), W = w * TEXEL, H = h * TEXEL, lit = !!d.lit?.(el);
+        const url = d.img ? urlOf(el.style.backgroundImage) : '', key = `${w}x${h}|${lit}|${url}`;
+        if (key !== e.key) {
+          const tex = d.img ? (url ? this.imgTex(url) : null) : pixTex(d.paint!(w, h, lit));
+          if (d.img && !tex) { e.mesh.visible = false; return; }
+          if (e.key.split('|')[0] !== `${w}x${h}`) { e.mesh.geometry.dispose(); e.mesh.geometry = this.slab(W, H); }
+          if (!d.img) mm.map?.dispose();
+          e.key = key; mm.map = tex; mm.emissive.setHex(lit ? 0x3a1a04 : 0); mm.needsUpdate = true;
+        }
+        e.mesh.visible = true;
+        const x0 = Math.round(r.left), y0 = Math.round(r.top), z = (d.z ?? 0) - (lit ? 3 : 0);
+        e.mesh.position.set(x0 + W / 2, -(y0 + H / 2), z);
+        if (d.screws && w > 20 && h > 16) n = this.screws4(n, x0, y0, W, H, i * 5 + d.sel.length, z);
+      });
+      for (let i = els.length; i < d.pool.length; i++) d.pool[i].mesh.visible = false;
+    }
+    return n;
+  }
+
+  // ------------------------------------------------------------------ the colony nameplate and the SHIP AI LINK switch
+  /** the colony's engraved brass nameplate over `tx`, and the SHIP AI LINK guarded switch over `link` (hover lifts the
+   *  guard, a press sinks the button) */
+  bindId(tx: HTMLElement, l1: string, l2: string, link: HTMLElement) {
+    const m = this.M;
+    // painted once the house faces have loaded (the plate is sized to its words)
+    void fontsReady.then(() => {
+      const w = Math.max(textWidth(l2, 'Title'), textWidth(l1)) + 28 & ~1, h = 48;
+      tx.style.width = w + 'px'; tx.style.height = h + 'px'; this.idTx = tx;
+      const pm = new THREE.MeshStandardMaterial({ map: pixTex(engraved(w, h, [{ s: l1, face: 'Body' }, { s: l2, face: 'Title' }], 'brass')), metalness: 0.7, roughness: 0.35 }); gbuf(pm, 1);
+      this.idPlate = new THREE.Mesh(facedBox(w, h, 5, 2), pm); this.scene.add(this.idPlate);
+      for (const [x, y] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) mesh(cyl(2.4, 2, 8), m.steel, this.idPlate, x * (w / 2 - 6), y * (h / 2 - 6), 3);
+      lm.map = pixTex(engraved(72, 36, [{ s: 'SHIP AI', face: 'Body' }, { s: 'LINK', face: 'Body' }])); lm.needsUpdate = true;
+    });
+    const lm = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.6, roughness: 0.4 }); gbuf(lm, 1);
+    const g = new THREE.Group(); this.scene.add(g);
+    mesh(uvPx(new RoundedBoxGeometry(150, 56, 8, 2, 4)), m.gun, g, 0, 0, 4);
+    for (const x of [-69, 69]) mesh(cyl(2.6, 2, 8), m.steel, g, x, 0, 8.6);
+    mesh(cyl(19, 3, 32), m.bore, g, -40, 0, 8.5);
+    mesh(new THREE.TorusGeometry(19, 2.6, 8, 32), m.steel, g, -40, 0, 9.5);
+    const btn = mesh(cyl(14, 8, 28), m.linkBlue, g, -40, 0, 12);
+    const pin = mesh(new THREE.CylinderGeometry(2.6, 2.6, 50, 10), m.steel, g, -40, 23, 18); pin.rotation.z = Math.PI / 2;
+    const guard = new THREE.Group(); guard.position.set(-40, 23, 18); g.add(guard);
+    const lid = mesh(new RoundedBoxGeometry(44, 46, 3, 1, 1.2), m.guard, guard, 0, -23, 0); lid.renderOrder = 5;
+    for (const x of [-21.5, 21.5]) mesh(new THREE.BoxGeometry(3, 44, 10), m.guard, guard, x, -22, -5).renderOrder = 5;
+    mesh(new THREE.BoxGeometry(44, 3, 10), m.guard, guard, 0, -45, -5).renderOrder = 5;
+    mesh(facedBox(72, 36, 3, 1.5), lm, g, 26, 0, 9.5);
+    this.link = { el: link, g, guard, btn, open: 0, hot: false, press: -1 };
+    link.addEventListener('pointerenter', () => { if (this.link) this.link.hot = true; });
+    link.addEventListener('pointerleave', () => { if (this.link) this.link.hot = false; });
+    link.addEventListener('pointerdown', () => { if (this.link) this.link.press = 0; });
+  }
+  private syncId(dt: number) {
+    if (this.idPlate && this.idTx) {
+      const r = this.idTx.getBoundingClientRect();
+      this.idPlate.visible = r.width > 0; this.idPlate.position.set(Math.round(r.left + r.width / 2), -Math.round(r.top + r.height / 2), 2.5);
+    }
+    const L = this.link; if (!L) return;
+    const r = L.el.getBoundingClientRect(); L.g.visible = r.width > 0;
+    L.g.position.set(Math.round(r.left + r.width / 2), -Math.round(r.top + r.height / 2), 0);
+    L.open += ((L.hot ? 1 : 0) - L.open) * Math.min(1, dt * 10); L.guard.rotation.x = -1.95 * L.open;
+    let dip = 0; if (L.press >= 0) { L.press += dt; const u = L.press / 0.25; dip = u < 0.3 ? u / 0.3 : Math.max(0, 1 - (u - 0.3) / 0.7); if (u >= 1) L.press = -1; }
+    L.btn.position.z = 12 - 4 * dip; (L.btn.material as Std).emissiveIntensity = 1 + L.open * 1.5;
   }
 
   // ------------------------------------------------------------------ the instrument cluster
@@ -208,13 +325,10 @@ export class Hud3D {
         const gl = mesh(new THREE.BoxGeometry(7, 23, 1), m.glass, b, 0, 0, 19.4); gl.renderOrder = 10;
       } else {
         // an enamel dial with a needle, a steel bezel and a domed glass
-        const face = gaugeFace(28, { a0: -2.2, a1: 2.2, ticks: 10, red: [0, 0.22] });
-        const I = (pts: [number, number, number][]) => { for (const [dx, dy, c] of pts) face.set(14 + dx, 21 + dy, c); };
-        if (id === 'food') I([[0, 0, R.moss[4]], [0, -1, R.moss[4]], [-1, -2, R.moss[3]], [1, -2, R.moss[5]], [0, 1, R.soil[3]], [-1, 1, R.soil[3]], [1, 1, R.soil[3]]]);
-        if (id === 'integrity') I([[-2, -1, R.steel[3]], [-1, -1, R.steel[4]], [0, -1, R.steel[4]], [1, -1, R.steel[3]], [-2, 0, R.steel[2]], [-1, 0, R.steel[3]], [0, 0, R.steel[3]], [1, 0, R.steel[2]]]);
-        if (id === 'health') I([[-1, -1, R.stampRed[3]], [1, -1, R.stampRed[3]], [-2, -1, R.stampRed[2]], [2, -1, R.stampRed[2]], [-1, 0, R.stampRed[3]], [0, 0, R.stampRed[3]], [1, 0, R.stampRed[3]], [0, 1, R.stampRed[2]]]);
-        if (id === 'morale') I([[-1, -1, R.ink[1]], [1, -1, R.ink[1]], [-2, 1, R.ink[1]], [-1, 2, R.ink[1]], [0, 2, R.ink[1]], [1, 2, R.ink[1]], [2, 1, R.ink[1]]]);
-        const fm = new THREE.MeshStandardMaterial({ map: pixTex(face), color: 0xc8c4bc, metalness: 0, roughness: 0.55 }); gbuf(fm, 1);
+        const [fc, ink, ic, art] = DIAL[id] ?? DIAL.integrity;
+        const face = gaugeFace(28, { a0: -2.2, a1: 2.2, ticks: 10, red: [0, 0.22], face: fc, ink });
+        art.forEach((row, j) => { for (let i = 0; i < row.length; i++) if (row[i] === '#') face.set(10 + i, 17 + j, ic); });
+        const fm = new THREE.MeshStandardMaterial({ map: pixTex(face), color: 0xdcd8d0, metalness: 0, roughness: 0.55 }); gbuf(fm, 1);
         mesh(cyl(33, 6, 40), m.gun, g, 0, 10, 3);
         mesh(new THREE.CircleGeometry(28, 40), fm, g, 0, 10, 6.2);
         mesh(new THREE.TorusGeometry(30.5, 3.4, 10, 44), m.steel, g, 0, 10, 7);
@@ -278,7 +392,7 @@ export class Hud3D {
   }
 
   // ------------------------------------------------------------------ the tool drum
-  bindDrum(cv: HTMLCanvasElement) { this.drumCv = cv; }
+  bindDrum(cv: HTMLCanvasElement, cfg?: HTMLElement) { this.drumCv = cv; cfg?.addEventListener('pointerdown', () => this.cfgKey?.press()); }
   private buildDrum() {
     const m = this.M, D = this.drum, RS = 84, HOLE = 26;
     // the housing ring and its bolts
@@ -287,12 +401,26 @@ export class Hud3D {
     // two side cogs behind it, meshing with the drum's teeth
     this.cogs.push(mesh(gearGeo(22, 10, 8, 4.4, 4), m.brass, D, 110, 104, -26), mesh(gearGeo(18, 8, 8, 4, 3.5), m.steelDark, D, -116, -100, -26));
     mesh(cyl(6, 12, 12), m.gun, D, 110, 104, -24); mesh(cyl(5, 12, 12), m.gun, D, -116, -100, -24);
-    // the piston at the lower right: an orange barrel, a steel rod that pumps while the drum turns
-    { const g = new THREE.Group(), a = -0.75; g.position.set(Math.cos(a) * 170, Math.sin(a) * 170, 4); g.rotation.z = 0.821; D.add(g);
-      mesh(uvPx(new THREE.CylinderGeometry(8, 8, 30, 16)), m.orange, g, 0, -15, 0);
-      mesh(new THREE.CylinderGeometry(9, 9, 3, 16), m.steelDark, g, 0, 0, 0);
-      this.rod = mesh(new THREE.CylinderGeometry(3.6, 3.6, 22, 12), m.steel, g, 0, 11, 0);
-      mesh(new THREE.CylinderGeometry(9, 9, 6, 16), m.steelDark, g, 0, -31, 0); }
+    // the detent plunger at the lower right, bolted to the housing: a gunmetal body on a bracket, a brass rod and a roller
+    // riding the drum's teeth (it lifts as the teeth pass and snaps back into a gap: the click)
+    { const g = new THREE.Group(), a = -0.75; g.position.set(Math.cos(a) * 150, Math.sin(a) * 150, 8); g.rotation.z = a + Math.PI / 2; D.add(g);
+      mesh(uvPx(new RoundedBoxGeometry(34, 14, 5, 1, 2)), m.steelDark, g, 0, -2, -4);
+      for (const x of [-12, 12]) mesh(cyl(2.6, 3, 6), m.steel, g, x, -2, -0.5);
+      mesh(uvPx(new THREE.CylinderGeometry(7, 7, 20, 16)), m.gun, g, 0, -4, 3);
+      mesh(new THREE.CylinderGeometry(7.6, 7.6, 3, 16), m.brass, g, 0, -14, 3);
+      this.plunger = new THREE.Group(); g.add(this.plunger);
+      mesh(new THREE.CylinderGeometry(3, 3, 10, 10), m.brass, this.plunger, 0, 10, 3);
+      mesh(cyl(4, 6, 12), m.steel, this.plunger, 0, 16, 3); }
+    // the tool's name on an engraved plate on a bracket at the left, the CONFIGURE key under it
+    mesh(uvPx(new THREE.BoxGeometry(34, 8, 4)), m.steelDark, D, -158, -64, -6);
+    { const cv = document.createElement('canvas'); cv.width = 168; cv.height = 34; this.nameCv = cv;
+      const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; this.nameTex = t;
+      const mm = new THREE.MeshStandardMaterial({ map: t, metalness: 0.6, roughness: 0.4 }); gbuf(mm, 1);
+      mesh(facedBox(168, 34, 5, 1.5), mm, D, -256, -64, -2);
+      for (const x of [-336, -176]) mesh(cyl(2.4, 2, 8), m.steel, D, x, -64, 1.2); }
+    { const k = physicalKey({ w: 0.2, d: 0.176, h: 0.05, cap: 0x5b636a, label: '' }); k.group.scale.setScalar(PXM); k.group.rotation.x = Math.PI / 2; k.group.position.set(-236, -118, -8); D.add(k.group); this.cfgKey = k;
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.011, 0.006, 0.07), this.M.legend); bar.rotation.y = 0.785; bar.position.set(-0.006, 0.028, 0.006); k.hit.add(bar);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.014, 0.005, 6, 12, Math.PI * 1.45), this.M.legend); ring.rotation.set(Math.PI / 2, 0, 1.6); ring.position.set(0.024, 0.028, -0.024); k.hit.add(ring); }
     // the drum: a toothed disc bored with the eight sockets, a dark backing behind the bores, two machined rings
     const holes: [number, number, number][] = [];
     for (let i = 0; i < 8; i++) { const a = Math.PI / 2 - (i * TAU) / 8; holes.push([Math.cos(a) * RS, Math.sin(a) * RS, HOLE]); }
@@ -339,7 +467,7 @@ export class Hud3D {
     const W = renderer.domElement.clientWidth || innerWidth, H = renderer.domElement.clientHeight || innerHeight, cam = this.cam;
     const dist = H / 2 / Math.tan((FOV * Math.PI) / 360);
     cam.aspect = W / H; cam.near = dist - 800; cam.far = dist + 800; cam.position.set(W / 2, -H / 2, dist); cam.lookAt(W / 2, -H / 2, 0); cam.updateProjectionMatrix();
-    this.syncPlates();
+    this.syncPlates(); this.syncId(dt);
     const v = c.vitals, k = Math.min(1, dt * 4);
     // instruments
     for (const i of this.insts) {
@@ -372,10 +500,13 @@ export class Hud3D {
       this.drum.position.set(Math.round(dr.left + dr.width / 2), -Math.round(dr.top + dr.height * (164 / 320)), 14 * s);
       const ang = st.drumAng; this.drumBody.rotation.z = -ang;
       this.cogs[0].rotation.z = ang * (48 / 10); this.cogs[1].rotation.z = ang * (48 / 8);
-      this.rod.position.y = 11 + st.pump * 12;
+      this.plunger.position.y = -Math.min(5, st.pump * 9);
+      this.cfgKey?.update(dt);
       (this.lens.material as Std).emissiveIntensity = c.slots.active >= 0 ? 1.7 + Math.sin(this.t * 4) * 0.3 : 0.35;
       const show = st.hover >= 0 ? st.hover : c.slots.active >= 0 ? c.slots.active : st.focus, lv = c.slots.slots[show]?.level ?? 0;
       this.pips.forEach((p, i) => { p.material = i < lv ? this.M.pipOn : this.M.lampOff; });
+      const ss = c.slots.slots[show], nm = !ss ? '' : ss.level <= 0 ? 'LOCKED' : ss.tool ? TOOLS[ss.tool].name.toUpperCase() : 'EMPTY';
+      if (nm !== this.nameText) { this.nameText = nm; this.nameCv.getContext('2d')!.putImageData(engraved(168, 34, [{ s: nm, face: 'Title' }]).image(), 0, 0); this.nameTex.needsUpdate = true; }
       this.sockets.forEach((so, i) => {
         const sl = c.slots.slots[i], lock = sl.level <= 0, act = c.slots.active === i;
         so.cap.visible = lock; so.collar.visible = !lock && sl.level >= 2; so.bolts.visible = sl.level >= 3;

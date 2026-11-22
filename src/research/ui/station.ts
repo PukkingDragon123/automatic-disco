@@ -167,7 +167,7 @@ export class RDStation implements Screen {
       const holo = holoify(model, u); const wrap = new THREE.Group(); wrap.add(holo); wrap.position.copy(slot); wrap.scale.setScalar(0.5); this.fx.add(wrap);
       const pillar = lightPillar(0.2, 0.16, 0.62, col, this.holoT, 0.22); pillar.mesh.position.set(slot.x, EM.y + 0.02, slot.z); this.fx.add(pillar.mesh);
       const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.75, 10), new THREE.MeshBasicMaterial()); hit.visible = false; hit.position.copy(slot).add(new V(0, 0.3, 0)); this.scene.add(hit);
-      const cap = el('div', 'rd-cap', this.root);
+      const cap = el('div', 'rd-cap', this.root); cap.style.cssText = 'left:-999px;top:-999px;opacity:0';
       const o: Offer = { id, holo: wrap, u, pillar, cap, hit, slot, pos: slot.clone(), scale: 0.5, spin: i * 1.3 };
       this.offers.push(o);
       this.picker.add(hit, { click: () => this.pick(id), hover: (on) => { if (on) csfx('beep', 0.15, 1.6); u.uDim.value = on ? 1.4 : 1; } });
@@ -300,7 +300,7 @@ export class RDStation implements Screen {
       const at = this.project(o.pos.clone().add(new V(0, -0.06, 0)));
       o.cap.style.left = at.x + 'px'; o.cap.style.top = at.y + 'px';
       o.cap.classList.toggle('sel', sel); o.cap.classList.toggle('dim', !!this.sel && !sel);
-      o.cap.style.opacity = o.u.uAppear.value > 0.6 ? '' : '0';
+      o.cap.style.opacity = o.u.uAppear.value > 0.3 ? '' : '0';
       void R;
     }
   }

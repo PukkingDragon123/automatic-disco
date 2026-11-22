@@ -92,16 +92,24 @@ export class Hud {
     this.alertsEl = el('div', 'cx-alerts', this.root);
     this.buildSel();
     this.ctlEl = el('div', 'cx-plate gun cx-ctl', this.root);
-    this.plate3(this.ctlEl, (w, h) => platePix(w, h, { mat: 'enamel', seed: 63, hazard: true, wear: 0.7 }));
+    this.plate3(this.ctlEl, (w, h) => platePix(w, h, { mat: 'enamel', seed: 63, hazard: true, wear: 0.3 }));
     // the wheel
     const wp = el('div', 'cx-plate cx-wheel', this.root);
-    const wcard = el('div', 'cx-plate', wp); wcard.style.cssText = 'left:0;top:150px;width:172px;height:164px'; this.plate3(wcard, (w, h) => platePix(w, h, { mat: 'enamel', seed: 41, rivets: true, wear: 1 }), 'wcard');
+    const wcard = el('div', 'cx-plate', wp); wcard.style.cssText = 'left:0;top:150px;width:172px;height:164px'; this.plate3(wcard, (w, h) => platePix(w, h, { mat: 'enamel', seed: 41, rivets: true, wear: 0.3 }), 'wcard');
     this.wheelInfo = el('div', 'cx-glass info cx-ph', wp);
-    this.wheel = new ToolWheel(wp, { colony: () => this.colony, config: (i) => this.openCfg(i), tip: (h, x, y) => this.tip(h, x, y), flash: (m, b) => this.flash(m, b) });
-    if (HW3D) { this.wheel.flat = false; this.hw.bindDrum(this.wheel.cv); }
-    const cfg = el('button', 'cx-btn cfg', wp, 'CONFIGURE SLOTS'); cfg.onclick = () => this.openCfg(this.wheel.hover >= 0 ? this.wheel.hover : Math.max(0, this.colony?.slots.active ?? 0));
+    this.wheel = new ToolWheel(wp, { colony: () => this.colony, config: (i) => this.openCfg(i), tip: (h, x, y) => this.tip(HW3D ? null : h, x, y), flash: (m, b) => this.flash(m, b) });
+    const cfg = el('button', 'cx-btn cfg', wp, 'CONFIGURE SLOTS');
+    if (HW3D) {
+      this.wheel.flat = false; this.hw.bindDrum(this.wheel.cv, cfg);
+      // the inventory's crate plate and the logistics hotbar join the hardware: slabs, screws, latched lit keys
+      const steel = (w: number, h: number) => platePix(w, h, { mat: 'steel', seed: 91, wear: 0.6, rivets: true });
+      this.hw.dyn('.crate-hud', { paint: steel, screws: true, metal: 0.45 });
+      this.hw.dyn('.crate-hud .badge', { img: true, clip: '.crate-hud .badges', z: 3 });
+      this.hw.dyn('.hb', { paint: steel, screws: true, metal: 0.45 });
+      this.hw.dyn('.hb-slot', { paint: (w, h, lit) => platePix(w, h, { mat: lit ? 'orange' : 'enamel', seed: 17, screws: false, wear: 0.5 }), lit: (e) => e.classList.contains('on') || e.classList.contains('drop'), z: 3 });
+    } cfg.onclick = () => this.openCfg(this.wheel.hover >= 0 ? this.wheel.hover : Math.max(0, this.colony?.slots.active ?? 0));
     this.cfgEl = el('div', 'cx-plate cx-slotcfg pe', this.root);
-    this.plate3(this.cfgEl, (w, h) => platePix(w, h, { mat: 'enamel', seed: 57, rivets: true, wear: 1.1 }), 'cfg');
+    this.plate3(this.cfgEl, (w, h) => platePix(w, h, { mat: 'enamel', seed: 57, rivets: true, wear: 0.3 }), 'cfg');
     addEventListener('resize', this.onResize);
     this.root.style.display = 'none';
   }
@@ -114,13 +122,14 @@ export class Hud {
   private buildTop() {
     const top = el('div', 'cx-plate cx-top', this.root);
     
-    const id = el('div', 'cx-id', top); this.plate3(id, (w, h) => platePix(w, h, { mat: 'enamel', seed: 5, wear: 1.0 }), 'id');
+    const id = el('div', 'cx-id', top); this.plate3(id, (w, h) => platePix(w, h, { mat: 'enamel', seed: 5, wear: 0.3 }), 'id');
     const rc = iconImg('u-pod', 56); rc.classList.add('pe'); id.appendChild(rc);
-    const tx = el('div', '', id);
+    const tx = el('div', 'cx-idtx', id);
     el('div', 't1 cx-sten', tx, 'UNAA · CP-07');
     const t2 = el('div', 't2', tx, esc(this.c.regionName.toUpperCase())); void t2;
     const link = el('button', 'cx-btn blue cx-link', id); link.appendChild(iconImg('v-link', 30)); el('span', '', link, 'SHIP AI LINK');
     link.onclick = (e) => { e.stopPropagation(); sfx('click'); this.colony?.shipLink(); };
+    if (HW3D) this.hw.bindId(tx, 'UNAA · CP-07', this.c.regionName.toUpperCase(), link);
     this.hoverTip(link, () => '<b>SHIP AI LINK</b><br>Talk to the ship\'s AI and return to the research ship. The colony waits, paused, until you come back.');
     rc.style.cursor = 'pointer'; rc.onclick = () => { const c = this.colony; if (c) { c.select({ kind: 'pod' }); this.g?.cam.lookAt(c.pod.x, c.pod.z); } };
     const vit = el('div', 'cx-vitals', top);
@@ -130,7 +139,7 @@ export class Hud {
       this.hoverTip(e, () => this.vitalTip(v.id));
     }
     const tm = el('div', 'cx-plate gun cx-time', top);
-    this.plate3(tm, (w, h) => platePix(w, h, { mat: 'steel', seed: 77, wear: 0.8 }), 'time');
+    this.plate3(tm, (w, h) => platePix(w, h, { mat: 'steel', seed: 77, wear: 0.4 }), 'time');
     const mk = (label: string, tip: string, f: () => void) => { const b = el('button', 'cx-btn', tm, label); b.onclick = (e) => { e.stopPropagation(); f(); }; this.hoverTip(b, () => tip); this.timeBtns.push(b); return b; };
     mk('II', '<b>PAUSE</b> [SPACE]<br>Orders, building and control still work while paused.', () => this.colony?.togglePause());
     mk('1x', '<b>NORMAL SPEED</b> [1]', () => this.colony?.setSpeed(1));
@@ -139,7 +148,7 @@ export class Hud {
     this.clock = el('div', 'cx-glass clock cx-ph', tm);
     if (HW3D) { this.hw.bindVitals(this.vitEls.map((e) => ({ id: e.id, el: e.el }))); this.hw.bindTime(this.timeBtns, this.clock); }
     this.pausebar = el('div', 'cx-plate gun cx-pausebar cx-sten', this.root, 'PAUSED');
-    this.plate3(this.pausebar, (w, h) => platePix(w, h, { mat: 'enamel', seed: 81, hazard: true, wear: 0.6 }), 'pause');
+    this.plate3(this.pausebar, (w, h) => platePix(w, h, { mat: 'enamel', seed: 81, hazard: true, wear: 0.3 }), 'pause');
     this.count = el('div', 'cx-plate gun cx-count', this.root, '<div class="h cx-sten"></div><div class="v"></div>');
     this.plate3(this.count, (w, h) => platePix(w, h, { mat: 'orange', seed: 85, hazard: true }), 'count');
   }
@@ -238,7 +247,7 @@ export class Hud {
   // ------------------------------------------------------------------ minimap
   private buildMap() {
     const p = el('div', 'cx-plate cx-map pe', this.root);
-    this.plate3(p, (w, h) => platePix(w, h, { mat: 'steel', seed: 23, wear: 1.2, rivets: true }), 'map');
+    this.plate3(p, (w, h) => platePix(w, h, { mat: 'steel', seed: 23, wear: 0.4, rivets: true }), 'map');
     this.mapHd = el('div', 'hd', p, '<span class="cx-sten">SURVEY</span><span class="cx-ph"></span>');
     const scr = el('div', 'cx-glass scr', p);
     this.mapCv = document.createElement('canvas'); scr.appendChild(this.mapCv);
@@ -349,7 +358,7 @@ export class Hud {
   // ------------------------------------------------------------------ the selected unit
   private buildSel() {
     this.selEl = el('div', 'cx-plate cx-sel pe', this.root);
-    this.plate3(this.selEl, (w, h) => { const p = platePix(w, h, { mat: 'enamel', seed: 11, wear: 1.2, rivets: true }); for (let y = 8; y < 8 + 118; y++) for (let x = 9; x < 9 + 168; x++) p.clear(x, y); return p; });
+    this.plate3(this.selEl, (w, h) => { const p = platePix(w, h, { mat: 'enamel', seed: 11, wear: 0.3, rivets: true }); for (let y = 8; y < 8 + 118; y++) for (let x = 9; x < 9 + 168; x++) p.clear(x, y); return p; });
     this.viewEl = el('div', 'view', this.selEl);
     this.calloutCv = document.createElement('canvas'); this.viewEl.appendChild(this.calloutCv);
     this.selHd = el('div', 'hd', this.selEl);
@@ -602,8 +611,9 @@ export class Hud {
     const c = this.colony, g = this.g;
     const show = !!c && c.ready && !c.fail$.on;
     this.root.style.display = show ? '' : 'none';
-    if (!show || !c || !g) { this.tip(null); return; }
+    if (!show || !c || !g) { this.tip(null); document.body.classList.remove('hw3d'); return; }
     document.body.classList.toggle('cx-paused', g.paused);
+    document.body.classList.toggle('hw3d', HW3D && c.ctl.k !== 'cannon');
     this.pausebar.classList.toggle('on', g.paused && !c.linkOpen);
     this.timeBtns.forEach((b, i) => b.classList.toggle('on', i === 0 ? g.paused : !g.paused && g.speed === i));
     this.wheel.update(dt);
@@ -632,7 +642,7 @@ export class Hud {
     return false;
   }
   escape() { if (this.cfgSlot >= 0) { this.cfgSlot = -1; return true; } return false; }
-  dispose() { removeEventListener('resize', this.onResize); this.root.remove(); this.tipEl.remove(); document.body.classList.remove('cx-paused'); }
+  dispose() { removeEventListener('resize', this.onResize); this.root.remove(); this.tipEl.remove(); document.body.classList.remove('cx-paused'); document.body.classList.remove('hw3d'); }
 }
 /** a bezel round a dial: a lit steel ring */
 function dialBezel(p: Pix, x: number, y: number, D: number) {

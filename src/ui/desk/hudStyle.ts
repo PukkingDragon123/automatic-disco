@@ -154,6 +154,13 @@ body.cannon-on .cx > :not(.cx-alarm) { opacity: 0; } body.cannon-on .overlay2d {
 .cx.hw3d .cx-time .cx-btn, .cx.hw3d .cx-time .cx-btn.on, .cx.hw3d .cx-time .cx-btn:active { border-image: none !important; border-color: transparent !important; background: transparent !important; color: transparent !important; filter: none !important; }
 .cx.hw3d .cx-time .clock { visibility: hidden; }
 .cx.hw3d .cx-wheel canvas.dial { opacity: 0; }
+.cx.hw3d .cx-idtx { visibility: hidden; }
+.cx.hw3d .cx-link { width: 150px; height: 56px; min-height: 0; padding: 0; border-image: none !important; border-color: transparent !important; background: none !important; filter: none !important; }
+.cx.hw3d .cx-link > * { visibility: hidden; }
+.cx.hw3d .cx-wheel > .cx-plate, .cx.hw3d .cx-wheel .info { display: none; }
+.cx.hw3d .cx-wheel .cfg { left: 49px; top: 262px; bottom: auto; width: 54px; height: 48px; min-height: 0; padding: 0; border-image: none !important; border-color: transparent !important; background: none !important; color: transparent !important; filter: none !important; }
+body.hw3d .crate-hud, body.hw3d .crate-hud .badge { background-image: none !important; filter: none !important; }
+body.hw3d .hb, body.hw3d .hb-slot, body.hw3d .hb-slot.on, body.hw3d .hb-slot.drop { border-image: none !important; border-color: transparent !important; }
 
 /* ---------------- failure */
 .cf-screen { position: fixed; inset: 0; z-index: 70; pointer-events: none; }
