@@ -88,11 +88,12 @@ body.bp-on .hud.cx > .cx-top { translate: 0 -120%; opacity: 0; pointer-events: n
 .bt-mini.ping .bt-bob { animation: bt-ping .5s cubic-bezier(.2,.9,.3,1.6) both; }
 @keyframes bt-ping { 35% { transform: translateY(-16px) scale(1.06, .95); } }
 .bt-mini.shake { animation: bfi-shake .32s steps(6) both; }
-.bt-name { position: relative; z-index: 2; margin-top: 4px; height: 18px; opacity: 0; transform: translateY(-4px); transition: opacity .15s, transform .2s cubic-bezier(.2,.9,.3,1.4); pointer-events: none;
+.bt-name { position: relative; z-index: 2; margin-top: 4px; height: 18px; opacity: .82; transform: none; max-width: 136px; overflow: hidden; text-overflow: clip; transition: opacity .15s, transform .2s cubic-bezier(.2,.9,.3,1.4); pointer-events: none;
   font-family: 'Alagard', monospace; font-size: 16px; line-height: 18px; color: #f2ead2; white-space: nowrap;
   text-shadow: -1px -1px 0 #08090c, 0 -1px 0 #08090c, 1px -1px 0 #08090c, -1px 0 0 #08090c, 1px 0 0 #08090c, -1px 1px 0 #08090c, 0 1px 0 #08090c, 1px 1px 0 #08090c, 1px 2px 0 #3a2a14, 2px 3px 0 #08090c; }
-.bt-mini.hot .bt-name { opacity: 1; transform: none; }
-.bt-cost { position: absolute; left: 50%; bottom: 128px; transform: translate(-50%, 6px); display: flex; gap: 6px; opacity: 0; pointer-events: none; z-index: 4; transition: opacity .15s, transform .22s cubic-bezier(.2,.9,.3,1.4); }
+.bt-mini.hot .bt-name { opacity: 1; color: #fff4cf; }
+.bt-mini.locked .bt-name { color: #9aa8b8; }
+.bt-cost { position: absolute; left: 50%; bottom: 132px; transform: translate(-50%, 8px); opacity: 0; pointer-events: none; z-index: 6; transition: opacity .15s, transform .22s cubic-bezier(.2,.9,.3,1.4); width: 380px; }
 .bt-mini.hot .bt-cost { opacity: 1; transform: translate(-50%, 0); }
 /* locked: dimmed, a padlock and the icon of what opens it */
 .bt-mini.locked { cursor: not-allowed; }
@@ -104,7 +105,7 @@ body.bp-on .hud.cx > .cx-top { translate: 0 -120%; opacity: 0; pointer-events: n
 .bt-why { position: absolute; left: 50%; bottom: 132px; transform: translateX(-50%); opacity: 0; pointer-events: none; transition: opacity .15s; z-index: 4;
   font-family: 'Alagard', monospace; font-size: 16px; line-height: 18px; color: #ffcf8a; white-space: nowrap;
   text-shadow: -1px -1px 0 #08090c, 0 -1px 0 #08090c, 1px -1px 0 #08090c, -1px 0 0 #08090c, 1px 0 0 #08090c, -1px 1px 0 #08090c, 0 1px 0 #08090c, 1px 1px 0 #08090c; }
-.bt-mini.locked.hot .bt-why { opacity: 1; }
+.bt-mini.locked.hot .bt-why { opacity: 0; }
 .bt-mini.locked.hot .bt-bob { transform: translateY(-6px); filter: none; }
 /* the miniature in the hand while it is dragged out of the tray */
 .bt-drag { position: fixed; z-index: 9000; pointer-events: none; transform: translate(-50%, -62%); transition: opacity .18s, transform .18s; }
@@ -136,7 +137,7 @@ body.bp-on .hud.cx > .cx-top { translate: 0 -120%; opacity: 0; pointer-events: n
 @keyframes bp-act-in { from { opacity: 0; transform: translateY(18px) scale(.6); } to { opacity: 1; transform: none; } }
 
 /* ---------------------------------------------------------------- the blueprint sheet (a building's info) */
-.bs { position: fixed; right: 40px; top: 112px; width: 600px; height: 808px; z-index: 820; pointer-events: none; visibility: hidden; transform: translateX(calc(100% + 90px)); }
+.bs { position: fixed; right: 40px; top: 60px; width: 600px; height: 952px; z-index: 820; pointer-events: none; visibility: hidden; transform: translateX(calc(100% + 90px)); }
 .bs.on { visibility: visible; pointer-events: auto; transform: none; transition: transform .55s cubic-bezier(.2,.9,.3,1.1); }
 .bs.off { visibility: visible; transform: translateX(calc(100% + 90px)); transition: transform .3s cubic-bezier(.55,0,.85,.35), visibility 0s .3s; }
 .bs-body { position: absolute; inset: 0; clip-path: inset(0 0 100% 0); }
@@ -144,7 +145,7 @@ body.bp-on .hud.cx > .cx-top { translate: 0 -120%; opacity: 0; pointer-events: n
 .bs.off .bs-body { clip-path: inset(0 0 0 0); }
 .bs.flip .bs-body { animation: bs-flip .36s cubic-bezier(.3,1.5,.5,1); }
 @keyframes bs-flip { 0% { transform: translateY(0); filter: brightness(1); } 25% { transform: translateY(-12px); filter: brightness(1.25); } 100% { transform: none; filter: none; } }
-.bs-paper, .bs-art { position: absolute; left: 0; top: 0; width: 600px; height: 808px; image-rendering: pixelated; pointer-events: none; }
+.bs-paper, .bs-art { position: absolute; left: 0; top: 0; width: 600px; height: 952px; image-rendering: pixelated; pointer-events: none; }
 .bs-paper { filter: drop-shadow(8px 12px 0 rgba(3, 8, 22, .45)); }
 .bs-clip { position: absolute; top: -16px; width: 40px; height: 36px; image-rendering: pixelated; z-index: 3; pointer-events: none; }
 .bs-clip.a { left: 92px; } .bs-clip.b { right: 92px; }
@@ -153,7 +154,7 @@ body.bp-on .hud.cx > .cx-top { translate: 0 -120%; opacity: 0; pointer-events: n
 .bs-x { position: absolute; right: -14px; top: -26px; z-index: 5; --glow: #ffb39a; }
 .bs-title { position: absolute; left: 30px; top: 22px; max-width: 420px; overflow: hidden; color: #f2ead2; }
 /* recipes: item icons in -> out; the current one bracketed in white */
-.bs-recs { position: absolute; left: 18px; top: 374px; width: 564px; display: flex; flex-direction: column; gap: 2px; }
+.bs-recs { position: absolute; left: 18px; top: 430px; width: 564px; display: flex; flex-direction: column; gap: 2px; }
 .bs-rec { position: relative; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; cursor: pointer; }
 .bs-rec::before { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0;
   background: linear-gradient(#e3e6df, #e3e6df) 0 0 / 12px 2px no-repeat, linear-gradient(#e3e6df, #e3e6df) 0 0 / 2px 12px no-repeat,
@@ -169,24 +170,30 @@ body.bp-on .hud.cx > .cx-top { translate: 0 -120%; opacity: 0; pointer-events: n
 .bs-it img, .bs-buf img { width: 32px; height: 32px; image-rendering: pixelated; filter: drop-shadow(1px 2px 0 rgba(3, 8, 22, .55)); }
 .bs-it b, .bs-buf b { position: absolute; right: -6px; bottom: -6px; font-weight: normal; }
 .bs-arrow { width: 24px; height: 14px; margin: 0 6px 0 10px; image-rendering: pixelated; background-size: 24px 14px; }
-.bs-time { margin-left: auto; color: #a8c4db; }
+.bs-time { margin-left: 10px; flex: 1; color: #c9d8e6; font-family: 'Alagard', monospace; font-size: 16px; line-height: 18px; white-space: normal;
+  text-shadow: -1px -1px 0 #08090c, 0 -1px 0 #08090c, 1px -1px 0 #08090c, -1px 0 0 #08090c, 1px 0 0 #08090c, -1px 1px 0 #08090c, 0 1px 0 #08090c, 1px 1px 0 #08090c; }
+.bs-rec.on .bs-time { color: #fff4cf; }
 /* what is in and out */
-.bs-bufs { position: absolute; left: 304px; top: 566px; width: 280px; display: flex; gap: 12px; flex-wrap: wrap; }
-.bs-buf { position: relative; display: inline-flex; }
+.bs-bufs { position: absolute; left: 22px; top: 776px; width: 556px; display: flex; gap: 6px 18px; flex-wrap: wrap; align-items: center; }
+.bs-buf { position: relative; display: inline-flex; align-items: center; gap: 4px; font-family: 'Alagard', monospace; font-size: 16px; color: #c9d8e6;
+  text-shadow: -1px -1px 0 #08090c, 0 -1px 0 #08090c, 1px -1px 0 #08090c, -1px 0 0 #08090c, 1px 0 0 #08090c, -1px 1px 0 #08090c, 0 1px 0 #08090c, 1px 1px 0 #08090c; }
+.bs-buf i { font-style: normal; color: #eecc8e; }
+.bs-buf b { position: static !important; font-weight: normal; }
+.bs-empty { font-family: 'Alagard', monospace; font-size: 16px; color: #a8c4db; text-shadow: 1px 1px 0 #08090c; }
 .bs-buf.in b { color: #a8c4db; } .bs-buf.out b { color: #c7e6ce; } .bs-buf.seam b { color: #eecc8e; }
 /* the crew: slots marked with corner brackets, portraits outlined in ink */
-.bs-crew { position: absolute; left: 22px; top: 638px; width: 556px; height: 96px; display: flex; gap: 18px; align-items: center; }
-.bs-slot { position: relative; display: flex; gap: 6px; align-items: center; min-width: 76px; height: 72px; padding: 0 8px 0 34px; transition: filter .15s;
+.bs-crew { position: absolute; left: 22px; top: 838px; width: 556px; height: 104px; display: flex; gap: 14px; align-items: stretch; }
+.bs-slot { position: relative; display: flex; gap: 6px; align-items: center; min-width: 120px; height: 100px; padding: 16px 8px 0 34px; box-sizing: border-box; transition: filter .15s;
   background: linear-gradient(#a8c4db, #a8c4db) 0 0 / 10px 2px no-repeat, linear-gradient(#a8c4db, #a8c4db) 0 0 / 2px 10px no-repeat,
     linear-gradient(#a8c4db, #a8c4db) 100% 0 / 10px 2px no-repeat, linear-gradient(#a8c4db, #a8c4db) 100% 0 / 2px 10px no-repeat,
     linear-gradient(#a8c4db, #a8c4db) 0 100% / 10px 2px no-repeat, linear-gradient(#a8c4db, #a8c4db) 0 100% / 2px 10px no-repeat,
     linear-gradient(#a8c4db, #a8c4db) 100% 100% / 10px 2px no-repeat, linear-gradient(#a8c4db, #a8c4db) 100% 100% / 2px 10px no-repeat; }
-.bs-slot-ic { position: absolute; left: 6px; top: 24px; width: 24px; height: 24px; image-rendering: pixelated; opacity: .9; }
+.bs-slot-ic { position: absolute; left: 6px; top: 40px; width: 24px; height: 24px; image-rendering: pixelated; opacity: .9; }
 .bs-slot.drop { filter: brightness(1.35) drop-shadow(0 0 8px rgba(199, 230, 206, .8)); }
 .bs.assigning .bs-slot:not(.drop) { animation: bs-pulse .9s ease-in-out infinite alternate; }
 @keyframes bs-pulse { to { filter: brightness(1.3); } }
 .bs-slot.shake { animation: bfi-shake .32s steps(6) both; }
-.bs-pool { margin-left: auto; display: flex; gap: 4px; align-items: center; min-height: 64px; }
+.bs-pool { position: relative; margin-left: auto; display: flex; gap: 4px; align-items: center; padding-top: 16px; }
 .bs-pool b { margin-left: 4px; }
 .bs-face { width: 72px; height: 72px; margin: -8px -6px; cursor: grab; transition: translate .16s cubic-bezier(.2,.9,.3,1.5);
   filter: drop-shadow(2px 0 0 #08090c) drop-shadow(-2px 0 0 #08090c) drop-shadow(0 2px 0 #08090c) drop-shadow(0 -2px 0 #08090c) drop-shadow(3px 5px 0 rgba(3, 8, 22, .5)); }
@@ -197,10 +204,67 @@ body.bp-on .hud.cx > .cx-top { translate: 0 -120%; opacity: 0; pointer-events: n
 .bs-drag { position: fixed; z-index: 9100; width: 64px; height: 64px; pointer-events: none; transform: translate(-50%, -62%);
   filter: drop-shadow(2px 0 0 #08090c) drop-shadow(-2px 0 0 #08090c) drop-shadow(0 2px 0 #08090c) drop-shadow(0 -2px 0 #08090c) drop-shadow(6px 12px 2px rgba(3, 8, 22, .5)); }
 /* the physical icons along the bottom edge */
-.bs-acts { position: absolute; left: 0; right: 0; bottom: -34px; display: flex; justify-content: center; gap: 26px; z-index: 4; }
+.bs-acts { position: absolute; left: 0; right: 0; bottom: -40px; display: flex; justify-content: center; gap: 26px; z-index: 4; }
 .bs.on .bs-acts .bfi { animation: bp-act-in .4s cubic-bezier(.2,1.5,.4,1) both; }
 .bs.on .bs-acts .bfi:nth-child(1) { animation-delay: .62s; } .bs.on .bs-acts .bfi:nth-child(2) { animation-delay: .67s; } .bs.on .bs-acts .bfi:nth-child(3) { animation-delay: .72s; }
 .bs.on .bs-acts .bfi:nth-child(4) { animation-delay: .77s; } .bs.on .bs-acts .bfi:nth-child(5) { animation-delay: .82s; }
 .bfi.bfi-nh .bfi-t { position: absolute; top: 100%; left: 50%; opacity: 0; transform: translate(-50%, -4px); transition: opacity .15s, transform .2s; }
 .bfi.bfi-nh.hot .bfi-t { opacity: 1; transform: translate(-50%, 0); }
 .bs .bfi.on .bfi-ic { filter: brightness(1.15) drop-shadow(0 0 7px rgba(255, 200, 100, .7)); }
+
+/* ---------------------------------------------------------------- text panels (V7 update: more text, more context) */
+/* a card of the library's blueprint stock with a printed double border and a hard drop shadow; Alagard 16 with ink */
+.bp-card { box-sizing: border-box; padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 3px; text-align: left; white-space: normal;
+  background: #1e4d8c var(--bp-paper) repeat; background-size: 256px 256px; image-rendering: pixelated;
+  box-shadow: inset 0 0 0 2px #0d1f3a, inset 0 0 0 4px #a8c4db, inset 0 0 0 6px rgba(13, 31, 58, .6), 6px 8px 0 rgba(3, 8, 22, .55);
+  font-family: 'Alagard', monospace; font-size: 16px; line-height: 19px; color: #e3ecf5;
+  text-shadow: -1px -1px 0 #08090c, 0 -1px 0 #08090c, 1px -1px 0 #08090c, -1px 0 0 #08090c, 1px 0 0 #08090c, -1px 1px 0 #08090c, 0 1px 0 #08090c, 1px 1px 0 #08090c; }
+.bp-card .bc-name { font-size: 32px; line-height: 34px; color: #fff4cf; margin-bottom: 2px;
+  text-shadow: -2px -2px 0 #08090c, 0 -2px 0 #08090c, 2px -2px 0 #08090c, -2px 0 0 #08090c, 2px 0 0 #08090c, -2px 2px 0 #08090c, 0 2px 0 #08090c, 2px 2px 0 #08090c, 2px 4px 0 #08090c; }
+.bp-card .bc-desc { color: #c9d8e6; }
+.bp-card .bc-sec { margin-top: 5px; color: #eecc8e; letter-spacing: .04em; }
+.bp-card .bc-line { display: flex; align-items: center; gap: 6px; }
+.bp-card .bc-line img { width: 32px; height: 32px; image-rendering: pixelated; flex: none; margin: -4px 0; }
+.bp-card .bc-line .bc-item { flex: 1; }
+.bp-card .bc-line b { font-weight: normal; color: #c7e6ce; }
+.bp-card .bc-line i { font-style: normal; color: #a8c4db; min-width: 44px; }
+.bp-card .bc-line.short b { color: #ff9a7a; }
+.bp-card .bc-facts { margin-top: 4px; color: #a8c4db; }
+.bp-card .bc-lock { margin-top: 4px; color: #ffcf8a; }
+.bp-card .bc-hint { margin-top: 4px; color: #9fe08a; }
+.bp-card .bc-bad { color: #ff9a7a; }
+.bp-card .bc-ok { color: #9fe08a; }
+.bp-card .bc-keys { margin-top: 4px; color: #a8c4db; }
+.bt-head { position: absolute; left: 50%; bottom: 258px; transform: translateX(-50%); display: flex; gap: 14px; align-items: baseline; white-space: nowrap; pointer-events: none;
+  font-family: 'Alagard', monospace; font-size: 16px; line-height: 18px; color: #c9d8e6;
+  text-shadow: -1px -1px 0 #08090c, 0 -1px 0 #08090c, 1px -1px 0 #08090c, -1px 0 0 #08090c, 1px 0 0 #08090c, -1px 1px 0 #08090c, 0 1px 0 #08090c, 1px 1px 0 #08090c, 1px 2px 0 #08090c; }
+.bt-head b { font-weight: normal; font-size: 32px; line-height: 34px; color: #fff4cf;
+  text-shadow: -2px -2px 0 #08090c, 0 -2px 0 #08090c, 2px -2px 0 #08090c, -2px 0 0 #08090c, 2px 0 0 #08090c, -2px 2px 0 #08090c, 0 2px 0 #08090c, 2px 2px 0 #08090c, 2px 4px 0 #08090c; }
+.bt-head.flash { animation: bt-headin .35s cubic-bezier(.2,.9,.3,1.3) both; }
+@keyframes bt-headin { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.bt { height: 300px; }
+.bt-exit .bfi-t { display: block; }
+/* the ghost's panel and the selection's plate */
+.bp-cost .bp-card { width: 400px; }
+.bp-acts { flex-direction: column; align-items: center; gap: 4px; }
+.bp-acts .bp-acts-row { display: flex; gap: 12px; }
+.bp-acts .bp-card { width: 420px; }
+.bp-acts .bfi-t { font-size: 16px; }
+
+/* the sheet's words */
+.bs-desc { position: absolute; left: 30px; top: 60px; width: 520px; font-family: 'Alagard', monospace; font-size: 16px; line-height: 19px; color: #c9d8e6; white-space: normal; max-height: 40px; overflow: hidden;
+  text-shadow: -1px -1px 0 #08090c, 0 -1px 0 #08090c, 1px -1px 0 #08090c, -1px 0 0 #08090c, 1px 0 0 #08090c, -1px 1px 0 #08090c, 0 1px 0 #08090c, 1px 1px 0 #08090c; }
+.bs-h { position: absolute; left: 22px; font-family: 'Alagard', monospace; font-size: 16px; line-height: 18px; color: #eecc8e; white-space: nowrap; letter-spacing: .02em;
+  text-shadow: -1px -1px 0 #08090c, 0 -1px 0 #08090c, 1px -1px 0 #08090c, -1px 0 0 #08090c, 1px 0 0 #08090c, -1px 1px 0 #08090c, 0 1px 0 #08090c, 1px 1px 0 #08090c; }
+.bs-h.h-draw { top: 104px; } .bs-h.h-rec { top: 410px; } .bs-h.h-gauge { top: 562px; } .bs-h.h-buf { top: 756px; } .bs-h.h-crew { top: 820px; }
+.bs-status { position: absolute; left: 22px; top: 708px; width: 556px; font-family: 'Alagard', monospace; font-size: 16px; line-height: 19px; color: #c9d8e6; white-space: normal;
+  text-shadow: -1px -1px 0 #08090c, 0 -1px 0 #08090c, 1px -1px 0 #08090c, -1px 0 0 #08090c, 1px 0 0 #08090c, -1px 1px 0 #08090c, 0 1px 0 #08090c, 1px 1px 0 #08090c; }
+.bs-status b { font-weight: normal; color: #fff4cf; }
+.bs-status span { color: #a8c4db; }
+.bs-sl { position: absolute; left: 8px; top: 0; font-family: 'Alagard', monospace; font-size: 16px; color: #a8c4db; white-space: nowrap; text-shadow: 1px 1px 0 #08090c, -1px 0 0 #08090c, 0 -1px 0 #08090c; }
+.bs-pool .bs-sl { left: auto; right: 0; }
+.bs-man { display: inline-flex; flex-direction: column; align-items: center; }
+.bs-man .bs-face { margin: -10px -6px -4px; }
+.bs-cap, .bs-role, .bs-none { font-family: 'Alagard', monospace; font-size: 16px; line-height: 16px; white-space: nowrap; text-shadow: -1px -1px 0 #08090c, 1px -1px 0 #08090c, -1px 1px 0 #08090c, 1px 1px 0 #08090c; }
+.bs-cap { color: #f2ead2; } .bs-role { color: #9fe08a; } .bs-none { color: #a8c4db; }
+.bs .bfi .bfi-t { display: block; }

@@ -27,10 +27,11 @@ import { tween, ease, burst, placeDust, shake, pop, floatUp, wait } from '../kit
 import { transition } from '../kit/transitions';
 import { floatIcon } from '../kit/floatIcon';
 import { installKitStyle } from '../kit/style';
-import { panel, slotGrid, meter, pkey, slot, type Panel, type Slot, type Meter, type PKey } from '../kit/panel';
+import { panel, slotGrid, meter, pkey, slot, section, para, kv, status, keyHint, bindTip, type Panel, type Slot, type Meter, type PKey, type Status, type TipContent } from '../kit/panel';
 import { itemIcon, ITEMS } from '../../factory/items';
 import type { PartSlot } from '../kit/models';
-import { PARTS, PART_SLOTS, partOf, statsOf, costOf, addCustomTool, customTools, type Stats } from './tools';
+import { PARTS, PART_SLOTS, SLOT_INFO, STAT_INFO, statText, partOf, statsOf, costOf, addCustomTool, customTools, TOOLS, type Stats, type PartDef } from './tools';
+const STAT_KEYS: (keyof Stats)[] = ['power', 'reach', 'speed', 'draw', 'mass'];
 import { customModel, partModel, partIcon, fitVisible } from './parts3d';
 import type { ToolWidget } from './toolWidget';
 
@@ -154,8 +155,10 @@ export class Bench {
   private parts: Record<PartSlot, string> = { head: 'lens', core: 'cell', grip: 'pistol', mod: 'none' };
   private hub: ShipHub | null = null; private rig: Rig | null = null; private offUpd: (() => void) | null = null;
   private busy = false; private slot: PartSlot = 'head'; private t = 0; private crewScan = -9; private crew: THREE.Object3D[] = []; private tmp = new THREE.Vector3();
-  private bin: Panel; private spec: Panel; private keys = new Map<PartSlot, PKey>(); private grid: Slot[] = []; private name: HTMLDivElement;
+  private bin: Panel; private spec: Panel; private keys = new Map<PartSlot, PKey>(); private grid: Slot[] = [];
   private meters = new Map<keyof Stats, Meter>(); private bill: HTMLDivElement; private plate: HTMLDivElement;
+  private brief: Panel; private state: Status; private binSec: HTMLDivElement; private binDesc: HTMLDivElement; private selSec: HTMLDivElement; private selName: HTMLDivElement; private selDesc: HTMLDivElement; private selRows: HTMLDivElement;
+  private toolSec: HTMLDivElement; private works: HTMLDivElement; private billSec: HTMLDivElement; private billRows: HTMLDivElement; private need: Status;
   private forgeKey: ReturnType<typeof floatIcon>; private back: ReturnType<typeof floatIcon>;
   private key = (e: KeyboardEvent) => {
     if (!this.isOpen) return;
@@ -166,28 +169,60 @@ export class Bench {
   constructor(readonly g: G, readonly w: ToolWidget) {
     installKitStyle(); injectCSS();
     const el = this.el = document.createElement('div'); el.className = 'h7-ws';
-    // ---- PARTS: category keys and the category's parts in item slots
-    this.bin = panel({ title: 'PARTS', tone: 'gun', serial: 'FAB-06', lamps: ['green', 'amber'], stencil: 'WORKSHOP', glands: 2, cls: 'h7-ws-bin' });
+    // ---- the brief: where you are and what to do here
+    this.brief = panel({ title: 'SHIP WORKSHOP', tone: 'olive', serial: 'DECK 1 AFT', lamps: ['green'], hazard: false, glands: 1, vents: false, cls: 'h7-ws-brief' });
+    this.brief.text('The fabrication bench in the MERIDIAN\'s workshop. Fit one part per bin onto the jig, then FORGE: the tool joins your arsenal.', { dim: true });
+    this.state = this.brief.status('Pick a part from the bins on the left.', 'info');
+    // ---- PARTS: category keys, the bin's parts in item slots, the selected part spelled out
+    this.bin = panel({ title: 'PART BINS', tone: 'gun', serial: 'FAB-06', lamps: ['green', 'amber'], stencil: 'WORKSHOP', glands: 2, cls: 'h7-ws-bin' });
     const keys = document.createElement('div'); keys.className = 'h7-ws-keys';
-    PART_SLOTS.forEach((s, i) => { const k = pkey(s.toUpperCase(), () => this.pickSlot(s), { w: 78, h: 32, tone: 'cream', lamp: 'amber', sound: 'tab' }); k.title = `${s} (${i + 1})`; keys.append(k); this.keys.set(s, k); });
+    PART_SLOTS.forEach((s, i) => { const k = pkey(SLOT_INFO[s].name, () => this.pickSlot(s), { w: 78, h: 32, tone: 'cream', lamp: 'amber', sound: 'tab' }); k.title = `${SLOT_INFO[s].name} bin (key ${i + 1}): ${SLOT_INFO[s].desc}`; keys.append(k); this.keys.set(s, k); });
+    this.binSec = section('HEAD BIN', '4 PARTS');
+    this.binDesc = para('', { dim: true });
     const grid = slotGrid(8, 4, 72, { gap: 8, numbered: true, onClick: (i) => { const p = PARTS[this.slot][i]; if (p) void this.fit(this.slot, p.id); } });
     this.grid = grid.slots;
-    grid.slots.forEach((s, i) => { s.el.addEventListener('pointerenter', () => { const p = PARTS[this.slot][i]; this.name.textContent = p ? p.name : ''; }); s.el.addEventListener('pointerleave', () => this.showName()); });
-    this.name = document.createElement('div'); this.name.className = 'h7-ws-name k7-t16';
-    this.bin.body.append(keys, grid.el, this.name);
-    // ---- SPECS: LED readouts and the bill of materials
-    this.spec = panel({ title: 'SPECS', tone: 'gun', serial: 'JIG-3', lamps: ['green', 'red'], knobs: 2, toggles: 2, foot: 30, cls: 'h7-ws-spec' });
+    grid.slots.forEach((sl, i) => bindTip(sl.el, () => { const p = PARTS[this.slot][i]; return p ? this.partTip(p) : { title: 'EMPTY BIN SLOT', desc: 'More parts are unlocked through research and found on the planet.', status: ['Locked', 'warn'] }; }));
+    this.selSec = section('FITTED ON THE JIG');
+    this.selName = document.createElement('div'); this.selName.className = 'k7-t16 h7-ws-name';
+    this.selDesc = para('');
+    this.selRows = document.createElement('div');
+    this.bin.body.append(keys, this.binSec, this.binDesc, grid.el, this.selSec, this.selName, this.selDesc, this.selRows);
+    // ---- SPECS: the tool on the jig spelled out, the LED readouts, the bill of materials, what is missing
+    this.spec = panel({ title: 'TOOL SPECS', tone: 'gun', serial: 'JIG-3', lamps: ['green', 'red'], knobs: 2, toggles: 2, foot: 30, cls: 'h7-ws-spec' });
+    this.toolSec = section('ON THE JIG', 'MK-1');
     this.plate = document.createElement('div'); this.plate.className = 'h7-ws-tool k7-t16';
+    this.works = para('', { dim: true });
     const ms = document.createElement('div'); ms.className = 'h7-ws-meters';
-    for (const s of STATS) { const m = meter(s.name, 0, { w: 160, col: s.col, value: 0 }); this.meters.set(s.k, m); ms.append(m.el); }
+    for (const k of STAT_KEYS) { const s = STATS.find((x) => x.k === k)!; const m = meter(STAT_INFO[k].short, 0, { w: 116, col: s.col, value: '0' }); m.el.title = `${STAT_INFO[k].name}: ${STAT_INFO[k].desc}`; this.meters.set(k, m); ms.append(m.el); }
+    this.billSec = section('BILL OF MATERIALS', 'NEED / IN STORE');
     this.bill = document.createElement('div'); this.bill.className = 'h7-ws-bill';
-    this.spec.body.append(this.plate, ms, this.bill);
-    // ---- FORGE and BACK as floating icons (Limbophobia's rule: menu buttons float, never boxed)
+    this.billRows = document.createElement('div');
+    this.need = status('', 'info');
+    const hints = document.createElement('div'); hints.className = 'h7-ws-hints';
+    hints.append(keyHint('1-4', 'bins'), keyHint('CLICK', 'fit part'), keyHint('F', 'forge'), keyHint('ESC', 'back'));
+    this.spec.body.append(this.toolSec, this.plate, this.works, ms, this.billSec, this.bill, this.billRows, this.need.el, hints);
+    // ---- FORGE and BACK as floating icons (Limbophobia's rule: menu buttons float, never boxed), with their keys
     this.forgeKey = floatIcon({ build: mForgeKey, name: 'FORGE', size: [48, 36], nameSize: 32, sound: '', hint: 'F', view: { pitch: 0.7, spin: 0, rock: 0.2 }, onClick: () => void this.forge() });
     this.forgeKey.el.classList.add('h7-ws-forge');
-    this.back = floatIcon({ build: () => fitVisible(customModel({ head: 'lens', core: 'cell', grip: 'pistol' }, 'hud')), name: 'BACK', size: [40, 32], nameSize: 16, sound: 'back', view: { pitch: 0.4 }, onClick: () => { if (!this.busy) this.open(false); } });
+    bindTip(this.forgeKey.el, () => { const short = this.shortfall(); return { title: 'FORGE THE TOOL', desc: 'The arm welds the fitted parts into one tool. It takes the bill of materials from the colony stores and adds the tool to your arsenal.', status: short.length ? [`Missing ${short.map(([it, n]) => `${n} ${ITEMS[it]?.name ?? it}`).join(', ')}`, 'bad'] : ['All materials in store', 'ok'], hint: [['F', 'forge']] }; });
+    this.back = floatIcon({ build: () => fitVisible(customModel({ head: 'lens', core: 'cell', grip: 'pistol' }, 'hud')), name: 'BACK', size: [40, 32], nameSize: 16, sound: 'back', hint: 'Esc', view: { pitch: 0.4 }, onClick: () => { if (!this.busy) this.open(false); } });
     this.back.el.classList.add('h7-ws-back');
-    el.append(this.bin.el, this.spec.el, this.forgeKey.el, this.back.el);
+    bindTip(this.back.el, () => ({ title: 'BACK TO THE PLANET', desc: 'Leave the workshop; the colony resumes where you left it.', hint: [['ESC', 'back']] }));
+    el.append(this.brief.el, this.bin.el, this.spec.el, this.forgeKey.el, this.back.el);
+  }
+  /** a part's tooltip: name, what it is, its stats with units, its cost and whether it is fitted */
+  private partTip(p: PartDef): TipContent {
+    const rows: [string, string | number, string?][] = [];
+    for (const k of STAT_KEYS) { const v = (p as unknown as Record<string, number | undefined>)[k]; if (v) rows.push([STAT_INFO[k].name, statText(k, v)]); }
+    const cost = Object.entries(p.cost).map(([it, n]) => `${n} ${ITEMS[it]?.name ?? it}`).join(', ');
+    if (cost) rows.push(['Cost', cost]);
+    const fitted = this.parts[p.slot] === p.id;
+    return { title: p.name, sub: `${SLOT_INFO[p.slot].name} PART${p.base ? ' · WORKS AS ' + TOOLS[p.base].name.toUpperCase() : ''}`, desc: p.desc, rows, status: fitted ? ['Fitted on the jig', 'ok'] : ['Click to fit it: the gantry carries it to the jig', 'info'] };
+  }
+  private shortfall(): [string, number][] {
+    if (this.g.__freeParts) return [];
+    const st = this.g.storage;
+    return Object.entries(costOf(this.parts)).map(([it, n]) => [it, n - (st?.count?.(it) ?? 0)] as [string, number]).filter(([, n]) => n > 0);
   }
   // ---------------------------------------------------------------- open: an iris, the ship's workshop behind it
   open(on: boolean) {
@@ -278,7 +313,7 @@ export class Bench {
   async fit(slot: PartSlot, id: string) {
     if (this.busy || !this.rig || !this.hub) return;
     if (this.parts[slot] === id) { const k = this.keys.get(slot); if (k) shake(k, 4); uiSfx('error', 0.4); return; }
-    this.busy = true; this.pickSlot(slot, true);
+    this.busy = true; this.pickSlot(slot, true); this.syncUI();
     const rig = this.rig, hub = this.hub;
     try {
       void hub.shot(CAM.fit(), 0.7);
@@ -313,7 +348,7 @@ export class Bench {
       await this.hookTo(1.45, 380);
       await this.trolleyTo(-11.9, 650);
       void hub.shot(CAM.home(), 0.8);
-    } finally { this.busy = false; }
+    } finally { this.busy = false; this.syncUI(); }
   }
   // ---------------------------------------------------------------- FORGE: weld, cool, reveal
   async forge() {
@@ -321,7 +356,7 @@ export class Bench {
     const cost = costOf(this.parts), st = this.g.storage;
     const short = Object.entries(cost).filter(([it, n]) => (st?.count?.(it) ?? 0) < n);
     if (short.length && !this.g.__freeParts) { shake(this.forgeKey.el, 6); uiSfx('error', 0.6); this.bill.querySelectorAll('.short').forEach((e) => pop(e as HTMLElement, 0.5)); return; }
-    this.busy = true; this.forgeKey.view?.press(1.4); uiSfx('clunk', 0.7); uiSfx('bong', 0.5);
+    this.busy = true; this.syncUI(); this.forgeKey.view?.press(1.4); uiSfx('clunk', 0.7); uiSfx('bong', 0.5);
     const rig = this.rig, hub = this.hub, a = rig.arm;
     try {
       void hub.shot(CAM.forge(), 0.8);
@@ -360,7 +395,7 @@ export class Bench {
       await tween(450, (k) => { rig.reveal = 1 - k; }, ease.inOutCubic);
       rig.clamp = 1; uiSfx('clunk', 0.5);
       void hub.shot(CAM.home(), 0.8); this.syncUI();
-    } finally { this.busy = false; rig.heat = 0; }
+    } finally { this.busy = false; rig.heat = 0; this.syncUI(); }
   }
   // ---------------------------------------------------------------- QA: hold a moment of the sequences still (headless shots)
   qaPose(kind: 'home' | 'carry' | 'weld' | 'reveal', slot: PartSlot = 'head', id = 'bit') {
@@ -389,28 +424,48 @@ export class Bench {
     for (const [k, b] of this.keys) b.setOn(k === s);
     if (!quiet) uiSfx('tab', 0.5);
     const list = PARTS[s];
+    (this.binSec.firstChild as HTMLElement).textContent = `${SLOT_INFO[s].name} BIN`; (this.binSec.lastChild as HTMLElement).textContent = `${list.length} PARTS`;
+    this.binDesc.textContent = SLOT_INFO[s].desc;
     this.grid.forEach((sl, i) => {
       const p = list[i];
       if (!p) { sl.set({ icon: null, count: null, state: 4, n: '' }); return; }
       sl.set({ icon: p.id === 'none' ? null : partIcon(s, p.id, 54), count: null, state: this.parts[s] === p.id ? 3 : 1, n: String(i + 1) });
-      sl.el.title = p.name;
     });
     this.showName();
   }
-  private showName() { this.name.textContent = `${this.slot.toUpperCase()} · ${partOf(this.slot, this.parts[this.slot]).name}`; }
+  /** the part fitted in the current bin, spelled out */
+  private showName() {
+    const p = partOf(this.slot, this.parts[this.slot]);
+    (this.selSec.firstChild as HTMLElement).textContent = `FITTED ${SLOT_INFO[this.slot].name}`;
+    this.selName.textContent = p.name; this.selDesc.textContent = p.desc ?? '';
+    this.selRows.textContent = '';
+    for (const k of STAT_KEYS) { const v = (p as unknown as Record<string, number | undefined>)[k]; if (v) this.selRows.append(kv(STAT_INFO[k].name, statText(k, v)).el); }
+    const cost = Object.entries(p.cost); if (cost.length) this.selRows.append(kv('Cost', cost.map(([it, n]) => `${n} ${ITEMS[it]?.name ?? it}`).join(', ')).el);
+  }
   private syncUI() {
     const st = statsOf(this.parts);
-    for (const s of STATS) this.meters.get(s.k)!.set(Math.max(0, st[s.k] + (s.off ?? 0)) / (s.max + (s.off ?? 0)), st[s.k]);
-    const head = partOf('head', this.parts.head);
-    this.plate.textContent = `${head.name.split(' ').pop()} MK-${customTools(this.g).length + 1}`;
-    this.bill.textContent = '';
-    for (const [it, n] of Object.entries(costOf(this.parts))) {
-      const have = this.g.storage?.count?.(it) ?? 0, s = slot(54, { title: ITEMS[it]?.name ?? it });
-      const im = document.createElement('img'); im.src = itemIcon(it as never, 64); im.width = 38; im.height = 38; im.alt = ITEMS[it]?.name ?? it;
-      s.set({ icon: im, count: n, state: have >= n || this.g.__freeParts ? 1 : 4 });
-      if (have < n && !this.g.__freeParts) s.el.classList.add('short');
+    for (const s of STATS) this.meters.get(s.k)!.set(Math.max(0, st[s.k] + (s.off ?? 0)) / (s.max + (s.off ?? 0)), statText(s.k, st[s.k]));
+    const head = partOf('head', this.parts.head), base = TOOLS[head.base ?? 'scanner'], n = customTools(this.g).length + 1;
+    this.plate.textContent = `${head.name.split(' ').pop()} MK-${n}`;
+    (this.toolSec.lastChild as HTMLElement).textContent = `TOOL ${n}`;
+    this.works.textContent = `Works as the ${base.name}: ${base.desc}`;
+    // the bill: slots with the item icons, then each line spelled out (need / in store)
+    this.bill.textContent = ''; this.billRows.textContent = '';
+    const cost = Object.entries(costOf(this.parts)), store = this.g.storage;
+    for (const [it, need] of cost) {
+      const have = store?.count?.(it) ?? 0, ok = have >= need || !!this.g.__freeParts, name = ITEMS[it]?.name ?? it;
+      const s = slot(50, { title: name });
+      const im = document.createElement('img'); im.src = itemIcon(it as never, 64); im.width = 34; im.height = 34; im.alt = name;
+      s.set({ icon: im, count: need, state: ok ? 1 : 4 });
+      bindTip(s.el, () => ({ title: name.toUpperCase(), desc: ITEMS[it]?.desc ?? undefined, rows: [['Needed', need], ['In store', this.g.__freeParts ? 'free (test)' : have]], status: ok ? ['Enough in store', 'ok'] : [`Short by ${need - have}: haul it to a store or craft it`, 'bad'] }));
+      if (!ok) s.el.classList.add('short');
       this.bill.append(s.el);
+      this.billRows.append(kv(name, `${need} / ${this.g.__freeParts ? 'free' : have}`, { color: ok ? undefined : '#ff8a70' }).el);
     }
+    const short = this.shortfall();
+    if (this.busy) { this.need.set('The bench is working...', 'busy'); this.state.set('Working: wait for the gantry and the arm to finish.', 'busy'); }
+    else if (short.length) { this.need.set(`Missing ${short.map(([it, k]) => `${k} ${ITEMS[it]?.name ?? it}`).join(', ')}. Haul them to a store, or fit cheaper parts.`, 'bad'); this.state.set('Not enough materials to forge this tool yet.', 'warn'); }
+    else { this.need.set('All materials in store. Press FORGE (F).', 'ok'); this.state.set('Ready: FORGE builds the tool and adds it to your arsenal.', 'ok'); }
     if (this.isOpen) this.pickSlot(this.slot, true);
   }
 }
@@ -424,10 +479,13 @@ function injectCSS() {
 .h7-ws.on { display: block; }
 body.h7-ws-open .h7-root, body.h7-ws-open .h7-test-bg, body.h7-ws-open .h7-ars { display: none !important; }
 .h7-ws > * { pointer-events: auto; }
+.h7-ws-brief { position: absolute; left: 50%; top: 10px; width: 560px; transform: translateX(-50%); }
 .h7-ws-bin { position: absolute; left: 22px; top: 96px; width: 376px; }
-.h7-ws-spec { position: absolute; right: 22px; top: 96px; width: 330px; }
+.h7-ws-spec { position: absolute; right: 22px; top: 96px; width: 350px; }
+.h7-ws-spec .kmeter { grid-template-columns: 84px auto 1fr; }
+.h7-ws-hints { margin-top: 10px; display: flex; flex-wrap: wrap; row-gap: 6px; }
 .h7-ws-keys { display: flex; gap: 6px; margin-bottom: 12px; }
-.h7-ws-name { margin-top: 10px; color: #f0d890; min-height: 18px; }
+.h7-ws-name { color: #ffe39a; min-height: 18px; }
 .h7-ws-tool { color: #ffe39a; margin-bottom: 10px; }
 .h7-ws-meters { display: flex; flex-direction: column; gap: 6px; }
 .h7-ws-bill { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }

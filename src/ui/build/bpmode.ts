@@ -22,6 +22,9 @@ import { floatBtn, bpIcon, type FloatBtn } from './bpicons';
 import { ease, clamp01, squash, placeDust, play } from './juice';
 import { bitText, bitMeasure } from '../kit/bitfont';
 import { installKitStyle } from '../kit/style';
+import { matCanvas } from '../../gfx/mat';
+import '../../gfx/mat/blueprint';
+import { bill as billOf, facts, oneLine, placeWords, statusWords, FACING } from './info';
 import { RAMPS as P } from '../../art/palette';
 import './bp.css';
 
@@ -76,6 +79,8 @@ export class BuildMode {
     this.acts.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.compass = paintCompass();
     installKitStyle();
+    // the text panels' stock: the material library's blueprint paper at 2 CSS px per texel
+    try { document.documentElement.style.setProperty('--bp-paper', `url(${matCanvas('paper_blueprint').toDataURL()})`); } catch { /* the plain fill stands in */ }
     this.hookDock();
   }
   /** the HUD's main dock (UI CORE): its BUILD slot opens and closes this mode, latched while it is open */
@@ -194,31 +199,35 @@ export class BuildMode {
     const c = f.sites ? f.sites.costOf(d) : d.cost;
     return Object.entries(c).map(([id, n]) => [id, f.sites ? f.sites.avail(id) : f.count(id), n ?? 0] as [ItemId, number, number]);
   }
-  /** the chips over the ghost: icon, have / need; and the reason when it does not fit */
+  /** the panel over the ghost: the building's name and what it is, its bill item by item (in stores / needed), its facts
+   *  and facing, the placement status in words, and the keys */
   private renderCost() {
     const b = this.b, el = this.cost;
-    const gh = b.ghosts[0];
-    const show = this.on && !!b.kind && !!gh && b.ghosts.length > 0 && !b.moving && this.f.g.input.overCanvas;
+    const gh = b.ghosts[0], kind = b.moving?.kind ?? b.kind;
+    const show = this.on && !!kind && !!gh && this.f.g.input.overCanvas;
     el.classList.toggle('on', show);
     el.classList.toggle('bad', !!b.why);
     if (!show) { this.costKey = ''; return; }
     const n = Math.max(1, b.ghosts.filter((g) => g.ok).length);
-    const rows = this.bill(b.kind!);
-    const key = `${b.kind}|${b.why}|${n}|${rows.map((r) => r[1]).join(',')}`;
+    const lines = b.moving ? [] : billOf(this.f, kind!, n);
+    const key = `${kind}|${b.why}|${n}|${gh.r}|${!!b.moving}|${lines.map((r) => r.have).join(',')}`;
     if (key !== this.costKey) {
       this.costKey = key;
-      const d = FDEFS[b.kind!];
-      el.innerHTML = `<div class="bp-chips">${rows.map(([id, have, need]) => `<span class="bp-chip ${have < need * n ? 'lack' : ''}" title="${esc(ITEMS[id]?.name ?? id)}"><img src="${itemIcon(id, 32)}" alt=""><b>${Math.min(999, Math.floor(have))}</b><i>/${need * n}</i></span>`).join('')}`
-        + `<span class="bp-chip t"><img src="${bpIcon('clock')}" alt=""><b>${Math.round(workOf(d))}</b><i>s</i></span>`
-        + (d.power > 0 ? `<span class="bp-chip t"><img src="${bpIcon('bolt')}" alt=""><b>${d.power}</b></span>` : '')
-        + `</div>` + (b.why ? `<div class="bp-why"><img src="${bpIcon('cancel')}" alt="">${esc(b.why)}</div>` : '');
+      const d = FDEFS[kind!];
+      el.innerHTML = `<div class="bp-card"><span class="bc-name">${esc(d.name)}${n > 1 ? ` x ${n}` : ''}</span><span class="bc-desc">${esc(oneLine(d.desc))}</span>`
+        + (b.moving ? `<span class="bc-sec">MOVING: everything it holds, its recipe, operator and routes go with it</span>`
+          : `<span class="bc-sec">COST (in stores / needed)</span>${lines.map((l) => `<span class="bc-line ${l.short ? 'short' : ''}"><img src="${itemIcon(l.id, 32)}" alt=""><span class="bc-item">${esc(l.name)}</span><b>${Math.min(9999, l.have)}</b><i>/ ${l.need}</i></span>`).join('')}`)
+        + `<span class="bc-facts">${esc(facts(kind!))}  ·  faces ${FACING[gh.r & 3]}</span>`
+        + `<span class="${b.why ? 'bc-bad' : 'bc-ok'}">${esc(placeWords(b.why, n))}</span>`
+        + `<span class="bc-keys">${b.moving ? 'Click: set it down here  ·  R / wheel: turn  ·  Esc: put it back' : 'Click: stake the site  ·  R / wheel: turn  ·  Right-click: put it down'}</span></div>`;
     }
-    // over the ghost's highest point
+    // over the ghost's highest point, kept on screen
     const def = FDEFS[gh.kind], w = footW(def, gh.r), dd = footD(def, gh.r), y = this.f.levelFor(gh.cx, gh.cz, w, dd);
     const [sx, sy] = this.f.g.screenOf(gh.cx + w / 2, y + def.h + 0.4, gh.cz);
     const r = el.getBoundingClientRect();
-    el.style.left = Math.round(Math.max(8, Math.min(innerWidth - r.width - 8, sx - r.width / 2)) / 2) * 2 + 'px';
-    el.style.top = Math.round(Math.max(8, sy - r.height - 18) / 2) * 2 + 'px';
+    const above = sy - r.height - 24 > 8;
+    el.style.left = Math.round(Math.max(8, Math.min(innerWidth - r.width - 8, sx + (above ? -r.width / 2 : 40))) / 2) * 2 + 'px';
+    el.style.top = Math.round((above ? sy - r.height - 24 : Math.min(innerHeight - r.height - 320, sy + 30)) / 2) * 2 + 'px';
   }
 
   // ------------------------------------------------------------------ the selection's action icons
@@ -228,17 +237,38 @@ export class BuildMode {
     this.acts.innerHTML = ''; this.actBtns = [];
     this.acts.classList.toggle('on', !!t);
     if (!t) return;
-    const b = this.b, site = isSite(t);
-    const add = (icon: Parameters<typeof floatBtn>[0], fn: () => void, sound?: string) => { const e = floatBtn(icon, '', fn, { size: 48, sound }); e.style.setProperty('--i', String(this.actBtns.length)); this.acts.appendChild(e); this.actBtns.push(e); return e; };
-    add('move', () => b.pickUp(t), 'lift');
-    add('rotate', () => b.turnSelected(), 'turn');
+    const b = this.b, site = isSite(t), d = t.def;
+    // the plate: name, what it is, what it is doing (or how far its construction has got)
+    const card = document.createElement('div'); card.className = 'bp-card bp-acts-card'; this.acts.appendChild(card);
+    this.actCard = card; this.cardKey = '';
+    const row = document.createElement('div'); row.className = 'bp-acts-row'; this.acts.appendChild(row);
+    const add = (icon: Parameters<typeof floatBtn>[0], name: string, tip: string, fn: () => void, sound?: string) => { const e = floatBtn(icon, name, fn, { size: 48, sound }); e.title = tip; e.style.setProperty('--i', String(this.actBtns.length)); row.appendChild(e); this.actBtns.push(e); return e; };
+    add('move', 'MOVE', 'Pick it up and set it down elsewhere (or drag it). Everything it holds goes with it.', () => b.pickUp(t), 'lift');
+    add('rotate', 'TURN', 'Turn it a quarter where it stands (R).', () => b.turnSelected(), 'turn');
     if (!site) {
-      add('info', () => b.onInspect?.(t as FBuilding), 'paper');
+      add('info', 'INFO', 'Open its blueprint sheet: recipes, power, stores and crew.', () => b.onInspect?.(t as FBuilding), 'paper');
       const fb = t as FBuilding;
-      if (fb.def.power > 0 || fb.def.station || fb.def.extract) add(fb.on ? 'pause' : 'play', () => { fb.on = !fb.on; this.actsFor = null; this.selectionActs(t); }, 'turn');
+      if (fb.def.power > 0 || fb.def.station || fb.def.extract) add(fb.on ? 'pause' : 'play', fb.on ? 'PAUSE' : 'RUN', fb.on ? 'Switch it off: it stops working and draws no power.' : 'Switch it back on.', () => { fb.on = !fb.on; this.actsFor = null; this.selectionActs(t); }, 'turn');
     }
-    add(site ? 'cancel' : 'dismantle', () => b.dismantle(t), 'clink');
+    add(site ? 'cancel' : 'dismantle', site ? 'CANCEL' : 'TAKE DOWN', site ? 'Cancel the site: delivered materials go back to the stores.' : 'Dismantle it: its whole bill and its contents go back to the stores (Delete).', () => b.dismantle(t), 'clink');
+    void d;
+    this.renderActCard();
     play('pick', 1.1, 0.35);
+  }
+  private actCard: HTMLDivElement | null = null; private cardKey = '';
+  private renderActCard() {
+    const t = this.actsFor, card = this.actCard; if (!t || !card) return;
+    const f = this.f, d = t.def;
+    let head: string, line: string;
+    if (isSite(t)) {
+      const s = t, p = f.sites.progress(s), need = Object.entries(s.need).map(([id, n]) => [id, (n ?? 0) - (s.got[id] ?? 0)] as [string, number]).filter(([, n]) => n > 0);
+      head = s.stage === 'build' ? `UNDER CONSTRUCTION ${Math.round(Math.min(1, s.work / s.workNeed) * 100)}%` : `AWAITING MATERIALS (${Math.round(p * 100)}%)`;
+      line = s.stage === 'build' ? (s.builders ? `${s.builders} worker${s.builders > 1 ? 's' : ''} building it.` : 'No worker free: the pod crane builds it, slowly.') : `Still needs ${need.map(([id, n]) => `${n} ${ITEMS[id]?.name ?? id}`).join(', ')}: workers carry it from the stores.`;
+    } else [head, line] = statusWords(f, t as FBuilding);
+    const key = head + line;
+    if (key === this.cardKey) return;
+    this.cardKey = key;
+    card.innerHTML = `<span class="bc-name">${esc(d.name)}</span><span class="bc-desc">${esc(oneLine(d.desc))}</span><span class="bc-sec">${esc(head)}</span><span class="bc-desc">${esc(line)}</span>`;
   }
   private placeActs() {
     const t = this.on && !this.b.moving && !this.b.kind ? this.b.selected : null;
@@ -248,9 +278,10 @@ export class BuildMode {
     const h = isSite(t) ? t.def.h : (t as FBuilding).def.h;
     const [sx, sy, ok] = this.f.g.screenOf(t.cx + t.fw / 2, t.y + h + 0.6, t.cz);
     if (!ok) return;
-    const w = this.actBtns.length * 58;
-    this.acts.style.left = Math.round((sx - w / 2) / 2) * 2 + 'px';
-    this.acts.style.top = Math.round((sy - 86) / 2) * 2 + 'px';
+    this.renderActCard();
+    const r = this.acts.getBoundingClientRect();
+    this.acts.style.left = Math.round(Math.max(8, Math.min(innerWidth - r.width - 8, sx - r.width / 2)) / 2) * 2 + 'px';
+    this.acts.style.top = Math.round(Math.max(8, sy - r.height - 16) / 2) * 2 + 'px';
   }
 
   // ------------------------------------------------------------------ drops: squash, stretch, dust
@@ -323,13 +354,13 @@ export class BuildMode {
     g.fillStyle = BLUE[5];
     g.fillRect(inner, inner, W - inner * 2, 2); g.fillRect(inner, inner, 2, bot - inner - 2); g.fillRect(W - inner - 2, inner, 2, bot - inner - 2);
     // top right (the time corner keeps the top left): the title block, the north arrow beside it, the scale bar under
-    const tw = 168, th = 58, tx = W - inner - tw - 24, ty = inner + 14;
+    const tw = 300, th = 58, tx = W - inner - tw - 24, ty = inner + 14;
     g.fillStyle = BLUE[1]; g.fillRect(tx, ty, tw, th);
     g.fillStyle = BLUE[6]; g.fillRect(tx, ty, tw, 2); g.fillRect(tx, ty + th - 2, tw, 2); g.fillRect(tx, ty, 2, th); g.fillRect(tx + tw - 2, ty, 2, th); g.fillRect(tx + 64, ty, 2, th); g.fillRect(tx + 64, ty + 28, tw - 64, 2);
-    text(g, 'B-07', tx + 10, ty + 38, WHITE, 16);
+    text(g, 'SHEET', tx + 8, ty + 22, BLUE[6], 16); text(g, 'B-07', tx + 10, ty + 46, WHITE, 16);
     const gc = this.f.g.groundAt(W / 2, H / 2), ppm = gc ? this.pxPerM(gc) : 0;
-    text(g, ppm ? `1:${Math.max(10, Math.round(3780 / ppm / 10) * 10)}` : '', tx + 74, ty + 22, BLUE[6], 16);
-    text(g, `${this.f.buildings.filter((b) => !b.def.hidden && !isBelt(b.kind)).length}`, tx + 74, ty + 50, AMB, 16);
+    text(g, ppm ? `SCALE 1:${Math.max(10, Math.round(3780 / ppm / 10) * 10)}` : '', tx + 72, ty + 22, BLUE[6], 16);
+    text(g, `${this.f.buildings.filter((b) => !b.def.hidden && !isBelt(b.kind)).length} BUILT, ${this.f.sites?.list.length ?? 0} SITES`, tx + 72, ty + 50, AMB, 16);
     const cam = this.f.g.cam, yaw = cam.yaw;
     g.save(); g.translate(tx - 52, ty + 30); g.rotate(yaw); g.drawImage(this.compass, -this.compass.width, -this.compass.height, this.compass.width * 2, this.compass.height * 2); g.restore();
     text(g, 'N', tx - 57 + Math.round(Math.sin(yaw) * 34), ty + 36 - Math.round(Math.cos(yaw) * 34), WHITE, 16);
@@ -356,7 +387,8 @@ export class BuildMode {
       g.beginPath(); g.arc(Math.round(sx), Math.round(sy), r, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
       const img = this.icon(s.item);
       if (img.complete && img.naturalWidth) g.drawImage(img, Math.round(sx - 16), Math.round(sy - 22), 32, 32);
-      text(g, String(Math.floor(s.amount)), Math.round(sx) - 10, Math.round(sy) + 26, want ? OKL : WHITE, 16);
+      const lbl = `${ITEMS[s.item]?.name ?? s.item}: ${Math.floor(s.amount)} left${s.drill ? ' (deep: drill miner)' : ''}`;
+      text(g, lbl, Math.round(sx - bitMeasure(lbl) / 2), Math.round(sy) + 28, want ? OKL : WHITE, 16);
     }
   }
   /** construction sites: an amber progress strip and what they still wait for */
@@ -367,10 +399,11 @@ export class BuildMode {
       const p = f.sites.progress(s), w = 64, x = Math.round((sx - w / 2) / 2) * 2, y = Math.round((sy - 8) / 2) * 2;
       g.fillStyle = INKC; g.fillRect(x - 2, y - 2, w + 4, 10);
       for (let i = 0; i < 16; i++) { g.fillStyle = i / 16 < p ? (s.stage === 'build' ? AMB : OKL) : BLUE[1]; g.fillRect(x + i * 4, y, 2, 6); }
-      if (s.stage === 'supply') {
-        const need = Object.entries(s.need).map(([id, n]) => [id, (n ?? 0) - (s.got[id] ?? 0)] as [string, number]).filter(([, n]) => n > 0).slice(0, 3);
-        need.forEach(([id, n], i) => { const img = this.icon(id); const ix = x + i * 40 - (need.length - 1) * 20 + 16; if (img.complete && img.naturalWidth) g.drawImage(img, ix, y - 34, 24, 24); text(g, String(n), ix + 22, y - 14, AMB, 16); });
-      }
+      // the site's name and what it is waiting for, in words, over the strip
+      const need = Object.entries(s.need).map(([id, n]) => [id, (n ?? 0) - (s.got[id] ?? 0)] as [string, number]).filter(([, n]) => n > 0);
+      const l1 = `${s.def.name} (site)`, l2 = s.stage === 'build' ? `Building ${Math.round(Math.min(1, s.work / s.workNeed) * 100)}%${s.builders ? `, ${s.builders} on it` : ', pod crane'}` : need.length ? `Needs ${need.slice(0, 2).map(([id, n]) => `${n} ${ITEMS[id]?.name ?? id}`).join(', ')}${need.length > 2 ? ' ...' : ''}` : 'Supplied';
+      text(g, l1, Math.round(sx - bitMeasure(l1) / 2), y - 26, WHITE, 16);
+      text(g, l2, Math.round(sx - bitMeasure(l2) / 2), y - 8, s.stage === 'build' ? AMB : OKL, 16);
     }
   }
   /** brackets, dimensions in metres and a facing chevron round the ghost's footprint */

@@ -12,6 +12,7 @@ import { Px, P, INK, rivet } from '../kit/px';
 import { Counter, pop, floatUp, burst, squash } from '../kit/juice';
 import { uiSfx } from '../kit/sound';
 import { installKitStyle } from '../kit/style';
+import { bindTip } from '../kit/panel';
 import { itemDef, itemIcon, ITEMS, type ItemId } from '../../factory/items';
 
 type G = Game & Record<string, any>;
@@ -48,6 +49,7 @@ export class StorageWidget {
   private view: ModelView;
   private slots: { cat: Cat; el: HTMLDivElement; icon: HTMLImageElement; count: Counter; last: number }[] = [];
   private acc = 0; private first = true; private lastFloat = 0;
+  private byCat: Record<string, Map<string, number>> = {}; private cap: HTMLDivElement; private names: HTMLDivElement;
   constructor(readonly g: G) {
     installKitStyle(); injectStorageCSS();
     const el = this.el = document.createElement('div'); el.className = 'h7-store';
@@ -79,18 +81,38 @@ export class StorageWidget {
       s.addEventListener('click', (e) => { e.stopPropagation(); squash(s, 0.8); this.openFor(cat); });
       this.slots.push({ cat, el: s, icon: ic, count, last: 0 });
     }
-    shelf.append(row, plank, counts);
+    this.names = document.createElement('div'); this.names.className = 'h7-shelf-names';
+    for (const cat of CATS) { const n = document.createElement('div'); n.className = 'k7-t16 h7-res-name'; n.textContent = cat.name; this.names.append(n); }
+    this.cap = document.createElement('div'); this.cap.className = 'k7-t16 h7-store-cap'; this.cap.textContent = 'COLONY STORES';
+    shelf.append(this.cap, row, plank, counts, this.names);
     el.append(crate, shelf);
+    // tooltips with the real contents: every item in the category by name, and what a click does
+    this.slots.forEach((sl) => bindTip(sl.el, () => {
+      const m = this.byCat[sl.cat.k] ?? new Map<string, number>(), list = [...m.entries()].sort((a, b) => b[1] - a[1]);
+      const rows: [string, string | number][] = list.slice(0, 9).map(([it, n]) => [ITEMS[it as ItemId]?.name ?? it, n]);
+      if (list.length > 9) rows.push([`+${list.length - 9} more kinds`, list.slice(9).reduce((q, [, n]) => q + n, 0)]);
+      return { title: `${sl.cat.name}: ${sl.last}`, sub: 'TOTAL IN ALL COLONY STORES', rows, status: list.length ? ['Click: open the store that holds the most', 'info'] : ['None in store yet', 'warn'] };
+    }));
+    bindTip(crate, () => {
+      const st = this.g.storage, all = (st?.all?.() ?? []) as { contents(): { n: number }[] }[];
+      const items = all.reduce((q, c) => q + c.contents().reduce((a, b) => a + b.n, 0), 0);
+      return { title: 'COLONY STORES', desc: 'Everything the colony has hauled in: the pod hold and every crate and silo you build.', rows: [['Containers', all.length], ['Items stored', items]], hint: [['CLICK', 'open the container grids']] };
+    });
     // the icon art arrives late (item sprites load lazily): refresh once a second for a while
     let tries = 0; const t = setInterval(() => { for (const s of this.slots) s.icon.src = itemIcon(s.cat.icon, 64); if (++tries > 6) clearInterval(t); }, 1200);
   }
   private totals(): Record<string, number> {
     const out: Record<string, number> = {}; for (const c of CATS) out[c.k] = 0;
     const st = this.g.storage; if (!st) return out;
-    for (const c of st.all()) for (const s of c.contents()) {
+    const by: Record<string, Map<string, number>> = {}; for (const c of CATS) by[c.k] = new Map();
+    let n = 0;
+    for (const c of st.all()) { n++; for (const s of c.contents()) {
       const d = ITEMS[s.item] ? itemDef(s.item) : null; if (!d) continue;
-      for (const cat of CATS) if (cat.test(d)) { out[cat.k] += s.n; break; }
-    }
+      for (const cat of CATS) if (cat.test(d)) { out[cat.k] += s.n; by[cat.k].set(s.item, (by[cat.k].get(s.item) ?? 0) + s.n); break; }
+    } }
+    this.byCat = by;
+    const tot = Object.values(out).reduce((a, b) => a + b, 0);
+    this.cap.textContent = `COLONY STORES · ${tot} ITEMS IN ${n} ${n === 1 ? 'CONTAINER' : 'CONTAINERS'}`;
     return out;
   }
   update(dt: number) {
@@ -154,6 +176,9 @@ function injectStorageCSS() {
 .h7-plank { display: block; position: relative; z-index: 0; }
 .h7-shelf-counts { display: flex; gap: 6px; padding: 0 4px 0 8px; margin-top: -6px; }
 .h7-res-n { width: 64px; display: flex; justify-content: center; }
+.h7-shelf-names { display: flex; gap: 6px; padding: 0 4px 0 8px; margin-top: -2px; }
+.h7-res-name { width: 64px; text-align: center; color: #d8c890; }
+.h7-store-cap { color: #f2c862; margin: 0 0 4px 8px; }
 `;
   document.head.append(s);
 }

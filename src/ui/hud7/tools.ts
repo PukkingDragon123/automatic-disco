@@ -7,32 +7,49 @@ import { TOOLS, TOOL_ORDER, type ToolId } from '../../colony/tools';
 import type { PartSlot } from '../kit/models';
 
 type G = Game & Record<string, any>;
-export interface PartDef { id: string; slot: PartSlot; name: string; base?: ToolId; power?: number; reach?: number; speed?: number; draw?: number; mass?: number; cost: Record<string, number> }
+export interface PartDef { id: string; slot: PartSlot; name: string; desc?: string; base?: ToolId; power?: number; reach?: number; speed?: number; draw?: number; mass?: number; cost: Record<string, number> }
 export const PARTS: Record<PartSlot, PartDef[]> = {
   head: [
-    { id: 'lens', slot: 'head', name: 'LENS', base: 'scanner', power: 1, reach: 8, cost: { glass: 2, circuit: 1 } },
-    { id: 'bit', slot: 'head', name: 'CORE BIT', base: 'drill', power: 3, reach: 2, mass: 2, cost: { steel_beam: 1, iron_rod: 2 } },
-    { id: 'claw', slot: 'head', name: 'CLAW', base: 'grab', power: 2, reach: 5, mass: 1, cost: { servo: 2, iron_plate: 2 } },
-    { id: 'torch', slot: 'head', name: 'TORCH', base: 'weld', power: 2, reach: 2, cost: { copper_wire: 4, iron_rod: 1 } },
+    { id: 'lens', slot: 'head', name: 'LENS', desc: 'Emitter dish from the scanner. The tool scans: research data and buried ore at long reach.', base: 'scanner', power: 1, reach: 8, cost: { glass: 2, circuit: 1 } },
+    { id: 'bit', slot: 'head', name: 'CORE BIT', desc: 'Twin-flute spinning bit from the core drill. The tool bores rock and ore seams; short reach, heavy.', base: 'drill', power: 3, reach: 2, mass: 2, cost: { steel_beam: 1, iron_rod: 2 } },
+    { id: 'claw', slot: 'head', name: 'CLAW', desc: 'Three-finger gravity claw from the grab. The tool seizes a thing and throws it where you point.', base: 'grab', power: 2, reach: 5, mass: 1, cost: { servo: 2, iron_plate: 2 } },
+    { id: 'torch', slot: 'head', name: 'TORCH', desc: 'Nozzle and arc from the welder. The tool welds damaged machines and hull plates whole.', base: 'weld', power: 2, reach: 2, cost: { copper_wire: 4, iron_rod: 1 } },
   ],
   core: [
-    { id: 'cell', slot: 'core', name: 'CELL', power: 1, speed: 1, draw: 2, mass: 1, cost: { circuit: 1, copper_wire: 2 } },
-    { id: 'reactor', slot: 'core', name: 'REACTOR', power: 3, speed: 0, draw: 6, mass: 3, cost: { crystal: 2, circuit: 2 } },
-    { id: 'motor', slot: 'core', name: 'MOTOR', power: 2, speed: 2, draw: 4, mass: 2, cost: { motor: 1, gear: 2 } },
+    { id: 'cell', slot: 'core', name: 'CELL', desc: 'Fuel cell with a sight glass. Light and frugal: modest output, quick handling.', power: 1, speed: 1, draw: 2, mass: 1, cost: { circuit: 1, copper_wire: 2 } },
+    { id: 'reactor', slot: 'core', name: 'REACTOR', desc: 'Pulsing field core. The most output, but it draws hard and is the heaviest core.', power: 3, speed: 0, draw: 6, mass: 3, cost: { crystal: 2, circuit: 2 } },
+    { id: 'motor', slot: 'core', name: 'MOTOR', desc: 'Geared motor train. Balanced output and the best handling of the cores.', power: 2, speed: 2, draw: 4, mass: 2, cost: { motor: 1, gear: 2 } },
   ],
   grip: [
-    { id: 'pistol', slot: 'grip', name: 'PISTOL GRIP', speed: 1, mass: 0, cost: { iron_plate: 1 } },
-    { id: 'brace', slot: 'grip', name: 'BRACE', power: 1, reach: 2, speed: -1, mass: 2, cost: { iron_rod: 2, iron_plate: 1 } },
-    { id: 'handle', slot: 'grip', name: 'T-HANDLE', speed: 2, reach: -1, mass: 1, cost: { iron_rod: 1 } },
+    { id: 'pistol', slot: 'grip', name: 'PISTOL GRIP', desc: 'One-hand pistol grip with a trigger guard. Light and quick to swing.', speed: 1, mass: 0, cost: { iron_plate: 1 } },
+    { id: 'brace', slot: 'grip', name: 'BRACE', desc: 'Shoulder brace. Steadier, for more output and reach; slower to turn.', power: 1, reach: 2, speed: -1, mass: 2, cost: { iron_rod: 2, iron_plate: 1 } },
+    { id: 'handle', slot: 'grip', name: 'T-HANDLE', desc: 'Two-hand T-handle. The fastest handling; a little less reach.', speed: 2, reach: -1, mass: 1, cost: { iron_rod: 1 } },
   ],
   mod: [
-    { id: 'none', slot: 'mod', name: 'NONE', cost: {} },
-    { id: 'scope', slot: 'mod', name: 'SCOPE', reach: 4, draw: 1, mass: 1, cost: { glass: 1, iron_rod: 1 } },
-    { id: 'tank', slot: 'mod', name: 'TANK', power: 2, draw: 2, mass: 2, cost: { iron_plate: 2 } },
-    { id: 'antenna', slot: 'mod', name: 'ANTENNA', reach: 6, draw: 1, cost: { copper_wire: 3 } },
+    { id: 'none', slot: 'mod', name: 'NONE', desc: 'Nothing bolted on: no extra draw, no extra mass.', cost: {} },
+    { id: 'scope', slot: 'mod', name: 'SCOPE', desc: 'Sweeping lens from the scanner. Adds reach for a little draw.', reach: 4, draw: 1, mass: 1, cost: { glass: 1, iron_rod: 1 } },
+    { id: 'tank', slot: 'mod', name: 'TANK', desc: 'Seed hopper refitted as a pressure tank. Adds output; draws more and weighs more.', power: 2, draw: 2, mass: 2, cost: { iron_plate: 2 } },
+    { id: 'antenna', slot: 'mod', name: 'ANTENNA', desc: 'Rotating beacon from the winch hook. Adds a lot of reach for little draw.', reach: 6, draw: 1, cost: { copper_wire: 3 } },
   ],
 };
 export const PART_SLOTS: PartSlot[] = ['head', 'core', 'grip', 'mod'];
+/** what each bin is for */
+export const SLOT_INFO: Record<PartSlot, { name: string; desc: string }> = {
+  head: { name: 'HEAD', desc: 'The working end: it decides what the tool does.' },
+  core: { name: 'CORE', desc: 'The power plant: output against power draw and mass.' },
+  grip: { name: 'GRIP', desc: 'How it is held: handling, steadiness and reach.' },
+  mod: { name: 'MOD', desc: 'An optional add-on bolted on top: reach or output.' },
+};
+/** the stats spelled out, with units (raw part points x k) */
+export const STAT_INFO: Record<keyof Stats, { name: string; short: string; unit: string; k: number; signed?: boolean; desc: string }> = {
+  power: { name: 'Output', short: 'OUTPUT', unit: 'kW', k: 5, desc: 'work the head does' },
+  reach: { name: 'Reach', short: 'REACH', unit: 'm', k: 1, desc: 'how far from the pod it works' },
+  speed: { name: 'Handling', short: 'HANDLING', unit: '', k: 1, signed: true, desc: 'how fast it swings and cycles' },
+  draw: { name: 'Power draw', short: 'DRAW', unit: 'kW', k: 1, desc: 'taken from the colony grid while in use' },
+  mass: { name: 'Mass', short: 'MASS', unit: 'kg', k: 1, desc: 'heavier tools are steadier but slower' },
+};
+/** a stat as text: value with its unit ('+2', '15 kW', '8 m') */
+export function statText(k: keyof Stats, v: number): string { const i = STAT_INFO[k], n = v * i.k; return (i.signed && n > 0 ? '+' : '') + n + (i.unit ? ' ' + i.unit : ''); }
 export const partOf = (slot: PartSlot, id?: string) => PARTS[slot].find((p) => p.id === id) ?? PARTS[slot][0];
 export interface CustomTool { id: string; name: string; parts: Record<PartSlot, string>; base: ToolId; stats: Stats }
 export interface Stats { power: number; reach: number; speed: number; draw: number; mass: number }

@@ -140,7 +140,7 @@ function injectCSS() {
   s.textContent = `
 .trp-bark { position: fixed; left: calc(50% - 450px); bottom: 172px; z-index: 600; pointer-events: none; opacity: 0; transform: translateY(8px); transition: opacity .2s ease-out, transform .25s cubic-bezier(.3,1.5,.5,1); }
 .trp-bark.on { opacity: 1; transform: none; }
-body.trp-cards-on .trp-bark { bottom: 214px; }
+body.trp-cards-on .trp-bark { left: 540px; bottom: 300px; }
 .trp-bark canvas { position: relative; display: block; image-rendering: pixelated; }
 .trp-bark .trp-bark-fade { position: absolute; left: -60px; right: 380px; top: -18px; bottom: -14px; z-index: -1; background: radial-gradient(closest-side, rgba(6,7,10,.6), rgba(6,7,10,.32) 60%, rgba(6,7,10,0)); }
 `;

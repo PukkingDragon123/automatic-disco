@@ -7,7 +7,7 @@
 // (its job, carry, speed, armour, sight, control, power). FILE pays the parts' bill from the stores and files the
 // fitted worker as a new design. No full 3D room, no text slop.
 import * as THREE from 'three';
-import { shipCSS, div, place, artCanvas, S, keyCap, chip, iconOf, itemImg, clean, ringSprite } from '../../ship/screen/ui';
+import { shipCSS, div, place, artCanvas, S, keyCap, chip, iconOf, itemImg, clean, ringSprite, textEl } from '../../ship/screen/ui';
 import { KitView, type KView } from '../../ship/screen/kitview';
 import { plate, strip } from '../kit/mat';
 import { Px, P, INK, hex, bevel, rivet, screw, mixHex, glassWell } from '../kit/px';
@@ -20,7 +20,8 @@ import { toonify } from '../kit/models';
 import { floatIcon } from '../kit/floatIcon';
 import { buildSpeciesModel, type SpeciesModel } from '../../life/creatureMesh';
 import type { Design } from '../../life/design';
-import { CYBER, CYBER_PARTS, slotsFor, fitPart, unfitPart, fitCost, type Slot, type CyberPart } from '../../life/cyber/catalog';
+import { CYBER, CYBER_PARTS, SLOT_NAME, slotsFor, fitPart, unfitPart, fitCost, type Slot, type CyberPart } from '../../life/cyber/catalog';
+import { ITEMS } from '../../factory/items';
 import { workerProfile, type WorkerProfile } from '../../life/cyber/roles';
 import { isAnatomy } from '../../life/titans/builders';
 import { beastDesign } from '../../life/bestiary';
@@ -30,6 +31,12 @@ import { have, pay } from '../../research/util';
 export interface LabFitOpts { close?: (after: () => void) => Promise<void> | void; base?: Design }
 const SLOT_ICON: Record<Slot, string> = { head: 'lens', collar: 'brain', tool: 'drill', back: 'crate', power: 'battery', armour: 'shield', fore: 'claw', hind: 'muscle' };
 const ROLE_ICON: Record<string, string> = { hauler: 'crate', miner: 'pick', farmer: 'wheat', builder: 'wrench', operator: 'gear', guard: 'shield', scout: 'telescope' };
+const ROLE_TEXT: Record<string, string> = {
+  hauler: 'carries goods between stores, building sites and machines', miner: 'digs ore, stone and soil out of the deposits', farmer: 'sows, waters and harvests the fields',
+  builder: 'builds and repairs structures and machines', operator: 'runs the machines: feeds them and works their controls', guard: 'stands watch and fights off threats', scout: 'ranges out ahead, spots and surveys',
+};
+const SKILL_NAME: Record<string, string> = { haul: 'Hauling', dig: 'Digging', farm: 'Farming', build: 'Building', operate: 'Operating', guard: 'Guarding', scout: 'Scouting' };
+const SLOT_SHORT: Record<Slot, string> = { head: 'Sensor head', collar: 'Control collar', tool: 'Tool arm', back: 'Back rig', power: 'Power pack', armour: 'Plating', fore: 'Forelimbs', hind: 'Hind limbs' };
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const cloneD = (d: Design): Design => JSON.parse(JSON.stringify(d));
 
@@ -104,7 +111,7 @@ export class LabFit {
   readonly el: HTMLDivElement;
   private frameEl: HTMLDivElement; private bg: HTMLCanvasElement;
   private cv: HTMLCanvasElement; private ov: HTMLCanvasElement; private oc: CanvasRenderingContext2D;
-  private rack: HTMLDivElement; private stats: HTMLDivElement; private nameEl: HTMLDivElement;
+  private rack: HTMLDivElement; private stats: HTMLDivElement; private nameEl: HTMLDivElement; private roleEl: HTMLDivElement; private statusEl: HTMLDivElement; private slotLabels = new Map<Slot, HTMLDivElement>();
   private tag: HTMLDivElement;
   private AW = 0; private AH = 0; private well = { x: 0, y: 0, w: 0, h: 0 }; private rackR = { x: 0, y: 0, w: 0, h: 0 };
   private bases: Design[] = []; private bi = 0;
@@ -131,6 +138,8 @@ export class LabFit {
     this.rack = div('s7-abs', this.frameEl);
     this.stats = div('s7-abs', this.frameEl); this.stats.style.display = 'flex'; this.stats.style.gap = 3 * S + 'px'; this.stats.style.alignItems = 'center';
     this.nameEl = div('s7-abs k7-t16', this.frameEl); this.nameEl.style.color = hex(P.brass[0]); this.nameEl.style.textShadow = `1px 1px 0 ${hex(P.brass[5])}`; this.nameEl.style.textAlign = 'center';
+    this.roleEl = div('s7-abs', this.frameEl); this.roleEl.style.pointerEvents = 'none';
+    this.statusEl = div('s7-abs', this.frameEl); this.statusEl.style.pointerEvents = 'none';
     this.tag = div('s7-tag off', this.frameEl); this.tag.style.zIndex = '8';
     document.body.append(this.el);
     if (game) { this.wasPaused = !!game.paused; game.paused = true; }
@@ -182,6 +191,8 @@ export class LabFit {
     for (const c of [this.cv, this.ov]) { c.width = this.well.w - 8; c.height = this.well.h - 8; place(c, this.well.x + 4, this.well.y + 4, this.well.w - 8, this.well.h - 8); c.getContext('2d')!.imageSmoothingEnabled = false; }
     place(this.rack, this.rackR.x, this.rackR.y, this.rackR.w, this.rackR.h);
     place(this.stats, this.well.x + 4, H - 46, this.well.w - 8, 34);
+    place(this.roleEl, this.well.x + 10, this.well.y + this.well.h - 40, this.well.w - 20);
+    place(this.statusEl, this.well.x + 10, this.well.y + 8, this.well.w - 20);
     place(this.nameEl, 40, 13, 160);
     if (!this.fileKey) {
       this.fileKey = keyCap(this.frameEl, { label: 'FILE', icon: iconOf('dna', 'amber'), w: 120, h: 34, mat: 'orange', sound: 'confirm', off: () => this.fileOff(), onClick: () => this.file() });
@@ -241,6 +252,8 @@ export class LabFit {
       const r = pads[i], el = div('s7-abs', this.rack); place(el, r.x - this.rackR.x, r.y - this.rackR.y, r.w, r.h); el.style.cursor = 'grab'; el.style.touchAction = 'none'; el.dataset.part = pt.id;
       const v = new ModelView(partModel(pt.id), { w: r.w, h: r.h, scale: S, spin: 0.5, hotSpin: 2.8, pitch: 0.45, zoom: 1.0, shadow: [2, 2, 0.45], frames: 32 });
       el.append(v.cv);
+      const nm = textEl(clean(pt.name), { color: '#e8dcc0', wrap: false }); nm.style.position = 'absolute'; nm.style.left = 2 * S + 'px'; nm.style.bottom = '0'; nm.style.width = (r.w - 4) * S + 'px'; nm.style.overflow = 'hidden'; nm.style.textOverflow = 'clip'; nm.style.pointerEvents = 'none'; el.append(nm);
+      el.title = `${clean(pt.name)} (${SLOT_SHORT[pt.slot]}): ${clean(pt.desc)}`;
       el.addEventListener('pointerenter', (e) => { v.hot(true); v.point(e.clientX, e.clientY); uiSfx('hover', 0.4); this.wantSlot = pt.slot; this.showTag(pt, el); this.dirty = true; });
       el.addEventListener('pointermove', (e) => v.point(e.clientX, e.clientY));
       el.addEventListener('pointerleave', () => { v.hot(false); if (!this.drag) { this.wantSlot = null; this.hideTag(); this.dirty = true; } });
@@ -252,18 +265,22 @@ export class LabFit {
   private markFitted() { for (const x of this.views) { const on = (this.d.fit ?? []).includes(x.id); x.el.style.filter = on ? 'brightness(.45) saturate(.4)' : ''; } }
   private showTag(pt: CyberPart, el: HTMLElement) {
     const cur = this.prof ?? workerProfile(this.d), next = workerProfile({ ...this.d, fit: fitPart(this.d.fit, pt.id) });
-    const chips: HTMLElement[] = [];
-    const nm = div('k7-t16'); nm.textContent = clean(pt.name.toUpperCase()); nm.style.width = '100%'; chips.push(nm);
-    for (const [it, n] of Object.entries(pt.cost)) if (n > 0) chips.push(chip(itemImg(it, 32), `${this.game ? have(this.game, it) : n}/${n}`, { ok: !this.game || have(this.game, it) >= n }));
-    const dl = (ic: string, a: number, b: number, f = 0) => { const dv = b - a; if (Math.abs(dv) < 0.05) return; chips.push(chip(iconOf(ic, dv > 0 ? 'lit' : 'red'), (dv > 0 ? '+' : '') + dv.toFixed(f), { mat: dv > 0 ? 'enamel' : 'enamel', ok: dv > 0 })); };
-    dl('crate', cur.carry, next.carry); dl('drone', cur.speed, next.speed, 1); dl('shield', cur.armour * 10, next.armour * 10); dl('lens', cur.sight, next.sight); dl('brain', cur.control * 10, next.control * 10);
-    if (next.role !== cur.role) chips.push(chip(iconOf(ROLE_ICON[next.role] ?? 'gear', 'amber'), next.roleName.slice(0, 8)));
+    const W = 230, col: HTMLElement[] = [];
+    col.push(textEl(clean(pt.name.toUpperCase()), { color: '#ffe7a8', wrap: false }), textEl(`Fits the ${SLOT_SHORT[pt.slot].toLowerCase()} slot.`, { color: '#9ab8d8', wrap: false }), textEl(clean(pt.desc), { color: '#d8ccb0' }));
+    col.push(textEl('PARTS IT TAKES', { color: '#c8a050', wrap: false }));
+    for (const [it, n] of Object.entries(pt.cost)) if (n > 0) { const h = this.game ? have(this.game, it) : n; col.push(textEl(`${n} x ${clean(ITEMS[it]?.name ?? it)} (have ${h})`, { color: h >= n ? '#b8e0a0' : '#ff9a80', wrap: false })); }
+    const ch: string[] = [];
+    const dl = (name: string, a: number, b: number, unit: string, f = 0) => { const d = b - a; if (Math.abs(d) >= 0.05) ch.push(`${name} ${d > 0 ? '+' : ''}${d.toFixed(f)}${unit}`); };
+    dl('Carry', cur.carry, next.carry, ' units'); dl('Speed', cur.speed, next.speed, ' m/s', 1); dl('Armour', cur.armour * 100, next.armour * 100, '%'); dl('Sight', cur.sight, next.sight, ' m'); dl('Control', cur.control * 100, next.control * 100, '%'); dl('Power', cur.needs.power, next.needs.power, '/min', 1);
+    if (ch.length) { col.push(textEl('WHAT IT CHANGES', { color: '#c8a050', wrap: false })); col.push(textEl(ch.join(', ') + '.', { color: '#e8dcc0' })); }
+    if (next.role !== cur.role) col.push(textEl(`Makes it a ${next.roleName}: it ${ROLE_TEXT[next.role] ?? ''}.`, { color: '#ffd890' }));
+    col.push(textEl('Drag it onto its glowing slot, or click it.', { color: '#8a8478', wrap: false }));
     this.tag.replaceChildren();
-    const pl = div('s7-abs', this.tag), row = div('', this.tag); row.style.position = 'relative'; row.style.padding = `${5 * S}px ${6 * S}px`; row.style.display = 'flex'; row.style.flexWrap = 'wrap'; row.style.gap = 2 * S + 'px'; row.style.width = 190 * S + 'px';
-    row.append(...chips);
-    requestAnimationFrame(() => { const w = Math.ceil(row.offsetWidth / S), h = Math.ceil(row.offsetHeight / S); const cv = plate(w, h, { mat: 'steel', seed: 3, chamfer: 3, wear: 0.5, lip: 2 }).canvas(); cv.style.width = w * S + 'px'; cv.style.height = h * S + 'px'; pl.replaceChildren(cv); });
+    const pl = div('s7-abs', this.tag), box = div('', this.tag); box.style.position = 'relative'; box.style.padding = `${6 * S}px ${7 * S}px`; box.style.display = 'flex'; box.style.flexDirection = 'column'; box.style.gap = '0'; box.style.width = W * S + 'px';
+    box.append(...col);
+    requestAnimationFrame(() => { const w = Math.ceil(box.offsetWidth / S), h = Math.ceil(box.offsetHeight / S); const cv = plate(w, h, { mat: 'gun', seed: 3, chamfer: 3, wear: 0.5, lip: 2, screws: true }).canvas(); cv.style.width = w * S + 'px'; cv.style.height = h * S + 'px'; pl.replaceChildren(cv); });
     const fr = this.frameEl.getBoundingClientRect(), r = el.getBoundingClientRect();
-    place(this.tag, Math.round((r.left - fr.left) / S - 100), Math.round((r.bottom - fr.top) / S + 2));
+    place(this.tag, Math.round((r.left - fr.left) / S - W - 12), Math.round(Math.min((r.top - fr.top) / S, this.AH - 260)));
     this.tag.style.transform = 'none'; this.tag.classList.remove('off');
   }
   private hideTag() { this.tag.classList.add('off'); }
@@ -304,18 +321,33 @@ export class LabFit {
   private paintStats() {
     const p = this.prof; if (!p) return;
     const prev = this.lastStats;
-    const vals: [string, string, number][] = [['crate', String(Math.round(p.carry)), p.carry], ['drone', p.speed.toFixed(1), p.speed], ['shield', String(Math.round(p.armour * 10)), p.armour * 10], ['lens', String(Math.round(p.sight)), p.sight], ['brain', String(Math.round(p.control * 10)), p.control * 10], ['battery', p.needs.power < 0 ? 'OWN' : p.needs.power.toFixed(1), p.needs.power]];
-    const role = chip(iconOf(ROLE_ICON[p.role] ?? 'gear', 'amber'), p.roleName, { iconPx: 18, mat: 'brass' });
+    const vals: [string, string, number][] = [
+      ['crate', `CARRY ${Math.round(p.carry)}`, p.carry], ['drone', `SPEED ${p.speed.toFixed(1)} M/S`, p.speed], ['shield', `ARMOUR ${Math.round(p.armour * 100)}%`, p.armour * 100],
+      ['lens', `SIGHT ${Math.round(p.sight)} M`, p.sight], ['brain', `CONTROL ${Math.round(p.control * 100)}%`, p.control * 100], ['battery', p.needs.power < 0 ? 'POWER: OWN CELL' : `POWER ${p.needs.power.toFixed(1)}/MIN`, p.needs.power],
+    ];
     const chips = vals.map(([ic, s]) => this.stat(ic, s));
-    // the top skills as small bars of pips
-    const top = (Object.entries(p.skills) as [string, number][]).sort((a, b) => b[1] - a[1]).slice(0, 2).filter(([, n]) => n > 0.5);
-    for (const [k, n] of top) chips.push(chip(iconOf(({ haul: 'crate', dig: 'pick', farm: 'wheat', build: 'wrench', operate: 'gear', guard: 'shield', scout: 'telescope' } as Record<string, string>)[k] ?? 'gear', 'lit'), String(Math.round(n)), { iconPx: 18, mat: 'brass' }));
-    this.stats.replaceChildren(role, ...chips);
-    // what changed rolls up over its chip
+    this.stats.replaceChildren(...chips);
+    this.stats.style.flexWrap = 'wrap'; this.stats.style.gap = 2 * S + 'px';
+    // the job, explained, with its best skills and what it needs to keep working
+    const top = (Object.entries(p.skills) as [string, number][]).sort((a, b) => b[1] - a[1]).slice(0, 3).filter(([, n]) => n > 0.5);
+    this.roleEl.replaceChildren(
+      textEl(`${p.roleName}: it ${ROLE_TEXT[p.role] ?? 'works'}.`, { color: '#ffd890' }),
+      textEl(`Best at ${top.map(([k, n]) => `${SKILL_NAME[k] ?? k} ${Math.round(n)}/10`).join(', ') || 'nothing yet'}. Eats ${p.needs.food.toFixed(1)} biomass/min, works ${Math.round(p.needs.work)} min then rests ${Math.round(p.needs.rest)}.`, { color: '#d8ccb0' }),
+    );
     if (prev) vals.forEach(([, , n], i) => { const d = n - prev[i]; if (Math.abs(d) > 0.05) setTimeout(() => { const r = chips[i].getBoundingClientRect(); floatUp(r.left + r.width / 2, r.top - 4, (d > 0 ? '+' : '') + (Math.abs(d) < 3 ? d.toFixed(1) : Math.round(d)), { color: d > 0 ? '#b8f0a0' : '#ffa090', size: 16 }); pop(chips[i], 0.9); }, 60 + i * 50); });
-    if (prev && prev[6] !== (p.role as unknown as number)) pop(role, 1);
+    if (prev && prev[6] !== (p.role as unknown as number)) pop(this.roleEl, 1);
     this.lastStats = [...vals.map((v) => v[2]), p.role as unknown as number];
+    this.paintStatus();
     this.fileKey?.refresh();
+  }
+  /** the bench's status line: what to do next */
+  private paintStatus() {
+    const np = this.newParts(), b = this.bill(), short = this.game ? Object.entries(b).filter(([k, n]) => have(this.game, k) < n) : [];
+    const n = Object.values(b).reduce((a, x) => a + x, 0);
+    const s = !np.length ? 'Drag a part from the rack onto its glowing slot. Click a fitted slot to take it off.'
+      : short.length ? `Short of ${short.map(([k, x]) => `${x - have(this.game, k)} ${clean(ITEMS[k]?.name ?? k)}`).join(', ')}: the stores cannot pay for the new parts yet.`
+      : `${np.length} new part${np.length > 1 ? 's' : ''}: FILE pays ${n} items from the stores and files this worker as a new design.`;
+    this.statusEl.replaceChildren(textEl(s, { color: short.length ? '#ff9a80' : np.length ? '#b8f0a0' : '#d8ccb0' }));
   }
   private lastStats: number[] | null = null;
 
@@ -481,7 +513,16 @@ export class LabFit {
   private drawOverlay(dt: number) {
     const c = this.oc; c.clearRect(0, 0, this.ov.width, this.ov.height);
     if (!this.spec) return;
+    const seen = new Set<Slot>();
     for (const p of this.slotPts()) {
+      seen.add(p.s);
+      let lb = this.slotLabels.get(p.s);
+      if (!lb) { lb = textEl(SLOT_SHORT[p.s], { wrap: false }); lb.className += ' s7-abs'; lb.style.pointerEvents = 'none'; lb.style.zIndex = '3'; this.frameEl.append(lb); this.slotLabels.set(p.s, lb); }
+      const on = p.s === this.hotSlot || p.s === this.wantSlot;
+      lb.textContent = p.fitted ? `${SLOT_SHORT[p.s]}: ${clean(CYBER[p.fitted]?.name ?? '')}` : SLOT_SHORT[p.s];
+      lb.style.color = on ? '#fff0c0' : p.fitted ? '#ffd890' : '#c8c0a8';
+      lb.style.opacity = p.facing || on ? '1' : '0.5';
+      place(lb, Math.round(this.well.x + 4 + p.x + 12), Math.round(this.well.y + 4 + p.y - 5));
       const hot = p.s === this.hotSlot, want = p.s === this.wantSlot, R = hot ? 10 + Math.sin(this.t * 10) : want ? 9 + Math.sin(this.t * 6) * 1.5 : p.fitted ? 8 : 7;
       const x = Math.round(p.x), y = Math.round(p.y);
       c.globalAlpha = p.facing || hot || want ? 1 : 0.45;

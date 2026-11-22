@@ -18,6 +18,7 @@ import { uiSfx, type UiSfx } from './sound';
 import { Counter } from './juice';
 
 // ------------------------------------------------------------------ the frame hook
+const HCACHE = new Map<string, HTMLCanvasElement>();
 export interface Frame { cv: HTMLCanvasElement; repaint(): void; dispose(): void; lamp(i: number, on: boolean): void; readonly size: { w: number; h: number } }
 /** hang a 3D housing behind `el`; spec(w, h) gives the housing for the element's current size */
 export function frame(el: HTMLElement, spec: (w: number, h: number) => HousingSpec, o: { pad?: number } = {}): Frame {
@@ -29,11 +30,18 @@ export function frame(el: HTMLElement, spec: (w: number, h: number) => HousingSp
   const draw = () => {
     if (!built) return;
     const { w, h, s } = built, lamps = (s.lamps ?? []).map((l, i) => ({ ...l, on: lampOn[i] ?? l.on }));
-    const H = housing({ ...s, lamps }), W2 = w + pad * 2, H2 = h + pad * 2;
+    const W2 = w + pad * 2, H2 = h + pad * 2;
     if (cv.width !== W2 || cv.height !== H2) { cv.width = W2; cv.height = H2; }
     const c = cv.getContext('2d')!; c.clearRect(0, 0, W2, H2);
+    // housings of the same size and spec are rendered once (tooltips, repeated cards)
+    const key = `${w}x${h}|${pad}|` + JSON.stringify({ ...s, lamps });
+    const hit = HCACHE.get(key);
+    if (hit) { c.drawImage(hit, 0, 0); return; }
+    const H = housing({ ...s, lamps });
     shoot(H.root, w, h, pad, c, 0, 0, { shadow: [3, 4], shadowA: 0.5 });
     disposeTree(H.root);
+    const cp = document.createElement('canvas'); cp.width = W2; cp.height = H2; cp.getContext('2d')!.drawImage(cv, 0, 0);
+    HCACHE.set(key, cp); if (HCACHE.size > 60) HCACHE.delete(HCACHE.keys().next().value as string);
   };
   const repaint = (force = false) => {
     const w = Math.round(el.offsetWidth), h = Math.round(el.offsetHeight);
@@ -66,7 +74,11 @@ export interface PanelOpts {
   /** stencilled tiny words on the hood / foot */
   stencil?: string;
 }
-export interface Panel { el: HTMLDivElement; body: HTMLDivElement; frame: Frame | null; lamp(i: number, on: boolean): void; setTitle(t: string): void; repaint(): void; dispose(): void }
+export interface Panel {
+  el: HTMLDivElement; body: HTMLDivElement; frame: Frame | null; lamp(i: number, on: boolean): void; setTitle(t: string): void; repaint(): void; dispose(): void;
+  /** append a section header / a paragraph / a key-value row / a status line to the body (Alagard, Limbophobia's panel style) */
+  section(title: string, right?: string): HTMLDivElement; text(t: string, o?: TextOpts): HTMLDivElement; kv(key: string, value: string | number, o?: KvOpts): Kv; status(t: string, kind?: StatusKind): Status;
+}
 /** the housing for a stock panel of w x h */
 export function panelSpec(w: number, h: number, o: PanelOpts = {}): HousingSpec {
   const seed = o.seed ?? 11, head = o.head ?? (o.title ? 34 : 14), foot = o.foot ?? 18, side = o.side ?? 10;
@@ -106,7 +118,111 @@ export function panel(o: PanelOpts = {}): Panel {
     setTitle: (t) => { if (t === title) return; title = t; fr?.repaint(); },
     repaint: () => fr?.repaint(),
     dispose: () => { fr?.dispose(); el.remove(); },
+    section: (t, r) => { const e = section(t, r); body.append(e); return e; },
+    text: (t, oo) => { const e = para(t, oo); body.append(e); return e; },
+    kv: (k, v, oo) => { const e = kv(k, v, oo); body.append(e.el); return e; },
+    status: (t, kind) => { const e = status(t, kind); body.append(e.el); return e; },
   };
+}
+
+// ------------------------------------------------------------------ TEXT (all Alagard 16, Limbophobia's panel style)
+export interface TextOpts { dim?: boolean; color?: string; cls?: string }
+/** a section header: an engraved strip (dark groove + lit lip) with the title in amber, an optional value on the right */
+export function section(title: string, right?: string): HTMLDivElement {
+  installPanelCSS();
+  const e = document.createElement('div'); e.className = 'kp-sec';
+  const t = document.createElement('span'); t.className = 'k7-t16 kp-sec-t'; t.textContent = title; e.append(t);
+  if (right !== undefined) { const r = document.createElement('span'); r.className = 'k7-t16 kp-sec-r'; r.textContent = right; e.append(r); }
+  return e;
+}
+/** body text: wraps, cream (dim: the quieter grey-green) */
+export function para(text: string, o: TextOpts = {}): HTMLDivElement {
+  installPanelCSS();
+  const e = document.createElement('div'); e.className = 'k7-t16 kp-p' + (o.dim ? ' dim' : '') + (o.cls ? ' ' + o.cls : ''); e.textContent = text;
+  if (o.color) e.style.color = o.color;
+  return e;
+}
+export interface KvOpts { unit?: string; color?: string; title?: string; bar?: number; barCol?: string }
+export interface Kv { el: HTMLDivElement; set(v: string | number, o?: { unit?: string; color?: string; bar?: number }): void }
+/** a key / value row: the key in amber, a dotted leader, the value in cream with its unit (a thin bar under it optional) */
+export function kv(key: string, value: string | number, o: KvOpts = {}): Kv {
+  installPanelCSS();
+  const e = document.createElement('div'); e.className = 'kp-kv';
+  if (o.title) e.title = o.title;
+  const k = document.createElement('span'); k.className = 'k7-t16 kp-kv-k'; k.textContent = key;
+  const d = document.createElement('span'); d.className = 'kp-kv-d';
+  const v = document.createElement('span'); v.className = 'k7-t16 kp-kv-v';
+  const bar = document.createElement('i'); bar.className = 'kp-kv-bar';
+  e.append(k, d, v);
+  const set = (val: string | number, oo: { unit?: string; color?: string; bar?: number } = {}) => {
+    const u = oo.unit ?? o.unit; v.textContent = String(val) + (u ? ' ' + u : '');
+    v.style.color = oo.color ?? o.color ?? '';
+    const b = oo.bar ?? o.bar;
+    if (b !== undefined) { if (!bar.isConnected) e.append(bar); bar.style.setProperty('--k', String(Math.max(0, Math.min(1, b)))); if (o.barCol) bar.style.setProperty('--c', o.barCol); }
+  };
+  set(value);
+  return { el: e, set };
+}
+export type StatusKind = 'ok' | 'warn' | 'bad' | 'info' | 'busy';
+export interface Status { el: HTMLDivElement; set(t: string, kind?: StatusKind): void }
+/** a status line: a lamp (green ok, amber warn, red bad, teal info, blinking busy) and what is happening / missing / next */
+export function status(text: string, kind: StatusKind = 'info'): Status {
+  installPanelCSS();
+  const e = document.createElement('div'); e.className = 'kp-st';
+  const l = document.createElement('i'); l.className = 'kp-st-l';
+  const t = document.createElement('span'); t.className = 'k7-t16 kp-st-t';
+  e.append(l, t);
+  const set = (tx: string, k: StatusKind = kind) => { t.textContent = tx; e.dataset.k = k; };
+  set(text, kind);
+  return { el: e, set };
+}
+/** a key hint: [KEY] action, the key on a small cream keycap */
+export function keyHint(key: string, action: string): HTMLSpanElement {
+  installPanelCSS();
+  const e = document.createElement('span'); e.className = 'kp-kh';
+  const k = document.createElement('b'); k.className = 'k7-t16'; k.textContent = key;
+  const a = document.createElement('span'); a.className = 'k7-t16'; a.textContent = action;
+  e.append(k, a); return e;
+}
+
+// ------------------------------------------------------------------ TOOLTIPS with real info (one shared, a small dark housing)
+export interface TipContent { title: string; sub?: string; desc?: string; rows?: [string, string | number, string?][]; status?: [string, StatusKind?]; hint?: [string, string][] }
+let tipP: Panel | null = null, tipFor: Element | null = null;
+function tipPanel() {
+  if (tipP) return tipP;
+  tipP = panel({ tone: 'dark', head: 8, foot: 8, side: 6, lamps: [], hazard: false, glands: 0, vents: false, guards: false, cls: 'kp-tip' });
+  document.body.append(tipP.el); return tipP;
+}
+/** show the tooltip by a screen point (or under / beside an element) */
+export function showTip(c: TipContent, at: { x: number; y: number } | Element) {
+  const p = tipPanel(), b = p.body; b.textContent = '';
+  const h = document.createElement('div'); h.className = 'k7-t16 kp-tip-t'; h.textContent = c.title; b.append(h);
+  if (c.sub) b.append(para(c.sub, { cls: 'kp-tip-sub' }));
+  if (c.desc) b.append(para(c.desc));
+  if (c.rows?.length) { const r = document.createElement('div'); r.className = 'kp-tip-rows'; for (const [k, v, u] of c.rows) r.append(kv(k, v, { unit: u }).el); b.append(r); }
+  if (c.status) b.append(status(c.status[0], c.status[1] ?? 'info').el);
+  if (c.hint?.length) { const hh = document.createElement('div'); hh.className = 'kp-tip-hint'; for (const [k, a] of c.hint) hh.append(keyHint(k, a)); b.append(hh); }
+  const el = p.el; el.classList.add('on');
+  // width snaps to steps so the housing render is reused
+  el.style.width = ''; const w0 = Math.min(360, Math.max(200, el.offsetWidth)); el.style.width = Math.ceil(w0 / 40) * 40 + 'px';
+  el.style.minHeight = ''; const h0 = el.offsetHeight; el.style.minHeight = Math.ceil(h0 / 24) * 24 + 'px';
+  let x: number, y: number;
+  if (at instanceof Element) {
+    const r = at.getBoundingClientRect();
+    // low on the screen: above the element; otherwise beside it
+    if (r.top > innerHeight * 0.55) { x = Math.min(innerWidth - el.offsetWidth - 8, Math.max(8, r.left + r.width / 2 - el.offsetWidth / 2)); y = r.top - el.offsetHeight - 10; }
+    else { x = r.right + 10; y = r.top; if (x + el.offsetWidth > innerWidth - 8) x = r.left - el.offsetWidth - 10; }
+  }
+  else { x = at.x + 18; y = at.y + 14; if (x + el.offsetWidth > innerWidth - 8) x = at.x - el.offsetWidth - 14; }
+  y = Math.max(8, Math.min(innerHeight - el.offsetHeight - 8, y));
+  el.style.left = Math.round(x) + 'px'; el.style.top = Math.round(y) + 'px';
+}
+export function hideTip(from?: Element) { if (from && tipFor && from !== tipFor) return; tipP?.el.classList.remove('on'); tipFor = null; }
+/** give an element a tooltip (content is computed on hover, so it is always current) */
+export function bindTip(el: Element, content: () => TipContent | null, o: { follow?: boolean } = {}) {
+  el.addEventListener('pointerenter', (e) => { const c = content(); if (!c) return; tipFor = el; showTip(c, o.follow ? { x: (e as PointerEvent).clientX, y: (e as PointerEvent).clientY } : el); });
+  if (o.follow) el.addEventListener('pointermove', (e) => { if (tipFor !== el || !tipP) return; const pe = e as PointerEvent, t = tipP.el; let x = pe.clientX + 18; if (x + t.offsetWidth > innerWidth - 8) x = pe.clientX - t.offsetWidth - 14; t.style.left = Math.round(x) + 'px'; t.style.top = Math.round(Math.max(8, Math.min(innerHeight - t.offsetHeight - 8, pe.clientY + 14))) + 'px'; });
+  el.addEventListener('pointerleave', () => hideTip(el));
 }
 
 // ------------------------------------------------------------------ item slots
@@ -254,6 +370,37 @@ export function installPanelCSS() {
 .kkey .kkey-t.k7-t16 { color: #1a1408; text-shadow: 0 1px 0 rgba(255,240,200,.35); }
 .kkey.dis .kkey-t.k7-t16 { color: #5a5444; }
 .kkey-ic { image-rendering: pixelated; }
+.kp-sec { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 10px 0 6px; padding-bottom: 4px; box-shadow: 0 2px 0 #060708, 0 3px 0 rgba(150,160,150,.22); }
+.kp-sec:first-child { margin-top: 0; }
+.kp-body .kp-sec .kp-sec-t { color: #f2c862; letter-spacing: .04em; text-transform: uppercase; }
+.kp-body .kp-sec .kp-sec-r { color: #b8b8a0; }
+.k7-t16.kp-p { white-space: normal; color: #ddd8c2; line-height: 18px; margin: 2px 0 6px; }
+.k7-t16.kp-p.dim { color: #9aa294; }
+.kp-kv { position: relative; display: flex; align-items: baseline; gap: 6px; margin: 1px 0; flex-wrap: wrap; }
+.kp-kv .kp-kv-k { color: #d8a848; flex: none; }
+.kp-kv .kp-kv-d { flex: 1; min-width: 10px; height: 1px; align-self: center; background-image: linear-gradient(90deg, rgba(190,180,140,.35) 1px, transparent 1px); background-size: 3px 1px; }
+.kp-kv .kp-kv-v { color: #f2ecd4; flex: 0 1 auto; margin-left: auto; text-align: right; white-space: normal; }
+.kp-kv-bar { flex-basis: 100%; height: 3px; background: #0a0c0e; box-shadow: inset 0 0 0 1px #1c2024; position: relative; }
+.kp-kv-bar::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--k, 0) * 100%); background: var(--c, #e8a83a); }
+.kp-st { display: flex; align-items: flex-start; gap: 8px; margin: 6px 0 2px; }
+.kp-st-l { flex: none; width: 8px; height: 8px; margin-top: 5px; background: #40f0e0; box-shadow: 0 0 0 1px #050607, 0 0 6px currentColor; color: #40f0e0; }
+.kp-st[data-k=ok] .kp-st-l { background: #4cff78; color: #4cff78; }
+.kp-st[data-k=warn] .kp-st-l { background: #ffb02a; color: #ffb02a; }
+.kp-st[data-k=bad] .kp-st-l { background: #ff4a2a; color: #ff4a2a; }
+.kp-st[data-k=busy] .kp-st-l { background: #ffb02a; color: #ffb02a; animation: kp-blink .6s steps(2) infinite; }
+@keyframes kp-blink { 50% { opacity: .25; } }
+.kp-st .kp-st-t { white-space: normal; color: #e8e2c8; line-height: 18px; }
+.kp-st[data-k=bad] .kp-st-t { color: #ffb0a0; }
+.kp-st[data-k=warn] .kp-st-t { color: #ffd89a; }
+.kp-kh { display: inline-flex; align-items: center; gap: 5px; margin-right: 12px; white-space: nowrap; }
+.kp-kh b.k7-t16 { color: #1a1408; text-shadow: none; background: #d8ceb0; padding: 0 5px; box-shadow: inset -1px -2px 0 #8a8068, inset 1px 1px 0 #fff4d8, 0 0 0 1px #0a0b0c, 1px 2px 0 #0a0b0c; }
+.kp-kh span.k7-t16 { color: #c8c4ae; }
+.kp-tip { position: fixed; z-index: 9800; pointer-events: none; display: none; max-width: 360px; }
+.kp-tip.on { display: block; }
+.kp-tip .kp-tip-t { color: #ffe39a; margin-bottom: 2px; white-space: normal; }
+.kp-tip .kp-tip-sub { color: #8fd8c8; }
+.kp-tip-rows { margin: 4px 0; }
+.kp-tip-hint { margin-top: 6px; display: flex; flex-wrap: wrap; row-gap: 4px; }
 `;
   document.head.append(s);
 }

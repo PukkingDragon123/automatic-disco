@@ -17,7 +17,7 @@ import { portrait } from '../../social/portrait';
 import { PEOPLE } from '../../social/social';
 import { NODE } from '../../research/unlocks';
 import { QUEST } from '../../story/questData';
-import { itemIcon } from '../../factory/items';
+import { itemIcon, ITEMS } from '../../factory/items';
 import type { Req } from '../../research/progress';
 
 export const S = 2;
@@ -229,4 +229,48 @@ export function ringSprite(R: number, rim: readonly number[], well = 0x14181c): 
   p.disc(m, m, R - 0.5, () => INK);
   p.disc(m, m, R - 1.5, (_d, lit) => mixHex(well, 0x000000, 0.2 - lit * 0.2));
   c = p.canvas(); rings.set(k, c); return c;
+}
+
+// ------------------------------------------------------------------ requirements in words
+const KNOW_NAME: Record<string, string> = { bio: 'Bio', geo: 'Geo', energy: 'Energy', xeno: 'Xeno' };
+export interface ReqLine { icon: CanvasImageSource | null; text: string; ok: boolean }
+/** the node that opens a feature and its requirements, each as a line of words ("4 Copper Wire (have 2)") */
+export function reqLines(game: any, feature: string): { node: string | null; lines: ReqLine[] } {
+  const U = game?.unlocks; if (!U) return { node: null, lines: [] };
+  const n = U.nodeFor?.(feature); if (!n) return { node: null, lines: [] };
+  const out: ReqLine[] = [];
+  for (const r of U.reqs(n.id) as Req[]) {
+    if (r.k === 'know') out.push({ icon: stepIcon(DATA_ICON[r.kind]), text: `${r.need} ${KNOW_NAME[r.kind] ?? r.kind} knowledge (have ${r.have})`, ok: r.ok });
+    else if (r.k === 'item') out.push({ icon: itemImg(r.id, 32), text: `${r.need} ${clean(ITEMS[r.id]?.name ?? r.id)} (have ${r.have})`, ok: r.ok });
+    else if (r.k === 'close') out.push({ icon: portrait(r.npc), text: `${clean(PEOPLE[r.npc]?.name ?? r.npc)}: bond ${r.need} (now ${r.have})`, ok: r.ok });
+    else if (r.k === 'quest') { const q = (QUEST as Record<string, { icon?: string; giver?: string; title?: string } | undefined>)[r.id]; out.push({ icon: stepIcon(q?.icon ?? 'lens', q?.giver), text: `Quest: ${clean(q?.title ?? r.id)} (${r.n}/${r.of})`, ok: r.ok }); }
+    else if (r.k === 'need') out.push({ icon: iconOf(NODE[r.id]?.icon ?? 'gear', 'steel'), text: `Learn ${clean(NODE[r.id]?.name ?? r.id)} first`, ok: r.ok });
+  }
+  return { node: clean(n.name), lines: out };
+}
+/** one sentence: "Needs 2 Geo knowledge, 4 Copper Wire, Teo Barrera bond 2" (only what is still missing) */
+export function reqSentence(game: any, feature: string): string {
+  const { lines } = reqLines(game, feature), miss = lines.filter((l) => !l.ok).map((l) => l.text.replace(/ \((have|now) .*\)$/, ''));
+  return miss.length ? 'Needs ' + miss.join(', ') : 'Ready to learn on the research tree';
+}
+/** a block of text in Alagard (wraps), cream with the ink outline on dark plates or ink on light ones */
+export function textEl(text: string, o: { size?: 16 | 32; color?: string; dark?: boolean; w?: number; cls?: string; wrap?: boolean } = {}): HTMLDivElement {
+  const e = document.createElement('div'); e.className = `k7-t${o.size ?? 16}` + (o.cls ? ' ' + o.cls : ''); e.textContent = text;
+  if (o.dark) { e.style.color = o.color ?? '#2a2014'; e.style.textShadow = 'none'; } else if (o.color) e.style.color = o.color;
+  if (o.wrap !== false) { e.style.whiteSpace = 'normal'; e.style.lineHeight = (o.size ?? 16) === 16 ? '18px' : '34px'; }
+  if (o.w) e.style.width = o.w * S + 'px';
+  return e;
+}
+/** a list of requirement lines (icon + words, green when met, red when missing) */
+export function reqList(lines: ReqLine[], dark = false): HTMLDivElement {
+  const e = document.createElement('div'); e.style.display = 'flex'; e.style.flexDirection = 'column'; e.style.gap = 2 * S + 'px';
+  for (const l of lines) {
+    const row = document.createElement('div'); row.style.display = 'flex'; row.style.alignItems = 'center'; row.style.gap = 3 * S + 'px';
+    const cv = artCanvas(12, 12, ''); const c = cv.getContext('2d')!; c.imageSmoothingEnabled = false;
+    const draw = () => { if (l.icon) c.drawImage(l.icon as CanvasImageSource, 0, 0, 12, 12); };
+    if (l.icon instanceof HTMLImageElement && !l.icon.complete) l.icon.addEventListener('load', draw, { once: true }); else draw();
+    row.append(cv, textEl((l.ok ? '+ ' : '- ') + l.text, { dark, color: l.ok ? (dark ? '#2e6a2a' : '#9fe08a') : (dark ? '#8a2a1a' : '#ff9a80'), wrap: false }));
+    e.append(row);
+  }
+  return e;
 }

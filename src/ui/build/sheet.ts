@@ -24,8 +24,9 @@ import { Px, cellBar, INK } from '../kit/px';
 import { bitText } from '../kit/bitfont';
 import { RAMPS as P } from '../../art/palette';
 import { matPixels } from '../../gfx/mat';
+import { recipeWords, statusWords, itemName } from './info';
 
-const W = 300, H = 404; // art px (shown at 2x)
+const W = 300, H = 476; // art px (shown at 2x)
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
 const WHITE = hex(P.quartz[5]), PALE = hex(P.sapphire[6]), MIDB = hex(P.sapphire[5]), AMB = hex(P.glowAmber[4]);
 const esc = (s: string) => s.replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]!));
@@ -52,7 +53,7 @@ type Logi = { routes: Route[]; sync(force?: boolean): void };
 export class BlueprintSheet {
   readonly root: HTMLDivElement;
   private paper: HTMLCanvasElement; private art: HTMLCanvasElement; private ag: CanvasRenderingContext2D;
-  private title: HTMLDivElement; private recs: HTMLDivElement; private bufs: HTMLDivElement; private crew: HTMLDivElement; private acts: HTMLDivElement;
+  private title: HTMLDivElement; private desc: HTMLDivElement; private status: HTMLDivElement; private statusKey = ''; private recs: HTMLDivElement; private bufs: HTMLDivElement; private crew: HTMLDivElement; private acts: HTMLDivElement;
   b: FBuilding | null = null;
   isOpen = false;
   private key = ''; private crewKey = ''; private bufKey = '';
@@ -64,10 +65,10 @@ export class BlueprintSheet {
   constructor(readonly f: Factory, readonly build: Build, readonly host: { closed(): void; nodes(b: FBuilding): void }) {
     const r = (this.root = document.createElement('div'));
     r.className = 'bs';
-    r.innerHTML = `<div class="bs-body"><canvas class="bs-paper"></canvas><canvas class="bs-art"></canvas><div class="bs-title k7-t32"></div><div class="bs-recs"></div><div class="bs-bufs"></div><div class="bs-crew"></div></div><canvas class="bs-clip a"></canvas><canvas class="bs-clip b"></canvas><div class="bs-acts"></div>`;
+    r.innerHTML = `<div class="bs-body"><canvas class="bs-paper"></canvas><canvas class="bs-art"></canvas><div class="bs-title k7-t32"></div><div class="bs-desc"></div><div class="bs-h h-draw">DRAWINGS: ISO, PLAN AND FRONT (METRES)</div><div class="bs-h h-rec">RECIPES (CLICK ONE TO SWITCH)</div><div class="bs-recs"></div><div class="bs-h h-gauge">POWER (MW)  ·  STATUS  ·  BATCH  ·  HULL</div><div class="bs-status"></div><div class="bs-h h-buf">STORES</div><div class="bs-bufs"></div><div class="bs-h h-crew">CREW (DRAG A WORKER ONTO A SLOT TO ASSIGN; OFF THE SHEET TO FREE)</div><div class="bs-crew"></div></div><canvas class="bs-clip a"></canvas><canvas class="bs-clip b"></canvas><div class="bs-acts"></div>`;
     document.body.appendChild(r);
     this.paper = r.querySelector('.bs-paper')!; this.art = r.querySelector('.bs-art')!;
-    this.title = r.querySelector('.bs-title')!; this.recs = r.querySelector('.bs-recs')!; this.bufs = r.querySelector('.bs-bufs')!; this.crew = r.querySelector('.bs-crew')!; this.acts = r.querySelector('.bs-acts')!;
+    this.title = r.querySelector('.bs-title')!; this.desc = r.querySelector('.bs-desc')!; this.status = r.querySelector('.bs-status')!; this.recs = r.querySelector('.bs-recs')!; this.bufs = r.querySelector('.bs-bufs')!; this.crew = r.querySelector('.bs-crew')!; this.acts = r.querySelector('.bs-acts')!;
     blueprintSheet(W, H, { seed: 11, border: 6, folds: { y: [0.46] }, dogEar: true }).canvas(this.paper);
     this.art.width = W; this.art.height = H;
     this.ag = this.art.getContext('2d')!; this.ag.imageSmoothingEnabled = false;
@@ -113,6 +114,8 @@ export class BlueprintSheet {
     const b = this.b; if (!b) return;
     const d = b.def;
     this.title.textContent = d.name.toUpperCase();
+    this.desc.textContent = d.desc;
+    this.statusKey = '';
     this.drawStatic();
     this.renderRecipes();
     this.renderActs();
@@ -123,14 +126,14 @@ export class BlueprintSheet {
     const b = this.b!, d = b.def, g = this.ag;
     g.clearRect(0, 0, W, H);
     const iso = techDrawing(b.kind, 'iso', 180, 132), plan = techDrawing(b.kind, 'plan', 88, 60), front = techDrawing(b.kind, 'front', 88, 60);
-    if (iso) g.drawImage(iso.cv, 10, 40);
+    if (iso) g.drawImage(iso.cv, 10, 62);
     // the right column: plan and front elevation, framed, with their dimensions
     const box = (x: number, y: number, w: number, h: number) => { g.fillStyle = MIDB; g.fillRect(x, y, w, 1); g.fillRect(x, y + h - 1, w, 1); g.fillRect(x, y, 1, h); g.fillRect(x + w - 1, y, 1, h); };
-    if (plan) { g.drawImage(plan.cv, 200, 44); box(198, 42, 92, 64); this.dims(plan.scale, 200 + 44, 44 + 30, d.w, d.d, 'plan'); }
-    if (front) { g.drawImage(front.cv, 200, 118); box(198, 116, 92, 64); this.dims(front.scale, 200 + 44, 118 + 30, d.w, d.h, 'front'); }
+    if (plan) { g.drawImage(plan.cv, 200, 64); box(198, 62, 92, 64); this.dims(plan.scale, 200 + 44, 64 + 30, d.w, d.d, 'plan'); }
+    if (front) { g.drawImage(front.cv, 200, 136); box(198, 134, 92, 64); this.dims(front.scale, 200 + 44, 136 + 30, d.w, d.h, 'front'); }
     // rules between the blocks
     g.fillStyle = PALE;
-    for (const y of [182, 244, 312]) for (let x = 10; x < W - 10; x++) if ((x >> 1) % 3 !== 2) g.fillRect(x, y, 1, 1);
+    for (const y of [202, 278, 376, 408]) for (let x = 10; x < W - 10; x++) if ((x >> 1) % 3 !== 2) g.fillRect(x, y, 1, 1);
   }
   /** dimension lines round a view: arrows, ticks and the size in metres */
   private dims(scale: number, cx: number, cy: number, a: number, bb: number, kind: 'plan' | 'front') {
@@ -166,7 +169,7 @@ export class BlueprintSheet {
       const ok = this.f.recipeOk(r), on = b.recipe === r;
       const out = r.robot ? `<span class="bs-it"><img src="${itemIcon('iron_plate', 32)}" alt=""></span>` : side(r.out);
       const rate = Object.entries(r.out)[0];
-      return `<div class="bs-rec ${on ? 'on' : ''} ${ok ? '' : 'locked'}" data-rec="${r.id}"><span class="bs-in">${side(r.in)}</span><img class="bs-arrow" src="${arrowUrl()}" alt=""><span class="bs-out">${out}</span><span class="bs-time k7-t16">${r.t}s${rate && !r.robot ? `  ${fmt(perMin(r, rate[1] ?? 0))}/m` : ''}</span></div>`;
+      return `<div class="bs-rec ${on ? 'on' : ''} ${ok ? '' : 'locked'}" data-rec="${r.id}"><span class="bs-in">${side(r.in)}</span><img class="bs-arrow" src="${arrowUrl()}" alt=""><span class="bs-out">${out}</span><span class="bs-time">${esc(recipeWords(r))}${on ? '  (running)' : ok ? '' : '  (locked)'}</span></div>`;
     }).join('');
   }
   private pickRecipe(e: MouseEvent) {
@@ -178,7 +181,8 @@ export class BlueprintSheet {
   private renderActs() {
     const b = this.b!, bd = this.build;
     this.acts.innerHTML = '';
-    const add = (icon: Parameters<typeof floatBtn>[0], name: string, fn: () => void, sound?: string) => { const e = floatBtn(icon, name, fn, { size: 48, sound, nameHover: true }); this.acts.appendChild(e); return e; };
+    const TIP: Record<string, string> = { MOVE: 'Pick it up in build mode and set it down elsewhere; its stock, recipe, crew and routes go with it.', TURN: 'Turn it a quarter where it stands.', PAUSE: 'Switch it off: it stops and draws no power.', RUN: 'Switch it back on.', NODES: 'Open the node map on this building to wire routes in and out.', 'TAKE DOWN': 'Dismantle it: the whole bill and its contents go back to the stores.' };
+    const add = (icon: Parameters<typeof floatBtn>[0], name: string, fn: () => void, sound?: string) => { const e = floatBtn(icon, name, fn, { size: 48, sound }); e.title = TIP[name] ?? name; this.acts.appendChild(e); return e; };
     add('move', 'MOVE', () => { const t = this.b; if (!t) return; this.close(); if (!bd.active) bd.open(null, 'select'); bd.pickUp(t); }, 'lift');
     add('rotate', 'TURN', () => { const t = this.b; if (!t) return; bd.selected = t; bd.turnSelected(); const nb = bd.selected; if (nb && nb !== t && !(nb as { need?: unknown }).need) this.open(nb as FBuilding); }, 'turn');
     this.pauseBtn = (b.def.power > 0 || b.def.station || b.def.extract) ? add(b.on ? 'pause' : 'play', b.on ? 'PAUSE' : 'RUN', () => { const t = this.b; if (!t) return; t.on = !t.on; this.renderActs(); }, 'clunk') : null;
@@ -209,7 +213,7 @@ export class BlueprintSheet {
   /** the dials, the lamp and the bars, painted into the art layer's gauge band */
   private drawGauges() {
     const b = this.b!, d = b.def, g = this.ag;
-    const y0 = 248, band = new Px(W, 62);
+    const y0 = 290, band = new Px(W, 62);
     // the POWER dial: brass bezel, paper face, ticks, a red end, the needle
     const dial = (cx: number, cy: number, r: number, frac: number, sectors: number[] | null) => {
       for (let y = -r - 2; y <= r + 2; y++) for (let x = -r - 2; x <= r + 2; x++) {
@@ -257,7 +261,8 @@ export class BlueprintSheet {
     const bk = items.map((x) => x.join(':')).join('|');
     if (force || bk !== this.bufKey) {
       this.bufKey = bk;
-      this.bufs.innerHTML = items.slice(0, 7).map(([k, id, n]) => `<span class="bs-buf ${k}" title="${esc(ITEMS[id]?.name ?? id)}"><img src="${itemIcon(id, 32)}" alt=""><b class="k7-t16">${Math.floor(n)}</b></span>`).join('');
+      const LBL: Record<string, string> = { in: 'IN', out: 'OUT', held: 'HELD', seam: 'SEAM' };
+      this.bufs.innerHTML = items.length ? items.slice(0, 5).map(([k, id, n]) => `<span class="bs-buf ${k}" title="${esc(ITEMS[id]?.desc ?? '')}"><i>${LBL[k]}</i><img src="${itemIcon(id, 32)}" alt=""><span>${esc(itemName(id))}</span><b>${Math.floor(n)}${k === 'in' ? ` / ${b.bufCap(id)}` : k === 'seam' ? ' left' : ''}</b></span>`).join('') : '<span class="bs-empty">Empty: nothing in or out yet.</span>';
     }
     // the crew: operator, the haulers on its routes, the free ones
     const W8 = f.workers; W8.sync();
@@ -268,14 +273,20 @@ export class BlueprintSheet {
     const ck = `${op?.id}|${haul.map((c) => c.id).join(',')}|${free.map((c) => c.id).join(',')}|${routes.length}`;
     if (force || ck !== this.crewKey) {
       this.crewKey = ck;
-      const face = (c: Creature, k: string) => `<img class="bs-face ${k}" data-c="${c.id}" src="${thumb(c.sp)}" alt="" draggable="false">`;
+      const role = (c: Creature, k: string) => k === 'op' ? 'Operator' : k === 'haul' ? 'Hauler' : (W8.of(c)?.job ?? 'idle') === 'idle' ? 'Free' : 'Busy';
+      const face = (c: Creature, k: string) => `<span class="bs-man"><img class="bs-face ${k}" data-c="${c.id}" src="${thumb(c.sp)}" alt="" draggable="false" title="${esc(c.sp.name)}: ${role(c, k)}"><span class="bs-cap">${esc(c.sp.name.split(' ')[0])}</span><span class="bs-role">${role(c, k)}</span></span>`;
       let h = '';
-      if (b.def.operable) h += `<span class="bs-slot op ${op ? 'full' : ''}" data-slot="op"><img class="bs-slot-ic" src="${this.icon('hand')}" alt="">${op ? face(op, 'op') : ''}</span>`;
-      if (routes.length) h += `<span class="bs-slot haul ${haul.length ? 'full' : ''}" data-slot="haul"><img class="bs-slot-ic" src="${this.icon('jack')}" alt="">${haul.slice(0, 3).map((c) => face(c, 'haul')).join('')}</span>`;
-      h += `<span class="bs-pool" data-slot="pool">${free.slice(0, 6).map((c) => face(c, 'pool')).join('')}${free.length > 6 ? `<b class="k7-t16">+${free.length - 6}</b>` : ''}</span>`;
+      if (b.def.operable) h += `<span class="bs-slot op ${op ? 'full' : ''}" data-slot="op"><span class="bs-sl">OPERATOR</span><img class="bs-slot-ic" src="${this.icon('hand')}" alt="">${op ? face(op, 'op') : '<span class="bs-none">none: runs slower</span>'}</span>`;
+      if (routes.length) h += `<span class="bs-slot haul ${haul.length ? 'full' : ''}" data-slot="haul"><span class="bs-sl">HAULERS (${routes.length} ROUTE${routes.length > 1 ? 'S' : ''})</span><img class="bs-slot-ic" src="${this.icon('jack')}" alt="">${haul.slice(0, 2).map((c) => face(c, 'haul')).join('') || '<span class="bs-none">pool workers</span>'}</span>`;
+      h += `<span class="bs-pool" data-slot="pool"><span class="bs-sl">FREE WORKERS</span>${free.slice(0, 3).map((c) => face(c, 'pool')).join('') || '<span class="bs-none">nobody free</span>'}${free.length > 3 ? `<b class="k7-t16">+${free.length - 3}</b>` : ''}</span>`;
       this.crew.innerHTML = h;
     }
     if (this.pauseBtn && this.pauseBtn.classList.contains('lock') === false) this.pauseBtn.classList.toggle('on', !b.on);
+    // the status in words: what it is doing, what it lacks, what to do; its power and hull with units
+    const [head, line] = statusWords(f, b), g = f.gridOf(b), d = b.def;
+    const pw = d.power < 0 ? `Makes ${-d.power} MW` : d.power > 0 ? (g ? `Draws ${d.power} MW; grid ${fmt(g.supply)} of ${fmt(g.demand)} MW (${Math.round(g.sat * 100)}%)` : `Needs ${d.power} MW: no grid within reach`) : 'Needs no power';
+    const sk = `${head}|${line}|${pw}|${Math.ceil(b.hp)}`;
+    if (sk !== this.statusKey) { this.statusKey = sk; this.status.innerHTML = `<b>${esc(head)}</b> ${esc(line)}<br><span>${esc(pw)}  ·  Hull ${Math.ceil(b.hp)} / ${b.maxHp}${b.recipe && b.running ? `  ·  Batch ${Math.round(b.prog * 100)}%` : ''}</span>`; }
   }
   private icons = new Map<string, string>();
   private icon(n: 'hand' | 'jack') { let u = this.icons.get(n); if (!u) { u = bpIcon(n); this.icons.set(n, u); } return u; }

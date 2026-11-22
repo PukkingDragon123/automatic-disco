@@ -25,6 +25,9 @@ import { uiSfx } from '../ui/kit/sound';
 import { pop, shake, bounceEl, squash, onFrame, placeDust } from '../ui/kit/juice';
 import { glyphCanvas, portraitBuild, holdLights, bareBuild, hpRamp, cloneBody } from './art';
 import { jobGlyph } from './cards';
+import { orderText, moraleWord, needLabels, KIND_WORD, STANCE_INFO, pct, tip } from './words';
+import { STATS } from '../robots/unit';
+import { ITEMS } from '../factory/items';
 import { paintTerrain } from '../ui/hud7/mapPaint';
 import { RECIPE, recipesAt } from '../factory/recipes';
 import { itemIcon } from '../factory/items';
@@ -86,6 +89,7 @@ export class TroopsScreen {
     // the three columns
     const colA = div('trs-col a'), colB = div('trs-col b'), colC = div('trs-col c');
     board.append(colA, colB, colC);
+    for (const [cls, t] of [['a', 'SQUADS · DRAG A PORTRAIT FROM PLATE TO PLATE TO REASSIGN IT · CLICK ONE FOR ITS RECORD'], ['b', 'THE SELECTED UNIT · ITS RECORD, AND WHERE EVERYONE IS'], ['c', 'PRODUCTION · NEW ROBOTS FROM THE FOUNDRY, NEW WORKERS FROM THE LAB']] as const) { const h = document.createElement('div'); h.className = 'k7-t16 trs-colh ' + cls; h.textContent = t; board.append(h); }
     this.squadsCol = colA; this.detailCol = colB; this.prodCol = colC;
     this.buildSquads();
     this.buildDetail();
@@ -127,6 +131,7 @@ export class TroopsScreen {
   private squadsCol!: HTMLDivElement; private detailCol!: HTMLDivElement; private prodCol!: HTMLDivElement;
   private squadEls = new Map<number | null, HTMLDivElement>();
   private panels: Panel[] = [];
+  private squadInfo = new Map<number, () => void>();
   private buildSquads() {
     const col = this.squadsCol; col.innerHTML = ''; this.squadEls.clear();
     for (const sq of this.book.squads) col.append(this.squadPlate(sq));
@@ -159,7 +164,8 @@ export class TroopsScreen {
       for (const s of STANCES) {
         const b = document.createElement('button'); b.type = 'button'; b.className = 'trs-st' + (sq.stance === s ? ' on' : ''); b.title = s;
         b.append(glyphCanvas(s, s === 'aggressive' ? 'red' : s === 'defensive' ? 'brass' : 'blue', 3));
-        b.addEventListener('click', () => { sq.stance = s; for (const o of st.children) o.classList.toggle('on', o === b); squash(b, 0.8); uiSfx('switch', 0.55); pn.lamp(1, s === 'aggressive'); this.book.save(); });
+        tip(b, () => ({ title: `STANCE: ${STANCE_INFO[s][0]}`, lines: [STANCE_INFO[s][1]] }));
+        b.addEventListener('click', () => { sq.stance = s; for (const o of st.children) o.classList.toggle('on', o === b); squash(b, 0.8); uiSfx('switch', 0.55); pn.lamp(1, s === 'aggressive'); info(); this.book.save(); });
         st.append(b);
       }
       const area = document.createElement('button'); area.type = 'button'; area.className = 'trs-area' + (sq.area ? ' set' : ''); area.append(glyphCanvas('area', sq.area ? 'amber' : 'dim', 3));
@@ -167,11 +173,20 @@ export class TroopsScreen {
       area.addEventListener('contextmenu', (e) => { e.preventDefault(); sq.area = null; area.classList.remove('set'); area.innerHTML = ''; area.append(glyphCanvas('area', 'dim', 3)); uiSfx('back', 0.4); this.book.save(); });
       const go = document.createElement('button'); go.type = 'button'; go.className = 'trs-go'; go.append(glyphCanvas('troops', 'cream', 3));
       go.addEventListener('click', () => { const m = this.book.members(sq.id); if (!m.length) { shake(go, 4); uiSfx('error', 0.4); return; } this.rts.select(m); this.close(); });
-      top.append(sw, st, area, go);
+      const cnt = document.createElement('span'); cnt.className = 'k7-t16 trs-cnt';
+      top.append(sw, st, area, cnt, go);
+      tip(area, () => ({ title: 'AREA PIN', lines: [sq.area ? `GUARDS ${Math.round(sq.area.x)}, ${Math.round(sq.area.z)} WITHIN ${sq.area.r} M` : 'NO AREA SET', 'CLICK, THEN CLICK THE SURVEY MAP TO SET IT', 'RIGHT-CLICK CLEARS IT; IDLE MEMBERS RETURN TO IT'] }));
+      tip(go, () => ({ title: 'SELECT THIS SQUAD', lines: ['SELECTS ITS MEMBERS IN THE FIELD AND CLOSES THE ROSTER'] }));
       pn.lamp(0, true); pn.lamp(1, sq.stance === 'aggressive');
+      const ex = document.createElement('div'); ex.className = 'k7-t16 trs-ex';
+      const info = () => { const n = this.book.members(sq.id).length; cnt.textContent = `${n} UNIT${n === 1 ? '' : 'S'}`; ex.textContent = `${STANCE_INFO[sq.stance][0]}: ${STANCE_INFO[sq.stance][1]}${sq.area ? ` · AREA ${Math.round(sq.area.x)},${Math.round(sq.area.z)}` : ''}`; };
+      info(); this.squadInfo.set(sq.id, info);
+      body.append(top, ex);
+    } else {
+      const ex = document.createElement('div'); ex.className = 'k7-t16 trs-ex'; ex.textContent = 'UNITS IN NO SQUAD. DRAG A PORTRAIT ONTO A SQUAD TO ASSIGN IT.'; body.append(ex);
     }
     const row = div('trs-members');
-    body.append(top, row);
+    body.append(row);
     this.fillMembers(sq?.id ?? null);
     return p;
   }
@@ -223,6 +238,7 @@ export class TroopsScreen {
     if (from === id) return;
     s.squad = id;
     this.fillMembers(from); this.fillMembers(id);
+    for (const f of this.squadInfo.values()) f();
     const landed = over.querySelector(`.trs-mem[data-key="${d.t.key}"]`) as HTMLElement | null;
     if (landed) { bounceEl(landed, 0.45); const r = landed.getBoundingClientRect(); placeDust(r.left + r.width / 2, r.bottom - 8, 0.25, { ground: 'metal', layer: 'ui' }); }
     uiSfx('clunk', 0.5);
@@ -234,12 +250,13 @@ export class TroopsScreen {
   private detPanel: Panel | null = null;
   private det: { port: HTMLDivElement; info: HTMLDivElement; hist: HTMLCanvasElement; wounds: HTMLDivElement } | null = null;
   private buildDetail() {
-    const pn = panel({ tone: 'gun', seed: 77, head: 20, foot: 14, side: 10, lamps: ['green', 'amber', 'red'], knobs: 2, cls: 'trs-detail' }); this.panels.push(pn); this.detPanel = pn;
+    const pn = panel({ tone: 'gun', seed: 77, title: 'UNIT RECORD', head: 34, foot: 14, side: 10, lamps: ['green', 'amber', 'red'], knobs: 2, cls: 'trs-detail' }); this.panels.push(pn); this.detPanel = pn;
     const p = pn.body;
     const port = div('trs-dport'), info = div('trs-dinfo');
+    const hcap = document.createElement('div'); hcap.className = 'k7-t16 trs-hcap'; hcap.textContent = 'HISTORY · HEALTH (GREEN) AND MORALE (BLUE), ONE MARK PER 6 S';
     const histW = div('trs-hist'); const hist = document.createElement('canvas'); hist.width = 272; hist.height = 62; hist.style.width = '544px'; hist.style.height = '124px'; histW.append(hist);
     const wounds = div('trs-wounds');
-    p.append(port, info, histW, wounds);
+    p.append(port, info, hcap, histW, wounds);
     this.detailCol.append(pn.el);
     this.det = { port, info, hist, wounds };
   }
@@ -260,29 +277,33 @@ export class TroopsScreen {
     pop(D.port, 0.3);
     const head = div('trs-dhead');
     const nm = document.createElement('div'); nm.className = 'k7-t48 trs-dcall'; nm.textContent = s.call;
-    const ty = document.createElement('div'); ty.className = 'k7-t16 trs-dtype'; ty.textContent = t.typeName;
+    const sqd = this.book.squad(s.squad);
+    const ty = document.createElement('div'); ty.className = 'k7-t16 trs-dtype'; ty.textContent = `${t.typeName} · ${KIND_WORD[t.kind]}${sqd ? ' · SQUAD ' + sqd.name : ' · RESERVE'}`;
     head.append(nm, ty);
+    const job = div('trs-gi trs-now2'); const jg = document.createElement('span'); const jt = document.createElement('span'); jt.className = 'k7-t16 trs-job'; job.append(jg, jt);
     const bars = div('trs-dbars');
-    const bar = (icon: string, pal: string, w: number) => { const r = div('trs-g'); r.append(glyphCanvas(icon, pal as never, 2)); const cv = document.createElement('canvas'); cv.width = w; cv.height = 8; cv.style.width = w * 2 + 'px'; cv.style.height = '16px'; r.append(cv); bars.append(r); return cv; };
-    const hpC = bar('heart', 'red', 96), moC = bar('morale', 'blue', 96);
-    const nd0 = t.needs(s), needC: Partial<Record<'food' | 'rest' | 'maint', HTMLCanvasElement>> = {};
+    const bar = (label: string, icon: string, pal: string, w: number) => { const r = div('trs-g'); r.append(glyphCanvas(icon, pal as never, 2)); const l = document.createElement('span'); l.className = 'k7-t16 trs-gl'; l.textContent = label; const cv = document.createElement('canvas'); cv.width = w; cv.height = 8; cv.style.width = w * 2 + 'px'; cv.style.height = '16px'; const v = document.createElement('span'); v.className = 'k7-t16 trs-gv'; r.append(l, cv, v); bars.append(r); return { cv, v }; };
+    const hpC = bar('HEALTH', 'heart', 'red', 70), moC = bar('MORALE', 'morale', 'blue', 70);
+    const nd0 = t.needs(s), needC: Partial<Record<'food' | 'rest' | 'maint', { cv: HTMLCanvasElement; v: HTMLSpanElement }>> = {}, NL = needLabels(t);
     const nI = { food: t.kind === 'robot' || t.kind === 'drone' ? 'battery' : 'food', rest: 'rest', maint: t.kind === 'crew' ? 'suit' : 'maint' };
-    for (const k of ['food', 'rest', 'maint'] as const) if (nd0[k] !== null) needC[k] = bar(nI[k], 'cream', 96);
+    for (const k of ['food', 'rest', 'maint'] as const) if (nd0[k] !== null) needC[k] = bar(NL[k], nI[k], 'cream', 70);
+    const gh = document.createElement('div'); gh.className = 'k7-t16 trs-sec'; gh.textContent = 'GEAR';
     const gear = div('trs-gear');
-    for (const g0 of t.gear()) { const gi = div('trs-gi'); gi.append(glyphCanvas(g0.icon.startsWith('part:') ? 'part' : g0.icon, 'steel', 2)); if (g0.val) { const n = document.createElement('span'); n.className = 'k7-t16'; n.textContent = g0.val; gi.append(n); } gi.title = g0.name; gear.append(gi); }
+    for (const g0 of t.gear()) { const gi = div('trs-gi'); gi.append(glyphCanvas(g0.icon.startsWith('part:') ? 'part' : g0.icon, 'steel', 2)); const n = document.createElement('span'); n.className = 'k7-t16'; n.textContent = g0.val ? `${g0.name} ${g0.val}${g0.icon === 'range' ? ' M' : g0.icon === 'speed' ? ' M/S' : g0.icon === 'armour' ? '%' : ''}` : g0.name; gi.append(n); gear.append(gi); }
     const tally = div('trs-tally');
     const kills = div('trs-gi'); kills.append(glyphCanvas('attack', 'red', 2)); const kn = document.createElement('span'); kn.className = 'k7-t16'; kills.append(kn);
     const ords = div('trs-gi'); ords.append(glyphCanvas('move', 'cream', 2)); const on = document.createElement('span'); on.className = 'k7-t16'; ords.append(on);
-    const job = div('trs-gi'); const jg = document.createElement('span'); const jt = document.createElement('span'); jt.className = 'k7-t16 trs-job'; job.append(jg, jt);
-    tally.append(kills, ords, job);
-    D.info.append(head, bars, gear, tally);
+    tally.append(kills, ords);
+    D.info.append(head, job, bars, gh, gear, tally);
     let lastJ = '';
     const upd = () => {
       const st = this.book.stateOf(t), nd = t.needs(st);
-      paint(hpC, t.hp01, hpRamp(t.hp01)); paint(moC, st.morale, st.morale < 0.25 ? P.ruby : st.morale < 0.5 ? P.glowAmber : P.sapphire);
-      for (const k of ['food', 'rest', 'maint'] as const) { const cv = needC[k], v0 = nd[k]; if (cv && v0 !== null) paint(cv, v0, v0 < 0.25 ? P.ruby : v0 < 0.5 ? P.glowAmber : P.malachite); }
-      kn.textContent = String(st.kills); on.textContent = String(st.orders);
-      const j = this.book.job(t); if (j !== lastJ) { lastJ = j; jt.textContent = j; jg.innerHTML = ''; jg.append(glyphCanvas(jobGlyph(j), 'amber', 2)); }
+      const maxHp = t.kind === 'crew' ? 100 : (t.ref.maxHp ?? 100);
+      paint(hpC.cv, t.hp01, hpRamp(t.hp01)); hpC.v.textContent = `${Math.round(t.hp01 * maxHp)} / ${Math.round(maxHp)}`;
+      paint(moC.cv, st.morale, st.morale < 0.25 ? P.ruby : st.morale < 0.5 ? P.glowAmber : P.sapphire); moC.v.textContent = `${pct(st.morale)} ${moraleWord(st.morale)}`;
+      for (const k of ['food', 'rest', 'maint'] as const) { const b = needC[k], v0 = nd[k]; if (b && v0 !== null) { paint(b.cv, v0, v0 < 0.25 ? P.ruby : v0 < 0.5 ? P.glowAmber : P.malachite); b.v.textContent = pct(v0); } }
+      kn.textContent = `KILLS ${st.kills}`; on.textContent = `ORDERS ${st.orders} · IN SERVICE ${Math.round((this.book.now - st.born) / 60)} MIN`;
+      const j = 'NOW: ' + orderText(this.book, t); if (j !== lastJ) { lastJ = j; jt.textContent = j; jg.innerHTML = ''; jg.append(glyphCanvas(jobGlyph(j), 'amber', 2)); }
       this.history(t); this.woundList(t);
     };
     (upd as { det?: boolean }).det = true;
@@ -308,30 +329,32 @@ export class TroopsScreen {
   }
   private wKey = '';
   private woundList(t: Troop) {
-    const s = this.book.stateOf(t), ws = s.wounds.slice(-6).reverse(), key = t.key + ws.map((w) => w.t.toFixed(0) + w.dmg.toFixed(0)).join(',');
+    const s = this.book.stateOf(t), ws = s.wounds.slice(-3).reverse(), key = t.key + ws.map((w) => w.t.toFixed(0) + w.dmg.toFixed(0)).join(',');
     if (key === this.wKey) return; this.wKey = key;
     const box = this.det!.wounds; box.innerHTML = '';
-    if (!ws.length) { const e = div('trs-gi'); e.append(glyphCanvas('heart', 'green', 2)); box.append(e); return; }
+    const wh = document.createElement('div'); wh.className = 'k7-t16 trs-sec'; wh.textContent = `WOUNDS · ${s.wounds.length} TAKEN`; box.append(wh);
+    if (!ws.length) { const e = div('trs-gi'); e.append(glyphCanvas('heart', 'green', 2)); const l = document.createElement('span'); l.className = 'k7-t16'; l.textContent = 'NO WOUNDS'; e.append(l); box.append(e); return; }
     for (const w of ws) {
       const r = div('trs-gi wound');
       const src = w.src === 'o2' ? 'o2' : w.src === 'hunger' ? 'hunger' : /shell|mortar|tank|titan|heavy|artillery|walker/.test(w.src) ? 'shell' : /rocket|mech/.test(w.src) ? 'rocket' : w.src === 'claw' ? 'claw' : 'hit';
       r.append(glyphCanvas(src, 'red', 2));
-      const n = document.createElement('span'); n.className = 'k7-t16'; n.textContent = '-' + Math.max(1, Math.round(w.dmg)); r.append(n);
-      const a = document.createElement('span'); a.className = 'k7-t16 trs-age'; const m = Math.max(0, (this.book.now - w.t) / 60); a.textContent = m < 1 ? Math.round(m * 60) + 's' : Math.round(m) + 'm'; r.append(a);
+      const by = w.src === 'o2' ? 'SUIT O2 RAN OUT' : w.src === 'hunger' ? 'STARVING' : w.src === 'claw' ? 'CLAWED BY AN ANIMAL' : w.src === 'hit' ? 'HIT' : String(STATS_NAME(w.src));
+      const n = document.createElement('span'); n.className = 'k7-t16'; n.textContent = `-${Math.max(1, Math.round(w.dmg))} HP · ${by}`; r.append(n);
+      const a = document.createElement('span'); a.className = 'k7-t16 trs-age'; const m = Math.max(0, (this.book.now - w.t) / 60); a.textContent = m < 1 ? `${Math.round(m * 60)} S AGO` : `${Math.round(m)} MIN AGO`; r.append(a);
       box.append(r);
     }
   }
 
   // ------------------------------------------------------------------ the survey map
   private buildMap() {
-    const pn = panel({ tone: 'steel', seed: 88, head: 14, foot: 12, side: 10, well: 'none', lamps: [], hazard: false, cls: 'trs-map' }); this.panels.push(pn);
+    const pn = panel({ tone: 'steel', seed: 88, title: 'SURVEY MAP', head: 34, foot: 12, side: 10, well: 'none', lamps: [], hazard: false, cls: 'trs-map' }); this.panels.push(pn);
     const p = pn.body;
     const cv = document.createElement('canvas'); cv.className = 'trs-mapcv';
-    const R = this.g.region, N = R?.N ?? 128, size = 264;
+    const R = this.g.region, N = R?.N ?? 128, size = 184;
     this.mapK = size / N;
     cv.width = size; cv.height = size; cv.style.width = size * 2 / 2 * 1.0 + 'px';
-    try { const k = Math.max(0.5, Math.min(2, size / N)); const pt = paintTerrain(R, R.pal, k); this.mapBase = pt.px.canvas(); this.mapK = pt.px.w / N; cv.width = pt.px.w; cv.height = pt.px.h; } catch (e) { console.warn('troops map', e); }
-    const scale = Math.max(1, Math.floor(300 / cv.width));
+    try { const k = Math.max(0.4, Math.min(2, size / N)); const pt = paintTerrain(R, R.pal, k); this.mapBase = pt.px.canvas(); this.mapK = pt.px.w / N; cv.width = pt.px.w; cv.height = pt.px.h; } catch (e) { console.warn('troops map', e); }
+    const scale = Math.max(1, Math.floor(184 / cv.width));
     cv.style.width = cv.width * scale + 'px'; cv.style.height = cv.height * scale + 'px';
     cv.addEventListener('pointerdown', (e) => {
       const r = cv.getBoundingClientRect(), x = ((e.clientX - r.left) / r.width) * cv.width / this.mapK, z = ((e.clientY - r.top) / r.height) * cv.height / this.mapK;
@@ -341,7 +364,11 @@ export class TroopsScreen {
         this.armArea = null; cv.classList.remove('arm'); this.buildSquads();
       } else { this.g.cam?.lookAt?.(x, z); uiSfx('tick', 0.4); }
     });
-    p.append(cv); this.mapCv = cv;
+    const cap = document.createElement('div'); cap.className = 'k7-t16 trs-mapcap'; cap.textContent = 'CLICK: LOOK THERE · WITH AN AREA PIN ARMED: SET THE SQUAD\'S AREA';
+    const legend = div('trs-legend');
+    for (const sq of this.book.squads) { const it = div('trs-gi'); const sw = document.createElement('i'); sw.className = 'trs-swatch'; sw.style.background = hex(sq.color); const l = document.createElement('span'); l.className = 'k7-t16'; l.textContent = sq.name; it.append(sw, l); legend.append(it); }
+    { const it = div('trs-gi'); const sw = document.createElement('i'); sw.className = 'trs-swatch'; sw.style.background = '#f2ead2'; const l = document.createElement('span'); l.className = 'k7-t16'; l.textContent = 'POD'; it.append(sw, l); legend.append(it); }
+    p.append(cap, cv, legend); this.mapCv = cv;
     this.detailCol.append(pn.el);
   }
   private mapT = 0;
@@ -380,7 +407,7 @@ export class TroopsScreen {
     if (!fs.length) {
       const lock = div('trs-lock'); lock.append(glyphCanvas('stop', 'dim', 4));
       const why = this.g.unlocks?.lockLine?.('robotfab') ?? null;
-      const l = document.createElement('span'); l.className = 'k7-t16'; l.textContent = why ?? 'BUILD A ROBOT FOUNDRY'; lock.append(l);
+      const l = document.createElement('div'); l.className = 'k7-t16'; l.innerHTML = ''; const l1 = document.createElement('div'); l1.textContent = why ?? 'NO ROBOT FOUNDRY YET'; const l2 = document.createElement('div'); l2.className = 'trs-dimt'; l2.textContent = 'BUILD ONE FROM THE BUILD DOCK (SPECIAL WORKS); THESE ARE THE ROBOTS IT MAKES.'; l.append(l1, l2); lock.append(l);
       fp.append(lock);
       // what it would build, behind glass until there is a foundry
       const opts = div('trs-opts locked');
@@ -395,7 +422,9 @@ export class TroopsScreen {
       const st = document.createElement('span'); st.className = 'k7-t16 trs-pst';
       now.append(cur, bar, st);
       const qrow = div('trs-queue');
-      fp.append(now, qrow);
+      const qcap = document.createElement('div'); qcap.className = 'k7-t16 trs-sec'; qcap.textContent = `QUEUE · UP TO ${QMAX} · CLICK A QUEUED ROBOT TO CANCEL IT`;
+      const ocap = document.createElement('div'); ocap.className = 'k7-t16 trs-sec'; ocap.textContent = 'CLICK A ROBOT TO QUEUE IT · ITS BILL OF PARTS UNDER IT';
+      fp.append(now, qcap, qrow, ocap);
       const opts = div('trs-opts');
       const recs = recipesAt('robotfab').filter((r: any) => this.g.factory?.recipeOk?.(r) ?? true);
       for (const r of recs) opts.append(this.robotOpt(b, r, () => drawQ()));
@@ -416,7 +445,8 @@ export class TroopsScreen {
         const kind = (b.recipe?.robot as string | undefined) ?? '';
         if (kind !== curKind) { curKind = kind; if (cv0) { cv0.dispose(); this.views.splice(this.views.indexOf(cv0), 1); cv0 = null; } cur.innerHTML = ''; if (kind) { let v: ModelView | null = null; v = new ModelView(bareBuild(() => robotBody(kind)), { w: 64, h: 56, scale: 2, spin: 0.6, pitch: 0.35, zoom: 1.05, anim: (root) => holdLights(root, v?.yaw ?? 0) }); cv0 = v; this.views.push(v); cur.append(v.cv); } else cur.append(glyphCanvas('build', 'dim', 4)); }
         const pb = new Px(120, 9); cellBar(pb, 1, 1, 118, 7, b.running ? b.prog ?? 0 : 0, P.glowAmber, performance.now() / 1000); pb.canvas(bar);
-        st.textContent = String(b.status ?? '').toUpperCase();
+        const q0 = this.foundry.queue(b);
+        st.textContent = `${kind ? `BUILDING: ${String(b.recipe?.name ?? kind).toUpperCase()} · ${Math.round((b.running ? b.prog ?? 0 : 0) * 100)}%` : 'IDLE: QUEUE A ROBOT'} · ${String(b.status ?? '').toUpperCase()}${b.note ? ' · ' + String(b.note).toUpperCase() : ''} · QUEUE ${q0.length}/${QMAX}`;
         fpn.lamp(0, !!b.running); fpn.lamp(1, b.status === 'starved' || b.status === 'blocked' || b.status === 'nopower');
         if (qrow.children.length && this.foundry.queue(b).length !== [...qrow.children].filter((c) => !c.classList.contains('empty')).length) drawQ();
       };
@@ -429,7 +459,8 @@ export class TroopsScreen {
     const hive = this.g.veyr;
     const ds: any[] = hive?.designs?.() ?? [];
     const grid = div('trs-opts');
-    if (!ds.length) { const lock = div('trs-lock'); lock.append(glyphCanvas('part', 'dim', 4)); const l = document.createElement('span'); l.className = 'k7-t16'; l.textContent = 'NO DESIGNS YET'; lock.append(l); lp.append(lock); }
+    const lcap = document.createElement('div'); lcap.className = 'k7-t16 trs-sec'; lcap.textContent = ds.length ? 'THE COLONY\'S WORKER DESIGNS · CLICK ONE TO PRINT IT BESIDE THE POD' : 'NO DESIGNS YET: ENGINEER ONE IN THE LAB (DOCK), THEN PRINT IT HERE';
+    lp.append(lcap);
     ds.slice(0, 8).forEach((sp, i) => grid.append(this.designOpt(sp, i)));
     lp.append(grid);
     col.append(lpn.el);
@@ -446,9 +477,14 @@ export class TroopsScreen {
       onClick: () => { if (b && this.foundry.add(b, r.id)) { uiSfx('confirm', 0.5); pop(wrap, 0.5); after(); } else { uiSfx('error', 0.5); shake(wrap, 5); } } });
     wrap.append(fi.el);
     if (fi.view) this.views.push(fi.view);
+    const tm = document.createElement('div'); tm.className = 'k7-t16 trs-dimt'; tm.textContent = `${r.t ?? '?'} S TO BUILD`; wrap.append(tm);
     wrap.append(this.bill(r.in ?? {}));
+    const st = (STATS as Record<string, { name: string; hp: number; speed: number; weapon: { dmg: number; range: number } }>)[kind];
+    tip(wrap, () => ({ title: `${String(st?.name ?? kind).toUpperCase()} · ${r.t ?? '?'} S`, lines: [st ? `HEALTH ${st.hp} · SPEED ${st.speed} M/S · DAMAGE ${st.weapon.dmg} · RANGE ${st.weapon.range} M` : '', 'NEEDS: ' + this.billWords(r.in ?? {}), b ? 'CLICK: ADD TO THE FOUNDRY QUEUE' : 'NEEDS A ROBOT FOUNDRY'] }));
     return wrap;
   }
+  /** a bill in words: each item's name, how many, and how many the stores hold */
+  private billWords(cost: Record<string, number>) { return Object.entries(cost).map(([id, n]) => `${(ITEMS as Record<string, { name: string }>)[id]?.name?.toUpperCase() ?? id.toUpperCase()} ${n} (HAVE ${Math.floor(this.g.factory?.count?.(id) ?? 0)})`).join(', '); }
   private designOpt(sp: any, i: number): HTMLElement {
     const wrap = div('trs-opt');
     const hive = this.g.veyr;
@@ -463,7 +499,9 @@ export class TroopsScreen {
     wrap.append(fi.el);
     if (fi.view) this.views.push(fi.view);
     let cost: Record<string, number> = {}; try { cost = hive?.printCost?.(sp) ?? {}; } catch { /* */ }
+    const role = document.createElement('div'); role.className = 'k7-t16 trs-dimt'; role.textContent = String(sp.role ?? 'WORKER').toUpperCase(); wrap.append(role);
     wrap.append(this.bill(cost));
+    tip(wrap, () => { const why = hive?.whyPrint?.(i); return { title: `PRINT: ${String(sp.name ?? 'DESIGN').toUpperCase()}`, lines: ['COST: ' + this.billWords(cost), why ? 'CANNOT PRINT: ' + String(why).toUpperCase() : 'CLICK: PRINT ONE BESIDE THE POD'] }; });
     return wrap;
   }
   /** a bill of items: each item's icon and the count (dimmed when the stores are short) */
@@ -480,6 +518,8 @@ export class TroopsScreen {
   }
 }
 
+/** a robot kind's name (a wound's source), else the word itself */
+const STATS_NAME = (k: string) => (STATS as Record<string, { name: string }>)[k]?.name?.toUpperCase() ?? k.toUpperCase().replace(/_/g, ' ');
 const div = (cls: string) => { const d = document.createElement('div'); d.className = cls; return d; };
 function paint(cv: HTMLCanvasElement, v: number, ramp: readonly number[]) { const p = new Px(cv.width, cv.height); cellBar(p, 1, 1, cv.width - 2, cv.height - 2, v, ramp, performance.now() / 1000); p.canvas(cv); }
 const robotCache = new Map<string, THREE.Object3D>();
@@ -509,11 +549,24 @@ function injectCSS() {
 .trs-count canvas, .trs canvas { image-rendering: pixelated; }
 .trs-count .k7-t32 { color: #ffe7a8; }
 .trs-back { position: absolute !important; right: 6px; top: -6px; }
-.trs-col { position: absolute; top: 78px; bottom: 0; display: flex; flex-direction: column; gap: 12px; }
+.trs-col { position: absolute; top: 100px; bottom: 0; display: flex; flex-direction: column; gap: 12px; }
 .trs-col.a { left: 0; width: 610px; }
 .trs-col.b { left: 628px; width: 584px; }
 .trs-col.c { left: 1230px; width: 610px; }
-.trs-sq { position: relative; height: 188px; transition: transform .16s cubic-bezier(.3,1.6,.5,1), filter .16s; flex: none; }
+.trs-colh { position: absolute; top: 74px; color: #d8ceb0; white-space: nowrap; }
+.trs-colh.a { left: 4px; } .trs-colh.b { left: 632px; } .trs-colh.c { left: 1234px; }
+.trs-sec { color: #ffd98a; }
+.trs-ex { color: #d8ceb0; height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
+.trs-cnt { color: #f2ead2; margin-left: 8px; }
+.trs-gl { width: 96px; color: #d8ceb0; }
+.trs-gv { color: #f6ecd0; }
+.trs-hcap { position: absolute !important; left: 4px; top: 312px; color: #d8ceb0; }
+.trs-mapcap { color: #2a2418; text-shadow: 0 1px 0 rgba(255,255,255,.35) !important; margin-bottom: 6px; }
+.trs-legend { display: flex; gap: 14px; margin-top: 6px; }
+.trs-legend .k7-t16 { color: #2a2418; text-shadow: 0 1px 0 rgba(255,255,255,.35) !important; }
+.trs-dimt { color: #b8ae90; }
+.trs-now2 .k7-t16 { color: #ffd98a; }
+.trs-sq { position: relative; height: 206px; transition: transform .16s cubic-bezier(.3,1.6,.5,1), filter .16s; flex: none; }
 .trs-sq.pool { flex: 1; min-height: 150px; }
 .trs-sq > .kp-body { display: flex; flex-direction: column; height: 100%; }
 .trs-sq.drop { transform: translateY(-3px); filter: brightness(1.18) drop-shadow(0 0 8px rgba(255,210,120,.55)); }
@@ -544,12 +597,12 @@ function injectCSS() {
 .trs-ghost { position: fixed; z-index: 9500; pointer-events: none; width: 60px; height: 68px; image-rendering: pixelated; filter: drop-shadow(0 10px 6px rgba(0,0,0,.5)); transform: rotate(-6deg) scale(1.15); }
 .trs-empty { opacity: .45; align-self: center; margin: 0 auto; }
 .trs-more { color: #ffe7a8; align-self: center; margin-left: 6px; }
-.trs-detail { position: relative; height: 520px; flex: none; }
+.trs-detail { position: relative; height: 590px; flex: none; }
 .trs-detail > .kp-body { height: 100%; }
 .trs-dport { position: absolute !important; left: 0; top: 0; width: 240px; height: 224px; cursor: pointer; }
 .trs-dport canvas.k7-model { position: absolute; left: 0; top: 0; }
 .trs-dport .trs-dport-sh { position: absolute; left: 30px; bottom: 6px; }
-.trs-dinfo { position: absolute !important; left: 250px; top: 2px; right: 4px; display: flex; flex-direction: column; gap: 10px; }
+.trs-dinfo { position: absolute !important; left: 250px; top: 0; right: 4px; display: flex; flex-direction: column; gap: 5px; }
 .trs-dcall { color: #f6ecd0; }
 .trs-dtype { color: var(--k7-dim); margin-top: -8px; }
 .trs-dbars { display: flex; flex-direction: column; gap: 6px; }
@@ -560,17 +613,17 @@ function injectCSS() {
 .trs-gi canvas { display: block; }
 .trs-gi .k7-t16 { color: #f2ead2; }
 .trs-job { color: #ffd98a !important; }
-.trs-hist { position: absolute !important; left: 2px; right: 2px; top: 236px; height: 126px; }
+.trs-hist { position: absolute !important; left: 2px; right: 2px; top: 334px; height: 126px; }
 .trs-hist canvas { display: block; }
-.trs-wounds { position: absolute !important; left: 6px; right: 6px; top: 376px; bottom: 4px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 10px 22px; }
+.trs-wounds { position: absolute !important; left: 6px; right: 6px; top: 466px; bottom: 0; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
 .trs-gi.wound .k7-t16 { color: #ff9a80; }
 .trs-age { color: var(--k7-dim) !important; }
 .trs-map { position: relative; flex: 1; }
-.trs-map > .kp-body { height: 100%; display: flex; align-items: center; justify-content: center; }
+.trs-map > .kp-body { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .trs-mapcv { position: relative; z-index: 1; image-rendering: pixelated; cursor: crosshair; box-shadow: 0 0 0 2px #08090c, 0 0 0 4px #6a6e70; }
 .trs-mapcv.arm { box-shadow: 0 0 0 2px #08090c, 0 0 0 4px #ffc560, 0 0 16px rgba(255,200,100,.6); }
 .trs-prod { position: relative; flex: none; }
-.trs-prod.fdy { height: 560px; }
+.trs-prod.fdy { height: 590px; }
 .trs-prod.lab { flex: 1; }
 .trs-lock { display: flex; align-items: center; gap: 12px; padding: 18px 6px; opacity: .85; }
 .trs-lock .k7-t16 { color: #c8bfa0; }

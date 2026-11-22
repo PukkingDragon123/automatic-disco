@@ -15,7 +15,8 @@ import { Spring, onFrame, bounceEl, placeDust, shake, pop, squash } from '../kit
 import { floatIcon } from '../kit/floatIcon';
 import { customModel, fitVisible } from './parts3d';
 import { installKitStyle } from '../kit/style';
-import { arsenal, setQuickCustom, quickCustom, TOOLS, type ArmEntry } from './tools';
+import { arsenal, setQuickCustom, quickCustom, TOOLS, STAT_INFO, statText, type ArmEntry, type Stats } from './tools';
+import { panel, kv, keyHint, section, type Panel, type Status } from '../kit/panel';
 import { toolBuild, toolAnim, type ToolWidget } from './toolWidget';
 import { lockGlyph } from './glyphs';
 import { driveToolModels } from '../../tools/models';
@@ -47,6 +48,7 @@ export class Arsenal {
   private live: (() => void) | null = null;
   private gears: ModelView[] = []; private pistons: ModelView[] = []; private liftK = new Spring(0, { k: 90, d: 14 });
   private key = (e: KeyboardEvent) => this.onKey(e);
+  private card!: Panel; private cSub!: HTMLDivElement; private cDesc!: HTMLDivElement; private cRows!: HTMLDivElement; private cStatus!: Status;
   constructor(readonly g: G, readonly w: ToolWidget) {
     installKitStyle(); injectArsenalCSS();
     const el = this.el = document.createElement('div'); el.className = 'h7-ars';
@@ -63,6 +65,7 @@ export class Arsenal {
     for (let i = 0; i < 4; i++) {
       const h = document.createElement('div'); h.className = 'h7-hol'; h.style.left = (pockets[i] * 2 - 80) + 'px';
       const n = document.createElement('span'); n.className = 'k7-t32 h7-hol-n'; n.textContent = String(i + 1); h.append(n);
+      const lb = document.createElement('span'); lb.className = 'k7-t16 h7-hol-l'; lb.textContent = `SLOT ${i + 1}`; h.append(lb);
       h.addEventListener('click', (e) => { e.stopPropagation(); this.assign(i); });
       h.addEventListener('pointerenter', () => { h.classList.add('hot'); uiSfx('hover', 0.35); this.holsters[i].view?.hot(true); });
       h.addEventListener('pointerleave', () => { h.classList.remove('hot'); this.holsters[i].view?.hot(false); });
@@ -77,7 +80,20 @@ export class Arsenal {
     back.el.classList.add('h7-ars-back');
     const arrows = (d: number) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'h7-arw ' + (d < 0 ? 'l' : 'r'); b.append(pxCanvas(arrowArt(d), 2)); b.addEventListener('click', (e) => { e.stopPropagation(); this.go(this.idx + d); squash(b, 0.6); }); return b; };
     rack.append(win, this.info, arrows(-1), arrows(1), bench.el, back.el, ...this.gears.map((v) => v.cv));
-    el.append(rack, belt, ...this.pistons.map((v) => v.cv));
+    // the TOOL DATA card: the centred tool spelled out
+    this.card = panel({ title: 'TOOL DATA', tone: 'gun', serial: 'ARSENAL', lamps: ['green', 'amber'], glands: 1, cls: 'h7-ars-card' });
+    this.cSub = this.card.text('', { color: '#8fd8c8' }); this.cDesc = this.card.text('');
+    this.cRows = document.createElement('div'); this.card.body.append(this.cRows);
+    this.cStatus = this.card.status('', 'info');
+    this.card.body.append(section('CONTROLS'));
+    const hk = document.createElement('div'); hk.className = 'h7-ars-keys';
+    hk.append(keyHint('< >', 'browse'), keyHint('DRAG', 'onto a bay'), keyHint('1-4', 'dock in slot'), keyHint('B', 'workshop'), keyHint('ESC', 'close'));
+    this.card.body.append(hk);
+    // the guide: what this screen is
+    const guide = panel({ title: 'ARSENAL', tone: 'olive', lamps: ['green'], glands: 1, cls: 'h7-ars-guide' });
+    guide.text('Every tool the colony owns, in its cradle. Swipe the rack to browse; drop a tool on one of the four QUICK SLOT bays below to carry it on the turret.', { dim: true });
+    guide.kv('Quick slots', '4 bays (keys 1-4)'); guide.kv('Custom tools', 'built in the WORKSHOP (B)');
+    el.append(rack, belt, this.card.el, guide.el, ...this.pistons.map((v) => v.cv));
     el.addEventListener('pointerdown', (e) => { if (e.target === el) this.open(false); });
     el.addEventListener('contextmenu', (e) => { e.preventDefault(); this.open(false); });
     this.wireTrack(win);
@@ -178,16 +194,30 @@ export class Arsenal {
   }
   private syncInfo() {
     const c = this.cards[this.idx]; if (!c) return;
-    const t = TOOLS[c.e.tool], units = this.g.colony?.slots?.candidates?.(c.e.tool)?.length ?? 0, st = c.e.custom?.stats;
+    const t = TOOLS[c.e.tool], who = (this.g.colony?.slots?.candidates?.(c.e.tool) ?? []) as { name: string }[], st = c.e.custom?.stats as Stats | undefined;
     const kw = st ? t.kw + st.draw : t.kw, cd = st ? Math.max(0.1, t.cd * (1 - st.speed * 0.08)) : t.cd;
     this.info.innerHTML = '';
     const nm = document.createElement('div'); nm.className = 'k7-name k7-t48'; nm.textContent = c.e.name; this.info.append(nm);
-    const row = document.createElement('div'); row.className = 'h7-ars-stats';
-    const stat = (k: string, v: string, col = '') => { const e = document.createElement('span'); e.className = 'k7-t32'; if (col) e.style.color = col; e.innerHTML = `${v}<small class="k7-t16">${k}</small>`; row.append(e); };
-    if (!c.e.owned) stat('', 'LOCKED', '#8f8670');
-    else { stat('KW', String(kw), '#ffd98a'); stat(t.hold ? 'HOLD' : 'S', t.hold ? '' : cd.toFixed(1)); stat('UNITS', String(units), units ? '#cfe8a8' : '#f09a7a'); if (st) stat('PWR', '+' + st.power, '#ffc560'); }
-    this.info.append(row);
+    const sub = document.createElement('div'); sub.className = 'k7-t16 h7-ars-sub'; sub.textContent = c.e.custom ? `CUSTOM ${t.name.toUpperCase()} · ${this.idx + 1} OF ${this.cards.length}` : `${t.name.toUpperCase()} · ${this.idx + 1} OF ${this.cards.length}`; this.info.append(sub);
     pop(nm, 0.3);
+    // the card
+    this.card.setTitle(c.e.name);
+    this.cSub.textContent = c.e.custom ? `Custom tool, works as the ${t.name}` : 'Standard colony tool';
+    this.cDesc.textContent = t.desc;
+    this.cRows.textContent = '';
+    const row = (k: string, v: string | number, o: Parameters<typeof kv>[2] = {}) => this.cRows.append(kv(k, v, o).el);
+    row('Power draw', kw, { unit: 'kW' });
+    row('Use', t.hold ? 'hold the button' : cd > 0 ? 'click' : 'click');
+    if (!t.hold && cd > 0) row('Cooldown', cd.toFixed(1), { unit: 's' });
+    if (st) for (const k of ['power', 'reach', 'speed', 'mass'] as (keyof Stats)[]) row(STAT_INFO[k].name, statText(k, st[k]));
+    row('Units able to carry it', who.length, { color: who.length ? undefined : '#ff9a7a' });
+    if (who.length) row('Carriers', who.slice(0, 3).map((w) => w.name).join(', ') + (who.length > 3 ? ` +${who.length - 3}` : ''));
+    const slots = (this.g.colony?.slots?.slots ?? []) as { tool: string | null }[], inSlot = slots.findIndex((q, i) => (c.e.custom ? quickCustom(this.g, i)?.id === c.e.custom.id : q.tool === c.e.tool && !quickCustom(this.g, i)));
+    row('Quick slot', inSlot >= 0 ? `docked in ${inSlot + 1}` : 'not docked');
+    if (!c.e.owned) this.cStatus.set('Locked: no unit or structure can carry this tool yet. Unlock it through research.', 'warn');
+    else if (!who.length) this.cStatus.set('Owned, but nobody can carry it: build an arm, a drone or a structure for it.', 'bad');
+    else if (inSlot >= 0) this.cStatus.set(`On the turret as quick slot ${inSlot + 1}.`, 'ok');
+    else this.cStatus.set('Drag it onto a bay (or press 1-4) to carry it on the turret.', 'info');
   }
   private syncHolsters() {
     for (let i = 0; i < 4; i++) {
@@ -196,6 +226,7 @@ export class Arsenal {
       H.el.classList.toggle('h7-cur', i === this.w.current);
       { const st = H.view?.state<{ cur: boolean }>(); if (st) st.cur = i === this.w.current; }
       if (key === H.key) continue;
+      { const lb = H.el.querySelector('.h7-hol-l'); if (lb) lb.textContent = `SLOT ${i + 1}: ${(s?.level ?? 1) <= 0 ? 'LOCKED' : qc ? qc.name : s?.tool ? TOOLS[s.tool as keyof typeof TOOLS].name.toUpperCase() : 'EMPTY'}`; }
       H.key = key; H.view?.dispose(); H.view = null;
       H.view = new ModelView(() => mBay(s?.tool && s.level > 0 ? toolBuild(s.tool, qc, 'icon') : null), { w: 80, h: 70, scale: 2, spin: 0, yaw0: 0.4, rock: 0.12, pitch: 0.5, anim: (r, t, hot) => animBay(r, t, hot), frames: 24 }); H.view.cv.classList.add('h7-hol-model'); H.el.prepend(H.view.cv);
     }
@@ -265,6 +296,11 @@ function injectArsenalCSS() {
 .h7-arw { position: absolute !important; top: 140px; border: 0; background: none; padding: 6px; cursor: pointer; line-height: 0; transition: transform .2s cubic-bezier(.2,.9,.3,1.6), filter .15s; filter: drop-shadow(2px 3px 0 rgba(5,6,8,.5)); }
 .h7-arw.l { left: 6px; } .h7-arw.r { right: 6px; }
 .h7-arw:hover { transform: scale(1.15); filter: brightness(1.25) drop-shadow(0 0 6px rgba(255,200,110,.6)); }
+.h7-ars-card { position: absolute; right: 24px; top: 24px; width: 320px; pointer-events: auto; }
+.h7-ars-guide { position: absolute; left: 24px; top: 24px; width: 300px; pointer-events: auto; }
+.h7-hol-l { position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%); white-space: nowrap; color: #e8dcb0; pointer-events: none; z-index: 3; }
+.h7-ars-keys { display: flex; flex-wrap: wrap; row-gap: 6px; }
+.h7-ars-sub { color: #a8c8b8; margin-top: -4px; }
 .h7-ars-bench { position: absolute !important; right: 46px; bottom: 20px; }
 .h7-ars-back { position: absolute !important; left: 46px; bottom: 26px; }
 .h7-belt { position: relative; width: 1440px; height: 200px; margin-top: 6px; z-index: 2; }

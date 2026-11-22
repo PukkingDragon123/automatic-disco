@@ -23,7 +23,7 @@ import { Hotbar } from '../ui/build/hotbar';
 import { NodeMap } from '../ui/nodes/map';
 import { isRun } from './build';
 import { BuildMode } from '../ui/build/bpmode';
-import { bitText } from '../ui/kit/bitfont';
+import { bitText, bitMeasure } from '../ui/kit/bitfont';
 import { BlueprintSheet } from '../ui/build/sheet';
 /** ?insp6 keeps the old steel inspection form instead of the blueprint sheet */
 const OLD_INSP = typeof location !== 'undefined' && new URLSearchParams(location.search).has('insp6');
@@ -354,12 +354,13 @@ export class FactoryUI {
     const w = 64; x = Math.round((x - w / 2) / 2) * 2; y = Math.round((y - 10) / 2) * 2;
     g.fillStyle = '#08090c'; g.fillRect(x - 2, y - 2, w + 4, 10);
     for (let i = 0; i < 16; i++) { g.fillStyle = i / 16 < p ? (build ? '#eecc8e' : '#c7e6ce') : '#1e232c'; g.fillRect(x + i * 4, y, 2, 6); }
-    if (!build) need.forEach(([id, n], i) => {
-      const img = this.icon(id), ix = x + w / 2 + (i - (need.length - 1) / 2) * 40 - 12;
-      if (img.complete && img.naturalWidth) { g.imageSmoothingEnabled = false; g.drawImage(img, ix, y - 30, 24, 24); }
-      bitText(g, String(n), ix + 22, y - 20, { color: '#eecc8e' });
-    });
-    else if (s.builders) bitText(g, `${s.builders}`, x + w + 6, y - 6, { color: '#eecc8e' });
+    // its name and what it waits for (or how far the crew has got), in words; the items as icons beside the words
+    const all = Object.entries(s.need).map(([id, n]) => [id, (n ?? 0) - (s.got[id] ?? 0)] as [string, number]).filter(([, n]) => n > 0);
+    const l1 = `${s.def.name} (site)`, l2 = build ? `Building ${Math.round(Math.min(1, s.work / s.workNeed) * 100)}%${s.builders ? `, ${s.builders} on it` : f.time - s.help > 8 ? ', pod crane' : ''}` : all.length ? `Needs ${all.slice(0, 2).map(([id, n]) => `${n} ${ITEMS[id]?.name ?? id}`).join(', ')}${all.length > 2 ? ' ...' : ''}` : 'Supplied: waiting for a builder';
+    const cx = x + w / 2, l1w = bitMeasure(l1), l2w = bitMeasure(l2);
+    bitText(g, l1, Math.round(cx - l1w / 2), y - 40, { color: '#e3e6df' });
+    bitText(g, l2, Math.round(cx - l2w / 2), y - 22, { color: build ? '#eecc8e' : '#c7e6ce' });
+    if (!build) need.forEach(([id], i) => { const img = this.icon(id); if (img.complete && img.naturalWidth) { g.imageSmoothingEnabled = false; g.drawImage(img, Math.round(cx + l2w / 2 + 6 + i * 20), y - 24, 16, 16); } });
   }
   /** the readout at the cursor while a building is in hand: what, where, what it costs (have/need), why not */
   private renderTag() {

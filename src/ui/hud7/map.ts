@@ -15,6 +15,16 @@ import { installKitStyle } from '../kit/style';
 import { paintTerrain, paintFog, type Landmark } from './mapPaint';
 import { markGlyph, compassGlyph, type MarkKind } from './glyphs';
 import * as THREE from 'three';
+import { panel, kv, keyHint, showTip, hideTip, type Panel, type Kv } from '../kit/panel';
+import { bitText } from '../kit/bitfont';
+/** what each mark is (legend + tooltips) */
+const KIND_INFO: Partial<Record<MarkKind, [string, string]>> = {
+  pod: ['POD', 'your landed pod: the colony centre'], building: ['BUILDING', 'a colony building'], struct: ['STRUCTURE', 'a colony structure'],
+  worker: ['CREW', 'a crew member or worker'], drone: ['DRONE', 'a colony drone'], rival: ['RIVAL', 'another faction\'s tower'], beast: ['CREATURE', 'a wild creature seen now'],
+  peak: ['PEAK', 'a summit; height above the water line'], fall: ['WATERFALL', 'falling water'], spring: ['SPRING', 'a fresh or mineral spring'], geyser: ['GEYSER', 'erupts on a cycle'],
+  cave: ['CAVE', 'a cave mouth'], pass: ['PASS', 'a way through the ridges'], vent: ['STEAM VENT', 'geothermal heat'], ore: ['ORE SEAM', 'drill it for ore'],
+  crystal: ['CRYSTAL SEAM', 'rare crystal'], lake: ['LAKE', 'standing water, marsh or tarn'], danger: ['DANGER', 'a hazard reported here'],
+};
 
 type G = Game & Record<string, any>;
 const MINI = 128, MK = MINI / 160;
@@ -94,6 +104,7 @@ export class MapScreen {
   private t = 0; private dirty = true; private from = { x: innerWidth - 150, y: 150 };
   private anchor: { sx: number; sy: number; ax: number; ay: number } | null = null;
   private layers = { marks: true, units: true, fog: true };
+  private leg!: Panel; private legRows: Record<string, Kv> = {};
   constructor(readonly g: G) {
     installKitStyle(); injectMapCSS();
     const el = this.el = document.createElement('div'); el.className = 'h7-map';
@@ -109,6 +120,26 @@ export class MapScreen {
     const close = floatIcon({ canvas: pxCanvas(compassGlyph(), 2), name: 'CLOSE', nameSize: 16, sound: 'back', onClick: () => this.open(false) });
     rail.append(close.el);
     this.tip = document.createElement('div'); this.tip.className = 'k7-tip k7-t16'; document.body.append(this.tip);
+    // the LEGEND: every mark explained, the region in numbers, the controls
+    this.leg = panel({ title: 'SURVEY MAP', tone: 'gun', serial: 'NAV', lamps: ['green'], glands: 1, cls: 'h7-map-leg' });
+    this.leg.text('A painted survey of the landing region from the pod\'s scans. Unseen ground stays under cloud.', { dim: true });
+    this.leg.section('LEGEND');
+    const grid = document.createElement('div'); grid.className = 'h7-leg';
+    for (const k of ['pod', 'building', 'worker', 'drone', 'beast', 'rival', 'peak', 'fall', 'spring', 'geyser', 'cave', 'pass', 'vent', 'ore', 'crystal', 'lake', 'danger'] as MarkKind[]) {
+      const inf = KIND_INFO[k]; if (!inf) continue;
+      const r = document.createElement('div'); r.className = 'h7-leg-r'; r.title = inf[1];
+      const g = pxCanvas(markGlyph(k, 2), 2); g.className = 'h7-leg-g';
+      const n = document.createElement('span'); n.className = 'k7-t16'; n.textContent = inf[0];
+      r.append(g, n); grid.append(r);
+    }
+    const extra = document.createElement('div'); extra.className = 'h7-leg-x k7-t16'; extra.innerHTML = '<span><i style="background:#c8402a"></i>CONTROL RING</span><span><i style="background:#f0f0e0"></i>CAMERA VIEW</span>';
+    this.leg.body.append(grid, extra);
+    this.leg.section('REGION');
+    for (const [k, l] of [['size', 'Size'], ['seen', 'Surveyed'], ['marks', 'Landmarks'], ['zoom', 'Zoom']] as [string, string][]) this.legRows[k] = this.leg.kv(l, '-');
+    this.leg.section('CONTROLS');
+    const hk = document.createElement('div'); hk.className = 'h7-leg-keys'; hk.append(keyHint('WHEEL', 'zoom'), keyHint('DRAG', 'pan'), keyHint('RIGHT CLICK', 'send units'), keyHint('M', 'close'));
+    this.leg.body.append(hk);
+    el.append(this.leg.el);
     this.wire();
     el.addEventListener('pointerdown', (e) => { if (e.target === el) this.open(false); });
     addEventListener('keydown', (e) => { if (this.isOpen && e.key === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); this.open(false); } }, true);
@@ -122,7 +153,7 @@ export class MapScreen {
       this.isOpen = on;
       this.el.classList.toggle('on', on);
       if (on) { if (!this.el.isConnected) document.body.append(this.el); this.centreOnPod(); this.dirty = true; this.fogCv = null; }
-      else this.tip.classList.remove('on');
+      else { this.tip.classList.remove('on'); hideTip(); }
     }, { x: this.from.x, y: this.from.y, ms: 300 });
   }
   private centreOnPod() { const c = this.g.colony, R = this.g.region; if (!R) return; this.pan.x = (c?.pod?.x ?? R.N / 2) * 2; this.pan.y = (c?.pod?.z ?? R.N / 2) * 2; this.zoomT = 4; this.zoom.snap(4); }
@@ -200,6 +231,9 @@ export class MapScreen {
     };
     if (this.layers.marks) for (const m of this.base!.marks) { if (m.kind === 'peak' || !seen(m.x, m.z)) continue; const [x, y] = P2(m.x, m.z); glyph(m.kind, x, y, m.key, m.name); }
     if (this.layers.marks) for (const m of this.base!.marks) if (m.kind === 'peak' && seen(m.x, m.z)) { const [x, y] = P2(m.x, m.z); marks.push({ x, y: y - 8, r: 14, name: m.name, key: m.key }); }
+    // landmark names written on the map (Alagard, inked), when there is room for them
+    if (this.layers.marks && zs >= 3) { c.imageSmoothingEnabled = false; for (const m of this.base!.marks) { if (!seen(m.x, m.z) || (m.kind === 'peak' && !m.big)) continue; const [x, y] = P2(m.x, m.z); if (x < -40 || y < -20 || x > W + 40 || y > H + 20) continue; bitText(c, m.name, x + 14, y - 9, { color: m.kind === 'danger' ? '#ff9a7a' : m.kind === 'ore' || m.kind === 'crystal' ? '#ffd98a' : '#efe4c4' }); } }
+    { let seenN = 0, all = 0; const sv = g.vision?.seen; if (sv) { for (let i = 0; i < sv.length; i += 7) { all++; if (sv[i] > 0) seenN++; } } this.legRows.size?.set(`${R.N} x ${R.N} m`); this.legRows.seen?.set(sv ? `${Math.round((seenN / Math.max(1, all)) * 100)} %` : 'all'); this.legRows.marks?.set(this.base!.marks.filter((m) => seen(m.x, m.z)).length); this.legRows.zoom?.set(`${zs.toFixed(zs % 1 ? 1 : 0)}x · 16 m grid`); }
     // the control ring and the camera's view
     const col = g.colony;
     if (col?.pod) { const [x, y] = P2(col.pod.x, col.pod.z); ring(c, x, y, (col.controlRadius ?? 30) * 2 * zs, P.ruby[4], 2); }
@@ -216,8 +250,8 @@ export class MapScreen {
     if (hv && !this.drag?.moved) for (const m of marks) { const d = Math.hypot(m.x - hv.x, m.y - hv.y); if (d < m.r + 6 && d < bd) { bd = d; best = m; } }
     const was = this.hot; this.hot = best?.key ?? '';
     if (this.hot !== was) { this.dirty = true; if (best) uiSfx('hover', 0.4); }
-    if (best) { const r = this.cv.getBoundingClientRect(); this.tip.textContent = best.name; this.tip.style.left = Math.round(r.left + best.x) + 'px'; this.tip.style.top = Math.round(r.top + best.y - 20) + 'px'; this.tip.classList.add('on'); }
-    else this.tip.classList.remove('on');
+    if (best) { const r = this.cv.getBoundingClientRect(), lm = this.base!.marks.find((m) => m.key === best!.key), dt = dotsOf(g).find((d) => d.key === best!.key), kind = (lm?.kind ?? dt?.kind) as MarkKind | undefined, inf = kind ? KIND_INFO[kind] : undefined, pod = g.colony?.pod, wx = lm?.x ?? dt?.x, wz = lm?.z ?? dt?.z; const dist = pod && wx !== undefined && wz !== undefined ? Math.round(Math.hypot(wx - pod.x, wz - pod.z)) : null; showTip({ title: best.name, sub: inf ? inf[0] : undefined, desc: inf ? inf[1][0].toUpperCase() + inf[1].slice(1) + '.' : undefined, rows: dist !== null ? [['From the pod', dist, 'm']] : undefined, hint: [['RIGHT CLICK', 'send units here']] }, { x: r.left + best.x, y: r.top + best.y });; }
+    else hideTip();
     this.cv.style.cursor = this.drag?.moved ? 'grabbing' : best ? 'pointer' : 'crosshair';
     this.scaleLabel(bar);
   }
@@ -268,8 +302,16 @@ function injectMapCSS() {
 .h7-mini-cv { position: absolute; left: 10px; top: 10px; width: 256px; height: 256px; z-index: 1; image-rendering: pixelated; cursor: crosshair; }
 .h7-mini-icon { position: absolute !important; left: -46px; bottom: -10px; z-index: 2; }
 .h7-map { position: fixed; inset: 0; z-index: 9300; display: none; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 50%, rgba(6,7,9,.6), rgba(6,7,9,.92)); }
-.h7-map.on { display: flex; }
-.h7-map-frame { position: relative; width: min(1500px, 92vw); height: min(900px, 86vh); }
+.h7-map.on { display: flex; gap: 22px; }
+.h7-map-leg { width: 300px; flex: none; align-self: center; }
+.h7-leg { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+.h7-leg-r { display: flex; align-items: center; gap: 6px; min-height: 26px; }
+.h7-leg-g { image-rendering: pixelated; flex: none; }
+.h7-leg-r .k7-t16 { color: #e8dcb8; }
+.h7-leg-x { display: flex; gap: 14px; margin-top: 4px; color: #e8dcb8; }
+.h7-leg-x i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; box-shadow: 0 0 0 1px #060708; }
+.h7-leg-keys { display: flex; flex-wrap: wrap; row-gap: 6px; }
+.h7-map-frame { position: relative; width: min(1300px, calc(94vw - 330px)); height: min(900px, 86vh); }
 .h7-map-cv { position: absolute; left: 28px; top: 28px; right: 28px; bottom: 28px; width: calc(100% - 56px); height: calc(100% - 56px); z-index: 1; image-rendering: pixelated; cursor: crosshair; touch-action: none; }
 .h7-map-cv.grab { cursor: grabbing; }
 .h7-map-rail { position: absolute; right: 60px; top: -46px; z-index: 3; display: flex; gap: 18px; align-items: flex-end; }

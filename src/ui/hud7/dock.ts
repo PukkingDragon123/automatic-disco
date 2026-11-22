@@ -13,6 +13,15 @@ import { ModelView } from '../kit/model3d';
 import { plate, skin, type Mat } from '../kit/mat';
 import { uiSfx } from '../kit/sound';
 import { installKitStyle } from '../kit/style';
+import { bindTip } from '../kit/panel';
+/** what each mode is for (tooltip) and its key */
+const INFO: Record<DockId, [string, string]> = {
+  build: ['Place and move buildings on a top-down blueprint of the region: costs, locked and unlocked builds.', 'B'],
+  research: ['The skill tree: spend knowledge and closeness to learn new functions one by one.', 'R'],
+  troops: ['Your people and units: select, group, give orders; health, morale and needs.', 'T'],
+  lab: ['Bio-engineering: study specimens and design creatures and plants.', 'L'],
+  ship: ['The MERIDIAN in orbit: its rooms and functions, the crew, the main monitor.', 'H'],
+};
 
 export type DockId = 'build' | 'research' | 'troops' | 'lab' | 'ship';
 export const DOCK_IDS: DockId[] = ['build', 'research', 'troops', 'lab', 'ship'];
@@ -45,6 +54,7 @@ export class Dock {
         onClick: () => this.open(id),
       });
       fi.el.dataset.dock = id;
+      bindTip(fi.el, () => { const s = this.slots.get(id); const locked = fi.el.classList.contains('lock'); return { title: NAMES[id], desc: INFO[id][0], status: locked ? ['Locked: not learned yet', 'warn'] : s?.open ? ['Click to open', 'ok'] : ['Opens a preview: this mode is still being built', 'info'] }; });
       el.append(fi.el);
       this.slots.set(id, { id, fi, open: null, kind: KIND[id] });
     }

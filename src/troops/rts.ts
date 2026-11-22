@@ -12,7 +12,8 @@ import type { Game } from '../game/game';
 import { type Troop, type Target, type OrderK } from './units';
 import { OrderBook, type Formation } from './orders';
 import { Decals, type MarkK } from './decals';
-import { bitText } from '../ui/kit/bitfont';
+import { bitText, bitMeasure } from '../ui/kit/bitfont';
+import { tname, ORDER_NAME } from './words';
 import { uiSfx } from '../ui/kit/sound';
 import { glyph, pip, hpRamp, P } from './art';
 
@@ -363,6 +364,10 @@ export class Rts {
     const sel = this.troops();
     for (const t of sel) this.pips(t);
     if (this.hover && !this.has(this.hover)) this.pips(this.hover, true);
+    if (this.hover) {
+      const t = this.hover, s = this.book.stateOf(t), [sx, sy, ok] = g.screenOf(t.x, t.y + t.height + 0.32, t.z);
+      if (ok) { const line = `${s.call} · ${t.typeName}`, w = bitMeasure(line); bitText(c, line, Math.round(sx - w / 2), Math.round(sy) - 40, { color: '#ffe7a8', scale: 1 }); const l2 = this.book.job(t), w2 = bitMeasure(l2); bitText(c, l2, Math.round(sx - w2 / 2), Math.round(sy) - 58, { color: '#c8d8e8', scale: 1 }); }
+    }
     const d = this.drag;
     if (d?.on) this.marquee(d.x0, d.y0, d.x1, d.y1, d.t0);
     const inp = g.input;
@@ -373,6 +378,9 @@ export class Rts {
       const p = glyph(name, pal as never, 1), x = Math.round(inp.mx + 14), y = Math.round(inp.my + 12);
       const bob = Math.round(Math.sin(this.t * 6) * 1);
       c.drawImage(p.canvas(), x, y + bob, p.w * 2, p.h * 2);
+      // the order in words beside it: what a right-click does here
+      const it = this.intent, word = this.arm === 'amove' ? (it?.k === 'attack' ? 'ATTACK ' + tname(it.tgt) : 'ATTACK-MOVE HERE') : this.arm === 'patrol' ? 'PATROL TO HERE' : `${ORDER_NAME[it.k]}${it.tgt ? ' ' + tname(it.tgt) : it.k === 'move' ? ' HERE' : ''}`;
+      bitText(c, word, x + p.w * 2 + 6, y + 4, { color: pal === 'red' ? '#ff9a80' : '#f6ecd0', scale: 1 });
       if (this.book.formation !== 'line' && sel.length > 1 && (k === 'move' || k === 'amove' || k === 'patrol')) { const f = glyph(this.book.formation, 'dim', 1); c.drawImage(f.canvas(), x + p.w * 2 + 2, y + 8, f.w * 2, f.h * 2); }
     }
   }
@@ -417,7 +425,7 @@ export class Rts {
     bracket(ax, ay, 1, 1); bracket(bx, ay, -1, 1); bracket(ax, by, 1, -1); bracket(bx, by, -1, -1);
     // the live count at the pointer
     const n = this.book.troops.filter((t) => this.inBox(t, x0, y0, x1, y1)).length;
-    if (n) bitText(c, String(n), x1 + (x1 >= x0 ? 10 : -26), y1 + (y1 >= y0 ? 6 : -30), { color: '#ffe7a8', scale: 2 });
+    if (n) { const txt = `${n} UNIT${n > 1 ? 'S' : ''}`, w = bitMeasure(txt) * 2; bitText(c, txt, x1 >= x0 ? x1 + 10 : x1 - w - 10, y1 + (y1 >= y0 ? 6 : -30), { color: '#ffe7a8', scale: 2 }); }
     void _v;
   }
 }

@@ -14,7 +14,8 @@ import { Px, P, INK } from '../kit/px';
 import { uiSfx } from '../kit/sound';
 import { shake, burst, bounceEl, onFrame, floatUp, pop } from '../kit/juice';
 import { installKitStyle } from '../kit/style';
-import { TOOLS, quickCustom, type ToolId } from './tools';
+import { TOOLS, quickCustom, statText, STAT_INFO, type ToolId, type Stats } from './tools';
+import { panel, kv, keyHint, type Panel, type Kv, type Status } from '../kit/panel';
 import { Arsenal } from './arsenal';
 import { Bench } from './bench';
 import { driveToolModels } from '../../tools/models';
@@ -57,6 +58,7 @@ export class ToolWidget {
   private press: { t0: number; x: number; y: number; moved: boolean; opened: boolean } | null = null;
   readonly arsenal: Arsenal; readonly bench: Bench;
   private acc = 0;
+  private card: Panel; private cDesc: HTMLDivElement; private cRows: HTMLDivElement; private cStatus: Status;
   constructor(readonly g: G) {
     installKitStyle(); injectToolCSS();
     const el = this.el = document.createElement('div'); el.className = 'h7-tool';
@@ -69,6 +71,13 @@ export class ToolWidget {
     this.lampCv = pxCanvas(lamps(1), 2, 'h7-lamps');
     const nameRow = document.createElement('div'); nameRow.className = 'h7-trow'; nameRow.append(this.nameEl, this.lampCv);
     const right = document.createElement('div'); right.className = 'h7-tright'; right.append(st, nameRow);
+    // the TOOL CARD beside the turret: what it is, what it does, its numbers with units, who carries it, what to press
+    this.card = panel({ title: 'TOOL', tone: 'gun', serial: 'QUICK SLOTS', lamps: ['green', 'amber'], glands: 1, vents: false, foot: 14, cls: 'h7-tcard' });
+    this.cDesc = this.card.text('', { dim: true });
+    this.cRows = document.createElement('div'); this.card.body.append(this.cRows);
+    this.cStatus = this.card.status('', 'info');
+    const hk = document.createElement('div'); hk.className = 'h7-tkeys'; hk.append(keyHint('F', 'use'), keyHint('G', 'arsenal'), keyHint('[ ]', 'switch')); this.card.body.append(hk);
+    right.prepend(this.card.el);
     el.append(right);
     this.wire();
     this.arsenal = new Arsenal(g, this);
@@ -172,13 +181,38 @@ export class ToolWidget {
       const nm = s.custom?.name ?? (s.level <= 0 ? 'LOCKED' : s.tool ? TOOLS[s.tool].name.toUpperCase() : 'EMPTY');
       this.nameEl.textContent = nm; if (changed) pop(this.nameEl, 0.4);
       lamps(s.level).canvas(this.lampCv);
+      this.fillCard(i, s);
     }
     const st = this.view?.state<TurretState>();
     if (st) { st.leds = all.map((t) => t.level > 0 && !!t.tool); st.locked = s.level <= 0 || !s.tool; st.live = this.g.colony?.slots?.active === i; st.slot = i; }
   }
+  /** the tool card: name plate, one-line description, the numbers spelled out with units */
+  private fillCard(i: number, s: { tool: ToolId | null; level: number; custom: ReturnType<typeof quickCustom> }) {
+    const d = s.tool ? TOOLS[s.tool] : null;
+    this.card.setTitle(s.custom?.name ?? (d ? d.name.toUpperCase() : 'EMPTY SLOT'));
+    this.cDesc.textContent = !d ? 'No tool in this quick slot. Hold the turret (or G) to open the arsenal and dock one.' : s.level <= 0 ? `${d.name}: not unlocked yet. Research it or bond with the guide to learn it.` : d.desc;
+    this.cRows.textContent = '';
+    if (d && s.level > 0) {
+      this.cRows.append(kv('Quick slot', `${i + 1} of 4`).el, kv('Level', `${s.level} / 3`).el, kv('Power draw', d.kw, { unit: 'kW' }).el, kv('Use', d.hold ? 'hold the button' : d.cd > 0 ? `click, ${d.cd} s cooldown` : 'click').el);
+      const st = s.custom?.stats as Stats | undefined;
+      if (st) for (const k of ['power', 'reach', 'speed'] as (keyof Stats)[]) this.cRows.append(kv(STAT_INFO[k].name, statText(k, st[k])).el);
+      const who = this.g.colony?.slots?.candidates?.(s.tool!) as { name: string }[] | undefined;
+      this.cRows.append(kv('Carried by', who?.length ? who.slice(0, 2).map((w) => w.name).join(', ') + (who.length > 2 ? ` +${who.length - 2}` : '') : 'nobody yet', { color: who?.length ? undefined : '#ff9a7a' }).el);
+    }
+  }
+  /** what the tool is doing right now, or why it cannot */
+  private cardStatus() {
+    const c = this.g.colony, i = this.current, s = this.slotTool(i);
+    if (!s.tool) { this.cStatus.set('Empty: dock a tool here from the arsenal.', 'warn'); return; }
+    if (s.level <= 0) { this.cStatus.set('Locked: not learned yet.', 'warn'); return; }
+    if (c?.slots?.active === i) { this.cStatus.set(`In use: ${TOOLS[s.tool].hold ? 'release to stop' : 'aim and click'}.`, 'busy'); return; }
+    const who = c?.slots?.candidates?.(s.tool) as unknown[] | undefined;
+    if (c && !who?.length) { this.cStatus.set('No unit can carry it: build an arm, a drone or a structure for it.', 'bad'); return; }
+    this.cStatus.set('Ready: click the turret (or F) to use it.', 'ok');
+  }
   update(dt: number) {
     this.acc -= dt; if (this.acc > 0) return; this.acc = 0.15;
-    this.refresh();
+    this.refresh(); this.cardStatus();
     const c = this.g.colony;
     this.stage.classList.toggle('live', !!c && c.slots?.active === this.current);
   }
@@ -198,6 +232,8 @@ function injectToolCSS() {
 .h7-q.on { filter: drop-shadow(0 0 6px rgba(255,190,80,.7)) drop-shadow(2px 3px 0 rgba(5,6,8,.4)); }
 .h7-q.on .h7-qn { color: var(--k7-amber); }
 .h7-q.lock { opacity: .45; }
+.h7-tcard { width: 300px; margin-bottom: 2px; pointer-events: auto; }
+.h7-tkeys { margin-top: 6px; display: flex; flex-wrap: wrap; row-gap: 4px; }
 .h7-tright { display: flex; flex-direction: column; align-items: center; pointer-events: auto; }
 .h7-stage { position: relative; width: 300px; height: 256px; border: 0; background: none; padding: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; touch-action: none; }
 .h7-stage .h7-tmodel { position: relative; z-index: 1; display: block; transition: transform .22s cubic-bezier(.2,.9,.3,1.5), filter .18s; }

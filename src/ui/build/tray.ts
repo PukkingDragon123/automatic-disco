@@ -16,6 +16,7 @@ import { spinFrame } from './studio';
 import { bpIcon, floatBtn, type BpIcon } from './bpicons';
 import { parallelRule, ruleCursor } from './paper';
 import { play } from './juice';
+import { bill, facts, lockWords, oneLine } from './info';
 
 /** the flagship of each category (its miniature floats on the rule) */
 const FLAG: Record<BuildCat, FKind[]> = {
@@ -63,7 +64,7 @@ class Mini {
     el.dataset.kind = kind;
     el.style.setProperty('--i', String(i));
     el.style.setProperty('--ph', (Math.random() * -4).toFixed(2) + 's');
-    el.innerHTML = `<span class="bt-cost"></span><span class="bt-sh"></span><span class="bt-bob"><img class="bt-art" src="${art(kind)}" alt="" draggable="false"><canvas class="bt-spin" width="64" height="48"></canvas>${this.lock.ok ? '' : `<span class="bt-lock"><img src="${bpIcon('lock')}" alt=""><img class="bt-req" src="${bpIcon(LOCK_ICON[this.lock.by])}" alt=""></span>`}</span><span class="bt-name">${esc(d.name)}</span>${this.lock.ok ? '' : `<span class="bt-why">${esc(this.lock.why)}</span>`}`;
+    el.innerHTML = `<span class="bt-cost bp-card"></span><span class="bt-sh"></span><span class="bt-bob"><img class="bt-art" src="${art(kind)}" alt="" draggable="false"><canvas class="bt-spin" width="64" height="48"></canvas>${this.lock.ok ? '' : `<span class="bt-lock"><img src="${bpIcon('lock')}" alt=""><img class="bt-req" src="${bpIcon(LOCK_ICON[this.lock.by])}" alt=""></span>`}</span><span class="bt-name">${esc(d.name)}</span>${this.lock.ok ? '' : `<span class="bt-why">${esc(this.lock.why)}</span>`}`;
     this.cv = el.querySelector('canvas')!; this.g = this.cv.getContext('2d')!; this.g.imageSmoothingEnabled = false;
     this.img = el.querySelector('.bt-art')!;
     el.addEventListener('pointerenter', () => this.setHot(true));
@@ -101,7 +102,7 @@ class Mini {
 export class BuildTray {
   readonly root: HTMLDivElement;
   private rail: HTMLCanvasElement; private cursor: HTMLCanvasElement;
-  private cats: HTMLDivElement; private shelf: HTMLDivElement;
+  private cats: HTMLDivElement; private shelf: HTMLDivElement; private head: HTMLDivElement;
   private catEls = new Map<BuildCat, HTMLElement>();
   private minis: Mini[] = [];
   cat: BuildCat = 'extraction';
@@ -115,10 +116,10 @@ export class BuildTray {
     registerColonyBuildings();
     const r = (this.root = document.createElement('div'));
     r.className = 'bt';
-    r.innerHTML = `<canvas class="bt-rail"></canvas><canvas class="bt-cur"></canvas><div class="bt-cats"></div><div class="bt-shelf"></div>`;
+    r.innerHTML = `<canvas class="bt-rail"></canvas><canvas class="bt-cur"></canvas><div class="bt-cats"></div><div class="bt-shelf"></div><div class="bt-head"></div>`;
     document.body.appendChild(r);
     this.rail = r.querySelector('.bt-rail')!; this.cursor = r.querySelector('.bt-cur')!;
-    this.cats = r.querySelector('.bt-cats')!; this.shelf = r.querySelector('.bt-shelf')!;
+    this.cats = r.querySelector('.bt-cats')!; this.shelf = r.querySelector('.bt-shelf')!; this.head = r.querySelector('.bt-head')!;
     for (const c of BUILD_CATS) {
       const fk = FLAG[c.k].find((k) => FDEFS[k]) ?? kindsIn(c.k)[0];
       const b = floatBtn(fk ? art(fk, 'small') : bpIcon('cog'), '', () => this.setCat(c.k), { size: 64, cls: 'bt-cat', sound: 'turn' });
@@ -126,7 +127,8 @@ export class BuildTray {
       const t = document.createElement('span'); t.className = 'bt-cat-t'; t.textContent = c.short; b.appendChild(t);
       this.cats.appendChild(b); this.catEls.set(c.k, b);
     }
-    const ex = floatBtn('exit', '', () => host.leave(), { size: 48, cls: 'bt-exit', sound: 'close' });
+    const ex = floatBtn('exit', 'EXIT', () => host.leave(), { size: 48, cls: 'bt-exit', sound: 'close' });
+    ex.title = 'Leave build mode (B or Esc)';
     r.appendChild(ex);
     for (const e of [this.cats, this.shelf]) { e.addEventListener('wheel', (ev) => { ev.stopPropagation(); if (e === this.cats) this.wheelCat(ev.deltaY); }, { passive: true }); }
     r.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -193,6 +195,10 @@ export class BuildTray {
     const kinds = kindsIn(this.cat);
     // unlocked first, in catalogue order
     const sorted = [...kinds].sort((a, b) => Number(!buildingLock(this.f.g, a).ok) - Number(!buildingLock(this.f.g, b).ok));
+    // the section header: the category, how much of it is open, what to do
+    const open = sorted.filter((k) => buildingLock(this.f.g, k).ok).length, cd = BUILD_CATS.find((c) => c.k === this.cat);
+    this.head.innerHTML = `<b>${esc((cd?.name ?? this.cat).toUpperCase())}</b><span>${open} of ${sorted.length} unlocked  ·  drag a building onto the blueprint  ·  wheel or R turns it  ·  right-click drops it</span>`;
+    this.head.classList.remove('flash'); void this.head.offsetWidth; this.head.classList.add('flash');
     const row = document.createElement('div'); row.className = 'bt-row' + (first ? ' first' : '');
     row.style.setProperty('--n', String(sorted.length));
     if (sorted.length > 12) row.classList.add('tight');
@@ -201,11 +207,15 @@ export class BuildTray {
     this.key = this.lockKey();
   }
   private lockKey() { return kindsIn(this.cat).map((k) => (buildingLock(this.f.g, k).ok ? 1 : 0)).join(''); }
-  /** the bill floats over a hot miniature: icon, have / need */
+  /** the card over a hot miniature: name, what it is, the bill item by item (have / need), its facts, a lock, how to use */
   renderCost(m: Mini) {
-    const el = m.el.querySelector('.bt-cost') as HTMLElement;
-    if (!m.lock.ok) { el.innerHTML = ''; return; }
-    el.innerHTML = this.host.bill(m.kind).map(([id, have, need]) => `<span class="bp-chip ${have < need ? 'lack' : ''}" title="${esc(ITEMS[id]?.name ?? id)}"><img src="${itemIcon(id, 32)}" alt=""><b>${Math.min(999, Math.floor(have))}</b><i>/${need}</i></span>`).join('');
+    const el = m.el.querySelector('.bt-cost') as HTMLElement, d = FDEFS[m.kind], f = this.f;
+    const lines = bill(f, m.kind).map((l) => `<span class="bc-line ${l.short ? 'short' : ''}"><img src="${itemIcon(l.id, 32)}" alt=""><span class="bc-item">${esc(l.name)}</span><b>${Math.min(9999, l.have)}</b><i>/ ${l.need}</i></span>`).join('');
+    const lock = lockWords(f, m.kind);
+    el.innerHTML = `<span class="bc-name">${esc(d.name)}</span><span class="bc-desc">${esc(oneLine(d.desc))}</span>`
+      + `<span class="bc-sec">COST (in stores / needed)</span>${lines || '<span class="bc-desc">Free</span>'}`
+      + `<span class="bc-facts">${esc(facts(m.kind))}</span>`
+      + (lock ? `<span class="bc-lock">${esc(lock)}</span>` : `<span class="bc-hint">${bill(f, m.kind).some((l) => l.short) ? 'Short of materials: you can still stake the site; workers wait for the rest' : 'Drag it onto the blueprint, or click to take it in hand'}</span>`);
   }
   miniOf(kind: FKind) { return this.minis.find((m) => m.kind === kind) ?? null; }
   /** the screen box a building's miniature is in (for the drop's fly-back) */

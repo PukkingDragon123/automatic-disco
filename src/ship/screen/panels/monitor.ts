@@ -6,14 +6,14 @@
 import * as THREE from 'three';
 import type { PanelCtx, Panel } from './index';
 import { KitView, type KView } from '../kitview';
-import { div, place, artCanvas, S, keyCap, chip, iconOf, clean } from '../ui';
+import { div, place, artCanvas, S, keyCap, iconOf, clean, textEl, pxLine } from '../ui';
 import { plate } from '../../../ui/kit/mat';
 import { Px, P, INK, hex, hash, mixHex } from '../../../ui/kit/px';
 import { libColor } from '../../../ui/kit/libmat';
 import { toon, renderModel, fitRoot } from '../../../ui/kit/model3d';
 import { bitText } from '../../../ui/kit/bitfont';
 import { uiSfx } from '../../../ui/kit/sound';
-import { Spring, pop, squash, tween, ease } from '../../../ui/kit/juice';
+import { Spring, pop, squash } from '../../../ui/kit/juice';
 import { systemWorlds, type World } from '../../hub/monitor';
 import { BIOME_COL, type Planet, type PRegion } from '../../../world/planet';
 import { shipLander } from '../../hub/index';
@@ -60,110 +60,123 @@ function globeModel(w: World | { planet: Planet; size?: number }, ringed: boolea
   return g;
 }
 
+const BIOME_TEXT: Record<string, [string, string]> = {
+  meadow: ['MEADOW', 'Open grassland and soft soil: easy building, steady water.'],
+  jungle: ['JUNGLE', 'Dense wet forest: rich wood and life, slow going.'],
+  savanna: ['SAVANNA', 'Dry grass and scattered trees: wide ground, little water.'],
+  marsh: ['MARSH', 'Wetland and peat: water everywhere, soft footings.'],
+  highland: ['HIGHLAND', 'Hills and stone: ore close to the surface, hard ground.'],
+  tundra: ['TUNDRA', 'Frozen plain: cold nights, thin soil, little life.'],
+  desert: ['DESERT', 'Sand and rock: sun for power, no water.'],
+  crystal: ['CRYSTAL FIELD', 'Crystal outcrops: rare minerals, odd life.'],
+  ashland: ['ASHLAND', 'Volcanic ash and vents: heat and sulphur, poor soil.'],
+  coast: ['COAST', 'Shore and dunes: water, salt and fish.'],
+  archipelago: ['ARCHIPELAGO', 'Small islands on open water: little room to build.'],
+  reef: ['REEF', 'Coral shallows: sea life, almost no dry ground.'],
+  ocean: ['OPEN OCEAN', 'Deep water: a splashdown, no ground.'],
+};
+const DIFF = ['', 'GENTLE', 'FAIR', 'HARSH', 'SEVERE', 'LETHAL'];
+const DANGER = ['', 'LOW', 'MEDIUM', 'HIGH'];
+
 export function monitorPanel(ctx: PanelCtx): Panel {
   const { w: W, h: H, host } = ctx;
   const L = shipLander();
   const runSeed = ctx.game?.run?.seed ?? L?.runSeed() ?? 1;
   const worlds = systemWorlds(runSeed);
   const here = L?.planet() ?? null;
-  // the colony's own world joins the system if it is not one of the five
   if (here && !worlds.some((x) => x.seed === here.seed)) worlds[0] = { ...worlds[0], seed: here.seed, planet: here };
   let wi = Math.max(0, here ? worlds.findIndex((x) => x.seed === here.seed) : worlds.reduce((b, x, k) => (x.diff < worlds[b].diff ? k : b), 0));
   const best = worlds.reduce((b, x, k) => (x.diff < worlds[b].diff ? k : b), 0);
   const homeSeed: number | null = ctx.game?.opts?.seed ?? null;
 
-  // ---- the panel's face: gunmetal with the globe's sunk bezel
-  const G = Math.min(W - 24, 280), gx = Math.round((W - G) / 2), gy = 10;
+  // ---- the panel's face: gunmetal, the globe's sunk bezel at the upper left, a readout plate beside it
+  const G = 172, gx = 8, gy = 6;
   const bg = artCanvas(W, H); host.append(bg);
   {
     const p = plate(W, H, { mat: 'gun', seed: 23, chamfer: 3, wear: 0.9, screws: true, grime: 0.7 });
     const cx = gx + G / 2, cy = gy + G / 2, R = G / 2;
-    p.disc(cx, cy, R + 4, () => INK);
-    p.disc(cx, cy, R + 3, (d, lit) => libColor('brass', Math.round(cx + lit * 40), Math.round(cy + d), 0.72 + lit * 0.42));
+    p.disc(cx, cy, R + 3, () => INK);
+    p.disc(cx, cy, R + 2, (d, lit) => libColor('brass', Math.round(cx + lit * 40), Math.round(cy + d), 0.72 + lit * 0.42));
     p.disc(cx, cy, R - 1, () => INK);
-    p.disc(cx, cy, R - 2, (d) => { const k = d / R; return mixHex(0x05070c, 0x101a2a, Math.max(0, 1 - k) * 0.8); });
-    // stars, a few, single pixels and a cross or two
-    for (let i = 0; i < 70; i++) { const a = hash(i, 3, 9) * Math.PI * 2, rr = Math.sqrt(hash(i, 4, 9)) * (R - 6), x = Math.round(cx + Math.cos(a) * rr), y = Math.round(cy + Math.sin(a) * rr); p.set(x, y, hash(i, 5, 9) > 0.8 ? 0xfff0d0 : 0x8090a8); if (hash(i, 6, 9) > 0.93) { p.set(x + 1, y, 0x607088); p.set(x - 1, y, 0x607088); p.set(x, y + 1, 0x607088); p.set(x, y - 1, 0x607088); } }
-    for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2, x = Math.round(cx + Math.cos(a) * (R + 1)), y = Math.round(cy + Math.sin(a) * (R + 1)); p.set(x, y, P.brass[5]); p.set(x + 1, y + 1, P.brass[0]); }
-    // the readout strip under the worlds
-    p.blit(plate(W - 20, 30, { mat: 'enamel', seed: 5, chamfer: 2, wear: 0.5, lip: 1 }), 10, gy + G + 46);
+    p.disc(cx, cy, R - 2, (d) => mixHex(0x05070c, 0x101a2a, Math.max(0, 1 - d / R) * 0.8));
+    for (let i = 0; i < 50; i++) { const a = hash(i, 3, 9) * Math.PI * 2, rr = Math.sqrt(hash(i, 4, 9)) * (R - 6); p.set(Math.round(cx + Math.cos(a) * rr), Math.round(cy + Math.sin(a) * rr), hash(i, 5, 9) > 0.8 ? 0xfff0d0 : 0x8090a8); }
+    p.blit(plate(W - G - 22, G, { mat: 'enamel', seed: 5, chamfer: 2, wear: 0.5, lip: 1 }), G + 14, gy);
+    p.blit(plate(W - 16, 112, { mat: 'enamel', seed: 6, chamfer: 2, wear: 0.5, lip: 1 }), 8, gy + G + 50);
     bg.getContext('2d')!.putImageData(p.image(), 0, 0);
   }
-  // ---- the globe
-  const gcv = artCanvas(G - 8, G - 8); place(gcv, gx + 4, gy + 4); host.append(gcv); gcv.style.cursor = 'grab'; gcv.style.touchAction = 'none';
-  const ov = artCanvas(G - 8, G - 8); place(ov, gx + 4, gy + 4); ov.style.pointerEvents = 'none'; host.append(ov);
+  // ---- the globe, a kit 3D element
+  const gcv = artCanvas(G - 6, G - 6); place(gcv, gx + 3, gy + 3); host.append(gcv); gcv.style.cursor = 'grab'; gcv.style.touchAction = 'none';
+  const ov = artCanvas(G - 6, G - 6); place(ov, gx + 3, gy + 3); ov.style.pointerEvents = 'none'; host.append(ov);
   const oc = ov.getContext('2d')!;
-  let kv: KitView, surf: THREE.Mesh;
-  const build = () => { const m = globeModel(worlds[wi], hash(worlds[wi].seed, 1) > 0.6); kv = new KitView(m, { ink: 2, edge: 0.05, rimK: 0.9 }); surf = m.getObjectByName('surface') as THREE.Mesh; };
+  let kv: KitView;
+  const build = () => { const m = globeModel(worlds[wi], hash(worlds[wi].seed, 1) > 0.6); kv = new KitView(m, { ink: 2, edge: 0.05, rimK: 0.9 }); };
   build();
   const yaw = new Spring(0, { k: 30, d: 9 }), pitch = new Spring(0.35, { k: 30, d: 9 }), zoom = new Spring(1.02, { k: 50, d: 11 });
   let spin = 0.12;
   const view = (): KView => ({ w: gcv.width, h: gcv.height, yaw: yaw.x, pitch: pitch.x, zoom: zoom.x });
   let dirty = true, acc = 0, t = 0;
   const draw = () => { kv.draw(gcv.getContext('2d')!, view()); dirty = false; };
-  // ---- the sites: the three safest landable regions (and home)
   let sites: PRegion[] = [], site = -1;
-  const pickSites = () => {
-    const pl = worlds[wi].planet;
-    sites = pl.regions.filter((r) => r.state !== 'veyr' && r.state !== 'lost' && r.seed !== homeSeed).sort((a, b) => a.danger - b.danger).slice(0, 3);
-    site = -1;
-  };
+  const pickSites = () => { sites = worlds[wi].planet.regions.filter((r) => r.state !== 'veyr' && r.state !== 'lost' && r.seed !== homeSeed).sort((a, b) => a.danger - b.danger).slice(0, 3); site = -1; };
   pickSites();
-  // turn the safest site toward us
-  const face = (r: PRegion | null) => { if (!r) return; const [x, , z] = r.c; yaw.target = Math.atan2(-x, z) + Math.round((yaw.target - Math.atan2(-x, z)) / (Math.PI * 2)) * Math.PI * 2; pitch.target = 0.35 + r.c[1] * 0.5; };
+  const face = (r: PRegion | null) => { if (!r) return; const [x, , z] = r.c, a = Math.atan2(-x, z); yaw.target = a + Math.round((yaw.target - a) / (Math.PI * 2)) * Math.PI * 2; pitch.target = 0.35 + r.c[1] * 0.5; };
   face(sites[0] ?? null);
   const homeR = (): PRegion | null => (homeSeed !== null && here && worlds[wi].seed === here.seed ? here.regions.find((r) => r.seed === homeSeed) ?? null : null);
-  // ---- the worlds under it
-  const row = div('s7-abs', host); place(row, 10, gy + G + 6); row.style.display = 'flex'; row.style.gap = 6 * S + 'px';
+  // ---- the world's readout beside the globe
+  const facts = div('s7-abs', host); place(facts, G + 20, gy + 5, W - G - 34); facts.style.display = 'flex'; facts.style.flexDirection = 'column'; facts.style.gap = '0';
+  const paintFacts = () => {
+    const wd = worlds[wi], f = Object.fromEntries(wd.facts);
+    const row = (k: string, v: string, col = '#2a2014') => { const r = div(''); r.style.display = 'flex'; r.style.justifyContent = 'space-between'; r.append(textEl(k, { dark: true, color: '#6a5a40', wrap: false }), textEl(v, { dark: true, color: col, wrap: false })); return r; };
+    facts.replaceChildren(
+      textEl(clean(wd.planet.name.toUpperCase()), { dark: true, color: '#2a2014', wrap: false }),
+      textEl(`${DIFF[wd.diff]} WORLD (${wd.diff}/5)${wi === best ? ', EASIEST' : ''}`, { dark: true, color: wd.diff <= 2 ? '#2e6a2a' : wd.diff <= 3 ? '#8a5a10' : '#8a2a1a', wrap: false }),
+      row('Gravity', f.GRAVITY ?? '--'), row('Mean temp', f['MEAN TEMP'] ?? '--'), row('Air', (f.ATMOSPHERE ?? '--').replace(' ATM', ' atm')), row('Water', f['SURFACE WATER'] ?? '--'),
+      row('Life', (f['LIFE SIGNS'] ?? '--').toLowerCase()), row('Regions', f.REGIONS ?? '--'),
+      textEl(clean(wd.tag), { dark: true, color: '#6a5a40' }),
+    );
+  };
+  paintFacts();
+  // ---- the system's worlds
+  const sysL = textEl('THE SYSTEM: 5 WORLDS (* = EASIEST)', { color: '#e8dcc0', wrap: false }); sysL.className += ' s7-abs'; place(sysL, 10, gy + G + 4); host.append(sysL);
+  const row = div('s7-abs', host); place(row, 10, gy + G + 14); row.style.display = 'flex'; row.style.gap = 6 * S + 'px';
   const chips: HTMLCanvasElement[] = [];
-  worlds.forEach((wd, i) => {
-    const cv = artCanvas(36, 36, ''); cv.style.cursor = 'pointer'; cv.className = 's7-tab'; row.append(cv); chips.push(cv);
+  worlds.forEach((_wd, i) => {
+    const cv = artCanvas(32, 32, ''); cv.style.cursor = 'pointer'; cv.className = 's7-tab'; row.append(cv); chips.push(cv);
+    cv.title = clean(worlds[i].planet.name);
     cv.addEventListener('pointerenter', () => uiSfx('hover', 0.4));
     cv.addEventListener('click', () => { if (i === wi) return; wi = i; uiSfx('glitch', 0.4); uiSfx('select', 0.6); squash(cv, 0.7); reskin(); });
   });
   const paintChips = () => worlds.forEach((wd, i) => {
-    const c = chips[i].getContext('2d')!; c.clearRect(0, 0, 36, 36);
-    const pp = new Px(36, 36); pp.disc(18, 18, 17, () => INK); pp.disc(18, 18, 16, (d, lit) => (i === wi ? P.ochre : P.steel)[Math.max(0, Math.min(6, Math.round(3 + lit * 2)))]);
+    const c = chips[i].getContext('2d')!; c.clearRect(0, 0, 32, 32);
+    const pp = new Px(32, 32); pp.disc(16, 16, 15, () => INK); pp.disc(16, 16, 14, (_d, lit) => (i === wi ? P.ochre : P.steel)[Math.max(0, Math.min(6, Math.round(3 + lit * 2)))]);
     c.putImageData(pp.image(), 0, 0);
-    const m = fitRoot(globeModel(wd, false)); renderModel(m, c, 30, 30, { yaw: 0.6 + i, pitch: 0.3, zoom: 1.05, ink: 1 }, 3, 3);
-    if (i === best) { bitText(c, '*', 30, -2, { color: '#ffd060' }); }
-    for (let k = 0; k < wd.diff; k++) { c.fillStyle = '#08090c'; c.fillRect(4 + k * 6, 31, 5, 4); c.fillStyle = k < 2 ? '#9fe08a' : k < 4 ? '#ffc560' : '#e36a4c'; c.fillRect(5 + k * 6, 32, 3, 2); }
+    renderModel(fitRoot(globeModel(wd, false)), c, 26, 26, { yaw: 0.6 + i, pitch: 0.3, zoom: 1.05, ink: 1 }, 3, 3);
+    if (i === best) bitText(c, '*', 26, -3, { color: '#ffd060' });
   });
   paintChips();
-  // ---- the readout: world name and its facts as icons and numbers; the site; DEPLOY
-  const info = div('s7-abs', host); place(info, 14, gy + G + 49, W - 28, 24); info.style.display = 'flex'; info.style.alignItems = 'center'; info.style.gap = 3 * S + 'px';
-  const siteEl = div('s7-abs', host); place(siteEl, 12, gy + G + 82, W - 24, 24); siteEl.style.display = 'flex'; siteEl.style.alignItems = 'center'; siteEl.style.gap = 3 * S + 'px';
-  const deploy = keyCap(host, {
-    label: 'DEPLOY', icon: iconOf('drone', 'amber'), w: 120, h: 34, mat: 'orange', sound: 'confirm',
-    off: () => (site < 0 ? 'PICK A SITE' : !L ? 'NO MISSION' : false),
-    onClick: () => void go(),
-  });
-  place(deploy.el, W - 132, H - 44); deploy.el.style.position = 'absolute';
-  const facts = () => {
-    const wd = worlds[wi], f = Object.fromEntries(wd.facts);
-    const g = parseFloat(f.GRAVITY) || 1, temp = parseInt(f['MEAN TEMP']) || 0, water = parseInt(f['SURFACE WATER']) || 0, life = parseInt(f['LIFE SIGNS']) || 0;
-    const name = div('k7-t16'); name.textContent = clean(wd.planet.name.toUpperCase()); name.style.color = '#3a2a14'; name.style.textShadow = 'none'; name.style.marginRight = 4 * S + 'px';
-    info.replaceChildren(name, chip(iconOf('moon', 'steel'), g.toFixed(1)), chip(iconOf('flame', 'red'), String(temp)), chip(iconOf('drop', 'steel'), water + '%'), chip(iconOf('dna', 'lit'), String(life)));
-    pop(info, 0.4);
-  };
-  const siteInfo = () => {
+  // ---- the landing sites: a row each (number, name, ground, danger); the picked one described
+  const siteBox = div('s7-abs', host); place(siteBox, 14, gy + G + 54, W - 28, 104); siteBox.style.display = 'flex'; siteBox.style.flexDirection = 'column'; siteBox.style.gap = 1 * S + 'px';
+  const paintSites = () => {
+    siteBox.replaceChildren(textEl('LANDING SITES (SAFEST FIRST)', { dark: true, color: '#6a5a40', wrap: false }));
+    const hr = homeR(); if (hr) siteBox.append(textEl(`POD: your colony, ${clean(hr.name)}`, { dark: true, color: '#1a5a7a', wrap: false }));
+    sites.forEach((r, k) => {
+      const b = BIOME_TEXT[r.biome] ?? [r.biome.toUpperCase(), ''];
+      const e = textEl(`${k === site ? '>' : ' '}${k + 1}. ${clean(r.name)}: ${b[0].toLowerCase()}, danger ${DANGER[r.danger] ?? r.danger}`, { dark: true, color: k === site ? '#2a2014' : '#5a4a30', wrap: false });
+      e.style.cursor = 'pointer'; e.addEventListener('click', () => pick(k)); e.addEventListener('pointerenter', () => uiSfx('hover', 0.3));
+      siteBox.append(e);
+    });
     const r = site >= 0 ? sites[site] : null;
-    siteEl.replaceChildren();
-    const hr = homeR();
-    if (!r) { if (hr) { const n = div('k7-t16'); n.textContent = 'HOME: ' + clean(hr.name.toUpperCase()); n.style.color = '#ffd890'; siteEl.append(n); } return; }
-    const n = div('k7-t16'); n.textContent = clean(r.name.toUpperCase()); n.style.color = '#ffe7a8';
-    const dg = chip(iconOf('claw', r.danger >= 3 ? 'red' : 'amber'), '#'.repeat(0) + r.danger + '/3', { ok: r.danger < 3 });
-    siteEl.append(n, dg);
-    pop(siteEl, 0.6);
+    siteBox.append(textEl(r ? (BIOME_TEXT[r.biome]?.[1] ?? '') : 'Pick a site: click its beacon on the globe or its line here.', { dark: true, color: r ? '#2a2014' : '#8a7a5a' }));
   };
-  facts(); siteInfo();
-  const reskin = () => {
-    surf.material = toon({ map: texOf(worlds[wi].planet), gloss: 0.1, rim: 0.25 });
-    // a fresh model when the ring changes
-    build(); pickSites(); paintChips(); facts(); siteInfo(); deploy.refresh();
-    yaw.kick(14); zoom.x = 0.7; zoom.target = 1.02; face(sites[0] ?? null); dirty = true;
-  };
-  // ---- input
+  paintSites();
+  const statusEl = div('s7-abs', host); place(statusEl, 10, H - 40, W - 150);
+  const paintStatus = () => statusEl.replaceChildren(textEl(!L ? 'No mission link: deploying needs the mission flow.' : site < 0 ? 'DEPLOY drops a new pod on the picked site.' : `Ready: DEPLOY sends a pod to ${clean(sites[site].name)}.`, { color: site >= 0 ? '#b8f0a0' : '#d8ccb0' }));
+  paintStatus();
+  const deploy = keyCap(host, { label: 'DEPLOY', icon: iconOf('drone', 'amber'), w: 120, h: 32, mat: 'orange', sound: 'confirm', off: () => (site < 0 ? 'PICK A SITE' : !L ? 'NO MISSION' : false), onClick: () => void go() });
+  place(deploy.el, W - 132, H - 42); deploy.el.style.position = 'absolute';
+  const pick = (k: number) => { site = k; uiSfx('select', 0.7); uiSfx('metalClose', 0.3); face(sites[k]); paintSites(); paintStatus(); deploy.refresh(); deploy.flash(); };
+  const reskin = () => { build(); pickSites(); paintChips(); paintFacts(); paintSites(); paintStatus(); deploy.refresh(); pop(facts, 0.5); yaw.kick(14); zoom.x = 0.7; zoom.target = 1.02; face(sites[0] ?? null); dirty = true; };
+  // ---- input on the globe
   let drag: { x: number; y: number; yaw: number; pitch: number; moved: boolean } | null = null;
   const local = (e: PointerEvent) => { const r = gcv.getBoundingClientRect(); return [(e.clientX - r.left) / S, (e.clientY - r.top) / S]; };
   gcv.addEventListener('pointerdown', (e) => { const [x, y] = local(e); drag = { x, y, yaw: yaw.target, pitch: pitch.target, moved: false }; gcv.setPointerCapture(e.pointerId); spin = 0; });
@@ -176,13 +189,12 @@ export function monitorPanel(ctx: PanelCtx): Panel {
     const d = drag; drag = null; try { gcv.releasePointerCapture(e.pointerId); } catch { /* */ }
     if (!d) return;
     if (d.moved) { setTimeout(() => { spin = 0.12; }, 2500); return; }
-    const [x, y] = local(e), k = hit(x, y);
-    if (k >= 0) { site = k; uiSfx('select', 0.7); uiSfx('metalClose', 0.3); face(sites[k]); siteInfo(); deploy.refresh(); deploy.flash(); }
+    const [x, y] = local(e), k = hit(x, y); if (k >= 0) pick(k);
   });
   const hit = (x: number, y: number) => {
-    let best = -1, bd = 12;
-    sites.forEach((r, k) => { const n = new THREE.Vector3(...r.c), [px, py, f] = kv.project(n.clone().setY(n.y + 1), view(), n); if (!f) return; const d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; best = k; } });
-    return best;
+    let bi = -1, bd = 12;
+    sites.forEach((r, k) => { const n = new THREE.Vector3(...r.c), [px, py, f] = kv.project(n.clone().setY(n.y + 1), view(), n); if (!f) return; const d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; bi = k; } });
+    return bi;
   };
   const go = async () => {
     const r = sites[site]; if (!r || !L) return;
@@ -190,9 +202,8 @@ export function monitorPanel(ctx: PanelCtx): Panel {
     zoom.target = 1.6; yaw.kick(-6);
     await new Promise((res) => setTimeout(res, 420));
     const seed = worlds[wi].seed, hub = ctx.hub;
-    // over the ship: the pod drop plays in the hangar first; over a colony: straight to the new landing
     const scr = (window as unknown as { __ship7?: { dispose(): void } }).__ship7;
-    if (hub) { const close = (window as unknown as { __hubPanel?: { dispose(): void } }).__hubPanel; close?.dispose(); const { podDrop } = await import('../../hub/drop'); await podDrop(hub); L.land(seed, r); return; }
+    if (hub) { (window as unknown as { __hubPanel?: { dispose(): void } }).__hubPanel?.dispose(); const { podDrop } = await import('../../hub/drop'); await podDrop(hub); L.land(seed, r); return; }
     scr?.dispose();
     L.land(seed, r);
   };
@@ -203,25 +214,22 @@ export function monitorPanel(ctx: PanelCtx): Panel {
       yaw.step(dt); pitch.step(dt); zoom.step(dt);
       acc += dt;
       if ((acc > 1 / 24 && (!yaw.settled || !pitch.settled || !zoom.settled)) || dirty) { acc = 0; draw(); }
-      // the beacons: a stem and a ring standing off the surface, numbered, the picked one pulsing; home carries the pod
       oc.clearRect(0, 0, ov.width, ov.height);
       const v = view();
       const beacon = (r: PRegion, label: string, col: string, on: boolean) => {
         const n = new THREE.Vector3(...r.c), base = n.clone().setY(n.y + 1), tip = n.clone().multiplyScalar(1.22).setY(n.y * 1.22 + 1);
         const [bx, by, f] = kv.project(base, v, n), [tx, ty] = kv.project(tip, v);
         if (!f) return;
-        oc.strokeStyle = '#08090c'; oc.lineWidth = 3; oc.beginPath(); oc.moveTo(bx, by); oc.lineTo(tx, ty); oc.stroke();
-        oc.strokeStyle = col; oc.lineWidth = 1; oc.beginPath(); oc.moveTo(bx, by); oc.lineTo(tx, ty); oc.stroke();
-        const rr = on ? 6 + Math.sin(t * 6) * 1.5 : 5;
-        oc.fillStyle = '#08090c'; oc.fillRect(Math.round(tx - rr - 1), Math.round(ty - rr - 1), Math.round(rr * 2 + 2), Math.round(rr * 2 + 2));
-        oc.fillStyle = col; oc.fillRect(Math.round(tx - rr), Math.round(ty - rr), Math.round(rr * 2), Math.round(rr * 2));
-        oc.fillStyle = '#08090c'; oc.fillRect(Math.round(tx - rr + 2), Math.round(ty - rr + 2), Math.round(rr * 2 - 4), Math.round(rr * 2 - 4));
+        pxLine(oc, bx, by, tx, ty, '#08090c', 3); pxLine(oc, bx, by, tx, ty, col);
+        const rr = on ? 5 + Math.round(Math.sin(t * 6)) : 4;
+        oc.fillStyle = '#08090c'; oc.fillRect(Math.round(tx - rr - 1), Math.round(ty - rr - 1), rr * 2 + 2, rr * 2 + 2);
+        oc.fillStyle = col; oc.fillRect(Math.round(tx - rr), Math.round(ty - rr), rr * 2, rr * 2);
+        oc.fillStyle = '#08090c'; oc.fillRect(Math.round(tx - rr + 2), Math.round(ty - rr + 2), rr * 2 - 4, rr * 2 - 4);
         bitText(oc, label, Math.round(tx), Math.round(ty - 8), { color: col, align: 'center' });
       };
       sites.forEach((r, k) => beacon(r, String(k + 1), k === site ? '#ffe7a8' : k === 0 ? '#9fe08a' : '#ffc560', k === site));
       const hr = homeR(); if (hr) beacon(hr, 'POD', '#7fd0e8', true);
     },
-    dispose() { /* the globe textures stay cached for the next visit */ },
+    dispose() { /* the globe textures stay cached */ },
   };
 }
-void tween; void ease; void hex;
