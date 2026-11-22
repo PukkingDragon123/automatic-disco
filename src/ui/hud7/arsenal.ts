@@ -13,7 +13,7 @@ import { Px, P, INK, rivet, hash } from '../kit/px';
 import { uiSfx } from '../kit/sound';
 import { Spring, onFrame, bounceEl, placeDust, shake, pop, squash } from '../kit/juice';
 import { floatIcon } from '../kit/floatIcon';
-import { mCustomTool } from '../kit/models';
+import { customModel, fitVisible } from './parts3d';
 import { installKitStyle } from '../kit/style';
 import { arsenal, setQuickCustom, quickCustom, TOOLS, type ArmEntry } from './tools';
 import { toolBuild, toolAnim, type ToolWidget } from './toolWidget';
@@ -71,9 +71,9 @@ export class Arsenal {
     // the gearboxes at the rack's ends and the pistons that lift it
     for (const side of ['l', 'r']) { const v = new ModelView(mGearBox, { w: 56, h: 72, scale: 2, spin: 0, yaw0: side === 'l' ? 0.35 : -0.35, rock: 0.05, pitch: 0.2, anim: (r, t) => animGearBox(r, t), liveFps: 12 }); v.cv.classList.add('h7-gbox', side); this.gears.push(v); }
     for (const side of ['l', 'r']) { const v = new ModelView(mPiston, { w: 36, h: 96, scale: 2, spin: 0, yaw0: 0.3, rock: 0.02, pitch: 0.15, anim: (r) => animPiston(r), liveFps: 20 }); v.cv.classList.add('h7-pist', side); this.pistons.push(v); }
-    const bench = floatIcon({ build: () => mCustomTool({ head: 'bit', core: 'reactor', grip: 'brace', mod: 'scope' }), name: 'BENCH', size: [52, 44], nameSize: 32, sound: 'open', hint: 'B', view: { pitch: 0.4, spin: 0.3 }, onClick: () => { this.open(false); this.w.openBench(); } });
+    const bench = floatIcon({ build: () => fitVisible(customModel({ head: 'bit', core: 'reactor', grip: 'brace', mod: 'scope' }, 'hud')), name: 'BENCH', size: [52, 44], nameSize: 32, sound: 'open', hint: 'B', view: { pitch: 0.4, spin: 0.3 }, onClick: () => { this.open(false); this.w.openBench(); } });
     bench.el.classList.add('h7-ars-bench');
-    const back = floatIcon({ build: () => mCustomTool({ head: 'lens', core: 'cell', grip: 'pistol' }), name: 'BACK', size: [40, 34], nameSize: 16, sound: 'back', view: { pitch: 0.4, spin: 0 }, onClick: () => this.open(false) });
+    const back = floatIcon({ build: () => fitVisible(customModel({ head: 'lens', core: 'cell', grip: 'pistol' }, 'hud')), name: 'BACK', size: [40, 34], nameSize: 16, sound: 'back', view: { pitch: 0.4, spin: 0 }, onClick: () => this.open(false) });
     back.el.classList.add('h7-ars-back');
     const arrows = (d: number) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'h7-arw ' + (d < 0 ? 'l' : 'r'); b.append(pxCanvas(arrowArt(d), 2)); b.addEventListener('click', (e) => { e.stopPropagation(); this.go(this.idx + d); squash(b, 0.6); }); return b; };
     rack.append(win, this.info, arrows(-1), arrows(1), bench.el, back.el, ...this.gears.map((v) => v.cv));

@@ -23,6 +23,7 @@ import { Hotbar } from '../ui/build/hotbar';
 import { NodeMap } from '../ui/nodes/map';
 import { isRun } from './build';
 import { BuildMode } from '../ui/build/bpmode';
+import { bitText } from '../ui/kit/bitfont';
 import { BlueprintSheet } from '../ui/build/sheet';
 /** ?insp6 keeps the old steel inspection form instead of the blueprint sheet */
 const OLD_INSP = typeof location !== 'undefined' && new URLSearchParams(location.search).has('insp6');
@@ -344,28 +345,21 @@ export class FactoryUI {
       this.siteTag(g, sx, sy, s, k);
     }
   }
-  /** a site's plate over the scaffold: name, stage, what it still waits for or how far the crew has got, a
-   *  segmented bar (Body at 11 px on a dark phosphor plate with a painted pointer) */
+  /** a site's marker over the scaffold (V7: icons and numbers, no plate of text): a segmented progress strip (green while
+   *  the materials come in, amber while the crew builds), the items it still waits for as icons with counts, or a hammer
+   *  count of the builders on it; Alagard via the kit's bitmap face */
   private siteTag(g: CanvasRenderingContext2D, x: number, y: number, s: import('../logistics/sites').Site, _k: number) {
-    const f = this.f, p = f.sites.progress(s);
-    const need = Object.entries(s.need).map(([id, n]) => [id, (n ?? 0) - (s.got[id] ?? 0)] as [string, number]).filter(([, n]) => n > 0);
-    const line = s.stage === 'build' ? `BUILDING ${Math.round(Math.min(1, s.work / s.workNeed) * 100)}%${s.builders ? ` · ${s.builders} ON IT` : f.time - s.help > 8 ? ' · POD CRANE' : ''}` : need.length ? `AWAITING ${need.slice(0, 2).map(([id, n]) => `${n} ${(ITEMS[id]?.name ?? id).toUpperCase()}`).join(', ')}${need.length > 2 ? ' +' : ''}` : 'SUPPLIED';
-    g.font = '11px Body, monospace'; g.textBaseline = 'top';
-    const name = s.def.name.toUpperCase();
-    const w = Math.ceil(Math.max(g.measureText(line).width, g.measureText(name).width)) + 16, h = 40;
-    x = Math.round(x - w / 2); y = Math.round(y - h - 6);
-    // a machined plate: dark steel, lit top edge, an LED segment bar, a steel stem down to the scaffold
-    g.fillStyle = 'rgba(8,10,14,0.45)'; g.fillRect(x + 3, y + 3, w, h);
-    g.fillStyle = '#14181d'; g.fillRect(x, y, w, h);
-    g.fillStyle = '#3d4650'; g.fillRect(x + 2, y + 2, w - 4, h - 4);
-    g.fillStyle = '#6b7782'; g.fillRect(x + 2, y + 2, w - 4, 2); g.fillRect(x + 2, y + 2, 2, h - 4);
-    g.fillStyle = '#262c33'; g.fillRect(x + 2, y + h - 4, w - 4, 2); g.fillRect(x + w - 4, y + 2, 2, h - 4);
-    g.fillStyle = '#d8dee3'; g.fillText(name, x + 8, y + 5);
-    g.fillStyle = s.stage === 'build' ? '#f0b040' : '#8a96a2'; g.fillText(line, x + 8, y + 18);
-    const segs = 20, sw = Math.floor((w - 16) / segs);
-    for (let i = 0; i < segs; i++) { g.fillStyle = i / segs < p ? (s.stage === 'build' ? '#f0b040' : '#7fe07a') : '#262c33'; g.fillRect(x + 8 + i * sw, y + 31, sw - 2, 4); }
-    g.fillStyle = '#c4ccd2'; g.fillRect(x + Math.floor(w / 2), y + h, 2, 6); g.fillStyle = '#14181d'; g.fillRect(x + Math.floor(w / 2) + 2, y + h, 1, 6);
-    g.textBaseline = 'alphabetic';
+    const f = this.f, p = f.sites.progress(s), build = s.stage === 'build';
+    const need = Object.entries(s.need).map(([id, n]) => [id, (n ?? 0) - (s.got[id] ?? 0)] as [string, number]).filter(([, n]) => n > 0).slice(0, 3);
+    const w = 64; x = Math.round((x - w / 2) / 2) * 2; y = Math.round((y - 10) / 2) * 2;
+    g.fillStyle = '#08090c'; g.fillRect(x - 2, y - 2, w + 4, 10);
+    for (let i = 0; i < 16; i++) { g.fillStyle = i / 16 < p ? (build ? '#eecc8e' : '#c7e6ce') : '#1e232c'; g.fillRect(x + i * 4, y, 2, 6); }
+    if (!build) need.forEach(([id, n], i) => {
+      const img = this.icon(id), ix = x + w / 2 + (i - (need.length - 1) / 2) * 40 - 12;
+      if (img.complete && img.naturalWidth) { g.imageSmoothingEnabled = false; g.drawImage(img, ix, y - 30, 24, 24); }
+      bitText(g, String(n), ix + 22, y - 20, { color: '#eecc8e' });
+    });
+    else if (s.builders) bitText(g, `${s.builders}`, x + w + 6, y - 6, { color: '#eecc8e' });
   }
   /** the readout at the cursor while a building is in hand: what, where, what it costs (have/need), why not */
   private renderTag() {
@@ -405,7 +399,7 @@ export class FactoryUI {
     g.fillText(st === 'nopower' ? '!' : st === 'blocked' ? '=' : '?', x + 3 * k, y - 8.5 * k);
   }
   private icons = new Map<string, HTMLImageElement>();
-  private icon(id: ItemId) { let i = this.icons.get(id); if (!i) { i = new Image(); i.src = itemIcon(id); this.icons.set(id, i); } return i; }
+  private icon(id: ItemId) { let i = this.icons.get(id); if (!i) { i = new Image(); i.src = itemIcon(id, 32); this.icons.set(id, i); } return i; }
   private bubble(g: CanvasRenderingContext2D, x: number, y: number, w: Worker, k: number) {
     x = Math.round(x); y = Math.round(y);
     const s = 12 * k;

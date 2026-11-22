@@ -1,193 +1,142 @@
-// HUD v7 · THE FABRICATION BAY (custom tools; from the arsenal's BENCH, or B in it). The user asked for a full facility
-// here (the one exception to "no full 3D scenes"): an iris from the HUD, then the camera swoops into a detailed 3D bay
-// drawn in the kit's pixel style (art resolution, black ink contours, banded light, MATERIAL LIBRARY textures at HD 2,
-// lamps that really light it): a heavy workbench with the clamping JIG at its centre, a PARTS RACK WALL with every part
-// hanging on hooks in four lit rows, an overhead GANTRY crane with a telescoping claw, a WELDING ROBOT and its gas cart,
-// cable runs, tool chests, stock crates, pendant lamps with haze cones.
-// The 2D layer stays slim: a category strip (HEAD CORE GRIP MOD) at the top, small stat chips beside the jig, the bill
-// of parts as item icons at the bottom, one FORGE key, a BACK icon.
-// Click (or drag) a part on the rack: the gantry runs over, the claw drops, grips it, carries it to the jig, the jaws
-// open, the part goes on, the jaws lock with sparks and a clunk. FORGE: the robot welds the tool (sparks, a hot light),
-// it cools (steam, a hiss), then the jaws open and the finished tool rises and spins with its working parts animating.
+// HUD v7 · THE WORKSHOP (custom tools; from the arsenal's BENCH, or B in it). The user: "make it like the workshop on
+// the space ship". So this IS the ship's workshop: the SHIP HUB (src/ship/hub, the ship agent's) is opened over the
+// paused game on its WORKSHOP + HANGAR room, in the hub's own isometric cutaway with its packed props, Limbophobia
+// furniture, posters, cables, the pod on its cradle, the crane and the room's lamps, rendered by the game's own
+// pipeline. The fabrication rig stands on the room's LIMBOPHOBIA WORKBENCH (its vice and hand tools put away):
+//   - the JIG: a machined base plate, a turntable and two sliding jaws holding the tool being built;
+//   - a bench GANTRY: two yellow uprights, a beam, a trolley with a hoist and a three-finger claw;
+//   - a parts TRAY at the bench's end, where the picked part lands before the claw takes it;
+//   - a WELDING ARM bolted to the bench (base, shoulder, elbow, torch) with its own hot light.
+// Every part is a real component of the TOOL MODELS agent's detailed tools (parts3d.ts: the scanner's dish, the
+// drill's bit and gear train, the grab's claws and core, the welder's nozzle and fuel cell...).
+// The 2D layer is the kit's detailed boxes (src/ui/kit/panel.ts): a PARTS panel (category keys, the parts in item
+// slots), a SPECS panel (LED readouts, the bill of materials in slots), the FORGE and BACK floating icons.
+// Pick a part: it drops into the tray, the gantry runs over, the claw takes it to the jig, the jaws open, it goes on,
+// the jaws lock with sparks and a clunk. FORGE: the arm welds (sparks, a hot flickering light), it cools (steam),
+// the jaws open and the finished tool rises and spins with its parts working.
 import * as THREE from 'three';
 import type { Game } from '../../game/game';
-import { matTex, matInfo } from '../../gfx/mat';
-import { toon, snapshot, LAMPS } from '../kit/model3d';
-import { mJig, animJig, mountTool } from '../kit/hardware';
-import { mCustomTool, animCustom, mCrate, type PartSlot } from '../kit/models';
-import { tex, dialTex } from '../kit/tex3d';
-import { Px, P, INK, cellBar } from '../kit/px';
-import { plate, skin, pxCanvas } from '../kit/mat';
+import type { ShipHub } from '../../ship/hub/hub';
+import { matMaterial } from '../../gfx/mat';
+import { gbuf, F_EMIT } from '../../gfx/gbuf';
+import { toon } from '../kit/model3d';
+import { tex } from '../kit/tex3d';
+import { P } from '../kit/px';
 import { uiSfx } from '../kit/sound';
-import { tween, ease, onFrame, burst, placeDust, shake, pop, floatUp, wait } from '../kit/juice';
+import { tween, ease, burst, placeDust, shake, pop, floatUp, wait } from '../kit/juice';
 import { transition } from '../kit/transitions';
 import { floatIcon } from '../kit/floatIcon';
 import { installKitStyle } from '../kit/style';
+import { panel, slotGrid, meter, pkey, slot, type Panel, type Slot, type Meter, type PKey } from '../kit/panel';
 import { itemIcon, ITEMS } from '../../factory/items';
+import type { PartSlot } from '../kit/models';
 import { PARTS, PART_SLOTS, partOf, statsOf, costOf, addCustomTool, customTools, type Stats } from './tools';
+import { customModel, partModel, partIcon, fitVisible } from './parts3d';
 import type { ToolWidget } from './toolWidget';
 
 type G = Game & Record<string, any>;
-const PI = Math.PI;
-const SLOT_NAME: Record<PartSlot, string> = { head: 'HEAD', core: 'CORE', grip: 'GRIP', mod: 'MOD' };
-const ROW_Y: Record<PartSlot, number> = { head: 2.72, core: 2.12, grip: 1.52, mod: 0.92 };
-const STATS: { k: keyof Stats; name: string; max: number; ramp: readonly number[] }[] = [
-  { k: 'power', name: 'PWR', max: 8, ramp: P.glowAmber }, { k: 'reach', name: 'RCH', max: 14, ramp: P.glowTeal }, { k: 'speed', name: 'SPD', max: 5, ramp: P.malachite },
-  { k: 'draw', name: 'KW', max: 10, ramp: P.ruby }, { k: 'mass', name: 'KG', max: 8, ramp: P.stone },
-];
-
-// ------------------------------------------------------------------ library materials, box-mapped at HD 2, lamp-lit
-const libCache = new Map<string, THREE.ShaderMaterial>();
-function L(name: string, o: { color?: number; metal?: number; gloss?: number; emissive?: number; emissiveK?: number } = {}): THREE.ShaderMaterial {
-  const key = name + JSON.stringify(o); let m = libCache.get(key);
-  if (m) return m;
-  let map: THREE.Texture | null = null, tri = 1;
-  try {
-    const t0 = matTex(name, { hd: 2 }), t = t0.clone();
-    t.colorSpace = THREE.NoColorSpace; t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.needsUpdate = true;
-    map = t; tri = 1 / (matInfo(name)?.mw ?? 1);
-  } catch (e) { console.warn('bay material', name, e); }
-  m = toon({ map, tri, lamps: true, light: 0.72, ...o });
-  libCache.set(key, m);
-  return m;
-}
-const K = (name: string, rep: [number, number] = [1, 1], o: Parameters<typeof toon>[0] = {}) => toon({ map: tex(name, rep), lamps: true, light: 0.72, ...o });
 type V3 = [number, number, number];
-function M(geo: THREE.BufferGeometry, mat: THREE.Material, parent: THREE.Object3D, p: V3 = [0, 0, 0], r: V3 = [0, 0, 0], name = '') { const m = new THREE.Mesh(geo, mat); m.position.set(...p); m.rotation.set(...r); if (name) m.name = name; parent.add(m); return m; }
+const PI = Math.PI;
+const STATS: { k: keyof Stats; name: string; max: number; col: 'amber' | 'teal' | 'green' | 'red' | 'white'; off?: number }[] = [
+  { k: 'power', name: 'PWR', max: 8, col: 'amber' }, { k: 'reach', name: 'RCH', max: 14, col: 'teal' }, { k: 'speed', name: 'SPD', max: 5, col: 'green', off: 2 },
+  { k: 'draw', name: 'KW', max: 10, col: 'red' }, { k: 'mass', name: 'KG', max: 8, col: 'white' },
+];
+// the room's workbench (src/ship/hub/rooms.ts: LIMBOPHOBIA's 'workbench' at x -1.78, z -12.6, turned to face -x; its
+// top at 0.9 m, 2 m along z, 1 m deep)
+const TOP = 0.9, BX = -1.84, JZ = -12.42, TRAY: V3 = [-1.9, TOP, -13.06];
+/** the weld arm's yaw that points its reach (local -z) from its base at the jig */
+const WY = Math.atan2(-(BX - -1.52), -(JZ - -11.86));
+const viewDir = (az: number, el: number) => new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
+const camAt = (look: V3, d: number, az = -2.02, el = 0.6, fov = 30) => { const l = new THREE.Vector3(...look); return { pos: l.clone().addScaledVector(viewDir(az, el), d), look: l, fov }; };
+const CAM = { home: () => camAt([-2.2, 0.95, -12.75], 6.6, -2.12, 0.7), fit: () => camAt([-1.95, 1.1, -12.7], 4.6, -2.1, 0.64), forge: () => camAt([-1.95, 1.0, -12.4], 4.8, -1.98, 0.62, 28), reveal: () => camAt([-1.95, 1.15, -12.5], 4.4, -2.05, 0.56, 27) };
+
+// ------------------------------------------------------------------ materials (library, through the game's G-buffer)
+const mats = new Map<string, THREE.Material>();
+const L = (name: string, o: { color?: number; emissive?: number; hd?: 1 | 2 } = {}) => { const k = name + '|' + (o.color ?? '') + '|' + (o.emissive ?? ''); let m = mats.get(k); if (!m) { m = matMaterial(name, { hd: o.hd ?? 2, color: o.color, emissive: o.emissive }); mats.set(k, m); } return m; };
+const glowM = (c: number, k = 1.6) => gbuf(new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(k) }), F_EMIT);
 const box = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
-const cyl = (a: number, b: number, h: number, n = 14) => new THREE.CylinderGeometry(a, b, h, n);
-const glowM = (c: number, k = 1) => toon({ color: c, emissive: c, emissiveK: 0.6 * k, light: 0.3 });
-const tube = (pts: V3[], r: number) => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(...p))), 40, r, 6);
-/** fit any model to a size (its longest side), centred on its own middle */
-function fitted(o: THREE.Object3D, size: number): THREE.Group {
-  const b = new THREE.Box3().setFromObject(o), s = b.getSize(new THREE.Vector3()), c = b.getCenter(new THREE.Vector3());
-  const g = new THREE.Group(), w = new THREE.Group(); w.add(o); o.position.sub(c); w.scale.setScalar(size / Math.max(0.001, s.x, s.y, s.z)); g.add(w); return g;
-}
+const cyl = (a: number, b: number, h: number, n = 16) => new THREE.CylinderGeometry(a, b, h, n);
+function M(geo: THREE.BufferGeometry, mat: THREE.Material, parent: THREE.Object3D, p: V3 = [0, 0, 0], r: V3 = [0, 0, 0]) { const m = new THREE.Mesh(geo, mat); m.position.set(...p); m.rotation.set(...r); m.castShadow = true; m.receiveShadow = true; parent.add(m); return m; }
+const YEL = () => L('enamel_white', { color: 0xf0b030 }), GUN = () => L('metal_anodised_grey'), MACH = () => L('metal_machined'), DARK = () => L('panel_anodised_grey', { color: 0x9098a0 }), RUB = () => L('rubber_seal');
 
-// ------------------------------------------------------------------ the post pass: ink contours from linear depth, quantised colour
-const POST_FRAG = /* glsl */`
-uniform sampler2D tSrc; uniform sampler2D tDepth; uniform vec2 uRes; uniform float uNear; uniform float uFar;
-varying vec2 vUv;
-float h1(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-float vn(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f); return mix(mix(h1(i), h1(i + vec2(1.0, 0.0)), u.x), mix(h1(i + vec2(0.0, 1.0)), h1(i + vec2(1.0, 1.0)), u.x), u.y); }
-float lin(vec2 uv) { float z = texture2D(tDepth, uv).x * 2.0 - 1.0; return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
-void main() {
-  vec2 px = 1.0 / uRes, uv = vUv;
-  vec3 col = texture2D(tSrc, uv).rgb;
-  float d0 = lin(uv), dl = lin(uv - vec2(px.x, 0.0)), dr = lin(uv + vec2(px.x, 0.0)), dd = lin(uv - vec2(0.0, px.y)), du = lin(uv + vec2(0.0, px.y));
-  float near = d0 - min(min(dl, dr), min(dd, du));
-  float lap = max(abs(dl + dr - 2.0 * d0), abs(dd + du - 2.0 * d0));
-  if (near > 0.012 * d0 + 0.012 && lap > 0.008 * d0) { gl_FragColor = vec4(mix(vec3(0.027, 0.03, 0.04), col, 0.1), 1.0); return; }
-  // a pixel-stepped vignette and a clustered quantise
-  vec2 q = uv - 0.5; float vg = 1.0 - smoothstep(0.42, 0.78, length(q * vec2(1.0, 0.8)));
-  col *= 0.72 + 0.28 * floor(vg * 6.0 + 0.5) / 6.0;
-  vec2 a = floor(gl_FragCoord.xy);
-  float t = clamp(0.5 + (vn(a / 3.0) - 0.5) * 1.7 + (h1(floor(a / 2.0)) - 0.5) * 0.22, 0.02, 0.98) - 0.5;
-  col = floor(clamp(col, 0.0, 1.0) * 30.0 + 0.5 + t * 0.85) / 30.0;
-  gl_FragColor = vec4(col, 1.0);
-}`;
-
-// ================================================================== the bay
 interface Rig {
-  scene: THREE.Scene; cam: THREE.PerspectiveCamera;
-  parts: THREE.Object3D[]; rows: Record<PartSlot, THREE.Mesh>;
-  jig: THREE.Group; jigHold: THREE.Object3D;
-  bridge: THREE.Group; trolley: THREE.Group; inner: THREE.Group; fingers: THREE.Object3D[]; grip: THREE.Group;
-  robot: { yaw: THREE.Group; sh: THREE.Group; el: THREE.Group; tip: THREE.Object3D; flame: THREE.Object3D };
-  lamps: { p: THREE.Vector3; c: THREE.Vector3; r: number }[];
+  root: THREE.Group; jaws: THREE.Object3D[]; table: THREE.Object3D; hold: THREE.Group; tray: THREE.Group;
+  trolley: THREE.Group; rope: THREE.Mesh; claw: THREE.Group; fingers: THREE.Object3D[]; grip: THREE.Group;
+  arm: { yaw: THREE.Group; sh: THREE.Group; el: THREE.Group; tip: THREE.Object3D; flame: THREE.Mesh }; light: THREE.PointLight;
+  clamp: number; hookY: number; reveal: number; heat: number;
 }
-function buildBay(): Rig {
-  const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0a0c10);
-  const cam = new THREE.PerspectiveCamera(36, 16 / 9, 0.4, 40);
-  // the room: a deck-plate floor, an anodised back wall, insulation quilt on the left, pipes and vents
-  M(box(13, 0.1, 9.5), L('deck_plate'), scene, [0, -0.05, -0.2]);
-  M(box(13, 4.8, 0.2), L('panel_anodised_grey'), scene, [0, 2.4, -3.7]);
-  M(box(0.2, 4.8, 9.5), L('quilt_insulation_grey'), scene, [-6, 2.4, -0.2]);
-  for (const [y, r] of [[4.05, 0.09], [4.3, 0.06]] as [number, number][]) M(cyl(r, r, 12.6, 10), L('steel_galvanised'), scene, [0, y, -3.5], [0, 0, PI / 2]);
-  for (const x of [-4.8, 2.6, 4.8]) { M(box(0.9, 0.55, 0.08), L('metal_machined'), scene, [x, 3.6, -3.58]); for (let i = 0; i < 4; i++) M(box(0.8, 0.05, 0.1), toon({ color: 0x101318, lamps: true }), scene, [x, 3.42 + i * 0.12, -3.54]); }
-  M(box(12.8, 0.12, 0.06), K('hazard', [24, 0.3]), scene, [0, 0.06, -3.55]);
-  // floor markings round the bench
-  for (const [x, z, w, d] of [[0, 1.05, 3.6, 0.1], [0, -1.05, 3.6, 0.1], [-1.75, 0, 0.1, 2.1], [1.75, 0, 0.1, 2.1]] as [number, number, number, number][]) M(box(w, 0.012, d), K('hazard', [Math.max(1, Math.round(w * 4)), 1]), scene, [x, 0.006, z]);
-  // ---------------------------------------------------------- the parts rack wall
-  const rack = new THREE.Group(); rack.position.set(-1.0, 0, -3.48); scene.add(rack);
-  M(box(6.4, 2.7, 0.08), L('panel_anodised_blue'), rack, [0, 1.85, 0]);
-  for (const x of [-3.2, 3.2]) M(box(0.14, 3.2, 0.2), L('metal_anodised_grey'), rack, [x, 1.6, 0.06]);
-  M(box(6.6, 0.16, 0.24), L('metal_anodised_grey'), rack, [0, 3.25, 0.06]);
-  const parts: THREE.Object3D[] = [], rows = {} as Record<PartSlot, THREE.Mesh>;
-  for (const slot of PART_SLOTS) {
-    const y = ROW_Y[slot];
-    M(box(6.3, 0.07, 0.16), L('metal_machined'), rack, [0, y + 0.3, 0.08]);
-    const led = M(box(6.2, 0.025, 0.02), glowM(P.glowTeal[2], 0.6), rack, [0, y + 0.255, 0.16]); led.material = (led.material as THREE.ShaderMaterial).clone(); rows[slot] = led;
-    PARTS[slot].forEach((pd, j) => {
-      if (pd.id === 'none') return;
-      const x = -2.4 + j * 1.45;
-      M(cyl(0.02, 0.02, 0.16, 6), L('metal_brushed'), rack, [x, y + 0.24, 0.12], [PI / 2, 0, 0]);
-      M(box(0.04, 0.1, 0.04), L('metal_brass'), rack, [x, y + 0.18, 0.2]);
-      const part = fitted(mCustomTool({ [slot]: pd.id } as Record<PartSlot, string>, slot), 0.6);
-      part.position.set(x, y - 0.06, 0.28); part.rotation.set(0.15, -0.35, 0);
-      part.userData.pick = { slot, id: pd.id, name: pd.name, home: part.position.clone() };
-      part.traverse((o) => { o.userData.pickRoot = part; });
-      rack.add(part); parts.push(part);
-    });
+/** the fabrication rig, in ship space, standing on the workshop's bench */
+function buildRig(): Rig {
+  const root = new THREE.Group(); root.name = 'fab-rig';
+  // ---- the jig
+  const jig = new THREE.Group(); jig.position.set(BX, TOP, JZ); root.add(jig);
+  M(box(0.36, 0.05, 0.66), GUN(), jig, [0, 0.025, 0]);
+  M(box(0.3, 0.02, 0.6), MACH(), jig, [0, 0.06, 0]);
+  for (const z of [-0.26, 0.26]) for (const x of [-0.14, 0.14]) M(cyl(0.012, 0.012, 0.012, 6), MACH(), jig, [x, 0.076, z]);
+  const table = M(cyl(0.13, 0.14, 0.03, 24), DARK(), jig, [0, 0.085, 0]);
+  M(cyl(0.06, 0.06, 0.012, 16), MACH(), table, [0, 0.02, 0]);
+  const jaws: THREE.Object3D[] = [];
+  for (const s of [-1, 1]) {
+    const j = new THREE.Group(); j.position.set(0, 0.07, s * 0.24); jig.add(j);
+    M(box(0.2, 0.12, 0.05), YEL(), j, [0, 0.06, 0]);
+    M(box(0.18, 0.03, 0.012), RUB(), j, [0, 0.1, -s * 0.03]);
+    M(cyl(0.012, 0.012, 0.16, 8), MACH(), j, [0, 0.05, s * 0.09], [PI / 2, 0, 0]);
+    M(cyl(0.022, 0.022, 0.03, 10), DARK(), j, [0, 0.05, s * 0.17], [PI / 2, 0, 0]);
+    M(box(0.1, 0.012, 0.012), MACH(), j, [0, 0.05, s * 0.185]);
+    jaws.push(j);
   }
-  // ---------------------------------------------------------- the workbench and the jig
-  const bench = new THREE.Group(); scene.add(bench);
-  M(box(3.0, 0.14, 1.2), L('steel_galvanised'), bench, [0, 0.94, 0]);
-  M(box(3.04, 0.06, 1.24), L('metal_anodised_grey'), bench, [0, 0.85, 0]);
-  for (const x of [-1.4, 1.4]) for (const z of [-0.5, 0.5]) M(box(0.12, 0.84, 0.12), L('metal_anodised_grey'), bench, [x, 0.42, z]);
-  M(box(2.9, 0.08, 1.0), L('metal_anodised_grey'), bench, [0, 0.22, 0]);
-  { const dr = new THREE.Group(); dr.position.set(-0.85, 0.52, 0); bench.add(dr); M(box(0.95, 0.58, 1.05), L('enamel_red'), dr); for (let i = 0; i < 3; i++) { M(box(0.9, 0.02, 0.02), toon({ color: 0x14090a, lamps: true }), dr, [0, 0.2 - i * 0.19, 0.53]); M(box(0.3, 0.03, 0.04), L('metal_brushed'), dr, [0, 0.12 - i * 0.19, 0.55]); } }
-  // a vice on the right end and loose things on the top
-  M(box(0.36, 0.2, 0.3), L('metal_anodised_blue'), bench, [1.18, 1.11, 0.2]); M(box(0.16, 0.18, 0.32), L('metal_machined'), bench, [1.18, 1.27, 0.2]); M(cyl(0.02, 0.02, 0.5, 6), L('metal_brushed'), bench, [1.18, 1.14, 0.45], [PI / 2, 0, 0]);
-  M(box(0.4, 0.03, 0.06), L('metal_brushed'), bench, [-1.0, 1.03, 0.38], [0, 0.4, 0]); for (let i = 0; i < 4; i++) M(cyl(0.025, 0.025, 0.05, 6), L('metal_brass'), bench, [-0.75 + i * 0.07, 1.04, -0.35]);
-  const jig = mJig(null); jig.scale.setScalar(0.62); jig.position.set(0, 1.01, 0); bench.add(jig);
-  const jigHold = jig.getObjectByName('tool')!;
-  // ---------------------------------------------------------- the overhead gantry crane
-  const GANT = L('enamel_white', { color: 0xffa648 });
-  for (const x of [-4.3, 3.9]) { M(box(0.22, 0.28, 7.2), GANT, scene, [x, 3.82, -0.3]); for (const z of [-3.4, 2.8]) M(box(0.26, 3.82, 0.26), L('metal_anodised_grey'), scene, [x, 1.91, z]); }
-  const bridge = new THREE.Group(); bridge.position.set(0, 3.62, -1.6); scene.add(bridge);
-  M(box(8.4, 0.3, 0.38), GANT, bridge, [-0.2, 0, 0]); M(box(8.4, 0.04, 0.4), K('hazard', [30, 0.3]), bridge, [-0.2, -0.17, 0]);
-  const trolley = new THREE.Group(); trolley.position.set(2.2, -0.3, 0); bridge.add(trolley);
-  M(box(0.62, 0.32, 0.62), L('metal_anodised_grey'), trolley); M(cyl(0.16, 0.16, 0.14, 12), L('metal_machined'), trolley, [0, -0.2, 0]);
-  M(cyl(0.11, 0.11, 0.95, 12), L('metal_brushed'), trolley, [0, -0.7, 0]);
-  const inner = new THREE.Group(); inner.position.y = -0.7; trolley.add(inner);
-  M(cyl(0.075, 0.075, 1.3, 10), L('metal_machined'), inner, [0, -0.6, 0]);
-  const claw = new THREE.Group(); claw.position.y = -1.3; inner.add(claw);
-  M(cyl(0.17, 0.13, 0.12, 10), L('metal_anodised_grey'), claw); M(cyl(0.03, 0.03, 0.04, 6), glowM(P.malachite[5]), claw, [0.14, 0, 0.08]);
+  const hold = new THREE.Group(); hold.position.set(0, 0.2, 0); jig.add(hold);
+  // ---- the parts tray (rubber matting in a steel tray)
+  const tray = new THREE.Group(); tray.position.set(...TRAY); root.add(tray);
+  M(box(0.34, 0.03, 0.3), GUN(), tray, [0, 0.015, 0]);
+  M(box(0.3, 0.012, 0.26), RUB(), tray, [0, 0.032, 0]);
+  for (const [x, z] of [[-0.16, 0], [0.16, 0]] as [number, number][]) M(box(0.02, 0.05, 0.3), GUN(), tray, [x, 0.035, z]);
+  // ---- the gantry: uprights at the bench's back edge, arms out over the top, a beam along the bench
+  const GY = 1.78, gx = BX - 0.02;
+  for (const z of [-13.52, -11.68]) {
+    M(box(0.08, GY - TOP, 0.08), YEL(), root, [-1.4, TOP + (GY - TOP) / 2, z]);
+    M(box(0.5, 0.07, 0.07), YEL(), root, [(-1.4 + gx) / 2 - 0.02, GY, z]);
+    M(box(0.12, 0.02, 0.12), MACH(), root, [-1.4, TOP + 0.01, z]);
+  }
+  M(box(0.07, 0.09, 1.92), YEL(), root, [gx, GY + 0.01, -12.6]);
+  M(box(0.02, 0.02, 1.9), MACH(), root, [gx - 0.045, GY - 0.03, -12.6]);
+  const trolley = new THREE.Group(); trolley.position.set(gx, GY - 0.07, -11.9); root.add(trolley);
+  M(box(0.16, 0.08, 0.14), DARK(), trolley);
+  M(cyl(0.035, 0.035, 0.1, 12), MACH(), trolley, [0, -0.02, 0], [0, 0, PI / 2]);
+  M(box(0.04, 0.02, 0.02), glowM(0xff8a2a, 1.4), trolley, [-0.085, 0.01, 0.04]);
+  const rope = M(cyl(0.006, 0.006, 1, 6), L('rubber_seal', { color: 0x404040 }), trolley);
+  const claw = new THREE.Group(); trolley.add(claw);
+  M(cyl(0.045, 0.05, 0.05, 10), YEL(), claw, [0, 0.03, 0]);
+  M(cyl(0.02, 0.02, 0.03, 8), MACH(), claw, [0, -0.005, 0]);
   const fingers: THREE.Object3D[] = [];
-  for (let i = 0; i < 3; i++) { const f = new THREE.Group(); f.rotation.y = (i / 3) * PI * 2; claw.add(f); const h = new THREE.Group(); h.position.set(0.12, -0.04, 0); f.add(h); M(box(0.04, 0.24, 0.05), GANT, h, [0, -0.12, 0]); fingers.push(h); }
-  const grip = new THREE.Group(); grip.position.y = -0.24; claw.add(grip);
-  // ---------------------------------------------------------- the welding robot on its pedestal, its gas cart and cable
-  const rb = new THREE.Group(); rb.position.set(1.45, 0, -0.85); scene.add(rb);
-  M(cyl(0.3, 0.36, 0.5, 8), L('metal_anodised_grey'), rb, [0, 0.25, 0]);
-  const yaw = new THREE.Group(); yaw.position.y = 0.5; rb.add(yaw); M(cyl(0.24, 0.26, 0.2, 12), GANT, yaw, [0, 0.1, 0]);
-  const sh = new THREE.Group(); sh.position.y = 0.26; yaw.add(sh); M(cyl(0.12, 0.12, 0.32, 10), L('metal_machined'), sh, [0, 0, 0], [0, 0, PI / 2]); M(box(0.18, 0.9, 0.18), GANT, sh, [0, 0.45, 0]);
-  const el = new THREE.Group(); el.position.y = 0.9; sh.add(el); M(cyl(0.1, 0.1, 0.26, 10), L('metal_machined'), el, [0, 0, 0], [0, 0, PI / 2]); M(box(0.13, 0.7, 0.13), GANT, el, [0, 0.35, 0]);
-  const tip = new THREE.Group(); tip.position.y = 0.72; el.add(tip); M(cyl(0.05, 0.03, 0.22, 8), L('metal_brass'), tip, [0, 0.08, 0]); M(cyl(0.028, 0.018, 0.12, 8), L('q_pipe_copper'), tip, [0, 0.24, 0]);
-  const flame = M(new THREE.ConeGeometry(0.05, 0.2, 8), glowM(0xbfe4ff, 1.6), tip, [0, 0.4, 0]); flame.visible = false;
-  const cart = new THREE.Group(); cart.position.set(3.7, 0, -1.6); scene.add(cart);
-  M(box(0.9, 0.7, 0.6), L('metal_anodised_teal'), cart, [0, 0.45, 0]); M(box(0.92, 0.04, 0.62), L('metal_machined'), cart, [0, 0.82, 0]);
-  for (const [x, c] of [[-0.25, 'enamel_red'], [0.25, 'enamel_green']] as [number, string][]) { M(cyl(0.15, 0.15, 1.3, 14), L(c), cart, [x, 1.5, -0.12]); M(cyl(0.06, 0.08, 0.12, 10), L('metal_brass'), cart, [x, 2.2, -0.12]); }
-  M(cyl(0.09, 0.09, 0.02, 14), toon({ map: dialTex(), lamps: true }), cart, [0.2, 0.55, 0.31], [PI / 2, 0, 0]);
-  M(tube([[3.5, 0.05, -1.3], [2.9, 0.03, -1.1], [2.2, 0.03, -0.9], [1.65, 0.3, -0.85]], 0.04), L('rubber_seal'), scene);
-  M(tube([[-4.3, 3.7, -3.4], [-4.5, 2.4, -3.5], [-4.6, 0.6, -3.5], [-3.6, 0.04, -2.6], [-1.4, 0.04, -1.2]], 0.045), L('rubber_seal'), scene);
-  // ---------------------------------------------------------- tool chests, stock crates, an extinguisher
-  for (const [x, z, n] of [[-5.1, -2.2, 5], [-5.1, -0.9, 3]] as V3[]) { const ch = new THREE.Group(); ch.position.set(x, 0, z); scene.add(ch); M(box(0.9, n * 0.24 + 0.1, 0.7), L('enamel_red'), ch, [0, (n * 0.24 + 0.1) / 2 + 0.08, 0]); for (let i = 0; i < n; i++) { M(box(0.86, 0.02, 0.02), toon({ color: 0x14090a, lamps: true }), ch, [0, 0.2 + i * 0.24, 0.36]); M(box(0.5, 0.03, 0.04), L('metal_brushed'), ch, [0, 0.14 + i * 0.24, 0.37]); } for (const dx of [-0.35, 0.35]) M(cyl(0.05, 0.05, 0.06, 8), L('rubber_seal'), ch, [dx, 0.03, 0.25], [0, 0, PI / 2]); }
-  for (const [x, z, s] of [[4.8, -2.6, 1.2], [5.0, -1.2, 0.9], [-4.4, 1.2, 1.1]] as V3[]) { const c = fitted(mCrate(), s); c.position.set(x, s * 0.36, z); c.rotation.y = x * 0.3; scene.add(c); }
-  M(cyl(0.11, 0.11, 0.55, 12), L('enamel_red'), scene, [-5.6, 0.3, -2.95]); M(cyl(0.04, 0.05, 0.1, 8), toon({ color: 0x111111 }), scene, [-5.6, 0.62, -2.95]);
-  // ---------------------------------------------------------- pendant lamps with haze cones (and the light they give)
-  const lamps: Rig['lamps'] = [];
-  for (const [x, z, k] of [[-1.2, -0.3, 1.25], [1.4, -0.1, 1.05], [-2.6, -2.6, 0.9]] as V3[]) {
-    const lp = new THREE.Group(); lp.position.set(x, 3.1, z); scene.add(lp);
-    M(cyl(0.012, 0.012, 1.5, 4), toon({ color: 0x111111 }), lp, [0, 0.8, 0]);
-    M(new THREE.ConeGeometry(0.34, 0.26, 14, 1, true), L('enamel_green'), lp, [0, 0.13, 0]);
-    M(new THREE.SphereGeometry(0.09, 10, 8), glowM(0xffe2a8, 2), lp, [0, -0.01, 0]);
-    const haze = M(new THREE.ConeGeometry(1.5, 3.0, 20, 1, true), new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.055, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }), lp, [0, -1.55, 0]);
-    haze.renderOrder = 5;
-    lamps.push({ p: new THREE.Vector3(x, 2.9, z), c: new THREE.Vector3(1.0, 0.82, 0.58).multiplyScalar(k), r: 5.4 });
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * PI * 2, f = new THREE.Group(); f.rotation.y = a; claw.add(f);
+    const k = new THREE.Group(); k.position.set(0.04, 0, 0); f.add(k);
+    M(box(0.014, 0.07, 0.018), GUN(), k, [0, -0.035, 0]); M(box(0.024, 0.012, 0.02), MACH(), k, [-0.01, -0.07, 0]);
+    fingers.push(k);
   }
-  lamps.push({ p: new THREE.Vector3(0, 1.6, 0.2), c: new THREE.Vector3(0, 0, 0), r: 2.4 }); // the forge's hot light
-  return { scene, cam, parts, rows, jig, jigHold, bridge, trolley, inner, fingers, grip, robot: { yaw, sh, el, tip, flame }, lamps };
+  const grip = new THREE.Group(); grip.position.y = -0.09; claw.add(grip);
+  // ---- the welding arm at the bench's far end
+  const base = new THREE.Group(); base.position.set(-1.52, TOP, -11.86); root.add(base);
+  M(cyl(0.09, 0.1, 0.05, 14), DARK(), base, [0, 0.025, 0]);
+  const yaw = new THREE.Group(); yaw.position.y = 0.05; base.add(yaw);
+  M(cyl(0.06, 0.07, 0.1, 12), YEL(), yaw, [0, 0.05, 0]);
+  const sh = new THREE.Group(); sh.position.y = 0.11; yaw.add(sh);
+  M(cyl(0.04, 0.04, 0.12, 12), MACH(), sh, [0, 0, 0], [0, 0, PI / 2]);
+  M(box(0.06, 0.36, 0.07), YEL(), sh, [0, 0.18, 0]);
+  const el = new THREE.Group(); el.position.y = 0.36; sh.add(el);
+  M(cyl(0.032, 0.032, 0.1, 12), MACH(), el, [0, 0, 0], [0, 0, PI / 2]);
+  M(box(0.045, 0.3, 0.05), YEL(), el, [0, 0.15, 0]);
+  const tipG = new THREE.Group(); tipG.position.y = 0.3; el.add(tipG);
+  M(cyl(0.022, 0.012, 0.1, 10), L('q_pipe_copper'), tipG, [0, 0.05, 0]);
+  const tip = new THREE.Object3D(); tip.position.y = 0.11; tipG.add(tip);
+  const flame = M(new THREE.ConeGeometry(0.018, 0.06, 8), glowM(0x9ad8ff, 2.4), tipG, [0, 0.13, 0], [PI, 0, 0]); flame.visible = false; flame.castShadow = false;
+  const hose = new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(0.0, 0.03, 0.08), new THREE.Vector3(0.05, 0.05, 0.25), new THREE.Vector3(0.12, -0.02, 0.4)]), 16, 0.012, 6);
+  M(hose, RUB(), base);
+  // the weld's own light (kept in the scene from the start so the light count never changes)
+  const light = new THREE.PointLight(0x9ad8ff, 0, 2.2, 2); light.position.set(BX - 0.15, TOP + 0.5, JZ); root.add(light);
+  sh.rotation.x = -0.3; el.rotation.x = -0.9; yaw.rotation.y = 2.5;
+  return { root, jaws, table, hold, tray, trolley, rope, claw, fingers, grip, arm: { yaw, sh, el, tip, flame }, light, clamp: 1, hookY: 1.45, reveal: 0, heat: 0 };
 }
 
 /** the FORGE key: a big red mushroom button in a hazard-striped collar on a steel plinth */
@@ -199,301 +148,292 @@ function mForgeKey(): THREE.Group {
   return g;
 }
 
-// ================================================================== the bench (controller + the slim 2D layer)
+// ================================================================== the workshop (controller + the 2D layer)
 export class Bench {
   readonly el: HTMLDivElement; isOpen = false;
   private parts: Record<PartSlot, string> = { head: 'lens', core: 'cell', grip: 'pistol', mod: 'none' };
-  private rig: Rig | null = null; private R: THREE.WebGLRenderer | null = null; private cv: HTMLCanvasElement;
-  private rt: THREE.WebGLRenderTarget | null = null; private post: { scene: THREE.Scene; cam: THREE.Camera; mat: THREE.ShaderMaterial } | null = null;
-  private busy = false; private t = 0; private hover: THREE.Object3D | null = null; private slot: PartSlot = 'head';
-  private camGoal = { pos: new THREE.Vector3(2.9, 3.2, 6.4), look: new THREE.Vector3(-0.4, 1.3, -1.0) }; private camLook = new THREE.Vector3();
-  private strip: HTMLDivElement; private stats: HTMLDivElement; private bill: HTMLDivElement; private tip: HTMLDivElement; private chips = new Map<PartSlot, HTMLButtonElement>();
-  private forgeKey: ReturnType<typeof floatIcon>; private jigClamp = 1; private reveal = 0; private heat = 0; private down: THREE.Object3D | null = null;
-  private key = (e: KeyboardEvent) => { if (!this.isOpen) return; if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); this.open(false); } };
+  private hub: ShipHub | null = null; private rig: Rig | null = null; private offUpd: (() => void) | null = null;
+  private busy = false; private slot: PartSlot = 'head'; private t = 0; private crewScan = -9; private crew: THREE.Object3D[] = []; private tmp = new THREE.Vector3();
+  private bin: Panel; private spec: Panel; private keys = new Map<PartSlot, PKey>(); private grid: Slot[] = []; private name: HTMLDivElement;
+  private meters = new Map<keyof Stats, Meter>(); private bill: HTMLDivElement; private plate: HTMLDivElement;
+  private forgeKey: ReturnType<typeof floatIcon>; private back: ReturnType<typeof floatIcon>;
+  private key = (e: KeyboardEvent) => {
+    if (!this.isOpen) return;
+    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); if (!this.busy) this.open(false); return; }
+    const i = ['1', '2', '3', '4'].indexOf(e.key); if (i >= 0) { e.preventDefault(); e.stopImmediatePropagation(); this.pickSlot(PART_SLOTS[i]); }
+    if (e.key === 'Enter' || e.key === 'f') { e.preventDefault(); e.stopImmediatePropagation(); void this.forge(); }
+  };
   constructor(readonly g: G, readonly w: ToolWidget) {
-    installKitStyle(); injectBayCSS();
-    const el = this.el = document.createElement('div'); el.className = 'h7-bay';
-    this.cv = document.createElement('canvas'); this.cv.className = 'h7-bay-cv';
-    // the category strip
-    this.strip = document.createElement('div'); this.strip.className = 'h7-bay-strip';
-    for (const s of PART_SLOTS) {
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'h7-bay-cat';
-      const n = document.createElement('span'); n.className = 'k7-name k7-t16'; n.textContent = SLOT_NAME[s];
-      b.append(n);
-      b.addEventListener('pointerenter', () => uiSfx('hover', 0.35));
-      b.addEventListener('click', (e) => { e.stopPropagation(); this.pickSlot(s); });
-      this.strip.append(b); this.chips.set(s, b);
-    }
-    this.stats = document.createElement('div'); this.stats.className = 'h7-bay-stats';
-    this.bill = document.createElement('div'); this.bill.className = 'h7-bay-bill';
-    this.tip = document.createElement('div'); this.tip.className = 'k7-tip k7-t16';
-    this.forgeKey = floatIcon({ build: mForgeKey, name: 'FORGE', size: [48, 36], nameSize: 32, sound: '', view: { pitch: 0.7, spin: 0, rock: 0.2 }, onClick: () => void this.forge() });
-    this.forgeKey.el.classList.add('h7-bay-forge');
-    const back = floatIcon({ build: () => mCustomTool({ head: 'lens', core: 'cell', grip: 'pistol' }), name: 'BACK', size: [40, 32], nameSize: 16, sound: 'back', view: { pitch: 0.4 }, onClick: () => { this.open(false); } });
-    back.el.classList.add('h7-bay-back');
-    el.append(this.cv, this.strip, this.stats, this.bill, this.forgeKey.el, back.el, this.tip);
-    this.wire();
+    installKitStyle(); injectCSS();
+    const el = this.el = document.createElement('div'); el.className = 'h7-ws';
+    // ---- PARTS: category keys and the category's parts in item slots
+    this.bin = panel({ title: 'PARTS', tone: 'gun', serial: 'FAB-06', lamps: ['green', 'amber'], stencil: 'WORKSHOP', glands: 2, cls: 'h7-ws-bin' });
+    const keys = document.createElement('div'); keys.className = 'h7-ws-keys';
+    PART_SLOTS.forEach((s, i) => { const k = pkey(s.toUpperCase(), () => this.pickSlot(s), { w: 78, h: 32, tone: 'cream', lamp: 'amber', sound: 'tab' }); k.title = `${s} (${i + 1})`; keys.append(k); this.keys.set(s, k); });
+    const grid = slotGrid(8, 4, 72, { gap: 8, numbered: true, onClick: (i) => { const p = PARTS[this.slot][i]; if (p) void this.fit(this.slot, p.id); } });
+    this.grid = grid.slots;
+    grid.slots.forEach((s, i) => { s.el.addEventListener('pointerenter', () => { const p = PARTS[this.slot][i]; this.name.textContent = p ? p.name : ''; }); s.el.addEventListener('pointerleave', () => this.showName()); });
+    this.name = document.createElement('div'); this.name.className = 'h7-ws-name k7-t16';
+    this.bin.body.append(keys, grid.el, this.name);
+    // ---- SPECS: LED readouts and the bill of materials
+    this.spec = panel({ title: 'SPECS', tone: 'gun', serial: 'JIG-3', lamps: ['green', 'red'], knobs: 2, toggles: 2, foot: 30, cls: 'h7-ws-spec' });
+    this.plate = document.createElement('div'); this.plate.className = 'h7-ws-tool k7-t16';
+    const ms = document.createElement('div'); ms.className = 'h7-ws-meters';
+    for (const s of STATS) { const m = meter(s.name, 0, { w: 160, col: s.col, value: 0 }); this.meters.set(s.k, m); ms.append(m.el); }
+    this.bill = document.createElement('div'); this.bill.className = 'h7-ws-bill';
+    this.spec.body.append(this.plate, ms, this.bill);
+    // ---- FORGE and BACK as floating icons (Limbophobia's rule: menu buttons float, never boxed)
+    this.forgeKey = floatIcon({ build: mForgeKey, name: 'FORGE', size: [48, 36], nameSize: 32, sound: '', hint: 'F', view: { pitch: 0.7, spin: 0, rock: 0.2 }, onClick: () => void this.forge() });
+    this.forgeKey.el.classList.add('h7-ws-forge');
+    this.back = floatIcon({ build: () => fitVisible(customModel({ head: 'lens', core: 'cell', grip: 'pistol' }, 'hud')), name: 'BACK', size: [40, 32], nameSize: 16, sound: 'back', view: { pitch: 0.4 }, onClick: () => { if (!this.busy) this.open(false); } });
+    this.back.el.classList.add('h7-ws-back');
+    el.append(this.bin.el, this.spec.el, this.forgeKey.el, this.back.el);
   }
-  // ---------------------------------------------------------------- open / close: an iris, then the camera swoops in
+  // ---------------------------------------------------------------- open: an iris, the ship's workshop behind it
   open(on: boolean) {
     if (on === this.isOpen) return;
     const r = this.w.el.getBoundingClientRect(), at = { x: r.left + r.width / 2, y: r.top + r.height / 3 };
     if (on) {
       this.isOpen = true;
-      void transition('iris', () => {
+      void transition('iris', async () => {
+        try { await this.enter(); } catch (e) { console.error('workshop', e); }
         if (!this.el.isConnected) document.body.append(this.el);
-        this.ensure(); this.el.classList.add('on');
-        const c = this.rig!.cam; c.position.set(7.5, 7.2, 11.5); this.camLook.set(0, 1.2, 0); c.lookAt(this.camLook);
-        this.home(1300);
-        this.syncUI(); this.pickSlot(this.slot, true);
+        this.el.classList.add('on'); document.body.classList.add('h7-ws-open');
         addEventListener('keydown', this.key, true);
+        this.syncUI(); this.pickSlot(this.slot, true);
         uiSfx('swishIn', 0.6, 0.8); uiSfx('creak', 0.35);
-        onFrame((dt) => { if (!this.isOpen) return false; this.frame(dt); return true; });
-      }, { ...at, ms: 320 });
+        await wait(120);
+      }, { ...at, ms: 340 });
     } else {
       removeEventListener('keydown', this.key, true);
-      void transition('iris', () => { this.isOpen = false; this.el.classList.remove('on'); this.tip.classList.remove('on'); uiSfx('close', 0.5); }, { ...at, ms: 300 });
+      void transition('iris', () => { this.isOpen = false; this.el.classList.remove('on'); document.body.classList.remove('h7-ws-open'); this.leave(); uiSfx('close', 0.5); }, { ...at, ms: 300 });
     }
   }
-  private ensure() {
-    if (this.R) return;
-    this.R = new THREE.WebGLRenderer({ canvas: this.cv, antialias: false, alpha: false });
-    this.R.setPixelRatio(1); this.R.outputColorSpace = THREE.LinearSRGBColorSpace;
-    const mat = new THREE.ShaderMaterial({ vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: POST_FRAG, depthTest: false, depthWrite: false,
-      uniforms: { tSrc: { value: null }, tDepth: { value: null }, uRes: { value: new THREE.Vector2() }, uNear: { value: 0.4 }, uFar: { value: 40 } } });
-    const ps = new THREE.Scene(), q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); q.frustumCulled = false; ps.add(q);
-    this.post = { scene: ps, cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), mat };
-    this.rig = buildBay();
-    this.mountAssembly();
+  /** the ship hub on its workshop, the rig on the bench, the camera on the bench */
+  private async enter() {
+    const engine = (this.g.engine ?? (window as unknown as { __engine?: unknown }).__engine) as import('../../app/engine').Engine | undefined;
+    if (!engine) throw new Error('no engine');
+    const { ShipHub } = await import('../../ship/hub/hub');
+    const was = this.g.paused; this.g.paused = true;
+    const hub = this.hub = new ShipHub(engine, { inside: true, fromPlanet: true });
+    hub.onDispose(() => { this.g.paused = was; });
+    engine.push(hub); engine.start();
+    hub.showChrome(false); hub.lockInput(true);
+    void hub.focus('workshop', { instant: true });
+    void hub.shot(CAM.home(), 0); hub.snap();
+    // the bench cleared for the rig: the vice and the hand tools put away
+    const room = hub.room('workshop').root;
+    room.traverse((o) => { if (/^ph:(bench_vice_01|adjustable_wrench|pliers|screwdriver)$/.test(o.name)) o.visible = false; });
+    // and whatever small things the room's clutter pass left on the bench top
+    for (const o of room.children) { const p = o.position; if (p.y > 0.85 && p.y < 1.6 && p.x > -2.4 && p.x < -1.2 && p.z > -13.7 && p.z < -11.5) o.visible = false; }
+    const rig = this.rig = buildRig(); room.add(rig.root);
+    this.mount();
+    this.offUpd = hub.onUpdate((dt) => this.frame(dt));
+    // two frames so the room is drawn before the iris opens
+    await new Promise<void>((res) => requestAnimationFrame(() => requestAnimationFrame(() => res())));
   }
-  private size() { return { W: Math.max(320, Math.round(innerWidth / 2)), H: Math.max(180, Math.round(innerHeight / 2)) }; }
-  private render() {
-    const R = this.R!, rig = this.rig!, { W, H } = this.size();
-    if (this.cv.width !== W || this.cv.height !== H) R.setSize(W, H, false);
-    if (!this.rt || this.rt.width !== W || this.rt.height !== H) {
-      this.rt?.dispose(); const dt = new THREE.DepthTexture(W, H); dt.minFilter = dt.magFilter = THREE.NearestFilter;
-      this.rt = new THREE.WebGLRenderTarget(W, H, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true, depthTexture: dt });
-    }
-    rig.cam.aspect = W / H; rig.cam.updateProjectionMatrix(); rig.cam.updateMatrixWorld();
-    // the practical lamps into view space for every lamp-lit material
-    rig.lamps.forEach((l, i) => { if (i > 3) return; LAMPS.p.value[i].copy(l.p).applyMatrix4(rig.cam.matrixWorldInverse); LAMPS.c.value[i].copy(l.c); LAMPS.r.value[i] = l.r; });
-    R.setRenderTarget(this.rt); R.setClearColor(0x0a0c10, 1); R.clear(); R.render(rig.scene, rig.cam);
-    R.setRenderTarget(null);
-    const u = this.post!.mat.uniforms; u.tSrc.value = this.rt.texture; u.tDepth.value = this.rt.depthTexture; u.uRes.value.set(W, H); u.uNear.value = rig.cam.near; u.uFar.value = rig.cam.far;
-    R.render(this.post!.scene, this.post!.cam);
+  private leave() {
+    this.offUpd?.(); this.offUpd = null;
+    const hub = this.hub; this.hub = null; this.rig = null;
+    if (hub) { const engine = hub.engine; if (engine.screen === hub) engine.pop(); else hub.dispose(); }
   }
   private frame(dt: number) {
     const rig = this.rig; if (!rig) return;
     this.t += dt;
-    // the camera eases to its goal
-    const c = rig.cam, k = 1 - Math.exp(-dt * 3.2);
-    c.position.lerp(this.camGoal.pos, k); this.camLook.lerp(this.camGoal.look, k); c.lookAt(this.camLook);
-    // the jig: clamps, turntable, the reveal lift and spin, the tool's working parts
-    const js = rig.jig.userData.state as { clamp: number; spin: number; flash: number };
-    js.clamp = this.jigClamp;
-    animJig(rig.jig, this.t, false);
-    rig.jigHold.position.y = 0.58 + this.reveal * 0.55; rig.jigHold.rotation.y += dt * this.reveal * 4.5;
-    animCustom(rig.jigHold, this.t, 0.4 + this.reveal);
-    // the forge's hot light, the robot's idle sway, the claw's carried part turning a little
-    const hot = rig.lamps[3]; hot.c.set(1.6, 0.55, 0.15).multiplyScalar(this.heat * (0.8 + Math.random() * 0.4));
-    if (!this.busy) { rig.robot.yaw.rotation.y = 2.5 + Math.sin(this.t * 0.5) * 0.06; rig.robot.sh.rotation.x = -0.25; rig.robot.el.rotation.x = -0.55; }
-    rig.grip.rotation.y += dt * 0.6;
-    // rack rows: the picked category glows
-    for (const s of PART_SLOTS) { const u = (rig.rows[s].material as THREE.ShaderMaterial).uniforms.uEmissive.value as THREE.Vector3, on = s === this.slot, kk = on ? 0.55 + Math.sin(this.t * 4) * 0.15 : 0.12, cc = new THREE.Color(P.glowTeal[3]); u.set(cc.r * kk, cc.g * kk, cc.b * kk); }
-    // the hovered part lifts off its hook a little
-    for (const p of rig.parts) { const h = (p.userData.pick.home as THREE.Vector3), lift = p === this.hover && !this.busy ? 0.12 : 0; p.position.z += (h.z + lift - p.position.z) * Math.min(1, dt * 10); p.rotation.y += ((p === this.hover ? 0.2 : -0.35) - p.rotation.y) * Math.min(1, dt * 6); }
-    this.render();
-    this.placeStats();
+    // the jaws slide to the clamp, the turntable lifts and spins on the reveal, the tool's parts work
+    rig.jaws.forEach((j, i) => { const s = i ? 1 : -1, goal = s * (0.17 + (1 - rig.clamp) * 0.08); j.position.z += (goal - j.position.z) * Math.min(1, dt * 12); });
+    rig.hold.position.y = 0.2 + rig.reveal * 0.35; rig.hold.rotation.y += dt * (0.15 + rig.reveal * 4);
+    rig.table.rotation.y = rig.hold.rotation.y;
+    (rig.hold.userData.update as ((dt: number) => void) | undefined)?.(dt);
+    (rig.grip.userData.update as ((dt: number) => void) | undefined)?.(dt);
+    // the crew keep working round the ship, but nobody stands in front of the bench while it is in use
+    const now = performance.now() / 1000;
+    if (now - this.crewScan > (this.crew.length ? 1 : 0.2)) { this.crewScan = now; this.crew = []; this.hub?.scene.traverse((o) => { if (o.children.some((k) => k.userData.crewId)) this.crew.push(o); }); }
+    for (const c of this.crew) {
+      const p = c.getWorldPosition(this.tmp), near = p.x > -3.4 && p.x < -1.2 && p.z > -14 && p.z < -10.9;
+      if (near) { if (c.visible) { c.visible = false; c.userData.wsHid = true; } } else if (c.userData.wsHid) { c.visible = true; c.userData.wsHid = false; }
+    }
+    // the hoist: the claw hangs at hookY (ship space), the rope runs from the trolley down to it
+    const ty = rig.trolley.position.y, y = rig.hookY + Math.sin(this.t * 1.3) * 0.004;
+    rig.claw.position.y = y - ty; rig.rope.scale.y = Math.max(0.01, ty - y); rig.rope.position.y = (y - ty) / 2;
+    // the weld light flickers with the heat; the arm idles
+    rig.light.intensity = rig.heat * (2.2 + Math.random() * 1.6);
+    if (!this.busy) { rig.arm.yaw.rotation.y = 2.5 + Math.sin(this.t * 0.5) * 0.05; }
   }
-  // ---------------------------------------------------------------- input: hover, click or drag a rack part
-  private pickAt(e: PointerEvent): THREE.Object3D | null {
-    const rig = this.rig; if (!rig) return null;
-    const r = this.cv.getBoundingClientRect(), ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-    const rc = new THREE.Raycaster(); rc.setFromCamera(ndc, rig.cam);
-    const hit = rc.intersectObjects(rig.parts, true)[0];
-    return (hit?.object.userData.pickRoot as THREE.Object3D | undefined) ?? null;
+  // ---------------------------------------------------------------- the tool on the jig
+  private mount() {
+    const rig = this.rig; if (!rig) return;
+    rig.hold.clear();
+    const m = customModel(this.parts, 'world'), fv = fitVisible(m);
+    const s = 0.5 / Math.max(0.001, (fv.userData.fitW as number) || 1);
+    fv.scale.setScalar(s); fv.rotation.y = -PI / 2;
+    rig.hold.add(fv); rig.hold.userData.update = m.userData.update;
   }
-  private wire() {
-    this.cv.addEventListener('pointermove', (e) => {
-      if (this.busy) return;
-      const p = this.pickAt(e);
-      if (p !== this.hover) { this.hover = p; if (p) uiSfx('hover', 0.4); this.cv.style.cursor = p ? 'pointer' : 'default'; }
-      if (p) { this.tip.textContent = `${SLOT_NAME[p.userData.pick.slot as PartSlot]} · ${p.userData.pick.name}`; this.tip.style.left = e.clientX + 'px'; this.tip.style.top = (e.clientY - 18) + 'px'; this.tip.classList.add('on'); }
-      else this.tip.classList.remove('on');
-    });
-    this.cv.addEventListener('pointerdown', (e) => { if (e.button !== 0 || this.busy) return; this.down = this.pickAt(e); if (this.down) { uiSfx('tick', 0.5, 0.8); this.cv.setPointerCapture(e.pointerId); } });
-    this.cv.addEventListener('pointerup', () => { const p = this.down; this.down = null; if (p && !this.busy) { const pk = p.userData.pick as { slot: PartSlot; id: string }; void this.fit(pk.slot, pk.id, p); } });
-    this.cv.addEventListener('pointerleave', () => { this.tip.classList.remove('on'); });
-  }
-  private pickSlot(s: PartSlot, quiet = false) {
-    this.slot = s;
-    for (const [k, b] of this.chips) b.classList.toggle('on', k === s);
-    if (!quiet) uiSfx('tab', 0.5);
-    // the camera leans toward that row of the rack, then back
-    if (!this.busy && !quiet) { const y = ROW_Y[s]; this.camGoal.pos.set(1.6, y + 1.5, 4.4); this.camGoal.look.set(-1.0, y - 0.1, -2.6); setTimeout(() => { if (!this.busy) this.home(); }, 1600); }
-  }
-  private home(_ms = 900) { this.camGoal.pos.set(2.9, 3.2, 6.4); this.camGoal.look.set(-0.4, 1.3, -1.0); }
-  // ---------------------------------------------------------------- the gantry carries a part to the jig
-  private async gantryTo(x: number, z: number, ms = 700) {
-    const rig = this.rig!, b0 = rig.bridge.position.z, t0 = rig.trolley.position.x;
-    uiSfx('winch', 0.4, 1.1);
-    await tween(ms, (k) => { rig.bridge.position.z = b0 + (z - b0) * k; rig.trolley.position.x = t0 + (x - t0) * k; }, ease.inOutCubic);
-  }
-  private async armTo(y: number, ms = 450) { const rig = this.rig!, i0 = rig.inner.position.y; await tween(ms, (k) => { rig.inner.position.y = i0 + (y - i0) * k; }, ease.inOutCubic); }
-  private async claw(open: boolean) { const rig = this.rig!, f0 = rig.fingers[0].rotation.z, g = open ? 0.55 : 0; uiSfx(open ? 'switch' : 'clunk', 0.5); await tween(180, (k) => { for (const f of rig.fingers) f.rotation.z = f0 + (g - f0) * k; }); }
-  /** the claw's tip in world y is the trolley's height (3.32) + inner (y) - 1.54: solve inner for a target height */
-  private innerFor(worldY: number) { return worldY - 3.32 + 1.54; }
-  private async fit(slot: PartSlot, id: string, from: THREE.Object3D) {
-    if (this.busy) return;
-    if (this.parts[slot] === id) { shake(this.chips.get(slot)!, 4); uiSfx('error', 0.4); return; }
-    this.busy = true; this.tip.classList.remove('on'); this.pickSlot(slot, true);
-    const rig = this.rig!;
+  private screenOf(v: THREE.Vector3) { const c = this.hub!.camera, p = v.clone().project(c); return { x: (p.x * 0.5 + 0.5) * innerWidth, y: (-p.y * 0.5 + 0.5) * innerHeight }; }
+  private jigTop() { return new THREE.Vector3(BX, TOP + 0.3, JZ); }
+  private async trolleyTo(z: number, ms = 700) { const rig = this.rig!, z0 = rig.trolley.position.z; uiSfx('winch', 0.4, 1.1); await tween(ms, (k) => { rig.trolley.position.z = z0 + (z - z0) * k; }, ease.inOutCubic); }
+  private async hookTo(y: number, ms = 450) { const rig = this.rig!, y0 = rig.hookY; await tween(ms, (k) => { rig.hookY = y0 + (y - y0) * k; }, ease.inOutCubic); }
+  private async clawOpen(open: boolean) { const rig = this.rig!, f0 = rig.fingers[0].rotation.z, g = open ? 0.5 : 0; uiSfx(open ? 'switch' : 'clunk', 0.5); await tween(180, (k) => { for (const f of rig.fingers) f.rotation.z = f0 + (g - f0) * k; }); }
+  // ---------------------------------------------------------------- fit a part: tray, gantry, claw, jig
+  async fit(slot: PartSlot, id: string) {
+    if (this.busy || !this.rig || !this.hub) return;
+    if (this.parts[slot] === id) { const k = this.keys.get(slot); if (k) shake(k, 4); uiSfx('error', 0.4); return; }
+    this.busy = true; this.pickSlot(slot, true);
+    const rig = this.rig, hub = this.hub;
     try {
-      const wp = from.getWorldPosition(new THREE.Vector3());
-      this.camGoal.pos.set(1.6, 2.4, 4.6); this.camGoal.look.set(-0.9, 2.2, -2.2);
-      await Promise.all([this.armTo(this.innerFor(3.0)), this.claw(true)]);
-      await this.gantryTo(wp.x, wp.z + 0.05, 750);
-      await this.armTo(this.innerFor(wp.y + 0.3), 420);
-      // grip: a copy of the part goes into the claw
-      await this.claw(false);
-      const carried = fitted(mCustomTool({ [slot]: id } as Record<PartSlot, string>, slot), 0.5); carried.position.y = -0.18; rig.grip.add(carried);
+      void hub.shot(CAM.fit(), 0.7);
+      // the part drops into the tray with a bounce and a puff
+      const part = partModel(slot, id, 'world');
+      const fv = part ? fitVisible(part) : new THREE.Group();
+      fv.scale.setScalar(0.2 / Math.max(0.001, (fv.userData.fitW as number) || 1));
+      const inTray = new THREE.Group(); inTray.add(fv); inTray.position.set(0, 0.04, 0); rig.tray.add(inTray);
+      await tween(320, (k) => { inTray.position.y = 0.04 + (1 - k) * 0.35; }, ease.outBounce);
+      const tp = this.screenOf(new THREE.Vector3(...TRAY)); placeDust(tp.x, tp.y, 0.3, { layer: 'ui', ground: 'metal' });
+      // the gantry runs over the tray, the claw drops, grips, lifts
+      await Promise.all([this.hookTo(1.5), this.clawOpen(true)]);
+      await this.trolleyTo(TRAY[2], 650);
+      await this.hookTo(TOP + 0.2, 420);
+      await this.clawOpen(false);
+      rig.tray.remove(inTray); inTray.position.set(0, -0.06, 0); rig.grip.add(inTray); rig.grip.userData.update = part?.userData.update;
       uiSfx('metal', 0.4, 1.3);
-      await this.armTo(this.innerFor(2.9), 380);
-      this.camGoal.pos.set(1.9, 2.5, 4.0); this.camGoal.look.set(-0.2, 1.7, -0.6);
-      await this.gantryTo(0, 0, 850);
-      this.jigClamp = 0; uiSfx('winch', 0.4, 1.4);
-      await this.armTo(this.innerFor(1.72), 450);
-      // the part goes on, the jaws lock with sparks and a knock
-      rig.grip.remove(carried);
-      this.parts[slot] = id; this.mountAssembly();
-      await this.claw(true);
-      this.jigClamp = 1;
-      const sp = this.screenOf(new THREE.Vector3(0, 1.3, 0));
+      await this.hookTo(1.5, 380);
+      // over the jig: the jaws open, down, the part goes on, the jaws lock with sparks and a knock
+      await this.trolleyTo(JZ, 800);
+      rig.clamp = 0; uiSfx('winch', 0.4, 1.4);
+      await this.hookTo(TOP + 0.42, 450);
+      rig.grip.remove(inTray); rig.grip.userData.update = undefined;
+      this.parts[slot] = id; this.mount();
+      await this.clawOpen(true);
+      rig.clamp = 1;
+      const sp = this.screenOf(this.jigTop());
       burst(sp.x, sp.y, { n: 26, ramp: P.glowAmber, speed: 300, life: 0.55 }); burst(sp.x, sp.y, { n: 10, ramp: P.sky, speed: 200, life: 0.4 });
-      placeDust(sp.x, sp.y + 30, 0.35, { layer: 'ui', ground: 'metal' });
+      placeDust(sp.x, sp.y + 24, 0.35, { layer: 'ui', ground: 'metal' });
       uiSfx('clunk', 0.7); uiSfx('metal', 0.5, 0.9);
       this.syncUI();
-      await this.armTo(this.innerFor(3.0), 380);
-      await this.gantryTo(2.2, -1.6, 700);
-      this.home();
+      await this.hookTo(1.45, 380);
+      await this.trolleyTo(-11.9, 650);
+      void hub.shot(CAM.home(), 0.8);
     } finally { this.busy = false; }
   }
-  private mountAssembly() {
-    const rig = this.rig; if (!rig) return;
-    rig.jigHold.clear();
-    mountTool(rig.jigHold, () => mCustomTool(this.parts), 0.95);
-  }
-  private screenOf(v: THREE.Vector3) { const rig = this.rig!, p = v.clone().project(rig.cam), r = this.cv.getBoundingClientRect(); return { x: r.left + (p.x * 0.5 + 0.5) * r.width, y: r.top + (-p.y * 0.5 + 0.5) * r.height }; }
   // ---------------------------------------------------------------- FORGE: weld, cool, reveal
-  private async forge() {
-    if (this.busy || !this.rig) return;
+  async forge() {
+    if (this.busy || !this.rig || !this.hub) return;
     const cost = costOf(this.parts), st = this.g.storage;
     const short = Object.entries(cost).filter(([it, n]) => (st?.count?.(it) ?? 0) < n);
     if (short.length && !this.g.__freeParts) { shake(this.forgeKey.el, 6); uiSfx('error', 0.6); this.bill.querySelectorAll('.short').forEach((e) => pop(e as HTMLElement, 0.5)); return; }
     this.busy = true; this.forgeKey.view?.press(1.4); uiSfx('clunk', 0.7); uiSfx('bong', 0.5);
-    const rig = this.rig, rb = rig.robot;
+    const rig = this.rig, hub = this.hub, a = rig.arm;
     try {
-      this.camGoal.pos.set(-1.4, 2.2, 2.8); this.camGoal.look.set(0.3, 1.2, -0.2);
-      // the robot swings its torch over the jig
-      const y0 = rb.yaw.rotation.y, s0 = rb.sh.rotation.x, e0 = rb.el.rotation.x;
-      await tween(650, (k) => { rb.yaw.rotation.y = y0 + (2.05 - y0) * k; rb.sh.rotation.x = s0 + (-0.79 - s0) * k; rb.el.rotation.x = e0 + (-0.93 - e0) * k; }, ease.inOutCubic);
+      void hub.shot(CAM.forge(), 0.8);
+      // the arm swings its torch over the jig
+      const y0 = a.yaw.rotation.y, s0 = a.sh.rotation.x, e0 = a.el.rotation.x;
+      await tween(650, (k) => { a.yaw.rotation.y = y0 + (WY - y0) * k; a.sh.rotation.x = s0 + (-0.75 - s0) * k; a.el.rotation.x = e0 + (-1.4 - e0) * k; }, ease.inOutCubic);
       // weld: sparks, a hot flickering light, the hiss of the torch
-      rb.flame.visible = true;
+      a.flame.visible = true;
       const tEnd = performance.now() + 1700;
       while (performance.now() < tEnd) {
-        this.heat = Math.min(1, this.heat + 0.18);
-        const p = this.screenOf(rb.tip.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, -0.05, 0)));
+        rig.heat = Math.min(1, rig.heat + 0.2);
+        const p = this.screenOf(a.tip.getWorldPosition(new THREE.Vector3()));
         burst(p.x, p.y, { n: 8, ramp: Math.random() < 0.5 ? P.glowAmber : P.sky, speed: 260, life: 0.45, gravity: 900 });
         if (Math.random() < 0.5) uiSfx(Math.random() < 0.5 ? 'scratch' : 'metal', 0.35, 1.3 + Math.random() * 0.4);
-        rb.el.rotation.x = -0.93 + Math.sin(performance.now() / 90) * 0.04;
+        a.el.rotation.x = -1.4 + Math.sin(performance.now() / 90) * 0.05; a.yaw.rotation.y = WY + Math.sin(performance.now() / 160) * 0.14;
         await wait(70);
       }
-      rb.flame.visible = false;
+      a.flame.visible = false;
       // cool: the glow fades, steam puffs off, a hiss
       uiSfx('swishOut', 0.6, 0.7);
-      const jp = this.screenOf(new THREE.Vector3(0, 1.4, 0));
+      const jp = this.screenOf(this.jigTop());
       for (let i = 0; i < 3; i++) setTimeout(() => placeDust(jp.x + (i - 1) * 30, jp.y, 0.3, { layer: 'ui', ground: 'snow', sound: false }), i * 180);
-      await Promise.all([tween(900, (k) => { this.heat = 1 - k; }), tween(650, (k) => { rb.yaw.rotation.y = 2.05 + (2.5 - 2.05) * k; rb.sh.rotation.x = -0.79 + (0.54) * k; rb.el.rotation.x = -0.93 + 0.38 * k; }, ease.inOutCubic)]);
+      await Promise.all([tween(900, (k) => { rig.heat = 1 - k; }), tween(650, (k) => { a.yaw.rotation.y = WY + (2.5 - WY) * k; a.sh.rotation.x = -0.75 + 0.45 * k; a.el.rotation.x = -1.4 + 0.5 * k; }, ease.inOutCubic)]);
       // reveal: the jaws open, the finished tool rises and spins with its parts working
-      this.jigClamp = 0; uiSfx('winch', 0.4, 1.5);
-      this.camGoal.pos.set(-0.9, 1.75, 2.2); this.camGoal.look.set(0, 1.45, 0);
-      (rig.jig.userData.state as { flash: number }).flash = performance.now() / 1000 + 2.2;
-      await tween(500, (k) => { this.reveal = k; }, ease.outBack);
+      rig.clamp = 0; uiSfx('winch', 0.4, 1.5);
+      void hub.shot(CAM.reveal(), 0.7);
+      await tween(500, (k) => { rig.reveal = k; }, ease.outBack);
       if (st && !this.g.__freeParts) for (const [it, n] of Object.entries(cost)) st.take(it, n);
       const head = partOf('head', this.parts.head), n = customTools(this.g).length + 1, name = `${head.name.split(' ').pop()} MK-${n}`;
       addCustomTool(this.g, { id: 'custom_' + Date.now().toString(36), name, parts: { ...this.parts }, base: head.base ?? 'scanner', stats: statsOf(this.parts) });
-      const np = this.screenOf(new THREE.Vector3(0, 2.0, 0));
+      const np = this.screenOf(new THREE.Vector3(BX, TOP + 0.75, JZ));
       floatUp(np.x, np.y, name, { size: 32, color: '#ffe39a' });
       burst(np.x, np.y + 40, { n: 30, ramp: P.glowTeal, speed: 320, life: 0.7 });
       uiSfx('confirm', 0.8); uiSfx('slam', 0.4);
       await wait(1900);
-      await tween(450, (k) => { this.reveal = 1 - k; }, ease.inOutCubic);
-      this.jigClamp = 1; uiSfx('clunk', 0.5);
-      this.home(); this.syncUI();
-    } finally { this.busy = false; this.heat = 0; }
+      await tween(450, (k) => { rig.reveal = 1 - k; }, ease.inOutCubic);
+      rig.clamp = 1; uiSfx('clunk', 0.5);
+      void hub.shot(CAM.home(), 0.8); this.syncUI();
+    } finally { this.busy = false; rig.heat = 0; }
   }
-  // ---------------------------------------------------------------- the slim 2D layer
+  // ---------------------------------------------------------------- QA: hold a moment of the sequences still (headless shots)
+  qaPose(kind: 'home' | 'carry' | 'weld' | 'reveal', slot: PartSlot = 'head', id = 'bit') {
+    const rig = this.rig, hub = this.hub; if (!rig || !hub) return;
+    const a = rig.arm;
+    rig.grip.clear(); rig.grip.userData.update = undefined; this.busy = kind !== 'home';
+    rig.clamp = 1; rig.reveal = 0; rig.heat = 0; a.flame.visible = false; rig.trolley.position.z = -11.9; rig.hookY = 1.45;
+    a.yaw.rotation.y = 2.5; a.sh.rotation.x = -0.3; a.el.rotation.x = -0.9;
+    let cam = CAM.home();
+    if (kind === 'carry') {
+      const part = partModel(slot, id, 'world'), fv = part ? fitVisible(part) : new THREE.Group();
+      fv.scale.setScalar(0.2 / Math.max(0.001, (fv.userData.fitW as number) || 1));
+      const g = new THREE.Group(); g.add(fv); g.position.y = -0.06; rig.grip.add(g); rig.grip.userData.update = part?.userData.update;
+      rig.trolley.position.z = -12.85; rig.hookY = 1.32; rig.clamp = 0; for (const f of rig.fingers) f.rotation.z = 0;
+      cam = CAM.fit();
+    }
+    if (kind === 'weld') { a.yaw.rotation.y = WY; a.sh.rotation.x = -0.75; a.el.rotation.x = -1.4; a.flame.visible = true; rig.heat = 1; cam = CAM.forge(); }
+    if (kind === 'reveal') { rig.clamp = 0; rig.reveal = 1; cam = CAM.reveal(); }
+    void hub.shot(cam, 0); hub.snap(); this.syncUI();
+    if (kind === 'weld') requestAnimationFrame(() => { const p = this.screenOf(a.tip.getWorldPosition(new THREE.Vector3())); for (let i = 0; i < 3; i++) burst(p.x, p.y, { n: 14, ramp: i % 2 ? P.glowAmber : P.sky, speed: 240, life: 4, gravity: 120 }); });
+    if (kind === 'reveal') requestAnimationFrame(() => { const np = this.screenOf(new THREE.Vector3(BX, TOP + 0.75, JZ)); floatUp(np.x, np.y, `${partOf('head', this.parts.head).name.split(' ').pop()} MK-1`, { size: 32, color: '#ffe39a' }); });
+  }
+  // ---------------------------------------------------------------- the 2D layer
+  private pickSlot(s: PartSlot, quiet = false) {
+    this.slot = s;
+    for (const [k, b] of this.keys) b.setOn(k === s);
+    if (!quiet) uiSfx('tab', 0.5);
+    const list = PARTS[s];
+    this.grid.forEach((sl, i) => {
+      const p = list[i];
+      if (!p) { sl.set({ icon: null, count: null, state: 4, n: '' }); return; }
+      sl.set({ icon: p.id === 'none' ? null : partIcon(s, p.id, 54), count: null, state: this.parts[s] === p.id ? 3 : 1, n: String(i + 1) });
+      sl.el.title = p.name;
+    });
+    this.showName();
+  }
+  private showName() { this.name.textContent = `${this.slot.toUpperCase()} · ${partOf(this.slot, this.parts[this.slot]).name}`; }
   private syncUI() {
-    // category chips: the part fitted in each slot, as a tiny render
-    for (const [s, b] of this.chips) {
-      b.querySelector('canvas')?.remove();
-      const id = this.parts[s];
-      const cv = id === 'none' ? null : snapshot(`part|${s}|${id}`, () => mCustomTool({ [s]: id } as Record<PartSlot, string>, s), 36, 30, { yaw: s === 'head' ? 1.1 : 0.6, pitch: 0.4, zoom: 1.1 });
-      if (cv) { const c2 = document.createElement('canvas'); c2.width = cv.width; c2.height = cv.height; c2.getContext('2d')!.drawImage(cv, 0, 0); c2.style.cssText = `width:${cv.width * 2}px;height:${cv.height * 2}px;image-rendering:pixelated;display:block`; b.prepend(c2); }
-      else { const c2 = document.createElement('canvas'); c2.width = 36; c2.height = 30; c2.style.cssText = 'width:72px;height:60px;display:block'; b.prepend(c2); }
-    }
-    // stat chips beside the jig
     const st = statsOf(this.parts);
-    this.stats.innerHTML = '';
-    for (const s of STATS) {
-      const chip = document.createElement('div'); chip.className = 'h7-bay-chip';
-      skin(chip, (W, H) => plate(W, H, { mat: 'gun', seed: 7 + s.k.length, chamfer: 2, wear: 0.4, lip: 1, grime: 0 }));
-      const nm = document.createElement('span'); nm.className = 'k7-t16'; nm.textContent = s.name;
-      const bar = new Px(34, 8); cellBar(bar, 1, 1, 32, 6, Math.max(0, st[s.k]) / s.max, s.ramp);
-      const v = document.createElement('span'); v.className = 'k7-t16'; v.textContent = String(st[s.k]);
-      chip.append(nm, pxCanvas(bar, 2), v); this.stats.append(chip);
-    }
-    // the bill of parts
-    this.bill.innerHTML = '';
+    for (const s of STATS) this.meters.get(s.k)!.set(Math.max(0, st[s.k] + (s.off ?? 0)) / (s.max + (s.off ?? 0)), st[s.k]);
+    const head = partOf('head', this.parts.head);
+    this.plate.textContent = `${head.name.split(' ').pop()} MK-${customTools(this.g).length + 1}`;
+    this.bill.textContent = '';
     for (const [it, n] of Object.entries(costOf(this.parts))) {
-      const have = this.g.storage?.count?.(it) ?? 0;
-      const e = document.createElement('div'); e.className = 'h7-bay-item' + (have >= n ? '' : ' short');
-      const ic = document.createElement('img'); ic.src = itemIcon(it, 64); ic.alt = ITEMS[it]?.name ?? it;
-      const t = document.createElement('span'); t.className = 'k7-t32'; t.textContent = String(n);
-      e.title = ITEMS[it]?.name ?? it; e.append(ic, t); this.bill.append(e);
+      const have = this.g.storage?.count?.(it) ?? 0, s = slot(54, { title: ITEMS[it]?.name ?? it });
+      const im = document.createElement('img'); im.src = itemIcon(it as never, 64); im.width = 38; im.height = 38; im.alt = ITEMS[it]?.name ?? it;
+      s.set({ icon: im, count: n, state: have >= n || this.g.__freeParts ? 1 : 4 });
+      if (have < n && !this.g.__freeParts) s.el.classList.add('short');
+      this.bill.append(s.el);
     }
-  }
-  private placeStats() {
-    if (!this.rig) return;
-    const p = this.screenOf(new THREE.Vector3(0.75, 1.75, 0.2));
-    this.stats.style.left = Math.round(Math.min(innerWidth - 260, p.x + 20)) + 'px'; this.stats.style.top = Math.round(Math.max(90, p.y - 40)) + 'px';
+    if (this.isOpen) this.pickSlot(this.slot, true);
   }
 }
 
 let css = false;
-function injectBayCSS() {
+function injectCSS() {
   if (css) return; css = true;
   const s = document.createElement('style');
   s.textContent = `
-.h7-bay { position: fixed; inset: 0; z-index: 8900; display: none; }
-.h7-bay.on { display: block; }
-.h7-bay-cv { position: absolute; inset: 0; width: 100vw; height: 100vh; image-rendering: pixelated; touch-action: none; }
-.h7-bay-strip { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); display: flex; gap: 22px; align-items: flex-end; pointer-events: auto; }
-.h7-bay-cat { position: relative; display: flex; flex-direction: column; align-items: center; border: 0; background: none; padding: 0; cursor: pointer; filter: drop-shadow(3px 4px 0 rgba(5,6,8,.55)); transition: transform .2s cubic-bezier(.2,.9,.3,1.6), filter .15s; }
-.h7-bay-cat .k7-name { margin-top: -4px; color: #b9c8c4; }
-.h7-bay-cat:hover { transform: translateY(-4px); }
-.h7-bay-cat.on { filter: drop-shadow(0 0 8px rgba(120,230,210,.7)) drop-shadow(3px 4px 0 rgba(5,6,8,.5)); }
-.h7-bay-cat.on .k7-name { color: #c8fff0; }
-.h7-bay-stats { position: absolute; display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
-.h7-bay-chip { position: relative; display: grid; grid-template-columns: 44px 68px 30px; align-items: center; gap: 4px; padding: 4px 8px; }
-.h7-bay-chip > * { position: relative; z-index: 1; }
-.h7-bay-chip canvas { display: block; }
-.h7-bay-bill { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 18px; pointer-events: none; }
-.h7-bay-item { display: flex; align-items: center; gap: 2px; }
-.h7-bay-item img { width: 64px; height: 64px; image-rendering: pixelated; filter: drop-shadow(3px 3px 0 rgba(5,6,8,.6)); }
-.h7-bay-item.short .k7-t32 { color: var(--k7-red); }
-.h7-bay-forge { position: absolute !important; right: 30px; bottom: 16px; --glow: #ff8a6a; }
-.h7-bay-back { position: absolute !important; left: 22px; top: 12px; }
+.h7-ws { position: fixed; inset: 0; z-index: 8900; display: none; pointer-events: none; }
+.h7-ws.on { display: block; }
+body.h7-ws-open .h7-root, body.h7-ws-open .h7-test-bg, body.h7-ws-open .h7-ars { display: none !important; }
+.h7-ws > * { pointer-events: auto; }
+.h7-ws-bin { position: absolute; left: 22px; top: 96px; width: 376px; }
+.h7-ws-spec { position: absolute; right: 22px; top: 96px; width: 330px; }
+.h7-ws-keys { display: flex; gap: 6px; margin-bottom: 12px; }
+.h7-ws-name { margin-top: 10px; color: #f0d890; min-height: 18px; }
+.h7-ws-tool { color: #ffe39a; margin-bottom: 10px; }
+.h7-ws-meters { display: flex; flex-direction: column; gap: 6px; }
+.h7-ws-bill { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.h7-ws-bill .short .kslot-n { color: #ff7a5a; }
+.h7-ws-forge { position: absolute !important; right: 120px; bottom: 26px; --glow: #ff8a6a; }
+.h7-ws-back { position: absolute !important; left: 26px; top: 14px; }
 `;
   document.head.append(s);
 }

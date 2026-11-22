@@ -28,7 +28,7 @@ export class OrderBook {
   /** a unit just died or was hurt: barks.ts listens */
   onOrder: ((e: OrderEvent) => void) | null = null;
   onEvent: ((k: 'died' | 'hurt' | 'kill' | 'break' | 'rally' | 'arrive' | 'balk', t: Troop, st: TState) => void) | null = null;
-  private time = 0; private list0 = 0;
+  private time = 0; private list0 = 0; private seq = 0;
   /** each robot's stock weapon numbers (morale scales the live ones) */
   private base = new WeakMap<object, { cd: number; spread: number }>();
   constructor(readonly g: G) {
@@ -67,10 +67,11 @@ export class OrderBook {
     if (!troops.length) return;
     const ground = !tgt && (k === 'move' || k === 'amove' || k === 'patrol' || k === 'guard' || k === 'hold');
     const spots = ground && troops.length > 1 ? this.slots(troops, x, z, this.formation, face, queued) : null;
+    const b = ++this.seq;
     troops.forEach((t, i) => {
       const s = this.stateOf(t);
       const [ox, oz] = spots ? spots[i] : [x, z];
-      const o: TOrder = { k, x: ox, z: oz, tgt, t: 0 };
+      const o: TOrder = { k, x: ox, z: oz, tgt, t: 0, b, bx: x, bz: z };
       if (k === 'patrol') { o.ax = t.x; o.az = t.z; }
       if (k === 'stop') { s.cur = null; s.queue = []; t.stop(); return; }
       if (k === 'hold') { s.queue = []; s.cur = { k: 'hold', x: t.x, z: t.z, t: 0 }; this.start(t, s, s.cur); return; }
@@ -206,7 +207,8 @@ export class OrderBook {
       }
     }
     // broken: a badly hurt unit with no heart left falls back to the pod
-    if (s.morale < 0.16 && hp < 0.35 && g.colony && (!s.cur || s.cur.k !== 'move' || s.cur.tgt?.kind !== 'pod')) {
+    if (s.morale < 0.16 && hp < 0.35 && g.colony && this.time - s.routT > 45 && (!s.cur || s.cur.k !== 'move' || s.cur.tgt?.kind !== 'pod')) {
+      s.routT = this.time;
       const p = g.colony.pod.door ?? g.colony.pod; s.queue = []; s.cur = { k: 'move', x: p.x, z: p.z, tgt: { kind: 'pod', ref: g.colony.pod, x: p.x, z: p.z }, t: 0 }; this.start(t, s, s.cur);
       this.onEvent?.('break', t, s);
     }

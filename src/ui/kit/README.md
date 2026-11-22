@@ -40,5 +40,9 @@ gamedeveloper.com (Eastward / Pixpil interviews), screwloose-games pixel art gui
 - `juice.ts` springs, tweens, squash, pop, shake, rolling counters, particle bursts, `placeDust` and `bounce3`;
   `transitions.ts` iris, shutter, dissolve and camera swoop; `sound.ts` the recorded CC0 UI sounds;
   `floatIcon.ts` floating icon buttons; `style.ts` the CSS.
-- Test pages: `?test=hud7&view=kit` (the whole kit on one sheet), `?test=hud7` (the HUD over a painted region),
+- `panel.ts` THE STANDARD DETAILED BOX (`panel`, `slot`, `slotGrid`, `meter`, `pkey`, `frame`) on `machine.ts`, a port of
+  Limbophobia's round-16 machine kit: each box a small 3D housing (library faces worn by hand, rail, guards, bolts,
+  rivets, lamps, vents, glands, nameplates, a sunk well behind a screwed lip) drawn once per size, one art pixel per
+  CSS pixel, by one shared WebGL context.
+- Test pages: `?test=hud7&view=kit` (the whole kit on one sheet), `?test=hud7&view=panels` (the detailed boxes), `?test=hud7` (the HUD over a painted region),
   `&view=arsenal|bench|map`, `&tr=iris|shutter|dissolve|swoop&k=0.6`.

@@ -188,9 +188,9 @@ body.bp-on .hud.cx > .cx-top { translate: 0 -120%; opacity: 0; pointer-events: n
 .bs-slot.shake { animation: bfi-shake .32s steps(6) both; }
 .bs-pool { margin-left: auto; display: flex; gap: 4px; align-items: center; min-height: 64px; }
 .bs-pool b { margin-left: 4px; }
-.bs-face { width: 56px; height: 56px; cursor: grab; transition: translate .16s cubic-bezier(.2,.9,.3,1.5);
+.bs-face { width: 72px; height: 72px; margin: -8px -6px; cursor: grab; transition: translate .16s cubic-bezier(.2,.9,.3,1.5);
   filter: drop-shadow(2px 0 0 #08090c) drop-shadow(-2px 0 0 #08090c) drop-shadow(0 2px 0 #08090c) drop-shadow(0 -2px 0 #08090c) drop-shadow(3px 5px 0 rgba(3, 8, 22, .5)); }
-.bs-pool .bs-face { width: 48px; height: 48px; opacity: .9; }
+.bs-pool .bs-face { width: 64px; height: 64px; opacity: .92; }
 .bs-face:hover { translate: 0 -5px; }
 .bs-face.land { animation: bs-land .45s cubic-bezier(.2,1.6,.4,1); }
 @keyframes bs-land { 0% { transform: translateY(-18px) scale(1, 1.1); } 45% { transform: translateY(0) scale(1.12, .86); } 70% { transform: scale(.96, 1.05); } 100% { transform: none; } }

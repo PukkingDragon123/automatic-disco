@@ -116,7 +116,19 @@ export function customModel(parts: Partial<Record<PartSlot, string>>, lod: Lod =
   root.userData.update = (dt: number) => { for (const u of ups) u(dt); };
   return root;
 }
-/** a part's icon, outlined, from the kit's renderer (cached) */
+/** like the kit's fitRoot, but framing only what is visible (a part hides the rest of its tool model) */
+export function fitVisible(obj: THREE.Object3D): THREE.Group {
+  const g = new THREE.Group(); g.add(obj);
+  const b = visBox(obj), c = b.getCenter(new THREE.Vector3()), s = b.getSize(new THREE.Vector3());
+  obj.position.x -= c.x; obj.position.z -= c.z; obj.position.y -= b.min.y;
+  g.userData.fitR = Math.max(0.001, Math.hypot(s.x, s.y, s.z) / 2); g.userData.fitH = s.y; g.userData.fitW = Math.max(s.x, s.z);
+  if (obj.userData.update) g.userData.update = obj.userData.update;
+  return g;
+}
+/** a part's icon, outlined, from the kit's renderer (rendered once and cached; each call gets its own copy) */
 export function partIcon(slot: PartSlot, id: string, size = 40): HTMLCanvasElement | null {
-  return snapshot(`part3d|${slot}|${id}|${size}`, () => { const p = partModel(slot, id, 'hud'); return p ? fitRoot(p) : new THREE.Group(); }, size, size, { pitch: 0.42, yaw: -0.6, zoom: 1.05, ink: 1 });
+  const src = snapshot(`part3d|${slot}|${id}|${size}`, () => { const p = partModel(slot, id, 'hud'); return p ? fitVisible(p) : fitRoot(new THREE.Group()); }, size, size, { pitch: 0.42, yaw: -0.6, zoom: 1.0, ink: 1 });
+  if (!src) return null;
+  const cv = document.createElement('canvas'); cv.width = src.width; cv.height = src.height; cv.getContext('2d')!.drawImage(src, 0, 0);
+  return cv;
 }

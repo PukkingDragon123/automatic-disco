@@ -17,7 +17,7 @@ import { uiSfx } from '../ui/kit/sound';
 import { glyph, pip, hpRamp, P } from './art';
 
 type G = Game & Record<string, any>;
-export interface Intent { k: OrderK; tgt: Target | null; x: number; z: number }
+export interface Intent { k: OrderK; tgt: Target | null; x: number; z: number; gx?: number; gz?: number }
 const FORMS: Formation[] = ['line', 'wedge', 'column'];
 const _v = new THREE.Vector3();
 
@@ -41,7 +41,7 @@ export class Rts {
   private t = 0;
   constructor(readonly g: G, readonly book: OrderBook, readonly decals: Decals) {
     const cv = this.cv = document.createElement('canvas');
-    cv.className = 'tr-ov';
+    cv.className = 'trp-ov';
     document.body.append(cv);
     this.c = cv.getContext('2d')!;
     this.resize();
@@ -90,7 +90,7 @@ export class Rts {
     if (g.harvest?.blocking || g.storyBlock || g.factory?.build?.active) return false;
     if (b.contains('bp-on') || b.contains('bp-off') || b.contains('pod7-on') || b.contains('cine-on') || b.contains('talk7') || b.contains('trs-on')) return false;
     if (g.map7?.isOpen) return false;
-    if (g.mode?.k && g.mode.k !== 'normal') return false;
+    if (g.mode?.k && g.mode.k !== 'normal' && g.mode.k !== 'factory') return false;
     return true;
   }
   private onCanvas(e: Event) { return e.target === this.g.engine?.canvas; }
@@ -117,11 +117,16 @@ export class Rts {
   private onScreen(t: Troop) { const [sx, sy, ok] = this.g.screenOf(t.x, t.y + t.height * 0.5, t.z); return ok && sx > 0 && sy > 0 && sx < innerWidth && sy < innerHeight; }
   /** what a right-click here would order the selection to do */
   context(mx: number, my: number, sel: Troop[]): Intent | null {
+    const it = this.context0(mx, my, sel);
+    if (it && it.gx === undefined) { const gp = this.g.groundAt(mx, my); if (gp) { it.gx = gp.x; it.gz = gp.z; } }
+    return it;
+  }
+  private context0(mx: number, my: number, sel: Troop[]): Intent | null {
     const g = this.g;
     const gp = g.groundAt(mx, my);
     const ground = (k: OrderK): Intent | null => gp ? { k, tgt: null, x: gp.x, z: gp.z } : null;
     if (this.arm === 'patrol') return ground('patrol');
-    if (this.arm === 'amove') { this.arm = null; const it = this.context(mx, my, sel); this.arm = 'amove'; return it?.k === 'attack' ? it : ground('amove'); }
+    if (this.arm === 'amove') { this.arm = null; const it = this.context0(mx, my, sel); this.arm = 'amove'; return it?.k === 'attack' ? it : ground('amove'); }
     const T = (kind: Target['kind'], ref: any, x: number, z: number): Target => ({ kind, ref, x, z });
     // enemies: robots, creatures, faction structures
     let foe: any = null, fd = 26;
@@ -159,7 +164,9 @@ export class Rts {
       const dep = (g.region?.deposits ?? []).find((d: any) => d.amount > 0 && Math.hypot(d.x - gp.x, d.z - gp.z) < (d.r ?? 2) + 0.8);
       if (dep) return { k: 'gather', tgt: T('deposit', dep, dep.x, dep.z), x: dep.x, z: dep.z };
       const fl = g.world?.flora; let fi = -1;
-      fl?.near?.(gp.x, gp.z, 0.9, (i: number) => { if (fl.bio?.[i] > 0.15) fi = i; });
+      // a shrub or a tree (the grass and the ground cover underfoot are walked over, not harvested)
+      let fd = 0.8;
+      fl?.near?.(gp.x, gp.z, 0.8, (i: number, d2: number) => { const sp = fl.species?.[fl.sp?.[i]]; if (fl.bio?.[i] > 0.15 && (sp?.hmax ?? 0) >= 1.2 && Math.sqrt(d2) < fd) { fd = Math.sqrt(d2); fi = i; } });
       if (fi >= 0) return { k: 'gather', tgt: T('flora', { i: fi, x: fl.x[fi], z: fl.z[fi] }, fl.x[fi], fl.z[fi]), x: fl.x[fi], z: fl.z[fi] };
     }
     return ground('move');
@@ -233,7 +240,8 @@ export class Rts {
   order(it: Intent, queued = false, face?: number) {
     const sel = this.troops(); if (!sel.length) return;
     this.book.issue(it.k, sel, it.x, it.z, it.tgt, queued, face);
-    this.decals.mark(it.x, it.z, it.k as MarkK, true);
+    const onUnit = it.k === 'attack' || it.k === 'follow';
+    this.decals.mark(onUnit ? it.x : it.gx ?? it.x, onUnit ? it.z : it.gz ?? it.z, it.k as MarkK, true);
     uiSfx(it.k === 'attack' || it.k === 'amove' ? 'metal' : 'confirm', it.k === 'attack' ? 0.45 : 0.4, 0.9 + Math.random() * 0.2);
   }
   private eat(e: Event) { e.stopImmediatePropagation(); e.preventDefault(); }
@@ -300,7 +308,7 @@ export class Rts {
       if (this.sel.length && this.intentT <= 0) { this.intentT = 0.1; this.intent = this.context(inp.mx, inp.my, this.troops()); }
     } else { this.hover = null; this.intent = null; }
     if (!this.sel.length) this.intent = null;
-    document.body.classList.toggle('tr-armed', !!this.arm);
+    document.body.classList.toggle('trp-armed', !!this.arm);
     // ---- ground marks
     const D = this.decals;
     D.begin(dt);
@@ -314,21 +322,28 @@ export class Rts {
     }
     for (const t of boxed) if (!this.has(t)) D.ring(t.x, t.z, t.radius * 1.25 + 0.22, 0.07, 0xd8f0ff, 0.85, 10, 0.6);
     if (this.hover && !this.has(this.hover)) D.ring(this.hover.x, this.hover.z, this.hover.radius * 1.25 + 0.22, 0.06, 0xf2ead2, 0.8, 8, 0.4);
-    // routes: the dashed path through every queued point, a beating marker at each
-    sel.forEach((t, i) => {
-      const route = this.book.route(t); if (!route.length) return;
-      const pts: [number, number][] = [[t.x, t.z]];
-      const live0 = (t.ref.path as number[] | null | undefined), pi = (t.ref.pi as number | undefined) ?? (t.ref.pathI as number | undefined) ?? 0;
-      route.forEach((o, j) => {
-        const p = o.tgt ? { x: o.tgt.ref?.x ?? o.x, z: o.tgt.ref?.z ?? o.z } : o;
-        if (j === 0 && live0 && live0.length >= 4 && (o.k === 'move' || o.k === 'amove')) { for (let q = Math.max(0, pi); q + 1 < live0.length; q += 2) pts.push([live0[q], live0[q + 1]]); }
-        pts.push([p.x, p.z]);
-        if (o.k === 'patrol' && o.ax !== undefined) pts.push([o.ax, o.az ?? p.z]);
-      });
-      const k = route[0].k, col = ({ attack: 0xff5a48, amove: 0xff8a5a, patrol: 0x7ab8ff, gather: 0xffc860, build: 0xffb050, repair: 0x8ad8ff, follow: 0xd8f0ff, guard: 0x9ad87a } as Record<string, number>)[k] ?? 0xe8e0b0;
-      if (k !== 'hold' && k !== 'stop') D.path(pts, 0.05, col, 0.85);
-      route.forEach((o, j) => { if (o.k === 'hold' || o.k === 'stop') return; const p = o.tgt ? { x: o.tgt.ref?.x ?? o.x, z: o.tgt.ref?.z ?? o.z } : o; if (j > 0 || i < 24) D.waypoint(p.x, p.z, (o.k === 'amove' ? 'amove' : o.k) as MarkK, i * 0.7 + j, j > 0 ? 0.95 : 0.8); });
-    });
+    // routes: one dashed line per order chain (from the members' centre through each order's point, the queue
+    // included), a beating marker at every point, and each member's own formation slot
+    const chains = new Map<string, { m: Troop[]; route: import('./units').TOrder[] }>();
+    for (const t of sel) {
+      const route = this.book.route(t); if (!route.length) continue;
+      const key = route.map((o) => o.b ?? 0).join('-');
+      const c0 = chains.get(key); if (c0) c0.m.push(t); else chains.set(key, { m: [t], route });
+    }
+    let ci = 0;
+    for (const { m, route } of chains.values()) {
+      const k = route[0].k; if (k === 'hold' || k === 'stop') continue;
+      let cx = 0, cz = 0; for (const t of m) { cx += t.x; cz += t.z; } cx /= m.length; cz /= m.length;
+      const pt = (o: import('./units').TOrder): [number, number] => o.tgt && o.tgt.kind !== 'deposit' && o.tgt.kind !== 'site' ? [o.tgt.ref?.x ?? o.x, o.tgt.ref?.z ?? o.z] : [o.bx ?? o.x, o.bz ?? o.z];
+      const pts: [number, number][] = [[cx, cz]];
+      for (const o of route) { pts.push(pt(o)); if (o.k === 'patrol' && o.ax !== undefined) pts.push([o.ax, o.az ?? o.z]); }
+      const col = ({ attack: 0xff5a48, amove: 0xff8a5a, patrol: 0x7ab8ff, gather: 0xffc860, build: 0xffb050, repair: 0x8ad8ff, follow: 0xd8f0ff, guard: 0x9ad87a } as Record<string, number>)[k] ?? 0xe8e0b0;
+      D.path(pts, 0.075, col, 0.95);
+      route.forEach((o, j) => { const [x, z] = pt(o); D.waypoint(x, z, (o.k === 'amove' ? 'amove' : o.k) as MarkK, ci * 0.9 + j, 0.95); });
+      // the formation: each member's own spot for the first leg
+      if (m.length > 1 && route[0].bx !== undefined && (k === 'move' || k === 'amove' || k === 'patrol')) for (const t of m) { const o = this.book.route(t)[0]; if (o && Math.hypot(o.x - t.x, o.z - t.z) > 1) D.ring(o.x, o.z, 0.3, 0.05, col, 0.8, 4, 0.5); }
+      ci++;
+    }
     // the formation preview while the right button drags
     const r = this.rdrag;
     if (r?.on && sel.length) {
@@ -366,14 +381,14 @@ export class Rts {
     const g = this.g, c = this.c;
     const [sx, sy, ok] = g.screenOf(t.x, t.y + t.height + 0.32, t.z); if (!ok) return;
     const s = this.book.stateOf(t);
-    const maxHp = t.kind === 'crew' ? 100 : (t.ref.maxHp ?? 100), N = Math.max(3, Math.min(8, Math.round(maxHp / 45))), lit = Math.ceil(t.hp01 * N - 0.01);
-    const ramp = hpRamp(t.hp01), mN = 4, mLit = Math.round(s.morale * mN);
-    const pw = 7, w = N * pw - 1, x0 = Math.round(sx - w / 2), y0 = Math.round(sy) - 20;
+    const maxHp = t.kind === 'crew' ? 100 : (t.ref.maxHp ?? 100), N = Math.max(3, Math.min(6, Math.round(maxHp / 50))), lit = Math.ceil(t.hp01 * N - 0.01);
+    const ramp = hpRamp(t.hp01), mN = 3, mLit = Math.round(s.morale * mN);
+    const pw = 8, w = N * pw, x0 = Math.round(sx - w / 2), y0 = Math.round(sy) - 18;
     c.globalAlpha = faint ? 0.75 : 1;
-    for (let i = 0; i < N; i++) c.drawImage(pip(ramp, i < lit, 4), x0 + i * pw - 1, y0, 12, 12);
-    const mw = mN * 6 - 1, mx0 = Math.round(sx - mw / 2), mr = s.morale < 0.25 ? P.ruby : s.morale < 0.5 ? P.ochre : P.sapphire;
+    for (let i = 0; i < N; i++) c.drawImage(pip(ramp, i < lit, 3), x0 + i * pw, y0, 10, 10);
+    const mw = mN * 7, mx0 = Math.round(sx - mw / 2), mr = s.morale < 0.25 ? P.ruby : s.morale < 0.5 ? P.ochre : P.sapphire;
     const blink = s.morale < 0.25 && Math.floor(this.t * 3) % 2 === 0;
-    if (!faint) for (let i = 0; i < mN; i++) c.drawImage(pip(mr, i < mLit && !blink, 3), mx0 + i * 6 - 1, y0 + 12, 10, 10);
+    if (!faint) for (let i = 0; i < mN; i++) c.drawImage(pip(mr, i < mLit && !blink, 2), mx0 + i * 7, y0 + 10, 8, 8);
     c.globalAlpha = 1;
     void this.pipCache;
   }

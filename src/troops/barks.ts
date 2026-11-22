@@ -35,8 +35,8 @@ export class Barks {
   private t = 0;
   constructor(readonly g: G, readonly book: OrderBook) {
     injectCSS();
-    const el = this.el = document.createElement('div'); el.className = 'tr-bark';
-    el.innerHTML = '<div class="tr-bark-fade"></div>';
+    const el = this.el = document.createElement('div'); el.className = 'trp-bark';
+    el.innerHTML = '<div class="trp-bark-fade"></div>';
     this.cv = document.createElement('canvas'); this.cv.width = 520; this.cv.height = 40; this.cv.style.width = '1040px'; this.cv.style.height = '80px';
     this.c = this.cv.getContext('2d')!; this.c.imageSmoothingEnabled = false;
     el.append(this.cv);
@@ -138,11 +138,11 @@ function injectCSS() {
   if (css) return; css = true;
   const s = document.createElement('style');
   s.textContent = `
-.tr-bark { position: fixed; left: calc(50% - 450px); bottom: 172px; z-index: 600; pointer-events: none; opacity: 0; transform: translateY(8px); transition: opacity .2s ease-out, transform .25s cubic-bezier(.3,1.5,.5,1); }
-.tr-bark.on { opacity: 1; transform: none; }
-body.tr-cards-on .tr-bark { bottom: 214px; }
-.tr-bark canvas { position: relative; display: block; image-rendering: pixelated; }
-.tr-bark .tr-bark-fade { position: absolute; left: -60px; right: 380px; top: -18px; bottom: -14px; z-index: -1; background: radial-gradient(closest-side, rgba(6,7,10,.6), rgba(6,7,10,.32) 60%, rgba(6,7,10,0)); }
+.trp-bark { position: fixed; left: calc(50% - 450px); bottom: 172px; z-index: 600; pointer-events: none; opacity: 0; transform: translateY(8px); transition: opacity .2s ease-out, transform .25s cubic-bezier(.3,1.5,.5,1); }
+.trp-bark.on { opacity: 1; transform: none; }
+body.trp-cards-on .trp-bark { bottom: 214px; }
+.trp-bark canvas { position: relative; display: block; image-rendering: pixelated; }
+.trp-bark .trp-bark-fade { position: absolute; left: -60px; right: 380px; top: -18px; bottom: -14px; z-index: -1; background: radial-gradient(closest-side, rgba(6,7,10,.6), rgba(6,7,10,.32) 60%, rgba(6,7,10,0)); }
 `;
   document.head.append(s);
 }

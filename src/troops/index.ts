@@ -42,7 +42,7 @@ export function installTroops(game: Game): TroopsApi {
   const r0 = g.render.bind(g);
   let lastT = -1, drawnAt = 0;
   // another screen over the game (the ship, the lab): the layers stand down until the colony is drawn again
-  onFrame(() => { if (!alive) return false; const on = performance.now() - drawnAt < 400; rts.cv.style.visibility = on ? '' : 'hidden'; barks.el.style.visibility = on ? '' : 'hidden'; return true; });
+  onFrame(() => { if (!alive) return false; const on = g.engine?.screen === g && (g as unknown as { act?: boolean }).act !== false && performance.now() - drawnAt < 4000; rts.cv.style.visibility = on ? '' : 'hidden'; barks.el.style.visibility = on ? '' : 'hidden'; return true; });
   g.render = (post: unknown, t: number) => {
     const dt = lastT < 0 ? 0 : Math.min(0.1, Math.max(0, t - lastT)); lastT = t;
     drawnAt = performance.now();

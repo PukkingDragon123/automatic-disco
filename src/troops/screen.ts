@@ -23,7 +23,7 @@ import { DOCK_MODELS } from '../ui/kit/models';
 import { tex } from '../ui/kit/tex3d';
 import { uiSfx } from '../ui/kit/sound';
 import { pop, shake, bounceEl, squash, onFrame, placeDust } from '../ui/kit/juice';
-import { glyphCanvas, portraitBuild, holdLights, bareBuild, hpRamp } from './art';
+import { glyphCanvas, portraitBuild, holdLights, bareBuild, hpRamp, cloneBody } from './art';
 import { jobGlyph } from './cards';
 import { paintTerrain } from '../ui/hud7/mapPaint';
 import { RECIPE, recipesAt } from '../factory/recipes';
@@ -143,7 +143,7 @@ export class TroopsScreen {
   }
   private squadPlate(sq: Squad | null): HTMLDivElement {
     // the kit's standard housing: the squad's name printed on its hood plate (click it to rename), lamps for its state
-    const pn = panel({ tone: sq ? 'olive' : 'gun', seed: 60 + (sq?.id ?? 9), title: sq ? sq.name : 'RESERVE', head: 34, foot: 12, side: 8, lamps: sq ? ['green', 'amber'] : ['white'], hazard: false, glands: sq ? 1 : 0, cls: 'trs-sq' + (sq ? '' : ' pool') });
+    const pn = panel({ tone: sq ? 'olive' : 'gun', seed: 60 + (sq?.id ?? 9), title: sq ? sq.name : 'RESERVE', head: 34, foot: 12, side: 8, well: 'none', lamps: sq ? ['green', 'amber'] : ['white'], hazard: false, glands: sq ? 1 : 0, cls: 'trs-sq' + (sq ? '' : ' pool') });
     const p = pn.el, body = pn.body;
     p.dataset.sq = sq ? String(sq.id) : 'pool';
     this.squadEls.set(sq?.id ?? null, p);
@@ -324,7 +324,7 @@ export class TroopsScreen {
 
   // ------------------------------------------------------------------ the survey map
   private buildMap() {
-    const pn = panel({ tone: 'steel', seed: 88, head: 14, foot: 12, side: 10, lamps: [], hazard: false, cls: 'trs-map' }); this.panels.push(pn);
+    const pn = panel({ tone: 'steel', seed: 88, head: 14, foot: 12, side: 10, well: 'none', lamps: [], hazard: false, cls: 'trs-map' }); this.panels.push(pn);
     const p = pn.body;
     const cv = document.createElement('canvas'); cv.className = 'trs-mapcv';
     const R = this.g.region, N = R?.N ?? 128, size = 264;
@@ -382,6 +382,10 @@ export class TroopsScreen {
       const why = this.g.unlocks?.lockLine?.('robotfab') ?? null;
       const l = document.createElement('span'); l.className = 'k7-t16'; l.textContent = why ?? 'BUILD A ROBOT FOUNDRY'; lock.append(l);
       fp.append(lock);
+      // what it would build, behind glass until there is a foundry
+      const opts = div('trs-opts locked');
+      for (const r of recipesAt('robotfab')) opts.append(this.robotOpt(null, r, () => {}));
+      fp.append(opts);
     } else {
       const b = fs[0];
       const now = div('trs-now');
@@ -439,7 +443,7 @@ export class TroopsScreen {
     const wrap = div('trs-opt');
     let fi: ReturnType<typeof floatIcon> | null = null;
     fi = floatIcon({ build: bareBuild(() => robotBody(kind)), name: String(r.name ?? kind).toUpperCase().slice(0, 9), size: [44, 40], scale: 2, nameSize: 16, sound: '', view: { pitch: 0.35, spin: 0, yaw0: 0.6, zoom: 1.05, anim: (root) => holdLights(root, fi?.view?.yaw ?? 0) },
-      onClick: () => { if (this.foundry.add(b, r.id)) { uiSfx('confirm', 0.5); pop(wrap, 0.5); after(); } else { uiSfx('error', 0.5); shake(wrap, 5); } } });
+      onClick: () => { if (b && this.foundry.add(b, r.id)) { uiSfx('confirm', 0.5); pop(wrap, 0.5); after(); } else { uiSfx('error', 0.5); shake(wrap, 5); } } });
     wrap.append(fi.el);
     if (fi.view) this.views.push(fi.view);
     wrap.append(this.bill(r.in ?? {}));
@@ -483,7 +487,7 @@ const robotCache = new Map<string, THREE.Object3D>();
 function robotBody(kind: string): THREE.Object3D | null {
   let m = robotCache.get(kind);
   if (!m) { try { m = buildModel(kind as never, liveryFor('veyr')).root; robotCache.set(kind, m); } catch (e) { console.warn('robot model', kind, e); return null; } }
-  return m.clone();
+  return cloneBody(m);
 }
 /** a species design's body (an animal of it in the world when there is one, else built from the design) */
 function speciesBody(g: G, sp: any): THREE.Object3D | null {
@@ -540,7 +544,7 @@ function injectCSS() {
 .trs-ghost { position: fixed; z-index: 9500; pointer-events: none; width: 60px; height: 68px; image-rendering: pixelated; filter: drop-shadow(0 10px 6px rgba(0,0,0,.5)); transform: rotate(-6deg) scale(1.15); }
 .trs-empty { opacity: .45; align-self: center; margin: 0 auto; }
 .trs-more { color: #ffe7a8; align-self: center; margin-left: 6px; }
-.trs-detail { position: relative; height: 560px; flex: none; }
+.trs-detail { position: relative; height: 520px; flex: none; }
 .trs-detail > .kp-body { height: 100%; }
 .trs-dport { position: absolute !important; left: 0; top: 0; width: 240px; height: 224px; cursor: pointer; }
 .trs-dport canvas.k7-model { position: absolute; left: 0; top: 0; }
@@ -566,7 +570,7 @@ function injectCSS() {
 .trs-mapcv { position: relative; z-index: 1; image-rendering: pixelated; cursor: crosshair; box-shadow: 0 0 0 2px #08090c, 0 0 0 4px #6a6e70; }
 .trs-mapcv.arm { box-shadow: 0 0 0 2px #08090c, 0 0 0 4px #ffc560, 0 0 16px rgba(255,200,100,.6); }
 .trs-prod { position: relative; flex: none; }
-.trs-prod.fdy { height: 540px; }
+.trs-prod.fdy { height: 560px; }
 .trs-prod.lab { flex: 1; }
 .trs-lock { display: flex; align-items: center; gap: 12px; padding: 18px 6px; opacity: .85; }
 .trs-lock .k7-t16 { color: #c8bfa0; }
@@ -579,10 +583,12 @@ function injectCSS() {
 .trs-slot.empty { cursor: default; background: radial-gradient(closest-side, rgba(0,0,0,.28), rgba(0,0,0,0)); }
 .trs-slot.empty::after { content: ''; width: 10px; height: 10px; background: #2a2e30; box-shadow: 0 0 0 2px #08090c, inset 1px 1px 0 #4a5052; }
 .trs-opts { display: flex; flex-wrap: wrap; gap: 4px 6px; }
-.trs-opt { display: flex; flex-direction: column; align-items: center; width: 136px; }
+.trs-opts.locked .trs-opt { filter: grayscale(.85) brightness(.62); }
+.trs-opts.locked { margin-top: 6px; }
+.trs-opt { display: flex; flex-direction: column; align-items: center; width: 184px; }
 .trs-opt .k7-fi { width: 128px; }
 .trs-opt .k7-name { white-space: nowrap; }
-.trs-bill { display: flex; gap: 2px; margin-top: 2px; }
+.trs-bill { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 4px; margin-top: 2px; max-width: 184px; }
 .trs-bi { display: inline-flex; align-items: center; gap: 0; }
 .trs-bi img { image-rendering: pixelated; display: block; }
 .trs-bi .k7-t16 { color: #f2ead2; margin-left: -4px; }

@@ -10,11 +10,11 @@ export async function testHud7(_engine: Engine, _input: Input, P: URLSearchParam
   installKitStyle();
   document.body.style.background = '#1d2420';
   const view = P.get('view') ?? 'hud';
+  if (view === 'panels') { await (await import('./panelSheet')).panelSheet(); return; }
   const { makeStandIn } = await import('./standin');
   const g = await makeStandIn(P);
   const { installHud7 } = await import('./index');
   if (view === 'kit') { (await import('./kitSheet')).kitSheet(); return; }
-  if (view === 'panels') { await (await import('./panelSheet')).panelSheet(); return; }
   const hud = installHud7(g, { only: view === 'hud' ? undefined : view });
   (window as unknown as { __hud7: unknown }).__hud7 = hud;
   if (P.get('hover')) setTimeout(() => { const el = hud.dock?.icon(P.get('hover') as never); el?.dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse' })); }, 300);

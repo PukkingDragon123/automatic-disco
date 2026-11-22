@@ -6,7 +6,8 @@
 // it and says why. HOLD it: an amber ring of cells fills round it and the ARSENAL opens (arsenal.ts).
 import type { Game } from '../../game/game';
 import { ModelView } from '../kit/model3d';
-import { TOOL_ANIM, mCustomTool, toolModel, hasToolModelProvider, type ToolLod } from '../kit/models';
+import { customModel, fitVisible } from './parts3d';
+import { TOOL_ANIM, toolModel, hasToolModelProvider, type ToolLod } from '../kit/models';
 import { mTurret, animTurret, type TurretState } from '../kit/hardware';
 import { shadowBlob, pxCanvas } from '../kit/mat';
 import { Px, P, INK } from '../kit/px';
@@ -22,7 +23,7 @@ type G = Game & Record<string, any>;
 const HOLD_MS = 420;
 /** a tool's model (the TOOL MODELS agent's when registered, else the kit's); custom tools are built from their parts */
 export function toolBuild(tool: ToolId | null, custom?: { parts: Record<string, string> } | null, lod: ToolLod = 'hud') {
-  if (custom) return () => mCustomTool(custom.parts);
+  if (custom) return () => fitVisible(customModel(custom.parts, 'hud'));
   return toolModel(tool ?? 'scanner', lod);
 }
 /** the kit's own per-tool animation (only for its own models) */

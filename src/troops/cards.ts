@@ -38,17 +38,17 @@ export class Cards {
   private liveT = 0;
   constructor(readonly g: G, readonly rts: Rts, readonly book: OrderBook) {
     injectCSS();
-    const el = this.el = document.createElement('div'); el.className = 'tr-cards';
+    const el = this.el = document.createElement('div'); el.className = 'trp-cards';
     // the kit's standard housing: a gunmetal box, lamps on the hood, the selection sunk in its dark well
-    this.pan = panel({ tone: 'gun', seed: 41, head: 20, foot: 14, side: 10, lamps: ['green', 'amber', 'red'], hazard: true, guards: true, cls: 'tr-plate' });
-    const pl = this.pan.body; el.append(this.pan.el);
-    this.groupsEl = document.createElement('div'); this.groupsEl.className = 'tr-groups'; el.append(this.groupsEl);
-    this.body = document.createElement('div'); this.body.className = 'tr-body'; pl.append(this.body);
-    this.keysEl = document.createElement('div'); this.keysEl.className = 'tr-keys'; pl.append(this.keysEl);
+    this.pan = panel({ tone: 'steel', seed: 41, head: 20, foot: 14, side: 10, well: 'none', lamps: ['green', 'amber', 'red'], hazard: true, guards: true, glands: 2, cls: 'trp-plate' });
+    const pl = document.createElement('div'); pl.className = 'trp-inner'; this.pan.body.append(pl); el.append(this.pan.el);
+    this.groupsEl = document.createElement('div'); this.groupsEl.className = 'trp-groups'; el.append(this.groupsEl);
+    this.body = document.createElement('div'); this.body.className = 'trp-body'; pl.append(this.body);
+    this.keysEl = document.createElement('div'); this.keysEl.className = 'trp-keys'; pl.append(this.keysEl);
     this.buildKeys();
     // the roster: the TROOPS screen from the card (the dock is down while units are selected)
     const ros = floatIcon({ build: DOCK_MODELS.troops, name: '', size: [30, 26], scale: 2, sound: 'open', view: { pitch: 0.5, spin: 0, yaw0: 0.5, zoom: 1.3, lift: 0.03 }, onClick: (e) => { e.stopPropagation(); void this.g.dock?.open?.('troops'); }, aria: 'TROOPS' });
-    ros.el.classList.add('tr-roster'); el.append(ros.el);
+    ros.el.classList.add('trp-roster'); el.append(ros.el);
     document.body.append(el);
     rts.onChange = () => this.refresh();
     rts.onGroups = () => this.drawGroups();
@@ -58,10 +58,11 @@ export class Cards {
   // ------------------------------------------------------------------ the order keys
   private buildKeys() {
     const row1 = document.createElement('div'), row2 = document.createElement('div');
-    row1.className = row2.className = 'tr-krow';
+    row1.className = row2.className = 'trp-krow';
     const K = (id: string, glyphName: string, name: string, cap: Parameters<typeof keyModel>[1]['cap'], act: () => void, row: HTMLElement) => {
-      const fi = floatIcon({ build: keyModel(glyphName, { cap }), name, size: [34, 30], scale: 2, nameSize: 16, sound: '', view: { pitch: 0.95, spin: 0, yaw0: 0.3, rock: 0.18, hotSpin: 0.7, zoom: 1.12, lift: 0.02 }, onClick: (e) => { e.stopPropagation(); act(); }, aria: id });
-      fi.el.classList.add('tr-key'); fi.el.dataset.key = id;
+      const big = name !== '';
+      const fi = floatIcon({ build: keyModel(glyphName, { cap }), name, size: big ? [38, 32] : [30, 25], scale: 2, nameSize: 16, sound: '', view: { pitch: 0.9, spin: 0, yaw0: 0.22, rock: 0.14, hotSpin: 0.7, zoom: 1.55, lift: 0.04 }, onClick: (e) => { e.stopPropagation(); act(); }, aria: id });
+      fi.el.classList.add('trp-key'); fi.el.dataset.key = id;
       row.append(fi.el); this.keys.set(id, fi);
     };
     K('amove', 'attack', 'A', 'red', () => this.rts.cmd('amove'), row1);
@@ -97,7 +98,7 @@ export class Cards {
     const show = sel.length > 0;
     if (show !== this.shown) {
       this.shown = show;
-      document.body.classList.toggle('tr-cards-on', show);
+      document.body.classList.toggle('trp-cards-on', show);
       this.el.classList.toggle('on', show);
       uiSfx(show ? 'swishIn' : 'swishOut', 0.35, show ? 1.05 : 0.95);
     }
@@ -117,30 +118,30 @@ export class Cards {
   }
   private one(t: Troop) {
     const s = this.book.stateOf(t);
-    const wrap = document.createElement('div'); wrap.className = 'tr-one';
-    const port = document.createElement('div'); port.className = 'tr-port';
+    const wrap = document.createElement('div'); wrap.className = 'trp-one';
+    const port = document.createElement('div'); port.className = 'trp-port';
     const v = this.view(t, 84, 76, 2, true, { spin: 0.35, zoom: 1.0 });
-    port.append(pxCanvas(shadowBlob(66, 10, 0.5), 2, 'tr-port-sh'), v.cv);
+    port.append(pxCanvas(shadowBlob(66, 10, 0.5), 2, 'trp-port-sh'), v.cv);
     port.addEventListener('pointerenter', () => v.hot(true)); port.addEventListener('pointerleave', () => v.hot(false));
     port.addEventListener('pointermove', (e) => v.point(e.clientX, e.clientY));
     port.addEventListener('click', () => { v.poke(10); this.rts.focus([t]); });
-    const info = document.createElement('div'); info.className = 'tr-info';
-    const head = document.createElement('div'); head.className = 'tr-head';
+    const info = document.createElement('div'); info.className = 'trp-info';
+    const head = document.createElement('div'); head.className = 'trp-head';
     head.append(glyphCanvas(TYPE_GLYPH[t.kind] ?? 'troops', 'brass', 2));
-    const nm = document.createElement('span'); nm.className = 'k7-t32 tr-call'; nm.textContent = s.call; head.append(nm);
+    const nm = document.createElement('span'); nm.className = 'k7-t32 trp-call'; nm.textContent = s.call; head.append(nm);
     const sq = this.book.squad(s.squad);
-    if (sq) { const tag = document.createElement('span'); tag.className = 'tr-sqtag'; skin(tag, (w, h) => strip(w, h, 'brass', 7 + sq.id)); const tx = document.createElement('span'); tx.className = 'k7-t16'; tx.textContent = sq.name; tag.append(tx); head.append(tag); }
-    const ty = document.createElement('div'); ty.className = 'k7-t16 tr-type'; ty.textContent = t.typeName;
+    if (sq) { const tag = document.createElement('span'); tag.className = 'trp-sqtag'; skin(tag, (w, h) => strip(w, h, 'brass', 7 + sq.id)); const tx = document.createElement('span'); tx.className = 'k7-t16'; tx.textContent = sq.name; tag.append(tx); head.append(tag); }
+    const ty = document.createElement('div'); ty.className = 'k7-t16 trp-type'; ty.textContent = t.typeName;
     // gauges: health, morale (glass cell bars), the needs, the job
-    const bar = (icon: string, pal: string, w: number) => { const row = document.createElement('div'); row.className = 'tr-g'; row.append(glyphCanvas(icon, pal as never, 2)); const cv = document.createElement('canvas'); cv.className = 'tr-bar'; cv.width = w; cv.height = 8; cv.style.width = w * 2 + 'px'; cv.style.height = '16px'; row.append(cv); return { row, cv }; };
+    const bar = (icon: string, pal: string, w: number) => { const row = document.createElement('div'); row.className = 'trp-g'; row.append(glyphCanvas(icon, pal as never, 2)); const cv = document.createElement('canvas'); cv.className = 'trp-bar'; cv.width = w; cv.height = 8; cv.style.width = w * 2 + 'px'; cv.style.height = '16px'; row.append(cv); return { row, cv }; };
     const hpB = bar('heart', 'red', 74), moB = bar('morale', 'blue', 74);
-    const gauges = document.createElement('div'); gauges.className = 'tr-gauges'; gauges.append(hpB.row, moB.row);
+    const gauges = document.createElement('div'); gauges.className = 'trp-gauges'; gauges.append(hpB.row, moB.row);
     const n0 = t.needs(s);
     const needIcon = { food: t.kind === 'robot' || t.kind === 'drone' ? 'battery' : 'food', rest: 'rest', maint: t.kind === 'crew' ? 'suit' : 'maint' } as const;
-    const needs = document.createElement('div'); needs.className = 'tr-needs';
+    const needs = document.createElement('div'); needs.className = 'trp-needs';
     const nb: Partial<Record<'food' | 'rest' | 'maint', HTMLCanvasElement>> = {};
-    for (const k of ['food', 'rest', 'maint'] as const) { if (n0[k] === null) continue; const b = bar(needIcon[k], 'cream', 30); b.row.classList.add('tr-need'); needs.append(b.row); nb[k] = b.cv; }
-    const job = document.createElement('div'); job.className = 'tr-job';
+    for (const k of ['food', 'rest', 'maint'] as const) { if (n0[k] === null) continue; const b = bar(needIcon[k], 'cream', 30); b.row.classList.add('trp-need'); needs.append(b.row); nb[k] = b.cv; }
+    const job = document.createElement('div'); job.className = 'trp-job';
     const jg = document.createElement('span'); const jt = document.createElement('span'); jt.className = 'k7-t16'; job.append(jg, jt);
     info.append(head, ty, gauges, needs, job);
     wrap.append(port, info);
@@ -157,27 +158,29 @@ export class Cards {
     this.live();
   }
   private many(sel: Troop[]) {
-    const wrap = document.createElement('div'); wrap.className = 'tr-many';
+    const wrap = document.createElement('div'); wrap.className = 'trp-many';
     const by = new Map<string, Troop[]>();
     for (const t of sel) { const a = by.get(t.type) ?? []; a.push(t); by.set(t.type, a); }
     const groups = [...by.values()].sort((a, b) => b.length - a.length);
-    const MAX = 22; let n = 0;
+    const MAX = 24; let n = 0;
     const bars: { t: Troop; cv: HTMLCanvasElement }[] = [];
     for (const list of groups) {
       if (n >= MAX) break;
-      const grp = document.createElement('div'); grp.className = 'tr-grp';
-      const hd = document.createElement('div'); hd.className = 'tr-grp-h';
-      hd.append(glyphCanvas(TYPE_GLYPH[list[0].kind] ?? 'troops', 'brass', 2));
-      const cnt = document.createElement('span'); cnt.className = 'k7-t16'; cnt.textContent = '×' + list.length; hd.append(cnt);
-      hd.title = list[0].typeName;
-      hd.addEventListener('click', (e) => { this.rts.select(list, e.shiftKey); uiSfx('select', 0.45); });
-      const ports = document.createElement('div'); ports.className = 'tr-ports';
-      for (const t of list) {
-        if (n++ >= MAX) break;
-        const p = document.createElement('div'); p.className = 'tr-mini';
-        const v = this.view(t, 30, 34, 2, false, { zoom: 1.1, pitch: 0.28 });
-        const hb = document.createElement('canvas'); hb.className = 'tr-minibar'; hb.width = 26; hb.height = 5; hb.style.width = '52px'; hb.style.height = '10px';
-        p.append(pxCanvas(shadowBlob(22, 5, 0.45), 2, 'tr-mini-sh'), v.cv, hb);
+      const grp = document.createElement('div'); grp.className = 'trp-grp';
+      list.forEach((t, k) => {
+        if (n++ >= MAX) return;
+        const p = document.createElement('div'); p.className = 'trp-mini' + (k === 0 ? ' first' : '');
+        const v = this.view(t, 26, 30, 2, false, { zoom: 1.12, pitch: 0.28 });
+        const hb = document.createElement('canvas'); hb.className = 'trp-minibar'; hb.width = 26; hb.height = 5; hb.style.width = '52px'; hb.style.height = '10px';
+        p.append(pxCanvas(shadowBlob(20, 5, 0.5), 2, 'trp-mini-sh'), v.cv, hb);
+        if (k === 0) {
+          // the group's tag: its kind's glyph and the head count (click: the whole group)
+          const hd = document.createElement('div'); hd.className = 'trp-grp-h';
+          hd.append(glyphCanvas(TYPE_GLYPH[t.kind] ?? 'troops', 'brass', 2));
+          const cnt = document.createElement('span'); cnt.className = 'k7-t16'; cnt.textContent = '×' + list.length; hd.append(cnt);
+          hd.addEventListener('click', (e) => { e.stopPropagation(); this.rts.select(list, e.shiftKey); uiSfx('select', 0.45); });
+          p.append(hd);
+        }
         bars.push({ t, cv: hb });
         p.addEventListener('pointerenter', () => { v.hot(true); uiSfx('hover', 0.3); }); p.addEventListener('pointerleave', () => v.hot(false));
         p.addEventListener('click', (e) => {
@@ -186,12 +189,11 @@ export class Cards {
           if (e.detail >= 2) { this.rts.focus([t]); return; }
           this.rts.select([t]); uiSfx('select', 0.45);
         });
-        ports.append(p);
-      }
-      grp.append(hd, ports);
+        grp.append(p);
+      });
       wrap.append(grp);
     }
-    if (sel.length > MAX) { const more = document.createElement('div'); more.className = 'k7-t32 tr-more'; more.textContent = '+' + (sel.length - MAX); wrap.append(more); }
+    if (sel.length > MAX) { const more = document.createElement('div'); more.className = 'k7-t32 trp-more'; more.textContent = '+' + (sel.length - MAX); wrap.append(more); }
     this.body.append(wrap);
     this.live = () => { for (const b of bars) paintMini(b.cv, b.t.hp01, this.book.stateOf(b.t).morale); };
     this.live();
@@ -201,10 +203,10 @@ export class Cards {
     const G0 = this.groupsEl; G0.innerHTML = '';
     for (let i = 1; i <= 9; i++) {
       const ks = this.rts.groups.get(i); if (!ks?.length) continue;
-      const tag = document.createElement('button'); tag.type = 'button'; tag.className = 'tr-gtag'; tag.dataset.g = String(i);
+      const tag = document.createElement('button'); tag.type = 'button'; tag.className = 'trp-gtag'; tag.dataset.g = String(i);
       skin(tag, (w, h) => strip(w, h, 'brass', 20 + i));
       const n = document.createElement('span'); n.className = 'k7-t16'; n.textContent = String(i);
-      const c = document.createElement('span'); c.className = 'k7-t16 tr-gcount'; c.textContent = String(ks.length);
+      const c = document.createElement('span'); c.className = 'k7-t16 trp-gcount'; c.textContent = String(ks.length);
       tag.append(n, c);
       const on = ks.length && ks.every((k) => this.rts.sel.includes(k)) && ks.length === this.rts.sel.length;
       tag.classList.toggle('on', !!on);
@@ -245,58 +247,59 @@ function injectCSS() {
   if (css) return; css = true;
   const s = document.createElement('style');
   s.textContent = `
-.tr-ov { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; z-index: 2 !important; pointer-events: none; image-rendering: pixelated; }
-body.tr-armed canvas { cursor: crosshair; }
+.trp-ov { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; z-index: 2 !important; pointer-events: none; image-rendering: pixelated; }
+body.trp-armed canvas { cursor: crosshair; }
 .h7-dock { transition: transform .34s cubic-bezier(.3,1.5,.55,1), opacity .25s; }
-body.tr-cards-on .h7-dock { transform: translate(-50%, 230px); opacity: 0; transition: transform .26s cubic-bezier(.55,0,.8,.3), opacity .25s; }
-body.tr-cards-on { --sub7-y: 236px; }
-.tr-cards { position: fixed; left: 50%; bottom: 4px; z-index: 41; width: 960px; height: 216px; transform: translate(-50%, 240px); transition: transform .34s cubic-bezier(.55,0,.8,.3); pointer-events: none; }
-.tr-cards.on { transform: translate(-50%, 0); transition: transform .42s cubic-bezier(.25,1.45,.5,1); }
-.tr-cards .tr-plate { position: absolute; left: 0; right: 0; bottom: 0; height: 196px; pointer-events: auto; }
-.tr-cards .tr-plate > .kp-body { display: flex; align-items: stretch; height: 100%; }
-.tr-cards .tr-body { position: relative; z-index: 1; flex: 1; display: flex; align-items: center; padding: 0 8px 0 10px; min-width: 0; }
-.tr-cards .tr-keys { position: relative; z-index: 1; width: 304px; display: flex; flex-direction: column; justify-content: center; gap: 0; padding-right: 2px; }
-.tr-cards .tr-krow { display: flex; justify-content: center; gap: 4px; }
-.tr-cards .tr-krow + .tr-krow { margin-top: -10px; }
-.tr-cards .tr-key { width: 74px; }
-.tr-cards .tr-key .k7-name { margin-top: -10px; }
-.tr-cards .tr-key.on .k7-ic { filter: brightness(1.2) drop-shadow(0 0 6px rgba(255,200,110,.8)); transform: translateY(3px); }
-.tr-one { display: flex; align-items: center; gap: 14px; height: 100%; }
-.tr-port { position: relative; width: 168px; height: 152px; cursor: pointer; flex: none; margin-top: -8px; }
-.tr-port canvas.k7-model { position: absolute; left: 0; top: 0; }
-.tr-port .tr-port-sh { position: absolute; left: 14px; bottom: 6px; }
-.tr-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.tr-head { display: flex; align-items: center; gap: 8px; }
-.tr-head canvas { image-rendering: pixelated; }
-.tr-call { color: #f6ecd0; }
-.tr-sqtag { position: relative; display: inline-flex; align-items: center; height: 22px; padding: 0 12px; margin-left: 4px; }
-.tr-sqtag .k7-t16 { position: relative; z-index: 1; color: #2a1c0c; text-shadow: 0 1px 0 rgba(255,240,200,.45); }
-.tr-type { color: var(--k7-dim); margin-top: -6px; }
-.tr-gauges, .tr-needs { display: flex; gap: 18px; align-items: center; }
-.tr-g { display: flex; align-items: center; gap: 6px; }
-.tr-g canvas { image-rendering: pixelated; display: block; }
-.tr-needs .tr-g { gap: 4px; }
-.tr-job { display: flex; align-items: center; gap: 8px; }
-.tr-job canvas { image-rendering: pixelated; display: block; }
-.tr-job .k7-t16 { color: #ffd98a; }
-.tr-many { display: flex; flex-wrap: wrap; align-content: center; gap: 2px 18px; height: 100%; padding-top: 4px; overflow: hidden; }
-.tr-grp { display: flex; flex-direction: column; align-items: flex-start; }
-.tr-grp-h { display: flex; align-items: center; gap: 4px; cursor: pointer; margin-bottom: -6px; position: relative; z-index: 2; }
-.tr-grp-h .k7-t16 { color: #ffe7a8; }
-.tr-ports { display: flex; flex-wrap: wrap; max-width: 560px; gap: 0 2px; }
-.tr-mini { position: relative; width: 60px; height: 80px; cursor: pointer; transition: transform .16s cubic-bezier(.3,1.6,.5,1); }
-.tr-mini:hover { transform: translateY(-5px); }
-.tr-mini canvas.k7-model { position: absolute; left: 0; top: 0; }
-.tr-mini .tr-mini-sh { position: absolute; left: 8px; top: 58px; }
-.tr-mini .tr-minibar { position: absolute; left: 4px; bottom: 2px; image-rendering: pixelated; }
-.tr-more { align-self: center; color: #ffe7a8; }
-.tr-cards .tr-roster { position: absolute !important; right: 2px; top: -30px; z-index: 3; width: 70px; }
-.tr-groups { position: absolute; left: 230px; top: 2px; height: 26px; display: flex; gap: 6px; pointer-events: auto; z-index: 2; }
-.tr-gtag { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border: 0; background: none; cursor: pointer; transition: transform .14s cubic-bezier(.3,1.6,.5,1); }
-.tr-gtag:hover { transform: translateY(-3px); }
-.tr-gtag .k7-t16 { position: relative; z-index: 1; color: #2a1c0c; text-shadow: 0 1px 0 rgba(255,240,200,.5); }
-.tr-gtag .tr-gcount { color: #5a3e18; }
-.tr-gtag.on { filter: brightness(1.25) drop-shadow(0 0 5px rgba(255,210,120,.8)); }
+body.trp-cards-on .h7-dock { transform: translate(-50%, 230px); opacity: 0; transition: transform .26s cubic-bezier(.55,0,.8,.3), opacity .25s; }
+body.trp-cards-on { --sub7-y: 236px; }
+.trp-cards { position: fixed; left: 50%; bottom: 4px; z-index: 41; width: 890px; height: 216px; transform: translate(-50%, 240px); transition: transform .34s cubic-bezier(.55,0,.8,.3); pointer-events: none; }
+.trp-cards.on { transform: translate(-50%, 0); transition: transform .42s cubic-bezier(.25,1.45,.5,1); }
+.trp-cards .trp-plate { position: absolute; left: 0; right: 0; bottom: 0; height: 196px; pointer-events: auto; }
+.trp-cards .trp-plate > .kp-body { position: relative; height: 100%; }
+.trp-cards .trp-inner { position: absolute; left: 0; top: 0; right: 0; bottom: 0; display: flex; flex-direction: row; align-items: stretch; }
+.trp-cards .trp-body { position: relative; z-index: 1; flex: 1 1 auto; display: flex; align-items: center; padding: 0 8px 0 10px; min-width: 0; }
+.trp-cards .trp-keys { position: relative; z-index: 1; flex: none; width: 330px; display: flex; flex-direction: column; justify-content: center; gap: 0; padding-right: 2px; }
+.trp-cards .trp-krow { display: flex; justify-content: center; gap: 4px; }
+.trp-cards .trp-krow + .trp-krow { margin-top: -10px; }
+.trp-cards .trp-key { width: 78px; }
+.trp-cards .trp-krow + .trp-krow .trp-key { width: 64px; }
+.trp-cards .trp-key .k7-name { margin-top: -10px; }
+.trp-cards .trp-key.on .k7-ic { filter: brightness(1.2) drop-shadow(0 0 6px rgba(255,200,110,.8)); transform: translateY(3px); }
+.trp-one { display: flex; align-items: center; gap: 14px; height: 100%; }
+.trp-port { position: relative; width: 168px; height: 152px; cursor: pointer; flex: none; margin-top: -8px; }
+.trp-port canvas.k7-model { position: absolute; left: 0; top: 0; }
+.trp-port .trp-port-sh { position: absolute; left: 14px; bottom: 6px; }
+.trp-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.trp-head { display: flex; align-items: center; gap: 8px; }
+.trp-head canvas { image-rendering: pixelated; }
+.trp-call { color: #f6ecd0; }
+.trp-sqtag { position: relative; display: inline-flex; align-items: center; height: 22px; padding: 0 12px; margin-left: 4px; }
+.trp-sqtag .k7-t16 { position: relative; z-index: 1; color: #2a1c0c; text-shadow: 0 1px 0 rgba(255,240,200,.45); }
+.trp-type { color: var(--k7-dim); margin-top: -6px; }
+.trp-gauges, .trp-needs { display: flex; gap: 18px; align-items: center; }
+.trp-g { display: flex; align-items: center; gap: 6px; }
+.trp-g canvas { image-rendering: pixelated; display: block; }
+.trp-needs .trp-g { gap: 4px; }
+.trp-job { display: flex; align-items: center; gap: 8px; }
+.trp-job canvas { image-rendering: pixelated; display: block; }
+.trp-job .k7-t16 { color: #ffd98a; }
+.trp-many { display: flex; flex-wrap: wrap; align-content: center; gap: 0 14px; height: 100%; width: 100%; overflow: hidden; }
+.trp-grp { display: flex; gap: 0; }
+.trp-mini { position: relative; width: 50px; height: 66px; cursor: pointer; transition: transform .16s cubic-bezier(.3,1.6,.5,1); }
+.trp-mini:hover { transform: translateY(-5px); }
+.trp-mini canvas.k7-model { position: absolute; left: -1px; top: 0; }
+.trp-mini .trp-mini-sh { position: absolute; left: 5px; top: 48px; }
+.trp-mini .trp-minibar { position: absolute; left: 0; bottom: 0; image-rendering: pixelated; }
+.trp-grp-h { position: absolute; left: -6px; top: -4px; z-index: 2; display: flex; align-items: center; gap: 2px; cursor: pointer; }
+.trp-grp-h .k7-t16 { color: #ffe7a8; }
+.trp-more { align-self: center; color: #ffe7a8; }
+.trp-cards .trp-roster { position: absolute !important; right: 2px; top: -30px; z-index: 3; width: 70px; }
+.trp-groups { position: absolute; left: 230px; top: 2px; height: 26px; display: flex; gap: 6px; pointer-events: auto; z-index: 2; }
+.trp-gtag { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border: 0; background: none; cursor: pointer; transition: transform .14s cubic-bezier(.3,1.6,.5,1); }
+.trp-gtag:hover { transform: translateY(-3px); }
+.trp-gtag .k7-t16 { position: relative; z-index: 1; color: #2a1c0c; text-shadow: 0 1px 0 rgba(255,240,200,.5); }
+.trp-gtag .trp-gcount { color: #5a3e18; }
+.trp-gtag.on { filter: brightness(1.25) drop-shadow(0 0 5px rgba(255,210,120,.8)); }
 `;
   document.head.append(s);
 }

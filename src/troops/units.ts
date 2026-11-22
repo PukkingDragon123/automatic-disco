@@ -22,6 +22,8 @@ export interface TOrder {
   ax?: number; az?: number; lx?: number; lz?: number;
   /** a crew member's patrol leg */
   leg?: number;
+  /** the order it came in with (one id per issue: a group's chain of waypoints draws as one line) and its point */
+  b?: number; bx?: number; bz?: number;
 }
 export interface TState {
   key: string; call: string;
@@ -34,6 +36,8 @@ export interface TState {
   react: number; reactK: 'ack' | 'hit' | 'cheer' | 'balk';
   /** a low-morale unit hesitates before it obeys */
   balkT: number;
+  /** when it last broke and fell back (it rallies before it can break again) */
+  routT: number;
   dead: boolean;
 }
 
@@ -275,7 +279,7 @@ export function allTroops(g: G): Troop[] {
   const out: Troop[] = [];
   for (const u of (g.robots ?? []) as any[]) if (u.faction === 'veyr' && !u.dead && !u.removed) out.push(adapt(u, () => new RobotTroop(g, u)));
   const W = g.world?.creatures as any[] | undefined;
-  if (W) for (const c of W) if (c.faction === 'veyr' && !c.dead && c.mesh?.visible !== false && c.mind !== 'held') out.push(adapt(c, () => new WorkerTroop(g, c)));
+  if (W) for (const c of W) if (c.faction === 'veyr' && !c.dead && c.mind !== 'held') out.push(adapt(c, () => new WorkerTroop(g, c)));
   const col = g.colony;
   if (col) {
     for (const t of col.teammates ?? []) if (t.alive && !t.staged) out.push(adapt(t, () => new CrewTroop(g, t)));
@@ -293,7 +297,7 @@ export function newState(t: Troop, now: number): TState {
   else if (t.kind === 'drone') call = String(t.ref.name ?? 'DRONE');
   else if (t.kind === 'robot') call = `${ROBOT_SHORT[t.ref.kind] ?? 'U'}-${String(t.ref.id % 100).padStart(2, '0')} ${CALLS[h % CALLS.length]}`;
   else call = CALLS[h % CALLS.length];
-  return { key: t.key, call, morale: 0.72, fatigue: 0.1, wear: 0.05, charge: 1, wounds: [], hist: [], kills: 0, orders: 0, born: now, cur: null, queue: [], lastHp: t.hp01, histT: 0, squad: null, react: 0, reactK: 'ack', balkT: 0, dead: false };
+  return { key: t.key, call, morale: 0.72, fatigue: 0.1, wear: 0.05, charge: 1, wounds: [], hist: [], kills: 0, orders: 0, born: now, cur: null, queue: [], lastHp: t.hp01, histT: 0, squad: null, react: 0, reactK: 'ack', balkT: 0, routT: -999, dead: false };
 }
 
 /** where a target is now */

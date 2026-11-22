@@ -4,7 +4,7 @@
 import { panel, slotGrid, slot, meter, pkey } from '../kit/panel';
 import { ModelView } from '../kit/model3d';
 import { bitReady } from '../kit/bitfont';
-import { partIcon, partModel, customModel } from './parts3d';
+import { partIcon, partModel, customModel, fitVisible } from './parts3d';
 import { PARTS, PART_SLOTS, statsOf, costOf } from './tools';
 import { itemIcon, ITEMS } from '../../factory/items';
 import type { Tone } from '../kit/machine';
@@ -38,7 +38,7 @@ export async function panelSheet() {
   const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:12px;align-items:flex-start';
   const well = panel({ tone: 'dark', head: 8, foot: 8, side: 6, lamps: [], hazard: false, glands: 0, vents: false });
   well.el.style.cssText += ';width:150px;height:150px;flex:none';
-  const mv = new ModelView(() => partModel('head', 'bit', 'hud')!, { w: 62, h: 62, scale: 2, spin: 0.5, pitch: 0.4, liveFps: 10 });
+  const mv = new ModelView(() => fitVisible(partModel('head', 'bit', 'hud')!), { w: 62, h: 62, scale: 2, spin: 0.5, pitch: 0.4, liveFps: 10 });
   well.body.append(mv.cv);
   const info = document.createElement('div'); info.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding-top:2px';
   const line = (k: string, v: string) => { const d = document.createElement('div'); d.className = 'k7-t16'; d.style.cssText = 'display:flex;gap:8px'; const a = document.createElement('span'); a.style.color = '#d8b060'; a.textContent = k; const b = document.createElement('span'); b.textContent = v; d.append(a, b); return d; };
@@ -65,7 +65,7 @@ export async function panelSheet() {
   // ---- the assembled tool in a well
   const tool = panel({ title: 'ASSEMBLY', tone: 'steel', lamps: ['teal', 'green', 'amber'], serial: 'JIG-3', handles: true });
   tool.el.style.width = '420px'; tool.el.style.height = '300px';
-  const tv = new ModelView(() => customModel(parts, 'hud'), { w: 190, h: 110, scale: 2, spin: 0.35, pitch: 0.38, liveFps: 10 });
+  const tv = new ModelView(() => fitVisible(customModel(parts, 'hud')), { w: 190, h: 110, scale: 2, spin: 0.35, pitch: 0.38, liveFps: 10 });
   tool.body.style.cssText = 'display:grid;place-items:center;height:100%';
   tool.body.append(tv.cv);
   root.append(tool.el);
