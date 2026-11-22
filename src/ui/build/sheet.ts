@@ -65,7 +65,7 @@ export class BlueprintSheet {
   constructor(readonly f: Factory, readonly build: Build, readonly host: { closed(): void; nodes(b: FBuilding): void }) {
     const r = (this.root = document.createElement('div'));
     r.className = 'bs';
-    r.innerHTML = `<div class="bs-body"><canvas class="bs-paper"></canvas><canvas class="bs-art"></canvas><div class="bs-title k7-t32"></div><div class="bs-desc"></div><div class="bs-h h-draw">DRAWINGS: ISO, PLAN AND FRONT (METRES)</div><div class="bs-h h-rec">RECIPES (CLICK ONE TO SWITCH)</div><div class="bs-recs"></div><div class="bs-h h-gauge">POWER (MW)  ·  STATUS  ·  BATCH  ·  HULL</div><div class="bs-status"></div><div class="bs-h h-buf">STORES</div><div class="bs-bufs"></div><div class="bs-h h-crew">CREW (DRAG A WORKER ONTO A SLOT TO ASSIGN; OFF THE SHEET TO FREE)</div><div class="bs-crew"></div></div><canvas class="bs-clip a"></canvas><canvas class="bs-clip b"></canvas><div class="bs-acts"></div>`;
+    r.innerHTML = `<div class="bs-body"><canvas class="bs-paper"></canvas><canvas class="bs-art"></canvas><div class="bs-title k7-t32"></div><div class="bs-desc"></div><div class="bs-h h-draw">DRAWINGS: ISO, PLAN AND FRONT (METRES)</div><div class="bs-h h-rec">RECIPES (CLICK ONE TO SWITCH)</div><div class="bs-recs"></div><div class="bs-h h-gauge">POWER (MW)  ·  STATUS  ·  BATCH  ·  HULL</div><div class="bs-status"></div><div class="bs-h h-buf">STORES</div><div class="bs-bufs"></div><div class="bs-h h-crew">CREW: DRAG A WORKER ONTO A SLOT TO ASSIGN, OFF TO FREE</div><div class="bs-crew"></div></div><canvas class="bs-clip a"></canvas><canvas class="bs-clip b"></canvas><div class="bs-acts"></div>`;
     document.body.appendChild(r);
     this.paper = r.querySelector('.bs-paper')!; this.art = r.querySelector('.bs-art')!;
     this.title = r.querySelector('.bs-title')!; this.desc = r.querySelector('.bs-desc')!; this.status = r.querySelector('.bs-status')!; this.recs = r.querySelector('.bs-recs')!; this.bufs = r.querySelector('.bs-bufs')!; this.crew = r.querySelector('.bs-crew')!; this.acts = r.querySelector('.bs-acts')!;
@@ -284,7 +284,7 @@ export class BlueprintSheet {
     if (this.pauseBtn && this.pauseBtn.classList.contains('lock') === false) this.pauseBtn.classList.toggle('on', !b.on);
     // the status in words: what it is doing, what it lacks, what to do; its power and hull with units
     const [head, line] = statusWords(f, b), g = f.gridOf(b), d = b.def;
-    const pw = d.power < 0 ? `Makes ${-d.power} MW` : d.power > 0 ? (g ? `Draws ${d.power} MW; grid ${fmt(g.supply)} of ${fmt(g.demand)} MW (${Math.round(g.sat * 100)}%)` : `Needs ${d.power} MW: no grid within reach`) : 'Needs no power';
+    const pw = d.power < 0 ? `Makes ${-d.power} MW` : d.power > 0 ? (g ? `Draws ${d.power} MW (its grid makes ${fmt(g.supply)}, uses ${fmt(g.demand)})` : `Needs ${d.power} MW: no grid within reach`) : 'Needs no power';
     const sk = `${head}|${line}|${pw}|${Math.ceil(b.hp)}`;
     if (sk !== this.statusKey) { this.statusKey = sk; this.status.innerHTML = `<b>${esc(head)}</b> ${esc(line)}<br><span>${esc(pw)}  ·  Hull ${Math.ceil(b.hp)} / ${b.maxHp}${b.recipe && b.running ? `  ·  Batch ${Math.round(b.prog * 100)}%` : ''}</span>`; }
   }

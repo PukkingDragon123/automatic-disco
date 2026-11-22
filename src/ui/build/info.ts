@@ -62,7 +62,7 @@ export function statusWords(f: Factory, b: FBuilding): [string, string] {
   if (st === 'nopower') return ['NO POWER', d.power > 0 ? `Needs ${d.power} MW: put a power pole within 7 m and keep the grid supplied.` : 'Not connected to the grid.'];
   if (st === 'starved') {
     const lack = rec ? Object.keys(rec.in).filter((id) => (b.inBuf.get(id) ?? 0) < (rec.in[id] ?? 0)).map(itemName) : [];
-    return ['INPUT STARVED', lack.length ? `Waiting for ${lack.join(' and ')}: wire a route in, or let the haulers bring it.` : 'Waiting for its inputs.'];
+    return ['INPUT STARVED', lack.length ? `Waiting for ${lack.join(' and ')}: wire a route in or let haulers bring it.` : 'Waiting for its inputs.'];
   }
   if (st === 'blocked') {
     const full = rec ? Object.keys(rec.out).map(itemName) : [];
