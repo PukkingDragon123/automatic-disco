@@ -88,8 +88,25 @@ export function nz(t: CTile, x: number, y: number, cx: number, cy: number, oct: 
   for (let i = 0; i < oct; i++) { sum += amp * tileNoise2((x / t.w) * a, (y / t.h) * b, a, b, seed + i * 131); norm += amp; amp *= 0.5; a *= 2; b *= 2; }
   return sum / norm;
 }
+/** a tiling Voronoi of nx x ny jittered cells, stretched (sx, sy): for any texel its cell and the distance to the
+ *  nearest border (in texels), for plates, scales and furrows */
+export function voronoi(t: CTile, nx: number, ny: number, sd: number, sx = 1, sy = 1): (x: number, y: number) => [number, number] {
+  const W = t.w, Hh = t.h, cw = W / nx, ch = Hh / ny, px: number[] = [], py: number[] = [];
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { px.push((i + 0.5 + (H(i, j, sd) - 0.5) * 0.85) * cw); py.push((j + 0.5 + (H(i, j, sd + 1) - 0.5) * 0.85) * ch); }
+  return (x, y) => {
+    let b = 0, bd = 1e9, b2 = 1e9; const gi = Math.floor(x / cw), gj = Math.floor(y / ch);
+    for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) {
+      const ii = ((gi + di) % nx + nx) % nx, jj = ((gj + dj) % ny + ny) % ny, k = jj * nx + ii;
+      let dx = x + 0.5 - px[k], dy = y + 0.5 - py[k]; dx -= Math.round(dx / W) * W; dy -= Math.round(dy / Hh) * Hh;
+      const d = Math.hypot(dx / sx, dy / sy);
+      if (d < bd) { b2 = bd; bd = d; b = k; } else if (d < b2) b2 = d;
+    }
+    return [b, (b2 - bd) * Math.min(sx, sy)];
+  };
+}
 /** placed marks on a jittered grid (one per cell, some skipped) */
 export function specks(t: CTile, cell: number, seed: number, draw: (x: number, y: number, r: number) => void, keep = 1) {
+  cell = Math.max(3, cell);
   const nx = Math.max(1, Math.round(t.w / cell)), ny = Math.max(1, Math.round(t.h / cell)), cw = t.w / nx, ch = t.h / ny;
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
     const r = H(i, j, seed + 7); if (r > keep) continue;
@@ -136,18 +153,16 @@ function overlay(t: CTile, ramp: number, m: number, size: number, thr: number, s
 const MATS: Record<string, Mat> = {
   // ---------------------------------------------------------------- wood
   bark: { base: C(BARK, 3), m: 1, paint: (t, s, sd, m) => {
-    // deep fissured ridges running down the trunk, warped round each other; the ridge tops catch the light on their
-    // left flank; cross-checks break the ridges into long plates; lichen in patches, a few insect holes
-    const nR = cells(m, 0.055);
+    // furrowed bark: long irregular plates running down the trunk (stretched cells), each plate's face mottled and
+    // lit on its upper left, the furrows between them deep and dark and of uneven width; lichen in patches
+    const v = voronoi(t, cells(m, 0.07), cells(m, 0.2), sd, 0.55, 1.9);
     t.field(BARK, (x, y) => {
-      const u = x / t.w, w = nz(t, x, y, nR / 3, cells(m, 0.45), 3, sd) - 0.5;
-      const r = fract(u * nR + w * 1.6), ridge = 1 - Math.abs(2 * r - 1);
-      const plate = nz(t, x, y, nR, cells(m, 0.16), 2, sd + 5);
-      const cross = plate < 0.3 ? (0.3 - plate) * 2.2 : 0;
-      return 0.1 + 0.62 * sstep(0.12, 0.62, ridge) - cross * ridge + (r < 0.5 ? 0.1 : -0.06) * ridge + (nz(t, x, y, cells(m, 0.02), cells(m, 0.03), 2, sd + 2) - 0.5) * 0.22;
+      const [k, e] = v(x, y), [, el] = v(x - 1, y - 1);
+      const deep = sstep(0.2, 1.8 + H(k, 5, sd) * 1.2, e);
+      return 0.06 + deep * (0.42 + H(k, 3, sd) * 0.16) + (el < e ? 0.1 : -0.04) * deep + (nz(t, x, y, cells(m, 0.04), cells(m, 0.08), 2, sd + 2) - 0.5) * 0.26 * deep;
     });
-    lichen(t, LICHEN, m, sd + 30, 0.16, 0.07);
-    specks(t, Math.max(4, 0.2 * s), sd + 4, (x, y, r) => { if (r < 0.35) { t.set(x, y, C(BARK, 0)); t.nudge(x + 1, y + 1, 1); } }, 0.4);
+    lichen(t, LICHEN, m, sd + 30, 0.15, 0.07);
+    specks(t, Math.max(4, 0.2 * s), sd + 4, (x, y, r) => { if (r < 0.3) { t.set(x, y, C(BARK, 0)); t.nudge(x + 1, y + 1, 1); } }, 0.4);
   } },
   barkPine: { base: C(BARKP, 3), m: 1, paint: (t, s, sd, m) => {
     // puzzle plates of pine: each plate a mottled tone, curling at its edges (lit lip above, deep shadow below)
@@ -339,8 +354,8 @@ const MATS: Record<string, Mat> = {
   // ---------------------------------------------------------------- loose earth
   dirt: { base: C(DIRT, 4), m: 0.5, paint: (t, s, sd, m) => {
     // dug earth: mottled, damp darker patches, crumbs lit on top, small stones, pale rootlets
-    t.field(DIRT, (x, y) => 0.5 + (nz(t, x, y, cells(m, 0.1), cells(m, 0.1), 3, sd) - 0.5) * 0.45 + (nz(t, x, y, cells(m, 0.02), cells(m, 0.02), 2, sd + 3) - 0.5) * 0.3);
-    specks(t, Math.max(2, 0.014 * s), sd + 1, (x, y, r) => { if (r < 0.45) grain(t, x, y, C(DIRT, 4 + Math.round(r * 4)), 1 + Math.round(r * 2), r); }, 0.8);
+    t.field(DIRT, (x, y) => 0.5 + (nz(t, x, y, cells(m, 0.12), cells(m, 0.12), 3, sd) - 0.5) * 0.45 + (nz(t, x, y, cells(m, 0.03), cells(m, 0.03), 2, sd + 3) - 0.5) * 0.18);
+    specks(t, Math.max(2, 0.02 * s), sd + 1, (x, y, r) => { if (r < 0.4) grain(t, x, y, C(DIRT, 4 + Math.round(r * 3)), 1 + Math.round(r * 2), r); }, 0.7);
     specks(t, Math.max(4, 0.05 * s), sd + 2, (x, y, r) => { if (r < 0.4) grain(t, x, y, C(STONE, 4 + Math.round(r * 3)), 2 + (r < 0.15 ? 1 : 0), r); });
     specks(t, Math.max(8, 0.15 * s), sd + 3, (x, y, r) => { if (r < 0.5) { let a = r * 6, xx = x, yy = y; for (let i = 0; i < 0.04 * s; i++) { t.set(xx, yy, C(ROOT, 2 + (i % 2))); a += H(i, x, sd) - 0.5; xx += Math.round(Math.cos(a)); yy += Math.round(Math.sin(a)); } } });
   } },
@@ -402,6 +417,11 @@ const MATS: Record<string, Mat> = {
   dung: { base: C(DIRT, 2), m: 0.25, paint: (t, s, sd, m) => {
     t.field(DIRT, (x, y) => 0.3 + (nz(t, x, y, cells(m, 0.03), cells(m, 0.03), 3, sd) - 0.5) * 0.4, F_GLOSS);
     specks(t, Math.max(3, 0.02 * s), sd + 1, (x, y, r) => { if (r < 0.3) for (let i = 0; i < 3; i++) t.set(x + i, y + (i >> 1), C(STRAW, 2)); }, 0.6);
+  } },
+  ground: { base: C(DIRT, 4), m: 2, paint: (t, s, sd, m) => {
+    // trodden ground for QA benches: big soft patches, a scatter of small stones, no busy grain
+    t.field(DIRT, (x, y) => 0.55 + (nz(t, x, y, cells(m, 0.5), cells(m, 0.5), 3, sd) - 0.5) * 0.3 + (nz(t, x, y, cells(m, 0.1), cells(m, 0.1), 2, sd + 4) - 0.5) * 0.12, 0, 0.6);
+    specks(t, Math.max(5, 0.3 * s), sd + 2, (x, y, r) => { if (r < 0.35) grain(t, x, y, C(STONE, 4 + Math.round(r * 4)), 2, r); }, 0.6);
   } },
   // ---------------------------------------------------------------- made things
   steel: { base: C(STEEL, 4, F_METAL), m: 0.5, paint: (t, s, sd, m) => {

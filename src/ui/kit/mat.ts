@@ -70,7 +70,7 @@ export function plate(w: number, h: number, o: PlateOpts = {}): Px {
     if (d < 1 + lip) {
       const dl = x, dt = y, dr = w - 1 - x, db = h - 1 - y, m = Math.min(dl, dt, dr, db);
       const litSide = m === dl || m === dt;
-      k += litSide ? (d < 2 ? 2.4 : 1.3) : (d < 2 ? -2.4 : -1.3);
+      k += litSide ? (d < 2 ? 3 : 1.6) : (d < 2 ? -3 : -1.6);
     }
     return k;
   };

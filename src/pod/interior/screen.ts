@@ -16,8 +16,8 @@ import { ModelView } from '../../ui/kit/model3d';
 import { bounce3, burst, tween, ease, floatUp, shake } from '../../ui/kit/juice';
 import { uiSfx } from '../../ui/kit/sound';
 import { bitText, bitMeasure } from '../../ui/kit/bitfont';
-import { Px, P, bevel, cellBar, rivet, hex } from '../../ui/kit/px';
-import { plate } from '../../ui/kit/mat';
+import { Px, P, bevel, cellBar, rivet, screw, glassWell, hex } from '../../ui/kit/px';
+import { shadowBlob, pxCanvas } from '../../ui/kit/mat';
 import { transition } from '../../ui/kit/transitions';
 import { gbuf } from '../../gfx/gbuf';
 import { itemIcon, ITEMS } from '../../factory/items';
@@ -29,13 +29,17 @@ const V = THREE.Vector3;
 const CSS = `
 .pod7 { position: fixed; inset: 0; z-index: 610; pointer-events: none; }
 .pod7 canvas { image-rendering: pixelated; display: block; }
-.pod7 .p7-tray { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); pointer-events: auto; display: flex; align-items: flex-end; gap: 4px; padding: 0 18px; }
-.pod7 .p7-tray > .p7-bg { position: absolute; left: 0; right: 0; bottom: 0; height: 100%; z-index: -1; }
-.pod7 .p7-card { position: relative; cursor: pointer; transition: transform .12s cubic-bezier(.3,1.6,.5,1); }
-.pod7 .p7-card:hover { transform: translateY(-8px); }
-.pod7 .p7-card.poor { filter: saturate(.35) brightness(.7); }
-.pod7 .p7-card.on { transform: translateY(-14px); }
-.pod7 .p7-card .k7-model { position: absolute; left: 0; top: 0; }
+.pod7 .p7-tray { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); pointer-events: auto; display: flex; align-items: flex-end; gap: 6px; padding: 0 12px 30px; }
+.pod7 .p7-rail { position: absolute; left: -12px; bottom: 4px; z-index: 0; }
+.pod7 .p7-card { position: relative; z-index: 1; cursor: pointer; display: flex; flex-direction: column; align-items: center; transition: transform .14s cubic-bezier(.3,1.6,.5,1); }
+.pod7 .p7-card .p7-model { animation: p7bob 3s ease-in-out infinite; animation-delay: var(--bob, 0s); filter: drop-shadow(0 0 0 transparent); }
+@keyframes p7bob { 50% { transform: translateY(-4px); } }
+.pod7 .p7-card .p7-sh { margin-top: -6px; opacity: .8; }
+.pod7 .p7-card .p7-cost { margin-top: 2px; }
+.pod7 .p7-card:hover { transform: translateY(-10px); }
+.pod7 .p7-card:hover .p7-model { animation-play-state: paused; }
+.pod7 .p7-card.poor .p7-model { filter: saturate(.3) brightness(.62); }
+.pod7 .p7-card.on { transform: translateY(-16px); }
 .pod7 .p7-joy { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); }
 .pod7 .p7-out { position: absolute; left: 22px; top: 22px; pointer-events: auto; cursor: pointer; transition: transform .12s; }
 .pod7 .p7-out:hover { transform: translateY(-3px) scale(1.05); }
@@ -45,13 +49,13 @@ interface Piece { p: Placed; obj: THREE.Group; def: DecorDef }
 
 export class PodInterior implements Screen {
   static current: PodInterior | null = null;
-  readonly cam = new THREE.PerspectiveCamera(64, innerWidth / innerHeight, 0.05, 40);
+  readonly cam = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 40);
   private room: Room; private ui: HTMLDivElement; private tray: HTMLDivElement; private joyCv: HTMLCanvasElement; private views: ModelView[] = [];
   private pieces: Piece[] = [];
   private carry: { def: DecorDef; obj: THREE.Group; rot: number; from: Placed | null; ok: boolean; at: THREE.Vector3; y: number } | null = null;
   private ray = new THREE.Raycaster(); private mouse = new THREE.Vector2(); private mx = 0; private my = 0;
   private t = 0; private dolly = 0; private joyShown = 0; private joyT = 0;
-  private camFrom = new V(0, 1.9, 3.3); private camTo = new V(0, 1.62, 1.95); private look = new V(0, 0.8, -0.9);
+  private camFrom = new V(0, 1.75, 2.7); private camTo = new V(0, 1.5, 1.62); private look = new V(0, 0.72, -0.85);
   private leaving = false;
   constructor(readonly g: Game, readonly engine: Engine, readonly home: PodHome, readonly onLeave: () => void) {
     PodInterior.current = this; (window as unknown as { __pod?: PodInterior }).__pod = this;
@@ -90,73 +94,86 @@ export class PodInterior implements Screen {
     const pc = { p, obj, def }; this.pieces.push(pc); return pc;
   }
   // ---------------------------------------------------------------- the tray
+  /** the tray: every piece floats free over a thin machined rail (no boxes), a pixel shadow under it, its cost
+   *  line under that (a heart and the joy, the items with their counts, red when short) */
   private buildTray() {
     this.tray.replaceChildren();
     for (const v of this.views) v.dispose(); this.views = [];
-    const bg = document.createElement('canvas'); bg.className = 'p7-bg'; this.tray.append(bg);
-    const CW = 62, CH = 92;
-    for (const d of DECOR) {
-      const card = document.createElement('div'); card.className = 'p7-card'; card.dataset.id = d.id;
-      const cv = document.createElement('canvas'); card.append(cv);
-      const view = new ModelView(() => decorToon(d.id).then((o) => o ?? new THREE.Group()), { w: CW - 6, h: 48, scale: 2, spin: 0, yaw0: 0.7, hotSpin: 2.2, zoom: 1.05, pitch: 0.5, shadow: [2, 2, 0.4], frames: 32 });
-      view.cv.style.left = 6 + 'px'; view.cv.style.top = 6 + 'px'; card.append(view.cv); this.views.push(view);
+    const rail = document.createElement('canvas'); rail.className = 'p7-rail'; this.tray.append(rail);
+    DECOR.forEach((d, i) => {
+      const card = document.createElement('div'); card.className = 'p7-card'; card.dataset.id = d.id; card.style.setProperty('--bob', (-(i * 0.37) % 3).toFixed(2) + 's');
+      const view = new ModelView(() => decorToon(d.id).then((o) => o ?? new THREE.Group()), { w: 52, h: 46, scale: 2, spin: 0, yaw0: 0.7 + (i % 3) * 0.3, hotSpin: 2.2, zoom: 1.1, pitch: 0.5, frames: 32 });
+      view.cv.classList.add('p7-model');
+      const sh = pxCanvas(shadowBlob(30, 6, 0.55), 2, 'p7-sh');
+      const cost = document.createElement('canvas'); cost.className = 'p7-cost';
+      card.append(view.cv, sh, cost); this.views.push(view);
       card.addEventListener('pointerenter', (e) => { view.hot(true); view.point(e.clientX, e.clientY); uiSfx('hover', 0.6); });
       card.addEventListener('pointermove', (e) => view.point(e.clientX, e.clientY));
       card.addEventListener('pointerleave', () => view.hot(false));
       card.addEventListener('pointerdown', (e) => { e.stopPropagation(); view.press(1); this.pick(d); this.dragFrom = [e.clientX, e.clientY]; });
       this.tray.append(card);
-      this.paintCard(card, cv, d, CW, CH);
-    }
-    requestAnimationFrame(() => {
-      const w = Math.round(this.tray.clientWidth / 2), h = CH + 16;
-      const p = plate(w, h, { mat: 'wood', seed: 5, screws: true, wear: 1, chamfer: 4 });
-      p.canvas(bg); bg.style.width = w * 2 + 'px'; bg.style.height = h * 2 + 'px';
+      this.paintCost(card, cost, d);
     });
+    requestAnimationFrame(() => this.paintRail(rail));
   }
-  private paintCard(card: HTMLElement, cv: HTMLCanvasElement, d: DecorDef, W: number, H: number) {
+  /** a thin machined rail: a gunmetal bar with a lit lip, a sunk amber light channel, bolted brackets and end caps */
+  private paintRail(cv: HTMLCanvasElement) {
+    const W = Math.round(this.tray.clientWidth / 2) + 24, H = 12, p = new Px(W, H);
+    bevel(p, 4, 3, W - 8, 7, P.steel, { chamfer: 1, base: 2 });
+    for (let x = 10; x < W - 10; x++) p.set(x, 6, (x >> 2) & 1 ? P.glowAmber[1] : P.glowAmber[2]);
+    for (let x = 10; x < W - 10; x += 6) p.set(x, 6, P.glowAmber[4]);
+    bevel(p, 0, 1, 8, 11, P.steel, { chamfer: 2 }); bevel(p, W - 8, 1, 8, 11, P.steel, { chamfer: 2 });
+    for (let x = 60; x < W - 40; x += 120) { bevel(p, x, 1, 10, 10, P.steel, { chamfer: 2, base: 4 }); rivet(p, x + 5, 6, 1); }
+    p.canvas(cv); cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
+  }
+  private paintCost(card: HTMLElement, cv: HTMLCanvasElement, d: DecorDef) {
     const cost = resolve(d.cost), afford = Object.entries(cost).every(([id, n]) => have(this.g, id) >= n);
     const full = this.home.count(d.id) >= d.max;
     card.classList.toggle('poor', !afford || full);
-    const p = new Px(W, H);
-    bevel(p, 1, 1, W - 2, H - 2, d.kind === 'need' ? P.olive : d.kind === 'furn' ? P.steel : P.clay, { chamfer: 3 });
-    bevel(p, 4, 4, W - 8, 50, P.steel, { chamfer: 2, sunk: true });
-    rivet(p, 6, H - 6, 1); rivet(p, W - 7, H - 6, 1);
-    p.canvas(cv); cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
-    const c = cv.getContext('2d')!; c.imageSmoothingEnabled = false;
-    // the joy it brings: a heart and the number
-    heart(c, 6, 58); bitText(c, '+' + d.joy, 18, 55, { color: '#ffd0c0' });
-    // the cost: item icons with the count (red when short)
-    let x = 4; const y = 72;
-    for (const [id, n] of Object.entries(cost)) {
-      if (!ITEMS[id]) continue;
-      const im = new Image(); im.src = itemIcon(id, 32);
-      const draw = () => { c.drawImage(im, x0, y, 14, 14); bitText(c, String(n), x0 + 14, y - 1, { color: have(this.g, id) >= n ? '#f4ecd6' : '#ff7a5a' }); };
-      const x0 = x; if (im.complete) draw(); else im.onload = draw;
-      x += 16 + bitMeasure(String(n)) + 2;
+    const ids = Object.keys(cost).filter((id) => ITEMS[id]);
+    const W = 60, H = 18;
+    cv.width = W; cv.height = H; cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
+    const c = cv.getContext('2d')!; c.imageSmoothingEnabled = false; c.clearRect(0, 0, W, H);
+    if (full) { bitText(c, 'MAX', W / 2, 1, { color: '#c8c0a8', align: 'center' }); return; }
+    // the joy, then each item: icon and count
+    const parts: { w: number; draw: (x: number) => void }[] = [];
+    parts.push({ w: 8 + bitMeasure('+' + d.joy), draw: (x) => { heart(c, x, 5, 1); bitText(c, '+' + d.joy, x + 8, 1, { color: '#ffc8b8' }); } });
+    for (const id of ids) {
+      const n = cost[id], ok = have(this.g, id) >= n, im = itemImg(id), t = String(n);
+      parts.push({ w: 11 + bitMeasure(t), draw: (x) => { const go = () => c.drawImage(im, x, 3, 10, 10); if (im.complete) go(); else im.addEventListener('load', go); bitText(c, t, x + 10, 1, { color: ok ? '#f4ecd6' : '#ff7a5a' }); } });
     }
-    if (full) bitText(c, 'MAX', W / 2, 32, { color: '#c8c0a8', align: 'center' });
+    const total = parts.reduce((s, q) => s + q.w + 2, -2);
+    let x = Math.max(0, Math.round((W - total) / 2));
+    for (const q of parts) { q.draw(x); x += q.w + 2; }
   }
-  private refreshTray() { this.tray.querySelectorAll<HTMLElement>('.p7-card').forEach((card) => { const d = DECOR_BY[card.dataset.id ?? '']; const cv = card.querySelector('canvas:not(.k7-model)') as HTMLCanvasElement | null; if (d && cv) this.paintCard(card, cv, d, 62, 92); card.classList.toggle('on', this.carry?.def.id === d?.id); }); }
+  private refreshTray() { this.tray.querySelectorAll<HTMLElement>('.p7-card').forEach((card) => { const d = DECOR_BY[card.dataset.id ?? '']; const cv = card.querySelector('.p7-cost') as HTMLCanvasElement | null; if (d && cv) this.paintCost(card, cv, d); card.classList.toggle('on', this.carry?.def.id === d?.id); }); }
   private paintOut(cv: HTMLCanvasElement) {
     const ic = stepIcon('hatch'), W = 48, H = 52; cv.width = W; cv.height = H; cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
     const c = cv.getContext('2d')!; c.imageSmoothingEnabled = false; c.drawImage(ic, 6, 0, 36, 36);
     bitText(c, 'OUT', W / 2, 34, { color: '#ffe2a0', extrude: [1, '#5a3a14'], align: 'center' });
   }
-  /** the happiness gauge: a riveted brass plate, a heart, the number rolling, a cell bar, the teammates' faces */
+  /** the happiness gauge: a clean machined gunmetal housing, four screws, a heart lamp, the number in a sunk glass
+   *  window, a cell bar that fills, the teammates' faces with their morale pips */
   private paintJoy() {
-    const W = 200, H = 46, p = plate(W, H, { mat: 'brass', seed: 9, screws: true, wear: 0.7, chamfer: 3 });
-    cellBar(p, 62, 28, 120, 9, this.joyShown / 100, P.glowAmber, this.t);
+    const W = 212, H = 44, p = new Px(W, H);
+    bevel(p, 1, 1, W - 2, H - 2, P.steel, { chamfer: 4, base: 2 });
+    bevel(p, 5, 5, W - 10, H - 10, P.steel, { chamfer: 2, base: 3, ink: false });
+    for (const [x, y] of [[4, 4], [W - 9, 4], [4, H - 9], [W - 9, H - 9]]) screw(p, x, y, x + y);
+    glassWell(p, 14, 9, 30, 26, 0x2a0c0a, { glare: true });
+    glassWell(p, 50, 9, 40, 14, 0x0c100e, { glare: false });
+    cellBar(p, 50, 27, 86, 8, this.joyShown / 100, P.glowAmber, this.t);
+    glassWell(p, 142, 7, 62, 30, 0x14181a, { glare: false });
     const cv = this.joyCv; p.canvas(cv); cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
     const c = cv.getContext('2d')!; c.imageSmoothingEnabled = false;
-    heart(c, 14, 14, 3);
-    bitText(c, String(Math.round(this.joyShown)), 60, 8, { color: '#fff0d0', extrude: [1, '#5a3a14'] });
+    heart(c, 18, 14, 3);
+    bitText(c, String(Math.round(this.joyShown)), 70, 7, { color: '#ffd890', outline: null, align: 'center' });
     const C = anyG(this.g).colony;
-    let x = 128;
+    let x = 146;
     for (const id of ['kristiansen', 'mamani']) {
       const t = C?.teammate?.(id); const f = portrait(id); if (!f) continue;
-      c.globalAlpha = t && !t.alive ? 0.35 : 1; c.drawImage(f, x, 2, 24, 24); c.globalAlpha = 1;
-      if (t?.alive) { const mo = Math.round((t.morale ?? 60) / 20); for (let i = 0; i < 5; i++) { c.fillStyle = i < mo ? '#ffc040' : '#3a2a14'; c.fillRect(x + 1 + i * 5, 24, 4, 2); } }
-      x += 32;
+      c.globalAlpha = t && !t.alive ? 0.35 : 1; c.drawImage(f, x, 8, 22, 22); c.globalAlpha = 1;
+      if (t?.alive) { const mo = Math.round((t.morale ?? 60) / 20); for (let i = 0; i < 5; i++) { c.fillStyle = i < mo ? '#ffc040' : '#3a2a14'; c.fillRect(x + 1 + i * 4, 31, 3, 2); } }
+      x += 29;
     }
     void hex;
   }
@@ -306,3 +323,5 @@ function heart(c: CanvasRenderingContext2D, x: number, y: number, s = 2) {
   c.fillStyle = '#0a0b10'; H.forEach((r, j) => [...r].forEach((ch, i) => { if (ch === '#') c.fillRect(x + i * s - 1, y + j * s - 1, s + 2, s + 2); }));
   H.forEach((r, j) => [...r].forEach((ch, i) => { if (ch === '#') { c.fillStyle = j < 2 && i < 3 ? '#ff9a8a' : '#e0503e'; c.fillRect(x + i * s, y + j * s, s, s); } }));
 }
+const itemImgs = new Map<string, HTMLImageElement>();
+function itemImg(id: string) { let im = itemImgs.get(id); if (!im) { im = new Image(); im.src = itemIcon(id, 32); itemImgs.set(id, im); } return im; }

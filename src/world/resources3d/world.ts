@@ -28,7 +28,7 @@ interface Drop {
   obj: THREE.Group; id: ItemId; w: number; s: number;
   from: THREE.Vector3; to: THREE.Vector3; T: number; t: number; v0y: number;
   phase: 0 | 1 | 2; vy: number; vx: number; vz: number; y: number; floor: number; hits: number; sq: number; sqT: number;
-  spin: THREE.Vector3; rest: THREE.Quaternion; aud: number; onLand?: () => void;
+  spin: THREE.Vector3; rest: THREE.Quaternion; aud: number; onLand?: () => void; keep: boolean;
 }
 interface SitePile { g: THREE.Group; key: string; got: Record<string, number>; spot: Map<string, THREE.Vector3> }
 
@@ -47,7 +47,7 @@ export class ResourceWorld {
   private audible(x: number, z: number) { const a = (this.g as unknown as { audible?: (x: number, z: number) => number }).audible; return a ? a.call(this.g, x, z) : 1; }
 
   /** toss n of an item from a point to a point (world): it flies, tumbles, bounces and dusts by its weight */
-  drop(id: ItemId, n: number, from: THREE.Vector3, to: THREE.Vector3, o: { scale?: number; onLand?: () => void; floor?: number } = {}) {
+  drop(id: ItemId, n: number, from: THREE.Vector3, to: THREE.Vector3, o: { scale?: number; onLand?: () => void; floor?: number; /** stay where it lands (a load put down on open ground) */ keep?: boolean } = {}) {
     const u = unitOf(id, Math.floor(Math.random() * 4), Math.floor(Math.random() * 3));
     const obj = meshesOf(u.M.build());
     const s = o.scale ?? 1, w = weightOf(id, n);
@@ -61,7 +61,7 @@ export class ResourceWorld {
       phase: 0, vy: 0, vx: (to.x - from.x) / T, vz: (to.z - from.z) / T, y: from.y, floor: o.floor ?? to.y, hits: 0, sq: 0, sqT: 0,
       spin: new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(spinK),
       rest: new THREE.Quaternion().setFromEuler(new THREE.Euler((Math.random() - 0.5) * 0.25, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 0.25)),
-      aud: this.audible(to.x, to.z), onLand: o.onLand,
+      aud: this.audible(to.x, to.z), onLand: o.onLand, keep: !!o.keep,
     });
   }
   /** something went into a container: if it is open and in view, the item drops onto its pile */
@@ -92,7 +92,8 @@ export class ResourceWorld {
     dt = Math.min(dt, 1 / 20);
     for (let i = this.drops.length - 1; i >= 0; i--) if (this.step(this.drops[i], dt)) {
       const d = this.drops[i];
-      d.obj.removeFromParent(); d.obj.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
+      if (d.keep) d.obj.scale.setScalar(d.s);
+      else { d.obj.removeFromParent(); d.obj.traverse((o) => (o as THREE.Mesh).geometry?.dispose()); }
       d.onLand?.();
       this.drops.splice(i, 1);
     }

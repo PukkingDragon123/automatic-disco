@@ -26,7 +26,7 @@ export async function dropTest(engine: Engine, P: URLSearchParams) {
   sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 0.5, far: 30 }); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.015;
   scene.add(sun, sun.target);
   const fg = new THREE.PlaneGeometry(30, 30); const fuv = fg.attributes.uv as THREE.BufferAttribute; for (let i = 0; i < fuv.count; i++) fuv.setXY(i, fuv.getX(i) * 30, fuv.getY(i) * 30);
-  const fm = new THREE.MeshLambertMaterial({ map: colorTex('dirt') }); gbuf(fm, 0);
+  const fm = new THREE.MeshLambertMaterial({ map: colorTex(P.get('floor') ?? 'ground') }); gbuf(fm, 0);
   const ground = new THREE.Mesh(fg, fm); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
   const cam = new THREE.PerspectiveCamera(Number(P.get('fov') ?? 32), innerWidth / innerHeight, 0.05, 100);
   cam.position.set(Number(P.get('cx') ?? 0.3), Number(P.get('cy') ?? 6.4), Number(P.get('cz') ?? 6.2)); cam.lookAt(Number(P.get('lx') ?? 0.1), 0.25, Number(P.get('lz') ?? -0.25));
@@ -60,6 +60,8 @@ export async function dropTest(engine: Engine, P: URLSearchParams) {
   const w = window as unknown as Record<string, unknown>;
   w.__drop = (k: string, item: ItemId, n = 1) => st.insert(byKind(k), item, n);
   w.__res = res; w.__st = st;
+  // a drop onto the ground (a delivery to a site, a load put down): real scale, tossed from shoulder height
+  w.__dropAt = (item: ItemId, x: number, z: number, n = 1) => res.drop(item, n, new THREE.Vector3(x + 0.7, 1.7, z + 0.4), new THREE.Vector3(x, 0, z), { scale: 1, keep: true });
   // QA: the real floor inside each container body (local y), probed down through the bay
   w.__floor = () => {
     const out: Record<string, number[]> = {}, rc = new THREE.Raycaster();

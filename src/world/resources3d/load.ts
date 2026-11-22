@@ -64,7 +64,7 @@ function surface(c: LoadC, B: Bay, flag: GFlag, shadow: boolean, group: THREE.Gr
   const cellH = new Float32Array(c.W * c.H), cellI = new Int32Array(c.W * c.H).fill(-1);
   c.stacks.forEach((s, si) => {
     const [w, h] = c.dims(s.item, s.rot), k = Math.min(1, s.n / Math.max(1, itemDef(s.item).stack));
-    for (let y = s.y; y < s.y + h; y++) for (let x = s.x; x < s.x + w; x++) if (x < c.W && y < c.H) { cellH[y * c.W + x] = B.h * (loose ? 0.16 + 0.84 * k : 0.06 + 0.5 * k); cellI[y * c.W + x] = si; }
+    for (let y = s.y; y < s.y + h; y++) for (let x = s.x; x < s.x + w; x++) if (x < c.W && y < c.H) { cellH[y * c.W + x] = B.h * (loose ? 0.16 + 0.84 * k : 0.18 + 0.72 * k); cellI[y * c.W + x] = si; }
   });
   const hAt = (vx: number, vz: number) => cellH[Math.min(c.H - 1, Math.floor(vz / RES)) * c.W + Math.min(c.W - 1, Math.floor(vx / RES))];
   let field = new Float32Array((NX + 1) * (NZ + 1));

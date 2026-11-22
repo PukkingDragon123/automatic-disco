@@ -33,9 +33,10 @@ export const DECOR: DecorDef[] = [
   D({ id: 'heater', name: 'Heater', kind: 'need', icon: 'flame', cost: { copper_wire: 4, iron_plate: 2 }, joy: 10, weight: 0.55, r: 0.45, max: 2, build: () => {
     const g = new THREE.Group(), steel = texMat(hullTex(P.rust, 8));
     g.add(mesh(new THREE.BoxGeometry(0.55, 0.6, 0.25), steel, [0, 0.32, 0]));
-    for (let k = 0; k < 4; k++) g.add(mesh(new THREE.BoxGeometry(0.42, 0.04, 0.02), glowMat(0xff6a20, 1.8), [0, 0.18 + k * 0.1, 0.13]));
+    for (let k = 0; k < 4; k++) g.add(mesh(new THREE.BoxGeometry(0.42, 0.025, 0.015), glowMat(0xd8501c, 0.95), [0, 0.18 + k * 0.1, 0.13]));
+    g.add(mesh(new THREE.BoxGeometry(0.5, 0.42, 0.01), texMat(hullTex(P.steel, 10)), [0, 0.32, 0.12]));
     g.add(mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.05, 6), texMat(null, 0x222222), [0.22, 0.66, 0]));
-    const l = new THREE.PointLight(0xff7a30, 1.2, 2.6, 1.8); l.position.set(0, 0.4, 0.3); g.add(l);
+    const l = new THREE.PointLight(0xff7a30, 0.6, 2.2, 1.8); l.position.set(0, 0.4, 0.3); g.add(l);
     return g; } }),
   D({ id: 'filter', name: 'Water Filter', kind: 'need', icon: 'drop', cost: { glass: 1, iron_rod: 2 }, joy: 8, weight: 0.5, r: 0.4, max: 1, build: () => {
     const g = prop('plastic_container', 1); const t = new THREE.Group(); t.add(g);

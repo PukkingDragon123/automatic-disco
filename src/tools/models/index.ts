@@ -20,7 +20,7 @@ const ALIAS: Record<string, string> = {
   welder: 'weld', torch: 'weld', repair: 'weld', gravity: 'grab', thrower: 'grab', grabber: 'grab', gravgrab: 'grab', planter: 'seeder', seed: 'seeder', seeds: 'seeder',
   massdriver: 'cannon', gun: 'cannon', winch: 'carry', hook: 'carry', tractor: 'lift', field: 'lift', liftfield: 'lift', coredrill: 'drill', scan: 'scanner', sample: 'sampler',
 };
-export const toolModelId = (id: string) => { const k = String(id ?? '').toLowerCase().replace(/^tool[_:-]/, '').replace(/[^a-z]/g, ''); return TOOL_SPECS[k] ? k : ALIAS[k] ?? null; };
+export const toolModelId = (id: string): string | null => { const k = String(id ?? '').toLowerCase().replace(/^tool[_:-]/, '').replace(/[^a-z]/g, ''); if (TOOL_SPECS[k]) return k; const a = ALIAS[k]; return a && TOOL_SPECS[a] ? a : null; };
 export const toolModelName = (id: string) => TOOL_SPECS[toolModelId(id) ?? '']?.name ?? id;
 export interface BuildOpts { lod?: Lod | number; animated?: boolean; level?: number; state?: ToolState }
 /**
@@ -38,4 +38,6 @@ export function buildToolModel(id: string, o: BuildOpts = {}): ToolModel | null 
 export function updateToolModels(root: THREE.Object3D, dt: number, state?: ToolState | ToolMode | number) {
   root.traverse((n) => { if ((n as ToolModel).userData?.toolModel) (n as ToolModel).update(dt, state); });
 }
-export { toolIcon, toolIconURL } from './icon';
+import { bindIconBuilder } from './icon';
+bindIconBuilder((id, level) => buildToolModel(id, { lod: 'icon', level, animated: false }));
+export { toolIcon, toolIconURL, renderIcon, disposeIconRenderer } from './icon';

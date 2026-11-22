@@ -48,7 +48,7 @@ export class Bench {
     installKitStyle(); injectBenchCSS();
     const el = this.el = document.createElement('div'); el.className = 'h7-bench';
     const top = document.createElement('div'); top.className = 'h7-bench-top';
-    skin(top, (W, H) => plate(W, H, { mat: 'steel', seed: 91, chamfer: 8, wear: 0.9, grime: 0.6, screws: true, rivets: true, hazard: 8 }));
+    skin(top, (W, H) => plate(W, H, { mat: 'gun', seed: 91, chamfer: 8, wear: 0.7, grime: 0.5, screws: true, rivets: true, hazard: 8 }));
     // trays
     const trays = document.createElement('div'); trays.className = 'h7-trays';
     for (const slot of PART_SLOTS) {
@@ -110,7 +110,7 @@ export class Bench {
   private rebuild(fitted: boolean) {
     // the jig keeps its place; only the tool in it is rebuilt (the jaws open, the part goes on, the jaws lock)
     const prev = this.view;
-    const v = new ModelView(() => mJig(() => mCustomTool(this.parts)), { w: 200, h: 150, scale: 2, spin: 0, yaw0: -0.3, rock: 0.12, hotSpin: 0, pitch: 0.5, anim: (r, t, hot) => animJig(r, t, hot), liveFps: 15, zoom: 1.08 });
+    const v = new ModelView(() => mJig(() => mCustomTool(this.parts)), { w: 270, h: 200, scale: 2, spin: 0, yaw0: -0.3, rock: 0.12, hotSpin: 0, pitch: 0.46, anim: (r, t, hot) => animJig(r, t, hot), liveFps: 15, zoom: 1.08 });
     v.cv.classList.add('h7-bench-model');
     v.cv.addEventListener('pointerenter', () => v.hot(true)); v.cv.addEventListener('pointerleave', () => v.hot(false)); v.cv.addEventListener('pointermove', (e) => v.point(e.clientX, e.clientY));
     if (fitted && prev) {

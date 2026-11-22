@@ -84,7 +84,7 @@ function zoo(engine: Engine, P: URLSearchParams) {
   scene.add(sun, sun.target);
   // a floor of packed sand at the world's texel density (UVs in metres)
   const fg = new THREE.PlaneGeometry(60, 40); const fuv = fg.attributes.uv as THREE.BufferAttribute; for (let i = 0; i < fuv.count; i++) fuv.setXY(i, fuv.getX(i) * 60, fuv.getY(i) * 40);
-  const fm = new THREE.MeshLambertMaterial({ map: colorTex(P.get('floor') ?? 'concrete'), color: 0xb8b4ac }); gbuf(fm, 0);
+  const fm = new THREE.MeshLambertMaterial({ map: colorTex(P.get('floor') ?? 'ground') }); gbuf(fm, 0);
   const ground = new THREE.Mesh(fg, fm); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
   // a row per resource at true scale: its variants, then its pile at three sizes
   const all = new THREE.Box3(); let z = 0;

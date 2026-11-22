@@ -77,7 +77,7 @@ const SURF: Record<Surf, SurfDef> = {
   teal: { base: 0x3f7a6c, paint: true, under: 0x5d6366 },
 };
 const rampCache = new Map<string, number[]>();
-export function surfRamp(m: Surf, steps = 9): number[] { const k = m + steps; let r = rampCache.get(k); if (!r) { const d = SURF[m]; r = makeRamp(d.base, steps, { spread: d.spread ?? 0.62 }); rampCache.set(k, r); } return r; }
+export function surfRamp(m: Surf, steps = 11): number[] { const k = m + steps; let r = rampCache.get(k); if (!r) { const d = SURF[m]; r = makeRamp(d.base, steps, { spread: d.spread ?? 0.62 }); rampCache.set(k, r); } return r; }
 export const surfIsMetal = (m: Surf) => !!SURF[m].metal;
 
 /**
@@ -85,22 +85,25 @@ export const surfIsMetal = (m: Surf) => !!SURF[m].metal;
  * then each material's own detail (all from smooth noise: no stripes, no lines, no flat fills)
  */
 export function surfField(m: Surf, x: number, y: number, seed = 1): number {
-  const mott = (fbm(x / 22, y / 18, seed) - 0.5) * 1.5 + (fbm(x / 7, y / 7, seed + 3) - 0.5) * 0.6;
+  const mott = (fbm(x / 26, y / 20, seed) - 0.5) * 0.5 + (fbm(x / 6, y / 6, seed + 3) - 0.5) * 0.22;
+  // Limbophobia's fine grime: dark specks in clumps, the odd pale fleck
+  const sp = hash(x, y, seed + 2), clump = vnoise(x / 5, y / 5, seed + 6);
+  const speck = sp < 0.07 && clump > 0.45 ? -0.9 : sp > 0.988 ? 0.8 : 0;
   switch (m) {
     case 'steel': case 'gun': case 'copper': {
       // brushed metal: a soft streaky sheen (noise stretched along x), fine pitting in clumps
-      const sheen = (vnoise(x / 14, y / 1.6, seed + 7) - 0.5) * 0.9;
+      const sheen = (vnoise(x / 16, y / 2.2, seed + 7) - 0.5) * 0.45;
       const pit = hash(x, y, seed + 9) < 0.035 && vnoise(x / 6, y / 6, seed + 10) > 0.5 ? -1.6 : 0;
-      return mott * 0.9 + sheen + pit;
+      return mott * 0.9 + sheen + pit + speck;
     }
     case 'brass': {
       // polished: broad soft highlight bands, tarnish in clumps
       const band = Math.pow(Math.max(0, Math.sin((x * 0.04 + y * 0.11) + fbm(x / 30, y / 30, seed + 2) * 3)), 6) * 1.6;
-      return mott * 0.8 + band - (fbm(x / 9, y / 9, seed + 4) > 0.64 ? 0.9 : 0);
+      return mott * 0.8 + band - (fbm(x / 9, y / 9, seed + 4) > 0.66 ? 0.8 : 0) + speck * 0.7;
     }
     case 'enamel': case 'olive': case 'orange': case 'red': case 'white': case 'teal':
       // paint: flat-ish with soft orange-peel mottling and a few drips of shade
-      return mott * 0.7 + (vnoise(x / 3, y / 3, seed + 12) - 0.5) * 0.35;
+      return mott * 0.8 + (vnoise(x / 3, y / 3, seed + 12) - 0.5) * 0.15 + speck;
     case 'paper': {
       const fib = hash(x, y, seed + 13) < 0.05 ? (hash(x, y, seed + 14) < 0.5 ? 0.9 : -0.9) : 0;
       return mott * 0.6 + fib;
@@ -110,7 +113,7 @@ export function surfField(m: Surf, x: number, y: number, seed = 1): number {
       // grain along the plank, bent round knots by a warp field; soft, no hard lines
       const warp = fbm(x / 40, y / 12, seed + 16) * 6;
       const g = vnoise(x / 26, y / 1.9 + warp, seed + 17);
-      return mott * 0.6 + (g - 0.5) * 1.6 + (g > 0.8 ? -0.6 : 0);
+      return mott * 0.5 + (g - 0.5) * 1.2 + (g > 0.8 ? -0.6 : 0);
     }
     case 'glass': return (fbm(x / 30, y / 30, seed + 18) - 0.5) * 1.2;
     case 'leather': {
@@ -138,14 +141,14 @@ export interface SurfOpts {
 }
 /** paint a material over every pixel where inside(x, y); returns its ramp */
 export function paintSurface(p: Px, m: Surf, inside: (x: number, y: number) => boolean, o: SurfOpts = {}): number[] {
-  const R = surfRamp(m, o.steps ?? 9), n = R.length, mid = (n - 1) / 2, seed = o.seed ?? 1, wear = o.wear ?? 0.6, H = o.h ?? p.h, d = SURF[m];
+  const R = surfRamp(m, o.steps ?? 11), n = R.length, mid = (n - 1) / 2, seed = o.seed ?? 1, wear = o.wear ?? 0.6, H = o.h ?? p.h, d = SURF[m];
   const under = d.under !== undefined ? makeRamp(d.under, 7, { spread: 0.7 }) : null;
   for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) {
     if (!inside(x, y)) continue;
     let t = mid + surfField(m, x, y, seed) + (o.light?.(x, y) ?? 0);
     // grime settles toward the foot in clumps
     const gr = (o.grime ?? 0.5) * Math.max(0, y / H - 0.55) * 2.2;
-    if (gr > 0 && fbm(x / 9, y / 6, seed + 30) < gr) t -= 1.2;
+    if (gr > 0 && fbm(x / 7, y / 5, seed + 30) < gr * 0.8) t -= 0.9;
     // edge wear: paint chipped through to the metal, bare metal burnished bright
     const e = o.edge?.(x, y) ?? 99;
     if (wear > 0 && e < 6) {
@@ -176,10 +179,10 @@ export function paintSurface(p: Px, m: Surf, inside: (x: number, y: number) => b
     }
   }
   // rust blooms on painted steel and old metal (a dark core, orange flecks round it)
-  if ((d.paint || m === 'steel' || m === 'gun') && wear > 0.5) {
-    const rust = RAMPS.rust, B = Math.round(wear * 1.5);
+  if ((d.paint || m === 'steel' || m === 'gun') && wear > 0.85 && p.w * p.h > 6000) {
+    const rust = RAMPS.rust, B = 1;
     for (let i = 0; i < B; i++) {
-      const cx = hash(i, 7, seed + 60) * p.w, cy = p.h * (0.55 + hash(i, 8, seed + 60) * 0.4), r = 2 + hash(i, 9, seed + 60) * 3.5;
+      const cx = p.w * (hash(i, 7, seed + 60) > 0.5 ? 0.9 : 0.1), cy = p.h * 0.86, r = 1.5 + hash(i, 9, seed + 60) * 1.5;
       for (let y = Math.floor(cy - r - 1); y <= cy + r + 1; y++) for (let x = Math.floor(cx - r - 1); x <= cx + r + 1; x++) {
         if (!inside(x, y)) continue;
         const dd = Math.hypot(x - cx, (y - cy) * 1.2) / r + (vnoise(x / 2, y / 2, seed + 61) - 0.5) * 0.7;

@@ -123,11 +123,11 @@ export function mTurret(tools: (Build | null)[]): THREE.Group {
   for (let i = 0; i < 4; i++) {
     const arm = new THREE.Group(); arm.rotation.y = -i * (PI / 2); head.add(arm);
     // a radial arm, a cradle with two clamp jaws, the tool over it
-    mesh(box(0.4, 0.07, 0.11), ANO2(), arm, [0, 0, 0.42], [0, PI / 2, 0]);
-    mesh(cyl(0.12, 0.13, 0.05, 6), DARK(), arm, [0, 0.03, 0.66]);
-    for (const s of [-1, 1]) mesh(box(0.035, 0.12, 0.05), ORANGE(), arm, [s * 0.11, 0.1, 0.66]);
-    const hold = new THREE.Group(); hold.name = 'tool' + i; hold.position.set(0, 0.33, 0.68); arm.add(hold);
-    mount(hold, tools[i], 0.5);
+    mesh(box(0.34, 0.07, 0.11), ANO2(), arm, [0, 0, 0.38], [0, PI / 2, 0]);
+    mesh(cyl(0.13, 0.14, 0.05, 6), DARK(), arm, [0, 0.03, 0.58]);
+    for (const s of [-1, 1]) mesh(box(0.035, 0.14, 0.05), ORANGE(), arm, [s * 0.12, 0.1, 0.58]);
+    const hold = new THREE.Group(); hold.name = 'tool' + i; hold.position.set(0, 0.42, 0.62); arm.add(hold);
+    mount(hold, tools[i], 0.78);
   }
   g.userData.state = { slot: 0, locked: [false, false, false, false], live: false, flash: 0 } as TurretState;
   g.userData.ang = 0;
@@ -172,8 +172,8 @@ export function mCradle(tool: Build | null, owned = true): THREE.Group {
     mesh(cyl(0.035, 0.035, 0.12, 8), BRASS(), arm, [0, 0, 0], [PI / 2, 0, 0]);
   }
   const l = led(g, [0, 0.1, 0.4], owned ? P.malachite[5] : P.ruby[4], 'led', 0.03, [PI / 2 - 0.3, 0, 0]); ownMat(l);
-  const hold = new THREE.Group(); hold.name = 'tool'; hold.position.y = 0.52; g.add(hold);
-  mount(hold, tool, 0.66);
+  const hold = new THREE.Group(); hold.name = 'tool'; hold.position.y = 0.58; g.add(hold);
+  mount(hold, tool, 0.9);
   g.userData.state = { open: 0, hot: false, owned };
   return g;
 }
@@ -182,7 +182,7 @@ export function animCradle(root: THREE.Object3D, t: number, hot: boolean) {
   s.open = ease(s.open, hot ? 1 : 0, dt, 6);
   const L = root.getObjectByName('clampL'), R = root.getObjectByName('clampR'), tool = root.getObjectByName('tool');
   if (L) L.rotation.z = 0.05 + s.open * 0.5; if (R) R.rotation.z = -0.05 - s.open * 0.5;
-  if (tool) { tool.position.y = 0.52 + s.open * 0.08 + Math.sin(t * 2) * 0.01 * s.open; tool.rotation.y = s.open * Math.sin(t * 0.8) * 0.4; }
+  if (tool) { tool.position.y = 0.58 + s.open * 0.08 + Math.sin(t * 2) * 0.01 * s.open; tool.rotation.y = s.open * Math.sin(t * 0.8) * 0.4; }
   pulseLeds(root, t, { led: s.owned ? (hot ? 'on' : 'pulse') : 'blink', ring: hot ? 'on' : 'pulse' });
 }
 
@@ -194,8 +194,8 @@ export function mBay(tool: Build | null): THREE.Group {
   mesh(cyl(0.34, 0.34, 0.09, 24, true), toon({ color: 0x0d1014 }), g, [0, 0.16, 0]);
   const ring = mesh(tor(0.38, 0.02, 6, 32), glow(P.glowAmber[3], 1), g, [0, 0.205, 0], [PI / 2, 0, 0], 1, 'ring'); ownMat(ring); ring.userData.col = P.glowAmber[3];
   for (let i = 0; i < 4; i++) { const a = (i / 4) * PI * 2 + PI / 4, c = new THREE.Group(); c.name = 'jaw' + i; c.position.set(Math.cos(a) * 0.44, 0.2, Math.sin(a) * 0.44); c.rotation.y = -a; g.add(c); mesh(box(0.12, 0.14, 0.08), ORANGE(), c, [0, 0.06, 0]); mesh(box(0.13, 0.03, 0.09), DARK(), c, [0, 0.14, 0]); }
-  const hold = new THREE.Group(); hold.name = 'tool'; hold.position.y = 0.5; g.add(hold);
-  mount(hold, tool, 0.62);
+  const hold = new THREE.Group(); hold.name = 'tool'; hold.position.y = 0.55; g.add(hold);
+  mount(hold, tool, 0.9);
   g.userData.state = { cur: false, drop: 0 };
   return g;
 }
