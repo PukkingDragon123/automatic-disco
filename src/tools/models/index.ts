@@ -62,5 +62,9 @@ export function driveToolModels(root: THREE.Object3D, t: number, state?: ToolSta
   for (const e of list) e.m.update(dt, typeof state === 'function' ? state(e.m, e.slot) : state);
 }
 import { bindIconBuilder } from './icon';
+import { setToolModelProvider, hasToolModelProvider } from '../../ui/kit/models';
+// register with the UI kit as soon as this module loads (the kit also finds it lazily; this closes the race where the
+// HUD builds its first views before the lazy import lands)
+if (!hasToolModelProvider()) setToolModelProvider((id, o) => buildToolModel(id, o));
 bindIconBuilder((id, level) => buildToolModel(id, { lod: 'icon', level, animated: false }));
 export { toolIcon, toolIconURL, renderIcon, disposeIconRenderer } from './icon';

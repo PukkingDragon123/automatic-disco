@@ -68,7 +68,7 @@ export const CANNON: ToolSpec = {
     for (const [y, lvl] of [[0, 1], [0.27, 2]] as [number, number][]) {
       const mountG = k.group(cradle, [-0.64, y, 0], [0, 0, 0], lvl > 1 ? { lvl } : {});
       for (const x of [-0.19, 0.19]) { k.mesh(cbox(0.03, lvl > 1 ? 0.3 : 0.26, 0.1, 0.008), 'hull2', mountG, [x, lvl > 1 ? -0.1 : -0.03, 0]); k.mesh(cyl(0.028, 0.05, 10), 'steel', mountG, [x, 0, 0], AX.x); }
-      const drum = k.group(mountG, [0, 0, 0], AX.x, { name: 'drum' });
+      const drum = k.group(k.group(mountG, [0, 0, 0], AX.x), [0, 0, 0], [0, 0, 0], { name: 'drum' });
       k.mesh(cyl(0.03, 0.36, 12), 'dark', drum);
       const cells: THREE.Mesh[] = [];
       for (const yy of [-0.15, 0.15]) { k.mesh(cyl(0.12, 0.022, 6, 0.004), 'hull2', drum, [0, yy, 0]); k.mesh(cyl(0.035, 0.03, 12), 'brass', drum, [0, yy + Math.sign(yy) * 0.02, 0]); }

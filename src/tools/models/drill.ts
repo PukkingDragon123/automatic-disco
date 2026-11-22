@@ -88,7 +88,8 @@ export const DRILL: ToolSpec = {
     k.callout('coil', 'HEAT COIL', coil);
 
     // ---------------------------------------------------------------- the chuck and the bit (x 0.46 .. 1.18)
-    const spin = k.group(root, [0.46, 0.02, 0], AX.x, { name: 'spin' });
+    // the axis frame lays the chuck along +X; the spin group turns about its own axis inside it
+    const spin = k.group(k.group(root, [0.46, 0.02, 0], AX.x), [0, 0, 0], [0, 0, 0], { name: 'spin' });
     k.mesh(ring(0.1, 0.05, 0.03, seg, 0.006), 'hazard', root, [0.47, 0.02, 0], AX.x);
     k.mesh(lathe([[0, 0], [0.09, 0], [0.095, 0.01], [0.095, 0.08], [0.075, 0.12], [0.05, 0.14], [0, 0.14]], seg), 'knurl', spin);
     for (let i = 0; i < 3; i++) { const j = k.group(spin, [0, 0.13, 0], [0, (i / 3) * TAU, 0]); k.mesh(cbox(0.03, 0.07, 0.03, 0.006), 'frame', j, [0.035, 0.02, 0]); }

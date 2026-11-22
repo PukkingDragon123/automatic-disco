@@ -232,6 +232,8 @@ export function renderModel(root: THREE.Object3D, out: CanvasRenderingContext2D,
 }
 
 // ------------------------------------------------------------------ live interactive views
+/** `?k7static`: no live re-rendering (only state changes redraw): for headless QA on software GL */
+const STATIC = typeof location !== 'undefined' && location.search.includes('k7static');
 const views = new Set<ModelView>();
 let viewTick: (() => void) | null = null;
 export interface ViewOpts {
@@ -324,7 +326,7 @@ export class ModelView {
     this.sq.step(dt); this.tx.step(dt); this.tz.step(dt);
     const animating = !this.sq.settled || !this.tx.settled || !this.tz.settled || Math.abs(this.vy) > 0.05 || this.isHot;
     const selfAnim = !!(this.root.children[0]?.userData?.update ?? this.root.userData.update);
-    const fps = o.liveFps ?? (selfAnim ? 12 : 0);
+    const fps = STATIC ? 0 : o.liveFps ?? (selfAnim ? 12 : 0);
     const live = animating || !!fps;
     if (fps && !animating) { this.liveAcc += dt; if (this.liveAcc < 1 / fps) return; this.liveAcc = 0; }
     const N = o.frames ?? 48;

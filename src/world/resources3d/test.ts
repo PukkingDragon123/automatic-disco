@@ -80,7 +80,7 @@ function zoo(engine: Engine, P: URLSearchParams) {
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0x2a323e);
   scene.add(new THREE.HemisphereLight(0xc9d6e2, 0x5a4a38, 1.2));
   const sun = new THREE.DirectionalLight(0xffe2bc, 2.9); sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.015;
+  sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.015;
   scene.add(sun, sun.target);
   // a floor of packed sand at the world's texel density (UVs in metres)
   const fg = new THREE.PlaneGeometry(60, 40); const fuv = fg.attributes.uv as THREE.BufferAttribute; for (let i = 0; i < fuv.count; i++) fuv.setXY(i, fuv.getX(i) * 60, fuv.getY(i) * 40);
@@ -118,7 +118,8 @@ function zoo(engine: Engine, P: URLSearchParams) {
     resize(w, h) { cam.aspect = w / h; cam.updateProjectionMatrix(); fit(); },
   });
   fit();
-  engine.start();
+  // a still bench: draw a few frames while textures settle, then stop (&live keeps the loop running)
+  if (P.has('live')) engine.start(); else for (let i = 0; i < 3; i++) setTimeout(() => engine.step(1 / 60, true), 400 + i * 1500);
   (window as unknown as { __done: boolean }).__done = true;
 }
 /** three pile sizes that read for this kind */

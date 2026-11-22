@@ -113,12 +113,13 @@ void main() {
   bool water = !obj && !s.sky && cell.g > 0.5;
 
   // ---- paper
-  float L = 2.45;
-  L += (vnoise(s.P.xz * 0.045) - 0.5) * 0.55 + (vnoise(s.P.xz * 0.17 + 7.0) - 0.5) * 0.22;
+  // the paper sits on a tone step (calm), mottled into the next one in wide clumps
+  float L = 2.1;
+  L += (vnoise(s.P.xz * 0.04) - 0.5) * 0.7 + (vnoise(s.P.xz * 0.15 + 7.0) - 0.5) * 0.18;
   float hs = dot(N, normalize(vec3(-0.55, 0.78, -0.32)));
   if (!obj) L += clamp((hs - 0.8) * 1.6, -0.8, 0.35);
   float fib = h21(cp);
-  L += (fib - 0.5) * 0.18;
+  L += (fib - 0.5) * 0.06;
   if (h21(cp + 11.0) > 0.985) L += 0.6; // paper flecks
   if (h21(cp * 1.31 + 23.0) > 0.99) L -= 0.5;
   if (s.sky) L = 2.0 + (fib - 0.5) * 0.4;
@@ -166,10 +167,10 @@ void main() {
   // ---- flora, rocks, creatures: stippled masses with a pale outline
   if (obj) {
     // a site plan's vegetation: a quiet mass one tone down, its crowns lit on the upper left
-    float oh = clamp((hs + 0.1) * 1.2, 0.0, 1.0);
-    col = rampC(clamp(floor(L - 0.6 + oh * 0.9 + clusterT(cp + 17.0) * 0.6), 1.0, 3.0));
+    float oh = clamp((hs + 0.1) * 1.2, 0.0, 1.0), Lo = 1.15 + oh * 0.75 + (vnoise(s.P.xz * 0.3) - 0.5) * 0.3, Lof = floor(Lo);
+    col = rampC(clamp(Lof + step(clusterT(cp + 17.0), Lo - Lof), 1.0, 3.0));
   }
-  if ((obj != objR || obj != objU) && !s.sky) col = mix(col, rampC(4.0), 0.35);
+  if ((obj != objR || obj != objU) && !s.sky) col = mix(col, rampC(4.0), 0.25);
   // the printed grid runs over everything on the sheet (1 m minor, 5 m major)
   if (smth) {
     vec2 g0 = floor(s.P.xz), gR = floor(sr.P.xz), gU = floor(su.P.xz);

@@ -52,7 +52,7 @@ export const GRAB: ToolSpec = {
     const nCoil = 6;
     for (let i = 0; i < nCoil; i++) {
       const lvl = i < 3 ? 1 : 3, c = k.group(orbit, [0, 0, 0], [(i / 3) * TAU + (i >= 3 ? PI / 3 : 0), 0, 0], lvl > 1 ? { lvl } : {});
-      const cc = k.group(c, [i >= 3 ? 0.09 : 0, 0.14, 0], AX.x);
+      const cc = k.group(k.group(c, [i >= 3 ? 0.09 : 0, 0.14, 0], AX.x), [0, 0, 0]);
       k.mesh(cyl(0.016, 0.12, 8), 'dark', cc);
       k.mesh(helix(0.026, 0.1, 7, 0.0075, det), 'coil', cc);
       for (const y of [-0.058, 0.058]) k.mesh(cyl(0.032, 0.012, 10, 0.003), 'hull', cc, [0, y, 0]);
@@ -106,7 +106,7 @@ export const GRAB: ToolSpec = {
     return (a) => {
       const sp = 0.6 + a.act * 2.2 + a.chg * 4.5;
       orb += a.dt * sp * 0.6; orbit.rotation.x = orb;
-      coils.forEach((c, i) => { c.position.y = 0.14 + Math.sin(a.t * 2.4 + i * 1.7) * 0.012 * (1 + a.chg); c.rotation.y = Math.sin(a.t * 1.5 + i) * 0.15; setGlow(c.userData.nub as THREE.Mesh, 0.4 + a.chg * 0.8 + 0.3 * Math.sin(a.t * 5 + i)); });
+      coils.forEach((c, i) => { c.position.x = Math.sin(a.t * 2.4 + i * 1.7) * 0.012 * (1 + a.chg); c.rotation.y = a.t * (1 + a.act * 3) * (i % 2 ? -1 : 1); setGlow(c.userData.nub as THREE.Mesh, 0.4 + a.chg * 0.8 + 0.3 * Math.sin(a.t * 5 + i)); });
       rs[0] += a.dt * sp * 1.6; rs[1] -= a.dt * sp * 1.25; rs[2] += a.dt * sp * 0.9;
       rings[0].rotation.y = rs[0]; rings[1].rotation.y = rs[1]; rings[2].rotation.y = rs[2];
       rings[0].parent!.rotation.z = Math.sin(a.t * 0.7) * 0.3; rings[1].parent!.rotation.x = 0.9 + Math.sin(a.t * 0.5) * 0.4;
