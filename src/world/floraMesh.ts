@@ -1,14 +1,20 @@
 // 3D flora meshes. A grown Plant (plantStyle) becomes real geometry: limb chains turn into tapered bark tubes with
-// rounded ends, tree and shrub crowns into clumps of big leaf-spray cards at the branch tips (crownCards, after
-// Lerfolese), every other leaf into its own folded, drooping, double-sided card cut from a hi-res painted leaf, grass and
-// strap leaves into creased ribbons, fronds into ribbons whose two halves hang from the rachis carrying the painted
-// leaflets, mushroom caps into domes with gills beneath, berries and pods into little spheres. Barrel cacti, crystal
-// shards and lily pads are modelled directly, and so is the ground cover (grass tussocks, sedges, meadow flowers,
-// clover, young ferns, mushrooms).
+// rounded ends, tree and shrub crowns into solid low-poly foliage masses at the branch tips (crownMasses: faceted lumps
+// wearing the painted leaf spray, cut leafy along their silhouettes, after Lerfolese's clumps) with a fringe of
+// leaf-spray cards on the full mesh, every other leaf into its own folded, drooping, double-sided card cut from a
+// hi-res painted leaf, grass and strap leaves into creased ribbons, fronds into ribbons whose two halves hang from the
+// rachis carrying the painted leaflets, mushroom caps into domes with gills beneath, berries and pods into little
+// spheres. Barrel cacti, crystal shards and lily pads are modelled directly, and so is the ground cover (grass
+// tussocks, sedges, meadow flowers, clover, young ferns, mushrooms).
+//
+// Three LODs per plant: 0 the full hero mesh (near), 1 the light mesh (mid range), 2 the low mesh (a few hundred
+// triangles at most: the scaffold limbs, the crown masses, the main leaves, fronds and caps; the same silhouette and
+// colours) that carries the plant out to the far range, where the painted cards take over.
 //
 // Every vertex carries what the vertex shader needs to move it: aW = (sway weight: 0 at the root .. 1 at the top,
 // branch weight: how far out on a limb, flutter weight: leaf tips and edges, phase), and aP = (pivot xyz: petals open
-// and close and pods breathe around it, kind). Vertex colours carry crown occlusion and per-leaf colour variation.
+// and close and pods breathe around it; a foliage mass's fill colour; FRINGE_Y on fringe cards; kind). Vertex colours
+// carry crown occlusion and per-leaf colour variation.
 import * as THREE from 'three';
 import { Rand } from '../core/rand';
 import { mixHex } from '../limbo/gfx/pixel';
@@ -21,7 +27,9 @@ import { trunkStyle, sculptTrunk, soilCollar, trunkLife, mushroom, flower } from
 
 export const PXM = 32;
 /** vertex kinds (aP.w) */
-export const KIND = { BARK: 0, LEAF: 1, PETAL: 2, GLOW: 3, SOLID: 4, STEM: 5, CRYSTAL: 6, TINT: 7, LOBE: 8, TENTACLE: 9, MEMBRANE: 10, LIQUID: 11, DEW: 12 } as const;
+export const KIND = { BARK: 0, LEAF: 1, PETAL: 2, GLOW: 3, SOLID: 4, STEM: 5, CRYSTAL: 6, TINT: 7, LOBE: 8, TENTACLE: 9, MEMBRANE: 10, LIQUID: 11, DEW: 12, MASS: 13 } as const;
+/** a crown fringe card's pivot y (a LEAF vertex with this pivot is dropped unless the fringe is on: high quality) */
+export const FRINGE_Y = -99;
 
 const TAU = Math.PI * 2;
 const lin = (c: number) => Math.pow(c / 255, 2.2);
@@ -155,14 +163,14 @@ function ribbonStrip(g: Geo, pts: V3[], hw: number[], rect: Rect, o: { fold?: nu
 }
 
 /** a leaf card (metres): base p, along d, face n; folded along the midrib, drooping at the tip */
-function leafCard(g: Geo, p: V3, d: V3, n: V3, len: number, hw: number, rect: Rect, fold: number, droop: number, crown: V3 | null) {
+function leafCard(g: Geo, p: V3, d: V3, n: V3, len: number, hw: number, rect: Rect, fold: number, droop: number, crown: V3 | null, one = false) {
   let side = vcross(n, d); if (vlen(side) < 1e-4) side = vperp(d);
   side = vnrm(side);
   let up = vnrm(vcross(d, side));
   const outward = crown ? vnrm(vsub(p, crown)) : UPV;
   if (vdot(up, outward) < 0 && vdot(up, UPV) < 0.3) { up = vmul(up, -1); side = vmul(side, -1); }
   const nrm = vnrm(vadd(vmul(up, 0.4), vmul(outward, 0.6)));
-  const segs = len > 0.24 ? 2 : 1, ca = Math.cos(fold), sa = Math.sin(fold);
+  const segs = len > 0.24 && !one ? 2 : 1, ca = Math.cos(fold), sa = Math.sin(fold);
   let prev: number[] | null = null;
   for (let k = 0; k <= segs; k++) {
     const t = k / segs, c = vadd(vadd(p, vmul(d, len * t)), [0, -droop * len * t * t, 0]);
@@ -241,63 +249,122 @@ function disc(g: Geo, c: V3, n: V3, r: number, rect: Rect, seg = 10, dome = 0, u
 }
 
 /**
- * A crown of clumps (after Lerfolese): each clump an ellipsoid filled with large leaf-spray cards, denser toward its
- * shell. A card's normal blends the clump's outward direction with the crown's (lit) plus an upward bias, so every
- * clump lights as one lump with a shaded underside; its vertex colour darkens toward the clump's core and underside
- * and with the crown's own occlusion. Cards are turned so the painted spray's top is toward the sky. The light mesh
- * keeps the outer cards only, fewer and bigger.
+ * A crown of foliage masses (after Lerfolese's clumps, made solid): each clump is a few overlapping low-poly lumps,
+ * faceted and lumpy and a little flattened beneath, wearing the species' painted leaf spray (the leaves at the cards'
+ * scale) with the dark of the crown's depth filling between the leaves. MASS kind: the shader cuts the painted leaves
+ * out wherever a lump turns away from the eye, so every silhouette stays leafy and bushy without a single card.
+ * Normals blend each facet with its lump's and the crown's outward directions plus an upward bias, so a clump lights
+ * as one lump, bright on top and shaded beneath, while its facets still read; vertex colours darken toward the
+ * clump's core and underside and with the crown's own occlusion. The full mesh (LOD 0) also grows a fringe of small
+ * leaf-spray cards poking out of the shells (FRINGE_Y pivot: drawn on high quality only); the light and low meshes
+ * keep fewer, coarser lumps. Returns where fruit hangs (under the clumps; full mesh only).
  */
-function crownCards(g: Geo, P: Plant, sp: PlantSpecies, tex: FloraTex, r: Rand, L1: boolean, look: { style: SprayStyle; shape: Shape; ramps: number[][]; twig: number[]; accent: number[]; young: number[]; thorns: boolean; hairs: boolean }): V3[] {
+function crownMasses(g: Geo, P: Plant, sp: PlantSpecies, tex: FloraTex, r: Rand, lod: number, look: { style: SprayStyle; shape: Shape; ramps: number[][]; twig: number[]; accent: number[]; young: number[]; thorns: boolean; hairs: boolean }): V3[] {
   const CL = P.clumps.map((k) => ({ c: M(k.c), R: M(k.R), ramp: k.ramp, flat: !!k.flat, lit: k.lit ?? 0.6 }));
   const shrub = sp.arch === 'shrub', umb = sp.arch === 'umbrella';
   // the crown's centre, a little low: the light wraps round the crown from above
   let vs = 0; const cc: V3 = [0, 0, 0];
   for (const k of CL) { const w = k.R[0] * k.R[1] * k.R[2]; cc[0] += k.c[0] * w; cc[1] += k.c[1] * w; cc[2] += k.c[2] * w; vs += w; }
   cc[0] /= vs; cc[1] = cc[1] / vs - (umb ? 0.8 : shrub ? 0.15 : 0.35); cc[2] /= vs;
-  const budget = shrub ? (L1 ? 64 : 200) : L1 ? 160 : 460, shd = P.shade();
-  const sizeK = L1 ? (shrub ? 1.5 : 1.25) : shrub ? 1.2 : 0.88;
+  const shd = P.shade();
+  const seg = lod ? (lod > 1 ? 6 : 7) : 9, rings = lod ? (lod > 1 ? 3 : 4) : 5, jag = lod > 1 ? 0.1 : 0.15;
   const cand: [number, V3][] = [];
   CL.forEach((k, ci) => {
-    const n = Math.max(L1 ? 3 : 6, Math.round((budget * k.R[0] * k.R[1] * k.R[2]) / vs));
     // the clump's own place in the crown: open sky above it or buried in it
     const sky = Math.min(1, 0.45 + 0.75 * shd.sky([k.c[0] * PXM, (k.c[1] + k.R[1] * 0.5) * PXM, k.c[2] * PXM]));
     const ramps = look.ramps, ri = Math.max(0, ramps.indexOf(k.ramp)), acc = ramps.length > 1 ? ramps[(ri + 1) % ramps.length] : look.accent;
     const Rm = k.flat ? (k.R[0] + k.R[2]) * 0.45 : (k.R[0] + k.R[1] + k.R[2]) / 3;
-    for (let q = 0; q < n; q++) {
-      let dx = 0, dy = 0, dz = 0, dd = 0;
-      do { dx = r.range(-1, 1); dy = r.range(-1, 1); dz = r.range(-1, 1); dd = dx * dx + dy * dy + dz * dz; } while (dd > 1 || dd < 1e-4);
-      const il = 1 / Math.sqrt(dd); dx *= il; dy *= il; dz *= il;
-      if (k.flat && dy < -0.2) dy *= 0.4;
-      // the light mesh: only the outer shell (the inside is never seen from where it shows)
-      const rr = L1 ? 0.55 + 0.45 * Math.pow(r.next(), 0.6) : 0.3 + 0.7 * Math.pow(r.next(), 0.55);
-      const p: V3 = [k.c[0] + dx * k.R[0] * rr, k.c[1] + dy * k.R[1] * rr - 0.06 * rr * rr, k.c[2] + dz * k.R[2] * rr];
-      const nOut = vnrm([dx / k.R[0], dy / k.R[1], dz / k.R[2]]);
-      const nl = vnrm(vadd(vadd(vmul(nOut, k.lit), vmul(vnrm(vsub(p, cc)), 1 - k.lit)), [0, 0.18, 0]));
-      // the card's face: random, leaning out of the clump; its top turned up to the sky
-      const fn = vnrm([dx * 0.7 + r.range(-0.8, 0.8), dy * 0.7 + r.range(-0.8, 0.8), dz * 0.7 + r.range(-0.8, 0.8)]);
-      let up = vsub(UPV, vmul(fn, fn[1]));
-      if (vlen(up) < 0.25) up = vperp(fn);
-      up = vnrm(up);
-      const sd0 = vcross(up, fn), tw = r.range(-0.55, 0.55), ct = Math.cos(tw), st = Math.sin(tw);
-      const ax = vnrm(vadd(vmul(sd0, ct), vmul(up, st))), ay = vnrm(vsub(vmul(up, ct), vmul(sd0, st)));
-      const s = Rm * sizeK * r.range(0.78, 1.22);
-      // darker toward the clump's core and under it: each clump a lit lump over its own shade
-      const ao = Math.min(1.08, Math.max(0.36, 0.34 + 0.36 * rr + 0.4 * (nl[1] * 0.5 + 0.5) - (dy < -0.35 ? 0.1 : 0))) * sky, vv = r.range(0.93, 1.06);
-      g.col = [ao * vv, ao * vv, ao * vv * 0.98]; g.kind = KIND.LEAF; g.phase = r.next(); g.pivot = [0, 0, 0];
-      const rect = tex.crown(look.style, look.shape, k.ramp, { accent: acc, young: look.young, twig: look.twig, bud: look.accent, var: (ci + q) % 3 + (ci % 4 === 3 && q % 4 === 0 ? 1 : 0), thorns: look.thorns, hairs: look.hairs, big: shrub });
-      const fl = 0.5 + 0.5 * rr;
-      const a = g.v(vadd(p, vadd(vmul(ax, -s), vmul(ay, s))), nl, rect.u0, rect.v0, fl), b = g.v(vadd(p, vadd(vmul(ax, s), vmul(ay, s))), nl, rect.u0 + rect.du, rect.v0, fl);
-      const c = g.v(vadd(p, vadd(vmul(ax, s), vmul(ay, -s))), nl, rect.u0 + rect.du, rect.v0 + rect.dv, fl), d = g.v(vadd(p, vadd(vmul(ax, -s), vmul(ay, -s))), nl, rect.u0, rect.v0 + rect.dv, fl);
-      g.quad(a, b, c, d);
+    // one painted spray spans S metres on a facet, as it did on a card: the leaves keep their size
+    const S = Rm * (shrub ? 2.4 : 1.76);
+    // the shade between the leaves: the clump ramp's deep steps (linear rgb, carried in the pivot)
+    const deep = linHex(k.ramp[1] ?? k.ramp[0], 1.05), fill: V3 = [deep[0], deep[1], deep[2]];
+    // the lumps: one filling the clump's core, the rest bulging out of its shell (more of them up close)
+    const nL = lod === 0 ? (Rm > 0.42 ? 4 : 3) : lod === 1 ? (Rm > 0.38 ? 3 : 2) : Rm > 0.55 ? 2 : 1;
+    const lumps: { c: V3; R: V3 }[] = [{ c: k.c, R: vmul(k.R, nL > 1 ? 0.8 : 0.94) }];
+    for (let j = 1; j < nL; j++) {
+      const a = (j / (nL - 1)) * TAU + r.range(-0.6, 0.6), el = r.range(-0.2, 0.9) * (k.flat ? 0.35 : 1), f = r.range(0.5, 0.64);
+      const d: V3 = [Math.cos(a) * Math.cos(el), Math.sin(el), Math.sin(a) * Math.cos(el)];
+      lumps.push({ c: [k.c[0] + d[0] * k.R[0] * 0.44, k.c[1] + d[1] * k.R[1] * 0.38, k.c[2] + d[2] * k.R[2] * 0.44], R: [k.R[0] * f, k.R[1] * f * r.range(0.85, 1.05), k.R[2] * f] });
     }
+    const vv = r.range(0.93, 1.06);
+    lumps.forEach((L, li) => {
+      g.kind = KIND.MASS; g.pivot = fill; g.phase = r.next();
+      const rect = tex.crown(look.style, look.shape, k.ramp, { accent: acc, young: look.young, twig: look.twig, bud: look.accent, var: (ci + li) % 3, thorns: look.thorns, hairs: look.hairs, big: shrub });
+      // the lump's grid: rings from the crown down to a flattened underside, every vertex pushed in or out a little
+      const ph = r.range(0, TAU), grid: V3[][] = [];
+      for (let j = 0; j <= rings; j++) {
+        const th = (j / rings) * Math.PI, y = Math.cos(th), s = Math.sin(th), row: V3[] = [];
+        for (let i = 0; i < seg; i++) {
+          const a = (i / seg) * TAU + ph + (j & 1) * (Math.PI / seg), kk = j === 0 || j === rings ? 1 : 1 + jag * r.range(-1, 1);
+          row.push([L.c[0] + Math.cos(a) * s * L.R[0] * kk, L.c[1] + (y < 0 ? y * 0.74 : y) * L.R[1] * kk, L.c[2] + Math.sin(a) * s * L.R[2] * kk]);
+        }
+        grid.push(row);
+      }
+      const vert = (p: V3, fn: V3, u: number, v: number) => {
+        const o: V3 = vnrm([(p[0] - L.c[0]) / (L.R[0] * L.R[0]), (p[1] - L.c[1]) / (L.R[1] * L.R[1]), (p[2] - L.c[2]) / (L.R[2] * L.R[2])]);
+        const co = vnrm(vsub(p, cc));
+        const nl = vnrm(vadd(vadd(vadd(vmul(fn, 0.4), vmul(o, 0.26 + 0.3 * k.lit)), vmul(co, 0.12 + 0.34 * (1 - k.lit))), [0, 0.16, 0]));
+        // darker toward the clump's core and under it: each clump a lit lump over its own shade
+        const q: V3 = [(p[0] - k.c[0]) / k.R[0], (p[1] - k.c[1]) / k.R[1], (p[2] - k.c[2]) / k.R[2]], rr = Math.min(1.1, vlen(q)), dy = q[1] / Math.max(0.05, rr);
+        const ao = Math.min(1.08, Math.max(0.34, 0.3 + 0.34 * rr + 0.42 * (nl[1] * 0.5 + 0.5) - (dy < -0.35 ? 0.1 : 0))) * sky * vv;
+        g.col = [ao, ao, ao * 0.98];
+        return g.v(p, nl, u, v, 0.15 + 0.25 * rr);
+      };
+      const tri = (a: V3, b: V3, c: V3) => {
+        let fn = vcross(vsub(b, a), vsub(c, a));
+        if (vlen(fn) < 1e-10) return;
+        const m: V3 = [(a[0] + b[0] + c[0]) / 3, (a[1] + b[1] + c[1]) / 3, (a[2] + b[2] + c[2]) / 3];
+        if (vdot(fn, vsub(m, L.c)) < 0) { const t = b; b = c; c = t; fn = vmul(fn, -1); }
+        fn = vnrm(fn);
+        // the facet's own frame for the spray: across it level, up it toward the sky
+        let t1 = vcross(UPV, fn); if (vlen(t1) < 0.2) t1 = vperp(fn); t1 = vnrm(t1);
+        const t2 = vcross(fn, t1), P3 = [a, b, c], lx = P3.map((p) => vdot(vsub(p, m), t1) / S), ly = P3.map((p) => vdot(vsub(p, m), t2) / S);
+        const ext = Math.max(0.01, ...lx.map(Math.abs), ...ly.map(Math.abs)), sc = Math.min(1, 0.44 / ext), room = Math.max(0, 0.46 - ext * sc);
+        const oa = r.range(0, TAU), od = room * Math.sqrt(r.next()) * 0.7, ox = Math.cos(oa) * od, oy = Math.sin(oa) * od;
+        const ids = P3.map((p, n) => vert(p, fn, rect.u0 + rect.du * (0.5 + ox + lx[n] * sc), rect.v0 + rect.dv * (0.5 + oy - ly[n] * sc)));
+        g.tri(ids[0], ids[1], ids[2]);
+      };
+      for (let j = 0; j < rings; j++) for (let i = 0; i < seg; i++) {
+        const i1 = (i + 1) % seg, a = grid[j][i], b = grid[j][i1], c = grid[j + 1][i1], d = grid[j + 1][i];
+        if (j > 0) tri(a, b, c);
+        if (j < rings - 1) tri(a, c, d);
+      }
+    });
+    if (lod === 0) {
+      // the fringe: small sprays poking out of the shell, breaking the silhouette (high quality only)
+      const nF = Math.max(3, Math.round(((shrub ? 60 : 130) * k.R[0] * k.R[1] * k.R[2]) / vs));
+      for (let q = 0; q < nF; q++) {
+        let dx = 0, dy = 0, dz = 0, dd = 0;
+        do { dx = r.range(-1, 1); dy = r.range(-0.55, 1); dz = r.range(-1, 1); dd = dx * dx + dy * dy + dz * dz; } while (dd > 1 || dd < 1e-4);
+        const il = 1 / Math.sqrt(dd); dx *= il; dy *= il; dz *= il;
+        if (k.flat && dy < -0.2) dy *= 0.4;
+        const rr = r.range(0.86, 1.02), p: V3 = [k.c[0] + dx * k.R[0] * rr, k.c[1] + dy * k.R[1] * rr, k.c[2] + dz * k.R[2] * rr];
+        const nOut = vnrm([dx / k.R[0], dy / k.R[1], dz / k.R[2]]);
+        const nl = vnrm(vadd(vadd(vmul(nOut, k.lit), vmul(vnrm(vsub(p, cc)), 1 - k.lit)), [0, 0.18, 0]));
+        const fn = vnrm([dx * 0.8 + r.range(-0.6, 0.6), dy * 0.8 + r.range(-0.6, 0.6), dz * 0.8 + r.range(-0.6, 0.6)]);
+        let up = vsub(UPV, vmul(fn, fn[1]));
+        if (vlen(up) < 0.25) up = vperp(fn);
+        up = vnrm(up);
+        const sd0 = vcross(up, fn), tw = r.range(-0.55, 0.55), ct = Math.cos(tw), st = Math.sin(tw);
+        const ax = vnrm(vadd(vmul(sd0, ct), vmul(up, st))), ay = vnrm(vsub(vmul(up, ct), vmul(sd0, st)));
+        const s = Rm * (shrub ? 0.5 : 0.4) * r.range(0.8, 1.2);
+        const ao = Math.min(1.08, Math.max(0.4, 0.7 + 0.4 * (nl[1] * 0.5 + 0.5) - (dy < -0.35 ? 0.12 : 0))) * sky * r.range(0.93, 1.06);
+        g.col = [ao, ao, ao * 0.98]; g.kind = KIND.LEAF; g.phase = r.next(); g.pivot = [0, FRINGE_Y, 0];
+        const rect = tex.crown(look.style, look.shape, k.ramp, { accent: acc, young: look.young, twig: look.twig, bud: look.accent, var: (ci + q) % 3, thorns: look.thorns, hairs: look.hairs, big: shrub });
+        const a = g.v(vadd(p, vadd(vmul(ax, -s), vmul(ay, s))), nl, rect.u0, rect.v0, 1), b = g.v(vadd(p, vadd(vmul(ax, s), vmul(ay, s))), nl, rect.u0 + rect.du, rect.v0, 1);
+        const c = g.v(vadd(p, vadd(vmul(ax, s), vmul(ay, -s))), nl, rect.u0 + rect.du, rect.v0 + rect.dv, 0.7), d = g.v(vadd(p, vadd(vmul(ax, -s), vmul(ay, -s))), nl, rect.u0, rect.v0 + rect.dv, 0.7);
+        g.quad(a, b, c, d);
+      }
+    }
+    g.pivot = [0, 0, 0];
     // fruit hangs under the clumps, the low and outer ones first (a bush's berries sit out on its clumps' flanks,
-    // never down on the ground under the skirt)
+    // never down on the ground under the skirt), just outside the masses
     const hx = k.c[0] - cc[0], hz = k.c[2] - cc[2], hl = Math.hypot(hx, hz) || 1;
-    if (shrub) { if (k.c[1] > k.R[1] * 0.6) cand.push([-hl - k.c[1] * 0.3, [k.c[0] + (hx / hl) * k.R[0] * 0.8, k.c[1] - k.R[1] * 0.15, k.c[2] + (hz / hl) * k.R[2] * 0.8]]); }
-    else if (k.flat && umb) cand.push([k.c[1], [k.c[0] + r.range(-0.3, 0.3) * k.R[0], k.c[1] - k.R[1] * 0.5, k.c[2] + r.range(-0.3, 0.3) * k.R[2]]]);
-    else if (k.c[1] - k.R[1] > 0.4) cand.push([k.c[1] - hl * 0.8, [k.c[0] + r.range(-0.4, 0.4) * k.R[0], k.c[1] - k.R[1] * 0.78, k.c[2] + r.range(-0.4, 0.4) * k.R[2]]]);
+    if (shrub) { if (k.c[1] > k.R[1] * 0.6) cand.push([-hl - k.c[1] * 0.3, [k.c[0] + (hx / hl) * k.R[0] * 0.86, k.c[1] - k.R[1] * 0.2, k.c[2] + (hz / hl) * k.R[2] * 0.86]]); }
+    else if (k.flat && umb) cand.push([k.c[1], [k.c[0] + r.range(-0.3, 0.3) * k.R[0], k.c[1] - k.R[1] * 0.8, k.c[2] + r.range(-0.3, 0.3) * k.R[2]]]);
+    else if (k.c[1] - k.R[1] > 0.4) cand.push([k.c[1] - hl * 0.8, [k.c[0] + r.range(-0.4, 0.4) * k.R[0], k.c[1] - k.R[1] * 0.76, k.c[2] + r.range(-0.4, 0.4) * k.R[2]]]);
   });
-  return L1 ? [] : cand.sort((a, b) => a[0] - b[0]).slice(0, 8).map((e) => e[1]);
+  return lod ? [] : cand.sort((a, b) => a[0] - b[0]).slice(0, 8).map((e) => e[1]);
 }
 
 // ------------------------------------------------------------------------------------------------ plants
@@ -309,7 +376,7 @@ export interface PlantGeo { geo: THREE.BufferGeometry; H: number; R: number; tri
 
 /** mesh a grown, normalised plant (its sprite pass ran first: limbs and leaves carry their sky light) */
 export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: number, bladeSet?: BladeSet, lod = 0): PlantGeo {
-  const r = new Rand(seed), L1 = lod > 0;
+  const r = new Rand(seed), L1 = lod > 0, L2 = lod > 1;
   // extents (metres)
   let H = 0.1, R = 0.05, cy = 0, cn = 0;
   for (const l of P.limbs) { H = Math.max(H, l.b[1] / PXM, l.a[1] / PXM); R = Math.max(R, Math.hypot(l.b[0], l.b[2]) / PXM); }
@@ -323,6 +390,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
 
   // every woody species wears its own bark on all its limbs (plated, furrowed, paper, shaggy, smooth, fibrous, scaled)
   const woody = tree || sp.arch === 'shrub' ? trunkStyle(sp, false) : null;
+  const clumpedCrown = (tree || sp.arch === 'shrub' || sp.arch === 'umbrella') && P.clumps.length > 0;
   // ---- limbs: chains -> tubes (pixel-art twigs are a pixel thick; in 3D they thin out, short twigs merge)
   let i = 0;
   const limbs = P.limbs;
@@ -347,10 +415,12 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
     const fine = crowned && isBark && r0 < (sp.arch === 'shrub' ? 0.03 : 0.022);
     if (fine && L1) continue;
     if (L1 && !crowned && r0 < 0.01 && pts.length > 6) continue;
+    // the low mesh: the crown masses hide the inner limbs, only the scaffold shows
+    if (L2 && clumpedCrown && isBark && r0 < (sp.arch === 'shrub' ? 0.04 : 0.05) && pts[0][1] > 0.05) continue;
     // merge short steps on thin limbs
     let P2 = pts, R2 = rad;
     if (L1 && !isBark && r0 < 0.012) continue;
-    const stepK = fine ? (sp.arch === 'shrub' ? 4 : 3) : L1 ? (r0 < 0.08 ? (pts.length > 12 ? 4 : 3) : 2) : r0 < 0.05 || sp.arch === 'shrub' ? (pts.length > 16 ? 3 : 2) : 1;
+    const stepK = fine ? (sp.arch === 'shrub' ? 4 : 3) : L2 ? Math.max(2, Math.ceil((pts.length - 1) / (r0 > 0.08 ? 4 : 3))) : L1 ? (r0 < 0.08 ? (pts.length > 12 ? 4 : 3) : 2) : r0 < 0.05 || sp.arch === 'shrub' ? (pts.length > 16 ? 3 : 2) : 1;
     if (pts.length > 3 && stepK > 1) { P2 = []; R2 = []; for (let k = 0; k < pts.length; k += stepK) { P2.push(pts[k]); R2.push(rad[k]); } if ((pts.length - 1) % stepK) { P2.push(pts[pts.length - 1]); R2.push(rad[rad.length - 1]); } }
     // a tree's trunk is sculpted (buttresses, twist, ridged bark, knots, a hollow) and sits in a soil collar; big
     // limbs swell into a collar where they leave their parent; roots sink into little mounds of earth
@@ -365,14 +435,14 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
       if (!L1) trunkLife(g, tex, sp, T, st, col, r);
       continue;
     }
-    if (isBark && tree && !fine && pts[0][1] > 0.1 && r0 > 0.02 && P2.length > 1) {
+    if (isBark && tree && !fine && !L2 && pts[0][1] > 0.1 && r0 > 0.02 && P2.length > 1) {
       P2 = [P2[0], vadd(P2[0], vmul(vsub(P2[1], P2[0]), 0.2)), ...P2.slice(1)]; R2 = [R2[0] * 1.42, R2[0] * 1.12, ...R2.slice(1)];
     }
     const rootEnd = tree && isBark && !L1 && pts[pts.length - 1][1] < 0.03 && pts[0][1] > pts[pts.length - 1][1] + 0.02;
     const slot = l0.ring ? BARK.RING : isBark && woody ? woody.slot : isBark ? ((l0.ridge ?? 0) >= 3 ? (sp.trunk & 1 ? BARK.PLATE : BARK.FURROW) : (l0.ridge ?? 0) >= 2 ? BARK.FURROW : sp.arch === 'coral' ? BARK.FLESH : BARK.STEM) : (l0.ridge ?? 0) >= 3 ? BARK.FIBRE : BARK.STEM;
     const fslot = sp.arch === 'fungus' && isBark ? BARK.FIBRE : slot;
     const green = !isBark || sp.arch === 'coral';
-    const rm = Math.max(...R2), sides = fine ? 3 : sp.arch === 'shrub' ? (L1 ? 3 : rm > 0.035 ? 5 : 3) : L1 ? (rm > 0.07 ? 6 : rm > 0.035 && !green ? 4 : 3) : rm > 0.09 ? 8 : rm > 0.045 ? 6 : rm > 0.022 && !(green && rm < 0.04) ? 4 : 3;
+    const rm = Math.max(...R2), sides = fine ? 3 : L2 ? (rm > 0.09 ? 5 : rm > 0.045 ? 4 : 3) : sp.arch === 'shrub' ? (L1 ? 3 : rm > 0.035 ? 5 : 3) : L1 ? (rm > 0.07 ? 6 : rm > 0.035 && !green ? 4 : 3) : rm > 0.09 ? 8 : rm > 0.045 ? 6 : rm > 0.022 && !(green && rm < 0.04) ? 4 : 3;
     const base = l0.ramp[Math.min(l0.ramp.length - 1, 3)], ao = ampOf(amb);
     g.col = linHex(base, ao * SLOT_GAIN[fslot] * (isBark ? 0.95 : 1));
     g.kind = isBark && sp.arch !== 'coral' && sp.arch !== 'fungus' ? KIND.BARK : KIND.STEM; g.pivot = [0, 0, 0]; g.phase = r.next();
@@ -391,16 +461,16 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
   const fsty = new Rand(sp.id * 977 + 3), hairy = fsty.chance(0.3), thorny = (sp.arch === 'shrub' || sp.arch === 'umbrella') && fsty.chance(0.45);
   const sprayStyle: SprayStyle = sp.arch === 'umbrella' ? fsty.pick<SprayStyle>(['bipinnate', 'pinnate', 'alternate']) : sp.arch === 'shrub' ? fsty.pick<SprayStyle>(['alternate', 'trifoliate', 'whorl', 'alternate', 'palmate']) : fsty.pick<SprayStyle>(['alternate', 'pinnate', 'palmate', 'whorl', 'alternate']);
   const twigR = rampFor(sp.trunk), accR = rampFor(sp.accent), youngR = rampFor(mixHex(sp.leaf, 0xd8dca0, 0.3));
-  const budget = crown3 ? (sp.arch === 'shrub' ? (L1 ? 34 : 80) : L1 ? 120 : 380) : L1 ? 40 : 400;
+  const budget = crown3 ? (sp.arch === 'shrub' ? (L2 ? 16 : L1 ? 34 : 80) : L2 ? 40 : L1 ? 120 : 380) : L2 ? 22 : L1 ? 40 : 400;
   // crowns grown as clumps (broadleaf, umbrella, weeper, shrub) are dressed clump by clump in big leaf-spray cards
-  const clumped = crown3 && P.clumps.length > 0;
+  const clumped = clumpedCrown;
   let crownAnchors: V3[] = [];
   if (clumped) {
     const shapes = new Map<Shape, number>(), rampN = new Map<number[], number>();
     for (const l of P.leaves) if (!l.skip3d && l.kind !== K.ACC) { shapes.set(l.shape, (shapes.get(l.shape) ?? 0) + 1); rampN.set(l.ramp, (rampN.get(l.ramp) ?? 0) + 1); }
     for (const k of P.clumps) if (!rampN.has(k.ramp)) rampN.set(k.ramp, 1);
     const shape = [...shapes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'ovate';
-    crownAnchors = crownCards(g, P, sp, tex, r, L1, { style: shape === 'needle' ? 'needle' : sprayStyle, shape, ramps: [...rampN.entries()].sort((a, b) => b[1] - a[1]).map((e) => e[0]), twig: twigR, accent: accR, young: youngR, thorns: thorny, hairs: hairy });
+    crownAnchors = crownMasses(g, P, sp, tex, r, lod, { style: shape === 'needle' ? 'needle' : sprayStyle, shape, ramps: [...rampN.entries()].sort((a, b) => b[1] - a[1]).map((e) => e[0]), twig: twigR, accent: accR, young: youngR, thorns: thorny, hairs: hairy });
   }
   const thin = Math.max(1, Math.round(nLeaf / budget)), grow = thin > 1 ? Math.sqrt(thin) * 0.9 : 1;
   let li = 0, vi = seed % 4;
@@ -414,7 +484,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
       const rect = tex.spray(needle ? 'needle' : sprayStyle, l.shape, l.ramp, { var: vi++ % 4, twig: twigR, berry: accR, thorns: thorny, hairs: hairy, young: youngR });
       const Ls = (l.len / PXM) * leafK * Math.sqrt(thin) * (needle ? 1.0 : 1.2), ao = ampOf(l.amb), vv = r.range(0.9, 1.08);
       g.col = [ao * vv, ao * vv, ao * vv]; g.kind = KIND.LEAF; g.phase = r.next(); g.pivot = [0, 0, 0];
-      leafCard(g, M(l.p), l.d, l.n, Ls, Ls * 0.39, rect, L1 ? 0 : 0.3, tree ? 0.18 : 0.12, crown);
+      leafCard(g, M(l.p), l.d, l.n, Ls, Ls * 0.39, rect, L1 ? 0 : 0.3, tree ? 0.18 : 0.12, crown, L2);
       continue;
     }
     const rect = needle ? tex.needles(l.ramp, li & 1) : tex.leaf(l.shape, l.ramp, { vein: l.vein, lat: l.lat, teeth: l.teeth, petal, var: petal ? 0 : (vi++ % 4), hairs: hairy && !petal });
@@ -423,7 +493,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
     g.col = [ao * vv * (1 + warm), ao * vv, ao * vv * (1 - warm)];
     g.kind = petal ? KIND.PETAL : KIND.LEAF; g.phase = r.next();
     g.pivot = petal ? M(l.p) : [0, 0, 0];
-    leafCard(g, M(l.p), l.d, l.n, len, hw, rect, L1 || len < 0.2 ? 0 : Math.atan(l.fold ?? 0.35) * 0.75, petal ? 0.05 : tree ? 0.22 : 0.16, petal ? null : crown);
+    leafCard(g, M(l.p), l.d, l.n, len, hw, rect, L1 || len < 0.2 ? 0 : Math.atan(l.fold ?? 0.35) * 0.75, petal ? 0.05 : tree ? 0.22 : 0.16, petal ? null : crown, L2);
   }
 
   parts.leaves = g.tris - parts.limbs;
@@ -431,16 +501,20 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
   const bs = bladeSet ?? bladeSetOf([P]);
   const bladeTex = bs.ramps.length ? tex.blades(bs.ramps, bs.dry, bs.ramps.length * 2, { pairs: true, wide: true }) : null;
   const grassy = sp.arch === 'tuft' || sp.arch === 'reed';
-  let bi = 0;
+  let bi = 0, si = 0;
+  // the low mesh keeps half the blades (a little wider) and every other weeping strand
+  const nBlade = P.ribbons.reduce((n, rb) => n + (rb.kind === 'blade' ? 1 : 0), 0), bladeThin = L2 && nBlade > 8 ? 2 : 1;
   for (const rb of P.ribbons) {
-    const pts = resample(rb.pts.map(M), rb.kind === 'blade' ? (L1 ? 2 : grassy ? 3 : 4) : L1 ? 3 : 6);
+    if (L2 && rb.kind === 'strand' && (si++ & 1)) continue;
+    const pts = resample(rb.pts.map(M), rb.kind === 'blade' ? (L2 ? (grassy ? 1 : 2) : L1 ? 2 : grassy ? 3 : 4) : L2 ? (rb.kind === 'strand' ? 2 : 3) : L1 ? 3 : 6);
     const lim = rb.limbs ?? [];
     let amb = 0; for (const l of lim) amb += l.amb ?? 0.6; amb = lim.length ? amb / lim.length : 0.6;
     g.phase = r.next(); g.pivot = [0, 0, 0]; g.kind = KIND.LEAF;
     const ao = ampOf(amb);
     if (rb.kind === 'blade' && sp.arch === 'shrub' && (L1 || (bi++ & 1))) continue;
+    if (rb.kind === 'blade' && bladeThin > 1 && (bi++ % bladeThin)) continue;
     if (rb.kind === 'blade') {
-      const w0 = (rb.w[0] / PXM) * 1.25, nc = bs.ramps.length * 2, col = (bs.index.get(rb.ramp.join('.')) ?? 0) * 2 + (rb.dry ? 1 : 0);
+      const w0 = (rb.w[0] / PXM) * 1.25 * (bladeThin > 1 ? 1.35 : 1), nc = bs.ramps.length * 2, col = (bs.index.get(rb.ramp.join('.')) ?? 0) * 2 + (rb.dry ? 1 : 0);
       const vv = r.range(0.9, 1.08);
       g.col = [ao * vv, ao * vv, ao * vv];
       ribbonStrip(g, pts, pts.map(() => w0), bladeTex!, { crease: 0.22, flutLen: true, flat: grassy || L1, uOff: col / nc, uW: 1 / nc });
@@ -465,7 +539,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
   // ---- orbs: fruit, berries, beads, coral polyps, lantern pods
   const spk = tex.speckle();
   let oi = 0;
-  const orbThin = Math.max(1, Math.round(P.orbs.length / (sp.arch === 'shrub' ? (L1 ? 3 : 6) : L1 ? 8 : 40)));
+  const orbThin = Math.max(1, Math.round(P.orbs.length / (sp.arch === 'shrub' ? (L2 ? 2 : L1 ? 3 : 6) : L2 ? 4 : L1 ? 8 : 40)));
   const anchors: V3[] = [];
   for (const o of P.orbs) {
     // edible fruit is the ecosystem's (the fruit layer shows it, scaled by ripeness): here it only marks where it hangs
@@ -478,13 +552,14 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
       const rect = tex.pod(o.ramp, o.ribs * 2, o.glow !== undefined);
       g.kind = o.glow !== undefined ? KIND.GLOW : KIND.SOLID; g.col = [ao, ao, ao];
       // a lantern pod: six flat facets, a broad shoulder, a pointed tip and a short neck at the stalk
-      const sq = o.sq ?? 1, sides = L1 ? 5 : 6, prof: [number, number][] = [[0.15, -1.0], [0.62, -0.72], [0.96, -0.15], [0.84, 0.42], [0.42, 0.85], [0.05, 1.12]];
+      const sq = o.sq ?? 1, sides = L2 ? 4 : L1 ? 5 : 6, prof: [number, number][] = [[0.15, -1.0], [0.62, -0.72], [0.96, -0.15], [0.84, 0.42], [0.42, 0.85], [0.05, 1.12]];
       const Pg: V3[][] = prof.map(([pr, py], j) => Array.from({ length: sides + 1 }, (_, i) => { const a = (i / sides) * TAU + (j & 1) * 0.25; return [c[0] + Math.cos(a) * pr * rr, c[1] + py * rr * sq, c[2] + Math.sin(a) * pr * rr] as V3; }));
       facetGrid(g, Pg, rect, c);
     } else {
       g.kind = o.glow !== undefined ? KIND.GLOW : KIND.SOLID;
       g.col = linHex(o.ramp[Math.min(o.ramp.length - 1, 4)], ao * 1.35);
-      if (L1) sphere(g, c, rr, spk, rr > 0.08 ? 6 : 4, rr > 0.08 ? 3 : 2, o.sq ?? 1);
+      if (L2) sphere(g, c, rr, spk, rr > 0.08 ? 5 : 4, 2, o.sq ?? 1);
+      else if (L1) sphere(g, c, rr, spk, rr > 0.08 ? 6 : 4, rr > 0.08 ? 3 : 2, o.sq ?? 1);
       else sphere(g, c, rr, spk, rr > 0.08 ? 8 : rr > 0.04 ? 6 : 5, rr > 0.08 ? 4 : rr > 0.04 ? 3 : 2, o.sq ?? 1);
     }
   }
@@ -500,7 +575,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
   for (const e of P.eyes) {
     const rect = tex.eye(e.iris);
     g.kind = KIND.SOLID; g.pivot = M(e.p); g.phase = r.next(); g.col = [1, 1, 1];
-    disc(g, M(e.p), vnrm(e.n), (e.r / PXM) * 1.1, rect, L1 ? 6 : 10, 0.35, UPV);
+    disc(g, M(e.p), vnrm(e.n), (e.r / PXM) * 1.1, rect, L2 ? 5 : L1 ? 6 : 10, 0.35, UPV);
   }
   parts.rest = g.tris - parts.limbs - parts.leaves - parts.ribbons;
   // a clumped crown's fruit hangs under its clumps (the tips the model grew it at are buried in the leaves now)

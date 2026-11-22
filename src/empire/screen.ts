@@ -64,6 +64,7 @@ export class EmpireScreen {
   }
   private offChange: (() => void) | null = null;
   private teardown() {
+    const g = this.e.g as Record<string, unknown> | null; if (g && Object.prototype.hasOwnProperty.call(g, 'render')) delete g.render;
     removeEventListener('keydown', this.onKey, true);
     this.offChange?.(); this.offChange = null;
     this.stop?.(); this.stop = null;
@@ -85,6 +86,8 @@ export class EmpireScreen {
   private build() {
     const e = this.e;
     const el = this.el = div('emp'); document.body.append(el); document.body.classList.add('emp-on');
+    // the board covers the region: its 3D frame is not drawn while the board is up (the world keeps running)
+    const g = e.g; if (g) { g.render = () => { /* covered by the empire board */ }; }
     // ---- header: the name floating, the stats strip, the icons
     const hd = div('emp-hd', el);
     const tt = div('emp-tt', hd);
