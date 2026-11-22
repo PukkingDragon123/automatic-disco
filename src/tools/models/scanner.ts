@@ -4,7 +4,7 @@
 // running over its glass and its iris turning; a live readout screen scrolls the return; a whip antenna blinks.
 // Level 2: a side sensor pod and a second antenna. Level 3: an emitter ring round the lens and a sub-reflector.
 import * as THREE from 'three';
-import { type Kit, R, PI, TAU, AX, cbox, box, lathe, cyl, ring, sphere, cone, prism, gear, liveTex, setGlow, glowMat, torus } from './kit';
+import { type Kit, R, PI, TAU, AX, cbox, box, lathe, cyl, ring, sphere, cone, prism, gear, liveTex, setGlow, setGlowMat, glowMat, torus } from './kit';
 import type { ToolSpec } from './model';
 
 export const SCANNER: ToolSpec = {
@@ -22,7 +22,7 @@ export const SCANNER: ToolSpec = {
     k.mesh(box(0.008, 0.004, 0.28), 'ink', body, [0.12, 0.151, 0]);
     // the side panel: vents, the diode chase, the serial stencil, a barcode
     k.vent(body, 0.16, 0.08, [-0.19, 0.03, 0.162]);
-    k.decal(body, { kind: 'stencil', text: 'SCN-3', ramp: R.bone }, 0.18, 0.06, [0.1, 0.04, 0.162]);
+    k.decal(body, { kind: 'stencil', text: 'SCN-3', ink: R.teal[1] }, 0.18, 0.06, [0.1, 0.04, 0.162]);
     k.decal(body, { kind: 'bar' }, 0.09, 0.035, [0.15, -0.105, 0.162]);
     const chase = [0, 1, 2, 3, 4].map((i) => k.diode(body, [-0.24 + i * 0.04, -0.105, 0.162], 'z', i === 4 ? R.ruby[5] : R.glowTeal[3], 0.011));
     k.bolts(body, [[-0.29, 0.13, 0.162], [0.29, 0.13, 0.162], [-0.29, -0.13, 0.162], [0.29, -0.13, 0.162]], 0.009);
@@ -125,7 +125,7 @@ export const SCANNER: ToolSpec = {
       const yy = Math.sin(a.t * (2.2 + a.act * 4)) * 0.075, chord = 2 * Math.sqrt(Math.max(0, 0.085 * 0.085 - yy * yy));
       scan.position.set(yy, 0.137, 0); scan.scale.z = Math.max(0.05, chord / 0.18); scan.visible = a.act > 0.05 || a.chg > 0.1;
       setGlow(scan, 0.6 + a.act * 0.9);
-      setGlow(lensMat as never, 0); (lensMat as THREE.Material) && setGlowOf(lensMat, 0.35 + a.act * 0.75 + Math.sin(a.t * 31) * 0.06 * a.act);
+      setGlowMat(lensMat, 0.35 + a.act * 0.75 + Math.sin(a.t * 31) * 0.06 * a.act);
       setGlow(hornTip, 0.5 + 0.5 * Math.abs(Math.sin(a.t * (2 + a.act * 9))));
       // the diode chase (faster at work), the antenna's slow blink
       const ci = Math.floor(a.t * (3 + a.act * 9)) % 5;
@@ -154,4 +154,3 @@ function glowScreen(k: Kit, map: THREE.Texture): THREE.Material {
   if (m.uniforms?.uMap) { m.uniforms.uMap.value = map; m.defines = { ...(m.defines ?? {}), USE_MAP: '' }; m.needsUpdate = true; }
   return m;
 }
-function setGlowOf(m: THREE.Material, k: number) { const sm = m as THREE.ShaderMaterial, g = m.userData.glow; if (!g) return; if (sm.uniforms?.uEmissive) (sm.uniforms.uEmissive.value as THREE.Vector3).set(g.r * k, g.g * k, g.b * k); else (m as THREE.MeshLambertMaterial).emissiveIntensity = k; }

@@ -109,7 +109,7 @@ function heap(M: Mesher, id: string, n: number, seed: number, o: { base?: (x: nu
 function mound(M: Mesher, id: string, n: number, seed: number) {
   const f = formOf(id), u0 = unitOf(id, 0), r = new Rnd(seed);
   const s = Math.cbrt(n);
-  const R = 0.13 + s * 0.13, Hh = R * (0.48 + Math.min(0.12, n * 0.01));
+  const R = 0.13 + s * 0.13, Hh = R * (f.heap === 'leafLitter' ? 0.3 : 0.48 + Math.min(0.12, n * 0.01));
   M.at([0, 0, 0], [0, r.r(0, PI), 0], 1, () => M.mound(f.heap ?? 'dirt', R, Hh, seed + 3, { rz: R * r.r(0.85, 1), rings: 5, n: 15, lump: 0.1, peak: 1.7 }));
   // the mound's own profile (as Mesher.mound draws it), for sitting things on it
   const prof = (t: number) => Hh * Math.pow(Math.max(0, 1 - Math.pow(Math.min(1, t), 1.7)), 0.85) * (0.75 + 0.25 * (1 - t));

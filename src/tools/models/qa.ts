@@ -43,7 +43,7 @@ function live(id: string, x: number, y: number, w: number, h: number, o: { scale
   const sc = o.scale ?? 2, cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.className = 'qa-cv';
   cv.style.left = x + 'px'; cv.style.top = y + 'px'; cv.style.width = w * sc + 'px'; cv.style.height = h * sc + 'px';
   app.append(cv);
-  const L: Live = { cv, c: cv.getContext('2d')!, m, root, w, h, yaw: o.yaw ?? 0.55, pitch: o.pitch ?? 0.4, zoom: o.zoom ?? 1.05, mode: o.mode ?? 'active', level: o.level ?? 3, spin: o.spin ?? 0 };
+  const L: Live = { cv, c: cv.getContext('2d')!, m, root, w, h, yaw: o.yaw ?? 0.55, pitch: o.pitch ?? 0.4, zoom: o.zoom ?? 1.55, mode: o.mode ?? 'active', level: o.level ?? 3, spin: o.spin ?? 0 };
   lives.push(L); return L;
 }
 function caption(text: string, x: number, y: number, size = 32, color?: string) {
@@ -93,7 +93,7 @@ if (view === 'lineup') {
   const id = Q.get('id') ?? 'drill';
   caption(toolModelName(id).toUpperCase(), 40, 22, 48);
   caption('MID-WORK  ·  LEVEL 3  ·  COMPONENTS', 40, 80, 16, '#c9bd98');
-  const big = live(id, 60, 120, 560, 470, { mode: (Q.get('mode') as ToolMode) ?? 'active', level: 3, yaw: Number(Q.get('yaw') ?? 0.55), pitch: Number(Q.get('pitch') ?? 0.38), zoom: 1.02 })!;
+  const big = live(id, 60, 120, 560, 470, { mode: (Q.get('mode') as ToolMode) ?? 'active', level: 3, yaw: Number(Q.get('yaw') ?? 0.55), pitch: Number(Q.get('pitch') ?? 0.38), zoom: Number(Q.get('zoom') ?? 1.45) })!;
   const states: [ToolMode, number][] = [['idle', 1], ['charging', 2], ['active', 3]];
   states.forEach(([mode, lvl], i) => {
     const y = 120 + i * 315;

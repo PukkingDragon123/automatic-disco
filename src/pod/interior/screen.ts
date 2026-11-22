@@ -131,7 +131,7 @@ export class PodInterior implements Screen {
     const full = this.home.count(d.id) >= d.max;
     card.classList.toggle('poor', !afford || full);
     const ids = Object.keys(cost).filter((id) => ITEMS[id]);
-    const W = 60, H = 18;
+    const W = 52, H = 30;
     cv.width = W; cv.height = H; cv.style.width = W * 2 + 'px'; cv.style.height = H * 2 + 'px';
     const c = cv.getContext('2d')!; c.imageSmoothingEnabled = false; c.clearRect(0, 0, W, H);
     if (full) { bitText(c, 'MAX', W / 2, 1, { color: '#c8c0a8', align: 'center' }); return; }
@@ -142,9 +142,13 @@ export class PodInterior implements Screen {
       const n = cost[id], ok = have(this.g, id) >= n, im = itemImg(id), t = String(n);
       parts.push({ w: 11 + bitMeasure(t), draw: (x) => { const go = () => c.drawImage(im, x, 3, 10, 10); if (im.complete) go(); else im.addEventListener('load', go); bitText(c, t, x + 10, 1, { color: ok ? '#f4ecd6' : '#ff7a5a' }); } });
     }
-    const total = parts.reduce((s, q) => s + q.w + 2, -2);
+    // the joy on the first line, the items on the second
+    parts[0].draw(Math.round((W - parts[0].w) / 2));
+    const rest = parts.slice(1), total = rest.reduce((s, q) => s + q.w + 2, -2);
+    c.save(); c.translate(0, 14);
     let x = Math.max(0, Math.round((W - total) / 2));
-    for (const q of parts) { q.draw(x); x += q.w + 2; }
+    for (const q of rest) { q.draw(x); x += q.w + 2; }
+    c.restore();
   }
   private refreshTray() { this.tray.querySelectorAll<HTMLElement>('.p7-card').forEach((card) => { const d = DECOR_BY[card.dataset.id ?? '']; const cv = card.querySelector('.p7-cost') as HTMLCanvasElement | null; if (d && cv) this.paintCost(card, cv, d); card.classList.toggle('on', this.carry?.def.id === d?.id); }); }
   private paintOut(cv: HTMLCanvasElement) {
@@ -278,10 +282,10 @@ export class PodInterior implements Screen {
     if (k === 'x' || k === 'delete') { e.preventDefault(); e.stopPropagation(); this.drop(false); }
   };
   /** QA and story beats: build a piece at a spot (pays, bounces) */
-  qaPlace(id: string, x: number, z: number, rot = 0) {
+  qaPlace(id: string, x: number, z: number, rot = 0, y = 0) {
     const d = DECOR_BY[id]; if (!d) return false;
     this.pick(d); const c = this.carry; if (!c) return false;
-    c.rot = rot; c.obj.rotation.y = rot; c.at.set(x, 0, z); c.y = 0; c.ok = true; c.obj.position.set(x, 0.3, z);
+    c.rot = rot; c.obj.rotation.y = rot; c.at.set(x, y, z); c.y = y; c.ok = true; c.obj.position.set(x, y + 0.3, z);
     this.drop(true); return true;
   }
   leave() {

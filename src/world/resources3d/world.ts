@@ -16,7 +16,7 @@ import { formOf } from './forms';
 import { unitOf, pileGeo } from './piles';
 import { meshesOf } from './mats';
 import { landSfx } from './sound';
-import { placeDustWorld } from '../../ui/kit/juice';
+import { placeDustWorld, placeDust, bounceEl } from '../../ui/kit/juice';
 
 const OPEN = new Set(['crate', 'st_pit', 'st_bunker', 'st_bin']);
 /** how heavy a load reads (0 a seed .. 1 a beam): drives the dust, the bounce and the thud */
@@ -199,4 +199,14 @@ export class ResourceWorld {
     try { return w.surfaceY ? w.surfaceY(x, z) : fb; } catch { return fb; }
   }
   dispose() { this.group.removeFromParent(); for (const d of this.drops) d.obj.traverse((o) => (o as THREE.Mesh).geometry?.dispose()); this.drops = []; }
+}
+
+/** an item put down in a 2D grid window (the stores): the kit's dust puff at the drop point in the item's own dust,
+ *  scaled by its weight, its landing sound, and a little bounce of the stack where it lands */
+export function uiPlace(item: ItemId, n: number, x: number, y: number) {
+  if (!ITEMS[item]) return;
+  const w = weightOf(item, n), f = formOf(item);
+  placeDust(x, y, Math.max(0.1, w), { layer: 'ui', ground: RAMPS[f.dust] as unknown as number[], sound: false, scale: 0.7 });
+  landSfx(f.sound, w * 0.8, 0.75);
+  requestAnimationFrame(() => requestAnimationFrame(() => { const el = document.elementFromPoint(x, y)?.closest('.inv-stack') as HTMLElement | null; if (el) bounceEl(el, w); }));
 }

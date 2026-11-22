@@ -6,6 +6,7 @@
 // and an etched search line; the gear opens the settings plate (name, logo, paint, priority, takes, crew). Hover shows
 // a compact card: the item larger, its name and its numbers.
 import type { Game } from '../../game/game';
+import { uiPlace } from '../../world/resources3d/world';
 import { ITEMS, ITEM_IDS, ITEM_GROUPS, itemDef, itemIcon, type ItemId, type ItemGroup } from '../../factory/items';
 import type { Container, Stack, SortKey } from '../../inv/container';
 import type { Storage } from '../../inv/storage';
@@ -421,13 +422,13 @@ export class InvUI {
       const o = src.occ(d.s), under = t.cx >= 0 && t.cy >= 0 && t.cx < src.W && t.cy < src.H ? src.stacks[o[t.cy * src.W + t.cx]] : undefined;
       if (d.n < d.s.n) {
         const k = d.n;
-        if (under && under.item === d.s.item) { const lim = itemDef(d.s.item).stack, m = Math.min(k, lim - under.n); if (m > 0) { under.n += m; d.s.n -= m; src.touch(); st.changed(src); this.fire('merged', src); } return; }
+        if (under && under.item === d.s.item) { const lim = itemDef(d.s.item).stack, m = Math.min(k, lim - under.n); if (m > 0) { under.n += m; d.s.n -= m; src.touch(); st.changed(src); this.fire('merged', src); uiPlace(d.s.item, m, x, y); } return; }
         if (!src.fits(d.s.item, px, py, d.rot)) { t.w.flashNote('no room'); sfx('deny'); return; }
-        d.s.n -= k; src.stacks.push({ item: d.s.item, n: k, x: px, y: py, rot: d.rot, fresh: d.s.fresh }); src.touch(); st.changed(src); this.fire('split', src); sfx('click', 0.9, 0.5);
+        d.s.n -= k; src.stacks.push({ item: d.s.item, n: k, x: px, y: py, rot: d.rot, fresh: d.s.fresh }); src.touch(); st.changed(src); this.fire('split', src); sfx('click', 0.9, 0.5); uiPlace(d.s.item, k, x, y);
         return;
       }
       const merging = under && under.item === d.s.item && under !== d.s;
-      if (src.place(d.s, merging ? t.cx : px, merging ? t.cy : py, d.rot)) { sfx('click', 0.9, 0.5); st.changed(src); this.fire(merging ? 'merged' : 'moved', src); }
+      if (src.place(d.s, merging ? t.cx : px, merging ? t.cy : py, d.rot)) { sfx('click', 0.9, 0.5); st.changed(src); this.fire(merging ? 'merged' : 'moved', src); uiPlace(d.s.item, d.s.n, x, y); }
       else { t.w.flashNote('no room'); sfx('deny'); }
       return;
     }
@@ -436,7 +437,7 @@ export class InvUI {
     const got = st.transfer(src, d.s, d.n, dst, px, py, d.rot);
     if (got <= 0) { t.w.flashNote('full'); sfx('deny'); return; }
     if (got < d.n) t.w.flashNote(`${got} fit`);
-    sfx('click', 0.8, 0.6); this.fire('moved', dst);
+    sfx('click', 0.8, 0.6); this.fire('moved', dst); uiPlace(d.s.item, got, x, y);
   }
   cancelDrag() { const d = this.drag; if (!d) return; this.drag = null; d.ghost.remove(); for (const w of this.wins) { w.hideDrop(); w.liftStack(null); } }
   /** double-click: the whole stack to the other open panel */

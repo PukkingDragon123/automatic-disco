@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js';
 import { RAMPS } from '../../art/palette';
 import { Px, hash } from '../../ui/kit/px';
+import { paintTile, type TileKind } from './paint';
 import { toon } from '../../ui/kit/model3d';
 import { gbuf, F_EMIT } from '../../gfx/gbuf';
 
@@ -42,54 +43,36 @@ export function liveTex(w: number, h: number) {
   const px = new Px(w, h), cv = px.canvas(), t = pair(cv);
   return { px, t, push() { px.canvas(cv); t.ui.needsUpdate = true; t.world.needsUpdate = true; } };
 }
-const rnd = (i: number, s: number, k = 0) => hash(i, s, k);
-/** enamel paint: one ramp step, a few clean tonal clusters, chips through to the metal, a little run-off grime */
-function enamel(p: Px, r: Ramp, s: number, seed: number) {
-  p.rect(0, 0, p.w, p.h, at(r, s));
-  for (let i = 0; i < 22; i++) { const x = Math.floor(rnd(i, seed, 1) * p.w), y = Math.floor(rnd(i, seed, 2) * p.h), up = rnd(i, seed, 3) > 0.5; const c = at(r, s + (up ? 1 : -1)); p.set(x, y, c); p.set(x + 1, y, c); if (rnd(i, seed, 4) > 0.6) p.set(x, y + 1, c); }
-  for (let i = 0; i < 5; i++) {
-    const x = Math.floor(rnd(i, seed, 5) * (p.w - 4)), y = Math.floor(rnd(i, seed, 6) * (p.h - 4)), w = 2 + Math.floor(rnd(i, seed, 7) * 2);
-    for (let j = 0; j < 2; j++) for (let q = 0; q < w; q++) p.set(x + q, y + j, j === 0 ? at(r, s - 2) : at(R.steel, 4));
-    p.set(x + w, y + 1, at(r, s + 1));
-  }
-  for (let i = 0; i < 4; i++) { const x = Math.floor(rnd(i, seed, 8) * p.w), y = Math.floor(rnd(i, seed, 9) * p.h), L = 3 + Math.floor(rnd(i, seed, 10) * 5); for (let j = 0; j < L; j++) p.set(x, y + j, at(r, s - 1)); }
-}
-/** machined metal: brushed streaks along the rows */
-function machined(p: Px, r: Ramp, s: number, seed: number) {
-  p.rect(0, 0, p.w, p.h, at(r, s));
-  for (let y = 0; y < p.h; y++) { let x = Math.floor(rnd(y, seed) * 8); while (x < p.w) { const L = 3 + Math.floor(rnd(x, y, seed) * 12); if (rnd(x + 7, y, seed) < 0.28) for (let q = 0; q < L; q++) p.set(x + q, y, at(r, s + (rnd(x, y, seed + 1) < 0.6 ? 1 : -1))); x += L + 3 + Math.floor(rnd(x, y, seed + 2) * 9); } }
-}
 type Painter = (p: Px) => void;
+const T = (kind: TileKind, base: number, seed: number, o: { wear?: number; light?: number } = {}): [number, number, Painter] => [64, 64, (p) => { paintTile(p, kind, base, seed, o); }];
 const PAINT: Record<string, [number, number, Painter]> = {
-  steel: [64, 64, (p) => machined(p, R.steel, 4, 3)],
-  chrome: [64, 64, (p) => { machined(p, R.steel, 5, 4); for (let y = 0; y < p.h; y += 16) p.hl(0, p.w - 1, y, R.steel[6]); }],
-  frame: [64, 64, (p) => machined(p, R.steel, 2, 5)],
-  dark: [64, 64, (p) => { p.rect(0, 0, 64, 64, R.steel[1]); for (let i = 0; i < 60; i++) p.set(Math.floor(rnd(i, 11) * 64), Math.floor(rnd(i, 12) * 64), rnd(i, 13) > 0.5 ? R.steel[2] : R.steel[0]); }],
-  rubber: [64, 64, (p) => { p.rect(0, 0, 64, 64, R.basalt[1]); for (let y = 0; y < 64; y += 2) for (let x = (y >> 1) % 2; x < 64; x += 3) p.set(x, y, R.basalt[0]); for (let i = 0; i < 30; i++) p.set(Math.floor(rnd(i, 21) * 64), Math.floor(rnd(i, 22) * 64), R.basalt[2]); }],
-  brass: [64, 64, (p) => { machined(p, R.brass, 4, 6); for (let i = 0; i < 4; i++) { const x = Math.floor(rnd(i, 31) * 62), y = Math.floor(rnd(i, 32) * 62); p.set(x, y, R.teal[3]); p.set(x + 1, y, R.teal[2]); } }],
-  copper: [64, 64, (p) => machined(p, R.copper, 4, 7)],
-  // a copper winding: wire after wire (3 texels each: lit, mid, the dark gap)
-  coil: [64, 64, (p) => { for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) { const k = (y + (x >> 4)) % 3; p.set(x, y, k === 0 ? R.copper[6] : k === 1 ? R.copper[4] : R.copper[1]); } }],
-  // vent slats over a black recess
-  grille: [64, 64, (p) => { for (let y = 0; y < 64; y++) { const k = y % 4; p.hl(0, 63, y, k === 0 ? INKC : k === 1 ? R.steel[1] : k === 2 ? R.steel[3] : R.steel[2]); } }],
-  hazard: [64, 64, (p) => { for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) p.set(x, y, ((x + y) % 16) < 8 ? R.ochre[5] : R.ink[1]); for (let i = 0; i < 6; i++) { const x = Math.floor(rnd(i, 41) * 62), y = Math.floor(rnd(i, 42) * 62); p.set(x, y, R.steel[3]); p.set(x + 1, y, R.steel[4]); } }],
-  knurl: [64, 64, (p) => { for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) { const a = (x + y) % 4, b = (x - y + 64) % 4; p.set(x, y, a === 0 || b === 0 ? R.steel[1] : a === 1 ? R.steel[5] : R.steel[3]); } }],
-  glass: [64, 64, (p) => { for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) { const d = (x + y * 0.5) % 32; p.set(x, y, d < 2 ? R.sky[5] : d < 3 ? R.sky[3] : at(R.water, 2 + (y < 8 ? 1 : 0))); } }],
-  carbon: [64, 64, (p) => { for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) { const c = ((x >> 1) + (y >> 1)) % 2; p.set(x, y, c ? R.steel[1] : R.basalt[0]); if (((x + y) & 3) === 0) p.set(x, y, R.steel[2]); } }],
-  cable: [64, 64, (p) => { for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) p.set(x, y, ((x + y) % 4) < 2 ? R.basalt[3] : R.basalt[1]); }],
-  ceramic: [64, 64, (p) => { p.rect(0, 0, 64, 64, R.bone[4]); for (let i = 0; i < 40; i++) p.set(Math.floor(rnd(i, 51) * 64), Math.floor(rnd(i, 52) * 64), rnd(i, 53) > 0.5 ? R.bone[3] : R.bone[5]); }],
+  steel: T('metal', R.steel[4], 3),
+  chrome: T('polished', R.steel[5], 4),
+  frame: T('cast', R.steel[2], 5),
+  dark: T('cast', R.steel[1], 11),
+  rubber: T('rubber', R.basalt[1], 21),
+  brass: T('brass', R.brass[4], 6),
+  copper: T('metal', R.copper[4], 7),
+  // a coil is wound wire: the winding is geometry (helices, stacked turns); the copper itself is polished
+  coil: T('polished', R.copper[5], 8),
+  grille: T('cast', R.steel[1], 12),
+  hazard: [64, 64, (p) => { for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) p.set(x, y, ((x + y) % 16) < 8 ? R.ochre[5] : R.ink[1]); }],
+  knurl: T('metal', R.steel[3], 14, { wear: 0.8 }),
+  glass: T('glass', R.water[3], 15),
+  carbon: T('cast', R.basalt[1], 16),
+  cable: T('rubber', R.basalt[2], 17),
+  ceramic: T('ceramic', R.bone[4], 18),
   ink: [8, 8, (p) => p.rect(0, 0, 8, 8, INKC)],
-  // a cooling fin: bright machined lip, darker face
-  fin: [64, 64, (p) => { machined(p, R.steel, 3, 9); for (let x = 0; x < 64; x++) { p.set(x, 0, R.steel[5]); p.set(x, 63, R.steel[1]); } }],
+  fin: T('metal', R.steel[3], 9, { light: 0.4 }),
 };
-/** a named shared texture (see PAINT), or an enamel paint keyed 'paint:<ramp>:<step>' */
+/** a named shared texture (see PAINT), or an enamel paint keyed 'paint:<ramp>:<step>[:seed]', or 'metal:<ramp>:<step>' */
 export function texOf(name: string): TexPair {
   const d = PAINT[name];
   if (d) return painted(name, d[0], d[1], d[2]);
   const m = /^paint:(\w+):(\d)(?::(\d+))?$/.exec(name);
-  if (m) { const r = (R as Record<string, Ramp>)[m[1]] ?? R.steel; return painted(name, 64, 64, (p) => enamel(p, r, Number(m[2]), Number(m[3] ?? 7) + m[1].length * 13)); }
+  if (m) { const r = (R as Record<string, Ramp>)[m[1]] ?? R.steel; return painted(name, 64, 64, (p) => { paintTile(p, 'paint', at(r, Number(m[2])), Number(m[3] ?? 7) + m[1].length * 13); }); }
   const n = /^metal:(\w+):(\d)$/.exec(name);
-  if (n) { const r = (R as Record<string, Ramp>)[n[1]] ?? R.steel; return painted(name, 64, 64, (p) => machined(p, r, Number(n[2]), 17 + n[1].length)); }
+  if (n) { const r = (R as Record<string, Ramp>)[n[1]] ?? R.steel; return painted(name, 64, 64, (p) => { paintTile(p, 'metal', at(r, Number(n[2])), 17 + n[1].length); }); }
   return painted('ink', 8, 8, PAINT.ink[2]);
 }
 
@@ -114,7 +97,7 @@ function paintDecal(p: Px, d: DecalSpec) {
     p.rect(0, 0, W, H, at(r, 4)); p.hl(0, W - 1, 0, at(r, 5)); p.vl(0, 0, H - 1, at(r, 5)); p.hl(0, W - 1, H - 1, at(r, 2)); p.vl(W - 1, 0, H - 1, at(r, 2));
     const tw = stencilW(d.text ?? ''); stencil(p, d.text ?? '', Math.max(1, Math.round((W - tw) / 2)), Math.round((H - 5) / 2), ink);
   } else if (d.kind === 'stencil') {
-    const tw = stencilW(d.text ?? ''); stencil(p, d.text ?? '', Math.max(0, Math.round((W - tw) / 2)), Math.round((H - 5) / 2), at(r, 5));
+    const tw = stencilW(d.text ?? ''); stencil(p, d.text ?? '', Math.max(0, Math.round((W - tw) / 2)), Math.round((H - 5) / 2), d.ink ?? at(r, 5));
   } else if (d.kind === 'hazard') {
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) p.set(x, y, ((x + y) % 6) < 3 ? R.ochre[5] : R.ink[1]);
   } else if (d.kind === 'chev') {
@@ -156,7 +139,7 @@ export function uv32<T extends THREE.BufferGeometry>(geo: T): T {
       const X = p.getX(i + k), Y = p.getY(i + k), Z = p.getZ(i + k);
       let u: number, v: number;
       if (ay >= ax && ay >= az) { u = X; v = Z; } else if (ax >= az) { u = Z; v = Y; } else { u = X; v = Y; }
-      uv[(i + k) * 2] = u * UVK; uv[(i + k) * 2 + 1] = v * UVK;
+      uv[(i + k) * 2] = u * UVK + 0.5; uv[(i + k) * 2 + 1] = v * UVK + 0.5;
     }
   }
   g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
@@ -181,8 +164,8 @@ export function hull(pts: V3[]) { return cached('hl' + pts.join(';'), () => uv32
  * a turned part: the profile [r, y] runs from the bottom (r = 0 for a closed foot) up the outside and in over the top;
  * every profile corner stays sharp (each segment is its own band), smooth round the axis. UVs: metres round and along.
  */
-export function lathe(prof: [number, number][], seg = 16, o: { arc?: number; a0?: number } = {}): THREE.BufferGeometry {
-  return cached(`la${seg}|${o.arc ?? ''}|${o.a0 ?? ''}|${prof.join(';')}`, () => {
+export function lathe(prof: [number, number][], seg = 16, o: { arc?: number; a0?: number; flat?: boolean } = {}): THREE.BufferGeometry {
+  return cached(`la${seg}|${o.arc ?? ''}|${o.a0 ?? ''}|${o.flat ? 'f' : ''}|${prof.join(';')}`, () => {
     const arc = o.arc ?? TAU, a0 = o.a0 ?? 0, pos: number[] = [], nor: number[] = [], uv: number[] = [];
     let acc = 0;
     for (let i = 0; i < prof.length - 1; i++) {
@@ -192,8 +175,9 @@ export function lathe(prof: [number, number][], seg = 16, o: { arc?: number; a0?
       for (let s = 0; s < seg; s++) {
         const aA = a0 + (arc * s) / seg, aB = a0 + (arc * (s + 1)) / seg, cA = Math.cos(aA), sA = Math.sin(aA), cB = Math.cos(aB), sB = Math.sin(aB);
         const A0 = [r0 * cA, y0, r0 * sA], A1 = [r1 * cA, y1, r1 * sA], B0 = [r0 * cB, y0, r0 * sB], B1 = [r1 * cB, y1, r1 * sB];
-        const nA = [nr * cA, ny, nr * sA], nB = [nr * cB, ny, nr * sB];
-        const uA = aA * rm * UVK, uB = aB * rm * UVK, v0 = acc * UVK, v1 = (acc + L) * UVK;
+        const cM = Math.cos((aA + aB) / 2), sM = Math.sin((aA + aB) / 2);
+        const nA = o.flat ? [nr * cM, ny, nr * sM] : [nr * cA, ny, nr * sA], nB = o.flat ? nA : [nr * cB, ny, nr * sB];
+        const uA = aA * rm * UVK + 0.25, uB = aB * rm * UVK + 0.25, v0 = acc * UVK + 0.25, v1 = (acc + L) * UVK + 0.25;
         pos.push(...A0, ...A1, ...B0, ...B0, ...A1, ...B1); nor.push(...nA, ...nA, ...nB, ...nB, ...nA, ...nB);
         uv.push(uA, v0, uA, v1, uB, v0, uB, v0, uA, v1, uB, v1);
       }
@@ -405,11 +389,14 @@ export class Kit {
   }
   /** a decal: a thin painted plate (size in metres, 32 px/m), facing +Z of its frame */
   decal(parent: THREE.Object3D, d: DecalSpec, w: number, h: number, p: V3, r: V3 = [0, 0, 0], o: MeshOpts = {}) {
-    const W = Math.max(3, Math.round(w * TPM * (d.kind === 'label' || d.kind === 'stencil' ? 1 : 1))), H = Math.max(3, Math.round(h * TPM));
-    const tw = d.kind === 'label' || d.kind === 'stencil' ? Math.max(W, stencilW(d.text ?? '') + 2) : W, th = d.kind === 'label' || d.kind === 'stencil' ? Math.max(H, 7) : H;
+    // text is fine print: stencils and labels are painted at twice the density (shown from the hero lod up)
+    const text = d.kind === 'label' || d.kind === 'stencil', dens = text ? TPM * 2 : TPM;
+    if (text && this.det < 2 && !o.det) return null;
+    const W = Math.max(3, Math.round(w * dens)), H = Math.max(3, Math.round(h * dens));
+    const tw = text ? Math.max(W, stencilW(d.text ?? '') + 2) : W, th = text ? Math.max(H, 7) : H;
     const key = `dc|${d.kind}|${d.text ?? ''}|${tw}x${th}|${(d.ramp ?? R.bone)[0]}|${d.ink ?? ''}`;
     const t = painted(key, tw, th, (px) => paintDecal(px, d));
-    const ww = tw / TPM, hh = th / TPM;
+    const ww = tw / dens, hh = th / dens;
     const geo = cached(`dg${ww},${hh}`, () => new THREE.PlaneGeometry(ww, hh));
     const mat = this.ui ? toon({ map: t.ui, gloss: 0.3, rim: 0.1 }) : gbuf(new THREE.MeshLambertMaterial({ map: t.world, transparent: false, alphaTest: 0.5 }), 1);
     return this.mesh(geo, mat, parent, p, r, { det: 1, ...o });

@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { placeModel, preload } from '../../ship/hub/models';
 import { canvasTex, hullTex, texMat, glowMat, pxTex, P, at, hash } from '../../social/tex';
 import { toon } from '../../ui/kit/model3d';
+import { padTex, woolTex, podMat } from './tex';
 
 export type DecorKind = 'need' | 'furn' | 'decor';
 export interface DecorDef { id: string; name: string; kind: DecorKind; icon: string; cost: Record<string, number>; joy: number; weight: number; top?: number; r: number; max: number; build: () => THREE.Group; props?: string[] }
@@ -26,9 +27,10 @@ export const DECOR: DecorDef[] = [
     const g = new THREE.Group(), steel = texMat(hullTex(P.steel, 7));
     for (const x of [-0.42, 0.42]) for (const z of [-0.95, 0.95]) g.add(mesh(new THREE.BoxGeometry(0.06, 0.5, 0.06), steel, [x, 0.25, z]));
     g.add(mesh(new THREE.BoxGeometry(0.9, 0.06, 2.0), steel, [0, 0.36, 0]));
-    g.add(mesh(new THREE.BoxGeometry(0.84, 0.12, 1.9), texMat(mattress()), [0, 0.45, 0]));
-    g.add(mesh(new THREE.BoxGeometry(0.86, 0.05, 1.1), texMat(blanket()), [0, 0.53, 0.35]));
-    g.add(prop('throw_pillows_01', 0.7, 0, 0.5).translateZ(-0.7));
+    g.add(mesh(new THREE.BoxGeometry(0.84, 0.12, 1.9), podMat(padTex({ base: 0x6a7058, seed: 23, wear: 0.4 }), { repeat: [0.4, 0.9] }), [0, 0.45, 0]));
+    g.add(mesh(new THREE.BoxGeometry(0.88, 0.05, 1.15), podMat(woolTex(), { repeat: [0.9, 1.15] }), [0, 0.53, 0.33]));
+    const pillow = mesh(new THREE.BoxGeometry(0.62, 0.11, 0.32), podMat(padTex({ base: 0xc8c0a8, seed: 29, wear: 0.3 }), { repeat: [0.3, 0.2] }), [0, 0.57, -0.72], [0.12, 0, 0]);
+    pillow.scale.set(1, 1, 1); g.add(pillow);
     return g; } }),
   D({ id: 'heater', name: 'Heater', kind: 'need', icon: 'flame', cost: { copper_wire: 4, iron_plate: 2 }, joy: 10, weight: 0.55, r: 0.45, max: 2, build: () => {
     const g = new THREE.Group(), steel = texMat(hullTex(P.rust, 8));

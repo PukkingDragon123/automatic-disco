@@ -40,14 +40,14 @@ export function padTex(o: { base?: number; seed?: number; wear?: number; torn?: 
       // a seam pinches in where the stitch pulls (every third texel deeper)
       const edge = Math.min(c.u, 1 - c.u) * CW, edgeV = Math.min(c.v, 1 - c.v) * CH, e = Math.min(edge, edgeV);
       const seam = e < 1 ? -0.28 - (ph(x, y, seed) < 0.35 ? 0.08 : 0) : e < 2 ? -0.1 : 0;
-      const bulge = (ph(c.col, c.row, seed + 9) - 0.5) * 0.08;
-      const weave = (fbm(pc, x, y, 16, seed + 1, 2) - 0.5) * 0.07;
-      const mottle = (fbm(pc, x, y, 3, seed + 2) - 0.5) * 0.16;
-      return 0.56 + dome * 0.12 + lit + seam + bulge + weave + mottle;
-    }, 0.9);
+      const bulge = (ph(c.col, c.row, seed + 9) - 0.5) * 0.04;
+      const weave = (fbm(pc, x, y, 16, seed + 1, 2) - 0.5) * 0.05;
+      const mottle = (fbm(pc, x, y, 3, seed + 2) - 0.5) * 0.06;
+      return 0.5 + dome * 0.2 + lit * 1.4 + seam + bulge + weave + mottle;
+    }, 0.8);
     // body grime collects low, scuffs at knee height, a few hand-dark smudges
-    pc.grime(mixHex(R[1], 0x2a2018, 0.4), 0.8 * wear, 3, seed + 5, 0.5);
-    for (let k = 0; k < 6 * wear; k++) pc.ditherBlob(rng.int(0, 63), rng.int(28, 63), rng.int(3, 7), rng.int(2, 4), R[2], 0.7);
+    pc.grime(mixHex(R[1], 0x2a2018, 0.4), 0.45 * wear, 2, seed + 5, 0.62);
+    for (let k = 0; k < 3 * wear; k++) pc.ditherBlob(rng.int(0, 63), rng.int(36, 63), rng.int(3, 6), rng.int(2, 3), R[2], 0.55);
     // tea and coolant stains
     for (let k = 0; k < 2 * wear; k++) pc.stain(rng.int(6, 58), rng.int(6, 58), rng.int(4, 8), mixHex(R[3], 0x8a6a2a, 0.3), mixHex(R[2], 0x5a3a1a, 0.4), seed + k);
     // a scorched plume (the landing fire)
@@ -113,8 +113,11 @@ export function deckTex(seed = 4) {
 export function foilTex(seed = 6) {
   return tex(`foil7|${seed}`, 32, 32, (pc, rng) => {
     const R = makeRamp(0xb8913c, 7, { hueShift: 0.05, spread: 0.65 });
-    pc.fillRamp(R, (x, y) => { const n = fbm(pc, x, y, 5, seed, 2); return Math.floor(n * 6) / 6 * 0.8 + (fbm(pc, x, y, 10, seed + 2, 1) - 0.5) * 0.2 + 0.1; }, 0.7);
-    for (let k = 0; k < 18; k++) { const x = rng.int(0, 31), y = rng.int(0, 31); pc.set(x, y, R[6]); if (rng.chance(0.4)) pc.set(x + 1, y, mixHex(R[6], 0xffffff, 0.4)); }
+    // small crinkled facets: each a flat tone, lit where it faces up-left; a bright crease on the lit side of each fold
+    const lv = (x: number, y: number) => Math.floor(fbm(pc, x, y, 8, seed, 2) * 5);
+    pc.fillRamp(R, (x, y) => 0.22 + lv(x, y) * 0.13 + (fbm(pc, x, y, 16, seed + 2, 1) - 0.5) * 0.08, 0.5);
+    for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) { const a = lv(x, y), l = lv(x - 1, y), u = lv(x, y - 1); if (a > l || a > u) pc.set(x, y, R[Math.min(6, 3 + a)]); else if (a < l && a < u) pc.set(x, y, R[1]); }
+    for (let k = 0; k < 10; k++) { const x = rng.int(0, 31), y = rng.int(0, 31); pc.set(x, y, mixHex(R[6], 0xffffff, 0.45)); }
   });
 }
 /** a cable loom running along v: cords of rubber in four colours, a sheen on each, tie wraps */
@@ -172,4 +175,17 @@ export function podMat(map: THREE.Texture, o: { side?: THREE.Side; repeat?: [num
   if (o.repeat) { m2 = map.clone(); m2.repeat.set(...o.repeat); m2.needsUpdate = true; }
   const m = new THREE.MeshLambertMaterial({ map: m2, side: o.side ?? THREE.FrontSide, transparent: !!o.transparent, alphaTest: o.transparent ? 0.05 : 0, depthWrite: !o.transparent, color: o.color ?? 0xffffff });
   return gbuf(m, o.transparent ? 0 : 1);
+}
+/** a wool camp blanket: a muted plaid woven through, fuzz, a darker hem */
+export function woolTex(seed = 21) {
+  return tex(`wool7|${seed}`, 32, 32, (pc, rng) => {
+    const R = makeRamp(0x7a4a32, 6, { spread: 0.5 }), G = makeRamp(0x4a5a3a, 6, { spread: 0.45 });
+    pc.fillRamp(R, (x, y) => 0.5 + (fbm(pc, x, y, 8, seed, 2) - 0.5) * 0.18 + (((x + y) & 1) ? 0.04 : -0.04), 0.8);
+    // the plaid: two soft bands each way, woven (every other texel), never a ruled line
+    for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+      const bx = (x % 16) >= 5 && (x % 16) < 8, by = (y % 16) >= 9 && (y % 16) < 12;
+      if ((bx && (x + y) % 2 === 0) || (by && (x + y) % 2 === 1)) pc.set(x, y, G[bx && by ? 1 : 2 + Math.floor(ph(x, y, seed) * 2)]);
+    }
+    pc.speckle(rng, [R[4], R[5]], 0.03);
+  });
 }

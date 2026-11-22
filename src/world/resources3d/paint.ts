@@ -420,7 +420,7 @@ const MATS: Record<string, Mat> = {
   } },
   ground: { base: C(DIRT, 4), m: 2, paint: (t, s, sd, m) => {
     // trodden ground for QA benches: big soft patches, a scatter of small stones, no busy grain
-    t.field(DIRT, (x, y) => 0.55 + (nz(t, x, y, cells(m, 0.5), cells(m, 0.5), 3, sd) - 0.5) * 0.3 + (nz(t, x, y, cells(m, 0.1), cells(m, 0.1), 2, sd + 4) - 0.5) * 0.12, 0, 0.6);
+    t.field(DIRT, (x, y) => 0.56 + (nz(t, x, y, cells(m, 0.6), cells(m, 0.6), 3, sd) - 0.5) * 0.13 + (nz(t, x, y, cells(m, 0.12), cells(m, 0.12), 2, sd + 4) - 0.5) * 0.08, 0, 0.6);
     specks(t, Math.max(5, 0.3 * s), sd + 2, (x, y, r) => { if (r < 0.35) grain(t, x, y, C(STONE, 4 + Math.round(r * 4)), 2, r); }, 0.6);
   } },
   // ---------------------------------------------------------------- made things

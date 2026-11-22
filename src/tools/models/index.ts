@@ -11,9 +11,17 @@ import type * as THREE from 'three';
 import { ToolModel, type ToolSpec, type ToolState, type ToolMode } from './model';
 import type { Lod } from './kit';
 import { DRILL } from './drill';
+import { SCANNER } from './scanner';
+import { GRAB } from './grab';
+import { WELD } from './weld';
+import { CANNON } from './cannon';
+import { SAMPLER } from './sampler';
+import { SEEDER } from './seeder';
+import { LIFT } from './lift';
+import { CARRY } from './carry';
 
 export { ToolModel, type ToolState, type ToolMode, type Lod };
-export const TOOL_SPECS: Record<string, ToolSpec> = { drill: DRILL };
+export const TOOL_SPECS: Record<string, ToolSpec> = { scanner: SCANNER, sampler: SAMPLER, seeder: SEEDER, grab: GRAB, drill: DRILL, weld: WELD, lift: LIFT, cannon: CANNON, carry: CARRY };
 /** every tool id in the game's order (src/colony/tools.ts TOOL_ORDER) */
 export const TOOL_MODEL_IDS = ['scanner', 'sampler', 'seeder', 'grab', 'drill', 'weld', 'lift', 'cannon', 'carry'];
 const ALIAS: Record<string, string> = {

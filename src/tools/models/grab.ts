@@ -20,7 +20,7 @@ export const GRAB: ToolSpec = {
     k.mesh(cbox(0.08, 0.29, 0.29, 0.02), 'accent', body, [0.1, 0, 0]);
     k.mesh(box(0.006, 0.24, 0.004), 'ink', body, [-0.08, 0, 0.141]);
     k.vent(body, 0.12, 0.09, [-0.15, 0.02, 0.142]);
-    k.decal(body, { kind: 'stencil', text: 'GRV-2', ramp: R.steel }, 0.17, 0.06, [-0.07, -0.08, 0.142]);
+    k.decal(body, { kind: 'stencil', text: 'GRV-2', ink: R.amethyst[2] }, 0.17, 0.06, [-0.07, -0.08, 0.142]);
     k.decal(body, { kind: 'rad' }, 0.06, 0.06, [0.0, 0.04, 0.142]);
     k.bolts(body, [[-0.2, 0.12, 0.142], [0.2, 0.12, 0.142], [-0.2, -0.12, 0.142], [0.2, -0.12, 0.142]], 0.009);
     const dio = [0, 1, 2].map((i) => k.diode(body, [-0.19 + i * 0.035, -0.045, 0.142], 'z', i ? G[5] : R.malachite[5], 0.01));

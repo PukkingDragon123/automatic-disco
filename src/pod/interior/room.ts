@@ -78,8 +78,8 @@ export function buildRoom(): Room {
       m(new THREE.PlaneGeometry(wallW, H * 0.28), pad2, [0, H * 0.86, 0], [0, 0, 0], g);
       // the cracked slab: one corner still screwed on, the rest swinging
       const slab = new THREE.Group(); slab.position.set(wallW / 2 - 0.12, H * 0.72, -0.05); g.add(slab);
-      m(new THREE.BoxGeometry(wallW * 0.62, 1.05, 0.05), padD, [-wallW * 0.31, -0.52, 0], [0, 0, 0], slab);
-      slab.rotation.set(0.12, 0.25, 0.42); slab.userData.swing = i;
+      m(new THREE.BoxGeometry(wallW * 0.55, 0.9, 0.04), padD, [-wallW * 0.27, -0.45, 0], [0, 0, 0], slab);
+      slab.rotation.set(0.05, 0.08, 0.38); slab.userData.swing = i;
       // a burnt-out junction behind it
       const sm = m(new THREE.PlaneGeometry(0.75, 1.0), soot, [-0.2, 1.1, -0.02], [0, 0, 0], g); sm.castShadow = false;
     } else {
@@ -112,9 +112,9 @@ export function buildRoom(): Room {
     for (let k = 0; k < 3; k++) m(new THREE.CylinderGeometry(0.006, 0.006, 0.08, 4), gbuf(new THREE.MeshLambertMaterial({ color: 0xc87a3a }), 1), [bend + (k - 1) * 0.015, -len - 0.04, 0.02], [0.2 * (k - 1), 0, 0.3 * (k - 1)], g);
     looms.push({ g, ph });
   };
-  hang(-0.7, 0.4, 0.95, 0.12, 0); hang(-0.55, 0.55, 0.6, -0.1, 1.3); hang(0.9, -0.5, 0.8, -0.15, 2.1); hang(0.2, -1.1, 0.5, 0.08, 3.4); hang(-1.1, -0.6, 1.1, 0.2, 4.2);
+  hang(-0.75, -0.35, 0.95, 0.12, 0); hang(-0.6, -0.15, 0.55, -0.1, 1.3); hang(0.9, -0.6, 0.8, -0.15, 2.1); hang(0.25, -1.2, 0.5, 0.08, 3.4); hang(-1.15, -0.9, 1.1, 0.2, 4.2);
   // one loom slumped across the deck from the torn wall
-  { const pts = [new V(-1.45, 1.6, 0.6), new V(-1.25, 0.6, 0.55), new V(-0.95, 0.03, 0.75), new V(-0.4, 0.03, 1.15), new V(0.2, 0.03, 1.4)]; m(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.035, 6), loom, [0, 0, 0], [0, 0, 0], scene); }
+  { const pts = [new V(-1.5, 1.6, -0.55), new V(-1.35, 0.6, -0.7), new V(-1.05, 0.03, -0.95), new V(-0.6, 0.03, -1.15), new V(-0.1, 0.03, -1.3)]; m(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.035, 6), loom, [0, 0, 0], [0, 0, 0], scene); }
   // ---- the broken lamp swinging on its cable
   const lampG = new THREE.Group(); lampG.position.set(-0.25, TOP - 0.25, 0.15); scene.add(lampG);
   m(new THREE.CylinderGeometry(0.008, 0.008, 0.8, 4), gbuf(new THREE.MeshLambertMaterial({ color: 0x1a1a1a }), 1), [0, -0.4, 0], [0, 0, 0], lampG);
@@ -166,9 +166,9 @@ export function buildRoom(): Room {
   P2('plastic_crate_01', -0.55, -1.5, { ry: 1.9 }); blocked.push({ x: -0.55, z: -1.5, r: 0.32 });
   P2('korean_fire_extinguisher_01', 0.6, -1.25, { y: 0.09, ry: 1.2, rz: Math.PI / 2 }); blocked.push({ x: 0.6, z: -1.25, r: 0.25 });
   P2('medical_box', 1.55, 0.55, { ry: -0.6 }); blocked.push({ x: 1.55, z: 0.55, r: 0.25 });
-  P2('clipboard', -0.15, 0.95, { y: 0.01, ry: 2.4 });
-  P2('russian_food_cans_01', 0.75, 1.05, { ry: 0.5, s: 0.9 });
-  P2('office_notepads', 0.35, 0.6, { y: 0.01, ry: 1.1, s: 0.9 });
+  P2('clipboard', -0.95, -0.95, { y: 0.01, ry: 2.4 });
+  P2('russian_food_cans_01', 1.45, -0.15, { ry: 0.5, s: 0.9 });
+  P2('office_notepads', 0.35, -0.35, { y: 0.01, ry: 1.1, s: 0.9 });
   P2('screwdriver', -0.6, 0.2, { y: 0.01, ry: 0.4 });
   P2('combination_wrench', 0.15, -0.55, { y: 0.01, ry: 2.2 });
   P2('pliers', -0.95, 1.2, { y: 0.01, ry: 3.6 });
