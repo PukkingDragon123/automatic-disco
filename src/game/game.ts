@@ -38,6 +38,7 @@ import { VeyrChild } from './child';
 import { Player } from './player';
 import { Details } from './details';
 import { installBiotech } from '../biotech';
+import { installTroops } from '../troops';
 import { installProgression } from '../research';
 import { attachEco } from '../eco/view';
 import { attachOcean, type Ocean } from '../ocean/ocean';
@@ -215,6 +216,7 @@ export class Game implements Screen {
     this.factions = new Factions(this);
     installBiotech(this); // engineered creatures and plants at work, Bio-Works structures, work orders (src/biotech)
     installProgression(this); // v6: mastery, research, the Upgrader, mission quotas, random events (src/research, src/story)
+    installTroops(this); // v7: RTS control, unit cards, squads and the TROOPS screen (src/troops)
     if (opts.descent) this.awaitPod();
     else this.landColony();
     (window as any).__game = this;
@@ -947,7 +949,7 @@ export class Game implements Screen {
     g.imageSmoothingEnabled = false;
     const px = S;
     for (const c of this.world.creatures) {
-      if (c.dead || !c.mesh.visible) continue;
+      if (c.dead || !c.mesh.visible || (c as unknown as { __troopSel?: number }).__troopSel) continue; // v7: the troops' own pips
       const show = c.selected || c.hovered || c.hp < c.maxHp * 0.98 || c.mind === 'held';
       if (!show) continue;
       const [sx, sy, ok] = this.screenOf(c.x, c.y + c.air + c.sp.pheno.height * c.growth + 0.25, c.z);
@@ -997,7 +999,7 @@ export class Game implements Screen {
     if (s && s.kind === 'pod') this.circle(new THREE.Vector3(c.pod.x, 0, c.pod.z), 3.6, '#9fe0a8');
     const px = S;
     for (const t of c.teammates) {
-      if (!t.alive || !t.root.visible) continue;
+      if (!t.alive || !t.root.visible || (t as unknown as { __troopSel?: number }).__troopSel) continue;
       const [sx, sy, ok] = this.screenOf(t.x, t.y + 2.05, t.z); if (!ok) continue;
       const w = 22 * px, x = Math.round(sx - w / 2), y = Math.round(sy);
       g.fillStyle = 'rgba(10,14,12,0.8)'; g.fillRect(x - px, y - px, w + 2 * px, 5 * px);
@@ -1005,7 +1007,7 @@ export class Game implements Screen {
       g.fillStyle = t.suit > 30 ? '#7ab8e0' : '#e0604a'; g.fillRect(x, y + 2 * px, Math.round(w * t.suit / 100), px);
     }
     for (const d of c.drones) {
-      if (d.docked && d.battery > d.def.battery * 0.95) continue;
+      if ((d.docked && d.battery > d.def.battery * 0.95) || (d as unknown as { __troopSel?: number }).__troopSel) continue;
       const [sx, sy, ok] = this.screenOf(d.x, d.y + 0.7, d.z); if (!ok) continue;
       const w = 18 * px, x = Math.round(sx - w / 2), y = Math.round(sy);
       g.fillStyle = 'rgba(10,14,12,0.8)'; g.fillRect(x - px, y - px, w + 2 * px, 3 * px);

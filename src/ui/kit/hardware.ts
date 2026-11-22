@@ -61,6 +61,8 @@ function led(parent: THREE.Object3D, p: V3, col: number, name: string, r = 0.028
   return l;
 }
 /** put a (possibly async) tool model into a holder, fitted to a size */
+/** put a (possibly async) model into a holder, fitted to a size (exported for scenes that swap what a holder carries) */
+export function mountTool(holder: THREE.Object3D, build: Build | null, size: number) { mount(holder, build, size); }
 function mount(holder: THREE.Object3D, build: Build | null, size: number) {
   if (!build) return;
   const place = (o: THREE.Object3D | null) => {

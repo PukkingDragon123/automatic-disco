@@ -95,13 +95,17 @@ function pushOut(c: Col, x: Float32Array, i: number, m: number): boolean {
 /** what every simulated thing shares: positions, previous positions (verlet velocity), inverse masses, sleeping */
 abstract class PSet {
   x: Float32Array; p: Float32Array; w: Float32Array; awake = true; still = 0;
+  /** steps left in its calm phase: overlaps it was born into are pushed apart without turning into velocity */
+  calm = 24;
   /** particle radius (collision margin), friction 0..1 on contact, bounce 0..1 */
   r = 0.01; fr = 0.5; bounce = 0.1; drag = 0.995; windK = 0;
   constructor(readonly n: number) { this.x = new Float32Array(n * 3); this.p = new Float32Array(n * 3); this.w = new Float32Array(n).fill(1); }
   centre(out = new V3()) { out.set(0, 0, 0); for (let i = 0; i < this.n; i++) out.x += this.x[i * 3], out.y += this.x[i * 3 + 1], out.z += this.x[i * 3 + 2]; return out.multiplyScalar(1 / this.n); }
   wake() { if (!this.awake) { this.awake = true; this.still = 0; } }
+  /** an outside shove ends the calm phase */
+  get settled() { return this.calm <= 0; }
   /** add a velocity (m/s) to every particle, scaled per particle by f(i) */
-  kick(v: THREE.Vector3, h: number, f: (i: number) => number = () => 1) { this.wake(); for (let i = 0; i < this.n; i++) if (this.w[i] > 0) { const k = f(i) * h; this.p[i * 3] -= v.x * k; this.p[i * 3 + 1] -= v.y * k; this.p[i * 3 + 2] -= v.z * k; } }
+  kick(v: THREE.Vector3, h: number, f: (i: number) => number = () => 1) { this.wake(); this.calm = 0; for (let i = 0; i < this.n; i++) if (this.w[i] > 0) { const k = f(i) * h; this.p[i * 3] -= v.x * k; this.p[i * 3 + 1] -= v.y * k; this.p[i * 3 + 2] -= v.z * k; } }
   abstract sync(): void;
   dispose() {}
 }
@@ -262,7 +266,7 @@ export class Cluster extends PSet {
   }
   dispose() { if (this.mesh) { this.mesh.removeFromParent(); this.mesh.geometry.dispose(); } }
 }
-/** a rigid body for an object: its local box (from its meshes, or given) as eight corner particles */
+/** a rigid body for an object: its local box (from its meshes, or given) as 26 particles on its surface */
 export function rigidFor(o: THREE.Object3D, frame: THREE.Object3D, o2: { box?: THREE.Box3; mass?: number } = {}): Cluster | null {
   frame.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(o.matrixWorld).invert();
@@ -274,7 +278,12 @@ export function rigidFor(o: THREE.Object3D, frame: THREE.Object3D, o2: { box?: T
   }
   const toFrame = new THREE.Matrix4().copy(frame.matrixWorld).invert().multiply(o.matrixWorld);
   const pts: THREE.Vector3[] = [];
-  for (const X of [box.min.x, box.max.x]) for (const Y of [box.min.y, box.max.y]) for (const Z of [box.min.z, box.max.z]) pts.push(new V3(X, Y, Z).applyMatrix4(toFrame));
+  // corners, edge midpoints and face centres: a box resting on another's face always has points inside it
+  const cx = (box.min.x + box.max.x) / 2, cy = (box.min.y + box.max.y) / 2, cz = (box.min.z + box.max.z) / 2;
+  for (const X of [box.min.x, cx, box.max.x]) for (const Y of [box.min.y, cy, box.max.y]) for (const Z of [box.min.z, cz, box.max.z]) {
+    if (X === cx && Y === cy && Z === cz) continue;
+    pts.push(new V3(X, Y, Z).applyMatrix4(toFrame));
+  }
   const cl = new Cluster(pts, 1);
   const s = new V3(); const pos = new V3(); const rq = new THREE.Quaternion(); toFrame.decompose(pos, rq, s);
   box.getSize(cl.half).multiply(s).multiplyScalar(0.5); cl.bq0.copy(rq);
@@ -363,7 +372,7 @@ export class PodPhysics {
       for (const s of sets) if (s.awake) this.contacts(s, cols);
       if (this.grab) { const { set, i, target } = this.grab, x = set.x; x[i * 3] += (target.x - x[i * 3]) * 0.5; x[i * 3 + 1] += (target.y - x[i * 3 + 1]) * 0.5; x[i * 3 + 2] += (target.z - x[i * 3 + 2]) * 0.5; }
     }
-    for (const s of sets) if (s.awake) this.sleepCheck(s);
+    for (const s of sets) if (s.awake) { if (s.calm > 0 && s instanceof Cluster) { s.calm--; s.p.set(s.x); } else this.sleepCheck(s); }
   }
   private integrate(s: PSet, h: number) {
     const x = s.x, p = s.p, w = s.w, g = this.g * h * h, t = this.t;
@@ -380,14 +389,16 @@ export class PodPhysics {
         const f = wd.k * s.windK * (1 - off / spread) / (1 + along * 0.8) * gust * h * h;
         ax += wd.dir.x * f; ay += wd.dir.y * f; az += wd.dir.z * f;
       }
-      const vx = (x[k] - p[k]) * s.drag, vy = (x[k + 1] - p[k + 1]) * s.drag, vz = (x[k + 2] - p[k + 2]) * s.drag;
+      let vx = (x[k] - p[k]) * s.drag, vy = (x[k + 1] - p[k + 1]) * s.drag, vz = (x[k + 2] - p[k + 2]) * s.drag;
+      // nothing in a cabin moves faster than 14 m/s
+      const vl = Math.hypot(vx, vy, vz); if (vl > 0.24) { const f = 0.24 / vl; vx *= f; vy *= f; vz *= f; }
       p[k] = x[k]; p[k + 1] = x[k + 1]; p[k + 2] = x[k + 2];
       x[k] += vx + ax; x[k + 1] += vy + ay; x[k + 2] += vz + az;
     }
   }
   /** the deck, the cabin wall and every collider */
   private contacts(s: PSet, cols: Col[]) {
-    const x = s.x, p = s.p, r = s.r, Rw = this.R - 0.04 - r;
+    const x = s.x, p = s.p, r = s.r, Rw = this.R - 0.04 - r, solids = s instanceof Cluster ? [] : this.bodies.concat(this.softs);
     for (let i = 0; i < s.n; i++) {
       if (s.w[i] === 0) continue;
       const k = i * 3;
@@ -399,7 +410,7 @@ export class PodPhysics {
         p[k] += (x[k] - p[k]) * s.fr - c.v.x / 60; p[k + 1] += (x[k + 1] - p[k + 1]) * s.fr * 0.5 - c.v.y / 60; p[k + 2] += (x[k + 2] - p[k + 2]) * s.fr - c.v.z / 60;
       }
       // cloth and ropes rest on the bodies and the pillow
-      if (!(s instanceof Cluster)) for (const b of [...this.bodies, ...this.softs]) {
+      for (const b of solids) {
         if (Math.hypot(x[k] - b.c.x, x[k + 1] - b.c.y, x[k + 2] - b.c.z) > b.rad + r + 0.02) continue;
         _q.copy(b.q).multiply(b.bq0);
         const tmpCol: Col = { kind: 'box', p: b.c, r: 0, half: b.half, q: _q, v: _v.set(0, 0, 0) };
@@ -436,7 +447,7 @@ export class PodPhysics {
     let m = 0;
     for (let i = 0; i < s.n; i++) { const k = i * 3; m = Math.max(m, Math.abs(s.x[k] - s.p[k]) + Math.abs(s.x[k + 1] - s.p[k + 1]) + Math.abs(s.x[k + 2] - s.p[k + 2])); }
     const windy = s.windK > 0 && this.winds.length > 0;
-    if (m < 0.0007 && !windy && this.grab?.set !== s) { if (++s.still > 50) { s.awake = false; s.p.set(s.x); s.sync(); } } else s.still = 0;
+    if (m < (s instanceof Cluster && s.k < 1 ? 0.0016 : 0.0007) && !windy && this.grab?.set !== s) { if (++s.still > 50) { s.awake = false; s.p.set(s.x); s.sync(); } } else s.still = 0;
   }
   /** the particle nearest a point (for the cursor's grab) */
   nearest(pt: THREE.Vector3, maxD = 0.35): { set: PSet; i: number } | null {

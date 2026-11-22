@@ -434,7 +434,7 @@ function buildParts(g: THREE.Group, pr: { core: string; head: string; grip: stri
   });
   // the head: what it does
   track('head', () => {
-  const hg = new THREE.Group(); g.add(hg); hg.position.set(0.3, 0.4, 0);
+  const hg = new THREE.Group(); g.add(hg); hg.position.set(0.3, 0.4, 0); hg.name = 'phead'; hg.userData.kind = head;
   if (head === 'lens') { mesh(cyl(0.12, 0.14, 0.12, 16), steel(), hg, [0.04, 0, 0], [0, 0, PI / 2]); mesh(cyl(0.1, 0.1, 0.01, 16), toon({ map: tex('lens'), emissive: P.glowTeal[3], emissiveK: 0.6 }), hg, [0.105, 0, 0], [0, 0, PI / 2]); }
   else if (head === 'bit') { mesh(new THREE.ConeGeometry(0.08, 0.36, 12), T('steel', [1, 2], { metal: 1 }), hg, [0.2, 0, 0], [0, 0, -PI / 2]); mesh(cyl(0.1, 0.08, 0.08, 12), T('knurlSteel', [2, 1], { metal: 0.9 }), hg, [0.02, 0, 0], [0, 0, PI / 2]); }
   else if (head === 'claw') { for (let i = 0; i < 3; i++) { const a = (i / 3) * PI * 2, f = new THREE.Group(); hg.add(f); f.rotation.x = a; mesh(box(0.22, 0.04, 0.04), T('orange', [1, 1]), f, [0.1, 0.07, 0], [0, 0, 0.4]); } mesh(sph(0.06, 10, 8), glow(P.amethyst[5], 1.2), hg, [0.08, 0, 0]); }
@@ -500,3 +500,13 @@ export function toolModel(id: string, lod: ToolLod = 'hud'): () => THREE.Object3
 // auto-register the TOOL MODELS agent's builder when its module exists (no import when it does not)
 const toolMods = import.meta.glob('../../tools/models/index.ts');
 for (const load of Object.values(toolMods)) void load().then((m) => { const f = (m as { buildToolModel?: ToolModelFn }).buildToolModel; if (typeof f === 'function' && !provider) setToolModelProvider(f); }).catch(() => {});
+
+/** a custom tool's working parts (the bench's reveal): the bit spins, the claw works, the torch flickers, the lens breathes */
+export function animCustom(root: THREE.Object3D, t: number, k = 1) {
+  const h = root.getObjectByName('phead'); if (!h) return;
+  const kind = h.userData.kind as string;
+  if (kind === 'bit') h.rotation.x = t * 14 * k;
+  else if (kind === 'claw') h.children.forEach((c, i) => { if (c.type === 'Group') c.rotation.z = Math.sin(t * 5 + i) * 0.35 * k; });
+  else if (kind === 'torch') h.scale.setScalar(1 + Math.abs(Math.sin(t * 31)) * 0.12 * k);
+  else h.rotation.x = Math.sin(t * 1.5) * 0.25 * k;
+}

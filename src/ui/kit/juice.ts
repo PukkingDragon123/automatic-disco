@@ -48,9 +48,10 @@ export function onFrame(f: Tick) { ticks.add(f); if (!raf) { lastT = performance
 /** a tween: f(k) with k eased 0..1 over ms */
 export function tween(ms: number, f: (k: number, raw: number) => void, e: Ease = ease.outCubic): Promise<void> {
   return new Promise((res) => {
-    let t = 0;
+    const t0 = performance.now();
     f(e(0), 0);
-    onFrame((dt) => { t += dt * 1000; const r = Math.min(1, t / Math.max(1, ms)); f(e(r), r); if (r >= 1) { res(); return false; } return true; });
+    // wall-clock time: a sequence ends on time even when the frame rate drops
+    onFrame(() => { const r = Math.min(1, (performance.now() - t0) / Math.max(1, ms)); f(e(r), r); if (r >= 1) { res(); return false; } return true; });
   });
 }
 export const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));

@@ -14,6 +14,9 @@ import type { Post } from '../../gfx/post';
 import type { Game } from '../../game/game';
 import { buildRoom, R as ROOM_R, FLOOR_Y, HULL_R, H as ROOM_H, type Room } from './room';
 import type { PodStage } from './stage';
+import { Cloth, Cluster, softFor, boxCol, type Col } from './soft';
+import { matMaterial, matInfo } from '../../gfx/mat';
+import type { BreakKind } from './breakage';
 import { DECOR, DECOR_BY, decorToon, preloadDecor, type DecorDef } from './decor';
 import type { PodHome, Placed } from './home';
 import { ModelView } from '../../ui/kit/model3d';
@@ -48,7 +51,14 @@ const CSS = `
 .pod7 .p7-out:hover { transform: translateY(-3px) scale(1.05); }
 body.pod7-on .qt7 { top: 150px; }
 `;
-interface Piece { p: Placed; obj: THREE.Group; def: DecorDef }
+interface Piece { p: Placed; obj: THREE.Group; def: DecorDef; sims?: (Cloth | Cluster)[]; hidden?: THREE.Object3D[]; col?: Col | null; box?: THREE.Box3 | null }
+/** a piece's solid parts (not its cloth or soft parts) as a box in its own frame (null until its models arrive) */
+function solidBox(obj: THREE.Object3D): THREE.Box3 | null {
+  obj.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(obj.matrixWorld).invert(), box = new THREE.Box3(), b = new THREE.Box3();
+  obj.traverse((o) => { const m = o as THREE.Mesh; if (!m.isMesh || m.userData.cloth || m.userData.soft || !m.geometry) return; if (!m.geometry.boundingBox) m.geometry.computeBoundingBox(); b.copy(m.geometry.boundingBox!).applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld)); box.union(b); });
+  return box.isEmpty() ? null : box;
+}
 
 export class PodInterior implements Screen {
   static current: PodInterior | null = null;
@@ -115,7 +125,7 @@ export class PodInterior implements Screen {
     const obj = def.build(); obj.position.set(p.x, p.y, p.z); obj.rotation.y = p.rot;
     obj.traverse((o) => { o.userData.piece = p; });
     this.room.root.add(obj);
-    const pc = { p, obj, def }; this.pieces.push(pc); return pc;
+    const pc: Piece = { p, obj, def }; this.pieces.push(pc); this.softify(pc); return pc;
   }
   // ---------------------------------------------------------------- the tray
   /** the tray: every piece floats free over a thin machined rail (no boxes), a pixel shadow under it, its cost
@@ -216,8 +226,77 @@ export class PodInterior implements Screen {
     uiSfx('pluck', 0.7); this.refreshTray();
     this.hover();
   }
+  // ---------------------------------------------------------------- the soft and loose things (soft.ts)
+  /** a placed piece joins the physics: its cloth parts become cloth, its soft parts soft bodies, its solid parts a collider */
+  private softify(pc: Piece) {
+    const phys = this.room.phys, root = this.room.root;
+    root.updateMatrixWorld(true);
+    pc.sims = []; pc.hidden = [];
+    pc.obj.traverse((o) => {
+      const m = o as THREE.Mesh; if (!m.isMesh) return;
+      const cl = m.userData.cloth as { mat: string; w: number; d: number; nx: number; ny: number } | undefined, so = m.userData.soft as { mat: string } | undefined;
+      if (cl) {
+        const toRoot = new THREE.Matrix4().copy(root.matrixWorld).invert().multiply(m.matrixWorld), info = matInfo(cl.mat)!;
+        const cloth = new Cloth(cl.nx, cl.ny, (i, j) => new V(((i / (cl.nx - 1)) - 0.5) * cl.w, 0.035, ((j / (cl.ny - 1)) - 0.5) * cl.d).applyMatrix4(toRoot),
+          matMaterial(cl.mat, { hd: 2, uv: 'uv', repeat: [cl.w / info.mw, cl.d / info.mh], side: THREE.DoubleSide }));
+        cloth.fr = 0.75; cloth.windK = 0.4;
+        phys.add(cloth); pc.sims!.push(cloth); m.visible = false; pc.hidden!.push(m);
+      } else if (so) {
+        const info = matInfo(so.mat)!, b = softFor(m, root, matMaterial(so.mat, { hd: 2, uv: 'uv', repeat: [1 / info.mw, 1 / info.mh] }));
+        phys.add(b); pc.sims!.push(b); m.visible = false; pc.hidden!.push(m);
+      }
+    });
+    pc.box = solidBox(pc.obj); pc.col = null;
+  }
+  private unsoftify(pc: Piece) {
+    for (const s of pc.sims ?? []) this.room.phys.remove(s);
+    for (const o of pc.hidden ?? []) o.visible = true;
+    pc.sims = []; pc.hidden = []; pc.col = null;
+  }
+  /** a piece's collider in the cabin frame (its solid box, turned with it) */
+  private colOf(obj: THREE.Object3D, box: THREE.Box3, toFloor = false): Col {
+    const c = box.getCenter(new V()), half = box.getSize(new V()).multiplyScalar(0.5);
+    const p = c.clone().applyQuaternion(obj.quaternion).add(obj.position);
+    if (toFloor) { const top = p.y + half.y; p.y = top / 2; half.y = Math.max(0.05, top / 2); }
+    return boxCol(p, half, obj.quaternion, 'piece');
+  }
+  private carryCol: Col | null = null; private carryBox: THREE.Box3 | null = null;
+  /** the colliders the pieces make this frame: placed ones, and the one in hand sweeping the deck under it */
+  private colliders(dt: number) {
+    const cols: Col[] = [];
+    for (const pc of this.pieces) {
+      if (!pc.box) pc.box = solidBox(pc.obj);
+      if (pc.box) { const c = this.colOf(pc.obj, pc.box); if (pc.col) c.v.copy(c.p).sub(pc.col.p).divideScalar(Math.max(dt, 1e-3)); pc.col = c; cols.push(c); }
+    }
+    if (this.carry) {
+      if (!this.carryBox) this.carryBox = solidBox(this.carry.obj);
+      if (this.carryBox) { const c = this.colOf(this.carry.obj, this.carryBox, true); if (this.carryCol) c.v.copy(c.p).sub(this.carryCol.p).divideScalar(Math.max(dt, 1e-3)); this.carryCol = c; cols.push(c); }
+    } else { this.carryCol = null; this.carryBox = null; }
+    this.room.phys.dyn = cols;
+  }
+  /** the cursor drags cloth, ropes, the pillow and the debris (a particle pulled toward the cursor at its depth) */
+  private dragSim: { dist: number } | null = null;
+  private trySimGrab(): boolean {
+    const phys = this.room.phys, root = this.room.root;
+    const targets: THREE.Object3D[] = [];
+    for (const s of phys.all()) { const o = (s as Cloth).mesh ?? (s as Cluster).obj; if (o) targets.push(o); }
+    const h = this.ray.intersectObjects(targets, true)[0]; if (!h) return false;
+    const pt = root.worldToLocal(h.point.clone()), n = phys.nearest(pt, 0.45); if (!n) return false;
+    phys.grab = { set: n.set, i: n.i, target: pt.clone().add(new V(0, 0.08, 0)) };
+    this.dragSim = { dist: h.distance };
+    uiSfx('pluck', 0.6, 1.2); this.engine.canvas.style.cursor = 'grabbing';
+    return true;
+  }
+  private dragTo() {
+    const g = this.room.phys.grab; if (!g || !this.dragSim) return;
+    const w = this.ray.ray.origin.clone().addScaledVector(this.ray.ray.direction, this.dragSim.dist);
+    const p = this.room.root.worldToLocal(w); p.y = Math.max(0.03, p.y);
+    g.target.copy(p);
+  }
+
   private lift(pc: Piece) {
     if (this.carry) return;
+    this.unsoftify(pc);
     this.pieces.splice(this.pieces.indexOf(pc), 1);
     const i = this.home.placed.indexOf(pc.p); if (i >= 0) this.home.remove(i);
     this.carry = { def: pc.def, obj: pc.obj, rot: pc.p.rot, from: pc.p, ok: true, at: pc.obj.position.clone(), y: pc.p.y };
@@ -267,10 +346,14 @@ export class PodInterior implements Screen {
     const p: Placed = { id: c.def.id, x: c.at.x, z: c.at.z, y: c.y, rot: c.rot };
     c.obj.position.set(p.x, p.y, p.z); c.obj.rotation.y = p.rot;
     c.obj.traverse((o) => { o.userData.piece = p; });
-    this.pieces.push({ p, obj: c.obj, def: c.def });
+    const placed: Piece = { p, obj: c.obj, def: c.def }; this.pieces.push(placed);
+    // the landing shoves the loose things about (scaled by its weight)
+    this.room.phys.impulse(new V(p.x, p.y + 0.05, p.z), 0.45 + c.def.r + c.def.weight * 0.8, 1.2 + c.def.weight * 3.2, 0.7);
     this.home.add(p);
     // the drop: a fall, a squash by weight, a bounce, dust and the thud (build mode's juice, from the kit)
-    void bounce3(c.obj, c.def.weight, { camera: this.cam, dust: true, ground: 'metal' });
+    // its cloth and soft parts come alive once it has landed (at once for QA placement)
+    if (this.qaInstant) this.softify(placed);
+    else void bounce3(c.obj, c.def.weight, { camera: this.cam, dust: true, ground: 'metal' }).then(() => { if (this.pieces.includes(placed)) this.softify(placed); });
     if (!c.from) { const s = this.screenOf(c.obj.position.clone().add(new V(0, 0.6, 0))); floatUp(s[0], s[1], '+' + c.def.joy, { color: '#ffb0a0' }); burst(s[0], s[1], { n: 10, ramp: P.coral, speed: 120, life: 0.6, gravity: -60 }); }
     this.refreshTray(); this.bump();
   }
@@ -280,7 +363,7 @@ export class PodInterior implements Screen {
   private screenOf(p: THREE.Vector3): [number, number] { const v = this.room.root.localToWorld(p.clone()).project(this.cam); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; }
 
   // ---------------------------------------------------------------- input
-  private onMove = (e: PointerEvent) => { this.mx = e.clientX; this.my = e.clientY; this.mouse.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); if (this.carry) this.hover(); else { this.ray.setFromCamera(this.mouse, this.cam); const h = this.ray.intersectObjects(this.pieces.map((p) => p.obj), true)[0]; this.engine.canvas.style.cursor = h ? 'grab' : ''; } };
+  private onMove = (e: PointerEvent) => { this.mx = e.clientX; this.my = e.clientY; this.mouse.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); if (this.room.phys.grab) { this.ray.setFromCamera(this.mouse, this.cam); this.dragTo(); return; } if (this.carry) this.hover(); else { this.ray.setFromCamera(this.mouse, this.cam); const h = this.ray.intersectObjects(this.pieces.map((p) => p.obj), true)[0]; this.engine.canvas.style.cursor = h ? 'grab' : ''; } };
   private onDown = (e: PointerEvent) => {
     if (this.leaving) return;
     this.onMove(e);
@@ -288,11 +371,13 @@ export class PodInterior implements Screen {
     if (e.button !== 0) return;
     this.ray.setFromCamera(this.mouse, this.cam);
     const h = this.ray.intersectObjects(this.pieces.map((p) => p.obj), true)[0];
-    if (h) { const p = h.object.userData.piece as Placed | undefined; const pc = this.pieces.find((x) => x.p === p); if (pc) this.lift(pc); }
+    if (h) { const p = h.object.userData.piece as Placed | undefined; const pc = this.pieces.find((x) => x.p === p); if (pc) { this.lift(pc); return; } }
+    this.trySimGrab();
   };
   /** drag from the tray and let go over the cabin: it drops there (a click on the tray, then a click works too) */
   private dragFrom: [number, number] | null = null;
   private onUp = (e: PointerEvent) => {
+    if (this.room.phys.grab) { this.room.phys.grab = null; this.dragSim = null; this.engine.canvas.style.cursor = ''; }
     const f = this.dragFrom; this.dragFrom = null;
     if (!f || !this.carry || e.button !== 0) return;
     if (Math.hypot(e.clientX - f[0], e.clientY - f[1]) > 24 && e.target === this.engine.canvas) { this.onMove(e); this.drop(true); }
@@ -310,9 +395,10 @@ export class PodInterior implements Screen {
   qaPlace(id: string, x: number, z: number, rot = 0, y = 0) {
     const d = DECOR_BY[id]; if (!d) return false;
     this.pick(d); const c = this.carry; if (!c) return false;
-    c.rot = rot; c.obj.rotation.y = rot; c.at.set(x, y, z); c.y = y; c.ok = true; c.obj.position.set(x, y + 0.3, z);
-    this.drop(true); return true;
+    c.rot = rot; c.obj.rotation.y = rot; c.at.set(x, y, z); c.y = y; c.ok = true; c.obj.position.set(x, y, z);
+    this.qaInstant = true; this.drop(true); this.qaInstant = false; return true;
   }
+  private qaInstant = false;
   /** zoom back out: the hull closes over the cabin, the colony brightens, then the colony view takes over again */
   leave() {
     if (this.leaving) return; this.leaving = true;
@@ -376,13 +462,32 @@ export class PodInterior implements Screen {
     if (this.k !== k0 || this.k < 1) this.pose(this.k);
     if (this.dir < 0 && this.k <= 0) { this.dir = 0; this.onLeave(); return; }
     if (this.dir >= 0) this.clipWalk();
-    this.room.update(dt, this.t);
+    this.colliders(dt);
+    this.room.stress = this.stress();
+    if (!this.frozen) this.room.update(dt, this.t);
+    // a failure shakes the view
+    if (this.room.shake > 0.002) { this.pose(this.k); const a = this.room.shake; this.cam.position.add(new V((Math.random() - 0.5) * a, (Math.random() - 0.5) * a, (Math.random() - 0.5) * a)); this.room.shake *= Math.exp(-dt * 7); if (this.room.shake <= 0.002) { this.room.shake = 0; this.pose(this.k); } }
     if (this.carry) { const c = this.carry; const lift = 0.25 + Math.sin(this.t * 6) * 0.03; c.obj.position.lerp(new V(c.at.x, c.y + lift, c.at.z), Math.min(1, dt * 16)); c.obj.rotation.y += (c.rot - c.obj.rotation.y) * Math.min(1, dt * 14); }
     // the gauge rolls toward the real happiness
     const h = this.home.happiness();
     this.joyT += dt;
     if (Math.abs(h - this.joyShown) > 0.05 || this.joyT < 1) { this.joyShown += (h - this.joyShown) * Math.min(1, dt * 4); this.paintJoy(); }
   }
+  /** how hard the cabin is failing: an unhappy crew and a damaged hull make it break sooner and more often (0..2) */
+  private stress() {
+    const h = this.home.happiness(), pod = anyG(this.g).colony?.pod;
+    const integ = pod && pod.maxHp ? Math.max(0, Math.min(1, pod.hp / pod.maxHp)) : 1;
+    return Math.max(0, Math.min(1, (60 - h) / 60)) + (1 - integ);
+  }
+  /** QA: freeze the cabin's motion (physics, smoke, sparks) for a still frame */
+  frozen = false;
+  qaFreeze(on = true) { this.frozen = on; }
+  /** QA: a failure now */
+  qaBreak(kind: BreakKind) { return this.room.breaks.trigger(kind); }
+  /** QA: run the cabin's motion for a while without drawing (60 steps a second) */
+  qaAdvance(sec: number) { this.colliders(1 / 60); for (let t = 0; t < sec; t += 1 / 60) { this.t += 1 / 60; this.room.update(1 / 60, this.t); } }
+  /** QA: move the camera in (dist m) over a cabin point (x, z) */
+  qaZoom(dist: number, x = 0, z = 0) { const pod = this.stage.pod, at = this.room.root.localToWorld(new V(x, 0, z)); this.into.dist = dist; this.into.target.set(at.x, pod.y + FLOOR_Y - 0.4, at.z); this.pose(this.k); }
   render(post: Post, t: number) { this.focus(post); this.stage.render(post, t); }
   resize() { this.cam.aspect = innerWidth / innerHeight; this.cam.updateProjectionMatrix(); }
   dispose() {

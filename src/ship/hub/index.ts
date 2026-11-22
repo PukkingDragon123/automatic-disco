@@ -10,3 +10,17 @@ let opener: ((fromPlanet: boolean) => void) | null = null;
 export function setShipHubOpener(fn: (fromPlanet: boolean) => void) { opener = fn; }
 /** open the ship hub; from the planet (the SHIP AI LINK) it goes over the paused game and BACK DOWN returns */
 export function openShipHub(fromPlanet = false) { if (opener) opener(fromPlanet); else console.warn('openShipHub: no opener registered (flow.ts)'); }
+
+/** v7: what the bridge's MONITOR panel needs from the flow (the run's system, the world chosen, the landing) */
+export interface ShipLander {
+  /** the run's seed (the system's worlds come from it); starts a run when there is none */
+  runSeed(): number;
+  /** the world the run is on (null before the first landing) */
+  planet(): import('../../world/planet').Planet | null;
+  /** choose the world and land the pod in a region of it */
+  land(planetSeed: number, r: import('../../world/planet').PRegion): void;
+}
+let lander: ShipLander | null = null;
+/** flow.ts registers it */
+export function setShipLander(l: ShipLander) { lander = l; }
+export function shipLander(): ShipLander | null { return lander; }

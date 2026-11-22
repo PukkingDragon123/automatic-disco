@@ -9,6 +9,7 @@ import { placeModel, preload } from '../../ship/hub/models';
 import { glowMat } from '../../social/tex';
 import { toon } from '../../ui/kit/model3d';
 import { matMaterial, type MatOpts } from '../../gfx/mat';
+import { cushionGeo } from './soft';
 
 /** a library material at the close-up density */
 const L = (name: string, o: MatOpts = {}) => matMaterial(name, { hd: 2, ...o });
@@ -27,9 +28,12 @@ export const DECOR: DecorDef[] = [
     const g = new THREE.Group(), steel = L('metal_anodised_grey');
     for (const x of [-0.42, 0.42]) for (const z of [-0.95, 0.95]) g.add(mesh(new THREE.BoxGeometry(0.06, 0.5, 0.06), steel, [x, 0.25, z]));
     g.add(mesh(new THREE.BoxGeometry(0.9, 0.06, 2.0), steel, [0, 0.36, 0]));
-    g.add(mesh(new THREE.BoxGeometry(0.84, 0.12, 1.9), L('mattress'), [0, 0.45, 0]));
-    g.add(mesh(new THREE.BoxGeometry(0.88, 0.05, 1.15), L('q_wool_blanket'), [0, 0.53, 0.33]));
-    const pillow = mesh(new THREE.BoxGeometry(0.62, 0.11, 0.32), L('pillow'), [0, 0.57, -0.72], [0.12, 0, 0]);
+    // a puffy mattress; the blanket is CLOTH and the pillow a SOFT BODY once the bunk stands in the cabin (screen.ts)
+    g.add(mesh(cushionGeo(0.84, 0.15, 1.9, { round: 0.3, puff: 0.14 }), L('mattress'), [0, 0.46, 0]));
+    const blanket = mesh(cushionGeo(0.92, 0.04, 1.15, { round: 0.25, puff: 0.12 }), L('q_wool_blanket'), [0, 0.56, 0.33]);
+    blanket.userData.cloth = { mat: 'q_wool_blanket', w: 1.04, d: 1.25, nx: 12, ny: 14 }; g.add(blanket);
+    const pillow = mesh(cushionGeo(0.6, 0.16, 0.34, { round: 0.75, puff: 0.5, seg: 0.075 }), L('pillow'), [0, 0.62, -0.7], [0.1, 0, 0]);
+    pillow.userData.soft = { mat: 'pillow' };
     pillow.scale.set(1, 1, 1); g.add(pillow);
     return g; } }),
   D({ id: 'heater', name: 'Heater', kind: 'need', icon: 'flame', cost: { copper_wire: 4, iron_plate: 2 }, joy: 10, weight: 0.55, r: 0.45, max: 2, build: () => {
@@ -58,9 +62,9 @@ export const DECOR: DecorDef[] = [
   D({ id: 'chair', name: 'Armchair', kind: 'furn', icon: 'socket', cost: { iron_rod: 2, iron_plate: 2 }, joy: 8, weight: 0.6, r: 0.5, max: 2, build: () => prop('modern_arm_chair_01', 1) }),
   D({ id: 'shelf', name: 'Shelf', kind: 'furn', icon: 'crate', cost: { iron_rod: 4 }, joy: 4, weight: 0.6, top: 0.92, r: 0.5, max: 2, build: () => prop('steel_frame_shelves_01', 0.8) }),
   D({ id: 'table', name: 'Crate Table', kind: 'furn', icon: 'crate', cost: { iron_plate: 2 }, joy: 3, weight: 0.65, top: 0.42, r: 0.5, max: 3, build: () => prop('old_military_crate', 1.1) }),
-  D({ id: 'rug', name: 'Rug', kind: 'decor', icon: 'fibre', cost: { 'fibre|leaves': 3 }, joy: 6, weight: 0.05, r: 0.8, max: 1, build: () => { const g = new THREE.Group(); const m = mesh(new THREE.BoxGeometry(1.6, 0.015, 1.0), L('carpet_rug', { uv: 'uv', transparent: false }), [0, 0.008, 0]); m.castShadow = false; g.add(m); return g; } }),
+  D({ id: 'rug', name: 'Rug', kind: 'decor', icon: 'fibre', cost: { 'fibre|leaves': 3 }, joy: 6, weight: 0.05, r: 0.8, max: 1, build: () => { const g = new THREE.Group(); const m = mesh(cushionGeo(1.6, 0.02, 1.0, { round: 0.2, puff: 0.05, seg: 0.1 }), L('carpet_rug', { uv: 'uv', repeat: [1 / 1.6, 1 / 1.0], transparent: false }), [0, 0.012, 0]); m.castShadow = false; g.add(m); return g; } }),
   D({ id: 'clock', name: 'Clock', kind: 'decor', icon: 'gauge', cost: { gear: 1, glass: 1 }, joy: 4, weight: 0.12, r: 0.15, max: 1, build: () => prop('alarm_clock_01', 1.5) }),
-  D({ id: 'blanket', name: 'Bedroll', kind: 'need', icon: 'bunk', cost: { 'fibre|fruit': 2 }, joy: 5, weight: 0.15, r: 0.6, max: 2, build: () => { const g = new THREE.Group(); g.add(mesh(new THREE.BoxGeometry(0.7, 0.1, 1.7), L('q_tent_fabric'), [0, 0.05, 0])); g.add(mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.7, 8), L('q_wool_blanket'), [0, 0.14, -0.7], [0, 0, Math.PI / 2])); return g; } }),
+  D({ id: 'blanket', name: 'Bedroll', kind: 'need', icon: 'bunk', cost: { 'fibre|fruit': 2 }, joy: 5, weight: 0.15, r: 0.6, max: 2, build: () => { const g = new THREE.Group(); g.add(mesh(cushionGeo(0.7, 0.1, 1.7, { round: 0.35, puff: 0.25 }), L('q_tent_fabric'), [0, 0.05, 0])); g.add(mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.7, 8), L('q_wool_blanket'), [0, 0.14, -0.7], [0, 0, Math.PI / 2])); return g; } }),
 ];
 export const DECOR_BY: Record<string, DecorDef> = Object.fromEntries(DECOR.map((d) => [d.id, d]));
 export const PROP_IDS = ['throw_pillows_01', 'plastic_container', 'industrial_wall_lamp', 'potted_plant_01', 'standing_picture_frame_01', 'vintage_radio_transceiver', 'vintage_electric_kettle', 'tea_set_01', 'modern_arm_chair_01', 'steel_frame_shelves_01', 'old_military_crate', 'alarm_clock_01'];

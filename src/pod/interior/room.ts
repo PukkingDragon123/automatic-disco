@@ -192,7 +192,7 @@ export function buildRoom(): Room {
   const lampMount = lampG.position.clone().add(new V(0, 0.1, 0));
   // ---- access panels on the walls (they can pop): a dark recess and a wire behind each
   const panels: BreakRefs['panels'] = [];
-  for (const [i, x, y] of [[2, 0.3, 0.78], [6, -0.25, 0.66], [4, 0.82, 1.02]] as [number, number, number][]) {
+  for (const [i, x, y] of [[6, -0.25, 0.66], [4, 0.82, 1.02], [2, 0.3, 0.78]] as [number, number, number][]) {
     const g = wallFrame(root, i, 0.0);
     mesh(new THREE.PlaneGeometry(0.3, 0.24), gun, [x, y, 0.04], [0, 0, 0], g).castShadow = false;
     const p = mesh(cushionGeo(0.34, 0.28, 0.03, { round: 0.15, puff: 0.03 }), panelM, [x, y, 0.07], [0, 0, 0], g);
@@ -208,7 +208,7 @@ export function buildRoom(): Room {
   { const c3 = new THREE.CatmullRomCurve3([new V(-1.35, 1.6, -1.1), new V(-1.15, 0.5, -0.95), new V(-0.95, 0.04, -1.05), new V(-0.55, 0.04, -1.2), new V(-0.2, 0.04, -1.35)]);
     phys.add(new Rope(c3.getSpacedPoints(16), 0.034, cableM(c3.getLength()))); }
   // ---- the landing's debris: every loose thing is a rigid body; the couch on its side, a fallen pad, boxes, cans, tools
-  const couch = new THREE.Group(); couch.position.set(-1.35, 0.32, -0.6); couch.rotation.set(0, 0.5, 1.35); root.add(couch);
+  const couch = new THREE.Group(); couch.position.set(-1.5, 0.31, -0.45); couch.rotation.set(0, 0.55, Math.PI / 2); root.add(couch);
   mesh(cushionGeo(0.58, 0.16, 1.1, { round: 0.35, puff: 0.22 }), leather, [0, 0.3, 0], [0, 0, 0], couch);
   mesh(cushionGeo(0.58, 0.62, 0.14, { round: 0.3, puff: 0.12 }), leather, [0, 0.56, -0.5], [0.3, 0, 0], couch);
   mesh(new THREE.BoxGeometry(0.5, 0.06, 1.0), gun, [0, 0.2, 0], [0, 0, 0], couch);

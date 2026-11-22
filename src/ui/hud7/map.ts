@@ -252,6 +252,7 @@ function viewQuad(g: G): [number, number][] | null {
   return out;
 }
 function order(g: G, x: number, z: number) {
+  if (g.troops?.orderAt?.(x, z)) { uiSfx('confirm', 0.5); return; } // v7: the troops' selection goes there
   const s = g.colony?.sel; if (!s) return;
   if (s.kind === 'drone') { s.ref.order = { k: 'move', x, z }; s.ref.docked = false; uiSfx('confirm', 0.5); }
   else if (s.kind === 'crew' && s.ref.alive) { s.ref.order({ k: 'move', x, z }); uiSfx('confirm', 0.5); }

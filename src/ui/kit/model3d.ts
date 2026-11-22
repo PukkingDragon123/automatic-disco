@@ -16,7 +16,7 @@ import { onFrame, Spring } from './juice';
 
 // ------------------------------------------------------------------ the toon material
 const VERT = /* glsl */`
-varying vec3 vN; varying vec2 vUv; varying vec3 vCol; varying vec3 vW;
+varying vec3 vN; varying vec2 vUv; varying vec3 vCol; varying vec3 vW; varying vec3 vOP; varying vec3 vON; varying vec3 vV;
 attribute vec3 color;
 void main() {
   vUv = uv;
@@ -27,22 +27,33 @@ void main() {
 #endif
   vN = normalize(normalMatrix * normal);
   vW = (modelMatrix * vec4(position, 1.0)).xyz;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  vOP = position; vON = normal;
+  vec4 mv = modelViewMatrix * vec4(position, 1.0); vV = mv.xyz;
+  gl_Position = projectionMatrix * mv;
 }`;
 const FRAG = /* glsl */`
 uniform vec3 uColor; uniform vec3 uEmissive; uniform float uMetal; uniform float uGloss; uniform float uRim; uniform float uOpacity; uniform float uLight;
-uniform vec3 uKey; uniform vec3 uFill; uniform float uBright;
+uniform vec3 uKey; uniform vec3 uFill; uniform float uBright; uniform float uTri;
 #ifdef USE_MAP
 uniform sampler2D uMap;
 #endif
-varying vec3 vN; varying vec2 vUv; varying vec3 vCol; varying vec3 vW;
+#ifdef LAMPS
+uniform vec3 uLampP[4]; uniform vec3 uLampC[4]; uniform float uLampR[4];
+#endif
+varying vec3 vN; varying vec2 vUv; varying vec3 vCol; varying vec3 vW; varying vec3 vOP; varying vec3 vON; varying vec3 vV;
 void main() {
   vec3 n = normalize(vN);
   if (!gl_FrontFacing) n = -n;
   vec3 base = uColor * vCol;
   float a = uOpacity;
 #ifdef USE_MAP
+#ifdef TRI
+  // box mapping in object space at the library's density: each face takes the axis it faces
+  vec3 an = abs(vON); vec2 tuv = an.x > an.y && an.x > an.z ? vOP.zy : an.y > an.z ? vOP.xz : vOP.xy;
+  vec4 t = texture2D(uMap, tuv * uTri);
+#else
   vec4 t = texture2D(uMap, vUv);
+#endif
   base *= t.rgb;
   a *= t.a;
   if (a < 0.5) discard;
@@ -57,26 +68,38 @@ void main() {
   col += (step(0.45, sp) * 0.28 + step(0.82, sp) * 0.42) * (uMetal * 0.9 + uGloss * 0.6) * vec3(1.0, 0.96, 0.86);
   float rim = 1.0 - clamp(n.z, 0.0, 1.0);
   col += rim * rim * rim * uRim * vec3(1.0, 0.92, 0.78);
+#ifdef LAMPS
+  // motivated light: practical lamps in the scene (view space), banded like the key
+  for (int i = 0; i < 4; i++) {
+    vec3 L = uLampP[i] - vV; float d = length(L);
+    float att = clamp(1.0 - d / max(0.001, uLampR[i]), 0.0, 1.0); att *= att;
+    float df = clamp(dot(n, L / max(d, 0.001)), 0.0, 1.0); df = floor(df * 3.0 + 0.5) / 3.0;
+    col += base * uLampC[i] * (0.25 + df) * att;
+  }
+#endif
   col += uEmissive;
   gl_FragColor = vec4(col, a);
 }`;
 const KEY = new THREE.Vector3(-0.55, 0.72, 0.52).normalize(), FILL = new THREE.Vector3(0.7, -0.35, 0.45).normalize();
-export interface ToonOpts { color?: number; map?: THREE.Texture | null; metal?: number; gloss?: number; emissive?: number; emissiveK?: number; rim?: number; opacity?: number; side?: THREE.Side; light?: number; vcol?: boolean; bright?: number }
+/** the practical lamps shared by every `lamps: true` toon material (view space; the scene updates them each frame) */
+export const LAMPS = { p: { value: [0, 1, 2, 3].map(() => new THREE.Vector3(0, 0, 1e6)) }, c: { value: [0, 1, 2, 3].map(() => new THREE.Vector3()) }, r: { value: [1, 1, 1, 1] } };
+export interface ToonOpts { /** box-map the map in object space, this many repeats per unit (library density) */ tri?: number; /** lit by the scene's practical lamps (LAMPS) */ lamps?: boolean; color?: number; map?: THREE.Texture | null; metal?: number; gloss?: number; emissive?: number; emissiveK?: number; rim?: number; opacity?: number; side?: THREE.Side; light?: number; vcol?: boolean; bright?: number }
 const mats = new Map<string, THREE.ShaderMaterial>();
 /** the kit's toon material (cached by options; a map is keyed by its uuid) */
 export function toon(o: ToonOpts = {}): THREE.ShaderMaterial {
-  const key = JSON.stringify([o.color, o.map?.uuid, o.metal, o.gloss, o.emissive, o.emissiveK, o.rim, o.opacity, o.side, o.light, o.vcol, o.bright]);
+  const key = JSON.stringify([o.color, o.map?.uuid, o.metal, o.gloss, o.emissive, o.emissiveK, o.rim, o.opacity, o.side, o.light, o.vcol, o.bright, o.tri, o.lamps]);
   const hit = mats.get(key); if (hit) return hit;
   const c = new THREE.Color(o.color ?? 0xffffff), e = new THREE.Color(o.emissive ?? 0x000000).multiplyScalar(o.emissiveK ?? 1);
   const m = new THREE.ShaderMaterial({
     vertexShader: VERT, fragmentShader: FRAG,
-    defines: { ...(o.map ? { USE_MAP: '' } : {}), ...(o.vcol ? { VCOL: '' } : {}) },
+    defines: { ...(o.map ? { USE_MAP: '' } : {}), ...(o.vcol ? { VCOL: '' } : {}), ...(o.tri ? { TRI: '' } : {}), ...(o.lamps ? { LAMPS: '' } : {}) },
     side: o.side ?? THREE.FrontSide,
     transparent: (o.opacity ?? 1) < 1, depthWrite: (o.opacity ?? 1) >= 1,
     uniforms: {
       uColor: { value: new THREE.Vector3(c.r, c.g, c.b) }, uEmissive: { value: new THREE.Vector3(e.r, e.g, e.b) },
       uMetal: { value: o.metal ?? 0 }, uGloss: { value: o.gloss ?? 0.2 }, uRim: { value: o.rim ?? 0.12 }, uOpacity: { value: o.opacity ?? 1 },
-      uLight: { value: o.light ?? 1 }, uMap: { value: o.map ?? null }, uKey: { value: KEY }, uFill: { value: FILL }, uBright: { value: o.bright ?? 1 },
+      uLight: { value: o.light ?? 1 }, uMap: { value: o.map ?? null }, uKey: { value: KEY }, uFill: { value: FILL }, uBright: { value: o.bright ?? 1 }, uTri: { value: o.tri ?? 1 },
+      ...(o.lamps ? { uLampP: LAMPS.p, uLampC: LAMPS.c, uLampR: LAMPS.r } : {}),
     },
   });
   (m as unknown as { _keep: boolean })._keep = true;
@@ -306,8 +329,8 @@ export class ModelView {
     this.seenT -= dt;
     if (this.seenT <= 0) {
       this.seenT = 0.5;
-      if (!this.cv.isConnected) { this.visible = false; if (!document.body.contains(this.cv)) { this.offT = (this.offT ?? 0) + 0.5; if (this.offT > 30) views.delete(this); } return; }
-      this.offT = 0;
+      // (a view off the page simply waits: a panel built hidden may be shown much later; dispose() removes it)
+      if (!this.cv.isConnected) { this.visible = false; return; }
       const r = this.cv.getBoundingClientRect(); this.visible = r.width > 0 && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth;
     }
     if (!this.visible) return;

@@ -22,7 +22,7 @@ import { GENE } from './life/genes';
 import { el, panel, ui, Btn, toast } from './ui/kit';
 import { sfx } from './audio/audio';
 import { makeHub } from './ship/hub/flowHub';
-import { setShipHubOpener } from './ship/hub';
+import { setShipHubOpener, setShipLander } from './ship/hub';
 
 interface Save {
   planet: number; states: RState[]; landings: number;
@@ -47,7 +47,11 @@ export class Flow {
   private inherit: string[] = [];
   /** the region being played (its works are written into the run when the run is saved) */
   game: Game | null = null;
-  constructor(readonly engine: Engine, readonly input: Input) { setShipHubOpener((fp) => this.openShipHub(fp)); }
+  constructor(readonly engine: Engine, readonly input: Input) {
+    setShipHubOpener((fp) => this.openShipHub(fp));
+    // v7: the SHIP screen's MONITOR panel picks the world and the landing site (src/ship/screen/panels/monitor.ts)
+    setShipLander({ runSeed: () => { this.ensureRun(); return this.run!.seed; }, planet: () => this.planet, land: (seed, r) => { this.choosePlanet(seed); this.landAt(r, { x: 128, z: 128 }); } });
+  }
 
   /** the ship hub is the main menu (src/ship/hub): the title, then the cutaway with every room's function */
   menu() {
