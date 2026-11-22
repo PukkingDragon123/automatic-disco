@@ -110,3 +110,4 @@ addTextureModule(() => {
     for (let k = 0; k < 6; k++) pc.set(rng.int(0, 15), rng.int(0, 15), 0xc04838);
   }, 0.12, 0.12);
 });
+void K;

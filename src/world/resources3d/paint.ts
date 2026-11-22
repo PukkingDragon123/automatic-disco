@@ -375,15 +375,12 @@ const MATS: Record<string, Mat> = {
     t.field(SAND, (x, y) => { const w = nz(t, x, y, cells(m, 0.2), cells(m, 0.2), 2, sd) - 0.5; const rip = Math.sin(((y / t.h) * cells(m, 0.05) + w * 1.5) * 6.283); return 0.56 + rip * 0.08 + (nz(t, x, y, cells(m, 0.012), cells(m, 0.012), 2, sd + 3) - 0.5) * 0.4; });
     specks(t, Math.max(2, 0.01 * s), sd + 1, (x, y, r) => { if (r < 0.12) t.set(x, y, C(STONE, 1)); else if (r < 0.3) t.nudge(x, y, 2); }, 0.7);
   } },
-  gravel: { base: C(STONE, 4), m: 0.5, paint: (t, s, sd) => {
-    // packed gravel: rounded stones of mixed rock, each lit on its crown with a dark contact shadow, grit between
-    t.field(STONE, (x, y) => 0.18 + hashf(x, y, sd) * 0.15);
-    const cell = Math.max(3, 0.035 * s), nx = Math.max(1, Math.round(t.w / cell)), ny = Math.max(1, Math.round(t.h / cell)), cw = t.w / nx, ch = t.h / ny;
-    const list: [number, number, number, number][] = [];
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) list.push([(i + 0.5 + (H(i, j, sd) - 0.5) * 0.6) * cw, (j + 0.5 + (H(i, j, sd + 1) - 0.5) * 0.6) * ch, cw * (0.4 + H(i, j, sd + 2) * 0.25), H(i, j, sd + 3)]);
-    list.sort((a, b) => a[1] - b[1]);
-    const rmp = [STONE, GRAN, SANDS, SLATE, BAS];
-    for (const [cx, cy, r, k] of list) { const ramp = rmp[Math.floor(k * rmp.length)]; t.blob(cx, cy + 1, r + 0.6, r * 0.8 + 0.6, (x, y) => t.set(x, y, C(STONE, 0)), 2); t.blob(cx, cy, r, r * 0.78, (x, y, d) => { const dx = (x - cx) / r, dy = (y - cy) / r; const l = -dx * 0.6 - dy * 0.8 + d * 0.4; t.set(x, y, C(ramp, Math.round(3 + l * 2.6 + (H(x, y, sd) - 0.5)))); }, 3); }
+  gravel: { base: C(STONE, 4), m: 0.5, paint: (t, s, sd, m) => {
+    // packed gravel: a grey mass mottled stone by stone (a cell per stone, each its own tone and a hint of another
+    // rock), the gaps between dark, the crowns lit
+    const v = voronoi(t, cells(m, 0.03), cells(m, 0.03), sd, 1, 0.85);
+    t.field(STONE, (x, y) => { const [k, e] = v(x, y), [, el] = v(x - 1, y - 1); const body = sstep(0, 1.4, e); return 0.12 + body * (0.38 + H(k, 3, sd) * 0.24) + (el < e ? 0.1 : -0.05) * body; });
+    for (let y = 0; y < t.h; y++) for (let x = 0; x < t.w; x++) { const [k] = v(x, y); const r = H(k, 9, sd); if (r < 0.18) t.set(x, y, C(SANDS, cStep(t.get(x, y)))); else if (r < 0.3) t.set(x, y, C(SLATE, cStep(t.get(x, y)))); }
   } },
   peat: { base: C(PEAT, 3), m: 0.5, paint: (t, s, sd, m) => {
     t.field(PEAT, (x, y) => 0.42 + (nz(t, x, y, cells(m, 0.06), cells(m, 0.06), 3, sd) - 0.5) * 0.4);
@@ -397,9 +394,11 @@ const MATS: Record<string, Mat> = {
     t.field(ASH, (x, y) => 0.6 + (nz(t, x, y, cells(m, 0.08), cells(m, 0.08), 3, sd) - 0.5) * 0.35);
     specks(t, Math.max(3, 0.025 * s), sd + 1, (x, y, r) => { if (r < 0.35) grain(t, x, y, C(COAL, 1 + Math.round(r * 4)), 1 + Math.round(r * 3), r); else if (r < 0.38) t.set(x, y, C(RUST, 6)); }, 0.8);
   } },
-  crushed: { base: C(FER, 3), m: 0.5, paint: (t, s, sd) => {
-    t.field(FER, (x, y) => 0.25 + hashf(x, y, sd) * 0.15);
-    specks(t, Math.max(2, 0.016 * s), sd, (x, y, r) => { const c = r < 0.45 ? C(RUST, 3 + Math.round(r * 4)) : C(FER, 3 + Math.round(r * 4)); grain(t, x, y, c, 2 + (r < 0.2 ? 1 : 0), r); if (r > 0.9) t.set(x, y, C(IRON, 7, F_METAL)); }, 1);
+  crushed: { base: C(FER, 3), m: 0.5, paint: (t, s, sd, m) => {
+    // crushed ferrite: a dark granular mass, rusty fines in drifts, metallic grains glinting
+    t.field(FER, (x, y) => 0.42 + (nz(t, x, y, cells(m, 0.06), cells(m, 0.06), 3, sd) - 0.5) * 0.4 + (hashf(x >> 1, y >> 1, sd) - 0.5) * 0.14);
+    overlay(t, RUST, m, 0.08, 0.58, sd + 20, 2, 10);
+    specks(t, Math.max(3, 0.02 * s), sd + 2, (x, y, r) => { if (r < 0.3) { t.set(x, y, C(IRON, 7, F_METAL)); t.nudge(x, y + 1, -2); } }, 0.6);
   } },
   salt: { base: C(SALT, 4), m: 0.25, paint: (t, s, sd, m) => {
     t.field(SALT, (x, y) => 0.4 + (nz(t, x, y, cells(m, 0.03), cells(m, 0.03), 2, sd) - 0.5) * 0.3);

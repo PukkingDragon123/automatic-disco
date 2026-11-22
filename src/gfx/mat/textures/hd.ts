@@ -17,8 +17,12 @@ export type HdKind = 'carpet' | 'paper' | 'tile' | 'wood' | 'stone' | 'metal' | 
 /** which world textures get a close-up version at all (opaque surfaces people walk past) */
 export const HD_RULE = /^(wall_|carpet|tile|ceil_|concrete|wood|metal|fabric|plastic|door_|plank|linoleum|checker|terrazzo|asphalt|dirt|soil|sand|gravel|grass|sidewalk|lab_floor|server_floor|rubber|grate|brick|leather|curtain|cloth|upholstery|paper|cardboard|window_frame|fence|zw_wall|zw_floor|zw_carpet|zw_tile|bw_)/;
 
+/** ODDWORLD: explicit close-up layers for textures whose names the rules below would misread (src/gfx/mat/scifi.ts) */
+export const HD_KIND = new Map<string, HdKind>();
+
 export function hdKind(name: string): HdKind {
   const n = name;
+  const ov = HD_KIND.get(n); if (ov) return ov;
   if (/carpet|rug|mat_/.test(n)) return 'carpet';
   if (/^ceil_tile/.test(n)) return 'ceiling';
   if (/wood|plank|panel|door_wood|door_house|fence|cardboard/.test(n)) return 'wood';

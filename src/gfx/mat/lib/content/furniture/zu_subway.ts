@@ -279,3 +279,4 @@ addTextureModule(() => {
   A.add('su_behind', 128, 7, stencilBehind);
   A.add('su_step', 32, 32, stepNose);
 });
+ void carSide;
