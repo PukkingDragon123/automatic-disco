@@ -10,3 +10,4 @@ export * from './tex3d';
 export * from './models';
 export * from './floatIcon';
 export { installKitStyle } from './style';
+export * from './libmat';

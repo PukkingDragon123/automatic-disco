@@ -7,8 +7,7 @@
 //   skin(el, paint, scale)    paint an element's background to its size, repainted on resize
 //   materialField(mat, x, y)  the material's own texture tone at a pixel (for other painters)
 import { Px, P, INK, hash, bayer, at, mixHex, screw, rivet, hazard, glassWell, type Ramp } from './px';
-import { paintSurface, surfField, type Surf } from './paint';
-const surfOf = (m: Mat): Surf => (m === 'leather' ? 'rubber' : m) as Surf;
+import { libColor } from './libmat';
 
 export type Mat = 'steel' | 'gun' | 'enamel' | 'brass' | 'olive' | 'paper' | 'blueprint' | 'wood' | 'glass' | 'leather' | 'rubber' | 'orange' | 'copper';
 interface MatDef { ramp: Ramp; base: number; under?: Ramp; underK?: number; metal?: boolean }
@@ -28,9 +27,10 @@ const MATS: Record<Mat, MatDef> = {
   copper: { ramp: P.copper, base: 3, metal: true },
 };
 
-/** the material's own surface detail as whole ramp steps (-2..2) at a pixel (from the smooth surface field) */
+/** (kept for old callers) a material's relief at a pixel in whole steps, from its library texture's luminance */
 export function materialField(mat: Mat, x: number, y: number, seed = 1, _w = 64, _h = 64): number {
-  return Math.max(-2, Math.min(2, Math.round(surfField(surfOf(mat), x, y, seed))));
+  const c = libColor(mat, x + seed * 13, y + seed * 7), l = (((c >> 16) & 255) * 0.3 + ((c >> 8) & 255) * 0.59 + (c & 255) * 0.11) / 255;
+  return Math.max(-2, Math.min(2, Math.round((l - 0.5) * 6)));
 }
 
 export interface PlateOpts {
@@ -74,8 +74,20 @@ export function plate(w: number, h: number, o: PlateOpts = {}): Px {
     }
     return k;
   };
-  paintSurface(p, surfOf(mat), (x, y) => inside(x, y) && (o.noInk || edgeD(x, y) >= 1), { seed, wear, grime, h, edge: edgeD, light });
-  if (!o.noInk) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (inside(x, y) && edgeD(x, y) < 1) p.set(x, y, INK);
+  // the face: the library material (tiled, offset per plate), lit top-left, its lips bevelled, grime low, edge wear
+  const ox = Math.floor(hash(seed, 1) * 97), oy = Math.floor(hash(seed, 2) * 61);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (!inside(x, y)) continue;
+    const d = edgeD(x, y);
+    if (d < 1 && !o.noInk) { p.set(x, y, INK); continue; }
+    let k = 1 + light(x, y) * 0.085;
+    // grime settling low, in soft clumps broken by the ordered threshold
+    const gr = grime * Math.max(0, y / h - 0.6) * 2.4;
+    if (gr > 0 && hash(x >> 2, y >> 1, seed + 30) * 0.6 + bayer(x, y) * 0.4 < gr) k *= 0.84;
+    // edge wear: paint rubbed through to bright metal at the rim
+    if (wear > 0 && d < 4 && M.under && hash(x >> 1, y >> 1, seed + 31) > 1 - wear * 0.22 * (4 - d) / 4) { p.set(x, y, libColor('steel', x, y, 1.15)); continue; }
+    p.set(x, y, libColor(mat, x, y, k, ox, oy));
+  }
   void R; void bayer;
   // hazard band
   if (o.hazard) { const hh = o.hazard; hazard(p, ch + 2, h - hh - 3, w - ch * 2 - 4, hh, P.ochre[5], P.ink[1]); p.hl(ch + 2, w - ch - 3, h - hh - 4, INK); }
