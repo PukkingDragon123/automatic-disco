@@ -454,3 +454,49 @@ function buildParts(g: THREE.Group, pr: { core: string; head: string; grip: stri
   });
   return out;
 }
+
+// ================================================================== the tool model hook (TOOL MODELS agent)
+/**
+ * The tools' 3D art can come from another module: `setToolModelProvider(fn)` with fn(id, { lod, animated }) returning
+ * an Object3D (or a Promise of one, or null to fall back to the kit's own models above). The kit auto-registers
+ * `buildToolModel` from src/tools/models/index.ts when that module exists. Provided models keep their maps and colours
+ * but are drawn with the kit's toon material (banded light, black outline) so they sit in the UI; a model that
+ * animates itself exposes `userData.update(dt, t)` (on its root or first child) and the views drive it.
+ *   toolModel(id, lod)   -> a build function for ModelView / snapshot
+ */
+export type ToolLod = 'icon' | 'hud' | 'hero';
+export type ToolModelFn = (id: string, o: { lod: ToolLod; animated: boolean }) => THREE.Object3D | null | Promise<THREE.Object3D | null>;
+let provider: ToolModelFn | null = null;
+export function setToolModelProvider(fn: ToolModelFn | null) { provider = fn; }
+export function hasToolModelProvider() { return !!provider; }
+/** give an outside model the kit's look: each mesh's material becomes a toon material with its map and colour */
+export function toonify(root: THREE.Object3D): THREE.Object3D {
+  root.traverse((n) => {
+    const m = n as THREE.Mesh; if (!m.isMesh || !m.material) return;
+    const conv = (mt: THREE.Material) => {
+      const s = mt as THREE.MeshStandardMaterial & { emissiveIntensity?: number };
+      if ((mt as THREE.ShaderMaterial).isShaderMaterial) return mt;
+      const map = s.map ?? null; if (map) { map.magFilter = THREE.NearestFilter; map.minFilter = THREE.NearestFilter; map.needsUpdate = true; }
+      const e = s.emissive && (s.emissive.r + s.emissive.g + s.emissive.b) > 0.02 ? s.emissive.getHex() : undefined;
+      return toon({ map, color: s.color ? s.color.getHex() : 0xffffff, metal: s.metalness ?? 0, gloss: 1 - (s.roughness ?? 0.8), emissive: e, emissiveK: e !== undefined ? Math.min(1.5, (s.emissiveIntensity ?? 1) * 0.6) : 1, opacity: s.transparent ? Math.max(0.55, s.opacity) : 1, side: s.side, vcol: !!s.vertexColors });
+    };
+    m.material = Array.isArray(m.material) ? m.material.map(conv) : conv(m.material);
+  });
+  return root;
+}
+/** the build function for a tool's model (the provider's when there is one, else the kit's) */
+export function toolModel(id: string, lod: ToolLod = 'hud'): () => THREE.Object3D | Promise<THREE.Object3D | null> {
+  const own = TOOL_MODELS[id] ?? TOOL_MODELS.scanner;
+  if (!provider) return own;
+  const p = provider;
+  return () => {
+    try {
+      const r = p(id, { lod, animated: lod !== 'icon' });
+      if (r && typeof (r as Promise<unknown>).then === 'function') return (r as Promise<THREE.Object3D | null>).then((o) => (o ? toonify(o) : own())).catch(() => own());
+      return r ? toonify(r as THREE.Object3D) : own();
+    } catch (e) { console.warn('tool model provider', id, e); return own(); }
+  };
+}
+// auto-register the TOOL MODELS agent's builder when its module exists (no import when it does not)
+const toolMods = import.meta.glob('../../tools/models/index.ts');
+for (const load of Object.values(toolMods)) void load().then((m) => { const f = (m as { buildToolModel?: ToolModelFn }).buildToolModel; if (typeof f === 'function' && !provider) setToolModelProvider(f); }).catch(() => {});

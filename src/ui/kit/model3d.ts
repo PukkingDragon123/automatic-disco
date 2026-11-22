@@ -319,8 +319,10 @@ export class ModelView {
     }
     this.sq.step(dt); this.tx.step(dt); this.tz.step(dt);
     const animating = !this.sq.settled || !this.tx.settled || !this.tz.settled || Math.abs(this.vy) > 0.05 || this.isHot;
-    const live = animating || !!o.liveFps;
-    if (o.liveFps && !animating) { this.liveAcc += dt; if (this.liveAcc < 1 / o.liveFps) return; this.liveAcc = 0; }
+    const selfAnim = !!(this.root.children[0]?.userData?.update ?? this.root.userData.update);
+    const fps = o.liveFps ?? (selfAnim ? 12 : 0);
+    const live = animating || !!fps;
+    if (fps && !animating) { this.liveAcc += dt; if (this.liveAcc < 1 / fps) return; this.liveAcc = 0; }
     const N = o.frames ?? 48;
     if (!live) {
       // idle: a cached frame per 1/N turn
@@ -333,14 +335,19 @@ export class ModelView {
       const cc = document.createElement('canvas'); cc.width = this.w; cc.height = this.h; cc.getContext('2d')!.drawImage(this.cv, 0, 0); this.cache.set(f, cc);
       return;
     }
-    if (y0 === this.yaw && !animating && !this.dirty && !o.liveFps) return;
+    if (y0 === this.yaw && !animating && !this.dirty && !fps) return;
     this.dirty = false; this.last = '';
     this.draw(this.yaw, this.sq.x * 0.05, this.tx.x, this.tz.x);
   }
   private offT = 0;
+  private lastDraw = 0;
   private draw(yaw: number, squash: number, tiltX: number, tiltZ: number) {
     const o = this.o, root = this.root!;
     o.anim?.(root, this.t, this.isHot);
+    // a provided model that animates itself
+    const up = (root.children[0]?.userData?.update ?? root.userData.update) as ((dt: number, t: number) => void) | undefined;
+    if (up) { const dt = Math.min(0.1, this.t - this.lastDraw); try { up(dt, this.t); } catch { /* its own business */ } }
+    this.lastDraw = this.t;
     renderModel(root, this.c, this.w, this.h, { yaw, pitch: (o.pitch ?? 0.45) + tiltX, roll: tiltZ, squash, zoom: o.zoom, shadow: o.shadow, ink: o.ink, lift: o.lift });
   }
 }

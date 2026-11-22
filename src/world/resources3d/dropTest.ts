@@ -60,6 +60,20 @@ export async function dropTest(engine: Engine, P: URLSearchParams) {
   const w = window as unknown as Record<string, unknown>;
   w.__drop = (k: string, item: ItemId, n = 1) => st.insert(byKind(k), item, n);
   w.__res = res; w.__st = st;
+  // QA: the real floor inside each container body (local y), probed down through the bay
+  w.__floor = () => {
+    const out: Record<string, number[]> = {}, rc = new THREE.Raycaster();
+    for (const c of st.containers) {
+      const m = render.modelOf(c)!; m.root.updateMatrixWorld(true); const B = m.bayOf(), body = m.root.children[0];
+      out[c.kind] = [];
+      for (const [fx, fz] of [[0.5, 0.5], [0.25, 0.5], [0.75, 0.5], [0.5, 0.25], [0.5, 0.75]]) {
+        const p = m.root.localToWorld(new THREE.Vector3(B.x0 + (B.x1 - B.x0) * fx, 3, B.z0 + (B.z1 - B.z0) * fz));
+        rc.set(p, new THREE.Vector3(0, -1, 0)); const h = rc.intersectObject(body, true)[0];
+        out[c.kind].push(h ? Math.round(m.root.worldToLocal(h.point.clone()).y * 100) / 100 : -1);
+      }
+    }
+    return JSON.stringify(out);
+  };
   let t = 0;
   const step = (dt: number) => { t += dt; for (const f of fg2.update$) f(dt); fx.update(dt, engine.h, cam.fov); };
   const screen = {

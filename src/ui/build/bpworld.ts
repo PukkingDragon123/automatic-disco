@@ -131,21 +131,25 @@ void main() {
   vec3 col = rampC(L);
 
   // ---- grid (ground only) and contours
-  bool flatG = !obj && !objR && !objU && !s.sky && abs(s.vz - sr.vz) < 0.5 + s.vz * 0.02 && abs(s.vz - su.vz) < 0.5 + s.vz * 0.02;
+  bool smooth = !s.sky && abs(s.vz - sr.vz) < 0.35 + s.vz * 0.012 && abs(s.vz - su.vz) < 0.35 + s.vz * 0.012;
+  bool flatG = !obj && !objR && !objU && smooth;
   float minorK = clamp(1.6 - pxW * 3.2, 0.0, 1.0);
   vec4 cur = cellAt(s.P.xz);
   float nearC = uHand * clamp(1.0 - length(s.P.xz - uCursor.xy) / max(1.0, uCursor.z), 0.0, 1.0);
   if (flatG) {
-    vec2 g0 = floor(s.P.xz), gR = floor(sr.P.xz), gU = floor(su.P.xz);
-    bool minor = any(notEqual(g0, gR)) || any(notEqual(g0, gU));
-    vec2 M0 = floor(s.P.xz / 5.0), MR = floor(sr.P.xz / 5.0), MU = floor(su.P.xz / 5.0);
-    bool major = any(notEqual(M0, MR)) || any(notEqual(M0, MU));
     float c0 = floor(s.P.y / 0.5), cR = floor(sr.P.y / 0.5), cU = floor(su.P.y / 0.5);
     bool cont = c0 != cR || c0 != cU;
     bool contM = floor(s.P.y / 2.0) != floor(sr.P.y / 2.0) || floor(s.P.y / 2.0) != floor(su.P.y / 2.0);
     if (cont && !water) col = mix(col, rampC(contM ? 5.0 : 4.0), contM ? 0.7 : 0.5);
-    if (minor) col = mix(col, rampC(4.0 + nearC * 2.0), (0.32 + nearC * 0.5) * minorK + glowK * 0.5);
-    if (major) col = mix(col, rampC(5.0 + nearC), 0.62 + glowK * 0.3);
+  }
+  // the printed grid runs over everything on the sheet (1 m minor, 5 m major)
+  if (smooth) {
+    vec2 g0 = floor(s.P.xz), gR = floor(sr.P.xz), gU = floor(su.P.xz);
+    bool minor = any(notEqual(g0, gR)) || any(notEqual(g0, gU));
+    vec2 M0 = floor(s.P.xz / 5.0), MR = floor(sr.P.xz / 5.0), MU = floor(su.P.xz / 5.0);
+    bool major = any(notEqual(M0, MR)) || any(notEqual(M0, MU));
+    if (minor) col = mix(col, rampC(4.0 + nearC * 2.0), (0.42 + nearC * 0.45) * minorK + glowK * 0.5);
+    if (major) col = mix(col, rampC(5.0 + nearC), 0.78 + glowK * 0.2);
   }
   // ---- seams (ore under the ground): stippled, outlined
   if (!obj && cell.b > 0.5) {

@@ -119,7 +119,6 @@ export class BuildTray {
     document.body.appendChild(r);
     this.rail = r.querySelector('.bt-rail')!; this.cursor = r.querySelector('.bt-cur')!;
     this.cats = r.querySelector('.bt-cats')!; this.shelf = r.querySelector('.bt-shelf')!;
-    ruleCursor(32).canvas(this.cursor);
     for (const c of BUILD_CATS) {
       const fk = FLAG[c.k].find((k) => FDEFS[k]) ?? kindsIn(c.k)[0];
       const b = floatBtn(fk ? art(fk, 'small') : bpIcon('cog'), '', () => this.setCat(c.k), { size: 64, cls: 'bt-cat', sound: 'turn' });
@@ -146,11 +145,15 @@ export class BuildTray {
     this.rail.style.width = w * 2 + 'px'; this.rail.style.height = this.rail.height * 2 + 'px';
     this.placeCursor();
   };
+  private curW = 0;
+  /** the slide-rule cursor frames the open category's engraved name (repainted to its width) */
   private placeCursor() {
     const b = this.catEls.get(this.cat); if (!b) return;
-    const rr = this.root.getBoundingClientRect(), br = b.getBoundingClientRect();
+    const rr = this.root.getBoundingClientRect(), br = b.getBoundingClientRect(), tr = b.querySelector('.bt-cat-t')?.getBoundingClientRect();
     if (!br.width) return;
-    this.cursor.style.left = Math.round((br.left + br.width / 2 - rr.left) / 2) * 2 - 32 + 'px';
+    const w = Math.max(24, Math.ceil(((tr?.width ?? 60) + 18) / 2));
+    if (w !== this.curW) { this.curW = w; ruleCursor(w).canvas(this.cursor); this.cursor.style.width = w * 2 + 'px'; this.cursor.style.height = this.cursor.height * 2 + 'px'; }
+    this.cursor.style.left = Math.round((br.left + br.width / 2 - rr.left) / 2) * 2 - w + 'px';
   }
   private wheelCat(dy: number) { const i = BUILD_CATS.findIndex((c) => c.k === this.cat), n = BUILD_CATS.length; this.setCat(BUILD_CATS[(i + (dy > 0 ? 1 : n - 1)) % n].k); }
 

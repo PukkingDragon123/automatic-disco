@@ -14,9 +14,8 @@ import { floatIcon } from '../kit/floatIcon';
 import { mCustomTool } from '../kit/models';
 import { installKitStyle } from '../kit/style';
 import { arsenal, setQuickCustom, quickCustom, TOOLS, type ArmEntry } from './tools';
-import { toolBuild, type ToolWidget } from './toolWidget';
+import { toolBuild, toolAnim, type ToolWidget } from './toolWidget';
 import { lockGlyph } from './glyphs';
-import { TOOL_ANIM } from '../kit/models';
 
 type G = Game & Record<string, any>;
 const GAP = 224;
@@ -145,7 +144,7 @@ export class Arsenal {
       const el = document.createElement('div'); el.className = 'h7-card' + (e.owned ? '' : ' lock');
       el.append(pxCanvas(hookArt(), 2, 'h7-hook'));
       let view: ModelView | null = null;
-      view = new ModelView(toolBuild(e.tool, e.custom), { w: 92, h: 78, scale: 2, spin: 0, yaw0: 0.5 + hash(this.cards.length, 3) * 0.6, hotSpin: 1.6, pitch: 0.4, anim: TOOL_ANIM[e.tool], frames: 32 });
+      view = new ModelView(toolBuild(e.tool, e.custom), { w: 92, h: 78, scale: 2, spin: 0, yaw0: 0.5 + hash(this.cards.length, 3) * 0.6, hotSpin: 1.6, pitch: 0.4, anim: toolAnim(e.tool), frames: 32 });
       el.append(view.cv);
       if (!e.owned) el.append(pxCanvas(lockGlyph(), 2, 'h7-card-lock'));
       const nm = document.createElement('div'); nm.className = 'k7-t16 h7-card-n'; nm.textContent = e.name; el.append(nm);
@@ -227,7 +226,7 @@ export class Arsenal {
       H.el.classList.toggle('h7-cur', i === this.w.current);
       if (key === H.key) continue;
       H.key = key; H.view?.dispose(); H.view = null;
-      if (s?.tool && s.level > 0) { H.view = new ModelView(toolBuild(s.tool, qc), { w: 52, h: 44, scale: 2, spin: 0, yaw0: 0.5, pitch: 0.35, frames: 24 }); H.view.cv.classList.add('h7-hol-model'); H.el.prepend(H.view.cv); }
+      if (s?.tool && s.level > 0) { H.view = new ModelView(toolBuild(s.tool, qc, 'icon'), { w: 52, h: 44, scale: 2, spin: 0, yaw0: 0.5, pitch: 0.35, frames: 24 }); H.view.cv.classList.add('h7-hol-model'); H.el.prepend(H.view.cv); }
     }
   }
   /** put the centred tool into quick slot i */

@@ -5,7 +5,7 @@
 // bounce. HOLD it: an amber ring fills round it and the ARSENAL opens (arsenal.ts).
 import type { Game } from '../../game/game';
 import { ModelView } from '../kit/model3d';
-import { TOOL_MODELS, TOOL_ANIM, mCustomTool } from '../kit/models';
+import { TOOL_ANIM, mCustomTool, toolModel, hasToolModelProvider, type ToolLod } from '../kit/models';
 import { shadowBlob, pxCanvas } from '../kit/mat';
 import { Px, P, INK } from '../kit/px';
 import { uiSfx } from '../kit/sound';
@@ -17,10 +17,13 @@ import { Bench } from './bench';
 
 type G = Game & Record<string, any>;
 const HOLD_MS = 420;
-export function toolBuild(tool: ToolId | null, custom?: { parts: Record<string, string> } | null) {
+/** a tool's model (the TOOL MODELS agent's when registered, else the kit's); custom tools are built from their parts */
+export function toolBuild(tool: ToolId | null, custom?: { parts: Record<string, string> } | null, lod: ToolLod = 'hud') {
   if (custom) return () => mCustomTool(custom.parts);
-  return TOOL_MODELS[tool ?? 'scanner'] ?? TOOL_MODELS.scanner;
+  return toolModel(tool ?? 'scanner', lod);
 }
+/** the kit's own per-tool animation (only for its own models) */
+export const toolAnim = (t: ToolId | null) => (t && !hasToolModelProvider() ? TOOL_ANIM[t] : undefined);
 /** three level lamps (brass bezels, amber when lit) */
 function lamps(level: number): Px {
   const p = new Px(26, 8);
@@ -158,7 +161,7 @@ export class ToolWidget {
     if (key !== this.viewKey || force) {
       const changed = this.viewKey !== '';
       this.viewKey = key;
-      const v = new ModelView(toolBuild(s.tool, s.custom), { w: 84, h: 70, scale: 2, spin: 0, yaw0: 0.5, hotSpin: 1.8, pitch: 0.38, anim: s.tool ? TOOL_ANIM[s.tool] : undefined, zoom: 1.1 });
+      const v = new ModelView(toolBuild(s.tool, s.custom, 'hero'), { w: 84, h: 70, scale: 2, spin: 0, yaw0: 0.5, hotSpin: 1.8, pitch: 0.38, anim: toolAnim(s.tool), zoom: 1.1 });
       v.cv.classList.add('h7-tmodel');
       this.view?.dispose(); this.view = v;
       this.stage.insertBefore(v.cv, this.ring);
@@ -175,7 +178,7 @@ export class ToolWidget {
       Q.el.classList.toggle('lock', t.level <= 0);
       if (qk === Q.key) continue;
       Q.key = qk; Q.view?.dispose(); Q.view = null;
-      if (t.tool && t.level > 0) { Q.view = new ModelView(toolBuild(t.tool, t.custom), { w: 38, h: 32, scale: 2, spin: 0, yaw0: 0.5, hotSpin: 2.5, pitch: 0.4, frames: 24, zoom: 1.15 }); Q.el.prepend(Q.view.cv); }
+      if (t.tool && t.level > 0) { Q.view = new ModelView(toolBuild(t.tool, t.custom, 'icon'), { w: 38, h: 32, scale: 2, spin: 0, yaw0: 0.5, hotSpin: 2.5, pitch: 0.4, frames: 24, zoom: 1.15 }); Q.el.prepend(Q.view.cv); }
     }
   }
   update(dt: number) {
