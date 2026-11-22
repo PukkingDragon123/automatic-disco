@@ -27,7 +27,7 @@ export class BuildDetail {
   private cv: HTMLCanvasElement; private g: CanvasRenderingContext2D;
   private top: HTMLDivElement; private bodyEl: HTMLDivElement;
   kind: FKind | null = null;
-  private key = ''; private ang = 0; private cur = -1; private t = 0; private shown: FKind | null = null;
+  private key = ''; private ang = 0; private cur = -1; private t = 0; private shotT = -1; private shown: FKind | null = null;
   isOpen = false;
 
   constructor(readonly f: Factory, readonly host: { inHand(): FKind | null; moving(): boolean; view(): 'normal' | 'blueprint' }) {
@@ -64,7 +64,8 @@ export class BuildDetail {
     const i = ((Math.round((this.ang / (Math.PI * 2)) * FRAMES) % FRAMES) + FRAMES) % FRAMES;
     if (i === this.cur) return;
     let r = reels.get(k); if (!r) reels.set(k, (r = new Array(FRAMES).fill(null)));
-    if (!r[i]) r[i] = spinFrame(k, PW, PH, (i / FRAMES) * Math.PI * 2);
+    // a new frame of the turn is shot at most every 0.12 s (each is a small render and read-back); cached ones replay
+    if (!r[i]) { if (this.t - this.shotT < 0.12) return; this.shotT = this.t; r[i] = spinFrame(k, PW, PH, (i / FRAMES) * Math.PI * 2); }
     const fr = r[i]; if (!fr) return;
     this.cur = i; this.g.clearRect(0, 0, PW, PH); this.g.drawImage(fr, 0, 0);
   }
@@ -86,7 +87,7 @@ export class BuildDetail {
       kv('Height', `${fmt(d.h)} m`).el,
       kv('Hull', `${d.hp} HP`).el,
       kv('Built', n || s ? `${n}${s ? ` (+${s} site${s > 1 ? 's' : ''})` : ''}` : 'none yet', { color: n ? '#9fe08a' : undefined }).el,
-      kv('Build work', `${Math.round(workOf(d))} worker-s`).el,
+      kv('Build time', `${Math.round(workOf(d))} s, one worker`).el,
     );
     B.append(side, para(say(d.desc), { cls: 'bd-desc' }));
     // cost, item by item

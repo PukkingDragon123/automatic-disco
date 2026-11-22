@@ -73,7 +73,7 @@ body.h7 .hud .cx-alerts { top: 330px !important; }
 body.h7 .hud .cx-sel { top: 96px !important; }
 body.h7 .hud .cx-pausebar { display: none !important; }
 body.h7 .hud .cx-ctl { top: 22px !important; }
-body.h7 .hud .cx-count { top: 22px !important; }
+body.h7 .hud .cx-count { display: none !important; }
 `;
   document.head.append(s);
 }

@@ -450,14 +450,14 @@ export class EmpireScreen {
       const p = this.livePanel(panel({ title: BLOC_NAME[b].toUpperCase(), tone: b === 'soviet' ? 'dark' : 'steel', serial: TREATY_WORD[B.treaty].toUpperCase(), lamps: [B.treaty === 'war' ? 'red' : B.treaty === 'pact' ? 'green' : 'amber'], cls: 'emp-tabp emp-bloc' })); host.append(p.el);
       const top = div('emp-bl', p.body); top.append(glyphEl(blocGlyph(b, 3), 1));
       const tx = div('emp-bl-t', top); tx.append(para(BLOC_DESC[b], { dim: true }));
-      const rel: Meter = meter('RELATIONS', (B.relation + 100) / 200, { w: 170, col: B.relation < -25 ? 'red' : B.relation > 15 ? 'green' : 'amber', value: Math.round(B.relation) });
+      const rel: Meter = meter('RELATIONS', (B.relation + 100) / 200, { w: 170, col: B.relation < -25 ? 'red' : B.relation > 15 ? 'green' : 'amber', value: `${Math.round(B.relation) > 0 ? '+' : ''}${Math.round(B.relation)}` });
       p.body.append(rel.el);
       const word = kv('Standing', relationWord(B.relation)), treaty = kv('Treaty', TREATY_WORD[B.treaty], { color: B.treaty === 'war' ? '#ff9a7a' : B.treaty === 'pact' ? '#9ae0a0' : undefined });
       const held = e.planet.regions.filter((r) => e.rivalsIn(r.id).includes(b)).length, onTheirs = e.d.settlements.filter((s) => e.rivalsIn(s.region).includes(b)).length;
       p.body.append(word.el, treaty.el, kv('Regions with their bases', held).el, kv('Your settlements on their ground', onTheirs, { color: onTheirs ? '#ffd89a' : undefined }).el);
       const dl = kv('Trade deal', '-'); p.body.append(dl.el);
       this.onLive(p.body, () => {
-        rel.set((B.relation + 100) / 200, Math.round(B.relation)); word.set(relationWord(B.relation));
+        rel.set((B.relation + 100) / 200, `${Math.round(B.relation) > 0 ? '+' : ''}${Math.round(B.relation)}`); word.set(relationWord(B.relation));
         dl.set(B.deal ? `${B.deal.giveN} ${nm(B.deal.give)} for ${B.deal.getN} ${nm(B.deal.get)}, next in ${Math.max(0, Math.ceil(B.deal.t))} s (${B.deal.kept} kept, ${B.deal.missed} missed)` : 'none');
       });
       const act = div('emp-act', p.body);
@@ -589,6 +589,8 @@ body.emp-on .h7-root, body.emp-on .hud { visibility: hidden; }
 .emp-oc { display: flex; align-items: center; gap: 2px; color: #9ae0a0; }
 .emp-dim { color: #8a9284; }
 .emp-route { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 8px; align-items: center; margin: 6px 0; padding: 4px; background: rgba(0,0,0,.22); box-shadow: inset 0 0 0 1px rgba(200,190,150,.14); }
+.emp-route-t { min-width: 0; }
+.emp-route-t > .k7-t16 { white-space: normal; overflow-wrap: anywhere; }
 .emp-ln { image-rendering: pixelated; }
 .emp-route-h { color: #ffe7a8; }
 .emp-route-s { color: #c8c4ae; }

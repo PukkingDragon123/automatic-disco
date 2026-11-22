@@ -60,17 +60,17 @@ const dv=new DataView(ab),n=dv.getUint32(0,true),idx=JSON.parse(new TextDecoder(
 for(const [f,o,l,t] of idx)m.set(f,{buf:ab.slice(b0+o,b0+o+l),type:t});return m;})());
 const key=(u,set)=>{if(typeof u!=='string'||/^(data:|blob:)/.test(u))return null;let p=u.replace(/^[a-z][a-z0-9+.-]*:\\/\\/[^/]*/i,'').replace(/[?#].*$/,'');
 try{p=decodeURIComponent(p)}catch{}const parts=p.split('/').filter((x)=>x&&x!=='.');for(let i=0;i<parts.length;i++){const k=parts.slice(i).join('/');if(set(k))return k;}return null;};
-const inImg=(k)=>k in IMG,inPack=(k)=>NAMES.has(k);
+const inImg=(k)=>Object.prototype.hasOwnProperty.call(IMG,k),inPack=(k)=>NAMES.has(k);const hits={};const hit=(k)=>{hits[k]=(hits[k]||0)+1;};
 const raw=window.fetch.bind(window);
 window.fetch=async(input,init)=>{const u=typeof input==='string'?input:input instanceof URL?input.href:input&&input.url;
-const ki=key(u,inImg);if(ki)return raw(IMG[ki]);const k=key(u,inPack);if(!k)return raw(input,init);
-const e=(await unpack()).get(k);return new Response(e.buf.slice(0),{status:200,headers:{'Content-Type':e.type}});};
+const ki=key(u,inImg);if(ki){hit(ki);return raw(IMG[ki]);}const k=key(u,inPack);if(!k)return raw(input,init);
+const e=(await unpack()).get(k);hit(k);return new Response(e.buf.slice(0),{status:200,headers:{'Content-Type':e.type}});};
 const blobs=new Map();
 const media=(k)=>{if(blobs.has(k))return blobs.get(k);const p=unpack().then((m)=>URL.createObjectURL(new Blob([m.get(k).buf],{type:m.get(k).type})));blobs.set(k,p);return p;};
 for(const C of [HTMLImageElement,HTMLMediaElement,HTMLSourceElement]){const d=Object.getOwnPropertyDescriptor(C.prototype,'src');if(!d||!d.set)continue;
-Object.defineProperty(C.prototype,'src',{configurable:true,enumerable:d.enumerable,get(){return d.get.call(this)},set(v){const ki=key(v,inImg);if(ki)return d.set.call(this,IMG[ki]);
-const k=key(v,inPack);if(k){media(k).then((b)=>d.set.call(this,b));return;}return d.set.call(this,v);}});}
-window.__owAssets={images:Object.keys(IMG).length,packed:NAMES.size,unpack};
+Object.defineProperty(C.prototype,'src',{configurable:true,enumerable:d.enumerable,get(){return d.get.call(this)},set(v){const ki=key(v,inImg);if(ki){hit(ki);return d.set.call(this,IMG[ki]);}
+const k=key(v,inPack);if(k){hit(k);media(k).then((b)=>d.set.call(this,b));return;}return d.set.call(this,v);}});}
+window.__owAssets={images:Object.keys(IMG).length,packed:NAMES.size,unpack,hits};
 })();`;
 
 // ---- the module
