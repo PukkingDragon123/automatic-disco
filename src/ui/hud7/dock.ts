@@ -14,6 +14,7 @@ import { plate, skin, type Mat } from '../kit/mat';
 import { uiSfx } from '../kit/sound';
 import { installKitStyle } from '../kit/style';
 import { bindTip } from '../kit/panel';
+import { shake } from '../kit/juice';
 /** what each mode is for (tooltip) and its key */
 const INFO: Record<DockId, [string, string]> = {
   build: ['Place and move buildings on a top-down blueprint of the region: costs, locked and unlocked builds.', 'B'],
@@ -54,7 +55,7 @@ export class Dock {
         onClick: () => this.open(id),
       });
       fi.el.dataset.dock = id;
-      bindTip(fi.el, () => { const s = this.slots.get(id); const locked = fi.el.classList.contains('lock'); return { title: NAMES[id], desc: INFO[id][0], status: locked ? ['Locked: not learned yet', 'warn'] : s?.open ? ['Click to open', 'ok'] : ['Opens a preview: this mode is still being built', 'info'] }; });
+      bindTip(fi.el, () => { const s = this.slots.get(id); const locked = fi.el.classList.contains('lock'); return { title: NAMES[id], desc: INFO[id][0], status: locked ? [this.lockWhy(id), 'warn'] : s?.open ? ['Click to open', 'ok'] : ['Opens a preview: this mode is still being built', 'info'] }; });
       el.append(fi.el);
       this.slots.set(id, { id, fi, open: null, kind: KIND[id] });
     }
@@ -75,9 +76,17 @@ export class Dock {
   setOn(id: DockId, on: boolean) { this.slots.get(id)?.fi.setOn(on); }
   icon(id: DockId) { return this.slots.get(id)?.fi.el ?? null; }
   /** open a slot's mode with its transition */
+  /** why a locked slot is locked: the skill-tree node that opens it, in words */
+  private lockWhy(id: DockId) {
+    const u = (this.g as unknown as { unlocks?: { lockLine?(f: string): string | null } } | null)?.unlocks;
+    const line = u?.lockLine?.('dock:' + id);
+    return line ? `Locked: ${line.toLowerCase().replace(/^unlock /, 'learn ')} on the skill tree` : 'Locked: not learned yet';
+  }
   async open(id: DockId) {
     if (this.busy) return;
     const s = this.slots.get(id); if (!s) return;
+    // a slot not learned yet refuses (the tooltip says what opens it)
+    if (s.fi.el.classList.contains('lock')) { uiSfx('error', 0.5); shake(s.fi.el, 3, 260); return; }
     this.busy = true;
     const r = s.fi.el.querySelector('.k7-model')?.getBoundingClientRect() ?? s.fi.el.getBoundingClientRect();
     const x = r.left + r.width / 2, y = r.top + r.height / 2;

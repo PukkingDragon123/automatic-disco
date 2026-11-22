@@ -21,6 +21,7 @@ import { BIOMES } from '../world/region';
 import { PlanetMap } from './planetMap';
 import { tierGlyph, blocGlyph, unitGlyph, glyphEl } from './glyphs';
 import { travelTo } from './travel';
+import { empireHost } from './host';
 import {
   TIERS, TIER_NAME, TIER_RULE, LINK_RULE, CONVOY_COST, CONVOY_FOOD, DROP_COST, DROP_ITEMS, BLOC_NAME, BLOC_SHORT, BLOC_DESC, BLOC_TRADE,
   GIFT_CR, PEACE_CR, DEAL_PERIOD, TREATY_WORD, relationWord, type SettlementData, type BlocId, type LinkData,
@@ -60,7 +61,9 @@ export class EmpireScreen {
   close(anim = true) {
     if (!this.el) return;
     const done = () => this.teardown();
-    if (anim) void transition('iris', done, { x: this.from.x, y: this.from.y, ms: 300 }); else done();
+    // what was set up on the board (routes, deals, treaties, convoys) is written to the run's save
+    if (anim) { void transition('iris', done, { x: this.from.x, y: this.from.y, ms: 300 }); try { this.e.capture(); empireHost()?.save(); } catch (err) { console.error('empire save', err); } }
+    else done();
   }
   private offChange: (() => void) | null = null;
   private teardown() {
@@ -92,7 +95,7 @@ export class EmpireScreen {
     const hd = div('emp-hd', el);
     const tt = div('emp-tt', hd);
     div('k7-name k7-t48', tt, 'EMPIRE');
-    const sub = t16('', 'emp-sub', tt);
+    const sub = t16('', 'emp-sub', tt), sub2 = t16('', 'emp-sub', tt);
     const strip = panel({ tone: 'dark', head: 8, foot: 8, side: 8, lamps: [], hazard: false, glands: 0, vents: false, cls: 'emp-strip' }); this.panels.push(strip);
     hd.append(strip.el);
     const chips: [string, HTMLCanvasElement, (s: EmpireStats) => number, string, string][] = [
@@ -110,8 +113,9 @@ export class EmpireScreen {
     for (const [label, ic, f, unit, tip] of chips) {
       const ch = div('emp-chip', strip.body); ic.classList.add('emp-chip-ic'); ch.append(ic);
       const col = div('emp-chip-t', ch);
-      const num = div('emp-chip-n', col); const cn = new Counter(num, { size: 32 }); ctrs.push([cn, f]);
-      t16(unit ? `${label} · ${unit}` : label, 'emp-chip-l', col);
+      const nr = div('emp-chip-nr', col), num = div('emp-chip-n', nr); const cn = new Counter(num, { size: 32 }); ctrs.push([cn, f]);
+      if (unit) t16(unit, 'emp-chip-u', nr);
+      t16(label, 'emp-chip-l', col);
       bindTip(ch, () => { const s = e.stats(); return { title: label, desc: tip, rows: label === 'POWER' ? [['Generation', s.power.gen, 'kW'], ['Draw', s.power.draw, 'kW']] : label === 'FOOD' ? [['In store', s.food, 'meals'], ['Eaten', Math.round(s.meals * 10) / 10, 'meals/min']] : label === 'CREDITS' ? [['Taxes', s.tax, 'CR/min']] : label === 'POPULATION' ? [['Crew', s.crew], ['Robots and drones', s.robots], ['Settlements', s.settlements]] : undefined }; });
     }
     const icons = div('emp-ics', hd);
@@ -138,7 +142,8 @@ export class EmpireScreen {
     const sel = div('emp-sel', C);
     // tabs
     const tabs = div('emp-tabs', R);
-    for (const [id, label] of TABS) { const k = pkey(label, () => this.setTab(id), { w: 106, h: 34, tone: 'cream', lamp: 'amber' }); this.keys.set(id, k); tabs.append(k); bindTip(k, () => ({ title: label, desc: TAB_INFO[id], hint: [[String(TABS.findIndex((x) => x[0] === id) + 1), 'this tab']] })); }
+    const TW: Record<Tab, number> = { settlements: 140, routes: 96, diplomacy: 128, log: 72 };
+    for (const [id, label] of TABS) { const k = pkey(label, () => this.setTab(id), { w: TW[id], h: 34, tone: 'cream', lamp: 'amber' }); this.keys.set(id, k); tabs.append(k); bindTip(k, () => ({ title: label, desc: TAB_INFO[id], hint: [[String(TABS.findIndex((x) => x[0] === id) + 1), 'this tab']] })); }
     const tb = div('emp-tabb', R);
     this.col = { l: led.body, sel, tabs, tabBody: tb };
     this.setTab(this.tab);
@@ -146,7 +151,8 @@ export class EmpireScreen {
     // live
     let acc = 0;
     const tick = () => {
-      sub.textContent = `UNAA MANDATE OF ${e.planet.name.toUpperCase()} · SOL ${e.sol()} · ${e.d.settlements.length} SETTLEMENT${e.d.settlements.length === 1 ? '' : 'S'} · ${e.d.convoys.length} ON THE ROAD`;
+      sub.textContent = `UNAA MANDATE OF ${e.planet.name.toUpperCase()}`;
+      sub2.textContent = `SOL ${e.sol()} · ${e.d.settlements.length} SETTLEMENT${e.d.settlements.length === 1 ? '' : 'S'} · ${e.d.convoys.length} ON THE ROAD`;
       const s = e.stats(); for (const [c, f] of ctrs) c.set(Math.round(f(s)));
     };
     tick();
@@ -203,7 +209,7 @@ export class EmpireScreen {
     b.append(section('SHORTAGES'));
     const short = div('emp-short', b);
     const sh: Status = status('-', 'ok'); short.append(sh.el);
-    let lastP = '', lastU = '';
+    let lastP = '#', lastU = '#';
     this.onLive(b, () => {
       const s = e.stats();
       rows.pop.set(s.pop); rows.workers.set(s.workers); rows.crew.set(s.crew); rows.robots.set(s.robots); rows.hap.set(s.happiness, { bar: s.happiness / 100 });
@@ -263,7 +269,7 @@ export class EmpireScreen {
     c3.append(section('IN STORE'));
     const stock = div('emp-stock', c3);
     const sh = status('', 'ok'); c3.append(sh.el);
-    let lastO = '', lastS = '';
+    let lastO = '#', lastS = '#';
     this.onLive(p.body, () => {
       rows.pop.set(Math.round(s.pop)); rows.workers.set(s.workers); rows.bld.set(s.buildings); rows.hap.set(Math.round(s.happiness), { bar: s.happiness / 100 }); rows.food.set(s.food); rows.pow.set(`${s.power.gen} / ${s.power.draw}`); rows.gar.set(s.garrison);
       if (next) {
@@ -335,7 +341,7 @@ export class EmpireScreen {
     p.text('Each settlement is a region with its own works, stores, workers and troops. Click a card to find it on the map; GO to travel there.', { dim: true });
     for (const s of [...e.d.settlements].sort((a, b) => TIERS.indexOf(b.tier) - TIERS.indexOf(a.tier) || b.pop - a.pop)) {
       const card = div('emp-card' + (e.isLive(s) ? ' live' : ''), p.body);
-      const g = div('emp-card-g', card); g.append(glyphEl(tierGlyph(s.tier, 2), 1));
+      const g = div('emp-card-g', card); g.append(glyphEl(tierGlyph(s.tier, 2), 2));
       const t = div('emp-card-t', card);
       const h = div('emp-card-h', t); t16(s.name.toUpperCase(), 'emp-card-nm', h); t16(e.isLive(s) ? 'LIVE' : TIER_NAME[s.tier].toUpperCase(), 'emp-card-tier' + (e.isLive(s) ? ' on' : ''), h);
       const r = e.region(s.region)!;
@@ -345,7 +351,7 @@ export class EmpireScreen {
       nums.append(pop.el, hap.el);
       const out = div('emp-card-o', t);
       const sh = t16('', 'emp-card-sh', t);
-      let lo = '';
+      let lo = '#';
       this.onLive(card, () => {
         pop.set(Math.round(s.pop)); hap.set(Math.round(s.happiness), { bar: s.happiness / 100 });
         const o = e.topProd(s, 3), k = o.map((x) => x.join(':')).join(',');
@@ -524,7 +530,9 @@ body.emp-on .h7-root, body.emp-on .hud { visibility: hidden; }
 .emp-chip { display: flex; align-items: center; gap: 8px; padding: 2px 4px; cursor: default; }
 .emp-chip-ic { image-rendering: pixelated; flex: none; }
 .emp-chip-t { display: flex; flex-direction: column; }
-.emp-chip-n { color: #fff0c0; line-height: 32px; height: 32px; }
+.emp-chip-nr { display: flex; align-items: baseline; gap: 6px; }
+.emp-chip-n { color: #fff0c0; line-height: 32px; height: 32px; overflow: hidden; }
+.emp-chip-u { color: #a8a890; white-space: nowrap; }
 .emp-chip-l { color: #d8a848; font-size: 16px; white-space: nowrap; }
 .emp-ics { display: flex; gap: 14px; align-items: flex-end; flex: none; }
 .emp-ics .k7-fi { width: 96px; }
@@ -564,7 +572,7 @@ body.emp-on .h7-root, body.emp-on .hud { visibility: hidden; }
 .emp-tabp { flex: none; }
 .emp-tabb > .emp-tabp:only-child { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .emp-tabb > .emp-tabp:only-child > .kp-body { flex: 1; }
-.emp-card { position: relative; display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 6px 6px 4px; margin: 6px 0; cursor: pointer;
+.emp-card { position: relative; display: grid; grid-template-columns: 68px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 6px 6px 4px; margin: 6px 0; cursor: pointer;
   background: linear-gradient(180deg, rgba(40,44,46,.7), rgba(18,20,22,.7)); box-shadow: inset 0 0 0 1px #050607, inset 1px 1px 0 rgba(220,210,170,.16), 0 2px 0 #050607; }
 .emp-card:hover { background: linear-gradient(180deg, rgba(58,60,56,.8), rgba(26,28,28,.8)); }
 .emp-card.live { box-shadow: inset 0 0 0 1px #050607, inset 0 0 0 2px rgba(240,200,90,.55), 0 2px 0 #050607; }

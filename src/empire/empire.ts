@@ -216,7 +216,8 @@ export class Empire {
     s.power = { gen: r1((pw?.supply ?? 0) + (v?.gen ?? 0)), draw: r1((pw?.demand ?? 0) + (v?.draw ?? 0)) };
     s.stock = this.liveStock(); s.base = { ...s.stock };
     const rt = f?.rates?.() as Record<string, { made: number; used: number }> | undefined;
-    s.rates = {}; for (const [k, x] of Object.entries(rt ?? {})) { const net = x.made - x.used; if (Math.abs(net) >= 0.05 && nonInternal(k)) s.rates[k] = r1(net); }
+    // the works' rates settle after a minute (the cargo unpacked at the start counts as "made" in the first one)
+    if ((g.world?.time ?? 0) > 75) { s.rates = {}; for (const [k, x] of Object.entries(rt ?? {})) { const net = Math.max(-90, Math.min(90, x.made - x.used)); if (Math.abs(net) >= 0.05 && nonInternal(k)) s.rates[k] = r1(net); } }
     s.garrison = g.troops?.list?.().length ?? robots;
     const sh: string[] = [];
     if (v?.levels?.food && v.levels.food !== 'ok') sh.push('food');

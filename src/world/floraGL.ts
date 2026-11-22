@@ -2,8 +2,11 @@
 // position + yaw + scale, bend in the shared wind field plus the physics field (floraField) with the bend angle
 // growing toward the tip, leaves flutter, petals open and close, pods breathe; eaten, moss-withered, grafted,
 // dissolving and tinted plants come from a per-plant state texture. Leaves are lit with crown-blended normals and a
-// little light through them, cut out of a mip-safe alpha. The card material is the far LOD (the painted sprites,
-// leaning back toward the camera) and the ground-cover decals. Near and far cross-fade with a screen-door dither.
+// little light through them, cut out of a mip-safe alpha. Crown foliage masses (MASS) wear the painted spray with the
+// crown's deep shade between the leaves, and the leaves are cut out along the masses' silhouettes (where the surface
+// turns away from the eye), so a solid low-poly crown keeps a leafy edge; the crowns' fringe cards show on high
+// quality only (uFringe). The card material is the farthest LOD (the painted sprites, past ~120 m, leaning back toward
+// the camera) and the ground-cover decals. LODs switch per plant at its own distance (a screen-door band).
 // Both write the G-buffer: bark, caps and other solids are outlined, foliage is not; glowing parts flag bloom.
 import * as THREE from 'three';
 import { GN_DECL } from '../gfx/gbuf';
@@ -93,8 +96,9 @@ float cutAt(vec3 P, vec3 C) {
 const VERT_PARS_3D = /* glsl */`
 attribute vec4 aW; attribute vec4 aP;
 attribute vec4 iA; attribute vec4 iB;
-uniform float uTime, uN, uH, uFlex, uPushK, uGround, uBob, uDay;
+uniform float uTime, uN, uH, uFlex, uPushK, uGround, uBob, uDay, uFringe;
 uniform vec3 uCamPos; uniform vec4 uLod3;
+varying vec3 vFill;
 // seasons: A = (bloom, highsun, ember, frost), B = (eclipse, bloodtide, monsoon, thaw); per batch: deciduous, fungus,
 // small herb
 uniform vec4 uSeasonA, uSeasonB; uniform float uDecid, uFungus, uSmall;
@@ -123,12 +127,16 @@ vGraft = vec4(sA.g, floor(bB / 64.0), sA.b, sA.a);
 vTint = sB.rgb; vTintK = mod(bB, 64.0) / 63.0;
 vBloom = uBloom[int(clamp(floor(iB.z), 0.0, 7.0))];
 vWither = wither; vBase = base; vKind = aP.w; vLocal = position; vLeafR = fract(aW.w * 7.31 + seed * 3.7);
+// a foliage mass carries its deep fill colour in the pivot
+vFill = aP.xyz;
 vUp = clamp(position.y / max(0.05, uH), 0.0, 1.0);
 float grow = sA.a * (uGround > 0.5 ? (1.0 - wither) : (1.0 - wither * 0.45) * step(0.02, bio));
 // frost: herbs die back toward their dormant crowns
 grow *= 1.0 - uSmall * uSeasonA.w * 0.35;
 vec3 p = position;
 float kind = aP.w;
+// the crowns' leaf-card fringe (pivot y FRINGE_Y) only on high quality: collapsed to a point otherwise
+if (isK(kind, 1.0) && aP.y < -50.0) grow *= step(0.5, uFringe);
 // petals open by day and close at night; pods, bulbs and caps breathe round their pivot; trap lobes snap shut on
 // their hinge and tentacles curl in when prey comes near (closure from the per-plant state)
 float closure = stateC(iB.y).r;
@@ -189,6 +197,7 @@ const FRAG_PARS_3D = /* glsl */`
 uniform sampler2D uBark, uVis; uniform float uN, uTime, uGround, uDay; uniform vec3 uDark; uniform vec3 uGraftCol[4];
 uniform vec4 uSeasonA, uSeasonB; uniform float uDecid, uFungus, uSmall; uniform vec3 uAutumn[4];
 varying float vLeafR;
+varying vec3 vFill;
 bool isK(float k, float v) { return abs(k - v) < 0.5; }
 varying float vWither, vUp, vTr, vTintK; varying vec2 vFade; varying vec3 vWorld;
 varying vec4 vGraft; varying vec3 vBase, vLocal, vTint, vBloom;
@@ -202,16 +211,15 @@ ${CUT_PARS}
 const FRAG_TEX_3D = /* glsl */`
 float bay = bayer4(gl_FragCoord.xy);
 if (bay >= vFade.x || bay < vFade.y) discard;
-bool barkK = vKind < 0.5 || (vKind > 4.5 && vKind < 5.5);
+bool barkK = vKind < 0.5 || (vKind > 4.5 && vKind < 5.5), massK = isK(vKind, 13.0);
 vec4 tB = texture2D(uBark, vMapUv), tA = texture2D(map, vMapUv);
 vec4 texel = barkK ? tB : tA;
-if (!barkK && !isK(vKind, 4.0) && !isK(vKind, 6.0) && !isK(vKind, 11.0) && !isK(vKind, 12.0)) {
-  vec2 dd = fwidth(vMapUv) * vec2(1024.0, 2048.0);
-  float al = texel.a * (1.0 + max(0.0, log2(max(max(dd.x, dd.y), 1.0))) * 0.42);
-  if (al < 0.5) discard;
-}
+// mip-safe coverage: thin leaflets stay a solid silhouette far away
+vec2 dd = fwidth(vMapUv) * vec2(1024.0, 2048.0);
+float alM = texel.a * (1.0 + max(0.0, log2(max(max(dd.x, dd.y), 1.0))) * 0.42);
+if (!barkK && !massK && !isK(vKind, 4.0) && !isK(vKind, 6.0) && !isK(vKind, 11.0) && !isK(vKind, 12.0) && alM < 0.5) discard;
 // ember drops the deciduous leaves, frost leaves the crowns bare
-if (uGround < 0.5 && uDecid > 0.5 && isK(vKind, 1.0) && vLeafR < uSeasonA.z * 0.55 + uSeasonA.w * 0.92) discard;
+if (uGround < 0.5 && uDecid > 0.5 && (isK(vKind, 1.0) || massK) && vLeafR < uSeasonA.z * 0.55 + uSeasonA.w * 0.92) discard;
 `;
 
 export interface FloraUniforms { [k: string]: THREE.IUniform }
@@ -231,14 +239,21 @@ export function plant3dMaterial(U: FloraUniforms, atlas: THREE.Texture, local: {
       .replace('void main() {', GN_DECL + 'void main() {')
       .replace('#include <map_fragment>', `${FRAG_TEX_3D}
 if (distance(vWorld, uCamPos) < 1.5) discard;
-if (uGround < 0.5 && (isK(vKind, 1.0) || isK(vKind, 2.0) || isK(vKind, 7.0) || isK(vKind, 10.0)) && stip(gl_FragCoord.xy, cutAt(vWorld, uCamPos)) > 0.5) discard;
+if (uGround < 0.5 && (isK(vKind, 1.0) || isK(vKind, 2.0) || isK(vKind, 7.0) || isK(vKind, 10.0) || massK) && stip(gl_FragCoord.xy, cutAt(vWorld, uCamPos)) > 0.5) discard;
+if (massK) {
+  // a foliage mass: between the painted leaves, the crown's deep shade; along the silhouette (the surface turning
+  // away from the eye) the gaps are cut out, so the edge is leaves against the sky; inside faces are the deep shade
+  float ndv = abs(dot(normalize(vNormal), normalize(vViewPosition)));
+  if (alM < 0.5) { if (ndv < 0.36 && gl_FrontFacing) discard; texel.rgb = vFill; }
+  if (!gl_FrontFacing) texel.rgb = vFill * 0.7;
+}
 diffuseColor.rgb *= texel.rgb;
 if (isK(vKind, 7.0)) diffuseColor.rgb *= vBloom * 1.25;
 {
   // the seasons on the growth: autumn colour, sun-cured grass and curled leaves, frost-browned herbs with rimed
   // tips, fresh thaw growth, the monsoon's wet sheen, fungi flushing blood red in the bloodtide
   float lumS = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
-  if (isK(vKind, 1.0)) {
+  if (isK(vKind, 1.0) || massK) {
     vec3 aut = uAutumn[int(floor(vLeafR * 3.99))] * (0.45 + lumS * 1.6);
     diffuseColor.rgb = mix(diffuseColor.rgb, aut, uSeasonA.z * (uGround > 0.5 ? 0.35 : uDecid > 0.5 ? 0.85 : 0.3));
     vec3 straw = vec3(0.6, 0.5, 0.28) * (0.45 + lumS * 1.3);
@@ -256,11 +271,11 @@ diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lumW) * vec3(0.95, 0.85, 0.55), vT
 ${GRAFT_3D}`)
       .replace('#include <normal_fragment_begin>', `float faceDirection = gl_FrontFacing ? 1.0 : -1.0;
 vec3 normal = normalize(vNormal + vec3(0.0, 1e-5, 0.0));
-if (vKind < 0.5 || (vKind > 3.5 && vKind < 6.5) || vKind > 10.5) normal *= faceDirection;
+if (vKind < 0.5 || (vKind > 3.5 && vKind < 6.5) || (vKind > 10.5 && vKind < 12.5)) normal *= faceDirection;
 vec3 nonPerturbedNormal = normal;`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
 float night = 1.0 - uDay;
-float sss = ((vKind > 0.5 && vKind < 3.5) || (vKind > 6.5 && vKind < 10.5)) ? 0.17 : 0.05;
+float sss = ((vKind > 0.5 && vKind < 3.5) || (vKind > 6.5 && vKind < 10.5)) ? 0.17 : isK(vKind, 13.0) ? 0.1 : 0.05;
 totalEmissiveRadiance += diffuseColor.rgb * sss * (1.0 - vWither * 0.6) + graftE;
 // lures and glowing tissue: dim by day, bright at night
 float ecl = 1.0 + uSeasonB.x * 2.5;
@@ -298,12 +313,13 @@ if (vGraft.z > 0.0) { vec3 q = floor(vLocal * 46.0); if (h2(q.xy + q.z * 3.1 + 1
 // ------------------------------------------------------------------------------------------------ cards
 /**
  * Card instance layout (stride 16): cA = (x, y, z, flip: ±1 upright, ±2 lying flat), cB = (w, h, phase, stiffness),
- * cR = atlas rect, cC = (plant id or -1, anim, anim speed, lod: 0 always shown, 1 big / 2 small plant / 3 ground far LOD)
+ * cR = atlas rect, cC = (plant id or -1, anim, anim speed, lod: 0 always shown, 1 big / 2 small plant / 3 grass /
+ * 4 ground herb far LOD)
  */
 const CARD_VERT_PARS = /* glsl */`
 attribute vec4 cA; attribute vec4 cB; attribute vec4 cR; attribute vec4 cC;
 uniform float uTime, uN, uLean, uHComp, uGround;
-uniform vec3 uCamRight, uCamBack, uCamPos; uniform vec2 uLod, uLodS, uLodGr;
+uniform vec3 uCamRight, uCamBack, uCamPos; uniform vec2 uLod, uLodS, uLodGr, uLodGr2;
 uniform sampler2D uMoss, uField;
 varying float vWither, vFlut, vFade; varying vec3 vBase, vWorld; varying vec4 vGraft; varying vec4 vGRect;
 ${SHADER_NOISE}
@@ -324,8 +340,8 @@ vec2 sz = cB.xy * sc * sA.a;
 vec3 transformed;
 vec3 wnd = windAt(cA.xz, uTime);
 vec2 fb = (texture2D(uField, cA.xz / uN).xy - 0.5) * 4.0;
-// far LOD of: 1 a large plant, 2 a small plant, 3 3D ground cover (0: a decal, always shown)
-vec2 lr = cC.w > 2.5 ? uLodGr : cC.w > 1.5 ? uLodS : uLod;
+// far LOD of: 1 a large plant, 2 a small plant, 3 3D grass, 4 a 3D ground herb (0: a decal, always shown)
+vec2 lr = cC.w > 3.5 ? uLodGr2 : cC.w > 2.5 ? uLodGr : cC.w > 1.5 ? uLodS : uLod;
 vFade = cC.w > 0.5 ? smoothstep(lr.x, lr.y, distance(uCamPos, cA.xyz)) : 1.0;
 if (abs(cA.w) > 1.5) {
   // lying flat (lily pads, leaf litter): turned to its own angle, pads bob on the water

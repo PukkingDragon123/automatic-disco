@@ -59,6 +59,8 @@ function kitFor(biome?: BiomeKey, planetSeed?: number): Kit {
     uSeasonA: { value: new THREE.Vector4(0, 0, 0, 0) }, uSeasonB: { value: new THREE.Vector4(0, 0, 0, 0) },
     uAutumn: { value: [0xc36530, 0xd8ac5b, 0xbf6346, 0x833b4e].map((c) => new THREE.Color(c)) },
     uLean: { value: 0 }, uHComp: { value: 1 }, uCamRight: { value: new THREE.Vector3(1, 0, 0) }, uCamBack: { value: new THREE.Vector3(0, 0, 1) },
+    // a standalone plant is seen up close: its crown keeps the leaf-card fringe
+    uFringe: { value: 1 },
   });
   k = { key, species, tex, pal, U, live: false };
   kits.set(key, k);

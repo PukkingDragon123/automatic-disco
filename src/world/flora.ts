@@ -1,12 +1,16 @@
 // Flora: plant instances on the region (food for herbivores, life force for the Veyr), grown as real 3D plants
-// near the camera and drawn as their painted sprites far away, over a dense layer of 3D ground cover (grass
-// tussocks, sedges, meadow flowers, clover, young ferns, mushrooms) with pebble, litter and twig decals.
+// everywhere the play camera can see (the painted sprites only past the far range, about 120 m and more), over a
+// dense layer of 3D ground cover (grass tussocks, sedges, meadow flowers, clover, young ferns, mushrooms) with
+// pebble, litter and twig decals.
 //
 // Each species is grown (plantStyle) into a few variant structures; each structure is rasterised into the sprite
-// atlas (the far LOD) and meshed (floraMesh) with hi-res painted leaves, fronds, blades and bark (floraTex). Instances
-// are sorted into 8 m chunks per draw (floraBatch) and only chunks in view are drawn, 3D near, cards far, with a
-// dithered cross-fade. Everything moves in the shared wind field and in a physical spring field (floraField): what
-// walks through pushes the growth aside, heavy things trample it flat for a while, blasts whip it about.
+// atlas (the far cards) and meshed (floraMesh) three times with hi-res painted leaves, fronds, blades and bark
+// (floraTex): the full hero mesh (near), the light mesh (mid range) and the low mesh (a few hundred triangles: the
+// scaffold, solid foliage masses, the main leaves, fronds and caps) that carries the plant out to the far range.
+// Instances are sorted into 4 m chunks per draw (floraBatch) and only chunks in view and in a draw's LOD range are
+// drawn; each plant switches LOD whole at its own distance. Everything moves in the shared wind field and in a
+// physical spring field (floraField): what walks through pushes the growth aside, heavy things trample it flat for
+// a while, blasts whip it about.
 //
 // PUBLIC API (other systems):
 //   x, z, sp, bio, n, species, near(), eat(), tick(), reseat(), shade        simulation (unchanged)
@@ -57,20 +61,30 @@ const BENDS: Record<string, [number, number]> = {
   snaptrap: [0.05, 0.3], pitcher: [0.03, 0.2], sundew: [0.02, 0.15], sail: [0.05, 0.12], lure: [0.2, 0.5], bloom: [0.3, 0.75], crust: [0, 0.05],
 };
 /**
- * LOD ranges per quality tier (camera distance, metres): full 3D fades to the lighter 3D mesh over near, that to the
- * painted cards at plant (small plants: small); 3D ground cover to its cards at ground. Each plant switches whole
- * (a hard per-instance cut, no dithered cross-fade band). Low keeps full 3D
- * within ~10 m only (shrubs on their light mesh), cards beyond, and half the grass.
+ * LOD ranges per quality tier (camera distance, metres). Every plant is a real 3D mesh out to the far range: the full
+ * mesh to big[0], the light mesh to big[1], the low mesh to big[2], its painted card only beyond (small: plants under
+ * about 1.5 m). Low quality skips the light mesh: the low mesh from the near range on. Ground cover: grass tussocks
+ * are 3D to gnd and cards beyond (thinned to every keep-th); flowers, clover, ferns and mushrooms are full 3D to
+ * gfl[0], their low mesh to gfl[1], cards beyond. fringe: the crowns' leaf-card fringe (high only). Each plant
+ * switches whole at its own distance (a hard per-instance cut).
  */
-type R2 = [number, number];
-interface LodSet { near: R2; plant: R2; small: R2; ground: R2; grassKeep: number; low: boolean }
+type R3 = [number, number, number];
+interface LodSet { big: R3; small: R3; gnd: number; gfl: [number, number]; keep: number; fringe: boolean }
 const LODS: Record<Quality, LodSet> = {
-  high: { near: [23, 23.05], plant: [62, 62.05], small: [46, 46.05], ground: [44, 44.05], grassKeep: 1, low: false },
-  medium: { near: [11, 11.05], plant: [30, 30.05], small: [24, 24.05], ground: [25, 25.05], grassKeep: 1, low: false },
-  low: { near: [10, 10.05], plant: [10, 10.05], small: [10, 10.05], ground: [10, 10.05], grassKeep: 2, low: true },
+  high: { big: [26, 62, 150], small: [18, 44, 128], gnd: 44, gfl: [30, 90], keep: 1, fringe: true },
+  medium: { big: [14, 34, 132], small: [11, 26, 122], gnd: 26, gfl: [18, 72], keep: 1, fringe: false },
+  low: { big: [9, 9, 122], small: [8, 8, 118], gnd: 12, gfl: [9, 56], keep: 2, fringe: false },
 };
-/** plants shorter than this hand over to their cards at the nearer LOD_SMALL range */
+/** plants shorter than this use the small LOD ranges */
 const SMALL_H = 1.25;
+/** ground cover that stays 3D out to the far range (a low mesh beyond the full one); grass goes to cards */
+const GROUND_LOW = new Set<GroundForm>(['flower', 'fern', 'mush', 'clover']);
+/** LOD categories: plants big / small, ground grass / ground herbs */
+const enum Cat { BIG = 0, SMALL = 1, GRASS = 2, HERB = 3 }
+/** one draw: a batch shown over LODs lo..hi of its category */
+interface Span { b: Batch; cat: Cat; lo: number; hi: number; band: THREE.IUniform; ri: number; keep: boolean }
+/** a camera-distance range and this frame's chunk list for it */
+interface Rng { a: number; b: number; list: Int32Array; n: number; sig: number }
 
 const I3D: [string, number, number][] = [['iA', 4, 0], ['iB', 4, 4]];
 const ICARD: [string, number, number][] = [['cA', 4, 0], ['cB', 4, 4], ['cR', 4, 8], ['cC', 4, 12]];
@@ -94,11 +108,13 @@ export class Flora {
   private recovering = new Set<number>();
   shade!: Float32Array;
   readonly group = new THREE.Group();
-  /** per-species, per-variant, per-LOD 3D draws */
+  /** per-species, per-variant 3D draws (one per distinct mesh: a span of LODs) */
   private p3d: Batch[][][] = [];
   private pGeo: PlantGeo[][][] = [];
   private pCards!: Batch;
   private g3d: Batch[] = [];
+  private spans: Span[] = [];
+  private rngs: Rng[] = []; private rFar = 0; private rGFar = 0;
   private gFar!: Batch; private gAlways!: Batch;
   private all: Batch[] = [];
   private nc: number;
@@ -127,10 +143,10 @@ export class Flora {
     this.U = {
       uTime: { value: 0 }, uN: { value: N }, uLean: { value: 0.42 }, uHComp: { value: 1.08 },
       uCamRight: { value: new THREE.Vector3(1, 0, 0) }, uCamBack: { value: new THREE.Vector3(0, 0, 1) }, uCamPos: { value: new THREE.Vector3(0, 50, 0) },
-      // LOD bands (set by setQuality): 3D near / light 3D per category (big, small, shrub), ground, and the card fades
-      uLod: { value: new THREE.Vector2() }, uLodS: { value: new THREE.Vector2() }, uLodGr: { value: new THREE.Vector2() },
-      uLodA: { value: new THREE.Vector4() }, uLodB: { value: new THREE.Vector4() }, uLodBs: { value: new THREE.Vector4() },
-      uLodAsh: { value: new THREE.Vector4() }, uLodBsh: { value: new THREE.Vector4() }, uLodG: { value: new THREE.Vector4() },
+      // the cards' fade-in ranges (set by setQuality: big plants, small plants, grass, ground herbs; each 3D draw has its
+      // own LOD band) and the crowns' leaf-card fringe (high quality)
+      uLod: { value: new THREE.Vector2() }, uLodS: { value: new THREE.Vector2() }, uLodGr: { value: new THREE.Vector2() }, uLodGr2: { value: new THREE.Vector2() },
+      uFringe: { value: 1 },
       uMoss: { value: moss }, uVis: { value: vis }, uDark: { value: new THREE.Color(0x07080c) },
       uField: { value: this.field.tex }, uBark: { value: this.tex.bark },
       uFocus: { value: new THREE.Vector3() }, uCut: { value: new THREE.Vector4(0, 2.2, 3.4, 0) }, uDay: { value: 1 },
@@ -403,26 +419,32 @@ export class Flora {
       const bset = bladeSetOf(s.forms ?? []);
       const [flex, pushK] = BENDS[s.arch] ?? [0.2, 0.5];
       const shadow = s.tree || s.hmax > 1.05 || s.arch === 'shrub';
+      const small = this.isSmall(s), cat = small ? Cat.SMALL : Cat.BIG;
+      const decid = s.arch === 'broadleaf' || s.arch === 'umbrella' || s.arch === 'shrub' || s.arch === 'weeper' || s.arch === 'bloom';
       for (let v = 0; v < V; v++) {
         const form = s.forms?.[v], h = s.heights?.[v] ?? s.hmax, seed = this.region.seed * 131 + si * 17 + v;
         const pgs: PlantGeo[] = [], tm = performance.now();
-        if (form) { pgs.push(meshPlant(form, s, this.tex, seed, bset, 0), meshPlant(form, s, this.tex, seed, bset, 1)); s.forms![v] = null; }
-        else if (HERO[s.arch]) pgs.push(HERO[s.arch](s, h, this.tex, seed, 0), HERO[s.arch](s, h, this.tex, seed, 1));
-        else {
-          const pg = s.arch === 'barrel' ? meshBarrel(s, h, this.tex, seed) : meshCrystal(s, h, this.tex, seed, this.region.pal);
-          pgs.push(pg, pg);
-        }
+        // full, light and low meshes
+        if (form) { for (let l = 0; l < 3; l++) pgs.push(meshPlant(form, s, this.tex, seed, bset, l)); s.forms![v] = null; }
+        else if (HERO[s.arch]) for (let l = 0; l < 3; l++) pgs.push(HERO[s.arch](s, h, this.tex, seed, l));
+        else if (s.arch === 'barrel') for (let l = 0; l < 3; l++) pgs.push(meshBarrel(s, h, this.tex, seed, l));
+        else { const pg = meshCrystal(s, h, this.tex, seed, this.region.pal); pgs.push(pg, pg, pg); }
+        // a coarser mesh that saves little is dropped: the finer one carries on over its range (one draw fewer)
+        if (pgs[1] !== pgs[0] && pgs[1].tris > pgs[0].tris * 0.85) pgs[1] = pgs[0];
+        if (pgs[2] !== pgs[1] && pgs[2].tris > pgs[1].tris * 0.8) pgs[2] = pgs[1];
         this.stats.tMesh += performance.now() - tm;
         this.pGeo[si][v] = pgs; this.p3d[si][v] = []; (this.anchors[si] ??= [])[v] = pgs[0].anchors ?? [];
-        pgs.forEach((pg, lod) => {
+        for (let lo = 0; lo < 3;) {
+          let hi = lo; while (hi < 2 && pgs[hi + 1] === pgs[lo]) hi++;
+          const pg = pgs[lo];
           tris += pg.tris;
-          const small = this.isSmall(s), shrub = s.arch === 'shrub', U = this.U;
-          const band = lod ? (shrub ? U.uLodBsh : small ? U.uLodBs : U.uLodB) : shrub ? U.uLodAsh : U.uLodA;
-          const decid = s.arch === 'broadleaf' || s.arch === 'umbrella' || s.arch === 'shrub' || s.arch === 'weeper' || s.arch === 'bloom';
+          const band = { value: new THREE.Vector4() };
           const { mat, depth } = plant3dMaterial(this.U, this.tex.tex, { uH: pg.H, uFlex: flex, uPushK: pushK, uBob: s.arch === 'lily' ? 1 : 0, lod: band, decid, fungus: s.arch === 'fungus', small: small && !s.tree });
-          const b = new Batch(`flora3d:${s.arch}:${v}:${lod}`, pg.geo, mat, shadow ? depth : null, 8, I3D, per3d[si][v], nc2, 24);
-          this.p3d[si][v][lod] = b; this.all.push(b);
-        });
+          const b = new Batch(`flora3d:${s.arch}:${v}:${lo}${hi > lo ? '-' + hi : ''}`, pg.geo, mat, shadow ? depth : null, 8, I3D, per3d[si][v], nc2, 24);
+          this.p3d[si][v].push(b); this.all.push(b);
+          this.spans.push({ b, cat, lo, hi, band, ri: 0, keep: false });
+          lo = hi + 1;
+        }
       }
     });
     this.stats.tris3d = tris;
@@ -443,7 +465,7 @@ export class Flora {
       const g3 = GROUND3D[gi.kind];
       const k = r.range(0.85, 1.15), stiff = (STIFF[gi.kind] ?? 1) * r.range(0.75, 1.3);
       const L = ((g3 ? farCards : alwaysCards)[c] ??= []);
-      L.push(p[0], p[1], p[2], (r.chance(0.5) ? 1 : -1) * (gi.flat ? 2 : 1), s.w * k, s.h * k, r.range(0, 6.28), stiff, s.u0, s.v0, s.du, s.dv, -1, 0, r.range(0.8, 1.25), g3 ? 3 : 0);
+      L.push(p[0], p[1], p[2], (r.chance(0.5) ? 1 : -1) * (gi.flat ? 2 : 1), s.w * k, s.h * k, r.range(0, 6.28), stiff, s.u0, s.v0, s.du, s.dv, -1, 0, r.range(0.8, 1.25), g3 ? (GROUND_LOW.has(g3[0]) ? 4 : 3) : 0);
       if (!g3) return;
       const [form, nv] = g3, v = gi.kind === 'flower' ? (hash01(gi.tint, 3, this.region.seed) * 4) | 0 : (p[3] + j) % nv;
       const key = form + v;
@@ -453,13 +475,18 @@ export class Flora {
       (forms[fi].per[c] ??= []).push(p[0], p[1], p[2], r.range(0, 6.2832), k, -1, tint + r.range(0, 0.999), r.range(0.75, 1.3));
     });
     for (const f of forms) {
-      const pg = meshGround(f.form, f.v, this.tex, pal, this.region.seed);
       const flex = f.form === 'mush' ? 0.02 : f.form === 'clover' ? 0.12 : f.form === 'fern' ? 0.3 : f.form === 'flower' ? 0.38 : 0.55;
       const pushK = f.form === 'mush' ? 0.15 : f.form === 'clover' ? 0.5 : 1;
-      const { mat } = plant3dMaterial(this.U, this.tex.tex, { uH: pg.H, uFlex: flex, uPushK: pushK, uGround: true, lod: this.U.uLodG, fungus: f.form === 'mush', small: true });
-      const b = new Batch(`ground3d:${f.key}`, pg.geo, mat, null, 8, I3D, f.per, nc2);
-      this.g3d.push(b); this.all.push(b);
-      this.stats.tris3d += pg.tris;
+      // grass: full 3D near, cards beyond; flowers, clover, ferns and mushrooms: full near, their low mesh far
+      const herb = GROUND_LOW.has(f.form), cat = herb ? Cat.HERB : Cat.GRASS;
+      for (const lod of herb ? [0, 2] : [0]) {
+        const pg = meshGround(f.form, f.v, this.tex, pal, this.region.seed, lod), band = { value: new THREE.Vector4() };
+        const { mat } = plant3dMaterial(this.U, this.tex.tex, { uH: pg.H, uFlex: flex, uPushK: pushK, uGround: true, lod: band, fungus: f.form === 'mush', small: true });
+        const b = new Batch(`ground3d:${f.key}${lod ? ':low' : ''}`, pg.geo, mat, null, 8, I3D, f.per, nc2);
+        this.g3d.push(b); this.all.push(b);
+        this.spans.push({ b, cat, lo: lod, hi: lod, band, ri: 0, keep: !herb });
+        this.stats.tris3d += pg.tris;
+      }
     }
     const cg = cardGeo(2);
     const far = cardMaterial(this.U, this.atlas.tex, true, false);
@@ -474,12 +501,24 @@ export class Flora {
   private offSettings: (() => void) | null = null;
   /** switch LOD tier ('low' | 'medium' | 'high'); follows settings.quality automatically */
   setQuality(q: Quality) {
-    const L = (this.L = LODS[q] ?? LODS.high), U = this.U, HIDE: [number, number] = [1e6, 1e6 + 1], ALL: [number, number] = [-2, -1];
-    const v4 = (u: THREE.IUniform, a: R2, b: R2) => (u.value as THREE.Vector4).set(a[0], a[1], b[0], b[1]);
-    v4(U.uLodA, ALL, L.near); v4(U.uLodB, L.near, L.plant); v4(U.uLodBs, L.near, L.small); v4(U.uLodG, ALL, L.ground);
-    // on low, shrubs show their light mesh up close instead of the full one
-    if (L.low) { v4(U.uLodAsh, HIDE, HIDE); v4(U.uLodBsh, ALL, L.near); } else { v4(U.uLodAsh, ALL, L.near); v4(U.uLodBsh, L.near, L.plant); }
-    (U.uLod.value as THREE.Vector2).set(...(L.low ? L.near : L.plant)); (U.uLodS.value as THREE.Vector2).set(...(L.low ? L.near : L.small)); (U.uLodGr.value as THREE.Vector2).set(...L.ground);
+    const L = (this.L = LODS[q] ?? LODS.high), U = this.U, E = 0.05, nc2 = this.nc * this.nc;
+    // the distance range each draw covers: from the end of the finer LOD before it to the end of its last LOD
+    const ends = (c: Cat): number[] => (c === Cat.BIG ? L.big : c === Cat.SMALL ? L.small : c === Cat.GRASS ? [L.gnd, L.gnd, L.gnd] : [L.gfl[0], L.gfl[0], L.gfl[1]]);
+    const rngs: Rng[] = [], rngOf = (a: number, b: number) => {
+      let i = rngs.findIndex((g) => g.a === a && g.b === b);
+      if (i < 0) { i = rngs.length; rngs.push({ a, b, list: new Int32Array(nc2), n: 0, sig: 0 }); }
+      return i;
+    };
+    for (const s of this.spans) {
+      const e = ends(s.cat), a = s.lo === 0 ? -2 : e[s.lo - 1], b = e[s.hi], v = s.band.value as THREE.Vector4;
+      if (a >= b) { v.set(1e6, 1e6 + 1, 1e6, 1e6 + 1); s.ri = -1; continue; }
+      v.set(a, a + E, b, b + E); s.ri = rngOf(a, b + E);
+    }
+    this.rFar = rngOf(Math.min(L.big[2], L.small[2]), 1e9); this.rGFar = rngOf(Math.min(L.gnd, L.gfl[1]), 1e9);
+    this.rngs = rngs;
+    (U.uLod.value as THREE.Vector2).set(L.big[2], L.big[2] + E); (U.uLodS.value as THREE.Vector2).set(L.small[2], L.small[2] + E);
+    (U.uLodGr.value as THREE.Vector2).set(L.gnd, L.gnd + E); (U.uLodGr2.value as THREE.Vector2).set(L.gfl[1], L.gfl[1] + E);
+    U.uFringe.value = L.fringe ? 1 : 0;
     for (const b of this.all) b.dirty = true;
   }
   /** stop following the settings (call when the world is thrown away) */
@@ -510,15 +549,17 @@ export class Flora {
     this.fruitFrame(dt, cp, e);
   }
 
-  private lists = { n0: new Int32Array(4096), n1: new Int32Array(4096), n1s: new Int32Array(4096), far: new Int32Array(4096), gNear: new Int32Array(4096), gFar: new Int32Array(4096), vis: new Int32Array(4096) };
+  private vis = new Int32Array(0);
   private box = new THREE.Box3();
   private cull(cam: THREE.PerspectiveCamera, cp: THREE.Vector3) {
     cam.updateMatrixWorld();
     this.pm.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.pm);
-    const nc = this.nc, L = this.lists, box = this.box, M = 2.5, LL = this.L;
-    let n0 = 0, n1 = 0, n1s = 0, nF = 0, gN = 0, gF = 0, nV = 0;
-    let s0 = 17, s1 = 23, s1s = 29, sF = 31, sGN = 7, sGF = 11, sV = 3;
+    const nc = this.nc, box = this.box, M = 2.5, R = this.rngs, nR = R.length;
+    if (this.vis.length !== nc * nc) this.vis = new Int32Array(nc * nc);
+    const vis = this.vis;
+    let nV = 0, sV = 3;
+    for (let k = 0; k < nR; k++) { R[k].n = 0; R[k].sig = 17 + k * 6; }
     const mix = (h: number, c: number) => (Math.imul(h ^ (c + 0x9e37), 0x01000193) >>> 0);
     for (let cz = 0; cz < nc; cz++) for (let cx = 0; cx < nc; cx++) {
       const c = cz * nc + cx, y0 = this.chunkY[c * 2], y1 = this.chunkY[c * 2 + 1];
@@ -531,39 +572,32 @@ export class Flora {
       const dmin = hyp(qx - cp.x, qy - cp.y, qz - cp.z) - M;
       const fx = Math.abs(cp.x - x0) > Math.abs(cp.x - x1) ? x0 : x1, fz = Math.abs(cp.z - z0) > Math.abs(cp.z - z1) ? z0 : z1;
       const dmax = hyp(fx - cp.x, cp.y - y0, fz - cp.z) + M;
-      L.vis[nV++] = c; sV = mix(sV, c);
-      if (dmin < LL.near[1]) { L.n0[n0++] = c; s0 = mix(s0, c); }
-      if (dmax > LL.near[0] && dmin < LL.plant[1]) { L.n1[n1++] = c; s1 = mix(s1, c); }
-      if (dmax > LL.near[0] && dmin < LL.small[1]) { L.n1s[n1s++] = c; s1s = mix(s1s, c); }
-      if (dmax > Math.min(LL.small[0], LL.plant[0])) { L.far[nF++] = c; sF = mix(sF, c); }
-      if (dmin < LL.ground[1]) { L.gNear[gN++] = c; sGN = mix(sGN, c); }
-      if (dmax > LL.ground[0]) { L.gFar[gF++] = c; sGF = mix(sGF, c); }
+      vis[nV++] = c; sV = mix(sV, c);
+      for (let k = 0; k < nR; k++) { const g = R[k]; if (dmax > g.a && dmin < g.b) { g.list[g.n++] = c; g.sig = mix(g.sig, c); } }
     }
     let drawn = 0, i3 = 0;
-    this.p3d.forEach((row, si) => { const s = this.species[si], small = this.isSmall(s), shrub = s.arch === 'shrub'; for (const pair of row) {
-      if (LL.low) {
-        // low: full 3D up close only (shrubs on their light mesh), nothing in between
-        pair[0].rebuild(L.n0, shrub ? 0 : n0, s0); pair[1].rebuild(L.n0, shrub ? n0 : 0, s0 + 1);
-      } else {
-        pair[0].rebuild(L.n0, n0, s0);
-        if (small) pair[1].rebuild(L.n1s, n1s, s1s); else pair[1].rebuild(L.n1, n1, s1);
-      }
-      drawn += pair[0].count + pair[1].count; i3 += pair[0].count + pair[1].count;
-    } });
-    for (const b of this.g3d) { b.rebuild(L.gNear, gN, sGN, LL.grassKeep); drawn += b.count; i3 += b.count; }
-    this.pCards.rebuild(L.far, nF, sF); this.gFar.rebuild(L.gFar, gF, sGF, LL.grassKeep); this.gAlways.rebuild(L.vis, nV, sV);
+    for (const s of this.spans) {
+      if (s.ri < 0) s.b.rebuild(vis, 0, 1);
+      else { const g = R[s.ri]; s.b.rebuild(g.list, g.n, g.sig, s.keep ? this.L.keep : 1); }
+      drawn += s.b.count; i3 += s.b.count;
+    }
+    const F = R[this.rFar], GF = R[this.rGFar];
+    this.pCards.rebuild(F.list, F.n, F.sig); this.gFar.rebuild(GF.list, GF.n, GF.sig, this.L.keep); this.gAlways.rebuild(vis, nV, sV);
     drawn += this.pCards.count + this.gFar.count + this.gAlways.count;
     this.stats.drawn = drawn; this.stats.inst3d = i3;
   }
 
-  /** triangles drawn by the flora this frame (colour pass), by group */
+  /** triangles drawn by the flora this frame (colour pass), by group and LOD (0 full, 1 light, 2 low) */
   frameTris() {
     const t = (b: Batch) => b.count * ((b.mesh.geometry.index?.count ?? 0) / 3);
     let plants = 0, ground = 0, cards = 0;
-    for (const row of this.p3d) for (const pair of row) for (const b of pair) plants += t(b);
-    for (const b of this.g3d) ground += t(b);
+    const byLod = [0, 0, 0], inst = [0, 0, 0];
+    for (const s of this.spans) {
+      const n = t(s.b);
+      if (s.cat === Cat.BIG || s.cat === Cat.SMALL) { plants += n; byLod[s.lo] += n; inst[s.lo] += s.b.count; } else ground += n;
+    }
     cards = t(this.pCards) + t(this.gFar) + t(this.gAlways);
-    return { plants: Math.round(plants), ground: Math.round(ground), cards: Math.round(cards), draws: this.all.filter((b) => b.mesh.visible).length };
+    return { plants: Math.round(plants), ground: Math.round(ground), cards: Math.round(cards), plantLod: byLod.map(Math.round), plantInst: inst, cardInst: this.pCards.count, draws: this.all.filter((b) => b.mesh.visible).length };
   }
 
   // ---------------------------------------------------------------- seasons (climate.ts calls it)

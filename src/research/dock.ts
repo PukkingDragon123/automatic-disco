@@ -25,13 +25,14 @@ export function hookDock(g: Game, unlocks: Unlocks) {
       hooked = d; locked.clear();
       d.register('research', (ctx: Ctx) => { if (!SkillTree.current) openTree(G, G.engine, ctx.close ? (after) => ctx.close!(after) : undefined); });
     }
-    // a slot not learned yet is not there at all; one whose reveal is flying in keeps its place, unseen
+    // a slot not learned yet stands in the dock greyed and locked (its tooltip names the node that opens it; hiding
+    // them left a fresh game with no dock at all); one whose reveal is flying in keeps its place, unseen
     for (const id of DOCK_IDS) {
       const has = unlocks.has('dock:' + id), wait = waiting.has(id), on = !has || wait;
-      const st = !has ? 'gone' : wait ? 'wait' : 'here';
+      const st = !has ? 'locked' : wait ? 'wait' : 'here';
       if (locked.get(id) !== on) { locked.set(id, on); try { d.lock?.(id, on); } catch (e) { console.error('dock lock', id, e); } }
       const el = d.icon?.(id) ?? (document.querySelector(`[data-dock="${id}"]`) as HTMLElement | null);
-      if (el && el.dataset.u7 !== st) { el.dataset.u7 = st; el.style.display = st === 'gone' ? 'none' : ''; el.style.visibility = st === 'wait' ? 'hidden' : ''; if (st === 'here' && shown.has(id)) pop(el, 1.4); shown.add(id); }
+      if (el && el.dataset.u7 !== st) { const was = el.dataset.u7; el.dataset.u7 = st; el.style.display = ''; el.style.visibility = st === 'wait' ? 'hidden' : ''; if (st === 'here' && shown.has(id) && was !== 'here') pop(el, 1.4); shown.add(id); }
     }
   };
   const reveal = (slot: string) => {

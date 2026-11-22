@@ -250,9 +250,15 @@ export class PlanetMap {
       const p = this.convoyAt(cv); if (!p) continue;
       let kind: 'convoy' | 'train' | 'pod' | 'settlers' | 'deal' = cv.kind === 'drop' ? 'pod' : cv.kind === 'settlers' ? 'settlers' : cv.kind === 'deal' ? 'deal' : 'convoy';
       if (cv.kind === 'trade') { const pa = this.e.path(cv.from, cv.to); if (pa?.kind === 'rail') kind = 'train'; }
-      const g = glyphCv(unitGlyph(kind, 1)), bob = Math.round(Math.sin(this.t * 6 + cv.id) * 1);
-      if (kind === 'pod') { c.fillStyle = 'rgba(255,200,120,0.5)'; c.fillRect(Math.round(p[0]) - 1, Math.round(p[1]) - 26, 2, 22); }
-      c.drawImage(g, Math.round(p[0] - g.width), Math.round(p[1] - g.height) + bob, g.width * 2, g.height * 2);
+      const g = glyphCv(unitGlyph(kind, 1)), bob = Math.round(Math.sin(this.t * 6 + cv.id) * 1), sc = kind === 'settlers' || kind === 'pod' ? 3 : 2;
+      // settlers leave a dotted track from where they set out to where they are going, with a target ring
+      if (kind === 'settlers' && cv.region !== undefined) {
+        const A = this.e.settlement(cv.from), to = this.e.region(cv.region)!;
+        if (A) this.seg(this.e.region(A.region)!.c, to.c, 24, (pts) => this.poly(pts, 2, 'rgba(255,226,150,0.85)', [2, 6]));
+        this.ringRegion(to, P.gold[5], 1);
+      }
+      if (kind === 'pod') { const to = cv.region !== undefined ? this.e.region(cv.region) : null; if (to) this.ringRegion(to, P.glowAmber[4], 1); c.fillStyle = 'rgba(255,200,120,0.5)'; c.fillRect(Math.round(p[0]) - 1, Math.round(p[1]) - 40, 2, 34); }
+      c.drawImage(g, Math.round(p[0] - (g.width * sc) / 2), Math.round(p[1] - g.height * sc) + bob, g.width * sc, g.height * sc);
     }
   }
   private drawSettlements() {

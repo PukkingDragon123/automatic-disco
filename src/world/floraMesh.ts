@@ -267,9 +267,13 @@ function crownMasses(g: Geo, P: Plant, sp: PlantSpecies, tex: FloraTex, r: Rand,
   for (const k of CL) { const w = k.R[0] * k.R[1] * k.R[2]; cc[0] += k.c[0] * w; cc[1] += k.c[1] * w; cc[2] += k.c[2] * w; vs += w; }
   cc[0] /= vs; cc[1] = cc[1] / vs - (umb ? 0.8 : shrub ? 0.15 : 0.35); cc[2] /= vs;
   const shd = P.shade();
-  const seg = lod ? (lod > 1 ? 6 : 7) : 9, rings = lod ? (lod > 1 ? 3 : 4) : 5, jag = lod > 1 ? 0.1 : 0.15;
+  const seg = lod ? (lod > 1 ? (shrub ? 5 : 6) : 6) : 8, rings = lod ? (lod > 1 ? 3 : 4) : 5, jag = lod > 1 ? 0.1 : 0.15;
   const cand: [number, V3][] = [];
+  // the light and low meshes leave out clumps that sit mostly inside a bigger neighbour (no change to the silhouette)
+  const vol = (k: (typeof CL)[number]) => k.R[0] * k.R[1] * k.R[2], inK = lod > 1 ? 0.95 : 0.7;
+  const hidden = CL.map((k, i) => lod > 0 && CL.some((o, j) => j !== i && vol(o) >= vol(k) && ((k.c[0] - o.c[0]) / o.R[0]) ** 2 + ((k.c[1] - o.c[1]) / o.R[1]) ** 2 + ((k.c[2] - o.c[2]) / o.R[2]) ** 2 < inK * inK));
   CL.forEach((k, ci) => {
+    if (hidden[ci] && !hidden.every(Boolean)) return;
     // the clump's own place in the crown: open sky above it or buried in it
     const sky = Math.min(1, 0.45 + 0.75 * shd.sky([k.c[0] * PXM, (k.c[1] + k.R[1] * 0.5) * PXM, k.c[2] * PXM]));
     const ramps = look.ramps, ri = Math.max(0, ramps.indexOf(k.ramp)), acc = ramps.length > 1 ? ramps[(ri + 1) % ramps.length] : look.accent;
@@ -279,7 +283,7 @@ function crownMasses(g: Geo, P: Plant, sp: PlantSpecies, tex: FloraTex, r: Rand,
     // the shade between the leaves: the clump ramp's deep steps (linear rgb, carried in the pivot)
     const deep = linHex(k.ramp[1] ?? k.ramp[0], 1.05), fill: V3 = [deep[0], deep[1], deep[2]];
     // the lumps: one filling the clump's core, the rest bulging out of its shell (more of them up close)
-    const nL = lod === 0 ? (Rm > 0.42 ? 4 : 3) : lod === 1 ? (Rm > 0.38 ? 3 : 2) : Rm > 0.55 ? 2 : 1;
+    const nL = lod === 0 ? (shrub ? 2 : Rm > 0.42 ? 3 : 2) : lod === 1 ? (shrub ? 1 : 2) : 1;
     const lumps: { c: V3; R: V3 }[] = [{ c: k.c, R: vmul(k.R, nL > 1 ? 0.8 : 0.94) }];
     for (let j = 1; j < nL; j++) {
       const a = (j / (nL - 1)) * TAU + r.range(-0.6, 0.6), el = r.range(-0.2, 0.9) * (k.flat ? 0.35 : 1), f = r.range(0.5, 0.64);
@@ -413,14 +417,17 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
     const crowned = tree || sp.arch === 'shrub' || sp.arch === 'umbrella';
     // the finest twigs: dropped on the light mesh, kept up close (cheap, three-sided) so no leaf or fruit floats
     const fine = crowned && isBark && r0 < (sp.arch === 'shrub' ? 0.03 : 0.022);
-    if (fine && L1) continue;
+    if (fine && (L1 || clumpedCrown)) continue;
     if (L1 && !crowned && r0 < 0.01 && pts.length > 6) continue;
     // the low mesh: the crown masses hide the inner limbs, only the scaffold shows
-    if (L2 && clumpedCrown && isBark && r0 < (sp.arch === 'shrub' ? 0.04 : 0.05) && pts[0][1] > 0.05) continue;
+    if (L2 && clumpedCrown && isBark && r0 < (sp.arch === 'shrub' ? 0.05 : 0.085) && pts[0][1] > 0.05) continue;
+    if (L1 && clumpedCrown && isBark && r0 < 0.035 && pts[0][1] > 0.05) continue;
+    // and the finest stalks and twigs of the herbs
+    if (L2 && !crowned && r0 < 0.009 && pts.length > 2) continue;
     // merge short steps on thin limbs
     let P2 = pts, R2 = rad;
     if (L1 && !isBark && r0 < 0.012) continue;
-    const stepK = fine ? (sp.arch === 'shrub' ? 4 : 3) : L2 ? Math.max(2, Math.ceil((pts.length - 1) / (r0 > 0.08 ? 4 : 3))) : L1 ? (r0 < 0.08 ? (pts.length > 12 ? 4 : 3) : 2) : r0 < 0.05 || sp.arch === 'shrub' ? (pts.length > 16 ? 3 : 2) : 1;
+    const stepK = fine ? (sp.arch === 'shrub' ? 4 : 3) : L2 ? Math.max(2, Math.ceil((pts.length - 1) / (r0 > 0.08 ? 4 : r0 > 0.03 ? 3 : 2))) : L1 ? (r0 < 0.08 ? (pts.length > 12 ? 4 : 3) : 2) : r0 < 0.05 || sp.arch === 'shrub' ? (pts.length > 16 ? 3 : 2) : 1;
     if (pts.length > 3 && stepK > 1) { P2 = []; R2 = []; for (let k = 0; k < pts.length; k += stepK) { P2.push(pts[k]); R2.push(rad[k]); } if ((pts.length - 1) % stepK) { P2.push(pts[pts.length - 1]); R2.push(rad[rad.length - 1]); } }
     // a tree's trunk is sculpted (buttresses, twist, ridged bark, knots, a hollow) and sits in a soil collar; big
     // limbs swell into a collar where they leave their parent; roots sink into little mounds of earth
@@ -442,7 +449,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
     const slot = l0.ring ? BARK.RING : isBark && woody ? woody.slot : isBark ? ((l0.ridge ?? 0) >= 3 ? (sp.trunk & 1 ? BARK.PLATE : BARK.FURROW) : (l0.ridge ?? 0) >= 2 ? BARK.FURROW : sp.arch === 'coral' ? BARK.FLESH : BARK.STEM) : (l0.ridge ?? 0) >= 3 ? BARK.FIBRE : BARK.STEM;
     const fslot = sp.arch === 'fungus' && isBark ? BARK.FIBRE : slot;
     const green = !isBark || sp.arch === 'coral';
-    const rm = Math.max(...R2), sides = fine ? 3 : L2 ? (rm > 0.09 ? 5 : rm > 0.045 ? 4 : 3) : sp.arch === 'shrub' ? (L1 ? 3 : rm > 0.035 ? 5 : 3) : L1 ? (rm > 0.07 ? 6 : rm > 0.035 && !green ? 4 : 3) : rm > 0.09 ? 8 : rm > 0.045 ? 6 : rm > 0.022 && !(green && rm < 0.04) ? 4 : 3;
+    const rm = Math.max(...R2), sides = fine ? 3 : L2 ? (rm > 0.14 ? 5 : rm > 0.07 ? 4 : 3) : sp.arch === 'shrub' ? (L1 ? 3 : rm > 0.035 ? 5 : 3) : L1 ? (rm > 0.07 ? 6 : rm > 0.035 && !green ? 4 : 3) : rm > 0.09 ? 8 : rm > 0.045 ? 6 : rm > 0.022 && !(green && rm < 0.04) ? 4 : 3;
     const base = l0.ramp[Math.min(l0.ramp.length - 1, 3)], ao = ampOf(amb);
     g.col = linHex(base, ao * SLOT_GAIN[fslot] * (isBark ? 0.95 : 1));
     g.kind = isBark && sp.arch !== 'coral' && sp.arch !== 'fungus' ? KIND.BARK : KIND.STEM; g.pivot = [0, 0, 0]; g.phase = r.next();
@@ -473,12 +480,16 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
     crownAnchors = crownMasses(g, P, sp, tex, r, lod, { style: shape === 'needle' ? 'needle' : sprayStyle, shape, ramps: [...rampN.entries()].sort((a, b) => b[1] - a[1]).map((e) => e[0]), twig: twigR, accent: accR, young: youngR, thorns: thorny, hairs: hairy });
   }
   const thin = Math.max(1, Math.round(nLeaf / budget)), grow = thin > 1 ? Math.sqrt(thin) * 0.9 : 1;
-  let li = 0, vi = seed % 4;
+  // the low mesh keeps every other petal where a plant carries many (seed heads, panicles), a little bigger
+  let nPet = 0; for (const l of P.leaves) if (!l.skip3d && l.kind === K.ACC) nPet++;
+  const pThin = L2 && nPet > 12 ? 2 : 1;
+  let li = 0, vi = seed % 4, pi = 0;
   for (const l of P.leaves) {
     if (l.skip3d) continue;
     const petal = l.kind === K.ACC;
     if (clumped && !petal) continue;
     if (!petal && thin > 1 && (li++ % thin)) continue;
+    if (petal && pThin > 1 && (pi++ % pThin)) continue;
     const needle = l.shape === 'needle' && !petal;
     if (crown3 && !petal) {
       const rect = tex.spray(needle ? 'needle' : sprayStyle, l.shape, l.ramp, { var: vi++ % 4, twig: twigR, berry: accR, thorns: thorny, hairs: hairy, young: youngR });
@@ -488,7 +499,8 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
       continue;
     }
     const rect = needle ? tex.needles(l.ramp, li & 1) : tex.leaf(l.shape, l.ramp, { vein: l.vein, lat: l.lat, teeth: l.teeth, petal, var: petal ? 0 : (vi++ % 4), hairs: hairy && !petal });
-    const len = (l.len / PXM) * (petal ? 1.15 : leafK * grow) * (needle ? 1.25 : 1), hw = needle ? len * 0.42 : (l.wid / PXM) * pmaxOf(l.shape) * (petal ? 1.1 : leafK * grow);
+    const pk = petal && pThin > 1 ? 1.3 : 1;
+    const len = (l.len / PXM) * (petal ? 1.15 * pk : leafK * grow) * (needle ? 1.25 : 1), hw = needle ? len * 0.42 : (l.wid / PXM) * pmaxOf(l.shape) * (petal ? 1.1 * pk : leafK * grow);
     const ao = ampOf(l.amb), vv = r.range(0.88, 1.1), warm = r.range(-0.05, 0.05);
     g.col = [ao * vv * (1 + warm), ao * vv, ao * vv * (1 - warm)];
     g.kind = petal ? KIND.PETAL : KIND.LEAF; g.phase = r.next();
@@ -505,8 +517,8 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
   // the low mesh keeps half the blades (a little wider) and every other weeping strand
   const nBlade = P.ribbons.reduce((n, rb) => n + (rb.kind === 'blade' ? 1 : 0), 0), bladeThin = L2 && nBlade > 8 ? 2 : 1;
   for (const rb of P.ribbons) {
-    if (L2 && rb.kind === 'strand' && (si++ & 1)) continue;
-    const pts = resample(rb.pts.map(M), rb.kind === 'blade' ? (L2 ? (grassy ? 1 : 2) : L1 ? 2 : grassy ? 3 : 4) : L2 ? (rb.kind === 'strand' ? 2 : 3) : L1 ? 3 : 6);
+    if (L2 && rb.kind === 'strand' && (si++ % 3)) continue;
+    const pts = resample(rb.pts.map(M), rb.kind === 'blade' ? (L2 ? (grassy ? 1 : 2) : L1 ? 2 : grassy ? 3 : 4) : L2 ? (rb.kind === 'strand' || sp.tree ? 2 : 3) : L1 ? 3 : 6);
     const lim = rb.limbs ?? [];
     let amb = 0; for (const l of lim) amb += l.amb ?? 0.6; amb = lim.length ? amb / lim.length : 0.6;
     g.phase = r.next(); g.pivot = [0, 0, 0]; g.kind = KIND.LEAF;
@@ -524,7 +536,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
       const rect = tex.frond(rb.ramps ?? [rb.ramp], rb.ramp, { len: Math.max(0.3, total), hw: lmax * 0.9, lmax, fwd: rb.fwd ?? 1, wr: rb.wr ?? 0.28, start: 0.02, shape: 'lance' });
       g.col = [ao, ao, ao];
       const out = rb.out ?? [1, 0, 0], side = vnrm(vcross(UPV, vlen(out) > 0.1 ? out : [1, 0, 0]));
-      ribbonStrip(g, pts, pts.map(() => lmax * 0.9), rect, { vMap: cumulative(pts), flutLen: true, flat: true, side });
+      ribbonStrip(g, pts, pts.map(() => lmax * (L2 ? 1.3 : 0.9)), rect, { vMap: cumulative(pts), flutLen: true, flat: true, side });
     } else {
       const total = polyLen(rb.pts) / PXM, lmax = (rb.lmax ?? 8) / PXM, fwd = rb.fwd ?? 0.4;
       const hw = lmax / Math.sqrt(1 + fwd * fwd) * 1.04;
@@ -617,7 +629,7 @@ function resample(p: V3[], n: number): V3[] {
 
 // ------------------------------------------------------------------------------------------------ modelled kinds
 /** barrel cacti: ribbed lathe bodies with painted areoles and spines, a crown of petals */
-export function meshBarrel(sp: PlantSpecies, h: number, tex: FloraTex, seed: number): PlantGeo {
+export function meshBarrel(sp: PlantSpecies, h: number, tex: FloraTex, seed: number, lod = 0): PlantGeo {
   const r = new Rand(seed), g = new Geo(h);
   const G = rampFor(mixHex(sp.leaf, 0x5e7e62, 0.5)), A = rampFor(sp.accent);
   const n = r.int(1, 2), ribs = r.int(9, 14);
@@ -626,18 +638,18 @@ export function meshBarrel(sp: PlantSpecies, h: number, tex: FloraTex, seed: num
   for (let k = 0; k < n; k++) {
     const th = h * (k === 0 ? 0.92 : r.range(0.5, 0.7)), w = h * r.range(0.24, 0.32) * (n === 1 ? 1.1 : 0.85), x = n === 1 ? 0 : (k - 0.5) * w * 1.7, z = r.range(-0.05, 0.05);
     R = Math.max(R, Math.abs(x) + w);
-    const prof: [number, number][] = [];
-    for (let j = 0; j <= 9; j++) {
-      const t = j / 9, y = t * th;
+    const prof: [number, number][] = [], nj = lod > 1 ? 5 : lod ? 7 : 9;
+    for (let j = 0; j <= nj; j++) {
+      const t = j / nj, y = t * th;
       const dome = th - w * 1.05, rr = y > dome ? w * Math.sqrt(Math.max(0, 1 - ((y - dome) / (w * 1.05)) ** 2)) : w * (0.86 + 0.14 * Math.sin(t * Math.PI));
       prof.push([Math.max(0.004, rr), y]);
     }
     g.kind = KIND.SOLID; g.pivot = [x, th * 0.5, z]; g.phase = r.next(); g.col = [1, 1, 1];
-    lathe(g, [x, -0.03, z], prof, 28, skin, ribs, 0.1);
+    lathe(g, [x, -0.03, z], prof, lod ? ribs * 2 : 28, skin, ribs, 0.1);
     if (r.chance(0.75)) {
       // a flower at the apex: cupped petals, stamens, a pistil
       const pr = tex.leaf('petal', A, { petal: true, var: k }), top: V3 = [x, th - 0.012, z];
-      flower(g, tex, top, UPV, { n: 9, len: w * 0.42, wid: w * 0.14, rect: pr, cup: 0.75, layers: 2, stamens: 12, anther: rampNamed('gold'), pistil: rampNamed('straw'), receptacle: G }, r, 0);
+      flower(g, tex, top, UPV, { n: lod > 1 ? 6 : 9, len: w * 0.42, wid: w * 0.14 * (lod > 1 ? 1.3 : 1), rect: pr, cup: 0.75, layers: 2, stamens: 12, anther: rampNamed('gold'), pistil: rampNamed('straw'), receptacle: G }, r, lod);
     }
   }
   return { geo: g.build(R), H: h, R, tris: g.tris };
@@ -722,16 +734,19 @@ function tussock3d(g: Geo, r: Rand, tex: FloraTex, pal: Palette, kind: 'grass' |
 }
 
 /** a meadow flower: basal leaves, 1-3 stems, modelled heads tinted per instance (daisy, nodding bell, spike of
- *  florets opening from the bottom, cup), buds on the side stems */
-function flower3d(g: Geo, r: Rand, tex: FloraTex, pal: Palette, form: number) {
+ *  florets opening from the bottom, cup), buds on the side stems. The low mesh (lod 2) keeps the same layout (the
+ *  same random draws) with half the basal leaves, single-segment stems and one whorl of flat petals. */
+function flower3d(g: Geo, r: Rand, tex: FloraTex, pal: Palette, form: number, lod = 0) {
   const G = rampFor(mixHex(pal.grass, 0x3e7a34, 0.4)), leaf = tex.blades([G], null, 1, { wide: true, var: 3 });
   const paper = rampNamed('paper'), petal = tex.leaf(form === 0 ? 'strap' : form === 1 ? 'round' : 'petal', paper, { petal: true, var: form % 3 }), sep = tex.leaf('lance', G, { var: 2 });
+  const low = lod > 1, fl = low ? 2 : 1;
   g.kind = KIND.LEAF; g.pivot = [0, 0, 0];
   for (let k = 0; k < 4; k++) {
     const a = r.range(0, TAU), L = r.range(0.08, 0.14), pts: V3[] = [];
-    for (let j = 0; j <= 3; j++) { const t = j / 3; pts.push([Math.cos(a) * L * t, L * 0.6 * t - L * 0.3 * t * t, Math.sin(a) * L * t]); }
     g.col = [0.85, 0.85, 0.85]; g.phase = r.next();
-    ribbonStrip(g, pts, pts.map(() => 0.012), leaf, { crease: 0.2, flutLen: true });
+    if (low && k & 1) continue;
+    for (let j = 0; j <= (low ? 2 : 3); j++) { const t = j / (low ? 2 : 3); pts.push([Math.cos(a) * L * t, L * 0.6 * t - L * 0.3 * t * t, Math.sin(a) * L * t]); }
+    ribbonStrip(g, pts, pts.map(() => (low ? 0.016 : 0.012)), leaf, { crease: 0.2, flutLen: true, flat: low });
   }
   const ns = r.int(1, 3);
   for (let s = 0; s < ns; s++) {
@@ -739,33 +754,35 @@ function flower3d(g: Geo, r: Rand, tex: FloraTex, pal: Palette, form: number) {
     const top: V3 = [Math.cos(a) * lean * H, H, Math.sin(a) * lean * H], bud = s > 0 && r.chance(0.45) ? r.range(0.6, 1) : 0;
     g.kind = KIND.STEM; g.col = linHex(G[3], 2); g.phase = r.next(); g.pivot = [0, 0, 0];
     const bend: V3 = form === 1 ? vadd(top, [Math.cos(a) * 0.03, -0.02, Math.sin(a) * 0.03]) : top;
-    tube(g, [[0, 0, 0], vmul(top, 0.5), top, ...(form === 1 ? [bend] : [])], form === 1 ? [0.004, 0.0035, 0.003, 0.0028] : [0.004, 0.0035, 0.003], BARK.STEM, 3, false);
+    if (low) tube(g, [[0, 0, 0], bend], [0.0045, 0.0035], BARK.STEM, 3, false);
+    else tube(g, [[0, 0, 0], vmul(top, 0.5), top, ...(form === 1 ? [bend] : [])], form === 1 ? [0.004, 0.0035, 0.003, 0.0028] : [0.004, 0.0035, 0.003], BARK.STEM, 3, false);
     const ax = vnrm([Math.cos(a) * 0.3, 1, Math.sin(a) * 0.3]);
-    if (form === 0) flower(g, tex, top, ax, { n: 13, len: 0.03, wid: 0.0055, rect: petal, tinted: true, cup: 0.12, layers: 1, receptacle: rampNamed('ochre'), bud }, r, 1);
-    else if (form === 1) flower(g, tex, bend, [Math.cos(a) * 0.5, -1, Math.sin(a) * 0.5], { n: 5, len: 0.036, wid: 0.012, rect: petal, tinted: true, cup: 1.25, layers: 1, reflex: 0.5, bud }, r, 1);
+    if (form === 0) flower(g, tex, top, ax, { n: 13, len: 0.03, wid: 0.0055 * fl, rect: petal, tinted: true, cup: 0.12, layers: 1, receptacle: rampNamed('ochre'), bud }, r, lod || 1);
+    else if (form === 1) flower(g, tex, bend, [Math.cos(a) * 0.5, -1, Math.sin(a) * 0.5], { n: 5, len: 0.036, wid: 0.012 * (low ? 1.3 : 1), rect: petal, tinted: true, cup: 1.25, layers: 1, reflex: 0.5, bud }, r, lod || 1);
     else if (form === 2) {
       // a spike: florets up the stem, open below, buds toward the tip
       g.kind = KIND.TINT; g.pivot = top; g.col = [1, 1, 1];
-      for (let p = 0; p < 9; p++) { const b = p * 2.4, y = p * 0.012, op = 1 - p / 9, d: V3 = vnrm([Math.cos(b) * op, 0.6 + (1 - op) * 1.2, Math.sin(b) * op]); leafCard(g, vadd(top, [0, y, 0]), d, vnrm([-Math.cos(b) * 0.6, 1, -Math.sin(b) * 0.6]), 0.012 + op * 0.012, 0.006 + op * 0.004, petal, 0.2, 0, null); }
-    } else flower(g, tex, top, ax, { n: 6, len: 0.032, wid: 0.014, rect: petal, tinted: true, cup: 0.95, layers: 2, sepals: sep, receptacle: G, bud }, r, 1);
+      for (let p = 0; p < 9; p += low ? 2 : 1) { const b = p * 2.4, y = p * 0.012, op = 1 - p / 9, d: V3 = vnrm([Math.cos(b) * op, 0.6 + (1 - op) * 1.2, Math.sin(b) * op]); leafCard(g, vadd(top, [0, y, 0]), d, vnrm([-Math.cos(b) * 0.6, 1, -Math.sin(b) * 0.6]), (0.012 + op * 0.012) * (low ? 1.3 : 1), (0.006 + op * 0.004) * (low ? 1.3 : 1), petal, low ? 0 : 0.2, 0, null, low); }
+    } else flower(g, tex, top, ax, { n: 6, len: 0.032, wid: 0.014, rect: petal, tinted: true, cup: 0.95, layers: 2, sepals: sep, receptacle: G, bud }, r, lod || 1);
   }
 }
 
-/** a low mat of clover: trefoils on short stalks */
-function clover3d(g: Geo, r: Rand, tex: FloraTex, pal: Palette) {
-  const G = rampFor(mixHex(pal.grass, 0x4a8a3a, 0.45), 7);
+/** a low mat of clover: trefoils on short stalks (the low mesh: the same trefoils, coarser, no stalks) */
+function clover3d(g: Geo, r: Rand, tex: FloraTex, pal: Palette, lod = 0) {
+  const G = rampFor(mixHex(pal.grass, 0x4a8a3a, 0.45), 7), low = lod > 1;
   g.pivot = [0, 0, 0];
   for (let k = r.int(7, 12); k > 0; k--) {
     const a = r.range(0, TAU), d = Math.sqrt(r.next()) * 0.16, x = Math.cos(a) * d, z = Math.sin(a) * d, h = r.range(0.03, 0.08);
     g.kind = KIND.STEM; g.col = linHex(G[2], 2); g.phase = r.next();
-    tube(g, [[x * 0.5, 0, z * 0.5], [x, h, z]], [0.002, 0.0018], BARK.STEM, 3, false);
+    if (!low) tube(g, [[x * 0.5, 0, z * 0.5], [x, h, z]], [0.002, 0.0018], BARK.STEM, 3, false);
     g.kind = KIND.LEAF; g.col = [r.range(0.85, 1.05), r.range(0.85, 1.05), 0.9];
-    disc(g, [x, h, z], vnrm([r.range(-0.3, 0.3), 1, r.range(-0.3, 0.3)]), r.range(0.022, 0.032), tex.trefoil(G, r.int(0, 2)), 6, 0.1);
+    const n = vnrm([r.range(-0.3, 0.3), 1, r.range(-0.3, 0.3)]), rad = r.range(0.022, 0.032), rect = tex.trefoil(G, r.int(0, 2));
+    disc(g, [x, h, z], n, rad * (low ? 1.12 : 1), rect, low ? 4 : 6, 0.1);
   }
 }
 
-/** a young fern: a few small arching fronds */
-function fern3d(g: Geo, r: Rand, tex: FloraTex, pal: Palette) {
+/** a young fern: a few small arching fronds (curved 3D strips; the low mesh bends each in three steps, not six) */
+function fern3d(g: Geo, r: Rand, tex: FloraTex, pal: Palette, lod = 0) {
   const c = mixHex(pal.foliage[r.int(0, pal.foliage.length - 1)], 0x3e7a34, 0.55), G = rampFor(c, 7);
   const rect = tex.frond([G, rampFor(mixHex(c, 0xb09a50, 0.2), 7)], G, { len: 0.32, hw: 0.07, lmax: 0.075, fwd: 0.45, wr: 0.32, start: 0.12, shape: 'lobed', lobes: true, var: 2, solid: true });
   g.kind = KIND.LEAF; g.pivot = [0, 0, 0];
@@ -775,31 +792,36 @@ function fern3d(g: Geo, r: Rand, tex: FloraTex, pal: Palette) {
     pts.push(q);
     for (let k = 0; k < 6; k++) { d = vnrm(vadd(d, [0, -0.16, 0])); q = vadd(q, vmul(d, L / 6)); pts.push(q); }
     g.col = [0.9, 0.9, 0.9]; g.phase = r.next();
-    const vMap = cumulative(pts);
-    ribbonStrip(g, pts, pts.map((_, k) => 0.07 * Math.min(1, 0.35 + vMap[k] * 3)), rect, { fold: 0.15, vMap, flutLen: true });
+    const P = lod > 1 ? [pts[0], pts[2], pts[4], pts[6]] : pts, vMap = cumulative(P);
+    ribbonStrip(g, P, P.map((_, k) => 0.07 * Math.min(1, 0.35 + vMap[k] * 3)), rect, { fold: 0.15, vMap, flutLen: true });
   }
 }
 
-/** a cluster of small mushrooms at different stages: a button, opening caps with gill fins, a ring on some */
-function mush3d(g: Geo, r: Rand, tex: FloraTex, pal: Palette) {
+/** a cluster of small mushrooms at different stages: a button, opening caps with gill fins, a ring on some (the low
+ *  mesh: the same caps on coarser lathes, a comb of fins under each) */
+function mush3d(g: Geo, r: Rand, tex: FloraTex, pal: Palette, lod = 0) {
   const C = rampFor(r.pick(pal.fungus)), Gi = rampNamed(r.pick(['bone', 'paper', 'sand'] as const)), spot = rampNamed('paper')[5];
   const ringed = r.chance(0.5), spots = r.chance(0.5) ? 2 : 0;
+  // every cap drawn first, then built each from its own seed: the low mesh grows the very same cluster
+  const caps: [number, number, number, number, number, boolean, number, number][] = [];
   for (let k = r.int(1, 3); k > 0; k--) {
     const x = r.range(-0.07, 0.07), z = r.range(-0.07, 0.07), button = k === 1 && r.chance(0.5), rr = button ? r.range(0.016, 0.024) : r.range(0.024, 0.05), h = button ? rr * 0.9 : r.range(0.045, 0.11);
-    mushroom(g, tex, [x, 0, z], [x + r.range(-0.006, 0.006), h, z], rr, rr * (button ? 0.85 : r.range(0.45, 0.62)), { ramp: C, gill: Gi, stem: Gi, spots, spotCol: spot, button, glow: false, ring: ringed, volva: false }, r, 0);
+    caps.push([x, z, rr, h, x + r.range(-0.006, 0.006), button, button ? 0.85 : r.range(0.45, 0.62), r.int(1, 1e6)]);
   }
+  for (const [x, z, rr, h, cx, button, hk, sd] of caps) mushroom(g, tex, [x, 0, z], [cx, h, z], rr, rr * hk, { ramp: C, gill: Gi, stem: Gi, spots, spotCol: spot, button, glow: false, ring: ringed, volva: false }, new Rand(sd), lod);
 }
 
-/** ground cover variants: each form has a few, built once per planet */
-export function meshGround(form: GroundForm, variant: number, tex: FloraTex, pal: Palette, seed: number): PlantGeo {
+/** ground cover variants: each form has a few, built once per planet; lod 2 is the low mesh of the forms that stay 3D
+ *  out to the far range (flowers, clover, ferns, mushrooms) */
+export function meshGround(form: GroundForm, variant: number, tex: FloraTex, pal: Palette, seed: number, lod = 0): PlantGeo {
   const r = new Rand(seed * 977 + variant * 131 + form.length * 7);
   const H = form === 'tall' || form === 'sedge' ? 0.8 : form === 'grass' || form === 'dry' ? 0.45 : form === 'flower' ? 0.35 : form === 'fern' ? 0.3 : 0.12;
   const g = new Geo(H);
   if (form === 'grass' || form === 'tall' || form === 'dry' || form === 'sedge') tussock3d(g, r, tex, pal, form, variant % 3);
-  else if (form === 'flower') flower3d(g, r, tex, pal, variant % 4);
-  else if (form === 'clover') clover3d(g, r, tex, pal);
-  else if (form === 'fern') fern3d(g, r, tex, pal);
-  else mush3d(g, r, tex, pal);
+  else if (form === 'flower') flower3d(g, r, tex, pal, variant % 4, lod);
+  else if (form === 'clover') clover3d(g, r, tex, pal, lod);
+  else if (form === 'fern') fern3d(g, r, tex, pal, lod);
+  else mush3d(g, r, tex, pal, lod);
   return { geo: g.build(0.25), H, R: 0.25, tris: g.tris };
 }
 export type { Leaf, Limb, Ribbon };
