@@ -2,7 +2,8 @@
 // ribs, hinged lids, rivet rings, ladders, sight glasses, valve wheels, berms) in the hand-painted textures of
 // inv/tex.ts, merged per material so a container is a handful of draw calls. What is inside shows: open-topped
 // kinds (crate, pit, bunker) carry their real load over the rim, laid out exactly as the grid window shows it (each
-// stack at its cells: item cards for solids, heaped fill for loose bulk); the tank's sight glass and the silo's gauge
+// stack at its cells as the item's own 3D pile from world/resources3d: a log stack, a heap of ore, cans in a row;
+// loose bulk as one slumped landscape in each item's material); the tank's sight glass and the silo's gauge
 // read their level. `cutaway` (the crate HUD's miniatures) leaves lids, roofs and fronts off so every kind shows its
 // contents. Local frame: the footprint centred on the origin, the ground at y = 0, the front facing +z.
 import * as THREE from 'three';
@@ -10,7 +11,10 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { gbuf, type GFlag } from '../gfx/gbuf';
 import { RAMPS } from '../art/palette';
-import { ITEMS, ITEM_IDS, itemDef, itemPix, type ItemId } from '../factory/items';
+import { ITEMS, itemDef, type ItemId } from '../factory/items';
+import { buildLoad, type Spot } from '../world/resources3d/load';
+import { pileGeo, unitsFor } from '../world/resources3d/piles';
+import { meshesOf } from '../world/resources3d/mats';
 import type { Container } from './container';
 import { KIND_INFO, PAINTS, type ContainerKind } from './kinds';
 import { planks, plate, concrete, corrugated, hazard, frost, glass, earth, grain, grille, logoPlate } from './tex';
@@ -93,24 +97,6 @@ function baseMat(key: MatKey, c: Container): THREE.Material {
   }
 }
 
-// ------------------------------------------------------------------ the item atlas (cards inside the containers)
-let ATLAS: { tex: THREE.CanvasTexture; n: number; cols: number } | null = null;
-function atlas() {
-  if (ATLAS && ATLAS.n === ITEM_IDS.length) return ATLAS;
-  const cols = 16, rows = Math.ceil(ITEM_IDS.length / cols), S = 32;
-  const cv = document.createElement('canvas'); cv.width = cols * S; cv.height = rows * S;
-  const x = cv.getContext('2d')!;
-  ITEM_IDS.forEach((id, i) => { const p = itemPix(id); const img = new ImageData(new Uint8ClampedArray(p.d), S, S); x.putImageData(img, (i % cols) * S, Math.floor(i / cols) * S); });
-  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false;
-  ATLAS?.tex.dispose();
-  ATLAS = { tex, n: ITEM_IDS.length, cols };
-  return ATLAS;
-}
-function cardUV(id: ItemId): [number, number, number, number] {
-  const a = atlas(), i = ITEM_IDS.indexOf(id), rows = Math.ceil(a.n / a.cols);
-  const u0 = (i % a.cols) / a.cols, v0 = 1 - (Math.floor(i / a.cols) + 1) / rows;
-  return [u0, v0, u0 + 1 / a.cols, v0 + 1 / rows];
-}
 const BULK = (id: ItemId) => { const t = itemDef(id).tags; return t.includes('bulk') && !t.includes('solid') || itemDef(id).group === 'earth' && t.includes('bulk'); };
 /** kinds whose load lies loose: everything in them heaps */
 const LOOSE = new Set(['st_pit', 'st_bunker', 'silo', 'st_tank']);
@@ -127,6 +113,8 @@ export class ContainerModel {
   private bay: Bay = { x0: -0.4, z0: -0.4, x1: 0.4, z1: 0.4, y: 0.1, h: 0.6 };
   private gauge: THREE.Mesh | null = null; private lamp: THREE.Mesh | null = null;
   private plateMesh: THREE.Mesh | null = null;
+  private spots = new Map<ItemId, Spot>();
+  private holdN = 0; private holdUntil = 0;
   readonly flag: GFlag;
   constructor(readonly c: Container, readonly o: ModelOpts = {}) {
     this.flag = o.flag ?? { value: 1 };
@@ -218,12 +206,21 @@ export class ContainerModel {
     }
     if (this.lamp) { const on = this.c.powered(); const want = on ? 'lampOn' : 'lampOff'; if ((this.lamp.userData.k ?? '') !== want) { this.lamp.material = this.mat(want); this.lamp.userData.k = want; } }
     if (this.ver === this.c.ver) return;
+    // a resource on its way in (a worker's drop, world/resources3d/world.ts): the load shows its new state when it lands
+    if (this.holdN > 0 && performance.now() < this.holdUntil) return;
+    this.holdN = 0;
     this.ver = this.c.ver;
     this.fillLoad();
   }
-  /** what is inside, laid out as the grid lays it out */
+  /** keep the load as it is until release() (or ms pass): something is falling into it */
+  hold(ms = 2500) { this.holdN++; this.holdUntil = Math.max(this.holdUntil, performance.now() + ms); }
+  release() { this.holdN = Math.max(0, this.holdN - 1); }
+  /** where an item's pile sits in this container (container-local), its top and its display scale */
+  spotOf(item: ItemId): Spot | null { return this.spots.get(item) ?? null; }
+  /** what is inside, laid out as the grid lays it out: each stack the item's own 3D pile (world/resources3d) */
   private fillLoad() {
-    for (const ch of [...this.load.children]) { this.load.remove(ch); (ch as THREE.Mesh).geometry?.dispose(); }
+    for (const ch of [...this.load.children]) { this.load.remove(ch); ch.traverse((o) => { if (!o.userData.shared && !o.parent?.userData.shared) (o as THREE.Mesh).geometry?.dispose(); }); }
+    this.spots.clear();
     const c = this.c, B = this.bay, fillK = c.fill();
     if (this.gauge) { const g = this.gauge; g.scale.y = Math.max(0.02, fillK); g.position.y = g.userData.y0 + (g.userData.h * g.scale.y) / 2; }
     if (this.o.bare) return;
@@ -231,91 +228,8 @@ export class ContainerModel {
     const visible = this.o.cutaway || c.info.open || this.glbOpen;
     if (!visible || !c.stacks.length) return;
     if (this.o.cutaway && GLB[c.kind] && !GLB[c.kind]!.open && this.body.children.length) { this.display(); return; }
-    const cw = (B.x1 - B.x0) / c.W, cd = (B.z1 - B.z0) / c.H;
-    const cards: number[] = [], cuv: number[] = [], cn: number[] = [];
-    const hash = (a: number, b: number) => { const v = Math.sin(a * 91.7 + b * 47.3) * 43758.5; return v - Math.floor(v); };
-    const loose = LOOSE.has(c.kind);
-    // the loose load as one landscape over the whole bay: each cell rises with its stack's fill, the heights are
-    // smoothed so neighbouring piles slump into each other, each vertex takes the colour of the material under it
-    const RES = 4, NX = c.W * RES, NZ = c.H * RES;
-    const cellH = new Float32Array(c.W * c.H), cellC = new Int32Array(c.W * c.H).fill(-1);
-    let anyHeap = false;
-    for (const s of c.stacks) {
-      // loose loads heap to their fill; packed solids sit a little lower (they stack, they do not slump)
-      const [w, h] = c.dims(s.item, s.rot), k = Math.min(1, s.n / itemDef(s.item).stack), heapy = loose || BULK(s.item);
-      for (let y = s.y; y < s.y + h; y++) for (let x = s.x; x < s.x + w; x++) if (x < c.W && y < c.H) { cellH[y * c.W + x] = B.h * (heapy ? 0.18 + 0.82 * k : 0.12 + 0.7 * k); cellC[y * c.W + x] = ITEMS[s.item]?.side ?? 0x806040; }
-      anyHeap = true;
-    }
-    const hAt = (vx: number, vz: number) => { const x = Math.min(c.W - 1, Math.floor(vx / RES)), z = Math.min(c.H - 1, Math.floor(vz / RES)); return cellH[z * c.W + x]; };
-    let field: Float32Array | null = null;
-    if (anyHeap) {
-      field = new Float32Array((NX + 1) * (NZ + 1));
-      for (let z = 0; z <= NZ; z++) for (let x = 0; x <= NX; x++) {
-        let sum = 0, n = 0;
-        for (const [dx, dz] of [[0, 0], [-1, 0], [0, -1], [-1, -1]]) { const X = x + dx, Z = z + dz; if (X < 0 || Z < 0 || X >= NX || Z >= NZ) continue; sum += hAt(X, Z); n++; }
-        field[z * (NX + 1) + x] = n ? sum / n : 0;
-      }
-      for (let pass = 0; pass < 3; pass++) {
-        const f2 = new Float32Array(field);
-        for (let z = 0; z <= NZ; z++) for (let x = 0; x <= NX; x++) {
-          let sum = 0, n = 0;
-          for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) { const X = x + dx, Z = z + dz; if (X < 0 || Z < 0 || X > NX || Z > NZ) continue; sum += field[Z * (NX + 1) + X]; n++; }
-          f2[z * (NX + 1) + x] = sum / n;
-        }
-        field = f2;
-      }
-      const g = new THREE.PlaneGeometry(B.x1 - B.x0, B.z1 - B.z0, NX, NZ); g.rotateX(-Math.PI / 2);
-      const pos = g.attributes.position as THREE.BufferAttribute, uv = g.attributes.uv as THREE.BufferAttribute;
-      const col = new Float32Array(pos.count * 3), cc = new THREE.Color(), floor = new THREE.Color(RAMPS.soil[2]);
-      for (let i = 0; i < pos.count; i++) {
-        const vx = i % (NX + 1), vz = Math.floor(i / (NX + 1));
-        const hv = field[vz * (NX + 1) + vx];
-        pos.setY(i, hv * (0.92 + 0.16 * hash(vx * 3.1, vz * 5.7)));
-        uv.setXY(i, (pos.getX(i) + (B.x0 + B.x1) / 2) * 2, (pos.getZ(i) + (B.z0 + B.z1) / 2) * 2);
-        const ci = cellC[Math.min(c.H - 1, Math.floor(Math.min(NZ - 1, vz) / RES)) * c.W + Math.min(c.W - 1, Math.floor(Math.min(NX - 1, vx) / RES))];
-        if (ci >= 0) cc.setHex(ci); else cc.copy(floor);
-        col[i * 3] = cc.r; col[i * 3 + 1] = cc.g; col[i * 3 + 2] = cc.b;
-      }
-      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-      g.computeVertexNormals(); g.translate((B.x0 + B.x1) / 2, B.y, (B.z0 + B.z1) / 2);
-      let m = this.mats.get('heap');
-      if (!m) { m = gbuf(new THREE.MeshLambertMaterial({ map: grain(), vertexColors: true }), this.flag); this.mats.set('heap', m); }
-      const mesh = new THREE.Mesh(g, m); mesh.receiveShadow = true; mesh.castShadow = this.o.shadow !== false;
-      this.load.add(mesh);
-    }
-    const fieldAt = (x: number, z: number) => {
-      if (!field) return 0;
-      const vx = Math.round(((x - B.x0) / (B.x1 - B.x0)) * NX), vz = Math.round(((z - B.z0) / (B.z1 - B.z0)) * NZ);
-      return field[Math.max(0, Math.min(NZ, vz)) * (NX + 1) + Math.max(0, Math.min(NX, vx))];
-    };
-    for (const s of c.stacks) {
-      const [w, h] = c.dims(s.item, s.rot), lim = itemDef(s.item).stack, k = Math.min(1, s.n / lim), heap = loose || BULK(s.item);
-      const x0 = B.x0 + s.x * cw, z0 = B.z0 + s.y * cd, x1 = x0 + w * cw, z1 = z0 + h * cd;
-      const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-      // a card of the item's art lies on every stack (on the pile's crown for loose loads), a second under it when
-      // the stack is over half full: what is in there reads at a glance
-      const [u0, v0, u1, v1] = cardUV(s.item);
-      const sz = Math.min(Math.max(x1 - x0, z1 - z0) * 0.95, Math.min(x1 - x0, z1 - z0) * 1.35);
-      const layers = 1; void heap; void k;
-      for (let l = 0; l < layers; l++) {
-        const y = B.y + fieldAt(cx, cz) + 0.012, tilt = 0.7 + (hash(s.x, s.y + l) - 0.5) * 0.3, yaw = (hash(s.y, s.x + l) - 0.5) * 0.4;
-        const ox = l * sz * 0.08, oz = -l * sz * 0.06;
-        // a quad lying on its back, tipped up toward the front (+z) by `tilt`
-        const hw = sz / 2, ct = Math.cos(tilt), st = Math.sin(tilt), cy2 = Math.cos(yaw), sy2 = Math.sin(yaw);
-        const corner = (a: number, b: number): [number, number, number] => { const lx = a * hw, lz = b * hw * ct, ly = -b * hw * st; return [cx + ox + lx * cy2 + lz * sy2, y + ly + hw * st * 0.5, cz + oz - lx * sy2 + lz * cy2]; };
-        const P0 = corner(-1, 1), P1 = corner(1, 1), P2 = corner(1, -1), P3 = corner(-1, -1);
-        for (const [p, uu, vv] of [[P0, u0, v0], [P1, u1, v0], [P2, u1, v1], [P0, u0, v0], [P2, u1, v1], [P3, u0, v1]] as [[number, number, number], number, number][]) { cards.push(...p); cuv.push(uu, vv); cn.push(0, ct, st); }
-      }
-    }
-    if (cards.length) {
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(cards, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(cuv, 2)); g.setAttribute('normal', new THREE.Float32BufferAttribute(cn, 3));
-      let m = this.mats.get('cards') as THREE.MeshLambertMaterial | undefined;
-      const tex = atlas().tex;
-      if (!m || m.map !== tex) { m?.dispose(); m = gbuf(new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide }), this.flag); this.mats.set('cards', m); }
-      const mesh = new THREE.Mesh(g, m); mesh.castShadow = false; mesh.receiveShadow = true;
-      this.load.add(mesh);
-    }
+    const { group, spots } = buildLoad(c as never, B, this.flag, LOOSE.has(c.kind), this.o.shadow !== false);
+    this.load.add(group); this.spots = spots;
   }
   /** the specimen cabinet's load behind its glass: a stoppered jar per stack on the three shelves, filled with the
    *  colour of what is in it, fuller as the stack fills */
@@ -342,25 +256,20 @@ export class ContainerModel {
     if (!m) { m = gbuf(new THREE.MeshLambertMaterial({ vertexColors: true }), this.flag); this.mats.set('jars', m); }
     this.load.add(new THREE.Mesh(g, m));
   }
-  /** a closed lowpix body in the crate HUD: what it holds stands in front of it as item cards, a shop-window display */
+  /** a closed lowpix body in the crate HUD: what it holds stands in front of it as little piles, a shop-window display */
   private display() {
-    const c = this.c, items = c.contents().slice(0, 5);
-    const pos: number[] = [], uv: number[] = [], nor: number[] = [];
+    const c = this.c, items = c.contents().slice(0, 4);
     const box = new THREE.Box3().setFromObject(this.body), front = box.max.z + 0.05, w = box.max.x - box.min.x;
-    const sz = Math.min(0.62, (w * 1.2) / Math.max(1, items.length));
+    const cell = Math.min(0.62, (w * 1.15) / Math.max(1, items.length));
     items.forEach((e, i) => {
-      const [u0, v0, u1, v1] = cardUV(e.item);
-      const x = (i - (items.length - 1) / 2) * sz * 0.9, y = 0.02 + (i % 2) * 0.04, z = front + (i % 2) * 0.12, h = sz / 2;
-      const P0 = [x - h, y, z], P1 = [x + h, y, z], P2 = [x + h, y + sz, z], P3 = [x - h, y + sz, z];
-      for (const [p, uu, vv] of [[P0, u0, v0], [P1, u1, v0], [P2, u1, v1], [P0, u0, v0], [P2, u1, v1], [P3, u0, v1]] as [number[], number, number][]) { pos.push(...p); uv.push(uu, vv); nor.push(0, 0, 1); }
+      const n = unitsFor(e.item, Math.min(1, e.n / Math.max(1, itemDef(e.item).stack)));
+      const parts = pileGeo(e.item, n, 2 + i), g = meshesOf(parts, this.flag, false);
+      const bb = new THREE.Box3(); for (const p of parts) bb.union(p.geo.boundingBox!);
+      const sz = bb.getSize(new THREE.Vector3()), k = Math.min(1.6, (cell * 0.9) / Math.max(sz.x, sz.z, sz.y));
+      g.scale.setScalar(k); g.rotation.y = -0.3; g.userData.shared = true;
+      g.position.set((i - (items.length - 1) / 2) * cell, 0.01, front + (i % 2) * 0.1);
+      this.load.add(g);
     });
-    if (!pos.length) return;
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
-    let m = this.mats.get('cards') as THREE.MeshLambertMaterial | undefined;
-    const tex = atlas().tex;
-    if (!m || m.map !== tex) { m?.dispose(); m = gbuf(new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide }), this.flag); this.mats.set('cards', m); }
-    this.load.add(new THREE.Mesh(g, m));
   }
   dispose() {
     this.disposed = true;

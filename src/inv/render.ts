@@ -25,6 +25,8 @@ export class ContainerRender {
     this.group.add(m.root);
     this.place(c, m);
   }
+  /** the model drawing a placed container (world/resources3d drops resources into it) */
+  modelOf(c: Container): ContainerModel | null { return this.models.get(c) ?? null; }
   private drop(c: Container) { const m = this.models.get(c); if (!m) return; m.dispose(); this.models.delete(c); }
   private place(c: Container, m: ContainerModel) {
     const b = c.b as unknown as FBView;

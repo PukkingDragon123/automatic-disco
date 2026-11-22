@@ -1,11 +1,16 @@
-// Build mode. B opens the CONSTRUCTION PLANNER (src/ui/build/menu.ts); a tile or a hotbar key (1-0) puts a building in
-// hand: a holographic ghost snapped to the 1 m grid under the cursor (blue where it fits, red where it
+// Build mode. B (or the dock's BUILD icon) enters the BLUEPRINT BUILD MODE (src/ui/build/bpmode.ts: a top-down blueprint of the
+// world with a tray of buildings; Shift+B still opens the old construction planner, src/ui/build/menu.ts, as a fallback).
+// A tray miniature (dragged or clicked) or a hotbar key (1-0) puts a building in hand: a holographic ghost snapped to the 1 m grid under the cursor (blue where it fits, red where it
 // cannot go, with the reason and the bill of materials at the cursor), R to turn it, a grid drawn on the ground around
 // it. Placing lays a CONSTRUCTION SITE (src/logistics/sites.ts): workers bring the materials and build it over time.
 // Belts, pipes, walls, fences, dams and foundations are laid by dragging a path and go down at once (the pod's arm lays
 // runs). X dismantles (full refund; a site is cancelled and its delivered materials returned). Blueprints copy a
 // rectangle of machines and paste it elsewhere (turnable). The same pointer also assigns workers. On touch: tap to set
 // the ghost, tap it again to build, drag to lay belts.
+// In the blueprint mode a placed building or site is clicked to SELECT it (move, rotate, info, pause, dismantle float
+// over it), dragged (or MOVE) to carry it elsewhere, turned a quarter in place (ROTATE); every placement drops in with
+// a squash-and-stretch bounce and dust (bpmode.ts `drop`). Outside build mode a plain click on a machine opens its
+// blueprint sheet (src/ui/build/sheet.ts).
 import * as THREE from 'three';
 import type { Factory, FBuilding } from './factory';
 import { FDEFS, isBelt, isDrag, footW, footD, type FKind } from './defs';
@@ -20,10 +25,17 @@ import { shapeOf } from '../logistics/catalog';
 import { RAMPS } from '../art/palette';
 import { toast } from '../ui/kit';
 import { sfx } from '../audio/audio';
+import { play } from '../ui/build/juice';
+const playTurn = () => play('turn', 1.1, 0.4);
 import type { Job } from './workers';
 import type { Creature } from '../game/creature';
+import type { Site } from '../logistics/sites';
+import type { BuildMode } from '../ui/build/bpmode';
 
-export type Tool = 'place' | 'dismantle' | 'copy' | 'paste' | 'assign' | 'select';
+export type Tool = 'place' | 'dismantle' | 'copy' | 'paste' | 'assign' | 'select' | 'move';
+/** a placed building or a construction site (what the blueprint mode selects, moves and turns) */
+export type Placed = FBuilding | Site;
+export const isSiteT = (t: Placed): t is Site => (t as Site).need !== undefined && (t as Site).stage !== undefined;
 export interface BlueprintPart { kind: FKind; dx: number; dz: number; r: number; recipe?: string }
 export interface Blueprint { w: number; d: number; parts: BlueprintPart[] }
 interface Ghost { kind: FKind; cx: number; cz: number; r: number; ok: boolean; why: string | null }
@@ -71,6 +83,13 @@ export class Build {
   private holos: THREE.Mesh[] = [];
   /** the planner and the quick-slots (set by the factory UI) */
   menu?: BuildMenu; hotbar?: Hotbar;
+  /** the blueprint build mode (set by the factory UI) */
+  bp?: BuildMode;
+  /** the blueprint mode's selection, and a building or site being carried (MOVE) */
+  selected: Placed | null = null;
+  moving: { b: FBuilding | null; s: Site | null; kind: FKind; r0: number } | null = null;
+  /** a press on a placed building: a drag carries it, a click selects it */
+  private press: { t: Placed; x: number; y: number } | null = null;
   /** opens the node map (set by the factory UI) */
   onNodes?: () => void;
   /** the last key event this build mode used (game.ts skips its own handling of it) */
@@ -92,14 +111,16 @@ export class Build {
     this.grid = new THREE.LineSegments(new THREE.BufferGeometry(), lm); this.grid.frustumCulled = false; this.grid.visible = false; this.grid.renderOrder = 3;
     const fm = gbufNone(new THREE.MeshBasicMaterial({ color: RAMPS.sky[3], transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }));
     this.foot = new THREE.Mesh(new THREE.BufferGeometry(), fm); this.foot.frustumCulled = false; this.foot.visible = false; this.foot.renderOrder = 3;
+    this.grid.userData.bpSkip = true; this.foot.userData.bpSkip = true;
     f.render.group.add(this.grid, this.foot);
+    addEventListener('wheel', this.onWheel, { capture: true, passive: false });
     addEventListener('pointerdown', this.onDown, true);
     addEventListener('pointermove', this.onMove, true);
     addEventListener('pointerup', this.onUp, true);
     this.offKey = f.g.input.onKey((e) => this.onKey(e));
   }
   private offKey: () => void;
-  dispose() { removeEventListener('pointerdown', this.onDown, true); removeEventListener('pointermove', this.onMove, true); removeEventListener('pointerup', this.onUp, true); this.offKey(); }
+  dispose() { removeEventListener('wheel', this.onWheel, true); removeEventListener('pointerdown', this.onDown, true); removeEventListener('pointermove', this.onMove, true); removeEventListener('pointerup', this.onUp, true); this.offKey(); }
   get g() { return this.f.g; }
 
   // ------------------------------------------------------------------ modes
@@ -107,29 +128,34 @@ export class Build {
     const g = this.g;
     if (!this.active) {
       this.active = true;
-      this.camDist = g.cam.distGoal;
-      g.cam.distGoal = Math.max(g.cam.distGoal, 15);
       (g as unknown as { setMode(m: { k: string }): void }).setMode({ k: 'factory' });
-      sfx('open', 1, 0.6);
+      this.onInspect?.(null);
+      // the blueprint mode swoops the camera top-down; without it (tests) the old pull-back
+      if (this.bp) this.bp.enter();
+      else { this.camDist = g.cam.distGoal; g.cam.distGoal = Math.max(g.cam.distGoal, 15); sfx('open', 1, 0.6); }
     }
-    this.kind = kind; this.tool = tool; this.drag = null; this.tapAt = null;
+    if (this.moving && tool !== 'move') this.cancelMove();
+    this.kind = kind; this.tool = tool; this.drag = null; this.tapAt = null; this.hoverKey = '';
+    if (kind) this.selected = null;
     this.onChange?.();
   }
-  /** B: open the planner; while a building is in hand it comes back up; with it up, B leaves build mode */
+  /** Shift+B: the old construction planner (a fallback to the blueprint tray) */
   openMenu() { if (!this.active) this.open(null, 'select'); this.kind = null; this.tool = 'select'; this.clearGhosts(); this.menu?.open(); this.onChange?.(); }
   close() {
     if (!this.active) return;
-    this.active = false; this.kind = null; this.tool = 'place'; this.drag = null; this.pending = null;
+    if (this.moving) this.cancelMove();
+    this.active = false; this.kind = null; this.tool = 'place'; this.drag = null; this.pending = null; this.selected = null; this.press = null;
     this.menu?.close();
-    this.clearGhosts(); this.grid.visible = false; this.foot.visible = false;
+    this.clearGhosts(); this.ghosts = []; this.grid.visible = false; this.foot.visible = false;
     const g = this.g;
     if (g.mode.k === ('factory' as string)) (g as unknown as { setMode(m: { k: string }): void }).setMode({ k: 'normal' });
-    if (this.camDist) g.cam.distGoal = Math.min(g.cam.distGoal, Math.max(this.camDist, 6.5));
-    this.f.render.hover = null;
-    sfx('close', 1, 0.5);
+    if (this.bp) this.bp.exit();
+    else { if (this.camDist) g.cam.distGoal = Math.min(g.cam.distGoal, Math.max(this.camDist, 6.5)); sfx('close', 1, 0.5); }
+    this.f.render.hover = null; this.f.render.sel = null;
     this.onChange?.();
   }
-  toggle() { if (this.active && (this.menu?.isOpen || !this.menu)) this.close(); else this.openMenu(); }
+  /** B / the dock's BUILD icon: into the blueprint mode, or out of it */
+  toggle() { if (this.active) this.close(); else this.open(null, 'select'); }
   choose(kind: FKind) {
     const def = FDEFS[kind]; if (!def) return;
     const lk = buildingLock(this.g, kind);
@@ -137,6 +163,14 @@ export class Build {
     this.menu?.close();
     this.open(kind, 'place'); sfx('click');
   }
+  /** a building dragged out of the tray: in hand without a sound or a toast (the tray checked the lock) */
+  take(kind: FKind) { if (!buildingLock(this.g, kind).ok) return; this.open(kind, 'place'); }
+  /** the pointer is back over the tray: no ghost */
+  hideGhost() { this.cell = null; this.ground = null; this.ghosts = []; this.why = null; this.clearGhosts(); this.grid.visible = false; this.foot.visible = false; this.hoverKey = ''; }
+  /** released over the map: build what is in hand there */
+  dropHere() { if (this.ghosts.length) this.commit(); }
+  /** put down what is in hand */
+  drop() { if (this.moving) return; this.kind = null; this.tool = 'select'; this.ghosts = []; this.clearGhosts(); this.onChange?.(); }
   /** keys build mode owns while it is open (game.ts asks before its own handling) */
   wantsKey(k: string) { return this.active && /^[0-9]$/.test(k); }
   setTool(t: Tool) {
@@ -161,8 +195,9 @@ export class Build {
         if (b) this.onInspect?.(b); else this.onDismiss?.();
         e.stopPropagation(); e.preventDefault(); return;
       }
-      if (e.button === 0 && e.shiftKey && g.mode.k === 'normal') {
-        const b = this.pick(e.clientX, e.clientY);
+      // V7: a plain click on a machine (nothing else under the pointer, nothing in hand) opens its blueprint sheet
+      if (e.button === 0 && g.mode.k === 'normal' && (e.shiftKey || this.freeClick(e.clientX, e.clientY))) {
+        const b = e.shiftKey ? this.pick(e.clientX, e.clientY) : this.pickStrict(e.clientX, e.clientY);
         if (b) { this.onInspect?.(b); this.f.render.sel = b; e.stopPropagation(); e.preventDefault(); }
       }
       return;
@@ -170,14 +205,24 @@ export class Build {
     e.stopPropagation(); e.preventDefault();
     // a click in the world while the planner is up puts the planner away
     if (this.menu?.isOpen) { this.menu.close(); this.onChange?.(); return; }
-    if (e.button === 2) { if (this.tool !== 'select' || this.kind) { this.kind = null; this.tool = 'select'; this.pending = null; this.clearGhosts(); this.onChange?.(); } else this.close(); return; }
+    if (e.button === 2) { this.back(); return; }
     if (e.button !== 0) return;
     this.hoverAt(e.clientX, e.clientY);
+    // the blueprint mode: a press on a placed building or site selects it, a drag carries it
+    if (this.bp && this.tool === 'select' && !this.kind && e.pointerType !== 'touch') {
+      const t = this.pickAny(e.clientX, e.clientY);
+      if (t) { this.press = { t, x: e.clientX, y: e.clientY }; return; }
+    }
     const touch = e.pointerType === 'touch';
     this.drag = { x: this.cell?.[0] ?? 0, z: this.cell?.[1] ?? 0, on: false, touch, sx: e.clientX, sy: e.clientY };
   };
   private onMove = (e: PointerEvent) => {
-    if (!this.active || !this.canvasEv(e) && !this.drag) return;
+    if (this.active && this.press && Math.hypot(e.clientX - this.press.x, e.clientY - this.press.y) > 8) {
+      // dragging a placed building: pick it up and carry it under the pointer
+      const t = this.press.t; this.press = null;
+      this.pickUp(t, true);
+    }
+    if (!this.active || !this.canvasEv(e) && !this.drag && !this.carryDrag) return;
     if (this.drag && Math.hypot(e.clientX - this.drag.sx, e.clientY - this.drag.sy) > 8) this.drag.on = true;
     if (this.drag?.touch && !(this.kind && isRun(this.kind)) && this.tool !== 'copy') return;
     this.hoverAt(e.clientX, e.clientY);
@@ -187,6 +232,22 @@ export class Build {
     if (!this.active && this.tap && e.pointerType === 'touch') {
       const t = this.tap; this.tap = null;
       if (Math.hypot(e.clientX - t.x, e.clientY - t.y) < 10 && performance.now() - t.t < 400 && (this.g.mode.k === 'normal' || this.g.mode.k === ('factory' as string))) { const b = this.pick(e.clientX, e.clientY); if (b) { this.onInspect?.(b); this.f.render.sel = b; } else if (this.g.mode.k === ('factory' as string)) this.onDismiss?.(); }
+      return;
+    }
+    if (this.active && e.button === 0 && this.press) {
+      // a click on a placed building: select it (again: deselect)
+      const t = this.press.t; this.press = null;
+      this.selected = this.selected === t ? null : t;
+      this.f.render.sel = null;
+      sfx('click', 1.1, 0.4);
+      e.stopPropagation(); this.onChange?.();
+      return;
+    }
+    if (this.active && e.button === 0 && this.carryDrag && this.moving) {
+      // released after dragging a placed building: set it down here
+      this.carryDrag = false; e.stopPropagation();
+      this.hoverAt(e.clientX, e.clientY, true);
+      this.commit();
       return;
     }
     if (!this.active || !this.drag || e.button !== 0) return;
@@ -204,17 +265,43 @@ export class Build {
     if (/^[0-9]$/.test(k)) { eat(); if (!e.repeat) this.hotbar?.use((Number(k) + 9) % 10); return; }
     if (k === 'Escape') {
       // one step back at a time: the building in hand, the planner, then build mode itself (game.ts)
-      if (this.kind || this.tool !== 'select') { eat(); this.kind = null; this.tool = 'select'; this.pending = null; this.clearGhosts(); this.onChange?.(); sfx('click', 0.8, 0.4); return; }
+      if (this.moving || this.kind || this.tool !== 'select' || this.selected) { eat(); this.back(true); return; }
       if (this.menu?.isOpen) { eat(); this.menu.close(); this.onChange?.(); return; }
       return;
     }
-    if (k === 'b' && !this.menu?.isOpen) { eat(); this.openMenu(); return; }
+    if (k === 'b') { eat(); if (e.shiftKey && !this.menu?.isOpen) this.openMenu(); else this.close(); return; }
+    if (k === 'Delete' && this.selected) { eat(); this.dismantle(this.selected); return; }
+    if (k === 'm' && this.selected) { eat(); this.pickUp(this.selected); return; }
     if (k === 'r') { eat(); this.g.input.keys.delete('r'); if (!e.repeat) this.rotate(); }
     else if (k === 'x') { eat(); this.menu?.close(); this.setTool(this.tool === 'dismantle' ? 'select' : 'dismantle'); }
     else if (k === 'y') { eat(); this.menu?.close(); this.setTool('copy'); }
     else if (k === 'u') { eat(); this.menu?.close(); this.setTool('paste'); }
   }
-  rotate() { this.hoverKey = ''; this.rot = (this.rot + 1) & 3; if (this.tool === 'paste' && this.blueprint) this.blueprint = turn(this.blueprint); sfx('click', 1.3, 0.5); this.refresh(); }
+  rotate() {
+    if (!this.kind && !this.moving && this.selected && this.tool === 'select') { this.turnSelected(); return; }
+    this.hoverKey = ''; this.rot = (this.rot + 1) & 3; if (this.tool === 'paste' && this.blueprint) this.blueprint = turn(this.blueprint);
+    if (this.bp) playTurn(); else sfx('click', 1.3, 0.5);
+    this.refresh();
+  }
+  /** right-click / Escape: one step back (the carried building goes home, the hand empties, the selection clears, then
+   *  build mode closes on a right-click) */
+  private back(esc = false) {
+    if (this.moving) { this.cancelMove(); return; }
+    if (this.tool !== 'select' || this.kind) { this.kind = null; this.tool = 'select'; this.pending = null; this.ghosts = []; this.clearGhosts(); this.onChange?.(); sfx('click', 0.8, 0.4); return; }
+    if (this.selected) { this.selected = null; this.onChange?.(); return; }
+    if (!esc) this.close();
+  }
+  /** the wheel turns what is in hand (else it zooms, as always) */
+  private onWheel = (e: WheelEvent) => {
+    if (!this.active || e.target !== this.g.engine.canvas || !(this.kind || this.moving) || this.tool === 'copy') return;
+    e.preventDefault(); e.stopPropagation();
+    const now = performance.now(); if (now - this.wheelT < 110) return; this.wheelT = now;
+    if (e.deltaY < 0) { this.rot = (this.rot + 2) & 3; }
+    this.rotate();
+  };
+  private wheelT = 0;
+  /** a drag that picked a placed building up (released: it is set down) */
+  private carryDrag = false;
   /** touch: build the ghost where it stands */
   confirm() { if (this.ghosts.length) this.commit(); }
 
@@ -234,17 +321,44 @@ export class Build {
     const p = g.groundAt(mx, my); if (!p) return null;
     return this.f.at(Math.floor(p.x), Math.floor(p.z)) ?? this.f.foundAt(Math.floor(p.x), Math.floor(p.z));
   }
+  /** a tight pick for a plain click in normal play: the building's own cells, or its body on screen */
+  pickStrict(mx: number, my: number): FBuilding | null {
+    const g = this.g, p = g.groundAt(mx, my);
+    if (p) { const b = this.f.at(Math.floor(p.x), Math.floor(p.z)); if (b && !isBelt(b.kind) && b.kind !== 'found') return b; }
+    let best: FBuilding | null = null, bs = 1e9;
+    for (const b of this.f.buildings) {
+      if (isBelt(b.kind) || b.kind === 'found' || b.def.h < 1.2) continue;
+      const [sx, sy, ok] = g.screenOf(b.x, b.y + b.def.h * 0.55, b.z); if (!ok) continue;
+      const [, sy2] = g.screenOf(b.x, b.y, b.z);
+      const rad = Math.max(10, Math.abs(sy - sy2) * 0.8), d = Math.hypot(sx - mx, sy - my);
+      if (d < rad && d < bs) { bs = d; best = b; }
+    }
+    return best;
+  }
+  /** a plain click is ours when no creature, colony arm or drone wants it */
+  private freeClick(mx: number, my: number) {
+    const g = this.g as unknown as { colony?: { ctl?: { k: string } }; pickCreature?(x: number, y: number): unknown };
+    if (g.colony?.ctl && g.colony.ctl.k !== 'rts') return false;
+    if (g.pickCreature?.(mx, my)) return false;
+    return true;
+  }
+  /** a placed building or a construction site under the pointer (the blueprint mode's selection) */
+  pickAny(mx: number, my: number): Placed | null {
+    const p = this.g.groundAt(mx, my);
+    if (p && this.f.sites) { const s = this.f.sites.siteAt(Math.floor(p.x), Math.floor(p.z)); if (s) return s; }
+    return this.pickStrict(mx, my);
+  }
   private hoverKey = ''; private hoverT = 0;
-  private hoverAt(mx: number, my: number) {
+  hoverAt(mx: number, my: number, force = false) {
     // only when something moved (or twice a second, for costs and validity)
     const now = performance.now(), key = `${mx}|${my}|${this.rot}|${this.tool}|${this.kind}|${this.drag?.on ? this.drag.x + ',' + this.drag.z : ''}|${this.f.buildings.length}`;
-    if (key === this.hoverKey && now - this.hoverT < 500) return;
+    if (!force && key === this.hoverKey && now - this.hoverT < 500) return;
     this.hoverKey = key; this.hoverT = now;
     const p = this.g.groundAt(mx, my);
     this.ground = p;
     this.cell = p ? [Math.floor(p.x), Math.floor(p.z)] : null;
     const R = this.f.render;
-    R.hover = this.tool === 'dismantle' || this.tool === 'select' || this.tool === 'assign' ? this.pick(mx, my) : null;
+    R.hover = this.tool === 'dismantle' || this.tool === 'select' || this.tool === 'assign' ? (this.bp ? this.pickStrict(mx, my) : this.pick(mx, my)) : null;
     this.refresh();
   }
   /** ghost footprints for the current tool */
@@ -266,6 +380,13 @@ export class Build {
       }
       // the whole run must be affordable
       if (this.ghosts.length > 1) { const n = this.ghosts.filter((g) => g.ok).length; for (const [k, v] of Object.entries(def.cost)) if (f.count(k) < (v ?? 0) * n) { this.why = `Needs ${(v ?? 0) * n} ${k.replace('_', ' ')} for the run`; } }
+    } else if (this.tool === 'move' && this.moving) {
+      // carrying a placed building: where it would go, judged as if it were not standing where it stands now
+      const mv = this.moving, def = FDEFS[mv.kind], w = footW(def, this.rot), d = footD(def, this.rot);
+      const cx = x - Math.floor((w - 1) / 2), cz = z - Math.floor((d - 1) / 2);
+      const why = this.withoutSelf(() => f.why(mv.kind, cx, cz, this.rot, true));
+      this.ghosts.push({ kind: mv.kind, cx, cz, r: this.rot, ok: !why, why });
+      this.why = why;
     } else if (this.tool === 'paste' && this.blueprint) {
       const bp = this.blueprint;
       for (const p of bp.parts) {
@@ -313,13 +434,14 @@ export class Build {
       const geo = isBelt(gh.kind) ? beltGeo('straight', gh.kind === 'pipe') : (() => { const sh = shapeOf(gh.kind); return modelFor(sh.key, def.model, sh.hook).base; })();
       if (m.geometry !== geo) m.geometry = geo;
       m.material = gh.ok ? this.okMat : this.badMat;
+      m.userData.bpKind = gh.ok ? 3 : 4;
       const y = isBelt(gh.kind) || gh.kind === 'splitter' || gh.kind === 'merger' ? Math.max(R.water - 0.1, R.heightAt(gh.cx + 0.5, gh.cz + 0.5)) : def.extract === 'water' ? R.water - 0.05 : f.levelFor(gh.cx, gh.cz, w, d);
       m.position.set(gh.cx + w / 2, y + 0.02, gh.cz + d / 2);
       m.rotation.set(0, -gh.r * Math.PI / 2, 0);
       m.visible = true;
       // the hologram over the blueprint body
       let hm = this.holos[i];
-      if (!hm) { hm = this.holos[i] = new THREE.Mesh(geo, this.holoOk); hm.renderOrder = 5; hm.frustumCulled = false; f.render.group.add(hm); }
+      if (!hm) { hm = this.holos[i] = new THREE.Mesh(geo, this.holoOk); hm.renderOrder = 5; hm.frustumCulled = false; hm.userData.bpSkip = true; f.render.group.add(hm); }
       if (hm.geometry !== geo) hm.geometry = geo;
       hm.material = gh.ok ? this.holoOk : this.holoBad;
       hm.position.copy(m.position); hm.rotation.copy(m.rotation); hm.scale.setScalar(1.012);
@@ -327,7 +449,7 @@ export class Build {
     });
     for (let i = this.ghosts.length; i < this.holos.length; i++) this.holos[i].visible = false;
     // the grid around the cursor, and the footprint (or the copy box)
-    const show = !!this.cell;
+    const show = !!this.cell && !this.bp?.on;
     this.grid.visible = show; this.foot.visible = show && (this.ghosts.length > 0 || this.tool === 'copy' && !!this.drag?.on);
     if (!show) return;
     const [x, z] = this.cell!, pts: number[] = [], h = (X: number, Z: number) => Math.max(R.water - 0.12, R.groundSmooth(X, Z)) + 0.04;
@@ -359,6 +481,7 @@ export class Build {
   // ------------------------------------------------------------------ actions
   private click(mx: number, my: number, d: { x: number; z: number; on: boolean; touch: boolean }, shift: boolean) {
     const f = this.f;
+    if (this.tool === 'select' && this.bp) { if (this.selected) { this.selected = null; this.onChange?.(); } return; }
     if (this.tool === 'select' || this.tool === 'assign' && !this.pending) { const b = this.pick(mx, my); f.render.sel = b; this.onInspect?.(b); if (b) sfx('click', 1, 0.6); return; }
     if (this.tool === 'dismantle') {
       const gp = this.g.groundAt(mx, my), site = gp && f.sites ? f.sites.siteAt(Math.floor(gp.x), Math.floor(gp.z)) : null;
@@ -402,6 +525,7 @@ export class Build {
   private commit() {
     const f = this.f;
     if (!this.ghosts.length) return;
+    if (this.tool === 'move' && this.moving) { this.commitMove(); return; }
     if (this.why && this.ghosts.length === 1) { sfx('deny'); toast(this.why, 'warn', 1500); return; }
     let n = 0;
     const bp = this.tool === 'paste' ? this.blueprint : null;
@@ -413,20 +537,136 @@ export class Build {
         const s = f.sites.place(gh.kind, gh.cx, gh.cz, gh.r);
         if (!s) return;
         n++; sites++;
+        this.bp?.drop({ site: s });
         const rid = bp?.parts[i]?.recipe; if (rid && RECIPE[rid]) f.sites.onDone = ((prev) => (st, b) => { prev?.(st, b); if (st === s) f.setRecipe(b, RECIPE[rid]); })(f.sites.onDone);
-        f.g.fx.burst(gh.cx + s.fw / 2, s.y + 0.2, gh.cz + s.fd / 2, 8, RAMPS.sky[4], { speed: 1.2, up: 1.2, size: 2.4, life: 0.5, grav: 4 });
+        if (!this.bp) f.g.fx.burst(gh.cx + s.fw / 2, s.y + 0.2, gh.cz + s.fd / 2, 8, RAMPS.sky[4], { speed: 1.2, up: 1.2, size: 2.4, life: 0.5, grav: 4 });
         return;
       }
       const b = f.place(gh.kind, gh.cx, gh.cz, gh.r);
       if (!b) return;
       n++;
       const rid = bp?.parts[i]?.recipe; if (rid && RECIPE[rid]) f.setRecipe(b, RECIPE[rid]);
-      f.g.fx.burst(b.x, b.y + 0.3, b.z, 8, RAMPS.straw[4], { speed: 1.4, up: 1.6, size: 2.6, life: 0.5, grav: 6 });
+      // a run drops in a few of its pieces (not a puff per cell)
+      if (this.bp && (this.ghosts.length <= 3 || i % 4 === 0 || i === this.ghosts.length - 1)) { b.rise = 1; this.bp.drop({ b }); }
+      else f.g.fx.burst(b.x, b.y + 0.3, b.z, 8, RAMPS.straw[4], { speed: 1.4, up: 1.6, size: 2.6, life: 0.5, grav: 6 });
     });
-    if (n) { sfx(sites ? 'click' : 'build', sites ? 0.7 : 1, 0.7); f.g.cam.shake(0.05, 0.12); }
-    if (sites) toast(sites > 1 ? `<b>${sites}</b> construction sites staked out` : `Site staked out: <b>${FDEFS[this.ghosts.find((g) => g.ok)!.kind].name}</b> · the crew will bring the materials`, 'info', 1800);
-    else if (this.why) { sfx('deny'); toast(this.why, 'warn', 1500); }
+    if (n && !this.bp) { sfx(sites ? 'click' : 'build', sites ? 0.7 : 1, 0.7); f.g.cam.shake(0.05, 0.12); }
+    if (sites && !this.bp) toast(sites > 1 ? `<b>${sites}</b> construction sites staked out` : `Site staked out: <b>${FDEFS[this.ghosts.find((g) => g.ok)!.kind].name}</b> · the crew will bring the materials`, 'info', 1800);
+    else if (this.why && !n) { sfx('deny'); toast(this.why, 'warn', 1500); }
     this.refresh();
+  }
+
+  // ------------------------------------------------------------------ the blueprint mode: carry, turn, take down
+  /** judge a spot as if the building being carried were not standing where it stands */
+  private withoutSelf<T>(fn: () => T): T {
+    const mv = this.moving; if (!mv) return fn();
+    const f = this.f, N = f.N, t: Placed = mv.b ?? mv.s!, id = mv.b ? mv.b.id : -mv.s!.id, freed: number[] = [];
+    for (let j = 0; j < t.fd; j++) for (let i = 0; i < t.fw; i++) { const k = (t.cz + j) * N + t.cx + i; if (f.grid[k] === id) { f.grid[k] = 0; freed.push(k); } }
+    try { return fn(); } finally { for (const k of freed) f.grid[k] = id; }
+  }
+  /** pick a placed building or site up: it follows the pointer as a hologram until it is set down */
+  pickUp(t: Placed, drag = false) {
+    if (!this.active) return;
+    const site = isSiteT(t);
+    this.moving = { b: site ? null : t as FBuilding, s: site ? t as Site : null, kind: t.kind, r0: t.r };
+    this.selected = null; this.press = null;
+    this.kind = null; this.tool = 'move'; this.rot = t.r; this.hoverKey = '';
+    this.carryDrag = drag;
+    if (!site) this.f.render.sel = t as FBuilding;
+    play('lift', 1, 0.5);
+    this.hoverAt(this.g.input.mx, this.g.input.my, true);
+    this.onChange?.();
+  }
+  /** put it back where it was */
+  cancelMove() {
+    const mv = this.moving; if (!mv) return;
+    this.moving = null; this.carryDrag = false;
+    this.tool = 'select'; this.kind = null; this.ghosts = []; this.clearGhosts();
+    this.f.render.sel = null;
+    this.selected = mv.b ?? mv.s;
+    play('drop', 1.3, 0.25);
+    this.onChange?.();
+  }
+  private commitMove() {
+    const mv = this.moving!, gh = this.ghosts[0];
+    if (!gh || !gh.ok) { play('deny', 1, 0.45); toast(gh?.why ?? 'It cannot go there', 'warn', 1400); if (this.carryDrag) this.cancelMove(); return; }
+    const t: Placed = mv.b ?? mv.s!;
+    this.moving = null; this.carryDrag = false; this.f.render.sel = null;
+    this.tool = 'select'; this.kind = null; this.ghosts = []; this.clearGhosts();
+    if (gh.cx === t.cx && gh.cz === t.cz && gh.r === t.r) { this.selected = t; this.bp?.drop({ ...(mv.b ? { b: mv.b } : { site: mv.s! }), moved: true }); this.onChange?.(); return; }
+    const moved = this.relocate(t, gh.cx, gh.cz, gh.r);
+    if (moved) { this.selected = moved; this.bp?.drop(isSiteT(moved) ? { site: moved, moved: true } : { b: moved, moved: true }); }
+    else { play('deny', 1, 0.45); this.selected = t; }
+    this.onChange?.();
+  }
+  /** turn the selection a quarter in place (the first way round that fits) */
+  turnSelected() {
+    const t = this.selected; if (!t) return;
+    const def = FDEFS[t.kind], cx0 = t.cx + t.fw / 2, cz0 = t.cz + t.fd / 2;
+    const site = isSiteT(t);
+    this.moving = { b: site ? null : t as FBuilding, s: site ? t as Site : null, kind: t.kind, r0: t.r };
+    let best: [number, number, number] | null = null;
+    for (let k = 1; k < 4 && !best; k++) {
+      const r = (t.r + k) & 3, w = footW(def, r), d = footD(def, r), cx = Math.round(cx0 - w / 2), cz = Math.round(cz0 - d / 2);
+      if (!this.withoutSelf(() => this.f.why(t.kind, cx, cz, r, true))) best = [cx, cz, r];
+    }
+    this.moving = null;
+    if (!best) { play('deny', 1, 0.45); toast('No room to turn it here', 'warn', 1200); return; }
+    const moved = this.relocate(t, best[0], best[1], best[2]);
+    if (moved) { this.selected = moved; playTurn(); this.bp?.drop(isSiteT(moved) ? { site: moved, moved: true } : { b: moved, moved: true }); }
+    this.onChange?.();
+  }
+  /** take the selection down: a building's bill comes back, a site's delivered materials too */
+  dismantle(t: Placed) {
+    const f = this.f;
+    if (isSiteT(t)) { f.sites.cancel(t); play('clink', 0.9, 0.5); }
+    else {
+      f.remove(t as FBuilding, true);
+      f.g.fx.burst(t.x, t.y + 0.5, t.z, 16, RAMPS.steel[5], { speed: 2, up: 2.5, size: 3, life: 0.6, grav: 8 });
+      play('thud', 1.3, 0.45); sfx('crack', 1.2, 0.4);
+    }
+    if (this.selected === t) this.selected = null;
+    this.onChange?.();
+  }
+  /** move a building (state, store, operator and node-map wires kept) or a site (deliveries and work kept) */
+  private relocate(t: Placed, cx: number, cz: number, r: number): Placed | null {
+    const f = this.f, g = this.g;
+    if (isSiteT(t)) {
+      const got = { ...t.got }, work = t.work;
+      f.sites.cancel(t);
+      for (const [id, n] of Object.entries(got)) if (n) f.take(id, n);
+      const s = f.sites.restore(t.kind, cx, cz, r, got, work);
+      if (!s) { const back = f.sites.restore(t.kind, t.cx, t.cz, t.r, got, work); return back; }
+      return s;
+    }
+    const b = t as FBuilding, L = (g as unknown as { logistics?: { routes: { from: string; to: string }[]; sync(force?: boolean): void } }).logistics;
+    const oldId = 'b:' + b.id;
+    const st = { recipe: b.recipe, auto: b.auto, inBuf: new Map(b.inBuf), outBuf: new Map(b.outBuf), priority: b.priority, on: b.on, hp: b.hp, op: b.operator, items: [...b.items], prefab: (b as unknown as { prefab?: string }).prefab };
+    // a container's contents go with it (src/inv/storage.ts reloads a saved container at the new spot)
+    const storage = (g as unknown as { storage?: { containerOf(b: unknown): { save(): unknown } | null; pending?: Map<string, unknown> } }).storage;
+    const box = storage?.containerOf(b) ?? null;
+    if (box && storage?.pending) storage.pending.set(`${b.kind}@${cx},${cz}`, box.save());
+    const store = box ? null : new Map(b.store);
+    const wires = L ? L.routes.filter((x) => x.from === oldId || x.to === oldId) : [];
+    f.remove(b, false);
+    let nb = f.place(b.kind, cx, cz, r, true);
+    if (!nb) nb = f.place(b.kind, b.cx, b.cz, b.r, true);
+    if (!nb) { f.refund(b.def.cost); return null; }
+    nb.rise = 1;
+    if (st.recipe && nb.def.station) f.setRecipe(nb, st.recipe);
+    nb.auto = st.auto; nb.priority = st.priority; nb.on = st.on; nb.hp = st.hp;
+    for (const [id, n] of st.inBuf) nb.inBuf.set(id, n);
+    for (const [id, n] of st.outBuf) nb.outBuf.set(id, n);
+    if (store) for (const [id, n] of store) nb.store.set(id, n);
+    if (st.items.length && isBelt(nb.kind)) nb.items.push(...st.items);
+    if (st.prefab) (nb as unknown as { prefab?: string }).prefab = st.prefab;
+    if (st.op && !st.op.dead) f.workers.assign(st.op, 'operate', nb);
+    if (L) {
+      const newId = 'b:' + nb.id;
+      for (const w of wires) { if (w.from === oldId) w.from = newId; if (w.to === oldId) w.to = newId; if (!L.routes.includes(w)) L.routes.push(w); }
+      L.sync(true);
+    }
+    return nb;
   }
   private assignClick(mx: number, my: number) {
     const f = this.f, p = this.pending!, W = f.workers;
@@ -459,6 +699,7 @@ export class Build {
     if (!this.active) return;
     const g = this.g;
     if (g.mode.k !== ('factory' as string)) { this.close(); return; }
+    if (this.selected && (isSiteT(this.selected) ? !this.f.sites?.list.includes(this.selected) : (this.selected as FBuilding).dead)) this.selected = null;
     if (g.input.overCanvas && !this.drag?.touch) this.hoverAt(g.input.mx, g.input.my);
   }
 }

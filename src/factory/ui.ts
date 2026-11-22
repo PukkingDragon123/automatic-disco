@@ -22,6 +22,7 @@ import { initStudio } from '../ui/build/studio';
 import { Hotbar } from '../ui/build/hotbar';
 import { NodeMap } from '../ui/nodes/map';
 import { isRun } from './build';
+import { BuildMode } from '../ui/build/bpmode';
 
 const esc = (s: string) => s.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]!));
 const fmt = (n: number) => (n >= 100 ? Math.round(n).toString() : n >= 10 ? n.toFixed(0) : n.toFixed(1));
@@ -34,6 +35,8 @@ export class FactoryUI {
   private stats: HTMLDivElement; private crew: HTMLDivElement; private bar: HTMLDivElement;
   private overlay: HTMLCanvasElement; private og: CanvasRenderingContext2D;
   readonly menu: BuildMenu; readonly hotbar: Hotbar; readonly nodes: NodeMap;
+  /** V7: the blueprint build mode (top-down blueprint world, the tray, drag / move / rotate, drops) */
+  readonly bp: BuildMode;
   private tag: HTMLDivElement; private tagKey = '';
   private t = 0; private slow = 0;
   showStats = false; showCrew = false; showFlags = false;
@@ -52,6 +55,7 @@ export class FactoryUI {
     this.menu = b.menu = new BuildMenu(f, b);
     this.hotbar = b.hotbar = new Hotbar(f, b);
     this.nodes = new NodeMap(f);
+    this.bp = b.bp = new BuildMode(f, b);
     b.onNodes = () => this.nodes.open();
     this.tag = el('div', 'cr pl-tag', document.body);
     b.onChange = () => { this.catKey = ''; this.renderCat(); };
@@ -59,14 +63,14 @@ export class FactoryUI {
     b.onDismiss = () => this.closeAll();
     const g = f.g;
     const sus = g.suspend.bind(g), res = g.resume.bind(g), dis = g.dispose.bind(g);
-    const mine = () => [this.root, this.overlay, this.menu.root, this.hotbar.root, this.nodes.root, this.tag];
+    const mine = () => [this.root, this.overlay, this.menu.root, this.hotbar.root, this.nodes.root, this.tag, ...this.bp.els];
     // the node map covers the whole screen: the world is not drawn behind it (the simulation keeps running)
     const gr = g as unknown as { render(post: unknown, t: number): void };
     const rnd = gr.render.bind(g);
     gr.render = (post, t) => { if (this.nodes.isOpen) return; rnd(post, t); };
     g.suspend = () => { sus(); for (const e of mine()) e.style.display = 'none'; };
     g.resume = () => { res(); for (const e of mine()) e.style.display = ''; };
-    g.dispose = () => { this.root.remove(); this.overlay.remove(); this.tag.remove(); this.menu.dispose(); this.hotbar.dispose(); this.nodes.dispose(); b.dispose(); dis(); };
+    g.dispose = () => { this.root.remove(); this.overlay.remove(); this.tag.remove(); this.menu.dispose(); this.hotbar.dispose(); this.nodes.dispose(); this.bp.dispose(); b.dispose(); dis(); };
     f.g.input.onKey((e) => this.key(e));
     this.renderCat();
   }
@@ -279,6 +283,7 @@ export class FactoryUI {
   update(dt: number) {
     this.t += dt; this.slow -= dt;
     this.b.update();
+    this.bp.update(dt);
     this.menu.update(dt); this.hotbar.update(dt); this.nodes.update(dt);
     this.renderTag();
     // Escape (the game drops 'factory' mode): the paperwork goes away

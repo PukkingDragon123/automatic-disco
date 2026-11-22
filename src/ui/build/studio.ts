@@ -110,6 +110,66 @@ export function still(kind: FKind, w = 110, h = 70): string {
   stills.set(key, url);
   return url;
 }
+/** one turntable frame inked like Limbophobia's floating icons: pixelated, a bold ink rim (from pixelate), the upper-left
+ *  edges catching the light and the lower-right ones dropped into shade (the build tray's miniatures) */
+export function spinFrame(kind: FKind, w: number, h: number, ang: number): HTMLCanvasElement | null {
+  const big = shoot(kind, w * 2, h * 2, ang); if (!big) return null;
+  const cv = pixelate(big, w, h), g = cv.getContext('2d', { willReadFrequently: true })!;
+  const im = g.getImageData(0, 0, w, h), d = im.data, out = new Uint8ClampedArray(d);
+  const A = (x: number, y: number) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : d[(y * w + x) * 4 + 3]);
+  const rim = (i: number) => d[i] === 8 && d[i + 1] === 12 && d[i + 2] === 10;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4;
+    if (d[i + 3] < 40 || rim(i)) continue;
+    const ul = A(x - 1, y - 1) < 40 || A(x, y - 1) < 40 || rim(((y - 1) * w + x) * 4) || x > 0 && rim((y * w + x - 1) * 4);
+    const lr = A(x + 1, y + 1) < 40 || A(x, y + 1) < 40 || y < h - 1 && rim(((y + 1) * w + x) * 4);
+    if (ul) { out[i] = Math.min(255, d[i] * 1.28 + 30); out[i + 1] = Math.min(255, d[i + 1] * 1.24 + 26); out[i + 2] = Math.min(255, d[i + 2] * 1.12 + 12); }
+    else if (lr) { out[i] = d[i] * 0.72; out[i + 1] = d[i + 1] * 0.7; out[i + 2] = d[i + 2] * 0.74; }
+  }
+  g.putImageData(new ImageData(out, w, h), 0, 0);
+  return cv;
+}
+/** the passes a technical drawing is traced from: a flat id per mesh and view-space normals, seen orthographically
+ *  from 'iso' (a three-quarter isometric view), 'plan' (straight down), 'front' or 'side', as RGBA pixel arrays */
+export function drawingPasses(kind: FKind, w: number, h: number, view: 'iso' | 'plan' | 'front' | 'side'): { id: Uint8Array; nrm: Uint8Array; dep: Uint8Array; w: number; h: number; scale: number } | null {
+  const r = R; if (!r || !FDEFS[kind]) return null;
+  const e = group(kind);
+  const meshes: THREE.Mesh[] = [];
+  e.g.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh); });
+  const keep = meshes.map((m) => m.material);
+  const oc = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
+  const box = new THREE.Box3().setFromObject(e.g), sz = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+  const dir = view === 'plan' ? new THREE.Vector3(0, 1, 0.0001) : view === 'front' ? new THREE.Vector3(0, 0, 1) : view === 'side' ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(1, 0.82, 1).normalize();
+  // fit the box: project its corners onto the view plane
+  oc.position.copy(c).addScaledVector(dir, 50); oc.up.set(0, view === 'plan' ? 0 : 1, view === 'plan' ? -1 : 0); oc.lookAt(c); oc.updateMatrixWorld();
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  for (let i = 0; i < 8; i++) {
+    const v = new THREE.Vector3(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z).applyMatrix4(oc.matrixWorldInverse);
+    x0 = Math.min(x0, v.x); x1 = Math.max(x1, v.x); y0 = Math.min(y0, v.y); y1 = Math.max(y1, v.y);
+  }
+  const pad = 1.08, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  let hw = (x1 - x0) / 2 * pad, hh = (y1 - y0) / 2 * pad;
+  if (hw / hh > w / h) hh = hw * h / w; else hw = hh * w / h;
+  const rad = sz.length() / 2 + 0.3;
+  oc.left = cx - hw; oc.right = cx + hw; oc.top = cy + hh; oc.bottom = cy - hh; oc.near = Math.max(0.1, 50 - rad); oc.far = 50 + rad; oc.updateProjectionMatrix();
+  let rt = targets.get('d' + w + 'x' + h);
+  if (!rt) { rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.UnsignedByteType }); targets.set('d' + w + 'x' + h, rt); }
+  const prev = r.getRenderTarget(), pc = r.getClearColor(_clear).getHex(), pa = r.getClearAlpha();
+  const shot = () => { const px = new Uint8Array(w * h * 4); r.setRenderTarget(rt!); r.setClearColor(0x000000, 0); r.clear(); r.render(scene, oc); r.readRenderTargetPixels(rt!, 0, 0, w, h, px); const out = new Uint8Array(w * h * 4); for (let y = 0; y < h; y++) out.set(px.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4); return out; };
+  scene.add(e.g); e.g.rotation.y = 0; e.g.updateMatrixWorld(true);
+  try {
+    meshes.forEach((m, i) => { m.material = new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(((i * 0.618034) % 1), 0.9, 0.25 + ((i * 7) % 5) * 0.1) }); });
+    const id = shot();
+    meshes.forEach((m) => { (m.material as THREE.Material).dispose(); m.material = new THREE.MeshNormalMaterial(); });
+    const nrm = shot();
+    meshes.forEach((m) => { (m.material as THREE.Material).dispose(); m.material = new THREE.MeshDepthMaterial(); });
+    const dep = shot();
+    return { id, nrm, dep, w, h, scale: w / (hw * 2) };
+  } catch { return null; } finally {
+    meshes.forEach((m, i) => { if (m.material !== keep[i]) (m.material as THREE.Material).dispose(); m.material = keep[i]; });
+    r.setRenderTarget(prev); r.setClearColor(pc, pa); scene.remove(e.g);
+  }
+}
 /** the detail turntable: frames are shot one per call until the turn is complete, then replayed */
 const FRAMES = 36;
 let reel: { kind: FKind; w: number; h: number; f: (HTMLCanvasElement | null)[] } | null = null;

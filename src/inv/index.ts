@@ -9,8 +9,9 @@ import { preloadContainerModels } from './models';
 import { invUI } from '../ui/crates/grid';
 import { CrateHud } from '../ui/crates/hud';
 import { StoresTutorial } from '../ui/crates/tutorial';
+import { ResourceWorld } from '../world/resources3d/world';
 
-export interface Inventory { storage: Storage; render: ContainerRender; hud: CrateHud | null; tutorial: StoresTutorial | null; dispose(): void }
+export interface Inventory { storage: Storage; render: ContainerRender; hud: CrateHud | null; tutorial: StoresTutorial | null; /** resources in the world: drops into containers, piles at sites (world/resources3d) */ resources: ResourceWorld; dispose(): void }
 export function installInventory(g: Game, o: { hud?: boolean } = {}): Inventory {
   const gg = g as unknown as { inventory?: Inventory };
   if (gg.inventory) return gg.inventory;
@@ -21,7 +22,8 @@ export function installInventory(g: Game, o: { hud?: boolean } = {}): Inventory 
   const ui = invUI(g)!;
   const hud = o.hud === false ? null : new CrateHud(g, storage, ui);
   const tutorial = hud ? new StoresTutorial(g, storage, ui, hud) : null;
-  gg.inventory = { storage, render, hud, tutorial, dispose: () => { tutorial?.end(); hud?.dispose(); ui.dispose(); render.group.removeFromParent(); } };
+  const resources = new ResourceWorld(g, storage, render);
+  gg.inventory = { storage, render, hud, tutorial, resources, dispose: () => { tutorial?.end(); hud?.dispose(); ui.dispose(); render.group.removeFromParent(); resources.dispose(); } };
   return gg.inventory;
 }
 export { registerContainers, attachStorage };

@@ -14,8 +14,15 @@ import { anyG, gtime, resolve } from './util';
 import { spawnRuins, bindDrops, bindInstallFx } from './world';
 import { transmission } from './ui/transmit';
 import { toast } from '../ui/kit';
-import { PATH } from './mastery';
+import { PATH, CORE, PATHS } from './mastery';
 import { TECH } from './tech';
+import { Unlocks } from './progress';
+import { NODE } from './unlocks';
+import { Quests } from '../story/quests';
+import { Tracker } from '../story/tracker';
+import { installSocial } from '../social';
+import { installPodHome, enterPod } from '../pod/interior';
+import { hookDock } from './dock';
 
 export { Mastery, Research, Upgrades, Mission, Director };
 export type { PathId };
@@ -39,15 +46,45 @@ export function installProgression(game: Game) {
   const upgrades = new Upgrades(game);
   const mission = new Mission(game);
   const director = new Director(game);
+  // v7: start from zero. The unlock graph gates everything; quests teach; closeness opens functions
+  const unlocks = new Unlocks(game);
+  const quests = new Quests(game);
+  research.gate = unlocks;
   G.mastery = mastery; G.research = research; G.upgrades = upgrades; G.mission = mission; G.director = director;
+  G.unlocks = unlocks; G.quests = quests;
+  const people = installSocial(game, quests);
+  G.social = people.social; G.subs = people.subs;
+  unlocks.quests = quests; unlocks.social = people.social;
+  const home = installPodHome(game);
   // a saved run carries the progression (flow.ts writes run.prog)
   const saved = G.run?.prog;
   if (saved && typeof saved === 'object' && !(saved instanceof Function)) {
-    try { mastery.load(saved.mastery); research.load(saved.research); upgrades.load(saved.upgrades); director.load(saved.director); } catch (e) { console.error('progression load', e); }
+    try { mastery.load(saved.mastery); research.load(saved.research); upgrades.load(saved.upgrades); director.load(saved.director); people.social.load(saved.social); quests.load(saved.quests); unlocks.load(saved.unlocks); home.load(saved.home); } catch (e) { console.error('progression load', e); }
   }
   // the run asks for the live state when it is saved
-  try { Object.defineProperty(G.run, 'prog', { configurable: true, enumerable: true, get: () => ({ mastery: mastery.toJSON(), research: research.toJSON(), upgrades: upgrades.toJSON(), director: director.toJSON() }), set: () => { /* live */ } }); } catch { /* frozen run */ }
+  try { Object.defineProperty(G.run, 'prog', { configurable: true, enumerable: true, get: () => ({ mastery: mastery.toJSON(), research: research.toJSON(), upgrades: upgrades.toJSON(), director: director.toJSON(), unlocks: unlocks.toJSON(), quests: quests.toJSON(), social: people.social.toJSON(), home: home.toJSON() }), set: () => { /* live */ } }); } catch { /* frozen run */ }
   G.progression = { save: () => G.run?.prog, open: (tab?: string) => openTerminal(game, tab as never) };
+  const tracker = new Tracker(quests); G.questTracker = tracker;
+  hookDock(game, unlocks);
+  // clicking the pod zooms inside it (a real click on the canvas, not a selection from elsewhere)
+  let lastDown = 0;
+  addEventListener('pointerdown', (e) => { if (e.button === 0 && e.target === G.engine?.canvas) lastDown = performance.now(); }, true);
+  game.on('colony-select', (s: { kind?: string } | null) => { if (s?.kind === 'pod' && performance.now() - lastDown < 450) void enterPod(game); });
+  G.enterPod = () => enterPod(game);
+  // quest steps counted from the game's own events
+  research.on('scan', (h: { first: boolean }) => { if (h.first) quests.hit('scan'); });
+  game.on('sample', (d: { kind?: string }) => quests.hit('sample:' + (d?.kind ?? 'any')));
+  game.on('unlock', (d: { id: string }) => { quests.hit('unlock:' + d.id); quests.hit('unlocks'); });
+  game.on('built', (d: { kind: string }) => { const def = FDEFS[d?.kind]; if (!def || /^belt|^pipe|^found|^wall/.test(d.kind)) return; quests.hit('build:' + (def.cat ?? 'any')); });
+  game.on('placed-structure', (d: { kind?: string }) => quests.hit('place:' + (d?.kind ?? 'any')));
+  game.on('built-attachment', () => quests.hit('fit'));
+  game.on('screen-open', (d: { id: string }) => quests.hit('open:' + d?.id));
+  game.on('pod-enter', () => quests.hit('enter:pod'));
+  game.on('decor', (d: { id: string }) => quests.hit('decor:' + d?.id));
+  game.on('story-event', (d: { id: string; phase: string }) => { if (d?.phase === 'end') quests.hit('event:' + d.id); });
+  // mastery is learned by doing: its core perks install themselves as the levels come
+  mastery.on('level', (d: { path: PathId }) => { for (const id of CORE[d.path] ?? []) { if (mastery.has(id)) continue; if (!mastery.why(id)) mastery.take(id); break; } });
+  void PATHS;
   const P = new URLSearchParams(location.search);
   // harder planets press harder: danger 1..3 sets tighter quotas and more frequent events
   if (G.opts?.danger) director.difficulty = mission.difficulty = Math.max(0.8, Math.min(1.4, 0.8 + 0.2 * Number(G.opts.danger)));
@@ -100,8 +137,8 @@ export function installProgression(game: Game) {
     }
   });
   // feedback
-  mastery.on('level', (d: { path: PathId; level: number }) => toast(`<b>${PATH[d.path].name}</b> reaches level ${d.level}. A mastery point is waiting [K].`, 'good', 5200));
-  research.on('unlock', (d: { id: string }) => toast(`Research complete: <b>${TECH[d.id]?.name ?? d.id}</b>.`, 'good', 5200));
+  mastery.on('level', (d: { path: PathId; level: number }) => toast(`<b>${PATH[d.path].name}</b> ${d.level}`, 'good', 3200));
+  void TECH; void NODE;
   // the ship's voice
   mission.on('quota', (d: { q: any; phase: string }) => {
     const open = () => openTerminal(game, 'mission'), engine = G.engine;
@@ -126,18 +163,23 @@ export function installProgression(game: Game) {
     C.slots.setUpgrader({ ready: () => upgrades.upgraderReady(), name: 'UPGRADER', cost: (_slot: number, level: number) => resolve(SLOT_COST[Math.max(0, Math.min(1, level - 1))] as Record<string, number>) });
   };
   // ---------------------------------------------------------------- the clocks (game time: pause and speed apply)
-  let energyT = 0;
+  let energyT = 0, studyT = 0, unlockT = 0;
   G.update$?.push((dt: number) => {
     hookSlots();
+    unlockT += Math.max(dt, 1 / 60);
+    if (unlockT >= 0.5) { unlockT = 0; try { quests.poll(); unlocks.tick(); unlocks.toolSlots(); } catch (e) { console.error('unlocks tick', e); } }
     if (dt <= 0) return;
-    // the Meridian's first drop: enough parts for a Research Station and an Upgrader, once per run
-    if (!director.done.has('kit') && !G.descending && gtime(game) > 45) {
-      director.done.add('kit');
+    // v7: the ship's voice (quotas, drops) only once the SHIP link is learned; the Meridian's first drop comes with it
+    const linked = unlocks.has('ship:fn:quotas');
+    if (linked && !director.done.has('kit') && !G.descending) {
+      director.done.add('kit'); mission.next = Math.max(mission.next, gtime(game) + 120);
       mission.drop(resolve({ iron_plate: 24, copper_wire: 20, glass: 6, gear: 8, screw: 20 }));
-      transmission({ kind: 'drop', text: 'Station kit on its way down: parts for a Research Station and an Upgrader. Build them; the board wants data.', open: () => openTerminal(game, 'mission') });
+      transmission({ kind: 'drop', text: 'Link established. A supply capsule is on its way down. The board wants data.', open: () => openTerminal(game, 'mission') });
     }
-    try { research.tick(dt); } catch (e) { console.error('research tick', e); }
-    try { if (!G.descending) mission.tick(dt); } catch (e) { console.error('mission tick', e); }
+    try { if (linked && !G.descending) mission.tick(dt); } catch (e) { console.error('mission tick', e); }
+    // a powered Field Lab studies what the colony holds: a slow stream of knowledge
+    studyT += dt;
+    if (studyT >= 6) { studyT = 0; const st = research.stations().powered; if (st > 0) { research.addData('bio', 0.4 * st, 'Field Lab'); research.addData('geo', 0.4 * st, 'Field Lab'); } }
     try { if (!G.descending) director.tick(dt); } catch (e) { console.error('director tick', e); }
     energyT += dt;
     if (energyT >= 10) {
@@ -146,7 +188,7 @@ export function installProgression(game: Game) {
       if (sup > 0) { mastery.gain('energy', Math.min(12, sup * 0.04), 'Running the grid'); research.addData('energy', Math.min(2, sup / 120), 'Grid telemetry'); }
     }
   });
-  return { mastery, research, upgrades, mission, director };
+  return { mastery, research, upgrades, mission, director, unlocks, quests, social: people.social };
 }
 
 /** open the program terminal on a tab, from anywhere in the game */

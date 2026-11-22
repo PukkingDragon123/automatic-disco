@@ -7,13 +7,14 @@
 // The old four raw materials stay as ids: `ore` is Ferrite Ore, `soil` is Dirt, `water` is Water and `carbon` is
 // Biomass, and every item carries the old material CLASS it pays (`mat`): a build cost in carbon is paid by any
 // carbon-class item (wood, leaves, bark, fibre...), one in soil by any earth (dirt, topsoil, clay, sand, gravel...).
-// Each item has a hand-drawn icon in the master palette (ui/icons.ts hiItem; the new set lives in inv/itemArt.ts).
+// Each item's icon is rendered from its own 3D model (world/resources3d, baked into inv/itemSprites.ts at 32 and 64 px);
+// the older painted icons (ui/icons.ts hiItem, inv/itemArt.ts) stay as the fallback for items without one.
 import * as THREE from 'three';
 import { Pix, KPix, poly, selout, RA, INKC, type Pt } from './paint';
 import type { Res } from '../game/skills';
 import { itemIcon as hiItemURL, hiItem, hasItemArt } from '../ui/icons';
 import { installItemArt } from '../inv/itemArt';
-import { SPRITES, SPRITE_PAL, SPRITE_SIZE } from '../inv/itemSprites';
+import { SPRITES, SPRITES64, SPRITE_PAL, SPRITE_SIZE } from '../inv/itemSprites';
 
 export type BaseItemId =
   | 'ore' | 'carbon' | 'water' | 'soil' | 'copper_ore' | 'coal' | 'crystal' | 'fruit'
@@ -572,7 +573,7 @@ const ICON: Partial<Record<ItemId, Painter>> = {
 };
 
 const pixCache = new Map<ItemId, Pix>(), urlCache = new Map<string, string>();
-/** the lowpix sprite of an item (32 x 32, palette-snapped; inv/itemSprites.ts), decoded once */
+/** the item's icon rendered from its 3D model (32 x 32, palette-indexed; inv/itemSprites.ts), decoded once */
 const spriteCache = new Map<ItemId, Pix | null>();
 function sprite(id: ItemId): Pix | null {
   let p = spriteCache.get(id);
@@ -589,6 +590,24 @@ function sprite(id: ItemId): Pix | null {
   spriteCache.set(id, p);
   return p;
 }
+/** the 64 px version (run-length coded [count, index] pairs), decoded once */
+const sprite64Cache = new Map<ItemId, Pix | null>();
+export function itemPix64(id: ItemId): Pix | null {
+  let p = sprite64Cache.get(id);
+  if (p !== undefined) return p;
+  const b = (SPRITES64 as Record<string, string> | undefined)?.[id];
+  p = null;
+  if (b) {
+    const raw = atob(b); p = new Pix(64, 64);
+    for (let i = 0, o = 0; i + 1 < raw.length; i += 2) {
+      const n = raw.charCodeAt(i), k = raw.charCodeAt(i + 1);
+      if (k !== 255) { const c = SPRITE_PAL[k]; for (let q = 0; q < n; q++) { const j = (o + q) * 4; p.d[j] = (c >> 16) & 255; p.d[j + 1] = (c >> 8) & 255; p.d[j + 2] = c & 255; p.d[j + 3] = 255; } }
+      o += n;
+    }
+  }
+  sprite64Cache.set(id, p);
+  return p;
+}
 export const hasSprite = (id: ItemId) => !!SPRITES[id];
 /** a 32 px RGBA icon (the texture-array layer for belt crates): the lowpix sprite, else the painted icon */
 export function itemPix(id: ItemId): Pix {
@@ -602,18 +621,20 @@ export function itemPix(id: ItemId): Pix {
   }
   return p;
 }
-/** a data URL of an item's icon: its 32 px sprite blown up by the whole number nearest px / 32 (show it at any
- *  whole multiple of 32 with image-rendering: pixelated), else the painted icon at px */
+/** a data URL of an item's icon at a whole multiple of its 32 or 64 px rendering, whichever lands nearer px (show it
+ *  at that size with image-rendering: pixelated); else the painted icon at px */
 export function itemIcon(id: ItemId, px = chipPx()): string {
   const sp = sprite(id);
   if (sp) {
-    const k = Math.max(1, Math.round(px / S)), key = id + '#' + k;
+    const k32 = Math.max(1, Math.round(px / S)), k64 = Math.max(1, Math.round(px / 64));
+    const big = px >= 56 && Math.abs(px - 64 * k64) <= Math.abs(px - S * k32) ? itemPix64(id) : null;
+    const src = big ?? sp, n = big ? 64 : S, k = big ? k64 : k32, key = id + (big ? '#H' : '#') + k;
     let u = urlCache.get(key);
     if (!u) {
-      const c = document.createElement('canvas'); c.width = c.height = S * k;
-      const x = c.getContext('2d')!; const img = new ImageData(new Uint8ClampedArray(sp.d), S, S);
+      const c = document.createElement('canvas'); c.width = c.height = n * k;
+      const x = c.getContext('2d')!; const img = new ImageData(new Uint8ClampedArray(src.d), n, n);
       if (k === 1) x.putImageData(img, 0, 0);
-      else { const t = document.createElement('canvas'); t.width = t.height = S; t.getContext('2d')!.putImageData(img, 0, 0); x.imageSmoothingEnabled = false; x.drawImage(t, 0, 0, S * k, S * k); }
+      else { const t = document.createElement('canvas'); t.width = t.height = n; t.getContext('2d')!.putImageData(img, 0, 0); x.imageSmoothingEnabled = false; x.drawImage(t, 0, 0, n * k, n * k); }
       u = c.toDataURL(); urlCache.set(key, u);
     }
     return u;

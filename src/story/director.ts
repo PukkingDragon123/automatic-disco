@@ -35,12 +35,13 @@ export class Director {
   later(s: number, fn: () => void) { this.timers.push({ at: this.now() + s, fn }); }
   private get st() { return (this.stage ??= new Stage(this.g)); }
 
-  /** has the colony reached its first major milestone */
+  /** has the colony reached its first major milestone (v7: the unlock graph's progress: the ship link, or ten
+   *  things learned, or a met quota, or forty minutes on the ground) */
   milestone(): boolean {
     const G = anyG(this.g);
     const met = (G.mission?.quotas ?? []).some((q: any) => q.state === 'met');
-    const techs = (G.research?.known?.() ?? []).length - 2;
-    return met || techs >= 3 || this.now() > 1800;
+    const learned = (G.unlocks?.history?.length ?? 0);
+    return met || learned >= 10 || !!G.unlocks?.owns?.('dock_ship') || this.now() > 2400;
   }
   teammatesAlive(): boolean {
     const tms = anyG(this.g).colony?.teammates;
@@ -59,6 +60,8 @@ export class Director {
     this.ownMorale += ((ws ? 55 : 60) - this.ownMorale) * dt * 0.002;
     if (!this.done.has('fallen') && t > 600 && this.milestone() && this.teammatesAlive()) { this.trigger('fallen'); return; }
     if (t < this.next) return;
+    // v7: the first lessons come first: no random trouble until a few things are learned
+    if ((anyG(this.g).unlocks?.history?.length ?? 99) < 4) { this.next = t + 60; return; }
     const D = { morale: this.morale, difficulty: this.difficulty, t };
     const pool = EVENTS.map((e) => ({ e, w: this.recent(e.id) ? 0 : Math.max(0, e.weight(this.g, D)) })).filter((p) => p.w > 0);
     this.next = t + (300 + Math.random() * 240) / this.difficulty;

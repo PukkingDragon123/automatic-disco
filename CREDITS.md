@@ -168,3 +168,14 @@ finish (`src/inv/sprites/make_items.py`). A few are renders of real Poly Haven m
 | `rock_granite` | Boulder 01 | https://polyhaven.com/a/boulder_01 | Rico Cilliers | CC0 1.0 |
 | `plastic` | Plastic Container | https://polyhaven.com/a/plastic_container | PierreB3D | CC0 1.0 |
 | `bio_oil` | Oil Tin | https://polyhaven.com/a/oil_tin | Niklas | CC0 1.0 |
+
+## Resources in 3D (src/world/resources3d, public/sfx/res)
+The resource models, their piles and the item icons rendered from them are made in code (no third-party art).
+The landing sounds in `public/sfx/res/` are recorded **CC0 1.0** effects from [OpenGameArt.org](https://opengameart.org),
+trimmed and loudness-matched for the user's Limbophobia and reused here (same author); credited with thanks:
+
+| files | pack | author | source | licence |
+|---|---|---|---|---|
+| `woodhit_1-3`, `woodfall_1`, `metalfall_1` | 100 CC0 metal and wood SFX / 75 CC0 breaking, falling, hit sfx | rubberduck | https://opengameart.org/content/100-cc0-metal-and-wood-sfx, https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx | CC0 1.0 |
+| `rockhit_1-3` | 75 CC0 breaking, falling, hit sfx | rubberduck | https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx | CC0 1.0 |
+| `splash_1`, `plop_1-2` | 40 CC0 water / splash / slime SFX | rubberduck | https://opengameart.org/content/40-cc0-water-splash-slime-sfx | CC0 1.0 |

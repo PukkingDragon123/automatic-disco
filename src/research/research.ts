@@ -8,6 +8,7 @@ import { PATH, type Mastery } from './mastery';
 import { FDEFS } from '../factory/defs';
 import { anyG, gtime } from './util';
 import { ORES } from '../world/geo/ores';
+import { catOf } from '../logistics/catalog';
 
 export interface ScanHit { key: string; kind: 'species' | 'plant' | 'ore' | 'vent' | 'ruin' | 'crystal'; name: string; data: Partial<Record<DataKind, number>>; x: number; z: number; first: boolean }
 export interface Ruin { x: number; z: number; name: string; key: string }
@@ -43,8 +44,25 @@ export class Research {
 
   // ---------------------------------------------------------------- unlock state
   private skills() { return (this.g as unknown as { run?: { skills?: { owned: Set<string> } } })?.run?.skills ?? null; }
+  /** v7: the unlock graph (src/research/progress.ts) gates first; the old techs are only its legacy layer */
+  gate: { has(f: string): boolean; covers(f: string): boolean; lockLine(f: string): string | null } | null = null;
+  /** the graph's word on an id: true / false, or null when the graph does not gate it */
+  private graph(id: string): boolean | null {
+    const U = this.gate; if (!U) return null;
+    if (U.covers(id)) return U.has(id);
+    if (TECH[id] && U.covers('tech:' + id)) return U.has('tech:' + id) || this.done.has(id);
+    const def = FDEFS[id];
+    if (def) {
+      if (!U.has('dock:build')) return false;
+      const cat = 'cat:' + catOf(id as never);
+      if (U.covers(cat) && !U.has(cat)) return false;
+    }
+    return null;
+  }
   /** is it known: a tech id, a building kind, a recipe, a logic feature or a blueprint */
   unlocked(id: string): boolean {
+    const gr = this.graph(id);
+    if (gr !== null) { if (!gr) return false; if (this.gate?.covers(id)) return true; }
     if (TECH[id]) return this.done.has(id);
     const ts = this.by.get(id);
     if (ts?.length) {
@@ -77,6 +95,13 @@ export class Research {
   /** null when available, else one short line for a greyed tile */
   requirementOf(id: string): string | null {
     if (this.unlocked(id)) return null;
+    const U = this.gate;
+    if (U) {
+      const def = FDEFS[id];
+      const line = U.lockLine(id) ?? (TECH[id] ? U.lockLine('tech:' + id) : null) ?? (def ? (U.lockLine('dock:build') ?? U.lockLine('cat:' + catOf(id as never))) : null);
+      if (line) return line;
+      if (def) for (const g of [def.skill ? 'tech:' + (this.by.get(def.skill)?.[0]?.id ?? '') : '', ...((this.by.get(id) ?? []).map((t) => 'tech:' + t.id))]) { const l = g && U.lockLine(g); if (l) return l; }
+    }
     const t = this.techFor(id);
     if (!t) return null;
     // walk down to the first thing actually blocking: a missing prerequisite or a mastery level
@@ -146,10 +171,11 @@ export class Research {
     if (this.prog >= t.time) { this.queue.shift(); this.prog = 0; this.complete(id); }
   }
   /** unlock now (the queue's end, story rewards, tests) */
-  complete(id: string) {
+  complete(id: string, quiet = false) {
     const t = TECH[id]; if (!t || this.done.has(id)) return;
     this.done.add(id);
     const sk = this.skills(); if (sk) for (const s of t.grants ?? []) sk.owned.add(s);
+    if (quiet) return;
     this.mastery.gain(t.path, 20 + this.costSum(t) * 0.6, 'Research: ' + t.name);
     this.emit('unlock', { id, tech: t });
     anyG(this.g!)?.emit?.('research-unlock', { id, tech: t });

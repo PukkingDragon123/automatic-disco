@@ -139,8 +139,10 @@ export class FactoryRender {
       return;
     }
     _q.setFromAxisAngle(AX.y, -(b.r & 3) * Math.PI / 2);
-    _s.set(hidden ? 0 : 1, Math.max(0.0001, e), hidden ? 0 : 1);
-    _m.compose(_v.set(b.x, b.y, b.z), _q, _s);
+    // build mode's drop: squash and stretch [sxz, sy, lift] (src/ui/build/bpmode.ts)
+    const jz = (b as unknown as { jz?: [number, number, number] }).jz;
+    _s.set(hidden ? 0 : jz ? jz[0] : 1, Math.max(0.0001, e) * (jz ? jz[1] : 1), hidden ? 0 : jz ? jz[0] : 1);
+    _m.compose(_v.set(b.x, b.y + (jz ? jz[2] : 0), b.z), _q, _s);
   }
   private partMatrix(b: FBuilding, p: Part, k: number) {
     _p.identity();
@@ -175,8 +177,9 @@ export class FactoryRender {
     for (const [key, bt] of this.batches) {
       const list = bt.list;
       bt.ensure(list.length);
-      const rising = list.some((b) => b.rise < 1) || bt.dirty || list.some((b) => hiddenSet.has(b)) || (bt as unknown as { hadHidden?: boolean }).hadHidden;
+      const rising = list.some((b) => b.rise < 1 || (b as unknown as { jz?: unknown }).jz !== undefined) || (bt as unknown as { hadJz?: boolean }).hadJz || bt.dirty || list.some((b) => hiddenSet.has(b)) || (bt as unknown as { hadHidden?: boolean }).hadHidden;
       (bt as unknown as { hadHidden?: boolean }).hadHidden = list.some((b) => hiddenSet.has(b));
+      (bt as unknown as { hadJz?: boolean }).hadJz = list.some((b) => (b as unknown as { jz?: unknown }).jz !== undefined);
       const parts = this.parts.get(key) ?? [];
       for (const pb of parts) pb.ensure(list.length);
       const sa = bt.state.array as Float32Array, ba = bt.belt.array as Float32Array;
