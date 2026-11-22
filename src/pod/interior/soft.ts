@@ -158,12 +158,12 @@ export class Cloth extends PSet {
 export class Rope extends PSet {
   readonly seg: number; readonly mesh: THREE.Mesh; private sides = 6;
   pin: THREE.Vector3 | null; endObj: THREE.Object3D | null = null; endUp = new V3(0, 1, 0);
-  constructor(pts: THREE.Vector3[], radius: number, mat: THREE.Material, o: { pinStart?: boolean; endMass?: number } = {}) {
+  constructor(pts: THREE.Vector3[], radius: number, mat: THREE.Material, o: { pinStart?: boolean; endMass?: number; seg?: number } = {}) {
     super(pts.length);
     this.r = radius; this.fr = 0.7; this.windK = 0.35; this.drag = 0.985;
     pts.forEach((q, i) => { this.x.set([q.x, q.y, q.z], i * 3); this.p.set([q.x, q.y, q.z], i * 3); });
     let L = 0; for (let i = 1; i < pts.length; i++) L += pts[i].distanceTo(pts[i - 1]);
-    this.seg = L / (pts.length - 1);
+    this.seg = o.seg ?? L / (pts.length - 1);
     this.pin = o.pinStart === false ? null : pts[0].clone(); if (this.pin) this.w[0] = 0;
     if (o.endMass) this.w[this.n - 1] = 1 / o.endMass;
     const S = this.sides, pos = new Float32Array(this.n * S * 3), uv = new Float32Array(this.n * S * 2), idx: number[] = [];
