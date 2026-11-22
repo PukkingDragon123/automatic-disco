@@ -14,6 +14,7 @@ export const CANNON: ToolSpec = {
   id: 'cannon', name: 'Mass Driver',
   livery: { name: 'olive', hull: R.olive, hullStep: 4, accent: R.stampRed, accentStep: 3, glow: R.glowTeal },
   pose: { act: 1, chg: 0.9, t: 0.3 },
+  icon: { yaw: 0.5, roll: 0.42 },
   build(k: Kit, root: THREE.Group) {
     const det = k.det, seg = det >= 2 ? 20 : det ? 16 : 12;
     // ---------------------------------------------------------------- the turret base and the yoke
@@ -86,7 +87,7 @@ export const CANNON: ToolSpec = {
     k.mesh(cyl(0.05, 1.9, seg), 'dark', barrel, [0.9, 0, 0], AX.x);
     for (const s of [-1, 1]) k.mesh(cbox(1.8, 0.035, 0.05, 0.008), 'frame', barrel, [0.95, s * 0.075, 0]);
     const coils: THREE.Mesh[] = [];
-    const coilMat = () => glowTexMat('coil', R.glowTeal[4], k.ui, { metal: 0.85 });
+    const coilMat = () => glowTexMat('coil', R.glowTeal[3], k.ui, { metal: 0.85 });
     for (let i = 0; i < 6; i++) {
       const lvl = i < 4 ? 1 : 2, x = 0.36 + i * 0.2;
       const cg = k.group(barrel, [x + (i >= 4 ? 0.0 : 0), 0, 0], AX.x, lvl > 1 ? { lvl } : {});
@@ -107,8 +108,8 @@ export const CANNON: ToolSpec = {
     k.mesh(ring(0.104, 0.09, 0.02, seg), 'accent', muz, [0, 0.0, 0]);
     k.callout('muzzle', 'RECOILING BARREL', muz);
     const flash = k.group(muz, [0, 0.12, 0], [0, 0, 0], { name: 'flash' });
-    const fl1 = k.mesh(cone(0.13, 0.0, 0.2, 10), k.glow(4, 1.6, { color: R.glowTeal[4] }), flash, [0, 0.1, 0]);
-    const fl2 = k.mesh(new THREE.IcosahedronGeometry(0.1, 0), k.glow(4, 1.8, { color: 0xeafff4 }), flash, [0, 0.03, 0]);
+    const fl1 = k.mesh(cone(0.1, 0.0, 0.1, 10), k.glow(3, 1.2, { color: R.glowTeal[3] }), flash, [0, 0.05, 0]);
+    const fl2 = k.mesh(new THREE.IcosahedronGeometry(0.075, 0), k.glow(4, 1.3, { color: R.glowTeal[4] }), flash, [0, 0.03, 0]);
     for (let i = 0; i < 4; i++) { const an = (i / 4) * TAU + PI / 4; k.mesh(cone(0.035, 0.0, 0.16, 6), k.glow(4, 1.4, { color: R.glowTeal[3] }), flash, [Math.cos(an) * 0.1, 0.02, Math.sin(an) * 0.1], [Math.sin(an) * 1.2, 0, -Math.cos(an) * 1.2]); }
     // thick power cables from the drum to the bus bar
     k.cable(cradle, [[-0.5, 0.09, 0.07], [-0.35, 0.22, 0.12], [-0.05, 0.22, 0.12], [0.25, 0.16, 0.06], [0.33, 0.12, 0.02]], 0.02, 'cable');
@@ -117,7 +118,7 @@ export const CANNON: ToolSpec = {
     const fins3 = k.group(muz, [0, 0.03, 0], [0, 0, 0], { lvl: 3 });
     for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU; k.mesh(box(0.05, 0.12, 0.012), 'fin', fins3, [Math.cos(a) * 0.12, 0, Math.sin(a) * 0.12], [0, -a, 0]); }
     const hs = k.group(barrel, [0.85, 0.13, 0], [0, 0, 0], { lvl: 3 });
-    for (let i = 0; i < 12; i++) k.mesh(box(0.015, 0.06, 0.12), 'fin', hs, [-0.5 + i * 0.09, 0.03, 0]);
+    for (let i = 0; i < 12; i++) k.mesh(box(0.014, 0.035, 0.14), 'fin', hs, [-0.5 + i * 0.09, 0.012, 0]);
     const laser = k.group(barrel, [1.7, -0.13, 0], [0, 0, 0], { lvl: 3 });
     k.mesh(cbox(0.14, 0.05, 0.05, 0.008), 'frame', laser);
     k.mesh(cyl(0.012, 0.02, 8), k.glow(3, 1, { color: R.ruby[5] }), laser, [0.075, 0, 0], AX.x);
@@ -142,14 +143,14 @@ export const CANNON: ToolSpec = {
       coils.forEach((c, i) => {
         const on = clamp01(chP * (coils.length + 1) - i);
         const blast = firing && p >= 0.55 ? Math.max(0, 1 - (p - 0.55) * T * 3 - i * 0.08) : 0;
-        setGlow(c, on * 0.9 + blast * 1.6);
+        setGlow(c, on * 0.75 + blast * 0.8);
       });
       // fire: the barrel kicks back on its clamps and springs home; the flash
       const tau = firing && p >= 0.55 ? (p - 0.55) * T : 9;
       barrel.position.x = -0.17 * Math.exp(-tau * 7) * Math.cos(Math.min(tau * 9, PI / 2) * 0) * (tau < 9 ? 1 : 0);
       const fk = tau < 0.12 ? 1 - tau / 0.12 : 0;
       flash.visible = fk > 0; flash.scale.set(0.6 + fk * 0.6, 0.4 + fk * 1.2, 0.6 + fk * 0.6);
-      setGlow(fl1, 1 + fk); setGlow(fl2, 1.2 + fk);
+      setGlow(fl1, 0.8 + fk * 0.5); setGlow(fl2, 0.9 + fk * 0.5);
       // the breech cycles: the bolt runs back, a slug drops in, the bolt slams home
       const back = firing ? (p < 0.62 ? 0 : p < 0.72 ? ease((p - 0.62) / 0.1) : p < 0.8 ? 1 : p < 0.88 ? 1 - ease((p - 0.8) / 0.08) : 0) : 0;
       bolt.position.x = -back * 0.17; handle.rotation.x = -back * 0.9;

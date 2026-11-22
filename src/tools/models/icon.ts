@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { PALETTE, RAMPS } from '../../art/palette';
 
-export interface IconOpts { yaw?: number; pitch?: number; ss?: number; outline?: number; rim?: number; snap?: boolean; margin?: number }
+export interface IconOpts { yaw?: number; pitch?: number; roll?: number; ss?: number; outline?: number; rim?: number; snap?: boolean; margin?: number }
 let R: THREE.WebGLRenderer | null = null, dead = false;
 let ndMat: THREE.ShaderMaterial | null = null;
 function gl(): THREE.WebGLRenderer | null {
@@ -46,12 +46,13 @@ export function renderIcon(root: THREE.Object3D, size = 64, o: IconOpts = {}): H
   const out = document.createElement('canvas'); out.width = out.height = size;
   const r = gl(); if (!r || !ndMat) return out;
   const ss = o.ss ?? 4, S = size * ss, ow = o.outline ?? (size >= 96 ? 2 : 1), margin = (o.margin ?? 2) + ow;
-  const scene = new THREE.Scene(), pivot = new THREE.Group(); scene.add(pivot);
+  const pose = (root.userData.iconPose ?? {}) as IconOpts;
+  const scene = new THREE.Scene(), rollG = new THREE.Group(), pivot = new THREE.Group(); scene.add(rollG); rollG.add(pivot);
   const prevParent = root.parent; pivot.add(root);
-  const yaw = o.yaw ?? -0.62, pitch = o.pitch ?? 0.42;
-  pivot.rotation.set(0, yaw, 0); pivot.updateMatrixWorld(true);
+  const yaw = o.yaw ?? pose.yaw ?? 0.55, pitch = o.pitch ?? pose.pitch ?? 0.42, roll = o.roll ?? pose.roll ?? 0;
   // the camera looks down the pitch; fit the visible parts tight on the view axes
   const fwd = new THREE.Vector3(0, -Math.sin(pitch), -Math.cos(pitch)), up = new THREE.Vector3(0, Math.cos(pitch), -Math.sin(pitch)), right = new THREE.Vector3(1, 0, 0);
+  pivot.rotation.set(0, yaw, 0); rollG.quaternion.setFromAxisAngle(fwd, -roll); rollG.updateMatrixWorld(true);
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
   const v = new THREE.Vector3();
   root.traverseVisible((n) => {
@@ -66,7 +67,7 @@ export function renderIcon(root: THREE.Object3D, size = 64, o: IconOpts = {}): H
   const dist = (z1 - z0) + 2;
   cam.position.copy(right.clone().multiplyScalar(cxm)).add(up.clone().multiplyScalar(cym)).add(fwd.clone().multiplyScalar(z0 - 1));
   cam.up.copy(up); cam.lookAt(cam.position.clone().add(fwd));
-  cam.near = 0.5; cam.far = 1 + (z1 - z0) + 0.5; void dist;
+  cam.near = 0.9; cam.far = 1 + (z1 - z0) + 0.1; void dist;
   cam.updateProjectionMatrix();
   // colour, then normal + depth
   const rtC = new THREE.WebGLRenderTarget(S, S, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false });
@@ -98,7 +99,7 @@ export function renderIcon(root: THREE.Object3D, size = 64, o: IconOpts = {}): H
   }
   const img = new ImageData(size, size), d = img.data;
   const op = (x: number, y: number) => x >= 0 && y >= 0 && x < size && y < size && A[y * size + x] === 1;
-  const thr = 0.06, rimK = o.rim ?? 1;
+  const thr = Math.max(0.02, 0.045 / Math.max(0.2, cam.far - cam.near)), rimK = o.rim ?? 1;
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     const p = y * size + x; if (!A[p]) continue;
     let r0 = C[p * 3], g0 = C[p * 3 + 1], b0 = C[p * 3 + 2];
@@ -142,7 +143,7 @@ let builder: ((id: string, level: number) => THREE.Object3D | null) | null = nul
 export function bindIconBuilder(f: (id: string, level: number) => THREE.Object3D | null) { builder = f; }
 /** a tool's icon (cached): size px square, level 1..3 shows its upgrades */
 export function toolIcon(id: string, size = 64, o: IconOpts & { level?: number } = {}): HTMLCanvasElement | null {
-  const key = `${id}|${size}|${o.level ?? 1}|${o.yaw ?? ''}|${o.pitch ?? ''}|${o.outline ?? ''}`;
+  const key = `${id}|${size}|${o.level ?? 1}|${o.yaw ?? ''}|${o.pitch ?? ''}|${o.roll ?? ''}|${o.outline ?? ''}`;
   const hit = cache.get(key); if (hit) return hit;
   const m = builder?.(id, o.level ?? 1); if (!m) return null;
   const cv = renderIcon(m, size, o);

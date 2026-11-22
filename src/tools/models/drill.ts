@@ -12,6 +12,7 @@ export const DRILL: ToolSpec = {
   id: 'drill', name: 'Core Drill',
   livery: { name: 'rust', hull: R.rust, hullStep: 4, accent: R.ochre, accentStep: 5, glow: R.glowAmber },
   pose: { act: 0.7, heat: 0.8, t: 0.9 },
+  icon: { yaw: 0.5, roll: 0.55 },
   build(k: Kit, root: THREE.Group) {
     const det = k.det, seg = det >= 2 ? 22 : det ? 16 : 12;
     // ---------------------------------------------------------------- the motor (x -0.78 .. -0.22)
@@ -35,7 +36,6 @@ export const DRILL: ToolSpec = {
     k.mesh(cbox(0.3, 0.17, 0.03, 0.008), 'hull2', side);
     k.vent(side, 0.13, 0.1, [-0.06, 0.0, 0.016]);
     k.decal(side, { kind: 'stencil', text: 'CD-7', ink: R.rust[2] }, 0.1, 0.08, [0.085, 0.03, 0.016]);
-    k.decal(side, { kind: 'bar' }, 0.08, 0.04, [0.085, -0.045, 0.016]);
     k.bolts(side, [[-0.135, 0.07, 0.016], [0.135, 0.07, 0.016], [-0.135, -0.07, 0.016], [0.135, -0.07, 0.016]], 0.009);
     // the carry handle on top, a cable from the motor to the gearbox
     k.mesh(prism([[-0.2, 0], [-0.17, 0.11], [0.12, 0.11], [0.15, 0], [0.11, 0], [0.09, 0.075], [-0.14, 0.075], [-0.16, 0]], 0.04, 0.006), 'frame', root, [-0.52, 0.16, 0]);
@@ -51,7 +51,6 @@ export const DRILL: ToolSpec = {
     k.mesh(cbox(0.38, 0.04, 0.29, 0.01), 'frame', gb, [0, -0.185, 0]);
     k.mesh(cbox(0.38, 0.03, 0.29, 0.01), 'frame', gb, [0, 0.19, 0]);
     k.bolts(gb, [[-0.16, 0.17, 0.145], [0.16, 0.17, 0.145], [-0.16, -0.16, 0.145], [0.16, -0.16, 0.145], [-0.16, 0.005, 0.145], [0.16, 0.005, 0.145]], 0.011);
-    k.decal(gb, { kind: 'chev', ramp: R.ochre }, 0.3, 0.05, [0, -0.185, 0.147]);
     k.decal(gb, { kind: 'arrow', ramp: R.bone }, 0.16, 0.07, [0.02, 0.207, 0.04], [-PI / 2, 0, 0]);
     // the gear train on the open face
     const gface = k.group(gb, [0, 0, 0.158]);

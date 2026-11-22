@@ -300,6 +300,14 @@ export function glowTexMat(tex: string, color: number, ui: boolean, o: MatOpts =
   setGlowMat(m, 0);
   return m;
 }
+/** a self-lit screen showing a live texture (liveTex().t) */
+export function screenMat(ui: boolean, t: TexPair, k = 0.4): THREE.Material {
+  const m = glowMat(0xffffff, k, ui, {});
+  const sm = m as THREE.ShaderMaterial;
+  if (sm.uniforms?.uMap) { sm.uniforms.uMap.value = t.ui; sm.defines = { ...(sm.defines ?? {}), USE_MAP: '' }; sm.needsUpdate = true; }
+  else { (m as THREE.MeshLambertMaterial).map = t.world; (m as THREE.MeshLambertMaterial).emissiveMap = t.world; m.needsUpdate = true; }
+  return m;
+}
 /** set a glowing mesh's brightness (its own glowMat) */
 export function setGlow(o: THREE.Object3D | null | undefined, k: number) {
   if (!o) return;
@@ -389,8 +397,8 @@ export class Kit {
   }
   /** a decal: a thin painted plate (size in metres, 32 px/m), facing +Z of its frame */
   decal(parent: THREE.Object3D, d: DecalSpec, w: number, h: number, p: V3, r: V3 = [0, 0, 0], o: MeshOpts = {}) {
-    // text is fine print: stencils and labels are painted at twice the density (shown from the hero lod up)
-    const text = d.kind === 'label' || d.kind === 'stencil', dens = text ? TPM * 2 : TPM;
+    // text is fine print: stencils and labels are painted at three times the density (shown from the hero lod up)
+    const text = d.kind === 'label' || d.kind === 'stencil', dens = text ? TPM * 3 : TPM;
     if (text && this.det < 2 && !o.det) return null;
     const W = Math.max(3, Math.round(w * dens)), H = Math.max(3, Math.round(h * dens));
     const tw = text ? Math.max(W, stencilW(d.text ?? '') + 2) : W, th = text ? Math.max(H, 7) : H;

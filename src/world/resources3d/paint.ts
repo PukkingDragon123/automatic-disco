@@ -155,11 +155,11 @@ const MATS: Record<string, Mat> = {
   bark: { base: C(BARK, 3), m: 1, paint: (t, s, sd, m) => {
     // furrowed bark: long irregular plates running down the trunk (stretched cells), each plate's face mottled and
     // lit on its upper left, the furrows between them deep and dark and of uneven width; lichen in patches
-    const v = voronoi(t, cells(m, 0.07), cells(m, 0.2), sd, 0.55, 1.9);
+    const v = voronoi(t, cells(m, 0.1), cells(m, 0.28), sd, 0.55, 1.9);
     t.field(BARK, (x, y) => {
       const [k, e] = v(x, y), [, el] = v(x - 1, y - 1);
       const deep = sstep(0.2, 1.8 + H(k, 5, sd) * 1.2, e);
-      return 0.06 + deep * (0.42 + H(k, 3, sd) * 0.16) + (el < e ? 0.1 : -0.04) * deep + (nz(t, x, y, cells(m, 0.04), cells(m, 0.08), 2, sd + 2) - 0.5) * 0.26 * deep;
+      return 0.1 + deep * (0.5 + H(k, 3, sd) * 0.18) + (el < e ? 0.12 : -0.05) * deep + (nz(t, x, y, cells(m, 0.05), cells(m, 0.1), 2, sd + 2) - 0.5) * 0.22 * deep;
     });
     lichen(t, LICHEN, m, sd + 30, 0.15, 0.07);
     specks(t, Math.max(4, 0.2 * s), sd + 4, (x, y, r) => { if (r < 0.3) { t.set(x, y, C(BARK, 0)); t.nudge(x + 1, y + 1, 1); } }, 0.4);

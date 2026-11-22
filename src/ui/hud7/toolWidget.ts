@@ -16,6 +16,7 @@ import { installKitStyle } from '../kit/style';
 import { TOOLS, quickCustom, type ToolId } from './tools';
 import { Arsenal } from './arsenal';
 import { Bench } from './bench';
+import { driveToolModels } from '../../tools/models';
 
 type G = Game & Record<string, any>;
 const HOLD_MS = 420;
@@ -154,7 +155,7 @@ export class ToolWidget {
     if (setKey !== this.viewKey || force) {
       this.viewKey = setKey;
       const builds = all.map((t) => (t.tool && t.level > 0 ? toolBuild(t.tool, t.custom, 'hud') : null));
-      const v = new ModelView(() => mTurret(builds), { w: 150, h: 120, scale: 2, spin: 0, yaw0: -0.32, rock: 0.1, hotSpin: 0, pitch: 0.3, anim: (r, t) => animTurret(r, t), liveFps: 10, zoom: 1.08, lift: 0.0 });
+      const v = new ModelView(() => mTurret(builds), { w: 150, h: 120, scale: 2, spin: 0, yaw0: -0.32, rock: 0.1, hotSpin: 0, pitch: 0.3, anim: (r, t) => { animTurret(r, t); driveToolModels(r, t, (_m, q) => { const sl = this.slotTool(q), live = this.g.colony?.slots?.active === q; return { mode: live ? 'active' : q === this.current && this.stage.classList.contains('hot') ? 'charging' : 'idle', level: Math.max(1, sl.level) }; }); }, liveFps: 10, zoom: 1.08, lift: 0.0 });
       v.cv.classList.add('h7-tmodel');
       this.view?.dispose(); this.view = v;
       this.stage.insertBefore(v.cv, this.ring);

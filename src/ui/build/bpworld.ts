@@ -133,8 +133,8 @@ void main() {
   vec3 col = rampC(L);
 
   // ---- grid (ground only) and contours
-  bool smooth = !s.sky && abs(s.vz - sr.vz) < 0.35 + s.vz * 0.012 && abs(s.vz - su.vz) < 0.35 + s.vz * 0.012;
-  bool flatG = !obj && !objR && !objU && smooth;
+  bool smth = !s.sky && abs(s.vz - sr.vz) < 0.35 + s.vz * 0.012 && abs(s.vz - su.vz) < 0.35 + s.vz * 0.012;
+  bool flatG = !obj && !objR && !objU && smth;
   float minorK = clamp(1.6 - pxW * 3.2, 0.0, 1.0);
   vec4 cur = cellAt(s.P.xz);
   float nearC = uHand * clamp(1.0 - length(s.P.xz - uCursor.xy) / max(1.0, uCursor.z), 0.0, 1.0);
@@ -171,7 +171,7 @@ void main() {
   }
   if ((obj != objR || obj != objU) && !s.sky) col = mix(col, rampC(4.0), 0.35);
   // the printed grid runs over everything on the sheet (1 m minor, 5 m major)
-  if (smooth) {
+  if (smth) {
     vec2 g0 = floor(s.P.xz), gR = floor(sr.P.xz), gU = floor(su.P.xz);
     bool minor = any(notEqual(g0, gR)) || any(notEqual(g0, gU));
     vec2 M0 = floor(s.P.xz / 5.0), MR = floor(sr.P.xz / 5.0), MU = floor(su.P.xz / 5.0);

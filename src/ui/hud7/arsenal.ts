@@ -18,6 +18,7 @@ import { installKitStyle } from '../kit/style';
 import { arsenal, setQuickCustom, quickCustom, TOOLS, type ArmEntry } from './tools';
 import { toolBuild, toolAnim, type ToolWidget } from './toolWidget';
 import { lockGlyph } from './glyphs';
+import { driveToolModels } from '../../tools/models';
 import { mCradle, animCradle, mBay, animBay, mGearBox, animGearBox, mPiston, animPiston } from '../kit/hardware';
 
 type G = Game & Record<string, any>;
@@ -111,7 +112,7 @@ export class Arsenal {
     for (const e of list) {
       const el = document.createElement('div'); el.className = 'h7-card' + (e.owned ? '' : ' lock');
       let view: ModelView | null = null;
-      view = new ModelView(() => mCradle(e.owned ? toolBuild(e.tool, e.custom) : toolBuild(e.tool, e.custom, 'icon'), e.owned), { w: 96, h: 92, scale: 2, spin: 0, yaw0: 0.3 + hash(this.cards.length, 3) * 0.3, rock: 0.15, hotSpin: 0, pitch: 0.42, anim: (r, t, hot) => { animCradle(r, t, hot); toolAnim(e.tool)?.(r, t, hot); }, frames: 32, zoom: 1.05 });
+      view = new ModelView(() => mCradle(e.owned ? toolBuild(e.tool, e.custom) : toolBuild(e.tool, e.custom, 'icon'), e.owned), { w: 96, h: 92, scale: 2, spin: 0, yaw0: 0.3 + hash(this.cards.length, 3) * 0.3, rock: 0.15, hotSpin: 0, pitch: 0.42, anim: (r, t, hot) => { animCradle(r, t, hot); toolAnim(e.tool)?.(r, t, hot); driveToolModels(r, t, { mode: hot ? 'active' : 'idle', level: Math.max(1, ...(this.g.colony?.slots?.slots ?? []).filter((q: { tool: string | null }) => q.tool === e.tool).map((q: { level: number }) => q.level)) }); }, frames: 32, zoom: 1.05 });
       el.append(view.cv);
       if (!e.owned) el.append(pxCanvas(lockGlyph(), 2, 'h7-card-lock'));
       const nm = document.createElement('div'); nm.className = 'k7-t16 h7-card-n'; nm.textContent = e.name; el.append(nm);

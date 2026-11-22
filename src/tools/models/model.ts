@@ -25,6 +25,8 @@ export interface ToolSpec {
   build(k: Kit, root: THREE.Group): ToolAnim;
   /** the frozen pose for still renders (icons): act, chg, heat, t */
   pose?: Partial<AnimIn>;
+  /** the icon's camera: yaw, pitch, roll (a long tool lies on the diagonal) */
+  icon?: { yaw?: number; pitch?: number; roll?: number };
 }
 export class ToolModel extends THREE.Group {
   readonly toolId: string; readonly lod: Lod; animated: boolean;
@@ -50,6 +52,7 @@ export class ToolModel extends THREE.Group {
     if (!this.animated) this.anim(still); else { this.anim({ ...this.a, dt: 0 }); }
     this.userData.update = (dt: number) => this.update(dt);
     this.userData.toolModel = true;
+    this.userData.iconPose = spec.icon ?? {};
   }
   get root(): THREE.Group { return this; }
   setState(s: ToolState | ToolMode | number) {

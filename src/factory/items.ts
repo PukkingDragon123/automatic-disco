@@ -14,7 +14,7 @@ import { Pix, KPix, poly, selout, RA, INKC, type Pt } from './paint';
 import type { Res } from '../game/skills';
 import { itemIcon as hiItemURL, hiItem, hasItemArt } from '../ui/icons';
 import { installItemArt } from '../inv/itemArt';
-import { SPRITES, SPRITES64, SPRITE_PAL, SPRITE_SIZE } from '../inv/itemSprites';
+import { SPRITES, SPRITES64, SPRITE_SIZE } from '../inv/itemSprites';
 
 export type BaseItemId =
   | 'ore' | 'carbon' | 'water' | 'soil' | 'copper_ore' | 'coal' | 'crystal' | 'fruit'
@@ -573,38 +573,34 @@ const ICON: Partial<Record<ItemId, Painter>> = {
 };
 
 const pixCache = new Map<ItemId, Pix>(), urlCache = new Map<string, string>();
-/** the item's icon rendered from its 3D model (32 x 32, palette-indexed; inv/itemSprites.ts), decoded once */
+/** decode a baked icon: [n, r g b * n (its own palette), then run-length pairs [count, index]] (255 = clear) */
+function unpackIcon(b64: string, size: number): Pix {
+  const raw = atob(b64), p = new Pix(size, size), n = raw.charCodeAt(0), pal: number[] = [];
+  for (let i = 0; i < n; i++) pal.push((raw.charCodeAt(1 + i * 3) << 16) | (raw.charCodeAt(2 + i * 3) << 8) | raw.charCodeAt(3 + i * 3));
+  for (let i = 1 + n * 3, o = 0; i + 1 < raw.length; i += 2) {
+    const k = raw.charCodeAt(i), q = raw.charCodeAt(i + 1);
+    if (q !== 255) { const c = pal[q]; for (let j = 0; j < k; j++) { const d = (o + j) * 4; p.d[d] = (c >> 16) & 255; p.d[d + 1] = (c >> 8) & 255; p.d[d + 2] = c & 255; p.d[d + 3] = 255; } }
+    o += k;
+  }
+  return p;
+}
+/** the item's icon rendered from its 3D model (32 x 32; inv/itemSprites.ts), decoded once */
 const spriteCache = new Map<ItemId, Pix | null>();
 function sprite(id: ItemId): Pix | null {
   let p = spriteCache.get(id);
   if (p !== undefined) return p;
   const b = SPRITES[id];
-  p = null;
-  if (b && SPRITE_SIZE === S) {
-    const raw = atob(b); p = new Pix(S, S);
-    for (let i = 0; i < raw.length; i++) {
-      const k = raw.charCodeAt(i); if (k === 255) continue;
-      const c = SPRITE_PAL[k], j = i * 4; p.d[j] = (c >> 16) & 255; p.d[j + 1] = (c >> 8) & 255; p.d[j + 2] = c & 255; p.d[j + 3] = 255;
-    }
-  }
+  p = b && SPRITE_SIZE === S ? unpackIcon(b, S) : null;
   spriteCache.set(id, p);
   return p;
 }
-/** the 64 px version (run-length coded [count, index] pairs), decoded once */
+/** the 64 px version, decoded once */
 const sprite64Cache = new Map<ItemId, Pix | null>();
 export function itemPix64(id: ItemId): Pix | null {
   let p = sprite64Cache.get(id);
   if (p !== undefined) return p;
   const b = (SPRITES64 as Record<string, string> | undefined)?.[id];
-  p = null;
-  if (b) {
-    const raw = atob(b); p = new Pix(64, 64);
-    for (let i = 0, o = 0; i + 1 < raw.length; i += 2) {
-      const n = raw.charCodeAt(i), k = raw.charCodeAt(i + 1);
-      if (k !== 255) { const c = SPRITE_PAL[k]; for (let q = 0; q < n; q++) { const j = (o + q) * 4; p.d[j] = (c >> 16) & 255; p.d[j + 1] = (c >> 8) & 255; p.d[j + 2] = c & 255; p.d[j + 3] = 255; } }
-      o += n;
-    }
-  }
+  p = b ? unpackIcon(b, 64) : null;
   sprite64Cache.set(id, p);
   return p;
 }

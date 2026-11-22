@@ -12,6 +12,7 @@ export const WELD: ToolSpec = {
   id: 'weld', name: 'Welder',
   livery: { name: 'ochre', hull: R.ochre, hullStep: 5, accent: R.ruby, accentStep: 4, glow: R.sapphire },
   pose: { act: 1, heat: 0.7, t: 0.83 },
+  icon: { yaw: 0.45, roll: 0.12 },
   build(k: Kit, root: THREE.Group) {
     const det = k.det, seg = det >= 2 ? 20 : det ? 16 : 12;
     // ---------------------------------------------------------------- the torch body, grip, rear fan
@@ -94,7 +95,7 @@ export const WELD: ToolSpec = {
     const arcG = k.group(nozzle, [0, 0, 0], [0, 0, 0], { name: 'arc' });
     const arcSeg: THREE.Mesh[] = [];
     for (let i = 0; i < 6; i++) arcSeg.push(k.mesh(box(0.008, 1, 0.008), k.glow(5, 1.6, { color: 0xdff0ff }), arcG));
-    const flash = k.mesh(sphere(0.03, 10, 8), k.glow(4, 1.5, { color: R.sapphire[6], body: R.sapphire[6] }), arcG, [0, 0.21, 0]);
+    const flash = k.mesh(sphere(0.016, 10, 8), k.glow(4, 1.5, { color: R.sapphire[6], body: R.sapphire[6] }), arcG, [0, 0.21, 0]);
     const pilot = k.group(nozzle, [0, 0.165, 0]);
     k.mesh(cone(0.012, 0.0, 0.06, 8), k.glow(5, 1.2, { color: R.sapphire[5] }), pilot, [0, 0.03, 0]);
     // the sparks (a pool)
@@ -133,7 +134,7 @@ export const WELD: ToolSpec = {
           px = nx; py = ny; pz = nz2;
         }
         flash.position.set(0, 0.185 + len, 0);
-        flash.scale.setScalar(0.7 + Math.random() * 0.7);
+        flash.scale.setScalar(0.7 + Math.random() * 0.5);
       }
       for (const s of arcSeg) setGlow(s, 1.2 + Math.random() * 0.8);
       setGlow(flash, 1 + Math.random());

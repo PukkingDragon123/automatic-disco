@@ -4,7 +4,7 @@
 // planting bit down and back, the bit spinning as it bores, and two soil probe prongs. Level 2: a second hopper.
 // Level 3: a glowing fertiliser tank and its spray nozzle.
 import * as THREE from 'three';
-import { type Kit, R, PI, TAU, AX, cbox, box, lathe, cyl, ring, sphere, cone, prism, helix, helixTaper, setGlow, clamp01 } from './kit';
+import { type Kit, R, PI, TAU, AX, cbox, box, lathe, cyl, ring, sphere, cone, prism, helix, helixTaper, torus, setGlow, clamp01 } from './kit';
 import type { ToolSpec } from './model';
 
 const ease = (x: number) => { const t = clamp01(x); return t * t * (3 - 2 * t); };
@@ -12,6 +12,7 @@ export const SEEDER: ToolSpec = {
   id: 'seeder', name: 'Seed Planter',
   livery: { name: 'moss', hull: R.moss, hullStep: 3, accent: R.ochre, accentStep: 5, glow: R.malachite },
   pose: { act: 0.8, t: 0.4 },
+  icon: { yaw: 0.6, roll: 0.05 },
   build(k: Kit, root: THREE.Group) {
     const det = k.det, seg = det >= 2 ? 20 : det ? 16 : 12;
     // ---------------------------------------------------------------- the body
@@ -43,7 +44,8 @@ export const SEEDER: ToolSpec = {
     const seedList: THREE.Mesh[] = [];
     const nSeed = det >= 1 ? 22 : 12;
     for (let i = 0; i < nSeed; i++) { const m = k.mesh(sphere(0.018, 6, 5), i % 4 ? (i % 3 ? 'paint:fur:5' as never : 'paint:ochre:5' as never) : ('paint:moss:5' as never), seeds); m.scale.set(1, 0.7, 0.8); seedList.push(m); }
-    k.mesh(domeGeo, 'glass', hop);
+    k.mesh(domeGeo, k.paint('glass', { opacity: 0.5, rim: 0.5 }), hop);
+    for (let i = 0; i < 4; i++) { const an = (i / 4) * TAU + PI / 4; const rib = k.group(hop, [0, 0.03, 0], [0, -an, 0]); k.mesh(torus(0.137, 0.007, 4, 10, PI / 2), 'frame', rib, [0, 0, 0], [0, 0, 0]); }
     k.mesh(cyl(0.03, 0.03, 10, 0.006), 'brass', hop, [0, 0.19, 0]);
     k.callout('hopper', 'SEED HOPPER', hop);
     // ---------------------------------------------------------------- the feed tube and its auger
@@ -104,7 +106,7 @@ export const SEEDER: ToolSpec = {
       seedList.forEach((m, i) => {
         const ph = i * 2.39996, r = 0.03 + ((i * 7) % 5) * 0.018, lift = on ? Math.abs(Math.sin(a.t * 6 + i)) * 0.05 * a.act : 0;
         const ang = ph + aug * 0.3 * (i % 2 ? 1 : -1);
-        m.position.set(Math.cos(ang) * r, 0.015 + (i % 5) * 0.022 + lift, Math.sin(ang) * r);
+        const top = 0.15 * Math.sqrt(Math.max(0, 1 - (r / 0.135) ** 2)) - 0.03; m.position.set(Math.cos(ang) * r, Math.min(top, 0.015 + (i % 5) * 0.022 + lift), Math.sin(ang) * r);
         m.rotation.set(ph + aug * 0.5, ph, 0);
       });
       // the shot: plunge (0.1..0.45), bore (0.45..0.6), return (0.6..0.85); a pod feeds at the top

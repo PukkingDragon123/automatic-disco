@@ -46,6 +46,21 @@ export function buildToolModel(id: string, o: BuildOpts = {}): ToolModel | null 
 export function updateToolModels(root: THREE.Object3D, dt: number, state?: ToolState | ToolMode | number) {
   root.traverse((n) => { if ((n as ToolModel).userData?.toolModel) (n as ToolModel).update(dt, state); });
 }
+/**
+ * drive every tool model mounted under a UI root (a turret, a cradle, a bay) from a view's anim callback: t is the
+ * view's clock; state is one for all, or a function of the model and its turret slot (a holder named 'tool<i>')
+ */
+export function driveToolModels(root: THREE.Object3D, t: number, state?: ToolState | ToolMode | number | ((m: ToolModel, slot: number) => ToolState | ToolMode | number | undefined)) {
+  const u = root.userData, last = (u.__tmT as number) ?? t; u.__tmT = t;
+  const dt = Math.min(0.1, Math.max(0, t - last));
+  let list = u.__tmList as { m: ToolModel; slot: number }[] | undefined;
+  if (!list || !list.length || t - ((u.__tmScan as number) ?? -9) > 2) {
+    list = []; u.__tmScan = t;
+    root.traverse((n) => { if (!n.userData?.toolModel) return; let p: THREE.Object3D | null = n, slot = -1; while (p) { const m = /^tool(\d)$/.exec(p.name); if (m) { slot = Number(m[1]); break; } p = p.parent; } list!.push({ m: n as ToolModel, slot }); });
+    u.__tmList = list;
+  }
+  for (const e of list) e.m.update(dt, typeof state === 'function' ? state(e.m, e.slot) : state);
+}
 import { bindIconBuilder } from './icon';
 bindIconBuilder((id, level) => buildToolModel(id, { lod: 'icon', level, animated: false }));
 export { toolIcon, toolIconURL, renderIcon, disposeIconRenderer } from './icon';

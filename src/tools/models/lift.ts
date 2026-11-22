@@ -11,6 +11,7 @@ export const LIFT: ToolSpec = {
   id: 'lift', name: 'Lift Field',
   livery: { name: 'sapphire', hull: R.sapphire, hullStep: 3, accent: R.bone, accentStep: 5, glow: R.sapphire },
   pose: { act: 0.8, t: 0.9 },
+  icon: { yaw: 0.3, pitch: 0.5 },
   build(k: Kit, root: THREE.Group) {
     const det = k.det, seg = det >= 2 ? 24 : det ? 18 : 12, G = R.sapphire;
     // ---------------------------------------------------------------- the base

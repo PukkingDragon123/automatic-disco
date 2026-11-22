@@ -12,6 +12,7 @@ export const CARRY: ToolSpec = {
   id: 'carry', name: 'Winch Hook',
   livery: { name: 'ochre', hull: R.ochre, hullStep: 4, accent: R.steel, accentStep: 2, glow: R.glowAmber },
   pose: { act: 0.7, t: 1.6 },
+  icon: { yaw: 0.5, pitch: 0.35 },
   build(k: Kit, root: THREE.Group) {
     const det = k.det, seg = det >= 2 ? 20 : det ? 16 : 12;
     // ---------------------------------------------------------------- the frame under the drone
@@ -51,7 +52,7 @@ export const CARRY: ToolSpec = {
     for (const s of [-1, 1]) rollers.push(k.mesh(cyl(0.018, 0.12, 10), 'chrome', fair, [s * 0.025, 0.0, 0], AX.z));
     const line = k.mesh(cyl(0.009, 1, 6), 'cable', root, [0.0, 0, 0]);
     // ---------------------------------------------------------------- the hook block, sheave and hook
-    const block = k.group(root, [0, -0.3, 0], [0, 0, 0], { name: 'block' });
+    const block = k.group(root, [0, -0.16, 0], [0, 0, 0], { name: 'block' });
     k.mesh(cbox(0.16, 0.2, 0.09, 0.02), 'hazard', block, [0, 0, 0]);
     for (const s of [-1, 1]) k.mesh(cbox(0.17, 0.21, 0.012, 0.004), 'hull', block, [0, 0, s * 0.05]);
     const sheave = k.group(block, [0, 0.05, 0], [0, 0, 0], { name: 'sheave' });
@@ -99,11 +100,11 @@ export const CARRY: ToolSpec = {
       const p = (cyc % T) / T;
       // lower (0..0.4), hold (0.4..0.55), hoist (0.55..0.95)
       const drop = on ? (p < 0.4 ? ease(p / 0.4) : p < 0.55 ? 1 : p < 0.95 ? 1 - ease((p - 0.55) / 0.4) : 0) : 0.15 * Math.sin(a.t * 0.5) ** 2;
-      const dy = drop * 0.42, v = (drop - prevDrop) / Math.max(1e-4, a.dt); prevDrop = drop;
+      const dy = drop * 0.3, v = (drop - prevDrop) / Math.max(1e-4, a.dt); prevDrop = drop;
       const dA = dy / 0.085;
       drum.rotation.y = dA; drum2.rotation.y = dA * 1.4; train.turn(-dA * (20 / 9));
       rollers.forEach((r, i) => { r.rotation.y = dA * (i ? 3 : -3); });
-      block.position.y = -0.3 - dy;
+      block.position.y = -0.16 - dy;
       sheave.rotation.z = -dA * 1.6;
       // the line from the fairlead to the block
       const y0 = 0.115, y1 = block.position.y + 0.05, L = y0 - y1;

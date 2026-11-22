@@ -5,7 +5,7 @@
 // suction hose from probe to pump to carousel; a readout of bars. Level 2: a second carousel tier. Level 3: a
 // frosted cryo chamber with venting jets.
 import * as THREE from 'three';
-import { type Kit, R, PI, TAU, AX, cbox, box, lathe, cyl, ring, sphere, cone, prism, torus, setGlow, liveTex, clamp01 } from './kit';
+import { type Kit, R, PI, TAU, AX, cbox, box, lathe, cyl, ring, sphere, cone, prism, torus, setGlow, liveTex, screenMat, clamp01 } from './kit';
 import type { ToolSpec } from './model';
 
 const ease = (x: number) => { const t = clamp01(x); return t * t * (3 - 2 * t); };
@@ -13,6 +13,7 @@ export const SAMPLER: ToolSpec = {
   id: 'sampler', name: 'Sampler',
   livery: { name: 'white', hull: R.snow, hullStep: 4, accent: R.ruby, accentStep: 4, glow: R.glowTeal },
   pose: { act: 0.8, t: 0.55 },
+  icon: { yaw: 0.55, roll: 0.42 },
   build(k: Kit, root: THREE.Group) {
     const det = k.det, seg = det >= 2 ? 20 : det ? 16 : 12;
     // ---------------------------------------------------------------- the housing
@@ -40,8 +41,7 @@ export const SAMPLER: ToolSpec = {
     const scr = liveTex(14, 9);
     const sg = k.group(body, [-0.281, 0.02, 0], [0, -PI / 2, 0]);
     k.mesh(cbox(0.2, 0.14, 0.02, 0.006), 'frame', sg);
-    const sm = k.glow(3, 0.4, { color: 0xffffff });
-    if ((sm as THREE.ShaderMaterial).uniforms?.uMap) { (sm as THREE.ShaderMaterial).uniforms.uMap.value = scr.t.ui; (sm as THREE.ShaderMaterial).defines = { USE_MAP: '' }; sm.needsUpdate = true; } else (sm as THREE.MeshLambertMaterial).map = scr.t.world;
+    const sm = screenMat(k.ui, scr.t, 0.4);
     k.mesh(new THREE.PlaneGeometry(0.16, 0.1), sm, sg, [0, 0, 0.011]);
     // ---------------------------------------------------------------- the sample carousel (one tier, a second at level 2)
     const carMount = k.group(root, [-0.17, 0.14, 0]);

@@ -4,13 +4,14 @@
 // running over its glass and its iris turning; a live readout screen scrolls the return; a whip antenna blinks.
 // Level 2: a side sensor pod and a second antenna. Level 3: an emitter ring round the lens and a sub-reflector.
 import * as THREE from 'three';
-import { type Kit, R, PI, TAU, AX, cbox, box, lathe, cyl, ring, sphere, cone, prism, gear, liveTex, setGlow, setGlowMat, glowMat, torus } from './kit';
+import { type Kit, R, PI, TAU, AX, cbox, box, lathe, cyl, ring, sphere, cone, prism, gear, liveTex, setGlow, setGlowMat, screenMat, torus } from './kit';
 import type { ToolSpec } from './model';
 
 export const SCANNER: ToolSpec = {
   id: 'scanner', name: 'Scanner',
   livery: { name: 'teal', hull: R.teal, hullStep: 4, accent: R.bone, accentStep: 5, glow: R.glowTeal },
   pose: { act: 0.6, t: 1.1 },
+  icon: { yaw: 0.6, roll: 0.12 },
   build(k: Kit, root: THREE.Group) {
     const det = k.det, seg = det >= 2 ? 22 : det ? 16 : 12;
     // ---------------------------------------------------------------- the housing
@@ -22,8 +23,7 @@ export const SCANNER: ToolSpec = {
     k.mesh(box(0.008, 0.004, 0.28), 'ink', body, [0.12, 0.151, 0]);
     // the side panel: vents, the diode chase, the serial stencil, a barcode
     k.vent(body, 0.16, 0.08, [-0.19, 0.03, 0.162]);
-    k.decal(body, { kind: 'stencil', text: 'SCN-3', ink: R.teal[1] }, 0.18, 0.06, [0.1, 0.04, 0.162]);
-    k.decal(body, { kind: 'bar' }, 0.09, 0.035, [0.15, -0.105, 0.162]);
+    k.decal(body, { kind: 'stencil', text: 'SCN-3', ink: R.teal[1] }, 0.18, 0.06, [0.05, 0.035, 0.162]);
     const chase = [0, 1, 2, 3, 4].map((i) => k.diode(body, [-0.24 + i * 0.04, -0.105, 0.162], 'z', i === 4 ? R.ruby[5] : R.glowTeal[3], 0.011));
     k.bolts(body, [[-0.29, 0.13, 0.162], [0.29, 0.13, 0.162], [-0.29, -0.13, 0.162], [0.29, -0.13, 0.162]], 0.009);
     k.mesh(cbox(0.64, 0.05, 0.34, 0.012), 'frame', body, [0, -0.16, 0]);
@@ -41,7 +41,7 @@ export const SCANNER: ToolSpec = {
     const scr = liveTex(22, 13);
     const sg = k.group(root, [-0.2, 0.17, -0.02], [-0.6, 0, 0]);
     k.mesh(cbox(0.24, 0.16, 0.03, 0.008), 'frame', sg);
-    k.mesh(new THREE.PlaneGeometry(0.2, 0.12), k.ui ? glowScreen(k, scr.t.ui) : new THREE.MeshBasicMaterial({ map: scr.t.world }), sg, [0, 0, 0.016]);
+    k.mesh(new THREE.PlaneGeometry(0.2, 0.12), screenMat(k.ui, scr.t, 0.35), sg, [0, 0, 0.016]);
     k.callout('screen', 'READOUT', sg);
     // ---------------------------------------------------------------- the dish mast: a geared turntable, the yoke, the dish
     const mastBase = k.group(root, [0.02, 0.15, 0]);
@@ -149,8 +149,3 @@ export const SCANNER: ToolSpec = {
     };
   },
 };
-function glowScreen(k: Kit, map: THREE.Texture): THREE.Material {
-  const m = glowMat(0xffffff, 0.35, k.ui, {}) as THREE.ShaderMaterial;
-  if (m.uniforms?.uMap) { m.uniforms.uMap.value = map; m.defines = { ...(m.defines ?? {}), USE_MAP: '' }; m.needsUpdate = true; }
-  return m;
-}

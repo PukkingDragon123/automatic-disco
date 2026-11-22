@@ -132,11 +132,11 @@ if (view === 'lineup') {
 } else if (view === 'icons') {
   backdrop();
   caption('TOOL ICONS', 40, 22, 48);
-  caption('3/4 VIEW  ·  BLACK OUTLINE  ·  RIM LIGHT  ·  PALETTE  ·  128 / 64x2 / 32x2  ·  L1 AND L3', 380, 36, 16, '#c9bd98');
+  caption('3/4 VIEW  ·  BLACK OUTLINE  ·  RIM LIGHT  ·  MASTER PALETTE  ·  ROWS: 128 L3 · 64 L3 (2X) · 64 L1 (2X) · 32 L1 · 32 L1 (4X)', 380, 36, 16, '#c9bd98');
   ids.forEach((id, i) => {
     const x = 40 + i * 206, y = 110;
     const add = (cv: HTMLCanvasElement | null, sc: number, yy: number) => { if (!cv) return; const c = cv.cloneNode() as HTMLCanvasElement; c.getContext('2d')!.drawImage(cv, 0, 0); c.className = 'qa-cv'; c.style.left = x + 'px'; c.style.top = yy + 'px'; c.style.width = cv.width * sc + 'px'; c.style.height = cv.height * sc + 'px'; app.append(c); };
-    add(toolIcon(id, 128, { level: 3 }), 1.5, y);
+    add(toolIcon(id, 128, { level: 3 }), 1, y + 30);
     add(toolIcon(id, 64, { level: 3 }), 2, y + 220);
     add(toolIcon(id, 64, { level: 1 }), 2, y + 370);
     add(toolIcon(id, 32, { level: 1 }), 2, y + 520);
