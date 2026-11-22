@@ -1,11 +1,13 @@
-// HUD v7 · THE TOOL WIDGET (bottom right; replaces the drum). The CURRENT TOOL floats as a big outlined 3D model over
-// its shadow, its name under it and three level lamps; the four QUICK SLOTS sit beside it as small turning models, the
-// live one lit. CLICK the tool to use it (its unit takes it: the colony's useSlot); a refusal shakes it and says why.
-// Swipe it left / right (or the wheel, [ and ]) to change tool: the model spins out and the next drops in with a
-// bounce. HOLD it: an amber ring fills round it and the ARSENAL opens (arsenal.ts).
+// HUD v7 · THE TOOL TURRET (bottom right; replaces the drum). A machined, anodised four-arm TURRET on a geared pedestal
+// (src/ui/kit/hardware.ts), drawn in 3D with a black outline: the four QUICK SLOTS' tools stand in its cradles and the
+// current one faces you. Swipe it left / right (or the wheel, [ and ]): the head turns to the next tool, driving the
+// exposed gear train and pumping the piston, the slot LEDs follow, the power lamp blinks while it moves. CLICK it to use
+// the tool (its unit takes it: the colony's useSlot); the lens and the light ring blink while it runs; a refusal shakes
+// it and says why. HOLD it: an amber ring of cells fills round it and the ARSENAL opens (arsenal.ts).
 import type { Game } from '../../game/game';
 import { ModelView } from '../kit/model3d';
 import { TOOL_ANIM, mCustomTool, toolModel, hasToolModelProvider, type ToolLod } from '../kit/models';
+import { mTurret, animTurret, type TurretState } from '../kit/hardware';
 import { shadowBlob, pxCanvas } from '../kit/mat';
 import { Px, P, INK } from '../kit/px';
 import { uiSfx } from '../kit/sound';
@@ -35,8 +37,8 @@ function lamps(level: number): Px {
   return p;
 }
 /** the hold ring: amber cells round a circle, filled to k */
-function holdRing(k: number, R = 46): Px {
-  const S = R * 2 + 4, p = new Px(S, S), c = S / 2, n = 28;
+function holdRing(k: number, R = 70): Px {
+  const S = R * 2 + 4, p = new Px(S, S), c = S / 2, n = 40;
   for (let i = 0; i < n; i++) {
     const a = -Math.PI / 2 + (i / n) * Math.PI * 2, on = i / n < k;
     const x = Math.round(c + Math.cos(a) * R), y = Math.round(c + Math.sin(a) * R);
@@ -49,7 +51,6 @@ export class ToolWidget {
   readonly el: HTMLDivElement;
   private stage: HTMLButtonElement; private view: ModelView | null = null; private viewKey = '';
   private nameEl: HTMLDivElement; private lampCv: HTMLCanvasElement; private ring: HTMLCanvasElement;
-  private quick: { el: HTMLButtonElement; view: ModelView | null; key: string }[] = [];
   focus = 0;
   private press: { t0: number; x: number; y: number; moved: boolean; opened: boolean } | null = null;
   readonly arsenal: Arsenal; readonly bench: Bench;
@@ -57,26 +58,16 @@ export class ToolWidget {
   constructor(readonly g: G) {
     installKitStyle(); injectToolCSS();
     const el = this.el = document.createElement('div'); el.className = 'h7-tool';
-    // the quick slots
-    const qs = document.createElement('div'); qs.className = 'h7-quick';
-    for (let i = 0; i < 4; i++) {
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'h7-q'; b.setAttribute('aria-label', 'Quick slot ' + (i + 1));
-      const n = document.createElement('span'); n.className = 'k7-t16 h7-qn'; n.textContent = String(i + 1); b.append(n);
-      b.addEventListener('pointerenter', () => { uiSfx('hover', 0.35); this.quick[i].view?.hot(true); });
-      b.addEventListener('pointerleave', () => this.quick[i].view?.hot(false));
-      b.addEventListener('click', (e) => { e.stopPropagation(); this.select(i); });
-      qs.append(b); this.quick.push({ el: b, view: null, key: '' });
-    }
     // the stage: the big model, its shadow, the hold ring
     const st = this.stage = document.createElement('button'); st.type = 'button'; st.className = 'h7-stage'; st.setAttribute('aria-label', 'Use tool (hold for the arsenal)');
-    st.append(pxCanvas(shadowBlob(56, 10, 0.6), 2, 'h7-stage-sh'));
+    st.append(pxCanvas(shadowBlob(110, 14, 0.6), 2, 'h7-stage-sh'));
     this.ring = pxCanvas(holdRing(0), 2, 'h7-ring'); st.append(this.ring);
     const hint = document.createElement('span'); hint.className = 'k7-hint k7-t16 h7-hold'; hint.textContent = 'HOLD'; st.append(hint);
     this.nameEl = document.createElement('div'); this.nameEl.className = 'k7-name k7-t32 h7-tname';
     this.lampCv = pxCanvas(lamps(1), 2, 'h7-lamps');
     const nameRow = document.createElement('div'); nameRow.className = 'h7-trow'; nameRow.append(this.nameEl, this.lampCv);
     const right = document.createElement('div'); right.className = 'h7-tright'; right.append(st, nameRow);
-    el.append(qs, right);
+    el.append(right);
     this.wire();
     this.arsenal = new Arsenal(g, this);
     this.bench = new Bench(g, this);
@@ -126,9 +117,9 @@ export class ToolWidget {
     this.focus = i;
     const c = this.g.colony;
     if (c && c.slots.active >= 0 && c.slots.active !== i) c.release?.();
-    uiSfx('switch', 0.6); this.viewKey = ''; this.refresh(true);
+    uiSfx('switch', 0.6); this.refresh();
   }
-  cycle(d: number) { this.view?.poke(d * 14); this.select((this.focus + d + 4) % 4); }
+  cycle(d: number) { this.select((this.focus + d + 4) % 4); }
   /** use the current tool: its unit takes it */
   use() {
     const c = this.g.colony, i = this.current, s = this.slotTool(i);
@@ -136,7 +127,8 @@ export class ToolWidget {
     if (!c) { this.refuse('NO COLONY'); return; }
     const why = c.useSlot(i);
     if (why) { this.refuse(why); return; }
-    this.view?.press(1.3); this.view?.poke(10);
+    this.view?.press(1.3);
+    const ts = this.view?.state<TurretState>(); if (ts) ts.flash = performance.now() / 1000 + 0.6;
     burst(r.left + r.width / 2, r.top + r.height * 0.45, { n: 12, ramp: s.tool === 'weld' ? P.sapphire : s.tool === 'lift' || s.tool === 'grab' ? P.amethyst : P.glowAmber, speed: 240, life: 0.45 });
     uiSfx('confirm', 0.55); uiSfx('metal', 0.3, 1.4);
   }
@@ -154,32 +146,25 @@ export class ToolWidget {
     if (k === 'g') { this.openArsenal(); return true; }
     return false;
   }
-  /** rebuild the big model and the quick slots when their tools change */
+  /** rebuild the turret when the quick slots' tools change; turn it when the slot changes */
   refresh(force = false) {
     const i = this.current, s = this.slotTool(i);
-    const key = `${i}|${s.tool}|${s.custom?.id ?? ''}|${s.level}`;
-    if (key !== this.viewKey || force) {
-      const changed = this.viewKey !== '';
-      this.viewKey = key;
-      const v = new ModelView(toolBuild(s.tool, s.custom, 'hero'), { w: 84, h: 70, scale: 2, spin: 0, yaw0: 0.5, hotSpin: 1.8, pitch: 0.38, anim: toolAnim(s.tool), zoom: 1.1 });
+    const all = [0, 1, 2, 3].map((q) => this.slotTool(q));
+    const setKey = all.map((t) => `${t.tool}|${t.custom?.id ?? ''}|${t.level}`).join(',');
+    if (setKey !== this.viewKey || force) {
+      this.viewKey = setKey;
+      const builds = all.map((t) => (t.tool && t.level > 0 ? toolBuild(t.tool, t.custom, 'hud') : null));
+      const v = new ModelView(() => mTurret(builds), { w: 150, h: 118, scale: 2, spin: 0, yaw0: -0.38, rock: 0.1, hotSpin: 0, pitch: 0.36, anim: (r, t) => animTurret(r, t), liveFps: 10, zoom: 1.12, lift: 0.02 });
       v.cv.classList.add('h7-tmodel');
       this.view?.dispose(); this.view = v;
       this.stage.insertBefore(v.cv, this.ring);
-      if (s.level <= 0 || !s.tool) v.cv.classList.add('dim');
-      if (changed) { bounceEl(v.cv, 0.35); uiSfx('clunk', 0.4, 1.2); }
-      const nm = s.custom?.name ?? (s.level <= 0 ? 'LOCKED' : s.tool ? TOOLS[s.tool].name.toUpperCase() : 'EMPTY');
-      this.nameEl.textContent = nm;
-      lamps(s.level).canvas(this.lampCv);
-      if (changed) pop(this.nameEl, 0.4);
     }
-    for (let q = 0; q < 4; q++) {
-      const t = this.slotTool(q), qk = `${t.tool}|${t.custom?.id ?? ''}|${t.level}`, Q = this.quick[q];
-      Q.el.classList.toggle('on', q === i);
-      Q.el.classList.toggle('lock', t.level <= 0);
-      if (qk === Q.key) continue;
-      Q.key = qk; Q.view?.dispose(); Q.view = null;
-      if (t.tool && t.level > 0) { Q.view = new ModelView(toolBuild(t.tool, t.custom, 'icon'), { w: 38, h: 32, scale: 2, spin: 0, yaw0: 0.5, hotSpin: 2.5, pitch: 0.4, frames: 24, zoom: 1.15 }); Q.el.prepend(Q.view.cv); }
-    }
+    const st = this.view?.state<TurretState>();
+    if (st) { st.locked = all.map((t) => t.level <= 0); st.live = this.g.colony?.slots?.active === i; }
+    if (st && st.slot !== i) { st.slot = i; uiSfx('winch', 0.35, 1.4); uiSfx('clunk', 0.3, 1.3); }
+    const nm = s.custom?.name ?? (s.level <= 0 ? 'LOCKED' : s.tool ? TOOLS[s.tool].name.toUpperCase() : 'EMPTY');
+    if (this.nameEl.textContent !== nm) { this.nameEl.textContent = nm; pop(this.nameEl, 0.4); }
+    const lk = String(s.level); if (this.lampCv.dataset.l !== lk) { this.lampCv.dataset.l = lk; lamps(s.level).canvas(this.lampCv); }
   }
   update(dt: number) {
     this.acc -= dt; if (this.acc > 0) return; this.acc = 0.15;
@@ -204,10 +189,10 @@ function injectToolCSS() {
 .h7-q.on .h7-qn { color: var(--k7-amber); }
 .h7-q.lock { opacity: .45; }
 .h7-tright { display: flex; flex-direction: column; align-items: center; pointer-events: auto; }
-.h7-stage { position: relative; width: 176px; height: 150px; border: 0; background: none; padding: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; touch-action: none; }
+.h7-stage { position: relative; width: 300px; height: 236px; border: 0; background: none; padding: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; touch-action: none; }
 .h7-stage .h7-tmodel { position: relative; z-index: 1; display: block; transition: transform .22s cubic-bezier(.2,.9,.3,1.5), filter .18s; }
-.h7-stage.hot .h7-tmodel { transform: translateY(-8px); filter: brightness(1.15) drop-shadow(0 0 8px rgba(255,205,120,.6)); }
-.h7-stage.live .h7-tmodel { filter: brightness(1.2) drop-shadow(0 0 10px rgba(255,170,60,.85)); }
+.h7-stage.hot .h7-tmodel { transform: translateY(-4px); filter: brightness(1.12) drop-shadow(0 0 8px rgba(120,220,210,.45)); }
+.h7-stage.live .h7-tmodel { filter: brightness(1.15) drop-shadow(0 0 10px rgba(255,170,60,.7)); }
 .h7-stage .h7-tmodel.dim { filter: grayscale(.85) brightness(.55); }
 .h7-stage-sh { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 0; }
 .h7-ring { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(.9); z-index: 2; opacity: 0; transition: opacity .1s, transform .2s; pointer-events: none; }

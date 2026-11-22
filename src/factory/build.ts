@@ -437,7 +437,7 @@ export class Build {
       m.userData.bpKind = gh.ok ? 3 : 4;
       const y = isBelt(gh.kind) || gh.kind === 'splitter' || gh.kind === 'merger' ? Math.max(R.water - 0.1, R.heightAt(gh.cx + 0.5, gh.cz + 0.5)) : def.extract === 'water' ? R.water - 0.05 : f.levelFor(gh.cx, gh.cz, w, d);
       m.position.set(gh.cx + w / 2, y + 0.02, gh.cz + d / 2);
-      m.rotation.set(0, -gh.r * Math.PI / 2, 0);
+      m.rotation.set(0, this.ghosts.length === 1 ? this.gYaw(-gh.r * Math.PI / 2) : -gh.r * Math.PI / 2, 0);
       m.visible = true;
       // the hologram over the blueprint body
       let hm = this.holos[i];
@@ -693,8 +693,27 @@ export class Build {
     else { sfx('done', 1, 0.5); toast('Worker assigned', 'good', 1200); }
     this.pending = null; this.tool = 'select'; this.onChange?.();
   }
+  /** the single ghost turns to its new facing with a quick eased spin (R / the wheel) instead of a snap */
+  private yawShow: number | null = null; private yawGoal = 0;
+  private gYaw(goal: number) {
+    this.yawGoal = goal;
+    if (this.yawShow === null) this.yawShow = goal;
+    return this.yawShow;
+  }
+  private spinGhost(dt: number) {
+    if (this.yawShow === null || this.ghosts.length !== 1) { this.yawShow = this.ghosts.length === 1 ? this.yawGoal : null; return; }
+    let d = this.yawGoal - this.yawShow; d = Math.atan2(Math.sin(d), Math.cos(d));
+    if (Math.abs(d) < 0.002) { this.yawShow = this.yawGoal; return; }
+    this.yawShow += d * Math.min(1, dt * 16);
+    const m = this.meshes[0], h = this.holos[0];
+    if (m?.visible) m.rotation.y = this.yawShow;
+    if (h?.visible) h.rotation.y = this.yawShow;
+  }
+  private lastT = 0;
   update() {
     const t = performance.now() / 1000;
+    const dt = Math.min(0.1, Math.max(0, t - this.lastT)); this.lastT = t;
+    this.spinGhost(dt);
     for (const m of [this.holoOk, this.holoBad]) (m as unknown as { __u: { uTime: { value: number } } }).__u.uTime.value = t;
     if (!this.active) return;
     const g = this.g;

@@ -37,8 +37,8 @@ const CSS = `
 .rt7 .rt7-fx { z-index: 3; }
 .rt7 .rt7-node { position: absolute; z-index: 2; cursor: pointer; }
 .rt7 .rt7-node canvas.k7-model { position: absolute; left: 0; top: 0; }
-.rt7 .rt7-node.locked canvas.k7-model { filter: brightness(.42) saturate(.25); }
-.rt7 .rt7-node.poor canvas.k7-model { filter: brightness(.8) saturate(.75); }
+.rt7 .rt7-node.locked canvas.k7-model { filter: brightness(.55) saturate(.35); }
+.rt7 .rt7-node.poor canvas.k7-model { filter: brightness(.78) saturate(.6); }
 .rt7 .rt7-card { position: absolute; z-index: 4; }
 .rt7 .rt7-card canvas { position: absolute; left: 0; top: 0; }
 .rt7 .rt7-key { position: absolute; z-index: 5; cursor: pointer; transition: transform .07s; }
@@ -58,7 +58,7 @@ export class SkillTree {
   private card: HTMLDivElement; private cardCv: HTMLCanvasElement; private cardView: ModelView | null = null; private cardFor = '';
   private key: HTMLDivElement; private keyCv: HTMLCanvasElement; private closeEl: HTMLDivElement;
   private nodes = new Map<string, NodeV>(); private links: Link[] = [];
-  private AW = 0; private AH = 0; private board = { x0: 0, y0: 0, x1: 0, y1: 0, cw: 0, rh: 0, gx: 0 };
+  private AW = 0; private AH = 0; private SZ = 40; private board = { x0: 0, y0: 0, x1: 0, y1: 0, cw: 0, rh: 0, gx: 0 };
   private laneRows = new Map<Lane, number[]>();
   private sel: string | null = null; private hover: string | null = null;
   private raf = 0; private last = 0; private t = 0; private sig = ''; private sigT = 0;
@@ -110,6 +110,9 @@ export class SkillTree {
     this.laneRows.clear();
     for (const L of LANES) { const r2 = NODES.some((n) => n.lane === L.id && (n.row ?? 0) === 1); this.laneRows.set(L.id, r2 ? [rows, rows + 1] : [rows]); rows += r2 ? 2 : 1; }
     b.gx = b.x0 + 40; b.cw = (b.x1 - b.gx - 6) / COLS; b.rh = (b.y1 - b.y0 - 8) / rows;
+    // the socket fits its cell with room for the conduits between
+    this.SZ = Math.max(28, Math.min(46, Math.floor(b.rh) - 3, Math.floor(b.cw) - 16)) & ~1;
+    const SZ = this.SZ, MV = SZ - 8;
     // nodes
     for (const n of NODES) {
       const rr = this.laneRows.get(n.lane)!, row = rr[Math.min(rr.length - 1, n.row ?? 0)];
@@ -117,7 +120,7 @@ export class SkillTree {
       let v = this.nodes.get(n.id);
       if (!v) {
         const el = document.createElement('div'); el.className = 'rt7-node';
-        const view = new ModelView(() => nodeModel(n.model), { w: 40, h: 40, scale: S, spin: 0.25 + hash(n.col, n.lane.length) * 0.2, hotSpin: 2.4, zoom: 1.05, ink: 1, pitch: 0.42, yaw0: 0.5 + n.col * 0.3, frames: 32 });
+        const view = new ModelView(() => nodeModel(n.model), { w: MV, h: MV, scale: S, spin: 0.25 + hash(n.col, n.lane.length) * 0.2, hotSpin: 2.4, zoom: 1.25, ink: 1, pitch: 0.42, yaw0: 0.5 + n.col * 0.3, frames: 32 });
         el.append(view.cv);
         el.addEventListener('pointerenter', (e) => { this.hover = n.id; view.hot(true); view.point(e.clientX, e.clientY); uiSfx('hover', 0.6); this.pick(n.id, false, true); });
         el.addEventListener('pointermove', (e) => view.point(e.clientX, e.clientY));
@@ -125,22 +128,22 @@ export class SkillTree {
         el.addEventListener('pointerdown', (e) => { e.stopPropagation(); view.press(0.8); uiSfx('click', 0.8); this.pick(n.id, true); });
         el.addEventListener('dblclick', () => this.unlock(n.id));
         this.root.append(el);
-        v = { n, x, y, el, view, st: this.state(n.id), cage: this.state(n.id) === 'owned' ? 0 : 1, flash: 0, pulse: 0 };
+        v = { n, x, y, el, view, st: this.state(n.id), cage: this.state(n.id) === 'locked' ? 1 : 0, flash: 0, pulse: 0 };
         this.nodes.set(n.id, v);
       }
       v.x = x; v.y = y;
-      v.el.style.left = (x - 20) * S + 'px'; v.el.style.top = (y - 22) * S + 'px';
-      v.el.style.width = 40 * S + 'px'; v.el.style.height = 40 * S + 'px';
+      v.el.style.left = (x - MV / 2) * S + 'px'; v.el.style.top = (y - MV / 2 - 1) * S + 'px';
+      v.el.style.width = MV * S + 'px'; v.el.style.height = MV * S + 'px';
     }
     // conduits: orthogonal runs from each prerequisite into the node
     this.links = [];
     for (const v of this.nodes.values()) for (const r of v.n.needs) {
       const f = this.nodes.get(r); if (!f) continue;
-      const h = 21, pts: [number, number][] = [];
+      const h = SZ / 2 + 1, pts: [number, number][] = [];
       if (Math.abs(f.y - v.y) < 2) pts.push([f.x + h, f.y], [v.x - h, v.y]);
       else if (f.n.col === v.n.col) { const dn = v.y > f.y; pts.push([f.x, f.y + (dn ? h : -h)], [v.x, v.y + (dn ? -h : h)]); }
       else {
-        const right = v.x > f.x, xm = Math.round(right ? v.x - h - (b.cw - 42) / 2 : v.x + h + (b.cw - 42) / 2);
+        const right = v.x > f.x, xm = Math.round(right ? v.x - h - (b.cw - SZ) / 2 : v.x + h + (b.cw - SZ) / 2);
         pts.push([f.x + (right ? h : -h), f.y], [xm, f.y], [xm, v.y], [v.x + (right ? -h : h), v.y]);
       }
       let len = 0; for (let i = 1; i < pts.length; i++) len += Math.abs(pts[i][0] - pts[i - 1][0]) + Math.abs(pts[i][1] - pts[i - 1][1]);
@@ -176,6 +179,14 @@ export class SkillTree {
       bevel(p, b.x0 + 4, y0 + 3, 30, y1 - y0 - 6, P.steel, { chamfer: 2 });
       p.rect(b.x0 + 6, y0 + 5, 3, y1 - y0 - 10, L.col);
     });
+    // the sockets: a bolted steel ring round a sunk glass well, under each node's model
+    const SZ = this.SZ;
+    for (const v of this.nodes.values()) {
+      const x = v.x - SZ / 2, y = v.y - SZ / 2;
+      bevel(p, x, y, SZ, SZ, P.steel, { chamfer: 3 });
+      glassWell(p, x + 4, y + 4, SZ - 8, SZ - 9, 0x15191c, { glare: true });
+      for (const [sx, sy] of [[x + 1, y + 1], [x + SZ - 3, y + 1], [x + 1, y + SZ - 3], [x + SZ - 3, y + SZ - 3]]) { p.set(sx, sy, P.steel[6]); p.set(sx + 1, sy + 1, P.steel[1]); }
+    }
     // the card's backing: an enamel plate with screws
     const cx = AW - this.cardCv.width - 10;
     p.blit(plate(this.cardCv.width, AH - 54, { mat: 'enamel', seed: 4, screws: true, wear: 0.9, chamfer: 4 }), cx, 40);
@@ -319,7 +330,7 @@ export class SkillTree {
   // ---------------------------------------------------------------- the frame: socket lamps, conduit cores, beads, cages
   private frame = (now: number) => {
     this.raf = requestAnimationFrame(this.frame);
-    const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now; this.t += dt;
+    const dt = Math.max(0, Math.min(0.05, (now - this.last) / 1000)); this.last = now; this.t += dt;
     // states change as data arrives and quests finish (twice a second)
     this.sigT -= dt;
     if (this.sigT <= 0) {
@@ -338,7 +349,10 @@ export class SkillTree {
     for (const v of this.nodes.values()) {
       v.flash = Math.max(0, v.flash - dt * 1.2); v.pulse = Math.max(0, v.pulse - dt * 0.8);
       const owned = v.st === 'owned';
-      v.cage += ((owned ? 0 : 1) - v.cage) * Math.min(1, dt * (owned ? 3.2 : 10));
+      // the cage holds a node only while something still bars it (a prerequisite, a quest, a bond)
+      const caged = v.st === 'locked';
+      v.cage += ((caged ? 1 : 0) - v.cage) * Math.min(1, dt * (caged ? 10 : 3.2));
+      void owned;
       this.socket(c, v);
     }
     // the knowledge in the header, rolling toward the real values
@@ -369,35 +383,46 @@ export class SkillTree {
     if (L.charge > -0.01 && L.charge < 1) { for (let k = 0; k < 6; k++) { const [x, y] = along(Math.max(0, L.charge * L.len - k * 3)); c.fillStyle = k ? '#ffe090' : '#ffffff'; c.fillRect(Math.round(x) - 2 + (k ? 1 : 0), Math.round(y) - 2 + (k ? 1 : 0), k ? 2 : 4, k ? 2 : 4); } }
   }
   private socket(c: CanvasRenderingContext2D, v: NodeV) {
-    const x = v.x - 22, y = v.y - 24, st = v.st, sel = this.sel === v.n.id, hot = this.hover === v.n.id;
-    // the frame round the model: a bolted steel ring with a state lamp strip at its foot
+    const SZ = this.SZ, x = v.x - SZ / 2, y = v.y - SZ / 2, st = v.st, sel = this.sel === v.n.id, hot = this.hover === v.n.id;
     const lamp = st === 'owned' ? '#50d860' : st === 'open' ? (Math.sin(this.t * 4 + v.x) > -0.2 ? '#ffb030' : '#c87a20') : st === 'poor' ? '#8a5a1c' : '#3a1610';
-    c.fillStyle = '#08090c'; c.fillRect(x - 1, y - 1, 46, 48);
-    c.fillStyle = sel ? '#b1b2aa' : hot ? '#8e9190' : '#54595c'; c.fillRect(x, y, 44, 2); c.fillRect(x, y, 2, 46);
-    c.fillStyle = '#2a2f32'; c.fillRect(x, y + 44, 44, 2); c.fillRect(x + 42, y, 2, 46);
-    c.fillStyle = '#3d4346'; c.fillRect(x + 2, y + 2, 40, 1); c.fillRect(x + 2, y + 42, 40, 1);
-    for (const [sx, sy] of [[x + 3, y + 3], [x + 39, y + 3], [x + 3, y + 40], [x + 39, y + 40]]) { c.fillStyle = '#8e9190'; c.fillRect(sx, sy, 2, 2); c.fillStyle = '#1c1e20'; c.fillRect(sx + 1, sy + 1, 1, 1); }
-    c.fillStyle = lamp; c.fillRect(x + 12, y + 43, 20, 2);
-    if (st === 'open' || v.flash > 0 || v.pulse > 0) { c.globalAlpha = Math.min(1, 0.25 + v.flash + v.pulse * 0.6 + (st === 'open' ? Math.max(0, Math.sin(this.t * 4 + v.x)) * 0.25 : 0)); c.strokeStyle = v.flash > 0.3 ? '#ffffff' : lamp; c.lineWidth = 1; c.strokeRect(x - 2.5, y - 2.5, 49, 51); c.globalAlpha = 1; }
-    // the cage: steel bars and a bottom rail, winched up when the node is learned
+    // the state lamp across the foot of the ring
+    c.fillStyle = '#08090c'; c.fillRect(x + SZ / 2 - 9, y + SZ - 4, 18, 3); c.fillStyle = lamp; c.fillRect(x + SZ / 2 - 8, y + SZ - 4, 16, 2);
+    // picked / under the pointer: machined brackets at the corners
+    if (sel || hot) {
+      c.fillStyle = sel ? '#ffe2a0' : '#b1b2aa';
+      for (const [cx, cy, dx, dy] of [[x - 3, y - 3, 1, 1], [x + SZ + 2, y - 3, -1, 1], [x - 3, y + SZ + 2, 1, -1], [x + SZ + 2, y + SZ + 2, -1, -1]]) { c.fillRect(Math.min(cx, cx + dx * 5), cy, 6, 1); c.fillRect(cx, Math.min(cy, cy + dy * 5), 1, 6); }
+    }
+    // the glow of an open node, the flash of an unlock: a ring and rays of light
+    if (st === 'open' || v.flash > 0 || v.pulse > 0) {
+      c.globalAlpha = Math.min(1, 0.35 + v.flash + v.pulse * 0.6 + (st === 'open' ? Math.max(0, Math.sin(this.t * 4 + v.x)) * 0.3 : 0));
+      c.strokeStyle = v.flash > 0.3 ? '#ffffff' : lamp; c.lineWidth = 1; c.strokeRect(x - 1.5, y - 1.5, SZ + 3, SZ + 3); c.globalAlpha = 1;
+    }
+    if (v.flash > 0) {
+      const k = 1 - v.flash, r = 6 + k * 46, col = k < 0.3 ? '#ffffff' : '#ffd070';
+      c.fillStyle = col;
+      for (let a = 0; a < Math.PI * 2; a += 0.06) { const px = Math.round(v.x + Math.cos(a) * r), py = Math.round(v.y + Math.sin(a) * r); if ((px + py) & 1 || k < 0.5) c.fillRect(px, py, 1, 1); }
+      for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6 + this.t * 0.5; for (let d = SZ * 0.55; d < SZ * 0.55 + 22 * v.flash; d += 2) c.fillRect(Math.round(v.x + Math.cos(a) * d), Math.round(v.y + Math.sin(a) * d), 2, 2); }
+    }
+    // the cage: thin steel bars on rails in front of the model, winched up when the node is learned
     if (v.cage > 0.02) {
-      const lift = Math.round((1 - v.cage) * 40);
-      c.save(); c.beginPath(); c.rect(x + 2, y + 2, 40, 41); c.clip();
-      for (let i = 0; i < 6; i++) { const bx = x + 5 + i * 7; c.fillStyle = '#08090c'; c.fillRect(bx - 1, y + 2 - lift, 4, 41); c.fillStyle = '#8e9190'; c.fillRect(bx, y + 2 - lift, 1, 41); c.fillStyle = '#54595c'; c.fillRect(bx + 1, y + 2 - lift, 1, 41); }
-      c.fillStyle = '#08090c'; c.fillRect(x + 2, y + 36 - lift, 40, 6); c.fillStyle = '#6e7373'; c.fillRect(x + 2, y + 37 - lift, 40, 1); c.fillStyle = '#3d4346'; c.fillRect(x + 2, y + 38 - lift, 40, 3);
-      if (st === 'locked') { // the padlock
-        const lx = x + 17, ly = y + 30 - lift; c.fillStyle = '#08090c'; c.fillRect(lx - 1, ly - 7, 12, 16); c.fillStyle = '#b38737'; c.fillRect(lx, ly, 10, 8); c.fillStyle = '#cea457'; c.fillRect(lx, ly, 10, 1); c.fillStyle = '#8e9190'; c.fillRect(lx + 1, ly - 6, 2, 6); c.fillRect(lx + 7, ly - 6, 2, 6); c.fillRect(lx + 1, ly - 6, 8, 2); c.fillStyle = '#08090c'; c.fillRect(lx + 4, ly + 3, 2, 3);
+      const lift = Math.round((1 - v.cage) * SZ), ix = x + 4, iy = y + 4, iw = SZ - 8, ih = SZ - 9;
+      c.save(); c.beginPath(); c.rect(ix, iy, iw, ih); c.clip();
+      for (let bx = ix + 3; bx < ix + iw - 1; bx += 6) { c.fillStyle = '#08090c'; c.fillRect(bx + 1, iy - lift, 1, ih); c.fillStyle = '#8e9190'; c.fillRect(bx, iy - lift, 1, ih); }
+      c.fillStyle = '#08090c'; c.fillRect(ix, iy + ih - 5 - lift, iw, 4); c.fillStyle = '#6e7373'; c.fillRect(ix, iy + ih - 5 - lift, iw, 1); c.fillStyle = '#3d4346'; c.fillRect(ix, iy + ih - 4 - lift, iw, 2);
+      c.fillStyle = '#08090c'; c.fillRect(ix, iy - lift, iw, 3); c.fillStyle = '#6e7373'; c.fillRect(ix, iy - lift, iw, 1);
+      if (st === 'locked') { // a small brass padlock on the bottom rail
+        const lx = Math.round(v.x - 4), ly = iy + ih - 12 - lift; c.fillStyle = '#08090c'; c.fillRect(lx - 1, ly - 5, 10, 13); c.fillStyle = '#b38737'; c.fillRect(lx, ly, 8, 7); c.fillStyle = '#cea457'; c.fillRect(lx, ly, 8, 1); c.fillStyle = '#8e9190'; c.fillRect(lx + 1, ly - 4, 1, 4); c.fillRect(lx + 6, ly - 4, 1, 4); c.fillRect(lx + 1, ly - 4, 6, 1); c.fillStyle = '#08090c'; c.fillRect(lx + 3, ly + 2, 2, 3);
       }
       c.restore();
     }
-    // small tags: a quest mark, a bond mark (what still blocks it)
+    // small tags: a quest, a bond still to earn
     if (st === 'locked' || st === 'poor') {
       const rs = this.U?.reqs(v.n.id) ?? [];
-      let tx = x + 2;
+      let tx = x - 2;
       for (const r of rs) {
         if (r.ok) continue;
-        if (r.k === 'quest') { const ic = stepIcon(QUEST[r.id]?.icon ?? 'lens', QUEST[r.id]?.giver); c.drawImage(ic, tx, y - 9, 14, 14); tx += 15; }
-        if (r.k === 'close') { const f = portrait(r.npc); if (f) c.drawImage(f, tx, y - 9, 14, 14); tx += 15; }
+        if (r.k === 'quest') { const ic = stepIcon(QUEST[r.id]?.icon ?? 'lens', QUEST[r.id]?.giver); c.drawImage(ic, tx, y - 8, 14, 14); tx += 13; }
+        if (r.k === 'close') { const f = portrait(r.npc); if (f) c.drawImage(f, tx, y - 8, 14, 14); tx += 13; }
       }
     }
     void at; void screw; void ITEMS;

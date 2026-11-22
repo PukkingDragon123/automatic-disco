@@ -94,7 +94,7 @@ export class Subs {
   };
   private tick = (now: number) => {
     this.raf = 0;
-    const dt = Math.min(0.1, (now - this.last) / 1000); this.last = now;
+    const dt = Math.max(0, Math.min(0.3, (now - this.last) / 1000)); this.last = now;
     if (!this.cur && this.q.length) {
       this.cur = this.q.shift()!; this.shownChars = -1;
       if (this.cur.who) { this.voice?.(this.cur.who, this.cur.text); this.onLine?.(this.cur.who, this.cur.dur); }

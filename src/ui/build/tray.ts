@@ -159,6 +159,8 @@ export class BuildTray {
 
   open(cat?: BuildCat) {
     if (cat) this.cat = cat;
+    // nothing to build in the remembered category yet: open the first one that has something unlocked
+    else if (!kindsIn(this.cat).some((k) => buildingLock(this.f.g, k).ok)) { const c = BUILD_CATS.find((x) => kindsIn(x.k).some((k) => buildingLock(this.f.g, k).ok)); if (c) this.cat = c.k; }
     this.isOpen = true;
     this.root.classList.remove('out'); void this.root.offsetWidth;
     this.root.classList.add('on', 'in');

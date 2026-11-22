@@ -251,6 +251,8 @@ export interface ViewOpts {
   ink?: number;
   /** frames in the idle turntable cache */
   frames?: number;
+  /** the idle rock either side of yaw0 (rad) when spin is 0 */
+  rock?: number;
   lift?: number;
   cls?: string;
   /** called every rendered frame with the time and hot state (live parts: bubbles, lamps, needles) */
@@ -293,6 +295,8 @@ export class ModelView {
   poke(v = 9) { this.vy += v; this.dirty = true; }
   setSpin(v: number) { this.o.spin = v; }
   invalidate() { this.cache.clear(); this.dirty = true; }
+  /** the hardware state object of a kit hardware model (hardware.ts: root.userData.state), once it is built */
+  state<T = Record<string, unknown>>(): T | null { return (this.root?.children[0]?.userData.state ?? this.root?.userData.state ?? null) as T | null; }
   dispose() { views.delete(this); this.cache.clear(); this.cv.remove(); }
   private frame(dt: number) {
     if (!this.root) return;
@@ -310,7 +314,7 @@ export class ModelView {
     const y0 = this.yaw;
     if (this.isHot) this.yaw += dt * hs;
     else if (spin > 0) this.yaw += dt * spin;
-    else { const goal = (o.yaw0 ?? 0.6) + Math.sin(this.t * 0.55) * 0.45, r = this.yaw; this.yaw = r + (goal - r) * Math.min(1, dt * 2); }
+    else { const goal = (o.yaw0 ?? 0.6) + Math.sin(this.t * 0.55) * (o.rock ?? 0.45), r = this.yaw; this.yaw = r + (goal - r) * Math.min(1, dt * 2); }
     this.yaw += this.vy * dt; this.vy *= Math.exp(-dt * 3.5);
     // the tilt toward the pointer
     if (this.isHot && o.tilt !== false && this.pointer) {

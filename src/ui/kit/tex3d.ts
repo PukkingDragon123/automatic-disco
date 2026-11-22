@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { Px, P, INK, hash, bayer, at, mixHex, rivet, type Ramp } from './px';
 import { materialField, type Mat } from './mat';
+import { paintSurface, type Surf } from './paint';
 import { bitPx } from './bitfont';
 
 const cache = new Map<string, THREE.Texture>();
@@ -29,7 +30,12 @@ export function paintTex(key: string, w: number, h: number, f: (p: Px) => void, 
   cache.set(k, t);
   return t;
 }
-const fillMat = (p: Px, mat: Mat, ramp: Ramp, base: number, seed: number) => { for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) p.set(x, y, at(ramp, base + materialField(mat, x, y, seed, p.w, p.h))); };
+/** fill a whole texture with a material (the Limbophobia-style painter), its ramp centred near the master ramp's step */
+const fillMat = (p: Px, mat: Mat, ramp: Ramp, base: number, seed: number) => {
+  const s: Surf = ramp === P.teal ? 'teal' : ramp === P.ruby ? 'red' : ramp === P.snow ? 'white' : ((mat === 'leather' ? 'rubber' : mat) as Surf);
+  const lift = ramp === P.ochre ? 1 : 0;
+  paintSurface(p, s, () => true, { seed, wear: 0.5, grime: 0, light: () => (base - 3) * 0.6 + lift });
+};
 /** paint chips through a paint coat to the metal under it (upper-left lip shaded, lower-right lit) */
 function chips(p: Px, n: number, seed: number, metal: Ramp, coat: Ramp, coatK: number) {
   for (let i = 0; i < n; i++) {

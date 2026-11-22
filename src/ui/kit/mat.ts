@@ -7,6 +7,8 @@
 //   skin(el, paint, scale)    paint an element's background to its size, repainted on resize
 //   materialField(mat, x, y)  the material's own texture tone at a pixel (for other painters)
 import { Px, P, INK, hash, bayer, at, mixHex, screw, rivet, hazard, glassWell, type Ramp } from './px';
+import { paintSurface, surfField, type Surf } from './paint';
+const surfOf = (m: Mat): Surf => (m === 'leather' ? 'rubber' : m) as Surf;
 
 export type Mat = 'steel' | 'gun' | 'enamel' | 'brass' | 'olive' | 'paper' | 'blueprint' | 'wood' | 'glass' | 'leather' | 'rubber' | 'orange' | 'copper';
 interface MatDef { ramp: Ramp; base: number; under?: Ramp; underK?: number; metal?: boolean }
@@ -26,63 +28,9 @@ const MATS: Record<Mat, MatDef> = {
   copper: { ramp: P.copper, base: 3, metal: true },
 };
 
-/** the material's own surface detail: a ramp-step offset (-2..2) at a pixel (deterministic per seed) */
-export function materialField(mat: Mat, x: number, y: number, seed = 1, w = 64, h = 64): number {
-  const r = (a: number, b: number, c = 0) => hash(a + seed * 131, b + seed * 71, c);
-  switch (mat) {
-    case 'steel': case 'gun': case 'copper': {
-      // brushed: long horizontal strokes, a few deeper scratches at an angle
-      const row = Math.floor(y), streak = r(Math.floor(x / (9 + Math.floor(r(row, 1) * 14))), row, 2);
-      let v = streak > 0.82 ? 1 : streak < 0.1 ? -1 : 0;
-      const sc = (x * 3 + y * 7 + Math.floor(r(0, Math.floor((x - y * 2) / 23), 4) * 40)) % 97;
-      if (sc === 0 && r(x, y, 5) > 0.3) v = 1;
-      return v;
-    }
-    case 'brass': {
-      const band = Math.sin((x * 0.09 + y * 0.35) + r(0, Math.floor(y / 5), 1) * 2) > 0.86 ? 1 : 0;
-      return band + (r(x >> 1, y >> 1, 3) > 0.94 ? -1 : 0);
-    }
-    case 'enamel': case 'olive': case 'orange': {
-      // flat paint with a slight orange peel and a few brush marks
-      return r(x >> 2, y >> 1, 6) > 0.9 ? 1 : r(x >> 1, y >> 2, 7) > 0.95 ? -1 : 0;
-    }
-    case 'paper': {
-      // fibres: short strokes in every direction, a few foxing spots
-      let v = r(x, y, 8) > 0.93 ? (r(x, y, 9) > 0.5 ? 1 : -1) : 0;
-      const fx = Math.floor(r(Math.floor(x / 11), Math.floor(y / 9), 10) * 11), fy = Math.floor(r(Math.floor(x / 11), Math.floor(y / 9), 11) * 9);
-      if (Math.hypot((x % 11) - fx, (y % 9) - fy) < 1.2 && r(Math.floor(x / 11), Math.floor(y / 9), 12) > 0.8) v = -2;
-      return v;
-    }
-    case 'blueprint': {
-      const g = (x % 8 === 0 || y % 8 === 0) ? 1 : 0;
-      return g + (r(x, y, 13) > 0.96 ? 1 : 0);
-    }
-    case 'wood': {
-      // planks 14 px tall: a dark seam and a lit edge between them, long wandering grain lines, knots, end joints
-      const plank = Math.floor(y / 14), yy = y % 14;
-      if (yy === 0) return -3;
-      if (yy === 1) return 1;
-      const joint = Math.floor(r(plank, 0, 30) * 60) + 40;
-      if ((x + plank * 37) % joint === 0) return -2;
-      const wob = Math.sin(x * 0.045 + plank * 1.7) * 1.6 + Math.sin(x * 0.13 + plank * 0.6) * 0.6;
-      const gy = yy + wob;
-      const kx = Math.floor(r(plank, 3, 14) * w), kd = Math.hypot((x - kx) * 0.45, yy - 7);
-      if (kd < 1.6) return -2; if (kd < 2.8) return -1;
-      const ring = Math.abs(((gy + kd * 0.4) % 4.5) - 2.25) < 0.45;
-      return ring ? -1 : (yy === 2 || yy === 13) ? (yy === 2 ? 0 : -1) : 0;
-    }
-    case 'glass': return (x + y * 2) % 23 < 2 ? 2 : 0;
-    case 'leather': {
-      // soft mottling (big, low-contrast blotches), a fine pebble grain, a few creases
-      const m = (r(x >> 2, y >> 2, 16) + r((x + 2) >> 2, (y + 1) >> 2, 16) + r((x + 1) >> 3, y >> 3, 20) * 2) / 4;
-      let v = m > 0.72 ? 1 : m < 0.24 ? -1 : 0;
-      if ((x * 5 + y * 3) % 11 === 0 && r(x, y, 17) > 0.5) v -= 1;
-      const cr = (x + Math.floor(r(0, Math.floor(y / 9), 18) * 30) + y * 2) % 41;
-      if (cr === 0 && r(x >> 2, y >> 2, 19) > 0.4) v -= 1;
-      return v;
-    }
-    case 'rubber': return (x + y) % 4 === 0 ? -1 : 0;
-  }
+/** the material's own surface detail as whole ramp steps (-2..2) at a pixel (from the smooth surface field) */
+export function materialField(mat: Mat, x: number, y: number, seed = 1, _w = 64, _h = 64): number {
+  return Math.max(-2, Math.min(2, Math.round(surfField(surfOf(mat), x, y, seed))));
 }
 
 export interface PlateOpts {
@@ -104,57 +52,31 @@ export interface PlateOpts {
   grime?: number;
 }
 
-/** a plate painted to its size (art pixels) */
+/** a plate painted to its size (art pixels): the material from the Limbophobia-style painter (paint.ts), an ink
+ *  outline, chamfered corners, a lit lip top-left and a shaded one bottom-right, then its hardware */
 export function plate(w: number, h: number, o: PlateOpts = {}): Px {
   w = Math.max(6, Math.round(w)); h = Math.max(6, Math.round(h));
   const p = new Px(w, h), mat = o.mat ?? 'steel', M = MATS[mat], R = M.ramp, seed = o.seed ?? 1, ch = o.chamfer ?? 3;
   const wear = o.wear ?? 0.6, lip = o.lip ?? 2, grime = o.grime ?? 0.6;
   const inside = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h && x + y >= ch && (w - 1 - x) + y >= ch && x + (h - 1 - y) >= ch && (w - 1 - x) + (h - 1 - y) >= ch;
-  // distance to the plate edge (for the bevel and the edge wear)
   const edgeD = (x: number, y: number) => {
     const d = Math.min(x, y, w - 1 - x, h - 1 - y);
     const c = Math.min(x + y - ch, (w - 1 - x) + y - ch, x + (h - 1 - y) - ch, (w - 1 - x) + (h - 1 - y) - ch) / 1.41;
     return Math.min(d, c);
   };
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    if (!inside(x, y)) continue;
+  const light = (x: number, y: number) => {
     const d = edgeD(x, y);
-    if (d < 1 && !o.noInk) { p.set(x, y, INK); continue; }
-    let k = M.base + materialField(mat, x, y, seed, w, h);
-    // the bevel: top/left lip lit, bottom/right shaded (a chamfer's diagonal takes the side it faces)
-    const dl = x, dt = y, dr = w - 1 - x, db = h - 1 - y;
-    const m = Math.min(dl, dt, dr, db);
+    let k = (0.5 - y / h) * 0.9 + (0.5 - x / w) * 0.35;
     if (d < 1 + lip) {
-      const litSide = (m === dl || m === dt) && !(m === db && dl > dr) ;
-      k += litSide ? (d < 2 ? 2 : 1) : (d < 2 ? -2 : -1);
+      const dl = x, dt = y, dr = w - 1 - x, db = h - 1 - y, m = Math.min(dl, dt, dr, db);
+      const litSide = m === dl || m === dt;
+      k += litSide ? (d < 2 ? 2.4 : 1.3) : (d < 2 ? -2.4 : -1.3);
     }
-    // a broad top-left light across the face and grime at the foot (dithered steps)
-    const g = (y / h) * grime * 1.6 - (1 - x / w) * 0.25;
-    if (g + (bayer(x, y) - 0.5) * 0.5 > 0.75) k -= 1;
-    if (g + (bayer(x, y) - 0.5) * 0.5 < -0.15 && d > lip + 1) k += 0;
-    p.set(x, y, at(R, k));
-  }
-  // edge wear: chips through the paint to the metal under it (with a shaded upper-left lip and a lit lower-right
-  // one), or bright nicks on bare metal
-  const nChips = Math.round((w + h) * 0.06 * wear);
-  for (let i = 0; i < nChips; i++) {
-    const side = Math.floor(hash(i, seed, 21) * 4), t = hash(i, seed, 22);
-    const cx = side === 0 ? Math.round(t * w) : side === 1 ? w - 3 - Math.floor(hash(i, seed, 23) * 3) : side === 2 ? Math.round(t * w) : 2 + Math.floor(hash(i, seed, 23) * 3);
-    const cy = side === 0 ? 2 + Math.floor(hash(i, seed, 23) * 3) : side === 1 ? Math.round(t * h) : side === 2 ? h - 3 - Math.floor(hash(i, seed, 23) * 3) : Math.round(t * h);
-    const sz = 1 + Math.floor(hash(i, seed, 24) * 3);
-    for (let j = 0; j < sz; j++) for (let q = 0; q < sz + 1 - (j & 1); q++) {
-      const x = cx + q - (j >> 1), y = cy + j;
-      if (!inside(x, y) || edgeD(x, y) < 1) continue;
-      if (M.under) p.set(x, y, j === 0 || q === 0 ? at(M.under, (M.underK ?? 2) - 1) : at(M.under, M.underK ?? 2));
-      else p.set(x, y, at(R, M.base + (j === 0 ? 2 : 1)));
-    }
-  }
-  // a few scratches across the face
-  const nScr = Math.round(wear * 3 * Math.min(3, (w * h) / 4000 + 1));
-  for (let i = 0; i < nScr; i++) {
-    const x0 = 6 + hash(i, seed, 31) * (w - 12), y0 = 6 + hash(i, seed, 32) * (h - 12), L = 4 + hash(i, seed, 33) * 12, a = -0.6 + hash(i, seed, 34) * 0.5;
-    for (let s = 0; s < L; s++) { const x = Math.round(x0 + Math.cos(a) * s), y = Math.round(y0 + Math.sin(a) * s); if (inside(x, y) && edgeD(x, y) > 3) p.set(x, y, at(R, M.base + (M.metal ? 2 : 1))); }
-  }
+    return k;
+  };
+  paintSurface(p, surfOf(mat), (x, y) => inside(x, y) && (o.noInk || edgeD(x, y) >= 1), { seed, wear, grime, h, edge: edgeD, light });
+  if (!o.noInk) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (inside(x, y) && edgeD(x, y) < 1) p.set(x, y, INK);
+  void R; void bayer;
   // hazard band
   if (o.hazard) { const hh = o.hazard; hazard(p, ch + 2, h - hh - 3, w - ch * 2 - 4, hh, P.ochre[5], P.ink[1]); p.hl(ch + 2, w - ch - 3, h - hh - 4, INK); }
   // screws and rivet rows

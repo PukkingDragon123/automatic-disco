@@ -333,10 +333,12 @@ export class BuildMode {
     text(g, 'N', tx - 57 + Math.round(Math.sin(yaw) * 34), ty + 36 - Math.round(Math.cos(yaw) * 34), WHITE, 16);
     // the scale bar: 0 - 5 - 10 m at the true scale in the middle of the view
     if (gc && ppm > 2) {
-      const seg = Math.round(ppm * 5 / 2) * 2, bx = tx + tw - seg * 2, by = ty + th + 22;
-      g.fillStyle = INKC; g.fillRect(bx - 2, by - 2, seg * 2 + 4, 14);
-      for (let i = 0; i < 4; i++) { g.fillStyle = i % 2 ? BLUE[2] : WHITE; g.fillRect(bx + i * seg / 2, by, seg / 2, 10); }
-      text(g, '0', bx - 4, by + 30, WHITE, 16); text(g, '5', bx + seg - 4, by + 30, WHITE, 16); text(g, '10 m', bx + seg * 2 - 14, by + 30, WHITE, 16);
+      // two segments of a round unit, about a title block wide
+      const unit = [1, 2, 5, 10, 20].reduce((u, v) => (v * ppm * 2 <= tw + 12 ? v : u), 1);
+      const seg = Math.round(ppm * unit / 2) * 2, bx = tx + tw - seg * 2, by = ty + th + 20;
+      g.fillStyle = INKC; g.fillRect(bx - 2, by - 2, seg * 2 + 4, 12);
+      for (let i = 0; i < 4; i++) { g.fillStyle = i % 2 ? BLUE[2] : WHITE; g.fillRect(bx + i * seg / 2, by, seg / 2, 8); }
+      text(g, '0', bx - 3, by + 26, WHITE, 16); text(g, String(unit), bx + seg - 4, by + 26, WHITE, 16); text(g, `${unit * 2} m`, bx + seg * 2 - 18, by + 26, WHITE, 16);
     }
   }
   private pxPerM(gc: THREE.Vector3) { const g = this.f.g, [x0, y0] = g.screenOf(gc.x, gc.y, gc.z), [x1, y1] = g.screenOf(gc.x + 1, gc.y, gc.z); return Math.hypot(x1 - x0, y1 - y0); }

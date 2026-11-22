@@ -62,7 +62,7 @@ export class BlueprintSheet {
     document.body.appendChild(r);
     this.paper = r.querySelector('.bs-paper')!; this.art = r.querySelector('.bs-art')!;
     this.title = r.querySelector('.bs-title')!; this.recs = r.querySelector('.bs-recs')!; this.bufs = r.querySelector('.bs-bufs')!; this.crew = r.querySelector('.bs-crew')!; this.acts = r.querySelector('.bs-acts')!;
-    blueprintSheet(W, H, { seed: 11, grid: 8, major: 5, border: 6, folds: { y: [0.46] }, dogEar: true }).canvas(this.paper);
+    blueprintSheet(W, H, { seed: 11, border: 6, folds: { y: [0.46] }, dogEar: true }).canvas(this.paper);
     this.art.width = W; this.art.height = H;
     this.ag = this.art.getContext('2d')!; this.ag.imageSmoothingEnabled = false;
     const clip = bulldogClip();

@@ -42,7 +42,7 @@ export class BondMeter {
   }
   private tick = (now: number) => {
     this.raf = 0;
-    const dt = Math.min(0.1, (now - this.last) / 1000); this.last = now;
+    const dt = Math.max(0, Math.min(0.3, (now - this.last) / 1000)); this.last = now;
     for (const [id, s] of this.shows) {
       s.t += dt;
       if (s.t > 3.6) s.el.classList.add('out');

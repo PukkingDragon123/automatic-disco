@@ -1,16 +1,18 @@
 // TECHNICAL DRAWINGS of a building traced from its own model: the studio (studio.ts `drawingPasses`) renders the model
 // orthographically as a flat id per part, view-space normals and depth; this file traces them at the art resolution into
 // clean pixel line art on blueprint paper: white silhouettes, pale lines where parts meet or the surface folds or steps
-// back, faces lit from the upper left washed in two tones of the paper and the faces turned away hatched. Views: 'iso'
+// back, faces washed in the paper's tones by how they meet the light (clustered dither, no hatching). Views: 'iso'
 // (a three-quarter isometric), 'plan', 'front', 'side'. Cached per kind, view and size.
 import type { FKind } from '../../factory/defs';
 import { drawingPasses } from './studio';
 import { RAMPS as P } from '../../art/palette';
+import { qstep } from '../kit/paint';
 
 export interface TechDrawing { cv: HTMLCanvasElement; scale: number; w: number; h: number }
 const cache = new Map<string, TechDrawing | null>();
 const rgb = (c: number) => [(c >> 16) & 255, (c >> 8) & 255, c & 255] as const;
-const LINE = rgb(P.quartz[5]), CREASE = rgb(P.sapphire[6]), LIT = rgb(P.sapphire[4]), MID = rgb(P.sapphire[3]), DARK = rgb(P.sapphire[2]), HATCH = rgb(P.sapphire[4]), DEEP = rgb(P.sapphire[1]);
+const LINE = rgb(P.quartz[5]), CREASE = rgb(P.sapphire[6]), DEEP = rgb(P.sapphire[1]);
+const TONES = [P.sapphire[1], P.sapphire[2], P.sapphire[3], P.sapphire[4]].map(rgb);
 const L = (() => { const v = [-0.45, 0.65, 0.6], n = Math.hypot(...v); return v.map((x) => x / n); })();
 
 /** the building traced as a technical drawing, w x h art px (null before the studio is set up) */
@@ -39,10 +41,9 @@ export function techDrawing(kind: FKind, view: 'iso' | 'plan' | 'front' | 'side'
     if (!l || !r || !u || !dn) { put(i, LINE); continue; }
     const crease = (j: number) => ID(j) !== ID(i) || nx(i) * nx(j) + ny(i) * ny(j) + nz(i) * nz(j) < 0.86 || Math.abs(D(i) - D(j)) > 0.035;
     if (crease(i + 1) || crease(i + w)) { put(i, CREASE); continue; }
+    // faces washed by how they meet the light, the tones broken in clumps (the kit's clustered dither, no hatching)
     const lit = nx(i) * L[0] + ny(i) * L[1] + nz(i) * L[2];
-    if (lit > 0.62) put(i, LIT);
-    else if (lit > 0.2) put(i, (x + y * 3) % 7 === 0 ? LIT : MID);
-    else put(i, (x + y) % 3 === 0 ? HATCH : DARK);
+    put(i, TONES[qstep(1 + Math.max(0, Math.min(1, (lit + 0.15) / 0.95)) * 2.2, x, y, TONES.length, 17)]);
   }
   g.putImageData(img, 0, 0);
   const out: TechDrawing = { cv, scale: ps.scale, w, h };
