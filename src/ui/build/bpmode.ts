@@ -241,8 +241,8 @@ export class BuildMode {
       W.tray = 1 - k;
       if (k >= 1) { this.phase = 'off'; W.mix = 0; W.wipe = 0; this.camK = 0; this.restoreCam(); document.body.classList.remove('bp-off'); }
     }
-    // the view flip (eased), and the panels' words: the data card shows the hovered card, else what is in hand, else
-    // the last card picked, else the building selected on the map
+    // the view flip (eased), and the panels' words: the data card shows the hovered card, else what is carried or in
+    // hand, else the building selected on the map, else the last card picked
     // QA: window.__bpViewHold = 0..1 freezes the view flip at that point (screenshots of the blueprint printing itself)
     const vh = (window as unknown as { __bpViewHold?: number }).__bpViewHold;
     if (typeof vh === 'number' && this.viewT < 1) this.viewT = vh;
@@ -250,7 +250,7 @@ export class BuildMode {
     W.view = this.viewK;
     if (this.on) {
       const sel = this.b.selected;
-      this.detail.show(this.catalog.hot ?? this.b.moving?.kind ?? this.b.kind ?? this.catalog.pick ?? sel?.def.kind ?? null);
+      this.detail.show(this.catalog.hot ?? this.b.moving?.kind ?? this.b.kind ?? sel?.def.kind ?? this.catalog.pick ?? null);
       if (this.b.kind && this.catalog.pick !== this.b.kind && !this.catalog.hot) this.catalog.setPick(this.b.kind);
     }
     this.detail.update(dt);

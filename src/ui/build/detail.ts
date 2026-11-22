@@ -1,6 +1,6 @@
 // THE BUILDING DATA CARD (V7 "EMPIRE BUILDING": rich context on every building, like Dragon City's and Planet Zoo's
 // building cards). A tall kit housing down the right of build mode that shows the building under the pointer in the
-// catalogue, else the one in hand, else the last card picked, else the one selected on the map:
+// catalogue, else the one carried or in hand, else the one selected on the map, else the last card picked:
 //   its NAME, category and tier, the outlined model turning on a turntable in a sunk well, size, height, hull, how many
 //   stand in the settlement and how much construction work it takes;
 //   its full DESCRIPTION;

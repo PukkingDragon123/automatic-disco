@@ -262,12 +262,28 @@ function disc(g: Geo, c: V3, n: V3, r: number, rect: Rect, seg = 10, dome = 0, u
 function crownMasses(g: Geo, P: Plant, sp: PlantSpecies, tex: FloraTex, r: Rand, lod: number, look: { style: SprayStyle; shape: Shape; ramps: number[][]; twig: number[]; accent: number[]; young: number[]; thorns: boolean; hairs: boolean }): V3[] {
   const CL = P.clumps.map((k) => ({ c: M(k.c), R: M(k.R), ramp: k.ramp, flat: !!k.flat, lit: k.lit ?? 0.6 }));
   const shrub = sp.arch === 'shrub', umb = sp.arch === 'umbrella';
+  if (lod > 1) {
+    // the low mesh: the nearest clumps merge pairwise into bigger lumps (about half as many; the same outline)
+    const want = Math.max(5, Math.ceil(CL.length * 0.55));
+    while (CL.length > want) {
+      let bi = 0, bj = 1, bd = 1e9;
+      for (let i = 0; i < CL.length; i++) for (let j = i + 1; j < CL.length; j++) {
+        const a = CL[i], b = CL[j], d = vlen(vsub(a.c, b.c)) / ((a.R[0] + b.R[0]) * 0.5);
+        if (d < bd) { bd = d; bi = i; bj = j; }
+      }
+      const a = CL[bi], b = CL[bj], wa = a.R[0] * a.R[1] * a.R[2], wb = b.R[0] * b.R[1] * b.R[2], w = wa + wb;
+      const c: V3 = [(a.c[0] * wa + b.c[0] * wb) / w, (a.c[1] * wa + b.c[1] * wb) / w, (a.c[2] * wa + b.c[2] * wb) / w];
+      const R: V3 = [0, 1, 2].map((x) => Math.max(Math.abs(a.c[x] - c[x]) + a.R[x], Math.abs(b.c[x] - c[x]) + b.R[x]) * 0.9) as V3;
+      CL.splice(bj, 1);
+      CL[bi] = { c, R, ramp: wa >= wb ? a.ramp : b.ramp, flat: a.flat && b.flat, lit: (a.lit * wa + b.lit * wb) / w };
+    }
+  }
   // the crown's centre, a little low: the light wraps round the crown from above
   let vs = 0; const cc: V3 = [0, 0, 0];
   for (const k of CL) { const w = k.R[0] * k.R[1] * k.R[2]; cc[0] += k.c[0] * w; cc[1] += k.c[1] * w; cc[2] += k.c[2] * w; vs += w; }
   cc[0] /= vs; cc[1] = cc[1] / vs - (umb ? 0.8 : shrub ? 0.15 : 0.35); cc[2] /= vs;
   const shd = P.shade();
-  const seg = lod ? (lod > 1 ? (shrub ? 5 : 6) : 6) : 8, rings = lod ? (lod > 1 ? 3 : 4) : 5, jag = lod > 1 ? 0.1 : 0.15;
+  const seg = lod ? 6 : 8, rings = lod ? (lod > 1 || shrub ? 3 : 4) : 5, jag = lod > 1 ? 0.13 : 0.15;
   const cand: [number, V3][] = [];
   // the light and low meshes leave out clumps that sit mostly inside a bigger neighbour (no change to the silhouette)
   const vol = (k: (typeof CL)[number]) => k.R[0] * k.R[1] * k.R[2], inK = lod > 1 ? 0.95 : 0.7;
@@ -427,7 +443,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
     // merge short steps on thin limbs
     let P2 = pts, R2 = rad;
     if (L1 && !isBark && r0 < 0.012) continue;
-    const stepK = fine ? (sp.arch === 'shrub' ? 4 : 3) : L2 ? Math.max(2, Math.ceil((pts.length - 1) / (r0 > 0.08 ? 4 : r0 > 0.03 ? 3 : 2))) : L1 ? (r0 < 0.08 ? (pts.length > 12 ? 4 : 3) : 2) : r0 < 0.05 || sp.arch === 'shrub' ? (pts.length > 16 ? 3 : 2) : 1;
+    const stepK = fine ? (sp.arch === 'shrub' ? 4 : 3) : L2 ? Math.max(2, r0 > 0.03 ? Math.ceil((pts.length - 1) / (r0 > 0.08 ? 4 : 3)) : pts.length - 1) : L1 ? (r0 < 0.08 ? (pts.length > 12 ? 4 : 3) : 2) : r0 < 0.05 || sp.arch === 'shrub' ? (pts.length > 16 ? 3 : 2) : 1;
     if (pts.length > 3 && stepK > 1) { P2 = []; R2 = []; for (let k = 0; k < pts.length; k += stepK) { P2.push(pts[k]); R2.push(rad[k]); } if ((pts.length - 1) % stepK) { P2.push(pts[pts.length - 1]); R2.push(rad[rad.length - 1]); } }
     // a tree's trunk is sculpted (buttresses, twist, ridged bark, knots, a hollow) and sits in a soil collar; big
     // limbs swell into a collar where they leave their parent; roots sink into little mounds of earth
@@ -453,7 +469,7 @@ export function meshPlant(P: Plant, sp: PlantSpecies, tex: FloraTex, seed: numbe
     const base = l0.ramp[Math.min(l0.ramp.length - 1, 3)], ao = ampOf(amb);
     g.col = linHex(base, ao * SLOT_GAIN[fslot] * (isBark ? 0.95 : 1));
     g.kind = isBark && sp.arch !== 'coral' && sp.arch !== 'fungus' ? KIND.BARK : KIND.STEM; g.pivot = [0, 0, 0]; g.phase = r.next();
-    tube(g, P2, R2, fslot, sides, rm > 0.012);
+    tube(g, P2, R2, fslot, sides, rm > (L2 ? 0.03 : 0.012));
     if (rootEnd) soilCollar(g, pts[pts.length - 1], Math.max(0.02, rad[rad.length - 1] * 1.4), r, 1);
   }
 

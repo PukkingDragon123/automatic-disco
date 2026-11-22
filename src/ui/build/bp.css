@@ -310,3 +310,7 @@ body.bp-view-normal .bp-card { background: #3a3f45 var(--bp-gun) repeat; backgro
   box-shadow: inset 0 0 0 2px #08090c, inset 0 0 0 4px #858c92, inset 0 0 0 6px rgba(8, 9, 12, .65), 6px 8px 0 rgba(3, 8, 12, .45); }
 body.bp-view-normal .bp-card .bc-desc { color: #dcd8c6; }
 body.bp-view-normal .bp-card .bc-facts, body.bp-view-normal .bp-card .bc-keys { color: #b4bcb0; }
+/* the catalogue folded down to its title band */
+.bk-fold { position: absolute; right: 64px; top: 6px; z-index: 3; }
+.bk.on.fold { transform: translateY(calc(100% - 46px)); transition: transform .4s cubic-bezier(.3,.9,.4,1.1); }
+.bk.on:not(.fold) { transition: transform .45s cubic-bezier(.2,.9,.3,1.12); }

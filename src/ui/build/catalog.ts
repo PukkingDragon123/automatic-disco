@@ -132,6 +132,8 @@ class Card {
   }
   /** the housing again (picked: brass; the lamp's colour) */
   repaint() { this.fr?.repaint(); }
+  /** let go of the housing (its resize watch and canvas) */
+  dispose() { this.fr?.dispose(); }
   ping() { this.el.classList.remove('ping'); void this.el.offsetWidth; this.el.classList.add('ping'); }
   shake() { this.el.classList.remove('shake'); void this.el.offsetWidth; this.el.classList.add('shake'); }
   get imgEl() { return this.img; }
@@ -160,6 +162,11 @@ export class BuildCatalog {
     const body = p.body;
     body.innerHTML = `<div class="bk-tabs"></div><div class="bk-main"><div class="bk-bar"><label class="bk-q"><img src="${bpIcon('info')}" alt=""><input class="k7-t16" type="text" spellcheck="false" placeholder="Search buildings, materials..." aria-label="search the catalogue"></label><span class="bk-lbl k7-t16">SHOW</span><span class="bk-show"></span><span class="bk-lbl k7-t16">SORT</span><span class="bk-sort"></span></div>`
       + `<div class="bk-head"></div><div class="bk-sub k7-t16"></div><div class="bk-strip"></div><div class="bk-track"><div class="bk-thumb"></div></div></div>`;
+    // FOLD: the catalogue sinks to its title band (more of the map to build on), SHOW brings it back
+    const fold = pkey('FOLD', () => { const f = this.root.classList.toggle('fold'); fold.querySelector('.kkey-t')!.textContent = f ? 'SHOW' : 'FOLD'; fold.setOn(f); }, { w: 76, h: 24, tone: 'cream', lamp: 'amber', sound: 'switch' });
+    fold.classList.add('bk-fold');
+    bindTip(fold, () => ({ title: this.root.classList.contains('fold') ? 'SHOW THE CATALOGUE' : 'FOLD THE CATALOGUE', desc: 'Sinks the catalogue to its title band to free the map; the building in hand stays in hand.' }));
+    this.root.appendChild(fold);
     document.body.appendChild(this.root);
     this.strip = body.querySelector('.bk-strip')!; this.head = body.querySelector('.bk-head')!; this.sub = body.querySelector('.bk-sub')!;
     this.q = body.querySelector('input')!; this.thumb = body.querySelector('.bk-thumb')!; this.track = body.querySelector('.bk-track')!;
@@ -188,7 +195,7 @@ export class BuildCatalog {
     addEventListener('pointerup', this.onUp);
     this.syncKeys();
   }
-  dispose() { removeEventListener('pointermove', this.onMove); removeEventListener('pointerup', this.onUp); this.pan.dispose(); }
+  dispose() { removeEventListener('pointermove', this.onMove); removeEventListener('pointerup', this.onUp); for (const c of this.cards) c.dispose(); this.pan.dispose(); }
 
   // ------------------------------------------------------------------ open / close, tabs, filters
   open(cat?: BuildCat) {
@@ -262,6 +269,8 @@ export class BuildCatalog {
       old.forEach((r) => r.querySelectorAll('.bk-card').forEach((e, i) => { e.classList.add('drop'); (e as HTMLElement).style.setProperty('--i', String(Math.min(i, 8))); }));
       setTimeout(() => old.forEach((e) => e.remove()), 240);
     } else this.strip.innerHTML = '';
+    const gone = this.cards;
+    setTimeout(() => gone.forEach((c) => c.dispose()), swap ? 260 : 0);
     this.cards = [];
     this.syncKeys();
     const ks = this.list(), f = this.f;
