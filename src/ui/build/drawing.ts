@@ -1,18 +1,21 @@
 // TECHNICAL DRAWINGS of a building traced from its own model: the studio (studio.ts `drawingPasses`) renders the model
 // orthographically as a flat id per part, view-space normals and depth; this file traces them at the art resolution into
 // clean pixel line art on blueprint paper: white silhouettes, pale lines where parts meet or the surface folds or steps
-// back, faces washed in the paper's tones by how they meet the light (clustered dither, no hatching). Views: 'iso'
+// back, faces in the material library's blueprint stock washed by how they meet the light (no hatching). Views: 'iso'
 // (a three-quarter isometric), 'plan', 'front', 'side'. Cached per kind, view and size.
 import type { FKind } from '../../factory/defs';
 import { drawingPasses } from './studio';
 import { RAMPS as P } from '../../art/palette';
 import { qstep } from '../kit/paint';
+import { matPixels } from '../../gfx/mat';
+import '../../gfx/mat/blueprint';
 
 export interface TechDrawing { cv: HTMLCanvasElement; scale: number; w: number; h: number }
 const cache = new Map<string, TechDrawing | null>();
 const rgb = (c: number) => [(c >> 16) & 255, (c >> 8) & 255, c & 255] as const;
 const LINE = rgb(P.quartz[5]), CREASE = rgb(P.sapphire[6]), DEEP = rgb(P.sapphire[1]);
-const TONES = [P.sapphire[1], P.sapphire[2], P.sapphire[3], P.sapphire[4]].map(rgb);
+/** light washes over the paper stock, shade to lit */
+const WASH = [0.7, 0.92, 1.12, 1.32];
 const L = (() => { const v = [-0.45, 0.65, 0.6], n = Math.hypot(...v); return v.map((x) => x / n); })();
 
 /** the building traced as a technical drawing, w x h art px (null before the studio is set up) */
@@ -21,7 +24,7 @@ export function techDrawing(kind: FKind, view: 'iso' | 'plan' | 'front' | 'side'
   if (cache.has(key)) return cache.get(key)!;
   const ps = drawingPasses(kind, w, h, view);
   if (!ps) return null;
-  const { id, nrm, dep } = ps, N = w * h;
+  const { id, nrm, dep } = ps, N = w * h, paper = matPixels('paper_blueprint', 1);
   const A = (i: number) => id[i * 4 + 3] > 8;
   const ID = (i: number) => (id[i * 4] << 16) | (id[i * 4 + 1] << 8) | id[i * 4 + 2];
   const nx = (i: number) => nrm[i * 4] / 127.5 - 1, ny = (i: number) => nrm[i * 4 + 1] / 127.5 - 1, nz = (i: number) => nrm[i * 4 + 2] / 127.5 - 1;
@@ -41,9 +44,11 @@ export function techDrawing(kind: FKind, view: 'iso' | 'plan' | 'front' | 'side'
     if (!l || !r || !u || !dn) { put(i, LINE); continue; }
     const crease = (j: number) => ID(j) !== ID(i) || nx(i) * nx(j) + ny(i) * ny(j) + nz(i) * nz(j) < 0.86 || Math.abs(D(i) - D(j)) > 0.035;
     if (crease(i + 1) || crease(i + w)) { put(i, CREASE); continue; }
-    // faces washed by how they meet the light, the tones broken in clumps (the kit's clustered dither, no hatching)
+    // faces: the library's blueprint stock washed by how they meet the light (four washes, broken in clumps)
     const lit = nx(i) * L[0] + ny(i) * L[1] + nz(i) * L[2];
-    put(i, TONES[qstep(1 + Math.max(0, Math.min(1, (lit + 0.15) / 0.95)) * 2.2, x, y, TONES.length, 17)]);
+    const k = WASH[qstep(1 + Math.max(0, Math.min(1, (lit + 0.15) / 0.95)) * 2.2, x, y, WASH.length, 17)];
+    const ti = ((y % paper.h) * paper.w + (x % paper.w)) * 4;
+    put(i, [Math.min(255, paper.data[ti] * k), Math.min(255, paper.data[ti + 1] * k), Math.min(255, paper.data[ti + 2] * k)]);
   }
   g.putImageData(img, 0, 0);
   const out: TechDrawing = { cv, scale: ps.scale, w, h };

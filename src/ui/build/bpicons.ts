@@ -1,9 +1,11 @@
-// BUILD MODE ICONS: small physical objects painted as clean pixel art (flat material shapes rasterised from distance
-// fields at 24 x 24 art px, then lit from the upper left with the kit's sprite shader: bevelled height, warm lights and
-// cool shadows, dithered, a 1 px ink outline), shown at 2 CSS px per art px. And the FLOATING ICON BUTTON
+// BUILD MODE ICONS: small physical objects as clean pixel art (material shapes rasterised from distance fields at 24 x 24
+// art px, lit from the upper left with the kit's sprite shader: bevelled height, warm lights, cool shadows, a 1 px ink
+// outline, then each surface given its real material's grain from the shared MATERIAL LIBRARY: brushed steel, machined
+// steel, brass, enamel, blueprint paper, glass), shown at 2 CSS px per art px. And the FLOATING ICON BUTTON
 // (Limbophobia's floatIcon): the object hangs over a soft shadow and bobs; under the pointer it lifts, grows and
 // brightens; pressed it dips; locked it shakes. No key, tile or frame around it; its short name (if any) floats under it.
 import { Px, shadeSprite, INK } from '../kit/px';
+import { matPixels } from '../../gfx/mat';
 import { RAMPS as P } from '../../art/palette';
 import { play } from './juice';
 
@@ -132,14 +134,36 @@ const SHAPES: Record<BpIcon, Shape> = {
   },
 };
 
+/** which library material each flat colour of a shape stands for */
+const MAT_OF = new Map<number, string>([
+  [STEEL, 'metal_brushed'], [STEEL_D, 'metal_machined'], [BRASS, 'metal_brass'], [BRASS_L, 'metal_brass'], [RED, 'enamel_red'], [RED_D, 'enamel_red'],
+  [GREEN, 'enamel_green'], [BLUE, 'paper_blueprint'], [BLUE_L, 'paper_blueprint_back'], [AMBER, 'metal_brass'], [GLASS, 'glass'], [WOOD, 'metal_brass'],
+  [P.paper[5], 'paper'], [P.hide[4], 'enamel_cream'], [P.olive[4], 'enamel_olive'],
+]);
+/** a material's grain at a texel: its luminance over its mean, kept gentle (0.86 .. 1.14) */
+const meanLum = new Map<string, number>();
+function grain(name: string, x: number, y: number) {
+  const m = matPixels(name, 1), d = m.data;
+  let mean = meanLum.get(name);
+  if (mean === undefined) { let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11; mean = s / (d.length / 4) || 1; meanLum.set(name, mean); }
+  const i = ((y % m.h) * m.w + (x % m.w)) * 4, l = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
+  return Math.max(0.86, Math.min(1.14, 1 + (l / mean - 1) * 0.8));
+}
 const cache = new Map<string, string>();
 /** the icon as a data URL, 24 x 24 art px (show it at 48 CSS px) */
 export function bpIcon(name: BpIcon, tint?: 'dim' | 'hot'): string {
   const key = name + (tint ?? '');
   const hit = cache.get(key); if (hit) return hit;
-  const p = new Px(S + 2, S + 2), f = SHAPES[name];
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) { const c = f(x + 0.5, y + 0.5); if (c >= 0) p.set(x + 1, y + 1, c); }
+  const p = new Px(S + 2, S + 2), f = SHAPES[name], matOf = new Array<string | null>((S + 2) * (S + 2)).fill(null);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) { const c = f(x + 0.5, y + 0.5); if (c >= 0) { p.set(x + 1, y + 1, c); matOf[(y + 1) * (S + 2) + x + 1] = MAT_OF.get(c) ?? null; } }
   shadeSprite(p, { bevel: 2, light: 1.1, seed: name.length * 7 });
+  // the surfaces carry their real material: the library texture's own grain laid over the lit shape
+  for (let y = 0; y < S + 2; y++) for (let x = 0; x < S + 2; x++) {
+    const mn = matOf[y * (S + 2) + x]; if (!mn || p.alpha(x, y) === 0) continue;
+    const k = grain(mn, x, y), c = p.get(x, y); if (c < 0) continue;
+    const r = Math.min(255, ((c >> 16) & 255) * k), g = Math.min(255, ((c >> 8) & 255) * k), b = Math.min(255, (c & 255) * k);
+    p.set(x, y, (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b));
+  }
   if (tint === 'dim') for (let i = 0; i < p.d.length; i += 4) { const l = p.d[i] * 0.3 + p.d[i + 1] * 0.59 + p.d[i + 2] * 0.11; p.d[i] = p.d[i + 1] = p.d[i + 2] = l * 0.55; }
   const url = p.url();
   cache.set(key, url);

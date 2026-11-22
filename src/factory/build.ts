@@ -572,7 +572,6 @@ export class Build {
     this.selected = null; this.press = null;
     this.kind = null; this.tool = 'move'; this.rot = t.r; this.hoverKey = '';
     this.carryDrag = drag;
-    if (!site) this.f.render.sel = t as FBuilding;
     play('lift', 1, 0.5);
     this.hoverAt(this.g.input.mx, this.g.input.my, true);
     this.onChange?.();

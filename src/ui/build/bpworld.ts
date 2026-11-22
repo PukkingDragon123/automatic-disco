@@ -2,7 +2,7 @@
 // own image (it wraps engine.post.render for the world scene only, so the HUD's 3D hardware still draws over it) reads
 // the G-buffer (depth, world normals) and a MASK of the colony's structures (the factory render group drawn again with
 // a flat id / normal / kind material) and paints, at 2 screen px per art px:
-//   cyan-blue paper: mottled in world space, fibre grain, a posterised hill-shade, ordered dither between the tones;
+//   cyan-blue paper: the material library's blueprint stock (src/gfx/mat 'paper_blueprint') lit by a soft hill-shade;
 //   a crisp 1 m grid with 5 m majors, terrain contours every 0.5 m (2 m majors), hatched water;
 //   flora, rocks and creatures as outlined stippled masses (a site plan's trees);
 //   buildings as WHITE TECHNICAL DRAWINGS: bright silhouettes, part and crease lines, roofs washed, walls hatched;
@@ -14,6 +14,8 @@ import * as THREE from 'three';
 import type { Factory } from '../../factory/factory';
 import type { Post } from '../../gfx/post';
 import { FDEFS, type FKind } from '../../factory/defs';
+import { matTex } from '../../gfx/mat';
+import '../../gfx/mat/blueprint';
 
 /** mask kinds (alpha = kind / 16) */
 export const MK = { none: 0, building: 1, site: 2, ghostOk: 3, ghostBad: 4, sel: 5, res: 6, line: 7, item: 8, hover: 9, moving: 10 } as const;
@@ -53,7 +55,8 @@ uniform float uKind; void main() { gl_FragColor = vec4(0.0, 0.5, 0.5, uKind / 16
 const BP_F = /* glsl */`
 precision highp float;
 varying vec2 vUv;
-uniform sampler2D tDepth, tNormal, tMask, tCell, tHgt;
+uniform sampler2D tDepth, tNormal, tMask, tCell, tHgt, tPaper;
+uniform float uPaperN;
 uniform mat4 uInvProj, uCamWorld;
 uniform vec2 uRes, uWipeC;
 uniform float uTime, uMix, uWipe, uN, uFovK, uK, uHand, uSeam, uTray, uSelPulse;
@@ -112,26 +115,20 @@ void main() {
   vec4 cell = cellAt(s.P.xz);
   bool water = !obj && !s.sky && cell.g > 0.5;
 
-  // ---- paper
-  // the paper sits on a tone step (calm), mottled into the next one in wide clumps
-  float L = 2.1;
-  L += (vnoise(s.P.xz * 0.04) - 0.5) * 0.7 + (vnoise(s.P.xz * 0.15 + 7.0) - 0.5) * 0.18;
+  // ---- paper: the material library's blueprint stock (src/gfx/mat 'paper_blueprint'), one texel per art pixel, lit by
+  // the ground under it (a soft hill-shade), darker where it is water, sinking toward the tray
+  vec3 paper = pow(texture2D(tPaper, (cp + 0.5) / uPaperN).rgb, vec3(1.0 / 2.2));
   float hs = dot(N, normalize(vec3(-0.55, 0.78, -0.32)));
-  if (!obj) L += clamp((hs - 0.8) * 1.6, -0.8, 0.35);
-  float fib = h21(cp);
-  L += (fib - 0.5) * 0.06;
-  if (h21(cp + 11.0) > 0.985) L += 0.6; // paper flecks
-  if (h21(cp * 1.31 + 23.0) > 0.99) L -= 0.5;
-  if (s.sky) L = 2.0 + (fib - 0.5) * 0.4;
+  float L = 1.0;
+  if (!obj && !s.sky) L += clamp((hs - 0.8) * 0.55, -0.28, 0.1);
   if (water) {
-    // water: a deeper tone with soft ripple glints drifting over it (clumps, not lines)
-    L = 1.55 + (vnoise(s.P.xz * 0.3 + uTime * 0.05) - 0.5) * 0.5;
-    if (vnoise(vec2(s.P.x * 1.1, s.P.z * 2.6) + vec2(uTime * 0.21, -uTime * 0.13)) > 0.74) L += 1.0;
+    // water: the stock a shade deeper, soft ripple glints drifting over it in clumps
+    L = 0.66;
+    if (vnoise(vec2(s.P.x * 1.1, s.P.z * 2.6) + vec2(uTime * 0.21, -uTime * 0.13)) > 0.74 && clusterT(cp) < 0.7) L = 0.92;
   }
   float tray = uTray * clamp(1.0 - fc.y / (uRes.y * 0.24), 0.0, 1.0);
-  L -= tray * tray * 1.6;
-  float Lf = floor(L); L = clamp(Lf + step(clusterT(cp), L - Lf), 0.0, 4.0);
-  vec3 col = rampC(L);
+  L *= 1.0 - tray * tray * 0.5;
+  vec3 col = paper * L;
 
   // ---- grid (ground only) and contours
   bool smth = !s.sky && abs(s.vz - sr.vz) < 0.35 + s.vz * 0.012 && abs(s.vz - su.vz) < 0.35 + s.vz * 0.012;
@@ -166,9 +163,9 @@ void main() {
   }
   // ---- flora, rocks, creatures: stippled masses with a pale outline
   if (obj) {
-    // a site plan's vegetation: a quiet mass one tone down, its crowns lit on the upper left
-    float oh = clamp((hs + 0.1) * 1.2, 0.0, 1.0), Lo = 1.15 + oh * 0.75 + (vnoise(s.P.xz * 0.3) - 0.5) * 0.3, Lof = floor(Lo);
-    col = rampC(clamp(Lof + step(clusterT(cp + 17.0), Lo - Lof), 1.0, 3.0));
+    // a site plan's vegetation: the stock a shade down, its crowns lit on the upper left (clustered between two shades)
+    float oh = clamp((hs + 0.1) * 1.2, 0.0, 1.0);
+    col = paper * (step(clusterT(cp + 17.0), oh) > 0.5 ? 0.86 : 0.7) * (1.0 - tray * tray * 0.5);
   }
   if ((obj != objR || obj != objU) && !s.sky) col = mix(col, rampC(4.0), 0.25);
   // the printed grid runs over everything on the sheet (1 m minor, 5 m major)
@@ -259,8 +256,8 @@ export class BlueprintWorld {
   cursor: [number, number] = [0, 0];
   /** extra kinds for structures: the build mode marks the selection, the hover and a building being moved */
   marks = new Map<THREE.Object3D, number>();
-  /** the factory's selected building (drawn singly) is the one being carried: draw it as the faint original */
-  selMoving = false;
+  /** what the factory's hovered building (drawn singly) stands for: the hover, the selection, or the carried original */
+  hoverAs: number = MK.hover;
   private maskRT: THREE.WebGLRenderTarget; private artRT: THREE.WebGLRenderTarget; private blit: THREE.ShaderMaterial;
   private quad: THREE.Mesh; private qs = new THREE.Scene(); private ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private mat: THREE.ShaderMaterial;
@@ -283,9 +280,11 @@ export class BlueprintWorld {
     this.hgtTex = new THREE.DataTexture(this.hgtData, N, N, THREE.RedFormat, THREE.HalfFloatType);
     this.hgtTex.minFilter = this.hgtTex.magFilter = THREE.LinearFilter; this.hgtTex.needsUpdate = true;
     const post = f.g.engine.post;
+    const paperTex = matTex('paper_blueprint');
     this.mat = new THREE.ShaderMaterial({
       vertexShader: VERT, fragmentShader: BP_F, transparent: true, depthTest: false, depthWrite: false,
       uniforms: {
+        tPaper: { value: paperTex }, uPaperN: { value: paperTex.image.width },
         tDepth: post.U.tDepth, tNormal: post.U.tNormal, tMask: { value: this.maskRT.texture }, tCell: { value: this.cellTex }, tHgt: { value: this.hgtTex },
         uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() },
         uRes: { value: new THREE.Vector2(1, 1) }, uWipeC: { value: new THREE.Vector2() },
@@ -334,7 +333,7 @@ export class BlueprintWorld {
     for (let p: THREE.Object3D | null = o; p; p = p.parent) { const mk = this.marks.get(p); if (mk) return mk; if (siteOf.has(p)) return MK.site; if (p === this.f.render.group) break; }
     if ((o as THREE.LineSegments).isLineSegments || (o as THREE.Line).isLine) return MK.line;
     const mat = (o as THREE.Mesh).material as THREE.Material & { __flag?: { value: number } };
-    if (mat && (mat as { __flag?: { value: number } }).__flag) { const fl = mat.__flag!.value; return fl & 2 ? (this.selMoving ? MK.moving : MK.sel) : fl & 4 ? MK.hover : MK.building; }
+    if (mat && (mat as { __flag?: { value: number } }).__flag) { const fl = mat.__flag!.value; return fl & 2 ? MK.sel : fl & 4 ? this.hoverAs : MK.building; }
     if ((o as THREE.InstancedMesh).isInstancedMesh) return mat === this.f.render.mat ? MK.building : MK.item;
     if (o.parent === this.f.render.group && mat === this.f.render.mat) return MK.res;
     return MK.building;

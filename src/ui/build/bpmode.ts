@@ -174,9 +174,11 @@ export class BuildMode {
     if (mv?.s) W.marks.set(mv.s.mesh, MK.moving);
     const sel = this.b.selected;
     if (sel && !mv) { const o = isSite(sel) ? sel.mesh : (sel as unknown as { __lp?: THREE.Object3D }).__lp; if (o) W.marks.set(o, MK.sel); }
-    // the factory draws its selected building singly (the blueprint reads it as the selection, or the carried original)
-    W.selMoving = !!mv?.b;
-    if (this.on) this.f.render.sel = mv?.b ?? (sel && !isSite(sel) ? sel as FBuilding : null);
+    // the factory draws its hovered building singly: in build mode that slot carries the selection (or the carried
+    // original); render.sel stays free (the stores open a container's window when it changes)
+    const one = mv?.b ?? (sel && !isSite(sel) ? sel as FBuilding : null);
+    W.hoverAs = mv?.b ? MK.moving : one ? MK.sel : MK.hover;
+    if (this.on && one) this.f.render.hover = one;
     W.update(dt);
     this.tray.update(dt);
     this.updateDrops(dt);

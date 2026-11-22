@@ -23,6 +23,7 @@ import { play } from './juice';
 import { Px, cellBar, INK } from '../kit/px';
 import { bitText } from '../kit/bitfont';
 import { RAMPS as P } from '../../art/palette';
+import { matPixels } from '../../gfx/mat';
 
 const W = 300, H = 404; // art px (shown at 2x)
 const hex = (c: number) => '#' + c.toString(16).padStart(6, '0');
@@ -31,6 +32,11 @@ const esc = (s: string) => s.replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt
 const fmt = (n: number) => (n >= 100 ? Math.round(n).toString() : n >= 10 ? n.toFixed(0) : n.toFixed(1).replace(/\.0$/, ''));
 const ST_ORDER: Status[] = ['working', 'idle', 'starved', 'blocked', 'nopower'];
 
+/** a library material's texel at (x, y), times a light factor (the dials' brass and enamel) */
+function texel(name: string, x: number, y: number, k = 1) {
+  const m = matPixels(name, 1), i = (((y % m.h) + m.h) % m.h * m.w + (((x % m.w) + m.w) % m.w)) * 4, d = m.data;
+  return (Math.min(255, Math.round(d[i] * k)) << 16) | (Math.min(255, Math.round(d[i + 1] * k)) << 8) | Math.min(255, Math.round(d[i + 2] * k));
+}
 /** the recipe arrow: a white pixel arrow with an ink rim (12 x 7 art px) */
 let ARROW = '';
 function arrowUrl() {
@@ -209,10 +215,11 @@ export class BlueprintSheet {
       for (let y = -r - 2; y <= r + 2; y++) for (let x = -r - 2; x <= r + 2; x++) {
         const dd = Math.hypot(x + 0.5, y + 0.5);
         if (dd > r + 1.5) continue;
-        if (dd > r - 1.5) { band.set(cx + x, cy + y, dd > r + 0.5 ? INK : (x + y < 0 ? P.brass[5] : P.brass[2])); continue; }
-        if (y > 4) { if (dd > r - 3) band.set(cx + x, cy + y, P.brass[3]); continue; }
+        // a brass bezel and an enamel face, both from the material library, lit from the upper left
+        if (dd > r - 1.5) { band.set(cx + x, cy + y, dd > r + 0.5 ? INK : texel('metal_brass', cx + x, cy + y, x + y < 0 ? 1.25 : 0.7)); continue; }
+        if (y > 4) { if (dd > r - 3) band.set(cx + x, cy + y, texel('metal_brass', cx + x, cy + y, 0.9)); continue; }
         const a = Math.atan2(y + 0.5, x + 0.5); // -PI..0 is the upper half
-        let c = P.quartz[4];
+        let c = texel('enamel_white', cx + x, cy + y, 1.02 - (y + r) / r * 0.1);
         if (sectors) { const k = Math.max(0, Math.min(sectors.length - 1, Math.floor(((a + Math.PI) / Math.PI) * sectors.length))); if (dd > r - 7 && y < 0) c = sectors[k]; }
         else if (dd > r - 6 && a > -0.55 && y < 0) c = P.stampRed[3];
         band.set(cx + x, cy + y, c);

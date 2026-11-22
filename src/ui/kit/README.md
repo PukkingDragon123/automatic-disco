@@ -32,8 +32,8 @@ news.xbox.com (Frostpunk console radial design), timberborn.featureupvote.com (p
 gamedeveloper.com (Eastward / Pixpil interviews), screwloose-games pixel art guide (integer scaling).
 
 ## Modules (import from `src/ui/kit`; the full API list is in src/game/V7.md, "UI CORE")
-- `px.ts` pixel buffer and primitives; `paint.ts` the Limbophobia-style material painter (hue-shifted ramps, clustered
-  dither, real wear); `mat.ts` plates, skins, shadows; `bitfont.ts` Alagard bitmap text with an 8-way ink outline.
+- `px.ts` pixel buffer and primitives; `libmat.ts` every surface from the MATERIAL LIBRARY (src/gfx/mat, Limbophobia's
+  textures + the sci-fi set); `mat.ts` plates (library face + bevel, ink, screws, wear), skins, shadows; `bitfont.ts` Alagard bitmap text with an 8-way ink outline.
 - `model3d.ts` the 3D-in-UI renderer (toon material, black outline post, `ModelView`); `tex3d.ts` painted textures;
   `models.ts` dock, tool, crate and custom-tool models + the TOOL MODELS hook; `hardware.ts` sci-fi mechanical
   hardware (turret, cradles, docking bays, jig, gearboxes, pistons) with named moving parts.
