@@ -303,6 +303,8 @@ gNormal = vec4(inverseTransformDirection(normal, viewMatrix) * 0.5 + 0.5, outl +
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\n' + FRAG_PARS_3D)
       .replace('#include <map_fragment>', `${FRAG_TEX_3D}
+// foliage masses cast dappled shade: the light passes between their painted leaves
+if (massK && alM < 0.5) discard;
 if (vGraft.z > 0.0) { vec3 q = floor(vLocal * 46.0); if (h2(q.xy + q.z * 3.1 + 13.0) * 0.65 + vUp * 0.35 < vGraft.z * 1.05) discard; }`)
       .replace('#include <alphatest_fragment>', '');
   };
