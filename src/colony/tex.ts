@@ -142,7 +142,7 @@ export function hullSheet(seed = 7): Sheet {
     g.fillStyle = COL.orange; g.fillRect(0, 474, W, 22); g.fillStyle = COL.orangeD; g.fillRect(0, 494, W, 2);
     g.fillStyle = COL.blue; g.fillRect(0, 500, W, 8);
     b.fillStyle = '#868686'; b.fillRect(0, 474, W, 34);
-    for (let x = 40; x < W; x += 512) { stencil(g, 'UNAA', x, 485, 18, '#f3efe4', { spacing: 6 }); stencil(g, 'COLONY POD CP-07', x + 150, 485, 14, '#f3efe4', { font: "'VT', monospace", spacing: 2 }); }
+    for (let x = 40; x < W; x += 512) { stencil(g, 'UNAA', x, 485, 18, '#f3efe4', { spacing: 6 }); stencil(g, 'SETTLER POD CP-07', x + 150, 485, 14, '#f3efe4', { font: "'VT', monospace", spacing: 2 }); }
     // a dusting of grime toward the feet of the sheet (the lower hull gets dirtier: the shader cannot know, the sheet can)
     for (let y = 0; y < 140; y += 2) { g.fillStyle = `rgba(90,80,62,${(0.12 * (y / 140)).toFixed(3)})`; g.fillRect(0, H - 140 + y, W, 2); }
     return { map: texOf(c), bump: texOf(bc, false) };
@@ -303,7 +303,7 @@ export function decalSheet(): THREE.Texture {
     g.clearRect(0, 0, 1024, 512);
     const D = DECAL, at = (k: string) => D[k];
     { const [x, y, w] = at('roundel'); roundel(g, x + w / 2, y + w / 2, w * 0.46); }
-    { const [x, y, , h] = at('name'); stencil(g, 'UNAA COLONY POD  CP-07', x + 8, y + h * 0.36, 44, COL.ink, { spacing: 3 }); stencil(g, 'UNITED NATIONS OF ANTARCTICA AND THE AMERICAS  ·  PLANETARY RESEARCH PROGRAM', x + 10, y + h * 0.8, 17, COL.ink, { font: "'VT', monospace", alpha: 0.85 }); }
+    { const [x, y, , h] = at('name'); stencil(g, 'UNAA SETTLER POD  CP-07', x + 8, y + h * 0.36, 44, COL.ink, { spacing: 3 }); stencil(g, 'UNITED NATIONS OF ANTARCTICA AND THE AMERICAS  ·  PLANETARY RESEARCH PROGRAM', x + 10, y + h * 0.8, 17, COL.ink, { font: "'VT', monospace", alpha: 0.85 }); }
     { const [x, y, w, h] = at('big07'); stencil(g, '07', x + w / 2, y + h / 2 + 4, 150, COL.ink, { align: 'center' }); }
     { const [x, y, , h] = at('unaa'); stencil(g, 'UNAA', x + 6, y + h / 2, 84, COL.blueD, { spacing: 16 }); }
     { const [x, y, w, h] = at('arrow'); g.fillStyle = COL.ink; g.beginPath(); g.moveTo(x + 10, y + h / 2 - 8); g.lineTo(x + w - 40, y + h / 2 - 8); g.lineTo(x + w - 40, y + 8); g.lineTo(x + w - 6, y + h / 2); g.lineTo(x + w - 40, y + h - 8); g.lineTo(x + w - 40, y + h / 2 + 8); g.lineTo(x + 10, y + h / 2 + 8); g.closePath(); g.fill(); }

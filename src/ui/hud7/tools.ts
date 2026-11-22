@@ -45,7 +45,7 @@ export const STAT_INFO: Record<keyof Stats, { name: string; short: string; unit:
   power: { name: 'Output', short: 'OUTPUT', unit: 'kW', k: 5, desc: 'work the head does' },
   reach: { name: 'Reach', short: 'REACH', unit: 'm', k: 1, desc: 'how far from the pod it works' },
   speed: { name: 'Handling', short: 'HANDLING', unit: '', k: 1, signed: true, desc: 'how fast it swings and cycles' },
-  draw: { name: 'Power draw', short: 'DRAW', unit: 'kW', k: 1, desc: 'taken from the colony grid while in use' },
+  draw: { name: 'Power draw', short: 'DRAW', unit: 'kW', k: 1, desc: 'taken from the settlement grid while in use' },
   mass: { name: 'Mass', short: 'MASS', unit: 'kg', k: 1, desc: 'heavier tools are steadier but slower' },
 };
 /** a stat as text: value with its unit ('+2', '15 kW', '8 m') */

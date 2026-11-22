@@ -8,12 +8,12 @@ import { skin, platePix, Pix, R, fontText } from '../ui/desk/pxPanel';
 
 export type FailReason = 'collapse-power' | 'collapse-oxygen' | 'collapse-food' | 'collapse-workers' | 'pod-destroyed' | 'recalled';
 const TEXT: Record<FailReason, [string, string]> = {
-  'collapse-power': ['COLONY COLLAPSE · POWER', 'The battery ran flat and stayed flat. Life support, the scrubbers and the arms went dark one after another.'],
-  'collapse-oxygen': ['COLONY COLLAPSE · OXYGEN', 'The tank ran dry. Nobody in the pod could breathe, and nobody outside could refill a suit.'],
-  'collapse-food': ['COLONY COLLAPSE · FOOD', 'The lockers were empty for too long. The crew could not work, then could not stand.'],
-  'collapse-workers': ['COLONY COLLAPSE · NO WORKERS', 'There is nobody left on the ground to keep the colony running.'],
+  'collapse-power': ['SETTLEMENT COLLAPSE · POWER', 'The battery ran flat and stayed flat. Life support, the scrubbers and the arms went dark one after another.'],
+  'collapse-oxygen': ['SETTLEMENT COLLAPSE · OXYGEN', 'The tank ran dry. Nobody in the pod could breathe, and nobody outside could refill a suit.'],
+  'collapse-food': ['SETTLEMENT COLLAPSE · FOOD', 'The lockers were empty for too long. The crew could not work, then could not stand.'],
+  'collapse-workers': ['SETTLEMENT COLLAPSE · NO WORKERS', 'There is nobody left on the ground to keep the settlement running.'],
   'pod-destroyed': ['POD CP-07 DESTROYED', 'The hull gave way. Unit 07\'s core went silent with it.'],
-  'recalled': ['MISSION RECALLED', 'The program has pulled the colony. Quotas missed; the board has lost confidence in Unit 07.'],
+  'recalled': ['MISSION RECALLED', 'The program has pulled the settlement. Quotas missed; the board has lost confidence in Unit 07.'],
 };
 
 export class FailScreen {
@@ -25,7 +25,7 @@ export class FailScreen {
   show(reason: FailReason, detail?: string) {
     if (this.on) return;
     this.on = true; this.t = 0;
-    const g = this.c.g, [title, body] = TEXT[reason] ?? ['COLONY LOST', ''];
+    const g = this.c.g, [title, body] = TEXT[reason] ?? ['SETTLEMENT LOST', ''];
     this.from.copy(g.cam.cam.position); this.ang = Math.atan2(this.from.x - this.c.pod.x, this.from.z - this.c.pod.z);
     this.prevCine = g.cineCam;
     g.cineCam = (cam, dt) => this.camera(cam, dt);

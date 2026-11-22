@@ -257,7 +257,7 @@ body.bp-on .hud.cx > .cx-top { translate: 0 -120%; opacity: 0; pointer-events: n
 @keyframes bk-swing { from { rotate: -4deg; } to { rotate: 4deg; } }
 .bk-tier.k7-t16 { position: absolute; left: 10px; top: 9px; z-index: 2; font-weight: normal; color: #1a1408; text-shadow: none; background: #d8ceb0; padding: 0 4px; line-height: 16px; pointer-events: none;
   box-shadow: inset -1px -2px 0 #8a8068, inset 1px 1px 0 #fff4d8, 0 0 0 1px #0a0b0c, 1px 2px 0 #0a0b0c; }
-.bk-built.k7-t16 { position: absolute; right: 11px; top: 9px; z-index: 2; font-weight: normal; color: #9fe08a; pointer-events: none; }
+.bk-built.k7-t16 { position: absolute; right: 11px; top: 86px; z-index: 2; font-weight: normal; color: #9fe08a; pointer-events: none; }
 .bk-name.k7-t16 { position: absolute; left: 6px; right: 6px; top: 108px; text-align: center; overflow: hidden; text-overflow: ellipsis; color: #f2ecd4; pointer-events: none; }
 .bk-facts.k7-t16 { position: absolute; left: 6px; right: 6px; top: 127px; text-align: center; overflow: hidden; color: #a8b0a0; pointer-events: none; }
 .bk-cost { position: absolute; left: 6px; right: 6px; top: 145px; height: 32px; display: flex; justify-content: center; align-items: center; gap: 12px; pointer-events: none; }
@@ -266,18 +266,17 @@ body.bp-on .hud.cx > .cx-top { translate: 0 -120%; opacity: 0; pointer-events: n
 .bk-c i.k7-t16 { position: absolute; right: -8px; bottom: -5px; font-style: normal; color: #f2ecd4; }
 .bk-c.lack i.k7-t16 { color: #ff8a6a; }
 .bk-c.free { width: auto; color: #9fe08a; }
-.bk-why.k7-t16 { color: #ff9a7a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 134px; }
+.bk-why.k7-t16 { color: #ff9a7a; white-space: normal; text-align: center; line-height: 16px; max-height: 32px; overflow: hidden; max-width: 134px; }
 .bk-drag { position: fixed; z-index: 9000; pointer-events: none; transform: translate(-50%, -62%); transition: opacity .18s, transform .18s; }
 .bk-drag img { width: 128px; height: 96px; image-rendering: pixelated; filter: drop-shadow(0 10px 6px rgba(3, 8, 22, .55)); }
 .bk-drag.out { opacity: 0; transform: translate(-50%, -40%) scale(.6); }
 .bk-drag.home { transition: left .24s cubic-bezier(.3,.9,.4,1.2), top .24s cubic-bezier(.3,.9,.4,1.2), opacity .24s; }
 
 /* ---------------------------------------------------------------- the BUILDING DATA card (detail.ts) */
-.bd { position: fixed; right: 16px; top: 168px; bottom: 14px; width: 452px; z-index: 806; visibility: hidden; transform: translateX(calc(100% + 40px)); }
+.bd { position: fixed; right: 16px; top: 156px; bottom: 14px; width: 452px; z-index: 806; visibility: hidden; transform: translateX(calc(100% + 40px)); }
 .bd.on { visibility: visible; transform: none; transition: transform .55s .08s cubic-bezier(.2,.9,.3,1.1); }
 .bd.out { visibility: visible; transform: translateX(calc(100% + 40px)); transition: transform .3s cubic-bezier(.55,0,.85,.35), visibility 0s .3s; }
-.bd > .kp-body { height: 100%; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
-.bd > .kp-body::-webkit-scrollbar { display: none; }
+.bd > .kp-body { height: 100%; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: #c89838 #0a0c0e; padding-right: 4px; box-sizing: border-box; }
 .bd.flip .bd-top, .bd.flip .bd-body { animation: bd-flip .28s cubic-bezier(.2,.9,.3,1.2) both; }
 .bd.flip .bd-pic { animation: bd-pic .34s cubic-bezier(.2,1.5,.4,1) both; }
 @keyframes bd-flip { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -300,7 +299,7 @@ body.bp-on .hud.cx > .cx-top { translate: 0 -120%; opacity: 0; pointer-events: n
 .bd-keys { display: flex; flex-wrap: wrap; row-gap: 6px; margin-top: 10px; }
 
 /* ---------------------------------------------------------------- the VIEW switch */
-.bv { position: fixed; left: 50%; top: 10px; width: 520px; height: 126px; margin-left: -260px; z-index: 807; visibility: hidden; transform: translateY(-170px); }
+.bv { position: fixed; left: 50%; top: 18px; width: 520px; height: 126px; margin-left: -260px; z-index: 807; visibility: hidden; transform: translateY(-170px); }
 .bv.on { visibility: visible; transform: none; transition: transform .5s .12s cubic-bezier(.2,.9,.3,1.25); }
 .bv.out { visibility: visible; transform: translateY(-170px); transition: transform .28s cubic-bezier(.55,0,.85,.35), visibility 0s .28s; }
 .bv-keys { display: flex; gap: 8px; justify-content: center; }

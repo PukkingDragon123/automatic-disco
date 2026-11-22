@@ -158,6 +158,10 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
     // drop its overlay (without this the screen stayed black after a skip)
     let tail = 0;
     const offTail = hub.onUpdate((dt) => { tail += dt; cine.update(dt); if (tail > 1.4 || (tail > 0.2 && cine.ui.fadeDone && cine.ui.fadeV === 0 && cine.ui.lb <= 0.001)) { offTail(); cine.ui.dispose(); } });
+    // the cinema's end fade and letterbox only move while it is ticked: keep ticking it until they are done, then
+    // drop its overlay (without this the screen stayed black after a skip)
+    let tail = 0;
+    const offTail = hub.onUpdate((dt) => { tail += dt; cine.update(dt); if (tail > 1.4 || (tail > 0.2 && cine.ui.fadeDone && cine.ui.fadeV === 0 && cine.ui.lb <= 0.001)) { offTail(); cine.ui.dispose(); } });
     frameFns.clear();
     unit.root.visible = true; unit.power = 1; unit.mood = 'calm'; unit.grav(null); unit.setSquint(0);
     { const ms = hub.room('bridge')?.spots.monitor?.pos; unit.place(ms ? V(ms.x + 0.7, 1.7, ms.z - 1.6) : V(0, 1.7, 0)); }
@@ -203,7 +207,7 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
       modelOf('solano')?.rig.gesture('present');
       await line('solano', 'Most of you. You wrote the rest. Show-off.');
       ui.sys('ID [UNIT 07]', 5);
-      await line('solano', 'Welcome to the Meridian. We build colonies.');
+      await line('solano', 'Welcome to the Meridian. We build settlements.');
       await line('solano', 'You do the building. Up you get.');
       // out of its eyes: the camera pulls back and there it is, lifting off the cradle
       ui.bootView(false);

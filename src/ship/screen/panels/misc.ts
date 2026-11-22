@@ -39,7 +39,7 @@ export function ordersPanel(ctx: PanelCtx): Panel {
   paintLamps();
   const repH = div('s7-abs', host); place(repH, W - 92, 12); const sh = artCanvas(22, 22); sh.getContext('2d')!.drawImage(iconOf('shield', 'amber'), 0, 0, 22, 22); repH.append(sh); repH.style.display = 'flex'; repH.style.alignItems = 'center';
   const rep = new Counter(repH, { size: 32 }); rep.set(Math.round(M?.rep ?? 0), true);
-  if (!M) { none(host, W, H, 'NO COLONY'); return { dispose() {} }; }
+  if (!M) { none(host, W, H, 'NO SETTLEMENT'); return { dispose() {} }; }
   const list = div('s7-abs', host); place(list, 10, 50, W - 20, H - 60); list.style.display = 'flex'; list.style.flexDirection = 'column'; list.style.gap = 6 * S + 'px';
   const slips: { q: any; el: HTMLDivElement; cv: HTMLCanvasElement; key: ReturnType<typeof keyCap> }[] = [];
   const build = () => {
@@ -98,7 +98,7 @@ export function studyPanel(ctx: PanelCtx): Panel {
   const know = div('s7-abs', host); place(know, 16, 14, W - 32); know.style.display = 'flex'; know.style.gap = 3 * S + 'px';
   const paintKnow = () => { const d = game?.research?.data ?? { bio: 0, geo: 0, energy: 0, xeno: 0 }; know.replaceChildren(...['bio', 'geo', 'energy', 'xeno'].map((k) => chip(stepIcon(DATA_ICON[k]), String(Math.floor(d[k] ?? 0))))); };
   paintKnow();
-  if (!game) { none(host, W, H, 'NO COLONY'); return { dispose() {} }; }
+  if (!game) { none(host, W, H, 'NO SETTLEMENT'); return { dispose() {} }; }
   const list = div('s7-abs', host); place(list, 10, 52, W - 20, H - 62); list.style.display = 'flex'; list.style.flexDirection = 'column'; list.style.gap = 4 * S + 'px';
   const gain = (id: string): [string, number][] => (/crystal/.test(id) ? [['geo', 3], ['xeno', 2]] : /seed|plant/.test(id) ? [['bio', 3]] : [['bio', 4], ['xeno', 1]]);
   const rows = () => {
@@ -169,7 +169,7 @@ export function podsPanel(ctx: PanelCtx): Panel {
   vh.addEventListener('click', () => { v.press(1.2); v.poke(12); uiSfx('metal', 0.5); });
   const list = div('s7-abs', host); place(list, 10, 180, W - 20, H - 190); list.style.display = 'flex'; list.style.flexWrap = 'wrap'; list.style.gap = 3 * S + 'px';
   const units: { icon: string; hp: number }[] = [...(col?.arms ?? []).map((a: any) => ({ icon: 'arm', hp: a.hp / Math.max(1, a.maxHp ?? 100) })), ...(col?.drones ?? []).map((d: any) => ({ icon: 'drone', hp: (d.battery ?? 1) }))];
-  if (!units.length) { const e = div('k7-t16', list); e.textContent = game ? 'NONE BUILT' : 'NO COLONY'; e.style.color = '#d8d0b8'; }
+  if (!units.length) { const e = div('k7-t16', list); e.textContent = game ? 'NONE BUILT' : 'NO SETTLEMENT'; e.style.color = '#d8d0b8'; }
   for (const u of units.slice(0, 12)) { const cv = artCanvas(68, 26, ''); const p = plate(68, 26, { mat: 'enamel', seed: 7, chamfer: 2, wear: 0.4, lip: 1 }); cellBar(p, 26, 9, 36, 8, Math.max(0, Math.min(1, u.hp)), P.glowTeal, 0); const c = cv.getContext('2d')!; c.putImageData(p.image(), 0, 0); c.drawImage(iconOf(u.icon, 'steel'), 3, 3, 20, 20); list.append(cv); }
   return { dispose() { v.dispose(); } };
 }
@@ -191,7 +191,7 @@ export function corePanel(ctx: PanelCtx): Panel {
   const vh = div('s7-abs', host); vh.append(core.cv); place(vh, Math.round(W / 2 - 70), 20); vh.style.cursor = 'pointer';
   vh.addEventListener('pointerenter', () => { core.hot(true); uiSfx('hover', 0.4); }); vh.addEventListener('pointerleave', () => core.hot(false));
   vh.addEventListener('click', () => { core.press(1); core.poke(10); uiSfx('bong', 0.4); });
-  const save = keyCap(host, { label: 'SAVE', icon: iconOf('chip', 'amber'), w: 110, h: 30, mat: 'orange', sound: 'confirm', off: () => (!game?.colony ? 'NO COLONY' : false), onClick: () => {
+  const save = keyCap(host, { label: 'SAVE', icon: iconOf('chip', 'amber'), w: 110, h: 30, mat: 'orange', sound: 'confirm', off: () => (!game?.colony ? 'NO SETTLEMENT' : false), onClick: () => {
     try { game.colony.save(); } catch (e) { console.error(e); }
     const r = save.el.getBoundingClientRect(); floatUp(r.left + r.width / 2, r.top, 'SAVED', { color: '#b8f0a0', size: 32 }); burst(r.left + r.width / 2, r.top, { n: 16, ramp: P.glowTeal, kind: 'spark', layer: 'ui', up: 1 });
   } });

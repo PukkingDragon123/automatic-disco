@@ -79,9 +79,12 @@ export function slerp(a: readonly number[], b: readonly number[], k: number, out
   return out;
 }
 /** the rival bloc whose base holds a region (the first programme of its plan), and every bloc present */
+const holdCache = new Map<string, BlocId[]>();
 export function holders(r: PRegion): BlocId[] {
+  const k = r.seed + '|' + r.danger, hit = holdCache.get(k); if (hit) return hit;
   const out: BlocId[] = [];
   for (const s of planFactions(r.seed, r.danger)) if (s.faction !== 'expedition' && !out.includes(s.faction)) out.push(s.faction);
+  holdCache.set(k, out);
   return out;
 }
 export const isSea = (r: PRegion) => r.biome === 'ocean' || r.biome === 'reef' || r.biome === 'archipelago';

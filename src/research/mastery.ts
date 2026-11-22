@@ -25,7 +25,7 @@ export interface Perk {
 }
 
 export const PATH: Record<PathId, PathDef> = {
-  plant: { id: 'plant', name: 'PLANT ENGINEERING', short: 'PLANT', code: 'PE', motto: 'Fields, forests and the air the colony breathes.', icon: 'sprout',
+  plant: { id: 'plant', name: 'PLANT ENGINEERING', short: 'PLANT', code: 'PE', motto: 'Fields, forests and the air the settlement breathes.', icon: 'sprout',
     earn: ['Harvest crops, fruit, fibre and resin', 'Graft and plant engineered flora', 'Build planters, sprinklers and spreaders', 'Scan new plant species'] },
   bio: { id: 'bio', name: 'BIO ENGINEERING', short: 'BIO', code: 'BE', motto: 'Workers bred, built and kept alive.', icon: 'dna',
     earn: ['Design and print creatures', 'Fit robotic parts on workers', 'Breed and heal the herd', 'Scan new species'] },
@@ -72,8 +72,8 @@ export const PERKS: Perk[] = [
   P('agro_engine', 'agro', 4, 'Harvest Engine', 'harvester', 'Fields harvest and replant themselves.', ['Workers harvest and replant without orders', '+25% crop yield'], { minus: ['Crops drink 30% more water'], mods: { 'crop.yield': 0.25, 'crop.water': 0.3 }, grants: ['cap.autoharvest'] }),
   P('terra_bind', 'terra', 1, 'Soil Binders', 'roots', 'Engineered roots hold and enrich the ground.', ['Dug ground recovers fertility', '+10% flora spread'], { mods: { 'flora.spread': 0.1 }, grants: ['cap.soilbind'] }),
   P('terra_spore', 'terra', 2, 'Pioneer Spores', 'spore', 'Grafted plants seed outward on the wind.', ['+40% flora spread'], { mods: { 'flora.spread': 0.4 } }),
-  P('terra_canopy', 'terra', 3, 'Oxygen Canopy', 'tree', 'Grafted plants are tuned to breathe for the colony.', ['+30% oxygen from plants'], { minus: ['Wild grazers are drawn to the canopy'], mods: { 'oxygen.out': 0.3, 'grazer.lure': 1 } }),
-  P('terra_press', 'terra', 4, 'Biome Press', 'globe', 'The ground around the works turns to a biome you choose.', ['Convert the biome around the colony', '+20% crop growth everywhere'], { minus: ['Native species leave: bio scans pay 30% less'], mods: { 'crop.growth': 0.2, 'scan.bio': -0.3 }, grants: ['cap.biomepress'] }),
+  P('terra_canopy', 'terra', 3, 'Oxygen Canopy', 'tree', 'Grafted plants are tuned to breathe for the settlement.', ['+30% oxygen from plants'], { minus: ['Wild grazers are drawn to the canopy'], mods: { 'oxygen.out': 0.3, 'grazer.lure': 1 } }),
+  P('terra_press', 'terra', 4, 'Biome Press', 'globe', 'The ground around the works turns to a biome you choose.', ['Convert the biome around the settlement', '+20% crop growth everywhere'], { minus: ['Native species leave: bio scans pay 30% less'], mods: { 'crop.growth': 0.2, 'scan.bio': -0.3 }, grants: ['cap.biomepress'] }),
   P('silva_tap', 'silva', 1, 'Tapping', 'resin', 'Spiles and cups on every resin tree.', ['+25% resin and sap'], { mods: { 'resin.yield': 0.25 } }),
   P('silva_ret', 'silva', 2, 'Fibre Retting', 'fibre', 'Soaked stems split into long fibre.', ['+30% fibre and leaves'], { mods: { 'fibre.yield': 0.3 } }),
   P('silva_rotate', 'silva', 3, 'Timber Rotation', 'log', 'Felling follows a replanting rota.', ['Felled trees regrow in half the time', '+20% wood'], { mods: { 'tree.regrow': 1, 'wood.yield': 0.2 } }),
@@ -116,7 +116,7 @@ export const PERKS: Perk[] = [
   P('as_jigs', 'assembly', 1, 'Jigs and Fixtures', 'wrench', 'Every part held the same way every time.', ['+15% assembler speed'], { mods: { 'craft.speed': 0.15 } }),
   P('as_std', 'assembly', 2, 'Standard Parts', 'bolt', 'One bolt size, one beam length.', ['Buildings cost 10% less'], { mods: { 'build.cost': -0.1 } }),
   P('as_night', 'assembly', 3, 'Night Shift', 'moon', 'The lines never stop.', ['Machines run at full speed without operators'], { minus: ['+20% worker food upkeep'], mods: { 'worker.upkeep': 0.2 }, grants: ['cap.nightshift'] }),
-  P('as_full', 'assembly', 4, 'Full Industrial', 'factory', 'The colony is a factory with a pod in it.', ['+30% all production'], { minus: ['Bio scans pay 25% less'], mods: { 'craft.speed': 0.3, 'mine.rate': 0.3, 'scan.bio': -0.25 } }),
+  P('as_full', 'assembly', 4, 'Full Industrial', 'factory', 'The settlement is a factory with a pod in it.', ['+30% all production'], { minus: ['Bio scans pay 25% less'], mods: { 'craft.speed': 0.3, 'mine.rate': 0.3, 'scan.bio': -0.25 } }),
   // ---------------------------------------------------------------- ROBOTICS
   P('lb_hydro', 'limbs', 1, 'Hydraulic Lines', 'piston', 'Higher pressure, shorter strokes.', ['Arms move 20% faster'], { mods: { 'arm.speed': 0.2 } }),
   P('lb_tele', 'limbs', 2, 'Telescoping', 'telescope', 'Nested sections in every boom.', ['Arms reach 30% further'], { mods: { 'arm.reach': 0.3 } }),
@@ -129,7 +129,7 @@ export const PERKS: Perk[] = [
   P('lg_nodes', 'logic', 1, 'Node Literacy', 'nodes', 'Split and merge on the node map.', ['Splitter and merger nodes'], { grants: ['logic.split', 'logic.merge'] }),
   P('lg_gates', 'logic', 2, 'Sensors and Gates', 'sensor', 'Routes that look before they move.', ['Sensor and gate nodes', 'Route conditions'], { grants: ['logic.sensor', 'logic.gate', 'routes.conditions'] }),
   P('lg_tpl', 'logic', 3, 'Templates', 'template', 'Save a working layout, lay it again.', ['Node templates', 'Timer and counter nodes'], { grants: ['routes.templates', 'logic.timer', 'logic.counter'] }),
-  P('lg_auto', 'logic', 4, 'Colony Autopilot', 'auto', 'The network repairs its own routes.', ['Workers re-route around broken nodes', '+15% worker speed on routes'], { minus: ['The node map overrides direct orders'], mods: { 'worker.speed': 0.15 }, grants: ['cap.autopilot', 'logic.buffer'] }),
+  P('lg_auto', 'logic', 4, 'Settlement Autopilot', 'auto', 'The network repairs its own routes.', ['Workers re-route around broken nodes', '+15% worker speed on routes'], { minus: ['The node map overrides direct orders'], mods: { 'worker.speed': 0.15 }, grants: ['cap.autopilot', 'logic.buffer'] }),
 ];
 export const PERK: Record<string, Perk> = Object.fromEntries(PERKS.map((p) => [p.id, p]));
 /** the simplified tree (user: "fewer, clearer perks"): six perks per path, taken in order, each opening at a level.

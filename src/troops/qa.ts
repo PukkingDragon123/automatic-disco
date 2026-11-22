@@ -7,7 +7,7 @@ import { wildDesign } from '../life/design';
 import { planetPalette } from '../world/palette';
 
 export function troopsQA(game: Game, o: { robots?: string[]; workers?: number; foes?: boolean } = {}) {
-  const g = game as Game & Record<string, any>, c = g.colony; if (!c) return 'no colony';
+  const g = game as Game & Record<string, any>, c = g.colony; if (!c) return 'no settlement';
   c.qa('full'); c.qa('upgrader');
   const P = c.pod;
   // the most open ground near the pod (dense canopy hides units from the camera): the parade ground

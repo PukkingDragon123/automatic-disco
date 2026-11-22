@@ -70,7 +70,7 @@ export const QUESTS: QuestDef[] = [
     steps: [{ k: 'unlock:dock_build', icon: 'hammer', text: 'Build' }, { k: 'build', n: 1, icon: 'crate', text: 'Raise' }],
     reward: { know: { geo: 6 }, close: { guide: 4 } },
     start: ['You can\'t live in a crater. Lay something down. A store, a frame, anything.'],
-    done: ['There it is. A colony starts with one ugly box.'],
+    done: ['There it is. An empire starts with one ugly box.'],
     next: ['q_orders', 'q_spark', 'q_life'] }),
   Q({ id: 'q_orders', title: 'ORDERS', giver: 'kristiansen', icon: 'arms',
     steps: [{ k: 'order', n: 2, icon: 'boot', text: 'Orders' }],

@@ -401,7 +401,7 @@ export function posterTexSmooth(kind: PosterKind, seed = 1) {
       // the ship's silhouette climbing
       g.fillStyle = '#e8e2cc'; g.beginPath(); g.moveTo(150, 120); g.lineTo(186, 96); g.lineTo(192, 104); g.lineTo(158, 130); g.closePath(); g.fill();
       g.strokeStyle = 'rgba(232,180,110,0.8)'; g.lineWidth = 3; g.beginPath(); g.moveTo(152, 128); g.quadraticCurveTo(90, 180, 70, 240); g.stroke();
-      T('UNAA', 48, 34, 0xe8e2cc); T('REACH FURTHER', 74, 15, 0xd8a63a); T('THE COLONY PROGRAM NEEDS YOU', 330, 10, 0xe8e2cc, "'Jersey', monospace");
+      T('UNAA', 48, 34, 0xe8e2cc); T('REACH FURTHER', 74, 15, 0xd8a63a); T('THE SETTLEMENT PROGRAM NEEDS YOU', 330, 10, 0xe8e2cc, "'Jersey', monospace");
     } else if (kind === 'safety') {
       hazardStripes(g, 0, 0, W, 22, 22); hazardStripes(g, 0, H - 22, W, 22, 22);
       T('SECURE', 70, 30, 0x1c1b18); T('ALL LOOSE', 104, 24, 0x1c1b18); T('OBJECTS', 136, 30, 0x1c1b18);

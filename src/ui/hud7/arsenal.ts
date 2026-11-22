@@ -91,7 +91,7 @@ export class Arsenal {
     this.card.body.append(hk);
     // the guide: what this screen is
     const guide = panel({ title: 'ARSENAL', tone: 'olive', lamps: ['green'], glands: 1, cls: 'h7-ars-guide' });
-    guide.text('Every tool the colony owns, in its cradle. Swipe the rack to browse; drop a tool on one of the four QUICK SLOT bays below to carry it on the turret.', { dim: true });
+    guide.text('Every tool the empire owns, in its cradle. Swipe the rack to browse; drop a tool on one of the four QUICK SLOT bays below to carry it on the turret.', { dim: true });
     guide.kv('Quick slots', '4 bays (keys 1-4)'); guide.kv('Custom tools', 'built in the WORKSHOP (B)');
     el.append(rack, belt, this.card.el, guide.el, ...this.pistons.map((v) => v.cv));
     el.addEventListener('pointerdown', (e) => { if (e.target === el) this.open(false); });
@@ -202,7 +202,7 @@ export class Arsenal {
     pop(nm, 0.3);
     // the card
     this.card.setTitle(c.e.name);
-    this.cSub.textContent = c.e.custom ? `Custom tool, works as the ${t.name}` : 'Standard colony tool';
+    this.cSub.textContent = c.e.custom ? `Custom tool, works as the ${t.name}` : 'Standard UNAA tool';
     this.cDesc.textContent = t.desc;
     this.cRows.textContent = '';
     const row = (k: string, v: string | number, o: Parameters<typeof kv>[2] = {}) => this.cRows.append(kv(k, v, o).el);

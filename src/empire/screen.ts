@@ -62,8 +62,10 @@ export class EmpireScreen {
     const done = () => this.teardown();
     if (anim) void transition('iris', done, { x: this.from.x, y: this.from.y, ms: 300 }); else done();
   }
+  private offChange: (() => void) | null = null;
   private teardown() {
     removeEventListener('keydown', this.onKey, true);
+    this.offChange?.(); this.offChange = null;
     this.stop?.(); this.stop = null;
     for (const p of this.panels) p.dispose(); this.panels = []; this.live = [];
     this.el?.remove(); this.el = null; this.map = null; this.col = null; this.keys.clear();
@@ -152,6 +154,7 @@ export class EmpireScreen {
       return true;
     }) as unknown as () => void;
     addEventListener('keydown', this.onKey, true);
+    this.offChange = e.on('change', () => this.refresh());
     e.g?.emit?.('screen-open', { id: 'empire' });
     uiSfx('open', 0.5);
     this.refresh();
@@ -394,9 +397,9 @@ export class EmpireScreen {
     const cyc = <T,>(arr: T[], cur: T, d: number) => arr[(arr.indexOf(cur) + d + arr.length) % arr.length];
     const line = (label: string, value: string, prev: () => void, next: () => void, ic?: HTMLElement) => {
       const r = div('emp-form', p.body); t16(label, 'emp-form-l', r);
-      r.append(pkey('<', prev, { w: 34, h: 28, tone: 'cream', lamp: false }));
+      r.append(pkey('<', () => { prev(); this.refresh(); }, { w: 34, h: 28, tone: 'cream', lamp: false }));
       const v = div('emp-form-v', r); if (ic) v.append(ic); t16(value, '', v);
-      r.append(pkey('>', next, { w: 34, h: 28, tone: 'cream', lamp: false }));
+      r.append(pkey('>', () => { next(); this.refresh(); }, { w: 34, h: 28, tone: 'cream', lamp: false }));
     };
     const ids = S.map((s) => s.id);
     line('FROM', A.name.toUpperCase(), () => { f.from = cyc(ids, f.from, -1); this.sigs.tab = ''; }, () => { f.from = cyc(ids, f.from, 1); this.sigs.tab = ''; });

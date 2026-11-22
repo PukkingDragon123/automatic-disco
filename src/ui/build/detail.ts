@@ -105,7 +105,7 @@ export class BuildDetail {
     for (const e of effects(k)) B.append(para(e, { cls: 'bd-eff' }));
     // requirements and the unlock path
     B.append(section('REQUIREMENTS & UNLOCK', up.ok ? 'unlocked' : 'locked'));
-    B.append(kv('Ground', siteRule(k)).el);
+    B.append(para(`Ground: ${siteRule(k)}`, { cls: 'bd-eff' }));
     for (const l of up.lines) B.append(para(l, { dim: true, cls: 'bd-eff' }));
     // what happens if it is placed now
     const short = lines.filter((l) => l.short);

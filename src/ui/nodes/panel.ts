@@ -176,7 +176,7 @@ export class Panel {
   private overview(): string {
     const L = this.L, f = this.m.f, ws = f.workers.list.filter((w) => !w.c.dead);
     const flow = L.routes.reduce((a, r) => a + L.flow(r.id), 0), stalled = L.routes.filter((r) => r.on && r.note && !r.inflight);
-    let h = `<div class="nm-h">COLONY LOGISTICS<small>SELECT A NODE OR A WIRE TO EDIT IT</small></div>`;
+    let h = `<div class="nm-h">SETTLEMENT LOGISTICS<small>SELECT A NODE OR A WIRE TO EDIT IT</small></div>`;
     h += `<div class="nm-kv" style="margin-top:8px"><div><div class="k">ROUTES</div><div class="v">${L.routes.length}</div></div><div><div class="k">FLOW</div><div class="v">${fmt(flow)}<small>/MIN</small></div></div><div><div class="k">ROUTED, EVER</div><div class="v">${Math.floor(L.xp)}</div></div></div>`;
     if (!L.routes.length) h += `<div class="nm-p" style="margin-top:10px">Nothing is wired yet. Drag from a card's brass plug to another card, or open the <b style="color:var(--am);font-weight:normal">GUIDE</b>.</div>`;
     h += `<div class="nm-lbl">STALLED <i>${stalled.length}</i></div><ul class="nm-list">${stalled.map((r) => `<li data-act="sel.r" data-v="${r.id}"><span>${esc(L.node(r.from)?.name ?? '?')} → ${esc(L.node(r.to)?.name ?? '?')}</span><span class="amb">${esc(r.note)}</span></li>`).join('') || '<li><i>EVERY ROUTE IS MOVING OR READY</i></li>'}</ul>`;

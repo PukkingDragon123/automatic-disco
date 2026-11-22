@@ -204,10 +204,10 @@ export class Bench {
     // ---- FORGE and BACK as floating icons (Limbophobia's rule: menu buttons float, never boxed), with their keys
     this.forgeKey = floatIcon({ build: mForgeKey, name: 'FORGE', size: [48, 36], nameSize: 32, sound: '', hint: 'F', view: { pitch: 0.7, spin: 0, rock: 0.2 }, onClick: () => void this.forge() });
     this.forgeKey.el.classList.add('h7-ws-forge');
-    bindTip(this.forgeKey.el, () => { const short = this.shortfall(); return { title: 'FORGE THE TOOL', desc: 'The arm welds the fitted parts into one tool. It takes the bill of materials from the colony stores and adds the tool to your arsenal.', status: short.length ? [`Missing ${short.map(([it, n]) => `${n} ${ITEMS[it]?.name ?? it}`).join(', ')}`, 'bad'] : ['All materials in store', 'ok'], hint: [['F', 'forge']] }; });
+    bindTip(this.forgeKey.el, () => { const short = this.shortfall(); return { title: 'FORGE THE TOOL', desc: 'The arm welds the fitted parts into one tool. It takes the bill of materials from the settlement stores and adds the tool to your arsenal.', status: short.length ? [`Missing ${short.map(([it, n]) => `${n} ${ITEMS[it]?.name ?? it}`).join(', ')}`, 'bad'] : ['All materials in store', 'ok'], hint: [['F', 'forge']] }; });
     this.back = floatIcon({ build: () => fitVisible(customModel({ head: 'lens', core: 'cell', grip: 'pistol' }, 'hud')), name: 'BACK', size: [40, 32], nameSize: 16, sound: 'back', hint: 'Esc', view: { pitch: 0.4 }, onClick: () => { if (!this.busy) this.open(false); } });
     this.back.el.classList.add('h7-ws-back');
-    bindTip(this.back.el, () => ({ title: 'BACK TO THE PLANET', desc: 'Leave the workshop; the colony resumes where you left it.', hint: [['ESC', 'back']] }));
+    bindTip(this.back.el, () => ({ title: 'BACK TO THE PLANET', desc: 'Leave the workshop; the settlement resumes where you left it.', hint: [['ESC', 'back']] }));
     el.append(this.brief.el, this.bin.el, this.spec.el, this.forgeKey.el, this.back.el);
   }
   /** a part's tooltip: name, what it is, its stats with units, its cost and whether it is fitted */

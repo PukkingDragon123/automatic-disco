@@ -5,7 +5,10 @@
 // stores). One capsule at a time.
 import * as THREE from 'three';
 import type { PanelCtx, Panel } from './index';
-import { div, place, artCanvas, S, keyCap, iconOf, itemImg, clean, textEl } from '../ui';
+import { div, S, itemImg, clean } from '../ui';
+import { icon3d } from '../icons3d';
+import { panel, pkey, slot, meter, section, para, kv, status, bindTip, type Panel as KPanel, type PKey } from '../../../ui/kit/panel';
+import { have } from '../../../research/util';
 import { plate } from '../../../ui/kit/mat';
 import { Px, P, INK, hex, mixHex } from '../../../ui/kit/px';
 import { bitText } from '../../../ui/kit/bitfont';
@@ -35,79 +38,63 @@ function crateModel(tint: number) {
 }
 
 export function supplyPanel(ctx: PanelCtx): Panel {
-  const { w: W, h: H, host, game } = ctx;
+  const { host, game } = ctx;
   const M = game?.mission ?? null;
-  const bg = artCanvas(W, H); host.append(bg);
-  const p = plate(W, H, { mat: 'olive', seed: 13, chamfer: 3, wear: 1, screws: true, grime: 0.9, hazard: 8 });
-  p.blit(plate(W - 16, 48, { mat: 'enamel', seed: 4, chamfer: 2, wear: 0.6, lip: 1 }), 8, 6);
-  bg.getContext('2d')!.putImageData(p.image(), 0, 0);
   // ---- standing with the program: what pays for capsules
-  const star = artCanvas(20, 20); place(star, 14, 12); host.append(star); star.getContext('2d')!.drawImage(iconOf('shield', 'amber'), 0, 0, 20, 20);
-  const lbl = textEl('STANDING WITH THE PROGRAM', { dark: true, color: '#6a5a40', wrap: false }); lbl.className += ' s7-abs'; place(lbl, 38, 9); host.append(lbl);
-  const repHost = div('s7-abs', host); place(repHost, 38, 16); repHost.style.display = 'flex'; repHost.style.alignItems = 'baseline';
-  const rep = new Counter(repHost, { size: 32 });
-  rep.set(Math.round(M?.rep ?? 0), true);
-  repHost.append(textEl(' / 100', { dark: true, color: '#2a2014', wrap: false }));
-  const note = div('s7-abs', host); place(note, 14, 38, W - 32);
-  const paintNote = () => note.replaceChildren(textEl(!M ? 'No colony: capsules need a pod to land by.' : pending ? 'A capsule is on its way down. It lands by the pod.' : 'Met orders raise standing; each capsule spends some.', { dark: true, color: pending ? '#1a5a7a' : '#5a4a30' }));
+  const rep = meter('STANDING', (M?.rep ?? 0) / 100, { w: 200, segs: 14, col: 'amber', value: Math.round(M?.rep ?? 0), unit: ' / 100' });
+  host.append(rep.el);
+  const st = status('', 'info'); host.append(st.el);
   let pending = false;
-  paintNote();
+  const paintSt = () => st.set(!M ? 'No settlement: a capsule needs the pod to land by.' : pending ? 'A capsule is on its way down. It lands by the pod and its stock goes to the stores.' : 'Met orders raise standing; each capsule spends some.', !M ? 'warn' : pending ? 'busy' : 'info');
+  paintSt();
+  host.append(section('CAPSULES', 'FROM THE SHIP\'S STORES'));
   const reqs = REQS();
-  const y0 = 60, rowH = Math.floor((H - y0 - 10) / reqs.length);
-  const views: ModelView[] = [], keys: ReturnType<typeof keyCap>[] = [];
+  const views: ModelView[] = [], keys: PKey[] = [], cards: KPanel[] = [];
   reqs.forEach((r, i) => {
-    const y = y0 + i * rowH;
-    const shelf = artCanvas(W - 16, rowH - 4); place(shelf, 8, y); host.append(shelf);
-    const sp = new Px(W - 16, rowH - 4);
-    sp.blit(plate(W - 16, rowH - 4, { mat: 'steel', seed: 20 + i, chamfer: 3, wear: 0.7, lip: 2, grime: 0.5 }), 0, 0);
-    for (let yy = rowH - 22; yy < rowH - 10; yy++) for (let xx = 6; xx < 76; xx++) { const d = Math.hypot((xx - 41) / 35, (yy - (rowH - 16)) / 6); if (d < 1) sp.set(xx, yy, mixHex(P.steel[1], P.steel[3], 1 - d)); }
-    shelf.getContext('2d')!.putImageData(sp.image(), 0, 0);
-    // the crate itself, a live 3D element
-    const v = new ModelView(crateModel(r.tint), { w: 70, h: rowH - 14, scale: S, spin: 0.35, hotSpin: 2.4, pitch: 0.5, zoom: 1.05, shadow: [2, 3, 0.45] });
+    const p = panel({ title: `${r.name} CAPSULE`, tone: 'steel', lamps: ['amber'], hazard: false, glands: 0, foot: 10, cls: 's7-card7' });
+    host.append(p.el); cards.push(p); p.el.style.marginBottom = '8px';
+    const v = new ModelView(crateModel(r.tint), { w: 56, h: 50, scale: S, spin: 0.35, hotSpin: 2.4, pitch: 0.5, zoom: 1.05, shadow: [2, 3, 0.45] });
     views.push(v);
-    const vh = div('s7-abs', host); vh.append(v.cv); place(vh, 12, y + 4); vh.style.cursor = 'pointer';
+    const vh = div('', p.body); vh.style.flex = 'none'; vh.style.cursor = 'pointer'; vh.append(v.cv);
     vh.addEventListener('pointerenter', () => { v.hot(true); uiSfx('hover', 0.4); });
     vh.addEventListener('pointermove', (e) => v.point(e.clientX, e.clientY));
     vh.addEventListener('pointerleave', () => v.hot(false));
     vh.addEventListener('click', () => { v.press(1); v.poke(9); uiSfx('thudLight', 0.5); });
-    // its name, cost and contents, listed with amounts
-    const col = div('s7-abs', host); place(col, 88, y + 5, W - 16 - 88 - 6); col.style.display = 'flex'; col.style.flexDirection = 'column'; col.style.gap = '0';
-    col.append(textEl(`${r.name} CAPSULE`, { color: '#ffe7a8', wrap: false }), textEl(`Costs ${r.cost} standing. Contents:`, { color: (M?.rep ?? 0) >= r.cost ? '#c8d8b0' : '#ff9a80', wrap: false }));
+    const col = div('', p.body); col.style.flex = '1'; col.style.minWidth = '0';
+    col.append(kv('Cost', r.cost, { unit: 'standing', color: (M?.rep ?? 0) >= r.cost ? '#b8e0a0' : '#ff9a80' }).el);
+    const list = div('s7-keys', col); list.style.margin = '4px 0';
     for (const [id, n] of Object.entries(r.items)) {
       if (!ITEMS[id]) continue;
-      const row = div(''); row.style.display = 'flex'; row.style.alignItems = 'center'; row.style.gap = 2 * S + 'px';
-      const ic = itemImg(id, 32).cloneNode() as HTMLImageElement; ic.style.width = 12 * S + 'px'; ic.style.height = 12 * S + 'px'; ic.style.imageRendering = 'pixelated';
-      row.append(ic, textEl(`${n} x ${clean(ITEMS[id].name)}`, { color: '#e8dcc0', wrap: false }));
-      col.append(row);
+      const sl = slot(40, { title: clean(ITEMS[id].name) }); const ic = itemImg(id, 32).cloneNode() as HTMLImageElement; ic.style.width = ic.style.height = '28px'; ic.style.imageRendering = 'pixelated';
+      sl.set({ icon: ic, count: n, state: 1 }); list.append(sl.el);
+      bindTip(sl.el, () => ({ title: clean(ITEMS[id].name), sub: `${n} in this capsule`, rows: [['In your stores', game ? have(game, id) : '--']] }));
     }
-    const key = keyCap(host, {
-      label: 'REQUEST', w: 90, h: 26, mat: 'orange', sound: 'confirm',
-      off: () => (!M ? 'NO COLONY' : pending ? 'IN FLIGHT' : (M.rep ?? 0) < r.cost ? 'LOW STANDING' : false),
-      onClick: () => request(i, vh, v),
-    });
-    place(key.el, W - 8 - 96, y + rowH - 36).style.position = 'absolute';
-    keys.push(key);
+    col.append(para(Object.entries(r.items).filter(([id]) => ITEMS[id]).map(([id, n]) => `${n} x ${clean(ITEMS[id].name)}`).join(', ') + '.', { dim: true }));
+    const key = pkey('REQUEST', () => request(i, vh, v), { tone: 'yellow', lamp: 'amber', sound: 'confirm', icon: icon3d('crate', 22) });
+    col.append(key); keys.push(key);
   });
+  const keyState = () => reqs.forEach((r, i) => keys[i].setDisabled(!M || pending || (M.rep ?? 0) < r.cost));
+  keyState();
   const request = (i: number, vh: HTMLElement, v: ModelView) => {
     if (!M) return;
     const r = reqs[i];
-    M.rep = Math.max(0, (M.rep ?? 0) - r.cost); rep.set(Math.round(M.rep));
-    pending = true; paintNote();
+    M.rep = Math.max(0, (M.rep ?? 0) - r.cost); rep.set(M.rep / 100, Math.round(M.rep));
+    pending = true; paintSt(); keyState();
     const items: Record<string, number> = {}; for (const [id, n] of Object.entries(r.items)) if (ITEMS[id]) items[id] = n;
     v.press(1.4); uiSfx('winch', 0.6);
     const rr = vh.getBoundingClientRect();
-    void tween(380, (k) => { vh.style.transform = `translateY(${Math.round(-k * 30) * S}px) scale(${1 - k * 0.3})`; vh.style.opacity = String(1 - k); }, ease.inBack).then(() => {
+    void tween(380, (k) => { vh.style.transform = `translateY(${Math.round(-k * 60)}px) scale(${1 - k * 0.3})`; vh.style.opacity = String(1 - k); }, ease.inBack).then(() => {
       uiSfx('swishOut', 0.6);
       floatUp(rr.left + rr.width / 2, rr.top, 'CAPSULE AWAY', { color: '#ffe7a8', size: 16 });
       try { M.drop(items); } catch (e) { console.error('supply drop', e); }
-      setTimeout(() => { vh.style.transform = 'translateY(-40px)'; vh.style.opacity = '0'; void tween(420, (k) => { vh.style.transform = `translateY(${Math.round((1 - k) * -20) * S}px)`; vh.style.opacity = String(k); }, ease.outBounce).then(() => { vh.style.transform = ''; placeDust(rr.left + rr.width / 2, rr.bottom - 6, 0.55, { ground: 'metal', layer: 'ui' }); pop(vh, 0.6); }); }, 900);
-      setTimeout(() => { pending = false; paintNote(); keys.forEach((k) => k.refresh()); }, 8000);
-      keys.forEach((k) => k.refresh());
+      setTimeout(() => { vh.style.transform = 'translateY(-40px)'; vh.style.opacity = '0'; void tween(420, (k) => { vh.style.transform = `translateY(${Math.round((1 - k) * -40)}px)`; vh.style.opacity = String(k); }, ease.outBounce).then(() => { vh.style.transform = ''; placeDust(rr.left + rr.width / 2, rr.bottom - 6, 0.55, { ground: 'metal', layer: 'ui' }); pop(vh, 0.6); }); }, 900);
+      setTimeout(() => { pending = false; paintSt(); keyState(); }, 8000);
     });
     ctx.shake(0.6);
   };
   return {
-    update() { if (M && Math.round(M.rep) !== rep.value) rep.set(Math.round(M.rep)); },
-    dispose() { for (const v of views) v.dispose(); },
+    update() { if (M && Math.round(M.rep) !== Math.round(lastRep)) { lastRep = M.rep; rep.set(M.rep / 100, Math.round(M.rep)); keyState(); } },
+    dispose() { for (const v of views) v.dispose(); for (const c of cards) c.dispose(); },
   };
 }
+let lastRep = -1;

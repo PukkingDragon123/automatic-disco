@@ -672,7 +672,7 @@ export class Colony {
     // defend: something hostile close to the pod or the crew
     let threat: Creature | null = null, td = 13;
     g.world.near(this.pod.x, this.pod.z, 16, (c) => { if (c.dead || c.faction === 'veyr') return; const hostile = c.mind === 'hunt' || c.mind === 'attack' || c.mind === 'stalk' || c.sp.role === 'apex' || c.sp.role === 'stalker'; if (!hostile) return; const d = Math.hypot(c.x - t.x, c.z - t.z); if (d < td) { td = d; threat = c; } });
-    if (threat) return { k: 'defend', x: (threat as Creature).x, z: (threat as Creature).z, target: threat, label: 'DEFENDING THE COLONY' };
+    if (threat) return { k: 'defend', x: (threat as Creature).x, z: (threat as Creature).z, target: threat, label: 'DEFENDING THE SETTLEMENT' };
     const unfinished = this.structures.find((s) => !s.done);
     if (unfinished && (t.role === 'engineer' || Math.random() < 0.5)) return { k: 'build', x: unfinished.x, z: unfinished.z, target: unfinished };
     if (t.role === 'engineer') {

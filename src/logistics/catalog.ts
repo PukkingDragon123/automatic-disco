@@ -217,7 +217,7 @@ export function registerColonyBuildings() {
   B('bunkhouse', 'Bunkhouse', 'habitat', 3, 2, 1.8, { ore: 12, carbon: 16, soil: 10 }, 1, 'Bunks, lockers and a stove. Each one houses four more workers; rested workers keep their mood.', { input: 'none', output: 'none', store: 0, skill: 'works', work: 20 });
   B('messhall', 'Mess Hall', 'habitat', 3, 3, 2.0, { ore: 16, carbon: 20, soil: 14 }, 2, 'A galley and long tables. Haul food in; hungry workers eat here and come back happier than from a trough.', { input: 'all', output: 'none', store: 80, skill: 'works', work: 26 });
   B('floodlight', 'Floodlight Mast', 'decor', 1, 1, 3.4, { ore: 4, copper_wire: 1 }, 1, 'Two lamps on a mast. Night shifts work faster in the light.', { input: 'none', output: 'none', solid: false, skill: 'works', work: 4 });
-  B('flagpole', 'UNAA Flagpole', 'decor', 1, 1, 3.8, { ore: 3 }, 0, 'The program flag over the colony.', { input: 'none', output: 'none', solid: false, skill: 'works', work: 3 });
+  B('flagpole', 'UNAA Flagpole', 'decor', 1, 1, 3.8, { ore: 3 }, 0, 'The program flag over the settlement.', { input: 'none', output: 'none', solid: false, skill: 'works', work: 3 });
   B('fence', 'Timber Fence', 'decor', 1, 1, 1.0, { carbon: 2 }, 0, 'Post-and-rail fencing. Drag to lay a run.', { input: 'none', output: 'none', skill: 'works', work: 1 });
   B('planterbox', 'Planter Box', 'decor', 1, 1, 0.9, { carbon: 3, soil: 4 }, 0, 'A box of hardy shrubs.', { input: 'none', output: 'none', solid: false, skill: 'works', work: 2 });
   B('signpost', 'Signpost', 'decor', 1, 1, 2.0, { ore: 1, carbon: 1 }, 0, 'A stencilled direction board.', { input: 'none', output: 'none', solid: false, skill: 'works', work: 1 });

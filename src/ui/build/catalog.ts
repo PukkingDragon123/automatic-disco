@@ -103,7 +103,7 @@ class Card {
     const lampChanged = this.key !== '' && short !== this.short;
     this.key = key; this.short = short;
     this.el.classList.toggle('short', short);
-    this.builtEl.textContent = n || s ? `${n} BUILT${s ? ` +${s}` : ''}` : '';
+    this.builtEl.textContent = n && s ? `${n} BUILT +${s}` : n ? `${n} BUILT` : s ? `${s} SITE${s > 1 ? 'S' : ''}` : '';
     if (!this.lock.ok) this.costEl.innerHTML = `<span class="bk-why k7-t16">${esc(shortWhy(this.lock.why))}</span>`;
     else this.costEl.innerHTML = lines.length ? lines.slice(0, 3).map((l) => `<span class="bk-c${l.short ? ' lack' : ''}"><img src="${itemIcon(l.id, 32)}" alt=""><i class="k7-t16">${l.need}</i></span>`).join('') : '<span class="bk-c free k7-t16">FREE</span>';
     if (lampChanged) this.fr.repaint();
@@ -158,7 +158,7 @@ export class BuildCatalog {
     const p = (this.pan = panel({ title: 'BUILD CATALOGUE', tone: 'gun', seed: 23, serial: 'SETTLEMENT WORKS', lamps: ['green', 'amber'], glands: 2, stencil: 'DRAG A CARD ONTO THE MAP', cls: 'bk' }));
     this.root = p.el;
     const body = p.body;
-    body.innerHTML = `<div class="bk-tabs"></div><div class="bk-main"><div class="bk-bar"><label class="bk-q"><img src="${bpIcon('info')}" alt=""><input class="k7-t16" type="text" spellcheck="false" placeholder="Search: a building, a material, a product..." aria-label="search the catalogue"></label><span class="bk-lbl k7-t16">SHOW</span><span class="bk-show"></span><span class="bk-lbl k7-t16">SORT</span><span class="bk-sort"></span></div>`
+    body.innerHTML = `<div class="bk-tabs"></div><div class="bk-main"><div class="bk-bar"><label class="bk-q"><img src="${bpIcon('info')}" alt=""><input class="k7-t16" type="text" spellcheck="false" placeholder="Search buildings, materials..." aria-label="search the catalogue"></label><span class="bk-lbl k7-t16">SHOW</span><span class="bk-show"></span><span class="bk-lbl k7-t16">SORT</span><span class="bk-sort"></span></div>`
       + `<div class="bk-head"></div><div class="bk-sub k7-t16"></div><div class="bk-strip"></div><div class="bk-track"><div class="bk-thumb"></div></div></div>`;
     document.body.appendChild(this.root);
     this.strip = body.querySelector('.bk-strip')!; this.head = body.querySelector('.bk-head')!; this.sub = body.querySelector('.bk-sub')!;
@@ -273,7 +273,7 @@ export class BuildCatalog {
     const all = this.query ? ks : kindsIn(this.cat), open = all.filter((k) => buildingLock(f.g, k).ok), can = open.filter((k) => !bill(f, k).some((l) => l.short));
     const title = this.query ? `SEARCH: "${this.query.toUpperCase()}"` : catName(this.cat).toUpperCase();
     this.head.innerHTML = `<span class="bk-head-t k7-t16">${esc(title)}</span><span class="bk-head-r k7-t16">${all.length} building${all.length === 1 ? '' : 's'}  ·  ${open.length} unlocked  ·  ${can.length} affordable now${ks.length !== all.length ? `  ·  ${ks.length} shown` : ''}</span>`;
-    this.sub.textContent = this.query ? `Across every category: ${[...new Set(ks.map((k) => catName(catOf(k))))].join(', ') || 'none'}.` : `${CAT_DESC[this.cat]} Hover a card for its full data; click to take it in hand, or drag it onto the map.`;
+    this.sub.textContent = this.query ? `Across every category: ${[...new Set(ks.map((k) => catName(catOf(k))))].join(', ') || 'none'}.` : `${CAT_DESC[this.cat]} Click a card to take it in hand, or drag it onto the map.`;
     this.head.classList.remove('flash'); void this.head.offsetWidth; this.head.classList.add('flash');
     this.lockKey = this.locks();
     this.counts();

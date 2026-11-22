@@ -36,7 +36,7 @@ export async function testShip7(engine: Engine, _input: Input, P: URLSearchParam
   };
   host.storage = { count: (id: string) => stock.get(id) ?? 0, take: (id: string, n: number) => host.factory.take(id, n) };
   const tms = [{ id: 'kristiansen', name: 'Kristiansen', alive: true, hp: 62, suit: 81, hunger: 35, fatigue: 48, morale: 64, x: 0, z: 0 }, { id: 'mamani', name: 'Mamani', alive: true, hp: 88, suit: 70, hunger: 22, fatigue: 30, morale: 58, x: 0, z: 0 }];
-  host.colony = { teammates: tms, teammate: (id: string) => tms.find((t) => t.id === id) ?? null, vitals: { morale: 61 }, arms: [{ kind: 'manipulator', hp: 80 }, { kind: 'drill', hp: 100 }], drones: [{ kind: 'scout', battery: 0.7 }], structures: [], sol: 4, save() { console.info('colony saved'); } };
+  host.colony = { teammates: tms, teammate: (id: string) => tms.find((t) => t.id === id) ?? null, vitals: { morale: 61 }, arms: [{ kind: 'manipulator', hp: 80 }, { kind: 'drill', hp: 100 }], drones: [{ kind: 'scout', battery: 0.7 }], structures: [], sol: 4, save() { console.info('settlement saved'); } };
   const M = new Mastery(); M.now = () => world.time;
   const R = new Research(host, M), UL = new Unlocks(host), Q = new Quests(host), S = new Social(), MI = new Mission(host);
   host.mastery = M; host.research = R; host.unlocks = UL; host.quests = Q; host.social = S; host.mission = MI;

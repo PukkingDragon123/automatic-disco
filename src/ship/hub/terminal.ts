@@ -149,7 +149,7 @@ const BODY: Record<RoomId, (scr: HTMLElement, key: Key, c: TermCtx, redraw: () =
   cargo(scr, key, c) {
     const s = shipState().supplies;
     scr.innerHTML = `<h3>HOLD 2 MANIFEST</h3>${[['RATIONS', `${Math.round(s.rations)} DAYS`], ['SEED VAULT A-K', 'SEALED'], ['SPECIMEN CRATES', '2 SEALED'], ['HULL PATCH KITS', '12'], ['POD SPARES', '6 CRATES'], ['COOLANT', '880 L'], ['TOTAL MASS', '31.4 T']].map(([a, b]) => `<div class="row"><span class="l">${a}</span><span class="v">${b}</span></div>`).join('')}`;
-    key('OPEN POD HOLD', () => { closeTerminal(); c.actions?.hold?.(); }, 'H', c.actions?.hold ? false : 'NEEDS A COLONY');
+    key('OPEN POD HOLD', () => { closeTerminal(); c.actions?.hold?.(); }, 'H', c.actions?.hold ? false : 'NEEDS A SETTLEMENT');
   },
   engineering(scr, key, _c, redraw) {
     const p = shipState().power;

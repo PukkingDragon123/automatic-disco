@@ -4,7 +4,9 @@
 // bounce and dust, and their health fills (the ship's medical stock pays for it).
 import * as THREE from 'three';
 import type { PanelCtx, Panel } from './index';
-import { div, place, artCanvas, S, keyCap, iconOf, clean, textEl } from '../ui';
+import { div, S, clean } from '../ui';
+import { icon3d, mMedkit } from '../icons3d';
+import { panel, pkey, meter, section, para, status, type Panel as KPanel, type PKey } from '../../../ui/kit/panel';
 import { plate } from '../../../ui/kit/mat';
 import { Px, P, INK, hex, cellBar, bevel, mixHex } from '../../../ui/kit/px';
 import { bitText } from '../../../ui/kit/bitfont';
@@ -36,94 +38,76 @@ const word = (k: 'hp' | 'suit' | 'hunger' | 'fatigue' | 'morale', v: number): st
   return v > 70 ? 'Good spirits' : v > 45 ? 'Steady' : v > 25 ? 'Low' : 'Breaking';
 };
 export function medbayPanel(ctx: PanelCtx): Panel {
-  const { w: W, h: H, host, game } = ctx;
+  const { host, game } = ctx;
   const live: TM[] = (game?.colony?.teammates as TM[] | undefined) ?? TEAMMATES.map((id) => ({ id, hp: 100, suit: 100, hunger: 10, fatigue: 10, morale: 75, alive: crew.alive(id) }));
   const st = shipState();
-  const bg = artCanvas(W, H); host.append(bg);
-  const p = plate(W, H, { mat: 'enamel', seed: 61, chamfer: 3, wear: 0.7, screws: true, grime: 0.5 });
-  p.blit(plate(W - 16, 70, { mat: 'steel', seed: 6, chamfer: 3, wear: 0.6, lip: 2 }), 8, 6);
-  bg.getContext('2d')!.putImageData(p.image(), 0, 0);
-  // ---- the field medkit on its shelf and the medical stock
-  const kv = new ModelView(medkit, { w: 64, h: 56, scale: S, spin: 0.5, hotSpin: 3, pitch: 0.5, zoom: 1.05, shadow: [2, 3, 0.45] });
-  const kh = div('s7-abs', host); kh.append(kv.cv); place(kh, 12, 10); kh.style.cursor = 'pointer'; kh.style.zIndex = '3';
-  kh.addEventListener('pointerenter', () => { kv.hot(true); uiSfx('hover', 0.4); });
-  kh.addEventListener('pointermove', (e) => kv.point(e.clientX, e.clientY));
-  kh.addEventListener('pointerleave', () => kv.hot(false));
-  kh.addEventListener('click', () => { kv.press(1); kv.poke(10); uiSfx('glass', 0.4); });
-  const info = div('s7-abs', host); place(info, 82, 10, W - 98); info.style.display = 'flex'; info.style.flexDirection = 'column'; info.style.gap = '0';
-  const stockRow = div(''); stockRow.style.display = 'flex'; stockRow.style.alignItems = 'baseline'; stockRow.style.gap = 2 * S + 'px';
-  const medHost = div(''); const med = new Counter(medHost, { size: 32 }); med.set(Math.round(st.supplies.medical), true);
-  stockRow.append(textEl('MEDICAL STOCK', { color: '#ffe7a8', wrap: false }), medHost, textEl('units', { color: '#d8ccb0', wrap: false }));
-  info.append(stockRow, textEl('HEAL uses 4 units: health to full, fatigue down by 40, a little morale.', { color: '#d8ccb0' }));
-  // ---- a card per teammate: portrait, name and role, each condition as a gauge, a value and a word
-  const cards: { t: TM; el: HTMLDivElement; cv: HTMLCanvasElement; paint(): void; face: HTMLCanvasElement | null }[] = [];
-  const y0 = 84, ch = Math.floor((H - y0 - 8 - 6) / 2);
+  // ---- the field medkit (a live 3D element) and the medical stock
+  const topRow = div('s7-row-top', host);
+  const kv3 = new ModelView(mMedkit, { w: 56, h: 48, scale: S, spin: 0.5, hotSpin: 3, pitch: 0.5, zoom: 1.05, shadow: [2, 3, 0.45] });
+  const kh = div('', topRow); kh.append(kv3.cv); kh.style.cursor = 'pointer'; kh.style.flex = 'none'; kh.style.position = 'relative'; kh.style.zIndex = '3';
+  kh.addEventListener('pointerenter', () => { kv3.hot(true); uiSfx('hover', 0.4); });
+  kh.addEventListener('pointermove', (e) => kv3.point(e.clientX, e.clientY));
+  kh.addEventListener('pointerleave', () => kv3.hot(false));
+  kh.addEventListener('click', () => { kv3.press(1); kv3.poke(10); uiSfx('glass', 0.4); });
+  const right = div('', topRow); right.style.flex = '1';
+  const stock = meter('MEDICAL STOCK', Math.min(1, st.supplies.medical / 60), { w: 180, segs: 12, col: 'red', value: Math.round(st.supplies.medical), unit: ' u' });
+  right.append(stock.el, para('HEAL uses 4 units: health to full, fatigue down by 40, a little morale.', { dim: true }));
+  host.append(section('ON THE SURFACE', `${live.filter((t) => t.alive).length} ALIVE`));
+  const cards: { t: TM; p: KPanel; paint(): void; face: HTMLCanvasElement | null; key: PKey }[] = [];
   live.forEach((t, i) => {
-    const y = y0 + i * (ch + 6);
-    const el = div('s7-abs', host); place(el, 8, y, W - 16, ch);
-    const cv = artCanvas(W - 16, ch, ''); el.append(cv);
-    const col = div('s7-abs', el); place(col, 58, 4, W - 16 - 62); col.style.display = 'flex'; col.style.flexDirection = 'column'; col.style.gap = '0';
-    const card = { t, el, cv, face: null as HTMLCanvasElement | null, paint: () => {} };
-    const GW = 58, gx = 100;
+    const p = panel({ tone: 'steel', head: 8, foot: 8, side: 6, lamps: [], hazard: false, glands: 0, vents: false, guards: false, cls: 's7-card7' });
+    host.append(p.el); p.el.style.marginBottom = '8px';
+    const ph = document.createElement('canvas'); ph.width = ph.height = 36; ph.style.width = ph.style.height = '72px'; ph.style.imageRendering = 'pixelated'; ph.style.flex = 'none'; ph.style.background = '#2a3036'; ph.style.boxShadow = 'inset 0 0 0 2px #08090c';
+    const col = div('', p.body); col.style.flex = '1'; col.style.minWidth = '0';
+    p.body.prepend(ph);
+    const card = { t, p, face: null as HTMLCanvasElement | null, paint: () => {}, key: null as unknown as PKey };
     card.paint = () => {
       const m = crew.member(t.id), dead = !t.alive || !m.alive;
-      const q = new Px(W - 16, ch);
-      q.blit(plate(W - 16, ch, { mat: 'steel', seed: 40 + i, chamfer: 3, wear: 0.8, lip: 2 }), 0, 0);
-      bevel(q, 6, 6, 46, 46, P.steel, { chamfer: 2, sunk: true });
-      for (let yy = 8; yy < 50; yy++) for (let xx = 8; xx < 50; xx++) q.set(xx, yy, mixHex(0x2a3238, 0x4a5258, (yy - 8) / 42));
-      const G: [number, readonly number[]][] = [[t.hp / 100, P.ruby], [t.suit / 100, P.sapphire], [1 - t.hunger / 100, P.ochre], [1 - t.fatigue / 100, P.glowTeal], [t.morale / 100, P.malachite]];
-      G.forEach(([v, r], k) => cellBar(q, gx, 24 + k * 9, GW, 6, dead ? 0 : Math.max(0, Math.min(1, v)), r, 0));
-      const c = cv.getContext('2d')!; c.imageSmoothingEnabled = false; c.putImageData(q.image(), 0, 0);
-      if (card.face) { c.filter = dead ? 'grayscale(1) brightness(.6)' : 'none'; c.drawImage(card.face, 10, 10, 38, 38); c.filter = 'none'; }
-      const rows: [string, string, 'hp' | 'suit' | 'hunger' | 'fatigue' | 'morale', number][] = [['heart', 'Health', 'hp', t.hp], ['shield', 'Suit', 'suit', t.suit], ['wheat', 'Hunger', 'hunger', t.hunger], ['moon', 'Fatigue', 'fatigue', t.fatigue], ['heart', 'Morale', 'morale', t.morale]];
-      const lines: HTMLElement[] = [textEl(`${clean(m.name)}`, { color: dead ? '#a09888' : '#ffe7a8', wrap: false }), textEl(`${clean(m.role)}${dead ? ', LOST' : ', on the surface'}`, { color: '#c8c0a8', wrap: false })];
-      for (const [, name, k, v] of rows) {
-        const r = div(''); r.style.display = 'flex'; r.style.gap = 2 * S + 'px'; r.style.height = 9 * S + 'px';
-        const a = textEl(name, { color: '#c8c0a8', wrap: false }); a.style.width = 40 * S + 'px';
-        const sp = div(''); sp.style.width = (GW + 2) * S + 'px';
-        const b = textEl(`${Math.round(v)}%`, { color: '#e8dcc0', wrap: false }); b.style.width = 26 * S + 'px'; b.style.textAlign = 'right';
+      const c = ph.getContext('2d')!; c.imageSmoothingEnabled = false; c.clearRect(0, 0, 36, 36);
+      if (card.face) { c.filter = dead ? 'grayscale(1) brightness(.6)' : 'none'; c.drawImage(card.face, 0, 0, 36, 36); c.filter = 'none'; }
+      const name = para(clean(m.name)); name.style.color = dead ? '#9a9488' : '#ffe39a'; name.style.margin = '0';
+      const rows: HTMLElement[] = [name, para(`${clean(m.role)}${dead ? ', lost' : ', on the surface'}`, { dim: true })];
+      const G: [string, 'hp' | 'suit' | 'hunger' | 'fatigue' | 'morale', number, number, 'red' | 'teal' | 'amber' | 'green' | 'white'][] = [['HEALTH', 'hp', t.hp, t.hp, 'red'], ['SUIT', 'suit', t.suit, t.suit, 'teal'], ['HUNGER', 'hunger', t.hunger, 100 - t.hunger, 'amber'], ['FATIGUE', 'fatigue', t.fatigue, 100 - t.fatigue, 'white'], ['MORALE', 'morale', t.morale, t.morale, 'green']];
+      for (const [lab, k, v, fill, colr] of G) {
+        const r = div('s7-row-top');
+        const mt = meter(lab, dead ? 0 : fill / 100, { w: 110, segs: 10, col: colr, value: `${Math.round(v)}%` }); mt.el.style.flex = '1';
         const bad = k === 'hp' || k === 'suit' || k === 'morale' ? v < 45 : v > 55;
-        r.append(a, sp, b, textEl(dead ? '--' : word(k, v), { color: bad ? '#ff9a80' : '#b8e0a0', wrap: false }));
-        lines.push(r);
+        const w = para(dead ? '--' : word(k, v)); w.style.margin = '0'; w.style.width = '86px'; w.style.color = bad ? '#ff9a80' : '#b8e0a0';
+        r.append(mt.el, w); rows.push(r);
       }
-      col.replaceChildren(...lines);
-      // what needs doing, in one line
       const need: string[] = [];
       if (!dead) { if (t.hp < 60) need.push('treat the injuries'); if (t.fatigue > 55) need.push('rest'); if (t.hunger > 55) need.push('food'); if (t.suit < 50) need.push('suit repair at the pod'); }
-      const tail = textEl(dead ? 'Beyond help.' : need.length ? `Needs: ${need.join(', ')}.` : 'Fit for work.', { color: dead ? '#a09888' : need.length ? '#ffc890' : '#b8e0a0' });
-      col.append(tail);
+      rows.push(status(dead ? 'Beyond help.' : need.length ? `Needs: ${need.join(', ')}.` : 'Fit for work.', dead ? 'bad' : need.length ? 'warn' : 'ok').el);
+      col.replaceChildren(...rows);
+      if (card.key) col.append(card.key);
+      card.key?.setDisabled(!game || dead || (t.hp >= 99 && t.fatigue < 15) || st.supplies.medical < 4);
     };
+    card.key = pkey('HEAL', () => heal(card), { tone: 'cream', lamp: 'red', sound: 'confirm', icon: icon3d('medkit', 22) });
     card.paint();
     setTimeout(() => { try { card.face = portrait(t.id); } catch { card.face = null; } card.paint(); }, 80 + i * 120);
-    const key = keyCap(host, {
-      label: 'HEAL', icon: iconOf('cross', 'red'), w: 78, h: 26, mat: 'enamel', sound: 'confirm',
-      off: () => (!game ? 'ON THE SHIP' : !t.alive ? 'LOST' : t.hp >= 99 && t.fatigue < 15 ? 'WELL' : st.supplies.medical < 4 ? 'NO STOCK' : false),
-      onClick: () => heal(card, key),
-    });
-    place(key.el, 8 + 4, y + ch - 32).style.position = 'absolute';
     cards.push(card);
   });
-  const heal = (card: (typeof cards)[number], key: ReturnType<typeof keyCap>) => {
+  const heal = (card: (typeof cards)[number]) => {
     const t = card.t;
-    st.supplies.medical -= 4; saveShip(); med.set(Math.round(st.supplies.medical));
-    const a = kh.getBoundingClientRect(), b = card.el.getBoundingClientRect();
-    const dx = b.left + 20 * S - a.left, dy = b.top + 6 * S - a.top;
-    kv.poke(16); uiSfx('swishIn', 0.6);
-    void tween(460, (k) => { const arc = Math.sin(k * Math.PI) * -40 * S; kh.style.transform = `translate(${Math.round(dx * k)}px, ${Math.round(dy * k + arc)}px) scale(${1 - k * 0.35})`; }, ease.inCubic).then(() => {
-      placeDust(b.left + 60 * S, b.top + 40 * S, 0.3, { ground: 'metal', layer: 'ui' });
-      burst(b.left + 28 * S, b.top + 28 * S, { n: 18, ramp: P.malachite, kind: 'spark', layer: 'ui', up: 1 });
+    st.supplies.medical -= 4; saveShip(); stock.set(Math.min(1, st.supplies.medical / 60), Math.round(st.supplies.medical));
+    const a = kh.getBoundingClientRect(), b = card.p.el.getBoundingClientRect();
+    const dx = b.left + 40 - a.left, dy = b.top + 20 - a.top;
+    kv3.poke(16); uiSfx('swishIn', 0.6);
+    void tween(460, (k) => { const arc = Math.sin(k * Math.PI) * -80; kh.style.transform = `translate(${Math.round(dx * k)}px, ${Math.round(dy * k + arc)}px) scale(${1 - k * 0.35})`; }, ease.inCubic).then(() => {
+      placeDust(b.left + 120, b.top + 80, 0.3, { ground: 'metal', layer: 'ui' });
+      burst(b.left + 56, b.top + 56, { n: 18, ramp: P.malachite, kind: 'spark', layer: 'ui', up: 1 });
       uiSfx('glass', 0.5); setTimeout(() => uiSfx('confirm', 0.5), 120);
       const from = t.hp;
       t.hp = 100; t.fatigue = Math.max(0, t.fatigue - 40); t.morale = Math.min(100, t.morale + 6);
-      floatUp(b.left + 28 * S, b.top, `+${Math.round(100 - from)} HEALTH`, { color: '#b8f0a0', size: 16 });
-      pop(card.el, 0.7); card.paint(); key.refresh();
+      floatUp(b.left + 56, b.top, `+${Math.round(100 - from)} HEALTH`, { color: '#b8f0a0', size: 16 });
+      pop(card.p.el, 0.5); card.paint();
       game?.emit?.('teammate-healed', { id: t.id });
       return tween(520, (k) => { kh.style.transform = `translate(${Math.round(dx * (1 - k))}px, ${Math.round(dy * (1 - k))}px) scale(${0.65 + k * 0.35})`; }, ease.outBack);
     }).then(() => { kh.style.transform = ''; uiSfx('thudLight', 0.4); });
   };
   let acc = 0;
   return {
-    update(dt) { acc += dt; if (acc > 1) { acc = 0; for (const c of cards) c.paint(); } },
-    dispose() { kv.dispose(); },
+    update(dt) { acc += dt; if (acc > 2) { acc = 0; for (const c of cards) c.paint(); } },
+    dispose() { kv3.dispose(); for (const c of cards) c.p.dispose(); },
   };
 }

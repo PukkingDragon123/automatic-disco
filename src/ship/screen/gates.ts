@@ -41,7 +41,7 @@ export const fnOpen = (game: any, id: RoomId, f: FnId) => roomOpen(game, id) && 
 export const FN_DESC: Record<FnId, string> = {
   monitor: 'Survey the system\'s worlds and choose where the next pod lands.',
   orders: 'The program\'s directives: what it wants sent up, by when, and what it pays.',
-  core: 'UNIT 07\'s own core: save the colony and read the link\'s standing.',
+  core: 'UNIT 07\'s own core: save the empire and read the link\'s standing.',
   supply: 'Order a supply capsule from the ship\'s stores. It lands by the pod.',
   study: 'Send specimens up to the ship\'s lab. Each one becomes knowledge.',
   heal: 'Treat the teammates on the surface from the ship\'s medical stock.',

@@ -52,7 +52,7 @@ export function choose(spec: ChoiceSpec, run: (o: Opt) => { text: string; lines:
     const opts = el('div', 'evc-opts', crt); opts.style.setProperty('--n', String(spec.options.length));
     const out = el('div', 'evc-out', crt);
     const foot = el('div', 'evc-foot', box);
-    foot.innerHTML = `<span><b>1-${spec.options.length}</b> CHOOSE &nbsp;·&nbsp; THE COLONY IS PAUSED</span><span>UNIT 07 · COLONY DECISION LOG</span>`;
+    foot.innerHTML = `<span><b>1-${spec.options.length}</b> CHOOSE &nbsp;·&nbsp; THE SETTLEMENT IS PAUSED</span><span>UNIT 07 · EMPIRE DECISION LOG</span>`;
     // the brief types itself
     let k = 0; const txt = spec.brief;
     const type = setInterval(() => { k = Math.min(txt.length, k + 2); brief.innerHTML = txt.slice(0, k) + (k < txt.length ? '<span class="cur">_</span>' : ''); if (k % 6 === 0) csfx('type', 0.15, 1.4); if (k >= txt.length) clearInterval(type); }, 16);

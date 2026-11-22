@@ -123,7 +123,7 @@ export class HubChrome {
     plate(this.backEl, 'steel', 3);
     this.backEl.addEventListener('click', (e) => { e.stopPropagation(); csfx('page', 0.4); this.hub.back(); });
     this.hintEl = div('khint tag', this.root);
-    this.titleEl = div('title pe', this.root, `<div class="pre">UNAA COLONY PROGRAM</div><div class="big">${SHIP_NAME}</div><div class="sub">${SHIP_REG} · KEPLER-442</div>`);
+    this.titleEl = div('title pe', this.root, `<div class="pre">UNAA SETTLEMENT PROGRAM</div><div class="big">${SHIP_NAME}</div><div class="sub">${SHIP_REG} · KEPLER-442</div>`);
     if (o.hasSave) this.titleKeys.push({ id: 'continue', label: 'CONTINUE', key: 'C', run: () => (this.hub.opts.onContinue ? this.hub.opts.onContinue() : this.hub.board()) });
     this.titleKeys.push({ id: 'new', label: 'NEW MISSION', key: 'N', run: () => (this.hub.opts.onNew ? this.hub.opts.onNew() : this.hub.board()) });
     this.titleKeys.push({ id: 'settings', label: 'SETTINGS', key: 'O', run: () => this.openSettings() });

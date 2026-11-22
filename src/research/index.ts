@@ -147,7 +147,7 @@ export function installProgression(game: Game) {
     else if (d.phase === 'met') transmission({ kind: 'met', q: d.q, text: d.q.early ? 'Received early. A capsule is on its way down.' : 'Received. A capsule is on its way down.', open, engine });
     else if (d.phase === 'missed') transmission({ kind: 'missed', q: d.q, text: mission.strikes >= 2 ? 'Strike two. One more and the program pulls the mission.' : 'The directive lapsed. It is on your record.', open });
   });
-  mission.on('recall', () => transmission({ kind: 'recall', text: 'The UNAA has recalled the mission. The colony will be abandoned.' }));
+  mission.on('recall', () => transmission({ kind: 'recall', text: 'The UNAA has recalled the mission. The empire will be abandoned.' }));
   bindDrops(game, mission);
   bindInstallFx(game, (fn) => upgrades.on('install', fn));
   upgrades.on('install', (d: { def: { name: string } }) => toast(`Upgrader: <b>${d.def.name}</b> installed.`, 'good', 4500));

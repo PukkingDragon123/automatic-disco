@@ -144,8 +144,8 @@ export function effects(kind: FKind): string[] {
   }
   if (d.station) {
     const rs = recipesAt(d.station);
-    for (const r of rs.slice(0, 4)) out.push(say(recipeWords(r)) + '.');
-    if (rs.length > 4) out.push(`... and ${rs.length - 4} more recipes.`);
+    for (const r of rs.slice(0, 3)) out.push(say(recipeWords(r)) + '.');
+    if (rs.length > 3) out.push(`... and ${rs.length - 3} more recipe${rs.length > 4 ? 's' : ''} (all on its blueprint sheet).`);
   }
   if (d.power < 0) out.push(`Makes ${fmt(-d.power)} MW for the grid${d.station ? ' while it has fuel' : ''}.`);
   if (d.belt) out.push(`Moves ${fmt(d.belt * 180)} items per min along the run.`);

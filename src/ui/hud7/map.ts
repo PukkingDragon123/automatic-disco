@@ -19,8 +19,8 @@ import { panel, kv, keyHint, showTip, hideTip, type Panel, type Kv } from '../ki
 import { bitText } from '../kit/bitfont';
 /** what each mark is (legend + tooltips) */
 const KIND_INFO: Partial<Record<MarkKind, [string, string]>> = {
-  pod: ['POD', 'your landed pod: the colony centre'], building: ['BUILDING', 'a colony building'], struct: ['STRUCTURE', 'a colony structure'],
-  worker: ['CREW', 'a crew member or worker'], drone: ['DRONE', 'a colony drone'], rival: ['RIVAL', 'another faction\'s tower'], beast: ['CREATURE', 'a wild creature seen now'],
+  pod: ['POD', 'your landed pod: the settlement centre'], building: ['BUILDING', 'a settlement building'], struct: ['STRUCTURE', 'a settlement structure'],
+  worker: ['CREW', 'a crew member or worker'], drone: ['DRONE', 'a settlement drone'], rival: ['RIVAL', 'another faction\'s tower'], beast: ['CREATURE', 'a wild creature seen now'],
   peak: ['PEAK', 'a summit; height above the water line'], fall: ['WATERFALL', 'falling water'], spring: ['SPRING', 'a fresh or mineral spring'], geyser: ['GEYSER', 'erupts on a cycle'],
   cave: ['CAVE', 'a cave mouth'], pass: ['PASS', 'a way through the ridges'], vent: ['STEAM VENT', 'geothermal heat'], ore: ['ORE SEAM', 'drill it for ore'],
   crystal: ['CRYSTAL SEAM', 'rare crystal'], lake: ['LAKE', 'standing water, marsh or tarn'], danger: ['DANGER', 'a hazard reported here'],

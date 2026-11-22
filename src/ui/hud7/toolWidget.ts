@@ -135,7 +135,7 @@ export class ToolWidget {
   use() {
     const c = this.g.colony, i = this.current, s = this.slotTool(i);
     const r = this.stage.getBoundingClientRect();
-    if (!c) { this.refuse('NO COLONY'); return; }
+    if (!c) { this.refuse('NO SETTLEMENT'); return; }
     const why = c.useSlot(i);
     if (why) { this.refuse(why); return; }
     this.view?.press(1.3);

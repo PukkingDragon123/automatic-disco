@@ -59,6 +59,15 @@ export function shipCSS() {
 .s7-tab:hover { transform: translateY(-3px); filter: brightness(1.15); }
 .s7-tab.on { transform: translateY(4px); }
 .s7-hit { position: absolute; cursor: pointer; }
+.s7-row { cursor: pointer; padding: 4px 6px 2px; margin: 0 -6px; transition: background .12s; }
+.s7-row:hover { background: rgba(255, 210, 120, .07); box-shadow: inset 2px 0 0 #f2c862; }
+.s7-row-top { display: flex; align-items: center; gap: 6px; }
+.s7-keys { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }
+.s7-fnhost { position: relative; }
+.s7-cols { display: flex; gap: 10px; align-items: flex-start; }
+.s7-card7 { position: relative; }
+.s7-card7 .kp-body { display: flex; gap: 8px; }
+.s7-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 `;
   document.head.append(s);
 }

@@ -92,14 +92,14 @@ export const EVENTS: EventDef[] = [
     },
     brief: () => 'A storm cell is coming down off the ridge: high wind, hail and lightning over the works for several minutes.',
     options: () => [
-      { key: 'shelter', label: 'SHELTER EVERYTHING', plus: ['No damage, no losses'], minus: ['Every machine offline for 2 min'], run: (f) => { E.shutdown(f, 120); E.morale(f, 4); return 'The colony waited it out behind closed hatches.'; } },
+      { key: 'shelter', label: 'SHELTER EVERYTHING', plus: ['No damage, no losses'], minus: ['Every machine offline for 2 min'], run: (f) => { E.shutdown(f, 120); E.morale(f, 4); return 'The settlement waited it out behind closed hatches.'; } },
       { key: 'ride', label: 'KEEP WORKING', plus: ['Production continues'], minus: ['Machines may be struck', 'A worker may die'], run: (f) => { E.damageBuildings(f, 2 + (Math.random() < 0.5 ? 1 : 0), 0.45); if (E.pct(0.35)) E.killWorkers(f, 1, 'lightning'); else E.hurtWorkers(f, 0.25, 3); E.morale(f, -6); return 'The lines kept running. Not everything came through.'; } },
       { key: 'ground', label: 'CATCH THE LIGHTNING', plus: ['+18 ENERGY data', 'Energy mastery'], minus: ['Power poles take heavy damage'], need: () => null,
         run: (f) => { E.data(f, 'energy', 18); E.xp(f, 'energy', 40); E.damageBuildings(f, 6, 0.55, (b) => b.kind === 'pole' || b.kind === 'grav_pole'); return 'Three strikes hit the rods. The instruments recorded every one.'; } },
     ],
   },
   {
-    id: 'revolt', title: 'WORKER REVOLT', kicker: 'COLONY UNREST',
+    id: 'revolt', title: 'WORKER REVOLT', kicker: 'SETTLEMENT UNREST',
     weight: (g, D) => (E.workers(g).length >= 3 ? (D.morale < 45 ? 2.2 : 0.4) : 0),
     async cine(c, x) {
       const { st, g } = x, P = st.pod(), ws = E.workers(g).slice(0, 8);
@@ -107,7 +107,7 @@ export const EVENTS: EventDef[] = [
       for (const [i, w] of ws.entries()) { const a = (i / ws.length) * Math.PI * 2; w.order = { kind: 'move', x: P.x + Math.sin(a) * 5, z: P.z + Math.cos(a) * 5 }; w.path = null; w.mind = 'order'; }
       c.cam.cut(spot(st, P, 0.6, 16, 2.2), look(P, 1.2), 40);
       await c.fade(0, 0.6);
-      c.stamp('COLONY UNREST · WORK STOPPED ON ALL LINES', true);
+      c.stamp('SETTLEMENT UNREST · WORK STOPPED ON ALL LINES', true);
       c.cam.move({ pos: spot(st, P, 1.4, 8, 1.4), look: look(P, 1.0), dur: 7, ease: 'inOut' });
       c.sfx('roar', 0.5, 1.2);
       await c.say('Every fitted worker has stopped at once. They are coming to the pod.', { who: 'WORKS SUPERVISOR', style: 'radio' });
@@ -143,11 +143,11 @@ export const EVENTS: EventDef[] = [
       c.cam.move({ pos: spot(st, P, 2.4, 14, 4), look: look(P, 1), dur: 4, ease: 'inOut' });
       await c.say('Machines, workers, belts. They will not go round.', { who: 'UNIT 07', style: 'plain' });
     },
-    brief: (x) => `${x.data.h ? x.data.h.list.length + ' ' + (x.data.h.sp?.name ?? 'creatures') : 'A herd'} will cross the colony within the minute.`,
+    brief: (x) => `${x.data.h ? x.data.h.list.length + ' ' + (x.data.h.sp?.name ?? 'creatures') : 'A herd'} will cross the settlement within the minute.`,
     options: (x) => [
       { key: 'corridor', label: 'OPEN A CORRIDOR', plus: ['+20 BIO data (study them)', 'Nothing lost'], minus: ['Machines offline 90 s'], run: (f) => { E.shutdown(f, 90); E.data(f, 'bio', 20); E.xp(f, 'bio', 25); return 'The lines stopped and the herd walked through. The scanners logged every animal.'; } },
       { key: 'turn', label: 'TURN THEM BACK', plus: ['No downtime', `Meat and hide`], minus: ['Machines trampled', 'A worker may be gored'], run: (f) => { const h = x.data.h; let k = 0; if (h) for (const cr of h.list.slice(0, 3)) { cr.dieCause = 'culled'; A(x.g).world?.kill?.(cr, null); k++; } E.items(f, { [pick('meat', 'protein')]: 6 * Math.max(1, k), [pick('hide', 'silk')]: 3 * Math.max(1, k) }); E.damageBuildings(f, 2, 0.5); if (E.pct(0.4)) E.killWorkers(f, 1, 'gored'); return 'They broke and scattered, but not before they hit the works.'; } },
-      { key: 'capture', label: 'CAPTURE ONE', plus: ['A new worker joins'], minus: ['One machine trampled'], need: () => (A(x.g).run?.skills?.has?.('convert') ? null : 'Needs LABOUR HARNESS research'), run: (f) => { const h = x.data.h, cr = h?.list?.find((q: any) => !q.dead); if (cr) { cr.faction = 'veyr'; cr.order = null; f.out.push(`${cr.sp?.name ?? 'A creature'} joins the colony`); } E.damageBuildings(f, 1, 0.5); E.xp(f, 'bio', 30); return 'The harness took. One of them stayed.'; } },
+      { key: 'capture', label: 'CAPTURE ONE', plus: ['A new worker joins'], minus: ['One machine trampled'], need: () => (A(x.g).run?.skills?.has?.('convert') ? null : 'Needs LABOUR HARNESS research'), run: (f) => { const h = x.data.h, cr = h?.list?.find((q: any) => !q.dead); if (cr) { cr.faction = 'veyr'; cr.order = null; f.out.push(`${cr.sp?.name ?? 'A creature'} joins the settlement`); } E.damageBuildings(f, 1, 0.5); E.xp(f, 'bio', 30); return 'The harness took. One of them stayed.'; } },
     ],
   },
   {
@@ -273,7 +273,7 @@ export const EVENTS: EventDef[] = [
     options: (x) => [
       { key: 'workers', label: 'SEND WORKERS', plus: ['Recover most of the cargo'], minus: ['A worker may not come back'], run: (f) => { E.items(f, { [pick('iron_plate')]: 24, [pick('circuit')]: 4, [pick('motor')]: 1, [pick('glass')]: 8 }); if (E.pct(0.35)) E.killWorkers(f, 1, 'predators'); return 'They came back loaded. Not all of them came back.'; } },
       { key: 'drone', label: 'SEND A DRONE', plus: ['Safe recovery of half'], minus: ['Half the cargo stays out there'], need: () => ((A(x.g).colony?.drones?.length ?? 0) > 0 || (A(x.g).upgrades?.count?.('drone_') ?? 0) > 0 ? null : 'Needs a drone'), run: (f) => { E.items(f, { [pick('iron_plate')]: 12, [pick('circuit')]: 2 }); E.xp(f, 'robotics', 15); return 'The drone made three runs before the predators arrived.'; } },
-      { key: 'leave', label: 'WRITE IT OFF', plus: ['No risk'], minus: ['Cargo lost', 'Reputation -4'], run: (f) => { E.rep(f, -4); return 'The Meridian logged the loss against the colony.'; } },
+      { key: 'leave', label: 'WRITE IT OFF', plus: ['No risk'], minus: ['Cargo lost', 'Reputation -4'], run: (f) => { E.rep(f, -4); return 'The Meridian logged the loss against the settlement.'; } },
     ],
   },
 ];

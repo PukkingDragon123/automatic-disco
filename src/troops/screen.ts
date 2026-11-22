@@ -460,7 +460,7 @@ export class TroopsScreen {
     const hive = this.g.veyr;
     const ds: any[] = hive?.designs?.() ?? [];
     const grid = div('trs-opts');
-    const lcap = document.createElement('div'); lcap.className = 'k7-t16 trs-sec'; lcap.textContent = ds.length ? 'THE COLONY\'S WORKER DESIGNS · CLICK ONE TO PRINT IT BESIDE THE POD' : 'NO DESIGNS YET: ENGINEER ONE IN THE LAB (DOCK), THEN PRINT IT HERE';
+    const lcap = document.createElement('div'); lcap.className = 'k7-t16 trs-sec'; lcap.textContent = ds.length ? 'THE SETTLEMENT\'S WORKER DESIGNS · CLICK ONE TO PRINT IT BESIDE THE POD' : 'NO DESIGNS YET: ENGINEER ONE IN THE LAB (DOCK), THEN PRINT IT HERE';
     lp.append(lcap);
     ds.slice(0, 8).forEach((sp, i) => grid.append(this.designOpt(sp, i)));
     lp.append(grid);

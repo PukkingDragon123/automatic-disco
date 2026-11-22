@@ -80,10 +80,10 @@ export class Corner {
     this.pw = gauge('power'); this.ox = gauge('oxygen');
     el.append(clock, keys, vit);
     // COLONY STATUS: the time and every vital spelled out, and one line on what needs doing
-    this.card = panel({ title: 'COLONY STATUS', tone: 'gun', lamps: ['green', 'amber', 'red'], glands: 1, vents: false, foot: 12, cls: 'h7-status' });
+    this.card = panel({ title: 'SETTLEMENT STATUS', tone: 'gun', lamps: ['green', 'amber', 'red'], glands: 1, vents: false, foot: 12, cls: 'h7-status' });
     const row = (k: string, label: string, title: string) => { const r = kv(label, '-', { title, barCol: k === 'power' ? '#ffb02a' : k === 'oxygen' ? '#40d8f0' : '#8ce070' }); this.rows[k] = r; this.card.body.append(r.el); };
     row('time', 'Time', 'Local time on the planet and the part of the day');
-    row('speed', 'Speed', 'How fast the colony runs');
+    row('speed', 'Speed', 'How fast the settlement runs');
     row('power', 'Battery', 'Charge in the pod battery');
     row('net', 'Power net', 'Generation minus draw');
     row('oxygen', 'Oxygen', 'Pod tank; scrubbers refill it on power');
@@ -92,7 +92,7 @@ export class Corner {
     row('morale', 'Morale', 'How the crew is holding up');
     this.st = this.card.status('', 'ok');
     el.append(this.card.el);
-    const KEYDESC: Record<string, [string, string]> = { pause: ['PAUSE', 'Stop the clock. Orders can still be given.'], x1: ['NORMAL SPEED', 'Run the colony at 1x.'], x2: ['FAST', 'Run the colony at 2x.'], x3: ['FASTEST', 'Run the colony at 3x.'] };
+    const KEYDESC: Record<string, [string, string]> = { pause: ['PAUSE', 'Stop the clock. Orders can still be given.'], x1: ['NORMAL SPEED', 'Run the settlement at 1x.'], x2: ['FAST', 'Run the settlement at 2x.'], x3: ['FASTEST', 'Run the settlement at 3x.'] };
     this.keys.forEach((k) => bindTip(k.el, () => ({ title: KEYDESC[k.kind][0], desc: KEYDESC[k.kind][1], status: k.on ? ['Active now', 'ok'] : undefined })));
     this.tip = document.createElement('div'); this.tip.className = 'k7-tip k7-t16'; document.body.append(this.tip);
     for (const [gg, f] of [[this.pw, () => this.powerTip()], [this.ox, () => this.o2Tip()]] as const) {
@@ -107,7 +107,7 @@ export class Corner {
     const g = this.g, r = this.rows;
     r.time.set(`${hr} · ${part(hh)}`);
     r.speed.set(g.paused ? 'PAUSED' : (g.speed ?? 1) === 1 ? 'NORMAL 1x' : `FAST ${g.speed}x`, { color: g.paused ? '#ffb02a' : undefined });
-    if (!v) { for (const k of ['power', 'net', 'oxygen', 'food', 'hull', 'morale']) r[k].set('-'); this.st.set('No colony vitals yet.', 'info'); return; }
+    if (!v) { for (const k of ['power', 'net', 'oxygen', 'food', 'hull', 'morale']) r[k].set('-'); this.st.set('No settlement vitals yet.', 'info'); return; }
     const net = v.gen - v.draw;
     r.power.set(`${Math.round(v.battery)} / ${v.batteryCap} kWh`, { bar: v.battery / v.batteryCap, color: v.levels.power === 'ok' ? undefined : v.levels.power === 'crit' ? '#ff7a5a' : '#ffc860' });
     r.net.set(`${net >= 0 ? '+' : ''}${net.toFixed(1)} kW (${v.gen.toFixed(0)} in, ${v.draw.toFixed(0)} out)`, { color: net < 0 ? '#ffc860' : '#a8e890' });

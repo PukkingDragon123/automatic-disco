@@ -134,7 +134,7 @@ export class Hud {
     const link = el('button', 'cx-btn blue cx-link', id); link.appendChild(iconImg('v-link', 30)); el('span', '', link, 'SHIP AI LINK');
     link.onclick = (e) => { e.stopPropagation(); sfx('click'); this.colony?.shipLink(); };
     if (HW3D) this.hw.bindId(tx, 'UNAA · CP-07', this.c.regionName.toUpperCase(), link);
-    this.hoverTip(link, () => '<b>SHIP AI LINK</b><br>Talk to the ship\'s AI and return to the research ship. The colony waits, paused, until you come back.');
+    this.hoverTip(link, () => '<b>SHIP AI LINK</b><br>Talk to the ship\'s AI and return to the research ship. The settlement waits, paused, until you come back.');
     rc.style.cursor = 'pointer'; rc.onclick = () => { const c = this.colony; if (c) { c.select({ kind: 'pod' }); this.g?.cam.lookAt(c.pod.x, c.pod.z); } };
     const vit = el('div', 'cx-vitals', top);
     for (const v of VITALS) {
@@ -374,7 +374,7 @@ export class Hud {
   }
   private selName(s: Sel): [string, string, string] {
     switch (s.kind) {
-      case 'pod': return ['UNAA COLONY POD CP-07', 'HOME BASE · UNIT 07', 'u-pod'];
+      case 'pod': return ['UNAA SETTLER POD CP-07', 'HOME BASE · UNIT 07', 'u-pod'];
       case 'arm': return [s.ref.name, s.ref.def.name.toUpperCase(), CATALOG[('arm_' + s.ref.kind) as keyof typeof CATALOG]?.icon ?? 't-claw'];
       case 'drone': return [s.ref.name, s.ref.def.name.toUpperCase(), s.ref.kind === 'scout' ? 't-scout' : s.ref.kind === 'carrier' ? 't-carrier' : 't-repairdrone'];
       case 'crew': return [s.ref.name.toUpperCase(), s.ref.title, 'v-morale'];
@@ -455,7 +455,7 @@ export class Hud {
     const A = this.selActs; A.innerHTML = '';
     const say = (why: string) => { if (why) this.flash(why, true); };
     if (s.kind === 'pod') {
-      this.btn(A, 'SHIP AI LINK', () => c.shipLink(), 'Return to the ship through the AI link (the colony pauses).', 'blue');
+      this.btn(A, 'SHIP AI LINK', () => c.shipLink(), 'Return to the ship through the AI link (the settlement pauses).', 'blue');
       this.btn(A, 'CENTRE VIEW', () => this.g?.cam.lookAt(c.pod.x, c.pod.z));
     } else if (s.kind === 'arm') {
       const a = s.ref;
@@ -465,7 +465,7 @@ export class Hud {
       const d = s.ref;
       this.btn(A, 'STEER [ENTER]', () => say(c.control('drone:' + d.id)), 'Fly it yourself: WASD, R/F altitude, Shift boost, the pointer aims, the left button works its tool.', 'on');
       this.btn(A, 'RETURN', () => { d.order = { k: 'return' }; });
-      this.btn(A, 'PATROL', () => { const p = c.pod, r = 16; d.order = { k: 'patrol', pts: [0, 1, 2, 3, 4, 5].map((i) => [p.x + Math.cos(i * 1.05) * r, p.z + Math.sin(i * 1.05) * r] as [number, number]), i: 0 }; d.docked = false; }, 'Circle the colony at sixteen metres.');
+      this.btn(A, 'PATROL', () => { const p = c.pod, r = 16; d.order = { k: 'patrol', pts: [0, 1, 2, 3, 4, 5].map((i) => [p.x + Math.cos(i * 1.05) * r, p.z + Math.sin(i * 1.05) * r] as [number, number]), i: 0 }; d.docked = false; }, 'Circle the settlement at sixteen metres.');
       if (d.kind === 'scout') this.btn(A, 'AREA SCAN', () => c.scanArea(d.x, d.z, 14, d), 'Scan everything within fourteen metres of the drone.');
     } else if (s.kind === 'crew') {
       const t = s.ref;

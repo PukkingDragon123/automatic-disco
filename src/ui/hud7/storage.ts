@@ -83,7 +83,7 @@ export class StorageWidget {
     }
     this.names = document.createElement('div'); this.names.className = 'h7-shelf-names';
     for (const cat of CATS) { const n = document.createElement('div'); n.className = 'k7-t16 h7-res-name'; n.textContent = cat.name; this.names.append(n); }
-    this.cap = document.createElement('div'); this.cap.className = 'k7-t16 h7-store-cap'; this.cap.textContent = 'COLONY STORES';
+    this.cap = document.createElement('div'); this.cap.className = 'k7-t16 h7-store-cap'; this.cap.textContent = 'SETTLEMENT STORES';
     shelf.append(this.cap, row, plank, counts, this.names);
     el.append(crate, shelf);
     // tooltips with the real contents: every item in the category by name, and what a click does
@@ -91,12 +91,12 @@ export class StorageWidget {
       const m = this.byCat[sl.cat.k] ?? new Map<string, number>(), list = [...m.entries()].sort((a, b) => b[1] - a[1]);
       const rows: [string, string | number][] = list.slice(0, 9).map(([it, n]) => [ITEMS[it as ItemId]?.name ?? it, n]);
       if (list.length > 9) rows.push([`+${list.length - 9} more kinds`, list.slice(9).reduce((q, [, n]) => q + n, 0)]);
-      return { title: `${sl.cat.name}: ${sl.last}`, sub: 'TOTAL IN ALL COLONY STORES', rows, status: list.length ? ['Click: open the store that holds the most', 'info'] : ['None in store yet', 'warn'] };
+      return { title: `${sl.cat.name}: ${sl.last}`, sub: 'TOTAL IN ALL SETTLEMENT STORES', rows, status: list.length ? ['Click: open the store that holds the most', 'info'] : ['None in store yet', 'warn'] };
     }));
     bindTip(crate, () => {
       const st = this.g.storage, all = (st?.all?.() ?? []) as { contents(): { n: number }[] }[];
       const items = all.reduce((q, c) => q + c.contents().reduce((a, b) => a + b.n, 0), 0);
-      return { title: 'COLONY STORES', desc: 'Everything the colony has hauled in: the pod hold and every crate and silo you build.', rows: [['Containers', all.length], ['Items stored', items]], hint: [['CLICK', 'open the container grids']] };
+      return { title: 'SETTLEMENT STORES', desc: 'Everything this settlement has hauled in: the pod hold and every crate and silo you build.', rows: [['Containers', all.length], ['Items stored', items]], hint: [['CLICK', 'open the container grids']] };
     });
     // the icon art arrives late (item sprites load lazily): refresh once a second for a while
     let tries = 0; const t = setInterval(() => { for (const s of this.slots) s.icon.src = itemIcon(s.cat.icon, 64); if (++tries > 6) clearInterval(t); }, 1200);
@@ -112,7 +112,7 @@ export class StorageWidget {
     } }
     this.byCat = by;
     const tot = Object.values(out).reduce((a, b) => a + b, 0);
-    this.cap.textContent = `COLONY STORES · ${tot} ITEMS IN ${n} ${n === 1 ? 'CONTAINER' : 'CONTAINERS'}`;
+    this.cap.textContent = `SETTLEMENT STORES · ${tot} ITEMS IN ${n} ${n === 1 ? 'CONTAINER' : 'CONTAINERS'}`;
     return out;
   }
   update(dt: number) {

@@ -23,7 +23,7 @@ type Ev = 'quota' | 'drop' | 'recall';
 const BRIEFS: Record<QKind, string[]> = {
   data: ['The board wants proof this world is worth the fuel.', 'Science review in orbit. Send what you have learned.', 'The program lead asked for raw data, not summaries.'],
   items: ['The vessel needs stock for the return leg.', 'Fabrication aboard is short. Ship it up on the next lift.', 'Material samples for the Antarctic labs.'],
-  milestone: ['The council reviews colony viability this cycle.', 'Show the board a colony, not a camp.', 'Investors are watching the telemetry.'],
+  milestone: ['The council reviews settlement viability this cycle.', 'Show the board an empire, not a camp.', 'Investors are watching the telemetry.'],
 };
 
 export class Mission {

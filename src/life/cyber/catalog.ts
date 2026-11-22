@@ -15,7 +15,7 @@ export const SLOT_NAME: Record<Slot, string> = {
 };
 export const SLOT_DESC: Record<Slot, string> = {
   head: 'Sensors over the eyes: range, night vision, survey.',
-  collar: 'The neural control collar: obedience, coordination, the colony link.',
+  collar: 'The neural control collar: obedience, coordination, the settlement link.',
   back: 'Harness and cargo frame, or a seed hopper: what it carries on its back.',
   power: 'A power cell for the machinery, cabled to every fitted part.',
   fore: 'Front limbs: hydraulic replacements or digging claws.',
@@ -62,7 +62,7 @@ const P = (p: CyberPart) => p;
 export const CYBER_PARTS: CyberPart[] = [
   P({ id: 'cy_visor', name: 'Survey Visor', slot: 'head', cost: { glass: 2, circuit: 2, copper_wire: 3 }, sight: 14, skills: { scout: 2, operate: 0.6 }, power: 0.4, wear: 0.1, desc: 'A sealed visor band over the eyes: rangefinder, thermal and night optics, a mast with a survey lens.' }),
   P({ id: 'cy_sensor', name: 'Sensor Mast Head', slot: 'head', cost: { circuit: 3, vacuum_tube: 2, glass: 1, iron_plate: 2 }, sight: 22, skills: { scout: 3, guard: 0.8 }, power: 0.8, wear: 0.2, desc: 'A full sensor head: twin lenses, a radar fin and an aerial on the skull. It sees over the treeline.' }),
-  P({ id: 'cy_collar', name: 'Neural Control Collar', slot: 'collar', cost: { control_unit: 1, copper_wire: 4, iron_plate: 2 }, control: 1, skills: { operate: 1.2, haul: 0.3, build: 0.3 }, power: 0.3, wear: 0.05, desc: 'Electrodes into the brain stem and a control module: the animal stays on task and takes the colony\'s orders.' }),
+  P({ id: 'cy_collar', name: 'Neural Control Collar', slot: 'collar', cost: { control_unit: 1, copper_wire: 4, iron_plate: 2 }, control: 1, skills: { operate: 1.2, haul: 0.3, build: 0.3 }, power: 0.3, wear: 0.05, desc: 'Electrodes into the brain stem and a control module: the animal stays on task and takes the settlement\'s orders.' }),
   P({ id: 'cy_cargo', name: 'Load Harness & Cargo Frame', slot: 'back', plans: [...LEGGED, 'serpent'], cost: { steel_beam: 3, iron_rod: 4, rubber: 2, screw: 4 }, carry: 30, speed: -0.3, skills: { haul: 3 }, power: 0, wear: 0.15, desc: 'Padded straps round the barrel and a welded rack over the back, crates lashed on. It carries a load of goods.' }),
   P({ id: 'cy_hopper', name: 'Seed Hopper & Spray Boom', slot: 'back', plans: LEGGED, cost: { iron_plate: 4, rubber: 2, motor: 1, iron_rod: 2 }, carry: 8, skills: { farm: 3 }, power: 0.6, wear: 0.2, desc: 'A seed and water hopper with a rear boom: it sows, waters and sprays as it walks the rows.' }),
   P({ id: 'cy_power', name: 'Fuel-Cell Power Pack', slot: 'power', cost: { motor: 1, cable: 4, iron_plate: 3, circuit: 1 }, speed: 0.4, skills: { haul: 0.4, dig: 0.4, build: 0.4 }, power: -3, wear: 0.1, desc: 'A sealed cell over the hips with cooling fins and a gauge, cabled to every fitted part. Machinery runs harder.' }),

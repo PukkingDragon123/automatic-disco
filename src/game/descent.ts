@@ -77,7 +77,7 @@ export class GameDescent {
     g.vision.revealAll = true; g.vision.update(0, true);
     g.cineCam = (cam, dt) => this.camera(cam, dt);
     this.ui.letterbox(true, 0.01); this.ui.fade(1, 0); this.ui.fade(0, 1.2); this.ui.showSkip(true);
-    this.ui.stamp(`${o.planetName.toUpperCase()} · ${g.regionName.toUpperCase()} · COLONY POD CP-07 INBOUND`, true);
+    this.ui.stamp(`${o.planetName.toUpperCase()} · ${g.regionName.toUpperCase()} · SETTLER POD CP-07 INBOUND`, true);
     csfx('wind', 0.5);
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape' || e.key === ' ') { e.stopPropagation(); this.skip(); } };
     const click = () => this.skip();
@@ -132,7 +132,7 @@ export class GameDescent {
       // the chute settles away downwind; the pod is the colony's now
       if (this.chute.visible) { this.chuteV.y -= dt * 4; this.chute.position.addScaledVector(this.chuteV, dt); if (this.chute.position.y < L.y - 6) this.chute.visible = false; }
     }
-    if (t >= T_RISE && t - dt < T_RISE) { this.ui.stampOff(); this.ui.card('COLONY ESTABLISHED', `${g.regionName.toUpperCase()} · SOL 1`, 'UNAA PLANETARY RESEARCH PROGRAM', 'UNAA'); csfx('sting', 0.5); }
+    if (t >= T_RISE && t - dt < T_RISE) { this.ui.stampOff(); this.ui.card('SETTLEMENT ESTABLISHED', `${g.regionName.toUpperCase()} · SOL 1`, 'UNAA PLANETARY RESEARCH PROGRAM', 'UNAA'); csfx('sting', 0.5); }
     if (t >= T_END - 1.2 && t - dt < T_END - 1.2) { this.ui.cardOff(); this.ui.letterbox(false, 1); }
     if (t >= T_END) this.finish();
   };
