@@ -7,10 +7,16 @@
 // twisted rope fibre, rust blooms and chipped enamel. At 32 px/m it reads as a real material in a few pixels.
 // Everything is painted in code space (codes.ts) so the icon renderer can shade along the same ramps. Feature
 // sizes are in metres (strokes stay one texel), so one recipe paints the world's tiles and an icon's finer ones.
+// MATERIAL LIBRARY (v7, V7.md "MATERIAL LIBRARY"): the materials the shared library already paints (bark, sawn and split
+// wood, crate boards, stone, gravel, soil, sand, hide, steel, iron, rubber, concrete, paper, enamel) are taken from it
+// at its close-up HD density (LIB below) and quantised into code space on a ramp drawn from the texture's own tones, so
+// the icon renderer still shades along a ramp. The recipes left here (end grain, birch, ores, crystals, copper, brass,
+// gold, bricks, straw ...) paint at HD_K times the asked density, so their marks stay fine up close.
 import * as THREE from 'three';
-import { makeRamp } from '../../limbo/gfx/pixel';
-import { tileNoise2, hashf } from '../../limbo/core/rng';
-import { code, codeI, regRamp, shift, colorOf, cFlags, cRamp, cStep, cLen, F_EMIT, F_GLOSS, F_METAL, F_GLASS, type Code } from './codes';
+import { makeRamp } from '../../gfx/mat/pixel';
+import { matPixels, matInfo } from '../../gfx/mat';
+import { tileNoise2, hashf } from '../../gfx/mat/rng';
+import { code, codeI, regRamp, rampOf, shift, colorOf, cFlags, cRamp, cStep, cLen, F_EMIT, F_GLOSS, F_METAL, F_GLASS, type Code } from './codes';
 
 export const H = (x: number, y: number, s = 0) => { let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(s | 0, 2246822519)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 const sstep = (a: number, b: number, x: number) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -510,14 +516,60 @@ const matOf = (k: string): Mat | undefined => MATS[k] ?? solidMat(k) ?? undefine
 export const MAT_KEYS = Object.keys(MATS);
 export const hasMat = (k: string) => !!matOf(k);
 /** a material's base code (the tone a far LOD uses) */
-export const matBase = (k: string): Code => matOf(k)?.base ?? code('stone', 3);
+export const matBase = (k: string): Code => {
+  if (LIB[k]) { const c = tileOf(k, 32).tile.d[0]; return codeI(cRamp(c), 4, cFlags(c)); }
+  return matOf(k)?.base ?? code('stone', 3);
+};
+
+// ------------------------------------------------------------------ the library's materials
+/** resource material -> the material library's (src/gfx/mat) painter for it, and the scale of one repeat: the library
+ *  paints for rooms and trunks; a log, an ingot or a rock wants its features at about half that size */
+const LIB: Record<string, [string, number]> = {
+  bark: ['q_bark', 0.45], barkPine: ['bark', 0.5], wood: ['wood_light', 1], plank: ['wood_light', 1], crateWood: ['wood_crate', 1],
+  granite: ['stone_rough', 0.5], basalt: ['q_rock_dark', 0.5], limestone: ['pg_rock', 0.5], gravel: ['gravel', 0.5], dirt: ['dirt', 0.5], sand: ['sand', 0.5],
+  hide: ['rm_hide_doe', 0.5], steel: ['metal_grey', 0.5], iron: ['metal_dark', 0.5], rubber: ['rubber_black', 0.5], concrete: ['concrete', 0.5], paper: ['paper', 0.5],
+  olive: ['enamel_olive', 0.5], enamelRed: ['enamel_red', 0.5],
+};
+/** the multiple of the asked density the local recipes paint at (the library's tiles come at about 128 px/m) */
+const HD_K = 4;
+const libRamps = new Map<string, number>();
+/** a library texture in code space: its own 8-tone ramp (equal-count luminance buckets, each its mean colour) */
+function libTile(key: string, name: string, scale: number, flags: number): { tile: CTile; metres: number } {
+  const info = matInfo(name)!, hd = info.mw * scale <= 0.6 ? 2 : 4, p = matPixels(name, hd), n = p.w * p.h;
+  const lum = (i: number) => p.data[i * 4] * 0.3 + p.data[i * 4 + 1] * 0.59 + p.data[i * 4 + 2] * 0.11;
+  let rid = libRamps.get(name);
+  if (rid === undefined) {
+    const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => lum(a) - lum(b)), cols: number[] = [];
+    for (let k = 0; k < 8; k++) {
+      let r = 0, g = 0, b = 0, c = 0;
+      for (let j = Math.floor((k * n) / 8); j < Math.floor(((k + 1) * n) / 8); j++) { const i = order[j] * 4; r += p.data[i]; g += p.data[i + 1]; b += p.data[i + 2]; c++; }
+      c = Math.max(1, c); cols.push(((Math.round(r / c) << 16) | (Math.round(g / c) << 8) | Math.round(b / c)) >>> 0);
+    }
+    rid = regRamp('lib:' + name, cols); libRamps.set(name, rid);
+  }
+  const R = rampOf(rid), t = new CTile(p.w, p.h, codeI(rid, 4, flags));
+  for (let i = 0; i < n; i++) {
+    const r = p.data[i * 4], g = p.data[i * 4 + 1], b = p.data[i * 4 + 2];
+    let best = 0, bd = 1e9;
+    for (let k = 0; k < R.length; k++) { const c = R[k], dr = ((c >> 16) & 255) - r, dg = ((c >> 8) & 255) - g, db = (c & 255) - b, d = dr * dr * 3 + dg * dg * 4 + db * db * 2; if (d < bd) { bd = d; best = k; } }
+    t.d[i] = codeI(rid, best, flags);
+  }
+  void key;
+  return { tile: t, metres: info.mw * scale };
+}
 
 // ------------------------------------------------------------------ tiles, textures
 const tileCache = new Map<string, { tile: CTile; metres: number }>();
 /** a material's tile at a texel density (px per metre), with the metres it spans */
 export function tileOf(key: string, ppm: number, seed = 0): { tile: CTile; metres: number } {
   const M = matOf(key) ?? MATS.granite;
-  const T = Math.max(8, Math.min(256, Math.round(M.m * ppm)));
+  if (LIB[key]) {
+    const ck = `lib|${key}`;
+    let e = tileCache.get(ck);
+    if (!e) { e = libTile(key, LIB[key][0], LIB[key][1], cFlags(M.base)); tileCache.set(ck, e); }
+    return e;
+  }
+  const T = Math.max(8, Math.min(256, Math.round(M.m * ppm * HD_K)));
   const ck = `${key}|${T}|${seed}`;
   let e = tileCache.get(ck);
   if (!e) { const t = new CTile(T, T, M.base); M.paint(t, T / M.m, (seed * 101 + key.length * 17 + 5) | 0, M.m); e = { tile: t, metres: M.m }; tileCache.set(ck, e); }

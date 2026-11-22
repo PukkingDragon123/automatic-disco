@@ -63,7 +63,7 @@ vec3 finish(vec3 col, vec2 uv) {
   float l = dot(col, vec3(0.299, 0.587, 0.114));
   col = mix(vec3(l), col, uSat);
   if (uFocusK > 0.0) {
-    float fo = smoothstep(1.0, 1.45, length((uv - uFocus.xy) / uFocus.zw)) * uFocusK;
+    float fo = smoothstep(1.0, 1.3, length((uv - uFocus.xy) / uFocus.zw)) * uFocusK;
     col = mix(col, vec3(dot(col, vec3(0.299, 0.587, 0.114))) * vec3(0.4, 0.42, 0.5), fo);
   }
   vec2 q = uv - 0.5;

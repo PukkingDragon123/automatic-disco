@@ -13,7 +13,7 @@ import { matMaterial, matTex, type MatOpts } from '../../gfx/mat';
 import { placeModel } from '../../ship/hub/models';
 
 /** inner apothem, full wall height, hull skin radius, cabin floor above the pod's ground point */
-export const R = 2.0, H = 2.2, HULL_R = 2.72, FLOOR_Y = 1.6;
+export const R = 2.3, H = 2.2, HULL_R = 2.72, FLOOR_Y = 1.6;
 const SEG = 8, CUT = 0.55, MID = 1.25;
 const V = THREE.Vector3;
 const hash = (a: number, b = 0, c = 0) => { let h = Math.imul(a | 0, 0x27d4eb2d) ^ Math.imul(b | 0, 0x165667b1) ^ Math.imul(c | 0, 0x9e3779b1); h = Math.imul(h ^ (h >>> 15), 0x85ebca6b); return ((h ^ (h >>> 13)) >>> 0) / 4294967296; };
@@ -67,7 +67,7 @@ export function buildRoom(): Room {
   const wallW = 2 * R * Math.tan(Math.PI / SEG);
   // ---- the library's materials (HD x2: the camera sits a few metres off)
   const quilt = M('quilt_insulation'), quiltG = M('quilt_insulation_grey'), foil = M('foil_gold');
-  const foam = M('foam'), rib = M('metal_anodised_grey'), gun = M('metal_dark'), deckM = M('deck_plate');
+  const section = M('quilt_insulation_grey', { color: 0x9a9890 }), rib = M('metal_anodised_grey'), gun = M('metal_dark'), deckM = M('deck_plate');
   const olive = M('enamel_olive'), machined = M('metal_machined'), lockerM = M('p_locker'), rubber = M('rubber_seal');
   const enamelW = M('enamel_white'), leather = M('leather_black'), pipe = M('q_pipe_paint'), cable = M('ix_cable', { uv: 'uv', repeat: [1, 14] });
   // ---- the deck
@@ -99,7 +99,7 @@ export function buildRoom(): Room {
     const a0 = ((i - 0.5) / SEG) * Math.PI * 2, arc = (Math.PI * 2) / SEG;
     const skin = new THREE.CylinderGeometry(HULL_R, HULL_R, h, 6, 1, true, a0, arc).translate(0, h / 2, 0);
     mesh(skin, M('panel_hull_white', { uv: 'uv', repeat: [(HULL_R * arc) / 2, h / 2] }), [0, 0, 0], [0, 0, 0], root);
-    const cap = mesh(capGeo(i, h), foam, [0, 0, 0], [0, 0, 0], root); cap.castShadow = false;
+    const cap = mesh(capGeo(i, h), section, [0, 0, 0], [0, 0, 0], root); cap.castShadow = false;
     // a rib at the seam, as tall as the taller wall beside it
     const hr = Math.max(h, wallHeight((i + 1) % SEG));
     mesh(new THREE.BoxGeometry(0.12, hr + 0.03, 0.12), rib, [wallW / 2, hr / 2, 0.02], [0, 0, 0], g);
@@ -171,12 +171,12 @@ export function buildRoom(): Room {
   blocked.push({ x: -1.35, z: -0.6, r: 0.55 });
   mesh(new THREE.BoxGeometry(0.8, 0.04, 0.86), quilt, [-0.95, 0.03, -1.2], [0.05, 0.5, 0.08], root);
   const P2 = (id: string, x: number, z: number, o: { y?: number; ry?: number; rx?: number; rz?: number; s?: number } = {}) => placeModel(root, id, { x, z, y: o.y, ry: o.ry ?? 0, rx: o.rx, rz: o.rz, s: o.s ?? 1 });
-  P2('cardboard_box_01', 1.62, -0.3, { ry: 0.7, rz: 0.12, s: 0.85 }); blocked.push({ x: 1.62, z: -0.3, r: 0.32 });
-  P2('plastic_crate_01', 1.66, 0.42, { ry: 1.9 }); blocked.push({ x: 1.66, z: 0.42, r: 0.32 });
-  P2('korean_fire_extinguisher_01', -1.68, 0.3, { y: 0.09, ry: 0.4, rz: Math.PI / 2 }); blocked.push({ x: -1.68, z: 0.3, r: 0.22 });
+  P2('cardboard_box_01', 1.85, -0.8, { ry: 0.7, rz: 0.12, s: 0.85 }); blocked.push({ x: 1.85, z: -0.8, r: 0.32 });
+  P2('plastic_crate_01', -1.85, -0.05, { ry: 1.9 }); blocked.push({ x: -1.85, z: -0.05, r: 0.32 });
+  P2('korean_fire_extinguisher_01', -1.6, 1.55, { y: 0.09, ry: 0.4, rz: Math.PI / 2 }); blocked.push({ x: -1.6, z: 1.55, r: 0.22 });
   P2('medical_box', 0.9, -1.38, { ry: -0.6 }); blocked.push({ x: 0.9, z: -1.38, r: 0.25 });
   P2('clipboard', -0.55, -1.0, { y: 0.01, ry: 2.4 });
-  P2('russian_food_cans_01', 1.5, -0.85, { ry: 0.5, s: 0.9 });
+  P2('russian_food_cans_01', 1.95, -0.35, { ry: 0.5, s: 0.9 });
   P2('office_notepads', -0.2, -0.75, { y: 0.01, ry: 1.1, s: 0.9 });
   P2('screwdriver', 0.6, -0.8, { y: 0.01, ry: 0.4 });
   P2('combination_wrench', -1.1, 0.95, { y: 0.01, ry: 2.2 });

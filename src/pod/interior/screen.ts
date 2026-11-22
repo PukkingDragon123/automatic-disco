@@ -81,20 +81,10 @@ export class PodInterior implements Screen {
     const tY = pod.y + 0.5, tk = Math.abs(fwd.y) > 1e-3 ? (tY - c.y) / fwd.y : 30;
     const tgt = c.clone().addScaledVector(fwd, Math.max(1, tk));
     this.from = { target: new V(tgt.x, pod.y, tgt.z), dist: c.distanceTo(tgt), yaw: Math.atan2(c.x - tgt.x, c.z - tgt.z) };
-    const D = 11.2, toward = new V(Math.sin(pod.yaw), 0, Math.cos(pod.yaw));
-    this.into = { target: new V(pod.x, pod.y + FLOOR_Y - 0.5, pod.z).addScaledVector(toward, 0.35), dist: D, yaw: pod.yaw };
-    // the hull is sliced from the top down to the cabin floor as the camera comes in (the arms on its hardpoints step aside)
-    const ext = stage.exterior;
-    if (ext) {
-      const mounts = new Set<THREE.Object3D>(ext.hardpoints.map((h) => h.mount));
-      const walk = (o: THREE.Object3D) => {
-        if (mounts.has(o)) { for (const ch of o.children) if (ch.visible) { ch.visible = false; this.hidden.push(ch); } return; }
-        const mm = (o as THREE.Mesh).material;
-        if (mm) for (const m of Array.isArray(mm) ? mm : [mm]) if (!this.clipped.some((q) => q.m === m)) { this.clipped.push({ m, was: m.clippingPlanes }); m.clippingPlanes = [this.clip]; m.needsUpdate = true; }
-        for (const ch of o.children) walk(ch);
-      };
-      walk(ext.root);
-    }
+    // a building's distance: the cabin fills about two thirds of the frame, clear of the tray
+    const D = 15, toward = new V(Math.sin(pod.yaw), 0, Math.cos(pod.yaw));
+    this.into = { target: new V(pod.x, pod.y + FLOOR_Y - 0.5, pod.z).addScaledVector(toward, 0.3), dist: D, yaw: pod.yaw };
+    this.clipWalk();
     this.clipWas = engine.renderer.localClippingEnabled; engine.renderer.localClippingEnabled = true;
     // the pieces already built
     for (const p of home.placed) this.spawn(p);
@@ -331,6 +321,19 @@ export class PodInterior implements Screen {
     uiSfx('swishOut', 0.6); uiSfx('metalClose', 0.5);
     this.dir = -1;
   }
+  /** the hull is sliced from the top down to the cabin floor as the camera comes in (the arms on its hardpoints step
+   *  aside). Walked every frame: the pixel-art hull can arrive after the zoom has begun. */
+  private clipWalk() {
+    const ext = this.stage.exterior; if (!ext) return;
+    const mounts = new Set<THREE.Object3D>(ext.hardpoints.map((h) => h.mount));
+    const walk = (o: THREE.Object3D) => {
+      if (mounts.has(o)) { for (const ch of o.children) if (ch.visible) { ch.visible = false; this.hidden.push(ch); } return; }
+      const mm = (o as THREE.Mesh).material;
+      if (mm) for (const m of Array.isArray(mm) ? mm : [mm]) if (m.clippingPlanes?.[0] !== this.clip) { this.clipped.push({ m, was: m.clippingPlanes }); m.clippingPlanes = [this.clip]; m.needsUpdate = true; }
+      for (const ch of o.children) walk(ch);
+    };
+    walk(ext.root);
+  }
   /** jump to the inside at once (tests, screenshots) */
   snap() { this.k = 1; this.pose(1); }
 
@@ -359,19 +362,20 @@ export class PodInterior implements Screen {
       box.expandByPoint(new THREE.Vector2(v.x * 0.5 + 0.5, v.y * 0.5 + 0.5));
     }
     const c = box.getCenter(new THREE.Vector2()), sz = box.getSize(new THREE.Vector2());
-    post.focus.at.set(c.x, c.y, Math.max(0.05, sz.x * 0.56), Math.max(0.05, sz.y * 0.56));
+    post.focus.at.set(c.x, c.y, Math.max(0.05, sz.x * 0.5), Math.max(0.05, sz.y * 0.5));
     const e = Math.min(1, Math.max(0, (this.k - 0.3) / 0.6));
-    post.focus.k = 0.82 * e * e * (3 - 2 * e);
+    post.focus.k = 0.9 * e * e * (3 - 2 * e);
   }
 
   // ---------------------------------------------------------------- the frame
   update(dt: number) {
     this.t += dt;
-    const k0 = this.k, now = performance.now(), real = Math.min(0.25, (now - (this.lastNow || now)) / 1000); this.lastNow = now;
+    const k0 = this.k, now = performance.now(), real = Math.min(0.6, (now - (this.lastNow || now)) / 1000); this.lastNow = now;
     // the zoom runs on the wall clock (a slow frame never stretches it)
     this.k = Math.min(1, Math.max(0, this.k + this.dir * Math.max(dt, real) / 1.25));
     if (this.k !== k0 || this.k < 1) this.pose(this.k);
     if (this.dir < 0 && this.k <= 0) { this.dir = 0; this.onLeave(); return; }
+    if (this.dir >= 0) this.clipWalk();
     this.room.update(dt, this.t);
     if (this.carry) { const c = this.carry; const lift = 0.25 + Math.sin(this.t * 6) * 0.03; c.obj.position.lerp(new V(c.at.x, c.y + lift, c.at.z), Math.min(1, dt * 16)); c.obj.rotation.y += (c.rot - c.obj.rotation.y) * Math.min(1, dt * 14); }
     // the gauge rolls toward the real happiness

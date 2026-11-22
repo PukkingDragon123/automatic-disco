@@ -9,9 +9,20 @@ import { Px, P, INK, hash, bayer, at, mixHex, rivet, type Ramp } from './px';
 import { materialField, type Mat } from './mat';
 import { paintSurface, type Surf } from './paint';
 import { bitPx } from './bitfont';
+import { paintHd, HD_KIND, type HdKind } from '../../gfx/mat/textures/hd';
 
 const cache = new Map<string, THREE.Texture>();
-function toTex(p: Px): THREE.Texture {
+/** close-up density for the UI's 3D elements (V7.md MATERIAL LIBRARY: the HD path, textures/hd.ts): opaque paints are
+ *  rebuilt at 2x with Scale2x edges, re-dithered fields and their material's fine layer */
+const KIT_HD = 2;
+const hdKindOf = (key: string): HdKind => /steel|gun|brass|copper|knurl|coil|chrome|metal|iron|tin/.test(key) ? 'metal' : /wood|crate|plank/.test(key) ? 'wood' : /stone|ore|rock|concrete/.test(key) ? 'stone' : /paper|blueprint/.test(key) ? 'paper' : /enamel|glaze|tile/.test(key) ? 'tile' : 'plain';
+function toTex(p: Px, key = ''): THREE.Texture {
+  let opaque = true; for (let i = 3; i < p.d.length; i += 4) if (p.d[i] < 250) { opaque = false; break; }
+  if (opaque && KIT_HD > 1 && p.w * p.h <= 128 * 128) {
+    const k = 'kit:' + key; HD_KIND.set(k, hdKindOf(key));
+    const hd = paintHd(p.d, p.w, p.h, k, KIT_HD as 2), q = new Px(p.w * KIT_HD, p.h * KIT_HD); q.d.set(hd);
+    p = q;
+  }
   const t = new THREE.CanvasTexture(p.canvas());
   t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.NoColorSpace;
@@ -23,7 +34,7 @@ export function paintTex(key: string, w: number, h: number, f: (p: Px) => void, 
   let t = cache.get(k);
   if (t) return t;
   let base = cache.get(key + '|base');
-  if (!base) { const p = new Px(w, h); f(p); base = toTex(p); cache.set(key + '|base', base); }
+  if (!base) { const p = new Px(w, h); f(p); base = toTex(p, key); cache.set(key + '|base', base); }
   t = repeat[0] === 1 && repeat[1] === 1 ? base : base.clone();
   t.repeat.set(repeat[0], repeat[1]);
   t.needsUpdate = true;
