@@ -142,15 +142,6 @@ void main() {
     bool contM = floor(s.P.y / 2.0) != floor(sr.P.y / 2.0) || floor(s.P.y / 2.0) != floor(su.P.y / 2.0);
     if (cont && !water) col = mix(col, rampC(contM ? 5.0 : 4.0), contM ? 0.7 : 0.5);
   }
-  // the printed grid runs over everything on the sheet (1 m minor, 5 m major)
-  if (smooth) {
-    vec2 g0 = floor(s.P.xz), gR = floor(sr.P.xz), gU = floor(su.P.xz);
-    bool minor = any(notEqual(g0, gR)) || any(notEqual(g0, gU));
-    vec2 M0 = floor(s.P.xz / 5.0), MR = floor(sr.P.xz / 5.0), MU = floor(su.P.xz / 5.0);
-    bool major = any(notEqual(M0, MR)) || any(notEqual(M0, MU));
-    if (minor) col = mix(col, rampC(4.0 + nearC * 2.0), (0.42 + nearC * 0.45) * minorK + glowK * 0.5);
-    if (major) col = mix(col, rampC(5.0 + nearC), 0.78 + glowK * 0.2);
-  }
   // ---- seams (ore under the ground): stippled, outlined
   if (!obj && cell.b > 0.5) {
     float k = 0.35 + uSeam * 0.45;
@@ -173,6 +164,15 @@ void main() {
     col = rampC(clamp(floor(L - 0.6 + oh * 0.9 + bayer(cp) * 0.6), 1.0, 3.0));
   }
   if ((obj != objR || obj != objU) && !s.sky) col = mix(col, rampC(4.0), 0.35);
+  // the printed grid runs over everything on the sheet (1 m minor, 5 m major)
+  if (smooth) {
+    vec2 g0 = floor(s.P.xz), gR = floor(sr.P.xz), gU = floor(su.P.xz);
+    bool minor = any(notEqual(g0, gR)) || any(notEqual(g0, gU));
+    vec2 M0 = floor(s.P.xz / 5.0), MR = floor(sr.P.xz / 5.0), MU = floor(su.P.xz / 5.0);
+    bool major = any(notEqual(M0, MR)) || any(notEqual(M0, MU));
+    if (minor) col = mix(col, rampC(4.0 + nearC * 2.0), (obj ? 0.3 : 0.42 + nearC * 0.45) * minorK + glowK * 0.5);
+    if (major) col = mix(col, rampC(5.0 + nearC), (obj ? 0.6 : 0.78) + glowK * 0.2);
+  }
 
   // ---- the colony's structures (the mask)
   vec4 m = texture2D(tMask, uv), mr = texture2D(tMask, uv + dx), mu = texture2D(tMask, uv + dy), ml = texture2D(tMask, uv - dx), md = texture2D(tMask, uv - dy);
