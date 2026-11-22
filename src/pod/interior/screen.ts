@@ -1,15 +1,19 @@
-// INSIDE THE POD (v7). Clicking the pod zooms inside it (an iris on the pod): the ruined cabin (room.ts), lit and
-// outlined by the game's own post pipeline, and a tray along the bottom of DECOR, FURNITURE and NECESSITIES (each an
+// INSIDE THE POD (v7; the user: "make it top down, just like zoom in on it, same camera angle as a normal building, just
+// darken the outside"). Clicking the pod ZOOMS THE GAME'S OWN CAMERA onto it (same yaw and pitch rule as the colony
+// view, stage.ts): the hull is sliced down to the cabin floor as the camera comes in, the ruined cabin (room.ts) stands
+// in it as a cutaway (roof gone, near walls cut low), and the world around it dims and greys (post.focus). A tray
+// along the bottom holds the DECOR, FURNITURE and NECESSITIES (each an
 // outlined 3D model with its cost in item icons and the joy it brings). Placing works like build mode: pick a piece,
 // drag it over the deck (or onto a shelf, a crate or the bunk), R or the wheel turns it, click drops it: it falls,
 // squashes by its weight, bounces and puffs dust with a thud. Click a placed piece to pick it up again; X or right-click
 // while carrying puts it back in the stores. The HAPPINESS gauge at the top rolls with every piece, the teammates'
-// faces beside it. Esc or the hatch leaves (the iris opens back on the pod).
+// faces beside it. Esc or the hatch leaves: the camera zooms back out and the hull closes over the cabin again.
 import * as THREE from 'three';
 import type { Engine, Screen } from '../../app/engine';
 import type { Post } from '../../gfx/post';
 import type { Game } from '../../game/game';
-import { buildRoom, R as ROOM_R, type Room } from './room';
+import { buildRoom, R as ROOM_R, FLOOR_Y, HULL_R, H as ROOM_H, type Room } from './room';
+import type { PodStage } from './stage';
 import { DECOR, DECOR_BY, decorToon, preloadDecor, type DecorDef } from './decor';
 import type { PodHome, Placed } from './home';
 import { ModelView } from '../../ui/kit/model3d';
@@ -18,7 +22,6 @@ import { uiSfx } from '../../ui/kit/sound';
 import { bitText, bitMeasure } from '../../ui/kit/bitfont';
 import { Px, P, bevel, cellBar, rivet, screw, glassWell, hex } from '../../ui/kit/px';
 import { shadowBlob, pxCanvas } from '../../ui/kit/mat';
-import { transition } from '../../ui/kit/transitions';
 import { gbuf } from '../../gfx/gbuf';
 import { itemIcon, ITEMS } from '../../factory/items';
 import { resolve, have, pay, give, anyG } from '../../research/util';
@@ -49,19 +52,50 @@ interface Piece { p: Placed; obj: THREE.Group; def: DecorDef }
 
 export class PodInterior implements Screen {
   static current: PodInterior | null = null;
-  readonly cam = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 40);
+  readonly cam: THREE.PerspectiveCamera;
   private room: Room; private ui: HTMLDivElement; private tray: HTMLDivElement; private joyCv: HTMLCanvasElement; private views: ModelView[] = [];
   private pieces: Piece[] = [];
   private carry: { def: DecorDef; obj: THREE.Group; rot: number; from: Placed | null; ok: boolean; at: THREE.Vector3; y: number } | null = null;
   private ray = new THREE.Raycaster(); private mouse = new THREE.Vector2(); private mx = 0; private my = 0;
-  private t = 0; private dolly = 0; private joyShown = 0; private joyT = 0;
-  private camFrom = new V(0, 1.75, 2.7); private camTo = new V(0, 1.5, 1.62); private look = new V(0, 0.72, -0.85);
+  private t = 0; private joyShown = 0; private joyT = 0;
+  /** the zoom: 0 the colony view, 1 inside (the hull sliced, the outside dimmed); `dir` +1 coming in, -1 leaving */
+  private k = 0; private dir = 1; private lastNow = 0;
+  private from: { target: THREE.Vector3; dist: number; yaw: number };
+  private into: { target: THREE.Vector3; dist: number; yaw: number };
+  private clip = new THREE.Plane(new V(0, -1, 0), 1e4);
+  private clipped: { m: THREE.Material; was: THREE.Plane[] | null }[] = [];
+  private hidden: THREE.Object3D[] = [];
+  private clipWas = false;
   private leaving = false;
-  constructor(readonly g: Game, readonly engine: Engine, readonly home: PodHome, readonly onLeave: () => void) {
+  constructor(readonly g: Game, readonly engine: Engine, readonly home: PodHome, readonly stage: PodStage, readonly onLeave: () => void) {
     PodInterior.current = this; (window as unknown as { __pod?: PodInterior }).__pod = this;
     if (!document.getElementById('pod7-css')) { const s = document.createElement('style'); s.id = 'pod7-css'; s.textContent = CSS; document.head.append(s); }
+    this.cam = stage.cam;
     this.room = buildRoom();
-    this.room.fx.add(this.ring);
+    const pod = stage.pod;
+    this.room.root.position.set(pod.x, pod.y + FLOOR_Y, pod.z); this.room.root.rotation.y = pod.yaw;
+    stage.scene.add(this.room.root); stage.fx.add(this.room.fx);
+    this.room.root.add(this.ring);
+    // the camera: from where the colony view is now to the pod, at the colony view's own angle, the hatch toward us
+    const c = this.cam.position, fwd = new V(); this.cam.getWorldDirection(fwd);
+    const tY = pod.y + 0.5, tk = Math.abs(fwd.y) > 1e-3 ? (tY - c.y) / fwd.y : 30;
+    const tgt = c.clone().addScaledVector(fwd, Math.max(1, tk));
+    this.from = { target: new V(tgt.x, pod.y, tgt.z), dist: c.distanceTo(tgt), yaw: Math.atan2(c.x - tgt.x, c.z - tgt.z) };
+    const D = 11.2, toward = new V(Math.sin(pod.yaw), 0, Math.cos(pod.yaw));
+    this.into = { target: new V(pod.x, pod.y + FLOOR_Y - 0.5, pod.z).addScaledVector(toward, 0.35), dist: D, yaw: pod.yaw };
+    // the hull is sliced from the top down to the cabin floor as the camera comes in (the arms on its hardpoints step aside)
+    const ext = stage.exterior;
+    if (ext) {
+      const mounts = new Set<THREE.Object3D>(ext.hardpoints.map((h) => h.mount));
+      const walk = (o: THREE.Object3D) => {
+        if (mounts.has(o)) { for (const ch of o.children) if (ch.visible) { ch.visible = false; this.hidden.push(ch); } return; }
+        const mm = (o as THREE.Mesh).material;
+        if (mm) for (const m of Array.isArray(mm) ? mm : [mm]) if (!this.clipped.some((q) => q.m === m)) { this.clipped.push({ m, was: m.clippingPlanes }); m.clippingPlanes = [this.clip]; m.needsUpdate = true; }
+        for (const ch of o.children) walk(ch);
+      };
+      walk(ext.root);
+    }
+    this.clipWas = engine.renderer.localClippingEnabled; engine.renderer.localClippingEnabled = true;
     // the pieces already built
     for (const p of home.placed) this.spawn(p);
     this.ui = document.createElement('div'); this.ui.className = 'pod7';
@@ -79,7 +113,7 @@ export class PodInterior implements Screen {
     cv.addEventListener('pointermove', this.onMove); cv.addEventListener('pointerdown', this.onDown); cv.addEventListener('wheel', this.onWheel, { passive: false });
     addEventListener('keydown', this.onKey, true); addEventListener('pointerup', this.onUp, true);
     cv.addEventListener('contextmenu', this.noCtx);
-    this.cam.position.copy(this.camFrom); this.cam.lookAt(this.look);
+    this.pose(0);
     void preloadDecor();
     anyG(g).emit?.('pod-enter', {});
   }
@@ -90,7 +124,7 @@ export class PodInterior implements Screen {
     const def = DECOR_BY[p.id]; if (!def) return null;
     const obj = def.build(); obj.position.set(p.x, p.y, p.z); obj.rotation.y = p.rot;
     obj.traverse((o) => { o.userData.piece = p; });
-    this.room.scene.add(obj);
+    this.room.root.add(obj);
     const pc = { p, obj, def }; this.pieces.push(pc); return pc;
   }
   // ---------------------------------------------------------------- the tray
@@ -187,7 +221,7 @@ export class PodInterior implements Screen {
     const cost = resolve(d.cost);
     if (this.home.count(d.id) >= d.max) { uiSfx('error', 0.6); return; }
     if (!Object.entries(cost).every(([id, n]) => have(this.g, id) >= n)) { uiSfx('error', 0.6); const card = this.tray.querySelector(`[data-id="${d.id}"]`) as HTMLElement | null; if (card) shake(card, 4, 260); return; }
-    const obj = d.build(); this.room.scene.add(obj);
+    const obj = d.build(); this.room.root.add(obj);
     this.carry = { def: d, obj, rot: 0, from: null, ok: false, at: new V(), y: 0 };
     uiSfx('pluck', 0.7); this.refreshTray();
     this.hover();
@@ -209,8 +243,8 @@ export class PodInterior implements Screen {
     let at: THREE.Vector3 | null = null, y = 0;
     for (const h of hits) {
       const pc = h.object.userData.piece as Placed | undefined;
-      if (pc) { const d = DECOR_BY[pc.id]; if (d?.top && c.def.r < 0.6) { at = h.point.clone(); y = pc.y + d.top; break; } continue; }
-      at = h.point.clone(); y = 0; break;
+      if (pc) { const d = DECOR_BY[pc.id]; if (d?.top && c.def.r < 0.6) { at = this.room.root.worldToLocal(h.point.clone()); y = pc.y + d.top; break; } continue; }
+      at = this.room.root.worldToLocal(h.point.clone()); y = 0; break;
     }
     if (!at) return;
     const r = Math.hypot(at.x, at.z), maxR = ROOM_R - 0.3 - c.def.r * 0.6;
@@ -252,7 +286,8 @@ export class PodInterior implements Screen {
   }
   private bump() { this.joyT = 0; uiSfx('tick', 0.5); }
   private toast(text: string, at: THREE.Vector3) { const s = this.screenOf(at); floatUp(s[0], s[1], text); }
-  private screenOf(p: THREE.Vector3): [number, number] { const v = p.clone().project(this.cam); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; }
+  /** a point in the cabin's frame on the screen */
+  private screenOf(p: THREE.Vector3): [number, number] { const v = this.room.root.localToWorld(p.clone()).project(this.cam); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; }
 
   // ---------------------------------------------------------------- input
   private onMove = (e: PointerEvent) => { this.mx = e.clientX; this.my = e.clientY; this.mouse.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); if (this.carry) this.hover(); else { this.ray.setFromCamera(this.mouse, this.cam); const h = this.ray.intersectObjects(this.pieces.map((p) => p.obj), true)[0]; this.engine.canvas.style.cursor = h ? 'grab' : ''; } };
@@ -288,20 +323,55 @@ export class PodInterior implements Screen {
     c.rot = rot; c.obj.rotation.y = rot; c.at.set(x, y, z); c.y = y; c.ok = true; c.obj.position.set(x, y + 0.3, z);
     this.drop(true); return true;
   }
+  /** zoom back out: the hull closes over the cabin, the colony brightens, then the colony view takes over again */
   leave() {
     if (this.leaving) return; this.leaving = true;
     if (this.carry) this.drop(false);
-    uiSfx('swishOut', 0.6);
-    void transition('iris', () => { this.onLeave(); }, { x: 70, y: 70 });
+    this.ui.style.pointerEvents = 'none'; this.ui.style.transition = 'opacity .35s'; this.ui.style.opacity = '0';
+    uiSfx('swishOut', 0.6); uiSfx('metalClose', 0.5);
+    this.dir = -1;
+  }
+  /** jump to the inside at once (tests, screenshots) */
+  snap() { this.k = 1; this.pose(1); }
+
+  // ---------------------------------------------------------------- the camera, the slice, the dim
+  /** the RTS camera's pose between the colony view (0) and the pod (1): target, distance and yaw eased, its pitch rule */
+  private pose(k: number) {
+    const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+    const a = this.from, b = this.into;
+    const tgt = a.target.clone().lerp(b.target, e);
+    const dist = Math.exp(Math.log(a.dist) + (Math.log(b.dist) - Math.log(a.dist)) * e);
+    let dy = b.yaw - a.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    const yaw = a.yaw + dy * e, p = this.stage.pitch(dist);
+    this.cam.position.set(tgt.x + Math.sin(yaw) * Math.cos(p) * dist, tgt.y + Math.sin(p) * dist, tgt.z + Math.cos(yaw) * Math.cos(p) * dist);
+    this.cam.lookAt(tgt.x, tgt.y + 0.5, tgt.z); this.cam.updateMatrixWorld();
+    // the slice comes down the hull from its top to the cabin floor through the middle of the zoom
+    const s = Math.min(1, Math.max(0, (k - 0.12) / 0.66)), pod = this.stage.pod;
+    this.clip.constant = pod.y + FLOOR_Y + 0.02 + (1 - s * s * (3 - 2 * s)) * 6.5;
+    this.room.root.visible = s > 0.02;
+  }
+  /** the dim outside: a screen ellipse round the hull (and the far walls' tops) stays clear, the rest greys */
+  private focus(post: Post) {
+    const pod = this.stage.pod, box = new THREE.Box2(), v = new V();
+    for (let i = 0; i < 16; i++) for (const y of [0, ROOM_H]) {
+      const a = (i / 16) * Math.PI * 2;
+      v.set(pod.x + Math.sin(a) * (HULL_R + 0.25), pod.y + FLOOR_Y + y, pod.z + Math.cos(a) * (HULL_R + 0.25)).project(this.cam);
+      box.expandByPoint(new THREE.Vector2(v.x * 0.5 + 0.5, v.y * 0.5 + 0.5));
+    }
+    const c = box.getCenter(new THREE.Vector2()), sz = box.getSize(new THREE.Vector2());
+    post.focus.at.set(c.x, c.y, Math.max(0.05, sz.x * 0.56), Math.max(0.05, sz.y * 0.56));
+    const e = Math.min(1, Math.max(0, (this.k - 0.3) / 0.6));
+    post.focus.k = 0.82 * e * e * (3 - 2 * e);
   }
 
   // ---------------------------------------------------------------- the frame
   update(dt: number) {
-    this.t += dt; this.dolly = Math.min(1, this.dolly + dt / 1.4);
-    const e = 1 - Math.pow(1 - this.dolly, 3);
-    const par = new V((this.mx / innerWidth - 0.5) * 0.18, -(this.my / innerHeight - 0.5) * 0.08, 0);
-    this.cam.position.copy(this.camFrom).lerp(this.camTo, e).add(par);
-    this.cam.lookAt(this.look.clone().add(par.clone().multiplyScalar(0.6)));
+    this.t += dt;
+    const k0 = this.k, now = performance.now(), real = Math.min(0.25, (now - (this.lastNow || now)) / 1000); this.lastNow = now;
+    // the zoom runs on the wall clock (a slow frame never stretches it)
+    this.k = Math.min(1, Math.max(0, this.k + this.dir * Math.max(dt, real) / 1.25));
+    if (this.k !== k0 || this.k < 1) this.pose(this.k);
+    if (this.dir < 0 && this.k <= 0) { this.dir = 0; this.onLeave(); return; }
     this.room.update(dt, this.t);
     if (this.carry) { const c = this.carry; const lift = 0.25 + Math.sin(this.t * 6) * 0.03; c.obj.position.lerp(new V(c.at.x, c.y + lift, c.at.z), Math.min(1, dt * 16)); c.obj.rotation.y += (c.rot - c.obj.rotation.y) * Math.min(1, dt * 14); }
     // the gauge rolls toward the real happiness
@@ -309,10 +379,15 @@ export class PodInterior implements Screen {
     this.joyT += dt;
     if (Math.abs(h - this.joyShown) > 0.05 || this.joyT < 1) { this.joyShown += (h - this.joyShown) * Math.min(1, dt * 4); this.paintJoy(); }
   }
-  render(post: Post, t: number) { post.render(this.room.scene, this.cam, this.room.fx, t); }
+  render(post: Post, t: number) { this.focus(post); this.stage.render(post, t); }
   resize() { this.cam.aspect = innerWidth / innerHeight; this.cam.updateProjectionMatrix(); }
   dispose() {
     if (PodInterior.current === this) PodInterior.current = null;
+    this.engine.post.focus.k = 0;
+    for (const q of this.clipped) { q.m.clippingPlanes = q.was; q.m.needsUpdate = true; }
+    for (const o of this.hidden) o.visible = true;
+    this.engine.renderer.localClippingEnabled = this.clipWas;
+    this.stage.release();
     const cv = this.engine.canvas;
     cv.removeEventListener('pointermove', this.onMove); cv.removeEventListener('pointerdown', this.onDown); cv.removeEventListener('wheel', this.onWheel); cv.removeEventListener('contextmenu', this.noCtx);
     removeEventListener('keydown', this.onKey, true); removeEventListener('pointerup', this.onUp, true);

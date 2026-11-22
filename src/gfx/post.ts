@@ -38,6 +38,8 @@ const FINISH = /* glsl */`
 uniform sampler2D tExpo;
 uniform float uTone, uSat, uVig, uFade, uContrast, uExpK, uFilm;
 uniform vec3 uLift, uGamma, uGain, uFadeCol, uSplitLo, uSplitHi;
+// FOCUS (post.focus; the pod interior): outside a soft screen ellipse the image dims and greys (uFocusK 0 = off)
+uniform vec4 uFocus; uniform float uFocusK;
 vec3 srgb(vec3 c) { c = max(c, 0.0); return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
 vec3 finish(vec3 col, vec2 uv) {
   if (uTone > 0.5 && uTone < 1.5) {
@@ -60,6 +62,10 @@ vec3 finish(vec3 col, vec2 uv) {
   col = pow(max(col, 0.0), 1.0 / uGamma);
   float l = dot(col, vec3(0.299, 0.587, 0.114));
   col = mix(vec3(l), col, uSat);
+  if (uFocusK > 0.0) {
+    float fo = smoothstep(1.0, 1.45, length((uv - uFocus.xy) / uFocus.zw)) * uFocusK;
+    col = mix(col, vec3(dot(col, vec3(0.299, 0.587, 0.114))) * vec3(0.4, 0.42, 0.5), fo);
+  }
   vec2 q = uv - 0.5;
   col *= 1.0 - uVig * dot(q, q) * 1.6;
   col = mix(col, uFadeCol, uFade);
@@ -982,6 +988,8 @@ export class Post {
   /** a cleared 1x1 depth texture with a compare function: what the shadow sampler reads when there are no shafts */
   private noShadow: THREE.WebGLRenderTarget;
   readonly grade: Grade = defaultGrade();
+  /** dim and grey the image outside a soft screen ellipse: at = (centre u, v, radius u, radius v) in 0..1, k 0..1 (0 off) */
+  readonly focus = { at: new THREE.Vector4(0.5, 0.5, 0.3, 0.3), k: 0 };
   readonly U: Record<string, THREE.IUniform>;
   w = 1; h = 1;
 
@@ -1006,6 +1014,7 @@ export class Post {
       tBloom: { value: null }, tFx: { value: this.fx.texture }, uFxOn: { value: 0 },
       uRes: { value: new THREE.Vector2(4, 4) }, uNear: { value: 0.5 }, uFar: { value: 1000 }, uTime: { value: 0 },
       uBloom: { value: gr.bloom }, uSat: { value: gr.sat }, uVig: { value: gr.vig }, uFade: { value: 0 }, uFadeCol: { value: new THREE.Color(0, 0, 0) },
+      uFocus: { value: this.focus.at }, uFocusK: { value: 0 },
       uCrease: { value: 0.62 }, uAO: { value: 0.82 }, uAORad: { value: 1.15 }, uProj: { value: 600 }, uDebug: { value: Number(new URLSearchParams(location.search).get('dbg') ?? 0) },
       uLift: { value: gr.lift }, uGamma: { value: gr.gamma }, uGain: { value: gr.gain },
       uOutline: { value: new THREE.Color(0x07060c) }, uSelCol: { value: new THREE.Color(0x9dff6a) },
@@ -1108,7 +1117,7 @@ export class Post {
       this.U.tBloom.value = prev;
     } else this.U.tBloom.value = this.black.texture;
     const gr = this.grade;
-    this.U.uBloom.value = qp.bloom ? gr.bloom : 0; this.U.uSat.value = gr.sat; this.U.uVig.value = gr.vig;
+    this.U.uBloom.value = qp.bloom ? gr.bloom : 0; this.U.uSat.value = gr.sat; this.U.uVig.value = gr.vig; this.U.uFocusK.value = this.focus.k;
     this.U.uNear.value = camera.near; this.U.uFar.value = camera.far; this.U.uTime.value = time;
     this.U.uProj.value = this.h / (2 * Math.tan((camera.fov * Math.PI) / 360));
     // every scene: the camera for the depth -> world reconstruction

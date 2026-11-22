@@ -55,7 +55,8 @@ export async function testV7(engine: Engine, P: URLSearchParams) {
     const un = P.get('unlock'); if (un) setTimeout(() => (window as any).__tree?.unlock(un), Number(P.get('at') ?? 4000));
   } else if (view === 'pod') {
     new BondMeter(S); new Tracker(Q); Q.start('q_home');
-    const scr = new PodInterior(host, engine, host.podHome, () => engine.pop());
+    const { testStage } = await import('../pod/interior/stage');
+    const scr = new PodInterior(host, engine, host.podHome, testStage(), () => engine.pop());
     engine.push(scr);
     if (P.has('decor')) setTimeout(() => { scr.qaPlace('bunk', -0.25, 0.1, 0.35); setTimeout(() => { scr.qaPlace('heater', 0.85, -0.25, -0.7); scr.qaPlace('lamp', -1.25, 1.2, 0.6); scr.qaPlace('plant', 1.1, 1.3, 0); scr.qaPlace('radio', 0.5, 0.55, 2.6); scr.qaPlace('chair', 0.2, -1.05, 3.0); }, 1500); }, Number(P.get('at') ?? 3000));
   } else if (view === 'reveal') {

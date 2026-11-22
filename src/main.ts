@@ -252,6 +252,7 @@ else if (P.get('test') === 'factory') import('./factory/test').then((m) => m.tes
 else if (P.get('test') === 'logistics') import('./logistics/test').then((m) => m.testLogistics(engine, input, P));
 else if (P.get('test') === 'inv') import('./inv/test').then((m) => m.testInv(engine, input, P));
 else if (P.get('test') === 'res') import('./world/resources3d/test').then((m) => m.testRes(engine, P));
+else if (P.get('test') === 'mats') import('./gfx/mat/catalog').then((m) => m.testMats(engine, P));
 else if (P.get('test') === 'ocean') import('./ocean/test').then((m) => m.testOcean(engine, input, P));
 else if (P.get('test') === 'factions') import('./game/factions/test').then((m) => m.testFactions(engine, input, P));
 else if (P.get('test') === 'robots') import('./robots/testRobots').then((m) => m.testRobots(engine, input, P));

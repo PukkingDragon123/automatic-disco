@@ -120,7 +120,7 @@ export class ToolWidget {
     if (c && c.slots.active >= 0 && c.slots.active !== i) c.release?.();
     uiSfx('switch', 0.6); this.refresh();
   }
-  cycle(d: number) { this.select((this.focus + d + 4) % 4); }
+  cycle(d: number) { this.dir = d >= 0 ? 1 : -1; this.select((this.focus + d + 4) % 4); }
   /** use the current tool: its unit takes it */
   use() {
     const c = this.g.colony, i = this.current, s = this.slotTool(i);
@@ -147,25 +147,33 @@ export class ToolWidget {
     if (k === 'g') { this.openArsenal(); return true; }
     return false;
   }
-  /** rebuild the turret when the quick slots' tools change; turn it when the slot changes */
+  private lastAng = 0; private dir = 1;
+  /** the turret shows the CURRENT tool large and alone: rebuilt on a change (the head spins on, the tool rises in) */
   refresh(force = false) {
     const i = this.current, s = this.slotTool(i);
     const all = [0, 1, 2, 3].map((q) => this.slotTool(q));
-    const setKey = all.map((t) => `${t.tool}|${t.custom?.id ?? ''}|${t.level}`).join(',');
-    if (setKey !== this.viewKey || force) {
-      this.viewKey = setKey;
-      const builds = all.map((t) => (t.tool && t.level > 0 ? toolBuild(t.tool, t.custom, 'hud') : null));
-      const v = new ModelView(() => mTurret(builds), { w: 150, h: 120, scale: 2, spin: 0, yaw0: -0.32, rock: 0.1, hotSpin: 0, pitch: 0.3, anim: (r, t) => { animTurret(r, t); driveToolModels(r, t, (_m, q) => { const sl = this.slotTool(q), live = this.g.colony?.slots?.active === q; return { mode: live ? 'active' : q === this.current && this.stage.classList.contains('hot') ? 'charging' : 'idle', level: Math.max(1, sl.level) }; }); }, liveFps: 10, zoom: 1.08, lift: 0.0 });
+    const key = `${i}|${s.tool}|${s.custom?.id ?? ''}|${s.level}`;
+    if (key !== this.viewKey || force) {
+      const changed = this.viewKey !== '';
+      this.viewKey = key;
+      const prev = this.view?.state<TurretState>();
+      if (prev) this.lastAng = prev.ang;
+      const build = s.tool && s.level > 0 ? toolBuild(s.tool, s.custom, 'hero') : null;
+      const anim = toolAnim(s.tool);
+      const v = new ModelView(() => mTurret(build), { w: 150, h: 128, scale: 2, spin: 0, yaw0: -0.32, rock: 0.12, hotSpin: 0, pitch: 0.3, anim: (r, t, hot) => { animTurret(r, t); anim?.(r, t, hot); }, liveFps: 12, zoom: 1.04 });
       v.cv.classList.add('h7-tmodel');
       this.view?.dispose(); this.view = v;
       this.stage.insertBefore(v.cv, this.ring);
+      const a0 = this.lastAng, goal = changed ? a0 + this.dir * (Math.PI / 2) : a0;
+      const init = () => { const st = v.state<TurretState>(); if (!st) { requestAnimationFrame(init); return; } st.ang = a0; st.goal = goal; st.rise = changed ? 0 : 1; st.slot = i; };
+      init();
+      if (changed) { uiSfx('winch', 0.35, 1.4); uiSfx('clunk', 0.35, 1.3); }
+      const nm = s.custom?.name ?? (s.level <= 0 ? 'LOCKED' : s.tool ? TOOLS[s.tool].name.toUpperCase() : 'EMPTY');
+      this.nameEl.textContent = nm; if (changed) pop(this.nameEl, 0.4);
+      lamps(s.level).canvas(this.lampCv);
     }
     const st = this.view?.state<TurretState>();
-    if (st) { st.locked = all.map((t) => t.level <= 0); st.live = this.g.colony?.slots?.active === i; }
-    if (st && st.slot !== i) { st.slot = i; uiSfx('winch', 0.35, 1.4); uiSfx('clunk', 0.3, 1.3); }
-    const nm = s.custom?.name ?? (s.level <= 0 ? 'LOCKED' : s.tool ? TOOLS[s.tool].name.toUpperCase() : 'EMPTY');
-    if (this.nameEl.textContent !== nm) { this.nameEl.textContent = nm; pop(this.nameEl, 0.4); }
-    const lk = String(s.level); if (this.lampCv.dataset.l !== lk) { this.lampCv.dataset.l = lk; lamps(s.level).canvas(this.lampCv); }
+    if (st) { st.leds = all.map((t) => t.level > 0 && !!t.tool); st.locked = s.level <= 0 || !s.tool; st.live = this.g.colony?.slots?.active === i; st.slot = i; }
   }
   update(dt: number) {
     this.acc -= dt; if (this.acc > 0) return; this.acc = 0.15;
@@ -190,7 +198,7 @@ function injectToolCSS() {
 .h7-q.on .h7-qn { color: var(--k7-amber); }
 .h7-q.lock { opacity: .45; }
 .h7-tright { display: flex; flex-direction: column; align-items: center; pointer-events: auto; }
-.h7-stage { position: relative; width: 300px; height: 236px; border: 0; background: none; padding: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; touch-action: none; }
+.h7-stage { position: relative; width: 300px; height: 256px; border: 0; background: none; padding: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; touch-action: none; }
 .h7-stage .h7-tmodel { position: relative; z-index: 1; display: block; transition: transform .22s cubic-bezier(.2,.9,.3,1.5), filter .18s; }
 .h7-stage.hot .h7-tmodel { transform: translateY(-4px); filter: brightness(1.12) drop-shadow(0 0 8px rgba(120,220,210,.45)); }
 .h7-stage.live .h7-tmodel { filter: brightness(1.15) drop-shadow(0 0 10px rgba(255,170,60,.7)); }

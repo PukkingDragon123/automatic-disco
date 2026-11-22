@@ -87,23 +87,28 @@ function pulseLeds(root: THREE.Object3D, t: number, states: Record<string, 'on' 
 function ownMat(m: THREE.Mesh) { m.material = (m.material as THREE.ShaderMaterial).clone(); (m.material as THREE.ShaderMaterial).uniforms.uEmissive.value = (m.material as THREE.ShaderMaterial).uniforms.uEmissive.value.clone(); }
 
 // ================================================================== the tool turret (the tool widget)
-export interface TurretState { slot: number; locked: boolean[]; live: boolean; flash: number }
-/** a four-arm turret on a geared pedestal: the slot's tool faces you; turning it drives the gear train and the piston */
-export function mTurret(tools: (Build | null)[]): THREE.Group {
+export interface TurretState { slot: number; locked: boolean; live: boolean; flash: number; rise: number; ang: number; goal: number; leds: boolean[] }
+/** run the update(dt, t) of a provided model (and its children) mounted under a holder */
+function driveTool(holder: THREE.Object3D | undefined, dt: number, t: number) {
+  holder?.traverse((o) => { const up = o.userData?.update as ((dt: number, t: number) => void) | undefined; if (typeof up === 'function') { try { up(dt, t); } catch { /* its own */ } } });
+}
+/** the CURRENT tool large and alone on a turret head over a geared pedestal; a swap spins the head (driving the gear
+ *  train and the piston) and the next tool rises out of the hub */
+export function mTurret(tool: Build | null): THREE.Group {
   const g = new THREE.Group();
   // the pedestal: an anodised hexagonal base on a dark foot, a brass top ring, a light strip
   mesh(cyl(0.7, 0.76, 0.1, 6), DARK(), g, [0, 0.05, 0]);
   mesh(cyl(0.62, 0.7, 0.22, 6), ANO(), g, [0, 0.21, 0]);
   mesh(cyl(0.5, 0.56, 0.05, 28), BRASS(), g, [0, 0.345, 0]);
   const strip = mesh(tor(0.53, 0.018, 6, 40), glow(P.glowTeal[3], 1), g, [0, 0.33, 0], [PI / 2, 0, 0], 1, 'strip'); ownMat(strip); strip.userData.col = P.glowTeal[3];
-  // the exposed gear train on the front face: a big gear on the column's drive, two idlers
+  // the exposed gear train on the front face
   const train = new THREE.Group(); train.position.set(0, 0.2, 0.62); g.add(train);
   mesh(box(0.86, 0.3, 0.02), toon({ color: 0x14171c }), train, [0, 0, -0.012]);
   const gA = mesh(gearGeo(0.13, 14, 0.04), STEEL(), train, [-0.2, 0.01, 0.02], [0, 0, 0], 1, 'gearA');
-  const gB = mesh(gearGeo(0.08, 9, 0.04), BRASS(), train, [-0.2 + 0.2, 0.04, 0.02], [0, 0, 0], 1, 'gearB');
-  const gC = mesh(gearGeo(0.1, 11, 0.04), STEEL(), train, [0.18 + 0.03, -0.02, 0.02], [0, 0, 0], 1, 'gearC');
+  const gB = mesh(gearGeo(0.08, 9, 0.04), BRASS(), train, [0, 0.04, 0.02], [0, 0, 0], 1, 'gearB');
+  const gC = mesh(gearGeo(0.1, 11, 0.04), STEEL(), train, [0.21, -0.02, 0.02], [0, 0, 0], 1, 'gearC');
   for (const m of [gA, gB, gC]) mesh(cyl(0.025, 0.025, 0.06, 8), BRASS(), m, [0, 0, 0.02], [PI / 2, 0, 0]);
-  // status LEDs along the base front (one per slot), a power lamp
+  // slot LEDs (one per quick slot) and a power lamp
   for (let i = 0; i < 4; i++) { const l = led(g, [-0.45 + i * 0.07, 0.29, 0.5], P.malachite[5], 'led' + i, 0.022, [PI / 2 - 0.5, 0, 0]); ownMat(l); }
   { const l = led(g, [0.44, 0.29, 0.5], P.glowAmber[4], 'ledP', 0.03, [PI / 2 - 0.5, 0, 0]); ownMat(l); }
   // the piston on the right flank and a cable run up the back
@@ -111,50 +116,43 @@ export function mTurret(tools: (Build | null)[]): THREE.Group {
   mesh(cyl(0.05, 0.05, 0.26, 10), ORANGE(), pis, [0, 0.13, 0]);
   mesh(cyl(0.06, 0.06, 0.03, 10), DARK(), pis, [0, 0.27, 0]);
   mesh(cyl(0.022, 0.022, 0.3, 8), STEEL(), pis, [0, 0.3, 0], [0, 0, 0], 1, 'rod');
-  const cab = [new THREE.Vector3(-0.5, 0.2, -0.45), new THREE.Vector3(-0.55, 0.45, -0.35), new THREE.Vector3(-0.3, 0.68, -0.18), new THREE.Vector3(-0.1, 0.62, -0.08)];
+  const cab = [new THREE.Vector3(-0.5, 0.2, -0.45), new THREE.Vector3(-0.55, 0.42, -0.35), new THREE.Vector3(-0.3, 0.55, -0.18), new THREE.Vector3(-0.1, 0.5, -0.08)];
   mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(cab), 20, 0.025, 6), RUB(), g);
-  // the column and the turret head
-  mesh(cyl(0.13, 0.16, 0.34, 14), STEEL(), g, [0, 0.5, 0]);
-  mesh(cyl(0.18, 0.18, 0.04, 14), BRASS(), g, [0, 0.4, 0]);
-  const head = new THREE.Group(); head.name = 'head'; head.position.y = 0.72; g.add(head);
-  mesh(cyl(0.24, 0.27, 0.16, 8), ANO2(), head);
-  mesh(cyl(0.16, 0.2, 0.06, 16), DARK(), head, [0, 0.11, 0]);
-  const lens = mesh(new THREE.SphereGeometry(0.11, 14, 8, 0, PI * 2, 0, PI / 2), toon({ color: P.glowAmber[3], emissive: P.glowAmber[2], emissiveK: 0.6, gloss: 1, rim: 0.4 }), head, [0, 0.14, 0], [0, 0, 0], 1, 'lens'); ownMat(lens); lens.userData.col = P.glowAmber[3];
-  for (let i = 0; i < 4; i++) {
-    const arm = new THREE.Group(); arm.rotation.y = -i * (PI / 2); head.add(arm);
-    // a radial arm, a cradle with two clamp jaws, the tool over it
-    mesh(box(0.34, 0.07, 0.11), ANO2(), arm, [0, 0, 0.38], [0, PI / 2, 0]);
-    mesh(cyl(0.13, 0.14, 0.05, 6), DARK(), arm, [0, 0.03, 0.58]);
-    for (const s of [-1, 1]) mesh(box(0.035, 0.14, 0.05), ORANGE(), arm, [s * 0.12, 0.1, 0.58]);
-    const hold = new THREE.Group(); hold.name = 'tool' + i; hold.position.set(0, 0.42, 0.62); arm.add(hold);
-    mount(hold, tools[i], 0.78);
-  }
-  g.userData.state = { slot: 0, locked: [false, false, false, false], live: false, flash: 0 } as TurretState;
-  g.userData.ang = 0;
+  // the column and the turret head: a hub with four clamp jaws round the tool's mount, a status lens on a stalk
+  mesh(cyl(0.13, 0.16, 0.2, 14), STEEL(), g, [0, 0.45, 0]);
+  const head = new THREE.Group(); head.name = 'head'; head.position.y = 0.58; g.add(head);
+  mesh(cyl(0.3, 0.34, 0.12, 8), ANO2(), head);
+  mesh(cyl(0.22, 0.26, 0.05, 16), DARK(), head, [0, 0.08, 0]);
+  for (let i = 0; i < 4; i++) { const a = (i / 4) * PI * 2 + PI / 4; mesh(box(0.08, 0.14, 0.12), ORANGE(), head, [Math.cos(a) * 0.27, 0.1, Math.sin(a) * 0.27], [0, -a, 0]); }
+  const stalk = new THREE.Group(); stalk.position.set(-0.3, 0.05, -0.12); head.add(stalk);
+  mesh(cyl(0.015, 0.015, 0.26, 6), STEEL(), stalk, [0, 0.13, 0]);
+  const lens = mesh(sph(0.045, 10, 8), toon({ color: P.glowAmber[3], emissive: P.glowAmber[2], emissiveK: 0.6, gloss: 1 }), stalk, [0, 0.28, 0], [0, 0, 0], 1, 'lens'); ownMat(lens); lens.userData.col = P.glowAmber[3];
+  // the tool: large, alone, standing out of the hub (it rises in on a swap)
+  const hold = new THREE.Group(); hold.name = 'tool'; hold.position.set(0, 0.62, 0); head.add(hold);
+  mount(hold, tool, 1.45);
+  g.userData.state = { slot: 0, locked: false, live: false, flash: 0, rise: 1, ang: 0, goal: 0, leds: [true, true, true, true] } as TurretState;
   return g;
 }
 export function animTurret(root: THREE.Object3D, t: number) {
-  const dt = stepDt(root, t), st = (root.userData.state ?? root.children[0]?.userData.state) as TurretState | undefined; if (!st) return;
-  const head = root.getObjectByName('head'); if (!head) return;
-  const r = head.parent!.userData;
-  const goal = st.slot * (PI / 2);
-  let a = (r.ang as number) ?? 0;
-  // the short way round
-  let d = goal - a; while (d > PI) d -= PI * 2; while (d < -PI) d += PI * 2;
-  const na = a + d * Math.min(1, dt * 7);
-  const da = na - a; r.ang = na;
-  head.rotation.y = na;
-  // the gear train meshes with the head: ratios by tooth count; the piston pumps while it turns
+  const dt = stepDt(root, t), base = root.children[0] ?? root, st = (base.userData.state ?? root.userData.state) as TurretState | undefined; if (!st) return;
+  const head = root.getObjectByName('head'), hold = root.getObjectByName('tool'); if (!head) return;
+  const a0 = st.ang; st.ang += (st.goal - st.ang) * Math.min(1, dt * 6); const da = st.ang - a0;
+  head.rotation.y = st.ang;
+  st.rise = Math.min(1, st.rise + dt * 2.4);
+  if (hold) { const k = st.rise, e = 1 - (1 - k) * (1 - k); hold.position.y = 0.62 - (1 - e) * 0.55 + Math.sin(k * PI) * 0.06; hold.scale.setScalar(0.35 + 0.65 * e); hold.rotation.y = -st.ang + (1 - e) * 1.2; }
+  driveTool(hold, dt, t);
+  // the gear train meshes with the head; the piston pumps while it turns
   const gA = root.getObjectByName('gearA'), gB = root.getObjectByName('gearB'), gC = root.getObjectByName('gearC'), rod = root.getObjectByName('rod');
-  r.gear = ((r.gear as number) ?? 0) + da * 2.2 + dt * 0.25;
-  if (gA) gA.rotation.z = r.gear as number; if (gB) gB.rotation.z = -(r.gear as number) * (14 / 9) + 0.2; if (gC) gC.rotation.z = -(r.gear as number) * (14 / 11);
-  r.pump = ease((r.pump as number) ?? 0, Math.min(1, Math.abs(d) * 1.5), dt, 6);
-  if (rod) rod.position.y = 0.3 + (r.pump as number) * 0.14;
+  base.userData.gear = ((base.userData.gear as number) ?? 0) + da * 3 + dt * 0.25;
+  const gr = base.userData.gear as number;
+  if (gA) gA.rotation.z = gr; if (gB) gB.rotation.z = -gr * (14 / 9) + 0.2; if (gC) gC.rotation.z = -gr * (14 / 11);
+  base.userData.pump = ease((base.userData.pump as number) ?? 0, Math.min(1, Math.abs(st.goal - st.ang) * 1.5), dt, 6);
+  if (rod) rod.position.y = 0.3 + (base.userData.pump as number) * 0.14;
   const leds: Record<string, 'on' | 'off' | 'pulse' | 'blink'> = {};
-  for (let i = 0; i < 4; i++) leds['led' + i] = st.locked[i] ? 'off' : i === st.slot ? (st.live ? 'blink' : 'on') : 'pulse';
-  leds.ledP = Math.abs(d) > 0.02 ? 'blink' : 'on';
+  for (let i = 0; i < 4; i++) leds['led' + i] = !st.leds[i] ? 'off' : i === st.slot ? (st.live ? 'blink' : 'on') : 'pulse';
+  leds.ledP = Math.abs(st.goal - st.ang) > 0.02 || st.rise < 1 ? 'blink' : 'on';
   leds.strip = st.live ? 'on' : 'pulse';
-  leds.lens = st.live ? 'blink' : st.flash > performance.now() / 1000 ? 'on' : 'pulse';
+  leds.lens = st.live ? 'blink' : st.locked ? 'off' : st.flash > performance.now() / 1000 ? 'on' : 'pulse';
   pulseLeds(root, t, leds);
 }
 

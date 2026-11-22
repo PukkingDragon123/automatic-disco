@@ -68,6 +68,7 @@ function injectHideCSS() {
 .h7-root > * { pointer-events: none; }
 body.h7 .hud .cx-top, body.h7 .hud .cx-wheel, body.h7 .hud .cx-map, body.h7 .crate-hud { display: none !important; }
 body.h7:not(.bp-on) .hb { display: none !important; }
+body.cine-on .h7-root, body.cine-on .h7-map, body.cine-on .h7-ars, body.cine-on .h7-bench { visibility: hidden !important; }
 body.h7 .hud .cx-alerts { top: 330px !important; }
 body.h7 .hud .cx-sel { top: 96px !important; }
 body.h7 .hud .cx-pausebar { display: none !important; }
