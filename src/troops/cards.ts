@@ -12,7 +12,8 @@ import type { Game } from '../game/game';
 import type { Troop } from './units';
 import type { Rts } from './rts';
 import type { OrderBook, Formation } from './orders';
-import { plate, skin, strip, pxCanvas, shadowBlob } from '../ui/kit/mat';
+import { skin, strip, pxCanvas, shadowBlob } from '../ui/kit/mat';
+import { panel, type Panel } from '../ui/kit/panel';
 import { Px, cellBar, P } from '../ui/kit/px';
 import { ModelView } from '../ui/kit/model3d';
 import { floatIcon, type FloatIcon } from '../ui/kit/floatIcon';
@@ -28,6 +29,7 @@ const TYPE_GLYPH: Record<string, string> = { robot: 'gun', worker: 'claw', crew:
 
 export class Cards {
   readonly el: HTMLDivElement;
+  private pan: Panel;
   private body: HTMLDivElement; private keysEl: HTMLDivElement; private groupsEl: HTMLDivElement;
   private views: ModelView[] = [];
   private keys = new Map<string, FloatIcon>();
@@ -37,8 +39,9 @@ export class Cards {
   constructor(readonly g: G, readonly rts: Rts, readonly book: OrderBook) {
     injectCSS();
     const el = this.el = document.createElement('div'); el.className = 'tr-cards';
-    const pl = document.createElement('div'); pl.className = 'tr-plate'; el.append(pl);
-    skin(pl, (w, h) => plate(w, h, { mat: 'gun', seed: 41, chamfer: 7, screws: true, rivets: true, wear: 0.9, grime: 0.7, lip: 2 }));
+    // the kit's standard housing: a gunmetal box, lamps on the hood, the selection sunk in its dark well
+    this.pan = panel({ tone: 'gun', seed: 41, head: 20, foot: 14, side: 10, lamps: ['green', 'amber', 'red'], hazard: true, guards: true, cls: 'tr-plate' });
+    const pl = this.pan.body; el.append(this.pan.el);
     this.groupsEl = document.createElement('div'); this.groupsEl.className = 'tr-groups'; el.append(this.groupsEl);
     this.body = document.createElement('div'); this.body.className = 'tr-body'; pl.append(this.body);
     this.keysEl = document.createElement('div'); this.keysEl.className = 'tr-keys'; pl.append(this.keysEl);
@@ -245,9 +248,10 @@ body.tr-cards-on .h7-dock { transform: translate(-50%, 230px); opacity: 0; trans
 body.tr-cards-on { --sub7-y: 236px; }
 .tr-cards { position: fixed; left: 50%; bottom: 6px; z-index: 41; width: 940px; height: 196px; transform: translate(-50%, 240px); transition: transform .34s cubic-bezier(.55,0,.8,.3); pointer-events: none; }
 .tr-cards.on { transform: translate(-50%, 0); transition: transform .42s cubic-bezier(.25,1.45,.5,1); }
-.tr-cards .tr-plate { position: absolute; left: 0; right: 0; bottom: 0; height: 176px; pointer-events: auto; display: flex; align-items: stretch; }
-.tr-cards .tr-body { position: relative; z-index: 1; flex: 1; display: flex; align-items: center; padding: 6px 10px 6px 22px; min-width: 0; }
-.tr-cards .tr-keys { position: relative; z-index: 1; width: 318px; display: flex; flex-direction: column; justify-content: center; gap: 0; padding-right: 14px; }
+.tr-cards .tr-plate { position: absolute; left: 0; right: 0; bottom: 0; height: 184px; pointer-events: auto; }
+.tr-cards .tr-plate > .kp-body { display: flex; align-items: stretch; height: 100%; }
+.tr-cards .tr-body { position: relative; z-index: 1; flex: 1; display: flex; align-items: center; padding: 0 8px 0 10px; min-width: 0; }
+.tr-cards .tr-keys { position: relative; z-index: 1; width: 304px; display: flex; flex-direction: column; justify-content: center; gap: 0; padding-right: 2px; }
 .tr-cards .tr-krow { display: flex; justify-content: center; gap: 4px; }
 .tr-cards .tr-krow + .tr-krow { margin-top: -10px; }
 .tr-cards .tr-key { width: 74px; }
