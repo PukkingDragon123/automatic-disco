@@ -40,6 +40,7 @@ import { Details } from './details';
 import { installBiotech } from '../biotech';
 import { installTroops } from '../troops';
 import { installShipScreens } from '../ship/screen';
+import { installEmpire } from '../empire';
 import { installProgression } from '../research';
 import { attachEco } from '../eco/view';
 import { attachOcean, type Ocean } from '../ocean/ocean';
@@ -221,6 +222,7 @@ export class Game implements Screen {
     installShipScreens(this); // v7: the dock's SHIP and LAB slots (src/ship/screen, src/ui/lab7)
     if (opts.descent) this.awaitPod();
     else this.landColony();
+    installEmpire(this); // v7: settlements, roads and rail, trade, diplomacy and the EMPIRE overview (src/empire)
     (window as any).__game = this;
   }
 

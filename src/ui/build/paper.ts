@@ -2,9 +2,8 @@
 // (src/gfx/mat: matPixels; the blueprint stock is its 'paper_blueprint', added in src/gfx/mat/blueprint.ts) laid one texel
 // per art pixel and lit as an object (bevels, folds), with drawn parts on top (border, creases, ticks, screws):
 // the cyan-blue BLUEPRINT SHEET (mottled diazo stock, foxing, a printed border, fold creases, worn and bitten edges, a
-// dog-eared corner, pin holes), the steel PARALLEL RULE the build tray hangs on (brushed steel, an engraved scale,
-// brass end caps and screws), its brass slide-rule CURSOR, and a steel BULLDOG CLIP. A 1 px ink outline round each.
-import { Px, INK, hash, screw, rivet } from '../kit/px';
+// dog-eared corner, pin holes) and a steel BULLDOG CLIP. A 1 px ink outline round each.
+import { Px, INK, hash, rivet } from '../kit/px';
 import { matPixels } from '../../gfx/mat';
 import '../../gfx/mat/blueprint';
 import { RAMPS as P } from '../../art/palette';
@@ -70,40 +69,6 @@ export function blueprintSheet(w: number, h: number, o: SheetOpts = {}): Px {
     for (let y = 0; y < ear; y++) p.set(w - ear + y, y, INK);
   }
   if (o.pins) for (const px of [7, w - 8 - ear]) { p.set(px, 6, INK); p.set(px + 1, 6, INK); p.set(px, 7, INK); p.set(px + 1, 7, B[0]); p.set(px - 1, 5, B[6], 160); }
-  p.outline(INK);
-  return p;
-}
-
-/** the steel PARALLEL RULE (w x 14 art px): the library's brushed steel with a bevel, an engraved scale, brass end caps */
-export function parallelRule(w: number): Px {
-  const h = 14, p = new Px(w, h + 2), S = P.steel;
-  fillMat(p, 'metal_brushed', (x, y) => x > 0 && x < w - 1 && y > 0 && y < h - 1, bevelLight(w, h));
-  // the engraved scale along the top (a tick every 4, taller every 20, tallest every 100)
-  for (let x = 16; x < w - 16; x += 4) {
-    const n = (x - 16) / 4, len = n % 25 === 0 ? 6 : n % 5 === 0 ? 4 : 2;
-    for (let y = 3; y < 3 + len; y++) { p.set(x, y, S[1]); p.set(x + 1, y, S[6], 120); }
-  }
-  // brass end caps with a screw each
-  for (const x0 of [0, w - 12]) {
-    fillMat(p, 'metal_brass', (x, y) => x >= x0 && x < x0 + 12 && y >= 0 && y < h, bevelLight(12, h, x0, 0), x0);
-    screw(p, x0 + 3, 4, x0 + 1);
-  }
-  p.outline(INK);
-  // a hard shadow under the bar
-  for (let x = 2; x < w; x++) p.set(x, h, 0x000000, 90);
-  return p;
-}
-
-/** the slide-rule CURSOR that marks the open category: a brass frame round a glass window with a red hairline */
-export function ruleCursor(w = 30): Px {
-  const h = 20, p = new Px(w, h);
-  const fr = (x: number, y: number) => x < 3 || x > w - 4 || y < 3 || y > h - 4;
-  fillMat(p, 'metal_brass', (x, y) => fr(x, y), (x, y) => (x < 2 || y < 2 ? 1.3 : x > w - 3 || y > h - 3 ? 0.65 : 1));
-  // the glass window: the library's glass, mostly clear
-  const gl = matPixels('glass', 1);
-  for (let y = 3; y < h - 3; y++) for (let x = 3; x < w - 3; x++) { const i = ((y % gl.h) * gl.w + (x % gl.w)) * 4; p.set(x, y, (gl.data[i] << 16) | (gl.data[i + 1] << 8) | gl.data[i + 2], 70); }
-  for (let y = 3; y < h - 3; y++) p.set(Math.floor(w / 2), y, P.stampRed[3]);
-  rivet(p, 2, 2, 1, P.brass); rivet(p, w - 3, 2, 1, P.brass); rivet(p, 2, h - 3, 1, P.brass); rivet(p, w - 3, h - 3, 1, P.brass);
   p.outline(INK);
   return p;
 }

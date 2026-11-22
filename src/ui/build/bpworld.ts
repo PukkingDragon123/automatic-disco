@@ -10,6 +10,11 @@
 //   scan sweep; the selection with a halo; power cables as lines; ore seams stippled; around the cursor while a
 //   building is in hand, every cell it cannot use is hatched red and the grid lights up where it can.
 // The pass is revealed by a radial WIPE with a dissolving, glowing front (the transition in and out of build mode).
+// TWO VIEWS (V7 "EMPIRE BUILDING": a NORMAL and a BLUEPRINT view): in the NORMAL view the same pass lays only a clean
+// placement overlay over the lit world (a 1 m grid with 5 m majors, bright round the cursor; the cells the building in
+// hand cannot use washed red, the free ones marked with corner crosses; its footprint tinted; the ghost, sites, the
+// selection and a carried building outlined); in the BLUEPRINT view it prints the site plan above. A second radial
+// front (`view`, from `viewAt`) prints the blueprint over the world or lifts it off, art pixel by art pixel.
 import * as THREE from 'three';
 import type { Factory } from '../../factory/factory';
 import type { Post } from '../../gfx/post';
@@ -59,8 +64,10 @@ uniform sampler2D tDepth, tNormal, tMask, tCell, tHgt, tPaper;
 uniform float uPaperN;
 uniform mat4 uInvProj, uCamWorld;
 uniform vec2 uRes, uWipeC;
-uniform float uTime, uMix, uWipe, uN, uFovK, uK, uHand, uSeam, uTray, uSelPulse;
+uniform float uTime, uMix, uWipe, uN, uFovK, uK, uHand, uSeam, uTray, uSelPulse, uView, uFootK;
 uniform vec3 uCursor;
+uniform vec2 uViewC;
+uniform vec4 uFoot;
 
 float h21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -83,6 +90,9 @@ const vec3 WHITE = vec3(0.890, 0.902, 0.875);
 const vec3 OKC = vec3(0.584, 0.800, 0.690), OKL = vec3(0.780, 0.902, 0.808);
 const vec3 BADC = vec3(0.608, 0.259, 0.220), BADL = vec3(0.855, 0.529, 0.416);
 const vec3 AMB = vec3(0.933, 0.800, 0.557), AMBD = vec3(0.698, 0.490, 0.204);
+const vec3 GRIDC = vec3(0.945, 0.957, 0.890), HALO = vec3(0.56, 0.88, 1.0);
+/** straight-alpha 'over': paint c at alpha a over what the overlay has so far */
+vec4 over(vec4 d, vec3 c, float a) { float oa = a + d.a * (1.0 - a); return oa < 1e-4 ? vec4(0.0) : vec4((c * a + d.rgb * d.a * (1.0 - a)) / oa, oa); }
 struct S { vec3 P; float vz; bool sky; };
 S at(vec2 uv) {
   float d = texture2D(tDepth, uv).r; S s; s.sky = d >= 0.99999;
@@ -107,6 +117,11 @@ void main() {
   if (thr > front) discard;
   float edgeK = clamp(1.0 - (front - thr) / 0.035, 0.0, 1.0);
   float glowK = clamp(1.0 - (front - thr) / 0.22, 0.0, 1.0) * step(0.001, 1.0 - uWipe);
+  // the view front: inside it the blueprint, outside it the lit world with the placement overlay
+  float vthr = length((fc - uViewC) / uRes.y) + (h21(cp * 0.53 + 9.7) - 0.5) * 0.06;
+  float vfront = uView * 1.25;
+  bool bp = uView >= 0.999 || (uView > 0.001 && vthr <= vfront);
+  float vEdge = uView > 0.001 && uView < 0.999 ? clamp(1.0 - abs(vfront - vthr) / 0.022, 0.0, 1.0) : 0.0;
 
   S s = at(uv), sr = at(uv + dx), su = at(uv + dy);
   float pxW = s.vz * uFovK / uRes.y * uK; // world metres per art pixel
@@ -115,6 +130,75 @@ void main() {
   vec4 cell = cellAt(s.P.xz);
   bool water = !obj && !s.sky && cell.g > 0.5;
 
+  vec4 m = texture2D(tMask, uv), mr = texture2D(tMask, uv + dx), mu = texture2D(tMask, uv + dy), ml = texture2D(tMask, uv - dx), md = texture2D(tMask, uv - dy);
+  float k = kindOf(m), kr = kindOf(mr), ku = kindOf(mu), kl = kindOf(ml), kd = kindOf(md);
+  bool smth = !s.sky && abs(s.vz - sr.vz) < 0.35 + s.vz * 0.012 && abs(s.vz - su.vz) < 0.35 + s.vz * 0.012;
+  float minorK = clamp(1.6 - pxW * 3.2, 0.0, 1.0);
+  vec4 cur = cellAt(s.P.xz);
+  float nearC = uHand * clamp(1.0 - length(s.P.xz - uCursor.xy) / max(1.0, uCursor.z), 0.0, 1.0);
+  float dash = step(mod(cp.x + cp.y, 6.0), 2.9);
+  bool inFoot = uFootK > 0.5 && !s.sky && s.P.x >= uFoot.x && s.P.z >= uFoot.y && s.P.x < uFoot.z && s.P.z < uFoot.w;
+  bool footR = sr.P.x >= uFoot.x && sr.P.z >= uFoot.y && sr.P.x < uFoot.z && sr.P.z < uFoot.w;
+  bool footU = su.P.x >= uFoot.x && su.P.z >= uFoot.y && su.P.x < uFoot.z && su.P.z < uFoot.w;
+
+  if (!bp) {
+    // ======== NORMAL VIEW: a clean placement overlay on the lit world (straight alpha; the world shows through)
+    vec4 o = vec4(0.0);
+    if (smth && !obj) {
+      // the grid: faint everywhere, brighter in a soft pool round the cursor, brightest round a building in hand
+      vec2 g0 = floor(s.P.xz), gR = floor(sr.P.xz), gU = floor(su.P.xz);
+      bool minor = any(notEqual(g0, gR)) || any(notEqual(g0, gU));
+      vec2 M0 = floor(s.P.xz / 5.0), MR = floor(sr.P.xz / 5.0), MU = floor(su.P.xz / 5.0);
+      bool major = any(notEqual(M0, MR)) || any(notEqual(M0, MU));
+      float pool = clamp(1.0 - length(s.P.xz - uCursor.xy) / 18.0, 0.0, 1.0);
+      if (minor) o = over(o, GRIDC, (0.07 + 0.2 * pool + 0.28 * nearC) * minorK);
+      if (major) o = over(o, GRIDC, 0.2 + 0.18 * pool + 0.3 * nearC);
+    }
+    if (nearC > 0.0 && !s.sky) {
+      // the cells the building in hand cannot use, washed red in clumps; the free ones get a small corner cross
+      if (cur.r < 0.5) o = over(o, clusterT(cp * 0.8 + 3.0) < 0.38 ? BADL : BADC, (0.16 + 0.22 * nearC) * nearC + 0.04);
+      else if (!obj) { vec2 q = abs(fract(s.P.xz + 0.5) - 0.5); if ((q.x < pxW * 0.6 && q.y < 0.14) || (q.y < pxW * 0.6 && q.x < 0.14)) o = over(o, OKL, 0.85 * nearC); }
+    }
+    // the ghost's footprint: tinted, with a crisp edge
+    if (inFoot) {
+      vec3 fcol = uFootK < 1.5 ? OKC : BADC, fl = uFootK < 1.5 ? OKL : BADL;
+      o = over(o, fcol, 0.22 + 0.08 * step(clusterT(cp + 11.0), 0.3));
+      if (!footR || !footU) o = over(o, fl, 0.95);
+    } else if (uFootK > 0.5 && !s.sky && (footR || footU)) o = over(o, uFootK < 1.5 ? OKL : BADL, 0.95);
+    // ore seams the building in hand wants: their cells stippled, their edge drawn
+    if (uSeam > 0.5 && !obj && cell.b > 0.5) {
+      o = over(o, OKL, clusterT(cp + 40.0) < 0.3 ? 0.4 : 0.12);
+      vec4 cr = cellAt(sr.P.xz), cu = cellAt(su.P.xz);
+      if (cr.b < 0.5 || cu.b < 0.5) o = over(o, OKL, 0.85);
+    }
+    // structures: the ghost outlined (with a light scan sweep), sites dashed amber, the selection haloed, a carried
+    // building's old place dashed and dimmed; plain buildings are left to the lit world
+    if (k > 0.5) {
+      bool sil = kr < 0.5 || ku < 0.5 || kl < 0.5 || kd < 0.5;
+      if (k == 3.0 || k == 4.0) {
+        bool ok = k == 3.0;
+        float sweep = fract((s.P.x + s.P.z) * 0.18 - uTime * 0.7);
+        float band = smoothstep(0.0, 0.06, sweep) * (1.0 - smoothstep(0.06, 0.18, sweep));
+        o = over(o, ok ? OKL : BADL, 0.1 + band * 0.25);
+        if (sil) o = over(o, mix(ok ? OKL : BADL, WHITE, 0.3), 0.95);
+      } else if (k == 2.0) { if (sil) o = over(o, AMB, 0.95 * dash); }
+      else if (k == 10.0) { o = over(o, rampC(0.0), 0.35); if (sil) o = over(o, WHITE, 0.85 * dash); }
+      else if (k == 9.0) { if (sil) o = over(o, WHITE, 0.55); }
+    } else {
+      float nk = max(max(kr, ku), max(kl, kd));
+      bool hot = kr == 5.0 || ku == 5.0 || kl == 5.0 || kd == 5.0;
+      if (hot) o = over(o, mix(HALO, WHITE, uSelPulse * 0.5), 0.95);
+      else if (nk == 3.0 || nk == 4.0) o = over(o, rampC(0.0), 0.6);
+    }
+    // the fronts: build mode's wipe and the view's, each a bright printing edge
+    if (glowK > 0.0) o = over(o, rampC(6.0), glowK * 0.22);
+    if (edgeK > 0.0 && uWipe < 0.999) o = over(o, WHITE, edgeK * (0.6 + 0.4 * step(0.5, h21(cp + floor(uTime * 20.0)))));
+    if (vEdge > 0.0) o = over(o, WHITE, vEdge * (0.55 + 0.45 * step(0.5, h21(cp + floor(uTime * 20.0) + 3.0))));
+    gl_FragColor = o;
+    return;
+  }
+
+  // ======== BLUEPRINT VIEW
   // ---- paper: the material library's blueprint stock (src/gfx/mat 'paper_blueprint'), one texel per art pixel, lit by
   // the ground under it (a soft hill-shade), darker where it is water, sinking toward the tray
   vec3 paper = pow(texture2D(tPaper, (cp + 0.5) / uPaperN).rgb, vec3(1.0 / 2.2));
@@ -131,11 +215,7 @@ void main() {
   vec3 col = paper * L;
 
   // ---- grid (ground only) and contours
-  bool smth = !s.sky && abs(s.vz - sr.vz) < 0.35 + s.vz * 0.012 && abs(s.vz - su.vz) < 0.35 + s.vz * 0.012;
   bool flatG = !obj && !objR && !objU && smth;
-  float minorK = clamp(1.6 - pxW * 3.2, 0.0, 1.0);
-  vec4 cur = cellAt(s.P.xz);
-  float nearC = uHand * clamp(1.0 - length(s.P.xz - uCursor.xy) / max(1.0, uCursor.z), 0.0, 1.0);
   if (flatG) {
     float c0 = floor(s.P.y / 0.5), cR = floor(sr.P.y / 0.5), cU = floor(su.P.y / 0.5);
     bool cont = c0 != cR || c0 != cU;
@@ -178,15 +258,15 @@ void main() {
     if (major) col = mix(col, rampC(5.0 + nearC), (obj ? 0.6 : 0.78) + glowK * 0.2);
   }
 
-  // ---- the colony's structures (the mask)
-  vec4 m = texture2D(tMask, uv), mr = texture2D(tMask, uv + dx), mu = texture2D(tMask, uv + dy), ml = texture2D(tMask, uv - dx), md = texture2D(tMask, uv - dy);
-  float k = kindOf(m), kr = kindOf(mr), ku = kindOf(mu), kl = kindOf(ml), kd = kindOf(md);
+  // ---- the ghost's footprint, printed on the sheet
+  if (inFoot) { col = mix(col, uFootK < 1.5 ? OKC : BADC, 0.3); if (!footR || !footU) col = mix(col, uFootK < 1.5 ? OKL : BADL, 0.9); }
+  else if (uFootK > 0.5 && !s.sky && (footR || footU)) col = mix(col, uFootK < 1.5 ? OKL : BADL, 0.9);
+  // ---- the settlement's structures (the mask)
   if (k > 0.5) {
     bool sil = kr < 0.5 || ku < 0.5 || kl < 0.5 || kd < 0.5;
     bool crease = (kr > 0.5 && !same(m, mr)) || (ku > 0.5 && !same(m, mu)) || abs(s.vz - sr.vz) > 0.08 + s.vz * 0.006 || abs(s.vz - su.vz) > 0.08 + s.vz * 0.006;
     float ny = sqrt(max(0.0, 1.0 - pow(m.g * 2.0 - 1.0, 2.0) - pow(m.b * 2.0 - 1.0, 2.0)));
     bool wall = ny < 0.55;
-    float dash = step(mod(cp.x + cp.y, 6.0), 2.9);
     if (k == 7.0) { col = mix(col, rampC(6.0), 0.85); }
     else if (k == 8.0) { col = WHITE; }
     else if (k == 6.0) {
@@ -235,18 +315,26 @@ void main() {
   // ---- the wipe front: a bright, printing edge
   if (glowK > 0.0) col = mix(col, rampC(6.0), glowK * 0.18);
   if (edgeK > 0.0 && uWipe < 0.999) col = mix(col, WHITE, edgeK * (0.6 + 0.4 * step(0.5, h21(cp + floor(uTime * 20.0)))));
+  // the view front: the printing edge as the blueprint comes or goes, a pale glow just inside it
+  if (vEdge > 0.0) col = mix(col, WHITE, vEdge * (0.55 + 0.45 * step(0.5, h21(cp + floor(uTime * 20.0) + 3.0))));
+  else if (uView < 0.999) col = mix(col, rampC(6.0), clamp(1.0 - (vfront - vthr) / 0.2, 0.0, 1.0) * 0.2);
   gl_FragColor = vec4(col, 1.0);
 }`;
 const BLIT_F = /* glsl */`
 precision highp float;
 varying vec2 vUv;
 uniform sampler2D tArt; uniform float uMix;
-void main() { vec4 c = texture2D(tArt, vUv); if (c.a < 0.5) discard; gl_FragColor = vec4(c.rgb, uMix); }`;
+void main() { vec4 c = texture2D(tArt, vUv); if (c.a < 0.004) discard; gl_FragColor = vec4(c.rgb, c.a * uMix); }`;
 
 /** world -> blueprint */
 export class BlueprintWorld {
   /** overall strength 0..1 and the radial reveal 0..1 */
   mix = 0; wipe = 0;
+  /** the view: 0 the NORMAL view (the lit world and the placement overlay) .. 1 the BLUEPRINT; a radial front from viewAt */
+  view = 0;
+  viewAt: [number, number] = [innerWidth / 2, innerHeight / 2];
+  /** the ghost's footprint in cells [x0, z0, x1, z1] and 0 none / 1 fits / 2 does not */
+  foot: [number, number, number, number] = [0, 0, 0, 0]; footK = 0;
   /** the wipe's centre (screen px, top-left origin) */
   wipeAt: [number, number] = [innerWidth / 2, innerHeight / 2];
   /** the bottom tray's darkening 0..1 */
@@ -282,14 +370,15 @@ export class BlueprintWorld {
     const post = f.g.engine.post;
     const paperTex = matTex('paper_blueprint');
     this.mat = new THREE.ShaderMaterial({
-      vertexShader: VERT, fragmentShader: BP_F, transparent: true, depthTest: false, depthWrite: false,
+      // written straight into the art target (its alpha is the overlay's coverage; the blit blends it over the world)
+      vertexShader: VERT, fragmentShader: BP_F, transparent: false, blending: THREE.NoBlending, depthTest: false, depthWrite: false,
       uniforms: {
         tPaper: { value: paperTex }, uPaperN: { value: paperTex.image.width },
         tDepth: post.U.tDepth, tNormal: post.U.tNormal, tMask: { value: this.maskRT.texture }, tCell: { value: this.cellTex }, tHgt: { value: this.hgtTex },
         uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() },
         uRes: { value: new THREE.Vector2(1, 1) }, uWipeC: { value: new THREE.Vector2() },
         uTime: { value: 0 }, uMix: { value: 0 }, uWipe: { value: 0 }, uN: { value: N }, uFovK: { value: 1 }, uK: { value: 2 }, uHand: { value: 0 }, uSeam: { value: 0 }, uTray: { value: 0 }, uSelPulse: { value: 0 },
-        uCursor: { value: new THREE.Vector3() },
+        uCursor: { value: new THREE.Vector3() }, uView: { value: 0 }, uViewC: { value: new THREE.Vector2() }, uFoot: { value: new THREE.Vector4() }, uFootK: { value: 0 },
       },
     });
     const g = new THREE.BufferGeometry();
@@ -338,7 +427,7 @@ export class BlueprintWorld {
     if (o.parent === this.f.render.group && mat === this.f.render.mat) return MK.res;
     return MK.building;
   }
-  /** other structures drawn as buildings: the colony pod */
+  /** other structures drawn as buildings: the pod */
   private extras(): THREE.Object3D[] {
     const c = (this.f.g as unknown as { colony?: { pod?: { model?: { root?: THREE.Object3D } } } }).colony;
     const pod = c?.pod?.model?.root;
@@ -394,6 +483,9 @@ export class BlueprintWorld {
     U.uSeam.value = this.hand && FDEFS[this.hand]?.extract === 'node' ? 1 : 0;
     U.uSelPulse.value = 0.5 + 0.5 * Math.sin(this.t * 5);
     (U.uCursor.value as THREE.Vector3).set(this.cursor[0], this.cursor[1], 11);
+    U.uView.value = this.view;
+    (U.uViewC.value as THREE.Vector2).set(this.viewAt[0] * sc, post.h - this.viewAt[1] * sc);
+    (U.uFoot.value as THREE.Vector4).set(...this.foot); U.uFootK.value = this.footK;
     const aw = Math.ceil(post.w / K), ah = Math.ceil(post.h / K);
     if (this.artRT.width !== aw || this.artRT.height !== ah) this.artRT.setSize(aw, ah);
     const prev = r.getRenderTarget(), ac = r.autoClear, pc = r.getClearColor(new THREE.Color()).getHex(), pa = r.getClearAlpha();

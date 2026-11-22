@@ -1,8 +1,13 @@
-// BLUEPRINT BUILD MODE (V7: "build mode will go top down, show like blueprint, drag in city-like buildings"). Entered
-// from the dock's BUILD icon (or B, or a hotbar slot) with a transition: the camera swoops up to a top-down view while
-// the world prints itself as a blueprint from the centre out (bpworld.ts), the drafting sheet's border, north arrow,
-// scale bar and title block are drawn round it, and the tray of buildings slides up (tray.ts). Leaving reverses it.
-//   In hand (dragged from the tray or clicked): the holographic ghost snaps to the grid, R or the wheel turns it, it
+// BUILD MODE (V7: "build mode will go top down, show like blueprint, drag in city-like buildings"; V7 "EMPIRE BUILDING
+// + city-builder build UI": a NORMAL and a BLUEPRINT view, a shop-style catalogue, rich context on every building).
+// Entered from the dock's BUILD icon (or B, or a hotbar slot) with a transition: the camera swoops up to a top-down view
+// while the placement overlay prints itself from the dock icon out (bpworld.ts); the BUILD CATALOGUE rises along the
+// bottom left (catalog.ts), the BUILDING DATA card slides in on the right (detail.ts) and the VIEW switch drops in at
+// the top. Leaving reverses it.
+//   VIEWS: NORMAL (default): the real lit world from above with a clean placement grid and the ghost; BLUEPRINT: the
+//   site plan (bpworld.ts) with the drafting sheet's border, north arrow, scale bar and title block. The big switch at
+//   the top or V flips between them: the blueprint prints itself out of the switch across the screen, or lifts away.
+//   In hand (dragged from the catalogue or clicked): the holographic ghost snaps to the grid, R or the wheel turns it, it
 //   reads green or red; corner brackets, dimension lines in metres and a facing chevron are drawn round its footprint,
 //   and its bill floats over it as item icons with have / need.
 //   Placed buildings: click one to select it (a halo, and floating MOVE / ROTATE / INFO / PAUSE / DISMANTLE icons over
@@ -17,7 +22,9 @@ import { ITEMS, itemIcon, type ItemId } from '../../factory/items';
 import type { Site } from '../../logistics/sites';
 import { catOf, workOf } from '../../logistics/catalog';
 import { BlueprintWorld, MK } from './bpworld';
-import { BuildTray } from './tray';
+import { BuildCatalog } from './catalog';
+import { BuildDetail } from './detail';
+import { panel, pkey, bindTip, type Panel, type PKey } from '../kit/panel';
 import { floatBtn, bpIcon, type FloatBtn } from './bpicons';
 import { ease, clamp01, squash, placeDust, play } from './juice';
 import { bitText, bitMeasure } from '../kit/bitfont';
@@ -45,10 +52,22 @@ export function weightOf(kind: FKind): number {
   return Math.max(0.25, Math.min(3, (d.w * d.d * Math.max(0.5, d.h)) / 9 + bill / 45));
 }
 
+export type BuildView = 'normal' | 'blueprint';
+const VIEW_T = 0.75;
+const VIEW_WORDS: Record<BuildView, string> = {
+  normal: 'The lit world from above; a placement grid round the cursor.',
+  blueprint: 'A site plan: every building drawn; water, contours, seams.',
+};
+
 export class BuildMode {
   readonly world: BlueprintWorld;
-  readonly tray: BuildTray;
+  readonly catalog: BuildCatalog;
+  readonly detail: BuildDetail;
   phase: 'off' | 'in' | 'on' | 'out' = 'off';
+  /** the view (NORMAL is the default) and the flip between them */
+  view: BuildView = 'normal';
+  private viewK = 0; private viewFrom = 0; private viewT = 1;
+  private vp: Panel; private vNormal: PKey; private vBlue: PKey; private vText: HTMLDivElement;
   private t = 0;
   private camK = 0;
   private saved: { yaw: number; dist: number } | null = null;
@@ -63,14 +82,29 @@ export class BuildMode {
 
   constructor(readonly f: Factory, readonly b: Build) {
     this.world = new BlueprintWorld(f);
-    this.tray = new BuildTray(f, {
+    this.catalog = new BuildCatalog(f, {
       take: (k) => { this.b.choose(k); },
       dragStart: (k) => { this.b.take(k); },
       dragMove: (x, y, over) => { if (over) this.b.hideGhost(); else this.b.hoverAt(x, y, true); },
       dragEnd: (x, y, over) => { if (!over) { this.b.hoverAt(x, y, true); this.b.dropHere(); } this.b.drop(); },
-      leave: () => this.b.close(),
-      bill: (k) => this.bill(k),
+      overUi: (x, y) => this.overUi(x, y),
     });
+    this.detail = new BuildDetail(f, { inHand: () => this.b.kind, moving: () => !!this.b.moving, view: () => this.view });
+    // the VIEW switch: two big keys (NORMAL / BLUEPRINT), what the view shows, and the way out
+    this.vp = panel({ title: 'VIEW', tone: 'gun', seed: 37, serial: 'KEY V', lamps: ['green', 'teal'], glands: 0, vents: false, foot: 12, cls: 'bv' });
+    this.vp.body.innerHTML = '<div class="bv-keys"></div><div class="bv-t k7-t16"></div>';
+    const keys = this.vp.body.querySelector('.bv-keys')!;
+    this.vNormal = pkey('NORMAL', () => this.setView('normal', this.vNormal), { w: 150, h: 40, tone: 'cream', lamp: 'green', sound: 'switch' });
+    this.vBlue = pkey('BLUEPRINT', () => this.setView('blueprint', this.vBlue), { w: 170, h: 40, tone: 'cream', lamp: 'teal', sound: 'switch' });
+    const ex = pkey('EXIT', () => this.b.close(), { w: 100, h: 40, tone: 'red', lamp: 'red', hazard: true, sound: 'back' });
+    keys.append(this.vNormal, this.vBlue, ex);
+    this.vText = this.vp.body.querySelector('.bv-t')!;
+    bindTip(this.vNormal, () => ({ title: 'NORMAL VIEW', desc: VIEW_WORDS.normal, rows: [['Shows', 'the world as it is: light, models, plants'], ['Overlay', 'grid, ghost, red where it cannot go']], hint: [['V', 'switch view']] }));
+    bindTip(this.vBlue, () => ({ title: 'BLUEPRINT VIEW', desc: VIEW_WORDS.blueprint, rows: [['Grid', '1 m, 5 m majors'], ['Contours', 'every 0.5 m'], ['Sheet', 'scale bar, north arrow, title block']], hint: [['V', 'switch view']] }));
+    bindTip(ex, () => ({ title: 'LEAVE BUILD MODE', desc: 'Back to the game; sites keep building while you play.', hint: [['B', 'leave'], ['Esc', 'one step back']] }));
+    this.vp.el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    document.body.appendChild(this.vp.el);
+    this.syncView();
     this.ov = document.createElement('canvas'); this.ov.className = 'bp-ov';
     document.body.appendChild(this.ov);
     this.og = this.ov.getContext('2d')!;
@@ -79,8 +113,9 @@ export class BuildMode {
     this.acts.addEventListener('pointerdown', (e) => e.stopPropagation());
     this.compass = paintCompass();
     installKitStyle();
-    // the text panels' stock: the material library's blueprint paper at 2 CSS px per texel
+    // the text panels' stock: the material library's blueprint paper (and, in the normal view, its anodised gun metal)
     try { document.documentElement.style.setProperty('--bp-paper', `url(${matCanvas('paper_blueprint').toDataURL()})`); } catch { /* the plain fill stands in */ }
+    try { document.documentElement.style.setProperty('--bp-gun', `url(${matCanvas('metal_anodised_grey').toDataURL()})`); } catch { /* the plain fill stands in */ }
     this.hookDock();
   }
   /** the HUD's main dock (UI CORE): its BUILD slot opens and closes this mode, latched while it is open */
@@ -100,10 +135,43 @@ export class BuildMode {
     }, { transition: 'none' });
   }
   private dockAt: [number, number] | null = null;
-  dispose() { this.world.dispose(); this.tray.dispose(); this.ov.remove(); this.cost.remove(); this.acts.remove(); this.restoreCam(); }
+  dispose() { this.world.dispose(); this.catalog.dispose(); this.detail.dispose(); this.vp.dispose(); this.ov.remove(); this.cost.remove(); this.acts.remove(); this.restoreCam(); }
   get on() { return this.phase === 'in' || this.phase === 'on'; }
   /** the screen elements build mode owns (hidden with the game when it is suspended) */
-  get els(): HTMLElement[] { return [this.ov, this.cost, this.acts, this.tray.root]; }
+  get els(): HTMLElement[] { return [this.ov, this.cost, this.acts, this.catalog.root, this.detail.root, this.vp.el]; }
+  /** is a screen point over build mode's own panels (the catalogue, the data card, the view switch) */
+  overUi(x: number, y: number) {
+    if (!this.on) return false;
+    for (const e of [this.catalog.root, this.detail.root, this.vp.el]) { const r = e.getBoundingClientRect(); if (r.width && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return true; }
+    return false;
+  }
+  /** keep a floating card (w x h at x, y) clear of the panels: left of the data card, above the catalogue */
+  private clear(x: number, y: number, w: number, h: number): [number, number] {
+    const d = this.detail.root.getBoundingClientRect(), c = this.catalog.root.getBoundingClientRect();
+    if (this.detail.isOpen && d.width && x + w > d.left - 8) x = d.left - 8 - w;
+    if (this.catalog.isOpen && c.width && x < c.right && y + h > c.top - 8) y = c.top - 8 - h;
+    return [Math.max(8, x), Math.max(8, y)];
+  }
+
+  // ------------------------------------------------------------------ the two views
+  /** NORMAL <-> BLUEPRINT (V, or the switch): the blueprint prints itself out of the switch, or lifts back into it */
+  setView(v: BuildView, from?: HTMLElement) {
+    if (v === this.view) { if (from) (from as PKey).setOn(true); return; }
+    this.view = v;
+    const r = (from ?? (v === 'blueprint' ? this.vBlue : this.vNormal)).getBoundingClientRect();
+    this.world.viewAt = r.width ? [r.left + r.width / 2, r.top + r.height / 2] : [innerWidth / 2, innerHeight / 2];
+    this.viewFrom = this.viewK; this.viewT = 0;
+    play(v === 'blueprint' ? 'paper' : 'swooshOut', 1, 0.45);
+    this.syncView();
+  }
+  toggleView() { this.setView(this.view === 'normal' ? 'blueprint' : 'normal'); }
+  private syncView() {
+    this.vNormal.setOn(this.view === 'normal'); this.vBlue.setOn(this.view === 'blueprint');
+    this.vp.lamp(0, this.view === 'normal'); this.vp.lamp(1, this.view === 'blueprint');
+    this.vText.textContent = VIEW_WORDS[this.view];
+    document.body.classList.toggle('bp-view-bp', this.view === 'blueprint');
+    document.body.classList.toggle('bp-view-normal', this.view === 'normal');
+  }
 
   // ------------------------------------------------------------------ in and out
   enter() {
@@ -118,15 +186,16 @@ export class BuildMode {
     cam.distGoal = Math.max(24, Math.min(52, cam.distGoal * 1.15));
     this.phase = 'in'; this.t = 0;
     this.world.mix = 1; this.world.wipe = 0; this.world.wipeAt = this.wipeOrigin();
+    this.viewK = this.view === 'blueprint' ? 1 : 0; this.viewT = 1; this.world.view = this.viewK;
     document.body.classList.add('bp-on'); document.body.classList.remove('bp-off');
     this.dock?.setOn?.('build', true);
-    this.fitTray();
-    play('swoosh', 0.9, 0.5); play('paper', 1, 0.45);
+    this.syncView();
+    play('swoosh', 0.9, 0.5); if (this.view === 'blueprint') play('paper', 1, 0.45);
   }
   exit() {
     if (!this.on) return;
     this.phase = 'out'; this.t = 0;
-    this.tray.close();
+    this.catalog.close(); this.detail.close(); this.vp.el.classList.remove('on'); this.vp.el.classList.add('out');
     this.selectionActs(null);
     this.cost.classList.remove('on');
     this.world.wipeAt = this.wipeOrigin();
@@ -141,8 +210,6 @@ export class BuildMode {
     if (d) { const r = d.getBoundingClientRect(); if (r.width) return [r.left + r.width / 2, r.top + r.height / 2]; }
     return [innerWidth / 2, innerHeight * 0.55];
   }
-  /** the tray sits above the dock when there is one */
-  private fitTray() { /* the dock tucks away under the tray while the blueprint is out (bp.css) */ }
   private restoreCam() {
     const cam = this.f.g.cam as unknown as { pitch?: unknown; yawGoal: number; distGoal: number };
     if (Object.prototype.hasOwnProperty.call(cam, 'pitch')) delete cam.pitch;
@@ -161,7 +228,11 @@ export class BuildMode {
       this.camK = ease.inOut3(clamp01(this.t / 0.9));
       W.wipe = ease.out3(clamp01((this.t - 0.12) / 0.8));
       W.tray = ease.out3(clamp01((this.t - 0.4) / 0.5));
-      if (this.t > 0.38 && !this.tray.isOpen) { this.tray.open(this.b.kind ? catOf(this.b.kind) : undefined); play('open', 1, 0.4); }
+      if (this.t > 0.38 && !this.catalog.isOpen) {
+        this.catalog.open(this.b.kind ? catOf(this.b.kind) : undefined); this.detail.open();
+        this.vp.el.classList.remove('out'); void this.vp.el.offsetWidth; this.vp.el.classList.add('on');
+        play('open', 1, 0.4);
+      }
       if (k >= 1) { this.phase = 'on'; W.wipe = 1; }
     } else if (this.phase === 'out') {
       const k = clamp01(this.t / OUT_T);
@@ -170,6 +241,22 @@ export class BuildMode {
       W.tray = 1 - k;
       if (k >= 1) { this.phase = 'off'; W.mix = 0; W.wipe = 0; this.camK = 0; this.restoreCam(); document.body.classList.remove('bp-off'); }
     }
+    // the view flip (eased), and the panels' words: the data card shows the hovered card, else what is in hand, else
+    // the last card picked, else the building selected on the map
+    // QA: window.__bpViewHold = 0..1 freezes the view flip at that point (screenshots of the blueprint printing itself)
+    const vh = (window as unknown as { __bpViewHold?: number }).__bpViewHold;
+    if (typeof vh === 'number' && this.viewT < 1) this.viewT = vh;
+    if (this.viewT < 1) { this.viewT = Math.min(1, this.viewT + dt / VIEW_T); const e = ease.inOut3(this.viewT); this.viewK = this.viewFrom + ((this.view === 'blueprint' ? 1 : 0) - this.viewFrom) * e; }
+    W.view = this.viewK;
+    if (this.on) {
+      const sel = this.b.selected;
+      this.detail.show(this.catalog.hot ?? this.b.moving?.kind ?? this.b.kind ?? this.catalog.pick ?? sel?.def.kind ?? null);
+      if (this.b.kind && this.catalog.pick !== this.b.kind && !this.catalog.hot) this.catalog.setPick(this.b.kind);
+    }
+    this.detail.update(dt);
+    // the ghost's footprint (one building in hand): tinted under it in both views
+    const g0 = this.b.ghosts.length === 1 ? this.b.ghosts[0] : null;
+    if (this.on && g0 && FDEFS[g0.kind]) { const d = FDEFS[g0.kind]; W.foot = [g0.cx, g0.cz, g0.cx + footW(d, g0.r), g0.cz + footD(d, g0.r)]; W.footK = g0.ok ? 1 : 2; } else W.footK = 0;
     // the hand, the cursor, and the marks for the selection and a building being carried
     W.hand = this.on && this.b.kind ? this.b.kind : null;
     const gp = this.b.ground; if (gp) W.cursor = [gp.x, gp.z];
@@ -185,7 +272,7 @@ export class BuildMode {
     W.hoverAs = mv?.b ? MK.moving : one ? MK.sel : MK.hover;
     if (this.on && one) this.f.render.hover = one;
     W.update(dt);
-    this.tray.update(dt);
+    this.catalog.update(dt);
     this.updateDrops(dt);
     if (this.phase === 'off') { if (this.ov.width) this.clearOv(); return; }
     this.draw();
@@ -226,8 +313,9 @@ export class BuildMode {
     const [sx, sy] = this.f.g.screenOf(gh.cx + w / 2, y + def.h + 0.4, gh.cz);
     const r = el.getBoundingClientRect();
     const above = sy - r.height - 24 > 8;
-    el.style.left = Math.round(Math.max(8, Math.min(innerWidth - r.width - 8, sx + (above ? -r.width / 2 : 40))) / 2) * 2 + 'px';
-    el.style.top = Math.round((above ? sy - r.height - 24 : Math.min(innerHeight - r.height - 320, sy + 30)) / 2) * 2 + 'px';
+    const [cx, cy] = this.clear(Math.min(innerWidth - r.width - 8, sx + (above ? -r.width / 2 : 40)), above ? sy - r.height - 24 : sy + 30, r.width, r.height);
+    el.style.left = Math.round(cx / 2) * 2 + 'px';
+    el.style.top = Math.round(cy / 2) * 2 + 'px';
   }
 
   // ------------------------------------------------------------------ the selection's action icons
@@ -280,8 +368,9 @@ export class BuildMode {
     if (!ok) return;
     this.renderActCard();
     const r = this.acts.getBoundingClientRect();
-    this.acts.style.left = Math.round(Math.max(8, Math.min(innerWidth - r.width - 8, sx - r.width / 2)) / 2) * 2 + 'px';
-    this.acts.style.top = Math.round(Math.max(8, sy - r.height - 16) / 2) * 2 + 'px';
+    const [ax, ay] = this.clear(Math.min(innerWidth - r.width - 8, sx - r.width / 2), Math.max(8, sy - r.height - 16), r.width, r.height);
+    this.acts.style.left = Math.round(ax / 2) * 2 + 'px';
+    this.acts.style.top = Math.round(ay / 2) * 2 + 'px';
   }
 
   // ------------------------------------------------------------------ drops: squash, stretch, dust
@@ -290,6 +379,7 @@ export class BuildMode {
     const t = o.site ?? o.b; if (!t) return;
     const kind = o.site ? o.site.kind : o.b!.kind;
     const w = weightOf(kind);
+    if (!o.moved) this.catalog.placed(kind);
     this.drops.push({ t: o.moved ? -0.16 : -0.3, w, site: o.site, b: o.b, y0: t.y, sx: 1, sy: 1, fw: t.fw, fd: t.fd, dusted: false, x: t.cx + t.fw / 2, z: t.cz + t.fd / 2 });
   }
   private updateDrops(dt: number) {
@@ -305,7 +395,7 @@ export class BuildMode {
           // the puff spreads over the footprint as seen from here
           const [ax] = g.screenOf(d.x + d.fw / 2, d.y0, d.z);
           // the ring spreads to the footprint as seen from here; the kit plays the thud with it
-          placeDust(px, py, d.w, { ground: this.on ? 'snow' : 'dirt', scale: Math.max(0.7, Math.min(2.2, Math.abs(ax - px) / 40)) });
+          placeDust(px, py, d.w, { ground: this.on && this.view === 'blueprint' ? 'snow' : 'dirt', scale: Math.max(0.7, Math.min(2.2, Math.abs(ax - px) / 40)) });
         }
         g.fx.burst(d.x, d.y0 + 0.15, d.z, Math.round(6 + d.w * 8), P.sand[3], { speed: 1.6 + d.w * 0.6, up: 0.9, size: 3 + d.w, life: 0.7, grav: 2, spread: Math.max(d.fw, d.fd) * 0.5 });
         g.cam.shake(0.03 + d.w * 0.035, 0.12 + d.w * 0.05);
@@ -343,7 +433,7 @@ export class BuildMode {
     this.sites(g);
     this.ghostMarks(g);
     this.selMarks(g);
-    this.sheet(g, Wd, Ht);
+    if (W.view > 0.001) { g.globalAlpha *= Math.min(1, W.view * 1.4); this.sheet(g, Wd, Ht); }
     g.restore();
   }
   /** the drafting sheet: a printed double border with registration marks, the north arrow, the scale bar, the title block */
@@ -381,7 +471,7 @@ export class BuildMode {
     for (const s of this.f.seams) {
       if (s.amount <= 0) continue;
       const y = game.region.heightAt(s.x, s.z);
-      const [sx, sy, ok] = game.screenOf(s.x, y, s.z); if (!ok || sx < -60 || sy < -60 || sx > innerWidth + 60 || sy > innerHeight - 330) continue; // (not under the tray)
+      const [sx, sy, ok] = game.screenOf(s.x, y, s.z); if (!ok || sx < -60 || sy < -60 || sx > innerWidth + 60 || sy > innerHeight + 60 || this.overUi(sx, sy + 28)) continue; // (not under the panels)
       const [ex] = game.screenOf(s.x + s.r, y, s.z), r = Math.max(10, Math.abs(ex - sx));
       g.strokeStyle = want ? OKL : BLUE[6]; g.lineWidth = 2; g.setLineDash([6, 6]); g.lineDashOffset = -performance.now() / 120;
       g.beginPath(); g.arc(Math.round(sx), Math.round(sy), r, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);

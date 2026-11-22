@@ -257,6 +257,7 @@ else if (P.get('test') === 'ocean') import('./ocean/test').then((m) => m.testOce
 else if (P.get('test') === 'factions') import('./game/factions/test').then((m) => m.testFactions(engine, input, P));
 else if (P.get('test') === 'robots') import('./robots/testRobots').then((m) => m.testRobots(engine, input, P));
 else if (P.get('test') === 'hud7') import('./ui/hud7/test').then((m) => m.testHud7(engine, input, P));
+else if (P.get('test') === 'empire') import('./empire/test').then((m) => m.testEmpire(engine, input, P));
 else if (P.get('test') === 'ship7') import('./ship/screen/test').then((m) => { m.testShip7(engine, input, P); engine.start(); });
 else if (P.get('test') === 'ui') testUI();
 else if (P.get('test') === 'eco') testEco();

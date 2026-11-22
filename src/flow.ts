@@ -23,6 +23,7 @@ import { el, panel, ui, Btn, toast } from './ui/kit';
 import { sfx } from './audio/audio';
 import { makeHub } from './ship/hub/flowHub';
 import { setShipHubOpener, setShipLander } from './ship/hub';
+import { setEmpireHost, settledLanding } from './empire/host';
 
 interface Save {
   planet: number; states: RState[]; landings: number;
@@ -34,6 +35,8 @@ interface Save {
     factories?: Record<string, unknown>;
     /** v6 progression (src/research: mastery, research, upgrades, events) */
     prog?: unknown;
+    /** v7 the empire (src/empire: settlements, roads and rail, trade routes, convoys, diplomacy) */
+    empire?: unknown;
   };
 }
 const SK = 'oddworld.save', AK = 'oddworld.archive';
@@ -51,6 +54,8 @@ export class Flow {
     setShipHubOpener((fp) => this.openShipHub(fp));
     // v7: the SHIP screen's MONITOR panel picks the world and the landing site (src/ship/screen/panels/monitor.ts)
     setShipLander({ runSeed: () => { this.ensureRun(); return this.run!.seed; }, planet: () => this.planet, land: (seed, r) => { this.choosePlanet(seed); this.landAt(r, { x: 128, z: 128 }); } });
+    // v7: the empire travels between its settlements (src/empire/travel.ts) and saves with the run
+    setEmpireHost({ planet: () => this.planet, run: () => this.run, game: () => this.game, save: () => this.persist(), visit: (r, o) => this.land(r, o.drop, o.opts ?? {}) });
   }
 
   /** the ship hub is the main menu (src/ship/hub): the title, then the cutaway with every room's function */
@@ -77,7 +82,11 @@ export class Flow {
   /** the world picked on the main monitor */
   choosePlanet(seed: number) { if (!this.planet || this.planet.seed !== seed) { this.planet = makePlanet(seed); this.landings = 0; } this.persist(); }
   /** the pod is away: the region loop starts (the descent plays in the game) */
-  landAt(r: PRegion, pin: { x: number; z: number }) { this.land(r, { pin, first: this.landings === 0 }); }
+  landAt(r: PRegion, pin: { x: number; z: number }) {
+    // a region that already holds one of the empire's settlements is resumed, not dropped on again
+    const settled = settledLanding(this.run, r); if (settled) { this.land(r, undefined, settled); return; }
+    this.land(r, { pin, first: this.landings === 0 });
+  }
   save() { this.persist(); }
   /** load the saved run without leaving the screen */
   loadSave(): boolean {
@@ -92,6 +101,7 @@ export class Flow {
     if (s.run.flags) Object.assign(run.flags, s.run.flags);
     if (s.run.factories && typeof s.run.factories === 'object') run.factories = s.run.factories;
     if (s.run.prog && typeof s.run.prog === 'object') (run as unknown as { prog?: unknown }).prog = s.run.prog;
+    if (s.run.empire && typeof s.run.empire === 'object') (run as unknown as { empire?: unknown }).empire = s.run.empire;
     for (const d of s.run.designs) run.reg.add(d, 'veyr', null, 'design', 0);
     this.run = run; this.landings = s.landings;
     return true;
@@ -124,6 +134,7 @@ export class Flow {
     if (s.run.flags) Object.assign(run.flags, s.run.flags);
     if (s.run.factories && typeof s.run.factories === 'object') run.factories = s.run.factories;
     if (s.run.prog && typeof s.run.prog === 'object') (run as unknown as { prog?: unknown }).prog = s.run.prog;
+    if (s.run.empire && typeof s.run.empire === 'object') (run as unknown as { empire?: unknown }).empire = s.run.empire;
     for (const d of s.run.designs) run.reg.add(d, 'veyr', null, 'design', 0);
     this.run = run; this.landings = s.landings;
     this.planetView();
@@ -135,7 +146,7 @@ export class Flow {
     write(SK, {
       planet: this.planet.seed, states: this.planet.regions.map((x) => x.state), landings: this.landings,
       run: { seed: r.seed, genes: [...r.genes.values()].map((g) => [g.id, g.level, g.from]), helix: r.helix, designs: r.reg.list.filter((s) => s.owner === 'veyr' && s.role === 'design').map((s) => s.design),
-        res: { ...r.res }, skills: r.skills.toJSON(), plants: r.plants, flags: r.flags, factories: r.factories, prog: (r as unknown as { prog?: unknown }).prog },
+        res: { ...r.res }, skills: r.skills.toJSON(), plants: r.plants, flags: r.flags, factories: r.factories, prog: (r as unknown as { prog?: unknown }).prog, empire: (r as unknown as { empire?: unknown }).empire },
     } satisfies Save);
   }
   private planetView(note?: string) {
@@ -157,13 +168,14 @@ export class Flow {
 
   // ------------------------------------------------------------------ a region
   /** drop: the pod is in the air over this region (the game starts in descent mode; the landing is where it comes down) */
-  land(r: PRegion, drop?: { pin: { x: number; z: number }; first: boolean }) {
+  land(r: PRegion, drop?: { pin: { x: number; z: number }; first: boolean }, extra?: Partial<GameOpts>) {
     const p = this.planet!, run = this.run!;
     this.landings++;
     for (const s of run.reg.list) s.alive = 0;
     const engine = this.engine;
     const gopts: GameOpts = {
       seed: r.seed, biome: r.biome, pal: p.palKey, regionName: r.name, run, story: this.landings === 1, danger: r.danger, landing: drop?.pin, descent: !!drop,
+      ...(extra ?? {}),
       hooks: {
         openBuilder: (game) => openLab(engine, game),
         openLab: (game) => openLab(engine, game),
@@ -181,7 +193,7 @@ export class Flow {
     this.game = g;
     g.veyr.res.helix += run.helix;
     engine.setScreen(g);
-    if (this.landings > 1) toast(`You fall on <b>${r.name}</b>. Everything you have absorbed came with you.`, 'story', 5000);
+    if (this.landings > 1 && !extra) toast(`You fall on <b>${r.name}</b>. Everything you have absorbed came with you.`, 'story', 5000);
     if (drop) new GameDescent({
       game: g, lz: drop.pin, first: drop.first, planetName: p.name,
       onDone: (res) => { const b = bonusFor(res.grade); if (b.cells || Object.keys(b.res).length) toast(`Drop ${res.grade === 'BULLSEYE' ? '<b>dead on the pin</b>' : 'scored'}: ${b.text.toLowerCase()}.`, 'good', 6000); },

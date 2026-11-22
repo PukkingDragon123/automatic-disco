@@ -16,15 +16,18 @@
 // `install` runs the Upgrader effect of a blueprint at once (an arm on a free hardpoint, a drone on the pad ...).
 // Layout: `lane` is the row band of the lattice, `col` the column; `row` 0/1 splits a lane in two.
 import type { DataKind } from './tech';
+import { EMPIRE_NODES } from '../empire/nodes';
 
-export type Lane = 'core' | 'build' | 'tools' | 'pod' | 'life' | 'ship';
+export type Lane = 'core' | 'build' | 'tools' | 'pod' | 'life' | 'ship' | 'empire';
 export const LANES: { id: Lane; name: string; icon: string; col: number }[] = [
-  { id: 'core', name: 'COLONY', icon: 'core', col: 0xe8b04a },
+  { id: 'core', name: 'SETTLEMENT', icon: 'core', col: 0xe8b04a },
   { id: 'tools', name: 'TOOLS', icon: 'wrench', col: 0x7fd0e8 },
   { id: 'build', name: 'BUILD', icon: 'factory', col: 0xd89a5a },
   { id: 'pod', name: 'POD', icon: 'armsocket', col: 0xb8c0c8 },
   { id: 'life', name: 'LIFE', icon: 'dna', col: 0x8de08a },
   { id: 'ship', name: 'SHIP', icon: 'telescope', col: 0xa890ff },
+  // v7 EMPIRE BUILDING (src/empire/nodes.ts): the planet survey, settler convoys, roads, trade, rail, diplomacy, drops
+  { id: 'empire', name: 'EMPIRE', icon: 'globe', col: 0xe8c050 },
 ];
 export type NpcId = 'guide' | 'kristiansen' | 'mamani' | string;
 
@@ -114,6 +117,7 @@ export const NODES: UnlockNode[] = [
   N('arm_long', 'Long Boom', 'pod', 8, 'arm_long', 'telescope', ['gravpole', 'pod_coolant'], { know: { geo: 24, energy: 12 }, items: { steel_beam: 4, motor: 2 } }, ['tech:bp_long'], { install: ['arm_long'] }),
   N('force', 'Force Dome', 'life', 8, 'b:bt_field', 'shield', ['vats', 'bio_reactor'], { know: { energy: 24, xeno: 10 }, items: { crystal: 6 } }, ['tech:force_field', 'tech:biofuel', 'tech:silk']),
   N('rare', 'Rare Ores', 'core', 8, 'crystal', 'core', ['station', 'mission'], { know: { geo: 30, xeno: 14 } }, ['tech:lumen', 'tech:gravium']),
+  ...EMPIRE_NODES,
 ];
 export const NODE: Record<string, UnlockNode> = Object.fromEntries(NODES.map((n) => [n.id, n]));
 /** grid size of the lattice */

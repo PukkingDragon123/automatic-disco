@@ -270,6 +270,8 @@ export class Build {
       return;
     }
     if (k === 'b') { eat(); if (e.shiftKey && !this.menu?.isOpen) this.openMenu(); else this.close(); return; }
+    // V: the NORMAL / BLUEPRINT view
+    if (k === 'v' && this.bp?.on) { eat(); if (!e.repeat) this.bp.toggleView(); return; }
     if (k === 'Delete' && this.selected) { eat(); this.dismantle(this.selected); return; }
     if (k === 'm' && this.selected) { eat(); this.pickUp(this.selected); return; }
     if (k === 'r') { eat(); this.g.input.keys.delete('r'); if (!e.repeat) this.rotate(); }

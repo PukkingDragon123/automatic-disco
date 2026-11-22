@@ -154,6 +154,10 @@ export async function playIntro(hub: IntroHub, o: IntroOpts = {}): Promise<boole
     if (breach) { breach.patch(1); breach.done(); }
     alarm(false); hub.podBuild?.(1);
     ui.dispose(); ptr.dispose(); motes.dispose(); offUpd(); room?.stop(0.4); hush();
+    // the cinema's end fade and letterbox only move while it is ticked: keep ticking it until they are done, then
+    // drop its overlay (without this the screen stayed black after a skip)
+    let tail = 0;
+    const offTail = hub.onUpdate((dt) => { tail += dt; cine.update(dt); if (tail > 1.4 || (tail > 0.2 && cine.ui.fadeDone && cine.ui.fadeV === 0 && cine.ui.lb <= 0.001)) { offTail(); cine.ui.dispose(); } });
     frameFns.clear();
     unit.root.visible = true; unit.power = 1; unit.mood = 'calm'; unit.grav(null); unit.setSquint(0);
     { const ms = hub.room('bridge')?.spots.monitor?.pos; unit.place(ms ? V(ms.x + 0.7, 1.7, ms.z - 1.6) : V(0, 1.7, 0)); }
