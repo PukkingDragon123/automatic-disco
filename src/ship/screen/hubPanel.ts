@@ -29,8 +29,8 @@ export class HubPanel {
     Object.assign(this.box.el.style, { position: 'absolute', right: '16px', top: '16px', width: W + 'px', height: innerHeight - 32 + 'px' });
     this.el.append(this.box.el);
     this.body = div('', this.box.body); this.body.style.height = '100%'; this.body.style.overflow = 'hidden auto'; this.box.body.style.height = '100%';
-    const back = pkey('BACK  [ESC]', () => this.close(), { tone: 'red', lamp: false, sound: 'back' });
-    Object.assign(back.style, { position: 'absolute', right: '30px', top: '20px' }); this.el.append(back);
+    const back = pkey('BACK  [ESC]', () => this.close(), { tone: 'red', lamp: false, sound: 'back', h: 24 });
+    Object.assign(back.style, { position: 'absolute', right: '86px', top: '19px' }); this.el.append(back);
     document.body.append(this.el);
     hub?.lockInput?.(true);
     this.open(fn && ROOM_FNS[room].includes(fn) ? fn : ROOM_FNS[room][0]);

@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const V3 = THREE.Vector3;
+const NONE: never[] = [];
 const _v = new V3(), _w = new V3(), _q = new THREE.Quaternion(), _qi = new THREE.Quaternion(), _m4 = new THREE.Matrix4();
 
 // ================================================================ puffy geometry
@@ -332,6 +333,8 @@ export class PodPhysics {
     s.dispose();
   }
   all(): PSet[] { return [...this.bodies, ...this.softs, ...this.cloths, ...this.ropes]; }
+  /** scratch reused by every sub-step (no garbage per step) */
+  private colsBuf: Col[] = []; private solidsBuf: Cluster[] = []; private tmpCol: Col = { kind: 'box', p: new V3(), r: 0, half: new V3(), q: new THREE.Quaternion(), v: new V3() };
   /** a shove from a point: wakes what is near and throws it away from p (and up), strength in m/s at the centre */
   impulse(p: THREE.Vector3, r: number, k: number, up = 0.6) {
     const d = new V3();
@@ -357,7 +360,8 @@ export class PodPhysics {
   private sub(h: number) {
     this.t += h;
     for (let i = this.winds.length - 1; i >= 0; i--) { const wd = this.winds[i]; if (wd.ttl !== undefined && (wd.ttl -= h) <= 0) this.winds.splice(i, 1); }
-    const cols = [...this.statics, ...this.dyn];
+    const cols = this.colsBuf; cols.length = 0; for (const c of this.statics) cols.push(c); for (const c of this.dyn) cols.push(c);
+    this.solidsBuf.length = 0; for (const b of this.bodies) this.solidsBuf.push(b); for (const b of this.softs) this.solidsBuf.push(b);
     // a moving collider wakes what it reaches
     for (const c of cols) if (c.v.lengthSq() > 0.0025) this.wakeNear(c.p, Math.max(c.r, c.half.length()));
     const sets = this.all();
@@ -398,7 +402,7 @@ export class PodPhysics {
   }
   /** the deck, the cabin wall and every collider */
   private contacts(s: PSet, cols: Col[]) {
-    const x = s.x, p = s.p, r = s.r, Rw = this.R - 0.04 - r, solids = s instanceof Cluster ? [] : this.bodies.concat(this.softs);
+    const x = s.x, p = s.p, r = s.r, Rw = this.R - 0.04 - r, solids = s instanceof Cluster ? NONE : this.solidsBuf;
     for (let i = 0; i < s.n; i++) {
       if (s.w[i] === 0) continue;
       const k = i * 3;
@@ -413,7 +417,7 @@ export class PodPhysics {
       for (const b of solids) {
         if (Math.hypot(x[k] - b.c.x, x[k + 1] - b.c.y, x[k + 2] - b.c.z) > b.rad + r + 0.02) continue;
         _q.copy(b.q).multiply(b.bq0);
-        const tmpCol: Col = { kind: 'box', p: b.c, r: 0, half: b.half, q: _q, v: _v.set(0, 0, 0) };
+        const tmpCol = this.tmpCol; tmpCol.p = b.c; tmpCol.half = b.half; tmpCol.q = _q; tmpCol.v = _v.set(0, 0, 0);
         if (pushOut(tmpCol, x, k, r)) p[k] += (x[k] - p[k]) * s.fr, p[k + 2] += (x[k + 2] - p[k + 2]) * s.fr;
       }
     }
@@ -446,8 +450,21 @@ export class PodPhysics {
   private sleepCheck(s: PSet) {
     let m = 0;
     for (let i = 0; i < s.n; i++) { const k = i * 3; m = Math.max(m, Math.abs(s.x[k] - s.p[k]) + Math.abs(s.x[k + 1] - s.p[k + 1]) + Math.abs(s.x[k + 2] - s.p[k + 2])); }
-    const windy = s.windK > 0 && this.winds.length > 0;
+    // only a draught that actually reaches this set keeps it awake (the vent's steady draught used to keep every cloth
+    // and rope in the cabin awake, whatever corner it hung in)
+    const windy = s.windK > 0 && this.winds.length > 0 && this.inWind(s);
     if (m < (s instanceof Cluster && s.k < 1 ? 0.0016 : 0.0007) && !windy && this.grab?.set !== s) { if (++s.still > 50) { s.awake = false; s.p.set(s.x); s.sync(); } } else s.still = 0;
+  }
+  /** does any wind cone reach one of the set's particles (the same reach test the integrator uses)? */
+  private inWind(s: PSet) {
+    const x = s.x;
+    for (const wd of this.winds) for (let i = 0; i < s.n; i += 2) {
+      const k = i * 3, dx = x[k] - wd.p.x, dy = x[k + 1] - wd.p.y, dz = x[k + 2] - wd.p.z, along = dx * wd.dir.x + dy * wd.dir.y + dz * wd.dir.z;
+      if (along < -0.1) continue;
+      const ox = dx - wd.dir.x * along, oy = dy - wd.dir.y * along, oz = dz - wd.dir.z * along;
+      if (Math.hypot(ox, oy, oz) <= wd.r * (0.4 + along * 0.5)) return true;
+    }
+    return false;
   }
   /** the particle nearest a point (for the cursor's grab) */
   nearest(pt: THREE.Vector3, maxD = 0.35): { set: PSet; i: number } | null {

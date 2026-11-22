@@ -61,7 +61,7 @@ export class ShipScreen {
     const zm = div('s7-abs', vb); zm.style.right = '12px'; zm.style.top = '8px'; zm.style.pointerEvents = 'none';
     this.zoomM = meter('ZOOM', 0, { w: 110, segs: 10, col: 'teal', value: '1.0x' }); zm.append(this.zoomM.el);
     this.bayBody = div('', this.bay.body); this.bayBody.style.position = 'relative'; this.bayBody.style.height = '100%'; this.bayBody.style.overflow = 'hidden auto';
-    this.backK = pkey('BACK  [ESC]', () => this.back(), { tone: 'red', lamp: false, sound: 'back' });
+    this.backK = pkey('BACK  [ESC]', () => this.back(), { tone: 'red', lamp: false, sound: 'back', h: 24 });
     this.backK.style.position = 'absolute'; this.wrap.append(this.backK);
     document.body.append(this.el);
     if (o.game) { this.wasPaused = !!o.game.paused; o.game.paused = true; try { o.game.colony?.save?.(); } catch { /* no save */ } }
@@ -77,6 +77,7 @@ export class ShipScreen {
   async ready(): Promise<void> {
     try { this.mini = await shipMini(); } catch (e) { console.error('ship model', e); }
     this.mini?.fitShip(this.miniCv.width, this.miniCv.height);
+    for (const [sp, k] of [[this.tx, 'x'], [this.ty, 'y'], [this.tz, 'z']] as [Spring, 'x' | 'y' | 'z'][]) { sp.x = sp.target = SHIP_CENTRE[k]; }
     this.refreshLocks(); this.directory(); this.paintStatus();
     this.renderMini(true);
   }
@@ -91,13 +92,14 @@ export class ShipScreen {
   }
 
   // ---------------------------------------------------------------- layout
-  private onResize = () => { this.layout(); this.mini?.fitShip(this.miniCv.width, this.miniCv.height); this.renderMini(true); this.panelReflow(); };
+  private onResize = () => { this.layout(); this.mini?.fitShip(this.miniCv.width, this.miniCv.height); if (!this.sel) this.aim(SHIP_CENTRE, this.zoom.target, true); this.renderMini(true); this.panelReflow(); };
   private layout() {
     const W = innerWidth, H = innerHeight, m = 14, bw = Math.max(520, Math.min(660, Math.round(W * 0.34)));
     const lw = W - bw - m * 3;
     Object.assign(this.view3.el.style, { left: m + 'px', top: m + 'px', width: lw + 'px', height: H - m * 2 + 'px' });
     Object.assign(this.bay.el.style, { left: m * 2 + lw + 'px', top: m + 'px', width: bw + 'px', height: H - m * 2 + 'px' });
-    this.backK.style.left = W - m - 150 + 'px'; this.backK.style.top = m + 4 + 'px';
+    // in the bay's hood, clear of its lamps and vent
+    this.backK.style.left = W - m - 70 - this.backK.offsetWidth + 'px'; this.backK.style.top = m + 3 + 'px';
     // the 3D view fills the deck view's well, at two screen px per art px
     const bwid = lw - 32, bh = H - m * 2 - 64;
     this.vw = Math.floor(bwid / S); this.vh = Math.floor(bh / S);

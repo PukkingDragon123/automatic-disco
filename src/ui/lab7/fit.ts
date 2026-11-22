@@ -140,7 +140,7 @@ export class LabFit {
     this.cv = document.createElement('canvas'); this.cv.className = 's7-abs s7-mini'; bb.append(this.cv);
     this.ov = document.createElement('canvas'); this.ov.className = 's7-abs s7-ov'; bb.append(this.ov); this.oc = this.ov.getContext('2d')!;
     for (const c of [this.cv, this.ov]) c.style.imageRendering = 'pixelated';
-    const back = pkey('BACK  [ESC]', () => this.back(), { tone: 'red', lamp: false, sound: 'back' }); Object.assign(back.style, { position: 'absolute', right: '30px', top: '20px' }); this.el.append(back);
+    const back = pkey('BACK  [ESC]', () => this.back(), { tone: 'red', lamp: false, sound: 'back', h: 24 }); Object.assign(back.style, { position: 'absolute', right: '84px', top: '17px' }); this.el.append(back);
     this.info = div('', this.worker.body); this.info.style.height = '100%'; this.info.style.overflow = 'hidden auto';
     document.body.append(this.el);
     if (game) { this.wasPaused = !!game.paused; game.paused = true; }

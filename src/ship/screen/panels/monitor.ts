@@ -102,7 +102,9 @@ export function monitorPanel(ctx: PanelCtx): Panel {
   let kvw: KitView;
   const build = () => { const m = globeModel(worlds[wi], hash(worlds[wi].seed, 1) > 0.6); kvw = new KitView(m, { ink: 2, edge: 0.05, rimK: 0.9 }); };
   build();
-  const yaw = new Spring(0, { k: 30, d: 9 }), pitch = new Spring(0.35, { k: 30, d: 9 }), zoom = new Spring(1.02, { k: 50, d: 11 });
+  // frame the planet itself (not its ring) at about 90% of the housing's well
+  const fill = () => kvw.R0 / 1.12;
+  const yaw = new Spring(0, { k: 30, d: 9 }), pitch = new Spring(0.35, { k: 30, d: 9 }), zoom = new Spring(fill(), { k: 50, d: 11 });
   let spin = 0.12;
   const view = (): KView => ({ w: G, h: G, yaw: yaw.x, pitch: pitch.x, zoom: zoom.x });
   let dirty = true, acc = 0, t = 0;
@@ -157,7 +159,7 @@ export function monitorPanel(ctx: PanelCtx): Panel {
   };
   paintStatus();
   const pick = (k: number) => { site = k; uiSfx('select', 0.7); uiSfx('metalClose', 0.3); face(sites[k]); paintSites(); paintStatus(); pop(deploy, 0.6); };
-  const reskin = () => { build(); pickSites(); paintFacts(); paintSites(); paintStatus(); slots.forEach((sl, i) => sl.set({ state: i === wi ? 3 : 1 })); pop(facts, 0.5); yaw.kick(14); zoom.x = 0.7; zoom.target = 1.02; face(sites[0] ?? null); dirty = true; };
+  const reskin = () => { build(); pickSites(); paintFacts(); paintSites(); paintStatus(); slots.forEach((sl, i) => sl.set({ state: i === wi ? 3 : 1 })); pop(facts, 0.5); yaw.kick(14); zoom.x = fill() * 0.7; zoom.target = fill(); face(sites[0] ?? null); dirty = true; };
   // ---- input on the globe
   let drag: { x: number; y: number; yaw: number; pitch: number; moved: boolean } | null = null;
   const local = (e: PointerEvent) => { const r = gcv.getBoundingClientRect(); return [(e.clientX - r.left) / S, (e.clientY - r.top) / S]; };
@@ -181,7 +183,7 @@ export function monitorPanel(ctx: PanelCtx): Panel {
   const go = async () => {
     const r = sites[site]; if (!r || !L) return;
     uiSfx('thudHeavy', 0.6); ctx.shake(1.5);
-    zoom.target = 1.6; yaw.kick(-6);
+    zoom.target = fill() * 1.5; yaw.kick(-6);
     await new Promise((res) => setTimeout(res, 420));
     const seed = worlds[wi].seed, hub = ctx.hub;
     if (hub) { (window as unknown as { __hubPanel?: { dispose(): void } }).__hubPanel?.dispose(); const { podDrop } = await import('../../hub/drop'); await podDrop(hub); L.land(seed, r); return; }

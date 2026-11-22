@@ -27,6 +27,7 @@ const LOOK: Record<RoomLook, { bright: number; tint: number }> = {
 export const MINI_YAW0 = 1.9, MINI_PITCH0 = VIEW.el;
 /** the whole ship's box (deck metres), hull, mast and engine bells */
 const SHIP = new THREE.Box3(new THREE.Vector3(-8.6, -3.2, -25), new THREE.Vector3(8.6, 4.6, 22.5));
+/** where zoom 1 looks (re-centred on the model by fitShip) */
 export const SHIP_CENTRE = SHIP.getCenter(new THREE.Vector3());
 
 interface Part { mesh: THREE.Mesh; src: THREE.Material[]; room: RoomId | null }
@@ -142,15 +143,34 @@ export class ShipMini {
     for (const h of [1.2, 0.6, 0]) { const p = this.deckAt(px, py, v, h); if (!p) continue; const id = roomAt(p.x, p.z); if (id) return id; }
     return null;
   }
-  /** fit the whole ship at zoom 1 for this canvas (call when the canvas size changes) */
+  /** sampled points of the real model (deck metres), for framing */
+  private samples: THREE.Vector3[] | null = null;
+  private sample(): THREE.Vector3[] {
+    if (this.samples) return this.samples;
+    const out: THREE.Vector3[] = [], inv = new THREE.Matrix4();
+    this.root.position.set(0, 0, 0); this.root.rotation.set(0, 0, 0); this.root.updateMatrixWorld(true);
+    inv.copy(this.inner.matrixWorld).invert();
+    const v = new THREE.Vector3(), M = new THREE.Matrix4();
+    this.inner.traverse((o) => {
+      const m = o as THREE.Mesh; if (!m.isMesh) return;
+      const P = (m.geometry as THREE.BufferGeometry).attributes.position as THREE.BufferAttribute | undefined; if (!P) return;
+      M.multiplyMatrices(inv, m.matrixWorld);
+      const step = Math.max(1, Math.floor(P.count / 40));
+      for (let i = 0; i < P.count; i += step) out.push(v.fromBufferAttribute(P, i).applyMatrix4(M).clone());
+    });
+    return (this.samples = out);
+  }
+  /** frame the whole ship at zoom 1 (the model's own points fill ~88% of the canvas) and move SHIP_CENTRE to its middle */
   fitShip(w: number, h: number) {
     this.fit1 = 1;
     const v: MiniView = { w, h, zoom: 1, tx: SHIP_CENTRE.x, ty: SHIP_CENTRE.y, tz: SHIP_CENTRE.z };
-    let mx = 0, my = 0;
-    for (const x of [SHIP.min.x, SHIP.max.x]) for (const y of [SHIP.min.y, SHIP.max.y]) for (const z of [SHIP.min.z, SHIP.max.z]) {
-      const [px, py] = this.project(x, y, z, v); mx = Math.max(mx, Math.abs(px / w - 0.5) * 2); my = Math.max(my, Math.abs(py / h - 0.5) * 2);
-    }
-    this.fit1 = 0.94 / Math.max(mx, my, 0.05);
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const p of this.sample()) { const [px, py] = this.project(p.x, p.y, p.z, v); x0 = Math.min(x0, px); x1 = Math.max(x1, px); y0 = Math.min(y0, py); y1 = Math.max(y1, py); }
+    if (!isFinite(x0)) return;
+    // re-centre: the deck point under the model's projected middle becomes the target
+    const a = this.deckAt((x0 + x1) / 2, (y0 + y1) / 2, v, SHIP_CENTRE.y), c = this.deckAt(w / 2, h / 2, v, SHIP_CENTRE.y);
+    if (a && c) SHIP_CENTRE.add(a.sub(c));
+    this.fit1 = 0.88 / Math.max((x1 - x0) / w, (y1 - y0) / h, 0.05);
   }
   /** the zoom (over the whole-ship fit) that frames a room, its walls and a margin */
   roomZoom(id: RoomId, v: MiniView): number {
