@@ -620,12 +620,12 @@ export class Hud {
     document.body.classList.toggle('hw3d', HW3D && c.ctl.k !== 'cannon');
     this.pausebar.classList.toggle('on', g.paused && !c.linkOpen);
     this.timeBtns.forEach((b, i) => b.classList.toggle('on', i === 0 ? g.paused : !g.paused && g.speed === i));
+    this.h7?.ping();
     this.wheel.update(dt);
     this.drawCtl(c);
     this.slow -= dt;
     if (this.slow > 0) return;
     this.slow = 0.15;
-    this.h7?.ping();
     if (!this.h7) for (const e of this.vitEls) this.drawVital(e, c);
     const day = g.world.day, hh = Math.floor(((day + 0.25) % 1) * 24), mm = Math.floor(((((day + 0.25) % 1) * 24) % 1) * 60);
     const ck = `<span>SOL ${c.sol}</span><small>${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} · ${g.paused ? 'PAUSED' : g.speed + 'x'}</small>`;

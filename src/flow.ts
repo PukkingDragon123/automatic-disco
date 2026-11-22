@@ -40,6 +40,8 @@ interface Save {
   };
 }
 const SK = 'oddworld.save', AK = 'oddworld.archive';
+/** a drop with no pin of its own (the SHIP screen's DEPLOY): the pod comes down on the region's own landing site */
+const AUTO_PIN = { x: -1, z: -1 };
 const read = <T>(k: string, d: T): T => { try { const s = localStorage.getItem(k); return s ? (JSON.parse(s) as T) : d; } catch { return d; } };
 const write = (k: string, v: unknown) => { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage off */ } };
 
@@ -53,7 +55,7 @@ export class Flow {
   constructor(readonly engine: Engine, readonly input: Input) {
     setShipHubOpener((fp) => this.openShipHub(fp));
     // v7: the SHIP screen's MONITOR panel picks the world and the landing site (src/ship/screen/panels/monitor.ts)
-    setShipLander({ runSeed: () => { this.ensureRun(); return this.run!.seed; }, planet: () => this.planet, land: (seed, r) => { this.choosePlanet(seed); this.landAt(r, { x: 128, z: 128 }); } });
+    setShipLander({ runSeed: () => { this.ensureRun(); return this.run!.seed; }, planet: () => this.planet, land: (seed, r) => { this.choosePlanet(seed); this.landAt(r, AUTO_PIN); } });
     // v7: the empire travels between its settlements (src/empire/travel.ts) and saves with the run
     setEmpireHost({ planet: () => this.planet, run: () => this.run, game: () => this.game, save: () => this.persist(), visit: (r, o) => this.land(r, o.drop, o.opts ?? {}) });
   }
@@ -174,7 +176,7 @@ export class Flow {
     for (const s of run.reg.list) s.alive = 0;
     const engine = this.engine;
     const gopts: GameOpts = {
-      seed: r.seed, biome: r.biome, pal: p.palKey, regionName: r.name, run, story: this.landings === 1, danger: r.danger, landing: drop?.pin, descent: !!drop,
+      seed: r.seed, biome: r.biome, pal: p.palKey, regionName: r.name, run, story: this.landings === 1, danger: r.danger, landing: drop && drop.pin !== AUTO_PIN ? drop.pin : undefined, descent: !!drop,
       ...(extra ?? {}),
       hooks: {
         openBuilder: (game) => openLab(engine, game),
@@ -195,21 +197,18 @@ export class Flow {
     engine.setScreen(g);
     if (this.landings > 1 && !extra) toast(`You fall on <b>${r.name}</b>. Everything you have absorbed came with you.`, 'story', 5000);
     if (drop) new GameDescent({
-      game: g, lz: drop.pin, first: drop.first, planetName: p.name,
+      game: g, lz: drop.pin === AUTO_PIN ? { ...g.region.landing } : drop.pin, first: drop.first, planetName: p.name,
       onDone: (res) => { const b = bonusFor(res.grade); if (b.cells || Object.keys(b.res).length) toast(`Drop ${res.grade === 'BULLSEYE' ? '<b>dead on the pin</b>' : 'scored'}: ${b.text.toLowerCase()}.`, 'good', 6000); },
     });
   }
-  private result(title: string, sub: string, lines: string[], btn: string, then: () => void) {
-    const p = panel('choice', ui(), 'dark');
-    el('div', 'hdr ch-title', p, title);
-    el('div', 'small ch-sub', p, sub);
-    for (const l of lines) el('div', 'small', p, l);
-    const row = el('div', 'h-row', p);
-    new Btn(row, { icon: 'planet', label: btn, size: 'big' }, () => { p.remove(); then(); });
+  /** a region's outcome as a v7 kit panel (src/ui/hud7/pause.ts) */
+  private result(title: string, sub: string, lines: string[], btn: string, then: () => void, tone: 'yellow' | 'red' = 'yellow') {
+    void import('./ui/hud7/pause').then((m) => m.openResult({ title, sub, lines, key: btn, tone, then }));
   }
+
   private stats(g: Game) {
-    const sp = g.run.reg.list.filter((s) => s.owner === 'veyr').length;
-    return [`${Math.round(g.conquest() * 100)}% of the living ground is yours.`, `${g.run.genes.size} genes in your blood · ${sp} species of your own.`];
+    const c = g.colony, b = g.factory?.buildings?.length ?? 0, sp = g.run.reg.list.filter((s) => s.owner === 'veyr' && s.role === 'design').length;
+    return [`Held for ${c?.sol ?? 1} sol${(c?.sol ?? 1) === 1 ? '' : 's'}: ${b} building${b === 1 ? '' : 's'} raised.`, `${sp} creature design${sp === 1 ? '' : 's'} filed in the lab.`];
   }
   private won(g: Game, r: PRegion) {
     const p = this.planet!;
@@ -217,17 +216,17 @@ export class Flow {
     this.run!.helix = g.veyr.res.helix;
     this.persist(); sfx('absorb', 0.7, 1);
     const n = owned(p);
-    this.result('REGION TAKEN', `${r.name} is yours. ${n} of ${p.goal}.`, this.stats(g), n >= p.goal ? 'BECOME THE WORLD' : 'BACK TO ORBIT', () => (n >= p.goal ? this.ascend() : this.planetView()));
+    this.result('REGION SECURED', `${r.name} is held. ${n} of ${p.goal} regions.`, this.stats(g), n >= p.goal ? 'THE WORLD IS OURS' : 'BACK TO THE SHIP', () => { this.game = null; if (n >= p.goal) this.ascend(); else this.menu(); });
   }
   private lost(g: Game, r: PRegion) {
     const p = this.planet!;
     r.state = 'lost'; g.paused = true; sfx('crack', 2, 1);
     if (!owned(p)) {
       write(SK, null);
-      this.result('THE SEED IS SPENT', 'Your heart was torn open. Nothing of you is left on this world.', this.stats(g), 'INTO THE VOID', () => this.menu());
+      this.result('SETTLEMENT LOST', `${r.name} failed and nothing else on this world holds. The mission is over.`, this.stats(g), 'BACK TO THE TITLE', () => { this.game = null; this.menu(); }, 'red');
     } else {
       this.run!.helix = g.veyr.res.helix; this.persist();
-      this.result('THIS GROUND IS LOST', `${r.name} burnt out under you. Your other regions still hold.`, this.stats(g), 'BACK TO ORBIT', () => this.planetView());
+      this.result('SETTLEMENT LOST', `${r.name} failed. Your other settlements still hold.`, this.stats(g), 'BACK TO THE SHIP', () => { this.game = null; this.menu(); }, 'red');
     }
   }
   private ascend() {
@@ -240,17 +239,9 @@ export class Flow {
       this.menu();
     }));
   }
+  /** Esc on the planet: the v7 pause panel (src/ui/hud7/pause.ts: RESUME, SAVE, SHIP LINK, QUIT TO TITLE) */
   private pause(g: Game, r: PRegion) {
-    if (document.querySelector('.pause')) return;
-    const was = g.paused; g.paused = true;
-    const p = panel('choice pause', ui(), 'dark');
-    el('div', 'hdr ch-title', p, 'PAUSED');
-    el('div', 'small ch-sub', p, `${r.name} · ${Math.round(g.conquest() * 100)}% yours`);
-    const row = el('div', 'h-row', p);
-    const close = () => { p.remove(); g.paused = was; };
-    new Btn(row, { icon: 'core', label: 'RESUME', size: 'big' }, close);
-    new Btn(row, { icon: 'mirror', label: 'ASSEMBLY', size: 'wide' }, () => { close(); g.openMirror(); });
-    new Btn(row, { icon: 'planet', label: 'TO ORBIT', size: 'wide', tip: () => 'Leave this region for now (it stays unclaimed). Your genes and designs are kept.' }, () => { p.remove(); this.run!.helix = g.veyr.res.helix; this.persist(); this.planetView(); });
-    new Btn(row, { icon: 'skull', label: 'QUIT', size: 'wide', tip: () => 'Back to the void. The world is saved at its last orbit.' }, () => { p.remove(); this.menu(); });
+    void import('./ui/hud7/pause').then((m) => m.openPause(g, { region: r.name, save: () => { this.run!.helix = g.veyr.res.helix; g.colony?.save?.(); this.persist(); }, quit: () => { this.game = null; this.menu(); } }));
   }
+
 }

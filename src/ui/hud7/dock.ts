@@ -15,6 +15,9 @@ import { uiSfx } from '../kit/sound';
 import { installKitStyle } from '../kit/style';
 import { bindTip } from '../kit/panel';
 import { shake } from '../kit/juice';
+import { QUEST } from '../../story/questData';
+import { PEOPLE } from '../../social/social';
+import { ITEMS } from '../../factory/items';
 /** what each mode is for (tooltip) and its key */
 const INFO: Record<DockId, [string, string]> = {
   build: ['Place and move buildings on a top-down blueprint of the region: costs, locked and unlocked builds.', 'B'],
@@ -78,9 +81,17 @@ export class Dock {
   /** open a slot's mode with its transition */
   /** why a locked slot is locked: the skill-tree node that opens it, in words */
   private lockWhy(id: DockId) {
-    const u = (this.g as unknown as { unlocks?: { lockLine?(f: string): string | null } } | null)?.unlocks;
-    const line = u?.lockLine?.('dock:' + id);
-    return line ? `Locked: ${line.toLowerCase().replace(/^unlock /, 'learn ')} on the skill tree` : 'Locked: not learned yet';
+    type R = { k: string; ok: boolean; id?: string; npc?: string; kind?: string; have?: number; need?: number; n?: number; of?: number };
+    const u = (this.g as unknown as { unlocks?: { nodeFor?(f: string): { id: string; name: string } | null; reqs?(id: string): R[] } } | null)?.unlocks;
+    const node = u?.nodeFor?.('dock:' + id); if (!node) return 'Locked: not learned yet';
+    const miss = (u?.reqs?.(node.id) ?? []).filter((r) => !r.ok).map((r) => {
+      if (r.k === 'quest') return `finish the quest ${(QUEST[r.id!]?.title ?? r.id!).toUpperCase()}`;
+      if (r.k === 'close') return `closeness ${r.need} with ${PEOPLE[r.npc!]?.name ?? r.npc} (now ${r.have})`;
+      if (r.k === 'know') return `${r.need} ${String(r.kind).toUpperCase()} knowledge (have ${r.have})`;
+      if (r.k === 'item') return `${r.need} ${ITEMS[r.id as keyof typeof ITEMS]?.name ?? r.id} (have ${r.have})`;
+      return 'an earlier node first';
+    });
+    return `Locked: learn ${node.name.toUpperCase()}${miss.length ? `. Needs ${miss.slice(0, 2).join(', ')}` : ' on the skill tree'}`;
   }
   async open(id: DockId) {
     if (this.busy) return;

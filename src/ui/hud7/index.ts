@@ -35,14 +35,19 @@ export function installHud7(game: Game, o: { only?: string } = {}): Hud7 {
   for (const x of [dock, corner, storage, tool, mini]) if (x) root.append(x.el);
   if (dock) { g.dock = dock; (window as unknown as { __dock: Dock }).__dock = dock; }
   if (map) g.map7 = map;
-  let alive = true, lastPing = -1;
+  let alive = true, lastPing = -1, lastFrame = performance.now(), frameMs = 16, qtN = 0, qtY = -1;
   onFrame((dt) => {
     if (!alive) return false;
-    const c = g.colony, pinged = lastPing < 0 || performance.now() - lastPing < 300;
+    // 'pinged' = the game drew a frame lately; on a slow machine a frame can take longer than any fixed window, so the
+    // window follows the real frame time (a fixed 300 ms hid the whole HUD, dock included, below ~4 fps)
+    const now = performance.now(); frameMs += (Math.min(3000, now - lastFrame) - frameMs) * 0.3; lastFrame = now;
+    const c = g.colony, pinged = lastPing < 0 || now - lastPing < Math.max(300, frameMs * 3);
     const show = pinged && (!c || (c.ready !== false && !c.fail$?.on && c.ctl?.k !== 'cannon'));
     root.style.display = show ? '' : 'none';
     if (!show) return true;
     corner?.update(dt); storage?.update(dt); tool?.update(dt);
+    // the quest tracker floats just under the corner's status panel, whatever height its text gives it
+    if (corner && ++qtN % 10 === 0) { let b = 0; for (const e of [corner.el, ...Array.from(corner.el.children)]) { const q = e.getBoundingClientRect(); if (q.height > 0) b = Math.max(b, q.bottom); } const y = Math.round(b + 12); if (b > 0 && Math.abs(y - qtY) > 2) { qtY = y; document.documentElement.style.setProperty('--qt7-y', y + 'px'); } }
     return true;
   });
   const hud: Hud7 = {
@@ -70,7 +75,7 @@ body.h7 .hud .cx-top, body.h7 .hud .cx-wheel, body.h7 .hud .cx-map, body.h7 .cra
 body.h7:not(.bp-on) .hb { display: none !important; }
 body.cine-on .h7-root, body.cine-on .h7-map, body.cine-on .h7-ars, body.cine-on .h7-bench { visibility: hidden !important; }
 body.h7 .hud .cx-alerts { top: 330px !important; }
-body.h7 .hud .cx-sel { top: 96px !important; }
+body.h7 .hud .cx-sel { display: none !important; }
 body.h7 .hud .cx-pausebar { display: none !important; }
 body.h7 .hud .cx-ctl { top: 22px !important; }
 body.h7 .hud .cx-count { display: none !important; }

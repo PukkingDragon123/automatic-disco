@@ -77,6 +77,8 @@ export class GameDescent {
     g.vision.revealAll = true; g.vision.update(0, true);
     g.cineCam = (cam, dt) => this.camera(cam, dt);
     this.ui.letterbox(true, 0.01); this.ui.fade(1, 0); this.ui.fade(0, 1.2); this.ui.showSkip(true);
+    // the HUD (v7 dock, corner, tools, map) stands aside while the drop plays, as it does for every cutscene
+    document.body.classList.add('cine-on'); this.off.push(() => document.body.classList.remove('cine-on'));
     this.ui.stamp(`${o.planetName.toUpperCase()} · ${g.regionName.toUpperCase()} · SETTLER POD CP-07 INBOUND`, true);
     csfx('wind', 0.5);
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape' || e.key === ' ') { e.stopPropagation(); this.skip(); } };
