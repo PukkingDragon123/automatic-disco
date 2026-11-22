@@ -111,7 +111,7 @@ export class LabFit {
   private d!: Design; private start!: Design;
   private spec: Specimen | null = null; private prevSpec: Specimen | null = null; private kv: KitView | null = null;
   private ghost: THREE.Object3D | null = null; private ghostSlot: Slot | null = null;
-  private yaw = new Spring(-2.6, { k: 30, d: 9 }); private pitch = new Spring(0.32, { k: 30, d: 9 }); private zoom = new Spring(0.7, { k: 60, d: 10 }); private sq = new Spring(0, { k: 260, d: 12 });
+  private yaw = new Spring(2.6, { k: 30, d: 9 }); private pitch = new Spring(0.3, { k: 30, d: 9 }); private zoom = new Spring(0.7, { k: 60, d: 10 }); private base = 1.0; private sq = new Spring(0, { k: 260, d: 12 });
   private views: { id: string; v: ModelView; el: HTMLDivElement }[] = [];
   private drag: { id: string; el: HTMLDivElement; v: ModelView; ox: number; oy: number } | null = null;
   private turn: { x: number; y: number; yaw: number; pitch: number; moved: boolean } | null = null;
@@ -159,10 +159,15 @@ export class LabFit {
     this.frameEl.style.transform = `translateY(${this.AH * S}px)`;
     void tween(600, (k) => { this.frameEl.style.transform = `translateY(${Math.round((1 - k) * 140) * S}px)`; }, ease.outBack).then(() => { this.frameEl.style.transform = ''; });
     uiSfx('swishIn', 0.6); setTimeout(() => uiSfx('metalClose', 0.45), 400);
-    this.yaw.target = -2.2; this.zoom.target = 1;
+    this.yaw.target = this.base; this.zoom.target = 1;
     this.views.forEach((v, i) => { v.el.style.opacity = '0'; setTimeout(() => { v.el.style.opacity = ''; pop(v.el, 1); uiSfx('tick', 0.3, 0.9 + i * 0.04); }, 450 + i * 55); });
   }
-  async ready() { await new Promise((r) => requestAnimationFrame(() => r(null))); this.enter(); }
+  /** keep the cover on until the creature is grown (anatomy builds off the main thread; 5 s at most) */
+  async ready() {
+    const t0 = performance.now();
+    while (this.spec && !this.spec.ready && performance.now() - t0 < 5000) { await new Promise((r) => setTimeout(r, 120)); if (this.spec.poll()) { this.kv = this.viewOf(this.spec); this.dirty = true; } }
+    this.enter();
+  }
 
   // ---------------------------------------------------------------- layout and paint
   private onResize = () => { this.layout(); this.paintBg(); this.buildRack(); this.dirty = true; };
@@ -224,7 +229,7 @@ export class LabFit {
     const c = this.bg.getContext('2d')!; c.imageSmoothingEnabled = false; c.putImageData(p.image(), 0, 0);
   }
   private padRects() {
-    const r = this.rackR, parts = this.parts(), cols = 3, pw = Math.floor((r.w - 12) / cols), ph = Math.min(64, Math.floor((r.h - 12) / Math.ceil(parts.length / cols)));
+    const r = this.rackR, parts = this.parts(), cols = 3, pw = Math.floor((r.w - 12) / cols), ph = Math.min(80, Math.floor((r.h - 12) / Math.ceil(parts.length / cols)));
     return parts.map((_, i) => ({ x: r.x + 6 + (i % cols) * pw + 2, y: r.y + 6 + Math.floor(i / cols) * ph + 2, w: pw - 4, h: ph - 4 }));
   }
   private parts(): CyberPart[] { const sl = slotsFor(this.d.plan); return CYBER_PARTS.filter((p) => sl.includes(p.slot) && (!p.plans || p.plans.includes(this.d.plan))); }
@@ -233,7 +238,7 @@ export class LabFit {
     this.views = []; this.rack.replaceChildren();
     const pads = this.padRects();
     this.parts().forEach((pt, i) => {
-      const r = pads[i], el = div('s7-abs', this.rack); place(el, r.x - this.rackR.x, r.y - this.rackR.y, r.w, r.h); el.style.cursor = 'grab'; el.style.touchAction = 'none';
+      const r = pads[i], el = div('s7-abs', this.rack); place(el, r.x - this.rackR.x, r.y - this.rackR.y, r.w, r.h); el.style.cursor = 'grab'; el.style.touchAction = 'none'; el.dataset.part = pt.id;
       const v = new ModelView(partModel(pt.id), { w: r.w, h: r.h, scale: S, spin: 0.5, hotSpin: 2.8, pitch: 0.45, zoom: 1.0, shadow: [2, 2, 0.45], frames: 32 });
       el.append(v.cv);
       el.addEventListener('pointerenter', (e) => { v.hot(true); v.point(e.clientX, e.clientY); uiSfx('hover', 0.4); this.wantSlot = pt.slot; this.showTag(pt, el); this.dirty = true; });
@@ -275,11 +280,13 @@ export class LabFit {
   private setSpec(s: Specimen) {
     this.spec?.dispose(); this.spec = s; this.prevSpec = null;
     if (this.ghost) { this.ghost.removeFromParent(); this.ghost = null; this.ghostSlot = null; }
-    this.kv = new KitView(s.group, { ink: 2, edge: 0.05, rimK: 1, shadow: [3, 4, 0.45] });
+    this.kv = this.viewOf(s);
     this.prof = workerProfile(this.d); this.paintStats(); this.paintName();
     this.dirty = true;
   }
-  private get view(): KView { return { w: this.cv.width, h: this.cv.height, yaw: this.yaw.x, pitch: this.pitch.x, zoom: this.zoom.x * 0.92, lift: 0.04 }; }
+  /** a fresh kit view framing the specimen (re-fitted when its body changes) */
+  private viewOf(s: Specimen) { s.group.removeFromParent(); s.group.position.set(0, 0, 0); s.group.rotation.set(0, 0, 0); s.group.updateMatrixWorld(true); return new KitView(s.group, { ink: 2, edge: 0.05, rimK: 1, shadow: [3, 4, 0.45] }); }
+  private get view(): KView { return { w: this.cv.width, h: this.cv.height, yaw: this.yaw.x, pitch: this.pitch.x, zoom: this.zoom.x * 1.28, lift: 0.07 }; }
   /** the slot points on the side facing the camera */
   private slotPts(): { s: Slot; x: number; y: number; fitted: string | null; facing: boolean }[] {
     if (!this.spec || !this.kv) return [];
@@ -319,7 +326,7 @@ export class LabFit {
     cv.addEventListener('pointerdown', (e) => { if (e.button > 0) return; const [x, y] = local(e); this.turn = { x, y, yaw: this.yaw.target, pitch: this.pitch.target, moved: false }; cv.setPointerCapture(e.pointerId); });
     cv.addEventListener('pointermove', (e) => {
       const [x, y] = local(e);
-      if (this.turn) { const dx = x - this.turn.x, dy = y - this.turn.y; if (!this.turn.moved && Math.hypot(dx, dy) > 3) { this.turn.moved = true; cv.classList.add('drag'); } if (this.turn.moved) { this.yaw.target = this.turn.yaw + dx * 0.012; this.pitch.target = clamp(this.turn.pitch + dy * 0.006, 0.05, 0.9); } return; }
+      if (this.turn) { const dx = x - this.turn.x, dy = y - this.turn.y; if (!this.turn.moved && Math.hypot(dx, dy) > 3) { this.turn.moved = true; cv.classList.add('drag'); } if (this.turn.moved) { this.yaw.target = this.base = this.turn.yaw + dx * 0.012; this.pitch.target = clamp(this.turn.pitch + dy * 0.006, 0.05, 0.9); } return; }
       const h = this.slotNear(x, y, 14); if (h !== this.hotSlot) { this.hotSlot = h; if (h) uiSfx('hover', 0.4); this.dirty = true; cv.style.cursor = h ? 'pointer' : ''; }
     });
     cv.addEventListener('pointerup', (e) => {
@@ -331,6 +338,8 @@ export class LabFit {
     cv.addEventListener('wheel', (e) => { e.preventDefault(); this.zoom.target = clamp(this.zoom.target * (e.deltaY < 0 ? 1.1 : 1 / 1.1), 0.8, 1.8); uiSfx('tick', 0.25, 1.3); }, { passive: false });
     this.el.addEventListener('contextmenu', (e) => { e.preventDefault(); this.back(); });
   }
+  /** QA: a slot's point on screen (client px) */
+  slotScreen(s: Slot): [number, number] | null { const p = this.slotPts().find((q) => q.s === s); if (!p) return null; const c = this.cv.getBoundingClientRect(); return [Math.round(c.left + p.x * S), Math.round(c.top + p.y * S)]; }
   private slotNear(x: number, y: number, r: number): Slot | null { let best: Slot | null = null, bd = r; for (const p of this.slotPts()) { const d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = p.s; } } return best; }
   private pulseRack(s: Slot) { for (const v of this.views) if (CYBER[v.id]?.slot === s) { pop(v.el, 0.8); v.v.poke(8); } }
   private grab(e: PointerEvent, id: string, el: HTMLDivElement, v: ModelView) {
@@ -457,12 +466,13 @@ export class LabFit {
   // ---------------------------------------------------------------- frame
   private frame(dt: number) {
     this.t += dt;
-    if (!this.turn && !this.drag) this.yaw.target += dt * 0.08;
+    // a slow rock either side of where it was left
+    if (!this.turn && !this.drag && this.t > 1.2) this.yaw.target = this.base + Math.sin(this.t * 0.35) * 0.3;
     this.yaw.step(dt); this.pitch.step(dt); this.zoom.step(dt); this.sq.step(dt);
     // the regrown body landed (or the current one upgraded)
     if (this.prevSpec && this.prevSpec.poll()) this.setSpec(this.prevSpec);
     else if (this.prevSpec?.ready) this.setSpec(this.prevSpec);
-    if (this.spec?.poll()) { this.kv = new KitView(this.spec.group, { ink: 2, edge: 0.05, rimK: 1, shadow: [3, 4, 0.45] }); this.dirty = true; }
+    if (this.spec?.poll()) { this.kv = this.viewOf(this.spec); this.dirty = true; }
     const moving = !this.yaw.settled || !this.pitch.settled || !this.zoom.settled || !this.sq.settled;
     this.acc += dt;
     if (this.kv && (this.dirty || (moving && this.acc > 1 / 30))) { this.acc = 0; this.dirty = false; this.kv.draw(this.cv.getContext('2d')!, this.view, { squash: this.sq.x * 0.03 }); }
@@ -472,7 +482,7 @@ export class LabFit {
     const c = this.oc; c.clearRect(0, 0, this.ov.width, this.ov.height);
     if (!this.spec) { bitText(c, 'GROWING...', this.ov.width / 2, this.ov.height / 2, { color: '#ffd890', align: 'center' }); return; }
     for (const p of this.slotPts()) {
-      const hot = p.s === this.hotSlot, want = p.s === this.wantSlot, R = hot ? 9 + Math.sin(this.t * 10) : want ? 8 + Math.sin(this.t * 6) * 1.5 : 6;
+      const hot = p.s === this.hotSlot, want = p.s === this.wantSlot, R = hot ? 10 + Math.sin(this.t * 10) : want ? 9 + Math.sin(this.t * 6) * 1.5 : p.fitted ? 8 : 7;
       const x = Math.round(p.x), y = Math.round(p.y);
       c.globalAlpha = p.facing || hot || want ? 1 : 0.45;
       // a ring socket: ink, then brass (fitted) or steel; hot ones glow amber
@@ -498,7 +508,7 @@ export class LabFit {
   private onKey = (e: KeyboardEvent) => {
     if (!this.el.isConnected || this.closing) return;
     if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); this.back(); return; }
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') this.yaw.target += e.key === 'ArrowLeft' ? -0.4 : 0.4;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') this.yaw.target = this.base += e.key === 'ArrowLeft' ? -0.4 : 0.4;
     e.stopPropagation();
   };
   back() { this.close(); }

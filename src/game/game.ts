@@ -39,6 +39,7 @@ import { Player } from './player';
 import { Details } from './details';
 import { installBiotech } from '../biotech';
 import { installTroops } from '../troops';
+import { installShipScreens } from '../ship/screen';
 import { installProgression } from '../research';
 import { attachEco } from '../eco/view';
 import { attachOcean, type Ocean } from '../ocean/ocean';
@@ -217,6 +218,7 @@ export class Game implements Screen {
     installBiotech(this); // engineered creatures and plants at work, Bio-Works structures, work orders (src/biotech)
     installProgression(this); // v6: mastery, research, the Upgrader, mission quotas, random events (src/research, src/story)
     installTroops(this); // v7: RTS control, unit cards, squads and the TROOPS screen (src/troops)
+    installShipScreens(this); // v7: the dock's SHIP and LAB slots (src/ship/screen, src/ui/lab7)
     if (opts.descent) this.awaitPod();
     else this.landColony();
     (window as any).__game = this;

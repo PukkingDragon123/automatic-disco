@@ -7,6 +7,8 @@
 import type { Game } from '../../game/game';
 import { ShipScreen, type ShipScreenOpts } from './screen';
 import { portraitRenderer } from '../../social/portrait';
+import { onFrame } from '../../ui/kit/juice';
+import { uiSfx } from '../../ui/kit/sound';
 export { ShipScreen } from './screen';
 export { openHubPanel, HubPanel } from './hubPanel';
 
@@ -30,9 +32,13 @@ export function installShipScreens(game: Game) {
     const d = G.dock ?? (window as unknown as { __dock?: DockLike }).__dock ?? null;
     if (!d || d === hooked) return;
     hooked = d;
-    d.register('ship', async (ctx) => { await openShipScreen(game, { close: (after) => ctx.close(after) }); }, { transition: 'iris' });
-    d.register('lab', async (ctx) => { const { openLabFit } = await import('../../ui/lab7/fit'); await openLabFit(game, { close: (after) => ctx.close(after) }); }, { transition: 'dissolve' });
+    const ok = (id: string) => (G as unknown as { unlocks?: { has(f: string): boolean } }).unlocks?.has('dock:' + id) ?? true;
+    d.register('ship', async (ctx) => { if (!ok('ship')) { uiSfx('error', 0.5); return; } await openShipScreen(game, { close: (after) => ctx.close(after) }); }, { transition: 'iris' });
+    d.register('lab', async (ctx) => { if (!ok('lab')) { uiSfx('error', 0.5); return; } const { openLabFit } = await import('../../ui/lab7/fit'); await openLabFit(game, { close: (after) => ctx.close(after) }); }, { transition: 'dissolve' });
   };
   G.update$.push(hook);
+  // the HUD makes the dock a moment after the game: look for it every frame until it is there
+  let tries = 0;
+  onFrame(() => { hook(); return !hooked && ++tries < 600; });
   hook();
 }

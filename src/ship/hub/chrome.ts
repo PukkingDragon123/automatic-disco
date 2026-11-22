@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import type { ShipHub } from './hub';
 import { ROOMS, ROOM_IDS, SHIP_NAME, SHIP_REG, type RoomId } from './layout';
-import { ROOM_CALLOUTS, VIGNETTES, settingsStamps, type Callout, type Stamp, type VCtx } from './vignette';
+import { settingsStamps, type Stamp } from './settings';
 import { csfx } from '../../ui/cineAudio';
 import { ui } from '../../ui/kit';
 import { plate, railURL, buttonURL, toggleURL, lampURL, dialURL, ROOM_PLATE, K, type PlateKind } from './plates';
@@ -98,7 +98,6 @@ export class HubChrome {
   private pins: Pin[] = [];
   private stampsEl: HTMLElement; private backEl: HTMLElement; private titleEl: HTMLElement; private cardEl: HTMLElement; private hintEl: HTMLElement; private shipEl: HTMLElement; private tabsEl: HTMLElement;
   private mode = 'exterior'; private room: RoomId | null = null; private hov: RoomId | null = null;
-  private vig: { id: RoomId; ctx: VCtx } | null = null;
   private roomActs: RoomAction[] = [];
   private titleKeys: RoomAction[] = [];
   private v = new THREE.Vector3();
@@ -136,8 +135,7 @@ export class HubChrome {
       if ((e.target as HTMLElement)?.tagName === 'INPUT' || e.ctrlKey || e.metaKey || this.hub.isLocked()) return;
       const k = e.key.toLowerCase();
       if (this.mode === 'exterior' && !this.cardEl.classList.contains('on')) { const a = this.titleKeys.find((x) => x.key?.toLowerCase() === k); if (a) { csfx('button', 0.5); a.run(); } return; }
-      if (this.vig && this.hub.console.pressKey(k)) return;
-      const list: Stamp[] = this.vig ? this.vigStamps() : this.mode === 'room' ? this.roomActs.map((a) => ({ label: a.label, key: a.key, run: a.run, disabled: a.disabled })) : [];
+      const list: Stamp[] = this.mode === 'room' ? this.roomActs.map((a) => ({ label: a.label, key: a.key, run: a.run, disabled: a.disabled })) : [];
       const a = list.find((x) => x.key?.toLowerCase() === k); if (a && !a.disabled?.()) { csfx('button', 0.5); a.run(); }
     };
     addEventListener('keydown', keyH); this.offKey = () => removeEventListener('keydown', keyH);
@@ -147,7 +145,7 @@ export class HubChrome {
 
   /** a key: a plate with a toggle switch that throws when used (and springs back), a lamp lit on the primary */
   /** the material the current place speaks in (the room's own, or cream enamel outside) */
-  private kind(): PlateKind { const id = this.vig?.id ?? this.room; return id ? ROOM_PLATE[id] : 'enamelBone'; }
+  private kind(): PlateKind { const id = this.room; return id ? ROOM_PLATE[id] : 'enamelBone'; }
   private stamp(parent: HTMLElement, s: Stamp, i = 0, kind: PlateKind = this.kind()) {
     const e = div('stamp pe' + (s.hot ? ' hot' : ''), parent, `<i class="tg"></i><i class="lmp"></i>${s.icon ? `<img src="${art(s.icon)}" alt="">` : ''}<span>${s.label}</span>${s.key ? `<span class="k">${s.key}</span>` : ''}`);
     plate(e, kind, 31 + i * 7 + s.label.length);
@@ -172,12 +170,6 @@ export class HubChrome {
   }
   private unpin(p: Pin) { p.off(); p.el.remove(); p.line.remove(); p.under.remove(); p.dot.remove(); }
   private clearPins() { this.pins.forEach((p) => this.unpin(p)); this.pins = []; }
-  private callout(c: Callout) {
-    const txt = () => drum(c.text());
-    const html = `${c.gauge ? '<span class="dial"><i></i></span>' : c.icon ? `<img src="${art(c.icon)}" alt="">` : ''}<span class="col">${c.title ? `<span class="t">${c.title}</span>` : ''}<span class="s">${txt()}</span></span>`;
-    const p = this.pin(c.at, html, c.side ?? 'u', txt); p.gauge = c.gauge;
-    this.pins.push(p);
-  }
   /** place a pin: the tag beside its 3D point, the inked line between, a red pin at the point */
   private place(p: Pin, cam: THREE.Camera, i: number) {
     this.v.copy(p.at).project(cam);
@@ -207,52 +199,19 @@ export class HubChrome {
     this.titleEl.classList.toggle('off', m !== 'exterior');
     this.tabsEl.style.display = inside ? '' : 'none';
     this.shipEl.style.display = m === 'overview' ? '' : 'none';
-    this.backEl.style.display = m === 'room' || this.vig ? '' : 'none';
+    this.backEl.style.display = m === 'room' ? '' : 'none';
     for (const id of ROOM_IDS) this.tabs[id].classList.toggle('on', id === room);
     if (m !== 'room') this.closePanel();
-    if (m === 'exterior' || m === 'overview') this.closeVignette(false);
   }
-  /** the room is focused: its callouts, and its stamps (the first one uses the key prop) */
+  /** the room is focused: its stamps (the first one opens its functions: the SHIP screen's panels) */
   openPanel(id: RoomId, acts: RoomAction[]) {
-    this.vig = null;
     this.roomActs = acts;
     this.clearPins();
-    for (const c of ROOM_CALLOUTS[id]) this.callout(c);
     this.stampsEl.innerHTML = '';
     acts.forEach((a, i) => this.stamp(this.stampsEl, { label: a.label, key: a.key, run: a.run, disabled: a.disabled, icon: i === 0 ? ICON[id] : undefined, hot: i === 0 }, i));
     this.backEl.style.display = '';
   }
   closePanel() { this.clearPins(); this.stampsEl.innerHTML = ''; this.roomActs = []; }
-  // ---------------------------------------------------------------- vignettes
-  private settingsOn = false;
-  private vigStamps(): Stamp[] {
-    if (!this.vig) return [];
-    if (this.vig.id === 'core' && this.settingsOn) return [...settingsStamps(() => this.drawVig()), { label: 'DONE', key: 'O', run: () => { this.settingsOn = false; this.drawVig(); } }];
-    return VIGNETTES[this.vig.id].stamps(this.vig.ctx);
-  }
-  openVignette(id: RoomId, ctx: Omit<VCtx, 'redraw'>) {
-    this.vig = { id, ctx: { ...ctx, redraw: () => this.drawVig() } };
-    this.settingsOn = false;
-    this.hintEl.classList.remove('on');
-    this.drawVig();
-    this.backEl.style.display = '';
-  }
-  /** a vignette's function lives on the room's 3D hardware console (the hub raises it); the chrome keeps BACK */
-  private drawVig() {
-    if (!this.vig) return;
-    this.clearPins(); this.stampsEl.innerHTML = ''; this.tabsEl.style.display = 'none';
-    this.hub.showConsole(this.vig.id, VIGNETTES[this.vig.id].callouts, this.vigStamps());
-  }
-  redrawVig() { if (this.vig) this.drawVig(); }
-  closeVignette(restore = true) {
-    if (!this.vig) return false;
-    this.tabsEl.style.display = this.mode === 'overview' || this.mode === 'room' ? '' : 'none';
-    const id = this.vig.id; this.vig = null; this.settingsOn = false;
-    this.clearPins(); this.stampsEl.innerHTML = '';
-    if (restore) this.openPanel(id, this.hub.getActions(id));
-    return true;
-  }
-  inVignette() { return !!this.vig; }
   closeOverlay() { if (this.cardEl.classList.contains('on')) { this.cardEl.classList.remove('on'); csfx('page', 0.4); return true; } return false; }
   visible(on: boolean) { this.shown = on; this.root.classList.toggle('hide', !on); }
 
@@ -262,13 +221,13 @@ export class HubChrome {
     this.hov = id;
     for (const r of ROOM_IDS) this.tabs[r].classList.toggle('h', r === this.hov);
     if (this.hoverPin) { this.unpin(this.hoverPin); this.hoverPin = null; }
-    if (!id || this.mode === 'exterior' || this.mode === 'boarding' || (this.mode === 'room' && id === this.room) || this.vig) return;
+    if (!id || this.mode === 'exterior' || this.mode === 'boarding' || (this.mode === 'room' && id === this.room)) return;
     const r = ROOMS[id], up = r.x0 >= 0 || id === 'bridge';
     this.hoverPin = this.pin([id === 'bridge' ? 0 : (r.x0 + r.x1) / 2, 1.2, id === 'bridge' ? 21.5 : (r.z0 + r.z1) / 2], `<img src="${art(ICON[id])}" alt=""><span class="t">${r.name}</span>`, up ? 'u' : 'd', undefined, ROOM_PLATE[id]);
   }
   keyHint(label: string | null, x: number, y: number) {
     const e = this.hintEl;
-    if (!label || this.vig) { e.classList.remove('on'); return; }
+    if (!label) { e.classList.remove('on'); return; }
     if (e.dataset.k !== this.kind()) { (e as any)._off?.(); (e as any)._off = plate(e, this.kind(), 5); e.className = e.className.replace(/\bpl-\w+/g, '') + ' pl-' + this.kind(); e.dataset.k = this.kind(); }
     e.innerHTML = `<span class="t">${label.split(' · ')[0]}</span>`;
     e.style.transform = `translate(${Math.round(Math.min(innerWidth - 480, x + 28) / K) * K}px, ${Math.round((y + 22) / K) * K}px)`;
@@ -281,8 +240,8 @@ export class HubChrome {
     const draw = () => { c.innerHTML = '<div class="t">SETTINGS</div>'; const g = div('g', c); settingsStamps(draw).forEach((s, i) => this.stamp(g, s, i, 'enamelBone')); this.stamp(g, { label: 'CLOSE', key: 'ESC', run: () => this.closeOverlay() }, 9, 'enamelBone'); };
     draw(); c.classList.add('on'); csfx('page', 0.5);
   }
-  /** the AI core's settings, inside its vignette */
-  coreSettings() { if (this.vig?.id === 'core') { this.settingsOn = true; this.drawVig(); } else this.openSettings(); }
+  /** the settings card (the AI core's settings key) */
+  coreSettings() { this.openSettings(); }
 
   // ---------------------------------------------------------------- frame
   private acc = 0;
