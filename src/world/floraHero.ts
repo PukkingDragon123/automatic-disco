@@ -488,7 +488,7 @@ export function meshPitcher(sp: PlantSpecies, h: number, tex: FloraTex, seed: nu
     g.kind = KIND.SOLID; g.col = [1, 1, 1]; g.phase = r.next(); g.pivot = [0, 0, 0];
     sheet(g, outer.map(([q, y], j) => ring(c, q * pr, y * ph, sides, j >= outer.length - (lod > 1 ? 2 : 3) ? ribbed : undefined)), skin, { out: (p) => [p[0] - c[0], (p[1] - c[1] - ph * 0.45) * 0.3, p[2] - c[2]] });
     g.col = linHex(A[1], 1.7);
-    sheet(g, inner.map(([q, y], j) => ring(c, q * pr, y * ph, sides, j === 0 ? ribbed : undefined)), skin, { out: (p) => [c[0] - p[0], 0.4 * pr, c[2] - p[2]] });
+    sheet(g, (lod > 1 ? [inner[0], inner[2]] : inner).map(([q, y], j) => ring(c, q * pr, y * ph, sides, j === 0 ? ribbed : undefined)), skin, { out: (p) => [c[0] - p[0], 0.4 * pr, c[2] - p[2]] });
     // the pool
     g.kind = KIND.LIQUID; g.col = linHex(W[4], 1.5);
     const py = inner[2][1] * ph - 0.004, pl = ring(c, inner[2][0] * pr, py, sides), cc = g.v(vadd(c, [0, py, 0]), UP, skin.u0 + skin.du * 0.5, skin.v0 + skin.dv * 0.5);

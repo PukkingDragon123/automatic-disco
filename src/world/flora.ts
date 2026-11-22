@@ -71,9 +71,9 @@ const BENDS: Record<string, [number, number]> = {
 type R3 = [number, number, number];
 interface LodSet { big: R3; small: R3; gnd: number; gfl: [number, number]; keep: number; fringe: boolean }
 const LODS: Record<Quality, LodSet> = {
-  high: { big: [26, 62, 150], small: [18, 44, 128], gnd: 44, gfl: [30, 90], keep: 1, fringe: true },
-  medium: { big: [14, 34, 132], small: [11, 26, 122], gnd: 26, gfl: [18, 72], keep: 1, fringe: false },
-  low: { big: [9, 9, 122], small: [8, 8, 118], gnd: 12, gfl: [9, 56], keep: 2, fringe: false },
+  high: { big: [26, 62, 150], small: [18, 44, 128], gnd: 44, gfl: [30, 110], keep: 1, fringe: true },
+  medium: { big: [14, 34, 132], small: [11, 26, 122], gnd: 26, gfl: [18, 90], keep: 1, fringe: false },
+  low: { big: [9, 9, 120], small: [8, 8, 105], gnd: 12, gfl: [9, 70], keep: 2, fringe: false },
 };
 /** plants shorter than this use the small LOD ranges */
 const SMALL_H = 1.25;
@@ -186,7 +186,8 @@ export class Flora {
     this.stats.gen = performance.now() - t0;
     registerLiveFlora(this);
   }
-  /** the built mesh of species si, variant v, LOD lod (0 full, 1 light): shared with standalone plants (floraObject) */
+  /** the built mesh of species si, variant v, LOD lod (0 full, 1 light, 2 low; a coarser LOD that saved little is the
+   *  finer one's mesh): shared with standalone plants (floraObject) */
   plantGeo(si: number, v: number, lod: number): PlantGeo | null { return this.pGeo[si]?.[v]?.[lod] ?? null; }
 
   // ---------------------------------------------------------------- placement (where everything grows)
@@ -440,7 +441,9 @@ export class Flora {
           tris += pg.tris;
           const band = { value: new THREE.Vector4() };
           const { mat, depth } = plant3dMaterial(this.U, this.tex.tex, { uH: pg.H, uFlex: flex, uPushK: pushK, uBob: s.arch === 'lily' ? 1 : 0, lod: band, decid, fungus: s.arch === 'fungus', small: small && !s.tree });
-          const b = new Batch(`flora3d:${s.arch}:${v}:${lo}${hi > lo ? '-' + hi : ''}`, pg.geo, mat, shadow ? depth : null, 8, I3D, per3d[si][v], nc2, 24);
+          // far off, only trees and bushes still cast shadows (a herb's shadow is a few pixels there)
+          const cast = shadow && (lo < 2 || s.tree || s.arch === 'shrub');
+          const b = new Batch(`flora3d:${s.arch}:${v}:${lo}${hi > lo ? '-' + hi : ''}`, pg.geo, mat, cast ? depth : null, 8, I3D, per3d[si][v], nc2, 24);
           this.p3d[si][v].push(b); this.all.push(b);
           this.spans.push({ b, cat, lo, hi, band, ri: 0, keep: false });
           lo = hi + 1;

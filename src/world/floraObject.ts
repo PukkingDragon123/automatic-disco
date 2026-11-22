@@ -4,7 +4,8 @@
 //
 //   buildPlantObject(species, seed, lod?, opts?) -> THREE.Object3D
 //     species: index into floraSpeciesFor()'s list, an archetype ('broadleaf', 'palm', 'fungus', ...), a species name, or a
-//     PlantSpecies; seed picks the variant and the yaw; lod 'full' (hero mesh) or 'light' (mid-range mesh).
+//     PlantSpecies; seed picks the variant and the yaw; lod 'full' (hero mesh), 'light' (mid-range mesh) or 'low' (the
+//     low-poly far mesh: a few hundred triangles, crowns as solid foliage masses).
 //     The object sways in the world wind, opens its flowers by day, follows the seasons; it casts shadows.
 //     object.userData.plant = { species, height } (metres, before any scaling you apply).
 //   floraSpeciesFor(biome, opts?) -> PlantSpecies[]   the species that grow there (trees first)
@@ -78,8 +79,8 @@ function resolve(k: Kit, sp: number | string | PlantSpecies): PlantSpecies {
 }
 
 /** a standalone plant; see the file header */
-export function buildPlantObject(species: number | string | PlantSpecies, seed: number, lod: 'full' | 'light' = 'full', opts: { biome?: BiomeKey; planetSeed?: number; shadows?: boolean } = {}): THREE.Object3D {
-  const k = kitFor(opts.biome, opts.planetSeed), sp = resolve(k, species), si = k.species.indexOf(sp), v = ((seed % 4) + 4) % 4, L = lod === 'full' ? 0 : 1;
+export function buildPlantObject(species: number | string | PlantSpecies, seed: number, lod: 'full' | 'light' | 'low' = 'full', opts: { biome?: BiomeKey; planetSeed?: number; shadows?: boolean } = {}): THREE.Object3D {
+  const k = kitFor(opts.biome, opts.planetSeed), sp = resolve(k, species), si = k.species.indexOf(sp), v = ((seed % 4) + 4) % 4, L = lod === 'full' ? 0 : lod === 'light' ? 1 : 2;
   const gkey = `${k.key}|${si}|${v}|${L}`;
   let pg = geoCache.get(gkey) ?? null;
   if (!pg && k.live && live) pg = live.plantGeo(si, v, L);
@@ -89,7 +90,7 @@ export function buildPlantObject(species: number | string | PlantSpecies, seed: 
     const grow = GROW[sp.arch];
     if (grow) pg = meshPlant(grow(sp, h, r, k.pal).normalize(), sp, k.tex, mseed, undefined, L);
     else if (HERO[sp.arch]) pg = HERO[sp.arch](sp, h, k.tex, mseed, L);
-    else pg = sp.arch === 'barrel' ? meshBarrel(sp, h, k.tex, mseed) : meshCrystal(sp, h, k.tex, mseed, k.pal);
+    else pg = sp.arch === 'barrel' ? meshBarrel(sp, h, k.tex, mseed, L) : meshCrystal(sp, h, k.tex, mseed, k.pal);
     if (!k.live) k.tex.finish();
   }
   geoCache.set(gkey, pg);
