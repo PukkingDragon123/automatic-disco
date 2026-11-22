@@ -16,7 +16,7 @@ import { itemIcon } from '../../factory/items';
 import { catOf, workOf } from '../../logistics/catalog';
 import { panel, section, para, kv, status, keyHint, type Panel } from '../kit/panel';
 import { spinFrame } from './studio';
-import { bill, tierOf, ROMAN, catName, say, esc, fmt, builtOf, upkeep, effects, unlockPath, siteRule, CAT_DESC } from './info';
+import { bill, tierOf, ROMAN, catName, say, esc, fmt, builtOf, upkeep, effects, unlockPath, siteRule } from './info';
 
 const FRAMES = 36, PW = 96, PH = 72;
 const reels = new Map<FKind, (HTMLCanvasElement | null)[]>();
@@ -134,7 +134,7 @@ export class BuildDetail {
     B.append(section('ON THE MAP'));
     for (const l of ['Click a building: select it (MOVE, TURN, INFO, PAUSE, TAKE DOWN).', 'Drag a building: pick it up and set it down elsewhere; its stock and crew go with it.', 'Dashed rings: ore seams. Amber dashes: construction sites.']) B.append(para(l, { cls: 'bd-eff' }));
     B.append(section('CATEGORIES'));
-    B.append(para(`Extraction, storage, logistics, processing, power, bio-engineering, research, defence, habitat, decoration. ${CAT_DESC.extraction}`, { dim: true, cls: 'bd-eff' }));
+    B.append(para('Extraction, storage, logistics, processing, power, bio-engineering, research, defence, habitat and decoration: hover a tab for what it holds and how much of it is open.', { dim: true, cls: 'bd-eff' }));
     const st = status('Nothing in hand.', 'info'); st.el.classList.add('bd-st');
     const keys = document.createElement('div'); keys.className = 'bd-keys';
     keys.append(keyHint('V', 'switch view'), keyHint('B', 'leave'), keyHint('Esc', 'step back'));

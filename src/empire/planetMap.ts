@@ -295,10 +295,11 @@ export class PlanetMap {
     this.cv.style.cursor = this.drag?.moved ? 'grabbing' : this.linkFrom ? (best ? 'pointer' : 'crosshair') : 'pointer';
   }
   private drawHover() {
-    const h = this.hover, c = this.c; if (!h) { return; }
-    const r = this.hot.region !== null ? this.e.region(this.hot.region) : null;
+    const h = this.hover, c = this.c;
     const sr = this.sel.region !== null ? this.e.region(this.sel.region) : null;
     if (sr) this.ringRegion(sr, P.gold[6], 2);
+    if (!h) return;
+    const r = this.hot.region !== null ? this.e.region(this.hot.region) : null;
     if (r && r !== sr) this.ringRegion(r, 0xf0ead0, 1);
     // the card is rebuilt when the pointer finds something new (or twice a second), placed by the pointer
     const rect = this.cv.getBoundingClientRect(), key = `${this.hot.region}|${this.hot.settlement?.id}|${!!this.linkFrom}|${Math.round(h.x / 8)}|${Math.round(h.y / 8)}`;
